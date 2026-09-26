@@ -47,6 +47,7 @@ import type { MintResult } from "./mint.js";
 import { isObserver } from "./observer.js";
 import type { Stance } from "./observer.js";
 import { Prospective } from "./prospective/index.js";
+import type { PlainDue } from "./prospective/index.js";
 import {
   Recall,
   isConfidential,
@@ -764,6 +765,16 @@ export type DepositReason =
   | "gate-failed"
   | "io-failed";
 
+/**
+ * One plain reminder, claimed and due to be told (`Counterpart.plainReminders`).
+ * The record `prospective/` hands out, plus `what`: the memory's title or its
+ * first line, which is the one piece of the memory's own words a host needs to
+ * say it. The sentence around it is the host's.
+ */
+export interface PlainReminder extends PlainDue {
+  readonly what: string;
+}
+
 export interface DepositResult {
   readonly deposited: boolean;
   readonly reason: DepositReason;
@@ -1282,6 +1293,9 @@ export class Counterpart {
 
   /** Undefined when no embedder was wired, and under observer. See below. */
   private readonly vectors: VectorSource | undefined;
+  /** The owner's own session? Recall's rule, kept for the plain lane: a
+   *  confidential memory is said only to its owner (recall §9.1 G5). */
+  private readonly owner: boolean;
   private reportedBudget: number | null;
   private readonly onEvent: ((e: CounterpartEvent) => void) | undefined;
   private readonly nowFn: () => number;
@@ -1312,6 +1326,7 @@ export class Counterpart {
     // belongs in `Store.open` too, and this is not a substitute for that.
     if (opts.dir !== undefined) assertSafeDataDir(opts.dir);
     this.observer = isObserver(opts);
+    this.owner = opts.owner === true && !this.observer;
     this.onEvent = opts.onEvent;
     this.nowFn = opts.now ?? ((): number => Date.now());
     this.reportedBudget = opts.budgetBytes ?? null;
@@ -1644,15 +1659,146 @@ export class Counterpart {
    * temporal cues from `prospective/`, the hop function from `associate/`. A
    * missing `at` means no temporal channel — a lived day is not a date.
    */
-  recallForTurn(turn: RecallTurn, opts: { at?: string } = {}): RecallResult {
-    const result = recallTurn(this.recall, this.withSemantic(turn), {
+  recallForTurn(
+    turn: RecallTurn,
+    opts: {
+      at?: string;
+      /** Memory ids whose temporal cue is held back THIS turn: plain items the
+       *  host is saying outright in the same breath (2026-09-26 review), so the
+       *  model is not handed the same date twice in one turn. */
+      withhold?: ReadonlySet<string>;
+    } = {},
+  ): RecallResult {
+    // THE TEMPORAL CUES ARE COMPUTED HERE, not inside `composeTurn`, for one
+    // reason: the window each one came from has to survive the turn, so the
+    // arrivals the gate actually admitted can SPEND their fire budget below.
+    // `composeTurn` skips its own read when `turn.temporal` is already set, so
+    // this is the same channel and the same ceiling (§12 G1, G5) — one read of
+    // `arrivals()`, never two.
+    const arrived =
+      opts.at === undefined || turn.temporal !== undefined
+        ? null
+        : this.prospective.arrivals({
+            at: opts.at,
+            ...(turn.day === undefined ? {} : { day: turn.day }),
+            sessionId: turn.sessionId,
+          }).arrivals.filter((a) => opts.withhold?.has(a.memoryId) !== true);
+    const withCues: RecallTurn =
+      arrived === null ? turn : { ...turn, temporal: arrived.map((a) => ({ id: a.memoryId, weight: a.cueWeight })) };
+    const result = recallTurn(this.recall, this.withSemantic(withCues), {
       schemas: this.schemas,
       prospective: this.prospective,
       associate: this.associate,
       ...(opts.at === undefined ? {} : { at: opts.at }),
     });
     this.recordDecision(result.decision, opts.at ?? null);
+    if (arrived !== null && opts.at !== undefined) this.spendArrivals(arrived, result.decision, opts.at);
     return result;
+  }
+
+  /**
+   * `Prospective.fire()`'s LIVE CALLER (2026-09-26; until today the only one was
+   * `tools/demo/seed.ts`, so a dated memory would have been re-offered every
+   * turn of its window). A fire is a surfacing that HAPPENED (prospective NOTES
+   * §6): an arrival is spent only when the gate put its memory in this turn's
+   * surfaced or footnoted set — which is what makes brake 1 (once per lived
+   * day) and brake 2 (`FIRES_PER_WINDOW`) real. An aborted turn surfaced
+   * nothing and spends nothing (recall §5 G2); an observer's `fire()` stands
+   * down on its own (§5 G9). Never throws into the turn: a lost fire row costs
+   * one extra polite mention, never the recall (§12 G12).
+   */
+  private spendArrivals(
+    arrived: readonly { memoryId: string; windowKey: string }[],
+    decision: RecallDecision,
+    at: string,
+  ): void {
+    if (decision.aborted || arrived.length === 0) return;
+    const shown = new Set<string>([...decision.surfaced, ...decision.footnotes]);
+    for (const a of arrived) {
+      if (!shown.has(a.memoryId)) continue;
+      try {
+        this.prospective.fire({
+          memoryId: a.memoryId,
+          windowKey: a.windowKey,
+          at,
+          day: decision.day,
+          sessionId: decision.sessionId,
+        });
+      } catch (err) {
+        this.emit("counterpart.prospective.fire.failed", a.memoryId, { code: errCode(err) });
+      }
+    }
+  }
+
+  /**
+   * PLAIN REMINDERS DUE TODAY, NOT YET CLAIMED — a read. The owner-decided
+   * exception to "a cue, not a command" (prospective CONTRACT §3): an item its
+   * author marked plain is SAID on its day, to the person and to the model,
+   * once per beat. A host that can tell whether its line will actually reach
+   * the person reads here and claims (`claimPlainReminder`) only what it is
+   * certainly about to show — "mark only what is certainly leaving", the
+   * update notice's rule (2026-09-26 review). `plainReminders` is the two in
+   * one, for a host with no such question.
+   *
+   * `what` is the memory's title, else the first line of its body, with its
+   * whitespace folded — the handle a person recognizes. How long a line may be
+   * and the sentence around it are the host adapter's to decide. Never throws:
+   * any failure is an empty list.
+   */
+  plainDueToday(input: { at: string }): PlainReminder[] {
+    if (this.observer) return [];
+    const out: PlainReminder[] = [];
+    try {
+      for (const due of this.prospective.plainDue({ at: input.at })) {
+        let what = "";
+        try {
+          const read = this.store.read(due.memoryId);
+          // Confidential is said only in the owner's own session — recall's
+          // boundary gate 1, which a line outside recall must keep by hand.
+          if (read.confidential && !this.owner) continue;
+          const doc = read.doc;
+          const title = doc.title?.trim() ?? "";
+          const line = doc.body.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? "";
+          what = (title.length > 0 ? title : line).replace(/\s+/g, " ").trim();
+        } catch {
+          continue;
+        }
+        if (what.length === 0) continue;
+        out.push({ ...due, what });
+      }
+    } catch (err) {
+      this.emit("counterpart.prospective.plain.failed", undefined, { code: errCode(err) });
+    }
+    return out;
+  }
+
+  /**
+   * Claim one plain beat: TRUE only when this call wrote the latch
+   * (`Prospective.claimPlain`), so two processes racing for the same beat
+   * cannot both show it. Show the line only on true. Never throws.
+   */
+  claimPlainReminder(reminder: PlainDue, input: { at: string; day?: number }): boolean {
+    if (this.observer) return false;
+    try {
+      return this.prospective.claimPlain(reminder, {
+        at: input.at,
+        ...(input.day === undefined ? {} : { day: input.day }),
+      });
+    } catch (err) {
+      this.emit("counterpart.prospective.plain.failed", reminder.memoryId, { code: errCode(err) });
+      return false;
+    }
+  }
+
+  /**
+   * PLAIN REMINDERS DUE TODAY, each already CLAIMED (`plainDueToday`, then
+   * `claimPlainReminder` on each) — so the caller shows every one it gets
+   * back, and a second process asking the same morning gets none. For a host
+   * that shows whatever it reads; the Claude Code hooks instead claim only
+   * what their envelope will carry (`bin/hook.ts#deliverTurn`).
+   */
+  plainReminders(input: { at: string; day?: number }): PlainReminder[] {
+    return this.plainDueToday({ at: input.at }).filter((r) => this.claimPlainReminder(r, input));
   }
 
   /**
@@ -3736,6 +3882,11 @@ export class Counterpart {
         aliases: [...accepted.aliases],
         updates,
         unresolved: accepted.unresolved,
+        // The sweep never dates a memory: a reminder date is an explicit field
+        // an AUTHOR writes, and the interpreter's retelling is not one (owner
+        // decision 2026-09-25/26 — never infer a date from text).
+        eventDate: null,
+        remind: null,
         at: this.nowFn(),
         day,
         contentHash: accepted.contentHash,

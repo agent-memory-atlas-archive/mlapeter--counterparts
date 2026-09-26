@@ -24,7 +24,6 @@ import type { PutInput } from "../src/core/store/index.js";
 import type { Salience } from "../src/core/types.js";
 import * as prospective from "../src/core/prospective/index.js";
 import {
-  EVENT_DATE_META,
   EXCLUDED_KINDS,
   PROSPECTIVE_FIRE_EVENT,
   PROSPECTIVE_REFUSED_EVENT,
@@ -106,7 +105,7 @@ function put(s: Store, input: Partial<PutInput> = {}): string {
 
 /** A memory dated `date`, at whatever precision the string states. */
 function dated(s: Store, date: string, input: Partial<PutInput> = {}): string {
-  return put(s, { meta: { [EVENT_DATE_META]: date }, ...input });
+  return put(s, { eventDate: date, ...input });
 }
 
 function mem(over: Partial<DerivableMemory> = {}): DerivableMemory {
@@ -346,18 +345,18 @@ describe("derivation — the predicate, and every refusal by name", () => {
     expect(p.rejectedDates).toEqual([{ date: "2026", reason: "year-only-precision" }]);
   });
 
-  test("content-dates read `happenedOn` and the declared meta convention, shape only", () => {
-    expect(
-      contentDates({
-        id: "mem_x",
-        type: "memory",
-        happenedOn: "2026-09-04",
-        learnedOn: "2026-08-25",
-        bornDay: 0,
-        meta: { eventDate: "2026-10", eventDates: ["2026-11-02", "2026-09-04"] },
-        body: BODY,
-      }).map((d) => d.date),
-    ).toEqual(["2026-09-04", "2026-10", "2026-11-02"]);
+  test("the content-date is the reminder date column and nothing else (2026-09-26)", () => {
+    expect(contentDates({ eventDate: "2026-10" }).map((d) => d.date)).toEqual(["2026-10"]);
+    expect(contentDates({}).map((d) => d.date)).toEqual([]);
+    // `happenedOn` is a PAST date by name, and the old meta convention is gone:
+    // neither makes a memory arrive.
+    const s = store();
+    const past = put(s, { happenedOn: "2026-09-04" });
+    const meta = put(s, { body: `${BODY} (meta)`, meta: { eventDate: "2026-09-04", eventDates: ["2026-09-04"] } });
+    const p = engine(s);
+    expect(p.arrivals({ at: "2026-09-04", day: 5 }).arrivals).toEqual([]);
+    expect(p.deriveFor(past, "2026-09-04")?.reason).toBe<DeriveReason>("no-event-date");
+    expect(p.deriveFor(meta, "2026-09-04")?.reason).toBe<DeriveReason>("no-event-date");
   });
 });
 
@@ -616,14 +615,16 @@ describe("window lifecycle — armed, fired, and the four once-ness brakes", () 
 
   test("a month window and a day window on one memory are separate budgets", () => {
     const s = store();
-    const id = put(s, { meta: { eventDates: ["2026-09-04", "2026-09"] } });
+    // One date lives on the memory; a caller-extracted second one rides `dates`.
+    const id = dated(s, "2026-09-04");
     const p = engine(s);
     expect(p.fire({ memoryId: id, windowKey: "d:2026-09-04", at: "2026-09-04", day: 5 }).fired).toBe(
       true,
     );
-    expect(p.fire({ memoryId: id, windowKey: "m:2026-09", at: "2026-09-04", day: 5 }).fired).toBe(
-      true,
-    );
+    expect(
+      p.fire({ memoryId: id, windowKey: "m:2026-09", at: "2026-09-04", day: 5, dates: [{ date: "2026-09" }] })
+        .fired,
+    ).toBe(true);
     expect(s.prospectiveFor(id).map((r) => r.window_key)).toEqual(["d:2026-09-04", "m:2026-09"]);
   });
 });
@@ -754,9 +755,15 @@ describe("arrival is a cue, not a command — no bypass lane", () => {
 describe("suppression reasons are distinct", () => {
   test("a pending window and a passed window are different records", () => {
     const s = store();
-    const early = dated(s, "2026-12-25");
-    const late = dated(s, "2026-08-01");
-    const result = engine(s).arrivals({ at: "2026-09-04", day: 5 });
+    // Caller-extracted dates: the index (below) never hands `arrivals` a date
+    // whose window cannot be open, so this is where the two reasons still meet.
+    const early = put(s, { body: `${BODY} early` });
+    const late = put(s, { body: `${BODY} late` });
+    const extraDates = new Map([
+      [early, [{ date: "2026-12-25" }]],
+      [late, [{ date: "2026-08-01" }]],
+    ]);
+    const result = engine(s).arrivals({ at: "2026-09-04", day: 5, extraDates });
     expect(result.arrivals).toEqual([]);
     expect(result.suppressed).toEqual([
       { memoryId: early, windowKey: "d:2026-12-25", reason: "window-not-open" },
@@ -765,12 +772,30 @@ describe("suppression reasons are distinct", () => {
     expect(result.refused).toEqual([{ memoryId: late, reason: "window-passed" }]);
   });
 
+  test("the INDEX is the enumeration: a date whose window cannot be open is never read (INTERFACE-GAPS #2)", () => {
+    const s = store();
+    dated(s, "2026-12-25", { body: `${BODY} far` });
+    dated(s, "2026-08-01", { body: `${BODY} gone` });
+    put(s, { body: `${BODY} undated` });
+    const near = dated(s, "2026-09-06", { body: `${BODY} near` });
+    const month = dated(s, "2026-08", { body: `${BODY} month in grace` });
+    const range = dated(s, "2026-09-05..2026-09-20", { body: `${BODY} range` });
+    const result = engine(s).arrivals({ at: "2026-09-04", day: 5 });
+    // Six memories, three candidates: the window of each of these reaches 09-04
+    // (a month's grace runs to 09-07; a range opens LEAD_DAYS before its start).
+    expect(result.considered).toBe(3);
+    expect(result.arrivals.map((a) => a.memoryId).sort()).toEqual([near, month, range].sort());
+    expect(result.refused).toEqual([]);
+  });
+
   test("every brake has its own reason, and no two collide", () => {
     const s = store();
     const p = engine(s);
     const seen = new Map<SuppressReason, string>();
 
-    const pending = dated(s, "2026-12-25", { body: `${BODY} pending` });
+    // Pending is only reachable through a caller's date now: the index never
+    // hands `arrivals` a memory whose window has not opened.
+    const pending = put(s, { body: `${BODY} pending` });
     const referenced = dated(s, "2026-09-04", { body: `${BODY} referenced` });
     const overFired = dated(s, "2026-09-04", { body: `${BODY} overfired` });
     const firedToday = dated(s, "2026-09-04", { body: `${BODY} today` });
@@ -790,7 +815,12 @@ describe("suppression reasons are distinct", () => {
     });
     p.expire(retired, "d:2026-09-04", "retired by hand");
 
-    const result = p.arrivals({ at: "2026-09-05", day: 6, sessionId: "s1" });
+    const result = p.arrivals({
+      at: "2026-09-05",
+      day: 6,
+      sessionId: "s1",
+      extraDates: new Map([[pending, [{ date: "2026-12-25" }]]]),
+    });
     for (const r of result.suppressed) seen.set(r.reason, r.memoryId);
     expect(seen.get("window-not-open")).toBe(pending);
     expect(seen.get("already-referenced")).toBe(referenced);
@@ -929,7 +959,7 @@ describe("reschedule — the gated compare-and-swap", () => {
     expect(fresh?.fires).toBe(0);
 
     // The caller's half: the memory's own stated date moves (INTERFACE-GAPS #4).
-    s.revise(id, { meta: { [EVENT_DATE_META]: "2026-10-02" }, reason: "truck rebooked" });
+    s.revise(id, { eventDate: "2026-10-02", reason: "truck rebooked" });
     const fired = p.fire({ memoryId: id, windowKey: "d:2026-10-02", at: "2026-10-02", day: 20 });
     expect(fired.fired).toBe(true);
     expect(fired.fires).toBe(1);
@@ -1096,7 +1126,7 @@ describe("exits — every dated memory names its exit", () => {
       nextDate: "2026-10-02",
       at: "2026-09-01",
     });
-    s.revise(id, { meta: { [EVENT_DATE_META]: "2026-10-02" }, reason: "rescheduled" });
+    s.revise(id, { eventDate: "2026-10-02", reason: "rescheduled" });
 
     const report = p.exitReport("2026-09-30", 8);
     const byKey = new Map(report.exits.map((e) => [e.windowKey, e.kind]));

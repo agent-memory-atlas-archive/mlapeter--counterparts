@@ -20,7 +20,7 @@
  * else. Rules 1–4 of `views.ts` apply; no row text is emitted, only counts and
  * event `seq`s the page can open with `/api/event`.
  */
-import type { EventRow } from "../../../../core/store/index.js";
+import type { EventRow, ReadOnlyStore } from "../../../../core/store/index.js";
 import type { DurableEventName } from "../../registries.js";
 import type { DashboardSource } from "../../source.js";
 
@@ -62,6 +62,19 @@ interface MechanismProof {
   readonly proofs: readonly Proof[];
   /** For a grey light: the one plain line it shows instead of evidence. */
   readonly grey?: string;
+  /**
+   * WHAT THE MECHANISM IS HOLDING, when that is part of whether it can fire at
+   * all (2026-09-26, prospective: dated memories). Counted from the store, said
+   * after the evidence; and when it is ZERO and nothing fired, the light is
+   * grey with `none` — there is truly nothing for the mechanism to do.
+   */
+  readonly held?: {
+    readonly count: (store: ReadOnlyStore) => number;
+    readonly says: readonly [string, string];
+    readonly none: string;
+  };
+  /** Also say how many of the window's firings landed TODAY (this lived day). */
+  readonly today?: boolean;
 }
 
 const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
@@ -141,13 +154,23 @@ export const MECHANISM_PROOFS: readonly MechanismProof[] = [
     proofs: [{ event: "associate.flush", sum: "rows", says: ["link written", "links written"] }],
   },
   {
-    // `prospective.fire` exists and only the demo seeder calls `fire()`: no
-    // live path spends the budget, so the rows prove nothing about real use.
+    // Built end to end since 2026-09-26: `note` / `session_end` take a date; a
+    // QUIET one comes back as a footnote cue and spends a fire when it surfaces
+    // (`Counterpart#spendArrivals`), a PLAIN one is said on its day. Grey only
+    // when nothing is dated at all (`held` below).
     id: "prospective",
     family: "retrieval",
-    built: false,
-    proofs: [],
-    grey: "In development: dated reminders can be stored, but nothing brings them back on the day yet.",
+    built: true,
+    proofs: [
+      { event: "prospective.plain", says: ["reminder said plainly", "reminders said plainly"] },
+      { event: "prospective.fire", says: ["reminder came back as a quiet footnote", "reminders came back as quiet footnotes"] },
+    ],
+    held: {
+      count: (store) => store.datedMemories("0001-01-01", "9999-12-31").length,
+      says: ["dated memory held", "dated memories held"],
+      none: "Nothing dated yet: a note or a memory given a date comes back around that day.",
+    },
+    today: true,
   },
   // ── Transformation ──
   {
@@ -260,6 +283,7 @@ export function mechanismsView(src: DashboardSource): MechanismsView {
     }
     const parts: string[] = [];
     const backing: EventRow[] = [];
+    let today = 0;
     for (const proof of m.proofs) {
       let total = 0;
       for (const row of rowsFor(proof.event)) {
@@ -267,16 +291,40 @@ export function mechanismsView(src: DashboardSource): MechanismsView {
         if (n > 0) {
           total += n;
           backing.push(row);
+          if (row.day === livedDay) today += n;
         }
       }
       if (total > 0) parts.push(`${total} ${total === 1 ? proof.says[0] : proof.says[1]}`);
     }
+    // What it holds, read once and only for a row that declares it. A store
+    // that will not answer reads as "unknown", never as zero — zero turns the
+    // light grey, and a failed read is not evidence of nothing.
+    let held: number | null = null;
+    if (m.held !== undefined) {
+      try {
+        held = m.held.count(store);
+      } catch {
+        held = null;
+      }
+    }
+    const heldLine =
+      m.held === undefined || held === null ? "" : ` ${held} ${held === 1 ? m.held.says[0] : m.held.says[1]}.`;
     if (parts.length > 0) {
       const events = backing
         .sort((a, b) => b.seq - a.seq)
         .slice(0, RECENT_IDS)
         .map((r) => r.seq);
-      return { id: m.id, family: m.family, status: "green", evidence: `${parts.join(", ")} in the last ${MECHANISM_DAYS} lived days.`, events };
+      const todayLine = m.today === true ? ` ${today} today.` : "";
+      return {
+        id: m.id,
+        family: m.family,
+        status: "green",
+        evidence: `${parts.join(", ")} in the last ${MECHANISM_DAYS} lived days.${todayLine}${heldLine}`,
+        events,
+      };
+    }
+    if (m.held !== undefined && held === 0) {
+      return { id: m.id, family: m.family, status: "grey", evidence: m.held.none, events: [] };
     }
     // Built, and nothing inside the window: when was it last seen at all? Only
     // the newest LOOKBACK rows of each name are searched, so a name with that
@@ -295,7 +343,7 @@ export function mechanismsView(src: DashboardSource): MechanismsView {
       lastDay === null
         ? `Built, and no record of it firing yet.`
         : `Built, but quiet for ${MECHANISM_DAYS} lived days (last fired on lived day ${lastDay}).`;
-    return { id: m.id, family: m.family, status: "amber", evidence, events: [] };
+    return { id: m.id, family: m.family, status: "amber", evidence: `${evidence}${heldLine}`, events: [] };
   });
 
   return { livedDay, fromDay, days: MECHANISM_DAYS, mechanisms, truncated };

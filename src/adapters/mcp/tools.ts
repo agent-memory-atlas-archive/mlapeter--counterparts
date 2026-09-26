@@ -155,6 +155,40 @@ const FEELINGS_PROPERTY = {
 } as const;
 
 /**
+ * `eventDate` and `remind` on a `note` or a `session_end` entry (2026-09-26,
+ * owner decisions: an explicit date field only, never a date read out of the
+ * text; plain or quiet, default quiet, stored in the memory's meta).
+ */
+const EVENT_DATE_PROPERTY = {
+  type: "string",
+  description:
+    'Optional: the calendar date this memory is ABOUT, when that is a future date — so it comes back around then. Write it yourself, in one of four shapes: a day "2026-10-15", a month "2026-10", a range of two days "2026-10-20..2026-10-31" (that is how to say "late October"), or a year "2026" (a year alone never comes back on its own). Say "before the 15th" as the day or a range ending on it. Leave it out when nothing is dated; a date written only in the text is never read. An unreadable date is refused, and nothing is stored.',
+} as const;
+
+const REMIND_PROPERTY = {
+  type: "string",
+  enum: ["plain", "quiet"],
+  description:
+    'Optional, with eventDate: how it comes back. "plain" when you judge it genuinely matters for remembering to DO something — a real deadline, an important date — or when the person says it matters ("don\'t let me forget to pay taxes before Oct 15th!"): on the day it is said plainly, once, to them in their terminal and to you in context (a month or range: its first day and its last). Otherwise "quiet", the default: it can surface as a footnote around the date, at most twice — giving it a date is itself what makes it eligible, whatever its salience.',
+} as const;
+
+/** The two privileges `note` and `session_end` share for the date fields. */
+const DATE_PRIVILEGES: readonly Privilege[] = [
+  {
+    claim:
+      "`eventDate` is a FIELD, never read out of your text: it is checked by the one module that reads dates, and an unreadable one is refused by name before anything is stored.",
+    mechanizedBy:
+      "src/adapters/mcp/server.ts#readReminder -> src/core/remember/proposals.ts#intake (EVENT_DATE_UNREADABLE) -> src/core/time.ts#parseCalendarDate",
+  },
+  {
+    claim:
+      'A "plain" reminder is said at most once per beat — on its day, or on the first and the last day of a month or range — and never under observer stance; a "quiet" one is only ever a cue, capped at the footnote tier and spent at most twice per window.',
+    mechanizedBy:
+      "src/core/prospective/index.ts#Prospective.plainDue + claimPlain (dedupKey latch) + fire (FIRES_PER_WINDOW) -> src/core/counterpart.ts#recallForTurn",
+  },
+];
+
+/**
  * `note`'s privileges. Each one is a sentence v1 would have shipped in a prompt
  * and left unenforced; each one names the file that enforces it here.
  */
@@ -214,6 +248,7 @@ const NOTE: ToolSpec = {
       mechanizedBy:
         "src/core/remember/updates.ts#resolveUpdates -> src/core/mint.ts#mintProposal (UPDATES_META_KEY)",
     },
+    ...DATE_PRIVILEGES,
     {
       claim: "Under observer stance nothing is written and the refusal says so.",
       mechanizedBy: "src/core/store/index.ts#mutate (observer stand-down)",
@@ -259,6 +294,8 @@ const NOTE: ToolSpec = {
         description: "What sort of thing this is about. Defaults to fact.",
       },
       title: { type: "string", description: "Optional short handle for the memory." },
+      eventDate: EVENT_DATE_PROPERTY,
+      remind: REMIND_PROPERTY,
       feelings: FEELINGS_PROPERTY,
     },
     required: ["text"],
@@ -443,6 +480,7 @@ const SESSION_END: ToolSpec = {
       claim: "Credentials are redacted and empty entries are refused, per entry, without failing the batch.",
       mechanizedBy: "src/core/encode/secrets.ts + src/adapters/mcp/server.ts#sessionEndTool (per-entry isolation)",
     },
+    ...DATE_PRIVILEGES,
     {
       claim: "Under observer stance nothing is written and the refusal says so.",
       mechanizedBy: "src/core/store/index.ts#mutate (observer stand-down)",
@@ -541,6 +579,8 @@ const SESSION_END: ToolSpec = {
               description:
                 "The id or handle of a memory this revises, if it revises one. A field — never written into `content`.",
             },
+            eventDate: EVENT_DATE_PROPERTY,
+            remind: REMIND_PROPERTY,
             feelings: FEELINGS_PROPERTY,
           },
           required: ["content"],

@@ -472,7 +472,9 @@ export interface ProspectiveInput {
   memoryId: string;
   windowKey: string;
   eventDate: string;
-  precision: "day" | "month" | "year";
+  /** `range` since 2026-09-26 (prospective windows.ts) — the column is TEXT, so
+   *  this widens the type and nothing on disk. */
+  precision: "day" | "month" | "year" | "range";
   state: "armed" | "fired" | "suppressed" | "expired";
   fires?: number;
   lastFiredDay?: number | null;
@@ -2587,14 +2589,18 @@ export class Store {
    * month `2026-10` sorts BEFORE `2026-10-01` as text and a range's text runs
    * past its first day, so a plain `BETWEEN` would miss both. The index answers
    * "starts no later than `to`" (`'~'` sorts after every digit and `..`), and
-   * `calendarOverlaps` decides the rest. A memory with only the older meta
-   * convention (`meta.eventDate`) is not here; `prospective/contentDates`
-   * still reads that.
+   * `calendarOverlaps` decides the rest. The older meta convention
+   * (`meta.eventDate`) is read by nothing since 2026-09-26: this column is the
+   * one place a reminder date lives.
+   *
+   * `archived: true` includes archived memories too — for `prospective/`'s exit
+   * accounting, where a dated memory archived before its window is the `faded`
+   * exit and has to be found to be counted.
    */
-  datedMemories(from: string, to: string): DatedMemory[] {
+  datedMemories(from: string, to: string, opts: { archived?: boolean } = {}): DatedMemory[] {
     const rows = this.ops.all<{ id: string; event_date: string }>(
       `SELECT id, event_date FROM memories
-        WHERE event_date IS NOT NULL AND event_date <= ? AND archived = 0`,
+        WHERE event_date IS NOT NULL AND event_date <= ?${opts.archived === true ? "" : " AND archived = 0"}`,
       `${to}~`,
     );
     return rows
@@ -2695,6 +2701,18 @@ export class Store {
       "SELECT * FROM prospective WHERE memory_id = ? ORDER BY window_key",
       id,
     );
+  }
+
+  /**
+   * Every memory id that has at least one firing-state row, sorted. The exit
+   * accounting's other half (prospective §5 G12): a row can outlive its
+   * memory's date — a date cleared by `revise`, a reschedule's retired window —
+   * and `datedMemories` alone would never find it.
+   */
+  prospectiveMemoryIds(): string[] {
+    return this.ops
+      .all<{ memory_id: string }>("SELECT DISTINCT memory_id FROM prospective ORDER BY memory_id")
+      .map((r) => r.memory_id);
   }
 
   removalRecord(id?: string): RemovalRow[] {

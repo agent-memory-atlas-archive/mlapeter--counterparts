@@ -49,6 +49,7 @@
  * resolution, upstream, and this file does not write a second one.
  */
 import { TUNABLES as PHYSICS, clampSalienceAtSeam } from "./physics/index.js";
+import { CUE_MODE_META } from "./prospective/index.js";
 import type { Proposal } from "./remember/index.js";
 import { localDate } from "./time.js";
 import type { Store } from "./store/index.js";
@@ -182,6 +183,9 @@ export function mintProposal(store: Store, proposal: Proposal, opts: MintOptions
   // Durable, because the event ring is not: prose is canonical, so the flag on
   // the document is what makes "defaulted vs claimed" countable tomorrow.
   if (clamp.defaulted) meta[CLAIMED_DEFAULT_META_KEY] = true;
+  // PLAIN OR QUIET rides the meta bag beside its date (2026-09-26, no schema
+  // bump), under the key its one reader owns.
+  if (proposal.eventDate !== null && proposal.remind !== null) meta[CUE_MODE_META] = proposal.remind;
 
   // THE PROPOSAL'S OWN INSTANT, not the write's (§I7). `proposal.at` is the
   // span buffer's injected clock read at the moment the author deposited; the
@@ -203,6 +207,8 @@ export function mintProposal(store: Store, proposal: Proposal, opts: MintOptions
     body: proposal.content,
     learnedOn,
     ...(proposal.title === null ? {} : { title: proposal.title }),
+    // The reminder date, as the author wrote it (schema v7's `event_date`).
+    ...(proposal.eventDate === null ? {} : { eventDate: proposal.eventDate }),
     meta,
     band: opts.band ?? "episodic",
     ...(opts.model === undefined ? {} : { model: opts.model }),

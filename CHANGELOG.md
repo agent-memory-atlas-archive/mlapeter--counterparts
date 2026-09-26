@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+Reminders work.
+
+- **A memory can carry a date, and it comes back around then.** `note` and each
+  `session_end` memory take an optional `eventDate`: a day `2026-10-15`, a month
+  `2026-10`, or a range `2026-10-20..2026-10-31` (how to say "late October"). Claude writes
+  the date itself; nothing is read out of the text, and a date that cannot be read is
+  refused with the shapes that can. A year alone is kept but never comes back on its own.
+- **Plain or quiet.** Beside the date, `remind: "plain"` for something that really has to
+  happen — a deadline, an important day, or anything you say not to forget. On its day
+  you see it in the terminal (`Today: pay your taxes`) and Claude has it in context, once;
+  a month or a range is said on its first day and again on its last. Everything else is
+  quiet, the default: it can come back as a footnote around the date, at most twice.
+  Giving a memory a date is what makes it eligible, however ordinary the memory; one that
+  has faded away or been archived still never comes back.
+- **A plain line is spent only when you can see it.** If the morning's wake is too full
+  for the terminal line, it waits for your first prompt instead of being used up unseen,
+  and the update notice never pushes it out.
+- **A quiet reminder is not repeated every turn.** A footnote that came back spends one of
+  its two mentions, at most one a day. Month and range dates spread their warmth over the
+  first week instead of all landing on the 1st, keep their second mention for after the
+  dates pass, and never take one of the wake's two "Arriving" lines — those are for
+  day-dated things, and a tie goes to the one happening sooner.
+- **The gauge shows it.** `counterparts mechanisms` and the dashboard's Prospective light
+  count dated memories held and reminders that came back this week, plain and quiet apart
+  (the dashboard adds today's). Grey only when nothing is dated.
+
 ## 0.3.2 — 2026-09-25
 
 Dates and times follow your clock, and the store's format moves to v7.

@@ -59,8 +59,11 @@ export {
   SPAWN_REFUSAL_PREFIX,
   SPAWN_START_COUNT_KEY,
   SPAWN_START_DATE_KEY,
+  plainContextLine,
+  plainLine,
   substanceOf,
   wakeOutcome,
+  withoutPlain,
 } from "./hooks.js";
 export type {
   AdapterEvent,

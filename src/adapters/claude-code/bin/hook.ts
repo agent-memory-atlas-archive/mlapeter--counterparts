@@ -34,12 +34,13 @@ import {
   stanceOfMode,
 } from "../../scopes.js";
 import type { ScopeRead, ScopeVerdict } from "../../scopes.js";
-import { canonicalScope, readSession } from "../../sessions.js";
+import { PAGE_WRITER_ENV, canonicalScope, readSession } from "../../sessions.js";
 import { resolveZone, todayIn } from "../../../core/time.js";
 import { loadConfig, withEmbedderDefault } from "../config.js";
 import type { AdapterConfig } from "../config.js";
 import { HOOKS, openAdapter } from "../index.js";
-import { STOP_HUMAN_LINE } from "../hooks.js";
+import { STOP_HUMAN_LINE, plainLine, withoutPlain } from "../hooks.js";
+import type { PlainReminder } from "../../../core/counterpart.js";
 import type { HookInput, HookName } from "../hooks.js";
 import {
   CONFIG_REFUSED,
@@ -393,6 +394,9 @@ export function toHookInput(
     // nothing (`hooks.ts#askAtStop`).
     ...(payload["stop_hook_active"] === true ? { reFired: true } : {}),
     ...(typeof payload["prompt"] === "string" ? { prompt: payload["prompt"] } : {}),
+    // The host-mode page writer's headless child (`page-writer.ts` sets this):
+    // no one reads its terminal, so it must not spend a plain reminder's beat.
+    ...(((opts.env ?? process.env)[PAGE_WRITER_ENV] ?? "").trim().length > 0 ? { pageWriter: true } : {}),
     // THE PERSON'S DAY (docs/time.md, 2026-09-25; UTC before). It dates the
     // hook's rows, the wake preface, the prospective "today" and the date the
     // boundary hands the lived clock — which is why the lived clock can see a
@@ -739,6 +743,11 @@ async function runHook(
     // AND THE UPDATE NOTICE AT A PROMPT (roadmap E, 2026-09-23), fail-open
     // (`deliverTurn`): once per session, when the MCP server this session talks
     // to runs an older build than this installed one.
+    //
+    // AND PLAIN REMINDERS (2026-09-26), at both events, FIRST — `deliverTurn`
+    // adds them from `result.plain` and claims them only once the envelope is
+    // known to carry them (2026-09-26 review): a plain beat is spent once and
+    // never comes back, while the doctor's line returns at the next start.
     const delivery = deliverTurn(
       name,
       result,
@@ -783,38 +792,92 @@ async function runHook(
 export interface UpdateNoticeDoors {
   updateNotice(input: HookInput): string | null;
   markUpdateNotice(input: HookInput): boolean;
+  /**
+   * Claim plain reminders this delivery is certainly about to show, returning
+   * the ones claimed (`ClaudeCodeAdapter#claimPlain`). Absent: nothing can be
+   * claimed, so nothing is shown and every one waits for a later turn.
+   */
+  claimPlain?(input: HookInput, due: readonly PlainReminder[]): readonly PlainReminder[];
 }
 
 /**
- * THIS EVENT'S OUTPUT, WITH THE UPDATE NOTICE FOLDED IN FAIL-OPEN (roadmap E;
- * #187 re-review, N4).
+ * THIS EVENT'S OUTPUT, WITH PLAIN REMINDERS AND THE UPDATE NOTICE FOLDED IN
+ * FAIL-OPEN (roadmap E; #187 re-review, N4; 2026-09-26 review).
  *
- * The plain delivery is computed first and is the answer whenever anything
- * about the notice goes wrong: a door that throws, a mark that will not land.
- * The notice is MARKED only once it is certainly leaving — after the envelope
- * is known to carry it — and SHOWN only if the mark landed, so it never repeats
- * and is never marked-but-lost; a turn whose recall leaves no room drops it,
- * marks nothing, and tries again next turn. Every event but
- * `user-prompt-submit` is exactly `hostDelivery`.
+ * PLAIN REMINDERS FIRST, and under the update notice's own rule — MARK ONLY
+ * WHAT IS CERTAINLY LEAVING. A plain beat is spent once and never comes back,
+ * so it is claimed only after the envelope is known to carry its line to the
+ * terminal, and it goes ahead of every other notice (the doctor's red line
+ * returns at the next start; the beat would not). A turn with no room — a full
+ * wake at SessionStart — claims nothing and strips the lines from the model's
+ * context too (`withoutPlain`), so the first prompt, whose envelope is small,
+ * says them instead. A line whose claim is lost to another process is stripped
+ * the same way.
+ *
+ * Then the update notice: the delivery without it is the answer whenever
+ * anything about it goes wrong — a door that throws, a mark that will not
+ * land, an envelope with no room for it — so it can never cost a line that
+ * already fit. It is MARKED only once it is certainly leaving and SHOWN only if
+ * the mark landed, so it never repeats and is never marked-but-lost; a turn
+ * whose recall leaves no room marks nothing and tries again next turn.
  */
 export function deliverTurn(
   name: HookName,
-  result: { injection: string | null; ask: string | null },
+  result: {
+    injection: string | null;
+    ask: string | null;
+    notices?: readonly string[];
+    plain?: readonly PlainReminder[];
+  },
   payload: Record<string, unknown>,
-  sessionStartNotices: readonly (string | null)[] | null,
+  /** SessionStart's priority-ordered notices (after any plain reminders), or
+   *  null. At a prompt, null: the plain lines come from `result.plain`. */
+  notices: readonly (string | null)[] | null,
   doors: UpdateNoticeDoors,
   input: HookInput,
 ): Delivery {
-  const plain = hostDelivery(name, result, payload, sessionStartNotices);
-  if (name !== "user-prompt-submit") return plain;
+  let r = result;
+  let ordered = notices;
+  let deferred: Delivery["dropped"] = null;
+  const due = result.plain ?? [];
+  if (due.length > 0) {
+    // The longest run, in order, whose lines the envelope carries: a day with
+    // more plain items than room says what fits and keeps the rest for later.
+    let fits = 0;
+    for (let k = due.length; k > 0; k--) {
+      const probe = hostDelivery(name, r, payload, [due.slice(0, k).map(plainLine).join("\n")]);
+      if (probe.dropped === null) {
+        fits = k;
+        break;
+      }
+      if (k === due.length) deferred = probe.dropped;
+    }
+    let claimed: readonly PlainReminder[] = [];
+    if (fits > 0) {
+      try {
+        claimed = doors.claimPlain?.(input, due.slice(0, fits)) ?? [];
+      } catch {
+        claimed = [];
+      }
+    }
+    // By the beat's identity, not the object's: a door may hand back copies.
+    const beat = (x: PlainReminder): string => `${x.memoryId} ${x.windowKey} ${x.beat}`;
+    const kept = new Set(claimed.map(beat));
+    const shownPlain = due.filter((d) => kept.has(beat(d)));
+    r = withoutPlain(r, due.filter((d) => !kept.has(beat(d))));
+    if (shownPlain.length > 0) ordered = [shownPlain.map(plainLine).join("\n"), ...(notices ?? [])];
+  }
+  const shown = hostDelivery(name, r, payload, ordered);
+  const base = shown.dropped === null && deferred !== null ? { ...shown, dropped: deferred } : shown;
+  if (name !== "user-prompt-submit") return base;
   try {
     const update = doors.updateNotice(input);
-    if (update === null) return plain;
-    const carried = hostDelivery(name, result, payload, update);
-    if (carried.dropped !== null) return carried;
-    return doors.markUpdateNotice(input) ? carried : plain;
+    if (update === null) return base;
+    const carried = hostDelivery(name, r, payload, [...(ordered ?? []), update]);
+    if (carried.dropped !== null) return { ...base, dropped: base.dropped ?? carried.dropped };
+    return doors.markUpdateNotice(input) ? carried : base;
   } catch {
-    return plain;
+    return base;
   }
 }
 
@@ -890,7 +953,7 @@ export function hostDelivery(
    * each is added only while the envelope still fits, so a lower line can never
    * cost a higher one its place. At a prompt the lines are ALL OR NOTHING —
    * joined into one `systemMessage`, or all dropped — which is what lets
-   * `deliverTurn` mark only an envelope that carried them; today there is one.
+   * `deliverTurn` mark only an envelope that carried them; since 2026-09-26 that is plain reminders and the update notice.
    */
   notice: string | null | readonly (string | null)[] = null,
 ): Delivery {
@@ -935,7 +998,7 @@ export function hostDelivery(
     // no notice prints what it always has — plain text, or nothing. More than
     // one line would be JOINED into the one `systemMessage` an object carries,
     // never one replacing another, and dropped all together or not at all —
-    // not SessionStart's priority order; today the update notice is the only one.
+    // not SessionStart's priority order; since 2026-09-26 the plain reminders and the update notice (`deliverTurn` tries the two together and falls back to the first alone).
     if (name === "user-prompt-submit" && notices.length > 0) {
       const message = notices.join("\n");
       const envelope = JSON.stringify({

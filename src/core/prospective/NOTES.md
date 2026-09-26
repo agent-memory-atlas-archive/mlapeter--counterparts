@@ -48,6 +48,18 @@ where a faded memory actually loses — which is the whole "no bypass lane" clai
 `sal()` is imported from `physics/`. A local mean would be a second implementation of the
 one arithmetic rule, which is exactly the divergence v1's "two clocks" produced.
 
+**Revised 2026-09-26 (owner decision, PR #243 review).** A memory with an EXPLICIT
+`eventDate` (the `event_date` column its author wrote) no longer faces the floor: choosing
+a date is itself the importance signal, and an ordinary note sits at the 0.25 authored
+default, so the floor made quiet reminders dead for most notes. The floor still gates a
+date a caller extracted (`extraDates`). With the floor lifted, decay needed saying
+explicitly, so the predicate gained a `faded` refusal — strength at or below
+`FADED_STRENGTH`, the same line §8's `faded` exit uses, computed by `load()` so `derive`
+stays pure. That is G10 kept, not broken: a dated memory that faded before its window
+still does not arrive. Archived, journal and skill still refuse as before. Measured end to
+end: a quiet `note` at the authored default reaches the footnote tier on its day and spends
+its fire (`test/prospective-review-pr243.test.ts`).
+
 ## 5. Ramp shape: linear, two anchors, both CAL
 
 `RAMP_OPEN = 0.4` rising to 1 at the peak, then falling to `RAMP_CLOSE = 0.2` at the last
@@ -154,7 +166,113 @@ day", which is the smallest fact that answers the question.
 The ring emits are untouched: they are the live debugging channel and they die with the
 process. What is new is the half that outlives it.
 
-**Still true, and worth saying:** `fire()` has one caller in the whole tree
-(`tools/demo/seed.ts`), so on the live store these rows will read `never` until something
-arms and fires a window in earnest. That is inventory §3 S4, not a fault in this row — and
-now it is a silence the view can finally tell apart from a mechanism nobody watched.
+**Was true until 2026-09-26:** `fire()` had one caller in the whole tree
+(`tools/demo/seed.ts`). §12 names the live one.
+
+## 12. PR B, 2026-09-26: reminders actually working
+
+Owner decisions of 2026-09-25/26, all experimental working defaults.
+
+**The date is a field the model writes.** `note` and every `session_end` entry (so the
+write-up door too — it deposits through the same `depositEntries`) take `eventDate` in the
+v7 shapes and `remind: "plain" | "quiet"`. The MCP adapter checks the date with
+`time.ts#parseCalendarDate` before anything is captured and refuses an unreadable one by
+name, listing the shapes; `remember/proposals.ts#intake` checks it again at the one front
+door (`EVENT_DATE_UNREADABLE`, `REMIND_UNKNOWN`). `mint.ts` writes it to the column and
+`remind` to `meta.remind` (`CUE_MODE_META`) — no schema bump. `remind` with no date is
+dropped, counted, and said in the tool's reply; the memory still lands. The sweep never
+dates anything.
+
+**The caller of `fire()` is `Counterpart#spendArrivals`, reached from
+`Counterpart#recallForTurn`** — the UserPromptSubmit hook's recall. `recallForTurn` now
+reads `arrivals()` itself (so each cue keeps its window key), hands the cues to recall as
+`turn.temporal` (so `composeTurn` does not read them a second time), and after the gate
+spends one fire for each arrival whose memory the turn actually surfaced or footnoted. An
+aborted turn spends nothing; an observer's `fire()` stands down on its own. The wake's
+horizon lines do NOT spend a fire: the bundle is rendered at a boundary and served to
+every session until the next one, so a render is an offer, not a surfacing. They are
+bounded anyway, because `horizon()` reads `arrivals()` and a spent window is not offered.
+
+**Enumeration is the index.** `arrivals()` asks `Store.datedMemories(at − GRACE_DAYS,
+at + LEAD_DAYS)` — exactly the memories whose window can be open — plus any `extraDates`
+ids; `exitReport()` asks `datedMemories` over all time with archived rows included, plus
+`Store.prospectiveMemoryIds()` for rows that outlived a cleared date. No `store.list()`
+scan remains. Two consequences: `window-not-open` and `window-passed` are now reachable
+only through a caller's `extraDates` (the index never hands over a date whose window is
+shut), and the old sources are gone — `happenedOn` (a past date by name, and every
+belief's `statedOn` lands there) and the `meta.eventDate` convention (nothing ever wrote
+it). Nobody had dated memories yet, so nothing was migrated.
+
+**Range precision, and year.** A range `a..b` opens `LEAD_DAYS` before `a`, holds full
+intensity from `a` through `b` (a plateau: "late October" means all of it), and decays
+through grace after `b`. Its key is `r:a..b`. A year still has no window and is never told
+plainly: it names no day it could mean.
+
+**The four July tune questions** (bansai `eval/replay/GATES.md` finding 3), each with an
+acceptance test in `test/prospective-reminders.test.ts`:
+
+- (a) *Stagger month warmth.* A month's peak is its 1st plus a stable per-memory offset
+  (FNV-1a of the id, mod `MONTH_STAGGER_DAYS` = 7). The window KEY is unchanged — the
+  stagger lives only in `peakOn` — so G9 holds.
+- (b) *Space a month's fires so it gets an "after" beat.* With `FIRES_PER_WINDOW >= 2`, a
+  month or range window's last fire is held (`held-for-after`) until the stated span has
+  ended; it can then land in grace. Applied to ranges too, since a range front-loads its
+  budget the same way. A day window is untouched: it already had grace.
+- (c) *Only day-dated items take wake lines.* `horizon()` filters to day precision. Month
+  and range items still arrive as cues every day of their windows.
+- (d) *Imminence breaks salience ties.* `arrivals()` sorts by ramp × strength; scores
+  within 1e-9 are a tie, broken by days until the span starts, then span width (narrower
+  first), then key. The v1 caveat — month items must not be starved by a stream of
+  imminent day items — is bounded as v1 said: each occasion needs at most two slots, and
+  (c) already takes months out of the wake entirely.
+
+**Plain items** (CONTRACT §3's named exception). `plainDue({at})` lists plain memories
+whose STATED span covers `at` (no lead, no grace) and whose beat has not been told;
+`claimPlain` writes the `prospective.plain` row with a `dedupKey` per memory, window and
+beat, and returns true only when this call wrote it — so two hook processes cannot both
+say it. `Counterpart#plainDueToday` reads and adds `what` (title, else the first line);
+`claimPlainReminder` claims one; `plainReminders` is the two together. The claude-code
+adapter words it (`hooks.ts#plainLine`, clipped to `PLAIN_WHAT_MAX_CHARS`), puts it under
+the `Now:` line for the model, and returns it as `notices` + `plain` for the terminal's
+`systemMessage` at SessionStart and at a prompt (a day that began mid-session is said at
+the next prompt) — UNCLAIMED: `bin/hook.ts#deliverTurn` claims only once it knows the
+envelope carries the line (see the review, below). Beats: `day` on the day; `opens` the first
+day a month or range is seen open; `last-day` on its last day. The latch is by beat, and a
+beat belongs to a CALENDAR day — not the lived-day counter, which only moves at a boundary
+and would keep "today" shut all morning. No salience floor: the floor gates unasked
+surfacing, and an ordinary note sits at the 0.25 authored default. A plain item told today
+is not also offered as a quiet cue that day (`told-plainly-today`). A confidential one is
+told only in the owner's own session, recall's boundary gate kept by hand.
+
+Two edges, named by the builder. The model's copy sits under the `Now:` line, above the
+wake block; the delivery check finds the wake's sentinels by searching the attachment's
+text, not by line, so the extra lines cost it nothing. The second — a beat claimed before
+anyone knew the envelope would carry it — was FIXED by the review (below).
+
+**The review's fixes (2026-09-26, `docs/adversarial-review-pr243-2026-09-26.md`).**
+
+- *Claim only what is certainly leaving.* The adapter returns plain lines UNCLAIMED;
+  `bin/hook.ts#deliverTurn` puts them first among the notices, probes the envelope, and
+  claims (`ClaudeCodeAdapter#claimPlain`) only if it fits. No room — a ~9 KB wake at
+  SessionStart leaves none in the host's 10,000-character envelope — means no claim, and
+  the lines are stripped from the model's copy too (`withoutPlain`), so the first prompt
+  says them instead. A claim lost to another process strips the same way. The update
+  notice can no longer cost a plain line that fit: when the two do not fit together, the
+  delivery without the update notice stands.
+- *The page writer's headless child* (`COUNTERPARTS_PAGE_WRITER`) is told nothing, so it
+  cannot spend a beat nobody sees (`HookInput.pageWriter`). Any OTHER headless `claude -p`
+  with the hooks on still can: SessionStart gives no sign it is headless.
+- *Said outright means not also cued* on the same prompt: the plain ids are withheld from
+  that turn's temporal cues (`recallForTurn`'s `withhold`), since the claim that makes
+  `told-plainly-today` true now lands after recall.
+- *A fire row carries its calendar `date`*, as the plain row does, so the fired view counts
+  it on the day it was asked in any zone (the gauge test failed in Pacific/Auckland).
+
+The dashboard's "N today" counts rows on the current LIVED day, like its seven-day window;
+it stays on yesterday's number in the morning until a boundary moves the clock.
+
+**Still not wired:** `reference()` (brake 4, referenced-stop) has no live caller — when the
+model uses a dated memory, nothing yet stops its window. Session dedup (brake 3) is still
+in-process only, and every hook is its own process, so in live use brakes 1 and 2 are the
+ones doing the work. No bad-day or crisis switch was flipped: `refractory` and
+`previousSessionHighAffect` exist, and no live caller passes them.

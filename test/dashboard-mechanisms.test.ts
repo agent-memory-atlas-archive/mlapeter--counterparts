@@ -154,17 +154,9 @@ describe("the lights, on a seeded store", () => {
 
   test("grey never claims activity — even when the log holds rows that look like it", () => {
     const v = viewOf(richDir);
-    // The demo seeder calls `fire()` by hand, so the log holds `prospective.fire`
-    // rows no live path could write. The light must not borrow them.
-    const dash = Dashboard.open({ dir: richDir });
-    try {
-      expect(dash.source.store.eventLog({ name: "prospective.fire", limit: 10 }).length).toBeGreaterThan(0);
-    } finally {
-      dash.close();
-    }
     const greys = v.mechanisms.filter((m) => m.status === "grey");
     expect(greys.map((m) => m.id).sort()).toEqual(
-      ["emotional", "episodic-semantic", "interference", "prospective", "schema"],
+      ["emotional", "episodic-semantic", "interference", "schema"],
     );
     for (const m of greys) {
       expect(m.events).toEqual([]);
@@ -173,12 +165,24 @@ describe("the lights, on a seeded store", () => {
     }
   });
 
+  test("prospective, on the demo store: built, it holds dated memories, and says how many (2026-09-26)", () => {
+    const v = viewOf(richDir);
+    const m = v.mechanisms.find((x) => x.id === "prospective");
+    expect(["green", "amber"]).toContain(m?.status ?? "missing");
+    expect(m?.evidence).toMatch(/\d+ dated memor(y|ies) held\./);
+  });
+
   test("an empty store: nothing is green, built ones say they have no record yet", () => {
     const v = viewOf(emptyDir);
     for (const m of v.mechanisms) {
       expect(m.status).not.toBe("green");
       expect(m.events).toEqual([]);
-      if (MECHANISM_PROOFS.find((p) => p.id === m.id)!.built) {
+      const proof = MECHANISM_PROOFS.find((p) => p.id === m.id)!;
+      if (proof.built && proof.held !== undefined) {
+        // Built, but holding nothing it could act on: grey, and it says why.
+        expect(m.status).toBe("grey");
+        expect(m.evidence).toBe(proof.held.none);
+      } else if (proof.built) {
         expect(m.status).toBe("amber");
         expect(m.evidence).toContain("no record");
       }

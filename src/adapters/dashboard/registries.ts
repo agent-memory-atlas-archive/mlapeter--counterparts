@@ -64,8 +64,10 @@ import { BAND_TRANSITION_EVENT } from "../../core/sleep/index.js";
 // Prospective memory's two (2026-09-20, E2). The module had no durable row at
 // all: `fires` is a column, so the store could say a window had ever fired and
 // never when, or why one did not.
+// And a third (2026-09-26): a PLAIN item told to the person on its day.
 import {
   PROSPECTIVE_FIRE_EVENT,
+  PROSPECTIVE_PLAIN_EVENT,
   PROSPECTIVE_REFUSED_EVENT,
 } from "../../core/prospective/index.js";
 // The self page's two, from `self/` itself (2026-09-18, S1): a written page is
@@ -176,6 +178,7 @@ export type DurableEventName =
   | typeof SNAPSHOT_ROTATED_EVENT
   | typeof PROSPECTIVE_FIRE_EVENT
   | typeof PROSPECTIVE_REFUSED_EVENT
+  | typeof PROSPECTIVE_PLAIN_EVENT
   | typeof JOURNAL_COPY_WRITTEN_EVENT
   | typeof JOURNAL_COPY_FAILED_EVENT
   | typeof STORE_EXPORT_EVENT
@@ -265,6 +268,7 @@ export const DURABLE_EVENTS = {
   // counted as a firing.
   "prospective.fire": "a future date arrived and the reminder was offered into the turn (which window, and how much of its budget is left)",
   "prospective.fire.refused": "a reminder was NOT offered (which brake held — one row per window per reason per lived day)",
+  "prospective.plain": "a reminder its author marked plain was told to the person on its day (which window, which beat — its day, a month or range opening, or its last day — and the date)",
   // The journal's markdown copy and the hand export (2026-09-20, F6 and F7):
   // the two places the constitution's "prose the owner can view" is kept now
   // that every body is a column.

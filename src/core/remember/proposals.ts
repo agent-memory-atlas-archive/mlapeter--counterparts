@@ -21,6 +21,7 @@
  */
 import type { Kind, Salience } from "../types.js";
 import { hashText } from "../store/prose.js";
+import { parseCalendarDate } from "../time.js";
 import { randomBytes } from "node:crypto";
 
 // TYPE-ONLY, and the only edge this module has to `encode/`. The gate itself
@@ -61,6 +62,17 @@ export interface ProposalDraft {
   updates?: string;
   /** An open loop is an ordinary memory with a flag, not a special structure (§4). */
   unresolved?: boolean;
+  /**
+   * The calendar date this memory is ABOUT, when it is about a future one
+   * (schema v7's `event_date`; 2026-09-26): a day `2026-10-15`, a month
+   * `2026-10`, a year `2026`, or a range `2026-10-20..2026-10-31`. An explicit
+   * FIELD — the author converts "late October" itself, and nothing here reads
+   * prose for a date. Unreadable is malformed, never guessed.
+   */
+  eventDate?: string;
+  /** Plain or quiet (`prospective/` `CUE_MODE_META`). Only meaningful beside an
+   *  `eventDate`; without one it is dropped and counted. Default quiet. */
+  remind?: "plain" | "quiet";
 }
 
 export type ProposalSource = "session-end" | "jot";
@@ -79,6 +91,10 @@ export interface Proposal {
   aliases: string[];
   updates: UpdatesResolution | null;
   unresolved: boolean;
+  /** The reminder date as the author wrote it (already read by `time.ts`), or null. */
+  eventDate: string | null;
+  /** Plain or quiet — null exactly when `eventDate` is. */
+  remind: "plain" | "quiet" | null;
   at: number;
   day: number;
   /** Identity for idempotency: CONTENT, not span text (§4.1 G9). */
@@ -102,7 +118,11 @@ export type MalformedReason =
   | "TITLE_NOT_STRING"
   | "UPDATES_NOT_STRING"
   | "ALIASES_NOT_STRINGS"
-  | "FEELING_MALFORMED";
+  | "FEELING_MALFORMED"
+  /** `eventDate` is not a day, month, year or `a..b` range `time.ts` can read. */
+  | "EVENT_DATE_UNREADABLE"
+  /** `remind` is not `plain` or `quiet`. */
+  | "REMIND_UNKNOWN";
 
 const KIND_SET: Record<Kind, true> = {
   self: true,
@@ -129,6 +149,8 @@ export const DRAFT_FIELDS = [
   "aliases",
   "updates",
   "unresolved",
+  "eventDate",
+  "remind",
 ] as const;
 
 export type IntakeResult =
@@ -204,7 +226,29 @@ export function intake(raw: unknown): IntakeResult {
     }
   }
 
+  // THE REMINDER DATE (2026-09-26): read by `time.ts`, the one module that
+  // reads dates, and refused when it cannot be read — the same answer
+  // `Store#revise` gives (schema v7). Never guessed, never parsed from prose.
+  let eventDate: string | undefined;
+  if (rec["eventDate"] !== undefined && rec["eventDate"] !== null) {
+    const v = rec["eventDate"];
+    const read = typeof v === "string" ? parseCalendarDate(v) : null;
+    if (read === null) return bad("EVENT_DATE_UNREADABLE");
+    eventDate = read.text;
+  }
+  if (rec["remind"] !== undefined && rec["remind"] !== null) {
+    if (rec["remind"] !== "plain" && rec["remind"] !== "quiet") return bad("REMIND_UNKNOWN");
+  }
+
   const draft: ProposalDraft = { content: rec["content"] as string };
+  if (eventDate !== undefined) {
+    draft.eventDate = eventDate;
+    draft.remind = rec["remind"] === "plain" ? "plain" : "quiet";
+  } else if (rec["remind"] !== undefined && rec["remind"] !== null) {
+    // Plain or quiet says HOW a date comes back; with no date there is nothing
+    // to come back, so it is dropped and counted like any field with nowhere to go.
+    dropped.push("remind");
+  }
   if (rec["kind"] !== undefined) draft.kind = rec["kind"] as Kind;
   if (typeof rec["title"] === "string") draft.title = rec["title"];
   if (rec["claimed"] !== undefined) draft.claimed = rec["claimed"] as number | null;
@@ -527,6 +571,8 @@ export async function submitProposal(
     aliases: [...(verdict.aliases ?? draft.aliases ?? [])],
     updates,
     unresolved: draft.unresolved === true,
+    eventDate: draft.eventDate ?? null,
+    remind: draft.eventDate === undefined ? null : draft.remind ?? "quiet",
     at: buffer.now(),
     day: buffer.day(),
     contentHash,
