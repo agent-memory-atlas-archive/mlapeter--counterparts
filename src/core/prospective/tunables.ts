@@ -20,7 +20,10 @@ export interface ProspectiveTunables {
   /** Salience below this never becomes prospective, however well dated.
    *  Salience, NOT strength: eligibility is a predicate over the event date, the
    *  encode date, salience and flags (§12 G2), and a decay exemption before
-   *  arrival is exactly what G10 forbids. [v1: 0.6] CAL. */
+   *  arrival is exactly what G10 forbids. [v1: 0.6] CAL.
+   *  Since 2026-09-26 (owner decision) it gates only a date a CALLER extracted:
+   *  a memory with an explicit `eventDate` is exempt, because choosing a date
+   *  is itself the importance signal. Decay (`FADED_STRENGTH`) still holds. */
   SALIENCE_FLOOR: number;
   /** Calendar days before the event the window opens. [v1: 3] CAL. */
   LEAD_DAYS: number;

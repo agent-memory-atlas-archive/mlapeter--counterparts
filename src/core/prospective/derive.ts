@@ -44,7 +44,15 @@ export type DeriveReason =
   | "excluded-kind"
   /** A journal chapter. Its date is a day that was LIVED, never one arriving. */
   | "journal"
+  /** Salience under `SALIENCE_FLOOR`, for a memory whose date the AUTHOR did
+   *  not set — a caller-extracted date (`extraDates`). A memory carrying an
+   *  explicit `eventDate` is exempt (owner decision 2026-09-26): choosing a
+   *  date is itself the importance signal. */
   | "below-salience-floor"
+  /** Decayed to physics' prune floor (`FADED_STRENGTH`) — §12 G10, no decay
+   *  exemption before arrival: an occasion that faded before its window did
+   *  not matter. Holds for an explicitly dated memory too (2026-09-26). */
+  | "faded"
   /** Every derived window is behind us — the property expiring by itself. */
   | "window-passed";
 
@@ -87,6 +95,20 @@ export interface DerivableMemory {
    * is a rule that holds where somebody remembered it.
    */
   readonly journal: boolean;
+  /**
+   * The memory carries an EXPLICIT reminder date — the `event_date` column its
+   * author wrote on `note` / `session_end` (2026-09-26). Such a memory is
+   * exempt from the salience floor: the owner's rule is that choosing a date
+   * is itself the importance signal. Absent or false: the floor applies, as it
+   * always has, to a date some caller extracted.
+   */
+  readonly explicitDate?: boolean;
+  /**
+   * Decayed at or below `FADED_STRENGTH` on the lived day asked about. Computed
+   * by the caller that holds the physics (`Prospective.load`), so this stays a
+   * pure predicate. Absent: not checked.
+   */
+  readonly faded?: boolean;
 }
 
 /** A content-date the CALLER extracted. Its precision is its own shape (§12 G4). */
@@ -146,7 +168,11 @@ export function derive(
   if (memory.journal) blockedBy.push("journal");
   if (EXCLUDED_KINDS.includes(memory.kind)) blockedBy.push("excluded-kind");
   if (!encodeDateOk(memory.learnedOn)) blockedBy.push("missing-encode-date");
-  if (s < t.SALIENCE_FLOOR) blockedBy.push("below-salience-floor");
+  if (memory.faded === true) blockedBy.push("faded");
+  // The floor gates UNASKED surfacing of a date somebody else read out of the
+  // memory. An explicit `eventDate` was asked for, so it is exempt (owner
+  // decision 2026-09-26); decay (`faded`, above) and archival still hold.
+  if (s < t.SALIENCE_FLOOR && memory.explicitDate !== true) blockedBy.push("below-salience-floor");
 
   const windows: DerivedWindow[] = [];
   const rejectedDates: { date: string; reason: DeriveReason }[] = [];

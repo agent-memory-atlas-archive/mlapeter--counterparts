@@ -676,5 +676,10 @@ remind }` (plus a note when the date is a bare year, which never comes back on i
 `remind` sent with no date is dropped and said (`reminder: { ignored: "remind" }`), and
 the memory still lands. The `remind` description carries the owner's plain-vs-quiet
 guidance: plain for a real deadline or an important date, or when
-the person says it matters; quiet otherwise, and quiet ones surface only at a salience of
-about 0.6. What happens after the deposit is `prospective/` NOTES §12.
+the person says it matters; quiet otherwise. What happens after the deposit is
+`prospective/` NOTES §12.
+
+**Review, same day (owner decision):** an explicit `eventDate` now qualifies a quiet
+reminder whatever its salience — choosing a date is itself the importance signal — so the
+description no longer says "about 0.6". The salience floor still gates a date a caller
+extracted; decay (faded) and archival still keep a memory from arriving.

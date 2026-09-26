@@ -29,7 +29,9 @@ clothes. **Hold debts, lose deadlines.**
   day it is seen open and again on its last day). That is a bypass lane on purpose, and it
   is bounded like one: no salience floor (it was asked for), but never under observer,
   never for an archived, superseded, removed or journal row, never for a year, and never
-  twice for the same beat (`Prospective.plainDue` / `claimPlain`). Quiet — the default —
+  twice for the same beat (`Prospective.plainDue` / `claimPlain`), and a beat is claimed
+  only by a host about to show it (the Claude Code hooks claim after the envelope is known
+  to carry the line, 2026-09-26 review). Quiet — the default —
   is everything above, unchanged. A plain item told today is not also offered as a quiet
   cue that day (`told-plainly-today`).
 - **Prospectivity is DERIVED, never stored.** [v1] §12 G2 — eligibility is a predicate over
@@ -44,6 +46,11 @@ clothes. **Hold debts, lose deadlines.**
   `derive`'s seven call sites. Found by adversarial review when a dated chapter rendered
   in the wake's horizon lane as a thing about to happen.
   **A missing encode date fails conservatively.** [v1] §12 G3.
+  **An explicit date is its own importance signal** (owner decision 2026-09-26, a working
+  default): a memory whose author wrote its `eventDate` is exempt from the salience floor,
+  which now gates only a date a caller extracted. Decay is not exempted — a dated memory
+  faded to `FADED_STRENGTH` refuses as `faded` (G10) — and archived, skill and journal
+  still refuse.
 - **Precision is carried by the date's own format**, never rounded, and the ramp differs by
   precision — a stated month *means* early month more than the 29th. [v1] §12 G4. Since
   2026-09-26 there are four shapes (`core/time.ts`): a day, a month, a year (no window), and

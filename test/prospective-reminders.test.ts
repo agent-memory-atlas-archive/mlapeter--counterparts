@@ -591,16 +591,19 @@ describe("plain reminders reach the person AND the model, through the hooks", ()
     expect(result.notices).toEqual(["Today: pay your taxes"]);
     expect(result.injection).toMatch(/^Now: .*\nPlain reminder \(they asked to be told\) — Today: pay your taxes \[/);
     expect(result.injection).toContain(`[${id}]`);
+    // Nothing is claimed until the delivery knows the envelope carries it.
+    expect(a.counterpart.store.eventLog({ name: PROSPECTIVE_PLAIN_EVENT })).toEqual([]);
     const delivered = deliverTurn(
       "session-start",
       result,
       { hook_event_name: "SessionStart" },
-      [null, ...(result.notices ?? []), null],
-      { updateNotice: () => null, markUpdateNotice: () => false },
+      [null, null],
+      { updateNotice: () => null, markUpdateNotice: () => false, claimPlain: (i, due) => a.claimPlain(i, due) },
       input(),
     );
     const out = JSON.parse(delivered.stdout) as Record<string, unknown>;
     expect(out["systemMessage"]).toBe("Today: pay your taxes");
+    expect(a.counterpart.store.eventLog({ name: PROSPECTIVE_PLAIN_EVENT })).toHaveLength(1);
 
     // The same session's first prompt does not say it again.
     const turn = a.userPromptSubmit(input({ prompt: "morning" }));
@@ -619,8 +622,8 @@ describe("plain reminders reach the person AND the model, through the hooks", ()
       "user-prompt-submit",
       turn,
       {},
-      turn.notices ?? null,
-      { updateNotice: () => null, markUpdateNotice: () => false },
+      null,
+      { updateNotice: () => null, markUpdateNotice: () => false, claimPlain: (i, due) => a.claimPlain(i, due) },
       input(),
     );
     expect((JSON.parse(delivered.stdout) as Record<string, unknown>)["systemMessage"]).toBe("Today: pay your taxes");

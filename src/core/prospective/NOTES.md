@@ -48,6 +48,18 @@ where a faded memory actually loses — which is the whole "no bypass lane" clai
 `sal()` is imported from `physics/`. A local mean would be a second implementation of the
 one arithmetic rule, which is exactly the divergence v1's "two clocks" produced.
 
+**Revised 2026-09-26 (owner decision, PR #243 review).** A memory with an EXPLICIT
+`eventDate` (the `event_date` column its author wrote) no longer faces the floor: choosing
+a date is itself the importance signal, and an ordinary note sits at the 0.25 authored
+default, so the floor made quiet reminders dead for most notes. The floor still gates a
+date a caller extracted (`extraDates`). With the floor lifted, decay needed saying
+explicitly, so the predicate gained a `faded` refusal — strength at or below
+`FADED_STRENGTH`, the same line §8's `faded` exit uses, computed by `load()` so `derive`
+stays pure. That is G10 kept, not broken: a dated memory that faded before its window
+still does not arrive. Archived, journal and skill still refuse as before. Measured end to
+end: a quiet `note` at the authored default reaches the footnote tier on its day and spends
+its fire (`test/prospective-review-pr243.test.ts`).
+
 ## 5. Ramp shape: linear, two anchors, both CAL
 
 `RAMP_OPEN = 0.4` rising to 1 at the peak, then falling to `RAMP_CLOSE = 0.2` at the last
@@ -218,11 +230,13 @@ acceptance test in `test/prospective-reminders.test.ts`:
 whose STATED span covers `at` (no lead, no grace) and whose beat has not been told;
 `claimPlain` writes the `prospective.plain` row with a `dedupKey` per memory, window and
 beat, and returns true only when this call wrote it — so two hook processes cannot both
-say it. `Counterpart#plainReminders` reads, claims and adds `what` (title, else the first
-line); the claude-code adapter words it (`hooks.ts#plainLine`, clipped to
-`PLAIN_WHAT_MAX_CHARS`), puts it under the `Now:` line for the model, and returns it as
-`notices` for the terminal's `systemMessage` at SessionStart and at a prompt (a day that
-began mid-session is said at the next prompt). Beats: `day` on the day; `opens` the first
+say it. `Counterpart#plainDueToday` reads and adds `what` (title, else the first line);
+`claimPlainReminder` claims one; `plainReminders` is the two together. The claude-code
+adapter words it (`hooks.ts#plainLine`, clipped to `PLAIN_WHAT_MAX_CHARS`), puts it under
+the `Now:` line for the model, and returns it as `notices` + `plain` for the terminal's
+`systemMessage` at SessionStart and at a prompt (a day that began mid-session is said at
+the next prompt) — UNCLAIMED: `bin/hook.ts#deliverTurn` claims only once it knows the
+envelope carries the line (see the review, below). Beats: `day` on the day; `opens` the first
 day a month or range is seen open; `last-day` on its last day. The latch is by beat, and a
 beat belongs to a CALENDAR day — not the lived-day counter, which only moves at a boundary
 and would keep "today" shut all morning. No salience floor: the floor gates unasked
@@ -230,13 +244,29 @@ surfacing, and an ordinary note sits at the 0.25 authored default. A plain item 
 is not also offered as a quiet cue that day (`told-plainly-today`). A confidential one is
 told only in the owner's own session, recall's boundary gate kept by hand.
 
-Two edges, named rather than fixed. The model's copy sits under the `Now:` line, above the
+Two edges, named by the builder. The model's copy sits under the `Now:` line, above the
 wake block; the delivery check finds the wake's sentinels by searching the attachment's
-text, not by line, so the extra lines cost it nothing. And at a prompt, when the recall
-plus the plain lines plus the update notice would overflow the host's envelope, both
-terminal lines are dropped together (`deliverTurn`'s all-or-nothing) — the beat is already
-claimed, so the person misses that line while the model still has it in context. The
-drop is recorded (`adapter.notice.dropped`).
+text, not by line, so the extra lines cost it nothing. The second — a beat claimed before
+anyone knew the envelope would carry it — was FIXED by the review (below).
+
+**The review's fixes (2026-09-26, `docs/adversarial-review-pr243-2026-09-26.md`).**
+
+- *Claim only what is certainly leaving.* The adapter returns plain lines UNCLAIMED;
+  `bin/hook.ts#deliverTurn` puts them first among the notices, probes the envelope, and
+  claims (`ClaudeCodeAdapter#claimPlain`) only if it fits. No room — a ~9 KB wake at
+  SessionStart leaves none in the host's 10,000-character envelope — means no claim, and
+  the lines are stripped from the model's copy too (`withoutPlain`), so the first prompt
+  says them instead. A claim lost to another process strips the same way. The update
+  notice can no longer cost a plain line that fit: when the two do not fit together, the
+  delivery without the update notice stands.
+- *The page writer's headless child* (`COUNTERPARTS_PAGE_WRITER`) is told nothing, so it
+  cannot spend a beat nobody sees (`HookInput.pageWriter`). Any OTHER headless `claude -p`
+  with the hooks on still can: SessionStart gives no sign it is headless.
+- *Said outright means not also cued* on the same prompt: the plain ids are withheld from
+  that turn's temporal cues (`recallForTurn`'s `withhold`), since the claim that makes
+  `told-plainly-today` true now lands after recall.
+- *A fire row carries its calendar `date`*, as the plain row does, so the fired view counts
+  it on the day it was asked in any zone (the gauge test failed in Pacific/Auckland).
 
 The dashboard's "N today" counts rows on the current LIVED day, like its seven-day window;
 it stays on yesterday's number in the morning until a boundary moves the clock.

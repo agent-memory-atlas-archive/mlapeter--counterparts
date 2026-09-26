@@ -169,7 +169,7 @@ const REMIND_PROPERTY = {
   type: "string",
   enum: ["plain", "quiet"],
   description:
-    'Optional, with eventDate: how it comes back. "plain" when you judge it genuinely matters for remembering to DO something — a real deadline, an important date — or when the person says it matters ("don\'t let me forget to pay taxes before Oct 15th!"): on the day it is said plainly, once, to them in their terminal and to you in context (a month or range: its first day and its last). Otherwise "quiet", the default: it can surface as a footnote around the date, like any other memory the moment brings up, and only when it is held at a salience of about 0.6 or more.',
+    'Optional, with eventDate: how it comes back. "plain" when you judge it genuinely matters for remembering to DO something — a real deadline, an important date — or when the person says it matters ("don\'t let me forget to pay taxes before Oct 15th!"): on the day it is said plainly, once, to them in their terminal and to you in context (a month or range: its first day and its last). Otherwise "quiet", the default: it can surface as a footnote around the date, at most twice — giving it a date is itself what makes it eligible, whatever its salience.',
 } as const;
 
 /** The two privileges `note` and `session_end` share for the date fields. */

@@ -1659,7 +1659,16 @@ export class Counterpart {
    * temporal cues from `prospective/`, the hop function from `associate/`. A
    * missing `at` means no temporal channel — a lived day is not a date.
    */
-  recallForTurn(turn: RecallTurn, opts: { at?: string } = {}): RecallResult {
+  recallForTurn(
+    turn: RecallTurn,
+    opts: {
+      at?: string;
+      /** Memory ids whose temporal cue is held back THIS turn: plain items the
+       *  host is saying outright in the same breath (2026-09-26 review), so the
+       *  model is not handed the same date twice in one turn. */
+      withhold?: ReadonlySet<string>;
+    } = {},
+  ): RecallResult {
     // THE TEMPORAL CUES ARE COMPUTED HERE, not inside `composeTurn`, for one
     // reason: the window each one came from has to survive the turn, so the
     // arrivals the gate actually admitted can SPEND their fire budget below.
@@ -1673,7 +1682,7 @@ export class Counterpart {
             at: opts.at,
             ...(turn.day === undefined ? {} : { day: turn.day }),
             sessionId: turn.sessionId,
-          }).arrivals;
+          }).arrivals.filter((a) => opts.withhold?.has(a.memoryId) !== true);
     const withCues: RecallTurn =
       arrived === null ? turn : { ...turn, temporal: arrived.map((a) => ({ id: a.memoryId, weight: a.cueWeight })) };
     const result = recallTurn(this.recall, this.withSemantic(withCues), {
@@ -1722,18 +1731,21 @@ export class Counterpart {
   }
 
   /**
-   * PLAIN REMINDERS DUE TODAY, each already CLAIMED — so the caller shows every
-   * one it gets back, and a second process asking the same morning gets none
-   * (`Prospective.claimPlain`'s latch). The owner-decided exception to "a cue,
-   * not a command" (prospective CONTRACT §3): an item its author marked plain is
-   * SAID on its day, to the person and to the model, once per beat.
+   * PLAIN REMINDERS DUE TODAY, NOT YET CLAIMED — a read. The owner-decided
+   * exception to "a cue, not a command" (prospective CONTRACT §3): an item its
+   * author marked plain is SAID on its day, to the person and to the model,
+   * once per beat. A host that can tell whether its line will actually reach
+   * the person reads here and claims (`claimPlainReminder`) only what it is
+   * certainly about to show — "mark only what is certainly leaving", the
+   * update notice's rule (2026-09-26 review). `plainReminders` is the two in
+   * one, for a host with no such question.
    *
    * `what` is the memory's title, else the first line of its body, with its
    * whitespace folded — the handle a person recognizes. How long a line may be
    * and the sentence around it are the host adapter's to decide. Never throws:
    * any failure is an empty list.
    */
-  plainReminders(input: { at: string; day?: number }): PlainReminder[] {
+  plainDueToday(input: { at: string }): PlainReminder[] {
     if (this.observer) return [];
     const out: PlainReminder[] = [];
     try {
@@ -1752,13 +1764,41 @@ export class Counterpart {
           continue;
         }
         if (what.length === 0) continue;
-        if (!this.prospective.claimPlain(due, { at: input.at, ...(input.day === undefined ? {} : { day: input.day }) })) continue;
         out.push({ ...due, what });
       }
     } catch (err) {
       this.emit("counterpart.prospective.plain.failed", undefined, { code: errCode(err) });
     }
     return out;
+  }
+
+  /**
+   * Claim one plain beat: TRUE only when this call wrote the latch
+   * (`Prospective.claimPlain`), so two processes racing for the same beat
+   * cannot both show it. Show the line only on true. Never throws.
+   */
+  claimPlainReminder(reminder: PlainDue, input: { at: string; day?: number }): boolean {
+    if (this.observer) return false;
+    try {
+      return this.prospective.claimPlain(reminder, {
+        at: input.at,
+        ...(input.day === undefined ? {} : { day: input.day }),
+      });
+    } catch (err) {
+      this.emit("counterpart.prospective.plain.failed", reminder.memoryId, { code: errCode(err) });
+      return false;
+    }
+  }
+
+  /**
+   * PLAIN REMINDERS DUE TODAY, each already CLAIMED (`plainDueToday`, then
+   * `claimPlainReminder` on each) — so the caller shows every one it gets
+   * back, and a second process asking the same morning gets none. For a host
+   * that shows whatever it reads; the Claude Code hooks instead claim only
+   * what their envelope will carry (`bin/hook.ts#deliverTurn`).
+   */
+  plainReminders(input: { at: string; day?: number }): PlainReminder[] {
+    return this.plainDueToday({ at: input.at }).filter((r) => this.claimPlainReminder(r, input));
   }
 
   /**

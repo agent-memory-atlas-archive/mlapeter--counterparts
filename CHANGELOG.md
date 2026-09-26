@@ -13,8 +13,12 @@ Reminders work.
   happen — a deadline, an important day, or anything you say not to forget. On its day
   you see it in the terminal (`Today: pay your taxes`) and Claude has it in context, once;
   a month or a range is said on its first day and again on its last. Everything else is
-  quiet, the default: it can come back as a footnote around the date, at most twice, and
-  only for memories held strongly enough (a salience of about 0.6).
+  quiet, the default: it can come back as a footnote around the date, at most twice.
+  Giving a memory a date is what makes it eligible, however ordinary the memory; one that
+  has faded away or been archived still never comes back.
+- **A plain line is spent only when you can see it.** If the morning's wake is too full
+  for the terminal line, it waits for your first prompt instead of being used up unseen,
+  and the update notice never pushes it out.
 - **A quiet reminder is not repeated every turn.** A footnote that came back spends one of
   its two mentions, at most one a day. Month and range dates spread their warmth over the
   first week instead of all landing on the 1st, keep their second mention for after the

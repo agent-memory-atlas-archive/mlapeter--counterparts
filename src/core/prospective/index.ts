@@ -872,6 +872,11 @@ export class Prospective {
       cap: this.tunables.FIRES_PER_WINDOW,
       // Plain or quiet, so the gauge can count the two apart (2026-09-26).
       mode: cueModeOf(loaded.doc),
+      // The calendar day the fire was ABOUT, as the plain row carries it: the
+      // fired view dates a row by this field before the wall clock, so a fire
+      // near midnight or far from UTC is counted on the day it was asked
+      // (2026-09-26 review — the gauge test failed in Pacific/Auckland).
+      date: input.at,
     });
     return { fired: true, reason: "fired", derivation: null, fires, state: "fired" };
   }
@@ -1161,8 +1166,10 @@ export class Prospective {
       // A removed memory is not an error here; it simply has no future.
       return null;
     }
-    const dates = [...contentDates(read.doc), ...extra];
+    const explicit = contentDates(read.doc);
+    const dates = [...explicit, ...extra];
     const seen = new Set<string>();
+    const s = strength(read.physics, day);
     return {
       memory: {
         id: memoryId,
@@ -1173,10 +1180,14 @@ export class Prospective {
         // The same field `sleep/types.ts#isJournal` reads off the row, taken
         // from the doc already in hand. See `DerivableMemory.journal`.
         journal: read.doc.type === "episode",
+        // The owner's rule (2026-09-26): an author-written date is its own
+        // importance signal, so it skips the salience floor — never decay.
+        explicitDate: explicit.length > 0,
+        faded: s <= this.tunables.FADED_STRENGTH,
       },
       doc: read.doc,
       dates: dates.filter((d) => (seen.has(d.date) ? false : (seen.add(d.date), true))),
-      strength: strength(read.physics, day),
+      strength: s,
     };
   }
 

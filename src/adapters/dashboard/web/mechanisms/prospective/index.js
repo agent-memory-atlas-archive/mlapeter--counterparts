@@ -14,5 +14,5 @@ export default {
     "A note or a session's memories can be given a date, and quiet ones come back as footnotes at most twice per date.",
     "A reminder marked plain is said to you on its day, once.",
   ],
-  inDevelopment: ["Quiet reminders come back only for memories held strongly enough, and nothing yet notices when you have already dealt with one."],
+  inDevelopment: ["Nothing yet notices when you have already dealt with a reminder, so a quiet one can still come back a second time."],
 };
