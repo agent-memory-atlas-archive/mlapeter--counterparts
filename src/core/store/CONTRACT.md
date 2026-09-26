@@ -407,8 +407,15 @@ store property is the `VACUUM INTO`, and that is G19. The code's numbering wins.
     `feelings` row names `whose`, one of six cores, a wheel emotion or `other` with the
     word kept, a strength recorded once, and optionally the feeling on the same memory it
     sits beneath. A write is all-or-none and refused by name (`FEELING_INVALID`) rather
-    than guessed; an unknown emotion is kept as `other`, never mapped. The owner's
-    removal deletes them with the memory. They move no physics.
+    than guessed; an unknown emotion is kept as `other`, never mapped (a small ALIAS list
+    — `exposed` → `vulnerable` — reads as its wheel word and says so; a blend is stored
+    under its primary core). The owner's removal deletes them with the memory. *Since
+    2026-09-26 (emotion part A) they move physics:* `row()` reads the strongest recorded
+    strength beside the row (`feeling_peak`, not a column), which physics folds into the
+    memory's emotional intensity (§5.10 there). The recorded strength is still never
+    rewritten. Reads for the rest: `feelingsSince(ms)` (recall's mood), `feelingsOn(ids)`
+    (one query for recall's candidates), `emotionCensus()` (counts for the mechanisms
+    views).
 
 ## 6. Scars honored
 

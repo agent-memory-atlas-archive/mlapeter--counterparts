@@ -174,6 +174,20 @@ export interface RecallTunables {
    *  A high-salience wound must not light up every turn. [v1: 2] CAL. */
   AFFECT_REFRACTORY_TURNS: number;
 
+  // ── mood-matching (recall G18, emotion part A — WORKING DEFAULTS) ─────────────
+  /** How far back a recorded feeling still counts as how someone feels NOW, in
+   *  hours of the store's clock. No classifier reads the turn: the mood is only
+   *  what was recorded. CAL. */
+  MOOD_WINDOW_HOURS: number;
+  /** A recorded feeling weaker than this does not set a mood. CAL. */
+  MOOD_MIN_STRENGTH: number;
+  /** Salience a memory gains when it carried the SAME person's matching feeling,
+   *  times that feeling's softened strength. Modulates the relative bar only —
+   *  never activation, never an uncued memory. CAL. */
+  MOOD_SAME_WEIGHT: number;
+  /** The same for the OTHER person's matching feeling: the light cross-link. CAL. */
+  MOOD_CROSS_WEIGHT: number;
+
   // ── render ───────────────────────────────────────────────────────────────
   /** Composed byte budget for the WHOLE injection, sentinel included. The host
    *  owns the real ceiling (scar §2.18) and passes it in; this is the default. CAL. */
@@ -373,6 +387,18 @@ export const TUNABLES: RecallTunables = {
 
   AFFECT_MIN_EMOTION: 0.7,
   AFFECT_REFRACTORY_TURNS: 2,
+
+  // Emotion part A (2026-09-26). The window is "this sitting": long enough to
+  // span a working session's feelings, short enough that yesterday's mood is
+  // not today's. The weights are sized against SAL_BAR_WEIGHT = 0.5: a fresh
+  // same-person match at strength 0.9 adds 0.27 to salience, which lowers that
+  // candidate's relative bar by ~27%; the cross-link at 0.1 moves it ~9%. A
+  // match a month old has softened to ~0.2 of its strength (S_FEELING = 20)
+  // and moves the bar by ~6%. Unmeasured — recorded as a working default.
+  MOOD_WINDOW_HOURS: 3,
+  MOOD_MIN_STRENGTH: 0.3,
+  MOOD_SAME_WEIGHT: 0.3,
+  MOOD_CROSS_WEIGHT: 0.1,
 
   BUDGET_BYTES: 2048,
   GIST_BYTES: 240,

@@ -2119,18 +2119,36 @@ export class McpServer {
     }
     try {
       const added = this.counterpart.addFeelings(deposit.memoryId, inputs, model === undefined ? {} : { model });
+      // Two kinds of notice (emotion part A): a word kept as the writer's own
+      // (`other`), with a suggestion ONLY when a wheel word is genuinely close;
+      // and a word read as a wheel word (`readAs`: exposed → vulnerable).
+      const kept = added.notices.filter((n) => n.readAs === undefined);
+      const read = added.notices.filter((n) => n.readAs !== undefined);
       return {
         feelings: {
           stored: added.ids.length,
-          ...(added.notices.length === 0
+          ...(kept.length === 0
             ? {}
             : {
-                other: added.notices.map((n) => ({
+                other: kept.map((n) => ({
                   index: n.index,
                   word: n.word,
                   core: n.core,
                   closest: n.closest,
-                  note: `"${n.word}" is not on the feelings wheel, so it was kept as other. If you meant one of these, say it that way next time: ${n.closest.join(", ")}.`,
+                  note:
+                    n.closest.length === 0
+                      ? `"${n.word}" is not on the feelings wheel, so it was kept as your own word.`
+                      : `"${n.word}" is not on the feelings wheel, so it was kept as your own word. If you meant ${n.closest.join(" or ")}, say it that way next time.`,
+                })),
+              }),
+          ...(read.length === 0
+            ? {}
+            : {
+                readAs: read.map((n) => ({
+                  index: n.index,
+                  word: n.word,
+                  as: n.readAs,
+                  note: `"${n.word}" was stored as ${String(n.readAs)}.`,
                 })),
               }),
         },

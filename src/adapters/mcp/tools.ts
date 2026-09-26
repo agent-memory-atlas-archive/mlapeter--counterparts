@@ -117,13 +117,14 @@ export interface ToolSpec {
 /**
  * `feelings` on a `note` or a `session_end` entry (schema v7, 2026-09-25): one
  * object per feeling, spelled on the feelings wheel (`core/feelings-wheel.ts`).
- * Stored beside the memory and read by nothing yet — salience still comes from
- * `emotional`.
+ * Since emotion part A (2026-09-26) they weigh: the strongest one, or
+ * `emotional` if that is stronger, raises the memory and slows its fading
+ * (physics §5.10), and a recent one sets the mood recall matches (recall G18).
  */
 const FEELINGS_PROPERTY = {
   type: "array",
   description:
-    "Optional: the feelings in this moment, one object each — mixed feelings are several, and yours and the owner's go side by side. Stored beside the memory; they change nothing about how it is held yet.",
+    "Optional: the feelings in this moment, one object each — mixed feelings are several, and yours and the owner's go side by side. The strongest feeling on a memory holds it higher and slows its fading; memories that felt the way someone feels now come to mind more easily.",
   items: {
     type: "object",
     properties: {
@@ -132,7 +133,7 @@ const FEELINGS_PROPERTY = {
       emotion: {
         type: "string",
         description:
-          "The specific feeling on the wheel under that core (e.g. hopeful, anxious, frustrated), or your own word — kept as other, and the reply names the nearest wheel words.",
+          "The specific feeling on the wheel under that core (e.g. hopeful, anxious, frustrated, grateful, curious, relieved, fond, moved), or your own word, kept as yours. Blends go under either core: tender and wistful (sad or happy), bittersweet (happy or sad), sheepish (fear or sad).",
       },
       strength: { type: "number", minimum: 0, maximum: 1 },
       carried_by: {

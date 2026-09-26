@@ -419,6 +419,11 @@ describe("two runs build the same store", () => {
     const rb = await seedDemo({ dir: b });
 
     expect(contentDigest(a)).toBe(contentDigest(b));
+    // Every count, the wake's byte count included, is EXACTLY equal. Since
+    // emotion part A (physics §5.10) more felt, consolidated memories tie at the
+    // strength ceiling of 1.0 on the same born day; the lanes break that tie on
+    // a hash of the words before the random id (`self/identity.ts#tieKey`), so
+    // two stores built alike render the same wake.
     expect({ ...rb, dir: a }).toEqual({ ...ra, dir: a });
   }, 30_000); // two full 30-day seeds; 8.2 s was measured under suite load, against a 5 s default
 });

@@ -61,8 +61,10 @@ describe("the wheel", () => {
     expect(CORE_EMOTIONS).toEqual(["happy", "sad", "fear", "anger", "surprise", "disgust"]);
     const keys = FEELINGS_WHEEL.map((e) => e.key);
     expect(new Set(keys).size).toBe(keys.length);
-    // 6 cores + 36 middle + 72 outer, less sad's `abandoned` printed twice.
-    expect(FEELINGS_WHEEL.length).toBe(6 + 36 + 72 - 1);
+    // The POSTER: 6 cores + 36 middle + 72 outer, less sad's `abandoned` printed twice.
+    expect(FEELINGS_WHEEL.filter((e) => e.added !== true).length).toBe(6 + 36 + 72 - 1);
+    // Plus the words added from real use (2026-09-26), each marked as such.
+    expect(FEELINGS_WHEEL.filter((e) => e.added === true).length).toBe(10);
     expect(wheelEntry("abandoned")).toMatchObject({ core: "sad", ring: "middle", alsoUnder: "lonely" });
     expect(wheelEntry("furious")).toMatchObject({ core: "anger", ring: "outer", parent: "mad", valence: -1 });
   });
@@ -198,7 +200,7 @@ describe("the store", () => {
     const migrated = store({ snapshotsDir: join(dir, "..", `${dir.split("/").pop() ?? "x"}-snaps`) });
     expect(migrated.getMeta("schemaVersion")).toBe("7");
     const id = mem(migrated);
-    expect(migrated.addFeelings(id, [{ whose: "owner", core: "happy", emotion: "relieved", strength: 0.5, carriedBy: "" }]).notices.length).toBe(1);
+    expect(migrated.addFeelings(id, [{ whose: "owner", core: "happy", emotion: "clarified", strength: 0.5, carriedBy: "" }]).notices.length).toBe(1);
     rmSync(join(dir, "..", `${dir.split("/").pop() ?? "x"}-snaps`), { recursive: true, force: true });
   });
 });

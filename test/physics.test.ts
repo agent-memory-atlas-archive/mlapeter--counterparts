@@ -63,6 +63,17 @@ function S(n: number, novelty: number | null = n): Salience {
   return { novelty, relevance: n, emotional: n, predictive: n };
 }
 
+/**
+ * `S(n)` with NO emotional intensity, and `sal` still exactly `n` (the claimed
+ * floor holds it there: the mean of the other dimensions is below `n`). For
+ * the fixtures whose pinned numbers — the 08-24 exhibit, the prune walk —
+ * predate §5.10: the emotion lift and slope (2026-09-26) would otherwise move
+ * arithmetic those tests are not about. §5.10 has its own tests in `emotion.test.ts`.
+ */
+function Sflat(n: number, novelty: number | null = n): Salience {
+  return { novelty, relevance: n, emotional: 0, predictive: n, claimed: n };
+}
+
 function mem(p: Partial<MemoryPhysics> & { kind: Kind }): MemoryPhysics {
   return {
     salience: S(0.5),
@@ -83,7 +94,7 @@ function challenge(id: string, target: string, salience: number, day: number, ki
   return {
     id,
     declaredUpdates: target,
-    physics: mem({ kind, salience: S(salience), birthDay: day, lastUsedDay: day }),
+    physics: mem({ kind, salience: Sflat(salience), birthDay: day, lastUsedDay: day }),
   };
 }
 
@@ -376,7 +387,7 @@ describe("[M] guarantee 3 — base is monotone non-decreasing", () => {
   });
 
   test("base is a MAX of the two arms, never a product — the one-shot consolidates", () => {
-    const oneShot = mem({ kind: "entity", salience: S(0.9), uses: 0 });
+    const oneShot = mem({ kind: "entity", salience: Sflat(0.9), uses: 0 });
     expect(base(oneShot)).toBeCloseTo(0.9, 10);
     const k = kindPhysics("entity");
     expect(base(oneShot)).not.toBeCloseTo(k.wSal * 0.9 * (k.wRep * rep(oneShot)), 3);
@@ -666,13 +677,13 @@ describe("§5.5 reinforcement — graded, retrospective, at most once a day", ()
 // ---------------------------------------------------------------------------
 
 describe("[M] guarantee 7 — revision requires a DECLARED updates: target", () => {
-  const target = mem({ kind: "entity", salience: S(0.7), uses: 3, lastUsedDay: 100 });
+  const target = mem({ kind: "entity", salience: Sflat(0.7), uses: 3, lastUsedDay: 100 });
 
   test("an undeclared memory applies no pressure at all", () => {
     const out = applyChallenge(
       "bel",
       target,
-      { id: "x", declaredUpdates: null, physics: mem({ kind: "entity", salience: S(0.9), birthDay: 101, lastUsedDay: 101 }) },
+      { id: "x", declaredUpdates: null, physics: mem({ kind: "entity", salience: Sflat(0.9), birthDay: 101, lastUsedDay: 101 }) },
       101,
     );
     expect(out.credited).toBe(false);
@@ -695,12 +706,12 @@ describe("[M] guarantee 7 — revision requires a DECLARED updates: target", () 
   });
 
   test("novelty plays no role in the force term (review condition (c))", () => {
-    const informed = mem({ kind: "entity", salience: S(0.6, 0.05), birthDay: 101, lastUsedDay: 101 });
-    const blind = mem({ kind: "entity", salience: { ...S(0.6), novelty: null }, birthDay: 101, lastUsedDay: 101 });
+    const informed = mem({ kind: "entity", salience: Sflat(0.6, 0.05), birthDay: 101, lastUsedDay: 101 });
+    const blind = mem({ kind: "entity", salience: { ...Sflat(0.6), novelty: null }, birthDay: 101, lastUsedDay: 101 });
     // an informed challenger (near-zero prediction error) is not out-weighed by a blind one
     expect(challengeForce(informed, 101)).toBeGreaterThan(0);
     expect(challengeForce(blind, 101)).toBeGreaterThan(0);
-    const equalSal = mem({ kind: "entity", salience: S(0.6), birthDay: 101, lastUsedDay: 101 });
+    const equalSal = mem({ kind: "entity", salience: Sflat(0.6), birthDay: 101, lastUsedDay: 101 });
     expect(challengeForce(equalSal, 101)).toBeCloseTo(sal(equalSal.salience) ** 2, 10);
   });
 });
@@ -709,7 +720,7 @@ describe("regression 1 — the 08-24 exhibit fires", () => {
   // entity kind (iota = 0.5), an established belief at strength ~0.7, challenged by
   // declared corrections of author salience ~0.6 on successive lived days.
   const D0 = 100;
-  const belief = mem({ kind: "entity", salience: S(0.72), uses: 3, lastUsedDay: D0, birthDay: 20 });
+  const belief = mem({ kind: "entity", salience: Sflat(0.72), uses: 3, lastUsedDay: D0, birthDay: 20 });
 
   test("the belief is where the exhibit found it", () => {
     expect(kindPhysics("entity").iota).toBe(0.5);
@@ -830,7 +841,7 @@ describe("regression 2 — one loud claim does not flip a friend-model", () => {
 describe("regression 9 — pressure decays: an abandoned challenge fades", () => {
   const target = mem({
     kind: "entity",
-    salience: S(0.72),
+    salience: Sflat(0.72),
     uses: 3,
     lastUsedDay: 300,
     pressure: 0.3364,
@@ -952,7 +963,7 @@ describe("[M] guarantee 8 — a declared revision is never deduped into its targ
 // ---------------------------------------------------------------------------
 
 describe("[M] guarantees 9 and 10 — prune is gated on all five, and records nothing readable", () => {
-  const faded = mem({ kind: "fact", salience: S(0.55), uses: 1, lastUsedDay: 0, birthDay: 0 });
+  const faded = mem({ kind: "fact", salience: Sflat(0.55), uses: 1, lastUsedDay: 0, birthDay: 0 });
 
   test("superseded versions stay resolvable for H lived days; nothing here deletes one", () => {
     expect(TUNABLES.H_SUPERSEDED_DAYS).toBe(90);
@@ -992,7 +1003,7 @@ describe("[M] guarantees 9 and 10 — prune is gated on all five, and records no
 });
 
 describe("regression 5 — a faded semantic demotes and becomes prunable", () => {
-  const m = mem({ kind: "fact", salience: S(0.55), uses: 1, lastUsedDay: 0, birthDay: 0 });
+  const m = mem({ kind: "fact", salience: Sflat(0.55), uses: 1, lastUsedDay: 0, birthDay: 0 });
 
   test("it starts semantic", () => {
     expect(band(m, 0)).toBe("semantic");

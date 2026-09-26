@@ -134,6 +134,100 @@ decided twice.)*
    The FALLBACK channel is untouched: its ceiling and its interpreter-supplied
    dimensions are exactly what they were. CAL, and a working default.
 
+17. **Emotion, part A (2026-09-26) — feelings start to matter (CONTRACT §5.10).**
+   Owner decisions of 2026-09-25/26, built as working defaults. Three constants,
+   all CAL and unmeasured, chosen by the arithmetic below and kept modest because
+   this changes decay on an existing store.
+
+   **Where the lift lives.** In `base()`'s salience ARM (`salArm`), not in `sal()`.
+   `sal()` is also what recall's turn gate reads (§9 G10: the emotional dimension
+   counts only when the turn itself carries first-person feeling) and what
+   `challengeForce` multiplies by (the author's own how-much-this-mattered). Folding
+   the lift into `sal()` would have broken G10 silently and changed revision force.
+   The repetition arm gets nothing, so "repetition never reaches identity" is still
+   the cap arithmetic alone.
+
+   **Intensity** `I = max(emotional, strongest recorded feeling)`. `feelingPeak` is
+   read beside the row by `Store.row()` (one indexed subquery), which every physics
+   read goes through — sleep, recall, the dashboard, `physicsOf`, `read`. A bare
+   `SELECT * FROM memories` carries none and reads as the numeric score alone.
+
+   **The simulation.** A silent authored fact (claimed default 0.25, no dimensions,
+   never used, κ = 1), strength over lived days, at three intensities:
+
+   | I | height | S (lived days) | d0 | d7 | d30 | d60 | d90 | below φ = 0.02 on |
+   |---|---|---|---|---|---|---|---|---|
+   | 0 | 0.250 | 60 | 0.250 | 0.222 | 0.152 | 0.092 | 0.056 | day 152 |
+   | 0.5 | 0.325 | 75 | 0.325 | 0.296 | 0.218 | 0.146 | 0.098 | day 210 |
+   | 0.9 | 0.385 | 87 | 0.385 | 0.355 | 0.273 | 0.193 | 0.137 | day 258 |
+
+   (`test/emotion.test.ts` pins this table.) A `person` memory (κ = 0.75) at I = 0.9:
+   S = 116, below the floor on day 344 instead of 203. A note that said only
+   `emotional: 0.9`: before, height 0.300 and S = 60 (floor on day 163); now height
+   0.435 and S = 87 (floor on day 268).
+
+   **Why these numbers.**
+   - `EMO_LIFT = 0.15`. The lift is felt (a strongly felt silent note starts 54%
+     higher than an unfelt one) and bounded where it matters:
+     `AUTHORED_DEFAULT_CLAIM + EMO_LIFT = 0.40 < THETA_SEM`, so a feeling alone does
+     not make a silent note semantic at birth — consolidation (+0.2) or use still has
+     to, and a consolidated one at I = 0.9 holds semantic for ~14 lived days, then
+     fades back. Consolidated, it is 0.60, far under `THETA_ID = 0.85`. Larger lifts
+     (0.25+) would carry a felt silent note to semantic on birth; smaller ones (0.05)
+     are rounding error against a 0.25 floor.
+   - `EMO_SLOPE = 0.5`. ×1.25 stability at I = 0.5, ×1.45 at 0.9 — the strongly felt
+     memory lasts ~1.7× as long before it reaches the prune floor. It stays a slope,
+     not an exemption: nothing becomes immortal by being felt (identity is still the
+     only decay exemption, and still by promotion only).
+   - `S_FEELING = 20`. A 0.9 feeling reads 0.63 after a week, 0.45 after two, 0.20
+     after a month — while the fact it sits on is still at 0.79 of its height after
+     two weeks. "The feeling softens faster than the fact" as arithmetic.
+
+   **What moves on an existing store.** Every row with an `emotional` score or a
+   recorded feeling is now taller and slower. The first sleep pass after an upgrade
+   will re-read those bands; some episodic rows will read semantic (counted as
+   up-moves by guarantee 12's counter — expected, and a one-time step). A felt row
+   that reads semantic on a day after its birth is then CONSOLIDATED by the same
+   pass, and `consolidated` is permanent (+0.2 to `base` for life).
+
+   **Identity would have been reachable, in a window (adversarial review of #244) — closed below.**
+   Promotion eligibility is on `base`, and the lift is in `base`. The "stays under
+   identity" bound above is for a SILENT note only. For a memory whose `sal` was
+   claimed or computed, the consolidated bar `THETA_ID − CONS_BONUS = 0.65` is now
+   met at `sal ≥ 0.65 − 0.15 × I`: at I = 0.9 a consolidated memory with
+   `sal ∈ [0.515, 0.65)` and ≥ 3 distinct reinforced days is newly eligible, where
+   before it was not. Identity is decay-exempt, so this is one-way. It includes the
+   retelling channel: a sweep memory at `SWEEP_CLAIM_CEILING = 0.6` with an
+   `emotional` dimension ≥ 0.34 reaches 0.6 + 0.15 × I + 0.2 ≥ 0.85 (0.80 before).
+   On an existing store the first sleep after the upgrade could have promoted such rows.
+   **Settled 2026-09-26 (coordinator, holding the status quo until the owner's
+   consolidation/dreaming redesign lands): emotion does NOT count toward identity.**
+   Promotion reads `promotionBase` — `base` without the lift — so its reach is exactly
+   what it was before #244, and the settling view (which reads the verdict's `base`)
+   follows. The lift still makes a memory taller and slower to fade.
+
+   Anything that ranks by strength (the self page's ordering, the dashboard's
+   lists) shifts toward felt memories. Felt, consolidated, high-salience memories
+   also reach the strength CEILING of 1.0 more often (`strength` clamps `base × D`,
+   and base can exceed 1 with the consolidation bonus), so anything that ranks by
+   strength sees more ties. The self lanes break a tie on born day, then on a hash
+   of the memory's words (`self/identity.ts#tieKey`, added in review), then id —
+   so two stores built alike (the demo seed's two runs) render the same wake, and
+   `demo-seed.test.ts` compares the wake's bytes exactly again. On a live store,
+   lines tied on everything else move from id order to hash order — both
+   arbitrary, so nothing is lost; identity additionally rotates by last-rendered
+   day, which dominates after one render.
+
+   **Softening's clock, an approximation named.** A feeling softens over the lived
+   days since its MEMORY's birth day: the lived-day clock is a counter and cannot map
+   a feeling's wall-clock `created_at` back to a lived day. Every feeling written
+   today is written in the same call that minted its memory, so they agree; a later
+   `addFeelings` on an old memory would read as already softened.
+
+   **Not carried across a revision.** Feelings belong to a memory id. A supersede
+   mints a new id, so the successor starts without them (and without their lift).
+   Named, not solved — revisit with the self/schemas work.
+
 ## Observations for the owner (arithmetic vs prose)
 
 - **§5.6's "a slow kind cannot cross from rest in fewer than ~3 lived days" is

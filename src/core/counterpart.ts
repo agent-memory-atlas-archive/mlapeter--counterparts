@@ -1195,6 +1195,8 @@ export const RECALL_DECISION_FIELDS = [
   "footnoteCount",
   "affectFlag",
   "affectReason",
+  // Emotion part A (2026-09-26): admitted memories the current mood lifted.
+  "moodMatched",
   "sentinelRendered",
   "surfaced",
   "footnotes",
@@ -1265,6 +1267,7 @@ function recallDecisionRecord(
     footnoteCount: d.footnotes.length,
     affectFlag: d.affectFlag,
     affectReason: d.affectReason,
+    moodMatched: d.moodMatched,
     sentinelRendered: d.sentinel !== null,
     surfaced: tierRows(d.surfaced, d.verdicts),
     footnotes: tierRows(d.footnotes, d.verdicts),
@@ -2324,8 +2327,9 @@ export class Counterpart {
    * Feelings on a memory (schema v7, `store/feelings.ts`), through the SECRETS
    * half of the battery: `carried_by` and an `other` word are words about the
    * moment, and a credential must not land in them any more than in a body.
-   * Nothing else here reads them — salience, decay and recall are untouched
-   * until the emotion build. Throws what the store throws (`FEELING_INVALID`).
+   * Once stored they weigh (emotion part A): physics reads the strongest one
+   * beside the row (§5.10) and recall reads recent ones as the mood (G18).
+   * Throws what the store throws (`FEELING_INVALID`).
    */
   addFeelings(memoryId: string, inputs: readonly FeelingInput[], opts: { model?: string } = {}): AddFeelingsResult {
     const clean = inputs.map((f) => ({

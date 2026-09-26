@@ -4,7 +4,7 @@
  * Split out of `web/views.ts`, which re-exports every public name from here;
  * the four rules in that file's header apply to every line below.
  */
-import { TUNABLES as PHYSICS, kindPhysics, promotionEligibility, sal } from "../../../../core/physics/index.js";
+import { TUNABLES as PHYSICS, kindPhysics, promotionEligibility, sal, salArm } from "../../../../core/physics/index.js";
 import { isConfidential } from "../../../../core/recall/index.js";
 import {
   FRAMING,
@@ -554,7 +554,7 @@ function settlingView(
     const v = promotionEligibility(p);
     if (v.blockedBy.includes("already-identity")) continue;
     const k = kindPhysics(p.kind);
-    const best = Math.max(k.wSal * sal(p.salience), k.wRep * PHYSICS.REP_CAP) + PHYSICS.CONS_BONUS;
+    const best = Math.max(k.wSal * salArm(p), k.wRep * PHYSICS.REP_CAP) + PHYSICS.CONS_BONUS;
     if (best < v.threshold) {
       outOfReach += 1;
       continue;

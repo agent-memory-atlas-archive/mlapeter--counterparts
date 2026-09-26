@@ -79,16 +79,31 @@ export const MEMORY_MECHANISMS: readonly MemoryMechanism[] = [
   {
     name: "Emotion",
     group: "Encoding",
-    evidence: ["emotion"],
-    // The audit's verdict: a feeling is recorded as a label and carries no
-    // weight, and the classifier ships off. Idle whatever the counts say.
-    read: (rows) => ({
-      light: LIGHT.idle,
-      says:
-        rows("emotion")?.state === "disabled"
-          ? "built, held back: the feeling classifier is off, so feelings carry no weight yet"
-          : "built, not firing yet: feelings are recorded but carry no weight yet",
-    }),
+    evidence: ["feelings", "emotion-weight", "mood-match"],
+    // Emotion part A (2026-09-26): a memory's strongest feeling lifts it and
+    // slows its fading, and a recorded mood lifts matching memories in recall.
+    // Working when a memory carrying feeling was written this week or a mood
+    // lifted a memory that came to mind; the totals ride along either way.
+    read: (rows) => {
+      const weighted = rows("emotion-weight")?.total ?? 0;
+      const withFeelings = rows("feelings")?.total ?? 0;
+      const newWeighted = week(rows, "emotion-weight");
+      const matched = week(rows, "mood-match");
+      const held = `${plural(weighted, "memory", "memories")} held higher and fading slower (${String(withFeelings)} with recorded feelings)`;
+      if (newWeighted + matched > 0) {
+        const parts: string[] = [];
+        if (newWeighted > 0) parts.push(`${plural(newWeighted, "new memory", "new memories")} carrying feeling`);
+        if (matched > 0) parts.push(`${plural(matched, "turn")} where a mood brought matching memories closer`);
+        return { light: LIGHT.working, says: `${parts.join("; ")}; ${held}` };
+      }
+      return {
+        light: LIGHT.idle,
+        says:
+          weighted > 0
+            ? `built, not firing yet this week: ${held}`
+            : "built, not firing yet: no memory carries a feeling",
+      };
+    },
   },
   // ── Storage ──
   {

@@ -239,6 +239,7 @@ import type {
 import { humanBytes as humanDiskBytes, uninstall } from "./uninstall.js";
 import { NO_PAGE_VERSION } from "../../core/self/index.js";
 import { snapshot, snapshotName } from "./snapshot.js";
+import { feelingsLine } from "../feelings-line.js";
 // The console's map and the paragraphs the old `usage()` carried. One
 // direction only: `help.ts` imports nothing but types back from this file.
 import { COMMAND_DETAIL, CONSOLE_FOOTER, advancedHelp, shortHelp } from "./help.js";
@@ -5193,6 +5194,16 @@ async function recallCommand(
       const journal = m.journal ? "[journal] " : "";
       io.out(`  ${m.id}  [${m.tier}] ${journal}${m.kind}${m.title === null ? "" : ` — ${m.title}`}`);
       for (const line of m.body.split("\n")) io.out(`    ${line}`);
+      // The feelings on it, `you: … · me: …` (emotion part A). Read-only, and
+      // a store that cannot answer simply shows none.
+      let felt = "";
+      try {
+        const born = counterpart.store.physicsOf(m.id).birthDay;
+        felt = feelingsLine(counterpart.store.feelingsFor(m.id), counterpart.store.livedDay() - born);
+      } catch {
+        felt = "";
+      }
+      if (felt !== "") io.out(`    feelings — ${felt}`);
     }
     // THE TIER LEGEND, and it is not decoration. `answered` means the question
     // reached something, never that the something is right, and the loudest

@@ -42,6 +42,15 @@ export async function openMemory(id) {
         " · emotional " + n2(s.emotional) + " · predictive " + n2(s.predictive) +
         (s.novelty === null ? " · <span style='color:var(--amber)'>novelty blind (no schema context existed)</span>" : " · novelty " + n2(s.novelty)) +
         (s.claimed === null ? "" : " · claimed floor " + n2(s.claimed)) + "</span>") +
+      kv("feelings", d.confidential
+        ? "<span class='withheld'>withheld with the words</span>"
+        : d.feelings
+        ? esc(d.feelings) + " <span style='color:var(--faint)'>· intensity " + n2(d.intensity) +
+          " — holds it higher and slows its fading</span>"
+        : d.intensity > 0
+          ? "<span style='color:var(--dim)'>none recorded</span> <span style='color:var(--faint)'>· emotional score " + n2(d.intensity) +
+            " holds it higher and slows its fading</span>"
+          : "<span style='color:var(--dim)'>(none recorded)</span>") +
       kv("lived", "born day " + d.bornDay + " · used " + d.uses + "× over " + d.reinforcedDays +
         " separate days · last used day " + d.lastUsedDay) +
       kv("recorded", esc(d.learnedOn) + (d.happenedOn ? " · happened " + esc(d.happenedOn) : "") +
