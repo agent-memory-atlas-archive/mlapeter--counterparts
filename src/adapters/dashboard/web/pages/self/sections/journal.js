@@ -80,6 +80,9 @@ export function paint(d) {
   box.querySelectorAll(".jc-top").forEach((b) => b.addEventListener("click", () => {
     const key = b.dataset.key;
     if (ui.chapters.has(key)) ui.chapters.delete(key); else ui.chapters.add(key);
+    // Reading a day's chapter pins that day: a new day landing on a refresh
+    // must not move the strip out from under an open chapter.
+    if (ui.day === null) ui.day = picked.day;
     paint();
   }));
 }
