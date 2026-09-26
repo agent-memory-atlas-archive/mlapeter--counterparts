@@ -186,17 +186,36 @@ decided twice.)*
    **What moves on an existing store.** Every row with an `emotional` score or a
    recorded feeling is now taller and slower. The first sleep pass after an upgrade
    will re-read those bands; some episodic rows will read semantic (counted as
-   up-moves by guarantee 12's counter — expected, and a one-time step). Promotion
-   eligibility is on `base`, so a strongly felt `self` memory reaches `THETA_ID`
-   a little sooner — still only with ≥ 3 distinct reinforced days. Anything that
-   ranks by strength (the self page's ordering, the dashboard's lists) shifts
-   toward felt memories; `self/` code is unchanged. Felt, consolidated,
-   high-salience memories also reach the strength CEILING of 1.0 more often
-   (`strength` clamps `base × D`, and base can exceed 1 with the consolidation
-   bonus), so anything that ranks by strength sees more ties. The identity lane
-   breaks a tie on born day, then id; on a live store ids are fixed so the order
-   is stable, but two demo stores built from one script differ in ids, which is
-   why `demo-seed.test.ts` now compares the wake's byte count within 2%.
+   up-moves by guarantee 12's counter — expected, and a one-time step). A felt row
+   that reads semantic on a day after its birth is then CONSOLIDATED by the same
+   pass, and `consolidated` is permanent (+0.2 to `base` for life).
+
+   **Identity is newly reachable, in a window (adversarial review of #244).**
+   Promotion eligibility is on `base`, and the lift is in `base`. The "stays under
+   identity" bound above is for a SILENT note only. For a memory whose `sal` was
+   claimed or computed, the consolidated bar `THETA_ID − CONS_BONUS = 0.65` is now
+   met at `sal ≥ 0.65 − 0.15 × I`: at I = 0.9 a consolidated memory with
+   `sal ∈ [0.515, 0.65)` and ≥ 3 distinct reinforced days is newly eligible, where
+   before it was not. Identity is decay-exempt, so this is one-way. It includes the
+   retelling channel: a sweep memory at `SWEEP_CLAIM_CEILING = 0.6` with an
+   `emotional` dimension ≥ 0.34 reaches 0.6 + 0.15 × I + 0.2 ≥ 0.85 (0.80 before).
+   On an existing store the first sleep after the upgrade can promote such rows.
+   The preview is the dashboard's "settling" view on this build (it reads the same
+   `salArm`), which lists every memory within reach and which are `eligible`
+   already. Whether emotion should count toward identity at all, or promotion
+   should read the unlifted base, is an OWNER DECISION left open; this build keeps
+   the decision as given ("adds to height in `base()`").
+
+   Anything that ranks by strength (the self page's ordering, the dashboard's
+   lists) shifts toward felt memories. Felt, consolidated, high-salience memories
+   also reach the strength CEILING of 1.0 more often (`strength` clamps `base × D`,
+   and base can exceed 1 with the consolidation bonus), so anything that ranks by
+   strength sees more ties. The self lanes break a tie on born day, then on a hash
+   of the memory's words (`self/identity.ts#tieKey`, added in review), then id —
+   so two stores built alike (the demo seed's two runs) render the same wake, and
+   `demo-seed.test.ts` compares the wake's bytes exactly again. On a live store
+   this reorders tied elements once (words' hash instead of id); identity's
+   rotation by last-rendered day absorbs it after one render.
 
    **Softening's clock, an approximation named.** A feeling softens over the lived
    days since its MEMORY's birth day: the lived-day clock is a counter and cannot map

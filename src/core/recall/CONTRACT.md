@@ -259,8 +259,11 @@ credit at the boundary; reinforcement deltas handed to `physics/`.
     both its cores; a feeling recorded inside the window is the mood, never a match. The
     lift rides `sal` ONLY: it is computed for cued candidates only, it never enters
     `activation` (so it cannot change the candidate set), hard gate (a) and the absolute
-    floor (b) are both evaluated before `sal` is read, and the absolute regimes ignore
-    `sal` altogether. Tests: `emotion.test.ts` › "mood-matching never admits an uncued
+    floor (b) are both evaluated before `sal` is read, and in the absolute regimes the
+    admission bar ignores `sal`. What `sal` still decides in EVERY regime is the order
+    of the loud pool (`SAL_SORT_WEIGHT`): among memories already admitted loud, a
+    mood-lifted one can take a surfaced slot another would have had, pushing that one
+    to a footnote. Tests: `emotion.test.ts` › "mood-matching never admits an uncued
     memory". The decision record carries `moodMatched` — admitted memories the mood
     lifted, a count, never which feeling. Adding that field moves the surface set (G15):
     the parallel run it protected ended 2026-09-21, and a durable count is the only way

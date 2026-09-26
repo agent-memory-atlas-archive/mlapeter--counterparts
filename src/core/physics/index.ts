@@ -54,7 +54,11 @@ export const TUNABLES = {
    * self-claimed importance (mode 0.8), parking ~75% of the store above
    * THETA_SEM with no independent check (review F5). 0.6 clears the semantic
    * floor (a crashed day still matters) and sits structurally below THETA_ID.
-   * WORKING DEFAULT — to be revisited against the re-run's watch metrics.
+   * SINCE §5.10 (2026-09-26) that holds for the claim alone, not for the claim
+   * plus the emotion lift: consolidated, 0.6 + EMO_LIFT x I + CONS_BONUS reaches
+   * THETA_ID at I >= 0.34 (NOTES §17, "Identity is newly reachable" — an open
+   * owner decision). WORKING DEFAULT — to be revisited against the re-run's watch
+   * metrics.
    */
   SWEEP_CLAIM_CEILING: 0.6,
   /**
@@ -115,7 +119,10 @@ export const TUNABLES = {
    * = 0.40 < THETA_SEM` (a strong feeling alone does not make a silent note
    * semantic at birth; consolidation or use still has to), and even
    * consolidated it stays under identity: `0.25 + EMO_LIFT + CONS_BONUS = 0.60
-   * < THETA_ID`. NOTES.md "Emotion, part A" has the simulation. CAL.
+   * < THETA_ID`. That identity bound is for a SILENT note: a memory with a claimed
+   * or computed sal >= 0.65 - EMO_LIFT x I is newly promotion-eligible once
+   * consolidated (NOTES "Identity is newly reachable"). NOTES.md "Emotion, part
+   * A" has the simulation. CAL.
    */
   EMO_LIFT: 0.15,
   /**

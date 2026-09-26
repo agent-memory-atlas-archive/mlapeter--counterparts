@@ -31,6 +31,7 @@ import {
   base,
   challengeForce,
   emotionalIntensity,
+  promotionEligibility,
   sal,
   salArm,
   softenedFeeling,
@@ -156,6 +157,19 @@ describe("physics §5.10 — height, slope, and the feeling that softens", () =>
     expect(TUNABLES.AUTHORED_DEFAULT_CLAIM + TUNABLES.EMO_LIFT + TUNABLES.CONS_BONUS).toBeLessThan(TUNABLES.THETA_ID);
     // Softening is faster than the fact's own decay.
     expect(TUNABLES.S_FEELING).toBeLessThan(TUNABLES.S_BASE);
+  });
+
+  test("the identity bound is for a SILENT note: a claimed sal inside the window is newly eligible (review of #244)", () => {
+    // A consolidated, reinforced memory at the sweep's capped claim (0.6): under
+    // THETA_ID with no feeling, AT it once the intensity reaches ~1/3. This pins
+    // the window physics NOTES §17 names, so moving it is a visible decision.
+    const at = (feelingPeak: number): MemoryPhysics =>
+      note({ consolidated: true, reinforcedDays: 3, feelingPeak }, { claimed: TUNABLES.SWEEP_CLAIM_CEILING });
+    expect(promotionEligibility(at(0)).eligible).toBe(false);
+    expect(promotionEligibility(at(0.3)).eligible).toBe(false);
+    expect(promotionEligibility(at(0.4)).eligible).toBe(true);
+    // The silent note stays out of reach at any intensity, however reinforced.
+    expect(promotionEligibility(note({ consolidated: true, reinforcedDays: 9, feelingPeak: 1 })).eligible).toBe(false);
   });
 
   test("slope: the same intensity lengthens stability", () => {

@@ -9,7 +9,9 @@
  * mood is the cores of the feelings recorded for them in the last
  * `MOOD_WINDOW_HOURS` of the store's clock, at `MOOD_MIN_STRENGTH` or above. A
  * turn nobody recorded a feeling near has no mood, and this whole module costs
- * one indexed query that returns nothing.
+ * one query that returns nothing. That query (`Store.feelingsSince`) has no
+ * index on `created_at` — adding one is a schema change this part does not make
+ * — so it scans the `feelings` table, which is small (a few per memory at most).
  *
  * **It is a modulation, never an admission.** The lift is added to the
  * candidate's `sal` — the number the gate reads AFTER hard gate (a) (an uncued
@@ -17,7 +19,9 @@
  * absolute floor, checked before any salience adjustment). It never touches
  * `activation`, so it cannot change which memories become candidates, and in
  * the absolute regimes `modulate` ignores `sal` entirely. `activate.ts` does
- * not even compute a mood for an uncued candidate.
+ * not even compute a mood for an uncued candidate. One place `sal` IS read in
+ * every regime: the loud pool's order (`gate.ts`, `SAL_SORT_WEIGHT`), so among
+ * memories already admitted loud, a lifted one can take a surfaced slot.
  *
  * **A blend counts under both of its cores** (`coresOfFeeling`): a tender
  * memory matches a sad mood and a happy one.

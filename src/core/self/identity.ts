@@ -17,6 +17,7 @@
  * no index for — INTERFACE-GAPS #2) and text arrives at render time through the
  * `Resolve` seam.
  */
+import { createHash } from "node:crypto";
 import type { Band, Kind, MemoryPhysics } from "../types.js";
 import { strength } from "../physics/index.js";
 import type { ProseDoc, ReadOnlyStore, Store } from "../store/index.js";
@@ -33,6 +34,15 @@ export interface Ranked {
   readonly strength: number;
   readonly protected: boolean;
   readonly bornDay: number;
+  /**
+   * The last tie-break before the id: a hash of the memory's words, so two
+   * memories tied on everything else order the same way in every store that
+   * holds them. Ids are random (`store/index.ts#newId`), so an id tie-break is
+   * stable within one store but not across two built alike (the demo seed's
+   * two runs). A hash, not the text: this stays an ids-and-numbers structure.
+   * Absent on a line with no memory behind it (the horizon lane).
+   */
+  readonly tieKey?: string;
   /** Threads only: person-scoped debts trim last (behavioral-spec §1 G4). */
   readonly personScoped: boolean;
   /** Lived day this element last rendered in a wake; -1 never. Identity only. */
@@ -110,6 +120,14 @@ export function scanActive(store: Store, day: number): Scanned[] {
 function byStrength(a: Ranked, b: Ranked): number {
   if (b.strength !== a.strength) return b.strength - a.strength;
   if (a.bornDay !== b.bornDay) return a.bornDay - b.bornDay;
+  return byContentThenId(a, b);
+}
+
+/** The final tie-break: the words' hash (`tieKey`), then the id. */
+function byContentThenId(a: Ranked, b: Ranked): number {
+  const ka = a.tieKey ?? "";
+  const kb = b.tieKey ?? "";
+  if (ka !== kb) return ka < kb ? -1 : 1;
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
@@ -137,7 +155,7 @@ function byRotation(a: Ranked, b: Ranked): number {
 function byThreadAge(a: Ranked, b: Ranked): number {
   if (a.personScoped !== b.personScoped) return a.personScoped ? -1 : 1;
   if (a.bornDay !== b.bornDay) return a.bornDay - b.bornDay;
-  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  return byContentThenId(a, b);
 }
 
 function rank(s: Scanned, lane: LaneName): Ranked {
@@ -149,6 +167,7 @@ function rank(s: Scanned, lane: LaneName): Ranked {
     strength: s.strength,
     protected: s.physics.protected,
     bornDay: s.doc.bornDay,
+    tieKey: createHash("sha256").update(s.doc.body).digest("hex"),
     personScoped: s.kind === "person",
     lastRendered: s.lastRendered,
   };
