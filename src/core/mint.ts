@@ -49,7 +49,7 @@
  * resolution, upstream, and this file does not write a second one.
  */
 import { TUNABLES as PHYSICS, clampSalienceAtSeam } from "./physics/index.js";
-import { CUE_MODE_META, REMINDER_FROM_META } from "./prospective/index.js";
+import { CUE_MODE_META, DATE_FROM_META } from "./prospective/index.js";
 import type { Proposal } from "./remember/index.js";
 import { localDate } from "./time.js";
 import type { Store } from "./store/index.js";
@@ -188,7 +188,7 @@ export function mintProposal(store: Store, proposal: Proposal, opts: MintOptions
   if (proposal.eventDate !== null && proposal.remind !== null) meta[CUE_MODE_META] = proposal.remind;
   // The memory a revision took its reminder from (`Counterpart#carryReminder`):
   // an id, so what was already said for the same window still counts.
-  if (proposal.reminderFrom !== undefined) meta[REMINDER_FROM_META] = proposal.reminderFrom;
+  if (proposal.reminderFrom !== undefined) meta[DATE_FROM_META] = proposal.reminderFrom;
 
   // THE PROPOSAL'S OWN INSTANT, not the write's (§I7). `proposal.at` is the
   // span buffer's injected clock read at the moment the author deposited; the

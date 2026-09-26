@@ -310,7 +310,7 @@ a `DateIntent`, so it neither carries nor moves.
   cancel by the old id did nothing (silently) and a reschedule by it minted a second dated
   row beside the carried one, at quiet. Now the move writes `meta.reminderMovedTo` on the
   old row in the SAME `revise` that clears its date, and `Counterpart#reminderHolder` walks
-  that chain (each hop through `Store#resolve`, bounded by `REMINDER_LINEAGE_MAX`) to the
+  that chain (each hop through `Store#resolve`, bounded by `DATE_LINEAGE_MAX`) to the
   live memory holding the date; `from` in the reply names that holder. A cancel that finds
   no dated memory at all now says so (`reminder: { cleared: false }`).
 - *A move is not a new reminder.* The plain latch and the quiet firing rows are keyed by

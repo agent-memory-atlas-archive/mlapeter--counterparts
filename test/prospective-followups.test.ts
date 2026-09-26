@@ -19,7 +19,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { CUE_MODE_META, REMINDER_FROM_META, REMINDER_MOVED_TO_META } from "../src/core/prospective/index.js";
+import { CUE_MODE_META, DATE_FROM_META, DATE_MOVED_TO_META } from "../src/core/prospective/index.js";
 import { openServer } from "../src/adapters/mcp/index.js";
 import type { McpServer } from "../src/adapters/mcp/index.js";
 
@@ -236,8 +236,8 @@ describe("review of #247: the reminder is found where it moved, and a move is no
     ] as string;
     // The old row stays live (link-only) and points at where the reminder went.
     expect(store.row(old)?.archived).toBe(0);
-    expect(store.readProse(old).meta[REMINDER_MOVED_TO_META]).toBe(first);
-    expect(store.readProse(first).meta[REMINDER_FROM_META]).toBe(old);
+    expect(store.readProse(old).meta[DATE_MOVED_TO_META]).toBe(first);
+    expect(store.readProse(first).meta[DATE_FROM_META]).toBe(old);
     const cancel = await note(s, {
       text: "Mike already paid the quarterly estimated taxes early, so that is done.",
       updates: old,

@@ -122,12 +122,12 @@ export function cueModeOf(doc: Pick<ProseDoc, "meta">): CueMode {
  *     ordinary memory is link-only) still finds the reminder to reschedule or
  *     drop, instead of finding nothing.
  */
-export const REMINDER_FROM_META = "reminderFrom";
-export const REMINDER_MOVED_TO_META = "reminderMovedTo";
+export const DATE_FROM_META = "reminderFrom";
+export const DATE_MOVED_TO_META = "reminderMovedTo";
 
 /** How far either pointer is followed. A reminder revised this many times in a
  *  row is still found; a longer chain answers as if it ended there. */
-export const REMINDER_LINEAGE_MAX = 16;
+export const DATE_LINEAGE_MAX = 16;
 
 const WINDOW_STATES: readonly WindowState[] = ["armed", "fired", "suppressed", "expired"];
 
@@ -742,7 +742,7 @@ export class Prospective {
    *  so a turn with nothing new to say takes no write lock at all. */
   private plainTold(memoryId: string, windowKey: string, beat: PlainBeat): boolean {
     // The memories this reminder moved through count too: a beat told on the
-    // row a revision took the reminder from was TOLD (`REMINDER_FROM_META`).
+    // row a revision took the reminder from was TOLD (`DATE_FROM_META`).
     for (const id of this.lineage(memoryId)) {
       for (const e of this.plainRows(id)) {
         if (e.dedup_key === `${PROSPECTIVE_PLAIN_EVENT}:${id}:${windowKey}:${beat}`) return true;
@@ -774,12 +774,12 @@ export class Prospective {
   private lineage(memoryId: string): string[] {
     const out = [memoryId];
     let current = memoryId;
-    for (let hop = 0; hop < REMINDER_LINEAGE_MAX; hop++) {
+    for (let hop = 0; hop < DATE_LINEAGE_MAX; hop++) {
       const raw = this.store.row(current)?.meta;
       if (raw === undefined) break;
       let from: unknown;
       try {
-        from = (JSON.parse(raw) as Record<string, unknown>)[REMINDER_FROM_META];
+        from = (JSON.parse(raw) as Record<string, unknown>)[DATE_FROM_META];
       } catch {
         break;
       }

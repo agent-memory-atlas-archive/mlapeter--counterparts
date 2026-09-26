@@ -115,7 +115,7 @@ export interface Proposal {
   /**
    * The memory this proposal takes its reminder over from, set by
    * `Counterpart#carryReminder` only (never by an author): written to
-   * `meta.reminderFrom` at the minting seam (prospective `REMINDER_FROM_META`).
+   * `meta.reminderFrom` at the minting seam (prospective `DATE_FROM_META`).
    */
   reminderFrom?: string;
   at: number;

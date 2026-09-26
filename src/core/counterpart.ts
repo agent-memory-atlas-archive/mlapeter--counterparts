@@ -46,7 +46,7 @@ import { mintProposal } from "./mint.js";
 import type { MintResult } from "./mint.js";
 import { isObserver } from "./observer.js";
 import type { Stance } from "./observer.js";
-import { Prospective, REMINDER_LINEAGE_MAX, REMINDER_MOVED_TO_META, cueModeOf } from "./prospective/index.js";
+import { Prospective, DATE_LINEAGE_MAX, DATE_MOVED_TO_META, cueModeOf } from "./prospective/index.js";
 import type { PlainDue } from "./prospective/index.js";
 import {
   Recall,
@@ -3815,12 +3815,12 @@ export class Counterpart {
    * is dated, else the end of its `meta.reminderMovedTo` chain (each hop through
    * `Store#resolve`, since a holder can itself be superseded). Null when there
    * is none, when the chain reaches an archived or removed row, or when it runs
-   * past `REMINDER_LINEAGE_MAX`.
+   * past `DATE_LINEAGE_MAX`.
    */
   private reminderHolder(target: string): string | null {
     let current = target;
     const seen = new Set<string>();
-    for (let hop = 0; hop <= REMINDER_LINEAGE_MAX; hop++) {
+    for (let hop = 0; hop <= DATE_LINEAGE_MAX; hop++) {
       if (seen.has(current)) return null;
       seen.add(current);
       const row = this.store.row(current);
@@ -3828,7 +3828,7 @@ export class Counterpart {
       if (row.event_date !== null) return current;
       let next: unknown;
       try {
-        next = this.store.readProse(current).meta[REMINDER_MOVED_TO_META];
+        next = this.store.readProse(current).meta[DATE_MOVED_TO_META];
         if (typeof next !== "string") return null;
         current = this.store.resolve(next);
       } catch {
@@ -3852,7 +3852,7 @@ export class Counterpart {
       // it leaves behind land in one transaction or not at all.
       this.store.revise(from, {
         eventDate: null,
-        meta: { [REMINDER_MOVED_TO_META]: successor },
+        meta: { [DATE_MOVED_TO_META]: successor },
         reason: "reminder-moved",
       });
       moved = true;

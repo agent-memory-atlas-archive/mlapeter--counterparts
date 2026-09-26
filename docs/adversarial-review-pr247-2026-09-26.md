@@ -28,7 +28,7 @@ already cleared it.
 `revise` that clears its date, so both land together or not at all. `carryReminder` now
 finds the date through `reminderHolder`: the target when it is dated, and otherwise the
 end of its `reminderMovedTo` chain. Each hop goes through `Store#resolve`. The walk is
-bounded by `REMINDER_LINEAGE_MAX` and is cycle-safe. The reply's `from` names that
+bounded by `DATE_LINEAGE_MAX` and is cycle-safe. The reply's `from` names that
 holder. A revision that sends `eventDate: null` and reaches no dated memory now answers
 `reminder: { cleared: false, note }` instead of silence. A fresh note sending `null` still
 answers nothing.
