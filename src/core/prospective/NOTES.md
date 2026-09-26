@@ -227,7 +227,19 @@ day a month or range is seen open; `last-day` on its last day. The latch is by b
 beat belongs to a CALENDAR day — not the lived-day counter, which only moves at a boundary
 and would keep "today" shut all morning. No salience floor: the floor gates unasked
 surfacing, and an ordinary note sits at the 0.25 authored default. A plain item told today
-is not also offered as a quiet cue that day (`told-plainly-today`).
+is not also offered as a quiet cue that day (`told-plainly-today`). A confidential one is
+told only in the owner's own session, recall's boundary gate kept by hand.
+
+Two edges, named rather than fixed. The model's copy sits under the `Now:` line, above the
+wake block; the delivery check finds the wake's sentinels by searching the attachment's
+text, not by line, so the extra lines cost it nothing. And at a prompt, when the recall
+plus the plain lines plus the update notice would overflow the host's envelope, both
+terminal lines are dropped together (`deliverTurn`'s all-or-nothing) — the beat is already
+claimed, so the person misses that line while the model still has it in context. The
+drop is recorded (`adapter.notice.dropped`).
+
+The dashboard's "N today" counts rows on the current LIVED day, like its seven-day window;
+it stays on yesterday's number in the morning until a boundary moves the clock.
 
 **Still not wired:** `reference()` (brake 4, referenced-stop) has no live caller — when the
 model uses a dated memory, nothing yet stops its window. Session dedup (brake 3) is still
