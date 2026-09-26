@@ -54,10 +54,8 @@ export const TUNABLES = {
    * self-claimed importance (mode 0.8), parking ~75% of the store above
    * THETA_SEM with no independent check (review F5). 0.6 clears the semantic
    * floor (a crashed day still matters) and sits structurally below THETA_ID.
-   * SINCE §5.10 (2026-09-26) that holds for the claim alone, not for the claim
-   * plus the emotion lift: consolidated, 0.6 + EMO_LIFT x I + CONS_BONUS reaches
-   * THETA_ID at I >= 0.34 (NOTES §17, "Identity is newly reachable" — an open
-   * owner decision). WORKING DEFAULT — to be revisited against the re-run's watch
+   * The emotion lift (§5.10) does not change that: promotion reads
+   * `promotionBase`, which leaves the lift out (NOTES §17). WORKING DEFAULT — to be revisited against the re-run's watch
    * metrics.
    */
   SWEEP_CLAIM_CEILING: 0.6,
@@ -119,9 +117,8 @@ export const TUNABLES = {
    * = 0.40 < THETA_SEM` (a strong feeling alone does not make a silent note
    * semantic at birth; consolidation or use still has to), and even
    * consolidated it stays under identity: `0.25 + EMO_LIFT + CONS_BONUS = 0.60
-   * < THETA_ID`. That identity bound is for a SILENT note: a memory with a claimed
-   * or computed sal >= 0.65 - EMO_LIFT x I is newly promotion-eligible once
-   * consolidated (NOTES "Identity is newly reachable"). NOTES.md "Emotion, part
+   * < THETA_ID`. Promotion reads `promotionBase` (no lift), so the lift never
+   * makes anything promotion-eligible (NOTES §17). NOTES.md "Emotion, part
    * A" has the simulation. CAL.
    */
   EMO_LIFT: 0.15,
@@ -574,8 +571,20 @@ export interface PromotionVerdict {
  * Note it is `base`, not decayed strength: promotion is about what the memory
  * earned, not about how recently it was touched.
  */
+/**
+ * The base promotion reads: `base` WITHOUT the emotion lift (§5.10). Emotion
+ * makes a memory taller and slower to fade, but it does not count toward
+ * identity — identity is decay-exempt and permanent, and how a memory earns it
+ * is being redesigned with the owner (dreaming + consolidation, 2026-09-26).
+ * Until then promotion keeps its pre-#244 reach exactly.
+ */
+export function promotionBase(m: MemoryPhysics): number {
+  const k = kindPhysics(m.kind);
+  return Math.max(k.wSal * sal(m.salience), k.wRep * rep(m)) + cons(m);
+}
+
 export function promotionEligibility(m: MemoryPhysics): PromotionVerdict {
-  const b = base(m);
+  const b = promotionBase(m);
   const days = reinforcedDays(m);
   const blockedBy: PromotionReason[] = [];
   if (m.promotedIdentity) blockedBy.push("already-identity");

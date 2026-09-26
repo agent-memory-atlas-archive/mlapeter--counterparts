@@ -190,7 +190,7 @@ decided twice.)*
    that reads semantic on a day after its birth is then CONSOLIDATED by the same
    pass, and `consolidated` is permanent (+0.2 to `base` for life).
 
-   **Identity is newly reachable, in a window (adversarial review of #244).**
+   **Identity would have been reachable, in a window (adversarial review of #244) — closed below.**
    Promotion eligibility is on `base`, and the lift is in `base`. The "stays under
    identity" bound above is for a SILENT note only. For a memory whose `sal` was
    claimed or computed, the consolidated bar `THETA_ID − CONS_BONUS = 0.65` is now
@@ -199,12 +199,12 @@ decided twice.)*
    before it was not. Identity is decay-exempt, so this is one-way. It includes the
    retelling channel: a sweep memory at `SWEEP_CLAIM_CEILING = 0.6` with an
    `emotional` dimension ≥ 0.34 reaches 0.6 + 0.15 × I + 0.2 ≥ 0.85 (0.80 before).
-   On an existing store the first sleep after the upgrade can promote such rows.
-   The preview is the dashboard's "settling" view on this build (it reads the same
-   `salArm`), which lists every memory within reach and which are `eligible`
-   already. Whether emotion should count toward identity at all, or promotion
-   should read the unlifted base, is an OWNER DECISION left open; this build keeps
-   the decision as given ("adds to height in `base()`").
+   On an existing store the first sleep after the upgrade could have promoted such rows.
+   **Settled 2026-09-26 (coordinator, holding the status quo until the owner's
+   consolidation/dreaming redesign lands): emotion does NOT count toward identity.**
+   Promotion reads `promotionBase` — `base` without the lift — so its reach is exactly
+   what it was before #244, and the settling view (which reads the verdict's `base`)
+   follows. The lift still makes a memory taller and slower to fade.
 
    Anything that ranks by strength (the self page's ordering, the dashboard's
    lists) shifts toward felt memories. Felt, consolidated, high-salience memories

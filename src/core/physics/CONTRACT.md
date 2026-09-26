@@ -312,12 +312,9 @@ low-strength memory is still present and still retrievable by a strong enough cu
     lift), the repetition arm gets no lift (guarantee 4 stands), and a silent note with
     the strongest possible feeling is below `THETA_SEM` at birth and below `THETA_ID`
     even consolidated. The recorded feeling is never rewritten; softening is a read.
-    **Scope of the identity bound:** it is for a SILENT note. Promotion reads `base`,
-    and the lift is in `base`, so a consolidated memory with a claimed or computed
-    `sal ≥ 0.65 − EMO_LIFT × I` (the sweep's capped 0.6 claim included, at I ≥ 0.34)
-    meets `THETA_ID` where it did not before — still only with ≥ 3 distinct
-    reinforced days (NOTES §17, "Identity is newly reachable"). Whether emotion should
-    count toward identity is an open owner decision.
+    **Emotion does not count toward identity:** promotion reads `promotionBase` (`base`
+    without the lift), so its reach is unchanged by §5.10 (coordinator, 2026-09-26,
+    pending the owner's consolidation redesign; NOTES §17).
 
 ### 5.10 Emotion — height, slope, and the feeling that softens
 

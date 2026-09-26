@@ -31,6 +31,7 @@ import {
   base,
   challengeForce,
   emotionalIntensity,
+  promotionBase,
   promotionEligibility,
   sal,
   salArm,
@@ -159,16 +160,14 @@ describe("physics §5.10 — height, slope, and the feeling that softens", () =>
     expect(TUNABLES.S_FEELING).toBeLessThan(TUNABLES.S_BASE);
   });
 
-  test("the identity bound is for a SILENT note: a claimed sal inside the window is newly eligible (review of #244)", () => {
-    // A consolidated, reinforced memory at the sweep's capped claim (0.6): under
-    // THETA_ID with no feeling, AT it once the intensity reaches ~1/3. This pins
-    // the window physics NOTES §17 names, so moving it is a visible decision.
+  test("emotion does not count toward identity: promotion reads base without the lift (2026-09-26)", () => {
+    // A consolidated, reinforced memory at the sweep's capped claim (0.6) stays
+    // below THETA_ID at ANY intensity — the lift makes it taller, never core.
     const at = (feelingPeak: number): MemoryPhysics =>
       note({ consolidated: true, reinforcedDays: 3, feelingPeak }, { claimed: TUNABLES.SWEEP_CLAIM_CEILING });
-    expect(promotionEligibility(at(0)).eligible).toBe(false);
-    expect(promotionEligibility(at(0.3)).eligible).toBe(false);
-    expect(promotionEligibility(at(0.4)).eligible).toBe(true);
-    // The silent note stays out of reach at any intensity, however reinforced.
+    for (const I of [0, 0.3, 0.4, 1]) expect(promotionEligibility(at(I)).eligible).toBe(false);
+    expect(promotionBase(at(1))).toBeCloseTo(promotionBase(at(0)), 10);
+    expect(base(at(1))).toBeGreaterThan(promotionBase(at(1)));
     expect(promotionEligibility(note({ consolidated: true, reinforcedDays: 9, feelingPeak: 1 })).eligible).toBe(false);
   });
 

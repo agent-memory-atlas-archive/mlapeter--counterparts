@@ -8,8 +8,8 @@
   Claude's, or its emotional score if that is stronger. This changes how existing memories
   fade too: the ones that carry feeling now last longer (a strongly felt note about 1.7
   times as long before it is let go). The first nightly cleanup after upgrading may move a
-  few felt memories up a band, and a felt memory that was already close to identity (used
-  on three separate days, and rated fairly important) can now cross into it.
+  few felt memories up a band. Feeling does not count toward becoming core: what it takes
+  to reach identity is unchanged.
 - **A recorded feeling softens faster than the memory it sits on.** The feeling is kept as
   it was recorded; the softened strength is what recall and the displays read.
 - **Mood-matching.** When a feeling was recorded in the last few hours, memories that
