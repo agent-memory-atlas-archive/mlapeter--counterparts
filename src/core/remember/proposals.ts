@@ -77,6 +77,15 @@ export interface ProposalDraft {
 
 export type ProposalSource = "session-end" | "jot";
 
+/** What a draft said about its reminder date (`Proposal.dateIntent`). */
+export interface DateIntent {
+  /** `set`: a readable date was sent; `cleared`: `eventDate: null` was sent;
+   *  `absent`: the field was left out. */
+  readonly eventDate: "set" | "cleared" | "absent";
+  /** The `remind` the author sent, or null when none was (the draft's quiet is a default). */
+  readonly remind: "plain" | "quiet" | null;
+}
+
 /** What the engine mints. Memory objects only — no operations, by construction. */
 export interface Proposal {
   id: string;
@@ -95,6 +104,14 @@ export interface Proposal {
   eventDate: string | null;
   /** Plain or quiet — null exactly when `eventDate` is. */
   remind: "plain" | "quiet" | null;
+  /**
+   * What the author SAID about the date, as opposed to what defaulted — read
+   * only when this proposal revises a memory (`updates:`), where a date the
+   * author left out is carried over from the one it revises rather than lost
+   * (review N7, 2026-09-26; `Counterpart#carryReminder`). Absent on a proposal
+   * no author wrote (the sweep), which therefore carries nothing.
+   */
+  dateIntent?: DateIntent;
   at: number;
   day: number;
   /** Identity for idempotency: CONTENT, not span text (§4.1 G9). */
@@ -154,7 +171,13 @@ export const DRAFT_FIELDS = [
 ] as const;
 
 export type IntakeResult =
-  | { ok: true; draft: Required<Pick<ProposalDraft, "content">> & ProposalDraft; dropped: string[] }
+  | {
+      ok: true;
+      draft: Required<Pick<ProposalDraft, "content">> & ProposalDraft;
+      dropped: string[];
+      /** What the draft said about its date, before any default (`DateIntent`). */
+      dateIntent: DateIntent;
+    }
   | { ok: false; reason: MalformedReason; text: string | null; dropped: string[] };
 
 /**
@@ -259,7 +282,14 @@ export function intake(raw: unknown): IntakeResult {
   if (rec["aliases"] !== undefined) draft.aliases = rec["aliases"] as string[];
   if (typeof rec["updates"] === "string") draft.updates = rec["updates"];
   draft.unresolved = rec["unresolved"] === true;
-  return { ok: true, draft: draft as Required<Pick<ProposalDraft, "content">> & ProposalDraft, dropped };
+  // What was SAID, before the quiet default above: a revision carries over
+  // whatever its author left out (review N7), so "left out" and "said quiet"
+  // must stay two different answers. `eventDate: null` is the explicit drop.
+  const dateIntent: DateIntent = {
+    eventDate: eventDate !== undefined ? "set" : rec["eventDate"] === null ? "cleared" : "absent",
+    remind: rec["remind"] === "plain" || rec["remind"] === "quiet" ? rec["remind"] : null,
+  };
+  return { ok: true, draft: draft as Required<Pick<ProposalDraft, "content">> & ProposalDraft, dropped, dateIntent };
 }
 
 // ── the gate seam (INJECTED — see INTERFACE-GAPS.md #2) ──────────────────────
@@ -573,6 +603,7 @@ export async function submitProposal(
     unresolved: draft.unresolved === true,
     eventDate: draft.eventDate ?? null,
     remind: draft.eventDate === undefined ? null : draft.remind ?? "quiet",
+    dateIntent: parsed.dateIntent,
     at: buffer.now(),
     day: buffer.day(),
     contentHash,

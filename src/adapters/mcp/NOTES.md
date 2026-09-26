@@ -683,3 +683,16 @@ the person says it matters; quiet otherwise. What happens after the deposit is
 reminder whatever its salience — choosing a date is itself the importance signal — so the
 description no longer says "about 0.6". The salience floor still gates a date a caller
 extracted; decay (faded) and archival still keep a memory from arriving.
+
+**Follow-ups, same day (review N7, N8).** `eventDate` also takes `null` (the schema type is
+now `["string", "null"]`): on a revision it drops the date. `readReminder` passes `remind`
+through only when it was SENT, so `remember/intake` can tell a left-out mode from a stated
+one (`DateIntent`). The echo reports what was RECORDED, not what was sent: a revision that
+carried a date answers `reminder: { eventDate, remind, from, carriedOver }`, and one that
+dropped it `reminder: { cleared: true, from }` (the carry itself is `core/counterpart.ts`,
+`prospective/` NOTES §13). A date whose last day is before the person's today —
+`time.ts#todayIn` in the store's zone, off this server's injectable clock — is kept and
+answered with `note: "That date has already passed — it won't come back as a reminder."`;
+that note wins over the bare-year one. A plain past date is indeed never said; a quiet one
+could still be cued in the week of grace after it, which the note does not spell out —
+its job is to let the model catch a wrong year.
