@@ -140,13 +140,14 @@ function usePart(d) {
 
 function standing(d) {
   const out = [];
-  if (d.promoted) out.push('<span class="mbadge core">★ core</span> part of who I am');
-  if (d.protected) out.push('<span class="mbadge lock">locked</span> protected — nothing can revise it');
+  if (d.promoted) out.push('<span class="mbadge core">★ core</span><span>part of who I am</span>');
+  if (d.protected) out.push('<span class="mbadge lock">locked</span><span>protected — nothing can revise it</span>');
   else if (!d.journal && !d.chapter) {
-    out.push("revisable — a strong enough correction can change it" +
-      (d.pressure > 0 ? '<span class="mc-dim"> · under some pressure now (' + n2(d.pressure) + (d.bar === null ? "" : " of a bar of " + n2(d.bar)) + ")</span>" : ""));
+    out.push("<span>revisable — a strong enough correction can change it" +
+      (d.pressure > 0 ? '<span class="mc-dim"> · under some pressure now (' + n2(d.pressure) + (d.bar === null ? "" : " of a bar of " + n2(d.bar)) + ")</span>" : "") +
+      "</span>");
   }
-  if (d.chapter) out.push('<span class="mbadge journal">journal</span> a journal chapter, kept as written — not scored');
+  if (d.chapter) out.push('<span class="mbadge journal">journal</span><span>a journal chapter, kept as written — not scored</span>');
   return out.length ? '<ul class="mc-list">' + out.map((x) => "<li>" + x + "</li>").join("") + "</ul>" : "";
 }
 

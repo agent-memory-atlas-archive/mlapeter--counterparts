@@ -50,6 +50,7 @@ shared/
   canvas.js           FACE (the canvas's face, Outfit) fit hitTest roundRect clip wrapText
   tip.js modal.js     showTip/hideTip; openModal/closeModal/section
   memory-modal.js     openMemory, copyId, removeMemory (window globals: rows use inline onclick)
+  memory-marks.js .css  a memory's kind icon/colour, feeling dots, strength meter, badges
   event-modal.js      openEvent (window global)
   state.js            tabs {current, loaded}; live {lastSeq, fingerprint}
   widgets/            card rows table chart tiles bar feed light .css;
@@ -96,17 +97,27 @@ narrated, plus a `picture`, both read-only). `mechanisms/picture.js` holds the
 pictures' shared pieces. A mechanism built later gets a `panel.js`, one line in
 `PANELS`, and a case in `mechanism-panel.ts`.
 
-`pages/memories/` — the memories tab. `state.js` holds the page's filters
-(live/archived/all, kind, band, page offset) and notifies the list when they
-change; `counterparts:changed` (a window event, fired after a note and after a
-removal on the memory card) makes the page re-read at once. Sections:
-`search.js` (search by words, plus Ask via `act("ask", {json:true})` rendered
-as a list), `tools.js` (write a note, and the back-up/export folder dialog),
-`constellation.js` (the one picture: the scatter, band chips that filter,
-strength-by-band in the right margin), `kinds.js` (six kinds in words; click to
-filter), `list.js` (every memory, newest first, paged on the server by
-`/api/memories/list` in `views/memories.ts`, whose archive reasons are put into
-plain words by `archiveWords` from `views/archive-words.ts`).
+`pages/memories/` — the memories tab (round 2, 2026-09-26, an experiment:
+brighter = held more firmly, everywhere on the tab). `state.js` holds the
+page's filters (live/archived/all, kind, core, journal, sort, page offset) and
+the pinned `?` tips, and notifies the list when a filter changes; a live
+refresh redraws from it and puts the scroll back, and
+`counterparts:changed` (a window event, fired after a note and after a removal
+on the memory card) makes the page re-read at once. `tips.js` is the `?`
+widget (a copy of the self tab's); `row.js` is the one row shape the list,
+search hits and Ask's answers share. Sections: `search.js` (search by words,
+plus Ask via `act("ask", {json:true})`, its tiers drawn as brightness),
+`tools.js` (write a note, and the back-up/export folder dialog),
+`constellation.js` (the one picture: strength up, age across, size for
+salience, amber for close to being let go, ★ for core), `list.js` (every
+memory, newest or oldest first, kinds as chips, paged on the server by
+`/api/memories/list` in `views/memories.ts`). `views/memory-words.ts` says how
+a row's words are shown (a date at their front lifted off, journal chapters,
+feelings in words); archive reasons come from `views/archive-words.ts`.
+`shared/memory-marks.{js,css}` are the kind icons and colours, feeling dots,
+the strength meter and the badges, used by the rows and the memory card
+(`shared/memory-modal.js`, whose strength curve comes from `fadeCurve` in
+`views/mechanism-panel.ts`, the Forgetting panel's own maths).
 
 `pages/self/`: the self tab (reworked 2026-09-26 as an experiment). The top is
 two columns: the self page on the left (rendered by `markdown.js`, which escapes

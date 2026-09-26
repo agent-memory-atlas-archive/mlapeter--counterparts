@@ -116,7 +116,7 @@ export function draw() {
   const order = pts.slice().sort((a, b) => a.strength - b.strength);
   for (const p of order) {
     const sal = Math.max(0, Math.min(1, p.salience));
-    const r = (few ? 4 : 2.5) + sal * sal * (few ? 9 : 8.5);
+    const r = (few ? 4 : narrow ? 1.8 : 2.5) + sal * sal * (few ? 9 : narrow ? 5 : 8.5);
     let x = X(p.ageDays), y = Y(p.strength);
     const key = Math.round(x / 3) + "," + Math.round(y / 3);
     const i = stacked.get(key) || 0;
