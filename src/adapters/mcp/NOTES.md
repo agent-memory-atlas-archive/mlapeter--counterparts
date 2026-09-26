@@ -695,4 +695,6 @@ dropped it `reminder: { cleared: true, from }` (the carry itself is `core/counte
 answered with `note: "That date has already passed — it won't come back as a reminder."`;
 that note wins over the bare-year one. A plain past date is indeed never said; a quiet one
 could still be cued in the week of grace after it, which the note does not spell out —
-its job is to let the model catch a wrong year.
+its job is to let the model catch a wrong year. The carry runs only for an `updates`
+address that resolved as an ID (`Store#resolve` is id-only): a handle or title falls to
+content matching, which carries nothing — so the `eventDate` description says "by its id".

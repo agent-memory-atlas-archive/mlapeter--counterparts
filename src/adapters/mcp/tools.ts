@@ -163,7 +163,7 @@ const FEELINGS_PROPERTY = {
 const EVENT_DATE_PROPERTY = {
   type: ["string", "null"],
   description:
-    'Optional: the calendar date this memory is ABOUT, when that is a future date — so it comes back around then. Write it yourself, in one of four shapes: a day "2026-10-15", a month "2026-10", a range of two days "2026-10-20..2026-10-31" (that is how to say "late October"), or a year "2026" (a year alone never comes back on its own). Say "before the 15th" as the day or a range ending on it. Leave it out when nothing is dated; a date written only in the text is never read. An unreadable date is refused, and nothing is stored. Revising a dated memory with `updates`: its date and remind carry over unless you send new ones; send null to drop the date (done, cancelled).',
+    'Optional: the calendar date this memory is ABOUT, when that is a future date — so it comes back around then. Write it yourself, in one of four shapes: a day "2026-10-15", a month "2026-10", a range of two days "2026-10-20..2026-10-31" (that is how to say "late October"), or a year "2026" (a year alone never comes back on its own). Say "before the 15th" as the day or a range ending on it. Leave it out when nothing is dated; a date written only in the text is never read. An unreadable date is refused, and nothing is stored. Revising a dated memory by its id with `updates`: its date and remind carry over unless you send new ones; send null to drop the date (done, cancelled).',
 } as const;
 
 const REMIND_PROPERTY = {

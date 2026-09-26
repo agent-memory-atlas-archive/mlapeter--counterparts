@@ -100,8 +100,9 @@ describe("N7: a revision that leaves the date out carries it over", () => {
     const versions = store.versions(old);
     expect(versions.at(-1)?.event_date).toBe("2026-10-15");
     expect(versions.at(-1)?.reason).toBe("reminder-moved");
-    // One reminder, on one memory.
+    // One reminder, on one memory — in the index, and in what is SAID on the day.
     expect(store.datedMemories("0001-01-01", "9999-12-31").map((d) => d.id)).toEqual([id]);
+    expect(s.counterpart.prospective.plainDue({ at: "2026-10-15" }).map((d) => d.memoryId)).toEqual([id]);
   });
 
   test("a reschedule: the new date wins, a left-out remind carries, the old day stops", async () => {
@@ -122,6 +123,11 @@ describe("N7: a revision that leaves the date out carries it over", () => {
     expect(store.row(old)?.event_date).toBeNull();
     expect(store.datedMemories("0001-01-01", "9999-12-31")).toEqual([
       { id: body["id"] as string, eventDate: "2026-10-20" },
+    ]);
+    // The old day says nothing; the new one says it once.
+    expect(s.counterpart.prospective.plainDue({ at: "2026-10-15" })).toEqual([]);
+    expect(s.counterpart.prospective.plainDue({ at: "2026-10-20" }).map((d) => d.memoryId)).toEqual([
+      body["id"] as string,
     ]);
   });
 
