@@ -307,6 +307,46 @@ low-strength memory is still present and still retrievable by a strong enough cu
     calibration and a fixture-bounded window, or disabled (scar §2.8).
 12. **[M]** Up-moves and down-moves are counted separately, per kind, with a stated expected
     ratio — the symmetry counter that made v1's one-way ratchet visible (scar §2.10).
+13. **[M]** Emotion (§5.10) lifts only the SALIENCE arm and lengthens only stability:
+    `sal()` is unchanged (recall's turn gate and revision force read it without the
+    lift), the repetition arm gets no lift (guarantee 4 stands), and a silent note with
+    the strongest possible feeling is below `THETA_SEM` at birth and below `THETA_ID`
+    even consolidated. The recorded feeling is never rewritten; softening is a read.
+
+### 5.10 Emotion — height, slope, and the feeling that softens
+
+*(Added 2026-09-26, emotion part A — owner decisions of 2026-09-25/26. Working defaults,
+not rulings: the three constants are CAL and unmeasured. NOTES "Emotion, part A" has the
+simulation and the reasons.)*
+
+```
+I(m)        = max( emotional(m), max strength of the feelings recorded on m )   # his or mine
+salArm(m)   = clamp01( sal(m) + EMO_LIFT × I(m) )          EMO_LIFT  = 0.15   # TUNABLE
+base(m)     = max( ω_sal(k) × salArm(m), ω_rep(k) × rep(m) ) + cons(m)       # §5.2, arm lifted
+S(m)        = §5.4's S × (1 + EMO_SLOPE × I(m))            EMO_SLOPE = 0.5    # TUNABLE
+feeling now = strength × exp( −(d − birth_day(m)) / S_FEELING )  S_FEELING = 20 # read only
+```
+
+- **Height ADDS.** Before this, a lone `emotional: 0.9` on a note read as a mean of 0.3
+  under a claimed floor of 0.25 — the feeling averaged away. Now intensity adds on top of
+  whatever the mean-with-floor is. `sal()` itself is v0's verbatim mean and stays that way.
+- **The strongest feeling decides**, whoever's it is: `I` is a MAX over the numeric score
+  and every recorded feeling on the memory (the owner's and the self's), read beside the
+  row by `store.row()` as `feelingPeak`. A MAX, like `base`, so quieter feelings never
+  average a strong one down.
+- **Slope follows the same number.** "How long a memory lasts follows the strongest
+  feeling on it." It changes decay on EXISTING stores — every row with an `emotional`
+  score or a recorded feeling — which is why the multiplier is modest (×1.45 at I = 0.9).
+- **The feeling softens faster than the fact.** A feeling's strength as it reads now is
+  the recorded strength softened over the lived days since its MEMORY was born.
+  `S_FEELING = 20 < S_BASE = 60`. The table keeps the strength as recorded; nothing
+  writes the softened value back. Height and slope use the RECORDED peak (affect stamps a
+  trace at encoding); the softened value is what mood-matching (recall G18) and the
+  displays read. **Approximation, named:** a feeling's age is counted from its memory's
+  birth day, because the lived-day clock cannot map a feeling's wall-clock `created_at`
+  back to a lived day. Today every feeling is written in the same call that mints its
+  memory, so the two agree; a feeling added to an old memory later (`addFeelings` is
+  public) would read as already softened.
 
 ## 6. Scars honored
 

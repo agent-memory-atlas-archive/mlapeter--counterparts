@@ -249,6 +249,31 @@ credit at the boundary; reinforcement deltas handed to `physics/`.
     by the next turn stamps the newer turn number, so a cue can be labelled one turn later
     than the text it was computed from. Cheap to detect (the hits are a turn stale), not
     worth a lock.
+18. **[M]** **Mood-matching modulates; it never admits** (emotion part A, owner decision
+    2026-09-25/26 — working default; `mood.ts`). A person's CURRENT feeling is only what
+    was RECORDED for them in the last `MOOD_WINDOW_HOURS = 3` of the store's clock at
+    `MOOD_MIN_STRENGTH = 0.3` or more — no classifier reads the turn. A candidate that
+    carried a feeling sharing a core with someone's mood gets `MOOD_SAME_WEIGHT (0.3) ×`
+    that feeling's SOFTENED strength added to its `sal` when the feeling was that same
+    person's, `MOOD_CROSS_WEIGHT (0.1) ×` when it was the other's; a blend counts under
+    both its cores; a feeling recorded inside the window is the mood, never a match. The
+    lift rides `sal` ONLY: it is computed for cued candidates only, it never enters
+    `activation` (so it cannot change the candidate set), hard gate (a) and the absolute
+    floor (b) are both evaluated before `sal` is read, and the absolute regimes ignore
+    `sal` altogether. Tests: `emotion.test.ts` › "mood-matching never admits an uncued
+    memory". The decision record carries `moodMatched` — admitted memories the mood
+    lifted, a count, never which feeling. Adding that field moves the surface set (G15):
+    the parallel run it protected ended 2026-09-21, and a durable count is the only way
+    the mechanism can be seen firing.
+    **The tension with G11, named.** §3 keeps v1's rule that the affect CUE is first-person
+    only, "guarding against mood-congruent overgeneralization" — and this is mood-congruent
+    recall, on purpose. The guard it keeps is structural rather than a subject rule: it
+    cannot reach a memory the conversation did not, it lifts by at most 0.3 of salience,
+    the other person's mood lifts a third as much, and a match softens with age. The turn
+    gate itself (G10: the emotional DIMENSION counts only when the turn is felt in the first
+    person) is unchanged; when it opens, the dimension now reads as the memory's emotional
+    INTENSITY (physics §5.10), so a feeling held in the `feelings` table is not read as
+    unfelt. The affect flag's "charged" test reads the same intensity.
 
 ## 6. Scars honored
 

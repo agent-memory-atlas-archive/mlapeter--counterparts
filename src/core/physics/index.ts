@@ -105,6 +105,39 @@ export const TUNABLES = {
   /** CAL. Size of the nearest-neighbour slice in E(m) for novelty (v1's top-M). */
   K_NEAREST: 8,
 
+  // --- §5.10 emotion (owner decisions 2026-09-25/26 — WORKING DEFAULTS) ---
+  /**
+   * How much a memory's emotional intensity ADDS to its salience arm (§5.2):
+   * `clamp01(sal + EMO_LIFT x I)`. Before this, a 0.9 `emotional` on a note
+   * with no other dimensions read as mean 0.3 — the feeling averaged away by
+   * the claimed floor. 0.15 is chosen so the lift is felt but cannot on its
+   * own carry a silent note across a band: `AUTHORED_DEFAULT_CLAIM + EMO_LIFT
+   * = 0.40 < THETA_SEM` (a strong feeling alone does not make a silent note
+   * semantic at birth; consolidation or use still has to), and even
+   * consolidated it stays under identity: `0.25 + EMO_LIFT + CONS_BONUS = 0.60
+   * < THETA_ID`. NOTES.md "Emotion, part A" has the simulation. CAL.
+   */
+  EMO_LIFT: 0.15,
+  /**
+   * How much the same intensity slows decay: stability x (1 + EMO_SLOPE x I).
+   * At I = 0.9 that is x1.45 — a fact with S = 60 lived days gets S = 87. It
+   * changes decay on EXISTING stores (every row with an `emotional` score or a
+   * feeling), which is why it is modest: a strongly felt, never-used note
+   * reaches the prune floor after ~255 lived days instead of ~150. CAL.
+   */
+  EMO_SLOPE: 0.5,
+  /**
+   * How fast a recorded FEELING softens, in lived days: `strength x
+   * exp(-age / S_FEELING)`, age counted from the memory's birth day. 20 < 60 =
+   * S_BASE is the owner's "the feeling softens faster than the fact" as
+   * arithmetic: half the feeling is gone in ~14 lived days, while the fact
+   * itself is still at ~0.8 of its height. Softening is READ-SIDE ONLY — the
+   * table keeps the strength as recorded, and height and slope use that
+   * recorded peak; the softened value is what mood-matching and the displays
+   * read. CAL.
+   */
+  S_FEELING: 20,
+
   // --- §5.5 reinforcement ---
   /** Retrospective credit weights by tier. The ignorable tier never trains. */
   W_REFERENCED: 1.0,
@@ -402,13 +435,56 @@ export function cons(m: Pick<MemoryPhysics, "consolidated">): number {
  */
 export function base(m: MemoryPhysics): number {
   const k = kindPhysics(m.kind);
-  return Math.max(k.wSal * sal(m.salience), k.wRep * rep(m)) + cons(m);
+  return Math.max(k.wSal * salArm(m), k.wRep * rep(m)) + cons(m);
 }
 
-/** Stability S, in lived days. kappa DIVIDES (§5.4). */
-export function stability(m: Pick<MemoryPhysics, "kind" | "uses">): number {
+// ---------------------------------------------------------------------------
+// §5.10 Emotion — height, slope, and the feeling that softens
+// ---------------------------------------------------------------------------
+
+/**
+ * I(m) — a memory's emotional intensity: the STRONGEST of its numeric
+ * `emotional` score and the recorded strengths of the feelings on it, whoever's
+ * they are (owner decision 2026-09-25/26: "how long a memory lasts follows the
+ * strongest feeling on it, his or mine"). A MAX, like `base`, so a lone strong
+ * feeling is never averaged down by quieter ones. 0 when there is neither.
+ */
+export function emotionalIntensity(m: { salience: Salience; feelingPeak?: number | null | undefined }): number {
+  const peak = m.feelingPeak;
+  return Math.max(
+    clamp01(m.salience.emotional),
+    typeof peak === "number" && Number.isFinite(peak) ? clamp01(peak) : 0,
+  );
+}
+
+/**
+ * The salience ARM of `base`: `sal(m)` with the emotion ADDED on top of it.
+ * `sal()` itself stays v0's verbatim mean-with-floor — it is also what recall's
+ * turn gate (§9 G10) and `challengeForce` read, and neither may see this lift.
+ * The repetition arm gets no lift at all, so "repetition is capped below
+ * identity" (§3) is untouched.
+ */
+export function salArm(m: Pick<MemoryPhysics, "salience" | "feelingPeak">): number {
+  return clamp01(sal(m.salience) + TUNABLES.EMO_LIFT * emotionalIntensity(m));
+}
+
+/**
+ * How a recorded feeling reads NOW — softened over the lived days since it was
+ * recorded. `ageDays` is lived days (the one clock); a negative or non-finite
+ * age reads as fresh. Never written back: the table keeps the strength as felt.
+ */
+export function softenedFeeling(strength: number, ageDays: number): number {
+  const age = Number.isFinite(ageDays) ? Math.max(0, ageDays) : 0;
+  return clamp01(strength) * Math.exp(-age / TUNABLES.S_FEELING);
+}
+
+/** Stability S, in lived days. kappa DIVIDES (§5.4); emotion lengthens it (§5.10). */
+export function stability(
+  m: Pick<MemoryPhysics, "kind" | "uses"> & Partial<Pick<MemoryPhysics, "salience" | "feelingPeak">>,
+): number {
+  const felt = m.salience === undefined ? 0 : emotionalIntensity({ salience: m.salience, feelingPeak: m.feelingPeak });
   return (
-    (TUNABLES.S_BASE * (1 + TUNABLES.BETA * Math.log(1 + Math.max(0, m.uses)))) /
+    (TUNABLES.S_BASE * (1 + TUNABLES.BETA * Math.log(1 + Math.max(0, m.uses))) * (1 + TUNABLES.EMO_SLOPE * felt)) /
     kindPhysics(m.kind).kappa
   );
 }

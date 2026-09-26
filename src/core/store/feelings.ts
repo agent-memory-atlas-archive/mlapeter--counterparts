@@ -12,9 +12,16 @@
  * `carried_by` says briefly what in the moment carried it — the words, what
  * happened — and need not be a statement of feeling.
  *
- * Nothing reads these yet: salience, decay and recall are untouched (the
- * emotion build comes later), and the existing `emotional` dimension and the
- * `meta.feeling` label stay exactly as they were.
+ * READ SINCE 2026-09-26 (emotion part A). The strongest recorded strength on
+ * a memory joins its numeric `emotional` score as its emotional intensity,
+ * which lifts its height and slows its decay (physics §5.10, read beside the row
+ * by `Store.row()`); a feeling recorded in the last few hours sets the mood
+ * that recall matches against (recall G18). The `meta.feeling` label is still
+ * only a label.
+ *
+ * A BLEND (`tender`: sad + happy) may be named under either of its cores and is
+ * stored under its PRIMARY core — `core` holds one value, and anything that
+ * matches by core reads the blend as both (`feelings-wheel.ts#coresOfFeeling`).
  */
 import { CORE_EMOTIONS, OTHER_EMOTION, closestKeys, isCoreEmotion, resolveEmotion } from "../feelings-wheel.js";
 import type { CoreEmotion } from "../feelings-wheel.js";
@@ -64,12 +71,18 @@ export interface FeelingRow extends Row {
   updated_at: number;
 }
 
-/** A feeling stored as `other`: the word as given, and the wheel keys nearest it. */
+/**
+ * What the caller should hear about one input: either it was stored as `other`
+ * (the word as given, and the wheel keys GENUINELY close to it — usually none),
+ * or, with `readAs`, the word was an alias and was stored as that wheel key.
+ */
 export interface FeelingNotice {
   readonly index: number;
   readonly word: string;
   readonly core: CoreEmotion;
   readonly closest: readonly string[];
+  /** Set when `word` was read as this wheel key (`exposed` → `vulnerable`). */
+  readonly readAs?: string;
 }
 
 export interface AddFeelingsResult {
@@ -129,6 +142,7 @@ export function checkFeelings(inputs: readonly FeelingInput[]): { rows: CheckedF
     }
     let emotion: string;
     let otherWord: string | null = null;
+    let storedCore: CoreEmotion = core;
     if (f.emotion.trim().toLowerCase() === OTHER_EMOTION) {
       const word = (f.otherWord ?? "").trim();
       if (word.length === 0) invalid(i, "other-word-missing");
@@ -142,9 +156,12 @@ export function checkFeelings(inputs: readonly FeelingInput[]): { rows: CheckedF
       }
       if (read.kind === "wheel") {
         emotion = read.entry.key;
+        // A blend named under its second core is stored under its primary.
+        storedCore = read.entry.core;
+        if (read.alias !== undefined) notices.push({ index: i, word: read.alias, core: storedCore, closest: [], readAs: read.entry.key });
       } else {
         // Not on the wheel: kept, as `other`, with the word — and the caller is
-        // told the nearest keys so it can rewrite if it meant one of them.
+        // told of a wheel word only when one is genuinely close (a misspelling).
         emotion = OTHER_EMOTION;
         otherWord = read.kind === "other" ? read.word : f.emotion.trim();
         notices.push({ index: i, word: otherWord, core, closest: read.kind === "other" ? read.closest : [] });
@@ -160,7 +177,7 @@ export function checkFeelings(inputs: readonly FeelingInput[]): { rows: CheckedF
     }
     rows.push({
       whose: f.whose as FeelingWhose,
-      core,
+      core: storedCore,
       emotion,
       otherWord,
       strength: f.strength,

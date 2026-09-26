@@ -27,6 +27,7 @@
  * and the per-turn decision record is the richest replay comparison surface
  * (contract §5 G14, scar §2.4).
  */
+import { emotionalIntensity } from "../physics/index.js";
 import { tokenize } from "../store/index.js";
 import type { Candidate } from "./activate.js";
 import { MIN_RARITY_STORE, informativeness } from "./cues.js";
@@ -82,6 +83,8 @@ export interface CandidateVerdict {
   readonly hops: number;
   readonly cueFraction: number;
   readonly sal: number;
+  /** The part of `sal` the current mood added (recall G18). Present only when > 0. */
+  readonly mood?: number;
   readonly strength: number;
   /** False ⇒ this memory may never be credited from this turn (§9 G5). */
   readonly trains: boolean;
@@ -304,6 +307,7 @@ export function gate(input: GateInput, t: RecallTunables): GateResult {
       hops: c.hops,
       cueFraction: c.cueFraction,
       sal: c.sal,
+      ...(c.mood > 0 ? { mood: c.mood } : {}),
       strength: c.strength,
       trains: c.trains,
       ...(blocked !== undefined ? { loudBlockedBy: blocked } : {}),
@@ -332,7 +336,9 @@ export function gate(input: GateInput, t: RecallTunables): GateResult {
     // what THIS TURN touches, and it names nothing — no id, no body, no feeling.
     // A memory already sitting in this session's context still means the turn is
     // near something that carries weight.
-    if (c.physics.salience.emotional >= t.AFFECT_MIN_EMOTION) charged = true;
+    // Charged by the memory's emotional INTENSITY — its numeric score or its
+    // strongest recorded feeling, whichever is stronger (physics §5.10).
+    if (emotionalIntensity(c.physics) >= t.AFFECT_MIN_EMOTION) charged = true;
     // Boundary gate 2 — session dedup. It is already in this session's context.
     if (input.state.surfaced[c.id] !== undefined) {
       record(c, "dedup-suppressed");

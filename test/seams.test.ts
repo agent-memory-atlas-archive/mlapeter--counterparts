@@ -195,6 +195,7 @@ function unitCandidate(spec: {
     },
     strength: 0,
     sal: spec.sal,
+    mood: 0,
     cue: spec.cue,
     temporal: spec.temporal,
     semantic: spec.semantic,

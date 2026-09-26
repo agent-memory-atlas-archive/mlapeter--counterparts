@@ -389,6 +389,17 @@ export interface MemoryRow extends Row {
   event_date: string | null;
 }
 
+/**
+ * NOT A COLUMN: the strongest recorded feeling on a memory, read beside the
+ * row by `Store.row()` (`MAX(feelings.strength)`), null when it has none.
+ * Optional, and kept off `MemoryRow` itself, so a bare `SELECT * FROM
+ * memories` is still a row — such a read simply carries no feeling, and the
+ * intensity falls back to the numeric `emotional` score (physics §5.10).
+ */
+export interface FeelingPeak {
+  feeling_peak?: number | null;
+}
+
 export interface VersionRow extends Row {
   memory_id: string;
   seq: number;
@@ -809,7 +820,7 @@ export function rowToSalience(row: MemoryRow): Salience {
   };
 }
 
-export function rowToPhysics(row: MemoryRow): MemoryPhysics {
+export function rowToPhysics(row: MemoryRow & FeelingPeak): MemoryPhysics {
   return {
     kind: row.kind,
     salience: rowToSalience(row),
@@ -819,6 +830,9 @@ export function rowToPhysics(row: MemoryRow): MemoryPhysics {
     // Distinct lived days that credited a use — `uses` is a weighted sum and
     // cannot reconstruct it (physics §5.3/§5.5). Absent reads as 0.
     reinforcedDays: row.reinforced_days,
+    // The strongest feeling recorded on it (physics §5.10), when the read
+    // carried one — `Store.row()` always does.
+    feelingPeak: row.feeling_peak ?? null,
     consolidated: row.consolidated === 1,
     promotedIdentity: row.promoted_identity === 1,
     protected: row.protected === 1,

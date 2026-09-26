@@ -138,8 +138,12 @@ describe("the lights, on a seeded store", () => {
     const dash = Dashboard.open({ dir: richDir });
     try {
       for (const m of v.mechanisms.filter((x) => x.status === "green")) {
-        const names = MECHANISM_PROOFS.find((p) => p.id === m.id)!.proofs.map((p) => p.event as string);
-        expect(m.events.length).toBeGreaterThan(0);
+        const proof = MECHANISM_PROOFS.find((p) => p.id === m.id)!;
+        const names = proof.proofs.map((p) => p.event as string);
+        // Green is backed by rows: event rows, or — for the one mechanism whose
+        // firing is arithmetic on a row (emotion, part A) — the census of rows
+        // it acted on inside the window, which backs no event seq.
+        if (proof.census === undefined) expect(m.events.length).toBeGreaterThan(0);
         expect(m.evidence).toMatch(/^\d+ /);
         for (const seq of m.events) {
           const row = dash.source.store.eventLog({ sinceDay: v.fromDay, limit: 100_000 }).find((r) => r.seq === seq);
@@ -164,7 +168,7 @@ describe("the lights, on a seeded store", () => {
     }
     const greys = v.mechanisms.filter((m) => m.status === "grey");
     expect(greys.map((m) => m.id).sort()).toEqual(
-      ["emotional", "episodic-semantic", "interference", "prospective", "schema"],
+      ["episodic-semantic", "interference", "prospective", "schema"],
     );
     for (const m of greys) {
       expect(m.events).toEqual([]);

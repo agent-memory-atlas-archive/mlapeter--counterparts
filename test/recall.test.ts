@@ -181,6 +181,7 @@ function cand(spec: CandSpec): Candidate {
     physics: phys({ salience: { novelty: null, relevance: 0, emotional: spec.emotional ?? 0, predictive: 0, claimed: null } }),
     strength: 0,
     sal: spec.sal ?? 0.5,
+    mood: 0,
     cue,
     temporal,
     semantic,

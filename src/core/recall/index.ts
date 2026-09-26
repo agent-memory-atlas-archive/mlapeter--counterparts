@@ -35,6 +35,7 @@ import type { Candidate } from "./activate.js";
 import { detectAffect, stripBoilerplate } from "./cues.js";
 import { floorUnit, gate } from "./gate.js";
 import type { Background, CandidateVerdict, Verdict } from "./gate.js";
+import { currentMood } from "./mood.js";
 import { loadGateState, saveGateState } from "./session.js";
 import type { GateState, SemanticSource } from "./session.js";
 import { render } from "./render.js";
@@ -44,6 +45,7 @@ import type { RecallTunables } from "./tunables.js";
 
 export * from "./cues.js";
 export * from "./gate.js";
+export * from "./mood.js";
 export * from "./render.js";
 export * from "./session.js";
 export * from "./tunables.js";
@@ -177,6 +179,13 @@ export interface RecallDecision {
   readonly footnotes: string[];
   readonly affectFlag: boolean;
   readonly affectReason: string;
+  /**
+   * How many memories this turn admitted (loud or quiet) that the current mood
+   * had lifted (recall G18) — a memory that carried a feeling matching how someone
+   * feels now. Counts only; which feeling is never named. 0 on a turn with no
+   * mood, and on every quiet turn.
+   */
+  readonly moodMatched: number;
   readonly bytes: number;
   readonly budgetBytes: number;
   readonly sentinel: string | null;
@@ -323,6 +332,7 @@ export class Recall {
         footnotes: [],
         affectFlag: false,
         affectReason: "no-feeling-in-turn",
+        moodMatched: 0,
         bytes: 0,
         budgetBytes,
         sentinel: null,
@@ -347,6 +357,11 @@ export class Recall {
         ? this.tunables.COLD_START_MAX_CANDIDATES
         : this.tunables.MAX_CANDIDATES;
 
+    // How each person feels now — only what was RECORDED in the last few hours
+    // (recall G18; no classifier). Read on the store's clock, which is the clock the
+    // feelings were stamped with.
+    const mood = currentMood(this.store, this.store.now(), this.tunables);
+
     const act = activate(
       this.store,
       {
@@ -359,6 +374,7 @@ export class Recall {
         spread: turn.spread,
         day,
         selfFelt: affect.selfFelt,
+        mood,
         maxCandidates,
         storeSize,
       },
@@ -447,6 +463,9 @@ export class Recall {
       footnotes: rendered.footnotes,
       affectFlag: rendered.affectFlag,
       affectReason: gated.affectReason,
+      moodMatched: gated.verdicts.filter(
+        (v) => (v.verdict === "surfaced" || v.verdict === "footnoted") && (v.mood ?? 0) > 0,
+      ).length,
       bytes: rendered.bytes,
       budgetBytes,
       sentinel: rendered.sentinel,

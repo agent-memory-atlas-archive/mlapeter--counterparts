@@ -20,7 +20,7 @@
  * else. Rules 1–4 of `views.ts` apply; no row text is emitted, only counts and
  * event `seq`s the page can open with `/api/event`.
  */
-import type { EventRow } from "../../../../core/store/index.js";
+import type { EventRow, ReadOnlyStore } from "../../../../core/store/index.js";
 import type { DurableEventName } from "../../registries.js";
 import type { DashboardSource } from "../../source.js";
 
@@ -60,6 +60,13 @@ interface MechanismProof {
   readonly built: boolean;
   /** Empty when not built. */
   readonly proofs: readonly Proof[];
+  /**
+   * A mechanism whose firing is ARITHMETIC ON A ROW rather than an event (the
+   * emotion lift): a count of rows it acted on inside the window, read from the
+   * store directly. The one read here that is not `eventLog`; it is still a
+   * read, and still counts only. It backs no event seq.
+   */
+  readonly census?: (store: ReadOnlyStore, fromDay: number) => { count: number; says: readonly [string, string] };
   /** For a grey light: the one plain line it shows instead of evidence. */
   readonly grey?: string;
 }
@@ -83,14 +90,21 @@ export const MECHANISM_PROOFS: readonly MechanismProof[] = [
     ],
   },
   {
-    // The quoted feeling is stored as a label with no weight, the classifier
-    // ships off, and the numeric emotional score rides the salience columns —
-    // there is no row that could say "feeling changed this memory".
+    // Emotion part A (2026-09-26): a memory's strongest feeling (or its
+    // `emotional` score) lifts it and slows its fading, and a recorded mood
+    // lifts matching memories in recall. The lift has no event of its own — it
+    // is arithmetic on the row — so it is counted by a census of the rows
+    // born inside the window; the mood-match is a count on the turn's row.
     id: "emotional",
     family: "encoding",
-    built: false,
-    proofs: [],
-    grey: "In development: a feeling is stored as a label but does not yet weigh anything.",
+    built: true,
+    proofs: [
+      { event: "recall.decision", sum: "moodMatched", says: ["memory a matching mood brought closer", "memories a matching mood brought closer"] },
+    ],
+    census: (store, fromDay) => {
+      const c = store.emotionCensus({ sinceDay: fromDay });
+      return { count: c.weighted, says: ["new memory held higher and fading slower for the feeling it carries", "new memories held higher and fading slower for the feeling they carry"] };
+    },
   },
   // ── Storage ──
   {
@@ -270,6 +284,15 @@ export function mechanismsView(src: DashboardSource): MechanismsView {
         }
       }
       if (total > 0) parts.push(`${total} ${total === 1 ? proof.says[0] : proof.says[1]}`);
+    }
+    if (m.census !== undefined) {
+      let c = { count: 0, says: ["", ""] as readonly [string, string] };
+      try {
+        c = m.census(store, fromDay);
+      } catch {
+        // A store that cannot answer the census simply has no census line.
+      }
+      if (c.count > 0) parts.push(`${c.count} ${c.count === 1 ? c.says[0] : c.says[1]}`);
     }
     if (parts.length > 0) {
       const events = backing

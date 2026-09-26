@@ -22,8 +22,37 @@
  * **Valence** is +1 or −1 per entry, and 0 for `surprise` itself: surprise's
  * children take their own (amazed, awe, astonished, excited, energetic, eager
  * lean positive; startled, shocked, dismayed, confused, perplexed, disillusioned
- * lean negative). Nothing reads valence yet — it is here so the emotion build
- * that comes later does not have to re-transcribe the poster.
+ * lean negative). The one reader so far is the suggestion rule below: a word
+ * off the wheel is never nudged toward a word of the opposite sign.
+ *
+ * **ADDITIONS — NOT THE POSTER'S** (emotion part A, 2026-09-26). Real use
+ * showed the poster missing the words a counterpart actually reaches for:
+ * session random-53 wrote eight feelings and seven fell off the wheel
+ * (grateful, curious, tender, exposed, sheepish, caught, clarified — only
+ * "amused" matched). `ADDED` below lists the words added for that, each marked
+ * `added: true` on its entry and placed on the middle ring of its best core
+ * with no parent — they are not squeezed under a poster word they do not
+ * belong to. The poster's entries are unchanged, and `added` is how any reader
+ * tells the two apart.
+ *
+ * **BLENDS carry two cores** with no schema change: an entry may declare
+ * `alsoCore`. The stored row keeps the PRIMARY core (`core`); anything that
+ * matches by core — mood-matching in recall — reads a blend as both
+ * (`coresOfFeeling`), and a writer may name a blend under either of its cores.
+ * One poster word gains a second core this way (`vulnerable`, + fear, so
+ * "exposed" — its alias — can be written under fear); the word stays the
+ * poster's and the entry says the second core is ours (`secondCoreAdded`).
+ *
+ * **ALIASES** (`ALIASES`): a few everyday words that mean a wheel word read
+ * as that word (`exposed` → `vulnerable`, `thankful` → `grateful`). The caller
+ * is told what its word was read as.
+ *
+ * **Suggestions are only offered when genuinely close** (`closestKeys`): a
+ * misspelling (edit distance 1, or 2 for a word of six letters or more) of a
+ * word under the SAME core, never one of the opposite valence. The first
+ * version offered the five nearest keys by raw edit distance, so "tender"
+ * under sad was offered bored / despair / lonely — steering a warm word toward
+ * its opposite. A word with nothing close is simply kept as the writer's own.
  *
  * A leaf: no imports, so `store/` (which validates against it) and anything
  * above can read it without a layering question.
@@ -47,6 +76,13 @@ export interface WheelEntry {
   readonly valence: Valence;
   /** A middle-ring word the wheel ALSO prints on the outer ring of the same core. */
   readonly alsoUnder?: string;
+  /** True for a word added from real use — NOT on the owner's poster. See
+   *  ADDITIONS in the header. */
+  readonly added?: true;
+  /** A blend's second core. The row stores `core`; matching reads both. */
+  readonly alsoCore?: CoreEmotion;
+  /** True when a POSTER word's `alsoCore` is ours, not the poster's. */
+  readonly secondCoreAdded?: true;
 }
 
 /** The one emotion key that is not on the wheel: the person's own word is kept beside it. */
@@ -107,6 +143,45 @@ const TREE: Record<CoreEmotion, readonly Branch[]> = {
 
 const SURPRISE_POSITIVE = new Set(["excited", "energetic", "eager", "amazed", "awe", "astonished"]);
 
+/**
+ * THE ADDITIONS — words a counterpart actually has that the poster does not
+ * (session random-53, 2026-09-26). Each sits on the middle ring of its best
+ * core, marked `added`. A blend names its second core; its valence is stated
+ * rather than derived, because a blend's sign is not its primary core's.
+ * WORKING DEFAULTS: the placements are judgment, and the owner may move any.
+ */
+const ADDED: readonly { word: string; core: CoreEmotion; alsoCore?: CoreEmotion; valence: Valence }[] = [
+  { word: "grateful", core: "happy", valence: 1 },
+  { word: "curious", core: "happy", valence: 1 },
+  { word: "intrigued", core: "happy", valence: 1 },
+  { word: "fond", core: "happy", valence: 1 },
+  { word: "relieved", core: "happy", valence: 1 },
+  { word: "moved", core: "happy", valence: 1 },
+  // Blends: the row keeps the first core, matching reads both.
+  { word: "bittersweet", core: "happy", alsoCore: "sad", valence: 0 },
+  { word: "tender", core: "sad", alsoCore: "happy", valence: 1 },
+  { word: "wistful", core: "sad", alsoCore: "happy", valence: -1 },
+  { word: "sheepish", core: "fear", alsoCore: "sad", valence: -1 },
+];
+
+/** A second core given to a POSTER word — itself an addition, marked on the entry. */
+const ADDED_SECOND_CORE: Readonly<Record<string, CoreEmotion>> = {
+  // Vulnerable is printed under sad (despair); being exposed is as much fear.
+  vulnerable: "fear",
+};
+
+/**
+ * Everyday words that MEAN a wheel word, read as it. Small on purpose: an
+ * alias decides for the writer, so each one must be a synonym, not a cousin.
+ */
+export const ALIASES: Readonly<Record<string, string>> = {
+  exposed: "vulnerable",
+  thankful: "grateful",
+  touched: "moved",
+  nostalgic: "wistful",
+  inquiring: "curious",
+};
+
 function valenceOf(core: CoreEmotion, word: string, ring: WheelRing): Valence {
   if (core === "happy") return 1;
   if (core !== "surprise") return -1;
@@ -156,8 +231,28 @@ function build(): WheelEntry[] {
         seen.add(key);
       }
     }
+    // The additions, after the poster's own words for this core.
+    for (const a of ADDED) {
+      if (a.core !== core) continue;
+      if (seen.has(a.word) || coresOf.has(a.word)) throw new Error(`feelings wheel: addition "${a.word}" is already on the poster`);
+      out.push({
+        key: a.word,
+        word: a.word,
+        core,
+        ring: "middle",
+        parent: null,
+        valence: a.valence,
+        added: true,
+        ...(a.alsoCore === undefined ? {} : { alsoCore: a.alsoCore }),
+      });
+      seen.add(a.word);
+    }
   }
-  return out;
+  // A second core on a poster word is an addition too, and says so.
+  return out.map((e) => {
+    const second = ADDED_SECOND_CORE[e.key];
+    return second === undefined ? e : { ...e, alsoCore: second, secondCoreAdded: true as const };
+  });
 }
 
 /** Every entry on the wheel, cores first within each core's block. */
@@ -173,34 +268,97 @@ export function wheelEntry(key: string): WheelEntry | undefined {
   return BY_KEY.get(key);
 }
 
+/**
+ * Every core a recorded feeling counts under: its own, plus a blend's second
+ * core. An `other` (or a key the wheel does not know) counts under the core it
+ * was recorded with, and nothing else.
+ */
+export function coresOfFeeling(core: string, emotion: string): CoreEmotion[] {
+  const entry = BY_KEY.get(emotion);
+  const out: CoreEmotion[] = isCoreEmotion(core) ? [core] : [];
+  if (entry !== undefined) {
+    if (!out.includes(entry.core)) out.push(entry.core);
+    if (entry.alsoCore !== undefined && !out.includes(entry.alsoCore)) out.push(entry.alsoCore);
+  }
+  return out;
+}
+
+/** A blend may be named under either of its cores. */
+function underCore(e: WheelEntry, core: CoreEmotion): boolean {
+  return e.core === core || e.alsoCore === core;
+}
+
 /** How an emotion as given reads against the wheel, under the core it was given with. */
 export type EmotionResolution =
-  | { readonly kind: "wheel"; readonly entry: WheelEntry }
+  /** On the wheel. `alias` is the writer's word when it was read AS this entry
+   *  (`exposed` → `vulnerable`); absent when the word was the entry itself. */
+  | { readonly kind: "wheel"; readonly entry: WheelEntry; readonly alias?: string }
   | { readonly kind: "wrong-core"; readonly entry: WheelEntry }
   | { readonly kind: "other"; readonly word: string; readonly closest: readonly string[] };
 
 /**
  * Read `emotion` (a key or a bare word, any case) under `core`. A bare word the
- * wheel prints under two cores is qualified by `core`; a word that is on the
+ * wheel prints under two cores is qualified by `core`; a blend reads under
+ * either of its cores; an alias reads as its wheel word; a word that is on the
  * wheel under a DIFFERENT core only is `wrong-core`; anything else is `other`,
- * with the closest keys under `core` for the caller to rewrite with.
+ * with a suggestion only when one is genuinely close (`closestKeys`).
  */
 export function resolveEmotion(core: CoreEmotion, emotion: string): EmotionResolution {
   const raw = emotion.trim().toLowerCase();
   const direct = BY_KEY.get(raw) ?? BY_KEY.get(`${core}.${raw}`);
-  if (direct !== undefined) return direct.core === core ? { kind: "wheel", entry: direct } : { kind: "wrong-core", entry: direct };
+  if (direct !== undefined) return underCore(direct, core) ? { kind: "wheel", entry: direct } : { kind: "wrong-core", entry: direct };
+  const aliased = Object.hasOwn(ALIASES, raw) ? BY_KEY.get(ALIASES[raw] as string) : undefined;
+  if (aliased !== undefined) {
+    return underCore(aliased, core) ? { kind: "wheel", entry: aliased, alias: emotion.trim() } : { kind: "wrong-core", entry: aliased };
+  }
   const elsewhere = FEELINGS_WHEEL.find((e) => e.word === raw);
   if (elsewhere !== undefined) return { kind: "wrong-core", entry: elsewhere };
   return { kind: "other", word: emotion.trim(), closest: closestKeys(core, raw) };
 }
 
-/** Up to `n` keys under `core`, nearest first by edit distance to `word`. */
-export function closestKeys(core: CoreEmotion, word: string, n = 5): string[] {
-  return FEELINGS_WHEEL.filter((e) => e.core === core && e.ring !== "core")
-    .map((e) => ({ key: e.key, d: editDistance(word, e.word) }))
-    .sort((a, b) => a.d - b.d || (a.key < b.key ? -1 : 1))
+/** The sign a core leans: happy up, surprise either way, the other four down. */
+function coreSign(core: CoreEmotion): Valence {
+  return core === "happy" ? 1 : core === "surprise" ? 0 : -1;
+}
+
+/**
+ * At most `n` wheel keys that `word` is GENUINELY close to under `core` — and
+ * usually none. Close means a misspelling: edit distance 1, or 2 for a word of
+ * six letters or more, against a wheel word or an alias. Only words that can be
+ * written under `core` (its own, and blends that include it) are offered, and
+ * never one whose valence opposes the core's — a writer who chose `sad` is not
+ * steered to a happy word, nor the reverse. Nothing close: an empty list, and
+ * the writer's own word stands.
+ *
+ * Replaced 2026-09-26 the "five nearest keys by raw edit distance", which
+ * offered "tender" (under sad) bored, despair and lonely.
+ */
+export function closestKeys(core: CoreEmotion, word: string, n = 3): string[] {
+  const w = word.trim().toLowerCase();
+  if (w.length === 0) return [];
+  const limit = w.length >= 6 ? 2 : 1;
+  const sign = coreSign(core);
+  const fits = (e: WheelEntry): boolean =>
+    e.ring !== "core" &&
+    underCore(e, core) &&
+    // A blend belongs to this core by definition; any other word must lean
+    // the core's way (surprise, sign 0, leans either).
+    (e.alsoCore !== undefined || sign === 0 || e.valence === 0 || e.valence === sign);
+  const best = new Map<string, number>();
+  const offer = (key: string, d: number): void => {
+    if (d > limit) return;
+    const had = best.get(key);
+    if (had === undefined || d < had) best.set(key, d);
+  };
+  for (const e of FEELINGS_WHEEL) if (fits(e)) offer(e.key, editDistance(w, e.word));
+  for (const [alias, key] of Object.entries(ALIASES)) {
+    const e = BY_KEY.get(key);
+    if (e !== undefined && fits(e)) offer(key, editDistance(w, alias));
+  }
+  return [...best.entries()]
+    .sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : 1))
     .slice(0, n)
-    .map((x) => x.key);
+    .map(([key]) => key);
 }
 
 function editDistance(a: string, b: string): number {

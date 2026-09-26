@@ -71,6 +71,7 @@ import {
 import type {
   EdgeRow,
   EventRow,
+  FeelingPeak,
   GateSessionRow,
   MemoryRow,
   MigrationNote,
@@ -130,6 +131,7 @@ export * from "./feelings.js";
 export type { Db, Statement, WalFold } from "./db.js";
 export type {
   MemoryRow,
+  FeelingPeak,
   VersionRow,
   EdgeRow,
   EventRow,
@@ -1656,7 +1658,8 @@ export class Store {
    * Record feelings on a memory (schema v7; `store/feelings.ts`). All or none:
    * one bad input refuses the call `FEELING_INVALID` and writes nothing. An
    * emotion not on the wheel is stored as `other` with the word kept, and the
-   * result's `notices` name the nearest wheel keys so the caller can rewrite.
+   * result's `notices` name a wheel key only when one is a near misspelling (and
+   * an alias read as a wheel word carries `readAs`).
    * `beneath` is an existing feeling's id ON THIS MEMORY or another input's
    * index. `model` is the writer's model id, screened like `PutInput.model`.
    */
@@ -1692,7 +1695,7 @@ export class Store {
         this.ops.run("UPDATE feelings SET beneath_id = ? WHERE id = ?", under, ids[i] as string);
       });
     });
-    this.emit("store.feelings", memoryId, { count: rows.length, other: notices.length });
+    this.emit("store.feelings", memoryId, { count: rows.length, other: notices.filter((n) => n.readAs === undefined).length });
     return { ids, notices };
   }
 
@@ -2495,8 +2498,19 @@ export class Store {
     return this.row(id) !== undefined;
   }
 
-  row(id: string): MemoryRow | undefined {
-    return this.ops.get<MemoryRow>("SELECT * FROM memories WHERE id = ?", id);
+  /**
+   * One memory's row — plus `feeling_peak`, the strongest feeling recorded on
+   * it (physics §5.10, emotion part A). Every physics read goes through here
+   * (`read`, `physicsOf`, sleep, recall, the dashboard), so this one subquery
+   * is what makes a feeling weigh the same everywhere. `feelings_memory` is
+   * indexed, so it is one index probe per row.
+   */
+  row(id: string): (MemoryRow & FeelingPeak) | undefined {
+    return this.ops.get<MemoryRow & FeelingPeak>(
+      `SELECT m.*, (SELECT MAX(f.strength) FROM feelings f WHERE f.memory_id = m.id) AS feeling_peak
+         FROM memories m WHERE m.id = ?`,
+      id,
+    );
   }
 
   read(id: string): StoredMemory {
@@ -2609,6 +2623,71 @@ export class Store {
       "SELECT * FROM feelings WHERE memory_id = ? ORDER BY created_at, rowid",
       memoryId,
     );
+  }
+
+  /**
+   * Feelings recorded at or after `sinceMs` (the store's clock, UTC ms) — the
+   * raw material of "how each person feels right now" (recall G18). Newest
+   * first. Only feelings on a memory that is still live: an archived or
+   * superseded memory's feelings no longer speak for the moment.
+   */
+  feelingsSince(sinceMs: number): FeelingRow[] {
+    return this.ops.all<FeelingRow>(
+      `SELECT f.* FROM feelings f JOIN memories m ON m.id = f.memory_id
+        WHERE f.created_at >= ? AND m.archived = 0 AND m.superseded_by IS NULL
+        ORDER BY f.created_at DESC, f.rowid DESC`,
+      sinceMs,
+    );
+  }
+
+  /**
+   * The feelings on several memories in ONE query, with each memory's birth
+   * day beside them (a feeling softens from the day its memory was born —
+   * physics §5.10). Recall's mood-matching reads this for its candidates only,
+   * inside its latency budget. Ids with no feelings are simply absent.
+   */
+  feelingsOn(ids: readonly string[]): Map<string, (FeelingRow & { birth_day: number })[]> {
+    const out = new Map<string, (FeelingRow & { birth_day: number })[]>();
+    if (ids.length === 0) return out;
+    const unique = [...new Set(ids)];
+    // SQLite's default bound-variable ceiling is far above recall's candidate
+    // cap; chunk anyway so no caller can walk into it.
+    for (let at = 0; at < unique.length; at += 500) {
+      const part = unique.slice(at, at + 500);
+      const rows = this.ops.all<FeelingRow & { birth_day: number }>(
+        `SELECT f.*, m.birth_day AS birth_day FROM feelings f JOIN memories m ON m.id = f.memory_id
+          WHERE f.memory_id IN (${part.map(() => "?").join(",")})
+          ORDER BY f.created_at, f.rowid`,
+        ...part,
+      );
+      for (const r of rows) {
+        const list = out.get(r.memory_id) ?? [];
+        list.push(r);
+        out.set(r.memory_id, list);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * THE EMOTION CENSUS — how many live memories carry feeling, and how many of
+   * those the feeling actually weighs on (intensity > 0: held higher at birth
+   * and fading slower, physics §5.10). `sinceDay` narrows both to memories born
+   * on or after that lived day. Counts only; no word of any feeling leaves.
+   */
+  emotionCensus(opts: { sinceDay?: number } = {}): { withFeelings: number; weighted: number } {
+    const since = opts.sinceDay ?? Number.MIN_SAFE_INTEGER;
+    const row = this.ops.get<{ with_feelings: number | null; weighted: number | null }>(
+      `SELECT
+         SUM(CASE WHEN EXISTS (SELECT 1 FROM feelings f WHERE f.memory_id = m.id) THEN 1 ELSE 0 END) AS with_feelings,
+         SUM(CASE WHEN m.emotional > 0
+                    OR EXISTS (SELECT 1 FROM feelings f WHERE f.memory_id = m.id AND f.strength > 0)
+                  THEN 1 ELSE 0 END) AS weighted
+         FROM memories m
+        WHERE m.archived = 0 AND m.superseded_by IS NULL AND m.birth_day >= ?`,
+      since,
+    );
+    return { withFeelings: row?.with_feelings ?? 0, weighted: row?.weighted ?? 0 };
   }
 
   /**

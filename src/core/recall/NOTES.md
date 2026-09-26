@@ -519,3 +519,42 @@ handle whose open lost the lock, so the identity is read per activation.
 stay as calibrated on the lexical channel; nothing in the decision record's hashed field
 set moved (`ActivationResult` is not the decision record).
 
+
+## 17. Mood-matching, and emotion reaching the turn gate — 2026-09-26 (emotion part A)
+
+Owner decision 4 (2026-09-25/26): when a person's current feeling is known, memories that
+carried a matching feeling for that same person come up more easily; the other person's
+matching feeling gives a smaller lift. CONTRACT guarantee 18 states the rule; this is how
+it was built and what was decided along the way.
+
+- **Where it folds in.** Beside `gatedSal`, on the candidate's `sal` — the number the gate
+  reads only after hard gate (a) (uncued is dark) and hard gate (b) (the absolute floor).
+  `modulate` lowers the RELATIVE bar by `SAL_BAR_WEIGHT × 2 × lift`, so a fresh same-person
+  match at strength 0.9 (lift 0.27) faces a bar ~27% lower; the cross-link at 0.1 moves it
+  ~9%; the same match a month later (softened to ~0.22 of its strength) ~6%. In the two
+  absolute regimes nothing moves. `activation` is never touched, so the candidate set is
+  the same with and without a mood — `emotion.test.ts` builds the same turn with the mood
+  switched off and compares every activation.
+- **"Current" = recorded in the last 3 hours** of the STORE's clock (the clock `created_at`
+  was stamped with; `Recall.now` is the latency clock and is not used), at strength 0.3 or
+  more. Not "this session": feelings carry no session id and the table is not to change
+  in this part, and a session that runs past three hours has usually moved on from how it
+  started. One indexed query per turn; with no mood, nothing else is read.
+- **A feeling inside the window is the mood, not a match.** Otherwise the note written five
+  minutes ago matches its own feeling — and session dedup would not catch it, because it
+  was never surfaced.
+- **Blends match as both cores** (`coresOfFeeling`): tender (sad + happy) matches a sad mood
+  and a happy one.
+- **Per candidate: one batched read** (`Store.feelingsOn`), only for CUED candidates, only
+  when there is a mood, inside the latency budget.
+- **`moodMatched` joined the durable decision record** — how many admitted memories the mood
+  had lifted. It moves the surface set (G15); the parallel run whose ratings that protected
+  ended 2026-09-21, and the mechanisms views need a durable count to show the mechanism
+  firing.
+- **G10 and the affect flag read intensity.** When the turn carries first-person feeling,
+  `gatedSal` reads the emotional dimension as the memory's intensity (the stronger of its
+  score and its recorded feelings); otherwise 0, as before. The affect flag's "charged"
+  test uses the same intensity against `AFFECT_MIN_EMOTION = 0.7`.
+
+**Unmeasured.** Every mood tunable is a working default with a reason, not a measurement;
+the recall bench has no feelings in it yet.

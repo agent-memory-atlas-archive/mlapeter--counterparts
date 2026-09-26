@@ -55,6 +55,8 @@
 import { TUNABLES as ENCODE } from "../core/encode/tunables.js";
 import { addDays, daysBetween as calendarDaysBetween, localDate } from "../core/time.js";
 import type { EventRow, ReadOnlyStore } from "../core/store/index.js";
+import { rowToPhysics } from "../core/store/index.js";
+import { emotionalIntensity } from "../core/physics/index.js";
 import type { DurableEventName } from "./dashboard/registries.js";
 
 /** The window every count on this page is measured over. Seven CALENDAR days,
@@ -140,6 +142,10 @@ export const STATE_MEANING: Record<FiredState, string> = {
  */
 export type ProbeId =
   | "edges"
+  /** Live memories carrying at least one recorded feeling (dated by the newest). */
+  | "feelings"
+  /** Live memories whose emotional intensity is above 0 (dated by birth day). */
+  | "emotion.weighted"
   | "prospective.armed"
   | "prospective.fired"
   | "protected"
@@ -352,6 +358,30 @@ export const MECHANISMS: readonly Mechanism[] = [
             ENCODE.EMOTION_CLASSIFIER_PRECISION_BAR,
           )} (encode/tunables.ts) — a named decision, not a fault`,
         }),
+  },
+  // EMOTION PART A (2026-09-26): feelings weigh now. Three rows, because the
+  // three halves leave three different traces — a feeling on a row, a row
+  // whose intensity lifts and slows it, and a turn whose mood lifted a memory.
+  {
+    id: "feelings",
+    label: "how something felt was recorded on a memory, the owner's or the self's",
+    module: "store/feelings.ts",
+    evidence: { kind: "probe", probe: "feelings" },
+    since: "2026-09-25",
+  },
+  {
+    id: "emotion-weight",
+    label: "a memory's strongest feeling holds it higher at birth and slows its fading",
+    module: "physics/ §5.10",
+    evidence: { kind: "probe", probe: "emotion.weighted" },
+    since: "2026-09-26",
+  },
+  {
+    id: "mood-match",
+    label: "a memory that felt the way someone feels now came to mind more easily",
+    module: "recall/mood.ts",
+    evidence: { kind: "event", names: ["recall.decision"], positive: "moodMatched" },
+    since: "2026-09-26",
   },
   {
     id: "salience",
@@ -1647,6 +1677,16 @@ function readProbes(store: ReadOnlyStore, w: Window): Probed {
   for (const id of scanned) {
     const row = store.row(id);
     if (row !== undefined && row.archived === 0 && row.protected === 1) bump("protected");
+    // Emotion part A: `row()` carries the strongest recorded feeling beside the
+    // row, so only a memory that HAS one pays for the dated read.
+    if (row !== undefined && row.archived === 0 && row.superseded_by === null) {
+      if (emotionalIntensity(rowToPhysics(row)) > 0) bump("emotion.weighted", { livedDay: row.birth_day });
+      if (row.feeling_peak !== null && row.feeling_peak !== undefined) {
+        let newest: number | null = null;
+        for (const f of store.feelingsFor(id)) if (newest === null || f.created_at > newest) newest = f.created_at;
+        bump("feelings", { at: newest });
+      }
+    }
     for (const edge of store.edgesFrom(id)) bump("edges", { livedDay: edge.last_day });
     for (const p of store.prospectiveFor(id)) {
       bump("prospective.armed");
@@ -1698,5 +1738,7 @@ function probeLabel(probe: ProbeId): string {
   if (probe === "protected") return "memories marked permanent";
   if (probe === "removals") return "the removal record";
   if (probe === "edges") return "the links table";
+  if (probe === "feelings") return "memories carrying a recorded feeling";
+  if (probe === "emotion.weighted") return "memories a feeling holds higher and fades slower";
   return `the ${probe.replace(".", " ")} table`;
 }

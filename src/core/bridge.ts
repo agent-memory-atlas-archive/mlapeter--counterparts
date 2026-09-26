@@ -186,27 +186,32 @@ function verdictFor(
 }
 
 /**
- * All three author dimensions or nothing — a partial claim is not padded.
+ * The author's dimensions, as given — a missing one reads 0, exactly as
+ * `mint.ts` has always stored it.
  *
- * NAMED GAP (2026-09-04): the obvious source for `emotional` when the author
- * gave none is the stated-emotion gate, and it cannot supply one.
- * `encode/emotion.ts#gateEmotion` yields a `DurableFeeling` of `{type, subject}`
- * — a feeling that SURVIVED, with no magnitude on it anywhere — so there is no
- * number to read across, and manufacturing one from "a feeling was stated" is
- * retro-typing emotion, which encode §3 forbids outright. Left open rather than
- * approximated; the MCP adapter's contract carries the same gap as its §7.4.
+ * CHANGED 2026-09-26 (emotion part A, owner decision 1: "stop dropping a lone
+ * `emotional` score"). This used to be all three or nothing, so a note that
+ * said only `emotional: 0.9` reached the battery with no dimensions at all —
+ * while `mint.ts`, reading the same draft, stored the 0.9 on the row. The two
+ * readings of one note disagreed; now they agree. Padding a missing dimension
+ * with 0 claims nothing the author did not say: 0 is what an unsaid dimension
+ * has always been on the row. The SWEEP's intake (`counterpart.ts#applySweep`)
+ * keeps its all-three rule on purpose — a retelling author's lone number is not
+ * testimony, and it would now lift height and slow decay (physics §5.10).
+ *
+ * Still NOT manufactured from a stated feeling: `encode/emotion.ts#gateEmotion`
+ * yields `{type, subject}` with no magnitude, and inventing one from "a feeling
+ * was stated" is retro-typing emotion, which encode §3 forbids. Recorded
+ * FEELINGS (the `feelings` table) carry their own strength and reach physics
+ * beside the row (`feelingPeak`), not through this function.
  */
 function dimensionsFrom(
   s: Partial<{ relevance: number; emotional: number; predictive: number }>,
 ): ClaimedDimensions | null {
-  if (
-    typeof s.relevance === "number" &&
-    typeof s.emotional === "number" &&
-    typeof s.predictive === "number"
-  ) {
-    return { relevance: s.relevance, emotional: s.emotional, predictive: s.predictive };
-  }
-  return null;
+  const given = [s.relevance, s.emotional, s.predictive].some((v) => typeof v === "number");
+  if (!given) return null;
+  const n = (v: number | undefined): number => (typeof v === "number" ? v : 0);
+  return { relevance: n(s.relevance), emotional: n(s.emotional), predictive: n(s.predictive) };
 }
 
 /**
