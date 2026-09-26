@@ -14,7 +14,9 @@
  *
  * The dates come from the CALLER. This module does no NLP: it reads the shape of
  * a date string and nothing else (`windows.ts`). Whoever extracted "September"
- * from a sentence owns that judgment; the deriver owns only what follows from it.
+ * from a sentence owns that judgment — since 2026-09-26 that is the model, which
+ * writes the explicit `eventDate` field on `note` / `session_end` — and the
+ * deriver owns only what follows from it.
  *
  * Every refusal has a NAME. "Not prospective" is not a verdict a log can act on,
  * and a memory excluded because it is a skill and one excluded because its window
@@ -159,7 +161,8 @@ export function derive(
       rejectedDates.push({ date: d.date, reason: "year-only-precision" });
       continue;
     }
-    const w = windowFor(d.date, precision, t);
+    // The memory id salts a month's stagger (tune question a) and nothing else.
+    const w = windowFor(d.date, precision, t, memory.id);
     if (w === null) {
       rejectedDates.push({ date: d.date, reason: "malformed-date" });
       continue;

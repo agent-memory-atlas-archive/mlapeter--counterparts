@@ -739,11 +739,20 @@ async function runHook(
     // AND THE UPDATE NOTICE AT A PROMPT (roadmap E, 2026-09-23), fail-open
     // (`deliverTurn`): once per session, when the MCP server this session talks
     // to runs an older build than this installed one.
+    //
+    // AND PLAIN REMINDERS (2026-09-26), at both events: second at SessionStart,
+    // after the doctor's red line and before the registry's; at a prompt, the
+    // turn's own lines, joined with the update notice when there is one.
+    const told = result.notices ?? [];
     const delivery = deliverTurn(
       name,
       result,
       payload,
-      name === "session-start" ? [adapter.notice(input), trouble] : null,
+      name === "session-start"
+        ? [adapter.notice(input), ...told, trouble]
+        : told.length > 0
+          ? told
+          : null,
       adapter,
       input,
     );
@@ -801,16 +810,18 @@ export function deliverTurn(
   name: HookName,
   result: { injection: string | null; ask: string | null },
   payload: Record<string, unknown>,
-  sessionStartNotices: readonly (string | null)[] | null,
+  /** SessionStart's priority-ordered notices; at a prompt, the turn's own
+   *  owner-facing lines (plain reminders, 2026-09-26), or null. */
+  notices: readonly (string | null)[] | null,
   doors: UpdateNoticeDoors,
   input: HookInput,
 ): Delivery {
-  const plain = hostDelivery(name, result, payload, sessionStartNotices);
+  const plain = hostDelivery(name, result, payload, notices);
   if (name !== "user-prompt-submit") return plain;
   try {
     const update = doors.updateNotice(input);
     if (update === null) return plain;
-    const carried = hostDelivery(name, result, payload, update);
+    const carried = hostDelivery(name, result, payload, [...(notices ?? []), update]);
     if (carried.dropped !== null) return carried;
     return doors.markUpdateNotice(input) ? carried : plain;
   } catch {

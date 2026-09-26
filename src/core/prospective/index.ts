@@ -34,11 +34,12 @@ import type { Kind } from "../types.js";
 import { strength } from "../physics/index.js";
 import type { UseTier } from "../physics/index.js";
 import type { ProseDoc, ProspectiveInput, ProspectiveRow, Store } from "../store/index.js";
+import { addDays, isDay } from "../time.js";
 import { derive } from "./derive.js";
 import type { DerivableMemory, DeriveReason, ExtractedDate, Prospectivity } from "./derive.js";
 import { TEMPORAL_MAX_TIER, withTunables } from "./tunables.js";
 import type { ProspectiveTunables } from "./tunables.js";
-import { parseWindowKey, phaseOf, precisionOf, rampAt, windowFor } from "./windows.js";
+import { imminence, parseWindowKey, phaseOf, precisionOf, rampAt, windowFor } from "./windows.js";
 import type { DatePrecision, Phase, Window, WindowPrecision } from "./windows.js";
 
 export * from "./derive.js";
@@ -83,6 +84,30 @@ export type WindowState = ProspectiveInput["state"];
 export const PROSPECTIVE_FIRE_EVENT = "prospective.fire";
 export const PROSPECTIVE_REFUSED_EVENT = "prospective.fire.refused";
 
+/**
+ * THE THIRD DURABLE ROW (2026-09-26): a PLAIN item was told to the person —
+ * one row per memory, window and beat, latched by `dedupKey`, so it doubles as
+ * the once-only mark two hook processes race for (`claimPlain`). Ids, the
+ * window key, the beat and today's calendar date; never a word of the memory.
+ */
+export const PROSPECTIVE_PLAIN_EVENT = "prospective.plain";
+
+/**
+ * PLAIN OR QUIET (owner decision 2026-09-25/26, a working default). The author
+ * of a dated memory says which, on the same `note` / `session_end` entry that
+ * carries the date, and it lives in the memory's `meta` bag under this key — no
+ * column, no schema bump. Anything but `"plain"` reads as quiet, which is the
+ * default and the whole of the tact principle: a quiet item is one more cue,
+ * capped at the footnote tier. A plain one is also SAID, plainly, on its day —
+ * the one deliberate exception to "no bypass lane", recorded in CONTRACT §3.
+ */
+export type CueMode = "plain" | "quiet";
+export const CUE_MODE_META = "remind";
+
+export function cueModeOf(doc: Pick<ProseDoc, "meta">): CueMode {
+  return doc.meta[CUE_MODE_META] === "plain" ? "plain" : "quiet";
+}
+
 const WINDOW_STATES: readonly WindowState[] = ["armed", "fired", "suppressed", "expired"];
 
 /** Box 2 hands back `state` as TEXT. An unrecognized value reads as `armed` — the
@@ -109,6 +134,13 @@ export type SuppressReason =
   | "over-fired"
   /** Brake 1: at most one ambient fire per occasion per LIVED day. */
   | "already-fired-today"
+  /** Tune question (b), 2026-09-26: a month or range window's LAST fire is kept
+   *  for after the span it names, so it gets an "after" beat instead of spending
+   *  its whole budget in the first days (`HOLD_LAST_FIRE_FOR_AFTER`). */
+  | "held-for-after"
+  /** A PLAIN item already told outright today (`claimPlain`): the same thing
+   *  as a footnote on the next turn would be saying it twice (2026-09-26). */
+  | "told-plainly-today"
   /** Brake 3: already offered in this session. */
   | "session-dedup";
 
@@ -186,6 +218,33 @@ export interface Arrival {
    *  arrival (§12 G10): a future-dated memory that faded before its window was
    *  an occasion that didn't matter. */
   readonly strength: number;
+  /** Plain or quiet, as the author said (`CUE_MODE_META`). Carried so the fire
+   *  row can count the two apart; it changes nothing about the cue itself. */
+  readonly mode: CueMode;
+}
+
+/** Which moment of a plain item's window it is being told on. */
+export type PlainBeat =
+  /** A day-dated item, on its day. */
+  | "day"
+  /** A month or range item, the first day it is open and seen. */
+  | "opens"
+  /** A month or range item, on the last day it names. */
+  | "last-day";
+
+/**
+ * A plain item due to be told today. Records only — like `Arrival`, no words:
+ * the adapter that talks to a person owns those (`adapters/claude-code`).
+ */
+export interface PlainDue {
+  readonly memoryId: string;
+  readonly windowKey: string;
+  readonly eventDate: string;
+  readonly precision: WindowPrecision;
+  readonly beat: PlainBeat;
+  /** The span the date names, `YYYY-MM-DD` both. */
+  readonly firstDay: string;
+  readonly lastDay: string;
 }
 
 export interface SuppressionRecord {
@@ -309,28 +368,36 @@ export interface ExitReport {
   readonly exits: Exit[];
 }
 
-/** Where a memory's own content-dates live on the prose payload. */
-export const EVENT_DATE_META = "eventDate";
-export const EVENT_DATES_META = "eventDates";
-
 /**
- * A memory's content-dates: `happenedOn` (stated precision, never rounded) plus
- * the `eventDate` / `eventDates` meta convention this module declares. SHAPE
- * ONLY — nothing here reads prose for dates. That is the caller's job, and its
- * output arrives through `extraDates` (INTERFACE-GAPS #2).
+ * A memory's content-date: its reminder date, `ProseDoc.eventDate` (schema v7,
+ * the `event_date` column), exactly as stated. SHAPE ONLY — nothing here reads
+ * prose for dates; the model writes the field (INTERFACE-GAPS #2, closed
+ * 2026-09-26).
+ *
+ * Two sources this used to read are gone on purpose. `happenedOn` is a PAST
+ * date by name, and `schemas/` writes every belief's `statedOn` into it, so
+ * reading it as a future occasion was a category error waiting for data. The
+ * `meta.eventDate` / `meta.eventDates` convention was this module's own
+ * stand-in for the column, and nothing ever wrote it; keeping it would have
+ * meant a second enumeration (a scan of every memory) to find what the index
+ * now answers. Caller-extracted dates still arrive through `extraDates`.
  */
-export function contentDates(doc: ProseDoc): ExtractedDate[] {
-  const out: ExtractedDate[] = [];
-  const push = (v: unknown): void => {
-    if (typeof v === "string" && v !== "") out.push({ date: v });
-  };
-  push(doc.happenedOn);
-  push(doc.meta[EVENT_DATE_META]);
-  const many = doc.meta[EVENT_DATES_META];
-  if (Array.isArray(many)) for (const v of many) push(v);
-  const seen = new Set<string>();
-  return out.filter((d) => (seen.has(d.date) ? false : (seen.add(d.date), true)));
+export function contentDates(doc: Pick<ProseDoc, "eventDate">): ExtractedDate[] {
+  const v = doc.eventDate;
+  return typeof v === "string" && v !== "" ? [{ date: v }] : [];
 }
+
+/** Every memory whose stated date could have an OPEN window on `at`: the span
+ *  must reach from `at - GRACE_DAYS` to `at + LEAD_DAYS`. */
+function candidateSpan(at: string, t: ProspectiveTunables): { from: string; to: string } | null {
+  if (!isDay(at)) return null;
+  return { from: addDays(at, -t.GRACE_DAYS), to: addDays(at, t.LEAD_DAYS) };
+}
+
+/** Score, then imminence, then key — tune question (d). Scores closer than
+ *  this are a TIE: two salience means 0.7 and 0.7 must not be split by a float
+ *  rounding in the ramp. */
+const TIE = 1e-9;
 
 interface Loaded {
   memory: DerivableMemory;
@@ -410,8 +477,17 @@ export class Prospective {
     const suppressed: SuppressionRecord[] = [];
     const refused: { memoryId: string; reason: DeriveReason }[] = [];
     const denied = new Set(this.store.deniedIds());
-    const ids = this.store.list({ archived: false });
+    // THE INDEX, not a scan (INTERFACE-GAPS #2, closed 2026-09-26): only a
+    // memory whose stated date reaches `at` through lead or grace can have an
+    // open window, and `Store.datedMemories` answers exactly that. The ids a
+    // caller supplied dates for ride along — the index cannot know about them.
+    const span = candidateSpan(input.at, this.tunables);
+    const ids = new Set<string>(
+      span === null ? [] : this.store.datedMemories(span.from, span.to).map((d) => d.id),
+    );
+    for (const id of input.extraDates?.keys() ?? []) ids.add(id);
     let considered = 0;
+    const order = new Map<string, readonly [number, number]>();
 
     for (const id of ids) {
       if (denied.has(id)) continue;
@@ -432,14 +508,18 @@ export class Prospective {
       }
 
       const rows = this.rowsFor(id);
+      const mode = cueModeOf(loaded.doc);
+      // Read only for a plain item, and only once per memory per call.
+      const toldToday = mode === "plain" && this.plainToldOn(id, input.at);
       for (const w of p.windows) {
         const stateRow = rows.get(w.key);
-        const brake = this.brakeFor(w, stateRow, {
-          at: input.at,
-          day,
-          refractory: input.refractory === true,
-          sessionId: input.sessionId,
-        });
+        const brake =
+          this.brakeFor(w, stateRow, {
+            at: input.at,
+            day,
+            refractory: input.refractory === true,
+            sessionId: input.sessionId,
+          }) ?? (toldToday ? "told-plainly-today" : null);
         if (brake !== null) {
           suppressed.push({ memoryId: id, windowKey: w.key, reason: brake });
           continue;
@@ -460,14 +540,26 @@ export class Prospective {
           fires: stateRow?.fires ?? 0,
           lastFiredDay: stateRow?.last_fired_day ?? null,
           strength: loaded.strength,
+          mode,
         });
+        order.set(`${id} ${w.key}`, imminence(w, input.at));
       }
     }
 
-    arrivals.sort(
-      (a, b) =>
-        b.ramp * b.strength - a.ramp * a.strength || (a.windowKey < b.windowKey ? -1 : 1),
-    );
+    // Salience-weighted ramp first; a TIE goes to the more imminent window —
+    // sooner, then narrower — so "today" beats "sometime this month" at equal
+    // salience (tune question d); then the key, so the order is total.
+    const soon = (a: Arrival): readonly [number, number] =>
+      order.get(`${a.memoryId} ${a.windowKey}`) ?? [0, 0];
+    arrivals.sort((a, b) => {
+      const d = b.ramp * b.strength - a.ramp * a.strength;
+      if (Math.abs(d) > TIE) return d;
+      const [au, aw] = soon(a);
+      const [bu, bw] = soon(b);
+      if (au !== bu) return au - bu;
+      if (aw !== bw) return aw - bw;
+      return a.windowKey < b.windowKey ? -1 : a.windowKey > b.windowKey ? 1 : a.memoryId < b.memoryId ? -1 : 1;
+    });
 
     for (const s of suppressed) {
       // A window that has not opened yet was NEVER ASKED, which is a different
@@ -513,7 +605,14 @@ export class Prospective {
         considered,
       };
     }
-    const items = considered.arrivals.slice(0, this.tunables.HORIZON_ITEMS);
+    // Tune question (c), 2026-09-26 — the owner's human-memory framing: people
+    // date-fire DAY-precision things (trash day, a defense tomorrow). A month
+    // or a range lives as footnote warmth and context corroboration only; it
+    // still arrives as a cue every day of its window, it just never takes a
+    // wake line.
+    const items = considered.arrivals
+      .filter((a) => a.precision === "day")
+      .slice(0, this.tunables.HORIZON_ITEMS);
     const reason: HorizonReason = items.length === 0 ? "nothing-arrived" : "selected";
     this.emit("prospective.horizon", undefined, {
       reason,
@@ -522,6 +621,127 @@ export class Prospective {
       ids: items.map((i) => i.memoryId).join(","),
     });
     return { items, reason, suppressedWholesale: false, considered };
+  }
+
+  // ── plain items: the one exception to "a cue, not a command" ──────────────
+
+  /**
+   * PLAIN items due to be told today, not yet told (owner decision 2026-09-25/26,
+   * a working default — CONTRACT §3 names it as the deliberate exception to "no
+   * bypass lane"). A person who said "don't let me forget to pay taxes before Oct
+   * 15th!" asked to be told, and a footnote the model may or may not raise is not
+   * telling them.
+   *
+   * SPARING, by construction — at most two beats per window, each once ever:
+   *
+   *   - a DAY item on its day (`day`);
+   *   - a MONTH or RANGE item the first day it is open and seen (`opens`), and
+   *     again on the last day it names (`last-day`) — the deadline end of
+   *     "before the 15th". Seen first ON its last day, it gets that beat only.
+   *
+   * Only the stated span counts — no lead days, no grace: "on the day" is what
+   * was asked. A YEAR has no day it could mean, so it is never told (the same
+   * structural exclusion as a window, §12 G3).
+   *
+   * It does NOT run the eligibility predicate. The salience floor is the tact
+   * principle's gate on UNASKED surfacing; this is asked-for, and an ordinary
+   * note sits at the authored default (0.25) under a 0.6 floor, so gating here
+   * would make a plain reminder dead for most notes. What still refuses: an
+   * archived, superseded, removed or journal row, and an observer.
+   *
+   * A read — `claimPlain` is the write, and the caller shows a line only for a
+   * claim that landed. Records only; the words are the adapter's.
+   */
+  plainDue(input: { at: string }): PlainDue[] {
+    if (this.observer || !isDay(input.at)) return [];
+    const at = input.at;
+    const denied = new Set(this.store.deniedIds());
+    const out: PlainDue[] = [];
+    for (const dated of this.store.datedMemories(at, at)) {
+      const id = dated.id;
+      if (denied.has(id)) continue;
+      const row = this.store.row(id);
+      if (row === undefined || row.superseded_by !== null) continue;
+      let doc: ProseDoc;
+      try {
+        doc = this.store.read(id).doc;
+      } catch {
+        continue;
+      }
+      if (doc.type === "episode" || cueModeOf(doc) !== "plain") continue;
+      const precision = precisionOf(dated.eventDate);
+      if (precision === null || precision === "year") continue;
+      const w = windowFor(dated.eventDate, precision, this.tunables, id);
+      if (w === null || at < w.firstDay || at > w.lastDay) continue;
+      const beat: PlainBeat =
+        w.precision === "day" ? "day" : at === w.lastDay ? "last-day" : "opens";
+      if (this.plainTold(id, w.key, beat)) continue;
+      out.push({
+        memoryId: id,
+        windowKey: w.key,
+        eventDate: w.eventDate,
+        precision: w.precision,
+        beat,
+        firstDay: w.firstDay,
+        lastDay: w.lastDay,
+      });
+    }
+    return out;
+  }
+
+  /**
+   * Mark one plain beat as told. TRUE only when this call wrote the mark: the
+   * `dedupKey` latch is the whole lock, so two hook processes racing for the
+   * same beat cannot both win, and the caller shows the line only on true —
+   * the update notice's "mark first, show only if marked" (roadmap E). An
+   * observer marks nothing and is therefore told nothing.
+   */
+  claimPlain(due: PlainDue, opts: { at: string; day?: number }): boolean {
+    if (this.observer) return false;
+    const day = opts.day ?? this.store.livedDay();
+    try {
+      const seq = this.store.appendEvent({
+        name: PROSPECTIVE_PLAIN_EVENT,
+        day,
+        ref: due.memoryId,
+        payload: { window: due.windowKey, beat: due.beat, precision: due.precision, date: opts.at, mode: "plain" },
+        dedupKey: `${PROSPECTIVE_PLAIN_EVENT}:${due.memoryId}:${due.windowKey}:${due.beat}`,
+      });
+      if (seq > 0) {
+        this.emit("prospective.plain", due.memoryId, { window: due.windowKey, beat: due.beat, day });
+      }
+      return seq > 0;
+    } catch {
+      // A lost mark costs this line, never the turn (§12 G12's budget).
+      return false;
+    }
+  }
+
+  /** Has this beat already been told? A read of the latch `claimPlain` writes,
+   *  so a turn with nothing new to say takes no write lock at all. */
+  private plainTold(memoryId: string, windowKey: string, beat: PlainBeat): boolean {
+    for (const e of this.plainRows(memoryId)) {
+      if (e.dedup_key === `${PROSPECTIVE_PLAIN_EVENT}:${memoryId}:${windowKey}:${beat}`) return true;
+    }
+    return false;
+  }
+
+  /** Was this memory told plainly on the calendar day `at`? */
+  private plainToldOn(memoryId: string, at: string): boolean {
+    for (const e of this.plainRows(memoryId)) {
+      try {
+        if ((JSON.parse(e.payload ?? "{}") as { date?: unknown }).date === at) return true;
+      } catch {
+        /* an unreadable row answers nothing */
+      }
+    }
+    return false;
+  }
+
+  /** A memory's plain rows, newest first. At most two beats per window, so a
+   *  small bound is every row a live memory will ever have. */
+  private plainRows(memoryId: string): { dedup_key: string | null; payload: string | null }[] {
+    return this.store.eventLog({ name: PROSPECTIVE_PLAIN_EVENT, ref: memoryId, order: "desc", limit: 50 });
   }
 
   // ── firing-state transitions (all refuse under observer) ──────────────────
@@ -650,6 +870,8 @@ export class Prospective {
       precision: w.precision,
       fires,
       cap: this.tunables.FIRES_PER_WINDOW,
+      // Plain or quiet, so the gauge can count the two apart (2026-09-26).
+      mode: cueModeOf(loaded.doc),
     });
     return { fired: true, reason: "fired", derivation: null, fires, state: "fired" };
   }
@@ -759,7 +981,9 @@ export class Prospective {
     }
     const nextPrecision = precisionOf(input.nextDate);
     const nextWindow =
-      nextPrecision === null ? null : windowFor(input.nextDate, nextPrecision, this.tunables);
+      nextPrecision === null
+        ? null
+        : windowFor(input.nextDate, nextPrecision, this.tunables, input.memoryId);
     if (nextWindow === null) {
       this.emit("prospective.reschedule.refused", input.memoryId, { reason: "malformed-date" });
       return { rescheduled: false, reason: "malformed-date", retiredKey: null, armedKey: null };
@@ -826,7 +1050,14 @@ export class Prospective {
     const exits: Exit[] = [];
     const counts = Object.fromEntries(EXIT_KINDS.map((k) => [k, 0])) as Record<ExitKind, number>;
 
-    for (const id of this.store.list({})) {
+    // Every memory that has a date (archived ones included — archived before its
+    // window is the `faded` exit) and every memory that has a firing row (a row
+    // can outlive a cleared date). Two indexed reads, not a scan of the store.
+    const ids = new Set<string>(
+      this.store.datedMemories("0001-01-01", "9999-12-31", { archived: true }).map((m) => m.id),
+    );
+    for (const id of this.store.prospectiveMemoryIds()) ids.add(id);
+    for (const id of [...ids].sort()) {
       const loaded = this.load(id, [], d);
       if (loaded === null) continue;
       const p = derive(loaded.memory, loaded.dates, at, this.tunables);
@@ -836,7 +1067,8 @@ export class Prospective {
       for (const key of rows.keys()) {
         if (byKey.has(key)) continue;
         const parsed = parseWindowKey(key);
-        const w = parsed === null ? null : windowFor(parsed.eventDate, parsed.precision, this.tunables);
+        const w =
+          parsed === null ? null : windowFor(parsed.eventDate, parsed.precision, this.tunables, id);
         byKey.set(key, { window: w, phase: w === null ? null : phaseOf(w, at) });
       }
 
@@ -897,6 +1129,18 @@ export class Prospective {
       if (row.fires >= this.tunables.FIRES_PER_WINDOW) return "over-fired";
       if (row.last_fired_day !== null && row.last_fired_day === ctx.day) {
         return "already-fired-today";
+      }
+      // Tune question (b): the last fire of a month or range waits for after
+      // the span it names. Without it, a month item spent its whole budget in
+      // its first days and never knew when "after" was.
+      if (
+        this.tunables.HOLD_LAST_FIRE_FOR_AFTER &&
+        w.precision !== "day" &&
+        this.tunables.FIRES_PER_WINDOW >= 2 &&
+        row.fires >= this.tunables.FIRES_PER_WINDOW - 1 &&
+        ctx.at <= w.lastDay
+      ) {
+        return "held-for-after";
       }
     }
     if (ctx.sessionId !== undefined && this.sessionFired.get(ctx.sessionId)?.has(w.key) === true) {

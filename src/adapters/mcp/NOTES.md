@@ -662,3 +662,19 @@ the feelings, never the memory, and says so. No salience, decay or recall change
   - `other_word` is now in the published schema, so the schema and the reader agree.
 - **N6.** A note that did not land (a duplicate, a gate) answers
   `feelings: { stored: 0, reason: "memory-not-stored" }`.
+
+## 2026-09-26 — `eventDate` and `remind` on `note` and `session_end` (PR B)
+
+An optional `eventDate` (a day, a month, a year or an `a..b` range, read by
+`time.ts#parseCalendarDate`) and `remind: "plain" | "quiet"` on a `note` and on every
+`session_end` entry, the write-up door's included. `readReminder` checks both BEFORE
+anything is captured or minted: an unreadable date refuses the note, or that one entry,
+as `event-date-unreadable` with the four shapes in `detail`; anything but the two words is
+`remind-unknown`. The model converts "late October" itself — nothing here, or anywhere,
+reads a date out of the text. A deposit that landed answers `reminder: { eventDate,
+remind }` (plus a note when the date is a bare year, which never comes back on its own);
+`remind` sent with no date is dropped and said (`reminder: { ignored: "remind" }`), and
+the memory still lands. The `remind` description carries the owner's plain-vs-quiet
+guidance: plain for a real deadline or an important date, or when
+the person says it matters; quiet otherwise, and quiet ones surface only at a salience of
+about 0.6. What happens after the deposit is `prospective/` NOTES §12.

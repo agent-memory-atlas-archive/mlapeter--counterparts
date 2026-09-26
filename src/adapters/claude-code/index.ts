@@ -59,6 +59,7 @@ export {
   SPAWN_REFUSAL_PREFIX,
   SPAWN_START_COUNT_KEY,
   SPAWN_START_DATE_KEY,
+  plainLine,
   substanceOf,
   wakeOutcome,
 } from "./hooks.js";

@@ -81,6 +81,13 @@ export const TUNABLES = {
    */
   WRITE_UP_ASKS_PER_DAY: 2,
   /**
+   * A plain reminder's handle — the memory's title or first line — is clipped
+   * to this many characters in the line a person reads (2026-09-26). One
+   * glance's worth: a longer title is a paragraph, and the memory's id rides
+   * beside it in the model's copy.
+   */
+  PLAIN_WHAT_MAX_CHARS: 120,
+  /**
    * The host's cap on a hook's whole output, in characters. The host's own
    * words: "Hook output strings, including `additionalContext`, `systemMessage`,
    * and plain stdout, are capped at 10,000 characters. Output that exceeds this

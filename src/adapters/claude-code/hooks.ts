@@ -51,7 +51,7 @@ import {
   WAKE_DELIVERED_EVENT,
   WAKE_INJECTED_EVENT,
 } from "../../core/counterpart.js";
-import type { AdapterDurableEventName } from "../../core/counterpart.js";
+import type { AdapterDurableEventName, PlainReminder } from "../../core/counterpart.js";
 import type {
   BoundaryKind,
   CaptureResult,
@@ -98,7 +98,7 @@ import {
   writerInstruction,
   writerInstructionOverhead,
 } from "../../core/self/index.js";
-import { localClock, localDate } from "../../core/time.js";
+import { localClock, localDate, readableDate } from "../../core/time.js";
 import { capabilities, pageWriterMode } from "./config.js";
 import { TUNABLES } from "./config.js";
 import type { AdapterConfig, CapabilityReport } from "./config.js";
@@ -220,6 +220,14 @@ export interface HookResult {
   readonly spansAppended: number;
   readonly spawn: SpawnOutcome | null;
   readonly observer: boolean;
+  /**
+   * Lines for the PERSON — the host's `systemMessage`, which their terminal
+   * shows (`bin/hook.ts#hostDelivery`). Today only plain reminders
+   * (`Counterpart.plainReminders`, 2026-09-26), at SessionStart and at a
+   * prompt; absent when there are none. The same lines also ride in
+   * `injection`, for the model, so it can raise them.
+   */
+  readonly notices?: readonly string[];
 }
 
 export interface AdapterEvent {
@@ -698,7 +706,12 @@ export class ClaudeCodeAdapter {
       // the delivery check finds its sentinels by prefix, not by line number.
       // It is counted wherever the host's ceiling is: the over-budget event
       // and the room an ask may take both measure `sent`, not `woke.bytes`.
-      const lead = woke.text.length === 0 ? "" : `${this.nowLine()}\n`;
+      // PLAIN REMINDERS DUE TODAY (2026-09-26) ride right under the clock, outside
+      // the wake block like the clock itself, and go to the person too
+      // (`notices`). Claimed as they are read, so the first prompt of this
+      // session will not say them again.
+      const plain = this.plainFor(input);
+      const lead = `${woke.text.length === 0 && plain.context.length === 0 ? "" : `${this.nowLine()}\n`}${plain.context}`;
       const sent = woke.bytes + Buffer.byteLength(lead, "utf8");
       if (budget !== undefined && sent > budget) {
         // Exceeding a reported limit is an EVENT, never silent degradation. The
@@ -767,6 +780,7 @@ export class ClaudeCodeAdapter {
         bytes: woke.bytes,
         sentinel: woke.sentinel,
         ask: asks.length === 0 ? null : asks,
+        ...(plain.notices.length === 0 ? {} : { notices: plain.notices }),
       };
     });
   }
@@ -1208,9 +1222,13 @@ export class ClaudeCodeAdapter {
         return { ...out, ok: true, reason: "primacy-standdown" };
       }
       this.checkWakeArrival(input);
+      // A plain reminder whose day began while this session was already open —
+      // the session that runs past midnight — is said at the next prompt, once.
+      const plain = this.plainFor(input);
+      const told = plain.notices.length === 0 ? {} : { notices: plain.notices };
       const text = input.prompt ?? "";
       if (text.trim().length === 0) {
-        return { ...out, ok: true, reason: "empty-prompt", injection: this.nowLine() };
+        return { ...out, ok: true, reason: "empty-prompt", injection: `${this.nowLine()}${plain.context.length === 0 ? "" : `\n${plain.context.trimEnd()}`}`, ...told };
       }
       const result = this.counterpart.recallForTurn(
         {
@@ -1251,13 +1269,17 @@ export class ClaudeCodeAdapter {
         // session can run for hours. One line ABOVE the recall note when there
         // is one, outside it like the wake's, so the note's byte count and
         // sentinel stand; alone when recall surfaced nothing.
-        injection: result.injection.length === 0 ? this.nowLine() : `${this.nowLine()}\n${result.injection}`,
+        injection:
+          result.injection.length === 0
+            ? `${this.nowLine()}${plain.context.length === 0 ? "" : `\n${plain.context.trimEnd()}`}`
+            : `${this.nowLine()}\n${plain.context}${result.injection}`,
         bytes: decision.bytes,
         sentinel: decision.sentinel,
         // The footnote tier is carried SEPARATELY from the loud one, because the
         // two mean different things to reinforcement: a footnote trains nothing.
         surfaced: decision.surfaced,
         footnotes: decision.footnotes,
+        ...told,
       };
     });
   }
@@ -1265,6 +1287,37 @@ export class ClaudeCodeAdapter {
   /** `Now: Fri 25 Sep 2026, 1:40 pm MDT` — this adapter's clock, in the store's zone. */
   private nowLine(): string {
     return `Now: ${localClock(this.nowFn(), this.counterpart.store.zone())}`;
+  }
+
+  /**
+   * PLAIN REMINDERS, in words (owner decision 2026-09-25/26): "Today: pay your
+   * taxes". Two renderings of each, from the same claimed record —
+   *
+   *   - `notices`, for the PERSON, bare: the host shows them as the hook's
+   *     `systemMessage` in the terminal (`bin/hook.ts#hostDelivery`);
+   *   - `context`, for the MODEL, one line each ending in a newline, saying it
+   *     was asked for and naming the memory, so it can raise it and look it up.
+   *
+   * `Counterpart.plainReminders` has already CLAIMED every one it returns, so
+   * each is said at most once per beat whichever process asks first. No date
+   * (`input.at` absent) means no calendar, and so nothing. Never throws.
+   */
+  private plainFor(input: HookInput): { context: string; notices: string[] } {
+    if (input.at === undefined) return { context: "", notices: [] };
+    try {
+      const due = this.counterpart.plainReminders({ at: input.at });
+      const notices: string[] = [];
+      let context = "";
+      for (const r of due) {
+        const said = plainLine(r);
+        notices.push(said);
+        context += `Plain reminder (they asked to be told) — ${said} [${r.memoryId}]\n`;
+      }
+      if (due.length > 0) this.emit("adapter.plain.told", { count: due.length });
+      return { context, notices };
+    } catch {
+      return { context: "", notices: [] };
+    }
   }
 
   /**
@@ -2545,6 +2598,26 @@ export function wakeOutcome(expected: string | null, arrival: WakeArrival): Wake
     if (!arrival.headPrinted.present) return "not-found";
   }
   return "truncated";
+}
+
+/**
+ * ONE PLAIN REMINDER, AS A PERSON READS IT (2026-09-26). The owner's example is
+ * the whole spec — "Today: pay your taxes" — so each beat is the shortest
+ * sentence that says when:
+ *
+ *   day        `Today: pay your taxes`
+ *   opens      `This month: launch the beta` / `Until Sat 31 Oct 2026: book flights`
+ *   last-day   `Last day today: file the extension`
+ *
+ * `what` is the memory's title or first line (`Counterpart.plainReminders`).
+ */
+export function plainLine(r: Pick<PlainReminder, "beat" | "precision" | "lastDay" | "what">): string {
+  const max = TUNABLES.PLAIN_WHAT_MAX_CHARS;
+  const what = r.what.length <= max ? r.what : `${r.what.slice(0, max - 1).trimEnd()}…`;
+  if (r.beat === "day") return `Today: ${what}`;
+  if (r.beat === "last-day") return `Last day today: ${what}`;
+  if (r.precision === "month") return `This month: ${what}`;
+  return `Until ${readableDate(r.lastDay)}: ${what}`;
 }
 
 function codeOf(err: unknown): string {

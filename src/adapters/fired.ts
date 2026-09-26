@@ -142,6 +142,7 @@ export type ProbeId =
   | "edges"
   | "prospective.armed"
   | "prospective.fired"
+  | "prospective.dated"
   | "protected"
   | "removals"
   | `versions:${string}`;
@@ -735,26 +736,38 @@ export const MECHANISMS: readonly Mechanism[] = [
     },
   },
   {
-    // STILL BLIND, and the rows are built and waiting (2026-09-20, E2).
-    //
-    // `prospective.fire` and `prospective.fire.refused` exist now and are
-    // written by `Prospective.fire()`. What does NOT exist is a caller: the
-    // only one in the tree is `tools/demo/seed.ts` (mechanism inventory §3 S4).
-    // So pointing this row's evidence at the new name would make it read `new`
-    // for two days and then `never` for ever — durable evidence asserted for a
-    // mechanism nothing can make fire, which is the blind case wearing a never
-    // label, and exactly the confusion this view exists to break.
-    //
-    // It goes back to event evidence the day the surfacing path spends a fire.
+    // A memory with a reminder date on it (2026-09-26): `note` and
+    // `session_end` write the `event_date` column now. The count the gauge
+    // reads as "dated memories held".
+    id: "prospective-dated",
+    label: "a memory was given a date to come back on",
+    module: "prospective/, mcp/tools.ts",
+    evidence: { kind: "probe", probe: "prospective.dated" },
+  },
+  {
+    // BACK ON EVENT EVIDENCE (2026-09-26). Until today the only caller of
+    // `fire()` was `tools/demo/seed.ts`, so this row was `blind` on purpose;
+    // `Counterpart#spendArrivals` now spends a fire whenever a date's cue
+    // actually surfaced in a turn. A QUIET reminder, the default.
     id: "prospective-fired",
     label: "that future date arrived and the reminder came back",
-    module: "prospective/",
-    evidence: {
-      kind: "none",
-      reason:
-        "the two rows that would record it now exist (`prospective.fire`, `prospective.fire.refused`) and nothing calls `fire()` outside the demo seeder, so no row can land: `arrivals()` is read every turn but the fire budget is never spent. Wiring the surfacing path to spend it is what closes this, not another row.",
-    },
-    covers: ["prospective.fire", "prospective.fire.refused"],
+    module: "prospective/, counterpart.ts#spendArrivals",
+    evidence: { kind: "event", names: ["prospective.fire"] },
+    // The refusal row is ACCOUNTED FOR here, and deliberately not read as a
+    // refusal column: its reasons are budget and calendar ("already fired
+    // today", "held for after"), the "not yet" vocabulary `RefusalSource.only`
+    // exists to keep out of the blocked list.
+    covers: ["prospective.fire.refused"],
+    since: "2026-09-26",
+  },
+  {
+    // A PLAIN reminder told to the person on its day (2026-09-26): one row per
+    // memory, window and beat, latched.
+    id: "prospective-plain",
+    label: "a reminder marked plain was said plainly on its day",
+    module: "prospective/, claude-code/hooks.ts",
+    evidence: { kind: "event", names: ["prospective.plain"] },
+    since: "2026-09-26",
   },
 
   // ── the machinery underneath ─────────────────────────────────────────────
@@ -1647,6 +1660,11 @@ function readProbes(store: ReadOnlyStore, w: Window): Probed {
   for (const id of scanned) {
     const row = store.row(id);
     if (row !== undefined && row.archived === 0 && row.protected === 1) bump("protected");
+    // A live memory carrying a reminder date (schema v7's `event_date`), dated
+    // by when it was written: the day a date was SET is the row's own moment.
+    if (row !== undefined && row.archived === 0 && row.event_date !== null) {
+      bump("prospective.dated", { at: row.created_at });
+    }
     for (const edge of store.edgesFrom(id)) bump("edges", { livedDay: edge.last_day });
     for (const p of store.prospectiveFor(id)) {
       bump("prospective.armed");

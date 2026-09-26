@@ -46,6 +46,18 @@ export interface ProspectiveTunables {
   FADED_STRENGTH: number;
   /** Bound on the in-process session-dedup set (INTERFACE-GAPS #3). */
   MAX_SESSION_WINDOWS: number;
+  /** Tune question (a), 2026-09-26: a month-dated memory peaks on the 1st plus a
+   *  stable per-memory offset of `0..N-1` days, so a month-heavy store does not
+   *  warm everything on day 1. 0 or 1 turns the stagger off. CAL — v1 measured
+   *  the clustering, never a spread; seven is "the first week". */
+  MONTH_STAGGER_DAYS: number;
+  /** Tune question (b), 2026-09-26: a month or range window keeps its LAST fire
+   *  for after the span it names — the "after" beat a month item never got in
+   *  v1 (Rosa's post-surgery check-in). Only meaningful with
+   *  `FIRES_PER_WINDOW >= 2`; with one fire it would never fire, so it is
+   *  ignored there. Structural in shape, CAL in whether it is warm (open
+   *  question 1). */
+  HOLD_LAST_FIRE_FOR_AFTER: boolean;
 }
 
 /**
@@ -65,6 +77,8 @@ export const TUNABLES: ProspectiveTunables = {
   RAMP_CLOSE: 0.2,
   FADED_STRENGTH: PHYSICS.PHI_PRUNE,
   MAX_SESSION_WINDOWS: 200,
+  MONTH_STAGGER_DAYS: 7,
+  HOLD_LAST_FIRE_FOR_AFTER: true,
 };
 
 export function withTunables(overrides: Partial<ProspectiveTunables> = {}): ProspectiveTunables {

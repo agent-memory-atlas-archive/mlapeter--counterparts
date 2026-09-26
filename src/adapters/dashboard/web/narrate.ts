@@ -773,6 +773,13 @@ export const NARRATORS = {
     calm(
       `I held back a reminder about ${subject(t)} (${s(t, "reason") ?? "no reason recorded"}). Holding debts and losing deadlines is the whole of the tact rule; this is it working.`,
     ),
+  // A plain reminder (2026-09-26): the one kind that is SAID, because its
+  // author asked for exactly that.
+  "prospective.plain": (t) => {
+    const beat = s(t, "beat");
+    const when = beat === "last-day" ? "on its last day" : beat === "opens" ? "as its dates opened" : "on the day";
+    return notable(`I told you plainly about ${subject(t)} ${when}, as it was asked to be.`);
+  },
 
   // ── the worker that did start ──────────────────────────────────────────────
   //
@@ -945,6 +952,7 @@ export const REF_KIND = {
   // key is a derived address on that row, not an entity of its own.
   "prospective.fire": "memory",
   "prospective.fire.refused": "memory",
+  "prospective.plain": "memory",
   "adapter.checkout": "none",
   "adapter.wake.delivered": "none",
   "adapter.wake.injected": "none",

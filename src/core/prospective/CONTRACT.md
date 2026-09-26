@@ -21,6 +21,17 @@ clothes. **Hold debts, lose deadlines.**
   turning to June is treated exactly like the user saying "Portland": one more cue into the
   same activation → gate → tier competition, under the same floors, refractory, dedup, and
   footnote-first tiering as everything else.
+  **One named exception, by the owner's decision (2026-09-25/26, a working default, not a
+  rule): a PLAIN item.** When the author of a dated memory marks it `remind: "plain"` —
+  because the person said "don't let me forget", or it is a real deadline — it is *also*
+  said outright on its day: one line to the person (the host's terminal) and the same line
+  to the model, at most once per beat (a day item on its day; a month or range the first
+  day it is seen open and again on its last day). That is a bypass lane on purpose, and it
+  is bounded like one: no salience floor (it was asked for), but never under observer,
+  never for an archived, superseded, removed or journal row, never for a year, and never
+  twice for the same beat (`Prospective.plainDue` / `claimPlain`). Quiet — the default —
+  is everything above, unchanged. A plain item told today is not also offered as a quiet
+  cue that day (`told-plainly-today`).
 - **Prospectivity is DERIVED, never stored.** [v1] §12 G2 — eligibility is a predicate over
   the event date, the encode date, salience, and flags, so the property expires by itself
   when the window passes: no cleanup pass, no second source of truth, nothing for decay to
@@ -34,7 +45,12 @@ clothes. **Hold debts, lose deadlines.**
   in the wake's horizon lane as a thing about to happen.
   **A missing encode date fails conservatively.** [v1] §12 G3.
 - **Precision is carried by the date's own format**, never rounded, and the ramp differs by
-  precision — a stated month *means* early month more than the 29th. [v1] §12 G4.
+  precision — a stated month *means* early month more than the 29th. [v1] §12 G4. Since
+  2026-09-26 there are four shapes (`core/time.ts`): a day, a month, a year (no window), and
+  a RANGE `a..b` — the author saying exactly which days, so it is at full intensity for the
+  whole span. The date is the `memories.event_date` column (schema v7), written by `note`
+  and `session_end` as an explicit field; nothing in this module or upstream of it reads a
+  date out of prose.
 - **A temporal cue alone reaches the footnote tier at most.** [v1] §12 G5.
 - **Once-ness has four independent brakes**: one ambient fire per occasion per lived day;
   a cap per window; session dedup; and — decisive — **once the assistant is observed to
@@ -85,14 +101,17 @@ clothes. **Hold debts, lose deadlines.**
 the cue and gate machinery of `recall/`; per-occasion firing history; the previous
 session's affect summary; the observer predicate.
 **Outputs** — at most a line or two on the session's horizon, framed *"remembered, not
-tasks"*, and/or a temporal cue fed into the ordinary turn-time pass; firing-state
-transitions; telemetry by reference.
+tasks"* (day-dated items only, since 2026-09-26), and/or a temporal cue fed into the
+ordinary turn-time pass; for a PLAIN item, a claimed record the host turns into one line on
+its day (§3's named exception) — records, never words; firing-state transitions;
+telemetry by reference.
 
 **Guarantees** — **[M]** mechanized, **[A]** advisory:
 
-1. **[M] There is no bypass lane.** A temporal cue enters `recall/` through the same
-   activation and gate path as any other cue; a test asserts no second injection path
-   exists.
+1. **[M] There is no bypass lane for a quiet item.** A temporal cue enters `recall/`
+   through the same activation and gate path as any other cue; a test asserts no second
+   injection path exists. The plain lane (§3) is the one named exception, and this module
+   still holds no words for it — it hands out records, and a test asserts the exports.
 2. **[M] Eligibility is a pure predicate, computed at read time.** Nothing stores
    "prospective"; nothing has to clean it up.
 3. **[M] A missing or year-only encode date fails closed.**
@@ -135,3 +154,6 @@ admission criterion, with a named negative example) · **§2.17** (exit paths ar
    lane would be simpler and more brain-faithful.
 3. **What replaces `session dedup` if `recall/`'s per-session gate state is not persisted?**
    One of the four brakes depends on it — see `recall/` open question 1.
+4. **Is "plain" the right amount of loud?** (2026-09-26.) Once on the day, twice for a
+   month or range, only on the stated span — no lead-day warning, no nag when the day is
+   missed. The owner's first weeks of use answer it; nothing here measured it.
