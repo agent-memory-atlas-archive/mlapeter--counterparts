@@ -1593,3 +1593,15 @@ What the build settled, beyond the CONTRACT section:
 - **Review of #231, S1 (2026-09-25):** the evening of the upgrade no longer turns doctor
   RED. The store holds a one-day-back date as the same lived day, and the migration
   clamps `lastActiveDate`; details are in store NOTES.
+
+## 2026-09-26 — plain reminders are claimed only once the envelope carries them (PR #243 review)
+
+Plain reminder lines ("Today: pay your taxes") now go FIRST among the terminal notices,
+ahead of the doctor's red line, and are claimed only after `bin/hook.ts#deliverTurn` has
+probed the envelope and found room for them — the update notice's "mark only what is
+certainly leaving". The priority order above still holds for the notices that follow them.
+The reason for going first: the doctor's line returns at the next start, while a plain
+beat is spent once. A full wake (the ~9 KB case above) therefore defers the plain lines —
+unclaimed, and stripped from the model's copy too (`hooks.ts#withoutPlain`) — to the first
+prompt, whose envelope is small. When a plain line and the update notice do not fit
+together at a prompt, the update notice waits. Details: `docs/adversarial-review-pr243-2026-09-26.md`.
