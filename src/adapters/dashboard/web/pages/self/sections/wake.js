@@ -1,19 +1,25 @@
-/* What the next session wakes up with — folded to one line and a stacked bar of
-   its parts; click to read the whole text. And the one management door on this
-   tab: rebuild it now (`counterparts rebrief`, through the actions seam). */
+/* What the next session wakes up with — one line and a stacked bar of its
+   parts, in the side column; "read it" opens the whole text in place. The
+   rebuild door (`counterparts rebrief`, through the actions seam) is shown but
+   not offered for now: rebrief is one step of sleep, and it comes back with
+   the sleep work. The console's `counterparts rebrief` is unchanged. */
 import { absenceLine } from "../../../shared/absence.js";
 import { act, resultHtml } from "../../../shared/actions.js";
 import { $, esc } from "../../../shared/dom.js";
+import { ui } from "../state.js";
+import { q, wireTips } from "../tips.js";
 
 export const markup = `
-        <h2>What the next session wakes up with</h2>
-        <div class="card pad" id="self-wake"></div>
+      <div class="side-block">
+        <h3 class="sb-h" id="self-wake-h">What the next session wakes up with <span id="self-wake-q"></span></h3>
+        <div id="self-wake"></div>
         <div class="wk-act">
-          <button type="button" class="act-btn" id="rebrief-go">Rebuild what the next session wakes up with</button>
+          <button type="button" class="act-btn" id="rebrief-go" disabled aria-disabled="true"
+            title="comes with the sleep work">Rebuild it now</button><span class="soon" title="comes with the sleep work">coming soon</span>
           <div id="rebrief-out"></div>
-        </div>`;
+        </div>
+      </div>`;
 
-let open = false;
 let onDone = null;
 
 export const kb = (b) => (b / 1000).toFixed(1) + " KB";
@@ -21,10 +27,15 @@ export const kb = (b) => (b / 1000).toFixed(1) + " KB";
 /** The parts, in reading order, with a colour each. */
 const TONE = { furniture: "p-furn", page: "p-page", identity: "p-page", craft: "p-craft", threads: "p-threads", hints: "p-hints", horizon: "p-horizon" };
 
+const EXPLAIN = "When a session starts, a line with today's date goes on top, and in a folder with a handoff note, a pointer to it. " +
+  "It is composed without a model, at the end of each day.";
+
 export function mount(refresh) {
   onDone = refresh;
+  // The action stays wired, so turning the button back on is one attribute.
   $("rebrief-go").addEventListener("click", async () => {
     const go = $("rebrief-go");
+    if (go.disabled) return;
     go.disabled = true;
     $("rebrief-out").innerHTML = resultHtml({ out: ["rebuilding…"] });
     const r = await act("rebrief", {});
@@ -34,7 +45,13 @@ export function mount(refresh) {
   });
 }
 
+let last = null;
+
 export function paint(d) {
+  if (d) last = d;
+  d = last;
+  $("self-wake-q").innerHTML = q("wake", EXPLAIN);
+  wireTips($("self-wake-q"));
   const w = d.wake;
   if (!w.ok) {
     $("self-wake").innerHTML = absenceLine(w.absent || "(never run)", "no wake has been composed yet (" + w.reason + ")");
@@ -50,16 +67,15 @@ export function paint(d) {
     '<span class="wk-key"><i class="' + (TONE[p.key] || "p-furn") + '"></i>' + esc(p.label) + " <em>" + kb(p.bytes) + "</em></span>").join("") +
     (budget && budget > w.bytes ? '<span class="wk-key"><i class="p-room"></i>room left <em>' + kb(budget - w.bytes) + "</em></span>" : "");
   $("self-wake").innerHTML =
-    '<button type="button" class="wk-sum" id="wake-toggle" aria-expanded="' + open + '">' +
-      '<span class="wk-line"><b>' + kb(w.bytes) + "</b>" +
-        (budget ? " of " + kb(budget) : " <small>(the size it may take was not recorded)</small>") + "</span>" +
-      '<span class="wk-open">' + (open ? "hide the text" : "read it") + "</span>" +
+    '<button type="button" class="wk-sum" id="wake-toggle" aria-expanded="' + ui.wake + '">' +
+      '<span class="wk-line">Next session gets <b>' + (w.bytes / 1000).toFixed(1) + "</b>" +
+        (budget ? " of " + kb(budget) : " KB <small>(its ceiling was not recorded)</small>") + "</span>" +
+      '<span class="wk-open">' + (ui.wake ? "hide it" : "read it") + "</span>" +
     "</button>" +
     '<div class="wk-bar" role="img" aria-label="' + esc(parts.map((p) => p.label + " " + p.bytes + " bytes").join(", ")) + '">' + seg + "</div>" +
     '<div class="wk-legend">' + legend + "</div>" +
-    '<div class="wk-full"' + (open ? "" : " hidden") + ">" + fullText(w) + "</div>" +
-    '<p class="foot">When a session starts, a line with today\'s date goes on top, and in a folder with a handoff note, a pointer to it. It is composed without a model, at the end of each day.</p>';
-  $("wake-toggle").addEventListener("click", () => { open = !open; paint(d); });
+    '<div class="wk-full" id="wake-full"' + (ui.wake ? "" : " hidden") + ">" + fullText(w) + "</div>";
+  $("wake-toggle").addEventListener("click", () => { ui.wake = !ui.wake; paint(); });
 }
 
 function fullText(w) {

@@ -25,7 +25,7 @@ import { mindView } from "../src/adapters/dashboard/web/views.js";
 import { Counterpart } from "../src/core/counterpart.js";
 import { Store, dateOf } from "../src/core/store/index.js";
 import { localDate } from "../src/core/time.js";
-import { PAGE_CORE_HEADING, PAGE_LATELY_HEADING } from "../src/core/self/index.js";
+import { PAGE_CORE_HEADING, PAGE_LATELY_HEADING, SELF_TUNABLES } from "../src/core/self/index.js";
 
 const PAGE = `## ${PAGE_CORE_HEADING}\n\nCore: placeholder.\n\n## ${PAGE_LATELY_HEADING}\n\nLately: placeholder.`;
 const PAGE_TWO = `## ${PAGE_CORE_HEADING}\n\nCore: placeholder two.\n\n## ${PAGE_LATELY_HEADING}\n\nLately: placeholder two.`;
@@ -370,6 +370,10 @@ describe("the page is visible where mechanisms are", () => {
     expect(found?.severity).toBe("amber");
     expect(found?.data["stale"]).toBe(true);
     expect(found?.fix.length).toBeGreaterThan(0);
+    // The count and the limit ride along, so the dashboard's health row can
+    // say it in words ("not rewritten in 40 days") without re-deriving either.
+    expect(found?.data["daysSince"]).toBe(40);
+    expect(found?.data["staleAfter"]).toBe(SELF_TUNABLES.PAGE_STALE_DAYS);
     later.close();
   });
 

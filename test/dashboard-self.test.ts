@@ -16,7 +16,10 @@ import { Dashboard } from "../src/adapters/dashboard/index.js";
 import type { DashboardSource } from "../src/adapters/dashboard/index.js";
 import { router } from "../src/adapters/dashboard/web/server.js";
 import { mindView } from "../src/adapters/dashboard/web/views.js";
-import { wakeParts } from "../src/adapters/dashboard/web/views/mind.js";
+import { wakeParts, writerReason, writerWords } from "../src/adapters/dashboard/web/views/mind.js";
+import { SELF_TUNABLES } from "../src/core/self/index.js";
+// @ts-expect-error — a plain browser module, no declarations
+import { PLAIN } from "../src/adapters/dashboard/web/pages/health/sections/checks.js";
 // @ts-expect-error — a plain browser module, no declarations
 import { diffStats, diffText, diffTokens } from "../src/adapters/dashboard/web/pages/self/diff.js";
 
@@ -171,6 +174,82 @@ describe("the self tab's view", () => {
       expect(reply.status).toBe(200);
       expect(hash()).toBe(before);
     });
+  });
+});
+
+describe("the self tab's side column (round 2, an experiment)", () => {
+  test("the opening is one short line", () => {
+    const v = withSource(dir, (src) => mindView(src));
+    expect(v.opening).toMatch(/^Day \d+ · Who I am$/);
+  });
+
+  test("the page carries the limit its staleness is measured against", () => {
+    const v = withSource(dir, (src) => mindView(src));
+    expect(v.page?.staleAfter).toBe(SELF_TUNABLES.PAGE_STALE_DAYS);
+  });
+
+  test("a store the page writer never ran on says so, as never run", () => {
+    const v = withSource(dir, (src) => mindView(src));
+    expect(v.writer.ran).toBe(false);
+    expect(v.writer.line).toBe("No run recorded yet");
+    expect(v.writer.absent).toBe("(never run)");
+  });
+
+  test("every outcome reads in plain words, and last night is named as such", () => {
+    const y = "2026-09-25";
+    const w = (outcome: string, detail = "", derived = false, about = y) =>
+      writerWords({ about, outcome: outcome as never, derived, run: { detail } }, y);
+    expect(w("revised").line).toBe("Last night: rewrote it");
+    expect(w("nothing-to-say").line).toBe("Last night: read the day and kept it as is");
+    // Derived: nobody reported it, so it is not worded as a report.
+    expect(w("nothing-to-say", "", true).line).toBe("Last night: was handed the day and left it as is");
+    expect(w("failed", "watchdog").line).toBe("Last night: couldn't run — it ran out of time");
+    expect(w("failed", "exit 2").what).toBe("couldn't run — it stopped with an error (exit 2)");
+    expect(w("failed", "", true).what).toBe("started and never finished");
+    expect(w("refused", "too-large").what).toBe("tried, but the rewrite was turned away — too large");
+    expect(w("skipped", "no-room").what).toBe("didn't run — the session had no room to ask it");
+    expect(w("asked").what).toBe("was asked at today's first session; no answer yet");
+    expect(w("started").what).toBe("is running now");
+    const older = w("revised", "", false, "2026-07-09");
+    expect(older.lastNight).toBe(false);
+    expect(older.line).toBe("The night of Jul 9: rewrote it");
+    // A night with no row at all behind its skip says nothing it does not know.
+    expect(writerWords({ about: y, outcome: "skipped", derived: true, run: null }, y).what).toBe("nothing ran, and nothing says why");
+    expect(writerReason("some-new-code")).toBe("some new code");
+    expect(writerReason("")).toBe("no reason was recorded");
+  });
+
+  test("the newest run is read through self/'s own status: an asked night that is over reads as derived", () => {
+    const at = mkdtempSync(join(tmpdir(), "counterparts-self-writer-"));
+    try {
+      const then = Date.parse("2026-09-02T15:00:00Z");
+      const c = Counterpart.open({ dir: at, owner: true, now: () => then });
+      try {
+        c.revisePage(PAGE_1, { reason: "first", by: "writer" });
+        c.recordPageWriterRun({ about: "2026-09-01", mode: "session", outcome: "asked" });
+      } finally {
+        c.close();
+      }
+      // Read on the real clock, which is weeks past the claim.
+      const v = withSource(at, (src) => mindView(src));
+      expect(v.writer.ran).toBe(true);
+      expect(v.writer.outcome).toBe("nothing-to-say");
+      expect(v.writer.derived).toBe(true);
+      expect(v.writer.line).toBe("The night of Sep 1: was handed the day and left it as is");
+      expect(v.page?.stale).toBe(true);
+    } finally {
+      rmSync(at, { recursive: true, force: true });
+    }
+  });
+
+  test("the health row says the self page's age in words, and says when it is past the limit", () => {
+    const line = PLAIN["self-page"] as (d: unknown) => string | null;
+    expect(line({ present: true, daysSince: 0, version: 3, stale: false, staleAfter: 14 })).toBe("rewritten today · version 3");
+    expect(line({ present: true, daysSince: 5, version: 3, stale: false, staleAfter: 14 })).toBe("rewritten 5 days ago · version 3");
+    expect(line({ present: true, daysSince: 16, version: 3, stale: true, staleAfter: 14 })).toBe("not rewritten in 16 days; this turns amber after 14");
+    // Nothing to count from (absent, cleared, or an older doctor): doctor's own detail stands.
+    expect(line({ present: false })).toBeNull();
+    expect(line({ present: true, stale: true })).toBeNull();
   });
 });
 
