@@ -105,8 +105,13 @@ no key. The test's exact `toEqual` is back.
 **Verified.** Eight seeds in UTC and six in `TZ=America/Denver` all came out
 byte-identical (5886 bytes, one sha).
 
-**On the live store.** Tied lines are reordered once, by the words' hash instead of the
-id. Identity's rotation by last-rendered day absorbs that after one render.
+**On the live store.** Lines tied on everything else move from id order to hash order.
+Both orders are arbitrary, so nothing is lost. Identity also rotates by last-rendered
+day, which takes over after one render. Craft, threads and hints don't rotate, so their
+tied lines simply stay in hash order. Nothing serializes a `Ranked` whole: the briefing
+events carry the id, the lane and the strength. So the hash never reaches a durable
+row. Whoever merges #238, which adds `hint` to `Ranked`, should know `tieKey` is
+there.
 
 **Merging with PR #238.** The edits sit away from #238's hunks: the field goes after
 `bornDay`, the literal line after `bornDay: s.doc.bornDay,`, and one import. They should

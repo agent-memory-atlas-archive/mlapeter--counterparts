@@ -213,9 +213,10 @@ decided twice.)*
    strength sees more ties. The self lanes break a tie on born day, then on a hash
    of the memory's words (`self/identity.ts#tieKey`, added in review), then id —
    so two stores built alike (the demo seed's two runs) render the same wake, and
-   `demo-seed.test.ts` compares the wake's bytes exactly again. On a live store
-   this reorders tied elements once (words' hash instead of id); identity's
-   rotation by last-rendered day absorbs it after one render.
+   `demo-seed.test.ts` compares the wake's bytes exactly again. On a live store,
+   lines tied on everything else move from id order to hash order — both
+   arbitrary, so nothing is lost; identity additionally rotates by last-rendered
+   day, which dominates after one render.
 
    **Softening's clock, an approximation named.** A feeling softens over the lived
    days since its MEMORY's birth day: the lived-day clock is a counter and cannot map
