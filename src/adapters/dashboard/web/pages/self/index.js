@@ -1,40 +1,79 @@
-/* The self tab (was "mind"): the self page on top with its history as a line of
-   dots, what is settling into the core (and what is closest), the wake folded to
-   one line, and the journal by day. One fetch (`/api/mind`). */
+/* The self tab (was "mind"): the self page on the left with a side column
+   beside it (when it was rewritten and by whom, what the page writer did last,
+   the page's history as a line of dots, what the next session wakes up with);
+   under them, what is settling into the core and the journal as a strip of
+   days. One fetch (`/api/mind`).
+
+   LIVE. The pulse calls `refresh()` when the store moves. Only the panels whose
+   data changed are redrawn, each from `state.js`, so whatever was open — a
+   picked day, expanded chapters, an opened version, a pinned `?`, the wake's
+   text — is drawn open again, and the scroll position is put back. */
 import { api, fail } from "../../shared/api.js";
-import { $ } from "../../shared/dom.js";
+import { $, esc } from "../../shared/dom.js";
 import * as journal from "./sections/journal.js";
 import * as page from "./sections/page.js";
 import * as settling from "./sections/settling.js";
 import * as wake from "./sections/wake.js";
+import { q, wireTips } from "./tips.js";
 
 const markup = `
-    <p class="lede" id="mind-opening"></p>${page.markup}
+    <h2 class="sp-title" id="mind-opening"></h2>
+    <div class="self-top">
+      <div class="self-main">${page.mainMarkup}
+      </div>
+      <aside class="self-side">${page.sideMarkup}${wake.markup}
+      </aside>
+    </div>
     <div class="cols self-cols">
       <div>${settling.markup}
       </div>
-      <div>${wake.markup}
+      <div>${journal.markup}
       </div>
-    </div>${journal.markup}
+    </div>
   `;
 
-async function render() {
+/** Each panel, the slice of the view it draws from, and how it draws. */
+const PANELS = [
+  { name: "opening", slice: (d) => [d.opening], paint: paintOpening },
+  { name: "page", slice: (d) => [d.page, d.pageAbsent], paint: page.paintPage },
+  { name: "meta", slice: (d) => [d.page, d.writer], paint: page.paintMeta },
+  { name: "history", slice: (d) => [d.pageHistory], paint: page.paintHistory },
+  { name: "wake", slice: (d) => [d.wake, d.wakeParts, d.wakeBudget], paint: wake.paint },
+  { name: "settling", slice: (d) => [d.settling, d.stories], paint: settling.paint },
+  { name: "journal", slice: (d) => [d.journal, d.journalAbsent, d.journalMore], paint: journal.paint },
+];
+
+/** What each panel was last drawn from. */
+const drawn = {};
+
+function paintOpening(d) {
+  $("mind-opening").innerHTML = esc(d.opening) + " " +
+    q("opening", "In my own words; the next session opens with this. Under it: how it has changed, what is slowly settling into the core, what the next session will be handed, and the journal.");
+  wireTips($("mind-opening"));
+}
+
+/** Draw every panel whose data moved (all of them when `force`). */
+async function draw(force) {
   let d;
-  try { d = await api("/api/mind"); } catch (e) { return fail("The self page", e); }
-  $("mind-opening").textContent = d.opening;
-  page.paint(d);
-  settling.paint(d);
-  wake.paint(d);
-  journal.paint(d);
+  try { d = await api("/api/mind"); } catch (e) { if (force) fail("The self page", e); return; }
+  const x = scrollX, y = scrollY;
+  for (const p of PANELS) {
+    const key = JSON.stringify(p.slice(d));
+    if (!force && drawn[p.name] === key) continue;
+    p.paint(d);
+    drawn[p.name] = key;
+  }
+  if (scrollX !== x || scrollY !== y) scrollTo(x, y);
 }
 
 export default {
   name: "self",
   mount(section) {
     section.innerHTML = markup;
-    wake.mount(render);
+    wake.mount(() => draw(false));
   },
-  render,
+  render: () => draw(true),
+  refresh: () => draw(false),
   /** `#self/settling`, `#self/journal`: open the tab at that section. */
   route({ anchor }) {
     const h = anchor && $("self-" + anchor + "-h");

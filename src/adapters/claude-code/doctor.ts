@@ -2376,7 +2376,17 @@ export function selfPageFindings(store: Store): Finding[] {
   const detail =
     `${page.bytes} bytes, version ${page.version}, last revised ${page.revisedOn === "" ? "(unrecorded)" : page.revisedOn}` +
     `${page.by === null ? "" : ` by ${page.by}`}`;
-  const data = { present: true, bytes: page.bytes, version: page.version, revisedOn: page.revisedOn, stale };
+  // The day count and the limit ride along so a surface can say it in words
+  // ("not rewritten in 16 days") without re-deriving either (dashboard health).
+  const data = {
+    present: true,
+    bytes: page.bytes,
+    version: page.version,
+    revisedOn: page.revisedOn,
+    stale,
+    daysSince: calendarDaysSince(page.revisedOn, store.today()),
+    staleAfter: SELF_TUNABLES.PAGE_STALE_DAYS,
+  };
   return [
     stale
       ? finding(
@@ -2561,12 +2571,18 @@ function clearedPage(
  * two are asserted to agree.
  */
 function pageStaleOn(revisedOn: string, today: string, limit: number): boolean {
+  const days = calendarDaysSince(revisedOn, today);
+  return days === null ? true : days > limit;
+}
+
+/** Calendar days from `revisedOn` to `today`; null when either does not read. */
+function calendarDaysSince(revisedOn: string, today: string): number | null {
   const on = revisedOn.trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(on) || !/^\d{4}-\d{2}-\d{2}$/.test(today)) return true;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(on) || !/^\d{4}-\d{2}-\d{2}$/.test(today)) return null;
   const a = Date.parse(`${on}T00:00:00Z`);
   const b = Date.parse(`${today}T00:00:00Z`);
-  if (!Number.isFinite(a) || !Number.isFinite(b)) return true;
-  return Math.round((b - a) / 86_400_000) > limit;
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  return Math.round((b - a) / 86_400_000);
 }
 
 /**
