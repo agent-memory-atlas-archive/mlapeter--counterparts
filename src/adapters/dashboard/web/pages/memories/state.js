@@ -1,7 +1,11 @@
 /* What the memories page is filtered to, kept apart from the markup so a live refresh redraws and leaves every choice as it was.
    One filter listener: the list. */
-/** `hold`: firm / settling / fading, set from the "How firmly it's held" bar. */
-export const filters = { state: "live", kind: null, core: false, journal: false, hold: null, sort: "newest", offset: 0 };
+/** `hold`: firm / settling / fading, set from the "How firmly it's held" bar.
+ *  `feeling` ({ word, whose }) and `feelingCore`: set from the "How it feels"
+ *  radar — one or the other, never both. */
+export const filters = {
+  state: "live", kind: null, core: false, journal: false, hold: null, feeling: null, feelingCore: null, sort: "newest", offset: 0,
+};
 
 const listeners = [];
 export function onFilter(fn) { listeners.push(fn); }

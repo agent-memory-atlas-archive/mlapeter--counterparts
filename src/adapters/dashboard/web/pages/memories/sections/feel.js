@@ -3,12 +3,14 @@
    owner's) and mine (this counterpart's own). Each axis is how much of that
    feeling runs through the live memories: the recorded strengths summed, both
    shapes scaled by the one largest axis so they compare, on a square-root
-   scale so a little of a feeling still shows beside a lot. Hover an axis (tap it
-   on a phone) for the feelings under it. Plain SVG. */
+   scale so a little of a feeling still shows beside a lot. Hover an axis for the
+   feelings under it; click or tap one to pin them and filter the list to that
+   core; click a word to filter to that feeling, from that side. Plain SVG. */
 import { $, esc } from "../../../shared/dom.js";
 import { FEELING_COLOURS } from "../../../shared/memory-marks.js";
 import { hideTip, showTip } from "../../../shared/tip.js";
 import { q, wireTips } from "../../../shared/widgets/tips.js";
+import { filters, onFilter, setFilter } from "../state.js";
 
 const YOURS = "#ffb74d";
 const MINE = "#b388ff";
@@ -25,25 +27,51 @@ let data = null;
 /** The axis whose feelings are showing (kept across a live refresh). */
 let picked = null;
 
+/**
+ * Hover floats an axis's words by the pointer and changes nothing. A click or a
+ * tap on an axis pins its words beside the chart AND filters the list to every
+ * memory with a feeling under that core (again: clears it). A click on a word
+ * in the pinned readout filters to that feeling, from that side. The readout
+ * changes only on a click, so a pointer crossing other axes on its way to a
+ * word leaves it alone.
+ */
 export function mount() {
   const el = $("feel");
-  const pick = (e) => {
+  el.addEventListener("click", (e) => {
+    const w = e.target.closest("button[data-word]");
+    if (w) {
+      const cur = filters.feeling;
+      const same = cur && cur.word === w.dataset.word && cur.whose === w.dataset.whose;
+      filterBy({ feeling: same ? null : { word: w.dataset.word, whose: w.dataset.whose }, feelingCore: null }, !same);
+      return;
+    }
     const a = e.target.closest("[data-core]");
     if (!a) return;
     picked = a.dataset.core;
-    showDetail();
-  };
-  el.addEventListener("mouseover", pick);
-  el.addEventListener("click", pick);
-  el.addEventListener("focusin", pick);
+    hideTip();
+    // No scroll here: the words just pinned are what a phone taps next.
+    filterBy({ feeling: null, feelingCore: filters.feelingCore === picked ? null : picked }, false);
+  });
+  el.addEventListener("keydown", (e) => {
+    const a = e.target.closest("g[data-core]");
+    if (a && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); a.dispatchEvent(new MouseEvent("click", { bubbles: true })); }
+  });
   // With a pointer, the words also float by it (the shell's hover tip).
   el.addEventListener("mousemove", (e) => {
-    const a = e.target.closest("[data-core]");
+    const a = e.target.closest("g[data-core]");
     const c = a && data ? data.cores.find((x) => x.core === a.dataset.core) : null;
     if (!c) return hideTip();
-    showTip(e.clientX, e.clientY, detailHtml(c));
+    showTip(e.clientX, e.clientY, detailHtml(c, false));
   });
   el.addEventListener("mouseleave", hideTip);
+  onFilter(showDetail);
+}
+
+/** Set the feeling filter; for a word, bring the list up if its rows would be off screen. */
+function filterBy(patch, scroll) {
+  setFilter(patch);
+  const h = document.getElementById("mlist-h");
+  if (scroll && h && h.getBoundingClientRect().top > innerHeight * 0.5) h.scrollIntoView({ block: "start", behavior: "smooth" });
 }
 
 export function paint(d) {
@@ -51,7 +79,7 @@ export function paint(d) {
   $("feel-q").innerHTML = q("feel",
     "The six core feelings of the feelings wheel. The amber shape is yours — how you felt about the moments I kept; the purple one is mine. " +
     "Each axis sums the strength of every feeling recorded under it, across the memories I hold now; both shapes share one scale, " +
-    "so a bigger shape means more of it was recorded (the scale is a square root, so small amounts still show). Hover or tap a feeling for the words under it.");
+    "so a bigger shape means more of it was recorded (the scale is a square root, so small amounts still show). Hover a feeling for the words under it; click or tap one to show those memories below, and click a word for just that feeling.");
   wireTips($("feel-q"));
   draw();
 }
@@ -113,19 +141,36 @@ function draw() {
 function showDetail() {
   const box = document.getElementById("feel-detail");
   if (!box || !data) return;
-  document.querySelectorAll("#feel .feel-axis").forEach((g) => g.classList.toggle("on", g.dataset.core === picked));
+  // A core the list is filtered to is the one shown, after a refresh too.
+  if (filters.feelingCore) picked = filters.feelingCore;
+  document.querySelectorAll("#feel .feel-axis").forEach((g) => {
+    g.classList.toggle("on", g.dataset.core === picked);
+    g.classList.toggle("filtering", g.dataset.core === filters.feelingCore);
+    g.setAttribute("aria-pressed", String(g.dataset.core === filters.feelingCore));
+  });
   const c = data.cores.find((x) => x.core === picked);
   if (!c) {
-    box.innerHTML = data.carrying ? '<span class="feel-hint">Hover or tap a feeling to see what’s under it.</span>' : "";
+    box.innerHTML = data.carrying ? '<span class="feel-hint">Click or tap a feeling to see what’s under it, and to show those memories below.</span>' : "";
     return;
   }
-  box.innerHTML = detailHtml(c);
+  box.innerHTML = detailHtml(c, true);
 }
 
-/** One core's feelings in words: `proud 3, joyful 1`, yours and mine. */
-function detailHtml(c) {
-  const words = (s) => s.words.length ? s.words.map((w) => esc(w.word) + " " + w.count).join(", ") : '<span class="feel-hint">none</span>';
+/** One core's feelings in words: `proud 3, joyful 1`, yours and mine. In the
+ *  pinned readout each word is a chip that filters the list. */
+function detailHtml(c, chips) {
+  const words = (s, whose) => {
+    if (!s.words.length) return '<span class="feel-hint">none</span>';
+    if (!chips) return s.words.map((w) => esc(w.word) + " " + w.count).join(", ");
+    const f = filters.feeling;
+    return s.words.map((w) => {
+      const on = !!f && f.word === w.word.toLowerCase() && f.whose === whose;
+      return '<button type="button" class="fword' + (on ? " on" : "") + '" data-word="' + esc(w.word.toLowerCase()) + '" data-whose="' + whose +
+        '" aria-pressed="' + on + '" title="show the memories carrying ' + esc(w.word) + " (" + (whose === "owner" ? "yours" : "mine") + ')">' +
+        esc(w.word) + ' <span class="fn">' + w.count + "</span></button>";
+    }).join("");
+  };
   return '<b style="color:' + (FEELING_COLOURS[c.core] || "inherit") + '">' + esc(c.core) + "</b>" +
-    '<div><span class="feel-who" style="color:' + YOURS + '">yours</span> ' + words(c.yours) + "</div>" +
-    '<div><span class="feel-who" style="color:' + MINE + '">mine</span> ' + words(c.mine) + "</div>";
+    '<div class="feel-line"><span class="feel-who" style="color:' + YOURS + '">yours</span> ' + words(c.yours, "owner") + "</div>" +
+    '<div class="feel-line"><span class="feel-who" style="color:' + MINE + '">mine</span> ' + words(c.mine, "self") + "</div>";
 }

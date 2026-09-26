@@ -298,6 +298,9 @@ export interface MemoryListView {
   readonly core: boolean;
   readonly journal: boolean;
   readonly hold: Hold | null;
+  /** A feeling filter from the radar: one word from one side, or every feeling under one core. */
+  readonly feeling: { readonly word: string; readonly whose: "owner" | "self" } | null;
+  readonly feelingCore: string | null;
   readonly sort: ListSort;
   readonly offset: number;
   readonly limit: number;
@@ -359,6 +362,11 @@ export function memoryListView(
     core?: boolean;
     journal?: boolean;
     hold?: string | null;
+    /** A feeling's word as shown (`proud`, or an `other`'s own word), with `whose`. */
+    feeling?: string | null;
+    whose?: string | null;
+    /** Every feeling under this core, from either side. */
+    feelingCore?: string | null;
     sort?: string | null;
     offset?: number;
     limit?: number;
@@ -374,6 +382,17 @@ export function memoryListView(
   const onlyCore = opts.core === true;
   const onlyJournal = opts.journal === true;
   const sort: ListSort = opts.sort === "oldest" ? "oldest" : "newest";
+  const word = typeof opts.feeling === "string" ? opts.feeling.trim().toLowerCase() : "";
+  const feeling: MemoryListView["feeling"] =
+    word.length > 0 && (opts.whose === "owner" || opts.whose === "self") ? { word, whose: opts.whose } : null;
+  const feelingCore = feeling === null && (CORE_EMOTIONS as readonly string[]).includes(opts.feelingCore ?? "") ? (opts.feelingCore as string) : null;
+  // Read only when a feeling filter asks for it: one feelings read per row.
+  const felt = (id: string): boolean => {
+    if (feeling === null && feelingCore === null) return true;
+    return feelingsShown(store, id).some((f) =>
+      feeling !== null ? f.whose === feeling.whose && f.word.toLowerCase() === feeling.word : f.core === feelingCore,
+    );
+  };
   const onlyHold: Hold | null = opts.hold === "firm" || opts.hold === "settling" || opts.hold === "fading" ? opts.hold : null;
 
   interface Slim {
@@ -445,7 +464,8 @@ export function memoryListView(
       (band === null || r.band === band) &&
       (!onlyCore || r.core) &&
       (!onlyJournal || r.journal) &&
-      (onlyHold === null || r.hold === onlyHold),
+      (onlyHold === null || r.hold === onlyHold) &&
+      felt(r.id),
   );
   // Newest first: the lived day it was born, then the moment it was written
   // (v7 `created_at`; a row from before v7 has none and counts as the older),
@@ -511,6 +531,8 @@ export function memoryListView(
     core: onlyCore,
     journal: onlyJournal,
     hold: onlyHold,
+    feeling,
+    feelingCore,
     sort,
     offset,
     limit,

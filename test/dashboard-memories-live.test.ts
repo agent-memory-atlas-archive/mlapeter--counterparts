@@ -38,10 +38,22 @@ if (browser === null) {
 
 let dir: string;
 let running: RunningDashboard | null = null;
+const feltIds: string[] = [];
 
 beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), "counterparts-memories-live-"));
   await seedDemo({ dir });
+  // Feelings for the radar: two of yours under happy (proud), one of mine under sad.
+  const c = Counterpart.open({ dir, owner: true });
+  try {
+    const people = c.store.list({ type: "memory", kind: "person", archived: false });
+    feltIds.push(...people.slice(0, 3));
+    c.store.addFeelings(people[0] as string, [{ whose: "owner", core: "happy", emotion: "proud", strength: 0.8 }]);
+    c.store.addFeelings(people[1] as string, [{ whose: "owner", core: "happy", emotion: "proud", strength: 0.6 }]);
+    c.store.addFeelings(people[2] as string, [{ whose: "self", core: "sad", emotion: "lonely", strength: 0.4 }]);
+  } finally {
+    c.close();
+  }
   if (browser !== null) running = await startDashboard({ dir, port: 0 });
 });
 
@@ -151,6 +163,31 @@ describe("the memories tab, live", () => {
         return ((await r.json()) as { total: number }).total;
       });
       expect(await total()).toBe(shown);
+
+      // ── the radar filters the list ──
+      await page.click('#mfilters button[data-f="clear"]');
+      await page.waitForFunction(() => !document.querySelector('#mfilters button[data-f="kind"].on'));
+      // A core: pins its words and filters to every memory with a feeling under it.
+      await page.click('#feel g.feel-axis[data-core="happy"] text');
+      await page.waitForSelector('#mfilters button[data-f="feeling"].on');
+      expect(await page.textContent('#mfilters button[data-f="feeling"]')).toContain("feeling: happy");
+      await page.waitForFunction(() => /of 2\b/.test(document.getElementById("mlist-sub")?.textContent ?? ""));
+      const happyIds = (await page.locator("#mlist .mrow").evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.id))).sort();
+      expect(happyIds).toEqual(feltIds.slice(0, 2).sort());
+      // A word in the pinned readout: that feeling, from that side.
+      await page.click('#feel-detail button[data-word="proud"][data-whose="owner"]');
+      await page.waitForFunction(() => /feeling: proud · yours/.test(document.querySelector('#mfilters button[data-f="feeling"]')?.textContent ?? ""));
+      expect(await total()).toBe(2);
+      // It survives a refresh, and the readout is still pinned with the word on.
+      write("A note written while the feeling filter was on.");
+      await refresh();
+      expect(await page.textContent('#mfilters button[data-f="feeling"]')).toContain("feeling: proud · yours");
+      expect(await page.locator('#feel-detail button[data-word="proud"].on').count()).toBe(1);
+      expect(await total()).toBe(2);
+      // Clicked again, the word clears the filter.
+      await page.click('#feel-detail button[data-word="proud"][data-whose="owner"]');
+      await page.waitForFunction(() => !document.querySelector('#mfilters button[data-f="feeling"]'));
+      expect(await total()).toBeGreaterThan(2);
       expect(errors).toEqual([]);
     } finally {
       await ctx.close();

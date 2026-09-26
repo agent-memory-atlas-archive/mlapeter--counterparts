@@ -36,7 +36,8 @@ export function mount() {
     if (!b) return;
     const f = b.dataset.f, v = b.dataset.v || null;
     if (f === "state") setFilter({ state: v });
-    else if (f === "clear") setFilter({ kind: null, core: false, journal: false, hold: null });
+    else if (f === "clear") setFilter({ kind: null, core: false, journal: false, hold: null, feeling: null, feelingCore: null });
+    else if (f === "feeling") setFilter({ feeling: null, feelingCore: null });
     else toggle(f, v);
   });
   $("msort").addEventListener("click", (e) => {
@@ -59,6 +60,8 @@ export async function render() {
   if (filters.core) qs.set("core", "1");
   if (filters.journal) qs.set("journal", "1");
   if (filters.hold) qs.set("hold", filters.hold);
+  if (filters.feeling) { qs.set("feeling", filters.feeling.word); qs.set("whose", filters.feeling.whose); }
+  else if (filters.feelingCore) qs.set("feelingCore", filters.feelingCore);
   let d;
   try { d = await api("/api/memories/list?" + qs.toString()); }
   catch (e) { return fail("The memory list", e); }
@@ -91,12 +94,16 @@ function paintFilters(d) {
   const special =
     chip("core", null, '<span class="star">★</span>core' + count(c.core), d.core, c.core === 0 ? "zero" : "", "in the core: part of who I am") +
     chip("journal", null, "journal" + count(c.journal), d.journal, c.journal === 0 ? "zero" : "", "journal chapters, kept as written");
-  const any = d.kind || d.core || d.journal || d.hold;
+  const any = d.kind || d.core || d.journal || d.hold || d.feeling || d.feelingCore;
+  const feelingChip = d.feeling || d.feelingCore
+    ? chip("feeling", null, "feeling: " + esc(d.feeling ? d.feeling.word + " · " + (d.feeling.whose === "owner" ? "yours" : "mine") : d.feelingCore) +
+      ' <span class="fx" aria-hidden="true">✕</span>', true, "", "from “How it feels” — click to clear")
+    : "";
   const holdChip = d.hold ? chip("hold", d.hold, '<span class="hdot ' + esc(d.hold) + '"></span>' + esc(d.hold) +
     count(c.hold[d.hold]), true, "", "from the bar above — click to show all again") : "";
   $("mfilters").innerHTML =
     '<div class="fgroup seggroup" role="group" aria-label="live or archived">' + state + "</div>" +
-    '<div class="fgroup" role="group" aria-label="kind">' + kinds + special + holdChip +
+    '<div class="fgroup" role="group" aria-label="kind">' + kinds + special + holdChip + feelingChip +
       (any ? chip("clear", null, "show all", false, "clear") : "") + q("kinds", KIND_TIP) + "</div>";
   wireTips($("mfilters"));
 }
@@ -106,7 +113,7 @@ function paintRows(d) {
   const to = Math.min(d.total, d.offset + d.rows.length);
   $("mlist-sub").textContent = d.total === 0 ? "— none match" : "— " + from + "–" + to + " of " + d.total;
   if (d.rows.length === 0) {
-    const narrowed = d.kind || d.core || d.journal || d.hold;
+    const narrowed = d.kind || d.core || d.journal || d.hold || d.feeling || d.feelingCore;
     $("mlist").innerHTML = absenceLine(d.absent || "(none yet)",
       d.state === "archived" ? "nothing has been archived" + (narrowed ? " that matches these filters" : "")
         : "no memory matches these filters");

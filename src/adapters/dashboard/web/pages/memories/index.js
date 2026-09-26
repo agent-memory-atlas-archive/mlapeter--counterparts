@@ -63,7 +63,7 @@ export default {
   route({ params }) {
     const state = params.get("state");
     if (!["live", "archived", "all"].includes(state)) return;
-    setFilter({ state, kind: null, core: false, journal: false, hold: null });
+    setFilter({ state, kind: null, core: false, journal: false, hold: null, feeling: null, feelingCore: null });
     $("mlist-h").scrollIntoView({ block: "start" });
   },
 };

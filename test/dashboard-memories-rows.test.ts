@@ -270,6 +270,30 @@ describe("how it feels: the six cores, yours and mine", () => {
       expect(fear?.yours.words).toEqual([{ word: "anxious", count: 1 }]);
     });
   });
+
+  test("the list filters to a feeling from one side, or to every feeling under a core", () => {
+    withSrc((src) => {
+      const ids1 = (qs: string): string[] => getList(src, `?limit=200${qs}`).rows.map((r) => r.id).sort();
+      const mine = getList(src, "?feeling=Amazed&whose=self");
+      expect(mine.feeling).toEqual({ word: "amazed", whose: "self" });
+      expect(mine.feelingCore).toBeNull();
+      expect(mine.rows.map((r) => r.id)).toEqual([ids.dated as string]);
+      expect(ids1("&feeling=proud&whose=owner")).toEqual([ids.dated as string]);
+      expect(ids1("&feeling=proud&whose=self")).toEqual([]);
+      // A core covers both sides.
+      expect(ids1("&feelingCore=surprise")).toEqual([ids.dated as string]);
+      expect(ids1("&feelingCore=fear")).toEqual([ids.secret as string]);
+      expect(ids1("&feelingCore=anger")).toEqual([]);
+      // It combines with the other filters.
+      expect(ids1("&feelingCore=fear&kind=fact")).toEqual([]);
+      expect(ids1("&feelingCore=fear&kind=person")).toEqual([ids.secret as string]);
+      // A word with no side, or an unknown core, is ignored rather than guessed.
+      const loose = getList(src, "?feeling=proud");
+      expect(loose.feeling).toBeNull();
+      expect(loose.total).toBe(getList(src, "").total);
+      expect(getList(src, "?feelingCore=joy").feelingCore).toBeNull();
+    });
+  });
 });
 
 describe("the memory card", () => {

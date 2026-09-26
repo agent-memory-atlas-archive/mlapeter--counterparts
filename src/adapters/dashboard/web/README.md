@@ -101,7 +101,7 @@ pictures' shared pieces. A mechanism built later gets a `panel.js`, one line in
 
 `pages/memories/` — the memories tab (round 2, 2026-09-26, an experiment:
 brighter = held more firmly, everywhere on the tab). `state.js` holds the
-page's filters (live/archived/all, kind, core, journal, hold, sort, page
+page's filters (live/archived/all, kind, core, journal, hold, feeling, sort, page
 offset) and notifies the list when a filter changes; a live refresh redraws
 from it and puts the scroll back, and `counterparts:changed` (a window event,
 fired after a note and after a removal on the memory card) makes the page
@@ -111,7 +111,7 @@ plus Ask via `act("ask", {json:true})`, its tiers drawn as brightness),
 `tools.js` (write a note, and the back-up/export folder dialog),
 `hold.js` ("How firmly it's held": one bar, firm / settling / fading, from
 `holdOf` in `views/memories.ts`; a part clicked filters the list), `feel.js`
-("How it feels": an SVG radar of the wheel's six cores, yours and mine), `list.js` (every
+("How it feels": an SVG radar of the wheel's six cores, yours and mine; an axis or a feeling word clicked filters the list), `list.js` (every
 memory, newest or oldest first, kinds as chips, paged on the server by
 `/api/memories/list` in `views/memories.ts`). `views/memory-words.ts` says how
 a row's words are shown (a date at their front lifted off, journal chapters,
