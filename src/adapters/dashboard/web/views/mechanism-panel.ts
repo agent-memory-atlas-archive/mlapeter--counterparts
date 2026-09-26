@@ -17,7 +17,8 @@
  * Read-only, like everything in this directory. Memory words go through
  * `reveal`, so a confidential row is withheld here exactly as everywhere else.
  */
-import { TUNABLES, promotionEligibility, strength } from "../../../../core/physics/index.js";
+import { TUNABLES, promotionEligibility, pruneVerdict, strength } from "../../../../core/physics/index.js";
+import type { MemoryPhysics } from "../../../../core/types.js";
 import { isJournal } from "../../../../core/sleep/index.js";
 import type { EventRow } from "../../../../core/store/index.js";
 import type { Band, Kind } from "../../../../core/types.js";
@@ -191,16 +192,9 @@ function decayPicture(src: DashboardSource, day: number): Picture {
   let from = day;
   const curves: FadeCurve[] = picks.map((m) => {
     const physics = store.physicsOf(m.id);
-    const start = Math.max(physics.lastUsedDay, day - FADE_BEHIND);
-    from = Math.min(from, start);
-    const points: [number, number][] = [];
-    let archiveDay: number | null = null;
-    for (let d = start; d <= to; d++) {
-      const s = strength(physics, d);
-      points.push([d, round(s)]);
-      if (archiveDay === null && d > day && s < TUNABLES.PHI_PRUNE) archiveDay = d;
-    }
-    return { ...saidLine(m), kind: m.kind, band: m.band, lastUsedDay: physics.lastUsedDay, now: round(m.strength), points, archiveDay };
+    const curve = fadeCurve(physics, day);
+    from = Math.min(from, curve.from);
+    return { ...saidLine(m), kind: m.kind, band: m.band, lastUsedDay: physics.lastUsedDay, now: round(m.strength), points: curve.points, archiveDay: curve.archiveDay };
   });
   return {
     kind: "decay",
@@ -362,6 +356,45 @@ function reconsolidationPicture(src: DashboardSource): Picture {
     };
   });
   return { kind: "reconsolidation", revisions };
+}
+
+/**
+ * One memory's fade, as the physics computes it: from its last use (at most
+ * `FADE_BEHIND` lived days back) to `FADE_AHEAD` days past `day`, one
+ * [lived day, strength] pair per day, and the first day ahead on which it falls
+ * below the archive line if nobody uses it. The Forgetting panel draws a few of
+ * these; the memory card draws its own one (`memory.ts`).
+ */
+export function fadeCurve(
+  physics: MemoryPhysics,
+  day: number,
+): { from: number; to: number; points: [number, number][]; archiveDay: number | null } {
+  const from = Math.max(physics.lastUsedDay, day - FADE_BEHIND);
+  const to = day + FADE_AHEAD;
+  const points: [number, number][] = [];
+  let archiveDay: number | null = null;
+  for (let d = from; d <= to; d++) {
+    const s = strength(physics, d);
+    points.push([d, round(s)]);
+    if (archiveDay === null && d > day && s < TUNABLES.PHI_PRUNE) archiveDay = d;
+  }
+  return { from, to, points, archiveDay };
+}
+
+/**
+ * The first lived day within `horizon` days ahead on which prune's own verdict
+ * (`physics#pruneVerdict`: under the floor, long enough unused, episodic, not
+ * protected) would let this memory go if nobody used it — or null. The
+ * revision-chain gate is not checked here (it needs the store), so this can
+ * only say "sooner than it will be", never "later".
+ */
+export function letGoDay(physics: MemoryPhysics, day: number, horizon: number): number | null {
+  // Unused, strength only falls: still over the floor at the horizon means never inside it.
+  if (strength(physics, day + horizon) >= TUNABLES.PHI_PRUNE) return null;
+  for (let d = day; d <= day + horizon; d++) {
+    if (pruneVerdict(physics, d, { inLiveRevisionChain: false }).prune) return d;
+  }
+  return null;
 }
 
 function round(x: number): number {

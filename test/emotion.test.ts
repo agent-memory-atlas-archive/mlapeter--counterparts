@@ -594,7 +594,7 @@ describe("showing it", () => {
     const dash = Dashboard.open({ dir });
     try {
       const d = memoryDetail(dash.source, id);
-      expect(d.feelings).toBe("you: relieved 0.8 · me: wistful 0.3");
+      expect(d.feelingsLine).toBe("you: relieved 0.8 · me: wistful 0.3");
       expect(d.intensity).toBeCloseTo(0.8, 10);
       const emo = mechanismsView(dash.source).mechanisms.find((m) => m.id === "emotional");
       expect(emo?.status).toBe("green");

@@ -50,12 +50,15 @@ shared/
   canvas.js           FACE (the canvas's face, Outfit) fit hitTest roundRect clip wrapText
   tip.js modal.js     showTip/hideTip; openModal/closeModal/section
   memory-modal.js     openMemory, copyId, removeMemory (window globals: rows use inline onclick)
+  memory-marks.js .css  a memory's kind icon/colour, feeling dots, strength meter, badges
   event-modal.js      openEvent (window global)
   state.js            tabs {current, loaded}; live {lastSeq, fingerprint}
   widgets/            card rows table chart tiles bar feed light .css;
                       feed.js (renderFeed, live-feed registry), chapters.js (chapterRows),
                       confirm.js + .css (confirmTyped: type a phrase back to confirm),
-                      light.js (the status dot: green / amber / grey)
+                      light.js (the status dot: green / amber / grey),
+                      tips.js + .css (the `?`: explaining words behind a tap or hover; one
+                      copy for every page, pinned tips kept across a live refresh)
 pages/<tab>/          tabs: home (was overview), memories, self (was mind), flow, health;
                       #overview and #mind still land (shell/tabs.js RENAMED)
   index.js            default export { name, mount(section), render(), refresh?, show?,
@@ -96,17 +99,27 @@ narrated, plus a `picture`, both read-only). `mechanisms/picture.js` holds the
 pictures' shared pieces. A mechanism built later gets a `panel.js`, one line in
 `PANELS`, and a case in `mechanism-panel.ts`.
 
-`pages/memories/` — the memories tab. `state.js` holds the page's filters
-(live/archived/all, kind, band, page offset) and notifies the list when they
-change; `counterparts:changed` (a window event, fired after a note and after a
-removal on the memory card) makes the page re-read at once. Sections:
-`search.js` (search by words, plus Ask via `act("ask", {json:true})` rendered
-as a list), `tools.js` (write a note, and the back-up/export folder dialog),
-`constellation.js` (the one picture: the scatter, band chips that filter,
-strength-by-band in the right margin), `kinds.js` (six kinds in words; click to
-filter), `list.js` (every memory, newest first, paged on the server by
-`/api/memories/list` in `views/memories.ts`, whose archive reasons are put into
-plain words by `archiveWords` from `views/archive-words.ts`).
+`pages/memories/` — the memories tab (round 2, 2026-09-26, an experiment:
+brighter = held more firmly, everywhere on the tab). `state.js` holds the
+page's filters (live/archived/all, kind, core, journal, hold, feeling, sort, page
+offset) and notifies the list when a filter changes; a live refresh redraws
+from it and puts the scroll back, and `counterparts:changed` (a window event,
+fired after a note and after a removal on the memory card) makes the page
+re-read at once. `row.js` is the one row shape the list, search hits and Ask's
+answers share. Sections: `search.js` (search by words,
+plus Ask via `act("ask", {json:true})`, its tiers drawn as brightness),
+`tools.js` (write a note, and the back-up/export folder dialog),
+`hold.js` ("How firmly it's held": one bar, firm / settling / fading, from
+`holdOf` in `views/memories.ts`; a part clicked filters the list), `feel.js`
+("How it feels": an SVG radar of the wheel's six cores, yours and mine; an axis or a feeling word clicked filters the list), `list.js` (every
+memory, newest or oldest first, kinds as chips, paged on the server by
+`/api/memories/list` in `views/memories.ts`). `views/memory-words.ts` says how
+a row's words are shown (a date at their front lifted off, journal chapters,
+feelings in words); archive reasons come from `views/archive-words.ts`.
+`shared/memory-marks.{js,css}` are the kind icons and colours, feeling dots,
+the strength meter and the badges, used by the rows and the memory card
+(`shared/memory-modal.js`, whose strength curve comes from `fadeCurve` in
+`views/mechanism-panel.ts`, the Forgetting panel's own maths).
 
 `pages/self/`: the self tab (reworked 2026-09-26 as an experiment). The top is
 two columns: the self page on the left (rendered by `markdown.js`, which escapes
@@ -123,8 +136,8 @@ candidates for the core; the view computes them with
 a stacked bar of its parts (`wakeParts`, cut at the lane headings from `self/`),
 with the rebrief button shown disabled ("coming soon", back with the sleep
 work). `sections/journal.js` is a strip of days; a day lists its chapters, a
-chapter opens in place. `tips.js` is the `?` that holds each explaining line;
-`state.js` holds what is open, so the pulse's `refresh()` (which redraws only
+chapter opens in place. The `?` that holds each explaining line is
+`shared/widgets/tips.js`; `state.js` holds what is open, so the pulse's `refresh()` (which redraws only
 the panels whose data moved) keeps it open. `sections/stories.js` is only
 `storyCard`, opened in the overlay. The view is still `views/mind.ts` / `/api/mind`.
 

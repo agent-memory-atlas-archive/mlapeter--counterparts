@@ -9,7 +9,7 @@ import { $, esc } from "../../../shared/dom.js";
 import { diffStats, diffText } from "../diff.js";
 import { renderMarkdown } from "../markdown.js";
 import { ui } from "../state.js";
-import { q, wireTips } from "../tips.js";
+import { q, wireTips } from "../../../shared/widgets/tips.js";
 
 /** The left column: an opened version (when one is), then the page. */
 export const mainMarkup = `

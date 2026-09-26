@@ -1,10 +1,16 @@
-/* The memories tab: find (search + ask), the page's buttons (note, back up,
-   export), one picture of everything held, the kinds in words, and every
-   memory as a paged list. `/api/memories` feeds the picture and the kinds;
-   the list fetches its own page (`/api/memories/list`). */
+/* The memories tab: everything it holds — find it (search + ask), see it (two
+   small pictures: how firmly it's held, and how it feels), read and manage it
+   (every memory as a paged list, the page's buttons). `/api/memories` feeds the
+   pictures; the list fetches its own page (`/api/memories/list`).
+
+   LIVE. The pulse calls `refresh()` when the store moves. Everything is re-read
+   and redrawn from `state.js`, so the chosen filters, sort and page (and any
+   pinned `?`, kept by the shared tip widget) come back as they were; an open memory card lives in the overlay
+   and is left alone; the scroll position is put back. */
 import { api, fail } from "../../shared/api.js";
-import * as constellation from "./sections/constellation.js";
-import * as kinds from "./sections/kinds.js";
+import { $ } from "../../shared/dom.js";
+import * as feel from "./sections/feel.js";
+import * as hold from "./sections/hold.js";
 import * as list from "./sections/list.js";
 import * as search from "./sections/search.js";
 import * as tools from "./sections/tools.js";
@@ -12,45 +18,38 @@ import { setFilter } from "./state.js";
 
 const markup = `
     <div class="mem-top">
-      <p class="mem-lede" id="mem-lede">Everything I remember, and why it is where it is.</p>${tools.markup}
+      <p class="mem-count" id="mem-lede"></p>${tools.markup}
     </div>${tools.notePanel}${search.markup}
-    ${constellation.markup}
-    ${kinds.markup}
+    <div class="glance2">${hold.markup}${feel.markup}
+    </div>
     ${list.markup}
   `;
-
-let MEM = null;
 
 async function render() {
   let d;
   try { d = await api("/api/memories"); } catch (e) { return fail("The memories page", e); }
-  MEM = d;
-  document.getElementById("mem-lede").textContent = lede(d);
-  constellation.paint(d);
-  kinds.paint(d);
-  constellation.draw();
+  const x = scrollX, y = scrollY;
+  $("mem-lede").textContent = count(d);
+  hold.paint(d);
+  feel.paint(d);
   await list.render();
+  if (scrollX !== x || scrollY !== y) scrollTo(x, y);
 }
 
-/** "121 memories and 24 entities and beliefs" — the census counts both, and
+/** "121 memories · 24 entities and beliefs" — the census counts both, and
  *  `counterparts status` prints them apart, so this page does too. */
-function heldWords(d) {
+function count(d) {
+  if (d.total === 0) return "Nothing held yet. Write a note, or just talk.";
   const m = d.memories + (d.memories === 1 ? " memory" : " memories");
-  return d.schemas ? m + " and " + d.schemas + (d.schemas === 1 ? " entity or belief" : " entities and beliefs") : m;
-}
-
-function lede(d) {
-  if (d.total === 0) return "Nothing held yet. Write a note, or just talk — what matters settles here.";
-  if (d.total < 20) return "A young memory: " + heldWords(d) + " so far. Every one is below, with its words; it fills in as we talk.";
-  return heldWords(d) + ". Search by words, ask a question, or browse every one below, newest first.";
+  return d.schemas ? m + " · " + d.schemas + (d.schemas === 1 ? " entity or belief" : " entities and beliefs") : m;
 }
 
 export default {
   name: "memories",
   mount(section) {
     section.innerHTML = markup;
-    constellation.mount();
-    kinds.mount();
+    hold.mount();
+    feel.mount();
     list.mount();
     search.mount();
     tools.mount();
@@ -60,16 +59,11 @@ export default {
   render,
   /** The store moved (the pulse): re-read everything this page shows. */
   refresh: render,
-  /** Coming back to the tab: the canvas may have been laid out at zero width. */
-  show() { constellation.draw(); },
-  resize() { if (MEM) constellation.draw(); },
   /** `#memories?state=archived` (or live/all): open the list at that filter. */
   route({ params }) {
     const state = params.get("state");
     if (!["live", "archived", "all"].includes(state)) return;
-    setFilter({ state, kind: null, band: null });
-    document.getElementById("mlist-h").scrollIntoView({ block: "start" });
+    setFilter({ state, kind: null, core: false, journal: false, hold: null, feeling: null, feelingCore: null });
+    $("mlist-h").scrollIntoView({ block: "start" });
   },
-  /** After boot, when this is the tab showing. */
-  redraw() { constellation.draw(); },
 };

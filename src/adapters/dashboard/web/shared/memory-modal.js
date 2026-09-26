@@ -1,11 +1,19 @@
 /* One memory, opened — from any row, dot or reference on any page. Resolved at
-   the moment it is opened, so a memory that left the store says so. */
+   the moment it is opened, so a memory that left the store says so.
+
+   Top to bottom (2026-09-26, an experiment): the title and the words; how
+   strong it is and where it heads if unused; why it mattered; the days it was
+   used; its standing in plain words; its feelings; what it is linked to; its
+   versions; a few small chips (model, the date it is about, when it was
+   recorded); and a "details" fold with the raw numbers. A part with nothing in
+   it is left out. */
 import { act, resultHtml } from "./actions.js";
 import { api, fail } from "./api.js";
 import { emptyBox } from "./absence.js";
 import { esc } from "./dom.js";
 import { headline, n2, n3, said } from "./format.js";
-import { openModal, section } from "./modal.js";
+import { FEELING_COLOURS, kindMark, kindOf, shortDate } from "./memory-marks.js";
+import { openModal } from "./modal.js";
 import { confirmTyped } from "./widgets/confirm.js";
 
 export async function openMemory(id) {
@@ -17,70 +25,239 @@ export async function openMemory(id) {
       emptyBox(d.absence || "[no longer at this address]",
         "Ids are resolved at the moment a page is drawn, so a memory that has left the store stops resolving immediately."));
   }
+  openModal(memoryCard(d));
+}
+
+/** The card's markup — pure, from the `/api/memory` payload. */
+export function memoryCard(d) {
+  const k = kindOf(d.kind);
+  const title = d.title ? esc(d.title) : d.confidential ? said(d.text, true) : esc(headline(d.shownText || d.text));
+  return '<div class="mc' + (d.archived ? " mc-arch" : "") + '">' +
+    '<h3 class="mc-title">' + kindMark(d.kind, false) + "<span>" + title + "</span></h3>" +
+    '<div class="mc-kind">' + esc(k.label) + (d.askedFor ? " · you asked for " + esc(d.askedFor) + ", which forwards here" : "") + "</div>" +
+    (d.archived ? '<div class="mc-archived">Archived — ' + esc(d.archivedWords || d.archived) + ". Kept, not deleted.</div>" : "") +
+    "<div class='body'>" + (d.confidential ? '<span class="withheld">' + esc(d.text) + "</span>" : esc(d.shownText || d.text)) + "</div>" +
+    (d.journal
+      ? '<p class="mc-note">A journal entry, not a memory: the account memories are made from. It sits outside every sleep phase, and nothing here decays.</p>'
+      : "") +
+    part("How strong", curvePart(d)) +
+    part("Why it mattered", fingerprint(d)) +
+    part("Use", usePart(d)) +
+    part("Standing", standing(d)) +
+    part("Feelings", feelingsPart(d)) +
+    part("Linked memories", linked(d)) +
+    part("Versions", versions(d)) +
+    chips(d) +
+    footer(d) +
+    "</div>";
+}
+
+/** A titled part, or nothing at all when it has nothing in it. */
+function part(title, body) {
+  return body ? '<section class="mc-part"><h4>' + esc(title) + "</h4>" + body + "</section>" : "";
+}
+
+const pct = (x) => Math.round(Math.max(0, Math.min(1, Number(x) || 0)) * 100) + "%";
+
+// ── how strong: so far, and ahead if unused ────────────────────────────────
+
+function curvePart(d) {
+  if (!d.curve) return d.curveNote && !d.journal ? '<p class="mc-line">' + esc(d.curveNote) + ".</p>" : "";
+  const c = d.curve;
+  const W = 520, H = 120, L = 8, R = 8, T = 10, B = 20;
+  const span = Math.max(1, c.to - c.from);
+  const x = (day) => L + ((day - c.from) / span) * (W - L - R);
+  const y = (s) => T + (1 - Math.max(0, Math.min(1, s))) * (H - T - B);
+  const path = (pts) => pts.map((q, i) => (i === 0 ? "M" : "L") + x(q[0]).toFixed(1) + " " + y(q[1]).toFixed(1)).join(" ");
+  const past = c.points.filter((q) => q[0] <= c.day);
+  const ahead = c.points.filter((q) => q[0] >= c.day);
+  const now = (c.points.find((q) => q[0] === c.day) || [c.day, d.strength])[1];
+  let svg = '<svg class="mc-curve" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" role="img" aria-label="strength so far, and ahead if unused">' +
+    '<line class="mc-guide" x1="' + L + '" x2="' + (W - R) + '" y1="' + y(c.archiveLine) + '" y2="' + y(c.archiveLine) + '"/>' +
+    '<line class="mc-today" x1="' + x(c.day) + '" x2="' + x(c.day) + '" y1="' + T + '" y2="' + (H - B) + '"/>';
+  if (past.length > 1) svg += '<path d="' + path(past) + '" class="mc-past"/>';
+  if (ahead.length > 1) svg += '<path d="' + path(ahead) + '" class="mc-ahead"/>';
+  svg += '<circle cx="' + x(c.day) + '" cy="' + y(now) + '" r="4" class="mc-now"/></svg>';
+  const axis = '<div class="mc-axis">' + (c.from === c.day
+    ? "<span>today, day " + c.day + "</span>"
+    : "<span>last used, day " + c.from + "</span><span>today</span>") + "<span>day " + c.to + "</span></div>";
+  const words = "Held " + pct(now) + " now" + (c.from < c.day ? ", fading since it was last used" : "") + ". " + (c.archiveDay !== null
+    ? "Unused, it falls to the let-go line around lived day " + c.archiveDay + "."
+    : now < c.archiveLine ? "It is already under the let-go line." : "Unused, it stays above the let-go line for the next " + (c.to - c.day) + " lived days.");
+  return svg + axis + '<p class="mc-line">' + esc(words) +
+    ' <span class="mc-dim">Solid is what happened; dashed is where it heads if nobody uses it; the faint line is where it could be let go.</span></p>';
+}
+
+// ── why it mattered: a four-part fingerprint ────────────────────────────────
+
+function fingerprint(d) {
+  if (d.journal || d.chapter) return "";
+  const s = d.salience;
+  const parts = [["relevance", s.relevance], ["feeling", s.emotional], ["changes what I expect", s.predictive], ["novelty", s.novelty]];
+  if (parts.every(([, v]) => !v)) return "";
+  return '<div class="mc-print">' + parts.map(([label, v]) => {
+    const blind = v === null;
+    return '<div class="mc-pbar" title="' + esc(label + ": " + (blind ? "not measured (nothing to compare it with yet)" : n2(v))) + '">' +
+      '<span class="mc-plabel">' + esc(label) + (blind ? ' <span class="mc-dim">· not measured</span>' : "") + "</span>" +
+      '<span class="mc-ptrack' + (blind ? " blind" : "") + '"><span style="width:' + (blind ? 0 : Math.round(Math.max(0, Math.min(1, v)) * 100)) + '%"></span></span>' +
+      "</div>";
+  }).join("") + "</div>";
+}
+
+// ── use: a strip of lived days, a dot on each day it was used ─────────────
+
+function usePart(d) {
+  if (d.journal || d.chapter) return "";
+  const p = d.promotion;
+  if (d.uses === 0 && d.useDays.length === 0 && !p.byUse) return "";
+  const last = d.day;
+  const first = Math.max(d.bornDay, last - 59);
+  const used = new Set(d.useDays);
+  if (d.uses > 0) used.add(d.lastUsedDay);
+  let cells = "";
+  for (let day = first; day <= last; day++) {
+    const cls = "mc-cell" + (used.has(day) ? " used" : "") + (day === d.bornDay ? " born" : "") + (day === last ? " today" : "");
+    cells += '<i class="' + cls + '" title="lived day ' + day + (day === d.bornDay ? " — born" : "") + (used.has(day) ? " — used" : "") + '"></i>';
+  }
+  const shown = [...used].filter((x) => x >= first).length;
+  const lines = [];
+  if (d.uses > 0) {
+    lines.push("Used " + d.uses + "× over " + d.reinforcedDays + (d.reinforcedDays === 1 ? " separate day" : " separate days") +
+      ", last on lived day " + d.lastUsedDay + ".");
+    if (shown < d.reinforcedDays) lines.push("The log shows " + shown + " of those days; it keeps only so much.");
+  } else lines.push("Not used yet.");
+  if (p.byUse) {
+    const more = Math.max(0, p.required - p.days);
+    lines.push(p.required + " separate days make it core" + (more ? " — " + more + " more to go." : "."));
+  }
+  return '<div class="mc-strip" role="img" aria-label="lived days, a dot on each day it was used">' +
+    (first > d.bornDay ? '<span class="mc-more">…</span>' : "") + cells + "</div>" +
+    '<div class="mc-axis"><span>' + (first === d.bornDay ? "born, day " + first : "day " + first) + "</span><span>today, day " + last + "</span></div>" +
+    '<p class="mc-line">' + esc(lines.join(" ")) + "</p>";
+}
+
+// ── standing, in plain words ────────────────────────────────────────────────
+
+function standing(d) {
+  const out = [];
+  if (d.promoted) out.push('<span class="mbadge core">★ core</span><span>part of who I am</span>');
+  if (d.protected) out.push('<span class="mbadge lock">locked</span><span>protected — nothing can revise it</span>');
+  else if (!d.journal && !d.chapter) {
+    out.push("<span>revisable — a strong enough correction can change it" +
+      (d.pressure > 0 ? '<span class="mc-dim"> · under some pressure now (' + n2(d.pressure) + (d.bar === null ? "" : " of a bar of " + n2(d.bar)) + ")</span>" : "") +
+      "</span>");
+  }
+  if (d.chapter) out.push('<span class="mbadge journal">journal</span><span>a journal chapter, kept as written — not scored</span>');
+  return out.length ? '<ul class="mc-list">' + out.map((x) => "<li>" + x + "</li>").join("") + "</ul>" : "";
+}
+
+// ── feelings ────────────────────────────────────────────────────────────────
+
+function feelingsPart(d) {
+  // Emotion part A (#244): feeling now holds a memory higher and slows its fading.
+  const held = d.intensity > 0 && !d.confidential
+    ? '<p class="mc-dim">Feeling holds it higher and slows its fading (intensity ' + n2(d.intensity) + ").</p>"
+    : "";
+  if (!d.feelings || d.feelings.length === 0) return held;
+  return '<ul class="mc-list">' + d.feelings.map((f) =>
+    '<li><i class="mc-fdot" style="background:' + (FEELING_COLOURS[f.core] || "#8a95a3") + '"></i><span>' +
+    (f.whose === "owner" ? "you felt " : f.whose === "self" ? "I felt " : esc(f.whose) + " felt ") + "<b>" + esc(f.word) + "</b>" +
+    '<span class="mc-dim"> · ' + esc(f.core) + (f.carriedBy ? " — " + esc(f.carriedBy) : "") + "</span></span></li>").join("") + "</ul>" + held;
+}
+
+// ── linked memories ────────────────────────────────────────────────────────
+
+function ref(id, text, confidential, role) {
+  return '<div class="ref" role="button" tabindex="0" onclick="openMemory(\'' + esc(id) + '\')" ' +
+    "onkeydown=\"if(event.key==='Enter')openMemory('" + esc(id) + "')\">" +
+    (role ? '<span class="role">' + role + "</span>" : "") + said(text, confidential) + "</div>";
+}
+
+function linked(d) {
+  const around = d.points.filter((p) => p.role === "hangs on" || p.role === "grounded in")
+    .map((p) => ref(p.id, p.text, false, esc(p.role)));
+  const wired = d.edges.slice().sort((a, b) => b.weight - a.weight).map((e) =>
+    ref(e.id, e.text, e.confidential, '<span class="mc-wbar" title="wired together: ' + n2(e.weight) + '"><span style="width:' +
+      Math.round(Math.max(0, Math.min(1, e.weight)) * 100) + '%"></span></span>'));
+  const all = around.concat(wired);
+  return all.length ? '<div class="mc-refs">' + all.join("") + "</div>" : "";
+}
+
+// ── versions: one line of its lineage ──────────────────────────────────────
+
+const REL = {
+  replaced: "replaced this older memory",
+  corrects: "corrects (the other stays as it was)",
+  revised: "rewritten in place",
+  became: "replaced by this newer memory",
+};
+
+function versions(d) {
+  if (!d.timeline || d.timeline.length === 0) return "";
+  const steps = d.timeline.map((s) => {
+    const when = s.day === null ? "" : "day " + s.day;
+    const head = '<span class="mc-vrel">' + esc(REL[s.rel] || s.rel) + "</span>" +
+      (when ? '<span class="mc-dim"> · ' + esc(when) + "</span>" : "") +
+      (s.reason && s.rel !== "corrects" ? '<span class="mc-dim"> · ' + esc(String(s.reason).replace(/-/g, " ")) + "</span>" : "");
+    const body = s.id ? ref(s.id, s.text, s.confidential, "") : "";
+    return '<li class="mc-v mc-v-' + s.rel + '"><i class="mc-vdot"></i><div>' + head + body + "</div></li>";
+  });
+  const nowAt = d.timeline.some((s) => s.rel === "became") ? "" :
+    '<li class="mc-v mc-v-now"><i class="mc-vdot"></i><div><span class="mc-vrel">this memory, as it stands</span>' +
+      '<span class="mc-dim"> · revision ' + esc(String(d.revision)) + "</span></div></li>";
+  return '<ol class="mc-versions">' + steps.join("") + nowAt + "</ol>";
+}
+
+// ── small chips ────────────────────────────────────────────────────────────
+
+function chips(d) {
+  const c = [];
+  if (d.writtenDate) {
+    c.push('<span class="mc-chip dated" title="' + (d.chapter ? "the day its journal chapter names" : "the date written at the front of the memory") +
+      '">' + esc(shortDate(d.writtenDate)) + "</span>");
+  }
+  if (d.model) c.push('<span class="mc-chip model" title="the model that wrote these words">' + esc(d.model) + "</span>");
+  if (d.eventDate) c.push('<span class="mc-chip" title="the date this memory is about">about ' + esc(d.eventDate) + "</span>");
+  if (d.happenedOn) c.push('<span class="mc-chip" title="when it happened">happened ' + esc(d.happenedOn) + "</span>");
+  if (d.learnedOn && d.learnedOn !== "—") {
+    c.push('<span class="mc-chip" title="the calendar day it entered the store (on a migrated or seeded store, the day of the import)">recorded ' +
+      esc(d.learnedOn) + "</span>");
+  }
+  c.push('<span class="mc-chip" title="the lived day it was born">lived day ' + esc(String(d.bornDay)) + "</span>");
+  for (const p of d.prospective || []) {
+    c.push('<span class="mc-chip" title="a reminder it holds">reminder ' + esc(p.date) + " · " + esc(p.state) + "</span>");
+  }
+  return '<div class="mc-chips">' + c.join("") + "</div>";
+}
+
+// ── the details fold, and the two buttons ──────────────────────────────────
+
+function footer(d) {
   const kv = (k, v) => '<div class="k">' + esc(k) + '</div><div class="v">' + v + "</div>";
   const s = d.salience;
-  openModal(
-    "<h3>" + (d.title ? esc(d.title) : d.confidential ? said(d.text, true) : esc(headline(d.text))) + "</h3>" +
-    "<div class='sub'><span>" + esc(d.id) + "</span>" +
-      (d.askedFor ? "<span>you asked for " + esc(d.askedFor) + ", which forwards here</span>" : "") +
-      "<span class='path'>rev " + esc(String(d.revision)) + " · " + esc(d.contentHash || "—") + "</span>" +
+  const raw = '<div class="kv">' +
+    kv("id", esc(d.id)) +
+    kv("record", "rev " + esc(String(d.revision)) + " · " + esc(d.contentHash || "—")) +
+    kv("band", esc(d.band) + " <span class='mc-dim'>(recorded " + esc(d.recordedBand) + ")</span>") +
+    kv("strength", n3(d.strength) + " <span class='mc-dim'>· repetition " + n3(d.repetition) + "</span>") +
+    kv("salience", n3(s.combined) + " <span class='mc-dim'>relevance " + n2(s.relevance) + " · emotional " + n2(s.emotional) +
+      " · predictive " + n2(s.predictive) + " · novelty " + (s.novelty === null ? "blind" : n2(s.novelty)) +
+      (s.claimed === null ? "" : " · claimed floor " + n2(s.claimed)) + "</span>") +
+    (d.feelingsLine || d.intensity > 0 ? kv("feelings", esc(d.feelingsLine || "none recorded") + " <span class='mc-dim'>· intensity " + n2(d.intensity) + "</span>") : "") +
+    kv("lived", "born day " + d.bornDay + " · used " + d.uses + "× over " + d.reinforcedDays + " days · last used day " + d.lastUsedDay) +
+    kv("standing", (d.consolidated ? "consolidated" : "not consolidated") + " · " + (d.promoted ? "promoted" : "not promoted") +
+      " · " + (d.protected ? "protected" : "revisable") + " · pressure " + n3(d.pressure) + (d.bar === null ? "" : " / bar " + n3(d.bar))) +
+    (d.createdAt ? kv("written", esc(new Date(d.createdAt).toISOString())) : "") +
+    (d.archived ? kv("archived", esc(d.archived)) : "") +
+    d.points.map((p) => kv(p.role, esc(p.id))).join("") +
+    d.removal.map((r) => kv("removal", esc(r.stage) + " by " + esc(r.actor) + " — " + esc(r.reason || "no reason recorded"))).join("") +
+    "</div>";
+  return '<div class="mc-foot">' +
+    '<details class="mc-details"><summary>details</summary>' + raw + "</details>" +
+    '<div class="mc-buttons">' +
       "<button class='copy' data-id=\"" + esc(d.id) + "\" onclick=\"copyId(this)\">copy id</button>" +
       "<button class='copy act-danger' data-id=\"" + esc(d.id) + "\" onclick=\"removeMemory(this)\">remove…</button>" +
-      "</div>" +
-      "<div id='remove-out'></div>" +
-    "<div class='body'>" + (d.confidential ? '<span class="withheld">' + esc(d.text) + "</span>" : esc(d.text)) + "</div>" +
-    (d.journal
-      ? "<p style='color:var(--purple);font-size:11px;line-height:1.7;margin:-4px 0 14px'>" +
-        "This is a journal entry, not a memory. It is the account a memory was made from, it sits outside " +
-        "every sleep phase, and the physics below is recorded but never acted on — nothing here decays.</p>"
-      : "") +
-    '<div class="kv">' +
-      kv("kind", esc(d.kind)) +
-      kv("band", esc(d.band) + " <span style='color:var(--faint)'>(recorded " + esc(d.recordedBand) + ")</span>") +
-      kv("strength", n3(d.strength) + " <span style='color:var(--faint)'>· repetition " + n3(d.repetition) + "</span>") +
-      kv("salience", n3(s.combined) + " <span style='color:var(--faint)'>relevance " + n2(s.relevance) +
-        " · emotional " + n2(s.emotional) + " · predictive " + n2(s.predictive) +
-        (s.novelty === null ? " · <span style='color:var(--amber)'>novelty blind (no schema context existed)</span>" : " · novelty " + n2(s.novelty)) +
-        (s.claimed === null ? "" : " · claimed floor " + n2(s.claimed)) + "</span>") +
-      kv("feelings", d.confidential
-        ? "<span class='withheld'>withheld with the words</span>"
-        : d.feelings
-        ? esc(d.feelings) + " <span style='color:var(--faint)'>· intensity " + n2(d.intensity) +
-          " — holds it higher and slows its fading</span>"
-        : d.intensity > 0
-          ? "<span style='color:var(--dim)'>none recorded</span> <span style='color:var(--faint)'>· emotional score " + n2(d.intensity) +
-            " holds it higher and slows its fading</span>"
-          : "<span style='color:var(--dim)'>(none recorded)</span>") +
-      kv("lived", "born day " + d.bornDay + " · used " + d.uses + "× over " + d.reinforcedDays +
-        " separate days · last used day " + d.lastUsedDay) +
-      kv("recorded", esc(d.learnedOn) + (d.happenedOn ? " · happened " + esc(d.happenedOn) : "") +
-        "<span style='color:var(--faint)'> — the calendar day this entered the store; " +
-        "on a migrated or seeded store, the day of the import</span>") +
-      kv("standing", (d.consolidated ? "consolidated" : "not yet consolidated") + " · " +
-        (d.promoted ? "promoted into identity" : "not promoted") + " · " +
-        (d.protected ? "<span style='color:var(--amber)'>PROTECTED — no revision path reaches it</span>" : "revisable")) +
-      kv("pressure", d.pressure === 0
-        ? "<span style='color:var(--dim)'>(none yet) — nothing has argued with it</span>"
-        : n3(d.pressure) + (d.bar === null ? "" : " against a bar of " + n3(d.bar))) +
-      (d.archived ? kv("archived", "<span style='color:var(--amber)'>" + esc(d.archived) + "</span>") : "") +
-    "</div>" +
-    section("Wired together with", d.edges.map((e) =>
-      "<div class='ref' onclick=\"openMemory('" + e.id + "')\"><span class='role'>" + n2(e.weight) + "</span>" +
-      said(e.text, e.confidential) + "</div>").join(""),
-      "(none yet) — it fires with nothing.") +
-    section("What it points at, resolved just now", d.points.map((p) =>
-      "<div class='ref' onclick=\"openMemory('" + p.id + "')\"><span class='role'>" + esc(p.role) + "</span>" +
-      esc(p.text) + "</div>").join(""), "(none yet) — it points at nothing.") +
-    section("Version history", d.versions.map((v) =>
-      "<div class='ref'><span class='role'>v" + v.seq + " · " + esc(v.reason) + " · day " + v.day + "</span>" +
-      esc(v.became) + "</div>").join(""), "(none yet) — it has never been revised.") +
-    section("Looks ahead to", d.prospective.map((p) =>
-      "<div class='ref'><span class='role'>" + esc(p.date) + " (" + esc(p.precision) + ")</span>" +
-      esc(p.state) + ", fired " + p.fires + "×</div>").join(""), "(none yet) — it holds no intention.") +
-    (d.removal.length === 0 ? "" : section("Removal record", d.removal.map((r) =>
-      "<div class='ref'><span class='role'>" + esc(r.stage) + "</span>by " + esc(r.actor) +
-      " — " + esc(r.reason || "no reason recorded") + "</div>").join(""), ""))
-  );
+    "</div></div><div id='remove-out'></div>";
 }
 
 /** The id, on demand — it is how the owner addresses this memory anywhere else

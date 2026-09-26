@@ -10,6 +10,8 @@ import type { Band, Kind } from "../../../../core/types.js";
 import { NEVER, NONE } from "../../layout.js";
 import type { DashboardSource } from "../../source.js";
 import { reveal } from "../reveal.js";
+import { feelingsShown, isChapterMemory, shownOf } from "./memory-words.js";
+import type { DateFrom, FeelingShown } from "./memory-words.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // search
@@ -17,7 +19,24 @@ import { reveal } from "../reveal.js";
 
 export interface SearchView {
   readonly q: string;
-  readonly hits: { id: string; score: number; text: string; kind: Kind; band: Band; strength: number; confidential: boolean }[];
+  readonly hits: {
+    id: string;
+    score: number;
+    text: string;
+    kind: Kind;
+    band: Band;
+    strength: number;
+    confidential: boolean;
+    /** The row shape the memories list uses (`memory-words.ts`). */
+    title: string | null;
+    shown: string;
+    date: string | null;
+    dateFrom: DateFrom | null;
+    core: boolean;
+    protected: boolean;
+    journal: boolean;
+    feelings: FeelingShown[];
+  }[];
   readonly absent: string | null;
 }
 
@@ -47,6 +66,13 @@ export function searchView(src: DashboardSource, q: string, limit = 25): SearchV
     } catch {
       /* a row that will not read is still a hit; it lists with a named absence */
     }
+    const chapter = isChapterMemory(row);
+    const shown = shownOf(row.body, {
+      chapter,
+      learnedOn: row.learned_on,
+      confidential: r.confidential || !r.present,
+      withheld: r.text ?? r.label,
+    });
     hits.push({
       id: hit.id,
       score: hit.score,
@@ -55,6 +81,14 @@ export function searchView(src: DashboardSource, q: string, limit = 25): SearchV
       band: b,
       strength: s,
       confidential: r.confidential,
+      title: r.confidential || row.title === null || row.title.trim() === "" ? null : row.title.trim(),
+      shown: shown.text || (r.text ?? r.label),
+      date: shown.date,
+      dateFrom: shown.dateFrom,
+      core: row.promoted_identity === 1,
+      protected: row.protected === 1,
+      journal: chapter,
+      feelings: feelingsShown(store, hit.id),
     });
     if (hits.length >= limit) break;
   }

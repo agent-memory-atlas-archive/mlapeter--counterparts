@@ -257,6 +257,13 @@ export function router(
         state: q.get("state"),
         kind: q.get("kind"),
         band: q.get("band"),
+        core: q.get("core") === "1",
+        journal: q.get("journal") === "1",
+        hold: q.get("hold"),
+        feeling: q.get("feeling"),
+        whose: q.get("whose"),
+        feelingCore: q.get("feelingCore"),
+        sort: q.get("sort"),
         offset: intParam(url, "offset", 0),
         limit: intParam(url, "limit", 50),
       }));

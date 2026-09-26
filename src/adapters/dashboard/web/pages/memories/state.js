@@ -1,6 +1,11 @@
-/* What the memories page is filtered to, shared by the legend (a band chip),
-   the kind cards and the list's own filter bar. One listener: the list. */
-export const filters = { state: "live", kind: null, band: null, offset: 0 };
+/* What the memories page is filtered to, kept apart from the markup so a live refresh redraws and leaves every choice as it was.
+   One filter listener: the list. */
+/** `hold`: firm / settling / fading, set from the "How firmly it's held" bar.
+ *  `feeling` ({ word, whose }) and `feelingCore`: set from the "How it feels"
+ *  radar — one or the other, never both. */
+export const filters = {
+  state: "live", kind: null, core: false, journal: false, hold: null, feeling: null, feelingCore: null, sort: "newest", offset: 0,
+};
 
 const listeners = [];
 export function onFilter(fn) { listeners.push(fn); }
@@ -13,9 +18,11 @@ export function setFilter(patch) {
   for (const fn of listeners) fn(filters);
 }
 
-/** A band or kind chip is a toggle: click it again to show everything. */
+/** A kind chip (or a part of the hold bar) is a toggle: click it again to
+ *  show everything. Core and journal chips are on/off. */
 export function toggle(key, value) {
-  setFilter({ [key]: filters[key] === value ? null : value });
+  if (key === "core" || key === "journal") setFilter({ [key]: !filters[key] });
+  else setFilter({ [key]: filters[key] === value ? null : value });
 }
 
 /** Tell the page the store changed on purpose (a note, a removal). */
