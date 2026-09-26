@@ -1,12 +1,12 @@
 /* Find a memory: search by its words (live, as you type) and ask a question
    (the console's own `counterparts ask`, through the actions seam). Both lists
-   open the memory on click. */
+   use the list's row shape and open the memory on click; Ask's answers are
+   bright when they came clearly to mind and dim when they are a faint lead. */
 import { absenceLine } from "../../../shared/absence.js";
 import { act, resultHtml } from "../../../shared/actions.js";
 import { api, fail } from "../../../shared/api.js";
 import { $, esc } from "../../../shared/dom.js";
-import { said } from "../../../shared/format.js";
-import { BANDCOL } from "../../../shared/colors.js";
+import { memRow } from "../row.js";
 
 export const markup = `
     <div class="find">
@@ -17,7 +17,7 @@ export const markup = `
             placeholder="a word the memory would use…">
           <span id="qn"></span>
         </div>
-        <div class="card rows" id="qout" hidden></div>
+        <div class="card mlist" id="qout" hidden></div>
       </div>
       <div class="find-col">
         <label class="find-lab" for="ask-q">Ask your memory a question</label>
@@ -29,16 +29,6 @@ export const markup = `
         <div id="ask-out"></div>
       </div>
     </div>`;
-
-/** One found memory as a row: words, then kind · band · strength. */
-function hitRow(id, title, text, confidential, kind, band, extra) {
-  const words = confidential ? said(text, true)
-    : (title ? "<b>" + esc(title) + "</b> " : "") + esc(text);
-  return '<div class="r click" onclick="openMemory(\'' + esc(id) + '\')">' + words +
-    '<div class="meta"><span class="k">' + esc(kind) + "</span>" +
-    (band ? '<span><span class="bdot" style="background:' + (BANDCOL[band] || "var(--dim)") + '"></span>' + esc(band) + "</span>" : "") +
-    (extra || "") + "</div></div>";
-}
 
 let qtimer = null;
 export function mount() {
@@ -61,12 +51,23 @@ async function runSearch() {
   $("qn").textContent = d.hits.length + (d.hits.length === 1 ? " match" : " matches");
   out.innerHTML = d.absent
     ? absenceLine(d.absent, "nothing I hold matches those words")
-    : d.hits.map((h) => hitRow(h.id, null, h.text, h.confidential, h.kind, h.band,
-        "<span>strength " + Math.round(h.strength * 100) + "%</span>")).join("");
+    : d.hits.map((h) => memRow({ ...h, text: h.shown, archived: null })).join("");
 }
 
-/** The tiers `ask` sorts answers into, in the words a person would use. */
+/** The tiers `ask` sorts answers into, in the words a person would use, and
+ *  the brightness each is drawn at. */
 const TIER = { vivid: "came clearly to mind", quiet: "came quietly", dim: "a faint lead" };
+const TIER_LIT = { vivid: 5, quiet: 3, dim: 1 };
+
+/** An answer's words as a row shows them: headings dropped, a date written at
+ *  the front lifted off (display only — the memory is untouched). */
+export function answerWords(body) {
+  const flat = String(body || "").split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#")).join(" ");
+  const m = /^(\d{4}-\d{2}-\d{2})(?:[ \t]*[:,—–-][ \t]*|[ \t]+)(?=\S)/.exec(flat);
+  let rest = m ? flat.slice(m[0].length) : flat;
+  if (m) rest = rest.charAt(0).toUpperCase() + rest.slice(1);
+  return { date: m ? m[1] : null, text: rest.length > 320 ? rest.slice(0, 319) + "…" : rest };
+}
 
 async function ask() {
   const q = $("ask-q").value.trim();
@@ -92,11 +93,11 @@ async function ask() {
   }
   out.innerHTML = '<div class="ask-head">What came to mind — ' + mems.length +
     (mems.length === 1 ? " memory" : " memories") + ", best first</div>" +
-    '<div class="card rows">' + mems.map((m) => {
-      const body = String(m.body || "");
-      const first = body.split("\n").map((l) => l.trim()).find((l) => l && !l.startsWith("#")) || body;
-      const text = first.length > 200 ? first.slice(0, 199) + "…" : first;
-      return hitRow(m.id, m.title, text, false, m.journal ? "journal" : m.kind, null,
-        '<span class="tier tier-' + esc(m.tier) + '">' + esc(TIER[m.tier] || m.tier) + "</span>");
+    '<div class="card mlist ask-list">' + mems.map((m) => {
+      const w = answerWords(m.body);
+      return memRow({
+        id: m.id, title: m.title, text: w.text, confidential: false, kind: m.kind, strength: m.strength,
+        date: w.date, dateFrom: w.date ? "text" : null, journal: !!m.journal, feelings: [], archived: null,
+      }, { lit: TIER_LIT[m.tier] || 3, tier: TIER[m.tier] || m.tier });
     }).join("") + "</div>";
 }

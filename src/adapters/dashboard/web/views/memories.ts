@@ -13,6 +13,9 @@ import { BANDS, KINDS } from "../../registries.js";
 import type { DashboardSource } from "../../source.js";
 import { WITHHELD, revealHere } from "../reveal.js";
 import { archiveWords } from "./archive-words.js";
+import { letGoDay } from "./mechanism-panel.js";
+import { feelingsShown, isChapterMemory, shownOf } from "./memory-words.js";
+import type { DateFrom, FeelingShown } from "./memory-words.js";
 import { BAND_GLOSS } from "./rows.js";
 import type { BarRow } from "./rows.js";
 import { absenceFor, census, countMap } from "./shared.js";
@@ -47,7 +50,10 @@ export interface MemoriesView {
   readonly memories: number;
   /** Of `total`: entities and beliefs about them (schema rows). */
   readonly schemas: number;
-  readonly points: MemoryLine[];
+  /** Every dot, strongest first, with what the picture needs beyond the census. */
+  readonly points: MemoryPoint[];
+  /** How many lived days ahead "close to being let go" looks (`NEAR_LET_GO_DAYS`). */
+  readonly nearLetGoDays: number;
   readonly distribution: { from: number; to: number; count: number }[];
   /** Strength in ten steps, each step split by today's band — the scatter's
    *  right margin. Over every row, not only the plotted ones. */
@@ -57,6 +63,18 @@ export interface MemoriesView {
   readonly pointsAbsent: string | null;
   readonly note: string;
 }
+
+/** A dot on the picture: the census line, plus its title, whether it is a
+ *  journal chapter, and whether prune would let it go soon if nobody used it. */
+export interface MemoryPoint extends MemoryLine {
+  readonly title: string | null;
+  readonly journal: boolean;
+  /** The first lived day within `NEAR_LET_GO_DAYS` on which prune would let it go, unused; else null. */
+  readonly letGoDay: number | null;
+}
+
+/** "Close to being let go" means prune would take it within this many lived days if unused. */
+export const NEAR_LET_GO_DAYS = 14;
 
 const KIND_GLOSS: Record<Kind, string> = {
   self: "who I am — salience only, and the slowest to be argued out of",
@@ -131,7 +149,21 @@ export function memoriesView(src: DashboardSource, opts: { limit?: number } = {}
     memories: rows.filter((r) => !r.schema).length,
     schemas: rows.filter((r) => r.schema).length,
     strengthByBand,
-    points: rows.slice(0, limit),
+    nearLetGoDays: NEAR_LET_GO_DAYS,
+    points: rows.slice(0, limit).map((m): MemoryPoint => {
+      const row = store.row(m.id);
+      const journal = row !== undefined && isChapterMemory(row);
+      let letGo: number | null = null;
+      if (!m.unreadable && !m.schema) {
+        try {
+          letGo = letGoDay(store.physicsOf(m.id), day, NEAR_LET_GO_DAYS);
+        } catch {
+          letGo = null;
+        }
+      }
+      const t = m.confidential ? null : (row?.title ?? null);
+      return { ...m, title: t !== null && t.trim().length > 0 ? t.trim() : null, journal, letGoDay: letGo };
+    }),
     pointsAbsent: rows.length === 0 ? (everLived ? NONE : NEVER) : null,
     distribution,
     bands: BANDS.map((b) => {
@@ -187,13 +219,31 @@ export interface ListRow {
   readonly schema: boolean;
   /** For a schema row: what it is — "entity", "belief", "current state". */
   readonly schemaRole: string | null;
+  /** The words to show: headings dropped, a date written at their front lifted off. */
+  readonly text: string;
+  /** The date shown beside the row (`YYYY-MM-DD`), and where it came from. */
+  readonly date: string | null;
+  readonly dateFrom: DateFrom | null;
+  /** In the core (promoted into identity). */
+  readonly core: boolean;
+  readonly protected: boolean;
+  /** A journal-chapter memory (`isChapterMemory`): not scored, shown as "journal". */
+  readonly journal: boolean;
+  readonly feelings: FeelingShown[];
+  /** v7 moment it was written (UTC ms); null on an older row. */
+  readonly createdAt: number | null;
 }
+
+export type ListSort = "newest" | "oldest";
 
 export interface MemoryListView {
   readonly day: number;
   readonly state: ListState;
   readonly kind: Kind | null;
   readonly band: Band | null;
+  readonly core: boolean;
+  readonly journal: boolean;
+  readonly sort: ListSort;
   readonly offset: number;
   readonly limit: number;
   /** Rows matching every filter — what the pager pages over. */
@@ -204,6 +254,9 @@ export interface MemoryListView {
     readonly archived: number;
     readonly kinds: Record<string, number>;
     readonly bands: Record<string, number>;
+    /** In the core, and journal chapters — each within the live/archived choice. */
+    readonly core: number;
+    readonly journal: number;
   };
   readonly rows: ListRow[];
   readonly absent: string | null;
@@ -242,7 +295,16 @@ function firstLine(body: string, width: number): string {
  */
 export function memoryListView(
   src: DashboardSource,
-  opts: { state?: string | null; kind?: string | null; band?: string | null; offset?: number; limit?: number } = {},
+  opts: {
+    state?: string | null;
+    kind?: string | null;
+    band?: string | null;
+    core?: boolean;
+    journal?: boolean;
+    sort?: string | null;
+    offset?: number;
+    limit?: number;
+  } = {},
 ): MemoryListView {
   const store = src.store;
   const day = store.livedDay();
@@ -251,6 +313,9 @@ export function memoryListView(
   const band = BANDS.includes(opts.band as Band) ? (opts.band as Band) : null;
   const limit = Math.max(1, Math.min(LIST_MAX, Math.floor(opts.limit ?? 50)));
   const offset = Math.max(0, Math.floor(opts.offset ?? 0));
+  const onlyCore = opts.core === true;
+  const onlyJournal = opts.journal === true;
+  const sort: ListSort = opts.sort === "oldest" ? "oldest" : "newest";
 
   interface Slim {
     id: string;
@@ -259,7 +324,10 @@ export function memoryListView(
     strength: number;
     bornDay: number;
     learnedOn: string;
+    createdAt: number | null;
     archived: boolean;
+    core: boolean;
+    journal: boolean;
   }
   const all: Slim[] = [];
   let live = 0;
@@ -281,35 +349,66 @@ export function memoryListView(
     } catch {
       /* a row whose physics will not compute still lists, at zero */
     }
-    all.push({ id, kind: row.kind, band: b, strength: s, bornDay: row.birth_day, learnedOn: row.learned_on, archived: isArchived });
+    all.push({
+      id,
+      kind: row.kind,
+      band: b,
+      strength: s,
+      bornDay: row.birth_day,
+      learnedOn: row.learned_on,
+      createdAt: row.created_at ?? null,
+      archived: isArchived,
+      core: row.promoted_identity === 1,
+      journal: isChapterMemory(row),
+    });
   }
   const kinds: Record<string, number> = Object.fromEntries(KINDS.map((k) => [k, 0]));
   const bands: Record<string, number> = Object.fromEntries(BANDS.map((b) => [b, 0]));
+  let core = 0;
+  let journal = 0;
   for (const r of all) {
     kinds[r.kind] = (kinds[r.kind] ?? 0) + 1;
     bands[r.band] = (bands[r.band] ?? 0) + 1;
+    if (r.core) core += 1;
+    if (r.journal) journal += 1;
   }
-  const matching = all.filter((r) => (kind === null || r.kind === kind) && (band === null || r.band === band));
-  // Newest first: the lived day it was born, then the calendar day it was
-  // recorded, then the id — so the order is defined, not SQLite's.
-  matching.sort(
-    (a, b) =>
-      b.bornDay - a.bornDay ||
-      (a.learnedOn < b.learnedOn ? 1 : a.learnedOn > b.learnedOn ? -1 : 0) ||
-      (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+  const matching = all.filter(
+    (r) =>
+      (kind === null || r.kind === kind) &&
+      (band === null || r.band === band) &&
+      (!onlyCore || r.core) &&
+      (!onlyJournal || r.journal),
   );
+  // Newest first: the lived day it was born, then the moment it was written
+  // (v7 `created_at`; a row from before v7 has none and counts as the older),
+  // then the calendar day it was recorded, then the id — so the order is
+  // defined, not SQLite's. Oldest first is exactly the reverse.
+  const newestFirst = (a: Slim, b: Slim): number =>
+    b.bornDay - a.bornDay ||
+    (b.createdAt ?? -Infinity) - (a.createdAt ?? -Infinity) ||
+    (a.learnedOn < b.learnedOn ? 1 : a.learnedOn > b.learnedOn ? -1 : 0) ||
+    (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  matching.sort(sort === "oldest" ? (a, b) => newestFirst(b, a) : newestFirst);
   const rows: ListRow[] = matching.slice(offset, offset + limit).map((r) => {
     const row = store.row(r.id);
     const here = revealHere(store, r.id, 160);
     let title: string | null = null;
     let line: string;
-    if (!here.present) line = here.label;
-    else if (here.confidential) line = WITHHELD;
+    let text: string;
+    if (!here.present) line = text = here.label;
+    else if (here.confidential) line = text = WITHHELD;
     else {
       const t = row?.title ?? null;
       title = t !== null && t.trim().length > 0 ? t.trim() : null;
       line = firstLine(row?.body ?? "", 160) || here.label;
+      text = "";
     }
+    const shown = shownOf(row?.body ?? "", {
+      chapter: r.journal,
+      learnedOn: r.learnedOn,
+      confidential: here.confidential || !here.present,
+      withheld: text,
+    });
     return {
       id: r.id,
       title,
@@ -324,6 +423,14 @@ export function memoryListView(
       archivedReason: r.archived ? (row?.archived_reason ?? null) : null,
       schema: row?.type === "schema",
       schemaRole: row?.type === "schema" ? schemaRole(row.meta) : null,
+      text: shown.text || line,
+      date: shown.date,
+      dateFrom: shown.dateFrom,
+      core: r.core,
+      protected: row?.protected === 1,
+      journal: r.journal,
+      feelings: feelingsShown(store, r.id),
+      createdAt: r.createdAt,
     };
   });
   const everLived = day > 0 || live + archived > 0;
@@ -332,10 +439,13 @@ export function memoryListView(
     state,
     kind,
     band,
+    core: onlyCore,
+    journal: onlyJournal,
+    sort,
     offset,
     limit,
     total: matching.length,
-    counts: { live, archived, kinds, bands },
+    counts: { live, archived, kinds, bands, core, journal },
     rows,
     absent: matching.length === 0 ? (everLived ? NONE : NEVER) : null,
   };

@@ -257,6 +257,9 @@ export function router(
         state: q.get("state"),
         kind: q.get("kind"),
         band: q.get("band"),
+        core: q.get("core") === "1",
+        journal: q.get("journal") === "1",
+        sort: q.get("sort"),
         offset: intParam(url, "offset", 0),
         limit: intParam(url, "limit", 50),
       }));

@@ -4,11 +4,47 @@
  * Split out of `web/views.ts`, which re-exports every public name from here;
  * the four rules in that file's header apply to every line below.
  */
-import { band, rep, sal, strength } from "../../../../core/physics/index.js";
+import { TUNABLES, band, promotionEligibility, rep, sal, strength } from "../../../../core/physics/index.js";
 import { isJournal } from "../../../../core/sleep/index.js";
 import type { Band, Kind } from "../../../../core/types.js";
 import type { DashboardSource } from "../../source.js";
-import { WITHHELD, gistOfDoc, reveal } from "../reveal.js";
+import { WITHHELD, gistOfDoc, reveal, revealHere } from "../reveal.js";
+import { archiveWords } from "./archive-words.js";
+import { fadeCurve } from "./mechanism-panel.js";
+import { feelingsShown, isChapterMemory } from "./memory-words.js";
+import type { FeelingShown } from "./memory-words.js";
+import { LOG_CEILING } from "./shared.js";
+
+/** One step in a memory's lineage, as the card's timeline draws it. */
+export interface TimelineStep {
+  /**
+   * `replaced` — an older memory this one took the place of (its `superseded_by` is this id);
+   * `corrects` — a memory this one argues with (`meta.updates`): a LINK, the other is untouched;
+   * `revised` — this memory's own words, rewritten in place (a `versions` row with no successor);
+   * `became` — the newer memory that replaced this one.
+   */
+  readonly rel: "replaced" | "corrects" | "revised" | "became";
+  /** The other memory, when there is one (click to open it). */
+  readonly id: string | null;
+  readonly text: string;
+  readonly confidential: boolean;
+  /** The lived day it happened, when the store knows it. */
+  readonly day: number | null;
+  /** For `revised`: the version's number. */
+  readonly seq: number | null;
+  readonly reason: string | null;
+}
+
+/** The card's strength curve: how strong so far, and where it heads if unused. */
+export interface MemoryCurve {
+  readonly day: number;
+  readonly from: number;
+  readonly to: number;
+  readonly points: readonly (readonly [number, number])[];
+  readonly archiveDay: number | null;
+  readonly archiveLine: number;
+  readonly semanticFloor: number;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // one memory, opened
@@ -67,6 +103,27 @@ export interface MemoryDetail {
   readonly versions: { seq: number; reason: string; day: number; became: string }[];
   readonly prospective: { date: string; state: string; fires: number; precision: string }[];
   readonly absence: string | null;
+  /** A journal-chapter memory (`isChapterMemory`): its words are a chapter, and it is not scored. */
+  readonly chapter: boolean;
+  /** Today's lived day, for the use strip. */
+  readonly day: number;
+  /** Null when there is nothing to draw — see `curveNote`. */
+  readonly curve: MemoryCurve | null;
+  /** Why there is no curve, in words ("in the core — it doesn't fade"), else null. */
+  readonly curveNote: string | null;
+  /** Lived days the log shows it being used on (`recall.credit`), ascending.
+   *  The log keeps only so much, so this can be fewer than `reinforcedDays`. */
+  readonly useDays: number[];
+  /** The road to the core, when use is what stands in the way. */
+  readonly promotion: { readonly byUse: boolean; readonly days: number; readonly required: number };
+  readonly feelings: (FeelingShown & { readonly carriedBy: string })[];
+  readonly model: string | null;
+  readonly eventDate: string | null;
+  readonly createdAt: number | null;
+  /** Why it was archived, in plain words; null while it is live. */
+  readonly archivedWords: string | null;
+  /** Its lineage, oldest first: what it replaced or corrects, its own rewrites, what it became. */
+  readonly timeline: TimelineStep[];
 }
 
 export function memoryDetail(src: DashboardSource, id: string): MemoryDetail {
@@ -108,6 +165,18 @@ export function memoryDetail(src: DashboardSource, id: string): MemoryDetail {
     versions: [],
     prospective: [],
     absence: r.label,
+    chapter: false,
+    day,
+    curve: null,
+    curveNote: null,
+    useDays: [],
+    promotion: { byUse: false, days: 0, required: TUNABLES.N_PROMOTION_DAYS },
+    feelings: [],
+    model: null,
+    eventDate: null,
+    createdAt: null,
+    archivedWords: null,
+    timeline: [],
   } satisfies MemoryDetail;
 
   if (!r.present || r.headId === null) return empty;
@@ -123,6 +192,17 @@ export function memoryDetail(src: DashboardSource, id: string): MemoryDetail {
     return empty;
   }
   const g = gistOfDoc(doc, 120);
+  const chapter = row !== undefined && isChapterMemory(row);
+  const journal = row === undefined ? false : isJournal(row);
+  const verdict = promotionEligibility(physics);
+  let curve: MemoryCurve | null = null;
+  let curveNote: string | null = null;
+  if (journal || chapter) curveNote = "a journal chapter — kept as written, not scored";
+  else if (physics.promotedIdentity === true) curveNote = "in the core — it doesn't fade";
+  else {
+    const c = fadeCurve(physics, day);
+    curve = { day, ...c, archiveLine: TUNABLES.PHI_PRUNE, semanticFloor: TUNABLES.THETA_SEM };
+  }
 
   const points: { role: string; id: string; text: string }[] = [];
   const push = (role: string, target: unknown): void => {
@@ -141,7 +221,7 @@ export function memoryDetail(src: DashboardSource, id: string): MemoryDetail {
     id: headId,
     headId,
     askedFor: headId === id ? null : id,
-    journal: row === undefined ? false : isJournal(row),
+    journal,
     title: doc.title ?? "",
     // The BODY is the memory, and this is the owner's own window onto their own
     // store (constitution line 6). A confidential body is the one exception, and
@@ -198,7 +278,98 @@ export function memoryDetail(src: DashboardSource, id: string): MemoryDetail {
       precision: p.precision,
     })),
     absence: null,
+    chapter,
+    day,
+    curve,
+    curveNote,
+    useDays: useDaysOf(src, headId),
+    promotion: {
+      // "N separate days make it core" only when the days are all that stand in the way.
+      byUse: verdict.blockedBy.length === 1 && verdict.blockedBy[0] === "insufficient-distinct-days",
+      days: verdict.reinforcedDays,
+      required: verdict.requiredDays,
+    },
+    feelings: feelingsWithCarry(src, headId, g.confidential),
+    model: row?.model ?? null,
+    eventDate: row?.event_date ?? null,
+    createdAt: row?.created_at ?? null,
+    archivedWords: row?.archived === 1 ? archiveWords(row.archived_reason ?? null, row.superseded_by !== null) : null,
+    timeline: timelineOf(src, headId, doc.meta["updates"]),
   };
+}
+
+/** The lived days the log shows this memory being credited for use (`recall.credit`'s `ids`). */
+function useDaysOf(src: DashboardSource, id: string): number[] {
+  const days = new Set<number>();
+  let rows;
+  try {
+    rows = src.store.eventLog({ name: "recall.credit", limit: LOG_CEILING });
+  } catch {
+    return [];
+  }
+  for (const e of rows) {
+    if (e.payload === null || !e.payload.includes(id)) continue;
+    try {
+      const p = JSON.parse(e.payload) as Record<string, unknown>;
+      const ids = p["ids"];
+      if (!Array.isArray(ids) || !ids.includes(id)) continue;
+      days.add(typeof p["day"] === "number" ? p["day"] : e.day);
+    } catch {
+      /* a row that will not parse says nothing about this memory */
+    }
+  }
+  return [...days].sort((a, b) => a - b);
+}
+
+/** Its feelings, with what carried each one — withheld with the words on a confidential memory. */
+function feelingsWithCarry(src: DashboardSource, id: string, confidential: boolean): MemoryDetail["feelings"] {
+  const words = feelingsShown(src.store, id);
+  let rows: { carried_by: string }[] = [];
+  try {
+    rows = src.store.feelingsFor(id);
+  } catch {
+    rows = [];
+  }
+  return words.map((f, i) => ({ ...f, carriedBy: confidential ? "" : (rows[i]?.carried_by ?? "") }));
+}
+
+/**
+ * Its lineage, oldest first. The older memories it REPLACED are found by
+ * scanning the archived rows for a `superseded_by` naming it — a scan on every
+ * open of a card, over the archived set only, and through `row()` (a read of an
+ * archived row through `read()` is itself an event).
+ */
+function timelineOf(src: DashboardSource, id: string, updates: unknown): TimelineStep[] {
+  const store = src.store;
+  const steps: TimelineStep[] = [];
+  const words = (other: string): { text: string; confidential: boolean } => {
+    const rr = revealHere(store, other, 90);
+    return { text: rr.text ?? rr.label, confidential: rr.confidential };
+  };
+  for (const other of store.list({ archived: true })) {
+    if (other === id) continue;
+    const o = store.row(other);
+    if (o === undefined || o.superseded_by !== id) continue;
+    const v = store.versions(other).find((x) => x.successor_id === id);
+    steps.push({ rel: "replaced", id: other, ...words(other), day: v?.version_day ?? null, seq: null, reason: v?.reason ?? o.archived_reason });
+  }
+  if (typeof updates === "string" && updates !== id) {
+    steps.push({ rel: "corrects", id: updates, ...words(updates), day: null, seq: null, reason: null });
+  }
+  let became: TimelineStep | null = null;
+  for (const v of store.versions(id)) {
+    if (v.successor_id === null) {
+      steps.push({ rel: "revised", id: null, text: "its words were rewritten in place", confidential: false, day: v.version_day, seq: v.seq, reason: v.reason });
+    } else {
+      became = { rel: "became", id: v.successor_id, ...words(v.successor_id), day: v.version_day, seq: v.seq, reason: v.reason };
+    }
+  }
+  const row = store.row(id);
+  if (became === null && row !== undefined && row.superseded_by !== null) {
+    became = { rel: "became", id: row.superseded_by, ...words(row.superseded_by), day: null, seq: null, reason: row.archived_reason };
+  }
+  if (became !== null) steps.push(became);
+  return steps;
 }
 
 function barFor(src: DashboardSource, id: string): number | null {
