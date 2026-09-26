@@ -44,7 +44,7 @@
  * No body text, no question text, no note text ever reaches an event.
  */
 import { MCP_RECALL_EVENT } from "../../core/counterpart.js";
-import { localDate, parseCalendarDate } from "../../core/time.js";
+import { localDate, parseCalendarDate, todayIn } from "../../core/time.js";
 import type { ChapterResult, Counterpart, DepositResult } from "../../core/counterpart.js";
 import type { SemanticSource } from "../../core/recall/index.js";
 import { AUTHOR_DIMENSIONS } from "../../core/remember/index.js";
@@ -959,7 +959,7 @@ export class McpServer {
     });
     return this.depositResult("note", deposit, {
       ...this.recordFeelings(deposit, feelings.inputs, model),
-      ...reminderEcho(deposit, dated),
+      ...reminderEcho(deposit, dated, this.today()),
     });
   }
 
@@ -1578,7 +1578,7 @@ export class McpServer {
         ...(malformed === null ? {} : { malformed }),
         ...(malformed === "KIND_UNKNOWN" ? { kinds: [...MEMORY_KINDS] } : {}),
         ...this.recordFeelings(result, feelings.inputs, model),
-        ...reminderEcho(result, dated),
+        ...reminderEcho(result, dated, this.today()),
       });
     }
     return { outcomes, deposited, duplicates, entries };
@@ -1968,6 +1968,12 @@ export class McpServer {
     return claimed;
   }
 
+  /** The person's calendar day now, in the store's zone (docs/time.md rule 3),
+   *  off this server's injectable clock — what a past `eventDate` is told against. */
+  private today(): string {
+    return todayIn(this.counterpart.store.zone(), this.nowFn());
+  }
+
   /**
    * The model the hooks last saw answer in THIS server's bound session — the
    * relay a chapter's model takes (self NOTES §24), used since 2026-09-25 for
@@ -2294,14 +2300,25 @@ function pickDimensions(rec: Record<string, unknown>): Record<string, unknown> {
 /** What `readReminder` hands back: the draft fields, and what to say about them. */
 type ReminderRead =
   | {
-      readonly fields: { eventDate?: string; remind?: "plain" | "quiet" };
-      /** `remind` was sent with no `eventDate`: there is nothing for it to shape. */
+      /** `eventDate: null` is the explicit drop (a revision's cancel); `remind`
+       *  rides only when it was SENT, so a revision can tell a left-out mode
+       *  from a stated one (review N7). */
+      readonly fields: { eventDate?: string | null; remind?: "plain" | "quiet" };
+      /** `remind` was sent with no `eventDate`: there is nothing for it to shape
+       *  — unless the memory it revises carries a date (`DepositResult.reminder`). */
       readonly remindIgnored: boolean;
     }
   | { readonly refused: "event-date-unreadable" | "remind-unknown"; readonly detail: string };
 
 const EVENT_DATE_SHAPES =
   'A day "2026-10-15", a month "2026-10", a year "2026", or a range of two days "2026-10-20..2026-10-31" (first day first). Convert "late October" or "before the 15th" into one of those yourself.';
+
+const YEAR_ALONE_NOTE =
+  "A year alone names no day, so this will not come back on its own. Give a month, a day or a range if it should.";
+
+/** Review N8 (2026-09-26): a past date is accepted and kept, and SAID — so a
+ *  wrong year can be caught by the model that wrote it. */
+const DATE_PASSED_NOTE = "That date has already passed — it won't come back as a reminder.";
 
 /**
  * `eventDate` and `remind` off a `note` or a `session_end` entry, CHECKED
@@ -2315,8 +2332,13 @@ function readReminder(rec: Record<string, unknown>): ReminderRead {
   if (rawRemind !== undefined && rawRemind !== null && rawRemind !== "plain" && rawRemind !== "quiet") {
     return { refused: "remind-unknown", detail: '`remind` is "plain" or "quiet".' };
   }
+  const sent: { remind?: "plain" | "quiet" } =
+    rawRemind === "plain" || rawRemind === "quiet" ? { remind: rawRemind } : {};
   if (rawDate === undefined || rawDate === null) {
-    return { fields: {}, remindIgnored: rawRemind === "plain" || rawRemind === "quiet" };
+    return {
+      fields: { ...(rawDate === null ? { eventDate: null } : {}), ...sent },
+      remindIgnored: sent.remind !== undefined,
+    };
   }
   const read = typeof rawDate === "string" ? parseCalendarDate(rawDate) : null;
   if (read === null) {
@@ -2325,26 +2347,59 @@ function readReminder(rec: Record<string, unknown>): ReminderRead {
       detail: `\`eventDate\` ${typeof rawDate === "string" ? `"${rawDate.slice(0, 64)}"` : "(not text)"} is not a date this can read. ${EVENT_DATE_SHAPES}`,
     };
   }
-  return {
-    fields: { eventDate: read.text, remind: rawRemind === "plain" ? "plain" : "quiet" },
-    remindIgnored: false,
-  };
+  return { fields: { eventDate: read.text, ...sent }, remindIgnored: false };
 }
 
-/** The reminder half of a deposit's answer: what was recorded, or why `remind`
- *  had nothing to shape. Nothing when neither field was sent or nothing minted. */
-function reminderEcho(deposit: DepositResult, dated: ReminderRead): Record<string, unknown> {
+/** What to say about a recorded date: that it has already passed (its last day
+ *  is before the person's today — `time.ts#todayIn` in the store's zone), or
+ *  that a year alone never comes back. One note, the passed one first. */
+function dateNote(eventDate: string, today: string): Record<string, unknown> {
+  const read = parseCalendarDate(eventDate);
+  if (read === null) return {};
+  if (read.last < today) return { note: DATE_PASSED_NOTE };
+  return read.precision === "year" ? { note: YEAR_ALONE_NOTE } : {};
+}
+
+/** The reminder half of a deposit's answer: what was RECORDED — after a
+ *  revision's carry-over, not merely what was sent — or why `remind` had
+ *  nothing to shape. Nothing when neither field was sent or nothing minted. */
+function reminderEcho(deposit: DepositResult, dated: ReminderRead, today: string): Record<string, unknown> {
   if ("refused" in dated || !deposit.deposited) return {};
-  const { eventDate, remind } = dated.fields;
-  if (eventDate !== undefined) {
-    const read = parseCalendarDate(eventDate);
+  const carried = deposit.reminder;
+  if (carried !== undefined) {
+    const unmoved = carried.moved ? {} : { unmoved: true };
+    if (carried.eventDate === null) {
+      return {
+        reminder: {
+          cleared: true,
+          from: carried.from,
+          ...unmoved,
+          note: "The date is dropped: neither this memory nor the one it revises will come back as a reminder.",
+        },
+      };
+    }
     return {
       reminder: {
-        eventDate,
-        remind: remind ?? "quiet",
-        ...(read?.precision === "year"
-          ? { note: "A year alone names no day, so this will not come back on its own. Give a month, a day or a range if it should." }
-          : {}),
+        eventDate: carried.eventDate,
+        remind: carried.remind ?? "quiet",
+        from: carried.from,
+        ...(carried.inherited.length > 0 ? { carriedOver: [...carried.inherited] } : {}),
+        ...unmoved,
+        ...dateNote(carried.eventDate, today),
+      },
+    };
+  }
+  const { eventDate, remind } = dated.fields;
+  if (typeof eventDate === "string") {
+    return { reminder: { eventDate, remind: remind ?? "quiet", ...dateNote(eventDate, today) } };
+  }
+  // A cancel that found nothing to cancel is SAID (review of #247): silence
+  // here read as success while a reminder the model meant to drop kept coming.
+  if (eventDate === null && (deposit.proposal?.updates?.declared ?? null) !== null) {
+    return {
+      reminder: {
+        cleared: false,
+        note: "No date was dropped: `updates` did not reach a dated memory by its id, so nothing was cancelled.",
       },
     };
   }

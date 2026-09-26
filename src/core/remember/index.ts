@@ -52,6 +52,7 @@ export {
   submitProposal,
 } from "./proposals.js";
 export type {
+  DateIntent,
   Feeling,
   GateFn,
   GateInput,

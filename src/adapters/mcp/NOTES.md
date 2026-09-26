@@ -683,3 +683,27 @@ the person says it matters; quiet otherwise. What happens after the deposit is
 reminder whatever its salience — choosing a date is itself the importance signal — so the
 description no longer says "about 0.6". The salience floor still gates a date a caller
 extracted; decay (faded) and archival still keep a memory from arriving.
+
+**Follow-ups, same day (review N7, N8).** `eventDate` also takes `null` (the schema type is
+now `["string", "null"]`): on a revision it drops the date. `readReminder` passes `remind`
+through only when it was SENT, so `remember/intake` can tell a left-out mode from a stated
+one (`DateIntent`). The echo reports what was RECORDED, not what was sent: a revision that
+carried a date answers `reminder: { eventDate, remind, from, carriedOver }`, and one that
+dropped it `reminder: { cleared: true, from }` (the carry itself is `core/counterpart.ts`,
+`prospective/` NOTES §13). A date whose last day is before the person's today —
+`time.ts#todayIn` in the store's zone, off this server's injectable clock — is kept and
+answered with `note: "That date has already passed — it won't come back as a reminder."`;
+that note wins over the bare-year one. A plain past date is indeed never said; a quiet one
+could still be cued in the week of grace after it, which the note does not spell out —
+its job is to let the model catch a wrong year. The carry runs only for an `updates`
+address that resolved as an ID (`Store#resolve` is id-only): a handle or title falls to
+content matching, which carries nothing — so the `eventDate` description says "by its id".
+
+**After the adversarial review of #247.** `from` in a carried or cleared reply names the
+memory the reminder came FROM, which is not always the id the author sent: when that
+memory's reminder had already moved on, the carry follows it (`Counterpart#reminderHolder`,
+prospective NOTES §13), so a cancel or a reschedule sent against the first id still lands.
+A revision that sends `eventDate: null` and reaches no dated memory now answers
+`reminder: { cleared: false, note }` instead of nothing; a fresh note sending `null` (no
+`updates`) still answers nothing, since a client that fills every optional field with null
+would otherwise get the note on every deposit.
