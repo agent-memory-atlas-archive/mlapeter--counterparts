@@ -12,7 +12,7 @@ import { api, fail } from "./api.js";
 import { emptyBox } from "./absence.js";
 import { esc } from "./dom.js";
 import { headline, n2, n3, said } from "./format.js";
-import { FEELING_COLOURS, kindMark, kindOf } from "./memory-marks.js";
+import { FEELING_COLOURS, kindMark, kindOf, shortDate } from "./memory-marks.js";
 import { openModal } from "./modal.js";
 import { confirmTyped } from "./widgets/confirm.js";
 
@@ -31,12 +31,12 @@ export async function openMemory(id) {
 /** The card's markup — pure, from the `/api/memory` payload. */
 export function memoryCard(d) {
   const k = kindOf(d.kind);
-  const title = d.title ? esc(d.title) : d.confidential ? said(d.text, true) : esc(headline(d.text));
+  const title = d.title ? esc(d.title) : d.confidential ? said(d.text, true) : esc(headline(d.shownText || d.text));
   return '<div class="mc' + (d.archived ? " mc-arch" : "") + '">' +
     '<h3 class="mc-title">' + kindMark(d.kind, false) + "<span>" + title + "</span></h3>" +
     '<div class="mc-kind">' + esc(k.label) + (d.askedFor ? " · you asked for " + esc(d.askedFor) + ", which forwards here" : "") + "</div>" +
     (d.archived ? '<div class="mc-archived">Archived — ' + esc(d.archivedWords || d.archived) + ". Kept, not deleted.</div>" : "") +
-    "<div class='body'>" + (d.confidential ? '<span class="withheld">' + esc(d.text) + "</span>" : esc(d.text)) + "</div>" +
+    "<div class='body'>" + (d.confidential ? '<span class="withheld">' + esc(d.text) + "</span>" : esc(d.shownText || d.text)) + "</div>" +
     (d.journal
       ? '<p class="mc-note">A journal entry, not a memory: the account memories are made from. It sits outside every sleep phase, and nothing here decays.</p>'
       : "") +
@@ -208,6 +208,10 @@ function versions(d) {
 
 function chips(d) {
   const c = [];
+  if (d.writtenDate) {
+    c.push('<span class="mc-chip dated" title="' + (d.chapter ? "the day its journal chapter names" : "the date written at the front of the memory") +
+      '">' + esc(shortDate(d.writtenDate)) + "</span>");
+  }
   if (d.model) c.push('<span class="mc-chip model" title="the model that wrote these words">' + esc(d.model) + "</span>");
   if (d.eventDate) c.push('<span class="mc-chip" title="the date this memory is about">about ' + esc(d.eventDate) + "</span>");
   if (d.happenedOn) c.push('<span class="mc-chip" title="when it happened">happened ' + esc(d.happenedOn) + "</span>");

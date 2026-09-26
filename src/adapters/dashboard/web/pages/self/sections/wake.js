@@ -7,7 +7,7 @@ import { absenceLine } from "../../../shared/absence.js";
 import { act, resultHtml } from "../../../shared/actions.js";
 import { $, esc } from "../../../shared/dom.js";
 import { ui } from "../state.js";
-import { q, wireTips } from "../tips.js";
+import { q, wireTips } from "../../../shared/widgets/tips.js";
 
 export const markup = `
       <div class="side-block">

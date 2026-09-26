@@ -8,7 +8,7 @@ import { $, esc } from "../../../shared/dom.js";
 import { headline, n2, said } from "../../../shared/format.js";
 import { openModal } from "../../../shared/modal.js";
 import { ui } from "../state.js";
-import { q, wireTips } from "../tips.js";
+import { q, wireTips } from "../../../shared/widgets/tips.js";
 import { storyCard } from "./stories.js";
 
 export const markup = `

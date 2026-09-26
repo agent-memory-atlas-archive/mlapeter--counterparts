@@ -6,7 +6,7 @@ import { absenceLine } from "../../../shared/absence.js";
 import { act, resultHtml } from "../../../shared/actions.js";
 import { api, fail } from "../../../shared/api.js";
 import { $, esc } from "../../../shared/dom.js";
-import { memRow } from "../row.js";
+import { memRow, wireRows } from "../row.js";
 
 export const markup = `
     <div class="find">
@@ -32,6 +32,8 @@ export const markup = `
 
 let qtimer = null;
 export function mount() {
+  wireRows($("qout"));
+  wireRows($("ask-out"));
   $("q").addEventListener("input", () => {
     clearTimeout(qtimer);
     qtimer = setTimeout(runSearch, 180);

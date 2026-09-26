@@ -1,10 +1,7 @@
-/* What the memories page is filtered to, and what is open on it — kept apart
-   from the markup so a live refresh redraws and leaves every choice as it was.
+/* What the memories page is filtered to, kept apart from the markup so a live refresh redraws and leaves every choice as it was.
    One filter listener: the list. */
-export const filters = { state: "live", kind: null, core: false, journal: false, sort: "newest", offset: 0 };
-
-/** What is open on the page: pinned `?` tips, by name. */
-export const ui = { tips: new Set() };
+/** `hold`: firm / settling / fading, set from the "How firmly it's held" bar. */
+export const filters = { state: "live", kind: null, core: false, journal: false, hold: null, sort: "newest", offset: 0 };
 
 const listeners = [];
 export function onFilter(fn) { listeners.push(fn); }
@@ -17,8 +14,8 @@ export function setFilter(patch) {
   for (const fn of listeners) fn(filters);
 }
 
-/** A kind chip is a toggle: click it again to show every kind. Core and
- *  journal chips are on/off. */
+/** A kind chip (or a part of the hold bar) is a toggle: click it again to
+ *  show everything. Core and journal chips are on/off. */
 export function toggle(key, value) {
   if (key === "core" || key === "journal") setFilter({ [key]: !filters[key] });
   else setFilter({ [key]: filters[key] === value ? null : value });

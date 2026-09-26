@@ -136,6 +136,21 @@ describe("the memories tab, live", () => {
       await page.waitForFunction((n) => new RegExp("of " + (n + 1)).test(document.getElementById("mlist-sub")?.textContent ?? ""), persons);
       expect(await page.locator('#mfilters button[data-f="kind"][data-v="person"].on').count()).toBe(1);
       expect(await page.locator('#msort button[data-sort="oldest"].on').count()).toBe(1);
+
+      // A part of "How firmly it's held", clicked, filters the list — and survives too.
+      await page.click('#hold .hkey.firm');
+      await page.waitForSelector('#mfilters button[data-f="hold"][data-v="firm"].on');
+      write("One more fact, written while the firm filter was on.");
+      await refresh();
+      expect(await page.locator("#hold .hkey.firm.on").count()).toBe(1);
+      expect(await page.locator('#mfilters button[data-f="hold"][data-v="firm"].on').count()).toBe(1);
+      expect(await page.locator('#mfilters button[data-f="kind"][data-v="person"].on').count()).toBe(1);
+      // The page asked the server for the firm rows, and shows what it answered.
+      const shown = await page.evaluate(async () => {
+        const r = await fetch("/api/memories/list?state=all&kind=person&hold=firm&sort=oldest");
+        return ((await r.json()) as { total: number }).total;
+      });
+      expect(await total()).toBe(shown);
       expect(errors).toEqual([]);
     } finally {
       await ctx.close();

@@ -5,6 +5,18 @@
    readable at the dimmest), with one quiet meter beside it. */
 import { esc } from "../../shared/dom.js";
 import { badges, feelingDots, kindMark, kindOf, litLevel, shortDate, strengthMeter } from "../../shared/memory-marks.js";
+import { openMemory } from "../../shared/memory-modal.js";
+
+/** Rows under `container` open their memory on a click or Enter (one listener
+ *  for every row it will ever hold, so a repaint needs no rewiring). */
+export function wireRows(container) {
+  const open = (e) => {
+    const row = e.target.closest(".mrow[data-id]");
+    if (row && container.contains(row)) openMemory(row.dataset.id);
+  };
+  container.addEventListener("click", open);
+  container.addEventListener("keydown", (e) => { if (e.key === "Enter") open(e); });
+}
 
 const DATE_WORDS = { text: "the date written in the memory", chapter: "the day its journal chapter names", recorded: "the day it was recorded" };
 
@@ -25,8 +37,7 @@ export function memRow(r, opts = {}) {
   const held = opts.tier ? '<span class="mtier">' + esc(opts.tier) + "</span>"
     : r.journal || r.archived ? "" : strengthMeter(r.strength);
   const id = esc(r.id);
-  return '<div class="mrow click lit-' + lit + (r.archived ? " arch" : "") + '" role="button" tabindex="0" data-id="' + id + '" ' +
-    "onclick=\"openMemory('" + id + "')\" onkeydown=\"if(event.key==='Enter')openMemory('" + id + "')\">" +
+  return '<div class="mrow click lit-' + lit + (r.archived ? " arch" : "") + '" role="button" tabindex="0" data-id="' + id + '">' +
     '<div class="mmain">' + main +
       (r.archived ? '<div class="mwhy">archived: ' + esc(r.archived) + "</div>" : "") + "</div>" +
     '<div class="mside">' +

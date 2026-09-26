@@ -14,7 +14,7 @@ import * as journal from "./sections/journal.js";
 import * as page from "./sections/page.js";
 import * as settling from "./sections/settling.js";
 import * as wake from "./sections/wake.js";
-import { q, wireTips } from "./tips.js";
+import { q, wireTips } from "../../shared/widgets/tips.js";
 
 const markup = `
     <h2 class="sp-title" id="mind-opening"></h2>

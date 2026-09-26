@@ -389,6 +389,8 @@ export function fadeCurve(
  * only say "sooner than it will be", never "later".
  */
 export function letGoDay(physics: MemoryPhysics, day: number, horizon: number): number | null {
+  // Unused, strength only falls: still over the floor at the horizon means never inside it.
+  if (strength(physics, day + horizon) >= TUNABLES.PHI_PRUNE) return null;
   for (let d = day; d <= day + horizon; d++) {
     if (pruneVerdict(physics, d, { inLiveRevisionChain: false }).prune) return d;
   }

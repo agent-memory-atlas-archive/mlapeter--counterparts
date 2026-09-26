@@ -11,8 +11,6 @@ export const ui = {
   day: null,
   /** Expanded chapters, as `<row id>:<chapter number>`. */
   chapters: new Set(),
-  /** Open `?` tips, by name. */
-  tips: new Set(),
   /** The wake's full text is showing. */
   wake: false,
   /** Which count's list is open above the chart: "core" | "guarded" | "contested" | null. */

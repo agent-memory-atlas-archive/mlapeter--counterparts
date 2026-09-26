@@ -11,7 +11,8 @@ import type { DashboardSource } from "../../source.js";
 import { WITHHELD, gistOfDoc, reveal, revealHere } from "../reveal.js";
 import { archiveWords } from "./archive-words.js";
 import { fadeCurve } from "./mechanism-panel.js";
-import { feelingsShown, isChapterMemory } from "./memory-words.js";
+import { chapterDate, feelingsShown, isChapterMemory, liftDate } from "./memory-words.js";
+import { readChapterLead } from "../../../../core/self/index.js";
 import type { FeelingShown } from "./memory-words.js";
 import { LOG_CEILING } from "./shared.js";
 
@@ -124,6 +125,11 @@ export interface MemoryDetail {
   readonly archivedWords: string | null;
   /** Its lineage, oldest first: what it replaced or corrects, its own rewrites, what it became. */
   readonly timeline: TimelineStep[];
+  /** The words as the card shows them: a date written at their front (or a
+   *  chapter's heading) lifted off. `text` stays the stored body. */
+  readonly shownText: string;
+  /** The date lifted off the front (`YYYY-MM-DD`), else null. */
+  readonly writtenDate: string | null;
 }
 
 export function memoryDetail(src: DashboardSource, id: string): MemoryDetail {
@@ -177,6 +183,8 @@ export function memoryDetail(src: DashboardSource, id: string): MemoryDetail {
     createdAt: null,
     archivedWords: null,
     timeline: [],
+    shownText: "",
+    writtenDate: null,
   } satisfies MemoryDetail;
 
   if (!r.present || r.headId === null) return empty;
@@ -295,6 +303,7 @@ export function memoryDetail(src: DashboardSource, id: string): MemoryDetail {
     createdAt: row?.created_at ?? null,
     archivedWords: row?.archived === 1 ? archiveWords(row.archived_reason ?? null, row.superseded_by !== null) : null,
     timeline: timelineOf(src, headId, doc.meta["updates"]),
+    ...cardWords(doc.body.trim(), chapter, g.confidential),
   };
 }
 
@@ -378,4 +387,15 @@ function barFor(src: DashboardSource, id: string): number | null {
   } catch {
     return null;
   }
+}
+
+/** The card's words with a written date lifted off the front — display only. */
+function cardWords(body: string, chapter: boolean, confidential: boolean): { shownText: string; writtenDate: string | null } {
+  if (confidential) return { shownText: WITHHELD, writtenDate: null };
+  if (chapter) {
+    const lead = readChapterLead(body);
+    return { shownText: lead.rest.trim() || body, writtenDate: chapterDate(lead.date) };
+  }
+  const lifted = liftDate(body);
+  return { shownText: lifted.rest, writtenDate: lifted.date };
 }

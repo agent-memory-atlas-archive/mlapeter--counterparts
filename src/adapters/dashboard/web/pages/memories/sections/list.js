@@ -6,9 +6,9 @@ import { absenceLine } from "../../../shared/absence.js";
 import { api, fail } from "../../../shared/api.js";
 import { $, esc } from "../../../shared/dom.js";
 import { kindMark, kindOf } from "../../../shared/memory-marks.js";
-import { memRow } from "../row.js";
+import { memRow, wireRows } from "../row.js";
 import { filters, onFilter, setFilter, toggle } from "../state.js";
-import { q, wireTips } from "../tips.js";
+import { q, wireTips } from "../../../shared/widgets/tips.js";
 
 const PAGE = 50;
 
@@ -30,12 +30,13 @@ export const markup = `
 let seq = 0;
 
 export function mount() {
+  wireRows($("mlist"));
   $("mfilters").addEventListener("click", (e) => {
     const b = e.target.closest("button[data-f]");
     if (!b) return;
     const f = b.dataset.f, v = b.dataset.v || null;
     if (f === "state") setFilter({ state: v });
-    else if (f === "clear") setFilter({ kind: null, core: false, journal: false });
+    else if (f === "clear") setFilter({ kind: null, core: false, journal: false, hold: null });
     else toggle(f, v);
   });
   $("msort").addEventListener("click", (e) => {
@@ -57,6 +58,7 @@ export async function render() {
   if (filters.kind) qs.set("kind", filters.kind);
   if (filters.core) qs.set("core", "1");
   if (filters.journal) qs.set("journal", "1");
+  if (filters.hold) qs.set("hold", filters.hold);
   let d;
   try { d = await api("/api/memories/list?" + qs.toString()); }
   catch (e) { return fail("The memory list", e); }
@@ -89,10 +91,12 @@ function paintFilters(d) {
   const special =
     chip("core", null, '<span class="star">★</span>core' + count(c.core), d.core, c.core === 0 ? "zero" : "", "in the core: part of who I am") +
     chip("journal", null, "journal" + count(c.journal), d.journal, c.journal === 0 ? "zero" : "", "journal chapters, kept as written");
-  const any = d.kind || d.core || d.journal;
+  const any = d.kind || d.core || d.journal || d.hold;
+  const holdChip = d.hold ? chip("hold", d.hold, '<span class="hdot ' + esc(d.hold) + '"></span>' + esc(d.hold) +
+    count(c.hold[d.hold]), true, "", "from the bar above — click to show all again") : "";
   $("mfilters").innerHTML =
     '<div class="fgroup seggroup" role="group" aria-label="live or archived">' + state + "</div>" +
-    '<div class="fgroup" role="group" aria-label="kind">' + kinds + special +
+    '<div class="fgroup" role="group" aria-label="kind">' + kinds + special + holdChip +
       (any ? chip("clear", null, "show all", false, "clear") : "") + q("kinds", KIND_TIP) + "</div>";
   wireTips($("mfilters"));
 }
@@ -102,7 +106,7 @@ function paintRows(d) {
   const to = Math.min(d.total, d.offset + d.rows.length);
   $("mlist-sub").textContent = d.total === 0 ? "— none match" : "— " + from + "–" + to + " of " + d.total;
   if (d.rows.length === 0) {
-    const narrowed = d.kind || d.core || d.journal;
+    const narrowed = d.kind || d.core || d.journal || d.hold;
     $("mlist").innerHTML = absenceLine(d.absent || "(none yet)",
       d.state === "archived" ? "nothing has been archived" + (narrowed ? " that matches these filters" : "")
         : "no memory matches these filters");

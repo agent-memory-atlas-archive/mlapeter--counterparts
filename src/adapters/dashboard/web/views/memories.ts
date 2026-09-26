@@ -1,13 +1,16 @@
 /**
- * `/api/memories` — the constellation and the kinds; `/api/memories/list` — every memory.
+ * `/api/memories` — how firmly what I hold is held, and how it feels (the two
+ * pictures above the list), plus the census the other tabs' tests lean on;
+ * `/api/memories/list` — every memory.
  *
  * Split out of `web/views.ts`, which re-exports every public name from here;
  * the four rules in that file's header apply to every line below.
  */
+import { CORE_EMOTIONS } from "../../../../core/feelings-wheel.js";
 import { TUNABLES as PHYSICS, band as bandOf, strength as strengthOf } from "../../../../core/physics/index.js";
-import { isJournal } from "../../../../core/sleep/index.js";
+import { isEntityCard, isJournal } from "../../../../core/sleep/index.js";
 import { rowToPhysics } from "../../../../core/store/index.js";
-import type { Band, Kind } from "../../../../core/types.js";
+import type { Band, Kind, MemoryPhysics } from "../../../../core/types.js";
 import { NEVER, NONE } from "../../layout.js";
 import { BANDS, KINDS } from "../../registries.js";
 import type { DashboardSource } from "../../source.js";
@@ -16,8 +19,6 @@ import { archiveWords } from "./archive-words.js";
 import { letGoDay } from "./mechanism-panel.js";
 import { feelingsShown, isChapterMemory, shownOf } from "./memory-words.js";
 import type { DateFrom, FeelingShown } from "./memory-words.js";
-import { BAND_GLOSS } from "./rows.js";
-import type { BarRow } from "./rows.js";
 import { absenceFor, census, countMap } from "./shared.js";
 import type { MemoryLine } from "./shared.js";
 
@@ -50,31 +51,62 @@ export interface MemoriesView {
   readonly memories: number;
   /** Of `total`: entities and beliefs about them (schema rows). */
   readonly schemas: number;
-  /** Every dot, strongest first, with what the picture needs beyond the census. */
-  readonly points: MemoryPoint[];
-  /** How many lived days ahead "close to being let go" looks (`NEAR_LET_GO_DAYS`). */
+  /** How firmly what I hold is held: firm / settling / fading, over every live
+   *  row but the journal chapters, which are counted apart (they aren't scored). */
+  readonly hold: { readonly firm: number; readonly settling: number; readonly fading: number; readonly journal: number };
+  /** How many lived days ahead "fading" looks (`NEAR_LET_GO_DAYS`). */
   readonly nearLetGoDays: number;
-  readonly distribution: { from: number; to: number; count: number }[];
-  /** Strength in ten steps, each step split by today's band — the scatter's
-   *  right margin. Over every row, not only the plotted ones. */
+  /** How many lived days ahead "firm" looks (`FIRM_AHEAD_DAYS`). */
+  readonly firmAheadDays: number;
+  /** How it feels: the feelings on live memories, by the wheel's six cores. */
+  readonly feelings: FeelingsView;
+  /** The census, strongest first. Nothing on the page draws it now; kept for the
+   *  callers and tests that read it. */
+  readonly points: MemoryLine[];
   readonly strengthByBand: { from: number; to: number; bands: Record<string, number> }[];
-  readonly bands: BarRow[];
   readonly kinds: KindRow[];
   readonly pointsAbsent: string | null;
-  readonly note: string;
 }
 
-/** A dot on the picture: the census line, plus its title, whether it is a
- *  journal chapter, and whether prune would let it go soon if nobody used it. */
-export interface MemoryPoint extends MemoryLine {
-  readonly title: string | null;
-  readonly journal: boolean;
-  /** The first lived day within `NEAR_LET_GO_DAYS` on which prune would let it go, unused; else null. */
-  readonly letGoDay: number | null;
+/** One person's side of one core feeling. */
+export interface FeelingSide {
+  /** How many feelings are recorded under this core. */
+  readonly count: number;
+  /** Their recorded strengths, summed (each 0..1, as felt). */
+  readonly sum: number;
+  /** The specific feelings under it, most first: `proud 3, joyful 1`. */
+  readonly words: { readonly word: string; readonly count: number }[];
 }
 
-/** "Close to being let go" means prune would take it within this many lived days if unused. */
+export interface FeelingsView {
+  /** Live memories carrying at least one feeling. */
+  readonly carrying: number;
+  /** In the wheel's order (`CORE_EMOTIONS`): yours (`whose = owner`) and mine (`whose = self`). */
+  readonly cores: { readonly core: string; readonly yours: FeelingSide; readonly mine: FeelingSide }[];
+}
+
+/** How firmly a memory is held, in three words. */
+export type Hold = "firm" | "settling" | "fading";
+
+/** "Fading": prune would take it within this many lived days if nobody used it. */
 export const NEAR_LET_GO_DAYS = 14;
+/** "Firm": unused, it is still above the semantic floor (`THETA_SEM`, settled
+ *  into what I know) this many lived days from now — far from the let-go line. */
+export const FIRM_AHEAD_DAYS = 30;
+
+/**
+ * Firm, settling or fading. Core and protected memories are firm (neither is
+ * pruned). Fading is prune's own verdict within `NEAR_LET_GO_DAYS` (`letGoDay`);
+ * an entity card is faded by `schemas/`, not by prune, so it is never fading
+ * here. Firm is still settled `FIRM_AHEAD_DAYS` from now if unused. The rest
+ * are settling.
+ */
+export function holdOf(physics: MemoryPhysics, day: number, opts: { prunable: boolean }): Hold {
+  if (physics.promotedIdentity === true || physics.protected === true) return "firm";
+  if (opts.prunable && letGoDay(physics, day, NEAR_LET_GO_DAYS) !== null) return "fading";
+  if (strengthOf(physics, day + FIRM_AHEAD_DAYS) >= PHYSICS.THETA_SEM) return "firm";
+  return "settling";
+}
 
 const KIND_GLOSS: Record<Kind, string> = {
   self: "who I am — salience only, and the slowest to be argued out of",
@@ -109,8 +141,6 @@ export function memoriesView(src: DashboardSource, opts: { limit?: number } = {}
   const rows = census(src);
   const limit = opts.limit ?? 4000;
   const byKind = countMap<Kind>(rows, "kind");
-  const byBand = countMap<Band>(rows, "band");
-  const peak = Math.max(1, ...BANDS.map((b) => byBand.get(b) ?? 0));
   const everLived = day > 0 || rows.length > 0;
 
   const meanByKind = new Map<Kind, number[]>();
@@ -118,18 +148,6 @@ export function memoriesView(src: DashboardSource, opts: { limit?: number } = {}
     const list = meanByKind.get(r.kind) ?? [];
     list.push(r.strength);
     meanByKind.set(r.kind, list);
-  }
-
-  const buckets = 20;
-  const distribution = Array.from({ length: buckets }, (_, i) => ({
-    from: i / buckets,
-    to: (i + 1) / buckets,
-    count: 0,
-  }));
-  for (const r of rows) {
-    const i = Math.min(buckets - 1, Math.max(0, Math.floor(r.strength * buckets)));
-    const bucket = distribution[i];
-    if (bucket !== undefined) bucket.count += 1;
   }
 
   const steps = 10;
@@ -143,33 +161,52 @@ export function memoriesView(src: DashboardSource, opts: { limit?: number } = {}
     if (step !== undefined) step.bands[r.band] = (step.bands[r.band] ?? 0) + 1;
   }
 
+  const hold = { firm: 0, settling: 0, fading: 0, journal: 0 };
+  const sides = new Map<string, { yours: Side; mine: Side }>(
+    CORE_EMOTIONS.map((c) => [c, { yours: side(), mine: side() }]),
+  );
+  let carrying = 0;
+  for (const m of rows) {
+    const row = store.row(m.id);
+    if (row !== undefined && isChapterMemory(row)) hold.journal += 1;
+    else if (m.unreadable) hold.settling += 1;
+    else {
+      try {
+        hold[holdOf(store.physicsOf(m.id), day, { prunable: row === undefined || !isEntityCard(row) })] += 1;
+      } catch {
+        hold.settling += 1;
+      }
+    }
+    const felt = feelingsShown(store, m.id);
+    if (felt.length > 0) carrying += 1;
+    for (const f of felt) {
+      const at = sides.get(f.core);
+      const s = f.whose === "owner" ? at?.yours : f.whose === "self" ? at?.mine : undefined;
+      if (s === undefined) continue;
+      s.count += 1;
+      s.sum += Math.max(0, Math.min(1, f.strength));
+      s.words.set(f.word, (s.words.get(f.word) ?? 0) + 1);
+    }
+  }
+
   return {
     day,
     total: rows.length,
     memories: rows.filter((r) => !r.schema).length,
     schemas: rows.filter((r) => r.schema).length,
-    strengthByBand,
+    hold,
     nearLetGoDays: NEAR_LET_GO_DAYS,
-    points: rows.slice(0, limit).map((m): MemoryPoint => {
-      const row = store.row(m.id);
-      const journal = row !== undefined && isChapterMemory(row);
-      let letGo: number | null = null;
-      if (!m.unreadable && !m.schema) {
-        try {
-          letGo = letGoDay(store.physicsOf(m.id), day, NEAR_LET_GO_DAYS);
-        } catch {
-          letGo = null;
-        }
-      }
-      const t = m.confidential ? null : (row?.title ?? null);
-      return { ...m, title: t !== null && t.trim().length > 0 ? t.trim() : null, journal, letGoDay: letGo };
-    }),
+    firmAheadDays: FIRM_AHEAD_DAYS,
+    feelings: {
+      carrying,
+      cores: CORE_EMOTIONS.map((core) => {
+        const at = sides.get(core) ?? { yours: side(), mine: side() };
+        return { core, yours: sideOut(at.yours), mine: sideOut(at.mine) };
+      }),
+    },
+    strengthByBand,
+    points: rows.slice(0, limit),
     pointsAbsent: rows.length === 0 ? (everLived ? NONE : NEVER) : null,
-    distribution,
-    bands: BANDS.map((b) => {
-      const count = byBand.get(b) ?? 0;
-      return { label: b, count, fraction: count / peak, note: BAND_GLOSS[b], absent: absenceFor(count, everLived) };
-    }),
     kinds: KINDS.map((kind) => {
       const count = byKind.get(kind) ?? 0;
       const list = meanByKind.get(kind) ?? [];
@@ -188,7 +225,22 @@ export function memoriesView(src: DashboardSource, opts: { limit?: number } = {}
         fadeSpeed: fadeSpeed(tunables.kappa),
       };
     }),
-    note: "Every dot is one memory — or one of the beliefs and entities the schemas hold, which decay and consolidate the same way and are counted apart only where a headline says memories. How many lived days old across, how strong up, how much it mattered at encoding as its size. Colour is the band it is in today, computed now — not the band it was born into.",
+  };
+}
+
+interface Side {
+  count: number;
+  sum: number;
+  words: Map<string, number>;
+}
+const side = (): Side => ({ count: 0, sum: 0, words: new Map() });
+function sideOut(s: Side): FeelingSide {
+  return {
+    count: s.count,
+    sum: Math.round(s.sum * 1000) / 1000,
+    words: [...s.words.entries()]
+      .map(([word, count]) => ({ word, count }))
+      .sort((a, b) => b.count - a.count || (a.word < b.word ? -1 : 1)),
   };
 }
 
@@ -232,6 +284,8 @@ export interface ListRow {
   readonly feelings: FeelingShown[];
   /** v7 moment it was written (UTC ms); null on an older row. */
   readonly createdAt: number | null;
+  /** How firmly it is held (`holdOf`); null for an archived row or a journal chapter. */
+  readonly hold: Hold | null;
 }
 
 export type ListSort = "newest" | "oldest";
@@ -243,6 +297,7 @@ export interface MemoryListView {
   readonly band: Band | null;
   readonly core: boolean;
   readonly journal: boolean;
+  readonly hold: Hold | null;
   readonly sort: ListSort;
   readonly offset: number;
   readonly limit: number;
@@ -257,6 +312,8 @@ export interface MemoryListView {
     /** In the core, and journal chapters — each within the live/archived choice. */
     readonly core: number;
     readonly journal: number;
+    /** Firm / settling / fading — live rows only, journal chapters left out. */
+    readonly hold: Record<Hold, number>;
   };
   readonly rows: ListRow[];
   readonly absent: string | null;
@@ -301,6 +358,7 @@ export function memoryListView(
     band?: string | null;
     core?: boolean;
     journal?: boolean;
+    hold?: string | null;
     sort?: string | null;
     offset?: number;
     limit?: number;
@@ -316,6 +374,7 @@ export function memoryListView(
   const onlyCore = opts.core === true;
   const onlyJournal = opts.journal === true;
   const sort: ListSort = opts.sort === "oldest" ? "oldest" : "newest";
+  const onlyHold: Hold | null = opts.hold === "firm" || opts.hold === "settling" || opts.hold === "fading" ? opts.hold : null;
 
   interface Slim {
     id: string;
@@ -328,6 +387,7 @@ export function memoryListView(
     archived: boolean;
     core: boolean;
     journal: boolean;
+    hold: Hold | null;
   }
   const all: Slim[] = [];
   let live = 0;
@@ -342,12 +402,16 @@ export function memoryListView(
     if (state === "archived" && !isArchived) continue;
     let b: Band = row.band;
     let s = 0;
+    const chapter = isChapterMemory(row);
+    let hold: Hold | null = null;
     try {
       const physics = rowToPhysics(row);
       b = bandOf(physics, day);
       s = strengthOf(physics, day);
+      if (!isArchived && !chapter) hold = holdOf(physics, day, { prunable: !isEntityCard(row) });
     } catch {
       /* a row whose physics will not compute still lists, at zero */
+      if (!isArchived && !chapter) hold = "settling";
     }
     all.push({
       id,
@@ -359,14 +423,17 @@ export function memoryListView(
       createdAt: row.created_at ?? null,
       archived: isArchived,
       core: row.promoted_identity === 1,
-      journal: isChapterMemory(row),
+      journal: chapter,
+      hold,
     });
   }
   const kinds: Record<string, number> = Object.fromEntries(KINDS.map((k) => [k, 0]));
   const bands: Record<string, number> = Object.fromEntries(BANDS.map((b) => [b, 0]));
   let core = 0;
   let journal = 0;
+  const holds: Record<Hold, number> = { firm: 0, settling: 0, fading: 0 };
   for (const r of all) {
+    if (r.hold !== null) holds[r.hold] += 1;
     kinds[r.kind] = (kinds[r.kind] ?? 0) + 1;
     bands[r.band] = (bands[r.band] ?? 0) + 1;
     if (r.core) core += 1;
@@ -377,7 +444,8 @@ export function memoryListView(
       (kind === null || r.kind === kind) &&
       (band === null || r.band === band) &&
       (!onlyCore || r.core) &&
-      (!onlyJournal || r.journal),
+      (!onlyJournal || r.journal) &&
+      (onlyHold === null || r.hold === onlyHold),
   );
   // Newest first: the lived day it was born, then the moment it was written
   // (v7 `created_at`; a row from before v7 has none and counts as the older),
@@ -431,6 +499,7 @@ export function memoryListView(
       journal: r.journal,
       feelings: feelingsShown(store, r.id),
       createdAt: r.createdAt,
+      hold: r.hold,
     };
   });
   const everLived = day > 0 || live + archived > 0;
@@ -441,11 +510,12 @@ export function memoryListView(
     band,
     core: onlyCore,
     journal: onlyJournal,
+    hold: onlyHold,
     sort,
     offset,
     limit,
     total: matching.length,
-    counts: { live, archived, kinds, bands, core, journal },
+    counts: { live, archived, kinds, bands, core, journal, hold: holds },
     rows,
     absent: matching.length === 0 ? (everLived ? NONE : NEVER) : null,
   };

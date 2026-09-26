@@ -1,4 +1,4 @@
-/* The hover tooltip (the constellation uses it). `#tip` lives in the shell. */
+/* The hover tooltip (the memories tab's "How it feels" uses it). `#tip` lives in the shell. */
 import { $ } from "./dom.js";
 
 export function showTip(x, y, html) {

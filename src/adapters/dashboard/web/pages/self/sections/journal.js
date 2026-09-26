@@ -7,7 +7,7 @@ import { absenceLine } from "../../../shared/absence.js";
 import { $, esc } from "../../../shared/dom.js";
 import { renderMarkdown } from "../markdown.js";
 import { chapterKey, ui } from "../state.js";
-import { q, wireTips } from "../tips.js";
+import { q, wireTips } from "../../../shared/widgets/tips.js";
 
 export const markup = `
     <h2 id="self-journal-h">Journal <span id="self-journal-q"></span></h2>

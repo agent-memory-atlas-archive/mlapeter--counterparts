@@ -16,11 +16,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Counterpart } from "../src/core/counterpart.js";
-import { TUNABLES } from "../src/core/physics/index.js";
+import { TUNABLES, strength } from "../src/core/physics/index.js";
 import { Dashboard } from "../src/adapters/dashboard/index.js";
 import type { DashboardSource } from "../src/adapters/dashboard/index.js";
 import { router } from "../src/adapters/dashboard/web/server.js";
 import { mechanismPanel, memoriesView, memoryDetail, searchView } from "../src/adapters/dashboard/web/views.js";
+import { FIRM_AHEAD_DAYS, NEAR_LET_GO_DAYS, holdOf } from "../src/adapters/dashboard/web/views/memories.js";
 import type { MemoryListView } from "../src/adapters/dashboard/web/views.js";
 import { fadeCurve } from "../src/adapters/dashboard/web/views/mechanism-panel.js";
 import { chapterDate, isChapterMemory, liftDate, shownOf } from "../src/adapters/dashboard/web/views/memory-words.js";
@@ -206,19 +207,67 @@ describe("the list's new marks, filters and sort", () => {
   });
 });
 
-describe("the picture: close to being let go, and journal chapters", () => {
-  test("a memory prune would take within the horizon is marked; journal chapters are flagged", () => {
+describe("how firmly it's held: firm / settling / fading", () => {
+  test("the classifier: core and protected are firm; prune's verdict is fading; still settled a month out is firm", () => {
+    withSrc((src) => {
+      const day = src.store.livedDay();
+      const p = (id: string) => src.store.physicsOf(id);
+      expect(holdOf(p(ids.fading as string), day, { prunable: true })).toBe("fading");
+      expect(holdOf(p(ids.fading as string), day, { prunable: false })).not.toBe("fading");
+      const core = allRows(src).find((r) => r.core);
+      expect(holdOf(p(core?.id ?? ""), day, { prunable: true })).toBe("firm");
+      for (const id of src.store.list({ archived: false })) {
+        const ph = src.store.physicsOf(id);
+        const h = holdOf(ph, day, { prunable: true });
+        if (h === "firm" && !ph.promotedIdentity && !ph.protected) {
+          expect(strength(ph, day + FIRM_AHEAD_DAYS)).toBeGreaterThanOrEqual(TUNABLES.THETA_SEM);
+        }
+        if (h === "settling") expect(strength(ph, day + FIRM_AHEAD_DAYS)).toBeLessThan(TUNABLES.THETA_SEM);
+      }
+    });
+  });
+
+  test("the bar's counts cover every live row but the journal chapters, and agree with the list", () => {
     withSrc((src) => {
       const v = memoriesView(src);
-      expect(v.nearLetGoDays).toBeGreaterThan(0);
-      const fading = v.points.find((p) => p.id === ids.fading);
-      expect(fading?.letGoDay).not.toBeNull();
-      expect(fading?.letGoDay).toBeLessThanOrEqual(v.day + v.nearLetGoDays);
-      const strong = v.points.find((p) => p.id === ids.dated);
-      expect(strong?.letGoDay).toBeNull();
-      for (const p of v.points) if (p.promoted) expect(p.letGoDay).toBeNull();
-      expect(v.points.some((p) => p.journal)).toBe(true);
-      expect(v.points.find((p) => p.id === ids.dated)?.title).toBe("An unedited rota");
+      const h = v.hold;
+      expect(v.nearLetGoDays).toBe(NEAR_LET_GO_DAYS);
+      expect(v.firmAheadDays).toBe(FIRM_AHEAD_DAYS);
+      expect(h.firm + h.settling + h.fading + h.journal).toBe(v.total);
+      expect(h.fading).toBeGreaterThanOrEqual(1);
+      expect(h.journal).toBeGreaterThan(0);
+      const d = getList(src, "?limit=200");
+      expect(d.counts.hold).toEqual({ firm: h.firm, settling: h.settling, fading: h.fading });
+      for (const k of ["firm", "settling", "fading"] as const) {
+        const f = getList(src, `?hold=${k}&limit=200`);
+        expect(f.hold).toBe(k);
+        expect(f.total).toBe(h[k]);
+        for (const r of f.rows) {
+          expect(r.hold).toBe(k);
+          expect(r.journal).toBe(false);
+        }
+      }
+      expect(getList(src, "?hold=fading&limit=200").rows.map((r) => r.id)).toContain(ids.fading as string);
+      // Archived rows carry no hold, and a junk value is ignored.
+      expect(getList(src, "?state=archived&hold=firm").total).toBe(0);
+      expect(getList(src, "?hold=nonsense").hold).toBeNull();
+    });
+  });
+});
+
+describe("how it feels: the six cores, yours and mine", () => {
+  test("per core, in wheel order: counts, summed strengths and the words, split by whose", () => {
+    withSrc((src) => {
+      const f = memoriesView(src).feelings;
+      expect(f.cores.map((c) => c.core)).toEqual(["happy", "sad", "fear", "anger", "surprise", "disgust"]);
+      expect(f.carrying).toBe(2); // the dated memory and the confidential one
+      const happy = f.cores.find((c) => c.core === "happy");
+      expect(happy?.yours).toEqual({ count: 1, sum: 0.8, words: [{ word: "proud", count: 1 }] });
+      expect(happy?.mine.count).toBe(0);
+      const surprise = f.cores.find((c) => c.core === "surprise");
+      expect(surprise?.mine).toEqual({ count: 1, sum: 0.5, words: [{ word: "amazed", count: 1 }] });
+      const fear = f.cores.find((c) => c.core === "fear");
+      expect(fear?.yours.words).toEqual([{ word: "anxious", count: 1 }]);
     });
   });
 });
@@ -263,6 +312,25 @@ describe("the memory card", () => {
       if (v.byUse) expect(v.days).toBeLessThan(v.required);
       // A memory with no use credits has no use days.
       expect(memoryDetail(src, ids.first as string).useDays).toEqual([]);
+    });
+  });
+
+  test("the card lifts a leading date off what it shows; the stored text stays", () => {
+    withSrc((src) => {
+      const card = memoryDetail(src, ids.dated as string);
+      expect(card.writtenDate).toBe("2026-07-10");
+      expect(card.shownText.startsWith("The Friday rota went up")).toBe(true);
+      expect(card.text.startsWith("2026-07-10: ")).toBe(true);
+      const plain = memoryDetail(src, ids.first as string);
+      expect(plain.writtenDate).toBeNull();
+      expect(plain.shownText).toBe(plain.text);
+      const secret = memoryDetail(src, ids.secret as string);
+      expect(secret.writtenDate).toBeNull();
+      expect(secret.shownText).not.toContain("private");
+      const ch = allRows(src).find((r) => r.journal);
+      const chCard = memoryDetail(src, ch?.id ?? "");
+      expect(chCard.writtenDate).toBe(ch?.date ?? "");
+      expect(chCard.shownText.startsWith("##")).toBe(false);
     });
   });
 
