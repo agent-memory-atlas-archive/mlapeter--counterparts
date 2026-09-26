@@ -71,6 +71,15 @@ export interface MemoryPhysics {
    *  Optional so this stays an extension, not a break; absent reads as 0, which
    *  is the promotion-blocking direction. */
   reinforcedDays?: number;
+  /**
+   * The strongest RECORDED feeling on this memory (the `feelings` table's
+   * `MAX(strength)`, owner's or self's), or absent/null when it carries none.
+   * Read beside the row by `store.row()`; physics folds it into the emotional
+   * intensity (`physics.emotionalIntensity`, CONTRACT §5.10). As recorded, never
+   * softened: the height and slope a feeling gives a memory are set by how it
+   * felt, the way affect stamps a trace at encoding.
+   */
+  feelingPeak?: number | null;
   consolidated: boolean;
   /** Set only by the explicit promotion crossing or revision inheritance (§5.3). */
   promotedIdentity: boolean;

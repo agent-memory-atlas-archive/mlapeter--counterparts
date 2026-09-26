@@ -51,7 +51,13 @@ a credential. It is a deliberate, non-ablatable addition.
 - **Beliefs and current state render verbatim; identity core renders compressed.** [v1]
   §8 G7 — "a paraphrase of a belief cannot be honestly confirmed or contradicted."
 - **Emotion is typed, attributed, and absent-means-null, never neutral. Retro-typing
-  emotion is forbidden.** [v1] §4.2 G5.
+  emotion is forbidden.** [v1] §4.2 G5. *(2026-09-26, emotion part A: the author's
+  `emotional` dimension is now read by the battery when it is given ALONE — a missing
+  relevance or predictive reads 0, as `mint.ts` has always stored it — so the two
+  readings of one note agree. That is the author's own number, not a type inferred here;
+  the stated-emotion gate still yields no magnitude. The emotional weight a memory
+  carries — its score or its recorded feelings, whichever is stronger — is physics'
+  arithmetic, §5.10.)*
 - **Task-state is not memory**, discriminated at encode time by one question: *would this
   still be a true memory worth holding after the date passes?* [v1] §4.2 G10.
 

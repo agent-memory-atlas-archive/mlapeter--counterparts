@@ -23,7 +23,7 @@ import { selfPageFindings } from "../src/adapters/claude-code/doctor.js";
 import { sourceOf } from "../src/adapters/dashboard/source.js";
 import { mindView } from "../src/adapters/dashboard/web/views.js";
 import { Counterpart } from "../src/core/counterpart.js";
-import { Store, dateOf } from "../src/core/store/index.js";
+import { Store } from "../src/core/store/index.js";
 import { localDate } from "../src/core/time.js";
 import { PAGE_CORE_HEADING, PAGE_LATELY_HEADING, SELF_TUNABLES } from "../src/core/self/index.js";
 
@@ -359,12 +359,15 @@ describe("the page is visible where mechanisms are", () => {
   });
 
   test("a page that has stopped being revised goes amber", () => {
+    const writtenAt = Date.now();
     withPage(PAGE);
-    const today = dateOf(Date.now());
     const later = Store.open({
       dir,
       observer: true,
-      now: () => Date.parse(`${today}T00:00:00Z`) + 40 * 86_400_000,
+      // Forty days after the page was actually written, so the count is 40
+      // calendar days in whatever zone the suite runs in (the page's date is
+      // local — docs/time.md). A fixed UTC midnight read as 39 west of Greenwich.
+      now: () => writtenAt + 40 * 86_400_000,
     });
     const found = selfPageFindings(later)[0];
     expect(found?.severity).toBe("amber");

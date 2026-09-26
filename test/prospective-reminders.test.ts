@@ -273,7 +273,17 @@ describe("tune (d): IMMINENCE breaks a salience tie", () => {
 const SESSION = "sess_reminders";
 
 function server(): McpServer {
-  const s = openServer({ dir, session: SESSION, scope: "/scope/one", owner: true });
+  // A pinned clock and zone: the replies below echo October dates exactly, and
+  // since review N8 a date that has passed carries a notice — so on the wall
+  // clock these would start failing once October 2026 was over.
+  const s = openServer({
+    dir,
+    session: SESSION,
+    scope: "/scope/one",
+    owner: true,
+    now: () => Date.parse("2026-09-26T12:00:00Z"),
+    timeZone: "UTC",
+  });
   open.push(s.counterpart);
   return s;
 }

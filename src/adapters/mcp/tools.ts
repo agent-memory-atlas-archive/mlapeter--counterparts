@@ -117,13 +117,14 @@ export interface ToolSpec {
 /**
  * `feelings` on a `note` or a `session_end` entry (schema v7, 2026-09-25): one
  * object per feeling, spelled on the feelings wheel (`core/feelings-wheel.ts`).
- * Stored beside the memory and read by nothing yet — salience still comes from
- * `emotional`.
+ * Since emotion part A (2026-09-26) they weigh: the strongest one, or
+ * `emotional` if that is stronger, raises the memory and slows its fading
+ * (physics §5.10), and a recent one sets the mood recall matches (recall G18).
  */
 const FEELINGS_PROPERTY = {
   type: "array",
   description:
-    "Optional: the feelings in this moment, one object each — mixed feelings are several, and yours and the owner's go side by side. Stored beside the memory; they change nothing about how it is held yet.",
+    "Optional: the feelings in this moment, one object each — mixed feelings are several, and yours and the owner's go side by side. The strongest feeling on a memory holds it higher and slows its fading; memories that felt the way someone feels now come to mind more easily.",
   items: {
     type: "object",
     properties: {
@@ -132,7 +133,7 @@ const FEELINGS_PROPERTY = {
       emotion: {
         type: "string",
         description:
-          "The specific feeling on the wheel under that core (e.g. hopeful, anxious, frustrated), or your own word — kept as other, and the reply names the nearest wheel words.",
+          "The specific feeling on the wheel under that core (e.g. hopeful, anxious, frustrated, grateful, curious, relieved, fond, moved), or your own word, kept as yours. Blends go under either core: tender and wistful (sad or happy), bittersweet (happy or sad), sheepish (fear or sad).",
       },
       strength: { type: "number", minimum: 0, maximum: 1 },
       carried_by: {
@@ -160,9 +161,9 @@ const FEELINGS_PROPERTY = {
  * text; plain or quiet, default quiet, stored in the memory's meta).
  */
 const EVENT_DATE_PROPERTY = {
-  type: "string",
+  type: ["string", "null"],
   description:
-    'Optional: the calendar date this memory is ABOUT, when that is a future date — so it comes back around then. Write it yourself, in one of four shapes: a day "2026-10-15", a month "2026-10", a range of two days "2026-10-20..2026-10-31" (that is how to say "late October"), or a year "2026" (a year alone never comes back on its own). Say "before the 15th" as the day or a range ending on it. Leave it out when nothing is dated; a date written only in the text is never read. An unreadable date is refused, and nothing is stored.',
+    'Optional: the calendar date this memory is ABOUT, when that is a future date — so it comes back around then. Write it yourself, in one of four shapes: a day "2026-10-15", a month "2026-10", a range of two days "2026-10-20..2026-10-31" (that is how to say "late October"), or a year "2026" (a year alone never comes back on its own). Say "before the 15th" as the day or a range ending on it. Leave it out when nothing is dated; a date written only in the text is never read. An unreadable date is refused, and nothing is stored. Revising a dated memory by its id with `updates`: its date and remind carry over unless you send new ones; send null to drop the date (done, cancelled).',
 } as const;
 
 const REMIND_PROPERTY = {
@@ -185,6 +186,12 @@ const DATE_PRIVILEGES: readonly Privilege[] = [
       'A "plain" reminder is said at most once per beat — on its day, or on the first and the last day of a month or range — and never under observer stance; a "quiet" one is only ever a cue, capped at the footnote tier and spent at most twice per window.',
     mechanizedBy:
       "src/core/prospective/index.ts#Prospective.plainDue + claimPlain (dedupKey latch) + fire (FIRES_PER_WINDOW) -> src/core/counterpart.ts#recallForTurn",
+  },
+  {
+    claim:
+      "A revision OWNS the reminder: revising a dated memory by its id carries its date and remind over unless you send your own (null drops the date), and the old memory's date is cleared — kept in its version — so one reminder never comes back twice. A later revision of the older id still finds the reminder where it moved, and what was already said or used for the same window still counts.",
+    mechanizedBy:
+      "src/core/counterpart.ts#carryReminder + reminderHolder + moveReminder -> src/core/store/index.ts#revise (eventDate: null, meta.reminderMovedTo) -> src/core/prospective/index.ts#lineage (meta.reminderFrom)",
   },
 ];
 

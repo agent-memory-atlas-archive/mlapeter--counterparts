@@ -46,7 +46,7 @@ import { mintProposal } from "./mint.js";
 import type { MintResult } from "./mint.js";
 import { isObserver } from "./observer.js";
 import type { Stance } from "./observer.js";
-import { Prospective } from "./prospective/index.js";
+import { Prospective, DATE_LINEAGE_MAX, DATE_MOVED_TO_META, cueModeOf } from "./prospective/index.js";
 import type { PlainDue } from "./prospective/index.js";
 import {
   Recall,
@@ -789,6 +789,35 @@ export interface DepositResult {
    *  …), when that is why it was refused. A bare "malformed" told the author
    *  nothing to fix (IMPROVEMENTS U11). */
   readonly malformed?: MalformedReason | null;
+  /**
+   * Present when this deposit REVISED a dated memory (`updates:`, declared and
+   * resolved): the reminder the new memory carries after the carry-over, and
+   * where it came from (`Counterpart#carryReminder`, review N7).
+   */
+  readonly reminder?: DepositReminder;
+}
+
+/** A revision's reminder: carried over, replaced, or dropped — and moved. */
+export interface DepositReminder {
+  /** The memory the reminder came from — the one revised, or, when its reminder
+   *  had already moved on, the memory holding it now. Its own date was cleared
+   *  (kept in its version) when `moved`. */
+  readonly from: string;
+  /** The date the new memory carries, or null when the revision dropped it. */
+  readonly eventDate: string | null;
+  readonly remind: "plain" | "quiet" | null;
+  /** Which fields came from `from` because the author left them out. */
+  readonly inherited: readonly ("eventDate" | "remind")[];
+  /** False only when clearing `from`'s date failed (evented). */
+  readonly moved: boolean;
+}
+
+/** `carryReminder`'s answer: the proposal to mint, and what it took from where. */
+interface ReminderCarryPlan {
+  readonly proposal: Proposal;
+  /** The dated memory being revised, or null when there is nothing to carry. */
+  readonly from: string | null;
+  readonly inherited: readonly ("eventDate" | "remind")[];
 }
 
 export interface SweepEntry {
@@ -1195,6 +1224,8 @@ export const RECALL_DECISION_FIELDS = [
   "footnoteCount",
   "affectFlag",
   "affectReason",
+  // Emotion part A (2026-09-26): admitted memories the current mood lifted.
+  "moodMatched",
   "sentinelRendered",
   "surfaced",
   "footnotes",
@@ -1265,6 +1296,7 @@ function recallDecisionRecord(
     footnoteCount: d.footnotes.length,
     affectFlag: d.affectFlag,
     affectReason: d.affectReason,
+    moodMatched: d.moodMatched,
     sentinelRendered: d.sentinel !== null,
     surfaced: tierRows(d.surfaced, d.verdicts),
     footnotes: tierRows(d.footnotes, d.verdicts),
@@ -2324,8 +2356,9 @@ export class Counterpart {
    * Feelings on a memory (schema v7, `store/feelings.ts`), through the SECRETS
    * half of the battery: `carried_by` and an `other` word are words about the
    * moment, and a credential must not land in them any more than in a body.
-   * Nothing else here reads them — salience, decay and recall are untouched
-   * until the emotion build. Throws what the store throws (`FEELING_INVALID`).
+   * Once stored they weigh (emotion part A): physics reads the strongest one
+   * beside the row (§5.10) and recall reads recent ones as the mood (G18).
+   * Throws what the store throws (`FEELING_INVALID`).
    */
   addFeelings(memoryId: string, inputs: readonly FeelingInput[], opts: { model?: string } = {}): AddFeelingsResult {
     const clean = inputs.map((f) => ({
@@ -3689,13 +3722,17 @@ export class Counterpart {
       return { ...none(reason, result.gate), malformed: result.malformed };
     }
 
-    const proposal = result.proposal;
+    const carry = this.carryReminder(result.proposal);
+    const proposal = carry.proposal;
     const mint = mintProposal(this.store, proposal, {
       self: this.self,
       channel: "authored",
       ...(ctx.model === undefined ? {} : { model: ctx.model }),
       onEvent: (name, data) => this.emit(name, undefined, data),
     });
+    // BEFORE the revision dispatch: a current-state target is superseded there,
+    // and the date must leave the row while it is still the live one.
+    const reminder = carry.from === null ? null : this.moveReminder(carry, mint.id);
     this.emit("counterpart.deposit", mint.id, {
       source,
       kind: proposal.kind,
@@ -3720,6 +3757,121 @@ export class Counterpart {
       mint,
       gate: null,
       covers: proposal.covers,
+      ...(reminder === null ? {} : { reminder }),
+    };
+  }
+
+  /**
+   * A REVISION OWNS THE REMINDER (review N7, 2026-09-26). A `note` or a
+   * `session_end` entry that revises a DATED memory (`updates:`) and leaves the
+   * date out would otherwise mint an undated successor — and because a revision
+   * of an ordinary memory is link-only (`revision.ts`), the old row would keep
+   * its date and keep coming back beside the new one; a reschedule would leave
+   * the old day firing too. So, field by field: what the author sent wins,
+   * `eventDate: null` drops the date, and anything left out is carried over from
+   * the memory being revised. `moveReminder` then clears the old row's date.
+   *
+   * Only for an address the AUTHOR declared and the store resolved (`declared`).
+   * A content match is the engine's guess, and moving a date off a guessed row
+   * would be a wrong write; leaving it where it is loses nothing. The sweep
+   * builds its proposals without a `dateIntent`, so it carries nothing either
+   * (it never dates a memory — `applySweep`).
+   *
+   * The reminder is found where it NOW lives (`reminderHolder`): the old id
+   * stays live after a move, so "cancel it" or "it moved to the 20th" sent
+   * against the id the model first saw must reach the memory holding the date,
+   * not answer from a row whose date already left (review of #247). An
+   * ARCHIVED holder carries nothing, as `revision.ts` refuses `target-archived`:
+   * a reminder that faded or was put away is not revived onto a live row by a
+   * revision that did not ask for it.
+   */
+  private carryReminder(p: Proposal): ReminderCarryPlan {
+    const intent = p.dateIntent;
+    const target = p.updates?.method === "declared" ? p.updates.resolved : null;
+    const none: ReminderCarryPlan = { proposal: p, from: null, inherited: [] };
+    if (intent === undefined || target === null) return none;
+    const from = this.reminderHolder(target);
+    // Nothing dated to carry or to move: the author's own fields stand as sent.
+    if (from === null) return none;
+    const priorDate = this.store.row(from)?.event_date ?? null;
+    if (priorDate === null) return none;
+    let priorMode: "plain" | "quiet" = "quiet";
+    try {
+      priorMode = cueModeOf(this.store.readProse(from));
+    } catch {
+      // Unreadable prose: the date still carries, at the default mode.
+    }
+    const eventDate =
+      intent.eventDate === "set" ? p.eventDate : intent.eventDate === "cleared" ? null : priorDate;
+    const remind = eventDate === null ? null : intent.remind ?? priorMode;
+    const inherited: ("eventDate" | "remind")[] = [];
+    if (eventDate !== null && intent.eventDate === "absent") inherited.push("eventDate");
+    if (eventDate !== null && intent.remind === null) inherited.push("remind");
+    return { proposal: { ...p, eventDate, remind, reminderFrom: from }, from, inherited };
+  }
+
+  /**
+   * The live memory holding the reminder `target` had: `target` itself when it
+   * is dated, else the end of its `meta.reminderMovedTo` chain (each hop through
+   * `Store#resolve`, since a holder can itself be superseded). Null when there
+   * is none, when the chain reaches an archived or removed row, or when it runs
+   * past `DATE_LINEAGE_MAX`.
+   */
+  private reminderHolder(target: string): string | null {
+    let current = target;
+    const seen = new Set<string>();
+    for (let hop = 0; hop <= DATE_LINEAGE_MAX; hop++) {
+      if (seen.has(current)) return null;
+      seen.add(current);
+      const row = this.store.row(current);
+      if (row === undefined || row.archived === 1) return null;
+      if (row.event_date !== null) return current;
+      let next: unknown;
+      try {
+        next = this.store.readProse(current).meta[DATE_MOVED_TO_META];
+        if (typeof next !== "string") return null;
+        current = this.store.resolve(next);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * The other half of `carryReminder`: the revised row's date is cleared, so the
+   * reminder lives on exactly one memory — the newest. `Store#revise` keeps the
+   * old date in the version it writes (constitution 7). A failed clear does not
+   * fail a deposit that is already on disk; it is emitted and reported.
+   */
+  private moveReminder(carry: ReminderCarryPlan, successor: string): DepositReminder {
+    const from = carry.from as string;
+    let moved = false;
+    try {
+      // The forward pointer rides the same revise, so the clear and the address
+      // it leaves behind land in one transaction or not at all.
+      this.store.revise(from, {
+        eventDate: null,
+        meta: { [DATE_MOVED_TO_META]: successor },
+        reason: "reminder-moved",
+      });
+      moved = true;
+    } catch (err) {
+      this.emit("counterpart.reminder.move.failed", from, { successor, error: errCode(err) });
+    }
+    this.emit("counterpart.reminder.moved", successor, {
+      from,
+      moved,
+      eventDate: carry.proposal.eventDate,
+      remind: carry.proposal.remind,
+      inherited: carry.inherited.join(",") || null,
+    });
+    return {
+      from,
+      eventDate: carry.proposal.eventDate,
+      remind: carry.proposal.remind,
+      inherited: carry.inherited,
+      moved,
     };
   }
 

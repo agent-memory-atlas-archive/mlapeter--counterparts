@@ -27,6 +27,39 @@ Reminders work.
 - **The gauge shows it.** `counterparts mechanisms` and the dashboard's Prospective light
   count dated memories held and reminders that came back this week, plain and quiet apart
   (the dashboard adds today's). Grey only when nothing is dated.
+- **Revising a dated memory keeps its date.** A revision (`updates:`) that leaves the date
+  or `remind` out carries them over, and the older memory stops coming back, so one
+  reminder is never said twice; `eventDate: null` drops the date. The reminder is found
+  where it moved even when a later revision names the older memory, and what was already
+  said or used for the same window still counts after the move.
+- **A date that has already passed is kept, and the reply says it won't come back**, so a
+  wrong year can be caught when it is written.
+
+**Feelings start to matter.** No change to the store's format.
+
+- **A memory's strongest feeling holds it higher and makes it fade more slowly** — yours or
+  Claude's, or its emotional score if that is stronger. This changes how existing memories
+  fade too: the ones that carry feeling now last longer (a strongly felt note about 1.7
+  times as long before it is let go). The first nightly cleanup after upgrading may move a
+  few felt memories up a band. Feeling does not count toward becoming core: what it takes
+  to reach identity is unchanged.
+- **A recorded feeling softens faster than the memory it sits on.** The feeling is kept as
+  it was recorded; the softened strength is what recall and the displays read.
+- **Mood-matching.** When a feeling was recorded in the last few hours, memories that
+  carried the same feeling for the same person come to mind more easily, and the other
+  person's matching feelings help a little. It only helps a memory the conversation
+  already reached — it never brings up one on its own.
+- **An emotional score given on its own is no longer ignored by the memory gate.**
+- **More words on the feelings wheel**, from real use: grateful, curious, tender,
+  sheepish, relieved, moved, wistful, bittersweet, fond and intrigued (marked as
+  additions, not the poster's), and "exposed" reads as vulnerable. Blends count under
+  both their feelings (tender: sad and happy). A word that is not on the wheel is kept as
+  your own, and the reply suggests a wheel word only for a near misspelling — "tender" is
+  no longer offered "despair".
+- **Showing it.** The dashboard's memory view and `counterparts ask --full` / `--id` show a
+  memory's feelings as `you: … · me: …`. The Emotion light on the dashboard and in
+  `counterparts mechanisms` now counts memories carrying feeling and turns where a mood
+  brought memories closer.
 
 ## 0.3.2 — 2026-09-25
 

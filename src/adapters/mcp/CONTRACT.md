@@ -303,6 +303,14 @@ this scar's direct descendant) · **§2.7** (the note traverses the one write ch
    what a feeling's magnitude IS (a fired-cue count? a stated intensity the author
    supplies alongside the type?) — a design question, not a wiring one. Until then the
    author's own `emotional` score is the only route, which is why it is now exposed.
+   **ANSWERED 2026-09-25/26:** a stated intensity. `note` and `session_end` take
+   `feelings` (schema v7), each with its own `strength`; since emotion part A the
+   strongest of those and `emotional` is the memory's intensity, which lifts its height
+   and slows its decay (physics §5.10), and a recent one sets the mood recall matches
+   (recall G18). A lone `emotional` score was already kept on the row by `mint.ts`; the
+   battery now reads it the same way (`bridge.ts#dimensionsFrom` pads a missing
+   dimension with 0 instead of dropping all three). The stated-emotion gate still
+   supplies no number, and still must not.
 5. **Is four hours the right TTL?** CAL. Every Stop refreshes the clock and the ask is
    delivered AT a Stop, so the window only ever bounds the gap between an ask and its
    answer: four hours is far past any plausible think-time and comfortably inside a day,

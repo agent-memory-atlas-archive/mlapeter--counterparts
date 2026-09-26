@@ -276,3 +276,56 @@ model uses a dated memory, nothing yet stops its window. Session dedup (brake 3)
 in-process only, and every hook is its own process, so in live use brakes 1 and 2 are the
 ones doing the work. No bad-day or crisis switch was flipped: `refractory` and
 `previousSessionHighAffect` exist, and no live caller passes them.
+
+## 13. A revision owns the reminder (review N7, 2026-09-26)
+
+The review's N7 said a `note` with `updates:` and no `eventDate` minted an undated
+successor, "once the old one is superseded the reminder is gone". The premise was half
+right: revising an ORDINARY memory is link-only (`revision.ts`'s table) — nothing
+supersedes it — so the old row kept its date and kept coming back, while the newest version
+of the thing was undated. Carrying the date over alone would therefore have doubled the
+reminder (two live dated rows; the plain latch is per memory, so said twice on its day),
+and a reschedule already left the old day firing.
+
+So the carry and a move, in `Counterpart#carryReminder` / `#moveReminder`, on the authored
+path only: field by field, what the author sent wins, `eventDate: null` drops the date,
+anything left out comes from the memory being revised; then the revised row's date is
+cleared with `Store#revise({ eventDate: null, reason: "reminder-moved" })`, which keeps the
+old date in its version (constitution 7). One reminder, on the newest memory. `remind`
+carries on its own, so a reschedule of a plain item that does not repeat `remind` stays
+plain, and `remind` alone on a revision reshapes the carried date rather than being
+ignored.
+
+Only for an address the author DECLARED and the store resolved. A content-matched link is
+the engine's guess; moving a date off a guessed row would be a wrong write, and leaving it
+where it is loses nothing. The sweep never dates anything and builds its proposals without
+a `DateIntent`, so it neither carries nor moves.
+
+**The adversarial review of #247 (same day) closed three holes in the first cut.**
+(`docs/adversarial-review-pr247-2026-09-26.md`.)
+
+- *The reminder is found where it moved.* The old row stays LIVE after a move (link-only),
+  so recall keeps showing it and the model's next `updates:` names it again — the normal
+  case, not an edge. The first cut read the date off that row only, found none, and so a
+  cancel by the old id did nothing (silently) and a reschedule by it minted a second dated
+  row beside the carried one, at quiet. Now the move writes `meta.reminderMovedTo` on the
+  old row in the SAME `revise` that clears its date, and `Counterpart#reminderHolder` walks
+  that chain (each hop through `Store#resolve`, bounded by `DATE_LINEAGE_MAX`) to the
+  live memory holding the date; `from` in the reply names that holder. A cancel that finds
+  no dated memory at all now says so (`reminder: { cleared: false }`).
+- *A move is not a new reminder.* The plain latch and the quiet firing rows are keyed by
+  memory id, so the successor started with nothing spent: a month or range already opened
+  was told "opens" again on any later day of it (not only the same day, as first noted), and
+  a quiet window the assistant had already used came back with a fresh budget. The
+  successor's `meta.reminderFrom` names its predecessor, and `lineage` lets the plain reads
+  (`plainTold`, `plainToldOn`) and the brakes (`firingRowsFor`, in `arrivals` and `fire`)
+  count what was spent for the SAME window key on the memories it moved through. A new date
+  is a new key and starts fresh, as `reschedule` does. Read-side on purpose: copying the
+  plain rows would have added `prospective.plain` rows for tells that never happened.
+- *An archived holder carries nothing*, matching `revision.ts`'s `target-archived`: a
+  reminder that faded or was put away is not revived onto a live row by a revision.
+
+Still open, left alone: the old memory's firing rows stay where they are, so `exitReport`
+can count a moved window twice (once per memory); and a failed clear (`moved: false`,
+evented, `unmoved: true` in the reply) leaves the reminder on both rows — a double, never a
+loss, because the successor is minted first.

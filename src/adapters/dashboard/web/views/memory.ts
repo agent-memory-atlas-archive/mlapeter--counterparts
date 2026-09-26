@@ -4,7 +4,8 @@
  * Split out of `web/views.ts`, which re-exports every public name from here;
  * the four rules in that file's header apply to every line below.
  */
-import { TUNABLES, band, promotionEligibility, rep, sal, strength } from "../../../../core/physics/index.js";
+import { TUNABLES, band, emotionalIntensity, promotionEligibility, rep, sal, strength } from "../../../../core/physics/index.js";
+import { feelingsLine } from "../../../feelings-line.js";
 import { isJournal } from "../../../../core/sleep/index.js";
 import type { Band, Kind } from "../../../../core/types.js";
 import type { DashboardSource } from "../../source.js";
@@ -103,6 +104,15 @@ export interface MemoryDetail {
   readonly points: { role: string; id: string; text: string }[];
   readonly versions: { seq: number; reason: string; day: number; became: string }[];
   readonly prospective: { date: string; state: string; fires: number; precision: string }[];
+  /**
+   * The feelings recorded on it, as one line — `you: worried 0.6 (now 0.3) ·
+   * me: tender 0.4` (`adapters/feelings-line.ts`) — or "" when it has none.
+   * Withheld with the body on a confidential memory: a feeling word about a
+   * sensitive thing says something about the thing.
+   */
+  readonly feelingsLine: string;
+  /** The emotional intensity physics reads (physics §5.10): 0 when unfelt. */
+  readonly intensity: number;
   readonly absence: string | null;
   /** A journal-chapter memory (`isChapterMemory`): its words are a chapter, and it is not scored. */
   readonly chapter: boolean;
@@ -170,6 +180,8 @@ export function memoryDetail(src: DashboardSource, id: string): MemoryDetail {
     points: [],
     versions: [],
     prospective: [],
+    feelingsLine: "",
+    intensity: 0,
     absence: r.label,
     chapter: false,
     day,
@@ -285,6 +297,8 @@ export function memoryDetail(src: DashboardSource, id: string): MemoryDetail {
       fires: p.fires,
       precision: p.precision,
     })),
+    feelingsLine: g.confidential ? "" : feelingsLine(store.feelingsFor(headId), day - physics.birthDay),
+    intensity: emotionalIntensity(physics),
     absence: null,
     chapter,
     day,

@@ -1328,7 +1328,7 @@ describe("band transitions, counted by direction (guarantee 12)", () => {
   test("a DEMOTION is counted, durably, with its direction and its site", () => {
     const s = store();
     const id = put(s, {
-      salience: { relevance: 0.9, emotional: 0.8, predictive: 0.8 },
+      salience: { relevance: 0.9, emotional: 0, predictive: 0.8 }, // emotion-free: §5.10 would hold it semantic
       physics: { birthDay: 0, lastUsedDay: 0, uses: 2 },
     });
 
@@ -1362,7 +1362,7 @@ describe("band transitions, counted by direction (guarantee 12)", () => {
   test("the same demotion is recorded ONCE, however many times the day is replayed", () => {
     const s = store();
     put(s, {
-      salience: { relevance: 0.9, emotional: 0.8, predictive: 0.8 },
+      salience: { relevance: 0.9, emotional: 0, predictive: 0.8 }, // emotion-free: §5.10 would hold it semantic
       physics: { birthDay: 0, lastUsedDay: 0, uses: 2 },
     });
     runCycle({ store: s, date: date(1) });
@@ -1403,7 +1403,7 @@ describe("band transitions, counted by direction (guarantee 12)", () => {
   test("an OBSERVER records no transition — it materializes no cache to diff against", () => {
     const s = store();
     put(s, {
-      salience: { relevance: 0.9, emotional: 0.8, predictive: 0.8 },
+      salience: { relevance: 0.9, emotional: 0, predictive: 0.8 }, // emotion-free: §5.10 would hold it semantic
       physics: { birthDay: 0, lastUsedDay: 0, uses: 2 },
     });
     runCycle({ store: s, date: date(1) });

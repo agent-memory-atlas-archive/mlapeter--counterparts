@@ -38,13 +38,15 @@
  * fail.
  */
 import type { Kind, MemoryPhysics } from "../types.js";
-import { sal, strength } from "../physics/index.js";
+import { emotionalIntensity, sal, strength } from "../physics/index.js";
 import type { Hit, ProseDoc, Store } from "../store/index.js";
 import { confidentialByMeta, rowToPhysics, tokenize } from "../store/index.js";
 import { buildCues, informativeness } from "./cues.js";
 import type { Cue } from "./cues.js";
 import type { RecallTunables, SemanticPath, SemanticTuning } from "./tunables.js";
 import { semanticTuning } from "./tunables.js";
+import { NO_MOOD, hasMood, moodLift } from "./mood.js";
+import type { Mood } from "./mood.js";
 
 export interface Candidate {
   readonly id: string;
@@ -56,6 +58,9 @@ export interface Candidate {
    *  turn itself carries first-person feeling (§9 G10/G11 — emotion is
    *  turn-gated, and that gate is the safety property). */
   readonly sal: number;
+  /** The part of `sal` that the current MOOD added (recall G18): 0 unless this
+   *  candidate is cued and carried a feeling matching someone's mood. */
+  readonly mood: number;
   readonly cue: number;
   /** The portion of `cue` that came from a temporal window (already included in
    *  `cue`; carried separately only so the ceiling below can be decided). */
@@ -104,6 +109,8 @@ export interface ActivationInput {
   readonly day: number;
   /** Whether the turn stated a FIRST-PERSON feeling. Gates emotional salience. */
   readonly selfFelt: boolean;
+  /** How each person feels now (`mood.ts#currentMood`). Absent: no mood. */
+  readonly mood?: Mood | undefined;
   readonly maxCandidates: number;
   /** Live memory count, for informativeness and the cold-start regime. */
   readonly storeSize: number;
@@ -207,9 +214,15 @@ export function isConfidential(doc: ProseDoc): boolean {
   return confidentialByMeta(doc.meta);
 }
 
-/** Salience with the emotional dimension gated on the turn (§9 G10). */
+/**
+ * Salience with the emotional dimension gated on the turn (§9 G10). When the
+ * turn carries first-person feeling, the dimension reads as the memory's full
+ * emotional INTENSITY — the stronger of its numeric score and its recorded
+ * feelings (physics §5.10) — so a memory that holds its feeling in the
+ * `feelings` table is not read as unfelt. Otherwise it is 0, as before.
+ */
 export function gatedSal(p: MemoryPhysics, selfFelt: boolean): number {
-  if (selfFelt) return sal(p.salience);
+  if (selfFelt) return sal({ ...p.salience, emotional: emotionalIntensity(p) });
   return sal({ ...p.salience, emotional: 0 });
 }
 
@@ -492,9 +505,20 @@ export function activate(
   }
   scored.sort((a, b) => b.activation - a.activation || (a.id < b.id ? -1 : 1));
 
+  const kept = scored.slice(0, input.maxCandidates);
+  // MOOD (recall G18): one batched read, and only when someone has a mood — and only
+  // for CUED candidates. An uncued candidate is dark at hard gate (a) before
+  // salience is ever read, so it is not even asked (the guarantee is the gate's;
+  // this just declines to do work the gate would throw away).
+  const mood = input.mood ?? NO_MOOD;
+  const feelingsById = hasMood(mood)
+    ? store.feelingsOn(kept.filter((c) => c.cue + c.semantic > 0).map((c) => c.id))
+    : new Map<string, never[]>();
   const candidates: Candidate[] = [];
-  for (const c of scored.slice(0, input.maxCandidates)) {
+  for (const c of kept) {
     const { id, physics, cue, temporal, semantic, arrival, hops, activation } = c;
+    const lift = cue + semantic > 0 ? moodLift(feelingsById.get(id), mood, input.day, t) : 0;
+    const gated = gatedSal(physics, input.selfFelt);
     // `readProse` is `read().doc`, so taking the whole read costs nothing and
     // brings the confidentiality flag with it instead of re-deriving it.
     const stored = store.read(id);
@@ -505,7 +529,10 @@ export function activate(
       doc,
       physics,
       strength: c.strength,
-      sal: gatedSal(physics, input.selfFelt),
+      // The mood lift rides salience only: it can lower this candidate's
+      // relative bar, never raise its activation or admit it uncued.
+      sal: Math.min(1, gated + lift),
+      mood: Math.min(1, gated + lift) - gated,
       cue,
       temporal,
       semantic,

@@ -1556,6 +1556,26 @@ migration transaction and a fresh store has it from birth.
 - **Nothing reads them.** Salience, decay and recall are untouched; the `emotional`
   dimension and `meta.feeling` are exactly as before. `Counterpart#addFeelings` runs
   `carried_by` and an `other` word through `redactSecrets` first.
+  *(Superseded 2026-09-26, emotion part A — see the next section.)*
+
+### Feelings are read (2026-09-26, emotion part A)
+
+- **`row()` carries `feeling_peak`** — `(SELECT MAX(strength) FROM feelings WHERE
+  memory_id = m.id)`, one probe of the `feelings_memory` index. Not a column and not on
+  `MemoryRow` (the `Row` index type would reject an optional member); it is the
+  `FeelingPeak` intersection on `row()`'s return, and `rowToPhysics` reads it as
+  `feelingPeak`, null or absent reading as "no feeling". Every physics read goes through
+  `row()` — `read`, `physicsOf`, sleep's phases, recall's scoring, the dashboard — so a
+  feeling weighs the same everywhere. `rebuildCache`'s bare `SELECT *` reads no feeling,
+  and needs none: it computes no strength.
+- **Suggestions** (`notices[].closest`) are now offered only for a near misspelling under
+  the same core (`feelings-wheel.ts#closestKeys`), never the five nearest by raw edit
+  distance — which offered "tender" bored, despair and lonely. An alias read is a notice
+  with `readAs`; the `store.feelings` ring event's `other` count excludes it.
+- **Three reads added**: `feelingsSince(ms)` (feelings on LIVE memories recorded at or
+  after a moment — recall's mood), `feelingsOn(ids)` (one query, chunked at 500 ids, with
+  each memory's `birth_day` for softening), `emotionCensus({ sinceDay })` (live memories
+  with feelings, and with intensity above 0 — counts only).
 
 ### What the adversarial review of #231 changed (2026-09-25)
 

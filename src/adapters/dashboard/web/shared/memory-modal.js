@@ -154,11 +154,15 @@ function standing(d) {
 // ── feelings ────────────────────────────────────────────────────────────────
 
 function feelingsPart(d) {
-  if (!d.feelings || d.feelings.length === 0) return "";
+  // Emotion part A (#244): feeling now holds a memory higher and slows its fading.
+  const held = d.intensity > 0 && !d.confidential
+    ? '<p class="mc-dim">Feeling holds it higher and slows its fading (intensity ' + n2(d.intensity) + ").</p>"
+    : "";
+  if (!d.feelings || d.feelings.length === 0) return held;
   return '<ul class="mc-list">' + d.feelings.map((f) =>
     '<li><i class="mc-fdot" style="background:' + (FEELING_COLOURS[f.core] || "#8a95a3") + '"></i><span>' +
     (f.whose === "owner" ? "you felt " : f.whose === "self" ? "I felt " : esc(f.whose) + " felt ") + "<b>" + esc(f.word) + "</b>" +
-    '<span class="mc-dim"> · ' + esc(f.core) + (f.carriedBy ? " — " + esc(f.carriedBy) : "") + "</span></span></li>").join("") + "</ul>";
+    '<span class="mc-dim"> · ' + esc(f.core) + (f.carriedBy ? " — " + esc(f.carriedBy) : "") + "</span></span></li>").join("") + "</ul>" + held;
 }
 
 // ── linked memories ────────────────────────────────────────────────────────
@@ -239,6 +243,7 @@ function footer(d) {
     kv("salience", n3(s.combined) + " <span class='mc-dim'>relevance " + n2(s.relevance) + " · emotional " + n2(s.emotional) +
       " · predictive " + n2(s.predictive) + " · novelty " + (s.novelty === null ? "blind" : n2(s.novelty)) +
       (s.claimed === null ? "" : " · claimed floor " + n2(s.claimed)) + "</span>") +
+    (d.feelingsLine || d.intensity > 0 ? kv("feelings", esc(d.feelingsLine || "none recorded") + " <span class='mc-dim'>· intensity " + n2(d.intensity) + "</span>") : "") +
     kv("lived", "born day " + d.bornDay + " · used " + d.uses + "× over " + d.reinforcedDays + " days · last used day " + d.lastUsedDay) +
     kv("standing", (d.consolidated ? "consolidated" : "not consolidated") + " · " + (d.promoted ? "promoted" : "not promoted") +
       " · " + (d.protected ? "protected" : "revisable") + " · pressure " + n3(d.pressure) + (d.bar === null ? "" : " / bar " + n3(d.bar))) +
