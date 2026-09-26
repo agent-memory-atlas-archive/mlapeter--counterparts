@@ -9,7 +9,10 @@ export default {
   short: "Prospective",
   tagline: "Remembering to do something later — the memory that fires itself at the right moment.",
   inDev: true,
-  explainer: "Not built yet. A memory can carry a date, like a launch next Tuesday, but nothing brings it back on the day.",
-  built: ["Dated reminders can be stored and have their own records."],
-  inDevelopment: ["Nothing live can put a date on a memory yet, and nothing brings one back on the day."],
+  explainer: "A memory can carry a date — a day, a month or a range like late October — and it comes back around then. Most come back quietly, as a footnote; one marked plain is said outright on its day.",
+  built: [
+    "A note or a session's memories can be given a date, and quiet ones come back as footnotes at most twice per date.",
+    "A reminder marked plain is said to you on its day, once.",
+  ],
+  inDevelopment: ["Nothing yet notices when you have already dealt with a reminder, so a quiet one can still come back a second time."],
 };

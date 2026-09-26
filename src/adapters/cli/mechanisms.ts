@@ -186,18 +186,28 @@ export const MEMORY_MECHANISMS: readonly MemoryMechanism[] = [
   {
     name: "Prospective",
     group: "Retrieval",
-    evidence: ["prospective-armed", "prospective-fired"],
-    // Nothing in live use can put a date on a memory yet (audit: DRAFT_FIELDS),
-    // and nothing spends a fire. A store that holds dated intentions anyway has
-    // the half that is built; one that holds none has nothing of it.
+    evidence: ["prospective-dated", "prospective-fired", "prospective-plain"],
+    // Built end to end since 2026-09-26: `note` and `session_end` take a date,
+    // a quiet one comes back as a footnote cue (`prospective.fire`), a plain
+    // one is said on its day (`prospective.plain`). Grey only when nothing is
+    // dated at all — then there is truly nothing for it to do.
     read: (rows) => {
-      const armed = rows("prospective-armed")?.total ?? 0;
-      return armed > 0
-        ? {
-            light: LIGHT.idle,
-            says: `built, not firing yet: ${plural(armed, "dated reminder")} held, and nothing brings one back yet`,
-          }
-        : { light: LIGHT.notBuilt, says: "not built yet: nothing can put a date on a memory" };
+      const dated = rows("prospective-dated")?.total ?? 0;
+      const quiet = week(rows, "prospective-fired");
+      const plain = week(rows, "prospective-plain");
+      const held = `${plural(dated, "dated memory", "dated memories")} held`;
+      if (quiet + plain > 0) {
+        const parts: string[] = [];
+        if (plain > 0) parts.push(`${String(plain)} said plainly`);
+        if (quiet > 0) parts.push(`${String(quiet)} as quiet footnotes`);
+        return {
+          light: LIGHT.working,
+          says: `${plural(quiet + plain, "reminder")} came back (${parts.join(", ")}); ${held}`,
+        };
+      }
+      return dated > 0
+        ? { light: LIGHT.idle, says: `built, nothing due this week: ${held}` }
+        : { light: LIGHT.notBuilt, says: "nothing dated yet: a note with a date comes back around that day" };
     },
   },
   // ── Transformation ──

@@ -11,10 +11,11 @@ import {
   LANE_ORDER,
   SELF_PAGE_REVISED_EVENT,
   chapterModels,
+  dayBefore,
   pageSections,
   readChapterLead,
 } from "../../../../core/self/index.js";
-import type { PageVersion } from "../../../../core/self/index.js";
+import type { PageVersion, PageWriterRun, PageWriterStatus } from "../../../../core/self/index.js";
 import { TUNABLES as SLEEP, isJournal } from "../../../../core/sleep/index.js";
 import type { Band, Kind } from "../../../../core/types.js";
 import { NEVER, NONE } from "../../layout.js";
@@ -92,6 +93,8 @@ export interface MindView {
     readonly reason: string | null;
     readonly version: number;
     readonly stale: boolean;
+    /** Calendar days without a rewrite past which `stale` turns true (`self/`'s PAGE_STALE_DAYS). */
+    readonly staleAfter: number;
     readonly core: string;
     readonly lately: string;
     readonly headed: boolean;
@@ -119,6 +122,34 @@ export interface MindView {
   readonly journalAbsent: string | null;
   /** Chapters past the ones sent. 0 when all of them are here. */
   readonly journalMore: number;
+  /** What the nightly page writer did on the newest night it has a row for. */
+  readonly writer: WriterLine;
+}
+
+/**
+ * The page writer's newest night, in plain words (2026-09-26, the self tab's
+ * side column; an experiment). Read from the newest `self.page.writer.ran` row
+ * through `self/`'s own `pageWriterStatus`, so a claim whose day has passed
+ * reads the way doctor reads it, and a derived reading is worded as ours.
+ */
+export interface WriterLine {
+  /** False when the log holds no run at all. */
+  readonly ran: boolean;
+  /** The night's date (the day the run read), "" when none. */
+  readonly about: string;
+  readonly outcome: string | null;
+  /** True when no row says this: it is read from a claim whose day is over. */
+  readonly derived: boolean;
+  /** True when that night is last night. */
+  readonly lastNight: boolean;
+  /** "Last night", "The night of Jul 9", or "" when nothing ran. */
+  readonly when: string;
+  /** What it did, in plain words. */
+  readonly what: string;
+  /** The two together, as the page prints it. */
+  readonly line: string;
+  /** `(never run)` when the log holds no run; null otherwise. */
+  readonly absent: string | null;
 }
 
 /** One state of the page: an archived version, or the one standing now. */
@@ -253,9 +284,7 @@ export function mindView(src: DashboardSource): MindView {
   const stories = storyViews(src);
 
   return {
-    opening:
-      `Lived day ${day}. Who I am, in my own words — and, under it, how that has changed, ` +
-      "what is slowly settling into the core, what the next session will be handed, and the journal.",
+    opening: `Day ${day} · Who I am`,
     identity,
     identityAbsent: e.identity.length === 0 ? (everLived ? NONE : NEVER) : null,
     guarded,
@@ -283,6 +312,7 @@ export function mindView(src: DashboardSource): MindView {
             reason: page.reason,
             version: page.version,
             stale: src.self.pageStale(page),
+            staleAfter: src.self.tunables.PAGE_STALE_DAYS,
             // The three the type declares, NAMED — a spread of `pageSections`
             // also carried `preamble` into the JSON, which `tsc` cannot catch
             // through a spread (adversarial review n2).
@@ -313,7 +343,101 @@ export function mindView(src: DashboardSource): MindView {
     wakeParts: wake.ok ? wakeParts(wake.text, page !== null) : [],
     wakeBudget: lastBudget(src),
     ...journal(src, JOURNAL_LIMIT, everLived ? NONE : NEVER),
+    writer: writerLine(src),
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// the page writer's last night, in plain words
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Why a run did not happen or did not finish, in words. A code nobody mapped
+ *  keeps its own words (hyphens read as spaces) rather than being guessed at. */
+const WRITER_REASON: Record<string, string> = {
+  watchdog: "it ran out of time",
+  "no-room": "the session had no room to ask it",
+  "scope-question": "the first-launch question took its turn",
+  off: "the writer is switched off",
+  observer: "the session was read-only",
+  "no-previous-day": "there was no earlier day to read",
+  "already-claimed": "that night was already handled",
+  "asks-spent": "it had already been asked as often as it may",
+  "no-memories": "nothing was remembered that day",
+  "not-host-mode": "it is not set to run on its own",
+};
+
+export function writerReason(detail: string): string {
+  const d = detail.trim();
+  if (d === "") return "no reason was recorded";
+  const known = WRITER_REASON[d];
+  if (known !== undefined) return known;
+  const exit = /^exit (\S+)$/.exec(d);
+  if (exit !== null) return `it stopped with an error (exit ${exit[1] as string})`;
+  return d.replace(/[-_]+/g, " ");
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** "2026-07-09" → "Jul 9"; anything else as it came. */
+function shortDay(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (m === null) return iso;
+  return `${MONTHS[Number(m[2]) - 1] ?? (m[2] as string)} ${Number(m[3])}`;
+}
+
+/** What `writerWords` reads: `pageWriterStatus`'s answer, or null when the log
+ *  holds no run at all. */
+export type WriterReading =
+  | (Pick<PageWriterStatus, "about" | "outcome" | "derived"> & { readonly run: Pick<PageWriterRun, "detail"> | null })
+  | null;
+
+/** The words for one night. Pure, so every outcome is tested without a store. */
+export function writerWords(status: WriterReading, yesterday: string): WriterLine {
+  if (status === null) {
+    const none = "No run recorded yet";
+    return { ran: false, about: "", outcome: null, derived: false, lastNight: false, when: "", what: none, line: none, absent: NEVER };
+  }
+  const detail = status.run?.detail ?? "";
+  let what: string;
+  switch (status.outcome) {
+    case "revised":
+      what = "rewrote it";
+      break;
+    case "nothing-to-say":
+      // A derived reading is OURS: the session was handed the day and nothing
+      // came back. It must not read as something the writer reported.
+      what = status.derived ? "was handed the day and left it as is" : "read the day and kept it as is";
+      break;
+    case "refused":
+      what = `tried, but the rewrite was turned away — ${writerReason(detail)}`;
+      break;
+    case "failed":
+      // Derived: a `started` claim still standing once its day was over.
+      what = status.derived ? "started and never finished" : `couldn't run — ${writerReason(detail)}`;
+      break;
+    case "asked":
+      what = "was asked at today's first session; no answer yet";
+      break;
+    case "started":
+      what = "is running now";
+      break;
+    default:
+      what = status.run === null ? "nothing ran, and nothing says why" : `didn't run — ${writerReason(detail)}`;
+  }
+  const lastNight = status.about !== "" && status.about === yesterday;
+  const when = lastNight ? "Last night" : status.about === "" ? "Its last run" : `The night of ${shortDay(status.about)}`;
+  return { ran: true, about: status.about, outcome: status.outcome, derived: status.derived, lastNight, when, what, line: `${when}: ${what}`, absent: null };
+}
+
+function writerLine(src: DashboardSource): WriterLine {
+  try {
+    const today = src.self.calendarToday();
+    const last = src.self.pageWriterRuns()[0];
+    if (last === undefined) return writerWords(null, dayBefore(today));
+    return writerWords(src.self.pageWriterStatus(last.about, today), dayBefore(today));
+  } catch {
+    return writerWords(null, "");
+  }
 }
 
 /** How many chapters the journal sends. The rest are counted, not dropped silently. */

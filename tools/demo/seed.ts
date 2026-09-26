@@ -501,15 +501,16 @@ export async function seedDemo(opts: SeedOptions): Promise<SeedReport> {
 
       // Prospective intentions. There is no "create intention" door: an
       // intention IS an ordinary memory carrying a date, and `prospective/`
-      // derives the window on every read. `store.put` is used because the
-      // authored draft has no field for `happenedOn` (filed as a gap).
+      // derives the window on every read. `store.put` is used so the seeded
+      // salience is exact; the authored draft's `eventDate` field (2026-09-26)
+      // writes the same column.
       for (const intent of INTENTIONS.filter((i) => i.onDay === index)) {
         const id = c.store.put({
           type: "memory",
           kind: "fact",
           body: intent.text,
           learnedOn: day.date,
-          ...(intent.dueOn === undefined ? {} : { happenedOn: intent.dueOn }),
+          ...(intent.dueOn === undefined ? {} : { eventDate: intent.dueOn }),
           salience: { novelty: null, relevance: 0.8, emotional: 0.7, predictive: 0.85 },
           physics: { birthDay: livedDay, lastUsedDay: livedDay },
           origin: { session: day.session, scope },

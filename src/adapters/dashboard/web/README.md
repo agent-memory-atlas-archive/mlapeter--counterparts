@@ -108,17 +108,25 @@ filter), `list.js` (every memory, newest first, paged on the server by
 `/api/memories/list` in `views/memories.ts`, whose archive reasons are put into
 plain words by `archiveWords` from `views/archive-words.ts`).
 
-`pages/self/`: the self tab. `sections/page.js` is the self page (rendered by
-`markdown.js`, which escapes first) and its history as a timeline; clicking a
-dot diffs that version against the one before with `diff.js` (line comparison,
-then words, no deps). `sections/settling.js` covers the core, protected and
-contested memories, plus the closest candidates for the core; the view computes
-them with `physics#promotionEligibility` and counts memories that can't get
-there by use separately. `sections/wake.js` is the wake folded to one line and
-a stacked bar of its parts (`wakeParts` in `views/mind.ts`, cut at the lane
-headings from `self/`), plus the rebrief button. `sections/journal.js` shows
-chapters by day with their model. `sections/stories.js` is only `storyCard`,
-opened in the overlay. The view is still `views/mind.ts` / `/api/mind`.
+`pages/self/`: the self tab (reworked 2026-09-26 as an experiment). The top is
+two columns: the self page on the left (rendered by `markdown.js`, which escapes
+first), and a side column with when it was rewritten and by whom, the page
+writer's newest night in words (`writer` in `views/mind.ts`, read through
+`self/`'s `pageWriterStatus`), the history as a line of dots, and the wake.
+`sections/page.js` draws the page, the side column's facts and the dots;
+clicking a dot opens that version above the page and diffs it against the one
+before with `diff.js` (line comparison, then words, no deps); nothing is open
+by default. `sections/settling.js` is one line of counts (core, protected,
+argued with; each opens its list) over a compact chart of the closest
+candidates for the core; the view computes them with
+`physics#promotionEligibility`. `sections/wake.js` is the wake as one line and
+a stacked bar of its parts (`wakeParts`, cut at the lane headings from `self/`),
+with the rebrief button shown disabled ("coming soon", back with the sleep
+work). `sections/journal.js` is a strip of days; a day lists its chapters, a
+chapter opens in place. `tips.js` is the `?` that holds each explaining line;
+`state.js` holds what is open, so the pulse's `refresh()` (which redraws only
+the panels whose data moved) keeps it open. `sections/stories.js` is only
+`storyCard`, opened in the overlay. The view is still `views/mind.ts` / `/api/mind`.
 
 The health tab answers "is it working?": `pages/health/sections/checks.js` runs
 `counterparts doctor --json` through the actions seam (a read; a dashboard

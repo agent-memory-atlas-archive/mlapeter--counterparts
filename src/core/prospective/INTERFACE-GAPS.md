@@ -48,10 +48,15 @@ computes arrivals and nothing consumes them.
 `revise({ eventDate })` (null clears it; the old date stays in the version), a partial
 index, and `Store.datedMemories(from, to)`. A new column rather than a widened
 `happenedOn`, because `schemas/` already writes every belief's `statedOn` into
-`happened_on` (store NOTES 2026-09-25). **Still open, for PR B:** nothing writes
-`event_date` yet, and `arrivals()` / `exitReport()` still scan `store.list()` and read
-`contentDates` (which keeps reading `happenedOn` and the `eventDate` meta convention); a
-range is not yet a window precision (`windows.ts` knows day and month).
+`happened_on` (store NOTES 2026-09-25).
+
+**Closed 2026-09-26 (PR B).** `note` and `session_end` write `event_date` (an explicit
+field the model fills; never read from text). `arrivals()` enumerates through
+`Store.datedMemories(at − GRACE_DAYS, at + LEAD_DAYS)`, `exitReport()` through
+`datedMemories(…, { archived: true })` plus the new `Store.prospectiveMemoryIds()`; no
+`store.list()` scan is left. `contentDates` reads `ProseDoc.eventDate` alone — the
+`happenedOn` reading and the `meta.eventDate` convention are dropped (NOTES §12). A range
+is a window precision. What follows is the history of the gap.
 
 **Owner:** `store/`.
 **Needed:** (a) somewhere canonical for "the date this memory is ABOUT, in the future";
@@ -83,7 +88,7 @@ seam it will use for the wiring in gap #1.
 
 ## 4. `store.revise` cannot patch `happenedOn`, so a reschedule cannot complete here
 
-**Closed 2026-09-24** — `Store#revise` takes `happenedOn` in its patch (`store/index.ts`, schema v6). `Prospective.reschedule()` still leaves that revise to its caller.
+**Closed 2026-09-24** — `Store#revise` takes `happenedOn` in its patch (`store/index.ts`, schema v6). `Prospective.reschedule()` still leaves that revise to its caller — which, since v7 and PR B, is `revise(id, { eventDate })`, the column this module reads.
 
 **Owner:** `store/`.
 **Needed:** §12 G8 — the correction "names the exact current value, carries a reason, and

@@ -67,6 +67,22 @@ function plain(detail) {
   return String(detail || "").replace(/^\/\S+ — /, "").replace(/^\/\S+ /, "");
 }
 
+/** A line doctor's facts can say in plain words, by key; null keeps the detail. */
+export const PLAIN = {
+  // The self page: how long since its last rewrite, and — once that passes
+  // doctor's own limit, which is what turns the row amber — that it has.
+  "self-page": (d) => {
+    if (!d || d.present !== true || typeof d.daysSince !== "number") return null;
+    const n = d.daysSince;
+    if (d.stale) {
+      return "not rewritten in " + n + (n === 1 ? " day" : " days") +
+        (typeof d.staleAfter === "number" ? "; this turns amber after " + d.staleAfter : "");
+    }
+    return "rewritten " + (n <= 0 ? "today" : n === 1 ? "yesterday" : n + " days ago") +
+      (typeof d.version === "number" ? " · version " + d.version : "");
+  },
+};
+
 function gradeOf(f) {
   if (f.key === "config" && f.data && f.data.reason === "not-read") return "grey";
   if (f.optional) return "off";
@@ -100,7 +116,7 @@ function paintFindings(report, when) {
     const name = NAMES[f.key] || f.title;
     const line = grade === "grey"
       ? "not checked — this dashboard was opened on a store, not through its settings file"
-      : plain(f.detail);
+      : (PLAIN[f.key] && PLAIN[f.key](f.data)) || plain(f.detail);
     details.push(f);
     rows.push({ grade, name, line, f, order: HEADLINE.indexOf(f.key) });
   }

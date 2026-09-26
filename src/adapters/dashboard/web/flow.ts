@@ -422,6 +422,8 @@ export const EVENT_NODE = {
   // not a command), so both rows land on the prospective node.
   "prospective.fire": "prospective",
   "prospective.fire.refused": "prospective",
+  // A plain item told on its day (2026-09-26) is the same node's, by request.
+  "prospective.plain": "prospective",
   // Which checkout was live at a session start. It belongs to the SESSION node:
   // it is a fact about the process the host started, recorded on the way in,
   // before anything was read or written.

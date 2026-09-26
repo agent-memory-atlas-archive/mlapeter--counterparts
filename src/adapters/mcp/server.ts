@@ -44,7 +44,7 @@
  * No body text, no question text, no note text ever reaches an event.
  */
 import { MCP_RECALL_EVENT } from "../../core/counterpart.js";
-import { localDate } from "../../core/time.js";
+import { localDate, parseCalendarDate } from "../../core/time.js";
 import type { ChapterResult, Counterpart, DepositResult } from "../../core/counterpart.js";
 import type { SemanticSource } from "../../core/recall/index.js";
 import { AUTHOR_DIMENSIONS } from "../../core/remember/index.js";
@@ -922,6 +922,11 @@ export class McpServer {
         detail: "relevance, emotional and predictive are each a number from 0 to 1.",
       });
     }
+    // THE REMINDER DATE AND HOW IT COMES BACK (2026-09-26) — checked before
+    // anything is captured, so an unreadable one is a refusal that says which
+    // shapes ARE readable rather than a note that lands without its date.
+    const dated = readReminder(args);
+    if ("refused" in dated) return this.refuse("note", dated.refused, { detail: dated.detail });
     const session = this.session ?? "mcp";
 
     const captured = this.counterpart.captureJot({ session, scope: this.scope, text });
@@ -939,6 +944,7 @@ export class McpServer {
     if (typeof args["updates"] === "string") draft["updates"] = args["updates"];
     if (salience !== undefined) draft["claimed"] = salience;
     if (Object.keys(dims).length > 0) draft["salience"] = dims;
+    Object.assign(draft, dated.fields);
 
     const model = this.sessionModel();
     const feelings = readFeelings(args["feelings"]);
@@ -951,7 +957,10 @@ export class McpServer {
       ownSpanHash,
       ...(model === undefined ? {} : { model }),
     });
-    return this.depositResult("note", deposit, this.recordFeelings(deposit, feelings.inputs, model));
+    return this.depositResult("note", deposit, {
+      ...this.recordFeelings(deposit, feelings.inputs, model),
+      ...reminderEcho(deposit, dated),
+    });
   }
 
   /**
@@ -1496,10 +1505,12 @@ export class McpServer {
   ): Promise<{ outcomes: Record<string, unknown>[]; deposited: number; duplicates: number; entries: Record<string, unknown>[] }> {
     const entries: Record<string, unknown>[] = [];
     const feelingsOf: FeelingsRead[] = [];
+    const datedOf: ReminderRead[] = [];
     for (const item of raw) {
       if (item === null || typeof item !== "object" || Array.isArray(item)) {
         entries.push({ content: "" });
         feelingsOf.push({ inputs: [] });
+        datedOf.push({ fields: {}, remindIgnored: false });
         continue;
       }
       const rec = item as Record<string, unknown>;
@@ -1513,6 +1524,11 @@ export class McpServer {
       // one entry as malformed, which is this tool's per-entry isolation rule.
       const entryDims = readDimensions(rec) ?? pickDimensions(rec);
       if (Object.keys(entryDims).length > 0) draft["salience"] = entryDims;
+      // The reminder date (2026-09-26), per entry: an unreadable one refuses
+      // THIS entry below, by name, and its siblings still land.
+      const dated = readReminder(rec);
+      if (!("refused" in dated)) Object.assign(draft, dated.fields);
+      datedOf.push(dated);
       entries.push(draft);
       feelingsOf.push(readFeelings(rec["feelings"]));
     }
@@ -1527,6 +1543,11 @@ export class McpServer {
       const feelings = feelingsOf[n] ?? { inputs: [] };
       if ("refused" in feelings) {
         outcomes.push({ stored: false, reason: "feelings-malformed", detail: feelings.refused });
+        continue;
+      }
+      const dated = datedOf[n] ?? { fields: {}, remindIgnored: false };
+      if ("refused" in dated) {
+        outcomes.push({ stored: false, reason: dated.refused, detail: dated.detail });
         continue;
       }
       let result: DepositResult;
@@ -1557,6 +1578,7 @@ export class McpServer {
         ...(malformed === null ? {} : { malformed }),
         ...(malformed === "KIND_UNKNOWN" ? { kinds: [...MEMORY_KINDS] } : {}),
         ...this.recordFeelings(result, feelings.inputs, model),
+        ...reminderEcho(result, dated),
       });
     }
     return { outcomes, deposited, duplicates, entries };
@@ -2265,6 +2287,70 @@ function pickDimensions(rec: Record<string, unknown>): Record<string, unknown> {
     if (rec[dim] !== undefined) out[dim] = rec[dim];
   }
   return out;
+}
+
+// ── a reminder date on a tool call (2026-09-26) ─────────────────────────────
+
+/** What `readReminder` hands back: the draft fields, and what to say about them. */
+type ReminderRead =
+  | {
+      readonly fields: { eventDate?: string; remind?: "plain" | "quiet" };
+      /** `remind` was sent with no `eventDate`: there is nothing for it to shape. */
+      readonly remindIgnored: boolean;
+    }
+  | { readonly refused: "event-date-unreadable" | "remind-unknown"; readonly detail: string };
+
+const EVENT_DATE_SHAPES =
+  'A day "2026-10-15", a month "2026-10", a year "2026", or a range of two days "2026-10-20..2026-10-31" (first day first). Convert "late October" or "before the 15th" into one of those yourself.';
+
+/**
+ * `eventDate` and `remind` off a `note` or a `session_end` entry, CHECKED
+ * before anything mints: the date by `time.ts` (the one module that reads
+ * dates), `remind` against its two words. Never a date parsed from prose — the
+ * model writes the field (owner decision 2026-09-25/26).
+ */
+function readReminder(rec: Record<string, unknown>): ReminderRead {
+  const rawDate = rec["eventDate"];
+  const rawRemind = rec["remind"];
+  if (rawRemind !== undefined && rawRemind !== null && rawRemind !== "plain" && rawRemind !== "quiet") {
+    return { refused: "remind-unknown", detail: '`remind` is "plain" or "quiet".' };
+  }
+  if (rawDate === undefined || rawDate === null) {
+    return { fields: {}, remindIgnored: rawRemind === "plain" || rawRemind === "quiet" };
+  }
+  const read = typeof rawDate === "string" ? parseCalendarDate(rawDate) : null;
+  if (read === null) {
+    return {
+      refused: "event-date-unreadable",
+      detail: `\`eventDate\` ${typeof rawDate === "string" ? `"${rawDate.slice(0, 64)}"` : "(not text)"} is not a date this can read. ${EVENT_DATE_SHAPES}`,
+    };
+  }
+  return {
+    fields: { eventDate: read.text, remind: rawRemind === "plain" ? "plain" : "quiet" },
+    remindIgnored: false,
+  };
+}
+
+/** The reminder half of a deposit's answer: what was recorded, or why `remind`
+ *  had nothing to shape. Nothing when neither field was sent or nothing minted. */
+function reminderEcho(deposit: DepositResult, dated: ReminderRead): Record<string, unknown> {
+  if ("refused" in dated || !deposit.deposited) return {};
+  const { eventDate, remind } = dated.fields;
+  if (eventDate !== undefined) {
+    const read = parseCalendarDate(eventDate);
+    return {
+      reminder: {
+        eventDate,
+        remind: remind ?? "quiet",
+        ...(read?.precision === "year"
+          ? { note: "A year alone names no day, so this will not come back on its own. Give a month, a day or a range if it should." }
+          : {}),
+      },
+    };
+  }
+  return dated.remindIgnored
+    ? { reminder: { ignored: "remind", note: "`remind` shapes how a date comes back; with no `eventDate` there was nothing to shape." } }
+    : {};
 }
 
 // ── feelings on a tool call (schema v7) ─────────────────────────────────────

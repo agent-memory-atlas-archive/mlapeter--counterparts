@@ -47,7 +47,7 @@ import {
 } from "../src/core/mint.js";
 import { SCALAR_REF, loadGateState, saveGateState } from "../src/core/recall/index.js";
 import { Associate } from "../src/core/associate/index.js";
-import { EVENT_DATE_META, Prospective } from "../src/core/prospective/index.js";
+import { Prospective } from "../src/core/prospective/index.js";
 import { Recall, TUNABLES as RECALL_TUNABLES, freshGateState, gate, withTunables } from "../src/core/recall/index.js";
 
 /**
@@ -805,7 +805,7 @@ describe("SEAMS D — a temporal window is one more CUE, capped at the footnote 
       kind: "person",
       body: "The Portland move lands on the fourth and the truck is booked.",
       learnedOn: "2026-08-25",
-      meta: { eventDate: "2026-09-04" },
+      eventDate: "2026-09-04",
       salience: { novelty: null, relevance: 0.8, emotional: 0.8, predictive: 0.8 },
     });
     return { s, prospective: new Prospective({ store: s }), id };
@@ -1222,7 +1222,7 @@ describe("SEAMS G — the cycle's last content write is self.boundary(), budget 
       title: "The lighthouse conversation",
       body: "## the lighthouse conversation\n\nWe talked for an hour about the lighthouse at Fernbrook Point.",
       learnedOn: "2026-09-05",
-      meta: { [EVENT_DATE_META]: "2026-09-10" },
+      eventDate: "2026-09-10",
       salience: { relevance: 0.9, emotional: 0.9, predictive: 0.9 },
       source: "episode",
     });
