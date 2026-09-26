@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.3.3 — 2026-09-26
+
+Reminders with dates, and feelings start to matter. The store's format is unchanged (still
+v7), so there is no upgrade step; close every Claude Code session before installing, and
+run `/mcp` → Reconnect in any you missed.
 
 Reminders work.
 
@@ -60,6 +64,13 @@ Reminders work.
   memory's feelings as `you: … · me: …`. The Emotion light on the dashboard and in
   `counterparts mechanisms` now counts memories carrying feeling and turns where a mood
   brought memories closer.
+
+**The dashboard's Self tab, round 2.** Lighter: one line on top, with the explanations
+behind a small `?`. Beside the page, a side column says when it was last rewritten, what
+the page writer did on its last night, the version dots and how much of the wake it
+takes. A version's changes open on a click, settling is one compact chart, the journal is
+a strip of days, and the tab refreshes itself while it is open. The Health row says how
+many days since the page was rewritten.
 
 ## 0.3.2 — 2026-09-25
 
