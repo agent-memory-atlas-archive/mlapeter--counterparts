@@ -2393,6 +2393,16 @@ function reminderEcho(deposit: DepositResult, dated: ReminderRead, today: string
   if (typeof eventDate === "string") {
     return { reminder: { eventDate, remind: remind ?? "quiet", ...dateNote(eventDate, today) } };
   }
+  // A cancel that found nothing to cancel is SAID (review of #247): silence
+  // here read as success while a reminder the model meant to drop kept coming.
+  if (eventDate === null && (deposit.proposal?.updates?.declared ?? null) !== null) {
+    return {
+      reminder: {
+        cleared: false,
+        note: "No date was dropped: `updates` did not reach a dated memory by its id, so nothing was cancelled.",
+      },
+    };
+  }
   return dated.remindIgnored
     ? { reminder: { ignored: "remind", note: "`remind` shapes how a date comes back; with no `eventDate` there was nothing to shape." } }
     : {};

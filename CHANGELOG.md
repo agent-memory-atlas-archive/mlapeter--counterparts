@@ -29,7 +29,9 @@ Reminders work.
   (the dashboard adds today's). Grey only when nothing is dated.
 - **Revising a dated memory keeps its date.** A revision (`updates:`) that leaves the date
   or `remind` out carries them over, and the older memory stops coming back, so one
-  reminder is never said twice; `eventDate: null` drops the date.
+  reminder is never said twice; `eventDate: null` drops the date. The reminder is found
+  where it moved even when a later revision names the older memory, and what was already
+  said or used for the same window still counts after the move.
 - **A date that has already passed is kept, and the reply says it won't come back**, so a
   wrong year can be caught when it is written.
 

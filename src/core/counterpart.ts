@@ -46,7 +46,7 @@ import { mintProposal } from "./mint.js";
 import type { MintResult } from "./mint.js";
 import { isObserver } from "./observer.js";
 import type { Stance } from "./observer.js";
-import { Prospective, cueModeOf } from "./prospective/index.js";
+import { Prospective, REMINDER_LINEAGE_MAX, REMINDER_MOVED_TO_META, cueModeOf } from "./prospective/index.js";
 import type { PlainDue } from "./prospective/index.js";
 import {
   Recall,
@@ -799,7 +799,9 @@ export interface DepositResult {
 
 /** A revision's reminder: carried over, replaced, or dropped — and moved. */
 export interface DepositReminder {
-  /** The memory revised; its own date was cleared (kept in its version) when `moved`. */
+  /** The memory the reminder came from — the one revised, or, when its reminder
+   *  had already moved on, the memory holding it now. Its own date was cleared
+   *  (kept in its version) when `moved`. */
   readonly from: string;
   /** The date the new memory carries, or null when the revision dropped it. */
   readonly eventDate: string | null;
@@ -3774,14 +3776,24 @@ export class Counterpart {
    * would be a wrong write; leaving it where it is loses nothing. The sweep
    * builds its proposals without a `dateIntent`, so it carries nothing either
    * (it never dates a memory — `applySweep`).
+   *
+   * The reminder is found where it NOW lives (`reminderHolder`): the old id
+   * stays live after a move, so "cancel it" or "it moved to the 20th" sent
+   * against the id the model first saw must reach the memory holding the date,
+   * not answer from a row whose date already left (review of #247). An
+   * ARCHIVED holder carries nothing, as `revision.ts` refuses `target-archived`:
+   * a reminder that faded or was put away is not revived onto a live row by a
+   * revision that did not ask for it.
    */
   private carryReminder(p: Proposal): ReminderCarryPlan {
     const intent = p.dateIntent;
-    const from = p.updates?.method === "declared" ? p.updates.resolved : null;
+    const target = p.updates?.method === "declared" ? p.updates.resolved : null;
     const none: ReminderCarryPlan = { proposal: p, from: null, inherited: [] };
-    if (intent === undefined || from === null) return none;
-    const priorDate = this.store.row(from)?.event_date ?? null;
+    if (intent === undefined || target === null) return none;
+    const from = this.reminderHolder(target);
     // Nothing dated to carry or to move: the author's own fields stand as sent.
+    if (from === null) return none;
+    const priorDate = this.store.row(from)?.event_date ?? null;
     if (priorDate === null) return none;
     let priorMode: "plain" | "quiet" = "quiet";
     try {
@@ -3795,7 +3807,35 @@ export class Counterpart {
     const inherited: ("eventDate" | "remind")[] = [];
     if (eventDate !== null && intent.eventDate === "absent") inherited.push("eventDate");
     if (eventDate !== null && intent.remind === null) inherited.push("remind");
-    return { proposal: { ...p, eventDate, remind }, from, inherited };
+    return { proposal: { ...p, eventDate, remind, reminderFrom: from }, from, inherited };
+  }
+
+  /**
+   * The live memory holding the reminder `target` had: `target` itself when it
+   * is dated, else the end of its `meta.reminderMovedTo` chain (each hop through
+   * `Store#resolve`, since a holder can itself be superseded). Null when there
+   * is none, when the chain reaches an archived or removed row, or when it runs
+   * past `REMINDER_LINEAGE_MAX`.
+   */
+  private reminderHolder(target: string): string | null {
+    let current = target;
+    const seen = new Set<string>();
+    for (let hop = 0; hop <= REMINDER_LINEAGE_MAX; hop++) {
+      if (seen.has(current)) return null;
+      seen.add(current);
+      const row = this.store.row(current);
+      if (row === undefined || row.archived === 1) return null;
+      if (row.event_date !== null) return current;
+      let next: unknown;
+      try {
+        next = this.store.readProse(current).meta[REMINDER_MOVED_TO_META];
+        if (typeof next !== "string") return null;
+        current = this.store.resolve(next);
+      } catch {
+        return null;
+      }
+    }
+    return null;
   }
 
   /**
@@ -3808,7 +3848,13 @@ export class Counterpart {
     const from = carry.from as string;
     let moved = false;
     try {
-      this.store.revise(from, { eventDate: null, reason: "reminder-moved" });
+      // The forward pointer rides the same revise, so the clear and the address
+      // it leaves behind land in one transaction or not at all.
+      this.store.revise(from, {
+        eventDate: null,
+        meta: { [REMINDER_MOVED_TO_META]: successor },
+        reason: "reminder-moved",
+      });
       moved = true;
     } catch (err) {
       this.emit("counterpart.reminder.move.failed", from, { successor, error: errCode(err) });

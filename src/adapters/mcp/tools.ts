@@ -189,9 +189,9 @@ const DATE_PRIVILEGES: readonly Privilege[] = [
   },
   {
     claim:
-      "A revision OWNS the reminder: revising a dated memory by its id carries its date and remind over unless you send your own (null drops the date), and the old memory's date is cleared — kept in its version — so one reminder never comes back twice.",
+      "A revision OWNS the reminder: revising a dated memory by its id carries its date and remind over unless you send your own (null drops the date), and the old memory's date is cleared — kept in its version — so one reminder never comes back twice. A later revision of the older id still finds the reminder where it moved, and what was already said or used for the same window still counts.",
     mechanizedBy:
-      "src/core/counterpart.ts#carryReminder + moveReminder -> src/core/store/index.ts#revise (eventDate: null)",
+      "src/core/counterpart.ts#carryReminder + reminderHolder + moveReminder -> src/core/store/index.ts#revise (eventDate: null, meta.reminderMovedTo) -> src/core/prospective/index.ts#lineage (meta.reminderFrom)",
   },
 ];
 

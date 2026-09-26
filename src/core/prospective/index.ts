@@ -108,6 +108,27 @@ export function cueModeOf(doc: Pick<ProseDoc, "meta">): CueMode {
   return doc.meta[CUE_MODE_META] === "plain" ? "plain" : "quiet";
 }
 
+/**
+ * A REMINDER THAT MOVED (review of #247, 2026-09-26). When a revision takes a
+ * dated memory's reminder over (`Counterpart#carryReminder`), the two memories
+ * point at each other in their meta bags, ids only:
+ *
+ *   - the successor's `reminderFrom` names the memory it took the reminder
+ *     from, so what was already said or spent for the SAME window (the plain
+ *     latch, the quiet fire budget, a referenced stop) is still counted — a
+ *     move is not a new reminder (`lineage`);
+ *   - the old memory's `reminderMovedTo` names where it went, so a later
+ *     revision that addresses the OLD id (which stays live: revising an
+ *     ordinary memory is link-only) still finds the reminder to reschedule or
+ *     drop, instead of finding nothing.
+ */
+export const REMINDER_FROM_META = "reminderFrom";
+export const REMINDER_MOVED_TO_META = "reminderMovedTo";
+
+/** How far either pointer is followed. A reminder revised this many times in a
+ *  row is still found; a longer chain answers as if it ended there. */
+export const REMINDER_LINEAGE_MAX = 16;
+
 const WINDOW_STATES: readonly WindowState[] = ["armed", "fired", "suppressed", "expired"];
 
 /** Box 2 hands back `state` as TEXT. An unrecognized value reads as `armed` — the
@@ -507,7 +528,7 @@ export class Prospective {
         continue;
       }
 
-      const rows = this.rowsFor(id);
+      const rows = this.firingRowsFor(id);
       const mode = cueModeOf(loaded.doc);
       // Read only for a plain item, and only once per memory per call.
       const toldToday = mode === "plain" && this.plainToldOn(id, input.at);
@@ -720,22 +741,69 @@ export class Prospective {
   /** Has this beat already been told? A read of the latch `claimPlain` writes,
    *  so a turn with nothing new to say takes no write lock at all. */
   private plainTold(memoryId: string, windowKey: string, beat: PlainBeat): boolean {
-    for (const e of this.plainRows(memoryId)) {
-      if (e.dedup_key === `${PROSPECTIVE_PLAIN_EVENT}:${memoryId}:${windowKey}:${beat}`) return true;
+    // The memories this reminder moved through count too: a beat told on the
+    // row a revision took the reminder from was TOLD (`REMINDER_FROM_META`).
+    for (const id of this.lineage(memoryId)) {
+      for (const e of this.plainRows(id)) {
+        if (e.dedup_key === `${PROSPECTIVE_PLAIN_EVENT}:${id}:${windowKey}:${beat}`) return true;
+      }
     }
     return false;
   }
 
-  /** Was this memory told plainly on the calendar day `at`? */
+  /** Was this memory — or one its reminder moved from — told plainly on the calendar day `at`? */
   private plainToldOn(memoryId: string, at: string): boolean {
-    for (const e of this.plainRows(memoryId)) {
-      try {
-        if ((JSON.parse(e.payload ?? "{}") as { date?: unknown }).date === at) return true;
-      } catch {
-        /* an unreadable row answers nothing */
+    for (const id of this.lineage(memoryId)) {
+      for (const e of this.plainRows(id)) {
+        try {
+          if ((JSON.parse(e.payload ?? "{}") as { date?: unknown }).date === at) return true;
+        } catch {
+          /* an unreadable row answers nothing */
+        }
       }
     }
     return false;
+  }
+
+  /**
+   * The memory, then each one its reminder moved from, newest first — read off
+   * `meta.reminderFrom`, bounded, cycle-safe. A row that is gone or whose meta
+   * will not parse ends the walk: losing it costs at most one extra mention
+   * (§12 G12), never a memory.
+   */
+  private lineage(memoryId: string): string[] {
+    const out = [memoryId];
+    let current = memoryId;
+    for (let hop = 0; hop < REMINDER_LINEAGE_MAX; hop++) {
+      const raw = this.store.row(current)?.meta;
+      if (raw === undefined) break;
+      let from: unknown;
+      try {
+        from = (JSON.parse(raw) as Record<string, unknown>)[REMINDER_FROM_META];
+      } catch {
+        break;
+      }
+      if (typeof from !== "string" || out.includes(from)) break;
+      out.push(from);
+      current = from;
+    }
+    return out;
+  }
+
+  /**
+   * The firing-state rows the brakes read: this memory's own, and — for a
+   * window it has no row for yet — the row of the nearest memory its reminder
+   * moved from, for the SAME window key. So a moved reminder keeps its spent
+   * budget, its last-fired day and a referenced stop; a rescheduled one (a new
+   * date, so a new key) starts fresh, exactly as `reschedule` does (§12 G9).
+   * The first fire writes the successor's own row from there.
+   */
+  private firingRowsFor(memoryId: string): Map<string, ProspectiveRow> {
+    const out = this.rowsFor(memoryId);
+    for (const id of this.lineage(memoryId).slice(1)) {
+      for (const [key, row] of this.rowsFor(id)) if (!out.has(key)) out.set(key, row);
+    }
+    return out;
   }
 
   /** A memory's plain rows, newest first. At most two beats per window, so a
@@ -806,7 +874,7 @@ export class Prospective {
       return { fired: false, reason: "not-eligible", derivation: p.reason, fires: 0, state: "armed" };
     }
     const w = p.windows.find((x) => x.key === input.windowKey);
-    const rows = this.rowsFor(input.memoryId);
+    const rows = this.firingRowsFor(input.memoryId);
     const row = rows.get(input.windowKey);
     if (w === undefined) {
       this.emit("prospective.fire.refused", input.memoryId, {

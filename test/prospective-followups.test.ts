@@ -19,7 +19,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { CUE_MODE_META } from "../src/core/prospective/index.js";
+import { CUE_MODE_META, REMINDER_FROM_META, REMINDER_MOVED_TO_META } from "../src/core/prospective/index.js";
 import { openServer } from "../src/adapters/mcp/index.js";
 import type { McpServer } from "../src/adapters/mcp/index.js";
 
@@ -219,6 +219,119 @@ describe("N7: a revision that leaves the date out carries it over", () => {
     expect(deposit.reminder).toBeUndefined();
     expect(store.row(deposit.memoryId as string)?.event_date).toBeNull();
     expect(store.row(old)?.event_date).toBe("2026-10-15");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Adversarial review of #247 — the reminder follows its lineage
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("review of #247: the reminder is found where it moved, and a move is not a new reminder", () => {
+  test("a cancel sent against the ORIGINAL id reaches the memory now holding the date", async () => {
+    const s = server();
+    const store = s.counterpart.store;
+    const old = await taxes(s);
+    const first = (await note(s, { text: "Mike confirmed the estimated tax amount with his accountant.", updates: old }))[
+      "id"
+    ] as string;
+    // The old row stays live (link-only) and points at where the reminder went.
+    expect(store.row(old)?.archived).toBe(0);
+    expect(store.readProse(old).meta[REMINDER_MOVED_TO_META]).toBe(first);
+    expect(store.readProse(first).meta[REMINDER_FROM_META]).toBe(old);
+    const cancel = await note(s, {
+      text: "Mike already paid the quarterly estimated taxes early, so that is done.",
+      updates: old,
+      eventDate: null,
+    });
+    expect(cancel["reminder"]).toMatchObject({ cleared: true, from: first });
+    expect(store.datedMemories("0001-01-01", "9999-12-31")).toEqual([]);
+  });
+
+  test("session_end: two entries revising the same memory leave ONE reminder, on the newest, still plain", async () => {
+    const s = server();
+    const store = s.counterpart.store;
+    const old = await taxes(s);
+    const body = (
+      await s.call("session_end", {
+        session: SESSION,
+        memories: [
+          { content: "Mike confirmed the estimated tax amount with his accountant.", updates: old },
+          {
+            content: "The quarterly estimated tax deadline moved to the twentieth this year.",
+            updates: old,
+            eventDate: "2026-10-20",
+          },
+        ],
+      })
+    ).structuredContent;
+    const [a, b] = body["outcomes"] as Record<string, unknown>[];
+    expect(a?.["reminder"]).toMatchObject({ eventDate: "2026-10-15", from: old });
+    expect(b?.["reminder"]).toEqual({
+      eventDate: "2026-10-20",
+      remind: "plain",
+      from: a?.["id"],
+      carriedOver: ["remind"],
+    });
+    expect(store.datedMemories("0001-01-01", "9999-12-31")).toEqual([
+      { id: b?.["id"] as string, eventDate: "2026-10-20" },
+    ]);
+  });
+
+  test("a plain month already opened is not told again after a revision — its last day still is", async () => {
+    const s = server({ now: Date.parse("2026-10-03T12:00:00Z") });
+    const p = s.counterpart.prospective;
+    const old = (
+      await note(s, { text: "Mike wants to repaint the back fence sometime this October.", eventDate: "2026-10", remind: "plain" })
+    )["id"] as string;
+    const due = p.plainDue({ at: "2026-10-03" });
+    expect(due.map((d) => [d.memoryId, d.beat])).toEqual([[old, "opens"]]);
+    for (const d of due) expect(p.claimPlain(d, { at: "2026-10-03" })).toBe(true);
+    const id = (await note(s, { text: "Mike already bought the paint for the back fence.", updates: old }))["id"] as string;
+    expect(p.plainDue({ at: "2026-10-03" })).toEqual([]);
+    expect(p.plainDue({ at: "2026-10-10" })).toEqual([]);
+    expect(p.plainDue({ at: "2026-10-31" }).map((d) => [d.memoryId, d.beat])).toEqual([[id, "last-day"]]);
+  });
+
+  test("a quiet window the assistant already used stays used after a revision; a reschedule starts fresh", async () => {
+    const s = server();
+    const p = s.counterpart.prospective;
+    const old = (await note(s, { text: TAXES, eventDate: "2026-10-15" }))["id"] as string;
+    const key = p.arrivals({ at: "2026-10-15" }).arrivals.find((a) => a.memoryId === old)?.windowKey;
+    expect(key).toBeDefined();
+    expect(p.reference(old, key as string).recorded).toBe(true);
+    const id = (await note(s, { text: "Mike set up the estimated tax payment through bill pay.", updates: old }))["id"] as string;
+    const after = p.arrivals({ at: "2026-10-15" });
+    expect(after.arrivals.map((a) => a.memoryId)).not.toContain(id);
+    expect(after.suppressed).toContainEqual({ memoryId: id, windowKey: key as string, reason: "already-referenced" });
+    // A NEW date is a new window, owing nothing to the old one's state.
+    const moved = (
+      await note(s, { text: "The estimated tax deadline moved to the twentieth.", updates: id, eventDate: "2026-10-20" })
+    )["id"] as string;
+    expect(p.arrivals({ at: "2026-10-20" }).arrivals.map((a) => a.memoryId)).toContain(moved);
+  });
+
+  test("an ARCHIVED dated memory is not revived by a revision: nothing carries, nothing moves", async () => {
+    const s = server();
+    const store = s.counterpart.store;
+    const old = await taxes(s);
+    store.archive(old, "test");
+    const body = await note(s, { text: "Mike confirmed the estimated tax amount with his accountant.", updates: old });
+    expect(body["reminder"]).toBeUndefined();
+    expect(store.row(body["id"] as string)?.event_date).toBeNull();
+    expect(store.versions(old)).toEqual([]);
+    expect(store.datedMemories("0001-01-01", "9999-12-31")).toEqual([]);
+  });
+
+  test("a cancel that finds no dated memory is said, not silent", async () => {
+    const s = server();
+    const old = (await note(s, { text: "Mike prefers paying bills by bank transfer rather than by card." }))[
+      "id"
+    ] as string;
+    const body = await note(s, { text: "Mike stopped caring how bills get paid.", updates: old, eventDate: null });
+    expect(body["reminder"]).toMatchObject({ cleared: false });
+    // A fresh note sending null (no `updates`) stays quiet.
+    const fresh = await note(s, { text: "Mike likes the downtown dental clinic a lot.", eventDate: null });
+    expect(fresh["reminder"]).toBeUndefined();
   });
 });
 

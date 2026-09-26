@@ -112,6 +112,12 @@ export interface Proposal {
    * no author wrote (the sweep), which therefore carries nothing.
    */
   dateIntent?: DateIntent;
+  /**
+   * The memory this proposal takes its reminder over from, set by
+   * `Counterpart#carryReminder` only (never by an author): written to
+   * `meta.reminderFrom` at the minting seam (prospective `REMINDER_FROM_META`).
+   */
+  reminderFrom?: string;
   at: number;
   day: number;
   /** Identity for idempotency: CONTENT, not span text (§4.1 G9). */
