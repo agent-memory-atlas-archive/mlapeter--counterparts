@@ -97,6 +97,11 @@ carried or moved and the author's own fields stand.
   ever become a boundary.
 - **Exit accounting:** the old memory's firing rows stay where they are, so
   `exitReport` can count a moved window once per memory.
+- **`Prospective#arm` / `reference` / `expire`** still read the memory's own rows, not
+  the inherited ones. `reference` and `expire` write terminal states, so that is harmless.
+  `arm(successor, key)` would write `armed` over an inherited `suppressed`. `arm` has no
+  caller in `src/` (`fire` arms lazily), so this is left alone. If one is ever wired, have
+  `write` read `firingRowsFor`.
 - **A reschedule with identical words** is refused as `duplicate-content` by the content
   ledger. This predates the PR.
 - **Schema `["string", "null"]`:** a client that sends no `eventDate` is unaffected, since
