@@ -7,8 +7,6 @@ export function emptyBox(msg, extra) {
 }
 /** The two words, given their meaning back. */
 export function absenceLine(marker, whatItWouldHold) {
-  const why = marker === "(never run)"
-    ? "I have never been asked, so there is nothing here to be wrong about."
-    : "I have looked, and the answer is none.";
+  const why = marker === "(never run)" ? "It hasn't run yet." : "Nothing here yet.";
   return emptyBox(marker + " — " + whatItWouldHold + ".", why);
 }

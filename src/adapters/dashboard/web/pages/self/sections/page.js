@@ -42,7 +42,7 @@ export function shortDate(iso) {
 export function paintPage(d) {
   const p = d.page;
   $("self-page").innerHTML = d.pageAbsent
-    ? absenceLine(d.pageAbsent, "no page has been written yet — it is written at the end of a session, from what keeps coming up, and you can amend it by hand")
+    ? absenceLine(d.pageAbsent, "no page yet — once a day, the first session of the morning writes it from the day before; you can also write it by hand")
     : '<div class="sp-body">' + renderMarkdown(p.body) + "</div>";
 }
 
