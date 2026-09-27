@@ -243,3 +243,36 @@ h4.st-h{font-family:var(--sans);font-size:13.5px;font-weight:600;color:var(--ink
 .sm-legend .k-one{background:rgba(0,229,255,.5);box-shadow:0 0 0 1.5px var(--card),0 0 0 2.6px rgba(0,191,165,.7)}
 .sm-legend .k-ready{background:rgba(0,229,255,.5);box-shadow:0 0 0 1.5px var(--card),0 0 0 3px var(--amber)}
 .sm-legend .k-link{width:14px;height:2px;border-radius:1px;background:var(--purple);opacity:.7}
+
+/* ── how I act: the trait bars, one thin row per axis (2026-09-27, a try) ── */
+.tr-axes{display:flex;flex-direction:column}
+.tr-axis{display:grid;grid-template-columns:minmax(0,1fr) 26px;align-items:center}
+/* A pinned gloss drops into the flow under its row, across the whole width. */
+.tr-axis .q-wrap.open{display:contents}
+.tr-axis .q-wrap.open .q-pop{grid-column:1/-1}
+.tr-q-gap{width:26px}
+.tr-row{display:grid;grid-template-columns:5.6em minmax(40px,1fr) 5.6em 6.4em;align-items:center;gap:0 10px;width:100%;
+  background:none;border:none;padding:4px 2px;min-height:40px;color:var(--ink);font-family:var(--sans);font-size:13px;
+  line-height:1.3;cursor:pointer;border-radius:4px;text-align:left}
+.tr-row:hover:not(:disabled){background:var(--hover)}
+.tr-row.on{background:rgba(0,229,255,.08)}
+.tr-row:disabled{cursor:default;color:var(--dim)}
+.tr-pole{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr-pole.l{text-align:right}
+.tr-track{position:relative;height:4px;border-radius:2px;background:var(--deep);border:1px solid var(--border)}
+.tr-track.bare{background:none;border-style:dashed}
+.tr-mid{position:absolute;left:50%;top:-4px;bottom:-4px;width:1px;background:var(--border)}
+.tr-mark{position:absolute;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:var(--cyan);
+  box-shadow:0 0 6px rgba(0,229,255,.5)}
+.tr-mark.ago{width:8px;height:8px;margin:-4px 0 0 -4px;background:none;border:1px solid rgba(0,229,255,.5);box-shadow:none}
+.tr-n{color:var(--faint);font-size:12px;white-space:nowrap;text-align:right}
+.tr-empty{color:var(--dim);font-size:13.5px;margin:0}
+.tr-list{margin:4px 0 8px}
+.tr-why{display:block;color:var(--faint);font-size:12px}
+.tr-toward{flex:0 0 auto;font-size:11.5px;border-radius:10px;padding:1px 8px;border:1px solid var(--border);color:var(--dim)}
+.tr-toward.k-r{color:var(--cyan);border-color:var(--glow)}
+.tr-more{margin:6px 0}
+@media(max-width:640px){
+  .tr-row{grid-template-columns:4.9em minmax(30px,1fr) 4.9em 5.4em;gap:0 7px;font-size:12.5px}
+  .tr-n{font-size:11px}
+}

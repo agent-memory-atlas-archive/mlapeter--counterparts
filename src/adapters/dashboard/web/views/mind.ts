@@ -28,6 +28,8 @@ import { coreHistory, dreamsView } from "./dreams.js";
 import type { CoreHistory, DreamsView } from "./dreams.js";
 import { selfMap } from "./self-map.js";
 import type { SelfMap } from "./self-map.js";
+import { traitsView } from "./traits.js";
+import type { TraitsView } from "./traits.js";
 import type { ChapterRow, ContestedRow } from "./rows.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -139,6 +141,11 @@ export interface MindView {
    * about us as dots and the links between them (`views/self-map.ts`).
    */
   readonly map: SelfMap;
+  /**
+   * HOW I ACT (2026-09-27, a try): the seven trait axes, each with its
+   * firmness-weighted balance and a week-ago one (`views/traits.ts`).
+   */
+  readonly traits: TraitsView;
   /**
    * WHAT THE NEXT WAKE STARTS WITH (round 3b, item 2), as a short list: the
    * page and its age, the nearby memories by title, anything arriving. Its size
@@ -422,6 +429,7 @@ export function mindView(src: DashboardSource): MindView {
       absent: everLived ? NONE : NEVER,
     }),
     map: selfMap(src, identity, candidates.raw),
+    traits: traitsView(src),
     wakeList: wakeList(src, wake.ok ? wake.text : null, page),
     ...journal(read, JOURNAL_LIMIT, everLived ? NONE : NEVER),
     pageBehind: pageBehind(src, page, read),

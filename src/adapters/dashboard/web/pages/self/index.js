@@ -1,7 +1,8 @@
 /* The self tab (was "mind"): the self page on the left with a side column
    beside it (the page's history as one strip of lived days, and what the next
    wake starts with); under them, what is settling into the core — its counts
-   and the self map — and the journal as a strip of days. One fetch
+   and the self map — how I act (the trait bars), and the journal as a strip
+   of days. One fetch
    (`/api/mind`).
 
    LIVE. The pulse calls `refresh()` when the store moves. Only the panels whose
@@ -14,6 +15,7 @@ import * as dreams from "./sections/dreams.js";
 import * as journal from "./sections/journal.js";
 import * as page from "./sections/page.js";
 import * as settling from "./sections/settling.js";
+import * as traits from "./sections/traits.js";
 import * as wake from "./sections/wake.js";
 import { q, wireTips } from "../../shared/widgets/tips.js";
 
@@ -26,7 +28,7 @@ const markup = `
       </aside>
     </div>
     <div class="cols self-cols">
-      <div>${settling.markup}
+      <div>${settling.markup}${traits.markup}
       </div>
       <div>${journal.markup}${dreams.markup}
       </div>
@@ -41,6 +43,7 @@ const PANELS = [
   { name: "history", slice: (d) => [d.pageHistory, d.pageDays, d.pageDaysUndated, d.pageDaysEarlier], paint: page.paintHistory },
   { name: "wake", slice: (d) => [d.wake, d.wakeList], paint: wake.paint },
   { name: "settling", slice: (d) => [d.settling, d.stories, d.map], paint: settling.paint },
+  { name: "traits", slice: (d) => [d.traits], paint: traits.paint },
   { name: "journal", slice: (d) => [d.journal, d.journalAbsent, d.journalMore], paint: journal.paint },
   { name: "dreams", slice: (d) => [d.dreams, d.dreamsAbsent], paint: dreams.paint },
 ];
@@ -77,7 +80,7 @@ export default {
   refresh: () => draw(false),
   /** The self map is drawn to its box's width: a new width redraws it. */
   resize: () => settling.resize(),
-  /** `#self/settling`, `#self/journal`: open the tab at that section. */
+  /** `#self/settling`, `#self/traits`, `#self/journal`: open the tab at that section. */
   route({ anchor }) {
     const h = anchor && $("self-" + anchor + "-h");
     if (h) h.scrollIntoView({ block: "start" });
