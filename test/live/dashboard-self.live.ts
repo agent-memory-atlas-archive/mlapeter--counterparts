@@ -52,10 +52,12 @@ async function liveDay(c: Counterpart, i: number, date: string, page: string): P
   const d = c.store.livedDay();
   c.wake(9000);
   if (i === 0) {
-    await c.submitSessionEnd(
+    const r = await c.submitSessionEnd(
       { content: "Mike prefers decisions recorded as what is true for now.", kind: "person", salience: { relevance: 0.9, emotional: 0.5, predictive: 0.8 } },
       { session: `s${i}`, scope: "x" },
     );
+    // v9: the writer marks what it learned about the owner (the self map draws marked memories).
+    if (r.deposited && r.memoryId) c.store.setAbout(r.memoryId, "owner", { by: "writer" });
   }
   c.episodeAsk(`s${i}`, { turns: 10, bytes: 6200 }, d);
   c.appendEpisode(`s${i}`, `Day ${i + 1} went quietly.\n\nMore after the first line, on day ${i + 1}.`, {
@@ -113,13 +115,16 @@ describe("the self tab, live", () => {
       expect(await page.isHidden("#self-version")).toBe(true);
       expect(await page.locator(".q-wrap.open").count()).toBe(0);
       expect(await page.locator(".jc.open").count()).toBe(0);
-      const dotsBefore = await page.locator(".tl-step").count();
+      const dotsBefore = await page.locator(".ps-dot.filled").count();
       expect(dotsBefore).toBe(3);
+      // Round 3b: the self map is drawn, and the wake's size lives on the health tab.
+      await page.waitForSelector("#self-map svg .sm-node");
+      expect(await page.locator("#self-wake .wk-bar").count()).toBe(0);
 
       // ── open things ──
       await page.click('#self-history .q-wrap[data-tip="history"] .q');
-      const firstSeq = await page.locator(".tl-step").first().getAttribute("data-seq");
-      await page.locator(".tl-step").first().click();
+      const firstDay = await page.locator(".ps-dot.filled").first().getAttribute("data-day");
+      await page.locator(".ps-dot.filled").first().click();
       await page.waitForSelector("#self-version .tl-detail");
       await page.click("#wake-toggle");
       const olderDay = await page.locator(".jd-day").nth(1).getAttribute("data-day");
@@ -152,13 +157,14 @@ describe("the self tab, live", () => {
       }, "/shell/pulse.js");
 
       // Redrawn: the new version's dot is there, and the newest day in the strip.
-      await page.waitForFunction(() => document.querySelectorAll(".tl-step").length === 4);
+      await page.waitForFunction(() => document.querySelectorAll(".ps-dot.filled").length === 4);
       expect(await page.locator(".jd-day").count()).toBe(4);
 
       // ...and nothing closed.
       expect(await page.locator('.q-wrap.open[data-tip="history"]').count()).toBe(1);
-      expect(await page.locator(".tl-step.on").getAttribute("data-seq")).toBe(firstSeq);
+      expect(await page.locator(".ps-dot.on").getAttribute("data-day")).toBe(firstDay);
       expect(await page.isVisible("#self-version .tl-detail")).toBe(true);
+      expect(await page.locator("#self-day-say.picked").textContent()).toContain("lived day " + firstDay);
       expect(await page.isVisible("#wake-full")).toBe(true);
       expect(await page.locator(".jd-day.on").getAttribute("data-day")).toBe(olderDay);
       expect(await page.locator(".jc.open .jc-body").count()).toBe(1);
@@ -174,7 +180,7 @@ describe("the self tab, live", () => {
         await m.default.render();
       }, "/pages/self/index.js");
       expect(await page.locator('.q-wrap.open[data-tip="history"]').count()).toBe(1);
-      expect(await page.locator(".tl-step.on").getAttribute("data-seq")).toBe(firstSeq);
+      expect(await page.locator(".ps-dot.on").getAttribute("data-day")).toBe(firstDay);
       expect(await page.isVisible("#wake-full")).toBe(true);
       expect(await page.locator(".jd-day.on").getAttribute("data-day")).toBe(olderDay);
       expect(await page.locator(".jc.open .jc-body").count()).toBe(1);

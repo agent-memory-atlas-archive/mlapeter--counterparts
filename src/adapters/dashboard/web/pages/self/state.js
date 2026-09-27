@@ -7,6 +7,8 @@ export const ui = {
   version: null,
   /** In that view: the whole version rather than the diff. */
   whole: false,
+  /** The lived day picked on the page's strip; null = none (round 3b). */
+  pageDay: null,
   /** The journal day picked (its lived day); null = follow the newest. */
   day: null,
   /** Expanded chapters, as `<row id>:<chapter number>`. */

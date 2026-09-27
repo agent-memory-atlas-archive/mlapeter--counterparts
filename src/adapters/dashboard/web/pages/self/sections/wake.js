@@ -1,51 +1,36 @@
-/* What the next session wakes up with — one line and a stacked bar of its
-   parts, in the side column; "read it" opens the whole text in place. The
-   rebuild door (`counterparts rebrief`, through the actions seam) is shown but
-   not offered for now: rebrief is one step of sleep, and it comes back with
-   the sleep work. The console's `counterparts rebrief` is unchanged. */
+/* "Next time I wake, I start with:" — what the next session's wake holds, as a
+   short list (round 3b, item 2): the self page and its age, the nearby
+   memories by title (each opens its card), and anything arriving. "read it"
+   opens the whole wake in place, as it will be read. Its size against the
+   budget is the health tab's now; the rebuild button comes back when it is
+   built (the console's `counterparts rebrief` is unchanged). */
 import { absenceLine } from "../../../shared/absence.js";
-import { act, resultHtml } from "../../../shared/actions.js";
 import { $, esc } from "../../../shared/dom.js";
+import { headline, said } from "../../../shared/format.js";
 import { ui } from "../state.js";
 import { q, wireTips } from "../../../shared/widgets/tips.js";
+import { shortDate } from "./page.js";
 
 export const markup = `
       <div class="side-block">
-        <h3 class="sb-h" id="self-wake-h">What the next session wakes up with <span id="self-wake-q"></span></h3>
+        <h3 class="sb-h" id="self-wake-h">Next time I wake, I start with: <span id="self-wake-q"></span></h3>
         <div id="self-wake"></div>
-        <div class="wk-act">
-          <button type="button" class="act-btn" id="rebrief-go" disabled aria-disabled="true"
-            title="comes with the sleep work">Rebuild it now</button><span class="soon" title="comes with the sleep work">coming soon</span>
-          <div id="rebrief-out"></div>
-        </div>
       </div>`;
 
-let onDone = null;
-
-export const kb = (b) => (b / 1000).toFixed(1) + " KB";
-
-/** The parts, in reading order, with a colour each. */
-const TONE = { furniture: "p-furn", page: "p-page", identity: "p-page", craft: "p-craft", threads: "p-threads", hints: "p-hints", horizon: "p-horizon" };
-
-const EXPLAIN = "When a session starts, a line with today's date goes on top, and in a folder with a handoff note, a pointer to it. " +
-  "It is composed without a model, at the end of each day.";
-
-export function mount(refresh) {
-  onDone = refresh;
-  // The action stays wired, so turning the button back on is one attribute.
-  $("rebrief-go").addEventListener("click", async () => {
-    const go = $("rebrief-go");
-    if (go.disabled) return;
-    go.disabled = true;
-    $("rebrief-out").innerHTML = resultHtml({ out: ["rebuilding…"] });
-    const r = await act("rebrief", {});
-    go.disabled = false;
-    $("rebrief-out").innerHTML = resultHtml(r);
-    if (r && r.ok && onDone) onDone();
-  });
-}
+const EXPLAIN = "The wake is what a session is handed before its first word: composed without a model at the end of each day, from the page and the memories that are nearby. " +
+  "When a session starts, a line with today's date goes on top, and in a folder with a handoff note, a pointer to it. " +
+  "How much room it takes is on the health tab.";
 
 let last = null;
+
+/** The page's line: when it was written, and how many lived days ago. Pure. */
+export function pageAge(p) {
+  if (!p) return "";
+  const date = shortDate(p.date);
+  const ago = p.livedDaysAgo === null ? "" : p.livedDaysAgo === 0 ? "today" : p.livedDaysAgo === 1 ? "1 lived day ago" : p.livedDaysAgo + " lived days ago";
+  const when = date && ago ? "written " + date + ", " + ago : date ? "written " + date : ago ? "written " + ago : "";
+  return when + (p.newerThanWake ? (when ? " — " : "") + "rewritten since; the next wake carries the new one" : "");
+}
 
 export function paint(d) {
   if (d) last = d;
@@ -53,27 +38,35 @@ export function paint(d) {
   $("self-wake-q").innerHTML = q("wake", EXPLAIN);
   wireTips($("self-wake-q"));
   const w = d.wake;
-  if (!w.ok) {
+  const l = d.wakeList;
+  if (!w.ok || !l || !l.ok) {
     $("self-wake").innerHTML = absenceLine(w.absent || "(never run)", "no wake has been composed yet (" + w.reason + ")");
     return;
   }
-  const budget = d.wakeBudget;
-  const total = budget && budget > w.bytes ? budget : w.bytes;
-  const parts = d.wakeParts || [];
-  const seg = parts.map((p) =>
-    '<span class="wk-seg ' + (TONE[p.key] || "p-furn") + '" style="width:' + (p.bytes / total * 100).toFixed(2) + '%" title="' +
-      esc(p.label) + ": " + p.bytes + ' bytes"></span>').join("");
-  const legend = parts.map((p) =>
-    '<span class="wk-key"><i class="' + (TONE[p.key] || "p-furn") + '"></i>' + esc(p.label) + " <em>" + kb(p.bytes) + "</em></span>").join("") +
-    (budget && budget > w.bytes ? '<span class="wk-key"><i class="p-room"></i>room left <em>' + kb(budget - w.bytes) + "</em></span>" : "");
+  const items = [];
+  if (l.page) {
+    items.push('<li class="wk-it"><span class="wk-what">The self page</span>' +
+      (pageAge(l.page) ? '<span class="wk-sub">' + esc(pageAge(l.page)) + "</span>" : "") + "</li>");
+  }
+  const nearby = l.nearby.length > 0
+    ? l.nearby.map((m) => '<li><button type="button" class="wk-mem" onclick="openMemory(\'' + esc(m.id) + '\')" title="' +
+        esc(m.confidential ? "withheld" : m.text) + '">' + said(headline(m.text), m.confidential) + "</button></li>").join("")
+    : l.nearbyLines.map((t) => '<li class="wk-line-i">' + esc(headline(t)) + "</li>").join("");
+  const nNear = l.nearby.length || l.nearbyLines.length;
+  if (nNear > 0) {
+    items.push('<li class="wk-it"><span class="wk-what">' + (nNear === 1 ? "A memory nearby" : nNear + " memories nearby") + "</span>" +
+      '<ul class="wk-sublist">' + nearby + "</ul></li>");
+  }
+  items.push(l.arriving.length > 0
+    ? '<li class="wk-it"><span class="wk-what">Arriving</span><ul class="wk-sublist">' +
+        l.arriving.map((t) => '<li class="wk-line-i">' + esc(t) + "</li>").join("") + "</ul></li>"
+    : '<li class="wk-it wk-none"><span class="wk-what">Nothing arriving</span></li>');
+  const also = l.also.length > 0
+    ? '<p class="wk-also">Also ' + l.also.map((a) => a.lines + " line" + (a.lines === 1 ? "" : "s") + " of " + esc(a.label)).join(", ") + ".</p>"
+    : "";
   $("self-wake").innerHTML =
-    '<button type="button" class="wk-sum" id="wake-toggle" aria-expanded="' + ui.wake + '">' +
-      '<span class="wk-line">Next session gets <b>' + (w.bytes / 1000).toFixed(1) + "</b>" +
-        (budget ? " of " + kb(budget) : " KB <small>(its ceiling was not recorded)</small>") + "</span>" +
-      '<span class="wk-open">' + (ui.wake ? "hide it" : "read it") + "</span>" +
-    "</button>" +
-    '<div class="wk-bar" role="img" aria-label="' + esc(parts.map((p) => p.label + " " + p.bytes + " bytes").join(", ")) + '">' + seg + "</div>" +
-    '<div class="wk-legend">' + legend + "</div>" +
+    '<ul class="wk-list">' + items.join("") + "</ul>" + also +
+    '<button type="button" class="wk-read" id="wake-toggle" aria-expanded="' + ui.wake + '">' + (ui.wake ? "hide it" : "read it") + "</button>" +
     '<div class="wk-full" id="wake-full"' + (ui.wake ? "" : " hidden") + ">" + fullText(w) + "</div>";
   $("wake-toggle").addEventListener("click", () => { ui.wake = !ui.wake; paint(); });
 }

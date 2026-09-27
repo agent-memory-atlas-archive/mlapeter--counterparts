@@ -161,28 +161,39 @@ named when it applies), where the curve starts ("written" until a real use),
 and the Versions rows (a dream's near-copy merges named and grouped) — are
 pure functions in `shared/memory-card-words.js`, checked in `bun test`.
 
-`pages/self/`: the self tab (reworked 2026-09-26 as an experiment). The top is
-two columns: the self page on the left (rendered by `markdown.js`, which escapes
-first), and a side column with when it was rewritten and by whom, the page
-writer's newest night in words (`writer` in `views/mind.ts`, read through
-`self/`'s `pageWriterStatus`), the history as a line of dots, and the wake.
-`sections/page.js` draws the page, the side column's facts and the dots;
-clicking a dot opens that version above the page and diffs it against the one
-before with `diff.js` (line comparison, then words, no deps); nothing is open
-by default. A page `PAGE_BEHIND_LIVED_DAYS` or more lived days old gets one calm
-line above it (`pageBehind`: when it was written, and the lived days, chapters
-and dreams since). The writer's line says what did not happen and what would
-make it happen, with the record's reason behind its `?` (round 3, 2026-09-27).
-`sections/settling.js` is one line of counts (core, protected,
-argued with; each opens its list) over a compact chart of the closest
-candidates for the core; the view computes them with
-`physics#promotionEligibility` in the engine's own context (`aboutMe`, the lived
-day, the owner's demotion; a memory he sent back is counted apart, not drawn), and a row the verdict puts one awake return from the fast lane shows
-"one return away" (`oneReturnAway` in `views/mind.ts`) instead of the slow
-lane's day circles. `sections/wake.js` is the wake as one line and
-a stacked bar of its parts (`wakeParts`, cut at the lane headings from `self/`),
-with the rebrief button shown disabled ("coming soon", back with the sleep
-work). `sections/journal.js` is a strip of days, each with its date in one
+`pages/self/`: the self tab (reworked 2026-09-26 as an experiment; round 3b,
+2026-09-27, prefers a picture to a paragraph). The top is two columns: the self
+page on the left (rendered by `markdown.js`, which escapes first), and a side
+column with the page's history as ONE strip and the wake as a short list.
+`sections/page.js` draws the page and the strip: one dot per lived day from the
+page's first version to the newest lived day (`pageDays` in `views/mind.ts`). A
+filled dot is a day it was rewritten; clicking it opens that day's newest
+version above the page, diffed against the one before with `diff.js` (line
+comparison, then words, no deps). A hollow dot is a day it was not; hover or
+tap it for why, in the page writer's own recorded words (the newest
+`pageWriterRuns` row that happened that lived day, read through `self/`'s
+`pageWriterStatus` and worded by `writerWords`), or "no record" when there is
+none. A version sits on the lived day it was WRITTEN (`PageVersion.day` is the
+day it was replaced). Nothing is open by default. A page
+`PAGE_BEHIND_LIVED_DAYS` or more lived days old gets one calm line above it
+(`pageBehind`: when it was written, and the lived days, chapters and dreams
+since). `sections/settling.js` is one line of counts (core, protected, argued
+with; each opens its list), then the self map, then what crossed lately. The
+self map (`sections/map.js` + `views/self-map.ts`, an experiment kept in those
+two files so it is easy to change or take out) draws the memories about me or
+about us as dots, as bright as they are firmly held, the core ringed in the
+middle, a faint ring on the ones one awake return away, nearer the middle the
+closer to the core, and the association links (`edgesFrom`) as lines; hover
+for the words, click for the card. Who is drawn and how close each is comes
+from `coreCandidates` (`physics#promotionEligibility` in the engine's own
+context: `aboutMe`, the lived day, the owner's demotion; a memory he sent back
+is not drawn), and the faint ring is `oneReturnAway`; the layout is a pure
+function of the data, so a live refresh draws the same picture. `settling.candidates`
+(the five closest) stays in the view for the home tile's sake. `sections/wake.js`
+is "Next time I wake, I start with:" — the page and its age, the nearby
+memories by title (the hints lane's open `wake_display` rows, each opening its
+card; the lane's own lines on an older store), anything arriving (the horizon
+lane) — and "read it" for the whole wake. `sections/journal.js` is a strip of days, each with its date in one
 format (the view's `iso`: the chapter heading's date, else the entry's own), its
 lived day and "N chapters"; a day lists its chapters, a chapter opens in place. The `?` that holds each explaining line is
 `shared/widgets/tips.js`; `state.js` holds what is open, so the pulse's `refresh()` (which redraws only
@@ -194,7 +205,11 @@ The health tab answers "is it working?": `pages/health/sections/checks.js` runs
 opened on a bare `--dir` arms the explicit-dir guard for that run, so the
 settings line reads "not checked") and draws its findings as a checklist,
 folding the non-headline greens the way `cli/report.ts` does; `cycle.js` is the
-last sleep cycle as one line with a dot per phase; `archive.js` is one stacked
+last sleep cycle as one line with a dot per phase; `wake.js` (round 3b, moved
+from the self tab) answers "is the wake overflowing?" in one compact row: its
+size against the ceiling the newest `self.briefing` row recorded, as a stacked
+bar of its parts (`wakeParts`, cut at the lane headings from `self/`), amber
+when that render had to trim to fit (`healthView#wake`); `archive.js` is one stacked
 bar of `archived_reason` (plain phrases in the shared archive-words module,
 unknown reasons get their own segment); `verify.js` is "Check the index"
 (`verify` through the seam). The developer panels (band symmetry, what fired,

@@ -1,9 +1,10 @@
 /* The self page — the heart of the tab — on the left, whole and untrimmed; and
-   in the side column, when it was last rewritten and by whom, what the page
-   writer did on its last night, and its history as a line of dots. Clicking a
-   dot opens that version and what changed from the one before it; nothing is
-   open until then. Read-only: there is no write door here (the doors are the
-   MCP tool and the console's `self-page`). */
+   in the side column its history as ONE strip of lived days (round 3b, item 1):
+   a filled dot is a day the page was rewritten (click it to see what changed),
+   a hollow dot a day it was not (hover or tap it for why, in the page writer's
+   own recorded words). Nothing is open until a dot is clicked. Read-only: there
+   is no write door here (the doors are the MCP tool and the console's
+   `self-page`). */
 import { absenceLine } from "../../../shared/absence.js";
 import { $, esc } from "../../../shared/dom.js";
 import { diffStats, diffText } from "../diff.js";
@@ -17,12 +18,14 @@ export const mainMarkup = `
       <p class="sp-behind" id="self-behind" hidden></p>
       <section class="sp-card" id="self-page"></section>`;
 
-/** The side column's top: the page's facts, then its history. */
+/** The side column's top: the page's history, one dot per lived day. */
 export const sideMarkup = `
-      <div class="side-block" id="self-meta"></div>
       <div class="side-block" id="self-history"></div>`;
 
 let steps = [];
+let days = [];
+let undated = 0;
+let earlier = 0;
 
 const WHO = { owner: "you, by hand", session: "a session", writer: "the page writer" };
 export const who = (by) => (by ? WHO[by] || by : "someone unrecorded");
@@ -35,9 +38,6 @@ export function shortDate(iso) {
   if (d.getUTCFullYear() !== new Date().getFullYear()) opts.year = "numeric";
   return d.toLocaleDateString("en-US", opts);
 }
-
-/** The writer's outcome → a tone for its line. */
-const WRITER_TONE = { revised: "ok", "nothing-to-say": "ok", refused: "warn", failed: "warn" };
 
 export function paintPage(d) {
   const p = d.page;
@@ -59,73 +59,113 @@ export function paintBehind(d) {
   el.innerHTML = esc(b.line) + " " +
     q("behind", "The page is rewritten by the page writer, at most once a night, when something about who I am has moved. " +
       "It was last rewritten on lived day " + b.writtenDay + "; today is lived day " + (b.writtenDay + b.livedDays) +
-      ". The side column says what the page writer did on its newest night.");
+      ". The strip beside the page says what happened on each day since.");
   wireTips(el);
 }
 
-export function paintMeta(d) {
-  const p = d.page;
-  const w = d.writer;
-  const rows = [];
-  if (p) {
-    rows.push('<div class="sb-line"><span class="sb-k">Rewritten</span><span>' +
-      esc(shortDate(p.revisedOn) || p.revisedOn || "on an unrecorded date") + " · by " + esc(who(p.by)) +
-      " · version " + p.version + "</span></div>");
-    if (p.stale) rows.push('<div class="sb-line"><span class="chip warn" title="not rewritten in over ' + p.staleAfter + ' days">not rewritten in a while</span></div>');
-    if (p.reason) rows.push('<div class="sb-why" title="' + esc(p.reason) + '">“' + esc(p.reason) + "”</div>");
-  }
-  if (w) {
-    rows.push('<div class="sb-writer' + (WRITER_TONE[w.outcome] ? " " + WRITER_TONE[w.outcome] : "") + '">' +
-      (w.absent ? '<span class="sb-absent">' + esc(w.absent) + "</span> " : "") + esc(w.line) +
-      q("writer", w.more || "The page writer reads the day just gone, once a night, and rewrites the page when something about who I am moved. This is its newest run.") +
-      "</div>");
-  }
-  $("self-meta").innerHTML = rows.join("");
-  wireTips($("self-meta"));
+/** A day's name on the strip: its date when the record gives one, else its lived day. */
+export function dayName(x) {
+  const date = shortDate(x.date);
+  return (x.today ? "Today" + (date ? ", " + date : "") : date || "Lived day " + x.day) +
+    (date || x.today ? " · lived day " + x.day : "");
 }
 
+/**
+ * What the strip's caption says for one day: when, and either who rewrote the
+ * page (and the reason they gave) or the view's own words for why it was not.
+ * Pure, so it is tested without a page.
+ */
+export function dayWords(x) {
+  if (x.seqs && x.seqs.length > 0) {
+    const times = x.seqs.length > 1 ? x.seqs.length + " times, last " : "";
+    return dayName(x) + " — rewritten " + times + "by " + who(x.by) + (x.reason ? ": “" + x.reason + "”" : ".");
+  }
+  return dayName(x) + " — " + (x.why || "not rewritten.");
+}
+
+/** The caption when no day is picked or hovered: how often, and the newest. */
+export function stripSummary(list) {
+  const written = list.filter((x) => x.seqs.length > 0);
+  if (list.length === 0) return "";
+  const newest = written[written.length - 1];
+  const n = list.length;
+  return "Rewritten on " + written.length + " of " + n + " lived day" + (n === 1 ? "" : "s") +
+    (newest ? " · newest " + (shortDate(newest.date) || "lived day " + newest.day) : "") + ".";
+}
+
+/** A filled day opens its newest version. */
+const newestSeq = (x) => x.seqs[x.seqs.length - 1];
+
 export function paintHistory(d) {
-  if (d) steps = d.pageHistory || [];
+  if (d) { steps = d.pageHistory || []; days = d.pageDays || []; undated = d.pageDaysUndated || 0; earlier = d.pageDaysEarlier || 0; }
   const el = $("self-history");
-  // A version that is no longer in the history (a cleared page) closes.
+  // A version, or a picked day, that is no longer there (a cleared page) closes.
   if (ui.version !== null && !steps.some((s) => s.seq === ui.version)) ui.version = null;
-  if (steps.length === 0) { el.innerHTML = ""; el.hidden = true; paintVersion(); return; }
-  el.hidden = false;
-  if (steps.length === 1) {
-    el.innerHTML = '<h3 class="sb-h">How the page changed</h3>' +
-      '<p class="foot sp-once">Written once; there is no earlier version to compare.</p>';
+  if (ui.pageDay !== null && !days.some((x) => x.day === ui.pageDay)) ui.pageDay = null;
+  if (days.length === 0) {
+    // Versions with no lived day still exist: say so rather than draw nothing.
+    el.hidden = undated === 0;
+    el.innerHTML = undated === 0 ? "" : '<h3 class="sb-h">The page, day by day</h3><p class="ps-say">' +
+      esc(undated + (undated === 1 ? " version carries" : " versions carry") + " no lived day, so no strip can draw " + (undated === 1 ? "it" : "them") + ".") + "</p>";
     paintVersion();
     return;
   }
-  const keep = el.querySelector(".tl");
-  const scrollLeft = keep ? keep.scrollLeft : null;
-  const dots = steps.map((s) => {
-    const on = s.seq === ui.version;
-    return '<button type="button" class="tl-step' + (on ? " on" : "") + (s.current ? " now" : "") +
-      '" data-seq="' + s.seq + '" aria-pressed="' + on + '" title="' + esc(s.reason || "") + '">' +
-      '<span class="tl-dot"></span>' +
-      '<span class="tl-date">' + esc(shortDate(s.date) || (s.day !== null ? "day " + s.day : "undated")) + "</span>" +
-      '<span class="tl-who">' + esc(s.current ? "now" : "v" + (s.seq - 1)) + " · " + esc(s.by === "owner" ? "you" : s.by || "?") + "</span>" +
-    "</button>";
+  el.hidden = false;
+  const dots = days.map((x) => {
+    const filled = x.seqs.length > 0;
+    const on = ui.pageDay === x.day;
+    return '<button type="button" class="ps-dot' + (filled ? " filled" : "") + (on ? " on" : "") + (x.today ? " today" : "") +
+      '" data-day="' + x.day + '" aria-pressed="' + on + '" aria-label="' + esc(dayWords(x)) + '"><i></i></button>';
   }).join("");
+  const first = days[0], last = days[days.length - 1];
+  const ends = '<div class="ps-ends"><span>' + esc(shortDate(first.date) || "lived day " + first.day) + "</span>" +
+    (days.length > 1 ? "<span>" + esc(last.today ? "today" : shortDate(last.date) || "lived day " + last.day) + "</span>" : "") + "</div>";
   el.innerHTML =
-    '<h3 class="sb-h">How the page changed ' +
-      q("history", steps.length + " versions, oldest on the left. Click one to see what changed from the version before it; click it again to close.") + "</h3>" +
-    '<div class="tl"><div class="tl-track">' + dots + "</div></div>";
-  const tl = el.querySelector(".tl");
-  // Where the line was scrolled stays; the first time, it shows the newest end.
-  tl.scrollLeft = scrollLeft === null ? tl.scrollWidth : scrollLeft;
-  el.querySelectorAll(".tl-step").forEach((b) => b.addEventListener("click", () => {
-    const seq = Number(b.dataset.seq);
-    ui.version = ui.version === seq ? null : seq;
-    ui.whole = false;
-    paintHistory();
-    // Only on a click, never on a refresh: bring the opened view into sight.
-    const v = $("self-version");
-    if (ui.version !== null && v.scrollIntoView) v.scrollIntoView({ block: "nearest" });
-  }));
+    '<h3 class="sb-h">The page, day by day ' +
+      q("history", "One dot per lived day since the page was first written. A filled dot is a day it was rewritten: click it to see what changed. " +
+        "A hollow dot is a day it was not: hover or tap it for why, from the page writer's own record." +
+        (undated > 0 ? " " + undated + (undated === 1 ? " older version carries" : " older versions carry") + " no lived day, so no dot shows it." : "")) + "</h3>" +
+    '<div class="ps-strip" role="group" aria-label="The page\'s history, one dot per lived day">' + dots + "</div>" +
+    ends +
+    '<p class="ps-say" id="self-day-say" aria-live="polite"></p>';
+  say();
+  el.querySelectorAll(".ps-dot").forEach((b) => {
+    const x = days.find((y) => y.day === Number(b.dataset.day));
+    b.addEventListener("click", () => {
+      const again = ui.pageDay === x.day;
+      ui.pageDay = again ? null : x.day;
+      ui.version = !again && x.seqs.length > 0 ? newestSeq(x) : null;
+      ui.whole = false;
+      paintHistory();
+      // Only on a click, never on a refresh: bring the opened version into sight.
+      const v = $("self-version");
+      if (ui.version !== null && v.scrollIntoView) v.scrollIntoView({ block: "nearest" });
+    });
+    b.addEventListener("mouseenter", () => say(x));
+    b.addEventListener("focus", () => say(x));
+    b.addEventListener("mouseleave", () => say());
+    b.addEventListener("blur", () => say());
+  });
   wireTips(el);
   paintVersion();
+}
+
+/** The caption: the hovered day, else the picked one, else the summary. The
+ *  picked day's longer story (the writer's record) sits behind its own `?`. */
+function say(hover) {
+  const box = $("self-day-say");
+  if (!box) return;
+  const picked = ui.pageDay === null ? null : days.find((y) => y.day === ui.pageDay) || null;
+  const x = hover || picked;
+  if (!x) {
+    box.className = "ps-say";
+    box.textContent = stripSummary(days) +
+      (earlier > 0 ? " " + earlier + " earlier lived day" + (earlier === 1 ? " is" : "s are") + " not drawn." : "");
+    return;
+  }
+  box.className = "ps-say" + (x === picked ? " picked" : "");
+  box.innerHTML = esc(dayWords(x)) + (x === picked && x.more ? " " + q("pageday", x.more) : "");
+  wireTips(box);
 }
 
 function paintVersion() {
@@ -171,6 +211,7 @@ function paintVersion() {
   }));
   $("self-version-close").addEventListener("click", () => {
     ui.version = null;
+    ui.pageDay = null;
     paintHistory();
   });
 }

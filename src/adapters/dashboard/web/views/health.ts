@@ -14,6 +14,8 @@ import type { DashboardSource } from "../../source.js";
 import { reveal, revealHere } from "../reveal.js";
 
 import { ARCHIVE_PHRASES, REMOVED_BY_OWNER, unmappedArchiveWords } from "./archive-words.js";
+import { lastRender, wakePartLabel, wakeParts } from "./mind.js";
+import type { WakePart } from "./mind.js";
 import { LOG_CEILING, eventCountsByName } from "./shared.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -76,6 +78,40 @@ export interface HealthView {
       known: boolean;
       items: { id: string; label: string; note: string | null }[];
     }[];
+  };
+  /**
+   * IS THE WAKE OVERFLOWING? (round 3b, item 3 — moved here from the self
+   * tab): the published wake's size in its parts against the ceiling the last
+   * render was composed to, and how many elements that render trimmed to fit.
+   */
+  readonly wake: WakeBudget;
+}
+
+export interface WakeBudget {
+  /** False when no wake has been published. */
+  readonly ok: boolean;
+  readonly bytes: number;
+  /** The ceiling the newest render recorded; null when none did. */
+  readonly budget: number | null;
+  /** The published wake cut into its parts, in the order it reads. */
+  readonly parts: WakePart[];
+  /** Elements the newest render dropped to fit, and the parts they came from. */
+  readonly trimmed: number;
+  readonly trimmedFrom: string[];
+}
+
+/** The wake against its ceiling. A read: `wake()` on the observer source writes nothing. */
+export function wakeBudget(src: DashboardSource): WakeBudget {
+  const wake = src.self.wake();
+  const render = lastRender(src);
+  if (!wake.ok) return { ok: false, bytes: 0, budget: render?.budget ?? null, parts: [], trimmed: 0, trimmedFrom: [] };
+  return {
+    ok: true,
+    bytes: wake.bytes,
+    budget: render?.budget ?? null,
+    parts: wakeParts(wake.text, src.self.page() !== null),
+    trimmed: render?.trimmed ?? 0,
+    trimmedFrom: (render?.trimmedLanes ?? []).map(wakePartLabel),
   };
 }
 
@@ -281,6 +317,7 @@ export function healthView(src: DashboardSource): HealthView {
   return {
     cycle,
     archive,
+    wake: wakeBudget(src),
     phases,
     symmetry,
     records,

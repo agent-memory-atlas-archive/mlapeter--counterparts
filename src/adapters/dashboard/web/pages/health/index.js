@@ -1,5 +1,6 @@
 /* The health tab: "is it working?" first — doctor's checks as a checklist
-   with lights — then the last sleep cycle as one line, where archived
+   with lights — then the last sleep cycle as one line, whether the wake fits
+   its budget as one compact row (round 3b, from the self tab), where archived
    memories went as one picture, and a button that checks the search index.
    The developer panels that used to live here (band symmetry, what fired,
    every durable record, the heatmap, what I cannot see) are on the flow tab,
@@ -10,10 +11,12 @@ import * as archive from "./sections/archive.js";
 import * as checks from "./sections/checks.js";
 import * as cycle from "./sections/cycle.js";
 import * as verify from "./sections/verify.js";
+import * as wake from "./sections/wake.js";
 
 const markup = `
     ${checks.markup}
     ${cycle.markup}
+    ${wake.markup}
     ${archive.markup}
     ${verify.markup}
   `;
@@ -24,6 +27,7 @@ async function paint() {
   let d;
   try { d = await api("/api/health"); } catch (e) { return fail("The health page", e); }
   cycle.paint(d);
+  wake.paint(d);
   archive.paint(d);
 }
 
