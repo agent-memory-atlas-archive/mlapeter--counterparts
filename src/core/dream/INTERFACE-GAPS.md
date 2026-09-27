@@ -30,12 +30,6 @@ What this module still owes, or asks of others (2026-09-26).
    - **A reflection on its own has no trigger**: `reflect launch` exists, but nothing asks
      for one on a dreamless day. The old SessionStart page writer still covers those
      nights.
-   - **`pageWriter.mode: off` does not stop the reflection's page write**: the MCP server
-     does not read the host configuration. Consent is per night (the owner said yes to the
-     dream). Owner decision D3 in `docs/adversarial-review-pr256-2026-09-27.md`.
-   - **The entry's memory is not redacted** when a memory it cites is removed (the record
-     is); like a dream's gist, it is a memory the owner can remove on its own. Owner
-     decision D4 in the review of #256.
    - **Not yet watched live** with a real background agent.
    - **`export --markdown` does not carry the `reflections` table** (as §4 for dreams).
    - **The crash-fallback sweep sets no about mark**: a self memory it mints is unmarked,

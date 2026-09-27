@@ -1691,3 +1691,16 @@ Working defaults from the owner's conversation of 2026-09-27 and its design revi
   and share become a line saying so (an untold share is not told), and the id leaves its
   lists. The entry's MEMORY (source `reflection`) is an ordinary memory the owner can
   remove on its own; it is not redacted with it (dream INTERFACE-GAPS §7).
+
+### Owner rulings on the review of #256 (2026-09-27)
+
+- **An about mark's history says what it was** (D2): `setAbout` writes `core_events.reason`
+  as `<mark> (was <before|unmarked>): <why>`, so doctor can count a reflection's
+  re-labels, and the moves into me/us/owner, off the rows.
+- **A removal redacts the reflection entry's memory** (D4), as it redacts the record:
+  `redactReflections` blanks the "Reflected: …" memory's words (a line saying so, its hash
+  matching), takes the removed id out of its `meta.cites`, and blanks its versions' words.
+  The row stays; the removal's cache rebuild indexes the line. A later writer's revision
+  of that entry (a successor) is not followed.
+- **`updateReflection({ ifShareState })`** (review S5) is a claim: it lands only if the
+  share is still in that state, and says whether it did.

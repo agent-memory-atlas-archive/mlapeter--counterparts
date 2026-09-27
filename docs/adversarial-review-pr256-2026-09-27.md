@@ -157,6 +157,34 @@ item)*
   - This is dream CONTRACT open question 2 ("promoted out of `dreamed` provenance?").
     Left there.
 
+## Owner rulings (2026-09-27, held lightly)
+
+The owner ruled on D1–D6 the same day. Commits titled "owner rulings on #256: …".
+
+- **D1. Off is fully closed.** With `core --reflected-feeling off`, the fast lane needs
+  a feeling felt at the time AND a return that is an ordinary use, not a reflection's
+  citation (`CoreContext.organicReturnDay`). A reflection may then only move what a
+  memory is about toward work or world. On, as before. The help, the console's core
+  list and the switch's reply say so. Tests: "D1", and the switch test end to end.
+- **D2. Open, a reflection may re-label either way** ("it's me reflecting; it may
+  catch labeling bugs"), with a why.
+  - Each re-label goes into `core_events` as `<mark> (was <before>): <why> (reflection
+    rfl_…)`.
+  - Doctor counts re-labels and, apart, the moves into me/us/owner.
+  - A move into me/us/owner is said in that morning's share ("I've come to think "X"
+    is about who I am").
+  - Test: "D2".
+- **D3. `pageWriter.mode: off` is honoured.** The MCP entry point passes it the way
+  it passes `snapshotsDir`/`timeZone`, and `openAdapter` does too. The reflection still
+  keeps its entry and offers its share, and a page it sends is refused
+  `page-writer-off`. Test: "D3", through the adapter and through the MCP server.
+- **D4. A removal redacts the entry's memory too.** Its words and title, the removed id
+  in `meta.cites`, and its versions' words. The row stays. Test: "D4".
+- **D5. No change; on the watch list** in the physics and sleep NOTES. Reflection alone
+  can carry the slow lane in about four weeks of weekly citing. Pinned by "D5".
+- **D6. No change; an open question** in the dream CONTRACT §7.2: should `aboutMe`
+  refuse a `dreamed` row outright?
+
 ## Notes
 
 - **N1. A reflection and an organic use on one lived day: the second is refused. That
@@ -299,7 +327,8 @@ a reflection since." Plus a Reflection line: "has not reflected yet; returns thi
 ## Suite
 
 After the review commits:
-- `bun test` without `*-live.test.ts`: 4118 pass, 0 fail, 8 skip (4099 at `69a6138`).
+- `bun test` without `*-live.test.ts`: 4118 pass, 0 fail, 8 skip (4099 at `69a6138`);
+  after the owner rulings, see the rulings' final report.
 - Each live file on its own: dashboard-home-live 1/0, dashboard-memories-live 1/0,
   dashboard-self-live 1/0.
 - `tsc --noEmit`: clean.

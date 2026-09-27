@@ -162,7 +162,9 @@ dream having run.
   - **The page** is rewritten whole through `Self#revisePage` (by `writer`), from what it
     cites — at least one core memory when there is a core — never from a dreamed gist
     or a confidential memory, and never carrying the words of a recent dream's gist or
-    of a confidential memory it was shown (review of #256); the old page is context. The write records
+    of a confidential memory it was shown (review of #256); the old page is context. With
+    the host's `pageWriter.mode: off` the page is not written at all (owner ruling D3); the
+    entry and the share still are. The write records
     the night's page-writer run.
   - **The share** — two or three sentences, citing what it rests on — is offered in the
     hand-back; `told` records `told` on the memories it cites; a later session carries
@@ -170,9 +172,14 @@ dream having run.
   - **Feelings** are the self's, recorded later (`source: reflection`, `recorded_later`
     = today), and may be stronger than anything felt at the time (at most 5) — on a
     lived memory only: not on a dream's gist or a reflection's own entry (review of #256).
-  - **About marks** (at most 8): `me`, `us`, `owner`, `work`, `world`; a core mark on a
-    `skill`, a dream's gist or a reflection's own entry is refused (`work`/`world` stay
-    open on those).
+  - **About marks** (at most 8): `me`, `us`, `owner`, `work`, `world`, each with a why; a
+    core mark on a `skill`, a dream's gist or a reflection's own entry is refused
+    (`work`/`world` stay open on those). With the door open it may re-label either way
+    (owner ruling D2 on #256: "it's me reflecting; it may catch labeling bugs"): every
+    re-label is recorded in `core_events` with what it was and the reflection's why,
+    doctor counts them (and apart, the moves into me/us/owner), and a move into me, us or
+    the owner is said in that morning's share. With the door closed only moves toward
+    `work`/`world` are allowed (D1).
   - Every memory it cites comes back: a reflection return (physics §5.11).
 - Guarantees: **[M]** at most one reflection a lived day; **[M]** it can cite, feel or
   mark only what it was shown; **[M]** nothing under observer; **[M]** a reflection is
@@ -193,6 +200,10 @@ examples) · **§2.19** (every change enumerable: `counterparts dream --show`) �
 1. How often will the owner say yes? The ask is once a day at most; if it is a nag, a
    longer snooze or a weekly rhythm is the next knob.
 2. Should a gist that proves true awake be promoted out of `dreamed` provenance?
+   Related (owner ruling D6 on #256, left open): should `sleep/consolidate.ts#aboutMe`
+   also refuse a `dreamed` row outright, as defence in depth? Today no road reaches the
+   core from a gist (capped salience; a reflection cannot feel it or mark it about me),
+   but the v9 upgrade marked a `self`-kind gist `me` when it carried the old rule.
 3. Should dream links be stored differently from Hebbian links (a marker, a hop
    weight)? A session designing association with the owner may decide; today they are
    ordinary edges at `LINK_WEIGHT`.

@@ -418,3 +418,19 @@ Working defaults from the owner's conversation of 2026-09-27, held lightly.
   its returns' sources (`reflectionOnly`), doctor counts "promoted on reflection alone",
   and the next morning share says "I think X has become part of who I am".
   `counterparts core --reflected-feeling off` closes it without a release.
+
+## 2026-09-27 — owner rulings on the review of #256
+
+Held lightly.
+
+- **"Off" means fully closed (D1).** With `core --reflected-feeling off`, the fast lane
+  needs a feeling felt at the time (not one a reflection recorded later) AND a return that
+  is an ordinary use: `CoreContext.organicReturnDay` (the last lived day of a counted
+  `awake` return; sleep reads it off the `returns` table) stands in for `lastReturnDay` in
+  the fast lane's gap. Open, the fast lane is as before. The slow lane is the same either
+  way (see the watch item).
+- **Watch list (D5, no change):** reflection alone can carry a memory through the SLOW
+  lane in about four weeks of weekly citing (five reflection days spanning 28+ lived days;
+  pinned by `test/reflect-review.test.ts` "D5"). Look again after a few weeks of live
+  reflections; if it shows up, the next step is to count reflection days toward the fast
+  lane's return only.

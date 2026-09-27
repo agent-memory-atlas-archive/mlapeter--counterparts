@@ -865,3 +865,13 @@ Working defaults, held lightly.
   writer or a reflection marks it. The v9 upgrade marked every `self` row it found `me`
   (and `self` schema rows but the page), so on an upgraded store nothing changed
   overnight; on a store born at v9, an unmarked self-kind memory reads as a work lesson.
+
+## 2026-09-27 — owner rulings on the review of #256
+
+Held lightly.
+
+- **Closed is fully closed (D1).** With the door off, consolidation passes
+  `organicReturnDay` (the last counted `awake` return, off `returnsOf`) for a memory about
+  me, so the fast lane needs an ordinary use; a reflection's citation no longer opens it.
+- **Watch list (D5, no change):** reflection alone can carry the slow lane in about four
+  weeks of weekly citing. Watch it on the live store.
