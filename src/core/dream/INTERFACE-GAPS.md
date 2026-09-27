@@ -35,3 +35,9 @@ What this module still owes, or asks of others (2026-09-26).
    - **The crash-fallback sweep sets no about mark**: a self memory it mints is unmarked,
      so not a core candidate until something awake marks it. A choice, not an oversight —
      the sweep is a reteller.
+
+8. **The dashboard reads the ask's preview (2026-09-27).** `previewAsk` exists for the
+   Tonight box, which still counts "new since the last dream" itself until the dashboard
+   session switches it over (its `DashboardSource` does not carry `dreams` yet). The
+   dashboard is an observer: it passes `owner: true` to preview the owner's own gate
+   (confidential memories counted), or leaves it off for a guest's — its call.

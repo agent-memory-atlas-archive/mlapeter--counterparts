@@ -81,6 +81,14 @@ dreamer is the model (a background agent the session launches), outside this pro
   writer's child, and not a phase of the dream: see §5.4.)
 - A contradiction a dream flagged is raised the same way, once, when both memories are
   showable.
+- **The ask, previewed** (2026-09-27, `previewAsk`, for the dashboard's Tonight box):
+  `{ wouldAsk, reason, newSince }` from the same gate `status` and `askLine` run — the
+  same dreamed / declined / asked-today checks, the same showable filter, the same
+  `MAX_NEW` cap — asked as a live session would ask it, so it answers under observer
+  too. `newSince` is counted for every reason (the gate itself stops before counting
+  once it knows). A live session previews its own gate; an observer previews a guest's
+  (confidential memories not counted) unless it passes `owner: true`. Only a count comes
+  back.
 
 ### 5.2 The dream
 
@@ -132,7 +140,10 @@ dreamer is the model (a background agent the session launches), outside this pro
    from a confidential memory is confidential; a dated reminder and a memory the owner
    demoted from the core are not merged; a dream's merges are not "new" for the next
    ask; a dream left open is closed to changes once a newer one begins (review of #251).
-5. **[M]** Under observer stance nothing is written and every phase says so.
+5. **[M]** Under observer stance nothing is written and every phase says so. The one
+   read that answers under observer, `previewAsk`, claims no ask, records no event and
+   writes nothing, in either stance (`test/dream-preview.test.ts`: byte-identical store,
+   and it agrees with `status` and `askLine` case by case).
 6. **[M]** The journal lives in the `dreams` table: no decay, dedup, prune or recall
    touches it.
 
