@@ -155,7 +155,7 @@ import { Store, assertSafeDataDir, hashText, indexTextOf } from "./store/index.j
 import type {
   AddFeelingsResult,
   FeelingInput, Embedder, StoreEvent } from "./store/index.js";
-import { TUNABLES as PHYSICS } from "./physics/index.js";
+import { TUNABLES as PHYSICS, band as bandOf } from "./physics/index.js";
 import type { UseTier } from "./physics/index.js";
 import type { Kind } from "./types.js";
 
@@ -2468,6 +2468,80 @@ export class Counterpart {
   /** Through the REAL battery: a first-person reflection is not exempt (SEAMS H). */
   ingestEpisode(input: { sessionId: string; day?: number; handles?: readonly string[] }): IngestResult {
     return this.self.ingestEpisode(input);
+  }
+
+  // ── the core: what it holds, and the owner's door out of it ────────────────
+
+  /**
+   * THE CORE, as the owner reads it (2026-09-26): every identity-band memory,
+   * with the lane that carried it there (when a promotion recorded one) and
+   * whether it is on the page's row; plus the recent nominations dreams made.
+   * A read.
+   */
+  coreList(): {
+    core: { id: string; kind: string; lane: string | null; day: number | null; body: string | null; confidential: boolean }[];
+    nominated: { id: string; day: number; reason: string | null; dream: string | null }[];
+    demoted: { id: string; day: number; reason: string | null }[];
+  } {
+    const core: ReturnType<Counterpart["coreList"]>["core"] = [];
+    for (const id of this.store.list({ archived: false })) {
+      const row = this.store.row(id);
+      if (row === undefined || row.promoted_identity !== 1) continue;
+      const promoted = this.store.coreEvents({ memoryId: id, action: "promoted", limit: 1 })[0];
+      let body: string | null = null;
+      try {
+        const doc = this.store.readProse(id);
+        body = row.confidential === 1 && !this.owner ? null : (doc.title ?? doc.body).split("\n")[0] ?? "";
+      } catch {
+        body = null;
+      }
+      core.push({
+        id,
+        kind: row.kind,
+        lane: promoted?.lane ?? null,
+        day: promoted?.day ?? null,
+        body,
+        confidential: row.confidential === 1,
+      });
+    }
+    const nominated = this.store
+      .coreEvents({ action: "nominated", limit: 50 })
+      .map((e) => ({ id: e.memory_id, day: e.day, reason: e.reason, dream: e.dream_id }));
+    const demoted = this.store
+      .coreEvents({ action: "demoted", limit: 50 })
+      .map((e) => ({ id: e.memory_id, day: e.day, reason: e.reason }));
+    return { core, nominated, demoted };
+  }
+
+  /**
+   * THE DEMOTE DOOR (owner decision 2026-09-26): send a core memory back to
+   * ordinary fading, and record why. Its fading restarts TODAY — it was held at
+   * full strength until now, and "back to normal fading" should not mean a
+   * collapse to whatever months of decay would have left. The demotion is
+   * sticky: the core lanes do not promote it again (`coreDemoted`). The row
+   * says who and why; a `band.demoted` event is the durable crossing record,
+   * the mirror of `band.promoted`.
+   */
+  demoteCore(id: string, opts: { reason: string; actor?: string }): { ok: boolean; reason: string } {
+    if (this.observer) return { ok: false, reason: "observer" };
+    const reason = opts.reason.trim();
+    if (reason.length === 0) return { ok: false, reason: "reason-required" };
+    const row = this.store.row(id);
+    if (row === undefined) return { ok: false, reason: "unknown-id" };
+    if (row.promoted_identity !== 1) return { ok: false, reason: "not-core" };
+    const day = this.store.livedDay();
+    this.store.appendCoreEvent({ memoryId: id, action: "demoted", day, reason, actor: opts.actor ?? "owner" });
+    this.store.updatePhysics(id, { promotedIdentity: false, lastUsedDay: Math.max(row.last_used_day, day) });
+    const after = this.store.physicsOf(id);
+    this.store.setBand(id, bandOf(after, day), day);
+    this.store.appendEvent({
+      name: "band.demoted",
+      day,
+      ref: id,
+      payload: { kind: row.kind, day, actor: opts.actor ?? "owner" },
+    });
+    this.emit("counterpart.core.demoted", id, { day });
+    return { ok: true, reason: "demoted" };
   }
 
   // ── the self page ──────────────────────────────────────────────────────────
