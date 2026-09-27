@@ -474,6 +474,40 @@ describe("reflect: dream → journal → reflect", () => {
     expect(quoted.outcome.page.written).toBe(true);
   });
 
+  test("what a dream or a reflection wrote earns no return by being cited; a reflection is not shown its own entries as memories", () => {
+    const c = brain();
+    const d = dreamed(c);
+    const begun = c.reflections.begin({ session: SESSION, dream: d.dream });
+    if (!begun.ok) throw new Error(begun.reason);
+    const done = c.reflections.finish({
+      reflection: begun.bundle.reflection,
+      session: SESSION,
+      entry: "The dream's pattern rings true: the dashboard is about being understood.",
+      cites: [d.gist, d.felt],
+    });
+    if (!done.ok) throw new Error(String(done.reason));
+    expect(done.outcome.returned).toContainEqual({ id: d.gist, counted: false, reason: "dreamed-rises-only-awake" });
+    expect(c.store.returnsOf(d.gist)).toEqual([]);
+    const entry = done.outcome.entryId as string;
+    nextDay(c);
+    const next = c.reflections.begin({ session: SESSION });
+    if (!next.ok) throw new Error(next.reason);
+    expect(Object.keys(next.bundle.memories)).not.toContain(entry);
+    expect(next.bundle.earlier[0]?.entry).toContain("being understood");
+  });
+
+  test("undoing the dream leaves the reflection after it: it was lived", () => {
+    const c = brain();
+    const d = dreamed(c);
+    const begun = c.reflections.begin({ session: SESSION, dream: d.dream });
+    if (!begun.ok) throw new Error(begun.reason);
+    const done = c.reflections.finish({ reflection: begun.bundle.reflection, session: SESSION, entry: "Still thinking about it.", cites: [d.felt] });
+    if (!done.ok) throw new Error(String(done.reason));
+    expect(c.dreams.undo(d.dream).ok).toBe(true);
+    expect(c.store.reflection(begun.bundle.reflection)).toMatchObject({ state: "reflected", dream_id: d.dream, entry: "Still thinking about it." });
+    expect(c.store.row(done.outcome.entryId as string)?.archived).toBe(0);
+  });
+
   test("a gist's words are refused on the page written after its dream", () => {
     const c = brain();
     const d = dreamed(c);

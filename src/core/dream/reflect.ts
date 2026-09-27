@@ -425,6 +425,16 @@ export class Reflections {
     // ── returns: every memory it cited came back (once) ────────────────────
     const returned: { id: string; counted: boolean; reason: string }[] = [];
     for (const id of [...new Set([...cites, ...shareCites, ...pageCites])].slice(0, T.LIMITS.returns)) {
+      // WHAT A DREAM OR A REFLECTION WROTE does not come back by being cited
+      // here: a dream's gist rises only by proving true in an organic use
+      // (the dream's own `dreamed-rises-only-awake`), and a reflection
+      // returning its own words would be the rumination loop self CONTRACT
+      // §2(c) names. They may still be cited in the entry and the share.
+      const source = this.store.row(id)?.source;
+      if (source === "dreamed" || source === "reflection") {
+        returned.push({ id, counted: false, reason: source === "dreamed" ? "dreamed-rises-only-awake" : "reflection-does-not-return-itself" });
+        continue;
+      }
       try {
         const r = this.store.reflectReturn(id, day);
         returned.push({ id, counted: r.counted, reason: r.reason });
@@ -683,9 +693,12 @@ export class Reflections {
     for (const mid of this.store.list({ type: "memory", archived: false })) {
       if (denied.has(mid)) continue;
       const row = this.store.row(mid);
-      if (row === undefined || !this.showable(row) || row.source === "dreamed") continue;
+      // A dream's gists come through the dream, marked; a reflection's own
+      // entries come through `earlier`, as words — neither as a memory to
+      // return to, feel or mark here.
+      if (row === undefined || !this.showable(row) || row.source === "dreamed" || row.source === "reflection") continue;
       const f = emotionalIntensity(this.store.physicsOf(mid));
-      if (row.birth_day >= day - T.CHAPTER_DAYS && row.source !== "reflection") recent.push({ id: mid, felt: f, at: row.created_at ?? 0 });
+      if (row.birth_day >= day - T.CHAPTER_DAYS) recent.push({ id: mid, felt: f, at: row.created_at ?? 0 });
       if (row.promoted_identity === 1) {
         core.push({ id: mid, felt: f });
         continue;

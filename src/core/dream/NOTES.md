@@ -141,3 +141,11 @@ brief left open, and why.
     lists it (`becameCore`), the instructions ask the share to say it, and if the share
     did not cite it the engine adds "I think "…" has become part of who I am." A meta
     latch (`reflection.coreMentioned.<id>`) says it once.
+14. **What a dream or a reflection wrote earns no return by being cited.** A dreamed
+    gist can be cited in the entry and the share (it is a suggestion the waking self may
+    take up), but the citation is not a return (`dreamed-rises-only-awake`, the dream's
+    own rule): otherwise the agent that dreamed a gist could wake, mark it, feel it and
+    cite it into the core in two days with no organic use. A reflection's own entries are
+    not shown to it as memories at all — only as words, under `earlier` — because a
+    reflection returning its own reflections is the rumination loop self CONTRACT §2(c)
+    names (`reflection-does-not-return-itself` if one is ever cited).

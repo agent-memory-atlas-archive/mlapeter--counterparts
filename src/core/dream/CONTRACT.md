@@ -173,7 +173,8 @@ dream having run.
   - Every memory it cites comes back: a reflection return (physics §5.11).
 - Guarantees: **[M]** at most one reflection a lived day; **[M]** it can cite, feel or
   mark only what it was shown; **[M]** nothing under observer; **[M]** a reflection is
-  not undone with its dream (it was lived); **[M]** its hand-back carries the mark, so
+  not undone with its dream (it was lived); **[M]** what a dream or a reflection wrote
+  earns no return by being cited; **[M]** its hand-back carries the mark, so
   the share is told in the session's own words, not captured from the tool's; **[M]**
   the owner's removal redacts a reflection that was shown, cited or quotes the memory.
 
