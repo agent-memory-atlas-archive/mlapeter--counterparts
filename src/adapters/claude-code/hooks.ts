@@ -73,6 +73,7 @@ import {
   ASK_ROW_COUNTING,
   decideUpdateNotice,
   installedBuild,
+  isLive,
   markUpdateNoticeShown,
   owedWriteUps,
   progressKey,
@@ -1317,12 +1318,26 @@ export class ClaudeCodeAdapter {
    * the host-mode page writer's headless child, never under observer, never
    * without a date. Only what could surface here anyway is counted or raised
    * (the dream module applies recall's gates). Never throws.
+   *
+   * v9 (2026-09-27): a MORNING SHARE the reflecting session never told is
+   * carried here, ONCE, by the next session — only when the session that
+   * reflected has ended (its registry record is ended or quiet), so the two
+   * do not both tell it. Here, on the prompt, rather than in the SessionStart
+   * wake, whose byte ceiling is what stranded the page writer.
    */
   private dreamLines(input: HookInput): string {
     if (this.observer || input.at === undefined || input.pageWriter === true || input.sessionId.length === 0) return "";
     try {
       const dreams = this.counterpart.dreams;
       const lines = [...dreams.raiseLines({ session: input.sessionId })];
+      const pending = this.counterpart.reflections.pendingShare({ session: input.sessionId });
+      if (pending !== null) {
+        const record = pending.session === null ? null : readSession(this.counterpart.store.dir, pending.session);
+        if (record === null || !isLive(record, this.nowFn())) {
+          const carried = this.counterpart.reflections.carryLine({ session: input.sessionId, reflection: pending.id });
+          if (carried !== null) lines.push(carried);
+        }
+      }
       const ask = dreams.askLine({ at: input.at, session: input.sessionId });
       if (ask !== null) lines.push(ask);
       if (lines.length > 0) this.emit("adapter.dream.lines", { asked: ask !== null, raised: lines.length - (ask === null ? 0 : 1) });

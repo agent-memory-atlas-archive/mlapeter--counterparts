@@ -174,6 +174,7 @@ export {
   pendingMigration,
   SCHEMA_VERSION,
   V8_UPGRADE_KEY,
+  V9_UPGRADE_KEY,
   rowToPhysics,
   rowTombstoned,
 } from "./operational.js";
@@ -2233,9 +2234,9 @@ export class Store {
   /** Reflections, newest first; optionally only one dream's. */
   reflections(filter: { limit?: number; dreamId?: string } = {}): ReflectionRow[] {
     return filter.dreamId === undefined
-      ? this.ops.all<ReflectionRow>("SELECT * FROM reflections ORDER BY started_at DESC, id DESC LIMIT ?", filter.limit ?? 100)
+      ? this.ops.all<ReflectionRow>("SELECT * FROM reflections ORDER BY started_at DESC, rowid DESC LIMIT ?", filter.limit ?? 100)
       : this.ops.all<ReflectionRow>(
-          "SELECT * FROM reflections WHERE dream_id = ? ORDER BY started_at DESC, id DESC LIMIT ?",
+          "SELECT * FROM reflections WHERE dream_id = ? ORDER BY started_at DESC, rowid DESC LIMIT ?",
           filter.dreamId,
           filter.limit ?? 100,
         );

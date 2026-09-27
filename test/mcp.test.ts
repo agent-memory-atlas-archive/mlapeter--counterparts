@@ -509,6 +509,8 @@ describe("the tool-description audit", () => {
     // promote, protect or strengthen anything.
     // The eighth is `dream` (2026-09-26): a dream's phases. It can NOMINATE a
     // memory for the core; only a core lane at consolidation promotes one.
+    // The ninth is `reflect` (2026-09-27): the waking self. What it cites comes
+    // back (a return); it promotes nothing either.
     expect(TOOL_NAMES).toEqual([
       "note",
       "recall",
@@ -518,6 +520,7 @@ describe("the tool-description audit", () => {
       "scope",
       "self_page",
       "dream",
+      "reflect",
     ]);
     // §4: what enters the identity band is the boundary's job by construction,
     // and `protected.add` went with the second-signature queue. Enumerated

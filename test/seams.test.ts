@@ -24,7 +24,7 @@ import {
   strength,
 } from "../src/core/physics/index.js";
 import { MEMORY_SOURCES } from "../src/core/types.js";
-import { Dreams } from "../src/core/dream/index.js";
+import { Dreams, Reflections } from "../src/core/dream/index.js";
 import type { MemoryPhysics } from "../src/core/types.js";
 import {
   SpanBuffer,
@@ -432,6 +432,10 @@ describe("SEAMS A — the observer predicate is hoisted, and stand-down totality
       recordDreamChange: ["drm_x", { action: "link" }],
       markDreamChangeUndone: ["drm_x", 1],
       setDreamAsk: [{ date: "2026-09-26", state: "offered", day: 0 }],
+      reflectReturn: [seedId, 1],
+      setAbout: [seedId, "me", { by: "writer" }],
+      openReflection: [{ id: "rfl_x", day: 0, questions: [], shown: [] }],
+      updateReflection: ["rfl_x", { state: "reflected" }],
     };
     for (const method of WRITE_METHODS) {
       const fn = (s as unknown as Record<string, ((...a: unknown[]) => unknown) | undefined>)[
@@ -1877,6 +1881,29 @@ describe("MemorySource is TOTAL — every member has a live writer that lands it
       changes: [{ action: "gist", text: "Ada keeps asking for the live walkthrough.", sources: [source] }],
     });
     seen.set("dreamed", gist.ok ? (gist.results[0]?.id ?? "missing") : "missing");
+
+    // reflection: a reflection's entry, through the reflection seam (2026-09-27).
+    const reflections = new Reflections({
+      store: s,
+      observer: false,
+      owner: true,
+      gate: (text) => ({ ok: true, text }),
+      page: () => null,
+      today: () => "2026-09-26",
+      ownerName: () => null,
+      dreamLine: () => null,
+      writePage: () => ({ ok: false, reason: "not-wired" }),
+    });
+    const opened = reflections.begin({ session: "s-tot" });
+    if (!opened.ok) throw new Error(`reflection refused: ${opened.reason}`);
+    const cite = opened.bundle.recent[0] ?? Object.keys(opened.bundle.memories)[0] ?? "none";
+    const finished = reflections.finish({
+      reflection: opened.bundle.reflection,
+      session: "s-tot",
+      entry: "Looking back, Ada's asks are about trust more than the walkthrough.",
+      cites: [cite],
+    });
+    seen.set("reflection", finished.ok ? (finished.outcome.entryId ?? "missing") : "missing");
 
     for (const member of MEMORY_SOURCES) {
       const id = seen.get(member);

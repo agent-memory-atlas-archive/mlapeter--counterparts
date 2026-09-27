@@ -46,6 +46,14 @@
  * `journal`) plus the session's `launch` and the owner's `decline`. It is not a
  * door into the identity band either: a dream NOMINATES, and only a core lane at
  * consolidation promotes (`sleep/consolidate.ts`).
+ *
+ * **`reflect` is the ninth, added 2026-09-27 (reflection + core by meaning).**
+ * The waking self: usually right after a dream (the dreamer wakes and
+ * reflects before it hands back), or on its own. It writes a lived entry,
+ * may rewrite the self page from the memories it cites, leaves a morning
+ * share, records how a memory feels now and marks what a memory is about.
+ * It promotes nothing: a memory it cites comes BACK (a return), and only a
+ * core lane at consolidation promotes.
  */
 import { RECALL_MAX_IDS } from "./deliberate.js";
 
@@ -57,7 +65,8 @@ export type ToolName =
   | "chapter"
   | "scope"
   | "self_page"
-  | "dream";
+  | "dream"
+  | "reflect";
 
 /**
  * The tool vocabulary, ENUMERATED. Three deliberate verbs plus the TWO return
@@ -95,6 +104,7 @@ export const TOOL_NAMES: readonly ToolName[] = [
   "scope",
   "self_page",
   "dream",
+  "reflect",
 ];
 
 /**
@@ -129,6 +139,18 @@ export interface ToolSpec {
  * `emotional` if that is stronger, raises the memory and slows its fading
  * (physics §5.10), and a recent one sets the mood recall matches (recall G18).
  */
+/**
+ * `about` on a `note` or a `session_end` entry (schema v9, 2026-09-27): what
+ * the memory is about, by meaning — a neutral, descriptive mark, not a topic.
+ * Only `me`, `us` and `owner` can become core; a work lesson is `work`.
+ */
+const ABOUT_PROPERTY = {
+  type: "string",
+  enum: ["me", "us", "owner", "work", "world"],
+  description:
+    "Optional: what this is about, by meaning — me (who I am), us (the owner and me), owner (the owner himself), work (the craft: how a job is done), world (anything else). Leave it out when unsure. Only me, us and owner can become part of who I am.",
+};
+
 const FEELINGS_PROPERTY = {
   type: "array",
   description:
@@ -312,6 +334,7 @@ const NOTE: ToolSpec = {
       eventDate: EVENT_DATE_PROPERTY,
       remind: REMIND_PROPERTY,
       feelings: FEELINGS_PROPERTY,
+      about: ABOUT_PROPERTY,
     },
     required: ["text"],
     additionalProperties: false,
@@ -597,6 +620,7 @@ const SESSION_END: ToolSpec = {
             eventDate: EVENT_DATE_PROPERTY,
             remind: REMIND_PROPERTY,
             feelings: FEELINGS_PROPERTY,
+            about: ABOUT_PROPERTY,
           },
           required: ["content"],
           additionalProperties: false,
@@ -987,6 +1011,114 @@ const DREAM: ToolSpec = {
   },
 };
 
+/**
+ * `reflect` — the ninth, added 2026-09-27. Reflection is its own act, with its
+ * own record: usually right after a dream (the dream's launch prompt carries
+ * the steps), or on its own (`launch`). `begin` hands it what to reflect on;
+ * `finish` takes what it wrote; `told` is the session saying the morning share
+ * was told.
+ */
+const REFLECT: ToolSpec = {
+  name: "reflect",
+  summary:
+    "Reflection: a few quiet, awake minutes — usually right after a dream — answering two or three questions about yourself, the owner and the two of you, citing the memories your thoughts rest on. It keeps a lived entry, may rewrite your self page from the memories it cites, leaves a short morning share for the owner, can record how a memory feels to you now and what a memory is about. Phases: `launch` (a reflection on its own, for a background agent), `begin` / `finish` (the reflecting mind's), `told` (the share was told).",
+  admission:
+    "The dreamer calls `begin` and `finish` right after its journal, as the dream's prompt says. Call `launch` only when the owner asks you to reflect, and hand its prompt to a background agent. Call `told` after you told the owner a morning share, in your own words.",
+  negativeExamples: [
+    "Do NOT make up depth: a night with nothing much to say is a short entry that cites nothing — it rewrites nothing and shares nothing.",
+    "Do NOT store a thought about the owner as a fact about him: say it to him tentatively in the share, or not at all — never a list of flaws.",
+    "Do NOT cite a dreamed gist as a source for the self page: a dream suggests, the waking self decides.",
+  ],
+  privileges: [
+    {
+      claim:
+        "It is bound to ONE session as `dream` is; at most one reflection a lived day, and under observer stance nothing is written and the refusal says so.",
+      mechanizedBy: "src/adapters/mcp/server.ts#requireBoundSession + src/core/dream/reflect.ts#Reflections.begin",
+    },
+    {
+      claim:
+        "It is shown only what could surface in this session anyway (recall's gates), and it can cite, feel or mark only memories it was shown.",
+      mechanizedBy: "src/core/dream/reflect.ts#Reflections.showable + #Reflections.finish (shown ids)",
+    },
+    {
+      claim:
+        "A memory it cites comes back — a return that slows its fading and counts toward the core's lanes — at most once a lived day, and once a week from reflections; it promotes nothing itself.",
+      mechanizedBy: "src/core/store/index.ts#reflectReturn -> src/core/physics/index.ts#creditReturn (REFLECTION_SPACING_DAYS)",
+    },
+    {
+      claim:
+        "The self page is rewritten only from memories it cites (never from a dreamed gist), through the page's one door, with every earlier version kept.",
+      mechanizedBy: "src/core/dream/reflect.ts#Reflections.finish (page) -> src/core/self/index.ts#Self.revisePage",
+    },
+    {
+      claim:
+        "A feeling it records is marked as recorded later, with the day, beside what was felt at the time; what a memory is about is a mark with who set it, and only me, us and owner make a core candidate.",
+      mechanizedBy: "src/core/store/index.ts#addFeelings (recorded_later) + src/core/store/index.ts#setAbout + src/core/sleep/consolidate.ts#aboutMe",
+    },
+    {
+      claim:
+        "Every word it writes is scanned for credentials first; its hand-back carries the mark capture refuses, so the share is told in the session's own words rather than filed from the tool's.",
+      mechanizedBy: "src/core/dream/reflect.ts#Reflections.words + src/core/dream/mark.ts#DREAM_MARK -> src/core/remember/spans.ts#enters",
+    },
+  ],
+  inputSchema: {
+    type: "object",
+    properties: {
+      phase: {
+        type: "string",
+        enum: ["launch", "begin", "finish", "told"],
+        description: "Which step: launch, begin, finish, or told.",
+      },
+      session: { type: "string", description: "The session this reflection belongs to." },
+      dream: { type: "string", description: "`begin`, after a dream: the dream id it follows." },
+      reflection: { type: "string", description: "`finish` and `told`: the reflection id `begin` returned." },
+      title: { type: "string", description: "`finish`: a short title for the entry." },
+      entry: { type: "string", description: "`finish`: your reflection, first person." },
+      cites: { type: "array", items: { type: "string" }, description: "`finish`: the memory ids the entry rests on." },
+      page: {
+        type: "object",
+        description: "`finish`, optional: the self page rewritten whole, and the memory ids it rests on (the core first).",
+        properties: { text: { type: "string" }, cites: { type: "array", items: { type: "string" } } },
+      },
+      share: {
+        type: "object",
+        description: "`finish`, optional: two or three sentences for the owner this morning, and the memory ids they rest on.",
+        properties: { text: { type: "string" }, cites: { type: "array", items: { type: "string" } } },
+      },
+      feelings: {
+        type: "array",
+        description: "`finish`, optional: how a memory feels to you now.",
+        items: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+            core: { type: "string", enum: ["happy", "sad", "fear", "anger", "surprise", "disgust"] },
+            emotion: { type: "string" },
+            strength: { type: "number", minimum: 0, maximum: 1 },
+            carried_by: { type: "string" },
+          },
+          required: ["id", "core", "emotion", "strength"],
+        },
+      },
+      about: {
+        type: "array",
+        description: "`finish`, optional: what a memory is about, by meaning.",
+        items: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+            about: { type: "string", enum: ["me", "us", "owner", "work", "world"] },
+            why: { type: "string" },
+          },
+          required: ["id", "about"],
+        },
+      },
+    },
+    required: ["phase"],
+    additionalProperties: false,
+  },
+};
+
 export const TOOLS: readonly ToolSpec[] = [
   NOTE,
   RECALL,
@@ -996,6 +1128,7 @@ export const TOOLS: readonly ToolSpec[] = [
   SCOPE,
   SELF_PAGE,
   DREAM,
+  REFLECT,
 ];
 
 export function toolSpec(name: string): ToolSpec | undefined {
