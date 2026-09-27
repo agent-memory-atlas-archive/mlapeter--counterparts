@@ -52,10 +52,12 @@ async function liveDay(c: Counterpart, i: number, date: string, page: string): P
   const d = c.store.livedDay();
   c.wake(9000);
   if (i === 0) {
-    await c.submitSessionEnd(
+    const r = await c.submitSessionEnd(
       { content: "Mike prefers decisions recorded as what is true for now.", kind: "person", salience: { relevance: 0.9, emotional: 0.5, predictive: 0.8 } },
       { session: `s${i}`, scope: "x" },
     );
+    // v9: the writer marks what it learned about the owner (the self map draws marked memories).
+    if (r.deposited && r.memoryId) c.store.setAbout(r.memoryId, "owner", { by: "writer" });
   }
   c.episodeAsk(`s${i}`, { turns: 10, bytes: 6200 }, d);
   c.appendEpisode(`s${i}`, `Day ${i + 1} went quietly.\n\nMore after the first line, on day ${i + 1}.`, {
