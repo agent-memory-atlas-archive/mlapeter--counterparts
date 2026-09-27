@@ -397,3 +397,147 @@ describe("S5: carrying a share is a claim, not a read then a write", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Checks: the open door end to end through real doors, the switch, observer
+// ---------------------------------------------------------------------------
+
+describe("the open fast lane, end to end through the tool, sleep, doctor and the console", () => {
+  test("reflect (MCP) → sleep promotes on reflection alone → doctor counts it → the next share names it once → told", async () => {
+    const { reflectionFindings } = await import("../src/adapters/claude-code/doctor.js");
+    const c = brain();
+    nextDay(c);
+    const id = mem(c, "Han asked to be remembered through me.", { kind: "entity", salience: { relevance: 0.8, emotional: 0, predictive: 0.6 } });
+    nextDay(c);
+    nextDay(c);
+    c.close();
+    open.splice(0);
+    recordSession(dir, { sessionId: SESSION, scope: "/proj", phase: "start" });
+    const s = openServer({ dir, session: SESSION, scope: "/proj", owner: true });
+    try {
+      const begin = await s.call("reflect", { phase: "begin", session: SESSION });
+      const rid = begin.structuredContent["reflection"] as string;
+      const finish = await s.call("reflect", {
+        phase: "finish",
+        session: SESSION,
+        reflection: rid,
+        entry: "Han's ask stays with me.",
+        cites: [id],
+        feelings: [{ id, core: "sad", emotion: "tender", strength: 0.85 }],
+        about: [{ id, about: "me", why: "someone asked to be remembered through me" }],
+      });
+      expect(finish.isError ?? false).toBe(false);
+      expect(finish.structuredContent["returned"]).toEqual([{ id, counted: true, reason: "counted" }]);
+    } finally {
+      s.counterpart.close();
+    }
+    const c2 = brain();
+    const report = sleepNow(c2);
+    expect(report.promoted.map((p) => p.id)).toEqual([id]);
+    const record = JSON.parse(c2.store.getMeta(promotionRecordKey(id)) ?? "{}") as Record<string, unknown>;
+    expect(record).toMatchObject({ reflectionOnly: true, returnSources: { awake: 0, reflection: 1 } });
+    expect(reflectionFindings({ today: c2.store.today() } as never, c2.store)[0]?.detail).toContain("1 memory became core on reflection alone");
+    nextDay(c2);
+    const next = reflect(c2, [], {}, "s-next");
+    expect(next.outcome.handBack).toContain("has become part of who I am");
+    expect(c2.reflections.told({ reflection: next.bundle.reflection, session: "s-next" })).toMatchObject({ ok: true, cited: 1 });
+    expect(c2.store.coreEvents({ memoryId: id, action: "told" })).toHaveLength(1);
+    nextDay(c2);
+    expect(reflect(c2, [], {}, "s-later").bundle.becameCore).toEqual([]);
+  });
+
+  test("`counterparts core --reflected-feeling off` closes the door to a later feeling; a feeling felt at the time still opens the fast lane on a reflection's return", async () => {
+    const c = brain();
+    c.close();
+    open.splice(0);
+    const out: string[] = [];
+    const err: string[] = [];
+    const code = await run(["core", "--reflected-feeling", "off", "--dir", dir], { io: { out: (l) => out.push(l), err: (l) => err.push(l) } });
+    expect(code).toBe(0);
+    const bad = await run(["core", "--reflected-feeling", "maybe", "--dir", dir], { io: { out: () => undefined, err: () => undefined } });
+    expect(bad).not.toBe(0);
+    const c2 = brain();
+    expect(c2.store.getMeta(REFLECTED_FEELING_KEY)).toBe("off");
+    nextDay(c2);
+    const later = mem(c2, "Mike lets an AI act for itself.", { kind: "person", about: "us", salience: { relevance: 0.7, emotional: 0, predictive: 0.5 } });
+    const atTheTime = mem(c2, "The night the store nearly corrupted and we saved it together.", { kind: "self", about: "us", salience: { relevance: 0.7, emotional: 0.9, predictive: 0.5 } });
+    nextDay(c2);
+    nextDay(c2);
+    reflect(c2, [later, atTheTime], { feelings: [{ id: later, core: "happy", emotion: "hopeful", strength: 0.9 }] });
+    const report = sleepNow(c2);
+    // Closed: the later feeling does not count...
+    expect(report.promoted.map((p) => p.id)).not.toContain(later);
+    // ...but "off" does not stop a promotion on a reflection's return alone (owner decision D1).
+    expect(report.promoted.map((p) => p.id)).toContain(atTheTime);
+    // The console says which way the door stands.
+    const { coreListLines } = await import("../src/adapters/cli/dream-core.js");
+    expect(coreListLines(c2).join("\n")).toContain("--reflected-feeling on to open it");
+  });
+
+  test("at most three cross a night, however many a reflection marks, feels and cites", () => {
+    const c = brain();
+    nextDay(c);
+    const ids = Array.from({ length: 5 }, (_, i) => mem(c, `A moment that mattered, number ${String(i)}.`, { kind: "fact", salience: { relevance: 0.7, emotional: 0, predictive: 0.5 } }));
+    nextDay(c);
+    nextDay(c);
+    reflect(c, ids, {
+      feelings: ids.map((id) => ({ id, core: "happy", emotion: "proud", strength: 0.9 })),
+      about: ids.map((id) => ({ id, about: "me" })),
+    });
+    expect(sleepNow(c).promoted.length).toBe(SLEEP.CORE_MAX_PER_SLEEP);
+  });
+});
+
+describe("observer stance, every phase", () => {
+  test("the reflect tool stands down in every phase and nothing is written; the module refuses finish, told and carrying", async () => {
+    const c = brain();
+    nextDay(c);
+    nextDay(c);
+    const id = mem(c, "I felt proud of the release.", { kind: "self", about: "me" });
+    const begun = c.reflections.begin({ session: SESSION });
+    if (!begun.ok) throw new Error(begun.reason);
+    c.close();
+    open.splice(0);
+    const before = new Database(paths.operational(dir), { readonly: true });
+    const count = (): string => JSON.stringify(before.query("SELECT (SELECT COUNT(*) FROM reflections), (SELECT COUNT(*) FROM feelings), (SELECT COUNT(*) FROM returns), (SELECT COUNT(*) FROM memories)").all());
+    const was = count();
+    recordSession(dir, { sessionId: SESSION, scope: "/proj", phase: "start" });
+    const s = openServer({ dir, session: SESSION, scope: "/proj", owner: true, observer: true });
+    try {
+      for (const args of [
+        { phase: "launch" },
+        { phase: "begin" },
+        { phase: "finish", reflection: begun.bundle.reflection, entry: "x", cites: [id], feelings: [{ id, core: "happy", emotion: "proud", strength: 0.9 }] },
+        { phase: "told", reflection: begun.bundle.reflection },
+      ]) {
+        const r = await s.call("reflect", { ...args, session: SESSION });
+        expect(r.isError).toBe(true);
+      }
+    } finally {
+      s.counterpart.close();
+    }
+    const o = brain({ observer: true });
+    expect(o.reflections.finish({ reflection: begun.bundle.reflection, session: SESSION, entry: "x", cites: [id] })).toEqual({ ok: false, reason: "observer" });
+    expect(o.reflections.told({ reflection: begun.bundle.reflection, session: SESSION }).reason).toBe("observer");
+    expect(o.reflections.pendingShare({ session: "s-x" })).toBe(null);
+    expect(o.reflections.carryLine({ session: "s-x", reflection: begun.bundle.reflection })).toBe(null);
+    expect(count()).toBe(was);
+    before.close();
+  });
+});
+
+describe("lanes: a reflection and an organic use on one lived day", () => {
+  test("reflection first, then the use: one lane day, and the use is refused as a return (the record reads reflection alone)", () => {
+    const c = brain();
+    nextDay(c);
+    const id = mem(c, "Mike lets me decide how to structure the work.", { kind: "person", about: "owner", salience: { relevance: 0.7, emotional: 0.8, predictive: 0.5 } });
+    nextDay(c);
+    nextDay(c);
+    expect(reflect(c, [id]).outcome.returned[0]?.reason).toBe("counted");
+    expect(c.store.reinforce(id, c.store.livedDay(), "referenced", { cued: true }).ret?.reason).toBe("already-returned-today");
+    expect(c.store.physicsOf(id).returnDays).toBe(1);
+    sleepNow(c);
+    const record = JSON.parse(c.store.getMeta(promotionRecordKey(id)) ?? "{}") as Record<string, unknown>;
+    // N3: the organic use that day is not in the record — it reads "reflection alone".
+    expect(record["reflectionOnly"]).toBe(true);
+  });
+});
