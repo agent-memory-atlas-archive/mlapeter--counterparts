@@ -13,6 +13,7 @@
 import { promotionEligibility } from "../../../../core/physics/index.js";
 import type { PromotionVerdict } from "../../../../core/physics/index.js";
 import { aboutMe } from "../../../../core/sleep/index.js";
+import { oneReturnAway } from "./mind.js";
 import type { ReadOnlyStore } from "../../../../core/store/index.js";
 import type { Kind } from "../../../../core/types.js";
 
@@ -47,8 +48,6 @@ export function coreRoad(
   } catch {
     return null;
   }
-  const f = verdict.fast;
-  const oneReturnAway =
-    f.intensity >= f.needIntensity && !f.met && verdict.blockedBy.length > 0 && verdict.blockedBy.every((b) => b === "no-lane-yet");
-  return { verdict, ready: verdict.eligible, oneReturnAway };
+  // One reading of "one return away" for every tab: the Self tab's.
+  return { verdict, ready: verdict.eligible, oneReturnAway: oneReturnAway(verdict) };
 }
