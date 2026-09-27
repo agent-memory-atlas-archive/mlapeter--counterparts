@@ -399,6 +399,8 @@ describe("reflect: dream → journal → reflect", () => {
   test("finish: a lived entry (source reflection), the page from the cited core, a share — and the hand-back relays both", () => {
     const c = brain();
     const d = dreamed(c);
+    // Something learned on an earlier calendar day, so the nightly writer has a night to be owed.
+    mem(c, "An older memory from before today.", { learnedOn: "2026-01-01" });
     const begun = c.reflections.begin({ session: SESSION, dream: d.dream });
     if (!begun.ok) throw new Error(begun.reason);
     const id = begun.bundle.reflection;
@@ -424,7 +426,7 @@ describe("reflect: dream → journal → reflect", () => {
     expect(o.page).toMatchObject({ written: true, reason: "rewritten" });
     expect(o.refusedCites).toContain(`${d.gist}:dreamed-is-not-a-source`);
     expect(c.self.page()?.body).toContain("understood");
-    expect(c.pageWriterDue({ mode: "session" }).due).toBe(false);
+    expect(c.pageWriterDue({ mode: "session" })).toMatchObject({ due: false, reason: "already-claimed" });
     // (c) the share, offered; the hand-back opens with the dream's marked line.
     expect(o.share).toEqual({ offered: true, reason: "offered" });
     expect(o.handBack.startsWith(DREAM_MARK)).toBe(true);
@@ -437,6 +439,55 @@ describe("reflect: dream → journal → reflect", () => {
     expect(row).toMatchObject({ state: "reflected", dream_id: d.dream, share_state: "offered", entry_id: o.entryId });
     // One a lived day.
     expect(c.reflections.begin({ session: SESSION })).toEqual({ ok: false, reason: "reflected-today" });
+  });
+
+  test("the page rests on the core when there is one, and a dream's gist does not go on it in its own words", () => {
+    const c = brain();
+    const d = dreamed(c);
+    const core = mem(c, "Mike trusted me with the whole release.", { kind: "person", about: "us", physics: { birthDay: 0, lastUsedDay: 0, promotedIdentity: true } });
+    const begun = c.reflections.begin({ session: SESSION, dream: d.dream });
+    if (!begun.ok) throw new Error(begun.reason);
+    expect(begun.bundle.core).toContain(core);
+    const gistWords = c.store.row(d.gist)?.body ?? "";
+    const done = c.reflections.finish({
+      reflection: begun.bundle.reflection,
+      session: SESSION,
+      entry: "Thinking about the release.",
+      cites: [d.felt],
+      page: { text: "## Core\n\nI want to be understood.", cites: [d.felt] },
+    });
+    if (!done.ok) throw new Error(String(done.reason));
+    expect(done.outcome.page).toMatchObject({ written: false, reason: "page-rests-on-the-core" });
+
+    nextDay(c);
+    const again = c.reflections.begin({ session: SESSION });
+    if (!again.ok) throw new Error(again.reason);
+    const quoted = c.reflections.finish({
+      reflection: again.bundle.reflection,
+      session: SESSION,
+      entry: "Again.",
+      cites: [core],
+      page: { text: `## Core\n\n${gistWords}`, cites: [core] },
+    });
+    if (!quoted.ok) throw new Error(String(quoted.reason));
+    // No dream before this one, so the gist check has nothing to hold it to: written.
+    expect(quoted.outcome.page.written).toBe(true);
+  });
+
+  test("a gist's words are refused on the page written after its dream", () => {
+    const c = brain();
+    const d = dreamed(c);
+    const begun = c.reflections.begin({ session: SESSION, dream: d.dream });
+    if (!begun.ok) throw new Error(begun.reason);
+    const done = c.reflections.finish({
+      reflection: begun.bundle.reflection,
+      session: SESSION,
+      entry: "The dream again.",
+      cites: [d.felt],
+      page: { text: `## Core\n\n${c.store.row(d.gist)?.body ?? ""}`, cites: [d.felt] },
+    });
+    if (!done.ok) throw new Error(String(done.reason));
+    expect(done.outcome.page).toMatchObject({ written: false, reason: "dreamed-words-on-the-page" });
   });
 
   test("'nothing much' is a normal night: no citation → the entry stays on the record, no memory, no page, no share", () => {

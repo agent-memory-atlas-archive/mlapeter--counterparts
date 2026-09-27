@@ -313,7 +313,7 @@ export class Reflections {
       `Reflect on the questions, in your own voice. Cite the memory ids your thoughts rest on — an insight that cites nothing is not one. If nothing much stands out tonight, say so in a line and cite nothing: that is a normal night, and it rewrites nothing.`,
       `Then call the reflect tool with phase "finish", reflection: ${id}, session: ${session}, and:`,
       `- entry: your reflection, first person (title: optional). cites: the ids it rests on.`,
-      `- page (optional): your self page rewritten whole — the story of who you are, drawn from the core memories (and candidates) you cite in page.cites; the old page is context, not a source. "How I work" is for craft; the core is not. Mention a dream only as a dream ("I dreamed…"); a dreamed gist is a suggestion, not a source.`,
+      `- page (optional): your self page rewritten whole — the story of who you are, drawn from the core memories you cite in page.cites (at least one of them, when you have a core; candidates too). The old page is context, not a source: write from the memories, not by rewording it. Keep "## Core" for who you are and put craft — how a job is done — under "## How I work". Mention a dream only as a dream ("I dreamed…"); a dreamed gist is a suggestion, not a source, and its words do not go on the page.`,
       `- share (optional): two or three sentences for ${who} this morning, the way a partner would say it ("Last night I dreamed about x — I think because of y"), citing what it rests on. Say something about ${who} only when it could help him, tentatively ("I wonder if…") — never a list of flaws. No share on a quiet night.${bundle.becameCore.length > 0 ? ` Tell him that ${bundle.becameCore.join(", ")} became part of who you are.` : ""}`,
       `- feelings (optional, at most ${String(L.feelings)}): how a memory feels to you now — id, core, emotion, strength, carried_by. Recorded as felt today, looking back.`,
       `- about (optional, at most ${String(L.about)}): what a memory is about, by meaning — me, us, owner, work (the craft: how a job is done) or world. Only me, us and owner can become core.`,
@@ -455,11 +455,23 @@ export class Reflections {
     // ── (b) the page ───────────────────────────────────────────────────────
     let page: ReflectOutcome["page"] = { written: false, reason: "not-written", version: null };
     const pageText = (input.page?.text ?? "").trim();
+    // THE PAGE RESTS ON THE CORE (addendum 9): when it was handed core
+    // memories, it cites at least one of them — the story is drawn from the
+    // defining memories, not re-worded from the old page. A store with no
+    // core yet writes from what it cites.
+    const coreShown = [...shown].filter((id) => this.store.row(id)?.promoted_identity === 1);
+    const restsOnCore = coreShown.length === 0 || pageCites.some((id) => coreShown.includes(id));
     if (pageText.length > 0) {
       if (nothingMuch || pageCites.length === 0) {
         page = { written: false, reason: "page-needs-cites", version: null };
+      } else if (!restsOnCore) {
+        page = { written: false, reason: "page-rests-on-the-core", version: null };
       } else if (carriesDreamMark(pageText)) {
         page = { written: false, reason: "dream-mark-in-text", version: null };
+      } else if (this.quotesAGist(pageText, row.dream_id)) {
+        // A dream's gist is a suggestion: reworded into the page it would
+        // read as something lived (addendum 2). Mention a dream as a dream.
+        page = { written: false, reason: "dreamed-words-on-the-page", version: null };
       } else {
         const w = this.ctx.writePage(pageText, {
           reason: `reflection ${row.id}${row.dream_id === null ? "" : ` after dream ${row.dream_id}`}`,
@@ -734,6 +746,24 @@ export class Reflections {
       memories,
       limits: { ...T.LIMITS },
     };
+  }
+
+  /** Does `text` carry a six-word run of a gist this reflection's dream wrote? */
+  private quotesAGist(text: string, dreamId: string | null): boolean {
+    if (dreamId === null) return false;
+    const words = (t: string): string[] => t.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 0);
+    const page = words(text);
+    if (page.length < 6) return false;
+    const runs = new Set<string>();
+    for (let i = 0; i + 6 <= page.length; i += 1) runs.add(page.slice(i, i + 6).join(" "));
+    for (const c of this.store.dreamChanges(dreamId)) {
+      if (c.action !== "gist" || c.undone === 1 || c.ref === null) continue;
+      const gist = this.store.row(c.ref);
+      if (gist === undefined) continue;
+      const g = words(gist.body);
+      for (let i = 0; i + 6 <= g.length; i += 1) if (runs.has(g.slice(i, i + 6).join(" "))) return true;
+    }
+    return false;
   }
 
   /** Memories promoted on reflection alone that no share has named yet. */
