@@ -2114,7 +2114,7 @@ export class Store {
   /**
    * SET WHAT A MEMORY IS ABOUT (v9, 2026-09-27) — `me`, `us`, `owner`, `work`
    * or `world` — and record who said so and why in `core_events` (action
-   * `about`, `reason` = `<mark>: <why>`). The mark is descriptive; only `me`,
+   * `about`, `reason` = `<mark> (was <before|unmarked>): <why>`). The mark is descriptive; only `me`,
    * `us` and `owner` make a core candidate. Refuses an unknown mark and a
    * removed or non-memory row by throwing, like every other seam write.
    */
@@ -2136,7 +2136,9 @@ export class Store {
         id,
         opts.day ?? this.livedDay(),
         this.nowFn(),
-        `${mark}${why.length > 0 ? `: ${why.slice(0, 300)}` : ""}`,
+        // What it was before rides in the reason (owner ruling D2 on #256):
+        // doctor counts re-labels, and moves into me/us/owner, off this row.
+        `${mark} (was ${before ?? "unmarked"})${why.length > 0 ? `: ${why.slice(0, 300)}` : ""}`,
         opts.dreamId ?? null,
         opts.by,
       );

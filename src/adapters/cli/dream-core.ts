@@ -175,8 +175,8 @@ export function coreListLines(counterpart: Counterpart): string[] {
     "and back after a gap (fast lane), or back on several separate days over weeks (slow lane). A",
     "reflection that cites a memory counts as it coming back. At most a few a night.",
     acceptsReflectedFeeling(counterpart.store)
-      ? "A feeling a reflection records later counts toward the fast lane (counterparts core --reflected-feeling off to close it)."
-      : "A feeling a reflection records later does not count toward the fast lane (counterparts core --reflected-feeling on to open it).",
+      ? "Open to reflection alone: a feeling a reflection records later and a reflection citing a memory count toward the fast lane, and a reflection may re-label either way (counterparts core --reflected-feeling off to close it)."
+      : "Closed to reflection alone: the fast lane needs a feeling felt at the time and an ordinary use after a gap, and a reflection may only move a memory toward work or world (counterparts core --reflected-feeling on to open it).",
   );
   if (nominated.length > 0) {
     out.push("", "Nominated by a dream (a lane still has to promote it):");

@@ -60,7 +60,7 @@ export interface SleepStore {
   read(id: string): StoredMemory;
   /** v9: one memory's counted returns, OPTIONAL — a promotion's record names
    *  their sources where the port has it. */
-  returnsOf?(id: string): readonly { source: string }[];
+  returnsOf?(id: string): readonly { source: string; day?: number }[];
   versions(id: string): VersionRow[];
   deniedIds(): string[];
 

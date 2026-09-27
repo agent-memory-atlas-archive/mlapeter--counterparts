@@ -785,7 +785,7 @@ export const COMMAND_BLURB: Record<Command, string> = {
   dream:
     "What each dream did, and its undo — and what the waking self made of it. With no flags (or --list), the recent dreams: date, state, title and what changed, then the recent reflections; --show <id> prints one dream's journal, every change it made and the reflection after it (--show <rfl_…> prints one reflection: its questions, entry, what it rests on and its morning share); --undo <id> reverses that dream's whole batch (merges come apart, links and gists go, replays and nominations are taken back) and keeps its journal, marked undone — a reflection is lived and stays. Reading works under observer; --undo refuses there.",
   core:
-    "The core — the memories about me, about us and about the owner that do not fade. With no flags (or --list), what it holds and which lane carried each one there, what dreams have nominated, and what you sent back; --demote <id> --reason \"...\" sends one back to ordinary fading from today, records why, and keeps the lanes from promoting it again; --reflected-feeling on|off decides whether a feeling a reflection records later counts toward the fast lane (on by default). Reading works under observer; the two changes refuse there.",
+    "The core — the memories about me, about us and about the owner that do not fade. With no flags (or --list), what it holds and which lane carried each one there, what dreams have nominated, and what you sent back; --demote <id> --reason \"...\" sends one back to ordinary fading from today, records why, and keeps the lanes from promoting it again; --reflected-feeling on|off opens or closes the core to reflection alone. On (the default): a feeling a reflection records later and a reflection citing a memory both count toward the fast lane, and a reflection may re-label what a memory is about either way — each re-label is recorded with its reason, and one into me, us or the owner is told in the next morning share. Off: nothing reaches the core on a reflection alone — the fast lane needs a feeling felt at the time (not one a reflection recorded later) and an ordinary use after a gap (not a reflection citing it), and a reflection may only move what a memory is about toward work or world. Reading works under observer; the two changes refuse there.",
   dashboard:
     "Open the dashboard in your browser: the web view of the store your configuration names, served on 127.0.0.1 and nowhere else. Ctrl-C stops it. Looking is read-only — it strengthens nothing and deposits nothing. What you do there on purpose (write a note, remove a memory, back up, …) runs through these same commands, and a removal asks you to type the id back.",
   version: "The version of Counterparts you have. It opens nothing.",
@@ -1030,7 +1030,7 @@ const CORE_FLAG_HELP: Record<string, string> = {
   list: "what the core holds, with lanes, nominations and demotions — the default",
   demote: "send one core memory back to ordinary fading from today, by id; needs --reason",
   reason: "why — recorded with the demotion, and shown by --list",
-  "reflected-feeling": "on or off: does a feeling a reflection records later count toward the fast lane (on by default)",
+  "reflected-feeling": "on or off — can a memory reach the core on reflection alone? On (the default): a feeling a reflection records later and a reflection citing a memory both count toward the fast lane, and a reflection may re-label what a memory is about either way — each re-label is recorded with its reason, and one into me, us or the owner is told in the next morning share. Off: nothing reaches the core on a reflection alone — the fast lane needs a feeling felt at the time (not one a reflection recorded later) and an ordinary use after a gap (not a reflection citing it), and a reflection may only move what a memory is about toward work or world.",
 };
 
 const DASHBOARD_FLAG_HELP: Record<string, string> = {
@@ -2087,8 +2087,8 @@ function coreCommand(dir: string, io: Io, parsed: Parsed, observer: boolean, nam
       counterpart.store.setMeta(REFLECTED_FEELING_KEY, reflected);
       io.out(
         reflected === "on"
-          ? "A feeling a reflection records later now counts toward the core's fast lane."
-          : "A feeling a reflection records later no longer counts toward the core's fast lane; only feelings felt at the time do.",
+          ? "On. a feeling a reflection records later and a reflection citing a memory both count toward the fast lane, and a reflection may re-label what a memory is about either way — each re-label is recorded with its reason, and one into me, us or the owner is told in the next morning share."
+          : "Off: nothing reaches the core on a reflection alone — the fast lane needs a feeling felt at the time (not one a reflection recorded later) and an ordinary use after a gap (not a reflection citing it), and a reflection may only move what a memory is about toward work or world.",
       );
       io.out("  It takes effect at the next consolidation. Nothing already in the core moves.");
       return EXIT.ok;

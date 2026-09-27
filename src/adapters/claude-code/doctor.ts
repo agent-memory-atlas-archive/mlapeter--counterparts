@@ -2498,6 +2498,11 @@ export function reflectionFindings(input: DoctorInput, store: Store): Finding[] 
   let last: ReturnType<Store["reflections"]>[number] | undefined;
   let returns: ReturnType<Store["returnCounts"]>;
   let alone = 0;
+  // RE-LABELS BY A REFLECTION (owner ruling D2 on #256): every mark a
+  // reflection changed, and apart, those that moved a memory INTO me, us or
+  // the owner (a core candidate it was not before).
+  let relabeled = 0;
+  let movedIn = 0;
   // A promotion the fast lane made only on a feeling a reflection recorded
   // later — the half of "on reflection" the open door lets through (review
   // of #256, S4). Counted apart from `alone`; one memory can be both.
@@ -2513,6 +2518,14 @@ export function reflectionFindings(input: DoctorInput, store: Store): Finding[] 
       } catch {
         continue;
       }
+    }
+    for (const e of store.coreEvents({ action: "about", limit: 10_000 })) {
+      if (e.actor !== "reflection") continue;
+      const m = /^(\w+) \(was (\w+)\)/.exec(e.reason ?? "");
+      if (m === null || m[1] === m[2]) continue;
+      relabeled += 1;
+      const core = (x: string | undefined): boolean => x === "me" || x === "us" || x === "owner";
+      if (core(m[1]) && !core(m[2])) movedIn += 1;
     }
   } catch {
     return [];
@@ -2532,7 +2545,10 @@ export function reflectionFindings(input: DoctorInput, store: Store): Finding[] 
   const byHow = `returns this week — awake ${String(returns.awake)}, reflection ${String(returns.reflection)}, dream ${String(returns.dream)}`;
   const aloneLine =
     (alone > 0 ? `; ${String(alone)} ${alone === 1 ? "memory" : "memories"} became core on reflection alone` : "") +
-    (later > 0 ? `; ${String(later)} ${later === 1 ? "memory" : "memories"} became core on a feeling a reflection recorded later` : "");
+    (later > 0 ? `; ${String(later)} ${later === 1 ? "memory" : "memories"} became core on a feeling a reflection recorded later` : "") +
+    (relabeled > 0
+      ? `; ${String(relabeled)} ${relabeled === 1 ? "mark" : "marks"} changed by a reflection, ${String(movedIn)} of them into me, us or the owner`
+      : "");
   return [
     finding(
       "reflection",
@@ -2550,6 +2566,8 @@ export function reflectionFindings(input: DoctorInput, store: Store): Finding[] 
         returnsDream: returns.dream,
         promotedOnReflectionAlone: alone,
         promotedOnFeelingRecordedLater: later,
+        relabeledByReflection: relabeled,
+        relabeledIntoCore: movedIn,
       },
     ),
   ];

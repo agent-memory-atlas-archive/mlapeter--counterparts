@@ -278,6 +278,9 @@ export function runConsolidate(ctx: PhaseCtx): ConsolidateResult {
       aboutMe: about,
       demoted: about ? (store.coreDemoted?.(id) ?? false) : false,
       acceptsReflectedFeeling: reflected,
+      // Closed means fully closed (owner ruling D1 on #256): the fast lane's
+      // return must be an ordinary use. Read only where it can matter.
+      ...(reflected || !about ? {} : { organicReturnDay: lastOrganicReturnDay(store, id) }),
     });
     if (!outcome.promoted || outcome.crossing === null) {
       // Every blocking reason is reported: "not about me" and "no lane yet"
@@ -349,6 +352,19 @@ export function runConsolidate(ctx: PhaseCtx): ConsolidateResult {
   if (ctx.apply && stoppedAt !== null) writeCursor(store, CONSOLIDATE_PHASE, stoppedAt);
 
   return { ...out, consolidated, promoted, promotionBlocked };
+}
+
+/** The last lived day of a counted ORDINARY awake return (source `awake`), or null. */
+function lastOrganicReturnDay(store: PhaseCtx["store"], id: string): number | null {
+  let last: number | null = null;
+  try {
+    for (const r of (store.returnsOf?.(id) ?? []) as readonly { source: string; day?: number }[]) {
+      if (r.source === "awake" && typeof r.day === "number" && (last === null || r.day > last)) last = r.day;
+    }
+  } catch {
+    /* a store without the table reads as none */
+  }
+  return last;
 }
 
 /** Counted awake-class returns by source, for a promotion's record. */

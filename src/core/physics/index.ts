@@ -108,8 +108,10 @@ export const TUNABLES = {
    * promotion is SHOWN to him — its record names the returns' sources, doctor
    * counts "promoted on reflection alone", and the next morning share says it
    * — not gated on him. Closed (`false`), the fast lane reads only feelings
-   * felt at the time or written in a session. Height and decay read every
-   * feeling either way. The owner flips it without a release
+   * felt at the time or written in a session, and its return must be an
+   * ordinary use, not a reflection's citation (`CoreContext.organicReturnDay`;
+   * owner ruling D1 on #256: closed is fully closed). Height and decay read
+   * every feeling either way. The owner flips it without a release
    * (`counterparts core --reflected-feeling off|on`, a meta row the
    * consolidate phase reads); this is the default when the row is absent.
    */
@@ -707,6 +709,15 @@ export interface CoreContext {
    */
   readonly acceptsReflectedFeeling?: boolean;
   /**
+   * v9 (owner ruling D1 on #256, 2026-09-27): the last lived day of an
+   * ORDINARY awake use that counted as a return (source `awake`, not
+   * `reflection`), or null when there was none. With the door CLOSED
+   * (`acceptsReflectedFeeling` false) the fast lane's "came back after a gap"
+   * reads this one, so nothing reaches the core on a reflection alone. Absent:
+   * the lane reads every awake-class return, as when the door is open.
+   */
+  readonly organicReturnDay?: number | null;
+  /**
    * The lived day the verdict is for. With it, the SLOW lane also asks the
    * memory to stand in the semantic band on that day (decayed strength at or
    * above `THETA_SEM`): coming back on many days is not by itself a reason to
@@ -745,7 +756,11 @@ export function promotionEligibility(m: MemoryPhysics, ctx: CoreContext): Promot
   const last = m.lastReturnDay ?? null;
   const gap = last === null ? null : last - m.birthDay;
   const span = first === null || last === null ? 0 : last - first;
-  const fastMet = intensity >= TUNABLES.CORE_FAST_FEELING && gap !== null && gap >= TUNABLES.CORE_FAST_GAP_DAYS;
+  // CLOSED means fully closed (owner ruling D1 on #256): the fast lane's
+  // return must be an ordinary use, not a reflection's citation.
+  const fastLast = !accepts && ctx.organicReturnDay !== undefined ? ctx.organicReturnDay : last;
+  const fastGap = fastLast === null ? null : fastLast - m.birthDay;
+  const fastMet = intensity >= TUNABLES.CORE_FAST_FEELING && fastGap !== null && fastGap >= TUNABLES.CORE_FAST_GAP_DAYS;
   const now = ctx.day === undefined ? null : strength(m, ctx.day);
   const slowMet =
     days >= TUNABLES.CORE_SLOW_DAYS &&
@@ -765,7 +780,7 @@ export function promotionEligibility(m: MemoryPhysics, ctx: CoreContext): Promot
       met: fastMet,
       intensity,
       needIntensity: TUNABLES.CORE_FAST_FEELING,
-      gap,
+      gap: fastGap,
       needGap: TUNABLES.CORE_FAST_GAP_DAYS,
     },
     slow: {

@@ -171,7 +171,7 @@ describe("B1: a dreamed gist cannot be felt later or marked about me by a reflec
       session: SESSION,
       entry: "Not about me after all.",
       cites: [d.felt],
-      about: [{ id: d.gist, about: "work" }],
+      about: [{ id: d.gist, about: "work", why: "it's about the craft" }],
     });
     if (!done.ok) throw new Error(String(done.reason));
     expect(done.outcome.about[0]).toMatchObject({ id: d.gist, ok: true });
@@ -445,7 +445,7 @@ describe("the open fast lane, end to end through the tool, sleep, doctor and the
     expect(reflect(c2, [], {}, "s-later").bundle.becameCore).toEqual([]);
   });
 
-  test("`counterparts core --reflected-feeling off` closes the door to a later feeling; a feeling felt at the time still opens the fast lane on a reflection's return", async () => {
+  test("`counterparts core --reflected-feeling off` closes the core to reflection alone: neither a later feeling nor a reflection's return opens the fast lane (owner ruling D1)", async () => {
     const c = brain();
     c.close();
     open.splice(0);
@@ -466,8 +466,12 @@ describe("the open fast lane, end to end through the tool, sleep, doctor and the
     const report = sleepNow(c2);
     // Closed: the later feeling does not count...
     expect(report.promoted.map((p) => p.id)).not.toContain(later);
-    // ...but "off" does not stop a promotion on a reflection's return alone (owner decision D1).
-    expect(report.promoted.map((p) => p.id)).toContain(atTheTime);
+    // ...nor does a reflection's citation as the return (owner ruling D1: fully closed).
+    expect(report.promoted.map((p) => p.id)).not.toContain(atTheTime);
+    // An ordinary use after a gap does.
+    nextDay(c2);
+    expect(c2.store.reinforce(atTheTime, c2.store.livedDay(), "referenced", { cued: true }).ret?.counted).toBe(true);
+    expect(sleepNow(c2).promoted.map((p) => p.id)).toContain(atTheTime);
     // The console says which way the door stands.
     const { coreListLines } = await import("../src/adapters/cli/dream-core.js");
     expect(coreListLines(c2).join("\n")).toContain("--reflected-feeling on to open it");
@@ -481,7 +485,7 @@ describe("the open fast lane, end to end through the tool, sleep, doctor and the
     nextDay(c);
     reflect(c, ids, {
       feelings: ids.map((id) => ({ id, core: "happy", emotion: "proud", strength: 0.9 })),
-      about: ids.map((id) => ({ id, about: "me" })),
+      about: ids.map((id) => ({ id, about: "me", why: "it shaped me" })),
     });
     expect(sleepNow(c).promoted.length).toBe(SLEEP.CORE_MAX_PER_SLEEP);
   });
@@ -543,18 +547,78 @@ describe("lanes: a reflection and an organic use on one lived day", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Decisions for the owner: today's behaviour, pinned so a ruling flips a test
+// Owner rulings on D1–D6 (2026-09-27)
 // ---------------------------------------------------------------------------
 
-describe("decisions for the owner (today's behaviour, not changed by the review)", () => {
-  test("D2: a reflection can turn a writer's `work` mark into `me`, and the owner has no door to set a mark", () => {
+describe("owner rulings on the review's decisions", () => {
+  test("D1: closed, a reflection may only move a mark toward work or world", () => {
+    const c = brain();
+    c.store.setMeta(REFLECTED_FEELING_KEY, "off");
+    nextDay(c);
+    nextDay(c);
+    const a = mem(c, "Mike lets an AI act for itself.", { kind: "person" });
+    const b = mem(c, "Back up the store before every migration.", { kind: "self", about: "me", aboutBy: "upgrade" });
+    const begun = c.reflections.begin({ session: SESSION });
+    if (!begun.ok) throw new Error(begun.reason);
+    expect(begun.instructions).toContain("only move a memory toward work");
+    const done = c.reflections.finish({
+      reflection: begun.bundle.reflection,
+      session: SESSION,
+      entry: "Sorting what is me from what is craft.",
+      cites: [a],
+      about: [
+        { id: a, about: "us", why: "it is about the two of us" },
+        { id: b, about: "work", why: "a work lesson" },
+      ],
+    });
+    if (!done.ok) throw new Error(String(done.reason));
+    expect(done.outcome.about).toEqual([
+      { id: a, ok: false, reason: "door-closed-work-or-world-only" },
+      { id: b, ok: true, reason: "relabeled" },
+    ]);
+    expect(c.store.read(a).about).toBe(null);
+    expect(c.store.read(b).about).toBe("work");
+  });
+
+  test("D2: open, a reflection may re-label either way — recorded with its reason, counted by doctor, and a move into me/us/owner told in the share", async () => {
+    const { reflectionFindings } = await import("../src/adapters/claude-code/doctor.js");
     const c = brain();
     nextDay(c);
     nextDay(c);
-    const lesson = mem(c, "Back up the store before every migration.", { kind: "self", about: "work", aboutBy: "writer" });
-    const { outcome } = reflect(c, [lesson], { about: [{ id: lesson, about: "me", why: "it is who I am" }] });
-    expect(outcome.about[0]).toMatchObject({ ok: true });
-    expect(c.store.read(lesson)).toMatchObject({ about: "me", aboutBy: "reflection" });
+    const lesson = mem(c, "Han asked to be remembered through me, and I said I would.", { kind: "entity", about: "work", aboutBy: "writer" });
+    const craft = mem(c, "I read a stack trace from the bottom.", { kind: "self", about: "me", aboutBy: "upgrade" });
+    const other = mem(c, "A quiet day of tests.");
+    const begun = c.reflections.begin({ session: SESSION });
+    if (!begun.ok) throw new Error(begun.reason);
+    const done = c.reflections.finish({
+      reflection: begun.bundle.reflection,
+      session: SESSION,
+      entry: "Some labels were wrong.",
+      cites: [other],
+      about: [
+        { id: lesson, about: "me", why: "someone asked to be remembered through me" },
+        { id: craft, about: "work", why: "this is craft, not who I am" },
+        { id: other, about: "world" },
+      ],
+    });
+    if (!done.ok) throw new Error(String(done.reason));
+    expect(done.outcome.about).toEqual([
+      { id: lesson, ok: true, reason: "relabeled" },
+      { id: craft, ok: true, reason: "relabeled" },
+      { id: other, ok: false, reason: "about-needs-why" },
+    ]);
+    // Recorded with the reflection's reason, and what it was before.
+    const ev = c.store.coreEvents({ memoryId: lesson, action: "about" })[0];
+    expect(ev?.actor).toBe("reflection");
+    expect(ev?.reason).toContain("me (was work): someone asked to be remembered through me");
+    expect(ev?.reason).toContain(begun.bundle.reflection);
+    // Told in the morning share (the share cited nothing: the line is the share).
+    expect(done.outcome.share).toEqual({ offered: true, reason: "relabeled" });
+    expect(done.outcome.handBack).toContain(`I've come to think "Han asked to be remembered through me, and I said I would." is about who I am.`);
+    expect(done.outcome.handBack).not.toContain("stack trace");
+    // Doctor counts both, and the move in apart.
+    const line = reflectionFindings({ today: c.store.today() } as never, c.store)[0];
+    expect(line?.detail).toContain("2 marks changed by a reflection, 1 of them into me, us or the owner");
   });
 
   test("D3: with `pageWriter.mode: off` the reflection still keeps its entry and its share, but does not write the page — through the adapter and through the MCP server", async () => {
@@ -629,7 +693,7 @@ describe("decisions for the owner (today's behaviour, not changed by the review)
     expect(c.store.read(entry).doc.body).toContain("redacted");
   });
 
-  test("D5: reflection alone carries the slow lane in four weeks of weekly citing", () => {
+  test("D5 (watch, no change): reflection alone carries the slow lane in four weeks of weekly citing", () => {
     const c = brain();
     nextDay(c);
     const id = mem(c, "I keep coming back to how quiet the good sessions are.", {

@@ -50,7 +50,7 @@ import { randomBytes } from "node:crypto";
 
 import { emotionalIntensity } from "../physics/index.js";
 import { isHandoff, isSelfPage } from "../recall/index.js";
-import { aboutMe, promotionRecordKey } from "../sleep/index.js";
+import { aboutMe, acceptsReflectedFeeling, promotionRecordKey } from "../sleep/index.js";
 import { ABOUT_MARKS, CORE_ABOUT_MARKS } from "../store/index.js";
 import type { AboutMark, MemoryRow, ProseDoc, ReflectionRow, Store } from "../store/index.js";
 import type { Kind } from "../types.js";
@@ -342,10 +342,14 @@ export class Reflections {
   private instructions(id: string, session: string, bundle: ReflectBundle): string {
     const who = bundle.owner ?? "the owner";
     const L = REFLECT_TUNABLES.LIMITS;
+    const open = acceptsReflectedFeeling(this.store);
     const pageLine =
       this.ctx.pageWrites === false
         ? `- page: not tonight — the owner has the page writer off, so the self page is not rewritten. Your entry and share still count.`
         : `- page (optional): your self page rewritten whole — the story of who you are, drawn from the core memories you cite in page.cites (at least one of them, when you have a core; candidates too). The old page is context, not a source: write from the memories, not by rewording it. Keep "## Core" for who you are and put craft — how a job is done — under "## How I work". Mention a dream only as a dream ("I dreamed…"); a dreamed gist is a suggestion, not a source, and its words do not go on the page.`;
+    const aboutLine = open
+      ? `- about (optional, at most ${String(L.about)}): what a memory is about, by meaning — me, us, owner, work (the craft: how a job is done) or world — with why. Only me, us and owner can become core. You may change a mark you think is wrong, either way; each change is recorded with your why, and one into me, us or owner is told in the morning share.`
+      : `- about (optional, at most ${String(L.about)}): tonight a mark may only move a memory toward work (the craft) or world, with why — the owner has closed the core to reflection alone.`;
     return [
       `Reflect on the questions, in your own voice. Cite the memory ids your thoughts rest on — an insight that cites nothing is not one. If nothing much stands out tonight, say so in a line and cite nothing: that is a normal night, and it rewrites nothing.`,
       `Then call the reflect tool with phase "finish", reflection: ${id}, session: ${session}, and:`,
@@ -353,7 +357,7 @@ export class Reflections {
       pageLine,
       `- share (optional): two or three sentences for ${who} this morning, the way a partner would say it ("Last night I dreamed about x — I think because of y"), citing what it rests on. Say something about ${who} only when it could help him, tentatively ("I wonder if…") — never a list of flaws. No share on a quiet night.${bundle.becameCore.length > 0 ? ` Tell him that ${bundle.becameCore.join(", ")} became part of who you are.` : ""}`,
       `- feelings (optional, at most ${String(L.feelings)}): how a memory feels to you now — id, core, emotion, strength, carried_by. Recorded as felt today, looking back.`,
-      `- about (optional, at most ${String(L.about)}): what a memory is about, by meaning — me, us, owner, work (the craft: how a job is done) or world. Only me, us and owner can become core.`,
+      aboutLine,
     ].join("\n");
   }
 
@@ -447,6 +451,12 @@ export class Reflections {
       }
     }
     const about: { id: string | null; ok: boolean; reason: string }[] = [];
+    // THE DOOR (owner ruling D1 on #256): closed, a reflection may only move a
+    // mark toward work or world. Open, it may re-label either way (D2: "it's me
+    // reflecting; it may catch labeling bugs"), and every move INTO me, us or
+    // the owner is told in the morning share below.
+    const doorOpen = acceptsReflectedFeeling(this.store);
+    const movedIn: { id: string; mark: AboutMark }[] = [];
     for (const a of (input.about ?? []).slice(0, 50)) {
       const id = typeof a.id === "string" ? a.id : null;
       if (about.filter((x) => x.ok).length >= T.LIMITS.about) {
@@ -476,10 +486,22 @@ export class Reflections {
         about.push({ id, ok: false, reason: notLived });
         continue;
       }
+      const core = (CORE_ABOUT_MARKS as readonly string[]).includes(mark);
+      if (core && !doorOpen) {
+        about.push({ id, ok: false, reason: "door-closed-work-or-world-only" });
+        continue;
+      }
+      // EVERY RE-LABEL CARRIES ITS REASON (owner ruling D2 on #256).
       const why = this.words(a.why ?? "", session, 300, true);
+      if (!why.ok || why.text.length === 0) {
+        about.push({ id, ok: false, reason: "about-needs-why" });
+        continue;
+      }
       try {
-        this.store.setAbout(r.id, mark as AboutMark, { by: "reflection", day, why: why.ok ? why.text : null, dreamId: row.dream_id });
-        about.push({ id, ok: true, reason: "marked" });
+        const set = this.store.setAbout(r.id, mark as AboutMark, { by: "reflection", day, why: `${why.text} (reflection ${row.id})`, dreamId: row.dream_id });
+        const wasCore = set.before !== null && (CORE_ABOUT_MARKS as readonly string[]).includes(set.before);
+        if (core && !wasCore) movedIn.push({ id: r.id, mark: mark as AboutMark });
+        about.push({ id, ok: true, reason: set.changed ? (set.before === null ? "marked" : "relabeled") : "unchanged" });
       } catch (err) {
         about.push({ id, ok: false, reason: errName(err) });
       }
@@ -599,6 +621,16 @@ export class Reflections {
       finalShareCites.push(...unsaid);
       share = { offered: true, reason: share.offered ? "offered" : "became-core" };
     }
+    // A RE-LABEL INTO ME, US OR THE OWNER is said too (owner ruling D2 on
+    // #256), the same way: shown to him, not gated on him.
+    const relabelLines = movedIn
+      .filter((m) => !finalShareCites.includes(m.id))
+      .map((m) => `I've come to think "${this.handle(m.id)}" is ${m.mark === "me" ? "about who I am" : m.mark === "us" ? "about the two of us" : "about you"}.`);
+    if (relabelLines.length > 0) {
+      shareText = [shareText, ...relabelLines].filter((x) => x.length > 0).join(" ");
+      for (const m of movedIn) if (!finalShareCites.includes(m.id)) finalShareCites.push(m.id);
+      share = { offered: true, reason: share.offered ? share.reason : "relabeled" };
+    }
     if (share.offered) for (const id of becameCore) this.store.setMeta(`${CORE_MENTIONED_PREFIX}${id}`, row.id);
 
     const counts = {
@@ -609,6 +641,7 @@ export class Reflections {
       page: page.written,
       share: share.offered,
       becameCore: becameCore.length,
+      movedIntoCore: movedIn.length,
     };
     detail["counts"] = counts;
     if (refusedCites.length > 0) detail["refusedCites"] = refusedCites.slice(0, 20);
