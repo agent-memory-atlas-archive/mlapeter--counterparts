@@ -67,20 +67,20 @@ beforeAll(async () => {
     const calm = { relevance: 0.7, emotional: 0.1, predictive: 0.4 };
 
     // M1 — strongly felt, about me, written five days ago, never come back to.
-    ids.felt = s.put({ type: "memory", kind: "self", body: "The four arms of the week, and how each one pulls.", salience: felt, source: "authored" });
+    ids.felt = s.put({ type: "memory", kind: "self", about: "me", body: "The four arms of the week, and how each one pulls.", salience: felt, source: "authored" });
     s.updatePhysics(ids.felt, { birthDay: day - 5, lastUsedDay: day - 5 });
     // ...and one just like it that HAS come back once, awake, days later: the fast lane is met.
-    ids.returned = s.put({ type: "memory", kind: "self", body: "The first reading day, and what it settled.", salience: felt, source: "authored" });
+    ids.returned = s.put({ type: "memory", kind: "self", about: "me", body: "The first reading day, and what it settled.", salience: felt, source: "authored" });
     s.updatePhysics(ids.returned, { birthDay: day - 5, lastUsedDay: day - 5 });
     s.reinforce(ids.returned, day, "referenced", { cued: true });
     // Calm, about me: only the slow lane.
-    ids.calm = s.put({ type: "memory", kind: "self", body: "I read the solver before the screens.", salience: calm, source: "authored" });
+    ids.calm = s.put({ type: "memory", kind: "self", about: "me", body: "I read the solver before the screens.", salience: calm, source: "authored" });
     s.updatePhysics(ids.calm, { birthDay: day - 5, lastUsedDay: day - 5 });
     // Strongly felt, but not about me: no lane at all.
     ids.fact = s.put({ type: "memory", kind: "fact", body: "The ward rota is published on Fridays.", salience: felt, source: "authored" });
     s.updatePhysics(ids.fact, { birthDay: day - 5, lastUsedDay: day - 5 });
     // Strongly felt, about me, and the owner took it out of the core.
-    ids.demoted = s.put({ type: "memory", kind: "self", body: "A thing the owner said is not who I am.", salience: felt, source: "authored" });
+    ids.demoted = s.put({ type: "memory", kind: "self", about: "me", body: "A thing the owner said is not who I am.", salience: felt, source: "authored" });
     s.updatePhysics(ids.demoted, { birthDay: day - 5, lastUsedDay: day - 5 });
     s.appendCoreEvent({ memoryId: ids.demoted, action: "demoted", day, reason: "not me", actor: "owner" });
 
