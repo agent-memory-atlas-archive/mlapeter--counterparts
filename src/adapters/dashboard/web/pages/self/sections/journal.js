@@ -7,6 +7,7 @@ import { absenceLine } from "../../../shared/absence.js";
 import { $, esc } from "../../../shared/dom.js";
 import { renderMarkdown } from "../markdown.js";
 import { chapterKey, ui } from "../state.js";
+import { shortDate } from "./page.js";
 import { q, wireTips } from "../../../shared/widgets/tips.js";
 
 export const markup = `
@@ -15,17 +16,34 @@ export const markup = `
 
 let last = null;
 
-/** "Fri 10 Jul 2026" → "10 Jul"; anything else as it came. */
+/**
+ * A day's date in the strip, in ONE format for every day (round 3, S4): the
+ * side column's "Jul 16", from the view's `iso` (the chapter heading's date,
+ * else the entry's own). "lived day 3" only when no date reads at all.
+ */
 export function dayLabel(day) {
-  if (!day.date) return "day " + day.day;
-  const m = /^\w{3},?\s+(\d{1,2})\s+(\w{3})\w*\s+\d{4}$/.exec(day.date.trim());
-  return m ? m[1] + " " + m[2] : day.date;
+  return shortDate(day.iso) || "lived day " + day.day;
+}
+
+/** The picked day's heading: "Thu, Jul 16" (the year when it is not this one). */
+export function dayTitle(day) {
+  if (!day.iso || !/^\d{4}-\d{2}-\d{2}$/.test(day.iso)) return "lived day " + day.day;
+  const dt = new Date(day.iso + "T12:00:00Z");
+  const opts = { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" };
+  if (dt.getUTCFullYear() !== new Date().getFullYear()) opts.year = "numeric";
+  return dt.toLocaleDateString("en-US", opts);
+}
+
+/** "1 chapter" / "7 chapters": what the number in a day's cell counts. */
+export function chapterCount(n) {
+  return n + (n === 1 ? " chapter" : " chapters");
 }
 
 export function paint(d) {
   if (d) last = d;
   d = last;
-  $("self-journal-q").innerHTML = q("journal", "A chapter is written at the end of a session; these do not fade.");
+  $("self-journal-q").innerHTML = q("journal", "A chapter is written at the end of a session; these do not fade. " +
+    "Each day in the strip shows its date, its lived day, and how many chapters were written that day. Pick one to list them.");
   wireTips($("self-journal-q"));
   const box = $("self-journal");
   if (d.journalAbsent) {
@@ -41,13 +59,14 @@ export function paint(d) {
   const cells = days.map((x) => {
     const on = x === picked;
     const n = x.chapters.length;
-    const marks = n <= 5
-      ? '<span class="jd-dots" aria-hidden="true">' + '<i></i>'.repeat(n) + "</span>"
-      : '<span class="jd-n" aria-hidden="true">' + n + "</span>";
+    // The count says what it counts, the same way on every day.
+    const marks = '<span class="jd-count" aria-hidden="true"><span class="jd-n">' + n + '</span> ' +
+      (n === 1 ? "chapter" : "chapters") + "</span>";
+    const dated = !!shortDate(x.iso);
     return '<button type="button" class="jd-day' + (on ? " on" : "") + '" data-day="' + x.day + '" aria-pressed="' + on + '"' +
-      ' aria-label="' + esc((x.date || "lived day " + x.day) + ", " + n + (n === 1 ? " chapter" : " chapters")) + '">' +
+      ' aria-label="' + esc(dayTitle(x) + (dated ? ", lived day " + x.day : "") + ", " + chapterCount(n)) + '">' +
       '<b>' + esc(dayLabel(x)) + "</b>" +
-      (x.date ? '<span class="jd-lived">day ' + x.day + "</span>" : "") + marks + "</button>";
+      (dated ? '<span class="jd-lived">day ' + x.day + "</span>" : "") + marks + "</button>";
   }).join("");
 
   const chapters = picked.chapters.map((c) => {
@@ -67,8 +86,8 @@ export function paint(d) {
 
   box.innerHTML =
     '<div class="jd-strip" role="group" aria-label="Days">' + cells + "</div>" +
-    '<div class="jd-head"><b>' + esc(picked.date || "lived day " + picked.day) + "</b>" +
-      (picked.date ? "<span>lived day " + picked.day + "</span>" : "") + "</div>" +
+    '<div class="jd-head"><b>' + esc(dayTitle(picked)) + "</b>" +
+      (shortDate(picked.iso) ? "<span>lived day " + picked.day + " · " + esc(chapterCount(picked.chapters.length)) + "</span>" : "<span>" + esc(chapterCount(picked.chapters.length)) + "</span>") + "</div>" +
     '<div class="jd-list">' + chapters + "</div>" +
     (d.journalMore > 0 ? '<p class="foot">' + d.journalMore + " older chapters are not shown here.</p>" : "");
   box.querySelector(".jd-strip").scrollLeft = scrollLeft;

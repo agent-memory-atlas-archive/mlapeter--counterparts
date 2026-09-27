@@ -53,6 +53,9 @@ h3.sb-h{font-family:var(--sans);font-size:13.5px;font-weight:600;color:var(--ink
 @media(max-width:860px){.self-top{grid-template-columns:minmax(0,1fr)}}
 
 /* ── the self page: the heart of the tab ── */
+/* how far behind it is: one calm line above it (round 3, S1) — dim, no tone */
+.sp-behind{margin:0 0 8px;font-size:13px;color:var(--dim);line-height:1.5;overflow-wrap:anywhere}
+.sp-behind[hidden]{display:none}
 .sp-card{background:var(--card);border:1px solid var(--glow);border-radius:6px;padding:20px 24px 16px;
   margin:0 0 8px;box-shadow:0 0 24px rgba(0,229,255,.06);min-width:0}
 .chip{display:inline-block;font-size:12px;color:var(--dim);border:1px solid var(--border);border-radius:11px;
@@ -162,6 +165,9 @@ h4.st-h{font-family:var(--sans);font-size:13.5px;font-weight:600;color:var(--ink
 .cm-dots{display:flex;gap:5px}
 .cm-dots .dd{width:11px;height:11px;border-radius:50%;border:1.5px solid var(--glow);background:transparent}
 .cm-dots .dd.on{background:var(--cyan);border-color:var(--cyan)}
+.cm-one{align-items:center;gap:6px}
+.cm-one .dd{border-color:var(--teal)}
+.cm-one-w{font-size:12px;color:var(--teal);white-space:nowrap}
 
 /* ── the wake, folded ── */
 .wk-sum{display:flex;justify-content:space-between;align-items:baseline;gap:10px;width:100%;background:none;border:none;
@@ -196,9 +202,8 @@ h4.st-h{font-family:var(--sans);font-size:13.5px;font-weight:600;color:var(--ink
 .jd-day:hover{border-color:var(--glow)}
 .jd-day.on{border-color:var(--cyan);background:rgba(0,229,255,.08)}
 .jd-day.on b{color:var(--cyan)}
-.jd-dots{display:flex;gap:3px;margin-top:2px}
-.jd-dots i{width:6px;height:6px;border-radius:50%;background:var(--purple)}
 .jd-n{font-family:var(--mono);font-size:12px;color:var(--purple)}
+.jd-count{font-size:11px;color:var(--dim);white-space:nowrap;margin-top:1px}
 .jd-head{display:flex;gap:10px;align-items:baseline;margin:4px 0 6px;font-size:13.5px;color:var(--ink)}
 .jd-head b{font-weight:600}
 .jd-head span{color:var(--dim);font-size:12px}

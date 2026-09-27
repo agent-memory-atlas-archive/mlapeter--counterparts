@@ -5,6 +5,7 @@
  * the four rules in that file's header apply to every line below.
  */
 import { TUNABLES as PHYSICS, promotionEligibility, sal } from "../../../../core/physics/index.js";
+import type { PromotionVerdict } from "../../../../core/physics/index.js";
 import { isConfidential } from "../../../../core/recall/index.js";
 import {
   FRAMING,
@@ -103,6 +104,12 @@ export interface MindView {
   } | null;
   /** The honest absence line when no page has been written. */
   readonly pageAbsent: string | null;
+  /**
+   * HOW FAR BEHIND THE PAGE IS (round 3, S1): once it is `PAGE_BEHIND_LIVED_DAYS`
+   * lived days old, what has been lived since, in one calm line shown above it.
+   * Null while it is fresher than that, or when it has no lived day to count from.
+   */
+  readonly pageBehind: PageBehind | null;
   /** Each body labelled with the write that PRODUCED it, and with what replaced
    *  it named separately — `store.revise` stores the replacing reason on the row
    *  it archives, so the two must not share a word (adversarial review M3). */
@@ -154,10 +161,18 @@ export interface WriterLine {
   readonly lastNight: boolean;
   /** "Last night", "The night of Jul 9", or "" when nothing ran. */
   readonly when: string;
-  /** What it did, in plain words. */
+  /** What it did — or what did not happen, and why — in plain words. */
   readonly what: string;
-  /** The two together, as the page prints it. */
+  /**
+   * WHAT WOULD MAKE IT HAPPEN (round 3, S2), when a night did not: one short
+   * sentence, or null when the night went as it should or nothing honest can
+   * be said. Never a guess about the store's settings.
+   */
+  readonly next: string | null;
+  /** `when: what`, and `next` after it, as the page prints it: one line. */
   readonly line: string;
+  /** The longer story, for the line's `?`: what the writer is, what the record says. */
+  readonly more: string;
   /** `(never run)` when the log holds no run; null otherwise. */
   readonly absent: string | null;
 }
@@ -199,6 +214,12 @@ export interface Candidate {
   /** The lane that is met, when one is: the next consolidation crosses it (the nightly cap permitting). */
   readonly lane: "fast" | "slow" | null;
   readonly eligible: boolean;
+  /**
+   * THE FAST LANE'S ROAD (round 3, S3): felt strongly enough, and nothing but
+   * a lane stands in the way, so ONE awake return after the gap makes it core.
+   * Read off the engine's own verdict (`oneReturnAway`), never re-derived here.
+   */
+  readonly oneReturnAway: boolean;
 }
 
 export interface SettlingRow {
@@ -227,6 +248,8 @@ export interface SettlingView {
   readonly unused: number;
   /** Memories that are not about me or about us: the core is not for them. */
   readonly outOfReach: number;
+  /** Memories about me or about us the owner sent back from the core: out of it, and not on the way. */
+  readonly sentBack: number;
   /**
    * WHAT CROSSED LATELY (2026-09-26): the newest promotions with their lane
    * ("became core last night"), the owner's demotions with his reason, and the
@@ -272,6 +295,12 @@ export interface JournalDay {
   readonly day: number;
   /** As the chapter heading wrote it (`Wed 23 Sep 2026`); null when it named none. */
   readonly date: string | null;
+  /**
+   * The day's calendar date as `YYYY-MM-DD` (round 3, S4): the heading's date,
+   * else the entry's own, so the strip shows every day in one format. Null
+   * only when neither reads.
+   */
+  readonly iso: string | null;
   readonly chapters: JournalChapter[];
 }
 
@@ -310,6 +339,7 @@ export function mindView(src: DashboardSource): MindView {
     return { id, text: r.text ?? r.label };
   });
   const stories = storyViews(src);
+  const read = journalChapters(src);
 
   return {
     opening: `Day ${day} · Who I am`,
@@ -370,7 +400,8 @@ export function mindView(src: DashboardSource): MindView {
     }),
     wakeParts: wake.ok ? wakeParts(wake.text, page !== null) : [],
     wakeBudget: lastBudget(src),
-    ...journal(src, JOURNAL_LIMIT, everLived ? NONE : NEVER),
+    ...journal(read, JOURNAL_LIMIT, everLived ? NONE : NEVER),
+    pageBehind: pageBehind(src, page, read),
     writer: writerLine(src),
     ...dreamsPart(src),
   };
@@ -386,30 +417,75 @@ function dreamsPart(src: DashboardSource): { dreams: DreamsView; dreamsAbsent: s
 // the page writer's last night, in plain words
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Why a run did not happen or did not finish, in words. A code nobody mapped
- *  keeps its own words (hyphens read as spaces) rather than being guessed at. */
-const WRITER_REASON: Record<string, string> = {
-  watchdog: "it ran out of time",
-  "no-room": "the session had no room to ask it",
-  "scope-question": "the first-launch question took its turn",
-  off: "the writer is switched off",
-  observer: "the session was read-only",
-  "no-previous-day": "there was no earlier day to read",
-  "already-claimed": "that night was already handled",
-  "asks-spent": "it had already been asked as often as it may",
-  "no-memories": "nothing was remembered that day",
-  "not-host-mode": "it is not set to run on its own",
+/**
+ * Why a run did not happen or did not finish, in words — and, round 3 (S2),
+ * what would make it happen, and the longer story for the `?`. Only `no-room`
+ * and `scope-question` ever reach a durable `skipped` row (the hooks'
+ * `noteWriterDeferred`); the rest arrive as a `failed`/`refused` detail. A code
+ * nobody mapped keeps its own words (hyphens read as spaces) and gets no
+ * `next`, rather than being guessed at.
+ */
+interface WriterReasonWords {
+  /** The cause, as a clause. */
+  readonly why: string;
+  /** What would make it happen, as a sentence; `lastNight` = the night is still today's to catch. */
+  readonly next?: (lastNight: boolean) => string;
+  /** One or two sentences for the `?`. */
+  readonly more?: (lastNight: boolean) => string;
+}
+
+const TONIGHT = "Tonight's run tries again.";
+
+const WRITER_REASON: Record<string, WriterReasonWords> = {
+  watchdog: { why: "it ran out of time", next: () => TONIGHT },
+  "no-room": {
+    why: "the session start had no room left to ask",
+    next: (lastNight) => (lastNight ? "A later session today still can." : "More room, or host mode, would let it run."),
+    more: (lastNight) =>
+      "The page writer is asked at the start of a session, beside the wake, and only when the ask fits in what the host lets a session start with. " +
+      "It did not fit, so it was held back rather than cut short. " +
+      (lastNight ? "The night is still today's to catch. " : "") +
+      "What makes room (the fix doctor gives): a larger injectionBudgetBytes in claude-code.json, or pageWriter.mode \"host\", where a windowless session does the writing.",
+  },
+  "scope-question": {
+    why: "the first-launch question took its turn",
+    next: () => "The next session asks the writer first.",
+    more: () => "A session start carries one question at most. The first-launch question went first; after that, the writer goes first.",
+  },
+  off: {
+    why: "the writer is switched off",
+    next: () => "Turning it on (pageWriter.mode in claude-code.json) brings it back.",
+  },
+  observer: { why: "the session was read-only", next: () => "An ordinary session will be asked." },
+  "no-previous-day": { why: "there was no earlier day to read" },
+  "already-claimed": { why: "that night was already handled" },
+  "asks-spent": { why: "it had already been asked as often as it may", next: () => TONIGHT },
+  "no-memories": { why: "nothing was remembered that day" },
+  "not-host-mode": { why: "it is not set to run on its own" },
 };
 
 export function writerReason(detail: string): string {
   const d = detail.trim();
   if (d === "") return "no reason was recorded";
   const known = WRITER_REASON[d];
-  if (known !== undefined) return known;
+  if (known !== undefined) return known.why;
   const exit = /^exit (\S+)$/.exec(d);
   if (exit !== null) return `it stopped with an error (exit ${exit[1] as string})`;
   return d.replace(/[-_]+/g, " ");
 }
+
+/** What would make a night that did not happen happen; null when nothing honest can be said. */
+function writerNext(detail: string, lastNight: boolean): string | null {
+  const d = detail.trim();
+  const known = WRITER_REASON[d];
+  if (known !== undefined) return known.next === undefined ? null : known.next(lastNight);
+  if (/^exit \S+$/.test(d)) return TONIGHT;
+  return null;
+}
+
+const WRITER_IS =
+  "The page writer reads the day just gone, once a night, and rewrites the page when something about who I am moved.";
+const WRITER_ABOUT = `${WRITER_IS} This is its newest night.`;
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -423,17 +499,27 @@ function shortDay(iso: string): string {
 /** What `writerWords` reads: `pageWriterStatus`'s answer, or null when the log
  *  holds no run at all. */
 export type WriterReading =
-  | (Pick<PageWriterStatus, "about" | "outcome" | "derived"> & { readonly run: Pick<PageWriterRun, "detail"> | null })
+  | (Pick<PageWriterStatus, "about" | "outcome" | "derived"> & {
+      readonly run: (Pick<PageWriterRun, "detail"> & Partial<Pick<PageWriterRun, "on">>) | null;
+    })
   | null;
 
 /** The words for one night. Pure, so every outcome is tested without a store. */
 export function writerWords(status: WriterReading, yesterday: string): WriterLine {
   if (status === null) {
     const none = "No run recorded yet";
-    return { ran: false, about: "", outcome: null, derived: false, lastNight: false, when: "", what: none, line: none, absent: NEVER };
+    return {
+      ran: false, about: "", outcome: null, derived: false, lastNight: false, when: "", what: none, next: null, line: none,
+      more: `${WRITER_IS} It has not run on this store yet.`, absent: NEVER,
+    };
   }
   const detail = status.run?.detail ?? "";
+  const lastNight = status.about !== "" && status.about === yesterday;
+  // The reason's own words and remedy apply only where the row's detail IS a
+  // reason: a skip, a failure the writer reported, a refusal.
   let what: string;
+  let next: string | null = null;
+  let reasoned = false;
   switch (status.outcome) {
     case "revised":
       what = "rewrote it";
@@ -445,10 +531,18 @@ export function writerWords(status: WriterReading, yesterday: string): WriterLin
       break;
     case "refused":
       what = `tried, but the rewrite was turned away — ${writerReason(detail)}`;
+      reasoned = true;
       break;
     case "failed":
       // Derived: a `started` claim still standing once its day was over.
-      what = status.derived ? "started and never finished" : `couldn't run — ${writerReason(detail)}`;
+      if (status.derived) {
+        what = "started and never finished";
+        next = TONIGHT;
+      } else {
+        what = `couldn't rewrite it — ${writerReason(detail)}`;
+        next = writerNext(detail, lastNight);
+        reasoned = true;
+      }
       break;
     case "asked":
       what = "was asked at today's first session; no answer yet";
@@ -457,11 +551,21 @@ export function writerWords(status: WriterReading, yesterday: string): WriterLin
       what = "is running now";
       break;
     default:
-      what = status.run === null ? "nothing ran, and nothing says why" : `didn't run — ${writerReason(detail)}`;
+      if (status.run === null) {
+        what = "nothing ran, and nothing says why";
+      } else {
+        what = `not rewritten — ${writerReason(detail)}`;
+        next = writerNext(detail, lastNight);
+        reasoned = true;
+      }
   }
-  const lastNight = status.about !== "" && status.about === yesterday;
   const when = lastNight ? "Last night" : status.about === "" ? "Its last run" : `The night of ${shortDay(status.about)}`;
-  return { ran: true, about: status.about, outcome: status.outcome, derived: status.derived, lastNight, when, what, line: `${when}: ${what}`, absent: null };
+  const on = status.run?.on ?? "";
+  const recorded = isIsoDay(on) ? ` Recorded ${shortDay(on)}.` : "";
+  const story = reasoned ? WRITER_REASON[detail.trim()]?.more?.(lastNight) : undefined;
+  const more = WRITER_ABOUT + (story === undefined ? "" : ` ${story}`) + recorded;
+  const line = `${when}: ${what}.` + (next === null ? "" : ` ${next}`);
+  return { ran: true, about: status.about, outcome: status.outcome, derived: status.derived, lastNight, when, what, next, line, more, absent: null };
 }
 
 function writerLine(src: DashboardSource): WriterLine {
@@ -477,6 +581,80 @@ function writerLine(src: DashboardSource): WriterLine {
 
 /** How many chapters the journal sends. The rest are counted, not dropped silently. */
 const JOURNAL_LIMIT = 60;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// how far behind the page is (round 3, S1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Lived days since the page's last rewrite at which the self tab says so above
+ * it. A dashboard choice about WHEN TO MENTION it, not a rule about the page:
+ * the writer runs nightly, so one day behind is ordinary and two is worth a
+ * line. (`self/`'s own `PAGE_STALE_DAYS` is calendar days and drives doctor and
+ * the side column's chip; the two answer different questions and both stand.)
+ */
+export const PAGE_BEHIND_LIVED_DAYS = 2;
+
+export interface PageBehind {
+  /** The page's `revisedOn`, `YYYY-MM-DD`, or "" when it recorded none. */
+  readonly date: string;
+  /** The lived day it was written on. */
+  readonly writtenDay: number;
+  readonly livedDays: number;
+  /** Chapters written on a lived day after the page's. */
+  readonly chapters: number;
+  /** Dreams dreamed on a lived day after the page's. */
+  readonly dreams: number;
+  /** The whole line, as the tab prints it. */
+  readonly line: string;
+}
+
+/** "a dream" / "3 dreams" — `a` for one, the number otherwise. */
+function countOf(n: number, one: string, many: string): string {
+  return n === 1 ? `a ${one}` : `${String(n)} ${many}`;
+}
+
+/**
+ * The line, in words: "Written Sep 24 — 3 lived days, 14 chapters and a dream
+ * since." Calm on purpose: a page a few days behind is information, not an
+ * alarm. Pure, so every shape is tested without a store.
+ */
+export function pageBehindWords(x: { date: string; writtenDay: number; livedDays: number; chapters: number; dreams: number }): string {
+  const when = isIsoDay(x.date) ? shortDay(x.date) : `on lived day ${String(x.writtenDay)}`;
+  const parts = [x.livedDays === 1 ? "1 lived day" : `${String(x.livedDays)} lived days`];
+  if (x.chapters > 0) parts.push(countOf(x.chapters, "chapter", "chapters"));
+  if (x.dreams > 0) parts.push(countOf(x.dreams, "dream", "dreams"));
+  const list = parts.length === 1 ? parts[0] as string : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1] as string}`;
+  return `Written ${when} — ${list} since.`;
+}
+
+/** How many dreams a store is asked for when counting the ones since the page. */
+const DREAMS_COUNTED = 1_000;
+
+function pageBehind(
+  src: DashboardSource,
+  page: ReturnType<DashboardSource["self"]["page"]>,
+  chapters: readonly ReadChapter[],
+): PageBehind | null {
+  if (page === null || page.revisedDay === null) return null;
+  const writtenDay = page.revisedDay;
+  const livedDays = src.store.livedDay() - writtenDay;
+  if (livedDays < PAGE_BEHIND_LIVED_DAYS) return null;
+  let dreams = 0;
+  try {
+    dreams = src.store.dreams({ limit: DREAMS_COUNTED }).filter((d) => d.day > writtenDay).length;
+  } catch {
+    /* no dreams table to read: none are counted, and none are claimed */
+  }
+  const x = {
+    date: page.revisedOn.trim(),
+    writtenDay,
+    livedDays,
+    chapters: chapters.filter((c) => c.day > writtenDay).length,
+    dreams,
+  };
+  return { ...x, line: pageBehindWords(x) };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // the page's history — a timeline, oldest first
@@ -567,6 +745,25 @@ export interface CoreCandidate {
   readonly eligible: boolean;
   /** The better of the two lanes' progress, 0..2. */
   readonly closeness: number;
+  /** One awake return away, by the fast lane (see `oneReturnAway`). */
+  readonly oneReturnAway: boolean;
+}
+
+/**
+ * "ONE RETURN AWAY" (round 3; home, memories and self read it the same way):
+ * the verdict says it is felt strongly enough for the fast lane, the fast lane
+ * is not met yet, and the ONLY thing blocking it is that no lane is met — so a
+ * single awake return after the gap is all it needs. Every part of this comes
+ * from `promotionEligibility`'s verdict; no threshold, kind or tunable is read
+ * here, so when the engine's rule changes this follows it.
+ */
+export function oneReturnAway(v: Pick<PromotionVerdict, "fast" | "blockedBy">): boolean {
+  return (
+    v.fast.intensity >= v.fast.needIntensity &&
+    !v.fast.met &&
+    v.blockedBy.length === 1 &&
+    v.blockedBy[0] === "no-lane-yet"
+  );
 }
 
 /**
@@ -574,11 +771,13 @@ export interface CoreCandidate {
  * can (see `settlingView`). Shared with the home page's core tile, so "closest:
  * 1 of 5 days" there is the head of the list the self tab draws.
  */
-export function coreCandidates(src: DashboardSource, pageId: string | null): { raw: CoreCandidate[]; outOfReach: number } {
+export function coreCandidates(src: DashboardSource, pageId: string | null): { raw: CoreCandidate[]; outOfReach: number; sentBack: number } {
   const store = src.store;
   const owner = ownerNames(store);
+  const day = store.livedDay();
   const raw: CoreCandidate[] = [];
   let outOfReach = 0;
+  let sentBack = 0;
   for (const id of store.list({ archived: false })) {
     const row = store.row(id);
     if (row === undefined || isJournal(row) || row.type === "schema" || id === pageId) continue;
@@ -589,11 +788,23 @@ export function coreCandidates(src: DashboardSource, pageId: string | null): { r
       continue;
     }
     if (p.promotedIdentity) continue;
-    if (!aboutMe(store, row, owner)) {
+    const about = aboutMe(store, row, owner);
+    if (!about) {
       outOfReach += 1;
       continue;
     }
-    const v = promotionEligibility(p, { aboutMe: true, demoted: false });
+    // The engine's own context, computed the way every tab computes the core
+    // road (round 3): who it is about, and today's lived day (the slow lane
+    // checks the memory's strength today) — plus, as sleep passes it, whether
+    // the owner sent it back, so a demoted memory is never "one return away".
+    const v = promotionEligibility(p, { aboutMe: about, day, demoted: store.coreDemoted(id) });
+    // SENT BACK BY THE OWNER: out of the core, and not on its way there — the
+    // engine refuses it whatever its lanes say, so it is counted apart rather
+    // than drawn as close (it is listed under "Sent back to ordinary fading").
+    if (v.blockedBy.includes("demoted-by-owner")) {
+      sentBack += 1;
+      continue;
+    }
     const returned = v.fast.gap !== null && v.fast.gap >= v.fast.needGap;
     const fast = Math.min(1, v.fast.intensity / v.fast.needIntensity) + (returned ? 1 : 0);
     const slow = Math.min(1, v.slow.days / v.slow.needDays) + Math.min(1, v.slow.span / v.slow.needSpan);
@@ -607,11 +818,12 @@ export function coreCandidates(src: DashboardSource, pageId: string | null): { r
       lane: v.lane,
       eligible: v.eligible,
       closeness: Math.max(fast, slow),
+      oneReturnAway: oneReturnAway(v),
     });
   }
   // Closest first: the better of the two lanes' progress; ties by return days.
   raw.sort((a, b) => b.closeness - a.closeness || b.days - a.days || (a.id < b.id ? -1 : 1));
-  return { raw, outOfReach };
+  return { raw, outOfReach, sentBack };
 }
 
 /**
@@ -637,7 +849,7 @@ function settlingView(
   },
 ): SettlingView {
   const store = src.store;
-  const { raw, outOfReach } = coreCandidates(src, x.pageId);
+  const { raw, outOfReach, sentBack } = coreCandidates(src, x.pageId);
   const candidates: Candidate[] = raw.slice(0, CANDIDATE_LIMIT).map((r) => {
     const t = reveal(store, r.id, 110);
     return {
@@ -654,6 +866,7 @@ function settlingView(
       needSpan: PHYSICS.CORE_SLOW_SPAN_DAYS,
       lane: r.lane,
       eligible: r.eligible,
+      oneReturnAway: r.oneReturnAway,
     };
   });
   const row = (el: { id: string; text: string; confidential?: boolean; kind?: Kind }): SettlingRow => ({
@@ -680,6 +893,7 @@ function settlingView(
     onTheWay: raw.filter((r) => r.days > 0).length,
     unused: raw.filter((r) => r.days === 0).length,
     outOfReach,
+    sentBack,
     history: coreHistory(src),
     rule: {
       needFeeling: PHYSICS.CORE_FAST_FEELING,
@@ -767,26 +981,53 @@ function lastBudget(src: DashboardSource): number | null {
 
 const CHAPTER_SPLIT = /^(?=[ \t]*#{1,6}[ \t]*chapter[ \t]+\d+)/im;
 
+/** One chapter as the journal reads it, before it is grouped by day. */
+type ReadChapter = JournalChapter & {
+  day: number;
+  date: string | null;
+  /** The chapter's calendar date, `YYYY-MM-DD`: its heading's, else its entry's. */
+  iso: string | null;
+  /** True when `iso` came from the chapter's own heading. */
+  isoFromHeading: boolean;
+};
+
+const MONTH_INDEX: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+
+/** A chapter heading's date (`Thu 16 Jul 2026`) → `2026-07-16`; null when it does not read. */
+export function headingIso(date: string | null): string | null {
+  if (date === null) return null;
+  const m = /^[A-Za-z]{3},?\s+(\d{1,2})\s+([A-Za-z]{3})[A-Za-z]*\s+(\d{4})$/.exec(date.trim());
+  if (m === null) return null;
+  const month = MONTH_INDEX[(m[2] as string).toLowerCase()];
+  if (month === undefined) return null;
+  return `${m[3] as string}-${String(month).padStart(2, "0")}-${(m[1] as string).padStart(2, "0")}`;
+}
+
+const isIsoDay = (s: string | null | undefined): s is string => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+
 /**
- * Every chapter, grouped by the lived day it was written on, newest first.
+ * Every chapter the journal holds, newest first.
  *
  * One journal row is one session's entry and can hold several chapters, each
  * under its own `## chapter N — <date> · <model> · lived day D` heading, so a
  * row is split at those headings and each part read with `self/`'s own
  * `readChapterLead`. The model falls back to the entry's `meta.models`; a
- * chapter written before either existed shows none.
+ * chapter written before either existed shows none. The date falls back to the
+ * entry's own (`happened_on`, then `learned_on`) when the heading named none,
+ * so every day in the strip is shown in one format (round 3, S4).
  */
-function journal(src: DashboardSource, limit: number, absent: string): Pick<MindView, "journal" | "journalAbsent" | "journalMore"> {
+function journalChapters(src: DashboardSource): ReadChapter[] {
   const store = src.store;
-  const all: (JournalChapter & { day: number; date: string | null })[] = [];
+  const all: ReadChapter[] = [];
   for (const id of store.list({ archived: false })) {
     const row = store.row(id);
     if (row === undefined || !isJournal(row)) continue;
+    const rowIso = isIsoDay(row.happened_on) ? row.happened_on : isIsoDay(row.learned_on) ? row.learned_on : null;
     let doc;
     try {
       doc = store.readProse(id);
     } catch {
-      all.push({ id, chapter: 1, title: reveal(store, id, 60).label, model: null, first: "", text: null, bytes: 0, confidential: false, day: 0, date: null });
+      all.push({ id, chapter: 1, title: reveal(store, id, 60).label, model: null, first: "", text: null, bytes: 0, confidential: false, day: 0, date: null, iso: rowIso, isoFromHeading: false });
       continue;
     }
     const withheld = isConfidential(doc);
@@ -798,6 +1039,7 @@ function journal(src: DashboardSource, limit: number, absent: string): Pick<Mind
       const n = lead.chapters[0] ?? i + 1;
       const rest = lead.rest.trim();
       const first = rest.split("\n").map((l) => l.trim()).find((l) => l.length > 0 && !l.startsWith("#") && !l.startsWith("<!--")) ?? "";
+      const fromHeading = headingIso(lead.date);
       all.push({
         id,
         chapter: n,
@@ -809,20 +1051,34 @@ function journal(src: DashboardSource, limit: number, absent: string): Pick<Mind
         confidential: withheld,
         day: lead.livedDay ?? doc.bornDay,
         date: lead.date,
+        iso: fromHeading ?? rowIso,
+        isoFromHeading: fromHeading !== null,
       });
     });
   }
   all.sort((a, b) => b.day - a.day || (a.id < b.id ? 1 : a.id > b.id ? -1 : b.chapter - a.chapter));
+  return all;
+}
+
+/** The chapters grouped by the lived day they were written on, newest first. */
+function journal(all: readonly ReadChapter[], limit: number, absent: string): Pick<MindView, "journal" | "journalAbsent" | "journalMore"> {
   const sent = all.slice(0, limit);
   const days: JournalDay[] = [];
+  let headed = false;
   for (const c of sent) {
     let d = days[days.length - 1];
     if (d === undefined || d.day !== c.day) {
-      d = { day: c.day, date: c.date, chapters: [] };
+      d = { day: c.day, date: c.date, iso: c.iso, chapters: [] };
       days.push(d);
+      headed = c.isoFromHeading;
     }
     if (d.date === null && c.date !== null) (d as { date: string | null }).date = c.date;
-    const { day: _day, date: _date, ...chapter } = c;
+    // A date a chapter's own heading named beats one read off its entry.
+    if (c.iso !== null && (d.iso === null || (!headed && c.isoFromHeading))) {
+      (d as { iso: string | null }).iso = c.iso;
+      headed = c.isoFromHeading;
+    }
+    const { day: _day, date: _date, iso: _iso, isoFromHeading: _headed, ...chapter } = c;
     d.chapters.push(chapter);
   }
   return { journal: days, journalAbsent: all.length === 0 ? absent : null, journalMore: all.length - sent.length };

@@ -14,6 +14,7 @@ import { q, wireTips } from "../../../shared/widgets/tips.js";
 /** The left column: an opened version (when one is), then the page. */
 export const mainMarkup = `
       <div id="self-version"></div>
+      <p class="sp-behind" id="self-behind" hidden></p>
       <section class="sp-card" id="self-page"></section>`;
 
 /** The side column's top: the page's facts, then its history. */
@@ -45,6 +46,23 @@ export function paintPage(d) {
     : '<div class="sp-body">' + renderMarkdown(p.body) + "</div>";
 }
 
+/**
+ * A page a few lived days behind says so, once, above it (round 3, S1): when it
+ * was written and what has been lived since. Calm — a note, not a warning. The
+ * view decides when (`pageBehind`); this only draws its line.
+ */
+export function paintBehind(d) {
+  const el = $("self-behind");
+  const b = d.pageBehind;
+  if (!b || d.pageAbsent) { el.innerHTML = ""; el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = esc(b.line) + " " +
+    q("behind", "The page is rewritten by the page writer, at most once a night, when something about who I am has moved. " +
+      "It was last rewritten on lived day " + b.writtenDay + "; today is lived day " + (b.writtenDay + b.livedDays) +
+      ". The side column says what the page writer did on its newest night.");
+  wireTips(el);
+}
+
 export function paintMeta(d) {
   const p = d.page;
   const w = d.writer;
@@ -59,7 +77,7 @@ export function paintMeta(d) {
   if (w) {
     rows.push('<div class="sb-writer' + (WRITER_TONE[w.outcome] ? " " + WRITER_TONE[w.outcome] : "") + '">' +
       (w.absent ? '<span class="sb-absent">' + esc(w.absent) + "</span> " : "") + esc(w.line) +
-      q("writer", "The page writer reads the day just gone, once a night, and rewrites the page when something about who I am moved. This is its newest run.") +
+      q("writer", w.more || "The page writer reads the day just gone, once a night, and rewrites the page when something about who I am moved. This is its newest run.") +
       "</div>");
   }
   $("self-meta").innerHTML = rows.join("");

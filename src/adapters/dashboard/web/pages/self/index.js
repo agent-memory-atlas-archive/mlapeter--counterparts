@@ -37,6 +37,7 @@ const markup = `
 const PANELS = [
   { name: "opening", slice: (d) => [d.opening], paint: paintOpening },
   { name: "page", slice: (d) => [d.page, d.pageAbsent], paint: page.paintPage },
+  { name: "behind", slice: (d) => [d.pageBehind, d.pageAbsent], paint: page.paintBehind },
   { name: "meta", slice: (d) => [d.page, d.writer], paint: page.paintMeta },
   { name: "history", slice: (d) => [d.pageHistory], paint: page.paintHistory },
   { name: "wake", slice: (d) => [d.wake, d.wakeParts, d.wakeBudget], paint: wake.paint },
