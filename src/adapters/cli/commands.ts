@@ -197,6 +197,7 @@ import type { RemovalPlan } from "./removal.js";
 import { repairDates } from "./repair-dates.js";
 import type { Confidence } from "./repair-dates.js";
 import { NO_PAGE_LINES, bodyFrom, pageLines, versionLines, writeLines } from "./self-page.js";
+import { coreListLines, dreamListLines, dreamShowLines } from "./dream-core.js";
 // The console's shared manners (2026-09-21): is there a person here, ask them,
 // and say one marked line back.
 import { ask, confirm, isInteractive, isPromptAborted, paint, typed, ui } from "./ui.js";
@@ -299,6 +300,12 @@ export const COMMANDS = [
   // The written page the wake leads with: read it, write it whole, and read
   // back what it used to say (2026-09-18, S1).
   "self-page",
+  // Dreaming + consolidation (2026-09-26): what each dream did, and its undo;
+  // what the core holds, and the owner's door out of it. Like `self-page`,
+  // each both reads and writes, so neither is on `OWNER_OPS`: reading works
+  // under observer, and the write refuses at the core's own seam.
+  "dream",
+  "core",
   // The owner's window, started on the store the CONFIGURATION names — no
   // `--dir` to get wrong, and the browser opened for you (2026-09-22, item 4).
   // `counterparts-dashboard serve` is still there and still refuses an unnamed
@@ -709,6 +716,8 @@ export const COMMAND_FLAGS: Record<Command, readonly string[]> = {
   // line is a page in shell history, and prose that is injected into every
   // session does not belong there.
   "self-page": ["write", "file", "stdin", "reason", "versions", "version", "restore", "clear", "if-version"],
+  dream: ["list", "show", "undo"],
+  core: ["list", "demote", "reason"],
   // `--config` because the store it opens is the one the CONFIGURATION names —
   // that is the whole point of the command over `counterparts-dashboard serve`,
   // which refuses until you name a store. `--dir` still parses (it is common)
@@ -772,6 +781,10 @@ export const COMMAND_BLURB: Record<Command, string> = {
     "Which directories this memory is for: on, observer, off, or paused until you resume it. It writes the host's own registry beside claude-code.json, opens no store, and needs no --dir. A subdirectory inherits its nearest ancestor's entry. On this one command --observer names the MODE, not the console's stance.",
   "self-page":
     "The written page the wake opens with. With no flags it prints the page, its date and its size; --write --file <path> or --write --stdin replaces it whole, keeping every earlier version; --versions lists those and --version <seq> prints one. Reading works under observer; writing refuses there.",
+  dream:
+    "What each dream did, and its undo. With no flags (or --list), the recent dreams: date, state, title and what changed; --show <id> prints one dream's journal and every change it made; --undo <id> reverses that dream's whole batch (merges come apart, links and gists go, replays and nominations are taken back) and keeps its journal, marked undone. Reading works under observer; --undo refuses there.",
+  core:
+    "The core — the memories about me and about us that do not fade. With no flags (or --list), what it holds and which lane carried each one there, what dreams have nominated, and what you sent back; --demote <id> --reason \"...\" sends one back to ordinary fading from today, records why, and keeps the lanes from promoting it again. Reading works under observer; --demote refuses there.",
   dashboard:
     "Open the dashboard in your browser: the web view of the store your configuration names, served on 127.0.0.1 and nowhere else. Ctrl-C stops it. Looking is read-only — it strengthens nothing and deposits nothing. What you do there on purpose (write a note, remove a memory, back up, …) runs through these same commands, and a removal asks you to type the id back.",
   version: "The version of Counterparts you have. It opens nothing.",
@@ -795,6 +808,8 @@ const COMMAND_ARGS: Partial<Record<Command, string>> = {
   connect: " [claude-code]",
   disconnect: " [claude-code]",
   help: " [advanced | <command>]",
+  dream: " [--show <id> | --undo <id>]",
+  core: " [--demote <id> --reason \"...\"]",
 };
 
 /**
@@ -1002,6 +1017,20 @@ const START_FRESH_FLAG_HELP: Record<string, string> = {
  * and it is the one the hooks and the memory tools open. Printing the shared
  * sentence would describe a resolution this command does not use.
  */
+/** `dream`'s own three: `--list` and `--undo` mean something else on other pages. */
+const DREAM_FLAG_HELP: Record<string, string> = {
+  list: "the recent dreams, newest first — the default",
+  show: "one dream, by id: its journal and every change it made",
+  undo: "reverse one dream's whole batch, by id (the id follows the flag); its journal is kept, marked undone",
+};
+
+/** `core`'s own three. */
+const CORE_FLAG_HELP: Record<string, string> = {
+  list: "what the core holds, with lanes, nominations and demotions — the default",
+  demote: "send one core memory back to ordinary fading from today, by id; needs --reason",
+  reason: "why — recorded with the demotion, and shown by --list",
+};
+
 const DASHBOARD_FLAG_HELP: Record<string, string> = {
   dir: "a store to look at instead of the one your configuration names",
 };
@@ -1035,7 +1064,11 @@ export function commandHelp(command: Command): string {
             ? DASHBOARD_FLAG_HELP
             : command === "connect" || command === "disconnect" || command === "uninstall"
               ? HOST_FLAG_HELP
-              : {};
+              : command === "dream"
+                ? DREAM_FLAG_HELP
+                : command === "core"
+                  ? CORE_FLAG_HELP
+                  : {};
   const flagLine = (name: string): string => {
     const shown = `--${name}${VALUED_FLAGS.includes(name) ? " <value>" : ""}`;
     return `  ${shown.padEnd(20)} ${override[name] ?? FLAG_HELP[name] ?? "(undocumented)"}`;
@@ -1092,6 +1125,8 @@ const VALUED_FLAGS: readonly string[] = [
   "version",
   "restore",
   "if-version",
+  "show",
+  "demote",
 ];
 
 /** Levenshtein, small and local. Only ever used to say "did you mean". */
@@ -1281,6 +1316,11 @@ export function parse(argv: readonly string[]): Parsed {
       restore: { type: "string" },
       clear: { type: "boolean" },
       "if-version": { type: "string" },
+      // `dream --show <id>` and `core --demote <id>`: strings, so a trailing
+      // flag is a refusal rather than a `true` read as "no id named". `dream
+      // --undo` reuses `start-fresh`'s boolean and takes the id positionally.
+      show: { type: "string" },
+      demote: { type: "string" },
       observer: { type: "boolean" },
       help: { type: "boolean" },
       // `scope`'s five. Declared as booleans for the same reason `rebuild` is:
@@ -1738,6 +1778,10 @@ export async function run(argv: readonly string[], opts: RunOptions): Promise<nu
           typeof parsed.flags["dir"] === "string",
           opts.stdin,
         );
+      case "dream":
+        return dreamCommand(dir, io, parsed, observer, typeof parsed.flags["dir"] === "string");
+      case "core":
+        return coreCommand(dir, io, parsed, observer, typeof parsed.flags["dir"] === "string");
     }
   } catch (err) {
     io.err(upgradePending(err) ?? `${command} failed: ${describeDirRefusal(err)}`);
@@ -1935,6 +1979,125 @@ function firedCommand(
     return EXIT.ok;
   } finally {
     store.close();
+  }
+}
+
+/**
+ * `dream` — what each dream did, and its undo (2026-09-26). The rules are the
+ * core's (`core/dream/`); this picks one of three modes and prints lines
+ * (`dream-core.ts`). Reading opens the store as an instrument; `--undo` opens
+ * it in the console's stance and the core refuses it under observer.
+ */
+function dreamCommand(dir: string, io: Io, parsed: Parsed, observer: boolean, namedDir: boolean): number {
+  if (!storeExists(dir)) {
+    io.err(`No store at ${dir}. Run 'counterparts init${namedDir ? ` --dir ${dir}` : ""}' to create one.`);
+    return EXIT.usage;
+  }
+  const show = parsed.flags["show"];
+  const undo = parsed.flags["undo"] === true;
+  const undoId = typeof parsed.flags["undo"] === "string" ? parsed.flags["undo"] : parsed.positional[0];
+  if (typeof show === "string" && undo) {
+    io.err("refused: --show and --undo are two different things to do. Pass one.");
+    return EXIT.usage;
+  }
+  if (undo) {
+    if (undoId === undefined || undoId.length === 0) {
+      io.err("refused: --undo needs the dream's id after it (counterparts dream --list shows them).");
+      return EXIT.usage;
+    }
+    const counterpart = openCounterpart(dir, observer);
+    try {
+      if (counterpart.store.dream(undoId) === undefined) {
+        io.err(`refused: no dream ${undoId} in this store. counterparts dream --list shows them.`);
+        return EXIT.refused;
+      }
+      const out = counterpart.dreams.undo(undoId);
+      if (!out.ok) {
+        io.err(
+          out.reason === "observer"
+            ? "refused: this console is an observer; it reads and changes nothing. Nothing was undone."
+            : `refused: ${out.reason}. Nothing was undone.`,
+        );
+        return EXIT.refused;
+      }
+      io.out(
+        out.reversed === 0
+          ? `Dream ${undoId} had nothing left to reverse; it is marked undone.`
+          : `Undid dream ${undoId}: ${String(out.reversed)} ${out.reversed === 1 ? "change" : "changes"} reversed.`,
+      );
+      io.out("  Merged memories are back as they were, its links and gists are gone, and its replays and nominations were taken back.");
+      io.out("  Its journal is kept, marked undone: counterparts dream --show " + undoId);
+      return EXIT.ok;
+    } finally {
+      counterpart.close();
+    }
+  }
+  const counterpart = openCounterpart(dir, true);
+  try {
+    if (typeof show === "string") {
+      const lines = dreamShowLines(counterpart, show);
+      if (lines === null) {
+        io.err(`refused: no dream ${show} in this store. counterparts dream --list shows them.`);
+        return EXIT.refused;
+      }
+      for (const line of lines) io.out(line);
+      return EXIT.ok;
+    }
+    for (const line of dreamListLines(counterpart)) io.out(line);
+    return EXIT.ok;
+  } finally {
+    counterpart.close();
+  }
+}
+
+/**
+ * `core` — what the core holds, and the owner's door out of it (2026-09-26).
+ * `--demote` opens the store in the console's stance; `Counterpart.demoteCore`
+ * decides everything and refuses under observer.
+ */
+function coreCommand(dir: string, io: Io, parsed: Parsed, observer: boolean, namedDir: boolean): number {
+  if (!storeExists(dir)) {
+    io.err(`No store at ${dir}. Run 'counterparts init${namedDir ? ` --dir ${dir}` : ""}' to create one.`);
+    return EXIT.usage;
+  }
+  const demote = parsed.flags["demote"];
+  const reason = parsed.flags["reason"];
+  if (reason !== undefined && typeof demote !== "string") {
+    io.err("refused: --reason goes with a --demote. Pass one, or leave it out.");
+    return EXIT.usage;
+  }
+  if (typeof demote === "string") {
+    if (typeof reason !== "string" || reason.trim().length === 0) {
+      io.err('refused: a demotion needs a reason — --reason "why" — and it is kept with the record.');
+      return EXIT.usage;
+    }
+    const counterpart = openCounterpart(dir, observer);
+    try {
+      const out = counterpart.demoteCore(demote, { reason, actor: "owner" });
+      if (!out.ok) {
+        const why: Record<string, string> = {
+          observer: "this console is an observer; it reads and changes nothing",
+          "unknown-id": `no memory ${demote} in this store`,
+          "not-core": `${demote} is not in the core (counterparts core --list shows what is)`,
+          "reason-required": "a demotion needs a reason",
+        };
+        io.err(`refused: ${why[out.reason] ?? out.reason}. Nothing was changed.`);
+        return EXIT.refused;
+      }
+      io.out(`Sent ${demote} back to ordinary fading, from today.`);
+      io.out(`  Why, as recorded: ${reason.trim()}`);
+      io.out("  It fades like any other memory now, and the core's lanes will not promote it again.");
+      return EXIT.ok;
+    } finally {
+      counterpart.close();
+    }
+  }
+  const counterpart = openCounterpart(dir, true);
+  try {
+    for (const line of coreListLines(counterpart)) io.out(line);
+    return EXIT.ok;
+  } finally {
+    counterpart.close();
   }
 }
 

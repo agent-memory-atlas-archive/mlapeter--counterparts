@@ -23,6 +23,8 @@ import { localDate } from "../../../../core/time.js";
 import type { DashboardSource } from "../../source.js";
 import { WITHHELD, reveal } from "../reveal.js";
 import { chapters, contestedRows, livedDays } from "./rows.js";
+import { coreHistory, dreamsView } from "./dreams.js";
+import type { CoreHistory, DreamsView } from "./dreams.js";
 import type { ChapterRow, ContestedRow } from "./rows.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -124,6 +126,14 @@ export interface MindView {
   readonly journalMore: number;
   /** What the nightly page writer did on the newest night it has a row for. */
   readonly writer: WriterLine;
+  /**
+   * THE DREAM JOURNAL (2026-09-26): each dream with its journal and its
+   * changes. The owner's to read — a dream is not a memory and never becomes
+   * one (`views/dreams.ts`).
+   */
+  readonly dreams: DreamsView;
+  /** `(never run)` when this store has never dreamed; null otherwise. */
+  readonly dreamsAbsent: string | null;
 }
 
 /**
@@ -217,6 +227,12 @@ export interface SettlingView {
   readonly unused: number;
   /** Memories that are not about me or about us: the core is not for them. */
   readonly outOfReach: number;
+  /**
+   * WHAT CROSSED LATELY (2026-09-26): the newest promotions with their lane
+   * ("became core last night"), the owner's demotions with his reason, and the
+   * memories dreams nominated. From `core_events`.
+   */
+  readonly history: CoreHistory;
   /** The rule, as numbers, so the page states it rather than restating it. */
   readonly rule: {
     needFeeling: number;
@@ -356,7 +372,14 @@ export function mindView(src: DashboardSource): MindView {
     wakeBudget: lastBudget(src),
     ...journal(src, JOURNAL_LIMIT, everLived ? NONE : NEVER),
     writer: writerLine(src),
+    ...dreamsPart(src),
   };
+}
+
+/** The dream journal, and its absence line when there has never been a dream. */
+function dreamsPart(src: DashboardSource): { dreams: DreamsView; dreamsAbsent: string | null } {
+  const dreams = dreamsView(src);
+  return { dreams, dreamsAbsent: dreams.dreams.length === 0 ? NEVER : null };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -657,6 +680,7 @@ function settlingView(
     onTheWay: raw.filter((r) => r.days > 0).length,
     unused: raw.filter((r) => r.days === 0).length,
     outOfReach,
+    history: coreHistory(src),
     rule: {
       needFeeling: PHYSICS.CORE_FAST_FEELING,
       needGap: PHYSICS.CORE_FAST_GAP_DAYS,

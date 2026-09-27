@@ -473,3 +473,41 @@ preload's temp `HOME`, read until `ctrl-c to stop.`, then killed — the shape
 preload.ts names as safe for a spawned child. The install loop's `serve` step asserts
 both refusals under its `perl alarm`, in the same step, so the step count QUICKSTART
 quotes did not move.
+
+
+## 2026-09-26 — dreaming and the core lanes, shown
+
+The dreaming + consolidation build (`core/dream/`, physics §5.3/§5.11) gave the
+dashboard three things to show, all read-only:
+
+- **The dream journal** (`views/dreams.ts#dreamsView`, `/api/dreams`, and the
+  `dreams` part of `/api/mind`; drawn by `pages/self/sections/dreams.js` under
+  the journal). Each dream: date, state (`begun` → "dreaming", `journaled` →
+  "woke", `undone`), title, the journal entry rendered as markdown, and every
+  change in order. A merge names the memory it made and then its originals
+  through `revealHere`, so they read as they stood rather than as what they
+  became; everything else goes through `reveal`, so a confidential memory a
+  dream touched is withheld as everywhere. The journal is the owner's to read in
+  full — it lives in the `dreams` table and is never a memory.
+- **What crossed lately** (`views/dreams.ts#coreHistory`, `settling.history`,
+  drawn at the top of the settling section): the newest crossings into the core
+  with the lane that carried each (fast: strongly felt and came back; slow: kept
+  coming back over weeks), the owner's demotions with his reason, and a dream's
+  nominations — which are only that; a lane promotes.
+- **The seven new durable names** (`dream.begun`, `dream.changed`,
+  `dream.journaled`, `dream.undone`, `dream.ask`, `band.demoted`,
+  `physics.upgrade.census`) are in `DURABLE_EVENTS` with a gloss, a narrator, a
+  flow node (a dream is a kind of sleep, so `sleep`; the ask is put to a
+  `session`; a demotion is the owner reaching into the `store`) and a ref kind
+  (a dream's rows point at the DREAM, not at a memory, so `none`). The
+  `band.promoted` narrator now names the lane when the row carries one.
+
+Two small things the build learned. The candidates on the settling section are
+now memories about me or about us, measured by the lanes (`views/mind.ts`), and a
+place or a plain fact is counted apart as "not for the core" rather than "out of
+reach by use". And the adapter's import scan reads a quote right after the word
+`from` as a module path, so `d["from"]` in a view is written as a destructure.
+
+The Consolidation and Dreaming LIGHTS are deliberately not here: master moved the
+mechanism lights into `src/adapters/mechanism-evidence.ts` (#250), and the
+builder wires those two there after the rebase.

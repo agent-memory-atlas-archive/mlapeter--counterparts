@@ -153,3 +153,15 @@ appends a raw string name would go unlisted without failing `tsc`.
 small by construction. Negligible today; wrong at a hundred names.
 
 **Owner:** `store/`.
+
+
+## §6 — Returns are kept by moment, the lights' window by lived day (2026-09-26)
+
+**Have:** `store.returnCounts(sinceAt)` counts the `returns` table from a UTC
+moment; the mechanism window is seven LIVED days. A light that wants "returns in
+the window" has to find the window's opening moment some other way (the earliest
+durable row on or after the window's first lived day is the honest proxy).
+
+**Want:** `returnCounts({ sinceDay })` — the table already carries `day`.
+
+**Owner:** `store/`.

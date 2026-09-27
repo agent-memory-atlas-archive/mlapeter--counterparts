@@ -50,6 +50,9 @@ export function paint(d) {
       " could not be read just now:</b> " + s.unreadable.map((u) => esc(u.label)).join(" · ") + "</div>");
   }
 
+  // ── what crossed lately: became core, sent back, nominated ──
+  parts.push(history(s.history));
+
   // ── on the way ──
   parts.push(candidates(s));
 
@@ -65,6 +68,34 @@ export function paint(d) {
   }));
   wireTips($("self-settling-q"));
   wireTips(box);
+}
+
+/**
+ * WHAT CROSSED LATELY (2026-09-26): the newest crossings into the core with
+ * the lane that carried each, the owner's demotions with his reason, and the
+ * memories a dream nominated. Nothing is drawn when all three are empty.
+ */
+function history(h) {
+  if (!h) return "";
+  const LANE = { fast: "strongly felt, and came back", slow: "kept coming back over weeks" };
+  const row = (r, tail) =>
+    '<button type="button" class="st-row click" onclick="openMemory(\'' + esc(r.id) + '\')">' +
+      '<span class="st-text">' + said(headline(r.text), r.confidential) + "</span>" +
+      '<span class="st-hist-tail">' + esc(tail) + "</span></button>";
+  const out = [];
+  if (h.promoted.length > 0) {
+    out.push('<h4 class="st-h">Became core</h4>' + h.promoted.map((r) =>
+      row(r, "day " + r.day + (r.lane ? " · " + (LANE[r.lane] || r.lane) : ""))).join(""));
+  }
+  if (h.demoted.length > 0) {
+    out.push('<h4 class="st-h">Sent back to ordinary fading</h4>' + h.demoted.map((r) =>
+      row(r, "day " + r.day + (r.reason ? " · " + r.reason : ""))).join(""));
+  }
+  if (h.nominated.length > 0) {
+    out.push('<h4 class="st-h">Nominated in a dream ' + q("nominated", "A dream can say a memory belongs to who I am. That is recorded here and nothing more: only coming back awake, by a lane, makes a memory core.") + "</h4>" +
+      h.nominated.map((r) => row(r, "day " + r.day + (r.reason ? " · " + r.reason : ""))).join(""));
+  }
+  return out.length === 0 ? "" : '<div class="st-hist">' + out.join("") + "</div>";
 }
 
 function listOf(s, key) {

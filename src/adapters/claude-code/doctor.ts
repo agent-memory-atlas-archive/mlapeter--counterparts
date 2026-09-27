@@ -2338,6 +2338,129 @@ export function journalCopyFindings(store: Store): Finding[] {
  * The reading is two row reads and a date comparison, so it sits with the cheap
  * groups rather than with `fired`.
  */
+/** The meta rows the v8 upgrade and its census write (`store/operational.ts`, `sleep/upgrade.ts`). */
+const V8_UPGRADE_META = "physics.v8.upgrade";
+const V8_CENSUS_META = "physics.v8.census";
+
+function metaJson(store: Store, key: string): Record<string, unknown> | null {
+  const raw = store.getMeta(key);
+  if (raw === undefined) return null;
+  try {
+    const v: unknown = JSON.parse(raw);
+    return v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function metaNum(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+}
+
+/**
+ * DID THE v8 UPGRADE MOVE ANY MEMORY DOWN? (dreaming + consolidation,
+ * 2026-09-26.) The migration marks every row it finds as keeping its old
+ * consolidation path and records what it found; the first sleep after it
+ * measures every memory by the old arithmetic and the new. Green when that
+ * census says nothing changed band down, nothing got weaker and nothing prunes
+ * sooner; amber while the census has not run yet; red if any memory moved
+ * down — the one thing the upgrade promised not to do. A store born at v8 has
+ * no upgrade record and gets no line.
+ */
+export function upgradeV8Findings(store: Store): Finding[] {
+  const upgrade = metaJson(store, V8_UPGRADE_META);
+  if (upgrade === null) return [];
+  const census = metaJson(store, V8_CENSUS_META);
+  const from = typeof upgrade["from"] === "string" ? upgrade["from"] : String(upgrade["from"] ?? "?");
+  const rows = metaNum(upgrade["rows"]);
+  const kept = metaNum(upgrade["consolidated"]);
+  const data: Record<string, string | number | boolean | null> = {
+    from,
+    rows,
+    consolidated: kept,
+    identity: metaNum(upgrade["identity"]),
+    censused: census !== null,
+  };
+  if (census === null) {
+    return [
+      finding(
+        "upgrade-v8",
+        "amber",
+        "Upgrade",
+        `upgraded from schema v${from} to v8 (${String(rows)} memories kept their old consolidation path); the old-versus-new check has not run yet`,
+        "Nothing to do: the next sleep measures it. counterparts doctor then says whether anything moved.",
+        data,
+      ),
+    ];
+  }
+  const checked = metaNum(census["checked"]);
+  const down = metaNum(census["bandDown"]);
+  const weaker = metaNum(census["weaker"]);
+  const sooner = metaNum(census["pruneSooner"]);
+  const up = metaNum(census["bandUp"]);
+  const measured = {
+    ...data,
+    checked,
+    bandDown: down,
+    bandUp: up,
+    weaker,
+    pruneSooner: sooner,
+    pruneLater: metaNum(census["pruneLater"]),
+    legacyConsolidated: metaNum(census["consolidated"]),
+  };
+  if (down + weaker + sooner > 0) {
+    return [
+      finding(
+        "upgrade-v8",
+        "red",
+        "Upgrade",
+        `the v8 upgrade moved memories down: of ${String(checked)} checked, ${String(down)} changed band down, ${String(weaker)} got weaker, ${String(sooner)} would be let go sooner`,
+        "Keep this store as it is and report it: the upgrade promised no memory would move down. The copy taken before it is in the snapshots directory.",
+        measured,
+      ),
+    ];
+  }
+  return [
+    finding(
+      "upgrade-v8",
+      "green",
+      "Upgrade",
+      `Upgrade to v8: ${String(checked)} memories checked; none changed band, none weaker, none prunes sooner; ${String(metaNum(census["consolidated"]))} kept their old consolidation${up > 0 ? `; ${String(up)} moved up a band` : ""}`,
+      "",
+      measured,
+    ),
+  ];
+}
+
+/**
+ * DREAMING, informational (2026-09-26): when the counterpart last dreamed, and
+ * whether today's ask went out or was declined. Never amber: not dreaming is
+ * the owner's choice, and a quiet week is not a fault.
+ */
+export function dreamingFindings(input: DoctorInput, store: Store): Finding[] {
+  let last: ReturnType<Store["dreams"]>[number] | undefined;
+  let ask: ReturnType<Store["dreamAsk"]>;
+  try {
+    last = store.dreams({ limit: 5 }).find((d) => d.state !== "undone");
+    ask = store.dreamAsk(input.today);
+  } catch {
+    return [];
+  }
+  const when = last === undefined ? null : (last.date ?? `lived day ${String(last.day)}`);
+  const today =
+    ask === undefined ? "not asked today" : ask.state === "declined" ? "asked today; the owner said not today" : "asked today";
+  return [
+    finding(
+      "dreaming",
+      "green",
+      "Dreaming",
+      `${when === null ? "has not dreamed yet" : `last dreamed ${when}${last?.title ? ` — "${last.title}"` : ""}`}; ${today}`,
+      "",
+      { last: when, dream: last?.id ?? null, ask: ask?.state ?? null },
+    ),
+  ];
+}
+
 export function selfPageFindings(store: Store): Finding[] {
   const page = readSelfPage(store);
   if (page === null) {
@@ -3076,6 +3199,11 @@ export function doctorFindings(input: DoctorInput): Finding[] {
     // B3's week: one bounded read of the newest `remember.prune` row. Folds into
     // `Background` while green.
     ["retention", () => retentionFindings(input, store)],
+    // The v8 upgrade's proof (2026-09-26): two meta reads. Silent on a store
+    // born at v8. Folds into `Background` while green.
+    ["upgrade-v8", () => upgradeV8Findings(store)],
+    // Dreaming (2026-09-26): informational — last dreamed, and today's ask.
+    ["dreaming", () => dreamingFindings(input, store)],
     // LAST, and deliberately: it is the widest read here — the whole event log,
     // plus a pass over the ids for the table probes — so when the console's
     // reading is cut short this is the group that goes, and the `Budget` finding

@@ -914,8 +914,8 @@ const DREAM: ToolSpec = {
     },
     {
       claim:
-        "Every word a dream writes crosses the credential battery, and the journal is kept as a dream — in its own table, never as a memory — so what was dreamed is never mistaken for what happened.",
-      mechanizedBy: "src/core/dream/index.ts#Dreams.words -> src/core/bridge.ts#episodeGate + src/core/store/operational.ts (dreams table)",
+        "Every word a dream writes is scanned for credentials and redacted before it is stored, and the journal is kept as a dream — in its own table, never as a memory — so what was dreamed is never mistaken for what happened.",
+      mechanizedBy: "src/core/dream/index.ts#Dreams.words -> src/core/counterpart.ts (the dream gate) -> src/core/encode/secrets.ts#redactSecrets + src/core/store/operational.ts (dreams table)",
     },
     {
       claim:

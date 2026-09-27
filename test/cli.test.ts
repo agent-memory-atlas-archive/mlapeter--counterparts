@@ -53,7 +53,7 @@ import {
 } from "../src/core/store/cache.js";
 import { openDb } from "../src/core/store/db.js";
 import { CONFIG_FLAG } from "../src/adapters/config-path.js";
-import { EMBED_FAILED_PREFIX, EMBED_SKIP_AFTER, LAYOUT, Store, isDatabaseSidecar, paths } from "../src/core/store/index.js";
+import { EMBED_FAILED_PREFIX, EMBED_SKIP_AFTER, LAYOUT, SCHEMA_VERSION, Store, isDatabaseSidecar, paths } from "../src/core/store/index.js";
 import { makeBodyUnreadable } from "./store-fixture.js";
 import {
   BLOB_NAME,
@@ -3245,7 +3245,7 @@ describe("verify", () => {
     // report ON the file layout, which went with the columns. What replaces it
     // is the one fact an owner looking for his markdown needs, and a store that
     // still had any prose files would be one this build refused to open.
-    expect(printed).toContain("Floor: schema v7 · bodies in rows · prose files: none");
+    expect(printed).toContain(`Floor: schema v${String(SCHEMA_VERSION)} · bodies in rows · prose files: none`);
     expect(printed).not.toContain("Prose paths:");
     // F1's line is still there, beside it.
     expect(printed).toContain("Journal mode: wal (busy timeout");

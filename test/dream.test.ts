@@ -270,6 +270,26 @@ describe("journal and undo", () => {
     expect(c.dreams.propose({ dream: id, session: SESSION, changes: [] })).toEqual({ ok: false, reason: "dream-closed" });
   });
 
+  test("short words are fine; a credential in a dream's words is redacted before anything is stored", () => {
+    const c = brain();
+    const m = lived(c);
+    const { id } = begin(c);
+    const out = c.dreams.propose({
+      dream: id,
+      session: SESSION,
+      changes: [
+        { action: "merge", ids: [m.a, m.b], text: "Migrate first. Key: sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" },
+        { action: "nominate-core", id: m.self, why: "It is how I work." },
+      ],
+    });
+    if (!out.ok) throw new Error("refused");
+    const merged = out.results[0]?.id as string;
+    expect(c.store.readProse(merged).body).toContain("Migrate first.");
+    expect(c.store.readProse(merged).body).not.toContain("sk-ant-api03");
+    expect(c.store.coreEvents({ memoryId: m.self, action: "nominated" })[0]?.reason).toBe("It is how I work.");
+    expect(c.dreams.journal({ dream: id, session: SESSION, text: "Short dream." }).ok).toBe(true);
+  });
+
   test("undo reverses the whole batch", () => {
     const c = brain();
     const m = lived(c);

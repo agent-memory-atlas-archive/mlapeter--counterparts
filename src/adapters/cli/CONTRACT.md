@@ -581,6 +581,17 @@ The standalone verb does not ask either: typing it is the yes.*
     treats it as foreign (never moved, never deleted, and named with one sentence saying
     what it is), and `start-fresh` leaves it byte for byte. `doctor` has no Credentials
     line; the configuration's retired settings are one green `Old settings` note.
+43. **[M] The owner's windows onto dreaming and the core (2026-09-26).** `counterparts
+    dream` lists the dreams, `--show <id>` prints one dream's journal and every change it
+    made (undone rows marked), and `--undo <id>` reverses its whole batch through
+    `Counterpart.dreams.undo` — the console decides nothing about what an undo does.
+    `counterparts core` lists the core with the lane that carried each memory there, the
+    dreams' nominations and the owner's demotions, and `--demote <id> --reason "…"` sends
+    one back to ordinary fading through `Counterpart.demoteCore`, which requires the
+    reason, records it, restarts fading from today and keeps the lanes from promoting it
+    again. Neither command is on `OWNER_OPS`: like `self-page`, reading works from an
+    instrument, and the write refuses at the core's own seam under observer. Confidential
+    rows print as `[confidential]`.
 
 ## 6. Scars honored
 

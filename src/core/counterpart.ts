@@ -1473,17 +1473,23 @@ export class Counterpart {
       onEvent: (e) => this.relay("remember", e),
     });
 
-    // DREAMING. Everything a dream writes crosses the same credential battery a
-    // chapter does; a merge hands its originals' links to the merged memory
-    // through `associate/`'s retarget, which had no caller until now.
-    const gate = episodeGate();
+    // DREAMING. Every word a dream writes is REDACTED of credentials before it
+    // is stored — the secrets scan the battery runs, without the battery's
+    // length and shape gates: a dream's words are a rewording of memories that
+    // already crossed the full battery, and a one-line journal, a nomination's
+    // reason or a merged sentence is short by nature (the full gate refused
+    // them `content-too-short`). Text that was nothing but a credential is
+    // refused. A merge hands its originals' links to the merged memory through
+    // `associate/`'s retarget, which had no caller until now.
     this.dreams = new Dreams({
       store: this.store,
       observer: this.observer,
       owner: this.owner,
-      gate: (text, sessionId) => {
-        const v = gate({ text, handles: [], sessionId });
-        return v.ok ? { ok: true, text: v.text ?? text } : { ok: false, reason: v.reason };
+      gate: (text) => {
+        const redacted = redactSecrets(text);
+        return redacted.replace(/\[REDACTED[^\]]*\]/g, "").trim().length === 0
+          ? { ok: false, reason: "only-a-credential" }
+          : { ok: true, text: redacted };
       },
       page: () => this.self.page()?.body ?? null,
       wake: () => this.store.getMeta(BRIEFING_KEY) ?? null,

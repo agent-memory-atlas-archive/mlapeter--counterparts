@@ -10,6 +10,7 @@
    text — is drawn open again, and the scroll position is put back. */
 import { api, fail } from "../../shared/api.js";
 import { $, esc } from "../../shared/dom.js";
+import * as dreams from "./sections/dreams.js";
 import * as journal from "./sections/journal.js";
 import * as page from "./sections/page.js";
 import * as settling from "./sections/settling.js";
@@ -27,7 +28,7 @@ const markup = `
     <div class="cols self-cols">
       <div>${settling.markup}
       </div>
-      <div>${journal.markup}
+      <div>${journal.markup}${dreams.markup}
       </div>
     </div>
   `;
@@ -41,6 +42,7 @@ const PANELS = [
   { name: "wake", slice: (d) => [d.wake, d.wakeParts, d.wakeBudget], paint: wake.paint },
   { name: "settling", slice: (d) => [d.settling, d.stories], paint: settling.paint },
   { name: "journal", slice: (d) => [d.journal, d.journalAbsent, d.journalMore], paint: journal.paint },
+  { name: "dreams", slice: (d) => [d.dreams, d.dreamsAbsent], paint: dreams.paint },
 ];
 
 /** What each panel was last drawn from. */

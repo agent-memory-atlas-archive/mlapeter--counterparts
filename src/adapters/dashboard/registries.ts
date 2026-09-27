@@ -93,6 +93,16 @@ import { RETENTION_EVENT } from "../../core/remember/index.js";
 // The vector cache's identity check (2026-09-23, #190): the one durable row the
 // store writes when an open changed what box 3's vectors are filed under.
 import { EMBEDDER_RECONCILED_EVENT } from "../../core/store/index.js";
+// Dreaming (2026-09-26, `dream/`): the five rows a dream leaves, from the module
+// itself; the v8 upgrade's one-time census, from `sleep/`.
+import {
+  DREAM_ASK_EVENT,
+  DREAM_BEGUN_EVENT,
+  DREAM_CHANGED_EVENT,
+  DREAM_JOURNALED_EVENT,
+  DREAM_UNDONE_EVENT,
+} from "../../core/dream/index.js";
+import { V8_CENSUS_EVENT } from "../../core/sleep/index.js";
 
 /** Display order for the bands, weakest commitment first. EXHAUSTIVE BY TYPE. */
 const BAND_ORDER = {
@@ -183,7 +193,16 @@ export type DurableEventName =
   | typeof JOURNAL_COPY_FAILED_EVENT
   | typeof STORE_EXPORT_EVENT
   | typeof RETENTION_EVENT
-  | typeof EMBEDDER_RECONCILED_EVENT;
+  | typeof EMBEDDER_RECONCILED_EVENT
+  | typeof DREAM_BEGUN_EVENT
+  | typeof DREAM_CHANGED_EVENT
+  | typeof DREAM_JOURNALED_EVENT
+  | typeof DREAM_UNDONE_EVENT
+  | typeof DREAM_ASK_EVENT
+  // The owner's demotion (`Counterpart.demoteCore`) writes this name as a
+  // literal; it is the mirror of `band.promoted`.
+  | "band.demoted"
+  | typeof V8_CENSUS_EVENT;
 
 export const DURABLE_EVENTS = {
   "adapter.ask": "the Stop ask was evaluated (asked, paced out, or capped for the day)",
@@ -282,6 +301,17 @@ export const DURABLE_EVENTS = {
   // The vector cache's identity check (2026-09-23, #190). Written only when an
   // open CHANGED something — never for a match — so a quiet week is no rows.
   "store.embedder.reconciled": "an open changed which model the stored vectors are filed under (reset to a new table and refilled, a paid model's vectors held until somebody chooses, a hold released, untagged vectors adopted, a decision deferred, or vectors dropped by a rebuild)",
+  // Dreaming (2026-09-26). Five rows, each ids and counts only: the journal's
+  // words live in the `dreams` table, never in the log.
+  "dream.begun": "a dream began: the dreamer was shown what was lived since the last one (how many new memories, how many shown in all, how many chapters)",
+  "dream.changed": "a dream changed memories (how many changes landed and were refused, by kind: merges, links, replays, gists, contradictions, feelings, nominations)",
+  "dream.journaled": "a dream ended with its journal entry written (how long, and what it changed)",
+  "dream.undone": "the owner reversed a whole dream (how many of its changes were put back)",
+  "dream.ask": "the day's dream ask was put to a session, or the owner said not today",
+  // The owner's door out of the core (2026-09-26).
+  "band.demoted": "the owner sent a core memory back to ordinary fading (and why is kept beside it)",
+  // The v8 upgrade's one-time proof (2026-09-26).
+  "physics.upgrade.census": "after the v8 upgrade, every memory was measured by the old arithmetic and the new (how many moved a band, down or up, and how many would be let go sooner or later)",
 } as const satisfies Record<DurableEventName, string>;
 
 export const DURABLE_EVENT_NAMES: readonly DurableEventName[] = Object.keys(

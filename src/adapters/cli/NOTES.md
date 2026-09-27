@@ -1800,6 +1800,31 @@ tier is primary while Voyage is frozen (ROADMAP §"Amendments"). What the build 
   binding in `bin/counterparts.ts`. Its only caller was `credentials set`; it is a small,
   tested primitive, and removing it was not part of this round.
 
+## `dream` and `core` (2026-09-26, dreaming + consolidation)
+
+Two small commands over the core's own answers (`cli/dream-core.ts` renders, the core
+decides). Choices made here:
+
+- **`--undo` is a boolean with the id after it** (`dream --undo drm_…`), because
+  `start-fresh --undo` already declares `undo` as a boolean and the parser's option table
+  is shared by every command; `--undo=<id>` works too. `--show` and `--demote` are new
+  and are valued flags.
+- **Both are on the advanced page, not the first one.** The first page is what a person
+  reads thirty seconds after installing; dreams and the core are what they look at a week
+  later. `counterparts help dream` / `help core` are the full pages.
+- **A demotion needs `--reason`**, and `--reason` without `--demote` is refused rather
+  than ignored: the reason is the one thing the record keeps that the store cannot
+  reconstruct.
+- **`fired` gained eight rows** (`returns`, `dream`, `dream-changes`, `dream-ask`,
+  `dream-replays`, `core-demote`, `upgrade-census`, and `gist` now backed by dreamed
+  memories instead of "not built"). `returns` and `dream-replays` are table probes over
+  the new `returns` table (dated by each row's moment); `gist` is a probe over live
+  memories of source `dreamed`.
+- **Doctor gained two lines**: `Upgrade` (the v8 upgrade's census — green when nothing
+  moved down, amber until the first sleep measures it, red if anything did; no line on a
+  store born at v8) and `Dreaming` (informational: last dreamed, and today's ask). Both
+  fold into `Background` while green.
+
 ## `ask` by meaning, and short (2026-09-24)
 
 **By meaning.** `ask` passed `vector: null, semantic: "embedder-off"` since the days
