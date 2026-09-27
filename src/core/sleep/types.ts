@@ -120,6 +120,23 @@ export interface SleepStore {
    */
   pruneEvents?(opts?: { limit?: number }): EventPruneReport;
   eventLogCensus?(): EventLogCensus;
+  /**
+   * The CORE's history (schema v8, 2026-09-26), OPTIONAL like the log. Where
+   * the port has it, a promotion is also written here with its lane, and an
+   * owner's demotion read from here keeps the lanes from re-promoting the
+   * memory; a port without it demotes nothing and records the crossing in the
+   * meta row and the event log only.
+   */
+  appendCoreEvent?(input: {
+    memoryId: string;
+    action: "promoted" | "demoted" | "nominated";
+    day: number;
+    lane?: string | null;
+    reason?: string | null;
+    dreamId?: string | null;
+    actor?: string | null;
+  }): number;
+  coreDemoted?(id: string): boolean;
 }
 
 // ---------------------------------------------------------------------------

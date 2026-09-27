@@ -19,7 +19,7 @@
  */
 import { TUNABLES, promotionEligibility, pruneVerdict, strength } from "../../../../core/physics/index.js";
 import type { MemoryPhysics } from "../../../../core/types.js";
-import { isJournal } from "../../../../core/sleep/index.js";
+import { aboutMe, isJournal, ownerNames } from "../../../../core/sleep/index.js";
 import type { EventRow } from "../../../../core/store/index.js";
 import type { Band, Kind } from "../../../../core/types.js";
 import type { DashboardSource } from "../../source.js";
@@ -88,10 +88,19 @@ export type Picture =
     }
   | {
       readonly kind: "consolidation";
-      readonly threshold: number;
+      /** Fast lane: how strongly felt it must be. */
+      readonly needFeeling: number;
+      /** Slow lane: returns on this many separate lived days… */
       readonly requiredDays: number;
-      readonly climbing: readonly (Said & { readonly base: number; readonly days: number })[];
-      readonly promoted: readonly (Said & { readonly day: number })[];
+      /** …spanning this many lived days. */
+      readonly needSpan: number;
+      readonly climbing: readonly (Said & {
+        readonly feeling: number;
+        readonly days: number;
+        readonly span: number;
+        readonly returned: boolean;
+      })[];
+      readonly promoted: readonly (Said & { readonly day: number; readonly lane: string | null })[];
       readonly core: number;
     }
   | {
@@ -288,32 +297,41 @@ function retrievalPicture(src: DashboardSource): Picture {
 // ── consolidation ───────────────────────────────────────────────────────────
 
 /**
- * Becoming core takes two things at once: a strong enough base, and real use on
- * three separate lived days. Each climber shows both, against the bar; the
- * nearest six are listed, with the last few that made it.
+ * Becoming core (2026-09-26): only memories about me or about us, by one of two
+ * lanes — strongly felt and come back once after a gap (fast), or come back on
+ * several separate days over weeks (slow). Each climber shows how far along
+ * both lanes it is; the nearest six are listed, with the last few that made it
+ * and the lane that carried them.
  */
 function consolidationPicture(src: DashboardSource): Picture {
   const store = src.store;
   const rows = census(src).filter((m) => !m.schema && !m.unreadable);
   const core = rows.filter((m) => m.promoted).length;
+  const owner = ownerNames(store);
   const climbing = rows
-    .filter((m) => !m.promoted)
+    .filter((m) => !m.promoted && aboutMe(store, { id: m.id, kind: m.kind }, owner))
     .map((m) => {
-      const v = promotionEligibility(store.physicsOf(m.id));
-      const progress = Math.min(1, v.base / v.threshold) + Math.min(1, v.reinforcedDays / v.requiredDays);
-      return { m, base: v.base, days: v.reinforcedDays, progress };
+      const v = promotionEligibility(store.physicsOf(m.id), { aboutMe: true });
+      const fast = Math.min(1, v.fast.intensity / v.fast.needIntensity) + (v.fast.gap !== null && v.fast.gap >= v.fast.needGap ? 1 : 0);
+      const slow = Math.min(1, v.slow.days / v.slow.needDays) + Math.min(1, v.slow.span / v.slow.needSpan);
+      const returned = v.fast.gap !== null && v.fast.gap >= v.fast.needGap;
+      return { m, feeling: v.fast.intensity, days: v.slow.days, span: v.slow.span, returned, progress: Math.max(fast, slow) };
     })
     .sort((a, b) => b.progress - a.progress || (a.m.id < b.m.id ? -1 : 1))
     .slice(0, 6)
-    .map((c) => ({ ...saidLine(c.m), base: round(c.base), days: c.days }));
+    .map((c) => ({ ...saidLine(c.m), feeling: round(c.feeling), days: c.days, span: c.span, returned: c.returned }));
   const promoted = store
     .eventLog({ name: "band.promoted", order: "desc", limit: 3 })
     .filter((r) => r.ref !== null)
-    .map((r) => ({ ...said(src, r.ref as string), day: r.day }));
+    .map((r) => {
+      const lane = payloadOf(r)["lane"];
+      return { ...said(src, r.ref as string), day: r.day, lane: typeof lane === "string" ? lane : null };
+    });
   return {
     kind: "consolidation",
-    threshold: TUNABLES.THETA_ID,
-    requiredDays: TUNABLES.N_PROMOTION_DAYS,
+    needFeeling: TUNABLES.CORE_FAST_FEELING,
+    requiredDays: TUNABLES.CORE_SLOW_DAYS,
+    needSpan: TUNABLES.CORE_SLOW_SPAN_DAYS,
     climbing,
     promoted,
     core,

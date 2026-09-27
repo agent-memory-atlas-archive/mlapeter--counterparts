@@ -195,6 +195,15 @@ export function chaseRemoved(store: Store, id: string): ChaseReport {
     // never left dangling mid-delete.
     db.run("DELETE FROM feelings WHERE memory_id = ?", id);
     db.run("DELETE FROM gate_session WHERE ref = ?", id);
+    // v8: its return history, what the wake showed of it, and its core history
+    // (a demotion's or a nomination's reason is words about it) go too. A
+    // dream's change log keeps the ORDER of what the dream did, but no longer
+    // names this memory: the address is blanked, never the dream's other rows.
+    db.run("DELETE FROM returns WHERE memory_id = ?", id);
+    db.run("DELETE FROM wake_display WHERE memory_id = ?", id);
+    db.run("DELETE FROM core_events WHERE memory_id = ?", id);
+    db.run("UPDATE dream_changes SET ref = NULL WHERE ref = ?", id);
+    db.run("UPDATE dream_changes SET ref2 = NULL WHERE ref2 = ?", id);
 
     // Version rows stay (a successor's predecessor pointer lives here) and lose
     // every word they held. `reason`, `version_day` and `successor_id` are
@@ -228,7 +237,9 @@ export function chaseRemoved(store: Store, id: string): ChaseReport {
                 archived = 1, archived_reason = ?, content_hash = '',
                 title = NULL, body = '', meta = '{}', confidential = 0,
                 learned_on = '', happened_on = NULL,
-                created_at = NULL, updated_at = NULL, model = NULL, event_date = NULL
+                created_at = NULL, updated_at = NULL, model = NULL, event_date = NULL,
+                returns = 0, return_days = 0, first_return_day = NULL, last_return_day = NULL,
+                last_dream_day = NULL
           WHERE id = ?`,
         REMOVED_REASON,
         id,

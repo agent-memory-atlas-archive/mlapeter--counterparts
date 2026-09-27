@@ -30,20 +30,67 @@ export const TUNABLES = {
   // --- §5.2 strength ---
   /** Repetition credit per use [v0, verbatim]. */
   REP_PER_USE: 0.12,
-  /** Repetition cap. With CONS_BONUS this tops out at 0.70, structurally below
-   *  THETA_ID = 0.85 — guarantee 4 is arithmetic, not a check [v0; v1 §10 G11]. */
+  /** Repetition cap [v0; v1 §10 G11]. Repetition is also no road to the
+   *  identity band for any kind but `self`/`person` — guarantee 4, now a rule of
+   *  `promotionEligibility` rather than a threshold (§5.3, 2026-09-26). */
   REP_CAP: 0.5,
-  /** Consolidation bonus [v0, verbatim]. */
+  /**
+   * The one-time consolidation bonus [v0, verbatim] — now a LEGACY path
+   * (2026-09-26): only a memory born before schema v8 (`legacy`) can still be
+   * marked consolidated and carry it, so the upgrade moves nothing down. Every
+   * memory made since earns its durability from RETURNS (§5.11) instead.
+   */
   CONS_BONUS: 0.2,
 
   // --- §5.3 bands ---
   /** Semantic floor, evaluated on DECAYED strength (§5.3 rewrite). */
   THETA_SEM: 0.5,
-  /** Identity floor, evaluated on `base` — one half of promotion eligibility. */
-  THETA_ID: 0.85,
-  /** Distinct lived days of reinforcement required to promote (owner ruling N = 3).
-   *  Same number, same ancestry, as the slow-kind revision pace (Amendment 15). */
-  N_PROMOTION_DAYS: 3,
+
+  // --- §5.11 returns (owner decisions 2026-09-26 — WORKING DEFAULTS) ---
+  /**
+   * How spacing weighs a return: `1 - exp(-gap / RETURN_SPACING_DAYS)`, `gap`
+   * the lived days since the memory's previous counted return (or its birth).
+   * 7 gives 0.13 the next day, 0.35 after three, 0.63 after a week and 0.95
+   * after three weeks — full weight once forgetting has visibly started (a fact
+   * with S = 60 has lost ~11% by day 7). Harvested from #238's spacing credit,
+   * with its penalty DROPPED: this scales what a return adds to durability and
+   * nothing else — `uses`, `lastUsedDay` and the rep arm credit exactly as
+   * before, so close-together use never counts against a memory. CAL.
+   */
+  RETURN_SPACING_DAYS: 7,
+  /**
+   * How much the returns lengthen stability: `x (1 + RETURN_GAIN x ln(1 +
+   * returns))`. One full-weight return x1.69, three x2.39, ten x3.40 — each
+   * spaced return slows fading, with diminishing returns (the log), and never
+   * makes a memory immortal. 1 at zero returns, so no memory's curve moves at
+   * the upgrade. NOTES "Returns" has the 60-day simulation. CAL.
+   */
+  RETURN_GAIN: 1.0,
+  /** A dream replay counts as a return worth this fraction of an awake one
+   *  (owner: "start ~0.5"), at most once per dream per memory. CAL. */
+  DREAM_RETURN_WEIGHT: 0.5,
+  /**
+   * The claimed-salience ceiling for a DREAMED memory (a dream's gist or
+   * pattern, source `dreamed`): below the semantic floor, so what a dream
+   * concludes starts lower than anything lived and rises only by proving true
+   * awake — used (the rep arm, returns) or confirmed. Above the
+   * `AUTHORED_DEFAULT_CLAIM` a silent note gets, so a gist is not prunable
+   * from birth, and below `THETA_SEM`. CAL.
+   */
+  DREAMED_CLAIM_CEILING: 0.3,
+
+  // --- §5.3 core lanes (owner decisions 2026-09-26 — WORKING DEFAULTS) ---
+  /** Fast lane: strongly felt — `emotionalIntensity` at or above this, his
+   *  feeling or mine. CAL. */
+  CORE_FAST_FEELING: 0.6,
+  /** Fast lane: "and it has come back at least once after a gap" — an awake
+   *  return at least this many lived days after the memory was made (2 = not
+   *  the very next day). CAL. */
+  CORE_FAST_GAP_DAYS: 2,
+  /** Slow lane: awake returns on at least this many distinct lived days… CAL. */
+  CORE_SLOW_DAYS: 5,
+  /** …spanning at least this many lived days, first return to last. CAL. */
+  CORE_SLOW_SPAN_DAYS: 21,
   /**
    * The salience-claim ceiling for a FALLBACK-minted memory (owner ruling
    * 2026-08-29, the authorship doctrine's salience half): the experiencer's own
@@ -53,10 +100,9 @@ export const TUNABLES = {
    * claim is CAPPED. The first blind replay showed why: 97.9% of sweep mints
    * self-claimed importance (mode 0.8), parking ~75% of the store above
    * THETA_SEM with no independent check (review F5). 0.6 clears the semantic
-   * floor (a crashed day still matters) and sits structurally below THETA_ID.
-   * The emotion lift (§5.10) does not change that: promotion reads
-   * `promotionBase`, which leaves the lift out (NOTES §17). WORKING DEFAULT — to be revisited against the re-run's watch
-   * metrics.
+   * floor (a crashed day still matters); identity is reached only through the
+   * core lanes (§5.3), never by a claim. WORKING DEFAULT — to be revisited
+   * against the re-run's watch metrics.
    */
   SWEEP_CLAIM_CEILING: 0.6,
   /**
@@ -115,11 +161,10 @@ export const TUNABLES = {
    * the claimed floor. 0.15 is chosen so the lift is felt but cannot on its
    * own carry a silent note across a band: `AUTHORED_DEFAULT_CLAIM + EMO_LIFT
    * = 0.40 < THETA_SEM` (a strong feeling alone does not make a silent note
-   * semantic at birth; consolidation or use still has to), and even
-   * consolidated it stays under identity: `0.25 + EMO_LIFT + CONS_BONUS = 0.60
-   * < THETA_ID`. Promotion reads `promotionBase` (no lift), so the lift never
-   * makes anything promotion-eligible (NOTES §17). NOTES.md "Emotion, part
-   * A" has the simulation. CAL.
+   * semantic at birth; use still has to). The lift is height only: identity
+   * reads the FEELING itself, in the core fast lane (§5.3, 2026-09-26), and
+   * only for memories about me or about us. NOTES.md "Emotion, part A" has
+   * the simulation. CAL.
    */
   EMO_LIFT: 0.15,
   /**
@@ -482,15 +527,28 @@ export function softenedFeeling(strength: number, ageDays: number): number {
   return clamp01(strength) * Math.exp(-age / TUNABLES.S_FEELING);
 }
 
-/** Stability S, in lived days. kappa DIVIDES (§5.4); emotion lengthens it (§5.10). */
+/**
+ * Stability S, in lived days. kappa DIVIDES (§5.4); emotion lengthens it
+ * (§5.10); spaced RETURNS lengthen it (§5.11) — a factor of exactly 1 at zero
+ * returns, so a memory that has never returned fades exactly as before.
+ */
 export function stability(
-  m: Pick<MemoryPhysics, "kind" | "uses"> & Partial<Pick<MemoryPhysics, "salience" | "feelingPeak">>,
+  m: Pick<MemoryPhysics, "kind" | "uses"> & Partial<Pick<MemoryPhysics, "salience" | "feelingPeak" | "returns">>,
 ): number {
   const felt = m.salience === undefined ? 0 : emotionalIntensity({ salience: m.salience, feelingPeak: m.feelingPeak });
   return (
-    (TUNABLES.S_BASE * (1 + TUNABLES.BETA * Math.log(1 + Math.max(0, m.uses))) * (1 + TUNABLES.EMO_SLOPE * felt)) /
+    (TUNABLES.S_BASE *
+      (1 + TUNABLES.BETA * Math.log(1 + Math.max(0, m.uses))) *
+      (1 + TUNABLES.EMO_SLOPE * felt) *
+      returnFactor(m.returns ?? 0)) /
     kindPhysics(m.kind).kappa
   );
+}
+
+/** The returns' share of stability: `1 + RETURN_GAIN x ln(1 + returns)`. */
+export function returnFactor(returns: number): number {
+  const r = Number.isFinite(returns) ? Math.max(0, returns) : 0;
+  return 1 + TUNABLES.RETURN_GAIN * Math.log(1 + r);
 }
 
 /** The decay curve itself, over an elapsed lived-day interval. */
@@ -547,62 +605,124 @@ export function band(m: MemoryPhysics, d: number, shape: DecayShape = TUNABLES.D
   return strength(m, d, shape) >= TUNABLES.THETA_SEM ? "semantic" : "episodic";
 }
 
+// ---------------------------------------------------------------------------
+// §5.3 Core — the two lanes into the identity band (2026-09-26)
+// ---------------------------------------------------------------------------
+
+/** Which lane carried a memory into the core. */
+export type CoreLane = "fast" | "slow";
+
 export type PromotionReason =
   | "eligible"
   | "already-identity"
-  | "base-below-identity-threshold"
-  | "insufficient-distinct-days";
+  /** Not a memory about me or about us: only `self`, and `person` memories
+   *  about the owner, may become core. Repetition alone makes nothing else
+   *  identity, however often it returns (guarantee 4). */
+  | "not-about-me"
+  /** The owner sent it back to ordinary fading; the lanes do not re-promote it. */
+  | "demoted-by-owner"
+  /** About me, but neither lane is met yet (`fast` / `slow` say which part). */
+  | "no-lane-yet";
 
 export interface PromotionVerdict {
   eligible: boolean;
   /** The first blocking reason, or "eligible". */
   reason: PromotionReason;
-  /** Every blocking reason — promotion needs ALL conditions, so all are reported. */
+  /** Every blocking reason. */
   blockedBy: PromotionReason[];
+  /** The lane that is met (fast first), or null. */
+  lane: CoreLane | null;
+  /** Fast lane: strongly felt AND it came back at least once after a gap. */
+  fast: {
+    readonly met: boolean;
+    readonly intensity: number;
+    readonly needIntensity: number;
+    /** Lived days from birth to the latest awake return; null when none. */
+    readonly gap: number | null;
+    readonly needGap: number;
+  };
+  /** Slow lane: awake returns on several distinct lived days over weeks. */
+  slow: {
+    readonly met: boolean;
+    readonly days: number;
+    readonly needDays: number;
+    /** Lived days from the first awake return to the last. */
+    readonly span: number;
+    readonly needSpan: number;
+  };
+  /** `base` as it stands — carried for the record, never a threshold. */
   base: number;
-  reinforcedDays: number;
-  requiredDays: number;
-  threshold: number;
+  /** Distinct lived days with a counted awake return. */
+  returnDays: number;
+}
+
+/** Who a memory is about, as the core lanes need it — decided by the caller,
+ *  which can read the words and the owner's names (sleep's consolidate phase). */
+export interface CoreContext {
+  /** Kind `self`, or a `person` memory about the owner. */
+  readonly aboutMe: boolean;
+  /** The owner demoted it (`counterparts core --demote`). */
+  readonly demoted?: boolean;
 }
 
 /**
- * Promotion eligibility (§5.3): `base >= THETA_ID` AND reinforcement on
- * >= N = 3 DISTINCT lived days. Evaluated at consolidation by `sleep/`.
- * Note it is `base`, not decayed strength: promotion is about what the memory
- * earned, not about how recently it was touched.
+ * Core eligibility (§5.3, owner decisions 2026-09-26). Only for memories about
+ * me or about us (`ctx.aboutMe`), and then by one of two lanes:
+ *
+ *   - FAST: strongly felt (`emotionalIntensity >= CORE_FAST_FEELING`, either
+ *     person's feeling) AND it has come back awake at least once, at least
+ *     `CORE_FAST_GAP_DAYS` after it was made;
+ *   - SLOW: not strongly felt, but it kept coming back organically — awake
+ *     returns on `>= CORE_SLOW_DAYS` distinct lived days spanning
+ *     `>= CORE_SLOW_SPAN_DAYS`.
+ *
+ * `base` is no longer read (the `promotionBase` stopgap of #244 is retired):
+ * emotion counts toward core ON PURPOSE, through the fast lane, and a dream's
+ * replays do not count toward either lane — a dream can nominate, only a lane
+ * promotes. Evaluated at consolidation by `sleep/`, which executes the crossing
+ * (and caps how many cross per night).
  */
-/**
- * The base promotion reads: `base` WITHOUT the emotion lift (§5.10). Emotion
- * makes a memory taller and slower to fade, but it does not count toward
- * identity — identity is decay-exempt and permanent, and how a memory earns it
- * is being redesigned with the owner (dreaming + consolidation, 2026-09-26).
- * Until then promotion keeps its pre-#244 reach exactly.
- */
-export function promotionBase(m: MemoryPhysics): number {
-  const k = kindPhysics(m.kind);
-  return Math.max(k.wSal * sal(m.salience), k.wRep * rep(m)) + cons(m);
-}
-
-export function promotionEligibility(m: MemoryPhysics): PromotionVerdict {
-  const b = promotionBase(m);
-  const days = reinforcedDays(m);
+export function promotionEligibility(m: MemoryPhysics, ctx: CoreContext): PromotionVerdict {
+  const intensity = emotionalIntensity(m);
+  const days = m.returnDays ?? 0;
+  const first = m.firstReturnDay ?? null;
+  const last = m.lastReturnDay ?? null;
+  const gap = last === null ? null : last - m.birthDay;
+  const span = first === null || last === null ? 0 : last - first;
+  const fastMet = intensity >= TUNABLES.CORE_FAST_FEELING && gap !== null && gap >= TUNABLES.CORE_FAST_GAP_DAYS;
+  const slowMet = days >= TUNABLES.CORE_SLOW_DAYS && span >= TUNABLES.CORE_SLOW_SPAN_DAYS;
   const blockedBy: PromotionReason[] = [];
   if (m.promotedIdentity) blockedBy.push("already-identity");
-  if (b < TUNABLES.THETA_ID) blockedBy.push("base-below-identity-threshold");
-  if (days < TUNABLES.N_PROMOTION_DAYS) blockedBy.push("insufficient-distinct-days");
+  if (!ctx.aboutMe) blockedBy.push("not-about-me");
+  if (ctx.demoted === true) blockedBy.push("demoted-by-owner");
+  if (!fastMet && !slowMet) blockedBy.push("no-lane-yet");
   return {
     eligible: blockedBy.length === 0,
     reason: blockedBy[0] ?? "eligible",
     blockedBy,
-    base: b,
-    reinforcedDays: days,
-    requiredDays: TUNABLES.N_PROMOTION_DAYS,
-    threshold: TUNABLES.THETA_ID,
+    lane: fastMet ? "fast" : slowMet ? "slow" : null,
+    fast: {
+      met: fastMet,
+      intensity,
+      needIntensity: TUNABLES.CORE_FAST_FEELING,
+      gap,
+      needGap: TUNABLES.CORE_FAST_GAP_DAYS,
+    },
+    slow: {
+      met: slowMet,
+      days,
+      needDays: TUNABLES.CORE_SLOW_DAYS,
+      span,
+      needSpan: TUNABLES.CORE_SLOW_SPAN_DAYS,
+    },
+    base: base(m),
+    returnDays: days,
   };
 }
 
 export type ConsolidationReason =
   | "eligible"
+  | "not-legacy"
   | "already-consolidated"
   | "archived"
   | "born-today"
@@ -619,20 +739,18 @@ export interface ConsolidationVerdict {
 }
 
 /**
- * Consolidation eligibility (SEAMS item M), mirroring `promotionEligibility`:
- * a memory that has survived at least one lived day past its birth and now sits
- * at or above the semantic floor is eligible. `consolidated` is worth
- * `+CONS_BONUS` to `base` for the rest of the memory's life (§5.2), so deciding
- * WHEN it turns on is arithmetic and belongs here — `sleep/` executes a crossing
- * it does not define, exactly as it does for promotion.
+ * THE LEGACY consolidation marking (SEAMS item M), kept for memories born
+ * before schema v8 and for them alone (`legacy`, 2026-09-26): a memory that
+ * survived at least one lived day past its birth and sits at or above the
+ * semantic floor is marked, worth `+CONS_BONUS` for the rest of its life. The
+ * upgrade leaves this path open for exactly the rows that had it, so no memory
+ * is marked later than it would have been — nothing drops a band or prunes
+ * sooner because of the upgrade. A memory made since the upgrade is refused
+ * `not-legacy`: returns (§5.11) are its road to staying strong.
  *
- * **There is deliberately NO reinforcement requirement.** "A formative one-shot
- * consolidates without repetition" is a property `base` protects with a `max`,
- * and a repetition gate here would quietly repeal it.
- *
- * Nothing consolidates on the day it was encoded, whatever it claims for itself:
- * sleep consolidates yesterday's experience. A memory already in the identity
- * band is past the semantic floor by definition and is not blocked by it.
+ * There is still deliberately NO reinforcement requirement on the legacy path
+ * ("a formative one-shot consolidates without repetition"). Nothing
+ * consolidates on the day it was encoded.
  */
 export function consolidationEligibility(
   m: MemoryPhysics,
@@ -642,6 +760,7 @@ export function consolidationEligibility(
 ): ConsolidationVerdict {
   const b = band(m, d, shape);
   const blockedBy: ConsolidationReason[] = [];
+  if (m.legacy !== true) blockedBy.push("not-legacy");
   if (opts.archived === true) blockedBy.push("archived");
   if (m.consolidated) blockedBy.push("already-consolidated");
   if (d <= m.birthDay) blockedBy.push("born-today");
@@ -659,7 +778,11 @@ export interface PromotionCrossing {
   readonly event: "band.promoted";
   readonly day: number;
   readonly kind: Kind;
+  readonly lane: CoreLane;
   readonly base: number;
+  readonly intensity: number;
+  readonly returnDays: number;
+  /** Kept on the record for the readers that print it; now equals `returnDays`. */
   readonly reinforcedDays: number;
 }
 
@@ -672,9 +795,9 @@ export interface PromotionOutcome {
   next: Pick<MemoryPhysics, "promotedIdentity"> | null;
 }
 
-export function promote(m: MemoryPhysics, d: number): PromotionOutcome {
-  const verdict = promotionEligibility(m);
-  if (!verdict.eligible) return { promoted: false, verdict, crossing: null, next: null };
+export function promote(m: MemoryPhysics, d: number, ctx: CoreContext): PromotionOutcome {
+  const verdict = promotionEligibility(m, ctx);
+  if (!verdict.eligible || verdict.lane === null) return { promoted: false, verdict, crossing: null, next: null };
   return {
     promoted: true,
     verdict,
@@ -682,11 +805,114 @@ export function promote(m: MemoryPhysics, d: number): PromotionOutcome {
       event: "band.promoted",
       day: d,
       kind: m.kind,
+      lane: verdict.lane,
       base: verdict.base,
-      reinforcedDays: verdict.reinforcedDays,
+      intensity: verdict.fast.intensity,
+      returnDays: verdict.returnDays,
+      reinforcedDays: verdict.returnDays,
     },
     next: { promotedIdentity: true },
   };
+}
+
+// ---------------------------------------------------------------------------
+// §5.11 Returns — durability from coming back
+// ---------------------------------------------------------------------------
+
+export type ReturnSource = "awake" | "dream";
+
+export type ReturnReason =
+  | "counted"
+  /** Shown in the wake's hints lane when it was used: the display may have
+   *  prompted the use, and counting it is the rich-get-richer loop (#238). */
+  | "on-display"
+  | "birth-day"
+  /** An awake credit below full weight (surfaced, not used): not a return. */
+  | "not-referenced"
+  /** A return (either kind) already counted this lived day, or later. */
+  | "already-returned-today"
+  | "ignorable-tier";
+
+export interface ReturnOutcome {
+  counted: boolean;
+  reason: ReturnReason;
+  source: ReturnSource;
+  /** Lived days since the previous counted return (or birth). */
+  gap: number;
+  /** What it added to `returns`: the source's weight x `spacingWeight(gap)`. */
+  weight: number;
+  next: {
+    returns: number;
+    returnDays: number;
+    firstReturnDay: number | null;
+    lastReturnDay: number | null;
+    lastDreamDay: number | null;
+  };
+}
+
+/** How spacing weighs a return: `1 - exp(-gap / RETURN_SPACING_DAYS)`, 0 for no gap. */
+export function spacingWeight(gap: number): number {
+  if (!Number.isFinite(gap) || gap <= 0) return 0;
+  return 1 - Math.exp(-gap / TUNABLES.RETURN_SPACING_DAYS);
+}
+
+/** The lived day spacing is measured from: the last counted return of either
+ *  kind, or the birth day when there has been none. */
+export function lastReturnAnchor(m: Pick<MemoryPhysics, "birthDay" | "lastReturnDay" | "lastDreamDay">): number {
+  return Math.max(m.birthDay, m.lastReturnDay ?? -Infinity, m.lastDreamDay ?? -Infinity);
+}
+
+/**
+ * One RETURN (§5.11, owner decisions 2026-09-26): a credited organic use on a
+ * lived day after the memory's previous counted return (awake), or a dream
+ * replay (at `DREAM_RETURN_WEIGHT`). Its weight is spacing-scaled, so returns
+ * close together count less — and NEVER against: this adds to `returns` and
+ * nothing else, and it is computed BESIDE `creditUse`, which is unchanged.
+ *
+ * An awake return is refused `on-display` when the memory was showing in the
+ * wake's hints lane: the use still credits (`creditUse`), but it buys no
+ * durability and no lane day, because the display may have prompted it.
+ * `tierWeight` is the credited use's §5.5 weight; only a full-weight
+ * (referenced) use is a return at all — a memory surfaced and left unused did
+ * not come back, it was offered.
+ */
+export function creditReturn(
+  m: MemoryPhysics,
+  d: number,
+  opts: { source: ReturnSource; tierWeight?: number; onDisplay?: boolean },
+): ReturnOutcome {
+  const unchanged = {
+    returns: m.returns ?? 0,
+    returnDays: m.returnDays ?? 0,
+    firstReturnDay: m.firstReturnDay ?? null,
+    lastReturnDay: m.lastReturnDay ?? null,
+    lastDreamDay: m.lastDreamDay ?? null,
+  };
+  const gap = d - lastReturnAnchor(m);
+  const refuse = (reason: ReturnReason): ReturnOutcome => ({
+    counted: false,
+    reason,
+    source: opts.source,
+    gap,
+    weight: 0,
+    next: unchanged,
+  });
+  const tier = opts.source === "dream" ? TUNABLES.DREAM_RETURN_WEIGHT : (opts.tierWeight ?? TUNABLES.W_REFERENCED);
+  if (tier <= 0) return refuse("ignorable-tier");
+  if (opts.source === "awake" && tier < TUNABLES.W_REFERENCED) return refuse("not-referenced");
+  if (d <= m.birthDay) return refuse("birth-day");
+  if (opts.source === "awake" && opts.onDisplay === true) return refuse("on-display");
+  if (gap <= 0) return refuse("already-returned-today");
+  const weight = (opts.source === "dream" ? tier : 1) * spacingWeight(gap);
+  const next = { ...unchanged, returns: unchanged.returns + weight };
+  if (opts.source === "dream") {
+    next.lastDreamDay = d;
+  } else {
+    next.lastReturnDay = d;
+    next.returnDays = unchanged.returnDays + 1;
+    if (next.firstReturnDay === null) next.firstReturnDay = d;
+  }
+  return { counted: true, reason: "counted", source: opts.source, gap, weight, next };
 }
 
 // ---------------------------------------------------------------------------

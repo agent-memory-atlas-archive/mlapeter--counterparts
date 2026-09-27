@@ -50,6 +50,19 @@ export interface SelfTunables {
    *  "identity is re-inhabited, not retrieved"). CAL. */
   WARM_FLOOR: number;
 
+  // ── the hints ("Nearby") lane's rotation (2026-09-26, harvested from #238) ─
+  /**
+   * What one published showing in the hints lane adds to a memory's
+   * habituation load — the SAME whether or not it was used while shown (#238's
+   * review: a half step for "used on display" barely habituated, and a use the
+   * display may have prompted is not evidence the hint was wanted). CAL.
+   */
+  HINT_STEP: number;
+  /** Lived days for the load to fall to 1/e once it stops being shown. CAL. */
+  HINT_RECOVERY_DAYS: number;
+  /** The pull a load leaves: `1 / (1 + HINT_HABITUATION x load)`. CAL. */
+  HINT_HABITUATION: number;
+
   // ── the self page (plan 2026-09-18, S1) ───────────────────────────────────
   /**
    * Bytes of the WAKE the page may take. A page longer than this renders cut, at
@@ -184,6 +197,10 @@ export const SELF_TUNABLES: SelfTunables = {
   HINTS_MAX: 8,
   HORIZON_MAX: 6,
   WARM_FLOOR: 0.35,
+
+  HINT_STEP: 1,
+  HINT_RECOVERY_DAYS: 3,
+  HINT_HABITUATION: 1,
 
   PAGE_WAKE_BYTES: 6_144,
   PAGE_MAX_BYTES: 16_384,

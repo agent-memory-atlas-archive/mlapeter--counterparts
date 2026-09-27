@@ -68,6 +68,7 @@ import { rowToPhysics } from "../store/operational.js";
 import { TUNABLES } from "./tunables.js";
 import type { BandTransition, PhaseCtx, PhaseOutcome } from "./types.js";
 import { countSkip, emptyOutcome, isJournal, recordBandTransition } from "./types.js";
+import { censusDue, upgradeCensus } from "./upgrade.js";
 import type { StrengthCache, StrengthRow } from "./strength-cache.js";
 
 /** Skip categories, enumerated so a zero is distinguishable from an absence. */
@@ -114,6 +115,16 @@ export interface DecayResult extends PhaseOutcome {
 export function runDecay(ctx: PhaseCtx, cache: StrengthCache | null): DecayResult {
   const out = emptyOutcome();
   for (const skip of DECAY_SKIPS) out.skipped[skip] = 0;
+  // Once per store, the first decay pass after the v8 upgrade measures every
+  // row old-vs-new (`upgrade.ts`). It is a READ plus one meta row; a failure
+  // here is recorded and never costs the tick.
+  if (ctx.apply && censusDue(ctx.store)) {
+    try {
+      upgradeCensus(ctx);
+    } catch (err) {
+      ctx.event("sleep.upgrade.census.failed", undefined, { error: err instanceof Error ? err.name : "UNKNOWN" });
+    }
+  }
 
   const { store, day } = ctx;
   const denied = new Set(store.deniedIds());

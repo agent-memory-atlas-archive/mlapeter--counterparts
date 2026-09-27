@@ -4,7 +4,7 @@
  * Split out of `web/views.ts`, which re-exports every public name from here;
  * the four rules in that file's header apply to every line below.
  */
-import { TUNABLES as PHYSICS, kindPhysics, promotionEligibility, sal, salArm } from "../../../../core/physics/index.js";
+import { TUNABLES as PHYSICS, promotionEligibility, sal } from "../../../../core/physics/index.js";
 import { isConfidential } from "../../../../core/recall/index.js";
 import {
   FRAMING,
@@ -16,7 +16,7 @@ import {
   readChapterLead,
 } from "../../../../core/self/index.js";
 import type { PageVersion, PageWriterRun, PageWriterStatus } from "../../../../core/self/index.js";
-import { TUNABLES as SLEEP, isJournal } from "../../../../core/sleep/index.js";
+import { TUNABLES as SLEEP, aboutMe, isJournal, ownerNames } from "../../../../core/sleep/index.js";
 import type { Band, Kind } from "../../../../core/types.js";
 import { NEVER, NONE } from "../../layout.js";
 import { localDate } from "../../../../core/time.js";
@@ -168,21 +168,26 @@ export interface PageStep {
   readonly bytes: number | null;
 }
 
+/**
+ * One memory about me or about us, on its way to the core (2026-09-26): how far
+ * along each lane it is. Fast: how strongly it was felt against the bar, and
+ * whether it has come back after a gap. Slow: on how many separate lived days
+ * it came back, over how many.
+ */
 export interface Candidate {
   readonly id: string;
   readonly text: string;
   readonly confidential: boolean;
   readonly kind: Kind;
-  /** What the memory has earned (`physics#base`), and the bar it must reach. */
-  readonly base: number;
-  readonly threshold: number;
-  /** True when consolidation's one-time bonus is already in `base`. */
-  readonly consolidated: boolean;
-  readonly bonus: number;
-  /** Distinct lived days a use was credited, and how many the rule needs. */
+  readonly feeling: number;
+  readonly needFeeling: number;
+  readonly returned: boolean;
   readonly days: number;
   readonly requiredDays: number;
-  /** Both conditions met: the next consolidation pass crosses it. */
+  readonly span: number;
+  readonly needSpan: number;
+  /** The lane that is met, when one is: the next consolidation crosses it (the nightly cap permitting). */
+  readonly lane: "fast" | "slow" | null;
   readonly eligible: boolean;
 }
 
@@ -206,14 +211,21 @@ export interface SettlingView {
   readonly unreadable: { id: string; label: string }[];
   /** The closest candidates, closest first. */
   readonly candidates: Candidate[];
-  /** Memories that could reach the core by use and have at least one credited day. */
+  /** Memories about me or about us that have come back at least once. */
   readonly onTheWay: number;
-  /** Memories that could reach it but have never been used on a later day. */
+  /** Memories about me or about us that have not come back yet. */
   readonly unused: number;
-  /** Memories whose score and kind put the core out of reach by use alone. */
+  /** Memories that are not about me or about us: the core is not for them. */
   readonly outOfReach: number;
   /** The rule, as numbers, so the page states it rather than restating it. */
-  readonly rule: { threshold: number; days: number; everyDays: number; repCap: number; bonus: number };
+  readonly rule: {
+    needFeeling: number;
+    needGap: number;
+    days: number;
+    span: number;
+    everyDays: number;
+    cap: number;
+  };
   /** Two-word absences, for each list that is empty. */
   readonly coreAbsent: string | null;
   readonly guardedAbsent: string | null;
@@ -514,24 +526,34 @@ const LOG_LIMIT = 2_000;
 
 type Shaped = MindView["identity"][number];
 
-/** One memory on its way to the core, in physics' own terms. */
+/**
+ * One memory about me or about us on its way to the core, in physics' own
+ * terms (2026-09-26): how far along each lane it is.
+ */
 export interface CoreCandidate {
   readonly id: string;
   readonly kind: Kind;
-  readonly base: number;
-  readonly consolidated: boolean;
-  /** Credited use on this many distinct lived days, of `N_PROMOTION_DAYS`. */
+  /** Fast lane: how strongly it was felt, and whether it has come back after a gap. */
+  readonly feeling: number;
+  readonly returned: boolean;
+  /** Slow lane: awake returns on this many distinct lived days, over `span` of them. */
   readonly days: number;
+  readonly span: number;
+  /** The lane that is met, when one is. */
+  readonly lane: "fast" | "slow" | null;
   readonly eligible: boolean;
+  /** The better of the two lanes' progress, 0..2. */
+  readonly closeness: number;
 }
 
 /**
  * The memories that can still reach the core, closest first, and how many never
  * can (see `settlingView`). Shared with the home page's core tile, so "closest:
- * 1 of 3 days" there is the head of the list the self tab draws.
+ * 1 of 5 days" there is the head of the list the self tab draws.
  */
 export function coreCandidates(src: DashboardSource, pageId: string | null): { raw: CoreCandidate[]; outOfReach: number } {
   const store = src.store;
+  const owner = ownerNames(store);
   const raw: CoreCandidate[] = [];
   let outOfReach = 0;
   for (const id of store.list({ archived: false })) {
@@ -543,21 +565,29 @@ export function coreCandidates(src: DashboardSource, pageId: string | null): { r
     } catch {
       continue;
     }
-    const v = promotionEligibility(p);
-    if (v.blockedBy.includes("already-identity")) continue;
-    const k = kindPhysics(p.kind);
-    const best = Math.max(k.wSal * salArm(p), k.wRep * PHYSICS.REP_CAP) + PHYSICS.CONS_BONUS;
-    if (best < v.threshold) {
+    if (p.promotedIdentity) continue;
+    if (!aboutMe(store, row, owner)) {
       outOfReach += 1;
       continue;
     }
-    raw.push({ id, kind: p.kind, base: v.base, consolidated: p.consolidated, days: v.reinforcedDays, eligible: v.eligible });
+    const v = promotionEligibility(p, { aboutMe: true, demoted: false });
+    const returned = v.fast.gap !== null && v.fast.gap >= v.fast.needGap;
+    const fast = Math.min(1, v.fast.intensity / v.fast.needIntensity) + (returned ? 1 : 0);
+    const slow = Math.min(1, v.slow.days / v.slow.needDays) + Math.min(1, v.slow.span / v.slow.needSpan);
+    raw.push({
+      id,
+      kind: p.kind,
+      feeling: v.fast.intensity,
+      returned,
+      days: v.slow.days,
+      span: v.slow.span,
+      lane: v.lane,
+      eligible: v.eligible,
+      closeness: Math.max(fast, slow),
+    });
   }
-  // Closest first: how much of each condition is met, both halves weighted
-  // alike; ties by days, then by what it has earned.
-  const closeness = (r: CoreCandidate): number =>
-    Math.min(1, r.base / PHYSICS.THETA_ID) + Math.min(1, r.days / PHYSICS.N_PROMOTION_DAYS);
-  raw.sort((a, b) => closeness(b) - closeness(a) || b.days - a.days || b.base - a.base || (a.id < b.id ? -1 : 1));
+  // Closest first: the better of the two lanes' progress; ties by return days.
+  raw.sort((a, b) => b.closeness - a.closeness || b.days - a.days || (a.id < b.id ? -1 : 1));
   return { raw, outOfReach };
 }
 
@@ -565,14 +595,11 @@ export function coreCandidates(src: DashboardSource, pageId: string | null): { r
  * The core as it stands, and — the part a young store needs — what is on its way.
  *
  * The candidates are computed with physics' OWN rule, `promotionEligibility`
- * (base >= THETA_ID and credited use on N distinct lived days); nothing here
- * restates the thresholds. What this adds is one honest distinction the rule
- * implies: `base` is `max(wSal x sal, wRep x rep) + cons`, repetition caps at
- * REP_CAP and consolidation adds CONS_BONUS once, so a memory whose best case
- * stays under the bar can never get there by being used (mechanism audit
- * 2026-09-24, Consolidation). Those are counted apart, not listed as "on their
- * way". Schema rows (the page, the identity core, beliefs) are not memories and
- * are left out, as are journal rows.
+ * (2026-09-26: only memories about me or about us, by the fast lane or the slow
+ * lane), and sleep's own "about me" reading; nothing here restates a
+ * threshold. Memories that are not about me or about us can never become core
+ * and are counted apart. Schema rows (the page, the identity core, beliefs)
+ * are not memories and are left out, as are journal rows.
  */
 function settlingView(
   src: DashboardSource,
@@ -595,12 +622,14 @@ function settlingView(
       text: t.text ?? t.label,
       confidential: t.confidential,
       kind: r.kind,
-      base: r.base,
-      threshold: PHYSICS.THETA_ID,
-      consolidated: r.consolidated,
-      bonus: PHYSICS.CONS_BONUS,
+      feeling: r.feeling,
+      needFeeling: PHYSICS.CORE_FAST_FEELING,
+      returned: r.returned,
       days: r.days,
-      requiredDays: PHYSICS.N_PROMOTION_DAYS,
+      requiredDays: PHYSICS.CORE_SLOW_DAYS,
+      span: r.span,
+      needSpan: PHYSICS.CORE_SLOW_SPAN_DAYS,
+      lane: r.lane,
       eligible: r.eligible,
     };
   });
@@ -629,11 +658,12 @@ function settlingView(
     unused: raw.filter((r) => r.days === 0).length,
     outOfReach,
     rule: {
-      threshold: PHYSICS.THETA_ID,
-      days: PHYSICS.N_PROMOTION_DAYS,
+      needFeeling: PHYSICS.CORE_FAST_FEELING,
+      needGap: PHYSICS.CORE_FAST_GAP_DAYS,
+      days: PHYSICS.CORE_SLOW_DAYS,
+      span: PHYSICS.CORE_SLOW_SPAN_DAYS,
       everyDays: SLEEP.CADENCE.consolidate,
-      repCap: PHYSICS.REP_CAP,
-      bonus: PHYSICS.CONS_BONUS,
+      cap: SLEEP.CORE_MAX_PER_SLEEP,
     },
     coreAbsent: x.core.length === 0 ? x.absent : null,
     guardedAbsent: x.guarded.length === 0 ? x.absent : null,

@@ -20,7 +20,7 @@
 import { createHash } from "node:crypto";
 import type { Band, Kind, MemoryPhysics } from "../types.js";
 import { strength } from "../physics/index.js";
-import type { ProseDoc, ReadOnlyStore, Store } from "../store/index.js";
+import type { ProseDoc, ReadOnlyStore, Store, WakeDisplayRow } from "../store/index.js";
 import type { SelfTunables } from "./tunables.js";
 
 export type LaneName = "identity" | "craft" | "threads" | "hints" | "horizon";
@@ -47,6 +47,78 @@ export interface Ranked {
   readonly personScoped: boolean;
   /** Lived day this element last rendered in a wake; -1 never. Identity only. */
   readonly lastRendered: number;
+  /** Hints only: why it ranked where it did (`hintReading`). */
+  readonly hint?: HintReading;
+}
+
+/**
+ * HOW A HINT RANKS (2026-09-26, the owner's "rich get richer"; harvested from
+ * #238 and reworked after its review). The hints ("Nearby, if it helps:")
+ * lane used to be "strongest first", so one strong memory held it nearly
+ * every session: it was shown, mentioned, credited, still strongest, shown
+ * again. Two changes break the loop, and both are here:
+ *
+ *   - **ORGANIC strength.** A hint is scored on its strength decayed since its
+ *     last ORGANIC use — its last counted awake return, or any use from before
+ *     it was ever shown — not since its last use of any kind. A use while it
+ *     was showing is exactly the use the display may have prompted, so it
+ *     keeps the memory's own strength up (it credits, as always) but buys it
+ *     no advantage here, and it is not a return (physics §5.11).
+ *   - **HABITUATION.** Each published showing adds `HINT_STEP` to a load that
+ *     recovers as `exp(-days / HINT_RECOVERY_DAYS)` once it stops showing; the
+ *     pull left is `1 / (1 + HINT_HABITUATION x load)`. Used or not while it
+ *     was shown, the step is the same. A return AFTER it left the wake — the
+ *     memory reached for without the prompt — resets the load outright.
+ *
+ * The score is `organic x habituation`; the warm floor still reads the
+ * memory's own strength. Pure: the caller hands in the display row.
+ */
+export interface HintReading {
+  readonly score: number;
+  /** Strength decayed from the last organic use. */
+  readonly organic: number;
+  /** The load as it stands on `day`, before this render. */
+  readonly load: number;
+  readonly habituation: number;
+  readonly habit: "fresh" | "habituated" | "reset";
+  /** The load to record if this render keeps it. */
+  readonly nextLoad: number;
+}
+
+export function hintReading(
+  physics: MemoryPhysics,
+  display: WakeDisplayRow | undefined,
+  day: number,
+  t: Pick<SelfTunables, "HINT_STEP" | "HINT_RECOVERY_DAYS" | "HINT_HABITUATION">,
+): HintReading {
+  const lastReturn = physics.lastReturnDay ?? null;
+  // What came back unprompted. Before it was ever shown, every use; after that,
+  // only the uses it had then plus its awake returns (each return is one
+  // referenced use the display did not prompt) — so a use while showing moves
+  // neither the anchor nor the stability this score decays by.
+  const organicUses =
+    display === undefined ? physics.uses : Math.min(physics.uses, display.ever_uses + (physics.returnDays ?? 0));
+  const anchor =
+    display === undefined
+      ? physics.lastUsedDay
+      : Math.max(physics.birthDay, display.ever_last_used, lastReturn ?? -Infinity);
+  const organic = strength({ ...physics, uses: organicUses, lastUsedDay: anchor }, day);
+  let load = 0;
+  let habit: HintReading["habit"] = "fresh";
+  if (display !== undefined && display.lane === "hints") {
+    const leftOn = display.closed_day;
+    if (leftOn !== null && lastReturn !== null && lastReturn > leftOn) {
+      habit = "reset";
+    } else {
+      load = display.load * Math.exp(-Math.max(0, day - display.shown_day) / t.HINT_RECOVERY_DAYS);
+      habit = load > 0 ? "habituated" : "fresh";
+    }
+  }
+  const habituation = 1 / (1 + t.HINT_HABITUATION * load);
+  // A same-day re-render is one showing, not two.
+  const sameDay = display !== undefined && habit !== "reset" && display.shown_day === day;
+  const nextLoad = sameDay ? display.load : load + t.HINT_STEP;
+  return { score: organic * habituation, organic, load, habituation, habit, nextLoad };
 }
 
 /**
@@ -79,6 +151,10 @@ export interface Scanned {
    *  dates a MIGRATED element differently — its encode date is an upper bound. */
   readonly source: string | null;
   readonly lastRendered: number;
+  /** What the wake's hints lane last did with it (v8 `wake_display`), if anything. */
+  readonly display?: WakeDisplayRow;
+  /** The lived day this scan read strength at. */
+  readonly day?: number;
 }
 
 /**
@@ -88,6 +164,7 @@ export interface Scanned {
 export function scanActive(store: Store, day: number): Scanned[] {
   const out: Scanned[] = [];
   const rendered = lastRenderedOf(store);
+  const displays = store.wakeDisplays();
   for (const id of store.list({ type: "memory", archived: false })) {
     const row = store.row(id);
     if (row === undefined) continue;
@@ -112,6 +189,8 @@ export function scanActive(store: Store, day: number): Scanned[] {
       unresolved: doc.meta["unresolved"] === true,
       source: row.source,
       lastRendered: rendered.get(id) ?? -1,
+      ...(displays.has(id) ? { display: displays.get(id) as WakeDisplayRow } : {}),
+      day,
     });
   }
   return out;
@@ -158,8 +237,17 @@ function byThreadAge(a: Ranked, b: Ranked): number {
   return byContentThenId(a, b);
 }
 
-function rank(s: Scanned, lane: LaneName): Ranked {
+/** Hints order: the hint score (organic strength x habituation), then as `byStrength`. */
+function byHint(a: Ranked, b: Ranked): number {
+  const sa = a.hint?.score ?? a.strength;
+  const sb = b.hint?.score ?? b.strength;
+  if (sb !== sa) return sb - sa;
+  return byStrength(a, b);
+}
+
+function rank(s: Scanned, lane: LaneName, hint?: HintReading): Ranked {
   return {
+    ...(hint === undefined ? {} : { hint }),
     id: s.id,
     lane,
     kind: s.kind,
@@ -195,7 +283,9 @@ export interface Lanes {
  *   craft    — skill-kind, not already in identity, above the warm floor. The
  *              procedural self is rendered as CONTENT, never a pointer (§1).
  *   threads  — `unresolved` memories: person-scoped first, oldest-opened first.
- *   hints    — everything else warm enough to be worth a nudge, strongest first.
+ *   hints    — everything else warm enough to be worth a nudge, by `hintReading`:
+ *              organic strength x habituation, so one strong memory cannot
+ *              hold the lane every day (2026-09-26).
  *   horizon  — the caller's arriving occasions, in the order supplied
  *              (`prospective/` owns the ordering — INTERFACE-GAPS #3).
  *
@@ -226,13 +316,13 @@ export function rankLanes(
       craft.push(rank(s, "craft"));
       continue;
     }
-    hints.push(rank(s, "hints"));
+    hints.push(rank(s, "hints", hintReading(s.physics, s.display, s.day ?? s.doc.bornDay, t)));
   }
 
   identity.sort(byRotation);
   craft.sort(byStrength);
   threads.sort(byThreadAge);
-  hints.sort(byStrength);
+  hints.sort(byHint);
 
   return {
     identity: identity.slice(0, t.IDENTITY_MAX),

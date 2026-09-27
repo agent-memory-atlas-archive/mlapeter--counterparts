@@ -16,6 +16,15 @@ export const TUNABLES = {
   CONSOLIDATION_EVERY_DAYS: 3,
 
   /**
+   * At most this many memories become core in one sleep, strongest first
+   * (owner decision 2026-09-26: "~3 per sleep"). The rest stay eligible and
+   * wait for the next consolidation, counted as `promotion:cap` — a rail so a
+   * store that has just grown a lane of eligible memories does not rewrite
+   * who it is overnight. CAL.
+   */
+  CORE_MAX_PER_SLEEP: 3,
+
+  /**
    * Below this change in cached strength, the row is left alone — CALM BY
    * DEFAULT (§3, v1 §11 G8). Exponential decay moves a floor memory by ~1e-9 a
    * day; without a quantum every quiet day would rewrite the whole cache and
