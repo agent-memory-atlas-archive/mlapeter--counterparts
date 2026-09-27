@@ -12,6 +12,7 @@ step, no dependencies. `server.ts` serves them as files (see "Serving" below).
 |---|---|
 | `server.ts` | `node:http` on 127.0.0.1, the Host allowlist, `router()` (GET: `/`, `/brain` (now a redirect to `/#home`), the favicon, `/api/*`, the static files), and the POST hand-off to `actions.ts`. A store waiting for its one-time upgrade (v6 met by v7, `../upgrade.ts`) gets one calm page instead, and is tried again on every request |
 | `actions.ts` | managing: `POST /api/action/<name>` — the same-origin + per-launch-token guard, argument validation, and the console's own `run()` (loaded lazily; never handed the observer source). `ACTIONS` lists them: `ask`, `note`, `remove`, `backup`, `export`, `scope`, `rebrief`, `verify`, and `doctor` (a read: the health tab's checklist, `doctor --json`) |
+| `ask-voice.ts` | `toMyVoice(question, ownerName)`: Ask is the owner talking to me, so `ask` turns his question into my voice before it searches ("do you remember what I said" → "do I remember what Mike said"; his I → "you" when the store knows no name). Pure; the rules are in its header and `test/dashboard-ask-voice.test.ts`. The server reads the name (`sleep#ownerNames`) and hands `actions.ts` the string |
 | `static.ts` | `resolveStatic()`: which URL paths are static files and where they live (pure; no fs) |
 | `views.ts` | the index of `views/`: re-exports every view, so callers import from here |
 | `views/<name>.ts` | one module per `/api` view: `meta`, `overview` (the home tab's), `memories` (`/api/memories` + `/api/memories/list`), `memory`, `search` (`/api/search` + `/api/chapters`), `mind` (the self tab's), `activity`, `flow-view` (`/api/flow` + `/api/node`), `health`, `pulse`, `mechanisms`, `mechanism-panel` (`/api/mechanism?id=`) |
@@ -139,7 +140,9 @@ answers share. Sections: `search.js` (search by words,
 plus Ask via `act("ask", {json:true})`, its tiers drawn as brightness; a
 journal chapter and the memory drawn from it are folded into one answer by
 `fold.js`, with a "from chapter …" link, from `/api/chapters` in
-`views/search.ts`),
+`views/search.ts`; the question is turned into my voice server side by
+`ask-voice.ts`, and when it was, a grey "searched as: …" line sits under the
+answers with "search exactly as typed", which holds until the box changes),
 `tools.js` (write a note, and the back-up/export folder dialog),
 `hold.js` ("How firmly it's held": one bar, firm / settling / fading, from
 `holdOf` in `views/memories.ts`; a part clicked filters the list), `feel.js`

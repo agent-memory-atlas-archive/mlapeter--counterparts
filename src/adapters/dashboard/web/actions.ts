@@ -9,7 +9,9 @@
  *     in this file can reach that source: no function here takes a
  *     `DashboardSource`, a `Dashboard` or a `Store`. It is handed the store's
  *     DIRECTORY and the configuration's PATH — two strings, exactly what a
- *     person types after `--dir` and `--config`.
+ *     person types after `--dir` and `--config` — and, for `ask`, the owner's
+ *     NAME, a third string the server reads off the identity core per request
+ *     (`ask-voice.ts` turns the owner's question into my voice with it).
  *   - **Managing** is the console's own `run()` — the function
  *     `bin/counterparts.ts` calls — with an argv array built here from
  *     validated fields. Every check, refusal and sentence is the CLI's; this
@@ -48,6 +50,7 @@ import { isAbsolute } from "node:path";
 
 import { REQUIRE_EXPLICIT_DIR_ENV } from "../../../core/store/paths.js";
 import { CONFIG_ENV } from "../../config-path.js";
+import { toMyVoice } from "./ask-voice.js";
 
 /**
  * THE HOME A BARE-STORE ACTION RESOLVES CONFIGURATIONS UNDER: a path that does
@@ -210,6 +213,19 @@ export interface ActionContext {
   readonly env?: Record<string, string | undefined>;
   /** The home the console resolves configurations under (tests only). */
   readonly home?: string;
+  /** The owner's name as the store knows it (`sleep#ownerNames`, first entry),
+   *  or null: what `ask` puts in place of his "I" (`ask-voice.ts`). */
+  readonly ownerName?: string | null;
+}
+
+/** What `ask` searched with: the question in my voice, unless asked exactly. */
+export interface Searched {
+  /** The text handed to `counterparts ask`. */
+  readonly text: string;
+  /** Whether it differs from what the owner typed. */
+  readonly changed: boolean;
+  /** The owner asked for it exactly as typed (nothing turned round). */
+  readonly exact: boolean;
 }
 
 export interface Built {
@@ -221,6 +237,8 @@ export interface Built {
   readonly env?: Record<string, string | undefined>;
   /** The home the console resolves configurations under, for this one run. */
   readonly home?: string;
+  /** `ask` by question: what it searched with. */
+  readonly searched?: Searched;
 }
 
 /** A memory id as the store accepts one: its family prefix, no whitespace, no slash. */
@@ -335,7 +353,17 @@ function argvFor(name: ActionName, body: Body, ctx: ActionContext): Built {
       // The answers as data, so the page can list them and open each one.
       if (flag(body, "json")) argv.push("--json");
       if (id !== undefined) return { argv: [...argv, "--id", id] };
-      return { argv: [...argv, "--", words(question as string, "question")] };
+      // THE OWNER'S VOICE, TURNED INTO MINE (memories round 3b): "what have you
+      // learned about yourself?" searches as "what have I learned about
+      // myself?". The page shows what was searched and can ask again with
+      // `exact: true`. The CLI's own `ask` is untouched.
+      const typed = words(question as string, "question");
+      const exact = flag(body, "exact");
+      const voiced = exact ? { text: typed, changed: false } : toMyVoice(typed, ctx.ownerName ?? null);
+      return {
+        argv: [...argv, "--", words(voiced.text, "question")],
+        searched: { text: voiced.text, changed: voiced.changed, exact },
+      };
     }
     case "note": {
       const content = text(body, "text", MAX_TEXT, true) as string;
@@ -469,6 +497,8 @@ export interface ActionResult {
     readonly err?: string[];
     readonly truncated?: boolean;
     readonly error?: string;
+    /** `ask` by question: what it searched with. */
+    readonly searched?: Searched;
   };
 }
 
@@ -627,5 +657,17 @@ export async function runAction(
       },
     };
   }
-  return { status: 200, body: { action: name, command, exit, ok: exit === 0, out, err, truncated } };
+  return {
+    status: 200,
+    body: {
+      action: name,
+      command,
+      exit,
+      ok: exit === 0,
+      out,
+      err,
+      truncated,
+      ...(built.searched === undefined ? {} : { searched: built.searched }),
+    },
+  };
 }

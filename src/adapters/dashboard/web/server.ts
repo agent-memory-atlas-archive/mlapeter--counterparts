@@ -63,6 +63,7 @@ import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { ownerNames } from "../../../core/sleep/index.js";
 import { dataDir, isStoreError } from "../../../core/store/index.js";
 import { Dashboard } from "../index.js";
 import { UPGRADE_PENDING_SENTENCE, upgradePending } from "../upgrade.js";
@@ -428,7 +429,11 @@ export function startDashboard(opts: ServeOptions = {}): Promise<RunningDashboar
         send(res, 503, { error: "upgrade-pending", message: UPGRADE_PENDING_SENTENCE });
         return;
       }
-      void handleAction(req, res, rawPath.slice(ACTION_PREFIX.length), token, boundPort, actionContext);
+      const name = rawPath.slice(ACTION_PREFIX.length);
+      // `ask` turns the owner's question into my voice, with his name read off
+      // the identity core — a string handed across, never the source itself.
+      const ctx = name === "ask" ? { ...actionContext, ownerName: ownerNameOf(dashboard.source) } : actionContext;
+      void handleAction(req, res, name, token, boundPort, ctx);
       return;
     }
     let reply: Reply;
@@ -486,6 +491,15 @@ export function startDashboard(opts: ServeOptions = {}): Promise<RunningDashboar
       });
     });
   });
+}
+
+/** The owner's name as the store knows it (sleep's `ownerNames`, first entry), or null. */
+function ownerNameOf(source: DashboardSource): string | null {
+  try {
+    return ownerNames(source.store)[0] ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function header(req: IncomingMessage, name: string): string | null {

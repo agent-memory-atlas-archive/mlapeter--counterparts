@@ -1,7 +1,10 @@
 /* Find a memory: search by its words (live, as you type) and ask a question
    (the console's own `counterparts ask`, through the actions seam). Both lists
    use the list's row shape and open the memory on click; Ask's answers are
-   bright when they came clearly to mind and dim when they are a faint lead. */
+   bright when they came clearly to mind and dim when they are a faint lead.
+   Ask is the owner talking to me, so the server turns his question into my
+   voice before it searches (`web/ask-voice.ts`); when it did, one grey line
+   under the answers says what was searched, with "search exactly as typed". */
 import { absenceLine } from "../../../shared/absence.js";
 import { act, resultHtml } from "../../../shared/actions.js";
 import { api, fail } from "../../../shared/api.js";
@@ -24,7 +27,7 @@ export const markup = `
         <label class="find-lab" for="ask-q">Ask your memory a question</label>
         <div class="find-row">
           <input id="ask-q" type="text" autocomplete="off" spellcheck="false"
-            placeholder="what do I know about…?">
+            placeholder="ask me something — what do you remember about…?">
           <button class="mbtn primary" id="ask-go" type="button">Ask</button>
         </div>
         <div id="ask-out"></div>
@@ -39,8 +42,31 @@ export function mount() {
     clearTimeout(qtimer);
     qtimer = setTimeout(runSearch, 180);
   });
-  $("ask-go").addEventListener("click", ask);
+  $("ask-go").addEventListener("click", () => ask());
   $("ask-q").addEventListener("keydown", (e) => { if (e.key === "Enter") ask(); });
+  // "Search exactly as typed" holds until the question changes.
+  $("ask-q").addEventListener("input", () => { exact = false; });
+  $("ask-out").addEventListener("click", (e) => {
+    const b = e.target instanceof Element ? e.target.closest("[data-ask-exact]") : null;
+    if (!b) return;
+    exact = b.getAttribute("data-ask-exact") === "1";
+    ask();
+  });
+}
+
+/** The owner chose "search exactly as typed" for the question in the box. */
+let exact = false;
+
+/** The grey line under the answers: what was searched, and the way back. */
+export function searchedLine(searched) {
+  if (!searched) return "";
+  if (searched.exact) {
+    return '<div class="ask-as">searched exactly as typed · ' +
+      '<button type="button" class="linkbtn" data-ask-exact="0">undo</button></div>';
+  }
+  if (!searched.changed) return "";
+  return '<div class="ask-as">searched as: <span class="ask-as-text">' + esc(searched.text) + "</span> · " +
+    '<button type="button" class="linkbtn" data-ask-exact="1">search exactly as typed</button></div>';
 }
 
 async function runSearch() {
@@ -78,13 +104,14 @@ async function ask() {
   if (!q) return;
   $("ask-go").disabled = true;
   out.innerHTML = '<div class="act-out">thinking…</div>';
-  const r = await act("ask", { question: q, json: true });
+  const r = await act("ask", exact ? { question: q, json: true, exact: true } : { question: q, json: true });
   $("ask-go").disabled = false;
+  const as = searchedLine(r && r.searched);
   let result = null;
   if (r && r.ok && Array.isArray(r.out)) {
     try { result = JSON.parse(r.out.join("\n")); } catch (e) { result = null; }
   }
-  if (!result) { out.innerHTML = resultHtml(r); return; }
+  if (!result) { out.innerHTML = resultHtml(r) + as; return; }
   const raw = Array.isArray(result.memories) ? result.memories : [];
   // A chapter and the memory drawn from it are one answer (`fold.js`). The
   // links are a read; without them the answers show as they came.
@@ -99,7 +126,7 @@ async function ask() {
       (result.considered === 0
         ? "Nothing I hold shared a word with the question."
         : esc(String(result.considered)) + " memories were weighed and none was close enough.") +
-      " Try the words the memory itself would use.</div>";
+      " Try the words the memory itself would use.</div>" + as;
     return;
   }
   out.innerHTML = '<div class="ask-head">What came to mind — ' + mems.length +
@@ -114,5 +141,5 @@ async function ask() {
         tier: TIER[m.tier] || m.tier,
         from: m.from ? { id: m.from.episodeId, words: fromWords(m.from) } : null,
       });
-    }).join("") + "</div>";
+    }).join("") + "</div>" + as;
 }
