@@ -472,8 +472,9 @@ describe("reflect: dream → journal → reflect", () => {
       page: { text: `## Core\n\n${gistWords}`, cites: [core] },
     });
     if (!quoted.ok) throw new Error(String(quoted.reason));
-    // No dream before this one, so the gist check has nothing to hold it to: written.
-    expect(quoted.outcome.page.written).toBe(true);
+    // No dream before this one — but the gist is a recent dream's, and its
+    // words stay off the page all the same (review of #256, S1).
+    expect(quoted.outcome.page).toMatchObject({ written: false, reason: "dreamed-words-on-the-page" });
   });
 
   test("what a dream or a reflection wrote earns no return by being cited; a reflection is not shown its own entries as memories", () => {

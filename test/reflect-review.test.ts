@@ -218,6 +218,22 @@ describe("B1: a dreamed gist cannot be felt later or marked about me by a reflec
 });
 
 // ---------------------------------------------------------------------------
+// S1 — the page carries no dream's words, from any dream
+// ---------------------------------------------------------------------------
+
+describe("S1: a gist's words stay off the page whichever dream wrote it", () => {
+  test("a reflection on its own, the day after a dream, cannot reword that dream's gist onto the page", () => {
+    const c = brain();
+    const d = dreamWithGist(c);
+    reflect(c, [d.felt], {}, SESSION);
+    nextDay(c);
+    const gistWords = c.store.row(d.gist)?.body ?? "";
+    const { outcome } = reflect(c, [d.felt], { page: { text: `## Core\n\n${gistWords}`, cites: [d.felt] } });
+    expect(outcome.page).toMatchObject({ written: false, reason: "dreamed-words-on-the-page" });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // S3 — the v9 upgrade carries the old rule onto every row it read
 // ---------------------------------------------------------------------------
 

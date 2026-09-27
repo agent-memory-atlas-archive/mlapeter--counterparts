@@ -235,6 +235,23 @@ function notLivedReason(row: MemoryRow, act: "feel" | "mark"): string | null {
   if (row.source === "reflection") return act === "feel" ? "reflection-does-not-feel-itself" : "reflection-does-not-mark-itself";
   return null;
 }
+
+/** How many recent dreams' gists the page's words are checked against. */
+const GIST_DREAMS = 30;
+
+/** Does `text` share a six-word run with any of `bodies`? Case and punctuation aside. */
+function sharesARun(text: string, bodies: readonly string[]): boolean {
+  const words = (t: string): string[] => t.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 0);
+  const page = words(text);
+  if (page.length < 6 || bodies.length === 0) return false;
+  const runs = new Set<string>();
+  for (let i = 0; i + 6 <= page.length; i += 1) runs.add(page.slice(i, i + 6).join(" "));
+  for (const body of bodies) {
+    const g = words(body);
+    for (let i = 0; i + 6 <= g.length; i += 1) if (runs.has(g.slice(i, i + 6).join(" "))) return true;
+  }
+  return false;
+}
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export class Reflections {
@@ -507,9 +524,11 @@ export class Reflections {
         page = { written: false, reason: "page-rests-on-the-core", version: null };
       } else if (carriesDreamMark(pageText)) {
         page = { written: false, reason: "dream-mark-in-text", version: null };
-      } else if (this.quotesAGist(pageText, row.dream_id)) {
+      } else if (this.quotesAGist(pageText)) {
         // A dream's gist is a suggestion: reworded into the page it would
         // read as something lived (addendum 2). Mention a dream as a dream.
+        // Any recent dream's gist, not only this reflection's dream's (review
+        // of #256, S1): a reflection on its own the next day is as close.
         page = { written: false, reason: "dreamed-words-on-the-page", version: null };
       } else {
         const w = this.ctx.writePage(pageText, {
@@ -796,22 +815,23 @@ export class Reflections {
     };
   }
 
-  /** Does `text` carry a six-word run of a gist this reflection's dream wrote? */
-  private quotesAGist(text: string, dreamId: string | null): boolean {
-    if (dreamId === null) return false;
-    const words = (t: string): string[] => t.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 0);
-    const page = words(text);
-    if (page.length < 6) return false;
-    const runs = new Set<string>();
-    for (let i = 0; i + 6 <= page.length; i += 1) runs.add(page.slice(i, i + 6).join(" "));
-    for (const c of this.store.dreamChanges(dreamId)) {
-      if (c.action !== "gist" || c.undone === 1 || c.ref === null) continue;
-      const gist = this.store.row(c.ref);
-      if (gist === undefined) continue;
-      const g = words(gist.body);
-      for (let i = 0; i + 6 <= g.length; i += 1) if (runs.has(g.slice(i, i + 6).join(" "))) return true;
+  /**
+   * Does `text` carry a six-word run of a gist a recent dream wrote? Every
+   * dream in the last `GIST_DREAMS` (not undone), not only this reflection's
+   * own — a reflection on its own the next morning is as close to the dream
+   * (review of #256, S1).
+   */
+  private quotesAGist(text: string): boolean {
+    const bodies: string[] = [];
+    for (const dream of this.store.dreams({ limit: GIST_DREAMS })) {
+      if (dream.state === "undone") continue;
+      for (const c of this.store.dreamChanges(dream.id)) {
+        if (c.action !== "gist" || c.undone === 1 || c.ref === null) continue;
+        const gist = this.store.row(c.ref);
+        if (gist !== undefined && gist.body !== "") bodies.push(gist.body);
+      }
     }
-    return false;
+    return sharesARun(text, bodies);
   }
 
   /** Memories promoted on reflection alone that no share has named yet. */
