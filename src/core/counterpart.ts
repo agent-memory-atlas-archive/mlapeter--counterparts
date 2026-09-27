@@ -716,6 +716,13 @@ export interface CounterpartOptions extends Stance {
    * reads through (`Store#zone`). Absent: the machine's current zone.
    */
   timeZone?: string;
+  /**
+   * The host config's `pageWriter.mode` (owner ruling D3 on #256,
+   * 2026-09-27): `off` means nothing writes the self page on its own — the
+   * reflection too. It still reflects, keeps its entry and offers its share;
+   * it does not write the page. Absent: `session`, the config's own default.
+   */
+  pageWriterMode?: PageWriterMode;
 }
 
 /** What `wake()` returns: the bundle, plus what the host told us about itself. */
@@ -1518,6 +1525,7 @@ export class Counterpart {
           : { ok: true, text: redacted };
       },
       page: () => this.self.page()?.body ?? null,
+      pageWrites: opts.pageWriterMode !== "off",
       today: () => this.store.today(),
       ownerName: () => this.ownerDisplayName(),
       dreamLine: (dreamId) => this.dreams.handBackOf(dreamId),

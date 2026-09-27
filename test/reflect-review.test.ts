@@ -557,7 +557,7 @@ describe("decisions for the owner (today's behaviour, not changed by the review)
     expect(c.store.read(lesson)).toMatchObject({ about: "me", aboutBy: "reflection" });
   });
 
-  test("D3: `pageWriter.mode: off` does not stop the reflection's page write", async () => {
+  test("D3: with `pageWriter.mode: off` the reflection still keeps its entry and its share, but does not write the page — through the adapter and through the MCP server", async () => {
     const { openAdapter } = await import("../src/adapters/claude-code/index.js");
     const a = openAdapter({ dataDir: dir, injectionBudgetBytes: 9_000, owner: true, pageWriter: { mode: "off" } } as never);
     open.push(a.counterpart);
@@ -565,8 +565,44 @@ describe("decisions for the owner (today's behaviour, not changed by the review)
     nextDay(c);
     nextDay(c);
     const id = mem(c, "Mike and I finished the release together.", { kind: "person", about: "us" });
-    const { outcome } = reflect(c, [id], { page: { text: "## Core\n\nI work beside Mike, and we finish things.", cites: [id] } });
-    expect(outcome.page.written).toBe(true);
+    const begun = c.reflections.begin({ session: SESSION });
+    if (!begun.ok) throw new Error(begun.reason);
+    expect(begun.instructions).toContain("the owner has the page writer off");
+    const done = c.reflections.finish({
+      reflection: begun.bundle.reflection,
+      session: SESSION,
+      entry: "We finish things together.",
+      cites: [id],
+      page: { text: "## Core\n\nI work beside Mike, and we finish things.", cites: [id] },
+      share: { text: "I've been thinking about how we finish things.", cites: [id] },
+    });
+    if (!done.ok) throw new Error(String(done.reason));
+    expect(done.outcome.page).toMatchObject({ written: false, reason: "page-writer-off" });
+    expect(done.outcome.entryId).not.toBe(null);
+    expect(done.outcome.share.offered).toBe(true);
+    expect(c.self.page()).toBe(null);
+    c.close();
+    open.splice(0);
+
+    nextDay(brain());
+    for (const x of open.splice(0)) x.close();
+    recordSession(dir, { sessionId: "s-mcp", scope: "/proj", phase: "start" });
+    const s = openServer({ dir, session: "s-mcp", scope: "/proj", owner: true, pageWriterMode: "off" });
+    try {
+      const begin = await s.call("reflect", { phase: "begin", session: "s-mcp" });
+      const rid = begin.structuredContent["reflection"] as string;
+      const finish = await s.call("reflect", {
+        phase: "finish",
+        session: "s-mcp",
+        reflection: rid,
+        entry: "Again.",
+        cites: [id],
+        page: { text: "## Core\n\nI work beside Mike.", cites: [id] },
+      });
+      expect(finish.structuredContent["page"]).toMatchObject({ written: false, reason: "page-writer-off" });
+    } finally {
+      s.counterpart.close();
+    }
   });
 
   test("D4: the owner's removal redacts the entry's memory too — its words and the removed id", async () => {

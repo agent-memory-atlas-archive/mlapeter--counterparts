@@ -1631,3 +1631,6 @@ ended (its registry record ended, or quiet past `SESSION_TTL_MS`), so both do no
 it. Here and not in the SessionStart wake, whose byte ceiling is what stranded the page
 writer (self NOTES §27). The SessionStart page writer is left as it was: on a night the
 reflection rewrote the page it finds the night claimed and stands down.
+
+- **2026-09-27, owner ruling D3 on #256:** `openAdapter` passes `pageWriter.mode` to
+  `Counterpart.open`, so `off` stops the reflection's page write in the hooks' process too.

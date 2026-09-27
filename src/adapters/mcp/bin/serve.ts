@@ -173,6 +173,9 @@ export function questionEmbedder(path = CONFIG_PATH): {
   snapshotsDir?: string;
   /** The configuration's `timeZone` (docs/time.md), when it names a real zone. */
   timeZone?: string;
+  /** The configuration's `pageWriter.mode`: `off` stops the reflection's page
+   *  write too (owner ruling D3 on #256). */
+  pageWriterMode?: "session" | "host" | "off";
 } {
   let raw: unknown;
   try {
@@ -190,6 +193,7 @@ export function questionEmbedder(path = CONFIG_PATH): {
     reason: load.reason,
     ...(config.snapshots?.dir === undefined ? {} : { snapshotsDir: config.snapshots.dir }),
     ...(config.timeZone === undefined ? {} : { timeZone: config.timeZone }),
+    ...(config.pageWriter?.mode === undefined ? {} : { pageWriterMode: config.pageWriter.mode }),
     // `openEmbedder` is the ONE answer to "is there an embedder": the knob is
     // the gate and an observer gets none.
     embedder: openEmbedder(config),
@@ -234,7 +238,7 @@ async function main(): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  const { embedder, reason, snapshotsDir, timeZone } = questionEmbedder(choice.path);
+  const { embedder, reason, snapshotsDir, timeZone, pageWriterMode } = questionEmbedder(choice.path);
   const unreadable = namedUnreadableRefusal(choice, reason);
   if (unreadable !== null) {
     process.stderr.write(`${unreadable}\n`);
@@ -298,6 +302,7 @@ async function main(): Promise<void> {
     embedder,
     ...(snapshotsDir === undefined ? {} : { snapshotsDir }),
     ...(timeZone === undefined ? {} : { timeZone }),
+    ...(pageWriterMode === undefined ? {} : { pageWriterMode }),
   });
   // THE BUILD THIS PROCESS WILL KEEP FOR THE REST OF THE SESSION, left where
   // the hooks can compare it with the installed one every turn

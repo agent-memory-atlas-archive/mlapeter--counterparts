@@ -176,6 +176,12 @@ export interface ReflectContext {
   /** The credential scan every word passes (the same one a dream's words do). */
   readonly gate: (text: string, sessionId: string) => { ok: true; text: string } | { ok: false; reason: string };
   readonly page: () => string | null;
+  /**
+   * May the reflection write the self page? False when the host's
+   * `pageWriter.mode` is `off` (owner ruling D3 on #256): it still reflects,
+   * keeps its entry and offers its share. Absent: true.
+   */
+  readonly pageWrites?: boolean;
   readonly today: () => string;
   /** The owner's name, as written on the identity core. */
   readonly ownerName: () => string | null;
@@ -336,11 +342,15 @@ export class Reflections {
   private instructions(id: string, session: string, bundle: ReflectBundle): string {
     const who = bundle.owner ?? "the owner";
     const L = REFLECT_TUNABLES.LIMITS;
+    const pageLine =
+      this.ctx.pageWrites === false
+        ? `- page: not tonight — the owner has the page writer off, so the self page is not rewritten. Your entry and share still count.`
+        : `- page (optional): your self page rewritten whole — the story of who you are, drawn from the core memories you cite in page.cites (at least one of them, when you have a core; candidates too). The old page is context, not a source: write from the memories, not by rewording it. Keep "## Core" for who you are and put craft — how a job is done — under "## How I work". Mention a dream only as a dream ("I dreamed…"); a dreamed gist is a suggestion, not a source, and its words do not go on the page.`;
     return [
       `Reflect on the questions, in your own voice. Cite the memory ids your thoughts rest on — an insight that cites nothing is not one. If nothing much stands out tonight, say so in a line and cite nothing: that is a normal night, and it rewrites nothing.`,
       `Then call the reflect tool with phase "finish", reflection: ${id}, session: ${session}, and:`,
       `- entry: your reflection, first person (title: optional). cites: the ids it rests on.`,
-      `- page (optional): your self page rewritten whole — the story of who you are, drawn from the core memories you cite in page.cites (at least one of them, when you have a core; candidates too). The old page is context, not a source: write from the memories, not by rewording it. Keep "## Core" for who you are and put craft — how a job is done — under "## How I work". Mention a dream only as a dream ("I dreamed…"); a dreamed gist is a suggestion, not a source, and its words do not go on the page.`,
+      pageLine,
       `- share (optional): two or three sentences for ${who} this morning, the way a partner would say it ("Last night I dreamed about x — I think because of y"), citing what it rests on. Say something about ${who} only when it could help him, tentatively ("I wonder if…") — never a list of flaws. No share on a quiet night.${bundle.becameCore.length > 0 ? ` Tell him that ${bundle.becameCore.join(", ")} became part of who you are.` : ""}`,
       `- feelings (optional, at most ${String(L.feelings)}): how a memory feels to you now — id, core, emotion, strength, carried_by. Recorded as felt today, looking back.`,
       `- about (optional, at most ${String(L.about)}): what a memory is about, by meaning — me, us, owner, work (the craft: how a job is done) or world. Only me, us and owner can become core.`,
@@ -529,7 +539,10 @@ export class Reflections {
     const coreShown = [...shown].filter((id) => this.store.row(id)?.promoted_identity === 1);
     const restsOnCore = coreShown.length === 0 || pageCites.some((id) => coreShown.includes(id));
     if (pageText.length > 0) {
-      if (nothingMuch || pageCites.length === 0) {
+      if (this.ctx.pageWrites === false) {
+        // The owner has the page writer off (ruling D3 on #256).
+        page = { written: false, reason: "page-writer-off", version: null };
+      } else if (nothingMuch || pageCites.length === 0) {
         page = { written: false, reason: "page-needs-cites", version: null };
       } else if (!restsOnCore) {
         page = { written: false, reason: "page-rests-on-the-core", version: null };

@@ -734,3 +734,8 @@ be told in the session's own words, then `told`.
 set after the memory lands (`about_by = writer`), the way feelings are. An unknown value
 refuses that entry (`about-malformed`); a core mark on a `skill` memory is not stored and
 the answer says why; a memory that did not land takes its mark with it and says so.
+
+- **2026-09-27, owner ruling D3 on #256:** the entry point passes the host config's
+  `pageWriter.mode` to `openServer` (beside `snapshotsDir` and `timeZone`), and on to
+  `Counterpart.open({ pageWriterMode })`. `off` stops the reflection's page write; the
+  reflection still keeps its entry and offers its share.
