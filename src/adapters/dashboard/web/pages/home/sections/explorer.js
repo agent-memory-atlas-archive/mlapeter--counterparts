@@ -134,6 +134,9 @@ function paintBody() {
     else if (data.activity.length === 0) feed.innerHTML = '<p class="pic-none" style="padding:10px 14px">No firing of this one is on record yet.</p>';
     else renderFeed(feed, data.activity);
   }
+  // A picture may carry its own `?` (the returns and used-rate lines); a
+  // pinned one is drawn open again by `q`, so a refresh keeps it open.
+  wireTips($("mech-body"));
 }
 
 async function loadPanel(id) {

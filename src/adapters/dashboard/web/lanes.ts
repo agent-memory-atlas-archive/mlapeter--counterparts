@@ -21,11 +21,38 @@ export type Icon = "remembered" | "stronger" | "replaced" | "faded" | "chapter" 
 
 type Payload = Record<string, unknown>;
 
-/** A lane, or a rule over the payload for the two names whose rows are only
+/** A lane, or a rule over the payload for the names whose rows are only
  *  sometimes about a memory. */
 type LaneRule = Lane | ((p: Payload) => Lane);
 
 const n = (p: Payload, k: string): number => (typeof p[k] === "number" && Number.isFinite(p[k]) ? (p[k] as number) : 0);
+
+/**
+ * A SLEEP CHECK, not a sleep (2026-09-27, home round 3 — a try): a
+ * `sleep.cycle` row whose clock found nothing to advance and whose every other
+ * phase did not run — already done today or not due this cadence, in practice
+ * (a phase with nothing wired to run it did not run either). A session end on
+ * a day that already slept writes one of these each time (about twenty on a
+ * busy day); it did nothing to any memory. A cycle where any phase ran,
+ * failed, or died is a real sleep and is not a check.
+ */
+export function isSleepCheck(p: Payload): boolean {
+  if (p["reason"] !== "ran" || n(p, "failed") > 0) return false;
+  const phases = p["phases"];
+  if (!Array.isArray(phases) || phases.length === 0) return false;
+  let clock = false;
+  for (const raw of phases) {
+    if (raw === null || typeof raw !== "object") return false;
+    const ph = raw as Payload;
+    if (ph["phase"] === "clock") {
+      if (ph["status"] !== "ran-nothing-found") return false;
+      clock = true;
+    } else if (ph["status"] !== "did-not-run") {
+      return false;
+    }
+  }
+  return clock;
+}
 
 export const LANES = {
   // ── memory events: home ──
@@ -45,7 +72,9 @@ export const LANES = {
   "journal.copy.failed": "home",
   "handoff.written": "home",
   "handoff.cleared": "home",
-  "sleep.cycle": "home",
+  // A sleep that did something is a home line; a CHECK that found nothing due
+  // (`isSleepCheck`) is housekeeping.
+  "sleep.cycle": (p) => (isSleepCheck(p) ? "flow" : "home"),
   "prospective.fire": "home",
   "prospective.plain": "home",
   // Dreaming and the core (2026-09-26): a dream that wrote its journal, what
@@ -126,6 +155,7 @@ export function iconOf(name: string, p: Payload): Icon | null {
     case "handoff.cleared":
       return "handoff";
     case "sleep.cycle":
+      return isSleepCheck(p) ? null : "sleep";
     case "dream.journaled":
     case "dream.changed":
     case "dream.undone":

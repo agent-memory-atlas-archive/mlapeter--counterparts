@@ -76,8 +76,28 @@ export function nextRunWords(nextInDays: number): string {
   return `in ${nextInDays} lived ${nextInDays === 1 ? "day" : "days"}`;
 }
 
-/** One verdict → one light, in the dashboard's words. */
-export function lightOf(v: Verdict): MechanismLight {
+/** Returns in the window, by source (`store.returnCounts`; `legacy` rows are never among them). */
+export interface ReturnsBySource {
+  readonly awake: number;
+  readonly dream: number;
+}
+
+/**
+ * THE RETURNS PART, SPLIT (2026-09-27, home round 3 — a try): "33 returns"
+ * beside candidates that each "came back on 0 days" read as a contradiction,
+ * because the core lanes count only a return in conversation and most of the
+ * 33 were dream replays. So the two are said apart, conversation first.
+ */
+export function returnWords(r: ReturnsBySource): string[] {
+  const out: string[] = [];
+  if (r.awake > 0) out.push(`${r.awake} came back in conversation`);
+  if (r.dream > 0) out.push(`${r.dream} replayed in a dream`);
+  return out;
+}
+
+/** One verdict → one light, in the dashboard's words. With `returns`, a
+ *  mechanism's returns part is said by source (`returnWords`). */
+export function lightOf(v: Verdict, returns?: ReturnsBySource): MechanismLight {
   const row = MECHANISM_EVIDENCE.find((m) => m.id === v.id);
   const base = { id: v.id, family: v.family, build: v.build, nextInDays: v.schedule?.nextInDays ?? null };
   if (v.build === "not" || row === undefined) {
@@ -85,7 +105,9 @@ export function lightOf(v: Verdict): MechanismLight {
   }
   const heldLine = row.held === undefined || v.held === null ? "" : ` ${plural(v.held, row.held.says)}.`;
   if (v.fired) {
-    const said = v.parts.filter((p) => p.count > 0).map((p) => plural(p.count, p.says));
+    const said = v.parts
+      .filter((p) => p.count > 0)
+      .flatMap((p) => (p.key === "returns" && returns !== undefined ? returnWords(returns) : [plural(p.count, p.says)]));
     const todayLine = v.today === null ? "" : ` ${v.today} today.`;
     return {
       ...base,
@@ -124,5 +146,7 @@ export function mechanismsView(src: DashboardSource): MechanismsView {
   }
   const fromDay = Math.max(0, livedDay - (MECHANISM_DAYS - 1));
   const { verdicts, truncated } = mechanismEvidence(store, { sinceDay: fromDay, today: livedDay });
-  return { livedDay, fromDay, days: MECHANISM_DAYS, mechanisms: verdicts.map(lightOf), truncated };
+  const r = store.returnCounts({ sinceDay: fromDay });
+  const returns: ReturnsBySource = { awake: r.awake, dream: r.dream };
+  return { livedDay, fromDay, days: MECHANISM_DAYS, mechanisms: verdicts.map((v) => lightOf(v, returns)), truncated };
 }

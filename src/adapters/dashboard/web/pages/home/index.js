@@ -1,6 +1,7 @@
 /* The home tab: the page the dashboard opens on, shaped like counterparts.ai's
-   home. The hero (one line about this memory, a few counts, the brain), the
-   mechanism panel under it, then the live feed and the latest chapters.
+   home. The hero (one line about this memory, a few counts, written vs came
+   back, the brain), the mechanism panel under it, then the live feed beside
+   "Tonight" and the latest chapters.
 
    Two fetches: `/api/overview` for the words and the feed, `/api/mechanisms`
    (and `/api/mechanism?id=` for the picked one) for the panel and the brain. */
@@ -11,6 +12,7 @@ import * as explorer from "./sections/explorer.js";
 import * as hero from "./sections/hero.js";
 import * as liveActivity from "./sections/live-activity.js";
 import * as recentChapters from "./sections/recent-chapters.js";
+import * as tonight from "./sections/tonight.js";
 
 const markup = `
     ${hero.markup}
@@ -18,7 +20,8 @@ const markup = `
     <div class="cols home-below">
       <div>${liveActivity.markup}
       </div>
-      <div>${recentChapters.markup}
+      <div>${tonight.markup}
+        ${recentChapters.markup}
       </div>
     </div>
   `;
@@ -45,6 +48,7 @@ async function render() {
 export function paintHome(d, withFeed) {
   hero.paint(d);
   if (withFeed) liveActivity.paint(d);
+  tonight.paint(d);
   recentChapters.paint(d);
 }
 
@@ -68,6 +72,7 @@ export default {
     hero.mount();
     explorer.mount();
     liveActivity.mount();
+    tonight.mount();
     recentChapters.mount();
     // The brain is built once and kept; a failure to start is a calm sentence
     // in its place, never an error on the page.

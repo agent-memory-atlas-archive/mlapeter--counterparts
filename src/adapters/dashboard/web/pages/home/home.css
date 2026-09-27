@@ -29,6 +29,27 @@
 .ht-core .n{color:var(--purple);text-shadow:0 0 15px rgba(179,136,255,.2)}
 .ht-replaced .n{color:var(--teal);text-shadow:0 0 15px rgba(0,191,165,.2)}
 
+/* written vs came back, under the tiles (sections/written.js, 2026-09-27) */
+.home-wr{max-width:34rem;margin-top:16px}
+.home-wr:empty{display:none}
+.wr-head{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;font-size:12px;color:var(--dim);margin:0 0 6px}
+.wr-key{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.wr-sw{display:inline-block;width:10px;height:6px;border-radius:1px}
+.wr-sw-w{background:var(--cyan)}
+.wr-sw-a{background:var(--purple)}
+.wr-sw-d{background:rgba(179,136,255,.32)}
+.wr-head .q-wrap.open{flex-basis:100%}
+.wr-svg{display:block;width:100%;height:64px;overflow:visible}
+.wr-svg .wr-hit{fill:transparent}
+.wr-svg g:hover .wr-hit{fill:rgba(0,229,255,.06)}
+.wr-svg .wr-axis{stroke:rgba(197,205,216,.22);stroke-width:1;vector-effect:non-scaling-stroke}
+.wr-svg .wr-w{fill:var(--cyan);opacity:.85}
+.wr-svg .wr-a{fill:var(--purple)}
+.wr-svg .wr-d{fill:rgba(179,136,255,.32)}
+.wr-svg .wr-none{fill:rgba(197,205,216,.18)}
+.wr-foot{display:flex;justify-content:space-between;font-size:11px;color:var(--faint);margin-top:3px}
+.wr-line{font-size:13px;color:var(--ink);margin:6px 0 0}
+
 /* ── the brain ────────────────────────────────────────── */
 .home-brain{position:relative;height:min(540px,calc(100vh - 150px));min-height:360px;width:100%}
 .brain-canvas{position:absolute;inset:0;width:100%;height:100%;cursor:grab;touch-action:pan-y}
@@ -126,6 +147,28 @@
 .pic-rev .pic-meta{display:inline;margin:0 4px}
 .pic-crossed{color:var(--amber)}
 .pic-gap{margin-top:16px}
+.pic-dim{color:var(--faint)}
+.pic-returns,.pic-use{font-size:13px;color:var(--ink);margin:0 0 12px;line-height:1.55}
+.pic-use{display:flex;gap:10px;align-items:flex-start}
+.pic-use b{font-weight:600;color:var(--cyan)}
+.use-trend{flex:none;margin-top:2px;overflow:visible}
+.use-trend .use-bar{fill:var(--teal)}
+.use-trend .use-none{fill:rgba(197,205,216,.25)}
+.pic-climb .pic-tag{vertical-align:1px;margin-left:4px}
+
+/* ── tonight (sections/tonight.js, 2026-09-27) ─────────── */
+.home-tonight{padding:10px 14px;display:grid;gap:8px;margin-bottom:22px;font-size:13.5px;line-height:1.55}
+.tn-row{display:grid;grid-template-columns:4.6rem minmax(0,1fr);gap:10px;align-items:baseline}
+.tn-l{font-size:12px;font-weight:600;color:var(--dim)}
+.tn-b{min-width:0;overflow-wrap:anywhere}
+.tn-phs{display:flex;flex-wrap:wrap;gap:5px}
+.tn-ph{font-size:12px;border:1px solid rgba(197,205,216,.16);border-radius:10px;padding:0 8px;color:var(--faint);white-space:nowrap}
+.tn-ph.on{color:#e8eef5;border-color:rgba(179,136,255,.55);background:rgba(179,136,255,.1)}
+.tn-when{color:var(--faint)}
+.tn-ph.on .tn-when{color:var(--dim)}
+.tn-hi{color:var(--purple);font-weight:600}
+.tn-names{color:var(--dim)}
+.tn-dim{color:var(--faint)}
 
 /* ── below ────────────────────────────────────────────── */
 .home-below{margin-top:26px}

@@ -1,8 +1,10 @@
 /* Live activity — memory events only, in my own words (2026-09-26, an
    experiment): something remembered, a memory stronger, replaced or let go, a
    chapter, a handoff, the night's sleep, a reminder. Housekeeping lines go to
-   the flow tab's feed (`web/lanes.ts` is the split). The one home panel the
-   pulse owns: it is registered as a live feed that takes only home rows. */
+   the flow tab's feed (`web/lanes.ts` is the split) — since 2026-09-27 that
+   includes a sleep CHECK that found nothing due. Neighbours that read the same
+   are one line, ×N (server and pulse alike). The one home panel the pulse
+   owns: it is registered as a live feed that takes only home rows. */
 import { $ } from "../../../shared/dom.js";
 import { registerLiveFeed, renderFeed } from "../../../shared/widgets/feed.js";
 import { q, wireTips } from "../../../shared/widgets/tips.js";
@@ -15,7 +17,8 @@ export const markup = `
         <div class="card feed" id="ov-feed"></div>`;
 
 export function mount() {
-  registerLiveFeed("ov-feed", (e) => e.lane === "home");
+  // Folded (2026-09-27): a new line that reads the same as the top one is ×N on it.
+  registerLiveFeed("ov-feed", (e) => e.lane === "home", { fold: true });
   wireTips($("ov-feed-h"));
 }
 

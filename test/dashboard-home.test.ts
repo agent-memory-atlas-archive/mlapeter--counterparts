@@ -180,8 +180,11 @@ describe("the feeds (round 2)", () => {
 
   test("the live feed keeps the split too: home registers a filter the pulse obeys", () => {
     const live = readFileSync(join(WEB, "pages/home/sections/live-activity.js"), "utf8");
-    expect(live).toContain('registerLiveFeed("ov-feed", (e) => e.lane === "home")');
-    expect(readFileSync(join(WEB, "shared/widgets/feed.js"), "utf8")).toContain("if (!accept(e)) continue;");
+    expect(live).toContain('registerLiveFeed("ov-feed", (e) => e.lane === "home", { fold: true })');
+    const feed = readFileSync(join(WEB, "shared/widgets/feed.js"), "utf8");
+    expect(feed).toContain("if (!accept(e)) continue;");
+    // Round 3: a new row that reads the same as the top one folds into it.
+    expect(feed).toContain("if (fold && top && top.dataset.fold === foldKey(e))");
   });
 
   test("orange is for real problems: a semantic cue that worked is calm", () => {

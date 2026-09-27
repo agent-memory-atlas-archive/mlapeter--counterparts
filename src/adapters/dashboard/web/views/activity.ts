@@ -16,6 +16,7 @@ import { laneOf } from "../lanes.js";
 import type { Lane } from "../lanes.js";
 import { narrate } from "../narrate.js";
 import type { NarratedEvent } from "../narrate.js";
+import { mergeRepeats } from "./mechanism-panel.js";
 import { FEED_LIMIT, LOG_CEILING, eventCountsByName } from "./shared.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -32,9 +33,15 @@ export interface ActivityView {
   readonly vocabulary: { name: DurableEventName; count: number; description: string; absent: string | null; node: string | null }[];
 }
 
+/**
+ * `fold` (2026-09-27, home round 3 — a try): neighbours that read the same are
+ * one line, "×N", with the span of days they cover (`mergeRepeats`, the
+ * mechanism panel's rule), and `limit` counts LINES, not rows. Only the home
+ * feed asks for it; the flow tab's feed stays the whole log, row by row.
+ */
 export function activityView(
   src: DashboardSource,
-  opts: { limit?: number; name?: string; sinceSeq?: number; lane?: Lane } = {},
+  opts: { limit?: number; name?: string; sinceSeq?: number; lane?: Lane; fold?: boolean } = {},
 ): ActivityView {
   const store = src.store;
   const limit = opts.limit ?? FEED_LIMIT;
@@ -44,8 +51,12 @@ export function activityView(
   const since = opts.sinceSeq;
   const lane = opts.lane;
   const inLane = (r: EventRow): boolean => lane === undefined || laneOf(r.name, payloadOf(r)) === lane;
-  const window = since === undefined ? newestIn(all, limit, inLane) : all.filter((r) => r.seq > since);
-  const events = window.map((row) => narrate(store, row));
+  const events =
+    since !== undefined
+      ? all.filter((r) => r.seq > since).map((row) => narrate(store, row))
+      : opts.fold === true
+        ? foldedNewest(store, all, limit, inLane)
+        : newestIn(all, limit, inLane).map((row) => narrate(store, row));
   const lastSeq = all.length === 0 ? 0 : (all[all.length - 1]?.seq ?? 0);
   const everLived = store.livedDay() > 0 || store.list().length > 0;
   const counts = eventCountsByName(src);
@@ -80,6 +91,25 @@ function newestIn(rows: readonly EventRow[], limit: number, keep: (r: EventRow) 
     if (r !== undefined && keep(r)) out.push(r);
   }
   return out;
+}
+
+/** The newest rows that pass `keep`, narrated and folded, until `limit` lines stand. */
+function foldedNewest(store: DashboardSource["store"], rows: readonly EventRow[], limit: number, keep: (r: EventRow) => boolean): NarratedEvent[] {
+  const lines: NarratedEvent[] = [];
+  let groups = 0;
+  let last: NarratedEvent | null = null;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const r = rows[i];
+    if (r === undefined || !keep(r)) continue;
+    const line = narrate(store, r);
+    if (last === null || line.text !== last.text || line.name !== last.name) {
+      groups += 1;
+      if (groups > limit) break;
+    }
+    last = line;
+    lines.push(line);
+  }
+  return mergeRepeats(lines);
 }
 
 /** One record, opened. `when` is its moment on the reader's clock, converted

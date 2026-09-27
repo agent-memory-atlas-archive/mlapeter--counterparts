@@ -115,6 +115,19 @@ narrated, plus a `picture`, both read-only). `mechanisms/picture.js` holds the
 pictures' shared pieces. A mechanism built later gets a `panel.js`, one line in
 `PANELS`, and a case in `mechanism-panel.ts`.
 
+Home round 3 (2026-09-27, a try): under the tiles, `sections/written.js` draws
+"written vs came back" per lived day (`views/written-returned.ts`, from the
+`returns` table by source; `legacy` rows are never shown). Beside the feed,
+`sections/tonight.js` is the next sleep in a few lines (`views/tonight.ts`:
+the sleep markers, the core road, the let-go line, new since the last dream,
+the last dream's suggestions). Anything that says who is close to the core asks
+`views/core-road.ts`, a thin wrapper over sleep's `aboutMe` and physics'
+`promotionEligibility`; nothing here re-derives eligibility. A sleep that only
+checked and found nothing due (`lanes.ts#isSleepCheck`) goes to the flow feed;
+the home feed folds neighbours that read the same (server: `activityView`'s
+`fold`; pulse: `registerLiveFeed(id, accept, { fold: true })`), and a merged
+line prints its span ("days 1–6").
+
 `pages/memories/` — the memories tab (round 2, 2026-09-26, an experiment:
 brighter = held more firmly, everywhere on the tab). `state.js` holds the
 page's filters (live/archived/all, kind, core, journal, hold, feeling, sort, page
