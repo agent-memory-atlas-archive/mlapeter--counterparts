@@ -875,3 +875,19 @@ Held lightly.
   me, so the fast lane needs an ordinary use; a reflection's citation no longer opens it.
 - **Watch list (D5, no change):** reflection alone can carry the slow lane in about four
   weeks of weekly citing. Watch it on the live store.
+
+## 2026-09-27 — the core lanes' context, in one place (`coreContextFor`)
+
+Held lightly.
+
+- **One builder for what `promote` receives.** `coreContextFor(store, row, day)` returns
+  the `CoreContext` consolidation hands the lanes — `aboutMe` (the mark), `demoted`
+  (read only for a memory about me), `acceptsReflectedFeeling` (the door), and, with the
+  door closed for a memory about me, `organicReturnDay` (D1) — plus `day`, so a reader can
+  pass it straight to `promotionEligibility`. Consolidation calls it; the dashboard's
+  eligibility views were building the context inline and without the door, so a view
+  could call a memory ready that the night would not promote. They can switch to it.
+- **Reads only**, through `ReadsCoreContext` (`list`, `read`, `getMeta`, `returnsOf`,
+  `coreDemoted`), which a read-only store satisfies. Consolidation reads the door once a
+  night and hands it in (`acceptsReflectedFeeling` option); a caller that omits it reads
+  the meta row per call.

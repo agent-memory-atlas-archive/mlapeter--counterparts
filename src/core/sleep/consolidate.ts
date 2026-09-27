@@ -34,7 +34,7 @@
 
 import { TUNABLES as PHYSICS_TUNABLES, consolidationEligibility, promote, promotionEligibility, strength } from "../physics/index.js";
 import { CORE_ABOUT_MARKS } from "../store/index.js";
-import type { MemoryPhysics, PromotionCrossing, PromotionReason } from "../physics/index.js";
+import type { CoreContext, MemoryPhysics, PromotionCrossing, PromotionReason } from "../physics/index.js";
 import { rowToPhysics } from "../store/operational.js";
 import type { MemoryRow } from "../store/operational.js";
 import { readCursor, resumeIndex, writeCursor } from "./markers.js";
@@ -186,6 +186,41 @@ export function acceptsReflectedFeeling(store: Pick<SleepStore, "getMeta">): boo
   return PHYSICS_TUNABLES.CORE_FAST_ACCEPTS_REFLECTED_FEELING;
 }
 
+/** What `coreContextFor` reads — reads only; a read-only (observer) store has them all. */
+export type ReadsCoreContext = ReadsDocs & Pick<SleepStore, "getMeta" | "returnsOf" | "coreDemoted">;
+
+/**
+ * THE CORE LANES' CONTEXT FOR ONE MEMORY (2026-09-27) — exactly what this
+ * phase hands `promote`, built in one place so every reader that asks "could
+ * this cross?" (the dashboard's eligibility views among them) asks it with the
+ * same inputs: who it is about (its mark, `aboutMe`), whether the owner sent it
+ * back out (`coreDemoted`), whether the fast lane reads a reflection's later
+ * feelings (`acceptsReflectedFeeling`), and — with that door closed, for a
+ * memory about me — the last day of an ordinary use (owner ruling D1 on #256:
+ * closed is fully closed). `day` rides along, so the result can go straight to
+ * `promotionEligibility`; `promote` sets the same day itself.
+ *
+ * Reads only. `acceptsReflectedFeeling` may be passed when the caller already
+ * read the door once for many rows (this phase does); omitted, it is read here.
+ */
+export function coreContextFor(
+  store: ReadsCoreContext,
+  row: Pick<MemoryRow, "id" | "kind"> & { about?: string | null },
+  day: number,
+  opts: { acceptsReflectedFeeling?: boolean } = {},
+): CoreContext & { readonly day: number } {
+  const reflected = opts.acceptsReflectedFeeling ?? acceptsReflectedFeeling(store);
+  const about = aboutMe(store, row);
+  return {
+    aboutMe: about,
+    demoted: about ? (store.coreDemoted?.(row.id) ?? false) : false,
+    acceptsReflectedFeeling: reflected,
+    // Read only where it can matter.
+    ...(reflected || !about ? {} : { organicReturnDay: lastOrganicReturnDay(store, row.id) }),
+    day,
+  };
+}
+
 export function runConsolidate(ctx: PhaseCtx): ConsolidateResult {
   const out = emptyOutcome();
   for (const skip of CONSOLIDATION_SKIPS) out.skipped[skip] = 0;
@@ -272,16 +307,11 @@ export function runConsolidate(ctx: PhaseCtx): ConsolidateResult {
       block("already-identity");
       continue;
     }
-    // Who it is about is the row's own mark (v9): no prose read.
-    const about = aboutMe(store, row);
-    const outcome = promote(p, day, {
-      aboutMe: about,
-      demoted: about ? (store.coreDemoted?.(id) ?? false) : false,
-      acceptsReflectedFeeling: reflected,
-      // Closed means fully closed (owner ruling D1 on #256): the fast lane's
-      // return must be an ordinary use. Read only where it can matter.
-      ...(reflected || !about ? {} : { organicReturnDay: lastOrganicReturnDay(store, id) }),
-    });
+    // Who it is about is the row's own mark (v9): no prose read. The whole
+    // context is `coreContextFor`'s — one source of truth with every reader
+    // that asks the same question. Closed means fully closed (owner ruling D1
+    // on #256): the fast lane's return must be an ordinary use.
+    const outcome = promote(p, day, coreContextFor(store, row, day, { acceptsReflectedFeeling: reflected }));
     if (!outcome.promoted || outcome.crossing === null) {
       // Every blocking reason is reported: "not about me" and "no lane yet"
       // are different diagnoses.
@@ -355,7 +385,7 @@ export function runConsolidate(ctx: PhaseCtx): ConsolidateResult {
 }
 
 /** The last lived day of a counted ORDINARY awake return (source `awake`), or null. */
-function lastOrganicReturnDay(store: PhaseCtx["store"], id: string): number | null {
+function lastOrganicReturnDay(store: Pick<SleepStore, "returnsOf">, id: string): number | null {
   let last: number | null = null;
   try {
     for (const r of (store.returnsOf?.(id) ?? []) as readonly { source: string; day?: number }[]) {
