@@ -23,7 +23,9 @@ import {
   clamp01,
   clampSalienceAtSeam,
   computedSal,
+  consolidationEligibility,
   cosine,
+  creditReturn,
   creditUse,
   dayKey,
   decay,
@@ -39,6 +41,7 @@ import {
   promotionEligibility,
   pruneVerdict,
   rep,
+  returnFactor,
   revisionBar,
   sal,
   stability,
@@ -165,8 +168,10 @@ describe("[M] guarantee 1 — physics makes no model calls and performs no I/O",
       sal(m.salience);
       creditUse(m, day, "referenced");
       applyChallenge("t1", m, ch, day);
-      promote(m, day);
-      promotionEligibility(m);
+      promote(m, day, { aboutMe: true });
+      promotionEligibility(m, { aboutMe: true });
+      creditReturn(m, day, { source: "awake" });
+      creditReturn(m, day, { source: "dream" });
       pruneVerdict(m, day, { inLiveRevisionChain: false });
       successorSeed(m);
       challengeForce(m, day);
@@ -307,9 +312,12 @@ describe("[M] guarantee 2 — salience is fixed at birth; a claim is a floor wit
     expect(TUNABLES.AUTHORED_DEFAULT_CLAIM).toBeLessThan(0.34);
   });
 
-  test("the ceiling sits between the semantic and identity floors by construction", () => {
+  test("the ceiling sits at or above the semantic floor, and a claim never promotes", () => {
     expect(TUNABLES.SWEEP_CLAIM_CEILING).toBeGreaterThanOrEqual(TUNABLES.THETA_SEM);
-    expect(TUNABLES.SWEEP_CLAIM_CEILING).toBeLessThan(TUNABLES.THETA_ID);
+    // Identity is the core lanes' alone (2026-09-26): a maximal claim with no
+    // return and no feeling is no lane at all.
+    const claimed = mem({ kind: "self", salience: { ...S(0), claimed: 1 } });
+    expect(promotionEligibility(claimed, { aboutMe: true }).reason).toBe("no-lane-yet");
   });
 
   test("salience does not move with use or with the clock", () => {
@@ -394,42 +402,136 @@ describe("[M] guarantee 3 — base is monotone non-decreasing", () => {
   });
 });
 
-describe("[M] guarantee 4 — repetition never reaches the identity band", () => {
+describe("[M] guarantee 4 — repetition alone makes nothing identity but a memory about me", () => {
   test("the repetition arm tops out at 0.70 for every kind — arithmetic, not a check", () => {
     for (const kind of ALL_KINDS) {
       const saturated = mem({ kind, salience: S(0), uses: 10_000, consolidated: true });
-      const b = base(saturated);
-      expect(`${kind}:${b <= TUNABLES.REP_CAP + TUNABLES.CONS_BONUS}`).toBe(`${kind}:true`);
-      expect(`${kind}:${b < TUNABLES.THETA_ID}`).toBe(`${kind}:true`);
-      expect(promotionEligibility({ ...saturated, reinforcedDays: 500 }).reason).toBe(
-        "base-below-identity-threshold",
-      );
+      expect(`${kind}:${base(saturated) <= TUNABLES.REP_CAP + TUNABLES.CONS_BONUS}`).toBe(`${kind}:true`);
     }
+    expect(TUNABLES.REP_CAP + TUNABLES.CONS_BONUS).toBeCloseTo(0.7, 10);
   });
 
-  test("the cap itself is what does it", () => {
-    expect(TUNABLES.REP_CAP + TUNABLES.CONS_BONUS).toBeCloseTo(0.7, 10);
-    expect(TUNABLES.REP_CAP + TUNABLES.CONS_BONUS).toBeLessThan(TUNABLES.THETA_ID);
+  test("a memory not about me never becomes core, however often it returns (2026-09-26)", () => {
+    for (const kind of ALL_KINDS) {
+      const returned = mem({
+        kind,
+        salience: S(0.9),
+        uses: 100,
+        reinforcedDays: 100,
+        returns: 40,
+        returnDays: 60,
+        firstReturnDay: 1,
+        lastReturnDay: 99,
+        feelingPeak: 1,
+      });
+      const v = promotionEligibility(returned, { aboutMe: false });
+      expect(`${kind}:${v.eligible}`).toBe(`${kind}:false`);
+      expect(v.blockedBy).toContain("not-about-me");
+      expect(promote(returned, 100, { aboutMe: false }).crossing).toBeNull();
+    }
   });
 });
 
-describe("regression 4 — repetition alone never promotes", () => {
-  test("100 lived days of low-salience use leaves base below the identity floor", () => {
+describe("regression 4 — repetition alone never promotes a skill", () => {
+  test("100 lived days of use: base caps, and the core is not for a skill", () => {
     const drilled = mem({
       kind: "skill",
       salience: S(0.2),
       uses: 100,
       consolidated: true,
       reinforcedDays: 100,
+      returnDays: 100,
+      firstReturnDay: 1,
+      lastReturnDay: 100,
       lastUsedDay: 100,
     });
     expect(base(drilled)).toBeCloseTo(0.7, 10);
-    const verdict = promotionEligibility(drilled);
+    // `aboutMe` is the caller's reading (sleep's); a skill never is.
+    const verdict = promotionEligibility(drilled, { aboutMe: false });
     expect(verdict.eligible).toBe(false);
-    expect(verdict.reason).toBe("base-below-identity-threshold");
-    // the DAY gate is satisfied — it is the strength gate that refuses
-    expect(verdict.blockedBy).toEqual(["base-below-identity-threshold"]);
-    expect(promote(drilled, 100).crossing).toBeNull();
+    expect(verdict.blockedBy).toEqual(["not-about-me"]);
+    expect(promote(drilled, 100, { aboutMe: false }).crossing).toBeNull();
+  });
+});
+
+describe("§5.11 returns — durability from coming back", () => {
+  test("a return needs a referenced use on a later lived day; spacing weighs it; close ones count less", () => {
+    const m = mem({ kind: "fact", birthDay: 0, lastUsedDay: 0 });
+    expect(creditReturn(m, 0, { source: "awake" }).reason).toBe("birth-day");
+    expect(creditReturn(m, 3, { source: "awake", tierWeight: TUNABLES.W_SURFACED }).reason).toBe("not-referenced");
+    const week = creditReturn(m, 7, { source: "awake" });
+    expect(week.counted).toBe(true);
+    expect(week.weight).toBeCloseTo(1 - Math.exp(-1), 10);
+    const next = { ...m, ...week.next };
+    const tomorrow = creditReturn(next, 8, { source: "awake" });
+    expect(tomorrow.weight).toBeCloseTo(1 - Math.exp(-1 / 7), 10);
+    expect(tomorrow.weight).toBeLessThan(week.weight);
+    expect(creditReturn({ ...next, ...tomorrow.next }, 8, { source: "awake" }).reason).toBe("already-returned-today");
+  });
+
+  test("a use while showing in the hints lane is not a return", () => {
+    const m = mem({ kind: "fact", birthDay: 0 });
+    expect(creditReturn(m, 5, { source: "awake", onDisplay: true })).toMatchObject({ counted: false, reason: "on-display" });
+  });
+
+  test("a dream replay is worth DREAM_RETURN_WEIGHT and counts toward no lane", () => {
+    const m = mem({ kind: "self", birthDay: 0 });
+    const r = creditReturn(m, 21, { source: "dream" });
+    expect(r.weight).toBeCloseTo(TUNABLES.DREAM_RETURN_WEIGHT * (1 - Math.exp(-3)), 10);
+    expect(r.next).toMatchObject({ returnDays: 0, lastDreamDay: 21, lastReturnDay: null });
+  });
+
+  test("returns slow fading and never quicken it; zero returns is the old arithmetic exactly", () => {
+    const m = mem({ kind: "fact", salience: S(0.6), birthDay: 0, lastUsedDay: 0 });
+    expect(stability({ ...m, returns: 0 })).toBe(stability(m));
+    let prev = stability(m);
+    for (const r of [0.5, 1, 3, 10]) {
+      const s = stability({ ...m, returns: r });
+      expect(s).toBeGreaterThan(prev);
+      prev = s;
+    }
+    // Diminishing: the tenth return adds less than the first.
+    const gain1 = stability({ ...m, returns: 1 }) - stability(m);
+    const gain10 = stability({ ...m, returns: 10 }) - stability({ ...m, returns: 9 });
+    expect(gain10).toBeLessThan(gain1);
+    expect(returnFactor(1)).toBeCloseTo(1 + Math.log(2), 10);
+  });
+});
+
+describe("§5.3 the core lanes", () => {
+  test("fast: strongly felt AND back at least once after a gap", () => {
+    const felt = mem({ kind: "self", birthDay: 0, feelingPeak: 0.7 });
+    expect(promotionEligibility(felt, { aboutMe: true }).reason).toBe("no-lane-yet");
+    const nextDay = { ...felt, returnDays: 1, firstReturnDay: 1, lastReturnDay: 1 };
+    expect(promotionEligibility(nextDay, { aboutMe: true }).fast.met).toBe(false); // the day after is no gap
+    const back = { ...felt, returnDays: 1, firstReturnDay: 3, lastReturnDay: 3 };
+    const v = promotionEligibility(back, { aboutMe: true });
+    expect(v).toMatchObject({ eligible: true, lane: "fast" });
+    const weak = { ...back, feelingPeak: 0.4 };
+    expect(promotionEligibility(weak, { aboutMe: true }).eligible).toBe(false);
+  });
+
+  test("slow: back on five distinct days spanning three weeks", () => {
+    const m = mem({ kind: "person", birthDay: 0 });
+    const four = { ...m, returnDays: 4, firstReturnDay: 2, lastReturnDay: 30 };
+    expect(promotionEligibility(four, { aboutMe: true }).eligible).toBe(false);
+    const short = { ...m, returnDays: 6, firstReturnDay: 2, lastReturnDay: 15 };
+    expect(promotionEligibility(short, { aboutMe: true }).eligible).toBe(false);
+    const ok = { ...m, returnDays: 5, firstReturnDay: 2, lastReturnDay: 23 };
+    expect(promotionEligibility(ok, { aboutMe: true })).toMatchObject({ eligible: true, lane: "slow" });
+  });
+
+  test("the owner's demotion holds against both lanes", () => {
+    const m = mem({ kind: "self", feelingPeak: 0.9, returnDays: 6, firstReturnDay: 2, lastReturnDay: 40 });
+    const v = promotionEligibility(m, { aboutMe: true, demoted: true });
+    expect(v.eligible).toBe(false);
+    expect(v.blockedBy).toContain("demoted-by-owner");
+  });
+
+  test("the legacy consolidation marking is closed to a memory made since v8", () => {
+    const m = mem({ kind: "fact", salience: S(0.9), birthDay: 0, lastUsedDay: 0 });
+    expect(consolidationEligibility(m, 1).reason).toBe("not-legacy");
+    expect(consolidationEligibility({ ...m, legacy: true }, 1).eligible).toBe(true);
   });
 });
 
@@ -538,13 +640,12 @@ describe("regression 3 — nothing is born into identity", () => {
     expect(band(born, 0)).not.toBe("identity");
   });
 
-  test("promotion refuses on the distinct-day gate, not on strength", () => {
-    const verdict = promotionEligibility(born);
+  test("promotion refuses at birth: no lane is met, whatever the claim", () => {
+    const verdict = promotionEligibility(born, { aboutMe: true });
     expect(verdict.eligible).toBe(false);
-    expect(verdict.reason).toBe("insufficient-distinct-days");
-    expect(verdict.blockedBy).toEqual(["insufficient-distinct-days"]);
-    expect(verdict.requiredDays).toBe(3);
-    const outcome = promote(born, 0);
+    expect(verdict.reason).toBe("no-lane-yet");
+    expect(verdict.blockedBy).toEqual(["no-lane-yet"]);
+    const outcome = promote(born, 0, { aboutMe: true });
     expect(outcome.promoted).toBe(false);
     expect(outcome.crossing).toBeNull();
     expect(outcome.next).toBeNull();
@@ -554,26 +655,27 @@ describe("regression 3 — nothing is born into identity", () => {
     expect(creditUse(born, 0, "referenced").reason).toBe("birth-day");
   });
 
-  test("three distinct lived days later, promotion is an explicit counted crossing", () => {
-    let m = born;
-    for (const d of [1, 2, 3]) {
-      const out = creditUse(m, d, "referenced");
-      expect(`${d}:${out.reason}`).toBe(`${d}:credited`);
-      m = { ...m, ...out.next };
+  test("coming back on five distinct days over three weeks, promotion is an explicit counted crossing", () => {
+    // Unfelt, so it is the SLOW lane that carries it (a felt one would take the fast lane at day 2).
+    let m: MemoryPhysics = { ...born, salience: { ...born.salience, emotional: 0 } };
+    for (const d of [2, 7, 12, 18, 24]) {
+      const r = creditReturn(m, d, { source: "awake" });
+      expect(`${d}:${r.reason}`).toBe(`${d}:counted`);
+      m = { ...m, ...creditUse(m, d, "referenced").next, ...r.next };
     }
-    const outcome = promote(m, 3);
+    const outcome = promote(m, 24, { aboutMe: true });
     expect(outcome.verdict.eligible).toBe(true);
-    expect(outcome.crossing).toMatchObject({ event: "band.promoted", day: 3, kind: "self", reinforcedDays: 3 });
+    expect(outcome.crossing).toMatchObject({ event: "band.promoted", day: 24, kind: "self", lane: "slow", returnDays: 5 });
     expect(outcome.next).toEqual({ promotedIdentity: true });
-    expect(band({ ...m, ...outcome.next }, 3)).toBe("identity");
+    expect(band({ ...m, ...outcome.next }, 24)).toBe("identity");
   });
 
-  test("two days is not three — the gate is distinct days, not uses", () => {
+  test("hammering one day does not buy a second: the slow lane counts distinct days", () => {
     let m = born;
-    for (const d of [1, 2]) m = { ...m, ...creditUse(m, d, "referenced").next };
-    // hammering day 2 again does not buy a third day
-    expect(creditUse(m, 2, "referenced").reason).toBe("already-credited-today");
-    expect(promotionEligibility(m).reason).toBe("insufficient-distinct-days");
+    const r = creditReturn(m, 2, { source: "awake" });
+    m = { ...m, ...r.next };
+    expect(creditReturn(m, 2, { source: "awake" }).reason).toBe("already-returned-today");
+    expect(promotionEligibility(m, { aboutMe: true }).slow.days).toBe(1);
   });
 });
 
@@ -1090,8 +1192,14 @@ describe("the TUNABLE table matches the contract, in one visible place", () => {
     expect(TUNABLES.REP_CAP).toBe(0.5);
     expect(TUNABLES.CONS_BONUS).toBe(0.2);
     expect(TUNABLES.THETA_SEM).toBe(0.5);
-    expect(TUNABLES.THETA_ID).toBe(0.85);
-    expect(TUNABLES.N_PROMOTION_DAYS).toBe(3);
+    expect(TUNABLES.RETURN_SPACING_DAYS).toBe(7);
+    expect(TUNABLES.RETURN_GAIN).toBe(1);
+    expect(TUNABLES.DREAM_RETURN_WEIGHT).toBe(0.5);
+    expect(TUNABLES.DREAMED_CLAIM_CEILING).toBe(0.3);
+    expect(TUNABLES.CORE_FAST_FEELING).toBe(0.6);
+    expect(TUNABLES.CORE_FAST_GAP_DAYS).toBe(2);
+    expect(TUNABLES.CORE_SLOW_DAYS).toBe(5);
+    expect(TUNABLES.CORE_SLOW_SPAN_DAYS).toBe(21);
     expect(TUNABLES.S_BASE).toBe(60);
     expect(TUNABLES.BETA).toBe(0.5);
     expect(TUNABLES.BOUNDARY_HOUR).toBe(4);

@@ -1992,8 +1992,8 @@ export class Counterpart {
   }
 
   /** Retrospective reinforcement for ONE memory the reply actually used. */
-  resolveUse(sessionId: string, memoryId: string, tier: UseTier): CreditResult {
-    return this.recall.resolveUse(sessionId, memoryId, tier);
+  resolveUse(sessionId: string, memoryId: string, tier: UseTier, opts: { cued?: boolean } = {}): CreditResult {
+    return this.recall.resolveUse(sessionId, memoryId, tier, opts);
   }
 
   /**
@@ -2086,7 +2086,11 @@ export class Counterpart {
     let credited = 0;
     for (const u of uses) {
       try {
-        const r = this.resolveUse(sessionId, u.memoryId, "referenced");
+        // A QUOTED use was a loud candidate recall surfaced on a turn's own cue
+        // this session: organic, whatever the wake's hints lane was showing. An
+        // EXPANDED id may have been read off the wake — the display decides
+        // whether it is a return (physics §5.11).
+        const r = this.resolveUse(sessionId, u.memoryId, "referenced", u.how === "quoted" ? { cued: true } : {});
         if (r.credited) {
           credited += 1;
           ids.push(u.memoryId);

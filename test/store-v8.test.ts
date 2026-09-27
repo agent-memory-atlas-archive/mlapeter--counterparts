@@ -286,7 +286,7 @@ describe("returns — the history and the aggregate", () => {
     expect(p.uses).toBe(0);
     expect(p.returnDays).toBe(0); // the lanes do not count a dream
     expect(p.lastDreamDay).toBe(21);
-    expect(s.removeDreamReturns("drm_a")).toBe(1);
+    expect(s.retractDreamReturns("drm_a")).toBe(1);
     expect(s.physicsOf(id)).toMatchObject({ returns: 0, lastDreamDay: null });
   });
 

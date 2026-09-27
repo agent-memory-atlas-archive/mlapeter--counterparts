@@ -672,10 +672,10 @@ export const WRITE_METHODS = [
   "recordHintDisplay",
   "supersedeInto",
   "restoreSuperseded",
-  "removeEdge",
-  "removeFeelings",
-  "removeDreamReturns",
-  "removeDreamNominations",
+  "restoreEdge",
+  "retractFeelings",
+  "retractDreamReturns",
+  "retractDreamNominations",
   "appendCoreEvent",
   "openDream",
   "updateDream",
@@ -1608,7 +1608,21 @@ export class Store {
    * and the aggregate columns are recomputed from the table. The use itself is
    * credited exactly as before either way.
    */
-  reinforce(id: string, day: number, tier: UseTier = "referenced"): CreditOutcome & { ret: ReturnOutcome | null } {
+  reinforce(
+    id: string,
+    day: number,
+    tier: UseTier = "referenced",
+    opts: {
+      /**
+       * The use came from recall SURFACING the memory on this turn's own cue
+       * (a quoted loud candidate), not from an id the model could have read
+       * off the wake: organic whatever the hints lane was showing, so the
+       * display check is skipped. Absent — every other caller — the display
+       * decides.
+       */
+      cued?: boolean;
+    } = {},
+  ): CreditOutcome & { ret: ReturnOutcome | null } {
     const outcome = this.mutate("reinforce", () => {
       const row = this.requireRow(id);
       const physics = rowToPhysics(row);
@@ -1627,7 +1641,7 @@ export class Store {
         ret = creditReturn(physics, day, {
           source: "awake",
           tierWeight: verdict.w,
-          onDisplay: this.shownInHints(id, day),
+          onDisplay: opts.cued !== true && this.shownInHints(id, day),
         });
         if (ret.counted) this.writeReturn(id, day, ret, null);
       }
@@ -1649,7 +1663,7 @@ export class Store {
    * awake one, spacing-scaled, at most once per dream per memory — and never a
    * USE: `uses`, `lastUsedDay` and the rep arm are untouched, and the core
    * lanes do not count it. Tagged with the dream's id so undoing the dream
-   * removes it (`removeDreamReturns`).
+   * removes it (`retractDreamReturns`).
    */
   replayReturn(id: string, day: number, dreamId: string): ReturnOutcome {
     const outcome = this.mutate("replayReturn", () => {
@@ -1882,8 +1896,8 @@ export class Store {
   }
 
   /** Remove one edge, or put back the weight it had before (a dream's link, undone). */
-  removeEdge(src: string, dst: string, restore: { weight: number; day: number } | null = null): void {
-    this.mutate("removeEdge", () => {
+  restoreEdge(src: string, dst: string, restore: { weight: number; day: number } | null = null): void {
+    this.mutate("restoreEdge", () => {
       if (restore === null) {
         this.ops.run("DELETE FROM edges WHERE src = ? AND dst = ?", src, dst);
       } else {
@@ -1897,12 +1911,12 @@ export class Store {
         );
       }
     });
-    this.emit("store.unlink", src, { dst, restored: restore !== null });
+    this.emit("store.edge.restored", src, { dst, restored: restore !== null });
   }
 
   /** Delete feelings by id (a dream's feeling-now, undone). */
-  removeFeelings(ids: readonly string[]): number {
-    const n = this.mutate("removeFeelings", () => {
+  retractFeelings(ids: readonly string[]): number {
+    const n = this.mutate("retractFeelings", () => {
       let count = 0;
       for (const id of ids) {
         this.ops.run("UPDATE feelings SET beneath_id = NULL WHERE beneath_id = ?", id);
@@ -1911,13 +1925,13 @@ export class Store {
       }
       return count;
     });
-    this.emit("store.feelings.removed", undefined, { count: n });
+    this.emit("store.feelings.retracted", undefined, { count: n });
     return n;
   }
 
   /** Delete a dream's replays and recompute each memory's returns from what is left. */
-  removeDreamReturns(dreamId: string): number {
-    const n = this.mutate("removeDreamReturns", () => {
+  retractDreamReturns(dreamId: string): number {
+    const n = this.mutate("retractDreamReturns", () => {
       const ids = this.ops
         .all<{ memory_id: string }>("SELECT DISTINCT memory_id FROM returns WHERE dream_id = ?", dreamId)
         .map((r) => r.memory_id);
@@ -1925,7 +1939,7 @@ export class Store {
       for (const id of ids) if (this.row(id) !== undefined) this.recomputeReturns(id);
       return ids.length;
     });
-    this.emit("store.replay.removed", undefined, { dream: dreamId, memories: n });
+    this.emit("store.replay.retracted", undefined, { dream: dreamId, memories: n });
     return n;
   }
 
@@ -1982,12 +1996,12 @@ export class Store {
   }
 
   /** Delete a dream's nominations (the undo of its `nominate-core` changes). */
-  removeDreamNominations(dreamId: string): number {
-    const n = this.mutate("removeDreamNominations", () => {
+  retractDreamNominations(dreamId: string): number {
+    const n = this.mutate("retractDreamNominations", () => {
       this.ops.run("DELETE FROM core_events WHERE dream_id = ? AND action = 'nominated'", dreamId);
       return this.ops.get<{ n: number }>("SELECT changes() AS n")?.n ?? 0;
     });
-    this.emit("store.core.removed", undefined, { dream: dreamId, count: n });
+    this.emit("store.core.retracted", undefined, { dream: dreamId, count: n });
     return n;
   }
 

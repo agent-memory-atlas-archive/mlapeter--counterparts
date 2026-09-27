@@ -164,7 +164,7 @@ export interface DreamStatus {
   readonly dreamedToday: boolean;
   readonly newSince: number;
   readonly due: boolean;
-  readonly reason: "due" | "observer" | "dreamed-today" | "asked-today" | "declined-today" | "too-little-new";
+  readonly reason: "due" | "observer" | "first-day" | "dreamed-today" | "asked-today" | "declined-today" | "too-little-new";
 }
 
 const KINDS: readonly Kind[] = ["self", "person", "entity", "skill", "place", "fact"];
@@ -198,9 +198,13 @@ export class Dreams {
     const dreamedToday = last !== null && last.day >= day && last.state !== "undone";
     const newSince = this.freshIds(last).length;
     const ask = this.store.dreamAsk(at);
+    // A store on its first lived day has no night behind it yet: "I haven't
+    // dreamed since …" needs a since.
     const reason: DreamStatus["reason"] = this.ctx.observer
       ? "observer"
-      : dreamedToday
+      : day < 1
+        ? "first-day"
+        : dreamedToday
         ? "dreamed-today"
         : ask?.state === "declined"
           ? "declined-today"
@@ -623,8 +627,8 @@ export class Dreams {
         }
         case "link": {
           if (c.ref !== null && c.ref2 !== null) {
-            this.store.removeEdge(c.ref, c.ref2, edgePrior(detail["ab"]));
-            this.store.removeEdge(c.ref2, c.ref, edgePrior(detail["ba"]));
+            this.store.restoreEdge(c.ref, c.ref2, edgePrior(detail["ab"]));
+            this.store.restoreEdge(c.ref2, c.ref, edgePrior(detail["ba"]));
           }
           break;
         }
@@ -633,15 +637,15 @@ export class Dreams {
             this.archiveQuietly(c.ref);
             const sources = Array.isArray(detail["sources"]) ? (detail["sources"] as string[]) : [];
             for (const s of sources) {
-              this.store.removeEdge(c.ref, s, null);
-              this.store.removeEdge(s, c.ref, null);
+              this.store.restoreEdge(c.ref, s, null);
+              this.store.restoreEdge(s, c.ref, null);
             }
           }
           break;
         }
         case "feeling-now": {
           const ids = Array.isArray(detail["feelings"]) ? (detail["feelings"] as string[]) : [];
-          if (ids.length > 0) this.store.removeFeelings(ids);
+          if (ids.length > 0) this.store.retractFeelings(ids);
           break;
         }
         default:
@@ -651,8 +655,8 @@ export class Dreams {
       this.store.markDreamChangeUndone(id, c.seq);
       reversed += 1;
     }
-    this.store.removeDreamReturns(id);
-    this.store.removeDreamNominations(id);
+    this.store.retractDreamReturns(id);
+    this.store.retractDreamNominations(id);
     this.store.updateDream(id, { state: "undone" });
     this.record(DREAM_UNDONE_EVENT, id, { reversed });
     return { ok: true, reason: "undone", reversed };

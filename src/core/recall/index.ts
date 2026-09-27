@@ -548,7 +548,7 @@ export class Recall {
    * so "the ignorable tier trains nothing" is proved by the seam that would have
    * trained it, not by an early return that never asked.
    */
-  resolveUse(sessionId: string, memoryId: string, tier: UseTier): CreditResult {
+  resolveUse(sessionId: string, memoryId: string, tier: UseTier, opts: { cued?: boolean } = {}): CreditResult {
     const w = USE_TIER_WEIGHT[tier];
     // Checked FIRST, before any other work (contract §5 G11, scar E7).
     if (this.observer) {
@@ -584,7 +584,7 @@ export class Recall {
       return { credited: false, reason: "already-credited-at-or-above", tier, w, outcome: null };
     }
 
-    const outcome = this.store.reinforce(memoryId, today, tier);
+    const outcome = this.store.reinforce(memoryId, today, tier, opts.cued === true ? { cued: true } : {});
     if (outcome.credited) {
       state.credited[memoryId] = { turn: state.turn, tier, day: today };
       this.persist(state, "resolveUse");

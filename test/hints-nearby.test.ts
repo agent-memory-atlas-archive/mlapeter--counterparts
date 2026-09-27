@@ -222,6 +222,15 @@ describe("the hints lane rotates, over real renders", () => {
     expect(s.returnsOf(strong)).toEqual([]);
   });
 
+  test("used while shown but brought up by the turn's own cue: organic, a return", () => {
+    const s = store();
+    const strong = warm(s, "The strongest warm thing in this store.", 0.95);
+    renderDay(self(s, { HINTS_MAX: 1 }), 1);
+    const credit = s.reinforce(strong, 2, "referenced", { cued: true });
+    expect(credit.ret).toMatchObject({ counted: true, reason: "counted" });
+    expect(s.physicsOf(strong).returnDays).toBe(1);
+  });
+
   test("the day a publish drops it is still a showing day (ambiguous: an earlier session read the old bundle)", () => {
     const s = store();
     const first = warm(s, "Warm, and alone in the lane this morning.", 0.7);

@@ -24,6 +24,7 @@ import {
   strength,
 } from "../src/core/physics/index.js";
 import { MEMORY_SOURCES } from "../src/core/types.js";
+import { Dreams } from "../src/core/dream/index.js";
 import type { MemoryPhysics } from "../src/core/types.js";
 import {
   SpanBuffer,
@@ -417,6 +418,20 @@ describe("SEAMS A — the observer predicate is hoisted, and stand-down totality
       rebuildCache: [],
       pruneDeadIndex: [],
       embedOne: ["mem_0"],
+      replayReturn: [seedId, 1, "drm_x"],
+      recordHintDisplay: [1, [{ id: seedId, load: 1 }]],
+      supersedeInto: [seedId, seedId, "dream-merge"],
+      restoreSuperseded: [seedId, "dream-merge"],
+      restoreEdge: [seedId, seedId, null],
+      retractFeelings: [["fel_x"]],
+      retractDreamReturns: ["drm_x"],
+      retractDreamNominations: ["drm_x"],
+      appendCoreEvent: [{ memoryId: seedId, action: "nominated", day: 0 }],
+      openDream: [{ id: "drm_x", day: 0 }],
+      updateDream: ["drm_x", { state: "undone" }],
+      recordDreamChange: ["drm_x", { action: "link" }],
+      markDreamChangeUndone: ["drm_x", 1],
+      setDreamAsk: [{ date: "2026-09-26", state: "offered", day: 0 }],
     };
     for (const method of WRITE_METHODS) {
       const fn = (s as unknown as Record<string, ((...a: unknown[]) => unknown) | undefined>)[
@@ -1473,6 +1488,9 @@ describe("SEAMS L — hops raise a candidate the conversation reached, and mint 
 // M — physics.consolidationEligibility(): sleep executes, physics decides
 // ═══════════════════════════════════════════════════════════════════════════
 describe("SEAMS M — the consolidation criterion lives in physics, where the arithmetic is", () => {
+  // Since v8 (2026-09-26) the marking is the LEGACY path, open only to rows
+  // born before the upgrade — so these fixtures are legacy rows, and one test
+  // below pins the refusal for everything made since.
   function phys(over: Partial<MemoryPhysics> = {}): MemoryPhysics {
     return {
       kind: "fact",
@@ -1481,6 +1499,7 @@ describe("SEAMS M — the consolidation criterion lives in physics, where the ar
       uses: 0,
       lastUsedDay: 0,
       reinforcedDays: 0,
+      legacy: true,
       consolidated: false,
       promotedIdentity: false,
       protected: false,
@@ -1515,6 +1534,13 @@ describe("SEAMS M — the consolidation criterion lives in physics, where the ar
     expect(consolidationEligibility(oneShot, 1).eligible).toBe(true);
   });
 
+  test("a memory made since the v8 upgrade is refused `not-legacy`: returns are its road", () => {
+    const v = consolidationEligibility(phys({ legacy: false }), 1);
+    expect(v.eligible).toBe(false);
+    expect(v.reason).toBe("not-legacy");
+    expect(consolidationEligibility(phys({ legacy: undefined }), 1).reason).toBe("not-legacy");
+  });
+
   test("a faded memory is below the semantic floor and does not consolidate", () => {
     const faded = phys({
       salience: { novelty: null, relevance: 0, emotional: 0, predictive: 0, claimed: null },
@@ -1534,14 +1560,14 @@ describe("SEAMS M — the consolidation criterion lives in physics, where the ar
       kind: "fact",
       body: "A memory born today, which nothing consolidates.",
       salience: { novelty: null, relevance: 0.9, emotional: 0.9, predictive: 0.9 },
-      physics: { birthDay: 1, lastUsedDay: 1 },
+      physics: { birthDay: 1, lastUsedDay: 1, legacy: true },
     });
     const ripe = s.put({
       type: "memory",
       kind: "fact",
       body: "A memory from yesterday, sitting well above the semantic floor.",
       salience: { novelty: null, relevance: 0.9, emotional: 0.9, predictive: 0.9 },
-      physics: { birthDay: 0, lastUsedDay: 0 },
+      physics: { birthDay: 0, lastUsedDay: 0, legacy: true },
     });
 
     const out = runConsolidate(phaseCtx(wrap(s), 1));
@@ -1754,7 +1780,7 @@ describe("SEAMS N — a self-claim repeat routes through the freeze at the minti
 // and the reteller's cap, end to end through the REAL path.
 // ═══════════════════════════════════════════════════════════════════════════
 describe("MemorySource is TOTAL — every member has a live writer that lands it on a row", () => {
-  test("all five members, each through its own writer, asserted on the written row", async () => {
+  test("every member, each through its own writer, asserted on the written row", async () => {
     // The PR-2 review's argument for this test: of the doctrine's five source
     // values, two shipped without any row-level assertion behind them — one
     // ("accommodation") without any writer at all at first. A member added to
@@ -1829,6 +1855,28 @@ describe("MemorySource is TOTAL — every member has a live writer that lands it
         source: "migrated",
       }),
     );
+
+    // dreamed: a dream's gist, through the dream seam (2026-09-26).
+    const dreams = new Dreams({
+      store: s,
+      observer: false,
+      owner: true,
+      gate: (text) => ({ ok: true, text }),
+      page: () => null,
+      wake: () => null,
+      today: () => "2026-09-26",
+    });
+    s.advanceClock("2026-09-25");
+    s.advanceClock("2026-09-26");
+    const begun = dreams.begin({ session: "s-tot" });
+    if (!begun.ok) throw new Error(`dream refused: ${begun.reason}`);
+    const source = Object.keys(begun.bundle.memories)[0] as string;
+    const gist = dreams.propose({
+      dream: begun.bundle.dream,
+      session: "s-tot",
+      changes: [{ action: "gist", text: "Ada keeps asking for the live walkthrough.", sources: [source] }],
+    });
+    seen.set("dreamed", gist.ok ? (gist.results[0]?.id ?? "missing") : "missing");
 
     for (const member of MEMORY_SOURCES) {
       const id = seen.get(member);

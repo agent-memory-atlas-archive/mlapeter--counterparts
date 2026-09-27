@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { SCHEMA_VERSION, Store, isStoreError, paths } from "../src/core/store/index.js";
 import type { StoreOptions } from "../src/core/store/index.js";
 import { chaseRemoved } from "../src/core/store/owner-op-seam.js";
+import { stripToV7 } from "./v7-fixture.js";
 
 let dir: string;
 const open: Store[] = [];
@@ -87,6 +88,8 @@ function makeV6(at: string): { mem: string; ver: string } {
   s.revise(ver, { body: "the second wording" });
   s.link({ src: mem, dst: ver, weight: 0.5, day: 0 });
   s.close();
+  // Back to v7 first (the v8 tables and columns off), then to v6.
+  stripToV7(at);
   const db = new Database(paths.operational(at));
   db.run("DROP INDEX IF EXISTS memories_event_date");
   db.run("DROP TABLE feelings");
@@ -124,9 +127,9 @@ describe("the v6 → v7 migration", () => {
 
     const s = store({ snapshotsDir: snaps });
     expect(s.getMeta("schemaVersion")).toBe(String(SCHEMA_VERSION));
-    expect(SCHEMA_VERSION).toBe(7);
+    // v6 migrates straight to the current schema (v8 since 2026-09-26), in one open.
     expect(s.migration?.from).toBe("6");
-    expect(s.migration?.to).toBe(7);
+    expect(s.migration?.to).toBe(SCHEMA_VERSION);
     // ONE copy, taken before the change.
     expect(existsSync(snaps)).toBe(true);
     expect(readdirSync(snaps).length).toBe(1);

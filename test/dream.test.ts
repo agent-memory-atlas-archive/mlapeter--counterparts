@@ -330,6 +330,10 @@ describe("the ask: once a day, snoozed by a no", () => {
 
   test("not due after a dream this lived day, nor with too little new", () => {
     const c = brain();
+    // A first lived day has no night behind it; later, with nothing new, still no ask.
+    expect(c.dreams.status("2026-09-26").reason).toBe("first-day");
+    c.store.advanceClock("2026-09-01");
+    c.store.advanceClock("2026-09-02");
     expect(c.dreams.status("2026-09-26").reason).toBe("too-little-new");
     lived(c);
     const { id } = begin(c);

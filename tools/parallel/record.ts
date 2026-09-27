@@ -19,7 +19,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 
-import { TUNABLES as PHYSICS } from "../../src/core/physics/index.js";
 import { contentAddress } from "../replay/corpus.js";
 
 import { PRESSURE_EVENT } from "../../src/core/revision.js";
@@ -623,10 +622,11 @@ export class RecordError extends Error {
  * ever" means the whole consolidation gradient above episodic is inert for
  * everything Counterparts has learned by itself.
  *
- * `N_PROMOTION_DAYS` is IMPORTED from physics rather than spelled here. A second
- * copy of that number in the instrument is the divergence this whole tool exists
- * to catch; importing a constant shares no arithmetic (surface.ts makes the same
- * argument about importing a field list).
+ * `N_PROMOTION_DAYS` was IMPORTED from physics rather than spelled here, until
+ * 2026-09-26: promotion then moved to the core lanes (physics §5.3) and the
+ * constant went with the rule it belonged to. This watch grades the PARALLEL
+ * RUN — a closed chapter — against the rule of its own day, so the number it
+ * used is kept here as `REINFORCE_WINDOW_DAYS`, named for what it measures.
  *
  * ONE DELIBERATE DEVIATION from the spec this was written to, stated here rather
  * than buried: the "too young to have been reinforced" test runs on the OLDEST
@@ -637,6 +637,10 @@ export class RecordError extends Error {
  * been reinforced yet" is a true statement about a whole set only when the
  * OLDEST member of it is too young.
  */
+/** Lived days a store's oldest row must reach before "never reinforced" is a
+ *  finding (the parallel run's N_PROMOTION_DAYS = 3; see above). */
+export const REINFORCE_WINDOW_DAYS = 3;
+
 export function gradeReinforced(
   post: V2DayCounts["memories"]["postLaunch"],
   livedDayNow: number | null,
@@ -666,17 +670,17 @@ export function gradeReinforced(
       reason: `${counted}, none reinforced — but the store's livedDay meta could not be read, so how old the oldest of them is cannot be established and a fail here would be a verdict on an unread clock`,
     };
   }
-  if (age < PHYSICS.N_PROMOTION_DAYS) {
+  if (age < REINFORCE_WINDOW_DAYS) {
     return {
       detector,
       value: "not-exercised",
-      reason: `${counted}, none reinforced — the OLDEST of them is ${age} lived day(s) old and identity promotion counts reinforcement on N_PROMOTION_DAYS=${PHYSICS.N_PROMOTION_DAYS} distinct days, so nothing could have been reinforced yet`,
+      reason: `${counted}, none reinforced — the OLDEST of them is ${age} lived day(s) old and identity promotion counted reinforcement on REINFORCE_WINDOW_DAYS=${REINFORCE_WINDOW_DAYS} distinct days, so nothing could have been reinforced yet`,
     };
   }
   return {
     detector,
     value: "fail",
-    reason: `${post.rows} post-launch rows, ${post.reinforced} with reinforced_days ≥ 1, ${post.used} with uses ≥ 1 — the promotion gradient has no input; see IMPROVEMENTS U10 (the oldest is ${age} lived day(s) old, past N_PROMOTION_DAYS=${PHYSICS.N_PROMOTION_DAYS})`,
+    reason: `${post.rows} post-launch rows, ${post.reinforced} with reinforced_days ≥ 1, ${post.used} with uses ≥ 1 — the promotion gradient has no input; see IMPROVEMENTS U10 (the oldest is ${age} lived day(s) old, past REINFORCE_WINDOW_DAYS=${REINFORCE_WINDOW_DAYS})`,
   };
 }
 
