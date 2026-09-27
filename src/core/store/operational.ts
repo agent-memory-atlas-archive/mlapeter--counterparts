@@ -1255,8 +1255,6 @@ export const V9_UPGRADE_KEY = "physics.v9.upgrade";
 export function markByOldRule(db: Db): { self: number; person: number; candidates: number } {
   const owner = ownerNamesIn(db);
   const rows = "type = 'memory' AND body != '' AND about IS NULL";
-  const live = "archived = 0 AND superseded_by IS NULL AND promoted_identity = 0";
-  const candidatesSelf = db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM memories WHERE ${rows} AND kind = 'self' AND ${live}`)?.n ?? 0;
   db.run(`UPDATE memories SET about = 'me', about_by = 'upgrade' WHERE ${rows} AND kind = 'self'`);
   const self = db.get<{ n: number }>("SELECT changes() AS n")?.n ?? 0;
   // The old rule read a `self` SCHEMA row (a belief about me, the identity
@@ -1275,11 +1273,13 @@ export function markByOldRule(db: Db): { self: number; person: number; candidate
     if (role !== "page") markSchema.run(r.id);
   }
   let person = 0;
-  let candidatesPerson = 0;
   if (owner.length > 0) {
     const mark = db.prepare("UPDATE memories SET about = 'owner', about_by = 'upgrade' WHERE id = ?");
-    for (const r of db.all<{ id: string; title: string | null; body: string; meta: string; archived: number; superseded_by: string | null; promoted_identity: number }>(
-      `SELECT id, title, body, meta, archived, superseded_by, promoted_identity FROM memories WHERE ${rows} AND kind = 'person'`,
+    // Schema rows too (review of #256, S3): the old rule read a `person`
+    // BELIEF naming the owner as about me as well, whatever its type.
+    for (const r of db.all<{ id: string; type: string; title: string | null; body: string; meta: string }>(
+      `SELECT id, type, title, body, meta FROM memories
+        WHERE type IN ('memory', 'schema') AND body != '' AND about IS NULL AND kind = 'person'`,
     )) {
       let meta: Record<string, unknown> = {};
       try {
@@ -1290,11 +1290,28 @@ export function markByOldRule(db: Db): { self: number; person: number; candidate
       const fields = [r.title ?? "", r.body, String(meta["name"] ?? ""), String(meta["entity"] ?? "")];
       if (!fields.some((f) => f.length > 0 && namesAny(f, owner))) continue;
       mark.run(r.id);
-      person += 1;
-      if (r.archived === 0 && r.superseded_by === null && r.promoted_identity === 0) candidatesPerson += 1;
+      if (r.type === "memory") person += 1;
     }
   }
-  return { self, person, candidates: candidatesSelf + candidatesPerson };
+  // THE CANDIDATES the old rule read, counted the way consolidation meets
+  // them (review of #256, S3): every row the upgrade marked, memory or schema,
+  // live and not yet core — but the page, which never crosses.
+  let candidates = 0;
+  for (const r of db.all<{ type: string; meta: string }>(
+    `SELECT type, meta FROM memories
+      WHERE about_by = 'upgrade' AND type IN ('memory', 'schema')
+        AND archived = 0 AND superseded_by IS NULL AND promoted_identity = 0`,
+  )) {
+    if (r.type === "schema") {
+      try {
+        if ((JSON.parse(r.meta) as Record<string, unknown>)["role"] === "page") continue;
+      } catch {
+        /* unreadable meta reads as not the page, as sleep reads it */
+      }
+    }
+    candidates += 1;
+  }
+  return { self, person, candidates };
 }
 
 /** The owner's names off the identity core (`role: entity`), lower-cased. */

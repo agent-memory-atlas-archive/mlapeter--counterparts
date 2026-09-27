@@ -233,7 +233,9 @@ describe("the v9 upgrade carries today's rule, and says so", () => {
       expect(after.store.read(fact).about).toBe(null);
       expect(after.store.feelingsFor(self).find((f) => f.id === feeling)?.source).toBe("session");
       const record = JSON.parse(after.store.getMeta(V9_UPGRADE_KEY) ?? "{}") as Record<string, unknown>;
-      expect(record).toMatchObject({ from: "8", markedMe: 1, markedOwner: 1, candidates: 2 });
+      // Candidates as consolidation meets them: the two, and the identity core
+      // (a self schema row the old rule read as about me too; review of #256, S3).
+      expect(record).toMatchObject({ from: "8", markedMe: 1, markedOwner: 1, candidates: 3 });
       // The candidates the morning after are the ones the old rule read.
       for (const id of [self, him]) expect(aboutMe(after.store, after.store.row(id)!)).toBe(true);
       for (const id of [ada, fact]) expect(aboutMe(after.store, after.store.row(id)!)).toBe(false);
@@ -242,7 +244,7 @@ describe("the v9 upgrade carries today's rule, and says so", () => {
       const line = upgradeV9Findings(after.store)[0];
       expect(line?.severity).toBe("green");
       expect(line?.detail).toContain("nothing changed overnight");
-      expect(line?.detail).toContain("2 core candidates");
+      expect(line?.detail).toContain("3 core candidates");
     } finally {
       dir = root;
     }
