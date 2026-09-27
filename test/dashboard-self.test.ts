@@ -15,7 +15,7 @@ import { TUNABLES, promotionEligibility } from "../src/core/physics/index.js";
 import { Dashboard } from "../src/adapters/dashboard/index.js";
 import type { DashboardSource } from "../src/adapters/dashboard/index.js";
 import { router } from "../src/adapters/dashboard/web/server.js";
-import { mindView } from "../src/adapters/dashboard/web/views.js";
+import { healthView, mindView } from "../src/adapters/dashboard/web/views.js";
 import {
   PAGE_BEHIND_LIVED_DAYS,
   headingIso,
@@ -144,12 +144,16 @@ describe("the self tab's view", () => {
     });
   });
 
-  test("the wake's parts add up to the bytes it carries, and the budget is the recorded one", () => {
+  test("the wake's parts add up to the bytes it carries, and the budget is the recorded one (on the health tab since 3b)", () => {
     const v = withSource(dir, (src) => mindView(src));
+    const w = withSource(dir, (src) => healthView(src)).wake;
     expect(v.wake.ok).toBe(true);
-    expect(v.wakeParts.reduce((a, p) => a + p.bytes, 0)).toBe(v.wake.bytes);
-    expect(v.wakeParts.map((p) => p.key)).toContain("page");
-    expect(v.wakeBudget).toBeGreaterThan(v.wake.bytes);
+    expect(w.ok).toBe(true);
+    expect(w.bytes).toBe(v.wake.bytes);
+    expect(w.parts.reduce((a, p) => a + p.bytes, 0)).toBe(v.wake.bytes);
+    expect(w.parts.map((p) => p.key)).toContain("page");
+    expect(w.budget).toBeGreaterThan(v.wake.bytes);
+    expect(w.trimmed).toBe(0);
   });
 
   test("wakeParts keeps the page's own headings inside the page's slice", () => {
@@ -173,7 +177,10 @@ describe("the self tab's view", () => {
   test("an empty store says so in two words, and draws nothing it does not have", () => {
     const v = withSource(emptyDir, (src) => mindView(src));
     expect(v.pageHistory).toEqual([]);
-    expect(v.wakeParts).toEqual([]);
+    expect(v.pageDays).toEqual([]);
+    expect(withSource(emptyDir, (src) => healthView(src)).wake.parts).toEqual([]);
+    expect(v.wakeList.nearby).toEqual([]);
+    expect(v.map).toEqual({ nodes: [], links: [], total: 0, more: 0 });
     expect(v.settling.candidates).toEqual([]);
     expect(v.settling.coreAbsent).not.toBeNull();
     expect(v.journalAbsent).not.toBeNull();

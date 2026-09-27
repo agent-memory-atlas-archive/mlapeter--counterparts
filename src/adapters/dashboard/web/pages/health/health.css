@@ -40,6 +40,20 @@
 .hcy-dots{display:flex;gap:8px;align-items:center}
 .hcy-dot{width:12px;height:12px;cursor:help}
 
+/* ── is the wake overflowing? one compact row (round 3b, from the self tab) ── */
+.hwk{margin-top:10px}
+.hwk-top{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.hwk-line{font-size:15px;color:var(--ink)}
+.wk-bar{display:flex;height:12px;border-radius:4px;overflow:hidden;background:var(--deep);border:1px solid var(--border)}
+.wk-seg{display:block;height:100%}
+.wk-seg+.wk-seg{border-left:1px solid var(--card)}
+.p-furn{background:#3a4552}.p-page{background:var(--cyan)}.p-craft{background:var(--purple)}
+.p-threads{background:var(--amber)}.p-hints{background:var(--teal)}.p-horizon{background:#ff8a80}
+.p-room{background:transparent;border:1px dashed var(--glow)}
+.wk-legend{display:flex;flex-wrap:wrap;gap:4px 12px;margin:8px 0 0;font-size:12.5px;color:var(--dim)}
+.wk-key i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:0}
+.wk-key em{font-style:normal;color:var(--faint);font-family:var(--mono);font-size:11.5px;margin-left:2px}
+
 /* ── where archived memories went ── */
 .ha-total{font-size:14px;color:var(--dim);margin-bottom:10px}
 .ha-total b{font-family:var(--mono);font-size:20px;color:var(--ink);font-weight:700;margin-right:4px}

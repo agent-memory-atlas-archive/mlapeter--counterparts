@@ -26,6 +26,8 @@ import { WITHHELD, reveal } from "../reveal.js";
 import { chapters, contestedRows, livedDays } from "./rows.js";
 import { coreHistory, dreamsView } from "./dreams.js";
 import type { CoreHistory, DreamsView } from "./dreams.js";
+import { selfMap } from "./self-map.js";
+import type { SelfMap } from "./self-map.js";
 import type { ChapterRow, ContestedRow } from "./rows.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -120,12 +122,27 @@ export interface MindView {
   readonly storiesAbsent: string | null;
   /** The page's whole life, OLDEST first, the standing page last. */
   readonly pageHistory: PageStep[];
+  /**
+   * THE PAGE'S HISTORY AS ONE STRIP (round 3b, item 1): one entry per lived day
+   * from the page's first dated version to today, oldest first — rewritten that
+   * day, or not and why.
+   */
+  readonly pageDays: PageDay[];
+  /** Versions whose lived day was never recorded, so no dot can carry them (counted, not dropped). */
+  readonly pageDaysUndated: number;
   /** What is settling into the core, and what is closest to it. */
   readonly settling: SettlingView;
-  /** The published wake cut into its parts, in the order it reads. */
-  readonly wakeParts: WakePart[];
-  /** The ceiling the last render was composed to; null when no render recorded one. */
-  readonly wakeBudget: number | null;
+  /**
+   * THE SELF MAP (round 3b, item 4; an experiment): the memories about me or
+   * about us as dots and the links between them (`views/self-map.ts`).
+   */
+  readonly map: SelfMap;
+  /**
+   * WHAT THE NEXT WAKE STARTS WITH (round 3b, item 2), as a short list: the
+   * page and its age, the nearby memories by title, anything arriving. Its size
+   * against the budget is the health tab's now (`healthView#wake`).
+   */
+  readonly wakeList: WakeList;
   /** The journal by lived day, newest first. */
   readonly journal: JournalDay[];
   readonly journalAbsent: string | null;
@@ -184,6 +201,7 @@ export interface PageStep {
   /** The store's version seq; for the standing page, its `version` + 1. */
   readonly seq: number;
   readonly current: boolean;
+  /** The lived day of the write that produced it (not the day it was replaced); null when unrecorded. */
   readonly day: number | null;
   /** Calendar date of the write that produced it (the durable row's clock); null when unrecorded. */
   readonly date: string | null;
@@ -340,6 +358,8 @@ export function mindView(src: DashboardSource): MindView {
   });
   const stories = storyViews(src);
   const read = journalChapters(src);
+  const history = pageHistory(src, page);
+  const candidates = coreCandidates(src, page?.id ?? null);
 
   return {
     opening: `Day ${day} · Who I am`,
@@ -388,18 +408,19 @@ export function mindView(src: DashboardSource): MindView {
     chaptersAbsent: chapters(src, 1).length === 0 ? (everLived ? NONE : NEVER) : null,
     stories,
     storiesAbsent: stories.length === 0 ? (everLived ? NONE : NEVER) : null,
-    pageHistory: pageHistory(src, page),
+    pageHistory: history,
+    ...pageDays(src, history),
     settling: settlingView(src, {
       core: identity,
       guarded,
       outside,
       unreadable,
       stories,
-      pageId: page?.id ?? null,
+      candidates,
       absent: everLived ? NONE : NEVER,
     }),
-    wakeParts: wake.ok ? wakeParts(wake.text, page !== null) : [],
-    wakeBudget: lastBudget(src),
+    map: selfMap(src, identity, candidates.raw),
+    wakeList: wakeList(src, wake.ok ? wake.text : null, page),
     ...journal(read, JOURNAL_LIMIT, everLived ? NONE : NEVER),
     pageBehind: pageBehind(src, page, read),
     writer: writerLine(src),
@@ -678,6 +699,7 @@ function dateOfMs(at: number, zone: string): string | null {
 function pageHistory(src: DashboardSource, page: ReturnType<DashboardSource["self"]["page"]>): PageStep[] {
   const versions = src.self.pageVersions().slice().sort((a, b) => a.seq - b.seq);
   const at = new Map<number, number>();
+  const onDay = new Map<number, number>();
   const pageId = page?.id ?? null;
   const zone = src.store.zone();
   try {
@@ -687,16 +709,24 @@ function pageHistory(src: DashboardSource, page: ReturnType<DashboardSource["sel
     for (const row of rows) {
       const payload = JSON.parse(row.payload ?? "{}") as Record<string, unknown>;
       const v = payload["version"];
-      if (typeof v === "number") at.set(v, row.at);
+      if (typeof v === "number") {
+        at.set(v, row.at);
+        onDay.set(v, row.day);
+      }
     }
   } catch {
     /* unreadable log: every date reads as unrecorded, never as a guess */
   }
+  // THE LIVED DAY A VERSION WAS WRITTEN ON (round 3b). `PageVersion.day` is
+  // the day the version was ARCHIVED — the day the next write replaced it — so
+  // the write that produced version `seq` is the one that archived `seq - 1`,
+  // on that version's `day`. The durable row's own day says it directly and
+  // wins; the first version has only the row.
   const steps: PageStep[] = versions.map((v, i) => ({
     n: i + 1,
     seq: v.seq,
     current: false,
-    day: v.day,
+    day: onDay.get(v.seq - 1) ?? (i > 0 ? (versions[i - 1] as PageVersion).day : null),
     date: at.has(v.seq - 1) ? dateOfMs(at.get(v.seq - 1) as number, zone) : null,
     by: v.by,
     reason: v.reason,
@@ -720,6 +750,136 @@ function pageHistory(src: DashboardSource, page: ReturnType<DashboardSource["sel
 }
 
 const LOG_LIMIT = 2_000;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// the page's history as one strip of lived days (round 3b, item 1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** One lived day on the page's strip. */
+export interface PageDay {
+  readonly day: number;
+  /** Its calendar date (`YYYY-MM-DD`) when the record gives one; null otherwise. */
+  readonly date: string | null;
+  readonly today: boolean;
+  /** The seqs of the versions written that day, oldest first; empty when it was not rewritten. */
+  readonly seqs: number[];
+  /** Who wrote the newest of them, and the reason it gave. */
+  readonly by: string | null;
+  readonly reason: string | null;
+  /** A day not rewritten: what happened, and what would make it happen, in one line. Null on a rewritten day. */
+  readonly why: string | null;
+  /** The longer story behind `why`, for its `?`. */
+  readonly more: string | null;
+}
+
+/** How many lived days the strip carries at most, the newest kept. */
+export const PAGE_DAYS_MAX = 90;
+/** How many writer runs are read to word the days. */
+const WRITER_RUNS_READ = 500;
+
+/**
+ * A day's words from the writer's own reading of its night: the S2 words
+ * (`writerWords`), led by what happened rather than by the night it was about,
+ * since the dot is the day the run happened on. Pure.
+ */
+export function pageDayWords(w: Pick<WriterLine, "what" | "next">): string {
+  const what = w.what;
+  const lead = /^(not |nothing )/.test(what) ? what.charAt(0).toUpperCase() + what.slice(1) : `The page writer ${what}`;
+  return `${lead}.` + (w.next === null ? "" : ` ${w.next}`);
+}
+
+/** The words for a lived day nothing in the record speaks for. Pure. */
+export function pageDayUnrecorded(today: boolean): { why: string; more: string } {
+  return today
+    ? { why: "Not rewritten today; the page writer has not run yet.", more: `${WRITER_IS} It runs at most once a night, when a session starts.` }
+    : { why: "Not rewritten, and the page writer left no record that day.", more: `${WRITER_IS} Nothing in the record says it ran on this lived day.` };
+}
+
+/**
+ * One entry per lived day from the page's first dated version to today. A day
+ * with versions is "rewritten" and carries their seqs (the strip opens the
+ * newest, diffed against the one before it). Any other day is worded from the
+ * newest page-writer run that HAPPENED on it (`run.day`), read through `self/`'s
+ * own `pageWriterStatus`, so a claim whose day is over reads as doctor reads
+ * it; a day with no run says so, never a guess.
+ */
+function pageDays(src: DashboardSource, history: readonly PageStep[]): { pageDays: PageDay[]; pageDaysUndated: number } {
+  const dated = history.filter((s) => s.day !== null);
+  const undated = history.length - dated.length;
+  if (dated.length === 0) return { pageDays: [], pageDaysUndated: undated };
+  const today = src.store.livedDay();
+  const first = Math.max(Math.min(...dated.map((s) => s.day as number)), today - (PAGE_DAYS_MAX - 1));
+  let calendar = "";
+  let runs: PageWriterRun[] = [];
+  try {
+    calendar = src.self.calendarToday();
+    runs = src.self.pageWriterRuns({ limit: WRITER_RUNS_READ });
+  } catch {
+    /* no runs to read: every day without a version says it has no record */
+  }
+  const yesterday = calendar === "" ? "" : dayBefore(calendar);
+  // The newest lived day is the store's last active date — today only when a
+  // session has run today; otherwise it is the day the store last lived.
+  const lastActive = src.store.getMeta("lastActiveDate") ?? "";
+  const newestDate = isIsoDay(lastActive) ? lastActive : null;
+  // A day nothing else dates is dated by its sleep cycle's own row, which
+  // records the calendar date it closed.
+  const cycleDate = new Map<number, string>();
+  try {
+    for (const row of src.store.eventLog({ name: "sleep.cycle", sinceDay: first, limit: LOG_LIMIT })) {
+      const date = (JSON.parse(row.payload ?? "{}") as Record<string, unknown>)["date"];
+      if (typeof date === "string" && isIsoDay(date) && !cycleDate.has(row.day)) cycleDate.set(row.day, date);
+    }
+  } catch {
+    /* undated days stay undated */
+  }
+  const newestRun = new Map<number, PageWriterRun>();
+  for (const r of runs) if (!newestRun.has(r.day)) newestRun.set(r.day, r);
+
+  const out: PageDay[] = [];
+  for (let d = first; d <= Math.max(first, today); d += 1) {
+    const steps = dated.filter((s) => s.day === d);
+    const isToday = d === today && calendar !== "" && newestDate === calendar;
+    const run = newestRun.get(d);
+    const runDate = run !== undefined && isIsoDay(run.on) ? run.on : null;
+    if (steps.length > 0) {
+      const last = steps[steps.length - 1] as PageStep;
+      out.push({
+        day: d,
+        date: last.date ?? runDate ?? (d === today ? newestDate : null) ?? cycleDate.get(d) ?? null,
+        today: isToday,
+        seqs: steps.map((s) => s.seq),
+        by: last.by,
+        reason: last.reason,
+        why: null,
+        more: null,
+      });
+      continue;
+    }
+    let words: { why: string; more: string };
+    if (run === undefined) {
+      words = pageDayUnrecorded(isToday);
+    } else {
+      let w: WriterLine;
+      try {
+        w = writerWords(src.self.pageWriterStatus(run.about, calendar || undefined), yesterday);
+      } catch {
+        w = writerWords({ about: run.about, outcome: run.outcome, derived: false, run }, yesterday);
+      }
+      words = { why: pageDayWords(w), more: w.more };
+    }
+    out.push({
+      day: d,
+      date: runDate ?? (d === today ? newestDate : null) ?? cycleDate.get(d) ?? null,
+      today: isToday,
+      seqs: [],
+      by: null,
+      reason: null,
+      ...words,
+    });
+  }
+  return { pageDays: out, pageDaysUndated: undated };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // what it's settling into — the core, and what is closest to it
@@ -844,12 +1004,12 @@ function settlingView(
     outside: { id: string; text: string }[];
     unreadable: { id: string; label: string }[];
     stories: StoryView[];
-    pageId: string | null;
+    candidates: ReturnType<typeof coreCandidates>;
     absent: string;
   },
 ): SettlingView {
   const store = src.store;
-  const { raw, outOfReach, sentBack } = coreCandidates(src, x.pageId);
+  const { raw, outOfReach, sentBack } = x.candidates;
   const candidates: Candidate[] = raw.slice(0, CANDIDATE_LIMIT).map((r) => {
     const t = reveal(store, r.id, 110);
     return {
@@ -963,16 +1123,120 @@ export function wakeParts(text: string, hasPage: boolean): WakePart[] {
     .filter((p) => p.bytes > 0);
 }
 
-/** The ceiling the newest durable render recorded, or null when none did. */
-function lastBudget(src: DashboardSource): number | null {
+/** What the newest durable render (`self.briefing`) recorded about its size. */
+export interface LastRender {
+  /** The ceiling it was composed to; null when it recorded none. */
+  readonly budget: number | null;
+  /** The lived day it rendered on; null when unrecorded. */
+  readonly day: number | null;
+  /** How many elements the trim dropped to make it fit. */
+  readonly trimmed: number;
+  /** The lanes they were dropped from, in order, each once. */
+  readonly trimmedLanes: string[];
+}
+
+/** The newest durable render's size facts; null when no render left a row. */
+export function lastRender(src: DashboardSource): LastRender | null {
   try {
     const [row] = src.store.eventLog({ name: "self.briefing", order: "desc", limit: 1 });
     if (row === undefined) return null;
-    const budget = (JSON.parse(row.payload ?? "{}") as Record<string, unknown>)["budget"];
-    return typeof budget === "number" && budget > 0 ? budget : null;
+    const p = JSON.parse(row.payload ?? "{}") as Record<string, unknown>;
+    const budget = p["budget"];
+    const day = p["day"];
+    const list = Array.isArray(p["trimmed"]) ? (p["trimmed"] as unknown[]) : [];
+    const total = typeof p["trimmedTotal"] === "number" ? (p["trimmedTotal"] as number) : list.length;
+    const lanes: string[] = [];
+    for (const t of list) {
+      const lane = t !== null && typeof t === "object" ? (t as { lane?: unknown }).lane : undefined;
+      if (typeof lane === "string" && !lanes.includes(lane)) lanes.push(lane);
+    }
+    return {
+      budget: typeof budget === "number" && budget > 0 ? budget : null,
+      day: typeof day === "number" ? day : null,
+      trimmed: total,
+      trimmedLanes: lanes,
+    };
   } catch {
     return null;
   }
+}
+
+/** The label a wake part is shown under ("nearby memories", "arriving", …). */
+export const wakePartLabel = (key: string): string => PART_LABEL[key] ?? key;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// what the next wake starts with, as a short list (round 3b, item 2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface WakeList {
+  /** False when no wake has been published: the page says so, and lists nothing. */
+  readonly ok: boolean;
+  /** The self page the wake leads with, and how old it is; null when the wake carries none. */
+  readonly page: { date: string | null; writtenDay: number | null; livedDaysAgo: number | null; newerThanWake: boolean } | null;
+  /** The nearby memories the published wake showed, by id (the hints lane's open showings). */
+  readonly nearby: { id: string; text: string; confidential: boolean }[];
+  /** Their lines as the wake prints them, when no showing was recorded (a wake from before v8). */
+  readonly nearbyLines: string[];
+  /** What is arriving (the horizon lane), as the wake prints it. */
+  readonly arriving: string[];
+  /** The other lanes it carries, counted: "how I work", "still open", "who I am". */
+  readonly also: { label: string; lines: number }[];
+}
+
+/** A wake line's leading date (`2026-07-10 · `, `by Jul 9 · `) lifted off. */
+const lineText = (item: string): string => item.replace(/^(\S+\s·\s|by\s\S+\s·\s)/, "");
+
+/**
+ * The wake as a list of what is in it. The nearby memories are read from the
+ * `wake_display` rows the last PUBLISHED bundle left open in its hints lane
+ * (v8; `store.wakeDisplays`, a read), so each can open its card; a wake from
+ * before those rows existed falls back to the lane's own lines. Arriving is the
+ * horizon lane's lines. Nothing here re-ranks what the wake chose.
+ */
+function wakeList(src: DashboardSource, text: string | null, page: ReturnType<DashboardSource["self"]["page"]>): WakeList {
+  if (text === null) return { ok: false, page: null, nearby: [], nearbyLines: [], arriving: [], also: [] };
+  const store = src.store;
+  const lanes = wakeLanes(text);
+  const lines = (lane: string): string[] => lanes.filter((l) => l.lane === lane).flatMap((l) => l.items);
+  const hasPage = page !== null && wakeParts(text, true).some((p) => p.key === "page");
+  const rendered = lastRender(src);
+  const pageLine: WakeList["page"] = !hasPage || page === null
+    ? null
+    : {
+        date: isIsoDay(page.revisedOn.trim()) ? page.revisedOn.trim() : null,
+        writtenDay: page.revisedDay,
+        livedDaysAgo: page.revisedDay === null ? null : Math.max(0, store.livedDay() - page.revisedDay),
+        // The wake is the page as of its last publish: a page rewritten on a
+        // later lived day than that render reaches the wake after the next one.
+        newerThanWake: page.revisedDay !== null && rendered?.day != null && page.revisedDay > rendered.day,
+      };
+  let nearby: WakeList["nearby"] = [];
+  try {
+    const open = [...store.wakeDisplays().values()]
+      .filter((r) => r.lane === "hints" && r.closed_day === null)
+      .sort((a, b) => b.shown_day - a.shown_day || (a.memory_id < b.memory_id ? -1 : 1));
+    nearby = open.flatMap((r) => {
+      const row = store.row(r.memory_id);
+      if (row === undefined || row.archived === 1) return [];
+      const t = reveal(store, r.memory_id, 110);
+      return [{ id: r.memory_id, text: t.text ?? t.label, confidential: t.confidential }];
+    });
+  } catch {
+    /* no showings to read (a store before v8): the lane's own lines stand in */
+  }
+  const also: WakeList["also"] = [];
+  for (const lane of ["identity", "craft", "threads"]) {
+    const n = lines(lane).length;
+    if (n > 0 && !(lane === "identity" && hasPage)) also.push({ label: PART_LABEL[lane] ?? lane, lines: n });
+  }
+  return {
+    ok: true,
+    page: pageLine,
+    nearby,
+    nearbyLines: nearby.length > 0 ? [] : lines("hints").map(lineText),
+    arriving: lines("horizon").map(lineText),
+    also,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

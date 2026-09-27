@@ -1,14 +1,15 @@
-/* Settling into the core, as one compact chart: a line of counts (in the core,
-   protected, being argued with — each opens the list behind it), then each
-   memory closest to the core as one row: a short name, a bar filling toward
-   the threshold (earned, with the tick where the core begins), and the day
-   dots. The candidates are measured against physics' own promotion rule (the
-   view computes it; this only draws it). The explaining words sit behind `?`. */
+/* Settling into the core: a line of counts (in the core, protected, being
+   argued with — each opens the list behind it), then the self map (round 3b:
+   the memories about me or about us around the core, `map.js`), then what
+   crossed lately (became core, sent back, nominated in a dream). Closeness to
+   the core is measured by physics' own promotion rule (the view computes it;
+   this only draws it). The explaining words sit behind `?`. */
 import { $, esc } from "../../../shared/dom.js";
 import { headline, n2, said } from "../../../shared/format.js";
 import { openModal } from "../../../shared/modal.js";
 import { ui } from "../state.js";
 import { q, wireTips } from "../../../shared/widgets/tips.js";
+import * as map from "./map.js";
 import { storyCard } from "./stories.js";
 
 export const markup = `
@@ -50,14 +51,16 @@ export function paint(d) {
       " could not be read just now:</b> " + s.unreadable.map((u) => esc(u.label)).join(" · ") + "</div>");
   }
 
+  // ── the self map: the core and what is around it (round 3b; it replaces
+  //    the list of the five closest — the picture shows closeness) ──
+  parts.push(mapHead(s));
+
   // ── what crossed lately: became core, sent back, nominated ──
   parts.push(history(s.history));
 
-  // ── on the way ──
-  parts.push(candidates(s));
-
   const box = $("self-settling");
   box.innerHTML = parts.join("");
+  map.paint($("self-map"), d.map);
   box.querySelectorAll(".st-count").forEach((b) => b.addEventListener("click", () => {
     ui.count = ui.count === b.dataset.count ? null : b.dataset.count;
     paint();
@@ -131,59 +134,32 @@ function row(r) {
     '<span class="st-text">' + said(r.text, r.confidential) + "</span></button>";
 }
 
-function candidates(s) {
+/** The rule in words, for the map's `?`: the two lanes, the check, and what is counted apart. */
+export function ruleWords(s) {
   const r = s.rule;
-  const c = s.candidates;
   const foot = ["Only a memory about me or about us joins the core, by one of two lanes: strongly felt (" + n2(r.needFeeling) +
     " or more) and come back at least once, " + r.needGap + " or more days after it was made; or come back on " + r.days +
     " different days over " + r.span + ". That is checked every " + r.everyDays + " lived days, at most " + r.cap + " a night. " +
-    "A row marked “one return away” is on the first road: it only has to come back once. The other rows show the second road's days, one circle each."];
+    "On the map, the nearer the middle a dot sits the closer it is to the core; a faint ring marks one that only has to come back once."];
   if (s.onTheWay > 0) foot.push(plural(s.onTheWay, "memory about us has", "memories about us have") + " come back at least once.");
   if (s.unused > 0) foot.push(s.unused + " more about us haven't come back yet.");
   if (s.sentBack > 0) {
     foot.push(s.sentBack + (s.sentBack === 1 ? " memory you sent back is" : " memories you sent back are") +
-      " out of the core and not on the way to it.");
+      " out of the core and not on the way to it, so the map leaves " + (s.sentBack === 1 ? "it" : "them") + " out.");
   }
   if (s.outOfReach > 0) {
     foot.push(s.outOfReach + (s.outOfReach === 1 ? " memory is" : " memories are") +
       " not about me or about us, so the core is not for them however often they come back.");
   }
-  const tip = q("rule", foot.join(" "));
-  if (c.length === 0) {
-    return '<h4 class="st-h">On the way to the core ' + tip + "</h4>" +
-      '<div class="empty"><b>(none yet)</b> nothing is on its way to the core yet.</div>';
-  }
-  const scale = 1.2; // the bar is drawn from 0 to 1.2 so the fast lane's mark sits right of centre
-  const rows = c.map((m) => {
-    const ready = m.eligible;
-    const have = Math.min(m.feeling, scale) / scale * 100;
-    const felt = m.feeling >= m.needFeeling;
-    // THE ROAD IT IS ON, as the engine's verdict says (round 3, S3): a memory
-    // one awake return from the fast lane shows that one return, not the slow
-    // lane's five days. The view decides; this only draws its flag.
-    const fast = !ready && m.oneReturnAway === true;
-    const road = fast
-      ? '<span class="cm-dots cm-one" aria-label="one return away: strongly felt, it needs to come back once">' +
-          '<span class="dd"></span><span class="cm-one-w">one return away</span></span>'
-      : '<span class="cm-dots" aria-label="came back on ' + m.days + " of " + m.requiredDays + ' days">' +
-          Array.from({ length: m.requiredDays }, (_, i) => '<span class="dd' + (i < m.days ? " on" : "") + '"></span>').join("") +
-        "</span>";
-    const status = ready
-      ? "ready (" + m.lane + " lane) — it crosses at the next check"
-      : fast
-        ? "strongly felt — one awake return after a gap makes it core"
-        : (felt ? "strongly felt" : "felt " + n2(m.feeling) + " of " + n2(m.needFeeling)) +
-          " · came back on " + Math.min(m.days, m.requiredDays) + " of " + m.requiredDays + " days, over " + m.span + " of " + m.needSpan;
-    return '<button type="button" class="cr' + (ready ? " ready" : "") + '" onclick="openMemory(\'' + m.id + '\')" title="' +
-        esc((m.confidential ? "" : m.text + " — ") + status) + '">' +
-      '<span class="cr-name">' + (ready ? '<span class="cr-ready">ready</span>' : "") + said(headline(m.text), m.confidential) + "</span>" +
-      '<span class="cm-track" aria-label="felt ' + n2(m.feeling) + " of " + n2(m.needFeeling) + '">' +
-        '<span class="cm-fill' + (felt ? " ok" : "") + '" style="width:' + have.toFixed(1) + '%"></span>' +
-        '<span class="cm-mark" style="left:' + (m.needFeeling / scale * 100).toFixed(1) + '%"></span>' +
-      "</span>" + road +
-    "</button>";
-  }).join("");
-  return '<h4 class="st-h">' + esc(plural(c.length, "memory", "memories")) + " closest to the core " + tip + "</h4>" +
-    '<div class="cr-head" aria-hidden="true"><span></span><span>felt</span><span>came back</span></div>' +
-    '<div class="cr-list">' + rows + "</div>";
+  return foot.join(" ");
 }
+
+/** The map's heading and its slot; `map.js` draws into the slot. */
+function mapHead(s) {
+  return '<h4 class="st-h">Around the core ' + q("rule", ruleWords(s)) + "</h4>" +
+    '<div class="sm" id="self-map"></div>';
+}
+
+/** A new width redraws the map to fit it. */
+export const resize = () => map.resize();
+

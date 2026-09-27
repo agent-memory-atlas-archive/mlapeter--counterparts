@@ -1,8 +1,8 @@
 /* The self tab (was "mind"): the self page on the left with a side column
-   beside it (when it was rewritten and by whom, what the page writer did last,
-   the page's history as a line of dots, what the next session wakes up with);
-   under them, what is settling into the core and the journal as a strip of
-   days. One fetch (`/api/mind`).
+   beside it (the page's history as one strip of lived days, and what the next
+   wake starts with); under them, what is settling into the core — its counts
+   and the self map — and the journal as a strip of days. One fetch
+   (`/api/mind`).
 
    LIVE. The pulse calls `refresh()` when the store moves. Only the panels whose
    data changed are redrawn, each from `state.js`, so whatever was open — a
@@ -38,10 +38,9 @@ const PANELS = [
   { name: "opening", slice: (d) => [d.opening], paint: paintOpening },
   { name: "page", slice: (d) => [d.page, d.pageAbsent], paint: page.paintPage },
   { name: "behind", slice: (d) => [d.pageBehind, d.pageAbsent], paint: page.paintBehind },
-  { name: "meta", slice: (d) => [d.page, d.writer], paint: page.paintMeta },
-  { name: "history", slice: (d) => [d.pageHistory], paint: page.paintHistory },
-  { name: "wake", slice: (d) => [d.wake, d.wakeParts, d.wakeBudget], paint: wake.paint },
-  { name: "settling", slice: (d) => [d.settling, d.stories], paint: settling.paint },
+  { name: "history", slice: (d) => [d.pageHistory, d.pageDays, d.pageDaysUndated], paint: page.paintHistory },
+  { name: "wake", slice: (d) => [d.wake, d.wakeList], paint: wake.paint },
+  { name: "settling", slice: (d) => [d.settling, d.stories, d.map], paint: settling.paint },
   { name: "journal", slice: (d) => [d.journal, d.journalAbsent, d.journalMore], paint: journal.paint },
   { name: "dreams", slice: (d) => [d.dreams, d.dreamsAbsent], paint: dreams.paint },
 ];
@@ -73,10 +72,11 @@ export default {
   name: "self",
   mount(section) {
     section.innerHTML = markup;
-    wake.mount(() => draw(false));
   },
   render: () => draw(true),
   refresh: () => draw(false),
+  /** The self map is drawn to its box's width: a new width redraws it. */
+  resize: () => settling.resize(),
   /** `#self/settling`, `#self/journal`: open the tab at that section. */
   route({ anchor }) {
     const h = anchor && $("self-" + anchor + "-h");
