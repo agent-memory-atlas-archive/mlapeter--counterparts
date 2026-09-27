@@ -12,7 +12,7 @@
  */
 import { promotionEligibility } from "../../../../core/physics/index.js";
 import type { PromotionVerdict } from "../../../../core/physics/index.js";
-import { aboutMe } from "../../../../core/sleep/index.js";
+import { coreContextFor } from "../../../../core/sleep/index.js";
 import { oneReturnAway } from "./mind.js";
 import type { ReadOnlyStore } from "../../../../core/store/index.js";
 import type { Kind } from "../../../../core/types.js";
@@ -36,15 +36,18 @@ export interface CoreRoad {
  */
 export function coreRoad(
   store: ReadOnlyStore,
-  row: { readonly id: string; readonly kind: Kind },
-  owner: readonly string[],
+  row: { readonly id: string; readonly kind: Kind; readonly about?: string | null },
   day: number,
 ): CoreRoad | null {
-  if (!aboutMe(store, row, owner)) return null;
+  // Exactly the context sleep's consolidate builds (`coreContextFor`, #262):
+  // the about-mark, the owner's demotion, the reflected-feeling door and,
+  // when it is closed, the last ordinary return.
+  const ctx = coreContextFor(store, row, day);
+  if (!ctx.aboutMe) return null;
   let verdict: PromotionVerdict;
   try {
     const physics = store.physicsOf(row.id);
-    verdict = promotionEligibility(physics, { aboutMe: true, day, demoted: store.coreDemoted(row.id) });
+    verdict = promotionEligibility(physics, ctx);
   } catch {
     return null;
   }
