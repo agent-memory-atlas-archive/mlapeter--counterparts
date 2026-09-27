@@ -17,6 +17,8 @@ export const ui = {
   wake: false,
   /** Which count's list is open above the chart: "core" | "guarded" | "contested" | null. */
   count: null,
+  /** The trait axis whose memories are listed (its id); null = none. */
+  trait: null,
 };
 
 /** A chapter's key in `ui.chapters`. */

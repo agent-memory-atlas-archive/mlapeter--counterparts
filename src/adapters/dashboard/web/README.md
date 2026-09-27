@@ -15,7 +15,7 @@ step, no dependencies. `server.ts` serves them as files (see "Serving" below).
 | `ask-voice.ts` | `toMyVoice(question, ownerName)`: Ask is the owner talking to me, so `ask` turns his question into my voice before it searches ("do you remember what I said" → "do I remember what Mike said"; his I → "you" when the store knows no name). Pure; the rules are in its header and `test/dashboard-ask-voice.test.ts`. The server reads the name (`sleep#ownerNames`) and hands `actions.ts` the string |
 | `static.ts` | `resolveStatic()`: which URL paths are static files and where they live (pure; no fs) |
 | `views.ts` | the index of `views/`: re-exports every view, so callers import from here |
-| `views/<name>.ts` | one module per `/api` view: `meta`, `overview` (the home tab's), `memories` (`/api/memories` + `/api/memories/list`), `memory`, `search` (`/api/search` + `/api/chapters`), `mind` (the self tab's), `activity`, `flow-view` (`/api/flow` + `/api/node`), `health`, `pulse`, `mechanisms`, `mechanism-panel` (`/api/mechanism?id=`) |
+| `views/<name>.ts` | one module per `/api` view: `meta`, `overview` (the home tab's), `memories` (`/api/memories` + `/api/memories/list`), `memory`, `search` (`/api/search` + `/api/chapters`), `mind` (the self tab's; its trait bars are `traits`), `activity`, `flow-view` (`/api/flow` + `/api/node`), `health`, `pulse`, `mechanisms`, `mechanism-panel` (`/api/mechanism?id=`) |
 | `views/archive-words.ts` | why a memory was archived, in plain words: one table (`ARCHIVE_WORDS`, a group phrase and a single-row phrase per reason) and one fallback for a reason nobody mapped; health's bar, the memories list and home's archived count read it |
 | `views/mechanisms.ts` | `/api/mechanisms`: each mechanism's light (grey = not built, green = fired in the last 7 lived days, waiting = built and not due — a scheduled run ahead, or nothing to act on — amber = built and quiet), its `build` (built / partly / not: the pill's "partly built" tag), one evidence line, the newest backing event `seq`s. Which rows count as a firing is `adapters/mechanism-evidence.ts` — ONE judgement shared with `counterparts mechanisms` (`cli/mechanisms.ts`), which keeps its own words and its calendar window; this file owns the lived-day window and the dashboard's words |
 | `views/shared.ts` | the census and small counters every view leans on |
@@ -206,7 +206,20 @@ from `coreCandidates` (`physics#promotionEligibility` in the engine's own
 context: `aboutMe`, the lived day, the owner's demotion; a memory he sent back
 is not drawn), and the faint ring is `oneReturnAway`; the layout is a pure
 function of the data, so a live refresh draws the same picture. `settling.candidates`
-(the five closest) stays in the view for the home tile's sake. `sections/wake.js`
+(the five closest) stays in the view for the home tile's sake. `sections/traits.js`
+("How I act", 2026-09-27, a try) sits under the settling panel: the seven trait
+axes (`store/traits.ts#TRAIT_AXES`) as thin spectrum bars, the left pole's word,
+a track, a marker, the right pole's word, and how many memories stand behind
+it; an axis's gloss is behind a `?`. The balance is `views/traits.ts`
+(`balanceOf`): each nudge counts `strength × firmness` (the memory's strength on
+today's lived day; a core memory counts 1), signed −1 toward `poles[0]` and +1
+toward `poles[1]`, over Σ unsigned. A faint marker is the same over the nudges
+recorded 7 or more calendar days ago, with today's firmness. Nudges come from
+`traitsAll()` (live memories only, so a merge is not counted twice); a
+confidential memory's nudge moves the bar and its words show as "withheld". An
+axis with nothing behind it draws an empty track and no marker. Tapping a row
+lists its memories (each opens its card); `state.js#trait` keeps it open.
+`sections/wake.js`
 is "Next time I wake, I start with:" — the page and its age, the nearby
 memories by title (the hints lane's open `wake_display` rows, each opening its
 card; the lane's own lines on an older store), anything arriving (the horizon
