@@ -151,7 +151,7 @@ export function rowTombstoned(row: Pick<MemoryRow, "body" | "content_hash">): bo
   return row.body === "" && row.content_hash === "";
 }
 
-const DDL: readonly string[] = [
+export const DDL: readonly string[] = [
   `CREATE TABLE IF NOT EXISTS meta (
      key   TEXT PRIMARY KEY,
      value TEXT NOT NULL
@@ -1149,8 +1149,12 @@ export function ensureCurrentTables(db: Db): void {
   });
 }
 
-/** Every table `DDL` creates, read off the statements themselves. */
-const CREATED_TABLES: readonly string[] = DDL.flatMap((sql) => {
+/**
+ * Every table `DDL` creates, read off the statements themselves. Exported for
+ * the test that holds it equal to what `DDL` actually creates
+ * (`test/traits.test.ts`), so the pattern cannot silently miss a table.
+ */
+export const CREATED_TABLES: readonly string[] = DDL.flatMap((sql) => {
   const m = /CREATE TABLE IF NOT EXISTS (\w+)/.exec(sql);
   return m === null ? [] : [m[1] as string];
 });
@@ -1185,7 +1189,7 @@ function copyBeforeMigrating(path: string, found: string, opts: OpenOperationalO
  * Indexes over columns that `ADDED_COLUMNS` may have just added, so they run
  * AFTER it: on a v6 store `event_date` does not exist while `DDL` runs.
  */
-const DDL_AFTER_COLUMNS: readonly string[] = [
+export const DDL_AFTER_COLUMNS: readonly string[] = [
   // v7: `Store.datedMemories` without a scan (prospective/INTERFACE-GAPS §2).
   // Partial, because almost no memory carries one.
   `CREATE INDEX IF NOT EXISTS memories_event_date ON memories (event_date) WHERE event_date IS NOT NULL`,

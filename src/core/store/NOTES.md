@@ -1721,7 +1721,11 @@ Working defaults from the owner's conversation of 2026-09-27 and its design revi
   kept per handle, a negative one asked again). Verified by hand as well as in
   `test/traits.test.ts`: a demo store seeded by `dcac1c9` (v8) upgraded to v9 with the
   table and a pre-migration copy; one seeded by `f19c5f2` (v9, no table) gained it on
-  its first writer open, no copy.
+  its first writer open, no copy. **Pinned since the review of #264:** a test holds every
+  statement in `DDL` and `DDL_AFTER_COLUMNS` to `CREATE … IF NOT EXISTS` and nothing else
+  (and runs them all twice over one database), and holds `CREATED_TABLES` equal to the
+  tables `DDL` actually creates, so a future non-idempotent statement fails the suite
+  instead of every current-version writer open, and the pattern cannot miss a table.
 - **Confidentiality in the reads, one rule:** numbers stay (axis, pole, strength — the
   way the dashboard shows a confidential memory's physics), words go (`carried_by` empty,
   `withheld: true`) unless `includeConfidential`. It reads the memory's column as it

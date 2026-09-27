@@ -25,6 +25,7 @@ import { Counterpart } from "../src/core/counterpart.js";
 import { REFLECT_TUNABLES } from "../src/core/dream/index.js";
 import { SCHEMA_VERSION, Store, TRAIT_AXES, isStoreError, paths } from "../src/core/store/index.js";
 import type { PutInput, StoreOptions } from "../src/core/store/index.js";
+import { CREATED_TABLES, DDL, DDL_AFTER_COLUMNS } from "../src/core/store/operational.js";
 import { chaseRemoved } from "../src/core/store/owner-op-seam.js";
 
 let root: string;
@@ -276,6 +277,53 @@ describe("the schema: folded into the unreleased v9", () => {
     expect(after.traitCensus()).toEqual({ memories: 0, nudges: 0 });
     after.addTraits(id, [candid]);
     expect(after.traitsFor(id).length).toBe(1);
+  });
+
+  test("every schema statement is idempotent: CREATE … IF NOT EXISTS and nothing else (ensureCurrentTables re-runs them on current stores)", () => {
+    const all = [...DDL, ...DDL_AFTER_COLUMNS];
+    expect(all.length).toBeGreaterThan(0);
+    for (const sql of all) {
+      // SQL comments may say anything (two carry a semicolon in their prose).
+      const text = sql
+        .replace(/\/\*[\s\S]*?\*\//g, " ")
+        .replace(/--[^\n]*/g, " ")
+        .trim()
+        .replace(/;\s*$/, "");
+      // One statement each: no second statement hiding after a semicolon.
+      expect({ sql: text.slice(0, 80), single: !text.includes(";") }).toEqual({ sql: text.slice(0, 80), single: true });
+      expect({
+        sql: text.slice(0, 80),
+        idempotent: /^CREATE\s+(?:TABLE|(?:UNIQUE\s+)?INDEX)\s+IF\s+NOT\s+EXISTS\s/i.test(text),
+      }).toEqual({ sql: text.slice(0, 80), idempotent: true });
+    }
+    // And in fact: running everything twice over one database is a no-op the second time.
+    const db = new Database(":memory:");
+    try {
+      for (const pass of [1, 2]) {
+        for (const sql of all) {
+          expect({ pass, ok: (() => { db.run(sql); return true; })() }).toEqual({ pass, ok: true });
+        }
+      }
+    } finally {
+      db.close();
+    }
+  });
+
+  test("CREATED_TABLES names every table DDL creates — read off the text loosely, and off what SQLite actually made", () => {
+    const loose = DDL.flatMap((sql) => {
+      const m = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["'`[]?(\w+)/i.exec(sql);
+      return m === null ? [] : [m[1] as string];
+    });
+    expect([...CREATED_TABLES].sort()).toEqual([...loose].sort());
+    const db = new Database(":memory:");
+    try {
+      for (const sql of DDL) db.run(sql);
+      const made = (db.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all() as { name: string }[]).map((r) => r.name);
+      expect([...CREATED_TABLES].sort()).toEqual(made.sort());
+    } finally {
+      db.close();
+    }
+    expect(CREATED_TABLES).toContain("traits");
   });
 
   test("a fresh store and a store that gained the table later have the same table shape", () => {
