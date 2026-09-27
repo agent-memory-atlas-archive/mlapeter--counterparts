@@ -41,13 +41,16 @@
  * sites are safe by construction, not by luck: `test/parallel.test.ts` (the daily
  * bin) passes every directory as an explicit flag, and `test/remember.test.ts`
  * passes an explicit `env`. If you add a third, do one of those two things.
- * `os.userInfo().homedir` is likewise unmocked; nothing in src/, tools/ or test/
- * calls it today.
+ * `os.userInfo().homedir` is likewise unmocked; the one caller is
+ * `test/live/harness.ts`, which uses it only to point playwright at its browser
+ * cache (`PLAYWRIGHT_BROWSERS_PATH`).
  *
  * THE SPAWN SITES, kept current (2026-09-20): `test/parallel.test.ts` passes every
  * directory as an explicit flag; `test/remember.test.ts`, `test/old-floor-fixture.ts`
  * (two) and `test/start-fresh.test.ts` (the `/bin/sh` runs of the printed rollback
- * lines) all pass an explicit `env` with a fake `HOME`. Add a site, do one of those two
+ * lines) all pass an explicit `env` with a fake `HOME`; `test/live/harness.ts` (the
+ * chromium probe and each live scenario's child `bun test`) passes an explicit `env`
+ * copied from this process, temp `HOME` included. Add a site, do one of those two
  * things, and add it here.
  */
 import { afterAll, mock } from "bun:test";
