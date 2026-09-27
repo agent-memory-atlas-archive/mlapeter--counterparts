@@ -328,7 +328,7 @@ a reflection since." Plus a Reflection line: "has not reflected yet; returns thi
 
 After the review commits:
 - `bun test` without `*-live.test.ts`: 4118 pass, 0 fail, 8 skip (4099 at `69a6138`);
-  after the owner rulings, see the rulings' final report.
+  after the owner rulings, 4119 pass, 0 fail, 8 skip.
 - Each live file on its own: dashboard-home-live 1/0, dashboard-memories-live 1/0,
   dashboard-self-live 1/0.
 - `tsc --noEmit`: clean.
