@@ -95,7 +95,8 @@ export function consoleVerdicts(store: ReadOnlyStore, today: string): Verdict[] 
 }
 
 /**
- * THE ELEVEN, in the site's four groups and its order. Whether each one fired
+ * THE TWELVE (Dreaming joined the eleven on 2026-09-26, beside Consolidation),
+ * in the site's four groups and its order. Whether each one fired
  * is `mechanism-evidence.ts`'s call, shared with the dashboard; the words are
  * this console's own.
  */
@@ -240,15 +241,17 @@ export const MEMORY_MECHANISMS: readonly MemoryMechanism[] = [
     name: "Consolidation",
     group: "Transformation",
     id: "consolidation",
-    evidence: ["sleep-cycle", "promotion", "dedup"],
+    evidence: ["sleep-cycle", "promotion", "dedup", "returns", "dream-replays", "core-demote", "upgrade-census"],
     read: (v) => {
       if (v.fired) {
         const parts: string[] = [];
+        const returns = part(v, "returns");
         const promoted = part(v, "promoted");
-        const merged = part(v, "merged");
+        const merged = part(v, "merged") + part(v, "dreamMerged");
         const rose = part(v, "rose");
+        if (returns > 0) parts.push(`${plural(returns, "return")} made memories fade more slowly`);
         if (promoted > 0) parts.push(`${plural(promoted, "memory", "memories")} became core`);
-        if (merged > 0) parts.push(`${plural(merged, "duplicate")} merged`);
+        if (merged > 0) parts.push(`${plural(merged, "near-copy", "near-copies")} merged`);
         if (rose > 0) parts.push(`${plural(rose, "memory", "memories")} settled a band higher`);
         return { light: LIGHT.working, says: parts.join("; ") };
       }
@@ -258,6 +261,29 @@ export const MEMORY_MECHANISMS: readonly MemoryMechanism[] = [
         return { light: LIGHT.idle, says: `built, ran on schedule with nothing to change; next run ${next}` };
       }
       return { light: LIGHT.idle, says: "built, not firing yet: nothing consolidated this week" };
+    },
+  },
+  {
+    name: "Dreaming",
+    group: "Transformation",
+    id: "dreaming",
+    evidence: ["dream", "dream-changes", "dream-ask"],
+    read: (v) => {
+      const dreams = part(v, "dreams");
+      const changes = part(v, "changes");
+      if (v.fired) {
+        return {
+          light: LIGHT.working,
+          says: `${plural(dreams, "dream")} this week${changes > 0 ? ` (${plural(changes, "change")})` : ""}`,
+        };
+      }
+      return {
+        light: LIGHT.idle,
+        says:
+          v.lastFiredDay === null
+            ? "built, not firing yet: no dream yet (a session asks, once a day, and you say yes or not today)"
+            : `built, not firing this week: the last dream was on lived day ${String(v.lastFiredDay)}`,
+      };
     },
   },
   {
@@ -285,7 +311,11 @@ export const MEMORY_MECHANISMS: readonly MemoryMechanism[] = [
     group: "Transformation",
     id: "episodic-semantic",
     evidence: ["gist"],
-    read: NOT_BUILT("many episodes are not yet distilled into one lasting memory"),
+    // PARTLY (2026-09-26): a dream can write the pattern it sees as a gist.
+    read: (v) =>
+      v.fired
+        ? { light: LIGHT.working, says: `${plural(part(v, "gist"), "pattern")} dreamed into a memory of its own` }
+        : { light: LIGHT.idle, says: "partly built, not firing this week: only a dream writes a gist so far" },
   },
 ];
 

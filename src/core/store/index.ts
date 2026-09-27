@@ -1731,14 +1731,18 @@ export class Store {
     return this.ops.all<ReturnRow>("SELECT * FROM returns WHERE memory_id = ? ORDER BY day, source", id);
   }
 
-  /** Returns counted since a moment (UTC ms), by source — for `fired` and the dashboard. */
-  returnCounts(sinceAt: number): { awake: number; dream: number; memories: number } {
+  /**
+   * Returns counted since a moment (UTC ms) or a lived day, by source — for
+   * `fired`, the mechanism lights and the dashboard. With neither, all of them.
+   */
+  returnCounts(filter: { sinceAt?: number; sinceDay?: number } = {}): { awake: number; dream: number; memories: number } {
     const r = this.ops.get<{ awake: number | null; dream: number | null; memories: number | null }>(
       `SELECT SUM(CASE WHEN source = 'awake' THEN 1 ELSE 0 END) AS awake,
               SUM(CASE WHEN source = 'dream' THEN 1 ELSE 0 END) AS dream,
               COUNT(DISTINCT memory_id) AS memories
-         FROM returns WHERE at >= ?`,
-      sinceAt,
+         FROM returns WHERE at >= ? AND day >= ?`,
+      filter.sinceAt ?? 0,
+      filter.sinceDay ?? -2_147_483_648,
     );
     return { awake: r?.awake ?? 0, dream: r?.dream ?? 0, memories: r?.memories ?? 0 };
   }

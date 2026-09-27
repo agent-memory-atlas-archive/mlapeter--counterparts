@@ -86,8 +86,8 @@ describe("the hero (round 2, 2026-09-26)", () => {
       const built = lights.filter((m) => m.build !== "not").length;
       const live = memoriesLive(src);
       expect(SHOW_MECHANISM_SCORE).toBe(true);
-      expect(hero.headline).toBe(`Day ${src.store.livedDay()} · ${live} memories · ${built} of 11 built · ${working} active this week`);
-      expect([hero.working, hero.mechanisms, hero.built, hero.memories]).toEqual([working, 11, built, live]);
+      expect(hero.headline).toBe(`Day ${src.store.livedDay()} · ${live} memories · ${built} of 12 built · ${working} active this week`);
+      expect([hero.working, hero.mechanisms, hero.built, hero.memories]).toEqual([working, 12, built, live]);
       expect(hero.counts.map((c) => c.key)).toEqual(["memories", "core", "chapters", "replaced"]);
     });
   });
@@ -150,7 +150,7 @@ describe("the hero (round 2, 2026-09-26)", () => {
   test("a store that has lived nothing says so, and counts nothing", () => {
     withSource(emptyDir, (src) => {
       const hero = get(src, "/api/overview").json["hero"] as HeroJson;
-      expect(hero.headline).toBe(`Nothing lived yet · 0 memories · ${hero.built} of 11 built · 0 active this week`);
+      expect(hero.headline).toBe(`Nothing lived yet · 0 memories · ${hero.built} of 12 built · 0 active this week`);
       expect(hero.counts.every((c) => c.absent)).toBe(true);
     });
   });

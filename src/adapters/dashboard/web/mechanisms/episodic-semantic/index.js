@@ -8,7 +8,7 @@ export default {
   name: "Episodic ↔ semantic",
   short: "Gist",
   tagline: "“I met her on Tuesday” slowly becomes “I know her” — the event fades, the meaning stays.",
-  explainer: "Not built yet. Memories carry a band label, but nothing turns many specific sessions into general knowledge.",
-  built: [],
-  inDevelopment: ["Nothing yet: memories carry a band label, but nothing distils many sessions into general knowledge."],
+  explainer: "Partly built. A dream can write the pattern it sees across several memories as a memory of its own, citing them — it starts lower than anything lived, and rises only if it proves true awake.",
+  built: ["A dream's gist: a pattern in its own words, labelled dreamed, linked to what it came from."],
+  inDevelopment: ["Nothing distils many sessions into general knowledge while awake, or on a schedule."],
 };

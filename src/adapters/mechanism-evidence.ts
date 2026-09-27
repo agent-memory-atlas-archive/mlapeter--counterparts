@@ -198,18 +198,43 @@ export const MECHANISM_EVIDENCE: readonly MechanismEvidence[] = [
   },
   // ── Transformation ──
   {
-    // PARTLY (audit: built, narrow): fresh → settled climbs and promotion to
-    // core run, but only exact duplicates merge. It runs every three lived
-    // days; the cycle row itself is not a proof (it lands every night).
+    // BUILT (2026-09-26, dreaming + consolidation): durability now comes from
+    // RETURNS — every spaced return makes a memory fade more slowly, credited
+    // the moment it happens (the census) — and the core from its two lanes,
+    // decided every three lived days (the schedule). A dream's merges are
+    // consolidation too. The cycle row itself is not a proof (it lands every
+    // night).
     id: "consolidation",
     family: "transformation",
-    build: "partly",
+    build: "built",
     proofs: [
       { key: "promoted", event: "band.promoted", says: ["memory became core", "memories became core"] },
       { key: "merged", event: "memory.merged", says: ["exact duplicate merged", "exact duplicates merged"] },
+      { key: "dreamMerged", event: "dream.changed", sum: "merge", says: ["near-copy merged in a dream", "near-copies merged in a dream"] },
       { key: "rose", event: "band.transition", where: (p) => p["site"] === "consolidate", says: ["memory rose a band", "memories rose a band"] },
     ],
+    census: {
+      key: "returns",
+      count: (store, sinceDay) => {
+        const r = store.returnCounts({ sinceDay });
+        return r.awake + r.dream;
+      },
+      says: ["return that will make a memory fade more slowly", "returns that will make memories fade more slowly"],
+    },
     schedule: "consolidate",
+  },
+  {
+    // BUILT (2026-09-26): a few minutes of replay the owner says yes to, by a
+    // background agent — merges, links, replays, patterns, flagged
+    // contradictions, a journal. A dream is proved by its journal and the
+    // changes it made; an ask alone is not a dream.
+    id: "dreaming",
+    family: "transformation",
+    build: "built",
+    proofs: [
+      { key: "dreams", event: "dream.journaled", says: ["dream", "dreams"] },
+      { key: "changes", event: "dream.changed", sum: "applied", says: ["change a dream made", "changes dreams made"] },
+    ],
   },
   {
     // PARTLY (audit): it revises only what a writer declared with `updates:`,
@@ -220,11 +245,13 @@ export const MECHANISM_EVIDENCE: readonly MechanismEvidence[] = [
     proofs: [{ key: "pressure", event: "revision.pressure", says: ["correction weighed against an old memory", "corrections weighed against old memories"] }],
   },
   {
+    // PARTLY (2026-09-26): a dream can write the pattern it sees across
+    // memories as a gist of its own (source `dreamed`, starting low). Nothing
+    // does it awake yet, and many sessions are not distilled on a schedule.
     id: "episodic-semantic",
     family: "transformation",
-    build: "not",
-    proofs: [],
-    grey: "In development: sessions do not turn into general knowledge yet.",
+    build: "partly",
+    proofs: [{ key: "gist", event: "dream.changed", sum: "gist", says: ["pattern dreamed into a memory of its own", "patterns dreamed into memories of their own"] }],
   },
   {
     // Entity cards exist (and fade, under Forgetting), but beliefs about them
@@ -409,7 +436,7 @@ export function mechanismEvidence(
   return { verdicts, truncated };
 }
 
-/** How many of the eleven are built at all ("partly" counts), for a headline. */
+/** How many of the twelve are built at all ("partly" counts), for a headline. */
 export function builtCount(): number {
   return MECHANISM_EVIDENCE.filter((m) => m.build !== "not").length;
 }

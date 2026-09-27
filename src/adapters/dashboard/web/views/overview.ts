@@ -239,7 +239,7 @@ export function overviewView(src: DashboardSource, feedLimit = FEED_LIMIT): Over
             ? ""
             : closest.eligible
               ? "closest: ready to join"
-              : `closest: back on ${Math.min(closest.days, PHYSICS.CORE_SLOW_DAYS)} of ${PHYSICS.CORE_SLOW_DAYS} days`,
+              : `closest: ${Math.min(closest.days, PHYSICS.CORE_SLOW_DAYS)} of ${PHYSICS.CORE_SLOW_DAYS} days`,
         absent: e.identity.length === 0,
         progress: closest === undefined ? null : { days: Math.min(closest.days, PHYSICS.CORE_SLOW_DAYS), of: PHYSICS.CORE_SLOW_DAYS },
       },

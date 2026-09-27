@@ -13,7 +13,7 @@ export const REGIONS = [
   { key: "amygdala", name: "Amygdala", role: "What matters", col: [1.0, 0.42, 0.52], anchor: [0.42, -0.42, 0.42], active: true,
     mechanisms: ["salience", "emotional"] },
   { key: "hippocampus", name: "Hippocampus", role: "Making memories last", col: [0.72, 0.53, 1.0], anchor: [0.38, -0.3, -0.2], active: true,
-    mechanisms: ["consolidation", "association", "interference"] },
+    mechanisms: ["consolidation", "dreaming", "association", "interference"] },
   { key: "thalamus", name: "Thalamus", role: "What comes to mind", col: [1.0, 0.8, 0.32], anchor: [0.0, 0.05, 0.05], active: true,
     mechanisms: ["retrieval"] },
   { key: "brainstem", name: "Brainstem", role: "The body clock", col: [0.55, 0.66, 0.85], anchor: [0.0, -0.8, -0.35], active: true,
