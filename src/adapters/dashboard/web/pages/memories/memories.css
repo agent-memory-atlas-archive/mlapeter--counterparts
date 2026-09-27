@@ -35,6 +35,8 @@
 #qn{color:var(--dim);font-size:12px;white-space:nowrap}
 #qout,#ask-out .mlist{max-height:440px;overflow-y:auto}
 .ask-head{color:var(--dim);font-size:12px;margin:2px 0 6px}
+.ask-as{color:var(--dim);font-size:12px;margin:6px 0 0;overflow-wrap:anywhere}
+.ask-as .linkbtn{font-size:12px;padding:0}
 
 .mfilters .q-wrap.open{display:block;flex-basis:100%}
 
