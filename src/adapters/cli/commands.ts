@@ -1025,11 +1025,12 @@ const DREAM_FLAG_HELP: Record<string, string> = {
   undo: "reverse one dream's whole batch, by id (the id follows the flag); its journal is kept, marked undone",
 };
 
-/** `core`'s own three. */
+/** `core`'s own four. */
 const CORE_FLAG_HELP: Record<string, string> = {
   list: "what the core holds, with lanes, nominations and demotions — the default",
   demote: "send one core memory back to ordinary fading from today, by id; needs --reason",
   reason: "why — recorded with the demotion, and shown by --list",
+  "reflected-feeling": "on or off: does a feeling a reflection records later count toward the fast lane (on by default)",
 };
 
 const DASHBOARD_FLAG_HELP: Record<string, string> = {
