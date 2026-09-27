@@ -14,10 +14,14 @@ import { fileURLToPath } from "node:url";
 
 import { Dashboard } from "../src/adapters/dashboard/index.js";
 import type { DashboardSource } from "../src/adapters/dashboard/index.js";
+import { DURABLE_EVENT_NAMES } from "../src/adapters/dashboard/registries.js";
+import { LANES, laneOf } from "../src/adapters/dashboard/web/lanes.js";
 import { narrate } from "../src/adapters/dashboard/web/narrate.js";
 import { router } from "../src/adapters/dashboard/web/server.js";
-import { archiveEntry } from "../src/adapters/dashboard/web/views/archive-words.js";
-import { memoriesHeld } from "../src/adapters/dashboard/web/views/shared.js";
+import { ARCHIVE_WORDS, archiveEntry } from "../src/adapters/dashboard/web/views/archive-words.js";
+import { mergeRepeats } from "../src/adapters/dashboard/web/views/mechanism-panel.js";
+import { SHOW_MECHANISM_SCORE } from "../src/adapters/dashboard/web/views/overview.js";
+import { memoriesHeld, memoriesLive } from "../src/adapters/dashboard/web/views/shared.js";
 import { MECHANISM_PROOFS, mechanismsView } from "../src/adapters/dashboard/web/views/mechanisms.js";
 import { seedDemo, seedEmpty } from "../tools/demo/seed.js";
 
@@ -70,52 +74,135 @@ function snapshot(dir: string): Map<string, string> {
   return out;
 }
 
-describe("the hero", () => {
-  test("one headline line and four plain counts that agree with the console", () => {
+describe("the hero (round 2, 2026-09-26)", () => {
+  type Count = { key: string; label: string; value: string; note: string; absent: boolean; progress?: { days: number; of: number } | null; others?: { label: string; count: number }[] };
+  type HeroJson = { headline: string; counts: Count[]; working: number; mechanisms: number; built: number; memories: number };
+
+  test("one short headline: the day, the one memory count, built and active", () => {
     withSource(richDir, (src) => {
-      const hero = get(src, "/api/overview").json["hero"] as {
-        headline: string; counts: { label: string; value: string }[]; working: number; mechanisms: number;
-      };
-      const held = memoriesHeld(src);
-      const working = mechanismsView(src).mechanisms.filter((m) => m.status === "green").length;
-      expect(hero.headline).toBe(`Day ${src.store.livedDay()}. Holding ${held} memories. ${working} of 11 mechanisms working.`);
-      expect(hero.counts.map((c) => c.label)).toEqual(["memories held", "core memories", "chapters written", "archived"]);
-      expect(hero.counts[0]?.value).toBe(String(held));
-      expect([hero.working, hero.mechanisms]).toEqual([working, 11]);
+      const hero = get(src, "/api/overview").json["hero"] as HeroJson;
+      const lights = mechanismsView(src).mechanisms;
+      const working = lights.filter((m) => m.status === "green").length;
+      const built = lights.filter((m) => m.build !== "not").length;
+      const live = memoriesLive(src);
+      expect(SHOW_MECHANISM_SCORE).toBe(true);
+      expect(hero.headline).toBe(`Day ${src.store.livedDay()} · ${live} memories · ${built} of 11 built · ${working} active this week`);
+      expect([hero.working, hero.mechanisms, hero.built, hero.memories]).toEqual([working, 11, built, live]);
+      expect(hero.counts.map((c) => c.key)).toEqual(["memories", "core", "chapters", "replaced"]);
     });
   });
 
-  test("the archived count names its most common reason in the shared plain words", () => {
+  test("ONE memory count: home, the memories header and the list's live chip say the same number", () => {
     withSource(richDir, (src) => {
-      const counts = get(src, "/api/overview").json["hero"] as { counts: { label: string; note: string }[] };
-      const note = counts.counts.find((c) => c.label === "archived")?.note ?? "";
-      const tally = new Map<string, number>();
-      for (const id of src.store.list()) {
+      const hero = get(src, "/api/overview").json["hero"] as HeroJson;
+      const header = get(src, "/api/memories").json as { total: number };
+      const list = get(src, "/api/memories/list?state=live").json as { counts: { live: number } };
+      expect(hero.counts[0]?.value).toBe(String(list.counts.live));
+      expect(header.total).toBe(list.counts.live);
+      expect(hero.memories).toBe(list.counts.live);
+      // It includes the people and project cards the console counts apart.
+      expect(memoriesLive(src)).toBeGreaterThan(memoriesHeld(src));
+    });
+    const page = readFileSync(join(WEB, "pages/memories/index.js"), "utf8");
+    expect(page).toContain('return d.total + (d.total === 1 ? " memory" : " memories");');
+  });
+
+  test("the core tile says how close the nearest candidate is, in physics' own terms", () => {
+    withSource(richDir, (src) => {
+      const core = (get(src, "/api/overview").json["hero"] as HeroJson).counts.find((c) => c.key === "core")!;
+      const self = get(src, "/api/mind").json["settling"] as { candidates: { days: number; requiredDays: number; eligible: boolean }[] };
+      const first = self.candidates[0]!;
+      expect(core.progress).toEqual({ days: Math.min(first.days, first.requiredDays), of: first.requiredDays });
+      expect(core.note).toBe(first.eligible ? "closest: ready to join" : `closest: ${Math.min(first.days, first.requiredDays)} of ${first.requiredDays} days`);
+    });
+  });
+
+  test("replaced counts newer readings only; what was let go is its own small number", () => {
+    withSource(richDir, (src) => {
+      const tile = (get(src, "/api/overview").json["hero"] as HeroJson).counts.find((c) => c.key === "replaced")!;
+      let replaced = 0;
+      let letGo = 0;
+      for (const id of src.store.list({ archived: true })) {
         const row = src.store.row(id);
-        if (row?.archived === 1 && row.archived_reason !== null) tally.set(row.archived_reason, (tally.get(row.archived_reason) ?? 0) + 1);
+        if (row === undefined || row.type === "episode") continue;
+        const entry = archiveEntry(row.archived_reason);
+        if (entry?.group === "replaced" || (entry === undefined && row.superseded_by !== null)) replaced += 1;
+        if (entry?.group === "let-go") letGo += 1;
       }
-      const top = [...tally.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))[0];
-      const words = top === undefined ? undefined : archiveEntry(top[0]);
-      expect(note).toContain(words === undefined ? "set aside" : words.many);
-      expect(note).toContain("kept, not deleted");
+      expect(tile.value).toBe(String(replaced));
+      expect(letGo).toBeGreaterThan(0); // the demo store has let some go
+      expect(tile.others).toContainEqual({ label: "let go", count: letGo });
+      expect(tile.note).toContain(`${letGo} let go`);
     });
+    for (const w of ARCHIVE_WORDS) expect(["replaced", "let-go", "removed"]).toContain(w.group);
   });
 
-  test("each hero count is a link to where it is shown in full", () => {
+  test("each tile is a link to where it is shown in full", () => {
     const tiles = readFileSync(join(WEB, "pages/home/sections/tiles.js"), "utf8");
-    for (const [label, to] of [
-      ["memories held", "memories?state=live"],
-      ["core memories", "self/settling"],
-      ["chapters written", "self/journal"],
-      ["archived", "memories?state=archived"],
-    ]) expect(tiles).toContain(`"${label}": "${to}"`);
+    for (const [key, to] of [
+      ["memories", "memories?state=live"],
+      ["core", "self/settling"],
+      ["chapters", "self/journal"],
+      ["replaced", "memories?state=archived"],
+    ]) expect(tiles).toContain(`"${key}": "${to}"`);
   });
 
   test("a store that has lived nothing says so, and counts nothing", () => {
     withSource(emptyDir, (src) => {
-      const hero = get(src, "/api/overview").json["hero"] as { headline: string; counts: { absent: boolean }[] };
-      expect(hero.headline).toBe("Nothing lived yet. Holding 0 memories. 0 of 11 mechanisms working.");
+      const hero = get(src, "/api/overview").json["hero"] as HeroJson;
+      expect(hero.headline).toBe(`Nothing lived yet · 0 memories · ${hero.built} of 11 built · 0 active this week`);
       expect(hero.counts.every((c) => c.absent)).toBe(true);
+    });
+  });
+});
+
+describe("the feeds (round 2)", () => {
+  test("home's live activity is memory events only; the split is one table covering every durable event", () => {
+    for (const name of DURABLE_EVENT_NAMES) expect(Object.keys(LANES)).toContain(name);
+    withSource(richDir, (src) => {
+      const feed = get(src, "/api/overview").json["feed"] as { name: string; lane: string; icon: string | null }[];
+      expect(feed.length).toBeGreaterThan(0);
+      for (const e of feed) {
+        expect(`${e.name}: ${e.lane}`).toBe(`${e.name}: home`);
+        expect(e.icon).not.toBeNull();
+      }
+      // The flow tab's feed still carries the housekeeping.
+      const flow = get(src, "/api/flow").json["feed"] as { lane: string }[];
+      expect(flow.some((e) => e.lane === "flow")).toBe(true);
+    });
+    for (const name of ["adapter.embed.backfill", "adapter.semantic.lag", "self.briefing", "adapter.boundary", "recall.decision"]) {
+      expect(`${name}: ${laneOf(name, {})}`).toBe(`${name}: flow`);
+    }
+    expect(laneOf("recall.credit", { credited: 0 })).toBe("flow");
+    expect(laneOf("recall.credit", { credited: 2 })).toBe("home");
+    expect(laneOf("recall.credit", { credited: 0, reason: "failed" })).toBe("home");
+  });
+
+  test("the live feed keeps the split too: home registers a filter the pulse obeys", () => {
+    const live = readFileSync(join(WEB, "pages/home/sections/live-activity.js"), "utf8");
+    expect(live).toContain('registerLiveFeed("ov-feed", (e) => e.lane === "home")');
+    expect(readFileSync(join(WEB, "shared/widgets/feed.js"), "utf8")).toContain("if (!accept(e)) continue;");
+  });
+
+  test("orange is for real problems: a semantic cue that worked is calm", () => {
+    withSource(emptyDir, (src) => {
+      const row = (payload: Record<string, unknown>) =>
+        ({ seq: 1, at: 0, day: 0, name: "adapter.semantic.lag", ref: null, payload: JSON.stringify(payload) }) as Parameters<typeof narrate>[1];
+      expect(narrate(src.store, row({ reason: "ok", hits: 4 })).tone).toBe("calm");
+      expect(narrate(src.store, row({ reason: "embedder-off", hits: 0 })).tone).toBe("calm");
+      expect(narrate(src.store, row({ reason: "embed-failed", hits: 0 })).tone).toBe("amber");
+    });
+  });
+
+  test("the panel's Lately merges neighbours that read the same, keeping the newest record", () => {
+    const line = (seq: number, text: string) => ({ seq, text, name: "gate.deposit" }) as unknown as Parameters<typeof mergeRepeats>[0][number];
+    const merged = mergeRepeats([line(9, "a"), line(8, "a"), line(7, "b"), line(6, "a")]);
+    expect(merged.map((m) => [m.seq, m.text, m.repeats])).toEqual([[9, "a", 2], [7, "b", 1], [6, "a", 1]]);
+    withSource(richDir, (src) => {
+      const act = get(src, "/api/mechanism?id=salience").json["activity"] as { text: string; repeats: number }[];
+      expect(act.length).toBeGreaterThan(0);
+      for (let i = 1; i < act.length; i++) expect(act[i]!.text).not.toBe(act[i - 1]!.text);
+      expect(act.some((a) => a.repeats > 1)).toBe(true);
     });
   });
 });
@@ -127,7 +214,7 @@ describe("/api/mechanism — the panel's data", () => {
       for (const id of IDS) {
         const res = get(src, `/api/mechanism?id=${id}`);
         expect(`${id} → ${res.status}`).toBe(`${id} → 200`);
-        const built = MECHANISM_PROOFS.find((m) => m.id === id)?.built === true;
+        const built = (MECHANISM_PROOFS.find((m) => m.id === id)?.build ?? "not") !== "not";
         expect(res.json["built"]).toBe(built);
         if (!built) {
           expect(lights[id]).toBe("grey");

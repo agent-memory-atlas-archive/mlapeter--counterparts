@@ -8,18 +8,21 @@
  * alarms when they are good news. This view is the page a regular user reads;
  * `--all` still prints the full `fired` report, unchanged, for the diagnosis.
  *
- * **It reads nothing of its own.** Every count comes off the rows `fired.ts`
- * already computed. The table below only says which of those rows are the
- * evidence for which mechanism, and how to say the count in plain words.
+ * **Whether a mechanism fired is not this file's call** (2026-09-26, an
+ * experiment). It asks `mechanism-evidence.ts`, the one judgement the dashboard's
+ * lights ask too, so the two can no longer disagree about which rows count. The
+ * WORDS and the WINDOW stay this console's own: seven calendar days, the same
+ * window the `fired` report counts over, and its own phrasing.
  *
- * **Deliberately light.** The grouping and the words are this console's own,
- * for now. The site and the dashboard have their own lists and are all still
- * moving, so nothing here is shared with them or tested against them — the
- * only coupling is to `MECHANISMS`, whose ids this table names.
+ * The plumbing line still reads the `fired` report's rows.
  *
  * The truth per mechanism is `docs/research/mechanism-audit-2026-09-24.md`.
  */
+import type { EventRow, ReadOnlyStore } from "../../core/store/index.js";
+import { FIRED_DAYS, daysBefore, rowDate } from "../fired.js";
 import type { FiredReport, FiredRow } from "../fired.js";
+import { mechanismEvidence, payloadOf } from "../mechanism-evidence.js";
+import type { EvidenceWindow, Verdict } from "../mechanism-evidence.js";
 
 /** The three lights. */
 export const LIGHT = {
@@ -31,22 +34,25 @@ export type Light = (typeof LIGHT)[keyof typeof LIGHT];
 
 export type Group = "Encoding" | "Storage" | "Retrieval" | "Transformation";
 
-/** The evidence rows, by `MECHANISMS` id, as the view reads them. */
+/** The `fired` report's rows, by `MECHANISMS` id — for totals the words carry. */
 type Rows = (id: string) => FiredRow | undefined;
 
 export interface MemoryMechanism {
   readonly name: string;
   readonly group: Group;
-  /** `MECHANISMS` ids that are this mechanism's evidence. */
+  /** The `mechanism-evidence.ts` id whose verdict decides the light. */
+  readonly id: string;
+  /** `MECHANISMS` ids this line accounts for — kept off the plumbing line. */
   readonly evidence: readonly string[];
-  /** The light and one plain line, from the evidence rows. */
-  readonly read: (rows: Rows) => { light: Light; says: string };
+  /** The light and one plain line, from the shared verdict (and the report's
+   *  totals, for the words only). */
+  readonly read: (v: Verdict, rows: Rows) => { light: Light; says: string };
 }
 
-/** Rows landed in the window, summed over the named ids. */
-function week(rows: Rows, ...ids: string[]): number {
+/** A proof's count inside the window, summed over the named keys. */
+function part(v: Verdict, ...keys: string[]): number {
   let n = 0;
-  for (const id of ids) n += rows(id)?.firedInWindow ?? 0;
+  for (const p of v.parts) if (keys.includes(p.key)) n += p.count;
   return n;
 }
 
@@ -60,18 +66,49 @@ const NOT_BUILT = (why: string) => (): { light: Light; says: string } => ({
 });
 
 /**
- * THE ELEVEN, in the site's four groups and its order. `evidence` lists every
- * id a `read` looks at, so the test can check each one still exists.
+ * THE CONSOLE'S WINDOW: seven CALENDAR days, today included, in the store's
+ * zone — the same window the `fired` report counts over. The lived-day bound
+ * only keeps the read cheap (a lived day is never longer than a calendar day).
+ */
+export function calendarWindow(store: ReadOnlyStore, today: string): EvidenceWindow {
+  let livedDay = 0;
+  try {
+    livedDay = store.livedDay();
+  } catch {
+    livedDay = 0;
+  }
+  const from = daysBefore(today, FIRED_DAYS - 1);
+  const zone = store.zone();
+  return {
+    sinceDay: Math.max(0, livedDay - FIRED_DAYS),
+    today: livedDay,
+    contains: (row: EventRow) => {
+      const date = rowDate(row, payloadOf(row), zone);
+      return date >= from && date <= today;
+    },
+  };
+}
+
+/** The shared verdicts over the console's window. */
+export function consoleVerdicts(store: ReadOnlyStore, today: string): Verdict[] {
+  return mechanismEvidence(store, calendarWindow(store, today)).verdicts;
+}
+
+/**
+ * THE ELEVEN, in the site's four groups and its order. Whether each one fired
+ * is `mechanism-evidence.ts`'s call, shared with the dashboard; the words are
+ * this console's own.
  */
 export const MEMORY_MECHANISMS: readonly MemoryMechanism[] = [
   // ── Encoding ──
   {
     name: "Salience",
     group: "Encoding",
+    id: "salience",
     evidence: ["deposit", "chunk-gate"],
-    read: (rows) => {
-      const n = week(rows, "deposit", "chunk-gate");
-      return n > 0
+    read: (v) => {
+      const n = part(v, "deposit", "chunk");
+      return v.fired
         ? { light: LIGHT.working, says: `${plural(n, "memory", "memories")} written and scored` }
         : { light: LIGHT.idle, says: "built, not firing yet: no memories written this week" };
     },
@@ -79,21 +116,20 @@ export const MEMORY_MECHANISMS: readonly MemoryMechanism[] = [
   {
     name: "Emotion",
     group: "Encoding",
+    id: "emotional",
     evidence: ["feelings", "emotion-weight", "mood-match"],
     // Emotion part A (2026-09-26): a memory's strongest feeling lifts it and
     // slows its fading, and a recorded mood lifts matching memories in recall.
-    // Working when a memory carrying feeling was written this week or a mood
-    // lifted a memory that came to mind; the totals ride along either way.
-    read: (rows) => {
+    read: (v, rows) => {
       const weighted = rows("emotion-weight")?.total ?? 0;
       const withFeelings = rows("feelings")?.total ?? 0;
-      const newWeighted = week(rows, "emotion-weight");
-      const matched = week(rows, "mood-match");
+      const newWeighted = part(v, "weighted");
+      const matched = part(v, "moodMatched");
       const held = `${plural(weighted, "memory", "memories")} held higher and fading slower (${String(withFeelings)} with recorded feelings)`;
-      if (newWeighted + matched > 0) {
+      if (v.fired) {
         const parts: string[] = [];
         if (newWeighted > 0) parts.push(`${plural(newWeighted, "new memory", "new memories")} carrying feeling`);
-        if (matched > 0) parts.push(`${plural(matched, "turn")} where a mood brought matching memories closer`);
+        if (matched > 0) parts.push(`${plural(matched, "memory", "memories")} a matching mood brought closer`);
         return { light: LIGHT.working, says: `${parts.join("; ")}; ${held}` };
       }
       return {
@@ -109,34 +145,25 @@ export const MEMORY_MECHANISMS: readonly MemoryMechanism[] = [
   {
     name: "Forgetting",
     group: "Storage",
+    id: "decay",
     evidence: ["decay", "prune", "fade", "sleep-cycle"],
-    read: (rows) => {
-      // `memory.pruned` and `band.transition` are one row per memory; the fade
-      // is one row per night that faded a card.
-      const letGo = week(rows, "prune");
-      const dropped = week(rows, "decay");
-      const faded = week(rows, "fade");
-      const cycles = week(rows, "sleep-cycle");
+    read: (v) => {
+      if (!v.fired) return { light: LIGHT.idle, says: "built, not firing yet: nothing faded this week" };
+      const letGo = part(v, "pruned");
+      const dropped = part(v, "faded");
+      const cards = part(v, "cards");
       const parts: string[] = [];
       if (letGo > 0) parts.push(`${plural(letGo, "memory", "memories")} let go at the floor`);
       if (dropped > 0) parts.push(`${plural(dropped, "memory", "memories")} faded a band`);
-      if (faded > 0) parts.push("unused names faded");
-      if (parts.length > 0) {
-        if (letGo === 0) parts.push("nothing at the floor yet");
-        return { light: LIGHT.working, says: parts.join("; ") };
-      }
-      if (cycles > 0) {
-        return {
-          light: LIGHT.working,
-          says: `decay ran in ${plural(cycles, "sleep cycle")}; nothing at the floor yet`,
-        };
-      }
-      return { light: LIGHT.idle, says: "built, not firing yet: no sleep cycle ran this week" };
+      if (cards > 0) parts.push("unused names faded");
+      if (letGo === 0) parts.push("nothing at the floor yet");
+      return { light: LIGHT.working, says: parts.join("; ") };
     },
   },
   {
     name: "Interference",
     group: "Storage",
+    id: "interference",
     evidence: [],
     read: NOT_BUILT("only exact duplicates are merged"),
   },
@@ -144,35 +171,34 @@ export const MEMORY_MECHANISMS: readonly MemoryMechanism[] = [
   {
     name: "Retrieval",
     group: "Retrieval",
+    id: "retrieval",
     evidence: ["recall-decision", "credit"],
-    read: (rows) => {
-      const turns = week(rows, "recall-decision");
-      // `recall.credit` is one row per session end, not per memory — so it is
-      // said as a fact, never as a count of memories.
-      const credited = week(rows, "credit") > 0;
-      if (turns === 0) {
-        return { light: LIGHT.idle, says: "built, not firing yet: no turns checked this week" };
-      }
-      return {
-        light: LIGHT.working,
-        says: credited
-          ? `${plural(turns, "turn")} checked; memories used were strengthened`
-          : `${plural(turns, "turn")} checked; nothing used yet, so nothing strengthened`,
-      };
+    read: (v) => {
+      if (!v.fired) return { light: LIGHT.idle, says: "built, not firing yet: nothing came to mind this week" };
+      const turns = part(v, "turns");
+      const lookups = part(v, "lookups");
+      const credited = part(v, "credited");
+      const parts: string[] = [];
+      if (turns > 0) parts.push(`${plural(turns, "turn")} brought memories to mind`);
+      if (lookups > 0) parts.push(plural(lookups, "deliberate look-up"));
+      parts.push(
+        credited > 0
+          ? `${plural(credited, "memory", "memories")} used and strengthened`
+          : "nothing used yet, so nothing strengthened",
+      );
+      return { light: LIGHT.working, says: parts.join("; ") };
     },
   },
   {
     name: "Association",
     group: "Retrieval",
+    id: "association",
     evidence: ["association-saved", "association"],
-    read: (rows) => {
-      const saved = week(rows, "association-saved");
+    read: (v, rows) => {
+      const saved = part(v, "links");
       const held = rows("association")?.total ?? 0;
-      if (saved > 0) {
-        return {
-          light: LIGHT.working,
-          says: `links saved after ${plural(saved, "session")}; ${plural(held, "link")} held`,
-        };
+      if (v.fired) {
+        return { light: LIGHT.working, says: `${plural(saved, "link")} written this week; ${plural(held, "link")} held` };
       }
       return {
         light: LIGHT.idle,
@@ -186,17 +212,16 @@ export const MEMORY_MECHANISMS: readonly MemoryMechanism[] = [
   {
     name: "Prospective",
     group: "Retrieval",
+    id: "prospective",
     evidence: ["prospective-dated", "prospective-fired", "prospective-plain"],
-    // Built end to end since 2026-09-26: `note` and `session_end` take a date,
-    // a quiet one comes back as a footnote cue (`prospective.fire`), a plain
-    // one is said on its day (`prospective.plain`). Grey only when nothing is
-    // dated at all — then there is truly nothing for it to do.
-    read: (rows) => {
-      const dated = rows("prospective-dated")?.total ?? 0;
-      const quiet = week(rows, "prospective-fired");
-      const plain = week(rows, "prospective-plain");
+    // Built end to end since 2026-09-26. With nothing dated it is still built,
+    // just holding nothing — so it is idle, never "not built" (2026-09-26).
+    read: (v, rows) => {
+      const dated = v.held ?? rows("prospective-dated")?.total ?? 0;
+      const quiet = part(v, "quiet");
+      const plain = part(v, "plain");
       const held = `${plural(dated, "dated memory", "dated memories")} held`;
-      if (quiet + plain > 0) {
+      if (v.fired) {
         const parts: string[] = [];
         if (plain > 0) parts.push(`${String(plain)} said plainly`);
         if (quiet > 0) parts.push(`${String(quiet)} as quiet footnotes`);
@@ -207,49 +232,50 @@ export const MEMORY_MECHANISMS: readonly MemoryMechanism[] = [
       }
       return dated > 0
         ? { light: LIGHT.idle, says: `built, nothing due this week: ${held}` }
-        : { light: LIGHT.notBuilt, says: "nothing dated yet: a note with a date comes back around that day" };
+        : { light: LIGHT.idle, says: "built, nothing dated yet: a note with a date comes back around that day" };
     },
   },
   // ── Transformation ──
   {
     name: "Consolidation",
     group: "Transformation",
+    id: "consolidation",
     evidence: ["sleep-cycle", "promotion", "dedup"],
-    read: (rows) => {
-      const cycles = week(rows, "sleep-cycle");
-      if (cycles === 0) {
-        return { light: LIGHT.idle, says: "built, not firing yet: no sleep cycle ran this week" };
+    read: (v) => {
+      if (v.fired) {
+        const parts: string[] = [];
+        const promoted = part(v, "promoted");
+        const merged = part(v, "merged");
+        const rose = part(v, "rose");
+        if (promoted > 0) parts.push(`${plural(promoted, "memory", "memories")} became core`);
+        if (merged > 0) parts.push(`${plural(merged, "duplicate")} merged`);
+        if (rose > 0) parts.push(`${plural(rose, "memory", "memories")} settled a band higher`);
+        return { light: LIGHT.working, says: parts.join("; ") };
       }
-      const promoted = week(rows, "promotion");
-      const merged = week(rows, "dedup");
-      const extra: string[] = [];
-      if (promoted > 0) extra.push(`${plural(promoted, "memory", "memories")} became core`);
-      if (merged > 0) extra.push(`${plural(merged, "duplicate")} merged`);
-      return {
-        light: LIGHT.working,
-        says: `${plural(cycles, "sleep cycle")} ran${extra.length > 0 ? `; ${extra.join(", ")}` : ""}`,
-      };
+      const s = v.schedule;
+      if (s !== null && s.onTime && s.lastRanDay !== null) {
+        const next = s.nextInDays <= 0 ? "at the next session's end" : `in ${plural(s.nextInDays, "lived day")}`;
+        return { light: LIGHT.idle, says: `built, ran on schedule with nothing to change; next run ${next}` };
+      }
+      return { light: LIGHT.idle, says: "built, not firing yet: nothing consolidated this week" };
     },
   },
   {
     name: "Reconsolidation",
     group: "Transformation",
+    id: "reconsolidation",
     evidence: ["revision", "accommodation"],
-    read: (rows) => {
-      const pressed = week(rows, "revision");
-      const replaced = week(rows, "accommodation");
-      if (pressed + replaced > 0) {
-        const parts: string[] = [];
-        if (replaced > 0) parts.push(`${plural(replaced, "memory", "memories")} corrected, old version kept`);
-        if (pressed > 0) parts.push(`${plural(pressed, "belief")} challenged`);
-        return { light: LIGHT.working, says: parts.join("; ") };
-      }
-      return { light: LIGHT.idle, says: "built, not firing yet: nothing corrected this week" };
+    read: (v) => {
+      const pressed = part(v, "pressure");
+      return v.fired
+        ? { light: LIGHT.working, says: `${plural(pressed, "correction")} weighed against old memories` }
+        : { light: LIGHT.idle, says: "built, not firing yet: nothing corrected this week" };
     },
   },
   {
     name: "Schemas",
     group: "Transformation",
+    id: "schema",
     // Entity cards are built; beliefs about them have no live producer.
     evidence: ["entity-birth"],
     read: NOT_BUILT("nothing forms beliefs about people and projects yet"),
@@ -257,10 +283,22 @@ export const MEMORY_MECHANISMS: readonly MemoryMechanism[] = [
   {
     name: "Gist",
     group: "Transformation",
+    id: "episodic-semantic",
     evidence: ["gist"],
     read: NOT_BUILT("many episodes are not yet distilled into one lasting memory"),
   },
 ];
+
+/** One line's reading: the shared verdict for its id, in the console's words. */
+export function readMechanism(
+  m: MemoryMechanism,
+  verdicts: readonly Verdict[],
+  rows: Rows,
+): { light: Light; says: string } {
+  const v = verdicts.find((x) => x.id === m.id);
+  if (v === undefined) return { light: LIGHT.notBuilt, says: "not built yet" };
+  return m.read(v, rows);
+}
 
 /**
  * THE PLUMBING ROWS WHOSE FIRING MEANS SOMETHING FAILED, with the words to say
@@ -298,7 +336,7 @@ export function plumbingLine(report: FiredReport): string {
 
 /** The whole short view, as plain lines: one per mechanism in the site's four
  *  groups and order, then the plumbing in one line. */
-export function mechanismsLines(report: FiredReport): string[] {
+export function mechanismsLines(report: FiredReport, verdicts: readonly Verdict[]): string[] {
   const byId = new Map(report.rows.map((r) => [r.id, r]));
   const rows: Rows = (id) => byId.get(id);
   const width = Math.max(...MEMORY_MECHANISMS.map((m) => m.name.length)) + 2;
@@ -307,7 +345,7 @@ export function mechanismsLines(report: FiredReport): string[] {
     lines.push("This memory is new, so most of these have had nothing to do yet.", "");
   }
   for (const m of MEMORY_MECHANISMS) {
-    const { light, says } = m.read(rows);
+    const { light, says } = readMechanism(m, verdicts, rows);
     lines.push(`${light} ${m.name.padEnd(width)}${says}`);
   }
   lines.push(

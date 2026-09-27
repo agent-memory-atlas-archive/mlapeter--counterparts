@@ -103,11 +103,12 @@ describe("the table", () => {
 describe("counterparts mechanisms", () => {
   test("one line per mechanism, each with the light its evidence earns", async () => {
     seed([
-      ["gate.deposit", TODAY],
-      ["gate.deposit", daysBefore(TODAY, 2)],
-      ["recall.decision", TODAY],
-      ["recall.credit", TODAY, { reason: "credited" }],
-      ["sleep.cycle", TODAY],
+      ["gate.deposit", TODAY, { accepted: 1 }],
+      ["gate.deposit", daysBefore(TODAY, 2), { accepted: 1 }],
+      ["recall.decision", TODAY, { surfacedCount: 2 }],
+      ["recall.credit", TODAY, { reason: "credited", credited: 1 }],
+      ["band.transition", TODAY, { site: "decay", direction: "down" }],
+      ["band.promoted", TODAY],
     ]);
     const { code, out } = await console_(["mechanisms"]);
     expect(code).toBe(0);
@@ -119,14 +120,16 @@ describe("counterparts mechanisms", () => {
       Interference: "○",
       Retrieval: "●",
       Association: "◐",
-      Prospective: "○",
+      // Built, holding nothing dated: idle, never "not built" (2026-09-26).
+      Prospective: "◐",
       Consolidation: "●",
       Reconsolidation: "◐",
       Schemas: "○",
       Gist: "○",
     });
     expect(lineFor(out, "Salience")).toContain("2 memories written and scored");
-    expect(lineFor(out, "Retrieval")).toContain("1 turn checked; memories used were strengthened");
+    expect(lineFor(out, "Retrieval")).toContain("1 turn brought memories to mind; 1 memory used and strengthened");
+    expect(lineFor(out, "Consolidation")).toContain("1 memory became core");
     expect(lineFor(out, "Association")).toContain("no links formed");
     expect(lineFor(out, "Forgetting")).toContain("nothing at the floor yet");
     // Short: about fifteen lines, not a wall.
@@ -134,10 +137,25 @@ describe("counterparts mechanisms", () => {
   });
 
   test("evidence older than the window reads as built, not firing", async () => {
-    seed([["gate.deposit", daysBefore(TODAY, 10)]]);
+    seed([["gate.deposit", daysBefore(TODAY, 10), { accepted: 1 }]]);
     const { out } = await console_(["mechanisms"]);
     expect(lights(out).get("Salience")).toBe("◐");
     expect(lineFor(out, "Salience")).toContain("built, not firing yet");
+  });
+
+  test("a row that lands whether or not the mechanism acted lights nothing (the shared rule, 2026-09-26)", async () => {
+    // A cycle that promoted, faded and merged nothing; a deposit that accepted
+    // nothing; a flush that wrote no link; a turn that brought nothing to mind.
+    seed([
+      ["sleep.cycle", TODAY, { faded: 0 }],
+      ["gate.deposit", TODAY, { accepted: 0 }],
+      ["associate.flush", TODAY, { rows: 0 }],
+      ["recall.decision", TODAY, { surfacedCount: 0, footnoteCount: 0 }],
+    ]);
+    const { out } = await console_(["mechanisms"]);
+    for (const name of ["Salience", "Forgetting", "Retrieval", "Association", "Consolidation"]) {
+      expect(`${name}: ${lights(out).get(name)}`).toBe(`${name}: ◐`);
+    }
   });
 
   test("the plumbing is one line, and good-news silence never reads as failing", async () => {

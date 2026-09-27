@@ -9,5 +9,9 @@
 .ev.amber .t{color:var(--amber)}
 .ev.notable .t{color:#dfe6ee}
 .ev.calm .t{color:var(--dim)}
+.ev .ev-i{display:inline-block;vertical-align:-2px;margin-right:7px;color:var(--cyan);opacity:.85}
+.ev.calm .ev-i{color:var(--dim)}
+.ev.amber .ev-i{color:var(--amber)}
+.ev .ev-x{color:var(--faint);font-family:var(--mono);font-size:.95em;white-space:nowrap}
 .ev.flash{animation:evflash 1.8s ease-out}
 @keyframes evflash{0%{background:rgba(0,229,255,.14)}100%{background:transparent}}

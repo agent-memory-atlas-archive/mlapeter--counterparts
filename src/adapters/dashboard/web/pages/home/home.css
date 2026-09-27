@@ -7,17 +7,27 @@
   min-height:min(500px,calc(100vh - 150px));margin:0 0 8px}
 .home-copy{position:relative;z-index:5;max-width:36rem}
 .home-eyebrow{font-size:12.5px;font-weight:500;letter-spacing:.3px;color:var(--dim);margin:0 0 10px}
-.home-headline{font-family:var(--sans);font-weight:700;font-size:clamp(26px,3vw,40px);line-height:1.2;
-  letter-spacing:-.3px;color:#e8eef5;margin:0 0 24px}
-.home-counts{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;max-width:30rem}
-.home-counts .tile{padding:12px 14px}
-.home-counts a.tile-link{display:block;min-height:44px;color:inherit;text-decoration:none;cursor:pointer;transition:border-color .15s,box-shadow .15s,transform .15s}
-.home-counts a.tile-link:hover{transform:translateY(-1px)}
-.home-counts a.tile-link:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
-.home-counts .tile .n{font-size:26px;font-weight:700}
-.home-counts .tile .l{font-size:13.5px;color:var(--ink)}
-.home-counts .tile .s{font-size:12px}
-.home-counts .tile.quiet .n{color:var(--dim);text-shadow:none}
+.home-headline{font-family:var(--sans);font-weight:700;font-size:clamp(24px,2.6vw,36px);line-height:1.25;
+  letter-spacing:-.3px;color:#e8eef5;margin:0 0 22px}
+.home-headline .hh-part{display:inline-block;white-space:nowrap}
+
+/* four small tiles: the number is the link; its words sit behind the `?` */
+.home-counts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;max-width:34rem}
+.home-counts .ht{position:relative;padding:11px 12px 10px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.home-counts .ht-link{display:flex;flex-direction:column;min-height:44px;color:inherit;text-decoration:none;cursor:pointer}
+.home-counts .ht-link:focus-visible{outline:2px solid var(--cyan);outline-offset:2px;border-radius:4px}
+.home-counts .ht:hover{border-color:var(--glow)}
+.home-counts .ht .n{font-family:var(--mono);font-size:26px;font-weight:700;line-height:1.15}
+.home-counts .ht .l{font-size:13px;color:var(--ink);text-transform:none;letter-spacing:0;margin-top:1px}
+.home-counts .ht .q-wrap{position:absolute;top:8px;right:8px}
+.home-counts .ht .q-wrap.open{position:static;display:block}
+.home-counts .ht .s{font-size:12px;color:var(--dim);margin-top:4px;line-height:1.4}
+.home-counts .ht.quiet .n{color:var(--dim);text-shadow:none}
+.ht-pips{display:inline-flex;gap:3px;margin-right:6px;vertical-align:1px}
+.ht-pip{width:7px;height:7px;border-radius:50%;border:1px solid rgba(179,136,255,.6)}
+.ht-pip.on{background:var(--purple);border-color:var(--purple);box-shadow:0 0 6px rgba(179,136,255,.5)}
+.ht-core .n{color:var(--purple);text-shadow:0 0 15px rgba(179,136,255,.2)}
+.ht-replaced .n{color:var(--teal);text-shadow:0 0 15px rgba(0,191,165,.2)}
 
 /* ── the brain ────────────────────────────────────────── */
 .home-brain{position:relative;height:min(540px,calc(100vh - 150px));min-height:360px;width:100%}
@@ -42,7 +52,12 @@
 .home-panel{--reg:var(--cyan);border:1px solid var(--border);border-top:2px solid var(--reg);border-radius:6px;background:var(--card);
   padding:18px clamp(14px,2.2vw,28px) 24px;box-shadow:0 -20px 60px -30px var(--reg);transition:border-color .3s,box-shadow .3s;
   scroll-margin-top:12px}
+.mech-top{display:flex;gap:12px;align-items:flex-start;margin:0 0 20px}
+.mech-top .mechs{flex:1;min-width:0;margin:0}
+.mech-legend{flex:none;padding-top:2px}
+.mech-legend .q-wrap.open .q-pop{position:absolute;right:0;left:auto;top:calc(100% + 8px);width:min(22rem,calc(100vw - 48px));max-width:none}
 .mechs{display:flex;flex-wrap:wrap;gap:14px 22px;margin:0 0 20px}
+.mech-pill.is-notbuilt{color:var(--dim);border-style:dashed}
 .mech-group{display:flex;flex-direction:column;gap:6px;flex:none;max-width:100%}
 .mech-fam{font-size:12.5px;font-weight:600;letter-spacing:.3px;color:var(--pin);padding-left:4px}
 .mech-row{display:flex;gap:5px;flex-wrap:wrap}
@@ -124,8 +139,9 @@
 }
 @media(max-width:560px){
   .home-brain{height:320px}
-  .home-headline{font-size:26px;margin-bottom:18px}
-  .home-counts .tile .n{font-size:22px}
+  .home-headline{font-size:22px;margin-bottom:18px}
+  .home-counts{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .home-counts .ht .n{font-size:22px}
 }
 @media(max-width:720px),(pointer:coarse){
   .mech-pill{min-height:44px;padding:0 14px}

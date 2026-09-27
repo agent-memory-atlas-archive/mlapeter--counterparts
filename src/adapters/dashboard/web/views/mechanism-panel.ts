@@ -121,10 +121,27 @@ export interface MechanismPanelView {
   readonly found: boolean;
   readonly built: boolean;
   readonly livedDay: number;
-  /** The newest few rows that count as this mechanism firing, narrated. */
-  readonly activity: readonly NarratedEvent[];
+  /** The newest few rows that count as this mechanism firing, narrated; a run
+   *  of lines that read the same is one line with `repeats` (its newest row). */
+  readonly activity: readonly (NarratedEvent & { readonly repeats: number })[];
   /** Null for a grey mechanism, and for a built one with no picture of its own. */
   readonly picture: Picture | null;
+}
+
+/**
+ * "I wrote something down and every gate was clear" four times is one line,
+ * ×4 (2026-09-26, an experiment). Only NEIGHBOURS that read the same merge, so
+ * the order of what happened is kept; the merged line keeps its newest row, so
+ * a click opens the latest record behind it.
+ */
+export function mergeRepeats(lines: readonly NarratedEvent[]): (NarratedEvent & { repeats: number })[] {
+  const out: (NarratedEvent & { repeats: number })[] = [];
+  for (const line of lines) {
+    const last = out[out.length - 1];
+    if (last !== undefined && last.text === line.text && last.name === line.name) last.repeats += 1;
+    else out.push({ ...line, repeats: 1 });
+  }
+  return out;
 }
 
 export function mechanismPanel(src: DashboardSource, id: string): MechanismPanelView {
@@ -132,7 +149,7 @@ export function mechanismPanel(src: DashboardSource, id: string): MechanismPanel
   const livedDay = store.livedDay();
   const proof = MECHANISM_PROOFS.find((m) => m.id === id);
   if (proof === undefined) return { id, found: false, built: false, livedDay, activity: [], picture: null };
-  if (!proof.built) return { id, found: true, built: false, livedDay, activity: [], picture: null };
+  if (proof.build === "not") return { id, found: true, built: false, livedDay, activity: [], picture: null };
 
   const backing: EventRow[] = [];
   for (const p of proof.proofs) {
@@ -141,11 +158,24 @@ export function mechanismPanel(src: DashboardSource, id: string): MechanismPanel
     }
   }
   const seen = new Set<number>();
-  const activity = backing
+  const ordered = backing
     .sort((a, b) => b.seq - a.seq)
-    .filter((r) => (seen.has(r.seq) ? false : (seen.add(r.seq), true)))
-    .slice(0, PANEL_ACTIVITY)
-    .map((r) => narrate(store, r));
+    .filter((r) => (seen.has(r.seq) ? false : (seen.add(r.seq), true)));
+  // Narrate newest first and stop once one line more than the panel shows has
+  // begun: every shown line's count is then whole (within the lookback).
+  const lines: NarratedEvent[] = [];
+  let groups = 0;
+  let lastText: string | null = null;
+  for (const row of ordered) {
+    const line = narrate(store, row);
+    if (line.text !== lastText) {
+      groups += 1;
+      lastText = line.text;
+      if (groups > PANEL_ACTIVITY) break;
+    }
+    lines.push(line);
+  }
+  const activity = mergeRepeats(lines).slice(0, PANEL_ACTIVITY);
 
   return { id, found: true, built: true, livedDay, activity, picture: pictureOf(src, id, livedDay) };
 }

@@ -1,9 +1,10 @@
 /* The memory mechanisms, in the site's order (counterparts-site
    features/home-v2/content/regions.ts, the two parked ones left out), and the
    four families they are grouped by. One folder per mechanism; each module's
-   default export is { id, family, name, short, tagline, inDev, explainer,
+   default export is { id, family, name, short, tagline, explainer,
    built, inDevelopment } (the last two: plain-word bullets).
-   Whether it is firing comes from `/api/mechanisms` (views/mechanisms.ts).
+   Whether it is firing, and how much of it is built (the pill's "partly built"
+   tag), come from `/api/mechanisms` — one table, `adapters/mechanism-evidence.ts`.
 
    A mechanism with a picture of this store's own data has a `panel.js` beside
    its `index.js` (export `picture(payload)`, pure markup from

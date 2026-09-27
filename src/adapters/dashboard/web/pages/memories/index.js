@@ -36,12 +36,12 @@ async function render() {
   if (scrollX !== x || scrollY !== y) scrollTo(x, y);
 }
 
-/** "121 memories · 24 entities and beliefs" — the census counts both, and
- *  `counterparts status` prints them apart, so this page does too. */
+/** "145 memories" — the dashboard's one count (2026-09-26): every live row but
+ *  the journal's, people and project cards included, the same number the
+ *  list's "live" chip and the home page say. */
 function count(d) {
   if (d.total === 0) return "Nothing held yet. Write a note, or just talk.";
-  const m = d.memories + (d.memories === 1 ? " memory" : " memories");
-  return d.schemas ? m + " · " + d.schemas + (d.schemas === 1 ? " entity or belief" : " entities and beliefs") : m;
+  return d.total + (d.total === 1 ? " memory" : " memories");
 }
 
 export default {

@@ -1479,7 +1479,7 @@ function countInto(
 
 /** The CALENDAR date a row is about: its own field, else the wall clock it was
  *  written at. `day` is the lived-day column and answers a different question. */
-function rowDate(row: EventRow, payload: Record<string, unknown>, zone: string): string {
+export function rowDate(row: EventRow, payload: Record<string, unknown>, zone: string): string {
   const date = payload["date"];
   if (typeof date === "string" && date.length === 10) return date;
   return localDate(row.at, zone);

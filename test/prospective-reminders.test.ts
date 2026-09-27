@@ -49,7 +49,7 @@ import { openAdapter, plainLine } from "../src/adapters/claude-code/index.js";
 import type { AdapterConfig, HookInput } from "../src/adapters/claude-code/index.js";
 import { deliverTurn, hostDelivery } from "../src/adapters/claude-code/bin/hook.js";
 import { firedReport } from "../src/adapters/fired.js";
-import { MEMORY_MECHANISMS } from "../src/adapters/cli/mechanisms.js";
+import { MEMORY_MECHANISMS, consoleVerdicts, readMechanism } from "../src/adapters/cli/mechanisms.js";
 import { mechanismsView } from "../src/adapters/dashboard/web/views/mechanisms.js";
 
 const T = TUNABLES;
@@ -658,7 +658,7 @@ describe("the gauge", () => {
     const report = firedReport(s, TODAY);
     const byId = new Map(report.rows.map((r) => [r.id, r]));
     const m = MEMORY_MECHANISMS.find((x) => x.name === "Prospective")!;
-    return m.read((id) => byId.get(id));
+    return readMechanism(m, consoleVerdicts(s, TODAY), (id) => byId.get(id));
   }
 
   function dashboard(s: Store): { status: string; evidence: string } {
@@ -666,11 +666,11 @@ describe("the gauge", () => {
     return v.mechanisms.find((m) => m.id === "prospective")!;
   }
 
-  test("grey only when nothing is dated", () => {
+  test("nothing dated: built and waiting — never grey, which means not built", () => {
     const s = store({ now });
-    expect(cliLine(s).light).toBe("○");
+    expect(cliLine(s).light).toBe("◐");
     expect(cliLine(s).says).toContain("nothing dated yet");
-    expect(dashboard(s).status).toBe("grey");
+    expect(dashboard(s).status).toBe("waiting");
   });
 
   test("dated, nothing due: built and waiting, with the count held", () => {

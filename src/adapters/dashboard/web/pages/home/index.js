@@ -66,7 +66,9 @@ export default {
   mount(section) {
     section.innerHTML = markup;
     hero.mount();
+    explorer.mount();
     liveActivity.mount();
+    recentChapters.mount();
     // The brain is built once and kept; a failure to start is a calm sentence
     // in its place, never an error on the page.
     try {
