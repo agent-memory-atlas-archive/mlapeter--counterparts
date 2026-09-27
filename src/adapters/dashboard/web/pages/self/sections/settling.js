@@ -140,6 +140,10 @@ function candidates(s) {
     "A row marked “one return away” is on the first road: it only has to come back once. The other rows show the second road's days, one circle each."];
   if (s.onTheWay > 0) foot.push(plural(s.onTheWay, "memory about us has", "memories about us have") + " come back at least once.");
   if (s.unused > 0) foot.push(s.unused + " more about us haven't come back yet.");
+  if (s.sentBack > 0) {
+    foot.push(s.sentBack + (s.sentBack === 1 ? " memory you sent back is" : " memories you sent back are") +
+      " out of the core and not on the way to it.");
+  }
   if (s.outOfReach > 0) {
     foot.push(s.outOfReach + (s.outOfReach === 1 ? " memory is" : " memories are") +
       " not about me or about us, so the core is not for them however often they come back.");

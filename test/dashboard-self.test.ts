@@ -259,8 +259,11 @@ describe("the self tab's side column (round 2, an experiment)", () => {
     expect(room.more).toContain("injectionBudgetBytes");
     expect(room.more).toContain("host");
     expect(room.more).toContain("Recorded Sep 27.");
+    expect(room.more).toContain("still today's to catch");
     // An older night can no longer be caught; what would make it happen is more room.
-    expect(read("no-room", "2026-09-20").next).toBe("More room, or host mode, would let it run.");
+    const older = read("no-room", "2026-09-20");
+    expect(older.next).toBe("More room, or host mode, would let it run.");
+    expect(older.more).not.toContain("still today's");
     expect(read("scope-question").line).toBe(
       "Last night: not rewritten — the first-launch question took its turn. The next session asks the writer first.",
     );
@@ -354,6 +357,9 @@ describe("the self tab, round 3", () => {
           ids["felt"] = put("I say what I don't know before I guess.", "self", 0.95);
           ids["mild"] = put("I like short sentences.", "self", 0.1);
           ids["fact"] = put("The deploy runs on push.", "fact", 0.95);
+          // Felt just as strongly, but the owner sent it back: the engine refuses it.
+          ids["sentBack"] = put("I always know best.", "self", 0.95);
+          c.store.appendCoreEvent({ memoryId: ids["sentBack"], action: "demoted", day: d, actor: "owner", reason: "not who I am" });
           c.revisePage(PAGE_1, { reason: "first", by: "writer", day: d });
         }
         if (i >= 2) {
@@ -424,8 +430,15 @@ describe("the self tab, round 3", () => {
       const mild = v.settling.candidates.find((c) => c.id === ids["mild"]);
       expect(felt?.oneReturnAway).toBe(true);
       expect(mild?.oneReturnAway).toBe(false);
+      // The owner's demotion is part of the engine's context, as sleep passes it:
+      // a memory he sent back is out of the core and not on its way, so it is
+      // counted apart, never drawn as "one return away".
+      expect(src.store.coreDemoted(ids["sentBack"] as string)).toBe(true);
+      expect(v.settling.candidates.some((c) => c.id === ids["sentBack"])).toBe(false);
+      expect(v.settling.sentBack).toBe(1);
       for (const c of v.settling.candidates) {
-        expect(c.oneReturnAway).toBe(oneReturnAway(promotionEligibility(src.store.physicsOf(c.id), { aboutMe: true, day })));
+        const verdict = promotionEligibility(src.store.physicsOf(c.id), { aboutMe: true, day, demoted: src.store.coreDemoted(c.id) });
+        expect(c.oneReturnAway).toBe(oneReturnAway(verdict));
       }
       // A fact is never a candidate, however strongly felt.
       expect(v.settling.candidates.some((c) => c.id === ids["fact"])).toBe(false);

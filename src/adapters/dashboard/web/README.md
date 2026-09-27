@@ -161,7 +161,7 @@ make it happen, with the record's reason behind its `?` (round 3, 2026-09-27).
 argued with; each opens its list) over a compact chart of the closest
 candidates for the core; the view computes them with
 `physics#promotionEligibility` in the engine's own context (`aboutMe`, the lived
-day), and a row the verdict puts one awake return from the fast lane shows
+day, the owner's demotion; a memory he sent back is counted apart, not drawn), and a row the verdict puts one awake return from the fast lane shows
 "one return away" (`oneReturnAway` in `views/mind.ts`) instead of the slow
 lane's day circles. `sections/wake.js` is the wake as one line and
 a stacked bar of its parts (`wakeParts`, cut at the lane headings from `self/`),

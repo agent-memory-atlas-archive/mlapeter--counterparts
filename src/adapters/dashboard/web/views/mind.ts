@@ -248,6 +248,8 @@ export interface SettlingView {
   readonly unused: number;
   /** Memories that are not about me or about us: the core is not for them. */
   readonly outOfReach: number;
+  /** Memories about me or about us the owner sent back from the core: out of it, and not on the way. */
+  readonly sentBack: number;
   /**
    * WHAT CROSSED LATELY (2026-09-26): the newest promotions with their lane
    * ("became core last night"), the owner's demotions with his reason, and the
@@ -429,7 +431,7 @@ interface WriterReasonWords {
   /** What would make it happen, as a sentence; `lastNight` = the night is still today's to catch. */
   readonly next?: (lastNight: boolean) => string;
   /** One or two sentences for the `?`. */
-  readonly more?: string;
+  readonly more?: (lastNight: boolean) => string;
 }
 
 const TONIGHT = "Tonight's run tries again.";
@@ -439,15 +441,16 @@ const WRITER_REASON: Record<string, WriterReasonWords> = {
   "no-room": {
     why: "the session start had no room left to ask",
     next: (lastNight) => (lastNight ? "A later session today still can." : "More room, or host mode, would let it run."),
-    more:
+    more: (lastNight) =>
       "The page writer is asked at the start of a session, beside the wake, and only when the ask fits in what the host lets a session start with. " +
-      "It did not fit, so it was held back rather than cut short, and that night stayed open. " +
+      "It did not fit, so it was held back rather than cut short. " +
+      (lastNight ? "The night is still today's to catch. " : "") +
       "What makes room (the fix doctor gives): a larger injectionBudgetBytes in claude-code.json, or pageWriter.mode \"host\", where a windowless session does the writing.",
   },
   "scope-question": {
     why: "the first-launch question took its turn",
     next: () => "The next session asks the writer first.",
-    more: "A session start carries one question at most. The first-launch question went first; after that, the writer goes first.",
+    more: () => "A session start carries one question at most. The first-launch question went first; after that, the writer goes first.",
   },
   off: {
     why: "the writer is switched off",
@@ -559,7 +562,7 @@ export function writerWords(status: WriterReading, yesterday: string): WriterLin
   const when = lastNight ? "Last night" : status.about === "" ? "Its last run" : `The night of ${shortDay(status.about)}`;
   const on = status.run?.on ?? "";
   const recorded = isIsoDay(on) ? ` Recorded ${shortDay(on)}.` : "";
-  const story = reasoned ? WRITER_REASON[detail.trim()]?.more : undefined;
+  const story = reasoned ? WRITER_REASON[detail.trim()]?.more?.(lastNight) : undefined;
   const more = WRITER_ABOUT + (story === undefined ? "" : ` ${story}`) + recorded;
   const line = `${when}: ${what}.` + (next === null ? "" : ` ${next}`);
   return { ran: true, about: status.about, outcome: status.outcome, derived: status.derived, lastNight, when, what, next, line, more, absent: null };
@@ -768,12 +771,13 @@ export function oneReturnAway(v: Pick<PromotionVerdict, "fast" | "blockedBy">): 
  * can (see `settlingView`). Shared with the home page's core tile, so "closest:
  * 1 of 5 days" there is the head of the list the self tab draws.
  */
-export function coreCandidates(src: DashboardSource, pageId: string | null): { raw: CoreCandidate[]; outOfReach: number } {
+export function coreCandidates(src: DashboardSource, pageId: string | null): { raw: CoreCandidate[]; outOfReach: number; sentBack: number } {
   const store = src.store;
   const owner = ownerNames(store);
   const day = store.livedDay();
   const raw: CoreCandidate[] = [];
   let outOfReach = 0;
+  let sentBack = 0;
   for (const id of store.list({ archived: false })) {
     const row = store.row(id);
     if (row === undefined || isJournal(row) || row.type === "schema" || id === pageId) continue;
@@ -791,8 +795,16 @@ export function coreCandidates(src: DashboardSource, pageId: string | null): { r
     }
     // The engine's own context, computed the way every tab computes the core
     // road (round 3): who it is about, and today's lived day (the slow lane
-    // checks the memory's strength today).
-    const v = promotionEligibility(p, { aboutMe: about, day });
+    // checks the memory's strength today) — plus, as sleep passes it, whether
+    // the owner sent it back, so a demoted memory is never "one return away".
+    const v = promotionEligibility(p, { aboutMe: about, day, demoted: store.coreDemoted(id) });
+    // SENT BACK BY THE OWNER: out of the core, and not on its way there — the
+    // engine refuses it whatever its lanes say, so it is counted apart rather
+    // than drawn as close (it is listed under "Sent back to ordinary fading").
+    if (v.blockedBy.includes("demoted-by-owner")) {
+      sentBack += 1;
+      continue;
+    }
     const returned = v.fast.gap !== null && v.fast.gap >= v.fast.needGap;
     const fast = Math.min(1, v.fast.intensity / v.fast.needIntensity) + (returned ? 1 : 0);
     const slow = Math.min(1, v.slow.days / v.slow.needDays) + Math.min(1, v.slow.span / v.slow.needSpan);
@@ -811,7 +823,7 @@ export function coreCandidates(src: DashboardSource, pageId: string | null): { r
   }
   // Closest first: the better of the two lanes' progress; ties by return days.
   raw.sort((a, b) => b.closeness - a.closeness || b.days - a.days || (a.id < b.id ? -1 : 1));
-  return { raw, outOfReach };
+  return { raw, outOfReach, sentBack };
 }
 
 /**
@@ -837,7 +849,7 @@ function settlingView(
   },
 ): SettlingView {
   const store = src.store;
-  const { raw, outOfReach } = coreCandidates(src, x.pageId);
+  const { raw, outOfReach, sentBack } = coreCandidates(src, x.pageId);
   const candidates: Candidate[] = raw.slice(0, CANDIDATE_LIMIT).map((r) => {
     const t = reveal(store, r.id, 110);
     return {
@@ -881,6 +893,7 @@ function settlingView(
     onTheWay: raw.filter((r) => r.days > 0).length,
     unused: raw.filter((r) => r.days === 0).length,
     outOfReach,
+    sentBack,
     history: coreHistory(src),
     rule: {
       needFeeling: PHYSICS.CORE_FAST_FEELING,
