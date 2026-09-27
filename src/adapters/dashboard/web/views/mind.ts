@@ -130,6 +130,8 @@ export interface MindView {
   readonly pageDays: PageDay[];
   /** Versions whose lived day was never recorded, so no dot can carry them (counted, not dropped). */
   readonly pageDaysUndated: number;
+  /** Lived days older than the strip carries (`PAGE_DAYS_MAX`), counted, not dropped silently. */
+  readonly pageDaysEarlier: number;
   /** What is settling into the core, and what is closest to it. */
   readonly settling: SettlingView;
   /**
@@ -803,10 +805,10 @@ export function pageDayUnrecorded(today: boolean): { why: string; more: string }
  * own `pageWriterStatus`, so a claim whose day is over reads as doctor reads
  * it; a day with no run says so, never a guess.
  */
-function pageDays(src: DashboardSource, history: readonly PageStep[]): { pageDays: PageDay[]; pageDaysUndated: number } {
+function pageDays(src: DashboardSource, history: readonly PageStep[]): { pageDays: PageDay[]; pageDaysUndated: number; pageDaysEarlier: number } {
   const dated = history.filter((s) => s.day !== null);
   const undated = history.length - dated.length;
-  if (dated.length === 0) return { pageDays: [], pageDaysUndated: undated };
+  if (dated.length === 0) return { pageDays: [], pageDaysUndated: undated, pageDaysEarlier: 0 };
   const today = src.store.livedDay();
   const first = Math.max(Math.min(...dated.map((s) => s.day as number)), today - (PAGE_DAYS_MAX - 1));
   let calendar = "";
@@ -878,7 +880,7 @@ function pageDays(src: DashboardSource, history: readonly PageStep[]): { pageDay
       ...words,
     });
   }
-  return { pageDays: out, pageDaysUndated: undated };
+  return { pageDays: out, pageDaysUndated: undated, pageDaysEarlier: first - Math.min(...dated.map((s) => s.day as number)) };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

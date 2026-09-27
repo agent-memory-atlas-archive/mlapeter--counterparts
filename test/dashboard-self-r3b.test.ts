@@ -105,6 +105,7 @@ describe("the self tab, round 3b", () => {
     expect(d5?.why).toBe(pageDayUnrecorded(d5?.today === true).why);
     expect(d5?.date).toBe("2026-09-05");
     expect(v.pageDaysUndated).toBe(0);
+    expect(v.pageDaysEarlier).toBe(0);
   });
 
   test("1: the strip's words, as the page draws them", () => {

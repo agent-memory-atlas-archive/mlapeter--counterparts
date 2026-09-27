@@ -25,6 +25,7 @@ export const sideMarkup = `
 let steps = [];
 let days = [];
 let undated = 0;
+let earlier = 0;
 
 const WHO = { owner: "you, by hand", session: "a session", writer: "the page writer" };
 export const who = (by) => (by ? WHO[by] || by : "someone unrecorded");
@@ -96,14 +97,16 @@ export function stripSummary(list) {
 const newestSeq = (x) => x.seqs[x.seqs.length - 1];
 
 export function paintHistory(d) {
-  if (d) { steps = d.pageHistory || []; days = d.pageDays || []; undated = d.pageDaysUndated || 0; }
+  if (d) { steps = d.pageHistory || []; days = d.pageDays || []; undated = d.pageDaysUndated || 0; earlier = d.pageDaysEarlier || 0; }
   const el = $("self-history");
   // A version, or a picked day, that is no longer there (a cleared page) closes.
   if (ui.version !== null && !steps.some((s) => s.seq === ui.version)) ui.version = null;
   if (ui.pageDay !== null && !days.some((x) => x.day === ui.pageDay)) ui.pageDay = null;
   if (days.length === 0) {
-    el.innerHTML = "";
-    el.hidden = true;
+    // Versions with no lived day still exist: say so rather than draw nothing.
+    el.hidden = undated === 0;
+    el.innerHTML = undated === 0 ? "" : '<h3 class="sb-h">The page, day by day</h3><p class="ps-say">' +
+      esc(undated + (undated === 1 ? " version carries" : " versions carry") + " no lived day, so no strip can draw " + (undated === 1 ? "it" : "them") + ".") + "</p>";
     paintVersion();
     return;
   }
@@ -154,7 +157,12 @@ function say(hover) {
   if (!box) return;
   const picked = ui.pageDay === null ? null : days.find((y) => y.day === ui.pageDay) || null;
   const x = hover || picked;
-  if (!x) { box.className = "ps-say"; box.textContent = stripSummary(days); return; }
+  if (!x) {
+    box.className = "ps-say";
+    box.textContent = stripSummary(days) +
+      (earlier > 0 ? " " + earlier + " earlier lived day" + (earlier === 1 ? " is" : "s are") + " not drawn." : "");
+    return;
+  }
   box.className = "ps-say" + (x === picked ? " picked" : "");
   box.innerHTML = esc(dayWords(x)) + (x === picked && x.more ? " " + q("pageday", x.more) : "");
   wireTips(box);
