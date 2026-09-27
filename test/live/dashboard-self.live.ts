@@ -180,6 +180,21 @@ describe("the self tab, live", () => {
       expect(await page.locator(".jc.open .jc-body").count()).toBe(1);
       expect(await page.locator(`.st-count.on[data-count="${countKey}"]`).count()).toBe(1);
       expect(Math.abs((await page.evaluate(() => scrollY)) - y)).toBeLessThanOrEqual(2);
+
+      // Round 3: the journal strip labels what its number counts, in one date
+      // format; and the tab never scrolls sideways at the three widths.
+      const dates = await page.locator(".jd-day b").allTextContents();
+      const counts = await page.locator(".jd-day .jd-count").allTextContents();
+      expect(dates.length).toBe(4);
+      for (const t of dates) expect(t).toMatch(/^[A-Z][a-z]{2} \d{1,2}(, \d{4})?$/);
+      expect(counts.length).toBe(4);
+      for (const t of counts) expect(t).toMatch(/^\d+ chapters?$/);
+      for (const width of [1440, 1000, 390]) {
+        await page.setViewportSize({ width, height: 800 });
+        await page.waitForTimeout(100);
+        const over = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+        expect({ width, over }).toEqual({ width, over: 0 });
+      }
       expect(errors).toEqual([]);
     } finally {
       await ctx.close();

@@ -153,14 +153,22 @@ writer's newest night in words (`writer` in `views/mind.ts`, read through
 `sections/page.js` draws the page, the side column's facts and the dots;
 clicking a dot opens that version above the page and diffs it against the one
 before with `diff.js` (line comparison, then words, no deps); nothing is open
-by default. `sections/settling.js` is one line of counts (core, protected,
+by default. A page `PAGE_BEHIND_LIVED_DAYS` or more lived days old gets one calm
+line above it (`pageBehind`: when it was written, and the lived days, chapters
+and dreams since). The writer's line says what did not happen and what would
+make it happen, with the record's reason behind its `?` (round 3, 2026-09-27).
+`sections/settling.js` is one line of counts (core, protected,
 argued with; each opens its list) over a compact chart of the closest
 candidates for the core; the view computes them with
-`physics#promotionEligibility`. `sections/wake.js` is the wake as one line and
+`physics#promotionEligibility` in the engine's own context (`aboutMe`, the lived
+day), and a row the verdict puts one awake return from the fast lane shows
+"one return away" (`oneReturnAway` in `views/mind.ts`) instead of the slow
+lane's day circles. `sections/wake.js` is the wake as one line and
 a stacked bar of its parts (`wakeParts`, cut at the lane headings from `self/`),
 with the rebrief button shown disabled ("coming soon", back with the sleep
-work). `sections/journal.js` is a strip of days; a day lists its chapters, a
-chapter opens in place. The `?` that holds each explaining line is
+work). `sections/journal.js` is a strip of days, each with its date in one
+format (the view's `iso`: the chapter heading's date, else the entry's own), its
+lived day and "N chapters"; a day lists its chapters, a chapter opens in place. The `?` that holds each explaining line is
 `shared/widgets/tips.js`; `state.js` holds what is open, so the pulse's `refresh()` (which redraws only
 the panels whose data moved) keeps it open. `sections/stories.js` is only
 `storyCard`, opened in the overlay. The view is still `views/mind.ts` / `/api/mind`.

@@ -136,7 +136,8 @@ function candidates(s) {
   const c = s.candidates;
   const foot = ["Only a memory about me or about us joins the core, by one of two lanes: strongly felt (" + n2(r.needFeeling) +
     " or more) and come back at least once, " + r.needGap + " or more days after it was made; or come back on " + r.days +
-    " different days over " + r.span + ". That is checked every " + r.everyDays + " lived days, at most " + r.cap + " a night."];
+    " different days over " + r.span + ". That is checked every " + r.everyDays + " lived days, at most " + r.cap + " a night. " +
+    "A row marked “one return away” is on the first road: it only has to come back once. The other rows show the second road's days, one circle each."];
   if (s.onTheWay > 0) foot.push(plural(s.onTheWay, "memory about us has", "memories about us have") + " come back at least once.");
   if (s.unused > 0) foot.push(s.unused + " more about us haven't come back yet.");
   if (s.outOfReach > 0) {
@@ -153,20 +154,29 @@ function candidates(s) {
     const ready = m.eligible;
     const have = Math.min(m.feeling, scale) / scale * 100;
     const felt = m.feeling >= m.needFeeling;
-    const dots = Array.from({ length: m.requiredDays }, (_, i) =>
-      '<span class="dd' + (i < m.days ? " on" : "") + '"></span>').join("");
+    // THE ROAD IT IS ON, as the engine's verdict says (round 3, S3): a memory
+    // one awake return from the fast lane shows that one return, not the slow
+    // lane's five days. The view decides; this only draws its flag.
+    const fast = !ready && m.oneReturnAway === true;
+    const road = fast
+      ? '<span class="cm-dots cm-one" aria-label="one return away: strongly felt, it needs to come back once">' +
+          '<span class="dd"></span><span class="cm-one-w">one return away</span></span>'
+      : '<span class="cm-dots" aria-label="came back on ' + m.days + " of " + m.requiredDays + ' days">' +
+          Array.from({ length: m.requiredDays }, (_, i) => '<span class="dd' + (i < m.days ? " on" : "") + '"></span>').join("") +
+        "</span>";
     const status = ready
       ? "ready (" + m.lane + " lane) — it crosses at the next check"
-      : (felt ? "strongly felt" + (m.returned ? "" : " — one return after a gap makes it core") : "felt " + n2(m.feeling) + " of " + n2(m.needFeeling)) +
-        " · came back on " + Math.min(m.days, m.requiredDays) + " of " + m.requiredDays + " days, over " + m.span + " of " + m.needSpan;
+      : fast
+        ? "strongly felt — one awake return after a gap makes it core"
+        : (felt ? "strongly felt" : "felt " + n2(m.feeling) + " of " + n2(m.needFeeling)) +
+          " · came back on " + Math.min(m.days, m.requiredDays) + " of " + m.requiredDays + " days, over " + m.span + " of " + m.needSpan;
     return '<button type="button" class="cr' + (ready ? " ready" : "") + '" onclick="openMemory(\'' + m.id + '\')" title="' +
         esc((m.confidential ? "" : m.text + " — ") + status) + '">' +
       '<span class="cr-name">' + (ready ? '<span class="cr-ready">ready</span>' : "") + said(headline(m.text), m.confidential) + "</span>" +
       '<span class="cm-track" aria-label="felt ' + n2(m.feeling) + " of " + n2(m.needFeeling) + '">' +
         '<span class="cm-fill' + (felt ? " ok" : "") + '" style="width:' + have.toFixed(1) + '%"></span>' +
         '<span class="cm-mark" style="left:' + (m.needFeeling / scale * 100).toFixed(1) + '%"></span>' +
-      "</span>" +
-      '<span class="cm-dots" aria-label="came back on ' + m.days + " of " + m.requiredDays + ' days">' + dots + "</span>" +
+      "</span>" + road +
     "</button>";
   }).join("");
   return '<h4 class="st-h">' + esc(plural(c.length, "memory", "memories")) + " closest to the core " + tip + "</h4>" +
