@@ -299,3 +299,10 @@ Recorded against the store, where it would be declared: `store/CONTRACT.md` §7 
 
 **What does not need it:** correctness. `journal` was classified before anything
 wrote it (scar §2.11) and a test asserts a snapshot carries the copies.
+
+## 12. The hints lane is ranked once a day, for every directory — 2026-09-26
+
+The wake is composed at the first boundary of a lived day and read from every directory,
+so "Nearby" cannot prefer what was learned HERE (#238 tried a scope boost that followed
+the boundary's scope, not the reader's, and it was dropped). Choosing per directory at
+wake time would put ranking on the wake path, which is meant to compute nothing. Open.

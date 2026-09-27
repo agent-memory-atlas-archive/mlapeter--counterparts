@@ -40,6 +40,12 @@
  * row with versions; it cannot promote a memory, cannot protect one, and moves
  * no strength anywhere. Promotion and reinforcement go on deciding what is true
  * of the self; the page is where that growth is written down.
+ *
+ * **`dream` is the eighth, added 2026-09-26 (owner decisions, dreaming +
+ * consolidation).** Its phases are the dreamer's (`begin`, `propose`,
+ * `journal`) plus the session's `launch` and the owner's `decline`. It is not a
+ * door into the identity band either: a dream NOMINATES, and only a core lane at
+ * consolidation promotes (`sleep/consolidate.ts`).
  */
 import { RECALL_MAX_IDS } from "./deliberate.js";
 

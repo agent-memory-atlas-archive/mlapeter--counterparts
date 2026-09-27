@@ -558,3 +558,10 @@ it was built and what was decided along the way.
 
 **Unmeasured.** Every mood tunable is a working default with a reason, not a measurement;
 the recall bench has no feelings in it yet.
+
+## 2026-09-26 — a cued use is organic
+
+`resolveUse(…, { cued })` passes through to `store.reinforce`: a use of a loud candidate
+recall surfaced on the turn's own cue (`reference.ts`'s `quoted`) is a RETURN even while
+the memory is showing in the wake's hints lane (physics §5.11). An id the model expanded
+may have been read off the wake, and there the display decides.

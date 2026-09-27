@@ -205,6 +205,10 @@ decided twice.)*
    Promotion reads `promotionBase` — `base` without the lift — so its reach is exactly
    what it was before #244, and the settling view (which reads the verdict's `base`)
    follows. The lift still makes a memory taller and slower to fade.
+   **Superseded the same day by the redesign** ("Returns, core lanes and the v8
+   upgrade", below): `promotionBase` is retired, promotion reads no `base` at all, and
+   emotion counts toward the core on purpose — through the fast lane, and only for
+   memories about me or about us.
 
    Anything that ranks by strength (the self page's ordering, the dashboard's
    lists) shifts toward felt memories. Felt, consolidated, high-salience memories
@@ -227,6 +231,103 @@ decided twice.)*
    **Not carried across a revision.** Feelings belong to a memory id. A supersede
    mints a new id, so the successor starts without them (and without their lift).
    Named, not solved — revisit with the self/schemas work.
+
+## Returns, core lanes and the v8 upgrade (2026-09-26)
+
+*Owner decisions of 2026-09-26 (dreaming + consolidation), held lightly: "try it, see
+how it goes, adjust". CONTRACT §5.2, §5.3, §5.4, §5.11; `sleep/consolidate.ts`;
+`self/identity.ts#hintReading`. Every number below is a working default and CAL.*
+
+**What changed, in one paragraph.** The one-time `+CONS_BONUS` for a memory that
+survived a day at the semantic floor was the only road to staying strong. Now a memory
+stays strong by COMING BACK: each spaced return lengthens its stability (diminishing),
+close-together returns count less but never against it, and a dream's replay counts as
+half a return. The bonus is kept, exactly, for rows born before the upgrade (`legacy`),
+so no memory moves down. The core (identity band) is for memories about me or about us
+only, by a fast lane (strongly felt, and back after a gap) or a slow lane (back on five
+distinct days over three weeks), at most three a night.
+
+**The tunables, and why each number.**
+
+| name | value | reason |
+|---|---|---|
+| `RETURN_SPACING_DAYS` | 7 | `1 − exp(−gap/7)`: 0.13 next day, 0.63 after a week, 0.95 after three. Full weight once forgetting has visibly started (a fact with S = 60 has lost ~11% by day 7). #238's curve, with its penalty on `uses` dropped. |
+| `RETURN_GAIN` | 1.0 | stability × (1 + ln(1 + returns)): one full return ×1.69, three ×2.39, ten ×3.40. In the 60-day run a fact that came back on 5–6 days ends with S ≈ 330 lived days against ≈ 130 without its returns — retrieval practice at its usual strength. The number most worth watching: generous if the store stops forgetting what it uses a few times. |
+| `DREAM_RETURN_WEIGHT` | 0.5 | the owner's "start ~0.5": a replay strengthens, less than living it again. Counts toward no core lane. |
+| `DREAMED_CLAIM_CEILING` | 0.3 | a dream's gist starts below `THETA_SEM` and just above a silent note's 0.25 default, so it is neither semantic at birth nor prunable from birth; it rises only by being used awake (rep arm, returns). |
+| `CORE_FAST_FEELING` | 0.6 | "strongly felt" — the top of the ordinary range: the sweep's claim ceiling is 0.6 too, and feelings recorded at 0.7–0.9 are the ones a person names. Either person's feeling (`emotionalIntensity`). |
+| `CORE_FAST_GAP_DAYS` | 2 | "came back at least once after a gap": not the very next day, which is usually the same thread continuing. |
+| `CORE_SLOW_DAYS` / `CORE_SLOW_SPAN_DAYS` | 5 / 21 | "kept coming back over several weeks": five separate days spread over three weeks is a habit, not a burst. The owner's example numbers. |
+| `CORE_MAX_PER_SLEEP` (sleep) | 3 | the owner's rail: a store that grew a lane of eligible memories does not rewrite who it is overnight; strongest first, the rest wait three lived days. |
+| `HINT_STEP` / `HINT_RECOVERY_DAYS` / `HINT_HABITUATION` (self) | 1 / 3 / 1 | #238's habituation with its half step for "used while shown" removed (its review: that barely habituated). |
+
+**Judgement calls, recorded because the brief was silent.**
+
+1. **A return needs a REFERENCED use.** A memory surfaced and left unused (tier 0.25)
+   did not come back; it was offered. Simpler too: every awake return is also a lane day.
+2. **"Shown in the hints lane" is decided by the store**, from `wake_display`: from the
+   first day of the current showing through the day a publish dropped it (the drop day
+   is ambiguous, #238's reading kept). **A use recall surfaced on the turn's own cue
+   (a quoted loud candidate) is organic even while shown** — found building the lifecycle
+   test: on a store small enough that the lane holds every warm memory, the plain rule
+   would have let nothing ever return. An id EXPANDED off the wake is the loop, and is
+   not a return.
+3. **The hints lane scores ORGANIC strength** — the uses the memory had when it was first
+   ever shown plus its awake returns, decayed from its last organic use — times
+   habituation. #238's review found the loop back every day by ~day 20 because
+   display-prompted uses kept `lastUsedDay` and `uses` up; both are set aside here.
+4. **Legacy is a flag the migration sets on every row it finds**, not a date: exact, and
+   a dream's merge of legacy rows carries it (the merged memory stands where its
+   strongest original stood). Rows born on the upgrade's own lived day before it are
+   legacy; rows born after are not.
+5. **Existing identity rows stay identity**, whatever their kind — the old rule promoted
+   facts and entities; the new one never will, and nothing takes back what was earned.
+6. **"About me"** is `self` kind, or a `person` memory naming the owner (the identity
+   core's name and aliases, whole-word). With no name configured, only `self` qualifies.
+7. **A demotion restarts fading from the demotion day** and is sticky against the lanes.
+
+**A. The upgrade, on a real v7 store** (`tools/sim/consolidation.ts --v7-src <a v7
+checkout>`: the demo store seeded by the v7 build, then opened by this one).
+
+| kind | rows | consolidated (kept) | episodic / semantic / identity | band moved at upgrade | prune day sooner | later |
+|---|---|---|---|---|---|---|
+| entity | 24 | 16 | 6 / 16 / 2 | 0 | 0 | 0 |
+| fact | 39 | 36 | 0 / 34 / 5 | 0 | 0 | 0 |
+| person | 29 | 21 | 5 / 21 / 3 | 0 | 0 | 0 |
+| place | 7 | 0 | 7 / 0 / 0 | 0 | 0 | 0 |
+| self | 33 | 13 | 17 / 11 / 5 | 0 | 0 | 0 |
+| skill | 13 | 0 | 13 / 0 / 0 | 0 | 0 | 0 |
+
+The census the first sleep recorded: `{"checked":145,"bandDown":0,"bandUp":0,"weaker":0,
+"pruneSooner":0,"pruneLater":0,"legacy":145,"consolidated":86}`. Zero by construction
+(the returns factor is 1 at zero returns and a legacy row keeps its path) — and measured.
+`doctor` prints it as the Upgrade line. What the upgrade DOES change is the future of a
+memory made after it: it will never get the one-time bonus, and stays strong only by
+returning.
+
+**B. Sixty lived days** on a synthetic store: 20 ordinary facts (a cued return 6% of
+days), a strong memory used every time the hints lane shows it (the loop), two strongly
+felt `self` memories (12%), two steady ones (30%), two rare ones (3%), one felt memory
+naming the owner (10%), three steady ones about him (25%), three about Ada (40%), two
+new facts a day, and on day 10 a burst of five felt `self` memories that all come back on
+day 12.
+
+- **Hints lane** (8 slots): the loop memory was shown on 34 of 60 days, longest run 8
+  days; 99 distinct memories were shown. Every one of its 34 uses was on display, so it
+  gathered 0 returns and never came near the core.
+- **The core**: Mike-felt on day 10 (fast); three of the burst on day 13 and the other two
+  on day 16 (fast; the cap held two back once); both felt `self` memories by day 19
+  (fast); both steady `self` memories on day 25 and the three steady Mike memories on
+  days 34–40 (slow). The rare `self` memories, every fact, and all three Ada memories
+  (26–30 return days each — not about me) stayed out.
+- **Durability**: facts that came back on 5–6 days end with S ≈ 320–340 lived days
+  (≈130 without their returns) and sit around the semantic floor at day 60; facts that
+  never came back fade as before.
+
+**Hazards named.** `RETURN_GAIN` is the lever most likely to need turning (see above). The
+fast lane opens on ONE return after a gap, so a strongly felt memory about me is core
+within days — the owner's intent, and the cap is the rail. A dream's feeling-now cannot
+raise intensity (capped at the peak), so a dream cannot open the fast lane.
 
 ## Observations for the owner (arithmetic vs prose)
 

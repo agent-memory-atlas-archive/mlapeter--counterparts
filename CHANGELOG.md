@@ -1,5 +1,67 @@
 # Changelog
 
+## Unreleased
+
+Memories stay strong by coming back, the core is for what is about the two of you, and
+Counterparts can dream. **The store's format changes (v7 → v8).** The first Claude Code
+session after installing copies the store (as every upgrade since 0.3.1 has) and upgrades
+it; until then `counterparts doctor` and the dashboard say it is not initialized. Close
+every session before installing, and run `/mcp` → Reconnect in any you missed.
+
+Staying strong.
+
+- **A memory that comes back fades more slowly.** Each time a memory is used again on a
+  later day, it gets harder to lose — a lot after a week or more, a little the next day,
+  and never less than before. This replaces the one-time bonus a memory used to get for
+  surviving its first day.
+- **Nothing you already have moves down.** Every memory in your store keeps the old
+  bonus path exactly, so no memory drops a band or will be let go sooner because of the
+  upgrade. The first sleep after the upgrade checks this on every memory, and `doctor`
+  prints what it found (an "Upgrade" line).
+- **"Nearby, if it helps" takes turns.** The wake's "Nearby" lane no longer shows the
+  same strong memory every day. A memory Claude uses because it was showing there still
+  counts as a use, but not as coming back; one shown a lot gives way for a while, and
+  returns to the lane over a few days.
+
+The core.
+
+- **Only memories about Claude, or about the two of you, become core** — kind `self`, and
+  memories about a person that name you. Facts, skills and places never do, however often
+  they come back.
+- **Two ways in.** Strongly felt (by you or by Claude) and it came back at least once, a
+  couple of days later. Or it kept coming back — on five separate days over three weeks.
+- **At most three a night**, strongest first; the rest wait for the next sleep.
+- **You can send one back.** `counterparts core` lists the core (with how each got
+  there), what dreams nominated, and what you sent back; `counterparts core --demote <id>
+  --reason "..."` returns a memory to ordinary fading from today and keeps it out.
+
+Dreaming.
+
+- **Once a day, when there is something new, Claude may ask you "I haven't dreamed since
+  … — OK if I dream for a few minutes?"** at a natural moment. Say no and it will not
+  ask again that day. Say yes and a background agent replays what you lived since the
+  last dream beside what it resembles.
+- **What a dream can do**: merge near-copies into one memory in better words (the
+  originals are kept), link memories that belong together, replay what matters (it
+  strengthens them a little), write down a pattern it notices (labelled "Dreamed", and
+  it starts weak until it proves true), flag two memories that disagree (Claude raises
+  them with you next session), record how an old feeling sits now, and nominate a
+  memory for the core. It cannot delete anything, change the self page, make anything
+  core, or rewrite a memory in place.
+- **A dream journal.** Every dream keeps a journal entry, apart from your memories — a
+  dream is never remembered as something that happened. `counterparts dream` lists
+  them, `--show <id>` shows the journal and every change, and `--undo <id>` reverses a
+  whole dream. The dashboard's self page shows the journal and what each dream changed.
+
+Seeing it.
+
+- `counterparts mechanisms` and the dashboard: Consolidation now lights up on real
+  evidence (memories coming back, merges, memories becoming core); **Dreaming** is a new
+  light beside it; Gist is partly built (a dream's pattern). The self page shows what
+  became core lately and by which way, what you sent back, and what dreams nominated.
+- `counterparts fired` has rows for returns, dream replays, dreams, dream changes, the
+  daily ask, demotions and the upgrade check.
+
 ## 0.3.3 — 2026-09-26
 
 Reminders with dates, and feelings start to matter. The store's format is unchanged (still

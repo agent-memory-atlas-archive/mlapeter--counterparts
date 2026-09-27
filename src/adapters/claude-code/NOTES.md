@@ -1605,3 +1605,19 @@ beat is spent once. A full wake (the ~9 KB case above) therefore defers the plai
 unclaimed, and stripped from the model's copy too (`hooks.ts#withoutPlain`) — to the first
 prompt, whose envelope is small. When a plain line and the update notice do not fit
 together at a prompt, the update notice waits. Details: `docs/adversarial-review-pr243-2026-09-26.md`.
+
+## 2026-09-26 — the dream ask, and dream words tagged `dream`
+
+- **The ask** rides `user-prompt-submit`'s context (the model's channel, like the quiet
+  Stop ask), after the plain reminders: one line, at most once per calendar day across
+  sessions (the store's `dream_asks` latch), never in the page writer's headless child,
+  never under observer, never without a date. It asks the model to ask the owner at a
+  natural moment. A contradiction a dream flagged is raised on the same channel, once.
+  The line is claimed when composed; if the envelope ever dropped it, that day's ask is
+  spent (dream INTERFACE-GAPS §2).
+- **The reader tags a block carrying `DREAM_MARK` as `dream`**, in either role and
+  whoever wrote the entry — after the foreign and ritual refusals, before everything
+  else. The case it exists for: a background agent's hand-back arrives in the PARENT's
+  transcript as `isMeta`, origin `peer`, "Another Claude session sent a message:", which
+  the reader otherwise keeps as `injected`. `test/dream.test.ts` drives that exact shape
+  through parse, capture and the sweep: zero rows minted from the dream's words.

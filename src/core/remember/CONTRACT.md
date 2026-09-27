@@ -64,6 +64,11 @@ is that the ask is ambient (constitution line 8) and its coverage is measured, n
   happened to us. Both refusals are COUNTED in `CaptureResult.excluded`, so a boundary
   that captured nothing because everything was excluded is distinguishable from a boundary
   where nothing happened.
+- **A DREAM's words never enter either** (2026-09-26, `dream/`) — the bundle a dreamer
+  was shown and the hand-back its background agent sends home carry `DREAM_MARK`
+  (`dream/mark.ts`), and `enters()` refuses any turn that carries it, by source (`dream`,
+  the Claude Code reader's tag) and by the mark itself, so no host's reader can let one
+  through. What was dreamed is not what happened.
 - **Boundaries are appenders, not thinkers.** Capture completes in microseconds; the host
   never waits on a model call at a boundary. [v1] §2 G1, [engram E4].
 

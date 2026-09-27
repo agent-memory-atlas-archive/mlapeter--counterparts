@@ -260,3 +260,13 @@ Two smaller notes that ride along:
   latched row, so the symmetry sample is untouched by it. The rolled-up total
   remains the thing to build when latched volume is the problem; unlatched
   volume no longer is.)*
+
+## 10. The core's lanes read words the port does not promise — 2026-09-26
+
+`aboutMe` and `ownerNames` read prose through the port's `read` (the identity core's
+names; a person memory's words). Measured cheap — only `self` and `person` rows pay —
+but it is the first time the consolidate phase reads a body. If "about me" ever needs
+more than a name match (a person card for the owner, an embedding), that is a
+`schemas/` question, and this phase should receive the verdict rather than compute it.
+The owner's demotions arrive through the optional `coreDemoted`; a port without it
+cannot be told "not this one".

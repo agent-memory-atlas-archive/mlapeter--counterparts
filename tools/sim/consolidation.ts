@@ -4,10 +4,14 @@
  * consolidation redesign (2026-09-26). Prints the tables `physics/NOTES.md`
  * ("Returns, core lanes and the v8 upgrade") quotes. Two parts:
  *
- *   A. THE UPGRADE, on the demo store: `tools/demo/seed.ts` builds it, this
- *      takes it back to the v7 shape (the 0.3.2 / 0.3.3 builds'), then opens it
- *      with this build — which copies it and migrates it — and compares every
- *      live memory's band and projected prune day, pre-v8 arithmetic vs v8, by
+ *   A. THE UPGRADE, on the demo store. With `--v7-src <dir>` (a checkout of a
+ *      v7 build, e.g. `git archive origin/master src tools package.json | tar
+ *      -x -C <dir>`), THAT build's `tools/demo/seed.ts` seeds it, so the store
+ *      is a real v7 one — its consolidated rows marked and its promotions made
+ *      by the old rules. Without it, this build seeds and the store is taken
+ *      back to the v7 shape (no consolidated rows then). Either way this build
+ *      then opens it — copying and migrating it — and compares every live
+ *      memory's band and projected prune day, pre-v8 arithmetic vs v8, by
  *      kind; then runs one sleep and prints the census the store recorded.
  *   B. SIXTY LIVED DAYS on a synthetic store: organic returns (cued by a
  *      turn), a strong memory used every time the hints lane shows it (the
@@ -79,13 +83,15 @@ function rawPhysics(dir: string): Map<string, MemoryPhysics> {
 
 function partA(): void {
   const dir = join(ROOT, "demo");
-  const seeded = spawnSync(process.execPath, ["run", resolve(import.meta.dir, "../demo/seed.ts"), "--dir", dir], {
-    encoding: "utf8",
-  });
+  const at = process.argv.indexOf("--v7-src");
+  const v7src = at === -1 ? null : (process.argv[at + 1] ?? null);
+  const seedScript = v7src === null ? resolve(import.meta.dir, "../demo/seed.ts") : resolve(v7src, "tools/demo/seed.ts");
+  const seeded = spawnSync(process.execPath, ["run", seedScript, "--dir", dir], { encoding: "utf8" });
   if (seeded.status !== 0) throw new Error(`seed failed: ${seeded.stderr}`);
-  // The demo store was seeded by THIS build; take it back to the v7 shape and
-  // mark its consolidated rows as the old build would have left them.
-  stripToV7(dir);
+  // A store this build seeded is taken back to the v7 shape; one a v7 build
+  // seeded already is one.
+  if (v7src === null) stripToV7(dir);
+  console.log(`(seeded by ${v7src === null ? "this build, stripped to v7" : `the v7 build at ${v7src}`})`);
   const before = rawPhysics(dir);
   const s = Store.open({ dir, snapshotsDir: join(ROOT, "demo-snaps") });
   const day = s.livedDay();

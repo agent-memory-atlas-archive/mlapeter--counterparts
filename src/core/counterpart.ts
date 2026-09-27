@@ -2515,10 +2515,10 @@ export class Counterpart {
       });
     }
     const nominated = this.store
-      .coreEvents({ action: "nominated", limit: 50 })
+      .coreEvents({ action: "nominated" })
       .map((e) => ({ id: e.memory_id, day: e.day, reason: e.reason, dream: e.dream_id }));
     const demoted = this.store
-      .coreEvents({ action: "demoted", limit: 50 })
+      .coreEvents({ action: "demoted" })
       .map((e) => ({ id: e.memory_id, day: e.day, reason: e.reason }));
     return { core, nominated, demoted };
   }

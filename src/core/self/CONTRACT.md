@@ -410,6 +410,9 @@ of them a budget. The composed budget is the caller's and lives nowhere in this 
 | `CRAFT_MAX` | 8 | Craft (skill-kind) elements considered. |
 | `THREADS_MAX` | 12 | Open threads considered. Dark on a migrated store — INTERFACE-GAPS §8, and no cap can fix a missing source. |
 | `HINTS_MAX` | 8 | Warm-shelf hints considered. |
+| `HINT_STEP` | 1 | What one published showing in the hints ("Nearby") lane adds to a memory's habituation load — used while shown or not (2026-09-26). |
+| `HINT_RECOVERY_DAYS` | 3 | Lived days for that load to fall to 1/e once the memory stops being shown. |
+| `HINT_HABITUATION` | 1 | The pull a load leaves: `1 / (1 + HINT_HABITUATION × load)`. |
 | `HORIZON_MAX` | 6 | Arriving occasions considered (source borrowed — INTERFACE-GAPS §3). |
 | `WARM_FLOOR` | 0.35 | Decayed strength a non-identity element must reach to be craft or a hint. Identity faces no floor. |
 | `BUDGET_PRESSURE` | 0.9 | Fraction of the budget that fires the pressure event (scar §2.4). |

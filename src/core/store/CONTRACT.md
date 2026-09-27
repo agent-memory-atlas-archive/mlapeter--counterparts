@@ -416,6 +416,18 @@ store property is the `VACUUM INTO`, and that is G19. The code's numbering wins.
     rewritten. Reads for the rest: `feelingsSince(ms)` (recall's mood), `feelingsOn(ids)`
     (one query for recall's candidates), `emotionCensus()` (counts for the mechanisms
     views).
+23. **[M] Returns, what the wake showed, dreams and the core's history** (schema v8,
+    2026-09-26). A credited use is also asked whether it is a RETURN (physics §5.11), in
+    the same transaction, with the one fact only the store holds — whether the memory was
+    showing in the wake's hints lane (`wake_display`); a return is a `returns` row, and
+    the aggregate columns on `memories` are recomputed FROM that table, never written
+    another way, so an undone dream's replays leave no trace. `legacy` marks every row
+    the v8 migration found (the old consolidation path stays theirs). A dream's rows
+    (`dreams`, `dream_changes`, `dream_asks`) hold ids and numbers, except the journal
+    and a reason, which are words. The owner's removal deletes a memory's returns,
+    display rows and core history, and blanks its address in a dream's change log. The
+    undo helpers are named for what they do (`restoreEdge`, `restoreSuperseded`,
+    `retract*`) — there is still no deletion verb on `Store`.
 
 ## 6. Scars honored
 
