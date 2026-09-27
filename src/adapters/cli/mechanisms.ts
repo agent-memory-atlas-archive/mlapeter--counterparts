@@ -271,11 +271,14 @@ export const MEMORY_MECHANISMS: readonly MemoryMechanism[] = [
     read: (v) => {
       const dreams = part(v, "dreams");
       const changes = part(v, "changes");
+      // Said apart from the changes: a nomination moves nothing until a lane promotes it awake.
+      const suggestions = part(v, "suggestions");
+      const made = [...(changes > 0 ? [plural(changes, "change")] : []), ...(suggestions > 0 ? [plural(suggestions, "core suggestion")] : [])];
       const reflections = part(v, "reflections");
       if (v.fired) {
         return {
           light: LIGHT.working,
-          says: `${plural(dreams, "dream")} this week${changes > 0 ? ` (${plural(changes, "change")})` : ""}${
+          says: `${plural(dreams, "dream")} this week${made.length > 0 ? ` (${made.join(", ")})` : ""}${
             reflections > 0 ? `; ${plural(reflections, "reflection")} afterwards` : ""
           }`,
         };
