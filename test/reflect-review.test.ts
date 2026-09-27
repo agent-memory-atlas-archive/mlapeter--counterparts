@@ -162,3 +162,27 @@ describe("S3: the v9 upgrade marks a person-kind schema row naming the owner, as
   });
 });
 
+// ---------------------------------------------------------------------------
+// S5 — a carried share is claimed once, even by two sessions racing
+// ---------------------------------------------------------------------------
+
+describe("S5: carrying a share is a claim, not a read then a write", () => {
+  test("a second session that read the share as still offered does not carry it again", () => {
+    const a = brain();
+    nextDay(a);
+    nextDay(a);
+    const id = mem(a, "I felt proud of the release.", { kind: "self", about: "me" });
+    const { bundle } = reflect(a, [id], { share: { text: "I've been thinking about the release.", cites: [id] } });
+    const b = brain();
+    const stale = b.store.reflection(bundle.reflection);
+    expect(stale?.share_state).toBe("offered");
+    // Session A carries it.
+    expect(a.reflections.carryLine({ session: "s-a", reflection: bundle.reflection })).not.toBe(null);
+    // Session B had read it as offered in the same instant.
+    const reflection = b.store.reflection.bind(b.store);
+    b.store.reflection = (x: string) => (x === bundle.reflection ? stale : reflection(x));
+    expect(b.reflections.carryLine({ session: "s-b", reflection: bundle.reflection })).toBe(null);
+    expect(a.store.reflection(bundle.reflection)?.share_session).toBe("s-a");
+  });
+});
+

@@ -616,7 +616,10 @@ export class Reflections {
     if (this.ctx.observer) return null;
     const row = this.store.reflection(input.reflection);
     if (row === undefined || row.share_state !== "offered" || row.share === null) return null;
-    this.store.updateReflection(row.id, { shareState: "carried", shareSession: input.session });
+    // A CLAIM, not a read then a write (review of #256, S5): two prompts
+    // racing both read "offered"; only the one whose write still finds it
+    // offered carries it.
+    if (!this.store.updateReflection(row.id, { shareState: "carried", shareSession: input.session, ifShareState: "offered" })) return null;
     this.record("reflection.carried", row.id, {});
     const who = this.ctx.ownerName() ?? "the owner";
     const when = row.date ?? "recently";

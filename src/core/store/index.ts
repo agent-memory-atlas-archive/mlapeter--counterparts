@@ -2183,6 +2183,11 @@ export class Store {
    * Change a reflection: close it with its entry, share and citations
    * (`reflected`, stamps `finished_at`), or move its share along
    * (`offered` → `carried` → `told`, stamping `share_at` / `share_session`).
+   *
+   * `ifShareState` makes it a CLAIM (review of #256, S5): the row changes only
+   * if its share is still in that state when the write lands, and the return
+   * says whether it did — so two sessions racing to carry one share cannot
+   * both carry it. Without it the write always lands (true).
    */
   updateReflection(
     id: string,
@@ -2197,17 +2202,19 @@ export class Store {
       shareSession?: string | null;
       pageVersion?: number | null;
       detail?: Record<string, unknown>;
+      ifShareState?: "none" | "offered" | "carried" | "told";
     },
-  ): void {
-    this.mutate("updateReflection", () => {
+  ): boolean {
+    const landed = this.mutate("updateReflection", () => {
       const row = this.ops.get<ReflectionRow>("SELECT * FROM reflections WHERE id = ?", id);
       if (row === undefined) throw new StoreError("ID_UNKNOWN", { id });
+      if (patch.ifShareState !== undefined && row.share_state !== patch.ifShareState) return false;
       const at = this.nowFn();
       this.ops.run(
         `UPDATE reflections
             SET state = ?, finished_at = ?, entry = ?, entry_id = ?, cites = ?, share = ?, share_cites = ?,
                 share_state = ?, share_at = ?, share_session = ?, page_version = ?, detail = ?
-          WHERE id = ?`,
+          WHERE id = ?${patch.ifShareState === undefined ? "" : " AND share_state = ?"}`,
         patch.state ?? row.state,
         patch.state === "reflected" ? at : row.finished_at,
         patch.entry === undefined ? row.entry : patch.entry,
@@ -2221,9 +2228,12 @@ export class Store {
         patch.pageVersion === undefined ? row.page_version : patch.pageVersion,
         patch.detail === undefined ? row.detail : JSON.stringify(patch.detail),
         id,
+        ...(patch.ifShareState === undefined ? [] : [patch.ifShareState]),
       );
+      return patch.ifShareState === undefined ? true : (this.ops.get<{ n: number }>("SELECT changes() AS n")?.n ?? 0) > 0;
     });
-    this.emit("store.reflection", id, { state: patch.state ?? null, share: patch.shareState ?? null });
+    if (landed) this.emit("store.reflection", id, { state: patch.state ?? null, share: patch.shareState ?? null });
+    return landed;
   }
 
   /** One reflection's row. */
