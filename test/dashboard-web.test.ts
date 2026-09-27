@@ -1187,7 +1187,12 @@ describe("the shapes the page draws with", () => {
       // The measurement behind this: every row said `learned 2026-09-04`,
       // because that is the day the store was built, beside `strength 1.00`,
       // which is what being in this band means. Two of three fields constant.
-      expect(rows.some((r) => r.lastUsedDay !== rows[0]?.lastUsedDay)).toBe(true);
+      // Since the core lanes (2026-09-26) the demo's identity notes are all
+      // still in use on its last day, so it is the BORN day that varies; either
+      // field varying shows the row carries lived days, not a build date.
+      expect(
+        rows.some((r) => r.lastUsedDay !== rows[0]?.lastUsedDay || r.bornDay !== rows[0]?.bornDay),
+      ).toBe(true);
       for (const r of rows) expect(r.lastUsedDay).toBeGreaterThanOrEqual(r.bornDay);
       // The calendar date is gone from the row and still in the card.
       expect(Object.keys(rows[0] ?? {})).not.toContain("learnedOn");

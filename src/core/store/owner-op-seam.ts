@@ -195,6 +195,22 @@ export function chaseRemoved(store: Store, id: string): ChaseReport {
     // never left dangling mid-delete.
     db.run("DELETE FROM feelings WHERE memory_id = ?", id);
     db.run("DELETE FROM gate_session WHERE ref = ?", id);
+    // v8: its return history, what the wake showed of it, and its core history
+    // (a demotion's or a nomination's reason is words about it) go too. A
+    // dream's change log keeps the ORDER of what the dream did, but no longer
+    // names this memory: the address is blanked, never the dream's other rows.
+    db.run("DELETE FROM returns WHERE memory_id = ?", id);
+    db.run("DELETE FROM wake_display WHERE memory_id = ?", id);
+    db.run("DELETE FROM core_events WHERE memory_id = ?", id);
+    // A DREAM'S JOURNAL about it (working default 2026-09-26, review of #251):
+    // a dream that was SHOWN the memory, CHANGED it, or whose journal QUOTES it
+    // (a six-word run of its words, or its title) may carry its words in the
+    // dream's own. The journal row stays — the dream happened, and its changes
+    // stay listed — but its title and entry are replaced by a line saying they
+    // were redacted. Asked before the words below are blanked.
+    const journals = redactDreamJournals(db, id, row?.title ?? null, row?.body ?? "");
+    db.run("UPDATE dream_changes SET ref = NULL WHERE ref = ?", id);
+    db.run("UPDATE dream_changes SET ref2 = NULL WHERE ref2 = ?", id);
 
     // Version rows stay (a successor's predecessor pointer lives here) and lose
     // every word they held. `reason`, `version_day` and `successor_id` are
@@ -228,7 +244,9 @@ export function chaseRemoved(store: Store, id: string): ChaseReport {
                 archived = 1, archived_reason = ?, content_hash = '',
                 title = NULL, body = '', meta = '{}', confidential = 0,
                 learned_on = '', happened_on = NULL,
-                created_at = NULL, updated_at = NULL, model = NULL, event_date = NULL
+                created_at = NULL, updated_at = NULL, model = NULL, event_date = NULL,
+                returns = 0, return_days = 0, first_return_day = NULL, last_return_day = NULL,
+                last_dream_day = NULL
           WHERE id = ?`,
         REMOVED_REASON,
         id,
@@ -268,11 +286,71 @@ export function chaseRemoved(store: Store, id: string): ChaseReport {
       neutralized: [
         { surface: "operational.memories", count: row === undefined ? 0 : 1 },
         { surface: "operational.versions", count: versions },
+        ...(journals > 0 ? [{ surface: "operational.dreams", count: journals }] : []),
       ],
       survives: ["removal_record", "deny-list", "removal_tombstone"],
       noop,
     };
   });
+}
+
+/** What a redacted dream journal says instead, title and entry. */
+const REDACTED_JOURNAL_TITLE = "(redacted)";
+const REDACTED_JOURNAL =
+  "[This dream's journal was redacted: it was shown, changed or quoted a memory the owner removed.]";
+
+/** Lowercase words, the one normalization the quote check uses on both sides. */
+function wordsOf(text: string): string[] {
+  return text
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((w) => w.length > 0);
+}
+
+/** Does `journal` carry a run of `window` consecutive words of `body`? */
+function quotes(body: string, journal: string, window = 6): boolean {
+  const b = wordsOf(body);
+  const j = wordsOf(journal);
+  if (b.length < window || j.length < window) return false;
+  const seen = new Set<string>();
+  for (let i = 0; i + window <= j.length; i += 1) seen.add(j.slice(i, i + window).join(" "));
+  for (let i = 0; i + window <= b.length; i += 1) if (seen.has(b.slice(i, i + window).join(" "))) return true;
+  return false;
+}
+
+/**
+ * Redact every dream journal that cites or quotes memory `id`: shown it (the
+ * dream's `shown` ids), changed it (`dream_changes`), or carries its title or a
+ * six-word run of its words. The row, its date, its state and its change list
+ * stay. Returns how many journals were redacted. Inside the caller's transaction.
+ */
+function redactDreamJournals(db: Db, id: string, title: string | null, body: string): number {
+  const dreams = db.all<{ id: string; shown: string; title: string | null; journal: string | null }>(
+    "SELECT id, shown, title, journal FROM dreams WHERE journal IS NOT NULL OR title IS NOT NULL",
+  );
+  const changed = new Set(
+    db
+      .all<{ dream_id: string }>("SELECT DISTINCT dream_id FROM dream_changes WHERE ref = ? OR ref2 = ?", id, id)
+      .map((r) => r.dream_id),
+  );
+  const named = title !== null && title.trim().length >= 8 ? title.trim().toLowerCase() : null;
+  let n = 0;
+  for (const d of dreams) {
+    if (d.journal === REDACTED_JOURNAL) continue;
+    let shown = false;
+    try {
+      const ids: unknown = JSON.parse(d.shown);
+      shown = Array.isArray(ids) && ids.includes(id);
+    } catch {
+      shown = false;
+    }
+    const text = `${d.title ?? ""}\n${d.journal ?? ""}`;
+    const quoted = quotes(body, text) || (named !== null && text.toLowerCase().includes(named));
+    if (!shown && !changed.has(d.id) && !quoted) continue;
+    db.run("UPDATE dreams SET title = ?, journal = ? WHERE id = ?", REDACTED_JOURNAL_TITLE, REDACTED_JOURNAL, d.id);
+    n += 1;
+  }
+  return n;
 }
 
 // ── the repair ──────────────────────────────────────────────────────────────

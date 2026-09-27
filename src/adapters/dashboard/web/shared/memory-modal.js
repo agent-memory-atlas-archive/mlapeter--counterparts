@@ -128,7 +128,8 @@ function usePart(d) {
   } else lines.push("Not used yet.");
   if (p.byUse) {
     const more = Math.max(0, p.required - p.days);
-    lines.push(p.required + " separate days make it core" + (more ? " — " + more + " more to go." : "."));
+    lines.push("Coming back on " + p.required + " separate days over " + p.needSpan + " makes it core" +
+      (more ? " — " + more + " more to go." : p.span < p.needSpan ? " — it needs to keep coming back a little longer." : "."));
   }
   return '<div class="mc-strip" role="img" aria-label="lived days, a dot on each day it was used">' +
     (first > d.bornDay ? '<span class="mc-more">…</span>' : "") + cells + "</div>" +

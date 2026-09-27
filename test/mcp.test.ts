@@ -507,6 +507,8 @@ describe("the tool-description audit", () => {
     // written page the wake now leads with. It is the PAGE's door, not the
     // identity band's — it writes one row of prose with versions, and cannot
     // promote, protect or strengthen anything.
+    // The eighth is `dream` (2026-09-26): a dream's phases. It can NOMINATE a
+    // memory for the core; only a core lane at consolidation promotes one.
     expect(TOOL_NAMES).toEqual([
       "note",
       "recall",
@@ -515,6 +517,7 @@ describe("the tool-description audit", () => {
       "chapter",
       "scope",
       "self_page",
+      "dream",
     ]);
     // §4: what enters the identity band is the boundary's job by construction,
     // and `protected.add` went with the second-signature queue. Enumerated

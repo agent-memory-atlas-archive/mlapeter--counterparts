@@ -1208,3 +1208,33 @@ proving it). For the nights either side of the change, rows written before carry
 no caller moved. The self page and each chapter's episode row also record their writer in
 the store's `model` column (store NOTES 2026-09-25) beside `meta.models`.
 
+## 26. "Nearby" rotates: organic strength × habituation (2026-09-26)
+
+*The owner's "rich get richer" (2026-09-25), harvested from the held #238 and reworked
+after its review. `identity.ts#hintReading`; physics §5.11 for the other half.*
+
+One strong memory held the hints lane nearly every session: shown, mentioned by the
+assistant, credited, still strongest, shown again. #238's review measured its fix
+slowing the loop without breaking it — the strong memory was back every day by ~day 20
+of a 60-day simulation — because a use while shown still reset `lastUsedDay`, still
+added to `uses`, and was only half a habituation step. Now:
+
+- **The lane ranks on ORGANIC strength** — the memory decayed from its last organic use,
+  with the uses it had when it was FIRST EVER shown plus its awake returns (each return
+  is a use the display did not prompt). A use while it was showing moves neither. Its
+  own strength still rises (the use credits, as always): the warm floor, recall and the
+  bands read that.
+- **Habituation**: each published showing adds `HINT_STEP` (1, used or not), recovering
+  as `exp(−days / 3)`; the pull is `1 / (1 + load)`. A return AFTER it left the lane — a
+  memory reached for without the prompt — resets the load.
+- **What was shown is a store table** (`wake_display`, schema v8), written by `boundary`
+  on a real publish (kept ids, not ranked ones; every other open showing closed that
+  day), because the store needs it too: a use while a memory is showing is not a return.
+- **Dropped from #238**: the scope/session context boost (it followed the scope of the
+  boundary that triggered the render, not the reader's — its own named approximation),
+  and the `self.hinted.*` meta keys (a table is chased by removal; meta keys were not).
+
+Measured (`tools/sim/consolidation.ts`, 60 lived days, HINTS_MAX 8, a strong memory
+used every time it is shown, two new facts a day): shown on 34 of 60 days, longest run 8,
+99 distinct memories shown, 0 returns. `test/hints-nearby.test.ts` pins the rotation, the
+recovery, the organic reset, the same-day re-render, and a 60-day loop at the defaults.

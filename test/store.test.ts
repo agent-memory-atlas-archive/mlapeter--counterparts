@@ -1634,7 +1634,9 @@ describe("an instrument does not write at open (live-verify 2026-08-25)", () => 
     // somebody "helpfully" relaxing the first. It was EMPTY at v6; v7
     // (2026-09-25) is the first real additive migration, and lists only the
     // moments, `model` and `event_date` — none of which a v5 store lacks in a
-    // way that hides its words.
+    // way that hides its words. v8 (2026-09-26) adds the legacy flag and the
+    // returns aggregate, none of which a pre-rows store lacks in a way that
+    // hides its words either.
     expect(ADDED_COLUMNS.map((c) => `${c.table}.${c.column}`)).toEqual([
       "memories.created_at",
       "memories.updated_at",
@@ -1647,6 +1649,12 @@ describe("an instrument does not write at open (live-verify 2026-08-25)", () => 
       "edges.updated_at",
       "prospective.created_at",
       "prospective.updated_at",
+      "memories.legacy",
+      "memories.returns",
+      "memories.return_days",
+      "memories.first_return_day",
+      "memories.last_return_day",
+      "memories.last_dream_day",
     ]);
     for (const spec of ADDED_COLUMNS) {
       expect({ column: spec.column, namesAFloorColumn: V6_COLUMNS.includes(spec.column) }).toEqual({
@@ -1796,6 +1804,21 @@ describe("observer mode is enforced at the store seam", () => {
     rebuildCache: [],
     pruneDeadIndex: [],
     embedOne: ["mem_0"],
+    // v8 (2026-09-26, dreaming + consolidation).
+    replayReturn: ["mem_000000000000", 1, "drm_x"],
+    recordHintDisplay: [1, [{ id: "mem_000000000000", load: 1 }]],
+    supersedeInto: ["mem_000000000000", "mem_000000000000", "dream-merge"],
+    restoreSuperseded: ["mem_000000000000", "dream-merge"],
+    restoreEdge: ["mem_000000000000", "mem_000000000000", null],
+    retractFeelings: [["fel_x"]],
+    retractDreamReturns: ["drm_x"],
+    retractDreamNominations: ["drm_x"],
+    appendCoreEvent: [{ memoryId: "mem_000000000000", action: "nominated", day: 0 }],
+    openDream: [{ id: "drm_x", day: 0 }],
+    updateDream: ["drm_x", { state: "undone" }],
+    recordDreamChange: ["drm_x", { action: "link" }],
+    markDreamChangeUndone: ["drm_x", 1],
+    setDreamAsk: [{ date: "2026-09-26", state: "offered", day: 0 }],
   };
 
   function populated(): { id: string; snapshot: string } {

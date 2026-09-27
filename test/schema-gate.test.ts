@@ -171,6 +171,8 @@ const ARGS: Record<string, Record<string, unknown>> = {
   chapter: { session: SESSION, text: "Chapter one: the server learned to ask before it touched anything." },
   scope: { mode: "off", note: "should never be written" },
   self_page: { body: "## Core\n\nI check the store's version before I touch it.\n\n## Lately\n\nA gate." },
+  // `launch` writes nothing; it is the phase every session can call.
+  dream: { phase: "launch", session: SESSION },
 };
 
 function seed(s: McpServer): void {
@@ -209,7 +211,7 @@ async function assertEveryToolRefuses(s: McpServer, ops: Db, cache: Db, reason: 
 // ── the rule ────────────────────────────────────────────────────────────────
 
 describe("the schema gate: a store a newer build migrated refuses every tool", () => {
-  test("a STORE stamp bumped from outside, after the server opened it, refuses all seven tools by name and writes nothing", async () => {
+  test("a STORE stamp bumped from outside, after the server opened it, refuses every tool by name and writes nothing", async () => {
     const s = server();
     seed(s);
     const ops = outside(paths.operational(dir));
@@ -257,7 +259,7 @@ describe("the schema gate: a store a newer build migrated refuses every tool", (
     expect(after["ops.data_version"]).not.toBe(before["ops.data_version"]);
   });
 
-  test("the control for all seven: on a current store the same calls each do their work", async () => {
+  test("the control for every tool: on a current store the same calls each do their work", async () => {
     const s = server();
     seed(s);
     const ops = outside(paths.operational(dir));

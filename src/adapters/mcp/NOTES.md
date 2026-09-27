@@ -707,3 +707,14 @@ A revision that sends `eventDate: null` and reaches no dated memory now answers
 `reminder: { cleared: false, note }` instead of nothing; a fresh note sending `null` (no
 `updates`) still answers nothing, since a client that fills every optional field with null
 would otherwise get the note on every deposit.
+
+## 2026-09-26 — `dream`, the eighth tool
+
+One tool with phases (`launch`, `begin`, `propose`, `journal`, `decline`) because a
+dream is one act in steps, and the audit wants every door enumerated. Every phase binds
+the session (`requireBoundSession`): the dreamer is a background agent the session
+launched, talking to this same server, and its writes belong to that session. `launch`
+writes nothing and returns the prompt `dream/` composes; the in-session model hands it to
+the Agent tool unchanged. `begin` returns the bundle as JSON behind the dream's mark;
+`journal` returns the hand-back the dreamer must end on. Under observer every phase
+stands down. The schema gate's "every tool refuses" fixture calls `launch`.

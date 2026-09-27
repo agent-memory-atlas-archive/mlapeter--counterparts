@@ -50,6 +50,9 @@ export function paint(d) {
       " could not be read just now:</b> " + s.unreadable.map((u) => esc(u.label)).join(" · ") + "</div>");
   }
 
+  // ── what crossed lately: became core, sent back, nominated ──
+  parts.push(history(s.history));
+
   // ── on the way ──
   parts.push(candidates(s));
 
@@ -65,6 +68,34 @@ export function paint(d) {
   }));
   wireTips($("self-settling-q"));
   wireTips(box);
+}
+
+/**
+ * WHAT CROSSED LATELY (2026-09-26): the newest crossings into the core with
+ * the lane that carried each, the owner's demotions with his reason, and the
+ * memories a dream nominated. Nothing is drawn when all three are empty.
+ */
+function history(h) {
+  if (!h) return "";
+  const LANE = { fast: "strongly felt, and came back", slow: "kept coming back over weeks" };
+  const row = (r, tail) =>
+    '<button type="button" class="st-row click" onclick="openMemory(\'' + esc(r.id) + '\')">' +
+      '<span class="st-text">' + said(headline(r.text), r.confidential) + "</span>" +
+      '<span class="st-hist-tail">' + esc(tail) + "</span></button>";
+  const out = [];
+  if (h.promoted.length > 0) {
+    out.push('<h4 class="st-h">Became core</h4>' + h.promoted.map((r) =>
+      row(r, "day " + r.day + (r.lane ? " · " + (LANE[r.lane] || r.lane) : ""))).join(""));
+  }
+  if (h.demoted.length > 0) {
+    out.push('<h4 class="st-h">Sent back to ordinary fading</h4>' + h.demoted.map((r) =>
+      row(r, "day " + r.day + (r.reason ? " · " + r.reason : ""))).join(""));
+  }
+  if (h.nominated.length > 0) {
+    out.push('<h4 class="st-h">Nominated in a dream ' + q("nominated", "A dream can say a memory belongs to who I am. That is recorded here and nothing more: only coming back awake, by a lane, makes a memory core.") + "</h4>" +
+      h.nominated.map((r) => row(r, "day " + r.day + (r.reason ? " · " + r.reason : ""))).join(""));
+  }
+  return out.length === 0 ? "" : '<div class="st-hist">' + out.join("") + "</div>";
 }
 
 function listOf(s, key) {
@@ -103,43 +134,42 @@ function row(r) {
 function candidates(s) {
   const r = s.rule;
   const c = s.candidates;
-  const foot = ["A memory joins the core once what it has earned reaches " + n2(r.threshold) +
-    " and it has been used on " + r.days + " different days. That is checked every " + r.everyDays + " lived days."];
-  if (s.onTheWay > 0) foot.push(plural(s.onTheWay, "memory has", "memories have") + " been used on a later day.");
-  if (s.unused > 0) foot.push(s.unused + " more could get there but haven't been used on a later day yet.");
+  const foot = ["Only a memory about me or about us joins the core, by one of two lanes: strongly felt (" + n2(r.needFeeling) +
+    " or more) and come back at least once, " + r.needGap + " or more days after it was made; or come back on " + r.days +
+    " different days over " + r.span + ". That is checked every " + r.everyDays + " lived days, at most " + r.cap + " a night."];
+  if (s.onTheWay > 0) foot.push(plural(s.onTheWay, "memory about us has", "memories about us have") + " come back at least once.");
+  if (s.unused > 0) foot.push(s.unused + " more about us haven't come back yet.");
   if (s.outOfReach > 0) {
-    foot.push(s.outOfReach + (s.outOfReach === 1 ? " memory was" : " memories were") +
-      " scored too low to get there by use alone (use tops out at " + n2(r.repCap + r.bonus) + ").");
+    foot.push(s.outOfReach + (s.outOfReach === 1 ? " memory is" : " memories are") +
+      " not about me or about us, so the core is not for them however often they come back.");
   }
   const tip = q("rule", foot.join(" "));
   if (c.length === 0) {
     return '<h4 class="st-h">On the way to the core ' + tip + "</h4>" +
       '<div class="empty"><b>(none yet)</b> nothing is on its way to the core yet.</div>';
   }
-  const scale = 1.2; // the bar is drawn from 0 to 1.2 so the threshold sits right of centre
+  const scale = 1.2; // the bar is drawn from 0 to 1.2 so the fast lane's mark sits right of centre
   const rows = c.map((m) => {
     const ready = m.eligible;
-    const have = Math.min(m.base, scale) / scale * 100;
-    const ghost = m.consolidated ? 0 : Math.min(m.bonus, scale - Math.min(m.base, scale)) / scale * 100;
-    const strong = m.base >= m.threshold;
+    const have = Math.min(m.feeling, scale) / scale * 100;
+    const felt = m.feeling >= m.needFeeling;
     const dots = Array.from({ length: m.requiredDays }, (_, i) =>
       '<span class="dd' + (i < m.days ? " on" : "") + '"></span>').join("");
     const status = ready
-      ? "ready — it crosses at the next check"
-      : (strong ? "strong enough" : "needs " + n2(m.threshold - m.base) + " more" + (m.consolidated ? "" : " (settling adds " + n2(m.bonus) + " once)")) +
-        " · used on " + Math.min(m.days, m.requiredDays) + " of " + m.requiredDays + " days";
+      ? "ready (" + m.lane + " lane) — it crosses at the next check"
+      : (felt ? "strongly felt" + (m.returned ? "" : " — one return after a gap makes it core") : "felt " + n2(m.feeling) + " of " + n2(m.needFeeling)) +
+        " · came back on " + Math.min(m.days, m.requiredDays) + " of " + m.requiredDays + " days, over " + m.span + " of " + m.needSpan;
     return '<button type="button" class="cr' + (ready ? " ready" : "") + '" onclick="openMemory(\'' + m.id + '\')" title="' +
         esc((m.confidential ? "" : m.text + " — ") + status) + '">' +
       '<span class="cr-name">' + (ready ? '<span class="cr-ready">ready</span>' : "") + said(headline(m.text), m.confidential) + "</span>" +
-      '<span class="cm-track" aria-label="earned ' + n2(m.base) + " of " + n2(m.threshold) + '">' +
-        '<span class="cm-fill' + (strong ? " ok" : "") + '" style="width:' + have.toFixed(1) + '%"></span>' +
-        (ghost > 0 ? '<span class="cm-ghost" style="left:' + have.toFixed(1) + "%;width:" + ghost.toFixed(1) + '%"></span>' : "") +
-        '<span class="cm-mark" style="left:' + (m.threshold / scale * 100).toFixed(1) + '%"></span>' +
+      '<span class="cm-track" aria-label="felt ' + n2(m.feeling) + " of " + n2(m.needFeeling) + '">' +
+        '<span class="cm-fill' + (felt ? " ok" : "") + '" style="width:' + have.toFixed(1) + '%"></span>' +
+        '<span class="cm-mark" style="left:' + (m.needFeeling / scale * 100).toFixed(1) + '%"></span>' +
       "</span>" +
-      '<span class="cm-dots" aria-label="used on ' + m.days + " of " + m.requiredDays + ' days">' + dots + "</span>" +
+      '<span class="cm-dots" aria-label="came back on ' + m.days + " of " + m.requiredDays + ' days">' + dots + "</span>" +
     "</button>";
   }).join("");
   return '<h4 class="st-h">' + esc(plural(c.length, "memory", "memories")) + " closest to the core " + tip + "</h4>" +
-    '<div class="cr-head" aria-hidden="true"><span></span><span>earned</span><span>days</span></div>' +
+    '<div class="cr-head" aria-hidden="true"><span></span><span>felt</span><span>came back</span></div>' +
     '<div class="cr-list">' + rows + "</div>";
 }

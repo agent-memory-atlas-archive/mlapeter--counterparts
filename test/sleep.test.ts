@@ -51,6 +51,7 @@ import {
   runDedup,
   runPrune,
   shouldSpawn,
+  TUNABLES as SLEEP_TUNABLES,
   sqliteStrengthCache,
   strengthCachePath,
   validateWatchdog,
@@ -123,6 +124,23 @@ function put(s: Store, over: Partial<PutInput> = {}): string {
     body: `A memory body that says something specific about ${id}.`,
     ...over,
   });
+}
+
+/**
+ * A memory about me that meets the core's FAST lane (2026-09-26): strongly
+ * felt, made three lived days ago, and back once today — an awake return,
+ * credited through the store the way a real use is.
+ */
+function fastLaneSelf(s: Store, over: Partial<PutInput> = {}): string {
+  const id = put(s, {
+    kind: "self",
+    salience: { relevance: 0.9, emotional: 0.9, predictive: 0.9 },
+    physics: { birthDay: -3, lastUsedDay: -3 },
+    ...over,
+  });
+  const credit = s.reinforce(id, 0, "referenced");
+  expect(credit.ret?.counted).toBe(true);
+  return id;
 }
 
 /** Zero salience, zero uses, untouched for 100+ lived days: prunable by physics. */
@@ -568,13 +586,9 @@ describe("the decay tick", () => {
 
 // ═══════════════════════════════════════════════════════════════════════════
 describe("consolidation and the identity crossing", () => {
-  test("identity promotion is an EXPLICIT, COUNTED crossing with a persisted record", () => {
+  test("identity promotion is an EXPLICIT, COUNTED crossing with a persisted record and its lane", () => {
     const s = store();
-    const id = put(s, {
-      kind: "self",
-      salience: { claimed: 0.9, relevance: 0.9 },
-      physics: { consolidated: true, reinforcedDays: 3, uses: 3 },
-    });
+    const id = fastLaneSelf(s);
     const report = runCycle({ store: s, date: "2026-01-02" });
 
     expect(report.promoted.length).toBe(1);
@@ -582,9 +596,12 @@ describe("consolidation and the identity crossing", () => {
     expect(crossing.event).toBe("band.promoted");
     expect(crossing.id).toBe(id);
     expect(crossing.kind).toBe("self");
-    expect(crossing.reinforcedDays).toBe(3);
-    expect(crossing.base).toBeGreaterThanOrEqual(PHYSICS.THETA_ID);
+    expect(crossing.lane).toBe("fast");
+    expect(crossing.returnDays).toBe(1);
+    expect(crossing.intensity).toBeGreaterThanOrEqual(PHYSICS.CORE_FAST_FEELING);
     expect(crossing.day).toBe(report.day);
+    // The core's own history carries it, lane and all.
+    expect(s.coreEvents({ memoryId: id, action: "promoted" })[0]?.lane).toBe("fast");
 
     // The flag, the band, the persisted §5.3 record, and the event — all four.
     expect(s.physicsOf(id).promotedIdentity).toBe(true);
@@ -593,27 +610,64 @@ describe("consolidation and the identity crossing", () => {
     expect(report.events.some((e) => e.name === "sleep.promoted" && e.ref === id)).toBe(true);
   });
 
-  test("promotion does NOT fire below N distinct reinforced days, and says why", () => {
+  test("promotion does NOT fire until a lane is met, and says why", () => {
     const s = store();
+    // About me, felt only a little, back once: neither lane.
     const id = put(s, {
       kind: "self",
       salience: { claimed: 0.9, relevance: 0.9 },
-      physics: { consolidated: true, reinforcedDays: PHYSICS.N_PROMOTION_DAYS - 1, uses: 2 },
+      physics: { birthDay: -3, lastUsedDay: -3, consolidated: false },
     });
+    s.reinforce(id, 0, "referenced");
+    // Not about me at all, however strong and felt.
+    const fact = fastLaneSelf(s, { kind: "fact" });
     const report = runCycle({ store: s, date: "2026-01-02" });
 
     expect(report.promoted).toEqual([]);
     expect(s.physicsOf(id).promotedIdentity).toBe(false);
     expect(s.row(id)?.band).not.toBe("identity");
     expect(s.getMeta(promotionRecordKey(id))).toBeUndefined();
+    expect(s.physicsOf(fact).promotedIdentity).toBe(false);
 
-    // The REASON, named — not merely "it didn't happen".
+    // The REASONS, named — not merely "it didn't happen".
     const cons = phaseReport(report, "consolidate");
-    expect(cons.skipped["promotion:insufficient-distinct-days"]).toBe(1);
-    expect(cons.skipped["promotion:base-below-identity-threshold"]).toBeUndefined();
-    const verdict = promotionEligibility(s.physicsOf(id));
+    expect(cons.skipped["promotion:no-lane-yet"]).toBe(1);
+    expect(cons.skipped["promotion:not-about-me"]).toBe(1);
+    const verdict = promotionEligibility(s.physicsOf(id), { aboutMe: true });
     expect(verdict.eligible).toBe(false);
-    expect(verdict.reason).toBe("insufficient-distinct-days");
+    expect(verdict.reason).toBe("no-lane-yet");
+  });
+
+  test("at most CORE_MAX_PER_SLEEP cross in one sleep, strongest first; the rest wait", () => {
+    const s = store();
+    const ids = [0.95, 0.9, 0.85, 0.8, 0.75].map((r) =>
+      fastLaneSelf(s, { salience: { relevance: r, emotional: 0.9, predictive: r } }),
+    );
+    const report = runCycle({ store: s, date: "2026-01-02" });
+    expect(report.promoted.map((p) => p.id)).toEqual(ids.slice(0, SLEEP_TUNABLES.CORE_MAX_PER_SLEEP));
+    expect(phaseReport(report, "consolidate").skipped["promotion:cap"]).toBe(2);
+    // The next consolidation (three lived days on) takes the rest.
+    const later = ["2026-01-03", "2026-01-04", "2026-01-05"].flatMap((date) => runCycle({ store: s, date }).promoted);
+    expect(later.map((p) => p.id).sort()).toEqual(ids.slice(3).sort());
+  });
+
+  test("a person memory is about me only when it names the owner", () => {
+    const s = store();
+    s.put({ type: "schema", kind: "self", title: "Mike", body: "Mike", meta: { role: "entity", name: "Mike", aliases: ["Michael"] } });
+    const him = fastLaneSelf(s, { kind: "person", body: "Michael laughed when the demo finally worked." });
+    const other = fastLaneSelf(s, { kind: "person", body: "Ada laughed when the demo finally worked." });
+    const report = runCycle({ store: s, date: "2026-01-02" });
+    expect(report.promoted.map((p) => p.id)).toEqual([him]);
+    expect(s.physicsOf(other).promotedIdentity).toBe(false);
+  });
+
+  test("the owner's demotion holds: the lanes do not promote it again", () => {
+    const s = store();
+    const id = fastLaneSelf(s);
+    s.appendCoreEvent({ memoryId: id, action: "demoted", day: 0, reason: "not me after all", actor: "owner" });
+    const report = runCycle({ store: s, date: "2026-01-02" });
+    expect(report.promoted).toEqual([]);
+    expect(phaseReport(report, "consolidate").skipped["promotion:demoted-by-owner"]).toBe(1);
   });
 
   test("nothing is born into identity, however loudly it claims salience", () => {
@@ -628,16 +682,18 @@ describe("consolidation and the identity crossing", () => {
     expect(s.physicsOf(id).promotedIdentity).toBe(false);
   });
 
-  test("consolidation marking: the semantic floor sets the flag; nothing consolidates on its birth day", () => {
+  test("consolidation marking (legacy rows): the semantic floor sets the flag; nothing consolidates on its birth day", () => {
     const s = store();
     const grown = put(s, {
       salience: { claimed: 0.8 },
-      physics: { birthDay: -3, lastUsedDay: 0 },
+      physics: { birthDay: -3, lastUsedDay: 0, legacy: true },
     });
     // Born ON the cycle's own lived day — sleep consolidates yesterday's
     // experience, never the day it is looking at.
-    const newborn = put(s, { salience: { claimed: 0.8 }, physics: { birthDay: 1 } });
-    const faded = prunable(s);
+    const newborn = put(s, { salience: { claimed: 0.8 }, physics: { birthDay: 1, legacy: true } });
+    const faded = prunable(s, { physics: { legacy: true } });
+    // Made since the v8 upgrade: the one-time bonus is not its road.
+    const modern = put(s, { salience: { claimed: 0.8 }, physics: { birthDay: -3, lastUsedDay: 0 } });
 
     const report = runCycle({ store: s, date: "2026-01-02" });
     const cons = phaseReport(report, "consolidate");
@@ -647,6 +703,8 @@ describe("consolidation and the identity crossing", () => {
     expect(s.physicsOf(faded).consolidated).toBe(false);
     expect(cons.skipped["born-today"]).toBe(1);
     expect(cons.skipped["below-semantic-floor"]).toBe(1);
+    expect(s.physicsOf(modern).consolidated).toBe(false);
+    expect(cons.skipped["not-legacy"]).toBe(1);
     expect(report.events.some((e) => e.name === "sleep.consolidated" && e.ref === grown)).toBe(true);
   });
 
@@ -684,7 +742,7 @@ describe("consolidation and the identity crossing", () => {
       const s = store();
       const ids: string[] = [];
       for (let i = 0; i < 7; i += 1) {
-        ids.push(put(s, { salience: { claimed: 0.8 }, physics: { birthDay: -3, lastUsedDay: 0 } }));
+        ids.push(put(s, { salience: { claimed: 0.8 }, physics: { birthDay: -3, lastUsedDay: 0, legacy: true } }));
       }
       // ceil(7 / 3) = 3 runs to reach every row at least once.
       const runs = [visitedIds(s, 3), visitedIds(s, 3), visitedIds(s, 3)];
@@ -1377,11 +1435,8 @@ describe("band transitions, counted by direction (guarantee 12)", () => {
 
   test("an identity crossing becomes an UP-move on the next tick, and only once", () => {
     const s = store();
-    const id = put(s, {
-      kind: "self",
-      salience: { claimed: 0.9, relevance: 0.9, emotional: 0.9, predictive: 0.9 },
-      physics: { consolidated: true, reinforcedDays: 3, uses: 3 },
-    });
+    // Felt, but held under the semantic floor, so the crossing is a band MOVE.
+    const id = fastLaneSelf(s, { salience: { relevance: 0.2, emotional: 0.6, predictive: 0.1 } });
     const crossing = runCycle({ store: s, date: date(1) });
     expect(crossing.promoted.length).toBe(1);
     // Not double-counted at the promotion site: the cache diff has no way to

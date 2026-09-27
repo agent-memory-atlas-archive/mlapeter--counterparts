@@ -26,6 +26,11 @@ export const MEMORY_SOURCES = [
   "episode",
   "accommodation",
   "migrated",
+  // A dream's own words (2026-09-26, `core/dream/`): a gist or pattern the
+  // dreamer wrote while replaying, citing its sources. Engine-set by the dream
+  // seam alone, and it starts lower than lived testimony (physics
+  // `DREAMED_CLAIM_CEILING`): it rises only if it proves true awake.
+  "dreamed",
 ] as const;
 export type MemorySource = (typeof MEMORY_SOURCES)[number];
 
@@ -81,6 +86,29 @@ export interface MemoryPhysics {
    */
   feelingPeak?: number | null;
   consolidated: boolean;
+  /**
+   * Born before schema v8 (the dreaming + consolidation redesign, 2026-09-26):
+   * the one-time `+CONS_BONUS` consolidation path stays open for it, exactly as
+   * it was, so the upgrade moves no memory down (physics §5.2). Absent reads
+   * false — every memory made since the upgrade earns durability from RETURNS
+   * instead.
+   */
+  legacy?: boolean;
+  /**
+   * RETURNS (physics §5.11): the weighted count of spaced returns — a credited
+   * organic use on a lived day after the previous counted return, or a dream
+   * replay at a fraction of that. Each one slows fading (stability), with
+   * diminishing returns; close-together returns count less, never against.
+   * Absent reads 0, which is exactly today's arithmetic.
+   */
+  returns?: number;
+  /** Distinct lived days with a counted AWAKE return (the core lanes read it). */
+  returnDays?: number;
+  /** The first and last lived day of a counted AWAKE return; null when none. */
+  firstReturnDay?: number | null;
+  lastReturnDay?: number | null;
+  /** The last lived day a dream replayed it; null when never. */
+  lastDreamDay?: number | null;
   /** Set only by the explicit promotion crossing or revision inheritance (§5.3). */
   promotedIdentity: boolean;
   protected: boolean;

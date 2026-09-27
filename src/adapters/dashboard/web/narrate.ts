@@ -175,10 +175,45 @@ function nameSome(t: Told, ids: readonly string[], cap = 2): string {
 
 export const NARRATORS = {
   // ── the sleep cycle ────────────────────────────────────────────────────────
-  "band.promoted": (t) =>
-    notable(
-      `${subject(t)} crossed into identity — it had been in real use on ${n(t, "reinforcedDays") ?? 0} separate days.`,
-    ),
+  "band.promoted": (t) => {
+    // Since 2026-09-26 a crossing names its LANE: strongly felt and back after
+    // a gap (fast), or back on several separate days over weeks (slow). A row
+    // written before then has no lane and reads as it always did.
+    const lane = s(t, "lane");
+    const days = n(t, "returnDays") ?? n(t, "reinforcedDays") ?? 0;
+    return notable(
+      lane === "fast"
+        ? `${subject(t)} became core — it was strongly felt, and it came back after a gap.`
+        : lane === "slow"
+          ? `${subject(t)} became core — it kept coming back, on ${days} separate days over weeks.`
+          : `${subject(t)} crossed into identity — it had been in real use on ${days} separate days.`,
+    );
+  },
+  "band.demoted": (t) =>
+    notable(`The owner sent ${subject(t)} back out of the core, to fade like any other memory from today.`),
+  "physics.upgrade.census": (t) => {
+    const down = n(t, "bandDown") ?? 0;
+    const sooner = n(t, "pruneSooner") ?? 0;
+    const checked = n(t, "checked") ?? 0;
+    const line = `After the v8 upgrade I measured ${checked} memories by the old arithmetic and the new: ${down} moved down a band, ${sooner} would be let go sooner.`;
+    return down + sooner === 0 ? calm(line) : amber(line);
+  },
+  // ── dreaming (2026-09-26) ──────────────────────────────────────────────────
+  "dream.begun": (t) =>
+    calm(`I began to dream, over ${n(t, "fresh") ?? 0} new memories and ${n(t, "shown") ?? 0} in all.`),
+  "dream.changed": (t) => {
+    const kinds = ["merge", "link", "replayed", "gist", "contradiction", "feeling-now", "nominate-core"]
+      .map((k) => [k, n(t, k) ?? 0] as const)
+      .filter(([, v]) => v > 0)
+      .map(([k, v]) => `${v} ${k}`);
+    return calm(
+      `In a dream I changed ${n(t, "applied") ?? 0} things${kinds.length > 0 ? ` (${kinds.join(", ")})` : ""}${(n(t, "refused") ?? 0) > 0 ? `; ${n(t, "refused") ?? 0} were refused` : ""}.`,
+    );
+  },
+  "dream.journaled": () => notable("I woke from a dream and wrote it in the dream journal."),
+  "dream.undone": (t) => notable(`The owner undid a dream — ${n(t, "reversed") ?? 0} of its changes were put back.`),
+  "dream.ask": (t) =>
+    calm(s(t, "state") === "declined" ? "The owner said not today to a dream." : "I asked whether I could dream."),
   "band.transition": (t) => {
     // The payload's key names are TAKEN FROM the core's own pinned field tuple
     // rather than retyped as literals — the same rule `registries.ts` keeps for
@@ -1023,6 +1058,15 @@ export const REF_KIND = {
   // A flush describes a SET of pairs, not one memory. The ids stay in the edge
   // rows, where they are the record; the row carries counts.
   "associate.flush": "none",
+  // A dream's rows point at the DREAM, which is not a memory and never becomes
+  // one; its id prints as the raw address, and the journal view opens it.
+  "dream.begun": "none",
+  "dream.changed": "none",
+  "dream.journaled": "none",
+  "dream.undone": "none",
+  "dream.ask": "none",
+  "band.demoted": "memory",
+  "physics.upgrade.census": "none",
 } as const satisfies Record<
   DurableEventName,
   "memory" | "session" | "chunk" | "proposal" | "handoff" | "none"

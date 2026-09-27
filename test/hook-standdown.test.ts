@@ -1272,7 +1272,7 @@ describe("doctor reads the open, not just the directory", () => {
     expect(vf.err.join("\n")).toContain(gone);
     // The census itself still prints — it is true, and hiding it would be a
     // second kind of lying.
-    expect(vf.out.join("\n")).toContain("Floor: schema v7");
+    expect(vf.out.join("\n")).toContain("Floor: schema v8");
 
     // And a HEALTHY store still says nothing of the sort, on either door.
     const clean = join(work, "clean");

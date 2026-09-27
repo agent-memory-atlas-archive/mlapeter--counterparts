@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { CORE_EMOTIONS, FEELINGS_WHEEL, resolveEmotion, wheelEntry } from "../src/core/feelings-wheel.js";
-import { Store, isStoreError, paths } from "../src/core/store/index.js";
+import { SCHEMA_VERSION, Store, isStoreError, paths } from "../src/core/store/index.js";
 import type { StoreOptions } from "../src/core/store/index.js";
 import { chaseRemoved } from "../src/core/store/owner-op-seam.js";
 import { openServer } from "../src/adapters/mcp/index.js";
@@ -198,7 +198,7 @@ describe("the store", () => {
     db.run("INSERT OR REPLACE INTO meta (key, value) VALUES ('schemaVersion', '6')");
     db.close();
     const migrated = store({ snapshotsDir: join(dir, "..", `${dir.split("/").pop() ?? "x"}-snaps`) });
-    expect(migrated.getMeta("schemaVersion")).toBe("7");
+    expect(migrated.getMeta("schemaVersion")).toBe(String(SCHEMA_VERSION));
     const id = mem(migrated);
     expect(migrated.addFeelings(id, [{ whose: "owner", core: "happy", emotion: "clarified", strength: 0.5, carriedBy: "" }]).notices.length).toBe(1);
     rmSync(join(dir, "..", `${dir.split("/").pop() ?? "x"}-snaps`), { recursive: true, force: true });
@@ -359,7 +359,7 @@ describe("the console", () => {
     const c = io();
     await run(["status", "--dir", dir], { io: c.io });
     const said = [...c.out, ...c.err].join("\n");
-    expect(said).toContain("this store is on schema v6; the next Claude Code session copies it and upgrades it to v7");
+    expect(said).toContain(`this store is on schema v6; the next Claude Code session copies it and upgrades it to v${String(SCHEMA_VERSION)}`);
     expect(said).not.toContain("could not open the store");
     expect(existsSync(dir) && readdirSync(dir).length > 0).toBe(true);
   });

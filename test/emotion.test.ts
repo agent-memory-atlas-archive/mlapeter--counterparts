@@ -31,7 +31,6 @@ import {
   base,
   challengeForce,
   emotionalIntensity,
-  promotionBase,
   promotionEligibility,
   sal,
   salArm,
@@ -154,21 +153,23 @@ describe("physics §5.10 — height, slope, and the feeling that softens", () =>
     // A silent note with the strongest possible feeling is not semantic at birth…
     expect(TUNABLES.AUTHORED_DEFAULT_CLAIM + TUNABLES.EMO_LIFT).toBeLessThan(TUNABLES.THETA_SEM);
     expect(strength(note({ feelingPeak: 1 }), 0)).toBeLessThan(TUNABLES.THETA_SEM);
-    // …and even consolidated it stays far below identity.
-    expect(TUNABLES.AUTHORED_DEFAULT_CLAIM + TUNABLES.EMO_LIFT + TUNABLES.CONS_BONUS).toBeLessThan(TUNABLES.THETA_ID);
     // Softening is faster than the fact's own decay.
     expect(TUNABLES.S_FEELING).toBeLessThan(TUNABLES.S_BASE);
   });
 
-  test("emotion does not count toward identity: promotion reads base without the lift (2026-09-26)", () => {
-    // A consolidated, reinforced memory at the sweep's capped claim (0.6) stays
-    // below THETA_ID at ANY intensity — the lift makes it taller, never core.
-    const at = (feelingPeak: number): MemoryPhysics =>
-      note({ consolidated: true, reinforcedDays: 3, feelingPeak }, { claimed: TUNABLES.SWEEP_CLAIM_CEILING });
-    for (const I of [0, 0.3, 0.4, 1]) expect(promotionEligibility(at(I)).eligible).toBe(false);
-    expect(promotionBase(at(1))).toBeCloseTo(promotionBase(at(0)), 10);
-    expect(base(at(1))).toBeGreaterThan(promotionBase(at(1)));
-    expect(promotionEligibility(note({ consolidated: true, reinforcedDays: 9, feelingPeak: 1 })).eligible).toBe(false);
+  test("emotion counts toward identity ON PURPOSE, and only through the fast lane, and only about me (2026-09-26)", () => {
+    // Back once, three lived days after it was made: the fast lane's second half.
+    const at = (feelingPeak: number, kind: MemoryPhysics["kind"] = "self"): MemoryPhysics =>
+      note({ kind, birthDay: 0, returnDays: 1, firstReturnDay: 3, lastReturnDay: 3, feelingPeak });
+    // Below the bar, no lane; at or above it, the fast lane opens.
+    for (const I of [0, 0.3, 0.5]) expect(promotionEligibility(at(I), { aboutMe: true }).eligible).toBe(false);
+    expect(promotionEligibility(at(TUNABLES.CORE_FAST_FEELING), { aboutMe: true })).toMatchObject({ eligible: true, lane: "fast" });
+    // His feeling or mine — the strongest counts (`emotionalIntensity`).
+    expect(promotionEligibility(note({ kind: "person", returnDays: 1, lastReturnDay: 3, firstReturnDay: 3 }, { emotional: 0.8 }), { aboutMe: true }).lane).toBe("fast");
+    // A fact about the world is not about me, however strongly it was felt.
+    expect(promotionEligibility(at(1, "fact"), { aboutMe: false }).eligible).toBe(false);
+    // And the lift stays height only: `base` rises with the feeling, the lane reads the feeling itself.
+    expect(base(at(1))).toBeGreaterThan(base(at(0)));
   });
 
   test("slope: the same intensity lengthens stability", () => {

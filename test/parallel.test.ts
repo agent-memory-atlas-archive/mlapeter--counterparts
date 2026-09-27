@@ -53,6 +53,7 @@ import {
   addressLines,
   crossEncoding,
   dailyRecord,
+  REINFORCE_WINDOW_DAYS,
   gradeReinforced,
 } from "../tools/parallel/record.js";
 import { TUNABLES as PHYSICS } from "../src/core/physics/index.js";
@@ -1332,7 +1333,7 @@ describe("the v2 store reader", () => {
       let day = 0;
       buildStore(data, (s) => {
         const id = s.put({ type: "memory", kind: "fact", body: "A row this store minted itself.", source: "authored" });
-        day = ageBy(s, PHYSICS.N_PROMOTION_DAYS + 1);
+        day = ageBy(s, REINFORCE_WINDOW_DAYS + 1);
         expect(s.reinforce(id, day).credited).toBe(true);
       });
       const post = readV2Day(data, "2026-09-14").memories.postLaunch;
@@ -1351,7 +1352,7 @@ describe("the v2 store reader", () => {
         s.put({ type: "memory", kind: "fact", body: "A swept one, equally untouched.", source: "fallback" });
         // Imported rows are NOT post-launch, however reinforced they are.
         s.put({ type: "memory", kind: "fact", body: "An imported row from v1.", source: "migrated" });
-        day = ageBy(s, PHYSICS.N_PROMOTION_DAYS + 1);
+        day = ageBy(s, REINFORCE_WINDOW_DAYS + 1);
       });
       const post = readV2Day(data, "2026-09-14").memories.postLaunch;
       expect(post.rows).toBe(2);
@@ -1363,18 +1364,18 @@ describe("the v2 store reader", () => {
       expect(w.reason).toContain("IMPROVEMENTS U10");
     });
 
-    test("NOT-EXERCISED when the oldest post-launch row is younger than N_PROMOTION_DAYS", () => {
+    test("NOT-EXERCISED when the oldest post-launch row is younger than REINFORCE_WINDOW_DAYS", () => {
       const data = dir("v2");
       let day = 0;
       buildStore(data, (s) => {
         s.put({ type: "memory", kind: "fact", body: "Minted this morning, and nothing has had a chance.", source: "authored" });
-        day = ageBy(s, PHYSICS.N_PROMOTION_DAYS - 1);
+        day = ageBy(s, REINFORCE_WINDOW_DAYS - 1);
       });
       const post = readV2Day(data, "2026-09-14").memories.postLaunch;
       expect(post.rows).toBe(1);
       const w = gradeReinforced(post, day);
       expect(w.value).toBe("not-exercised");
-      expect(w.reason).toContain("N_PROMOTION_DAYS");
+      expect(w.reason).toContain("REINFORCE_WINDOW_DAYS");
     });
 
     test("NOT-EXERCISED when nothing post-launch exists at all — a migrated-only store", () => {
@@ -1392,7 +1393,7 @@ describe("the v2 store reader", () => {
       let day = 0;
       buildStore(data, (s) => {
         s.put({ type: "memory", kind: "fact", body: "An old untouched row this store minted.", source: "authored" });
-        day = ageBy(s, PHYSICS.N_PROMOTION_DAYS + 2);
+        day = ageBy(s, REINFORCE_WINDOW_DAYS + 2);
         // Today's mint. On a newest-row rule this single row would hold the
         // watch at not-exercised forever, on every live store, every day.
         s.put({ type: "memory", kind: "fact", body: "And one minted today.", source: "authored" });

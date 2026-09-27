@@ -50,6 +50,7 @@ import { basename, join } from "node:path";
 
 import { grantSpanStrike } from "./owner-strike-seam.js";
 import { grantWriteUp } from "./write-up-seam.js";
+import { carriesDreamMark } from "../dream/mark.js";
 import { hashText } from "../store/prose.js";
 import { dataDir } from "../store/paths.js";
 import { isObserver } from "../observer.js";
@@ -80,7 +81,11 @@ export type TurnSource =
   | "file"
   | "image"
   | "foreign"
-  | "ritual";
+  | "ritual"
+  /** A DREAM's words (2026-09-26, `dream/`): the bundle a dreamer was shown or
+   *  its hand-back, read back off a transcript. What was dreamed is not what
+   *  happened; it enters nothing, and it is counted like `ritual`. */
+  | "dream";
 
 export interface Turn {
   role: "user" | "assistant";
@@ -1332,6 +1337,11 @@ export function enters(turn: Turn): boolean {
   // wording become a memory of having thought it, and the ask already has a
   // durable record of its own (`adapter.authorship.ask`). Refused, and counted.
   if (source === "ritual") return false;
+  // THE DREAM EXCLUSION (2026-09-26), by source AND by the mark itself, so a
+  // host whose reader never learned the `dream` tag still cannot let a dream's
+  // bundle or hand-back through: the sweep mints from these turns, and a dream
+  // is never a lived event (`dream/mark.ts`).
+  if (source === "dream" || carriesDreamMark(turn.text)) return false;
   return source === "conversation" || source === "injected";
 }
 

@@ -548,7 +548,7 @@ export class Recall {
    * so "the ignorable tier trains nothing" is proved by the seam that would have
    * trained it, not by an early return that never asked.
    */
-  resolveUse(sessionId: string, memoryId: string, tier: UseTier): CreditResult {
+  resolveUse(sessionId: string, memoryId: string, tier: UseTier, opts: { cued?: boolean } = {}): CreditResult {
     const w = USE_TIER_WEIGHT[tier];
     // Checked FIRST, before any other work (contract §5 G11, scar E7).
     if (this.observer) {
@@ -584,7 +584,14 @@ export class Recall {
       return { credited: false, reason: "already-credited-at-or-above", tier, w, outcome: null };
     }
 
-    const outcome = this.store.reinforce(memoryId, today, tier);
+    // THE CUED EXCEPTION, TIGHTENED (working default 2026-09-26, review of
+    // #251): a quoted use is organic whatever the hints lane showed only when
+    // recall surfaced the memory LOUD on this same turn — the cue that turn
+    // brought. Surfaced earlier in the session, the quote may have come off the
+    // wake, and the display decides as for any other use.
+    const cued =
+      opts.cued === true && surfaced !== undefined && surfaced.tier === "surfaced" && surfaced.turn === state.turn;
+    const outcome = this.store.reinforce(memoryId, today, tier, cued ? { cued: true } : {});
     if (outcome.credited) {
       state.credited[memoryId] = { turn: state.turn, tier, day: today };
       this.persist(state, "resolveUse");

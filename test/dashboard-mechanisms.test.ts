@@ -26,7 +26,7 @@ import { seedDemo, seedEmpty } from "../tools/demo/seed.js";
 const WEB = fileURLToPath(new URL("../src/adapters/dashboard/web/", import.meta.url));
 const SITE_IDS = [
   "salience", "emotional", "decay", "interference", "retrieval", "association",
-  "prospective", "consolidation", "reconsolidation", "episodic-semantic", "schema",
+  "prospective", "consolidation", "dreaming", "reconsolidation", "episodic-semantic", "schema",
 ];
 
 let richDir: string;
@@ -159,9 +159,8 @@ describe("the lights, on a seeded store", () => {
   test("grey never claims activity — even when the log holds rows that look like it", () => {
     const v = viewOf(richDir);
     const greys = v.mechanisms.filter((m) => m.status === "grey");
-    expect(greys.map((m) => m.id).sort()).toEqual(
-      ["episodic-semantic", "interference", "schema"],
-    );
+    // Gist is partly built since 2026-09-26 (a dream's pattern), so not grey.
+    expect(greys.map((m) => m.id).sort()).toEqual(["interference", "schema"]);
     for (const m of greys) {
       expect(m.events).toEqual([]);
       expect(m.evidence).not.toMatch(/\d/);

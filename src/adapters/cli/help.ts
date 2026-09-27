@@ -130,6 +130,8 @@ export const SHORT: Record<string, string | readonly string[]> = {
   //    installed the package.
   note: "Remember something on purpose, right now",
   mechanisms: "Which parts of memory are working, one line each",
+  dream: "What each dream did — and undo one",
+  core: "What became part of who I am — and send one back",
   init: "Make a second, separate memory store — a scratch one",
   "start-fresh": "Set this memory aside and start blank; --undo brings it back",
   verify: "Count the search index against what is actually stored",
@@ -176,6 +178,8 @@ export const GROUPS: readonly HelpGroup[] = [
 export const ADVANCED: readonly string[] = [
   "note",
   "mechanisms",
+  "dream",
+  "core",
   "init",
   "start-fresh",
   "verify",
@@ -354,6 +358,19 @@ export const COMMAND_DETAIL: Record<string, readonly string[]> = {
     "--all prints the full report, SILENT FIRST: when each part last fired, how",
     "many times in the last 7 days, what it turned away, and — for the ones",
     "nothing durable records — which row would fix that.",
+  ],
+  dream: [
+    "A session is asked, at most once a day, whether it may dream for a few",
+    "minutes; the owner says yes or not today. A dream runs as a background",
+    "agent and every change it makes is recorded under its id, so --undo can",
+    "reverse the whole batch. Its journal lives with the dream, never as a",
+    "memory.",
+  ],
+  core: [
+    "The core does not fade. Only a memory about me or about us gets there: by",
+    "the fast lane (strongly felt, and it came back after a gap) or the slow",
+    "lane (it came back on several separate days over weeks), at most a few a",
+    "night. A dream can nominate one; only a lane promotes it.",
   ],
   fired: [
     "`counterparts mechanisms` is the same command, and it is the listed",

@@ -447,6 +447,18 @@ export const EVENT_NODE = {
   "store.embedder.reconciled": "store",
   // A credited challenge, from either arm (belief or identity element).
   "revision.pressure": "schemas",
+  // DREAMING (2026-09-26) is a kind of sleep: an offline pass over what was
+  // lived, so every row a dream leaves lights the sleep node. The ask is put to
+  // a session, so it lights that one.
+  "dream.begun": "sleep",
+  "dream.changed": "sleep",
+  "dream.journaled": "sleep",
+  "dream.undone": "sleep",
+  "dream.ask": "session",
+  // The owner reaching into the core, like the merge repair: the store's.
+  "band.demoted": "store",
+  // The v8 upgrade's census runs in the decay phase.
+  "physics.upgrade.census": "sleep",
 } as const satisfies Record<DurableEventName, NodeKey>;
 
 export function nodeOf(name: string): NodeKey | null {

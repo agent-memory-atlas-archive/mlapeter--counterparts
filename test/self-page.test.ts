@@ -867,44 +867,38 @@ describe("the page survives sleep", () => {
    */
   test("the page never crosses into the identity band, and nothing else changes", () => {
     const s = store();
+    // Since 2026-09-26 only memories about me or about us can cross, by a core
+    // lane. Every row here is kind `self`, strongly felt, and comes back on a
+    // later day — the fast lane — so the only thing standing between the page
+    // and the band is the guard.
     const ready = {
       salience: { novelty: 0.9, relevance: 0.95, emotional: 0.8, predictive: 0.9 },
-      physics: { uses: 40, reinforcedDays: 20, birthDay: 0, lastUsedDay: 0 },
+      physics: { birthDay: 0, lastUsedDay: 0 },
     } as const;
-    const memory = s.put({ type: "memory", kind: "fact", body: "A placeholder memory used constantly.", ...ready });
+    const memory = s.put({ type: "memory", kind: "self", body: "A placeholder memory about myself.", ...ready });
     const belief = s.put({
       type: "schema",
-      kind: "person",
-      body: "A placeholder belief about a placeholder person.",
+      kind: "self",
+      body: "A placeholder belief about myself.",
       meta: { role: "belief", entityId: "ent_placeholder" },
-      ...ready,
-    });
-    const entity = s.put({
-      type: "schema",
-      kind: "entity",
-      body: "Placeholder Entity",
-      meta: { role: "entity", name: "Placeholder Entity", aliases: [] },
       ...ready,
     });
     const me = self(s);
     me.revisePage(PAGE, { reason: "first", by: "owner" });
     const page = findSelfPage(s) as string;
-    // The same physics the others carry, so the page is promotion-READY and the
-    // only thing standing between it and the band is the guard.
     s.updatePhysics(page, {
-      uses: 40,
-      reinforcedDays: 20,
       birthDay: 0,
       lastUsedDay: 0,
       salience: { novelty: 0.9, relevance: 0.95, emotional: 0.8, predictive: 0.9 },
     });
+    for (const id of [memory, belief, page]) expect(s.reinforce(id, 3, "referenced").ret?.counted).toBe(true);
 
     for (let i = 1; i <= 12; i++) {
       runCycle({ store: s, date: `2026-03-${String(i).padStart(2, "0")}`, render: () => ({ bytes: 1 }) });
     }
 
-    // The three that always crossed still cross, and stay decay-exempt.
-    for (const id of [memory, belief, entity]) {
+    // The two that meet a lane cross, and stay decay-exempt.
+    for (const id of [memory, belief]) {
       expect({ id, promoted: s.row(id)?.promoted_identity }).toEqual({ id, promoted: 1 });
       expect(s.row(id)?.band).toBe("identity");
     }
@@ -913,9 +907,8 @@ describe("the page survives sleep", () => {
     expect(s.row(page)?.band).not.toBe("identity");
     expect(s.eventLog({ name: "band.promoted", ref: page })).toHaveLength(0);
     expect(self(s).enumerate().identity.some((e) => e.id === page)).toBe(false);
-    // And the page is still CONSOLIDATED, like every other row — only the
-    // crossing is withheld.
-    expect(s.row(page)?.consolidated).toBe(1);
+    // And its return still counted like every other row's — only the crossing is withheld.
+    expect(s.physicsOf(page).returnDays).toBe(1);
   });
 
   test("a second page-shaped row is never merged into the page: schema rows skip dedup", () => {

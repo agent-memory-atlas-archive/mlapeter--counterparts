@@ -13,14 +13,30 @@ disuse, consolidation moving a trace from episodic to semantic. **Named deviatio
 *do* fade in humans, here they do not [v1 §11 G5]; (b) traces never blend — generalization
 is only an explicit, provenance-carrying revision, so there is no substrate confabulation
 [v1 §4.2 G9]; (c) only a retrieval the assistant actually *used* resets the curve, where in
-humans every retrieval reconsolidates [v1 §10 G1].
+humans every retrieval reconsolidates [v1 §10 G1]; (d) a DREAM's replay counts as a
+return worth half an awake one and toward no core lane (§5.11) — sleep replay does
+strengthen human memory, but here a dream is the model's own pass, so it is discounted and
+kept out of the door to identity.
+
+**Since 2026-09-26 (owner decisions, dreaming + consolidation)** the analog is sharper:
+durability comes from SPACED RETRIEVAL — Ebbinghaus's savings (1885), the spacing effect
+(Cepeda et al. 2006), Bjork & Bjork's storage strength (1992: each retrieval makes the
+trace harder to lose, more so after a gap) — rather than from a one-time bonus; and the
+identity band is systems consolidation for memories about me or about us, by two lanes: a
+strongly felt one that comes back (the amygdala's stamp plus one reactivation), or one
+that keeps coming back over weeks.
 
 ## 3. Keeps
 
 - **The strength formula's shape — encoding salience, repetition with a cap, a
   consolidation bonus, a decay term.** [v0] `clamp01( mean(salience) + min(accessCount ×
   0.12, 0.5) + (consolidated ? 0.2 : 0) − 0.015 × age_days )`, kept with the decay term
-  upgraded (§5.4).
+  upgraded (§5.4). **The consolidation bonus is LEGACY since 2026-09-26**: kept, exactly,
+  for memories born before schema v8, and closed to everything made since (§5.2, §5.11).
+- **Durability from spaced returns** (§5.11, 2026-09-26). [Ebbinghaus; Bjork & Bjork 1992;
+  the held #238's spacing curve, harvested with its penalty dropped] — each counted return
+  lengthens stability, with diminishing returns; close-together returns count less, never
+  against.
 - **Four-dimensional salience {novelty, relevance, emotional, predictive}, 0–1 each, scored
   once at encoding** and never re-scored. [v0]
 - **Novelty is prediction error against schema expectations, computed.** [v0 dimension,
@@ -32,9 +48,9 @@ humans every retrieval reconsolidates [v1 §10 G1].
   §4.3] — the single most reusable piece of v1 calibration.
 - **The active-day clock.** [engram E8, re-earned v1 §11] One lived-day function, every
   site routes through it, rollover at a local boundary hour rather than UTC.
-- **Repetition is structurally capped below identity.** [v1 §10 G11] — free here: v0's own
-  `0.5` repetition cap plus its `0.2` consolidation bonus sum to `0.70`, already below the
-  identity threshold.
+- **Repetition alone never makes identity** [v1 §10 G11] — since 2026-09-26 a rule of the
+  core lanes rather than a threshold: only a memory about me or about us can become core at
+  all, so a fact, a skill or a place never does however often it returns (§5.3).
 - **Graded retrospective reinforcement; the ignorable tier does not train.** [v1 §10 G1]
 - **The `updates: <memory-id>` field, declared by the writer.** [v0] — the revision channel
   v0 already had, which v1 rebuilt as the ledger and the owner has now returned to v0's
@@ -104,16 +120,16 @@ explicit claim — however low — is never overridden. See NOTES.md item 16.
 
 ```
 rep(m)  = min( 0.12 × uses(m), 0.5 )                                # v0, verbatim; TUNABLE
-cons(m) = 0.2 if consolidated(m) else 0                             # v0, verbatim; TUNABLE
+cons(m) = 0.2 if consolidated(m) else 0                             # v0; LEGACY rows only (§5.11)
 base(m) = max( ω_sal(k) × sal(m),  ω_rep(k) × rep(m) ) + cons(m)    # MAX, not product
 strength(m, d) = clamp01( base(m) × D(m, d) )
 ```
 
-`base` is monotone non-decreasing (salience is fixed, `uses` only rises). The repetition arm
-alone tops out at `0.5 + 0.2 = 0.70`, below `Θ_id = 0.85` [v1 §10 G11] — and after review
-finding 2, the salience arm cannot walk in either: **identity is reached only through §5.3's
-explicit promotion (≥ N distinct lived days) or declared revision — never at birth, by
-either arm.**
+`base` is monotone non-decreasing (salience is fixed, `uses` only rises). **Identity is
+reached only through §5.3's explicit promotion by a core lane, or declared revision —
+never at birth, by either arm, and never by `base`.** `consolidated` can be set only on a
+LEGACY row (born before schema v8): the upgrade kept that path open for exactly those rows,
+and every memory made since earns its durability from returns (§5.11) instead.
 
 Per-kind constants. `ω` reads v1 §4.3's *gradient driver* column; **TUNABLE,
 calibration-required** — v1 recorded which arm drives, not a weight, so the non-driving arm's
@@ -142,12 +158,23 @@ band(m, d) = identity  if promoted(m)                              # explicit cr
              episodic  otherwise
 ```
 
-- **Nothing is born into identity** (owner ruling, N = 3). At birth, band ≤ semantic
-  regardless of claimed salience. Identity is entered only by: (a) a declared revision
-  landing on an existing identity element — the successor inherits membership — or (b)
-  **promotion at consolidation** after `base ≥ Θ_id = 0.85` (TUNABLE) *and* reinforcement
-  on **≥ N = 3 distinct lived days**. The same number, with the same ancestry, as the
-  slow-kind revision pace — one rationale, used twice (Amendment 15).
+- **Nothing is born into identity.** At birth, band ≤ semantic regardless of claimed
+  salience. Identity is entered only by: (a) a declared revision landing on an existing
+  identity element — the successor inherits membership — or (b) **promotion at
+  consolidation by a CORE LANE** (rewritten 2026-09-26, owner decisions; working defaults):
+
+  ```
+  about me(m) = kind(m) = self, or kind(m) = person and m names the owner   # decided by sleep/
+  FAST lane   = I(m) ≥ 0.6  and  an awake return ≥ 2 lived days after birth
+  SLOW lane   = awake returns on ≥ 5 distinct lived days spanning ≥ 21 lived days
+  promote     ⇔ about me(m) ∧ (FAST ∨ SLOW) ∧ not demoted by the owner
+  ```
+
+  Emotion counts toward the core ON PURPOSE, through the fast lane (the `promotionBase`
+  stopgap of #244 is retired); repetition counts through the slow lane, and only for
+  memories about me or about us. A dream's replays count toward neither lane: a dream may
+  NOMINATE, only a lane promotes. `sleep/` caps the crossings at three a night, strongest
+  first; the owner's demotion (`counterparts core --demote`) is sticky.
 - **Promotion is an explicit, counted crossing event** — a distinct record, never an
   emergent side effect (scar §2.4) — and **identity-band membership is enumerable on
   demand** beside the protected list: permanence and inspectability scale together
@@ -165,8 +192,10 @@ band(m, d) = identity  if promoted(m)                              # explicit cr
 ```
 D(m, d) = 1                                          if band(m) == identity   # named deviation
         = exp( −( d − last_used_day(m) ) / S(m) )    otherwise
-S(m)    = S_base × (1 + β × ln(1 + uses(m))) / κ(k)                  # stability, lived days
+S(m)    = S_base × (1 + β × ln(1 + uses(m))) × E(m) × R(m) / κ(k)    # stability, lived days
 S_base  = 60      β = 0.5                                            # both TUNABLE
+E(m)    = 1 + EMO_SLOPE × I(m)                                       # §5.10
+R(m)    = 1 + RETURN_GAIN × ln(1 + returns(m))                       # §5.11; 1 at no returns
 ```
 
 - **The active-day clock is the only clock** [E8]: `d` counts days lived, rolling at
@@ -193,7 +222,8 @@ uses(m) += w ;  last_used_day(m) := d   (only when w > 0)
 
 At most one credited occasion per memory per lived day, and never on its birth day [v1 §10
 G9]. Credit is retrospective, resolved at the boundary when the reply is known [v1 §10 G1].
-The ignorable tier never trains.
+The ignorable tier never trains. A credited use is ALSO asked, beside this and without
+changing it, whether it is a RETURN (§5.11).
 
 ### 5.6 Revision — declared, pressure-accumulated, no second object
 
@@ -289,8 +319,9 @@ low-strength memory is still present and still retrievable by a strong enough cu
    recorded as a default, not as a lift — and no default can reach `THETA_SEM` on its own.
 3. **[M]** `base` is monotone non-decreasing: reinforcement re-lifts what decay eroded;
    nothing demotes what salience earned.
-4. **[M]** Repetition never reaches the identity band — structurally, from the cap
-   arithmetic, not from a removable check.
+4. **[M]** Repetition alone never reaches the identity band: only a memory about me or
+   about us can be promoted at all (the `not-about-me` refusal), so however often a fact,
+   a skill or a place returns it never crosses (2026-09-26; before, the cap arithmetic).
 5. **[M]** Exactly-once decay, by being a pure function of the clock rather than a step.
 6. **[M]** One lived-day function, with a totality test over its call sites (scar §2.4).
 7. **[M]** Revision requires a declared `updates:` target. There is no inferred-revision
@@ -312,9 +343,14 @@ low-strength memory is still present and still retrievable by a strong enough cu
     lift), the repetition arm gets no lift (guarantee 4 stands), and a silent note with
     the strongest possible feeling is below `THETA_SEM` at birth and below `THETA_ID`
     even consolidated. The recorded feeling is never rewritten; softening is a read.
-    **Emotion does not count toward identity:** promotion reads `promotionBase` (`base`
-    without the lift), so its reach is unchanged by §5.10 (coordinator, 2026-09-26,
-    pending the owner's consolidation redesign; NOTES §17).
+    **Emotion counts toward identity through the core's fast lane and nowhere else**
+    (owner decisions 2026-09-26; `promotionBase`, the interim stopgap, is retired). The
+    lift itself stays height only.
+14. **[M]** Returns (§5.11) only ever LENGTHEN stability: the factor is exactly 1 at zero
+    returns, so a memory that has never returned fades as it always did, and nothing a
+    return does lowers strength. The v8 upgrade moves no memory down a band and makes
+    none prune sooner — measured on every row by the first sleep after it
+    (`sleep/upgrade.ts`, `physics.v8.census`), not asserted.
 
 ### 5.10 Emotion — height, slope, and the feeling that softens
 
@@ -350,6 +386,38 @@ feeling now = strength × exp( −(d − birth_day(m)) / S_FEELING )  S_FEELING 
   back to a lived day. Today every feeling is written in the same call that mints its
   memory, so the two agree; a feeling added to an old memory later (`addFeelings` is
   public) would read as already softened.
+
+### 5.11 Returns — durability from coming back
+
+*(Added 2026-09-26 — owner decisions, dreaming + consolidation. Working defaults, CAL.
+NOTES "Returns, core lanes and the v8 upgrade" has the simulations and the reasons.)*
+
+```
+return          = a credited, REFERENCED use on a lived day after the memory's previous
+                  counted return (either kind) or its birth — NOT while the memory was
+                  showing in the wake's hints lane, unless recall surfaced it on the turn's
+                  own cue (the SAME turn) — or a DREAM replay (at most once per dream per
+                  memory, and once per RETURN_SPACING_DAYS)
+weight          = w × (1 − exp(−gap / RETURN_SPACING_DAYS))        RETURN_SPACING_DAYS = 7
+w               = 1 awake, DREAM_RETURN_WEIGHT dream                DREAM_RETURN_WEIGHT = 0.5
+returns(m)     += weight                                           # the history is a table
+R(m)            = 1 + RETURN_GAIN × ln(1 + returns(m))              RETURN_GAIN = 1.0
+```
+
+- **Never against the memory.** A return is computed BESIDE `creditUse`, which is
+  unchanged: `uses`, `lastUsedDay` and the rep arm credit exactly as before, and a close
+  return only adds less. The held #238 scaled `uses` down for consecutive-day use; that
+  penalty is dropped.
+- **The loop, broken.** A use while the memory was on display in the hints lane may have
+  been prompted by the display — the rich-get-richer loop (#238) — so it is not a return.
+  `self/` ranks that lane on ORGANIC strength and habituation for the same reason.
+- **Awake returns feed the core lanes** (`returnDays`, `first/lastReturnDay`); a dream's
+  do not — and a dream's replay earlier the same lived day does not take the lane day of
+  an organic return: the awake return still counts, at the weight its (zero) gap from the
+  replay gives it (review of #251).
+- **The legacy path.** `consolidated` / `+CONS_BONUS` stays exactly as it was for rows
+  born before schema v8 and is closed to every row made since. At zero returns, R = 1:
+  the upgrade changes no memory's arithmetic.
 
 ## 6. Scars honored
 

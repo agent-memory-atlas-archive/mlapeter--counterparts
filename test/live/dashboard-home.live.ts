@@ -80,7 +80,7 @@ describe("the home tab, live", () => {
 
       // The headline and the four tiles.
       const headline = (await page.textContent("#home-headline")) ?? "";
-      expect(headline).toMatch(/^Day \d+ · \d+ memories · \d+ of 11 built · \d+ active this week$/);
+      expect(headline).toMatch(/^Day \d+ · \d+ memories · \d+ of 12 built · \d+ active this week$/);
       expect(await page.locator("#ov-tiles .ht .l").allTextContents()).toEqual(["memories", "core", "chapters", "replaced"]);
       const before = Number(await tile("memories"));
       expect(before).toBeGreaterThan(100);

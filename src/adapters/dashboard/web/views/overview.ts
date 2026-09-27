@@ -232,15 +232,16 @@ export function overviewView(src: DashboardSource, feedLimit = FEED_LIMIT): Over
         key: "core",
         label: "core",
         value: String(e.identity.length),
-        // An eligible candidate has met both conditions and joins at the next consolidation.
+        // An eligible candidate has met a lane and joins at the next consolidation
+        // (2026-09-26); otherwise the slow lane's days are the progress shown.
         note:
           closest === undefined
             ? ""
             : closest.eligible
               ? "closest: ready to join"
-              : `closest: ${Math.min(closest.days, PHYSICS.N_PROMOTION_DAYS)} of ${PHYSICS.N_PROMOTION_DAYS} days`,
+              : `closest: ${Math.min(closest.days, PHYSICS.CORE_SLOW_DAYS)} of ${PHYSICS.CORE_SLOW_DAYS} days`,
         absent: e.identity.length === 0,
-        progress: closest === undefined ? null : { days: Math.min(closest.days, PHYSICS.N_PROMOTION_DAYS), of: PHYSICS.N_PROMOTION_DAYS },
+        progress: closest === undefined ? null : { days: Math.min(closest.days, PHYSICS.CORE_SLOW_DAYS), of: PHYSICS.CORE_SLOW_DAYS },
       },
       { key: "chapters", label: "chapters", value: String(journalCount), note: "", absent: journalCount === 0 },
       {

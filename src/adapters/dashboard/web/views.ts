@@ -56,6 +56,8 @@ export { BLIND_SPOTS, healthView } from "./views/health.js";
 export type { HealthView } from "./views/health.js";
 export { pulse } from "./views/pulse.js";
 export { MECHANISM_PROOFS, mechanismsView } from "./views/mechanisms.js";
+export { coreHistory, dreamsView } from "./views/dreams.js";
+export type { CoreHistory, CoreHistoryRow, DreamChangeView, DreamView, DreamsView } from "./views/dreams.js";
 export type { MechanismLight, MechanismsView } from "./views/mechanisms.js";
 export { mechanismPanel } from "./views/mechanism-panel.js";
 export type { MechanismPanelView, Picture } from "./views/mechanism-panel.js";

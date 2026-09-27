@@ -81,7 +81,7 @@ describe("one judgement, two surfaces", () => {
     s.close();
     expect(today).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     const lights = bothLights(richDir, today);
-    expect(lights.size).toBe(11);
+    expect(lights.size).toBe(12);
     for (const [id, [dash, cli]] of lights) expect(`${id}: ${cli}`).toBe(`${id}: ${dash}`);
     // And the store has something of each light to agree on.
     const seen = new Set([...lights.values()].map(([d]) => d));

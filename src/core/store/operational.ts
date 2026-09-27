@@ -10,6 +10,7 @@
  */
 import { existsSync } from "node:fs";
 
+import { spacingWeight } from "../physics/index.js";
 import type { Band, Kind, MemoryPhysics, Salience } from "../types.js";
 import type { Db, Row } from "./db.js";
 import { openDb } from "./db.js";
@@ -19,6 +20,17 @@ import { preMigrationDir, snapshotBeforeMigration } from "./pre-migration.js";
 import type { ProseType } from "./prose.js";
 
 /**
+ * Bumped to 8 (2026-09-26, dreaming + consolidation): ADDITIVE again, through
+ * the same copy-first seam. `memories` gains `legacy` (every row the upgrade
+ * finds keeps the old one-time consolidation path, so nothing drops a band)
+ * and the RETURNS aggregate (`returns`, `return_days`, `first_return_day`,
+ * `last_return_day`, `last_dream_day` — physics §5.11); six tables are new:
+ * `returns` (the history behind that aggregate), `wake_display` (what the
+ * wake's hints lane showed), `dreams` + `dream_changes` (a dream, its journal,
+ * and every change it made, for undo), `dream_asks` (the once-a-day ask and
+ * its snooze) and `core_events` (promotions with their lane, the owner's
+ * demotions, a dream's nominations). `store/NOTES.md` 2026-09-26.
+ *
  * Bumped to 7 (2026-09-25, docs/time.md): the first ADDITIVE migration since the
  * copy-before-migrating seam (#214) shipped. Every table that holds records
  * gains its MOMENTS — `created_at` / `updated_at`, UTC ms from `store.now()` —
@@ -60,7 +72,7 @@ import type { ProseType } from "./prose.js";
  * migrated open MUST converge on the identical schema; a test asserts
  * table_info equality.
  */
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 /**
  * The oldest schema an OBSERVER may open without a migration having run.
  *
@@ -79,8 +91,13 @@ export const SCHEMA_VERSION = 7;
  * next hook, which migrates it after taking its copy. A floor below the
  * version would mean every read tolerating missing columns, which is the
  * shape v5's exemption had and v6 dropped.
+ *
+ * Raised to 8 with v8 (2026-09-26), for the same reason: a row read names the
+ * returns columns, and the new tables are read by instruments. On a v7 store
+ * doctor and the dashboard say "not initialized" until the next hook opens it
+ * as a writer, which copies it and migrates it.
  */
-export const OBSERVER_READ_FLOOR = 7;
+export const OBSERVER_READ_FLOOR = 8;
 /** Retention for superseded-version rows, in LIVED days. TUNABLE (module-map ruling 2).
  *
  *  Owner ruling 1, 2026-09-18: the prune STAYS, at 90. It now deletes the words
@@ -169,7 +186,13 @@ const DDL: readonly string[] = [
      created_at        INTEGER,
      updated_at        INTEGER,
      model             TEXT,
-     event_date        TEXT
+     event_date        TEXT,
+     legacy            INTEGER NOT NULL DEFAULT 0,
+     returns           REAL NOT NULL DEFAULT 0,
+     return_days       INTEGER NOT NULL DEFAULT 0,
+     first_return_day  INTEGER,
+     last_return_day   INTEGER,
+     last_dream_day    INTEGER
    )`,
   `CREATE INDEX IF NOT EXISTS memories_band ON memories (band, archived)`,
   `CREATE INDEX IF NOT EXISTS memories_kind ON memories (kind, archived)`,
@@ -244,6 +267,103 @@ const DDL: readonly string[] = [
      updated_at  INTEGER NOT NULL
    )`,
   `CREATE INDEX IF NOT EXISTS feelings_memory ON feelings (memory_id)`,
+  // v8 (2026-09-26, dreaming + consolidation): RETURNS, one row per counted
+  // return — an awake credited use after a gap, or a dream replay. The history
+  // behind the `returns` / `return_days` / `*_return_day` columns on
+  // `memories`, which are recomputed FROM this table whenever it changes, so an
+  // undone dream's replays leave no trace in the physics. Ids and numbers only.
+  `CREATE TABLE IF NOT EXISTS returns (
+     memory_id  TEXT NOT NULL REFERENCES memories(id),
+     day        INTEGER NOT NULL,
+     source     TEXT NOT NULL,
+     weight     REAL NOT NULL,
+     gap        INTEGER NOT NULL,
+     dream_id   TEXT,
+     at         INTEGER NOT NULL,
+     PRIMARY KEY (memory_id, day, source)
+   )`,
+  `CREATE INDEX IF NOT EXISTS returns_at ON returns (at)`,
+  `CREATE INDEX IF NOT EXISTS returns_dream ON returns (dream_id) WHERE dream_id IS NOT NULL`,
+  // v8: WHAT THE WAKE SHOWED in its hints ("Nearby") lane — one row per memory
+  // a published bundle kept there: the first and last lived day of the current
+  // showing, the day a publish dropped it (NULL while it is still showing), and
+  // the habituation load `self/` keeps (#238, harvested). A use while a memory
+  // is showing credits as always but is not a RETURN (physics §5.11). The
+  // `ever_*` columns are the memory as it stood the FIRST time it was ever
+  // shown — its uses and its last use — so the lane can score it on what came
+  // back unprompted (`self/identity.ts#hintReading`).
+  `CREATE TABLE IF NOT EXISTS wake_display (
+     memory_id      TEXT PRIMARY KEY REFERENCES memories(id),
+     lane           TEXT NOT NULL,
+     first_day      INTEGER NOT NULL,
+     shown_day      INTEGER NOT NULL,
+     closed_day     INTEGER,
+     load           REAL NOT NULL DEFAULT 0,
+     ever_day       INTEGER NOT NULL,
+     ever_uses      REAL NOT NULL DEFAULT 0,
+     ever_last_used INTEGER NOT NULL,
+     updated_at     INTEGER NOT NULL
+   )`,
+  // v8: DREAMS (`core/dream/`). One row per dream: when, for which session, its
+  // state (`begun`, `journaled`, `undone`), and its JOURNAL — the dream's own
+  // entry, kept here and never as a memory, so it can never be mistaken for a
+  // lived event (no decay, no dedup, no prune, no recall). The latest row's day
+  // is "last dreamed".
+  `CREATE TABLE IF NOT EXISTS dreams (
+     id          TEXT PRIMARY KEY,
+     session     TEXT,
+     scope       TEXT,
+     day         INTEGER NOT NULL,
+     date        TEXT,
+     state       TEXT NOT NULL,
+     started_at  INTEGER NOT NULL,
+     finished_at INTEGER,
+     undone_at   INTEGER,
+     model       TEXT,
+     title       TEXT,
+     journal     TEXT,
+     shown       TEXT NOT NULL DEFAULT '[]'
+   )`,
+  `CREATE INDEX IF NOT EXISTS dreams_day ON dreams (day)`,
+  // v8: every change a dream made, in order, with what undoing it needs — ids
+  // and numbers only in `detail`, never words. `undone` marks a reversed row.
+  `CREATE TABLE IF NOT EXISTS dream_changes (
+     dream_id TEXT NOT NULL REFERENCES dreams(id),
+     seq      INTEGER NOT NULL,
+     action   TEXT NOT NULL,
+     ref      TEXT,
+     ref2     TEXT,
+     detail   TEXT NOT NULL DEFAULT '{}',
+     at       INTEGER NOT NULL,
+     undone   INTEGER NOT NULL DEFAULT 0,
+     PRIMARY KEY (dream_id, seq)
+   )`,
+  // v8: the dream ASK, one row per calendar day it was raised: `offered` when a
+  // session was handed the line, `declined` when the owner said not today.
+  `CREATE TABLE IF NOT EXISTS dream_asks (
+     date    TEXT PRIMARY KEY,
+     state   TEXT NOT NULL,
+     session TEXT,
+     day     INTEGER NOT NULL,
+     at      INTEGER NOT NULL
+   )`,
+  // v8: the CORE's history — every promotion (with its lane), every owner
+  // demotion (with the owner's reason) and every dream nomination. Not
+  // foreign-keyed: the record outlives a merge. The owner's removal deletes a
+  // memory's rows, because a reason is words about it.
+  `CREATE TABLE IF NOT EXISTS core_events (
+     seq       INTEGER PRIMARY KEY AUTOINCREMENT,
+     memory_id TEXT NOT NULL,
+     action    TEXT NOT NULL,
+     day       INTEGER NOT NULL,
+     at        INTEGER NOT NULL,
+     lane      TEXT,
+     reason    TEXT,
+     dream_id  TEXT,
+     actor     TEXT
+   )`,
+  `CREATE INDEX IF NOT EXISTS core_events_memory ON core_events (memory_id)`,
+  `CREATE INDEX IF NOT EXISTS core_events_at ON core_events (at)`,
   `CREATE INDEX IF NOT EXISTS feelings_whose_core ON feelings (whose, core)`,
   `CREATE INDEX IF NOT EXISTS feelings_whose_emotion ON feelings (whose, emotion)`,
   // SEAMS item B — per-session gate state, ONE ROW PER RECORD.
@@ -387,6 +507,86 @@ export interface MemoryRow extends Row {
   model: string | null;
   /** v7: the calendar date the memory is about, as said (`time.ts`). */
   event_date: string | null;
+  /** v8: 1 for every row the v8 upgrade found (the legacy consolidation path). */
+  legacy: number;
+  /** v8: the returns aggregate, recomputed from the `returns` table. */
+  returns: number;
+  return_days: number;
+  first_return_day: number | null;
+  last_return_day: number | null;
+  last_dream_day: number | null;
+}
+
+export interface ReturnRow extends Row {
+  memory_id: string;
+  day: number;
+  source: string;
+  weight: number;
+  gap: number;
+  dream_id: string | null;
+  at: number;
+}
+
+export interface WakeDisplayRow extends Row {
+  memory_id: string;
+  lane: string;
+  first_day: number;
+  shown_day: number;
+  closed_day: number | null;
+  load: number;
+  /** The first lived day it was EVER shown, and its uses / last use then. */
+  ever_day: number;
+  ever_uses: number;
+  ever_last_used: number;
+  updated_at: number;
+}
+
+export interface DreamRow extends Row {
+  id: string;
+  session: string | null;
+  scope: string | null;
+  day: number;
+  date: string | null;
+  state: string;
+  started_at: number;
+  finished_at: number | null;
+  undone_at: number | null;
+  model: string | null;
+  title: string | null;
+  journal: string | null;
+  /** The ids the dream was SHOWN (its bundle), as JSON: the only ids it may change. */
+  shown: string;
+}
+
+export interface DreamChangeRow extends Row {
+  dream_id: string;
+  seq: number;
+  action: string;
+  ref: string | null;
+  ref2: string | null;
+  detail: string;
+  at: number;
+  undone: number;
+}
+
+export interface DreamAskRow extends Row {
+  date: string;
+  state: string;
+  session: string | null;
+  day: number;
+  at: number;
+}
+
+export interface CoreEventRow extends Row {
+  seq: number;
+  memory_id: string;
+  action: string;
+  day: number;
+  at: number;
+  lane: string | null;
+  reason: string | null;
+  dream_id: string | null;
+  actor: string | null;
 }
 
 /**
@@ -709,6 +909,39 @@ export function openOperational(path: string, opts: OpenOperationalOptions = {})
           opts.localToday,
         );
       }
+      // v8 (2026-09-26): every row the upgrade finds is LEGACY — the one-time
+      // consolidation bonus path stays open for it exactly as it was, so the
+      // redesign moves no memory down a band and prunes none sooner (physics
+      // §5.2/§5.11). One statement; what it found is recorded for doctor, and
+      // the first decay pass after it measures every row old-vs-new
+      // (`sleep/decay.ts#upgradeCensus`). The counts doctor prints are of LIVE
+      // memories — not chapters, schema rows, archived rows or tombstones,
+      // which the flag also lands on (review of #251: 183 "memories" said for
+      // 129 on the seeded demo store).
+      if (now !== null && Number.parseInt(now, 10) < 8) {
+        db.run("UPDATE memories SET legacy = 1");
+        const counts = db.get<{ rows: number; consolidated: number; identity: number }>(
+          `SELECT COUNT(*) AS rows,
+                  COALESCE(SUM(consolidated), 0) AS consolidated,
+                  COALESCE(SUM(promoted_identity), 0) AS identity
+             FROM memories WHERE type = 'memory' AND archived = 0`,
+        );
+        const credited = creditLegacyReturns(db);
+        const lived = db.get<{ value: string }>("SELECT value FROM meta WHERE key = 'livedDay'")?.value ?? "0";
+        db.run(
+          "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+          V8_UPGRADE_KEY,
+          JSON.stringify({
+            from: now,
+            day: Number.parseInt(lived, 10) || 0,
+            at: Date.now(),
+            rows: counts?.rows ?? 0,
+            consolidated: counts?.consolidated ?? 0,
+            identity: counts?.identity ?? 0,
+            legacyReturns: credited.memories,
+          }),
+        );
+      }
       const put = db.prepare("INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)");
       put.run("livedDay", "0");
       put.run("lastActiveDate", "");
@@ -792,7 +1025,77 @@ export const ADDED_COLUMNS: readonly { table: string; column: string; ddl: strin
   { table: "edges", column: "updated_at", ddl: "ALTER TABLE edges ADD COLUMN updated_at INTEGER" },
   { table: "prospective", column: "created_at", ddl: "ALTER TABLE prospective ADD COLUMN created_at INTEGER" },
   { table: "prospective", column: "updated_at", ddl: "ALTER TABLE prospective ADD COLUMN updated_at INTEGER" },
+  // v8 (2026-09-26, dreaming + consolidation). `legacy` marks every row the
+  // upgrade found (set to 1 in the migrating transaction, below), so the old
+  // consolidation bonus path stays open for exactly those; the rest are the
+  // returns aggregate (`returns` table). Defaults of 0 are the pre-v8
+  // arithmetic exactly: a factor of 1 on stability, no lane progress.
+  { table: "memories", column: "legacy", ddl: "ALTER TABLE memories ADD COLUMN legacy INTEGER NOT NULL DEFAULT 0" },
+  { table: "memories", column: "returns", ddl: "ALTER TABLE memories ADD COLUMN returns REAL NOT NULL DEFAULT 0" },
+  {
+    table: "memories",
+    column: "return_days",
+    ddl: "ALTER TABLE memories ADD COLUMN return_days INTEGER NOT NULL DEFAULT 0",
+  },
+  { table: "memories", column: "first_return_day", ddl: "ALTER TABLE memories ADD COLUMN first_return_day INTEGER" },
+  { table: "memories", column: "last_return_day", ddl: "ALTER TABLE memories ADD COLUMN last_return_day INTEGER" },
+  { table: "memories", column: "last_dream_day", ddl: "ALTER TABLE memories ADD COLUMN last_dream_day INTEGER" },
 ];
+
+/**
+ * THE HISTORY A LEGACY ROW ALREADY HAD, credited as returns at the v8 upgrade
+ * (working default 2026-09-26, the review of #251): the old rules could carry
+ * a well-used memory into the identity band; the new ones let a fact go, so
+ * its durability must reflect the reinforcement it earned. Each distinct
+ * reinforced day (`reinforced_days`, a count — the days themselves were never
+ * kept) becomes one `returns` row of source `legacy`, placed evenly between
+ * the memory's birth and its last use (the last one exactly on it) and weighed
+ * by the same spacing rule as any return. `legacy` rows lengthen stability and
+ * nothing else: the core lanes read awake returns only, and invented day
+ * positions are not a lane's evidence. Idempotent (the rows' primary key), in
+ * the migrating transaction. Returns what it credited.
+ */
+export function creditLegacyReturns(db: Db): { memories: number; rows: number } {
+  const at = Date.now();
+  const candidates = db.all<{ id: string; birth_day: number; last_used_day: number; reinforced_days: number }>(
+    `SELECT id, birth_day, last_used_day, reinforced_days FROM memories
+      WHERE type = 'memory' AND body != '' AND reinforced_days > 0 AND last_used_day > birth_day`,
+  );
+  const insert = db.prepare(
+    `INSERT OR IGNORE INTO returns (memory_id, day, source, weight, gap, dream_id, at)
+     VALUES (?, ?, 'legacy', ?, ?, NULL, ?)`,
+  );
+  let memories = 0;
+  let rows = 0;
+  for (const c of candidates) {
+    const span = c.last_used_day - c.birth_day;
+    const n = Math.min(c.reinforced_days, span);
+    let prev = c.birth_day;
+    let wrote = 0;
+    for (let k = 1; k <= n; k += 1) {
+      const day = k === n ? c.last_used_day : c.birth_day + Math.round((k * span) / n);
+      if (day <= prev) continue;
+      const gap = day - prev;
+      insert.run(c.id, day, spacingWeight(gap), gap, at);
+      prev = day;
+      wrote += 1;
+    }
+    if (wrote > 0) {
+      memories += 1;
+      rows += wrote;
+      db.run(
+        "UPDATE memories SET returns = (SELECT COALESCE(SUM(weight), 0) FROM returns WHERE memory_id = ?) WHERE id = ?",
+        c.id,
+        c.id,
+      );
+    }
+  }
+  return { memories, rows };
+}
+
+/** Meta key: what the v8 upgrade found (`physics.v8.upgrade`), for doctor.
+ *  `sleep/upgrade.ts` spells the same key for its census latch. */
+export const V8_UPGRADE_KEY = "physics.v8.upgrade";
 
 function ensureAddedColumns(db: Db): void {
   const byTable = new Map<string, Set<string>>();
@@ -834,6 +1137,14 @@ export function rowToPhysics(row: MemoryRow & FeelingPeak): MemoryPhysics {
     // carried one — `Store.row()` always does.
     feelingPeak: row.feeling_peak ?? null,
     consolidated: row.consolidated === 1,
+    // v8 (physics §5.2/§5.11). Read tolerantly — a bare row built by a test or
+    // a tool without the columns reads as a post-upgrade memory with no returns.
+    legacy: row.legacy === 1,
+    returns: row.returns ?? 0,
+    returnDays: row.return_days ?? 0,
+    firstReturnDay: row.first_return_day ?? null,
+    lastReturnDay: row.last_return_day ?? null,
+    lastDreamDay: row.last_dream_day ?? null,
     promotedIdentity: row.promoted_identity === 1,
     protected: row.protected === 1,
     pressure: row.pressure,

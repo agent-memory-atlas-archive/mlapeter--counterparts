@@ -33,6 +33,11 @@ Legibility is the product's answer to the trust question a brain never has to fa
   content hash. For now that is what it prints; until 2026-09-18 it printed the markdown
   file's path instead, which named a filesystem layout rather than the memory, and which
   the bodies-in-rows work takes away.
+- **The dream journal, and what crossed into the core.** [new, 2026-09-26] Each dream
+  with its journal and every change it made (the memories it touched, clickable; an undone
+  change struck through), and the core's recent history — the crossings with their lane,
+  the owner's demotions with his reason, a dream's nominations. A dream is shown as a
+  dream: its journal is read from the `dreams` table and never presented as a memory.
 
 ## 4. Drops / simplifies
 

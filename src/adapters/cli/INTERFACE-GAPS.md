@@ -395,3 +395,19 @@ and says how much of the number is log (NOTES, 2026-09-23), which is this module
 SQL string and finalize the cache in `close()` — so a clean close is a real close. Worth
 measuring the hooks' per-turn cost before and after, since they open and close the store
 on every turn.
+
+## Dreaming and the core (2026-09-26)
+
+- **`counterparts mechanisms` does not yet say "became core by the fast/slow lane"
+  or count a dream's changes.** The short view reads only `fired.ts`'s rows, which
+  count rows, not payloads; the lane is on each `band.promoted` row's payload and a
+  dream's change count is on `dream.changed`'s. The builder is moving the lights into
+  the shared `adapters/mechanism-evidence.ts` (master ef37eb1); that is where the
+  Consolidation / Dreaming / Gist lines belong.
+- **A dream's journal cannot be removed from the console.** `remove` takes memory ids,
+  and a journal is not a memory (it lives in the `dreams` table). An owner who wants a
+  journal gone has `dream --undo`, which keeps it marked undone. A `dream --forget <id>`
+  would need a store write that blanks the journal text; not built.
+- **`export --markdown` does not carry the dreams table** (the journals, the change
+  logs): it walks memories. The database export and `backup` copy the whole file, so
+  they do.

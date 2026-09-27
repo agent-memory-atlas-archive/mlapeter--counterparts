@@ -48,7 +48,17 @@ export const LANES = {
   "sleep.cycle": "home",
   "prospective.fire": "home",
   "prospective.plain": "home",
+  // Dreaming and the core (2026-09-26): a dream that wrote its journal, what
+  // it changed, and the owner sending a memory back out of the core are
+  // things that happened to memories.
+  "dream.journaled": "home",
+  "dream.changed": "home",
+  "dream.undone": "home",
+  "band.demoted": "home",
   // ── housekeeping: flow ──
+  "dream.begun": "flow",
+  "dream.ask": "flow",
+  "physics.upgrade.census": "flow",
   "adapter.ask": "flow",
   "adapter.authorship.ask": "flow",
   "adapter.boundary": "flow",
@@ -116,7 +126,12 @@ export function iconOf(name: string, p: Payload): Icon | null {
     case "handoff.cleared":
       return "handoff";
     case "sleep.cycle":
+    case "dream.journaled":
+    case "dream.changed":
+    case "dream.undone":
       return "sleep";
+    case "band.demoted":
+      return "faded";
     case "prospective.fire":
     case "prospective.plain":
       return "reminder";

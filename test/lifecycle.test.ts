@@ -160,44 +160,67 @@ function creditRows(c: Counterpart): { reason: string; credited: number; expande
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("the lifecycle, through the adapter", () => {
-  test("born day N, expanded by recall on later days, identity on the first consolidate after three, and the wake carries it", async () => {
+  test("expanded by id while it shows in the wake's hints lane: credited every day, never a return, never core", async () => {
     const a = adapter();
     const c = a.counterpart;
     seed(c);
     const id = await mint(a);
-    expect(c.store.physicsOf(id).uses).toBe(0);
-    expect(c.store.physicsOf(id).reinforcedDays).toBe(0);
-
-    // Later days. Each: the lived day turns, a session's Stop carries an
-    // assistant turn that EXPANDED the memory by id and then argued with it,
-    // and the cycle runs. Nothing here calls `resolveUse`. The consolidate
-    // phase (where the identity crossing is decided) runs on its own cadence
-    // (`sleep/tunables.ts#CONSOLIDATION_EVERY_DAYS`), so the crossing lands on
-    // the first consolidate AFTER the third distinct reinforced day.
-    expect(PHYSICS.N_PROMOTION_DAYS).toBe(3);
-    let promotedOn: number | null = null;
-    const consolidateRanOn: number[] = [];
-    let day = 1;
-    for (; day <= 7 && promotedOn === null; day++) {
+    // THE LOOP (2026-09-26, the owner's "rich get richer"): the wake shows it
+    // under "Nearby", the model expands it by id, the use is credited. It
+    // stays credited — never against the memory — but a use the display may
+    // have prompted buys no durability and no core lane day (physics §5.11).
+    for (let day = 1; day <= 7; day++) {
       const date = `2026-01-0${day + 1}`;
       c.store.advanceClock(date);
       a.stop(
         input({
           sessionId: `s${day}`,
           at: date,
-          turns: [
-            ...TURNS,
-            {
-              role: "assistant",
-              text: "I looked that memory up and I think it is wrong: the cache should be in the backup set too, because a rebuild is not free.",
-            },
-          ],
-          // The recall call sat between turns[2] and turns[3]: atTurn is the
-          // index of the NEXT conversational turn.
+          turns: [...TURNS, { role: "assistant", text: "I looked that memory up and it still holds." }],
           expansions: [{ atTurn: 3, ids: [id] }],
         }),
       );
-      expect(c.store.physicsOf(id).reinforcedDays).toBe(day);
+      await c.sessionEnd({ date, at: date });
+    }
+    const physics = c.store.physicsOf(id);
+    expect(physics.uses).toBeGreaterThan(0);
+    // It was on display on the days it was expanded, so those uses were not returns.
+    expect(physics.returnDays).toBeLessThan(physics.reinforcedDays ?? 0);
+  });
+
+  test("born day N, brought back by the turn's own cue on later days, core by the fast lane, and the wake carries it", async () => {
+    const a = adapter();
+    const c = a.counterpart;
+    seed(c);
+    const id = await mint(a);
+    expect(c.store.physicsOf(id).uses).toBe(0);
+    expect(c.store.physicsOf(id).returnDays).toBe(0);
+
+    // Later days. Each: the lived day turns, a turn's own words bring the
+    // memory up loud (recall), the reply QUOTES it — a cued use, organic
+    // whatever the hints lane shows — and the cycle runs. The memory is kind
+    // `self` and felt at 0.6: the fast lane opens once it has come back two
+    // or more lived days after it was made, and the crossing lands on the
+    // first consolidate after that (`sleep/tunables.ts` cadence).
+    let promotedOn: number | null = null;
+    const consolidateRanOn: number[] = [];
+    let day = 1;
+    for (; day <= 7 && promotedOn === null; day++) {
+      const date = `2026-01-0${day + 1}`;
+      c.store.advanceClock(date);
+      const lived = c.store.livedDay();
+      a.userPromptSubmit(input({ sessionId: `s${day}`, at: date, prompt: "how does the storage split work again" }));
+      c.store.setGateRecords([
+        { sessionId: `s${day}`, kind: "surfaced", ref: id, turn: 1, lastDay: lived, tier: "surfaced", trains: true },
+      ]);
+      const summary = c.creditReferences(`s${day}`, {
+        assistantTurns: [
+          "Right: the storage split keeps canonical prose in markdown files, operational state in one small database, and a cache nobody backs up.",
+        ],
+        expansions: [],
+      });
+      expect(summary.quoted).toBe(1);
+      expect(c.store.physicsOf(id).returnDays).toBe(day);
       const report = await c.sessionEnd({ date, at: date });
       const consolidate = report.cycle.phases.find((p) => p.phase === "consolidate");
       if (consolidate?.status === "ran") consolidateRanOn.push(day);
@@ -207,26 +230,16 @@ describe("the lifecycle, through the adapter", () => {
       }
     }
 
-    // Promoted on EXACTLY the first consolidate at or after the third distinct
-    // reinforced day — not a day earlier (insufficient days), not a day later
-    // (the crossing is decided the first time the phase looks).
+    // Promoted on EXACTLY the first consolidate at or after the day the fast
+    // lane opened — not a day earlier (no gap yet), not a day later.
     expect(promotedOn).not.toBe(null);
-    const firstEligibleConsolidate = consolidateRanOn.find((d) => d >= PHYSICS.N_PROMOTION_DAYS);
+    const firstEligibleConsolidate = consolidateRanOn.find((d) => d >= PHYSICS.CORE_FAST_GAP_DAYS);
     expect(promotedOn).toBe(firstEligibleConsolidate as number);
     const physics = c.store.physicsOf(id);
-    expect(physics.reinforcedDays).toBe(promotedOn as number);
-    expect(physics.uses).toBe(promotedOn as number);
+    expect(physics.returnDays).toBe(promotedOn as number);
     expect(physics.promotedIdentity).toBe(true);
     expect(c.store.row(id)?.band).toBe("identity");
-
-    // The rows a later reader looks at: one per boundary, reason `credited`.
-    const rows = creditRows(c).filter((r) => r.reason === "credited");
-    expect(rows.length).toBe(promotedOn as number);
-    for (const r of rows) {
-      expect(r.expanded).toBe(1);
-      expect(r.credited).toBe(1);
-      expect(r.ids).toEqual([id]);
-    }
+    expect(c.store.coreEvents({ memoryId: id, action: "promoted" })[0]?.lane).toBe("fast");
 
     // And the next wake carries it, in "Who I am".
     const next = `2026-01-0${day + 1}`;

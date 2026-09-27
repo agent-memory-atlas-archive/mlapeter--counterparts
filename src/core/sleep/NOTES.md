@@ -804,3 +804,39 @@ What changed:
 2026-09-25: `adapters/fired.ts` lists it now — row `fade`, read off the `sleep.cycle` row
 only where `faded > 0` (the new `Evidence.positive` filter) — with no refusal column, because
 `fade/blocked:*` counts every blocker of every card that stayed, not the deciding one.
+
+## 18. The core's lanes, the cap, and the upgrade census — 2026-09-26
+
+*Owner decisions of 2026-09-26 (dreaming + consolidation). Physics NOTES "Returns, core
+lanes and the v8 upgrade" has the arithmetic and the simulations; this is the phase.*
+
+- **The order inside the phase is unchanged**: legacy marking, then the crossing. The
+  marking now refuses every post-upgrade row `not-legacy` (physics' own reason, mirrored
+  into the skip map like the others).
+- **Who is "about me" is read here**, because it needs words: `self` kind always; a
+  `person` memory when its title, body, `meta.name` or `meta.entity` names the owner as a
+  whole word — the names come off the identity core (`kind: self`, `role: entity`), read
+  structurally like `isThePage`, so `sleep/` still imports nothing from `self/`. With no
+  name configured, only `self` qualifies. The prose read is paid by `self` and `person`
+  rows alone.
+- **The cap collects, then crosses**: eligible rows are gathered over the pass, sorted by
+  strength (ties by id), and the first `CORE_MAX_PER_SLEEP` cross. The rest are counted
+  `promotion:cap`; they are still eligible at the next consolidation (three lived days
+  on). A budget-truncated pass caps only what it visited — a budget is not a debt.
+- **A crossing writes four things, record first**: the meta record, the durable
+  `band.promoted` event (now with `lane`, `intensity`, `returnDays`), a `core_events`
+  row, then the flag and the band. A port without `appendCoreEvent` writes the other three.
+- **The census** (`upgrade.ts`) runs at the start of the first decay pass after a v8
+  upgrade and never again (the meta row is its latch). It compares each row by the v8
+  arithmetic and by the same row with its returns set aside — which IS the pre-v8
+  formula, since the returns factor is the only term v8 added and a legacy row keeps its
+  path. Measured on a real v7 demo store: 145 rows, 0 down, 0 weaker, 0 prune sooner.
+  A failure is an event and never costs the tick.
+
+
+**After the review of #251 (2026-09-26, working defaults).**
+- The slow lane needs the semantic floor on the day it promotes (physics
+  `CORE_SLOW_FLOOR`); `promote` passes the day.
+- The upgrade census also counts `v7WouldPromote`: legacy rows the old rules were about
+  to make core. They are let go under the new rule and take the durability route (their
+  reinforcement days became legacy returns at the migration). Doctor says so, in green.

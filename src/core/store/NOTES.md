@@ -1600,3 +1600,51 @@ The review is `docs/adversarial-review-v7-2026-09-25.md`.
 - **N9, accepted.** A 0.3.1 worker already mid-run during the upgrade keeps writing
   v6-shaped SQL until its watchdog ends it. Its `INSERT OR REPLACE` on edges leaves
   `created_at` NULL on the edges it touches. That is harmless and bounded.
+
+## 2026-09-26 — schema v8: returns, the wake's display, dreams, the core's history
+
+*Owner decisions of 2026-09-26 (dreaming + consolidation). Additive, through the same
+copy-first seam as v7; an upgrade test (`test/store-v8.test.ts`) migrates a real v7 file
+(this build's store with every v8 column and table taken off, stamp 7) and checks nothing
+is lost and the schema equals a fresh v8's.*
+
+- **`memories` gains six columns** through `ADDED_COLUMNS`, all with defaults that are the
+  pre-v8 arithmetic exactly: `legacy` (0; the migration sets 1 on every row it finds),
+  `returns` (0), `return_days` (0), `first_return_day`, `last_return_day`,
+  `last_dream_day` (NULL). No SQL comment precedes the last column (v7's DROP COLUMN
+  trap).
+- **Six tables**: `returns` (one row per counted return, PK memory × day × source; the
+  history the aggregate is recomputed from), `wake_display` (the hints lane's current and
+  first-ever showing per memory, and its habituation load), `dreams` (a dream, its state,
+  the ids it was shown, its journal), `dream_changes` (every change, in order, with what
+  undo needs), `dream_asks` (one row per calendar date: offered / declined), and
+  `core_events` (promotions with their lane, demotions with the owner's reason, dream
+  nominations with the dream's).
+- **The migration records what it found** in meta `physics.v8.upgrade` (from, lived day,
+  rows, consolidated, identity) inside the same transaction; `sleep/upgrade.ts` measures
+  the rest on the first decay pass. `OBSERVER_READ_FLOOR` rises to 8, as v7's did: on a
+  v7 store doctor and the dashboard read "not initialized" until the next hook migrates.
+- **Why the aggregate is recomputed, not incremented**: a dream's replays can be undone
+  and a merged memory carries its originals' return rows; an incremented column would
+  drift from its own history the first time either happened.
+- **`reinforce` takes `{ cued }`**: a use recall surfaced on the turn's own cue is organic
+  even while the memory shows in the hints lane (physics NOTES "Returns"). Every other
+  caller lets the display decide.
+- **`vectorOf(id)`** reads one stored embedding (box 3), for a dream's neighbours.
+
+
+### After the review of #251 (2026-09-26)
+
+- **`creditLegacyReturns`**, in the v8 migrating transaction, turns each legacy row's
+  reinforced days into `returns` rows of source `legacy` (physics NOTES).
+  - `recomputeReturns` sums every source into `returns`, but counts lane days and
+    first/last from `awake` rows only, so legacy credit never feeds a lane.
+  - `returnCounts` and `fired` leave `legacy` out: it is history, not a firing.
+  - The upgrade record carries `legacyReturns` (how many memories were credited), and
+    its counts are of live memories.
+- **Removal redacts dream journals (Q6).** `chaseRemoved` redacts the title and entry of
+  any dream that was shown the memory, changed it, or quotes it (its title, or a
+  six-word run of its words).
+  - The dream row, its date, state and change list stay.
+  - The chase reports `operational.dreams` as neutralized when there were any.
+  - The seam's exports stay pinned.

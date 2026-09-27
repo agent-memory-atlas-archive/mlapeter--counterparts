@@ -105,18 +105,28 @@ describe("the self tab's view", () => {
   test("candidates are exactly what physics' promotion rule says, never a restatement", () => {
     withSource(dir, (src) => {
       const v = mindView(src);
+      // The candidates are memories about the owner (person memories naming
+      // Mike), measured by the core lanes (2026-09-26).
       expect(v.settling.candidates.length).toBeGreaterThan(0);
       for (const c of v.settling.candidates) {
-        const verdict = promotionEligibility(src.store.physicsOf(c.id));
-        expect(c.base).toBe(verdict.base);
-        expect(c.days).toBe(verdict.reinforcedDays);
+        const verdict = promotionEligibility(src.store.physicsOf(c.id), { aboutMe: true });
+        expect(c.feeling).toBe(verdict.fast.intensity);
+        expect(c.days).toBe(verdict.slow.days);
+        expect(c.span).toBe(verdict.slow.span);
+        expect(c.lane).toBe(verdict.lane);
         expect(c.eligible).toBe(verdict.eligible);
-        expect(c.threshold).toBe(TUNABLES.THETA_ID);
+        expect(c.needFeeling).toBe(TUNABLES.CORE_FAST_FEELING);
+        expect(c.requiredDays).toBe(TUNABLES.CORE_SLOW_DAYS);
+        expect(c.needSpan).toBe(TUNABLES.CORE_SLOW_SPAN_DAYS);
         expect(verdict.blockedBy).not.toContain("already-identity");
       }
-      // A place can never reach the core by use: counted apart, not listed.
+      // A place is not about me or about us: the core is not for it, and it is
+      // counted apart, not listed.
       expect(v.settling.outOfReach).toBeGreaterThan(0);
-      expect(v.settling.rule.days).toBe(TUNABLES.N_PROMOTION_DAYS);
+      expect(v.settling.rule.days).toBe(TUNABLES.CORE_SLOW_DAYS);
+      expect(v.settling.rule.span).toBe(TUNABLES.CORE_SLOW_SPAN_DAYS);
+      // The history lists are always there, empty on a store nothing crossed in.
+      expect(v.settling.history).toEqual({ promoted: [], demoted: [], nominated: [] });
     });
   });
 

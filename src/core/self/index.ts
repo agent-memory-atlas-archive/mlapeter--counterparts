@@ -50,6 +50,7 @@ import {
   RENDERED_PREFIX,
   enumerate,
   findIdentityCore,
+  hintReading,
   identityCoreName,
   rankLanes,
   scanActive,
@@ -1306,6 +1307,22 @@ export class Self {
       );
     }
     this.emit("self.briefing.published", undefined, { bytes: briefing.bytes, hash });
+    // WHAT THE HINTS LANE SHOWED (v8, 2026-09-26): the kept hint ids, each with
+    // the habituation load this showing leaves (`identity.ts#hintReading`), so
+    // the next render rotates, and so a use while a memory is showing is known
+    // not to be a return (physics §5.11). Kept, not ranked — as for identity.
+    // Every other open showing is closed today. After the publish, and never
+    // allowed to fail it.
+    try {
+      const displays = this.store.wakeDisplays();
+      const kept = briefing.kept.hints.map((id) => ({
+        id,
+        load: hintReading(this.store.physicsOf(id), displays.get(id), req.day, this.tunables).nextLoad,
+      }));
+      this.store.recordHintDisplay(req.day, kept);
+    } catch (err) {
+      this.emit("self.hints.display.failed", undefined, { error: err instanceof Error ? err.name : "UNKNOWN" });
+    }
     // THE JOURNAL'S BACKFILL (F6), and this is the only place it runs.
     //
     // A store whose `journal/` was deleted — or one whose episodes predate this

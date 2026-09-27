@@ -41,6 +41,7 @@ import { Associate, appendPendingDeltas, claimPending, releasePending } from "./
 import type { CoactivateResult, Credited, FlushReport, PairDelta, PendingClaim } from "./associate/index.js";
 import { selfRenderer } from "./briefing.js";
 import { batteryGate, episodeGate, gateSweepChunk } from "./bridge.js";
+import { Dreams } from "./dream/index.js";
 import type { VectorSource } from "./bridge.js";
 import { mintProposal } from "./mint.js";
 import type { MintResult } from "./mint.js";
@@ -122,6 +123,7 @@ import {
 } from "./handoff/index.js";
 import type { Handoff, HandoffRefusal, HandoffWrite } from "./handoff/index.js";
 import {
+  BRIEFING_KEY,
   BRIEFING_TRIM_LOG_CAP,
   LANE_ORDER,
   PREFACE_RESERVE_BYTES,
@@ -153,7 +155,7 @@ import { Store, assertSafeDataDir, hashText, indexTextOf } from "./store/index.j
 import type {
   AddFeelingsResult,
   FeelingInput, Embedder, StoreEvent } from "./store/index.js";
-import { TUNABLES as PHYSICS } from "./physics/index.js";
+import { TUNABLES as PHYSICS, band as bandOf } from "./physics/index.js";
 import type { UseTier } from "./physics/index.js";
 import type { Kind } from "./types.js";
 
@@ -1320,6 +1322,8 @@ export class Counterpart {
   readonly prospective: Prospective;
   /** Working context per directory (E1) — never memory. See `handoff/`. */
   readonly handoffs: Handoffs;
+  /** Dreaming (2026-09-26, `dream/`): the ask, the bundle, the changes, the journal, undo. */
+  readonly dreams: Dreams;
   /** One predicate, one definition: the store's. Never re-derived here. */
   readonly observer: boolean;
 
@@ -1467,6 +1471,33 @@ export class Counterpart {
       day: () => this.store.livedDay(),
       now: this.nowFn,
       onEvent: (e) => this.relay("remember", e),
+    });
+
+    // DREAMING. Every word a dream writes is REDACTED of credentials before it
+    // is stored — the secrets scan the battery runs, without the battery's
+    // length and shape gates: a dream's words are a rewording of memories that
+    // already crossed the full battery, and a one-line journal, a nomination's
+    // reason or a merged sentence is short by nature (the full gate refused
+    // them `content-too-short`). Text that was nothing but a credential is
+    // refused. A merge hands its originals' links to the merged memory through
+    // `associate/`'s retarget, which had no caller until now.
+    this.dreams = new Dreams({
+      store: this.store,
+      observer: this.observer,
+      owner: this.owner,
+      gate: (text) => {
+        const redacted = redactSecrets(text);
+        return redacted.replace(/\[REDACTED[^\]]*\]/g, "").trim().length === 0
+          ? { ok: false, reason: "only-a-credential" }
+          : { ok: true, text: redacted };
+      },
+      page: () => this.self.page()?.body ?? null,
+      wake: () => this.store.getMeta(BRIEFING_KEY) ?? null,
+      today: () => this.store.today(),
+      retarget: (oldId, newId, day) => {
+        this.associate.retargetOnSupersede(oldId, newId, day);
+      },
+      emit: (name, ref, data) => this.emit(name, ref, data),
     });
 
     if (opts.identity !== undefined) this.self.ensureIdentityCore(opts.identity);
@@ -1967,8 +1998,8 @@ export class Counterpart {
   }
 
   /** Retrospective reinforcement for ONE memory the reply actually used. */
-  resolveUse(sessionId: string, memoryId: string, tier: UseTier): CreditResult {
-    return this.recall.resolveUse(sessionId, memoryId, tier);
+  resolveUse(sessionId: string, memoryId: string, tier: UseTier, opts: { cued?: boolean } = {}): CreditResult {
+    return this.recall.resolveUse(sessionId, memoryId, tier, opts);
   }
 
   /**
@@ -2061,7 +2092,11 @@ export class Counterpart {
     let credited = 0;
     for (const u of uses) {
       try {
-        const r = this.resolveUse(sessionId, u.memoryId, "referenced");
+        // A QUOTED use was a loud candidate recall surfaced on a turn's own cue
+        // this session: organic, whatever the wake's hints lane was showing. An
+        // EXPANDED id may have been read off the wake — the display decides
+        // whether it is a return (physics §5.11).
+        const r = this.resolveUse(sessionId, u.memoryId, "referenced", u.how === "quoted" ? { cued: true } : {});
         if (r.credited) {
           credited += 1;
           ids.push(u.memoryId);
@@ -2443,6 +2478,80 @@ export class Counterpart {
   /** Through the REAL battery: a first-person reflection is not exempt (SEAMS H). */
   ingestEpisode(input: { sessionId: string; day?: number; handles?: readonly string[] }): IngestResult {
     return this.self.ingestEpisode(input);
+  }
+
+  // ── the core: what it holds, and the owner's door out of it ────────────────
+
+  /**
+   * THE CORE, as the owner reads it (2026-09-26): every identity-band memory,
+   * with the lane that carried it there (when a promotion recorded one) and
+   * whether it is on the page's row; plus the recent nominations dreams made.
+   * A read.
+   */
+  coreList(): {
+    core: { id: string; kind: string; lane: string | null; day: number | null; body: string | null; confidential: boolean }[];
+    nominated: { id: string; day: number; reason: string | null; dream: string | null }[];
+    demoted: { id: string; day: number; reason: string | null }[];
+  } {
+    const core: ReturnType<Counterpart["coreList"]>["core"] = [];
+    for (const id of this.store.list({ archived: false })) {
+      const row = this.store.row(id);
+      if (row === undefined || row.promoted_identity !== 1) continue;
+      const promoted = this.store.coreEvents({ memoryId: id, action: "promoted", limit: 1 })[0];
+      let body: string | null = null;
+      try {
+        const doc = this.store.readProse(id);
+        body = row.confidential === 1 && !this.owner ? null : (doc.title ?? doc.body).split("\n")[0] ?? "";
+      } catch {
+        body = null;
+      }
+      core.push({
+        id,
+        kind: row.kind,
+        lane: promoted?.lane ?? null,
+        day: promoted?.day ?? null,
+        body,
+        confidential: row.confidential === 1,
+      });
+    }
+    const nominated = this.store
+      .coreEvents({ action: "nominated" })
+      .map((e) => ({ id: e.memory_id, day: e.day, reason: e.reason, dream: e.dream_id }));
+    const demoted = this.store
+      .coreEvents({ action: "demoted" })
+      .map((e) => ({ id: e.memory_id, day: e.day, reason: e.reason }));
+    return { core, nominated, demoted };
+  }
+
+  /**
+   * THE DEMOTE DOOR (owner decision 2026-09-26): send a core memory back to
+   * ordinary fading, and record why. Its fading restarts TODAY — it was held at
+   * full strength until now, and "back to normal fading" should not mean a
+   * collapse to whatever months of decay would have left. The demotion is
+   * sticky: the core lanes do not promote it again (`coreDemoted`). The row
+   * says who and why; a `band.demoted` event is the durable crossing record,
+   * the mirror of `band.promoted`.
+   */
+  demoteCore(id: string, opts: { reason: string; actor?: string }): { ok: boolean; reason: string } {
+    if (this.observer) return { ok: false, reason: "observer" };
+    const reason = opts.reason.trim();
+    if (reason.length === 0) return { ok: false, reason: "reason-required" };
+    const row = this.store.row(id);
+    if (row === undefined) return { ok: false, reason: "unknown-id" };
+    if (row.promoted_identity !== 1) return { ok: false, reason: "not-core" };
+    const day = this.store.livedDay();
+    this.store.appendCoreEvent({ memoryId: id, action: "demoted", day, reason, actor: opts.actor ?? "owner" });
+    this.store.updatePhysics(id, { promotedIdentity: false, lastUsedDay: Math.max(row.last_used_day, day) });
+    const after = this.store.physicsOf(id);
+    this.store.setBand(id, bandOf(after, day), day);
+    this.store.appendEvent({
+      name: "band.demoted",
+      day,
+      ref: id,
+      payload: { kind: row.kind, day, actor: opts.actor ?? "owner" },
+    });
+    this.emit("counterpart.core.demoted", id, { day });
+    return { ok: true, reason: "demoted" };
   }
 
   // ── the self page ──────────────────────────────────────────────────────────

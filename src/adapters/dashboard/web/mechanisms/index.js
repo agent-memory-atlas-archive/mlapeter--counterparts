@@ -18,6 +18,7 @@ import retrieval from "./retrieval/index.js";
 import association from "./association/index.js";
 import prospective from "./prospective/index.js";
 import consolidation from "./consolidation/index.js";
+import dreaming from "./dreaming/index.js";
 import reconsolidation from "./reconsolidation/index.js";
 import episodic_semantic from "./episodic-semantic/index.js";
 import schema from "./schema/index.js";
@@ -28,7 +29,7 @@ import * as reconsolidationPanel from "./reconsolidation/panel.js";
 import * as retrievalPanel from "./retrieval/panel.js";
 import * as saliencePanel from "./salience/panel.js";
 
-export const MECHANISMS = [salience, emotional, decay, interference, retrieval, association, prospective, consolidation, reconsolidation, episodic_semantic, schema];
+export const MECHANISMS = [salience, emotional, decay, interference, retrieval, association, prospective, consolidation, dreaming, reconsolidation, episodic_semantic, schema];
 
 /** The pill groups, in the order a memory lives through them — the site's colours. */
 export const FAMILIES = [

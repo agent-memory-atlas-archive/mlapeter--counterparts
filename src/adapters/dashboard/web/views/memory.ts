@@ -6,7 +6,7 @@
  */
 import { TUNABLES, band, emotionalIntensity, promotionEligibility, rep, sal, strength } from "../../../../core/physics/index.js";
 import { feelingsLine } from "../../../feelings-line.js";
-import { isJournal } from "../../../../core/sleep/index.js";
+import { aboutMe, isJournal, ownerNames } from "../../../../core/sleep/index.js";
 import type { Band, Kind } from "../../../../core/types.js";
 import type { DashboardSource } from "../../source.js";
 import { WITHHELD, gistOfDoc, reveal, revealHere } from "../reveal.js";
@@ -126,7 +126,18 @@ export interface MemoryDetail {
    *  The log keeps only so much, so this can be fewer than `reinforcedDays`. */
   readonly useDays: number[];
   /** The road to the core, when use is what stands in the way. */
-  readonly promotion: { readonly byUse: boolean; readonly days: number; readonly required: number };
+  /**
+   * The core's slow lane, for a memory about me or about us (2026-09-26):
+   * `byUse` when coming back on more separate days is all that stands in the
+   * way; `days` of `required` separate return days, over `span` of `needSpan`.
+   */
+  readonly promotion: {
+    readonly byUse: boolean;
+    readonly days: number;
+    readonly required: number;
+    readonly span: number;
+    readonly needSpan: number;
+  };
   readonly feelings: (FeelingShown & { readonly carriedBy: string })[];
   readonly model: string | null;
   readonly eventDate: string | null;
@@ -188,7 +199,7 @@ export function memoryDetail(src: DashboardSource, id: string): MemoryDetail {
     curve: null,
     curveNote: null,
     useDays: [],
-    promotion: { byUse: false, days: 0, required: TUNABLES.N_PROMOTION_DAYS },
+    promotion: { byUse: false, days: 0, required: TUNABLES.CORE_SLOW_DAYS, span: 0, needSpan: TUNABLES.CORE_SLOW_SPAN_DAYS },
     feelings: [],
     model: null,
     eventDate: null,
@@ -214,7 +225,10 @@ export function memoryDetail(src: DashboardSource, id: string): MemoryDetail {
   const g = gistOfDoc(doc, 120);
   const chapter = row !== undefined && isChapterMemory(row);
   const journal = row === undefined ? false : isJournal(row);
-  const verdict = promotionEligibility(physics);
+  const verdict = promotionEligibility(physics, {
+    aboutMe: aboutMe(store, { id: headId, kind: physics.kind }, ownerNames(store)),
+    day,
+  });
   let curve: MemoryCurve | null = null;
   let curveNote: string | null = null;
   if (journal || chapter) curveNote = "a journal chapter — kept as written, not scored";
@@ -306,10 +320,13 @@ export function memoryDetail(src: DashboardSource, id: string): MemoryDetail {
     curveNote,
     useDays: useDaysOf(src, headId),
     promotion: {
-      // "N separate days make it core" only when the days are all that stand in the way.
-      byUse: verdict.blockedBy.length === 1 && verdict.blockedBy[0] === "insufficient-distinct-days",
-      days: verdict.reinforcedDays,
-      required: verdict.requiredDays,
+      // "N separate days make it core" only for a memory about me, when coming
+      // back is all that stands in the way.
+      byUse: verdict.blockedBy.length === 1 && verdict.blockedBy[0] === "no-lane-yet",
+      days: verdict.slow.days,
+      required: verdict.slow.needDays,
+      span: verdict.slow.span,
+      needSpan: verdict.slow.needSpan,
     },
     feelings: feelingsWithCarry(src, headId, g.confidential),
     model: row?.model ?? null,

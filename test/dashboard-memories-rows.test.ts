@@ -331,7 +331,9 @@ describe("the memory card", () => {
       const card = memoryDetail(src, ids.dated as string);
       expect(card.useDays).toEqual([card.day - 3, card.day]);
       expect(card.reinforcedDays).toBe(2);
-      expect(card.promotion.required).toBe(TUNABLES.N_PROMOTION_DAYS);
+      // The core's slow lane (2026-09-26): return days against CORE_SLOW_DAYS.
+      expect(card.promotion.required).toBe(TUNABLES.CORE_SLOW_DAYS);
+      expect(card.promotion.needSpan).toBe(TUNABLES.CORE_SLOW_SPAN_DAYS);
       const v = card.promotion;
       if (v.byUse) expect(v.days).toBeLessThan(v.required);
       // A memory with no use credits has no use days.

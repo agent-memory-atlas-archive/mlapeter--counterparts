@@ -151,6 +151,12 @@ export type ProbeId =
   | "prospective.dated"
   | "protected"
   | "removals"
+  /** Counted awake RETURNS (schema v8's `returns` table), dated by their moment. */
+  | "returns.awake"
+  /** Counted dream REPLAYS — returns a dream made, dated the same way. */
+  | "returns.dream"
+  /** Live memories a DREAM wrote in its own words (source `dreamed`), dated by when. */
+  | "dreamed"
   | `versions:${string}`;
 
 export type Evidence =
@@ -546,9 +552,37 @@ export const MECHANISMS: readonly Mechanism[] = [
     // `budgetExhausted` and `skippedForBudget` on the same cycle row, which is
     // where it belongs.
     id: "promotion",
-    label: "a memory reinforced over several days is promoted into identity",
+    label: "a memory about me or about us comes back and becomes core, by the fast or slow lane",
     module: "sleep/consolidate.ts",
     evidence: { kind: "event", names: ["band.promoted"] },
+  },
+  {
+    // RETURNS (2026-09-26, physics §5.11): the new road to staying strong. One
+    // row in the `returns` table per counted awake return, dated by its
+    // moment; a use while the memory was showing in the wake's hints lane is
+    // not one, so a quiet week here is "nothing came back unprompted".
+    id: "returns",
+    label: "a memory used again after a gap comes back stronger: it will fade more slowly",
+    module: "physics/ (creditReturn), store/index.ts#reinforce",
+    evidence: { kind: "probe", probe: "returns.awake" },
+    since: "2026-09-26",
+  },
+  {
+    // The owner's door out of the core, the mirror of `band.promoted`.
+    id: "core-demote",
+    label: "the owner sent a core memory back to ordinary fading, and said why",
+    module: "counterpart.ts#demoteCore",
+    evidence: { kind: "event", names: ["band.demoted"] },
+    since: "2026-09-26",
+  },
+  {
+    // The v8 upgrade's one-time proof: every memory measured by the old
+    // arithmetic and the new. One row per store, ever; doctor reads the verdict.
+    id: "upgrade-census",
+    label: "after the v8 upgrade, every memory was checked by the old rules and the new",
+    module: "sleep/upgrade.ts",
+    evidence: { kind: "event", names: ["physics.upgrade.census"] },
+    since: "2026-09-26",
   },
   {
     // TWO GATES out of six. `declared-revision-never-merged` and
@@ -637,10 +671,44 @@ export const MECHANISMS: readonly Mechanism[] = [
     },
   },
   {
+    // Built 2026-09-26: a dream may write a GIST — a pattern across memories,
+    // in its own words, citing its sources — as a memory of source `dreamed`
+    // that starts low. The evidence is those rows, dated by when.
     id: "gist",
-    label: "the gist of many episodes is distilled into one lasting memory",
-    module: "—",
-    evidence: { kind: "none", reason: "not built yet; the storage spec marks it thin." },
+    label: "a dream distilled a pattern across several memories into one, in its own words",
+    module: "dream/ (gist)",
+    evidence: { kind: "probe", probe: "dreamed" },
+    since: "2026-09-26",
+  },
+  // ── dreaming (2026-09-26) ─────────────────────────────────────────────────
+  {
+    id: "dream",
+    label: "the counterpart dreamed: replayed what was lived since the last dream, and wrote a journal",
+    module: "dream/",
+    evidence: { kind: "event", names: ["dream.journaled"] },
+    covers: ["dream.begun", "dream.undone"],
+    since: "2026-09-26",
+  },
+  {
+    id: "dream-changes",
+    label: "a dream changed memories: merged near-copies, drew links, replayed, flagged a contradiction",
+    module: "dream/ (propose)",
+    evidence: { kind: "event", names: ["dream.changed"] },
+    since: "2026-09-26",
+  },
+  {
+    id: "dream-ask",
+    label: "a session was handed the day's dream ask, or the owner said not today",
+    module: "dream/ (askLine, decline), claude-code/hooks.ts",
+    evidence: { kind: "event", names: ["dream.ask"] },
+    since: "2026-09-26",
+  },
+  {
+    id: "dream-replays",
+    label: "a dream replayed a memory: a return worth half an awake one",
+    module: "store/index.ts#replayReturn",
+    evidence: { kind: "probe", probe: "returns.dream" },
+    since: "2026-09-26",
   },
 
   // ── the self ─────────────────────────────────────────────────────────────
@@ -1713,6 +1781,15 @@ function readProbes(store: ReadOnlyStore, w: Window): Probed {
     for (const v of store.versions(id)) {
       bump(`versions:${v.reason}`, { livedDay: v.version_day, at: v.archived_at });
     }
+    // v8: every counted return, awake or dreamed, and every dreamed memory.
+    // The upgrade's LEGACY credits are history, not something that fired.
+    for (const r of store.returnsOf(id)) {
+      if (r.source === "legacy") continue;
+      bump(r.source === "dream" ? "returns.dream" : "returns.awake", { at: r.at });
+    }
+    if (row !== undefined && row.archived === 0 && row.source === "dreamed") {
+      bump("dreamed", { at: row.created_at, livedDay: row.birth_day });
+    }
   }
   return { byId, livedDay, truncated: scanned.length < ids.length, zone: w.zone };
 }
@@ -1758,5 +1835,8 @@ function probeLabel(probe: ProbeId): string {
   if (probe === "edges") return "the links table";
   if (probe === "feelings") return "memories carrying a recorded feeling";
   if (probe === "emotion.weighted") return "memories a feeling holds higher and fades slower";
+  if (probe === "returns.awake") return "the returns table (awake returns)";
+  if (probe === "returns.dream") return "the returns table (dream replays)";
+  if (probe === "dreamed") return "memories a dream wrote";
   return `the ${probe.replace(".", " ")} table`;
 }

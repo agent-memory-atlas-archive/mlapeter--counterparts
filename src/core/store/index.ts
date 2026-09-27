@@ -54,8 +54,8 @@ import {
 } from "../time.js";
 import { checkFeelings } from "./feelings.js";
 import type { AddFeelingsResult, FeelingInput, FeelingRow } from "./feelings.js";
-import { creditUse } from "../physics/index.js";
-import type { CreditOutcome, UseTier } from "../physics/index.js";
+import { creditReturn, creditUse } from "../physics/index.js";
+import type { CreditOutcome, ReturnOutcome, UseTier } from "../physics/index.js";
 import type { Db, Statement, WalFold } from "./db.js";
 import { foldWal, isLocked, wroteOn } from "./db.js";
 import { StoreError } from "./errors.js";
@@ -69,6 +69,10 @@ import {
   rowTombstoned,
 } from "./operational.js";
 import type {
+  CoreEventRow,
+  DreamAskRow,
+  DreamChangeRow,
+  DreamRow,
   EdgeRow,
   EventRow,
   FeelingPeak,
@@ -77,8 +81,10 @@ import type {
   MigrationNote,
   ProspectiveRow,
   RemovalRow,
+  ReturnRow,
   TombstoneRow,
   VersionRow,
+  WakeDisplayRow,
 } from "./operational.js";
 import { grantOwnerOps } from "./owner-op-seam.js";
 import {
@@ -103,6 +109,7 @@ import {
 import type { ProseDoc, ProseType } from "./prose.js";
 import {
   DEFAULT_LENGTH_NORM,
+  decodeVector,
   deindexDoc,
   docFrequency,
   embeddingCount,
@@ -130,6 +137,12 @@ export * from "./render.js";
 export * from "./feelings.js";
 export type { Db, Statement, WalFold } from "./db.js";
 export type {
+  CoreEventRow,
+  DreamAskRow,
+  DreamChangeRow,
+  DreamRow,
+  ReturnRow,
+  WakeDisplayRow,
   MemoryRow,
   FeelingPeak,
   VersionRow,
@@ -158,6 +171,7 @@ export {
   OBSERVER_READ_FLOOR,
   pendingMigration,
   SCHEMA_VERSION,
+  V8_UPGRADE_KEY,
   rowToPhysics,
   rowTombstoned,
 } from "./operational.js";
@@ -653,6 +667,21 @@ export const WRITE_METHODS = [
   "rebuildCache",
   "pruneDeadIndex",
   "embedOne",
+  // v8 (2026-09-26, dreaming + consolidation).
+  "replayReturn",
+  "recordHintDisplay",
+  "supersedeInto",
+  "restoreSuperseded",
+  "restoreEdge",
+  "retractFeelings",
+  "retractDreamReturns",
+  "retractDreamNominations",
+  "appendCoreEvent",
+  "openDream",
+  "updateDream",
+  "recordDreamChange",
+  "markDreamChangeUndone",
+  "setDreamAsk",
 ] as const;
 
 export type WriteMethod = (typeof WRITE_METHODS)[number];
@@ -1571,11 +1600,34 @@ export class Store {
    * verdict absolutely and adds no opinion of its own. One rule, one owner:
    * a second implementation of this arithmetic is exactly the divergence that
    * produced v1's "two clocks" fiction.
+   *
+   * v8 (2026-09-26): a credited use is ALSO asked whether it is a RETURN
+   * (`physics.creditReturn`, §5.11) — in the same transaction, with the one fact
+   * only the store holds: whether the memory was SHOWING in the wake's hints
+   * lane on this day (`wake_display`). A return is recorded as a `returns` row
+   * and the aggregate columns are recomputed from the table. The use itself is
+   * credited exactly as before either way.
    */
-  reinforce(id: string, day: number, tier: UseTier = "referenced"): CreditOutcome {
+  reinforce(
+    id: string,
+    day: number,
+    tier: UseTier = "referenced",
+    opts: {
+      /**
+       * The use came from recall SURFACING the memory on this turn's own cue
+       * (a quoted loud candidate), not from an id the model could have read
+       * off the wake: organic whatever the hints lane was showing, so the
+       * display check is skipped. Absent — every other caller — the display
+       * decides.
+       */
+      cued?: boolean;
+    } = {},
+  ): CreditOutcome & { ret: ReturnOutcome | null } {
     const outcome = this.mutate("reinforce", () => {
       const row = this.requireRow(id);
-      const verdict = creditUse(rowToPhysics(row), day, tier);
+      const physics = rowToPhysics(row);
+      const verdict = creditUse(physics, day, tier);
+      let ret: ReturnOutcome | null = null;
       if (verdict.credited) {
         this.ops.run(
           `UPDATE memories
@@ -1586,18 +1638,565 @@ export class Store {
           verdict.next.reinforcedDays,
           id,
         );
+        ret = creditReturn(physics, day, {
+          source: "awake",
+          tierWeight: verdict.w,
+          onDisplay: opts.cued !== true && this.shownInHints(id, day),
+          since: this.legacyLastReturn(id),
+        });
+        if (ret.counted) this.writeReturn(id, day, ret, null);
       }
-      return verdict;
+      return { ...verdict, ret };
     });
     this.emit("store.reinforce", id, {
       credited: outcome.credited,
       reason: outcome.reason,
       day,
       tier,
+      returned: outcome.ret?.counted ?? false,
+      returnReason: outcome.ret?.reason ?? null,
     });
     return outcome;
   }
 
+  /**
+   * A DREAM REPLAY (physics §5.11): a return worth `DREAM_RETURN_WEIGHT` of an
+   * awake one, spacing-scaled, at most once per dream per memory — and never a
+   * USE: `uses`, `lastUsedDay` and the rep arm are untouched, and the core
+   * lanes do not count it. Tagged with the dream's id so undoing the dream
+   * removes it (`retractDreamReturns`).
+   */
+  replayReturn(id: string, day: number, dreamId: string): ReturnOutcome {
+    const outcome = this.mutate("replayReturn", () => {
+      const row = this.requireRow(id);
+      const ret = creditReturn(rowToPhysics(row), day, { source: "dream", since: this.legacyLastReturn(id) });
+      if (ret.counted) this.writeReturn(id, day, ret, dreamId);
+      return ret;
+    });
+    this.emit("store.replay", id, { counted: outcome.counted, reason: outcome.reason, day, dream: dreamId });
+    return outcome;
+  }
+
+  /** The last day of a LEGACY return the upgrade credited (spacing reads it; the lanes never do). */
+  private legacyLastReturn(id: string): number | null {
+    return (
+      this.ops.get<{ d: number | null }>("SELECT MAX(day) AS d FROM returns WHERE memory_id = ? AND source = 'legacy'", id)?.d ??
+      null
+    );
+  }
+
+  /** Insert one `returns` row and bring the aggregate columns in line with the table. */
+  private writeReturn(id: string, day: number, ret: ReturnOutcome, dreamId: string | null): void {
+    this.ops.run(
+      `INSERT OR IGNORE INTO returns (memory_id, day, source, weight, gap, dream_id, at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      id,
+      day,
+      ret.source,
+      ret.weight,
+      Number.isFinite(ret.gap) ? ret.gap : 0,
+      dreamId,
+      this.nowFn(),
+    );
+    this.recomputeReturns(id);
+  }
+
+  /**
+   * The aggregate columns FROM the `returns` table — the one place they are
+   * written, so a removed dream's replays or a carried history can never leave
+   * the physics disagreeing with its own evidence.
+   */
+  private recomputeReturns(id: string): void {
+    const agg = this.ops.get<{
+      total: number | null;
+      days: number | null;
+      first: number | null;
+      last: number | null;
+      dream: number | null;
+    }>(
+      `SELECT SUM(weight) AS total,
+              COUNT(DISTINCT CASE WHEN source = 'awake' THEN day END) AS days,
+              MIN(CASE WHEN source = 'awake' THEN day END) AS first,
+              MAX(CASE WHEN source = 'awake' THEN day END) AS last,
+              MAX(CASE WHEN source = 'dream' THEN day END) AS dream
+         FROM returns WHERE memory_id = ?`,
+      id,
+    );
+    this.ops.run(
+      `UPDATE memories
+          SET returns = ?, return_days = ?, first_return_day = ?, last_return_day = ?, last_dream_day = ?
+        WHERE id = ?`,
+      agg?.total ?? 0,
+      agg?.days ?? 0,
+      agg?.first ?? null,
+      agg?.last ?? null,
+      agg?.dream ?? null,
+      id,
+    );
+  }
+
+  /** One memory's counted returns, oldest first. A read. */
+  returnsOf(id: string): ReturnRow[] {
+    return this.ops.all<ReturnRow>("SELECT * FROM returns WHERE memory_id = ? ORDER BY day, source", id);
+  }
+
+  /**
+   * Returns counted since a moment (UTC ms) or a lived day, by source — for
+   * `fired`, the mechanism lights and the dashboard. With neither, all of them.
+   */
+  returnCounts(filter: { sinceAt?: number; sinceDay?: number } = {}): { awake: number; dream: number; memories: number } {
+    const r = this.ops.get<{ awake: number | null; dream: number | null; memories: number | null }>(
+      `SELECT SUM(CASE WHEN source = 'awake' THEN 1 ELSE 0 END) AS awake,
+              SUM(CASE WHEN source = 'dream' THEN 1 ELSE 0 END) AS dream,
+              COUNT(DISTINCT memory_id) AS memories
+         FROM returns WHERE at >= ? AND day >= ?`,
+      filter.sinceAt ?? 0,
+      filter.sinceDay ?? -2_147_483_648,
+    );
+    return { awake: r?.awake ?? 0, dream: r?.dream ?? 0, memories: r?.memories ?? 0 };
+  }
+
+  // ── what the wake's hints lane showed (v8) ─────────────────────────────────
+
+  /**
+   * Was this memory SHOWING in the wake's hints lane on lived day `day`? True
+   * from the first day of its current showing through the day a publish
+   * dropped it: the day it is dropped is ambiguous (a session opened earlier
+   * that day still read the old bundle), and #238's reading of that ambiguity —
+   * count it as shown — is kept.
+   */
+  shownInHints(id: string, day: number): boolean {
+    const r = this.ops.get<WakeDisplayRow>("SELECT * FROM wake_display WHERE memory_id = ?", id);
+    if (r === undefined || r.lane !== "hints") return false;
+    if (day < r.first_day) return false;
+    return r.closed_day === null || day <= r.closed_day;
+  }
+
+  /** Every display row, by memory id. A read (`self/`'s habituation reads it). */
+  wakeDisplays(): Map<string, WakeDisplayRow> {
+    const out = new Map<string, WakeDisplayRow>();
+    for (const r of this.ops.all<WakeDisplayRow>("SELECT * FROM wake_display")) out.set(r.memory_id, r);
+    return out;
+  }
+
+  /**
+   * Record what a PUBLISHED bundle kept in its hints lane on lived day `day`:
+   * each kept id with the habituation load `self/` computed for it. A kept id
+   * already showing extends its showing; a new one opens one; every OTHER
+   * showing row still open is closed on `day`. Ids that no longer resolve to a
+   * row are skipped. One transaction.
+   */
+  recordHintDisplay(day: number, kept: readonly { id: string; load: number }[]): void {
+    this.mutate("recordHintDisplay", () => {
+      const at = this.nowFn();
+      const keptIds = new Set<string>();
+      for (const k of kept) {
+        const row = this.row(k.id);
+        if (row === undefined) continue;
+        keptIds.add(k.id);
+        const prior = this.ops.get<WakeDisplayRow>("SELECT * FROM wake_display WHERE memory_id = ?", k.id);
+        const open = prior !== undefined && prior.closed_day === null;
+        this.ops.run(
+          `INSERT INTO wake_display
+             (memory_id, lane, first_day, shown_day, closed_day, load, ever_day, ever_uses, ever_last_used, updated_at)
+           VALUES (?, 'hints', ?, ?, NULL, ?, ?, ?, ?, ?)
+           ON CONFLICT (memory_id) DO UPDATE SET
+             lane = 'hints', first_day = excluded.first_day, shown_day = excluded.shown_day,
+             closed_day = NULL, load = excluded.load, updated_at = excluded.updated_at`,
+          k.id,
+          open ? prior.first_day : day,
+          day,
+          k.load,
+          day,
+          row.uses,
+          row.last_used_day,
+          at,
+        );
+      }
+      for (const r of this.ops.all<WakeDisplayRow>("SELECT * FROM wake_display WHERE closed_day IS NULL")) {
+        if (keptIds.has(r.memory_id)) continue;
+        this.ops.run("UPDATE wake_display SET closed_day = ?, updated_at = ? WHERE memory_id = ?", day, at, r.memory_id);
+      }
+    });
+    this.emit("store.display", undefined, { day, kept: kept.length });
+  }
+
+  // ── merges, and undoing them (v8, `core/dream/`) ───────────────────────────
+
+  /**
+   * One original FOLDED INTO an already-written successor — a dream's merge of
+   * two or three near-copies. The original keeps its id, its words (a version
+   * row carries them, with the successor named) and a forwarding address, and
+   * is archived `reason`; nothing is deleted. With `carryReturns`, its return
+   * history is copied onto the successor (a return day both had is kept once),
+   * so the merged memory is at least as durable as what it was made from.
+   */
+  supersedeInto(oldId: string, successorId: string, reason: string, opts: { carryReturns?: boolean } = {}): void {
+    this.mutate("supersedeInto", () => {
+      const row = this.requireRow(oldId);
+      this.requireRow(successorId);
+      const at = this.nowFn();
+      this.ops.run(
+        `INSERT INTO versions
+           (memory_id, seq, reason, version_day, archived_at, content_hash, successor_id,
+            title, body, meta, learned_on, happened_on, created_at, model, event_date)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        oldId,
+        row.revision + 1,
+        reason,
+        this.livedDay(),
+        at,
+        row.content_hash,
+        successorId,
+        row.title,
+        row.body,
+        row.meta,
+        row.learned_on,
+        row.happened_on,
+        row.updated_at ?? row.created_at,
+        row.model,
+        row.event_date,
+      );
+      this.ops.run(
+        `UPDATE memories SET superseded_by = ?, archived = 1, archived_reason = ?, revision = ?, updated_at = ?
+          WHERE id = ?`,
+        successorId,
+        reason,
+        row.revision + 1,
+        at,
+        oldId,
+      );
+      if (opts.carryReturns === true) {
+        this.ops.run(
+          `INSERT OR IGNORE INTO returns (memory_id, day, source, weight, gap, dream_id, at)
+           SELECT ?, day, source, weight, gap, dream_id, at FROM returns WHERE memory_id = ?`,
+          successorId,
+          oldId,
+        );
+        this.recomputeReturns(successorId);
+      }
+    });
+    deindexDoc(this.cache, oldId);
+    this.emit("store.supersede", oldId, { successor: successorId, reason });
+  }
+
+  /**
+   * The undo of `supersedeInto`: the original is live again — no forwarding
+   * address, not archived — and back in the index. Its version row stays, as
+   * history. Refused (a no-op) for a row that is not archived with `reason`.
+   */
+  restoreSuperseded(oldId: string, reason: string): boolean {
+    const restored = this.mutate("restoreSuperseded", () => {
+      const row = this.requireRow(oldId);
+      if (row.archived !== 1 || row.archived_reason !== reason) return false;
+      this.ops.run(
+        `UPDATE memories SET superseded_by = NULL, archived = 0, archived_reason = NULL, updated_at = ?
+          WHERE id = ?`,
+        this.nowFn(),
+        oldId,
+      );
+      return true;
+    });
+    if (restored) {
+      try {
+        this.indexOne(this.readProse(oldId));
+      } catch {
+        /* a row that will not read stays out of the index; the restore stands */
+      }
+      this.emit("store.restore", oldId, { reason });
+    }
+    return restored;
+  }
+
+  /** Remove one edge, or put back the weight it had before (a dream's link, undone). */
+  restoreEdge(src: string, dst: string, restore: { weight: number; day: number } | null = null): void {
+    this.mutate("restoreEdge", () => {
+      if (restore === null) {
+        this.ops.run("DELETE FROM edges WHERE src = ? AND dst = ?", src, dst);
+      } else {
+        this.ops.run(
+          "UPDATE edges SET weight = ?, last_day = ?, updated_at = ? WHERE src = ? AND dst = ?",
+          restore.weight,
+          restore.day,
+          this.nowFn(),
+          src,
+          dst,
+        );
+      }
+    });
+    this.emit("store.edge.restored", src, { dst, restored: restore !== null });
+  }
+
+  /** Delete feelings by id (a dream's feeling-now, undone). */
+  retractFeelings(ids: readonly string[]): number {
+    const n = this.mutate("retractFeelings", () => {
+      let count = 0;
+      for (const id of ids) {
+        this.ops.run("UPDATE feelings SET beneath_id = NULL WHERE beneath_id = ?", id);
+        this.ops.run("DELETE FROM feelings WHERE id = ?", id);
+        count += this.ops.get<{ n: number }>("SELECT changes() AS n")?.n ?? 0;
+      }
+      return count;
+    });
+    this.emit("store.feelings.retracted", undefined, { count: n });
+    return n;
+  }
+
+  /** Delete a dream's replays and recompute each memory's returns from what is left. */
+  retractDreamReturns(dreamId: string): number {
+    const n = this.mutate("retractDreamReturns", () => {
+      const ids = this.ops
+        .all<{ memory_id: string }>("SELECT DISTINCT memory_id FROM returns WHERE dream_id = ?", dreamId)
+        .map((r) => r.memory_id);
+      this.ops.run("DELETE FROM returns WHERE dream_id = ?", dreamId);
+      for (const id of ids) if (this.row(id) !== undefined) this.recomputeReturns(id);
+      return ids.length;
+    });
+    this.emit("store.replay.retracted", undefined, { dream: dreamId, memories: n });
+    return n;
+  }
+
+  // ── the core's history (v8) ────────────────────────────────────────────────
+
+  /** Append one core event: a promotion (with its lane), a demotion, a nomination. */
+  appendCoreEvent(input: {
+    memoryId: string;
+    action: "promoted" | "demoted" | "nominated";
+    day: number;
+    lane?: string | null;
+    reason?: string | null;
+    dreamId?: string | null;
+    actor?: string | null;
+  }): number {
+    const seq = this.mutate("appendCoreEvent", () => {
+      this.ops.run(
+        `INSERT INTO core_events (memory_id, action, day, at, lane, reason, dream_id, actor)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        input.memoryId,
+        input.action,
+        input.day,
+        this.nowFn(),
+        input.lane ?? null,
+        input.reason ?? null,
+        input.dreamId ?? null,
+        input.actor ?? null,
+      );
+      return this.ops.get<{ seq: number }>("SELECT last_insert_rowid() AS seq")?.seq ?? 0;
+    });
+    this.emit("store.core", input.memoryId, { action: input.action });
+    return seq;
+  }
+
+  /** Core events, newest first, optionally for one memory / one action / since a moment. */
+  coreEvents(filter: { memoryId?: string; action?: string; sinceAt?: number; limit?: number } = {}): CoreEventRow[] {
+    const where: string[] = [];
+    const args: (string | number)[] = [];
+    if (filter.memoryId !== undefined) {
+      where.push("memory_id = ?");
+      args.push(filter.memoryId);
+    }
+    if (filter.action !== undefined) {
+      where.push("action = ?");
+      args.push(filter.action);
+    }
+    if (filter.sinceAt !== undefined) {
+      where.push("at >= ?");
+      args.push(filter.sinceAt);
+    }
+    const sql = `SELECT * FROM core_events${where.length > 0 ? ` WHERE ${where.join(" AND ")}` : ""} ORDER BY seq DESC LIMIT ?`;
+    args.push(filter.limit ?? 1_000);
+    return this.ops.all<CoreEventRow>(sql, ...args);
+  }
+
+  /** Delete a dream's nominations (the undo of its `nominate-core` changes). */
+  retractDreamNominations(dreamId: string): number {
+    const n = this.mutate("retractDreamNominations", () => {
+      this.ops.run("DELETE FROM core_events WHERE dream_id = ? AND action = 'nominated'", dreamId);
+      return this.ops.get<{ n: number }>("SELECT changes() AS n")?.n ?? 0;
+    });
+    this.emit("store.core.retracted", undefined, { dream: dreamId, count: n });
+    return n;
+  }
+
+  /** True when the owner's latest word on this memory's core membership is a demotion. */
+  coreDemoted(id: string): boolean {
+    const last = this.ops.get<{ action: string }>(
+      "SELECT action FROM core_events WHERE memory_id = ? AND action IN ('promoted', 'demoted') ORDER BY seq DESC LIMIT 1",
+      id,
+    );
+    return last?.action === "demoted";
+  }
+
+  // ── dreams (v8, `core/dream/`) ─────────────────────────────────────────────
+
+  /** Open a dream: its row, state `begun`. */
+  openDream(input: {
+    id: string;
+    session?: string | null;
+    scope?: string | null;
+    day: number;
+    date?: string | null;
+    model?: string | null;
+    shown?: readonly string[];
+  }): void {
+    this.mutate("openDream", () => {
+      this.ops.run(
+        `INSERT INTO dreams (id, session, scope, day, date, state, started_at, model, shown)
+         VALUES (?, ?, ?, ?, ?, 'begun', ?, ?, ?)`,
+        input.id,
+        input.session ?? null,
+        input.scope ?? null,
+        input.day,
+        input.date ?? null,
+        this.nowFn(),
+        modelOrNull(input.model ?? undefined),
+        JSON.stringify(input.shown ?? []),
+      );
+    });
+    this.emit("store.dream", input.id, { state: "begun", day: input.day });
+  }
+
+  /** Change a dream's state, journal or title. `journaled` / `undone` stamp their moment. */
+  updateDream(id: string, patch: { state?: "begun" | "journaled" | "undone"; title?: string | null; journal?: string | null }): void {
+    this.mutate("updateDream", () => {
+      const row = this.ops.get<DreamRow>("SELECT * FROM dreams WHERE id = ?", id);
+      if (row === undefined) throw new StoreError("ID_UNKNOWN", { id });
+      const at = this.nowFn();
+      const state = patch.state ?? row.state;
+      this.ops.run(
+        `UPDATE dreams SET state = ?, title = ?, journal = ?, finished_at = ?, undone_at = ? WHERE id = ?`,
+        state,
+        patch.title === undefined ? row.title : patch.title,
+        patch.journal === undefined ? row.journal : patch.journal,
+        patch.state === "journaled" ? at : row.finished_at,
+        patch.state === "undone" ? at : row.undone_at,
+        id,
+      );
+    });
+    this.emit("store.dream", id, { state: patch.state ?? null });
+  }
+
+  /** Record one change a dream made; returns its sequence number within the dream. */
+  recordDreamChange(dreamId: string, change: { action: string; ref?: string | null; ref2?: string | null; detail?: Record<string, unknown> }): number {
+    const seq = this.mutate("recordDreamChange", () => {
+      const next =
+        (this.ops.get<{ n: number | null }>("SELECT MAX(seq) AS n FROM dream_changes WHERE dream_id = ?", dreamId)?.n ?? 0) + 1;
+      this.ops.run(
+        `INSERT INTO dream_changes (dream_id, seq, action, ref, ref2, detail, at, undone)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
+        dreamId,
+        next,
+        change.action,
+        change.ref ?? null,
+        change.ref2 ?? null,
+        JSON.stringify(change.detail ?? {}),
+        this.nowFn(),
+      );
+      return next;
+    });
+    return seq;
+  }
+
+  /** Mark one recorded change as reversed. */
+  markDreamChangeUndone(dreamId: string, seq: number): void {
+    this.mutate("markDreamChangeUndone", () => {
+      this.ops.run("UPDATE dream_changes SET undone = 1 WHERE dream_id = ? AND seq = ?", dreamId, seq);
+    });
+  }
+
+  /** Raise or snooze the day's dream ask: one row per calendar date. */
+  setDreamAsk(input: { date: string; state: "offered" | "declined"; session?: string | null; day: number }): boolean {
+    const wrote = this.mutate("setDreamAsk", () => {
+      if (input.state === "offered") {
+        this.ops.run(
+          "INSERT OR IGNORE INTO dream_asks (date, state, session, day, at) VALUES (?, 'offered', ?, ?, ?)",
+          input.date,
+          input.session ?? null,
+          input.day,
+          this.nowFn(),
+        );
+        return (this.ops.get<{ n: number }>("SELECT changes() AS n")?.n ?? 0) > 0;
+      }
+      this.ops.run(
+        `INSERT INTO dream_asks (date, state, session, day, at) VALUES (?, 'declined', ?, ?, ?)
+         ON CONFLICT (date) DO UPDATE SET state = 'declined', at = excluded.at`,
+        input.date,
+        input.session ?? null,
+        input.day,
+        this.nowFn(),
+      );
+      return true;
+    });
+    this.emit("store.dream.ask", undefined, { date: input.date, state: input.state, wrote });
+    return wrote;
+  }
+
+  /**
+   * Live memories made since a dream — one bounded read, for the ask (which
+   * runs on every prompt) and a dream's bundle. Since a MOMENT when there was a
+   * dream (`created_at`; a pre-v7 row with no moment falls back to its lived
+   * birth day), else since a lived day. Newest first. Only the columns decide:
+   * `type` memory, not archived, not superseded, not protected, not a dream's
+   * own words. The caller applies the rest of recall's gates (the deny-list,
+   * confidentiality) to what comes back.
+   */
+  newMemoryIds(filter: { sinceAt: number | null; sinceDay: number; limit: number }): string[] {
+    // Nor a dream's own MERGES (origin `dream:<id>`): a merged memory is a
+    // rewording of what a dream already saw, and counting it as new would let
+    // one dream's output raise the next day's ask by itself (review of #251).
+    const base = `SELECT id FROM memories
+                   WHERE type = 'memory' AND archived = 0 AND superseded_by IS NULL AND protected = 0
+                     AND (source IS NULL OR source != 'dreamed')
+                     AND (origin_ref IS NULL OR origin_ref NOT LIKE 'dream:%')`;
+    const order = "ORDER BY COALESCE(created_at, 0) DESC, birth_day DESC, id LIMIT ?";
+    const rows =
+      filter.sinceAt === null
+        ? this.ops.all<{ id: string }>(`${base} AND birth_day >= ? ${order}`, filter.sinceDay, filter.limit)
+        : this.ops.all<{ id: string }>(
+            `${base} AND (created_at > ? OR (created_at IS NULL AND birth_day > ?)) ${order}`,
+            filter.sinceAt,
+            filter.sinceDay,
+            filter.limit,
+          );
+    return rows.map((r) => r.id);
+  }
+
+  /** One dream's row. */
+  dream(id: string): DreamRow | undefined {
+    return this.ops.get<DreamRow>("SELECT * FROM dreams WHERE id = ?", id);
+  }
+
+  /** Dreams, newest first. */
+  dreams(filter: { limit?: number; sinceAt?: number } = {}): DreamRow[] {
+    return filter.sinceAt === undefined
+      ? this.ops.all<DreamRow>("SELECT * FROM dreams ORDER BY started_at DESC, id DESC LIMIT ?", filter.limit ?? 100)
+      : this.ops.all<DreamRow>(
+          "SELECT * FROM dreams WHERE started_at >= ? ORDER BY started_at DESC, id DESC LIMIT ?",
+          filter.sinceAt,
+          filter.limit ?? 100,
+        );
+  }
+
+  /** One dream's changes, in the order they were made. */
+  dreamChanges(dreamId: string): DreamChangeRow[] {
+    return this.ops.all<DreamChangeRow>("SELECT * FROM dream_changes WHERE dream_id = ? ORDER BY seq", dreamId);
+  }
+
+  /** The day's ask row, when one was raised. */
+  dreamAsk(date: string): DreamAskRow | undefined {
+    return this.ops.get<DreamAskRow>("SELECT * FROM dream_asks WHERE date = ?", date);
+  }
+
+  /** The stored vector of one memory, or null (no embedder, or not embedded). A read of box 3. */
+  vectorOf(id: string): number[] | null {
+    try {
+      const r = this.cache.get<{ vec: unknown }>("SELECT vec FROM embeddings WHERE memory_id = ?", id);
+      if (r === undefined || r.vec === null || r.vec === undefined) return null;
+      return Array.from(decodeVector(r.vec as never));
+    } catch {
+      return null;
+    }
+  }
   setBand(id: string, band: Band, day: number): void {
     this.mutate("setBand", () => {
       this.requireRow(id);
@@ -3043,8 +3642,8 @@ export class Store {
          promoted_identity, protected, pressure, last_challenged_day, archived,
          archived_reason, superseded_by, revision, content_hash,
          learned_on, happened_on, source, origin_session, origin_scope, origin_ref,
-         title, body, meta, confidential, created_at, updated_at, model, event_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, NULL, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         title, body, meta, confidential, created_at, updated_at, model, event_date, legacy)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, NULL, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       id,
       input.type,
       input.kind,
@@ -3079,6 +3678,9 @@ export class Store {
       at,
       modelOrNull(input.model),
       doc.eventDate ?? null,
+      // v8: only a caller carrying a pre-upgrade memory's physics forward (a
+      // dream merge of legacy rows) sets it; every new memory is post-upgrade.
+      input.physics?.legacy === true ? 1 : 0,
     );
     return doc;
   }

@@ -79,6 +79,7 @@ import type { ActionContext } from "./actions.js";
 import { firedPanel } from "./fired.js";
 import { mechanismPanel } from "./views/mechanism-panel.js";
 import { mechanismsView } from "./views/mechanisms.js";
+import { DREAM_LIMIT, dreamsView } from "./views/dreams.js";
 import { resolveStatic } from "./static.js";
 import {
   activityView,
@@ -277,6 +278,7 @@ export function router(
       return json(searchView(src, url.searchParams.get("q") ?? "", intParam(url, "limit", 25)));
     }
     if (path === "/api/mind") return json(mindView(src));
+    if (path === "/api/dreams") return json(dreamsView(src, intParam(url, "limit", DREAM_LIMIT)));
     if (path === "/api/flow") return json(flowView(src, intParam(url, "limit", 24)));
     if (path === "/api/node") {
       const key = url.searchParams.get("key") ?? "";

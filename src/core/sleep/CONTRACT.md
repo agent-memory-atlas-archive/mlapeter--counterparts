@@ -71,7 +71,10 @@ alone.
 - **Over-budget is measured at full membership, not on the rendered output** — a renderer
   that demotes until it fits *by construction never reports being over budget*. [v1 §7]
 - **Auto-consolidation on a cycle** (v0: every 3 days) — the pass that links a memory to its
-  schemas and sets the consolidation bonus in `physics/` §5.2. [v0]
+  schemas and sets the consolidation bonus in `physics/` §5.2. [v0] **Since 2026-09-26 the
+  bonus is LEGACY** (rows born before schema v8 only; physics §5.11): a memory made since
+  stays strong by returning, credited at the moment it returns, and this pass decides the
+  CORE — by two lanes, for memories about me or about us, at most three a night (below).
 
 ## 4. Drops / simplifies
 
@@ -118,6 +121,19 @@ store, measured at four rows crossing on master and none under the wider guard. 
 belief should cross at all is a real question with a one-query answer against the live
 store that nobody has; it is not this change's to take. The identity core is not exempted
 either, for the same reason.*
+*THE CORE'S LANES, from 2026-09-26 (owner decisions, dreaming + consolidation).* The
+consolidate phase is still the ONE place a memory is promoted, and every crossing is
+still an explicit, counted record — now carrying its LANE. What changed: physics decides
+the lanes (`promotionEligibility(m, { aboutMe, demoted })`); this phase decides who is
+ABOUT ME (`consolidate.ts#aboutMe`: `self` kind, or a `person` memory naming the owner,
+read off the identity core's name and aliases), honours the owner's demotions
+(`store.coreDemoted`), and caps the night at `CORE_MAX_PER_SLEEP` (3), strongest first —
+the rest are counted `promotion:cap` and wait for the next consolidation. The legacy
+consolidation marking runs first, for legacy rows only; a post-upgrade row is counted
+`not-legacy`. The first decay pass after the v8 upgrade runs a one-time census
+(`upgrade.ts`): every live row's band and projected prune day, old arithmetic vs new, into
+`physics.v8.census` and one durable `physics.upgrade.census` row. Arithmetic only: no
+phase calls a model; dreaming, which does, is `dream/`'s and is asked for.
 **Outputs** — a refreshed strength cache; dedup merges; consolidation links; prune verdicts
 and their records; the next session's briefing, written last; a per-cycle summary vector
 (content-by-reference).

@@ -90,6 +90,7 @@ import {
   statSync,
 } from "node:fs";
 
+import { carriesDreamMark } from "../../core/dream/mark.js";
 import type { Turn, TurnSource } from "../../core/remember/index.js";
 
 /**
@@ -547,6 +548,12 @@ function pieceOf(text: string, role: "user" | "assistant", author: EntryAuthor):
   // metadata says: an `isMeta` Stop-hook block read as `injected` would ENTER
   // capture, which is G11 broken by a step meant only to keep it out of pacing.
   if (source === "foreign" || source === "ritual") return { text, source };
+  // A DREAM'S WORDS (2026-09-26): the bundle a dreamer was shown, or the
+  // hand-back its background agent sends home — which this host delivers into
+  // the parent's transcript user-role (`isMeta`, origin `peer`) and would read
+  // as `injected`, kept. Refused by the mark, whoever wrote the entry and in
+  // either role, so a dream never reaches the sweep (`core/dream/mark.ts`).
+  if (carriesDreamMark(text)) return { text, source: "dream" };
   // THE ASSISTANT'S TEXT IS NEVER RECLASSIFIED BY A MARKER (review m2): its own
   // replies add pacing bytes and earn recall credit exactly as on master. The one change is
   // an entry the host SYNTHESISED as the assistant (an API error), which the

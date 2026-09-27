@@ -8,7 +8,11 @@ export default {
   name: "Consolidation",
   short: "Consolidation",
   tagline: "Memories aren’t saved when they’re made. They’re rebuilt, offline, while you sleep.",
-  explainer: "Every few lived days a short “sleep” runs: exact duplicates are merged, and a memory that scored high and was used on three separate days becomes a core memory.",
-  built: ["A sleep pass every three lived days strengthens memories that held up and merges exact duplicates.", "A memory scored high and used on three separate days becomes a core memory."],
-  inDevelopment: ["Near-duplicates are not merged, on purpose, and few memories ever reach core (skills and places never can)."],
+  explainer: "Every time a memory comes back after a gap it fades more slowly — close-together returns count less, never against it. Every few lived days a short “sleep” decides the core: a memory about me or about us joins it when it was strongly felt and came back, or when it kept coming back over weeks, at most three a night.",
+  built: [
+    "Spaced returns make a memory fade more slowly; a use while it was showing in the wake's “Nearby” lane does not count.",
+    "Two lanes into the core, for memories about me or about us, capped at three a night; you can send one back (counterparts core --demote).",
+    "Exact duplicates merge at night; near-copies merge in a dream, with the originals kept.",
+  ],
+  inDevelopment: ["Facts, skills and places never become core, however often they come back — that is on purpose."],
 };

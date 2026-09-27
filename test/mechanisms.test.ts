@@ -83,7 +83,7 @@ describe("the table", () => {
     for (const id of MEMORY_MECHANISMS.flatMap((m) => m.evidence)) expect(known.has(id), id).toBe(true);
   });
 
-  test("eleven mechanisms, in the site's four groups and order", () => {
+  test("twelve mechanisms, in the site's four groups and order (Dreaming beside Consolidation since 2026-09-26)", () => {
     expect(MEMORY_MECHANISMS.map((m) => `${m.group}:${m.name}`)).toEqual([
       "Encoding:Salience",
       "Encoding:Emotion",
@@ -93,6 +93,7 @@ describe("the table", () => {
       "Retrieval:Association",
       "Retrieval:Prospective",
       "Transformation:Consolidation",
+      "Transformation:Dreaming",
       "Transformation:Reconsolidation",
       "Transformation:Schemas",
       "Transformation:Gist",
@@ -123,9 +124,11 @@ describe("counterparts mechanisms", () => {
       // Built, holding nothing dated: idle, never "not built" (2026-09-26).
       Prospective: "◐",
       Consolidation: "●",
+      Dreaming: "◐",
       Reconsolidation: "◐",
       Schemas: "○",
-      Gist: "○",
+      // Partly built since 2026-09-26: a dream writes a gist.
+      Gist: "◐",
     });
     expect(lineFor(out, "Salience")).toContain("2 memories written and scored");
     expect(lineFor(out, "Retrieval")).toContain("1 turn brought memories to mind; 1 memory used and strengthened");
