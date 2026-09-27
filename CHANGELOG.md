@@ -1,5 +1,121 @@
 # Changelog
 
+## 0.3.5 — 2026-09-27
+
+Claude reflects after a dream, tells you about it in the morning, and rewrites its self
+page from what it reflected on; what a memory is about now decides the core. **The
+store's format changes (v8 → v9).** The first Claude Code session after installing
+copies the store (as every upgrade since 0.3.1 has) and upgrades it; until then
+`counterparts doctor` says (amber) that the next session will upgrade it, and the
+dashboard asks you to open a session. Close every session before installing, and run
+`/mcp` → Reconnect in any you missed.
+
+Reflecting.
+
+- **After a dream, Claude reflects on it, awake.** The dream's background agent now
+  dreams, writes its journal, then reflects, as three separate steps. The reflection is
+  handed the dream (marked as dreamed), the last few days' chapters and memories, what is
+  on its mind (dated things in the next two weeks, disagreements still standing, where
+  the work stands), the self page and the core, and answers three questions that change
+  from night to night. It sees memories and feelings, not the numbers behind the core.
+- **What it writes.** An entry, kept as a memory titled "Reflected: …" when it rests on
+  memories it names. An entry that names nothing counts as "nothing much": it is kept on
+  the record, and nothing else is written or said. One reflection a lived day.
+- **The self page is rewritten from the reflection.** The page had stopped changing: the
+  morning writer needed room in the session start that a full wake no longer left it. Now
+  the reflection rewrites the page from the memories it names (at least one from the core
+  when there is a core), and that night's morning writer stands down. A dream's own
+  pattern is never a source for the page, and its words may not go on it.
+- **The morning share.** The reflection may leave a short note for you (at most 700
+  characters, naming what it rests on). Claude tells it once: when the dream hands back,
+  or, if that session has already ended, at the start of the next one.
+- **Feelings recorded later.** The reflection may record how a memory it was shown feels
+  now, marked as recorded later, on that day. It may feel stronger than anything felt at
+  the time.
+- **What a memory is about**: me, us, owner, work or world. Claude can say it when it
+  writes (`note` and `session_end` take `about`), and the reflection can set or change it,
+  with its reason. Each change is recorded; one that makes a memory about Claude, the two
+  of you or you is said in the next morning share.
+- **You are named, not "him".** What the reflection and the dream say about you uses
+  your name as the store knows it (`install --name`), or "the owner" when there is none —
+  never a pronoun that guesses.
+- `reflect` is a ninth tool for the MCP server; `counterparts dream --show <id>` includes
+  the dream's reflection, `--show rfl_…` shows one, and `--list` lists them. Undoing a
+  dream leaves its reflection. Removing a memory also redacts any reflection that named
+  it, and that reflection's entry. `pageWriter.mode: "off"` stops the reflection's page
+  write too.
+
+The core.
+
+- **What a memory is about decides whether it can become core**, not its kind: about me
+  (Claude), about us, or about the owner. A skill never becomes core. A memory marked
+  work or world does not either.
+- **Nothing changes overnight.** The upgrade marks memories by the old rule: every
+  `self` memory is about me, and every memory about a person that names you is about the
+  owner. So the candidates the morning after are the ones from the night before, and
+  `doctor`'s Upgrade line says how many were marked each way.
+- **A reflection naming a memory counts as it coming back.** It counts toward the fast
+  way in (strongly felt and came back after a gap), and toward the slow way at most once
+  a week per memory.
+- **A memory can reach the core on reflection alone, and you can close that.** This is
+  on by default: a feeling the reflection records later and a reflection naming the
+  memory both count. When one gets there that way, the next morning share says so, and
+  `doctor` counts it. `counterparts core --reflected-feeling off` closes it: the fast way
+  then needs a feeling felt at the time and an ordinary use after a gap, and a reflection
+  may only move what a memory is about toward work or world. `on` opens it again.
+  `counterparts core` says which way it stands.
+
+Traits.
+
+- **A memory can carry a small note on how Claude acted in it**, on seven fixed scales
+  (careful–bold, agreeable–candid, guarded–open, focused–curious, following–initiating,
+  inward–outward, serious–playful). `note`, `session_end` and the reflection take them;
+  most memories carry none. They are for display only: they change nothing about the
+  core, fading, the self page or recall. `export --markdown` has a Traits section, and
+  `counterparts fired` has a traits row.
+- **The dashboard's Self tab shows them as "How I act"**: one bar per scale, marking
+  where Claude has leaned lately and where it was a week ago. Tap a bar to see the
+  memories behind it.
+
+Seeing it.
+
+- `doctor` has a Reflection line: when it last reflected, whether the page was
+  rewritten, whether the share was told, the week's returns by where they came from
+  (awake, reflection, dream), and how many memories became core on reflection alone.
+- `counterparts mechanisms` counts reflections beside dreams, and a dream's core
+  suggestions apart from its changes ("2 dreams this week (60 changes, 3 core
+  suggestions)"). The dashboard says the same.
+- The dashboard's core views ask the same question sleep asks, so they never show a
+  memory as ready when sleep won't make it core (with `--reflected-feeling off` too).
+  Home's Tonight box says whether Claude will ask to dream next session, and why not
+  when it won't.
+
+**The dashboard's Memories tab, round 3.** A memory's card says when one return would
+make it core, and says "written, day N" until it is first used. Ask lists a chapter and
+the memory it came from once. Version rows say when a dream merged near-copies. Ask now
+reads your question in Claude's voice ("what do you remember about me?" searches "what
+do I remember about" and your name) and shows what it searched, with "search exactly as
+typed" to turn that off.
+
+**The dashboard's Home tab, round 3.** Less on the page. The mechanism pills sit on one
+line. Each mechanism shows one number, up to five of the memories behind it, and one line
+on what it does; the rest is under "how it works". New: a strip of what was written and
+what came back each day, a Tonight box (what the next sleep will do, what is close to the
+core, what is near being let go), and how often what came to mind was used. Sleep checks
+that did nothing move to the flow feed, and repeated lines fold into one. The core tile is
+a count, and the chapters column is gone (both live on Self).
+
+**The dashboard's Self tab, round 3.** The page's history is one strip, a dot a day: a
+filled dot is a day it was rewritten, a hollow one says why it wasn't, in plain words. A
+line above the page says when it has fallen behind. "Next time I wake, I start with:"
+lists what the next session opens with. A map of the memories about Claude and the two of
+you replaces the "closest to the core" list: the core in the middle, the closest near it.
+The journal's day strip shows dates. The wake's size moved to Health.
+
+**Health and empty pages.** Health no longer marks a step amber when it simply wasn't due
+yet (consolidate and fade run every three lived days). Empty panels say "(none yet)" in
+plain words.
+
 ## 0.3.4 — 2026-09-26
 
 Memories stay strong by coming back, the core is for what is about the two of you, and
