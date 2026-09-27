@@ -1,6 +1,6 @@
 /* The home page — shaped like counterparts.ai's home (features/home-v2): the
    hero with the brain on the right, the mechanism panel under it, the feed and
-   the latest chapters below. Outfit for words; Courier only for the counts. */
+   Tonight below. Outfit for words; Courier only for the counts. */
 
 /* ── hero ─────────────────────────────────────────────── */
 .home-hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:24px;align-items:center;
@@ -23,9 +23,6 @@
 .home-counts .ht .q-wrap.open{position:static;display:block}
 .home-counts .ht .s{font-size:12px;color:var(--dim);margin-top:4px;line-height:1.4}
 .home-counts .ht.quiet .n{color:var(--dim);text-shadow:none}
-.ht-pips{display:inline-flex;gap:3px;margin-right:6px;vertical-align:1px}
-.ht-pip{width:7px;height:7px;border-radius:50%;border:1px solid rgba(179,136,255,.6)}
-.ht-pip.on{background:var(--purple);border-color:var(--purple);box-shadow:0 0 6px rgba(179,136,255,.5)}
 .ht-core .n{color:var(--purple);text-shadow:0 0 15px rgba(179,136,255,.2)}
 .ht-replaced .n{color:var(--teal);text-shadow:0 0 15px rgba(0,191,165,.2)}
 
@@ -73,38 +70,64 @@
 .home-panel{--reg:var(--cyan);border:1px solid var(--border);border-top:2px solid var(--reg);border-radius:6px;background:var(--card);
   padding:18px clamp(14px,2.2vw,28px) 24px;box-shadow:0 -20px 60px -30px var(--reg);transition:border-color .3s,box-shadow .3s;
   scroll-margin-top:12px}
-.mech-top{display:flex;gap:12px;align-items:flex-start;margin:0 0 20px}
+.mech-top{display:flex;gap:10px;align-items:center;margin:0 0 18px}
 .mech-top .mechs{flex:1;min-width:0;margin:0}
-.mech-legend{flex:none;padding-top:2px}
+.mech-legend{flex:none}
 .mech-legend .q-wrap.open .q-pop{position:absolute;right:0;left:auto;top:calc(100% + 8px);width:min(22rem,calc(100vw - 48px));max-width:none}
-.mechs{display:flex;flex-wrap:wrap;gap:14px 22px;margin:0 0 20px}
-.mech-pill.is-notbuilt{color:var(--dim);border-style:dashed}
-.mech-group{display:flex;flex-direction:column;gap:6px;flex:none;max-width:100%}
-.mech-fam{font-size:12.5px;font-weight:600;letter-spacing:.3px;color:var(--pin);padding-left:4px}
-.mech-row{display:flex;gap:5px;flex-wrap:wrap}
-.mech-pill{display:inline-flex;align-items:center;gap:7px;min-height:34px;padding:0 12px;border-radius:22px;
-  border:1px solid color-mix(in srgb,var(--pin) 40%,transparent);background:transparent;color:var(--ink);
-  font-family:var(--sans);font-size:13px;cursor:pointer}
+/* ONE line of pills that scrolls sideways inside itself (round 3b): the stage is
+   the small colour mark on each pill, not a heading above a group. */
+.mechs{display:flex;flex-wrap:nowrap;gap:6px;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;
+  scrollbar-width:thin;scrollbar-color:rgba(197,205,216,.2) transparent;padding:2px 2px 6px;margin:0 0 18px}
+.mechs.more-right{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 36px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 36px),transparent)}
+.mechs.more-left{-webkit-mask-image:linear-gradient(to right,transparent,#000 36px);mask-image:linear-gradient(to right,transparent,#000 36px)}
+.mechs.more-left.more-right{-webkit-mask-image:linear-gradient(to right,transparent,#000 36px,#000 calc(100% - 36px),transparent);
+  mask-image:linear-gradient(to right,transparent,#000 36px,#000 calc(100% - 36px),transparent)}
+.mechs::-webkit-scrollbar{height:4px}
+.mechs::-webkit-scrollbar-thumb{background:rgba(197,205,216,.2);border-radius:2px}
+.mech-pill{flex:none;display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:0 10px 0 8px;border-radius:16px;
+  border:1px solid color-mix(in srgb,var(--pin) 35%,transparent);background:transparent;color:var(--ink);
+  font-family:var(--sans);font-size:12.5px;white-space:nowrap;cursor:pointer}
 .mech-pill:hover,.mech-pill:focus-visible{border-color:var(--pin);background:color-mix(in srgb,var(--pin) 10%,transparent);outline:none}
+.mech-pill:focus-visible{box-shadow:0 0 0 2px color-mix(in srgb,var(--pin) 60%,transparent)}
 .mech-pill.is-on{border-color:var(--pin);color:var(--pin);background:color-mix(in srgb,var(--pin) 14%,var(--card))}
-.mech-tag,.mech-dev{font-size:10.5px;font-weight:500;color:var(--amber);border:1px solid rgba(255,215,64,.35);
-  border-radius:9px;padding:0 6px;line-height:16px;white-space:nowrap}
-.mech-dev{font-size:11px;padding:0 7px;vertical-align:2px}
+.mech-pill.is-notbuilt{color:var(--dim);border-style:dashed}
+.mech-stage{flex:none;width:3px;height:13px;border-radius:2px;background:var(--pin)}
+.mech-tag,.mech-dev{font-size:9.5px;font-weight:500;color:var(--amber);border:1px solid rgba(255,215,64,.3);
+  border-radius:8px;padding:0 5px;line-height:14px;white-space:nowrap}
+.mech-dev{font-size:10.5px;padding:0 6px;vertical-align:2px;font-family:var(--sans)}
 
-.mech-grid{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:32px;align-items:start}
-.mech-eyebrow{font-size:13px;font-weight:600;color:var(--reg);margin:0 0 8px}
-.mech-title{font-family:var(--sans);font-weight:500;font-size:21px;line-height:1.4;color:#e8eef5;margin:0 0 12px;letter-spacing:0}
-.mech-explainer{font-size:14.5px;line-height:1.7;margin:0 0 12px}
+/* the panel: a big number, those memories, one line — then the fold */
+.mech-grid{display:grid;grid-template-columns:minmax(0,4fr) minmax(0,7fr);grid-template-areas:"main side";gap:32px;align-items:start}
+.mech-main{grid-area:main}
+.mech-side{grid-area:side;min-width:0}
+.mech-name{font-family:var(--sans);font-size:13.5px;font-weight:600;letter-spacing:0;color:var(--reg);margin:0 0 10px}
+.mech-lead{margin:0 0 12px;line-height:1.3;color:#e8eef5}
+.mech-n{display:block;font-family:var(--mono);font-size:48px;font-weight:700;line-height:1.05;color:var(--reg);
+  text-shadow:0 0 18px color-mix(in srgb,var(--reg) 25%,transparent)}
+.mech-words{display:block;font-size:15.5px;font-weight:500;margin-top:4px}
+.mech-lead-none{font-size:17px;color:var(--dim)}
+.mech-does{font-size:14px;line-height:1.6;color:var(--dim);margin:0}
+.mech-notbuilt{border:1px dashed var(--glow);border-radius:6px;padding:14px 16px;color:var(--dim);font-size:14px;line-height:1.6}
+
+.mech-how{margin-top:20px;border-top:1px solid var(--border);padding-top:6px}
+.mech-how summary{display:inline-flex;align-items:center;gap:6px;min-height:36px;cursor:pointer;list-style:none;
+  font-size:13px;color:var(--dim);user-select:none}
+.mech-how summary::-webkit-details-marker{display:none}
+.mech-how summary:hover,.mech-how summary:focus-visible{color:var(--cyan);outline:none}
+.mech-how summary:focus-visible .mech-how-l{text-decoration:underline}
+.mech-how-arrow{display:inline-block;transition:transform .2s}
+.mech-how[open] .mech-how-arrow{transform:rotate(180deg)}
+.mech-how-body{padding:6px 0 4px;max-width:62rem}
+.mech-quote{font-size:16px;line-height:1.5;color:#e8eef5;margin:0 0 10px}
+.mech-explainer{font-size:14px;line-height:1.7;margin:0 0 12px}
 .mech-evidence{font-size:13.5px;line-height:1.6;margin:0 0 10px;color:var(--ink)}
 .mech-evidence b{font-weight:600}
 .mech-evidence .light{vertical-align:0}
-.mech-guide{margin:0;font-size:13.5px}
+.mech-guide{margin:14px 0 0;font-size:13.5px}
 .mech-guide a{display:inline-flex;align-items:center;min-height:32px}
-.mech-notbuilt{border:1px dashed var(--glow);border-radius:6px;padding:16px 18px;color:var(--dim);font-size:14px;line-height:1.6}
-.mech-notbuilt b{color:var(--ink);font-weight:600}
-.mech-foot{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:22px}
+.mech-foot{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:16px}
 .mech-h{font-family:var(--sans);font-size:13.5px;font-weight:600;color:var(--dim);margin:0 0 6px}
-.mech-foot + .mech-h{margin-top:20px}
+.mech-foot + .mech-h{margin-top:18px}
 .mech-list{margin:0 0 4px 18px;font-size:13.5px;line-height:1.65}
 .mech-list li{margin:3px 0}
 .mech-feed{max-height:none}
@@ -155,6 +178,17 @@
 .use-trend .use-bar{fill:var(--teal)}
 .use-trend .use-none{fill:rgba(197,205,216,.25)}
 .pic-climb .pic-tag{vertical-align:1px;margin-left:4px}
+/* the short lists (round 3b): a memory, and a few words under it */
+.pic-rows{gap:10px}
+.pic-rows li{display:block}
+.pic-rows li .pic-meta{display:block;margin-top:2px}
+.pic-rows .pic-tag{font-size:10.5px;padding:0 6px}
+.pic-dream .pic-mem{color:var(--dim)}
+.pic-feel{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--dim);border:1px solid rgba(197,205,216,.16);
+  border-radius:9px;padding:0 7px;line-height:17px;white-space:nowrap}
+.pic-feel i{display:inline-block;width:7px;height:7px;border-radius:50%}
+.pic-more{display:inline-flex;align-items:center;min-height:32px}
+.pic-rows + .pic-use,.pic-none + .pic-use{margin:14px 0 0}
 
 /* ── tonight (sections/tonight.js, 2026-09-27) ─────────── */
 .home-tonight{padding:10px 14px;display:grid;gap:8px;margin-bottom:22px;font-size:13.5px;line-height:1.55}
@@ -169,16 +203,20 @@
 .tn-hi{color:var(--purple);font-weight:600}
 .tn-names{color:var(--dim)}
 .tn-dim{color:var(--faint)}
+.tn-link{color:var(--ink);text-decoration:none;border-bottom:1px dotted rgba(0,229,255,.35)}
+.tn-link:hover,.tn-link:focus-visible{color:var(--cyan);outline:none}
 
 /* ── below ────────────────────────────────────────────── */
-.home-below{margin-top:26px}
-.home-more{display:inline-flex;align-items:center;min-height:32px}
+.home-below{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:20px;align-items:start;margin-top:26px}
+.home-below>*{min-width:0}
 
 /* ── narrow ───────────────────────────────────────────── */
 @media(max-width:900px){
   .home-hero{grid-template-columns:1fr;min-height:0;gap:6px}
   .home-brain{height:360px;min-height:0}
-  .mech-grid,.mech-foot{grid-template-columns:1fr;gap:18px}
+  .mech-grid{grid-template-columns:1fr;grid-template-areas:"main" "side";gap:16px}
+  .mech-foot{grid-template-columns:1fr;gap:18px}
+  .home-below{grid-template-columns:1fr}
 }
 @media(max-width:560px){
   .home-brain{height:320px}
@@ -187,7 +225,8 @@
   .home-counts .ht .n{font-size:22px}
 }
 @media(max-width:720px),(pointer:coarse){
-  .mech-pill{min-height:44px;padding:0 14px}
-  .mech-guide a,.home-more{min-height:44px}
+  .mech-pill{min-height:44px;padding:0 12px 0 10px}
+  .mech-guide a,.pic-more,.mech-how summary{min-height:44px}
+  .mech-n{font-size:40px}
 }
-@media(prefers-reduced-motion:reduce){.home-panel{transition:none}}
+@media(prefers-reduced-motion:reduce){.home-panel,.mech-how-arrow{transition:none}}

@@ -8,6 +8,7 @@ export default {
   name: "Interference",
   short: "Interference",
   tagline: "New memories crowd out old ones. Old ones distort new ones. They compete.",
+  does: "Similar memories would compete for the same place. Not built yet.",
   explainer: "Not built yet. Today only exact duplicates are merged; similar memories sit side by side without competing.",
   built: [],
   inDevelopment: ["Nothing yet: only byte-identical memories merge, and similar ones sit side by side without competing."],

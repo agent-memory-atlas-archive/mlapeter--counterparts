@@ -8,13 +8,15 @@
  *                  `cadenceFor`), read-only.
  *   core         — ready for the core, and one return away: `core-road.ts`
  *                  (sleep's `aboutMe`, physics' `promotionEligibility`).
+ *                  Counts only since round 3b: the names live on the Self tab.
  *   letGo        — memories near the let-go line: physics' `pruneVerdict`
  *                  (through `letGoDay`) and sleep's `inLiveRevisionChain`.
  *   dream        — memories new since the last dream. Whether an ASK is likely
  *                  is the dream gate's call (`Dreams.status`), which answers
  *                  "observer" to a dashboard, so it is not guessed here.
- *   nominations  — what the last dream suggested for the core. Nothing acts on
- *                  these yet (only `counterparts core` lists them).
+ *   nominations  — how many memories the last dream suggested for the core.
+ *                  Nothing acts on these yet (only `counterparts core` lists
+ *                  them); which ones is the dream journal's, on the Self tab.
  *
  * THE NEXT SLEEP'S DAY: once the clock phase has run for today, the next sleep
  * is tomorrow's (`livedDay + 1`); before that it is today's. The same reading
@@ -26,21 +28,11 @@ import { DREAM_TUNABLES } from "../../../../core/dream/index.js";
 import { MARKER_UNSET, PHASES, cadenceFor, inLiveRevisionChain, isEntityCard, isJournal, markerDue, ownerNames, readMarker } from "../../../../core/sleep/index.js";
 import type { Phase } from "../../../../core/sleep/index.js";
 import type { DashboardSource } from "../../source.js";
-import { reveal } from "../reveal.js";
 import { coreRoad } from "./core-road.js";
 import { letGoDay } from "./mechanism-panel.js";
 
 /** How many lived days ahead "near the let-go line" looks. */
 export const LET_GO_HORIZON = 7;
-/** How many names a line carries; the rest are counted. */
-const NAMED = 3;
-
-export interface TonightName {
-  readonly id: string;
-  readonly text: string;
-  readonly confidential: boolean;
-}
-
 export interface TonightPhase {
   readonly phase: Phase;
   readonly cadence: number;
@@ -56,9 +48,6 @@ export interface TonightView {
   readonly core: {
     readonly ready: number;
     readonly oneReturnAway: number;
-    /** The first few of each, named (ready first). */
-    readonly readyNames: readonly TonightName[];
-    readonly oneAwayNames: readonly TonightName[];
   };
   readonly letGo: {
     /** Could be let go at the next sleep, if unused until then. */
@@ -75,13 +64,7 @@ export interface TonightView {
   };
   readonly nominations: {
     readonly count: number;
-    readonly names: readonly TonightName[];
   };
-}
-
-function name(src: DashboardSource, id: string): TonightName {
-  const r = reveal(src.store, id, 72);
-  return { id, text: r.text ?? r.label, confidential: r.confidential };
 }
 
 /** The lived day the next sleep runs on. */
@@ -106,8 +89,8 @@ export function tonightView(src: DashboardSource): TonightView {
 
   const owner = ownerNames(store);
   const denied = new Set(store.deniedIds());
-  const ready: string[] = [];
-  const oneAway: string[] = [];
+  let ready = 0;
+  let oneAway = 0;
   let letTonight = 0;
   let letNear = 0;
   for (const id of store.list({ archived: false })) {
@@ -118,8 +101,8 @@ export function tonightView(src: DashboardSource): TonightView {
     // are left off the road, as the self tab's settling list leaves them.
     const road = row.type === "schema" ? null : coreRoad(store, row, owner, day);
     if (road !== null) {
-      if (road.ready) ready.push(id);
-      else if (road.oneReturnAway) oneAway.push(id);
+      if (road.ready) ready += 1;
+      else if (road.oneReturnAway) oneAway += 1;
     }
     // Prune reaches memories only: not the journal, not an entity card, not a schema row.
     if (row.type !== "memory" || isEntityCard(row)) continue;
@@ -150,14 +133,9 @@ export function tonightView(src: DashboardSource): TonightView {
   return {
     day,
     phases,
-    core: {
-      ready: ready.length,
-      oneReturnAway: oneAway.length,
-      readyNames: ready.slice(0, NAMED).map((id) => name(src, id)),
-      oneAwayNames: oneAway.slice(0, NAMED).map((id) => name(src, id)),
-    },
+    core: { ready, oneReturnAway: oneAway },
     letGo: { tonight: letTonight, near: letNear, horizon: LET_GO_HORIZON },
     dream: { last: last === null ? null : (last.date ?? `lived day ${String(last.day)}`), newSince: fresh.length },
-    nominations: { count: nominated.length, names: nominated.slice(0, NAMED).map((c) => name(src, c.ref as string)) },
+    nominations: { count: nominated.length },
   };
 }

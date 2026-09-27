@@ -1,6 +1,5 @@
 /* Association, pictured: the graph hubs — the memories the most is wired to,
    by summed link weight. (Moved here from the memories page.) */
-import { esc } from "../../shared/dom.js";
 import { bar, memLink, nothingYet, two } from "../picture.js";
 
 export function picture(p) {
@@ -12,6 +11,5 @@ export function picture(p) {
     '<div class="r">' + memLink(h, 90) +
       '<div class="pic-two">' + bar(h.weight / top, "#ffc94d") +
       '<span class="pic-meta">wired to ' + h.degree + " · weight " + two(h.weight) + "</span></div></div>"
-  ).join("") + "</div>" +
-  '<p class="pic-cap">' + esc(p.links + " " + (p.links === 1 ? "link" : "links") + " in all. When one of these comes to mind, it can nudge its neighbours along.") + "</p>";
+  ).join("") + "</div>";
 }

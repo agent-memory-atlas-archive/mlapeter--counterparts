@@ -28,7 +28,8 @@ import { seedDemo, seedEmpty } from "../tools/demo/seed.js";
 const WEB = fileURLToPath(new URL("../src/adapters/dashboard/web/", import.meta.url));
 const HOST = "127.0.0.1:4747";
 const IDS = MECHANISM_PROOFS.map((m) => m.id);
-const PICTURED = ["salience", "decay", "retrieval", "association", "consolidation", "reconsolidation"];
+// Since home round 3b every built mechanism has a picture of our own memories.
+const PICTURED = MECHANISM_PROOFS.filter((m) => m.build !== "not").map((m) => m.id);
 
 let richDir: string;
 let emptyDir: string;
@@ -107,14 +108,18 @@ describe("the hero (round 2, 2026-09-26)", () => {
     expect(page).toContain('return d.total + (d.total === 1 ? " memory" : " memories");');
   });
 
-  test("the core tile says how close the nearest candidate is, in physics' own terms", () => {
+  test("the core tile is the count and a link to the Self tab: who is closest lives there (round 3b)", () => {
     withSource(richDir, (src) => {
       const core = (get(src, "/api/overview").json["hero"] as HeroJson).counts.find((c) => c.key === "core")!;
-      const self = get(src, "/api/mind").json["settling"] as { candidates: { days: number; requiredDays: number; eligible: boolean }[] };
-      const first = self.candidates[0]!;
-      expect(core.progress).toEqual({ days: Math.min(first.days, first.requiredDays), of: first.requiredDays });
-      expect(core.note).toBe(first.eligible ? "closest: ready to join" : `closest: ${Math.min(first.days, first.requiredDays)} of ${first.requiredDays} days`);
+      const self = get(src, "/api/mind").json["settling"] as { candidates: unknown[] };
+      expect(self.candidates.length).toBeGreaterThan(0); // there IS a closest one; home does not say it
+      expect(core.value).toBe(String(src.self.enumerate(src.store.livedDay()).identity.length));
+      expect(core.note).toBe("");
+      expect(core.progress).toBeUndefined();
     });
+    const tiles = readFileSync(join(WEB, "pages/home/sections/tiles.js"), "utf8");
+    expect(tiles).not.toContain("ht-pip");
+    expect(tiles).toContain('"core": "self/settling"');
   });
 
   test("replaced counts newer readings only; what was let go is its own small number", () => {
@@ -243,7 +248,9 @@ describe("/api/mechanism — the panel's data", () => {
         expect(c.points.find((p) => p[0] === decay.day)?.[1]).toBe(c.now);
       }
       expect((pic("retrieval")["turns"] as unknown[]).length).toBeGreaterThan(0);
-      expect((pic("consolidation")["climbing"] as unknown[]).length).toBeGreaterThan(0);
+      // Consolidation shows what it did this week, never a list of core candidates (3b).
+      expect(pic("consolidation")["climbing"]).toBeUndefined();
+      expect(Array.isArray(pic("consolidation")["memories"])).toBe(true);
       expect((pic("association")["hubs"] as unknown[]).length).toBeGreaterThan(0);
       const revs = pic("reconsolidation")["revisions"] as { crossed: boolean; pressure: number; bar: number }[];
       expect(revs.length).toBeGreaterThan(0);

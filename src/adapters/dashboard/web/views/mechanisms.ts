@@ -56,6 +56,18 @@ export interface MechanismLight {
   readonly events: readonly number[];
   /** A scheduled mechanism's next run, in lived days (0 = at the next session's end). */
   readonly nextInDays: number | null;
+  /**
+   * The panel's one big number about us (home round 3b, 2026-09-27 — a try):
+   * one part of the evidence line, "16" + "memories a matching mood brought
+   * closer this week". Null for a mechanism that is not built.
+   */
+  readonly lead: Lead | null;
+}
+
+/** One number and a few words. */
+export interface Lead {
+  readonly n: number;
+  readonly words: string;
 }
 
 export interface MechanismsView {
@@ -95,11 +107,76 @@ export function returnWords(r: ReturnsBySource): string[] {
   return out;
 }
 
+/**
+ * WHICH PART OF THE EVIDENCE IS THE BIG NUMBER, per mechanism: the first
+ * candidate whose count is above zero, else the first one at zero. A candidate
+ * sums the named parts. `awake`/`dream` are the returns part said by source
+ * (`returnWords`), `held` is what the mechanism holds; `week` adds "this week"
+ * (the window: the same seven lived days as the headline's "active this week").
+ * Only the words are the dashboard's — the counts are the shared table's.
+ */
+interface LeadCandidate {
+  readonly keys: readonly string[];
+  readonly says: readonly [string, string];
+  readonly week: boolean;
+}
+const lead = (keys: readonly string[], one: string, many: string, week = true): LeadCandidate => ({ keys, says: [one, many], week });
+export const LEADS: Readonly<Record<string, readonly LeadCandidate[]>> = {
+  salience: [lead(["deposit", "chunk"], "memory scored as it was written", "memories scored as they were written")],
+  emotional: [
+    lead(["moodMatched"], "memory a matching mood brought closer", "memories a matching mood brought closer"),
+    lead(["weighted"], "new memory held higher for its feeling", "new memories held higher for their feeling"),
+  ],
+  decay: [
+    lead(["faded"], "memory faded a band", "memories faded a band"),
+    lead(["pruned"], "memory let go at the floor", "memories let go at the floor"),
+    lead(["cards"], "unused card faded", "unused cards faded"),
+  ],
+  retrieval: [
+    lead(["turns"], "turn brought memories to mind", "turns brought memories to mind"),
+    lead(["lookups"], "deliberate look-up", "deliberate look-ups"),
+  ],
+  association: [lead(["links"], "link made", "links made")],
+  prospective: [
+    lead(["plain", "quiet"], "reminder came back", "reminders came back"),
+    lead(["held"], "dated memory held", "dated memories held", false),
+  ],
+  // Returns are counted as returns, not memories: one memory can come back on two days.
+  consolidation: [
+    lead(["awake"], "came back in conversation", "came back in conversation"),
+    lead(["promoted"], "memory became core", "memories became core"),
+    lead(["merged", "dreamMerged"], "memory merged", "memories merged"),
+    lead(["dream"], "replayed in a dream", "replayed in a dream"),
+  ],
+  dreaming: [
+    lead(["changes"], "change a dream made", "changes dreams made"),
+    lead(["dreams"], "dream", "dreams"),
+  ],
+  reconsolidation: [lead(["pressure"], "correction weighed against an old memory", "corrections weighed against old memories")],
+  "episodic-semantic": [lead(["gist"], "pattern dreamed into a memory of its own", "patterns dreamed into memories of their own")],
+};
+
+/** The big number, from a verdict's parts (and the returns split, and what it holds). */
+export function leadOf(v: Verdict, returns?: ReturnsBySource): Lead | null {
+  const candidates = LEADS[v.id];
+  if (v.build === "not" || candidates === undefined || candidates.length === 0) return null;
+  const counts = new Map<string, number>(v.parts.map((p) => [p.key, p.count]));
+  if (returns !== undefined) {
+    counts.set("awake", returns.awake);
+    counts.set("dream", returns.dream);
+  }
+  if (v.held !== null) counts.set("held", v.held);
+  const sum = (c: LeadCandidate): number => c.keys.reduce((t, k) => t + (counts.get(k) ?? 0), 0);
+  const pick = candidates.find((c) => sum(c) > 0) ?? candidates[0]!;
+  const n = sum(pick);
+  return { n, words: (n === 1 ? pick.says[0] : pick.says[1]) + (pick.week ? " this week" : "") };
+}
+
 /** One verdict → one light, in the dashboard's words. With `returns`, a
  *  mechanism's returns part is said by source (`returnWords`). */
 export function lightOf(v: Verdict, returns?: ReturnsBySource): MechanismLight {
   const row = MECHANISM_EVIDENCE.find((m) => m.id === v.id);
-  const base = { id: v.id, family: v.family, build: v.build, nextInDays: v.schedule?.nextInDays ?? null };
+  const base = { id: v.id, family: v.family, build: v.build, nextInDays: v.schedule?.nextInDays ?? null, lead: leadOf(v, returns) };
   if (v.build === "not" || row === undefined) {
     return { ...base, status: "grey", evidence: row?.grey ?? "Not built yet.", events: [] };
   }

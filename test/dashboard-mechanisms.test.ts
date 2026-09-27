@@ -100,6 +100,9 @@ describe("the mapping", () => {
       // One or two plain sentences.
       const sentences = m.explainer.split(/(?<=[.!?])\s+/).filter((s) => s.length > 0);
       expect(`${m.id}: ${sentences.length}`).toMatch(/: [12]$/);
+      // The panel's one short line (home round 3b): a sentence or two, short.
+      const does = (m as unknown as { does?: string }).does ?? "";
+      expect(`${m.id}: ${does.length > 10 && does.length <= 110}`).toBe(`${m.id}: true`);
       // What's built / what's still in development: 2–4 plain bullets in all.
       const bullets = m.built.length + m.inDevelopment.length;
       expect(`${m.id}: ${bullets >= 1 && bullets <= 4}`).toBe(`${m.id}: true`);

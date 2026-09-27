@@ -1,12 +1,10 @@
 /* Forgetting, pictured: the fade curves of a few of this store's own memories,
    from their last use to sixty lived days ahead, as the physics computes them.
    Solid is what has happened; dashed is what will, if nobody uses it. */
-import { esc } from "../../shared/dom.js";
 import { memLink, nothingYet, two } from "../picture.js";
 
 const COLOURS = ["#00e5ff", "#b388ff", "#ffd740", "#00bfa5"];
 
-export const caption = "A few of my own memories, fading on the days we work together. Used again, a curve starts over.";
 
 export function picture(p) {
   if (!p || p.curves.length === 0) return nothingYet("There is nothing here that can fade yet.");
@@ -41,5 +39,5 @@ export function picture(p) {
     '<span class="pic-meta">strength ' + two(c.now) + " now · last used day " + c.lastUsedDay +
     (c.now < p.archiveLine ? " · already below the archive line" : c.archiveDay === null ? "" : " · reaches the archive line around day " + c.archiveDay + " if unused") + "</span></span></li>"
   ).join("");
-  return svg + '<ul class="pic-legend">' + legend + "</ul>" + '<p class="pic-cap">' + esc(caption) + "</p>";
+  return svg + '<ul class="pic-legend">' + legend + "</ul>";
 }

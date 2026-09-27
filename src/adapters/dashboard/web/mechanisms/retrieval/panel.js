@@ -35,16 +35,25 @@ function useLine(u) {
     "</b> got used (said out loud: " + pctWords(u.said) + ", footnotes: " + pctWords(u.footnote) + ") " + q("pic-use", USE_TIP) + "</span></p>";
 }
 
+/** The last few memories brought to mind, newest turn first, each once (round 3b: at most five). */
+export function recent(turns, most = 5) {
+  const seen = new Set();
+  const out = [];
+  for (const t of turns) {
+    for (const m of t.memories) {
+      if (seen.has(m.id)) continue;
+      seen.add(m.id);
+      out.push({ ...m, day: t.day });
+      if (out.length >= most) return out;
+    }
+  }
+  return out;
+}
+
 export function picture(p) {
-  if (!p || p.turns.length === 0) return useLine(p && p.use) + nothingYet("No turn has brought a memory to mind yet.");
-  return useLine(p.use) + '<div class="pic-turns">' + p.turns.map((t) =>
-    '<div class="pic-turn"><div class="pic-head">day ' + t.day + " · turn " + t.turn + "</div><ul>" +
-      t.memories.map((m) =>
-        '<li><span class="pic-tag' + (m.said ? " on" : "") + '">' + (m.said ? "said" : "footnote") + "</span>" +
-        memLink(m, 80) +
-        '<span class="pic-used' + (m.usedSince ? " yes" : "") + '">' + (m.usedSince ? "used since" : "not used since") + "</span></li>"
-      ).join("") +
-    "</ul></div>"
-  ).join("") + "</div>" +
-  '<p class="pic-cap">' + esc("Said out loud means it came into the conversation; a footnote was near enough to mention. Only the ones actually used get stronger.") + "</p>";
+  if (!p || p.turns.length === 0) return nothingYet("No turn has brought a memory to mind yet.") + useLine(p && p.use);
+  return '<ul class="pic-list pic-rows">' + recent(p.turns).map((m) =>
+    "<li>" + memLink(m, 90) + '<span class="pic-meta"><span class="pic-tag' + (m.said ? " on" : "") + '">' + (m.said ? "said" : "footnote") + "</span> " +
+      '<span class="pic-used' + (m.usedSince ? " yes" : "") + '">' + (m.usedSince ? "used since" : "not used since") + "</span> · day " + m.day + "</span></li>"
+  ).join("") + "</ul>" + useLine(p.use);
 }

@@ -8,6 +8,7 @@ export default {
   name: "Prospective memory",
   short: "Prospective",
   tagline: "Remembering to do something later — the memory that fires itself at the right moment.",
+  does: "Brings a dated memory back around its day.",
   explainer: "A memory can carry a date — a day, a month or a range like late October — and it comes back around then. Most come back quietly, as a footnote; one marked plain is said outright on its day.",
   built: [
     "A note or a session's memories can be given a date, and quiet ones come back as footnotes at most twice per date.",

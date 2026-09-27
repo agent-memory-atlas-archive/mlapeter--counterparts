@@ -56,7 +56,7 @@ shared/
   event-modal.js      openEvent (window global)
   state.js            tabs {current, loaded}; live {lastSeq, fingerprint}
   widgets/            card rows table chart tiles bar feed light .css;
-                      feed.js (renderFeed, live-feed registry), chapters.js (chapterRows),
+                      feed.js (renderFeed, live-feed registry),
                       confirm.js + .css (confirmTyped: type a phrase back to confirm),
                       light.js (the status dot: green / waiting ring / amber / grey),
                       tips.js + .css (the `?`: explaining words behind a tap or hover; one
@@ -70,9 +70,11 @@ pages/<tab>/          tabs: home (was overview), memories, self (was mind), flow
   <tab>.css           styles only this page uses (home, memories, self, flow, health)
 mechanisms/
   index.js            MECHANISMS (the site's eleven, in its order) and FAMILIES (its four, with colours)
-  <id>/index.js       default export { id, family, name, short, tagline, inDev, explainer };
-                      the light comes from /api/mechanisms
-  <id>/panel.js       picture(payload): the Explorer panel's picture, where one is drawn
+  <id>/index.js       default export { id, family, name, short, tagline, does, explainer,
+                      built, inDevelopment }; the light (and its big number) come from
+                      /api/mechanisms
+  <id>/panel.js       picture(payload): the Explorer panel's list of our memories (every
+                      built mechanism has one since home round 3b)
   picture.js          the pictures' shared pieces
   regions.js          brain regions → mechanisms, as the site maps them
 ```
@@ -91,9 +93,8 @@ drawn. The home hero's four counts are links of this kind.
 The home page (round 2, 2026-09-26, an experiment) is one short headline
 ("Day 30 · 145 memories · 8 of 11 built · 6 active this week"; the mechanism
 score is behind `SHOW_MECHANISM_SCORE` in `views/overview.ts`, the one place to
-take it out), four small tiles (`sections/tiles.js`: memories, core with the
-closest candidate's days from `views/mind.ts#coreCandidates`, chapters, and
-replaced, with what was let go or removed as its own small number via
+take it out), four small tiles (`sections/tiles.js`: memories, core (the count and a
+link to Self, since round 3b), chapters, and replaced, with what was let go or removed as its own small number via
 `archive-words.ts#archiveGroup`), the brain, the mechanism panel, and a live
 feed of memory events only (`lanes.ts`; the housekeeping stays on the flow
 tab's feed, and the pulse's live rows are filtered by `registerLiveFeed(id,
@@ -128,6 +129,22 @@ checked and found nothing due (`lanes.ts#isSleepCheck`) goes to the flow feed;
 the home feed folds neighbours that read the same (server: `activityView`'s
 `fold`; pulse: `registerLiveFeed(id, accept, { fold: true })`), and a merged
 line prints its span ("days 1–6").
+
+Home round 3b (2026-09-27, a try): less on the page, and what remains is about
+our memories; each thing lives on one page and is linked from the others. The
+pills are one line that scrolls sideways inside itself (`.mechs`), each with its
+stage as a small colour mark instead of a heading. The panel is the same three
+things for every mechanism: one big number (`lead` on each light, picked from
+the evidence parts by `LEADS` in `views/mechanisms.ts`), the memories behind it
+(at most `PICTURE_ROWS` in `views/mechanism-panel.ts`), and the module's one
+`does` line. The rest (the site's line, the explainer, the firing line, built /
+in development, Lately, the Field Guide link) is behind a "how it works" fold,
+closed by default and kept open for the tab's session (sessionStorage). The core
+(who is close), chapters and dreams live on the Self tab: the core tile and
+Tonight give counts that link to `#self/settling` and `#self/dreams`, the
+Consolidation picture shows what came back, merged or was replayed this week,
+and the Dreaming picture links "the dream journal →". The "Latest chapters"
+column and `shared/widgets/chapters.js` are gone.
 
 `pages/memories/` — the memories tab (round 2, 2026-09-26, an experiment:
 brighter = held more firmly, everywhere on the tab). `state.js` holds the
