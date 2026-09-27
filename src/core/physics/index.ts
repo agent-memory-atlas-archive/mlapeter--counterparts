@@ -829,7 +829,8 @@ export type ReturnReason =
   | "birth-day"
   /** An awake credit below full weight (surfaced, not used): not a return. */
   | "not-referenced"
-  /** A return (either kind) already counted this lived day, or later. */
+  /** An awake return already counted this lived day (or later); for a dream
+   *  replay, a return of either kind. */
   | "already-returned-today"
   | "ignorable-tier";
 
@@ -902,7 +903,14 @@ export function creditReturn(
   if (opts.source === "awake" && tier < TUNABLES.W_REFERENCED) return refuse("not-referenced");
   if (d <= m.birthDay) return refuse("birth-day");
   if (opts.source === "awake" && opts.onDisplay === true) return refuse("on-display");
-  if (gap <= 0) return refuse("already-returned-today");
+  // "Already today" is asked of the SAME kind of return for an awake one: a
+  // dream that replayed the memory earlier this lived day (the ask comes
+  // mid-session, and the day goes on) takes the spacing — the awake return
+  // adds nothing to `returns` — but it must not take the lane day an organic
+  // return earns. A dream is refused against either kind, as before.
+  // (Adversarial review of #251, 2026-09-26.)
+  const sameKindGap = opts.source === "awake" ? d - Math.max(m.birthDay, m.lastReturnDay ?? -Infinity) : gap;
+  if (sameKindGap <= 0) return refuse("already-returned-today");
   const weight = (opts.source === "dream" ? tier : 1) * spacingWeight(gap);
   const next = { ...unchanged, returns: unchanged.returns + weight };
   if (opts.source === "dream") {

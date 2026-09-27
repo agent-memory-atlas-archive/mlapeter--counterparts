@@ -2132,9 +2132,13 @@ export class Store {
    * confidentiality) to what comes back.
    */
   newMemoryIds(filter: { sinceAt: number | null; sinceDay: number; limit: number }): string[] {
+    // Nor a dream's own MERGES (origin `dream:<id>`): a merged memory is a
+    // rewording of what a dream already saw, and counting it as new would let
+    // one dream's output raise the next day's ask by itself (review of #251).
     const base = `SELECT id FROM memories
                    WHERE type = 'memory' AND archived = 0 AND superseded_by IS NULL AND protected = 0
-                     AND (source IS NULL OR source != 'dreamed')`;
+                     AND (source IS NULL OR source != 'dreamed')
+                     AND (origin_ref IS NULL OR origin_ref NOT LIKE 'dream:%')`;
     const order = "ORDER BY COALESCE(created_at, 0) DESC, birth_day DESC, id LIMIT ?";
     const rows =
       filter.sinceAt === null

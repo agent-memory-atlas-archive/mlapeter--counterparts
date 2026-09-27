@@ -411,7 +411,9 @@ R(m)            = 1 + RETURN_GAIN × ln(1 + returns(m))              RETURN_GAIN
   been prompted by the display — the rich-get-richer loop (#238) — so it is not a return.
   `self/` ranks that lane on ORGANIC strength and habituation for the same reason.
 - **Awake returns feed the core lanes** (`returnDays`, `first/lastReturnDay`); a dream's
-  do not.
+  do not — and a dream's replay earlier the same lived day does not take the lane day of
+  an organic return: the awake return still counts, at the weight its (zero) gap from the
+  replay gives it (review of #251).
 - **The legacy path.** `consolidated` / `+CONS_BONUS` stays exactly as it was for rows
   born before schema v8 and is closed to every row made since. At zero returns, R = 1:
   the upgrade changes no memory's arithmetic.

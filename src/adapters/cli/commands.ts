@@ -2026,6 +2026,11 @@ function dreamCommand(dir: string, io: Io, parsed: Parsed, observer: boolean, na
           : `Undid dream ${undoId}: ${String(out.reversed)} ${out.reversed === 1 ? "change" : "changes"} reversed.`,
       );
       io.out("  Merged memories are back as they were, its links and gists are gone, and its replays and nominations were taken back.");
+      if (out.kept > 0) {
+        io.out(
+          `  ${String(out.kept)} ${out.kept === 1 ? "merge was" : "merges were"} left as ${out.kept === 1 ? "it is" : "they are"}: the merged memory has changed since (revised, merged again, or removed), and bringing its originals back would duplicate it.`,
+        );
+      }
       io.out("  Its journal is kept, marked undone: counterparts dream --show " + undoId);
       return EXIT.ok;
     } finally {

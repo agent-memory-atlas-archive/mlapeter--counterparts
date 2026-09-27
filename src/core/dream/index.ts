@@ -388,6 +388,13 @@ export class Dreams {
         if (rs.some((r) => r.promoted_identity === 1)) return { action, ok: false, reason: "core-is-not-merged" };
         if (rs.some((r) => r.source === "dreamed")) return { action, ok: false, reason: "dreamed-rises-only-awake" };
         if (new Set(rs.map((r) => r.kind)).size !== 1) return { action, ok: false, reason: "kinds-differ" };
+        // A DATED memory is a reminder that fires on its date (`prospective/`);
+        // the merged memory would carry no date, and the reminder would go
+        // quiet. Left alone. (Adversarial review of #251.)
+        if (rs.some((r) => r.event_date !== null)) return { action, ok: false, reason: "dated-is-not-merged" };
+        // The owner sent it back out of the core: a merged successor is a new
+        // id the demotion does not name, and the lanes could promote it again.
+        if (rs.some((r) => this.store.coreDemoted(r.id))) return { action, ok: false, reason: "demoted-is-not-merged" };
         const words = this.words(change.text, dream);
         if (!words.ok) return { action, ok: false, reason: words.reason };
         // The merged memory stands where the STRONGEST original stood — its
@@ -413,7 +420,10 @@ export class Dreams {
             consolidated: best.p.legacy === true && best.p.consolidated,
           },
           ...(best.r.source !== null ? { source: best.r.source as never } : {}),
-          meta: { dream: dream.id, mergedFrom: ids },
+          // CONFIDENTIALITY TRAVELS with the words: the column is recomputed
+          // from `meta` at `put`, so a merge that dropped the marker would
+          // hand a confidential memory's words to every session.
+          meta: { dream: dream.id, mergedFrom: ids, ...confidentialityOf(rs) },
           origin: { ...(dream.session === null ? {} : { session: dream.session }), ...(dream.scope === null ? {} : { scope: dream.scope }), ref: `dream:${dream.id}` },
           ...(dream.model === null ? {} : { model: dream.model }),
         });
@@ -479,7 +489,8 @@ export class Dreams {
       case "gist": {
         const sources = [...new Set(change.sources ?? [])];
         if (sources.length === 0) return { action, ok: false, reason: "gist-needs-sources" };
-        if (sources.map(live).some((r) => r === null)) return { action, ok: false, reason: "not-shown-or-gone" };
+        const sourceRows = sources.map(live);
+        if (sourceRows.some((r) => r === null)) return { action, ok: false, reason: "not-shown-or-gone" };
         const words = this.words(change.text, dream);
         if (!words.ok) return { action, ok: false, reason: words.reason };
         const kind: Kind = (KINDS as readonly string[]).includes(String(change.kind)) ? (change.kind as Kind) : "fact";
@@ -499,7 +510,8 @@ export class Dreams {
           },
           physics: { birthDay: day, lastUsedDay: day },
           source: "dreamed",
-          meta: { dream: dream.id, dreamed: true, sources },
+          // A pattern drawn from a confidential memory is as confidential as it.
+          meta: { dream: dream.id, dreamed: true, sources, ...confidentialityOf(sourceRows as MemoryRow[]) },
           origin: { ...(dream.session === null ? {} : { session: dream.session }), ...(dream.scope === null ? {} : { scope: dream.scope }), ref: `dream:${dream.id}` },
           ...(dream.model === null ? {} : { model: dream.model }),
         });
@@ -620,17 +632,28 @@ export class Dreams {
    * raised. The journal stays, marked undone. Idempotent: a change already
    * undone is skipped.
    */
-  undo(id: string): { ok: boolean; reason: string; reversed: number } {
-    if (this.ctx.observer) return { ok: false, reason: "observer", reversed: 0 };
+  undo(id: string): { ok: boolean; reason: string; reversed: number; kept: number } {
+    if (this.ctx.observer) return { ok: false, reason: "observer", reversed: 0, kept: 0 };
     const dream = this.store.dream(id);
-    if (dream === undefined) return { ok: false, reason: "unknown-dream", reversed: 0 };
+    if (dream === undefined) return { ok: false, reason: "unknown-dream", reversed: 0, kept: 0 };
     let reversed = 0;
+    let kept = 0;
     for (const c of [...this.store.dreamChanges(id)].reverse()) {
       if (c.undone === 1) continue;
       const detail = parseDetail(c.detail);
       switch (c.action) {
         case "merge": {
           const from = Array.isArray(detail["from"]) ? (detail["from"] as string[]) : [];
+          // SAFE AFTER LATER EDITS: when the merged memory has moved on since —
+          // revised into a successor, merged again by a later dream, archived
+          // or removed — bringing the originals back would stand them beside
+          // its live successor as duplicates. That merge is left as it is and
+          // counted; the rest of the dream is still reversed.
+          const merged = c.ref === null ? undefined : this.store.row(c.ref);
+          if (merged === undefined || merged.archived === 1 || merged.superseded_by !== null) {
+            kept += 1;
+            continue;
+          }
           for (const orig of from) {
             try {
               this.store.restoreSuperseded(orig, DREAM_MERGE_REASON);
@@ -674,8 +697,8 @@ export class Dreams {
     this.store.retractDreamReturns(id);
     this.store.retractDreamNominations(id);
     this.store.updateDream(id, { state: "undone" });
-    this.record(DREAM_UNDONE_EVENT, id, { reversed });
-    return { ok: true, reason: "undone", reversed };
+    this.record(DREAM_UNDONE_EVENT, id, { reversed, kept });
+    return { ok: true, reason: kept > 0 ? "undone-except-moved-on" : "undone", reversed, kept };
   }
 
   /**
@@ -900,6 +923,11 @@ export class Dreams {
     if (dream === undefined) return { ok: false, reason: "unknown-dream" };
     if (session !== undefined && dream.session !== null && dream.session !== session) return { ok: false, reason: "not-this-session" };
     if (dream.state !== "begun") return { ok: false, reason: "dream-closed" };
+    // A dream left open (never journaled) is closed by the next one that
+    // begins: otherwise an old id would stay writable for ever, with limits
+    // and a shown set of its own. (Adversarial review of #251.)
+    const newest = this.lastDream();
+    if (newest !== null && newest.id !== dream.id) return { ok: false, reason: "dream-closed" };
     return { ok: true, dream };
   }
 
@@ -979,6 +1007,28 @@ function edgePrior(v: unknown): { weight: number; day: number } | null {
   if (v === null || typeof v !== "object") return null;
   const r = v as Record<string, unknown>;
   return typeof r["weight"] === "number" && typeof r["day"] === "number" ? { weight: r["weight"], day: r["day"] } : null;
+}
+
+/**
+ * The confidentiality marker a dream's new memory must carry when any memory
+ * it was made from is confidential: `confidential: true`, plus the first
+ * named class (`confidentiality`) found. Empty when none is.
+ */
+function confidentialityOf(rows: readonly MemoryRow[]): Record<string, unknown> {
+  let out: Record<string, unknown> = {};
+  for (const r of rows) {
+    if (r.confidential !== 1) continue;
+    let klass: unknown;
+    try {
+      const meta = JSON.parse(r.meta) as Record<string, unknown>;
+      klass = meta["confidentiality"];
+    } catch {
+      klass = undefined;
+    }
+    if (out["confidential"] === undefined) out = { confidential: true };
+    if (typeof klass === "string" && klass.length > 0 && out["confidentiality"] === undefined) out["confidentiality"] = klass;
+  }
+  return out;
 }
 
 function cut(text: string | null, max: number): string | null {

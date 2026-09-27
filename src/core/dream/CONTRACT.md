@@ -114,7 +114,14 @@ dreamer is the model (a background agent the session launches), outside this pro
    reader tags such a block `dream`. Tested end to end: seed, dream, sweep, zero rows.
 4. **[M]** Undo reverses the whole batch and is idempotent: originals restored (their
    versions kept), the merged memory and gists archived `dream-undone`, links back to
-   their prior weights, the dream's feelings, replays and nominations removed.
+   their prior weights, the dream's feelings, replays and nominations removed. A merge
+   whose merged memory has moved on since (revised into a successor, merged again,
+   archived or removed) is left as it is and counted (`kept`), so an undo never stands
+   originals beside a live successor (review of #251).
+7. **[M]** What a dream makes keeps the rules of what it was made from: a merge or gist drawn
+   from a confidential memory is confidential; a dated reminder and a memory the owner
+   demoted from the core are not merged; a dream's merges are not "new" for the next
+   ask; a dream left open is closed to changes once a newer one begins (review of #251).
 5. **[M]** Under observer stance nothing is written and every phase says so.
 6. **[M]** The journal lives in the `dreams` table: no decay, dedup, prune or recall
    touches it.

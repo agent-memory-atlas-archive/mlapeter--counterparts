@@ -1763,7 +1763,12 @@ export class McpServer {
               phase,
               session,
               prompt: dreams.launchPrompt({ session }),
-              how: "Hand `prompt` to a background agent (the Agent tool), unchanged, and carry on. When it finishes, tell the owner in a line or two what the dream did.",
+              // The relay is the hand-back line AS IT IS: it carries the dream's
+              // mark, which keeps the dream out of what the sweep reads. A
+              // retelling in the session's own words would carry none, and the
+              // dream's title and changes would read as something that
+              // happened (adversarial review of #251).
+              how: "Hand `prompt` to a background agent (the Agent tool), unchanged, and carry on. When it finishes, show the owner its hand-back line exactly as it came back (it carries the dream's mark, which keeps the dream out of lived memory) — do not retell the dream in your own words.",
             },
             false,
           );
