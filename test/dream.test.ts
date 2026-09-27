@@ -231,6 +231,44 @@ describe("propose: what a dream may change", () => {
     expect(r[6]?.reason).toBe("not-about-me");
   });
 
+  test("a dream cannot strengthen what a dream wrote: its gist rises only awake", () => {
+    const c = brain();
+    const m = lived(c);
+    const { id } = begin(c);
+    const out = c.dreams.propose({
+      dream: id,
+      session: SESSION,
+      changes: [{ action: "gist", text: "Boot order again.", sources: [m.a] }],
+    });
+    if (!out.ok) throw new Error("refused");
+    const gist = out.results[0]?.id as string;
+    const again = c.dreams.propose({
+      dream: id,
+      session: SESSION,
+      changes: [
+        { action: "replayed", id: gist },
+        { action: "merge", ids: [gist, m.b], text: "Merged with a dream." },
+      ],
+    });
+    if (!again.ok) throw new Error("refused");
+    expect(again.results.map((r) => r.reason)).toEqual(["dreamed-rises-only-awake", "dreamed-rises-only-awake"]);
+    expect(c.store.physicsOf(gist).returns).toBe(0);
+  });
+
+  test("an undone dream does not count: the ask and begin agree", () => {
+    const c = brain();
+    lived(c);
+    const { id } = begin(c);
+    const shown = JSON.parse(c.store.dream(id)?.shown ?? "[]") as string[];
+    c.dreams.propose({ dream: id, session: SESSION, changes: [{ action: "link", a: shown[0] as string, b: shown[1] as string }] });
+    c.dreams.journal({ dream: id, session: SESSION, text: "A dream." });
+    expect(c.dreams.status("2026-09-26").reason).toBe("dreamed-today");
+    c.dreams.undo(id);
+    expect(c.dreams.lastDream()).toBeNull();
+    expect(c.dreams.status("2026-09-27").reason).toBe("due");
+    expect(c.dreams.begin({ session: SESSION }).ok).toBe(true);
+  });
+
   test("a dream touches only what it was shown, never core, never past its limits", () => {
     const c = brain();
     const m = lived(c);

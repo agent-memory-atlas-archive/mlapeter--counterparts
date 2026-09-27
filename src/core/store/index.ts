@@ -2122,6 +2122,32 @@ export class Store {
     return wrote;
   }
 
+  /**
+   * Live memories made since a dream — one bounded read, for the ask (which
+   * runs on every prompt) and a dream's bundle. Since a MOMENT when there was a
+   * dream (`created_at`; a pre-v7 row with no moment falls back to its lived
+   * birth day), else since a lived day. Newest first. Only the columns decide:
+   * `type` memory, not archived, not superseded, not protected, not a dream's
+   * own words. The caller applies the rest of recall's gates (the deny-list,
+   * confidentiality) to what comes back.
+   */
+  newMemoryIds(filter: { sinceAt: number | null; sinceDay: number; limit: number }): string[] {
+    const base = `SELECT id FROM memories
+                   WHERE type = 'memory' AND archived = 0 AND superseded_by IS NULL AND protected = 0
+                     AND (source IS NULL OR source != 'dreamed')`;
+    const order = "ORDER BY COALESCE(created_at, 0) DESC, birth_day DESC, id LIMIT ?";
+    const rows =
+      filter.sinceAt === null
+        ? this.ops.all<{ id: string }>(`${base} AND birth_day >= ? ${order}`, filter.sinceDay, filter.limit)
+        : this.ops.all<{ id: string }>(
+            `${base} AND (created_at > ? OR (created_at IS NULL AND birth_day > ?)) ${order}`,
+            filter.sinceAt,
+            filter.sinceDay,
+            filter.limit,
+          );
+    return rows.map((r) => r.id);
+  }
+
   /** One dream's row. */
   dream(id: string): DreamRow | undefined {
     return this.ops.get<DreamRow>("SELECT * FROM dreams WHERE id = ?", id);

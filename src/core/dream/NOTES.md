@@ -50,6 +50,18 @@ What the build learned, and every choice the brief left open (2026-09-26).
 10. **Contradictions are raised once each**, by a meta latch (`dream.raised.<dream>.<seq>`),
     at most two a session, and only when both memories are showable in that session.
 
+11. **The ask is cheap, because it runs on every prompt.** `status` answers observer,
+    first day, dreamed today and the day's ask row before it counts anything, and "new
+    since" is one bounded read (`store.newMemoryIds`, the column gates in SQL) with the
+    deny-list and confidentiality applied to what comes back. The first version walked
+    every memory row per prompt (~17k queries on the owner's store) on every quiet day.
+12. **One anchor for "the last dream"**: the newest dream not undone. The ask, "new
+    since" and `begin` all read it, so after an undo they agree.
+13. **A dream cannot strengthen what a dream wrote**: `replayed` and `merge` refuse a
+    `dreamed` row (`dreamed-rises-only-awake`). A gist rises only by proving true awake.
+14. **A dream can refer to what it made** in an earlier `propose` call of the same dream
+    (a merge's memory, a gist): those ids join what it was shown.
+
 ## What it cost to find out
 
 - The dashboard's import-scan reads `from"` as a module path, so reading a merge's

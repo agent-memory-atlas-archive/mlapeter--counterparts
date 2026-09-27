@@ -182,37 +182,43 @@ export class Dreams {
 
   // ── when ──────────────────────────────────────────────────────────────────
 
-  /** The last dream, or null when this store has never dreamed. */
+  /**
+   * THE LAST DREAM THAT COUNTS — the newest one not undone, or null when this
+   * store has never dreamed (or undid every dream). The ONE anchor: "last
+   * dreamed", "new since", "dreamed today" and `begin` all read it.
+   */
   lastDream(): DreamRow | null {
-    return this.store.dreams({ limit: 1 })[0] ?? null;
+    return this.store.dreams({ limit: 20 }).find((d) => d.state !== "undone") ?? null;
   }
 
   /**
    * Is a dream due? No dream yet this lived day, the day's ask not yet raised
    * or declined, and enough new — and SHOWABLE — memory since the last dream.
-   * A read.
+   * A read, and a CHEAP one: it runs on every prompt, so the questions that
+   * need no scan are asked first, and "new since" is one bounded read
+   * (`store.newMemoryIds`), counted only when everything else says yes.
    */
   status(at: string = this.ctx.today()): DreamStatus {
     const last = this.lastDream();
     const day = this.store.livedDay();
-    const dreamedToday = last !== null && last.day >= day && last.state !== "undone";
-    const newSince = this.freshIds(last).length;
-    const ask = this.store.dreamAsk(at);
+    const dreamedToday = last !== null && last.day >= day;
     // A store on its first lived day has no night behind it yet: "I haven't
     // dreamed since …" needs a since.
-    const reason: DreamStatus["reason"] = this.ctx.observer
+    const early: DreamStatus["reason"] | null = this.ctx.observer
       ? "observer"
       : day < 1
         ? "first-day"
         : dreamedToday
-        ? "dreamed-today"
-        : ask?.state === "declined"
-          ? "declined-today"
-          : ask !== undefined
-            ? "asked-today"
-            : newSince < DREAM_TUNABLES.MIN_NEW
-              ? "too-little-new"
-              : "due";
+          ? "dreamed-today"
+          : null;
+    if (early !== null) return { last, dreamedToday, newSince: 0, due: false, reason: early };
+    const ask = this.store.dreamAsk(at);
+    if (ask !== undefined) {
+      const reason = ask.state === "declined" ? "declined-today" : "asked-today";
+      return { last, dreamedToday, newSince: 0, due: false, reason };
+    }
+    const newSince = this.freshIds(last).length;
+    const reason = newSince < DREAM_TUNABLES.MIN_NEW ? "too-little-new" : "due";
     return { last, dreamedToday, newSince, due: reason === "due", reason };
   }
 
@@ -292,7 +298,7 @@ export class Dreams {
     if (this.ctx.observer) return { ok: false, reason: "observer" };
     const day = this.store.livedDay();
     const last = this.lastDream();
-    if (last !== null && last.day >= day && last.state !== "undone") {
+    if (last !== null && last.day >= day) {
       if (last.state === "journaled" || this.store.dreamChanges(last.id).length > 0) {
         return { ok: false, reason: "dreamed-today" };
       }
@@ -300,7 +306,8 @@ export class Dreams {
       // gave up) does not use up the day: it is closed and a fresh one opens.
       this.store.updateDream(last.id, { state: "undone" });
     }
-    const prior = this.store.dreams({ limit: 5 }).find((d) => d.state !== "undone" && d.day < day) ?? null;
+    // The same anchor `status` reads (an undone dream does not count).
+    const prior = this.lastDream();
     const fresh = this.freshIds(prior);
     if (fresh.length === 0) return { ok: false, reason: "nothing-new" };
     const at = input.at ?? this.ctx.today();
@@ -333,7 +340,12 @@ export class Dreams {
     const open = this.openFor(input.dream, input.session);
     if (!open.ok) return open;
     const dream = open.dream;
+    // What it was shown, and what it has itself made so far (a merge's memory,
+    // a gist) — a dream may link or flag what it wrote a call ago.
     const shown = new Set<string>(parseIds(dream.shown));
+    for (const c of this.store.dreamChanges(dream.id)) {
+      if ((c.action === "merge" || c.action === "gist") && c.undone === 0 && c.ref !== null) shown.add(c.ref);
+    }
     const results: ChangeResult[] = [];
     input.changes.forEach((change, index) => {
       let r: Omit<ChangeResult, "index">;
@@ -374,6 +386,7 @@ export class Dreams {
         if (rows.some((r) => r === null)) return { action, ok: false, reason: "not-shown-or-gone" };
         const rs = rows as MemoryRow[];
         if (rs.some((r) => r.promoted_identity === 1)) return { action, ok: false, reason: "core-is-not-merged" };
+        if (rs.some((r) => r.source === "dreamed")) return { action, ok: false, reason: "dreamed-rises-only-awake" };
         if (new Set(rs.map((r) => r.kind)).size !== 1) return { action, ok: false, reason: "kinds-differ" };
         const words = this.words(change.text, dream);
         if (!words.ok) return { action, ok: false, reason: words.reason };
@@ -456,6 +469,9 @@ export class Dreams {
       case "replayed": {
         const row = live(change.id);
         if (row === null) return { action, ok: false, reason: "not-shown-or-gone" };
+        // A dream's own gist rises only by proving true AWAKE: a dream cannot
+        // strengthen what a dream wrote.
+        if (row.source === "dreamed") return { action, ok: false, reason: "dreamed-rises-only-awake" };
         const r = this.store.replayReturn(row.id, day, dream.id);
         this.store.recordDreamChange(dream.id, { action, ref: row.id, detail: { counted: r.counted, weight: r.weight } });
         return { action, ok: true, reason: r.counted ? "replayed" : `replayed-not-counted:${r.reason}`, id: row.id };
@@ -710,26 +726,29 @@ export class Dreams {
     return true;
   }
 
-  /** Memories made since `last` (or in the last few lived days), showable, newest first. */
+  /**
+   * Memories made since `last` (or in the last few lived days), showable,
+   * newest first, at most `MAX_NEW`. One bounded read (`store.newMemoryIds`,
+   * which applies the column gates), then the deny-list and confidentiality.
+   */
   private freshIds(last: DreamRow | null): string[] {
-    const denied = new Set(this.store.deniedIds());
     const day = this.store.livedDay();
-    const out: { id: string; at: number; day: number }[] = [];
-    for (const id of this.store.list({ type: "memory", archived: false })) {
+    const ids = this.store.newMemoryIds(
+      last === null
+        ? { sinceAt: null, sinceDay: day - DREAM_TUNABLES.FIRST_DREAM_DAYS, limit: DREAM_TUNABLES.MAX_NEW * 3 }
+        : { sinceAt: last.started_at, sinceDay: last.day, limit: DREAM_TUNABLES.MAX_NEW * 3 },
+    );
+    if (ids.length === 0) return [];
+    const denied = new Set(this.store.deniedIds());
+    const out: string[] = [];
+    for (const id of ids) {
       if (denied.has(id)) continue;
       const row = this.store.row(id);
-      if (row === undefined || !this.showable(row) || row.source === "dreamed") continue;
-      const isNew =
-        last === null
-          ? row.birth_day >= day - DREAM_TUNABLES.FIRST_DREAM_DAYS
-          : row.created_at !== null
-            ? row.created_at > last.started_at
-            : row.birth_day > last.day;
-      if (!isNew) continue;
-      out.push({ id, at: row.created_at ?? 0, day: row.birth_day });
+      if (row === undefined || !this.showable(row)) continue;
+      out.push(id);
+      if (out.length >= DREAM_TUNABLES.MAX_NEW) break;
     }
-    out.sort((a, b) => b.at - a.at || b.day - a.day || (a.id < b.id ? -1 : 1));
-    return out.slice(0, DREAM_TUNABLES.MAX_NEW).map((o) => o.id);
+    return out;
   }
 
   private compose(id: string, fresh: readonly string[], last: DreamRow | null, day: number, at: string): DreamBundle {
