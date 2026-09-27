@@ -6,6 +6,8 @@
  */
 import { symmetryCheck } from "../../../../core/physics/index.js";
 import { MARKER_UNSET, MERGE_ARCHIVE_REASON, PRUNE_ARCHIVE_REASON, readMarker } from "../../../../core/sleep/index.js";
+import { cadenceFor, markerDue } from "../../../../core/sleep/markers.js";
+import type { Phase } from "../../../../core/sleep/types.js";
 import type { Kind } from "../../../../core/types.js";
 import { NEVER, NONE } from "../../layout.js";
 import { CYCLE_PHASES, DURABLE_EVENTS, DURABLE_EVENT_NAMES, KINDS } from "../../registries.js";
@@ -60,8 +62,10 @@ export interface HealthView {
     readonly day: number | null;
     readonly at: number | null;
     readonly ran: number;
+    /** Phases that did not run because their cadence had not come round: not a problem. */
+    readonly waiting: number;
     readonly total: number;
-    readonly phases: { phase: string; gloss: string; state: "ran" | "behind" | "never" | "torn"; day: number | null }[];
+    readonly phases: { phase: string; gloss: string; state: "ran" | "waiting" | "behind" | "never" | "torn"; day: number | null; nextInDays: number | null }[];
   };
   /**
    * WHERE ARCHIVED MEMORIES WENT — every archived row counted by its
@@ -232,20 +236,31 @@ export function healthView(src: DashboardSource): HealthView {
     at: x.at,
   }));
 
-  // The last cycle: the newest day any phase finished on is "the last cycle";
-  // a phase whose marker is older than that is behind.
+  // The last cycle: the newest day any phase finished on is "the last cycle".
+  // A phase whose marker is older than that is behind ONLY if it was due that
+  // day by its own cadence (consolidate runs every few lived days, not
+  // nightly); one that simply wasn't due yet is waiting, with its next run.
   const newest = phases.reduce<number | null>((m, p) => (p.day === null ? m : m === null ? p.day : Math.max(m, p.day)), null);
   const lastCycleRow = store.eventLog({ name: "sleep.cycle", order: "desc", limit: 1 })[0];
-  const cyclePhases = phases.map((p) => ({
-    phase: p.phase,
-    gloss: PHASE_GLOSS[p.phase] ?? p.phase,
-    state: p.torn ? ("torn" as const) : p.day === null ? ("never" as const) : p.day === newest ? ("ran" as const) : ("behind" as const),
-    day: p.day,
-  }));
+  const cyclePhases = phases.map((p) => {
+    const cadence = cadenceFor(p.phase as Phase);
+    const state = p.torn
+      ? ("torn" as const)
+      : p.day === null
+        ? ("never" as const)
+        : p.day === newest
+          ? ("ran" as const)
+          : newest !== null && markerDue(p.day, newest, cadence) === "due"
+            ? ("behind" as const)
+            : ("waiting" as const);
+    const nextInDays = state === "waiting" && p.day !== null ? Math.max(0, p.day + cadence - day) : null;
+    return { phase: p.phase, gloss: PHASE_GLOSS[p.phase] ?? p.phase, state, day: p.day, nextInDays };
+  });
   const cycle = {
     day: newest,
     at: lastCycleRow === undefined ? null : lastCycleRow.at,
     ran: cyclePhases.filter((p) => p.state === "ran").length,
+    waiting: cyclePhases.filter((p) => p.state === "waiting").length,
     total: cyclePhases.length,
     phases: cyclePhases,
   };

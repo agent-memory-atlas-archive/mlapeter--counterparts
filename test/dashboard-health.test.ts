@@ -31,7 +31,8 @@ import { NO_CONFIG_HOME, buildArgv, runAction } from "../src/adapters/dashboard/
 import { ARCHIVE_PHRASES } from "../src/adapters/dashboard/web/views/archive-words.js";
 import { healthView } from "../src/adapters/dashboard/web/views/health.js";
 import { TUNABLES as SCHEMA_TUNABLES } from "../src/core/schemas/index.js";
-import { MERGE_ARCHIVE_REASON, PRUNE_ARCHIVE_REASON } from "../src/core/sleep/index.js";
+import { MERGE_ARCHIVE_REASON, PRUNE_ARCHIVE_REASON, markerKey } from "../src/core/sleep/index.js";
+import { PHASES } from "../src/core/sleep/types.js";
 import { Store } from "../src/core/store/index.js";
 import { REMOVED_REASON } from "../src/core/store/owner-op-seam.js";
 import { seedDemo, seedEmpty } from "../tools/demo/seed.js";
@@ -255,6 +256,34 @@ describe("where archived memories went", () => {
       dash.close();
     }
   }, 60_000);
+
+  test("a phase that simply was not due by its cadence is waiting, not behind (2026-09-27)", () => {
+    const dir = join(tempDir("counterparts-health-cadence-"), "store");
+    seedEmpty({ dir });
+    const w = Store.open({ dir });
+    try {
+      for (const date of ["2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04", "2026-09-05", "2026-09-06"]) w.advanceClock(date);
+      const today = w.livedDay();
+      for (const phase of PHASES) w.setMeta(markerKey(phase), String(today));
+      w.setMeta(markerKey("consolidate"), String(today - 1)); // every 3 lived days: not due at the last cycle
+      w.setMeta(markerKey("prune"), String(today - 2)); // every lived day: it was due and did not run
+    } finally {
+      w.close();
+    }
+    const dash = Dashboard.open({ dir });
+    try {
+      const h = healthView(dash.source);
+      const by = new Map(h.cycle.phases.map((p) => [p.phase, p]));
+      expect(by.get("consolidate")?.state).toBe("waiting");
+      expect(by.get("consolidate")?.nextInDays).toBe(2);
+      expect(by.get("prune")?.state).toBe("behind");
+      expect(by.get("decay")?.state).toBe("ran");
+      expect(h.cycle.waiting).toBe(1);
+      expect(h.cycle.ran).toBe(PHASES.length - 2);
+    } finally {
+      dash.close();
+    }
+  });
 
   test("a sparse store reads calmly: nothing archived, sleep has not run", () => {
     const seeded = seedEmpty({ dir: join(tempDir("counterparts-health-sparse-"), "store") });
