@@ -195,6 +195,12 @@ export function chaseRemoved(store: Store, id: string): ChaseReport {
     // with the memory. One statement, so a `beneath_id` between two of them is
     // never left dangling mid-delete.
     db.run("DELETE FROM feelings WHERE memory_id = ?", id);
+    // v9: its trait nudges go the same way — `carried_by` is words about the
+    // moment. A development store that has not yet gained the table (a writer
+    // open adds it) has nothing to delete.
+    if (db.get<{ n: number }>("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = 'traits'")?.n) {
+      db.run("DELETE FROM traits WHERE memory_id = ?", id);
+    }
     db.run("DELETE FROM gate_session WHERE ref = ?", id);
     // v8: its return history, what the wake showed of it, and its core history
     // (a demotion's or a nomination's reason is words about it) go too. A

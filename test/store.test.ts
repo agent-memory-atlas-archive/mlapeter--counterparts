@@ -1796,6 +1796,7 @@ describe("observer mode is enforced at the store seam", () => {
       },
     ],
     addFeelings: ["mem_000000000000", [{ whose: "owner", core: "happy", emotion: "hopeful", strength: 0.5 }]],
+    addTraits: ["mem_000000000000", [{ axis: "agreeable-candid", toward: "candid", strength: 0.5 }]],
     advanceClock: ["2026-08-26"],
     setMeta: ["k", "v"],
     setMetaMany: [[["k", "v"]]],

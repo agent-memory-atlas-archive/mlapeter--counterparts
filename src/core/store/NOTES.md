@@ -1704,3 +1704,32 @@ Working defaults from the owner's conversation of 2026-09-27 and its design revi
   of that entry (a successor) is not followed.
 - **`updateReflection({ ifShareState })`** (review S5) is a claim: it lands only if the
   share is still in that state, and says whether it did.
+
+## 2026-09-27 — trait nudges, folded into v9 (working defaults, held lightly)
+
+- **Folded into v9, not a v10.** No published build has v9, so the `traits` table joins
+  it. A fresh store and a v8 upgrade both get it from `DDL` (`CREATE TABLE IF NOT
+  EXISTS`); existing memories start untagged, and the v9 upgrade record is unchanged.
+- **The unreleased-version exception to "write nothing when current".** The brief
+  assumed a dev store already stamped v9 would gain the table on open because the table
+  is `IF NOT EXISTS` — it would not: `openOperational` returns before any DDL when the
+  version is current. So a WRITER open at the current version now asks `sqlite_master`
+  which of the tables `DDL` creates are missing (one read; the common case ends there)
+  and, when any is, runs `DDL` in one transaction, with no copy taken (nothing that
+  exists changes shape). An observer open still writes nothing; the trait readers ask
+  `hasTable('traits')` and answer empty until a writer has opened (a positive answer is
+  kept per handle, a negative one asked again). Verified by hand as well as in
+  `test/traits.test.ts`: a demo store seeded by `dcac1c9` (v8) upgraded to v9 with the
+  table and a pre-migration copy; one seeded by `f19c5f2` (v9, no table) gained it on
+  its first writer open, no copy.
+- **Confidentiality in the reads, one rule:** numbers stay (axis, pole, strength — the
+  way the dashboard shows a confidential memory's physics), words go (`carried_by` empty,
+  `withheld: true`) unless `includeConfidential`. It reads the memory's column as it
+  stands, so a merge that inherits the marker withholds the nudges it carried.
+- **A merge carries each nudge's source, model and moment** (`addTraits`'s per-input
+  `provenance`): a nudge is a moment's, recorded once, so a merge does not make it new.
+  Feelings restamp `created_at` on a merge; traits do not, so "recorded this week" stays
+  true. `traitsAll()` reads live memories only by default, so the superseded originals'
+  copies do not count the moment twice.
+- **No profile here.** `traitCensus` is counts only (the fired row); the balance per axis
+  is the dashboard's arithmetic, weighted by firmness there.

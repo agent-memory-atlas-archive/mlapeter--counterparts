@@ -172,3 +172,19 @@ The dashboard's Tonight box asked `status`, got "observer", and fell back to cou
    `owner: true`. A live session previews its own and ignores the option — a guest
    session cannot count the owner's confidential memories by asking. Only a count comes
    back, never an id or a word.
+
+## 2026-09-27 — trait nudges (working defaults, held lightly)
+
+1. **The reflection writes them; it never reads them.** `finish` takes `traits: [{ id,
+   axis, toward, strength, carried_by }]` on memories it was shown, lived ones only
+   (`notLivedReason(…, "trait")`: a dream's gist is a suggestion, a reflection's entry is
+   not an act). Its `carried_by` is scanned like its feelings' and prefixed "on
+   reflection, <date>". The instructions name the seven axes and tie them to the
+   "unlike your page" question; nothing it is shown carries a trait, so it cannot steer
+   toward a balance.
+2. **A merge carries the originals' nudges** with their own source, model and
+   `created_at` — unlike feelings, which a merge restamps. A row today's vocabulary would
+   refuse stays on the (superseded) original rather than failing the merge half-way.
+   Undo needs nothing new: the merged memory is archived, the originals come back with
+   their own rows.
+3. **No backfill.** A dream does not write nudges (later, maybe).

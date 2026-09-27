@@ -107,8 +107,9 @@ dreamer is the model (a background agent the session launches), outside this pro
 - `propose` applies each change on its own, within per-dream `LIMITS`, and records it
   with what undo needs (ids and numbers only):
   `merge` (2–3 near-copies of one kind, not core, into one memory in better words; the
-  merged memory stands where the strongest original stood, carries their returns and
-  feelings, and inherits their links), `link` (both ways, `LINK_WEIGHT`), `replayed` (a
+  merged memory stands where the strongest original stood, carries their returns,
+  feelings and trait nudges — each nudge keeping its source, model and moment — and
+  inherits their links), `link` (both ways, `LINK_WEIGHT`), `replayed` (a
   return at `DREAM_RETURN_WEIGHT`, never a use), `gist` (source `dreamed`, citing and
   linked to its sources, salience capped at `DREAMED_CLAIM_CEILING`), `contradiction`,
   `feeling-now` (the self's feeling today, capped at the memory's peak), `nominate-core`
@@ -163,8 +164,8 @@ dream having run.
   since a share last said so — as memories and feelings, **never the lane arithmetic**.
   Three questions, rotated so consecutive nights share none (the dream question only
   after a dream).
-- `finish` takes an entry, what it cites, and optionally a page, a share, feelings and
-  about marks, each on its own. Everything it names must be something it was shown and
+- `finish` takes an entry, what it cites, and optionally a page, a share, feelings,
+  about marks and trait nudges, each on its own. Everything it names must be something it was shown and
   still standing.
   - **An insight cites real memories.** An entry that cites something becomes a memory,
     source `reflection`, titled "Reflected: …". **A night that cites nothing is "nothing
@@ -191,6 +192,12 @@ dream having run.
     doctor counts them (and apart, the moves into me/us/owner), and a move into me, us or
     the owner is said in that morning's share. With the door closed only moves toward
     `work`/`world` are allowed (D1).
+  - **Trait nudges** (folded into v9, 2026-09-27; at most 5): where a memory it was shown
+    really shows how I acted, on one of the seven axes (`store/traits.ts`), source
+    `reflection` — "where did you act unlike your self page?" is their natural question.
+    On a lived memory only, like its feelings; an unknown axis or pole is refused by name.
+    **It is shown no balance or totals** — no trait appears in what `begin` hands it
+    (only the limit): the arithmetic stays on the dashboard. Nudges feed nothing.
   - Every memory it cites comes back: a reflection return (physics §5.11).
 - Guarantees: **[M]** at most one reflection a lived day; **[M]** it can cite, feel or
   mark only what it was shown; **[M]** nothing under observer; **[M]** a reflection is

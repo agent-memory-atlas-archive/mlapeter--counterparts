@@ -154,7 +154,7 @@ import type { CyclePartial, CycleReport, Phase } from "./sleep/index.js";
 import { Store, assertSafeDataDir, hashText, indexTextOf } from "./store/index.js";
 import type {
   AddFeelingsResult,
-  FeelingInput, Embedder, StoreEvent } from "./store/index.js";
+  FeelingInput, Embedder, StoreEvent, TraitInput } from "./store/index.js";
 import { TUNABLES as PHYSICS, band as bandOf } from "./physics/index.js";
 import type { UseTier } from "./physics/index.js";
 import type { Kind } from "./types.js";
@@ -2456,6 +2456,20 @@ export class Counterpart {
       ...(typeof f.otherWord === "string" ? { otherWord: redactSecrets(f.otherWord) } : {}),
     }));
     return this.store.addFeelings(memoryId, clean, opts);
+  }
+
+  /**
+   * Trait nudges on a memory (folded into v9, `store/traits.ts`), through the
+   * same SECRETS half of the battery: `carried_by` is words about the moment.
+   * Display only — nothing in the core reads them. Throws what the store
+   * throws (`TRAIT_INVALID`).
+   */
+  addTraits(memoryId: string, inputs: readonly TraitInput[], opts: { model?: string } = {}): { ids: readonly string[] } {
+    const clean = inputs.map((t) => ({
+      ...t,
+      ...(typeof t.carriedBy === "string" ? { carriedBy: redactSecrets(t.carriedBy) } : {}),
+    }));
+    return this.store.addTraits(memoryId, clean, opts);
   }
 
   /** An in-the-moment deliberate deposit. Channel: `authored`. Always covers

@@ -41,3 +41,9 @@ What this module still owes, or asks of others (2026-09-26).
    session switches it over (its `DashboardSource` does not carry `dreams` yet). The
    dashboard is an observer: it passes `owner: true` to preview the owner's own gate
    (confidential memories counted), or leaves it off for a guest's — its call.
+
+9. **Trait nudges have no reader in the core (2026-09-27), on purpose.** The dashboard's
+   Self tab is to draw each axis as a firmness-weighted balance from `Store#traitsAll()`
+   (or `traitsOn(ids)` for the memories it already holds); until it does, nudges are
+   visible only in `export --markdown` and the `fired` row. A dream backfill of older
+   memories is not built.

@@ -186,6 +186,46 @@ const FEELINGS_PROPERTY = {
 } as const;
 
 /**
+ * `traits` on a `note` or a `session_end` entry (folded into schema v9,
+ * 2026-09-27): trait nudges — where this memory shows how I acted, on one of
+ * seven fixed axes (`store/traits.ts`, which the enums below must match; a
+ * test holds them equal). Display only: nothing in the core reads them.
+ */
+const TRAIT_AXIS_ENUM = [
+  "careful-bold",
+  "agreeable-candid",
+  "guarded-open",
+  "focused-curious",
+  "following-initiating",
+  "inward-outward",
+  "serious-playful",
+] as const;
+const TRAIT_POLE_ENUM = TRAIT_AXIS_ENUM.flatMap((a) => a.split("-"));
+
+/** What the tool text says about the axes and when to use them — shared by the three doors. */
+export const TRAITS_TEXT =
+  "Optional, and only when this memory really shows how you acted; most carry none. Don't make up depth: no nudge is better than a guessed one. " +
+  "Each nudge names one of seven axes — a spectrum between two good things, the first pole roughly where training puts you — and the pole the moment leaned toward: " +
+  "careful-bold, agreeable-candid, guarded-open (about your inner life), focused-curious, following-initiating, inward-outward (your own memory vs others'), serious-playful. " +
+  "Shown on the dashboard only; it changes nothing about how the memory is kept or recalled.";
+
+const TRAITS_PROPERTY = {
+  type: "array",
+  description: TRAITS_TEXT,
+  items: {
+    type: "object",
+    properties: {
+      axis: { type: "string", enum: TRAIT_AXIS_ENUM, description: "One of the seven axes." },
+      toward: { type: "string", enum: TRAIT_POLE_ENUM, description: "One of that axis's two poles (bold, for careful-bold)." },
+      strength: { type: "number", minimum: 0, maximum: 1, description: "How clearly the moment showed it, 0-1." },
+      carried_by: { type: "string", description: "Briefly, what in the moment showed it." },
+    },
+    required: ["axis", "toward", "strength"],
+    additionalProperties: false,
+  },
+} as const;
+
+/**
  * `eventDate` and `remind` on a `note` or a `session_end` entry (2026-09-26,
  * owner decisions: an explicit date field only, never a date read out of the
  * text; plain or quiet, default quiet, stored in the memory's meta).
@@ -335,6 +375,7 @@ const NOTE: ToolSpec = {
       remind: REMIND_PROPERTY,
       feelings: FEELINGS_PROPERTY,
       about: ABOUT_PROPERTY,
+      traits: TRAITS_PROPERTY,
     },
     required: ["text"],
     additionalProperties: false,
@@ -621,6 +662,7 @@ const SESSION_END: ToolSpec = {
             remind: REMIND_PROPERTY,
             feelings: FEELINGS_PROPERTY,
             about: ABOUT_PROPERTY,
+            traits: TRAITS_PROPERTY,
           },
           required: ["content"],
           additionalProperties: false,
@@ -1057,6 +1099,11 @@ const REFLECT: ToolSpec = {
     },
     {
       claim:
+        "A trait nudge it records sits only on a memory it was shown, is marked as the reflection's, and feeds nothing — it is shown no balance of them, and nothing in the core reads one.",
+      mechanizedBy: "src/core/dream/reflect.ts#Reflections.finish (traits) -> src/core/store/index.ts#addTraits",
+    },
+    {
+      claim:
         "Every word it writes is scanned for credentials first; its hand-back carries the mark capture refuses, so the share is told in the session's own words rather than filed from the tool's.",
       mechanizedBy: "src/core/dream/reflect.ts#Reflections.words + src/core/dream/mark.ts#DREAM_MARK -> src/core/remember/spans.ts#enters",
     },
@@ -1111,6 +1158,21 @@ const REFLECT: ToolSpec = {
             why: { type: "string" },
           },
           required: ["id", "about"],
+        },
+      },
+      traits: {
+        type: "array",
+        description: `\`finish\`, optional: trait nudges on memories you were shown. ${TRAITS_TEXT}`,
+        items: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+            axis: { type: "string", enum: TRAIT_AXIS_ENUM },
+            toward: { type: "string", enum: TRAIT_POLE_ENUM },
+            strength: { type: "number", minimum: 0, maximum: 1 },
+            carried_by: { type: "string" },
+          },
+          required: ["id", "axis", "toward", "strength"],
         },
       },
     },

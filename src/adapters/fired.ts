@@ -146,6 +146,8 @@ export type ProbeId =
   | "feelings"
   /** Live memories whose emotional intensity is above 0 (dated by birth day). */
   | "emotion.weighted"
+  /** Live memories carrying at least one trait nudge (dated by the newest). */
+  | "traits"
   | "prospective.armed"
   | "prospective.fired"
   | "prospective.dated"
@@ -382,6 +384,15 @@ export const MECHANISMS: readonly Mechanism[] = [
     module: "physics/ §5.10",
     evidence: { kind: "probe", probe: "emotion.weighted" },
     since: "2026-09-26",
+  },
+  // TRAITS (folded into v9, 2026-09-27): a nudge on a memory that showed how
+  // I acted. Display only, so this row says only that one was recorded.
+  {
+    id: "traits",
+    label: "a memory that showed how I acted was given a trait nudge",
+    module: "store/traits.ts",
+    evidence: { kind: "probe", probe: "traits" },
+    since: "2026-09-27",
   },
   {
     id: "mood-match",
@@ -1755,6 +1766,11 @@ function readProbes(store: ReadOnlyStore, w: Window): Probed {
 
   const ids = store.list();
   const scanned = ids.length > PROBE_CEILING ? ids.slice(0, PROBE_CEILING) : ids;
+  const traitNewest = new Map<string, number>();
+  for (const t of store.traitsAll()) {
+    const was = traitNewest.get(t.memory_id);
+    if (was === undefined || t.created_at > was) traitNewest.set(t.memory_id, t.created_at);
+  }
   for (const id of scanned) {
     const row = store.row(id);
     if (row !== undefined && row.archived === 0 && row.protected === 1) bump("protected");
@@ -1767,6 +1783,9 @@ function readProbes(store: ReadOnlyStore, w: Window): Probed {
         for (const f of store.feelingsFor(id)) if (newest === null || f.created_at > newest) newest = f.created_at;
         bump("feelings", { at: newest });
       }
+      // Trait nudges, dated by the newest (read once, above the loop).
+      const traitAt = traitNewest.get(id);
+      if (traitAt !== undefined) bump("traits", { at: traitAt });
     }
     // A live memory carrying a reminder date (schema v7's `event_date`), dated
     // by when it was written: the day a date was SET is the row's own moment.
@@ -1836,6 +1855,7 @@ function probeLabel(probe: ProbeId): string {
   if (probe === "removals") return "the removal record";
   if (probe === "edges") return "the links table";
   if (probe === "feelings") return "memories carrying a recorded feeling";
+  if (probe === "traits") return "memories carrying a trait nudge";
   if (probe === "emotion.weighted") return "memories a feeling holds higher and fades slower";
   if (probe === "returns.awake") return "the returns table (awake returns)";
   if (probe === "returns.dream") return "the returns table (dream replays)";
