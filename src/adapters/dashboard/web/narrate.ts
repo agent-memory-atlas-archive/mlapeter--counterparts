@@ -40,7 +40,7 @@ import type { EventRow, ReadOnlyStore } from "../../../core/store/index.js";
 import { num } from "../layout.js";
 import type { DurableEventName } from "../registries.js";
 import { nodeOf } from "./flow.js";
-import { iconOf, laneOf } from "./lanes.js";
+import { iconOf, isSleepCheck, laneOf } from "./lanes.js";
 import type { Icon, Lane } from "./lanes.js";
 import type { NodeKey } from "./flow.js";
 import { reveal, revealHere, revealPayload, shortOf } from "./reveal.js";
@@ -62,6 +62,9 @@ interface Told {
 }
 
 type Teller = (t: Told) => Narration;
+
+/** What every nomination line says after it (2026-09-27): nothing reads a nomination but `counterparts core`. */
+export const NOMINATION_CAVEAT = "nothing acts on these yet";
 
 const calm = (text: string): Narration => ({ text, tone: "calm" });
 const notable = (text: string): Narration => ({ text, tone: "notable" });
@@ -202,12 +205,21 @@ export const NARRATORS = {
   "dream.begun": (t) =>
     calm(`I began to dream, over ${n(t, "fresh") ?? 0} new memories and ${n(t, "shown") ?? 0} in all.`),
   "dream.changed": (t) => {
-    const kinds = ["merge", "link", "replayed", "gist", "contradiction", "feeling-now", "nominate-core"]
+    // A NOMINATION IS NOT A CHANGE ANYTHING ACTS ON (2026-09-27, home round 3):
+    // nothing reads it but `counterparts core`, so it is said apart, as a
+    // suggestion, rather than listed beside merges as if it will happen.
+    const kinds = ["merge", "link", "replayed", "gist", "contradiction", "feeling-now"]
       .map((k) => [k, n(t, k) ?? 0] as const)
       .filter(([, v]) => v > 0)
       .map(([k, v]) => `${v} ${k}`);
+    const nominated = n(t, "nominate-core") ?? 0;
+    const changed = Math.max(0, (n(t, "applied") ?? 0) - nominated);
+    const suggested =
+      nominated === 0
+        ? ""
+        : ` It suggested ${nominated} ${nominated === 1 ? "memory" : "memories"} for the core — ${NOMINATION_CAVEAT}.`;
     return calm(
-      `In a dream I changed ${n(t, "applied") ?? 0} things${kinds.length > 0 ? ` (${kinds.join(", ")})` : ""}${(n(t, "refused") ?? 0) > 0 ? `; ${n(t, "refused") ?? 0} were refused` : ""}.`,
+      `In a dream I changed ${changed} ${changed === 1 ? "thing" : "things"}${kinds.length > 0 ? ` (${kinds.join(", ")})` : ""}${(n(t, "refused") ?? 0) > 0 ? `; ${n(t, "refused") ?? 0} were refused` : ""}.${suggested}`,
     );
   },
   "dream.journaled": () => notable("I woke from a dream and wrote it in the dream journal."),
@@ -525,6 +537,9 @@ export const NARRATORS = {
         `My nightly cycle ran, but ${failed} phase${failed === 1 ? "" : "s"} failed — ${phaseNames(t, "failed")}. Those markers did not advance, so the work is retried tomorrow.`,
       );
     }
+    // A CHECK, not a sleep (`lanes.ts#isSleepCheck`): nothing was due, so
+    // nothing ran. It goes to the flow feed, and says so plainly there.
+    if (isSleepCheck(t.p)) return calm("I checked whether it was time to sleep: nothing was due.");
     const promoted = n(t, "promoted") ?? 0;
     const pruned = n(t, "pruned") ?? 0;
     const merged = n(t, "merged") ?? 0;
@@ -1130,6 +1145,41 @@ function parse(payload: string | null): Record<string, unknown> {
  * crashes on an unfamiliar row is the one moment the owner most needs it to
  * render (scar E7).
  */
+/**
+ * A MECHANISM PANEL'S OWN WORDS for a row it shares with other readings
+ * (2026-09-27, home round 3 — a try). The same `recall.decision` row is a turn
+ * on the flow feed and, on the Emotion panel, the mood lift it carries: that
+ * panel counts a turn only when a matching mood brought something closer, so
+ * its line says that, not which memory was kept as a footnote. Only the
+ * sentence changes; which rows count is `mechanism-evidence.ts`'s.
+ */
+const PANEL_NARRATORS: Readonly<Record<string, Readonly<Record<string, Teller>>>> = {
+  emotional: {
+    "recall.decision": (t) => {
+      const lifted = n(t, "moodMatched") ?? 0;
+      const came = (n(t, "surfacedCount") ?? 0) + (n(t, "footnoteCount") ?? 0);
+      const turn = n(t, "turn") ?? 0;
+      return calm(
+        `On turn ${turn} a matching mood brought ${lifted} ${lifted === 1 ? "memory" : "memories"} closer` +
+          (came > 0 ? ` (${came} came to mind).` : "."),
+      );
+    },
+  },
+};
+
+/** `narrate`, in the words of one mechanism's panel where it has its own (`PANEL_NARRATORS`). */
+export function narrateForPanel(panel: string, store: ReadOnlyStore, row: EventRow): NarratedEvent {
+  const line = narrate(store, row);
+  const teller = PANEL_NARRATORS[panel]?.[row.name];
+  if (teller === undefined) return line;
+  try {
+    const own = teller({ store, row, p: parse(row.payload) });
+    return { ...line, text: own.text, tone: own.tone };
+  } catch {
+    return line;
+  }
+}
+
 export function narrate(store: ReadOnlyStore, row: EventRow): NarratedEvent {
   const p = parse(row.payload);
   const told: Told = { store, row, p };

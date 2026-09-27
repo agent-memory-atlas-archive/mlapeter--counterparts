@@ -17,17 +17,18 @@
  * Read-only, like everything in this directory. Memory words go through
  * `reveal`, so a confidential row is withheld here exactly as everywhere else.
  */
-import { TUNABLES, promotionEligibility, pruneVerdict, strength } from "../../../../core/physics/index.js";
+import { TUNABLES, pruneVerdict, strength } from "../../../../core/physics/index.js";
 import type { MemoryPhysics } from "../../../../core/types.js";
-import { aboutMe, isJournal, ownerNames } from "../../../../core/sleep/index.js";
+import { isJournal, ownerNames } from "../../../../core/sleep/index.js";
 import type { EventRow } from "../../../../core/store/index.js";
 import type { Band, Kind } from "../../../../core/types.js";
 import type { DashboardSource } from "../../source.js";
-import { narrate } from "../narrate.js";
+import { narrateForPanel } from "../narrate.js";
 import type { NarratedEvent } from "../narrate.js";
 import { reveal, revealHere } from "../reveal.js";
-import { MECHANISM_PROOFS, counted, payloadOf } from "./mechanisms.js";
-import { census } from "./shared.js";
+import { coreRoad } from "./core-road.js";
+import { MECHANISM_DAYS, MECHANISM_PROOFS, counted, payloadOf } from "./mechanisms.js";
+import { LOG_CEILING, census } from "./shared.js";
 import type { MemoryLine } from "./shared.js";
 
 /** How many narrated firings the panel lists. */
@@ -85,6 +86,8 @@ export type Picture =
         readonly turn: number;
         readonly memories: readonly (Said & { readonly said: boolean; readonly usedSince: boolean })[];
       }[];
+      /** Of the memories brought to mind lately, how many got used (`recallUse`). */
+      readonly use: RecallUse;
     }
   | {
       readonly kind: "consolidation";
@@ -99,7 +102,18 @@ export type Picture =
         readonly days: number;
         readonly span: number;
         readonly returned: boolean;
+        /** The engine's verdict: a lane is met, nothing blocks it (`core-road.ts`). */
+        readonly ready: boolean;
+        /** Felt enough, and one return after a gap is all it lacks (`core-road.ts`). */
+        readonly oneReturnAway: boolean;
       })[];
+      /**
+       * Returns in the last `MECHANISM_DAYS` lived days, by source: `awake`
+       * came back in conversation (the only kind the core lanes count),
+       * `dream` was replayed in a dream. The upgrade's `legacy` rows are not
+       * returns anyone saw and are not counted.
+       */
+      readonly returns: { readonly awake: number; readonly dream: number; readonly days: number };
       readonly promoted: readonly (Said & { readonly day: number; readonly lane: string | null })[];
       readonly core: number;
     }
@@ -131,24 +145,36 @@ export interface MechanismPanelView {
   readonly built: boolean;
   readonly livedDay: number;
   /** The newest few rows that count as this mechanism firing, narrated; a run
-   *  of lines that read the same is one line with `repeats` (its newest row). */
-  readonly activity: readonly (NarratedEvent & { readonly repeats: number })[];
+   *  of lines that read the same is one line with `repeats` (its newest row)
+   *  and `fromDay` (its oldest row's day). */
+  readonly activity: readonly Merged[];
   /** Null for a grey mechanism, and for a built one with no picture of its own. */
   readonly picture: Picture | null;
 }
+
+/** A narrated line standing for `repeats` neighbours that read the same. */
+export type Merged = NarratedEvent & {
+  repeats: number;
+  /** The lived day of the OLDEST row it stands for; `day` is the newest's. */
+  fromDay: number;
+};
 
 /**
  * "I wrote something down and every gate was clear" four times is one line,
  * ×4 (2026-09-26, an experiment). Only NEIGHBOURS that read the same merge, so
  * the order of what happened is kept; the merged line keeps its newest row, so
- * a click opens the latest record behind it.
+ * a click opens the latest record behind it. Lines arrive newest first, and
+ * the run's span is kept (`fromDay`–`day`), so "×200" never hides that the 200
+ * were spread over several days (2026-09-27).
  */
-export function mergeRepeats(lines: readonly NarratedEvent[]): (NarratedEvent & { repeats: number })[] {
-  const out: (NarratedEvent & { repeats: number })[] = [];
+export function mergeRepeats(lines: readonly NarratedEvent[]): Merged[] {
+  const out: Merged[] = [];
   for (const line of lines) {
     const last = out[out.length - 1];
-    if (last !== undefined && last.text === line.text && last.name === line.name) last.repeats += 1;
-    else out.push({ ...line, repeats: 1 });
+    if (last !== undefined && last.text === line.text && last.name === line.name) {
+      last.repeats += 1;
+      last.fromDay = Math.min(last.fromDay, line.day);
+    } else out.push({ ...line, repeats: 1, fromDay: line.day });
   }
   return out;
 }
@@ -176,7 +202,7 @@ export function mechanismPanel(src: DashboardSource, id: string): MechanismPanel
   let groups = 0;
   let lastText: string | null = null;
   for (const row of ordered) {
-    const line = narrate(store, row);
+    const line = narrateForPanel(id, store, row);
     if (line.text !== lastText) {
       groups += 1;
       lastText = line.text;
@@ -194,9 +220,9 @@ function pictureOf(src: DashboardSource, id: string, day: number): Picture | nul
     case "decay":
       return decayPicture(src, day);
     case "retrieval":
-      return retrievalPicture(src);
+      return retrievalPicture(src, day);
     case "consolidation":
-      return consolidationPicture(src);
+      return consolidationPicture(src, day);
     case "salience":
       return saliencePicture(src);
     case "association":
@@ -266,7 +292,7 @@ function idsOf(v: unknown): string[] {
  * read off the memory's own physics (its last credited use is on or after that
  * turn's day, and after its birth), not guessed from the turn.
  */
-function retrievalPicture(src: DashboardSource): Picture {
+function retrievalPicture(src: DashboardSource, day: number): Picture {
   const store = src.store;
   const turns: Extract<Picture, { kind: "retrieval" }>["turns"][number][] = [];
   for (const row of store.eventLog({ name: "recall.decision", order: "desc", limit: ACTIVITY_LOOKBACK })) {
@@ -277,21 +303,86 @@ function retrievalPicture(src: DashboardSource): Picture {
     const memories = [
       ...surfaced.map((id) => ({ id, said: true })),
       ...footnotes.map((id) => ({ id, said: false })),
-    ].slice(0, 6).map(({ id, said: aloud }) => {
-      let usedSince = false;
-      try {
-        const physics = store.physicsOf(id);
-        usedSince = physics.lastUsedDay >= row.day && physics.lastUsedDay > physics.birthDay;
-      } catch {
-        usedSince = false;
-      }
-      return { ...said(src, id, 64), said: aloud, usedSince };
-    });
+    ].slice(0, 6).map(({ id, said: aloud }) => ({ ...said(src, id, 64), said: aloud, usedSince: usedSince(src, id, row.day) }));
     const turn = typeof p["turn"] === "number" ? p["turn"] : 0;
     turns.push({ seq: row.seq, day: row.day, turn, memories });
     if (turns.length >= 3) break;
   }
-  return { kind: "retrieval", turns };
+  return { kind: "retrieval", turns, use: recallUse(src, day) };
+}
+
+/**
+ * THE "USED SINCE" TEST, one copy: a memory brought to mind on `day` counts as
+ * used when its last credited use is on or after that day, and after its
+ * birth — read off the memory's own physics, not guessed from the turn.
+ */
+function usedSince(src: DashboardSource, id: string, day: number): boolean {
+  try {
+    const physics = src.store.physicsOf(id);
+    return physics.lastUsedDay >= day && physics.lastUsedDay > physics.birthDay;
+  } catch {
+    return false;
+  }
+}
+
+export interface UseCount {
+  /** Memories brought to mind. */
+  readonly brought: number;
+  /** Of them, used since (`usedSince`). */
+  readonly used: number;
+}
+
+export interface RecallUse extends UseCount {
+  /** Lived days looked at, today included. */
+  readonly days: number;
+  readonly said: UseCount;
+  readonly footnote: UseCount;
+  /** One entry per lived day of the window, oldest first. */
+  readonly perDay: readonly (UseCount & { readonly day: number })[];
+}
+
+/**
+ * OF THE MEMORIES BROUGHT TO MIND LATELY, HOW MANY GOT USED (2026-09-27, home
+ * round 3 — a try): every `recall.decision` of the last `MECHANISM_DAYS` lived
+ * days, surfaced (said out loud) and footnotes apart. A memory counts ONCE PER
+ * DAY — brought to mind on five turns of one day is one memory that day, said
+ * out loud if any of those turns said it — and "used" is `usedSince` above,
+ * the same test the turns' rows show.
+ */
+export function recallUse(src: DashboardSource, day: number, span = MECHANISM_DAYS): RecallUse {
+  const from = Math.max(0, day - (span - 1));
+  const byDay = new Map<number, Map<string, boolean>>();
+  for (const row of src.store.eventLog({ name: "recall.decision", sinceDay: from, order: "desc", limit: LOG_CEILING })) {
+    const p = payloadOf(row);
+    let seen = byDay.get(row.day);
+    if (seen === undefined) {
+      seen = new Map();
+      byDay.set(row.day, seen);
+    }
+    for (const id of idsOf(p["surfaced"])) seen.set(id, true);
+    for (const id of idsOf(p["footnotes"])) if (!seen.has(id)) seen.set(id, false);
+  }
+  const tally = { brought: 0, used: 0 };
+  const saidT = { brought: 0, used: 0 };
+  const footT = { brought: 0, used: 0 };
+  const perDay: (UseCount & { day: number })[] = [];
+  for (let d = from; d <= day; d++) {
+    const seen = byDay.get(d);
+    let brought = 0;
+    let used = 0;
+    for (const [id, aloud] of seen ?? []) {
+      const u = usedSince(src, id, d);
+      brought += 1;
+      if (u) used += 1;
+      const t = aloud ? saidT : footT;
+      t.brought += 1;
+      if (u) t.used += 1;
+    }
+    tally.brought += brought;
+    tally.used += used;
+    perDay.push({ day: d, brought, used });
+  }
+  return { ...tally, days: day - from + 1, said: saidT, footnote: footT, perDay };
 }
 
 // ── consolidation ───────────────────────────────────────────────────────────
@@ -303,23 +394,37 @@ function retrievalPicture(src: DashboardSource): Picture {
  * both lanes it is; the nearest six are listed, with the last few that made it
  * and the lane that carried them.
  */
-function consolidationPicture(src: DashboardSource): Picture {
+function consolidationPicture(src: DashboardSource, day: number): Picture {
   const store = src.store;
   const rows = census(src).filter((m) => !m.schema && !m.unreadable);
   const core = rows.filter((m) => m.promoted).length;
   const owner = ownerNames(store);
   const climbing = rows
-    .filter((m) => !m.promoted && aboutMe(store, { id: m.id, kind: m.kind }, owner))
-    .map((m) => {
-      const v = promotionEligibility(store.physicsOf(m.id), { aboutMe: true });
+    .filter((m) => !m.promoted)
+    .flatMap((m) => {
+      // The engine's verdict, asked the one way (`core-road.ts`); null = not
+      // about me or about us, so never on the road.
+      const road = coreRoad(store, { id: m.id, kind: m.kind }, owner, day);
+      if (road === null) return [];
+      const v = road.verdict;
       const fast = Math.min(1, v.fast.intensity / v.fast.needIntensity) + (v.fast.gap !== null && v.fast.gap >= v.fast.needGap ? 1 : 0);
       const slow = Math.min(1, v.slow.days / v.slow.needDays) + Math.min(1, v.slow.span / v.slow.needSpan);
       const returned = v.fast.gap !== null && v.fast.gap >= v.fast.needGap;
-      return { m, feeling: v.fast.intensity, days: v.slow.days, span: v.slow.span, returned, progress: Math.max(fast, slow) };
+      return [{ m, road, feeling: v.fast.intensity, days: v.slow.days, span: v.slow.span, returned, progress: Math.max(fast, slow) }];
     })
-    .sort((a, b) => b.progress - a.progress || (a.m.id < b.m.id ? -1 : 1))
+    .sort((a, b) => Number(b.road.ready) - Number(a.road.ready) || b.progress - a.progress || (a.m.id < b.m.id ? -1 : 1))
     .slice(0, 6)
-    .map((c) => ({ ...saidLine(c.m), feeling: round(c.feeling), days: c.days, span: c.span, returned: c.returned }));
+    .map((c) => ({
+      ...saidLine(c.m),
+      feeling: round(c.feeling),
+      days: c.days,
+      span: c.span,
+      returned: c.returned,
+      ready: c.road.ready,
+      oneReturnAway: c.road.oneReturnAway,
+    }));
+  const sinceDay = Math.max(0, day - (MECHANISM_DAYS - 1));
+  const counts = store.returnCounts({ sinceDay });
   const promoted = store
     .eventLog({ name: "band.promoted", order: "desc", limit: 3 })
     .filter((r) => r.ref !== null)
@@ -335,6 +440,7 @@ function consolidationPicture(src: DashboardSource): Picture {
     climbing,
     promoted,
     core,
+    returns: { awake: counts.awake, dream: counts.dream, days: MECHANISM_DAYS },
   };
 }
 

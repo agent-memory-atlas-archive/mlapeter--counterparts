@@ -20,6 +20,10 @@ import { lastActive } from "./meta.js";
 import { BAND_GLOSS, chapters, contestedRows, livedDays } from "./rows.js";
 import type { BarRow, ChapterRow, ContestedRow } from "./rows.js";
 import { FEED_LIMIT, LOG_CEILING, absenceFor, census, countMap } from "./shared.js";
+import { tonightView } from "./tonight.js";
+import type { TonightView } from "./tonight.js";
+import { writtenReturned } from "./written-returned.js";
+import type { WrittenReturnedView } from "./written-returned.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // overview
@@ -103,6 +107,10 @@ function archiveGroups(src: DashboardSource): { replaced: number; letGo: number;
 
 export interface OverviewView {
   readonly hero: Hero;
+  /** Under the tiles: per lived day, written vs came back (`written-returned.ts`). */
+  readonly written: WrittenReturnedView;
+  /** The "Tonight" box: the next sleep, in a few lines (`tonight.ts`). */
+  readonly tonight: TonightView;
   readonly opening: string;
   readonly tiles: Tile[];
   readonly bands: BarRow[];
@@ -261,6 +269,8 @@ export function overviewView(src: DashboardSource, feedLimit = FEED_LIMIT): Over
 
   return {
     hero,
+    written: writtenReturned(src),
+    tonight: tonightView(src),
     opening,
     tiles,
     bands: BANDS.map((b) => {
@@ -275,7 +285,7 @@ export function overviewView(src: DashboardSource, feedLimit = FEED_LIMIT): Over
     }),
     bandNote:
       "Memories start episodic and climb only by being used on separate days. Most fade where they started — that is the design, not a shortfall.",
-    feed: activityView(src, { limit: feedLimit, lane: "home" }).events,
+    feed: activityView(src, { limit: feedLimit, lane: "home", fold: true }).events,
     identity: e.identity.slice(0, 12).map((el) => {
       const r = reveal(store, el.id, 90);
       return {
