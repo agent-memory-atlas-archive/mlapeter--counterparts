@@ -35,6 +35,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { emotionalIntensity, strength } from "../physics/index.js";
 import { isHandoff, isSelfPage } from "../recall/index.js";
 import { namesOwner, ownerNames } from "../sleep/index.js";
+import { checkTraits } from "../store/index.js";
 import type { DreamChangeRow, DreamRow, MemoryRow, ProseDoc, Store } from "../store/index.js";
 import { TUNABLES as PHYSICS } from "../physics/index.js";
 import type { Kind } from "../types.js";
@@ -511,6 +512,28 @@ export class Dreams {
               // Each feeling keeps who recorded it and when (v9): a reflection's
               // later feeling stays one on the merged memory.
               { provenance: feelings.map((f) => ({ source: f.source, recordedLater: f.recorded_later })) },
+            );
+          }
+          // TRAIT NUDGES TRAVEL THE SAME WAY (v9): each keeps who recorded it,
+          // with what model and WHEN — a nudge is a moment's, recorded once, so
+          // a merge does not make it new. Read with its words even when the
+          // original is confidential: the merged memory inherits the marker
+          // (above), and every read withholds them from there.
+          // A row today's vocabulary would refuse is left on the original (it
+          // stays there, superseded) rather than failing the merge half-way.
+          const traits = this.store.traitsFor(r.id, { includeConfidential: true }).filter((t) => {
+            try {
+              checkTraits([{ axis: t.axis, toward: t.toward, strength: t.strength, carriedBy: t.carried_by }]);
+              return true;
+            } catch {
+              return false;
+            }
+          });
+          if (traits.length > 0) {
+            this.store.addTraits(
+              newId,
+              traits.map((t) => ({ axis: t.axis, toward: t.toward, strength: t.strength, carriedBy: t.carried_by })),
+              { provenance: traits.map((t) => ({ source: t.source, model: t.model, createdAt: t.created_at })) },
             );
           }
           this.store.supersedeInto(r.id, newId, DREAM_MERGE_REASON, { carryReturns: true });

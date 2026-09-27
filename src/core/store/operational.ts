@@ -35,6 +35,10 @@ import type { ProseType } from "./prose.js";
  * memory is marked `me` and every `person` memory naming the owner `owner`,
  * `about_by = 'upgrade'`, so the core candidates are the same the morning
  * after as the night before; doctor says so. `store/NOTES.md` 2026-09-27.
+ * Folded into v9 before any build published it: `traits` (a memory's trait
+ * nudges — `store/traits.ts`), new and empty, so every memory starts untagged.
+ * A development store already stamped v9 without it gains it at its next
+ * writer open (`ensureCurrentTables`, below).
  *
  * Bumped to 8 (2026-09-26, dreaming + consolidation): ADDITIVE again, through
  * the same copy-first seam. `memories` gains `legacy` (every row the upgrade
@@ -147,7 +151,7 @@ export function rowTombstoned(row: Pick<MemoryRow, "body" | "content_hash">): bo
   return row.body === "" && row.content_hash === "";
 }
 
-const DDL: readonly string[] = [
+export const DDL: readonly string[] = [
   `CREATE TABLE IF NOT EXISTS meta (
      key   TEXT PRIMARY KEY,
      value TEXT NOT NULL
@@ -291,6 +295,25 @@ const DDL: readonly string[] = [
      recorded_later TEXT
    )`,
   `CREATE INDEX IF NOT EXISTS feelings_memory ON feelings (memory_id)`,
+  // v9, folded in before any build published it (2026-09-27, the owner's
+  // design, held lightly): TRAIT NUDGES on a memory, one row each —
+  // `store/traits.ts` has the vocabulary and the check. Content-bearing
+  // (`carried_by`), so the owner's removal DELETES a memory's rows, as it
+  // does its feelings. Display only: nothing in the core reads this table to
+  // decide anything. Moments are NOT NULL: the table is new.
+  `CREATE TABLE IF NOT EXISTS traits (
+     id          TEXT PRIMARY KEY,
+     memory_id   TEXT NOT NULL REFERENCES memories(id),
+     axis        TEXT NOT NULL,
+     toward      TEXT NOT NULL,
+     strength    REAL NOT NULL,
+     carried_by  TEXT NOT NULL DEFAULT '',
+     source      TEXT,
+     model       TEXT,
+     created_at  INTEGER NOT NULL,
+     updated_at  INTEGER NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS traits_memory ON traits (memory_id)`,
   // v8 (2026-09-26, dreaming + consolidation): RETURNS, one row per counted
   // return — an awake credited use after a gap, or a dream replay. The history
   // behind the `returns` / `return_days` / `*_return_day` columns on
@@ -925,7 +948,17 @@ export function openOperational(path: string, opts: OpenOperationalOptions = {})
   // takes the write lock (`db.ts#convertToWal`).
   const db = openDb(path, { wal: opts.initialize !== false });
   const found = readSchemaVersion(db);
-  if (found === String(SCHEMA_VERSION)) return db;
+  if (found === String(SCHEMA_VERSION)) {
+    if (opts.initialize !== false) {
+      try {
+        ensureCurrentTables(db);
+      } catch (err) {
+        db.close();
+        throw err;
+      }
+    }
+    return db;
+  }
   // A store from a NEWER build must never be stamped backwards: v4 is the
   // first version doing column surgery, and "migrating" a future file would
   // mean rewriting state this build does not understand (PR-2 review nit).
@@ -1092,6 +1125,41 @@ export function openOperational(path: string, opts: OpenOperationalOptions = {})
 }
 
 /**
+ * THE UNRELEASED-VERSION EXCEPTION to "write nothing when current" (added
+ * 2026-09-27 with `traits`, a working default). A table folded into a schema
+ * version no published build has yet — `traits` into v9 — is missing from a
+ * development store that was stamped with that version before the table
+ * existed, and the steady-state return above never runs the DDL that would
+ * make it. So a WRITER open at the current version asks `sqlite_master` which
+ * of the tables this build creates are absent (one read, and the common case
+ * ends there), and when any is, runs the DDL — every statement is `IF NOT
+ * EXISTS` — in one transaction. No copy first: nothing that exists changes
+ * shape. An observer open does not write; a reader of such a table treats it
+ * as empty until a writer has opened (`Store#hasTable`).
+ */
+export function ensureCurrentTables(db: Db): void {
+  const have = new Set(
+    db.all<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table'").map((r) => r.name),
+  );
+  const missing = CREATED_TABLES.filter((t) => !have.has(t));
+  if (missing.length === 0) return;
+  db.transaction(() => {
+    for (const sql of DDL) db.exec(sql);
+    for (const sql of DDL_AFTER_COLUMNS) db.exec(sql);
+  });
+}
+
+/**
+ * Every table `DDL` creates, read off the statements themselves. Exported for
+ * the test that holds it equal to what `DDL` actually creates
+ * (`test/traits.test.ts`), so the pattern cannot silently miss a table.
+ */
+export const CREATED_TABLES: readonly string[] = DDL.flatMap((sql) => {
+  const m = /CREATE TABLE IF NOT EXISTS (\w+)/.exec(sql);
+  return m === null ? [] : [m[1] as string];
+});
+
+/**
  * The copy before a migration, or the refusal that stops it. Throws
  * `MIGRATION_SNAPSHOT_FAILED` inside the transaction, which rolls back: the
  * store stays on `found` and the build that wrote it still opens it.
@@ -1121,7 +1189,7 @@ function copyBeforeMigrating(path: string, found: string, opts: OpenOperationalO
  * Indexes over columns that `ADDED_COLUMNS` may have just added, so they run
  * AFTER it: on a v6 store `event_date` does not exist while `DDL` runs.
  */
-const DDL_AFTER_COLUMNS: readonly string[] = [
+export const DDL_AFTER_COLUMNS: readonly string[] = [
   // v7: `Store.datedMemories` without a scan (prospective/INTERFACE-GAPS §2).
   // Partial, because almost no memory carries one.
   `CREATE INDEX IF NOT EXISTS memories_event_date ON memories (event_date) WHERE event_date IS NOT NULL`,

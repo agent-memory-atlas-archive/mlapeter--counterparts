@@ -70,6 +70,14 @@ export type StoreErrorCode =
    * An emotion simply not on the wheel is NOT this — it is kept as `other`.
    */
   | "FEELING_INVALID"
+  /**
+   * A trait nudge (`Store#addTraits`, folded into schema v9) that cannot be
+   * stored as given: an axis that is not one of the seven, a `toward` that is
+   * not one of that axis's two poles, a strength outside 0..1, a `carried_by`
+   * too long. `detail` carries `{ index, reason, allowed? }`; the whole call
+   * wrote nothing.
+   */
+  | "TRAIT_INVALID"
   /** v9: an about-mark outside `ABOUT_MARKS`. `detail` carries `{ id, mark }`. */
   | "ABOUT_UNKNOWN"
   /** v9: an about-mark on a schema row or a removed memory. `detail` carries `{ id }`. */

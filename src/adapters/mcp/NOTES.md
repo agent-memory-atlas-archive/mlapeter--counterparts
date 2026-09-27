@@ -739,3 +739,22 @@ the answer says why; a memory that did not land takes its mark with it and says 
   `pageWriter.mode` to `openServer` (beside `snapshotsDir` and `timeZone`), and on to
   `Counterpart.open({ pageWriterMode })`. `off` stops the reflection's page write; the
   reflection still keeps its entry and offers its share.
+
+## 2026-09-27 — `traits` on `note`, `session_end` entries and `reflect finish`
+
+Trait nudges (folded into v9, `store/traits.ts`; working defaults, held lightly):
+`traits: [{ axis, toward, strength, carried_by? }]`, read and checked BEFORE the memory
+mints, like feelings — an unknown axis, a pole of another axis, a strength outside 0..1
+refuse that entry as `traits-malformed`, with what is allowed (and, for a pole given on
+the wrong axis, which axis it belongs to). After the memory lands the nudges are written
+through `Counterpart#addTraits` (secrets scrubbed from `carried_by`) and answered as
+`traits: { stored }`; a memory that did not land says its nudges did not either. The
+write-up door (`session_end` with `writeUp`) rides the same road, since it goes through
+`depositEntries`. `reflect finish` passes `traits: [{ id, … }]` to the reflection and
+answers what landed and what was refused, by name.
+
+The tool text (`TRAITS_TEXT`, shared by the three doors) names all seven axes with both
+poles, says "only when this memory really shows how you acted; most carry none" and
+"Don't make up depth", and says the nudges are shown on the dashboard only. The axis and
+pole enums in `tools.ts` are literal (the tools file imports nothing from the core); a
+test holds them equal to `TRAIT_AXES`.

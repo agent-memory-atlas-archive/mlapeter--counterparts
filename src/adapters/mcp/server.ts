@@ -48,8 +48,8 @@ import { localDate, parseCalendarDate, todayIn } from "../../core/time.js";
 import type { ChapterResult, Counterpart, DepositResult } from "../../core/counterpart.js";
 import type { SemanticSource } from "../../core/recall/index.js";
 import { AUTHOR_DIMENSIONS } from "../../core/remember/index.js";
-import { ABOUT_MARKS, CACHE_SCHEMA_VERSION, CORE_ABOUT_MARKS, SCHEMA_VERSION, StoreError, checkFeelings, isStoreError, schemaAhead } from "../../core/store/index.js";
-import type { AboutMark, FeelingInput } from "../../core/store/index.js";
+import { ABOUT_MARKS, CACHE_SCHEMA_VERSION, CORE_ABOUT_MARKS, SCHEMA_VERSION, StoreError, checkFeelings, checkTraits, isStoreError, schemaAhead } from "../../core/store/index.js";
+import type { AboutMark, FeelingInput, TraitInput } from "../../core/store/index.js";
 import { isLocked } from "../../core/store/db.js";
 import type { Band, Kind } from "../../core/types.js";
 import { recordHandleResolution } from "../expansions.js";
@@ -957,6 +957,8 @@ export class McpServer {
     }
     const about = readAbout(args["about"]);
     if ("refused" in about) return this.refuse("note", "about-malformed", { detail: about.refused });
+    const traits = readTraits(args["traits"]);
+    if ("refused" in traits) return this.refuse("note", "traits-malformed", { detail: traits.refused });
     const deposit = await this.counterpart.submitJot(draft, {
       session,
       scope: this.scope,
@@ -966,6 +968,7 @@ export class McpServer {
     return this.depositResult("note", deposit, {
       ...this.recordFeelings(deposit, feelings.inputs, model),
       ...this.recordAbout(deposit, about.mark),
+      ...this.recordTraits(deposit, traits.inputs, model),
       ...reminderEcho(deposit, dated, this.today()),
     });
   }
@@ -1514,12 +1517,14 @@ export class McpServer {
     const feelingsOf: FeelingsRead[] = [];
     const datedOf: ReminderRead[] = [];
     const aboutOf: AboutRead[] = [];
+    const traitsOf: TraitsRead[] = [];
     for (const item of raw) {
       if (item === null || typeof item !== "object" || Array.isArray(item)) {
         entries.push({ content: "" });
         feelingsOf.push({ inputs: [] });
         datedOf.push({ fields: {}, remindIgnored: false });
         aboutOf.push({ mark: null });
+        traitsOf.push({ inputs: [] });
         continue;
       }
       const rec = item as Record<string, unknown>;
@@ -1541,6 +1546,7 @@ export class McpServer {
       entries.push(draft);
       feelingsOf.push(readFeelings(rec["feelings"]));
       aboutOf.push(readAbout(rec["about"]));
+      traitsOf.push(readTraits(rec["traits"]));
     }
 
     const outcomes: Record<string, unknown>[] = [];
@@ -1563,6 +1569,12 @@ export class McpServer {
       const about = aboutOf[n] ?? { mark: null };
       if ("refused" in about) {
         outcomes.push({ stored: false, reason: "about-malformed", detail: about.refused });
+        continue;
+      }
+      // Trait nudges refuse THEIR entry before it mints, like its feelings.
+      const traits = traitsOf[n] ?? { inputs: [] };
+      if ("refused" in traits) {
+        outcomes.push({ stored: false, reason: "traits-malformed", detail: traits.refused });
         continue;
       }
       let result: DepositResult;
@@ -1594,6 +1606,7 @@ export class McpServer {
         ...(malformed === "KIND_UNKNOWN" ? { kinds: [...MEMORY_KINDS] } : {}),
         ...this.recordFeelings(result, feelings.inputs, model),
         ...this.recordAbout(result, about.mark),
+        ...this.recordTraits(result, traits.inputs, model),
         ...reminderEcho(result, dated, this.today()),
       });
     }
@@ -1914,6 +1927,7 @@ export class McpServer {
             page: part(args["page"]),
             feelings: Array.isArray(args["feelings"]) ? (args["feelings"] as never) : [],
             about: Array.isArray(args["about"]) ? (args["about"] as never) : [],
+            traits: Array.isArray(args["traits"]) ? (args["traits"] as never) : [],
             model: model ?? null,
           });
           if (!out.ok) return refused(out.reason, "The reflection was not written.");
@@ -1931,6 +1945,7 @@ export class McpServer {
               returned: o.returned,
               feelings: o.feelings,
               about: o.about,
+              ...(o.traits.length > 0 ? { traits: o.traits } : {}),
               ...(o.refusedCites.length > 0 ? { refusedCites: o.refusedCites } : {}),
               say: "Return `handBack` as your final message, unchanged.",
             },
@@ -2405,6 +2420,31 @@ export class McpServer {
     }
   }
 
+  /**
+   * The trait half of a deposit (folded into v9): the nudges written onto
+   * the memory that just minted, answered as `traits: { stored }`. Nothing
+   * when none were sent; said when the memory did not land. A throw here
+   * costs the nudges, never the memory, and says so.
+   */
+  private recordTraits(deposit: DepositResult, inputs: readonly TraitInput[], model: string | undefined): Record<string, unknown> {
+    if (inputs.length === 0) return {};
+    if (!deposit.deposited || deposit.memoryId === null) {
+      return {
+        traits: {
+          stored: 0,
+          reason: "memory-not-stored",
+          detail: `The memory was not stored (${deposit.reason}), so its ${String(inputs.length)} trait ${inputs.length === 1 ? "nudge was" : "nudges were"} not stored either.`,
+        },
+      };
+    }
+    try {
+      const added = this.counterpart.addTraits(deposit.memoryId, inputs, model === undefined ? {} : { model });
+      return { traits: { stored: added.ids.length } };
+    } catch (err) {
+      return { traits: { stored: 0, reason: "threw", detail: String((err as Error).message ?? err) } };
+    }
+  }
+
   private depositResult(tool: string, deposit: DepositResult, extra: Record<string, unknown> = {}): ToolResult {
     this.emit(`mcp.${tool}`, deposit.memoryId ?? undefined, {
       stored: deposit.deposited,
@@ -2654,6 +2694,54 @@ function reminderEcho(deposit: DepositResult, dated: ReminderRead, today: string
 type FeelingsRead = { inputs: FeelingInput[] } | { refused: string };
 
 type AboutRead = { mark: AboutMark | null } | { refused: string };
+
+type TraitsRead = { inputs: TraitInput[] } | { refused: string };
+
+/**
+ * `traits: [{ axis, toward, strength, carried_by? }]` off a `note` or a
+ * `session_end` entry (folded into v9), read and CHECKED before anything
+ * mints (`store/traits.ts#checkTraits`, pure). Absent is none; an unknown
+ * axis or pole is a refusal that names the item, the reason and what is
+ * allowed. Any throw is this entry's refusal, never the call's.
+ */
+function readTraits(raw: unknown): TraitsRead {
+  try {
+    if (raw === undefined || raw === null) return { inputs: [] };
+    if (!Array.isArray(raw)) return { refused: "`traits` is a list of objects." };
+    const inputs: TraitInput[] = [];
+    for (const [i, item] of raw.entries()) {
+      if (item === null || typeof item !== "object" || Array.isArray(item)) {
+        return { refused: `traits[${i}] is not an object.` };
+      }
+      const t = item as Record<string, unknown>;
+      for (const key of ["axis", "toward"] as const) {
+        if (typeof t[key] !== "string") return { refused: `traits[${i}].${key} is a word.` };
+      }
+      const carried = t["carried_by"];
+      if (carried !== undefined && typeof carried !== "string") return { refused: `traits[${i}].carried_by is text.` };
+      inputs.push({
+        axis: t["axis"] as string,
+        toward: t["toward"] as string,
+        strength: t["strength"] as number,
+        ...(carried === undefined ? {} : { carriedBy: carried }),
+      });
+    }
+    try {
+      checkTraits(inputs);
+    } catch (err) {
+      if (isStoreError(err, "TRAIT_INVALID")) {
+        const d = (err as { detail?: Record<string, unknown> }).detail ?? {};
+        const allowed = typeof d["allowed"] === "string" ? ` (one of ${d["allowed"]})` : "";
+        const pole = typeof d["axisOfPole"] === "string" ? `; that word belongs to ${d["axisOfPole"]}` : "";
+        return { refused: `traits[${String(d["index"])}]: ${String(d["reason"])}${allowed}${pole}.` };
+      }
+      throw err;
+    }
+    return { inputs };
+  } catch (err) {
+    return { refused: `traits could not be read: ${String((err as Error).message ?? err)}` };
+  }
+}
 
 /** `about` on a tool call (schema v9): absent, or one of the five marks. */
 function readAbout(raw: unknown): AboutRead {

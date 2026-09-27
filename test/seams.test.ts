@@ -405,6 +405,7 @@ describe("SEAMS A — the observer predicate is hoisted, and stand-down totality
         { memoryId: seedId, windowKey: "w", eventDate: "2026-09", precision: "month", state: "armed" },
       ],
       addFeelings: [seedId, [{ whose: "owner", core: "happy", emotion: "hopeful", strength: 0.5 }]],
+      addTraits: [seedId, [{ axis: "agreeable-candid", toward: "candid", strength: 0.5 }]],
       advanceClock: ["2026-08-26"],
       setMeta: ["k", "v"],
       setMetaMany: [[["k", "v"]]],

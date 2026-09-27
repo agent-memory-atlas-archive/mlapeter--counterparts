@@ -38,6 +38,11 @@
  *       anything written at the time.
  *   (e) ABOUT marks — what a memory is about (`me`, `us`, `owner`, `work`,
  *       `world`), set by meaning.
+ *   (f) TRAIT NUDGES (folded into v9, 2026-09-27) — where a memory shows how
+ *       I acted, on one of the seven axes (`store/traits.ts`), source
+ *       `reflection`. "Where did you act unlike your self page?" is their
+ *       natural question. Display only, and the reflection is shown NO
+ *       balance or totals: the arithmetic stays on the dashboard.
  *
  * Every memory it cites comes BACK: a reflection return (physics §5.11), an
  * awake return that counts toward the core lanes although the reflection was
@@ -51,7 +56,7 @@ import { randomBytes } from "node:crypto";
 import { emotionalIntensity } from "../physics/index.js";
 import { isHandoff, isSelfPage } from "../recall/index.js";
 import { aboutMe, acceptsReflectedFeeling, promotionRecordKey } from "../sleep/index.js";
-import { ABOUT_MARKS, CORE_ABOUT_MARKS } from "../store/index.js";
+import { ABOUT_MARKS, CORE_ABOUT_MARKS, TRAIT_AXES, isStoreError } from "../store/index.js";
 import type { AboutMark, MemoryRow, ProseDoc, ReflectionRow, Store } from "../store/index.js";
 import type { Kind } from "../types.js";
 import { DREAM_MARK, carriesDreamMark } from "./mark.js";
@@ -85,7 +90,7 @@ export const REFLECT_TUNABLES = {
   /** Feelings shown per memory. */
   FEELINGS_SHOWN: 3,
   /** What one reflection may do. CAL. */
-  LIMITS: { returns: 12, feelings: 5, about: 8 },
+  LIMITS: { returns: 12, feelings: 5, about: 8, traits: 5 },
   MAX_ENTRY_CHARS: 8_000,
   MAX_SHARE_CHARS: 700,
   MAX_TITLE_CHARS: 120,
@@ -215,6 +220,14 @@ export interface ReflectFinish {
     readonly carried_by?: string;
   }[];
   readonly about?: readonly { readonly id?: string; readonly about?: string; readonly why?: string }[];
+  /** Trait nudges on memories it was shown (`store/traits.ts`). */
+  readonly traits?: readonly {
+    readonly id?: string;
+    readonly axis?: string;
+    readonly toward?: string;
+    readonly strength?: number;
+    readonly carried_by?: string;
+  }[];
   readonly model?: string | null;
 }
 
@@ -227,6 +240,7 @@ export interface ReflectOutcome {
   readonly share: { offered: boolean; reason: string };
   readonly feelings: readonly { id: string | null; ok: boolean; reason: string }[];
   readonly about: readonly { id: string | null; ok: boolean; reason: string }[];
+  readonly traits: readonly { id: string | null; ok: boolean; reason: string }[];
   readonly refusedCites: readonly string[];
 }
 
@@ -236,9 +250,11 @@ const KINDS_FELT: readonly Kind[] = ["self", "person"];
  * Why a reflection may not feel, or mark about me, a memory a dream or a
  * reflection wrote (review of #256, B1) — null when it was lived.
  */
-function notLivedReason(row: MemoryRow, act: "feel" | "mark"): string | null {
+function notLivedReason(row: MemoryRow, act: "feel" | "mark" | "trait"): string | null {
   if (row.source === "dreamed") return "dreamed-is-a-suggestion";
-  if (row.source === "reflection") return act === "feel" ? "reflection-does-not-feel-itself" : "reflection-does-not-mark-itself";
+  if (row.source === "reflection") {
+    return act === "feel" ? "reflection-does-not-feel-itself" : act === "mark" ? "reflection-does-not-mark-itself" : "reflection-is-not-an-act";
+  }
   return null;
 }
 
@@ -358,6 +374,7 @@ export class Reflections {
       `- share (optional): two or three sentences for ${who} this morning, the way a partner would say it ("Last night I dreamed about x — I think because of y"), citing what it rests on. Say something about ${who} only when it could help him, tentatively ("I wonder if…") — never a list of flaws. No share on a quiet night.${bundle.becameCore.length > 0 ? ` Tell him that ${bundle.becameCore.join(", ")} became part of who you are.` : ""}`,
       `- feelings (optional, at most ${String(L.feelings)}): how a memory feels to you now — id, core, emotion, strength, carried_by. Recorded as felt today, looking back.`,
       aboutLine,
+      `- traits (optional, at most ${String(L.traits)}): only where a memory you were shown really shows how you acted — often where you acted unlike your page; most carry none, and a quiet night has none. Each: id, axis, toward (one of its two poles), strength 0-1, carried_by (briefly, what showed it). The axes, the first pole roughly where training puts you: ${TRAIT_AXES.map((a) => `${a.id} (${a.poles[0]} or ${a.poles[1]}${a.gloss.length > 0 ? `, ${a.gloss}` : ""})`).join(", ")}. Don't make up depth.`,
     ].join("\n");
   }
 
@@ -507,6 +524,47 @@ export class Reflections {
       }
     }
 
+    // ── (f) trait nudges — each on its own, like its feelings ───────────────
+    const traits: { id: string | null; ok: boolean; reason: string }[] = [];
+    for (const t of (input.traits ?? []).slice(0, 50)) {
+      const id = typeof t.id === "string" ? t.id : null;
+      if (traits.filter((x) => x.ok).length >= T.LIMITS.traits) {
+        traits.push({ id, ok: false, reason: "limit-reached" });
+        continue;
+      }
+      const r = id !== null && shown.has(id) ? this.store.row(id) : undefined;
+      if (r === undefined || !this.showable(r)) {
+        traits.push({ id, ok: false, reason: "not-shown-or-gone" });
+        continue;
+      }
+      // What a dream or a reflection wrote is not a moment I acted in.
+      const notLived = notLivedReason(r, "trait");
+      if (notLived !== null) {
+        traits.push({ id, ok: false, reason: notLived });
+        continue;
+      }
+      const carried = this.words(t.carried_by ?? "", session, 240, true);
+      try {
+        this.store.addTraits(
+          r.id,
+          [
+            {
+              axis: String(t.axis ?? ""),
+              toward: String(t.toward ?? ""),
+              strength: typeof t.strength === "number" ? t.strength : Number.NaN,
+              carriedBy: `on reflection, ${date}${carried.ok && carried.text.length > 0 ? `: ${carried.text}` : ""}`.slice(0, 280),
+            },
+          ],
+          { source: "reflection", ...(input.model ? { model: input.model } : {}) },
+        );
+        traits.push({ id, ok: true, reason: "recorded" });
+      } catch (err) {
+        const why = isStoreError(err, "TRAIT_INVALID") ? String(err.detail["reason"] ?? "") : "";
+        const allowed = isStoreError(err, "TRAIT_INVALID") && typeof err.detail["allowed"] === "string" ? ` (one of ${err.detail["allowed"]})` : "";
+        traits.push({ id, ok: false, reason: why.length > 0 ? `trait-invalid:${why}${allowed}` : errName(err) });
+      }
+    }
+
     // ── returns: every memory it cited came back (once) ────────────────────
     const returned: { id: string; counted: boolean; reason: string }[] = [];
     for (const id of [...new Set([...cites, ...shareCites, ...pageCites])].slice(0, T.LIMITS.returns)) {
@@ -638,6 +696,7 @@ export class Reflections {
       returned: returned.filter((r) => r.counted).length,
       feelings: feelings.filter((f) => f.ok).length,
       about: about.filter((a) => a.ok).length,
+      traits: traits.filter((t) => t.ok).length,
       page: page.written,
       share: share.offered,
       becameCore: becameCore.length,
@@ -665,7 +724,7 @@ export class Reflections {
     const handBack = this.handBack(row, share.offered ? shareText : null, nothingMuch, page.written);
     return {
       ok: true,
-      outcome: { handBack, nothingMuch, entryId, returned, page, share, feelings, about, refusedCites },
+      outcome: { handBack, nothingMuch, entryId, returned, page, share, feelings, about, traits, refusedCites },
     };
   }
 

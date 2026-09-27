@@ -428,6 +428,21 @@ store property is the `VACUUM INTO`, and that is G19. The code's numbering wins.
     display rows and core history, and blanks its address in a dream's change log. The
     undo helpers are named for what they do (`restoreEdge`, `restoreSuperseded`,
     `retract*`) — there is still no deletion verb on `Store`.
+24. **[M] Trait nudges are rows beside a memory, on a fixed vocabulary** (folded into
+    the unreleased v9, 2026-09-27; working default, held lightly). A `traits` row names
+    one of seven axes (`store/traits.ts#TRAIT_AXES`, each a spectrum between two good
+    things), the pole it leaned `toward`, a strength recorded once, what carried it, its
+    `source` (`session`, `reflection`) and model. A write is all-or-none and refused by
+    name (`TRAIT_INVALID`, with what is allowed) — there is no free word. DISPLAY ONLY:
+    nothing in the core reads the table to decide anything, and the store computes no
+    profile. Reads, all working under observer: `traitsFor(id)`, `traitsOn(ids)`,
+    `traitsAll({ sinceMs?, live? })` (with memory ids, live memories by default),
+    `traitCensus()` (counts). Each read row carries `confidential`; a confidential
+    memory's nudge keeps its numbers and comes back with `carried_by` empty and
+    `withheld: true` unless the caller asks `includeConfidential`. The owner's removal
+    deletes them with the memory. A dev store stamped v9 before the table existed gains
+    it at its next writer open (`operational.ts#ensureCurrentTables`); an observer reads
+    it as empty until then.
 
 ## 6. Scars honored
 

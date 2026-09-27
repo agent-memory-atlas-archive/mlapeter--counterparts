@@ -311,6 +311,9 @@ this scar's direct descendant) · **§2.7** (the note traverses the one write ch
    battery now reads it the same way (`bridge.ts#dimensionsFrom` pads a missing
    dimension with 0 instead of dropping all three). The stated-emotion gate still
    supplies no number, and still must not.
+   *Trait nudges (2026-09-27)* ride the same two doors and `reflect finish` as a
+   separate field, `traits`, on a fixed seven-axis vocabulary. They are display only:
+   nothing the doors write there changes salience, decay, recall or the core.
 5. **Is four hours the right TTL?** CAL. Every Stop refreshes the clock and the ask is
    delivered AT a Stop, so the window only ever bounds the gap between an ask and its
    answer: four hours is far past any plausible think-time and comfortably inside a day,

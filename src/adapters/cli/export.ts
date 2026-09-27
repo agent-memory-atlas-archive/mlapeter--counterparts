@@ -260,7 +260,9 @@ function collectMarkdown(store: Store, opts: ExportOptions): { bundle: Bundle; c
     // THE MEMORY'S FEELINGS TRAVEL WITH IT (schema v7, review N7): a short
     // section after the body, one line each, so the readable copy says what the
     // database does. The database export carries the table whole.
-    const text = rendered + feelingsSection(store, id);
+    // Its trait nudges too (v9), the same way. The row is here, so it was
+    // either not confidential or the owner asked for confidential ones.
+    const text = rendered + feelingsSection(store, id) + traitsSection(store, id);
     put(pathFor(store, row, doc), text);
     counts.rows += 1;
     if (row.type === "episode") counts.journal += 1;
@@ -314,6 +316,22 @@ function feelingsSection(store: Store, id: string): string {
     return `${String(i + 1)}. ${r.whose} · ${r.core} · ${word} · ${String(r.strength)}${under}${by}`;
   });
   return `\n\n## Feelings\n\n${lines.join("\n")}\n`;
+}
+
+/** `\n## Traits\n\n1. agreeable-candid → candid · 0.6 — carried by …`, or "" when none. */
+function traitsSection(store: Store, id: string): string {
+  let rows;
+  try {
+    rows = store.traitsFor(id, { includeConfidential: true });
+  } catch {
+    return "";
+  }
+  if (rows.length === 0) return "";
+  const lines = rows.map((r, i) => {
+    const by = r.carried_by.length === 0 ? "" : ` — carried by: ${r.carried_by.replace(/\r?\n/g, " ")}`;
+    return `${String(i + 1)}. ${r.axis} → ${r.toward} · ${String(r.strength)}${by}`;
+  });
+  return `\n\n## Traits\n\n${lines.join("\n")}\n`;
 }
 
 function pathFor(store: Store, row: MemoryRow, doc: ProseDoc): string {
@@ -734,7 +752,8 @@ function markdownReadme(census: MarkdownCensus, opts: ExportOptions): string {
     "",
     "- `memories/<kind>/<id>.md` — one file per memory, grouped by kind. The file name is",
     "  the memory's id; the title, dates and everything else are in the frontmatter, and",
-    "  any feelings recorded on it are a `## Feelings` list after the words.",
+    "  any feelings recorded on it are a `## Feelings` list after the words, and any trait",
+    "  nudges a `## Traits` list after those.",
     census.archived === 0
       ? "  None of them is archived: every memory here is a live one."
       : `  ${String(census.archived)} of them ${census.archived === 1 ? "is" : "are"} ARCHIVED — faded, superseded or merged.` +

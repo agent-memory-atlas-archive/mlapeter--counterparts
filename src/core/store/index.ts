@@ -54,6 +54,8 @@ import {
 } from "../time.js";
 import { checkFeelings } from "./feelings.js";
 import type { AddFeelingsResult, FeelingInput, FeelingRow, FeelingSource } from "./feelings.js";
+import { checkTraits } from "./traits.js";
+import type { TraitInput, TraitRead, TraitRow, TraitSource } from "./traits.js";
 import { creditReturn, creditUse } from "../physics/index.js";
 import type { CreditOutcome, ReturnOutcome, UseTier } from "../physics/index.js";
 import type { Db, Statement, WalFold } from "./db.js";
@@ -136,6 +138,7 @@ export * from "./paths.js";
 export * from "./prose.js";
 export * from "./render.js";
 export * from "./feelings.js";
+export * from "./traits.js";
 export type { Db, Statement, WalFold } from "./db.js";
 export type {
   CoreEventRow,
@@ -691,6 +694,7 @@ export const WRITE_METHODS = [
   "linkMany",
   "setProspective",
   "addFeelings",
+  "addTraits",
   "advanceClock",
   "setMeta",
   "setMetaMany",
@@ -2569,6 +2573,56 @@ export class Store {
     return { ids, notices };
   }
 
+  /**
+   * Record TRAIT NUDGES on a memory (folded into v9; `store/traits.ts`): how
+   * the moment showed I acted, on one of the seven axes. All or none: one bad
+   * input refuses the call `TRAIT_INVALID` and writes nothing. Display only —
+   * nothing in the core reads them. `model` is screened like `PutInput.model`.
+   */
+  addTraits(
+    memoryId: string,
+    inputs: readonly TraitInput[],
+    opts: {
+      model?: string;
+      /** `session` (the default: the awake writer) or `reflection`. */
+      source?: TraitSource;
+      /** Per input, overriding the above — a dream's merge carries each
+       *  original's own source, model and moment (`dream/`). Indexed like
+       *  `inputs`. */
+      provenance?: readonly ({ source?: string | null; model?: string | null; createdAt?: number | null } | undefined)[];
+    } = {},
+  ): { ids: readonly string[] } {
+    const rows = checkTraits(inputs);
+    const ids = rows.map(() => `trt_${randomBytes(6).toString("hex")}`);
+    this.mutate("addTraits", () => {
+      this.requireRow(memoryId);
+      const at = this.nowFn();
+      const model = modelOrNull(opts.model);
+      const source = opts.source ?? "session";
+      const insert = this.ops.prepare(
+        `INSERT INTO traits (id, memory_id, axis, toward, strength, carried_by, source, model, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      );
+      rows.forEach((r, i) => {
+        const own = opts.provenance?.[i];
+        insert.run(
+          ids[i] as string,
+          memoryId,
+          r.axis,
+          r.toward,
+          r.strength,
+          r.carriedBy,
+          own === undefined ? source : (own.source ?? null),
+          own === undefined ? model : modelOrNull(own.model ?? undefined),
+          own?.createdAt ?? at,
+          at,
+        );
+      });
+    });
+    this.emit("store.traits", memoryId, { count: rows.length });
+    return { ids };
+  }
+
   /** The active-day clock (scar E8): days actually lived, not calendar days. */
   advanceClock(date: string): number {
     const day = this.mutate("advanceClock", () => {
@@ -3600,6 +3654,136 @@ export class Store {
       tally.set(k, t);
     }
     return [...tally.values()].sort((a, b) => b.count - a.count || (a.whose + a.key < b.whose + b.key ? -1 : 1));
+  }
+
+  // ── traits (folded into v9): READ-ONLY, for the dashboard ────────────────
+  //
+  // THE CONFIDENTIALITY RULE, in one place: a nudge on a confidential memory
+  // comes back with its axis, pole and strength — numbers, the way the
+  // dashboard shows a confidential memory's physics — and its `carried_by`
+  // (words about the moment) EMPTY and `withheld: true`, unless the caller
+  // asks `includeConfidential`. It follows the memory's column as it stands
+  // now, so a memory made confidential later is withheld from then on, and a
+  // merge that inherits the marker withholds the nudges it carried over.
+  // The store computes no balance: that arithmetic is the dashboard's.
+
+  /**
+   * Is `name` a table in box 2? A development store stamped v9 before a table
+   * was folded into v9 lacks it until its next writer open
+   * (`operational.ts#ensureCurrentTables`); an observer read of such a table
+   * answers empty rather than throwing. A positive answer is kept; a negative
+   * one is asked again next time, since a writer may have created it since.
+   */
+  private hasTable(name: string): boolean {
+    if (this.tablesSeen.has(name)) return true;
+    const found = this.ops.get<{ n: number }>(
+      "SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = ?",
+      name,
+    );
+    if ((found?.n ?? 0) > 0) {
+      this.tablesSeen.add(name);
+      return true;
+    }
+    return false;
+  }
+
+  private readonly tablesSeen = new Set<string>();
+
+  private traitReads(rows: (TraitRow & { confidential: number })[], includeConfidential: boolean): TraitRead[] {
+    return rows.map((r) => {
+      const confidential = r.confidential === 1;
+      const withheld = confidential && !includeConfidential;
+      return {
+        id: r.id,
+        memory_id: r.memory_id,
+        axis: r.axis,
+        toward: r.toward,
+        strength: r.strength,
+        carried_by: withheld ? "" : r.carried_by,
+        source: r.source,
+        model: r.model,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+        confidential,
+        withheld,
+      };
+    });
+  }
+
+  /**
+   * A memory's trait nudges, oldest first (then in the order written). A
+   * removed memory has none. Works under observer. Confidentiality: above.
+   */
+  traitsFor(memoryId: string, opts: { includeConfidential?: boolean } = {}): TraitRead[] {
+    if (!this.hasTable("traits")) return [];
+    const rows = this.ops.all<TraitRow & { confidential: number }>(
+      `SELECT t.*, m.confidential AS confidential FROM traits t JOIN memories m ON m.id = t.memory_id
+        WHERE t.memory_id = ? ORDER BY t.created_at, t.rowid`,
+      memoryId,
+    );
+    return this.traitReads(rows, opts.includeConfidential === true);
+  }
+
+  /**
+   * The nudges on several memories in ONE query, keyed by memory id; ids with
+   * none are simply absent. Works under observer. Confidentiality: above.
+   */
+  traitsOn(ids: readonly string[], opts: { includeConfidential?: boolean } = {}): Map<string, TraitRead[]> {
+    const out = new Map<string, TraitRead[]>();
+    if (ids.length === 0 || !this.hasTable("traits")) return out;
+    const unique = [...new Set(ids)];
+    for (let at = 0; at < unique.length; at += 500) {
+      const part = unique.slice(at, at + 500);
+      const rows = this.ops.all<TraitRow & { confidential: number }>(
+        `SELECT t.*, m.confidential AS confidential FROM traits t JOIN memories m ON m.id = t.memory_id
+          WHERE t.memory_id IN (${part.map(() => "?").join(",")})
+          ORDER BY t.created_at, t.rowid`,
+        ...part,
+      );
+      for (const r of this.traitReads(rows, opts.includeConfidential === true)) {
+        const list = out.get(r.memory_id) ?? [];
+        list.push(r);
+        out.set(r.memory_id, list);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * EVERY NUDGE, each with its memory id — what the dashboard draws each
+   * axis's balance from (it weighs them by the memory's firmness itself).
+   * By default only nudges on LIVE memories (not archived, not superseded):
+   * a merged original's nudges were carried onto the merged memory, and
+   * counting both would count the moment twice. `live: false` reads them all.
+   * `sinceMs` (the store's clock, UTC ms) narrows to nudges recorded since.
+   * Oldest first. Works under observer. Confidentiality: above.
+   */
+  traitsAll(opts: { includeConfidential?: boolean; live?: boolean; sinceMs?: number } = {}): TraitRead[] {
+    if (!this.hasTable("traits")) return [];
+    const live = opts.live !== false;
+    const rows = this.ops.all<TraitRow & { confidential: number }>(
+      `SELECT t.*, m.confidential AS confidential FROM traits t JOIN memories m ON m.id = t.memory_id
+        WHERE t.created_at >= ?${live ? " AND m.archived = 0 AND m.superseded_by IS NULL" : ""}
+        ORDER BY t.created_at, t.rowid`,
+      opts.sinceMs ?? Number.MIN_SAFE_INTEGER,
+    );
+    return this.traitReads(rows, opts.includeConfidential === true);
+  }
+
+  /**
+   * THE TRAIT CENSUS, counts only: live memories carrying at least one
+   * nudge, and the nudges on them — both narrowed to nudges recorded at or
+   * after `sinceMs` when it is given. No word and no axis leaves here.
+   */
+  traitCensus(opts: { sinceMs?: number } = {}): { memories: number; nudges: number } {
+    if (!this.hasTable("traits")) return { memories: 0, nudges: 0 };
+    const row = this.ops.get<{ memories: number | null; nudges: number | null }>(
+      `SELECT COUNT(DISTINCT t.memory_id) AS memories, COUNT(*) AS nudges
+         FROM traits t JOIN memories m ON m.id = t.memory_id
+        WHERE t.created_at >= ? AND m.archived = 0 AND m.superseded_by IS NULL`,
+      opts.sinceMs ?? Number.MIN_SAFE_INTEGER,
+    );
+    return { memories: row?.memories ?? 0, nudges: row?.nudges ?? 0 };
   }
 
   versions(id: string): VersionRow[] {

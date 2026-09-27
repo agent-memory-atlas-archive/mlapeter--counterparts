@@ -1874,3 +1874,15 @@ found a paraphrase only by the words it shared. It now opens its store with the 
 the store's own, at open: a store whose box 3 holds another model's vectors withdraws
 the embedder, and the note lands with words only. Missing weights: the note lands with
 words only and prints nothing about it — doctor and the backfill name a missing table.
+
+## 2026-09-27 — trait nudges in the export and `fired` (working defaults)
+
+- **`export --markdown` carries a memory's nudges** as a `## Traits` list after its
+  `## Feelings` (`1. agreeable-candid → candid · 0.6 — carried by: …`). The row is only
+  there when it is not confidential or the owner passed `--include-confidential`, so the
+  section reads with its words.
+- **`fired` gained one row, `traits`** ("a memory that showed how I acted was given a
+  trait nudge"), a probe over live memories dated by the newest nudge. It is plumbing in
+  `counterparts mechanisms` (no mechanism line of its own: traits feed nothing), so it
+  shows in the plumbing count and in `mechanisms --all`. No doctor line: nothing there
+  fits without forcing it.
