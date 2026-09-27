@@ -541,3 +541,71 @@ describe("lanes: a reflection and an organic use on one lived day", () => {
     expect(record["reflectionOnly"]).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Decisions for the owner: today's behaviour, pinned so a ruling flips a test
+// ---------------------------------------------------------------------------
+
+describe("decisions for the owner (today's behaviour, not changed by the review)", () => {
+  test("D2: a reflection can turn a writer's `work` mark into `me`, and the owner has no door to set a mark", () => {
+    const c = brain();
+    nextDay(c);
+    nextDay(c);
+    const lesson = mem(c, "Back up the store before every migration.", { kind: "self", about: "work", aboutBy: "writer" });
+    const { outcome } = reflect(c, [lesson], { about: [{ id: lesson, about: "me", why: "it is who I am" }] });
+    expect(outcome.about[0]).toMatchObject({ ok: true });
+    expect(c.store.read(lesson)).toMatchObject({ about: "me", aboutBy: "reflection" });
+  });
+
+  test("D3: `pageWriter.mode: off` does not stop the reflection's page write", async () => {
+    const { openAdapter } = await import("../src/adapters/claude-code/index.js");
+    const a = openAdapter({ dataDir: dir, injectionBudgetBytes: 9_000, owner: true, pageWriter: { mode: "off" } } as never);
+    open.push(a.counterpart);
+    const c = a.counterpart;
+    nextDay(c);
+    nextDay(c);
+    const id = mem(c, "Mike and I finished the release together.", { kind: "person", about: "us" });
+    const { outcome } = reflect(c, [id], { page: { text: "## Core\n\nI work beside Mike, and we finish things.", cites: [id] } });
+    expect(outcome.page.written).toBe(true);
+  });
+
+  test("D4: the owner's removal redacts the reflection's record, but the entry's memory keeps the same words", async () => {
+    const c = brain();
+    nextDay(c);
+    nextDay(c);
+    const felt = mem(c, "I felt proud when Mike said the dashboard finally reads like a person.", { kind: "self", about: "me" });
+    const { bundle, outcome } = reflect(c, [felt], {});
+    const entry = outcome.entryId as string;
+    c.store.appendRemovalRecord({ memoryId: felt, stage: "requested", actor: "owner", reason: "test" });
+    c.store.appendRemovalRecord({ memoryId: felt, stage: "dark", actor: "owner", reason: "test" });
+    const { chaseRemoved } = await import("../src/core/store/owner-op-seam.js");
+    chaseRemoved(c.store, felt);
+    expect(c.store.reflection(bundle.reflection)?.entry).toContain("redacted");
+    expect(c.store.row(entry)?.body).toBe("Looking back over the last few days, a few things stand out.");
+    expect(JSON.parse(c.store.row(entry)?.meta ?? "{}").cites).toContain(felt);
+  });
+
+  test("D5: reflection alone carries the slow lane in four weeks of weekly citing", () => {
+    const c = brain();
+    nextDay(c);
+    const id = mem(c, "I keep coming back to how quiet the good sessions are.", {
+      kind: "self",
+      about: "me",
+      salience: { relevance: 0.9, emotional: 0.1, predictive: 0.9, claimed: 0.9 },
+    });
+    // A reflection every lived day, citing it; sleep each night.
+    const born = c.store.physicsOf(id).birthDay;
+    let promotedOn: number | null = null;
+    for (let night = 1; night <= 60 && promotedOn === null; night += 1) {
+      nextDay(c);
+      reflect(c, [id]);
+      if (sleepNow(c).promoted.some((p) => p.id === id)) promotedOn = c.store.livedDay();
+    }
+    expect(promotedOn).not.toBe(null);
+    expect(c.store.physicsOf(id).returnDays).toBe(5);
+    // Four weekly returns after the first: at least 28 lived days from the first citation.
+    expect((promotedOn as number) - born).toBeGreaterThanOrEqual(28);
+    const record = JSON.parse(c.store.getMeta(promotionRecordKey(id)) ?? "{}") as Record<string, unknown>;
+    expect(record).toMatchObject({ lane: "slow", reflectionOnly: true });
+  });
+});
