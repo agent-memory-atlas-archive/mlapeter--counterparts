@@ -82,3 +82,70 @@ What the build learned, and every choice the brief left open (2026-09-26).
 - **Replays follow spacing** (physics NOTES): a memory in every night's bundle counts at
   most once a week.
 - **Removal redacts journals** that cite or quote the removed memory (store NOTES).
+
+
+## 2026-09-27 — reflection, the morning share, core by meaning
+
+Working defaults from the owner's conversation of 2026-09-27 and its design review
+(`~/counterparts-notes/2026-09-27-build-brief.md`, addendum included). Every choice the
+brief left open, and why.
+
+1. **A sibling tool, `reflect`, not more `dream` phases.** Reflection has its own record
+   and can run without a dream (addendum 1); a phase of `dream` would have tied it to a
+   dream row. The dream's launch prompt chains the steps, and `journal` tells the dreamer
+   to reflect next (and to fall back to the journal's hand-back if reflecting fails).
+2. **The record is a table; the entry is also a memory when it cites something.** The
+   table holds what only a reflection has (the questions, the share and its state, the
+   page version). The entry is lived, so it becomes an ordinary memory of source
+   `reflection` — recall labels it "Reflected:", the next dream can replay it — but only
+   when it cites what it rests on. A "nothing much" night leaves no memory.
+3. **"Nothing much" = nothing cited.** The rule is mechanical so no made-up depth is
+   needed to pass it: no citations → no memory, no page (refused `page-needs-cites`), no
+   share. Only a memory that became core on reflection alone is still said.
+4. **How reflection returns feed the two lanes**: see physics NOTES 2026-09-27 — the fast
+   lane's return, and at most one slow-lane day a week per memory. Returns are credited
+   to the union of what the entry, the page and the share cite, at most 12.
+5. **The page rests on the core** when there is one (at least one cited core memory, else
+   `page-rests-on-the-core`); a store with no core yet writes from what it cites. A
+   dream's gist is not citable for the page (`dreamed-is-not-a-source`), and a page that
+   carries a six-word run of the dream's gist is refused (`dreamed-words-on-the-page`).
+   The prompt asks for craft under "## How I work"; nothing enforces headings.
+6. **The page write claims the night.** `writePage` records a `self.page.writer.ran` row
+   (mode `session`, outcome `revised`) for `pageWriterNight`'s date. That is why the old
+   SessionStart writer is LEFT IN PLACE: on a night the reflection wrote the page it
+   finds the night claimed and stands down; on a night with no reflection it behaves as
+   before (and mostly defers `no-room`, as it did). It does no harm, and removing it would
+   leave dreamless nights with no writer at all.
+7. **The share is carried on the prompt, not the wake.** The SessionStart wake's byte
+   ceiling is what stranded the page writer. `dreamLines` (UserPromptSubmit) carries an
+   untold share once, and only after the reflecting session ended (its registry record
+   is ended or quiet past `SESSION_TTL_MS`), so the two do not both tell it. The line and
+   the hand-back ask for a telling in the session's own words, then `told`.
+8. **The hand-back carries the mark**, a standalone reflection's too
+   (`⟦counterparts:dream reflection rfl_…⟧`): capture refuses the tool's words, so a
+   thought about the owner is never filed as a fact about him from them; the session's
+   own telling is what is lived.
+9. **Questions rotate by count**: three in a row from the list, starting where the last
+   night stopped (eight questions after a dream, seven without — consecutive nights never
+   share one).
+10. **No new durable event names.** The dashboard's registry is exhaustive by type and is
+    another session's; reflection records live in their own table, per-memory `told` and
+    `about` in `core_events`, and mechanisms count reflections with a census.
+11. **What's on my mind** reads what the store already keeps: dated memories in the next
+    14 days, flagged pairs still standing, live handoffs' first lines. No goals in v1
+    (nothing records one).
+12. **A dream's nomination is its suggestion of meaning.** It cannot set the mark, so it
+    may nominate an unmarked memory; not a `skill`, and not one something awake already
+    marked `work` or `world`. The reflection sees nominations and decides.
+13. **A promotion on reflection alone is said** (the owner's addition): the next bundle
+    lists it (`becameCore`), the instructions ask the share to say it, and if the share
+    did not cite it the engine adds "I think "…" has become part of who I am." A meta
+    latch (`reflection.coreMentioned.<id>`) says it once.
+14. **What a dream or a reflection wrote earns no return by being cited.** A dreamed
+    gist can be cited in the entry and the share (it is a suggestion the waking self may
+    take up), but the citation is not a return (`dreamed-rises-only-awake`, the dream's
+    own rule): otherwise the agent that dreamed a gist could wake, mark it, feel it and
+    cite it into the core in two days with no organic use. A reflection's own entries are
+    not shown to it as memories at all — only as words, under `earlier` — because a
+    reflection returning its own reflections is the rumination loop self CONTRACT §2(c)
+    names (`reflection-does-not-return-itself` if one is ever cited).

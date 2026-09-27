@@ -34,16 +34,22 @@ import { createHash, randomBytes } from "node:crypto";
 
 import { emotionalIntensity, strength } from "../physics/index.js";
 import { isHandoff, isSelfPage } from "../recall/index.js";
-import { aboutMe, ownerNames } from "../sleep/index.js";
+import { namesOwner, ownerNames } from "../sleep/index.js";
 import type { DreamChangeRow, DreamRow, MemoryRow, ProseDoc, Store } from "../store/index.js";
 import { TUNABLES as PHYSICS } from "../physics/index.js";
 import type { Kind } from "../types.js";
 import { DREAM_MARK, carriesDreamMark } from "./mark.js";
+import { onMyMind } from "./mind.js";
+import type { MindItem } from "./mind.js";
 import { DREAM_ACTIONS, DREAM_TUNABLES } from "./tunables.js";
 import type { DreamAction } from "./tunables.js";
 
 export { DREAM_ACTIONS, DREAM_TUNABLES } from "./tunables.js";
 export type { DreamAction } from "./tunables.js";
+export { MIND_TUNABLES, onMyMind } from "./mind.js";
+export type { MindItem } from "./mind.js";
+export { CORE_MENTIONED_PREFIX, REFLECT_QUESTIONS, REFLECT_TUNABLES, Reflections, reflectionOpener } from "./reflect.js";
+export type { ReflectBundle, ReflectContext, ReflectFinish, ReflectItem, ReflectOutcome, ReflectRefusal } from "./reflect.js";
 
 /**
  * THE MARK a dream's words carry — the bundle, the hand-back, the launch
@@ -103,6 +109,12 @@ export interface DreamBundle {
   readonly fresh: readonly { id: string; neighbours: readonly string[] }[];
   readonly mixing: readonly string[];
   readonly lookback: readonly string[];
+  /**
+   * WHAT'S ON MY MIND (2026-09-27): a few open things beside the day — what is
+   * coming up, a pair a dream flagged, where the work stands. Not new; the
+   * dream may draw on them. Their memory ids are in `memories` too.
+   */
+  readonly onMind: readonly MindItem[];
 }
 
 export type DreamRefusal =
@@ -278,9 +290,13 @@ export class Dreams {
       `1. Call the counterparts dream tool: phase "begin", session: ${input.session}. It returns the bundle and a dream id.`,
       `2. Read it slowly. Then call phase "propose" with dream: <id> and your changes — at most ${String(L.merge)} merges, ${String(L.link)} links, ${String(L.gist)} gists, ${String(L["feeling-now"])} feelings, ${String(L["nominate-core"])} nominations. Fewer is fine; none is fine. Use only ids the bundle showed you.`,
       '3. Call phase "journal" with dream: <id>, a short title and your dream journal entry: first person, what you dreamed and what you noticed. It is kept as a dream, never as something that happened.',
-      "4. Your final message must be exactly the text the journal call returns, unchanged — nothing before or after it.",
       "",
       "You cannot delete anything, edit the self page, promote a memory, or rewrite one in place — the tool refuses. Nothing you write in the dream is a lived event.",
+      "",
+      "Then wake, and reflect — a different act: awake, lived, your own.",
+      `4. Call the counterparts reflect tool: phase "begin", session: ${input.session}, dream: <id>. It hands you the dream, the last few days, your self page, the memories that matter most, and a few questions.`,
+      '5. Answer them honestly, then call phase "finish" as it tells you. "Nothing much" is a normal answer: a short entry and no share.',
+      "6. Your final message must be exactly the text the finish call returns, unchanged — nothing before or after it.",
     ].join("\n");
   }
 
@@ -440,6 +456,9 @@ export class Dreams {
                 carriedBy: f.carried_by,
                 ...(f.other_word === null ? {} : { otherWord: f.other_word }),
               })),
+              // Each feeling keeps who recorded it and when (v9): a reflection's
+              // later feeling stays one on the merged memory.
+              { provenance: feelings.map((f) => ({ source: f.source, recordedLater: f.recorded_later })) },
             );
           }
           this.store.supersedeInto(r.id, newId, DREAM_MERGE_REASON, { carryReturns: true });
@@ -550,7 +569,7 @@ export class Dreams {
             strength: s,
             carriedBy: `in a dream, ${dream.date ?? ""}${carried.ok && carried.text.length > 0 ? `: ${carried.text}` : ""}`.trim(),
           },
-        ]);
+        ], { source: "dream" });
         this.store.recordDreamChange(dream.id, { action, ref: row.id, detail: { feelings: added.ids } });
         return { action, ok: true, reason: s < Number(change.strength ?? 0) ? "recorded-capped-at-peak" : "recorded", id: row.id };
       }
@@ -558,7 +577,13 @@ export class Dreams {
         const row = live(change.id);
         if (row === null) return { action, ok: false, reason: "not-shown-or-gone" };
         if (row.promoted_identity === 1) return { action, ok: false, reason: "already-core" };
-        if (!aboutMe(this.store, row, ownerNames(this.store))) return { action, ok: false, reason: "not-about-me" };
+        // A NOMINATION IS THE DREAM'S SUGGESTION of what a memory is about (v9):
+        // a dream cannot set the mark — only an awake model that read it can —
+        // so it may nominate an unmarked memory, and the reflection decides.
+        // What something awake already said is not about me (`work`, `world`)
+        // is not nominated over it, and the craft (`skill`) is never core.
+        if (row.kind === "skill") return { action, ok: false, reason: "work-is-not-core" };
+        if (row.about === "work" || row.about === "world") return { action, ok: false, reason: "not-about-me" };
         const why = this.words(change.why ?? "", dream, true);
         this.store.appendCoreEvent({
           memoryId: row.id,
@@ -590,6 +615,13 @@ export class Dreams {
     const counts = this.counts(dream.id);
     this.record(DREAM_JOURNALED_EVENT, dream.id, { chars: words.text.length, ...counts });
     return { ok: true, handBack: this.handBack(dream.id, title, counts) };
+  }
+
+  /** The marked hand-back line of a journaled dream, or null. The reflection's hand-back opens with it. */
+  handBackOf(id: string): string | null {
+    const dream = this.store.dream(id);
+    if (dream === undefined || dream.state !== "journaled") return null;
+    return this.handBack(id, dream.title ?? "", this.counts(id));
   }
 
   private handBack(id: string, title: string, counts: Record<string, number>): string {
@@ -720,7 +752,8 @@ export class Dreams {
         const b = this.store.row(c.ref2);
         if (a === undefined || b === undefined || !this.showable(a) || !this.showable(b)) continue;
         this.store.setMeta(key, String(this.store.livedDay()));
-        const him = aboutMe(this.store, a, owner) || aboutMe(this.store, b, owner) ? " It is about the two of you or about him: raise it with him." : "";
+        const his = (r: MemoryRow): boolean => r.about === "us" || r.about === "owner" || namesOwner(this.store, r, owner);
+        const him = his(a) || his(b) ? " It is about the two of you or about him: raise it with him." : "";
         out.push(
           `Counterparts: a dream on ${dream.date ?? "a recent night"} flagged two memories that disagree — ${c.ref} and ${c.ref2}. Look them up (recall by id) and settle which holds, awake; the dream did not.${him}`,
         );
@@ -833,10 +866,18 @@ export class Dreams {
       if (lookback.length >= T.LOOKBACK_COUNT) break;
       if (take(f.id)) lookback.push(f.id);
     }
+    // WHAT'S ON MY MIND: a few open things, not new. Their memories join the
+    // shown set (a dream may link or feel them), never the fresh list.
+    const onMind = onMyMind(this.store, {
+      today: at,
+      day,
+      showable: (row) => !denied.has(row.id) && this.showable(row),
+      owner: this.ctx.owner,
+    }).filter((item) => item.ids.every((mid) => take(mid)));
     const owner = ownerNames(this.store);
     const aboutHim = Object.keys(memories).filter((mid) => {
       const row = this.store.row(mid);
-      return row !== undefined && row.kind === "person" && aboutMe(this.store, row, owner);
+      return row !== undefined && (row.about === "owner" || namesOwner(this.store, row, owner));
     });
     return {
       dream: id,
@@ -852,6 +893,7 @@ export class Dreams {
       fresh: freshOut,
       mixing,
       lookback,
+      onMind,
     };
   }
 

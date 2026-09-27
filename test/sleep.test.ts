@@ -129,11 +129,13 @@ function put(s: Store, over: Partial<PutInput> = {}): string {
 /**
  * A memory about me that meets the core's FAST lane (2026-09-26): strongly
  * felt, made three lived days ago, and back once today — an awake return,
- * credited through the store the way a real use is.
+ * credited through the store the way a real use is. Marked `me` (v9: the core
+ * reads the mark, not the kind).
  */
 function fastLaneSelf(s: Store, over: Partial<PutInput> = {}): string {
   const id = put(s, {
     kind: "self",
+    about: "me",
     salience: { relevance: 0.9, emotional: 0.9, predictive: 0.9 },
     physics: { birthDay: -3, lastUsedDay: -3 },
     ...over,
@@ -615,12 +617,13 @@ describe("consolidation and the identity crossing", () => {
     // About me, felt only a little, back once: neither lane.
     const id = put(s, {
       kind: "self",
+      about: "me",
       salience: { claimed: 0.9, relevance: 0.9 },
       physics: { birthDay: -3, lastUsedDay: -3, consolidated: false },
     });
     s.reinforce(id, 0, "referenced");
     // Not about me at all, however strong and felt.
-    const fact = fastLaneSelf(s, { kind: "fact" });
+    const fact = fastLaneSelf(s, { kind: "fact", about: "world" });
     const report = runCycle({ store: s, date: "2026-01-02" });
 
     expect(report.promoted).toEqual([]);
@@ -651,14 +654,20 @@ describe("consolidation and the identity crossing", () => {
     expect(later.map((p) => p.id).sort()).toEqual(ids.slice(3).sort());
   });
 
-  test("a person memory is about me only when it names the owner", () => {
+  test("the core reads the about mark, not the kind (v9): owner, me and us cross; work, world and unmarked do not", () => {
     const s = store();
     s.put({ type: "schema", kind: "self", title: "Mike", body: "Mike", meta: { role: "entity", name: "Mike", aliases: ["Michael"] } });
-    const him = fastLaneSelf(s, { kind: "person", body: "Michael laughed when the demo finally worked." });
-    const other = fastLaneSelf(s, { kind: "person", body: "Ada laughed when the demo finally worked." });
+    const him = fastLaneSelf(s, { kind: "person", about: "owner", body: "Michael laughed when the demo finally worked." });
+    // Naming him is no longer enough: nothing awake said it is about him.
+    const named = fastLaneSelf(s, { kind: "person", about: undefined, body: "Michael sighed when the build broke again." });
+    // A self-kind WORK LESSON, unmarked: not a candidate (rule A).
+    const lesson = fastLaneSelf(s, { kind: "self", about: undefined, body: "Always run the migration before the container boots." });
     const report = runCycle({ store: s, date: "2026-01-02" });
     expect(report.promoted.map((p) => p.id)).toEqual([him]);
-    expect(s.physicsOf(other).promotedIdentity).toBe(false);
+    expect(s.physicsOf(named).promotedIdentity).toBe(false);
+    expect(s.physicsOf(lesson).promotedIdentity).toBe(false);
+    // The two above, and the unmarked identity core (a schema row) besides.
+    expect(phaseReport(report, "consolidate").skipped["promotion:not-about-me"]).toBeGreaterThanOrEqual(2);
   });
 
   test("the owner's demotion holds: the lanes do not promote it again", () => {

@@ -20,6 +20,22 @@ import { preMigrationDir, snapshotBeforeMigration } from "./pre-migration.js";
 import type { ProseType } from "./prose.js";
 
 /**
+ * Bumped to 9 (2026-09-27, reflection + core by meaning): ADDITIVE, through the
+ * same copy-first seam. `memories` gains `about` — WHAT A MEMORY IS ABOUT, a
+ * neutral mark (`me`, `us`, `owner`, `work`, `world`, or NULL) an awake model
+ * sets by meaning (the writer at `note` / `session_end`, or the reflection),
+ * which replaces the kind-label reading as the core's first question — and
+ * `about_by`, who set it. `feelings` gains `source` (`session`, `dream`,
+ * `reflection`) and `recorded_later` — the calendar date a feeling was
+ * recorded AFTER the moment, NULL for one felt at the time. One table is new,
+ * `reflections` (the waking self's record: an optional dream id, the entry,
+ * the morning share and whether it was told, what it cited). `returns` gains
+ * a SOURCE, not a column: `reflection`, which the core lanes count beside
+ * `awake` (physics §5.11). The upgrade CARRIES TODAY'S RULE: every `self`
+ * memory is marked `me` and every `person` memory naming the owner `owner`,
+ * `about_by = 'upgrade'`, so the core candidates are the same the morning
+ * after as the night before; doctor says so. `store/NOTES.md` 2026-09-27.
+ *
  * Bumped to 8 (2026-09-26, dreaming + consolidation): ADDITIVE again, through
  * the same copy-first seam. `memories` gains `legacy` (every row the upgrade
  * finds keeps the old one-time consolidation path, so nothing drops a band)
@@ -72,7 +88,7 @@ import type { ProseType } from "./prose.js";
  * migrated open MUST converge on the identical schema; a test asserts
  * table_info equality.
  */
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 /**
  * The oldest schema an OBSERVER may open without a migration having run.
  *
@@ -96,8 +112,12 @@ export const SCHEMA_VERSION = 8;
  * returns columns, and the new tables are read by instruments. On a v7 store
  * doctor and the dashboard say "not initialized" until the next hook opens it
  * as a writer, which copies it and migrates it.
+ *
+ * Raised to 9 with v9 (2026-09-27), for the same reason again: the
+ * `reflections` table is read by instruments (doctor's reflection line), and a
+ * v8 file has none.
  */
-export const OBSERVER_READ_FLOOR = 8;
+export const OBSERVER_READ_FLOOR = 9;
 /** Retention for superseded-version rows, in LIVED days. TUNABLE (module-map ruling 2).
  *
  *  Owner ruling 1, 2026-09-18: the prune STAYS, at 90. It now deletes the words
@@ -192,7 +212,9 @@ const DDL: readonly string[] = [
      return_days       INTEGER NOT NULL DEFAULT 0,
      first_return_day  INTEGER,
      last_return_day   INTEGER,
-     last_dream_day    INTEGER
+     last_dream_day    INTEGER,
+     about             TEXT,
+     about_by          TEXT
    )`,
   `CREATE INDEX IF NOT EXISTS memories_band ON memories (band, archived)`,
   `CREATE INDEX IF NOT EXISTS memories_kind ON memories (kind, archived)`,
@@ -264,7 +286,9 @@ const DDL: readonly string[] = [
      carried_by  TEXT NOT NULL DEFAULT '',
      model       TEXT,
      created_at  INTEGER NOT NULL,
-     updated_at  INTEGER NOT NULL
+     updated_at  INTEGER NOT NULL,
+     source      TEXT,
+     recorded_later TEXT
    )`,
   `CREATE INDEX IF NOT EXISTS feelings_memory ON feelings (memory_id)`,
   // v8 (2026-09-26, dreaming + consolidation): RETURNS, one row per counted
@@ -362,6 +386,39 @@ const DDL: readonly string[] = [
      dream_id  TEXT,
      actor     TEXT
    )`,
+  // v9 (2026-09-27): REFLECTIONS — the waking self, usually after a dream
+  // (`dream_id`, optional: reflecting is its own act). One row per reflection:
+  // the questions it was asked, what it was shown, its entry (first person,
+  // LIVED; when it cited anything, the entry is also a memory of source
+  // `reflection`, `entry_id`), the morning share and what became of it
+  // (`none`, `offered`, `carried`, `told`), the ids it cited, and the page
+  // version it wrote. The owner's removal redacts an entry and a share that
+  // cite or quote a removed memory.
+  `CREATE TABLE IF NOT EXISTS reflections (
+     id           TEXT PRIMARY KEY,
+     dream_id     TEXT,
+     session      TEXT,
+     scope        TEXT,
+     day          INTEGER NOT NULL,
+     date         TEXT,
+     state        TEXT NOT NULL,
+     started_at   INTEGER NOT NULL,
+     finished_at  INTEGER,
+     model        TEXT,
+     questions    TEXT NOT NULL DEFAULT '[]',
+     shown        TEXT NOT NULL DEFAULT '[]',
+     entry        TEXT,
+     entry_id     TEXT,
+     cites        TEXT NOT NULL DEFAULT '[]',
+     share        TEXT,
+     share_cites  TEXT NOT NULL DEFAULT '[]',
+     share_state  TEXT NOT NULL DEFAULT 'none',
+     share_at     INTEGER,
+     share_session TEXT,
+     page_version INTEGER,
+     detail       TEXT NOT NULL DEFAULT '{}'
+   )`,
+  `CREATE INDEX IF NOT EXISTS reflections_day ON reflections (day)`,
   `CREATE INDEX IF NOT EXISTS core_events_memory ON core_events (memory_id)`,
   `CREATE INDEX IF NOT EXISTS core_events_at ON core_events (at)`,
   `CREATE INDEX IF NOT EXISTS feelings_whose_core ON feelings (whose, core)`,
@@ -515,6 +572,50 @@ export interface MemoryRow extends Row {
   first_return_day: number | null;
   last_return_day: number | null;
   last_dream_day: number | null;
+  /**
+   * v9: what the memory is about (`me`, `us`, `owner`, `work`, `world`), set
+   * by an awake model that read it — the writer at `note` / `session_end`, or
+   * the reflection — or by the v9 upgrade carrying the old kind rule. NULL =
+   * unmarked. Only `me`, `us` and `owner` can become core
+   * (`sleep/consolidate.ts#aboutMe`). Optional so a bare row built by a test
+   * or a tool without the column still reads.
+   */
+  about: string | null;
+  /** v9: who set `about` — `writer`, `reflection`, `owner`, `upgrade`. */
+  about_by: string | null;
+}
+
+export interface ReflectionRow extends Row {
+  id: string;
+  dream_id: string | null;
+  session: string | null;
+  scope: string | null;
+  day: number;
+  date: string | null;
+  /** `begun`, `reflected`. */
+  state: string;
+  started_at: number;
+  finished_at: number | null;
+  model: string | null;
+  /** JSON: the questions it was asked. */
+  questions: string;
+  /** JSON: the ids it was shown (the only ids it may cite, mark or feel). */
+  shown: string;
+  entry: string | null;
+  /** The memory the entry became (source `reflection`), or null (nothing cited: "nothing much"). */
+  entry_id: string | null;
+  /** JSON: the ids the entry and the page rest on. */
+  cites: string;
+  share: string | null;
+  /** JSON: the ids the share rests on (a telling records `told` on them). */
+  share_cites: string;
+  /** `none` (nothing to share), `offered`, `carried` (a later session was handed it), `told`. */
+  share_state: string;
+  share_at: number | null;
+  share_session: string | null;
+  page_version: number | null;
+  /** JSON: counts and reasons, ids and numbers only. */
+  detail: string;
 }
 
 export interface ReturnRow extends Row {
@@ -598,6 +699,8 @@ export interface CoreEventRow extends Row {
  */
 export interface FeelingPeak {
   feeling_peak?: number | null;
+  /** v9: the same peak without the feelings a reflection recorded later. */
+  feeling_peak_lived?: number | null;
 }
 
 export interface VersionRow extends Row {
@@ -942,6 +1045,36 @@ export function openOperational(path: string, opts: OpenOperationalOptions = {})
           }),
         );
       }
+      // v9 (2026-09-27): THE UPGRADE CARRIES TODAY'S RULE (working default
+      // after the design review, held lightly). Until v9 "about me" was a kind
+      // label — every `self` memory, and `person` memories naming the owner.
+      // Those rows are marked `me` and `owner` now, `about_by = 'upgrade'`, so
+      // the core candidates are the same the morning after the upgrade as the
+      // night before, and doctor says so. From here the mark is set by
+      // meaning: a writer's field, or the reflection — which may mark one of
+      // these `work` and take it out of the candidates (removal is the safer
+      // direction). Every existing feeling is given its source: `dream` for
+      // the ones a dream recorded (its change log names them), `session` for
+      // the rest (`store/NOTES.md` 2026-09-27).
+      if (now !== null && Number.parseInt(now, 10) < 9) {
+        const marked = markByOldRule(db);
+        const feelings = sourceExistingFeelings(db);
+        const lived = db.get<{ value: string }>("SELECT value FROM meta WHERE key = 'livedDay'")?.value ?? "0";
+        db.run(
+          "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+          V9_UPGRADE_KEY,
+          JSON.stringify({
+            from: now,
+            day: Number.parseInt(lived, 10) || 0,
+            at: Date.now(),
+            markedMe: marked.self,
+            markedOwner: marked.person,
+            candidates: marked.candidates,
+            feelingsDream: feelings.dream,
+            feelingsSession: feelings.session,
+          }),
+        );
+      }
       const put = db.prepare("INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)");
       put.run("livedDay", "0");
       put.run("lastActiveDate", "");
@@ -1040,6 +1173,15 @@ export const ADDED_COLUMNS: readonly { table: string; column: string; ddl: strin
   { table: "memories", column: "first_return_day", ddl: "ALTER TABLE memories ADD COLUMN first_return_day INTEGER" },
   { table: "memories", column: "last_return_day", ddl: "ALTER TABLE memories ADD COLUMN last_return_day INTEGER" },
   { table: "memories", column: "last_dream_day", ddl: "ALTER TABLE memories ADD COLUMN last_dream_day INTEGER" },
+  // v9 (2026-09-27, reflection + core by meaning): what a memory is about and
+  // who said so (the upgrade fills both for the rows today's rule reads as
+  // about me — below), and a feeling's source and the date it was recorded
+  // after the moment, NULL for one felt at the time (every feeling written
+  // before v9 was; the upgrade names each one's source).
+  { table: "memories", column: "about", ddl: "ALTER TABLE memories ADD COLUMN about TEXT" },
+  { table: "memories", column: "about_by", ddl: "ALTER TABLE memories ADD COLUMN about_by TEXT" },
+  { table: "feelings", column: "source", ddl: "ALTER TABLE feelings ADD COLUMN source TEXT" },
+  { table: "feelings", column: "recorded_later", ddl: "ALTER TABLE feelings ADD COLUMN recorded_later TEXT" },
 ];
 
 /**
@@ -1097,6 +1239,136 @@ export function creditLegacyReturns(db: Db): { memories: number; rows: number } 
  *  `sleep/upgrade.ts` spells the same key for its census latch. */
 export const V8_UPGRADE_KEY = "physics.v8.upgrade";
 
+/** Meta key: what the v9 upgrade found (`physics.v9.upgrade`), for doctor. */
+export const V9_UPGRADE_KEY = "physics.v9.upgrade";
+
+/**
+ * THE OLD KIND RULE, CARRIED as marks at the v9 upgrade: every `self` memory
+ * is marked `me`, and every `person` memory that names the owner (title,
+ * body, or its `name` / `entity` meta, whole word, any case) `owner` —
+ * `about_by = 'upgrade'`. Non-removed memory rows only (archived ones too, so
+ * a dream undo that restores one finds it as it was). The owner's names are
+ * read off the identity core, as `sleep/consolidate.ts#ownerNames` does;
+ * restated here because `store/` sits below `sleep/`. `candidates` counts the
+ * live, not-yet-core rows among them — the core candidates by today's rule.
+ */
+export function markByOldRule(db: Db): { self: number; person: number; candidates: number } {
+  const owner = ownerNamesIn(db);
+  const rows = "type = 'memory' AND body != '' AND about IS NULL";
+  db.run(`UPDATE memories SET about = 'me', about_by = 'upgrade' WHERE ${rows} AND kind = 'self'`);
+  const self = db.get<{ n: number }>("SELECT changes() AS n")?.n ?? 0;
+  // The old rule read a `self` SCHEMA row (a belief about me, the identity
+  // core) as about me too; carried the same, but for the page, which sleep
+  // never lets cross whatever it is marked (`sleep/consolidate.ts#isThePage`).
+  const markSchema = db.prepare("UPDATE memories SET about = 'me', about_by = 'upgrade' WHERE id = ?");
+  for (const r of db.all<{ id: string; meta: string }>(
+    "SELECT id, meta FROM memories WHERE type = 'schema' AND kind = 'self' AND body != '' AND about IS NULL",
+  )) {
+    let role: unknown;
+    try {
+      role = (JSON.parse(r.meta) as Record<string, unknown>)["role"];
+    } catch {
+      role = undefined;
+    }
+    if (role !== "page") markSchema.run(r.id);
+  }
+  let person = 0;
+  if (owner.length > 0) {
+    const mark = db.prepare("UPDATE memories SET about = 'owner', about_by = 'upgrade' WHERE id = ?");
+    // Schema rows too (review of #256, S3): the old rule read a `person`
+    // BELIEF naming the owner as about me as well, whatever its type.
+    for (const r of db.all<{ id: string; type: string; title: string | null; body: string; meta: string }>(
+      `SELECT id, type, title, body, meta FROM memories
+        WHERE type IN ('memory', 'schema') AND body != '' AND about IS NULL AND kind = 'person'`,
+    )) {
+      let meta: Record<string, unknown> = {};
+      try {
+        meta = JSON.parse(r.meta) as Record<string, unknown>;
+      } catch {
+        meta = {};
+      }
+      const fields = [r.title ?? "", r.body, String(meta["name"] ?? ""), String(meta["entity"] ?? "")];
+      if (!fields.some((f) => f.length > 0 && namesAny(f, owner))) continue;
+      mark.run(r.id);
+      if (r.type === "memory") person += 1;
+    }
+  }
+  // THE CANDIDATES the old rule read, counted the way consolidation meets
+  // them (review of #256, S3): every row the upgrade marked, memory or schema,
+  // live and not yet core — but the page, which never crosses.
+  let candidates = 0;
+  for (const r of db.all<{ type: string; meta: string }>(
+    `SELECT type, meta FROM memories
+      WHERE about_by = 'upgrade' AND type IN ('memory', 'schema')
+        AND archived = 0 AND superseded_by IS NULL AND promoted_identity = 0`,
+  )) {
+    if (r.type === "schema") {
+      try {
+        if ((JSON.parse(r.meta) as Record<string, unknown>)["role"] === "page") continue;
+      } catch {
+        /* unreadable meta reads as not the page, as sleep reads it */
+      }
+    }
+    candidates += 1;
+  }
+  return { self, person, candidates };
+}
+
+/** The owner's names off the identity core (`role: entity`), lower-cased. */
+function ownerNamesIn(db: Db): string[] {
+  const owner: string[] = [];
+  for (const r of db.all<{ meta: string }>("SELECT meta FROM memories WHERE type = 'schema' AND kind = 'self' AND archived = 0")) {
+    try {
+      const meta = JSON.parse(r.meta) as Record<string, unknown>;
+      if (meta["role"] !== "entity") continue;
+      const add = (v: unknown): void => {
+        if (typeof v === "string" && v.trim().length >= 2) owner.push(v.trim().toLowerCase());
+      };
+      add(meta["name"]);
+      if (Array.isArray(meta["aliases"])) for (const a of meta["aliases"]) add(a);
+    } catch {
+      continue;
+    }
+  }
+  return [...new Set(owner)];
+}
+
+/** Does `text` name any of `names` as a whole word (case-insensitive)? */
+function namesAny(text: string, names: readonly string[]): boolean {
+  const lower = text.toLowerCase();
+  for (const n of names) {
+    const escaped = n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}($|[^\\p{L}\\p{N}])`, "u").test(lower)) return true;
+  }
+  return false;
+}
+
+/**
+ * EVERY FEELING WRITTEN BEFORE v9 IS GIVEN ITS SOURCE: `dream` for the ones a
+ * dream's `feeling-now` recorded (its change log lists their ids), `session`
+ * for the rest — the only two writers there were.
+ */
+export function sourceExistingFeelings(db: Db): { dream: number; session: number } {
+  const dreamed = new Set<string>();
+  for (const c of db.all<{ detail: string }>("SELECT detail FROM dream_changes WHERE action = 'feeling-now'")) {
+    try {
+      const d = JSON.parse(c.detail) as { feelings?: unknown };
+      if (Array.isArray(d.feelings)) for (const id of d.feelings) if (typeof id === "string") dreamed.add(id);
+    } catch {
+      continue;
+    }
+  }
+  const mark = db.prepare("UPDATE feelings SET source = 'dream' WHERE id = ? AND source IS NULL");
+  let dream = 0;
+  for (const id of dreamed) {
+    mark.run(id);
+    dream += db.get<{ n: number }>("SELECT changes() AS n")?.n ?? 0;
+  }
+  db.run("UPDATE feelings SET source = 'session' WHERE source IS NULL");
+  const session = db.get<{ n: number }>("SELECT changes() AS n")?.n ?? 0;
+  return { dream, session };
+}
+
 function ensureAddedColumns(db: Db): void {
   const byTable = new Map<string, Set<string>>();
   for (const spec of ADDED_COLUMNS) {
@@ -1136,6 +1408,10 @@ export function rowToPhysics(row: MemoryRow & FeelingPeak): MemoryPhysics {
     // The strongest feeling recorded on it (physics §5.10), when the read
     // carried one — `Store.row()` always does.
     feelingPeak: row.feeling_peak ?? null,
+    // v9: the fast lane's peak (feelings felt at the time or written in a
+    // session, not a reflection's later ones). Absent on a read that did not
+    // compute it — then physics falls back to `feelingPeak`.
+    ...(row.feeling_peak_lived === undefined ? {} : { feelingPeakLived: row.feeling_peak_lived }),
     consolidated: row.consolidated === 1,
     // v8 (physics §5.2/§5.11). Read tolerantly — a bare row built by a test or
     // a tool without the columns reads as a post-upgrade memory with no returns.

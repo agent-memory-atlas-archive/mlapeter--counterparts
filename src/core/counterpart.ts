@@ -41,7 +41,7 @@ import { Associate, appendPendingDeltas, claimPending, releasePending } from "./
 import type { CoactivateResult, Credited, FlushReport, PairDelta, PendingClaim } from "./associate/index.js";
 import { selfRenderer } from "./briefing.js";
 import { batteryGate, episodeGate, gateSweepChunk } from "./bridge.js";
-import { Dreams } from "./dream/index.js";
+import { Dreams, Reflections } from "./dream/index.js";
 import type { VectorSource } from "./bridge.js";
 import { mintProposal } from "./mint.js";
 import type { MintResult } from "./mint.js";
@@ -716,6 +716,13 @@ export interface CounterpartOptions extends Stance {
    * reads through (`Store#zone`). Absent: the machine's current zone.
    */
   timeZone?: string;
+  /**
+   * The host config's `pageWriter.mode` (owner ruling D3 on #256,
+   * 2026-09-27): `off` means nothing writes the self page on its own — the
+   * reflection too. It still reflects, keeps its entry and offers its share;
+   * it does not write the page. Absent: `session`, the config's own default.
+   */
+  pageWriterMode?: PageWriterMode;
 }
 
 /** What `wake()` returns: the bundle, plus what the host told us about itself. */
@@ -1324,6 +1331,8 @@ export class Counterpart {
   readonly handoffs: Handoffs;
   /** Dreaming (2026-09-26, `dream/`): the ask, the bundle, the changes, the journal, undo. */
   readonly dreams: Dreams;
+  /** Reflection (2026-09-27, `dream/reflect.ts`): the waking self — entry, page, share, marks. */
+  readonly reflections: Reflections;
   /** One predicate, one definition: the store's. Never re-derived here. */
   readonly observer: boolean;
 
@@ -1496,6 +1505,51 @@ export class Counterpart {
       today: () => this.store.today(),
       retarget: (oldId, newId, day) => {
         this.associate.retargetOnSupersede(oldId, newId, day);
+      },
+      emit: (name, ref, data) => this.emit(name, ref, data),
+    });
+
+    // REFLECTION (2026-09-27). The same credential scan as a dream's words.
+    // The page is rewritten through the one seam (`Self#revisePage`, by
+    // `writer`), and the night's page-writer run is recorded with it — that
+    // claim is what makes the SessionStart writer stand down on a night the
+    // reflection wrote the page (dream NOTES).
+    this.reflections = new Reflections({
+      store: this.store,
+      observer: this.observer,
+      owner: this.owner,
+      gate: (text) => {
+        const redacted = redactSecrets(text);
+        return redacted.replace(/\[REDACTED[^\]]*\]/g, "").trim().length === 0
+          ? { ok: false, reason: "only-a-credential" }
+          : { ok: true, text: redacted };
+      },
+      page: () => this.self.page()?.body ?? null,
+      pageWrites: opts.pageWriterMode !== "off",
+      today: () => this.store.today(),
+      ownerName: () => this.ownerDisplayName(),
+      dreamLine: (dreamId) => this.dreams.handBackOf(dreamId),
+      writePage: (body, o) => {
+        const before = this.self.page();
+        const written = this.self.revisePage(body, {
+          by: "writer",
+          reason: o.reason,
+          session: o.session,
+          ...(o.model === null ? {} : { model: o.model }),
+        });
+        const night = this.self.pageWriterDue({ mode: "session" });
+        this.self.recordPageWriterRun({
+          about: night.about,
+          mode: "session",
+          outcome: written.written ? "revised" : "refused",
+          detail: written.written ? o.reason : `${o.reason}: ${written.reason}`,
+          bytesBefore: before === null ? 0 : byteLength(before.body),
+          bytesAfter: written.bytes,
+          dedupKey: `reflection.page.${o.reflection}`,
+        });
+        return written.written && written.version !== null
+          ? { ok: true, version: written.version }
+          : { ok: false, reason: written.reason };
       },
       emit: (name, ref, data) => this.emit(name, ref, data),
     });
@@ -2478,6 +2532,21 @@ export class Counterpart {
   /** Through the REAL battery: a first-person reflection is not exempt (SEAMS H). */
   ingestEpisode(input: { sessionId: string; day?: number; handles?: readonly string[] }): IngestResult {
     return this.self.ingestEpisode(input);
+  }
+
+  /** The owner's name as written on the identity core (not lower-cased), or null. */
+  ownerDisplayName(): string | null {
+    for (const id of this.store.list({ type: "schema", kind: "self", archived: false })) {
+      try {
+        const meta = this.store.readProse(id).meta;
+        if (meta["role"] === "entity" && typeof meta["name"] === "string" && meta["name"].trim().length > 0) {
+          return meta["name"].trim();
+        }
+      } catch {
+        continue;
+      }
+    }
+    return null;
   }
 
   // ── the core: what it holds, and the owner's door out of it ────────────────

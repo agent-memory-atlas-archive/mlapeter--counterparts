@@ -69,7 +69,16 @@ export type { StrengthCache, StrengthRow } from "./strength-cache.js";
 export { DECAY_SKIPS, runDecay } from "./decay.js";
 export type { DecayResult, DecaySkip } from "./decay.js";
 
-export { CONSOLIDATION_SKIPS, aboutMe, ownerNames, promotionRecordKey, runConsolidate } from "./consolidate.js";
+export {
+  CONSOLIDATION_SKIPS,
+  REFLECTED_FEELING_KEY,
+  aboutMe,
+  acceptsReflectedFeeling,
+  namesOwner,
+  ownerNames,
+  promotionRecordKey,
+  runConsolidate,
+} from "./consolidate.js";
 export { V8_CENSUS_EVENT, V8_CENSUS_KEY, V8_UPGRADE_KEY, censusDue, preV8, projectedPruneDay, upgradeCensus, v7WouldPromote } from "./upgrade.js";
 export type { UpgradeCensus } from "./upgrade.js";
 export type { ReadsDocs } from "./consolidate.js";

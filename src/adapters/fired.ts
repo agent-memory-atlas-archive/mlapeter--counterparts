@@ -1782,7 +1782,9 @@ function readProbes(store: ReadOnlyStore, w: Window): Probed {
       bump(`versions:${v.reason}`, { livedDay: v.version_day, at: v.archived_at });
     }
     // v8: every counted return, awake or dreamed, and every dreamed memory.
-    // The upgrade's LEGACY credits are history, not something that fired.
+    // The upgrade's LEGACY credits are history, not something that fired. A
+    // reflection's return (v9) is an awake return and counts as one here;
+    // doctor's Reflection line splits the week's returns by source.
     for (const r of store.returnsOf(id)) {
       if (r.source === "legacy") continue;
       bump(r.source === "dream" ? "returns.dream" : "returns.awake", { at: r.at });

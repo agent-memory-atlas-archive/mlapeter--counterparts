@@ -31,6 +31,11 @@ export const MEMORY_SOURCES = [
   // seam alone, and it starts lower than lived testimony (physics
   // `DREAMED_CLAIM_CEILING`): it rises only if it proves true awake.
   "dreamed",
+  // The waking self's words (2026-09-27, `core/dream/reflect.ts`): a
+  // reflection's entry, when it cited the memories it rests on. Lived — the
+  // reflection is an awake act — and labelled so recall can say where it came
+  // from (its title opens "Reflected:"), the way a dream's gist opens "Dreamed:".
+  "reflection",
 ] as const;
 export type MemorySource = (typeof MEMORY_SOURCES)[number];
 
@@ -85,6 +90,14 @@ export interface MemoryPhysics {
    * felt, the way affect stamps a trace at encoding.
    */
   feelingPeak?: number | null;
+  /**
+   * v9 (2026-09-27): the strongest feeling recorded AT THE TIME — every
+   * feeling but the ones a reflection recorded later (`feelings.source`). The
+   * core's fast lane reads this one unless `CORE_FAST_ACCEPTS_REFLECTED_FEELING`
+   * is set (physics §5.3); height and decay still read `feelingPeak`. Absent
+   * (a physics object built without it) falls back to `feelingPeak`.
+   */
+  feelingPeakLived?: number | null;
   consolidated: boolean;
   /**
    * Born before schema v8 (the dreaming + consolidation redesign, 2026-09-26):
@@ -102,9 +115,11 @@ export interface MemoryPhysics {
    * Absent reads 0, which is exactly today's arithmetic.
    */
   returns?: number;
-  /** Distinct lived days with a counted AWAKE return (the core lanes read it). */
+  /** Distinct lived days with a counted AWAKE return — awake use or, since
+   *  v9, a reflection that cited it (the core lanes read it). */
   returnDays?: number;
-  /** The first and last lived day of a counted AWAKE return; null when none. */
+  /** The first and last lived day of a counted AWAKE return (use or
+   *  reflection); null when none. */
   firstReturnDay?: number | null;
   lastReturnDay?: number | null;
   /** The last lived day a dream replayed it; null when never. */

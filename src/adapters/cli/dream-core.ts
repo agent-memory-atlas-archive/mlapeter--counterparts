@@ -9,6 +9,8 @@
  * tests can check the words without a store.
  */
 import type { Counterpart } from "../../core/counterpart.js";
+import { acceptsReflectedFeeling } from "../../core/sleep/index.js";
+import type { ReflectionRow } from "../../core/store/index.js";
 
 /** How a memory id reads in a list: its first line, or why it is not shown. */
 export function memoryWords(counterpart: Counterpart, id: string | null, max = 80): string {
@@ -45,11 +47,66 @@ export function dreamListLines(counterpart: Counterpart, limit = 20): string[] {
     out.push(`${dream.id}  ${when}  ${dream.state.padEnd(9)} ${title} — ${countsLine(counts)}`);
   }
   out.push("", "Read one: counterparts dream --show <id>    Reverse one: counterparts dream --undo <id>");
+  const reflections = counterpart.reflections.list(10);
+  if (reflections.length > 0) {
+    out.push("", `Reflections — the waking self, newest first (${String(reflections.length)} shown)`, "");
+    for (const r of reflections) out.push(`${r.id}  ${r.date ?? `lived day ${String(r.day)}`}  ${reflectionSummary(r)}`);
+    out.push("", "Read one: counterparts dream --show <rfl_…>");
+  }
   return out;
 }
 
-/** `counterparts dream --show <id>`: the journal, then every change, undone ones marked. */
+function parseIdList(json: string): string[] {
+  try {
+    const v: unknown = JSON.parse(json);
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+/** One line: after which dream, what it did, and what became of the share. */
+function reflectionSummary(r: ReflectionRow): string {
+  const parts: string[] = [];
+  parts.push(r.dream_id === null ? "on its own" : `after ${r.dream_id}`);
+  if (r.state !== "reflected") return `${parts.join(", ")} — begun, not finished`;
+  if (r.entry_id === null) parts.push("nothing much");
+  if (r.page_version !== null) parts.push("rewrote the page");
+  const share: Record<string, string> = { none: "no share", offered: "share not told yet", carried: "share carried to a later session", told: "share told" };
+  parts.push(share[r.share_state] ?? r.share_state);
+  return parts.join(", ");
+}
+
+/** `counterparts dream --show <rfl_…>`: one reflection, whole. */
+export function reflectionShowLines(counterpart: Counterpart, id: string): string[] | null {
+  const r = counterpart.reflections.show(id);
+  if (r === null) return null;
+  const out = [
+    `Reflection ${r.id} — ${r.date ?? `lived day ${String(r.day)}`}, ${reflectionSummary(r)}`,
+    ...(r.session === null ? [] : [`  for session ${r.session}`]),
+    "",
+    "Asked:",
+    ...parseIdList(r.questions).map((q) => `  - ${q}`),
+    "",
+    r.entry === null ? "Entry: (not written)" : "Entry:",
+  ];
+  if (r.entry !== null) for (const line of r.entry.split("\n")) out.push(`  ${line}`);
+  if (r.entry_id !== null) out.push(`  (kept as memory ${r.entry_id})`);
+  const cites = parseIdList(r.cites);
+  if (cites.length > 0) {
+    out.push("", "It rests on:");
+    for (const c of cites) out.push(`  ${c} "${memoryWords(counterpart, c)}"`);
+  }
+  if (r.share !== null) {
+    out.push("", "Morning share:", `  ${r.share}`);
+  }
+  if (r.page_version !== null) out.push("", `It rewrote the self page (version ${String(r.page_version)}): counterparts self-page --versions`);
+  return out;
+}
+
+/** `counterparts dream --show <id>`: the journal, then every change, undone ones marked — and the reflection after it. */
 export function dreamShowLines(counterpart: Counterpart, id: string): string[] | null {
+  if (id.startsWith("rfl_")) return reflectionShowLines(counterpart, id);
   const shown = counterpart.dreams.show(id);
   if (shown === null) return null;
   const { dream, changes } = shown;
@@ -90,6 +147,11 @@ export function dreamShowLines(counterpart: Counterpart, id: string): string[] |
     }
   }
   if (dream.state !== "undone") out.push("", `Reverse all of it: counterparts dream --undo ${dream.id}`);
+  // What the waking self made of it — lived, so an undo of the dream leaves it.
+  for (const r of counterpart.store.reflections({ dreamId: dream.id, limit: 3 })) {
+    const lines = reflectionShowLines(counterpart, r.id);
+    if (lines !== null) out.push("", ...lines);
+  }
   return out;
 }
 
@@ -108,8 +170,13 @@ export function coreListLines(counterpart: Counterpart): string[] {
   }
   out.push(
     "",
-    "Only a memory about me or about us becomes core: strongly felt and back after a gap (fast lane),",
-    "or back on several separate days over weeks (slow lane). At most a few a night.",
+    "Only a memory about me, about us or about the owner becomes core — what it is about is marked by",
+    "meaning, by the writer or by a reflection (work and world are not candidates). Then: strongly felt",
+    "and back after a gap (fast lane), or back on several separate days over weeks (slow lane). A",
+    "reflection that cites a memory counts as it coming back. At most a few a night.",
+    acceptsReflectedFeeling(counterpart.store)
+      ? "Open to reflection alone: a feeling a reflection records later and a reflection citing a memory count toward the fast lane, and a reflection may re-label either way (counterparts core --reflected-feeling off to close it)."
+      : "Closed to reflection alone: the fast lane needs a feeling felt at the time and an ordinary use after a gap, and a reflection may only move a memory toward work or world (counterparts core --reflected-feeling on to open it).",
   );
   if (nominated.length > 0) {
     out.push("", "Nominated by a dream (a lane still has to promote it):");

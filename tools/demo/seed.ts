@@ -399,6 +399,12 @@ export async function seedDemo(opts: SeedOptions): Promise<SeedReport> {
       }
       if (note.key !== undefined) memoryIds.set(note.key, result.memoryId);
       birthDayOf.set(result.memoryId, c.store.livedDay());
+      // WHAT IT IS ABOUT (schema v9): the writer's mark, set at the deposit the
+      // way the MCP doors set it. The script's writer marks its own reflections
+      // `me` and what it learns about the owner `owner`, and leaves the rest
+      // unmarked — the kind rule v9 carries onto an upgraded store.
+      const about = note.kind === "self" ? "me" : note.kind === "person" && note.content.includes(OWNER_NAME) ? "owner" : null;
+      if (about !== null) c.store.setAbout(result.memoryId, about, { by: "writer" });
       return result.memoryId;
     };
 

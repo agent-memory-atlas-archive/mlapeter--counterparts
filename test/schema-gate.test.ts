@@ -173,6 +173,8 @@ const ARGS: Record<string, Record<string, unknown>> = {
   self_page: { body: "## Core\n\nI check the store's version before I touch it.\n\n## Lately\n\nA gate." },
   // `launch` writes nothing; it is the phase every session can call.
   dream: { phase: "launch", session: SESSION },
+  // The same: `launch` writes nothing.
+  reflect: { phase: "launch", session: SESSION },
 };
 
 function seed(s: McpServer): void {

@@ -91,6 +91,9 @@ export interface OpenServerOptions extends Omit<McpServerOptions, "counterpart">
   snapshotsDir?: string;
   /** The host config's `timeZone` (docs/time.md); absent, the machine's zone. */
   timeZone?: string;
+  /** The host config's `pageWriter.mode` — `off` stops the reflection's page
+   *  write too (owner ruling D3 on #256). Absent: `session`. */
+  pageWriterMode?: "session" | "host" | "off";
 }
 
 /** The sync face of a live embedder, when `embedder` is one. Duck-typed on purpose: this file must not import the claude-code adapter. */
@@ -111,6 +114,7 @@ export function openServer(opts: OpenServerOptions = {}): McpServer {
     ...(opts.dir === undefined ? {} : { dir: opts.dir }),
     ...(opts.snapshotsDir === undefined ? {} : { snapshotsDir: opts.snapshotsDir }),
     ...(opts.timeZone === undefined ? {} : { timeZone: opts.timeZone }),
+    ...(opts.pageWriterMode === undefined ? {} : { pageWriterMode: opts.pageWriterMode }),
     ...(opts.observer === undefined ? {} : { observer: opts.observer }),
     ...(opts.owner === undefined ? {} : { owner: opts.owner }),
   });

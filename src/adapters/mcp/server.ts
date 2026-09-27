@@ -48,8 +48,8 @@ import { localDate, parseCalendarDate, todayIn } from "../../core/time.js";
 import type { ChapterResult, Counterpart, DepositResult } from "../../core/counterpart.js";
 import type { SemanticSource } from "../../core/recall/index.js";
 import { AUTHOR_DIMENSIONS } from "../../core/remember/index.js";
-import { CACHE_SCHEMA_VERSION, SCHEMA_VERSION, StoreError, checkFeelings, isStoreError, schemaAhead } from "../../core/store/index.js";
-import type { FeelingInput } from "../../core/store/index.js";
+import { ABOUT_MARKS, CACHE_SCHEMA_VERSION, CORE_ABOUT_MARKS, SCHEMA_VERSION, StoreError, checkFeelings, isStoreError, schemaAhead } from "../../core/store/index.js";
+import type { AboutMark, FeelingInput } from "../../core/store/index.js";
 import { isLocked } from "../../core/store/db.js";
 import type { Band, Kind } from "../../core/types.js";
 import { recordHandleResolution } from "../expansions.js";
@@ -525,6 +525,8 @@ export class McpServer {
         return this.selfPageTool(args);
       case "dream":
         return this.dreamTool(args);
+      case "reflect":
+        return this.reflectTool(args);
       default:
         return this.refuse(name, "unknown-tool", { tool: name });
     }
@@ -953,6 +955,8 @@ export class McpServer {
     if ("refused" in feelings) {
       return this.refuse("note", "feelings-malformed", { detail: feelings.refused });
     }
+    const about = readAbout(args["about"]);
+    if ("refused" in about) return this.refuse("note", "about-malformed", { detail: about.refused });
     const deposit = await this.counterpart.submitJot(draft, {
       session,
       scope: this.scope,
@@ -961,6 +965,7 @@ export class McpServer {
     });
     return this.depositResult("note", deposit, {
       ...this.recordFeelings(deposit, feelings.inputs, model),
+      ...this.recordAbout(deposit, about.mark),
       ...reminderEcho(deposit, dated, this.today()),
     });
   }
@@ -1508,11 +1513,13 @@ export class McpServer {
     const entries: Record<string, unknown>[] = [];
     const feelingsOf: FeelingsRead[] = [];
     const datedOf: ReminderRead[] = [];
+    const aboutOf: AboutRead[] = [];
     for (const item of raw) {
       if (item === null || typeof item !== "object" || Array.isArray(item)) {
         entries.push({ content: "" });
         feelingsOf.push({ inputs: [] });
         datedOf.push({ fields: {}, remindIgnored: false });
+        aboutOf.push({ mark: null });
         continue;
       }
       const rec = item as Record<string, unknown>;
@@ -1533,6 +1540,7 @@ export class McpServer {
       datedOf.push(dated);
       entries.push(draft);
       feelingsOf.push(readFeelings(rec["feelings"]));
+      aboutOf.push(readAbout(rec["about"]));
     }
 
     const outcomes: Record<string, unknown>[] = [];
@@ -1550,6 +1558,11 @@ export class McpServer {
       const dated = datedOf[n] ?? { fields: {}, remindIgnored: false };
       if ("refused" in dated) {
         outcomes.push({ stored: false, reason: dated.refused, detail: dated.detail });
+        continue;
+      }
+      const about = aboutOf[n] ?? { mark: null };
+      if ("refused" in about) {
+        outcomes.push({ stored: false, reason: "about-malformed", detail: about.refused });
         continue;
       }
       let result: DepositResult;
@@ -1580,6 +1593,7 @@ export class McpServer {
         ...(malformed === null ? {} : { malformed }),
         ...(malformed === "KIND_UNKNOWN" ? { kinds: [...MEMORY_KINDS] } : {}),
         ...this.recordFeelings(result, feelings.inputs, model),
+        ...this.recordAbout(result, about.mark),
         ...reminderEcho(result, dated, this.today()),
       });
     }
@@ -1768,7 +1782,7 @@ export class McpServer {
               // retelling in the session's own words would carry none, and the
               // dream's title and changes would read as something that
               // happened (adversarial review of #251).
-              how: "Hand `prompt` to a background agent (the Agent tool), unchanged, and carry on. When it finishes, show the owner its hand-back line exactly as it came back (it carries the dream's mark, which keeps the dream out of lived memory) — do not retell the dream in your own words.",
+              how: "Hand `prompt` to a background agent (the Agent tool), unchanged, and carry on. When it finishes, show the owner its first line (the dream's) exactly as it came back — it carries the dream's mark, which keeps the dream out of lived memory. If a morning share follows, tell it to the owner in your own words, as a telling (\"Last night I dreamed…\"), then call the reflect tool with phase \"told\" — never state what was dreamed as something that happened.",
             },
             false,
           );
@@ -1814,10 +1828,125 @@ export class McpServer {
           const out = dreams.journal({ dream, session, text, ...(typeof title === "string" ? { title } : {}) });
           if (!out.ok) return refused(out.reason, "The journal was not written.");
           this.emit("mcp.dream", dream, { phase: "journal" });
-          return this.result({ phase, dream, handBack: out.handBack, say: "Return `handBack` as your final message, unchanged." }, false);
+          return this.result(
+            {
+              phase,
+              dream,
+              handBack: out.handBack,
+              next: `Now wake and reflect: call the reflect tool with phase "begin", session: ${session}, dream: ${dream}. Your final message is the text its "finish" call returns. If reflecting fails, return \`handBack\` unchanged instead.`,
+            },
+            false,
+          );
         }
         default:
           return refused("phase-unknown", "phase is one of launch, begin, propose, journal, decline.");
+      }
+    } catch (err) {
+      return refused("threw", String((err as Error).message ?? err));
+    }
+  }
+
+  /**
+   * `reflect` — the waking self (`core/dream/reflect.ts`, 2026-09-27). Every
+   * phase binds the session, as `dream` does; `launch` writes nothing.
+   */
+  private reflectTool(args: Record<string, unknown>): ToolResult {
+    const phase = args["phase"];
+    if (this.observer) return this.standDown("reflect");
+    const bound = this.requireBoundSession(args["session"], "reflect");
+    if (bound !== null) return bound;
+    const session = this.session as string;
+    const reflections = this.counterpart.reflections;
+    const refused = (reason: string, detail: string): ToolResult => this.refuse("reflect", reason, { phase, detail });
+    const ids = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+    const part = (v: unknown): { text?: string; cites?: string[] } | null => {
+      if (v === null || typeof v !== "object" || Array.isArray(v)) return null;
+      const r = v as Record<string, unknown>;
+      return { ...(typeof r["text"] === "string" ? { text: r["text"] } : {}), cites: ids(r["cites"]) };
+    };
+    try {
+      switch (phase) {
+        case "launch":
+          this.emit("mcp.reflect", undefined, { phase: "launch", session });
+          return this.result(
+            {
+              phase,
+              session,
+              prompt: reflections.launchPrompt({ session }),
+              how: "Hand `prompt` to a background agent (the Agent tool), unchanged, and carry on. When it finishes, if it left a morning share, tell it to the owner in your own words, then call this tool with phase \"told\".",
+            },
+            false,
+          );
+        case "begin": {
+          const model = readSession(this.registryDir, session)?.model;
+          const dream = typeof args["dream"] === "string" ? args["dream"] : null;
+          const out = reflections.begin({ session, dream, scope: this.scope, ...(model === undefined ? {} : { model }) });
+          if (!out.ok) {
+            return refused(
+              out.reason,
+              out.reason === "reflected-today"
+                ? "A reflection already finished this lived day."
+                : out.reason === "dream-not-journaled"
+                  ? "That dream has not written its journal yet."
+                  : "The reflection did not begin.",
+            );
+          }
+          this.emit("mcp.reflect", out.bundle.reflection, { phase: "begin", session, shown: Object.keys(out.bundle.memories).length });
+          return this.result(
+            { phase, session, reflection: out.bundle.reflection, questions: out.bundle.questions, how: out.instructions, bundle: out.text },
+            false,
+          );
+        }
+        case "finish": {
+          const reflection = args["reflection"];
+          const entry = args["entry"];
+          if (typeof reflection !== "string" || typeof entry !== "string") {
+            return refused("reflection-and-entry-required", "Pass `reflection` (the id `begin` returned) and your `entry`.");
+          }
+          const model = readSession(this.registryDir, session)?.model;
+          const out = reflections.finish({
+            reflection,
+            session,
+            entry,
+            ...(typeof args["title"] === "string" ? { title: args["title"] } : {}),
+            cites: ids(args["cites"]),
+            share: part(args["share"]),
+            page: part(args["page"]),
+            feelings: Array.isArray(args["feelings"]) ? (args["feelings"] as never) : [],
+            about: Array.isArray(args["about"]) ? (args["about"] as never) : [],
+            model: model ?? null,
+          });
+          if (!out.ok) return refused(out.reason, "The reflection was not written.");
+          const o = out.outcome;
+          this.emit("mcp.reflect", reflection, { phase: "finish", nothingMuch: o.nothingMuch, page: o.page.written, share: o.share.offered });
+          return this.result(
+            {
+              phase,
+              reflection,
+              handBack: o.handBack,
+              nothingMuch: o.nothingMuch,
+              entry: o.entryId,
+              page: o.page,
+              share: o.share,
+              returned: o.returned,
+              feelings: o.feelings,
+              about: o.about,
+              ...(o.refusedCites.length > 0 ? { refusedCites: o.refusedCites } : {}),
+              say: "Return `handBack` as your final message, unchanged.",
+            },
+            false,
+          );
+        }
+        case "told": {
+          const reflection = args["reflection"];
+          if (typeof reflection !== "string") return refused("reflection-required", "Pass `reflection`, the id the share named.");
+          const out = reflections.told({ reflection, session });
+          if (!out.ok) return refused(out.reason, "Nothing to record: the share was already told, or there was none.");
+          this.emit("mcp.reflect", reflection, { phase: "told", cited: out.cited });
+          return this.result({ phase, reflection, told: true, cited: out.cited }, false);
+        }
+        default:
+          return refused("phase-unknown", "phase is one of launch, begin, finish, told.");
       }
     } catch (err) {
       return refused("threw", String((err as Error).message ?? err));
@@ -2253,6 +2382,29 @@ export class McpServer {
     }
   }
 
+  /**
+   * The `about` half of a deposit (schema v9): what the memory is about, set
+   * by the writer who just wrote it (`about_by = 'writer'`). Nothing when none
+   * was sent; said when the memory did not land. A `skill` memory is the craft
+   * — how I work — and is never core, so a core mark on one is not stored.
+   */
+  private recordAbout(deposit: DepositResult, mark: AboutMark | null): Record<string, unknown> {
+    if (mark === null) return {};
+    if (!deposit.deposited || deposit.memoryId === null) {
+      return { about: { stored: false, reason: "memory-not-stored" } };
+    }
+    try {
+      const row = this.counterpart.store.row(deposit.memoryId);
+      if (row?.kind === "skill" && (CORE_ABOUT_MARKS as readonly string[]).includes(mark)) {
+        return { about: { stored: false, reason: "skill-is-how-i-work", detail: "A skill memory is the craft — how I work — and is never core; mark it work, or give it another kind." } };
+      }
+      this.counterpart.store.setAbout(deposit.memoryId, mark, { by: "writer" });
+      return { about: { stored: true, mark } };
+    } catch (err) {
+      return { about: { stored: false, reason: "threw", detail: String((err as Error).message ?? err) } };
+    }
+  }
+
   private depositResult(tool: string, deposit: DepositResult, extra: Record<string, unknown> = {}): ToolResult {
     this.emit(`mcp.${tool}`, deposit.memoryId ?? undefined, {
       stored: deposit.deposited,
@@ -2500,6 +2652,17 @@ function reminderEcho(deposit: DepositResult, dated: ReminderRead, today: string
 // ── feelings on a tool call (schema v7) ─────────────────────────────────────
 
 type FeelingsRead = { inputs: FeelingInput[] } | { refused: string };
+
+type AboutRead = { mark: AboutMark | null } | { refused: string };
+
+/** `about` on a tool call (schema v9): absent, or one of the five marks. */
+function readAbout(raw: unknown): AboutRead {
+  if (raw === undefined || raw === null) return { mark: null };
+  if (typeof raw !== "string" || !(ABOUT_MARKS as readonly string[]).includes(raw)) {
+    return { refused: `\`about\` is one of ${ABOUT_MARKS.join(", ")}.` };
+  }
+  return { mark: raw as AboutMark };
+}
 
 /**
  * `feelings: [{ whose, core, emotion, strength, carried_by, beneath?, other_word? }]`

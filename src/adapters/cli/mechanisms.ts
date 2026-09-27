@@ -271,10 +271,13 @@ export const MEMORY_MECHANISMS: readonly MemoryMechanism[] = [
     read: (v) => {
       const dreams = part(v, "dreams");
       const changes = part(v, "changes");
+      const reflections = part(v, "reflections");
       if (v.fired) {
         return {
           light: LIGHT.working,
-          says: `${plural(dreams, "dream")} this week${changes > 0 ? ` (${plural(changes, "change")})` : ""}`,
+          says: `${plural(dreams, "dream")} this week${changes > 0 ? ` (${plural(changes, "change")})` : ""}${
+            reflections > 0 ? `; ${plural(reflections, "reflection")} afterwards` : ""
+          }`,
         };
       }
       return {

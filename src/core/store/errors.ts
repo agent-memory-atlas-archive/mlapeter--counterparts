@@ -70,6 +70,10 @@ export type StoreErrorCode =
    * An emotion simply not on the wheel is NOT this — it is kept as `other`.
    */
   | "FEELING_INVALID"
+  /** v9: an about-mark outside `ABOUT_MARKS`. `detail` carries `{ id, mark }`. */
+  | "ABOUT_UNKNOWN"
+  /** v9: an about-mark on a schema row or a removed memory. `detail` carries `{ id }`. */
+  | "ABOUT_NOT_A_MEMORY"
   | "ID_MALFORMED"
   | "ID_UNKNOWN"
   | "ID_CYCLE"

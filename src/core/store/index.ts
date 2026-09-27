@@ -53,7 +53,7 @@ import {
   utcDate,
 } from "../time.js";
 import { checkFeelings } from "./feelings.js";
-import type { AddFeelingsResult, FeelingInput, FeelingRow } from "./feelings.js";
+import type { AddFeelingsResult, FeelingInput, FeelingRow, FeelingSource } from "./feelings.js";
 import { creditReturn, creditUse } from "../physics/index.js";
 import type { CreditOutcome, ReturnOutcome, UseTier } from "../physics/index.js";
 import type { Db, Statement, WalFold } from "./db.js";
@@ -80,6 +80,7 @@ import type {
   MemoryRow,
   MigrationNote,
   ProspectiveRow,
+  ReflectionRow,
   RemovalRow,
   ReturnRow,
   TombstoneRow,
@@ -141,6 +142,7 @@ export type {
   DreamAskRow,
   DreamChangeRow,
   DreamRow,
+  ReflectionRow,
   ReturnRow,
   WakeDisplayRow,
   MemoryRow,
@@ -172,6 +174,7 @@ export {
   pendingMigration,
   SCHEMA_VERSION,
   V8_UPGRADE_KEY,
+  V9_UPGRADE_KEY,
   rowToPhysics,
   rowTombstoned,
 } from "./operational.js";
@@ -320,6 +323,13 @@ export interface PutInput {
    *  carrier a removal destroys, so the pointer dies with the thing it points
    *  at instead of outliving it in a box-2 column. */
   origin?: { session?: string; scope?: string; ref?: string; spanHash?: string };
+  /**
+   * v9: what the memory is about (`ABOUT_MARKS`), and who said so. Absent
+   * writes NULL — unmarked. A mark set later goes through `setAbout`, which
+   * also records it in the core's history; one given at birth does not.
+   */
+  about?: AboutMark;
+  aboutBy?: AboutSetter;
 }
 
 /**
@@ -359,6 +369,33 @@ export interface StoredMemory {
   updatedAt: number | null;
   /** v7: the model that wrote the current words; null = not a named model. */
   model: string | null;
+  /** v9: what the memory is about, or null when unmarked. */
+  about: AboutMark | null;
+  /** v9: who set it (`writer`, `reflection`, `owner`, `upgrade`), or null. */
+  aboutBy: string | null;
+}
+
+/**
+ * v9 (2026-09-27): WHAT A MEMORY IS ABOUT — a neutral, descriptive mark, so a
+ * writer is not nudged toward "core-eligible": `me` (who I am), `us` (the
+ * owner and me together), `owner` (the owner himself), `work` (the craft: how
+ * a job is done), `world` (anything else). Set by an awake model that read the
+ * words — the writer at `note` / `session_end`, or the reflection — or by the
+ * v9 upgrade carrying the old kind rule. It is not a topic (a separate axis,
+ * later). Only `me`, `us` and `owner` are core candidates
+ * (`CORE_ABOUT_MARKS`, `sleep/consolidate.ts#aboutMe`).
+ */
+export const ABOUT_MARKS = ["me", "us", "owner", "work", "world"] as const;
+export type AboutMark = (typeof ABOUT_MARKS)[number];
+/** The marks that make a memory a core candidate. */
+export const CORE_ABOUT_MARKS: readonly AboutMark[] = ["me", "us", "owner"];
+/** Who set a mark. */
+export const ABOUT_SETTERS = ["writer", "reflection", "owner", "upgrade"] as const;
+export type AboutSetter = (typeof ABOUT_SETTERS)[number];
+
+/** A column value read as a mark: anything else is unmarked. */
+export function aboutMarkOf(v: unknown): AboutMark | null {
+  return typeof v === "string" && (ABOUT_MARKS as readonly string[]).includes(v) ? (v as AboutMark) : null;
 }
 
 /** One memory with a reminder date, as `Store.datedMemories` returns it. */
@@ -682,6 +719,11 @@ export const WRITE_METHODS = [
   "recordDreamChange",
   "markDreamChangeUndone",
   "setDreamAsk",
+  // v9 (2026-09-27, reflection + core by meaning).
+  "reflectReturn",
+  "setAbout",
+  "openReflection",
+  "updateReflection",
 ] as const;
 
 export type WriteMethod = (typeof WRITE_METHODS)[number];
@@ -1524,6 +1566,9 @@ export class Store {
         at,
         oldId,
       );
+      // v9: THE ABOUT-ME MARK TRAVELS with the memory to its successor, unless
+      // the successor was given its own — a revision is still the same memory.
+      carryAboutMark(this.ops, oldId, created.id);
       return { doc: created, newId: created.id };
     });
     this.indexOne(doc);
@@ -1677,6 +1722,35 @@ export class Store {
     return outcome;
   }
 
+  /**
+   * A REFLECTION RETURN (physics §5.11, v9, 2026-09-27): the waking self after
+   * a dream deliberately revisited this memory and cited it. An awake return —
+   * it counts toward the core lanes — though the reflection was HANDED the
+   * memory: on display by construction, counted on purpose (physics CONTRACT
+   * §5.11). At most once per lived day per memory, and at most once every
+   * `REFLECTION_SPACING_DAYS` per memory, so a reflection cannot carry a
+   * memory through the slow lane by citing it every night. Not a use: `uses`
+   * and `lastUsedDay` are untouched. No dream id: undoing the dream does not
+   * take back what was lived awake after it.
+   */
+  reflectReturn(id: string, day: number): ReturnOutcome {
+    const outcome = this.mutate("reflectReturn", () => {
+      const row = this.requireRow(id);
+      const last =
+        this.ops.get<{ d: number | null }>("SELECT MAX(day) AS d FROM returns WHERE memory_id = ? AND source = 'reflection'", id)?.d ??
+        null;
+      const ret = creditReturn(rowToPhysics(row), day, {
+        source: "reflection",
+        since: this.legacyLastReturn(id),
+        lastReflectionDay: last,
+      });
+      if (ret.counted) this.writeReturn(id, day, ret, null);
+      return ret;
+    });
+    this.emit("store.reflect", id, { counted: outcome.counted, reason: outcome.reason, day });
+    return outcome;
+  }
+
   /** The last day of a LEGACY return the upgrade credited (spacing reads it; the lanes never do). */
   private legacyLastReturn(id: string): number | null {
     return (
@@ -1705,6 +1779,12 @@ export class Store {
    * The aggregate columns FROM the `returns` table — the one place they are
    * written, so a removed dream's replays or a carried history can never leave
    * the physics disagreeing with its own evidence.
+   *
+   * v9 (2026-09-27): the LANE columns (`return_days`, `first_return_day`,
+   * `last_return_day`) read `awake` AND `reflection` rows — a reflection that
+   * deliberately revisits and cites a memory is an awake return (physics
+   * §5.11). Dream replays and legacy credits still count toward durability
+   * only.
    */
   private recomputeReturns(id: string): void {
     const agg = this.ops.get<{
@@ -1715,9 +1795,9 @@ export class Store {
       dream: number | null;
     }>(
       `SELECT SUM(weight) AS total,
-              COUNT(DISTINCT CASE WHEN source = 'awake' THEN day END) AS days,
-              MIN(CASE WHEN source = 'awake' THEN day END) AS first,
-              MAX(CASE WHEN source = 'awake' THEN day END) AS last,
+              COUNT(DISTINCT CASE WHEN source IN ('awake', 'reflection') THEN day END) AS days,
+              MIN(CASE WHEN source IN ('awake', 'reflection') THEN day END) AS first,
+              MAX(CASE WHEN source IN ('awake', 'reflection') THEN day END) AS last,
               MAX(CASE WHEN source = 'dream' THEN day END) AS dream
          FROM returns WHERE memory_id = ?`,
       id,
@@ -1744,16 +1824,23 @@ export class Store {
    * Returns counted since a moment (UTC ms) or a lived day, by source — for
    * `fired`, the mechanism lights and the dashboard. With neither, all of them.
    */
-  returnCounts(filter: { sinceAt?: number; sinceDay?: number } = {}): { awake: number; dream: number; memories: number } {
-    const r = this.ops.get<{ awake: number | null; dream: number | null; memories: number | null }>(
+  returnCounts(filter: { sinceAt?: number; sinceDay?: number } = {}): {
+    awake: number;
+    dream: number;
+    /** v9: returns a reflection counted (also lane returns, beside `awake`). */
+    reflection: number;
+    memories: number;
+  } {
+    const r = this.ops.get<{ awake: number | null; dream: number | null; reflection: number | null; memories: number | null }>(
       `SELECT SUM(CASE WHEN source = 'awake' THEN 1 ELSE 0 END) AS awake,
               SUM(CASE WHEN source = 'dream' THEN 1 ELSE 0 END) AS dream,
-              COUNT(DISTINCT memory_id) AS memories
-         FROM returns WHERE at >= ? AND day >= ?`,
+              SUM(CASE WHEN source = 'reflection' THEN 1 ELSE 0 END) AS reflection,
+              COUNT(DISTINCT CASE WHEN source != 'legacy' THEN memory_id END) AS memories
+         FROM returns WHERE at >= ? AND day >= ? AND source != 'legacy'`,
       filter.sinceAt ?? 0,
       filter.sinceDay ?? -2_147_483_648,
     );
-    return { awake: r?.awake ?? 0, dream: r?.dream ?? 0, memories: r?.memories ?? 0 };
+    return { awake: r?.awake ?? 0, dream: r?.dream ?? 0, reflection: r?.reflection ?? 0, memories: r?.memories ?? 0 };
   }
 
   // ── what the wake's hints lane showed (v8) ─────────────────────────────────
@@ -1866,6 +1953,8 @@ export class Store {
         at,
         oldId,
       );
+      // v9: the about-me mark travels too (the first original that has one).
+      carryAboutMark(this.ops, oldId, successorId);
       if (opts.carryReturns === true) {
         this.ops.run(
           `INSERT OR IGNORE INTO returns (memory_id, day, source, weight, gap, dream_id, at)
@@ -1961,7 +2050,9 @@ export class Store {
   /** Append one core event: a promotion (with its lane), a demotion, a nomination. */
   appendCoreEvent(input: {
     memoryId: string;
-    action: "promoted" | "demoted" | "nominated";
+    /** v9 adds `about` (a mark set; `reason` is the mark and why) and `told`
+     *  (a morning share that cited it was told to the owner). */
+    action: "promoted" | "demoted" | "nominated" | "about" | "told";
     day: number;
     lane?: string | null;
     reason?: string | null;
@@ -2016,6 +2107,151 @@ export class Store {
     });
     this.emit("store.core.retracted", undefined, { dream: dreamId, count: n });
     return n;
+  }
+
+  // ── what a memory is about (v9) ──────────────────────────────────────────
+
+  /**
+   * SET WHAT A MEMORY IS ABOUT (v9, 2026-09-27) — `me`, `us`, `owner`, `work`
+   * or `world` — and record who said so and why in `core_events` (action
+   * `about`, `reason` = `<mark> (was <before|unmarked>): <why>`). The mark is descriptive; only `me`,
+   * `us` and `owner` make a core candidate. Refuses an unknown mark and a
+   * removed or non-memory row by throwing, like every other seam write.
+   */
+  setAbout(
+    id: string,
+    mark: AboutMark,
+    opts: { by: AboutSetter; day?: number; why?: string | null; dreamId?: string | null },
+  ): { changed: boolean; before: AboutMark | null } {
+    if (!(ABOUT_MARKS as readonly string[]).includes(mark)) throw new StoreError("ABOUT_UNKNOWN", { id, mark });
+    const out = this.mutate("setAbout", () => {
+      const row = this.requireRow(id);
+      if (row.type !== "memory" || rowTombstoned(row)) throw new StoreError("ABOUT_NOT_A_MEMORY", { id });
+      const before = aboutMarkOf(row.about);
+      this.ops.run("UPDATE memories SET about = ?, about_by = ? WHERE id = ?", mark, opts.by, id);
+      const why = (opts.why ?? "").trim();
+      this.ops.run(
+        `INSERT INTO core_events (memory_id, action, day, at, lane, reason, dream_id, actor)
+         VALUES (?, 'about', ?, ?, NULL, ?, ?, ?)`,
+        id,
+        opts.day ?? this.livedDay(),
+        this.nowFn(),
+        // What it was before rides in the reason (owner ruling D2 on #256):
+        // doctor counts re-labels, and moves into me/us/owner, off this row.
+        `${mark} (was ${before ?? "unmarked"})${why.length > 0 ? `: ${why.slice(0, 300)}` : ""}`,
+        opts.dreamId ?? null,
+        opts.by,
+      );
+      return { changed: before !== mark, before };
+    });
+    this.emit("store.about", id, { mark, by: opts.by, changed: out.changed });
+    return out;
+  }
+
+  // ── reflections (v9, `core/dream/reflect.ts`) ─────────────────────────────
+
+  /** Open a reflection: its row, state `begun`. */
+  openReflection(input: {
+    id: string;
+    dreamId?: string | null;
+    session?: string | null;
+    scope?: string | null;
+    day: number;
+    date?: string | null;
+    model?: string | null;
+    questions: readonly string[];
+    shown: readonly string[];
+  }): void {
+    this.mutate("openReflection", () => {
+      this.ops.run(
+        `INSERT INTO reflections (id, dream_id, session, scope, day, date, state, started_at, model, questions, shown)
+         VALUES (?, ?, ?, ?, ?, ?, 'begun', ?, ?, ?, ?)`,
+        input.id,
+        input.dreamId ?? null,
+        input.session ?? null,
+        input.scope ?? null,
+        input.day,
+        input.date ?? null,
+        this.nowFn(),
+        modelOrNull(input.model ?? undefined),
+        JSON.stringify(input.questions),
+        JSON.stringify(input.shown),
+      );
+    });
+    this.emit("store.reflection", input.id, { state: "begun", day: input.day });
+  }
+
+  /**
+   * Change a reflection: close it with its entry, share and citations
+   * (`reflected`, stamps `finished_at`), or move its share along
+   * (`offered` → `carried` → `told`, stamping `share_at` / `share_session`).
+   *
+   * `ifShareState` makes it a CLAIM (review of #256, S5): the row changes only
+   * if its share is still in that state when the write lands, and the return
+   * says whether it did — so two sessions racing to carry one share cannot
+   * both carry it. Without it the write always lands (true).
+   */
+  updateReflection(
+    id: string,
+    patch: {
+      state?: "begun" | "reflected";
+      entry?: string | null;
+      entryId?: string | null;
+      cites?: readonly string[];
+      share?: string | null;
+      shareCites?: readonly string[];
+      shareState?: "none" | "offered" | "carried" | "told";
+      shareSession?: string | null;
+      pageVersion?: number | null;
+      detail?: Record<string, unknown>;
+      ifShareState?: "none" | "offered" | "carried" | "told";
+    },
+  ): boolean {
+    const landed = this.mutate("updateReflection", () => {
+      const row = this.ops.get<ReflectionRow>("SELECT * FROM reflections WHERE id = ?", id);
+      if (row === undefined) throw new StoreError("ID_UNKNOWN", { id });
+      if (patch.ifShareState !== undefined && row.share_state !== patch.ifShareState) return false;
+      const at = this.nowFn();
+      this.ops.run(
+        `UPDATE reflections
+            SET state = ?, finished_at = ?, entry = ?, entry_id = ?, cites = ?, share = ?, share_cites = ?,
+                share_state = ?, share_at = ?, share_session = ?, page_version = ?, detail = ?
+          WHERE id = ?${patch.ifShareState === undefined ? "" : " AND share_state = ?"}`,
+        patch.state ?? row.state,
+        patch.state === "reflected" ? at : row.finished_at,
+        patch.entry === undefined ? row.entry : patch.entry,
+        patch.entryId === undefined ? row.entry_id : patch.entryId,
+        patch.cites === undefined ? row.cites : JSON.stringify(patch.cites),
+        patch.share === undefined ? row.share : patch.share,
+        patch.shareCites === undefined ? row.share_cites : JSON.stringify(patch.shareCites),
+        patch.shareState ?? row.share_state,
+        patch.shareState === undefined || patch.shareState === row.share_state ? row.share_at : at,
+        patch.shareSession === undefined ? row.share_session : patch.shareSession,
+        patch.pageVersion === undefined ? row.page_version : patch.pageVersion,
+        patch.detail === undefined ? row.detail : JSON.stringify(patch.detail),
+        id,
+        ...(patch.ifShareState === undefined ? [] : [patch.ifShareState]),
+      );
+      return patch.ifShareState === undefined ? true : (this.ops.get<{ n: number }>("SELECT changes() AS n")?.n ?? 0) > 0;
+    });
+    if (landed) this.emit("store.reflection", id, { state: patch.state ?? null, share: patch.shareState ?? null });
+    return landed;
+  }
+
+  /** One reflection's row. */
+  reflection(id: string): ReflectionRow | undefined {
+    return this.ops.get<ReflectionRow>("SELECT * FROM reflections WHERE id = ?", id);
+  }
+
+  /** Reflections, newest first; optionally only one dream's. */
+  reflections(filter: { limit?: number; dreamId?: string } = {}): ReflectionRow[] {
+    return filter.dreamId === undefined
+      ? this.ops.all<ReflectionRow>("SELECT * FROM reflections ORDER BY started_at DESC, rowid DESC LIMIT ?", filter.limit ?? 100)
+      : this.ops.all<ReflectionRow>(
+          "SELECT * FROM reflections WHERE dream_id = ? ORDER BY started_at DESC, rowid DESC LIMIT ?",
+          filter.dreamId,
+          filter.limit ?? 100,
+        );
   }
 
   /** True when the owner's latest word on this memory's core membership is a demotion. */
@@ -2264,7 +2500,23 @@ export class Store {
    * `beneath` is an existing feeling's id ON THIS MEMORY or another input's
    * index. `model` is the writer's model id, screened like `PutInput.model`.
    */
-  addFeelings(memoryId: string, inputs: readonly FeelingInput[], opts: { model?: string } = {}): AddFeelingsResult {
+  addFeelings(
+    memoryId: string,
+    inputs: readonly FeelingInput[],
+    opts: {
+      model?: string;
+      /** v9: who recorded them — `session` (the default: a writer in a
+       *  session), `dream`, `reflection`. The fast lane's feeling reads only
+       *  the ones not recorded later by a reflection (physics §5.3). */
+      source?: FeelingSource;
+      /** v9: the calendar date a feeling was recorded AFTER the moment (the
+       *  reflection's feeling-now). Absent: felt at the time. */
+      recordedLater?: string;
+      /** Per input, overriding the two above — a merge carries each
+       *  original's own (`dream/`). Indexed like `inputs`. */
+      provenance?: readonly ({ source?: string | null; recordedLater?: string | null } | undefined)[];
+    } = {},
+  ): AddFeelingsResult {
     const { rows, notices } = checkFeelings(inputs);
     const ids = rows.map(() => `fel_${randomBytes(6).toString("hex")}`);
     this.mutate("addFeelings", () => {
@@ -2274,12 +2526,29 @@ export class Store {
       const insert = this.ops.prepare(
         `INSERT INTO feelings
            (id, memory_id, whose, core, emotion, other_word, strength, beneath_id, carried_by, model,
-            created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)`,
+            created_at, updated_at, source, recorded_later)
+         VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)`,
       );
-      rows.forEach((r, i) =>
-        insert.run(ids[i] as string, memoryId, r.whose, r.core, r.emotion, r.otherWord, r.strength, r.carriedBy, model, at, at),
-      );
+      const later = opts.recordedLater !== undefined && opts.recordedLater.trim().length > 0 ? opts.recordedLater.trim() : null;
+      const source = opts.source ?? "session";
+      rows.forEach((r, i) => {
+        const own = opts.provenance?.[i];
+        insert.run(
+          ids[i] as string,
+          memoryId,
+          r.whose,
+          r.core,
+          r.emotion,
+          r.otherWord,
+          r.strength,
+          r.carriedBy,
+          model,
+          at,
+          at,
+          own?.source ?? source,
+          own === undefined ? later : (own.recordedLater ?? null),
+        );
+      });
       // THEN the links, so an input may sit on one listed after it.
       rows.forEach((r, i) => {
         if (r.beneath === null) return;
@@ -3107,8 +3376,14 @@ export class Store {
    * indexed, so it is one index probe per row.
    */
   row(id: string): (MemoryRow & FeelingPeak) | undefined {
+    // v9: `feeling_peak_lived` is the same peak WITHOUT the feelings a
+    // reflection recorded later — the one the core's fast lane reads unless
+    // `CORE_FAST_ACCEPTS_REFLECTED_FEELING` is set (physics §5.3).
     return this.ops.get<MemoryRow & FeelingPeak>(
-      `SELECT m.*, (SELECT MAX(f.strength) FROM feelings f WHERE f.memory_id = m.id) AS feeling_peak
+      `SELECT m.*,
+              (SELECT MAX(f.strength) FROM feelings f WHERE f.memory_id = m.id) AS feeling_peak,
+              (SELECT MAX(f.strength) FROM feelings f
+                WHERE f.memory_id = m.id AND (f.source IS NULL OR f.source != 'reflection')) AS feeling_peak_lived
          FROM memories m WHERE m.id = ?`,
       id,
     );
@@ -3136,6 +3411,8 @@ export class Store {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       model: row.model,
+      about: aboutMarkOf(row.about),
+      aboutBy: row.about_by ?? null,
     };
   }
 
@@ -3642,8 +3919,9 @@ export class Store {
          promoted_identity, protected, pressure, last_challenged_day, archived,
          archived_reason, superseded_by, revision, content_hash,
          learned_on, happened_on, source, origin_session, origin_scope, origin_ref,
-         title, body, meta, confidential, created_at, updated_at, model, event_date, legacy)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, NULL, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         title, body, meta, confidential, created_at, updated_at, model, event_date, legacy,
+         about, about_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, NULL, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       id,
       input.type,
       input.kind,
@@ -3681,6 +3959,8 @@ export class Store {
       // v8: only a caller carrying a pre-upgrade memory's physics forward (a
       // dream merge of legacy rows) sets it; every new memory is post-upgrade.
       input.physics?.legacy === true ? 1 : 0,
+      input.about !== undefined && aboutMarkOf(input.about) !== null ? input.about : null,
+      input.about !== undefined && aboutMarkOf(input.about) !== null ? (input.aboutBy ?? "writer") : null,
     );
     return doc;
   }
@@ -4002,6 +4282,25 @@ export function today(): string {
 }
 
 /** The v7 column's screen: a model id the host reported, or NULL. */
+/**
+ * v9: a successor takes its predecessor's about-mark (and who set it) when it
+ * has none of its own — a revision or a merge is still the same memory, and a
+ * mark that fell off at a supersede would quietly take it out of the core's
+ * candidates. Inside the caller's transaction.
+ */
+function carryAboutMark(ops: Db, fromId: string, toId: string): void {
+  ops.run(
+    `UPDATE memories
+        SET about = (SELECT about FROM memories WHERE id = ?),
+            about_by = (SELECT about_by FROM memories WHERE id = ?)
+      WHERE id = ? AND about IS NULL AND (SELECT about FROM memories WHERE id = ?) IS NOT NULL`,
+    fromId,
+    fromId,
+    toId,
+    fromId,
+  );
+}
+
 function modelOrNull(model: string | undefined): string | null {
   return model !== undefined && isModelId(model) ? model : null;
 }

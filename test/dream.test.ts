@@ -182,6 +182,8 @@ describe("propose: what a dream may change", () => {
     const m = lived(c);
     // A memory with a strong feeling to soften, made a few days before.
     c.store.addFeelings(m.old, [{ whose: "self", core: "fear", emotion: "anxious", strength: 0.5, carriedBy: "x" }]);
+    // v9: something awake already said this one is the craft, not about me.
+    c.store.setAbout(m.a, "work", { by: "writer" });
     const { id } = begin(c);
     const out = c.dreams.propose({
       dream: id,
@@ -416,12 +418,14 @@ describe("the ask: once a day, snoozed by a no", () => {
     expect(c.dreams.raiseLines({ session: "s-next" })).toEqual([]);
   });
 
-  test("the launch prompt names the session and tells the dreamer to hand back the journal's text unchanged", () => {
+  test("the launch prompt names the session, wakes the dreamer to reflect, and asks for the finish call's text unchanged", () => {
     const c = brain();
     const prompt = c.dreams.launchPrompt({ session: SESSION });
     expect(prompt.startsWith(DREAM_MARK)).toBe(true);
     expect(prompt).toContain(`session: ${SESSION}`);
-    expect(prompt).toContain("exactly the text the journal call returns");
+    // v9: dream → journal → reflect, as distinct acts.
+    expect(prompt.indexOf('phase "journal"')).toBeLessThan(prompt.indexOf("reflect tool"));
+    expect(prompt).toContain("exactly the text the finish call returns");
   });
 });
 

@@ -33,6 +33,18 @@ import { StoreError } from "./errors.js";
 export const FEELING_WHOSE = ["owner", "self"] as const;
 export type FeelingWhose = (typeof FEELING_WHOSE)[number];
 
+/**
+ * v9 (2026-09-27): WHO RECORDED A FEELING. `session` — a writer in a session,
+ * at the moment or at its end (every feeling before v9 but a dream's); `dream`
+ * — a dream's feeling-now, capped at the memory's peak; `reflection` — the
+ * waking self's feeling-now, which may be stronger than anything written at
+ * the time and is marked `recorded_later` with its date. The core's fast lane
+ * reads only the first two unless `CORE_FAST_ACCEPTS_REFLECTED_FEELING` is set
+ * (physics §5.3).
+ */
+export const FEELING_SOURCES = ["session", "dream", "reflection"] as const;
+export type FeelingSource = (typeof FEELING_SOURCES)[number];
+
 /** `carried_by` is a short pointer at the moment, not a transcript. */
 export const CARRIED_BY_MAX_CHARS = 280;
 /** The free word kept when the emotion is not on the wheel. */
@@ -69,6 +81,10 @@ export interface FeelingRow extends Row {
   model: string | null;
   created_at: number;
   updated_at: number;
+  /** v9: who recorded it (`FEELING_SOURCES`); null only on a bare test row. */
+  source: string | null;
+  /** v9: the calendar date it was recorded after the moment; null = felt at the time. */
+  recorded_later: string | null;
 }
 
 /**

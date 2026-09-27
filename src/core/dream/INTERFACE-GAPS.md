@@ -22,3 +22,16 @@ What this module still owes, or asks of others (2026-09-26).
 6. **Dream links are ordinary edges.** If the association work wants them marked (a
    table, a starting weight, a hop rule), `apply`'s `link` and `gist` arms are the two
    writers.
+
+7. **Reflection (2026-09-27) — what it still owes.**
+   - **The owner's reply to a share is not weighed** (the brief's follow-up): `told`
+     records the telling; nothing reads his answer yet.
+   - **No opt-out** for the morning share (on by default; Mike: opt out later if needed).
+   - **A reflection on its own has no trigger**: `reflect launch` exists, but nothing asks
+     for one on a dreamless day. The old SessionStart page writer still covers those
+     nights.
+   - **Not yet watched live** with a real background agent.
+   - **`export --markdown` does not carry the `reflections` table** (as §4 for dreams).
+   - **The crash-fallback sweep sets no about mark**: a self memory it mints is unmarked,
+     so not a core candidate until something awake marks it. A choice, not an oversight —
+     the sweep is a reteller.

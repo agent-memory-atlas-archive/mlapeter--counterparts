@@ -125,7 +125,8 @@ either, for the same reason.*
 consolidate phase is still the ONE place a memory is promoted, and every crossing is
 still an explicit, counted record — now carrying its LANE. What changed: physics decides
 the lanes (`promotionEligibility(m, { aboutMe, demoted })`); this phase decides who is
-ABOUT ME (`consolidate.ts#aboutMe`: `self` kind, or a `person` memory naming the owner,
+ABOUT ME (`consolidate.ts#aboutMe` — since v9, 2026-09-27, the memory's MARK: `me`, `us` or
+`owner`, set by an awake model that read it, never a `skill`; until v9: `self` kind, or a `person` memory naming the owner,
 read off the identity core's name and aliases), honours the owner's demotions
 (`store.coreDemoted`), and caps the night at `CORE_MAX_PER_SLEEP` (3), strongest first —
 the rest are counted `promotion:cap` and wait for the next consolidation. The legacy

@@ -1636,7 +1636,8 @@ describe("an instrument does not write at open (live-verify 2026-08-25)", () => 
     // moments, `model` and `event_date` — none of which a v5 store lacks in a
     // way that hides its words. v8 (2026-09-26) adds the legacy flag and the
     // returns aggregate, none of which a pre-rows store lacks in a way that
-    // hides its words either.
+    // hides its words either. v9 (2026-09-27) adds the about mark and a
+    // feeling's source and later date — the same.
     expect(ADDED_COLUMNS.map((c) => `${c.table}.${c.column}`)).toEqual([
       "memories.created_at",
       "memories.updated_at",
@@ -1655,6 +1656,10 @@ describe("an instrument does not write at open (live-verify 2026-08-25)", () => 
       "memories.first_return_day",
       "memories.last_return_day",
       "memories.last_dream_day",
+      "memories.about",
+      "memories.about_by",
+      "feelings.source",
+      "feelings.recorded_later",
     ]);
     for (const spec of ADDED_COLUMNS) {
       expect({ column: spec.column, namesAFloorColumn: V6_COLUMNS.includes(spec.column) }).toEqual({
@@ -1819,6 +1824,11 @@ describe("observer mode is enforced at the store seam", () => {
     recordDreamChange: ["drm_x", { action: "link" }],
     markDreamChangeUndone: ["drm_x", 1],
     setDreamAsk: [{ date: "2026-09-26", state: "offered", day: 0 }],
+    // v9 (2026-09-27, reflection + core by meaning).
+    reflectReturn: ["mem_000000000000", 1],
+    setAbout: ["mem_000000000000", "me", { by: "writer" }],
+    openReflection: [{ id: "rfl_x", day: 0, questions: [], shown: [] }],
+    updateReflection: ["rfl_x", { state: "reflected" }],
   };
 
   function populated(): { id: string; snapshot: string } {

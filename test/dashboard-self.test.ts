@@ -67,6 +67,8 @@ beforeAll(async () => {
             { session: `s${i}`, scope: "x" },
           );
           if (r.deposited && r.memoryId) ids.push(r.memoryId);
+          // v9: the writer marks what it learned about the owner.
+          if (r.deposited && r.memoryId && content.startsWith("Mike")) c.store.setAbout(r.memoryId, "owner", { by: "writer" });
         }
       } else {
         c.resolveUses(`s${i}`, [{ memoryId: ids[0] as string, tier: "referenced" as const }]);
@@ -353,6 +355,8 @@ describe("the self tab, round 3", () => {
               body,
               salience: { relevance: 0.6, emotional, predictive: 0.6 },
               physics: { birthDay: d, lastUsedDay: d },
+              // v9: the core reads what a memory is about, marked by meaning.
+              ...(kind === "self" ? { about: "me" as const } : {}),
             });
           ids["felt"] = put("I say what I don't know before I guess.", "self", 0.95);
           ids["mild"] = put("I like short sentences.", "self", 0.1);
