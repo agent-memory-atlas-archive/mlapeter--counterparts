@@ -12,6 +12,7 @@ import { api, fail } from "./api.js";
 import { emptyBox } from "./absence.js";
 import { esc } from "./dom.js";
 import { headline, n2, n3, said } from "./format.js";
+import { coreRoadLine, curveStart, fadingSince, versionRows } from "./memory-card-words.js";
 import { FEELING_COLOURS, kindMark, kindOf, shortDate } from "./memory-marks.js";
 import { openModal } from "./modal.js";
 import { confirmTyped } from "./widgets/confirm.js";
@@ -79,9 +80,9 @@ function curvePart(d) {
   if (ahead.length > 1) svg += '<path d="' + path(ahead) + '" class="mc-ahead"/>';
   svg += '<circle cx="' + x(c.day) + '" cy="' + y(now) + '" r="4" class="mc-now"/></svg>';
   const axis = '<div class="mc-axis">' + (c.from === c.day
-    ? "<span>today, day " + c.day + "</span>"
-    : "<span>last used, day " + c.from + "</span><span>today</span>") + "<span>day " + c.to + "</span></div>";
-  const words = "Held " + pct(now) + " now" + (c.from < c.day ? ", fading since it was last used" : "") + ". " + (c.archiveDay !== null
+    ? "<span>" + esc(curveStart(d)) + "</span>"
+    : "<span>" + esc(curveStart(d)) + "</span><span>today</span>") + "<span>day " + c.to + "</span></div>";
+  const words = "Held " + pct(now) + " now" + (c.from < c.day ? ", " + fadingSince(d) : "") + ". " + (c.archiveDay !== null
     ? "Unused, it falls to the let-go line around lived day " + c.archiveDay + "."
     : now < c.archiveLine ? "It is already under the let-go line." : "Unused, it stays above the let-go line for the next " + (c.to - c.day) + " lived days.");
   return svg + axis + '<p class="mc-line">' + esc(words) +
@@ -108,8 +109,8 @@ function fingerprint(d) {
 
 function usePart(d) {
   if (d.journal || d.chapter) return "";
-  const p = d.promotion;
-  if (d.uses === 0 && d.useDays.length === 0 && !p.byUse) return "";
+  const road = coreRoadLine(d.promotion, d.promoted);
+  if (d.uses === 0 && d.useDays.length === 0 && !road) return "";
   const last = d.day;
   const first = Math.max(d.bornDay, last - 59);
   const used = new Set(d.useDays);
@@ -126,11 +127,7 @@ function usePart(d) {
       ", last on lived day " + d.lastUsedDay + ".");
     if (shown < d.reinforcedDays) lines.push("The log shows " + shown + " of those days; it keeps only so much.");
   } else lines.push("Not used yet.");
-  if (p.byUse) {
-    const more = Math.max(0, p.required - p.days);
-    lines.push("Coming back on " + p.required + " separate days over " + p.needSpan + " makes it core" +
-      (more ? " — " + more + " more to go." : p.span < p.needSpan ? " — it needs to keep coming back a little longer." : "."));
-  }
+  if (road) lines.push(road);
   return '<div class="mc-strip" role="img" aria-label="lived days, a dot on each day it was used">' +
     (first > d.bornDay ? '<span class="mc-more">…</span>' : "") + cells + "</div>" +
     '<div class="mc-axis"><span>' + (first === d.bornDay ? "born, day " + first : "day " + first) + "</span><span>today, day " + last + "</span></div>" +
@@ -186,22 +183,16 @@ function linked(d) {
 
 // ── versions: one line of its lineage ──────────────────────────────────────
 
-const REL = {
-  replaced: "replaced this older memory",
-  corrects: "corrects (the other stays as it was)",
-  revised: "rewritten in place",
-  became: "replaced by this newer memory",
-};
-
 function versions(d) {
   if (!d.timeline || d.timeline.length === 0) return "";
-  const steps = d.timeline.map((s) => {
+  // The words (and the grouping of a dream's near-copies) are `versionRows`.
+  const steps = versionRows(d.timeline).map((s) => {
     const when = s.day === null ? "" : "day " + s.day;
-    const head = '<span class="mc-vrel">' + esc(REL[s.rel] || s.rel) + "</span>" +
+    const head = '<span class="mc-vrel">' + esc(s.label) + "</span>" +
       (when ? '<span class="mc-dim"> · ' + esc(when) + "</span>" : "") +
-      (s.reason && s.rel !== "corrects" ? '<span class="mc-dim"> · ' + esc(String(s.reason).replace(/-/g, " ")) + "</span>" : "");
-    const body = s.id ? ref(s.id, s.text, s.confidential, "") : "";
-    return '<li class="mc-v mc-v-' + s.rel + '"><i class="mc-vdot"></i><div>' + head + body + "</div></li>";
+      (s.reason ? '<span class="mc-dim"> · ' + esc(s.reason) + "</span>" : "");
+    const body = s.refs.map((r) => ref(r.id, r.text, r.confidential, "")).join("");
+    return '<li class="mc-v mc-v-' + s.rel + (s.dream ? " mc-v-dream" : "") + '"><i class="mc-vdot"></i><div>' + head + body + "</div></li>";
   });
   const nowAt = d.timeline.some((s) => s.rel === "became") ? "" :
     '<li class="mc-v mc-v-now"><i class="mc-vdot"></i><div><span class="mc-vrel">this memory, as it stands</span>' +

@@ -6,6 +6,7 @@ import { absenceLine } from "../../../shared/absence.js";
 import { act, resultHtml } from "../../../shared/actions.js";
 import { api, fail } from "../../../shared/api.js";
 import { $, esc } from "../../../shared/dom.js";
+import { foldChapters, fromWords } from "../fold.js";
 import { memRow, wireRows } from "../row.js";
 
 export const markup = `
@@ -84,7 +85,15 @@ async function ask() {
     try { result = JSON.parse(r.out.join("\n")); } catch (e) { result = null; }
   }
   if (!result) { out.innerHTML = resultHtml(r); return; }
-  const mems = Array.isArray(result.memories) ? result.memories : [];
+  const raw = Array.isArray(result.memories) ? result.memories : [];
+  // A chapter and the memory drawn from it are one answer (`fold.js`). The
+  // links are a read; without them the answers show as they came.
+  let links = {};
+  if (raw.length > 0) {
+    try { links = (await api("/api/chapters?ids=" + encodeURIComponent(raw.map((m) => m.id).join(",")))).links || {}; }
+    catch (e) { links = {}; }
+  }
+  const mems = foldChapters(raw, links);
   if (mems.length === 0) {
     out.innerHTML = '<div class="empty"><b>Nothing came back.</b> ' +
       (result.considered === 0
@@ -99,7 +108,11 @@ async function ask() {
       const w = answerWords(m.body);
       return memRow({
         id: m.id, title: m.title, text: w.text, confidential: false, kind: m.kind, strength: m.strength,
-        date: w.date, dateFrom: w.date ? "text" : null, journal: !!m.journal, feelings: [], archived: null,
-      }, { lit: TIER_LIT[m.tier] || 3, tier: TIER[m.tier] || m.tier });
+        date: w.date, dateFrom: w.date ? "text" : null, journal: !!m.journal || m.chapter, feelings: [], archived: null,
+      }, {
+        lit: TIER_LIT[m.tier] || 3,
+        tier: TIER[m.tier] || m.tier,
+        from: m.from ? { id: m.from.episodeId, words: fromWords(m.from) } : null,
+      });
     }).join("") + "</div>";
 }

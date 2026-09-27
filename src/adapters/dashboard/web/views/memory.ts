@@ -5,6 +5,8 @@
  * the four rules in that file's header apply to every line below.
  */
 import { TUNABLES, band, emotionalIntensity, promotionEligibility, rep, sal, strength } from "../../../../core/physics/index.js";
+import type { PromotionVerdict } from "../../../../core/physics/index.js";
+import { DREAM_MERGE_REASON } from "../../../../core/dream/index.js";
 import { feelingsLine } from "../../../feelings-line.js";
 import { aboutMe, isJournal, ownerNames } from "../../../../core/sleep/index.js";
 import type { Band, Kind } from "../../../../core/types.js";
@@ -35,6 +37,56 @@ export interface TimelineStep {
   /** For `revised`: the version's number. */
   readonly seq: number | null;
   readonly reason: string | null;
+  /**
+   * The step was a dream folding near-copies together (`dream#DREAM_MERGE_REASON`):
+   * on a `replaced` step, a near-copy merged into this one; on `became`, this
+   * one merged into its near-copy. Cleanup, and the card says so (2026-09-27).
+   */
+  readonly dream: boolean;
+}
+
+/** The card's road to the core — see `MemoryDetail.promotion`. */
+export interface CoreRoad {
+  readonly byUse: boolean;
+  readonly days: number;
+  readonly required: number;
+  readonly span: number;
+  readonly needSpan: number;
+  /** The slow lane's strength floor, not yet reached (its days may already be). */
+  readonly holdShort: boolean;
+  readonly oneReturn: boolean;
+  readonly needGap: number;
+  readonly lane: "fast" | "slow" | null;
+  readonly eligible: boolean;
+  readonly blocked: "not-about-me" | "demoted-by-owner" | null;
+}
+
+/**
+ * The card's road to the core, from the engine's verdict alone. "One return
+ * away" is the fast lane's feeling already there, its return not yet, and
+ * nothing but "no lane yet" in the way; `byUse` is that same "nothing else in
+ * the way" for the slow lane.
+ */
+export function coreRoad(verdict: PromotionVerdict): CoreRoad {
+  const onlyNoLane = verdict.blockedBy.length === 1 && verdict.blockedBy[0] === "no-lane-yet";
+  const blocked = verdict.blockedBy.includes("not-about-me")
+    ? "not-about-me"
+    : verdict.blockedBy.includes("demoted-by-owner")
+      ? "demoted-by-owner"
+      : null;
+  return {
+    byUse: onlyNoLane,
+    days: verdict.slow.days,
+    required: verdict.slow.needDays,
+    span: verdict.slow.span,
+    needSpan: verdict.slow.needSpan,
+    holdShort: verdict.slow.strength !== null && verdict.slow.strength < verdict.slow.needStrength,
+    oneReturn: onlyNoLane && !verdict.fast.met && verdict.fast.intensity >= verdict.fast.needIntensity,
+    needGap: verdict.fast.needGap,
+    lane: verdict.lane,
+    eligible: verdict.eligible,
+    blocked,
+  };
 }
 
 /** The card's strength curve: how strong so far, and where it heads if unused. */
@@ -125,19 +177,18 @@ export interface MemoryDetail {
   /** Lived days the log shows it being used on (`recall.credit`), ascending.
    *  The log keeps only so much, so this can be fewer than `reinforcedDays`. */
   readonly useDays: number[];
-  /** The road to the core, when use is what stands in the way. */
   /**
-   * The core's slow lane, for a memory about me or about us (2026-09-26):
-   * `byUse` when coming back on more separate days is all that stands in the
-   * way; `days` of `required` separate return days, over `span` of `needSpan`.
+   * The road to the core (2026-09-26; both lanes on the card 2026-09-27), read
+   * straight off `physics#promotionEligibility` — nothing here restates a
+   * threshold, a kind or a tunable, so when the engine's rule moves the card
+   * follows. `byUse`: coming back is all that stands in the way (the slow
+   * lane: `days` of `required` separate return days, over `span` of
+   * `needSpan`). `oneReturn`: felt strongly enough for the fast lane, so one
+   * real return (`needGap` lived days or more after it was made) makes it
+   * core. `lane`: the lane already met, when one is (a sleep decides).
+   * `blocked`: why no lane applies at all, or null.
    */
-  readonly promotion: {
-    readonly byUse: boolean;
-    readonly days: number;
-    readonly required: number;
-    readonly span: number;
-    readonly needSpan: number;
-  };
+  readonly promotion: CoreRoad;
   readonly feelings: (FeelingShown & { readonly carriedBy: string })[];
   readonly model: string | null;
   readonly eventDate: string | null;
@@ -199,7 +250,19 @@ export function memoryDetail(src: DashboardSource, id: string): MemoryDetail {
     curve: null,
     curveNote: null,
     useDays: [],
-    promotion: { byUse: false, days: 0, required: TUNABLES.CORE_SLOW_DAYS, span: 0, needSpan: TUNABLES.CORE_SLOW_SPAN_DAYS },
+    promotion: {
+      byUse: false,
+      days: 0,
+      required: TUNABLES.CORE_SLOW_DAYS,
+      span: 0,
+      needSpan: TUNABLES.CORE_SLOW_SPAN_DAYS,
+      holdShort: false,
+      oneReturn: false,
+      needGap: TUNABLES.CORE_FAST_GAP_DAYS,
+      lane: null,
+      eligible: false,
+      blocked: null,
+    },
     feelings: [],
     model: null,
     eventDate: null,
@@ -225,8 +288,13 @@ export function memoryDetail(src: DashboardSource, id: string): MemoryDetail {
   const g = gistOfDoc(doc, 120);
   const chapter = row !== undefined && isChapterMemory(row);
   const journal = row === undefined ? false : isJournal(row);
+  // The core's road, asked of the engine the way sleep asks it
+  // (`sleep/consolidate.ts`): sleep's own "about me" reading of the row, and
+  // the owner's last word on its core membership.
+  const about = row !== undefined && aboutMe(store, row, ownerNames(store));
   const verdict = promotionEligibility(physics, {
-    aboutMe: aboutMe(store, { id: headId, kind: physics.kind }, ownerNames(store)),
+    aboutMe: about,
+    demoted: about ? store.coreDemoted(headId) : false,
     day,
   });
   let curve: MemoryCurve | null = null;
@@ -319,15 +387,7 @@ export function memoryDetail(src: DashboardSource, id: string): MemoryDetail {
     curve,
     curveNote,
     useDays: useDaysOf(src, headId),
-    promotion: {
-      // "N separate days make it core" only for a memory about me, when coming
-      // back is all that stands in the way.
-      byUse: verdict.blockedBy.length === 1 && verdict.blockedBy[0] === "no-lane-yet",
-      days: verdict.slow.days,
-      required: verdict.slow.needDays,
-      span: verdict.slow.span,
-      needSpan: verdict.slow.needSpan,
-    },
+    promotion: coreRoad(verdict),
     feelings: feelingsWithCarry(src, headId, g.confidential),
     model: row?.model ?? null,
     eventDate: row?.event_date ?? null,
@@ -391,25 +451,31 @@ function timelineOf(src: DashboardSource, id: string, updates: unknown): Timelin
     const o = store.row(other);
     if (o === undefined || o.superseded_by !== id) continue;
     const v = store.versions(other).find((x) => x.successor_id === id);
-    steps.push({ rel: "replaced", id: other, ...words(other), day: v?.version_day ?? null, seq: null, reason: v?.reason ?? o.archived_reason });
+    steps.push({ rel: "replaced", id: other, ...words(other), day: v?.version_day ?? null, seq: null, ...why(v?.reason ?? o.archived_reason) });
   }
   if (typeof updates === "string" && updates !== id) {
-    steps.push({ rel: "corrects", id: updates, ...words(updates), day: null, seq: null, reason: null });
+    steps.push({ rel: "corrects", id: updates, ...words(updates), day: null, seq: null, reason: null, dream: false });
   }
   let became: TimelineStep | null = null;
   for (const v of store.versions(id)) {
     if (v.successor_id === null) {
-      steps.push({ rel: "revised", id: null, text: "its words were rewritten in place", confidential: false, day: v.version_day, seq: v.seq, reason: v.reason });
+      steps.push({ rel: "revised", id: null, text: "its words were rewritten in place", confidential: false, day: v.version_day, seq: v.seq, ...why(v.reason) });
     } else {
-      became = { rel: "became", id: v.successor_id, ...words(v.successor_id), day: v.version_day, seq: v.seq, reason: v.reason };
+      became = { rel: "became", id: v.successor_id, ...words(v.successor_id), day: v.version_day, seq: v.seq, ...why(v.reason) };
     }
   }
   const row = store.row(id);
   if (became === null && row !== undefined && row.superseded_by !== null) {
-    became = { rel: "became", id: row.superseded_by, ...words(row.superseded_by), day: null, seq: null, reason: row.archived_reason };
+    became = { rel: "became", id: row.superseded_by, ...words(row.superseded_by), day: null, seq: null, ...why(row.archived_reason) };
   }
   if (became !== null) steps.push(became);
   return steps;
+}
+
+/** A step's reason, and whether it was a dream's near-copy merge. */
+function why(reason: string | null | undefined): { reason: string | null; dream: boolean } {
+  const r = reason ?? null;
+  return { reason: r, dream: r === DREAM_MERGE_REASON };
 }
 
 function barFor(src: DashboardSource, id: string): number | null {

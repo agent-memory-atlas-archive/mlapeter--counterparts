@@ -186,6 +186,40 @@ describe("the memories tab, live", () => {
       await page.click('#feel-detail button[data-word="proud"][data-whose="owner"]');
       await page.waitForFunction(() => !document.querySelector('#mfilters button[data-f="feeling"]'));
       expect(await total()).toBeGreaterThan(2);
+
+      // ── Ask folds a chapter and its memory into one answer (round 3), and a refresh keeps it ──
+      await page.fill("#ask-q", "the first day inside Halfmoon, reading the rota solver");
+      await page.click("#ask-go");
+      await page.waitForSelector("#ask-out .mchapter", { timeout: 30_000 });
+      const answers = async (): Promise<string[]> =>
+        page.locator("#ask-out .mrow").evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.id ?? ""));
+      const folded = await answers();
+      const chapterOf = await page.locator("#ask-out .mchapter").first().getAttribute("data-open");
+      // The chapter the link names is not also listed as an answer of its own.
+      expect(folded).not.toContain(chapterOf);
+      expect(new Set(folded).size).toBe(folded.length);
+      expect(await page.textContent("#ask-out .ask-head")).toContain(`${folded.length} memor`);
+      write("A fact written while the answer was open.");
+      await refresh();
+      expect(await answers()).toEqual(folded);
+      // The link opens the chapter, not the memory it sits in.
+      await page.locator("#ask-out .mchapter").first().click();
+      await page.waitForSelector("#overlay.show .mc");
+      expect(await page.textContent("#modal .mc")).toContain("A journal entry, not a memory");
+      await page.keyboard.press("Escape");
+
+      // ── no sideways scroll, with the list, the answers and a card open ──
+      for (const width of [1440, 1000, 390]) {
+        await page.setViewportSize({ width, height: 800 });
+        await page.locator("#ask-out .mrow").first().click();
+        await page.waitForSelector("#overlay.show .mc");
+        const w = await page.evaluate(() => ({
+          page: document.documentElement.scrollWidth - innerWidth,
+          modal: (document.getElementById("modal")?.scrollWidth ?? 0) - (document.getElementById("modal")?.clientWidth ?? 0),
+        }));
+        expect(w).toEqual({ page: 0, modal: 0 });
+        await page.keyboard.press("Escape");
+      }
       expect(errors).toEqual([]);
     } finally {
       await ctx.close();

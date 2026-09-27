@@ -11,11 +11,15 @@ import { openMemory } from "../../shared/memory-modal.js";
  *  for every row it will ever hold, so a repaint needs no rewiring). */
 export function wireRows(container) {
   const open = (e) => {
+    // A link inside a row (Ask's "from chapter …") opens what it names, not the row.
+    const link = e.target.closest("[data-open]");
+    if (link && container.contains(link)) { openMemory(link.dataset.open); return; }
     const row = e.target.closest(".mrow[data-id]");
     if (row && container.contains(row)) openMemory(row.dataset.id);
   };
   container.addEventListener("click", open);
-  container.addEventListener("keydown", (e) => { if (e.key === "Enter") open(e); });
+  // Enter on a button inside a row is already a click; only the row itself needs this.
+  container.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.target.closest("button")) open(e); });
 }
 
 const DATE_WORDS = { text: "the date written in the memory", chapter: "the day its journal chapter names", recorded: "the day it was recorded" };
@@ -24,7 +28,8 @@ const DATE_WORDS = { text: "the date written in the memory", chapter: "the day i
  * `r`: { id, title, text, confidential, kind, strength, date, dateFrom, core,
  * protected, journal, feelings, archived, schemaRole }. `opts.lit` overrides the
  * brightness (Ask's tiers); `opts.tier` adds a small tier word in place of the
- * meter.
+ * meter; `opts.from` ({ id, words }) adds a small link under the words to the
+ * journal chapter the memory was drawn from.
  */
 export function memRow(r, opts = {}) {
   const lit = r.archived ? 1 : opts.lit ?? (r.journal ? 3 : litLevel(r.strength));
@@ -39,6 +44,7 @@ export function memRow(r, opts = {}) {
   const id = esc(r.id);
   return '<div class="mrow click lit-' + lit + (r.archived ? " arch" : "") + '" role="button" tabindex="0" data-id="' + id + '">' +
     '<div class="mmain">' + main +
+      (opts.from ? '<button type="button" class="mchapter" data-open="' + esc(opts.from.id) + '">' + esc(opts.from.words) + "</button>" : "") +
       (r.archived ? '<div class="mwhy">archived: ' + esc(r.archived) + "</div>" : "") + "</div>" +
     '<div class="mside">' +
       '<span class="mline">' + held +
