@@ -149,3 +149,26 @@ brief left open, and why.
     not shown to it as memories at all — only as words, under `earlier` — because a
     reflection returning its own reflections is the rumination loop self CONTRACT §2(c)
     names (`reflection-does-not-return-itself` if one is ever cited).
+
+## 2026-09-27 — the ask, previewed (`previewAsk`)
+
+The dashboard's Tonight box asked `status`, got "observer", and fell back to counting
+"new since the last dream" itself — a count that skipped the showable filter
+(confidential rows) and the `MAX_NEW` cap, so it could read higher than the gate.
+
+1. **One gate, two stances.** `status` and the new `previewAsk` both call the private
+   `gate(at, observer, owner)`; `askLine` still reads `status`. Agreement is by
+   construction, and `test/dream-preview.test.ts` checks it case by case against
+   `status` and against `askLine`'s actual line.
+2. **It mirrors `status`, not `begin`.** `begin` quietly closes a dream that was begun
+   and did nothing; `status` counts that dream as today's. The real ask reads `status`,
+   so the preview does too.
+3. **`newSince` is always counted** in the preview. The gate stops before counting when
+   it already knows (dreamed, asked or declined today; first day) — that is the per-prompt
+   path's economy, not a meaning. The Tonight box wants the number anyway.
+4. **Whose gate.** An observer is never the owner's session (the facade forces `owner`
+   off), while the owner's hooks run `owner: true`, where confidential memories count as
+   new. So an observer previews a guest's gate by default and the owner's on
+   `owner: true`. A live session previews its own and ignores the option — a guest
+   session cannot count the owner's confidential memories by asking. Only a count comes
+   back, never an id or a word.

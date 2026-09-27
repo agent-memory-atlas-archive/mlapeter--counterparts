@@ -142,6 +142,79 @@ describe("one judgement, two surfaces", () => {
   });
 });
 
+describe("dreaming: core suggestions are said apart from changes (2026-09-27)", () => {
+  test("a nomination is not counted among a dream's changes, on either surface", () => {
+    const dir = tempDir("counterparts-evidence-dream-");
+    const TODAY = "2026-01-12";
+    const c = Counterpart.open({ dir, owner: true });
+    try {
+      for (let i = 1; i <= 12; i++) c.store.advanceClock(`2026-01-${String(i).padStart(2, "0")}`);
+      const day = c.store.livedDay();
+      const row = (name: string, payload: Record<string, number>): void => {
+        c.store.appendEvent({ name, day, ref: null, payload: { date: TODAY, ...payload } });
+      };
+      // Two dreams: 63 changes applied, 3 of them nominations.
+      row("dream.changed", { applied: 40, refused: 1, merge: 8, link: 30, "nominate-core": 2 });
+      row("dream.changed", { applied: 23, refused: 0, link: 22, "nominate-core": 1 });
+      row("dream.journaled", { chars: 400 });
+      row("dream.journaled", { chars: 300 });
+    } finally {
+      c.close();
+    }
+    const dash = Dashboard.open({ dir });
+    try {
+      const m = mechanismsView(dash.source).mechanisms.find((x) => x.id === "dreaming")!;
+      expect(m.status).toBe("green");
+      expect(m.evidence).toContain("2 dreams, 60 changes dreams made, 3 core suggestions");
+      expect(m.evidence).not.toContain("63");
+    } finally {
+      dash.close();
+    }
+    const s = Store.open({ dir, observer: true });
+    try {
+      const report = firedReport(s, TODAY);
+      const byId = new Map(report.rows.map((r) => [r.id, r]));
+      const dreaming = MEMORY_MECHANISMS.find((m) => m.id === "dreaming")!;
+      const line = readMechanism(dreaming, consoleVerdicts(s, TODAY), (id) => byId.get(id));
+      expect(line.light).toBe("●");
+      expect(line.says).toBe("2 dreams this week (60 changes, 3 core suggestions)");
+    } finally {
+      s.close();
+    }
+  });
+
+  test("a dream that only suggested reads as suggestions, with no changes", () => {
+    const dir = tempDir("counterparts-evidence-dream-only-");
+    const TODAY = "2026-01-12";
+    const c = Counterpart.open({ dir, owner: true });
+    try {
+      for (let i = 1; i <= 12; i++) c.store.advanceClock(`2026-01-${String(i).padStart(2, "0")}`);
+      const day = c.store.livedDay();
+      c.store.appendEvent({ name: "dream.changed", day, ref: null, payload: { date: TODAY, applied: 1, "nominate-core": 1 } });
+      c.store.appendEvent({ name: "dream.journaled", day, ref: null, payload: { date: TODAY, chars: 100 } });
+    } finally {
+      c.close();
+    }
+    const dash = Dashboard.open({ dir });
+    try {
+      const m = mechanismsView(dash.source).mechanisms.find((x) => x.id === "dreaming")!;
+      expect(m.evidence).toContain("1 dream, 1 core suggestion in the last");
+      expect(m.evidence).not.toContain("change");
+    } finally {
+      dash.close();
+    }
+    const s = Store.open({ dir, observer: true });
+    try {
+      const report = firedReport(s, TODAY);
+      const byId = new Map(report.rows.map((r) => [r.id, r]));
+      const dreaming = MEMORY_MECHANISMS.find((m) => m.id === "dreaming")!;
+      expect(readMechanism(dreaming, consoleVerdicts(s, TODAY), (id) => byId.get(id)).says).toBe("1 dream this week (1 core suggestion)");
+    } finally {
+      s.close();
+    }
+  });
+});
+
 describe("built / partly / not", () => {
   test("one table; a mechanism not built claims no proof, a built one names some", () => {
     for (const m of MECHANISM_EVIDENCE) {

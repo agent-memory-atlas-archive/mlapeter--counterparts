@@ -179,6 +179,23 @@ export interface DreamStatus {
   readonly reason: "due" | "observer" | "first-day" | "dreamed-today" | "asked-today" | "declined-today" | "too-little-new";
 }
 
+/**
+ * THE ASK, PREVIEWED (`Dreams.previewAsk`): what the day's gate would answer a
+ * live session right now, read without claiming the day. Never "observer".
+ */
+export interface DreamPreview {
+  /** The gate would raise the ask now (`askLine` would claim the day and return a line). */
+  readonly wouldAsk: boolean;
+  /** The gate's own reason (`DreamStatus.reason`), never "observer". */
+  readonly reason: Exclude<DreamStatus["reason"], "observer">;
+  /**
+   * Showable memories new since the last dream that stands, capped at
+   * `DREAM_TUNABLES.MAX_NEW` — the count the gate compares with `MIN_NEW`.
+   * Counted for every reason, also when the gate stops before counting.
+   */
+  readonly newSince: number;
+}
+
 const KINDS: readonly Kind[] = ["self", "person", "entity", "skill", "place", "fact"];
 
 export class Dreams {
@@ -211,12 +228,47 @@ export class Dreams {
    * (`store.newMemoryIds`), counted only when everything else says yes.
    */
   status(at: string = this.ctx.today()): DreamStatus {
+    return this.gate(at, this.ctx.observer, this.ctx.owner);
+  }
+
+  /**
+   * THE ASK, PREVIEWED (2026-09-27, for the dashboard's Tonight box): would the
+   * gate raise the ask now, why, and how many memories are new since the last
+   * dream. The SAME gate `status` and `askLine` run (`gate` below: the same
+   * dreamed / declined / asked-today checks, the same showable filter, the same
+   * `MAX_NEW` cap), asked as a live session would ask it — so it answers under
+   * observer, where `status` says "observer". It claims no ask, records no
+   * event, writes nothing.
+   *
+   * WHOSE GATE. Confidential memories count toward "new" only in the owner's
+   * own session. A live session previews its own gate, whatever it asks for.
+   * An observer is never the owner's session (the facade forces `owner` off),
+   * so by default it previews a guest's gate; `owner: true` previews the
+   * owner's — his hooks run `owner: true` (the install writes it). Only a
+   * count comes back, never an id or a word.
+   */
+  previewAsk(opts: { at?: string; owner?: boolean } = {}): DreamPreview {
+    const at = opts.at ?? this.ctx.today();
+    const owner = this.ctx.observer ? (opts.owner ?? this.ctx.owner) : this.ctx.owner;
+    const s = this.gate(at, false, owner);
+    if (s.reason === "observer") throw new Error("unreachable: the preview asks as a live session");
+    // The gate stops before counting when it already knows the answer; the
+    // preview counts anyway (it is not on the per-prompt path).
+    const counted = s.reason === "due" || s.reason === "too-little-new";
+    return { wouldAsk: s.due, reason: s.reason, newSince: counted ? s.newSince : this.freshIds(s.last, owner).length };
+  }
+
+  /**
+   * THE GATE ITSELF — `status` asks it in this module's stance, `previewAsk` as
+   * a live session. Reads only.
+   */
+  private gate(at: string, observer: boolean, owner: boolean): DreamStatus {
     const last = this.lastDream();
     const day = this.store.livedDay();
     const dreamedToday = last !== null && last.day >= day;
     // A store on its first lived day has no night behind it yet: "I haven't
     // dreamed since …" needs a since.
-    const early: DreamStatus["reason"] | null = this.ctx.observer
+    const early: DreamStatus["reason"] | null = observer
       ? "observer"
       : day < 1
         ? "first-day"
@@ -229,7 +281,7 @@ export class Dreams {
       const reason = ask.state === "declined" ? "declined-today" : "asked-today";
       return { last, dreamedToday, newSince: 0, due: false, reason };
     }
-    const newSince = this.freshIds(last).length;
+    const newSince = this.freshIds(last, owner).length;
     const reason = newSince < DREAM_TUNABLES.MIN_NEW ? "too-little-new" : "due";
     return { last, dreamedToday, newSince, due: reason === "due", reason };
   }
@@ -774,10 +826,15 @@ export class Dreams {
    * confidential unless this is the owner's own session.
    */
   showable(row: MemoryRow): boolean {
+    return this.showableAs(row, this.ctx.owner);
+  }
+
+  /** `showable`, for a session whose owner stance is `owner` (the preview's). */
+  private showableAs(row: MemoryRow, owner: boolean): boolean {
     if (row.archived === 1 || row.superseded_by !== null) return false;
     if (row.type !== "memory") return false;
     if (row.protected === 1) return false;
-    if (row.confidential === 1 && !this.ctx.owner) return false;
+    if (row.confidential === 1 && !owner) return false;
     if (row.body === "") return false;
     return true;
   }
@@ -785,9 +842,10 @@ export class Dreams {
   /**
    * Memories made since `last` (or in the last few lived days), showable,
    * newest first, at most `MAX_NEW`. One bounded read (`store.newMemoryIds`,
-   * which applies the column gates), then the deny-list and confidentiality.
+   * which applies the column gates), then the deny-list and confidentiality
+   * (`owner`: this session's stance unless the preview names another).
    */
-  private freshIds(last: DreamRow | null): string[] {
+  private freshIds(last: DreamRow | null, owner: boolean = this.ctx.owner): string[] {
     const day = this.store.livedDay();
     const ids = this.store.newMemoryIds(
       last === null
@@ -800,7 +858,7 @@ export class Dreams {
     for (const id of ids) {
       if (denied.has(id)) continue;
       const row = this.store.row(id);
-      if (row === undefined || !this.showable(row)) continue;
+      if (row === undefined || !this.showableAs(row, owner)) continue;
       out.push(id);
       if (out.length >= DREAM_TUNABLES.MAX_NEW) break;
     }

@@ -74,6 +74,7 @@ export {
   REFLECTED_FEELING_KEY,
   aboutMe,
   acceptsReflectedFeeling,
+  coreContextFor,
   namesOwner,
   ownerNames,
   promotionRecordKey,
@@ -81,7 +82,7 @@ export {
 } from "./consolidate.js";
 export { V8_CENSUS_EVENT, V8_CENSUS_KEY, V8_UPGRADE_KEY, censusDue, preV8, projectedPruneDay, upgradeCensus, v7WouldPromote } from "./upgrade.js";
 export type { UpgradeCensus } from "./upgrade.js";
-export type { ReadsDocs } from "./consolidate.js";
+export type { ReadsCoreContext, ReadsDocs } from "./consolidate.js";
 export type { ConsolidateResult, ConsolidationSkip } from "./consolidate.js";
 
 export { inLiveRevisionChain, pruneRecordKey, runPrune } from "./prune.js";

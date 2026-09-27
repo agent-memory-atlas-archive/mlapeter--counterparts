@@ -56,6 +56,9 @@ export interface Proof {
    *  is not a number above zero does not count at all (`fired.ts`'s `positive`
    *  rule: a row that lands whether or not the mechanism acted is not a firing). */
   readonly sum?: string;
+  /** With `sum`: these numeric payload fields are taken off it first — a part
+   *  of the total that another proof says in words of its own. */
+  readonly less?: readonly string[];
   /** Only rows this accepts count. */
   readonly where?: (p: Payload) => boolean;
   /**
@@ -240,7 +243,18 @@ export const MECHANISM_EVIDENCE: readonly MechanismEvidence[] = [
     proofs: [
       // An undone dream is taken back: it no longer lights the mechanism.
       { key: "dreams", event: "dream.journaled", stands: dreamStands, says: ["dream", "dreams"] },
-      { key: "changes", event: "dream.changed", sum: "applied", stands: dreamStands, says: ["change a dream made", "changes dreams made"] },
+      // A NOMINATION IS A SUGGESTION, NOT A CHANGE (2026-09-27): it moves
+      // nothing until a lane promotes the memory awake, so it is said apart —
+      // "60 changes dreams made, 3 core suggestions", not "63 changes".
+      {
+        key: "changes",
+        event: "dream.changed",
+        sum: "applied",
+        less: ["nominate-core"],
+        stands: dreamStands,
+        says: ["change a dream made", "changes dreams made"],
+      },
+      { key: "suggestions", event: "dream.changed", sum: "nominate-core", stands: dreamStands, says: ["core suggestion", "core suggestions"] },
     ],
     // v9 (2026-09-27): the waking self after a dream (or on its own) keeps its
     // own record, the `reflections` table, not the event log — so it is
@@ -357,7 +371,8 @@ function dreamStands(store: ReadOnlyStore, row: EventRow): boolean {
 export function amount(proof: Proof, p: Payload): number {
   if (proof.where !== undefined && !proof.where(p)) return 0;
   if (proof.sum === undefined) return 1;
-  const v = num(p[proof.sum]);
+  let v = num(p[proof.sum]);
+  for (const f of proof.less ?? []) v -= num(p[f]);
   return v > 0 ? v : 0;
 }
 
