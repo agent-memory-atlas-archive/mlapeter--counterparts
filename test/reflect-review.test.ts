@@ -234,6 +234,64 @@ describe("S1: a gist's words stay off the page whichever dream wrote it", () => 
 });
 
 // ---------------------------------------------------------------------------
+// S2 — confidential memories stay out of the page and out of other sessions
+// ---------------------------------------------------------------------------
+
+describe("S2: what is confidential stays in the owner's session", () => {
+  test("the page does not rest on, or carry the words of, a confidential memory (the page is read by every session)", () => {
+    const c = brain();
+    nextDay(c);
+    nextDay(c);
+    const secret = mem(c, "Mike told me about the health scare he has not told anyone else about yet.", {
+      kind: "person",
+      about: "owner",
+      meta: { confidential: true },
+    });
+    const open = mem(c, "Mike and I finished the release together and he said thank you.", { kind: "person", about: "us" });
+    expect(c.store.row(secret)?.confidential).toBe(1);
+    const cited = reflect(c, [open], { page: { text: "## Core\n\nI am trusted with what matters to him.", cites: [secret] } });
+    expect(cited.outcome.page.written).toBe(false);
+    expect(cited.outcome.refusedCites.some((r) => r.startsWith(secret))).toBe(true);
+    nextDay(c);
+    const quoted = reflect(c, [open], {
+      page: { text: "## Core\n\nMike told me about the health scare he has not told anyone else about yet.", cites: [open] },
+    });
+    expect(quoted.outcome.page).toMatchObject({ written: false, reason: "confidential-words-on-the-page" });
+    expect(c.self.page()).toBe(null);
+  });
+
+  test("an entry is as confidential as anything it cites — the share's and the page's citations too", () => {
+    const c = brain();
+    nextDay(c);
+    nextDay(c);
+    const secret = mem(c, "The acquisition talks are confidential until October.", { meta: { confidential: true } });
+    const plain = mem(c, "We shipped the dashboard.");
+    const { outcome } = reflect(c, [plain], { share: { text: "I've been thinking about October.", cites: [secret] } });
+    expect(c.store.row(outcome.entryId as string)?.confidential).toBe(1);
+  });
+
+  test("outside the owner's session, a share or an earlier entry that rests on a confidential memory is not handed over", () => {
+    const owner = brain();
+    nextDay(owner);
+    nextDay(owner);
+    const secret = mem(owner, "The acquisition talks are confidential until October.", { meta: { confidential: true } });
+    recordSession(dir, { sessionId: SESSION, scope: "proj", phase: "start" });
+    const done = reflect(owner, [secret], { share: { text: "I've been thinking about October.", cites: [secret] } });
+    expect(done.outcome.share.offered).toBe(true);
+    recordSession(dir, { sessionId: SESSION, scope: "proj", phase: "end" });
+    owner.close();
+    open.splice(0);
+
+    const other = brain({ owner: false });
+    expect(other.reflections.pendingShare({ session: "s-guest" })).toBe(null);
+    nextDay(other);
+    const begun = other.reflections.begin({ session: "s-guest" });
+    if (!begun.ok) throw new Error(begun.reason);
+    expect(begun.bundle.earlier).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // S3 — the v9 upgrade carries the old rule onto every row it read
 // ---------------------------------------------------------------------------
 

@@ -378,10 +378,17 @@ export class Reflections {
     };
     const cites = citable(input.cites);
     const shareCites = citable(input.share?.cites);
-    // A dreamed gist is a suggestion, never a page's source (addendum 2).
+    // A dreamed gist is a suggestion, never a page's source (addendum 2). A
+    // CONFIDENTIAL memory is not one either (review of #256, S2): the page is
+    // read by every session, and the nightly writer never shows it one.
     const pageCitesAll = citable(input.page?.cites);
-    const pageCites = pageCitesAll.filter((id) => this.store.row(id)?.source !== "dreamed");
-    for (const id of pageCitesAll) if (!pageCites.includes(id)) refusedCites.push(`${id}:dreamed-is-not-a-source`);
+    const pageCites: string[] = [];
+    for (const id of pageCitesAll) {
+      const r = this.store.row(id);
+      if (r?.source === "dreamed") refusedCites.push(`${id}:dreamed-is-not-a-source`);
+      else if (r?.confidential === 1) refusedCites.push(`${id}:confidential-is-not-a-page-source`);
+      else pageCites.push(id);
+    }
 
     const nothingMuch = cites.length === 0 && shareCites.length === 0 && pageCites.length === 0;
     const detail: Record<string, unknown> = {};
@@ -493,7 +500,11 @@ export class Reflections {
     const title = (input.title ?? "").trim().slice(0, T.MAX_TITLE_CHARS) || firstLine(entryWords.text) || date;
     let entryId: string | null = null;
     if (cites.length > 0) {
-      const sourceRows = cites.map((id) => this.store.row(id)).filter((r): r is MemoryRow => r !== undefined);
+      // As confidential as anything the night cites — the share's and the
+      // page's citations too (review of #256, S2): the entry is one text.
+      const sourceRows = [...new Set([...cites, ...shareCites, ...pageCitesAll])]
+        .map((id) => this.store.row(id))
+        .filter((r): r is MemoryRow => r !== undefined);
       entryId = this.store.put({
         type: "memory",
         kind: "self",
@@ -530,6 +541,10 @@ export class Reflections {
         // Any recent dream's gist, not only this reflection's dream's (review
         // of #256, S1): a reflection on its own the next day is as close.
         page = { written: false, reason: "dreamed-words-on-the-page", version: null };
+      } else if (this.quotesConfidential(pageText, shown)) {
+        // The words of a confidential memory it was shown in the owner's
+        // session do not go on a page every session reads (review of #256, S2).
+        page = { written: false, reason: "confidential-words-on-the-page", version: null };
       } else {
         const w = this.ctx.writePage(pageText, {
           reason: `reflection ${row.id}${row.dream_id === null ? "" : ` after dream ${row.dream_id}`}`,
@@ -652,6 +667,9 @@ export class Reflections {
     if (this.ctx.observer) return null;
     const row = this.store.reflections({ limit: 5 }).find((r) => r.state === "reflected" && r.share_state === "offered");
     if (row === undefined || row.share === null || row.session === input.session) return null;
+    // Not into a session that is not the owner's when it rests on something
+    // confidential (review of #256, S2).
+    if (!this.ctx.owner && this.touchesConfidential(row)) return null;
     return row;
   }
 
@@ -664,6 +682,7 @@ export class Reflections {
     if (this.ctx.observer) return null;
     const row = this.store.reflection(input.reflection);
     if (row === undefined || row.share_state !== "offered" || row.share === null) return null;
+    if (!this.ctx.owner && this.touchesConfidential(row)) return null;
     // A CLAIM, not a read then a write (review of #256, S5): two prompts
     // racing both read "offered"; only the one whose write still finds it
     // offered carries it.
@@ -800,8 +819,9 @@ export class Reflections {
       selfPage: cut(this.ctx.page(), T.PAGE_CHARS),
       chapters: this.recentChapters(day),
       earlier: this.store
-        .reflections({ limit: T.EARLIER + 1 })
+        .reflections({ limit: T.EARLIER + 4 })
         .filter((r) => r.state === "reflected" && r.entry !== null && r.id !== id)
+        .filter((r) => this.ctx.owner || !this.touchesConfidential(r))
         .slice(0, T.EARLIER)
         .map((r) => ({ date: r.date, entry: cut(r.entry, T.EARLIER_CHARS) ?? "" })),
       onMind,
@@ -832,6 +852,26 @@ export class Reflections {
       }
     }
     return sharesARun(text, bodies);
+  }
+
+  /** Does `text` carry a six-word run of a CONFIDENTIAL memory it was shown? */
+  private quotesConfidential(text: string, shown: ReadonlySet<string>): boolean {
+    const bodies: string[] = [];
+    for (const id of shown) {
+      const r = this.store.row(id);
+      if (r !== undefined && r.confidential === 1 && r.body !== "") bodies.push(`${r.title ?? ""}\n${r.body}`);
+    }
+    return sharesARun(text, bodies);
+  }
+
+  /**
+   * Does a reflection rest on something confidential — its entry's memory,
+   * or anything it or its share cites? Then it is not handed to a session
+   * that is not the owner's (review of #256, S2).
+   */
+  private touchesConfidential(r: ReflectionRow): boolean {
+    const ids = [...parseIds(r.cites), ...parseIds(r.share_cites), ...(r.entry_id === null ? [] : [r.entry_id])];
+    return ids.some((id) => this.store.row(id)?.confidential === 1);
   }
 
   /** Memories promoted on reflection alone that no share has named yet. */
