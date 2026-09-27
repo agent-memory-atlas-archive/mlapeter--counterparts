@@ -17,7 +17,7 @@ import {
   readChapterLead,
 } from "../../../../core/self/index.js";
 import type { PageVersion, PageWriterRun, PageWriterStatus } from "../../../../core/self/index.js";
-import { TUNABLES as SLEEP, aboutMe, isJournal, ownerNames } from "../../../../core/sleep/index.js";
+import { TUNABLES as SLEEP, coreContextFor, isJournal } from "../../../../core/sleep/index.js";
 import type { Band, Kind } from "../../../../core/types.js";
 import { NEVER, NONE } from "../../layout.js";
 import { localDate } from "../../../../core/time.js";
@@ -935,7 +935,6 @@ export function oneReturnAway(v: Pick<PromotionVerdict, "fast" | "blockedBy">): 
  */
 export function coreCandidates(src: DashboardSource, pageId: string | null): { raw: CoreCandidate[]; outOfReach: number; sentBack: number } {
   const store = src.store;
-  const owner = ownerNames(store);
   const day = store.livedDay();
   const raw: CoreCandidate[] = [];
   let outOfReach = 0;
@@ -950,8 +949,9 @@ export function coreCandidates(src: DashboardSource, pageId: string | null): { r
       continue;
     }
     if (p.promotedIdentity) continue;
-    const about = aboutMe(store, row, owner);
-    if (!about) {
+    // Exactly the context sleep's consolidate builds (`coreContextFor`, #262).
+    const ctx = coreContextFor(store, row, day);
+    if (!ctx.aboutMe) {
       outOfReach += 1;
       continue;
     }
@@ -959,7 +959,7 @@ export function coreCandidates(src: DashboardSource, pageId: string | null): { r
     // road (round 3): who it is about, and today's lived day (the slow lane
     // checks the memory's strength today) — plus, as sleep passes it, whether
     // the owner sent it back, so a demoted memory is never "one return away".
-    const v = promotionEligibility(p, { aboutMe: about, day, demoted: store.coreDemoted(id) });
+    const v = promotionEligibility(p, ctx);
     // SENT BACK BY THE OWNER: out of the core, and not on its way there — the
     // engine refuses it whatever its lanes say, so it is counted apart rather
     // than drawn as close (it is listed under "Sent back to ordinary fading").

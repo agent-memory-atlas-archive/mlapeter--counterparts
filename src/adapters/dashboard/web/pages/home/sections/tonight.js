@@ -19,6 +19,16 @@ export const markup = `
           "Let go: memories that would fall below the line within a week if nobody used them. Dream: what is new since the last dream.")}</h2>
         <div class="card home-tonight" id="home-tonight"></div>`;
 
+/** The dream gate's reasons (`Dreams.previewAsk`), in plain words. */
+const ASK_WORDS = {
+  "due": "I'll ask to dream next session",
+  "first-day": "no dream on the first day",
+  "dreamed-today": "already dreamed today",
+  "asked-today": "already asked today",
+  "declined-today": "you said not today",
+  "too-little-new": "not enough new to dream yet",
+};
+
 export function mount() { wireTips($("home-tonight-h")); }
 
 function phaseChip(p) {
@@ -47,9 +57,11 @@ export function paint(d) {
   const letGo = lg.near === 0
     ? "none near the line"
     : lg.near + " within " + lg.horizon + " days if unused" + (lg.tonight > 0 ? " (" + lg.tonight + " tonight)" : "");
-  const dream = t.dream.last === null
-    ? "no dream yet · " + t.dream.newSince + " new this week"
+  const since = t.dream.last === null
+    ? t.dream.newSince + " new this week"
     : t.dream.newSince + " new since the last dream (" + esc(t.dream.last) + ")";
+  const ask = t.dream.ask === null ? "" : (ASK_WORDS[t.dream.ask.reason] ?? (t.dream.ask.wouldAsk ? "I'll ask to dream" : "")) ;
+  const dream = (ask ? '<b class="' + (t.dream.ask.wouldAsk ? "tn-hi" : "tn-dim") + '">' + esc(ask) + "</b> · " : "") + since;
   const nom = t.nominations.count === 0 ? "" :
     row("Suggested", link("self/dreams", t.nominations.count + " by the last dream") +
       ' <span class="tn-dim">— nothing acts on these yet</span>');

@@ -430,7 +430,7 @@ describe("5. Tonight", () => {
       const store = src.store;
       const day = nextSleepDay(src);
       const row = store.row(demotedId)!;
-      const road = coreRoad(store, row, ownerNames(store), day)!;
+      const road = coreRoad(store, row, day)!;
       expect(road.verdict.blockedBy).toContain("demoted-by-owner");
       expect([road.ready, road.oneReturnAway]).toEqual([false, false]);
       // Without the owner's word it WOULD read as one return away: the flag is what keeps it off.
@@ -453,6 +453,23 @@ describe("5. Tonight", () => {
     expect(client).toContain("nothing acts on these yet");
     expect(client).toContain('link("self/dreams"');
     expect(readFileSync(join(WEB, "pages/home/index.js"), "utf8")).toContain("${tonight.markup}");
+  });
+
+  test("the dream line is the gate's own preview, as the owner's session would meet it (#262)", () => {
+    withSource(dir, (src) => {
+      const t = tonightView(src);
+      const gate = src.dreams?.previewAsk({ owner: true });
+      expect(gate).toBeDefined();
+      expect(t.dream.ask).toEqual({ wouldAsk: gate?.wouldAsk as boolean, reason: gate?.reason as string });
+      expect(t.dream.newSince).toBe(gate?.newSince as number);
+      expect(["due", "first-day", "dreamed-today", "asked-today", "declined-today", "too-little-new"]).toContain(t.dream.ask?.reason as string);
+    });
+    // A hand-built source without the gate still reads, saying only what is new.
+    withSource(dir, (src) => {
+      const t = tonightView({ ...src, dreams: undefined });
+      expect(t.dream.ask).toBeNull();
+      expect(t.dream.newSince).toBeGreaterThanOrEqual(0);
+    });
   });
 
   test("a store that never dreamed says so", () => {

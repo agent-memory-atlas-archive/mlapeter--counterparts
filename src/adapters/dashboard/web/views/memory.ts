@@ -8,7 +8,7 @@ import { TUNABLES, band, emotionalIntensity, promotionEligibility, rep, sal, str
 import type { PromotionVerdict } from "../../../../core/physics/index.js";
 import { DREAM_MERGE_REASON } from "../../../../core/dream/index.js";
 import { feelingsLine } from "../../../feelings-line.js";
-import { aboutMe, isJournal, ownerNames } from "../../../../core/sleep/index.js";
+import { coreContextFor, isJournal } from "../../../../core/sleep/index.js";
 import type { Band, Kind } from "../../../../core/types.js";
 import type { DashboardSource } from "../../source.js";
 import { WITHHELD, gistOfDoc, reveal, revealHere } from "../reveal.js";
@@ -291,12 +291,11 @@ export function memoryDetail(src: DashboardSource, id: string): MemoryDetail {
   // The core's road, asked of the engine the way sleep asks it
   // (`sleep/consolidate.ts`): sleep's own "about me" reading of the row, and
   // the owner's last word on its core membership.
-  const about = row !== undefined && aboutMe(store, row, ownerNames(store));
-  const verdict = promotionEligibility(physics, {
-    aboutMe: about,
-    demoted: about ? store.coreDemoted(headId) : false,
-    day,
-  });
+  // Exactly the context sleep's consolidate builds (`coreContextFor`, #262).
+  const verdict = promotionEligibility(
+    physics,
+    row !== undefined ? coreContextFor(store, { ...row, id: headId }, day) : { aboutMe: false, day },
+  );
   let curve: MemoryCurve | null = null;
   let curveNote: string | null = null;
   if (journal || chapter) curveNote = "a journal chapter — kept as written, not scored";
