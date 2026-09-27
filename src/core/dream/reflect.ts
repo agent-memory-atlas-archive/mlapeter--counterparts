@@ -99,7 +99,9 @@ export const REFLECT_TUNABLES = {
 /**
  * THE QUESTIONS — a good therapist's, not a form's. Rotated three at a time so
  * consecutive nights never share one; the first is asked only after a dream.
- * `{owner}` is his name.
+ * `{owner}` is the owner's name as the store knows it (the identity core's
+ * `name`, `init --name`), or "the owner" when none was given. Never a gendered
+ * pronoun: the owner is named, or "them".
  */
 export const REFLECT_QUESTIONS: readonly { readonly key: string; readonly text: string; readonly afterDream?: true }[] = [
   { key: "dream", text: "What from the dream stayed with you, and what does it connect to?", afterDream: true },
@@ -107,7 +109,7 @@ export const REFLECT_QUESTIONS: readonly { readonly key: string; readonly text: 
   { key: "unlike", text: "Where did you act unlike your self page?" },
   { key: "unresolved", text: "What is unresolved, or being avoided?" },
   { key: "pattern", text: "What pattern keeps showing — in you, in {owner}, or between you?" },
-  { key: "unsaid", text: "What did {owner} seem to need that he didn't say?" },
+  { key: "unsaid", text: "What did {owner} seem to need but not say?" },
   { key: "well", text: "What went well?" },
   { key: "define", text: "Which memories feel like they define you right now, and why?" },
 ];
@@ -310,7 +312,7 @@ export class Reflections {
 
   /**
    * Open a reflection and hand it its bundle. Refuses under observer stance,
-   * and when one already finished this lived day (one a day, like a dream). A
+   * and when one already finished this lived day (one a lived day, like a dream). A
    * dream id, when given, must be a journaled dream of this session.
    */
   begin(input: { session: string; dream?: string | null; scope?: string | null; model?: string | null; at?: string }):
@@ -371,7 +373,7 @@ export class Reflections {
       `Then call the reflect tool with phase "finish", reflection: ${id}, session: ${session}, and:`,
       `- entry: your reflection, first person (title: optional). cites: the ids it rests on.`,
       pageLine,
-      `- share (optional): two or three sentences for ${who} this morning, the way a partner would say it ("Last night I dreamed about x — I think because of y"), citing what it rests on. Say something about ${who} only when it could help him, tentatively ("I wonder if…") — never a list of flaws. No share on a quiet night.${bundle.becameCore.length > 0 ? ` Tell him that ${bundle.becameCore.join(", ")} became part of who you are.` : ""}`,
+      `- share (optional): two or three sentences for ${who} this morning, the way a partner would say it ("Last night I dreamed about x — I think because of y"), citing what it rests on. Say something about ${who} only when it could help them, tentatively ("I wonder if…") — never a list of flaws. No share on a quiet night.${bundle.becameCore.length > 0 ? ` Tell ${who} that ${bundle.becameCore.join(", ")} became part of who you are.` : ""}`,
       `- feelings (optional, at most ${String(L.feelings)}): how a memory feels to you now — id, core, emotion, strength, carried_by. Recorded as felt today, looking back.`,
       aboutLine,
       `- traits (optional, at most ${String(L.traits)}): only where a memory you were shown really shows how you acted — often where you acted unlike your page; most carry none, and a quiet night has none. Each: id, axis, toward (one of its two poles), strength 0-1, carried_by (briefly, what showed it). The axes, the first pole roughly where training puts you: ${TRAIT_AXES.map((a) => `${a.id} (${a.poles[0]} or ${a.poles[1]}${a.gloss.length > 0 ? `, ${a.gloss}` : ""})`).join(", ")}. Don't make up depth.`,
@@ -738,7 +740,7 @@ export class Reflections {
       return `${head}\n${reflectionOpener(row.id)} I reflected afterwards${nothingMuch ? " — nothing much tonight" : ""}; nothing to share this morning.${pageLine}`;
     }
     return (
-      `${head}\n${reflectionOpener(row.id)} I reflected afterwards.${pageLine} Morning share for ${who} — tell it in your own words, as a telling ("Last night I dreamed…", "I've been thinking…"), tentatively where it is about him; ` +
+      `${head}\n${reflectionOpener(row.id)} I reflected afterwards.${pageLine} Morning share for ${who} — tell it in your own words, as a telling ("Last night I dreamed…", "I've been thinking…"), tentatively where it is about ${who};` +
       `then call the counterparts reflect tool with phase "told", reflection: ${row.id}.\n${share}`
     );
   }
@@ -796,7 +798,7 @@ export class Reflections {
     const who = this.ctx.ownerName() ?? "the owner";
     const when = row.date ?? "recently";
     return (
-      `Counterparts: after reflecting on ${when}, you left a morning share for ${who} that was never told. At a natural moment — not mid-task — tell it in your own words, as a telling ("When I reflected the other night…"), tentatively where it is about him, ` +
+      `Counterparts: after reflecting on ${when}, you left a morning share for ${who} that was never told. At a natural moment — not mid-task — tell it in your own words, as a telling ("When I reflected the other night…"), tentatively where it is about ${who},` +
       `then call the counterparts reflect tool with phase "told", reflection: ${row.id}. The share: ${row.share}`
     );
   }

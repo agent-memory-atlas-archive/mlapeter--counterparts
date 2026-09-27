@@ -141,6 +141,12 @@ export interface DreamContext {
   /** `associate.retargetOnSupersede`, so a merged memory inherits its originals' links. */
   readonly retarget?: (oldId: string, newId: string, day: number) => void;
   readonly emit?: (name: string, ref?: string, data?: Record<string, string | number | boolean | null>) => void;
+  /**
+   * The owner's name as the store knows it (the identity core's `name`, `init
+   * --name`), for lines that speak of the owner. Null or absent: "the owner".
+   * Never a gendered pronoun.
+   */
+  readonly ownerName?: () => string | null;
 }
 
 /** One proposed change, as the tool receives it. */
@@ -827,10 +833,11 @@ export class Dreams {
         const b = this.store.row(c.ref2);
         if (a === undefined || b === undefined || !this.showable(a) || !this.showable(b)) continue;
         this.store.setMeta(key, String(this.store.livedDay()));
-        const his = (r: MemoryRow): boolean => r.about === "us" || r.about === "owner" || namesOwner(this.store, r, owner);
-        const him = his(a) || his(b) ? " It is about the two of you or about him: raise it with him." : "";
+        const theirs = (r: MemoryRow): boolean => r.about === "us" || r.about === "owner" || namesOwner(this.store, r, owner);
+        const who = this.ctx.ownerName?.() ?? "the owner";
+        const raise = theirs(a) || theirs(b) ? ` It is about ${who}, or the two of you: raise it with ${who}.` : "";
         out.push(
-          `Counterparts: a dream on ${dream.date ?? "a recent night"} flagged two memories that disagree — ${c.ref} and ${c.ref2}. Look them up (recall by id) and settle which holds, awake; the dream did not.${him}`,
+          `Counterparts: a dream on ${dream.date ?? "a recent night"} flagged two memories that disagree — ${c.ref} and ${c.ref2}. Look them up (recall by id) and settle which holds, awake; the dream did not.${raise}`,
         );
         if (out.length >= 2) return out;
       }

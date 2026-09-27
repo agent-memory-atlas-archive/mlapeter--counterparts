@@ -1507,6 +1507,7 @@ export class Counterpart {
         this.associate.retargetOnSupersede(oldId, newId, day);
       },
       emit: (name, ref, data) => this.emit(name, ref, data),
+      ownerName: () => this.ownerDisplayName(),
     });
 
     // REFLECTION (2026-09-27). The same credential scan as a dream's words.

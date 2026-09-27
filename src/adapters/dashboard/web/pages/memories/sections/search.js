@@ -2,7 +2,7 @@
    (the console's own `counterparts ask`, through the actions seam). Both lists
    use the list's row shape and open the memory on click; Ask's answers are
    bright when they came clearly to mind and dim when they are a faint lead.
-   Ask is the owner talking to me, so the server turns his question into my
+   Ask is the owner talking to me, so the server turns their question into my
    voice before it searches (`web/ask-voice.ts`); when it did, one grey line
    under the answers says what was searched, with "search exactly as typed". */
 import { absenceLine } from "../../../shared/absence.js";

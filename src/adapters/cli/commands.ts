@@ -2087,7 +2087,7 @@ function coreCommand(dir: string, io: Io, parsed: Parsed, observer: boolean, nam
       counterpart.store.setMeta(REFLECTED_FEELING_KEY, reflected);
       io.out(
         reflected === "on"
-          ? "On. a feeling a reflection records later and a reflection citing a memory both count toward the fast lane, and a reflection may re-label what a memory is about either way — each re-label is recorded with its reason, and one into me, us or the owner is told in the next morning share."
+          ? "On: a feeling a reflection records later and a reflection citing a memory both count toward the fast lane, and a reflection may re-label what a memory is about either way — each re-label is recorded with its reason, and one into me, us or the owner is told in the next morning share."
           : "Off: nothing reaches the core on a reflection alone — the fast lane needs a feeling felt at the time (not one a reflection recorded later) and an ordinary use after a gap (not a reflection citing it), and a reflection may only move what a memory is about toward work or world.",
       );
       io.out("  It takes effect at the next consolidation. Nothing already in the core moves.");
