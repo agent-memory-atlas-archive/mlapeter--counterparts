@@ -41,6 +41,7 @@ import { Associate, appendPendingDeltas, claimPending, releasePending } from "./
 import type { CoactivateResult, Credited, FlushReport, PairDelta, PendingClaim } from "./associate/index.js";
 import { selfRenderer } from "./briefing.js";
 import { batteryGate, episodeGate, gateSweepChunk } from "./bridge.js";
+import { Dreams } from "./dream/index.js";
 import type { VectorSource } from "./bridge.js";
 import { mintProposal } from "./mint.js";
 import type { MintResult } from "./mint.js";
@@ -122,6 +123,7 @@ import {
 } from "./handoff/index.js";
 import type { Handoff, HandoffRefusal, HandoffWrite } from "./handoff/index.js";
 import {
+  BRIEFING_KEY,
   BRIEFING_TRIM_LOG_CAP,
   LANE_ORDER,
   PREFACE_RESERVE_BYTES,
@@ -1320,6 +1322,8 @@ export class Counterpart {
   readonly prospective: Prospective;
   /** Working context per directory (E1) — never memory. See `handoff/`. */
   readonly handoffs: Handoffs;
+  /** Dreaming (2026-09-26, `dream/`): the ask, the bundle, the changes, the journal, undo. */
+  readonly dreams: Dreams;
   /** One predicate, one definition: the store's. Never re-derived here. */
   readonly observer: boolean;
 
@@ -1467,6 +1471,27 @@ export class Counterpart {
       day: () => this.store.livedDay(),
       now: this.nowFn,
       onEvent: (e) => this.relay("remember", e),
+    });
+
+    // DREAMING. Everything a dream writes crosses the same credential battery a
+    // chapter does; a merge hands its originals' links to the merged memory
+    // through `associate/`'s retarget, which had no caller until now.
+    const gate = episodeGate();
+    this.dreams = new Dreams({
+      store: this.store,
+      observer: this.observer,
+      owner: this.owner,
+      gate: (text, sessionId) => {
+        const v = gate({ text, handles: [], sessionId });
+        return v.ok ? { ok: true, text: v.text ?? text } : { ok: false, reason: v.reason };
+      },
+      page: () => this.self.page()?.body ?? null,
+      wake: () => this.store.getMeta(BRIEFING_KEY) ?? null,
+      today: () => this.store.today(),
+      retarget: (oldId, newId, day) => {
+        this.associate.retargetOnSupersede(oldId, newId, day);
+      },
+      emit: (name, ref, data) => this.emit(name, ref, data),
     });
 
     if (opts.identity !== undefined) this.self.ensureIdentityCore(opts.identity);

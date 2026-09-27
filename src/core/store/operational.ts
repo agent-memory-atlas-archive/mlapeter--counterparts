@@ -320,7 +320,8 @@ const DDL: readonly string[] = [
      undone_at   INTEGER,
      model       TEXT,
      title       TEXT,
-     journal     TEXT
+     journal     TEXT,
+     shown       TEXT NOT NULL DEFAULT '[]'
    )`,
   `CREATE INDEX IF NOT EXISTS dreams_day ON dreams (day)`,
   // v8: every change a dream made, in order, with what undoing it needs — ids
@@ -552,6 +553,8 @@ export interface DreamRow extends Row {
   model: string | null;
   title: string | null;
   journal: string | null;
+  /** The ids the dream was SHOWN (its bundle), as JSON: the only ids it may change. */
+  shown: string;
 }
 
 export interface DreamChangeRow extends Row {

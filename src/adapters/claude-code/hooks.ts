@@ -1242,9 +1242,12 @@ export class ClaudeCodeAdapter {
       // for, is said at the next prompt, once (claimed at delivery).
       const plain = this.plainFor(input);
       const told = plain.due.length === 0 ? {} : { notices: plain.notices, plain: plain.due };
+      // The DREAM lines (2026-09-26): the once-a-day ask, and any contradiction
+      // a dream flagged that is still unraised — for the model, quietly.
+      const context = `${plain.context}${this.dreamLines(input)}`;
       const text = input.prompt ?? "";
       if (text.trim().length === 0) {
-        return { ...out, ok: true, reason: "empty-prompt", injection: `${this.nowLine()}${plain.context.length === 0 ? "" : `\n${plain.context.trimEnd()}`}`, ...told };
+        return { ...out, ok: true, reason: "empty-prompt", injection: `${this.nowLine()}${context.length === 0 ? "" : `\n${context.trimEnd()}`}`, ...told };
       }
       const result = this.counterpart.recallForTurn(
         {
@@ -1291,8 +1294,8 @@ export class ClaudeCodeAdapter {
         // sentinel stand; alone when recall surfaced nothing.
         injection:
           result.injection.length === 0
-            ? `${this.nowLine()}${plain.context.length === 0 ? "" : `\n${plain.context.trimEnd()}`}`
-            : `${this.nowLine()}\n${plain.context}${result.injection}`,
+            ? `${this.nowLine()}${context.length === 0 ? "" : `\n${context.trimEnd()}`}`
+            : `${this.nowLine()}\n${context}${result.injection}`,
         bytes: decision.bytes,
         sentinel: decision.sentinel,
         // The footnote tier is carried SEPARATELY from the loud one, because the
@@ -1302,6 +1305,31 @@ export class ClaudeCodeAdapter {
         ...told,
       };
     });
+  }
+
+  /**
+   * THE DREAM LINES (2026-09-26, `core/dream/`), for the MODEL only, each
+   * ending in a newline: a contradiction a dream flagged, raised once awake,
+   * and the day's ask — "I haven't dreamed since …" — which the model is to put
+   * to the owner at a natural moment. The ask is at most once a CALENDAR day
+   * across every session (the store's `dream_asks` latch decides, so of two
+   * sessions racing one gets it); a "no" is the dream tool's `decline`. Never in
+   * the host-mode page writer's headless child, never under observer, never
+   * without a date. Only what could surface here anyway is counted or raised
+   * (the dream module applies recall's gates). Never throws.
+   */
+  private dreamLines(input: HookInput): string {
+    if (this.observer || input.at === undefined || input.pageWriter === true || input.sessionId.length === 0) return "";
+    try {
+      const dreams = this.counterpart.dreams;
+      const lines = [...dreams.raiseLines({ session: input.sessionId })];
+      const ask = dreams.askLine({ at: input.at, session: input.sessionId });
+      if (ask !== null) lines.push(ask);
+      if (lines.length > 0) this.emit("adapter.dream.lines", { asked: ask !== null, raised: lines.length - (ask === null ? 0 : 1) });
+      return lines.map((l) => `${l}\n`).join("");
+    } catch {
+      return "";
+    }
   }
 
   /** `Now: Fri 25 Sep 2026, 1:40 pm MDT` — this adapter's clock, in the store's zone. */

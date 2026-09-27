@@ -523,6 +523,8 @@ export class McpServer {
         return this.scopeTool(args);
       case "self_page":
         return this.selfPageTool(args);
+      case "dream":
+        return this.dreamTool(args);
       default:
         return this.refuse(name, "unknown-tool", { tool: name });
     }
@@ -1733,6 +1735,88 @@ export class McpServer {
       },
       !written.appended,
     );
+  }
+
+  /**
+   * `dream` — dreaming, in phases (`core/dream/`, 2026-09-26). Every phase
+   * binds the session: the dreamer is a background agent the session launched,
+   * talking to this same server, and its writes belong to that session.
+   * `launch` writes nothing — it hands back the prompt for the dreamer — and is
+   * refused under observer stance with the rest, because a dream it launched
+   * could do nothing there.
+   */
+  private dreamTool(args: Record<string, unknown>): ToolResult {
+    const phase = args["phase"];
+    if (this.observer) return this.standDown("dream");
+    const bound = this.requireBoundSession(args["session"], "dream");
+    if (bound !== null) return bound;
+    const session = this.session as string;
+    const dreams = this.counterpart.dreams;
+    const at = this.counterpart.store.today();
+    const refused = (reason: string, detail: string): ToolResult => this.refuse("dream", reason, { phase, detail });
+    try {
+      switch (phase) {
+        case "launch":
+          this.emit("mcp.dream", undefined, { phase: "launch", session });
+          return this.result(
+            {
+              phase,
+              session,
+              prompt: dreams.launchPrompt({ session }),
+              how: "Hand `prompt` to a background agent (the Agent tool), unchanged, and carry on. When it finishes, tell the owner in a line or two what the dream did.",
+            },
+            false,
+          );
+        case "decline": {
+          dreams.decline({ at, session });
+          this.emit("mcp.dream", undefined, { phase: "decline", session });
+          return this.result({ phase, session, snoozed: at, said: "Not today — the ask will not come back until tomorrow." }, false);
+        }
+        case "begin": {
+          const model = readSession(this.registryDir, session)?.model;
+          const out = dreams.begin({ session, scope: this.scope, ...(model === undefined ? {} : { model }) });
+          if (!out.ok) {
+            return refused(
+              out.reason,
+              out.reason === "dreamed-today"
+                ? "A dream already ran this lived day."
+                : out.reason === "nothing-new"
+                  ? "Nothing new has been lived since the last dream."
+                  : "The dream did not begin.",
+            );
+          }
+          this.emit("mcp.dream", out.bundle.dream, { phase: "begin", session, shown: Object.keys(out.bundle.memories).length });
+          return this.result({ phase, session, dream: out.bundle.dream, bundle: out.text }, false);
+        }
+        case "propose": {
+          const dream = args["dream"];
+          const changes = args["changes"];
+          if (typeof dream !== "string" || !Array.isArray(changes)) {
+            return refused("dream-and-changes-required", "Pass `dream` (the id `begin` returned) and `changes`, an array.");
+          }
+          const out = dreams.propose({ dream, session, changes: changes as never });
+          if (!out.ok) return refused(out.reason, "That dream is not open for this session.");
+          this.emit("mcp.dream", dream, { phase: "propose", applied: out.results.filter((r) => r.ok).length });
+          return this.result({ phase, dream, results: out.results }, false);
+        }
+        case "journal": {
+          const dream = args["dream"];
+          const text = args["text"];
+          if (typeof dream !== "string" || typeof text !== "string") {
+            return refused("dream-and-text-required", "Pass `dream` and the journal `text`.");
+          }
+          const title = args["title"];
+          const out = dreams.journal({ dream, session, text, ...(typeof title === "string" ? { title } : {}) });
+          if (!out.ok) return refused(out.reason, "The journal was not written.");
+          this.emit("mcp.dream", dream, { phase: "journal" });
+          return this.result({ phase, dream, handBack: out.handBack, say: "Return `handBack` as your final message, unchanged." }, false);
+        }
+        default:
+          return refused("phase-unknown", "phase is one of launch, begin, propose, journal, decline.");
+      }
+    } catch (err) {
+      return refused("threw", String((err as Error).message ?? err));
+    }
   }
 
   /**

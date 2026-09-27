@@ -675,6 +675,7 @@ export const WRITE_METHODS = [
   "removeEdge",
   "removeFeelings",
   "removeDreamReturns",
+  "removeDreamNominations",
   "appendCoreEvent",
   "openDream",
   "updateDream",
@@ -1980,6 +1981,16 @@ export class Store {
     return this.ops.all<CoreEventRow>(sql, ...args);
   }
 
+  /** Delete a dream's nominations (the undo of its `nominate-core` changes). */
+  removeDreamNominations(dreamId: string): number {
+    const n = this.mutate("removeDreamNominations", () => {
+      this.ops.run("DELETE FROM core_events WHERE dream_id = ? AND action = 'nominated'", dreamId);
+      return this.ops.get<{ n: number }>("SELECT changes() AS n")?.n ?? 0;
+    });
+    this.emit("store.core.removed", undefined, { dream: dreamId, count: n });
+    return n;
+  }
+
   /** True when the owner's latest word on this memory's core membership is a demotion. */
   coreDemoted(id: string): boolean {
     const last = this.ops.get<{ action: string }>(
@@ -1992,11 +2003,19 @@ export class Store {
   // ── dreams (v8, `core/dream/`) ─────────────────────────────────────────────
 
   /** Open a dream: its row, state `begun`. */
-  openDream(input: { id: string; session?: string | null; scope?: string | null; day: number; date?: string | null; model?: string | null }): void {
+  openDream(input: {
+    id: string;
+    session?: string | null;
+    scope?: string | null;
+    day: number;
+    date?: string | null;
+    model?: string | null;
+    shown?: readonly string[];
+  }): void {
     this.mutate("openDream", () => {
       this.ops.run(
-        `INSERT INTO dreams (id, session, scope, day, date, state, started_at, model)
-         VALUES (?, ?, ?, ?, ?, 'begun', ?, ?)`,
+        `INSERT INTO dreams (id, session, scope, day, date, state, started_at, model, shown)
+         VALUES (?, ?, ?, ?, ?, 'begun', ?, ?, ?)`,
         input.id,
         input.session ?? null,
         input.scope ?? null,
@@ -2004,6 +2023,7 @@ export class Store {
         input.date ?? null,
         this.nowFn(),
         modelOrNull(input.model ?? undefined),
+        JSON.stringify(input.shown ?? []),
       );
     });
     this.emit("store.dream", input.id, { state: "begun", day: input.day });

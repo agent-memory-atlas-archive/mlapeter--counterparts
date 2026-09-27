@@ -50,7 +50,8 @@ export type ToolName =
   | "session_end"
   | "chapter"
   | "scope"
-  | "self_page";
+  | "self_page"
+  | "dream";
 
 /**
  * The tool vocabulary, ENUMERATED. Three deliberate verbs plus the TWO return
@@ -87,6 +88,7 @@ export const TOOL_NAMES: readonly ToolName[] = [
   "chapter",
   "scope",
   "self_page",
+  "dream",
 ];
 
 /**
@@ -860,6 +862,125 @@ const SELF_PAGE: ToolSpec = {
   },
 };
 
+/**
+ * `dream` — the eighth, added 2026-09-26 (owner decisions, dreaming +
+ * consolidation). One tool with phases, because a dream is one act in steps:
+ * `launch` hands the in-session model the prompt for a background dreamer;
+ * `begin`, `propose` and `journal` are the dreamer's; `decline` is the owner's
+ * "not today". It is not a door into the identity band: a dream may NOMINATE a
+ * memory for the core, and only a core lane, at consolidation, promotes.
+ */
+const DREAM: ToolSpec = {
+  name: "dream",
+  summary:
+    "Dreaming: a few minutes of replay over what was lived since the last dream — merging near-copies, linking what belongs together, replaying what matters, writing a pattern you notice, flagging a contradiction, recording how an old feeling sits now — kept in a dream journal and reversible as a whole. Phases: `launch` (the prompt for a background dreamer), `begin` / `propose` / `journal` (the dreamer's), `decline` (not today).",
+  admission:
+    "Call `launch` only after the owner said yes to the dream ask, and hand the prompt it returns to a background agent unchanged. Call `decline` when the owner says not today. The other three phases are the dreamer's, in order, following that prompt.",
+  negativeExamples: [
+    "Do NOT dream without asking the owner first — the ask arrives as a quiet line at the start of a session, once a day at most.",
+    "Do NOT run the dream yourself in this conversation: `launch` returns a prompt for a background agent, and the dream's words must stay out of this transcript.",
+    "Do NOT use `propose` to correct or delete a memory — a dream cannot rewrite one in place, delete one, edit the self page or promote one, and it touches only memories its bundle showed it.",
+  ],
+  privileges: [
+    {
+      claim:
+        "It is bound to ONE session exactly as `session_end` is, and every change a dream makes is recorded under that session's dream, in order, so `counterparts dream --undo <id>` reverses the whole batch.",
+      mechanizedBy: "src/adapters/mcp/server.ts#requireBoundSession + src/core/dream/index.ts#Dreams.undo",
+    },
+    {
+      claim:
+        "At most one dream a lived day: `begin` refuses when one already ran today, and under observer stance nothing is written and the refusal says so.",
+      mechanizedBy: "src/core/dream/index.ts#Dreams.begin + src/adapters/mcp/server.ts#standDown",
+    },
+    {
+      claim:
+        "The bundle is what could surface in this session anyway — recall's gates: no archived, superseded, protected or schema row, and nothing confidential outside the owner's own session — and a dream can change only memories its bundle showed it.",
+      mechanizedBy: "src/core/dream/index.ts#Dreams.showable + #Dreams.apply (shown ids)",
+    },
+    {
+      claim:
+        "Each dream has limits (about ten merges, twenty links, three gists), and a merge keeps its originals: archived with a forwarding address and their words kept as a version, never deleted.",
+      mechanizedBy: "src/core/dream/tunables.ts#DREAM_TUNABLES.LIMITS + src/core/store/index.ts#supersedeInto",
+    },
+    {
+      claim:
+        "A replay is a RETURN worth half an awake one — it slows fading a little — and never a use; a gist starts lower than anything lived (source `dreamed`) and rises only if it proves true awake.",
+      mechanizedBy: "src/core/store/index.ts#replayReturn -> src/core/physics/index.ts#creditReturn + DREAMED_CLAIM_CEILING",
+    },
+    {
+      claim:
+        "A dream cannot promote: a nomination is recorded and shown to the owner, and only a core lane at consolidation promotes. A feeling recorded in a dream can be as strong as the memory ever was, never stronger.",
+      mechanizedBy: "src/core/dream/index.ts#Dreams.apply (nominate-core, feeling-now) + src/core/sleep/consolidate.ts#runConsolidate",
+    },
+    {
+      claim:
+        "Every word a dream writes crosses the credential battery, and the journal is kept as a dream — in its own table, never as a memory — so what was dreamed is never mistaken for what happened.",
+      mechanizedBy: "src/core/dream/index.ts#Dreams.words -> src/core/bridge.ts#episodeGate + src/core/store/operational.ts (dreams table)",
+    },
+    {
+      claim:
+        "The bundle and the hand-back carry a mark that capture refuses, so a dream never becomes a lived memory through the end-of-session sweep.",
+      mechanizedBy: "src/core/dream/mark.ts#DREAM_MARK -> src/core/remember/spans.ts#enters + src/adapters/claude-code/transcript.ts#pieceOf",
+    },
+  ],
+  inputSchema: {
+    type: "object",
+    properties: {
+      phase: {
+        type: "string",
+        enum: ["launch", "begin", "propose", "journal", "decline"],
+        description: "Which step: launch, begin, propose, journal, or decline.",
+      },
+      session: {
+        type: "string",
+        description: "The session this dream belongs to — the id the dream ask and the launch prompt named.",
+      },
+      dream: {
+        type: "string",
+        description: "`propose` and `journal`: the dream id `begin` returned.",
+      },
+      changes: {
+        type: "array",
+        description:
+          "`propose`: the changes, each an object with `action` — `merge` (ids: two or three near-copies, text: the one memory in better words, title?), `link` (a, b), `replayed` (id), `gist` (text, sources: ids, title?, kind?), `contradiction` (a, b), `feeling-now` (id, core, emotion, strength, carried_by?), `nominate-core` (id, why).",
+        items: {
+          type: "object",
+          properties: {
+            action: {
+              type: "string",
+              enum: ["merge", "link", "replayed", "gist", "contradiction", "feeling-now", "nominate-core"],
+            },
+            ids: { type: "array", items: { type: "string" } },
+            id: { type: "string" },
+            a: { type: "string" },
+            b: { type: "string" },
+            text: { type: "string" },
+            title: { type: "string" },
+            kind: { type: "string", enum: ["self", "person", "entity", "skill", "place", "fact"] },
+            sources: { type: "array", items: { type: "string" } },
+            core: { type: "string", enum: ["happy", "sad", "fear", "anger", "surprise", "disgust"] },
+            emotion: { type: "string" },
+            strength: { type: "number", minimum: 0, maximum: 1 },
+            carried_by: { type: "string" },
+            why: { type: "string" },
+          },
+          required: ["action"],
+        },
+      },
+      title: {
+        type: "string",
+        description: "`journal`: a short title for the dream.",
+      },
+      text: {
+        type: "string",
+        description: "`journal`: the dream journal entry, first person — what you dreamed and what you noticed.",
+      },
+    },
+    required: ["phase"],
+    additionalProperties: false,
+  },
+};
+
 export const TOOLS: readonly ToolSpec[] = [
   NOTE,
   RECALL,
@@ -868,6 +989,7 @@ export const TOOLS: readonly ToolSpec[] = [
   CHAPTER,
   SCOPE,
   SELF_PAGE,
+  DREAM,
 ];
 
 export function toolSpec(name: string): ToolSpec | undefined {
