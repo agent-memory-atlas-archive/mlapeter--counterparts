@@ -414,7 +414,8 @@ describe("the ask: once a day, snoozed by a no", () => {
     const lines = c.dreams.raiseLines({ session: "s-next" });
     expect(lines.length).toBe(1);
     expect(lines[0]).toContain(m.a);
-    expect(lines[0]).toContain("raise it with him");
+    expect(lines[0]).toContain("raise it with Mike");
+    expect(lines[0]).not.toMatch(/\b(he|him|his|himself)\b/i);
     expect(c.dreams.raiseLines({ session: "s-next" })).toEqual([]);
   });
 

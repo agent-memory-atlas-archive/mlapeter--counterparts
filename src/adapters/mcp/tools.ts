@@ -148,7 +148,7 @@ const ABOUT_PROPERTY = {
   type: "string",
   enum: ["me", "us", "owner", "work", "world"],
   description:
-    "Optional: what this is about, by meaning — me (who I am), us (the owner and me), owner (the owner himself), work (the craft: how a job is done), world (anything else). Leave it out when unsure. Only me, us and owner can become part of who I am.",
+    "Optional: what this is about, by meaning — me (who I am), us (the owner and me), owner (the owner, as a person), work (the craft: how a job is done), world (anything else). Leave it out when unsure. Only me, us and owner can become part of who I am.",
 };
 
 const FEELINGS_PROPERTY = {
@@ -1068,7 +1068,7 @@ const REFLECT: ToolSpec = {
     "The dreamer calls `begin` and `finish` right after its journal, as the dream's prompt says. Call `launch` only when the owner asks you to reflect, and hand its prompt to a background agent. Call `told` after you told the owner a morning share, in your own words.",
   negativeExamples: [
     "Do NOT make up depth: a night with nothing much to say is a short entry that cites nothing — it rewrites nothing and shares nothing.",
-    "Do NOT store a thought about the owner as a fact about him: say it to him tentatively in the share, or not at all — never a list of flaws.",
+    "Do NOT store a thought about the owner as a fact about them: say it to them tentatively in the share, or not at all — never a list of flaws.",
     "Do NOT cite a dreamed gist as a source for the self page: a dream suggests, the waking self decides.",
   ],
   privileges: [
