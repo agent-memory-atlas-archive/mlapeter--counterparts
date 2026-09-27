@@ -11,7 +11,11 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { openAdapter } from "../src/adapters/claude-code/index.js";
+import type { HookInput } from "../src/adapters/claude-code/index.js";
+import type { SpawnPlan } from "../src/adapters/claude-code/spawn.js";
 import { parseTranscript } from "../src/adapters/claude-code/transcript.js";
+import { recordSession } from "../src/adapters/sessions.js";
 import { Counterpart } from "../src/core/counterpart.js";
 import { DREAM_MARK, DREAM_TUNABLES, dreamOpener } from "../src/core/dream/index.js";
 import { TUNABLES as PHYSICS } from "../src/core/physics/index.js";
@@ -457,5 +461,33 @@ describe("a dream never becomes a lived memory through the sweep", () => {
     expect(prompts.length).toBeGreaterThan(0);
     expect(prompts.join("\n")).not.toContain("ZQDREAMWORDS");
     for (const mid of c.store.list()) expect(c.store.row(mid)?.body ?? "").not.toContain("ZQDREAMWORDS");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// the ask, through the real hook
+// ---------------------------------------------------------------------------
+
+describe("the ask reaches a session through user-prompt-submit, quietly, once a day", () => {
+  test("the model's context carries it once; a second session that day does not; the page writer never does", () => {
+    const a = openAdapter(
+      { dataDir: dir, injectionBudgetBytes: 9_000, owner: true },
+      { command: "/bin/true", args: ["runner"], spawner: (_p: SpawnPlan) => ({ pid: 4242 }) },
+    );
+    open.push(a.counterpart);
+    lived(a.counterpart);
+    const input = (over: Partial<HookInput>): HookInput => {
+      const hook: HookInput = { sessionId: "s1", scope: "proj", turns: [], at: "2026-09-26", prompt: "good morning", ...over };
+      recordSession(dir, { sessionId: hook.sessionId, scope: hook.scope, phase: "start" });
+      return hook;
+    };
+    // The headless page writer is told nothing, and claims nothing.
+    expect(a.userPromptSubmit(input({ sessionId: "pw", pageWriter: true })).injection).not.toContain("dream");
+    const first = a.userPromptSubmit(input({ sessionId: "s1" }));
+    expect(first.injection).toContain("OK if I dream for a few minutes?");
+    // Quiet: for the model, never the person's terminal line.
+    expect(first.notices ?? []).toEqual([]);
+    expect(a.userPromptSubmit(input({ sessionId: "s2" })).injection).not.toContain("OK if I dream");
+    expect(a.userPromptSubmit(input({ sessionId: "s1" })).injection).not.toContain("OK if I dream");
   });
 });

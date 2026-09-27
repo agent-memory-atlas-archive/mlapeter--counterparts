@@ -909,10 +909,19 @@ export class Dreams {
     }
   }
 
+  /** The owner's name as it was written on the identity core (not lower-cased). */
   private ownerName(): string | null {
-    const names = ownerNames(this.store);
-    const first = names[0];
-    return first === undefined ? null : first.charAt(0).toUpperCase() + first.slice(1);
+    for (const id of this.store.list({ type: "schema", kind: "self", archived: false })) {
+      try {
+        const meta = this.store.readProse(id).meta;
+        if (meta["role"] === "entity" && typeof meta["name"] === "string" && meta["name"].trim().length > 0) {
+          return meta["name"].trim();
+        }
+      } catch {
+        continue;
+      }
+    }
+    return null;
   }
 
   /** A durable row (ids and counts only), and the ring event beside it. */
