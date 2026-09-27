@@ -270,3 +270,12 @@ more than a name match (a person card for the owner, an embedding), that is a
 `schemas/` question, and this phase should receive the verdict rather than compute it.
 The owner's demotions arrive through the optional `coreDemoted`; a port without it
 cannot be told "not this one".
+
+
+## Demotion has no way back (2026-09-26, working default)
+
+`counterparts core --demote` is permanent: `coreDemoted` reads the latest promoted/demoted
+event, and nothing writes a "restored" one. The owner's call after the review of #251 is
+to leave it so for now. If a way back is wanted, it is one more `core_events` action
+(`restored`) that `coreDemoted` reads as clearing the demotion, plus a console flag. The
+lanes would then decide as for any memory.

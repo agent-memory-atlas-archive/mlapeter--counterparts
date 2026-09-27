@@ -348,3 +348,41 @@ raise intensity (capped at the peak), so a dream cannot open the fast lane.
   the `TUNABLES` table. Per scar §2.8 and guarantee 11 they ship with a recorded
   measurement or they ship disabled; `PHI_PRUNE` and `D_FLOOR_DAYS` are the two
   with no ancestry at all (open question 5 — v1 never pruned).
+
+
+## After the review of #251 (2026-09-26) — working defaults, held lightly
+
+- **Legacy history counts as returns (Q1).** The review found the upgrade closed v7's
+  road to the core for legacy rows: `promotionBase ≥ 0.85` with 3 reinforced days, any
+  kind. The decision is to let those rows go under the new rule (only memories about me
+  or about us become core), but not weaker than the design intends.
+  - At the upgrade, each legacy row's `reinforced_days` become `returns` rows of source
+    `legacy`. They are placed evenly from birth to the last use, the last one on it,
+    because the days themselves were never kept, and weighed by `spacingWeight`.
+  - They lengthen stability and nothing else. The lanes read awake returns only, and
+    invented day positions are not a lane's evidence.
+  - `creditReturn`'s `since` lets spacing measure a post-upgrade return from the last
+    legacy day.
+- **The slow lane needs the semantic floor (Q2).** `CORE_SLOW_FLOOR` = `THETA_SEM` =
+  0.5, decayed strength on the promoting day (`CoreContext.day`; `promote` always passes
+  it).
+  - The independent upgrade run had six `self` rows with salience `[0,0,0,0]` cross on
+    repetition alone.
+  - The fast lane is unchanged.
+- **A dream follows spacing (Q5).** A replay counts at most once per
+  `RETURN_SPACING_DAYS` per memory (refusal reason `dream-spaced`).
+  - `DREAM_RETURN_WEIGHT` 0.5 and `RETURN_GAIN` 1.0 are unchanged, to be tuned on the
+    real store.
+  - The return factor R after each period (the returns total in brackets), from
+    `creditReturn` itself:
+
+  | Days | Dream replay every night | Awake every day | Awake every week |
+  |---|---|---|---|
+  | 30 | 1.85 (1.3) | 2.61 (4.0) | 2.26 (2.5) |
+  | 90 | 2.58 (3.9) | 3.56 (12.0) | 3.15 (7.6) |
+  | 365 | **3.86** (16.5) | 4.90 (48.6) | **4.52** (32.9) |
+
+  - Before the spacing rule, nightly replay reached R ≈ 4.23 at a year, nearly weekly
+    awake use. It now stays below.
+- **Awake after a dream the same day (review S1).** The awake return keeps its lane day,
+  at the weight its zero gap gives it (0).

@@ -25,6 +25,7 @@ import {
   MECHANISM_EVIDENCE,
   RECENT_IDS,
   amount,
+  counted,
   builtCount,
   mechanismEvidence,
   payloadOf,
@@ -32,7 +33,7 @@ import {
 import type { Build, Family, MechanismEvidence, Payload, Proof, Verdict } from "../../../mechanism-evidence.js";
 import type { DashboardSource } from "../../source.js";
 
-export { FAMILIES, RECENT_IDS, amount, builtCount, payloadOf };
+export { FAMILIES, RECENT_IDS, amount, builtCount, counted, payloadOf };
 export type { Build, Family, Payload, Proof };
 
 /** The one table, under the name this directory has always read it by. */

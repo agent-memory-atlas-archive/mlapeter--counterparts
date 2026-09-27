@@ -1631,3 +1631,20 @@ is lost and the schema equals a fresh v8's.*
   even while the memory shows in the hints lane (physics NOTES "Returns"). Every other
   caller lets the display decide.
 - **`vectorOf(id)`** reads one stored embedding (box 3), for a dream's neighbours.
+
+
+### After the review of #251 (2026-09-26)
+
+- **`creditLegacyReturns`**, in the v8 migrating transaction, turns each legacy row's
+  reinforced days into `returns` rows of source `legacy` (physics NOTES).
+  - `recomputeReturns` sums every source into `returns`, but counts lane days and
+    first/last from `awake` rows only, so legacy credit never feeds a lane.
+  - `returnCounts` and `fired` leave `legacy` out: it is history, not a firing.
+  - The upgrade record carries `legacyReturns` (how many memories were credited), and
+    its counts are of live memories.
+- **Removal redacts dream journals (Q6).** `chaseRemoved` redacts the title and entry of
+  any dream that was shown the memory, changed it, or quotes it (its title, or a
+  six-word run of its words).
+  - The dream row, its date, state and change list stay.
+  - The chase reports `operational.dreams` as neutralized when there were any.
+  - The seam's exports stay pinned.

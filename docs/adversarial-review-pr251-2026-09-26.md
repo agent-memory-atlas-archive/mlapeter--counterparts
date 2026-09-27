@@ -336,3 +336,17 @@ instruction for an MCP-only or other-host user.
 
 **N21.** On the real store, a budget/cursor backlog of v7-eligible rows may exist. S8
 counts it at the first sleep.
+
+## Decisions taken (coordinator, 2026-09-26: working defaults, held lightly)
+
+| Question | Decision | Where it lives | Test |
+|---|---|---|---|
+| Q1 | Let the old road go, but credit each legacy row's reinforced days as `legacy` returns at the upgrade. Durability only, never a lane day; post-upgrade spacing reads them. The census keeps `v7WouldPromote`, and doctor says in green how many were on the old road and now take the durability route. | `creditLegacyReturns`, `creditReturn.since` | `test/review-defaults.test.ts` Q1 |
+| Q2 | Slow lane floor: decayed strength ≥ `THETA_SEM` on the promoting day (`CORE_SLOW_FLOOR`). | `promotionEligibility` | Q2 |
+| Q3 | A quoted use is organic only if surfaced loud this same turn. | `Recall.resolveUse` | Q3 |
+| Q4 | Confirmed: merged return days are a union of distinct days, not a sum. | `supersedeInto` + `recomputeReturns` | Q4 |
+| Q5 | A dream replay counts at most once per `RETURN_SPACING_DAYS`. At 365 days, nightly replay gives R = 3.86 against 4.52 for weekly awake use (4.23 before). | `creditReturn` (`dream-spaced`) | Q5 |
+| Q6 | Removal redacts the title and entry of any dream journal that was shown, changed or quotes the memory. The row stays. | `chaseRemoved` → `redactDreamJournals` | Q6 |
+| Q7 | Left as is. | | |
+| Q8 | Demotion stays permanent for now; noted in `sleep/INTERFACE-GAPS.md`. | | |
+| N11 | An undone dream no longer lights Dreaming, Consolidation's dream merges or the gist. | `Proof.stands` | "an undone dream…" |

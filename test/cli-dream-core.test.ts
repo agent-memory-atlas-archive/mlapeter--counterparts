@@ -279,8 +279,8 @@ describe("doctor: the v8 upgrade and dreaming", () => {
         JSON.stringify({ checked: 11, bandDown: 0, bandUp: 0, weaker: 0, pruneSooner: 0, pruneLater: 0, legacy: 11, consolidated: 4, v7WouldPromote: 2 }),
       );
       const road = upgradeV8Findings(s)[0];
-      expect(road?.severity).toBe("amber");
-      expect(road?.detail).toContain("2 were about to become core under the old rules");
+      expect(road?.severity).toBe("green");
+      expect(road?.detail).toContain("2 were on the old road to the core and take the durability route now");
       s.setMeta(
         "physics.v8.census",
         JSON.stringify({ checked: 11, bandDown: 1, bandUp: 0, weaker: 0, pruneSooner: 0, pruneLater: 0, legacy: 11, consolidated: 4 }),

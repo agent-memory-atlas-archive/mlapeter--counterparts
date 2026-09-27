@@ -68,3 +68,17 @@ What the build learned, and every choice the brief left open (2026-09-26).
   `from` key needed a destructure (dashboard NOTES).
 - The store bans deletion verbs in method names; undo's helpers are `restoreEdge` and
   `retract*`.
+
+
+## After the review of #251 (2026-09-26)
+
+- **Merged return days are a UNION (Q4, confirmed and tested).** `supersedeInto` copies
+  returns under `(memory_id, day, source)`, and `return_days` is `COUNT(DISTINCT day)`
+  of awake rows. Two originals that came back on the same day give the merged memory
+  that day once.
+- **An undone dream no longer lights anything.** Proofs read from dream events carry
+  `stands`, which drops rows whose dream is undone. This covers Dreaming,
+  Consolidation's dream merges, and Episodic → semantic's gist.
+- **Replays follow spacing** (physics NOTES): a memory in every night's bundle counts at
+  most once a week.
+- **Removal redacts journals** that cite or quote the removed memory (store NOTES).

@@ -2426,28 +2426,24 @@ export function upgradeV8Findings(store: Store): Finding[] {
     ];
   }
   // WHAT THE SELF-COMPARISON CANNOT SEE (review of #251): rows the old rules
-  // were about to make core, which the new lanes do not. Nothing moved at the
-  // upgrade; their future did. The owner's decision stands (only memories about
-  // me or about us become core), so this is a question for him, not a fault.
+  // were about to make core. The decision (working default 2026-09-26): they
+  // are let go under the new rule — only memories about me or about us become
+  // core — and take the DURABILITY route instead: the upgrade credited their
+  // reinforcement days as returns, so they fade as slowly as that history
+  // earns. Said, green: it is the design, not a fault.
   const road = metaNum(census["v7WouldPromote"]);
-  if (road > 0) {
-    return [
-      finding(
-        "upgrade-v8",
-        "amber",
-        "Upgrade",
-        `Upgrade to v8: ${String(checked)} memories checked, none moved; but ${String(road)} ${road === 1 ? "was" : "were"} about to become core under the old rules and will not under the new ones (only memories about me or about us become core now), so ${road === 1 ? "it fades" : "they fade"} like any other memory`,
-        "Nothing to do if that is the rule you want. If they should stay on the old road, that is a decision to make about the upgrade; the copy taken before it is in the snapshots directory.",
-        measured,
-      ),
-    ];
-  }
+  const credited = metaNum(upgrade["legacyReturns"]);
+  const roadLine =
+    road > 0
+      ? `; ${String(road)} ${road === 1 ? "was" : "were"} on the old road to the core and ${road === 1 ? "takes" : "take"} the durability route now (only memories about me or about us become core)`
+      : "";
+  const creditLine = credited > 0 ? `; ${String(credited)} had their reinforcement days counted as returns` : "";
   return [
     finding(
       "upgrade-v8",
       "green",
       "Upgrade",
-      `Upgrade to v8: ${String(checked)} memories checked by the old arithmetic and the new; none changed band, none weaker, none prunes sooner; ${String(metaNum(census["consolidated"]))} kept their old consolidation${up > 0 ? `; ${String(up)} moved up a band` : ""}`,
+      `Upgrade to v8: ${String(checked)} memories checked by the old arithmetic and the new; none changed band, none weaker, none prunes sooner; ${String(metaNum(census["consolidated"]))} kept their old consolidation${up > 0 ? `; ${String(up)} moved up a band` : ""}${creditLine}${roadLine}`,
       "",
       measured,
     ),

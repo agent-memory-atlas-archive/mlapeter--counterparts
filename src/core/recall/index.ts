@@ -584,7 +584,14 @@ export class Recall {
       return { credited: false, reason: "already-credited-at-or-above", tier, w, outcome: null };
     }
 
-    const outcome = this.store.reinforce(memoryId, today, tier, opts.cued === true ? { cued: true } : {});
+    // THE CUED EXCEPTION, TIGHTENED (working default 2026-09-26, review of
+    // #251): a quoted use is organic whatever the hints lane showed only when
+    // recall surfaced the memory LOUD on this same turn — the cue that turn
+    // brought. Surfaced earlier in the session, the quote may have come off the
+    // wake, and the display decides as for any other use.
+    const cued =
+      opts.cued === true && surfaced !== undefined && surfaced.tier === "surfaced" && surfaced.turn === state.turn;
+    const outcome = this.store.reinforce(memoryId, today, tier, cued ? { cued: true } : {});
     if (outcome.credited) {
       state.credited[memoryId] = { turn: state.turn, tier, day: today };
       this.persist(state, "resolveUse");

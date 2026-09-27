@@ -10,6 +10,7 @@
  */
 import { existsSync } from "node:fs";
 
+import { spacingWeight } from "../physics/index.js";
 import type { Band, Kind, MemoryPhysics, Salience } from "../types.js";
 import type { Db, Row } from "./db.js";
 import { openDb } from "./db.js";
@@ -925,6 +926,7 @@ export function openOperational(path: string, opts: OpenOperationalOptions = {})
                   COALESCE(SUM(promoted_identity), 0) AS identity
              FROM memories WHERE type = 'memory' AND archived = 0`,
         );
+        const credited = creditLegacyReturns(db);
         const lived = db.get<{ value: string }>("SELECT value FROM meta WHERE key = 'livedDay'")?.value ?? "0";
         db.run(
           "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
@@ -936,6 +938,7 @@ export function openOperational(path: string, opts: OpenOperationalOptions = {})
             rows: counts?.rows ?? 0,
             consolidated: counts?.consolidated ?? 0,
             identity: counts?.identity ?? 0,
+            legacyReturns: credited.memories,
           }),
         );
       }
@@ -1038,6 +1041,57 @@ export const ADDED_COLUMNS: readonly { table: string; column: string; ddl: strin
   { table: "memories", column: "last_return_day", ddl: "ALTER TABLE memories ADD COLUMN last_return_day INTEGER" },
   { table: "memories", column: "last_dream_day", ddl: "ALTER TABLE memories ADD COLUMN last_dream_day INTEGER" },
 ];
+
+/**
+ * THE HISTORY A LEGACY ROW ALREADY HAD, credited as returns at the v8 upgrade
+ * (working default 2026-09-26, the review of #251): the old rules could carry
+ * a well-used memory into the identity band; the new ones let a fact go, so
+ * its durability must reflect the reinforcement it earned. Each distinct
+ * reinforced day (`reinforced_days`, a count — the days themselves were never
+ * kept) becomes one `returns` row of source `legacy`, placed evenly between
+ * the memory's birth and its last use (the last one exactly on it) and weighed
+ * by the same spacing rule as any return. `legacy` rows lengthen stability and
+ * nothing else: the core lanes read awake returns only, and invented day
+ * positions are not a lane's evidence. Idempotent (the rows' primary key), in
+ * the migrating transaction. Returns what it credited.
+ */
+export function creditLegacyReturns(db: Db): { memories: number; rows: number } {
+  const at = Date.now();
+  const candidates = db.all<{ id: string; birth_day: number; last_used_day: number; reinforced_days: number }>(
+    `SELECT id, birth_day, last_used_day, reinforced_days FROM memories
+      WHERE type = 'memory' AND body != '' AND reinforced_days > 0 AND last_used_day > birth_day`,
+  );
+  const insert = db.prepare(
+    `INSERT OR IGNORE INTO returns (memory_id, day, source, weight, gap, dream_id, at)
+     VALUES (?, ?, 'legacy', ?, ?, NULL, ?)`,
+  );
+  let memories = 0;
+  let rows = 0;
+  for (const c of candidates) {
+    const span = c.last_used_day - c.birth_day;
+    const n = Math.min(c.reinforced_days, span);
+    let prev = c.birth_day;
+    let wrote = 0;
+    for (let k = 1; k <= n; k += 1) {
+      const day = k === n ? c.last_used_day : c.birth_day + Math.round((k * span) / n);
+      if (day <= prev) continue;
+      const gap = day - prev;
+      insert.run(c.id, day, spacingWeight(gap), gap, at);
+      prev = day;
+      wrote += 1;
+    }
+    if (wrote > 0) {
+      memories += 1;
+      rows += wrote;
+      db.run(
+        "UPDATE memories SET returns = (SELECT COALESCE(SUM(weight), 0) FROM returns WHERE memory_id = ?) WHERE id = ?",
+        c.id,
+        c.id,
+      );
+    }
+  }
+  return { memories, rows };
+}
 
 /** Meta key: what the v8 upgrade found (`physics.v8.upgrade`), for doctor.
  *  `sleep/upgrade.ts` spells the same key for its census latch. */

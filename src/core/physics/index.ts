@@ -91,6 +91,10 @@ export const TUNABLES = {
   CORE_SLOW_DAYS: 5,
   /** …spanning at least this many lived days, first return to last. CAL. */
   CORE_SLOW_SPAN_DAYS: 21,
+  /** …and standing at least this strong (decayed) on the day it is promoted:
+   *  the semantic floor, so a faint memory does not become core on repetition
+   *  alone (working default 2026-09-26, review of #251). CAL. */
+  CORE_SLOW_FLOOR: 0.5,
   /**
    * The salience-claim ceiling for a FALLBACK-minted memory (owner ruling
    * 2026-08-29, the authorship doctrine's salience half): the experiencer's own
@@ -649,6 +653,9 @@ export interface PromotionVerdict {
     /** Lived days from the first awake return to the last. */
     readonly span: number;
     readonly needSpan: number;
+    /** Decayed strength on `ctx.day` (null when no day was given) and the floor it must reach. */
+    readonly strength: number | null;
+    readonly needStrength: number;
   };
   /** `base` as it stands — carried for the record, never a threshold. */
   base: number;
@@ -663,6 +670,16 @@ export interface CoreContext {
   readonly aboutMe: boolean;
   /** The owner demoted it (`counterparts core --demote`). */
   readonly demoted?: boolean;
+  /**
+   * The lived day the verdict is for. With it, the SLOW lane also asks the
+   * memory to stand in the semantic band on that day (decayed strength at or
+   * above `THETA_SEM`): coming back on many days is not by itself a reason to
+   * be part of who I am when the memory is faint (working default, 2026-09-26,
+   * after the review of #251 saw six zero-salience `self` rows cross on
+   * repetition alone). `promote` always passes it; a reader that only wants
+   * the lane progress may leave it out.
+   */
+  readonly day?: number;
 }
 
 /**
@@ -690,7 +707,11 @@ export function promotionEligibility(m: MemoryPhysics, ctx: CoreContext): Promot
   const gap = last === null ? null : last - m.birthDay;
   const span = first === null || last === null ? 0 : last - first;
   const fastMet = intensity >= TUNABLES.CORE_FAST_FEELING && gap !== null && gap >= TUNABLES.CORE_FAST_GAP_DAYS;
-  const slowMet = days >= TUNABLES.CORE_SLOW_DAYS && span >= TUNABLES.CORE_SLOW_SPAN_DAYS;
+  const now = ctx.day === undefined ? null : strength(m, ctx.day);
+  const slowMet =
+    days >= TUNABLES.CORE_SLOW_DAYS &&
+    span >= TUNABLES.CORE_SLOW_SPAN_DAYS &&
+    (now === null || now >= TUNABLES.CORE_SLOW_FLOOR);
   const blockedBy: PromotionReason[] = [];
   if (m.promotedIdentity) blockedBy.push("already-identity");
   if (!ctx.aboutMe) blockedBy.push("not-about-me");
@@ -714,6 +735,8 @@ export function promotionEligibility(m: MemoryPhysics, ctx: CoreContext): Promot
       needDays: TUNABLES.CORE_SLOW_DAYS,
       span,
       needSpan: TUNABLES.CORE_SLOW_SPAN_DAYS,
+      strength: now,
+      needStrength: TUNABLES.CORE_SLOW_FLOOR,
     },
     base: base(m),
     returnDays: days,
@@ -796,7 +819,7 @@ export interface PromotionOutcome {
 }
 
 export function promote(m: MemoryPhysics, d: number, ctx: CoreContext): PromotionOutcome {
-  const verdict = promotionEligibility(m, ctx);
+  const verdict = promotionEligibility(m, { ...ctx, day: d });
   if (!verdict.eligible || verdict.lane === null) return { promoted: false, verdict, crossing: null, next: null };
   return {
     promoted: true,
@@ -832,6 +855,8 @@ export type ReturnReason =
   /** An awake return already counted this lived day (or later); for a dream
    *  replay, a return of either kind. */
   | "already-returned-today"
+  /** A dream replay within `RETURN_SPACING_DAYS` of the memory's last one. */
+  | "dream-spaced"
   | "ignorable-tier";
 
 export interface ReturnOutcome {
@@ -880,7 +905,18 @@ export function lastReturnAnchor(m: Pick<MemoryPhysics, "birthDay" | "lastReturn
 export function creditReturn(
   m: MemoryPhysics,
   d: number,
-  opts: { source: ReturnSource; tierWeight?: number; onDisplay?: boolean },
+  opts: {
+    source: ReturnSource;
+    tierWeight?: number;
+    onDisplay?: boolean;
+    /**
+     * The last lived day of a return the physics fields do not carry — the
+     * LEGACY returns the v8 upgrade credited for a memory's pre-upgrade
+     * reinforcement days (`store/operational.ts`). Spacing is measured from it
+     * too; the lanes never read it.
+     */
+    since?: number | null;
+  },
 ): ReturnOutcome {
   const unchanged = {
     returns: m.returns ?? 0,
@@ -889,7 +925,7 @@ export function creditReturn(
     lastReturnDay: m.lastReturnDay ?? null,
     lastDreamDay: m.lastDreamDay ?? null,
   };
-  const gap = d - lastReturnAnchor(m);
+  const gap = d - Math.max(lastReturnAnchor(m), opts.since ?? -Infinity);
   const refuse = (reason: ReturnReason): ReturnOutcome => ({
     counted: false,
     reason,
@@ -911,6 +947,13 @@ export function creditReturn(
   // (Adversarial review of #251, 2026-09-26.)
   const sameKindGap = opts.source === "awake" ? d - Math.max(m.birthDay, m.lastReturnDay ?? -Infinity) : gap;
   if (sameKindGap <= 0) return refuse("already-returned-today");
+  // A DREAM FOLLOWS SPACING (working default 2026-09-26, review of #251): a
+  // replay counts at most once every `RETURN_SPACING_DAYS` per memory, so a
+  // memory that sits in every night's bundle cannot outgrow one that comes
+  // back awake every week.
+  if (opts.source === "dream" && m.lastDreamDay !== null && m.lastDreamDay !== undefined && d - m.lastDreamDay < TUNABLES.RETURN_SPACING_DAYS) {
+    return refuse("dream-spaced");
+  }
   const weight = (opts.source === "dream" ? tier : 1) * spacingWeight(gap);
   const next = { ...unchanged, returns: unchanged.returns + weight };
   if (opts.source === "dream") {

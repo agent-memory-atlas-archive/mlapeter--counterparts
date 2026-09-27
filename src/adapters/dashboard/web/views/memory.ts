@@ -227,6 +227,7 @@ export function memoryDetail(src: DashboardSource, id: string): MemoryDetail {
   const journal = row === undefined ? false : isJournal(row);
   const verdict = promotionEligibility(physics, {
     aboutMe: aboutMe(store, { id: headId, kind: physics.kind }, ownerNames(store)),
+    day,
   });
   let curve: MemoryCurve | null = null;
   let curveNote: string | null = null;

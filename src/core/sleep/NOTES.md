@@ -832,3 +832,11 @@ lanes and the v8 upgrade" has the arithmetic and the simulations; this is the ph
   formula, since the returns factor is the only term v8 added and a legacy row keeps its
   path. Measured on a real v7 demo store: 145 rows, 0 down, 0 weaker, 0 prune sooner.
   A failure is an event and never costs the tick.
+
+
+**After the review of #251 (2026-09-26, working defaults).**
+- The slow lane needs the semantic floor on the day it promotes (physics
+  `CORE_SLOW_FLOOR`); `promote` passes the day.
+- The upgrade census also counts `v7WouldPromote`: legacy rows the old rules were about
+  to make core. They are let go under the new rule and take the durability route (their
+  reinforcement days became legacy returns at the migration). Doctor says so, in green.

@@ -1782,7 +1782,11 @@ function readProbes(store: ReadOnlyStore, w: Window): Probed {
       bump(`versions:${v.reason}`, { livedDay: v.version_day, at: v.archived_at });
     }
     // v8: every counted return, awake or dreamed, and every dreamed memory.
-    for (const r of store.returnsOf(id)) bump(r.source === "dream" ? "returns.dream" : "returns.awake", { at: r.at });
+    // The upgrade's LEGACY credits are history, not something that fired.
+    for (const r of store.returnsOf(id)) {
+      if (r.source === "legacy") continue;
+      bump(r.source === "dream" ? "returns.dream" : "returns.awake", { at: r.at });
+    }
     if (row !== undefined && row.archived === 0 && row.source === "dreamed") {
       bump("dreamed", { at: row.created_at, livedDay: row.birth_day });
     }

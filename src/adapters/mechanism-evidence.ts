@@ -58,6 +58,12 @@ export interface Proof {
   readonly sum?: string;
   /** Only rows this accepts count. */
   readonly where?: (p: Payload) => boolean;
+  /**
+   * Only rows whose act STILL STANDS count — for an act the owner can take
+   * back after it fired (a dream, undone). Read against the store, so it is
+   * asked of a row only after `where` and `sum` said it counts.
+   */
+  readonly stands?: (store: ReadOnlyStore, row: EventRow) => boolean;
 }
 
 export interface MechanismEvidence {
@@ -210,7 +216,7 @@ export const MECHANISM_EVIDENCE: readonly MechanismEvidence[] = [
     proofs: [
       { key: "promoted", event: "band.promoted", says: ["memory became core", "memories became core"] },
       { key: "merged", event: "memory.merged", says: ["exact duplicate merged", "exact duplicates merged"] },
-      { key: "dreamMerged", event: "dream.changed", sum: "merge", says: ["near-copy merged in a dream", "near-copies merged in a dream"] },
+      { key: "dreamMerged", event: "dream.changed", sum: "merge", stands: dreamStands, says: ["near-copy merged in a dream", "near-copies merged in a dream"] },
       { key: "rose", event: "band.transition", where: (p) => p["site"] === "consolidate", says: ["memory rose a band", "memories rose a band"] },
     ],
     census: {
@@ -232,8 +238,9 @@ export const MECHANISM_EVIDENCE: readonly MechanismEvidence[] = [
     family: "transformation",
     build: "built",
     proofs: [
-      { key: "dreams", event: "dream.journaled", says: ["dream", "dreams"] },
-      { key: "changes", event: "dream.changed", sum: "applied", says: ["change a dream made", "changes dreams made"] },
+      // An undone dream is taken back: it no longer lights the mechanism.
+      { key: "dreams", event: "dream.journaled", stands: dreamStands, says: ["dream", "dreams"] },
+      { key: "changes", event: "dream.changed", sum: "applied", stands: dreamStands, says: ["change a dream made", "changes dreams made"] },
     ],
   },
   {
@@ -251,7 +258,7 @@ export const MECHANISM_EVIDENCE: readonly MechanismEvidence[] = [
     id: "episodic-semantic",
     family: "transformation",
     build: "partly",
-    proofs: [{ key: "gist", event: "dream.changed", sum: "gist", says: ["pattern dreamed into a memory of its own", "patterns dreamed into memories of their own"] }],
+    proofs: [{ key: "gist", event: "dream.changed", sum: "gist", stands: dreamStands, says: ["pattern dreamed into a memory of its own", "patterns dreamed into memories of their own"] }],
   },
   {
     // Entity cards exist (and fade, under Forgetting), but beliefs about them
@@ -323,6 +330,22 @@ export function payloadOf(row: EventRow): Payload {
 }
 
 /** The amount this row contributes, or 0 when it does not count. */
+/** `amount`, and zero for a row whose act no longer stands (`Proof.stands`). */
+export function counted(proof: Proof, row: EventRow, store: ReadOnlyStore): number {
+  const n = amount(proof, payloadOf(row));
+  if (n <= 0 || proof.stands === undefined) return n;
+  try {
+    return proof.stands(store, row) ? n : 0;
+  } catch {
+    return n;
+  }
+}
+
+/** A dream's row counts while the dream is not undone (review of #251). */
+function dreamStands(store: ReadOnlyStore, row: EventRow): boolean {
+  return row.ref === null || store.dream(row.ref)?.state !== "undone";
+}
+
 export function amount(proof: Proof, p: Payload): number {
   if (proof.where !== undefined && !proof.where(p)) return 0;
   if (proof.sum === undefined) return 1;
@@ -377,7 +400,7 @@ export function mechanismEvidence(
     for (const proof of m.proofs) {
       let total = 0;
       for (const row of rowsFor(proof.event)) {
-        const n = amount(proof, payloadOf(row));
+        const n = counted(proof, row, store);
         if (n > 0) {
           total += n;
           backing.push(row);
@@ -415,7 +438,7 @@ export function mechanismEvidence(
       // Only the newest LOOKBACK rows of each name are searched.
       for (const proof of m.proofs) {
         for (const row of store.eventLog({ name: proof.event, order: "desc", limit: LOOKBACK })) {
-          if (amount(proof, payloadOf(row)) > 0) {
+          if (counted(proof, row, store) > 0) {
             if (lastFiredDay === null || row.day > lastFiredDay) lastFiredDay = row.day;
             break;
           }

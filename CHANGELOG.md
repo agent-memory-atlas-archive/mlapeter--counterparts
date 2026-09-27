@@ -18,6 +18,10 @@ Staying strong.
   bonus path exactly, so no memory drops a band or will be let go sooner because of the
   upgrade. The first sleep after the upgrade checks this on every memory, and `doctor`
   prints what it found (an "Upgrade" line).
+- **The days a memory was already used count as coming back.** At the upgrade, every
+  day a memory was used before counts toward fading more slowly. A memory the old rules
+  were about to make core but the new ones do not (a well-used fact, say) stays strong
+  that way instead, and `doctor`'s Upgrade line says how many there were.
 - **"Nearby, if it helps" takes turns.** The wake's "Nearby" lane no longer shows the
   same strong memory every day. A memory Claude uses because it was showing there still
   counts as a use, but not as coming back; one shown a lot gives way for a while, and

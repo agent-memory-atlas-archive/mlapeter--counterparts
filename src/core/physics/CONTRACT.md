@@ -396,7 +396,8 @@ NOTES "Returns, core lanes and the v8 upgrade" has the simulations and the reaso
 return          = a credited, REFERENCED use on a lived day after the memory's previous
                   counted return (either kind) or its birth — NOT while the memory was
                   showing in the wake's hints lane, unless recall surfaced it on the turn's
-                  own cue — or a DREAM replay (at most once per dream per memory)
+                  own cue (the SAME turn) — or a DREAM replay (at most once per dream per
+                  memory, and once per RETURN_SPACING_DAYS)
 weight          = w × (1 − exp(−gap / RETURN_SPACING_DAYS))        RETURN_SPACING_DAYS = 7
 w               = 1 awake, DREAM_RETURN_WEIGHT dream                DREAM_RETURN_WEIGHT = 0.5
 returns(m)     += weight                                           # the history is a table

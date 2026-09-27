@@ -26,7 +26,7 @@ import type { DashboardSource } from "../../source.js";
 import { narrate } from "../narrate.js";
 import type { NarratedEvent } from "../narrate.js";
 import { reveal, revealHere } from "../reveal.js";
-import { MECHANISM_PROOFS, amount, payloadOf } from "./mechanisms.js";
+import { MECHANISM_PROOFS, counted, payloadOf } from "./mechanisms.js";
 import { census } from "./shared.js";
 import type { MemoryLine } from "./shared.js";
 
@@ -163,7 +163,7 @@ export function mechanismPanel(src: DashboardSource, id: string): MechanismPanel
   const backing: EventRow[] = [];
   for (const p of proof.proofs) {
     for (const row of store.eventLog({ name: p.event, order: "desc", limit: ACTIVITY_LOOKBACK })) {
-      if (amount(p, payloadOf(row)) > 0) backing.push(row);
+      if (counted(p, row, store) > 0) backing.push(row);
     }
   }
   const seen = new Set<number>();

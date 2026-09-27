@@ -1642,6 +1642,7 @@ export class Store {
           source: "awake",
           tierWeight: verdict.w,
           onDisplay: opts.cued !== true && this.shownInHints(id, day),
+          since: this.legacyLastReturn(id),
         });
         if (ret.counted) this.writeReturn(id, day, ret, null);
       }
@@ -1668,12 +1669,20 @@ export class Store {
   replayReturn(id: string, day: number, dreamId: string): ReturnOutcome {
     const outcome = this.mutate("replayReturn", () => {
       const row = this.requireRow(id);
-      const ret = creditReturn(rowToPhysics(row), day, { source: "dream" });
+      const ret = creditReturn(rowToPhysics(row), day, { source: "dream", since: this.legacyLastReturn(id) });
       if (ret.counted) this.writeReturn(id, day, ret, dreamId);
       return ret;
     });
     this.emit("store.replay", id, { counted: outcome.counted, reason: outcome.reason, day, dream: dreamId });
     return outcome;
+  }
+
+  /** The last day of a LEGACY return the upgrade credited (spacing reads it; the lanes never do). */
+  private legacyLastReturn(id: string): number | null {
+    return (
+      this.ops.get<{ d: number | null }>("SELECT MAX(day) AS d FROM returns WHERE memory_id = ? AND source = 'legacy'", id)?.d ??
+      null
+    );
   }
 
   /** Insert one `returns` row and bring the aggregate columns in line with the table. */
