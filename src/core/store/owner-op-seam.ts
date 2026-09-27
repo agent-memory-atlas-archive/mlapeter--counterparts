@@ -209,6 +209,10 @@ export function chaseRemoved(store: Store, id: string): ChaseReport {
     // stay listed — but its title and entry are replaced by a line saying they
     // were redacted. Asked before the words below are blanked.
     const journals = redactDreamJournals(db, id, row?.title ?? null, row?.body ?? "");
+    // v9: A REFLECTION that was shown it, cited it, or quotes it, the same
+    // way: its entry and its share are replaced by a line saying so, and the
+    // id leaves its lists. The row stays — the reflection happened.
+    const reflections = redactReflections(db, id, row?.title ?? null, row?.body ?? "");
     db.run("UPDATE dream_changes SET ref = NULL WHERE ref = ?", id);
     db.run("UPDATE dream_changes SET ref2 = NULL WHERE ref2 = ?", id);
 
@@ -246,7 +250,7 @@ export function chaseRemoved(store: Store, id: string): ChaseReport {
                 learned_on = '', happened_on = NULL,
                 created_at = NULL, updated_at = NULL, model = NULL, event_date = NULL,
                 returns = 0, return_days = 0, first_return_day = NULL, last_return_day = NULL,
-                last_dream_day = NULL
+                last_dream_day = NULL, about = NULL, about_by = NULL
           WHERE id = ?`,
         REMOVED_REASON,
         id,
@@ -287,6 +291,7 @@ export function chaseRemoved(store: Store, id: string): ChaseReport {
         { surface: "operational.memories", count: row === undefined ? 0 : 1 },
         { surface: "operational.versions", count: versions },
         ...(journals > 0 ? [{ surface: "operational.dreams", count: journals }] : []),
+        ...(reflections > 0 ? [{ surface: "operational.reflections", count: reflections }] : []),
       ],
       survives: ["removal_record", "deny-list", "removal_tombstone"],
       noop,
@@ -348,6 +353,65 @@ function redactDreamJournals(db: Db, id: string, title: string | null, body: str
     const quoted = quotes(body, text) || (named !== null && text.toLowerCase().includes(named));
     if (!shown && !changed.has(d.id) && !quoted) continue;
     db.run("UPDATE dreams SET title = ?, journal = ? WHERE id = ?", REDACTED_JOURNAL_TITLE, REDACTED_JOURNAL, d.id);
+    n += 1;
+  }
+  return n;
+}
+
+/** What a redacted reflection says instead, entry and share. */
+const REDACTED_REFLECTION =
+  "[This reflection was redacted: it was shown, cited or quoted a memory the owner removed.]";
+
+/** A JSON id list without `id`, and whether it had it. */
+function without(json: string, id: string): { json: string; had: boolean } {
+  try {
+    const ids: unknown = JSON.parse(json);
+    if (!Array.isArray(ids)) return { json, had: false };
+    const kept = ids.filter((x) => x !== id);
+    return { json: JSON.stringify(kept), had: kept.length !== ids.length };
+  } catch {
+    return { json, had: false };
+  }
+}
+
+/**
+ * Redact every reflection (v9) that was shown, cited or quotes memory `id`:
+ * its entry and share become a line saying so (a share not yet told is not
+ * told), and the id leaves its `shown`, `cites` and `share_cites`. The row,
+ * its date and its dream stay. Returns how many were redacted. Inside the
+ * caller's transaction.
+ */
+function redactReflections(db: Db, id: string, title: string | null, body: string): number {
+  const rows = db.all<{
+    id: string;
+    shown: string;
+    cites: string;
+    share_cites: string;
+    entry: string | null;
+    share: string | null;
+    share_state: string;
+  }>("SELECT id, shown, cites, share_cites, entry, share, share_state FROM reflections");
+  const named = title !== null && title.trim().length >= 8 ? title.trim().toLowerCase() : null;
+  let n = 0;
+  for (const r of rows) {
+    const shown = without(r.shown, id);
+    const cites = without(r.cites, id);
+    const shareCites = without(r.share_cites, id);
+    const text = `${r.entry ?? ""}\n${r.share ?? ""}`;
+    const quoted = r.entry !== REDACTED_REFLECTION && (quotes(body, text) || (named !== null && text.toLowerCase().includes(named)));
+    if (!shown.had && !cites.had && !shareCites.had && !quoted) continue;
+    db.run(
+      `UPDATE reflections
+          SET entry = ?, share = ?, share_state = CASE WHEN share_state IN ('offered', 'carried') THEN 'none' ELSE share_state END,
+              shown = ?, cites = ?, share_cites = ?
+        WHERE id = ?`,
+      r.entry === null ? null : REDACTED_REFLECTION,
+      r.share === null ? null : REDACTED_REFLECTION,
+      shown.json,
+      cites.json,
+      shareCites.json,
+      r.id,
+    );
     n += 1;
   }
   return n;

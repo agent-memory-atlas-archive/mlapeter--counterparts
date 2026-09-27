@@ -874,6 +874,8 @@ describe("the page survives sleep", () => {
     const ready = {
       salience: { novelty: 0.9, relevance: 0.95, emotional: 0.8, predictive: 0.9 },
       physics: { birthDay: 0, lastUsedDay: 0 },
+      // v9: the core reads the about mark; every row here carries `me`.
+      about: "me",
     } as const;
     const memory = s.put({ type: "memory", kind: "self", body: "A placeholder memory about myself.", ...ready });
     const belief = s.put({

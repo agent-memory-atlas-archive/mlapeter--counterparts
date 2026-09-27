@@ -16,11 +16,12 @@
  *    `not-legacy` by it.
  *
  * 2. **Core promotion — HERE AND ONLY HERE**, now by LANES (physics §5.3):
- *    only a memory about me or about us (`self`, or a `person` memory about the
- *    owner) can become core, by the fast lane (strongly felt, and it came back
- *    after a gap) or the slow lane (it kept coming back over weeks). Physics
- *    decides eligibility; this phase decides who is ABOUT ME (it can read the
- *    words and the owner's names), honours the owner's demotions, and caps the
+ *    only a memory about me, about us or about the owner can become core — by
+ *    its MARK (v9, 2026-09-27: `me`, `us`, `owner`, set by an awake model that
+ *    read it; `aboutMe` below) — by the fast lane (strongly felt, and it came
+ *    back after a gap) or the slow lane (it kept coming back over weeks).
+ *    Physics decides eligibility; this phase reads the mark, honours the
+ *    owner's demotions, and caps the
  *    night at `CORE_MAX_PER_SLEEP`, strongest first — the rest wait for the
  *    next consolidation. The crossing is an EXPLICIT, COUNTED EVENT with a
  *    persisted record carrying its lane, never an emergent side effect of a
@@ -31,7 +32,8 @@
  * Arithmetic only: this phase never calls a model.
  */
 
-import { consolidationEligibility, promote, strength } from "../physics/index.js";
+import { TUNABLES as PHYSICS_TUNABLES, consolidationEligibility, promote, strength } from "../physics/index.js";
+import { CORE_ABOUT_MARKS } from "../store/index.js";
 import type { PromotionCrossing, PromotionReason } from "../physics/index.js";
 import { rowToPhysics } from "../store/operational.js";
 import type { MemoryRow } from "../store/operational.js";
@@ -123,14 +125,45 @@ function names(text: string, owner: readonly string[]): boolean {
 }
 
 /**
- * IS THIS MEMORY ABOUT ME OR ABOUT US? — the core's first question (owner
- * decision 2026-09-26). `self` kind always is. A `person` memory is when it
- * names the owner (title, body, or its `name` / `entity` meta); a person memory
- * about somebody else is not, and a `fact` that merely mentions him never is,
- * whatever it says. Everything else is not.
+ * IS THIS MEMORY ABOUT ME, ABOUT US, OR ABOUT THE OWNER? — the core's first
+ * question, answered BY MEANING since v9 (2026-09-27): the memory's `about`
+ * mark is `me`, `us` or `owner`, set by an awake model that read the words
+ * (the writer at `note` / `session_end`, or the reflection) — or by the v9
+ * upgrade, which carried the old kind rule onto the rows it found. A kind
+ * label no longer answers it: a `self` memory with no mark is a work lesson
+ * until something that read it says otherwise (rule A), and an `entity`
+ * memory marked `me` — someone asking to be remembered through me — is a
+ * candidate. `skill` is never one, whatever it is marked: the craft is "how I
+ * work", durable but not core (rule A).
+ *
+ * The signature is the old one, so every reader (the dashboard's views among
+ * them) asks the same question; `owner` is no longer read.
  */
-export function aboutMe(store: ReadsDocs, row: Pick<MemoryRow, "id" | "kind">, owner: readonly string[]): boolean {
-  if (row.kind === "self") return true;
+export function aboutMe(
+  store: ReadsDocs,
+  row: Pick<MemoryRow, "id" | "kind"> & { about?: string | null },
+  owner?: readonly string[],
+): boolean {
+  void owner;
+  if (row.kind === "skill") return false;
+  let mark: unknown = row.about;
+  if (mark === undefined) {
+    try {
+      mark = store.read(row.id).about;
+    } catch {
+      return false;
+    }
+  }
+  return typeof mark === "string" && (CORE_ABOUT_MARKS as readonly string[]).includes(mark);
+}
+
+/**
+ * DOES THIS PERSON MEMORY NAME THE OWNER? — the old kind reading (title, body,
+ * or its `name` / `entity` meta, whole word), kept for what it still answers
+ * that is not the core's question: which memories a dream's bundle files under
+ * the owner's card, and whether a flagged contradiction is his to hear.
+ */
+export function namesOwner(store: ReadsDocs, row: Pick<MemoryRow, "id" | "kind">, owner: readonly string[]): boolean {
   if (row.kind !== "person" || owner.length === 0) return false;
   try {
     const doc = store.read(row.id).doc;
@@ -140,6 +173,17 @@ export function aboutMe(store: ReadsDocs, row: Pick<MemoryRow, "id" | "kind">, o
   } catch {
     return false;
   }
+}
+
+/** Meta key: the owner opened the fast lane to feelings a reflection recorded later. */
+export const REFLECTED_FEELING_KEY = "core.fast.acceptsReflectedFeeling";
+
+/** Does the fast lane read feelings a reflection recorded later? The meta row, else the tunable. */
+export function acceptsReflectedFeeling(store: Pick<SleepStore, "getMeta">): boolean {
+  const v = store.getMeta(REFLECTED_FEELING_KEY);
+  if (v === "1" || v === "true" || v === "on") return true;
+  if (v === "0" || v === "false" || v === "off") return false;
+  return PHYSICS_TUNABLES.CORE_FAST_ACCEPTS_REFLECTED_FEELING;
 }
 
 export function runConsolidate(ctx: PhaseCtx): ConsolidateResult {
@@ -156,7 +200,7 @@ export function runConsolidate(ctx: PhaseCtx): ConsolidateResult {
   const { store, day } = ctx;
   const denied = new Set(store.deniedIds());
   const ids = store.list();
-  const owner = ownerNames(store);
+  const reflected = acceptsReflectedFeeling(store);
 
   // WHERE THE LAST RUN STOPPED. `store.list()` is `ORDER BY id`, so the rotation
   // is stable and a cursor means something: this run resumes strictly after it
@@ -228,12 +272,12 @@ export function runConsolidate(ctx: PhaseCtx): ConsolidateResult {
       block("already-identity");
       continue;
     }
-    // Who it is about is asked only where it can matter — `self` and `person`
-    // — so the prose read is paid by those rows alone.
-    const about = aboutMe(store, row, owner);
+    // Who it is about is the row's own mark (v9): no prose read.
+    const about = aboutMe(store, row);
     const outcome = promote(p, day, {
       aboutMe: about,
       demoted: about ? (store.coreDemoted?.(id) ?? false) : false,
+      acceptsReflectedFeeling: reflected,
     });
     if (!outcome.promoted || outcome.crossing === null) {
       // Every blocking reason is reported: "not about me" and "no lane yet"
@@ -252,7 +296,16 @@ export function runConsolidate(ctx: PhaseCtx): ConsolidateResult {
       block("cap");
       continue;
     }
-    const record: PromotionRecord = { id: e.id, ...e.crossing };
+    // WHERE ITS RETURNS CAME FROM (v9): the record names the sources of the
+    // awake-class returns the lanes counted, so "promoted on reflection
+    // alone" is a number doctor can print rather than a guess.
+    const sources = returnSourcesOf(store, e.id);
+    const record: PromotionRecord = {
+      id: e.id,
+      ...e.crossing,
+      returnSources: sources,
+      reflectionOnly: sources.reflection > 0 && sources.awake === 0,
+    };
     if (ctx.apply) {
       // Record BEFORE the flag: a crossing nobody could account for afterwards
       // is exactly the emergent promotion this phase exists to replace. If the
@@ -289,6 +342,21 @@ export function runConsolidate(ctx: PhaseCtx): ConsolidateResult {
   if (ctx.apply && stoppedAt !== null) writeCursor(store, CONSOLIDATE_PHASE, stoppedAt);
 
   return { ...out, consolidated, promoted, promotionBlocked };
+}
+
+/** Counted awake-class returns by source, for a promotion's record. */
+function returnSourcesOf(store: PhaseCtx["store"], id: string): { awake: number; reflection: number } {
+  let awake = 0;
+  let reflection = 0;
+  try {
+    for (const r of store.returnsOf?.(id) ?? []) {
+      if (r.source === "awake") awake += 1;
+      else if (r.source === "reflection") reflection += 1;
+    }
+  } catch {
+    /* a store without the table reads as no returns */
+  }
+  return { awake, reflection };
 }
 
 export type { PromotionReason };

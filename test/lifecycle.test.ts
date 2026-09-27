@@ -139,6 +139,8 @@ async function mint(a: ClaudeCodeAdapter, session = "s0"): Promise<string> {
     { session, scope: "proj" },
   );
   expect(deposit.deposited).toBe(true);
+  // v9: the core reads the writer's mark, not the kind.
+  c.store.setAbout(deposit.memoryId as string, "me", { by: "writer" });
   return deposit.memoryId as string;
 }
 

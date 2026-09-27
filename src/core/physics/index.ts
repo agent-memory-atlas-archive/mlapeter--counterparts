@@ -70,6 +70,22 @@ export const TUNABLES = {
    *  (owner: "start ~0.5"), at most once per dream per memory. CAL. */
   DREAM_RETURN_WEIGHT: 0.5,
   /**
+   * A REFLECTION's return (v9, 2026-09-27): the waking self deliberately
+   * revisited and cited the memory. Lived, so full awake weight for
+   * durability (spacing-scaled like any return). CAL.
+   */
+  REFLECTION_RETURN_WEIGHT: 1.0,
+  /**
+   * A reflection counts a memory as returned at most once every this many
+   * lived days (working default 2026-09-27): "the reflection can't cite the
+   * same memory every night", and the SLOW lane gets at most one reflection
+   * day a week from it — so reflection alone cannot carry a memory through
+   * the slow lane's five days in ~10 (it would take four weeks of weekly
+   * citing). A citation inside the window still stands in the entry; it just
+   * is not a return. CAL.
+   */
+  REFLECTION_SPACING_DAYS: 7,
+  /**
    * The claimed-salience ceiling for a DREAMED memory (a dream's gist or
    * pattern, source `dreamed`): below the semantic floor, so what a dream
    * concludes starts lower than anything lived and rises only by proving true
@@ -83,6 +99,21 @@ export const TUNABLES = {
   /** Fast lane: strongly felt — `emotionalIntensity` at or above this, his
    *  feeling or mine. CAL. */
   CORE_FAST_FEELING: 0.6,
+  /**
+   * Does the fast lane's feeling read feelings a REFLECTION recorded later
+   * (v9, `feelings.source = 'reflection'`)? Default OPEN — the owner's call of
+   * 2026-09-27, held lightly: nearly all sessions are straight work with
+   * little typing, so what matters may never come up in the moment, and a
+   * memory has to be able to reach the core on reflection alone. Such a
+   * promotion is SHOWN to him — its record names the returns' sources, doctor
+   * counts "promoted on reflection alone", and the next morning share says it
+   * — not gated on him. Closed (`false`), the fast lane reads only feelings
+   * felt at the time or written in a session. Height and decay read every
+   * feeling either way. The owner flips it without a release
+   * (`counterparts core --reflected-feeling off|on`, a meta row the
+   * consolidate phase reads); this is the default when the row is absent.
+   */
+  CORE_FAST_ACCEPTS_REFLECTED_FEELING: true,
   /** Fast lane: "and it has come back at least once after a gap" — an awake
    *  return at least this many lived days after the memory was made (2 = not
    *  the very next day). CAL. */
@@ -671,6 +702,11 @@ export interface CoreContext {
   /** The owner demoted it (`counterparts core --demote`). */
   readonly demoted?: boolean;
   /**
+   * v9: may the fast lane's feeling read the feelings a reflection recorded
+   * later? Absent: `CORE_FAST_ACCEPTS_REFLECTED_FEELING`.
+   */
+  readonly acceptsReflectedFeeling?: boolean;
+  /**
    * The lived day the verdict is for. With it, the SLOW lane also asks the
    * memory to stand in the semantic band on that day (decayed strength at or
    * above `THETA_SEM`): coming back on many days is not by itself a reason to
@@ -700,7 +736,10 @@ export interface CoreContext {
  * (and caps how many cross per night).
  */
 export function promotionEligibility(m: MemoryPhysics, ctx: CoreContext): PromotionVerdict {
-  const intensity = emotionalIntensity(m);
+  // v9: the fast lane's feeling, without the feelings a reflection recorded
+  // later unless the owner opened that door (`CORE_FAST_ACCEPTS_REFLECTED_FEELING`).
+  const accepts = ctx.acceptsReflectedFeeling ?? TUNABLES.CORE_FAST_ACCEPTS_REFLECTED_FEELING;
+  const intensity = accepts || m.feelingPeakLived === undefined ? emotionalIntensity(m) : emotionalIntensity({ ...m, feelingPeak: m.feelingPeakLived });
   const days = m.returnDays ?? 0;
   const first = m.firstReturnDay ?? null;
   const last = m.lastReturnDay ?? null;
@@ -842,7 +881,19 @@ export function promote(m: MemoryPhysics, d: number, ctx: CoreContext): Promotio
 // §5.11 Returns — durability from coming back
 // ---------------------------------------------------------------------------
 
-export type ReturnSource = "awake" | "dream";
+/**
+ * Where a return came from: an organic AWAKE use, a DREAM replay (durability
+ * only), or a REFLECTION that deliberately revisited and cited the memory (v9,
+ * 2026-09-27) — an awake return, counted toward the core lanes beside `awake`,
+ * though the reflection was HANDED what it cites. That is on display by
+ * construction, and it counts anyway, on purpose: awake returns are rare (14
+ * memories used across 391 turns in the owner's first week), so without it
+ * the lanes starve, and deliberately revisiting a memory is what rehearsal
+ * is. Its guard is spacing (`REFLECTION_SPACING_DAYS`), not the display rule
+ * #238 gave `awake` — do not "fix" it back to `on-display` (physics
+ * CONTRACT §5.11).
+ */
+export type ReturnSource = "awake" | "dream" | "reflection";
 
 export type ReturnReason =
   | "counted"
@@ -857,6 +908,8 @@ export type ReturnReason =
   | "already-returned-today"
   /** A dream replay within `RETURN_SPACING_DAYS` of the memory's last one. */
   | "dream-spaced"
+  /** A reflection return within `REFLECTION_SPACING_DAYS` of the memory's last one. */
+  | "reflection-spaced"
   | "ignorable-tier";
 
 export interface ReturnOutcome {
@@ -916,6 +969,9 @@ export function creditReturn(
      * too; the lanes never read it.
      */
     since?: number | null;
+    /** v9: the last lived day a REFLECTION return was counted for this
+     *  memory (the store reads it off the `returns` table). */
+    lastReflectionDay?: number | null;
   },
 ): ReturnOutcome {
   const unchanged = {
@@ -934,7 +990,12 @@ export function creditReturn(
     weight: 0,
     next: unchanged,
   });
-  const tier = opts.source === "dream" ? TUNABLES.DREAM_RETURN_WEIGHT : (opts.tierWeight ?? TUNABLES.W_REFERENCED);
+  const tier =
+    opts.source === "dream"
+      ? TUNABLES.DREAM_RETURN_WEIGHT
+      : opts.source === "reflection"
+        ? TUNABLES.REFLECTION_RETURN_WEIGHT
+        : (opts.tierWeight ?? TUNABLES.W_REFERENCED);
   if (tier <= 0) return refuse("ignorable-tier");
   if (opts.source === "awake" && tier < TUNABLES.W_REFERENCED) return refuse("not-referenced");
   if (d <= m.birthDay) return refuse("birth-day");
@@ -945,8 +1006,25 @@ export function creditReturn(
   // adds nothing to `returns` — but it must not take the lane day an organic
   // return earns. A dream is refused against either kind, as before.
   // (Adversarial review of #251, 2026-09-26.)
-  const sameKindGap = opts.source === "awake" ? d - Math.max(m.birthDay, m.lastReturnDay ?? -Infinity) : gap;
+  //
+  // A REFLECTION is an awake return and is asked the same question: a
+  // reflection and an organic use on one lived day are ONE lane day (the
+  // aggregate counts distinct days), so the second of them is refused
+  // `already-returned-today` whichever came first. Harmless for the lanes;
+  // the day is already counted (v9).
+  const sameKindGap = opts.source !== "dream" ? d - Math.max(m.birthDay, m.lastReturnDay ?? -Infinity) : gap;
   if (sameKindGap <= 0) return refuse("already-returned-today");
+  // A REFLECTION FOLLOWS ITS OWN SPACING (v9): at most once every
+  // `REFLECTION_SPACING_DAYS` per memory, so it cannot cite its way through
+  // the slow lane night after night.
+  if (
+    opts.source === "reflection" &&
+    opts.lastReflectionDay !== null &&
+    opts.lastReflectionDay !== undefined &&
+    d - opts.lastReflectionDay < TUNABLES.REFLECTION_SPACING_DAYS
+  ) {
+    return refuse("reflection-spaced");
+  }
   // A DREAM FOLLOWS SPACING (working default 2026-09-26, review of #251): a
   // replay counts at most once every `RETURN_SPACING_DAYS` per memory, so a
   // memory that sits in every night's bundle cannot outgrow one that comes
@@ -954,7 +1032,7 @@ export function creditReturn(
   if (opts.source === "dream" && m.lastDreamDay !== null && m.lastDreamDay !== undefined && d - m.lastDreamDay < TUNABLES.RETURN_SPACING_DAYS) {
     return refuse("dream-spaced");
   }
-  const weight = (opts.source === "dream" ? tier : 1) * spacingWeight(gap);
+  const weight = (opts.source === "awake" ? 1 : tier) * spacingWeight(gap);
   const next = { ...unchanged, returns: unchanged.returns + weight };
   if (opts.source === "dream") {
     next.lastDreamDay = d;

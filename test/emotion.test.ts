@@ -383,6 +383,8 @@ function feeling(over: Partial<FeelingRow> & { whose: string; core: string; emot
     model: null,
     created_at: 0,
     updated_at: 0,
+    source: "session",
+    recorded_later: null,
     birth_day: 0,
     ...over,
   };

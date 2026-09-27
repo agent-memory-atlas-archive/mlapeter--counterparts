@@ -67,6 +67,8 @@ beforeAll(async () => {
             { session: `s${i}`, scope: "x" },
           );
           if (r.deposited && r.memoryId) ids.push(r.memoryId);
+          // v9: the writer marks what it learned about the owner.
+          if (r.deposited && r.memoryId && content.startsWith("Mike")) c.store.setAbout(r.memoryId, "owner", { by: "writer" });
         }
       } else {
         c.resolveUses(`s${i}`, [{ memoryId: ids[0] as string, tier: "referenced" as const }]);

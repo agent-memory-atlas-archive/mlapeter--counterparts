@@ -173,10 +173,11 @@ describe("the v7 → v8 migration", () => {
     open.splice(0);
 
     const s = store({ snapshotsDir: snaps });
-    expect(SCHEMA_VERSION).toBe(8);
-    expect(s.getMeta("schemaVersion")).toBe("8");
+    // v9 (2026-09-27) sits on top: a v7 file migrates through both in one open.
+    expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(8);
+    expect(s.getMeta("schemaVersion")).toBe(String(SCHEMA_VERSION));
     expect(s.migration?.from).toBe("7");
-    expect(s.migration?.to).toBe(8);
+    expect(s.migration?.to).toBe(SCHEMA_VERSION);
     expect(existsSync(snaps)).toBe(true);
     expect(readdirSync(snaps).length).toBe(1);
 

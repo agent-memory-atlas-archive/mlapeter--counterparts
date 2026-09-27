@@ -58,6 +58,9 @@ export interface SleepStore {
   }): string[];
   row(id: string): MemoryRow | undefined;
   read(id: string): StoredMemory;
+  /** v9: one memory's counted returns, OPTIONAL — a promotion's record names
+   *  their sources where the port has it. */
+  returnsOf?(id: string): readonly { source: string }[];
   versions(id: string): VersionRow[];
   deniedIds(): string[];
 
@@ -329,6 +332,14 @@ export interface SleepEvent {
 /** The §5.3 crossing record, plus the id physics does not carry. */
 export interface PromotionRecord extends PromotionCrossing {
   readonly id: string;
+  /**
+   * v9: the awake-class returns behind it, by source — an organic use
+   * (`awake`) or a reflection that cited it (`reflection`). Absent on a
+   * record written before v9.
+   */
+  readonly returnSources?: { readonly awake: number; readonly reflection: number };
+  /** v9: every awake-class return it had came from a reflection. */
+  readonly reflectionOnly?: boolean;
 }
 
 /** A prune record as persisted: physics' record, plus the id it belongs to. */
