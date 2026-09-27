@@ -131,6 +131,9 @@
   -webkit-box-orient:vertical;overflow-wrap:anywhere;margin-top:1px}
 .mtext.solo{color:var(--t);font-size:13.5px;margin-top:0}
 .mwhy{color:var(--amber);font-size:12px;margin-top:3px}
+.mchapter{display:inline-block;max-width:100%;margin-top:3px;padding:0;background:none;border:none;color:var(--cyan);
+  font:inherit;font-size:12px;text-align:left;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mchapter:hover,.mchapter:focus-visible{text-decoration:underline;outline:none}
 .mside{display:flex;flex-direction:column;align-items:flex-end;gap:4px;min-width:0;padding-top:2px}
 .mline{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;min-height:18px}
 .mdate{color:var(--faint);font-size:12px;white-space:nowrap}

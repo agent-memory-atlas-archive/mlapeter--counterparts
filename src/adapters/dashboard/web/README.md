@@ -14,7 +14,7 @@ step, no dependencies. `server.ts` serves them as files (see "Serving" below).
 | `actions.ts` | managing: `POST /api/action/<name>` — the same-origin + per-launch-token guard, argument validation, and the console's own `run()` (loaded lazily; never handed the observer source). `ACTIONS` lists them: `ask`, `note`, `remove`, `backup`, `export`, `scope`, `rebrief`, `verify`, and `doctor` (a read: the health tab's checklist, `doctor --json`) |
 | `static.ts` | `resolveStatic()`: which URL paths are static files and where they live (pure; no fs) |
 | `views.ts` | the index of `views/`: re-exports every view, so callers import from here |
-| `views/<name>.ts` | one module per `/api` view: `meta`, `overview` (the home tab's), `memories` (`/api/memories` + `/api/memories/list`), `memory`, `search`, `mind` (the self tab's), `activity`, `flow-view` (`/api/flow` + `/api/node`), `health`, `pulse`, `mechanisms`, `mechanism-panel` (`/api/mechanism?id=`) |
+| `views/<name>.ts` | one module per `/api` view: `meta`, `overview` (the home tab's), `memories` (`/api/memories` + `/api/memories/list`), `memory`, `search` (`/api/search` + `/api/chapters`), `mind` (the self tab's), `activity`, `flow-view` (`/api/flow` + `/api/node`), `health`, `pulse`, `mechanisms`, `mechanism-panel` (`/api/mechanism?id=`) |
 | `views/archive-words.ts` | why a memory was archived, in plain words: one table (`ARCHIVE_WORDS`, a group phrase and a single-row phrase per reason) and one fallback for a reason nobody mapped; health's bar, the memories list and home's archived count read it |
 | `views/mechanisms.ts` | `/api/mechanisms`: each mechanism's light (grey = not built, green = fired in the last 7 lived days, waiting = built and not due — a scheduled run ahead, or nothing to act on — amber = built and quiet), its `build` (built / partly / not: the pill's "partly built" tag), one evidence line, the newest backing event `seq`s. Which rows count as a firing is `adapters/mechanism-evidence.ts` — ONE judgement shared with `counterparts mechanisms` (`cli/mechanisms.ts`), which keeps its own words and its calendar window; this file owns the lived-day window and the dashboard's words |
 | `views/shared.ts` | the census and small counters every view leans on |
@@ -123,7 +123,10 @@ from it and puts the scroll back, and `counterparts:changed` (a window event,
 fired after a note and after a removal on the memory card) makes the page
 re-read at once. `row.js` is the one row shape the list, search hits and Ask's
 answers share. Sections: `search.js` (search by words,
-plus Ask via `act("ask", {json:true})`, its tiers drawn as brightness),
+plus Ask via `act("ask", {json:true})`, its tiers drawn as brightness; a
+journal chapter and the memory drawn from it are folded into one answer by
+`fold.js`, with a "from chapter …" link, from `/api/chapters` in
+`views/search.ts`),
 `tools.js` (write a note, and the back-up/export folder dialog),
 `hold.js` ("How firmly it's held": one bar, firm / settling / fading, from
 `holdOf` in `views/memories.ts`; a part clicked filters the list), `feel.js`
@@ -135,7 +138,12 @@ feelings in words); archive reasons come from `views/archive-words.ts`.
 `shared/memory-marks.{js,css}` are the kind icons and colours, feeling dots,
 the strength meter and the badges, used by the rows and the memory card
 (`shared/memory-modal.js`, whose strength curve comes from `fadeCurve` in
-`views/mechanism-panel.ts`, the Forgetting panel's own maths).
+`views/mechanism-panel.ts`, the Forgetting panel's own maths). The card's
+sentences that read the payload — the road to the core (the engine's verdict,
+`views/memory.ts#coreRoad`, from `physics#promotionEligibility`; the fast lane
+named when it applies), where the curve starts ("written" until a real use),
+and the Versions rows (a dream's near-copy merges named and grouped) — are
+pure functions in `shared/memory-card-words.js`, checked in `bun test`.
 
 `pages/self/`: the self tab (reworked 2026-09-26 as an experiment). The top is
 two columns: the self page on the left (rendered by `markdown.js`, which escapes
