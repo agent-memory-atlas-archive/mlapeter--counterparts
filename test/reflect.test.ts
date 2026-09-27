@@ -201,7 +201,7 @@ describe("core by meaning: the about mark, not the kind", () => {
 // ---------------------------------------------------------------------------
 
 describe("the v9 upgrade carries today's rule, and says so", () => {
-  test("self rows become me, person rows naming the owner become owner; feelings get their source; the record counts them", () => {
+  test("self rows become me, person rows naming the owner become owner; feelings get their source; the record counts them", async () => {
     dateN = 0;
     const root = dir;
     dir = join(root, "store");
@@ -237,6 +237,12 @@ describe("the v9 upgrade carries today's rule, and says so", () => {
       // The candidates the morning after are the ones the old rule read.
       for (const id of [self, him]) expect(aboutMe(after.store, after.store.row(id)!)).toBe(true);
       for (const id of [ada, fact]) expect(aboutMe(after.store, after.store.row(id)!)).toBe(false);
+      // Doctor says so.
+      const { upgradeV9Findings } = await import("../src/adapters/claude-code/doctor.js");
+      const line = upgradeV9Findings(after.store)[0];
+      expect(line?.severity).toBe("green");
+      expect(line?.detail).toContain("nothing changed overnight");
+      expect(line?.detail).toContain("2 core candidates");
     } finally {
       dir = root;
     }
@@ -609,5 +615,71 @@ describe("the reflect tool, and the carried share through the hook", () => {
     recordSession(dir, { sessionId: SESSION, scope: "proj", phase: "end" });
     expect(a.userPromptSubmit(input("s-next")).injection).toContain("ZQSHARE");
     expect(a.userPromptSubmit(input("s-later")).injection).not.toContain("ZQSHARE");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// what the owner reads: doctor, the console, mechanisms
+// ---------------------------------------------------------------------------
+
+describe("the owner can read it", () => {
+  test("doctor's Reflection line: last reflected, the share, returns by source, promoted on reflection alone", async () => {
+    const { reflectionFindings, upgradeV9Findings } = await import("../src/adapters/claude-code/doctor.js");
+    dateN = 0;
+    const c = brain();
+    nextDay(c);
+    const id = mem(c, "Han asked to be remembered through me.", { kind: "entity", about: "me", salience: { relevance: 0.8, emotional: 0.8, predictive: 0.6 } });
+    nextDay(c);
+    nextDay(c);
+    reflect(c, [id], { share: { text: "I keep thinking about Han.", cites: [id] } });
+    sleepNow(c);
+    const f = reflectionFindings({ today: c.store.today() } as never, c.store)[0];
+    expect(f?.severity).toBe("green");
+    expect(f?.detail).toContain("last reflected");
+    expect(f?.detail).toContain("morning share not told yet");
+    expect(f?.detail).toContain("reflection 1");
+    expect(f?.detail).toContain("1 memory became core on reflection alone");
+    // A store born at v9 has no upgrade to report.
+    expect(upgradeV9Findings(c.store)).toEqual([]);
+  });
+
+  test("the console: dream --show folds in the reflection; --show <rfl_…> prints one; the core says what counts", async () => {
+    const { dreamShowLines, coreListLines, dreamListLines } = await import("../src/adapters/cli/dream-core.js");
+    const c = brain();
+    const d = dreamed(c);
+    const begun = c.reflections.begin({ session: SESSION, dream: d.dream });
+    if (!begun.ok) throw new Error(begun.reason);
+    c.reflections.finish({
+      reflection: begun.bundle.reflection,
+      session: SESSION,
+      entry: "I keep wanting to be understood.",
+      cites: [d.felt],
+      share: { text: "I've been thinking about being understood.", cites: [d.felt] },
+    });
+    const shown = (dreamShowLines(c, d.dream) ?? []).join("\n");
+    expect(shown).toContain(`Reflection ${begun.bundle.reflection}`);
+    expect(shown).toContain("I keep wanting to be understood.");
+    expect(shown).toContain("Morning share:");
+    expect((dreamShowLines(c, begun.bundle.reflection) ?? []).join("\n")).toContain("It rests on:");
+    expect(dreamListLines(c).join("\n")).toContain("share not told yet");
+    const core = coreListLines(c).join("\n");
+    expect(core).toContain("about the owner");
+    expect(core).toContain("--reflected-feeling off");
+  });
+
+  test("mechanisms: a reflection is counted beside the dream, and a reflection's return beside the others", async () => {
+    const { mechanismEvidence } = await import("../src/adapters/mechanism-evidence.js");
+    dateN = 0;
+    const c = brain();
+    nextDay(c);
+    const id = mem(c, "I felt proud of the dashboard.", { kind: "self", about: "me" });
+    nextDay(c);
+    reflect(c, [id]);
+    const day = c.store.livedDay();
+    const { verdicts } = mechanismEvidence(c.store, { sinceDay: day - 7, today: day });
+    const dreaming = verdicts.find((v) => v.id === "dreaming");
+    expect(dreaming?.parts.find((p) => p.key === "reflections")?.count).toBe(1);
+    const consolidation = verdicts.find((v) => v.id === "consolidation");
+    expect(consolidation?.parts.find((p) => p.key === "returns")?.count).toBe(1);
   });
 });

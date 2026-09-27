@@ -2450,6 +2450,102 @@ export function upgradeV8Findings(store: Store): Finding[] {
   ];
 }
 
+/** The meta row the v9 upgrade writes (`store/operational.ts#V9_UPGRADE_KEY`). */
+const V9_UPGRADE_META = "physics.v9.upgrade";
+
+/**
+ * WHAT THE v9 UPGRADE CARRIED (2026-09-27, reflection + core by meaning),
+ * informational. The core's first question moved from a kind label to a mark
+ * set by meaning; the upgrade carried the old rule onto the rows it found, so
+ * the candidates did not change overnight — this line says so, and how many
+ * marks have been set by meaning since. Silent on a store born at v9.
+ */
+export function upgradeV9Findings(store: Store): Finding[] {
+  const upgrade = metaJson(store, V9_UPGRADE_META);
+  if (upgrade === null) return [];
+  const me = metaNum(upgrade["markedMe"]);
+  const owner = metaNum(upgrade["markedOwner"]);
+  const candidates = metaNum(upgrade["candidates"]);
+  let since = 0;
+  let work = 0;
+  try {
+    for (const e of store.coreEvents({ action: "about", limit: 10_000 })) {
+      since += 1;
+      if ((e.reason ?? "").startsWith("work")) work += 1;
+    }
+  } catch {
+    since = 0;
+  }
+  return [
+    finding(
+      "upgrade-v9",
+      "green",
+      "Upgrade",
+      `Upgrade to v9: what a memory is about is now marked by meaning; the old rule was carried so nothing changed overnight — ${String(me)} self ${me === 1 ? "memory" : "memories"} marked about me, ${String(owner)} about the owner (${String(candidates)} core ${candidates === 1 ? "candidate" : "candidates"}); ${String(since)} ${since === 1 ? "mark" : "marks"} set by the writer or a reflection since${work > 0 ? `, ${String(work)} of them "work" (out of the candidates)` : ""}`,
+      "",
+      { markedMe: me, markedOwner: owner, candidates, marksSince: since, work },
+    ),
+  ];
+}
+
+/**
+ * REFLECTION, informational (2026-09-27): when the waking self last
+ * reflected, what it did, what became of the morning share; the week's
+ * returns by source; and how many memories became core on reflection alone.
+ * Never amber: a quiet week is not a fault.
+ */
+export function reflectionFindings(input: DoctorInput, store: Store): Finding[] {
+  let last: ReturnType<Store["reflections"]>[number] | undefined;
+  let returns: ReturnType<Store["returnCounts"]>;
+  let alone = 0;
+  try {
+    last = store.reflections({ limit: 5 }).find((r) => r.state === "reflected");
+    returns = store.returnCounts({ sinceAt: Date.parse(`${input.today}T00:00:00Z`) - 6 * 86_400_000 });
+    for (const row of store.eventLog({ name: "band.promoted" })) {
+      try {
+        if ((JSON.parse(row.payload ?? "{}") as { reflectionOnly?: unknown }).reflectionOnly === true) alone += 1;
+      } catch {
+        continue;
+      }
+    }
+  } catch {
+    return [];
+  }
+  const share: Record<string, string> = {
+    none: "no share",
+    offered: "its morning share not told yet",
+    carried: "its morning share carried to a later session",
+    told: "its morning share told",
+  };
+  const what =
+    last === undefined
+      ? "has not reflected yet"
+      : `last reflected ${last.date ?? `lived day ${String(last.day)}`} (${last.dream_id === null ? "on its own" : "after a dream"}): ${
+          last.entry_id === null ? "nothing much" : "an entry"
+        }${last.page_version === null ? "" : ", the self page rewritten"}, ${share[last.share_state] ?? last.share_state}`;
+  const byHow = `returns this week — awake ${String(returns.awake)}, reflection ${String(returns.reflection)}, dream ${String(returns.dream)}`;
+  const aloneLine = alone > 0 ? `; ${String(alone)} ${alone === 1 ? "memory" : "memories"} became core on reflection alone` : "";
+  return [
+    finding(
+      "reflection",
+      "green",
+      "Reflection",
+      `${what}; ${byHow}${aloneLine}`,
+      "",
+      {
+        last: last?.date ?? null,
+        reflection: last?.id ?? null,
+        page: last?.page_version !== null && last?.page_version !== undefined,
+        share: last?.share_state ?? null,
+        returnsAwake: returns.awake,
+        returnsReflection: returns.reflection,
+        returnsDream: returns.dream,
+        promotedOnReflectionAlone: alone,
+      },
+    ),
+  ];
+}
+
 /**
  * DREAMING, informational (2026-09-26): when the counterpart last dreamed, and
  * whether today's ask went out or was declined. Never amber: not dreaming is
@@ -3222,6 +3318,9 @@ export function doctorFindings(input: DoctorInput): Finding[] {
     ["upgrade-v8", () => upgradeV8Findings(store)],
     // Dreaming (2026-09-26): informational — last dreamed, and today's ask.
     ["dreaming", () => dreamingFindings(input, store)],
+    // v9 (2026-09-27): what the upgrade carried, and the reflection.
+    ["upgrade-v9", () => upgradeV9Findings(store)],
+    ["reflection", () => reflectionFindings(input, store)],
     // LAST, and deliberately: it is the widest read here — the whole event log,
     // plus a pass over the ids for the table probes — so when the console's
     // reading is cut short this is the group that goes, and the `Budget` finding

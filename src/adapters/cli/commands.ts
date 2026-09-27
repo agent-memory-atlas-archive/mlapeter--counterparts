@@ -198,6 +198,7 @@ import { repairDates } from "./repair-dates.js";
 import type { Confidence } from "./repair-dates.js";
 import { NO_PAGE_LINES, bodyFrom, pageLines, versionLines, writeLines } from "./self-page.js";
 import { coreListLines, dreamListLines, dreamShowLines } from "./dream-core.js";
+import { REFLECTED_FEELING_KEY } from "../../core/sleep/index.js";
 // The console's shared manners (2026-09-21): is there a person here, ask them,
 // and say one marked line back.
 import { ask, confirm, isInteractive, isPromptAborted, paint, typed, ui } from "./ui.js";
@@ -717,7 +718,7 @@ export const COMMAND_FLAGS: Record<Command, readonly string[]> = {
   // session does not belong there.
   "self-page": ["write", "file", "stdin", "reason", "versions", "version", "restore", "clear", "if-version"],
   dream: ["list", "show", "undo"],
-  core: ["list", "demote", "reason"],
+  core: ["list", "demote", "reason", "reflected-feeling"],
   // `--config` because the store it opens is the one the CONFIGURATION names —
   // that is the whole point of the command over `counterparts-dashboard serve`,
   // which refuses until you name a store. `--dir` still parses (it is common)
@@ -782,9 +783,9 @@ export const COMMAND_BLURB: Record<Command, string> = {
   "self-page":
     "The written page the wake opens with. With no flags it prints the page, its date and its size; --write --file <path> or --write --stdin replaces it whole, keeping every earlier version; --versions lists those and --version <seq> prints one. Reading works under observer; writing refuses there.",
   dream:
-    "What each dream did, and its undo. With no flags (or --list), the recent dreams: date, state, title and what changed; --show <id> prints one dream's journal and every change it made; --undo <id> reverses that dream's whole batch (merges come apart, links and gists go, replays and nominations are taken back) and keeps its journal, marked undone. Reading works under observer; --undo refuses there.",
+    "What each dream did, and its undo — and what the waking self made of it. With no flags (or --list), the recent dreams: date, state, title and what changed, then the recent reflections; --show <id> prints one dream's journal, every change it made and the reflection after it (--show <rfl_…> prints one reflection: its questions, entry, what it rests on and its morning share); --undo <id> reverses that dream's whole batch (merges come apart, links and gists go, replays and nominations are taken back) and keeps its journal, marked undone — a reflection is lived and stays. Reading works under observer; --undo refuses there.",
   core:
-    "The core — the memories about me and about us that do not fade. With no flags (or --list), what it holds and which lane carried each one there, what dreams have nominated, and what you sent back; --demote <id> --reason \"...\" sends one back to ordinary fading from today, records why, and keeps the lanes from promoting it again. Reading works under observer; --demote refuses there.",
+    "The core — the memories about me, about us and about the owner that do not fade. With no flags (or --list), what it holds and which lane carried each one there, what dreams have nominated, and what you sent back; --demote <id> --reason \"...\" sends one back to ordinary fading from today, records why, and keeps the lanes from promoting it again; --reflected-feeling on|off decides whether a feeling a reflection records later counts toward the fast lane (on by default). Reading works under observer; the two changes refuse there.",
   dashboard:
     "Open the dashboard in your browser: the web view of the store your configuration names, served on 127.0.0.1 and nowhere else. Ctrl-C stops it. Looking is read-only — it strengthens nothing and deposits nothing. What you do there on purpose (write a note, remove a memory, back up, …) runs through these same commands, and a removal asks you to type the id back.",
   version: "The version of Counterparts you have. It opens nothing.",
@@ -809,7 +810,7 @@ const COMMAND_ARGS: Partial<Record<Command, string>> = {
   disconnect: " [claude-code]",
   help: " [advanced | <command>]",
   dream: " [--show <id> | --undo <id>]",
-  core: " [--demote <id> --reason \"...\"]",
+  core: " [--demote <id> --reason \"...\" | --reflected-feeling on|off]",
 };
 
 /**
@@ -1321,6 +1322,9 @@ export function parse(argv: readonly string[]): Parsed {
       // --undo` reuses `start-fresh`'s boolean and takes the id positionally.
       show: { type: "string" },
       demote: { type: "string" },
+      // `core --reflected-feeling on|off` (2026-09-27): a string, so a bare
+      // flag is a refusal rather than a `true` read as a choice.
+      "reflected-feeling": { type: "string" },
       observer: { type: "boolean" },
       help: { type: "boolean" },
       // `scope`'s five. Declared as booleans for the same reason `rebuild` is:
@@ -2067,6 +2071,30 @@ function coreCommand(dir: string, io: Io, parsed: Parsed, observer: boolean, nam
   }
   const demote = parsed.flags["demote"];
   const reason = parsed.flags["reason"];
+  const reflected = parsed.flags["reflected-feeling"];
+  if (reflected !== undefined) {
+    if (reflected !== "on" && reflected !== "off") {
+      io.err("refused: --reflected-feeling takes on or off.");
+      return EXIT.usage;
+    }
+    if (observer) {
+      io.err("refused: this console is an observer; it reads and changes nothing. Nothing was changed.");
+      return EXIT.refused;
+    }
+    const counterpart = openCounterpart(dir, observer);
+    try {
+      counterpart.store.setMeta(REFLECTED_FEELING_KEY, reflected);
+      io.out(
+        reflected === "on"
+          ? "A feeling a reflection records later now counts toward the core's fast lane."
+          : "A feeling a reflection records later no longer counts toward the core's fast lane; only feelings felt at the time do.",
+      );
+      io.out("  It takes effect at the next consolidation. Nothing already in the core moves.");
+      return EXIT.ok;
+    } finally {
+      counterpart.close();
+    }
+  }
   if (reason !== undefined && typeof demote !== "string") {
     io.err("refused: --reason goes with a --demote. Pass one, or leave it out.");
     return EXIT.usage;

@@ -223,7 +223,7 @@ export const MECHANISM_EVIDENCE: readonly MechanismEvidence[] = [
       key: "returns",
       count: (store, sinceDay) => {
         const r = store.returnCounts({ sinceDay });
-        return r.awake + r.dream;
+        return r.awake + r.dream + r.reflection;
       },
       says: ["return that will make a memory fade more slowly", "returns that will make memories fade more slowly"],
     },
@@ -242,6 +242,14 @@ export const MECHANISM_EVIDENCE: readonly MechanismEvidence[] = [
       { key: "dreams", event: "dream.journaled", stands: dreamStands, says: ["dream", "dreams"] },
       { key: "changes", event: "dream.changed", sum: "applied", stands: dreamStands, says: ["change a dream made", "changes dreams made"] },
     ],
+    // v9 (2026-09-27): the waking self after a dream (or on its own) keeps its
+    // own record, the `reflections` table, not the event log — so it is
+    // counted from the store, like the returns under Consolidation.
+    census: {
+      key: "reflections",
+      count: (store, sinceDay) => store.reflections({ limit: 500 }).filter((r) => r.state === "reflected" && r.day >= sinceDay).length,
+      says: ["reflection after a dream", "reflections after dreams"],
+    },
   },
   {
     // PARTLY (audit): it revises only what a writer declared with `updates:`,
