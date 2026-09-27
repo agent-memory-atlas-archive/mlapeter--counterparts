@@ -569,20 +569,28 @@ describe("decisions for the owner (today's behaviour, not changed by the review)
     expect(outcome.page.written).toBe(true);
   });
 
-  test("D4: the owner's removal redacts the reflection's record, but the entry's memory keeps the same words", async () => {
+  test("D4: the owner's removal redacts the entry's memory too — its words and the removed id", async () => {
     const c = brain();
     nextDay(c);
     nextDay(c);
     const felt = mem(c, "I felt proud when Mike said the dashboard finally reads like a person.", { kind: "self", about: "me" });
-    const { bundle, outcome } = reflect(c, [felt], {});
+    const kept = mem(c, "We shipped the dashboard.");
+    const { bundle, outcome } = reflect(c, [felt, kept], {});
     const entry = outcome.entryId as string;
     c.store.appendRemovalRecord({ memoryId: felt, stage: "requested", actor: "owner", reason: "test" });
     c.store.appendRemovalRecord({ memoryId: felt, stage: "dark", actor: "owner", reason: "test" });
     const { chaseRemoved } = await import("../src/core/store/owner-op-seam.js");
     chaseRemoved(c.store, felt);
     expect(c.store.reflection(bundle.reflection)?.entry).toContain("redacted");
-    expect(c.store.row(entry)?.body).toBe("Looking back over the last few days, a few things stand out.");
-    expect(JSON.parse(c.store.row(entry)?.meta ?? "{}").cites).toContain(felt);
+    const row = c.store.row(entry);
+    expect(row?.body).toContain("redacted");
+    expect(row?.title).toBe("Reflected: [redacted]");
+    expect(row?.body).not.toContain("Looking back");
+    const cites = JSON.parse(row?.meta ?? "{}").cites as string[];
+    expect(cites).not.toContain(felt);
+    expect(cites).toContain(kept);
+    // Still a readable memory (the hash matches its words), not a broken row.
+    expect(c.store.read(entry).doc.body).toContain("redacted");
   });
 
   test("D5: reflection alone carries the slow lane in four weeks of weekly citing", () => {

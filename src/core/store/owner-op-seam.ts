@@ -41,6 +41,7 @@
  * machine must still be a week of second thoughts.
  */
 import { StoreError } from "./errors.js";
+import { hashText } from "./prose.js";
 import type { Db } from "./db.js";
 import type { MemoryRow } from "./operational.js";
 import type { RemovalNote, Store } from "./index.js";
@@ -388,9 +389,10 @@ function redactReflections(db: Db, id: string, title: string | null, body: strin
     cites: string;
     share_cites: string;
     entry: string | null;
+    entry_id: string | null;
     share: string | null;
     share_state: string;
-  }>("SELECT id, shown, cites, share_cites, entry, share, share_state FROM reflections");
+  }>("SELECT id, shown, cites, share_cites, entry, entry_id, share, share_state FROM reflections");
   const named = title !== null && title.trim().length >= 8 ? title.trim().toLowerCase() : null;
   let n = 0;
   for (const r of rows) {
@@ -412,9 +414,46 @@ function redactReflections(db: Db, id: string, title: string | null, body: strin
       shareCites.json,
       r.id,
     );
+    // THE ENTRY'S MEMORY TOO (owner ruling D4 on #256, as #251's Q6 does for
+    // dream journals): the "Reflected: …" memory holds the same words the
+    // record did, and names the removed id among its citations. Its words go
+    // (a line saying so, the hash matching it), the id leaves `meta.cites`,
+    // and its earlier versions lose their words. The row stays — the
+    // reflection happened. The removal's cache rebuild then indexes the line.
+    if (r.entry_id !== null && r.entry_id !== id) redactEntryMemory(db, r.entry_id, id);
     n += 1;
   }
   return n;
+}
+
+/** The title a redacted reflection entry's memory carries. */
+const REDACTED_ENTRY_TITLE = "Reflected: [redacted]";
+
+/** Blank one reflection entry's memory: words, the removed id in its citations, its versions' words. */
+function redactEntryMemory(db: Db, entryId: string, removedId: string): void {
+  const row = db.get<{ meta: string; body: string }>("SELECT meta, body FROM memories WHERE id = ?", entryId);
+  if (row === undefined || row.body === "") return;
+  let meta: Record<string, unknown> = {};
+  try {
+    meta = JSON.parse(row.meta) as Record<string, unknown>;
+  } catch {
+    meta = {};
+  }
+  if (Array.isArray(meta["cites"])) meta["cites"] = (meta["cites"] as unknown[]).filter((x) => x !== removedId);
+  db.run(
+    "UPDATE memories SET title = ?, body = ?, content_hash = ?, meta = ? WHERE id = ?",
+    REDACTED_ENTRY_TITLE,
+    REDACTED_REFLECTION,
+    hashText(REDACTED_REFLECTION),
+    JSON.stringify(meta),
+    entryId,
+  );
+  db.run(
+    "UPDATE versions SET title = NULL, body = ?, content_hash = ?, meta = '{}' WHERE memory_id = ?",
+    REDACTED_REFLECTION,
+    hashText(REDACTED_REFLECTION),
+    entryId,
+  );
 }
 
 // ── the repair ──────────────────────────────────────────────────────────────
