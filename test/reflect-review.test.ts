@@ -122,6 +122,102 @@ function dreamWithGist(c: Counterpart): { dream: string; gist: string; felt: str
 }
 
 // ---------------------------------------------------------------------------
+// B1 — dream words into the core through the reflection
+// ---------------------------------------------------------------------------
+
+describe("B1: a dreamed gist cannot be felt later or marked about me by a reflection", () => {
+  test("the reflection's feeling and mark on a gist are refused, so one organic use cannot carry the gist into the core", () => {
+    const c = brain();
+    const d = dreamWithGist(c);
+    const begun = c.reflections.begin({ session: SESSION, dream: d.dream });
+    if (!begun.ok) throw new Error(begun.reason);
+    expect(Object.keys(begun.bundle.memories)).toContain(d.gist);
+    const done = c.reflections.finish({
+      reflection: begun.bundle.reflection,
+      session: SESSION,
+      entry: "The dream's pattern rings true.",
+      cites: [d.felt],
+      feelings: [{ id: d.gist, core: "happy", emotion: "hopeful", strength: 0.9 }],
+      about: [{ id: d.gist, about: "me", why: "it is who I am" }],
+    });
+    if (!done.ok) throw new Error(String(done.reason));
+    expect(done.outcome.feelings[0]).toMatchObject({ id: d.gist, ok: false });
+    expect(done.outcome.about[0]).toMatchObject({ id: d.gist, ok: false });
+    expect(c.store.feelingsFor(d.gist)).toEqual([]);
+    // Marking a gist `work` or `world` — out of the candidates — is still allowed.
+    nextDay(c);
+    const again = c.reflections.begin({ session: SESSION });
+    if (!again.ok) throw new Error(again.reason);
+    // (Not shown on a dreamless night: nothing to mark. The main pass keeps gists out.)
+    expect(Object.keys(again.bundle.memories)).not.toContain(d.gist);
+    c.reflections.finish({ reflection: again.bundle.reflection, session: SESSION, entry: "quiet", cites: [] });
+
+    // One organic use two days after it was written, then sleep: the gist stays out of the core.
+    nextDay(c);
+    nextDay(c);
+    c.store.reinforce(d.gist, c.store.livedDay(), "referenced", { cued: true });
+    const report = sleepNow(c);
+    expect(report.promoted.map((p) => p.id)).not.toContain(d.gist);
+    expect(c.store.row(d.gist)?.promoted_identity).toBe(0);
+  });
+
+  test("a gist may still be marked work (the safer direction)", () => {
+    const c = brain();
+    const d = dreamWithGist(c);
+    const begun = c.reflections.begin({ session: SESSION, dream: d.dream });
+    if (!begun.ok) throw new Error(begun.reason);
+    const done = c.reflections.finish({
+      reflection: begun.bundle.reflection,
+      session: SESSION,
+      entry: "Not about me after all.",
+      cites: [d.felt],
+      about: [{ id: d.gist, about: "work" }],
+    });
+    if (!done.ok) throw new Error(String(done.reason));
+    expect(done.outcome.about[0]).toMatchObject({ id: d.gist, ok: true });
+    expect(c.store.read(d.gist).about).toBe("work");
+  });
+
+  test("a reflection's own entry, nominated by the next dream, is not handed back to a reflection as a memory to mark or feel", () => {
+    const c = brain();
+    nextDay(c);
+    for (let i = 0; i < 3; i += 1) nextDay(c);
+    const felt = mem(c, "I felt proud when Mike trusted me with the release.", {
+      kind: "self",
+      about: "me",
+      salience: { relevance: 0.8, emotional: 0.8, predictive: 0.5 },
+    });
+    for (let i = 0; i < 3; i += 1) mem(c, `A fresh memory about the release, number ${String(i)}.`);
+    const first = reflect(c, [felt]);
+    const entry = first.outcome.entryId as string;
+    expect(c.store.row(entry)?.source).toBe("reflection");
+    nextDay(c);
+    const dream = c.dreams.begin({ session: SESSION });
+    if (!dream.ok) throw new Error(dream.reason);
+    expect(Object.keys(dream.bundle.memories)).toContain(entry);
+    const p = c.dreams.propose({ dream: dream.bundle.dream, session: SESSION, changes: [{ action: "nominate-core", id: entry, why: "it sounds like me" }] });
+    if (!p.ok) throw new Error("propose refused");
+    expect(p.results[0]?.ok).toBe(true);
+    c.dreams.journal({ dream: dream.bundle.dream, session: SESSION, text: "I dreamed of the release." });
+    const begun = c.reflections.begin({ session: SESSION, dream: dream.bundle.dream });
+    if (!begun.ok) throw new Error(begun.reason);
+    expect(Object.keys(begun.bundle.memories)).not.toContain(entry);
+    const done = c.reflections.finish({
+      reflection: begun.bundle.reflection,
+      session: SESSION,
+      entry: "Again.",
+      cites: [felt],
+      feelings: [{ id: entry, core: "happy", emotion: "proud", strength: 0.9 }],
+      about: [{ id: entry, about: "me" }],
+    });
+    if (!done.ok) throw new Error(String(done.reason));
+    expect(done.outcome.feelings[0]?.ok).toBe(false);
+    expect(done.outcome.about[0]?.ok).toBe(false);
+    expect(c.store.read(entry).about).toBe(null);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // S3 — the v9 upgrade carries the old rule onto every row it read
 // ---------------------------------------------------------------------------
 

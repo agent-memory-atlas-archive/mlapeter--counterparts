@@ -225,6 +225,16 @@ export interface ReflectOutcome {
 }
 
 const KINDS_FELT: readonly Kind[] = ["self", "person"];
+
+/**
+ * Why a reflection may not feel, or mark about me, a memory a dream or a
+ * reflection wrote (review of #256, B1) — null when it was lived.
+ */
+function notLivedReason(row: MemoryRow, act: "feel" | "mark"): string | null {
+  if (row.source === "dreamed") return "dreamed-is-a-suggestion";
+  if (row.source === "reflection") return act === "feel" ? "reflection-does-not-feel-itself" : "reflection-does-not-mark-itself";
+  return null;
+}
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export class Reflections {
@@ -372,6 +382,16 @@ export class Reflections {
         feelings.push({ id, ok: false, reason: "not-shown-or-gone" });
         continue;
       }
+      // WHAT A DREAM OR A REFLECTION WROTE IS NOT FELT LATER (review of #256,
+      // B1): a gist starts low on purpose (its salience is capped, a dream's
+      // own feeling-now is capped at its peak), and a later feeling is exactly
+      // what the fast lane reads — one organic use after it would carry dream
+      // words into the core. Feel the memories it was drawn from instead.
+      const notLived = notLivedReason(r, "feel");
+      if (notLived !== null) {
+        feelings.push({ id, ok: false, reason: notLived });
+        continue;
+      }
       const carried = this.words(f.carried_by ?? "", session, 240, true);
       try {
         this.store.addFeelings(
@@ -411,6 +431,15 @@ export class Reflections {
       }
       if (r.kind === "skill" && (CORE_ABOUT_MARKS as readonly string[]).includes(mark)) {
         about.push({ id, ok: false, reason: "skill-is-how-i-work" });
+        continue;
+      }
+      // A dream's gist or a reflection's own entry is not marked about me, us
+      // or the owner here (review of #256, B1): that is the core's first
+      // question, and dream words are suggestions. Marking one `work` or
+      // `world` — out of the candidates — is the safer direction and stays open.
+      const notLived = (CORE_ABOUT_MARKS as readonly string[]).includes(mark) ? notLivedReason(r, "mark") : null;
+      if (notLived !== null) {
+        about.push({ id, ok: false, reason: notLived });
         continue;
       }
       const why = this.words(a.why ?? "", session, 300, true);
@@ -664,6 +693,9 @@ export class Reflections {
       if (denied.has(mid)) return false;
       const row = this.store.row(mid);
       if (row === undefined || !this.showable(row)) return false;
+      // Its own entries come as words (`earlier`), never as a memory — not
+      // even when a dream nominated one or it is on my mind (review of #256, B1).
+      if (row.source === "reflection") return false;
       const item = this.item(row);
       if (item === null) return false;
       memories[mid] = item;
