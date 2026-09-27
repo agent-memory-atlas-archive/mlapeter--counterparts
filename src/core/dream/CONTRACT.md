@@ -160,16 +160,19 @@ dream having run.
     much"** — a normal outcome: the entry stays on the record, and nothing else is
     written or shared.
   - **The page** is rewritten whole through `Self#revisePage` (by `writer`), from what it
-    cites — at least one core memory when there is a core — never from a dreamed gist,
-    and never carrying a gist's own words; the old page is context. The write records
+    cites — at least one core memory when there is a core — never from a dreamed gist
+    or a confidential memory, and never carrying the words of a recent dream's gist or
+    of a confidential memory it was shown (review of #256); the old page is context. The write records
     the night's page-writer run.
   - **The share** — two or three sentences, citing what it rests on — is offered in the
     hand-back; `told` records `told` on the memories it cites; a later session carries
     an untold one once. A memory promoted on reflection alone is named in the next share.
   - **Feelings** are the self's, recorded later (`source: reflection`, `recorded_later`
-    = today), and may be stronger than anything felt at the time (at most 5).
+    = today), and may be stronger than anything felt at the time (at most 5) — on a
+    lived memory only: not on a dream's gist or a reflection's own entry (review of #256).
   - **About marks** (at most 8): `me`, `us`, `owner`, `work`, `world`; a core mark on a
-    `skill` is refused.
+    `skill`, a dream's gist or a reflection's own entry is refused (`work`/`world` stay
+    open on those).
   - Every memory it cites comes back: a reflection return (physics §5.11).
 - Guarantees: **[M]** at most one reflection a lived day; **[M]** it can cite, feel or
   mark only what it was shown; **[M]** nothing under observer; **[M]** a reflection is

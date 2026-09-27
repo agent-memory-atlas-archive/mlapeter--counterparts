@@ -855,7 +855,9 @@ Working defaults, held lightly.
   that is not the core's question: which bundle memories go under the owner's card, and
   whether a flagged contradiction is his to hear.
 - **The promotion record names its returns' sources** (`returnSources`, `reflectionOnly`),
-  read off the memory's `returns` rows when the port has `returnsOf`.
+  read off the memory's `returns` rows when the port has `returnsOf` — and
+  `feelingRecordedLater` (review of #256): it would not have crossed tonight with the
+  door to feelings recorded later closed.
 - **The fast lane's door for feelings recorded later** is a meta row,
   `core.fast.acceptsReflectedFeeling` (`on` / `off`), read once per consolidation
   (`acceptsReflectedFeeling`); absent, the physics tunable decides (open).

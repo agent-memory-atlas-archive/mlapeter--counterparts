@@ -32,15 +32,12 @@ What this module still owes, or asks of others (2026-09-26).
      nights.
    - **`pageWriter.mode: off` does not stop the reflection's page write**: the MCP server
      does not read the host configuration. Consent is per night (the owner said yes to the
-     dream).
+     dream). Owner decision D3 in `docs/adversarial-review-pr256-2026-09-27.md`.
    - **The entry's memory is not redacted** when a memory it cites is removed (the record
-     is); like a dream's gist, it is a memory the owner can remove on its own.
+     is); like a dream's gist, it is a memory the owner can remove on its own. Owner
+     decision D4 in the review of #256.
    - **Not yet watched live** with a real background agent.
    - **`export --markdown` does not carry the `reflections` table** (as §4 for dreams).
-   - **The page's gist check reads this dream's gists only**: a gist from an earlier dream
-     could be reworded onto the page (it still cannot be cited as a source).
-   - **A carried share is claimed read-then-write**, not in one transaction: two prompts
-     racing in the same instant could both carry it. Narrow; not fixed.
    - **The crash-fallback sweep sets no about mark**: a self memory it mints is unmarked,
      so not a core candidate until something awake marks it. A choice, not an oversight —
      the sweep is a reteller.
