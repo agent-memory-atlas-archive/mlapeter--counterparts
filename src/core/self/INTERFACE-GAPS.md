@@ -306,3 +306,7 @@ The wake is composed at the first boundary of a lived day and read from every di
 so "Nearby" cannot prefer what was learned HERE (#238 tried a scope boost that followed
 the boundary's scope, not the reader's, and it was dropped). Choosing per directory at
 wake time would put ranking on the wake path, which is meant to compute nothing. Open.
+
+- **The page writer's `off` mode does not reach the reflection** (2026-09-27): the
+  reflection writes the page from the MCP server, which does not read the host
+  configuration. Named in dream INTERFACE-GAPS §7.

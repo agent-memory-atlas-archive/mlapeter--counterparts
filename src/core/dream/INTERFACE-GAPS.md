@@ -22,3 +22,17 @@ What this module still owes, or asks of others (2026-09-26).
 6. **Dream links are ordinary edges.** If the association work wants them marked (a
    table, a starting weight, a hop rule), `apply`'s `link` and `gist` arms are the two
    writers.
+
+7. **Reflection (2026-09-27) — what it still owes.**
+   - **The owner's reply to a share is not weighed** (the brief's follow-up): `told`
+     records the telling; nothing reads his answer yet.
+   - **No opt-out** for the morning share (on by default; Mike: opt out later if needed).
+   - **A reflection on its own has no trigger**: `reflect launch` exists, but nothing asks
+     for one on a dreamless day. The old SessionStart page writer still covers those
+     nights.
+   - **`pageWriter.mode: off` does not stop the reflection's page write**: the MCP server
+     does not read the host configuration. Consent is per night (the owner said yes to the
+     dream).
+   - **The entry's memory is not redacted** when a memory it cites is removed (the record
+     is); like a dream's gist, it is a memory the owner can remove on its own.
+   - **Not yet watched live** with a real background agent.

@@ -840,3 +840,26 @@ lanes and the v8 upgrade" has the arithmetic and the simulations; this is the ph
 - The upgrade census also counts `v7WouldPromote`: legacy rows the old rules were about
   to make core. They are let go under the new rule and take the durability route (their
   reinforcement days became legacy returns at the migration). Doctor says so, in green.
+
+
+## 2026-09-27 — core by meaning (v9)
+
+Working defaults, held lightly.
+
+- **`aboutMe` reads the mark.** A memory is a core candidate when its `about` is `me`,
+  `us` or `owner` (`store.CORE_ABOUT_MARKS`) and it is not a `skill` (rule A: the craft is
+  "how I work", durable but not core). The signature is unchanged, so every reader — the
+  dashboard's settling view among them — asks the same question; the `owner` argument is
+  no longer read. No prose read: the row carries the column.
+- **The old reading stays under its own name** (`namesOwner`) for what it still answers
+  that is not the core's question: which bundle memories go under the owner's card, and
+  whether a flagged contradiction is his to hear.
+- **The promotion record names its returns' sources** (`returnSources`, `reflectionOnly`),
+  read off the memory's `returns` rows when the port has `returnsOf`.
+- **The fast lane's door for feelings recorded later** is a meta row,
+  `core.fast.acceptsReflectedFeeling` (`on` / `off`), read once per consolidation
+  (`acceptsReflectedFeeling`); absent, the physics tunable decides (open).
+- **What an unmarked `self` row means now.** Nothing: it is not a candidate until the
+  writer or a reflection marks it. The v9 upgrade marked every `self` row it found `me`
+  (and `self` schema rows but the page), so on an upgraded store nothing changed
+  overnight; on a store born at v9, an unmarked self-kind memory reads as a work lesson.

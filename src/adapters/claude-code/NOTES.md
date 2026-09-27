@@ -1621,3 +1621,13 @@ together at a prompt, the update notice waits. Details: `docs/adversarial-review
   transcript as `isMeta`, origin `peer`, "Another Claude session sent a message:", which
   the reader otherwise keeps as `injected`. `test/dream.test.ts` drives that exact shape
   through parse, capture and the sweep: zero rows minted from the dream's words.
+
+
+## 2026-09-27 — an untold morning share is carried on the prompt
+
+`dreamLines` (UserPromptSubmit) now also carries a reflection's share that was never
+told, once, into a later session's context — only when the session that reflected has
+ended (its registry record ended, or quiet past `SESSION_TTL_MS`), so both do not tell
+it. Here and not in the SessionStart wake, whose byte ceiling is what stranded the page
+writer (self NOTES §27). The SessionStart page writer is left as it was: on a night the
+reflection rewrote the page it finds the night claimed and stands down.

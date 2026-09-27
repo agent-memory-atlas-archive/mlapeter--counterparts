@@ -386,3 +386,35 @@ raise intensity (capped at the peak), so a dream cannot open the fast lane.
     awake use. It now stays below.
 - **Awake after a dream the same day (review S1).** The awake return keeps its lane day,
   at the weight its zero gap gives it (0).
+
+
+## 2026-09-27 — reflection returns, and the fast lane's feeling
+
+Working defaults from the owner's conversation of 2026-09-27, held lightly.
+
+- **`ReturnSource` gains `reflection`.** `creditReturn` treats it as an awake return for
+  "already today" (a reflection and an organic use on one lived day are one lane day —
+  whichever comes second is refused `already-returned-today`, harmlessly), weighs it at
+  `REFLECTION_RETURN_WEIGHT` × spacing, and refuses it `reflection-spaced` within
+  `REFLECTION_SPACING_DAYS` of the memory's last reflection return (the store reads that
+  day off the `returns` table; no column).
+- **How reflection returns feed the two lanes (decided):** they satisfy the fast lane's
+  "came back after a gap" (a single one can, with the feeling bar met), and they count
+  toward the slow lane at most once a week per memory — the weekly spacing is the one
+  rule that gives both "the reflection can't cite the same memory every night" and "not
+  through the slow lane in ~10 days". Ten nights of citing one memory give two lane days
+  (tested). Reflection alone could still carry a memory through the slow lane over four
+  weeks of weekly citing; that is left open on purpose — a memory the waking self keeps
+  coming back to every week for a month is the slow lane's own description.
+- **The fast lane and a feeling recorded later.** `MemoryPhysics.feelingPeakLived` is the
+  peak without the feelings a reflection recorded later (`Store.row()` computes both).
+  `promotionEligibility` reads it unless `ctx.acceptsReflectedFeeling` (else the tunable
+  `CORE_FAST_ACCEPTS_REFLECTED_FEELING`) is true. The design review of 2026-09-27 wanted
+  it closed; **the owner opened it** the same day: nearly all sessions are straight work
+  with little typing, so what matters may never come up in the moment, and a memory has
+  to be able to reach the core on reflection alone. So one reflection can raise a
+  memory's feeling and give it its return in one night, and the next consolidation can
+  promote it (tested). The guard is visibility, not a gate: the promotion's record names
+  its returns' sources (`reflectionOnly`), doctor counts "promoted on reflection alone",
+  and the next morning share says "I think X has become part of who I am".
+  `counterparts core --reflected-feeling off` closes it without a release.

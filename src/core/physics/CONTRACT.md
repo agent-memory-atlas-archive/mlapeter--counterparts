@@ -164,11 +164,20 @@ band(m, d) = identity  if promoted(m)                              # explicit cr
   consolidation by a CORE LANE** (rewritten 2026-09-26, owner decisions; working defaults):
 
   ```
-  about me(m) = kind(m) = self, or kind(m) = person and m names the owner   # decided by sleep/
+  about me(m) = about(m) ∈ {me, us, owner}, and kind(m) ≠ skill            # the mark, read by sleep/
   FAST lane   = I(m) ≥ 0.6  and  an awake return ≥ 2 lived days after birth
   SLOW lane   = awake returns on ≥ 5 distinct lived days spanning ≥ 21 lived days
   promote     ⇔ about me(m) ∧ (FAST ∨ SLOW) ∧ not demoted by the owner
   ```
+
+  *(v9, 2026-09-27, working defaults.)* "About me" is a MARK set by meaning — by the
+  writer at `note` / `session_end` or by a reflection (`me`, `us`, `owner`, `work`,
+  `world`) — no longer the kind label; the v9 upgrade carried the old label rule onto the
+  rows it found. An awake return is an organic use OR a reflection that cited the memory
+  (§5.11). The fast lane's `I(m)` reads every feeling, including one a reflection recorded
+  later, while `CORE_FAST_ACCEPTS_REFLECTED_FEELING` is open (the default, the owner's call
+  of 2026-09-27); closed, it reads only feelings felt at the time or written in a
+  session.
 
   Emotion counts toward the core ON PURPOSE, through the fast lane (the `promotionBase`
   stopgap of #244 is retired); repetition counts through the slow lane, and only for
@@ -415,6 +424,18 @@ R(m)            = 1 + RETURN_GAIN × ln(1 + returns(m))              RETURN_GAIN
   do not — and a dream's replay earlier the same lived day does not take the lane day of
   an organic return: the awake return still counts, at the weight its (zero) gap from the
   replay gives it (review of #251).
+- **A REFLECTION's citation is an awake return** (v9, 2026-09-27, working default): source
+  `reflection`, weight `REFLECTION_RETURN_WEIGHT` (1) × spacing, counted toward both lanes
+  beside `awake`. **It is on display by construction** — the reflection is HANDED the core
+  candidates and the most strongly felt memories, and then cites them — **and it counts
+  anyway, on purpose.** Awake returns are rare (14 memories used across 391 turns in the
+  owner's first week), so without it the lanes starve; deliberately revisiting a memory is
+  what rehearsal is; and its guard is spacing, not the display rule: at most once a lived
+  day per memory (a reflection and an organic use on one day are one lane day), and at
+  most once every `REFLECTION_SPACING_DAYS` (7) per memory from reflections — so a
+  reflection cannot cite its way through the slow lane's five days in ~10 (it would take
+  four weeks of weekly citing). This is not the #238 loop come back; do not "fix" it to
+  `on-display`.
 - **The legacy path.** `consolidated` / `+CONS_BONUS` stays exactly as it was for rows
   born before schema v8 and is closed to every row made since. At zero returns, R = 1:
   the upgrade changes no memory's arithmetic.

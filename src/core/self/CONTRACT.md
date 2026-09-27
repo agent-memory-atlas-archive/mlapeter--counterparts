@@ -19,7 +19,14 @@ while here it is a ritual, which is the authorship thesis; (b) identity-band mem
 not decay here, where flashbulb memories do in humans; (c) **transcript-derived
 self-reinforcement is deliberately not copied** — it is the rumination / illusory-truth
 pathway, a documented bug of human cognition rather than architecture (owner ruling
-2026-08-24).
+2026-08-24); (d) **a reflection's citation counts as a memory coming back, and a
+reflection may record a feeling later and mark what a memory is about** (2026-09-27,
+working default). This changes the §2(c)/§3 ruling that lived salience is the only
+identity input — said explicitly, as the owner's choice, not as drift. The reflection is
+an AWAKE, deliberate act by the self, not a transcript sweep, and its guards are
+spacing (once a lived day, once a week per memory), citation (it can only touch what it
+was handed and cites), and visibility (a promotion on reflection alone is recorded,
+counted by doctor, and said in the next morning share).
 
 ## 3. Keeps
 

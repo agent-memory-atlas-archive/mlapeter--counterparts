@@ -1238,3 +1238,18 @@ Measured (`tools/sim/consolidation.ts`, 60 lived days, HINTS_MAX 8, a strong mem
 used every time it is shown, two new facts a day): shown on 34 of 60 days, longest run 8,
 99 distinct memories shown, 0 returns. `test/hints-nearby.test.ts` pins the rotation, the
 recovery, the organic reset, the same-day re-render, and a 60-day loop at the defaults.
+
+
+## 27. The page is rewritten by the reflection (2026-09-27)
+
+The page had been stuck at version 1 since 09-24: the nightly writer's ask rode in the
+SessionStart injection beside the wake and deferred `no-room` every session
+(`adapters/claude-code/hooks.ts`), and as the wake grew it could only get worse. The
+rewrite moved to the reflection after a dream (`core/dream/reflect.ts`): it is handed the
+page as context and the core as the source, cites the memories the page rests on (at
+least one core memory when there is a core), and writes through `revisePage` with
+`by: "writer"` — the author the S2 writer was given, so no new vocabulary. The write
+records the night's page-writer run, which claims the night: the SessionStart writer
+finds it claimed and stands down, and on a night with no reflection it runs as before.
+Left in place because it does no harm and dreamless nights still have it. Craft belongs
+under "## How I work", not the core; the reflection's instructions say so.

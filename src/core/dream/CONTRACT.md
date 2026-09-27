@@ -76,7 +76,9 @@ dreamer is the model (a background agent the session launches), outside this pro
 - Raised as ONE quiet line for the model (the hook's `additionalContext`), at most once
   per CALENDAR day across every session (the `dream_asks` latch). It asks the model to
   ask the owner at a natural moment. A "no" is phase `decline`: snoozed for the day.
-- Never in the host-mode page writer's headless session.
+- Never in the host-mode page writer's headless session. (The reflection that follows a
+  dream is the DREAMER's, in the background agent the session launched — not the page
+  writer's child, and not a phase of the dream: see §5.4.)
 - A contradiction a dream flagged is raised the same way, once, when both memories are
   showable.
 
@@ -88,9 +90,12 @@ dreamer is the model (a background agent the session launches), outside this pro
   nothing is new; otherwise it records the dream and returns the bundle: the self page,
   the wake, journal chapters since the last dream, the owner's names and the memories
   about him, every new memory with its `NEIGHBOURS` nearest older ones (the static
-  embedder's vectors, or the token index), `MIXING` loosely related older ones, and the
-  `LOOKBACK_COUNT` strongest-feeling memories from about a week back. The ids shown are
-  recorded on the dream; nothing else can be changed by it.
+  embedder's vectors, or the token index), `MIXING` loosely related older ones, the
+  `LOOKBACK_COUNT` strongest-feeling memories from about a week back, and WHAT'S ON MY
+  MIND (2026-09-27, `mind.ts`): up to five open things — a memory dated in the next two
+  weeks, a pair a dream flagged that still stands, where the work stands in a directory
+  (a handoff's first line, words only). Not new; the dream may draw on them. The ids
+  shown are recorded on the dream; nothing else can be changed by it.
 - `propose` applies each change on its own, within per-dream `LIMITS`, and records it
   with what undo needs (ids and numbers only):
   `merge` (2–3 near-copies of one kind, not core, into one memory in better words; the
@@ -99,9 +104,14 @@ dreamer is the model (a background agent the session launches), outside this pro
   return at `DREAM_RETURN_WEIGHT`, never a use), `gist` (source `dreamed`, citing and
   linked to its sources, salience capped at `DREAMED_CLAIM_CEILING`), `contradiction`,
   `feeling-now` (the self's feeling today, capped at the memory's peak), `nominate-core`
-  (a memory about me or about us; recorded in `core_events` with the dream's reason).
+  (the dream's SUGGESTION of what a memory is about — since v9 any memory but a `skill`
+  and one something awake already marked `work` or `world`, because a dream cannot set
+  the mark; recorded in `core_events` with the dream's reason).
 - `journal` closes the dream with its entry (kept in `dreams.journal`, never a memory)
-  and returns the hand-back line, which begins with the mark.
+  and returns the hand-back line, which begins with the mark — and tells the dreamer to
+  wake and reflect (§5.4). The launch prompt runs dream → journal → reflect as three
+  steps of two acts; the dreamer's final message is the reflection's hand-back, which
+  opens with the dream's line.
 - Every word a dream writes is redacted of credentials first.
 
 ### 5.3 Guarantees
@@ -125,6 +135,47 @@ dreamer is the model (a background agent the session launches), outside this pro
 5. **[M]** Under observer stance nothing is written and every phase says so.
 6. **[M]** The journal lives in the `dreams` table: no decay, dedup, prune or recall
    touches it.
+
+### 5.4 Reflection — the waking self (2026-09-27, working defaults)
+
+`reflect.ts`, and the `reflect` tool. Dreaming, reflecting and talking are three things:
+a reflection is LIVED, has its own record (`reflections`, with an optional dream id),
+usually follows a dream and can run on its own, so the self page does not depend on a
+dream having run.
+
+- `begin` refuses under observer and when one already finished this lived day; given a
+  dream, it must be this session's and journaled. It HANDS the reflection, rather than
+  letting it search: the dream (journal, gists, nominations — marked as dreamed), the
+  last few days' chapters and memories, its own last few reflections, what's on my mind,
+  the self page, the core, the core candidates, the most strongly felt memories that
+  could be about me (marked or not), and memories that became core on reflection alone
+  since a share last said so — as memories and feelings, **never the lane arithmetic**.
+  Three questions, rotated so consecutive nights share none (the dream question only
+  after a dream).
+- `finish` takes an entry, what it cites, and optionally a page, a share, feelings and
+  about marks, each on its own. Everything it names must be something it was shown and
+  still standing.
+  - **An insight cites real memories.** An entry that cites something becomes a memory,
+    source `reflection`, titled "Reflected: …". **A night that cites nothing is "nothing
+    much"** — a normal outcome: the entry stays on the record, and nothing else is
+    written or shared.
+  - **The page** is rewritten whole through `Self#revisePage` (by `writer`), from what it
+    cites — at least one core memory when there is a core — never from a dreamed gist,
+    and never carrying a gist's own words; the old page is context. The write records
+    the night's page-writer run.
+  - **The share** — two or three sentences, citing what it rests on — is offered in the
+    hand-back; `told` records `told` on the memories it cites; a later session carries
+    an untold one once. A memory promoted on reflection alone is named in the next share.
+  - **Feelings** are the self's, recorded later (`source: reflection`, `recorded_later`
+    = today), and may be stronger than anything felt at the time (at most 5).
+  - **About marks** (at most 8): `me`, `us`, `owner`, `work`, `world`; a core mark on a
+    `skill` is refused.
+  - Every memory it cites comes back: a reflection return (physics §5.11).
+- Guarantees: **[M]** at most one reflection a lived day; **[M]** it can cite, feel or
+  mark only what it was shown; **[M]** nothing under observer; **[M]** a reflection is
+  not undone with its dream (it was lived); **[M]** its hand-back carries the mark, so
+  the share is told in the session's own words, not captured from the tool's; **[M]**
+  the owner's removal redacts a reflection that was shown, cited or quotes the memory.
 
 ## 6. Scars honored
 

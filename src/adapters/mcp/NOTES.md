@@ -718,3 +718,19 @@ writes nothing and returns the prompt `dream/` composes; the in-session model ha
 the Agent tool unchanged. `begin` returns the bundle as JSON behind the dream's mark;
 `journal` returns the hand-back the dreamer must end on. Under observer every phase
 stands down. The schema gate's "every tool refuses" fixture calls `launch`.
+
+
+## 2026-09-27 — `reflect`, the ninth tool; `about` on the two doors
+
+`reflect` has phases `launch`, `begin`, `finish`, `told`, each binding the session as
+`dream` does; under observer every phase stands down, and `launch` writes nothing (the
+schema gate's fixture calls it). `begin` returns the bundle behind the mark and plain
+instructions (`how`); `finish` returns the hand-back the reflecting mind must end on, plus
+what landed and what was refused, each by name. `dream`'s `journal` now answers with
+`next` (reflect, or fall back to the hand-back) and `launch`'s `how` asks for the share to
+be told in the session's own words, then `told`.
+
+`note` and `session_end` entries take `about` (`me`, `us`, `owner`, `work`, `world`),
+set after the memory lands (`about_by = writer`), the way feelings are. An unknown value
+refuses that entry (`about-malformed`); a core mark on a `skill` memory is not stored and
+the answer says why; a memory that did not land takes its mark with it and says so.

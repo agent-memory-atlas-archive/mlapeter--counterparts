@@ -1648,3 +1648,46 @@ is lost and the schema equals a fresh v8's.*
   - The dream row, its date, state and change list stay.
   - The chase reports `operational.dreams` as neutralized when there were any.
   - The seam's exports stay pinned.
+
+
+## 2026-09-27 — schema v9: what a memory is about, feelings recorded later, reflections
+
+Working defaults from the owner's conversation of 2026-09-27 and its design review.
+
+- **Additive, through the copy-first seam.** `memories` gains `about` and `about_by`;
+  `feelings` gains `source` and `recorded_later`; one new table, `reflections`. All through
+  `ADDED_COLUMNS` (and the fresh CREATE), so a fresh open and a migrated one converge.
+  `OBSERVER_READ_FLOOR` rises to 9, as before.
+- **The about mark is a neutral enum**, `me | us | owner | work | world` (`ABOUT_MARKS`),
+  nullable, with who set it (`writer`, `reflection`, `owner`, `upgrade`). Descriptive on
+  purpose, so a writer is not nudged toward "core-eligible"; it is not a topic (a
+  separate axis, later). `setAbout` sets it and records `core_events` action `about`
+  (reason `<mark>: <why>`). A mark travels to a successor (`supersede`, `supersedeInto`)
+  unless the successor has its own, so a revision or a dream's merge does not quietly
+  drop a candidate. `PutInput.about` sets one at birth (tests, the demo seeder).
+- **The upgrade default: carry today's rule** (the design review; "removal is the safer
+  direction"). Every `self` memory is marked `me`, every `person` memory naming the owner
+  `owner`, and `self` schema rows but the page `me` — `about_by = 'upgrade'` — so the core
+  candidates are the same the morning after as the night before. From then on the writer
+  or a reflection marks by meaning, and a reflection may mark one `work`, taking it out.
+  The migration records `physics.v9.upgrade` (`markedMe`, `markedOwner`, `candidates`,
+  the feelings it sourced); doctor prints it. (The first draft marked nothing and
+  counted what the old rule would have said; the review preferred no overnight change.)
+- **Every existing feeling gets a source**: `dream` for the ids a dream's `feeling-now`
+  change lists, `session` for the rest. `addFeelings` takes `source`, `recordedLater` and
+  per-input `provenance` (a merge carries each original's own).
+- **`Store.row()` computes `feeling_peak_lived`** beside `feeling_peak`: the peak without
+  a reflection's later feelings, for the fast lane's door.
+- **Returns gain a source, not a column.** `recomputeReturns` counts lane days from
+  `awake` and `reflection` rows; `reflectReturn` reads the memory's last reflection day
+  off the table; `returnCounts` reports `reflection` and leaves `legacy` out of every
+  count, `memories` included.
+- **`reflections`**: an optional `dream_id` (reflecting is its own act), the questions,
+  what it was shown, the entry and the memory it became (`entry_id`, null on a "nothing
+  much" night), what it cites, the share and its state (`none`, `offered`, `carried`,
+  `told`), the page version it wrote. Ordered by `started_at` then `rowid`, because
+  several can start in one millisecond.
+- **Removal redacts a reflection** that was shown, cited or quotes the memory: its entry
+  and share become a line saying so (an untold share is not told), and the id leaves its
+  lists. The entry's MEMORY (source `reflection`) is an ordinary memory the owner can
+  remove on its own; it is not redacted with it (dream INTERFACE-GAPS §7).
