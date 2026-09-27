@@ -40,6 +40,8 @@ import type { EventRow, ReadOnlyStore } from "../../../core/store/index.js";
 import { num } from "../layout.js";
 import type { DurableEventName } from "../registries.js";
 import { nodeOf } from "./flow.js";
+import { iconOf, laneOf } from "./lanes.js";
+import type { Icon, Lane } from "./lanes.js";
 import type { NodeKey } from "./flow.js";
 import { reveal, revealHere, revealPayload, shortOf } from "./reveal.js";
 
@@ -492,13 +494,10 @@ export const NARRATORS = {
     const pruned = n(t, "pruned") ?? 0;
     const merged = n(t, "merged") ?? 0;
     if (promoted + pruned + merged === 0) {
-      return calm(
-        "My nightly cycle ran end to end and changed nothing worth naming — nothing promoted, nothing let go, nothing merged. This line is here to prove the quiet is real.",
-      );
+      // One short line (2026-09-26): the quiet night is still said, so the quiet is known to be real.
+      return calm("I slept: nothing to promote, let go or merge.");
     }
-    return notable(
-      `My nightly cycle ran: ${promoted} promoted, ${pruned} let go, ${merged} merged.`,
-    );
+    return notable(`I slept: ${promoted} promoted, ${pruned} let go, ${merged} merged.`);
   },
   /**
    * THE WAKE RENDER'S ROW (U9). Neutral by rule: a trim is the budget working,
@@ -643,10 +642,16 @@ export const NARRATORS = {
   "adapter.semantic.lag": (t) => {
     const reason = s(t, "reason");
     const hits = n(t, "hits");
-    if (hits !== null && hits >= 0 && reason === null) {
-      return calm(`I left next turn's semantic cue ready — ${hits} neighbours precomputed.`);
+    // The writer ALWAYS sets `reason`, and "ok" is the normal case — reading
+    // only a missing reason as success painted every healthy turn orange
+    // (2026-09-26). Orange is for the one real failure: an embed that broke.
+    if (reason === null || reason === "ok") {
+      return calm(`I left next turn's semantic cue ready — ${hits ?? 0} neighbours precomputed.`);
     }
-    return amber(`I could not leave next turn's semantic cue: ${reason ?? "no reason recorded"}.`);
+    if (reason === "embedder-off") return calm("No semantic cue for next turn: the embedder is off, by choice.");
+    if (reason === "no-text") return calm("No semantic cue for next turn: the turn had no words to look up.");
+    if (reason === "no-credentials") return calm("No semantic cue for next turn: this embedder needs a key, and none is set.");
+    return amber(`I could not leave next turn's semantic cue: ${reason}.`);
   },
 
   // ── waking ─────────────────────────────────────────────────────────────────
@@ -1053,6 +1058,10 @@ export interface NarratedEvent {
   readonly text: string;
   readonly tone: Tone;
   readonly node: NodeKey | null;
+  /** Which feed it belongs in: home (memory events) or flow (housekeeping). `lanes.ts`. */
+  readonly lane: Lane;
+  /** The small icon a home line carries, or null. `lanes.ts`. */
+  readonly icon: Icon | null;
   /** The stored ref, resolved now — or null when the row named nothing. */
   readonly subject: string | null;
   /** The payload, every id in it resolved. Ids and counts only, never text. */
@@ -1095,6 +1104,8 @@ export function narrate(store: ReadOnlyStore, row: EventRow): NarratedEvent {
     text: line.text,
     tone: line.tone,
     node: nodeOf(row.name),
+    lane: laneOf(row.name, p),
+    icon: iconOf(row.name, p),
     // Resolved BY EVENT NAME — see `REF_KIND`.
     subject: subjectOf(store, row),
     detail: revealPayload(store, p, 40),

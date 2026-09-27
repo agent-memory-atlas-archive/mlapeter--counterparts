@@ -151,6 +151,20 @@ export function memoriesHeld(src: DashboardSource): number {
 }
 
 /**
+ * THE DASHBOARD'S ONE MEMORY COUNT (2026-09-26, an experiment): every live row
+ * but the journal's episodes — memories, and the cards for people and projects
+ * with their beliefs. It is what the memories list's "live" chip counts, and
+ * what the home page and the memories header say.
+ *
+ * NOT the console's `Memories:` (`memoriesHeld` above, memory rows only), which
+ * is also doctor's and the wake preface's; the two differ by the schema rows,
+ * a known gap, left open for now.
+ */
+export function memoriesLive(src: DashboardSource): number {
+  return census(src).length;
+}
+
+/**
  * Every event name's row count, in ONE grouped query (`Store.eventCounts`,
  * INTERFACE-GAPS §5) — where this used to read up to `LOG_CEILING` rows per
  * name and take the length. Exact, not capped. A name absent from the map has

@@ -4,7 +4,7 @@
  * Split out of `web/views.ts`, which re-exports every public name from here;
  * the four rules in that file's header apply to every line below.
  */
-import { band, strength } from "../../../../core/physics/index.js";
+import { TUNABLES as PHYSICS, band, strength } from "../../../../core/physics/index.js";
 import { MARKER_UNSET, isJournal, readMarker } from "../../../../core/sleep/index.js";
 import type { Band, Kind } from "../../../../core/types.js";
 import { NEVER, NONE } from "../../layout.js";
@@ -13,7 +13,8 @@ import type { DashboardSource } from "../../source.js";
 import type { NarratedEvent } from "../narrate.js";
 import { reveal } from "../reveal.js";
 import { activityView } from "./activity.js";
-import { archiveEntry } from "./archive-words.js";
+import { archiveGroup } from "./archive-words.js";
+import { coreCandidates } from "./mind.js";
 import { mechanismsView } from "./mechanisms.js";
 import { lastActive } from "./meta.js";
 import { BAND_GLOSS, chapters, contestedRows, livedDays } from "./rows.js";
@@ -34,43 +35,70 @@ export interface Tile {
 }
 
 
-/** One of the three or four plain counts under the home page's headline. */
+/** One of the four small tiles under the home page's headline. */
 export interface HeroCount {
+  /** Stable name the page keys its link and its `?` by. */
+  readonly key: "memories" | "core" | "chapters" | "replaced";
   readonly label: string;
   readonly value: string;
+  /** A few words under the number, or "" for none. */
   readonly note: string;
   /** True when the value is an absence marker or zero. */
   readonly absent: boolean;
+  /** The core tile: the closest candidate's credited days, of those required. */
+  readonly progress?: { readonly days: number; readonly of: number } | null;
+  /** The replaced tile: the other ways out, each its own small number (zeros left out). */
+  readonly others?: readonly { readonly label: string; readonly count: number }[];
 }
 
 /**
- * The home page's hero, left side: one plain headline line and a few counts in
- * plain words. The other numbers the old tile row carried live where they are
- * about: the lived day in the header and the headline; protected rows, the
- * contested beliefs and the briefing's bytes on the self tab; the last cycle on
- * the health tab.
+ * The home page's hero, left side: one headline line and four small tiles. The
+ * other numbers live where they are about: protected rows, contested beliefs
+ * and the briefing on the self tab; the last cycle on the health tab.
  */
 export interface Hero {
-  /** "Day 30. Holding 121 memories. 6 of 11 mechanisms working." */
+  /** "Day 30 · 145 memories · 8 of 11 built · 6 active this week". */
   readonly headline: string;
   readonly counts: HeroCount[];
   /** Mechanisms that fired in the window, and how many there are. */
   readonly working: number;
   readonly mechanisms: number;
+  /** Mechanisms built at all ("partly" included). */
+  readonly built: number;
+  /** The one memory count (`memoriesLive`). */
+  readonly memories: number;
 }
 
 /**
- * The archived count's caption: the most common reason, in the shared plain
- * words, when there is one the table names — archived rows are mostly cleared
- * handoff notes, revisions and regrown journal memories, not fading.
+ * THE MECHANISM SCORE IN THE HEADLINE — the owner's development view, for now
+ * (2026-09-26): expected to go once all eleven are built. This flag is the one
+ * place to take it out.
  */
-function archivedNote(reasons: readonly (string | null)[]): string {
-  const counts = new Map<string, number>();
-  for (const r of reasons) if (r !== null) counts.set(r, (counts.get(r) ?? 0) + 1);
-  const top = [...counts.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))[0];
-  const entry = top === undefined ? undefined : archiveEntry(top[0]);
-  if (top === undefined || entry === undefined) return "set aside, kept, not deleted";
-  return `${counts.size === 1 ? "all" : "mostly"} ${entry.many}; kept, not deleted`;
+export const SHOW_MECHANISM_SCORE = true;
+
+/** The headline, in short parts joined by a dot. */
+export function heroHeadline(x: { day: number; lived: boolean; memories: number; built: number; working: number; mechanisms: number }): string {
+  const parts = [
+    x.lived ? `Day ${x.day}` : "Nothing lived yet",
+    `${x.memories} ${x.memories === 1 ? "memory" : "memories"}`,
+  ];
+  if (SHOW_MECHANISM_SCORE) parts.push(`${x.built} of ${x.mechanisms} built`, `${x.working} active this week`);
+  return parts.join(" · ");
+}
+
+/** Archived rows by the way they left (`archive-words.ts#archiveGroup`). */
+function archiveGroups(src: DashboardSource): { replaced: number; letGo: number; removed: number; other: number } {
+  const out = { replaced: 0, letGo: 0, removed: 0, other: 0 };
+  for (const id of src.store.list({ archived: true })) {
+    const row = src.store.row(id);
+    if (row === undefined || isJournal(row)) continue;
+    const g = archiveGroup(row.archived_reason, row.superseded_by !== null);
+    if (g === "replaced") out.replaced += 1;
+    else if (g === "let-go") out.letGo += 1;
+    else if (g === "removed") out.removed += 1;
+    else out.other += 1;
+  }
+  return out;
 }
 
 export interface OverviewView {
@@ -186,39 +214,48 @@ export function overviewView(src: DashboardSource, feedLimit = FEED_LIMIT): Over
 
   const mech = mechanismsView(src).mechanisms;
   const working = mech.filter((m) => m.status === "green").length;
+  const built = mech.filter((m) => m.build !== "not").length;
+  // THE ONE COUNT: what the memories list's "live" chip counts.
+  const memories = rows.length;
+  const closest = coreCandidates(src, src.self.page()?.id ?? null).raw[0];
+  const left = archiveGroups(src);
+  const others = [
+    { label: "let go", count: left.letGo },
+    { label: "removed by you", count: left.removed },
+    { label: "set aside", count: left.other },
+  ].filter((o) => o.count > 0);
   const hero: Hero = {
-    headline:
-      (day === 0 && rows.length === 0 ? "Nothing lived yet." : `Day ${day}.`) +
-      ` Holding ${held.length} ${held.length === 1 ? "memory" : "memories"}.` +
-      ` ${working} of ${mech.length} mechanisms working.`,
+    headline: heroHeadline({ day, lived: !(day === 0 && rows.length === 0), memories, built, working, mechanisms: mech.length }),
     counts: [
+      { key: "memories", label: "memories", value: String(memories), note: "", absent: memories === 0 },
       {
-        label: "memories held",
-        value: String(held.length),
-        note: beliefs === 0 ? "live, and able to fade" : `plus ${beliefs} ${beliefs === 1 ? "belief or entity" : "beliefs and entities"}, counted apart`,
-        absent: held.length === 0,
-      },
-      {
-        label: "core memories",
+        key: "core",
+        label: "core",
         value: String(e.identity.length),
-        note: "earned by use on separate days; these do not fade",
+        // An eligible candidate has met both conditions and joins at the next consolidation.
+        note:
+          closest === undefined
+            ? ""
+            : closest.eligible
+              ? "closest: ready to join"
+              : `closest: ${Math.min(closest.days, PHYSICS.N_PROMOTION_DAYS)} of ${PHYSICS.N_PROMOTION_DAYS} days`,
         absent: e.identity.length === 0,
+        progress: closest === undefined ? null : { days: Math.min(closest.days, PHYSICS.N_PROMOTION_DAYS), of: PHYSICS.N_PROMOTION_DAYS },
       },
+      { key: "chapters", label: "chapters", value: String(journalCount), note: "", absent: journalCount === 0 },
       {
-        label: "chapters written",
-        value: String(journalCount),
-        note: "the journal, in the first person",
-        absent: journalCount === 0,
-      },
-      {
-        label: "archived",
-        value: String(archived.length),
-        note: archivedNote(archived.map((r) => r.archived)),
-        absent: archived.length === 0,
+        key: "replaced",
+        label: "replaced",
+        value: String(left.replaced),
+        note: others.map((o) => `${o.count} ${o.label}`).join(" · "),
+        absent: left.replaced === 0,
+        others,
       },
     ],
     working,
     mechanisms: mech.length,
+    built,
+    memories,
   };
 
   return {
@@ -237,7 +274,7 @@ export function overviewView(src: DashboardSource, feedLimit = FEED_LIMIT): Over
     }),
     bandNote:
       "Memories start episodic and climb only by being used on separate days. Most fade where they started — that is the design, not a shortfall.",
-    feed: activityView(src, { limit: feedLimit }).events,
+    feed: activityView(src, { limit: feedLimit, lane: "home" }).events,
     identity: e.identity.slice(0, 12).map((el) => {
       const r = reveal(store, el.id, 90);
       return {

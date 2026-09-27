@@ -1,6 +1,7 @@
 /* The mechanism panel, under the hero — the site's Explorer, with this store in
    it. Eleven pills in the site's four families, each with its light (from
-   `/api/mechanisms`) and, where the site marks it so, an "in dev" tag. Picking
+   `/api/mechanisms`: fired lately, waiting, quiet, not built) and, when only
+   some of it is built, a "partly built" tag (the view's `build`). Picking
    one (here, or on the brain) shows it INLINE: what it is, what the store says
    it did, a small picture of this store's own data where one exists
    (`mechanisms/<id>/panel.js`, fed by `/api/mechanism?id=`), what is built and
@@ -15,12 +16,23 @@ import { $, esc } from "../../../shared/dom.js";
 import "../../../shared/memory-modal.js"; // window.openMemory, for the pictures' rows
 import { renderFeed } from "../../../shared/widgets/feed.js";
 import { LIGHT_WORD, light } from "../../../shared/widgets/light.js";
+import { q, wireTips } from "../../../shared/widgets/tips.js";
+
+const LEGEND =
+  "A green light fired in the last 7 lived days. A ring is waiting: its next run is ahead, or it has nothing to act on yet. " +
+  "Amber is built but quiet. Grey is not built yet. \"Partly built\" means some of it works and some is still to come.";
 
 export const markup = `
     <section class="home-panel" id="mech-panel" aria-labelledby="mech-title">
-      <div class="mechs" id="mech-strip" role="group" aria-label="Memory mechanisms, by stage"></div>
+      <div class="mech-top">
+        <div class="mechs" id="mech-strip" role="group" aria-label="Memory mechanisms, by stage"></div>
+        <span class="mech-legend">${q("home-lights", LEGEND)}</span>
+      </div>
       <div class="mech-body" id="mech-body"></div>
     </section>`;
+
+/** Wire the legend's `?` once the markup is in the page. */
+export function mount() { wireTips($("mech-panel")); }
 
 const ORDER = MECHANISMS.map((m) => m.id);
 const byIdStatic = Object.fromEntries(MECHANISMS.map((m) => [m.id, m]));
@@ -34,7 +46,9 @@ let selected = null;
 let panelData = {}; // id → the /api/mechanism payload last read
 let asked = 0;
 
-const lightOf = (id) => lights[id] || { status: "grey", evidence: "", events: [] };
+const lightOf = (id) => lights[id] || { status: "grey", build: "not", evidence: "", events: [] };
+/** A pill's tag: only the partly built say so. Built needs no tag; grey is not built. */
+const tagOf = (id) => lightOf(id).build === "partly" ? '<span class="mech-tag">partly built</span>' : "";
 
 /** Hand the explorer the brain it drives (and that drives it). */
 export function attachBrain(b) {
@@ -64,9 +78,10 @@ function paintStrip() {
       '<span class="mech-fam">' + esc(f.label) + "</span>" +
       '<div class="mech-row">' +
         MECHANISMS.filter((m) => m.family === f.key).map((m) =>
-          '<button type="button" class="mech-pill' + (m.id === selected ? " is-on" : "") + '" data-id="' + esc(m.id) + '"' +
+          '<button type="button" class="mech-pill' + (m.id === selected ? " is-on" : "") +
+            (lightOf(m.id).build === "not" ? " is-notbuilt" : "") + '" data-id="' + esc(m.id) + '"' +
             ' aria-pressed="' + (m.id === selected ? "true" : "false") + '" title="' + esc(m.name) + '">' +
-            light(lightOf(m.id).status) + esc(m.short) + (m.inDev ? '<span class="mech-tag">in dev</span>' : "") + "</button>"
+            light(lightOf(m.id).status) + esc(m.short) + tagOf(m.id) + "</button>"
         ).join("") +
       "</div></div>"
   ).join("");
@@ -100,7 +115,7 @@ function paintBody() {
   $("mech-body").innerHTML =
     '<div class="mech-grid">' +
       '<div class="mech-text">' +
-        '<p class="mech-eyebrow">' + esc(m.name) + (m.inDev ? ' <span class="mech-dev">in development</span>' : "") + "</p>" +
+        '<p class="mech-eyebrow">' + esc(m.name) + (l.build === "partly" ? ' <span class="mech-dev">partly built</span>' : "") + "</p>" +
         '<h2 class="mech-title" id="mech-title">' + esc(m.tagline) + "</h2>" +
         '<p class="mech-explainer">' + esc(m.explainer) + "</p>" +
         '<p class="mech-evidence">' + light(l.status) + " <b>" + esc(LIGHT_WORD[l.status] || "") + "</b> — " + esc(l.evidence) + "</p>" +
@@ -164,7 +179,7 @@ function paint(view) {
   for (const r of REGIONS) {
     levels[r.key] = Math.max(0, ...r.mechanisms.map((id) => {
       const s = lightOf(id).status;
-      return s === "green" ? 1 : s === "amber" ? 0.25 : 0;
+      return s === "green" ? 1 : s === "waiting" ? 0.45 : s === "amber" ? 0.25 : 0;
     }));
   }
   brain.levels(levels);

@@ -514,6 +514,53 @@ const LOG_LIMIT = 2_000;
 
 type Shaped = MindView["identity"][number];
 
+/** One memory on its way to the core, in physics' own terms. */
+export interface CoreCandidate {
+  readonly id: string;
+  readonly kind: Kind;
+  readonly base: number;
+  readonly consolidated: boolean;
+  /** Credited use on this many distinct lived days, of `N_PROMOTION_DAYS`. */
+  readonly days: number;
+  readonly eligible: boolean;
+}
+
+/**
+ * The memories that can still reach the core, closest first, and how many never
+ * can (see `settlingView`). Shared with the home page's core tile, so "closest:
+ * 1 of 3 days" there is the head of the list the self tab draws.
+ */
+export function coreCandidates(src: DashboardSource, pageId: string | null): { raw: CoreCandidate[]; outOfReach: number } {
+  const store = src.store;
+  const raw: CoreCandidate[] = [];
+  let outOfReach = 0;
+  for (const id of store.list({ archived: false })) {
+    const row = store.row(id);
+    if (row === undefined || isJournal(row) || row.type === "schema" || id === pageId) continue;
+    let p;
+    try {
+      p = store.physicsOf(id);
+    } catch {
+      continue;
+    }
+    const v = promotionEligibility(p);
+    if (v.blockedBy.includes("already-identity")) continue;
+    const k = kindPhysics(p.kind);
+    const best = Math.max(k.wSal * salArm(p), k.wRep * PHYSICS.REP_CAP) + PHYSICS.CONS_BONUS;
+    if (best < v.threshold) {
+      outOfReach += 1;
+      continue;
+    }
+    raw.push({ id, kind: p.kind, base: v.base, consolidated: p.consolidated, days: v.reinforcedDays, eligible: v.eligible });
+  }
+  // Closest first: how much of each condition is met, both halves weighted
+  // alike; ties by days, then by what it has earned.
+  const closeness = (r: CoreCandidate): number =>
+    Math.min(1, r.base / PHYSICS.THETA_ID) + Math.min(1, r.days / PHYSICS.N_PROMOTION_DAYS);
+  raw.sort((a, b) => closeness(b) - closeness(a) || b.days - a.days || b.base - a.base || (a.id < b.id ? -1 : 1));
+  return { raw, outOfReach };
+}
+
 /**
  * The core as it stands, and — the part a young store needs — what is on its way.
  *
@@ -540,32 +587,7 @@ function settlingView(
   },
 ): SettlingView {
   const store = src.store;
-  const raw: { id: string; kind: Kind; base: number; consolidated: boolean; days: number; eligible: boolean }[] = [];
-  let outOfReach = 0;
-  for (const id of store.list({ archived: false })) {
-    const row = store.row(id);
-    if (row === undefined || isJournal(row) || row.type === "schema" || id === x.pageId) continue;
-    let p;
-    try {
-      p = store.physicsOf(id);
-    } catch {
-      continue;
-    }
-    const v = promotionEligibility(p);
-    if (v.blockedBy.includes("already-identity")) continue;
-    const k = kindPhysics(p.kind);
-    const best = Math.max(k.wSal * salArm(p), k.wRep * PHYSICS.REP_CAP) + PHYSICS.CONS_BONUS;
-    if (best < v.threshold) {
-      outOfReach += 1;
-      continue;
-    }
-    raw.push({ id, kind: p.kind, base: v.base, consolidated: p.consolidated, days: v.reinforcedDays, eligible: v.eligible });
-  }
-  // Closest first: how much of each condition is met, both halves weighted
-  // alike; ties by days, then by what it has earned.
-  const closeness = (r: (typeof raw)[number]): number =>
-    Math.min(1, r.base / PHYSICS.THETA_ID) + Math.min(1, r.days / PHYSICS.N_PROMOTION_DAYS);
-  raw.sort((a, b) => closeness(b) - closeness(a) || b.days - a.days || b.base - a.base || (a.id < b.id ? -1 : 1));
+  const { raw, outOfReach } = coreCandidates(src, x.pageId);
   const candidates: Candidate[] = raw.slice(0, CANDIDATE_LIMIT).map((r) => {
     const t = reveal(store, r.id, 110);
     return {

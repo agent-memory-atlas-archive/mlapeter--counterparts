@@ -13,24 +13,32 @@ import { MERGE_ARCHIVE_REASON, PRUNE_ARCHIVE_REASON } from "../../../../core/sle
  *  store's WRITE seam and this directory imports no write seam. */
 export const REMOVED_BY_OWNER = "removed-by-owner";
 
+/**
+ * What kind of leaving it was, for the home page's "replaced" tile (2026-09-26,
+ * an experiment): an older reading REPLACED by a newer one (nothing forgotten),
+ * a memory LET GO because it faded, or one REMOVED by the owner.
+ */
+export type ArchiveGroup = "replaced" | "let-go" | "removed";
+
 export interface ArchiveReasonWords {
   readonly reason: string;
   readonly many: string;
   readonly one: string;
+  readonly group: ArchiveGroup;
 }
 
 /** EVERY `archived_reason` the code writes, in the order the health bar draws them. */
 export const ARCHIVE_WORDS: readonly ArchiveReasonWords[] = [
-  { reason: "handoff-cleared", many: "old handoff notes cleared", one: "old handoff note cleared" },
-  { reason: "handoff-duplicate", many: "duplicate handoff notes retired", one: "a repeated handoff note, cleared" },
-  { reason: SCHEMA_TUNABLES.REVISED_REASON, many: "revised", one: "revised — a newer version replaced it" },
-  { reason: SCHEMA_TUNABLES.REPLACED_REASON, many: "replaced by a correction", one: "replaced by a correction" },
-  { reason: "supersede", many: "replaced by a newer version", one: "replaced by a newer version" },
-  { reason: "episode-regrown", many: "rebuilt from the journal", one: "regrown from its episode — a newer reading replaced it" },
-  { reason: SCHEMA_TUNABLES.FADE_REASON, many: "faded from use", one: "faded away — nothing mentions it any more" },
-  { reason: PRUNE_ARCHIVE_REASON, many: "let go at the floor", one: "let go at the floor — too weak for too long" },
-  { reason: MERGE_ARCHIVE_REASON, many: "merged duplicates", one: "merged into a near-duplicate" },
-  { reason: REMOVED_BY_OWNER, many: "removed by you", one: "removed by you" },
+  { reason: "handoff-cleared", many: "old handoff notes cleared", one: "old handoff note cleared", group: "replaced" },
+  { reason: "handoff-duplicate", many: "duplicate handoff notes retired", one: "a repeated handoff note, cleared", group: "replaced" },
+  { reason: SCHEMA_TUNABLES.REVISED_REASON, many: "revised", one: "revised — a newer version replaced it", group: "replaced" },
+  { reason: SCHEMA_TUNABLES.REPLACED_REASON, many: "replaced by a correction", one: "replaced by a correction", group: "replaced" },
+  { reason: "supersede", many: "replaced by a newer version", one: "replaced by a newer version", group: "replaced" },
+  { reason: "episode-regrown", many: "rebuilt from the journal", one: "regrown from its episode — a newer reading replaced it", group: "replaced" },
+  { reason: SCHEMA_TUNABLES.FADE_REASON, many: "faded from use", one: "faded away — nothing mentions it any more", group: "let-go" },
+  { reason: PRUNE_ARCHIVE_REASON, many: "let go at the floor", one: "let go at the floor — too weak for too long", group: "let-go" },
+  { reason: MERGE_ARCHIVE_REASON, many: "merged duplicates", one: "merged into a near-duplicate", group: "replaced" },
+  { reason: REMOVED_BY_OWNER, many: "removed by you", one: "removed by you", group: "removed" },
 ];
 
 /** `[reason, many]` pairs, in the bar's order. */
@@ -54,4 +62,13 @@ export function archiveWords(reason: string | null, superseded: boolean): string
   if (entry !== undefined) return entry.one;
   if (superseded) return "revised — a newer version replaced it";
   return unmappedArchiveWords(reason);
+}
+
+/** Which group an archived row falls in. A reason nobody mapped counts as
+ *  replaced only when a newer version superseded it; otherwise it stays apart
+ *  (`null`), so the tile never files it under a word it has not earned. */
+export function archiveGroup(reason: string | null, superseded = false): ArchiveGroup | null {
+  const entry = archiveEntry(reason);
+  if (entry !== undefined) return entry.group;
+  return superseded ? "replaced" : null;
 }

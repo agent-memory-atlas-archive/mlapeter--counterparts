@@ -1,0 +1,415 @@
+/**
+ * Did a memory mechanism fire, and which rows say so — the ONE judgement the
+ * dashboard's lights (`dashboard/web/views/mechanisms.ts`) and the console's
+ * short view (`cli/mechanisms.ts`) both call.
+ *
+ * **Why it exists** (2026-09-26, an experiment). The two surfaces kept their
+ * own rules and disagreed on five of the eleven: the console called a bare
+ * sleep-cycle row consolidation AND forgetting, counted a deposit row that
+ * accepted nothing as salience, and a flush that wrote no link as association.
+ * Now the rules are here, once. Each surface keeps its own table of WORDS and
+ * its own window (lived days on the dashboard, calendar days in the console),
+ * and both hand the window in.
+ *
+ * **Where it sits.** Beside `fired.ts`, for the reason that file gives: two
+ * adapters need it and adapters never import each other. It imports
+ * `dashboard/registries.ts` for the same reason `fired.ts` does — a registry,
+ * not a view — and nothing else of the dashboard's, so the console loads no
+ * dashboard code.
+ *
+ * **Built / partly / not** is `build` below, one table: the pills' tags and the
+ * home page's "N of 11 built" read it. The calls are from
+ * `docs/research/mechanism-audit-2026-09-24.md` plus what shipped since (emotion
+ * part A, prospective reminders, the entity-card fade). A working default,
+ * revisable.
+ *
+ * Read-only: `eventLog`, two counts and one meta read. No row text.
+ */
+import { cadenceFor, readMarker, MARKER_UNSET } from "../core/sleep/index.js";
+import type { Phase } from "../core/sleep/index.js";
+import type { EventRow, ReadOnlyStore } from "../core/store/index.js";
+import type { DurableEventName } from "./dashboard/registries.js";
+
+/** How many backing event seqs a verdict keeps. */
+export const RECENT_IDS = 3;
+/** Ceiling on one name's read inside a window — reported, never silent. */
+const WINDOW_CEILING = 50_000;
+/** How far back "last fired" looks, per event name, newest first. */
+const LOOKBACK = 500;
+
+export type Family = "encoding" | "storage" | "retrieval" | "transformation";
+export const FAMILIES: readonly Family[] = ["encoding", "storage", "retrieval", "transformation"];
+
+/** How much of a mechanism is built. Grey with no tag, a "partly built" tag, no tag. */
+export type Build = "built" | "partly" | "not";
+
+export type Payload = Record<string, unknown>;
+
+/** One kind of row that proves a mechanism fired. */
+export interface Proof {
+  /** A name the surfaces can ask for this proof's count by. */
+  readonly key: string;
+  readonly event: DurableEventName;
+  /** The dashboard's words for a unit of it — [one, many]. */
+  readonly says: readonly [string, string];
+  /** Sum this numeric payload field instead of counting rows; a row whose field
+   *  is not a number above zero does not count at all (`fired.ts`'s `positive`
+   *  rule: a row that lands whether or not the mechanism acted is not a firing). */
+  readonly sum?: string;
+  /** Only rows this accepts count. */
+  readonly where?: (p: Payload) => boolean;
+}
+
+export interface MechanismEvidence {
+  readonly id: string;
+  readonly family: Family;
+  readonly build: Build;
+  /** Empty when not built. */
+  readonly proofs: readonly Proof[];
+  /**
+   * A mechanism whose firing is ARITHMETIC ON A ROW rather than an event (the
+   * emotion lift): rows it acted on born inside the window, counted from the
+   * store. Backs no event seq.
+   */
+  readonly census?: {
+    readonly key: string;
+    readonly count: (store: ReadOnlyStore, sinceDay: number) => number;
+    readonly says: readonly [string, string];
+  };
+  /** For a mechanism that is not built: the one plain line shown instead. */
+  readonly grey?: string;
+  /**
+   * WHAT THE MECHANISM IS HOLDING, when that decides whether it can fire at all
+   * (prospective: dated memories). Zero, with nothing fired, means there is
+   * truly nothing for it to do.
+   */
+  readonly held?: {
+    readonly count: (store: ReadOnlyStore) => number;
+    readonly says: readonly [string, string];
+    readonly none: string;
+  };
+  /** Also count how many firings landed TODAY (the window's `today`). */
+  readonly today?: boolean;
+  /**
+   * The sleep phase it runs in, when it runs on a SCHEDULE rather than every
+   * day (consolidation: every `CADENCE.consolidate` lived days). A quiet week
+   * of a phase that ran on time is "next run in N days", not "quiet".
+   */
+  readonly schedule?: Phase;
+}
+
+const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+
+// ── THE TABLE ───────────────────────────────────────────────────────────────
+// One row per mechanism, in the site's order. What counts as it firing, in the
+// rows the store already keeps; and how much of it is built.
+export const MECHANISM_EVIDENCE: readonly MechanismEvidence[] = [
+  // ── Encoding ──
+  {
+    // Salience writes no row of its own: the score is columns on the memory.
+    // Every memory is scored at the gate, so the gate's ACCEPTED count is it.
+    id: "salience",
+    family: "encoding",
+    build: "built",
+    proofs: [
+      { key: "deposit", event: "gate.deposit", sum: "accepted", says: ["memory scored as it was written", "memories scored as they were written"] },
+      { key: "chunk", event: "gate.chunk", sum: "accepted", says: ["memory scored from a crash write-up", "memories scored from a crash write-up"] },
+    ],
+  },
+  {
+    // PARTLY: emotion part A (2026-09-26) weighs recorded feelings — the lift
+    // and the slower fade are arithmetic on the row (the census), the mood
+    // match is a count on the turn's row. Nothing reads feeling from words yet.
+    id: "emotional",
+    family: "encoding",
+    build: "partly",
+    proofs: [
+      { key: "moodMatched", event: "recall.decision", sum: "moodMatched", says: ["memory a matching mood brought closer", "memories a matching mood brought closer"] },
+    ],
+    census: {
+      key: "weighted",
+      count: (store, sinceDay) => store.emotionCensus({ sinceDay }).weighted,
+      says: ["new memory held higher and fading slower for the feeling it carries", "new memories held higher and fading slower for the feeling they carry"],
+    },
+  },
+  // ── Storage ──
+  {
+    id: "decay",
+    family: "storage",
+    build: "built",
+    proofs: [
+      // The decay site also records the CROSSING into identity (direction up),
+      // which is not a fade; only a move down counts.
+      { key: "faded", event: "band.transition", where: (p) => p["site"] === "decay" && p["direction"] !== "up", says: ["memory faded a band", "memories faded a band"] },
+      { key: "pruned", event: "memory.pruned", says: ["memory archived at the floor", "memories archived at the floor"] },
+      // The entity-card fade has no row of its own; it is a count on the cycle row.
+      { key: "cards", event: "sleep.cycle", sum: "faded", says: ["unused card faded", "unused cards faded"] },
+    ],
+  },
+  {
+    // Only byte-identical bodies merge (consolidation's); near-duplicates are
+    // left alone on purpose. Nothing competes.
+    id: "interference",
+    family: "storage",
+    build: "not",
+    proofs: [],
+    grey: "In development: similar memories do not compete yet.",
+  },
+  // ── Retrieval ──
+  {
+    id: "retrieval",
+    family: "retrieval",
+    build: "built",
+    proofs: [
+      {
+        key: "turns",
+        event: "recall.decision",
+        where: (p) => num(p["surfacedCount"]) + num(p["footnoteCount"]) > 0,
+        says: ["turn brought memories to mind", "turns brought memories to mind"],
+      },
+      { key: "lookups", event: "mcp.recall", says: ["deliberate look-up", "deliberate look-ups"] },
+      { key: "credited", event: "recall.credit", sum: "credited", says: ["memory strengthened by being used", "memories strengthened by being used"] },
+    ],
+  },
+  {
+    // PARTLY (audit: built but starved): links form only between memories used
+    // in the same turn, and a hop only lifts what the turn already reached.
+    id: "association",
+    family: "retrieval",
+    build: "partly",
+    proofs: [{ key: "links", event: "associate.flush", sum: "rows", says: ["link written", "links written"] }],
+  },
+  {
+    // Built end to end since 2026-09-26 (#243, #247): a date on a note or a
+    // session's memories; quiet ones come back as footnotes, plain ones are said.
+    id: "prospective",
+    family: "retrieval",
+    build: "built",
+    proofs: [
+      { key: "plain", event: "prospective.plain", says: ["reminder said plainly", "reminders said plainly"] },
+      { key: "quiet", event: "prospective.fire", says: ["reminder came back as a quiet footnote", "reminders came back as quiet footnotes"] },
+    ],
+    held: {
+      count: (store) => store.datedMemories("0001-01-01", "9999-12-31").length,
+      says: ["dated memory held", "dated memories held"],
+      none: "Nothing dated yet: a note or a memory given a date comes back around that day.",
+    },
+    today: true,
+  },
+  // ── Transformation ──
+  {
+    // PARTLY (audit: built, narrow): fresh → settled climbs and promotion to
+    // core run, but only exact duplicates merge. It runs every three lived
+    // days; the cycle row itself is not a proof (it lands every night).
+    id: "consolidation",
+    family: "transformation",
+    build: "partly",
+    proofs: [
+      { key: "promoted", event: "band.promoted", says: ["memory became core", "memories became core"] },
+      { key: "merged", event: "memory.merged", says: ["exact duplicate merged", "exact duplicates merged"] },
+      { key: "rose", event: "band.transition", where: (p) => p["site"] === "consolidate", says: ["memory rose a band", "memories rose a band"] },
+    ],
+    schedule: "consolidate",
+  },
+  {
+    // PARTLY (audit): it revises only what a writer declared with `updates:`,
+    // for beliefs and identity lines, under pressure over several days.
+    id: "reconsolidation",
+    family: "transformation",
+    build: "partly",
+    proofs: [{ key: "pressure", event: "revision.pressure", says: ["correction weighed against an old memory", "corrections weighed against old memories"] }],
+  },
+  {
+    id: "episodic-semantic",
+    family: "transformation",
+    build: "not",
+    proofs: [],
+    grey: "In development: sessions do not turn into general knowledge yet.",
+  },
+  {
+    // Entity cards exist (and fade, under Forgetting), but beliefs about them
+    // have no live producer (`addBelief` is called only by the demo seeder),
+    // and a card's birth leaves no durable row. Not built, for the light.
+    id: "schema",
+    family: "transformation",
+    build: "not",
+    proofs: [],
+    grey: "In development: beliefs about people and projects are not formed yet.",
+  },
+];
+
+/** The window a surface judges over. */
+export interface EvidenceWindow {
+  /** The lowest lived day a row may carry — the SQL bound, and the census's. */
+  readonly sinceDay: number;
+  /** The lived day that counts as today. */
+  readonly today: number;
+  /** Whether a row falls inside the window. Default: `row.day >= sinceDay`. */
+  readonly contains?: (row: EventRow) => boolean;
+}
+
+export interface EvidencePart {
+  readonly key: string;
+  readonly count: number;
+  readonly says: readonly [string, string];
+}
+
+/** A scheduled mechanism's clock: when its phase last ran, and when it runs next. */
+export interface Schedule {
+  readonly phase: Phase;
+  readonly cadence: number;
+  /** The lived day its phase last completed, or null when it never has. */
+  readonly lastRanDay: number | null;
+  /** Lived days until it is due again; 0 = due at the next session's end. */
+  readonly nextInDays: number;
+  /** True while the phase is on time: it ran within one cadence of today. */
+  readonly onTime: boolean;
+}
+
+export interface Verdict {
+  readonly id: string;
+  readonly family: Family;
+  readonly build: Build;
+  /** Some proof counted above zero inside the window. */
+  readonly fired: boolean;
+  /** Every proof's count inside the window (zeros included), census last. */
+  readonly parts: readonly EvidencePart[];
+  /** The newest backing event seqs, newest first (at most RECENT_IDS). */
+  readonly events: readonly number[];
+  /** Of the window's firings, how many landed today (only when asked for). */
+  readonly today: number | null;
+  /** What it holds, when the row declares it; null when unasked or unreadable. */
+  readonly held: number | null;
+  /** When it did not fire in the window: the newest lived day it ever did. */
+  readonly lastFiredDay: number | null;
+  readonly schedule: Schedule | null;
+}
+
+export function payloadOf(row: EventRow): Payload {
+  if (row.payload === null) return {};
+  try {
+    const v: unknown = JSON.parse(row.payload);
+    return v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Payload) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** The amount this row contributes, or 0 when it does not count. */
+export function amount(proof: Proof, p: Payload): number {
+  if (proof.where !== undefined && !proof.where(p)) return 0;
+  if (proof.sum === undefined) return 1;
+  const v = num(p[proof.sum]);
+  return v > 0 ? v : 0;
+}
+
+function scheduleOf(store: ReadOnlyStore, phase: Phase, today: number): Schedule {
+  const cadence = cadenceFor(phase);
+  let lastRanDay: number | null = null;
+  try {
+    const m = readMarker(store, phase);
+    if (m.health === "ok" && m.day !== MARKER_UNSET) lastRanDay = m.day;
+  } catch {
+    lastRanDay = null;
+  }
+  if (lastRanDay === null) return { phase, cadence, lastRanDay, nextInDays: 0, onTime: false };
+  const nextInDays = Math.max(0, lastRanDay + cadence - today);
+  return { phase, cadence, lastRanDay, nextInDays, onTime: today - lastRanDay <= cadence };
+}
+
+/**
+ * Every mechanism's verdict over one window. One read per event name inside the
+ * window, shared by every proof that names it.
+ */
+export function mechanismEvidence(
+  store: ReadOnlyStore,
+  window: EvidenceWindow,
+): { verdicts: Verdict[]; truncated: boolean } {
+  const contains = window.contains ?? ((row: EventRow) => row.day >= window.sinceDay);
+  let truncated = false;
+  const windowRows = new Map<string, EventRow[]>();
+  const rowsFor = (name: string): EventRow[] => {
+    let rows = windowRows.get(name);
+    if (rows === undefined) {
+      const read = store.eventLog({ name, sinceDay: window.sinceDay, limit: WINDOW_CEILING, order: "desc" });
+      if (read.length >= WINDOW_CEILING) truncated = true;
+      rows = read.filter(contains);
+      windowRows.set(name, rows);
+    }
+    return rows;
+  };
+
+  const verdicts = MECHANISM_EVIDENCE.map((m): Verdict => {
+    const empty = { id: m.id, family: m.family, build: m.build };
+    if (m.build === "not") {
+      return { ...empty, fired: false, parts: [], events: [], today: null, held: null, lastFiredDay: null, schedule: null };
+    }
+    const parts: EvidencePart[] = [];
+    const backing: EventRow[] = [];
+    let today = 0;
+    for (const proof of m.proofs) {
+      let total = 0;
+      for (const row of rowsFor(proof.event)) {
+        const n = amount(proof, payloadOf(row));
+        if (n > 0) {
+          total += n;
+          backing.push(row);
+          if (row.day === window.today) today += n;
+        }
+      }
+      parts.push({ key: proof.key, count: total, says: proof.says });
+    }
+    if (m.census !== undefined) {
+      let count = 0;
+      try {
+        count = m.census.count(store, window.sinceDay);
+      } catch {
+        // A store that cannot answer the census simply has no census count.
+      }
+      parts.push({ key: m.census.key, count, says: m.census.says });
+    }
+    // A store that will not answer reads as unknown (null), never as zero —
+    // zero turns the light grey, and a failed read is not evidence of nothing.
+    let held: number | null = null;
+    if (m.held !== undefined) {
+      try {
+        held = m.held.count(store);
+      } catch {
+        held = null;
+      }
+    }
+    const fired = parts.some((p) => p.count > 0);
+    const events = backing
+      .sort((a, b) => b.seq - a.seq)
+      .slice(0, RECENT_IDS)
+      .map((r) => r.seq);
+    let lastFiredDay: number | null = null;
+    if (!fired) {
+      // Only the newest LOOKBACK rows of each name are searched.
+      for (const proof of m.proofs) {
+        for (const row of store.eventLog({ name: proof.event, order: "desc", limit: LOOKBACK })) {
+          if (amount(proof, payloadOf(row)) > 0) {
+            if (lastFiredDay === null || row.day > lastFiredDay) lastFiredDay = row.day;
+            break;
+          }
+        }
+      }
+    }
+    return {
+      ...empty,
+      fired,
+      parts,
+      events,
+      today: m.today === true ? today : null,
+      held,
+      lastFiredDay,
+      schedule: m.schedule === undefined ? null : scheduleOf(store, m.schedule, window.today),
+    };
+  });
+  return { verdicts, truncated };
+}
+
+/** How many of the eleven are built at all ("partly" counts), for a headline. */
+export function builtCount(): number {
+  return MECHANISM_EVIDENCE.filter((m) => m.build !== "not").length;
+}

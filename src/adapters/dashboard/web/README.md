@@ -16,11 +16,12 @@ step, no dependencies. `server.ts` serves them as files (see "Serving" below).
 | `views.ts` | the index of `views/`: re-exports every view, so callers import from here |
 | `views/<name>.ts` | one module per `/api` view: `meta`, `overview` (the home tab's), `memories` (`/api/memories` + `/api/memories/list`), `memory`, `search`, `mind` (the self tab's), `activity`, `flow-view` (`/api/flow` + `/api/node`), `health`, `pulse`, `mechanisms`, `mechanism-panel` (`/api/mechanism?id=`) |
 | `views/archive-words.ts` | why a memory was archived, in plain words: one table (`ARCHIVE_WORDS`, a group phrase and a single-row phrase per reason) and one fallback for a reason nobody mapped; health's bar, the memories list and home's archived count read it |
-| `views/mechanisms.ts` | `/api/mechanisms`: each mechanism's light (grey = not built, green = fired in the last 7 lived days, amber = built and quiet), one evidence line, the newest backing event `seq`s. `MECHANISM_PROOFS` is the one table saying which durable rows count as a mechanism firing |
+| `views/mechanisms.ts` | `/api/mechanisms`: each mechanism's light (grey = not built, green = fired in the last 7 lived days, waiting = built and not due — a scheduled run ahead, or nothing to act on — amber = built and quiet), its `build` (built / partly / not: the pill's "partly built" tag), one evidence line, the newest backing event `seq`s. Which rows count as a firing is `adapters/mechanism-evidence.ts` — ONE judgement shared with `counterparts mechanisms` (`cli/mechanisms.ts`), which keeps its own words and its calendar window; this file owns the lived-day window and the dashboard's words |
 | `views/shared.ts` | the census and small counters every view leans on |
 | `views/rows.ts` | row shapes and builders more than one view uses (band bars, contested beliefs, chapters, lived days) |
 | `flow.ts` | the diagram's static shape: nodes, edges, which event lights which node |
-| `narrate.ts` | a durable event → one first-person sentence |
+| `narrate.ts` | a durable event → one first-person sentence, with its tone (orange only for a real problem), its feed and its icon |
+| `lanes.ts` | which feed an event belongs in — `home` (memory events: remembered, stronger, replaced, let go, a chapter, a handoff, sleep, a reminder) or `flow` (housekeeping) — and the home line's icon; one table, exhaustive by type |
 | `reveal.ts` | id → words at render time, withholding confidential rows |
 | `fired.ts` | `/api/fired`, the what-fired panel |
 
@@ -56,7 +57,7 @@ shared/
   widgets/            card rows table chart tiles bar feed light .css;
                       feed.js (renderFeed, live-feed registry), chapters.js (chapterRows),
                       confirm.js + .css (confirmTyped: type a phrase back to confirm),
-                      light.js (the status dot: green / amber / grey),
+                      light.js (the status dot: green / waiting ring / amber / grey),
                       tips.js + .css (the `?`: explaining words behind a tap or hover; one
                       copy for every page, pinned tips kept across a live refresh)
 pages/<tab>/          tabs: home (was overview), memories, self (was mind), flow, health;
@@ -85,6 +86,21 @@ A hash can carry more than the tab: `#self/settling` (an anchor) or
 `#memories?state=archived` (a query). `shell/tabs.js#parseRoute` splits it, and
 the page's optional `route({ anchor, params })` is called once the page is
 drawn. The home hero's four counts are links of this kind.
+
+The home page (round 2, 2026-09-26, an experiment) is one short headline
+("Day 30 · 145 memories · 8 of 11 built · 6 active this week"; the mechanism
+score is behind `SHOW_MECHANISM_SCORE` in `views/overview.ts`, the one place to
+take it out), four small tiles (`sections/tiles.js`: memories, core with the
+closest candidate's days from `views/mind.ts#coreCandidates`, chapters, and
+replaced, with what was let go or removed as its own small number via
+`archive-words.ts#archiveGroup`), the brain, the mechanism panel, and a live
+feed of memory events only (`lanes.ts`; the housekeeping stays on the flow
+tab's feed, and the pulse's live rows are filtered by `registerLiveFeed(id,
+accept)`). The memory count is `views/shared.ts#memoriesLive` — what the
+memories list's "live" chip counts, and what the memories header says; the
+console's `Memories:` (doctor, status, the wake preface) counts memory rows
+only, so the two differ by the people and project cards. Explaining words sit
+behind `?`s; what is pinned survives the pulse's refresh.
 
 The home page is the site's hero plus Explorer. `pages/home/brain.js` is the
 three.js brain, imported statically from `shared/vendor/three.module.min.js`

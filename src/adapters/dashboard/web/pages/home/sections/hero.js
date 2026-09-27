@@ -1,5 +1,5 @@
-/* The hero: one plain line about this memory and a few counts on the left, the
-   brain on the right (`../brain.js`). The brain is mounted once; the words are
+/* The hero: one short headline and four small tiles on the left, the brain on
+   the right (`../brain.js`). The brain is mounted once; the words are
    repainted whenever the store moves. */
 import { $ } from "../../../shared/dom.js";
 import * as tiles from "./tiles.js";
@@ -16,7 +16,19 @@ export const markup = `
 
 export function mount() { tiles.mount(); }
 
+/** "Day 30 · 145 memories · 8 of 11 built · 6 active this week": each part is
+ *  its own span, so a narrow screen breaks between parts, never inside one. */
 export function paint(d) {
-  $("home-headline").textContent = d.hero.headline;
+  const el = $("home-headline");
+  const parts = d.hero.headline.split(" · ");
+  const nodes = [];
+  parts.forEach((part, i) => {
+    if (i > 0) nodes.push(document.createTextNode(" "));
+    const s = document.createElement("span");
+    s.className = "hh-part";
+    s.textContent = part + (i < parts.length - 1 ? " ·" : "");
+    nodes.push(s);
+  });
+  el.replaceChildren(...nodes);
   tiles.paint(d);
 }

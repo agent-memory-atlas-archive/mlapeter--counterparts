@@ -105,13 +105,13 @@ describe("the mapping", () => {
       expect(`${m.id}: ${bullets >= 1 && bullets <= 4}`).toBe(`${m.id}: true`);
       // A grey mechanism claims nothing built beyond what exists without firing.
       const proof = MECHANISM_PROOFS.find((p) => p.id === m.id);
-      if (proof && !proof.built) expect(m.inDevelopment.length).toBeGreaterThan(0);
+      if (proof && proof.build === "not") expect(m.inDevelopment.length).toBeGreaterThan(0);
     }
   });
 
   test("a built mechanism names durable events; a grey one names none and says why", () => {
     for (const m of MECHANISM_PROOFS) {
-      if (m.built) {
+      if (m.build !== "not") {
         expect(`${m.id}: ${m.proofs.length > 0}`).toBe(`${m.id}: true`);
         for (const p of m.proofs) expect(DURABLE_EVENT_NAMES).toContain(p.event);
       } else {
@@ -182,11 +182,11 @@ describe("the lights, on a seeded store", () => {
       expect(m.status).not.toBe("green");
       expect(m.events).toEqual([]);
       const proof = MECHANISM_PROOFS.find((p) => p.id === m.id)!;
-      if (proof.built && proof.held !== undefined) {
-        // Built, but holding nothing it could act on: grey, and it says why.
-        expect(m.status).toBe("grey");
+      if (proof.build !== "not" && proof.held !== undefined) {
+        // Built, but holding nothing it could act on: waiting (never grey, which means not built), and it says why.
+        expect(m.status).toBe("waiting");
         expect(m.evidence).toBe(proof.held.none);
-      } else if (proof.built) {
+      } else if (proof.build !== "not") {
         expect(m.status).toBe("amber");
         expect(m.evidence).toContain("no record");
       }

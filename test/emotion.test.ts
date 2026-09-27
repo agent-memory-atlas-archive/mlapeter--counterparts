@@ -57,7 +57,7 @@ import { openServer } from "../src/adapters/mcp/index.js";
 import type { McpServer } from "../src/adapters/mcp/index.js";
 import { recordSession } from "../src/adapters/sessions.js";
 import { firedReport } from "../src/adapters/fired.js";
-import { mechanismsLines } from "../src/adapters/cli/mechanisms.js";
+import { consoleVerdicts, mechanismsLines } from "../src/adapters/cli/mechanisms.js";
 import { feelingsLine } from "../src/adapters/feelings-line.js";
 import { Dashboard } from "../src/adapters/dashboard/index.js";
 import { memoryDetail } from "../src/adapters/dashboard/web/views/memory.js";
@@ -576,7 +576,7 @@ describe("showing it", () => {
     const byId = new Map(report.rows.map((r) => [r.id, r]));
     expect(byId.get("feelings")?.total).toBe(1);
     expect(byId.get("emotion-weight")?.total).toBe(1);
-    const line = mechanismsLines(report).find((l) => l.includes("Emotion")) ?? "";
+    const line = mechanismsLines(report, consoleVerdicts(s, s.today())).find((l) => l.includes("Emotion")) ?? "";
     expect(line.startsWith("●")).toBe(true);
     expect(line).toContain("1 new memory carrying feeling");
     expect(line).toContain("1 memory held higher and fading slower (1 with recorded feelings)");

@@ -9,7 +9,11 @@ import { NEVER, NONE } from "../../layout.js";
 import { DURABLE_EVENTS, DURABLE_EVENT_NAMES } from "../../registries.js";
 import type { DurableEventName } from "../../registries.js";
 import type { DashboardSource } from "../../source.js";
+import type { EventRow } from "../../../../core/store/index.js";
+import { payloadOf } from "../../../mechanism-evidence.js";
 import { FLOW_NODES, eventsOfNode } from "../flow.js";
+import { laneOf } from "../lanes.js";
+import type { Lane } from "../lanes.js";
 import { narrate } from "../narrate.js";
 import type { NarratedEvent } from "../narrate.js";
 import { FEED_LIMIT, LOG_CEILING, eventCountsByName } from "./shared.js";
@@ -30,7 +34,7 @@ export interface ActivityView {
 
 export function activityView(
   src: DashboardSource,
-  opts: { limit?: number; name?: string; sinceSeq?: number } = {},
+  opts: { limit?: number; name?: string; sinceSeq?: number; lane?: Lane } = {},
 ): ActivityView {
   const store = src.store;
   const limit = opts.limit ?? FEED_LIMIT;
@@ -38,7 +42,9 @@ export function activityView(
   if (opts.name !== undefined && opts.name.length > 0) filter.name = opts.name;
   const all = store.eventLog(filter);
   const since = opts.sinceSeq;
-  const window = since === undefined ? all.slice(-limit).reverse() : all.filter((r) => r.seq > since);
+  const lane = opts.lane;
+  const inLane = (r: EventRow): boolean => lane === undefined || laneOf(r.name, payloadOf(r)) === lane;
+  const window = since === undefined ? newestIn(all, limit, inLane) : all.filter((r) => r.seq > since);
   const events = window.map((row) => narrate(store, row));
   const lastSeq = all.length === 0 ? 0 : (all[all.length - 1]?.seq ?? 0);
   const everLived = store.livedDay() > 0 || store.list().length > 0;
@@ -64,6 +70,16 @@ export function activityView(
       };
     }),
   };
+}
+
+/** The newest `limit` rows that pass `keep`, newest first. */
+function newestIn(rows: readonly EventRow[], limit: number, keep: (r: EventRow) => boolean): EventRow[] {
+  const out: EventRow[] = [];
+  for (let i = rows.length - 1; i >= 0 && out.length < limit; i--) {
+    const r = rows[i];
+    if (r !== undefined && keep(r)) out.push(r);
+  }
+  return out;
 }
 
 /** One record, opened. `when` is its moment on the reader's clock, converted

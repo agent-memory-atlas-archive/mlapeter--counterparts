@@ -133,7 +133,7 @@ import { OBSERVER_ENV, observerFromEnv, unreadableStanceLine } from "../stance-e
 import { STATE_MEANING, STATE_ORDER, firedReport } from "../fired.js";
 import type { FiredReport, FiredState } from "../fired.js";
 // The short view over the same reading: one line per memory mechanism.
-import { mechanismsLines } from "./mechanisms.js";
+import { consoleVerdicts, mechanismsLines } from "./mechanisms.js";
 // The two snapshot readers `status` shares with doctor: the DIRECTORY is what
 // says how many copies you have, and a row only says what a run once wrote.
 import { readSnapshotsDir, resolveSnapshotsDir } from "../snapshots.js";
@@ -1929,8 +1929,9 @@ function firedCommand(
     return EXIT.failed;
   }
   try {
-    const report = firedReport(store, localDate(now(), store.zone()));
-    for (const line of all ? firedLines(report, true) : mechanismsLines(report)) io.out(line);
+    const today = localDate(now(), store.zone());
+    const report = firedReport(store, today);
+    for (const line of all ? firedLines(report, true) : mechanismsLines(report, consoleVerdicts(store, today))) io.out(line);
     return EXIT.ok;
   } finally {
     store.close();

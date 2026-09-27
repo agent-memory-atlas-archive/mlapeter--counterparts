@@ -468,7 +468,7 @@ async function liveEvent(
     const noteBefore = { remember: await stateOf("remember"), store: await stateOf("store") };
     // AND THE PAGE THE DASHBOARD OPENS ON. The flow diagram was made live and
     // the overview was not: its tiles, its band bars and its identity panel
-    // were painted once at boot and never again, so `memories held` on the
+    // were painted once at boot and never again, so `memories` on the
     // first screen of the product stayed frozen while the flow tab beside it
     // moved. Read off the DOM, not out of a payload — a page that never
     // repaints would still answer the payload correctly.
@@ -476,13 +476,13 @@ async function liveEvent(
       (await page.evaluate(
         `window.tileValue ? window.tileValue(${JSON.stringify(label)}) : ""`,
       )) as string;
-    const tileBefore = await tileOf("memories held");
+    const tileBefore = await tileOf("memories");
     if (tileBefore === "") {
       findings.push({
         store: "rich",
         page: "home @ note",
         kind: "stale",
-        text: "the 'memories held' tile could not be read from the open page — the staleness check would prove nothing",
+        text: "the 'memories' tile could not be read from the open page — the staleness check would prove nothing",
       });
     }
     const jot = Counterpart.open({ dir, owner: true });
@@ -540,20 +540,20 @@ async function liveEvent(
       }
       // The overview repaint is a SECOND request behind `/api/meta`, so give it
       // a few ticks of the 4s poll rather than one fixed sleep.
-      let tileAfter = await tileOf("memories held");
+      let tileAfter = await tileOf("memories");
       for (let waited = 0; waited < 14_000 && tileAfter === tileBefore; waited += 250) {
         await page.waitForTimeout(250);
-        tileAfter = await tileOf("memories held");
+        tileAfter = await tileOf("memories");
       }
       if (tileBefore !== "" && tileAfter === tileBefore) {
         findings.push({
           store: "rich",
           page: "home @ note",
           kind: "stale",
-          text: `the home page's 'memories held' tile still reads "${tileAfter}" after a note deposited a memory — the first screen of the product is reporting a number the server no longer agrees with`,
+          text: `the home page's 'memories' tile still reads "${tileAfter}" after a note deposited a memory — the first screen of the product is reporting a number the server no longer agrees with`,
         });
       } else {
-        process.stdout.write(`  memories held tile: "${tileBefore}" → "${tileAfter}"\n`);
+        process.stdout.write(`  memories tile: "${tileBefore}" → "${tileAfter}"\n`);
       }
     }
   } finally {
