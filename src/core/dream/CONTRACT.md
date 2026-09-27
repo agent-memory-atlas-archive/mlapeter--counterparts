@@ -140,9 +140,9 @@ dreamer is the model (a background agent the session launches), outside this pro
    from a confidential memory is confidential; a dated reminder and a memory the owner
    demoted from the core are not merged; a dream's merges are not "new" for the next
    ask; a dream left open is closed to changes once a newer one begins (review of #251).
-5. **[M]** Under observer stance nothing is written and every phase says so. The one
-   read that answers under observer, `previewAsk`, claims no ask, records no event and
-   writes nothing, in either stance (`test/dream-preview.test.ts`: byte-identical store,
+5. **[M]** Under observer stance nothing is written and every phase says so. The ask's
+   preview (`previewAsk`) answers under observer where `status` stands down, and claims
+   no ask, records no event and writes nothing, in either stance (`test/dream-preview.test.ts`: byte-identical store,
    and it agrees with `status` and `askLine` case by case).
 6. **[M]** The journal lives in the `dreams` table: no decay, dedup, prune or recall
    touches it.
