@@ -1,12 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.3.4 — 2026-09-26
 
 Memories stay strong by coming back, the core is for what is about the two of you, and
 Counterparts can dream. **The store's format changes (v7 → v8).** The first Claude Code
 session after installing copies the store (as every upgrade since 0.3.1 has) and upgrades
-it; until then `counterparts doctor` and the dashboard say it is not initialized. Close
-every session before installing, and run `/mcp` → Reconnect in any you missed.
+it; until then `counterparts doctor` says (amber) that the next session will upgrade it,
+and the dashboard asks you to open a session. Close every session before installing, and
+run `/mcp` → Reconnect in any you missed.
 
 Staying strong.
 
@@ -65,6 +66,20 @@ Seeing it.
   became core lately and by which way, what you sent back, and what dreams nominated.
 - `counterparts fired` has rows for returns, dream replays, dreams, dream changes, the
   daily ask, demotions and the upgrade check.
+
+**The dashboard's Memories tab, round 2.** One idea across the tab: brighter means held
+more firmly. The map of everything held plots strength against age, marks the core with a
+★ and turns amber what would be let go within two weeks if it isn't used. Kinds are chips
+in the list's filter row; each row shows a title, its date, the kind and its feelings, and
+sorts newest or oldest first. A memory's card shows its strength curve, why it mattered,
+the days it was used, its versions as one timeline, and the raw numbers under "details".
+
+**The dashboard's Home tab, round 2.** One headline count, four small tiles (memories,
+core with the closest candidate's progress, chapters, replaced), and the mechanism lights
+as built, partly built or not built, with a new "waiting" ring for a mechanism that ran on
+schedule with nothing to do. The dashboard and `counterparts mechanisms` now read the same
+evidence for each light, so the two agree. Home's feed shows memory events only; the
+housekeeping stays in the flow feed.
 
 ## 0.3.3 — 2026-09-26
 
