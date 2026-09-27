@@ -340,6 +340,12 @@ export interface PromotionRecord extends PromotionCrossing {
   readonly returnSources?: { readonly awake: number; readonly reflection: number };
   /** v9: every awake-class return it had came from a reflection. */
   readonly reflectionOnly?: boolean;
+  /**
+   * v9 (review of #256): the fast lane was met only because it reads feelings
+   * a reflection recorded later (`CORE_FAST_ACCEPTS_REFLECTED_FEELING` open);
+   * with that door closed it would not have crossed tonight.
+   */
+  readonly feelingRecordedLater?: boolean;
 }
 
 /** A prune record as persisted: physics' record, plus the id it belongs to. */

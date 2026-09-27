@@ -789,19 +789,24 @@ export class Reflections {
       if (this.store.getMeta(`${CORE_MENTIONED_PREFIX}${e.memory_id}`) !== undefined) continue;
       const row = this.store.row(e.memory_id);
       if (row === undefined || row.promoted_identity !== 1 || !this.showable(row)) continue;
-      if (!this.promotedOnReflectionAlone(e.memory_id)) continue;
+      if (!this.promotedThroughReflection(e.memory_id)) continue;
       if (!out.includes(e.memory_id)) out.push(e.memory_id);
     }
     return out;
   }
 
-  /** Did its promotion's record say every awake-class return came from a reflection? */
-  private promotedOnReflectionAlone(id: string): boolean {
+  /**
+   * Did its promotion's record say a reflection carried it — every awake-class
+   * return from a reflection (`reflectionOnly`), or the fast lane met only by a
+   * feeling a reflection recorded later (`feelingRecordedLater`, review of
+   * #256, S4: the half the open door lets through)?
+   */
+  private promotedThroughReflection(id: string): boolean {
     try {
       const raw = this.store.getMeta(promotionRecordKey(id));
       if (raw === undefined) return false;
-      const rec = JSON.parse(raw) as { reflectionOnly?: unknown };
-      return rec.reflectionOnly === true;
+      const rec = JSON.parse(raw) as { reflectionOnly?: unknown; feelingRecordedLater?: unknown };
+      return rec.reflectionOnly === true || rec.feelingRecordedLater === true;
     } catch {
       return false;
     }

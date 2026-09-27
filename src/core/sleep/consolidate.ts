@@ -32,9 +32,9 @@
  * Arithmetic only: this phase never calls a model.
  */
 
-import { TUNABLES as PHYSICS_TUNABLES, consolidationEligibility, promote, strength } from "../physics/index.js";
+import { TUNABLES as PHYSICS_TUNABLES, consolidationEligibility, promote, promotionEligibility, strength } from "../physics/index.js";
 import { CORE_ABOUT_MARKS } from "../store/index.js";
-import type { PromotionCrossing, PromotionReason } from "../physics/index.js";
+import type { MemoryPhysics, PromotionCrossing, PromotionReason } from "../physics/index.js";
 import { rowToPhysics } from "../store/operational.js";
 import type { MemoryRow } from "../store/operational.js";
 import { readCursor, resumeIndex, writeCursor } from "./markers.js";
@@ -213,7 +213,7 @@ export function runConsolidate(ctx: PhaseCtx): ConsolidateResult {
   let stoppedAt: string | null = null;
 
   /** Tonight's eligible crossings, before the cap. */
-  const eligible: { id: string; index: number; crossing: PromotionCrossing; strength: number }[] = [];
+  const eligible: { id: string; index: number; crossing: PromotionCrossing; strength: number; physics: MemoryPhysics }[] = [];
 
   while (visited < ids.length) {
     if (out.examined >= ctx.budget) {
@@ -285,7 +285,7 @@ export function runConsolidate(ctx: PhaseCtx): ConsolidateResult {
       for (const reason of outcome.verdict.blockedBy) block(reason);
       continue;
     }
-    eligible.push({ id, index, crossing: outcome.crossing, strength: strength(p, day) });
+    eligible.push({ id, index, crossing: outcome.crossing, strength: strength(p, day), physics: p });
   }
 
   // ── the nightly cap: strongest first, the rest wait ──────────────────────
@@ -300,11 +300,18 @@ export function runConsolidate(ctx: PhaseCtx): ConsolidateResult {
     // awake-class returns the lanes counted, so "promoted on reflection
     // alone" is a number doctor can print rather than a guess.
     const sources = returnSourcesOf(store, e.id);
+    // AND WHETHER THE OPEN DOOR CARRIED IT (review of #256, S4): with the
+    // fast lane open to feelings a reflection recorded later, would it still
+    // have crossed with that door closed? If not, a reflection's feeling is
+    // what carried it — shown like a promotion on reflection alone, whatever
+    // the source of its return.
+    const closed = reflected ? promotionEligibility(e.physics, { aboutMe: true, day, acceptsReflectedFeeling: false }) : null;
     const record: PromotionRecord = {
       id: e.id,
       ...e.crossing,
       returnSources: sources,
       reflectionOnly: sources.reflection > 0 && sources.awake === 0,
+      feelingRecordedLater: closed !== null && !closed.fast.met && !closed.slow.met,
     };
     if (ctx.apply) {
       // Record BEFORE the flag: a crossing nobody could account for afterwards

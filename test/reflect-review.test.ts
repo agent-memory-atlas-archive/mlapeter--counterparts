@@ -163,6 +163,47 @@ describe("S3: the v9 upgrade marks a person-kind schema row naming the owner, as
 });
 
 // ---------------------------------------------------------------------------
+// S4 — the open door is shown, whichever half of the lane the reflection gave
+// ---------------------------------------------------------------------------
+
+describe("S4: a promotion that needed a feeling recorded later is shown like one on reflection alone", () => {
+  test("organic return + a feeling only the reflection recorded: the record says so, doctor counts it, the next share names it", async () => {
+    const { reflectionFindings } = await import("../src/adapters/claude-code/doctor.js");
+    const c = brain();
+    nextDay(c);
+    const id = mem(c, "Mike lets an AI act for itself.", { kind: "person", about: "us", salience: { relevance: 0.7, emotional: 0, predictive: 0.5 } });
+    nextDay(c);
+    nextDay(c);
+    // The feeling comes from a reflection that cites something else.
+    const other = mem(c, "A quiet day of tests.", { kind: "fact" });
+    nextDay(c);
+    const begun = c.reflections.begin({ session: SESSION });
+    if (!begun.ok) throw new Error(begun.reason);
+    c.reflections.finish({
+      reflection: begun.bundle.reflection,
+      session: SESSION,
+      entry: "It matters that he trusts me.",
+      cites: [other],
+      feelings: [{ id, core: "happy", emotion: "hopeful", strength: 0.8 }],
+    });
+    nextDay(c);
+    // The return is ORGANIC.
+    expect(c.store.reinforce(id, c.store.livedDay(), "referenced", { cued: true }).ret?.counted).toBe(true);
+    const report = sleepNow(c);
+    expect(report.promoted.map((p) => p.id)).toEqual([id]);
+    const record = JSON.parse(c.store.getMeta(promotionRecordKey(id)) ?? "{}") as Record<string, unknown>;
+    expect(record["reflectionOnly"]).toBe(false);
+    expect(record["feelingRecordedLater"]).toBe(true);
+    const line = reflectionFindings({ today: c.store.today() } as never, c.store)[0];
+    expect(line?.detail).toContain("on a feeling a reflection recorded later");
+    nextDay(c);
+    const next = reflect(c, []);
+    expect(next.bundle.becameCore).toEqual([id]);
+    expect(next.outcome.share.offered).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // S5 — a carried share is claimed once, even by two sessions racing
 // ---------------------------------------------------------------------------
 

@@ -2498,12 +2498,18 @@ export function reflectionFindings(input: DoctorInput, store: Store): Finding[] 
   let last: ReturnType<Store["reflections"]>[number] | undefined;
   let returns: ReturnType<Store["returnCounts"]>;
   let alone = 0;
+  // A promotion the fast lane made only on a feeling a reflection recorded
+  // later — the half of "on reflection" the open door lets through (review
+  // of #256, S4). Counted apart from `alone`; one memory can be both.
+  let later = 0;
   try {
     last = store.reflections({ limit: 5 }).find((r) => r.state === "reflected");
     returns = store.returnCounts({ sinceAt: Date.parse(`${input.today}T00:00:00Z`) - 6 * 86_400_000 });
     for (const row of store.eventLog({ name: "band.promoted" })) {
       try {
-        if ((JSON.parse(row.payload ?? "{}") as { reflectionOnly?: unknown }).reflectionOnly === true) alone += 1;
+        const p = JSON.parse(row.payload ?? "{}") as { reflectionOnly?: unknown; feelingRecordedLater?: unknown };
+        if (p.reflectionOnly === true) alone += 1;
+        if (p.feelingRecordedLater === true) later += 1;
       } catch {
         continue;
       }
@@ -2524,7 +2530,9 @@ export function reflectionFindings(input: DoctorInput, store: Store): Finding[] 
           last.entry_id === null ? "nothing much" : "an entry"
         }${last.page_version === null ? "" : ", the self page rewritten"}, ${share[last.share_state] ?? last.share_state}`;
   const byHow = `returns this week — awake ${String(returns.awake)}, reflection ${String(returns.reflection)}, dream ${String(returns.dream)}`;
-  const aloneLine = alone > 0 ? `; ${String(alone)} ${alone === 1 ? "memory" : "memories"} became core on reflection alone` : "";
+  const aloneLine =
+    (alone > 0 ? `; ${String(alone)} ${alone === 1 ? "memory" : "memories"} became core on reflection alone` : "") +
+    (later > 0 ? `; ${String(later)} ${later === 1 ? "memory" : "memories"} became core on a feeling a reflection recorded later` : "");
   return [
     finding(
       "reflection",
@@ -2541,6 +2549,7 @@ export function reflectionFindings(input: DoctorInput, store: Store): Finding[] 
         returnsReflection: returns.reflection,
         returnsDream: returns.dream,
         promotedOnReflectionAlone: alone,
+        promotedOnFeelingRecordedLater: later,
       },
     ),
   ];
