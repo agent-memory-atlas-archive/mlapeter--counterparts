@@ -8,6 +8,7 @@ export default {
   name: "Dreaming",
   short: "Dreaming",
   tagline: "Asleep, the day is replayed: the near-copies merge, what belongs together links, the sting softens, and a pattern shows.",
+  does: "With your yes, replays what is new, merges near-copies and links what belongs together.",
   explainer:
     "Once a day, when there is something new, a session asks whether it may dream; if you say yes, a background agent replays what was lived since the last dream beside what it resembles — merging near-copies (the originals kept), linking, replaying what matters, writing a pattern it sees, flagging two memories that disagree, and suggesting a memory for the core (nothing acts on these suggestions yet). It keeps a dream journal, and the whole dream can be undone.",
   built: [

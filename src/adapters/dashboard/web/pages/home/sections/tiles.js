@@ -1,7 +1,8 @@
 /* The four small tiles under the home page's headline (`/api/overview`'s
    `hero.counts`, 2026-09-26, an experiment): memories, core, chapters,
    replaced. Each number is a link to where it is shown in full (a hash route:
-   `shell/tabs.js#parseRoute`); the words that explain it sit behind its `?`. */
+   `shell/tabs.js#parseRoute`); the words that explain it sit behind its `?`.
+   The core tile is the count and a link (round 3b): who is closest is Self's. */
 import { $, esc } from "../../../shared/dom.js";
 import { q, wireTips } from "../../../shared/widgets/tips.js";
 
@@ -14,25 +15,17 @@ const GOES_TO = {
 
 const TIPS = {
   memories: "Everything I hold right now: memories, and the cards for the people and projects I know. The journal's chapters are counted apart.",
-  core: "Core memories don't fade. A memory gets there by being used on separate days with a high enough score. \"Closest\" is the one nearest to making it.",
+  core: "Core memories don't fade. Only a memory about me or about us gets there, by coming back. Which ones are close is on the Self tab.",
   chapters: "My journal, written in the first person at the end of a session. Chapters don't fade.",
   replaced: "Older readings replaced by newer ones — nothing forgotten; the old version is kept. \"Let go\" is different: memories that faded until they were set aside.",
 };
 
 export const markup = `<div class="home-counts" id="ov-tiles"></div>`;
 
-/** Filled pips for the closest candidate's days: a small picture of "1 of 3". */
-function pips(p) {
-  if (!p || !p.of) return "";
-  let out = '<span class="ht-pips" aria-hidden="true">';
-  for (let i = 0; i < p.of; i++) out += '<span class="ht-pip' + (i < p.days ? " on" : "") + '"></span>';
-  return out + "</span>";
-}
-
 export function paint(d) {
   $("ov-tiles").innerHTML = d.hero.counts.map((t) => {
     const to = GOES_TO[t.key];
-    const note = t.note ? '<div class="s">' + pips(t.progress) + esc(t.note) + "</div>" : "";
+    const note = t.note ? '<div class="s">' + esc(t.note) + "</div>" : "";
     return '<div class="tile ht ht-' + esc(t.key) + (t.absent ? " quiet" : "") + '">' +
       '<a class="ht-link" href="#' + esc(to) + '">' +
         '<span class="n">' + esc(t.value) + "</span>" +

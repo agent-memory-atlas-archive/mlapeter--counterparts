@@ -4,7 +4,6 @@
  * Split out of `web/views.ts`, which re-exports every public name from here;
  * the four rules in that file's header apply to every line below.
  */
-import { TUNABLES as PHYSICS, band, strength } from "../../../../core/physics/index.js";
 import { MARKER_UNSET, isJournal, readMarker } from "../../../../core/sleep/index.js";
 import type { Band, Kind } from "../../../../core/types.js";
 import { NEVER, NONE } from "../../layout.js";
@@ -14,7 +13,6 @@ import type { NarratedEvent } from "../narrate.js";
 import { reveal } from "../reveal.js";
 import { activityView } from "./activity.js";
 import { archiveGroup } from "./archive-words.js";
-import { coreCandidates } from "./mind.js";
 import { mechanismsView } from "./mechanisms.js";
 import { lastActive } from "./meta.js";
 import { BAND_GLOSS, chapters, contestedRows, livedDays } from "./rows.js";
@@ -49,8 +47,6 @@ export interface HeroCount {
   readonly note: string;
   /** True when the value is an absence marker or zero. */
   readonly absent: boolean;
-  /** The core tile: the closest candidate's credited days, of those required. */
-  readonly progress?: { readonly days: number; readonly of: number } | null;
   /** The replaced tile: the other ways out, each its own small number (zeros left out). */
   readonly others?: readonly { readonly label: string; readonly count: number }[];
 }
@@ -225,7 +221,6 @@ export function overviewView(src: DashboardSource, feedLimit = FEED_LIMIT): Over
   const built = mech.filter((m) => m.build !== "not").length;
   // THE ONE COUNT: what the memories list's "live" chip counts.
   const memories = rows.length;
-  const closest = coreCandidates(src, src.self.page()?.id ?? null).raw[0];
   const left = archiveGroups(src);
   const others = [
     { label: "let go", count: left.letGo },
@@ -236,21 +231,9 @@ export function overviewView(src: DashboardSource, feedLimit = FEED_LIMIT): Over
     headline: heroHeadline({ day, lived: !(day === 0 && rows.length === 0), memories, built, working, mechanisms: mech.length }),
     counts: [
       { key: "memories", label: "memories", value: String(memories), note: "", absent: memories === 0 },
-      {
-        key: "core",
-        label: "core",
-        value: String(e.identity.length),
-        // An eligible candidate has met a lane and joins at the next consolidation
-        // (2026-09-26); otherwise the slow lane's days are the progress shown.
-        note:
-          closest === undefined
-            ? ""
-            : closest.eligible
-              ? "closest: ready to join"
-              : `closest: ${Math.min(closest.days, PHYSICS.CORE_SLOW_DAYS)} of ${PHYSICS.CORE_SLOW_DAYS} days`,
-        absent: e.identity.length === 0,
-        progress: closest === undefined ? null : { days: Math.min(closest.days, PHYSICS.CORE_SLOW_DAYS), of: PHYSICS.CORE_SLOW_DAYS },
-      },
+      // THE CORE LIVES ON SELF (home round 3b, 2026-09-27 — a try): the tile is
+      // the count and a link there; who is closest is the Self tab's to say.
+      { key: "core", label: "core", value: String(e.identity.length), note: "", absent: e.identity.length === 0 },
       { key: "chapters", label: "chapters", value: String(journalCount), note: "", absent: journalCount === 0 },
       {
         key: "replaced",

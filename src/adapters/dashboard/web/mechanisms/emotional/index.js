@@ -8,6 +8,7 @@ export default {
   name: "Emotional modulation",
   short: "Emotion",
   tagline: "The moments that mattered are the ones you keep. Feeling is the encoder’s thumb on the scale.",
+  does: "A feeling on a memory holds it higher and slows its fading.",
   explainer: "The strongest feeling on a memory, yours or Claude’s, holds it higher and makes it fade more slowly. Memories that felt the way one of you feels now come to mind a little more easily.",
   built: [
     "A memory’s strongest recorded feeling, or its emotional score, lifts it and slows its fading.",

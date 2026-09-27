@@ -211,22 +211,27 @@ describe("0. the consolidation panel tells the truth about returns and nominatio
     expect(lightOf(v as never, { awake: 1, dream: 2 }).evidence).toContain("1 came back in conversation, 2 replayed in a dream");
   });
 
-  test("the picture's returns match the table, legacy never counted; each climber's tags are the engine's verdict", () => {
+  test("the picture's returns match the table, legacy never counted; its rows are real returns by source (3b: no candidate list)", () => {
     withSource(dir, (src) => {
       const p = (get(src, "/api/mechanism?id=consolidation")["picture"]) as {
         returns: { awake: number; dream: number; days: number };
-        climbing: { id: string; ready: boolean; oneReturnAway: boolean; days: number }[];
+        memories: { id: string; how: string; day: number; times: number }[];
+        climbing?: unknown;
       };
       const day = src.store.livedDay();
       expect(returnsOn(day).legacy).toBeGreaterThan(0);
       const r = src.store.returnCounts({ sinceDay: day - (p.returns.days - 1) });
       expect(p.returns).toEqual({ awake: r.awake, dream: r.dream, days: 7 });
-      expect(p.climbing.length).toBeGreaterThan(0);
-      for (const c of p.climbing) {
-        const v = promotionEligibility(src.store.physicsOf(c.id), { aboutMe: true, day, demoted: src.store.coreDemoted(c.id) });
-        const oneAway = v.fast.intensity >= v.fast.needIntensity && !v.fast.met && v.blockedBy.length === 1 && v.blockedBy[0] === "no-lane-yet";
-        expect(`${c.id} ${c.ready} ${c.oneReturnAway}`).toBe(`${c.id} ${v.eligible} ${oneAway}`);
-        expect(c.days).toBe(v.slow.days);
+      expect(p.climbing).toBeUndefined();
+      expect(p.memories.length).toBeGreaterThan(0);
+      expect(p.memories.length).toBeLessThanOrEqual(5);
+      // Both sources that happened keep a row, conversation first.
+      expect(p.memories.some((m) => m.how === "awake")).toBe(true);
+      expect(p.memories.some((m) => m.how === "dream")).toBe(true);
+      expect(p.memories[0]!.how).toBe("awake");
+      for (const m of p.memories.filter((x) => x.how !== "merged")) {
+        const mine = src.store.returnsOf(m.id).filter((x) => x.source === m.how && x.day >= day - 6);
+        expect(`${m.id} ${m.times} ${m.day}`).toBe(`${m.id} ${mine.length} ${Math.max(...mine.map((x) => x.day))}`);
       }
     });
   });
@@ -411,8 +416,12 @@ describe("5. Tonight", () => {
       expect(t.core.ready).toBe(ready);
       expect(t.core.oneReturnAway).toBe(away);
       expect(away).toBeGreaterThan(0);
-      expect(t.core.oneAwayNames.length).toBe(Math.min(3, away));
+      // Counts only since 3b: the names live on the Self tab.
+      expect(Object.keys(t.core).sort()).toEqual(["oneReturnAway", "ready"]);
     });
+    const client = readFileSync(join(WEB, "pages/home/sections/tonight.js"), "utf8");
+    expect(client).toContain('link("self/settling"');
+    expect(client).not.toContain("openMemory");
   });
 
   test("a memory the owner sent back out of the core is neither ready nor one return away", () => {
@@ -427,10 +436,6 @@ describe("5. Tonight", () => {
       // Without the owner's word it WOULD read as one return away: the flag is what keeps it off.
       const bare = promotionEligibility(store.physicsOf(demotedId), { aboutMe: true, day });
       expect(bare.fast.intensity).toBeGreaterThanOrEqual(bare.fast.needIntensity);
-      const t = tonightView(src);
-      expect([...t.core.readyNames, ...t.core.oneAwayNames].map((m) => m.id)).not.toContain(demotedId);
-      const climbing = (get(src, "/api/mechanism?id=consolidation")["picture"] as { climbing: { id: string; ready: boolean; oneReturnAway: boolean }[] }).climbing;
-      for (const c of climbing.filter((x) => x.id === demotedId)) expect([c.ready, c.oneReturnAway]).toEqual([false, false]);
     });
   });
 
@@ -441,12 +446,12 @@ describe("5. Tonight", () => {
       expect(t.letGo.tonight).toBeLessThanOrEqual(t.letGo.near);
       expect(t.dream.last).not.toBeNull();
       expect(t.dream.newSince).toBeGreaterThanOrEqual(0);
-      expect(t.nominations.count).toBe(nominated);
-      expect(t.nominations.names.length).toBe(Math.min(3, nominated));
+      expect(t.nominations).toEqual({ count: nominated });
       expect(get(src, "/api/overview")["tonight"]).toEqual(t as unknown as Record<string, unknown>);
     });
     const client = readFileSync(join(WEB, "pages/home/sections/tonight.js"), "utf8");
     expect(client).toContain("nothing acts on these yet");
+    expect(client).toContain('link("self/dreams"');
     expect(readFileSync(join(WEB, "pages/home/index.js"), "utf8")).toContain("${tonight.markup}");
   });
 
@@ -505,7 +510,8 @@ describe("6. the retrieval panel's used-rate", () => {
       expect(ret).toContain("got used (said out loud:");
       const cons = index.PANELS["consolidation"]!.picture(get(src, "/api/mechanism?id=consolidation")["picture"]);
       expect(cons).toContain("came back in conversation");
-      expect(cons).toContain("one return away");
+      expect(cons).toContain("replayed in a dream");
+      expect(cons).not.toContain("one return away");
     });
   });
 });
@@ -516,7 +522,7 @@ describe("looking still writes nothing", () => {
       const before = snapshot(dir);
       get(src, "/api/overview");
       get(src, "/api/mechanisms");
-      for (const id of ["consolidation", "retrieval", "emotional", "salience"]) get(src, `/api/mechanism?id=${id}`);
+      for (const m of mechanismsView(src).mechanisms) get(src, `/api/mechanism?id=${m.id}`);
       tonightView(src);
       writtenReturned(src);
       expect(snapshot(dir)).toEqual(before);

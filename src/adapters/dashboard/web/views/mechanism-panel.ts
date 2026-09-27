@@ -3,13 +3,21 @@
  * picked mechanism: its last few firings, narrated, and a small picture of THIS
  * store's real data where the site shows a demo.
  *
- *   decay            — the fade curves of a few real memories, from their last use
- *   retrieval        — the last turns that brought memories to mind, and whether
- *                      each one has been used since
- *   consolidation    — memories climbing toward the core, and how far each has to go
- *   salience         — recent memories and the score each was written with
- *   association      — the graph hubs: what the most is wired to
- *   reconsolidation  — recent corrections weighed against old memories
+ * Since home round 3b (2026-09-27, a try) EVERY built mechanism has a picture,
+ * and each is about our own memories, at most `PICTURE_ROWS` of them:
+ *
+ *   salience          — recent memories and the score each was written with
+ *   emotional         — the newest memories a feeling holds higher, with it
+ *   decay             — the fade curves of a few real memories, from their last use
+ *   retrieval         — the last turns that brought memories to mind, and whether
+ *                       each one has been used since
+ *   association       — the graph hubs: what the most is wired to
+ *   prospective       — reminders that came back, and dated memories waiting
+ *   consolidation     — what came back in conversation, merged, or was replayed
+ *                       in a dream this week (who is close to the core is Self's)
+ *   dreaming          — the memories the last dream changed
+ *   reconsolidation   — recent corrections weighed against old memories
+ *   episodic-semantic — the patterns dreams wrote as memories of their own
  *
  * A grey mechanism (not built) gets no picture and no activity: it has none.
  * Which rows count as a firing is `MECHANISM_PROOFS`, in `mechanisms.ts`.
@@ -19,20 +27,23 @@
  */
 import { TUNABLES, pruneVerdict, strength } from "../../../../core/physics/index.js";
 import type { MemoryPhysics } from "../../../../core/types.js";
-import { isJournal, ownerNames } from "../../../../core/sleep/index.js";
-import type { EventRow } from "../../../../core/store/index.js";
+import { isJournal } from "../../../../core/sleep/index.js";
+import type { DreamRow, EventRow } from "../../../../core/store/index.js";
 import type { Band, Kind } from "../../../../core/types.js";
 import type { DashboardSource } from "../../source.js";
 import { narrateForPanel } from "../narrate.js";
 import type { NarratedEvent } from "../narrate.js";
 import { reveal, revealHere } from "../reveal.js";
-import { coreRoad } from "./core-road.js";
+import { feelingsShown } from "./memory-words.js";
+import type { FeelingShown } from "./memory-words.js";
 import { MECHANISM_DAYS, MECHANISM_PROOFS, counted, payloadOf } from "./mechanisms.js";
 import { LOG_CEILING, census } from "./shared.js";
 import type { MemoryLine } from "./shared.js";
 
 /** How many narrated firings the panel lists. */
 export const PANEL_ACTIVITY = 4;
+/** How many memories a picture lists (the fade curves draw four). */
+export const PICTURE_ROWS = 5;
 /** How far back, per event name, the panel looks for them. */
 const ACTIVITY_LOOKBACK = 200;
 /** How many lived days ahead a fade curve is drawn. */
@@ -91,22 +102,6 @@ export type Picture =
     }
   | {
       readonly kind: "consolidation";
-      /** Fast lane: how strongly felt it must be. */
-      readonly needFeeling: number;
-      /** Slow lane: returns on this many separate lived days… */
-      readonly requiredDays: number;
-      /** …spanning this many lived days. */
-      readonly needSpan: number;
-      readonly climbing: readonly (Said & {
-        readonly feeling: number;
-        readonly days: number;
-        readonly span: number;
-        readonly returned: boolean;
-        /** The engine's verdict: a lane is met, nothing blocks it (`core-road.ts`). */
-        readonly ready: boolean;
-        /** Felt enough, and one return after a gap is all it lacks (`core-road.ts`). */
-        readonly oneReturnAway: boolean;
-      })[];
       /**
        * Returns in the last `MECHANISM_DAYS` lived days, by source: `awake`
        * came back in conversation (the only kind the core lanes count),
@@ -114,8 +109,45 @@ export type Picture =
        * returns anyone saw and are not counted.
        */
       readonly returns: { readonly awake: number; readonly dream: number; readonly days: number };
-      readonly promoted: readonly (Said & { readonly day: number; readonly lane: string | null })[];
-      readonly core: number;
+      /** Merges in the window: exact duplicates at sleep, near-copies in a dream that stands. */
+      readonly merges: number;
+      /**
+       * Up to `PICTURE_ROWS` of the memories behind those numbers: came back in
+       * conversation first, then merged, then replayed in a dream. `times` is
+       * how many of the window's returns (or merges) it holds; `day` the newest.
+       * Who is close to the core is the Self tab's, not this picture's (3b).
+       */
+      readonly memories: readonly (Said & { readonly how: "awake" | "merged" | "dream"; readonly day: number; readonly times: number })[];
+    }
+  | {
+      readonly kind: "emotional";
+      /**
+       * The newest live memories a feeling holds higher (its emotional score,
+       * or a recorded feeling with strength): up to `PICTURE_ROWS`, each with
+       * its feelings, strongest first. WHICH memories a matching mood brought
+       * closer is not recorded per memory (`recall.decision` keeps the count
+       * only), so they are not guessed here.
+       */
+      readonly memories: readonly (Said & { readonly bornDay: number; readonly emotional: number; readonly feelings: readonly FeelingShown[] })[];
+    }
+  | {
+      readonly kind: "prospective";
+      /** Reminders that came back in the window, newest first: said plainly, or a quiet footnote. */
+      readonly came: readonly (Said & { readonly day: number; readonly plain: boolean })[];
+      /** Dated memories whose day is today or ahead, soonest first (fills the rest of the rows). */
+      readonly waiting: readonly (Said & { readonly date: string })[];
+    }
+  | {
+      readonly kind: "dreaming";
+      /** The newest dream that stands (not undone), or null when there is none. */
+      readonly dream: { readonly id: string; readonly date: string | null; readonly day: number; readonly title: string | null; readonly changes: number } | null;
+      /** The memories it changed, one row each, in the order it changed them. */
+      readonly memories: readonly (Said & { readonly did: string })[];
+    }
+  | {
+      readonly kind: "episodic-semantic";
+      /** Patterns a standing dream wrote as memories of their own, newest first. */
+      readonly gists: readonly (Said & { readonly day: number; readonly date: string | null })[];
     }
   | {
       readonly kind: "salience";
@@ -225,13 +257,29 @@ function pictureOf(src: DashboardSource, id: string, day: number): Picture | nul
       return consolidationPicture(src, day);
     case "salience":
       return saliencePicture(src);
+    case "emotional":
+      return emotionalPicture(src);
     case "association":
       return associationPicture(src);
+    case "prospective":
+      return prospectivePicture(src, day);
+    case "dreaming":
+      return dreamingPicture(src);
+    case "episodic-semantic":
+      return gistPicture(src);
     case "reconsolidation":
       return reconsolidationPicture(src);
     default:
       return null;
   }
+}
+
+/** The first lived day of the panel's window (the lights' window). */
+const windowStart = (day: number): number => Math.max(0, day - (MECHANISM_DAYS - 1));
+
+/** Dreams that stand (not undone), newest first. */
+function standingDreams(src: DashboardSource): DreamRow[] {
+  return src.store.dreams({ limit: 20 }).filter((d) => d.state !== "undone");
 }
 
 // ── forgetting ──────────────────────────────────────────────────────────────
@@ -388,60 +436,195 @@ export function recallUse(src: DashboardSource, day: number, span = MECHANISM_DA
 // ── consolidation ───────────────────────────────────────────────────────────
 
 /**
- * Becoming core (2026-09-26): only memories about me or about us, by one of two
- * lanes — strongly felt and come back once after a gap (fast), or come back on
- * several separate days over weeks (slow). Each climber shows how far along
- * both lanes it is; the nearest six are listed, with the last few that made it
- * and the lane that carried them.
+ * What consolidation did this week, about our memories (home round 3b,
+ * 2026-09-27 — a try): which came back in conversation (the returns that make
+ * a memory fade more slowly, and the only ones the core lanes count), which
+ * merged, and which a dream replayed (dimmer). Read from the `returns` rows by
+ * source — never `legacy` — and the merge records. Who is close to the core is
+ * the Self tab's; this picture does not repeat it.
  */
 function consolidationPicture(src: DashboardSource, day: number): Picture {
   const store = src.store;
-  const rows = census(src).filter((m) => !m.schema && !m.unreadable);
-  const core = rows.filter((m) => m.promoted).length;
-  const owner = ownerNames(store);
-  const climbing = rows
-    .filter((m) => !m.promoted)
-    .flatMap((m) => {
-      // The engine's verdict, asked the one way (`core-road.ts`); null = not
-      // about me or about us, so never on the road.
-      const road = coreRoad(store, { id: m.id, kind: m.kind }, owner, day);
-      if (road === null) return [];
-      const v = road.verdict;
-      const fast = Math.min(1, v.fast.intensity / v.fast.needIntensity) + (v.fast.gap !== null && v.fast.gap >= v.fast.needGap ? 1 : 0);
-      const slow = Math.min(1, v.slow.days / v.slow.needDays) + Math.min(1, v.slow.span / v.slow.needSpan);
-      const returned = v.fast.gap !== null && v.fast.gap >= v.fast.needGap;
-      return [{ m, road, feeling: v.fast.intensity, days: v.slow.days, span: v.slow.span, returned, progress: Math.max(fast, slow) }];
-    })
-    .sort((a, b) => Number(b.road.ready) - Number(a.road.ready) || b.progress - a.progress || (a.m.id < b.m.id ? -1 : 1))
-    .slice(0, 6)
-    .map((c) => ({
-      ...saidLine(c.m),
-      feeling: round(c.feeling),
-      days: c.days,
-      span: c.span,
-      returned: c.returned,
-      ready: c.road.ready,
-      oneReturnAway: c.road.oneReturnAway,
-    }));
-  const sinceDay = Math.max(0, day - (MECHANISM_DAYS - 1));
-  const counts = store.returnCounts({ sinceDay });
-  const promoted = store
-    .eventLog({ name: "band.promoted", order: "desc", limit: 3 })
-    .filter((r) => r.ref !== null)
-    .map((r) => {
-      const lane = payloadOf(r)["lane"];
-      return { ...said(src, r.ref as string), day: r.day, lane: typeof lane === "string" ? lane : null };
-    });
+  const since = windowStart(day);
+  const counts = store.returnCounts({ sinceDay: since });
+  const awake: { id: string; day: number; times: number }[] = [];
+  const dream: { id: string; day: number; times: number }[] = [];
+  for (const id of store.list({ archived: false })) {
+    const row = store.row(id);
+    if (row === undefined || isJournal(row)) continue;
+    const woke = row.last_return_day !== null && row.last_return_day >= since;
+    const dreamt = row.last_dream_day !== null && row.last_dream_day >= since;
+    if (!woke && !dreamt) continue;
+    const rets = store.returnsOf(id).filter((r) => r.day >= since);
+    for (const [source, into] of [["awake", awake], ["dream", dream]] as const) {
+      const mine = rets.filter((r) => r.source === source);
+      if (mine.length > 0) into.push({ id, day: Math.max(...mine.map((r) => r.day)), times: mine.length });
+    }
+  }
+  // Merges: an exact duplicate folded at sleep (the survivor is `originalId`),
+  // or near-copies a standing dream merged (the change's `ref` is what it made).
+  const merged = new Map<string, { day: number; times: number }>();
+  const addMerge = (id: string, at: number): void => {
+    const cur = merged.get(id);
+    merged.set(id, { day: Math.max(cur?.day ?? at, at), times: (cur?.times ?? 0) + 1 });
+  };
+  let merges = 0;
+  for (const row of store.eventLog({ name: "memory.merged", sinceDay: since, order: "desc", limit: LOG_CEILING })) {
+    const kept = payloadOf(row)["originalId"];
+    merges += 1;
+    if (typeof kept === "string") addMerge(kept, row.day);
+  }
+  for (const d of standingDreams(src).filter((x) => x.day >= since)) {
+    for (const c of store.dreamChanges(d.id)) {
+      if (c.action !== "merge" || c.undone !== 0) continue;
+      merges += 1;
+      if (c.ref !== null) addMerge(c.ref, d.day);
+    }
+  }
+  const newest = (a: { id: string; day: number; times: number }, b: { id: string; day: number; times: number }): number =>
+    b.day - a.day || b.times - a.times || (a.id < b.id ? -1 : 1);
+  const groups = [
+    awake.sort(newest).map((r) => ({ ...r, how: "awake" as const })),
+    [...merged.entries()].map(([id, m]) => ({ id, ...m })).sort(newest).map((r) => ({ ...r, how: "merged" as const })),
+    dream.sort(newest).map((r) => ({ ...r, how: "dream" as const })),
+  ];
+  // Each kind that happened keeps a row (conversation up to three, a merge and
+  // a replay one each); the rest of the rows go to whatever is left, in order.
+  const seen = new Set<string>();
+  const picked: (typeof groups)[number][number][] = [];
+  const take = (g: (typeof groups)[number], most: number): void => {
+    for (const r of g) {
+      if (picked.length >= PICTURE_ROWS || most <= 0) return;
+      if (seen.has(r.id)) continue;
+      seen.add(r.id);
+      picked.push(r);
+      most -= 1;
+    }
+  };
+  take(groups[0]!, 3);
+  take(groups[1]!, 1);
+  take(groups[2]!, 1);
+  for (const g of groups) take(g, PICTURE_ROWS);
+  const order = { awake: 0, merged: 1, dream: 2 } as const;
+  const memories = picked
+    .sort((a, b) => order[a.how] - order[b.how])
+    .map((r) => ({ ...said(src, r.id), how: r.how, day: r.day, times: r.times }));
   return {
     kind: "consolidation",
-    needFeeling: TUNABLES.CORE_FAST_FEELING,
-    requiredDays: TUNABLES.CORE_SLOW_DAYS,
-    needSpan: TUNABLES.CORE_SLOW_SPAN_DAYS,
-    climbing,
-    promoted,
-    core,
     returns: { awake: counts.awake, dream: counts.dream, days: MECHANISM_DAYS },
+    merges,
+    memories,
   };
+}
+
+// ── emotional modulation ────────────────────────────────────────────────────
+
+/**
+ * The newest live memories a feeling holds higher — the census's own test
+ * (`store.emotionCensus`: an emotional score above zero, or a recorded feeling
+ * with strength) — each with its feelings, strongest first.
+ */
+function emotionalPicture(src: DashboardSource): Picture {
+  const store = src.store;
+  const out: Extract<Picture, { kind: "emotional" }>["memories"][number][] = [];
+  const newestFirst = census(src)
+    .filter((m) => !m.schema && !m.unreadable)
+    .sort((a, b) => b.bornDay - a.bornDay || (a.id < b.id ? 1 : -1));
+  for (const m of newestFirst) {
+    const row = store.row(m.id);
+    if (row === undefined) continue;
+    const feelings = feelingsShown(store, m.id);
+    if (!(row.emotional > 0 || feelings.some((f) => f.strength > 0))) continue;
+    out.push({
+      ...saidLine(m),
+      bornDay: m.bornDay,
+      emotional: round(row.emotional),
+      feelings: [...feelings].sort((a, b) => b.strength - a.strength).slice(0, 2),
+    });
+    if (out.length >= PICTURE_ROWS) break;
+  }
+  return { kind: "emotional", memories: out };
+}
+
+// ── prospective memory ──────────────────────────────────────────────────────
+
+/**
+ * Reminders that came back this week (both rows point at the memory whose day
+ * it was), newest first; the rest of the rows are the dated memories still
+ * waiting for their day, soonest first.
+ */
+function prospectivePicture(src: DashboardSource, day: number): Picture {
+  const store = src.store;
+  const since = windowStart(day);
+  const rows = [
+    ...store.eventLog({ name: "prospective.plain", sinceDay: since, order: "desc", limit: 200 }).map((r) => ({ r, plain: true })),
+    ...store.eventLog({ name: "prospective.fire", sinceDay: since, order: "desc", limit: 200 }).map((r) => ({ r, plain: false })),
+  ].sort((a, b) => b.r.seq - a.r.seq);
+  const seen = new Set<string>();
+  const came: Extract<Picture, { kind: "prospective" }>["came"][number][] = [];
+  for (const { r, plain } of rows) {
+    if (r.ref === null || seen.has(r.ref)) continue;
+    seen.add(r.ref);
+    came.push({ ...said(src, r.ref), day: r.day, plain });
+    if (came.length >= PICTURE_ROWS) break;
+  }
+  const today = store.getMeta("lastActiveDate");
+  const from = typeof today === "string" && /^\d{4}-\d{2}-\d{2}$/.test(today) ? today : "0001-01-01";
+  const waiting = store
+    .datedMemories(from, "9999-12-31")
+    .filter((d) => !seen.has(d.id))
+    .slice(0, Math.max(0, PICTURE_ROWS - came.length))
+    .map((d) => ({ ...said(src, d.id), date: d.eventDate }));
+  return { kind: "prospective", came, waiting };
+}
+
+// ── dreaming ────────────────────────────────────────────────────────────────
+
+/** A dream's change, in a few words (the dream journal on the Self tab says it in full). */
+const DREAM_DID: Readonly<Record<string, string>> = {
+  merge: "merged near-copies into this",
+  link: "linked it to another",
+  replayed: "replayed it",
+  gist: "wrote this pattern",
+  contradiction: "flagged a disagreement",
+  "feeling-now": "said how the feeling sits now",
+  "nominate-core": "suggested it for the core",
+};
+
+/** The newest dream that stands, and the memories it changed, in the order it changed them. */
+function dreamingPicture(src: DashboardSource): Picture {
+  const store = src.store;
+  const last = standingDreams(src)[0];
+  if (last === undefined) return { kind: "dreaming", dream: null, memories: [] };
+  const changes = store.dreamChanges(last.id).filter((c) => c.undone === 0);
+  const seen = new Set<string>();
+  const memories: (Said & { did: string })[] = [];
+  for (const c of changes) {
+    if (c.ref === null || seen.has(c.ref)) continue;
+    seen.add(c.ref);
+    memories.push({ ...said(src, c.ref), did: DREAM_DID[c.action] ?? c.action });
+    if (memories.length >= PICTURE_ROWS) break;
+  }
+  return {
+    kind: "dreaming",
+    dream: { id: last.id, date: last.date, day: last.day, title: last.title, changes: changes.length },
+    memories,
+  };
+}
+
+// ── episodic → semantic ─────────────────────────────────────────────────────
+
+/** The patterns standing dreams wrote as memories of their own, newest first. */
+function gistPicture(src: DashboardSource): Picture {
+  const gists: Extract<Picture, { kind: "episodic-semantic" }>["gists"][number][] = [];
+  for (const d of standingDreams(src)) {
+    for (const c of src.store.dreamChanges(d.id)) {
+      if (c.action !== "gist" || c.undone !== 0 || c.ref === null) continue;
+      gists.push({ ...said(src, c.ref), day: d.day, date: d.date });
+      if (gists.length >= PICTURE_ROWS) return { kind: "episodic-semantic", gists };
+    }
+  }
+  return { kind: "episodic-semantic", gists };
 }
 
 // ── salience ────────────────────────────────────────────────────────────────
@@ -451,7 +634,7 @@ function saliencePicture(src: DashboardSource): Picture {
   const memories = census(src)
     .filter((m) => !m.schema && !m.unreadable)
     .sort((a, b) => b.bornDay - a.bornDay || (a.id < b.id ? -1 : 1))
-    .slice(0, 8)
+    .slice(0, PICTURE_ROWS)
     .map((m) => ({ ...saidLine(m), salience: round(m.salience), bornDay: m.bornDay, memKind: m.kind }));
   return { kind: "salience", memories };
 }
@@ -478,7 +661,7 @@ function associationPicture(src: DashboardSource): Picture {
   }
   const hubs = [...weight.entries()]
     .sort((a, b) => b[1].w - a[1].w || (a[0] < b[0] ? -1 : 1))
-    .slice(0, 6)
+    .slice(0, PICTURE_ROWS)
     .map(([id, v]) => ({ ...said(src, id), weight: round(v.w), degree: v.d }));
   return { kind: "association", hubs, links };
 }
@@ -492,7 +675,7 @@ function associationPicture(src: DashboardSource): Picture {
  */
 function reconsolidationPicture(src: DashboardSource): Picture {
   const store = src.store;
-  const revisions = store.eventLog({ name: "revision.pressure", order: "desc", limit: 5 }).map((row) => {
+  const revisions = store.eventLog({ name: "revision.pressure", order: "desc", limit: PICTURE_ROWS }).map((row) => {
     const p = payloadOf(row);
     const targetId = typeof p["targetId"] === "string" ? p["targetId"] : (row.ref ?? "");
     const challengerId = typeof p["challengerId"] === "string" ? p["challengerId"] : "";
