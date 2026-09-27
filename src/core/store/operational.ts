@@ -913,14 +913,17 @@ export function openOperational(path: string, opts: OpenOperationalOptions = {})
       // redesign moves no memory down a band and prunes none sooner (physics
       // §5.2/§5.11). One statement; what it found is recorded for doctor, and
       // the first decay pass after it measures every row old-vs-new
-      // (`sleep/decay.ts#upgradeCensus`).
+      // (`sleep/decay.ts#upgradeCensus`). The counts doctor prints are of LIVE
+      // memories — not chapters, schema rows, archived rows or tombstones,
+      // which the flag also lands on (review of #251: 183 "memories" said for
+      // 129 on the seeded demo store).
       if (now !== null && Number.parseInt(now, 10) < 8) {
         db.run("UPDATE memories SET legacy = 1");
         const counts = db.get<{ rows: number; consolidated: number; identity: number }>(
           `SELECT COUNT(*) AS rows,
                   COALESCE(SUM(consolidated), 0) AS consolidated,
                   COALESCE(SUM(promoted_identity), 0) AS identity
-             FROM memories`,
+             FROM memories WHERE type = 'memory' AND archived = 0`,
         );
         const lived = db.get<{ value: string }>("SELECT value FROM meta WHERE key = 'livedDay'")?.value ?? "0";
         db.run(

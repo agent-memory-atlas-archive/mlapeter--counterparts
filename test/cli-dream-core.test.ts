@@ -271,8 +271,16 @@ describe("doctor: the v8 upgrade and dreaming", () => {
       const green = upgradeV8Findings(s)[0];
       expect(green?.severity).toBe("green");
       expect(green?.detail).toBe(
-        "Upgrade to v8: 11 memories checked; none changed band, none weaker, none prunes sooner; 4 kept their old consolidation",
+        "Upgrade to v8: 11 memories checked by the old arithmetic and the new; none changed band, none weaker, none prunes sooner; 4 kept their old consolidation",
       );
+      // What the self-comparison cannot see: rows the old rules were about to make core.
+      s.setMeta(
+        "physics.v8.census",
+        JSON.stringify({ checked: 11, bandDown: 0, bandUp: 0, weaker: 0, pruneSooner: 0, pruneLater: 0, legacy: 11, consolidated: 4, v7WouldPromote: 2 }),
+      );
+      const road = upgradeV8Findings(s)[0];
+      expect(road?.severity).toBe("amber");
+      expect(road?.detail).toContain("2 were about to become core under the old rules");
       s.setMeta(
         "physics.v8.census",
         JSON.stringify({ checked: 11, bandDown: 1, bandUp: 0, weaker: 0, pruneSooner: 0, pruneLater: 0, legacy: 11, consolidated: 4 }),

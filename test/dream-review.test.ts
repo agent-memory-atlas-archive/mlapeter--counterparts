@@ -14,7 +14,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Counterpart } from "../src/core/counterpart.js";
+import { V8_CENSUS_KEY, runCycle, v7WouldPromote } from "../src/core/sleep/index.js";
+import type { UpgradeCensus } from "../src/core/sleep/index.js";
+import { Store, V8_UPGRADE_KEY } from "../src/core/store/index.js";
 import type { PutInput } from "../src/core/store/index.js";
+import { stripToV7 } from "./v7-fixture.js";
 
 let dir: string;
 const open: Counterpart[] = [];
@@ -232,5 +236,68 @@ describe("review of #251: what a dream's changes must keep", () => {
     expect(p.returns).toBeCloseTo(before, 10);
     // A second awake use the same day is still not a second lane day.
     expect(c.store.reinforce(m.old, c.store.livedDay(), "referenced", { cued: true }).ret?.counted ?? false).toBe(false);
+  });
+});
+
+describe("review of #251: the upgrade says what it found truthfully", () => {
+  // The `<base>/store` layout, so the copy before migrating has a home.
+  const storeDir = (): string => join(dir, "store");
+
+  test("the v8 upgrade record counts live memories — not chapters, schema rows or archived rows", () => {
+    const s = Store.open({ dir: storeDir() });
+    const live = s.put({ type: "memory", kind: "fact", body: "A live memory that stays." });
+    s.put({ type: "memory", kind: "fact", body: "Another live memory that stays too." });
+    const gone = s.put({ type: "memory", kind: "fact", body: "An archived memory." });
+    s.archive(gone, "test");
+    s.put({ type: "episode", kind: "self", body: "A chapter of my own." });
+    s.put({ type: "schema", kind: "person", body: "Card: Sarah", meta: { role: "entity", name: "Sarah" } });
+    s.close();
+    stripToV7(storeDir());
+    const again = Store.open({ dir: storeDir() });
+    try {
+      const upgrade = JSON.parse(again.getMeta(V8_UPGRADE_KEY) ?? "{}") as Record<string, unknown>;
+      expect(upgrade["rows"]).toBe(2);
+      // …while every row the upgrade found keeps the old path.
+      expect(again.row(gone)?.legacy).toBe(1);
+      expect(again.row(live)?.legacy).toBe(1);
+    } finally {
+      again.close();
+    }
+  });
+
+  test("the census sees the rows the old rules were about to make core, which the lanes will not", () => {
+    const s = Store.open({ dir: storeDir() });
+    s.advanceClock("2026-09-01");
+    // A fact the pre-v8 rule would promote at its next consolidation: claimed
+    // 0.95 (+0.2 consolidated) and reinforced on three lived days.
+    const road = s.put({
+      type: "memory",
+      kind: "fact",
+      body: "The release train leaves every other Thursday at noon.",
+      salience: { relevance: 0.9, emotional: 0.2, predictive: 0.9, claimed: 0.95 },
+      physics: { birthDay: 0, lastUsedDay: 0, uses: 3, reinforcedDays: 3, consolidated: true },
+    });
+    // One that is not on the road: two days only.
+    s.put({
+      type: "memory",
+      kind: "fact",
+      body: "The staging box is rebuilt every Monday morning.",
+      salience: { relevance: 0.9, emotional: 0.2, predictive: 0.9, claimed: 0.95 },
+      physics: { birthDay: 0, lastUsedDay: 0, uses: 2, reinforcedDays: 2, consolidated: true },
+    });
+    s.advanceClock("2026-09-02");
+    s.close();
+    stripToV7(storeDir());
+    const again = Store.open({ dir: storeDir() });
+    try {
+      runCycle({ store: again, date: "2026-09-03" });
+      const census = JSON.parse(again.getMeta(V8_CENSUS_KEY) ?? "null") as UpgradeCensus | null;
+      expect(census).toMatchObject({ bandDown: 0, weaker: 0, pruneSooner: 0, v7WouldPromote: 1 });
+      expect(v7WouldPromote(again.physicsOf(road), again.livedDay())).toBe(true);
+      // The lanes do not take it: a fact is not about me.
+      expect(again.physicsOf(road).promotedIdentity).toBe(false);
+    } finally {
+      again.close();
+    }
   });
 });

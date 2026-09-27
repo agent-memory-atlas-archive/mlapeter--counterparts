@@ -75,31 +75,65 @@ changes.
 - Fix: the instruction now says to show the hand-back line exactly as it came back. It
   carries the mark, so the reader tags it `dream` in either role.
 
-## Notes and owner questions
+**S8. The upgrade census could not see the one real down-move.** *(made visible, not
+changed)*
+- The census compares each row with itself (returns set aside) at one moment. Returns
+  are zero at the upgrade, so its down counts are zero by construction.
+- The upgrade kept v7's consolidation path for legacy rows, but not v7's *promotion*
+  path (`promotionBase ≥ 0.85` with 3 reinforced days, any kind).
+- A legacy row that already meets that rule but is waiting for the next 3-day
+  consolidation is not made core. Doctor meanwhile printed a green "none changed band".
+  See the independent check below: one natural row on the demo store, and eight probes.
+- Fix: the census also counts `v7WouldPromote`: legacy, not identity, meeting v7's rule,
+  with the consolidation mark the same v7 pass would have set.
+  - Doctor turns that line amber when the count is above 0, and names it as the owner's
+    decision.
+  - The green text now says what it measures ("checked by the old arithmetic and the
+    new").
+- Not changed: whether those rows keep the old road. That is owner question Q1.
+
+**S9. The upgrade record's counts were of every row.** *(fixed)*
+- The counts covered chapters, schema rows, archived rows and the removal tombstone. On
+  the seeded demo, doctor said "183 memories" for 129 live ones.
+- Fix: the counts are of live `type = 'memory'` rows. `legacy = 1` still lands on every
+  row.
+
+## Owner questions
+
+- **Q1. The old road to the core.** Should legacy rows that were already on it (see S8)
+  keep it, be grandfathered at the upgrade, or be let go as the new rule says ("facts,
+  skills and places never become core")?
+  - Doctor will count them on his store at the first sleep after the upgrade.
+  - Under continued use, the demo shows 21 rows v7 would have made core and v8 does not
+    (below).
+- **Q2. Slow lane with no salience floor.** Six `self` memories with salience `[0,0,0,0]`
+  (base 0–0.045) became core, permanently, on repetition alone (days 61–67 of the demo
+  run). v7 had pruned five of them. Should the slow lane require a floor, such as the
+  semantic floor or the warm floor?
+- **Q3. Tighten the cued exception?** Count a quoted use only when the surfacing and the
+  quote are on the same turn (N3).
+- **Q4. Can a merge build a lane?** A merge takes the union of return days and so can
+  assemble a lane (N4). Accept it, or recompute the lanes without a merge's inherited
+  days?
+- **Q5. Durability from dreams alone.** `DREAM_RETURN_WEIGHT` / `RETURN_GAIN`: a
+  memory replayed every night becomes almost as durable as one used weekly (N5).
+- **Q6. Removal and journals.** When the owner removes a memory, should that also blank
+  the journal of any dream that was shown it (N8)?
+- **Q7. Who "me" is.** `aboutMe` counts any `person` memory that mentions the owner's name
+  (N10). Narrow it?
+- **Q8. A way back after demotion?** Today a demotion is permanent (N15).
+
+## Notes
 
 **Migration and upgrade (item 1).** See "Independent upgrade check" below for the
 measured results.
 
-**N1. The upgrade census is tautological.**
-- `preV8` zeroes `returns`, and returns are zero at the upgrade. The only term v8 adds for
-  a legacy row is `R(returns) ≥ 1`.
-- So `bandDown`, `weaker` and `pruneSooner` can never be non-zero, and doctor's red
-  branch cannot be reached.
-- The green line is true, but it reads as a measurement and is one by construction only
-  (constitution 11).
-- Owner question: reword it ("by construction: the arithmetic for existing rows is
-  unchanged"), or drop it. The real check is the independent run below.
-- The obvious real alternative is to compare the v7-written `band` column against v8's
-  band at `band_day`. That would raise false reds: revision successors inherit the
-  target's band at birth.
+**N1. The census's band/strength/prune counts remain zero by construction.**
+- The red branch is kept as an alarm and commented as such.
+- Comparing the v7-written `band` column with v8's band at `band_day` would be a real
+  check, but it gives false reds: a revision successor is born with its target's band.
 
-**N2. The v7 promotion road is closed for legacy rows.**
-- v7 promoted any kind at `promotionBase ≥ 0.85` with 3 reinforced days. v8 promotes only
-  `self` and owner-`person` rows, by lanes.
-- A legacy fact that was on that road now never becomes identity. Nothing moves down at
-  the instant of the upgrade. Measured over time below.
-- Owner question: should `legacy` keep the v7 promotion rule too, or is this the intended
-  retirement?
+**N2.** Folded into S8 and Q1.
 
 **N3. The cued exception is session-wide, not "the turn's own cue".**
 - `creditReferences` builds its candidates from everything surfaced loud this session.
@@ -220,5 +254,85 @@ Episodic → semantic) green for the week.**
 
 ## Independent upgrade check
 
-(See the section appended below: a store seeded by the v7 build at `ef37eb1`, migrated by
-this build, and advanced side by side with no use.)
+Done independently of the PR's simulation and census, on pristine archives of `ef37eb1`
+(v7) and `5dd4436` (v8). Scripts and per-row dumps are kept outside the repo.
+
+**Seed.** The v7 `tools/demo/seed.ts` (30 lived days), then, with the v7 build:
+- 4 feelings, an owner removal, an explicit archive, a self page and a dated reminder
+- 9 probe memories reinforced on three days
+- The store already had revisions, entity cards, a named identity core, 106 consolidated
+  rows and 16 identity rows.
+- The upgrade came at lived day 35.
+
+**At the instant of the upgrade (the literal promise): met.**
+- Snapshot `<base>/snapshots/<ts>-pre-migration-v7-to-v8/counterparts.sqlite`: v7, and
+  every table's row count equal to the original.
+- The migrated store is v8, with `legacy = 1` on 183/183 rows.
+- Every v7 table is identical on every v7 column: edges 252, feelings 4, gate_session 233,
+  memories 183, prospective 5, removal_record 4, removal_tombstone 1, versions 2.
+- The only other differences are one `store.migrated` event and the new meta row.
+- A second open took no new snapshot and left the store byte-identical.
+- Band, strength and projected prune day at +0 and +1: identical row by row.
+
+**Interrupted migration.**
+- A snapshot failure gives `MIGRATION_SNAPSHOT_FAILED`. The store stays v7, the v7 build
+  opens it, and a retry migrates cleanly.
+- A DDL failure after the copy rolls back cleanly, but surfaces as raw SQLite text ("no
+  such column: memory_id"), not a StoreError (N18).
+- A retry after a v7 write between the failure and the retry reuses the earlier, now
+  stale, copy (183 vs 184 memories). This is #214's reuse rule ("taken today, or not
+  written since"), which predates this PR (N19).
+
+**Observer floor (v8 CLI on a v7 store, `--dir`).** Nothing wrote: the database and WAL
+hashes were unchanged and no new files appeared.
+- `doctor`: exit 0, three amber lines ("on schema v7; this build reads it once a session
+  has upgraded it"; "the next session copies it … and upgrades it to v8").
+- `status`, `ask`, `dream --list`, `core`: exit 3, "this store is on schema v7; the next
+  Claude Code session copies it and upgrades it to v8. Nothing to do: start a session,
+  then run this again."
+- dashboard `status`: exit 1, "This memory needs a one-time upgrade…".
+- Clear. It names "Claude Code", which is wrong for another host (N20).
+
+**Side by side after the upgrade, no further use** (each build runs its own sleep; E/S/I
+= rows in the episodic, semantic and identity bands):
+
+| checkpoint | v7 E/S/I | v8 E/S/I | lower in v8 | pruned earlier | higher in v8 |
+|---|---|---|---|---|---|
+| +0, +1 | 50/88/16 | 50/88/16 | 0 | 0 | 0 |
+| +3 | 51/79/24 | 51/87/16 | 8 | 0 | 0 |
+| +30 | 63/67/24 | 63/75/16 | 8 | 0 | 0 |
+| +180 | 110/0/24 | 117/1/16 | 8 | 0 | 0 |
+
+- The 8 are the probes. v7 promoted all of them at its day-37 consolidation. v8 refuses
+  them as `not-about-me` or `no-lane-yet`.
+- By +180, 7 of the 8 are episodic (strength 0.25–0.48), with v8 projected prune days
+  557–896 against never under v7.
+- **Natural case** (a fresh, unaugmented demo seed, upgraded at day 30): exactly one row.
+  - `fact`, claimed 0.95, 4 reinforced days, consolidated.
+  - v7 promotes it at day 31. v8 keeps it semantic, then episodic by +180 (0.383).
+  - v8 projects a prune at lived day 675; v7 never prunes it.
+- The PR's census read `bandDown 0` on both stores. That is S8.
+
+**With use** (the same 35 ids reinforced on days +2, +5, +9, +16, +24 and +33):
+- v7 ends with 41 identity rows, v8 with 27.
+- 21 rows are lower in v8 (fact, entity and non-owner person rows v7 promoted), and 2 are
+  higher.
+- v8 keeps 5 rows v7 pruned: the six zero-salience `self` rows of Q2.
+- Cued and plain reinforcement gave identical results, even with 2–16 on-display
+  refusals per use day.
+
+**Not measured.** On the real store, consolidation runs under a budget and a cursor.
+Rows that meet v7's rule and have not yet been visited are a backlog of the same kind
+(N21). The S8 count covers them at the first sleep.
+
+**N18.** A DDL failure during migration reaches the person as raw SQLite text, not a
+named StoreError.
+
+**N19.** The pre-migration copy is reused after a failed attempt even when an old-build
+process wrote in between. This is #214's rule, not this PR's.
+
+**N20.** The upgrade-pending messages name "Claude Code session", which is the wrong
+instruction for an MCP-only or other-host user.
+
+**N21.** On the real store, a budget/cursor backlog of v7-eligible rows may exist. S8
+counts it at the first sleep.

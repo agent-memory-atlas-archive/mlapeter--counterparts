@@ -16,7 +16,18 @@
  * Arithmetic only. Runs at most once per store: the meta row is its latch.
  */
 
-import { TUNABLES as PHYSICS, band, base, stability, strength } from "../physics/index.js";
+import {
+  TUNABLES as PHYSICS,
+  band,
+  base,
+  consolidationEligibility,
+  kindPhysics,
+  reinforcedDays,
+  rep,
+  sal,
+  stability,
+  strength,
+} from "../physics/index.js";
 import type { MemoryPhysics } from "../physics/index.js";
 import { rowToPhysics } from "../store/operational.js";
 import type { PhaseCtx } from "./types.js";
@@ -37,6 +48,17 @@ export interface UpgradeCensus {
   readonly pruneLater: number;
   readonly legacy: number;
   readonly consolidated: number;
+  /**
+   * THE ROAD THE UPGRADE CLOSED (adversarial review of #251): live rows the
+   * pre-v8 rule would have made identity at its next consolidation — `base`
+   * without the emotion lift (+ the consolidation bonus the same pass would
+   * have granted) at or above 0.85, reinforced on 3+ distinct lived days — and
+   * that v8's core lanes do not promote. Every band/strength/prune count above
+   * compares a row with itself at one moment, so it cannot see these: nothing
+   * moves at the upgrade, but these rows no longer have the future the old
+   * rules gave them. Absent on a census recorded before the review.
+   */
+  readonly v7WouldPromote?: number;
 }
 
 /**
@@ -51,6 +73,26 @@ export function projectedPruneDay(m: MemoryPhysics): number | null {
   const reach = m.lastUsedDay + stability(m) * Math.log(b / PHYSICS.PHI_PRUNE);
   return Math.max(Math.ceil(reach), m.lastUsedDay + PHYSICS.D_FLOOR_DAYS);
 }
+
+/**
+ * Would the PRE-v8 rule have promoted this row at a consolidation on `day`?
+ * v7's `promotionBase` (`max(wSal x sal, wRep x rep) + cons`, no emotion lift)
+ * at or above its `THETA_ID` of 0.85, and reinforcement on at least its N = 3
+ * distinct lived days — with the consolidation mark the same pass would have
+ * set first counted in, as v7 ordered it. Legacy rows only: a row made since
+ * the upgrade never had the old rules.
+ */
+export function v7WouldPromote(m: MemoryPhysics, day: number): boolean {
+  if (m.legacy !== true || m.promotedIdentity) return false;
+  const k = kindPhysics(m.kind);
+  const marked = m.consolidated || consolidationEligibility(m, day).eligible;
+  const b = Math.max(k.wSal * sal(m.salience), k.wRep * rep(m)) + (marked ? PHYSICS.CONS_BONUS : 0);
+  return b >= V7_THETA_ID && reinforcedDays(m) >= V7_PROMOTION_DAYS;
+}
+
+/** The pre-v8 identity threshold and distinct-day count, kept here for the census alone. */
+const V7_THETA_ID = 0.85;
+const V7_PROMOTION_DAYS = 3;
 
 /** The same row by the pre-v8 formula: its returns set aside. */
 export function preV8(m: MemoryPhysics): MemoryPhysics {
@@ -74,6 +116,7 @@ export function upgradeCensus(ctx: PhaseCtx): UpgradeCensus {
   let legacy = 0;
   let consolidated = 0;
   let weaker = 0;
+  let closedRoad = 0;
   const rank = { episodic: 0, semantic: 1, identity: 2 } as const;
   for (const id of store.list({ archived: false })) {
     if (denied.has(id)) continue;
@@ -84,6 +127,9 @@ export function upgradeCensus(ctx: PhaseCtx): UpgradeCensus {
     checked += 1;
     if (now.legacy === true) legacy += 1;
     if (now.consolidated) consolidated += 1;
+    if (row.type !== "schema" || row.kind !== "self") {
+      if (v7WouldPromote(now, day)) closedRoad += 1;
+    }
     const move = rank[band(now, day)] - rank[band(old, day)];
     if (move < 0) bandDown += 1;
     else if (move > 0) bandUp += 1;
@@ -96,7 +142,18 @@ export function upgradeCensus(ctx: PhaseCtx): UpgradeCensus {
       else if (pNow > pOld) pruneLater += 1;
     }
   }
-  const census: UpgradeCensus = { day, checked, bandDown, bandUp, weaker, pruneSooner, pruneLater, legacy, consolidated };
+  const census: UpgradeCensus = {
+    day,
+    checked,
+    bandDown,
+    bandUp,
+    weaker,
+    pruneSooner,
+    pruneLater,
+    legacy,
+    consolidated,
+    v7WouldPromote: closedRoad,
+  };
   if (ctx.apply) {
     store.setMeta(V8_CENSUS_KEY, JSON.stringify(census));
     store.appendEvent?.({

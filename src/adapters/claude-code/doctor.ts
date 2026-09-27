@@ -2407,7 +2407,12 @@ export function upgradeV8Findings(store: Store): Finding[] {
     pruneSooner: sooner,
     pruneLater: metaNum(census["pruneLater"]),
     legacyConsolidated: metaNum(census["consolidated"]),
+    v7WouldPromote: metaNum(census["v7WouldPromote"]),
   };
+  // By construction the three down counts read zero: they compare each row
+  // with itself, returns set aside, and returns are zero at the upgrade (the
+  // arithmetic for existing rows is unchanged). The branch stays as the alarm
+  // if that ever stops being true. (Adversarial review of #251.)
   if (down + weaker + sooner > 0) {
     return [
       finding(
@@ -2420,12 +2425,29 @@ export function upgradeV8Findings(store: Store): Finding[] {
       ),
     ];
   }
+  // WHAT THE SELF-COMPARISON CANNOT SEE (review of #251): rows the old rules
+  // were about to make core, which the new lanes do not. Nothing moved at the
+  // upgrade; their future did. The owner's decision stands (only memories about
+  // me or about us become core), so this is a question for him, not a fault.
+  const road = metaNum(census["v7WouldPromote"]);
+  if (road > 0) {
+    return [
+      finding(
+        "upgrade-v8",
+        "amber",
+        "Upgrade",
+        `Upgrade to v8: ${String(checked)} memories checked, none moved; but ${String(road)} ${road === 1 ? "was" : "were"} about to become core under the old rules and will not under the new ones (only memories about me or about us become core now), so ${road === 1 ? "it fades" : "they fade"} like any other memory`,
+        "Nothing to do if that is the rule you want. If they should stay on the old road, that is a decision to make about the upgrade; the copy taken before it is in the snapshots directory.",
+        measured,
+      ),
+    ];
+  }
   return [
     finding(
       "upgrade-v8",
       "green",
       "Upgrade",
-      `Upgrade to v8: ${String(checked)} memories checked; none changed band, none weaker, none prunes sooner; ${String(metaNum(census["consolidated"]))} kept their old consolidation${up > 0 ? `; ${String(up)} moved up a band` : ""}`,
+      `Upgrade to v8: ${String(checked)} memories checked by the old arithmetic and the new; none changed band, none weaker, none prunes sooner; ${String(metaNum(census["consolidated"]))} kept their old consolidation${up > 0 ? `; ${String(up)} moved up a band` : ""}`,
       "",
       measured,
     ),
