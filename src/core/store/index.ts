@@ -854,6 +854,11 @@ function memoryWhere(filter: MemoryFilter): { clause: string; args: (string | nu
   return { clause: where.length ? `WHERE ${where.join(" AND ")}` : "", args };
 }
 
+/** A memory row the NIGHTLY RUN wrote — a dream's gist or merge, a reflection's
+ *  entry — as SQL (temporal contiguity's reads, review of #281 finding 1). */
+const NIGHTLY_SQL = `(COALESCE(source, '') IN ('dreamed', 'reflection')
+  OR COALESCE(origin_ref, '') LIKE 'dream:%' OR COALESCE(origin_ref, '') LIKE 'reflection:%')`;
+
 export class Store {
   readonly dir: string;
   readonly observer: boolean;
@@ -3977,27 +3982,37 @@ export class Store {
    * (association build 2, 2026-09-28). Ids, sessions, moments and days only.
    * Rows with no session, no moment (pre-v7), archived or superseded are left
    * out: contiguity links what one session made, in the order it made it.
+   *
+   * `nightly` marks a row the NIGHTLY RUN wrote (review of #281, finding 1): a
+   * dream's gist or merge, a reflection's entry. They carry the launching
+   * session's id, but the session did not make them, so contiguity counts them
+   * and links nothing to them. Marked by origin (`dream:` / `reflection:`,
+   * which catches merges too, whose `source` is their best source's) and by
+   * source (`dreamed` / `reflection`), in case a later writer keeps one and
+   * not the other.
    */
-  memoriesWrittenSince(at: number): { id: string; session: string; at: number; bornDay: number }[] {
+  memoriesWrittenSince(at: number): { id: string; session: string; at: number; bornDay: number; nightly: boolean }[] {
     return this.ops
-      .all<{ id: string; origin_session: string; created_at: number; birth_day: number }>(
-        `SELECT id, origin_session, created_at, birth_day FROM memories
+      .all<{ id: string; origin_session: string; created_at: number; birth_day: number; nightly: number }>(
+        `SELECT id, origin_session, created_at, birth_day, ${NIGHTLY_SQL} AS nightly FROM memories
           WHERE type = 'memory' AND created_at >= ? AND origin_session IS NOT NULL
             AND archived = 0 AND superseded_by IS NULL
           ORDER BY created_at, rowid`,
         at,
       )
-      .map((r) => ({ id: r.id, session: r.origin_session, at: r.created_at, bornDay: r.birth_day }));
+      .map((r) => ({ id: r.id, session: r.origin_session, at: r.created_at, bornDay: r.birth_day, nightly: r.nightly === 1 }));
   }
 
   /** The same rows for ONE session, in write order — the neighbours a newly
-   *  written memory sits beside (2026-09-28). */
+   *  written memory sits beside (2026-09-28). The nightly run's rows are left
+   *  out, so a note made after the dream sits next to the note made before
+   *  it (finding 1 of the review of #281). */
   memoriesOfSession(session: string): { id: string; session: string; at: number; bornDay: number }[] {
     return this.ops
       .all<{ id: string; origin_session: string; created_at: number; birth_day: number }>(
         `SELECT id, origin_session, created_at, birth_day FROM memories
           WHERE type = 'memory' AND origin_session = ? AND created_at IS NOT NULL
-            AND archived = 0 AND superseded_by IS NULL
+            AND archived = 0 AND superseded_by IS NULL AND NOT ${NIGHTLY_SQL}
           ORDER BY created_at, rowid`,
         session,
       )

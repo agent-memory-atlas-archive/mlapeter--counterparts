@@ -532,6 +532,35 @@ describe("4. temporal contiguity: adjacent only, lag-weighted, forward where the
     expect(w(a, later)).toBeCloseTo(rate * T.CONTIGUITY_LAG_DECAY, 10);
   });
 
+  test("the nightly run's rows are not the session's: dream gists, merges and reflection entries are counted and left out (review of #281, finding 1)", async () => {
+    const clock = { now: Date.UTC(2026, 8, 28, 12) };
+    const c = brainAt(clock);
+    const n1 = memoryIn(c, "s1", "A note in the working session.");
+    clock.now += 5 * 60_000;
+    const n2 = memoryIn(c, "s1", "Another note in the working session.");
+    clock.now += 5 * 60_000;
+    // Shaped as `dream/index.ts` and `dream/reflect.ts` write them: the launching session's id.
+    const nightly = (title: string, source: string, ref?: string): string =>
+      c.store.put({ type: "memory", kind: "fact", title, body: `${title}, as the night wrote it.`, source: source as never, origin: { session: "s1", ...(ref === undefined ? {} : { ref }) } });
+    const gist = nightly("Dreamed: pattern one", "dreamed", "dream:d1");
+    const merge = nightly("A merge keeps its best source", "authored", "dream:d1");
+    const entry = nightly("Reflected: the day", "reflection", "reflection:r1");
+    const bare = nightly("Dreamed: with no ref", "dreamed");
+    clock.now += 5 * 60_000;
+    const n3 = memoryIn(c, "s1", "A note made after the night.");
+    const report = await c.sessionEnd({ date: "2026-09-28", budgetBytes: 9000 });
+    expect(report.contiguity.excluded).toBe(4);
+    expect(report.contiguity.memories).toBe(3);
+    for (const id of [gist, merge, entry, bare]) expect(c.store.edgesFrom(id)).toEqual([]);
+    const w = (x: string, y: string): number => c.store.edgesFrom(x).find((e) => e.dst === y)?.weight ?? 0;
+    // The note after the night sits next to the note before it.
+    expect(w(n2, n3)).toBeGreaterThan(0);
+    expect(w(n1, n3)).toBeGreaterThan(0);
+    const rows = c.store.eventLog({ name: "associate.flush" });
+    const last = JSON.parse(rows[rows.length - 1]?.payload ?? "{}") as { contiguity?: Record<string, unknown> };
+    expect(last.contiguity?.["excluded"]).toBe(4);
+  });
+
   test("a first pass on a store with history links only what was born today — never the whole past", async () => {
     const clock = { now: Date.UTC(2026, 8, 20, 12) };
     const c = brainAt(clock);

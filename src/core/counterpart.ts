@@ -503,6 +503,10 @@ export interface ContiguityPass {
   /** Sessions with a new memory, and the new memories themselves. */
   readonly sessions: number;
   readonly memories: number;
+  /** New rows the NIGHTLY RUN wrote (a dream's gist or merge, a reflection's
+   *  entry), which carry the launching session's id and are left out of
+   *  contiguity — counted, never cut silently (review of #281, finding 1). */
+  readonly excluded: number;
   /** Pairs planned: with a real order between them (forward bias), or one batch (flat). */
   readonly pairs: number;
   readonly timed: number;
@@ -3231,6 +3235,7 @@ export class Counterpart {
       buffered: 0,
       blocked: 0,
       frozen: 0,
+      excluded: 0,
     };
     if (this.observer) return { ...zero, reason: "observer" };
     try {
@@ -3239,13 +3244,20 @@ export class Counterpart {
       const rows = this.store.memoriesWrittenSince(cursor?.at ?? 0);
       if (rows.length === 0) return zero;
       const seen = new Set(cursor?.ids ?? []);
-      const fresh = rows.filter((r) => (cursor === null ? r.bornDay >= day : !(r.at === cursor.at && seen.has(r.id))));
+      const unread = rows.filter((r) => (cursor === null ? r.bornDay >= day : !(r.at === cursor.at && seen.has(r.id))));
+      // THE NIGHTLY RUN'S ROWS ARE NOT THE SESSION'S (review of #281, finding
+      // 1): a dream's gists and merges and a reflection's entry carry the
+      // launching session's id, but the session did not write them. They are
+      // counted (`excluded`), the cursor moves past them, and nothing links
+      // to them — the dream proposes, waking use confirms.
+      const fresh = unread.filter((r) => !r.nightly);
+      const excluded = unread.length - fresh.length;
       const newest = rows.reduce((m, r) => Math.max(m, r.at), 0);
       this.store.setMeta(
         CONTIGUITY_CURSOR_META,
         JSON.stringify({ at: newest, ids: rows.filter((r) => r.at === newest).map((r) => r.id) }),
       );
-      if (fresh.length === 0) return zero;
+      if (fresh.length === 0) return { ...zero, excluded };
       const freshIds = new Set(fresh.map((r) => r.id));
       const sessions = [...new Set(fresh.map((r) => r.session))].sort();
       const deltas: PairDelta[] = [];
@@ -3267,6 +3279,7 @@ export class Counterpart {
         reason: buffered.pairs > 0 ? "buffered" : "nothing-new",
         sessions: sessions.length,
         memories: fresh.length,
+        excluded,
         pairs: deltas.length,
         timed,
         batch,
@@ -3312,6 +3325,7 @@ export class Counterpart {
       contiguity: {
         sessions: contiguity.sessions,
         memories: contiguity.memories,
+        excluded: contiguity.excluded,
         pairs: contiguity.pairs,
         timed: contiguity.timed,
         batch: contiguity.batch,
