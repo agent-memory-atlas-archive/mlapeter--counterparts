@@ -364,9 +364,11 @@ proposals and their archive; render and delivery telemetry.
     2026-09-28), or — still read — a date the SessionStart hook wrote on the session's
     registry record (nothing writes it since the ask was retired), or one the launcher
     pinned onto a windowless child's environment, honoured only while that night's claim
-    is open. The run's agent shares its session's id, so that session's own page write
-    while the claim is open is labelled `writer` too; the registry mark had the same
-    property.
+    is open. The run's claim counts only for a write that NAMES the session in its call
+    (the writer instruction says to), not for the session the server is bound to — the
+    run's agent shares its session's id, and the owner's own page edit in that session
+    stays an ordinary amendment (review of #271). When the run moves past the writer
+    without a write, the next phase answers the night `nothing-to-say`.
     **In the nightly run the block carries the page whole**: the background agent never
     got the wake. Beside the wake (host mode's child) it names the version instead of
     repeating a page the reader already woke with. A day that did not all fit is delivered

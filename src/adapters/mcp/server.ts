@@ -2337,10 +2337,10 @@ export class McpServer {
    * while that night's claim is still open: a session that lives past
    * midnight, or one whose night has already been answered, writes as an
    * ordinary session again. Null on every other path, including an unbound
-   * server, which is the direction that never over-claims. The residual: the
-   * run's agent shares its session's id, so a `self_page` write the session
-   * itself makes while the claim is open is labelled `writer` too — the
-   * registry mark had the same property.
+   * server, which is the direction that never over-claims. The run's claim
+   * counts only for a write that names the session in its call (review of
+   * #271): the run's agent shares its session's id, and the session's own
+   * page edit, which names none, stays an ordinary amendment.
    */
   /**
    * A session claim on the PAGE's door: corroborated if it can be, ignored if

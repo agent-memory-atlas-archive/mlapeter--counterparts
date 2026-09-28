@@ -95,7 +95,11 @@ dreamer is the model (a background agent the session launches), outside this pro
   agent went with it), today's or yesterday's, makes the line due again once the line
   itself has been quiet as long — and with `auto`, so does a launch no dream followed.
   At most `RELAUNCHES_PER_DAY` (2) a day, a compare-and-set on the latch
-  (`reclaimDreamAsk`); an `ask` nobody answered is not asked again.
+  (`reclaimDreamAsk`); an `ask` nobody answered is not asked again, but one the owner said
+  yes to is (`launch` flips the day to `launched`). A dream that began, changed nothing and
+  went quiet does not count as following a launch. A dream journaled today whose
+  reflection never finished makes the line start the REFLECTION alone (`reflect launch`
+  with the dream's id), under the same latch and cap.
 - Never in the host-mode page writer's headless session. (The reflection that follows a
   dream is the DREAMER's, in the background agent the session launched — not the page
   writer's child, and not a phase of the dream: see §5.4.)

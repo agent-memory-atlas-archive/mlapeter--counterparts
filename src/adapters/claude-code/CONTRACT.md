@@ -589,11 +589,11 @@ for the ask field, and the registry mark it wrote. The dream tool's `writer` pha
 run's first call — writes the night's claim (the ordinary `asked` row, `about` = yesterday's
 local date, carrying the SESSION and the run) and hands the writer its day through a tool
 result, the page whole: no injection ceiling, so nothing is deferred for room.
-The MCP server labels a `self_page` write `by: "writer"` when this session holds that open
-claim (`self/writer.ts#nightClaimFor`); the registry mark and host mode's environment pin
-are still read. The residual, as with the registry mark: the run's agent shares its
-session's id, so the session's own page write while the claim is open is labelled `writer`
-too. The wake's `injection`, `bytes` and `sentinel` are untouched by any of it.
+The MCP server labels a `self_page` write `by: "writer"` when the write NAMES a session
+that holds that open claim (`self/writer.ts#nightClaimFor`) — not the session the server is
+bound to, so the owner's own page edit in the run's session stays an ordinary amendment;
+and when the run moves past the writer without a write, its next phase answers the night
+`nothing-to-say`. The registry mark and host mode's environment pin are still read. The wake's `injection`, `bytes` and `sentinel` are untouched by any of it.
 
 **[M] Host mode (not the default; left in place) starts a windowless session of the self,
 and reads the outcome from the store.** With `pageWriter.mode: host` the nightly run claims
