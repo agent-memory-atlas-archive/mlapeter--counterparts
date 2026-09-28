@@ -800,10 +800,12 @@ export class Reflections {
           ? { offered: false, reason: `${row.share_state}-earlier` }
           : { offered: false, reason: nothingMuch ? "nothing-much" : "no-share" };
     const rawShare = (input.share?.text ?? "").trim();
-    let shareRefused = false;
+    // What the share's own words hit, kept apart: a became-core line may still
+    // make a share below, and the retry must say THESE words were not written.
+    let shareMiss: string | null = null;
     if (rawShare.length > 0) {
       if (shareLocked) {
-        shareRefused = true;
+        shareMiss = "";
         share = {
           offered: false,
           reason: `share-already-${row.share_state}`,
@@ -812,7 +814,7 @@ export class Reflections {
       } else if (nothingMuch) {
         // "NOTHING MUCH" IS A NORMAL NIGHT and shares nothing: a night that
         // cites no memory at all has nothing to tell.
-        shareRefused = true;
+        shareMiss = "";
         share = {
           offered: false,
           reason: "share-needs-cites",
@@ -831,11 +833,12 @@ export class Reflections {
           if (w.cut) notes.push(`It was kept to its first ${String(T.MAX_SHARE_CHARS)} characters.`);
           share = { offered: true, reason: earlierShare !== null ? "replaced" : "offered", ...(notes.length > 0 ? { note: notes.join(" ") } : {}) };
         } else {
-          shareRefused = true;
+          shareMiss = "";
           share = { offered: earlierShare !== null, reason: w.reason, detail: `${w.detail}${earlierShare !== null ? " The earlier share stands." : ""}` };
         }
       }
     }
+    if (shareMiss !== null) shareMiss = `${share.reason}${share.detail !== undefined ? `: ${share.detail}` : ""}`;
     // A MEMORY THAT BECAME CORE ON REFLECTION ALONE is said, so the owner
     // sees it happen (the owner's call, 2026-09-27): shown to him, not gated
     // on him. When the share did not cite it, a line is added in the self's
@@ -907,7 +910,7 @@ export class Reflections {
     // WHAT WAS NOT WRITTEN, and that it can be sent again (2026-09-28).
     const missed: string[] = [];
     if (pageRefused) missed.push(`page — ${page.reason}${page.detail !== undefined ? `: ${page.detail}` : ""}`);
-    if (shareRefused) missed.push(`share — ${share.reason}${share.detail !== undefined ? `: ${share.detail}` : ""}`);
+    if (shareMiss !== null) missed.push(`share — ${shareMiss}`);
     for (const [part, list] of [["feelings", feelings], ["about", about], ["traits", traits]] as const) {
       list.forEach((x, i) => {
         if (!x.ok) missed.push(`${part}[${String(i)}]${x.id === null ? "" : ` (${x.id})`} — ${x.reason}${x.detail !== undefined ? `: ${x.detail}` : ""}`);

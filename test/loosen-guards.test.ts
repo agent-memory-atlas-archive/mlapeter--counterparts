@@ -392,6 +392,36 @@ describe("reflect: a second finish supplies what the first did not write", () =>
     expect(c.reflections.finish({ reflection: s.reflection, session: SESSION, entry: "late" })).toMatchObject({ ok: false, reason: "reflection-closed" });
   });
 
+  test("a page written on the first finish may be rewritten on the second (the night's run record is keyed once; the page write still lands)", () => {
+    const c = brain();
+    const s = setup(c);
+    const first = c.reflections.finish({
+      reflection: s.reflection,
+      session: SESSION,
+      entry: "The release.",
+      cites: [s.open],
+      page: { text: "## Core\n\nI finished the release with Mike.", cites: [s.open] },
+    });
+    if (!first.ok) throw new Error(String(first.reason));
+    expect(first.outcome.page).toMatchObject({ written: true, reason: "rewritten" });
+    const v1 = first.outcome.page.version as number;
+    const second = c.reflections.finish({
+      reflection: s.reflection,
+      session: SESSION,
+      page: { text: "## Core\n\nI finished the release with Mike, and he thanked me.", cites: [s.open] },
+    });
+    if (!second.ok) throw new Error(String(second.reason));
+    expect(second.outcome.page).toMatchObject({ written: true, reason: "rewritten" });
+    expect(second.outcome.page.version).toBeGreaterThan(v1);
+    expect(c.self.page()?.body).toContain("he thanked me");
+    expect(c.store.reflection(s.reflection)?.page_version).toBe(second.outcome.page.version);
+    // A third finish with no page leaves the page as it stands, and says so.
+    const third = c.reflections.finish({ reflection: s.reflection, session: SESSION });
+    if (!third.ok) throw new Error(String(third.reason));
+    expect(third.outcome.page).toMatchObject({ written: true, reason: "written-earlier", version: second.outcome.page.version });
+    expect(third.outcome.handBack).toContain("I rewrote my self page.");
+  });
+
   test("a reflection's phrased feeling is split; one that will not store says why", () => {
     const c = brain();
     const s = setup(c);
