@@ -748,7 +748,9 @@ describe("spreading activation", () => {
   test("archived memories are never resurrected — not as a destination, not as a bridge", () => {
     const s = store();
     const [a, x, b] = memories(s, 3) as [string, string, string];
-    const g = assoc(s);
+    // No threshold: the property here is the conducting predicate, and a
+    // bridge of two fresh edges falls under the default threshold (2026-09-28).
+    const g = assoc(s, { SPREAD_MIN_FRACTION: 0 });
     g.coactivate([ref(a), ref(x)]);
     g.coactivate([ref(x), ref(b)]);
     g.flush(0);
@@ -769,7 +771,9 @@ describe("spreading activation", () => {
   test("an ERASED id stops conducting, and a cache rebuild cannot resurrect it (contract G8)", () => {
     const s = store();
     const [a, x, b] = memories(s, 3) as [string, string, string];
-    const g = assoc(s);
+    // No threshold: the property here is the conducting predicate, and a
+    // bridge of two fresh edges falls under the default threshold (2026-09-28).
+    const g = assoc(s, { SPREAD_MIN_FRACTION: 0 });
     g.coactivate([ref(a), ref(x)]);
     g.coactivate([ref(x), ref(b)]);
     g.flush(0);

@@ -1359,7 +1359,7 @@ describe("SEAMS H — episodes route through the REAL battery, so the refusing d
 // ═══════════════════════════════════════════════════════════════════════════
 // L — spread() into recall: MODULATE ONLY (SEAMS L's conservative default)
 // ═══════════════════════════════════════════════════════════════════════════
-describe("SEAMS L — hops raise a candidate the conversation reached, and mint nothing", () => {
+describe("SEAMS L — hops raise what the conversation reached; links may add a few quiet pointers", () => {
   const FILLER = [
     "The garage door opener needs a new battery soon.",
     "Rebasing keeps the history readable for reviewers.",
@@ -1395,7 +1395,9 @@ describe("SEAMS L — hops raise a candidate the conversation reached, and mint 
       physics: { birthDay: 0, lastUsedDay: 0 },
     });
     const associate = new Associate({ store: s });
-    for (let i = 0; i < 4; i++) {
+    // Six co-uses (0.6): well over the pointer threshold, which a direct link
+    // from the strongest seed crosses near 0.4.
+    for (let i = 0; i < 6; i++) {
       associate.coactivate([
         { id: cued, tier: "referenced" },
         { id: dark, tier: "referenced" },
@@ -1405,64 +1407,82 @@ describe("SEAMS L — hops raise a candidate the conversation reached, and mint 
     return { s, associate, cued, dark };
   }
 
-  test("a hop NEVER mints a candidate — an uncued memory stays dark (hard gate (a))", () => {
+  test("a well-linked uncued memory comes back as a QUIET POINTER — footnote tier, never loud (2026-09-28)", () => {
+    // Association build 2 took answer (b) of associate INTERFACE-GAPS §1: a
+    // memory only links reached may join the turn, in the quiet tier only.
     const { s, associate, cued, dark } = linked();
     expect(associate.linked(cued, dark)).toBe(true);
 
     const r = new Recall({ store: s, owner: true });
     const out = recallTurn(r, { sessionId: "s1", text: "my sourdough starter died" }, { associate });
 
-    expect(out.decision.verdicts.some((v) => v.id === cued)).toBe(true);
-    // The hop reached it and it is still not a candidate at all: gate (a) stays
-    // STRUCTURAL — the memory was never fetched, so no salience arithmetic ran.
-    expect(out.decision.verdicts.some((v) => v.id === dark)).toBe(false);
+    // The anchor is SHOWN — a pointer completes something that came to mind.
+    expect([...out.decision.surfaced, ...out.decision.footnotes]).toContain(cued);
+    const v = out.decision.verdicts.find((x) => x.id === dark);
+    expect(v?.verdict).toBe("footnoted");
+    expect(v?.via).toBe("link");
+    expect(v?.cue).toBe(0);
+    expect(v?.semantic).toBe(0);
     expect(out.decision.surfaced).not.toContain(dark);
+    expect(out.decision.footnotes).toContain(dark);
+    // It says what it is, in front of its title.
+    expect(out.injection).toContain(`Linked: `);
+    expect(out.injection).toContain(`[${dark}]`);
+    // And the session remembers it WAS a pointer, for the credit pass to count.
+    expect(r.gateState("s1").surfaced[dark]?.via).toBe("link");
+  });
+
+  test("a single co-use does not make a pointer: under the threshold, an uncued memory stays dark", () => {
+    const s = store();
+    for (const body of FILLER) s.put({ type: "memory", kind: "fact", body });
+    const cued = s.put({ type: "memory", kind: "fact", body: "The sourdough starter died after two weeks of neglect." });
+    const dark = s.put({ type: "memory", kind: "fact", body: "Vellichor quixotry zygomorphic — nothing in any turn will ever cue this." });
+    const associate = new Associate({ store: s });
+    associate.coactivate([
+      { id: cued, tier: "referenced" },
+      { id: dark, tier: "referenced" },
+    ]);
+    associate.flush();
+    const out = recallTurn(new Recall({ store: s, owner: true }), { sessionId: "s1", text: "my sourdough starter died" }, { associate });
+    // Reached (0.1 passes 1.25% of the seed), counted, and under the 5% bar.
+    expect(out.decision.spread?.linkOnly).toBe(1);
+    expect(out.decision.spread?.pointerCandidates).toBe(0);
+    expect(out.decision.verdicts.some((x) => x.id === dark)).toBe(false);
     expect(out.decision.footnotes).not.toContain(dark);
   });
 
-  test("a hop RAISES a candidate the OTHER channels reached (a semantic hit)", () => {
-    // Two channels, deliberately: the seeds are the CUED candidates, and a seed
-    // receives no contribution of its own, so what the graph can raise is a
-    // candidate the conversation's own WORDS did not reach.
+  test("a MEANING hit seeds spreading too: a memory linked only to a semantic hit is pointed at", () => {
     const embed = (text: string): number[] =>
       text.toLowerCase().includes("vellichor") ? [1, 0] : [0, 1];
     const s = store({ embed });
     for (const body of FILLER) s.put({ type: "memory", kind: "fact", body });
-    const cued = s.put({
-      type: "memory",
-      kind: "fact",
-      body: "The sourdough starter died after two weeks of neglect.",
-      physics: { birthDay: 0, lastUsedDay: 0 },
-    });
     const semantic = s.put({
       type: "memory",
       kind: "fact",
       body: "Vellichor marks the strange wistfulness of second-hand bookshops.",
       physics: { birthDay: 0, lastUsedDay: 0 },
     });
+    const behind = s.put({
+      type: "memory",
+      kind: "fact",
+      body: "Quixotry zygomorphic ephemera — no word here is in the turn.",
+      physics: { birthDay: 0, lastUsedDay: 0 },
+    });
     const associate = new Associate({ store: s });
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 6; i++) {
       associate.coactivate([
-        { id: cued, tier: "referenced" },
         { id: semantic, tier: "referenced" },
+        { id: behind, tier: "referenced" },
       ]);
       associate.flush();
     }
-
-    const turn = { sessionId: "a", text: "my sourdough starter died", vector: [1, 0] };
-    const withHops = new Recall({ store: s, owner: true }).recall(
-      composeTurn(turn, { associate }),
-    );
-    const without = new Recall({ store: s, owner: true }).recall({ ...turn, sessionId: "b" });
-
-    const a = withHops.decision.verdicts.find((v) => v.id === semantic);
-    const b = without.decision.verdicts.find((v) => v.id === semantic);
-    expect(b?.hops).toBe(0);
-    expect(a?.hops).toBeGreaterThan(0);
-    expect(a?.activation).toBeGreaterThan(b?.activation as number);
-    // And the cue fraction did not move (2026-09-28): the graph can neither buy
-    // loudness nor take it away — hops are in neither half of the fraction.
-    expect(a?.cueFraction).toBeCloseTo(b?.cueFraction as number, 10);
+    // The words cue nothing here; only the embedding reaches `semantic`.
+    const turn = { sessionId: "a", text: "what a peculiar feeling", vector: [1, 0] };
+    const d = new Recall({ store: s, owner: true }).recall(composeTurn(turn, { associate })).decision;
+    expect(d.verdicts.find((v) => v.id === semantic)?.semantic).toBeGreaterThan(0);
+    const v = d.verdicts.find((x) => x.id === behind);
+    expect(v?.via).toBe("link");
+    expect(v?.verdict).toBe("footnoted");
   });
 
   test("a hop cannot DEMOTE a loud memory: hops are in neither half of cueFraction", () => {
@@ -1477,39 +1497,38 @@ describe("SEAMS L — hops raise a candidate the conversation reached, and mint 
     const turn = { text: "my sourdough starter died", day: 0, selfFelt: false, maxCandidates: 24, storeSize: 12 };
     const plain = activate(s, turn, FIXTURE_TUNABLES).candidates.find((c) => c.id === id);
     // A traversal that hands the memory a contribution larger than its cue.
+    // No seeds (`SPREAD_SEEDS: 0`): a seed receives nothing, and this memory
+    // would otherwise be one (2026-09-28, seeds are the strongest candidates).
     const hopped = activate(
       s,
       { ...turn, spread: () => ({ contributions: [{ id, activation: 50 }] }) },
-      FIXTURE_TUNABLES,
+      // And no ceiling, so the whole 50 lands (the ceiling has its own test).
+      { ...FIXTURE_TUNABLES, SPREAD_SEEDS: 0, HOP_CEILING: Infinity },
     ).candidates.find((c) => c.id === id);
     expect(plain).toBeDefined();
-    // It is a seed-free call here (the fake ignores seeds), so the hop lands.
+    // It is a seed-free call here, so the hop lands.
     expect(hopped?.hops).toBe(50);
     expect(hopped?.cueFraction).toBeCloseTo(plain?.cueFraction as number, 10);
     expect(hopped?.cueFraction).toBeGreaterThanOrEqual(FIXTURE_TUNABLES.MIN_CUE_FRACTION);
   });
 
-  test("the turn's record says what spreading did: seeds, depth, stop, computed, landed", () => {
-    const embed = (text: string): number[] =>
-      text.toLowerCase().includes("vellichor") ? [1, 0] : [0, 1];
-    const s = store({ embed });
-    for (const body of FILLER) s.put({ type: "memory", kind: "fact", body });
-    const cued = s.put({ type: "memory", kind: "fact", body: "The sourdough starter died after two weeks of neglect." });
-    const semantic = s.put({ type: "memory", kind: "fact", body: "Vellichor marks the strange wistfulness of second-hand bookshops." });
-    const associate = new Associate({ store: s });
-    associate.coactivate([
-      { id: cued, tier: "referenced" },
-      { id: semantic, tier: "referenced" },
-    ]);
-    associate.flush();
-    const turn = { sessionId: "a", text: "my sourdough starter died", vector: [1, 0] };
+  test("the turn's record says what spreading did: seeds, depth, stop, computed, landed, pointers", () => {
+    const { s, associate, dark } = linked();
+    const turn = { sessionId: "a", text: "my sourdough starter died" };
     const d = new Recall({ store: s, owner: true }).recall(composeTurn(turn, { associate })).decision;
     expect(d.spread).not.toBeNull();
     expect(d.spread?.seeds).toBeGreaterThanOrEqual(1);
     expect(d.spread?.depth).toBeGreaterThanOrEqual(1);
-    expect(["exhausted", "hop-limit", "node-limit"]).toContain(d.spread?.stop as string);
+    expect(["exhausted", "hop-limit", "threshold", "node-limit"]).toContain(d.spread?.stop as string);
     expect(d.spread?.computed).toBeGreaterThanOrEqual(1);
-    expect(d.spread?.landed).toBe(1);
+    // Every candidate here is a seed, and a seed receives nothing: no landing.
+    expect(d.spread?.landed).toBe(0);
+    // The link-only half, counted end to end.
+    expect(d.spread?.linkOnly).toBe(1);
+    expect(d.spread?.pointerCandidates).toBe(1);
+    expect(d.spread?.pointersUnanchored).toBe(0);
+    expect(d.spread?.pointersShown).toBe(1);
+    expect(d.footnotes).toContain(dark);
     // No traversal injected: nothing to report, and it says null rather than 0.
     expect(new Recall({ store: s, owner: true }).recall({ ...turn, sessionId: "b" }).decision.spread).toBeNull();
   });

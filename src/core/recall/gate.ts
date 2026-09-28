@@ -10,7 +10,9 @@
  * other — the order IS the guarantee:
  *
  *   (a) **an uncued memory is dark**, whatever its salience: the salience
- *       arithmetic is never even evaluated;
+ *       arithmetic is never even evaluated — with one named lane since
+ *       2026-09-28: a QUIET POINTER (`Candidate.linkOnly`, a memory only links
+ *       reached) goes to its own few slots in the quiet tier and nowhere else;
  *   (b) an **absolute floor** is checked BEFORE any salience adjustment;
  *   (c) the loud tier requires a **minimum fraction of activation from cues**, so
  *       recency alone can never carry a memory there no matter how sacred it is.
@@ -96,6 +98,11 @@ export interface CandidateVerdict {
    *  "The footnote tier is where the loud tier said no" is a question replay
    *  asks constantly; a bare tier label cannot answer it. */
   readonly loudBlockedBy?: Verdict;
+  /** `"link"` for a QUIET POINTER — a memory only links reached (2026-09-28,
+   *  `activate.ts#Candidate.linkOnly`). Its verdict is one of the ordinary ones;
+   *  this says which lane it came by. Absent for everything the conversation
+   *  reached. */
+  readonly via?: "link";
 }
 
 export interface Background {
@@ -127,6 +134,9 @@ export interface GateResult {
   readonly background: Background;
   readonly verdicts: CandidateVerdict[];
   readonly surfaced: Candidate[];
+  /** The quiet tier: what the conversation reached, then any quiet pointers
+   *  (`linkOnly`), in that order — so a render trimming from the end drops the
+   *  pointers first. */
   readonly footnotes: Candidate[];
   /** One content-free line: no ids, no bodies, no feeling named. */
   readonly affectFlag: boolean;
@@ -311,8 +321,13 @@ export function gate(input: GateInput, t: RecallTunables): GateResult {
       strength: c.strength,
       trains: c.trains,
       ...(blocked !== undefined ? { loudBlockedBy: blocked } : {}),
+      ...(c.linkOnly === true ? { via: "link" as const } : {}),
     });
   };
+
+  /** Quiet pointers that passed the boundary gates, in the order activation
+   *  ranked them (strongest arrival first). */
+  const pointerPool: Candidate[] = [];
 
   /** Charged candidates feed the affect flag even when they never surface —
    *  a content-free line leaks nothing, and that is what makes it the cheapest
@@ -328,8 +343,23 @@ export function gate(input: GateInput, t: RecallTunables): GateResult {
     }
     // Hard gate (a) — uncued is dark. Salience is never evaluated below here
     // for such a candidate, which is the guarantee, not an optimization.
+    // ONE LANE IS NAMED (2026-09-28, association build 2): a QUIET POINTER —
+    // a memory only links reached (`linkOnly`) — is not dark. It skips the
+    // floor and the bar (neither is in its units: it carries no cue), charges
+    // no affect flag (the turn did not touch it), and goes to its own few
+    // quiet slots below — only when a memory the turn SHOWS passed it enough
+    // (the anchor), and never the loud tier. Every other uncued candidate is
+    // dark, as before.
     if (c.cue + c.semantic <= 0) {
-      record(c, "dark-uncued");
+      if (c.linkOnly !== true) {
+        record(c, "dark-uncued");
+        continue;
+      }
+      if (input.state.surfaced[c.id] !== undefined) {
+        record(c, "dedup-suppressed");
+        continue;
+      }
+      pointerPool.push(c);
       continue;
     }
     // The affect flag is charged BEFORE dedup, deliberately: the flag is about
@@ -417,8 +447,47 @@ export function gate(input: GateInput, t: RecallTunables): GateResult {
   const surfacedIds = new Set(surfaced.map((c) => c.id));
 
   const footnotePool = kept.filter((k) => !surfacedIds.has(k.c.id));
-  const footnotes = footnotePool.slice(0, t.MAX_FOOTNOTES).map((k) => k.c);
-  const footnoteIds = new Set(footnotes.map((c) => c.id));
+  const cuedFootnotes = footnotePool.slice(0, t.MAX_FOOTNOTES).map((k) => k.c);
+
+  // ── quiet pointers: their own slots, after what the words found ─────────
+  // THE ANCHOR (2026-09-28, after the bench — working default). Pattern
+  // completion completes something that came to mind: a pointer is shown only
+  // when the activation that reached it FROM MEMORIES THIS TURN SHOWS (loud or
+  // quiet) is at least `LINK_POINTER_MIN_FRACTION` of the strongest shown
+  // memory's activation. A pointer carried there by candidates the gate turned
+  // away would sit in the render with nothing visible to complete — on the
+  // bench it was most of them — and it is `dark-uncued`, which is what it is
+  // once its anchors went dark. Anchored pointers go strongest-anchored first.
+  // Lateral inhibition applies to them as to anything admitted: a pointer that
+  // is a near-duplicate of something already shown tells the reader nothing.
+  // `LINK_POINTERS_MAX` slots of their own, so a pointer never displaces a
+  // memory the conversation reached; the rest are `capped`, recorded.
+  const shownCued = [...surfaced, ...cuedFootnotes];
+  const shownIds = new Set(shownCued.map((c) => c.id));
+  const anchorBar = shownCued.reduce((m, c) => Math.max(m, c.activation), 0) * t.LINK_POINTER_MIN_FRACTION;
+  const anchored = (p: Candidate): number =>
+    Object.entries(p.linkedFrom ?? {}).reduce((sum, [id, a]) => (shownIds.has(id) ? sum + a : sum), 0);
+  const ranked = pointerPool
+    .map((p) => ({ p, a: anchored(p) }))
+    .sort((x, y) => y.a - x.a || (x.p.id < y.p.id ? -1 : 1));
+  const pointers: Candidate[] = [];
+  for (const { p, a } of ranked) {
+    if (!(a > 0) || a < anchorBar) {
+      record(p, "dark-uncued");
+      continue;
+    }
+    if (kept.some((k) => similarity(k.c, p) >= t.NEAR_DUPLICATE) || pointers.some((q) => similarity(q, p) >= t.NEAR_DUPLICATE)) {
+      record(p, "inhibited");
+      continue;
+    }
+    if (pointers.length >= t.LINK_POINTERS_MAX) {
+      record(p, "capped");
+      continue;
+    }
+    pointers.push(p);
+  }
+  const footnotes = [...cuedFootnotes, ...pointers];
+  const footnoteIds = new Set(cuedFootnotes.map((c) => c.id));
 
   for (const c of surfaced) record(c, "surfaced");
   for (const c of footnotes) record(c, "footnoted");

@@ -2612,21 +2612,45 @@ describe("Association (2026-09-28): what spreading did, and the edges", () => {
     s.appendEvent(spreadRow(2, "hop-limit", 1));
     s.appendEvent(spreadRow(1, "node-limit", 0));
     s.appendEvent({ name: "recall.decision", day, payload: { spread: null, dropped: 0 } });
+    // Quiet pointers (association build 2): shown on the turns, expanded at credit.
+    s.appendEvent({ name: "recall.decision", day, payload: { spread: { seeds: 1, expanded: 1, stop: "exhausted", depth: 1, computed: 2, landed: 0, pointersShown: 2 }, dropped: 0 } });
+    s.appendEvent({ name: "recall.credit", day, payload: { reason: "credited", pointersExpanded: 1 } });
+    // Temporal contiguity: the boundary's own flush row says what it buffered.
+    s.appendEvent({
+      name: "associate.flush",
+      day,
+      payload: { reason: "flushed", source: "boundary", rows: 4, contiguity: { pairs: 3, buffered: 3, landed: 2, evictedOther: 1, renormalizedNodes: 1, excluded: 2 } },
+    });
     const f = by(doctorFindings(input({ store: s })), "association");
     expect(f.severity).toBe("green");
-    expect(f.data["turns"]).toBe(2);
+    expect(f.data["turns"]).toBe(3);
     expect(f.data["deep"]).toBe(1);
     expect(f.data["nodeLimit"]).toBe(1);
     expect(f.data["landed"]).toBe(1);
-    expect(f.data["computed"]).toBe(10);
+    expect(f.data["computed"]).toBe(12);
     expect(f.data["dropped"]).toBe(4);
     expect(f.data["edges"]).toBe(3);
     expect(f.data["conducting"]).toBe(2);
     expect(f.data["hebbian"]).toBe(3);
-    expect(f.detail).toContain("(depth 2) on 50% of 2 turns it ran");
+    expect(f.detail).toContain("(depth 2) on 33% of 3 turns it ran");
     expect(f.detail).toContain("last 7 lived days");
-    expect(f.detail).toContain("summed over all 3 recall turns");
-    expect(f.data["allTurns"]).toBe(3);
-    expect(f.detail).toContain("node limit on 50%");
+    expect(f.detail).toContain("summed over all 4 recall turns");
+    expect(f.data["allTurns"]).toBe(4);
+    expect(f.detail).toContain("node limit on 33%");
+    expect(f.data["pointersShown"]).toBe(2);
+    expect(f.data["pointersExpanded"]).toBe(1);
+    expect(f.detail).toContain("2 quiet pointers shown (memories only links reached), 1 later expanded");
+    expect(f.data["contiguityPairs"]).toBe(3);
+    expect(f.data["contiguityLanded"]).toBe(2);
+    // Buffered is not linked (review of #281, finding 2): the line says both.
+    expect(f.detail).toContain("Temporal contiguity buffered 3 pairs of neighbouring memories at the boundaries, 2 landed as links");
+    expect(f.detail).toContain("pushed out 1 other link and scaled back 1 memory's links");
+    expect(f.detail).toContain("2 memories the nightly run wrote left out");
+    expect(f.detail).not.toContain("the pass failed");
+    // A failed pass and pairs lost before a flush recorded them are said too.
+    s.appendEvent({ name: "associate.flush", day, payload: { reason: "nothing-buffered", source: "boundary", rows: 0, contiguity: { reason: "failed", code: "SQLITE_BUSY", lostEarlier: 4 } } });
+    const g = by(doctorFindings(input({ store: s })), "association");
+    expect(g.data["contiguityFailed"]).toBe(1);
+    expect(g.detail).toContain("the pass failed at 1 boundary; 4 planned pairs were lost before a flush recorded them");
   });
 });

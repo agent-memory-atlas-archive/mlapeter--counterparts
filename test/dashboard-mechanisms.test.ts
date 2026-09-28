@@ -134,9 +134,10 @@ describe("the lights, on a seeded store", () => {
     for (const id of ["salience", "decay", "retrieval", "consolidation", "reconsolidation"]) {
       expect(`${id}: ${by[id]?.status}`).toBe(`${id}: green`);
     }
-    // The seeder never flushes an association, so it is built and quiet.
-    expect(by["association"]?.status).toBe("amber");
-    expect(by["association"]?.events).toEqual([]);
+    // The seeder's boundaries flush their co-use and contiguity links in-process,
+    // and since 2026-09-28 the boundary writes an associate.flush row for that.
+    expect(by["association"]?.status).toBe("green");
+    expect(by["association"]?.events.length).toBeGreaterThan(0);
 
     const dash = Dashboard.open({ dir: richDir });
     try {

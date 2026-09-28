@@ -29,7 +29,15 @@ export interface EdgeState {
 export interface PairDelta {
   readonly a: string;
   readonly b: string;
+  /** The delta for a → b — and for b → a too, unless `back` says otherwise. */
   readonly delta: number;
+  /**
+   * The delta for b → a when it DIFFERS from a → b (2026-09-28): temporal
+   * contiguity's forward bias, where the earlier memory's link to the later
+   * one is stronger than the link back. Absent for a co-use, which is
+   * symmetric — and absent is what every delta was before it.
+   */
+  readonly back?: number;
 }
 
 /** An edge pushed out by the per-node count cap (§10 G3, scar §2.17). */
@@ -139,6 +147,8 @@ export function homeostasis(
  *    `edgesFrom` only. Renormalization can later make the two directions differ
  *    in magnitude — a hub's edge to a quiet node is scaled while the quiet node's
  *    edge back is not — and that asymmetry is real, not a bug (NOTES.md §5).
+ *    A delta that carries `back` (temporal contiguity's forward bias,
+ *    2026-09-28) writes the two directions with their own deltas.
  * 2. **Decay is REALIZED, not merely observed.** Every row a touched node writes
  *    carries its decayed-to-`day` weight and `lastDay = day`. Exact for the
  *    exponential family, which is why the shape is pinned (NOTES.md §4).
@@ -268,7 +278,7 @@ function plan(
     const forward = load(d.a);
     const back = load(d.b);
     forward.set(d.b, combine(forward.get(d.b) ?? 0, d.delta));
-    back.set(d.a, combine(back.get(d.a) ?? 0, d.delta));
+    back.set(d.a, combine(back.get(d.a) ?? 0, d.back ?? d.delta));
   }
 
   const rows: EdgeState[] = [];

@@ -167,6 +167,31 @@ export interface RecallTunables {
   /** Hard cap on footnotes. [v1: 6] */
   MAX_FOOTNOTES: number;
 
+  // ── quiet pointers from links (association build 2, 2026-09-28) ──────────
+  /** Memories reached ONLY through links that may join a turn as footnote-tier
+   *  pointers — pattern completion, held to a few. Their own slots, beside
+   *  `MAX_FOOTNOTES`, so a pointer never displaces a memory the words found.
+   *  Working default, unmeasured on a live store. CAL. */
+  LINK_POINTERS_MAX: number;
+  /** The activation threshold a link-only memory must reach to be pointed at:
+   *  this fraction of the strongest seed's activation. Relative, so it means the
+   *  same on a small store as a big one. At 0.05 a direct link from the
+   *  strongest seed must weigh about 0.4 (four co-uses: `0.5 · w / 4 ≥ 0.05`);
+   *  a single fresh co-use (0.1) or a legacy gist tie does not reach it. CAL. */
+  LINK_POINTER_MIN_FRACTION: number;
+  /** How many of the turn's strongest candidates (ranked the way the cut
+   *  ranks them, words and meaning both) SEED spreading — 2026-09-28. Not the
+   *  whole cue union, which on a big store is ~1,000 ids, most of them one weak
+   *  word from the turn. Set equal to `MAX_CANDIDATES` so the seeds are the
+   *  memories the cut would keep before links touch anything; a seed receives
+   *  no contribution, so links lift only what ranks past them. CAL. */
+  SPREAD_SEEDS: number;
+  /** "Links suggest, they don't take over", as arithmetic (2026-09-28): a
+   *  candidate's hop score is capped at this multiple of its own cue +
+   *  semantic. At 1 the graph can at most double what the conversation gave a
+   *  memory, however many paths reach it. Counted when it binds. CAL. */
+  HOP_CEILING: number;
+
   // ── affect ───────────────────────────────────────────────────────────────
   /** Emotional salience a candidate needs before it can raise the affect flag. [v1: 0.7] CAL. */
   AFFECT_MIN_EMOTION: number;
@@ -384,6 +409,11 @@ export const TUNABLES: RecallTunables = {
   // measured bound for an unmeasured one.
   MAX_SURFACED: 1,
   MAX_FOOTNOTES: 6,
+
+  LINK_POINTERS_MAX: 2,
+  LINK_POINTER_MIN_FRACTION: 0.05,
+  SPREAD_SEEDS: 24,
+  HOP_CEILING: 1,
 
   AFFECT_MIN_EMOTION: 0.7,
   AFFECT_REFRACTORY_TURNS: 2,

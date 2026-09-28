@@ -22,13 +22,15 @@
  *      (a recency multiplier): wiring it there would turn a modulator into an
  *      admission channel and break hard gate (a) for every dated memory.
  *   L. **Spreading activation** — `associate.spreadFrom()` becomes `Turn.spread`.
- *      The conservative default (SEAMS L, = option (a) of `associate/`'s gap §1):
- *      hops MODULATE candidates the conversation already reached and never mint
- *      one, which is the only reading that keeps recall's hard gate (a)
- *      structural. Excluded from `cueFraction` entirely (2026-09-28: it was in
- *      the denominator, which let a hop take the loud tier away), so hop weight
- *      can neither buy nor revoke the loud tier. The traversal's own account of
- *      itself — expanded, stop, depth — rides through to the turn's record.
+ *      Hops MODULATE candidates the conversation already reached, and since
+ *      2026-09-28 (association build 2, option (b) of `associate/`'s gap §1) a
+ *      memory ONLY links reached may join the turn as a quiet pointer — a few,
+ *      over a threshold, footnote tier only; recall's gate names that one lane
+ *      and keeps every other uncued memory dark. Excluded from `cueFraction`
+ *      entirely (2026-09-28: it was in the denominator, which let a hop take the
+ *      loud tier away), so hop weight can neither buy nor revoke the loud tier.
+ *      The traversal's own account of itself — expanded, stop, depth — rides
+ *      through to the turn's record.
  */
 import type { RecallResult, Turn } from "./recall/index.js";
 import type { Recall } from "./recall/index.js";
