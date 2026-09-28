@@ -1517,28 +1517,37 @@ describe("SEAMS L — hops raise a candidate the conversation reached, and mint 
   test("salience ranks the candidate cut, and the cut is counted, never silent", () => {
     const s = store();
     for (const body of FILLER) s.put({ type: "memory", kind: "fact", body });
-    const dull = s.put({
-      type: "memory",
-      kind: "fact",
-      body: "The sourdough starter died after two weeks.",
-      salience: { relevance: 0.05, emotional: 0, predictive: 0.05 },
-      physics: { birthDay: 0, lastUsedDay: 0 },
-    });
+    const dull = (body: string): string =>
+      s.put({
+        type: "memory",
+        kind: "fact",
+        body,
+        salience: { relevance: 0.05, emotional: 0, predictive: 0.05 },
+        physics: { birthDay: 0, lastUsedDay: 0 },
+      });
+    dull("The sourdough starter died after two weeks.");
+    dull("A sourdough starter died on the windowsill.");
+    dull("The rye sourdough starter died in the cold.");
     const salient = s.put({
       type: "memory",
       kind: "fact",
-      body: "The sourdough starter died after two long weeks of quiet neglect.",
+      body: "The sourdough starter died after two long weeks of quiet neglect, and it mattered more than it should have.",
       salience: { relevance: 0.95, emotional: 0, predictive: 0.95 },
       physics: { birthDay: 0, lastUsedDay: 0 },
     });
-    const turn = { text: "sourdough starter died", day: 0, selfFelt: false, storeSize: 18 };
+    const turn = { text: "sourdough starter died", day: 0, selfFelt: false, storeSize: 20 };
     const all = activate(s, { ...turn, maxCandidates: 100 }, FIXTURE_TUNABLES).candidates;
-    const act = (id: string): number => all.find((c) => c.id === id)?.activation ?? 0;
-    // The dull one is LOUDER on activation alone — the old cut kept it.
-    expect(act(dull)).toBeGreaterThan(act(salient));
-    const cut = activate(s, { ...turn, maxCandidates: 1 }, FIXTURE_TUNABLES);
-    expect(cut.candidates.map((c) => c.id)).toEqual([salient]);
-    expect(cut.dropped).toBe(all.length - 1);
+    const byActivation = [...all].sort((a, b) => b.activation - a.activation).map((c) => c.id);
+    // On activation alone the salient one is NOT in the top three — the old cut
+    // left it out.
+    expect(byActivation.slice(0, 3)).not.toContain(salient);
+    const cut = activate(s, { ...turn, maxCandidates: 3 }, FIXTURE_TUNABLES);
+    expect(cut.candidates.map((c) => c.id)).toContain(salient);
+    expect(cut.dropped).toBe(all.length - 3);
+    // Cold start: the bar is absolute and salience never lowers it, so the cut
+    // ranks by activation alone there.
+    const cold = activate(s, { ...turn, storeSize: 10, maxCandidates: 3 }, FIXTURE_TUNABLES);
+    expect(cold.candidates.map((c) => c.id)).not.toContain(salient);
   });
 
   test("hops are excluded from cueFraction's NUMERATOR, so they cannot buy loud", () => {

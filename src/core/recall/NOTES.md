@@ -589,7 +589,9 @@ Working defaults, held lightly; the association side is `associate/NOTES.md` §1
   never met the lowered bar that would have let it in. The cut now ranks by activation
   over the gate's own bar factor (`salienceRank`: `1 − SAL_BAR_WEIGHT·(2·sal − 1)`,
   with the turn-gated emotional dimension), so it keeps what the relative bar would
-  admit first. Chosen over raising the cut because a bigger cut changes the turn's
+  admit first — and only where the gate will modulate: on a cold-start store or a turn
+  too thin for a background the bar is absolute, so the cut ranks by activation alone
+  there (cold start stays stricter). Chosen over raising the cut because a bigger cut changes the turn's
   background (more weak candidates, lower bars) for every turn, while ranking changes
   only which 24 get there. Mood's lift is not in the key: it needs the feelings read,
   which stays after the cut. What the cut left out is counted (`dropped` on the

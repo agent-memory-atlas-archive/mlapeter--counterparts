@@ -567,7 +567,20 @@ export function activate(
   // of it: activation over the gate's own salience factor. Mood's lift is NOT
   // in this key — it needs the feelings read, which stays after the cut (below);
   // the turn-gated emotional dimension is.
-  scored.sort((a, b) => b.cutKey - a.cutKey || b.activation - a.activation || (a.id < b.id ? -1 : 1));
+  //
+  // Only where the gate WILL modulate: the relative regime. On a cold-start
+  // store, or a turn too thin for a background (`gate.ts#background`), the bar
+  // is absolute and salience never lowers it — ranking by salience there would
+  // let a quieter memory displace the one the absolute bar would admit, and
+  // cold start is stricter, not looser. The gate's sample is the kept set, so
+  // it is at most `maxCandidates`.
+  const relative =
+    storeSize >= t.COLD_START_MIN_STORE && Math.min(scored.length, input.maxCandidates) >= t.MIN_BACKGROUND_SAMPLE;
+  scored.sort((a, b) =>
+    relative
+      ? b.cutKey - a.cutKey || b.activation - a.activation || (a.id < b.id ? -1 : 1)
+      : b.activation - a.activation || (a.id < b.id ? -1 : 1),
+  );
 
   const kept = scored.slice(0, input.maxCandidates);
   const dropped = scored.length - kept.length;
