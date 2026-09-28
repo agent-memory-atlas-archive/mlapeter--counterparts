@@ -2494,7 +2494,7 @@ export class Store {
     return this.ops.all<DreamChangeRow & { dream_date: string | null }>(
       `SELECT c.*, d.date AS dream_date FROM dream_changes c JOIN dreams d ON d.id = c.dream_id
         WHERE c.action = ? AND c.undone = 0 AND d.state != 'undone'
-        ORDER BY d.started_at DESC, d.id DESC, c.seq ASC LIMIT ?`,
+        ORDER BY d.started_at DESC, d.rowid DESC, c.seq ASC LIMIT ?`,
       action,
       limit,
     );

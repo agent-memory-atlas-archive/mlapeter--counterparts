@@ -769,3 +769,9 @@ the parts join back exactly); ids past `RECALL_ID_RESULT_CHARS` (40,000) wait, n
 call that fetches them. The list path is unchanged. The `mcp.recall` row counts expansions an
 index offered only in part (`fromIndex`), per mechanism — `core/fit/`.
 
+After the adversarial review of #278 (2026-09-28): the by-id room is measured on the SERIALISED
+memories (pretty JSON, a non-ASCII character counted as three, both the text and the
+`structuredContent` copy counted — a host may count both), `RECALL_ID_RESULT_CHARS` 56,000 in
+those units; the old content cap came to ~73k on the wire. Lookups are counted from the ids the
+result DELIVERED, once per index; an id is fetched whole only when its last part went out.
+

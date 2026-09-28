@@ -1039,8 +1039,12 @@ export class McpServer {
     const resolved = this.noteHandleResolution(handle, result);
     // THE MEASUREMENT (2026-09-28): did this lookup fetch what a mechanism's
     // index offered only in part? Counted per mechanism, never the ids.
-    const fromIndex = result.path === "handle" && result.memories.length > 0 ? this.lookupsFromIndex(result.memories.map((m) => m.id)) : {};
     const payload = this.recallPayload(result, typeof part === "number" ? part : 1);
+    // Counted from what was DELIVERED (review of #278), not what was asked:
+    // an id that waited is not a lookup yet, and one is fetched whole only
+    // when its last part went out.
+    const delivered = result.path === "handle" ? ((payload["memories"] as { id: string; part?: number; parts?: number }[] | undefined) ?? []) : [];
+    const fromIndex = delivered.length > 0 ? this.lookupsFromIndex(delivered.map((m) => ({ id: m.id, whole: (m.part ?? 1) >= (m.parts ?? 1) }))) : {};
     this.emit("mcp.recall", undefined, {
       path: result.path,
       reason: result.reason,
@@ -1220,9 +1224,9 @@ export class McpServer {
    * made from the whole. Never throws: a tool answer may not fail because its
    * measurement did.
    */
-  private lookupsFromIndex(ids: readonly string[]): Partial<Record<FitMechanism, number>> {
+  private lookupsFromIndex(delivered: readonly { id: string; whole: boolean }[]): Partial<Record<FitMechanism, number>> {
     try {
-      return noteLookups(this.counterpart.store, ids);
+      return noteLookups(this.counterpart.store, delivered);
     } catch {
       return {};
     }
@@ -1268,7 +1272,7 @@ export class McpServer {
       ...(bounded.waiting !== undefined
         ? {
             waiting: [...bounded.waiting],
-            more: `No room for ${String(bounded.waiting.length)} of the ids in one result (${RECALL_ID_RESULT_CHARS} characters): ask again with ids: [${bounded.waiting.join(", ")}].`,
+            more: `No room for ${String(bounded.waiting.length)} of the ids in one result: ask again with ids: [${bounded.waiting.join(", ")}].`,
           }
         : {}),
       ...(result.ambiguous.length > 0 ? { ambiguous: [...result.ambiguous] } : {}),

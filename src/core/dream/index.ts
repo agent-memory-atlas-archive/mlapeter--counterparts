@@ -47,7 +47,7 @@ import { TUNABLES as PHYSICS } from "../physics/index.js";
 import { addDays, isDay } from "../time.js";
 import type { Kind } from "../types.js";
 import { DREAM_MARK, carriesDreamMark } from "./mark.js";
-import { mindRanked } from "./mind.js";
+import { mindRanked, noteMindShown } from "./mind.js";
 import type { MindItem } from "./mind.js";
 import { chapterEntries, entryKey, fitEpisodes, shownEntry } from "./slices.js";
 import type { ChapterEntry, EpisodeInView, EpisodesFit, ShownChapter, ShownEntry } from "./slices.js";
@@ -1669,6 +1669,7 @@ export class Dreams {
       lookup: DREAM_LOOKUP,
       parts: null,
     };
+    noteMindShown(this.store, bundle.onMind, day);
     return {
       bundle,
       shown: fitted.placed.map((p) => p.id),

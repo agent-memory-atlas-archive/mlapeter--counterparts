@@ -87,7 +87,7 @@ import { DREAM_MARK, carriesDreamMark } from "./mark.js";
 import { chapterEntries, entryKey, fitEpisodes, shownEntry } from "./slices.js";
 import type { ChapterEntry, EpisodeInView, EpisodesFit, ShownChapter } from "./slices.js";
 import { DREAM_TUNABLES } from "./tunables.js";
-import { mindRanked } from "./mind.js";
+import { mindRanked, noteMindShown } from "./mind.js";
 import type { MindItem } from "./mind.js";
 
 /** Every `reflect` knob, in one place. Working defaults of 2026-09-27; CAL = not yet measured. */
@@ -1559,6 +1559,7 @@ export class Reflections {
       lookup: REFLECT_LOOKUP,
       limits: { ...T.LIMITS },
     };
+    noteMindShown(this.store, bundle.onMind, day);
     return { bundle, offered };
   }
 
