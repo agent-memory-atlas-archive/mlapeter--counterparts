@@ -1,6 +1,7 @@
 /* The home page (round 4, 2026-09-28): a headline and a health dot across the
-   top; the brain beside "Today"; the feelings radar beside the self map. One
-   column on a phone, in that order. Outfit for words. The radar's and the
+   top; "Today" with the brain on its right; the feelings radar beside the self
+   map. One column on a phone, in that order (headline, Today, brain, radar,
+   map). Outfit for words. The radar's and the
    map's own styles are their tabs' (memories.css, self.css). */
 
 /* ── the headline and the health dot ─────────────────── */
@@ -16,7 +17,7 @@
 /* ── the two rows ─────────────────────────────────────── */
 .home-row{display:grid;gap:24px;align-items:start}
 .home-row>*{min-width:0}
-.home-row-a{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);align-items:center;margin:0 0 18px}
+.home-row-a{grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);align-items:center;margin:0 0 18px}
 .home-row-b{grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:stretch}
 .home-card{display:flex;flex-direction:column;min-width:0}
 .home-card .card{flex:1;margin-bottom:8px}
@@ -28,7 +29,9 @@
 .home-more{display:inline-flex;align-items:center;min-height:32px;margin-top:4px;font-size:13.5px}
 
 /* ── today ────────────────────────────────────────────── */
-.home-today{min-width:0}
+/* Centred beside the brain, a new line moves Today's top: first in the page
+   now, it would be the browser's scroll anchor and the page would jump. */
+.home-today{min-width:0;overflow-anchor:none}
 .td-list{list-style:none;margin:0;padding:0;display:grid;gap:2px}
 .td-line{position:relative;padding-left:18px}
 .td-line::before{content:"";position:absolute;left:2px;top:17px;width:7px;height:7px;border-radius:50%;

@@ -1,8 +1,9 @@
 /* The self map on the home tab (round 4, 2026-09-28): the Self tab's "Around
-   the core", the same component (`../../self/sections/map.js`) with a shorter
-   legend — dots are memories about me or about us, brighter is held more
-   firmly, the core sits in the middle, lines are links. Click a dot for its
-   memory card; "who I'm becoming" goes to the Self tab.
+   the core", the same component (`../../self/sections/map.js`) — its rings
+   named on the map ("who I am", "almost there", "about me and us"), the core
+   and almost-there memories named, one caption — without the Self tab's line
+   of counts. Click a dot for its memory card; "who I'm becoming" goes to the
+   Self tab.
 
    Data: `/api/overview`'s `map` (`views/self-map.ts`). */
 import { $ } from "../../../shared/dom.js";
@@ -18,7 +19,7 @@ export const markup = `
         </section>`;
 
 export function paint(d) {
-  selfMap.paint($("home-map"), d.map, { legend: "min" });
+  selfMap.paint($("home-map"), d.map, { count: false });
 }
 
 /** Drawn to its box's width: a new width (or a tab shown after a hidden build) redraws it. */

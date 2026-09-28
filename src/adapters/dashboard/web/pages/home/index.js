@@ -4,8 +4,9 @@
    own tab. Top to bottom:
      - one headline ("Day 7 with Mike · 306 memories · 13 new today") and a
        small health dot, linked to Health;
-     - the brain (a region opens its mechanism on Health) beside "Today", a few
-       plain lines about memory;
+     - "Today", a few plain lines about memory, with the brain on its right (a
+       region opens its mechanism on Health; Mike, 2026-09-28: the brain back
+       on the right);
      - "How it feels" (the memories tab's radar) beside "Around the core" (the
        Self tab's map).
    The mechanism pills and panel moved to Health; the tiles, the written-vs-
@@ -23,8 +24,8 @@ import * as today from "./sections/today.js";
 const markup = `
     ${hero.markup}
     <div class="home-row home-row-a">
-      ${brain.markup}
       ${today.markup}
+      ${brain.markup}
     </div>
     <div class="home-row home-row-b">
       ${feel.markup}

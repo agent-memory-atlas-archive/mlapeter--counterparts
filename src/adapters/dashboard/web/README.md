@@ -194,10 +194,17 @@ since). `sections/settling.js` is one line of counts (core, protected, argued
 with; each opens its list), then the self map, then what crossed lately. The
 self map (`sections/map.js` + `views/self-map.ts`, an experiment kept in those
 two files so it is easy to change or take out) draws the memories about me or
-about us as dots, as bright as they are firmly held, the core ringed in the
-middle, a faint ring on the ones one awake return away, nearer the middle the
-closer to the core, and the association links (`edgesFrom`) as lines; hover
-for the words, click for the card. Who is drawn and how close each is comes
+about us as dots, as bright as they are firmly held, in three rings named on
+the map itself (round 4, 2026-09-28: no legend): "who I am" (the core, in the
+middle), "almost there" (ready, or one awake return away) and "about me and
+us" (the rest, nearer the middle the closer to the core). The core and the
+almost-there dots carry short titles, placed so none overlaps another or a dot
+(a pure function of the data and the width, text widths estimated from a
+table), the rest counted as "+N more" when room runs out; the other dots are
+unnamed and fainter. The association links (`edgesFrom`) are hidden until a
+dot is hovered, focused or tapped, and then only that dot's show; one caption
+sits under it. Click for the card (on a touch screen, the first tap shows the
+links and words, the second opens it). Who is drawn and how close each is comes
 from `coreCandidates` (`physics#promotionEligibility` in the engine's own
 context: `aboutMe`, the lived day, the owner's demotion; a memory he sent back
 is not drawn), and the faint ring is `oneReturnAway`; the layout is a pure
