@@ -500,8 +500,10 @@ export class Reflections {
       current.push(p);
       used += p.size;
     }
+    // Everything fitted after all (the furniture's margin was generous): whole.
+    if (parts.length === 1) return { bundle: composed, later: [] };
     const first = parts[0] ?? [];
-    const has = (kind: "m" | "c" | "s", x: string): boolean => first.some((p) => p.kind === kind && p.id === x);
+    const has =(kind: "m" | "c" | "s", x: string): boolean => first.some((p) => p.kind === kind && p.id === x);
     const later: LaterPart[] = parts.slice(1).map((ps) => ({
       m: ps.filter((p) => p.kind === "m").map((p) => p.id),
       c: ps.filter((p) => p.kind === "c").map((p) => p.id),
