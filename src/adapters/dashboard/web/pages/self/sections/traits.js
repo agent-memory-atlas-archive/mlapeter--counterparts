@@ -19,9 +19,8 @@ export const markup = `
 
 export const EMPTY = "No memory carries a trait yet. They're recorded as memories are written.";
 
-export const ABOUT = "Each line runs between two good ways to act; the left one is roughly where training puts me, " +
-  "so a pull to the right is the one that says something. The mark is the balance of the moments my memories " +
-  "recorded, the firmly held ones counting more, and the faint mark is where it stood a week ago.";
+export const ABOUT = "Each line runs between two good ways to act, and the mark is where my memories put me. " +
+  "The faint mark is where I stood a week ago.";
 
 /** Where a balance (−1..+1) sits on the track, in percent; null draws no marker. */
 export function markerAt(balance) {

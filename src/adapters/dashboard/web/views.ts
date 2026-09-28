@@ -57,7 +57,7 @@ export type { HealthView } from "./views/health.js";
 export { pulse } from "./views/pulse.js";
 export { MECHANISM_PROOFS, mechanismsView } from "./views/mechanisms.js";
 export { coreHistory, dreamsView } from "./views/dreams.js";
-export { TRAIT_ROWS_MAX, WEEK_AGO_DAYS, balanceOf, traitsView } from "./views/traits.js";
+export { TRAIT_ROWS_MAX, WEEK_AGO_DAYS, balanceOf, firmnessThen, traitsView } from "./views/traits.js";
 export type { TraitAxisView, TraitNudgeRow, TraitsView, WeighedNudge } from "./views/traits.js";
 export type { CoreHistory, CoreHistoryRow, DreamChangeView, DreamView, DreamsView } from "./views/dreams.js";
 export type { MechanismLight, MechanismsView } from "./views/mechanisms.js";

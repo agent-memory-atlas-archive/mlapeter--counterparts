@@ -276,3 +276,8 @@ h4.st-h{font-family:var(--sans);font-size:13.5px;font-weight:600;color:var(--ink
   .tr-row{grid-template-columns:4.9em minmax(30px,1fr) 4.9em 5.4em;gap:0 7px;font-size:12.5px}
   .tr-n{font-size:11px}
 }
+/* On a phone the count drops under the track, so the track keeps the width. */
+@media(max-width:480px){
+  .tr-row{grid-template-columns:4.9em minmax(0,1fr) 4.9em;gap:2px 7px}
+  .tr-n{grid-column:2;text-align:center;font-size:10.5px;line-height:1}
+}
