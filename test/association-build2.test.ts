@@ -11,7 +11,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Store } from "../src/core/store/index.js";
-import { Associate } from "../src/core/associate/index.js";
+import { Associate, TUNABLES as ASSOCIATE_TUNABLES, spread, withTunables as withAssociate } from "../src/core/associate/index.js";
+import type { EdgeState } from "../src/core/associate/index.js";
 import { Recall, freshGateState, gate, withTunables } from "../src/core/recall/index.js";
 import type { Candidate } from "../src/core/recall/index.js";
 import { recallTurn } from "../src/core/retrieval.js";
@@ -211,5 +212,100 @@ describe("1. quiet pointers: a few per turn, footnote tier only, over a threshol
     expect(summary.pointersExpanded).toBe(1);
     expect(summary.credited).toBe(1);
     expect(summary.ids).toContain(behind);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 2. Best-first spread across depths, with a threshold; seeds from the top-K
+// ═══════════════════════════════════════════════════════════════════════════
+describe("2. best-first across depths, a threshold stop, the node budget recorded, seeds from the top-K", () => {
+  /** A graph from a list of directed edges, all written on day 0. */
+  function graph(edges: readonly [string, string, number][]): (id: string) => EdgeState[] {
+    return (id) => edges.filter(([src]) => src === id).map(([src, dst, weight]) => ({ src, dst, weight, lastDay: 0 }));
+  }
+  const ALL = (): boolean => true;
+
+  test("a strong first-hop node is expanded before a weak seed", () => {
+    // S carries 10; its link to M passes 10 · 0.5 · 1/4 = 1.25 — more than the
+    // weak seed W's own 0.5. With room for two expansions, S then M go first.
+    const out = spread(
+      {
+        seeds: [
+          { id: "W", activation: 0.5 },
+          { id: "S", activation: 10 },
+        ],
+        day: 0,
+        edgesFrom: graph([
+          ["S", "M", 1],
+          ["M", "Z", 1],
+          ["W", "V", 1],
+        ]),
+        conducts: ALL,
+      },
+      withAssociate({ MAX_SPREAD_NODES: 2 }),
+    );
+    const ids = out.contributions.map((c) => c.id);
+    expect(ids).toContain("Z");
+    expect(ids).not.toContain("V");
+    expect(out.stop).toBe("node-limit");
+    expect(out.depth).toBe(2);
+    // The budget bound with the weak seed still waiting over the threshold.
+    expect(out.waiting).toBe(1);
+  });
+
+  test("the walk stops at the first node under the threshold, and says so", () => {
+    // One fresh co-use (0.1) passes 1.25% of the seed: under the 2% threshold,
+    // so b is reached (a contribution) but never expanded (c is out of reach).
+    const out = spread(
+      {
+        seeds: [{ id: "a", activation: 1 }],
+        day: 0,
+        edgesFrom: graph([
+          ["a", "b", 0.1],
+          ["b", "c", 1],
+        ]),
+        conducts: ALL,
+      },
+      withAssociate(),
+    );
+    expect(out.stop).toBe("threshold");
+    expect(out.expanded).toBe(1);
+    expect(out.contributions.map((c) => c.id)).toEqual(["b"]);
+    expect(out.waiting).toBe(0);
+  });
+
+  test("the hop ceiling holds under best-first: nothing past HOPS is expanded, and the stop says hop-limit", () => {
+    const out = spread(
+      {
+        seeds: [{ id: "a", activation: 1 }],
+        day: 0,
+        edgesFrom: graph([
+          ["a", "b", 1],
+          ["b", "c", 1],
+          ["c", "d", 1],
+        ]),
+        conducts: ALL,
+      },
+      withAssociate({ SPREAD_MIN_FRACTION: 0 }),
+    );
+    expect(out.contributions.map((c) => c.id).sort()).toEqual(["b", "c"]);
+    expect(out.stop).toBe("hop-limit");
+    expect(out.depth).toBe(ASSOCIATE_TUNABLES.HOPS);
+  });
+
+  test("seeds are the strongest SPREAD_SEEDS candidates, and a candidate past them is lifted by a link", () => {
+    const { s, associate, cued } = seeded();
+    // A second, weaker cued candidate: one word of the turn.
+    const weaker = s.put({ type: "memory", kind: "fact", body: "Neglect is the usual cause, the forum said.", physics: { birthDay: 0, lastUsedDay: 0 } });
+    coUse(associate, cued, weaker, 6);
+    const turn = { sessionId: "s1", text: "my sourdough starter died of neglect" };
+    const one = recallTurn(new Recall({ store: s, owner: true, tunables: { SPREAD_SEEDS: 1 } }), turn, { associate }).decision;
+    const all = recallTurn(new Recall({ store: s, owner: true }), { ...turn, sessionId: "s2" }, { associate }).decision;
+    expect(one.spread?.seeds).toBe(1);
+    // With one seed, the weaker candidate is not a seed and the link lifts it.
+    expect(one.verdicts.find((v) => v.id === weaker)?.hops).toBeGreaterThan(0);
+    expect(one.spread?.landed).toBeGreaterThanOrEqual(1);
+    // With the default, both are seeds, and inside the seeds links reorder nothing.
+    expect(all.verdicts.find((v) => v.id === weaker)?.hops).toBe(0);
   });
 });

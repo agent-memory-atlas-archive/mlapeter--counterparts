@@ -75,9 +75,22 @@ export interface AssociateTunables {
    *  lone 0.03 edge pass everything). [v1: on] Structural-ish — off (raw
    *  weight) is an A/B arm, not a shipping mode. */
   FAN_NORMALIZATION: boolean;
-  /** Nodes expanded in one traversal — a latency bound, and the reason a dense
-   *  graph cannot turn one seed into a whole-store sweep. CAL. */
+  /** Nodes expanded in one traversal — since 2026-09-28 a host-cost BACKSTOP
+   *  behind the threshold below, not the thing that normally stops the walk;
+   *  when it binds, the turn's record says so (`stop: "node-limit"`, and how
+   *  many nodes above the threshold were still waiting). CAL. */
   MAX_SPREAD_NODES: number;
+  /**
+   * The activation threshold of the best-first walk (association build 2,
+   * 2026-09-28; ACT-R's retrieval threshold, in spirit): a node is expanded
+   * only while what it carries is at least this fraction of the STRONGEST
+   * seed's activation, and the walk stops at the first node under it. Relative
+   * to the strongest seed because this module does not know recall's units —
+   * the same fraction means the same thing on a small store and a big one. At
+   * 0.02 a first hop from the strongest seed is expanded when its link weighs
+   * about 0.16 or more (`0.5 · w / 4 ≥ 0.02`). CAL, unmeasured on a live store.
+   */
+  SPREAD_MIN_FRACTION: number;
 }
 
 export const TUNABLES: AssociateTunables = {
@@ -96,6 +109,7 @@ export const TUNABLES: AssociateTunables = {
   HOP_DECAY: 0.5,
   FAN_NORMALIZATION: true,
   MAX_SPREAD_NODES: 64,
+  SPREAD_MIN_FRACTION: 0.02,
 };
 
 export function withTunables(overrides: Partial<AssociateTunables> = {}): AssociateTunables {

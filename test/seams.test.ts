@@ -1496,13 +1496,15 @@ describe("SEAMS L — hops raise what the conversation reached; links may add a 
     const turn = { text: "my sourdough starter died", day: 0, selfFelt: false, maxCandidates: 24, storeSize: 12 };
     const plain = activate(s, turn, FIXTURE_TUNABLES).candidates.find((c) => c.id === id);
     // A traversal that hands the memory a contribution larger than its cue.
+    // No seeds (`SPREAD_SEEDS: 0`): a seed receives nothing, and this memory
+    // would otherwise be one (2026-09-28, seeds are the strongest candidates).
     const hopped = activate(
       s,
       { ...turn, spread: () => ({ contributions: [{ id, activation: 50 }] }) },
-      FIXTURE_TUNABLES,
+      { ...FIXTURE_TUNABLES, SPREAD_SEEDS: 0 },
     ).candidates.find((c) => c.id === id);
     expect(plain).toBeDefined();
-    // It is a seed-free call here (the fake ignores seeds), so the hop lands.
+    // It is a seed-free call here, so the hop lands.
     expect(hopped?.hops).toBe(50);
     expect(hopped?.cueFraction).toBeCloseTo(plain?.cueFraction as number, 10);
     expect(hopped?.cueFraction).toBeGreaterThanOrEqual(FIXTURE_TUNABLES.MIN_CUE_FRACTION);

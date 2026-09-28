@@ -179,6 +179,13 @@ export interface RecallTunables {
    *  strongest seed must weigh about 0.4 (four co-uses: `0.5 · w / 4 ≥ 0.05`);
    *  a single fresh co-use (0.1) or a legacy gist tie does not reach it. CAL. */
   LINK_POINTER_MIN_FRACTION: number;
+  /** How many of the turn's strongest candidates (ranked the way the cut
+   *  ranks them, words and meaning both) SEED spreading — 2026-09-28. Not the
+   *  whole cue union, which on a big store is ~1,000 ids, most of them one weak
+   *  word from the turn. Set equal to `MAX_CANDIDATES` so the seeds are the
+   *  memories the cut would keep before links touch anything; a seed receives
+   *  no contribution, so links lift only what ranks past them. CAL. */
+  SPREAD_SEEDS: number;
 
   // ── affect ───────────────────────────────────────────────────────────────
   /** Emotional salience a candidate needs before it can raise the affect flag. [v1: 0.7] CAL. */
@@ -400,6 +407,7 @@ export const TUNABLES: RecallTunables = {
 
   LINK_POINTERS_MAX: 2,
   LINK_POINTER_MIN_FRACTION: 0.05,
+  SPREAD_SEEDS: 24,
 
   AFFECT_MIN_EMOTION: 0.7,
   AFFECT_REFRACTORY_TURNS: 2,

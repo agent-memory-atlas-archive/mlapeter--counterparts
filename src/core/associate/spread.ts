@@ -7,26 +7,25 @@
  * expressible at all — "a removed id stops conducting" is a property of the
  * predicate, not of a deletion that has to be chased through a cache.
  *
- * `recall/` CAN consume this as a fourth channel beside cue, semantic and arrival
- * (its NOTES.md §7 already names the seam and says the gate does not change).
- * **It is not wired in here** — see INTERFACE-GAPS.md §1, which also records the
- * one real collision: a hop contribution can reach an UNCUED memory, and whether
- * that memory may become a candidate is recall's hard gate (a) to decide.
+ * `recall/` consumes this as its hop channel (wired by `core/retrieval.ts`):
+ * contributions modulate candidates the conversation reached, and since
+ * 2026-09-28 a memory only the graph reached may become a quiet pointer — that
+ * decision is recall's gate's, not this module's (INTERFACE-GAPS.md §1).
  *
- * Bounds, all three of them structural:
- *   - **depth** — `HOPS` hops, and a node is expanded once, at the shallowest
- *     depth it was reached;
+ * Bounds:
+ *   - **depth** — `HOPS` hops, and a node is expanded once;
  *   - **fan** — a node passes activation in proportion to each edge's ABSOLUTE
  *     weight against the homeostatic bound (`MAX_OUT_WEIGHT`), and never more
  *     than its whole outgoing weight allows, so a hub cannot flood
  *     (`FAN_NORMALIZATION`, NOTES.md §6, 2026-09-28);
- *   - **size** — `MAX_SPREAD_NODES` expansions, and the result says when it hit
- *     the ceiling instead of quietly returning less.
+ *   - **threshold** — a node is expanded only while it carries at least
+ *     `SPREAD_MIN_FRACTION` of the strongest seed (2026-09-28);
+ *   - **size** — `MAX_SPREAD_NODES` expansions, a host-cost backstop, and the
+ *     result says when it bound instead of quietly returning less.
  *
- * ORDER (2026-09-28): seeds are expanded strongest first, and each hop's
- * frontier by the activation it carries — not in the order the caller happened
- * to list them. On a big store the node budget is spent before the seeds run
- * out, so insertion order decided which memories ever got to spread.
+ * ORDER: best-first across depths (2026-09-28, association build 2) — one
+ * queue over what each node carries, so the budget goes where activation is,
+ * not to whichever seed or depth happened to come first (see `spread()`).
  */
 import { conducts, edgeWeightAt } from "./edges.js";
 import type { EdgeState } from "./edges.js";
@@ -62,7 +61,15 @@ export interface Contribution {
   readonly paths: number;
 }
 
-export type SpreadStop = "exhausted" | "hop-limit" | "node-limit";
+/**
+ * Why the walk stopped. `exhausted`: nothing left to expand. `hop-limit`:
+ * nothing left within `HOPS`, and the graph went on past it. `threshold`: the
+ * strongest node still waiting carried less than `SPREAD_MIN_FRACTION` of the
+ * strongest seed — the ordinary stop since 2026-09-28. `node-limit`: the
+ * `MAX_SPREAD_NODES` backstop bound first, with `waiting` nodes above the
+ * threshold left unexpanded.
+ */
+export type SpreadStop = "exhausted" | "hop-limit" | "threshold" | "node-limit";
 
 export interface SpreadResult {
   readonly contributions: readonly Contribution[];
@@ -75,109 +82,143 @@ export interface SpreadResult {
    *  the seeds themselves; 2 means the traversal got past them. Measured
    *  2026-09-28, so a turn can say how far spreading actually reached. */
   readonly depth: number;
+  /** Nodes at or above the threshold still waiting when the walk stopped —
+   *  non-zero only when the node budget bound (2026-09-28). What the backstop
+   *  cost, counted rather than silent. */
+  readonly waiting: number;
 }
 
+/**
+ * BEST-FIRST ACROSS DEPTHS (association build 2, 2026-09-28). One queue over
+ * what each node CARRIES — seeds by their own activation, a reached node by
+ * the sum of everything that arrived at it — and the strongest node is
+ * expanded next, whatever its depth. So a strong first-hop node is expanded
+ * before a weak seed, and the node budget goes where activation is. The walk
+ * stops at the first node under the threshold (`SPREAD_MIN_FRACTION` of the
+ * strongest seed); `MAX_SPREAD_NODES` is a backstop behind it.
+ *
+ * A node is expanded ONCE, at the carried it had when it came to the head of
+ * the queue; a path that arrives after that still adds to its contribution
+ * (contributions sum over every path, NOTES §6) but does not re-queue it. Its
+ * `depth` is the shallowest arrival, and a node first reached at the hop limit
+ * is expanded only if a shorter path reaches it before its turn.
+ */
 export function spread(input: SpreadInput, t: AssociateTunables): SpreadResult {
   const acc = new Map<string, { activation: number; depth: number; paths: number }>();
-  const expandedAt = new Map<string, number>();
   /** Seeds receive NO contribution: their activation is the caller's own, and a
    *  round trip (a → b → a) would hand it back to them as new evidence. The
    *  contributions are what the graph ADDS, never an echo (NOTES.md §6). */
   const seedIds = new Set(input.seeds.map((s) => s.id));
+  /** Waiting to be expanded: what the node carries, and the hop level it would
+   *  be expanded at (1 for a seed, its shallowest arrival + 1 otherwise). */
+  const queue = new Map<string, { carried: number; level: number }>();
+  const expandedAt = new Set<string>();
   let blocked = 0;
   let expanded = 0;
   let reached = 0;
-  let stop: SpreadStop = "exhausted";
+  /** A contribution arrived at the hop limit, on a node that is not expanded. */
+  let pastHops = false;
 
-  // One entry per seed id (a repeated seed carries its summed activation),
-  // strongest first: the node budget goes to the loudest memories.
-  const seedCarry = new Map<string, number>();
+  // One entry per seed id (a repeated seed carries its summed activation).
   for (const s of input.seeds) {
     if (!input.conducts(s.id)) {
       blocked += 1;
       continue;
     }
-    if (s.activation > 0) seedCarry.set(s.id, (seedCarry.get(s.id) ?? 0) + s.activation);
+    if (!(s.activation > 0)) continue;
+    const have = queue.get(s.id);
+    queue.set(s.id, { carried: (have?.carried ?? 0) + s.activation, level: 1 });
   }
-  let frontier = byCarried(seedCarry);
+  let strongest = 0;
+  for (const q of queue.values()) strongest = Math.max(strongest, q.carried);
+  const threshold = strongest * t.SPREAD_MIN_FRACTION;
 
-  for (let depth = 1; depth <= t.HOPS && frontier.length > 0; depth++) {
-    /** The nodes reached at THIS depth, carrying what they received over every
-     *  path — not whichever path happened to arrive first. */
-    const reachedNow = new Map<string, number>();
-    for (const node of frontier) {
-      if (expandedAt.has(node.id)) continue;
-      if (expanded >= t.MAX_SPREAD_NODES) {
-        stop = "node-limit";
-        return finish(acc, expanded, blocked, stop, reached);
+  let stop: SpreadStop = "exhausted";
+  for (;;) {
+    const next = head(queue);
+    if (next === null) {
+      stop = pastHops ? "hop-limit" : "exhausted";
+      break;
+    }
+    if (next.carried < threshold) {
+      stop = "threshold";
+      break;
+    }
+    if (expanded >= t.MAX_SPREAD_NODES) {
+      stop = "node-limit";
+      break;
+    }
+    queue.delete(next.id);
+    expandedAt.add(next.id);
+    expanded += 1;
+    if (next.level > reached) reached = next.level;
+
+    const live: { dst: string; weight: number }[] = [];
+    for (const e of input.edgesFrom(next.id)) {
+      if (e.dst === next.id) continue;
+      const w = edgeWeightAt(e, input.day, t);
+      if (!conducts(w, t)) continue;
+      if (!input.conducts(e.dst)) {
+        blocked += 1;
+        continue;
       }
-      expandedAt.set(node.id, depth);
-      expanded += 1;
-      reached = depth;
+      live.push({ dst: e.dst, weight: w });
+    }
+    if (live.length === 0) continue;
 
-      const live: { dst: string; weight: number }[] = [];
-      for (const e of input.edgesFrom(node.id)) {
-        if (e.dst === node.id) continue;
-        const w = edgeWeightAt(e, input.day, t);
-        if (!conducts(w, t)) continue;
-        if (!input.conducts(e.dst)) {
-          blocked += 1;
-          continue;
-        }
-        live.push({ dst: e.dst, weight: w });
+    // ABSOLUTE weight (2026-09-28): an edge passes `w / MAX_OUT_WEIGHT` of
+    // what the node carries, before hop decay — a fresh 0.1 edge passes 2.5%
+    // whether or not it has siblings. It used to be `w / (the node's live
+    // sum)`, which let a lone 0.03 edge pass everything. The divisor never
+    // drops below the node's own outgoing sum, so a node whose edges were
+    // written outside homeostasis (a legacy dream gist) still passes at most
+    // what it carries.
+    const sum = live.reduce((total, e) => total + e.weight, 0);
+    const fan = t.FAN_NORMALIZATION ? Math.max(t.MAX_OUT_WEIGHT, sum) : 1;
+    if (!(fan > 0)) continue;
+    for (const e of live) {
+      if (seedIds.has(e.dst)) continue;
+      const gain = next.carried * t.HOP_DECAY * (e.weight / fan);
+      if (gain <= 0) continue;
+      const have = acc.get(e.dst);
+      if (have === undefined) acc.set(e.dst, { activation: gain, depth: next.level, paths: 1 });
+      else {
+        // Contributions SUM across paths — two co-active seeds pointing at the
+        // same memory say more than one does — while `depth` keeps the
+        // shallowest arrival (NOTES.md §6).
+        have.activation += gain;
+        have.paths += 1;
+        if (next.level < have.depth) have.depth = next.level;
       }
-      if (live.length === 0) continue;
-
-      // ABSOLUTE weight (2026-09-28): an edge passes `w / MAX_OUT_WEIGHT` of
-      // what the node carries, before hop decay — a fresh 0.1 edge passes 2.5%
-      // whether or not it has siblings. It used to be `w / (the node's live
-      // sum)`, which let a lone 0.03 edge pass everything. The divisor never
-      // drops below the node's own outgoing sum, so a node whose edges were
-      // written outside homeostasis (a legacy dream gist) still passes at most
-      // what it carries.
-      const sum = live.reduce((total, e) => total + e.weight, 0);
-      const fan = t.FAN_NORMALIZATION ? Math.max(t.MAX_OUT_WEIGHT, sum) : 1;
-      if (!(fan > 0)) continue;
-      for (const e of live) {
-        if (seedIds.has(e.dst)) continue;
-        const gain = node.carried * t.HOP_DECAY * (e.weight / fan);
-        if (gain <= 0) continue;
-        const have = acc.get(e.dst);
-        if (have === undefined) acc.set(e.dst, { activation: gain, depth, paths: 1 });
-        else {
-          // Contributions SUM across paths — two co-active seeds pointing at the
-          // same memory say more than one does — while `depth` keeps the
-          // shallowest arrival (NOTES.md §6).
-          have.activation += gain;
-          have.paths += 1;
-          if (depth < have.depth) have.depth = depth;
-        }
-        if (!expandedAt.has(e.dst)) reachedNow.set(e.dst, (reachedNow.get(e.dst) ?? 0) + gain);
+      if (expandedAt.has(e.dst)) continue;
+      if (next.level >= t.HOPS) {
+        pastHops = true;
+        continue;
+      }
+      const waiting = queue.get(e.dst);
+      if (waiting === undefined) queue.set(e.dst, { carried: gain, level: next.level + 1 });
+      else {
+        waiting.carried += gain;
+        if (next.level + 1 < waiting.level) waiting.level = next.level + 1;
       }
     }
-    frontier = byCarried(reachedNow);
-    if (frontier.length > 0 && depth === t.HOPS) stop = "hop-limit";
   }
 
-  return finish(acc, expanded, blocked, stop, reached);
-}
-
-/** A frontier, strongest first; ties broken by id so a traversal is deterministic. */
-function byCarried(m: ReadonlyMap<string, number>): { id: string; carried: number }[] {
-  return [...m]
-    .map(([id, carried]) => ({ id, carried }))
-    .sort((a, b) => b.carried - a.carried || (a.id < b.id ? -1 : 1));
-}
-
-function finish(
-  acc: ReadonlyMap<string, { activation: number; depth: number; paths: number }>,
-  expanded: number,
-  blocked: number,
-  stop: SpreadStop,
-  depth: number,
-): SpreadResult {
+  let waiting = 0;
+  if (stop === "node-limit") for (const q of queue.values()) if (q.carried >= threshold) waiting += 1;
   const contributions = [...acc]
     .map(([id, v]) => ({ id, activation: v.activation, depth: v.depth, paths: v.paths }))
     .sort((a, b) => b.activation - a.activation || (a.id < b.id ? -1 : 1));
-  return { contributions, expanded, blocked, stop, depth };
+  return { contributions, expanded, blocked, stop, depth: reached, waiting };
+}
+
+/** The strongest node waiting; ties broken by id so a traversal is deterministic. */
+function head(queue: ReadonlyMap<string, { carried: number; level: number }>): { id: string; carried: number; level: number } | null {
+  let best: { id: string; carried: number; level: number } | null = null;
+  for (const [id, q] of queue) {
+    if (best === null || q.carried > best.carried || (q.carried === best.carried && id < best.id)) {
+      best = { id, carried: q.carried, level: q.level };
+    }
+  }
+  return best;
 }

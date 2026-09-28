@@ -117,6 +117,7 @@ export type SpreadFn = (
   expanded?: number;
   stop?: string;
   depth?: number;
+  waiting?: number;
 };
 
 /**
@@ -130,10 +131,14 @@ export type SpreadFn = (
 export interface SpreadStats {
   readonly seeds: number;
   readonly expanded: number | null;
-  /** `exhausted` / `hop-limit` / `node-limit`, as the traversal reported it. */
+  /** `exhausted` / `hop-limit` / `threshold` / `node-limit`, as the traversal
+   *  reported it (`threshold` since the best-first walk, 2026-09-28). */
   readonly stop: string | null;
   /** Deepest hop expanded: 1 = seeds only, 2 = got past them. */
   readonly depth: number | null;
+  /** When the node budget bound: nodes at or above the threshold still waiting
+   *  (2026-09-28). Absent when the traversal did not say. */
+  readonly waiting?: number;
   readonly computed: number;
   /** Contributions that landed on a candidate the cut KEPT (what the gate saw). */
   readonly landed: number;
@@ -476,45 +481,6 @@ export function activate(
   const denied = new Set(store.deniedIds());
   const ids = new Set<string>([...cueScore.keys(), ...semScore.keys()]);
 
-  // ── the hop channel (SEAMS item L) ──────────────────────────────────────
-  // The SEEDS are the candidates the CONVERSATION reached — its words AND,
-  // since 2026-09-28, its meaning: a semantic hit is as much "what this turn
-  // is about" as a cued one. A seed receives no contribution of its own — a
-  // round trip a→b→a would hand a memory its own activation back as new
-  // evidence (associate NOTES §6). What the graph adds therefore goes to two
-  // places: a candidate that is not a seed (modulation), and a memory that is
-  // not a candidate at all (`linkOnly` — a possible quiet pointer, below).
-  const hopScore = new Map<string, number>();
-  const linkOnlyScore = new Map<string, number>();
-  let strongestSeed = 0;
-  let spreadRun: Omit<SpreadStats, "landed" | "pointerCandidates" | "pointers"> | null = null;
-  if (input.spread !== undefined && ids.size > 0) {
-    // Strongest first (2026-09-28): the traversal ranks them too, but the list
-    // it is handed should not depend on which cue's postings came first.
-    const seeds = [...ids]
-      .map((id) => ({ id, activation: (cueScore.get(id) ?? 0) + (semScore.get(id) ?? 0) }))
-      .filter((s) => s.activation > 0)
-      .sort((a, b) => b.activation - a.activation || (a.id < b.id ? -1 : 1));
-    strongestSeed = seeds[0]?.activation ?? 0;
-    const out = input.spread(seeds, input.day);
-    for (const c of out.contributions) {
-      if (!(c.activation > 0)) continue;
-      // A candidate is modulated; anything else is link-only. Whether a
-      // link-only memory is SHOWN is decided below, after the candidates are
-      // scored — it has to be live, above the threshold, and among the few.
-      if (ids.has(c.id)) hopScore.set(c.id, (hopScore.get(c.id) ?? 0) + c.activation);
-      else linkOnlyScore.set(c.id, (linkOnlyScore.get(c.id) ?? 0) + c.activation);
-    }
-    spreadRun = {
-      seeds: seeds.length,
-      expanded: typeof out.expanded === "number" ? out.expanded : null,
-      stop: typeof out.stop === "string" ? out.stop : null,
-      depth: typeof out.depth === "number" ? out.depth : null,
-      computed: out.contributions.length,
-      linkOnly: linkOnlyScore.size,
-    };
-  }
-
   // Two passes: SCORE from box 2, then READ the survivors' prose.
   //
   // Every number in the sort key — cue, semantic, arrival, hops — is available
@@ -534,6 +500,8 @@ export function activate(
     readonly id: string;
     readonly physics: MemoryPhysics;
     readonly strength: number;
+    /** The turn-gated salience the cut's key divides by. */
+    readonly sal: number;
     readonly cue: number;
     readonly temporal: number;
     readonly semantic: number;
@@ -566,7 +534,7 @@ export function activate(
     if (row.type === "schema" && row.kind === "place" && isHandoffRow(store, id)) return undefined;
     return row;
   };
-  const scored: Scored[] = [];
+  let scored: Scored[] = [];
   let skipped = 0;
   for (const id of ids) {
     const row = recallable(id);
@@ -580,19 +548,20 @@ export function activate(
     const semantic = semScore.get(id) ?? 0;
     const s = strength(physics, input.day);
     const arrival = cue + semantic > 0 ? t.ARRIVAL_WEIGHT * s : 0;
-    const hops = cue + semantic > 0 ? hopScore.get(id) ?? 0 : 0;
-    const activation = cue + semantic + arrival + hops;
+    const activation = cue + semantic + arrival;
+    const gatedS = gatedSal(physics, input.selfFelt);
     scored.push({
       id,
       physics,
       strength: s,
+      sal: gatedS,
       cue,
       temporal,
       semantic,
       arrival,
-      hops,
+      hops: 0,
       activation,
-      cutKey: salienceRank(activation, gatedSal(physics, input.selfFelt), t),
+      cutKey: salienceRank(activation, gatedS, t),
     });
   }
   // SALIENCE BEFORE THE CUT (2026-09-28). The gate lowers a salient candidate's
@@ -613,17 +582,76 @@ export function activate(
   // `cue + semantic > 0` (at most `maxCandidates` of them), and a sample with
   // no spread (sd 0) is thin too. Estimated here on the cued candidates an
   // activation-ranked cut would keep.
-  const sample = scored
-    .filter((c) => c.cue + c.semantic > 0)
-    .map((c) => c.activation)
-    .sort((x, y) => y - x)
-    .slice(0, input.maxCandidates);
-  const relative = storeSize >= t.COLD_START_MIN_STORE && sample.length >= t.MIN_BACKGROUND_SAMPLE && spreadOf(sample) > 0;
-  scored.sort((a, b) =>
-    relative
-      ? b.cutKey - a.cutKey || b.activation - a.activation || (a.id < b.id ? -1 : 1)
-      : b.activation - a.activation || (a.id < b.id ? -1 : 1),
-  );
+  const rankForCut = (list: Scored[]): void => {
+    const sample = list
+      .filter((c) => c.cue + c.semantic > 0)
+      .map((c) => c.activation)
+      .sort((x, y) => y - x)
+      .slice(0, input.maxCandidates);
+    const relative = storeSize >= t.COLD_START_MIN_STORE && sample.length >= t.MIN_BACKGROUND_SAMPLE && spreadOf(sample) > 0;
+    list.sort((a, b) =>
+      relative
+        ? b.cutKey - a.cutKey || b.activation - a.activation || (a.id < b.id ? -1 : 1)
+        : b.activation - a.activation || (a.id < b.id ? -1 : 1),
+    );
+  };
+  rankForCut(scored);
+
+  // ── the hop channel (SEAMS item L) ──────────────────────────────────────
+  // The SEEDS are the strongest candidates the CONVERSATION reached — words
+  // AND meaning (2026-09-28: a semantic hit is as much "what this turn is
+  // about" as a cued one) — ranked the way the cut ranks, the top
+  // `SPREAD_SEEDS` of them, each with its own activation. Not the whole union:
+  // on a big store the union is ~1,000 ids, most of them one weak word away
+  // from the turn, and seeding from all of it spread their neighbourhoods
+  // instead of the turn's.
+  //
+  // A seed receives no contribution of its own — a round trip a→b→a would
+  // hand a memory its own activation back as new evidence (associate NOTES
+  // §6). So what the graph adds goes to two places: a candidate that is NOT a
+  // seed (ranked past `SPREAD_SEEDS`; the contribution may lift it into the
+  // cut), and a memory that is not a candidate at all (`linkOnly` — a possible
+  // quiet pointer, below). Inside the seeds, links do not reorder: that is the
+  // conversation's to decide.
+  const linkOnlyScore = new Map<string, number>();
+  let strongestSeed = 0;
+  let spreadRun: Omit<SpreadStats, "landed" | "pointerCandidates" | "pointers"> | null = null;
+  if (input.spread !== undefined && scored.length > 0) {
+    const seeds = scored
+      .filter((c) => c.cue + c.semantic > 0)
+      .slice(0, t.SPREAD_SEEDS)
+      .map((c) => ({ id: c.id, activation: c.activation }));
+    const seedIds = new Set(seeds.map((s) => s.id));
+    for (const s of seeds) strongestSeed = Math.max(strongestSeed, s.activation);
+    const out = input.spread(seeds, input.day);
+    const hopScore = new Map<string, number>();
+    for (const c of out.contributions) {
+      if (!(c.activation > 0) || seedIds.has(c.id)) continue;
+      // A candidate is modulated; anything else is link-only. Whether a
+      // link-only memory is SHOWN is decided below, after the cut — it has to
+      // be live, above the threshold, and among the few.
+      if (ids.has(c.id)) hopScore.set(c.id, (hopScore.get(c.id) ?? 0) + c.activation);
+      else linkOnlyScore.set(c.id, (linkOnlyScore.get(c.id) ?? 0) + c.activation);
+    }
+    if (hopScore.size > 0) {
+      scored = scored.map((c) => {
+        const hops = c.cue + c.semantic > 0 ? hopScore.get(c.id) ?? 0 : 0;
+        if (hops === 0) return c;
+        const activation = c.activation + hops;
+        return { ...c, hops, activation, cutKey: salienceRank(activation, c.sal, t) };
+      });
+      rankForCut(scored);
+    }
+    spreadRun = {
+      seeds: seeds.length,
+      expanded: typeof out.expanded === "number" ? out.expanded : null,
+      stop: typeof out.stop === "string" ? out.stop : null,
+      depth: typeof out.depth === "number" ? out.depth : null,
+      computed: out.contributions.length,
+      ...(typeof out.waiting === "number" ? { waiting: out.waiting } : {}),
+      linkOnly: linkOnlyScore.size,
+    };
+  }
 
   const kept = scored.slice(0, input.maxCandidates);
   const dropped = scored.length - kept.length;
