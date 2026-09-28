@@ -76,7 +76,10 @@ export const PLAIN = {
   store: (d, detail) => {
     if (!d || typeof d.memories !== "number") return null;
     const n = d.memories;
-    return n + (n === 1 ? " memory" : " memories") + ", not counting the cards for people and projects" +
+    // Keep where the store is: doctor's detail opens with its path.
+    const at = String(detail || "").split(" — ")[0];
+    return (at && at !== String(detail || "") ? at + " — " : "") +
+      n + (n === 1 ? " memory" : " memories") + ", not counting the cards for people and projects" +
       (/opens fine/.test(String(detail || "")) ? " · opens fine" : "");
   },
   // The self page: how long since its last rewrite, and — once that passes
