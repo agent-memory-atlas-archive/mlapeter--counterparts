@@ -1,7 +1,7 @@
 /* "How firmly it's held": one bar in three parts — firm, settling, fading —
    with their counts. Brighter is firmer (the tab's one visual language), and
    fading is amber. Click a part to filter the list to it; click it again for
-   everything. Journal chapters aren't scored, so they are a note, not a part. */
+   everything. The journal's entries aren't scored, so they are a note, not a part. */
 import { $, esc } from "../../../shared/dom.js";
 import { q, wireTips } from "../../../shared/widgets/tips.js";
 import { filters, onFilter, toggle } from "../state.js";
@@ -61,7 +61,12 @@ function paintParts() {
     '<div class="hkeys">' + keys + "</div>" + journalNote(h);
 }
 
-function journalNote(h) {
-  return h.journal ? '<p class="glance-note">' + h.journal + (h.journal === 1 ? " journal chapter isn't" : " journal chapters aren't") +
-    " scored, so " + (h.journal === 1 ? "it's" : "they're") + " left out.</p>" : "";
+/** The note under the bar. What it counts is the journal's ENTRIES (one per
+ *  session; an entry can hold several chapters), so it says entries —
+ *  "chapters" here disagreed with the Self tab's chapter count (2026-09-28). */
+export function journalNote(h) {
+  if (!h.journal) return "";
+  return '<p class="glance-note">' + (h.journal === 1
+    ? "The journal's one entry isn't scored, so it's left out."
+    : "The journal's " + h.journal + " entries aren't scored, so they're left out.") + "</p>";
 }

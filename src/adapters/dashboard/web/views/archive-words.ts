@@ -6,6 +6,7 @@
  * row on its card. A reason not in the table still gets words, from
  * `unmappedArchiveWords`, so nothing archived is ever left unsaid.
  */
+import { DREAM_MERGE_REASON, DREAM_UNDONE_REASON } from "../../../../core/dream/index.js";
 import { TUNABLES as SCHEMA_TUNABLES } from "../../../../core/schemas/index.js";
 import { MERGE_ARCHIVE_REASON, PRUNE_ARCHIVE_REASON } from "../../../../core/sleep/index.js";
 
@@ -38,6 +39,11 @@ export const ARCHIVE_WORDS: readonly ArchiveReasonWords[] = [
   { reason: SCHEMA_TUNABLES.FADE_REASON, many: "faded from use", one: "faded away — nothing mentions it any more", group: "let-go" },
   { reason: PRUNE_ARCHIVE_REASON, many: "let go at the floor", one: "let go at the floor — too weak for too long", group: "let-go" },
   { reason: MERGE_ARCHIVE_REASON, many: "merged duplicates", one: "merged into a near-duplicate", group: "replaced" },
+  { reason: DREAM_MERGE_REASON, many: "merged in a dream", one: "merged in a dream into a near-copy", group: "replaced" },
+  // What an undone dream had made (a merged memory or a gist): the originals
+  // it was made from stand again, so nothing is forgotten — "replaced", not
+  // "removed by you" (a dream can be undone by the session as well as by you).
+  { reason: DREAM_UNDONE_REASON, many: "undone with their dream", one: "made in a dream that was undone — the originals stand", group: "replaced" },
   { reason: REMOVED_BY_OWNER, many: "removed by you", one: "removed by you", group: "removed" },
 ];
 

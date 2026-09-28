@@ -632,13 +632,13 @@ export const NARRATORS = {
     const days = n(t, "lifeDays") ?? 0;
     return calm(
       `I left a handoff for the next session in this directory: ${num(bytes, 0)} bytes, ` +
-        `${created ? "the first one here" : "replacing the one that stood"}, showing for ${num(days)} days of use.`,
+        `${created ? "the first one here" : "replacing the one that stood"}, showing for ${num(days, 0)} ${days === 1 ? "day" : "days"} of use.`,
     );
   },
   "handoff.shown": (t) => {
     const age = n(t, "ageDays");
     const bytes = n(t, "bytes") ?? 0;
-    const when = age === null ? "" : age === 0 ? ", written today" : `, written ${num(age)} days of use ago`;
+    const when = age === null ? "" : age === 0 ? ", written today" : `, written ${num(age, 0)} ${age === 1 ? "day" : "days"} of use ago`;
     return calm(`I woke here and was handed the pointer to this directory's handoff${when} (${num(bytes, 0)} bytes of the wake).`);
   },
   "handoff.cleared": (t) => {

@@ -1334,6 +1334,17 @@ function journalChapters(src: DashboardSource): ReadChapter[] {
   return all;
 }
 
+/**
+ * How many chapters the journal holds — the Self tab's count (the strip's
+ * chapters plus its "N older chapters"), for the home page's chapters tile,
+ * which links here. One journal entry can hold many chapters, so counting
+ * entries said 26 where the journal held 84 (2026-09-28). One read per live
+ * journal entry.
+ */
+export function journalChapterCount(src: DashboardSource): number {
+  return journalChapters(src).length;
+}
+
 /** The chapters grouped by the lived day they were written on, newest first. */
 function journal(all: readonly ReadChapter[], limit: number, absent: string): Pick<MindView, "journal" | "journalAbsent" | "journalMore"> {
   const sent = all.slice(0, limit);

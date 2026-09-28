@@ -19,7 +19,7 @@ import { dayWords, stripSummary } from "../src/adapters/dashboard/web/pages/self
 // @ts-expect-error — a plain browser module, no declarations
 import { pageAge } from "../src/adapters/dashboard/web/pages/self/sections/wake.js";
 // @ts-expect-error — a plain browser module, no declarations
-import { layout, nodeWords } from "../src/adapters/dashboard/web/pages/self/sections/map.js";
+import { MIN_APART, layout, nodeWords } from "../src/adapters/dashboard/web/pages/self/sections/map.js";
 // @ts-expect-error — a plain browser module, no declarations
 import { wakeLine } from "../src/adapters/dashboard/web/pages/health/sections/wake.js";
 
@@ -195,5 +195,38 @@ describe("the self tab, round 3b", () => {
     expect(dist(x, "far")).toBeCloseTo(x.R, 5);
     expect(nodeWords({ core: true, strength: 0.5 })).toBe("in the core · held 50%");
     expect(nodeWords({ oneReturnAway: true, strength: 0.72 })).toBe("one return away from the core · held 72%");
+  });
+
+  test("4: ready dots share the innermost ring but never sit on top of each other (2026-09-28)", () => {
+    // The owner's map: six ready dots, all linked to the same core memories
+    // and to each other, drawn as one overlapping clump beside the core.
+    const nodes: { id: string; core: boolean; ready?: boolean; closeness: number; strength: number }[] = [];
+    for (let i = 0; i < 4; i++) nodes.push({ id: `mem_core${i}`, core: true, closeness: 2, strength: 0.9 });
+    for (let i = 0; i < 6; i++) nodes.push({ id: `mem_ready${i}`, core: false, ready: true, closeness: 2, strength: 0.7 });
+    for (let i = 0; i < 30; i++) nodes.push({ id: `mem_o${i}`, core: false, closeness: (i % 10) / 5, strength: 0.4 });
+    const links: { a: string; b: string; weight: number }[] = [];
+    for (let i = 0; i < 6; i++) {
+      links.push({ a: "mem_core0", b: `mem_ready${i}`, weight: 0.8 }, { a: "mem_core1", b: `mem_ready${i}`, weight: 0.5 });
+      for (let j = i + 1; j < 6; j++) links.push({ a: `mem_ready${i}`, b: `mem_ready${j}`, weight: 0.6 });
+    }
+    for (let i = 0; i < 30; i++) links.push({ a: `mem_o${i}`, b: `mem_ready${i % 6}`, weight: 0.3 });
+    type P = { x: number; y: number; r: number };
+    type L = { pos: Map<string, P>; cx: number; cy: number; inner: number };
+    for (const [w, h] of [[700, 380], [360, 342]] as const) {
+      const x = layout({ nodes, links }, w, h) as L;
+      const again = layout({ nodes, links }, w, h) as L;
+      const drawn = nodes.filter((n) => !n.core).map((n) => ({ id: n.id, p: x.pos.get(n.id) as P }));
+      for (const d of drawn) expect(again.pos.get(d.id)).toEqual(d.p);
+      for (let i = 0; i < drawn.length; i++) {
+        for (let j = i + 1; j < drawn.length; j++) {
+          const a = drawn[i]!.p, b = drawn[j]!.p;
+          expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThanOrEqual(MIN_APART - 0.5);
+        }
+      }
+      // Still at the radius their closeness gives them: only the angle moved.
+      for (const d of drawn.filter((n) => n.id.startsWith("mem_ready"))) {
+        expect(Math.hypot(d.p.x - x.cx, d.p.y - x.cy)).toBeCloseTo(x.inner, 5);
+      }
+    }
   });
 });

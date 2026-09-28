@@ -317,6 +317,17 @@ describe("the self tab's side column (round 2, an experiment)", () => {
     expect(line({ present: false })).toBeNull();
     expect(line({ present: true, stale: true })).toBeNull();
   });
+
+  test("the health row's memory count says what it leaves out (home counts the people and project cards in)", () => {
+    const line = PLAIN["store"] as (d: unknown, detail?: string) => string | null;
+    expect(line({ exists: true, memories: 295 }, "~/.counterparts — 295 memories, opens fine")).toBe(
+      "295 memories, not counting the cards for people and projects · opens fine",
+    );
+    expect(line({ exists: true, memories: 1 }, "~/x — 1 memory")).toBe("1 memory, not counting the cards for people and projects");
+    // No count (a store not read, or one behind its migration): doctor's own detail stands.
+    expect(line({ exists: true, named: "~/y" }, "read ~/x, but …")).toBeNull();
+    expect(line(undefined)).toBeNull();
+  });
 });
 
 describe("the self tab's diff", () => {

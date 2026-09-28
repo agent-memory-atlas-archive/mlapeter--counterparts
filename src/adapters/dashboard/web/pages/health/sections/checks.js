@@ -69,6 +69,16 @@ function plain(detail) {
 
 /** A line doctor's facts can say in plain words, by key; null keeps the detail. */
 export const PLAIN = {
+  // Doctor's count is memories proper (the wake's and `status`'s number); the
+  // home and memories tabs count the cards for people and projects in too, so
+  // this line says what it leaves out rather than show a second, smaller
+  // "memories" with no reason (2026-09-28: 302 on home, 295 here).
+  store: (d, detail) => {
+    if (!d || typeof d.memories !== "number") return null;
+    const n = d.memories;
+    return n + (n === 1 ? " memory" : " memories") + ", not counting the cards for people and projects" +
+      (/opens fine/.test(String(detail || "")) ? " · opens fine" : "");
+  },
   // The self page: how long since its last rewrite, and — once that passes
   // doctor's own limit, which is what turns the row amber — that it has.
   "self-page": (d) => {
@@ -116,7 +126,7 @@ function paintFindings(report, when) {
     const name = NAMES[f.key] || f.title;
     const line = grade === "grey"
       ? "not checked — this dashboard was opened on a store, not through its settings file"
-      : (PLAIN[f.key] && PLAIN[f.key](f.data)) || plain(f.detail);
+      : (PLAIN[f.key] && PLAIN[f.key](f.data, f.detail)) || plain(f.detail);
     details.push(f);
     rows.push({ grade, name, line, f, order: HEADLINE.indexOf(f.key) });
   }

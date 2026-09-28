@@ -23,6 +23,9 @@ import { mergeRepeats } from "../src/adapters/dashboard/web/views/mechanism-pane
 import { SHOW_MECHANISM_SCORE } from "../src/adapters/dashboard/web/views/overview.js";
 import { memoriesHeld, memoriesLive } from "../src/adapters/dashboard/web/views/shared.js";
 import { MECHANISM_PROOFS, mechanismsView } from "../src/adapters/dashboard/web/views/mechanisms.js";
+import { Counterpart } from "../src/core/counterpart.js";
+// @ts-expect-error — a plain browser module, no declarations
+import { journalNote } from "../src/adapters/dashboard/web/pages/memories/sections/hold.js";
 import { seedDemo, seedEmpty } from "../tools/demo/seed.js";
 
 const WEB = fileURLToPath(new URL("../src/adapters/dashboard/web/", import.meta.url));
@@ -150,6 +153,54 @@ describe("the hero (round 2, 2026-09-26)", () => {
       ["chapters", "self/journal"],
       ["replaced", "memories?state=archived"],
     ]) expect(tiles).toContain(`"${key}": "${to}"`);
+  });
+
+  test("the chapters tile counts chapters the way the Self tab's journal does, not journal entries (2026-09-28)", () => {
+    const x = mkdtempSync(join(tmpdir(), "counterparts-home-chapters-"));
+    try {
+      Counterpart.open({ dir: x, owner: true }).close();
+      const c = Counterpart.open({ dir: x, owner: true });
+      try {
+        c.store.advanceClock("2026-09-01");
+        const entry = (title: string, chapters: number): string =>
+          c.store.put({
+            type: "episode",
+            kind: "self",
+            title,
+            body: Array.from({ length: chapters }, (_, i) => `## chapter ${i + 1} — lived day 1\n\nPart ${i + 1} of ${title}.`).join("\n\n"),
+            salience: { relevance: 0.5, emotional: 0.2, predictive: 0.2 },
+            physics: { birthDay: 1, lastUsedDay: 1 },
+          });
+        entry("a long session", 62); // past the strip's 60, so Self says "N older chapters"
+        entry("a short one", 2);
+        c.store.archive(entry("an archived one", 5), "episode-regrown"); // out of both counts
+      } finally {
+        c.close();
+      }
+      withSource(x, (src) => {
+        const hero = get(src, "/api/overview").json["hero"] as HeroJson;
+        const mind = get(src, "/api/mind").json as { journal: { chapters: unknown[] }[]; journalMore: number };
+        const self = mind.journal.reduce((n, d) => n + d.chapters.length, 0) + mind.journalMore;
+        expect(mind.journalMore).toBeGreaterThan(0);
+        expect(self).toBe(64);
+        expect(hero.counts.find((t) => t.key === "chapters")?.value).toBe(String(self));
+      });
+    } finally {
+      rmSync(x, { recursive: true, force: true });
+    }
+    // The memories tab's note counts the journal's rows, so it says entries.
+    expect(journalNote({ journal: 26 })).toContain("The journal's 26 entries aren't scored, so they're left out.");
+    expect(journalNote({ journal: 1 })).toContain("The journal's one entry isn't scored, so it's left out.");
+    expect(journalNote({ journal: 0 })).toBe("");
+  });
+
+  test("home's memory count is doctor's plus the people and project cards (the health line says so)", () => {
+    withSource(richDir, (src) => {
+      const doctor = src.store.countMemories({ type: "memory", archived: false });
+      const cards = src.store.countMemories({ type: "schema", archived: false });
+      expect(cards).toBeGreaterThan(0);
+      expect(memoriesLive(src)).toBe(doctor + cards);
+    });
   });
 
   test("a store that has lived nothing says so, and counts nothing", () => {

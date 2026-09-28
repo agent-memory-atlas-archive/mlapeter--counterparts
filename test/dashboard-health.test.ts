@@ -30,6 +30,7 @@ import { Dashboard } from "../src/adapters/dashboard/index.js";
 import { NO_CONFIG_HOME, buildArgv, runAction } from "../src/adapters/dashboard/web/actions.js";
 import { ARCHIVE_PHRASES } from "../src/adapters/dashboard/web/views/archive-words.js";
 import { healthView } from "../src/adapters/dashboard/web/views/health.js";
+import { DREAM_MERGE_REASON, DREAM_UNDONE_REASON } from "../src/core/dream/index.js";
 import { TUNABLES as SCHEMA_TUNABLES } from "../src/core/schemas/index.js";
 import { MERGE_ARCHIVE_REASON, PRUNE_ARCHIVE_REASON, markerKey } from "../src/core/sleep/index.js";
 import { PHASES } from "../src/core/sleep/types.js";
@@ -199,6 +200,8 @@ describe("where archived memories went", () => {
     for (const reason of [
       PRUNE_ARCHIVE_REASON,
       MERGE_ARCHIVE_REASON,
+      DREAM_MERGE_REASON,
+      DREAM_UNDONE_REASON,
       SCHEMA_TUNABLES.FADE_REASON,
       SCHEMA_TUNABLES.REVISED_REASON,
       SCHEMA_TUNABLES.REPLACED_REASON,
@@ -210,20 +213,46 @@ describe("where archived memories went", () => {
     ]) {
       expect(`${reason}: ${mapped.has(reason)}`).toBe(`${reason}: true`);
     }
-    // And every string literal the core hands `store.archive(…, "…")` today.
-    const literals = new Set<string>();
-    const walk = (at: string): void => {
-      for (const entry of readdirSync(at, { withFileTypes: true })) {
-        const full = join(at, entry.name);
-        if (entry.isDirectory()) walk(full);
-        else if (entry.name.endsWith(".ts")) {
-          for (const m of readFileSync(full, "utf8").matchAll(/\.archive\([^,()]+,\s*"([^"]+)"\)/g)) literals.add(m[1] as string);
-        }
-      }
-    };
-    walk(join(import.meta.dir, "..", "src", "core"));
-    expect(literals.size).toBeGreaterThan(0);
-    for (const reason of literals) expect(`${reason}: ${mapped.has(reason)}`).toBe(`${reason}: true`);
+    // And every reason the code hands the store's three archiving writers
+    // today — `archive(id, reason)`, `supersede(old, input, reason = "supersede")`
+    // and `supersedeInto(old, successor, reason)` — read off the call sites.
+    // The first version of this check matched only `.archive(x, "literal")`
+    // on one line, so a reason passed as a named constant, or to
+    // `supersedeInto`, got past it: the health tab showed
+    // "archived (dream-merge)" after 0.3.5 (2026-09-28).
+    const written = archiveReasonsWritten(join(import.meta.dir, "..", "src"));
+    expect(written.unresolved).toEqual([]);
+    for (const reason of [DREAM_MERGE_REASON, DREAM_UNDONE_REASON, SCHEMA_TUNABLES.FADE_REASON, "revised-by-pressure"]) {
+      expect(`${reason}: ${written.found.has(reason)}`).toBe(`${reason}: true`);
+    }
+    for (const reason of written.found) expect(`${reason}: ${mapped.has(reason)}`).toBe(`${reason}: true`);
+  });
+
+  test("the reason reader sees the call shapes the first check missed", () => {
+    const dir = tempDir("counterparts-archive-reasons-");
+    mkdirSync(join(dir, "core", "x"), { recursive: true });
+    writeFileSync(
+      join(dir, "core", "x", "a.ts"),
+      [
+        'export const SOME_REASON = "some-reason";',
+        "export const TUNABLES = {",
+        '  TUNED_REASON: "tuned-reason" as const,',
+        "};",
+        "store.archive(id, SOME_REASON);",
+        'this.store.supersedeInto(a, b, "into-reason", { carryReturns: true });',
+        "store.supersede(",
+        "  old,",
+        '  { type: "memory", body: f(x, y) },',
+        '  "multi-line-reason",',
+        ");",
+        "store.supersede(old, { body });",
+        "store.archive(id, TUNABLES.TUNED_REASON);",
+        "store.archive(id, someVariable);",
+      ].join("\n"),
+    );
+    const read = archiveReasonsWritten(dir);
+    expect([...read.found].sort()).toEqual(["into-reason", "multi-line-reason", "some-reason", "supersede", "tuned-reason"]);
+    expect(read.unresolved).toEqual([`${join("core", "x", "a.ts")}: someVariable`]);
   });
 
   test("the counts add up to the archived rows, and an unknown reason still gets a segment", async () => {
@@ -299,3 +328,87 @@ describe("where archived memories went", () => {
     }
   });
 });
+
+/**
+ * Every `archived_reason` the source under `root` hands the store's archiving
+ * writers, read from the call sites. The reason argument — the second of
+ * `.archive(`, the third of `.supersede(` and `.supersedeInto(` — is a string
+ * literal, a named constant (`export const NAME = "…"` anywhere under `root`),
+ * a `TUNABLES.NAME` (`NAME: "…"`), or `supersede`'s own default when it is left
+ * off. Anything else is `unresolved` unless it is a pass-through named below,
+ * so a new call shape fails the test instead of slipping by.
+ */
+function archiveReasonsWritten(root: string): { found: Set<string>; unresolved: string[] } {
+  const files: { path: string; text: string }[] = [];
+  const walk = (at: string): void => {
+    for (const entry of readdirSync(at, { withFileTypes: true })) {
+      const full = join(at, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith(".ts")) files.push({ path: relative(root, full), text: readFileSync(full, "utf8") });
+    }
+  };
+  walk(root);
+  const consts = new Map<string, string>();
+  for (const f of files) {
+    for (const m of f.text.matchAll(/export const ([A-Z][A-Z0-9_]*) = "([^"]+)"/g)) consts.set(m[1] as string, m[2] as string);
+    for (const m of f.text.matchAll(/^\s+([A-Z][A-Z0-9_]*): "([^"]+)"(?: as const)?,/gm)) consts.set(`.${m[1] as string}`, m[2] as string);
+  }
+  // Reasons a caller forwards: `schemas/` revises under pressure and replaces
+  // by declaration through one helper that hands `spec.reason` on, set from
+  // TUNABLES.REVISED_REASON and TUNABLES.REPLACED_REASON — both checked by name
+  // in the fixed list.
+  const PASS_THROUGH = new Set([`${join("core", "schemas", "index.ts")}: spec.reason`]);
+  const found = new Set<string>();
+  const unresolved: string[] = [];
+  for (const f of files) {
+    if (f.path.startsWith(join("core", "store"))) continue; // the writers themselves
+    for (const m of f.text.matchAll(/\.(archive|supersede|supersedeInto)\(/g)) {
+      const args = topLevelArgs(f.text, (m.index as number) + m[0].length);
+      if (args === null) continue;
+      const method = m[1] as string;
+      const arg = args[method === "archive" ? 1 : 2];
+      if (arg === undefined) {
+        if (method === "supersede" && args.length === 2) found.add("supersede");
+        else unresolved.push(`${f.path}: .${method}(${args.join(", ").slice(0, 60)})`);
+        continue;
+      }
+      const lit = /^"([^"]+)"$/.exec(arg);
+      const member = /^[A-Za-z_]+(\.[A-Z][A-Z0-9_]*)$/.exec(arg);
+      if (lit !== null) found.add(lit[1] as string);
+      else if (consts.has(arg)) found.add(consts.get(arg) as string);
+      else if (member !== null && consts.has(member[1] as string)) found.add(consts.get(member[1] as string) as string);
+      else if (!PASS_THROUGH.has(`${f.path}: ${arg}`)) unresolved.push(`${f.path}: ${arg}`);
+    }
+  }
+  return { found, unresolved };
+}
+
+/** The top-level arguments of a call whose `(` ends just before `from`; null when it never closes. */
+function topLevelArgs(text: string, from: number): string[] | null {
+  const args: string[] = [];
+  let depth = 0;
+  let quote: string | null = null;
+  let start = from;
+  for (let i = from; i < text.length; i++) {
+    const c = text[i] as string;
+    if (quote !== null) {
+      if (c === "\\") i += 1;
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") quote = c;
+    else if (c === "(" || c === "{" || c === "[") depth += 1;
+    else if (c === ")" || c === "}" || c === "]") {
+      if (depth === 0) {
+        const last = text.slice(start, i).trim();
+        if (last.length > 0) args.push(last);
+        return args;
+      }
+      depth -= 1;
+    } else if (c === "," && depth === 0) {
+      args.push(text.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  return null;
+}
