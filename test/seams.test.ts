@@ -1489,6 +1489,58 @@ describe("SEAMS L — hops raise a candidate the conversation reached, and mint 
     expect(hopped?.cueFraction).toBeGreaterThanOrEqual(FIXTURE_TUNABLES.MIN_CUE_FRACTION);
   });
 
+  test("the turn's record says what spreading did: seeds, depth, stop, computed, landed", () => {
+    const embed = (text: string): number[] =>
+      text.toLowerCase().includes("vellichor") ? [1, 0] : [0, 1];
+    const s = store({ embed });
+    for (const body of FILLER) s.put({ type: "memory", kind: "fact", body });
+    const cued = s.put({ type: "memory", kind: "fact", body: "The sourdough starter died after two weeks of neglect." });
+    const semantic = s.put({ type: "memory", kind: "fact", body: "Vellichor marks the strange wistfulness of second-hand bookshops." });
+    const associate = new Associate({ store: s });
+    associate.coactivate([
+      { id: cued, tier: "referenced" },
+      { id: semantic, tier: "referenced" },
+    ]);
+    associate.flush();
+    const turn = { sessionId: "a", text: "my sourdough starter died", vector: [1, 0] };
+    const d = new Recall({ store: s, owner: true }).recall(composeTurn(turn, { associate })).decision;
+    expect(d.spread).not.toBeNull();
+    expect(d.spread?.seeds).toBeGreaterThanOrEqual(1);
+    expect(d.spread?.depth).toBeGreaterThanOrEqual(1);
+    expect(["exhausted", "hop-limit", "node-limit"]).toContain(d.spread?.stop as string);
+    expect(d.spread?.computed).toBeGreaterThanOrEqual(1);
+    expect(d.spread?.landed).toBe(1);
+    // No traversal injected: nothing to report, and it says null rather than 0.
+    expect(new Recall({ store: s, owner: true }).recall({ ...turn, sessionId: "b" }).decision.spread).toBeNull();
+  });
+
+  test("salience ranks the candidate cut, and the cut is counted, never silent", () => {
+    const s = store();
+    for (const body of FILLER) s.put({ type: "memory", kind: "fact", body });
+    const dull = s.put({
+      type: "memory",
+      kind: "fact",
+      body: "The sourdough starter died after two weeks.",
+      salience: { relevance: 0.05, emotional: 0, predictive: 0.05 },
+      physics: { birthDay: 0, lastUsedDay: 0 },
+    });
+    const salient = s.put({
+      type: "memory",
+      kind: "fact",
+      body: "The sourdough starter died after two long weeks of quiet neglect.",
+      salience: { relevance: 0.95, emotional: 0, predictive: 0.95 },
+      physics: { birthDay: 0, lastUsedDay: 0 },
+    });
+    const turn = { text: "sourdough starter died", day: 0, selfFelt: false, storeSize: 18 };
+    const all = activate(s, { ...turn, maxCandidates: 100 }, FIXTURE_TUNABLES).candidates;
+    const act = (id: string): number => all.find((c) => c.id === id)?.activation ?? 0;
+    // The dull one is LOUDER on activation alone — the old cut kept it.
+    expect(act(dull)).toBeGreaterThan(act(salient));
+    const cut = activate(s, { ...turn, maxCandidates: 1 }, FIXTURE_TUNABLES);
+    expect(cut.candidates.map((c) => c.id)).toEqual([salient]);
+    expect(cut.dropped).toBe(all.length - 1);
+  });
+
   test("hops are excluded from cueFraction's NUMERATOR, so they cannot buy loud", () => {
     // Unit-level, where the arithmetic is visible: identical cue and semantic,
     // one with hop weight. The hop never raises the cue fraction.

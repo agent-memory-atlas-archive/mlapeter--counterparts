@@ -3946,6 +3946,11 @@ export class Store {
     return this.ops.all<EdgeRow>("SELECT * FROM edges WHERE src = ? ORDER BY dst", src);
   }
 
+  /** Every edge row, for a census (doctor's Association line, 2026-09-28). A read. */
+  allEdges(): EdgeRow[] {
+    return this.ops.all<EdgeRow>("SELECT * FROM edges ORDER BY src, dst");
+  }
+
   prospectiveFor(id: string): ProspectiveRow[] {
     return this.ops.all<ProspectiveRow>(
       "SELECT * FROM prospective WHERE memory_id = ? ORDER BY window_key",

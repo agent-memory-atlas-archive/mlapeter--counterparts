@@ -2590,3 +2590,40 @@ describe("a store younger than the window it is graded over (findings 8, 9)", ()
     expect(f.fix).toBe("The sweep stood down; the reason names why.");
   });
 });
+
+describe("Association (2026-09-28): what spreading did, and the edges", () => {
+  test("reads the week's turns and the edge census, and says it in numbers", () => {
+    mintStore();
+    const s = store();
+    const [a, b, x] = ["one", "two", "three"].map((w) =>
+      s.put({ type: "memory", kind: "fact", body: `memory ${w} for the census` }),
+    ) as [string, string, string];
+    const day = s.livedDay();
+    s.linkMany([
+      { src: a, dst: b, weight: 0.4, day },
+      { src: b, dst: a, weight: 0.4, day },
+      { src: a, dst: x, weight: 0.001, day },
+    ]);
+    const spreadRow = (depth: number, stop: string, landed: number) => ({
+      name: "recall.decision",
+      day,
+      payload: { spread: { seeds: 3, expanded: 4, stop, depth, computed: 5, landed }, dropped: 2 },
+    });
+    s.appendEvent(spreadRow(2, "hop-limit", 1));
+    s.appendEvent(spreadRow(1, "node-limit", 0));
+    s.appendEvent({ name: "recall.decision", day, payload: { spread: null, dropped: 0 } });
+    const f = by(doctorFindings(input({ store: s })), "association");
+    expect(f.severity).toBe("green");
+    expect(f.data["turns"]).toBe(2);
+    expect(f.data["deep"]).toBe(1);
+    expect(f.data["nodeLimit"]).toBe(1);
+    expect(f.data["landed"]).toBe(1);
+    expect(f.data["computed"]).toBe(10);
+    expect(f.data["dropped"]).toBe(4);
+    expect(f.data["edges"]).toBe(3);
+    expect(f.data["conducting"]).toBe(2);
+    expect(f.data["hebbian"]).toBe(3);
+    expect(f.detail).toContain("(depth 2) on 50% of 2 turns");
+    expect(f.detail).toContain("node limit on 50%");
+  });
+});

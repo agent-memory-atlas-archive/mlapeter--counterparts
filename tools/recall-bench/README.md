@@ -44,6 +44,11 @@ in `informativeness(1, storeSize)` — one maximally-rare cue (`recall/gate.ts#f
 A cell therefore means the same thing on a seventeen-memory store as on a fifteen-thousand
 one, which is the property the loud tier's calibration rests on.
 
+`--spread` wires the associate traversal (the hop channel) into every turn, as the live
+hook does (2026-09-28). Without it the bench runs with hops dark — which is how every
+table before that date was made, so the hop channel has never been measured here. It
+reads the edge graph and writes nothing.
+
 `--b 0 --k1 1 --cap inf` reproduces the pre-2026-09-04 scorer exactly (`2·tf/(tf+1)` is
 BM25 at `b = 0, k1 = 1`), which is how a "before" column is produced without checking out
 an old revision.

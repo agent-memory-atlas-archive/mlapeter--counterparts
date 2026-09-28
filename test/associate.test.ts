@@ -860,6 +860,127 @@ describe("observer", () => {
 });
 
 // ───────────────────────────────────────────────────────────────────────────
+// Proposed links (a dream's) and the flush's sweep — 2026-09-28
+// ───────────────────────────────────────────────────────────────────────────
+
+describe("proposed links go through homeostasis", () => {
+  test("a gist with forty sources is homeostased at BIRTH: count cap and outgoing bound", () => {
+    const s = store();
+    const [gist, ...sources] = memories(s, 41) as [string, ...string[]];
+    const g = assoc(s);
+    // Proposed at a weight that, raw, would sum far past the bound.
+    const r = g.propose(
+      sources.map((id) => ({ a: gist, b: id })),
+      0.3,
+      0,
+    );
+    expect(r.reason).toBe("linked");
+    expect(r.pairs).toBe(40);
+    const live = s.edgesFrom(gist).filter((e) => conducts(e.weight, TUNABLES));
+    expect(live.length).toBe(TUNABLES.MAX_EDGES_PER_NODE);
+    expect(r.evictions.length).toBe(40 - TUNABLES.MAX_EDGES_PER_NODE);
+    const sum = live.reduce((t, e) => t + e.weight, 0);
+    expect(sum).toBeLessThanOrEqual(TUNABLES.MAX_OUT_WEIGHT + 1e-9);
+    expect(r.renormalized).toBeGreaterThan(0);
+  });
+
+  test("defaults to about one co-activation (HEBB_RATE), both ways", () => {
+    const s = store();
+    const [a, b] = memories(s, 2) as [string, string];
+    const g = assoc(s);
+    g.propose([{ a, b }], undefined, 0);
+    expect(g.weightAt(a, b, 0)).toBeCloseTo(TUNABLES.HEBB_RATE, 10);
+    expect(g.weightAt(b, a, 0)).toBeCloseTo(TUNABLES.HEBB_RATE, 10);
+  });
+
+  test("a re-proposal starts from the DECAYED weight — it never resurrects a faded one", () => {
+    const s = store();
+    const [a, b] = memories(s, 2) as [string, string];
+    s.linkMany([
+      { src: a, dst: b, weight: 0.9, day: 0 },
+      { src: b, dst: a, weight: 0.9, day: 0 },
+    ]);
+    const g = assoc(s);
+    const later = TUNABLES.S_EDGE * 3; // 0.9 × e^-3 ≈ 0.045
+    g.propose([{ a, b }], 0.1, later);
+    expect(g.weightAt(a, b, later)).toBeCloseTo(0.1, 10);
+    const row = s.edgesFrom(a).find((e) => e.dst === b);
+    expect(row?.last_day).toBe(later);
+  });
+
+  test("a proposal never LOWERS an edge that is already stronger", () => {
+    const s = store();
+    const [a, b] = memories(s, 2) as [string, string];
+    const g = assoc(s);
+    g.propose([{ a, b }], 0.5, 0);
+    g.propose([{ a, b }], 0.1, 0);
+    expect(g.weightAt(a, b, 0)).toBeCloseTo(0.5, 10);
+  });
+
+  test("a pinned endpoint is frozen; a dead one is blocked; an observer writes nothing", () => {
+    const s = store();
+    const a = s.put(mem("an ordinary working memory"));
+    const pinned = s.put(mem("a pinned memory under audit", { physics: { protected: true } }));
+    const gone = s.put(mem("a memory that was archived"));
+    s.archive(gone, "consolidated away");
+    const g = assoc(s);
+    const r = g.propose([{ a, b: pinned }, { a, b: gone }], 0.1, 0);
+    expect(r.reason).toBe("nothing-to-link");
+    expect(r.frozen).toBe(1);
+    expect(r.blocked).toBe(1);
+    expect(s.edgesFrom(a)).toHaveLength(0);
+
+    s.close();
+    const probe = store({ observer: true });
+    expect(assoc(probe).propose([{ a, b: pinned }]).reason).toBe("observer");
+  });
+});
+
+describe("the flush sweeps rows that carry nothing", () => {
+  test("an eviction's zero and a decayed-to-the-floor row are swept, and counted", () => {
+    const s = store();
+    const ids = memories(s, 5);
+    const [a, b, c, d, e] = ids as [string, string, string, string, string];
+    // A long-faded edge between c and d, stored at day 0.
+    s.linkMany([
+      { src: c, dst: d, weight: 0.2, day: 0 },
+      { src: d, dst: c, weight: 0.2, day: 0 },
+    ]);
+    // A cap of two live edges per node, so the third co-credit evicts one.
+    const g = assoc(s, { MAX_EDGES_PER_NODE: 2 });
+    const day = TUNABLES.S_EDGE * 3; // 0.2 × e^-3 ≈ 0.01, below the floor
+    g.coactivate([ref(a), ref(b)]);
+    g.coactivate([ref(a), ref(e)]);
+    g.coactivate([ref(a), ref(c)]);
+    const r = g.flush(day);
+    expect(r.reason).toBe("flushed");
+    expect(r.evictions.length).toBeGreaterThan(0);
+    // The zeroed evictions and the faded c↔d pair are gone from the table.
+    expect(r.swept).toBeGreaterThanOrEqual(r.evictions.length + 2);
+    for (const row of s.allEdges()) expect(row.weight).toBeGreaterThan(TUNABLES.EDGE_FLOOR);
+    expect(s.edgesFrom(d).find((x) => x.dst === c)).toBeUndefined();
+  });
+
+  test("a store without the sweep keeps its dead rows and the flush still stands", () => {
+    const s = store();
+    const [a, b] = memories(s, 2) as [string, string];
+    const narrow: AssociateStore = {
+      observer: false,
+      livedDay: () => s.livedDay(),
+      row: (id) => s.row(id),
+      deniedIds: () => s.deniedIds(),
+      edgesFrom: (id) => s.edgesFrom(id),
+      linkMany: (rows) => s.linkMany(rows),
+    };
+    const g = assoc(narrow);
+    g.coactivate([ref(a), ref(b)]);
+    const r = g.flush(0);
+    expect(r.reason).toBe("flushed");
+    expect(r.swept).toBe(0);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
 // The module's own shape
 // ───────────────────────────────────────────────────────────────────────────
 

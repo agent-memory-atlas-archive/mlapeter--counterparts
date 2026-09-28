@@ -7,7 +7,7 @@
  *
  *   bun tools/recall-bench/bin/bench.ts \
  *     --store-dir /tmp/store-copy --input /tmp/recall-bench-input.json \
- *     [--out /tmp/bench-out] [--sweep] [--b 0.75] [--k1 1] [--cap 3]
+ *     [--out /tmp/bench-out] [--sweep] [--b 0.75] [--k1 1] [--cap 3] [--spread]
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -27,6 +27,7 @@ interface Args {
   k1: number;
   cap: number;
   oneSided: boolean;
+  spread: boolean;
 }
 
 function usage(): never {
@@ -45,6 +46,8 @@ function usage(): never {
       "                      CAL values; --cap inf disables the per-document ceiling.",
       "  --one-sided         clamp the length factor at 1 (penalize long, never",
       "  --two-sided         reward short). Default follows the shipped CAL value.",
+      "  --spread            wire the associate traversal (the hop channel) into each",
+      "                      turn, as the live hook does. Off: hops are dark.",
       "",
     ].join("\n"),
   );
@@ -62,6 +65,7 @@ function parse(argv: readonly string[]): Args {
     k1: TUNABLES.CUE_TF_SATURATION,
     cap: TUNABLES.CUE_DOC_CAP,
     oneSided: TUNABLES.CUE_LENGTH_ONE_SIDED,
+    spread: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i];
@@ -81,6 +85,7 @@ function parse(argv: readonly string[]): Args {
       case "--cap": { const v = next(); a.cap = v === "inf" ? Infinity : Number(v); break; }
       case "--one-sided": a.oneSided = true; break;
       case "--two-sided": a.oneSided = false; break;
+      case "--spread": a.spread = true; break;
       case "-h": case "--help": usage();
       default: usage();
     }
@@ -171,7 +176,8 @@ function main(): void {
 
   const reports: BenchReport[] = [];
   const chunks: string[] = [];
-  for (const config of configs) {
+  for (const base of configs) {
+    const config: BenchConfig = a.spread ? { ...base, name: `${base.name} +spread`, spread: true } : base;
     const report = runBench(a.storeDir as string, input, config);
     reports.push(report);
     const text = renderReport(report);

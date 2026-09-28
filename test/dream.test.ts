@@ -236,6 +236,54 @@ describe("propose: what a dream may change", () => {
     expect(r[6]?.note).toContain("marked work");
   });
 
+  test("links go through the edge module: about one co-activation, from the DECAYED weight, and counted on the row", () => {
+    const c = brain();
+    const m = lived(c);
+    const day = c.store.livedDay();
+    // An old strong a–old edge, long faded: a re-link must not bring it back.
+    c.store.linkMany([
+      { src: m.a, dst: m.old, weight: 0.9, day: day - 120 },
+      { src: m.old, dst: m.a, weight: 0.9, day: day - 120 },
+    ]);
+    const { id } = begin(c);
+    const out = c.dreams.propose({
+      dream: id,
+      session: SESSION,
+      changes: [
+        { action: "link", a: m.a, b: m.old },
+        { action: "link", a: m.a, b: m.b },
+        { action: "gist", text: "Migrations before boot, every time.", sources: [m.a, m.b, m.old] },
+      ],
+    });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.results.every((r) => r.ok)).toBe(true);
+    expect(DREAM_TUNABLES.LINK_WEIGHT).toBeCloseTo(c.associate.tunables.HEBB_RATE, 10);
+    // Raised to the proposal from the DECAYED weight, not the stored 0.9.
+    expect(c.associate.weightAt(m.a, m.old, day)).toBeCloseTo(DREAM_TUNABLES.LINK_WEIGHT, 10);
+    expect(c.associate.weightAt(m.a, m.b, day)).toBeCloseTo(DREAM_TUNABLES.LINK_WEIGHT, 10);
+    const gist = out.results[2]?.id as string;
+    expect(c.associate.weightAt(gist, m.old, day)).toBeCloseTo(DREAM_TUNABLES.LINK_WEIGHT, 10);
+    const row = c.store.eventLog({ name: "dream.changed", order: "desc", limit: 1 })[0];
+    const payload = JSON.parse(String(row?.payload ?? "{}")) as Record<string, unknown>;
+    expect(payload["gistLinks"]).toBe(3);
+  });
+
+  test("a memory pinned after it was shown gets no link: its edges are frozen", () => {
+    const c = brain();
+    const m = lived(c);
+    const { id } = begin(c);
+    // Pinned mid-dream: the bundle's own gate refuses it first (a dream never
+    // sees a pinned memory), and the edge module's freeze stands behind that.
+    c.store.updatePhysics(m.b, { protected: true });
+    const out = c.dreams.propose({ dream: id, session: SESSION, changes: [{ action: "link", a: m.a, b: m.b }] });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.results[0]?.ok).toBe(false);
+    expect(c.store.edgesFrom(m.a).some((e) => e.dst === m.b)).toBe(false);
+    expect(c.associate.propose([{ a: m.a, b: m.b }]).frozen).toBe(1);
+  });
+
   test("a dream cannot strengthen what a dream wrote: its gist rises only awake", () => {
     const c = brain();
     const m = lived(c);
