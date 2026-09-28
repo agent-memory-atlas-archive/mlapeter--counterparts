@@ -288,6 +288,15 @@ describe("a week ago: firmness then, and memories that have left since", () => {
         provenance: [{ createdAt: at }],
       });
       c.store.supersedeInto(w["F"] as string, w["G"] as string, "merged");
+      // guarded-open: T records the same nudge twice in one write (one
+      // moment); U pulls the other way at twice the strength.
+      w["T"] = put("I told him how the week had felt.", 0.5);
+      w["U"] = put("I kept my worry to myself.", 0.5);
+      c.store.addTraits(w["T"] as string, [
+        { axis: "guarded-open", toward: "open", strength: 0.5, carriedBy: "said it" },
+        { axis: "guarded-open", toward: "open", strength: 0.5, carriedBy: "said it" },
+      ], { provenance: [{ createdAt: at }, { createdAt: at }] });
+      nudge(w["U"] as string, "guarded-open", "guarded", 1);
     } finally {
       c.close();
     }
@@ -345,6 +354,14 @@ describe("a week ago: firmness then, and memories that have left since", () => {
     // way; counting G's copy too would pull it toward "playful".
     expect(a.weekAgo as number).toBeCloseTo(0, 2);
   });
+
+  test("the same nudge twice on ONE memory is two nudges a week ago, as it is today", () => {
+    const v = withSource(wk, (src) => traitsView(src));
+    const a = axis(v, "guarded-open");
+    expect(a.nudges).toBe(3);
+    expect(a.balance as number).toBeCloseTo(0, 2);
+    expect(a.weekAgo as number).toBeCloseTo(0, 2);
+  });
 });
 
 describe("the bars, as the page draws them", () => {
@@ -364,6 +381,10 @@ describe("the bars, as the page draws them", () => {
     const a = { poles: ["careful", "bold"], balance: 0.7, weekAgo: -0.4, memories: 4 };
     expect(leanWords(a)).toBe("careful to bold: strongly bold (4 memories); a week ago toward careful");
     expect(leanWords({ ...a, balance: 0.05, weekAgo: null })).toBe("careful to bold: about even (4 memories)");
-    expect(leanWords({ ...a, balance: null, memories: 0 })).toBe("careful to bold: no memory carries it yet");
+    expect(leanWords({ ...a, balance: null, weekAgo: null, memories: 0 })).toBe("careful to bold: no memory carries it yet");
+    // Every memory behind it a week ago has left since: the faint mark stands alone.
+    expect(leanWords({ ...a, balance: null, memories: 0 })).toBe(
+      "careful to bold: no memory carries it yet; a week ago toward careful",
+    );
   });
 });
