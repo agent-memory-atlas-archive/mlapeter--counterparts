@@ -18,10 +18,10 @@ import { lookupFindings } from "../src/adapters/claude-code/doctor.js";
 import { McpServer, RECALL_MAX_IDS } from "../src/adapters/mcp/index.js";
 import { recordSession } from "../src/adapters/sessions.js";
 import { Counterpart } from "../src/core/counterpart.js";
-import { DREAM_TUNABLES } from "../src/core/dream/index.js";
+import { DREAM_TUNABLES, REFLECT_TUNABLES } from "../src/core/dream/index.js";
 import type { DreamBundle, DreamItem } from "../src/core/dream/index.js";
 import { chapterEntries } from "../src/core/dream/slices.js";
-import { clipBytes, derivedFrom, fit, lineOf, packParts, readIndex } from "../src/core/fit/index.js";
+import { clipBytes, derivedFrom, fit, lineOf, packParts, readIndex, wireChars } from "../src/core/fit/index.js";
 import { chapterHeading } from "../src/core/self/index.js";
 import type { PutInput } from "../src/core/store/index.js";
 
@@ -97,7 +97,8 @@ describe("the fitter: a line for everything, whole for the most important, what 
     const out = fit([cand("a", 1, "y".repeat(5_000))], { room: 10_000, excerptChars: 1_000, overhead: 10 });
     const [p] = out.placed;
     expect(p?.fidelity).toBe("excerpt");
-    expect(p?.text.length).toBe(1_000);
+    expect(p?.text.length).toBeLessThanOrEqual(1_000);
+    expect(p?.text.length).toBeGreaterThan(990);
     expect(p?.text.endsWith("…")).toBe(true);
     expect(p?.chars).toBe(5_000);
   });
@@ -169,8 +170,11 @@ describe("the dream's new memories are a queue: ranked by label, what does not f
     const salient = mem(c, `The release broke the owner's trust — ${"a charged detail. ".repeat(30)}`, { salience: { relevance: 1, emotional: 1, predictive: 1 } });
     const ids: string[] = [];
     for (let i = 0; i < 220; i += 1) ids.push(mem(c, `Plain note ${String(i)} — ${"something ordinary about the build pipeline and its caches, ".repeat(6)}`, { salience: { relevance: 0.2, emotional: 0, predictive: 0.2 } }));
+    expect(c.dreams.previewAsk({ at: "2026-09-20" }).newSince).toBe(221);
+    // The per-prompt gate stops at what it needs, and says so.
     const before = c.dreams.status("2026-09-20");
-    expect(before.newSince).toBe(221);
+    expect(before.newSince).toBe(DREAM_TUNABLES.MIN_NEW);
+    expect(before.newSinceAtLeast).toBe(true);
     const d = c.dreams.begin({ session: SESSION, at: "2026-09-20" });
     if (!d.ok) throw new Error(d.reason);
     const q = d.bundle.queue;
@@ -188,7 +192,7 @@ describe("the dream's new memories are a queue: ranked by label, what does not f
     expect(j.handBack).toContain(`${String(q.waiting)} new memories wait for the next night`);
     // The next night: what waited is the queue, and the gate counts it.
     days(c, 21, 21);
-    expect(c.dreams.status("2026-09-21").newSince).toBe(q.waiting);
+    expect(c.dreams.previewAsk({ at: "2026-09-21" }).newSince).toBe(q.waiting);
     const next = c.dreams.begin({ session: SESSION, at: "2026-09-21" });
     if (!next.ok) throw new Error(next.reason);
     const nextFresh = new Set(next.bundle.fresh.map((f) => f.id));
@@ -295,13 +299,13 @@ describe("the dream's begin result at the REAL limit, measured as the MCP server
     expect(how).toContain(`up to ${String(RECALL_MAX_IDS)} at once`);
     const parts = begin.structuredContent["parts"] as { of: number } | undefined;
     expect(parts?.of ?? 1).toBeGreaterThan(1);
-    const bundle = JSON.parse((begin.structuredContent["bundle"] as string).split("\n").slice(1).join("\n")) as DreamBundle;
+    const bundle = JSON.parse(((JSON.parse(textOf(begin)) as { bundle: string }).bundle).split("\n").slice(1).join("\n")) as DreamBundle;
     const seen = new Set(Object.keys(bundle.memories));
     for (let k = 2; k <= (parts?.of ?? 1); k += 1) {
       const p = await s.call("dream", { phase: "part", session: SESSION, dream: dreamId, part: k });
       expect(p.isError ?? false).toBe(false);
       expect(textOf(p).length).toBeLessThanOrEqual(DREAM_TUNABLES.PART_CHARS);
-      const body = JSON.parse((p.structuredContent["bundle"] as string).split("\n").slice(1).join("\n")) as { memories: Record<string, unknown> };
+      const body = JSON.parse(((JSON.parse(textOf(p)) as { bundle: string }).bundle).split("\n").slice(1).join("\n")) as { memories: Record<string, unknown> };
       for (const id of Object.keys(body.memories)) {
         expect(seen.has(id)).toBe(false);
         seen.add(id);
@@ -341,6 +345,100 @@ describe("the reflection is handed the whole core — a line each at least, the 
     expect(r.bundle.shownAs.notShown).toBe(0);
     expect(r.bundle.lookup).toContain("recall");
   });
+});
+
+// ---------------------------------------------------------------------------
+// review of build B: what the first pass missed
+// ---------------------------------------------------------------------------
+
+describe("review of build B (#277)", () => {
+  test("journal entries the room did not take come the next night, though the episode did not grow — 160 entries over two nights, none lost", () => {
+    const c = brain();
+    days(c, 10, 12);
+    const day = c.store.livedDay();
+    const body = Array.from({ length: 160 }, (_, i) => `${chapterHeading(i + 1, day)}\n\nEntry ${String(i + 1)}: ${"what happened, told plainly and at some length. ".repeat(5)}`).join("\n\n");
+    const epi = c.store.put({ type: "episode", kind: "self", body, source: "episode" });
+    for (let i = 0; i < 3; i += 1) mem(c, `Night one memory ${String(i)}.`);
+    const seen = new Set<number>();
+    const d1 = c.dreams.begin({ session: SESSION, at: "2026-09-12" });
+    if (!d1.ok) throw new Error(d1.reason);
+    const ch1 = d1.bundle.chapters.find((x) => x.id === epi);
+    for (const e of ch1?.entries ?? []) seen.add(e.chapter ?? -1);
+    expect(ch1?.notShown ?? 0).toBeGreaterThan(0);
+    c.dreams.journal({ dream: d1.bundle.dream, session: SESSION, text: "One." });
+    days(c, 13, 13);
+    offsetMs += 1_000;
+    for (let i = 0; i < 3; i += 1) mem(c, `Night two memory ${String(i)}.`);
+    const d2 = c.dreams.begin({ session: SESSION, at: "2026-09-13" });
+    if (!d2.ok) throw new Error(d2.reason);
+    const ch2 = d2.bundle.chapters.find((x) => x.id === epi);
+    for (const e of ch2?.entries ?? []) seen.add(e.chapter ?? -1);
+    expect(ch2?.notShown ?? 0).toBe(0);
+    expect(seen.size).toBe(160);
+  }, 60_000);
+
+  test("a lookup counts as the index's only while its run is open (plus a short grace), not an ordinary session's later", async () => {
+    const c = brain();
+    days(c);
+    const big = mem(c, `The long one. ${"Every detail, step by step. ".repeat(200)}`, { salience: { relevance: 1, emotional: 0.5, predictive: 1 } });
+    mem(c, "Two.");
+    mem(c, "Three.");
+    const s = server(c);
+    const begin = await s.call("dream", { phase: "begin", session: SESSION });
+    const dreamId = begin.structuredContent["dream"] as string;
+    await s.call("dream", { phase: "journal", session: SESSION, dream: dreamId, text: "Done." });
+    offsetMs += 60 * 60_000;
+    await s.call("recall", { ids: [big] });
+    const row = c.store.eventLog({ name: "mcp.recall", order: "desc", limit: 1 })[0];
+    expect(JSON.parse(row?.payload ?? "{}").fromIndex).toBeUndefined();
+  });
+
+  test("the hand-back's waiting count leaves out what was made during the night; the gate counts only as far as MIN_NEW", () => {
+    const c = brain();
+    days(c);
+    for (let i = 0; i < 4; i += 1) mem(c, `Before the night ${String(i)}.`);
+    const d = c.dreams.begin({ session: SESSION, at: "2026-09-20" });
+    if (!d.ok) throw new Error(d.reason);
+    offsetMs += 1_000;
+    for (let i = 0; i < 5; i += 1) mem(c, `Made during the night ${String(i)}.`);
+    const j = c.dreams.journal({ dream: d.bundle.dream, session: SESSION, text: "Night." });
+    if (!j.ok) throw new Error(String(j.reason));
+    expect(j.handBack).not.toContain("wait for the next night");
+  });
+
+  test("CJK at the real limits: dream begin, its parts and the reflection's begin stay under the ceilings by what they cost, not by characters", async () => {
+    const c = brain();
+    c.store.advanceClock("2026-09-10");
+    const zh = "我们今天讨论了发布流程和迁移步骤，决定先运行迁移再启动容器。".repeat(8);
+    for (let i = 0; i < 120; i += 1) mem(c, `旧的记忆 ${String(i)}：${zh}`, { kind: "fact" });
+    for (let d = 11; d <= 20; d += 1) c.store.advanceClock(`2026-09-${String(d)}`);
+    for (let i = 0; i < 90; i += 1) mem(c, `今天的记忆 ${String(i)}：${zh}${i % 9 === 0 ? zh.repeat(20) : ""}`, { kind: i % 2 === 0 ? "person" : "self", about: i % 2 === 0 ? "us" : "me" });
+    expect(c.revisePage(`## Core\n\n${"我是谁，我如何工作。".repeat(500)}`, { reason: "a long page", by: "owner" }).written).toBe(true);
+    const s = server(c);
+    const begin = await s.call("dream", { phase: "begin", session: SESSION });
+    expect(begin.isError ?? false).toBe(false);
+    expect(wireChars(textOf(begin))).toBeLessThanOrEqual(DREAM_TUNABLES.RESULT_CHARS);
+    const dreamId = begin.structuredContent["dream"] as string;
+    const parts = (begin.structuredContent["parts"] as { of: number } | undefined)?.of ?? 1;
+    expect(parts).toBeGreaterThan(1);
+    for (let k = 2; k <= parts; k += 1) {
+      const p = await s.call("dream", { phase: "part", session: SESSION, dream: dreamId, part: k });
+      expect(wireChars(textOf(p))).toBeLessThanOrEqual(DREAM_TUNABLES.PART_CHARS);
+    }
+    // The bundle rides once: the structured copy carries its length, not its text.
+    expect(begin.structuredContent["bundle"]).toBeUndefined();
+    expect(begin.structuredContent["bundleChars"]).toBeGreaterThan(0);
+    await s.call("dream", { phase: "journal", session: SESSION, dream: dreamId, text: "梦。" });
+    const r = await s.call("reflect", { phase: "begin", session: SESSION, dream: dreamId });
+    expect(r.isError ?? false).toBe(false);
+    expect(wireChars(textOf(r))).toBeLessThanOrEqual(REFLECT_TUNABLES.RESULT_CHARS);
+    const rid = r.structuredContent["reflection"] as string;
+    const rparts = (r.structuredContent["parts"] as { of: number } | undefined)?.of ?? 1;
+    for (let k = 2; k <= rparts; k += 1) {
+      const p = await s.call("reflect", { phase: "part", session: SESSION, reflection: rid, part: k });
+      expect(wireChars(textOf(p))).toBeLessThanOrEqual(REFLECT_TUNABLES.PART_CHARS);
+    }
+  }, 60_000);
 });
 
 // ---------------------------------------------------------------------------

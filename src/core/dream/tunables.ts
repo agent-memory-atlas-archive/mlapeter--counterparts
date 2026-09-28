@@ -57,6 +57,8 @@ export const DREAM_TUNABLES = {
   FRESH_SHARE: 0.5,
   /** The share for the journal's new entries. CAL. */
   CHAPTER_SHARE: 0.3,
+  /** The most tonight's fresh LIST (ids and neighbours, in part 1) may cost on the wire. CAL. */
+  FRESH_LIST_CHARS: 12_000,
   /** Nearest OLDER neighbours shown beside each new memory (owner: 5–8). */
   NEIGHBOURS: 6,
   /** Loosely related older memories shown for mixing (the REM half). CAL. */
@@ -80,7 +82,12 @@ export const DREAM_TUNABLES = {
   LINE_BYTES: 200,
   /** The longest journal entry shown whole; longer is an excerpt with its length said. */
   ENTRY_CHARS: 6_000,
-  /** Characters of the self page and the wake the bundle carries (their whole lengths are said). */
+  /**
+   * The self page and the wake as the bundle carries them, by wire cost
+   * (`fit/wireChars`); their whole lengths are said. The wake is the page
+   * first, then its lanes (craft, open threads, what's coming, hints): the
+   * page part mostly repeats `selfPage`.
+   */
   PAGE_CHARS: 6_000,
   WAKE_CHARS: 6_000,
   /**

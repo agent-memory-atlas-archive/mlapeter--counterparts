@@ -20,3 +20,18 @@ What the build learned. Newest last.
 - **Unsure:** `NIGHT_CHARS` 100,000 and the reflection's `ROOM_CHARS` 80,000 are sized by
   feel from the first dream's ~111k tokens. The lookup count and a real night's `dream.begun`
   row are what should size them.
+
+## §2. After the adversarial review (2026-09-28)
+
+- **Characters are not tokens.** The ceilings are in tokens; a CJK character is about a token by
+  itself. Every room and part now costs text by `wireChars` (a non-ASCII character counts as
+  three), and cuts go by `clipWire`. Tested with Chinese text at the real limits.
+- **A result carries its payload twice** (the text, and `structuredContent`). Whether a host
+  counts both is not known here; nothing in this package reads `structuredContent`, so the long
+  `bundle` text rides only in the text and the structured copy says `bundleChars`.
+- **A lookup counts as the index's only while its run is open** (the dream not journaled, the
+  reflection not finished) or within `LOOKUP_GRACE_MS` of its end.
+- **Journal entries the room did not take are carried**: the index keeps each episode's entry
+  count and the entries below it that were not taken (`unread`); the next dream sends them
+  whether or not the episode grew.
+

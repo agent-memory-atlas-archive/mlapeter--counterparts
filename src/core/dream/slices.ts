@@ -120,8 +120,10 @@ export interface EpisodesFit {
   readonly offered: { whole: string[]; excerpt: string[]; line: string[]; id: string[] };
   /** `<episode>:<position among its shown entries>` → the entry's place among all its entries. */
   readonly entryIndex: Record<string, number>;
-  /** How far this read each episode, by entry count: up to the first entry in view the room did not take. */
+  /** How far this read each episode: its entry count when read. */
   readonly reads: Record<string, number>;
+  /** Entries below that count the room did not take — they come next time. */
+  readonly unread: Record<string, number[]>;
 }
 
 /**
@@ -132,7 +134,15 @@ export interface EpisodesFit {
  */
 export function fitEpisodes(
   episodes: readonly EpisodeInView[],
-  opts: { room: number; owner: readonly string[]; day: number; lineBytes: number; entryChars: number; reads?: Readonly<Record<string, number>> },
+  opts: {
+    room: number;
+    owner: readonly string[];
+    day: number;
+    lineBytes: number;
+    entryChars: number;
+    reads?: Readonly<Record<string, number>>;
+    unread?: Readonly<Record<string, readonly number[]>>;
+  },
 ): EpisodesFit {
   const ordered = [...episodes].sort((a, b) => b.at - a.at);
   const cands: FitCandidate[] = [];
@@ -140,7 +150,8 @@ export function fitEpisodes(
     for (const entry of ep.fresh) {
       cands.push({
         id: entryKey(ep.row.id, entry.index),
-        priority: entryImportance(entry.text, opts.owner) + (entry.day ?? opts.day) * 1e-4 + entry.index * 1e-6,
+        // Importance first; on a tie the EARLIER entry (it has waited longer).
+        priority: entryImportance(entry.text, opts.owner) - entry.index * 1e-6,
         line: lineOf({ body: entry.text }, opts.lineBytes),
         whole: entry.text,
       });
@@ -152,17 +163,23 @@ export function fitEpisodes(
   const offered = { whole: [...o.whole], excerpt: [...o.excerpt], line: [...o.line], id: [...o.id] };
   const chapters: ShownChapter[] = [];
   const entryIndex: Record<string, number> = {};
+  // HOW FAR EACH EPISODE WAS READ (review of build B): its entry count, and
+  // the entries in view the room did not take — so they come next time, in
+  // any order the fit placed the rest, and nothing between is lost.
   const reads: Record<string, number> = { ...(opts.reads ?? {}) };
+  const unread: Record<string, number[]> = Object.fromEntries(Object.entries(opts.unread ?? {}).map(([k, v]) => [k, [...v]]));
   for (const ep of ordered) {
     const entries: ShownEntry[] = [];
     let more = 0;
+    reads[ep.row.id] = ep.earlier + ep.fresh.length;
+    unread[ep.row.id] = [];
     for (const entry of ep.fresh) {
       const p = placed.get(entryKey(ep.row.id, entry.index));
       if (p === undefined) {
         more += 1;
+        unread[ep.row.id]?.push(entry.index);
         continue;
       }
-      if (more === 0) reads[ep.row.id] = entry.index + 1;
       entryIndex[`${ep.row.id}:${String(entries.length)}`] = entry.index;
       entries.push(shownEntry(entry, p));
     }
@@ -170,7 +187,8 @@ export function fitEpisodes(
     chapters.push({ id: ep.row.id, title: ep.row.title, entries, earlier: ep.earlier, ...(more > 0 ? { notShown: more } : {}) });
     if (ep.earlier > 0 || more > 0 || entries.some((e) => e.fidelity !== "whole")) offered.line.push(ep.row.id);
   }
-  return { chapters, used: fitted.used, report: fitted.report, notShown: fitted.waiting.length, offered, entryIndex, reads };
+  for (const [k, v] of Object.entries(unread)) if (v.length === 0) delete unread[k];
+  return { chapters, used: fitted.used, report: fitted.report, notShown: fitted.waiting.length, offered, entryIndex, reads, unread };
 }
 
 let wheelWords: Set<string> | null = null;

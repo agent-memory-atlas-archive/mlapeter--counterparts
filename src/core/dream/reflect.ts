@@ -80,7 +80,7 @@ import {
 } from "../store/index.js";
 import type { AboutMark, FeelingInput, MemoryRow, ProseDoc, ReflectionRow, Store } from "../store/index.js";
 import type { Kind } from "../types.js";
-import { fit, lineOf, offeredInPart, offeredOf, readIndex, writeIndex } from "../fit/index.js";
+import { clipWire, fit, lineOf, offeredInPart, offeredOf, readIndex, wireChars, writeIndex } from "../fit/index.js";
 import type { Fidelity, FitCandidate, Placed } from "../fit/index.js";
 import { ownerNames } from "../sleep/index.js";
 import { DREAM_MARK, carriesDreamMark } from "./mark.js";
@@ -547,7 +547,7 @@ export class Reflections {
     const how = this.instructions(id, session, composed);
     if (resultChars(render(id, composed), how, questions) <= T.RESULT_CHARS) return { bundle: composed, later: [] };
     // A piece's cost as it leaves: its JSON, escaped once more inside the string.
-    const cost = (v: unknown): number => JSON.stringify(JSON.stringify(v)).length;
+    const cost = (v: unknown): number => wireChars(JSON.stringify(JSON.stringify(v)));
     const pieces: { kind: "m" | "c" | "s"; id: string; size: number }[] = [
       ...Object.entries(composed.memories).map(([k, v]) => ({ kind: "m" as const, id: k, size: cost({ [k]: v }) })),
       ...composed.chapters.map((c) => ({ kind: "c" as const, id: c.id, size: cost(c) })),
@@ -653,8 +653,9 @@ export class Reflections {
         continue;
       }
       const f = fidelityOf(mid) ?? "line";
-      const text = f === "whole" ? v.whole : f === "excerpt" ? excerpt(v.whole, T.DETAIL_CHARS) : f === "line" ? v.line : "";
-      memories[mid] = this.item(v.row, { fidelity: f, text, chars: v.whole.length });
+      // Bounded whatever its fidelity (review of build B).
+      const text = f === "line" ? v.line : f === "id" ? "" : clipWire(v.whole, T.DETAIL_CHARS);
+      memories[mid] = this.item(v.row, { fidelity: f === "line" || f === "id" ? f : text === v.whole ? "whole" : "excerpt", text, chars: v.whole.length });
     }
     const chapters = ids.c.map((cid): ShownChapter => {
       const r = this.store.row(cid);
@@ -664,8 +665,10 @@ export class Reflections {
       for (const e of all) {
         const f = fidelityOf(entryKey(cid, e.index));
         if (f === null || f === "id") continue;
-        const text = f === "whole" ? e.text : f === "excerpt" ? excerpt(e.text, T.ENTRY_CHARS) : lineOf({ body: e.text }, T.LINE_BYTES);
-        entries.push(shownEntry(e, { fidelity: f, text, chars: e.text.length }));
+        // An entry whose place moved since begin (the body was rewritten) is
+        // still bounded: whatever it holds now reads within ENTRY_CHARS.
+        const text = f === "line" ? lineOf({ body: e.text }, T.LINE_BYTES) : clipWire(e.text, T.ENTRY_CHARS);
+        entries.push(shownEntry(e, { fidelity: f === "line" ? "line" : text === e.text ? "whole" : "excerpt", text, chars: e.text.length }));
       }
       return { id: cid, title: r.title, entries, earlier: all.length - entries.length };
     });
@@ -1413,7 +1416,7 @@ export class Reflections {
         .map((e) => ({ id: e.memory_id, why: e.reason }));
       dreamed = {
         title: dream?.title ?? null,
-        journal: cut(dream?.journal ?? null, T.JOURNAL_CHARS),
+        journal: dream?.journal == null ? null : clipWire(dream.journal, T.JOURNAL_CHARS),
         gists,
         nominations,
       };
@@ -1491,13 +1494,13 @@ export class Reflections {
       .filter((r) => r.state === "reflected" && r.entry !== null && r.id !== id)
       .filter((r) => this.ctx.owner || !this.touchesConfidential(r))
       .slice(0, T.EARLIER)
-      .map((r) => ({ date: r.date, entry: cut(r.entry, T.EARLIER_CHARS) ?? "" }));
+      .map((r) => ({ date: r.date, entry: clipWire(r.entry ?? "", T.EARLIER_CHARS) }));
     const spent =
       chaptersFit.used +
-      (page?.length ?? 0) +
-      (dreamed?.journal?.length ?? 0) +
-      earlier.reduce((n, e) => n + e.entry.length, 0) +
-      dreamSaw.reduce((n, s) => n + s.text.length + 30, 0);
+      wireChars(page ?? "") +
+      wireChars(dreamed?.journal ?? "") +
+      earlier.reduce((n, e) => n + wireChars(e.entry), 0) +
+      dreamSaw.reduce((n, s) => n + wireChars(s.text) + 30, 0);
     const room = Math.max(0, T.ROOM_CHARS - spent - REFLECT_FURNITURE);
     const cands: FitCandidate[] = [...priority].map(([mid, p]) => {
       const v = see(mid) as { whole: string; line: string };
@@ -1589,7 +1592,7 @@ export class Reflections {
     if (isSelfPage(doc) || isHandoff(doc)) return null;
     const head = doc.title !== undefined && doc.title.trim().length > 0 ? `${doc.title.trim()} — ` : "";
     const flat = `${head}${doc.body}`.replace(/\s+/g, " ").trim();
-    return { id, text: cut(flat, REFLECT_TUNABLES.SAW_CHARS) ?? "" };
+    return { id, text: clipWire(flat, REFLECT_TUNABLES.SAW_CHARS) };
   }
 
   /**
@@ -1877,7 +1880,7 @@ const PART_FURNITURE = 1_000;
  * questions beside it (the MCP adapter's `reflect` tool).
  */
 export function resultChars(text: string, how: string, questions: readonly string[]): number {
-  return JSON.stringify({ bundle: text, how, questions }, null, 2).length;
+  return wireChars(JSON.stringify({ bundle: text, how, questions }, null, 2));
 }
 
 /** A later part of a bundle, by id: its memories, chapters and lines of what the dream saw. */

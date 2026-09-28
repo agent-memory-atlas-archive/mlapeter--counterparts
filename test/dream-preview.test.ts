@@ -93,7 +93,12 @@ function agree(c: Counterpart, owner: boolean): DreamPreview {
   const live = c.dreams.previewAsk({ at: AT });
   expect(live.wouldAsk).toBe(s.due);
   expect(live.reason).toBe(s.reason as DreamPreview["reason"]);
-  if (s.reason === "due" || s.reason === "too-little-new") expect(live.newSince).toBe(s.newSince);
+  // The per-prompt gate counts only as far as MIN_NEW (review of build B) and
+  // says when its count is a floor; below that it is exact.
+  if (s.reason === "due" || s.reason === "too-little-new") {
+    if (s.newSinceAtLeast === true) expect(live.newSince).toBeGreaterThanOrEqual(s.newSince);
+    else expect(live.newSince).toBe(s.newSince);
+  }
   const seen = observed((o) => {
     // The observer's own gate stands down, as it always did.
     expect(o.dreams.status(AT).reason).toBe("observer");

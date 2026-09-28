@@ -449,7 +449,7 @@ const RECALL: ToolSpec = {
     },
     {
       claim:
-        "Pass ids to get a few of those memories in full. It takes at most three, each resolved as an exact address with the same confidentiality boundary, and the total stays bounded.",
+        `Pass ids to get a few of those memories in full. It takes up to ${RECALL_MAX_IDS}, each resolved as an exact address with the same confidentiality boundary, and the total stays bounded.`,
       mechanizedBy: "src/adapters/mcp/deliberate.ts#expandIds (RECALL_MAX_IDS, expandHandle per id)",
     },
     {

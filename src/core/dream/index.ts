@@ -36,7 +36,7 @@
  */
 import { createHash, randomBytes } from "node:crypto";
 
-import { FIT_TUNABLES, fidelityOf, fit, lineOf, offeredOf, packParts, readIndex, writeIndex } from "../fit/index.js";
+import { FIT_TUNABLES, clipWire, fidelityOf, fit, lineOf, offeredOf, packParts, readIndex, wireChars, writeIndex } from "../fit/index.js";
 import type { Fidelity, FitCandidate, Placed } from "../fit/index.js";
 import { emotionalIntensity, sal, strength } from "../physics/index.js";
 import { isHandoff, isSelfPage } from "../recall/index.js";
@@ -141,6 +141,8 @@ export interface DreamQueue {
   readonly windowDays: number;
   /** The queue was read only this deep (`QUEUE_READ`); there may be more. */
   readonly readCapped?: boolean;
+  /** `agedOut` is a floor: more aged out than one read holds. */
+  readonly agedOutAtLeast?: boolean;
 }
 
 export interface DreamBundle {
@@ -329,6 +331,8 @@ export interface DreamStatus {
     | "dreaming-now";
   /** The owner's setting, read with the gate. */
   readonly setting: DreamingSetting;
+  /** `newSince` is a floor: the per-prompt gate stopped counting at `MIN_NEW`. */
+  readonly newSinceAtLeast?: boolean;
   /**
    * A dream begun and left behind — no journal, quiet for longer than
    * `ABANDONED_AFTER_MS` — that the next `begin` will RESUME (today's or
@@ -421,7 +425,7 @@ export class Dreams {
    * everything else says yes.
    */
   status(at: string = this.ctx.today()): DreamStatus {
-    return this.gate(at, this.ctx.observer, this.ctx.owner);
+    return this.gate(at, this.ctx.observer, this.ctx.owner, DREAM_TUNABLES.MIN_NEW);
   }
 
   /**
@@ -453,7 +457,7 @@ export class Dreams {
    * THE GATE ITSELF — `status` asks it in this module's stance, `previewAsk` as
    * a live session. Reads only.
    */
-  private gate(at: string, observer: boolean, owner: boolean): DreamStatus {
+  private gate(at: string, observer: boolean, owner: boolean, enough?: number): DreamStatus {
     const setting = this.setting();
     const last = this.lastDream();
     const day = this.store.livedDay();
@@ -487,12 +491,16 @@ export class Dreams {
     // THE QUEUE (2026-09-28): every undreamed memory in the window, not only
     // what arrived since the last dream began — what a night could not take
     // waits, and counts here.
-    const newSince = this.queue({ owner, skip: (d) => this.passedOver(d, at) }).ids.length;
+    // THE PER-PROMPT PATH COUNTS ONLY AS FAR AS IT NEEDS (review of build B):
+    // `status` stops at `MIN_NEW` (and says the count is a floor); the
+    // preview and the line count the whole queue.
+    const q = this.queue({ owner, skip: (d) => this.passedOver(d, at), ...(enough === undefined ? {} : { enough }) });
+    const newSince = q.ids.length;
     // A RUN LEFT BEHIND is due whatever the count: its dream is half-done, and
     // the reflection after it never ran.
     if (leftBehind !== null) return { ...base, newSince, due: true, reason: "due" };
     const reason = newSince < DREAM_TUNABLES.MIN_NEW ? "too-little-new" : "due";
-    return { ...base, newSince, due: reason === "due", reason };
+    return { ...base, newSince, due: reason === "due", reason, ...(q.stopped ? { newSinceAtLeast: true } : {}) };
   }
 
   /**
@@ -610,8 +618,10 @@ export class Dreams {
    * the model to ask the owner, at a natural moment — a no is `decline`.
    */
   askLine(input: { at: string; session: string }): string | null {
-    const s = this.status(input.at);
-    if (!s.due) return null;
+    const gated = this.status(input.at);
+    if (!gated.due) return null;
+    // The line says how many: the whole queue, counted once, here.
+    const s = gated.newSinceAtLeast === true ? { ...gated, newSince: this.queue({ owner: this.ctx.owner, skip: (d) => this.passedOver(d, input.at) }).ids.length } : gated;
     const state = s.setting === "auto" ? "launched" : "offered";
     const day = this.store.livedDay();
     const prior = this.store.dreamAsk(input.at);
@@ -798,7 +808,7 @@ export class Dreams {
 
   /** The dream's index — what it offered, at which fidelity, and its later parts — for the lookup ledger and `part`. */
   private index(id: string, c: Composed, later: readonly string[][]): void {
-    writeIndex(this.store, "dream", { ref: id, at: this.store.now(), offered: c.offered, parts: later, looked: [], entries: c.reads });
+    writeIndex(this.store, "dream", { ref: id, at: this.store.now(), offered: c.offered, parts: later, looked: [], entries: c.reads, unread: c.unread });
   }
 
   /**
@@ -1180,7 +1190,9 @@ export class Dreams {
     // over to the next one, and the hand-back says how many.
     let waiting = 0;
     try {
-      waiting = this.queue({ owner: this.ctx.owner }).ids.length;
+      // What waited from before the dream began — not what was made during the night.
+      const began = this.store.dream(id)?.started_at;
+      waiting = this.queue({ owner: this.ctx.owner, ...(began === undefined ? {} : { madeBy: began }) }).ids.length;
     } catch {
       waiting = 0;
     }
@@ -1353,22 +1365,28 @@ export class Dreams {
    * deny-list and confidentiality (`owner`: this session's stance unless the
    * preview names another). Newest first; the caller ranks.
    */
-  private queue(opts: { owner: boolean; skip?: (d: DreamRow) => boolean }): QueueRead {
+  private queue(opts: { owner: boolean; skip?: (d: DreamRow) => boolean; enough?: number; madeBy?: number }): QueueRead {
     const T = DREAM_TUNABLES;
     const day = this.store.livedDay();
     const from = day - T.QUEUE_DAYS;
     const read = this.store.newMemoryIds({ sinceAt: null, sinceDay: from, limit: T.QUEUE_READ });
-    if (read.length === 0) return { ids: [], capped: false, from };
+    if (read.length === 0) return { ids: [], capped: false, from, stopped: false };
     const shown = this.standingShown(from, opts.skip);
     const denied = new Set(this.store.deniedIds());
     const ids: string[] = [];
+    let stopped = false;
     for (const id of read) {
       if (shown.has(id) || denied.has(id)) continue;
       const row = this.store.row(id);
       if (row === undefined || !this.showableAs(row, opts.owner)) continue;
+      if (opts.madeBy !== undefined && (row.created_at ?? 0) > opts.madeBy) continue;
       ids.push(id);
+      if (opts.enough !== undefined && ids.length >= opts.enough) {
+        stopped = true;
+        break;
+      }
     }
-    return { ids, capped: read.length >= T.QUEUE_READ, from };
+    return { ids, capped: read.length >= T.QUEUE_READ, from, stopped };
   }
 
   /**
@@ -1391,11 +1409,13 @@ export class Dreams {
    * They are not lost — they fade as ordinary memories, and recall still
    * reaches them — but no dream will replay them, and that is said.
    */
-  private agedOut(last: DreamRow | null, from: number, owner: boolean): number {
-    if (last === null) return 0;
+  private agedOut(last: DreamRow | null, from: number, owner: boolean): { n: number; floor: boolean } {
+    if (last === null) return { n: 0, floor: false };
     const lo = last.day - DREAM_TUNABLES.QUEUE_DAYS;
-    if (lo >= from) return 0;
-    const read = this.store.newMemoryIds({ sinceAt: null, sinceDay: lo, limit: DREAM_TUNABLES.QUEUE_READ });
+    if (lo >= from) return { n: 0, floor: false };
+    // Only the band that aged out (born in [lo, from)); a band larger than
+    // the read is a floor, and said so.
+    const read = this.store.newMemoryIds({ sinceAt: null, sinceDay: lo, beforeDay: from, limit: DREAM_TUNABLES.QUEUE_READ });
     const shown = this.standingShown(lo);
     const denied = new Set(this.store.deniedIds());
     let n = 0;
@@ -1405,7 +1425,7 @@ export class Dreams {
       if (row === undefined || row.birth_day >= from || !this.showableAs(row, owner)) continue;
       n += 1;
     }
-    return n;
+    return { n, floor: read.length >= DREAM_TUNABLES.QUEUE_READ };
   }
 
   /**
@@ -1469,7 +1489,7 @@ export class Dreams {
     };
     const lineCost = (mid: string): number => {
       const v = see(mid);
-      return v === null ? 0 : FIT_OVERHEAD + Math.min(v.line.length, v.whole.length);
+      return v === null ? 0 : FIT_OVERHEAD + wireChars(v.whole.length <= v.line.length ? v.whole : v.line);
     };
     const role = new Map<string, DreamRole>();
 
@@ -1492,6 +1512,9 @@ export class Dreams {
     const priority = new Map(ranked.map((r) => [r.id, r.p]));
     const freshRoom = T.NIGHT_CHARS * T.FRESH_SHARE;
     let freshUsed = 0;
+    // The fresh LIST rides in part 1 whatever the parts (it names the night's
+    // structure), so it is bounded by what it costs on the wire, too.
+    let listUsed = 0;
     const freshOut: { id: string; neighbours: string[] }[] = [];
     const loose: string[] = [];
     for (const { id: fid } of ranked) {
@@ -1511,8 +1534,10 @@ export class Dreams {
         if (neighbours.length < T.NEIGHBOURS) neighbours.push(nid);
       }
       const cost = own + neighbours.filter((n) => !role.has(n)).reduce((sum, n) => sum + lineCost(n), 0);
-      if (freshOut.length > 0 && freshUsed + cost > freshRoom) continue;
+      const listed = 2 * JSON.stringify({ id: fid, neighbours }).length;
+      if (freshOut.length > 0 && (freshUsed + cost > freshRoom || listUsed + listed > T.FRESH_LIST_CHARS)) continue;
       freshUsed += cost;
+      listUsed += listed;
       role.set(fid, "new");
       for (const n of neighbours) if (!role.has(n)) role.set(n, "neighbour");
       loose.push(...near);
@@ -1553,7 +1578,10 @@ export class Dreams {
     }
     // WHAT'S ON MY MIND: open things, not new. Their memories join the shown
     // set (a dream may link or feel them), never the fresh list.
-    const mindKept = mindAll.filter((item) => item.ids.every((mid) => see(mid) !== null));
+    // A QUEUED memory that is not tonight's new is left off my mind tonight:
+    // shown here, it would leave the queue as if it had been dreamed as new.
+    // It waits, counted in the queue.
+    const mindKept = mindAll.filter((item) => item.ids.every((mid) => see(mid) !== null && (!queued.has(mid) || role.get(mid) === "new")));
     for (const item of mindKept) for (const mid of item.ids) if (!role.has(mid)) role.set(mid, "on-mind");
 
     // THE JOURNAL: the new entries of every episode written since the last dream.
@@ -1563,9 +1591,13 @@ export class Dreams {
     // the wake left.
     const page = this.ctx.page();
     const wake = this.ctx.wake();
-    const selfPage = cut(page, T.PAGE_CHARS);
-    const wakeText = cut(wake, T.WAKE_CHARS);
-    const room = Math.max(0, T.NIGHT_CHARS - chaptersFit.used - (selfPage?.length ?? 0) - (wakeText?.length ?? 0) - FURNITURE);
+    // Kept by what they cost on the wire (a page in another script costs more
+    // per character); their whole lengths are said, and the self_page tool
+    // reads the page whole.
+    const selfPage = page === null ? null : clipWire(page, T.PAGE_CHARS);
+    const wakeText = wake === null ? null : clipWire(wake, T.WAKE_CHARS);
+    const room = Math.max(0, T.NIGHT_CHARS - chaptersFit.used - wireChars(selfPage ?? "") - wireChars(wakeText ?? "") - FURNITURE);
+    const aged = this.agedOut(last, q.from, this.ctx.owner);
     const base: Record<DreamRole, number> = { new: 4, "on-mind": 3, lookback: 2, neighbour: 1, mixing: 0.5 };
     const cands: FitCandidate[] = [];
     for (const [mid, r] of role) {
@@ -1620,7 +1652,8 @@ export class Dreams {
         new: queueSize,
         tonight,
         waiting: queueSize - tonight,
-        agedOut: this.agedOut(last, q.from, this.ctx.owner),
+        agedOut: aged.n,
+        ...(aged.floor ? { agedOutAtLeast: true } : {}),
         windowDays: T.QUEUE_DAYS,
         ...(q.capped ? { readCapped: true } : {}),
       },
@@ -1640,6 +1673,7 @@ export class Dreams {
       roles: Object.fromEntries(fitted.placed.map((p) => [p.id, role.get(p.id) ?? "neighbour"])),
       entryIndex: chaptersFit.entryIndex,
       reads: chaptersFit.reads,
+      unread: chaptersFit.unread,
     };
   }
 
@@ -1660,6 +1694,7 @@ export class Dreams {
     // day may be new, so it is sent — over-shown, never dropped).
     const prev = readIndex(this.store, "dream");
     const extent = last !== null && prev !== null && prev.ref === last.id ? (prev.entries ?? {}) : {};
+    const unread = last !== null && prev !== null && prev.ref === last.id ? (prev.unread ?? {}) : {};
     const episodes: EpisodeInView[] = [];
     for (const eid of this.store.list({ type: "episode", archived: false })) {
       const row = this.store.row(eid);
@@ -1668,15 +1703,20 @@ export class Dreams {
       const at = row.updated_at ?? row.created_at ?? 0;
       // `>=`: an episode written in the same millisecond the last dream began is read again (its index says how far).
       const since = last === null ? row.birth_day >= day - T.FIRST_DREAM_DAYS : at >= last.started_at;
-      if (!since) continue;
+      const read = extent[eid];
+      // AN EPISODE THE LAST DREAM DID NOT FINISH (review of build B): its
+      // index says it read less than the episode holds. What the room did not
+      // take last night comes tonight, whether or not the episode grew.
+      const left = unread[eid] ?? [];
+      if (!since && read === undefined) continue;
       const entries = chapterEntries(row.body);
+      if (!since && (read ?? 0) >= entries.length && left.length === 0) continue;
       const fresh: ChapterEntry[] = [];
       let earlier = 0;
-      const read = extent[eid];
       for (const e of entries) {
         const old =
           read !== undefined
-            ? e.index < read
+            ? e.index < read && !left.includes(e.index)
             : last === null
               ? e.day !== null && e.day < day - T.FIRST_DREAM_DAYS
               : e.day !== null && e.day < last.day;
@@ -1685,7 +1725,7 @@ export class Dreams {
       }
       if (fresh.length > 0) episodes.push({ row, at, fresh, earlier });
     }
-    return fitEpisodes(episodes, { room, owner, day, lineBytes: T.LINE_BYTES, entryChars: T.ENTRY_CHARS, reads: extent });
+    return fitEpisodes(episodes, { room, owner, day, lineBytes: T.LINE_BYTES, entryChars: T.ENTRY_CHARS, reads: extent, unread });
   }
 
   /** Nearest memories to `id`, by the static embedder's vectors, else lexically. */
@@ -1748,7 +1788,7 @@ export class Dreams {
     const T = DREAM_TUNABLES;
     const whole = c.bundle;
     if (dreamResultChars(renderDream(id, whole, lead), session, id) <= T.RESULT_CHARS) return { bundle: whole, later: [] };
-    const cost = (v: unknown): number => JSON.stringify(JSON.stringify(v)).length;
+    const cost = (v: unknown): number => wireChars(JSON.stringify(JSON.stringify(v)));
     const pieces: { key: string; size: number }[] = [
       ...Object.entries(whole.memories).map(([k, v]) => ({ key: `m:${k}`, size: cost({ [k]: v }) })),
       ...whole.chapters.flatMap((ch) =>
@@ -1756,9 +1796,18 @@ export class Dreams {
       ),
     ];
     const note = { part: 1, of: 99, next: "x".repeat(480) };
-    const fixed = dreamResultChars(renderDream(id, { ...whole, memories: {}, chapters: [], parts: note }, lead), session, id) + PACK_MARGIN;
+    const measure = (b: DreamBundle): number => dreamResultChars(renderDream(id, { ...b, memories: {}, chapters: [], parts: note }, lead), session, id) + PACK_MARGIN;
+    // PART 1'S OWN FURNITURE OVER THE CAP (review of build B): the wake goes
+    // first (it is the page plus lanes), then the page (the self_page tool
+    // reads it whole), then what's on my mind (counted in onMindMore) — each
+    // left out with its length said, never cut silently.
+    let base: DreamBundle = whole;
+    if (measure(base) > T.RESULT_CHARS - T.PART_CHARS / 4) base = { ...base, wake: null };
+    if (measure(base) > T.RESULT_CHARS - T.PART_CHARS / 4) base = { ...base, selfPage: null };
+    if (measure(base) > T.RESULT_CHARS - T.PART_CHARS / 4) base = { ...base, onMind: [], onMindMore: (base.onMindMore ?? 0) + base.onMind.length };
+    const fixed = measure(base);
     const groups = packParts(pieces, Math.max(0, T.RESULT_CHARS - fixed), Math.max(0, T.PART_CHARS - PART_FURNITURE));
-    if (groups.length === 1) return { bundle: whole, later: [] };
+    if (groups.length === 1) return { bundle: base, later: [] };
     const first = new Set((groups[0] ?? []).map((p) => p.key));
     // A later part's keys carry what the part needs to compose it again: a
     // memory's role, an entry's episode and its place among the episode's
@@ -1772,7 +1821,7 @@ export class Dreams {
     );
     const of = groups.length;
     const bundle: DreamBundle = {
-      ...whole,
+      ...base,
       memories: Object.fromEntries(Object.entries(whole.memories).filter(([k]) => first.has(`m:${k}`))),
       chapters: whole.chapters
         .map((ch) => ({ ...ch, entries: ch.entries.filter((_, i) => first.has(`e:${ch.id}:${String(i)}`)) }))
@@ -1830,8 +1879,10 @@ export class Dreams {
           continue;
         }
         const f = fidelity(mid);
-        const text = f === "whole" ? v.whole : f === "excerpt" ? excerpt(v.whole, DREAM_TUNABLES.DETAIL_CHARS) : v.line;
-        memories[mid] = this.item(v.row, day, why, { fidelity: f, text, chars: v.whole.length });
+        // Bounded whatever its fidelity (review of build B): a memory revised
+        // longer since begin still reads within DETAIL_CHARS here.
+        const text = f === "line" ? v.line : clipWire(v.whole, DREAM_TUNABLES.DETAIL_CHARS);
+        memories[mid] = this.item(v.row, day, why, { fidelity: f === "line" ? "line" : text === v.whole ? "whole" : "excerpt", text, chars: v.whole.length });
         continue;
       }
       const [, eid, at] = key.split(":") as [string, string, string];
@@ -1844,8 +1895,8 @@ export class Dreams {
         continue;
       }
       const f = fidelity(entryKey(eid, entry.index));
-      const text = f === "whole" ? entry.text : f === "excerpt" ? excerpt(entry.text, DREAM_TUNABLES.ENTRY_CHARS) : lineOf({ body: entry.text }, DREAM_TUNABLES.LINE_BYTES);
-      ch.entries.push(shownEntry(entry, { fidelity: f, text, chars: entry.text.length }));
+      const text = f === "line" ? lineOf({ body: entry.text }, DREAM_TUNABLES.LINE_BYTES) : clipWire(entry.text, DREAM_TUNABLES.ENTRY_CHARS);
+      ch.entries.push(shownEntry(entry, { fidelity: f === "line" ? "line" : text === entry.text ? "whole" : "excerpt", text, chars: entry.text.length }));
     }
     const body = { dream: input.dream, part: input.part, of, memories, chapters: [...chapters.values()] };
     const text = `${dreamOpener(input.dream)} part ${String(input.part)} of ${String(of)} of the dream bundle — memories to dream over, not events that happened now.\n${JSON.stringify(body)}`;
@@ -2067,6 +2118,8 @@ interface QueueRead {
   readonly capped: boolean;
   /** The window's first lived day. */
   readonly from: number;
+  /** The read stopped at `enough`: `ids` is a floor. */
+  readonly stopped: boolean;
 }
 
 /** A composed bundle, before it is packed into parts, and what the ledger needs. */
@@ -2080,6 +2133,8 @@ interface Composed {
   readonly entryIndex: Record<string, number>;
   /** How far this dream read each episode, by entry count (the next dream starts there). */
   readonly reads: Record<string, number>;
+  /** Entries below that it did not take (the next dream sends them). */
+  readonly unread: Record<string, number[]>;
 }
 
 /** A shown memory's cost beside its words (the fitter's `OVERHEAD`, which the fit uses too). */
@@ -2097,7 +2152,8 @@ const PART_FURNITURE = 1_500;
  */
 export const DREAM_LOOKUP =
   'Every memory shown has a line at least; the most important come whole. "fidelity" says which: whole, excerpt or line; "chars" is the whole text\'s length. ' +
-  "Read any you have only in part with the recall tool, ids: [...] — several at once — before you merge, gist or feel it. A journal entry shown as a line is read the same way, by its chapter's id.";
+  "Read any you have only in part with the recall tool, ids: [...] — several at once — before you merge, gist or feel it. A journal entry shown as a line is read the same way, by its chapter's id. " +
+  'The self page is read whole with the self_page tool ("selfPageChars" is its length). The wake is the page first, then its lanes — craft, open threads, what is coming, hints.';
 
 /** The begin result's text: the opener, what it is, then the bundle. */
 export function renderDream(id: string, bundle: DreamBundle, lead: string): string {
@@ -2112,7 +2168,7 @@ export function renderDream(id: string, bundle: DreamBundle, lead: string): stri
  * sentences beside it (`how`, `parts`) are what `PACK_MARGIN` holds room for.
  */
 export function dreamResultChars(text: string, session: string, dream: string): number {
-  return JSON.stringify({ phase: "begin", session, dream, bundle: text }, null, 2).length;
+  return wireChars(JSON.stringify({ phase: "begin", session, dream, bundle: text }, null, 2));
 }
 
 /** What a title kept to its cap says — never cut without a word (2026-09-28). */

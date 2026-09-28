@@ -35,6 +35,13 @@ export const FIT_TUNABLES = {
   OVERHEAD: 120,
   /** A fitted index counts lookups for this long after it was made (a night's run takes minutes). */
   LOOKUP_WINDOW_MS: 12 * 60 * 60 * 1000,
+  /**
+   * …and only while its run is open: the dream not yet journaled, the
+   * reflection not yet finished — or finished less than this long ago (a
+   * receiver's last lookups may land just after). Past it, a lookup of the
+   * same id is an ordinary session's, not the index's. CAL.
+   */
+  LOOKUP_GRACE_MS: 10 * 60 * 1000,
   /** The meta prefix of each mechanism's latest index (one row per mechanism, overwritten). */
   INDEX_PREFIX: "fit.index.",
 } as const;
@@ -120,13 +127,13 @@ export function fit(candidates: readonly FitCandidate[], opts: FitOptions): FitO
   let used = 0;
   const lineOf = (c: FitCandidate): string => (c.whole.length <= c.line.length ? c.whole : c.line);
   const detail = (c: FitCandidate): { text: string; fidelity: Fidelity } =>
-    c.whole.length <= opts.excerptChars ? { text: c.whole, fidelity: "whole" } : { text: `${c.whole.slice(0, Math.max(0, opts.excerptChars - 1))}…`, fidelity: "excerpt" };
+    wireChars(c.whole) <= opts.excerptChars ? { text: c.whole, fidelity: "whole" } : { text: clipWire(c.whole, opts.excerptChars), fidelity: "excerpt" };
 
   // 1. The least each may be, in priority order. What does not fit waits. (An
   //    id costs the same for all; a line by its length, so a shorter one
   //    later may still fit.)
   for (const c of order) {
-    const cost = least === "line" ? over + lineOf(c).length : over;
+    const cost = least === "line" ? over + wireChars(lineOf(c)) : over;
     if (used + cost > opts.room) {
       waiting.push(c.id);
       continue;
@@ -138,7 +145,7 @@ export function fit(candidates: readonly FitCandidate[], opts: FitOptions): FitO
   if (least === "id") {
     for (const c of order) {
       if (level.get(c.id) !== "id") continue;
-      const add = lineOf(c).length;
+      const add = wireChars(lineOf(c));
       if (used + add > opts.room) continue;
       used += add;
       level.set(c.id, lineOf(c) === c.whole ? "whole" : "line");
@@ -148,7 +155,7 @@ export function fit(candidates: readonly FitCandidate[], opts: FitOptions): FitO
   for (const c of order) {
     if (level.get(c.id) !== "line") continue;
     const d = detail(c);
-    const add = d.text.length - lineOf(c).length;
+    const add = wireChars(d.text) - wireChars(lineOf(c));
     if (add <= 0 || used + add > opts.room) continue;
     used += add;
     level.set(c.id, d.fidelity);
@@ -176,6 +183,36 @@ export function fit(candidates: readonly FitCandidate[], opts: FitOptions): FitO
       agedOut: opts.agedOut ?? 0,
     },
   };
+}
+
+// ── what a text costs on the wire ───────────────────────────────────────────
+
+/**
+ * A TEXT'S COST AGAINST A TOKEN CEILING, in ASCII-character equivalents
+ * (2026-09-28, review of build B). The host's ceilings are in tokens, and
+ * the budgets here are in characters sized at about three characters a token
+ * — true of English, not of every script: a CJK character is about a token by
+ * itself. So a character outside ASCII counts as three. Used for every room
+ * and every part, so a page in another script is measured, not guessed.
+ */
+export function wireChars(text: string): number {
+  let extra = 0;
+  for (let i = 0; i < text.length; i += 1) if (text.charCodeAt(i) > 0x7f) extra += 1;
+  return text.length + 2 * extra;
+}
+
+/** `text` kept to a wire cost of `max` (`wireChars`), cut at a character with "…"; the text itself when it fits. */
+export function clipWire(text: string, max: number): string {
+  if (wireChars(text) <= max) return text;
+  let out = "";
+  let used = 0;
+  for (const ch of text) {
+    const w = ch.length === 1 && ch.charCodeAt(0) <= 0x7f ? 1 : 3 * ch.length;
+    if (used + w > max - 3) break;
+    out += ch;
+    used += w;
+  }
+  return `${out}…`;
 }
 
 // ── a line ──────────────────────────────────────────────────────────────────
@@ -325,6 +362,8 @@ export interface FitIndex {
    * run sends only what was added since. The mechanism's own bookkeeping.
    */
   readonly entries?: Readonly<Record<string, number>>;
+  /** Entries below that count this run did not take — the next run sends them. */
+  readonly unread?: Readonly<Record<string, readonly number[]>>;
 }
 
 export function indexKey(mechanism: FitMechanism): string {
@@ -358,6 +397,9 @@ export function readIndex(store: Pick<Store, "getMeta">, mechanism: FitMechanism
       ...(v.entries !== undefined && v.entries !== null && typeof v.entries === "object"
         ? { entries: Object.fromEntries(Object.entries(v.entries).filter((e): e is [string, number] => typeof e[1] === "number")) }
         : {}),
+      ...(v.unread !== undefined && v.unread !== null && typeof v.unread === "object"
+        ? { unread: Object.fromEntries(Object.entries(v.unread).map(([k, x]) => [k, Array.isArray(x) ? x.filter((n): n is number => typeof n === "number") : []])) }
+        : {}),
     };
   } catch {
     return null;
@@ -382,7 +424,7 @@ export function offeredInPart(index: Pick<FitIndex, "offered">): number {
  * a change made from one reads as made from the whole text. Counts come back
  * per mechanism; zero mechanisms are left out. Never throws.
  */
-export function noteLookups(store: Pick<Store, "getMeta" | "setMeta" | "now">, ids: readonly string[]): Partial<Record<FitMechanism, number>> {
+export function noteLookups(store: Pick<Store, "getMeta" | "setMeta" | "now" | "dream" | "reflection">, ids: readonly string[]): Partial<Record<FitMechanism, number>> {
   const out: Partial<Record<FitMechanism, number>> = {};
   if (ids.length === 0) return out;
   let now: number;
@@ -393,7 +435,7 @@ export function noteLookups(store: Pick<Store, "getMeta" | "setMeta" | "now">, i
   }
   for (const m of FIT_MECHANISMS) {
     const index = readIndex(store, m);
-    if (index === null || now - index.at > FIT_TUNABLES.LOOKUP_WINDOW_MS) continue;
+    if (index === null || now - index.at > FIT_TUNABLES.LOOKUP_WINDOW_MS || !runOpen(store, m, index.ref, now)) continue;
     const inPart = new Set([...index.offered.excerpt, ...index.offered.line, ...index.offered.id]);
     const hits = [...new Set(ids)].filter((id) => inPart.has(id));
     if (hits.length === 0) continue;
@@ -401,6 +443,23 @@ export function noteLookups(store: Pick<Store, "getMeta" | "setMeta" | "now">, i
     writeIndex(store, m, { ...index, looked: [...new Set([...(index.looked ?? []), ...hits])] });
   }
   return out;
+}
+
+/**
+ * IS THE RUN THAT MADE THIS INDEX STILL OPEN? A lookup counts as the index's
+ * only then (review of build B): an ordinary session that later recalls the
+ * same memory is not the dream reading its line.
+ */
+function runOpen(store: Pick<Store, "dream" | "reflection">, m: FitMechanism, ref: string, now: number): boolean {
+  try {
+    const row = m === "dream" ? store.dream(ref) : store.reflection(ref);
+    if (row === undefined) return false;
+    if (row.state === "begun") return true;
+    if (row.state !== (m === "dream" ? "journaled" : "reflected")) return false;
+    return row.finished_at !== null && now - row.finished_at <= FIT_TUNABLES.LOOKUP_GRACE_MS;
+  } catch {
+    return false;
+  }
 }
 
 /**

@@ -375,10 +375,10 @@ describe("the reflection sees what the dream saw, and the whole page", () => {
     expect(parts?.part).toBe(1);
     expect(parts?.of ?? 0).toBeGreaterThan(1);
     expect(parts?.next).toContain('phase "part"');
-    expect(String(begin.structuredContent["bundle"]).length).toBeLessThanOrEqual(REFLECT_TUNABLES.RESULT_CHARS);
+    expect(String((JSON.parse(textOf(begin)) as { bundle: string }).bundle).length).toBeLessThanOrEqual(REFLECT_TUNABLES.RESULT_CHARS);
     const rid = begin.structuredContent["reflection"] as string;
     // Every memory the reflection was handed is in exactly one part.
-    const first = JSON.parse(String(begin.structuredContent["bundle"]).split("\n").slice(1).join("\n")) as {
+    const first = JSON.parse(String((JSON.parse(textOf(begin)) as { bundle: string }).bundle).split("\n").slice(1).join("\n")) as {
       memories: Record<string, unknown>;
       dreamSaw: { id: string }[];
     };
@@ -387,7 +387,7 @@ describe("the reflection sees what the dream saw, and the whole page", () => {
     for (let k = 2; k <= (parts?.of ?? 1); k += 1) {
       const p = await s.call("reflect", { phase: "part", session: SESSION, reflection: rid, part: k });
       expect(p.isError ?? false).toBe(false);
-      const text = String(p.structuredContent["bundle"]);
+      const text = String((JSON.parse(textOf(p)) as { bundle: string }).bundle);
       expect(text.length).toBeLessThanOrEqual(REFLECT_TUNABLES.PART_CHARS + 2_000);
       const body = JSON.parse(text.split("\n").slice(1).join("\n")) as { memories: Record<string, unknown>; dreamSaw: { id: string }[] };
       for (const id of Object.keys(body.memories)) {

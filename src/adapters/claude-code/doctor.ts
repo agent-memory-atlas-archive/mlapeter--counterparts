@@ -2589,12 +2589,6 @@ export function reflectionFindings(input: DoctorInput, store: Store): Finding[] 
   ];
 }
 
-/**
- * DREAMING, informational (2026-09-26): the owner's setting (2026-09-28:
- * auto, ask or off), when the counterpart last dreamed, and what today's line
- * did — started the nightly run, asked, or was declined. Never amber: not
- * dreaming is the owner's choice, and a quiet week is not a fault.
- */
 /** How far back the lookup count reads, in lived days. */
 const LOOKUP_WINDOW_DAYS = 14;
 
@@ -2675,6 +2669,12 @@ export function lookupFindings(store: Store): Finding[] {
 /** Rows each lookup read takes, newest first; a read that comes back full is a floor. */
 const LOOKUP_ROWS = 2_000;
 
+/**
+ * DREAMING, informational (2026-09-26): the owner's setting (2026-09-28:
+ * auto, ask or off), when the counterpart last dreamed, and what today's line
+ * did — started the nightly run, asked, or was declined. Never amber: not
+ * dreaming is the owner's choice, and a quiet week is not a fault.
+ */
 export function dreamingFindings(input: DoctorInput, store: Store): Finding[] {
   let last: ReturnType<Store["dreams"]>[number] | undefined;
   let ask: ReturnType<Store["dreamAsk"]>;
