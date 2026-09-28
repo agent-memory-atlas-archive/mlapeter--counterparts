@@ -57,6 +57,8 @@ export interface DreamView {
 
 export interface DreamsView {
   readonly dreams: readonly DreamView[];
+  /** Every dream the store holds. */
+  readonly total: number;
   /** Dreams past the ones sent. */
   readonly more: number;
   /** The day of the newest dream, or null when this store has never dreamed. */
@@ -169,13 +171,14 @@ function dreamView(src: DashboardSource, row: DreamRow): DreamView {
 }
 
 export function dreamsView(src: DashboardSource, limit = DREAM_LIMIT): DreamsView {
-  const rows = src.store.dreams({ limit: limit + 1 });
-  const shown = rows.slice(0, limit);
+  const shown = src.store.dreams({ limit });
+  // Counted in SQL, so the page can say "the newest 12 of N".
+  const total = Math.max(shown.length, src.store.dreamCount());
   return {
     dreams: shown.map((r) => dreamView(src, r)),
-    // One past the limit says "there are more"; the exact count is not worth a scan.
-    more: rows.length > limit ? rows.length - limit : 0,
-    lastDreamed: rows[0] === undefined ? null : (rows[0].date ?? `lived day ${String(rows[0].day)}`),
+    total,
+    more: total - shown.length,
+    lastDreamed: shown[0] === undefined ? null : (shown[0].date ?? `lived day ${String(shown[0].day)}`),
   };
 }
 

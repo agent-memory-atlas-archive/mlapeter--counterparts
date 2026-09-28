@@ -159,8 +159,11 @@ export function overviewView(src: DashboardSource, feedLimit = FEED_LIMIT): Over
   // The lived day each element crossed into the identity band, where the store
   // watched it happen. Read once for the panel rather than once per row.
   const promotedDays = new Map<string, number>();
-  for (const row of store.eventLog({ name: "band.promoted", limit: LOG_CEILING })) {
-    if (row.ref !== null && !promotedDays.has(row.ref)) promotedDays.set(row.ref, row.day);
+  // Newest first, and the last write wins: the earliest crossing in the read,
+  // as before, but past the ceiling it is the oldest crossings that go missing
+  // rather than every element promoted since.
+  for (const row of store.eventLog({ name: "band.promoted", order: "desc", limit: LOG_CEILING })) {
+    if (row.ref !== null) promotedDays.set(row.ref, row.day);
   }
 
   const tiles: Tile[] = [

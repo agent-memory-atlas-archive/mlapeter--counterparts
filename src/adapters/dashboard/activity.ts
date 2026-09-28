@@ -26,6 +26,8 @@ import { resolvePayload, resolveRef } from "./resolve.js";
 import type { DashboardSource } from "./source.js";
 
 export const DEFAULT_FEED = 30;
+/** The most rows one feed reads, newest first. */
+const FEED_CEILING = 1000;
 
 export interface ActivityOptions {
   readonly style?: Style;
@@ -41,14 +43,25 @@ export function renderActivity(src: DashboardSource, opts: ActivityOptions = {})
   const store = src.store;
   const limit = opts.limit ?? DEFAULT_FEED;
 
-  const filter: { name?: string; ref?: string; limit: number } = { limit: 1000 };
+  const filter: { name?: string; ref?: string; limit: number; order: "desc" } = { limit: FEED_CEILING, order: "desc" };
   if (opts.name !== undefined) filter.name = opts.name;
   if (opts.ref !== undefined) filter.ref = opts.ref;
 
-  // `eventLog` returns oldest first, so a story reads in the order it happened.
-  // The FEED wants the opposite — newest first is what "lately" means.
+  // Newest first is what "lately" means, and it has to be asked of the store:
+  // an ascending read with a limit is the OLDEST rows, so past the ceiling the
+  // feed printed last month as lately.
   const all = store.eventLog(filter);
-  const shown = all.slice(-limit).reverse();
+  const shown = all.slice(0, limit);
+  // How many the log holds, counted in SQL where it can be; a `ref` filter has
+  // no grouped count, so its read is the count and a full one says "at least".
+  const held =
+    opts.ref === undefined
+      ? store
+          .eventCounts()
+          .filter((c) => opts.name === undefined || c.name === opts.name)
+          .reduce((n, c) => n + c.count, 0)
+      : all.length;
+  const atLeast = opts.ref !== undefined && all.length >= FEED_CEILING;
 
   const bound =
     `I keep events for ${plural(store.retentionDays, "lived day")}; older ones are swept unless ` +
@@ -77,7 +90,7 @@ export function renderActivity(src: DashboardSource, opts: ActivityOptions = {})
     indent(table(rows)),
     vocabulary(src, style),
     `${subheading("The bounds of this feed", style)}\n${indent(bound)}`,
-    `Showing ${shown.length} of ${plural(all.length, "event")} I hold.`,
+    `Showing ${shown.length} of ${atLeast ? "at least " : ""}${plural(held, "event")} I hold.`,
   );
 }
 

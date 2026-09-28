@@ -717,7 +717,7 @@ export const COMMAND_FLAGS: Record<Command, readonly string[]> = {
   // line is a page in shell history, and prose that is injected into every
   // session does not belong there.
   "self-page": ["write", "file", "stdin", "reason", "versions", "version", "restore", "clear", "if-version"],
-  dream: ["list", "show", "undo"],
+  dream: ["list", "show", "undo", "all"],
   core: ["list", "demote", "reason", "reflected-feeling"],
   // `--config` because the store it opens is the one the CONFIGURATION names —
   // that is the whole point of the command over `counterparts-dashboard serve`,
@@ -783,7 +783,7 @@ export const COMMAND_BLURB: Record<Command, string> = {
   "self-page":
     "The written page the wake opens with. With no flags it prints the page, its date and its size; --write --file <path> or --write --stdin replaces it whole, keeping every earlier version; --versions lists those and --version <seq> prints one. Reading works under observer; writing refuses there.",
   dream:
-    "What each dream did, and its undo — and what the waking self made of it. With no flags (or --list), the recent dreams: date, state, title and what changed, then the recent reflections; --show <id> prints one dream's journal, every change it made and the reflection after it (--show <rfl_…> prints one reflection: its questions, entry, what it rests on and its morning share); --undo <id> reverses that dream's whole batch (merges come apart, links and gists go, replays and nominations are taken back) and keeps its journal, marked undone — a reflection is lived and stays. Reading works under observer; --undo refuses there.",
+    "What each dream did, and its undo — and what the waking self made of it. With no flags (or --list), the newest 20 dreams (--list --all for every one): date, state, title and what changed, then the recent reflections; --show <id> prints one dream's journal, every change it made and the reflection after it (--show <rfl_…> prints one reflection: its questions, entry, what it rests on and its morning share); --undo <id> reverses that dream's whole batch (merges come apart, links and gists go, replays and nominations are taken back) and keeps its journal, marked undone — a reflection is lived and stays. Reading works under observer; --undo refuses there.",
   core:
     "The core — the memories about me, about us and about the owner that do not fade. With no flags (or --list), what it holds and which lane carried each one there, what dreams have nominated, and what you sent back; --demote <id> --reason \"...\" sends one back to ordinary fading from today, records why, and keeps the lanes from promoting it again; --reflected-feeling on|off opens or closes the core to reflection alone. On (the default): a feeling a reflection records later and a reflection citing a memory both count toward the fast lane, and a reflection may re-label what a memory is about either way — each re-label is recorded with its reason, and one into me, us or the owner is told in the next morning share. Off: nothing reaches the core on a reflection alone — the fast lane needs a feeling felt at the time (not one a reflection recorded later) and an ordinary use after a gap (not a reflection citing it), and a reflection may only move what a memory is about toward work or world. Reading works under observer; the two changes refuse there.",
   dashboard:
@@ -809,7 +809,7 @@ const COMMAND_ARGS: Partial<Record<Command, string>> = {
   connect: " [claude-code]",
   disconnect: " [claude-code]",
   help: " [advanced | <command>]",
-  dream: " [--show <id> | --undo <id>]",
+  dream: " [--list [--all] | --show <id> | --undo <id>]",
   core: " [--demote <id> --reason \"...\" | --reflected-feeling on|off]",
 };
 
@@ -1018,9 +1018,10 @@ const START_FRESH_FLAG_HELP: Record<string, string> = {
  * and it is the one the hooks and the memory tools open. Printing the shared
  * sentence would describe a resolution this command does not use.
  */
-/** `dream`'s own three: `--list` and `--undo` mean something else on other pages. */
+/** `dream`'s own four: `--list` and `--undo` mean something else on other pages. */
 const DREAM_FLAG_HELP: Record<string, string> = {
   list: "the recent dreams, newest first — the default",
+  all: "with --list: every dream the store holds, not only the newest 20",
   show: "one dream, by id: its journal and every change it made",
   undo: "reverse one dream's whole batch, by id (the id follows the flag); its journal is kept, marked undone",
 };
@@ -1921,10 +1922,11 @@ function probeCommand(dir: string, io: Io, namedDir: boolean): number {
     return EXIT.failed;
   }
   try {
-    // Explicit ceiling: `eventLog` defaults to 500 oldest-first, which would
-    // drop the newest rows — the side of the table the probe exists to read.
-    const decisions = store.eventLog({ name: RECALL_DECISION_EVENT, limit: PROBE_ROW_CEILING });
-    const credits = store.eventLog({ name: RECALL_CREDIT_EVENT, limit: PROBE_ROW_CEILING });
+    // Explicit ceiling, read NEWEST first and turned back to oldest first: an
+    // ascending read with a limit drops the newest rows — the side of the
+    // table the probe exists to read.
+    const decisions = store.eventLog({ name: RECALL_DECISION_EVENT, order: "desc", limit: PROBE_ROW_CEILING }).reverse();
+    const credits = store.eventLog({ name: RECALL_CREDIT_EVENT, order: "desc", limit: PROBE_ROW_CEILING }).reverse();
     const rows = [...decisions, ...credits].map((r) => ({ name: r.name, day: r.day, payload: r.payload }));
     for (const line of renderProbe(probeOQ4(rows))) io.out(line);
     for (const [name, got] of [
@@ -1932,7 +1934,7 @@ function probeCommand(dir: string, io: Io, namedDir: boolean): number {
       [RECALL_CREDIT_EVENT, credits.length],
     ] as const) {
       if (got >= PROBE_ROW_CEILING) {
-        io.err(`warning: ${name} hit the ${PROBE_ROW_CEILING}-row ceiling; the newest rows may be missing from this table`);
+        io.err(`warning: ${name} hit the ${PROBE_ROW_CEILING}-row ceiling; the oldest rows are missing from this table`);
       }
     }
     return EXIT.ok;
@@ -2053,7 +2055,7 @@ function dreamCommand(dir: string, io: Io, parsed: Parsed, observer: boolean, na
       for (const line of lines) io.out(line);
       return EXIT.ok;
     }
-    for (const line of dreamListLines(counterpart)) io.out(line);
+    for (const line of dreamListLines(counterpart, parsed.flags["all"] === true ? "all" : undefined)) io.out(line);
     return EXIT.ok;
   } finally {
     counterpart.close();
@@ -2413,12 +2415,14 @@ export function firedLines(report: FiredReport, all = false): string[] {
  *  become the thing that throws, and it may not guess either. */
 function newestBoundary(store: Store, livedDay: number): string | null {
   try {
-    const rows = store.eventLog({
+    // The newest row itself: `rows.at(-1)` of an ascending read with a limit
+    // was the 2,000th-oldest row of the window once it held more.
+    const [last] = store.eventLog({
       name: BOUNDARY_EVENT,
       sinceDay: Math.max(0, livedDay - 30),
-      limit: 2000,
+      order: "desc",
+      limit: 1,
     });
-    const last = rows[rows.length - 1];
     if (last === undefined) return null;
     const payload = JSON.parse(last.payload ?? "{}") as Record<string, unknown>;
     const date = payload["date"];
@@ -7761,8 +7765,7 @@ function mergedBeliefs(store: Store): MergedBelief[] {
 
 /** The last `memory.merged` record naming this id, in ids and numbers. */
 function mergeRecordOf(store: Store, id: string): { originalId: string | null; day: number | null } {
-  const rows = store.eventLog({ name: "memory.merged", ref: id });
-  const last = rows[rows.length - 1];
+  const [last] = store.eventLog({ name: "memory.merged", ref: id, order: "desc", limit: 1 });
   if (last === undefined || last.payload === null) return { originalId: null, day: null };
   try {
     const parsed = JSON.parse(last.payload) as Record<string, unknown>;

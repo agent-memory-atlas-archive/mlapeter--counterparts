@@ -50,7 +50,9 @@ export interface StoriesOptions {
 export function contestedBeliefs(src: DashboardSource): string[][] {
   const store = src.store;
   const candidates = new Set<string>();
-  for (const row of store.eventLog({ name: PRESSURE_EVENT, limit: 1000 })) {
+  // Newest first: past the limit it is the longest-quiet beliefs that fall out,
+  // never the ones argued with this week.
+  for (const row of store.eventLog({ name: PRESSURE_EVENT, order: "desc", limit: 1000 })) {
     if (row.ref !== null) candidates.add(row.ref);
   }
   for (const id of store.list()) {

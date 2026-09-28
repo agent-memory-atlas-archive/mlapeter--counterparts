@@ -176,7 +176,7 @@ export function healthView(src: DashboardSource): HealthView {
     return { phase, day: marker.day, ago: Math.max(0, day - marker.day), torn: false, absent: null };
   });
 
-  const transitions = store.eventLog({ name: "band.transition", limit: LOG_CEILING });
+  const transitions = store.eventLog({ name: "band.transition", order: "desc", limit: LOG_CEILING });
   const symmetry = KINDS.map((kind) => {
     let up = 0;
     let down = 0;
@@ -221,7 +221,9 @@ export function healthView(src: DashboardSource): HealthView {
   const days = Array.from({ length: Math.max(1, Math.min(span, day + 1)) }, (_, i) => from + i);
   const cells: { day: number; name: string; count: number }[] = [];
   for (const name of DURABLE_EVENT_NAMES) {
-    const rows = store.eventLog({ name, sinceDay: from, limit: LOG_CEILING });
+    // Newest first: past the ceiling the missing rows are the window's oldest
+    // days, not today's (an ascending read kept the oldest and emptied the right edge).
+    const rows = store.eventLog({ name, sinceDay: from, order: "desc", limit: LOG_CEILING });
     const per = new Map<number, number>();
     for (const row of rows) per.set(row.day, (per.get(row.day) ?? 0) + 1);
     for (const d of days) cells.push({ day: d, name, count: per.get(d) ?? 0 });
@@ -268,16 +270,23 @@ export function healthView(src: DashboardSource): HealthView {
   // Where archived memories went. One pass over the rows, then the removal
   // record for "removed by you" (a removed row keeps only a skeleton, so its
   // words are gone and the record is what says what happened).
+  // NEWEST FIRST: each list carries at most `ARCHIVE_ITEMS_CAP`, and in id
+  // order (random) those were an arbitrary 200. Archiving stamps `updated_at`,
+  // so it is the moment each one left.
+  const archivedAt = new Map<string, number>();
   const byReason = new Map<string, string[]>();
   for (const id of store.list()) {
     const row = store.row(id);
     if (row === undefined || row.archived !== 1) continue;
     const reason = row.archived_reason ?? "";
     if (reason === REMOVED_BY_OWNER) continue;
+    archivedAt.set(id, row.updated_at ?? row.created_at ?? 0);
     const ids = byReason.get(reason) ?? [];
     ids.push(id);
     byReason.set(reason, ids);
   }
+  const newestFirst = (ids: readonly string[], at: (id: string) => number): string[] =>
+    [...ids].sort((a, b) => at(b) - at(a) || (a < b ? -1 : 1));
   const removedLatest = new Map<string, (typeof removals)[number]>();
   for (const r of removals) removedLatest.set(r.id, r);
   const removedIds = new Set<string>(removedLatest.keys());
@@ -287,7 +296,7 @@ export function healthView(src: DashboardSource): HealthView {
   }
   const reasons: HealthView["archive"]["reasons"] = [];
   const itemsOf = (ids: readonly string[]) =>
-    ids.slice(0, ARCHIVE_ITEMS_CAP).map((id) => {
+    newestFirst(ids, (id) => archivedAt.get(id) ?? 0).slice(0, ARCHIVE_ITEMS_CAP).map((id) => {
       // The archived row's OWN words (not its successor's) when they can be
       // shown; otherwise the named absence or the withholding.
       const r = revealHere(store, id, 90);
@@ -302,7 +311,7 @@ export function healthView(src: DashboardSource): HealthView {
         phrase,
         count: ids.length,
         known: true,
-        items: ids.slice(0, ARCHIVE_ITEMS_CAP).map((id) => {
+        items: newestFirst(ids, (id) => removedLatest.get(id)?.at ?? 0).slice(0, ARCHIVE_ITEMS_CAP).map((id) => {
           const rec = removedLatest.get(id);
           return {
             id,

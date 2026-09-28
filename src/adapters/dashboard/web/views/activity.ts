@@ -45,9 +45,12 @@ export function activityView(
 ): ActivityView {
   const store = src.store;
   const limit = opts.limit ?? FEED_LIMIT;
-  const filter: { name?: string; limit: number } = { limit: LOG_CEILING };
+  const filter: { name?: string; limit: number; order: "desc" } = { limit: LOG_CEILING, order: "desc" };
   if (opts.name !== undefined && opts.name.length > 0) filter.name = opts.name;
-  const all = store.eventLog(filter);
+  // NEWEST `LOG_CEILING`, turned back to oldest first. An ascending read with a
+  // limit is the OLDEST rows: past the ceiling the feed showed last month as
+  // "lately" and `lastSeq` froze, so the pulse never saw a new row again.
+  const all = store.eventLog(filter).reverse();
   const since = opts.sinceSeq;
   const lane = opts.lane;
   const inLane = (r: EventRow): boolean => lane === undefined || laneOf(r.name, payloadOf(r)) === lane;
@@ -60,10 +63,12 @@ export function activityView(
   const lastSeq = all.length === 0 ? 0 : (all[all.length - 1]?.seq ?? 0);
   const everLived = store.livedDay() > 0 || store.list().length > 0;
   const counts = eventCountsByName(src);
+  // The total is counted in SQL, not the length of a read that stops at the ceiling.
+  const total = filter.name !== undefined ? (counts.get(filter.name) ?? 0) : [...counts.values()].reduce((n, c) => n + c, 0);
 
   return {
     events,
-    total: all.length,
+    total,
     lastSeq,
     retentionDays: store.retentionDays,
     bound:
@@ -119,7 +124,8 @@ export function eventDetail(
   seq: number,
 ): { found: boolean; event: NarratedEvent | null; when: string | null } {
   const store = src.store;
-  for (const row of store.eventLog({ limit: LOG_CEILING })) {
+  // Newest first: the rows a page links to are the recent ones.
+  for (const row of store.eventLog({ limit: LOG_CEILING, order: "desc" })) {
     if (row.seq === seq) return { found: true, event: narrate(store, row), when: localClock(row.at, store.zone()) };
   }
   return { found: false, event: null, when: null };

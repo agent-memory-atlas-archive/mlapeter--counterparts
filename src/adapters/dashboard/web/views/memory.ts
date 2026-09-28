@@ -402,7 +402,9 @@ function useDaysOf(src: DashboardSource, id: string): number[] {
   const days = new Set<number>();
   let rows;
   try {
-    rows = src.store.eventLog({ name: "recall.credit", limit: LOG_CEILING });
+    // Newest first: past the ceiling it is the OLDEST days that go uncounted,
+    // never the days it was used this week.
+    rows = src.store.eventLog({ name: "recall.credit", order: "desc", limit: LOG_CEILING });
   } catch {
     return [];
   }

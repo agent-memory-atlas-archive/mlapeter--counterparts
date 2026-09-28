@@ -54,6 +54,14 @@ export function mount() {
   });
 }
 
+/** How many matched, said honestly: "the closest 25 of 143 matches" when the list
+ *  stops short of every match, "3 matches" when it is all of them. */
+export function matchCount(shown, total) {
+  const all = typeof total === "number" && total > shown ? total : shown;
+  if (all > shown) return "the closest " + shown + " of " + all + " matches";
+  return shown + (shown === 1 ? " match" : " matches");
+}
+
 /** The owner chose "search exactly as typed" for the question in the box. */
 let exact = false;
 
@@ -77,7 +85,7 @@ async function runSearch() {
   try { d = await api("/api/search?limit=25&q=" + encodeURIComponent(q)); }
   catch (e) { return fail("Search", e); }
   out.hidden = false;
-  $("qn").textContent = d.hits.length + (d.hits.length === 1 ? " match" : " matches");
+  $("qn").textContent = matchCount(d.hits.length, d.total);
   out.innerHTML = d.absent
     ? absenceLine(d.absent, "nothing I hold matches those words")
     : d.hits.map((h) => memRow({ ...h, text: h.shown, archived: null })).join("");

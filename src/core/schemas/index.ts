@@ -1623,7 +1623,14 @@ export class Schemas {
       `${i.targetId}:${i.day}:${i.challengerId}`;
     const out: PressureIncrement[] = [];
     const seen = new Set<string>();
-    for (const row of this.store.eventLog({ name: "revision.pressure", limit: 1000 })) {
+    // Read by `ref`, one read per id in the chain, newest first: one read of the
+    // whole name kept the OLDEST 1,000 challenges in the store, so once the log
+    // held more, the newest chapters of every story were the ones missing. The
+    // story is told in the order it happened.
+    const rows = chain
+      .flatMap((id) => this.store.eventLog({ name: "revision.pressure", ref: id, order: "desc", limit: 1000 }))
+      .sort((a, b) => a.seq - b.seq);
+    for (const row of rows) {
       if (row.ref === null || !chain.includes(row.ref) || row.payload === null) continue;
       try {
         const p = JSON.parse(row.payload) as Omit<PressureIncrement, "event">;

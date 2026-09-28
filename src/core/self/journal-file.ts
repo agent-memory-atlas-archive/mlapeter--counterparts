@@ -551,8 +551,11 @@ export function standingJournalFailures(store: Store): Set<string> {
   const sinceDay = Math.max(0, store.livedDay() - JOURNAL_FAILURE_WINDOW_DAYS);
   const newest = (name: string): Map<string, number> => {
     const out = new Map<string, number>();
-    for (const row of store.eventLog({ name, sinceDay, limit: 5_000 })) {
-      if (row.ref !== null) out.set(row.ref, row.seq);
+    // Newest first, and the first row seen per id is its newest: an ascending
+    // read with a limit kept the OLDEST rows, so past it a copy written since
+    // was never seen and a mended failure read as standing.
+    for (const row of store.eventLog({ name, sinceDay, order: "desc", limit: 5_000 })) {
+      if (row.ref !== null && !out.has(row.ref)) out.set(row.ref, row.seq);
     }
     return out;
   };

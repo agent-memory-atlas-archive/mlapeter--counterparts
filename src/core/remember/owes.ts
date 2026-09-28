@@ -484,8 +484,11 @@ export function retentionRuns(store: Pick<Store, "eventLog" | "livedDay">): Rete
   try {
     rows = store.eventLog({
       name: RETENTION_EVENT,
-      // Bounded by day, not by count: `eventLog` cuts oldest-first.
+      // Bounded by day as well as by count: an ascending `eventLog` read with a
+      // limit keeps the OLDEST rows and drops the newest, so it is read newest
+      // first (and sorted below either way).
       sinceDay: Math.max(0, store.livedDay() - RETENTION_LOOKBACK_DAYS),
+      order: "desc",
       limit: RETENTION_ROW_CEILING,
     });
   } catch {

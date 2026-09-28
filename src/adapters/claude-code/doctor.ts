@@ -1712,6 +1712,7 @@ function rowsInWindow(
   const all = store.eventLog({
     name,
     sinceDay: Math.max(0, livedDay - AUTHORSHIP_DAYS),
+    order: "desc",
     limit: AUTHORSHIP_LIMIT,
   });
   return {
@@ -1719,10 +1720,9 @@ function rowsInWindow(
       const date = rowDate(r);
       return date !== null && date >= from;
     }),
-    // `eventLog` orders ASCENDING, so a full read is the OLDEST rows of the
-    // window and the newest days are the ones missing. The counts are a floor
-    // and the line says so; a confident wrong number is the one thing a
-    // diagnostic may never produce.
+    // Read newest first, so a full read is missing the window's OLDEST rows
+    // rather than today's. The counts are still a floor and the line says so;
+    // a confident wrong number is the one thing a diagnostic may never produce.
     truncated: all.length >= AUTHORSHIP_LIMIT,
   };
 }
@@ -2488,6 +2488,9 @@ export function upgradeV9Findings(store: Store): Finding[] {
   ];
 }
 
+/** How many `band.promoted` rows the reflection finding reads, newest first. */
+export const PROMOTED_ROWS = 5000;
+
 /**
  * REFLECTION, informational (2026-09-27): when the waking self last
  * reflected, what it did, what became of the morning share; the week's
@@ -2507,10 +2510,17 @@ export function reflectionFindings(input: DoctorInput, store: Store): Finding[] 
   // later — the half of "on reflection" the open door lets through (review
   // of #256, S4). Counted apart from `alone`; one memory can be both.
   let later = 0;
+  let promotionsUnread = false;
   try {
     last = store.reflections({ limit: 5 }).find((r) => r.state === "reflected");
     returns = store.returnCounts({ sinceAt: Date.parse(`${input.today}T00:00:00Z`) - 6 * 86_400_000 });
-    for (const row of store.eventLog({ name: "band.promoted" })) {
+    // Newest first with a named ceiling. The default read was the OLDEST 500
+    // promotions, so the newest were the ones never counted; a read that comes
+    // back full has not seen them all, and then the two counts are unknown
+    // rather than a floor dressed as a total (as `newestRows` does).
+    const promotions = store.eventLog({ name: "band.promoted", order: "desc", limit: PROMOTED_ROWS });
+    promotionsUnread = promotions.length >= PROMOTED_ROWS;
+    for (const row of promotions) {
       try {
         const p = JSON.parse(row.payload ?? "{}") as { reflectionOnly?: unknown; feelingRecordedLater?: unknown };
         if (p.reflectionOnly === true) alone += 1;
@@ -2544,8 +2554,11 @@ export function reflectionFindings(input: DoctorInput, store: Store): Finding[] 
         }${last.page_version === null ? "" : ", the self page rewritten"}, ${share[last.share_state] ?? last.share_state}`;
   const byHow = `returns this week — awake ${String(returns.awake)}, reflection ${String(returns.reflection)}, dream ${String(returns.dream)}`;
   const aloneLine =
-    (alone > 0 ? `; ${String(alone)} ${alone === 1 ? "memory" : "memories"} became core on reflection alone` : "") +
-    (later > 0 ? `; ${String(later)} ${later === 1 ? "memory" : "memories"} became core on a feeling a reflection recorded later` : "") +
+    (promotionsUnread
+      ? `; how many became core on reflection alone is unknown: more than ${String(PROMOTED_ROWS)} promotions in the log, and only the newest ${String(PROMOTED_ROWS)} were read`
+      : "") +
+    (!promotionsUnread && alone > 0 ? `; ${String(alone)} ${alone === 1 ? "memory" : "memories"} became core on reflection alone` : "") +
+    (!promotionsUnread && later > 0 ? `; ${String(later)} ${later === 1 ? "memory" : "memories"} became core on a feeling a reflection recorded later` : "") +
     (relabeled > 0
       ? `; ${String(relabeled)} ${relabeled === 1 ? "mark" : "marks"} changed by a reflection, ${String(movedIn)} of them into me, us or the owner`
       : "");
@@ -2564,8 +2577,8 @@ export function reflectionFindings(input: DoctorInput, store: Store): Finding[] 
         returnsAwake: returns.awake,
         returnsReflection: returns.reflection,
         returnsDream: returns.dream,
-        promotedOnReflectionAlone: alone,
-        promotedOnFeelingRecordedLater: later,
+        promotedOnReflectionAlone: promotionsUnread ? null : alone,
+        promotedOnFeelingRecordedLater: promotionsUnread ? null : later,
         relabeledByReflection: relabeled,
         relabeledIntoCore: movedIn,
       },

@@ -2418,6 +2418,11 @@ export class Store {
         );
   }
 
+  /** How many dreams the store holds, counted in SQL — the "of N" beside a list of the newest. */
+  dreamCount(): number {
+    return this.ops.get<{ n: number }>("SELECT COUNT(*) AS n FROM dreams")?.n ?? 0;
+  }
+
   /** One dream's changes, in the order they were made. */
   dreamChanges(dreamId: string): DreamChangeRow[] {
     return this.ops.all<DreamChangeRow>("SELECT * FROM dream_changes WHERE dream_id = ? ORDER BY seq", dreamId);

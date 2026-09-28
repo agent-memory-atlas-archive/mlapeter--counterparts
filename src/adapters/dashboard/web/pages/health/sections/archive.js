@@ -38,9 +38,12 @@ function list(r) {
       : '<div class="ha-item ha-still">' + esc(m.label) +
         (m.note ? '<span class="ha-note">' + esc(m.note) + "</span>" : "") + "</div>"
   ).join("");
-  const more = r.count > r.items.length ? '<div class="ha-more">and ' + (r.count - r.items.length) + " more</div>" : "";
+  const capped = r.count > r.items.length;
+  const more = capped ? '<div class="ha-more">and ' + (r.count - r.items.length) + " older, not listed</div>" : "";
   return '<div class="ha-listhead"><span class="ha-sw" style="background:' + colourOf(r) + '"></span>' +
-    esc(r.phrase) + " · " + r.count + "</div>" + items + more;
+    esc(r.phrase) + " · " + r.count +
+    '<span class="ha-note">' + (capped ? "the newest " + r.items.length + " of " + r.count + ", newest first" : "newest first") + "</span>" +
+    "</div>" + items + more;
 }
 
 function select(reason) {

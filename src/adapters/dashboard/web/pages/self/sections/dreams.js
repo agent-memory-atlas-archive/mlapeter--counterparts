@@ -66,7 +66,10 @@ export function paint(d) {
         : "") +
       "</div>";
   }).join("") +
-    (v.more > 0 ? '<p class="foot">…and older dreams: <code>counterparts dream --list</code></p>' : "") +
+    (v.more > 0
+      ? '<p class="foot">The newest ' + v.dreams.length + " of " + (v.total ?? v.dreams.length + v.more) + " dreams. " +
+        "Every one, newest first: <code>counterparts dream --list --all</code></p>"
+      : "") +
     "</div>";
   box.querySelectorAll(".dr-top").forEach((b) => b.addEventListener("click", () => {
     const id = b.dataset.id;
