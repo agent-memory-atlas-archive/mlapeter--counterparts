@@ -235,9 +235,10 @@ A superseding row is linked as new; see associate NOTES §14 for what carries ov
 | 9 | Counted (`evictedOther`, `evictedOwn`, `renormalizedNodes`); full homeostasis kept | `counterpart.ts#contiguityOutcome`, doctor |
 | 10 | Listed as dashboard follow-ups | PR body |
 | 11 | Known gap, stated | associate NOTES §14 |
-| A | Pointer lane on or off | waiting for the owner |
-| B | Contiguity through full homeostasis or room-only | waiting for the owner |
-| C | Keep lag 2 | waiting for the owner |
-| D | Seeds receiving from other seeds | waiting for the owner (a later build) |
+| A | Pointer lane on, as built (threshold 0.05, 2 a turn); watch doctor's shown and expanded counts for a week or two of use, then keep, adjust or turn off | owner, 2026-09-28, held lightly |
+| B | Full homeostasis kept, as built; what contiguity pushes out is counted (`evictedOther`, `renormalizedNodes`) and watched | owner, 2026-09-28, held lightly |
+| C | Lag 2 kept for now | owner, 2026-09-28, held lightly |
+| D | Seeds receiving from other seeds: left for a later build | owner, 2026-09-28, held lightly |
 | E | Dashboard test changed to green, as the review gave it | `test/dashboard-mechanisms.test.ts` |
-| F | First pass today-only; supersede noted | waiting for the owner ("start at the next boundary after release") |
+| F | First pass today-only; supersede noted; contiguity starts at the next boundary after release | owner, 2026-09-28, held lightly |
+| 3, follow-up | The cursor's pending mark counts pairs buffered, not pairs planned, so a pair refused at the buffer is not later reported as lost | `counterpart.ts#bufferContiguity`, found by the coordinator reading the fix |
