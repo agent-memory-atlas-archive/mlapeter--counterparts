@@ -583,19 +583,21 @@ Working defaults, held lightly; the association side is `associate/NOTES.md` §1
   was meant to push a candidate away from the loud tier and could also take it away: a
   neighbour's contribution larger than a well-cued memory's own cue dropped it under
   `MIN_CUE_FRACTION` and footnoted it. A hop can now neither buy nor revoke the loud
-  tier; gate (c) is decided by the conversation alone.
+  tier; gate (c) is decided by the conversation alone: `(cue + semantic) / (cue +
+  semantic + arrival)`.
 - **Salience ranks the cut.** The cut to `MAX_CANDIDATES` ranked on activation alone,
   before salience, feeling or mood touched anything — so a salient memory ranked 25th
   never met the lowered bar that would have let it in. The cut now ranks by activation
   over the gate's own bar factor (`salienceRank`: `1 − SAL_BAR_WEIGHT·(2·sal − 1)`,
   with the turn-gated emotional dimension), so it keeps what the relative bar would
-  admit first — and only where the gate will modulate: on a cold-start store or a turn
-  too thin for a background the bar is absolute, so the cut ranks by activation alone
-  there (cold start stays stricter). Chosen over raising the cut because a bigger cut changes the turn's
+  admit first — and only where the gate will modulate: on a cold-start store, or a turn
+  whose cued sample (`cue + semantic > 0`, at most `maxCandidates`) is under
+  `MIN_BACKGROUND_SAMPLE` or has no spread (sd 0), the bar is absolute, so the cut
+  ranks by activation alone there (cold start stays stricter). Chosen over raising the cut because a bigger cut changes the turn's
   background (more weak candidates, lower bars) for every turn, while ranking changes
   only which 24 get there. Mood's lift is not in the key: it needs the feelings read,
   which stays after the cut. What the cut left out is counted (`dropped` on the
   decision and its durable row) — never a silent cut.
 - **The decision record carries `spread`** — seeds, expanded, stop, depth, computed,
-  landed — and `dropped`, both added to `RECALL_DECISION_FIELDS` the way `moodMatched`
+  and `landed` (on candidates the cut KEPT) — and `dropped`, both added to `RECALL_DECISION_FIELDS` the way `moodMatched`
   was (the parallel run that froze that list is over).

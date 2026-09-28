@@ -269,6 +269,44 @@ describe("propose: what a dream may change", () => {
     expect(payload["gistLinks"]).toBe(3);
   });
 
+  test("a proposal lands only where there is room: a full memory gets no-room, and learned links stay", () => {
+    const c = brain();
+    const m = lived(c);
+    const day = c.store.livedDay();
+    // `old` is full: 32 learned links at 0.1 (sum 3.2, at the count cap).
+    const others = Array.from({ length: 32 }, (_, i) => mem(c, `unrelated filler memory number ${String(i)} about gardening`));
+    c.store.linkMany(others.flatMap((o) => [{ src: m.old, dst: o, weight: 0.1, day }]));
+    const learned = c.store.edgesFrom(m.old).map((e) => [e.dst, e.weight]);
+    const { id } = begin(c);
+    const out = c.dreams.propose({
+      dream: id,
+      session: SESSION,
+      changes: [
+        { action: "link", a: m.a, b: m.old },
+        { action: "gist", text: "Migrations before boot, every time.", sources: [m.a, m.old, m.b] },
+      ],
+    });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.results[0]?.ok).toBe(false);
+    expect(out.results[0]?.reason).toBe("no-room");
+    expect(out.results[1]?.ok).toBe(true);
+    expect(out.results[1]?.note).toContain("linked to 2 of 3 sources");
+    // Nothing waking use learned was evicted or scaled.
+    expect(c.store.edgesFrom(m.old).map((e) => [e.dst, e.weight])).toEqual(learned);
+    const gist = out.results[1]?.id as string;
+    const change = c.store.dreamChanges(id).find((x) => x.action === "gist");
+    expect(JSON.parse(String(change?.detail))["linked"]).toEqual([m.a, m.b]);
+    expect(JSON.parse(String(change?.detail))["noRoom"]).toBe(1);
+    expect(c.store.edgesFrom(gist).map((e) => e.dst).sort()).toEqual([m.a, m.b].sort());
+    const row = c.store.eventLog({ name: "dream.changed", order: "desc", limit: 1 })[0];
+    const payload = JSON.parse(String(row?.payload ?? "{}")) as Record<string, unknown>;
+    expect(payload["gistLinks"]).toBe(2);
+    expect(payload["linkNoRoom"]).toBe(2);
+    expect(payload["linkFrozen"]).toBe(0);
+    expect(payload["linkFailed"]).toBe(0);
+  });
+
   test("a memory pinned after it was shown gets no link: its edges are frozen", () => {
     const c = brain();
     const m = lived(c);

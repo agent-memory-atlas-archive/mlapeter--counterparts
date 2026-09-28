@@ -2561,10 +2561,30 @@ export class Store {
    * already carry nothing (an eviction's zero, a weight decayed to the floor;
    * 2026-09-28). The predicate is the caller's, because the decay arithmetic is
    * `associate/`'s, not the store's. One transaction; returns the count.
+   *
+   * PREFILTERED IN SQL, so the write transaction reads only candidates: rows
+   * at or below `floor`, or last written on or before `staleOnOrBefore` (the
+   * caller's day by which even a full-weight edge has decayed under the
+   * floor). `dead` decides on that subset. A row that has faded more recently
+   * is swept on a later flush, once it is old enough to be a candidate. Rows
+   * touching a PINNED memory are never candidates: a pinned memory's edges are
+   * frozen both ways (associate G9), and that includes their removal.
    */
-  sweepEdges(dead: (e: EdgeRow) => boolean): number {
+  sweepEdges(
+    filter: { floor: number; staleOnOrBefore: number },
+    dead: (e: EdgeRow) => boolean,
+  ): number {
     const n = this.mutate("sweepEdges", () => {
-      const doomed = this.ops.all<EdgeRow>("SELECT * FROM edges").filter(dead);
+      const doomed = this.ops
+        .all<EdgeRow>(
+          `SELECT e.* FROM edges e
+            WHERE (e.weight <= ? OR e.last_day <= ?)
+              AND NOT EXISTS (SELECT 1 FROM memories m
+                               WHERE m.id IN (e.src, e.dst) AND m.protected = 1)`,
+          filter.floor,
+          filter.staleOnOrBefore,
+        )
+        .filter(dead);
       if (doomed.length === 0) return 0;
       const st = this.ops.prepare("DELETE FROM edges WHERE src = ? AND dst = ?");
       for (const e of doomed) st.run(e.src, e.dst);

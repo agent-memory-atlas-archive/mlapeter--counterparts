@@ -109,10 +109,10 @@ export function homeostasis(
     .sort((x, y) => y[1] - x[1] || (x[0] < y[0] ? -1 : 1));
 
   for (const [dst, w] of live.slice(t.MAX_EDGES_PER_NODE)) {
-    // "Removal" here is a zeroed weight, not a deleted row: this module has no
-    // delete and the store exports none (no-silent-destruction). The eviction is
-    // reported and evented; the durable eviction ARCHIVE is a store gap
-    // (INTERFACE-GAPS.md §2).
+    // Eviction writes a ZEROED weight here; the flush's sweep (`sweepEdges`,
+    // 2026-09-28) then deletes the zeroed row after the write lands. The
+    // eviction is reported and evented, but no durable archive of which pair
+    // was evicted exists — a store gap (INTERFACE-GAPS.md §2).
     next.set(dst, 0);
     evictions.push({ src, dst, priorWeight: w, reason: "count-cap" });
   }
@@ -152,13 +152,30 @@ export function planFlush(
   return plan(deltas, day, edgesFrom, t, (current, delta) => strengthen(current, delta, t));
 }
 
+/** One proposed pair's fate. */
+export type ProposalOutcome = "landed" | "no-room";
+
+export interface ProposalPlan {
+  /** Absolute rows for the pairs that landed — only those pairs' two edges;
+   *  no other row is touched. */
+  readonly rows: readonly EdgeState[];
+  /** Per pair, in the order proposed. */
+  readonly outcomes: readonly { a: string; b: string; outcome: ProposalOutcome }[];
+}
+
 /**
- * A PROPOSED link (a dream's `link`, a gist's sources — 2026-09-28): each
- * direction becomes at least `weight`, measured against its DECAYED weight at
- * `day` (never the stored one, or re-proposing an old pair would resurrect the
- * weight it had before it faded), capped, and then the touched nodes go through
- * the same homeostasis a Hebbian flush does. A proposal adds nothing to an
- * edge already at or above it: the dream proposes, waking use confirms.
+ * A PROPOSED link (a dream's `link`, a gist's sources — 2026-09-28) lands ONLY
+ * WHERE THERE IS ROOM. The dream proposes, waking use confirms: a proposal
+ * never evicts an edge and never scales one down, so nothing use has learned
+ * is ever paid for by a dream. Homeostasis stays the Hebbian flush's.
+ *
+ * Each direction is raised to at least `weight` from its DECAYED weight at
+ * `day` (never the stored one — re-proposing an old pair must not resurrect
+ * what it weighed before it faded). A pair lands only if BOTH endpoints have
+ * room: a new live edge must fit under `MAX_EDGES_PER_NODE`, and the node's
+ * live outgoing sum after the raise must stay within `MAX_OUT_WEIGHT`.
+ * Otherwise the pair is `no-room` and nothing about it is written. Pairs are
+ * taken in the order given, so when room runs out the first named are kept.
  */
 export function planProposal(
   pairs: readonly { a: string; b: string }[],
@@ -166,15 +183,58 @@ export function planProposal(
   day: number,
   edgesFrom: (id: string) => readonly EdgeState[],
   t: AssociateTunables,
-): FlushPlan {
+): ProposalPlan {
   const w = Math.min(t.EDGE_CAP, Math.max(0, weight));
-  return plan(
-    pairs.map((p) => ({ a: p.a, b: p.b, delta: w })),
-    day,
-    edgesFrom,
-    t,
-    (current, proposed) => Math.max(current, proposed),
-  );
+  /** node -> (dst -> decayed weight at `day`), updated as pairs land. */
+  const nodes = new Map<string, Map<string, number>>();
+  const load = (id: string): Map<string, number> => {
+    const have = nodes.get(id);
+    if (have !== undefined) return have;
+    const m = new Map<string, number>();
+    for (const e of edgesFrom(id)) if (e.dst !== id) m.set(e.dst, edgeWeightAt(e, day, t));
+    nodes.set(id, m);
+    return m;
+  };
+  const room = (node: Map<string, number>, dst: string): boolean => {
+    const current = node.get(dst) ?? 0;
+    const next = Math.max(current, w);
+    if (next === current) return true; // nothing to add
+    let live = 0;
+    let sum = 0;
+    for (const v of node.values()) {
+      if (!conducts(v, t)) continue;
+      live += 1;
+      sum += v;
+    }
+    const isNew = !conducts(current, t) && conducts(next, t);
+    if (isNew && live + 1 > t.MAX_EDGES_PER_NODE) return false;
+    const after = sum - (conducts(current, t) ? current : 0) + (conducts(next, t) ? next : 0);
+    return after <= t.MAX_OUT_WEIGHT + 1e-12;
+  };
+
+  const rows = new Map<string, EdgeState>();
+  const outcomes: { a: string; b: string; outcome: ProposalOutcome }[] = [];
+  for (const p of pairs) {
+    if (p.a === p.b) continue;
+    const fwd = load(p.a);
+    const back = load(p.b);
+    if (!room(fwd, p.b) || !room(back, p.a)) {
+      outcomes.push({ a: p.a, b: p.b, outcome: "no-room" });
+      continue;
+    }
+    for (const [src, node, dst] of [
+      [p.a, fwd, p.b],
+      [p.b, back, p.a],
+    ] as const) {
+      const current = node.get(dst) ?? 0;
+      const next = Math.max(current, w);
+      if (next === current) continue;
+      node.set(dst, next);
+      rows.set(`${src}\u0000${dst}`, { src, dst, weight: next, lastDay: day });
+    }
+    outcomes.push({ a: p.a, b: p.b, outcome: "landed" });
+  }
+  return { rows: [...rows.values()], outcomes };
 }
 
 function plan(

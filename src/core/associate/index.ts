@@ -68,7 +68,7 @@ export interface AssociateStore {
    * so a store without it simply keeps its dead rows — they conduct nothing
    * either way. Returns how many rows went.
    */
-  sweepEdges?(dead: (e: EdgeRow) => boolean): number;
+  sweepEdges?(filter: { floor: number; staleOnOrBefore: number }, dead: (e: EdgeRow) => boolean): number;
 }
 
 /** Telemetry: ids, counts, weights, reasons. NEVER body text or turn text. */
@@ -145,17 +145,20 @@ export interface FlushReport {
   readonly swept: number;
 }
 
-export type ProposeReason = "linked" | "observer" | "nothing-to-link" | "failed";
+export type ProposeReason = "linked" | "no-room" | "observer" | "nothing-to-link" | "failed";
 
 /** What a proposed link did (a dream's `link`, a gist's sources — 2026-09-28). */
 export interface ProposeReport {
   readonly reason: ProposeReason;
   readonly day: number;
-  /** Pairs that went through (both endpoints live and not pinned). */
+  /** Pairs that LANDED (or were already at least the proposal). */
   readonly pairs: number;
+  /** The pairs that landed, in the order proposed. */
+  readonly landed: readonly { a: string; b: string }[];
   readonly rows: number;
-  readonly evictions: readonly Eviction[];
-  readonly renormalized: number;
+  /** Pairs refused because an endpoint had no room (count cap or outgoing
+   *  bound) — a proposal never evicts or scales down to make room. */
+  readonly noRoom: number;
   /** Pairs refused because an endpoint is not live memory. */
   readonly blocked: number;
   /** Pairs refused because an endpoint is pinned (G9: frozen both ways). */
@@ -176,6 +179,19 @@ function codeOf(err: unknown): string {
 }
 
 const EVENT_RING = 200;
+
+/**
+ * Lived days for a FULL-weight edge (`EDGE_CAP`) to decay to the floor: any
+ * row last written this long ago is dead whatever it weighed, so the sweep's
+ * SQL prefilter can name it without the curve. Found by stepping the curve,
+ * so it holds for any shape.
+ */
+export function fadeHorizon(t: AssociateTunables): number {
+  for (let h = 1; h < 100_000; h++) {
+    if (!conducts(edgeWeightAt({ src: "", dst: "", weight: t.EDGE_CAP, lastDay: 0 }, h, t), t)) return h;
+  }
+  return 100_000;
+}
 
 export class Associate {
   readonly tunables: AssociateTunables;
@@ -439,8 +455,9 @@ export class Associate {
   private sweep(day: number): number {
     if (this.store.sweepEdges === undefined) return 0;
     try {
-      return this.store.sweepEdges((e) =>
-        isDead({ src: e.src, dst: e.dst, weight: e.weight, lastDay: e.last_day }, day, this.tunables),
+      return this.store.sweepEdges(
+        { floor: this.tunables.EDGE_FLOOR, staleOnOrBefore: day - fadeHorizon(this.tunables) },
+        (e) => isDead({ src: e.src, dst: e.dst, weight: e.weight, lastDay: e.last_day }, day, this.tunables),
       );
     } catch (err) {
       this.emit("associate.sweep.failed", undefined, { day, error: codeOf(err) });
@@ -453,15 +470,16 @@ export class Associate {
   /**
    * A link somebody PROPOSES rather than one waking use earned: a dream's
    * `link`, a dreamed gist's ties to its sources. It lands now (there is no
-   * turn boundary to wait for) and goes through the same rules a Hebbian flush
-   * does — both endpoints live, a pinned memory frozen both ways (G9), each
-   * direction raised to at least `weight` from its DECAYED weight, then the
-   * count cap and the outgoing bound on every touched node — so a gist with
-   * forty sources is homeostased at birth instead of carrying a sum of twelve.
+   * turn boundary to wait for), under the rules a Hebbian flush obeys — both
+   * endpoints live, a pinned memory frozen both ways (G9), each direction
+   * raised to at least `weight` from its DECAYED weight — and ONLY WHERE THERE
+   * IS ROOM (`planProposal`): a proposal never evicts an edge and never scales
+   * one down. Where an endpoint is full (the count cap) or the raise would pass
+   * the outgoing bound, that pair is refused `no-room`. The dream proposes,
+   * waking use confirms: homeostasis belongs to the Hebbian flush.
    *
-   * `weight` defaults to `HEBB_RATE`: about one co-activation. The dream
-   * proposes; waking use confirms, and decay (`S_EDGE`) fades what it never
-   * does.
+   * `weight` defaults to `HEBB_RATE`: about one co-activation. Decay
+   * (`S_EDGE`) fades what waking use never confirms.
    */
   propose(pairs: readonly { a: string; b: string }[], weight?: number, day?: number): ProposeReport {
     const d = day ?? this.store.livedDay();
@@ -469,9 +487,9 @@ export class Associate {
       reason: "nothing-to-link",
       day: d,
       pairs: 0,
+      landed: [],
       rows: 0,
-      evictions: [],
-      renormalized: 0,
+      noRoom: 0,
       blocked: 0,
       frozen: 0,
     };
@@ -503,6 +521,8 @@ export class Associate {
 
     const w = weight ?? this.tunables.HEBB_RATE;
     const plan = planProposal(live, w, d, (id) => this.edgeStates(id), this.tunables);
+    const landed = plan.outcomes.filter((o) => o.outcome === "landed").map((o) => ({ a: o.a, b: o.b }));
+    const noRoom = plan.outcomes.length - landed.length;
     const rows: EdgeInput[] = plan.rows.map((r) => ({ src: r.src, dst: r.dst, weight: r.weight, day: r.lastDay }));
     if (rows.length > 0) {
       try {
@@ -512,30 +532,28 @@ export class Associate {
         return { ...empty, reason: "failed", blocked, frozen, code: codeOf(err) };
       }
     }
-    for (const ev of plan.evictions) {
-      this.emit("associate.edge.evicted", ev.src, { dst: ev.dst, priorWeight: ev.priorWeight, reason: ev.reason });
-    }
     this.emit("associate.propose", undefined, {
       day: d,
       pairs: live.length,
       weight: w,
+      landed: landed.length,
+      noRoom,
       rows: rows.length,
       blocked,
       frozen,
-      evicted: plan.evictions.length,
-      renormalized: plan.renormalized.length,
     });
     return {
-      reason: "linked",
+      reason: landed.length > 0 ? "linked" : "no-room",
       day: d,
-      pairs: live.length,
+      pairs: landed.length,
+      landed,
       rows: rows.length,
-      evictions: plan.evictions,
-      renormalized: plan.renormalized.length,
+      noRoom,
       blocked,
       frozen,
     };
   }
+
 
   // ── spreading activation ───────────────────────────────────────────────────
 

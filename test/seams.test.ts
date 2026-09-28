@@ -429,7 +429,7 @@ describe("SEAMS A — the observer predicate is hoisted, and stand-down totality
       supersedeInto: [seedId, seedId, "dream-merge"],
       restoreSuperseded: [seedId, "dream-merge"],
       restoreEdge: [seedId, seedId, null],
-      sweepEdges: [() => true],
+      sweepEdges: [{ floor: 0.02, staleOnOrBefore: 0 }, () => true],
       retractFeelings: [["fel_x"]],
       retractDreamReturns: ["drm_x"],
       retractDreamNominations: ["drm_x"],

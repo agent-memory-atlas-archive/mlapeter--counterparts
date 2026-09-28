@@ -205,3 +205,16 @@ into the quiet node's edges, which the quiet node may value (it is one of few), 
 is not the build-1 question. If replay shows one-way ghosts mattering, the fix is to
 zero the back row inside the same plan (`planFlush` already loads both endpoints of
 every delta), counted as its own eviction reason.
+
+## 10. Left for the next build (from the adversarial review of #279, 2026-09-28)
+
+Recorded, not built — build 1 was measure-and-fix only:
+
+- **A best-first queue across depths, with an activation threshold.** Today each hop's
+  frontier is ranked, but depth 1 still finishes before depth 2 starts, and a node is
+  expanded however little it carries. A single priority queue over (carried) across
+  depths, stopping under a threshold, would spend the node budget where activation is.
+- **A ceiling on the per-candidate hop score.** Contributions sum across paths with no
+  cap, so a candidate reached by many seeds can gather a hop score out of proportion to
+  its own cue. A ceiling (relative to the candidate's cue + semantic, say) belongs with
+  option (b) of §1, when hops start to matter for what is shown.

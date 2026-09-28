@@ -701,6 +701,8 @@ describe("co-activation crosses the process line on disk", () => {
     const later = c.creditReferences("s1", { assistantTurns: [], expansions: [a, d] });
     expect(later.credited).toBe(1);
     expect(later.refused["already-credited-at-or-above"]).toBe(1);
+    expect(later.linkedDespite).toBe(1);
+    expect(first.linkedDespite).toBe(0);
 
     c.applyPendingAssociations();
     expect(c.associate.linked(a, b)).toBe(true);

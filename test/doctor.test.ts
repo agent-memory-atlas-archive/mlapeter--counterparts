@@ -2623,7 +2623,10 @@ describe("Association (2026-09-28): what spreading did, and the edges", () => {
     expect(f.data["edges"]).toBe(3);
     expect(f.data["conducting"]).toBe(2);
     expect(f.data["hebbian"]).toBe(3);
-    expect(f.detail).toContain("(depth 2) on 50% of 2 turns");
+    expect(f.detail).toContain("(depth 2) on 50% of 2 turns it ran");
+    expect(f.detail).toContain("last 7 lived days");
+    expect(f.detail).toContain("summed over all 3 recall turns");
+    expect(f.data["allTurns"]).toBe(3);
     expect(f.detail).toContain("node limit on 50%");
   });
 });

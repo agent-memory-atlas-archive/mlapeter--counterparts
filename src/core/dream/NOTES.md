@@ -14,7 +14,7 @@ What the build learned, and every choice the brief left open (2026-09-26).
 | `LOOKBACK_DAYS` ± `LOOKBACK_SPREAD`, `LOOKBACK_COUNT` | 7 ± 2, 5 | "about a week back", the strongest-felt five |
 | `TEXT_CHARS`, `PAGE_CHARS`, `WAKE_CHARS`, `CHAPTER_CHARS`, `MAX_CHAPTERS` | 400, 6000, 6000, 3000, 6 | keep the bundle well under an MCP tool result's size |
 | `LIMITS` | merge 10, link 20, gist 3, replayed 60, contradiction 10, feeling-now 10, nominate-core 3 | the owner's "~10 merges, 20 links, 3 gists"; the rest sized so a dream over 40 new memories can replay each |
-| `LINK_WEIGHT` | 0.1 (was 0.3 until 2026-09-28) | about one Hebbian co-activation (`HEBB_RATE`): the dream proposes, waking use confirms, edge decay fades the rest. Written through `associate`'s homeostasis, raised from the decayed weight, never added |
+| `LINK_WEIGHT` | 0.1 (was 0.3 until 2026-09-28) | about one Hebbian co-activation (`HEBB_RATE`): the dream proposes, waking use confirms, edge decay fades the rest. Written through `associate.propose`: raised from the decayed weight, never added, and only where both ends have room (never evicts or scales down a learned link) |
 | `MAX_TEXT_CHARS`, `MAX_JOURNAL_CHARS` | 2000, 12000 | bounds, not targets |
 
 ## Choices the brief left open

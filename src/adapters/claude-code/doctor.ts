@@ -2694,11 +2694,13 @@ export function associationFindings(store: Store): Finding[] {
   let landed = 0;
   let computed = 0;
   let dropped = 0;
+  let allTurns = 0;
   let unread = false;
   const census = { total: 0, conducting: 0, gist: 0, dream: 0, hebbian: 0 };
   try {
     const rows = store.eventLog({ name: "recall.decision", sinceDay: since, order: "desc", limit: ASSOCIATION_ROWS });
     unread = rows.length >= ASSOCIATION_ROWS;
+    allTurns = rows.length;
     for (const row of rows) {
       const p = payloadOf(row);
       const d = num(p, "dropped");
@@ -2734,15 +2736,15 @@ export function associationFindings(store: Store): Finding[] {
   const pct = (n: number): string => (turns === 0 ? "0%" : `${String(Math.round((100 * n) / turns))}%`);
   const spreadSaid =
     turns === 0
-      ? `no spreading measured on the last ${String(ASSOCIATION_WINDOW_DAYS)} lived days' turns yet`
-      : `spread got past its seeds (depth 2) on ${pct(deep)} of ${String(turns)} turns; stopped at the node limit on ${pct(nodeLimit)}; ${String(landed)} of ${String(computed)} contributions landed on a candidate this week`;
+      ? `last ${String(ASSOCIATION_WINDOW_DAYS)} lived days — no spreading measured yet`
+      : `last ${String(ASSOCIATION_WINDOW_DAYS)} lived days — spread got past its seeds (depth 2) on ${pct(deep)} of ${String(turns)} turns it ran; stopped at the node limit on ${pct(nodeLimit)}; ${String(landed)} of ${String(computed)} contributions landed on a candidate the cut kept`;
   return [
     finding(
       "association",
       "green",
       "Association",
-      `${spreadSaid}. Edges: ${String(census.total)} rows, ${String(census.conducting)} conducting — ${String(census.hebbian)} learned from use, ${String(census.dream)} dream links, ${String(census.gist)} gist ties (sources derived)` +
-        (dropped > 0 ? `. The candidate cut left out ${String(dropped)} scored memories over those turns` : "") +
+      `${spreadSaid}. Edges: ${String(census.total)} rows, ${String(census.conducting)} conducting — ${String(census.hebbian)} learned from use, ${String(census.dream)} dream links, ${String(census.gist)} gist ties (derived: a row touching a dream's gist is a gist tie, a pair a dream linked is a dream link, the rest were learned from use)` +
+        (dropped > 0 ? `. The candidate cut left out ${String(dropped)} scored memories, summed over all ${String(allTurns)} recall turns in the window` : "") +
         (unread ? ". More turns than were read: the counts are a floor" : ""),
       "",
       {
@@ -2752,6 +2754,7 @@ export function associationFindings(store: Store): Finding[] {
         landed,
         computed,
         dropped,
+        allTurns,
         edges: census.total,
         conducting: census.conducting,
         hebbian: census.hebbian,

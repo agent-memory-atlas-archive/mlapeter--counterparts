@@ -72,7 +72,7 @@ export interface Candidate {
    *  `cueFraction`'s numerator, and never able to mint a candidate. */
   readonly hops: number;
   readonly activation: number;
-  /** (cue + semantic) / (activation − hops) — hard gate (c)'s input. Hops are
+  /** (cue + semantic) / (cue + semantic + arrival) — hard gate (c)'s input. Hops are
    *  in neither half (2026-09-28). */
   readonly cueFraction: number;
   readonly matched: number;
@@ -119,6 +119,7 @@ export interface SpreadStats {
   /** Deepest hop expanded: 1 = seeds only, 2 = got past them. */
   readonly depth: number | null;
   readonly computed: number;
+  /** Contributions that landed on a candidate the cut KEPT (what the gate saw). */
   readonly landed: number;
 }
 
@@ -572,10 +573,17 @@ export function activate(
   // store, or a turn too thin for a background (`gate.ts#background`), the bar
   // is absolute and salience never lowers it — ranking by salience there would
   // let a quieter memory displace the one the absolute bar would admit, and
-  // cold start is stricter, not looser. The gate's sample is the kept set, so
-  // it is at most `maxCandidates`.
-  const relative =
-    storeSize >= t.COLD_START_MIN_STORE && Math.min(scored.length, input.maxCandidates) >= t.MIN_BACKGROUND_SAMPLE;
+  // cold start is stricter, not looser. The regime test mirrors
+  // `gate.ts#background`: the gate's sample is the kept candidates with
+  // `cue + semantic > 0` (at most `maxCandidates` of them), and a sample with
+  // no spread (sd 0) is thin too. Estimated here on the cued candidates an
+  // activation-ranked cut would keep.
+  const sample = scored
+    .filter((c) => c.cue + c.semantic > 0)
+    .map((c) => c.activation)
+    .sort((x, y) => y - x)
+    .slice(0, input.maxCandidates);
+  const relative = storeSize >= t.COLD_START_MIN_STORE && sample.length >= t.MIN_BACKGROUND_SAMPLE && spreadOf(sample) > 0;
   scored.sort((a, b) =>
     relative
       ? b.cutKey - a.cutKey || b.activation - a.activation || (a.id < b.id ? -1 : 1)
@@ -621,7 +629,7 @@ export function activate(
       // standing, can never buy it the loud tier, and can no longer REVOKE it
       // either — with hops in the denominator, a neighbour's activation could
       // push a well-cued memory under `MIN_CUE_FRACTION` and footnote it.
-      cueFraction: activation - hops > 0 ? (cue + semantic) / (activation - hops) : 0,
+      cueFraction: cue + semantic + arrival > 0 ? (cue + semantic) / (cue + semantic + arrival) : 0,
       matched: matchCount.get(id) ?? 0,
       // A temporal cue is id-addressed: no handle is involved, so nothing about
       // it is ambiguous, and an unambiguous cue trains. Without this clause a
@@ -642,9 +650,18 @@ export function activate(
     semanticDegraded,
     capped,
     semantic: ranked === null ? null : { identity, path, floor: tuning.floor, weight: tuning.weight },
-    spread: spreadRun === null ? null : { ...spreadRun, landed: scored.filter((c) => c.hops > 0).length },
+    // `landed` is counted AFTER the cut: a hop on a candidate the cut left out
+    // reached nothing the gate saw.
+    spread: spreadRun === null ? null : { ...spreadRun, landed: kept.filter((c) => c.hops > 0).length },
     dropped,
   };
+}
+
+/** Population standard deviation — the gate's own (`gate.ts#background`). */
+function spreadOf(xs: readonly number[]): number {
+  if (xs.length === 0) return 0;
+  const mean = xs.reduce((a, b) => a + b, 0) / xs.length;
+  return Math.sqrt(xs.reduce((acc, x) => acc + (x - mean) * (x - mean), 0) / xs.length);
 }
 
 /**

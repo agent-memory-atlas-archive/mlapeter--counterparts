@@ -597,6 +597,9 @@ export interface CreditSummary {
   /** Refusals keyed by the physics `CreditReason` (or recall's own gate reason). */
   readonly refused: Record<string, number>;
   readonly ids: string[];
+  /** Uses refused strength credit only for their day cadence that still joined
+   *  the turn's links (2026-09-28; associate NOTES §13). */
+  readonly linkedDespite: number;
   /** Every id the assistant EXPANDED this boundary, credited or refused — the
    *  OQ4 probe's input (`recall/probe.ts`): footnotes delivered ∩ later expanded. */
   readonly expandedIds: string[];
@@ -2168,6 +2171,10 @@ export class Counterpart {
     const ids: string[] = [];
     const coactivated: Credited[] = [];
     let credited = 0;
+    /** Uses whose strength credit was refused for its day cadence and that
+     *  joined the turn's links anyway (2026-09-28) — counted, so the decoupling
+     *  is visible on the credit row. */
+    let linkedDespite = 0;
     for (const u of uses) {
       try {
         // A QUOTED use was a loud candidate recall surfaced on a turn's own cue
@@ -2184,6 +2191,7 @@ export class Counterpart {
         // observer, and a use that threw. Pairs are still at most once per turn:
         // `coactivate` takes each id once.
         if (r.credited || linksDespite(r)) coactivated.push({ id: u.memoryId, tier: "referenced" });
+        if (!r.credited && linksDespite(r)) linkedDespite += 1;
         if (r.credited) {
           credited += 1;
           ids.push(u.memoryId);
@@ -2217,6 +2225,7 @@ export class Counterpart {
       unreadable,
       refused,
       ids,
+      linkedDespite,
     };
     this.emit("counterpart.credit", sessionId, {
       reason,
@@ -2225,6 +2234,7 @@ export class Counterpart {
       expanded: summary.expanded,
       quoted: summary.quoted,
       credited,
+      linkedDespite,
     });
     return summary;
   }
@@ -2463,7 +2473,9 @@ export class Counterpart {
     for (const use of uses) {
       const result = this.resolveUse(sessionId, use.memoryId, use.tier);
       results.push(result);
-      if (result.credited) credited.push({ id: use.memoryId, tier: use.tier });
+      // The same rule as `creditReferences` (2026-09-28): links do not inherit
+      // the once-a-day credit cadence.
+      if (result.credited || linksDespite(result)) credited.push({ id: use.memoryId, tier: use.tier });
     }
     this.associate.coactivate(credited);
     return results;
