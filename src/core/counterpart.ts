@@ -2468,7 +2468,7 @@ export class Counterpart {
    * Display only — nothing in the core reads them. Throws what the store
    * throws (`TRAIT_INVALID`).
    */
-  addTraits(memoryId: string, inputs: readonly TraitInput[], opts: { model?: string } = {}): { ids: readonly string[] } {
+  addTraits(memoryId: string, inputs: readonly TraitInput[], opts: { model?: string } = {}): { ids: readonly string[]; repairs: readonly { index: number; note: string }[] } {
     const clean = inputs.map((t) => ({
       ...t,
       ...(typeof t.carriedBy === "string" ? { carriedBy: redactSecrets(t.carriedBy) } : {}),

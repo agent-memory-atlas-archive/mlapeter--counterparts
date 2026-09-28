@@ -117,7 +117,7 @@ export interface FeelingNotice {
  */
 export interface FeelingRepair {
   readonly index: number;
-  readonly field: "emotion" | "other_word" | "carried_by";
+  readonly field: "emotion" | "other_word" | "carried_by" | "core";
   readonly was: string;
   readonly now: string;
   readonly note: string;
@@ -139,9 +139,12 @@ const ANY_BREAK = /\s*(?:[:;,—–]|\s-\s)\s*/u;
  * `steadied` and the nuance after it, which belongs in `carried_by`. Split
  * when the text is longer than `OTHER_WORD_MAX_CHARS`, or carries a strong
  * break (`:`, `;`, a dash): the head — up to the first `:`, `—`, `–`, `;` or
- * `,` (a comma only when over-long), else the first word — is the emotion, and
- * the rest goes to `carried_by` (set when empty, else appended). Pure; null
- * when nothing needed splitting.
+ * `,` (a comma only when over-long) — is the emotion, and the rest goes to
+ * `carried_by` (set when empty, else appended). With no break, an over-long
+ * phrase is cut at the last word boundary within the cap ("a deep and abiding
+ * sense of gratitude for…" keeps its first words, not just "a"); punctuation
+ * alone is kept to the cap. The emotion that comes back is never longer than
+ * the cap. Pure; null when nothing needed splitting.
  */
 export function repairEmotion(emotion: string, carriedBy: string): { emotion: string; carriedBy: string; tail: string } | null {
   const raw = emotion.trim();
@@ -154,22 +157,33 @@ export function repairEmotion(emotion: string, carriedBy: string): { emotion: st
     head = raw.slice(0, cut.index).trim();
     tail = raw.slice(cut.index + cut[0].length).trim();
   } else {
-    // No break before any words (or none at all): the first word is the emotion.
-    const words = raw.replace(/^[\s:;,—–-]+/u, "").split(/\s+/u);
-    head = (words[0] ?? "").replace(/[:;,—–]+$/u, "");
-    tail = words.slice(1).join(" ").trim();
+    // A break before any words (": steadied — …"): drop the leading
+    // punctuation and read what is left. No break at all: the whole of it.
+    const stripped = raw.replace(/^[\s:;,—–-]+/u, "").trim();
+    if (stripped.length > 0 && stripped !== raw) {
+      const again = repairEmotion(stripped, carriedBy);
+      return again ?? { emotion: stripped, carriedBy: carriedBy.trim(), tail: "" };
+    }
+    head = stripped.length > 0 ? stripped : raw;
+    tail = "";
   }
   if (head.length > OTHER_WORD_MAX_CHARS) {
-    // A head still too long to be a word: its first word is the emotion.
-    const words = head.split(/\s+/u);
-    const first = words[0] ?? "";
-    head = first.slice(0, OTHER_WORD_MAX_CHARS);
-    tail = [first.slice(OTHER_WORD_MAX_CHARS), words.slice(1).join(" "), tail].filter((x) => x.length > 0).join(" ");
+    const [kept, rest] = fitWords(head, OTHER_WORD_MAX_CHARS);
+    head = kept;
+    tail = [rest, tail].filter((x) => x.length > 0).join(" ");
   }
   if (head.length === 0) return null;
   const carried = carriedBy.trim();
   const joined = tail.length === 0 ? carried : carried.length === 0 ? tail : `${carried}; ${tail}`;
   return { emotion: head, carriedBy: joined, tail };
+}
+
+/** `text` cut at the last word boundary within `max` (or at `max` when one word is longer), and the rest. */
+function fitWords(text: string, max: number): [string, string] {
+  if (text.length <= max) return [text, ""];
+  const at = text.lastIndexOf(" ", max);
+  if (at > 0) return [text.slice(0, at).trim(), text.slice(at).trim()];
+  return [text.slice(0, max), text.slice(max)];
 }
 
 /** What a split says to the writer, so the next one is written right. */
@@ -268,9 +282,19 @@ export function checkFeelings(inputs: readonly FeelingInput[]): { rows: CheckedF
     } else {
       const read = resolveEmotion(core, f.emotion);
       if (read.kind === "wrong-core") {
-        invalid(i, "emotion-under-another-core", { emotion: read.entry.key, core: read.entry.core });
-      }
-      if (read.kind === "wheel") {
+        // ACCEPT AND REPAIR (owner, 2026-09-28): a wheel word named under
+        // another core is stored under its own, and said (it was refused
+        // `emotion-under-another-core`).
+        emotion = read.entry.key;
+        storedCore = read.entry.core;
+        repairs.push({
+          index: i,
+          field: "core",
+          was: core,
+          now: read.entry.core,
+          note: `"${read.entry.word}" sits under ${read.entry.core} on the wheel, not ${core}, so it was stored under ${read.entry.core}.`,
+        });
+      } else if (read.kind === "wheel") {
         emotion = read.entry.key;
         // A blend named under its second core is stored under its primary.
         storedCore = read.entry.core;

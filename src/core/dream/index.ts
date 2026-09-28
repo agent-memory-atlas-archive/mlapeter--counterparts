@@ -450,6 +450,17 @@ export class Dreams {
   private apply(dream: DreamRow, shown: Set<string>, change: DreamChange): Omit<ChangeResult, "index"> {
     const action = String(change.action) as DreamAction;
     if (!(DREAM_ACTIONS as readonly string[]).includes(action)) return { action, ok: false, reason: "unknown-action", detail: `"${action}" is not an action: one of ${DREAM_ACTIONS.join(", ")}.` };
+    // A feeling this dream already recorded is answered as recorded BEFORE the
+    // limit is read: a resent batch must not come back limit-reached and ask
+    // to be proposed again (review of #268).
+    if (action === "feeling-now" && change.id !== undefined && shown.has(change.id)) {
+      const row = this.store.row(change.id);
+      if (row !== undefined && this.showable(row)) {
+        const made = this.feelingNow(dream, row, change);
+        const same = made.ok ? this.sameFeelingThisDream(dream.id, row.id, made.input) : null;
+        if (same !== null) return { action, ok: true, reason: "already-recorded", id: row.id, note: `This dream already recorded that feeling on ${row.id} (${same}); nothing new was written.` };
+      }
+    }
     const used = this.store.dreamChanges(dream.id).filter((c) => c.action === action && c.undone === 0).length;
     if (used >= DREAM_TUNABLES.LIMITS[action]) return { action, ok: false, reason: "limit-reached", detail: `This dream has made its ${String(DREAM_TUNABLES.LIMITS[action])} ${action} changes.` };
     const day = this.store.livedDay();
@@ -481,6 +492,7 @@ export class Dreams {
         if (!words.ok) return { action, ok: false, reason: words.reason, detail: `text: ${words.detail}` };
         const notes: string[] = [];
         if (words.cut) notes.push(`text was kept to its first ${String(DREAM_TUNABLES.MAX_TEXT_CHARS)} characters.`);
+        if ((change.title ?? "").trim().length > DREAM_TUNABLES.MAX_TITLE_CHARS) notes.push(titleNote());
         // KINDS THAT DIFFER are merged under the strongest original's kind
         // (2026-09-28: was refused `kinds-differ`).
         if (new Set(rs.map((r) => r.kind)).size !== 1) notes.push(`The originals' kinds differ (${[...new Set(rs.map((r) => r.kind))].join(", ")}); the merged memory takes the strongest one's.`);
@@ -635,7 +647,8 @@ export class Dreams {
         );
         this.store.recordDreamChange(dream.id, { action, ref: id, detail: { sources } });
         shown.add(id);
-        return { action, ok: true, reason: "dreamed", id, ...(words.cut ? { note: `text was kept to its first ${String(DREAM_TUNABLES.MAX_TEXT_CHARS)} characters.` } : {}) };
+        const gistNotes = [...(words.cut ? [`text was kept to its first ${String(DREAM_TUNABLES.MAX_TEXT_CHARS)} characters.`] : []), ...((change.title ?? "").trim().length > DREAM_TUNABLES.MAX_TITLE_CHARS ? [titleNote()] : [])];
+        return { action, ok: true, reason: "dreamed", id, ...(gistNotes.length > 0 ? { note: gistNotes.join(" ") } : {}) };
       }
       case "contradiction": {
         const a = live(change.a);
@@ -648,44 +661,24 @@ export class Dreams {
       case "feeling-now": {
         const row = live(change.id);
         if (row === null) return { action, ok: false, reason: "not-shown-or-gone", detail: this.notLive([change.id], shown) };
-        // How it feels NOW can be as strong as it ever was, never stronger: a
-        // dream records softening; it cannot manufacture a feeling that would
-        // raise the memory or open the core's fast lane.
-        const peak = emotionalIntensity(this.store.physicsOf(row.id));
-        const s = Math.max(0, Math.min(Number(change.strength ?? 0), peak));
-        // ACCEPT AND REPAIR (2026-09-28): `emotion` is one word and
-        // `carried_by` the nuance. A phrase in `emotion` ("steadied: the guard
-        // has held…") is split BEFORE the scan, so its tail crosses the
-        // credential battery with the rest of carried_by.
-        const sentEmotion = String(change.emotion ?? "");
-        const split = repairEmotion(sentEmotion, typeof change.carried_by === "string" ? change.carried_by : "");
-        const carried = this.words(split?.carriedBy ?? change.carried_by ?? "", dream, true, CARRIED_BY_MAX_CHARS);
-        const input: FeelingInput = {
-          whose: "self",
-          core: String(change.core ?? ""),
-          emotion: split?.emotion ?? sentEmotion,
-          strength: s,
-          carriedBy: `in a dream, ${dream.date ?? ""}${carried.ok && carried.text.length > 0 ? `: ${carried.text}` : ""}`.trim(),
-        };
+        const made = this.feelingNow(dream, row, change);
+        if (!made.ok) return { action, ok: false, reason: made.reason, detail: made.detail };
         // THE SAME FEELING TWICE IN ONE DREAM is one record: a dreamer that
         // resends a batch after some of it was refused must not double the
-        // ones that landed (2026-09-28).
-        const same = this.sameFeelingThisDream(dream.id, row.id, input);
+        // ones that landed (2026-09-28). (Also asked before the limit, above.)
+        const same = this.sameFeelingThisDream(dream.id, row.id, made.input);
         if (same !== null) return { action, ok: true, reason: "already-recorded", id: row.id, note: `This dream already recorded that feeling on ${row.id} (${same}); nothing new was written.` };
-        const notes: string[] = [];
-        if (split !== null) notes.push(splitNote(split));
-        if (!carried.ok) notes.push(`carried_by was not kept — ${carried.detail}`);
+        const notes = [...made.notes];
         let added: ReturnType<Store["addFeelings"]>;
         try {
-          added = this.store.addFeelings(row.id, [input], { source: "dream" });
+          added = this.store.addFeelings(row.id, [made.input], { source: "dream" });
         } catch (err) {
           return { action, ok: false, reason: refusalOf(err), detail: "Nothing was recorded for this feeling; fix it and propose it again." };
         }
         for (const rep of added.repairs) notes.push(rep.note);
-        const capped = s < Number(change.strength ?? 0);
-        if (capped) notes.push(`strength was capped at ${String(round(peak))}, the most this memory was ever felt: a dream records softening, never a stronger feeling.`);
+        if (made.capped) notes.push(`strength was capped at ${String(round(made.peak))}, the most this memory was ever felt: a dream records softening, never a stronger feeling.`);
         this.store.recordDreamChange(dream.id, { action, ref: row.id, detail: { feelings: added.ids } });
-        return { action, ok: true, reason: capped ? "recorded-capped-at-peak" : "recorded", id: row.id, ...(notes.length > 0 ? { note: notes.join(" ") } : {}) };
+        return { action, ok: true, reason: made.capped ? "recorded-capped-at-peak" : "recorded", id: row.id, ...(notes.length > 0 ? { note: notes.join(" ") } : {}) };
       }
       case "nominate-core": {
         const row = live(change.id);
@@ -706,6 +699,7 @@ export class Dreams {
         else if (row.about === "work" || row.about === "world") notes.push(`${row.id} is marked ${row.about}; it can become core only if the reflection re-marks it me, us or owner.`);
         const why = this.words(change.why ?? "", dream, true, DREAM_TUNABLES.MAX_WHY_CHARS);
         if (!why.ok) notes.push(`why was not kept — ${why.detail}`);
+        else if (why.cut) notes.push(`why was kept to its first ${String(DREAM_TUNABLES.MAX_WHY_CHARS)} characters.`);
         this.store.appendCoreEvent({
           memoryId: row.id,
           action: "nominated",
@@ -735,7 +729,8 @@ export class Dreams {
     this.store.updateDream(dream.id, { state: "journaled", title, journal: words.text });
     const counts = this.counts(dream.id);
     this.record(DREAM_JOURNALED_EVENT, dream.id, { chars: words.text.length, ...counts });
-    return { ok: true, handBack: this.handBack(dream.id, title, counts), ...(words.cut ? { note: `The journal was kept to its first ${String(DREAM_TUNABLES.MAX_JOURNAL_CHARS)} characters.` } : {}) };
+    const said = [...(words.cut ? [`The journal was kept to its first ${String(DREAM_TUNABLES.MAX_JOURNAL_CHARS)} characters.`] : []), ...((input.title ?? "").trim().length > DREAM_TUNABLES.MAX_TITLE_CHARS ? [titleNote()] : [])];
+    return { ok: true, handBack: this.handBack(dream.id, title, counts), ...(said.length > 0 ? { note: said.join(" ") } : {}) };
   }
 
   /** The marked hand-back line of a journaled dream, or null. The reflection's hand-back opens with it. */
@@ -1129,6 +1124,48 @@ export class Dreams {
   }
 
   /**
+   * A dream's feeling-now, as it will be stored. The WHOLE sent emotion
+   * crosses the credential battery and the mark check first (review of #268:
+   * a key in `emotion` went around the scan), then a phrase in it is split —
+   * `emotion` is one word, `carried_by` the nuance — and the tail crosses the
+   * scan with the rest of carried_by. Strength is capped at the memory's
+   * peak. Nothing is written here.
+   */
+  private feelingNow(
+    dream: DreamRow,
+    row: MemoryRow,
+    change: DreamChange,
+  ): { ok: true; input: FeelingInput; notes: string[]; capped: boolean; peak: number } | { ok: false; reason: string; detail: string } {
+    // How it feels NOW can be as strong as it ever was, never stronger: a
+    // dream records softening; it cannot manufacture a feeling that would
+    // raise the memory or open the core's fast lane.
+    const peak = emotionalIntensity(this.store.physicsOf(row.id));
+    const s = Math.max(0, Math.min(Number(change.strength ?? 0), peak));
+    const sent = this.words(String(change.emotion ?? ""), dream, false, CARRIED_BY_MAX_CHARS);
+    if (!sent.ok) return { ok: false, reason: sent.reason, detail: `emotion: ${sent.detail}` };
+    const notes: string[] = [];
+    if (sent.cut) notes.push(`emotion was kept to its first ${String(CARRIED_BY_MAX_CHARS)} characters.`);
+    const split = repairEmotion(sent.text, typeof change.carried_by === "string" ? change.carried_by : "");
+    const carried = this.words(split?.carriedBy ?? change.carried_by ?? "", dream, true, CARRIED_BY_MAX_CHARS);
+    if (split !== null) notes.push(splitNote(split));
+    if (!carried.ok) notes.push(`carried_by was not kept — ${carried.detail}`);
+    else if (carried.cut) notes.push(`carried_by was kept to its first ${String(CARRIED_BY_MAX_CHARS)} characters.`);
+    return {
+      ok: true,
+      input: {
+        whose: "self",
+        core: String(change.core ?? ""),
+        emotion: split?.emotion ?? sent.text,
+        strength: s,
+        carriedBy: `in a dream, ${dream.date ?? ""}${carried.ok && carried.text.length > 0 ? `: ${carried.text}` : ""}`.trim(),
+      },
+      notes,
+      capped: s < Number(change.strength ?? 0),
+      peak,
+    };
+  }
+
+  /**
    * The id of a feeling THIS dream already recorded on `memoryId` that says
    * the same thing (whose, core, emotion, word) — or null. Checked the way
    * the store will spell it (`checkFeelings`, pure); a feeling that will not
@@ -1243,6 +1280,11 @@ function confidentialityOf(rows: readonly MemoryRow[]): Record<string, unknown> 
 function cut(text: string | null, max: number): string | null {
   if (text === null) return null;
   return text.length <= max ? text : `${text.slice(0, max)}…`;
+}
+
+/** What a title kept to its cap says — never cut without a word (2026-09-28). */
+function titleNote(): string {
+  return `title was kept to its first ${String(DREAM_TUNABLES.MAX_TITLE_CHARS)} characters.`;
 }
 
 function firstLine(text: string): string {

@@ -69,13 +69,14 @@ import {
   ABOUT_MARKS,
   CARRIED_BY_MAX_CHARS,
   CORE_ABOUT_MARKS,
+  checkFeelings,
   TRAIT_AXES,
   TRAIT_CARRIED_BY_MAX_CHARS,
   isStoreError,
   repairEmotion,
   splitNote,
 } from "../store/index.js";
-import type { AboutMark, MemoryRow, ProseDoc, ReflectionRow, Store } from "../store/index.js";
+import type { AboutMark, FeelingInput, MemoryRow, ProseDoc, ReflectionRow, Store } from "../store/index.js";
 import type { Kind } from "../types.js";
 import { DREAM_MARK, carriesDreamMark } from "./mark.js";
 import { onMyMind } from "./mind.js";
@@ -521,13 +522,16 @@ export class Reflections {
     const detail: Record<string, unknown> = {};
 
     // ── (d) feelings, (e) about marks — each on its own ────────────────────
+    // What this reflection already recorded, on an earlier finish: a resent
+    // feeling or nudge is answered as recorded and not written twice (review
+    // of #268).
+    const priorRecorded = isRecord(prior["recorded"]) ? prior["recorded"] : {};
+    const idsOf = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+    const recordedFeelings = new Set(idsOf(priorRecorded["feelings"]));
+    const recordedTraits = new Set(idsOf(priorRecorded["traits"]));
     const feelings: PartResult[] = [];
     for (const f of (input.feelings ?? []).slice(0, 50)) {
       const id = typeof f.id === "string" ? f.id : null;
-      if (used("feelings") + feelings.filter((x) => x.ok).length >= T.LIMITS.feelings) {
-        feelings.push({ id, ok: false, reason: "limit-reached", detail: this.limitDetail("feelings", again) });
-        continue;
-      }
       const r = id !== null && shown.has(id) ? this.store.row(id) : undefined;
       if (r === undefined || !this.showable(r)) {
         feelings.push({ id, ok: false, reason: "not-shown-or-gone", detail: this.notCitable(id, shown) });
@@ -544,28 +548,41 @@ export class Reflections {
         continue;
       }
       // ACCEPT AND REPAIR (2026-09-28): emotion is one word, carried_by the
-      // nuance. A phrase in `emotion` is split BEFORE the scan, so its tail
-      // crosses the credential scan with the rest of carried_by.
-      const sentEmotion = String(f.emotion ?? "");
-      const split = repairEmotion(sentEmotion, typeof f.carried_by === "string" ? f.carried_by : "");
+      // nuance. The WHOLE sent emotion crosses the credential scan and the
+      // mark check first (review of #268: a key in `emotion` went around the
+      // scan); then a phrase in it is split, and the tail crosses the scan
+      // again with the rest of carried_by.
+      const sent = this.words(String(f.emotion ?? ""), session, CARRIED_BY_MAX_CHARS);
+      if (!sent.ok) {
+        feelings.push({ id, ok: false, reason: sent.reason, detail: `emotion: ${sent.detail}` });
+        continue;
+      }
+      const split = repairEmotion(sent.text, typeof f.carried_by === "string" ? f.carried_by : "");
       const carried = this.words(split?.carriedBy ?? f.carried_by ?? "", session, CARRIED_BY_MAX_CHARS, true);
+      const feeling: FeelingInput = {
+        whose: "self",
+        core: String(f.core ?? ""),
+        emotion: split?.emotion ?? sent.text,
+        strength: Math.max(0, Math.min(1, Number(f.strength ?? 0))),
+        carriedBy: `on reflection, ${date}${carried.ok && carried.text.length > 0 ? `: ${carried.text}` : ""}`,
+      };
+      const same = sameFeeling(this.store, r.id, recordedFeelings, feeling);
+      if (same !== null) {
+        feelings.push({ id, ok: true, reason: "already-recorded", note: `This reflection already recorded that feeling on ${r.id} (${same}); nothing new was written.` });
+        continue;
+      }
+      if (used("feelings") + feelings.filter((x) => x.ok && x.reason !== "already-recorded").length >= T.LIMITS.feelings) {
+        feelings.push({ id, ok: false, reason: "limit-reached", detail: this.limitDetail("feelings", again) });
+        continue;
+      }
       const notes: string[] = [];
+      if (sent.cut) notes.push(`emotion was kept to its first ${String(CARRIED_BY_MAX_CHARS)} characters.`);
       if (split !== null) notes.push(splitNote(split));
       if (!carried.ok) notes.push(`carried_by was not kept — ${carried.detail}`);
+      else if (carried.cut) notes.push(`carried_by was kept to its first ${String(CARRIED_BY_MAX_CHARS)} characters.`);
       try {
-        const added = this.store.addFeelings(
-          r.id,
-          [
-            {
-              whose: "self",
-              core: String(f.core ?? ""),
-              emotion: split?.emotion ?? sentEmotion,
-              strength: Math.max(0, Math.min(1, Number(f.strength ?? 0))),
-              carriedBy: `on reflection, ${date}${carried.ok && carried.text.length > 0 ? `: ${carried.text}` : ""}`,
-            },
-          ],
-          { source: "reflection", recordedLater: date, ...(input.model ? { model: input.model } : {}) },
-        );
+        const added = this.store.addFeelings(r.id, [feeling], { source: "reflection", recordedLater: date, ...(input.model ? { model: input.model } : {}) });
+        for (const fid of added.ids) recordedFeelings.add(fid);
         for (const rep of added.repairs) notes.push(rep.note);
         feelings.push({ id, ok: true, reason: "recorded-later", ...(notes.length > 0 ? { note: notes.join(" ") } : {}) });
       } catch (err) {
@@ -621,6 +638,7 @@ export class Reflections {
       const whyText = why.ok && why.text.length > 0 ? why.text : "no why given";
       if (!why.ok) notes.push(`The why was not kept — ${why.detail}`);
       else if (why.text.length === 0) notes.push("No why was given; the mark records that. Say why next time.");
+      else if (why.cut) notes.push(`The why was kept to its first ${String(T.MAX_WHY_CHARS)} characters.`);
       try {
         const set = this.store.setAbout(r.id, mark as AboutMark, { by: "reflection", day, why: `${whyText} (reflection ${row.id})`, dreamId: row.dream_id });
         const wasCore = set.before !== null && (CORE_ABOUT_MARKS as readonly string[]).includes(set.before);
@@ -640,10 +658,6 @@ export class Reflections {
     const traits: PartResult[] = [];
     for (const t of (input.traits ?? []).slice(0, 50)) {
       const id = typeof t.id === "string" ? t.id : null;
-      if (used("traits") + traits.filter((x) => x.ok).length >= T.LIMITS.traits) {
-        traits.push({ id, ok: false, reason: "limit-reached", detail: this.limitDetail("traits", again) });
-        continue;
-      }
       const r = id !== null && shown.has(id) ? this.store.row(id) : undefined;
       if (r === undefined || !this.showable(r)) {
         traits.push({ id, ok: false, reason: "not-shown-or-gone", detail: this.notCitable(id, shown) });
@@ -655,25 +669,32 @@ export class Reflections {
         traits.push({ id, ok: false, reason: notLived, detail: `${r.id} was written by a ${r.source === "dreamed" ? "dream" : "reflection"}, not a moment you acted in.` });
         continue;
       }
+      const axis = String(t.axis ?? "");
+      const toward = String(t.toward ?? "");
+      const same = this.store
+        .traitsFor(r.id, { includeConfidential: true })
+        .find((x) => recordedTraits.has(x.id) && x.axis === axis && x.toward === toward);
+      if (same !== undefined) {
+        traits.push({ id, ok: true, reason: "already-recorded", note: `This reflection already recorded that nudge on ${r.id} (${same.id}); nothing new was written.` });
+        continue;
+      }
+      if (used("traits") + traits.filter((x) => x.ok && x.reason !== "already-recorded").length >= T.LIMITS.traits) {
+        traits.push({ id, ok: false, reason: "limit-reached", detail: this.limitDetail("traits", again) });
+        continue;
+      }
       const carried = this.words(t.carried_by ?? "", session, TRAIT_CARRIED_BY_MAX_CHARS, true);
       const full = `on reflection, ${date}${carried.ok && carried.text.length > 0 ? `: ${carried.text}` : ""}`;
       const kept = full.length <= TRAIT_CARRIED_BY_MAX_CHARS ? full : `${full.slice(0, TRAIT_CARRIED_BY_MAX_CHARS - 1)}…`;
       const notes: string[] = [];
       if (!carried.ok) notes.push(`carried_by was not kept — ${carried.detail}`);
-      else if (kept !== full) notes.push(`carried_by was kept to its first ${String(TRAIT_CARRIED_BY_MAX_CHARS)} characters.`);
+      else if (kept !== full || carried.cut) notes.push(`carried_by was kept to its first ${String(TRAIT_CARRIED_BY_MAX_CHARS)} characters.`);
       try {
-        this.store.addTraits(
+        const added = this.store.addTraits(
           r.id,
-          [
-            {
-              axis: String(t.axis ?? ""),
-              toward: String(t.toward ?? ""),
-              strength: typeof t.strength === "number" ? t.strength : Number.NaN,
-              carriedBy: kept,
-            },
-          ],
+          [{ axis, toward, strength: typeof t.strength === "number" ? t.strength : Number.NaN, carriedBy: kept }],
           { source: "reflection", ...(input.model ? { model: input.model } : {}) },
         );
+        for (const tid of added.ids) recordedTraits.add(tid);
         traits.push({ id, ok: true, reason: "recorded", ...(notes.length > 0 ? { note: notes.join(" ") } : {}) });
       } catch (err) {
         traits.push({ id, ok: false, reason: refusalOf(err), detail: "Nothing was recorded for this one; fix it and send it again." });
@@ -705,6 +726,9 @@ export class Reflections {
     // ── (a) the entry ──────────────────────────────────────────────────────
     const priorTitle = typeof prior["title"] === "string" ? prior["title"] : null;
     const title = (input.title ?? "").trim().slice(0, T.MAX_TITLE_CHARS) || priorTitle || firstLine(entryText) || date;
+    if ((input.title ?? "").trim().length > T.MAX_TITLE_CHARS) {
+      entryNote = [entryNote, `The title was kept to its first ${String(T.MAX_TITLE_CHARS)} characters.`].filter((x) => x !== undefined).join(" ");
+    }
     let entryId: string | null = again ? row.entry_id : null;
     let entryReason = again ? (row.entry_id !== null ? "stands" : "on-the-record") : "on-the-record";
     if (entryId === null && cites.length > 0) {
@@ -866,15 +890,47 @@ export class Reflections {
       for (const m of movedAll) if (!finalShareCites.includes(m.id)) finalShareCites.push(m.id);
       share = { ...share, offered: true, reason: share.offered ? share.reason : "relabeled" };
     }
-    if (share.offered) for (const id of becameCore) this.store.setMeta(`${CORE_MENTIONED_PREFIX}${id}`, row.id);
+    // A share already told or carried is not replaced — but a mark this finish
+    // moved into me, us or the owner is still said in the hand-back (review
+    // of #268), in the self's voice, for the session to tell.
+    const tellAlso = shareLocked
+      ? movedIn
+          .filter((m) => !priorMoved.some((p) => p.id === m.id))
+          .map((m) => `I've come to think "${this.handle(m.id)}" is ${m.mark === "me" ? "about who I am" : m.mark === "us" ? "about the two of us" : "about you"}.`)
+      : [];
 
+    // REPLACING AN OFFERED SHARE IS A CLAIM (review of #268): a later session
+    // may carry it between the read above and this write; only the write that
+    // still finds it offered replaces it.
+    let shareWritten = !shareLocked;
+    if (!shareLocked && earlierShare !== null) {
+      const claimed = this.store.updateReflection(row.id, {
+        share: share.offered ? shareText : null,
+        shareCites: share.offered ? finalShareCites : [],
+        shareState: share.offered ? "offered" : "none",
+        ifShareState: "offered",
+      });
+      shareWritten = false;
+      if (!claimed) {
+        share = { offered: false, reason: "share-already-carried", detail: "Another session took the morning share to tell while this finish ran, so it is not replaced." };
+        shareMiss = `${share.reason}: ${share.detail ?? ""}`;
+      }
+    }
+    const shareStands = shareWritten || (!shareLocked && earlierShare !== null && share.offered);
+    if (shareStands && share.offered) for (const id of becameCore) this.store.setMeta(`${CORE_MENTIONED_PREFIX}${id}`, row.id);
+
+    // A page a first finish wrote STANDS when a second one's is refused
+    // (review of #268): the hand-back and the counts say so.
+    const pageStands = page.written || earlierPage !== null;
+    // The entry's citations, as a set across finishes — a re-cite is not a new one.
+    const entryCites = [...new Set([...idsOf(prior["entryCites"]), ...cites])];
     const counts = {
-      cites: used("cites") + cites.length,
+      cites: entryCites.length,
       returned: used("returned") + returned.filter((r) => r.counted).length,
-      feelings: used("feelings") + feelings.filter((f) => f.ok).length,
+      feelings: used("feelings") + feelings.filter((f) => f.ok && f.reason !== "already-recorded").length,
       about: used("about") + about.filter((a) => a.ok).length,
-      traits: used("traits") + traits.filter((t) => t.ok).length,
-      page: page.written,
+      traits: used("traits") + traits.filter((t) => t.ok && t.reason !== "already-recorded").length,
+      page: pageStands,
       share: shareLocked ? true : share.offered,
       becameCore: becameCore.length,
       movedIntoCore: movedAll.length,
@@ -884,13 +940,16 @@ export class Reflections {
     if (allRefused.length > 0) detail["refusedCites"] = allRefused.slice(0, 20);
     detail["title"] = title;
     if (movedAll.length > 0) detail["movedIn"] = movedAll;
+    if (entryCites.length > 0) detail["entryCites"] = entryCites;
+    // What this reflection recorded, so a later finish does not record it twice.
+    detail["recorded"] = { feelings: [...recordedFeelings], traits: [...recordedTraits] };
     if (again) detail["finishes"] = (typeof prior["finishes"] === "number" ? prior["finishes"] : 1) + 1;
     this.store.updateReflection(row.id, {
       ...(again ? {} : { state: "reflected" as const }),
       entry: entryText,
       entryId,
       cites: [...new Set([...parseIds(row.cites), ...cites, ...pageCites])],
-      ...(shareLocked
+      ...(!shareWritten
         ? {}
         : {
             share: share.offered ? shareText : null,
@@ -921,7 +980,7 @@ export class Reflections {
         ? null
         : `Not written: ${missed.join("; ")}. You can fix these and call finish again with reflection ${row.id} and just those parts — the entry and everything already written stand.`;
 
-    const handBack = this.handBack(row, !shareLocked && share.offered ? shareText : null, nothingMuch, page.written);
+    const handBack = this.handBack(row, !shareLocked && share.offered ? shareText : null, nothingMuch, pageStands, tellAlso);
     return {
       ok: true,
       outcome: {
@@ -955,13 +1014,16 @@ export class Reflections {
   }
 
   /** The dreamer's (or reflector's) final message: the dream's line, then the share. */
-  private handBack(row: ReflectionRow, share: string | null, nothingMuch: boolean, page: boolean): string {
+  private handBack(row: ReflectionRow, share: string | null, nothingMuch: boolean, page: boolean, tellAlso: readonly string[] = []): string {
     const who = this.ctx.ownerName() ?? "the owner";
     const dreamLine = row.dream_id === null ? null : this.ctx.dreamLine(row.dream_id);
     const head = dreamLine ?? `${reflectionOpener(row.id)} I reflected for a few minutes.`;
     const pageLine = page ? " I rewrote my self page." : "";
     if (share === null) {
-      return `${head}\n${reflectionOpener(row.id)} I reflected afterwards${nothingMuch ? " — nothing much tonight" : ""}; nothing to share this morning.${pageLine}`;
+      // The share was already told: a mark moved into me, us or the owner
+      // since is still said, for the session to tell in its own words.
+      const also = tellAlso.length === 0 ? "" : ` Tell ${who} in your own words: ${tellAlso.join(" ")}`;
+      return `${head}\n${reflectionOpener(row.id)} I reflected afterwards${nothingMuch ? " — nothing much tonight" : ""}; nothing to share this morning.${pageLine}${also}`;
     }
     return (
       `${head}\n${reflectionOpener(row.id)} I reflected afterwards.${pageLine} Morning share for ${who} — tell it in your own words, as a telling ("Last night I dreamed…", "I've been thinking…"), tentatively where it is about ${who};` +
@@ -1352,6 +1414,27 @@ function parseIds(json: string): string[] {
   } catch {
     return [];
   }
+}
+
+/**
+ * The id of a feeling among `mine` (what this reflection recorded) on
+ * `memoryId` that says the same thing as `input` — whose, core, emotion, word,
+ * spelled the way the store will spell it — or null. A feeling that will not
+ * check is left for the store to refuse, with its reason.
+ */
+function sameFeeling(store: Store, memoryId: string, mine: ReadonlySet<string>, input: FeelingInput): string | null {
+  if (mine.size === 0) return null;
+  let want: ReturnType<typeof checkFeelings>["rows"][number] | undefined;
+  try {
+    want = checkFeelings([input]).rows[0];
+  } catch {
+    return null;
+  }
+  if (want === undefined) return null;
+  const hit = store
+    .feelingsFor(memoryId)
+    .find((f) => mine.has(f.id) && f.whose === want.whose && f.core === want.core && f.emotion === want.emotion && (f.other_word ?? null) === want.otherWord);
+  return hit?.id ?? null;
 }
 
 function parseDetail(json: string): Record<string, unknown> {

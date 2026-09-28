@@ -294,13 +294,11 @@ describe("the wheel's additions, blends and aliases", () => {
     expect(coresOfFeeling("sad", "tender")).toEqual(["sad", "happy"]);
     expect(coresOfFeeling("fear", "sheepish")).toEqual(["fear", "sad"]);
     expect(coresOfFeeling("happy", "other")).toEqual(["happy"]);
-    // A blend under a core it does not have is still refused.
-    try {
-      s.addFeelings(id, [{ whose: "owner", core: "anger", emotion: "tender", strength: 0.5 }]);
-      throw new Error("not refused");
-    } catch (err) {
-      expect(isStoreError(err) ? String(err.detail["reason"]) : String(err)).toBe("emotion-under-another-core");
-    }
+    // A blend under a core it does not have is stored under its primary, and
+    // said (owner, 2026-09-28: it was refused).
+    const moved = s.addFeelings(id, [{ whose: "owner", core: "anger", emotion: "tender", strength: 0.5 }]);
+    expect(moved.repairs).toMatchObject([{ field: "core", was: "anger", now: "sad" }]);
+    expect(s.feelingsFor(id).at(-1)).toMatchObject({ core: "sad", emotion: "tender" });
   });
 
   test("an alias is read as its wheel word, and the caller is told", () => {

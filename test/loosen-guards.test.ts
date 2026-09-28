@@ -102,12 +102,20 @@ describe("feelings: an emotion that carries a phrase is split, never refused for
     // Over-long with no strong break: a comma cuts it, else the first word.
     const long = `relieved, because ${"the long night finally ended and ".repeat(4)}`;
     expect(repairEmotion(long, "")?.emotion).toBe("relieved");
-    const words = `grateful ${"for everything that happened ".repeat(4)}`;
-    expect(repairEmotion(words, "")?.emotion).toBe("grateful");
+    // No break at all: cut at the last word boundary within the cap, never
+    // down to its first word; the rest goes to carried_by (review of #268).
+    const words = "a deep and abiding sense of gratitude for everything he did through the long release night";
+    const fit = repairEmotion(words, "");
+    expect(fit?.emotion).toBe("a deep and abiding sense of gratitude for everything he did through the long");
+    expect(fit?.carriedBy).toBe("release night");
+    expect(repairEmotion("a deep and abiding sense of gratitude", "")).toBe(null);
     // One giant token keeps its head, and the rest is not dropped.
     const giant = repairEmotion("x".repeat(200), "");
     expect(giant?.emotion.length).toBe(OTHER_WORD_MAX_CHARS);
     expect(giant?.carriedBy.length).toBe(200 - OTHER_WORD_MAX_CHARS);
+    // Punctuation alone is kept to the cap too.
+    expect(repairEmotion(":".repeat(200), "")?.emotion.length).toBe(OTHER_WORD_MAX_CHARS);
+    expect(checkFeelings([{ whose: "self", core: "happy", emotion: "—;:".repeat(60), strength: 0.5 }]).rows[0]?.otherWord?.length).toBeLessThanOrEqual(OTHER_WORD_MAX_CHARS);
   });
 
   test("checkFeelings repairs instead of refusing: emotion, other_word and an over-long carried_by", () => {
@@ -363,7 +371,8 @@ describe("reflect: a second finish supplies what the first did not write", () =>
   test("a told share is not replaced, and says so; limits count across both finishes; an older reflection stays closed", () => {
     const c = brain();
     const s = setup(c);
-    const f = (n: number) => ({ id: s.open, core: "happy", emotion: "grateful", strength: 0.5 + n / 100 });
+    const words = ["grateful", "proud", "hopeful", "relieved", "peaceful", "content"];
+    const f = (n: number) => ({ id: s.open, core: "happy", emotion: words[n - 1] ?? "happy", strength: 0.5 + n / 100 });
     const first = c.reflections.finish({
       reflection: s.reflection,
       session: SESSION,
@@ -441,8 +450,15 @@ describe("reflect: a second finish supplies what the first did not write", () =>
     const row = c.store.feelingsFor(s.open).find((x) => x.source === "reflection");
     expect(row).toMatchObject({ emotion: "grateful" });
     expect(row?.carried_by).toContain("he said thank you and meant it");
-    expect(done.outcome.feelings[1]?.reason).toStartWith("feeling-invalid:emotion-under-another-core");
-    expect(done.outcome.retry).toContain("feelings[1]");
+    // A wheel word under another core is stored under its own (owner, 2026-09-28).
+    expect(done.outcome.feelings[1]).toMatchObject({ ok: true, reason: "recorded-later" });
+    expect(done.outcome.feelings[1]?.note).toContain("sits under anger");
+    expect(c.store.feelingsFor(s.open).some((x) => x.core === "anger" && x.emotion === "furious")).toBe(true);
+    // One that still will not store says why.
+    const bad = c.reflections.finish({ reflection: s.reflection, session: SESSION, feelings: [{ id: s.open, core: "boredom", emotion: "flat", strength: 0.2 }] });
+    if (!bad.ok) throw new Error(String(bad.reason));
+    expect(bad.outcome.feelings[0]?.reason).toStartWith("feeling-invalid:core-unknown");
+    expect(bad.outcome.retry).toContain("feelings[0]");
   });
 
   test("text caps: a long share and entry are kept whole", () => {

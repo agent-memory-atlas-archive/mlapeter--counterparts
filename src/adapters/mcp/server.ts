@@ -2435,7 +2435,9 @@ export class McpServer {
    * The `about` half of a deposit (schema v9): what the memory is about, set
    * by the writer who just wrote it (`about_by = 'writer'`). Nothing when none
    * was sent; said when the memory did not land. A `skill` memory is the craft
-   * — how I work — and is never core, so a core mark on one is not stored.
+   * — how I work — and is never core (`aboutMe` never reads one as a
+   * candidate), so a core mark on one is stored as asked, with a note
+   * (2026-09-28: it was refused `skill-is-how-i-work`).
    */
   private recordAbout(deposit: DepositResult, mark: AboutMark | null): Record<string, unknown> {
     if (mark === null) return {};
@@ -2444,11 +2446,15 @@ export class McpServer {
     }
     try {
       const row = this.counterpart.store.row(deposit.memoryId);
-      if (row?.kind === "skill" && (CORE_ABOUT_MARKS as readonly string[]).includes(mark)) {
-        return { about: { stored: false, reason: "skill-is-how-i-work", detail: "A skill memory is the craft — how I work — and is never core; mark it work, or give it another kind." } };
-      }
+      const skill = row?.kind === "skill" && (CORE_ABOUT_MARKS as readonly string[]).includes(mark);
       this.counterpart.store.setAbout(deposit.memoryId, mark, { by: "writer" });
-      return { about: { stored: true, mark } };
+      return {
+        about: {
+          stored: true,
+          mark,
+          ...(skill ? { note: "A skill memory is the craft — how I work — and never becomes core, whatever its mark." } : {}),
+        },
+      };
     } catch (err) {
       return { about: { stored: false, reason: "threw", detail: String((err as Error).message ?? err) } };
     }
@@ -2473,7 +2479,13 @@ export class McpServer {
     }
     try {
       const added = this.counterpart.addTraits(deposit.memoryId, inputs, model === undefined ? {} : { model });
-      return { traits: { stored: added.ids.length } };
+      return {
+        traits: {
+          stored: added.ids.length,
+          // ACCEPT AND REPAIR (2026-09-28): an over-long carried_by was kept to its length.
+          ...(added.repairs.length === 0 ? {} : { repaired: added.repairs.map((r) => ({ index: r.index, note: r.note })) }),
+        },
+      };
     } catch (err) {
       return { traits: { stored: 0, reason: "threw", detail: String((err as Error).message ?? err) } };
     }

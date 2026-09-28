@@ -114,7 +114,11 @@ describe("the vocabulary: seven axes, each between two good things", () => {
     expect(code(() => s.addTraits(id, [{ ...candid, toward: "bold" }]))).toBe("TRAIT_INVALID:toward-on-another-axis");
     expect(code(() => s.addTraits(id, [{ ...candid, toward: "blunt" }]))).toBe("TRAIT_INVALID:toward-unknown");
     expect(code(() => s.addTraits(id, [{ ...candid, strength: 1.5 }]))).toBe("TRAIT_INVALID:strength-out-of-range");
-    expect(code(() => s.addTraits(id, [{ ...candid, carriedBy: "x".repeat(1_001) }]))).toBe("TRAIT_INVALID:carried-by-too-long");
+    // An over-long carried_by is kept to its length and said, never refused (2026-09-28).
+    const long = mem(s);
+    const kept = s.addTraits(long, [{ ...candid, carriedBy: "x".repeat(1_001) }]);
+    expect(kept.repairs.map((r) => r.field)).toEqual(["carried_by"]);
+    expect(s.traitsFor(long)[0]?.carried_by.length).toBe(1_000);
     // All or none: a good nudge beside a bad one is not stored either.
     expect(code(() => s.addTraits(id, [candid, { ...candid, axis: "bravery" }]))).toBe("TRAIT_INVALID:axis-unknown");
     expect(s.traitsFor(id)).toEqual([]);

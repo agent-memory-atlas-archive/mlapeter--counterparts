@@ -246,3 +246,25 @@ never a gist; one dream a lived day; observer stance; the live-store rules.
    `door-closed-work-or-world-only` (the owner's own switches), `dated-is-not-merged` and
    `demoted-is-not-merged` (a reminder going quiet; the owner's demotion), the per-action
    `limit-reached` counts, `gist-needs-sources`, `same-memory`.
+7. **After the adversarial review of #268** (same day):
+   - The whole sent `emotion` now crosses the credential scan and the mark check
+     BEFORE it is split, in the dream and the reflection (a key in `emotion` had gone
+     around the scan into `other_word`); the note door already redacts it in
+     `counterpart.addFeelings`. Not done centrally in `Store.addFeelings`: `store/`
+     sits below `encode/` and does not import it.
+   - A second `finish` records nothing twice: a feeling (whose, core, emotion, word) or
+     nudge (axis, toward) this reflection already recorded on that memory comes back
+     `already-recorded` (`detail.recorded` holds the ids). Cites count as a set
+     (`detail.entryCites`). A page refused on a second finish no longer hides the one the
+     first wrote (hand-back and `counts.page`). Replacing an offered share is a claim
+     (`ifShareState: "offered"`), `share-already-carried` when another session took it.
+     After a told share, a mark moved into me/us/owner is still said in the hand-back.
+   - The dream's `already-recorded` is asked before its limit, so a resent batch does
+     not come back `limit-reached`.
+   - `repairEmotion` never hands back an emotion over the cap: with no break, it cuts at
+     the last word boundary within the cap (not the first word); punctuation alone is
+     kept to the cap.
+   - Owner direction: `emotion-under-another-core` is repaired — stored under the wheel
+     word's own core, with a note — and the note door's `skill-is-how-i-work` is loosened
+     like the reflection's. A trait's over-long `carried_by` is kept to its length at the
+     note door too. Titles and whys over their caps are said.

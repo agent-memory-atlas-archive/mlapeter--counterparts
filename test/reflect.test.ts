@@ -160,7 +160,9 @@ describe("core by meaning: the about mark, not the kind", () => {
         ],
       });
       const outcomes = ended.structuredContent["outcomes"] as Record<string, unknown>[];
-      expect(outcomes[0]?.["about"]).toMatchObject({ stored: false, reason: "skill-is-how-i-work" });
+      // Stored as asked, with a note (2026-09-28: was refused `skill-is-how-i-work`) — a skill never becomes core.
+      expect(outcomes[0]?.["about"]).toMatchObject({ stored: true, mark: "me" });
+      expect(String((outcomes[0]?.["about"] as Record<string, unknown>)["note"])).toContain("never becomes core");
       expect(outcomes[1]?.["about"]).toEqual({ stored: true, mark: "work" });
     } finally {
       s.counterpart.close();
