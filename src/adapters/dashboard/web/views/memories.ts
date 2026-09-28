@@ -162,10 +162,6 @@ export function memoriesView(src: DashboardSource, opts: { limit?: number } = {}
   }
 
   const hold = { firm: 0, settling: 0, fading: 0, journal: 0 };
-  const sides = new Map<string, { yours: Side; mine: Side }>(
-    CORE_EMOTIONS.map((c) => [c, { yours: side(), mine: side() }]),
-  );
-  let carrying = 0;
   for (const m of rows) {
     const row = store.row(m.id);
     if (row !== undefined && isChapterMemory(row)) hold.journal += 1;
@@ -177,16 +173,6 @@ export function memoriesView(src: DashboardSource, opts: { limit?: number } = {}
         hold.settling += 1;
       }
     }
-    const felt = feelingsShown(store, m.id);
-    if (felt.length > 0) carrying += 1;
-    for (const f of felt) {
-      const at = sides.get(f.core);
-      const s = f.whose === "owner" ? at?.yours : f.whose === "self" ? at?.mine : undefined;
-      if (s === undefined) continue;
-      s.count += 1;
-      s.sum += Math.max(0, Math.min(1, f.strength));
-      s.words.set(f.word, (s.words.get(f.word) ?? 0) + 1);
-    }
   }
 
   return {
@@ -197,13 +183,7 @@ export function memoriesView(src: DashboardSource, opts: { limit?: number } = {}
     hold,
     nearLetGoDays: NEAR_LET_GO_DAYS,
     firmAheadDays: FIRM_AHEAD_DAYS,
-    feelings: {
-      carrying,
-      cores: CORE_EMOTIONS.map((core) => {
-        const at = sides.get(core) ?? { yours: side(), mine: side() };
-        return { core, yours: sideOut(at.yours), mine: sideOut(at.mine) };
-      }),
-    },
+    feelings: feelingsView(src, rows),
     strengthByBand,
     points: rows.slice(0, limit),
     pointsAbsent: rows.length === 0 ? (everLived ? NONE : NEVER) : null,
@@ -224,6 +204,37 @@ export function memoriesView(src: DashboardSource, opts: { limit?: number } = {}
         plain: KIND_PLAIN[kind] ?? { label: kind, what: KIND_GLOSS[kind] ?? kind, fades: "", corrects: "" },
         fadeSpeed: fadeSpeed(tunables.kappa),
       };
+    }),
+  };
+}
+
+/**
+ * How it feels: the feelings recorded on `rows` (the live census), by the
+ * wheel's six cores, yours and mine. The memories tab's radar draws it, and
+ * the home tab draws the same radar from the same numbers.
+ */
+export function feelingsView(src: DashboardSource, rows: readonly { readonly id: string }[] = census(src)): FeelingsView {
+  const sides = new Map<string, { yours: Side; mine: Side }>(
+    CORE_EMOTIONS.map((c) => [c, { yours: side(), mine: side() }]),
+  );
+  let carrying = 0;
+  for (const m of rows) {
+    const felt = feelingsShown(src.store, m.id);
+    if (felt.length > 0) carrying += 1;
+    for (const f of felt) {
+      const at = sides.get(f.core);
+      const s = f.whose === "owner" ? at?.yours : f.whose === "self" ? at?.mine : undefined;
+      if (s === undefined) continue;
+      s.count += 1;
+      s.sum += Math.max(0, Math.min(1, f.strength));
+      s.words.set(f.word, (s.words.get(f.word) ?? 0) + 1);
+    }
+  }
+  return {
+    carrying,
+    cores: CORE_EMOTIONS.map((core) => {
+      const at = sides.get(core) ?? { yours: side(), mine: side() };
+      return { core, yours: sideOut(at.yours), mine: sideOut(at.mine) };
     }),
   };
 }

@@ -1,12 +1,12 @@
 /* The activity feed: narrated durable-log rows, newest first. Any page may
-   render one; a feed REGISTERED as live also receives the pulse's new rows
-   (`shell/pulse.js`), prepended and flashed — only the rows its `accept` takes,
-   so the home feed stays memory events while the flow feed takes everything.
+   render one; a feed REGISTERED as live (the flow tab's) also receives the
+   pulse's new rows (`shell/pulse.js`), prepended and flashed. The home tab's
+   memory-only live feed, which filtered and folded the pulse's rows, went in
+   home round 4 (2026-09-28).
 
    A row carries a small icon when it has one (`web/lanes.ts`), and "×N" when
-   it stands for N neighbours that read the same (the mechanism panel's Lately,
-   and the home feed), with the span of days they cover ("days 1–6"). A feed
-   registered with `{ fold: true }` folds the pulse's new rows the same way. */
+   it stands for N neighbours that read the same (the mechanism panel's
+   Lately), with the span of days they cover ("days 1–6"). */
 import { absenceLine } from "../absence.js";
 import { $, esc } from "../dom.js";
 import { openEvent } from "../event-modal.js";
@@ -47,9 +47,6 @@ export function dayLabel(e) {
   return typeof e.fromDay === "number" && e.fromDay < e.day ? "days " + e.fromDay + "–" + e.day : "day " + e.day;
 }
 
-/** What two neighbours must share to fold into one line. */
-const foldKey = (e) => e.name + " | " + e.text;
-
 function inner(e) {
   const times = e.repeats > 1 ? '<span class="ev-x"> ×' + e.repeats + "</span>" : "";
   return '<span class="d">' + dayLabel(e) + "</span>" +
@@ -64,53 +61,26 @@ export function renderFeed(el, events, ctx) {
   }
   el.innerHTML = events.map((e) =>
     '<div class="ev ' + e.tone + (e.icon ? " has-i" : "") + '" data-seq="' + e.seq + '"' +
-      ' data-fold="' + esc(foldKey(e)) + '" data-repeats="' + (e.repeats || 1) + '" data-from="' + (typeof e.fromDay === "number" ? e.fromDay : e.day) + '"' +
       ' onclick="openEvent(' + e.seq + ')">' + inner(e) + "</div>"
   ).join("");
 }
 
-/** The feeds the pulse writes into, in registration order: element id → { accept, fold }. */
-const LIVE = new Map();
-export function registerLiveFeed(id, accept, opts) {
-  if (!LIVE.has(id)) LIVE.set(id, { accept: accept || (() => true), fold: !!(opts && opts.fold) });
+/** The feeds the pulse writes into, in registration order (element ids). */
+const LIVE = new Set();
+export function registerLiveFeed(id) {
+  LIVE.add(id);
 }
 
-/** A new row that reads the same as the top one: fold it in (×N, the span of
- *  days, the newest record behind a click) and flash it, instead of a new line. */
-function foldInto(top, e) {
-  const repeats = Number(top.dataset.repeats || "1") + 1;
-  const fromDay = Math.min(Number(top.dataset.from || e.day), e.day);
-  top.dataset.repeats = String(repeats);
-  top.dataset.from = String(fromDay);
-  top.dataset.seq = e.seq;
-  top.removeAttribute("onclick");
-  top.onclick = () => openEvent(e.seq);
-  top.innerHTML = inner({ ...e, repeats, fromDay });
-  top.classList.remove("flash");
-  void top.offsetWidth; // restart the flash
-  top.classList.add("flash");
-}
-
-/** New events arrive oldest-first; each one a feed accepts is inserted at the
- *  top, flashed. A feed still showing its absence line is left alone (its page
- *  repaints it). */
+/** New events arrive oldest-first; each one is inserted at the top, flashed.
+ *  A feed still showing its absence line is left alone (its page repaints it). */
 export function prependToLiveFeeds(fresh) {
-  for (const [id, { accept, fold }] of LIVE) {
+  for (const id of LIVE) {
     const el = $(id);
     if (!el || el.querySelector(".empty")) continue;
     for (const e of fresh) {
-      if (!accept(e)) continue;
-      const top = el.firstElementChild;
-      if (fold && top && top.dataset.fold === foldKey(e)) {
-        foldInto(top, e);
-        continue;
-      }
       const row = document.createElement("div");
       row.className = "ev " + e.tone + (e.icon ? " has-i" : "") + " flash";
       row.dataset.seq = e.seq;
-      row.dataset.fold = foldKey(e);
-      row.dataset.repeats = "1";
-      row.dataset.from = String(e.day);
       row.onclick = () => openEvent(e.seq);
       row.innerHTML = inner(e);
       el.insertBefore(row, el.firstChild);

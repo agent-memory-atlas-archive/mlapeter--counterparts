@@ -1,63 +1,61 @@
-/* The home page — shaped like counterparts.ai's home (features/home-v2): the
-   hero with the brain on the right, the mechanism panel under it, the feed and
-   Tonight below. Outfit for words; Courier only for the counts. */
+/* The home page (round 4, 2026-09-28): a headline and a health dot across the
+   top; the brain beside "Today"; the feelings radar beside the self map. One
+   column on a phone, in that order. Outfit for words. The radar's and the
+   map's own styles are their tabs' (memories.css, self.css). */
 
-/* ── hero ─────────────────────────────────────────────── */
-.home-hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:24px;align-items:center;
-  min-height:min(500px,calc(100vh - 150px));margin:0 0 8px}
-.home-copy{position:relative;z-index:5;max-width:36rem}
-.home-eyebrow{font-size:12.5px;font-weight:500;letter-spacing:.3px;color:var(--dim);margin:0 0 10px}
-.home-headline{font-family:var(--sans);font-weight:700;font-size:clamp(24px,2.6vw,36px);line-height:1.25;
-  letter-spacing:-.3px;color:#e8eef5;margin:0 0 22px}
+/* ── the headline and the health dot ─────────────────── */
+.home-top{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 24px;margin:6px 0 10px}
+.home-headline{font-family:var(--sans);font-weight:700;font-size:clamp(22px,2.4vw,32px);line-height:1.25;
+  letter-spacing:-.3px;color:#e8eef5;margin:0;min-width:0}
 .home-headline .hh-part{display:inline-block;white-space:nowrap}
+.home-health{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 12px;border:1px solid var(--border);
+  border-radius:18px;color:var(--ink);font-size:13.5px;text-decoration:none;white-space:nowrap}
+.home-health:hover,.home-health:focus-visible{border-color:var(--glow);color:#e8eef5;outline:none}
+.home-health .hc-dot{flex:none}
 
-/* four small tiles: the number is the link; its words sit behind the `?` */
-.home-counts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;max-width:34rem}
-.home-counts .ht{position:relative;padding:11px 12px 10px;display:flex;flex-direction:column;gap:2px;min-width:0}
-.home-counts .ht-link{display:flex;flex-direction:column;min-height:44px;color:inherit;text-decoration:none;cursor:pointer}
-.home-counts .ht-link:focus-visible{outline:2px solid var(--cyan);outline-offset:2px;border-radius:4px}
-.home-counts .ht:hover{border-color:var(--glow)}
-.home-counts .ht .n{font-family:var(--mono);font-size:26px;font-weight:700;line-height:1.15}
-.home-counts .ht .l{font-size:13px;color:var(--ink);text-transform:none;letter-spacing:0;margin-top:1px}
-.home-counts .ht .q-wrap{position:absolute;top:8px;right:8px}
-.home-counts .ht .q-wrap.open{position:static;display:block}
-.home-counts .ht .s{font-size:12px;color:var(--dim);margin-top:4px;line-height:1.4}
-.home-counts .ht.quiet .n{color:var(--dim);text-shadow:none}
-.ht-core .n{color:var(--purple);text-shadow:0 0 15px rgba(179,136,255,.2)}
-.ht-replaced .n{color:var(--teal);text-shadow:0 0 15px rgba(0,191,165,.2)}
+/* ── the two rows ─────────────────────────────────────── */
+.home-row{display:grid;gap:24px;align-items:start}
+.home-row>*{min-width:0}
+.home-row-a{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);align-items:center;margin:0 0 18px}
+.home-row-b{grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:stretch}
+.home-card{display:flex;flex-direction:column;min-width:0}
+.home-card .card{flex:1;margin-bottom:8px}
+.home-feel .feel-row{flex-direction:column;flex-wrap:nowrap;align-items:center;justify-content:center;gap:4px}
+.home-feel .feel-svg{flex:none;width:100%;max-width:24rem}
+.home-feel{display:flex;flex-direction:column;justify-content:center}
+.home-feel .feel-side{flex:none;align-items:center}
+.home-map .sm{margin:0}
+.home-more{display:inline-flex;align-items:center;min-height:32px;margin-top:4px;font-size:13.5px}
 
-/* written vs came back, under the tiles (sections/written.js, 2026-09-27) */
-.home-wr{max-width:34rem;margin-top:16px}
-.home-wr:empty{display:none}
-.wr-head{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;font-size:12px;color:var(--dim);margin:0 0 6px}
-.wr-key{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
-.wr-sw{display:inline-block;width:10px;height:6px;border-radius:1px}
-.wr-sw-w{background:var(--cyan)}
-.wr-sw-a{background:var(--purple)}
-.wr-sw-d{background:rgba(179,136,255,.32)}
-.wr-head .q-wrap.open{flex-basis:100%}
-.wr-svg{display:block;width:100%;height:64px;overflow:visible}
-.wr-svg .wr-hit{fill:transparent}
-.wr-svg g:hover .wr-hit{fill:rgba(0,229,255,.06)}
-.wr-svg .wr-axis{stroke:rgba(197,205,216,.22);stroke-width:1;vector-effect:non-scaling-stroke}
-.wr-svg .wr-w{fill:var(--cyan);opacity:.85}
-.wr-svg .wr-a{fill:var(--purple)}
-.wr-svg .wr-d{fill:rgba(179,136,255,.32)}
-.wr-svg .wr-none{fill:rgba(197,205,216,.18)}
-.wr-foot{display:flex;justify-content:space-between;font-size:11px;color:var(--faint);margin-top:3px}
-.wr-line{font-size:13px;color:var(--ink);margin:6px 0 0}
+/* ── today ────────────────────────────────────────────── */
+.home-today{min-width:0}
+.td-list{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.td-line{position:relative;padding-left:18px}
+.td-line::before{content:"";position:absolute;left:2px;top:17px;width:7px;height:7px;border-radius:50%;
+  transform:translateY(-50%);background:var(--cyan);opacity:.8}
+.td-core::before{background:var(--purple);opacity:1}
+.td-dream::before{background:rgba(179,136,255,.55)}
+.td-let-go::before{background:var(--faint)}
+.td-more::before{display:none}
+.td-link{display:block;width:100%;padding:6px 0;background:none;border:0;font:inherit;font-size:15px;line-height:1.5;text-align:left;
+  color:var(--ink);cursor:pointer;text-decoration:underline dotted rgba(0,229,255,.35);text-underline-offset:4px;overflow-wrap:anywhere}
+.td-link:hover,.td-link:focus-visible{color:var(--cyan);outline:none}
+.td-core .td-link{color:#e8eef5}
+.td-more .td-link{color:var(--dim);font-size:14px}
+.td-none{color:var(--dim);font-size:14px;line-height:1.6}
 
 /* ── the brain ────────────────────────────────────────── */
-.home-brain{position:relative;height:min(540px,calc(100vh - 150px));min-height:360px;width:100%}
+.home-brain{position:relative;height:min(460px,calc(100vh - 200px));min-height:340px;width:100%;min-width:0}
 .brain-canvas{position:absolute;inset:0;width:100%;height:100%;cursor:grab;touch-action:pan-y}
 .brain-canvas.is-drag{cursor:grabbing}
 .brain-pin{position:absolute;left:0;top:0;margin:-22px 0 0 -11px;min-height:44px;display:inline-flex;align-items:center;
   gap:8px;padding:0 10px 0 5px;background:transparent;border:0;cursor:pointer;font-family:var(--sans);font-size:13px;
   font-weight:500;color:var(--ink);white-space:nowrap;will-change:transform;--pin:rgb(138,149,163)}
-.brain-pin-name:empty{display:none}
-.brain-pin-name{background:var(--card);border:1px solid var(--pin);color:var(--pin);border-radius:4px;padding:2px 8px}
+/* a point's name shows only while it is hovered or focused (round 4) */
+.brain-pin-name{display:none;background:var(--card);border:1px solid var(--pin);color:var(--pin);border-radius:4px;padding:2px 8px}
+.brain-pin:hover,.brain-pin:focus-visible{--pin:var(--cyan)}
+.brain-pin:hover .brain-pin-name,.brain-pin:focus-visible .brain-pin-name{display:inline}
 .brain-pin-dot{width:10px;height:10px;border-radius:50%;background:var(--pin);color:var(--pin);box-shadow:0 0 10px currentColor;flex:none}
-.brain-pin.is-on .brain-pin-dot{box-shadow:0 0 0 4px rgba(255,255,255,.08),0 0 16px currentColor}
 .brain-pin:focus-visible{outline:2px solid var(--cyan);outline-offset:2px;border-radius:6px}
 .brain-hint{position:absolute;right:8px;bottom:4px;margin:0;font-size:12px;color:var(--faint);pointer-events:none}
 .hint-touch{display:none}
@@ -66,167 +64,18 @@
   border:1px dashed var(--glow);border-radius:8px;padding:24px;color:var(--dim);font-size:14px;line-height:1.6}
 .home-brain.is-nogl .brain-canvas,.home-brain.is-nogl .brain-pin,.home-brain.is-nogl .brain-hint{display:none}
 
-/* ── the mechanism panel ──────────────────────────────── */
-.home-panel{--reg:var(--cyan);border:1px solid var(--border);border-top:2px solid var(--reg);border-radius:6px;background:var(--card);
-  padding:18px clamp(14px,2.2vw,28px) 24px;box-shadow:0 -20px 60px -30px var(--reg);transition:border-color .3s,box-shadow .3s;
-  scroll-margin-top:12px}
-.mech-top{display:flex;gap:10px;align-items:center;margin:0 0 18px}
-.mech-top .mechs{flex:1;min-width:0;margin:0}
-.mech-legend{flex:none}
-.mech-legend .q-wrap.open .q-pop{position:absolute;right:0;left:auto;top:calc(100% + 8px);width:min(22rem,calc(100vw - 48px));max-width:none}
-/* ONE line of pills that scrolls sideways inside itself (round 3b): the stage is
-   the small colour mark on each pill, not a heading above a group. */
-.mechs{display:flex;flex-wrap:nowrap;gap:6px;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;
-  scrollbar-width:thin;scrollbar-color:rgba(197,205,216,.2) transparent;padding:2px 2px 6px;margin:0 0 18px}
-.mechs.more-right{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 36px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 36px),transparent)}
-.mechs.more-left{-webkit-mask-image:linear-gradient(to right,transparent,#000 36px);mask-image:linear-gradient(to right,transparent,#000 36px)}
-.mechs.more-left.more-right{-webkit-mask-image:linear-gradient(to right,transparent,#000 36px,#000 calc(100% - 36px),transparent);
-  mask-image:linear-gradient(to right,transparent,#000 36px,#000 calc(100% - 36px),transparent)}
-.mechs::-webkit-scrollbar{height:4px}
-.mechs::-webkit-scrollbar-thumb{background:rgba(197,205,216,.2);border-radius:2px}
-.mech-pill{flex:none;display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:0 10px 0 8px;border-radius:16px;
-  border:1px solid color-mix(in srgb,var(--pin) 35%,transparent);background:transparent;color:var(--ink);
-  font-family:var(--sans);font-size:12.5px;white-space:nowrap;cursor:pointer}
-.mech-pill:hover,.mech-pill:focus-visible{border-color:var(--pin);background:color-mix(in srgb,var(--pin) 10%,transparent);outline:none}
-.mech-pill:focus-visible{box-shadow:0 0 0 2px color-mix(in srgb,var(--pin) 60%,transparent)}
-.mech-pill.is-on{border-color:var(--pin);color:var(--pin);background:color-mix(in srgb,var(--pin) 14%,var(--card))}
-.mech-pill.is-notbuilt{color:var(--dim);border-style:dashed}
-.mech-stage{flex:none;width:3px;height:13px;border-radius:2px;background:var(--pin)}
-.mech-tag,.mech-dev{font-size:9.5px;font-weight:500;color:var(--amber);border:1px solid rgba(255,215,64,.3);
-  border-radius:8px;padding:0 5px;line-height:14px;white-space:nowrap}
-.mech-dev{font-size:10.5px;padding:0 6px;vertical-align:2px;font-family:var(--sans)}
-
-/* the panel: a big number, those memories, one line — then the fold */
-.mech-grid{display:grid;grid-template-columns:minmax(0,4fr) minmax(0,7fr);grid-template-areas:"main side";gap:32px;align-items:start}
-.mech-main{grid-area:main}
-.mech-side{grid-area:side;min-width:0}
-.mech-name{font-family:var(--sans);font-size:13.5px;font-weight:600;letter-spacing:0;color:var(--reg);margin:0 0 10px}
-.mech-lead{margin:0 0 12px;line-height:1.3;color:#e8eef5}
-.mech-n{display:block;font-family:var(--mono);font-size:48px;font-weight:700;line-height:1.05;color:var(--reg);
-  text-shadow:0 0 18px color-mix(in srgb,var(--reg) 25%,transparent)}
-.mech-words{display:block;font-size:15.5px;font-weight:500;margin-top:4px}
-.mech-lead-none{font-size:17px;color:var(--dim)}
-.mech-does{font-size:14px;line-height:1.6;color:var(--dim);margin:0}
-.mech-notbuilt{border:1px dashed var(--glow);border-radius:6px;padding:14px 16px;color:var(--dim);font-size:14px;line-height:1.6}
-
-.mech-how{margin-top:20px;border-top:1px solid var(--border);padding-top:6px}
-.mech-how summary{display:inline-flex;align-items:center;gap:6px;min-height:36px;cursor:pointer;list-style:none;
-  font-size:13px;color:var(--dim);user-select:none}
-.mech-how summary::-webkit-details-marker{display:none}
-.mech-how summary:hover,.mech-how summary:focus-visible{color:var(--cyan);outline:none}
-.mech-how summary:focus-visible .mech-how-l{text-decoration:underline}
-.mech-how-arrow{display:inline-block;transition:transform .2s}
-.mech-how[open] .mech-how-arrow{transform:rotate(180deg)}
-.mech-how-body{padding:6px 0 4px;max-width:62rem}
-.mech-quote{font-size:16px;line-height:1.5;color:#e8eef5;margin:0 0 10px}
-.mech-explainer{font-size:14px;line-height:1.7;margin:0 0 12px}
-.mech-evidence{font-size:13.5px;line-height:1.6;margin:0 0 10px;color:var(--ink)}
-.mech-evidence b{font-weight:600}
-.mech-evidence .light{vertical-align:0}
-.mech-guide{margin:14px 0 0;font-size:13.5px}
-.mech-guide a{display:inline-flex;align-items:center;min-height:32px}
-.mech-foot{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:16px}
-.mech-h{font-family:var(--sans);font-size:13.5px;font-weight:600;color:var(--dim);margin:0 0 6px}
-.mech-foot + .mech-h{margin-top:18px}
-.mech-list{margin:0 0 4px 18px;font-size:13.5px;line-height:1.65}
-.mech-list li{margin:3px 0}
-.mech-feed{max-height:none}
-
-/* ── the pictures (mechanisms/<id>/panel.js) ──────────── */
-.mech-picture{font-size:13px;line-height:1.55}
-.pic-none{color:var(--dim);font-size:13.5px;margin:0}
-.pic-cap{color:var(--dim);font-size:12.5px;margin:10px 0 0}
-.pic-meta{display:block;color:var(--faint);font-size:12px;margin-top:2px}
-.pic-mem{color:var(--ink);cursor:pointer;border-bottom:1px dotted rgba(0,229,255,.35)}
-.pic-mem:hover,.pic-mem:focus-visible{color:var(--cyan);outline:none}
-.pic-head{font-size:12.5px;color:var(--dim);font-weight:600;margin:0 0 4px}
-.pic-svg{display:block;width:100%;height:auto;max-height:230px;overflow:visible}
-.pic-svg .pic-guide{stroke:rgba(197,205,216,.25);stroke-dasharray:2 4}
-.pic-svg .pic-now{stroke:rgba(0,229,255,.45)}
-.pic-svg .pic-tick{fill:var(--faint);font-family:var(--sans);font-size:11px}
-.pic-legend,.pic-list,.pic-climb,.pic-sal{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:9px}
-.pic-legend li,.pic-sal li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:start}
-.pic-swatch{width:12px;height:3px;border-radius:2px;margin-top:9px}
-.pic-list li{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
-.pic-list li .pic-meta{display:inline}
-.pic-turns{display:grid;gap:12px}
-.pic-turn ul{list-style:none;margin:0;padding:0;display:grid;gap:6px}
-.pic-turn li{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
-.pic-tag{font-size:11px;font-weight:500;border:1px solid var(--glow);border-radius:9px;padding:0 7px;color:var(--dim);white-space:nowrap}
-.pic-tag.on{color:var(--cyan);border-color:rgba(0,229,255,.5)}
-.pic-used{font-size:12px;color:var(--faint);white-space:nowrap}
-.pic-used.yes{color:var(--teal)}
-.pic-two{display:grid;grid-template-columns:auto minmax(80px,1fr);gap:4px 10px;align-items:center;margin-top:5px}
-.pic-lab{font-size:12px;color:var(--dim);white-space:nowrap}
-.pic-bar{position:relative;display:block;height:6px;border-radius:3px;background:rgba(197,205,216,.1);overflow:visible}
-.pic-fill{position:absolute;left:0;top:0;bottom:0;border-radius:3px}
-.pic-mark{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink);opacity:.6}
-.pic-hubs{display:grid;gap:10px}
-.pic-hubs .pic-two{grid-template-columns:minmax(80px,1fr) auto}
-.pic-hubs .pic-meta{display:inline;margin:0}
-.pic-dotwrap{width:30px;height:30px;display:flex;align-items:center;justify-content:center}
-.pic-dot{display:block;border-radius:50%;background:#00e5ff;box-shadow:0 0 10px rgba(0,229,255,.5);opacity:.85}
-.pic-rev{margin:2px 0}
-.pic-rev .pic-meta{display:inline;margin:0 4px}
-.pic-crossed{color:var(--amber)}
-.pic-gap{margin-top:16px}
-.pic-dim{color:var(--faint)}
-.pic-returns,.pic-use{font-size:13px;color:var(--ink);margin:0 0 12px;line-height:1.55}
-.pic-use{display:flex;gap:10px;align-items:flex-start}
-.pic-use b{font-weight:600;color:var(--cyan)}
-.use-trend{flex:none;margin-top:2px;overflow:visible}
-.use-trend .use-bar{fill:var(--teal)}
-.use-trend .use-none{fill:rgba(197,205,216,.25)}
-.pic-climb .pic-tag{vertical-align:1px;margin-left:4px}
-/* the short lists (round 3b): a memory, and a few words under it */
-.pic-rows{gap:10px}
-.pic-rows li{display:block}
-.pic-rows li .pic-meta{display:block;margin-top:2px}
-.pic-rows .pic-tag{font-size:10.5px;padding:0 6px}
-.pic-dream .pic-mem{color:var(--dim)}
-.pic-feel{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--dim);border:1px solid rgba(197,205,216,.16);
-  border-radius:9px;padding:0 7px;line-height:17px;white-space:nowrap}
-.pic-feel i{display:inline-block;width:7px;height:7px;border-radius:50%}
-.pic-more{display:inline-flex;align-items:center;min-height:32px}
-.pic-rows + .pic-use,.pic-none + .pic-use{margin:14px 0 0}
-
-/* ── tonight (sections/tonight.js, 2026-09-27) ─────────── */
-.home-tonight{padding:10px 14px;display:grid;gap:8px;margin-bottom:22px;font-size:13.5px;line-height:1.55}
-.tn-row{display:grid;grid-template-columns:4.6rem minmax(0,1fr);gap:10px;align-items:baseline}
-.tn-l{font-size:12px;font-weight:600;color:var(--dim)}
-.tn-b{min-width:0;overflow-wrap:anywhere}
-.tn-phs{display:flex;flex-wrap:wrap;gap:5px}
-.tn-ph{font-size:12px;border:1px solid rgba(197,205,216,.16);border-radius:10px;padding:0 8px;color:var(--faint);white-space:nowrap}
-.tn-ph.on{color:#e8eef5;border-color:rgba(179,136,255,.55);background:rgba(179,136,255,.1)}
-.tn-when{color:var(--faint)}
-.tn-ph.on .tn-when{color:var(--dim)}
-.tn-hi{color:var(--purple);font-weight:600}
-.tn-names{color:var(--dim)}
-.tn-dim{color:var(--faint)}
-.tn-link{color:var(--ink);text-decoration:none;border-bottom:1px dotted rgba(0,229,255,.35)}
-.tn-link:hover,.tn-link:focus-visible{color:var(--cyan);outline:none}
-
-/* ── below ────────────────────────────────────────────── */
-.home-below{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:20px;align-items:start;margin-top:26px}
-.home-below>*{min-width:0}
 
 /* ── narrow ───────────────────────────────────────────── */
 @media(max-width:900px){
-  .home-hero{grid-template-columns:1fr;min-height:0;gap:6px}
-  .home-brain{height:360px;min-height:0}
-  .mech-grid{grid-template-columns:1fr;grid-template-areas:"main" "side";gap:16px}
-  .mech-foot{grid-template-columns:1fr;gap:18px}
-  .home-below{grid-template-columns:1fr}
+  .home-row-a,.home-row-b{grid-template-columns:1fr}
+  .home-brain{height:340px;min-height:0}
 }
 @media(max-width:560px){
-  .home-brain{height:320px}
-  .home-headline{font-size:22px;margin-bottom:18px}
-  .home-counts{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .home-counts .ht .n{font-size:22px}
+  .home-brain{height:300px}
+  .home-headline{font-size:22px}
 }
 @media(max-width:720px),(pointer:coarse){
-  .mech-pill{min-height:44px;padding:0 12px 0 10px}
-  .mech-guide a,.pic-more,.mech-how summary{min-height:44px}
-  .mech-n{font-size:40px}
+  .td-link{padding:10px 0}
+  .td-line::before{top:21px}
+  .home-more{min-height:44px}
 }
-@media(prefers-reduced-motion:reduce){.home-panel,.mech-how-arrow{transition:none}}

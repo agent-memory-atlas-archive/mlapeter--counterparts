@@ -30,14 +30,10 @@ addEventListener("resize", () => {
 
 (async function boot() {
   try {
+    // The store's shape, for the pulse's "did anything move" (round 4,
+    // 2026-09-28: the header's store and day chips went — the day is in the
+    // home tab's headline, the store's path on the health tab).
     const meta = await api("/api/meta");
-    // The NAME of the store, not its address. A temp path in the header is in
-    // every screenshot this dashboard produces, and it says nothing about the
-    // store — the full path is one hover away for the moment it matters.
-    const name = meta.dir.replace(/\/+$/, "").split("/").pop() || meta.dir;
-    $("dir").textContent = name;
-    $("dir").title = "reading " + meta.dir;
-    $("clock").textContent = "day " + meta.day;
     live.fingerprint = { rows: meta.rows, day: meta.day };
   } catch (e) { fail("The header", e); }
   showTab(location.hash.slice(1) || "home", false);

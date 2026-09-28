@@ -1077,7 +1077,7 @@ describe("the shapes the page draws with", () => {
    * The behaviour itself is asserted in a browser by `tools/visual-loop`, which
    * types a real note and reads the tile back off the DOM. This is the cheap
    * half: the refresh path must ask for the overview at all, and it must not be
-   * the boot path (which owns the feed).
+   * a stale boot-time copy.
    */
   test("the poll's refresh re-reads the overview, not only the flow diagram", () => {
     // The page is split into modules (`web/README.md`): the pulse re-reads every
@@ -1101,10 +1101,10 @@ describe("the shapes the page draws with", () => {
     const registry = read("shell/pages.js");
     expect(registry).toContain("home, memories, self, flow, health");
     expect(overview).toMatch(/export default \{[\s\S]*\brefresh,/);
-    // And the paint is a function of its own, so the refresh path can skip the
-    // feed the poll is prepending into.
-    expect(overview).toContain("export function paintHome(d, withFeed)");
-    expect(read("pages/home/sections/tiles.js")).toContain("window.tileValue");
+    // And the paint is a function of its own, and the headline's counts can be
+    // read back off the page (the visual loop's staleness check).
+    expect(overview).toContain("export function paintHome(d)");
+    expect(read("pages/home/sections/hero.js")).toContain("window.homeCount");
   });
 
   test("an empty store's row count is zero and its emptiness agrees with it", () => {

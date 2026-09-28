@@ -1,66 +1,63 @@
-/* The home tab: the page the dashboard opens on, shaped like counterparts.ai's
-   home. The hero (one line about this memory, a few counts, written vs came
-   back, the brain), the mechanism panel under it, then the live feed beside
-   "Tonight". Chapters, dreams and the core live on the Self tab (home round
-   3b, 2026-09-27 — a try: each thing on one page, linked from the others).
+/* The home tab (round 4, 2026-09-28 — a try, judged when seen): the best
+   pictures from the other tabs, for someone who knows roughly what this is
+   and none of the details. Clicking anything takes you to that thing on its
+   own tab. Top to bottom:
+     - one headline ("Day 7 with Mike · 306 memories · 13 new today") and a
+       small health dot, linked to Health;
+     - the brain (a region opens its mechanism on Health) beside "Today", a few
+       plain lines about memory;
+     - "How it feels" (the memories tab's radar) beside "Around the core" (the
+       Self tab's map).
+   The mechanism pills and panel moved to Health; the tiles, the written-vs-
+   came-back chart, Tonight and the live feed went.
 
-   Two fetches: `/api/overview` for the words and the feed, `/api/mechanisms`
-   (and `/api/mechanism?id=` for the picked one) for the panel and the brain. */
+   Two fetches: `/api/overview` for the words and pictures, `/api/mechanisms`
+   for the brain's lights. */
 import { api, fail } from "../../shared/api.js";
-import { $ } from "../../shared/dom.js";
-import { mountBrain } from "./brain.js";
-import * as explorer from "./sections/explorer.js";
+import * as brain from "./sections/brain.js";
+import * as feel from "./sections/feel.js";
 import * as hero from "./sections/hero.js";
-import * as liveActivity from "./sections/live-activity.js";
-import * as tonight from "./sections/tonight.js";
+import * as map from "./sections/map.js";
+import * as today from "./sections/today.js";
 
 const markup = `
     ${hero.markup}
-    ${explorer.markup}
-    <div class="home-below">
-      <div>${liveActivity.markup}
-      </div>
-      <div>${tonight.markup}
-      </div>
+    <div class="home-row home-row-a">
+      ${brain.markup}
+      ${today.markup}
+    </div>
+    <div class="home-row home-row-b">
+      ${feel.markup}
+      ${map.markup}
     </div>
   `;
 
+/** Draw the home page's words and pictures from one `/api/overview` payload. */
+export function paintHome(d) {
+  hero.paint(d);
+  today.paint(d);
+  feel.paint(d);
+  map.paint(d);
+}
+
 async function render() {
-  await Promise.all([explorer.render(), (async () => {
+  await Promise.all([brain.refresh(), (async () => {
     let d;
     try { d = await api("/api/overview"); } catch (e) { return fail("The home page", e); }
-    paintHome(d, true);
+    paintHome(d);
   })()]);
 }
 
 /**
- * Draw the home page's words from a payload. Called once at boot with the feed,
- * and again from the poll WITHOUT it whenever the store moved.
- *
- * The feed is the one panel the poll owns: it prepends flashed rows as events
- * arrive, and a repaint from `/api/overview` underneath that would wipe them
- * mid-flash. So the refresh path passes `withFeed = false` — except while the
- * feed is still showing its absence line, where there is nothing to wipe and
- * everything to gain (a store's first event should not need a reload to
- * appear).
- */
-export function paintHome(d, withFeed) {
-  hero.paint(d);
-  if (withFeed) liveActivity.paint(d);
-  tonight.paint(d);
-}
-
-/**
- * The store moved: re-read the overview and the mechanisms. THE FLOW PAGE WAS
- * NOT THE ONLY PAGE COUNTING — the home page's counts used to stay frozen at
- * boot while the flow tab beside them moved. The feed belongs to the poll (see
- * `paintHome`), unless it is still the absence line. The mechanisms' refresh is
- * also what lights the brain: a mechanism whose newest row moved flares.
+ * The store moved: re-read the overview and the brain's lights. THE FLOW PAGE
+ * WAS NOT THE ONLY PAGE COUNTING — the home page's counts used to stay frozen
+ * at boot while the flow tab beside them moved. The lights' refresh is also
+ * what flares the brain: a mechanism whose newest row moved lights its region.
  */
 async function refresh() {
-  explorer.refresh();
+  void brain.refresh();
   const fresh = await api("/api/overview");
-  paintHome(fresh, liveActivity.showingAbsence());
+  paintHome(fresh);
 }
 
 export default {
@@ -68,21 +65,13 @@ export default {
   mount(section) {
     section.innerHTML = markup;
     hero.mount();
-    explorer.mount();
-    liveActivity.mount();
-    tonight.mount();
-    // The brain is built once and kept; a failure to start is a calm sentence
-    // in its place, never an error on the page.
-    try {
-      explorer.attachBrain(mountBrain($("home-brain"), explorer.pickRegion));
-    } catch (e) {
-      const wrap = $("home-brain");
-      wrap.classList.add("is-nogl");
-      wrap.innerHTML = '<div class="brain-off"><p>The brain picture could not start in this browser.</p>' +
-        "<p>Everything it shows is in the mechanisms below.</p></div>";
-      wrap.dataset.ready = "1";
-    }
+    today.mount();
+    feel.mount();
+    brain.mount();
   },
   render,
   refresh,
+  /** Built while hidden, the map drew at a guessed width: coming back redraws it to fit. */
+  show: map.resize,
+  resize: map.resize,
 };

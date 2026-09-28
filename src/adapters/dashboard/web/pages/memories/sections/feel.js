@@ -5,7 +5,9 @@
    shapes scaled by the one largest axis so they compare, on a square-root
    scale so a little of a feeling still shows beside a lot. Hover an axis for the
    feelings under it; click or tap one to pin them and filter the list to that
-   core; click a word to filter to that feeling, from that side. Plain SVG. */
+   core; click a word to filter to that feeling, from that side. Plain SVG.
+   The home tab draws the same radar (`radarSvg`, `hoverWords`); a click there
+   opens this tab filtered to that feeling (`#memories?feeling=<core>`). */
 import { $, esc } from "../../../shared/dom.js";
 import { FEELING_COLOURS } from "../../../shared/memory-marks.js";
 import { hideTip, showTip } from "../../../shared/tip.js";
@@ -57,13 +59,7 @@ export function mount() {
     if (a && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); a.dispatchEvent(new MouseEvent("click", { bubbles: true })); }
   });
   // With a pointer, the words also float by it (the shell's hover tip).
-  el.addEventListener("mousemove", (e) => {
-    const a = e.target.closest("g[data-core]");
-    const c = a && data ? data.cores.find((x) => x.core === a.dataset.core) : null;
-    if (!c) return hideTip();
-    showTip(e.clientX, e.clientY, detailHtml(c, false));
-  });
-  el.addEventListener("mouseleave", hideTip);
+  hoverWords(el, () => data);
   onFilter(showDetail);
 }
 
@@ -84,9 +80,13 @@ export function paint(d) {
   draw();
 }
 
-function draw() {
-  const f = data;
-  if (!f) return;
+/**
+ * The radar itself, as SVG markup: a pure function of `/api/memories`'s (or
+ * `/api/overview`'s) `feelings`. Each axis is a `g[data-core]` to hover, click
+ * or tap; what a click does is the caller's (here, filter the list; on the home
+ * tab, open this tab filtered). `picked` marks one axis as on.
+ */
+export function radarSvg(f, picked) {
   const cores = f.cores;
   const max = Math.max(0, ...cores.map((c) => Math.max(c.yours.sum, c.mine.sum)));
   const W = 300, H = 250, cx = W / 2, cy = H / 2 + 2, R = 86;
@@ -126,14 +126,33 @@ function draw() {
         '" r="3" fill="' + (FEELING_COLOURS[c.core] || "#8a95a3") + '"/>' +
       '<text class="feel-label" x="' + lx.toFixed(1) + '" y="' + (ly + (anchor === "middle" && ly > cy ? 8 : 0)).toFixed(1) + '" text-anchor="' + anchor + '">' + esc(c.core) + "</text></g>";
   });
-  svg += "</svg>";
-  const legend = '<div class="feel-legend"><span><i style="background:' + YOURS + '"></i>yours</span><span><i style="background:' + MINE + '"></i>mine</span></div>';
+  return svg + "</svg>";
+}
+
+/** The two swatches: yours and mine. */
+export const radarLegend = '<div class="feel-legend"><span><i style="background:' + YOURS + '"></i>yours</span><span><i style="background:' + MINE + '"></i>mine</span></div>';
+
+/** A pointer over an axis floats its feelings in words (the shell's hover tip). */
+export function hoverWords(el, feelings) {
+  el.addEventListener("mousemove", (e) => {
+    const a = e.target.closest("g[data-core]");
+    const f = feelings();
+    const c = a && f ? f.cores.find((x) => x.core === a.dataset.core) : null;
+    if (!c) return hideTip();
+    showTip(e.clientX, e.clientY, detailHtml(c, false));
+  });
+  el.addEventListener("mouseleave", hideTip);
+}
+
+function draw() {
+  const f = data;
+  if (!f) return;
   const line = f.carrying === 0
     ? '<p class="glance-empty">No feelings recorded yet. When a memory is kept with how it felt — yours or mine — it shows here.</p>'
     : f.carrying < FEW
       ? '<p class="glance-note">' + f.carrying + (f.carrying === 1 ? " memory carries" : " memories carry") + " feelings so far.</p>"
       : "";
-  $("feel").innerHTML = '<div class="feel-row">' + svg + '<div class="feel-side">' + (f.carrying ? legend : "") +
+  $("feel").innerHTML = '<div class="feel-row">' + radarSvg(f, picked) + '<div class="feel-side">' + (f.carrying ? radarLegend : "") +
     '<div class="feel-detail" id="feel-detail" aria-live="polite"></div></div></div>' + line;
   showDetail();
 }

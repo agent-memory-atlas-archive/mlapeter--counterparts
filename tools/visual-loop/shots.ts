@@ -281,7 +281,7 @@ async function shoot(
       // console error nobody sees until a stranger clicks. Exercised on the
       // desktop pass, and only where there is something to click.
       if (viewport === DESKTOP && store === "rich") {
-        if (name === "home") await modal(page, ".ev", `${store}-event-modal`, out, shots, label);
+        if (name === "home") await modal(page, "#home-today button.td-link", `${store}-home-memory-modal`, out, shots, label);
         if (name === "memories") await modal(page, "#mlist .mrow", `${store}-memory-modal`, out, shots, label);
         if (name === "flow") await nodePanel(page, out, shots, label, store);
       }
@@ -467,14 +467,14 @@ async function liveEvent(
     // embedder and no interpreter, so it spends nothing.
     const noteBefore = { remember: await stateOf("remember"), store: await stateOf("store") };
     // AND THE PAGE THE DASHBOARD OPENS ON. The flow diagram was made live and
-    // the overview was not: its tiles, its band bars and its identity panel
-    // were painted once at boot and never again, so `memories` on the
-    // first screen of the product stayed frozen while the flow tab beside it
-    // moved. Read off the DOM, not out of a payload — a page that never
+    // the overview was not: its counts were painted once at boot and never
+    // again, so `memories` on the first screen of the product stayed frozen
+    // while the flow tab beside it moved. Read off the DOM (the home headline's
+    // count, `window.homeCount`), not out of a payload — a page that never
     // repaints would still answer the payload correctly.
     const tileOf = async (label: string): Promise<string> =>
       (await page.evaluate(
-        `window.tileValue ? window.tileValue(${JSON.stringify(label)}) : ""`,
+        `window.homeCount ? window.homeCount(${JSON.stringify(label)}) : ""`,
       )) as string;
     const tileBefore = await tileOf("memories");
     if (tileBefore === "") {
@@ -482,7 +482,7 @@ async function liveEvent(
         store: "rich",
         page: "home @ note",
         kind: "stale",
-        text: "the 'memories' tile could not be read from the open page — the staleness check would prove nothing",
+        text: "the home headline's memory count could not be read from the open page — the staleness check would prove nothing",
       });
     }
     const jot = Counterpart.open({ dir, owner: true });
@@ -550,10 +550,10 @@ async function liveEvent(
           store: "rich",
           page: "home @ note",
           kind: "stale",
-          text: `the home page's 'memories' tile still reads "${tileAfter}" after a note deposited a memory — the first screen of the product is reporting a number the server no longer agrees with`,
+          text: `the home headline still counts "${tileAfter}" memories after a note deposited one — the first screen of the product is reporting a number the server no longer agrees with`,
         });
       } else {
-        process.stdout.write(`  memories tile: "${tileBefore}" → "${tileAfter}"\n`);
+        process.stdout.write(`  home memories: "${tileBefore}" → "${tileAfter}"\n`);
       }
     }
   } finally {

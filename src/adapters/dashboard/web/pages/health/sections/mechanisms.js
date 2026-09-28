@@ -1,12 +1,18 @@
-/* The mechanism panel, under the hero — the site's Explorer, with this store in
-   it. The pills are ONE small line that scrolls sideways (home round 3b,
-   2026-09-27 — a try): each carries its stage as a small colour mark (the
-   site's four colours; no headings), its light (from `/api/mechanisms`: fired
-   lately, waiting, quiet, not built) and, when only some of it is built, a
-   "partly built" tag.
+/* "How the memory works" — the mechanism panel, the site's Explorer with this
+   store in it. It lived under the brain on the home tab until round 4
+   (2026-09-28), when it moved here, to the bottom of Health: the things useful
+   to the people building the memory live on this tab. Its behaviour did not
+   change. The brain stayed on Home; clicking one of its regions opens this
+   section with that region's mechanism picked (`#health/mechanisms?id=<id>`,
+   `open` below).
 
-   Picking one (here, or on the brain) shows it INLINE, the same three things
-   for every mechanism, all about OUR memories:
+   The pills are ONE small line that scrolls sideways: each carries its stage
+   as a small colour mark (the site's four colours; no headings), its light
+   (from `/api/mechanisms`: fired lately, waiting, quiet, not built) and, when
+   only some of it is built, a "partly built" tag.
+
+   Picking one shows it INLINE, the same three things for every mechanism, all
+   about OUR memories:
      1. one big number (the light's `lead`, from the evidence line);
      2. those memories: a short list or a small picture, each opening its card
         (`mechanisms/<id>/panel.js`, fed by `/api/mechanism?id=`);
@@ -20,7 +26,6 @@
    session), and a refresh repaints the lights and the picked panel's data
    under them. */
 import { FAMILIES, MECHANISMS, PANELS, guideUrl } from "../../../mechanisms/index.js";
-import { REGIONS, regionOf } from "../../../mechanisms/regions.js";
 import { api, fail } from "../../../shared/api.js";
 import { $, esc } from "../../../shared/dom.js";
 import "../../../shared/memory-modal.js"; // window.openMemory, for the pictures' rows
@@ -35,10 +40,11 @@ const LEGEND =
   "The line scrolls sideways.";
 
 export const markup = `
-    <section class="home-panel" id="mech-panel" aria-labelledby="mech-title">
+    <h2 id="h-mechanisms-h">How the memory works</h2>
+    <section class="mech-card" id="mech-panel" aria-labelledby="mech-title">
       <div class="mech-top">
         <div class="mechs" id="mech-strip" role="group" aria-label="Memory mechanisms"></div>
-        <span class="mech-legend">${q("home-lights", LEGEND)}</span>
+        <span class="mech-legend">${q("mech-lights", LEGEND)}</span>
       </div>
       <div class="mech-body" id="mech-body"></div>
     </section>`;
@@ -63,18 +69,15 @@ export function mount() {
 const ORDER = MECHANISMS.map((m) => m.id);
 const byIdStatic = Object.fromEntries(MECHANISMS.map((m) => [m.id, m]));
 const familyOf = (m) => FAMILIES.find((f) => f.key === m.family) || FAMILIES[0];
-const hexRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
 
-let brain = { select() {}, levels() {}, pulse() {} };
 let lights = {}; // id → { status, evidence, events, lead }
-let lastSeen = null; // id → newest backing seq, as of the previous paint
 let selected = null;
 let panelData = {}; // id → the /api/mechanism payload last read
 let asked = 0;
 
 // THE FOLD: closed by default, and once opened it stays open for this tab's
 // session — across the pulse's repaint and across picks.
-const HOW_KEY = "counterparts.home.how";
+const HOW_KEY = "counterparts.mechanisms.how";
 let howOpen = (() => {
   try { return sessionStorage.getItem(HOW_KEY) === "1"; } catch { return false; }
 })();
@@ -86,28 +89,6 @@ function setHow(open) {
 const lightOf = (id) => lights[id] || { status: "grey", build: "not", evidence: "", events: [], lead: null };
 /** A pill's tag: only the partly built say so. Built needs no tag; grey is not built. */
 const tagOf = (id) => lightOf(id).build === "partly" ? '<span class="mech-tag">partly built</span>' : "";
-
-/** Hand the explorer the brain it drives (and that drives it). */
-export function attachBrain(b) {
-  brain = b;
-  if (selected) pushSelectionToBrain();
-}
-
-/** A region was clicked on the brain: pick its first mechanism, or step to the
- *  next one if one of its mechanisms is already picked. */
-export function pickRegion(key) {
-  const region = REGIONS.find((r) => r.key === key);
-  if (!region || region.mechanisms.length === 0) return;
-  const at = region.mechanisms.indexOf(selected);
-  select(region.mechanisms[at < 0 ? 0 : (at + 1) % region.mechanisms.length], true);
-}
-
-function pushSelectionToBrain() {
-  const m = byIdStatic[selected];
-  const region = regionOf(selected);
-  if (!m || !region) return;
-  brain.select(region.key, hexRgb(familyOf(m).color), m.short);
-}
 
 function paintStrip() {
   const strip = $("mech-strip");
@@ -122,7 +103,7 @@ function paintStrip() {
   }).join("");
   strip.scrollLeft = keep;
   for (const el of strip.querySelectorAll(".mech-pill")) {
-    el.addEventListener("click", () => select(el.dataset.id, false));
+    el.addEventListener("click", () => select(el.dataset.id));
   }
   edges();
 }
@@ -219,9 +200,8 @@ async function loadPanel(id) {
   if (ticket === asked && id === selected) paintBody();
 }
 
-/** Pick a mechanism. `fromBrain`: on a phone the panel sits below the brain,
- *  often off screen, so bring it into view or the tap looks like it did nothing. */
-export function select(id, fromBrain) {
+/** Pick a mechanism (a pill, or the brain on the home tab via `open`). */
+export function select(id) {
   if (!byIdStatic[id]) return;
   selected = id;
   for (const el of document.querySelectorAll("#mech-strip .mech-pill")) {
@@ -229,51 +209,25 @@ export function select(id, fromBrain) {
     el.classList.toggle("is-on", on);
     el.setAttribute("aria-pressed", on ? "true" : "false");
   }
-  pushSelectionToBrain();
   revealPill(id);
   paintBody();
   loadPanel(id);
-  if (fromBrain && matchMedia("(max-width: 900px)").matches) {
-    const panel = $("mech-panel");
-    if (panel && panel.getBoundingClientRect().top > innerHeight * 0.45) {
-      panel.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
-    }
-  }
 }
 
-/** Lights in: repaint the strip, the brain's steady glow, and — for every
- *  mechanism whose newest backing row moved since the last paint — a flare on
- *  its region. The first paint flares each working region once, staggered. */
+/** `#health/mechanisms?id=<id>` (the home tab's brain): pick it and bring the section into view. */
+export function open(id) {
+  if (id) select(id);
+  const h = $("h-mechanisms-h");
+  if (h) h.scrollIntoView({ block: "start" });
+}
+
+/** Lights in: repaint the strip. */
 function paint(view) {
   lights = Object.fromEntries(view.mechanisms.map((l) => [l.id, l]));
   if (selected === null) {
     selected = ORDER.find((id) => lightOf(id).status === "green") || ORDER[0];
   }
   paintStrip();
-  const levels = {};
-  for (const r of REGIONS) {
-    levels[r.key] = Math.max(0, ...r.mechanisms.map((id) => {
-      const s = lightOf(id).status;
-      return s === "green" ? 1 : s === "waiting" ? 0.45 : s === "amber" ? 0.25 : 0;
-    }));
-  }
-  brain.levels(levels);
-  const newest = Object.fromEntries(view.mechanisms.map((l) => [l.id, l.events[0] ?? null]));
-  if (lastSeen === null) {
-    let k = 0;
-    for (const r of REGIONS) {
-      if (levels[r.key] === 1) setTimeout(() => brain.pulse(r.key), 400 + 450 * k++);
-    }
-  } else {
-    for (const id of ORDER) {
-      if (newest[id] !== null && newest[id] !== lastSeen[id]) {
-        const r = regionOf(id);
-        if (r) brain.pulse(r.key);
-      }
-    }
-  }
-  lastSeen = newest;
-  pushSelectionToBrain();
 }
 
 export async function render() {

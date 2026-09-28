@@ -8,10 +8,12 @@
    a signal travelling into it, when the page sees that mechanism fire. Nothing
    is invented: no ambient arcs, no pretend activity.
 
-   Drag to rotate; click (or tap) a region's point to pick its mechanism. three.js
-   is vendored (shared/vendor/, MIT) and served from this origin — nothing leaves
+   Drag to rotate; click (or tap) a region's point to open its mechanism on the
+   Health tab (home round 4, 2026-09-28: the brain no longer drives a panel on
+   Home). A point's name shows only while it is hovered or focused. three.js is
+   vendored (shared/vendor/, MIT) and served from this origin — nothing leaves
    the machine. Without WebGL the picture is replaced by a calm sentence; the
-   pills below reach everything it does. */
+   Health tab's mechanisms reach everything it does. */
 import * as THREE from "../../shared/vendor/three.module.min.js";
 import { REGIONS } from "../../mechanisms/regions.js";
 
@@ -27,22 +29,24 @@ function webglAvailable() {
 }
 
 /**
+
  * Mount the brain into `wrap`. Returns a controller:
- *   select(key, tint, label) — the picked region, its tint (rgb 0..1), the pin's label
  *   levels({ key: 0..1 })    — each region's steady glow (its mechanisms' lights)
  *   pulse(key)               — one real firing: a flare and a signal into the region
- * `onPick(key)` is called when a region is clicked on the brain.
+ * `onPick(key)` is called when a region is clicked on the brain; `nameOf(key)`
+ * is the words its point shows on hover.
  */
-export function mountBrain(wrap, onPick) {
-  const state = { selected: null, tint: [0.0, 0.9, 1.0], label: "" };
-  const noop = { select() {}, levels() {}, pulse() {}, live: false };
+export function mountBrain(wrap, onPick, nameOf = (key) => key) {
+  const noop = { levels() {}, pulse() {}, live: false };
+  const esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   wrap.innerHTML =
     '<canvas class="brain-canvas" aria-hidden="true"></canvas>' +
     REGIONS.map((r) => r.active
-      ? '<button type="button" class="brain-pin" data-key="' + r.key + '" aria-label="' + r.name + '"><span class="brain-pin-dot" aria-hidden="true"></span><span class="brain-pin-name"></span></button>'
+      ? '<button type="button" class="brain-pin" data-key="' + r.key + '" aria-label="' + esc(r.name + ": " + nameOf(r.key)) + '">' +
+        '<span class="brain-pin-dot" aria-hidden="true"></span><span class="brain-pin-name" aria-hidden="true">' + esc(nameOf(r.key)) + "</span></button>"
       : "").join("") +
     '<p class="brain-hint" aria-hidden="true"><span class="hint-mouse">drag to rotate · click a point</span><span class="hint-touch">swipe sideways to rotate · tap a point</span></p>' +
-    '<div class="brain-off" hidden><p>The brain picture needs WebGL, which this browser has switched off.</p><p>Everything it shows is in the mechanisms below.</p></div>';
+    '<div class="brain-off" hidden><p>The brain picture needs WebGL, which this browser has switched off.</p><p>Everything it shows is on the Health tab, under how the memory works.</p></div>';
   const canvas = wrap.querySelector(".brain-canvas");
   const pins = [...wrap.querySelectorAll(".brain-pin")];
   const pinOf = (key) => pins.find((p) => p.dataset.key === key);
@@ -151,25 +155,20 @@ export function mountBrain(wrap, onPick) {
     uTime: { value: 0 },
     uGlow: { value: new Array(N).fill(0) },
     uLevel: { value: new Array(N).fill(0) },
-    uLock: { value: -1 },
-    uTint: { value: new THREE.Color(0, 0.9, 1) },
     uPx: { value: 1 },
   };
   const mat = new THREE.ShaderMaterial({
     uniforms, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     vertexShader: `attribute vec3 aColor;attribute float aRegion;
-      uniform float uTime;uniform float uGlow[${N}];uniform float uLevel[${N}];uniform float uLock;uniform float uPx;uniform vec3 uTint;
+      uniform float uTime;uniform float uGlow[${N}];uniform float uLevel[${N}];uniform float uPx;
       varying vec3 vC;varying float vA;
       void main(){
         int r=int(aRegion+0.5);
         float glow=uGlow[r];
         float level=uLevel[r];
         float tw=0.82+0.18*sin(uTime*2.1+position.x*37.0+position.y*53.0+position.z*41.0);
-        bool picked=abs(uLock-aRegion)<0.5;
-        float lockBoost=(uLock<-0.5)?1.0:(picked?1.6:0.7);
-        vec3 base=picked?uTint:aColor;
-        vC=base*(0.7+0.45*level+1.35*glow)*tw*lockBoost;
-        vA=(0.66+0.22*level+0.30*glow)*lockBoost;
+        vC=aColor*(0.7+0.45*level+1.35*glow)*tw;
+        vA=0.66+0.22*level+0.30*glow;
         vec4 mv=modelViewMatrix*vec4(position,1.0);
         gl_PointSize=uPx*(2.6+0.6*level+2.2*glow)*(3.0/-mv.z);
         gl_Position=projectionMatrix*mv;
@@ -321,8 +320,6 @@ export function mountBrain(wrap, onPick) {
       glowTarget[i] *= 0.965;
       uniforms.uLevel.value[i] += (levelTarget[i] - uniforms.uLevel.value[i]) * 0.08;
     }
-    uniforms.uLock.value = state.selected === null ? -1 : RID[state.selected];
-    uniforms.uTint.value.setRGB(state.tint[0], state.tint[1], state.tint[2]);
     stepArcs(now);
     renderer.render(scene, camera);
     project();
@@ -341,24 +338,8 @@ export function mountBrain(wrap, onPick) {
   wake();
   wrap.dataset.ready = "1";
 
-  const rgb = (c) => "rgb(" + c.map((x) => Math.round(x * 255)).join(",") + ")";
   return {
     live: true,
-    select(key, tint, label) {
-      state.selected = key;
-      state.tint = tint;
-      state.label = label;
-      for (const pin of pins) {
-        const on = pin.dataset.key === key;
-        pin.classList.toggle("is-on", on);
-        pin.setAttribute("aria-pressed", on ? "true" : "false");
-        pin.style.setProperty("--pin", on ? rgb(tint) : "rgb(138,149,163)");
-        pin.querySelector(".brain-pin-name").textContent = on ? label : "";
-      }
-      const i = RID[key];
-      if (i !== undefined) glowTarget[i] = Math.max(glowTarget[i], 0.6);
-      wake();
-    },
     levels(byKey) {
       REGIONS.forEach((r, i) => { levelTarget[i] = Math.max(0, Math.min(1, byKey[r.key] || 0)); });
       wake();

@@ -23,7 +23,6 @@
     font-size:13px;white-space:nowrap}
   .hright a{min-height:44px;display:inline-flex;align-items:center}
   .badge{font-size:10px;padding:4px 9px}
-  .badge.dirpath{max-width:150px}
   /* The chips have to fit ONE line, or the header grows a row back. The
      observer badge is the long one, and `observer` alone is the whole claim —
      the sentence is still in its `title`. */
