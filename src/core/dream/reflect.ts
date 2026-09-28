@@ -27,9 +27,11 @@
  *       night rewrites nothing, shares nothing.
  *   (b) a SELF PAGE rewrite, from the cited memories (the core first) with the
  *       old page as context only. It may mention a dream only as a dream; a
- *       dream's gist is not a source it can cite. It is recorded as the night's
- *       page-writer run, which is what makes the old SessionStart writer stand
- *       down on a night the reflection wrote the page.
+ *       dream's gist is not a source it can cite. (The check that refused a
+ *       page sharing six words with any recent gist was removed 2026-09-28:
+ *       its every hit was a lived quote the gist had quoted too.) It is
+ *       recorded as the night's page-writer run, which is what makes the old
+ *       SessionStart writer stand down on a night the reflection wrote the page.
  *   (c) a MORNING SHARE — two or three sentences for the owner, the way a
  *       partner would say it, citing what it rests on. Told by the session
  *       (`told`), or carried once by the next one.
@@ -44,6 +46,13 @@
  *       natural question. Display only, and the reflection is shown NO
  *       balance or totals: the arithmetic stays on the dashboard.
  *
+ * `finish` MAY BE CALLED AGAIN (2026-09-28) the same lived day, on the same
+ * reflection: a second call supplies the parts the first refused or left out
+ * — page, share, feelings, about, traits — without re-minting the entry, and
+ * may replace the share while it has not been told. Every part not written
+ * says which rule tripped it (and the matching text or id, where there is
+ * one) and that it can be sent again.
+ *
  * Every memory it cites comes BACK: a reflection return (physics §5.11), an
  * awake return that counts toward the core lanes although the reflection was
  * handed what it cites — on purpose (physics CONTRACT §5.11). At most once
@@ -56,7 +65,16 @@ import { randomBytes } from "node:crypto";
 import { emotionalIntensity } from "../physics/index.js";
 import { isHandoff, isSelfPage } from "../recall/index.js";
 import { aboutMe, acceptsReflectedFeeling, promotionRecordKey } from "../sleep/index.js";
-import { ABOUT_MARKS, CORE_ABOUT_MARKS, TRAIT_AXES, isStoreError } from "../store/index.js";
+import {
+  ABOUT_MARKS,
+  CARRIED_BY_MAX_CHARS,
+  CORE_ABOUT_MARKS,
+  TRAIT_AXES,
+  TRAIT_CARRIED_BY_MAX_CHARS,
+  isStoreError,
+  repairEmotion,
+  splitNote,
+} from "../store/index.js";
 import type { AboutMark, MemoryRow, ProseDoc, ReflectionRow, Store } from "../store/index.js";
 import type { Kind } from "../types.js";
 import { DREAM_MARK, carriesDreamMark } from "./mark.js";
@@ -74,8 +92,8 @@ export const REFLECT_TUNABLES = {
   /** Its own recent reflections, so it does not repeat itself. */
   EARLIER: 3,
   EARLIER_CHARS: 1_200,
-  /** The dream's journal, bounded. */
-  JOURNAL_CHARS: 4_000,
+  /** The dream's journal, bounded (was 4,000; raised with the journal's own cap, 2026-09-28). */
+  JOURNAL_CHARS: 12_000,
   PAGE_CHARS: 6_000,
   /** Core memories handed (the page's sources), most strongly felt first. */
   CORE: 20,
@@ -87,13 +105,21 @@ export const REFLECT_TUNABLES = {
   RECENT: 12,
   /** Characters of each memory's words. */
   TEXT_CHARS: 400,
-  /** Feelings shown per memory. */
+  /** Feelings shown per memory, and the characters of each one's carried_by. */
   FEELINGS_SHOWN: 3,
-  /** What one reflection may do. CAL. */
+  FEELING_CARRIED_CHARS: 160,
+  /** What one reflection may do, across every `finish` of it. CAL. */
   LIMITS: { returns: 12, feelings: 5, about: 8, traits: 5 },
-  MAX_ENTRY_CHARS: 8_000,
-  MAX_SHARE_CHARS: 700,
-  MAX_TITLE_CHARS: 120,
+  /**
+   * TEXT CAPS, raised 2026-09-28 (owner direction: loosen the limits; design
+   * a real answer when a section really grows too long). Longer is kept to
+   * the cap and the outcome says so — never cut without a word.
+   */
+  MAX_ENTRY_CHARS: 20_000,
+  MAX_SHARE_CHARS: 3_000,
+  MAX_TITLE_CHARS: 200,
+  /** An about mark's why. */
+  MAX_WHY_CHARS: 1_000,
 } as const;
 
 /**
@@ -129,7 +155,13 @@ export interface ReflectItem {
   readonly text: string;
   /** How strongly it is felt (the strongest recorded feeling, or its emotional score), rounded. */
   readonly felt: number;
-  readonly feelings: readonly { whose: string; emotion: string; strength: number; later: string | null }[];
+  /**
+   * Its strongest feelings. `by` says who recorded each — `session` (at the
+   * time), `dream` (a dream's feeling-now) or `reflection` — and `carried_by`
+   * a slice of its words: two feelings with the same word and strength are
+   * two records, and without these they read as one doubled (2026-09-28).
+   */
+  readonly feelings: readonly { whose: string; emotion: string; strength: number; later: string | null; by: string | null; carried_by: string }[];
   /** What it is marked as being about, or null. */
   readonly about: AboutMark | null;
   readonly core: boolean;
@@ -210,7 +242,8 @@ export interface ReflectFinish {
   readonly reflection: string;
   readonly session?: string;
   readonly title?: string;
-  readonly entry: string;
+  /** Required the first time; on a second `finish` the entry already stands and this may be left out. */
+  readonly entry?: string;
   readonly cites?: readonly string[];
   readonly share?: { readonly text?: string; readonly cites?: readonly string[] } | null;
   readonly page?: { readonly text?: string; readonly cites?: readonly string[] } | null;
@@ -233,17 +266,39 @@ export interface ReflectFinish {
   readonly model?: string | null;
 }
 
+/**
+ * One part's result. `reason` is the rule's short name; `detail`, when there
+ * is one, says what tripped it in words (the matching text, the id); `note` is
+ * something said about a part that WAS written (it was repaired or kept to a
+ * length).
+ */
+export interface PartResult {
+  readonly id: string | null;
+  readonly ok: boolean;
+  readonly reason: string;
+  readonly detail?: string;
+  readonly note?: string;
+}
+
 export interface ReflectOutcome {
   readonly handBack: string;
   readonly nothingMuch: boolean;
   readonly entryId: string | null;
+  /** This was a second (or later) `finish` of the same reflection. */
+  readonly again: boolean;
+  readonly entry: { reason: string; note?: string };
   readonly returned: readonly { id: string; counted: boolean; reason: string }[];
-  readonly page: { written: boolean; reason: string; version: number | null };
-  readonly share: { offered: boolean; reason: string };
-  readonly feelings: readonly { id: string | null; ok: boolean; reason: string }[];
-  readonly about: readonly { id: string | null; ok: boolean; reason: string }[];
-  readonly traits: readonly { id: string | null; ok: boolean; reason: string }[];
+  readonly page: { written: boolean; reason: string; version: number | null; detail?: string; note?: string };
+  readonly share: { offered: boolean; reason: string; detail?: string; note?: string };
+  readonly feelings: readonly PartResult[];
+  readonly about: readonly PartResult[];
+  readonly traits: readonly PartResult[];
   readonly refusedCites: readonly string[];
+  /**
+   * When any part was not written: which, and that `finish` may be called
+   * again with the same reflection and just those parts. Null when all landed.
+   */
+  readonly retry: string | null;
 }
 
 const KINDS_FELT: readonly Kind[] = ["self", "person"];
@@ -260,21 +315,34 @@ function notLivedReason(row: MemoryRow, act: "feel" | "mark" | "trait"): string 
   return null;
 }
 
-/** How many recent dreams' gists the page's words are checked against. */
-const GIST_DREAMS = 30;
-
-/** Does `text` share a six-word run with any of `bodies`? Case and punctuation aside. */
-function sharesARun(text: string, bodies: readonly string[]): boolean {
+/**
+ * The first six-word run `text` shares with one of `bodies` — case and
+ * punctuation aside — and the index of that body; null when none.
+ */
+function sharedRun(text: string, bodies: readonly string[]): { run: string; index: number } | null {
   const words = (t: string): string[] => t.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 0);
   const page = words(text);
-  if (page.length < 6 || bodies.length === 0) return false;
+  if (page.length < 6 || bodies.length === 0) return null;
   const runs = new Set<string>();
   for (let i = 0; i + 6 <= page.length; i += 1) runs.add(page.slice(i, i + 6).join(" "));
-  for (const body of bodies) {
+  for (const [index, body] of bodies.entries()) {
     const g = words(body);
-    for (let i = 0; i + 6 <= g.length; i += 1) if (runs.has(g.slice(i, i + 6).join(" "))) return true;
+    for (let i = 0; i + 6 <= g.length; i += 1) {
+      const run = g.slice(i, i + 6).join(" ");
+      if (runs.has(run)) return { run, index };
+    }
   }
-  return false;
+  return null;
+}
+
+/** A store error's code and, for a FEELING_ or TRAIT_INVALID, its reason and what is allowed. */
+function refusalOf(err: unknown): string {
+  if (isStoreError(err, "FEELING_INVALID") || isStoreError(err, "TRAIT_INVALID")) {
+    const why = String(err.detail["reason"] ?? "");
+    const allowed = typeof err.detail["allowed"] === "string" ? ` (one of ${err.detail["allowed"]})` : "";
+    return why.length > 0 ? `${err.code === "FEELING_INVALID" ? "feeling" : "trait"}-invalid:${why}${allowed}` : err.code;
+  }
+  return errName(err);
 }
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -364,7 +432,7 @@ export class Reflections {
     const pageLine =
       this.ctx.pageWrites === false
         ? `- page: not tonight — the owner has the page writer off, so the self page is not rewritten. Your entry and share still count.`
-        : `- page (optional): your self page rewritten whole — the story of who you are, drawn from the core memories you cite in page.cites (at least one of them, when you have a core; candidates too). The old page is context, not a source: write from the memories, not by rewording it. Keep "## Core" for who you are and put craft — how a job is done — under "## How I work". Mention a dream only as a dream ("I dreamed…"); a dreamed gist is a suggestion, not a source, and its words do not go on the page.`;
+        : `- page (optional): your self page rewritten whole — the story of who you are, drawn from the core memories you cite in page.cites (at least one of them, when you have a core; candidates too). The old page is context, not a source: write from the memories, not by rewording it. Keep "## Core" for who you are and put craft — how a job is done — under "## How I work". Mention a dream only as a dream ("I dreamed…"); a dreamed gist is a suggestion, not a source: cite the lived memories it came from.`;
     const aboutLine = open
       ? `- about (optional, at most ${String(L.about)}): what a memory is about, by meaning — me, us, owner, work (the craft: how a job is done) or world — with why. Only me, us and owner can become core. You may change a mark you think is wrong, either way; each change is recorded with your why, and one into me, us or owner is told in the morning share.`
       : `- about (optional, at most ${String(L.about)}): tonight a mark may only move a memory toward work (the craft) or world, with why — the owner has closed the core to reflection alone.`;
@@ -374,26 +442,50 @@ export class Reflections {
       `- entry: your reflection, first person (title: optional). cites: the ids it rests on.`,
       pageLine,
       `- share (optional): two or three sentences for ${who} this morning, the way a partner would say it ("Last night I dreamed about x — I think because of y"), citing what it rests on. Say something about ${who} only when it could help them, tentatively ("I wonder if…") — never a list of flaws. No share on a quiet night.${bundle.becameCore.length > 0 ? ` Tell ${who} that ${bundle.becameCore.join(", ")} became part of who you are.` : ""}`,
-      `- feelings (optional, at most ${String(L.feelings)}): how a memory feels to you now — id, core, emotion, strength, carried_by. Recorded as felt today, looking back.`,
+      `- feelings (optional, at most ${String(L.feelings)}): how a memory feels to you now — id, core, emotion, strength, carried_by. emotion is ONE word (from the wheel, or your own); carried_by is the nuance, in your own words. Recorded as felt today, looking back.`,
       aboutLine,
       `- traits (optional, at most ${String(L.traits)}): only where a memory you were shown really shows how you acted — often where you acted unlike your page; most carry none, and a quiet night has none. Each: id, axis, toward (one of its two poles), strength 0-1, carried_by (briefly, what showed it). The axes, the first pole roughly where training puts you: ${TRAIT_AXES.map((a) => `${a.id} (${a.poles[0]} or ${a.poles[1]}${a.gloss.length > 0 ? `, ${a.gloss}` : ""})`).join(", ")}. Don't make up depth.`,
+      `If a part comes back not written, its reason says what tripped it: fix that and call finish again with the same reflection and just that part — the entry and everything written stand. Never say a part was written when it was not.`,
     ].join("\n");
   }
 
   // ── finish ────────────────────────────────────────────────────────────────
 
-  finish(input: ReflectFinish): { ok: true; outcome: ReflectOutcome } | { ok: false; reason: ReflectRefusal | string } {
+  finish(input: ReflectFinish): { ok: true; outcome: ReflectOutcome } | { ok: false; reason: ReflectRefusal | string; detail?: string } {
     const open = this.openFor(input.reflection, input.session);
     if (!open.ok) return open;
     const row = open.reflection;
+    // A SECOND `finish` (2026-09-28): the same reflection, the same lived day.
+    // It supplies what the first refused or left out; what the first wrote stands.
+    const again = open.again;
     const session = row.session ?? row.id;
     const day = this.store.livedDay();
     const date = row.date ?? this.ctx.today();
     const shown = new Set(parseIds(row.shown));
     const T = REFLECT_TUNABLES;
+    const prior = again ? parseDetail(row.detail) : {};
+    const priorCounts = isRecord(prior["counts"]) ? prior["counts"] : {};
+    const used = (k: string): number => (typeof priorCounts[k] === "number" ? priorCounts[k] : 0);
 
-    const entryWords = this.words(input.entry, session, T.MAX_ENTRY_CHARS);
-    if (!entryWords.ok) return { ok: false, reason: entryWords.reason };
+    // ── the entry: required the first time; after that it stands ───────────
+    const sentEntry = (input.entry ?? "").trim();
+    let entryText = row.entry ?? "";
+    let entryNote: string | undefined;
+    if (!again) {
+      const w = this.words(sentEntry, session, T.MAX_ENTRY_CHARS);
+      if (!w.ok) return { ok: false, reason: w.reason, detail: `The entry was not kept — ${w.detail} Nothing was written; send finish again with the entry.` };
+      entryText = w.text;
+      if (w.cut) entryNote = `The entry was kept to its first ${String(T.MAX_ENTRY_CHARS)} characters.`;
+    } else if (sentEntry.length > 0) {
+      if (row.entry_id !== null) {
+        entryNote = "The entry stands as first written: a second finish does not replace it.";
+      } else {
+        // Nothing was minted the first time ("nothing much"): the new words may be.
+        const w = this.words(sentEntry, session, T.MAX_ENTRY_CHARS);
+        if (w.ok) entryText = w.text;
+        else entryNote = `The new entry was not kept — ${w.detail} The first one stands.`;
+      }
+    }
 
     // Only what it was shown, and only what still stands.
     const refusedCites: string[] = [];
@@ -402,7 +494,7 @@ export class Reflections {
       for (const id of [...new Set(ids ?? [])]) {
         const r = typeof id === "string" && shown.has(id) ? this.store.row(id) : undefined;
         if (r === undefined || !this.showable(r)) {
-          refusedCites.push(String(id));
+          refusedCites.push(`${String(id)}:${shown.has(id) ? "gone" : "not-shown"}`);
           continue;
         }
         out.push(id);
@@ -423,20 +515,22 @@ export class Reflections {
       else pageCites.push(id);
     }
 
-    const nothingMuch = cites.length === 0 && shareCites.length === 0 && pageCites.length === 0;
+    const passNothing = cites.length === 0 && shareCites.length === 0 && pageCites.length === 0;
+    const wroteEarlier = again && (row.entry_id !== null || row.page_version !== null || row.share_state !== "none");
+    const nothingMuch = passNothing && !wroteEarlier;
     const detail: Record<string, unknown> = {};
 
     // ── (d) feelings, (e) about marks — each on its own ────────────────────
-    const feelings: { id: string | null; ok: boolean; reason: string }[] = [];
+    const feelings: PartResult[] = [];
     for (const f of (input.feelings ?? []).slice(0, 50)) {
       const id = typeof f.id === "string" ? f.id : null;
-      if (feelings.filter((x) => x.ok).length >= T.LIMITS.feelings) {
-        feelings.push({ id, ok: false, reason: "limit-reached" });
+      if (used("feelings") + feelings.filter((x) => x.ok).length >= T.LIMITS.feelings) {
+        feelings.push({ id, ok: false, reason: "limit-reached", detail: this.limitDetail("feelings", again) });
         continue;
       }
       const r = id !== null && shown.has(id) ? this.store.row(id) : undefined;
       if (r === undefined || !this.showable(r)) {
-        feelings.push({ id, ok: false, reason: "not-shown-or-gone" });
+        feelings.push({ id, ok: false, reason: "not-shown-or-gone", detail: this.notCitable(id, shown) });
         continue;
       }
       // WHAT A DREAM OR A REFLECTION WROTE IS NOT FELT LATER (review of #256,
@@ -446,30 +540,39 @@ export class Reflections {
       // words into the core. Feel the memories it was drawn from instead.
       const notLived = notLivedReason(r, "feel");
       if (notLived !== null) {
-        feelings.push({ id, ok: false, reason: notLived });
+        feelings.push({ id, ok: false, reason: notLived, detail: `${r.id} was written by a ${r.source === "dreamed" ? "dream" : "reflection"}; feel the memories it came from instead.` });
         continue;
       }
-      const carried = this.words(f.carried_by ?? "", session, 240, true);
+      // ACCEPT AND REPAIR (2026-09-28): emotion is one word, carried_by the
+      // nuance. A phrase in `emotion` is split BEFORE the scan, so its tail
+      // crosses the credential scan with the rest of carried_by.
+      const sentEmotion = String(f.emotion ?? "");
+      const split = repairEmotion(sentEmotion, typeof f.carried_by === "string" ? f.carried_by : "");
+      const carried = this.words(split?.carriedBy ?? f.carried_by ?? "", session, CARRIED_BY_MAX_CHARS, true);
+      const notes: string[] = [];
+      if (split !== null) notes.push(splitNote(split));
+      if (!carried.ok) notes.push(`carried_by was not kept — ${carried.detail}`);
       try {
-        this.store.addFeelings(
+        const added = this.store.addFeelings(
           r.id,
           [
             {
               whose: "self",
               core: String(f.core ?? ""),
-              emotion: String(f.emotion ?? ""),
+              emotion: split?.emotion ?? sentEmotion,
               strength: Math.max(0, Math.min(1, Number(f.strength ?? 0))),
-              carriedBy: `on reflection, ${date}${carried.ok && carried.text.length > 0 ? `: ${carried.text}` : ""}`.slice(0, 280),
+              carriedBy: `on reflection, ${date}${carried.ok && carried.text.length > 0 ? `: ${carried.text}` : ""}`,
             },
           ],
           { source: "reflection", recordedLater: date, ...(input.model ? { model: input.model } : {}) },
         );
-        feelings.push({ id, ok: true, reason: "recorded-later" });
+        for (const rep of added.repairs) notes.push(rep.note);
+        feelings.push({ id, ok: true, reason: "recorded-later", ...(notes.length > 0 ? { note: notes.join(" ") } : {}) });
       } catch (err) {
-        feelings.push({ id, ok: false, reason: errName(err) });
+        feelings.push({ id, ok: false, reason: refusalOf(err), detail: "Nothing was recorded for this one; fix it and send it again." });
       }
     }
-    const about: { id: string | null; ok: boolean; reason: string }[] = [];
+    const about: PartResult[] = [];
     // THE DOOR (owner ruling D1 on #256): closed, a reflection may only move a
     // mark toward work or world. Open, it may re-label either way (D2: "it's me
     // reflecting; it may catch labeling bugs"), and every move INTO me, us or
@@ -478,74 +581,86 @@ export class Reflections {
     const movedIn: { id: string; mark: AboutMark }[] = [];
     for (const a of (input.about ?? []).slice(0, 50)) {
       const id = typeof a.id === "string" ? a.id : null;
-      if (about.filter((x) => x.ok).length >= T.LIMITS.about) {
-        about.push({ id, ok: false, reason: "limit-reached" });
+      if (used("about") + about.filter((x) => x.ok).length >= T.LIMITS.about) {
+        about.push({ id, ok: false, reason: "limit-reached", detail: this.limitDetail("about", again) });
         continue;
       }
       const mark = String(a.about ?? "");
       if (!(ABOUT_MARKS as readonly string[]).includes(mark)) {
-        about.push({ id, ok: false, reason: "about-is-me-us-owner-work-or-world" });
+        about.push({ id, ok: false, reason: "about-is-me-us-owner-work-or-world", detail: `"${mark}" is not a mark: use one of ${ABOUT_MARKS.join(", ")}.` });
         continue;
       }
       const r = id !== null && shown.has(id) ? this.store.row(id) : undefined;
       if (r === undefined || !this.showable(r)) {
-        about.push({ id, ok: false, reason: "not-shown-or-gone" });
+        about.push({ id, ok: false, reason: "not-shown-or-gone", detail: this.notCitable(id, shown) });
         continue;
       }
-      if (r.kind === "skill" && (CORE_ABOUT_MARKS as readonly string[]).includes(mark)) {
-        about.push({ id, ok: false, reason: "skill-is-how-i-work" });
-        continue;
-      }
+      const core = (CORE_ABOUT_MARKS as readonly string[]).includes(mark);
+      const notes: string[] = [];
+      // A SKILL is the craft: `aboutMe` never reads one as a candidate, so a
+      // core mark on it is written as asked and changes nothing (2026-09-28:
+      // was refused `skill-is-how-i-work`).
+      if (r.kind === "skill" && core) notes.push("A skill memory is the craft — how I work — and never becomes core, whatever its mark.");
       // A dream's gist or a reflection's own entry is not marked about me, us
       // or the owner here (review of #256, B1): that is the core's first
       // question, and dream words are suggestions. Marking one `work` or
       // `world` — out of the candidates — is the safer direction and stays open.
-      const notLived = (CORE_ABOUT_MARKS as readonly string[]).includes(mark) ? notLivedReason(r, "mark") : null;
+      const notLived = core ? notLivedReason(r, "mark") : null;
       if (notLived !== null) {
-        about.push({ id, ok: false, reason: notLived });
+        about.push({ id, ok: false, reason: notLived, detail: `${r.id} was written by a ${r.source === "dreamed" ? "dream" : "reflection"}; only work or world may be set on it.` });
         continue;
       }
-      const core = (CORE_ABOUT_MARKS as readonly string[]).includes(mark);
       if (core && !doorOpen) {
-        about.push({ id, ok: false, reason: "door-closed-work-or-world-only" });
+        about.push({ id, ok: false, reason: "door-closed-work-or-world-only", detail: "The owner has closed the core to reflection alone: tonight a mark may only move toward work or world." });
         continue;
       }
-      // EVERY RE-LABEL CARRIES ITS REASON (owner ruling D2 on #256).
-      const why = this.words(a.why ?? "", session, 300, true);
-      if (!why.ok || why.text.length === 0) {
-        about.push({ id, ok: false, reason: "about-needs-why" });
-        continue;
-      }
+      // EVERY RE-LABEL CARRIES ITS REASON (owner ruling D2 on #256) — asked
+      // for, and recorded as missing when it is not given (2026-09-28: was
+      // refused `about-needs-why`).
+      const why = this.words(a.why ?? "", session, T.MAX_WHY_CHARS, true);
+      const whyText = why.ok && why.text.length > 0 ? why.text : "no why given";
+      if (!why.ok) notes.push(`The why was not kept — ${why.detail}`);
+      else if (why.text.length === 0) notes.push("No why was given; the mark records that. Say why next time.");
       try {
-        const set = this.store.setAbout(r.id, mark as AboutMark, { by: "reflection", day, why: `${why.text} (reflection ${row.id})`, dreamId: row.dream_id });
+        const set = this.store.setAbout(r.id, mark as AboutMark, { by: "reflection", day, why: `${whyText} (reflection ${row.id})`, dreamId: row.dream_id });
         const wasCore = set.before !== null && (CORE_ABOUT_MARKS as readonly string[]).includes(set.before);
-        if (core && !wasCore) movedIn.push({ id: r.id, mark: mark as AboutMark });
-        about.push({ id, ok: true, reason: set.changed ? (set.before === null ? "marked" : "relabeled") : "unchanged" });
+        if (core && !wasCore && r.kind !== "skill") movedIn.push({ id: r.id, mark: mark as AboutMark });
+        about.push({
+          id,
+          ok: true,
+          reason: set.changed ? (set.before === null ? "marked" : "relabeled") : "unchanged",
+          ...(notes.length > 0 ? { note: notes.join(" ") } : {}),
+        });
       } catch (err) {
-        about.push({ id, ok: false, reason: errName(err) });
+        about.push({ id, ok: false, reason: errName(err), detail: "Nothing was marked for this one." });
       }
     }
 
     // ── (f) trait nudges — each on its own, like its feelings ───────────────
-    const traits: { id: string | null; ok: boolean; reason: string }[] = [];
+    const traits: PartResult[] = [];
     for (const t of (input.traits ?? []).slice(0, 50)) {
       const id = typeof t.id === "string" ? t.id : null;
-      if (traits.filter((x) => x.ok).length >= T.LIMITS.traits) {
-        traits.push({ id, ok: false, reason: "limit-reached" });
+      if (used("traits") + traits.filter((x) => x.ok).length >= T.LIMITS.traits) {
+        traits.push({ id, ok: false, reason: "limit-reached", detail: this.limitDetail("traits", again) });
         continue;
       }
       const r = id !== null && shown.has(id) ? this.store.row(id) : undefined;
       if (r === undefined || !this.showable(r)) {
-        traits.push({ id, ok: false, reason: "not-shown-or-gone" });
+        traits.push({ id, ok: false, reason: "not-shown-or-gone", detail: this.notCitable(id, shown) });
         continue;
       }
       // What a dream or a reflection wrote is not a moment I acted in.
       const notLived = notLivedReason(r, "trait");
       if (notLived !== null) {
-        traits.push({ id, ok: false, reason: notLived });
+        traits.push({ id, ok: false, reason: notLived, detail: `${r.id} was written by a ${r.source === "dreamed" ? "dream" : "reflection"}, not a moment you acted in.` });
         continue;
       }
-      const carried = this.words(t.carried_by ?? "", session, 240, true);
+      const carried = this.words(t.carried_by ?? "", session, TRAIT_CARRIED_BY_MAX_CHARS, true);
+      const full = `on reflection, ${date}${carried.ok && carried.text.length > 0 ? `: ${carried.text}` : ""}`;
+      const kept = full.length <= TRAIT_CARRIED_BY_MAX_CHARS ? full : `${full.slice(0, TRAIT_CARRIED_BY_MAX_CHARS - 1)}…`;
+      const notes: string[] = [];
+      if (!carried.ok) notes.push(`carried_by was not kept — ${carried.detail}`);
+      else if (kept !== full) notes.push(`carried_by was kept to its first ${String(TRAIT_CARRIED_BY_MAX_CHARS)} characters.`);
       try {
         this.store.addTraits(
           r.id,
@@ -554,22 +669,21 @@ export class Reflections {
               axis: String(t.axis ?? ""),
               toward: String(t.toward ?? ""),
               strength: typeof t.strength === "number" ? t.strength : Number.NaN,
-              carriedBy: `on reflection, ${date}${carried.ok && carried.text.length > 0 ? `: ${carried.text}` : ""}`.slice(0, 280),
+              carriedBy: kept,
             },
           ],
           { source: "reflection", ...(input.model ? { model: input.model } : {}) },
         );
-        traits.push({ id, ok: true, reason: "recorded" });
+        traits.push({ id, ok: true, reason: "recorded", ...(notes.length > 0 ? { note: notes.join(" ") } : {}) });
       } catch (err) {
-        const why = isStoreError(err, "TRAIT_INVALID") ? String(err.detail["reason"] ?? "") : "";
-        const allowed = isStoreError(err, "TRAIT_INVALID") && typeof err.detail["allowed"] === "string" ? ` (one of ${err.detail["allowed"]})` : "";
-        traits.push({ id, ok: false, reason: why.length > 0 ? `trait-invalid:${why}${allowed}` : errName(err) });
+        traits.push({ id, ok: false, reason: refusalOf(err), detail: "Nothing was recorded for this one; fix it and send it again." });
       }
     }
 
     // ── returns: every memory it cited came back (once) ────────────────────
     const returned: { id: string; counted: boolean; reason: string }[] = [];
-    for (const id of [...new Set([...cites, ...shareCites, ...pageCites])].slice(0, T.LIMITS.returns)) {
+    const returnsLeft = Math.max(0, T.LIMITS.returns - used("returned"));
+    for (const id of [...new Set([...cites, ...shareCites, ...pageCites])].slice(0, returnsLeft)) {
       // WHAT A DREAM OR A REFLECTION WROTE does not come back by being cited
       // here: a dream's gist rises only by proving true in an organic use
       // (the dream's own `dreamed-rises-only-awake`), and a reflection
@@ -589,19 +703,21 @@ export class Reflections {
     }
 
     // ── (a) the entry ──────────────────────────────────────────────────────
-    const title = (input.title ?? "").trim().slice(0, T.MAX_TITLE_CHARS) || firstLine(entryWords.text) || date;
-    let entryId: string | null = null;
-    if (cites.length > 0) {
+    const priorTitle = typeof prior["title"] === "string" ? prior["title"] : null;
+    const title = (input.title ?? "").trim().slice(0, T.MAX_TITLE_CHARS) || priorTitle || firstLine(entryText) || date;
+    let entryId: string | null = again ? row.entry_id : null;
+    let entryReason = again ? (row.entry_id !== null ? "stands" : "on-the-record") : "on-the-record";
+    if (entryId === null && cites.length > 0) {
       // As confidential as anything the night cites — the share's and the
       // page's citations too (review of #256, S2): the entry is one text.
-      const sourceRows = [...new Set([...cites, ...shareCites, ...pageCitesAll])]
+      const sourceRows = [...new Set([...parseIds(row.cites), ...cites, ...shareCites, ...pageCitesAll])]
         .map((id) => this.store.row(id))
         .filter((r): r is MemoryRow => r !== undefined);
       entryId = this.store.put({
         type: "memory",
         kind: "self",
         title: `Reflected: ${title}`,
-        body: entryWords.text,
+        body: entryText,
         salience: { novelty: null, relevance: 0.5, emotional: 0.3, predictive: 0.5 },
         physics: { birthDay: day, lastUsedDay: day },
         source: "reflection",
@@ -609,37 +725,45 @@ export class Reflections {
         origin: { ...(row.session === null ? {} : { session: row.session }), ...(row.scope === null ? {} : { scope: row.scope }), ref: `reflection:${row.id}` },
         ...(input.model ? { model: input.model } : row.model !== null ? { model: row.model } : {}),
       });
+      entryReason = "kept-as-memory";
     }
 
     // ── (b) the page ───────────────────────────────────────────────────────
-    let page: ReflectOutcome["page"] = { written: false, reason: "not-written", version: null };
+    const earlierPage = again && row.page_version !== null ? row.page_version : null;
+    let page: ReflectOutcome["page"] =
+      earlierPage !== null ? { written: true, reason: "written-earlier", version: earlierPage } : { written: false, reason: "not-written", version: null };
     const pageText = (input.page?.text ?? "").trim();
-    // THE PAGE RESTS ON THE CORE (addendum 9): when it was handed core
-    // memories, it cites at least one of them — the story is drawn from the
-    // defining memories, not re-worded from the old page. A store with no
-    // core yet writes from what it cites.
-    const coreShown = [...shown].filter((id) => this.store.row(id)?.promoted_identity === 1);
-    const restsOnCore = coreShown.length === 0 || pageCites.some((id) => coreShown.includes(id));
+    let pageRefused = false;
     if (pageText.length > 0) {
+      const stands = earlierPage === null ? "" : " The page written earlier stands.";
+      const refuse = (reason: string, why: string): void => {
+        page = { written: false, reason, version: null, detail: `${why}${stands}` };
+        pageRefused = true;
+      };
+      // THE PAGE RESTS ON THE CORE (addendum 9): when it was handed core
+      // memories, it cites at least one of them. Since 2026-09-28 a page that
+      // does not is WRITTEN, with a note (it was refused `page-rests-on-the-core`).
+      const coreShown = [...shown].filter((id) => this.store.row(id)?.promoted_identity === 1);
+      const restsOnCore = coreShown.length === 0 || pageCites.some((id) => coreShown.includes(id));
+      const confidential = this.quotesConfidential(pageText, shown);
       if (this.ctx.pageWrites === false) {
         // The owner has the page writer off (ruling D3 on #256).
-        page = { written: false, reason: "page-writer-off", version: null };
-      } else if (nothingMuch || pageCites.length === 0) {
-        page = { written: false, reason: "page-needs-cites", version: null };
-      } else if (!restsOnCore) {
-        page = { written: false, reason: "page-rests-on-the-core", version: null };
+        refuse("page-writer-off", "The owner has the page writer off, so the self page is not rewritten.");
+      } else if (pageCites.length === 0) {
+        const bad = refusedCites.filter((c) => (input.page?.cites ?? []).some((id) => c.startsWith(`${id}:`)));
+        refuse(
+          "page-needs-cites",
+          `page.cites names no memory the page can rest on${bad.length > 0 ? ` (${bad.join(", ")})` : ""}: put the ids of memories you were shown in page.cites and send the page again.`,
+        );
       } else if (carriesDreamMark(pageText)) {
-        page = { written: false, reason: "dream-mark-in-text", version: null };
-      } else if (this.quotesAGist(pageText)) {
-        // A dream's gist is a suggestion: reworded into the page it would
-        // read as something lived (addendum 2). Mention a dream as a dream.
-        // Any recent dream's gist, not only this reflection's dream's (review
-        // of #256, S1): a reflection on its own the next day is as close.
-        page = { written: false, reason: "dreamed-words-on-the-page", version: null };
-      } else if (this.quotesConfidential(pageText, shown)) {
+        refuse("dream-mark-in-text", `The page carries the dream's mark (${DREAM_MARK}…): take it out and send the page again.`);
+      } else if (confidential !== null) {
         // The words of a confidential memory it was shown in the owner's
         // session do not go on a page every session reads (review of #256, S2).
-        page = { written: false, reason: "confidential-words-on-the-page", version: null };
+        refuse(
+          "confidential-words-on-the-page",
+          `The page repeats "${confidential.run}" from confidential memory ${confidential.id}, and the page is read in every session: say it another way and send the page again.`,
+        );
       } else {
         const w = this.ctx.writePage(pageText, {
           reason: `reflection ${row.id}${row.dream_id === null ? "" : ` after dream ${row.dream_id}`}`,
@@ -647,26 +771,68 @@ export class Reflections {
           model: input.model ?? row.model,
           reflection: row.id,
         });
-        page = w.ok ? { written: true, reason: "rewritten", version: w.version } : { written: false, reason: w.reason, version: null };
+        if (w.ok) {
+          page = {
+            written: true,
+            reason: "rewritten",
+            version: w.version,
+            ...(restsOnCore
+              ? {}
+              : { note: `It cites none of the core memories you were shown (${coreShown.slice(0, 5).join(", ")}${coreShown.length > 5 ? ", …" : ""}); the page is meant to rest on them.` }),
+          };
+        } else {
+          refuse(w.reason, `The self page refused it (${w.reason}).`);
+        }
       }
     }
 
     // ── (c) the share ──────────────────────────────────────────────────────
-    const becameCore = this.becameCoreUnsaid();
-    let shareText = "";
-    let share: ReflectOutcome["share"] = { offered: false, reason: nothingMuch ? "nothing-much" : "no-share" };
+    // A share already told, or handed to another session to tell, is not
+    // replaced; one only offered may be (a second finish, 2026-09-28).
+    const shareLocked = again && (row.share_state === "told" || row.share_state === "carried");
+    const earlierShare = again && !shareLocked && row.share_state === "offered" && row.share !== null ? { text: row.share, cites: parseIds(row.share_cites) } : null;
+    let shareText = earlierShare?.text ?? "";
+    let finalShareCites = [...(earlierShare?.cites ?? [])];
+    let share: ReflectOutcome["share"] =
+      earlierShare !== null
+        ? { offered: true, reason: "offered-earlier" }
+        : shareLocked
+          ? { offered: false, reason: `${row.share_state}-earlier` }
+          : { offered: false, reason: nothingMuch ? "nothing-much" : "no-share" };
     const rawShare = (input.share?.text ?? "").trim();
-    const finalShareCites = [...shareCites];
+    let shareRefused = false;
     if (rawShare.length > 0) {
-      if (shareCites.length === 0) {
-        share = { offered: false, reason: "share-needs-cites" };
+      if (shareLocked) {
+        shareRefused = true;
+        share = {
+          offered: false,
+          reason: `share-already-${row.share_state}`,
+          detail: `The morning share was already ${row.share_state === "told" ? "told" : "handed to another session to tell"}, so it is not replaced.`,
+        };
+      } else if (nothingMuch) {
+        // "NOTHING MUCH" IS A NORMAL NIGHT and shares nothing: a night that
+        // cites no memory at all has nothing to tell.
+        shareRefused = true;
+        share = {
+          offered: false,
+          reason: "share-needs-cites",
+          detail: "Nothing tonight cites a memory, so it is a quiet night and shares nothing: put the ids the share rests on in share.cites and send it again.",
+        };
       } else {
         const w = this.words(rawShare, session, T.MAX_SHARE_CHARS);
         if (w.ok) {
           shareText = w.text;
-          share = { offered: true, reason: "offered" };
+          finalShareCites = [...shareCites];
+          const notes: string[] = [];
+          // A SHARE THAT CITES NOTHING, on a night that cites something, is
+          // offered (2026-09-28: was refused `share-needs-cites`); telling it
+          // records nothing on a memory.
+          if (shareCites.length === 0) notes.push("It cites no memory you were shown, so telling it records nothing on one.");
+          if (w.cut) notes.push(`It was kept to its first ${String(T.MAX_SHARE_CHARS)} characters.`);
+          share = { offered: true, reason: earlierShare !== null ? "replaced" : "offered", ...(notes.length > 0 ? { note: notes.join(" ") } : {}) };
         } else {
-          share = { offered: false, reason: w.reason };
+          shareRefused = true;
+          share = { offered: earlierShare !== null, reason: w.reason, detail: `${w.detail}${earlierShare !== null ? " The earlier share stands." : ""}` };
         }
       }
     }
@@ -674,60 +840,115 @@ export class Reflections {
     // sees it happen (the owner's call, 2026-09-27): shown to him, not gated
     // on him. When the share did not cite it, a line is added in the self's
     // voice; when there was no share, the line is the share.
+    const becameCore = shareLocked ? [] : this.becameCoreUnsaid(row.id);
     const unsaid = becameCore.filter((id) => !finalShareCites.includes(id));
     if (unsaid.length > 0) {
       const lines = unsaid.map((id) => `I think "${this.handle(id)}" has become part of who I am.`);
       shareText = [shareText, ...lines].filter((x) => x.length > 0).join(" ");
       finalShareCites.push(...unsaid);
-      share = { offered: true, reason: share.offered ? "offered" : "became-core" };
+      share = { ...share, offered: true, reason: share.offered ? share.reason : "became-core" };
     }
     // A RE-LABEL INTO ME, US OR THE OWNER is said too (owner ruling D2 on
-    // #256), the same way: shown to him, not gated on him.
-    const relabelLines = movedIn
-      .filter((m) => !finalShareCites.includes(m.id))
-      .map((m) => `I've come to think "${this.handle(m.id)}" is ${m.mark === "me" ? "about who I am" : m.mark === "us" ? "about the two of us" : "about you"}.`);
+    // #256), the same way: shown to him, not gated on him. The first finish's
+    // moves are kept in its detail, so a replaced share still says them.
+    const priorMoved = Array.isArray(prior["movedIn"]) ? (prior["movedIn"] as { id: string; mark: AboutMark }[]) : [];
+    const movedAll = [...priorMoved, ...movedIn.filter((m) => !priorMoved.some((p) => p.id === m.id))];
+    const relabelLines = shareLocked
+      ? []
+      : movedAll
+          .filter((m) => !finalShareCites.includes(m.id))
+          .map((m) => `I've come to think "${this.handle(m.id)}" is ${m.mark === "me" ? "about who I am" : m.mark === "us" ? "about the two of us" : "about you"}.`);
     if (relabelLines.length > 0) {
       shareText = [shareText, ...relabelLines].filter((x) => x.length > 0).join(" ");
-      for (const m of movedIn) if (!finalShareCites.includes(m.id)) finalShareCites.push(m.id);
-      share = { offered: true, reason: share.offered ? share.reason : "relabeled" };
+      for (const m of movedAll) if (!finalShareCites.includes(m.id)) finalShareCites.push(m.id);
+      share = { ...share, offered: true, reason: share.offered ? share.reason : "relabeled" };
     }
     if (share.offered) for (const id of becameCore) this.store.setMeta(`${CORE_MENTIONED_PREFIX}${id}`, row.id);
 
     const counts = {
-      cites: cites.length,
-      returned: returned.filter((r) => r.counted).length,
-      feelings: feelings.filter((f) => f.ok).length,
-      about: about.filter((a) => a.ok).length,
-      traits: traits.filter((t) => t.ok).length,
+      cites: used("cites") + cites.length,
+      returned: used("returned") + returned.filter((r) => r.counted).length,
+      feelings: used("feelings") + feelings.filter((f) => f.ok).length,
+      about: used("about") + about.filter((a) => a.ok).length,
+      traits: used("traits") + traits.filter((t) => t.ok).length,
       page: page.written,
-      share: share.offered,
+      share: shareLocked ? true : share.offered,
       becameCore: becameCore.length,
-      movedIntoCore: movedIn.length,
+      movedIntoCore: movedAll.length,
     };
     detail["counts"] = counts;
-    if (refusedCites.length > 0) detail["refusedCites"] = refusedCites.slice(0, 20);
+    const allRefused = [...(Array.isArray(prior["refusedCites"]) ? (prior["refusedCites"] as string[]) : []), ...refusedCites];
+    if (allRefused.length > 0) detail["refusedCites"] = allRefused.slice(0, 20);
     detail["title"] = title;
+    if (movedAll.length > 0) detail["movedIn"] = movedAll;
+    if (again) detail["finishes"] = (typeof prior["finishes"] === "number" ? prior["finishes"] : 1) + 1;
     this.store.updateReflection(row.id, {
-      state: "reflected",
-      entry: entryWords.text,
+      ...(again ? {} : { state: "reflected" as const }),
+      entry: entryText,
       entryId,
-      cites: [...new Set([...cites, ...pageCites])],
-      share: share.offered ? shareText : null,
-      shareCites: share.offered ? finalShareCites : [],
-      shareState: share.offered ? "offered" : "none",
-      pageVersion: page.version,
+      cites: [...new Set([...parseIds(row.cites), ...cites, ...pageCites])],
+      ...(shareLocked
+        ? {}
+        : {
+            share: share.offered ? shareText : null,
+            shareCites: share.offered ? finalShareCites : [],
+            shareState: share.offered ? ("offered" as const) : ("none" as const),
+          }),
+      pageVersion: page.written ? page.version : earlierPage,
       detail,
     });
     this.record("reflection.finished", row.id, {
       dream: row.dream_id,
       nothingMuch,
+      again,
       ...counts,
     });
-    const handBack = this.handBack(row, share.offered ? shareText : null, nothingMuch, page.written);
+
+    // WHAT WAS NOT WRITTEN, and that it can be sent again (2026-09-28).
+    const missed: string[] = [];
+    if (pageRefused) missed.push(`page — ${page.reason}${page.detail !== undefined ? `: ${page.detail}` : ""}`);
+    if (shareRefused) missed.push(`share — ${share.reason}${share.detail !== undefined ? `: ${share.detail}` : ""}`);
+    for (const [part, list] of [["feelings", feelings], ["about", about], ["traits", traits]] as const) {
+      list.forEach((x, i) => {
+        if (!x.ok) missed.push(`${part}[${String(i)}]${x.id === null ? "" : ` (${x.id})`} — ${x.reason}${x.detail !== undefined ? `: ${x.detail}` : ""}`);
+      });
+    }
+    const retry =
+      missed.length === 0
+        ? null
+        : `Not written: ${missed.join("; ")}. You can fix these and call finish again with reflection ${row.id} and just those parts — the entry and everything already written stand.`;
+
+    const handBack = this.handBack(row, !shareLocked && share.offered ? shareText : null, nothingMuch, page.written);
     return {
       ok: true,
-      outcome: { handBack, nothingMuch, entryId, returned, page, share, feelings, about, traits, refusedCites },
+      outcome: {
+        handBack,
+        nothingMuch,
+        entryId,
+        again,
+        entry: { reason: entryReason, ...(entryNote === undefined ? {} : { note: entryNote }) },
+        returned,
+        page,
+        share,
+        feelings,
+        about,
+        traits,
+        refusedCites,
+        retry,
+      },
     };
+  }
+
+  /** Why an id cannot be cited, felt or marked here, in words. */
+  private notCitable(id: string | null, shown: ReadonlySet<string>): string {
+    if (id === null) return "No id was given.";
+    if (!shown.has(id)) return `${id} was not among the memories you were shown; use an id from the bundle.`;
+    return `${id} is gone since you were shown it (archived, merged or made private).`;
+  }
+
+  /** What a per-reflection limit says. */
+  private limitDetail(part: keyof typeof REFLECT_TUNABLES.LIMITS, again: boolean): string {
+    return `A reflection records at most ${String(REFLECT_TUNABLES.LIMITS[part])} ${part === "about" ? "about marks" : part}${again ? ", counting the earlier finish" : ""}.`;
   }
 
   /** The dreamer's (or reflector's) final message: the dream's line, then the share. */
@@ -943,32 +1164,21 @@ export class Reflections {
   }
 
   /**
-   * Does `text` carry a six-word run of a gist a recent dream wrote? Every
-   * dream in the last `GIST_DREAMS` (not undone), not only this reflection's
-   * own — a reflection on its own the next morning is as close to the dream
-   * (review of #256, S1).
+   * Does `text` carry a six-word run of a CONFIDENTIAL memory it was shown?
+   * The run and the memory, so the refusal can name them; null when not.
    */
-  private quotesAGist(text: string): boolean {
-    const bodies: string[] = [];
-    for (const dream of this.store.dreams({ limit: GIST_DREAMS })) {
-      if (dream.state === "undone") continue;
-      for (const c of this.store.dreamChanges(dream.id)) {
-        if (c.action !== "gist" || c.undone === 1 || c.ref === null) continue;
-        const gist = this.store.row(c.ref);
-        if (gist !== undefined && gist.body !== "") bodies.push(gist.body);
-      }
-    }
-    return sharesARun(text, bodies);
-  }
-
-  /** Does `text` carry a six-word run of a CONFIDENTIAL memory it was shown? */
-  private quotesConfidential(text: string, shown: ReadonlySet<string>): boolean {
+  private quotesConfidential(text: string, shown: ReadonlySet<string>): { id: string; run: string } | null {
+    const ids: string[] = [];
     const bodies: string[] = [];
     for (const id of shown) {
       const r = this.store.row(id);
-      if (r !== undefined && r.confidential === 1 && r.body !== "") bodies.push(`${r.title ?? ""}\n${r.body}`);
+      if (r !== undefined && r.confidential === 1 && r.body !== "") {
+        ids.push(id);
+        bodies.push(`${r.title ?? ""}\n${r.body}`);
+      }
     }
-    return sharesARun(text, bodies);
+    const hit = sharedRun(text, bodies);
+    return hit === null ? null : { id: ids[hit.index] as string, run: hit.run };
   }
 
   /**
@@ -981,11 +1191,16 @@ export class Reflections {
     return ids.some((id) => this.store.row(id)?.confidential === 1);
   }
 
-  /** Memories promoted on reflection alone that no share has named yet. */
-  private becameCoreUnsaid(): string[] {
+  /**
+   * Memories promoted on reflection alone that no share has named yet. A
+   * share of `mine` (the reflection finishing again) counts as not having
+   * named them: its share may be replaced, and the line must come with it.
+   */
+  private becameCoreUnsaid(mine?: string): string[] {
     const out: string[] = [];
     for (const e of this.store.coreEvents({ action: "promoted", limit: 50 })) {
-      if (this.store.getMeta(`${CORE_MENTIONED_PREFIX}${e.memory_id}`) !== undefined) continue;
+      const said = this.store.getMeta(`${CORE_MENTIONED_PREFIX}${e.memory_id}`);
+      if (said !== undefined && said !== mine) continue;
       const row = this.store.row(e.memory_id);
       if (row === undefined || row.promoted_identity !== 1 || !this.showable(row)) continue;
       if (!this.promotedThroughReflection(e.memory_id)) continue;
@@ -1047,6 +1262,8 @@ export class Reflections {
         emotion: f.emotion === "other" && f.other_word !== null ? f.other_word : f.emotion,
         strength: round(f.strength),
         later: f.recorded_later ?? null,
+        by: f.source ?? null,
+        carried_by: cut(f.carried_by, REFLECT_TUNABLES.FEELING_CARRIED_CHARS) ?? "",
       }));
     const about = row.about === null ? null : (ABOUT_MARKS as readonly string[]).includes(row.about) ? (row.about as AboutMark) : null;
     return {
@@ -1080,26 +1297,41 @@ export class Reflections {
     return line.length > 80 ? `${line.slice(0, 79)}…` : line || id;
   }
 
-  /** A reflection this session may still finish: begun, this session's, and the newest. */
-  private openFor(id: string, session: string | undefined): { ok: true; reflection: ReflectionRow } | { ok: false; reason: ReflectRefusal } {
+  /**
+   * A reflection this session may still finish: this session's and the
+   * newest; begun — or already finished THIS lived day, when `again` (a
+   * second `finish` supplies what the first refused or left out, 2026-09-28).
+   * An older one, or one a newer reflection followed, is closed.
+   */
+  private openFor(id: string, session: string | undefined): { ok: true; reflection: ReflectionRow; again: boolean } | { ok: false; reason: ReflectRefusal } {
     if (this.ctx.observer) return { ok: false, reason: "observer" };
     const row = this.store.reflection(id);
     if (row === undefined) return { ok: false, reason: "unknown-reflection" };
     if (session !== undefined && row.session !== null && row.session !== session) return { ok: false, reason: "not-this-session" };
-    if (row.state !== "begun") return { ok: false, reason: "reflection-closed" };
     const newest = this.last();
     if (newest !== null && newest.id !== row.id) return { ok: false, reason: "reflection-closed" };
-    return { ok: true, reflection: row };
+    if (row.state === "begun") return { ok: true, reflection: row, again: false };
+    if (row.state === "reflected" && row.day >= this.store.livedDay()) return { ok: true, reflection: row, again: true };
+    return { ok: false, reason: "reflection-closed" };
   }
 
-  /** Words through the credential scan; bounded; never empty unless allowed; never marked. */
-  private words(text: string | undefined, session: string, max: number, allowEmpty = false): { ok: true; text: string } | { ok: false; reason: string } {
+  /**
+   * Words through the credential scan; never empty unless allowed; never
+   * marked. Longer than `max` is kept to `max` and SAID (`cut`), never cut
+   * without a word.
+   */
+  private words(
+    text: string | undefined,
+    session: string,
+    max: number,
+    allowEmpty = false,
+  ): { ok: true; text: string; cut: boolean } | { ok: false; reason: string; detail: string } {
     const raw = (text ?? "").trim();
-    if (raw.length === 0) return allowEmpty ? { ok: true, text: "" } : { ok: false, reason: "empty-text" };
-    if (carriesDreamMark(raw)) return { ok: false, reason: "dream-mark-in-text" };
+    if (raw.length === 0) return allowEmpty ? { ok: true, text: "", cut: false } : { ok: false, reason: "empty-text", detail: "It was empty." };
+    if (carriesDreamMark(raw)) return { ok: false, reason: "dream-mark-in-text", detail: `It carries the dream's mark (${DREAM_MARK}…); take it out.` };
     const verdict = this.ctx.gate(raw.slice(0, max), session);
-    if (!verdict.ok) return { ok: false, reason: `gate:${verdict.reason}` };
-    return { ok: true, text: verdict.text };
+    if (!verdict.ok) return { ok: false, reason: `gate:${verdict.reason}`, detail: `The credential scan refused it (${verdict.reason}).` };
+    return { ok: true, text: verdict.text, cut: raw.length > max };
   }
 
   /** A durable row (ids and counts only) — in the reflection's own record, not the event log. */
@@ -1117,6 +1349,19 @@ function parseIds(json: string): string[] {
   } catch {
     return [];
   }
+}
+
+function parseDetail(json: string): Record<string, unknown> {
+  try {
+    const v: unknown = JSON.parse(json);
+    return isRecord(v) ? v : {};
+  } catch {
+    return {};
+  }
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === "object" && !Array.isArray(v);
 }
 
 function confidentialityOf(rows: readonly MemoryRow[]): Record<string, unknown> {

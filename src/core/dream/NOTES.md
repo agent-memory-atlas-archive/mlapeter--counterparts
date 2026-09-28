@@ -109,6 +109,8 @@ brief left open, and why.
    `page-rests-on-the-core`); a store with no core yet writes from what it cites. A
    dream's gist is not citable for the page (`dreamed-is-not-a-source`), and a page that
    carries a six-word run of the dream's gist is refused (`dreamed-words-on-the-page`).
+   *(2026-09-28: the gist-words check is removed and the core rule is a note — see that
+   day's entry below.)*
    The prompt asks for craft under "## How I work"; nothing enforces headings.
 6. **The page write claims the night.** `writePage` records a `self.page.writer.ran` row
    (mode `session`, outcome `revised`) for `pageWriterNight`'s date. That is why the old
@@ -188,3 +190,59 @@ The dashboard's Tonight box asked `status`, got "observer", and fell back to cou
    Undo needs nothing new: the merged memory is archived, the originals come back with
    their own rows.
 3. **No backfill.** A dream does not write nudges (later, maybe).
+
+## 2026-09-28 — loosening the guards (owner direction)
+
+The owner's direction after the morning's dream `drm_0cead381e69a` and reflection
+`rfl_86a13d83326d` failed three ways, all ours: **err on the side of removing guards and
+limits; add or tighten one only after a real issue is seen; fix the root cause (clearer
+instructions, fields shown in advance) — accept and repair beats refuse.** Kept, because
+each protects something real: the dream's mark never carries dream text into lived
+memory; a confidential memory's words stay off the page; the page cites real memories and
+never a gist; one dream a lived day; observer stance; the live-store rules.
+
+1. **Removed: the gist-words check on the page** (`quotesAGist`,
+   `dreamed-words-on-the-page`). Every hit that morning was a lived quote the gist had
+   quoted too (the owner's own words of 09-25; the system-card reading). The citation
+   rules carry the intent: a gist is still no page's source (`dreamed-is-not-a-source`).
+2. **`finish` may be called again** the same lived day: the second call supplies the parts
+   the first refused or left out, never re-mints the entry, and may replace a share not
+   yet told or carried. Limits count across both (`detail.counts`); the first call's
+   moves into me/us/owner are kept in `detail.movedIn` so a replaced share still says
+   them, and a became-core line claimed by this reflection is said again. Every part not
+   written carries `detail` (the rule, the matching words or id) and the outcome's
+   `retry` says it can be sent again. The morning's share claimed a rewrite that had
+   been refused; the MCP `say` now tells the model never to claim a part that was not
+   written.
+3. **Feelings: accept and repair.** An `emotion` that carries a phrase ("steadied: the
+   guard has held every time since…") is split — the word is the emotion, the rest goes
+   to `carried_by` — in `store/feelings.ts#checkFeelings` for every door, and before the
+   credential scan in the dream and the reflection so the tail crosses it. Root cause:
+   nothing the dreamer read said `emotion` is one word and `carried_by` the nuance; every
+   schema and both prompts now say so, and the launch prompt lists each change's fields.
+   A FEELING_INVALID that remains carries its reason through every door
+   (`feeling-invalid:<reason>`).
+4. **The doubled "steadied" was a display, not a write.** A feeling recorded at the time
+   and the dream's feeling-now of the same word, capped at the memory's peak — which is
+   that very feeling's strength — are two records; the bundle showed only whose, word,
+   strength and `later`, so they read as one twice. The bundle now carries `by` (who
+   recorded it) and a slice of `carried_by`. Separately, a dream that resends a batch no
+   longer doubles a feeling it already recorded (`already-recorded`). A refused feeling
+   never wrote: the check runs before the transaction and the change record after it.
+5. **Text caps raised; nothing is cut without a word.** Share 700 → 3,000, entry 8,000 →
+   20,000, journal 12,000 → 30,000, merged/dreamed text 2,000 → 8,000, titles → 200,
+   other word 40 → 80, carried_by 280 → 1,000 (a trait's too). A text over its cap is
+   kept to it and the result says so. The per-dream COUNTS stay numbers; the launch
+   prompt now says "usually far fewer; none is fine" (a dream used all 20 links twice).
+   The host injection budget and the self page's `PAGE_MAX_BYTES` are untouched.
+6. **Refusals re-classified** against the keep list. Now written with a note:
+   `page-rests-on-the-core`, `about-needs-why` (recorded "no why given"),
+   `skill-is-how-i-work` (reflect's; `aboutMe` never reads a skill), `share-needs-cites`
+   on a night that cites something (a night that cites nothing is still "nothing much"),
+   `kinds-differ`, `merge-takes-two-or-three` (now two or more), `already-core`,
+   `work-is-not-core`, `not-about-me` (a nomination promotes nothing). Kept, with a
+   `detail`: the mark and confidentiality rules, `dreamed-*` / `reflection-does-not-*`,
+   `core-is-not-merged`, `page-needs-cites`, `not-shown-or-gone`, `page-writer-off` and
+   `door-closed-work-or-world-only` (the owner's own switches), `dated-is-not-merged` and
+   `demoted-is-not-merged` (a reminder going quiet; the owner's demotion), the per-action
+   `limit-reached` counts, `gist-needs-sources`, `same-memory`.

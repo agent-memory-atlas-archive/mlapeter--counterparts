@@ -247,7 +247,6 @@ describe("the MCP doors", () => {
       [{ whose: "owner", core: "happy", emotion: "other", other_word: 7, strength: 0.5 }],
       [{ whose: 1, core: "happy", emotion: "hopeful", strength: 0.5 }],
       [{ whose: "owner", core: ["happy"], emotion: "hopeful", strength: 0.5 }],
-      [{ whose: "owner", core: "happy", emotion: "x".repeat(10_000), strength: 0.5 }],
       [{ whose: "owner", core: "happy", emotion: "hopeful", strength: 0.5, beneath: "fel_abc" }],
       [{ whose: "owner", core: "happy", emotion: "hopeful", strength: 0.5, beneath: 0.5 }],
     ];

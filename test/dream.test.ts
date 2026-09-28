@@ -208,7 +208,7 @@ describe("propose: what a dream may change", () => {
       ["contradiction", true],
       ["feeling-now", true],
       ["nominate-core", true],
-      ["nominate-core", false],
+      ["nominate-core", true],
     ]);
     // link: both ways.
     expect(c.store.edgesFrom(m.a).some((e) => e.dst === m.old)).toBe(true);
@@ -230,7 +230,10 @@ describe("propose: what a dream may change", () => {
     // nominate: recorded, not promoted.
     expect(c.store.coreEvents({ memoryId: m.self, action: "nominated" }).length).toBe(1);
     expect(c.store.physicsOf(m.self).promotedIdentity).toBe(false);
-    expect(r[6]?.reason).toBe("not-about-me");
+    // Marked work by something awake: nominated all the same since 2026-09-28
+    // (was refused `not-about-me`) — a nomination promotes nothing.
+    expect(r[6]?.reason).toBe("nominated");
+    expect(r[6]?.note).toContain("marked work");
   });
 
   test("a dream cannot strengthen what a dream wrote: its gist rises only awake", () => {

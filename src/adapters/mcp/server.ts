@@ -1829,7 +1829,19 @@ export class McpServer {
           const out = dreams.propose({ dream, session, changes: changes as never });
           if (!out.ok) return refused(out.reason, "That dream is not open for this session.");
           this.emit("mcp.dream", dream, { phase: "propose", applied: out.results.filter((r) => r.ok).length });
-          return this.result({ phase, dream, results: out.results }, false);
+          const refusedN = out.results.filter((r) => !r.ok).length;
+          return this.result(
+            {
+              phase,
+              dream,
+              results: out.results,
+              // Each refusal names what tripped it (`detail`); 2026-09-28.
+              ...(refusedN === 0
+                ? {}
+                : { again: `${String(refusedN)} change${refusedN === 1 ? " was" : "s were"} not applied (see each result's reason and detail). Fix those and propose just them again; the rest already landed.` }),
+            },
+            false,
+          );
         }
         case "journal": {
           const dream = args["dream"];
@@ -1839,13 +1851,14 @@ export class McpServer {
           }
           const title = args["title"];
           const out = dreams.journal({ dream, session, text, ...(typeof title === "string" ? { title } : {}) });
-          if (!out.ok) return refused(out.reason, "The journal was not written.");
+          if (!out.ok) return refused(out.reason, "detail" in out && out.detail !== undefined ? out.detail : "The journal was not written.");
           this.emit("mcp.dream", dream, { phase: "journal" });
           return this.result(
             {
               phase,
               dream,
               handBack: out.handBack,
+              ...(out.note === undefined ? {} : { note: out.note }),
               next: `Now wake and reflect: call the reflect tool with phase "begin", session: ${session}, dream: ${dream}. Your final message is the text its "finish" call returns. If reflecting fails, return \`handBack\` unchanged instead.`,
             },
             false,
@@ -1913,14 +1926,16 @@ export class McpServer {
         case "finish": {
           const reflection = args["reflection"];
           const entry = args["entry"];
-          if (typeof reflection !== "string" || typeof entry !== "string") {
+          // `entry` is required the first time; a second finish of the same
+          // reflection (2026-09-28) may leave it out — the entry stands.
+          if (typeof reflection !== "string" || (entry !== undefined && typeof entry !== "string")) {
             return refused("reflection-and-entry-required", "Pass `reflection` (the id `begin` returned) and your `entry`.");
           }
           const model = readSession(this.registryDir, session)?.model;
           const out = reflections.finish({
             reflection,
             session,
-            entry,
+            ...(typeof entry === "string" ? { entry } : {}),
             ...(typeof args["title"] === "string" ? { title: args["title"] } : {}),
             cites: ids(args["cites"]),
             share: part(args["share"]),
@@ -1930,9 +1945,17 @@ export class McpServer {
             traits: Array.isArray(args["traits"]) ? (args["traits"] as never) : [],
             model: model ?? null,
           });
-          if (!out.ok) return refused(out.reason, "The reflection was not written.");
+          if (!out.ok) {
+            return refused(
+              out.reason,
+              out.detail ??
+                (out.reason === "reflection-closed"
+                  ? "That reflection is closed: it is not today's, or a newer one followed it. Begin a new one tomorrow."
+                  : "The reflection was not written."),
+            );
+          }
           const o = out.outcome;
-          this.emit("mcp.reflect", reflection, { phase: "finish", nothingMuch: o.nothingMuch, page: o.page.written, share: o.share.offered });
+          this.emit("mcp.reflect", reflection, { phase: "finish", nothingMuch: o.nothingMuch, page: o.page.written, share: o.share.offered, again: o.again });
           return this.result(
             {
               phase,
@@ -1940,6 +1963,7 @@ export class McpServer {
               handBack: o.handBack,
               nothingMuch: o.nothingMuch,
               entry: o.entryId,
+              entryNote: o.entry,
               page: o.page,
               share: o.share,
               returned: o.returned,
@@ -1947,7 +1971,12 @@ export class McpServer {
               about: o.about,
               ...(o.traits.length > 0 ? { traits: o.traits } : {}),
               ...(o.refusedCites.length > 0 ? { refusedCites: o.refusedCites } : {}),
-              say: "Return `handBack` as your final message, unchanged.",
+              // WHAT WAS NOT WRITTEN, and that it can be sent again (2026-09-28).
+              ...(o.retry === null ? {} : { again: o.retry }),
+              say:
+                o.retry === null
+                  ? "Return `handBack` as your final message, unchanged."
+                  : "Some parts were not written (see `again`). You may fix them and call finish again with the same reflection and just those parts; then return the `handBack` of your last finish call as your final message, unchanged. Never say a part was written when it was not.",
             },
             false,
           );
@@ -2390,6 +2419,11 @@ export class McpServer {
                   note: `"${n.word}" was stored as ${String(n.readAs)}.`,
                 })),
               }),
+          // ACCEPT AND REPAIR (2026-09-28): an emotion that carried a phrase
+          // was split into the word and carried_by, rather than refused.
+          ...(added.repairs.length === 0
+            ? {}
+            : { repaired: added.repairs.map((r) => ({ index: r.index, field: r.field, now: r.now, note: r.note })) }),
         },
       };
     } catch (err) {

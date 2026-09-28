@@ -443,14 +443,13 @@ describe("reflect: dream → journal → reflect", () => {
     expect(c.reflections.begin({ session: SESSION })).toEqual({ ok: false, reason: "reflected-today" });
   });
 
-  test("the page rests on the core when there is one, and a dream's gist does not go on it in its own words", () => {
+  test("the page rests on the core when there is one: a page that cites none is written, with a note naming the core it was shown", () => {
     const c = brain();
     const d = dreamed(c);
     const core = mem(c, "Mike trusted me with the whole release.", { kind: "person", about: "us", physics: { birthDay: 0, lastUsedDay: 0, promotedIdentity: true } });
     const begun = c.reflections.begin({ session: SESSION, dream: d.dream });
     if (!begun.ok) throw new Error(begun.reason);
     expect(begun.bundle.core).toContain(core);
-    const gistWords = c.store.row(d.gist)?.body ?? "";
     const done = c.reflections.finish({
       reflection: begun.bundle.reflection,
       session: SESSION,
@@ -459,22 +458,10 @@ describe("reflect: dream → journal → reflect", () => {
       page: { text: "## Core\n\nI want to be understood.", cites: [d.felt] },
     });
     if (!done.ok) throw new Error(String(done.reason));
-    expect(done.outcome.page).toMatchObject({ written: false, reason: "page-rests-on-the-core" });
-
-    nextDay(c);
-    const again = c.reflections.begin({ session: SESSION });
-    if (!again.ok) throw new Error(again.reason);
-    const quoted = c.reflections.finish({
-      reflection: again.bundle.reflection,
-      session: SESSION,
-      entry: "Again.",
-      cites: [core],
-      page: { text: `## Core\n\n${gistWords}`, cites: [core] },
-    });
-    if (!quoted.ok) throw new Error(String(quoted.reason));
-    // No dream before this one — but the gist is a recent dream's, and its
-    // words stay off the page all the same (review of #256, S1).
-    expect(quoted.outcome.page).toMatchObject({ written: false, reason: "dreamed-words-on-the-page" });
+    // 2026-09-28: was refused `page-rests-on-the-core`; now written, and said.
+    expect(done.outcome.page).toMatchObject({ written: true, reason: "rewritten" });
+    expect(done.outcome.page.note).toContain(core);
+    expect(c.self.page()?.body).toContain("I want to be understood.");
   });
 
   test("what a dream or a reflection wrote earns no return by being cited; a reflection is not shown its own entries as memories", () => {
@@ -509,22 +496,6 @@ describe("reflect: dream → journal → reflect", () => {
     expect(c.dreams.undo(d.dream).ok).toBe(true);
     expect(c.store.reflection(begun.bundle.reflection)).toMatchObject({ state: "reflected", dream_id: d.dream, entry: "Still thinking about it." });
     expect(c.store.row(done.outcome.entryId as string)?.archived).toBe(0);
-  });
-
-  test("a gist's words are refused on the page written after its dream", () => {
-    const c = brain();
-    const d = dreamed(c);
-    const begun = c.reflections.begin({ session: SESSION, dream: d.dream });
-    if (!begun.ok) throw new Error(begun.reason);
-    const done = c.reflections.finish({
-      reflection: begun.bundle.reflection,
-      session: SESSION,
-      entry: "The dream again.",
-      cites: [d.felt],
-      page: { text: `## Core\n\n${c.store.row(d.gist)?.body ?? ""}`, cites: [d.felt] },
-    });
-    if (!done.ok) throw new Error(String(done.reason));
-    expect(done.outcome.page).toMatchObject({ written: false, reason: "dreamed-words-on-the-page" });
   });
 
   test("'nothing much' is a normal night: no citation → the entry stays on the record, no memory, no page, no share", () => {

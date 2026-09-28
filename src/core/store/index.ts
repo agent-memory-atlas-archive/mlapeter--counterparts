@@ -2521,7 +2521,7 @@ export class Store {
       provenance?: readonly ({ source?: string | null; recordedLater?: string | null } | undefined)[];
     } = {},
   ): AddFeelingsResult {
-    const { rows, notices } = checkFeelings(inputs);
+    const { rows, notices, repairs } = checkFeelings(inputs);
     const ids = rows.map(() => `fel_${randomBytes(6).toString("hex")}`);
     this.mutate("addFeelings", () => {
       this.requireRow(memoryId);
@@ -2570,7 +2570,7 @@ export class Store {
       });
     });
     this.emit("store.feelings", memoryId, { count: rows.length, other: notices.filter((n) => n.readAs === undefined).length });
-    return { ids, notices };
+    return { ids, notices, repairs };
   }
 
   /**

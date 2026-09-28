@@ -61,8 +61,8 @@ export function polesOf(axis: string): readonly [string, string] | undefined {
 export const TRAIT_SOURCES = ["session", "reflection"] as const;
 export type TraitSource = (typeof TRAIT_SOURCES)[number];
 
-/** `carried_by` is a short pointer at the moment, not a transcript. */
-export const TRAIT_CARRIED_BY_MAX_CHARS = 280;
+/** `carried_by`, what in the moment showed it. Raised 280 → 1,000 with a feeling's (2026-09-28). */
+export const TRAIT_CARRIED_BY_MAX_CHARS = 1_000;
 
 export interface TraitInput {
   readonly axis: string;

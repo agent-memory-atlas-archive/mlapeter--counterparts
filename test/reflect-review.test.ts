@@ -218,18 +218,26 @@ describe("B1: a dreamed gist cannot be felt later or marked about me by a reflec
 });
 
 // ---------------------------------------------------------------------------
-// S1 — the page carries no dream's words, from any dream
+// S1 — REMOVED 2026-09-28: the six-word gist check on the page
 // ---------------------------------------------------------------------------
 
-describe("S1: a gist's words stay off the page whichever dream wrote it", () => {
-  test("a reflection on its own, the day after a dream, cannot reword that dream's gist onto the page", () => {
+describe("S1 removed (2026-09-28): a page is not refused for sharing words with a gist", () => {
+  test("a lived quote the gist also quoted goes on the page — the citation rules carry the intent", () => {
     const c = brain();
     const d = dreamWithGist(c);
     reflect(c, [d.felt], {}, SESSION);
     nextDay(c);
+    // The morning of 09-28: every overlap was a lived quote the gist had
+    // quoted too. The page cites the lived memory, never the gist.
+    const lived = c.store.row(d.felt)?.body ?? "";
     const gistWords = c.store.row(d.gist)?.body ?? "";
-    const { outcome } = reflect(c, [d.felt], { page: { text: `## Core\n\n${gistWords}`, cites: [d.felt] } });
-    expect(outcome.page).toMatchObject({ written: false, reason: "dreamed-words-on-the-page" });
+    const { outcome } = reflect(c, [d.felt], { page: { text: `## Core\n\n${lived}\n\n${gistWords}`, cites: [d.felt] } });
+    expect(outcome.page).toMatchObject({ written: true, reason: "rewritten" });
+    // The gist is still no page's source.
+    nextDay(c);
+    const cited = reflect(c, [d.felt], { page: { text: "## Core\n\nI want to be understood.", cites: [d.gist] } });
+    expect(cited.outcome.page).toMatchObject({ written: false, reason: "page-needs-cites" });
+    expect(cited.outcome.refusedCites.some((r) => r.startsWith(d.gist))).toBe(true);
   });
 });
 
@@ -572,10 +580,12 @@ describe("owner rulings on the review's decisions", () => {
       ],
     });
     if (!done.ok) throw new Error(String(done.reason));
-    expect(done.outcome.about).toEqual([
+    expect(done.outcome.about).toMatchObject([
       { id: a, ok: false, reason: "door-closed-work-or-world-only" },
       { id: b, ok: true, reason: "relabeled" },
     ]);
+    // The refusal says what tripped it (2026-09-28).
+    expect(done.outcome.about[0]?.detail).toContain("closed the core");
     expect(c.store.read(a).about).toBe(null);
     expect(c.store.read(b).about).toBe("work");
   });
@@ -605,8 +615,11 @@ describe("owner rulings on the review's decisions", () => {
     expect(done.outcome.about).toEqual([
       { id: lesson, ok: true, reason: "relabeled" },
       { id: craft, ok: true, reason: "relabeled" },
-      { id: other, ok: false, reason: "about-needs-why" },
+      // No why: marked all the same, and the record says none was given
+      // (2026-09-28: was refused `about-needs-why`).
+      { id: other, ok: true, reason: "marked", note: "No why was given; the mark records that. Say why next time." },
     ]);
+    expect(c.store.coreEvents({ memoryId: other, action: "about" })[0]?.reason).toContain("no why given");
     // Recorded with the reflection's reason, and what it was before.
     const ev = c.store.coreEvents({ memoryId: lesson, action: "about" })[0];
     expect(ev?.actor).toBe("reflection");
@@ -616,9 +629,9 @@ describe("owner rulings on the review's decisions", () => {
     expect(done.outcome.share).toEqual({ offered: true, reason: "relabeled" });
     expect(done.outcome.handBack).toContain(`I've come to think "Han asked to be remembered through me, and I said I would." is about who I am.`);
     expect(done.outcome.handBack).not.toContain("stack trace");
-    // Doctor counts both, and the move in apart.
+    // Doctor counts all three (the unexplained mark too), and the move in apart.
     const line = reflectionFindings({ today: c.store.today() } as never, c.store)[0];
-    expect(line?.detail).toContain("2 marks changed by a reflection, 1 of them into me, us or the owner");
+    expect(line?.detail).toContain("3 marks changed by a reflection, 1 of them into me, us or the owner");
   });
 
   test("D3: with `pageWriter.mode: off` the reflection still keeps its entry and its share, but does not write the page — through the adapter and through the MCP server", async () => {

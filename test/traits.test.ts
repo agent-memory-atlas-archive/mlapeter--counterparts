@@ -114,7 +114,7 @@ describe("the vocabulary: seven axes, each between two good things", () => {
     expect(code(() => s.addTraits(id, [{ ...candid, toward: "bold" }]))).toBe("TRAIT_INVALID:toward-on-another-axis");
     expect(code(() => s.addTraits(id, [{ ...candid, toward: "blunt" }]))).toBe("TRAIT_INVALID:toward-unknown");
     expect(code(() => s.addTraits(id, [{ ...candid, strength: 1.5 }]))).toBe("TRAIT_INVALID:strength-out-of-range");
-    expect(code(() => s.addTraits(id, [{ ...candid, carriedBy: "x".repeat(281) }]))).toBe("TRAIT_INVALID:carried-by-too-long");
+    expect(code(() => s.addTraits(id, [{ ...candid, carriedBy: "x".repeat(1_001) }]))).toBe("TRAIT_INVALID:carried-by-too-long");
     // All or none: a good nudge beside a bad one is not stored either.
     expect(code(() => s.addTraits(id, [candid, { ...candid, axis: "bravery" }]))).toBe("TRAIT_INVALID:axis-unknown");
     expect(s.traitsFor(id)).toEqual([]);
@@ -492,10 +492,10 @@ describe("the reflection: writes nudges on what it was shown, is shown no balanc
     if (!done.ok) throw new Error(done.reason);
     const t = done.outcome.traits;
     expect(t[0]).toEqual({ id, ok: true, reason: "recorded" });
-    expect(t[1]).toEqual({ id: "mem_not_shown", ok: false, reason: "not-shown-or-gone" });
+    expect(t[1]).toMatchObject({ id: "mem_not_shown", ok: false, reason: "not-shown-or-gone" });
     expect(t[2]?.ok).toBe(false);
     expect(t[2]?.reason).toContain("trait-invalid:axis-unknown");
-    if (shown.has(dreamed)) expect(t[3]).toEqual({ id: dreamed, ok: false, reason: "dreamed-is-a-suggestion" });
+    if (shown.has(dreamed)) expect(t[3]).toMatchObject({ id: dreamed, ok: false, reason: "dreamed-is-a-suggestion" });
     const [row] = c.store.traitsFor(id);
     expect(row).toMatchObject({ source: "reflection", axis: "agreeable-candid", toward: "candid", strength: 0.7 });
     expect(row?.carried_by.startsWith("on reflection,")).toBe(true);
