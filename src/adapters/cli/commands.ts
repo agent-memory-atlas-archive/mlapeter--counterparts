@@ -197,7 +197,8 @@ import type { RemovalPlan } from "./removal.js";
 import { repairDates } from "./repair-dates.js";
 import type { Confidence } from "./repair-dates.js";
 import { NO_PAGE_LINES, bodyFrom, pageLines, versionLines, writeLines } from "./self-page.js";
-import { coreListLines, dreamListLines, dreamShowLines } from "./dream-core.js";
+import { coreListLines, dreamListLines, dreamShowLines, dreamingSettingWords } from "./dream-core.js";
+import { DREAMING_SETTINGS } from "../../core/dream/index.js";
 import { REFLECTED_FEELING_KEY } from "../../core/sleep/index.js";
 // The console's shared manners (2026-09-21): is there a person here, ask them,
 // and say one marked line back.
@@ -717,7 +718,7 @@ export const COMMAND_FLAGS: Record<Command, readonly string[]> = {
   // line is a page in shell history, and prose that is injected into every
   // session does not belong there.
   "self-page": ["write", "file", "stdin", "reason", "versions", "version", "restore", "clear", "if-version"],
-  dream: ["list", "show", "undo", "all"],
+  dream: ["list", "show", "undo", "all", "setting"],
   core: ["list", "demote", "reason", "reflected-feeling"],
   // `--config` because the store it opens is the one the CONFIGURATION names —
   // that is the whole point of the command over `counterparts-dashboard serve`,
@@ -1024,6 +1025,8 @@ const DREAM_FLAG_HELP: Record<string, string> = {
   all: "with --list: every dream the store holds, not only the newest 20",
   show: "one dream, by id: its journal and every change it made",
   undo: "reverse one dream's whole batch, by id (the id follows the flag); its journal is kept, marked undone",
+  setting:
+    "auto, ask or off — the nightly run (page writer, dream, reflection). auto (the default): the first session of a day starts it in the background and says so in one line; ask: the session asks you first; off: no dreams. `counterparts dream` prints the setting.",
 };
 
 /** `core`'s own four. */
@@ -1327,6 +1330,9 @@ export function parse(argv: readonly string[]): Parsed {
       // `core --reflected-feeling on|off` (2026-09-27): a string, so a bare
       // flag is a refusal rather than a `true` read as a choice.
       "reflected-feeling": { type: "string" },
+      // `dream --setting auto|ask|off` (2026-09-28): a string, like
+      // `--reflected-feeling`. `counterparts dream` prints the setting.
+      setting: { type: "string" },
       observer: { type: "boolean" },
       help: { type: "boolean" },
       // `scope`'s five. Declared as booleans for the same reason `rebuild` is:
@@ -2003,9 +2009,35 @@ function dreamCommand(dir: string, io: Io, parsed: Parsed, observer: boolean, na
   const show = parsed.flags["show"];
   const undo = parsed.flags["undo"] === true;
   const undoId = typeof parsed.flags["undo"] === "string" ? parsed.flags["undo"] : parsed.positional[0];
+  const setting = parsed.flags["setting"];
   if (typeof show === "string" && undo) {
     io.err("refused: --show and --undo are two different things to do. Pass one.");
     return EXIT.usage;
+  }
+  if (setting !== undefined) {
+    // THE OWNER'S SETTING (2026-09-28): the same value the dream tool's
+    // `setting` phase writes ("no dreams" in conversation).
+    if (typeof setting !== "string" || !(DREAMING_SETTINGS as readonly string[]).includes(setting)) {
+      io.err("refused: --setting takes auto, ask or off.");
+      return EXIT.usage;
+    }
+    if (observer) {
+      io.err("refused: this console is an observer; it reads and changes nothing. Nothing was changed.");
+      return EXIT.refused;
+    }
+    const counterpart = openCounterpart(dir, observer);
+    try {
+      const out = counterpart.dreams.setSetting(setting, { by: "owner" });
+      if (!out.ok) {
+        io.err(`refused: ${out.reason}. Nothing was changed.`);
+        return EXIT.refused;
+      }
+      io.out(`Dreaming: ${out.setting}${out.before === out.setting ? " (it already was)" : ` (was ${out.before})`}.`);
+      io.out(`  ${dreamingSettingWords(out.setting)}`);
+      return EXIT.ok;
+    } finally {
+      counterpart.close();
+    }
   }
   if (undo) {
     if (undoId === undefined || undoId.length === 0) {

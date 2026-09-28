@@ -12,7 +12,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { openServer } from "../src/adapters/mcp/index.js";
+import { McpServer, openServer } from "../src/adapters/mcp/index.js";
 import { run } from "../src/adapters/cli/index.js";
 import { recordSession } from "../src/adapters/sessions.js";
 import { Counterpart } from "../src/core/counterpart.js";
@@ -45,6 +45,9 @@ function brain(opts: { owner?: boolean; observer?: boolean } = {}): Counterpart 
     dir,
     owner: opts.owner ?? true,
     ...(opts.observer === true ? { observer: true } : { identity: { name: "Mike" } }),
+    // The calendar follows the test's days (the once-a-day gates are the
+    // calendar date since 2026-09-28).
+    now: () => Date.now() + dateN * 86_400_000,
   });
   open.push(c);
   return c;
@@ -664,7 +667,14 @@ describe("owner rulings on the review's decisions", () => {
     nextDay(brain());
     for (const x of open.splice(0)) x.close();
     recordSession(dir, { sessionId: "s-mcp", scope: "/proj", phase: "start" });
-    const s = openServer({ dir, session: "s-mcp", scope: "/proj", owner: true, pageWriterMode: "off" });
+    // The next calendar day: one reflection a calendar day (2026-09-28), and
+    // the adapter's reflection above ran on today's.
+    const s = new McpServer({
+      counterpart: Counterpart.open({ dir, owner: true, pageWriterMode: "off", now: () => Date.now() + 86_400_000 }),
+      session: "s-mcp",
+      scope: "/proj",
+      owner: true,
+    });
     try {
       const begin = await s.call("reflect", { phase: "begin", session: "s-mcp" });
       const rid = begin.structuredContent["reflection"] as string;

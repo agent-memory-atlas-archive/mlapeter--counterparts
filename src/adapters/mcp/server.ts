@@ -97,6 +97,8 @@ import {
   success,
 } from "./protocol.js";
 import type { Id, Request, Response } from "./protocol.js";
+import { DREAMING_SETTINGS, nightNext } from "../../core/dream/index.js";
+import type { DreamingSetting, NightPart } from "../../core/dream/index.js";
 import { NO_PAGE_VERSION } from "../../core/self/index.js";
 import type { PageWriterMode } from "../../core/self/index.js";
 import { TOOL_NAMES, toolDefinitions, toolSpec } from "./tools.js";
@@ -1781,6 +1783,14 @@ export class McpServer {
     const dreams = this.counterpart.dreams;
     const at = this.counterpart.store.today();
     const refused = (reason: string, detail: string): ToolResult => this.refuse("dream", reason, { phase, detail });
+    // WHAT COMES NEXT in the nightly run, in its own order (`nightOrder`).
+    const nextAfter = (part: NightPart, dream: string | null): string | null => {
+      const next = nightNext(part);
+      if (next === "writer") return `Next, the page writer: call the dream tool with phase "writer", session: ${session}${dream === null ? "" : `, dream: ${dream}`}.`;
+      if (next === "reflection") return `Now wake and reflect: call the reflect tool with phase "begin", session: ${session}, dream: ${dream ?? "<the dream id>"}. Your final message is the text its "finish" call returns.`;
+      if (next === "dream") return `Next, the dream: call the dream tool with phase "begin", session: ${session}.`;
+      return null;
+    };
     try {
       switch (phase) {
         case "launch":
@@ -1802,7 +1812,23 @@ export class McpServer {
         case "decline": {
           dreams.decline({ at, session });
           this.emit("mcp.dream", undefined, { phase: "decline", session });
-          return this.result({ phase, session, snoozed: at, said: "Not today — the ask will not come back until tomorrow." }, false);
+          return this.result({ phase, session, snoozed: at, said: "Not today — the line will not come back until tomorrow." }, false);
+        }
+        case "setting": {
+          // THE OWNER'S OFF SWITCH (2026-09-28): "no dreams" in conversation.
+          const value = args["value"];
+          if (typeof value !== "string") {
+            return refused("value-required", `Pass \`value\`: auto, ask or off. It is ${dreams.setting()} now.`);
+          }
+          const out = dreams.setSetting(value, { by: "session", session });
+          if (!out.ok) return refused(out.reason, `value is one of ${DREAMING_SETTINGS.join(", ")}. It is ${dreams.setting()} now.`);
+          this.emit("mcp.dream", undefined, { phase: "setting", setting: out.setting, before: out.before });
+          const said: Record<DreamingSetting, string> = {
+            auto: "Dreaming is on: once a day, the first session starts the nightly run in the background and says so in one line.",
+            ask: "Dreaming asks first: once a day, a session asks the owner before starting the nightly run.",
+            off: "No dreams: nothing starts the nightly run and nothing asks. It can be turned back on with this phase (value auto or ask) or with counterparts dream --setting auto.",
+          };
+          return this.result({ phase, setting: out.setting, before: out.before, said: said[out.setting] }, false);
         }
         case "begin": {
           const model = readSession(this.registryDir, session)?.model;
@@ -1811,14 +1837,30 @@ export class McpServer {
             return refused(
               out.reason,
               out.reason === "dreamed-today"
-                ? "A dream already ran this lived day."
-                : out.reason === "nothing-new"
-                  ? "Nothing new has been lived since the last dream."
-                  : "The dream did not begin.",
+                ? "A dream already ran today."
+                : out.reason === "dreaming-now"
+                  ? "Another session's dream is under way; it has the day."
+                  : out.reason === "nothing-new"
+                    ? "Nothing new has been lived since the last dream."
+                    : "The dream did not begin.",
             );
           }
-          this.emit("mcp.dream", out.bundle.dream, { phase: "begin", session, shown: Object.keys(out.bundle.memories).length });
-          return this.result({ phase, session, dream: out.bundle.dream, bundle: out.text }, false);
+          this.emit("mcp.dream", out.bundle.dream, {
+            phase: "begin",
+            session,
+            shown: Object.keys(out.bundle.memories).length,
+            resumed: out.resumed,
+          });
+          return this.result(
+            {
+              phase,
+              session,
+              dream: out.bundle.dream,
+              ...(out.resumed ? { resumed: true } : {}),
+              bundle: out.text,
+            },
+            false,
+          );
         }
         case "propose": {
           const dream = args["dream"];
@@ -1853,19 +1895,66 @@ export class McpServer {
           const out = dreams.journal({ dream, session, text, ...(typeof title === "string" ? { title } : {}) });
           if (!out.ok) return refused(out.reason, "detail" in out && out.detail !== undefined ? out.detail : "The journal was not written.");
           this.emit("mcp.dream", dream, { phase: "journal" });
+          const next = nextAfter("dream", dream);
           return this.result(
             {
               phase,
               dream,
               handBack: out.handBack,
               ...(out.note === undefined ? {} : { note: out.note }),
-              next: `Now wake and reflect: call the reflect tool with phase "begin", session: ${session}, dream: ${dream}. Your final message is the text its "finish" call returns. If reflecting fails, return \`handBack\` unchanged instead.`,
+              next: `${next ?? "Return `handBack` as your final message, unchanged."}${next === null ? "" : " If the rest of the run fails, return `handBack` unchanged as your final message instead."}`,
+            },
+            false,
+          );
+        }
+        case "writer": {
+          // THE NIGHTLY RUN'S PAGE WRITER (2026-09-28): the night's day to read,
+          // handed through this result rather than beside the wake — the page
+          // whole, no injection ceiling, no `no-room`. It is the run's FIRST
+          // part (the owner's order), so the night's claim is written here, for
+          // this session and this run; a claim this session already holds is
+          // reused (a run started again the same day claims nothing twice).
+          const dreamArg = typeof args["dream"] === "string" ? args["dream"] : null;
+          const claim = this.counterpart.claimNightWriter({ session, run: dreamArg ?? `night of ${at}` });
+          const out = this.counterpart.nightWriter({ session, tool: "counterparts self_page" });
+          const next = nextAfter("writer", dreamArg);
+          if (!out.ok) {
+            this.emit("mcp.dream", dreamArg ?? undefined, { phase: "writer", writer: claim.reason });
+            const why: Record<string, string> = {
+              off: "the owner has the page writer off",
+              "host-mode": "the page writer runs in host mode here, from its own windowless session",
+              "no-previous-day": "this store has no day before today yet",
+              "no-memories": `nothing was written down on ${claim.about}`,
+              "already-claimed": `${claim.about} was already written or answered`,
+              "asks-spent": `${claim.about} has been offered twice already`,
+            };
+            return this.result(
+              {
+                phase,
+                writer: false,
+                reason: claim.reason,
+                said: `No page writing tonight — ${why[claim.reason] ?? claim.reason}. Leave the page as it stands.`,
+                ...(next === null ? {} : { next }),
+              },
+              false,
+            );
+          }
+          this.emit("mcp.dream", dreamArg ?? undefined, { phase: "writer", about: out.about, considered: out.considered, dropped: out.dropped });
+          return this.result(
+            {
+              phase,
+              writer: true,
+              about: out.about,
+              ifVersion: out.version ?? NO_PAGE_VERSION,
+              read: out.text,
+              how: `Read the block. If something about who you are moved on ${out.about}, call the self_page tool with the WHOLE page, reason, ifVersion: ${String(out.version ?? NO_PAGE_VERSION)} and session: ${session}; if nothing moved, write nothing — that is an answer too.`,
+              ...(next === null ? {} : { next: `Then: ${next}` }),
             },
             false,
           );
         }
         default:
-          return refused("phase-unknown", "phase is one of launch, begin, propose, journal, decline.");
+          return refused("phase-unknown", "phase is one of launch, begin, propose, journal, writer, decline, setting.");
       }
     } catch (err) {
       return refused("threw", String((err as Error).message ?? err));
@@ -1911,7 +2000,7 @@ export class McpServer {
             return refused(
               out.reason,
               out.reason === "reflected-today"
-                ? "A reflection already finished this lived day."
+                ? "A reflection already finished today."
                 : out.reason === "dream-not-journaled"
                   ? "That dream has not written its journal yet."
                   : "The reflection did not begin.",
@@ -1919,7 +2008,37 @@ export class McpServer {
           }
           this.emit("mcp.reflect", out.bundle.reflection, { phase: "begin", session, shown: Object.keys(out.bundle.memories).length });
           return this.result(
-            { phase, session, reflection: out.bundle.reflection, questions: out.bundle.questions, how: out.instructions, bundle: out.text },
+            {
+              phase,
+              session,
+              reflection: out.bundle.reflection,
+              questions: out.bundle.questions,
+              // IN PARTS (2026-09-28): said up front, never a silent cut.
+              ...(out.bundle.parts === null ? {} : { parts: out.bundle.parts }),
+              how: out.instructions,
+              bundle: out.text,
+            },
+            false,
+          );
+        }
+        case "part": {
+          const reflection = args["reflection"];
+          const n = args["part"];
+          if (typeof reflection !== "string" || typeof n !== "number") {
+            return refused("reflection-and-part-required", "Pass `reflection` (the id `begin` returned) and `part` (2 and up).");
+          }
+          const out = reflections.part({ reflection, session, part: n });
+          if (!out.ok) return refused(out.reason, out.detail ?? "That reflection is not open for this session.");
+          this.emit("mcp.reflect", reflection, { phase: "part", part: out.part, of: out.of });
+          return this.result(
+            {
+              phase,
+              reflection,
+              part: out.part,
+              of: out.of,
+              bundle: out.text,
+              ...(out.part < out.of ? { next: `Then part ${String(out.part + 1)}: the reflect tool, phase "part", reflection: ${reflection}, part: ${String(out.part + 1)}.` } : { next: "That was the last part. Answer the questions, then call finish." }),
+            },
             false,
           );
         }
@@ -1990,7 +2109,7 @@ export class McpServer {
           return this.result({ phase, reflection, told: true, cited: out.cited }, false);
         }
         default:
-          return refused("phase-unknown", "phase is one of launch, begin, finish, told.");
+          return refused("phase-unknown", "phase is one of launch, begin, part, finish, told.");
       }
     } catch (err) {
       return refused("threw", String((err as Error).message ?? err));
@@ -2194,12 +2313,18 @@ export class McpServer {
    *
    * `by` on a page revision is the DOOR's and is not claimable from outside
    * (`self/page.ts`), so this server may not take a tool argument's word for it.
-   * The evidence is a mark only the SessionStart hook writes — `pageWriterFor`,
-   * a DATE, on this session's registry record (`adapters/sessions.ts`) — and it
-   * counts only while that night's claim is still open: a session that lives
-   * past midnight, or one whose night has already been answered, writes as an
+   * The evidence, since 2026-09-28, is the NIGHTLY RUN's claim row in the
+   * store — written when the run's dream began, naming this session — and,
+   * kept readable for host mode and older records, the mark the SessionStart
+   * hook used to write (`pageWriterFor`, a DATE, on this session's registry
+   * record, `adapters/sessions.ts`; nothing writes it now). Either counts only
+   * while that night's claim is still open: a session that lives past
+   * midnight, or one whose night has already been answered, writes as an
    * ordinary session again. Null on every other path, including an unbound
-   * server, which is the direction that never over-claims.
+   * server, which is the direction that never over-claims. The residual: the
+   * run's agent shares its session's id, so a `self_page` write the session
+   * itself makes while the claim is open is labelled `writer` too — the
+   * registry mark had the same property.
    */
   /**
    * A session claim on the PAGE's door: corroborated if it can be, ignored if
@@ -2267,6 +2392,15 @@ export class McpServer {
     claimedSession: string | null,
   ): { about: string; mode: PageWriterMode } | null {
     try {
+      // THE NIGHTLY RUN'S CLAIM (2026-09-28), the channel the default mode
+      // uses now: the run's background agent shares its session's id, and
+      // the claim its dream wrote at `begin` names that session. Host mode's
+      // environment pin, when present, is the child's and outranks it.
+      if (!/^\d{4}-\d{2}-\d{2}$/.test((this.env[PAGE_WRITER_ENV] ?? "").trim())) {
+        const id = claimedSession ?? this.session;
+        const night = id === null ? null : this.counterpart.nightClaimFor(id);
+        if (night !== null) return { about: night.about, mode: night.mode };
+      }
       const about = this.pageWriterClaim(claimedSession);
       if (about === null) return null;
       // THE MODE COMES FROM THE CLAIM THIS IS CLOSING, not from the channel the

@@ -563,22 +563,42 @@ row, saying which source answered, existed until the keys were removed — §1a.
     back immediately. Doctor prints these steps as the remedy on any Snapshot
     finding that is not green.
 
-### The nightly page writer, in two modes (S2, 2026-09-20 — true for now)
+### The nightly run, and the page writer inside it (2026-09-28 — working defaults, held lightly)
 
-**[M] Session mode is the default, and it costs the wake nothing.** When the writer is owed
-the day just gone, the SessionStart hook puts the core's instruction in `HookResult.ask` —
-the same field, beside the wake and never inside it, that the first-launch scope question
-uses and for the same reason: the bundle's byte count and its tail sentinel are load-bearing.
-The wake's `injection`, `bytes` and `sentinel` are byte-identical with the writer off and
-with it on, and that is asserted rather than argued. **The first-launch question wins the
-field** when both want it; the writer's is deferred with a ring event and the night stays
-owed. **No room under the reported ceiling defers rather than truncating**, and claims
-nothing. One session is asked once — a compaction re-firing SessionStart asks nothing — and
-the mark is a DATE on the session's registry record, which is also the only evidence the
-MCP server accepts for writing `by: "writer"` on the revision that comes back.
+**[M] Once per local calendar day, the first session's line starts the nightly run.** On the
+first prompt of a calendar day (`hooks.ts#dreamLines`, UserPromptSubmit), when at least three
+memories are new since the last dream, the line tells the model to call the dream tool's
+`launch` and hand the prompt to ONE background agent, then tell the owner in one line:
+"Dreaming in the background (a few minutes). Say 'no dreams' anytime to turn it off." The
+run is, in order (`DREAM_TUNABLES.NIGHT_ORDER`, the owner's call): the page writer, the dream,
+the reflection — the writer first so it reads yesterday before any merge archives an
+original, survives a session cut off mid-run, and the dream and the reflection see the fresh
+page.
+Fewer than three new: nothing runs, and they carry over (new = since the last dream). The
+owner's setting decides the line — `auto` (the default) starts the run, `ask` asks first as
+it did from 2026-09-26, `off` says nothing — kept in the store's meta, set by the dream
+tool's `setting` phase ("no dreams") or `counterparts dream --setting`, shown by doctor. The
+line is claimed once a day across sessions (`dream_asks`), and again only for a run left
+behind (a dream begun and quiet for 30 minutes, or — `auto` — a launch no dream followed),
+at most twice a day.
 
-**[M] Host mode starts a windowless session of the self, and reads the outcome from the
-store.** `claude -p`, so the ordinary SessionStart hook fires inside the child and the
+**[M] The writer moved out of the wake and into the run (2026-09-28).** The SessionStart ask
+that handed the first session of a day the day just gone (S2's session mode, 2026-09-20) is
+RETIRED, and with it its deferral (`no-room`), its contest with the first-launch question
+for the ask field, and the registry mark it wrote. The dream tool's `writer` phase — the
+run's first call — writes the night's claim (the ordinary `asked` row, `about` = yesterday's
+local date, carrying the SESSION and the run) and hands the writer its day through a tool
+result, the page whole: no injection ceiling, so nothing is deferred for room.
+The MCP server labels a `self_page` write `by: "writer"` when this session holds that open
+claim (`self/writer.ts#nightClaimFor`); the registry mark and host mode's environment pin
+are still read. The residual, as with the registry mark: the run's agent shares its
+session's id, so the session's own page write while the claim is open is labelled `writer`
+too. The wake's `injection`, `bytes` and `sentinel` are untouched by any of it.
+
+**[M] Host mode (not the default; left in place) starts a windowless session of the self,
+and reads the outcome from the store.** With `pageWriter.mode: host` the nightly run claims
+nothing for the writer (its `writer` phase says so) and the worker's child writes instead.
+`claude -p`, so the ordinary SessionStart hook fires inside the child and the
 writer wakes with the wake; exactly one pre-approved tool, the page's. The plan is pure and
 decides everything; the starter is six lines. The package's own values go onto the child's
 environment LAST (§2.13), and `COUNTERPARTS_SESSION` / `COUNTERPARTS_SCOPE` are REMOVED
@@ -588,24 +608,22 @@ as a pinned DATE (`COUNTERPARTS_PAGE_WRITER`), because a windowless child's sess
 minted by the host after the launcher is gone. **The child's stdout is never parsed into a
 verdict**: what the run did is read from the page's version chain and from the row the tool
 left, and the exit code decides only between "nothing to say" and "could not run". The
-child's own SessionStart raises no writer ask — session mode only — or a session started to
-do the writing would be asked to do it.
+child is told nothing on its prompts (`HookInput.pageWriter`): no dream line, no reminders.
 
-**[M] The ask is measured, not predicted, and a deferral is not a silence.** The composed
-block is checked against the host's reported ceiling AFTER composing (the estimate is its
-shortest shape; the delivered one is longer), and re-composed once against the room the
-first attempt proved was really there. A block that will not fit, or that can carry none of
-the day, is DEFERRED — and the deferral leaves a durable `skipped` row, deduped one per
-night per reason, which claims nothing and can never close a night. The first-launch scope
-question still wins the field, but only once per night: on a blank store it is exactly what
-is pending on nights 1–3, and an unanswered one used to starve the writer for ever.
+(Retired with the SessionStart ask, 2026-09-28: the measured-not-predicted sizing against the
+host's ceiling, the durable `skipped` deferral rows, and the first-launch question's
+once-per-night patience. `skipped` rows written before still read as they always did.)
 
 **[M] It never costs anything else.** The writer runs last in the detached worker, inside
 the same `finally` as the snapshot, so a day whose sweep broke is still a day that gets
 written about; it never throws; and a failure never fails a wake, a boundary or a session.
-Doctor's `Page writer` line is GREEN when it has never run on a store with no yesterday and
-GREEN on a night that had nothing to say, AMBER only on a failure or a refusal or on the
-writer being off while a page stands, and never RED.
+Doctor's `Page writer` line is GREEN when it has never run on a store with no yesterday,
+GREEN on a night that had nothing to say, GREEN when it is off (a deliberate choice; this
+page used to say amber while a page stands, which the code has not done since the S2 review
+— the words follow the code as of 2026-09-28), AMBER on a failure, a refusal, an unreadable
+`pageWriter` block, or — in session mode — a night owed for days while nightly runs went on
+without it, and never RED. A night owed because no run started (fewer than three new
+memories, dreaming off or declined) is green: the writer runs inside the nightly run now.
 
 **[M] The child gets the day on STDIN and a stance this package chose.** The instruction is
 not in `argv`, where `ps` shows it to every process on the machine, and

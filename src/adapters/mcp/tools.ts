@@ -921,7 +921,7 @@ const SELF_PAGE: ToolSpec = {
       body: {
         type: "string",
         description:
-          "The WHOLE page, first person, in your own voice — `## Core` and `## Lately` by convention. Omit it to read the page instead of writing it.",
+          "The WHOLE page, first person, in your own voice — `## Core` and `## Lately` by convention, and any other `##` section the page has grown. Omit it to read the page instead of writing it.",
       },
       reason: {
         type: "string",
@@ -937,7 +937,7 @@ const SELF_PAGE: ToolSpec = {
       session: {
         type: "string",
         description:
-          "Only when the nightly page-writer block at the start of this session asked you to write, and only the id IT named. It is how the write is recorded as that night's work rather than as an ordinary amendment. Omit it every other time; the page is never refused for lack of it.",
+          "Only when the nightly page-writer block (the dream tool's `writer` phase, in the nightly run) asked you to write, and only the id IT named. It is how the write is recorded as that night's work rather than as an ordinary amendment. Omit it every other time; the page is never refused for lack of it.",
       },
     },
     required: [],
@@ -956,11 +956,11 @@ const SELF_PAGE: ToolSpec = {
 const DREAM: ToolSpec = {
   name: "dream",
   summary:
-    "Dreaming: a few minutes of replay over what was lived since the last dream — merging near-copies, linking what belongs together, replaying what matters, writing a pattern you notice, flagging a contradiction, recording how an old feeling sits now — kept in a dream journal and reversible as a whole. Phases: `launch` (the prompt for a background dreamer), `begin` / `propose` / `journal` (the dreamer's), `decline` (not today).",
+    "Dreaming, in the nightly run: a few minutes of replay over what was lived since the last dream — merging near-copies, linking what belongs together, replaying what matters, writing a pattern you notice, flagging a contradiction, recording how an old feeling sits now — kept in a dream journal and reversible as a whole — with the page writer before it and a reflection after it, in one background run. Phases: `launch` (the prompt for the background run), `begin` / `propose` / `journal` (the dreamer's), `writer` (the night's page writer: the day to read), `decline` (not today), `setting` (auto, ask or off — 'no dreams' is off).",
   admission:
-    "Call `launch` only after the owner said yes to the dream ask, and hand the prompt it returns to a background agent unchanged. Call `decline` when the owner says not today. The other three phases are the dreamer's, in order, following that prompt.",
+    "Call `launch` when the line at the start of a session says to (the owner's setting `auto`), or after the owner said yes to the dream ask (setting `ask`), and hand the prompt it returns to a background agent unchanged. Call `setting` with value `off` when the owner says 'no dreams' (and `auto` or `ask` when they turn it back on); `decline` when they say not today. `begin`, `propose`, `journal` and `writer` are the background run's, following that prompt.",
   negativeExamples: [
-    "Do NOT dream without asking the owner first — the ask arrives as a quiet line at the start of a session, once a day at most.",
+    "Do NOT start a dream the line did not start: it arrives as a quiet line at the start of a session, once a day at most, and the owner's setting decides whether it starts the run or asks first.",
     "Do NOT run the dream yourself in this conversation: `launch` returns a prompt for a background agent, and the dream's words must stay out of this transcript.",
     "Do NOT use `propose` to correct or delete a memory — a dream cannot rewrite one in place, delete one, edit the self page or promote one, and it touches only memories its bundle showed it.",
   ],
@@ -972,7 +972,7 @@ const DREAM: ToolSpec = {
     },
     {
       claim:
-        "At most one dream a lived day: `begin` refuses when one already ran today, and under observer stance nothing is written and the refusal says so.",
+        "At most one dream a calendar day: `begin` refuses when one already ran today; a dream left unfinished when its session closed is resumed by the next one, not counted as the day's; and under observer stance nothing is written and the refusal says so.",
       mechanizedBy: "src/core/dream/index.ts#Dreams.begin + src/adapters/mcp/server.ts#standDown",
     },
     {
@@ -1011,16 +1011,21 @@ const DREAM: ToolSpec = {
     properties: {
       phase: {
         type: "string",
-        enum: ["launch", "begin", "propose", "journal", "decline"],
-        description: "Which step: launch, begin, propose, journal, or decline.",
+        enum: ["launch", "begin", "propose", "journal", "writer", "decline", "setting"],
+        description: "Which step: launch, begin, propose, journal, writer, decline, or setting.",
       },
       session: {
         type: "string",
-        description: "The session this dream belongs to — the id the dream ask and the launch prompt named.",
+        description: "The session this dream belongs to — the id the line and the launch prompt named.",
       },
       dream: {
         type: "string",
-        description: "`propose` and `journal`: the dream id `begin` returned.",
+        description: "`propose` and `journal`: the dream id `begin` returned. (`writer` may carry it too; it runs first, before there is one.)",
+      },
+      value: {
+        type: "string",
+        enum: ["auto", "ask", "off"],
+        description: "`setting`: auto (the run starts on its own, once a day, and says so), ask (ask the owner first), or off (no dreams).",
       },
       changes: {
         type: "array",
@@ -1074,9 +1079,9 @@ const DREAM: ToolSpec = {
 const REFLECT: ToolSpec = {
   name: "reflect",
   summary:
-    "Reflection: a few quiet, awake minutes — usually right after a dream — answering two or three questions about yourself, the owner and the two of you, citing the memories your thoughts rest on. It keeps a lived entry, may rewrite your self page from the memories it cites, leaves a short morning share for the owner, can record how a memory feels to you now and what a memory is about. Phases: `launch` (a reflection on its own, for a background agent), `begin` / `finish` (the reflecting mind's), `told` (the share was told).",
+    "Reflection: a few quiet, awake minutes — usually at the end of the nightly run, after the dream — answering two or three questions about yourself, the owner and the two of you, citing the memories your thoughts rest on. It keeps a lived entry, may rewrite your self page from the memories it cites, leaves a short morning share for the owner, can record how a memory feels to you now and what a memory is about. Phases: `launch` (a reflection on its own, for a background agent), `begin` / `part` / `finish` (the reflecting mind's — `part` fetches the rest of a bundle that came in parts), `told` (the share was told).",
   admission:
-    "The dreamer calls `begin` and `finish` right after its journal, as the dream's prompt says. Call `launch` only when the owner asks you to reflect, and hand its prompt to a background agent. Call `told` after you told the owner a morning share, in your own words.",
+    "The nightly run calls `begin` and `finish` after the dream, as its prompt says. Call `launch` only when the owner asks you to reflect, and hand its prompt to a background agent. Call `told` after you told the owner a morning share, in your own words.",
   negativeExamples: [
     "Do NOT make up depth: a night with nothing much to say is a short entry that cites nothing — it rewrites nothing and shares nothing.",
     "Do NOT store a thought about the owner as a fact about them: say it to them tentatively in the share, or not at all — never a list of flaws.",
@@ -1085,7 +1090,7 @@ const REFLECT: ToolSpec = {
   privileges: [
     {
       claim:
-        "It is bound to ONE session as `dream` is; at most one reflection a lived day, and under observer stance nothing is written and the refusal says so.",
+        "It is bound to ONE session as `dream` is; at most one reflection a calendar day, and under observer stance nothing is written and the refusal says so.",
       mechanizedBy: "src/adapters/mcp/server.ts#requireBoundSession + src/core/dream/reflect.ts#Reflections.begin",
     },
     {
@@ -1100,7 +1105,7 @@ const REFLECT: ToolSpec = {
     },
     {
       claim:
-        "The self page is rewritten only from memories it cites (never from a dreamed gist), through the page's one door, with every earlier version kept.",
+        "The self page is rewritten only from memories it cites (never from a dreamed gist), through the page's one door, labelled as the reflection's, with every earlier version kept.",
       mechanizedBy: "src/core/dream/reflect.ts#Reflections.finish (page) -> src/core/self/index.ts#Self.revisePage",
     },
     {
@@ -1124,15 +1129,19 @@ const REFLECT: ToolSpec = {
     properties: {
       phase: {
         type: "string",
-        enum: ["launch", "begin", "finish", "told"],
-        description: "Which step: launch, begin, finish, or told.",
+        enum: ["launch", "begin", "part", "finish", "told"],
+        description: "Which step: launch, begin, part, finish, or told.",
+      },
+      part: {
+        type: "number",
+        description: "`part`: which part of the bundle to fetch (2 and up), when `begin` said it came in parts.",
       },
       session: { type: "string", description: "The session this reflection belongs to." },
       dream: { type: "string", description: "`begin`, after a dream: the dream id it follows." },
       reflection: {
         type: "string",
         description:
-          "`finish` and `told`: the reflection id `begin` returned. `finish` may be called again the same day with the same id to send the parts a first call did not write (page, share, feelings, about, traits); the entry stands, and a share not yet told may be replaced.",
+          "`part`, `finish` and `told`: the reflection id `begin` returned. `finish` may be called again the same day with the same id to send the parts a first call did not write (page, share, feelings, about, traits); the entry stands, and a share not yet told may be replaced.",
       },
       title: { type: "string", description: "`finish`: a short title for the entry." },
       entry: { type: "string", description: "`finish`: your reflection, first person. Required the first time; may be left out on a second finish." },

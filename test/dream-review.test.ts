@@ -148,9 +148,11 @@ describe("review of #251: what a dream's changes must keep", () => {
     const m = lived(c);
     const first = begin(c);
     expect(c.dreams.propose({ dream: first, session: SESSION, changes: [{ action: "link", a: m.a, b: m.old }] }).ok).toBe(true);
-    // Never journaled. A lived day later, with new memories, a new dream begins.
+    // Never journaled. Three calendar days later — past resuming (today's or
+    // yesterday's dream left behind is RESUMED since 2026-09-28) — with new
+    // memories, a new dream begins.
     c.store.advanceClock("2026-09-27");
-    offsetMs += 5_000;
+    offsetMs += 3 * 86_400_000;
     for (const body of [
       "The nightly backup job moved to two in the morning to miss the batch window.",
       "The batch window now ends at one thirty, so backups start after it.",
