@@ -75,6 +75,12 @@ export function conducts(weight: number, t: AssociateTunables): boolean {
   return weight > t.EDGE_FLOOR;
 }
 
+/** A row that carries nothing any more: zeroed by an eviction, or decayed to
+ *  the floor. What the flush's sweep removes (2026-09-28). */
+export function isDead(e: EdgeState, day: number, t: AssociateTunables): boolean {
+  return !conducts(edgeWeightAt(e, day, t), t);
+}
+
 /** Increment, capped. The cap is the per-edge half of homeostasis (§10 G2). */
 export function strengthen(current: number, delta: number, t: AssociateTunables): number {
   const next = current + Math.max(0, delta);
@@ -143,6 +149,41 @@ export function planFlush(
   edgesFrom: (id: string) => readonly EdgeState[],
   t: AssociateTunables,
 ): FlushPlan {
+  return plan(deltas, day, edgesFrom, t, (current, delta) => strengthen(current, delta, t));
+}
+
+/**
+ * A PROPOSED link (a dream's `link`, a gist's sources — 2026-09-28): each
+ * direction becomes at least `weight`, measured against its DECAYED weight at
+ * `day` (never the stored one, or re-proposing an old pair would resurrect the
+ * weight it had before it faded), capped, and then the touched nodes go through
+ * the same homeostasis a Hebbian flush does. A proposal adds nothing to an
+ * edge already at or above it: the dream proposes, waking use confirms.
+ */
+export function planProposal(
+  pairs: readonly { a: string; b: string }[],
+  weight: number,
+  day: number,
+  edgesFrom: (id: string) => readonly EdgeState[],
+  t: AssociateTunables,
+): FlushPlan {
+  const w = Math.min(t.EDGE_CAP, Math.max(0, weight));
+  return plan(
+    pairs.map((p) => ({ a: p.a, b: p.b, delta: w })),
+    day,
+    edgesFrom,
+    t,
+    (current, proposed) => Math.max(current, proposed),
+  );
+}
+
+function plan(
+  deltas: readonly PairDelta[],
+  day: number,
+  edgesFrom: (id: string) => readonly EdgeState[],
+  t: AssociateTunables,
+  combine: (current: number, delta: number) => number,
+): FlushPlan {
   /** node -> (dst -> weight at `day`, deltas applied). */
   const nodes = new Map<string, Map<string, number>>();
   /** node -> (dst -> the row as stored), so unchanged rows are not rewritten. */
@@ -166,8 +207,8 @@ export function planFlush(
     if (d.a === d.b) continue;
     const forward = load(d.a);
     const back = load(d.b);
-    forward.set(d.b, strengthen(forward.get(d.b) ?? 0, d.delta, t));
-    back.set(d.a, strengthen(back.get(d.a) ?? 0, d.delta, t));
+    forward.set(d.b, combine(forward.get(d.b) ?? 0, d.delta));
+    back.set(d.a, combine(back.get(d.a) ?? 0, d.delta));
   }
 
   const rows: EdgeState[] = [];

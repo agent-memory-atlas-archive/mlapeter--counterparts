@@ -109,8 +109,14 @@ export const DREAM_TUNABLES = {
     "feeling-now": 10,
     "nominate-core": 3,
   },
-  /** The weight of a link a dream draws, both ways (about three co-activations). CAL. */
-  LINK_WEIGHT: 0.3,
+  /**
+   * The weight a dream PROPOSES for a link or a gist's tie, both ways — about
+   * one co-activation (`associate` `HEBB_RATE`, 0.1). Was 0.3, three full
+   * co-activations, written around homeostasis (2026-09-28: the dream proposes,
+   * waking use confirms, and edge decay fades what it never does). A proposal
+   * raises an edge to at least this from its decayed weight; it never adds. CAL.
+   */
+  LINK_WEIGHT: 0.1,
   /**
    * TEXT CAPS, raised 2026-09-28 (owner direction: loosen the limits; design a
    * real answer when something really grows too long). Longer is kept to the

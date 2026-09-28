@@ -31,7 +31,7 @@ import { USE_TIER_WEIGHT } from "../physics/index.js";
 import type { CreditOutcome, UseTier } from "../physics/index.js";
 import type { ProseDoc, Store } from "../store/index.js";
 import { activate } from "./activate.js";
-import type { Candidate } from "./activate.js";
+import type { Candidate, SpreadFn, SpreadStats } from "./activate.js";
 import { detectAffect, stripBoilerplate } from "./cues.js";
 import { floorUnit, gate } from "./gate.js";
 import type { Background, CandidateVerdict, Verdict } from "./gate.js";
@@ -49,7 +49,8 @@ export * from "./mood.js";
 export * from "./render.js";
 export * from "./session.js";
 export * from "./tunables.js";
-export { activate, isConfidential, isHandoff, isSelfPage, gatedSal, recordedIdentity } from "./activate.js";
+export { activate, isConfidential, isHandoff, isSelfPage, gatedSal, recordedIdentity, salienceRank } from "./activate.js";
+export type { SpreadFn, SpreadStats } from "./activate.js";
 export type { Candidate, ActivationResult } from "./activate.js";
 import type { ActivationResult } from "./activate.js";
 
@@ -107,10 +108,7 @@ export interface Turn {
   /** Spreading activation (SEAMS item L), injected at the composition root.
    *  Hops MODULATE candidates the conversation already reached; they never mint
    *  one, which is what keeps hard gate (a) structural. */
-  spread?: (
-    seeds: readonly { id: string; activation: number }[],
-    day: number,
-  ) => { contributions: readonly { id: string; activation: number }[] };
+  spread?: SpreadFn;
   /** Lived day. Defaults to the store's clock (scar E8 — lived, not calendar). */
   day?: number;
   /** Per-turn override of the session's owner stance. */
@@ -186,6 +184,17 @@ export interface RecallDecision {
    * mood, and on every quiet turn.
    */
   readonly moodMatched: number;
+  /**
+   * What spreading did this turn (association build 1, 2026-09-28): seeds,
+   * nodes expanded, where and why it stopped, contributions computed and how
+   * many LANDED on a candidate. Null when it did not run. Counts only. On the
+   * durable `recall.decision` row (`RECALL_DECISION_FIELDS`), added to the
+   * surface set the way `moodMatched` was — the parallel run it was frozen for
+   * is over.
+   */
+  readonly spread: SpreadStats | null;
+  /** Scored candidates the candidate cut left out (never a silent cut). */
+  readonly dropped: number;
   readonly bytes: number;
   readonly budgetBytes: number;
   readonly sentinel: string | null;
@@ -333,6 +342,8 @@ export class Recall {
         affectFlag: false,
         affectReason: "no-feeling-in-turn",
         moodMatched: 0,
+        spread: null,
+        dropped: 0,
         bytes: 0,
         budgetBytes,
         sentinel: null,
@@ -466,6 +477,8 @@ export class Recall {
       moodMatched: gated.verdicts.filter(
         (v) => (v.verdict === "surfaced" || v.verdict === "footnoted") && (v.mood ?? 0) > 0,
       ).length,
+      spread: act.spread,
+      dropped: act.dropped,
       bytes: rendered.bytes,
       budgetBytes,
       sentinel: rendered.sentinel,

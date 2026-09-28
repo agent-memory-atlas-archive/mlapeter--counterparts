@@ -580,7 +580,7 @@ describe("spreading activation", () => {
     expect(out.contributions.find((c) => c.id === "c")?.depth).toBe(2);
   });
 
-  test("hop decay and fan normalization: a hub shares its activation, it does not flood", () => {
+  test("hop decay and ABSOLUTE weight: an edge passes w / MAX_OUT_WEIGHT, siblings or not", () => {
     const single = spread(
       {
         seeds: [{ id: "a", activation: 1 }],
@@ -590,7 +590,11 @@ describe("spreading activation", () => {
       },
       withTunables({ HOPS: 1 }),
     );
-    expect(single.contributions[0]?.activation).toBeCloseTo(TUNABLES.HOP_DECAY, 10);
+    // 0.5 × 0.4 / 4 — a lone edge no longer passes everything it carries.
+    expect(single.contributions[0]?.activation).toBeCloseTo(
+      (TUNABLES.HOP_DECAY * 0.4) / TUNABLES.MAX_OUT_WEIGHT,
+      10,
+    );
 
     const hub = spread(
       {
@@ -605,9 +609,64 @@ describe("spreading activation", () => {
       withTunables({ HOPS: 1 }),
     );
     expect(hub.contributions).toHaveLength(2);
-    for (const c of hub.contributions) expect(c.activation).toBeCloseTo(0.25, 10);
-    const total = hub.contributions.reduce((sum, c) => sum + c.activation, 0);
+    // A sibling does not dilute: each edge passes what its own weight says.
+    for (const c of hub.contributions) expect(c.activation).toBeCloseTo(0.05, 10);
+  });
+
+  test("a hub written outside homeostasis still cannot pass more than it carries", () => {
+    // A legacy dream gist: 40 raw 0.3 edges, sum 12 — three times the bound.
+    const edges: [string, string, number][] = [];
+    for (let i = 0; i < 40; i++) edges.push(["g", `s${String(i)}`, 0.3]);
+    const out = spread(
+      { seeds: [{ id: "g", activation: 1 }], day: 0, edgesFrom: graph(edges), conducts: ALL_CONDUCT },
+      withTunables({ HOPS: 1 }),
+    );
+    const total = out.contributions.reduce((sum, c) => sum + c.activation, 0);
     expect(total).toBeCloseTo(TUNABLES.HOP_DECAY, 10);
+  });
+
+  test("seeds expand strongest first, whatever order the caller listed them in", () => {
+    const out = spread(
+      {
+        seeds: [
+          { id: "weak", activation: 0.1 },
+          { id: "loud", activation: 5 },
+        ],
+        day: 0,
+        edgesFrom: graph([
+          ["weak", "w1", 0.5],
+          ["loud", "l1", 0.5],
+        ]),
+        conducts: ALL_CONDUCT,
+      },
+      withTunables({ MAX_SPREAD_NODES: 1 }),
+    );
+    expect(out.stop).toBe("node-limit");
+    expect(out.contributions.map((c) => c.id)).toEqual(["l1"]);
+    expect(out.depth).toBe(1);
+  });
+
+  test("a second-hop node carries what it received over EVERY path, and depth is reported", () => {
+    const out = spread(
+      {
+        seeds: [
+          { id: "a", activation: 1 },
+          { id: "b", activation: 1 },
+        ],
+        day: 0,
+        edgesFrom: graph([
+          ["a", "m", 1],
+          ["b", "m", 1],
+          ["m", "z", 1],
+        ]),
+        conducts: ALL_CONDUCT,
+      },
+      TUNABLES,
+    );
+    const per = (TUNABLES.HOP_DECAY * 1) / TUNABLES.MAX_OUT_WEIGHT;
+    expect(out.contributions.find((c) => c.id === "m")?.activation).toBeCloseTo(2 * per, 10);
+    expect(out.contributions.find((c) => c.id === "z")?.activation).toBeCloseTo(2 * per * per, 10);
+    expect(out.depth).toBe(2);
   });
 
   test("contributions SUM across paths and keep the shallowest depth", () => {
@@ -629,7 +688,7 @@ describe("spreading activation", () => {
     const t = out.contributions.find((c) => c.id === "t");
     expect(t?.paths).toBe(2);
     expect(t?.depth).toBe(1);
-    expect(t?.activation).toBeCloseTo(1.0, 10);
+    expect(t?.activation).toBeCloseTo((2 * TUNABLES.HOP_DECAY * 0.5) / TUNABLES.MAX_OUT_WEIGHT, 10);
   });
 
   test("a faded edge conducts nothing — decay applies inside the traversal too", () => {

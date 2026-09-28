@@ -33,7 +33,7 @@
 import type { EdgeInput, EdgeRow, MemoryRow } from "../store/index.js";
 import type { UseTier } from "../physics/index.js";
 import { DeltaBuffer } from "./buffer.js";
-import { conducts, edgeWeightAt, planFlush } from "./edges.js";
+import { conducts, edgeWeightAt, isDead, planFlush, planProposal } from "./edges.js";
 import type { EdgeState, Eviction, PairDelta } from "./edges.js";
 import { spread } from "./spread.js";
 import type { Seed, SpreadResult } from "./spread.js";
@@ -48,9 +48,10 @@ export * from "./tunables.js";
 
 /**
  * The narrow store seam this module needs — six members, all of which `Store`
- * already has. Narrow on purpose: it names the whole surface associate can reach
- * (there is no delete on it, and there could not be), and it makes the crash
- * points reachable in a test without a real database standing in for one.
+ * already has, plus one optional sweep. Narrow on purpose: it names the whole
+ * surface associate can reach (the only removal on it is the sweep of rows that
+ * already carry nothing), and it makes the crash points reachable in a test
+ * without a real database standing in for one.
  */
 export interface AssociateStore {
   /** The ONE observer predicate, already derived by the store. Never re-derived
@@ -61,6 +62,13 @@ export interface AssociateStore {
   deniedIds(): string[];
   edgesFrom(src: string): EdgeRow[];
   linkMany(edges: readonly EdgeInput[]): void;
+  /**
+   * Remove the edge rows `dead` says carry nothing (2026-09-28): the zeroed rows
+   * an eviction leaves and the ones decayed to the floor. Optional on the seam,
+   * so a store without it simply keeps its dead rows — they conduct nothing
+   * either way. Returns how many rows went.
+   */
+  sweepEdges?(dead: (e: EdgeRow) => boolean): number;
 }
 
 /** Telemetry: ids, counts, weights, reasons. NEVER body text or turn text. */
@@ -131,6 +139,27 @@ export interface FlushReport {
   /** The failure's stable CODE — the store's own where it has one, the error's
    *  name otherwise. `error` above is the message, which is for a human reading
    *  a report; a durable row takes this instead (store §5 G10). */
+  readonly code?: string;
+  /** Dead rows (zeroed by an eviction, or decayed to the floor) the flush swept
+   *  away after it landed (2026-09-28). */
+  readonly swept: number;
+}
+
+export type ProposeReason = "linked" | "observer" | "nothing-to-link" | "failed";
+
+/** What a proposed link did (a dream's `link`, a gist's sources — 2026-09-28). */
+export interface ProposeReport {
+  readonly reason: ProposeReason;
+  readonly day: number;
+  /** Pairs that went through (both endpoints live and not pinned). */
+  readonly pairs: number;
+  readonly rows: number;
+  readonly evictions: readonly Eviction[];
+  readonly renormalized: number;
+  /** Pairs refused because an endpoint is not live memory. */
+  readonly blocked: number;
+  /** Pairs refused because an endpoint is pinned (G9: frozen both ways). */
+  readonly frozen: number;
   readonly code?: string;
 }
 
@@ -296,6 +325,7 @@ export class Associate {
       nodesTouched: 0,
       blocked: 0,
       dropped: 0,
+      swept: 0,
     };
 
     if (this.observer) {
@@ -364,6 +394,7 @@ export class Associate {
           nodesTouched: plan.nodesTouched,
           blocked,
           dropped: live.length,
+          swept: 0,
           error: err instanceof Error ? err.message : String(err),
           code: codeOf(err),
         };
@@ -377,6 +408,10 @@ export class Associate {
         reason: ev.reason,
       });
     }
+    // HYGIENE, after the write has landed (2026-09-28): the rows that carry
+    // nothing — an eviction's zero, an edge decayed to the floor — are swept,
+    // and counted. A sweep that fails costs only the tidying: the flush stands.
+    const swept = this.sweep(day);
     this.emit("associate.flush.done", undefined, {
       day,
       pairs: deltas.length,
@@ -384,6 +419,7 @@ export class Associate {
       blocked,
       evicted: plan.evictions.length,
       renormalized: plan.renormalized.length,
+      swept,
     });
     return {
       reason: "flushed",
@@ -395,6 +431,109 @@ export class Associate {
       nodesTouched: plan.nodesTouched,
       blocked,
       dropped: 0,
+      swept,
+    };
+  }
+
+  /** Sweep dead edge rows; 0 when the store has no sweep or it failed. */
+  private sweep(day: number): number {
+    if (this.store.sweepEdges === undefined) return 0;
+    try {
+      return this.store.sweepEdges((e) =>
+        isDead({ src: e.src, dst: e.dst, weight: e.weight, lastDay: e.last_day }, day, this.tunables),
+      );
+    } catch (err) {
+      this.emit("associate.sweep.failed", undefined, { day, error: codeOf(err) });
+      return 0;
+    }
+  }
+
+  // ── proposed links (the dream's, 2026-09-28) ───────────────────────────────
+
+  /**
+   * A link somebody PROPOSES rather than one waking use earned: a dream's
+   * `link`, a dreamed gist's ties to its sources. It lands now (there is no
+   * turn boundary to wait for) and goes through the same rules a Hebbian flush
+   * does — both endpoints live, a pinned memory frozen both ways (G9), each
+   * direction raised to at least `weight` from its DECAYED weight, then the
+   * count cap and the outgoing bound on every touched node — so a gist with
+   * forty sources is homeostased at birth instead of carrying a sum of twelve.
+   *
+   * `weight` defaults to `HEBB_RATE`: about one co-activation. The dream
+   * proposes; waking use confirms, and decay (`S_EDGE`) fades what it never
+   * does.
+   */
+  propose(pairs: readonly { a: string; b: string }[], weight?: number, day?: number): ProposeReport {
+    const d = day ?? this.store.livedDay();
+    const empty: ProposeReport = {
+      reason: "nothing-to-link",
+      day: d,
+      pairs: 0,
+      rows: 0,
+      evictions: [],
+      renormalized: 0,
+      blocked: 0,
+      frozen: 0,
+    };
+    if (this.observer) {
+      this.emit("associate.observer.skip", undefined, { site: "propose", pairs: pairs.length });
+      return { ...empty, reason: "observer" };
+    }
+    const conductor = this.conductor();
+    const live: { a: string; b: string }[] = [];
+    const seen = new Set<string>();
+    let blocked = 0;
+    let frozen = 0;
+    for (const p of pairs) {
+      if (p.a === p.b) continue;
+      const key = p.a < p.b ? `${p.a}|${p.b}` : `${p.b}|${p.a}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      if (!conductor(p.a) || !conductor(p.b)) {
+        blocked += 1;
+        continue;
+      }
+      if (this.store.row(p.a)?.protected === 1 || this.store.row(p.b)?.protected === 1) {
+        frozen += 1;
+        continue;
+      }
+      live.push(p);
+    }
+    if (live.length === 0) return { ...empty, blocked, frozen };
+
+    const w = weight ?? this.tunables.HEBB_RATE;
+    const plan = planProposal(live, w, d, (id) => this.edgeStates(id), this.tunables);
+    const rows: EdgeInput[] = plan.rows.map((r) => ({ src: r.src, dst: r.dst, weight: r.weight, day: r.lastDay }));
+    if (rows.length > 0) {
+      try {
+        this.store.linkMany(rows);
+      } catch (err) {
+        this.emit("associate.propose.failed", undefined, { day: d, pairs: live.length, error: codeOf(err) });
+        return { ...empty, reason: "failed", blocked, frozen, code: codeOf(err) };
+      }
+    }
+    for (const ev of plan.evictions) {
+      this.emit("associate.edge.evicted", ev.src, { dst: ev.dst, priorWeight: ev.priorWeight, reason: ev.reason });
+    }
+    this.emit("associate.propose", undefined, {
+      day: d,
+      pairs: live.length,
+      weight: w,
+      rows: rows.length,
+      blocked,
+      frozen,
+      evicted: plan.evictions.length,
+      renormalized: plan.renormalized.length,
+    });
+    return {
+      reason: "linked",
+      day: d,
+      pairs: live.length,
+      rows: rows.length,
+      evictions: plan.evictions,
+      renormalized: plan.renormalized.length,
+      blocked,
+      frozen,
     };
   }
 
@@ -459,6 +598,7 @@ export class Associate {
       nodesTouched: 0,
       blocked: 0,
       dropped: 0,
+      swept: 0,
     };
     if (this.observer) {
       this.emit("associate.observer.skip", undefined, { site: "retarget" });
@@ -497,6 +637,7 @@ export class Associate {
         reason: "failed",
         rows: 0,
         dropped: inherited.size,
+        swept: 0,
         error: err instanceof Error ? err.message : String(err),
       };
     }

@@ -715,6 +715,8 @@ export const WRITE_METHODS = [
   "supersedeInto",
   "restoreSuperseded",
   "restoreEdge",
+  // 2026-09-28 (association build 1): the flush sweeps edge rows that carry nothing.
+  "sweepEdges",
   "retractFeelings",
   "retractDreamReturns",
   "retractDreamNominations",
@@ -2552,6 +2554,24 @@ export class Store {
       for (const e of edges) st.run(e.src, e.dst, e.weight, e.day, at, at);
     });
     this.emit("store.link", undefined, { count: edges.length });
+  }
+
+  /**
+   * Remove the edge rows `dead` names — `associate/`'s sweep of rows that
+   * already carry nothing (an eviction's zero, a weight decayed to the floor;
+   * 2026-09-28). The predicate is the caller's, because the decay arithmetic is
+   * `associate/`'s, not the store's. One transaction; returns the count.
+   */
+  sweepEdges(dead: (e: EdgeRow) => boolean): number {
+    const n = this.mutate("sweepEdges", () => {
+      const doomed = this.ops.all<EdgeRow>("SELECT * FROM edges").filter(dead);
+      if (doomed.length === 0) return 0;
+      const st = this.ops.prepare("DELETE FROM edges WHERE src = ? AND dst = ?");
+      for (const e of doomed) st.run(e.src, e.dst);
+      return doomed.length;
+    });
+    if (n > 0) this.emit("store.edge.swept", undefined, { count: n });
+    return n;
   }
 
   setProspective(entry: ProspectiveInput): void {
