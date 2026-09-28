@@ -59,6 +59,9 @@ beforeAll(async () => {
         physics: { birthDay: day, lastUsedDay: day },
       }));
     }
+    // The secret must be the newest written: step past the last put's millisecond,
+    // or a same-millisecond tie orders them by random id (a 1-in-10 flake).
+    for (const t = Date.now(); Date.now() <= t; );
     made.secret = c.store.put({
       type: "memory",
       kind: "fact",
