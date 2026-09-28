@@ -101,7 +101,47 @@ export function layout(map, w, h) {
       p.y = cy + p.r * Math.sin(a);
     }
   }
+  spread(others.map((n) => pos.get(n.id)), cx, cy);
   return { pos, cx, cy, R, rc, inner };
+}
+
+/** How far apart two dots' centres must end up: a ringed dot is 9px across its
+ *  ring, so this leaves each its own ring and a sliver of room to aim at. */
+export const MIN_APART = 22;
+
+/**
+ * THE LAST PASS: no two dots on top of each other. Links can pull dots that
+ * share a ring (every "ready" dot sits on the innermost one, closeness 2) to
+ * the same spot, stronger than the push apart — six of them ended as one
+ * overlapping clump beside the core on the owner's map (2026-09-28). Each pair
+ * still too close is eased apart along its own ring, so a dot keeps its
+ * distance from the middle (its closeness) and only its angle moves. The
+ * passes are bounded: a ring with more dots than it has room for at this
+ * spacing ends crowded rather than looping.
+ */
+function spread(pts, cx, cy) {
+  for (let pass = 0; pass < 120; pass++) {
+    let moved = false;
+    for (let i = 0; i < pts.length; i++) {
+      for (let j = i + 1; j < pts.length; j++) {
+        const p = pts[i], q = pts[j];
+        const d = Math.hypot(q.x - p.x, q.y - p.y);
+        if (d >= MIN_APART - 0.01 || p.r < 1 || q.r < 1) continue;
+        const ap = Math.atan2(p.y - cy, p.x - cx), aq = Math.atan2(q.y - cy, q.x - cx);
+        // Which way round each goes: q ahead of p, or (on a tie) the later dot ahead.
+        let diff = aq - ap;
+        while (diff > Math.PI) diff -= TAU;
+        while (diff < -Math.PI) diff += TAU;
+        const dir = diff > 1e-9 ? 1 : diff < -1e-9 ? -1 : 1;
+        const half = (MIN_APART - d) / 2 + 0.05;
+        const np = ap - dir * half / p.r, nq = aq + dir * half / q.r;
+        p.x = cx + p.r * Math.cos(np); p.y = cy + p.r * Math.sin(np);
+        q.x = cx + q.r * Math.cos(nq); q.y = cy + q.r * Math.sin(nq);
+        moved = true;
+      }
+    }
+    if (!moved) return;
+  }
 }
 
 /** A dot's brightness from how firmly it is held, 0..1 → an opacity the dimmest can still be seen at. */

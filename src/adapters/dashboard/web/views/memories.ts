@@ -52,7 +52,7 @@ export interface MemoriesView {
   /** Of `total`: entities and beliefs about them (schema rows). */
   readonly schemas: number;
   /** How firmly what I hold is held: firm / settling / fading, over every live
-   *  row but the journal chapters, which are counted apart (they aren't scored). */
+   *  row but the journal's entries, which are counted apart (they aren't scored). */
   readonly hold: { readonly firm: number; readonly settling: number; readonly fading: number; readonly journal: number };
   /** How many lived days ahead "fading" looks (`NEAR_LET_GO_DAYS`). */
   readonly nearLetGoDays: number;

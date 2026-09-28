@@ -14,6 +14,7 @@ import { reveal } from "../reveal.js";
 import { activityView } from "./activity.js";
 import { archiveGroup } from "./archive-words.js";
 import { mechanismsView } from "./mechanisms.js";
+import { journalChapterCount } from "./mind.js";
 import { lastActive } from "./meta.js";
 import { BAND_GLOSS, chapters, contestedRows, livedDays } from "./rows.js";
 import type { BarRow, ChapterRow, ContestedRow } from "./rows.js";
@@ -221,6 +222,10 @@ export function overviewView(src: DashboardSource, feedLimit = FEED_LIMIT): Over
   const built = mech.filter((m) => m.build !== "not").length;
   // THE ONE COUNT: what the memories list's "live" chip counts.
   const memories = rows.length;
+  // CHAPTERS, NOT ENTRIES (2026-09-28): the tile links to the Self tab's
+  // journal, so it counts what that strip counts. An entry is one session's
+  // row and can hold many chapters.
+  const chapterTotal = journalChapterCount(src);
   const left = archiveGroups(src);
   const others = [
     { label: "let go", count: left.letGo },
@@ -234,7 +239,7 @@ export function overviewView(src: DashboardSource, feedLimit = FEED_LIMIT): Over
       // THE CORE LIVES ON SELF (home round 3b, 2026-09-27 — a try): the tile is
       // the count and a link there; who is closest is the Self tab's to say.
       { key: "core", label: "core", value: String(e.identity.length), note: "", absent: e.identity.length === 0 },
-      { key: "chapters", label: "chapters", value: String(journalCount), note: "", absent: journalCount === 0 },
+      { key: "chapters", label: "chapters", value: String(chapterTotal), note: "", absent: chapterTotal === 0 },
       {
         key: "replaced",
         label: "replaced",

@@ -47,7 +47,7 @@ import { localDate } from "../src/core/time.js";
 import { readSentinel } from "../src/core/self/index.js";
 import { MECHANISMS, firedReport } from "../src/adapters/fired.js";
 import { DURABLE_EVENT_NAMES } from "../src/adapters/dashboard/registries.js";
-import { REF_KIND } from "../src/adapters/dashboard/web/narrate.js";
+import { NARRATORS, REF_KIND } from "../src/adapters/dashboard/web/narrate.js";
 import { TOOL_NAMES, openServer, toolSpec } from "../src/adapters/mcp/index.js";
 import { openAdapter } from "../src/adapters/claude-code/index.js";
 import { canonicalScope } from "../src/adapters/sessions.js";
@@ -1235,6 +1235,17 @@ describe("the review's findings, each with the thing that was wrong", () => {
     expect(REF_KIND["handoff.written"]).toBe("handoff");
     expect(REF_KIND["handoff.shown"]).toBe("handoff");
     expect(REF_KIND["handoff.written"]).not.toBe("memory");
+  });
+
+  test("the dashboard says a handoff's days as whole days (post-0.3.5: 'showing for 14.00 days of use')", () => {
+    const tell = (name: "handoff.written" | "handoff.shown", p: Record<string, unknown>): string =>
+      NARRATORS[name]({ store: null as never, row: {} as never, p }).text;
+    const written = tell("handoff.written", { bytes: 812, created: false, lifeDays: 14 });
+    expect(written).toContain("showing for 14 days of use.");
+    expect(tell("handoff.written", { bytes: 812, created: true, lifeDays: 1 })).toContain("showing for 1 day of use.");
+    expect(tell("handoff.shown", { bytes: 300, ageDays: 3 })).toContain(", written 3 days of use ago");
+    expect(tell("handoff.shown", { bytes: 300, ageDays: 1 })).toContain(", written 1 day of use ago");
+    for (const line of [written, tell("handoff.shown", { bytes: 300, ageDays: 3 })]) expect(line).not.toMatch(/\d\.\d{2} day/);
   });
 });
 
