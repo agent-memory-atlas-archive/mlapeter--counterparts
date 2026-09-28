@@ -712,6 +712,19 @@ describe("4. temporal contiguity: adjacent only, lag-weighted, forward where the
     expect(report.contiguity.frozen).toBe(1);
     expect(c.associate.weightAt(pinned, plain)).toBe(0);
   });
+
+  test("a refused pair was never buffered, so the next pass does not count it as lost", async () => {
+    const clock = { now: Date.UTC(2026, 8, 28, 12) };
+    const c = brainAt(clock);
+    c.store.put({ type: "memory", kind: "fact", body: "A pinned memory.", origin: { session: "s1" }, physics: { protected: true } as never });
+    memoryIn(c, "s1", "An ordinary memory after it.");
+    const report = await c.sessionEnd({ date: "2026-09-28", budgetBytes: 9000 });
+    expect(report.contiguity.frozen).toBe(1);
+    expect(report.contiguity.buffered).toBe(0);
+    expect(JSON.parse(c.store.getMeta(CONTIGUITY_CURSOR_META) ?? "{}")).not.toHaveProperty("pending");
+    const again = await c.sessionEnd({ date: "2026-09-29", budgetBytes: 9000 });
+    expect(again.contiguity.lostEarlier).toBe(0);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

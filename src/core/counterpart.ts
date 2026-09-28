@@ -3325,6 +3325,19 @@ export class Counterpart {
       );
       if (fresh.length === 0) return { pass: { ...zero, excluded, lostEarlier }, pairs: [] };
       const buffered = this.associate.contiguity(deltas);
+      // The mark counts pairs that could be LOST, which is the pairs buffered:
+      // a pair refused here (pinned or dead endpoint) is counted as `frozen`
+      // or `blocked` on this pass and was never in the buffer to lose.
+      if (buffered.pairs !== deltas.length) {
+        this.store.setMeta(
+          CONTIGUITY_CURSOR_META,
+          JSON.stringify({
+            at: newest,
+            ids: rows.filter((r) => r.at === newest).map((r) => r.id),
+            ...(buffered.pairs > 0 ? { pending: buffered.pairs } : {}),
+          }),
+        );
+      }
       const out: ContiguityPass = {
         reason: buffered.pairs > 0 ? "buffered" : "nothing-new",
         sessions: sessions.length,
