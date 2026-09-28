@@ -4,25 +4,26 @@
  * Split out of `web/views.ts`, which re-exports every public name from here;
  * the four rules in that file's header apply to every line below.
  */
-import { MARKER_UNSET, isJournal, readMarker } from "../../../../core/sleep/index.js";
+import { MARKER_UNSET, isJournal, ownerNames, readMarker } from "../../../../core/sleep/index.js";
 import type { Band, Kind } from "../../../../core/types.js";
 import { NEVER, NONE } from "../../layout.js";
 import { BANDS, CYCLE_PHASES } from "../../registries.js";
 import type { DashboardSource } from "../../source.js";
 import type { NarratedEvent } from "../narrate.js";
+import { displayName } from "../ask-voice.js";
 import { reveal } from "../reveal.js";
 import { activityView } from "./activity.js";
-import { archiveGroup } from "./archive-words.js";
-import { mechanismsView } from "./mechanisms.js";
-import { journalChapterCount } from "./mind.js";
+import { feelingsView } from "./memories.js";
+import type { FeelingsView } from "./memories.js";
 import { lastActive } from "./meta.js";
+import { coreCandidates } from "./mind.js";
 import { BAND_GLOSS, chapters, contestedRows, livedDays } from "./rows.js";
 import type { BarRow, ChapterRow, ContestedRow } from "./rows.js";
 import { FEED_LIMIT, LOG_CEILING, absenceFor, census, countMap } from "./shared.js";
-import { tonightView } from "./tonight.js";
-import type { TonightView } from "./tonight.js";
-import { writtenReturned } from "./written-returned.js";
-import type { WrittenReturnedView } from "./written-returned.js";
+import { selfMap } from "./self-map.js";
+import type { SelfMap } from "./self-map.js";
+import { todayView } from "./today.js";
+import type { TodayView } from "./today.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // overview
@@ -38,76 +39,60 @@ export interface Tile {
 }
 
 
-/** One of the four small tiles under the home page's headline. */
-export interface HeroCount {
-  /** Stable name the page keys its link and its `?` by. */
-  readonly key: "memories" | "core" | "chapters" | "replaced";
-  readonly label: string;
-  readonly value: string;
-  /** A few words under the number, or "" for none. */
-  readonly note: string;
-  /** True when the value is an absence marker or zero. */
-  readonly absent: boolean;
-  /** The replaced tile: the other ways out, each its own small number (zeros left out). */
-  readonly others?: readonly { readonly label: string; readonly count: number }[];
-}
-
 /**
- * The home page's hero, left side: one headline line and four small tiles. The
- * other numbers live where they are about: protected rows, contested beliefs
- * and the briefing on the self tab; the last cycle on the health tab.
+ * The home page's headline (round 4, 2026-09-28): whose memory this is, how
+ * many it holds, how many are new today — "Day 7 with Mike · 306 memories · 13
+ * new today". The mechanism score went (it is the developers', on Health), and
+ * so did the four tiles under it: they repeated the headline or needed words.
  */
 export interface Hero {
-  /** "Day 30 · 145 memories · 8 of 11 built · 6 active this week". */
   readonly headline: string;
-  readonly counts: HeroCount[];
-  /** Mechanisms that fired in the window, and how many there are. */
-  readonly working: number;
-  readonly mechanisms: number;
-  /** Mechanisms built at all ("partly" included). */
-  readonly built: number;
-  /** The one memory count (`memoriesLive`). */
+  /** The one memory count (`memoriesLive`): what the memories list's "live" chip counts. */
   readonly memories: number;
+  /** Memories written today (`todayView`'s `newToday`). */
+  readonly newToday: number;
 }
 
-/**
- * THE MECHANISM SCORE IN THE HEADLINE — the owner's development view, for now
- * (2026-09-26): expected to go once all eleven are built. This flag is the one
- * place to take it out.
- */
-export const SHOW_MECHANISM_SCORE = true;
-
-/** The headline, in short parts joined by a dot. */
-export function heroHeadline(x: { day: number; lived: boolean; memories: number; built: number; working: number; mechanisms: number }): string {
+/** The headline, in short parts joined by a dot. A zero "new today" is left out. */
+export function heroHeadline(x: { day: number; lived: boolean; owner: string | null; memories: number; newToday: number }): string {
   const parts = [
-    x.lived ? `Day ${x.day}` : "Nothing lived yet",
+    x.lived ? `Day ${x.day}${x.owner === null ? "" : ` with ${x.owner}`}` : "Nothing lived yet",
     `${x.memories} ${x.memories === 1 ? "memory" : "memories"}`,
   ];
-  if (SHOW_MECHANISM_SCORE) parts.push(`${x.built} of ${x.mechanisms} built`, `${x.working} active this week`);
+  if (x.newToday > 0) parts.push(`${x.newToday} new today`);
   return parts.join(" · ");
 }
 
-/** Archived rows by the way they left (`archive-words.ts#archiveGroup`). */
-function archiveGroups(src: DashboardSource): { replaced: number; letGo: number; removed: number; other: number } {
-  const out = { replaced: 0, letGo: 0, removed: 0, other: 0 };
-  for (const id of src.store.list({ archived: true })) {
-    const row = src.store.row(id);
-    if (row === undefined || isJournal(row)) continue;
-    const g = archiveGroup(row.archived_reason, row.superseded_by !== null);
-    if (g === "replaced") out.replaced += 1;
-    else if (g === "let-go") out.letGo += 1;
-    else if (g === "removed") out.removed += 1;
-    else out.other += 1;
+/** The owner's name as the store knows it (sleep's `ownerNames`, first entry), written as a name; null when none. */
+export function ownerName(src: DashboardSource): string | null {
+  try {
+    return displayName(ownerNames(src.store)[0] ?? null);
+  } catch {
+    return null;
   }
-  return out;
+}
+
+/**
+ * The self map, as the Self tab draws it (`views/self-map.ts`): the core and
+ * the memories about me or about us closest to it. The home tab draws the
+ * same picture.
+ */
+function homeMap(src: DashboardSource, identity: readonly { id: string; strength: number }[]): SelfMap {
+  const core = identity.map((el) => {
+    const r = reveal(src.store, el.id, 120);
+    return { id: el.id, text: r.text ?? r.label, confidential: r.confidential, strength: el.strength };
+  });
+  return selfMap(src, core, coreCandidates(src, src.self.page()?.id ?? null).raw);
 }
 
 export interface OverviewView {
   readonly hero: Hero;
-  /** Under the tiles: per lived day, written vs came back (`written-returned.ts`). */
-  readonly written: WrittenReturnedView;
-  /** The "Tonight" box: the next sleep, in a few lines (`tonight.ts`). */
-  readonly tonight: TonightView;
+  /** "Today": a few plain lines about memory, newest first (`today.ts`). */
+  readonly today: TodayView;
+  /** "How it feels": the memories tab's radar numbers (`memories.ts#feelingsView`). */
+  readonly feelings: FeelingsView;
+  /** "Around the core": the Self tab's map (`self-map.ts`). */
+  readonly map: SelfMap;
   readonly opening: string;
   readonly tiles: Tile[];
   readonly bands: BarRow[];
@@ -220,48 +205,20 @@ export function overviewView(src: DashboardSource, feedLimit = FEED_LIMIT): Over
         (archived.length === 0 ? "" : `, with ${archived.length} more archived`) +
         (journalCount === 0 ? "." : `, beside ${journalCount} journal ${journalCount === 1 ? "entry" : "entries"} that do not decay.`);
 
-  const mech = mechanismsView(src).mechanisms;
-  const working = mech.filter((m) => m.status === "green").length;
-  const built = mech.filter((m) => m.build !== "not").length;
   // THE ONE COUNT: what the memories list's "live" chip counts.
   const memories = rows.length;
-  // CHAPTERS, NOT ENTRIES (2026-09-28): the tile links to the Self tab's
-  // journal, so it counts what that strip counts. An entry is one session's
-  // row and can hold many chapters.
-  const chapterTotal = journalChapterCount(src);
-  const left = archiveGroups(src);
-  const others = [
-    { label: "let go", count: left.letGo },
-    { label: "removed by you", count: left.removed },
-    { label: "set aside", count: left.other },
-  ].filter((o) => o.count > 0);
+  const today = todayView(src);
   const hero: Hero = {
-    headline: heroHeadline({ day, lived: !(day === 0 && rows.length === 0), memories, built, working, mechanisms: mech.length }),
-    counts: [
-      { key: "memories", label: "memories", value: String(memories), note: "", absent: memories === 0 },
-      // THE CORE LIVES ON SELF (home round 3b, 2026-09-27 — a try): the tile is
-      // the count and a link there; who is closest is the Self tab's to say.
-      { key: "core", label: "core", value: String(e.identity.length), note: "", absent: e.identity.length === 0 },
-      { key: "chapters", label: "chapters", value: String(chapterTotal), note: "", absent: chapterTotal === 0 },
-      {
-        key: "replaced",
-        label: "replaced",
-        value: String(left.replaced),
-        note: others.map((o) => `${o.count} ${o.label}`).join(" · "),
-        absent: left.replaced === 0,
-        others,
-      },
-    ],
-    working,
-    mechanisms: mech.length,
-    built,
+    headline: heroHeadline({ day, lived: !(day === 0 && rows.length === 0), owner: ownerName(src), memories, newToday: today.newToday }),
     memories,
+    newToday: today.newToday,
   };
 
   return {
     hero,
-    written: writtenReturned(src),
-    tonight: tonightView(src),
+    today,
+    feelings: feelingsView(src, rows),
+    map: homeMap(src, e.identity),
     opening,
     tiles,
     bands: BANDS.map((b) => {

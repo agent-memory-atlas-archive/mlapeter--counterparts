@@ -3,9 +3,10 @@
    The reading is the console's own: the page runs `doctor --json` through the
    actions seam (a READ — it writes nothing) and draws its findings, so this
    list and the terminal cannot disagree about what "healthy" means. It runs
-   once when the tab first opens; "Check again" runs it again. */
-import { act } from "../../../shared/actions.js";
+   once when the tab is first built; "Check again" runs it again. The run is
+   `shared/doctor.js`'s, which the home tab's health dot reads too. */
 import { $, esc } from "../../../shared/dom.js";
+import { doctorOnce, gradeOf, runDoctor, verdictOf } from "../../../shared/doctor.js";
 
 export const markup = `
     <h2>Is everything working? <small>— the same checks as <code>counterparts doctor</code></small></h2>
@@ -96,12 +97,6 @@ export const PLAIN = {
   },
 };
 
-function gradeOf(f) {
-  if (f.key === "config" && f.data && f.data.reason === "not-read") return "grey";
-  if (f.optional) return "off";
-  return f.severity;
-}
-
 function row(i, f, grade, name, line) {
   return '<button type="button" class="hc-row" aria-expanded="false" data-i="' + i + '">' + dot(grade) +
     '<span class="hc-name">' + esc(name) + '</span><span class="hc-line">' + esc(line) + "</span></button>" +
@@ -119,11 +114,9 @@ function paintFindings(report, when) {
   const rows = [];
   const details = [];
   const folded = [];
-  let look = 0;
   let unasked = 0;
   for (const f of report.findings) {
     const grade = gradeOf(f);
-    if (grade === "red" || grade === "amber") look += 1;
     if (grade === "grey") unasked += 1;
     if (grade === "green" && !HEADLINE.includes(f.key)) { folded.push(f); continue; }
     const name = NAMES[f.key] || f.title;
@@ -146,10 +139,8 @@ function paintFindings(report, when) {
       "<li>" + dot("green") + '<span class="hc-name">' + esc(NAMES[f.key] || f.title) + "</span>" +
       '<span class="hc-detail">' + esc(plain(f.detail)) + "</span></li>").join("") + "</ul>");
   }
-  const head = look === 0
-    ? dot("green") + '<span class="hc-verdict">All good</span>'
-    : dot(report.red > 0 ? "red" : "amber") +
-      '<span class="hc-verdict">' + look + (look === 1 ? " thing" : " things") + " to look at</span>";
+  const v = verdictOf(report);
+  const head = dot(v.grade) + '<span class="hc-verdict">' + esc(v.words) + "</span>";
   const tail = [];
   tail.push(report.findings.length + " checks");
   if (unasked > 0) tail.push(unasked + " not checked");
@@ -179,6 +170,12 @@ function paintProblem(message) {
   $("hc-again").onclick = run;
 }
 
+/** Draw a reading: its findings, or why there are none. */
+function paintReading(r) {
+  if (r.problem !== undefined) return paintProblem(r.problem);
+  paintFindings(r.report, r.at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+}
+
 /** Run `doctor --json` through the seam and draw what it said. */
 export async function run() {
   if (state.running) return;
@@ -186,16 +183,13 @@ export async function run() {
   const again = document.getElementById("hc-again");
   if (again) { again.disabled = true; again.textContent = "Checking…"; }
   try {
-    const r = await act("doctor", {});
-    if (r.error && !r.out) return paintProblem(r.error);
-    let report = null;
-    try { report = JSON.parse((r.out || []).join("\n")); } catch (e) { report = null; }
-    if (!report || !Array.isArray(report.findings)) {
-      return paintProblem((r.err && r.err.length ? r.err.join(" ") : r.error) || "doctor gave no reading.");
-    }
-    const now = new Date();
-    paintFindings(report, now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+    paintReading(await runDoctor());
   } finally {
     state.running = false;
   }
+}
+
+/** The tab's first build: draw the reading there is, or make the first one. */
+export async function runOnce() {
+  paintReading(await doctorOnce());
 }

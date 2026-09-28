@@ -13,8 +13,10 @@
 
    The layout is a pure function of the data (angles seeded from each id, a
    fixed number of steps, no randomness), so a live refresh of unchanged data
-   draws the same picture. To take the map out: this file, `views/self-map.ts`,
-   the `map` field in `mindView`, and its lines in `settling.js`. */
+   draws the same picture. The home tab draws it too (round 4), with a shorter
+   legend; each box keeps its own last drawing. To take the map out: this file,
+   `views/self-map.ts`, the `map` field in `mindView` and `overviewView`, its
+   lines in `settling.js` and the home tab's `sections/map.js`. */
 import { esc } from "../../../shared/dom.js";
 import { headline } from "../../../shared/format.js";
 import { hideTip, showTip } from "../../../shared/tip.js";
@@ -154,27 +156,36 @@ export function nodeWords(n) {
   return where + " · held " + Math.round(Math.max(0, Math.min(1, n.strength)) * 100) + "%";
 }
 
-let last = null;
-let box = null;
-let drawnWidth = 0;
+/** Every box a map is drawn in (the Self tab's, the home tab's), with what it
+ *  last drew: `{ map, opts, width }`. */
+const boxes = new Map();
 
-/** Draw the map into `el` (the settling panel's slot). */
-export function paint(el, map) {
-  box = el;
-  last = map;
-  draw();
+/**
+ * Draw the map into `el`. `opts.legend`: "full" (the Self tab's: every mark
+ * and the count) or "min" (the home tab's: three words about the picture).
+ */
+export function paint(el, map, opts = {}) {
+  // A repaint writes a new slot; the old one left the page with its markup.
+  for (const old of boxes.keys()) if (!old.isConnected) boxes.delete(old);
+  boxes.set(el, { map, opts, width: 0 });
+  draw(el);
 }
 
-/** Redraw at a new width; nothing to do when the width did not change. */
+/** Redraw at a new width; nothing to do where the width did not change. */
 export function resize() {
-  if (box && box.isConnected && Math.round(box.clientWidth) !== drawnWidth) draw();
+  for (const [el, at] of boxes) {
+    if (!el.isConnected) { boxes.delete(el); continue; }
+    if (Math.round(el.clientWidth) !== at.width) draw(el);
+  }
 }
 
-function draw() {
-  const map = last;
-  if (!box || !map) return;
+function draw(box) {
+  const at = boxes.get(box);
+  if (!at) return;
+  const map = at.map;
+  const min = at.opts.legend === "min";
   const w = Math.max(260, Math.round(box.clientWidth || 480));
-  drawnWidth = Math.round(box.clientWidth);
+  at.width = Math.round(box.clientWidth);
   // A phone gets a near-square picture, so the rings keep their room.
   const h = Math.round(Math.max(230, Math.min(380, w * (w < 520 ? 0.95 : 0.66))));
   const L = layout(map, w, h);
@@ -212,8 +223,13 @@ function draw() {
   const empty = map.nodes.length === 0
     ? '<p class="sm-empty"><b>(none yet)</b> nothing about me or about us is remembered yet; when it is, it shows here, around the core.</p>'
     : "";
-  const legend =
-    '<div class="sm-legend" aria-hidden="true">' +
+  const legend = min
+    ? '<div class="sm-legend" aria-hidden="true">' +
+        '<span><i class="k-bright"></i><i class="k-dim"></i>brighter = firmer</span>' +
+        '<span><i class="k-core"></i>core in the middle</span>' +
+        '<span><i class="k-link"></i>linked</span>' +
+      "</div>"
+    : '<div class="sm-legend" aria-hidden="true">' +
       '<span><i class="k-bright"></i><i class="k-dim"></i>brighter = held more firmly</span>' +
       '<span><i class="k-core"></i>in the core</span>' +
       '<span><i class="k-one"></i>one return away</span>' +
@@ -221,7 +237,7 @@ function draw() {
       '<span><i class="k-link"></i>linked</span>' +
       "<span>nearer the middle = closer to the core</span>" +
     "</div>";
-  const count = map.nodes.length === 0 ? "" :
+  const count = map.nodes.length === 0 || min ? "" :
     '<p class="sm-count">' + map.nodes.length + (map.nodes.length === 1 ? " memory" : " memories") + " about me or about us" +
       (map.more > 0 ? " (the closest " + map.nodes.length + " of " + map.total + ")" : "") +
       " · " + map.links.length + (map.links.length === 1 ? " link" : " links") + " between them</p>";

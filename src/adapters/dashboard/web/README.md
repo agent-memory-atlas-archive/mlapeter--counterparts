@@ -15,7 +15,7 @@ step, no dependencies. `server.ts` serves them as files (see "Serving" below).
 | `ask-voice.ts` | `toMyVoice(question, ownerName)`: Ask is the owner talking to me, so `ask` turns his question into my voice before it searches ("do you remember what I said" → "do I remember what Mike said"; his I → "you" when the store knows no name). Pure; the rules are in its header and `test/dashboard-ask-voice.test.ts`. The server reads the name (`sleep#ownerNames`) and hands `actions.ts` the string |
 | `static.ts` | `resolveStatic()`: which URL paths are static files and where they live (pure; no fs) |
 | `views.ts` | the index of `views/`: re-exports every view, so callers import from here |
-| `views/<name>.ts` | one module per `/api` view: `meta`, `overview` (the home tab's), `memories` (`/api/memories` + `/api/memories/list`), `memory`, `search` (`/api/search` + `/api/chapters`), `mind` (the self tab's; its trait bars are `traits`), `activity`, `flow-view` (`/api/flow` + `/api/node`), `health`, `pulse`, `mechanisms`, `mechanism-panel` (`/api/mechanism?id=`) |
+| `views/<name>.ts` | one module per `/api` view: `meta`, `overview` (the home tab's; its "Today" lines are `today`), `memories` (`/api/memories` + `/api/memories/list`), `memory`, `search` (`/api/search` + `/api/chapters`), `mind` (the self tab's; its trait bars are `traits`), `activity`, `flow-view` (`/api/flow` + `/api/node`), `health`, `pulse`, `mechanisms`, `mechanism-panel` (`/api/mechanism?id=`) |
 | `views/archive-words.ts` | why a memory was archived, in plain words: one table (`ARCHIVE_WORDS`, a group phrase and a single-row phrase per reason) and one fallback for a reason nobody mapped; health's bar, the memories list and home's archived count read it |
 | `views/mechanisms.ts` | `/api/mechanisms`: each mechanism's light (grey = not built, green = fired in the last 7 lived days, waiting = built and not due — a scheduled run ahead, or nothing to act on — amber = built and quiet), its `build` (built / partly / not: the pill's "partly built" tag), one evidence line, the newest backing event `seq`s. Which rows count as a firing is `adapters/mechanism-evidence.ts` — ONE judgement shared with `counterparts mechanisms` (`cli/mechanisms.ts`), which keeps its own words and its calendar window; this file owns the lived-day window and the dashboard's words |
 | `views/shared.ts` | the census and small counters every view leans on |
@@ -54,6 +54,7 @@ shared/
   memory-modal.js     openMemory, copyId, removeMemory (window globals: rows use inline onclick)
   memory-marks.js .css  a memory's kind icon/colour, feeling dots, strength meter, badges
   event-modal.js      openEvent (window global)
+  doctor.js           one `doctor --json` run shared by Health's checklist and Home's health dot
   state.js            tabs {current, loaded}; live {lastSeq, fingerprint}
   widgets/            card rows table chart tiles bar feed light .css;
                       feed.js (renderFeed, live-feed registry),
@@ -88,63 +89,58 @@ a page stylesheet; move that too.
 A hash can carry more than the tab: `#self/settling` (an anchor) or
 `#memories?state=archived` (a query). `shell/tabs.js#parseRoute` splits it, and
 the page's optional `route({ anchor, params })` is called once the page is
-drawn. The home hero's four counts are links of this kind.
+drawn. Everything on the home tab links this way.
 
-The home page (round 2, 2026-09-26, an experiment) is one short headline
-("Day 30 · 145 memories · 8 of 11 built · 6 active this week"; the mechanism
-score is behind `SHOW_MECHANISM_SCORE` in `views/overview.ts`, the one place to
-take it out), four small tiles (`sections/tiles.js`: memories, core (the count and a
-link to Self, since round 3b), chapters, and replaced, with what was let go or removed as its own small number via
-`archive-words.ts#archiveGroup`), the brain, the mechanism panel, and a live
-feed of memory events only (`lanes.ts`; the housekeeping stays on the flow
-tab's feed, and the pulse's live rows are filtered by `registerLiveFeed(id,
-accept)`). The memory count is `views/shared.ts#memoriesLive` — what the
-memories list's "live" chip counts, and what the memories header says; the
-console's `Memories:` (doctor, status, the wake preface) counts memory rows
-only, so the two differ by the people and project cards. Explaining words sit
-behind `?`s; what is pinned survives the pulse's refresh.
+The home page (round 4, 2026-09-28, a try): the best pictures from the other
+tabs, each a way into its own tab, for someone who knows none of the details.
+Top to bottom: one headline (`sections/hero.js`, "Day 7 with Mike · 306
+memories · 13 new today" — `views/overview.ts#heroHeadline`; the owner's name
+is sleep's `ownerNames`, a zero "new today" is left out) with a health dot
+beside it (`shared/doctor.js`: the Health tab's doctor run, said in a few
+words, linked to `#health`); the brain (`sections/brain.js` feeds `brain.js`
+its lights from `/api/mechanisms`; a click on a region goes to
+`#health/mechanisms?id=<its first mechanism>`, and a point's name shows only on
+hover) beside "Today" (`sections/today.js`, `views/today.ts`: a few plain lines
+about memory — written today, became core, the day's dream, let go — each a
+memory card or a place on another tab; no event names, bytes or paths; an
+empty today falls back to the most recent lived day and says which); then "How
+it feels" (the memories tab's radar, `pages/memories/sections/feel.js#radarSvg`,
+a click opens `#memories?feeling=<core>`) beside "Around the core" (the Self
+tab's map, `pages/self/sections/map.js`, with `{ legend: "min" }`). No tips.
+The memory count is `views/shared.ts#memoriesLive` — what the memories list's
+"live" chip counts, and what the memories header says; the console's
+`Memories:` (doctor, status, the wake preface) counts memory rows only, so the
+two differ by the people and project cards. Gone in round 4: the four tiles,
+the written-vs-came-back chart (`views/written-returned.ts`), Tonight
+(`views/tonight.ts`), the live feed (Home's filtered, folding live feed with
+it) and the header's store, day and last-event chips.
 
-The home page is the site's hero plus Explorer. `pages/home/brain.js` is the
-three.js brain, imported statically from `shared/vendor/three.module.min.js`
-(0.169.0, MIT, `MIT-three.txt` beside it; never a CDN). It sets
-`#home-brain[data-ready]` once it is drawing or has fallen back to a sentence.
-`mechanisms/regions.js` maps brain regions to mechanisms, as the site does.
-`sections/explorer.js` owns the pills and the inline panel. The panel's picture
-comes from `mechanisms/<id>/panel.js` (export `picture(payload)`, pure markup),
-gathered in `PANELS` in `mechanisms/index.js` beside `guideUrl(id)`. Its data
-comes from `/api/mechanism?id=` (`views/mechanism-panel.ts`: last firings
-narrated, plus a `picture`, both read-only). `mechanisms/picture.js` holds the
-pictures' shared pieces. A mechanism built later gets a `panel.js`, one line in
-`PANELS`, and a case in `mechanism-panel.ts`.
+`pages/home/brain.js` is the three.js brain, imported statically from
+`shared/vendor/three.module.min.js` (0.169.0, MIT, `MIT-three.txt` beside it;
+never a CDN). It sets `#home-brain[data-ready]` once it is drawing or has
+fallen back to a sentence. `mechanisms/regions.js` maps brain regions to
+mechanisms, as the site does.
 
-Home round 3 (2026-09-27, a try): under the tiles, `sections/written.js` draws
-"written vs came back" per lived day (`views/written-returned.ts`, from the
-`returns` table by source; `legacy` rows are never shown). Beside the feed,
-`sections/tonight.js` is the next sleep in a few lines (`views/tonight.ts`:
-the sleep markers, the core road, the let-go line, new since the last dream,
-the last dream's suggestions). Anything that says who is close to the core asks
+The mechanism pills and panel ("How the memory works") are the Health tab's
+last section since round 4: `pages/health/sections/mechanisms.js`, behaviour
+unchanged, its styles in `health.css`. The panel's picture comes from
+`mechanisms/<id>/panel.js` (export `picture(payload)`, pure markup), gathered in
+`PANELS` in `mechanisms/index.js` beside `guideUrl(id)`. Its data comes from
+`/api/mechanism?id=` (`views/mechanism-panel.ts`: last firings narrated, plus a
+`picture`, both read-only). `mechanisms/picture.js` holds the pictures' shared
+pieces. A mechanism built later gets a `panel.js`, one line in `PANELS`, and a
+case in `mechanism-panel.ts`. The pills are one line that scrolls sideways
+inside itself (`.mechs`), each with its stage as a small colour mark. The panel
+is the same three things for every mechanism: one big number (`lead` on each
+light, picked from the evidence parts by `LEADS` in `views/mechanisms.ts`), the
+memories behind it (at most `PICTURE_ROWS` in `views/mechanism-panel.ts`), and
+the module's one `does` line. The rest (the site's line, the explainer, the
+firing line, built / in development, Lately, the Field Guide link) is behind a
+"how it works" fold, closed by default and kept open for the tab's session
+(sessionStorage). Anything that says who is close to the core asks
 `views/core-road.ts`, a thin wrapper over sleep's `aboutMe` and physics'
 `promotionEligibility`; nothing here re-derives eligibility. A sleep that only
-checked and found nothing due (`lanes.ts#isSleepCheck`) goes to the flow feed;
-the home feed folds neighbours that read the same (server: `activityView`'s
-`fold`; pulse: `registerLiveFeed(id, accept, { fold: true })`), and a merged
-line prints its span ("days 1–6").
-
-Home round 3b (2026-09-27, a try): less on the page, and what remains is about
-our memories; each thing lives on one page and is linked from the others. The
-pills are one line that scrolls sideways inside itself (`.mechs`), each with its
-stage as a small colour mark instead of a heading. The panel is the same three
-things for every mechanism: one big number (`lead` on each light, picked from
-the evidence parts by `LEADS` in `views/mechanisms.ts`), the memories behind it
-(at most `PICTURE_ROWS` in `views/mechanism-panel.ts`), and the module's one
-`does` line. The rest (the site's line, the explainer, the firing line, built /
-in development, Lately, the Field Guide link) is behind a "how it works" fold,
-closed by default and kept open for the tab's session (sessionStorage). The core
-(who is close), chapters and dreams live on the Self tab: the core tile and
-Tonight give counts that link to `#self/settling` and `#self/dreams`, the
-Consolidation picture shows what came back, merged or was replayed this week,
-and the Dreaming picture links "the dream journal →". The "Latest chapters"
-column and `shared/widgets/chapters.js` are gone.
+checked and found nothing due (`lanes.ts#isSleepCheck`) goes to the flow feed.
 
 `pages/memories/` — the memories tab (round 2, 2026-09-26, an experiment:
 brighter = held more firmly, everywhere on the tab). `state.js` holds the
@@ -206,7 +202,7 @@ from `coreCandidates` (`physics#promotionEligibility` in the engine's own
 context: `aboutMe`, the lived day, the owner's demotion; a memory he sent back
 is not drawn), and the faint ring is `oneReturnAway`; the layout is a pure
 function of the data, so a live refresh draws the same picture. `settling.candidates`
-(the five closest) stays in the view for the home tile's sake. `sections/traits.js`
+(the five closest) stays in the view. `sections/traits.js`
 ("How I act", 2026-09-27, a try) sits under the settling panel: the seven trait
 axes (`store/traits.ts#TRAIT_AXES`) as thin spectrum bars, the left pole's word,
 a track, a marker, the right pole's word, and how many memories stand behind

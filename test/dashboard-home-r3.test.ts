@@ -3,8 +3,9 @@
  * panel's returns said by source and nominations said as suggestions (0), the
  * live feed folding repeats and sending sleep CHECKS to the flow feed (1), the
  * Emotion panel's Lately in the mood's words (2), merged repeats showing their
- * span (3), "written vs came back" per lived day (4), the Tonight box (5) and
- * the retrieval panel's used-rate (6).
+ * span (3) and the retrieval panel's used-rate (6). "Written vs came back"
+ * (4) and the Tonight box (5) left Home in round 4 (2026-09-28), and their
+ * views and tests with them.
  *
  * Every "who is close to the core" answer is checked against physics'
  * `promotionEligibility` directly, so the dashboard can never be re-deriving
@@ -20,17 +21,14 @@ import { fileURLToPath } from "node:url";
 
 import { Counterpart } from "../src/core/counterpart.js";
 import { promotionEligibility } from "../src/core/physics/index.js";
-import { MARKER_UNSET, V8_UPGRADE_KEY, aboutMe, cadenceFor, isJournal, markerDue, ownerNames, readMarker } from "../src/core/sleep/index.js";
+import { V8_UPGRADE_KEY, aboutMe, ownerNames } from "../src/core/sleep/index.js";
 import { Dashboard } from "../src/adapters/dashboard/index.js";
 import type { DashboardSource } from "../src/adapters/dashboard/index.js";
 import { isSleepCheck, laneOf } from "../src/adapters/dashboard/web/lanes.js";
-import { coreRoad } from "../src/adapters/dashboard/web/views/core-road.js";
 import { NOMINATION_CAVEAT, narrate } from "../src/adapters/dashboard/web/narrate.js";
 import { router } from "../src/adapters/dashboard/web/server.js";
 import { mergeRepeats, recallUse } from "../src/adapters/dashboard/web/views/mechanism-panel.js";
 import { lightOf, mechanismsView, returnWords } from "../src/adapters/dashboard/web/views/mechanisms.js";
-import { nextSleepDay, tonightView } from "../src/adapters/dashboard/web/views/tonight.js";
-import { writtenReturned } from "../src/adapters/dashboard/web/views/written-returned.js";
 import { seedDemo } from "../tools/demo/seed.js";
 
 const WEB = fileURLToPath(new URL("../src/adapters/dashboard/web/", import.meta.url));
@@ -339,150 +337,6 @@ describe("3. merged repeats show their span", () => {
 
 // ── 4 ──────────────────────────────────────────────────────────────────────
 
-describe("4. written vs came back, per lived day", () => {
-  test("each day: memories born, awake and dream returns from the table; legacy rows never", () => {
-    withSource(dir, (src) => {
-      const v = writtenReturned(src);
-      const today = src.store.livedDay();
-      expect(v.days.length).toBe(21);
-      expect(v.days[v.days.length - 1]!.day).toBe(today);
-      expect(v.since).toBeNull();
-      for (const d of v.days) {
-        const r = returnsOn(d.day);
-        expect([d.day, d.awake, d.dream]).toEqual([d.day, r.awake, r.dream]);
-        let born = 0;
-        for (const id of src.store.list()) {
-          const row = src.store.row(id);
-          if (row !== undefined && row.type === "memory" && !isJournal(row) && row.birth_day === d.day) born += 1;
-        }
-        expect([d.day, d.written]).toEqual([d.day, born]);
-      }
-      const t = v.today!;
-      expect(t.dream).toBeGreaterThan(0);
-      expect(t.written).toBeGreaterThanOrEqual(2);
-      expect(returnsOn(today).legacy).toBeGreaterThan(0);
-      expect(get(src, "/api/overview")["written"]).toEqual(v as unknown as Record<string, unknown>);
-    });
-  });
-
-  test("a store that went through the upgrade says the day returns began", () => {
-    withSource(upgradedDir, (src) => {
-      const v = writtenReturned(src);
-      expect(v.since).toBe(3);
-      expect(v.days.map((d) => d.day)).toEqual([0, 1, 2, 3, 4, 5]);
-    });
-    const client = readFileSync(join(WEB, "pages/home/sections/written.js"), "utf8");
-    expect(client).toContain("Returns only began to be recorded at the upgrade");
-    expect(readFileSync(join(WEB, "pages/home/sections/hero.js"), "utf8")).toContain("${written.markup}");
-  });
-});
-
-// ── 5 ──────────────────────────────────────────────────────────────────────
-
-describe("5. Tonight", () => {
-  test("which phases are due is the markers' own verdict, and agrees with the consolidation light", () => {
-    withSource(dir, (src) => {
-      const t = tonightView(src);
-      const lived = src.store.livedDay();
-      expect(t.day).toBe(nextSleepDay(src));
-      expect(t.day).toBe(lived + 1); // tonight's sleep already ran
-      expect(t.phases.map((p) => p.phase)).not.toContain("clock");
-      for (const p of t.phases) {
-        const m = readMarker(src.store, p.phase);
-        expect(p.cadence).toBe(cadenceFor(p.phase));
-        expect(p.due).toBe(markerDue(m.health === "ok" ? m.day : MARKER_UNSET, t.day, p.cadence) === "due");
-      }
-      const cons = t.phases.find((p) => p.phase === "consolidate")!;
-      const light = mechanismsView(src).mechanisms.find((m) => m.id === "consolidation")!;
-      if (cons.due) expect(lived + (light.nextInDays ?? 0)).toBeLessThanOrEqual(t.day);
-      else expect(t.day + cons.inDays).toBe(lived + (light.nextInDays ?? 0));
-    });
-  });
-
-  test("ready and one return away are physics' verdicts, counted over every live memory about me or us", () => {
-    withSource(dir, (src) => {
-      const t = tonightView(src);
-      const store = src.store;
-      const owner = ownerNames(store);
-      let ready = 0;
-      let away = 0;
-      for (const id of store.list({ archived: false })) {
-        const row = store.row(id);
-        if (row === undefined || row.type === "schema" || isJournal(row) || !aboutMe(store, row, owner)) continue;
-        const v = promotionEligibility(store.physicsOf(id), { aboutMe: true, day: t.day, demoted: store.coreDemoted(id) });
-        if (v.eligible) ready += 1;
-        else if (v.fast.intensity >= v.fast.needIntensity && !v.fast.met && v.blockedBy.length === 1 && v.blockedBy[0] === "no-lane-yet") away += 1;
-      }
-      expect(t.core.ready).toBe(ready);
-      expect(t.core.oneReturnAway).toBe(away);
-      expect(away).toBeGreaterThan(0);
-      // Counts only since 3b: the names live on the Self tab.
-      expect(Object.keys(t.core).sort()).toEqual(["oneReturnAway", "ready"]);
-    });
-    const client = readFileSync(join(WEB, "pages/home/sections/tonight.js"), "utf8");
-    expect(client).toContain('link("self/settling"');
-    expect(client).not.toContain("openMemory");
-  });
-
-  test("a memory the owner sent back out of the core is neither ready nor one return away", () => {
-    expect(demotedId).not.toBe("");
-    withSource(dir, (src) => {
-      const store = src.store;
-      const day = nextSleepDay(src);
-      const row = store.row(demotedId)!;
-      const road = coreRoad(store, row, day)!;
-      expect(road.verdict.blockedBy).toContain("demoted-by-owner");
-      expect([road.ready, road.oneReturnAway]).toEqual([false, false]);
-      // Without the owner's word it WOULD read as one return away: the flag is what keeps it off.
-      const bare = promotionEligibility(store.physicsOf(demotedId), { aboutMe: true, day });
-      expect(bare.fast.intensity).toBeGreaterThanOrEqual(bare.fast.needIntensity);
-    });
-  });
-
-  test("near the let-go line, the last dream, and its suggestions", () => {
-    withSource(dir, (src) => {
-      const t = tonightView(src);
-      expect(t.letGo.horizon).toBe(7);
-      expect(t.letGo.tonight).toBeLessThanOrEqual(t.letGo.near);
-      expect(t.dream.last).not.toBeNull();
-      expect(t.dream.newSince).toBeGreaterThanOrEqual(0);
-      expect(t.nominations).toEqual({ count: nominated });
-      expect(get(src, "/api/overview")["tonight"]).toEqual(t as unknown as Record<string, unknown>);
-    });
-    const client = readFileSync(join(WEB, "pages/home/sections/tonight.js"), "utf8");
-    expect(client).toContain("nothing acts on these yet");
-    expect(client).toContain('link("self/dreams"');
-    expect(readFileSync(join(WEB, "pages/home/index.js"), "utf8")).toContain("${tonight.markup}");
-  });
-
-  test("the dream line is the gate's own preview, as the owner's session would meet it (#262)", () => {
-    withSource(dir, (src) => {
-      const t = tonightView(src);
-      const gate = src.dreams?.previewAsk({ owner: true });
-      expect(gate).toBeDefined();
-      expect(t.dream.ask).toEqual({ wouldAsk: gate?.wouldAsk as boolean, reason: gate?.reason as string });
-      expect(t.dream.newSince).toBe(gate?.newSince as number);
-      expect(["due", "first-day", "dreamed-today", "asked-today", "declined-today", "too-little-new"]).toContain(t.dream.ask?.reason as string);
-    });
-    // A hand-built source without the gate still reads, saying only what is new.
-    withSource(dir, (src) => {
-      const t = tonightView({ ...src, dreams: undefined });
-      expect(t.dream.ask).toBeNull();
-      expect(t.dream.newSince).toBeGreaterThanOrEqual(0);
-    });
-  });
-
-  test("a store that never dreamed says so", () => {
-    withSource(upgradedDir, (src) => {
-      const t = tonightView(src);
-      expect(t.dream.last).toBeNull();
-      expect(t.nominations.count).toBe(0);
-    });
-  });
-});
-
-// ── 6 ──────────────────────────────────────────────────────────────────────
-
 describe("6. the retrieval panel's used-rate", () => {
   test("once per memory per day, said out loud and footnotes apart, used by the turns' own test", () => {
     withSource(dir, (src) => {
@@ -540,8 +394,6 @@ describe("looking still writes nothing", () => {
       get(src, "/api/overview");
       get(src, "/api/mechanisms");
       for (const m of mechanismsView(src).mechanisms) get(src, `/api/mechanism?id=${m.id}`);
-      tonightView(src);
-      writtenReturned(src);
       expect(snapshot(dir)).toEqual(before);
     });
   });

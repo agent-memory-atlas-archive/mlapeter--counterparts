@@ -1,5 +1,5 @@
 /**
- * The home page: the hero's words (`/api/overview`'s `hero`), the mechanism
+ * The home page: the headline (`/api/overview`'s `hero`), the mechanism
  * panel's data (`/api/mechanism?id=`), the pictures each mechanism draws
  * (`web/mechanisms/<id>/panel.js`), the brain's region table, the vendored
  * three.js, and the retired `/brain` page. Hermetic: two stores seeded into
@@ -18,12 +18,10 @@ import { DURABLE_EVENT_NAMES } from "../src/adapters/dashboard/registries.js";
 import { LANES, laneOf } from "../src/adapters/dashboard/web/lanes.js";
 import { narrate } from "../src/adapters/dashboard/web/narrate.js";
 import { router } from "../src/adapters/dashboard/web/server.js";
-import { ARCHIVE_WORDS, archiveEntry } from "../src/adapters/dashboard/web/views/archive-words.js";
 import { mergeRepeats } from "../src/adapters/dashboard/web/views/mechanism-panel.js";
-import { SHOW_MECHANISM_SCORE } from "../src/adapters/dashboard/web/views/overview.js";
+import { heroHeadline, ownerName } from "../src/adapters/dashboard/web/views/overview.js";
 import { memoriesHeld, memoriesLive } from "../src/adapters/dashboard/web/views/shared.js";
 import { MECHANISM_PROOFS, mechanismsView } from "../src/adapters/dashboard/web/views/mechanisms.js";
-import { Counterpart } from "../src/core/counterpart.js";
 // @ts-expect-error — a plain browser module, no declarations
 import { journalNote } from "../src/adapters/dashboard/web/pages/memories/sections/hold.js";
 import { seedDemo, seedEmpty } from "../tools/demo/seed.js";
@@ -78,22 +76,28 @@ function snapshot(dir: string): Map<string, string> {
   return out;
 }
 
-describe("the hero (round 2, 2026-09-26)", () => {
-  type Count = { key: string; label: string; value: string; note: string; absent: boolean; progress?: { days: number; of: number } | null; others?: { label: string; count: number }[] };
-  type HeroJson = { headline: string; counts: Count[]; working: number; mechanisms: number; built: number; memories: number };
+describe("the headline (round 4, 2026-09-28)", () => {
+  type HeroJson = { headline: string; memories: number; newToday: number };
 
-  test("one short headline: the day, the one memory count, built and active", () => {
+  test("one line: the day and whose memory it is, the one memory count, how many are new today", () => {
     withSource(richDir, (src) => {
-      const hero = get(src, "/api/overview").json["hero"] as HeroJson;
-      const lights = mechanismsView(src).mechanisms;
-      const working = lights.filter((m) => m.status === "green").length;
-      const built = lights.filter((m) => m.build !== "not").length;
+      const d = get(src, "/api/overview").json;
+      const hero = d["hero"] as HeroJson;
+      const today = d["today"] as { newToday: number };
       const live = memoriesLive(src);
-      expect(SHOW_MECHANISM_SCORE).toBe(true);
-      expect(hero.headline).toBe(`Day ${src.store.livedDay()} · ${live} memories · ${built} of 12 built · ${working} active this week`);
-      expect([hero.working, hero.mechanisms, hero.built, hero.memories]).toEqual([working, 12, built, live]);
-      expect(hero.counts.map((c) => c.key)).toEqual(["memories", "core", "chapters", "replaced"]);
+      const owner = ownerName(src);
+      expect(owner).not.toBeNull();
+      const tail = today.newToday > 0 ? ` · ${today.newToday} new today` : "";
+      expect(hero.headline).toBe(`Day ${src.store.livedDay()} with ${owner} · ${live} memories${tail}`);
+      expect(Object.keys(hero).sort()).toEqual(["headline", "memories", "newToday"]);
+      expect(hero.memories).toBe(live);
+      expect(hero.newToday).toBe(today.newToday);
+      // No mechanism score and no tiles: those went to Health, or went.
+      expect(hero.headline).not.toContain("built");
+      expect(hero.headline).not.toContain("active this week");
     });
+    expect(heroHeadline({ day: 7, lived: true, owner: "Mike", memories: 306, newToday: 13 })).toBe("Day 7 with Mike · 306 memories · 13 new today");
+    expect(heroHeadline({ day: 7, lived: true, owner: null, memories: 1, newToday: 0 })).toBe("Day 7 · 1 memory");
   });
 
   test("ONE memory count: home, the memories header and the list's live chip say the same number", () => {
@@ -101,9 +105,8 @@ describe("the hero (round 2, 2026-09-26)", () => {
       const hero = get(src, "/api/overview").json["hero"] as HeroJson;
       const header = get(src, "/api/memories").json as { total: number };
       const list = get(src, "/api/memories/list?state=live").json as { counts: { live: number } };
-      expect(hero.counts[0]?.value).toBe(String(list.counts.live));
-      expect(header.total).toBe(list.counts.live);
       expect(hero.memories).toBe(list.counts.live);
+      expect(header.total).toBe(list.counts.live);
       // It includes the people and project cards the console counts apart.
       expect(memoriesLive(src)).toBeGreaterThan(memoriesHeld(src));
     });
@@ -111,84 +114,7 @@ describe("the hero (round 2, 2026-09-26)", () => {
     expect(page).toContain('return d.total + (d.total === 1 ? " memory" : " memories");');
   });
 
-  test("the core tile is the count and a link to the Self tab: who is closest lives there (round 3b)", () => {
-    withSource(richDir, (src) => {
-      const core = (get(src, "/api/overview").json["hero"] as HeroJson).counts.find((c) => c.key === "core")!;
-      const self = get(src, "/api/mind").json["settling"] as { candidates: unknown[] };
-      expect(self.candidates.length).toBeGreaterThan(0); // there IS a closest one; home does not say it
-      expect(core.value).toBe(String(src.self.enumerate(src.store.livedDay()).identity.length));
-      expect(core.note).toBe("");
-      expect(core.progress).toBeUndefined();
-    });
-    const tiles = readFileSync(join(WEB, "pages/home/sections/tiles.js"), "utf8");
-    expect(tiles).not.toContain("ht-pip");
-    expect(tiles).toContain('"core": "self/settling"');
-  });
-
-  test("replaced counts newer readings only; what was let go is its own small number", () => {
-    withSource(richDir, (src) => {
-      const tile = (get(src, "/api/overview").json["hero"] as HeroJson).counts.find((c) => c.key === "replaced")!;
-      let replaced = 0;
-      let letGo = 0;
-      for (const id of src.store.list({ archived: true })) {
-        const row = src.store.row(id);
-        if (row === undefined || row.type === "episode") continue;
-        const entry = archiveEntry(row.archived_reason);
-        if (entry?.group === "replaced" || (entry === undefined && row.superseded_by !== null)) replaced += 1;
-        if (entry?.group === "let-go") letGo += 1;
-      }
-      expect(tile.value).toBe(String(replaced));
-      expect(letGo).toBeGreaterThan(0); // the demo store has let some go
-      expect(tile.others).toContainEqual({ label: "let go", count: letGo });
-      expect(tile.note).toContain(`${letGo} let go`);
-    });
-    for (const w of ARCHIVE_WORDS) expect(["replaced", "let-go", "removed"]).toContain(w.group);
-  });
-
-  test("each tile is a link to where it is shown in full", () => {
-    const tiles = readFileSync(join(WEB, "pages/home/sections/tiles.js"), "utf8");
-    for (const [key, to] of [
-      ["memories", "memories?state=live"],
-      ["core", "self/settling"],
-      ["chapters", "self/journal"],
-      ["replaced", "memories?state=archived"],
-    ]) expect(tiles).toContain(`"${key}": "${to}"`);
-  });
-
-  test("the chapters tile counts chapters the way the Self tab's journal does, not journal entries (2026-09-28)", () => {
-    const x = mkdtempSync(join(tmpdir(), "counterparts-home-chapters-"));
-    try {
-      Counterpart.open({ dir: x, owner: true }).close();
-      const c = Counterpart.open({ dir: x, owner: true });
-      try {
-        c.store.advanceClock("2026-09-01");
-        const entry = (title: string, chapters: number): string =>
-          c.store.put({
-            type: "episode",
-            kind: "self",
-            title,
-            body: Array.from({ length: chapters }, (_, i) => `## chapter ${i + 1} — lived day 1\n\nPart ${i + 1} of ${title}.`).join("\n\n"),
-            salience: { relevance: 0.5, emotional: 0.2, predictive: 0.2 },
-            physics: { birthDay: 1, lastUsedDay: 1 },
-          });
-        entry("a long session", 62); // past the strip's 60, so Self says "N older chapters"
-        entry("a short one", 2);
-        c.store.archive(entry("an archived one", 5), "episode-regrown"); // out of both counts
-      } finally {
-        c.close();
-      }
-      withSource(x, (src) => {
-        const hero = get(src, "/api/overview").json["hero"] as HeroJson;
-        const mind = get(src, "/api/mind").json as { journal: { chapters: unknown[] }[]; journalMore: number };
-        const self = mind.journal.reduce((n, d) => n + d.chapters.length, 0) + mind.journalMore;
-        expect(mind.journalMore).toBeGreaterThan(0);
-        expect(self).toBe(64);
-        expect(hero.counts.find((t) => t.key === "chapters")?.value).toBe(String(self));
-      });
-    } finally {
-      rmSync(x, { recursive: true, force: true });
-    }
-    // The memories tab's note counts the journal's rows, so it says entries.
+  test("the memories tab's note counts the journal's rows, so it says entries", () => {
     expect(journalNote({ journal: 26 })).toContain("The journal's 26 entries aren't scored, so they're left out.");
     expect(journalNote({ journal: 1 })).toContain("The journal's one entry isn't scored, so it's left out.");
     expect(journalNote({ journal: 0 })).toBe("");
@@ -206,14 +132,14 @@ describe("the hero (round 2, 2026-09-26)", () => {
   test("a store that has lived nothing says so, and counts nothing", () => {
     withSource(emptyDir, (src) => {
       const hero = get(src, "/api/overview").json["hero"] as HeroJson;
-      expect(hero.headline).toBe(`Nothing lived yet · 0 memories · ${hero.built} of 12 built · 0 active this week`);
-      expect(hero.counts.every((c) => c.absent)).toBe(true);
+      expect(hero.headline).toBe("Nothing lived yet · 0 memories");
+      expect(hero.newToday).toBe(0);
     });
   });
 });
 
 describe("the feeds (round 2)", () => {
-  test("home's live activity is memory events only; the split is one table covering every durable event", () => {
+  test("the overview's feed is memory events only; the split is one table covering every durable event", () => {
     for (const name of DURABLE_EVENT_NAMES) expect(Object.keys(LANES)).toContain(name);
     withSource(richDir, (src) => {
       const feed = get(src, "/api/overview").json["feed"] as { name: string; lane: string; icon: string | null }[];
@@ -234,13 +160,11 @@ describe("the feeds (round 2)", () => {
     expect(laneOf("recall.credit", { credited: 0, reason: "failed" })).toBe("home");
   });
 
-  test("the live feed keeps the split too: home registers a filter the pulse obeys", () => {
-    const live = readFileSync(join(WEB, "pages/home/sections/live-activity.js"), "utf8");
-    expect(live).toContain('registerLiveFeed("ov-feed", (e) => e.lane === "home", { fold: true })');
-    const feed = readFileSync(join(WEB, "shared/widgets/feed.js"), "utf8");
-    expect(feed).toContain("if (!accept(e)) continue;");
-    // Round 3: a new row that reads the same as the top one folds into it.
-    expect(feed).toContain("if (fold && top && top.dataset.fold === foldKey(e))");
+  test("the live feed is the flow tab's alone now: Home has no feed (round 4)", () => {
+    const flow = readFileSync(join(WEB, "pages/flow/sections/feed.js"), "utf8");
+    expect(flow).toContain('registerLiveFeed("flow-feed")');
+    expect(existsSync(join(WEB, "pages/home/sections/live-activity.js"))).toBe(false);
+    expect(readFileSync(join(WEB, "pages/home/index.js"), "utf8")).not.toContain("registerLiveFeed");
   });
 
   test("orange is for real problems: a semantic cue that worked is calm", () => {

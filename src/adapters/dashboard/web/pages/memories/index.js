@@ -59,11 +59,17 @@ export default {
   render,
   /** The store moved (the pulse): re-read everything this page shows. */
   refresh: render,
-  /** `#memories?state=archived` (or live/all): open the list at that filter. */
+  /** `#memories?state=archived` (or live/all): open the list at that filter.
+   *  `#memories?feeling=joy` (the home tab's radar): the live memories carrying
+   *  a feeling under that core, as a click on this tab's radar would show them. */
   route({ params }) {
     const state = params.get("state");
-    if (!["live", "archived", "all"].includes(state)) return;
-    setFilter({ state, kind: null, core: false, journal: false, hold: null, feeling: null, feelingCore: null });
+    const feeling = params.get("feeling");
+    if (feeling) {
+      setFilter({ state: "live", kind: null, core: false, journal: false, hold: null, feeling: null, feelingCore: feeling });
+    } else if (["live", "archived", "all"].includes(state)) {
+      setFilter({ state, kind: null, core: false, journal: false, hold: null, feeling: null, feelingCore: null });
+    } else return;
     $("mlist-h").scrollIntoView({ block: "start" });
   },
 };

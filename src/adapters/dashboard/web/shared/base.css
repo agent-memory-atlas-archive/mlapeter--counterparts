@@ -23,7 +23,6 @@ nav a.on{color:var(--cyan);background:var(--hover)}
 .badge{font-size:9px;padding:1px 8px;border-radius:9px;border:1px solid var(--glow);color:var(--dim);
   letter-spacing:.5px;white-space:nowrap}
 .badge.ok{color:var(--teal);border-color:rgba(0,191,165,.45)}
-.badge.dirpath{color:var(--dim);max-width:240px;overflow:hidden;text-overflow:ellipsis;cursor:help}
 .hright a{color:var(--dim);font-size:11px}
 .hright a:hover{color:var(--cyan)}
 

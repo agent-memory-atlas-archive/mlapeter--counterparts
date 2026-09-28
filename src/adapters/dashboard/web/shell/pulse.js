@@ -1,7 +1,6 @@
 /* The pulse: a four-second poll. Particles ride only on events that are
    actually new, and every page that counts is re-read when the store moves. */
 import { api } from "../shared/api.js";
-import { $ } from "../shared/dom.js";
 import { live, tabs } from "../shared/state.js";
 import { prependToLiveFeeds } from "../shared/widgets/feed.js";
 import { PAGES } from "./pages.js";
@@ -34,29 +33,16 @@ export async function poll() {
     live.lastSeq = d.lastSeq;
     // A new event means the store moved, so everything the pages count moved
     // with it: left open, the flow page silently reported yesterday's numbers
-    // beside today's feed. Refresh the counters — and the lived day, which is
-    // the one number in the header that is allowed to change.
+    // beside today's feed. Refresh the counters.
     refreshCounters(meta);
     const fresh = d.events.slice().reverse();
     for (const page of PAGES) if (page.onEvents) page.onEvents(fresh);
     prependToLiveFeeds(fresh);
-    // The wall clock gets its OWN chip, and only when something happened. It
-    // used to overwrite the lived-day chip on every four-second tick whether or
-    // not anything had — so the product's own clock survived four seconds and
-    // was then replaced by a host timestamp that means nothing to the store.
-    const seen = $("seen");
-    seen.hidden = false;
-    seen.textContent = "last event " + new Date().toTimeString().slice(0, 8);
   } else if (deposited) {
     // A deposit with no event of its own: the counters moved, and the pages
     // that animate say so (the flow page's `onDeposit`).
     refreshCounters(meta);
     for (const page of PAGES) if (page.onDeposit) page.onDeposit();
-    // A different word, because it IS a different thing: something was stored,
-    // and nothing was recorded about the storing.
-    const seen = $("seen");
-    seen.hidden = false;
-    seen.textContent = "last deposit " + new Date().toTimeString().slice(0, 8);
   }
 }
 
@@ -76,7 +62,6 @@ export async function poll() {
 export async function refreshCounters(meta) {
   try {
     const m = meta ?? (await api("/api/meta"));
-    $("clock").textContent = "day " + m.day;
     live.fingerprint = { rows: m.rows, day: m.day };
   } catch (e) { /* the next poll retries */ }
   for (const page of PAGES) {

@@ -8,6 +8,9 @@
  *   3. each thing lives on one page: the core, chapters and dreams on Self,
  *      linked from Home rather than repeated.
  *
+ * Round 4 (2026-09-28) moved the pills and the panel to the Health tab
+ * (`pages/health/sections/mechanisms.js`) unchanged; Tonight left Home.
+ *
  * Hermetic: a demo store seeded into a temp dir, removed after.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -98,7 +101,7 @@ const read = (p: string): string => readFileSync(join(WEB, p), "utf8");
 
 describe("1. the pills: one small line", () => {
   test("no stage headings; each pill carries its stage as a colour mark, and the line scrolls, never wraps", () => {
-    const explorer = read("pages/home/sections/explorer.js");
+    const explorer = read("pages/health/sections/mechanisms.js");
     expect(explorer).not.toContain("mech-fam");
     expect(explorer).not.toContain("mech-group");
     expect(explorer).toContain('class="mech-stage"');
@@ -106,7 +109,7 @@ describe("1. the pills: one small line", () => {
     // keyboard: the arrow keys walk the line, and a pick is brought into view inside the strip
     expect(explorer).toContain('"ArrowRight"');
     expect(explorer).toContain("function revealPill(");
-    const css = read("pages/home/home.css");
+    const css = read("pages/health/health.css");
     expect(css).toMatch(/\.mechs\{[^}]*flex-wrap:nowrap[^}]*overflow-x:auto/);
     expect(css).toMatch(/\.mech-pill\{flex:none/);
     expect(css).not.toContain(".mech-fam");
@@ -205,7 +208,7 @@ describe("2. the panel: one number, those memories, one line", () => {
   });
 
   test("everything else is behind one fold, closed by default, remembered for the session", () => {
-    const explorer = read("pages/home/sections/explorer.js");
+    const explorer = read("pages/health/sections/mechanisms.js");
     expect(explorer).toContain('<details class="mech-how"');
     expect(explorer).toContain("how it works");
     expect(explorer).toContain('(howOpen ? " open" : "")');
@@ -225,18 +228,6 @@ describe("3. each thing lives on one page", () => {
     expect(home).not.toContain("recentChapters");
     expect(existsSync(join(WEB, "pages/home/sections/recent-chapters.js"))).toBe(false);
     expect(existsSync(join(WEB, "shared/widgets/chapters.js"))).toBe(false);
-  });
-
-  test("Tonight counts and links to Self; the core tile is a count", () => {
-    const tonight = read("pages/home/sections/tonight.js");
-    expect(tonight).toContain("one return away");
-    expect(tonight).toContain('link("self/settling"');
-    expect(tonight).not.toContain("Names");
-    withSource((src) => {
-      const t = get(src, "/api/overview")["tonight"] as { core: Record<string, unknown>; nominations: Record<string, unknown> };
-      expect(Object.keys(t.core).sort()).toEqual(["oneReturnAway", "ready"]);
-      expect(Object.keys(t.nominations)).toEqual(["count"]);
-    });
   });
 
   test("the consolidation picture has no candidate list and no core history", async () => {

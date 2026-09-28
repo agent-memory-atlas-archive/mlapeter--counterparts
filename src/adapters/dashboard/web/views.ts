@@ -38,7 +38,7 @@ export type { MetaView } from "./views/meta.js";
 export { divergentPair } from "./views/rows.js";
 export type { BarRow, ChapterRow, ContestedRow } from "./views/rows.js";
 export { overviewView } from "./views/overview.js";
-export type { Hero, HeroCount, OverviewView, Tile } from "./views/overview.js";
+export type { Hero, OverviewView, Tile } from "./views/overview.js";
 export { archiveWords } from "./views/archive-words.js";
 export { LIST_MAX, memoriesView, memoryListView } from "./views/memories.js";
 export type { KindRow, ListRow, ListState, MemoriesView, MemoryListView } from "./views/memories.js";
