@@ -2696,6 +2696,8 @@ export function associationFindings(store: Store): Finding[] {
   let dropped = 0;
   let allTurns = 0;
   let unread = false;
+  let pointersShown = 0;
+  let pointersExpanded = 0;
   const census = { total: 0, conducting: 0, gist: 0, dream: 0, hebbian: 0 };
   try {
     const rows = store.eventLog({ name: "recall.decision", sinceDay: since, order: "desc", limit: ASSOCIATION_ROWS });
@@ -2713,6 +2715,13 @@ export function associationFindings(store: Store): Finding[] {
       if (sp["stop"] === "node-limit") nodeLimit += 1;
       if (typeof sp["landed"] === "number") landed += sp["landed"];
       if (typeof sp["computed"] === "number") computed += sp["computed"];
+      if (typeof sp["pointersShown"] === "number") pointersShown += sp["pointersShown"];
+    }
+    // The other half of the pointer measurement (2026-09-28): of the quiet
+    // pointers shown, how many a reply went on to expand.
+    for (const row of store.eventLog({ name: "recall.credit", sinceDay: since, order: "desc", limit: ASSOCIATION_ROWS })) {
+      const n = num(payloadOf(row), "pointersExpanded");
+      if (n !== null) pointersExpanded += n;
     }
     const dreamed = new Set<string>();
     const dreamPairs = new Set<string>();
@@ -2737,7 +2746,7 @@ export function associationFindings(store: Store): Finding[] {
   const spreadSaid =
     turns === 0
       ? `last ${String(ASSOCIATION_WINDOW_DAYS)} lived days — no spreading measured yet`
-      : `last ${String(ASSOCIATION_WINDOW_DAYS)} lived days — spread got past its seeds (depth 2) on ${pct(deep)} of ${String(turns)} turns it ran; stopped at the node limit on ${pct(nodeLimit)}; ${String(landed)} of ${String(computed)} contributions landed on a candidate the cut kept`;
+      : `last ${String(ASSOCIATION_WINDOW_DAYS)} lived days — spread got past its seeds (depth 2) on ${pct(deep)} of ${String(turns)} turns it ran; stopped at the node limit on ${pct(nodeLimit)}; ${String(landed)} of ${String(computed)} contributions landed on a candidate the cut kept; ${String(pointersShown)} quiet ${pointersShown === 1 ? "pointer" : "pointers"} shown (memories only links reached), ${String(pointersExpanded)} later expanded`;
   return [
     finding(
       "association",
@@ -2755,6 +2764,8 @@ export function associationFindings(store: Store): Finding[] {
         computed,
         dropped,
         allTurns,
+        pointersShown,
+        pointersExpanded,
         edges: census.total,
         conducting: census.conducting,
         hebbian: census.hebbian,

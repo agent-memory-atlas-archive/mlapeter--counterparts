@@ -63,6 +63,14 @@ export const FRAMING = {
    * qualifies a claim has to be read before the claim, not after it has landed.
    */
   journal: "Journal:",
+  /**
+   * ONE WORD, IN FRONT OF A QUIET POINTER (association build 2, 2026-09-28 —
+   * working default). A pointer came to mind by association — a link from
+   * something the turn did reach — not by the turn's own words or meaning, and
+   * the reader should know that before it reads the title. Same shape and same
+   * reason as `journal`: a label, never a filter.
+   */
+  linked: "Linked:",
 } as const;
 
 export type Lane = "footnote" | "surfaced" | "affect";
@@ -81,6 +89,9 @@ export interface Resolved {
    *  renders with `FRAMING.journal` in front of it. Absent reads as false, so a
    *  resolver that predates the label marks nothing. */
   readonly journal?: boolean;
+  /** True for a quiet pointer (`Candidate.linkOnly`), which renders with
+   *  `FRAMING.linked` in front of it. Absent reads as false. */
+  readonly linked?: boolean;
 }
 
 /** Id -> text, at render time. */
@@ -146,7 +157,7 @@ export function clip(text: string, maxBytes: number): string {
  * belongs.
  */
 function label(r: Resolved): string {
-  return r.journal === true ? `${FRAMING.journal} ` : "";
+  return `${r.linked === true ? `${FRAMING.linked} ` : ""}${r.journal === true ? `${FRAMING.journal} ` : ""}`;
 }
 
 function openMarker(turn: number): string {

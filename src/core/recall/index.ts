@@ -106,8 +106,9 @@ export interface Turn {
    *  "arrival" means two different things on the two sides of this seam. */
   temporal?: readonly { id: string; weight: number }[];
   /** Spreading activation (SEAMS item L), injected at the composition root.
-   *  Hops MODULATE candidates the conversation already reached; they never mint
-   *  one, which is what keeps hard gate (a) structural. */
+   *  Hops MODULATE candidates the conversation already reached, and may add a
+   *  few QUIET POINTERS — memories only links reached, footnote tier only
+   *  (2026-09-28; the gate's one named lane past hard gate (a)). */
   spread?: SpreadFn;
   /** Lived day. Defaults to the store's clock (scar E8 — lived, not calendar). */
   day?: number;
@@ -426,7 +427,12 @@ export class Recall {
 
     const docs = new Map<string, ProseDoc>();
     for (const c of act.candidates) docs.set(c.id, c.doc);
-    const resolve: Resolve = (id) => resolveDoc(docs.get(id), id);
+    // Quiet pointers render with their one-word label (`FRAMING.linked`).
+    const linked = new Set(act.candidates.filter((c) => c.linkOnly === true).map((c) => c.id));
+    const resolve: Resolve = (id) => {
+      const r = resolveDoc(docs.get(id), id);
+      return linked.has(id) ? { ...r, linked: true } : r;
+    };
 
     const rendered = render(
       {
@@ -477,7 +483,12 @@ export class Recall {
       moodMatched: gated.verdicts.filter(
         (v) => (v.verdict === "surfaced" || v.verdict === "footnoted") && (v.mood ?? 0) > 0,
       ).length,
-      spread: act.spread,
+      // What the gate SHOWED of the pointers activation handed it, after the
+      // render's trim: the pointer lane's last number (2026-09-28).
+      spread:
+        act.spread === null
+          ? null
+          : { ...act.spread, pointersShown: rendered.footnotes.filter((id) => linked.has(id)).length },
       dropped: act.dropped,
       bytes: rendered.bytes,
       budgetBytes,
@@ -529,7 +540,15 @@ export class Recall {
       next.surfaced[id] = { turn: d.turn, tier: "surfaced", trains: trainsOf(d.verdicts, id) };
     }
     for (const id of d.footnotes) {
-      next.surfaced[id] = { turn: d.turn, tier: "footnoted", trains: trainsOf(d.verdicts, id) };
+      // A quiet pointer is remembered AS one (2026-09-28), so the credit pass
+      // can count how many were later expanded — whether they are used at all.
+      const via = d.verdicts.find((v) => v.id === id)?.via;
+      next.surfaced[id] = {
+        turn: d.turn,
+        tier: "footnoted",
+        trains: trainsOf(d.verdicts, id),
+        ...(via === "link" ? { via } : {}),
+      };
     }
     this.persist(next, "recall");
 

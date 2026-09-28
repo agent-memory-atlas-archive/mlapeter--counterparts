@@ -1631,6 +1631,9 @@ export class ClaudeCodeAdapter {
         idsTotal: summary.ids.length,
         expandedIds: summary.expandedIds.slice(0, 64),
         expandedTotal: summary.expandedIds.length,
+        /** Of the expanded, how many this session had seen as a QUIET POINTER
+         *  (reached only through links, 2026-09-28) — whether pointers are used. */
+        pointersExpanded: summary.pointersExpanded,
         elapsedMs: this.nowFn() - started,
       });
     } catch (err) {

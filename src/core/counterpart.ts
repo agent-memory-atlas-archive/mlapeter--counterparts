@@ -603,6 +603,11 @@ export interface CreditSummary {
   /** Every id the assistant EXPANDED this boundary, credited or refused — the
    *  OQ4 probe's input (`recall/probe.ts`): footnotes delivered ∩ later expanded. */
   readonly expandedIds: string[];
+  /** Of those, how many this session had been shown as a QUIET POINTER — a
+   *  memory only links reached (association build 2, 2026-09-28). Pointers
+   *  shown are on each turn's `recall.decision` (`spread.pointersShown`);
+   *  this is the other half: whether they get used. */
+  readonly pointersExpanded: number;
 }
 
 /**
@@ -2212,10 +2217,13 @@ export class Counterpart {
         : candidates.length === 0 && refs.uses.length === 0
           ? "no-candidates"
           : "nothing-to-credit";
+    const expandedIds = refs.uses.filter((u) => u.how === "expanded").map((u) => u.memoryId);
+    const pointersExpanded = expandedIds.filter((id) => state.surfaced[id]?.via === "link").length;
     const summary: CreditSummary = {
       reason,
       day,
-      expandedIds: refs.uses.filter((u) => u.how === "expanded").map((u) => u.memoryId),
+      expandedIds,
+      pointersExpanded,
       considered: refs.considered,
       expanded: refs.expanded,
       quoted: refs.quoted,
@@ -2235,6 +2243,7 @@ export class Counterpart {
       quoted: summary.quoted,
       credited,
       linkedDespite,
+      pointersExpanded,
     });
     return summary;
   }

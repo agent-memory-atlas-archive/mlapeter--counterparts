@@ -205,8 +205,17 @@ credit at the boundary; reinforcement deltas handed to `physics/`.
 3. **[M]** Build and record are separate steps.
 4. **[M]** Surfacing is relative to this turn's background, never a fixed number.
 5. **[M]** The three hard gates hold: uncued is dark; the absolute floor precedes any salience
-   adjustment; the loud tier requires a minimum cue fraction.
-6. **[M]** Tiers are disjoint and capped.
+   adjustment; the loud tier requires a minimum cue fraction. *Working default since
+   2026-09-28 (association build 2): "uncued is dark" has ONE named lane. A memory that
+   only links reached — a QUIET POINTER (`activate.ts#Candidate.linkOnly`), pattern
+   completion — may join the quiet tier: at most `LINK_POINTERS_MAX` (2) a turn, in slots
+   of its own after the cued footnotes, only when the activation that arrived is at least
+   `LINK_POINTER_MIN_FRACTION` (0.05) of the strongest seed's, never the loud tier, and
+   still behind confidentiality and session dedup. For that lane gate (a) is CHECKED
+   rather than structural (the memory is fetched); for every other uncued memory it is
+   structural as before. Tests: `association-build2.test.ts` › "1. quiet pointers".*
+6. **[M]** Tiers are disjoint and capped. *(Quiet pointers have their own cap,
+   `LINK_POINTERS_MAX`, beside `MAX_FOOTNOTES`; 2026-09-28.)*
 7. **[M]** Ambiguous handles fire at reduced weight AND train nothing — both halves, with a
    test that greps for the consumer, not the comment (scar §2.6).
 8. **[M]** Deliberate recall trains nothing and deposits nothing.

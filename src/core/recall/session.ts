@@ -52,6 +52,8 @@ export const GATE_KINDS = ["surfaced", "credited", "scalar", "semantic"] as cons
 export const SCALAR_REF = "state";
 /** The one `semantic` row: last turn's embedding cue, resolved to neighbours. */
 export const SEMANTIC_REF = "lag";
+/** A `surfaced` row's `value` when the memory was a quiet pointer (2026-09-28). */
+export const POINTER_VALUE = "link";
 
 /** What a memory got, the turn it got it, and whether it may ever train. */
 export interface SurfaceRecord {
@@ -59,6 +61,10 @@ export interface SurfaceRecord {
   tier: "surfaced" | "footnoted";
   /** False when the memory arrived only through ambiguous handles (§9 G5). */
   trains: boolean;
+  /** `"link"` when it was a QUIET POINTER — reached only through links
+   *  (2026-09-28). Kept in the row's otherwise unused `value` column, so the
+   *  credit pass can count pointers that were later expanded. No schema change. */
+  via?: "link";
 }
 
 export interface CreditRecord {
@@ -148,6 +154,7 @@ export function loadGateState(store: Store, sessionId: string, max = Infinity): 
         turn: row.turn,
         tier: row.tier === "footnoted" ? "footnoted" : "surfaced",
         trains: row.trains !== 0,
+        ...(row.value === POINTER_VALUE ? { via: "link" as const } : {}),
       };
     } else if (row.kind === "credited") {
       credited[row.ref] = { turn: row.turn, tier: (row.tier ?? "referenced") as UseTier, day: row.last_day };
@@ -209,6 +216,7 @@ export function saveGateState(store: Store, state: GateState, max: number): void
       lastDay: state.lastDay,
       tier: rec.tier,
       trains: rec.trains,
+      ...(rec.via === "link" ? { value: POINTER_VALUE } : {}),
     });
   }
   for (const [id, rec] of Object.entries(bound(state.credited, max))) {

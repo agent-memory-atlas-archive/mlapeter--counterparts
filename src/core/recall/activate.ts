@@ -20,17 +20,24 @@
  *   hard gate (a), *an uncued memory is dark whatever its salience*, is enforced
  *   structurally rather than checked: an uncued memory is not fetched, so its
  *   salience arithmetic is never evaluated (§9 G7a).
- *   **hops** (spreading activation, SEAMS item L) MODULATE ONLY, exactly like
- *   arrival. `associate/INTERFACE-GAPS.md` §1 names three defensible answers and
- *   SEAMS L records the one chosen: the conservative default, which is the only
- *   one that keeps hard gate (a) STRUCTURAL — a hop reaches "a memory no cue and
- *   no embedding touched", and in this contract's vocabulary that memory is
- *   uncued and therefore dark. So a hop is added to a candidate that already
- *   exists, never mints one, and is excluded from `cueFraction` altogether —
- *   which is what makes "spreading never creates a loud-tier candidate without a
- *   cue" arithmetic rather than a promise. (Until 2026-09-28 hop weight sat in
- *   the DENOMINATOR, which also let a hop push a well-cued memory under the
- *   loud tier's cue fraction: a hop can neither buy the loud tier nor revoke it.)
+ *   **hops** (spreading activation, SEAMS item L) MODULATE a candidate the
+ *   conversation reached, like arrival, and are excluded from `cueFraction`
+ *   altogether — which is what makes "spreading never creates a loud-tier
+ *   candidate without a cue" arithmetic rather than a promise. (Until
+ *   2026-09-28 hop weight sat in the DENOMINATOR, which also let a hop push a
+ *   well-cued memory under the loud tier's cue fraction: a hop can neither buy
+ *   the loud tier nor revoke it.)
+ *   **Quiet pointers** (association build 2, 2026-09-28 — working default).
+ *   `associate/INTERFACE-GAPS.md` §1 named three answers for a hop that reaches
+ *   "a memory no cue and no embedding touched"; build 1 took (a), modulate only,
+ *   which kept hard gate (a) STRUCTURAL. This build takes (b): such a memory may
+ *   join the turn as a footnote-tier POINTER — pattern completion, a partial cue
+ *   recovering what goes with it — bounded to `LINK_POINTERS_MAX`, ranked by
+ *   the activation that arrived, above `LINK_POINTER_MIN_FRACTION` of the
+ *   strongest seed, `maxTier: "footnoted"`, marked `linkOnly`. Hard gate (a)
+ *   is therefore CHECKED for this one lane rather than structural: the gate
+ *   admits a `linkOnly` candidate to its own quiet slots and to nothing else,
+ *   and every other uncued candidate is still dark.
  *
  * The candidate set is exactly the union of the token index's hits and the vector
  * index's hits. NO MODEL CALL: the turn's vector is an INPUT. Its absence degrades
@@ -85,6 +92,15 @@ export interface Candidate {
    *  by design — it caps, it never admits. */
   readonly maxTier: "surfaced" | "footnoted";
   readonly confidential: boolean;
+  /**
+   * A QUIET POINTER (association build 2, 2026-09-28): a memory no cue and no
+   * embedding reached, brought here ONLY by links from memories that were
+   * (`associate/INTERFACE-GAPS.md` §1 answer (b), pattern completion). Its
+   * `cue` and `semantic` are 0, its `hops` is what arrived, `maxTier` is
+   * `footnoted`, and the gate gives it its own few slots in the quiet tier —
+   * never the loud one. Absent on every candidate the conversation reached.
+   */
+  readonly linkOnly?: true;
 }
 
 /**
@@ -121,6 +137,20 @@ export interface SpreadStats {
   readonly computed: number;
   /** Contributions that landed on a candidate the cut KEPT (what the gate saw). */
   readonly landed: number;
+  /**
+   * The link-only half (association build 2, 2026-09-28). `linkOnly`: memories
+   * the graph reached that no cue and no embedding did. `pointerCandidates`: of
+   * those, the live ones at or above the pointer threshold
+   * (`LINK_POINTER_MIN_FRACTION` of the strongest seed). `pointers`: how many
+   * of them were handed to the gate (at most `LINK_POINTERS_MAX`); the rest are
+   * counted here, never cut silently. Which of them the gate SHOWED is on the
+   * decision (`pointersShown`).
+   */
+  readonly linkOnly: number;
+  readonly pointerCandidates: number;
+  readonly pointers: number;
+  /** Pointers the gate put in the quiet tier (filled in by `Recall.build`). */
+  readonly pointersShown?: number;
 }
 
 export interface ActivationInput {
@@ -136,9 +166,10 @@ export interface ActivationInput {
    *  Folded into `cueScore`, never into `arrival` (see the header). */
   readonly temporal?: readonly { id: string; weight: number }[] | undefined;
   /** INJECTED traversal (`Associate.spreadFrom`), because `recall/` must not
-   *  import `associate/`. Seeded with the CUED candidates and their own
-   *  activation; contributions to anything that is not already a candidate are
-   *  DROPPED here, which is where "hops modulate only" is enforced. */
+   *  import `associate/`. Seeded with the candidates the conversation reached —
+   *  words AND meaning — and their own activation. A contribution to a
+   *  candidate modulates it; a contribution to anything else may become a quiet
+   *  pointer (bounded, thresholded, footnote tier only — 2026-09-28). */
   readonly spread?: SpreadFn | undefined;
   readonly day: number;
   /** Whether the turn stated a FIRST-PERSON feeling. Gates emotional salience. */
@@ -445,37 +476,43 @@ export function activate(
   const denied = new Set(store.deniedIds());
   const ids = new Set<string>([...cueScore.keys(), ...semScore.keys()]);
 
-  // ── the hop channel: modulate only (SEAMS item L) ───────────────────────
-  // The seeds are the candidates the CONVERSATION reached; a contribution to
-  // anything outside that set is dropped right here, so a hop can never be the
-  // reason a memory is fetched at all.
-  // The SEEDS are the CUED candidates (`associate/INTERFACE-GAPS.md` §1's own
-  // wording). A seed receives no contribution of its own — a round trip a→b→a
-  // would hand a memory its own activation back as new evidence — so what the
-  // graph can actually raise is a candidate the OTHER channels reached: a
-  // semantic hit, or a temporal one, that the conversation's own words did not.
+  // ── the hop channel (SEAMS item L) ──────────────────────────────────────
+  // The SEEDS are the candidates the CONVERSATION reached — its words AND,
+  // since 2026-09-28, its meaning: a semantic hit is as much "what this turn
+  // is about" as a cued one. A seed receives no contribution of its own — a
+  // round trip a→b→a would hand a memory its own activation back as new
+  // evidence (associate NOTES §6). What the graph adds therefore goes to two
+  // places: a candidate that is not a seed (modulation), and a memory that is
+  // not a candidate at all (`linkOnly` — a possible quiet pointer, below).
   const hopScore = new Map<string, number>();
-  let spreadRun: Omit<SpreadStats, "landed"> | null = null;
-  if (input.spread !== undefined && cueScore.size > 0) {
+  const linkOnlyScore = new Map<string, number>();
+  let strongestSeed = 0;
+  let spreadRun: Omit<SpreadStats, "landed" | "pointerCandidates" | "pointers"> | null = null;
+  if (input.spread !== undefined && ids.size > 0) {
     // Strongest first (2026-09-28): the traversal ranks them too, but the list
     // it is handed should not depend on which cue's postings came first.
-    const seeds = [...cueScore.entries()]
-      .map(([id, activation]) => ({ id, activation }))
+    const seeds = [...ids]
+      .map((id) => ({ id, activation: (cueScore.get(id) ?? 0) + (semScore.get(id) ?? 0) }))
+      .filter((s) => s.activation > 0)
       .sort((a, b) => b.activation - a.activation || (a.id < b.id ? -1 : 1));
+    strongestSeed = seeds[0]?.activation ?? 0;
     const out = input.spread(seeds, input.day);
+    for (const c of out.contributions) {
+      if (!(c.activation > 0)) continue;
+      // A candidate is modulated; anything else is link-only. Whether a
+      // link-only memory is SHOWN is decided below, after the candidates are
+      // scored — it has to be live, above the threshold, and among the few.
+      if (ids.has(c.id)) hopScore.set(c.id, (hopScore.get(c.id) ?? 0) + c.activation);
+      else linkOnlyScore.set(c.id, (linkOnlyScore.get(c.id) ?? 0) + c.activation);
+    }
     spreadRun = {
       seeds: seeds.length,
       expanded: typeof out.expanded === "number" ? out.expanded : null,
       stop: typeof out.stop === "string" ? out.stop : null,
       depth: typeof out.depth === "number" ? out.depth : null,
       computed: out.contributions.length,
+      linkOnly: linkOnlyScore.size,
     };
-    for (const c of out.contributions) {
-      // Dropped unless it is ALREADY a candidate. This line is hard gate (a):
-      // a hop is not a cue, and an uncued memory is dark whatever reached it.
-      if (!ids.has(c.id) || !(c.activation > 0)) continue;
-      hopScore.set(c.id, (hopScore.get(c.id) ?? 0) + c.activation);
-    }
   }
 
   // Two passes: SCORE from box 2, then READ the survivors' prose.
@@ -506,36 +543,34 @@ export function activate(
     /** The rank the cut uses: activation over the gate's own salience factor. */
     readonly cutKey: number;
   }
-  const scored: Scored[] = [];
-  let skipped = 0;
-  for (const id of ids) {
-    if (denied.has(id)) {
-      skipped += 1;
-      continue;
-    }
+  /** The row, when this id is live memory that may be recalled at all; the
+   *  same test for a candidate and for a link-only pointer. */
+  const recallable = (id: string): ReturnType<Store["row"]> => {
+    if (denied.has(id)) return undefined;
     const row = store.row(id);
     // Archive is a state, not a deletion: it keeps its id and simply never
     // surfaces (§4.2 G3). A superseded head forwards; the successor is reached
     // on its own merits, never by dragging the old id along.
-    if (row === undefined || row.archived === 1 || row.superseded_by !== null) {
-      skipped += 1;
-      continue;
-    }
+    if (row === undefined || row.archived === 1 || row.superseded_by !== null) return undefined;
     // The self page, which is delivered at wake and never here (`isSelfPage`).
     // The prose read is gated on the row's own columns, so only a SCHEMA row of
     // the self kind pays for it — the page, the identity core, and the handful
     // of beliefs held about the self.
-    if (row.type === "schema" && row.kind === "self" && isPageRow(store, id)) {
-      skipped += 1;
-      continue;
-    }
+    if (row.type === "schema" && row.kind === "self" && isPageRow(store, id)) return undefined;
     // The per-directory handoff (E1), for the page's reason and one of its own:
     // it is already delivered as a pointer at the wake of the directory it
     // belongs to, and it has no project scope of its own that a search could
     // honour — so left in the pool it would surface one directory's working
     // context inside another's turn. Gated on the row's own columns, as above,
     // so only a SCHEMA row of the place kind pays for the prose read.
-    if (row.type === "schema" && row.kind === "place" && isHandoffRow(store, id)) {
+    if (row.type === "schema" && row.kind === "place" && isHandoffRow(store, id)) return undefined;
+    return row;
+  };
+  const scored: Scored[] = [];
+  let skipped = 0;
+  for (const id of ids) {
+    const row = recallable(id);
+    if (row === undefined) {
       skipped += 1;
       continue;
     }
@@ -642,6 +677,56 @@ export function activate(
     });
   }
 
+  // ── quiet pointers: pattern completion, held to a few (2026-09-28) ──────
+  // A memory the words and the meaning did not reach, that the graph did. It
+  // may join the turn as a footnote-tier pointer when it is live, recallable
+  // memory and the activation that arrived is at least
+  // `LINK_POINTER_MIN_FRACTION` of the strongest seed's — strongest first,
+  // `LINK_POINTERS_MAX` of them. Everything the threshold or the count left out
+  // is counted on the turn's record (`linkOnly`, `pointerCandidates`), never
+  // cut silently. The gate decides whether each is SHOWN (confidentiality,
+  // dedup, inhibition) and gives it the quiet tier only.
+  const threshold = strongestSeed * t.LINK_POINTER_MIN_FRACTION;
+  const pool = [...linkOnlyScore]
+    .filter(([, a]) => a >= threshold)
+    .sort((x, y) => y[1] - x[1] || (x[0] < y[0] ? -1 : 1));
+  let pointerCandidates = 0;
+  let pointers = 0;
+  for (const [id, arrived] of pool) {
+    const row = recallable(id);
+    if (row === undefined) continue;
+    pointerCandidates += 1;
+    if (pointers >= t.LINK_POINTERS_MAX) continue;
+    pointers += 1;
+    const physics = rowToPhysics(row);
+    const stored = store.read(id);
+    candidates.push({
+      id,
+      kind: physics.kind,
+      doc: stored.doc,
+      physics,
+      strength: strength(physics, input.day),
+      // No mood lift: mood modulates what the conversation reached, and this
+      // is not that (recall G18).
+      sal: gatedSal(physics, input.selfFelt),
+      mood: 0,
+      cue: 0,
+      temporal: 0,
+      semantic: 0,
+      arrival: 0,
+      hops: arrived,
+      activation: arrived,
+      cueFraction: 0,
+      matched: 0,
+      // A link is an id, not an ambiguous handle: an expansion of a pointer is
+      // a use like any other, and it is what confirms the link.
+      trains: true,
+      maxTier: "footnoted",
+      confidential: stored.confidential,
+      linkOnly: true,
+    });
+  }
+
   return {
     cues,
     candidates,
@@ -652,7 +737,10 @@ export function activate(
     semantic: ranked === null ? null : { identity, path, floor: tuning.floor, weight: tuning.weight },
     // `landed` is counted AFTER the cut: a hop on a candidate the cut left out
     // reached nothing the gate saw.
-    spread: spreadRun === null ? null : { ...spreadRun, landed: kept.filter((c) => c.hops > 0).length },
+    spread:
+      spreadRun === null
+        ? null
+        : { ...spreadRun, landed: kept.filter((c) => c.hops > 0).length, pointerCandidates, pointers },
     dropped,
   };
 }
