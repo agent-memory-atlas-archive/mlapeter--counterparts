@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { Store } from "../src/core/store/index.js";
 import { Associate, TUNABLES as ASSOCIATE_TUNABLES, spread, withTunables as withAssociate } from "../src/core/associate/index.js";
 import type { EdgeState } from "../src/core/associate/index.js";
-import { Recall, freshGateState, gate, withTunables } from "../src/core/recall/index.js";
+import { Recall, activate, freshGateState, gate, withTunables } from "../src/core/recall/index.js";
 import type { Candidate } from "../src/core/recall/index.js";
 import { recallTurn } from "../src/core/retrieval.js";
 import { Counterpart } from "../src/core/counterpart.js";
@@ -307,5 +307,49 @@ describe("2. best-first across depths, a threshold stop, the node budget recorde
     expect(one.spread?.landed).toBeGreaterThanOrEqual(1);
     // With the default, both are seeds, and inside the seeds links reorder nothing.
     expect(all.verdicts.find((v) => v.id === weaker)?.hops).toBe(0);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 3. A ceiling on the hop score: links suggest, they don't take over
+// ═══════════════════════════════════════════════════════════════════════════
+describe("3. the hop ceiling: at most HOP_CEILING × the candidate's own cue + semantic; pointers held lower", () => {
+  function scoredTurn(tunables: Partial<Parameters<typeof withTunables>[0]>, contribution: number) {
+    const { s, cued } = seeded();
+    const t = withTunables({ SPREAD_SEEDS: 0, ...tunables });
+    const turn = { text: TURN, day: 0, selfFelt: false, maxCandidates: 24, storeSize: 18 };
+    const plain = activate(s, turn, t).candidates.find((c) => c.id === cued);
+    const out = activate(s, { ...turn, spread: () => ({ contributions: [{ id: cued, activation: contribution }] }) }, t);
+    return { plain, hopped: out.candidates.find((c) => c.id === cued), spread: out.spread };
+  }
+
+  test("a contribution bigger than the candidate's own evidence is capped at it, and the cap is counted", () => {
+    const { plain, hopped, spread: stats } = scoredTurn({}, 1_000);
+    const own = (plain?.cue ?? 0) + (plain?.semantic ?? 0);
+    expect(own).toBeGreaterThan(0);
+    expect(hopped?.hops).toBeCloseTo(own * withTunables().HOP_CEILING, 10);
+    expect(hopped?.activation).toBeCloseTo((plain?.activation ?? 0) + own, 10);
+    expect(stats?.hopsCapped).toBe(1);
+  });
+
+  test("a contribution under the ceiling lands whole, and nothing is counted as capped", () => {
+    const { plain, hopped, spread: stats } = scoredTurn({}, 0.001);
+    expect(hopped?.hops).toBeCloseTo(0.001, 12);
+    expect(hopped?.activation).toBeCloseTo((plain?.activation ?? 0) + 0.001, 12);
+    expect(stats?.hopsCapped).toBe(0);
+  });
+
+  test("a pointer carries at most LINK_POINTER_CAP_FRACTION of the strongest seed, however many paths reach it", () => {
+    const { s, cued } = seeded();
+    const behind = s.put({ type: "memory", kind: "fact", body: FOREIGN[3] as string });
+    const t = withTunables();
+    const turn = { text: TURN, day: 0, selfFelt: false, maxCandidates: 24, storeSize: 18 };
+    const out = activate(s, { ...turn, spread: () => ({ contributions: [{ id: behind, activation: 1_000 }] }) }, t);
+    const strongest = Math.max(...out.candidates.filter((c) => c.linkOnly !== true).map((c) => c.activation));
+    const p = out.candidates.find((c) => c.id === behind);
+    expect(p?.linkOnly).toBe(true);
+    expect(p?.activation).toBeCloseTo(strongest * t.LINK_POINTER_CAP_FRACTION, 10);
+    expect(out.spread?.pointersCapped).toBe(1);
+    expect(out.candidates.some((c) => c.id === cued)).toBe(true);
   });
 });

@@ -186,6 +186,15 @@ export interface RecallTunables {
    *  memories the cut would keep before links touch anything; a seed receives
    *  no contribution, so links lift only what ranks past them. CAL. */
   SPREAD_SEEDS: number;
+  /** "Links suggest, they don't take over", as arithmetic (2026-09-28): a
+   *  candidate's hop score is capped at this multiple of its own cue +
+   *  semantic. At 1 the graph can at most double what the conversation gave a
+   *  memory, however many paths reach it. Counted when it binds. CAL. */
+  HOP_CEILING: number;
+  /** A quiet pointer's own, smaller cap: its activation is at most this
+   *  fraction of the strongest seed's, however many paths reach it — so a
+   *  pointer never carries more than a quarter of what the words found. CAL. */
+  LINK_POINTER_CAP_FRACTION: number;
 
   // ── affect ───────────────────────────────────────────────────────────────
   /** Emotional salience a candidate needs before it can raise the affect flag. [v1: 0.7] CAL. */
@@ -408,6 +417,8 @@ export const TUNABLES: RecallTunables = {
   LINK_POINTERS_MAX: 2,
   LINK_POINTER_MIN_FRACTION: 0.05,
   SPREAD_SEEDS: 24,
+  HOP_CEILING: 1,
+  LINK_POINTER_CAP_FRACTION: 0.25,
 
   AFFECT_MIN_EMOTION: 0.7,
   AFFECT_REFRACTORY_TURNS: 2,

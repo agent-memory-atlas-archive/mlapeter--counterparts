@@ -1501,7 +1501,8 @@ describe("SEAMS L — hops raise what the conversation reached; links may add a 
     const hopped = activate(
       s,
       { ...turn, spread: () => ({ contributions: [{ id, activation: 50 }] }) },
-      { ...FIXTURE_TUNABLES, SPREAD_SEEDS: 0 },
+      // And no ceiling, so the whole 50 lands (the ceiling has its own test).
+      { ...FIXTURE_TUNABLES, SPREAD_SEEDS: 0, HOP_CEILING: Infinity },
     ).candidates.find((c) => c.id === id);
     expect(plain).toBeDefined();
     // It is a seed-free call here, so the hop lands.

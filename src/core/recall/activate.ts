@@ -142,6 +142,11 @@ export interface SpreadStats {
   readonly computed: number;
   /** Contributions that landed on a candidate the cut KEPT (what the gate saw). */
   readonly landed: number;
+  /** Candidates whose hop score the ceiling cut (`HOP_CEILING` × their own
+   *  cue + semantic), and pointers held to `LINK_POINTER_CAP_FRACTION` of the
+   *  strongest seed — 2026-09-28, counted rather than silent. */
+  readonly hopsCapped: number;
+  readonly pointersCapped: number;
   /**
    * The link-only half (association build 2, 2026-09-28). `linkOnly`: memories
    * the graph reached that no cue and no embedding did. `pointerCandidates`: of
@@ -615,7 +620,8 @@ export function activate(
   // conversation's to decide.
   const linkOnlyScore = new Map<string, number>();
   let strongestSeed = 0;
-  let spreadRun: Omit<SpreadStats, "landed" | "pointerCandidates" | "pointers"> | null = null;
+  let hopsCapped = 0;
+  let spreadRun: Omit<SpreadStats, "landed" | "pointerCandidates" | "pointers" | "hopsCapped" | "pointersCapped"> | null = null;
   if (input.spread !== undefined && scored.length > 0) {
     const seeds = scored
       .filter((c) => c.cue + c.semantic > 0)
@@ -635,8 +641,17 @@ export function activate(
     }
     if (hopScore.size > 0) {
       scored = scored.map((c) => {
-        const hops = c.cue + c.semantic > 0 ? hopScore.get(c.id) ?? 0 : 0;
-        if (hops === 0) return c;
+        const raw = c.cue + c.semantic > 0 ? hopScore.get(c.id) ?? 0 : 0;
+        if (raw === 0) return c;
+        // THE CEILING (2026-09-28, association build 2): "links suggest, they
+        // don't take over", as arithmetic. Contributions sum over every path,
+        // so a memory many seeds point at could gather a hop score out of
+        // proportion to its own evidence; it is capped at `HOP_CEILING` times
+        // what the conversation gave it (cue + semantic), and every cap is
+        // counted (`hopsCapped`).
+        const ceiling = t.HOP_CEILING * (c.cue + c.semantic);
+        const hops = Math.min(raw, ceiling);
+        if (raw > ceiling) hopsCapped += 1;
         const activation = c.activation + hops;
         return { ...c, hops, activation, cutKey: salienceRank(activation, c.sal, t) };
       });
@@ -720,12 +735,19 @@ export function activate(
     .sort((x, y) => y[1] - x[1] || (x[0] < y[0] ? -1 : 1));
   let pointerCandidates = 0;
   let pointers = 0;
+  let pointersCapped = 0;
+  // A pointer's own, smaller ceiling (2026-09-28): whatever arrived, it carries
+  // at most `LINK_POINTER_CAP_FRACTION` of the strongest seed — ranked by what
+  // arrived, recorded at the cap, and the cap counted (`pointersCapped`).
+  const pointerCap = strongestSeed * t.LINK_POINTER_CAP_FRACTION;
   for (const [id, arrived] of pool) {
     const row = recallable(id);
     if (row === undefined) continue;
     pointerCandidates += 1;
     if (pointers >= t.LINK_POINTERS_MAX) continue;
     pointers += 1;
+    const carried = Math.min(arrived, pointerCap);
+    if (arrived > pointerCap) pointersCapped += 1;
     const physics = rowToPhysics(row);
     const stored = store.read(id);
     candidates.push({
@@ -742,8 +764,8 @@ export function activate(
       temporal: 0,
       semantic: 0,
       arrival: 0,
-      hops: arrived,
-      activation: arrived,
+      hops: carried,
+      activation: carried,
       cueFraction: 0,
       matched: 0,
       // A link is an id, not an ambiguous handle: an expansion of a pointer is
@@ -768,7 +790,14 @@ export function activate(
     spread:
       spreadRun === null
         ? null
-        : { ...spreadRun, landed: kept.filter((c) => c.hops > 0).length, pointerCandidates, pointers },
+        : {
+            ...spreadRun,
+            landed: kept.filter((c) => c.hops > 0).length,
+            hopsCapped,
+            pointerCandidates,
+            pointers,
+            pointersCapped,
+          },
     dropped,
   };
 }
