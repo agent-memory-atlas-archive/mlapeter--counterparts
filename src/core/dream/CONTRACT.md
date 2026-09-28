@@ -108,7 +108,7 @@ dreamer is the model (a background agent the session launches), outside this pro
 - **The ask, previewed** (2026-09-27, `previewAsk`, for the dashboard's Tonight box):
   `{ wouldAsk, reason, newSince }` from the same gate `status` and `askLine` run — the
   same dreamed / declined / asked-today checks, the same showable filter, the same
-  `MAX_NEW` cap — asked as a live session would ask it, so it answers under observer
+  queue (2026-09-28: no longer capped at `MAX_NEW`) — asked as a live session would ask it, so it answers under observer
   too. `newSince` is counted for every reason (the gate itself stops before counting
   once it knows). A live session previews its own gate; an observer previews a guest's
   (confidential memories not counted) unless it passes `owner: true`. Only a count comes
@@ -143,6 +143,24 @@ dreamer is the model (a background agent the session launches), outside this pro
   weeks, a pair a dream flagged that still stands, where the work stands in a directory
   (a handoff's first line, words only). Not new; the dream may draw on them. The ids
   shown are recorded on the dream; nothing else can be changed by it.
+- **The queue, tonight's room, and parts** (2026-09-28, build B; working defaults, held
+  lightly — `fit/` CONTRACT states the principle). "New" is every showable memory born
+  within `QUEUE_DAYS` lived days that no dream that stands was shown (read from the
+  dreams' own `shown`; a dream being resumed, or one the next `begin` will resume or
+  close, is passed over). The gate's `MIN_NEW` counts this queue. `begin` ranks it by
+  replay priority (salience, how strongly felt, coming up or on my mind, salient-but-weak,
+  less a little for age) and takes tonight's new memories in that order while their lines,
+  and their neighbours', fit `FRESH_SHARE` of `NIGHT_CHARS`; the rest WAIT for the next
+  night, counted in the bundle (`queue`), the tool's `how` and the hand-back. Past the
+  window a never-dreamed memory leaves the queue for ordinary fading, and how many did since
+  the last dream is said (`agedOut`). Every memory shown has a line at least and says why
+  it is here, what it is about, its strongest feeling and its whole length; the most
+  important come whole (up to `DETAIL_CHARS`, else an excerpt with its length). The
+  journal comes as ENTRIES, cut at the chapter headings: only the entries added since the
+  last dream (how far it read each episode is kept in its index), a line each, the most
+  important whole. A bundle longer than one tool result — measured as the MCP server sends
+  it — comes in parts (phase `part`). A merge or a gist records the fidelity it was made
+  from (`detail.fidelity`: whole, excerpt, line — or whole, looked up since).
 - `propose` applies each change on its own, within per-dream `LIMITS`, and records it
   with what undo needs (ids and numbers only):
   `merge` (two or more near-copies, not core, into one memory in better words, under
@@ -217,7 +235,13 @@ dream having run.
   everything but the long lists, which go on in order as far as the room allows — and
   the result says so; phase `part` hands the rest, `PART_CHARS` at a time, each memory
   as it reads now (one gone since is said to be gone). The parts' ids are kept on the
-  row until the first finish. PR B brings a shared fitter; this is the simple version.
+  row. **Fitted** (2026-09-28, build B; `fit/`): the WHOLE core, every core candidate and
+  every memory of the last few days are handed (they were the 20, 12 and 12 most felt),
+  plus a page of the most strongly felt with its full count (`feltOf`); the fitter gives
+  the most felt their whole text (up to `DETAIL_CHARS`), a line to the rest, an id alone
+  past that, each with its whole length (`chars`). The chapters come as entries of the
+  last few days, a line each, the most important whole. How the room was spent is on the
+  row (`detail.fit`) and in the bundle (`shownAs`).
 - `finish` takes an entry, what it cites, and optionally a page, a share, feelings,
   about marks and trait nudges, each on its own. Everything it names must be something it was shown and
   still standing.

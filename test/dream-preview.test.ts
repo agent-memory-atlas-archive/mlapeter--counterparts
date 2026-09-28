@@ -198,12 +198,12 @@ describe("the preview and the real gate agree", () => {
     realAsk(owner, o);
   });
 
-  test("the cap: new since never reads past MAX_NEW", () => {
+  test("the queue is counted whole: what one night cannot take still counts (build B, 2026-09-28; was capped at MAX_NEW 40)", () => {
     const c = brain(false);
     days(c);
-    fresh(c, DREAM_TUNABLES.MAX_NEW + 5);
+    fresh(c, 45);
     const p = agree(c, false);
-    expect(p).toEqual({ wouldAsk: true, reason: "due", newSince: DREAM_TUNABLES.MAX_NEW });
+    expect(p).toEqual({ wouldAsk: true, reason: "due", newSince: 45 });
     realAsk(c, p);
   });
 });

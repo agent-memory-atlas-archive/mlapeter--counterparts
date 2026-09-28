@@ -57,6 +57,17 @@
  */
 import { RECALL_MAX_IDS } from "./deliberate.js";
 
+/**
+ * A MEMORY'S TITLE, ASKED FOR AS ONE LINE (2026-09-28, build B). Indexes — the
+ * dream's bundle, the reflection's, a recall list — show most memories as a
+ * line and fetch the rest on request; a title the writer chose is a better
+ * line than the first line of the body. Still optional, and never filled in
+ * for the writer: a title is also a handle recall can expand by, and it is
+ * searched with the body.
+ */
+const TITLE_TEXT =
+  "Optional, and asked for: one line saying what this memory is — the line an index shows when it lists memories without their words, so it is worth choosing. Also a handle: recall can expand a memory by its exact title.";
+
 export type ToolName =
   | "note"
   | "recall"
@@ -381,7 +392,7 @@ const NOTE: ToolSpec = {
         enum: ["self", "person", "entity", "skill", "place", "fact"],
         description: "What sort of thing this is about. Defaults to fact.",
       },
-      title: { type: "string", description: "Optional short handle for the memory." },
+      title: { type: "string", description: TITLE_TEXT },
       eventDate: EVENT_DATE_PROPERTY,
       remind: REMIND_PROPERTY,
       feelings: FEELINGS_PROPERTY,
@@ -638,7 +649,7 @@ const SESSION_END: ToolSpec = {
               type: "string",
               enum: ["self", "person", "entity", "skill", "place", "fact"],
             },
-            title: { type: "string" },
+            title: { type: "string", description: TITLE_TEXT },
             salience: {
               type: "number",
               minimum: 0,
@@ -762,7 +773,7 @@ const CHAPTER: ToolSpec = {
       },
       title: {
         type: "string",
-        description: "Optional short handle for the episode. Set on the first chapter only.",
+        description: "One line: what this session's episode is — the line a later index shows for all of it, so it can be told apart without being read. Set on the first chapter only.",
       },
     },
     required: ["text"],
@@ -1005,14 +1016,19 @@ const DREAM: ToolSpec = {
         "The bundle and the hand-back carry a mark that capture refuses, so a dream never becomes a lived memory through the end-of-session sweep.",
       mechanizedBy: "src/core/dream/mark.ts#DREAM_MARK -> src/core/remember/spans.ts#enters + src/adapters/claude-code/transcript.ts#pieceOf",
     },
+    {
+      claim:
+        "Nothing is cut by position: every memory shown has a line, the most important come whole, and every excerpt says its whole length. New memories tonight's room cannot take wait in the queue for the next night, counted; a bundle longer than one result comes in parts.",
+      mechanizedBy: "src/core/dream/index.ts#Dreams.compose + src/core/fit/index.ts#fit + src/core/dream/index.ts#Dreams.pack",
+    },
   ],
   inputSchema: {
     type: "object",
     properties: {
       phase: {
         type: "string",
-        enum: ["launch", "begin", "propose", "journal", "writer", "decline", "setting"],
-        description: "Which step: launch, begin, propose, journal, writer, decline, or setting.",
+        enum: ["launch", "begin", "part", "propose", "journal", "writer", "decline", "setting"],
+        description: "Which step: launch, begin, part (the rest of a bundle that came in parts), propose, journal, writer, decline, or setting.",
       },
       session: {
         type: "string",
@@ -1020,7 +1036,12 @@ const DREAM: ToolSpec = {
       },
       dream: {
         type: "string",
-        description: "`propose` and `journal`: the dream id `begin` returned. (`writer` may carry it too; it runs first, before there is one.)",
+        description: "`part`, `propose` and `journal`: the dream id `begin` returned. (`writer` may carry it too; it runs first, before there is one.)",
+      },
+      part: {
+        type: "integer",
+        minimum: 2,
+        description: "`part`: which part of the bundle, 2 and up, when `begin` said it came in parts.",
       },
       value: {
         type: "string",

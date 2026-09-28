@@ -98,7 +98,9 @@ import {
 } from "./protocol.js";
 import type { Id, Request, Response } from "./protocol.js";
 import { DREAMING_SETTINGS, nightNext, nightOrder } from "../../core/dream/index.js";
-import type { DreamingSetting, NightPart } from "../../core/dream/index.js";
+import type { DreamBundle, DreamingSetting, NightPart } from "../../core/dream/index.js";
+import { noteLookups } from "../../core/fit/index.js";
+import type { FitMechanism } from "../../core/fit/index.js";
 import { NO_PAGE_VERSION, pageSections } from "../../core/self/index.js";
 import type { PageWriterMode } from "../../core/self/index.js";
 import { TOOL_NAMES, toolDefinitions, toolSpec } from "./tools.js";
@@ -1028,6 +1030,9 @@ export class McpServer {
       },
     );
     const resolved = this.noteHandleResolution(handle, result);
+    // THE MEASUREMENT (2026-09-28): did this lookup fetch what a mechanism's
+    // index offered only in part? Counted per mechanism, never the ids.
+    const fromIndex = result.path === "handle" && result.memories.length > 0 ? this.lookupsFromIndex(result.memories.map((m) => m.id)) : {};
     const payload = this.recallPayload(result);
     this.emit("mcp.recall", undefined, {
       path: result.path,
@@ -1046,7 +1051,7 @@ export class McpServer {
       truncated: payload["truncated"] === true,
       droppedForBudget: (payload["droppedForBudget"] as number | undefined) ?? 0,
     });
-    this.noteRecall(result, askedIds.length, question, resolved, payload);
+    this.noteRecall(result, askedIds.length, question, resolved, payload, fromIndex);
     const bad =
       result.reason === "no-argument" ||
       result.reason === "both-arguments" ||
@@ -1088,6 +1093,7 @@ export class McpServer {
     question: unknown,
     handleResolved: boolean,
     payload: Record<string, unknown>,
+    fromIndex: Partial<Record<FitMechanism, number>> = {},
   ): void {
     const byAddress = result.path === "handle";
     const blockedBy: Record<string, number> = { ...(result.blockedBy ?? {}) };
@@ -1126,6 +1132,9 @@ export class McpServer {
         droppedForBudget: payload["droppedForBudget"] ?? 0,
         // THE POINT OF THE ROW: what kept the rest out, by name.
         blockedBy,
+        // How many of the expanded ids a mechanism's index had offered only
+        // in part (2026-09-28) — the lookup's use, per mechanism. Counts only.
+        ...(Object.keys(fromIndex).length > 0 ? { fromIndex } : {}),
       });
     } catch {
       // The ring emit above already carries this call; a telemetry write that
@@ -1195,6 +1204,21 @@ export class McpServer {
       at: this.nowFn(),
     });
     return written && id !== null;
+  }
+
+  /**
+   * THE LOOKUP LEDGER, read from the recall tool (2026-09-28): the expanded
+   * ids a dream's or a reflection's latest index offered only in part.
+   * `noteLookups` also marks them fetched, so a change made from one reads as
+   * made from the whole. Never throws: a tool answer may not fail because its
+   * measurement did.
+   */
+  private lookupsFromIndex(ids: readonly string[]): Partial<Record<FitMechanism, number>> {
+    try {
+      return noteLookups(this.counterpart.store, ids);
+    } catch {
+      return {};
+    }
   }
 
   /**
@@ -1865,7 +1889,33 @@ export class McpServer {
               session,
               dream: out.bundle.dream,
               ...(out.resumed ? { resumed: true } : {}),
+              // IN PARTS (2026-09-28): said up front, never a silent cut.
+              ...(out.bundle.parts === null ? {} : { parts: out.bundle.parts }),
+              how: dreamHow(out.bundle),
               bundle: out.text,
+            },
+            false,
+          );
+        }
+        case "part": {
+          const dream = args["dream"];
+          const n = args["part"];
+          if (typeof dream !== "string" || typeof n !== "number") {
+            return refused("dream-and-part-required", "Pass `dream` (the id `begin` returned) and `part` (2 and up).");
+          }
+          const out = dreams.part({ dream, session, part: n });
+          if (!out.ok) return refused(out.reason, out.detail ?? "That dream is not open for this session.");
+          this.emit("mcp.dream", dream, { phase: "part", part: out.part, of: out.of });
+          return this.result(
+            {
+              phase,
+              dream,
+              part: out.part,
+              of: out.of,
+              bundle: out.text,
+              ...(out.part < out.of
+                ? { next: `Then part ${String(out.part + 1)}: the dream tool, phase "part", dream: ${dream}, part: ${String(out.part + 1)}.` }
+                : { next: "That was the last part. Now propose your changes." }),
             },
             false,
           );
@@ -1962,7 +2012,7 @@ export class McpServer {
           );
         }
         default:
-          return refused("phase-unknown", "phase is one of launch, begin, propose, journal, writer, decline, setting.");
+          return refused("phase-unknown", "phase is one of launch, begin, part, propose, journal, writer, decline, setting.");
       }
     } catch (err) {
       return refused("threw", String((err as Error).message ?? err));
@@ -2027,7 +2077,8 @@ export class McpServer {
               questions: out.bundle.questions,
               // IN PARTS (2026-09-28): said up front, never a silent cut.
               ...(out.bundle.parts === null ? {} : { parts: out.bundle.parts }),
-              how: out.instructions,
+              // THE LOOKUP, with its number (2026-09-28; `PACK_MARGIN` holds room for it).
+              how: `${out.instructions}\nWhat is shown only in part (fidelity excerpt, line or id): read it whole with the recall tool, ids: [...] — up to ${String(RECALL_MAX_IDS)} at once.`,
               bundle: out.text,
             },
             false,
@@ -2731,6 +2782,23 @@ export class McpServer {
  * Total on purpose. A new handle-path reason added without a line here records
  * nothing rather than guessing, which fails in the under-credit direction.
  */
+/**
+ * THE LOOKUP, NAMED IN THE DREAM'S OWN RESULT (2026-09-28): what tonight's
+ * room gave, what waits, and how to read the rest — with the number of ids
+ * one recall takes. Kept short: `dreamResultChars`' margin holds room for it.
+ */
+export function dreamHow(bundle: Pick<DreamBundle, "queue" | "shownAs">): string {
+  const q = bundle.queue;
+  const s = bundle.shownAs;
+  const waits = q.waiting > 0 ? ` ${String(q.waiting)} more new wait for the next night.` : "";
+  const aged = q.agedOut > 0 ? ` ${String(q.agedOut)} aged out of the queue since the last dream, never dreamed.` : "";
+  return (
+    `Tonight: ${String(q.tonight)} of ${String(q.new)} new memories.${waits}${aged} ` +
+    `Shown whole: ${String(s.whole)}; as an excerpt: ${String(s.excerpt)}; as a line: ${String(s.line)}${s.notShown > 0 ? `; related, not shown: ${String(s.notShown)}` : ""}. ` +
+    `To read any whole, call the recall tool with ids: [...] — up to ${String(RECALL_MAX_IDS)} at once.`
+  );
+}
+
 function resolvedIdOf(result: DeliberateResult): string | null | undefined {
   switch (result.reason) {
     case "expanded":

@@ -5,10 +5,11 @@
  */
 export const DREAM_TUNABLES = {
   // ── when to ask ───────────────────────────────────────────────────────────
-  /** The ask is due only when at least this many memories are new since the
-   *  last dream — a dream with nothing to replay is not worth his minutes. CAL. */
+  /** The ask is due only when at least this many memories wait in the queue
+   *  (undreamed, within `QUEUE_DAYS`) — a dream with nothing to replay is not
+   *  worth his minutes. CAL. */
   MIN_NEW: 3,
-  /** A store that has never dreamed looks back this many lived days for "new". */
+  /** A store that has never dreamed reads its journal this many lived days back. */
   FIRST_DREAM_DAYS: 7,
   /**
    * THE NIGHTLY RUN (2026-09-28, held lightly). A dream begun and quiet this
@@ -32,8 +33,30 @@ export const DREAM_TUNABLES = {
   NIGHT_ORDER: ["writer", "dream", "reflection"] as readonly ("dream" | "writer" | "reflection")[],
 
   // ── the bundle ────────────────────────────────────────────────────────────
-  /** Most new memories one dream is shown (newest first). CAL. */
-  MAX_NEW: 40,
+  /**
+   * THE QUEUE (2026-09-28, build B; held lightly). What the dream replays is
+   * every memory not yet shown to a dream that stands — "undreamed", read
+   * from the dreams' own `shown`, no table of its own — born within this many
+   * lived days. Ranked by replay priority, not by age; what tonight's room
+   * cannot take WAITS for the next night, with a count. Past the window a
+   * memory leaves the queue for ordinary fading, and the count of those that
+   * aged out is said. The same span as the look-back. CAL.
+   */
+  QUEUE_DAYS: 7,
+  /** The queue is read at most this many rows deep (said when reached). CAL. */
+  QUEUE_READ: 2_000,
+  /**
+   * TONIGHT'S ROOM, in characters of shown text (plus a fixed cost per item):
+   * the whole bundle across its parts. Sized from the dreamer's context (the
+   * first dream cost ~111k tokens with far less), not from one tool result —
+   * a bundle longer than one result comes in parts. What it cannot take waits
+   * (new memories) or is counted (the rest). CAL.
+   */
+  NIGHT_CHARS: 100_000,
+  /** The share of tonight's room tonight's new memories and their neighbours may take as lines. CAL. */
+  FRESH_SHARE: 0.5,
+  /** The share for the journal's new entries. CAL. */
+  CHAPTER_SHARE: 0.3,
   /** Nearest OLDER neighbours shown beside each new memory (owner: 5–8). */
   NEIGHBOURS: 6,
   /** Loosely related older memories shown for mixing (the REM half). CAL. */
@@ -46,13 +69,28 @@ export const DREAM_TUNABLES = {
   /** …within this many lived days either side of it. */
   LOOKBACK_SPREAD: 2,
   LOOKBACK_COUNT: 5,
-  /** Characters of each memory's words the bundle carries. */
-  TEXT_CHARS: 400,
-  /** Characters of the self page, the wake and each chapter the bundle carries. */
+  /**
+   * DETAIL BY IMPORTANCE (2026-09-28: was a flat 400 characters each). Every
+   * memory shown gets a line; the most important get their whole text, up to
+   * this many characters — longer is an excerpt with its whole length said,
+   * and the rest is a lookup away.
+   */
+  DETAIL_CHARS: 4_000,
+  /** Bytes of a memory's line. */
+  LINE_BYTES: 200,
+  /** The longest journal entry shown whole; longer is an excerpt with its length said. */
+  ENTRY_CHARS: 6_000,
+  /** Characters of the self page and the wake the bundle carries (their whole lengths are said). */
   PAGE_CHARS: 6_000,
   WAKE_CHARS: 6_000,
-  CHAPTER_CHARS: 3_000,
-  MAX_CHAPTERS: 6,
+  /**
+   * THE BUNDLE IN PARTS (2026-09-28), measured the way the MCP server sends
+   * it (`dreamResultChars`): the begin result under this, each later part
+   * under `PART_CHARS`. The tool result's ceiling is about 25k tokens, and
+   * escaped JSON runs near three characters a token. CAL.
+   */
+  RESULT_CHARS: 54_000,
+  PART_CHARS: 54_000,
 
   // ── what one dream may change (owner: "start ~10 merges, 20 links, 3 gists") ─
   LIMITS: {
