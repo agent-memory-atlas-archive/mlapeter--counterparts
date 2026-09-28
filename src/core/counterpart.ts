@@ -37,7 +37,7 @@
  */
 import { randomUUID } from "node:crypto";
 
-import { Associate, appendPendingDeltas, claimPending, planContiguity, releasePending } from "./associate/index.js";
+import { Associate, appendPendingDeltas, claimPending, pairKey, planContiguity, releasePending } from "./associate/index.js";
 import type { CoactivateResult, Credited, FlushReport, PairDelta, PendingClaim } from "./associate/index.js";
 import { selfRenderer } from "./briefing.js";
 import { batteryGate, episodeGate, gateSweepChunk } from "./bridge.js";
@@ -517,6 +517,17 @@ export interface ContiguityPass {
   readonly buffered: number;
   readonly blocked: number;
   readonly frozen: number;
+  /**
+   * After the boundary's flush (review of #281, findings 2 and 9): buffered
+   * pairs that LANDED as a conducting link, the pairs' own new links the count
+   * cap evicted, other links it evicted at nodes contiguity touched, and those
+   * nodes the outgoing bound scaled back. Absent from a pass that buffered
+   * nothing, or one called on its own (`contiguityPass`), which has no flush.
+   */
+  readonly landed?: number;
+  readonly evictedOwn?: number;
+  readonly evictedOther?: number;
+  readonly renormalizedNodes?: number;
   readonly code?: string;
 }
 export const SPAWN_REFUSED_EVENT = "adapter.spawn.refused";
@@ -3119,8 +3130,11 @@ export class Counterpart {
     // TEMPORAL CONTIGUITY (2026-09-28), before the flush so its deltas go out
     // through the same plan, homeostasis and sweep as a co-use, and are
     // counted on the boundary's own `associate.flush` row.
-    const contiguity = this.contiguityPass();
+    const planned = this.bufferContiguity();
     const edges = this.associate.flush();
+    // What the buffered pairs BECAME, now the flush has landed (review of
+    // #281, findings 2 and 9): links that conduct, and what they cost.
+    const contiguity = this.contiguityOutcome(planned, edges);
     this.recordBoundaryFlush(edges, contiguity);
     // The hooks' own co-activation, applied in the process that can afford to
     // wait on the write lock. After the in-process flush, so a single-process
@@ -3222,8 +3236,16 @@ export class Counterpart {
    *
    * Fail-open, like every other step of the boundary: a pass that throws is a
    * `failed` report and the boundary goes on. An observer does nothing.
+   *
+   * This public door buffers and returns; the boundary itself goes through
+   * `bufferContiguity` so it can keep the planned pairs and say, after its
+   * flush, which of them landed (`contiguityOutcome`).
    */
   contiguityPass(): ContiguityPass {
+    return this.bufferContiguity().pass;
+  }
+
+  private bufferContiguity(): { pass: ContiguityPass; pairs: readonly PairDelta[] } {
     const zero: ContiguityPass = {
       reason: "nothing-new",
       sessions: 0,
@@ -3237,12 +3259,12 @@ export class Counterpart {
       frozen: 0,
       excluded: 0,
     };
-    if (this.observer) return { ...zero, reason: "observer" };
+    if (this.observer) return { pass: { ...zero, reason: "observer" }, pairs: [] };
     try {
       const cursor = readContiguityCursor(this.store.getMeta(CONTIGUITY_CURSOR_META));
       const day = this.store.livedDay();
       const rows = this.store.memoriesWrittenSince(cursor?.at ?? 0);
-      if (rows.length === 0) return zero;
+      if (rows.length === 0) return { pass: zero, pairs: [] };
       const seen = new Set(cursor?.ids ?? []);
       const unread = rows.filter((r) => (cursor === null ? r.bornDay >= day : !(r.at === cursor.at && seen.has(r.id))));
       // THE NIGHTLY RUN'S ROWS ARE NOT THE SESSION'S (review of #281, finding
@@ -3257,7 +3279,7 @@ export class Counterpart {
         CONTIGUITY_CURSOR_META,
         JSON.stringify({ at: newest, ids: rows.filter((r) => r.at === newest).map((r) => r.id) }),
       );
-      if (fresh.length === 0) return { ...zero, excluded };
+      if (fresh.length === 0) return { pass: { ...zero, excluded }, pairs: [] };
       const freshIds = new Set(fresh.map((r) => r.id));
       const sessions = [...new Set(fresh.map((r) => r.session))].sort();
       const deltas: PairDelta[] = [];
@@ -3289,12 +3311,52 @@ export class Counterpart {
         frozen: buffered.frozen,
       };
       this.emit("counterpart.associate.contiguity", undefined, { ...out });
-      return out;
+      return { pass: out, pairs: buffered.accepted };
     } catch (err) {
       const code = errCode(err);
       this.emit("counterpart.associate.contiguity.failed", undefined, { code });
-      return { ...zero, reason: "failed", code };
+      return { pass: { ...zero, reason: "failed", code }, pairs: [] };
     }
+  }
+
+  /**
+   * What the boundary's buffered contiguity pairs BECAME once its flush
+   * landed (review of #281, findings 2 and 9). `landed`: pairs with a link
+   * that conducts in at least one direction now — a pair whose new link was
+   * the weakest at a full node and evicted in the same flush, or whose deltas
+   * were swept under the floor, did not land. `evictedOwn`: those evictions of
+   * the pair's own new link. `evictedOther`: links OTHER than a contiguity
+   * pair's own that the count cap pushed out at a node contiguity touched —
+   * possibly waking-learned ones, which is what the owner watches.
+   * `renormalizedNodes`: nodes contiguity touched that the outgoing bound
+   * scaled back. Exact when the in-process buffer held only contiguity, as it
+   * does on the host (co-use arrives through the pending file and flushes on
+   * its own); for a single-process caller that also co-activated in-process,
+   * the eviction and scaling counts are attributed to contiguity's nodes.
+   */
+  private contiguityOutcome(planned: { pass: ContiguityPass; pairs: readonly PairDelta[] }, edges: FlushReport): ContiguityPass {
+    const { pass, pairs } = planned;
+    if (pairs.length === 0) return pass;
+    if (edges.reason !== "flushed") return { ...pass, landed: 0, evictedOwn: 0, evictedOther: 0, renormalizedNodes: 0 };
+    const keys = new Set(pairs.map((p) => pairKey(p.a, p.b)));
+    const ends = new Set(pairs.flatMap((p) => [p.a, p.b]));
+    let landed = 0;
+    try {
+      for (const p of pairs) {
+        if (this.associate.weightAt(p.a, p.b, edges.day) > this.associate.tunables.EDGE_FLOOR ||
+            this.associate.weightAt(p.b, p.a, edges.day) > this.associate.tunables.EDGE_FLOOR) landed += 1;
+      }
+    } catch (err) {
+      this.emit("counterpart.associate.contiguity.outcome.failed", undefined, { code: errCode(err) });
+    }
+    let evictedOwn = 0;
+    let evictedOther = 0;
+    for (const e of edges.evictions) {
+      if (keys.has(pairKey(e.src, e.dst))) evictedOwn += 1;
+      else if (ends.has(e.src)) evictedOther += 1;
+    }
+    const renormalizedNodes = (edges.renormalizedNodes ?? []).filter((n) => ends.has(n)).length;
+    return { ...pass, landed, evictedOwn, evictedOther, renormalizedNodes };
   }
 
   /**
@@ -3333,6 +3395,10 @@ export class Counterpart {
         buffered: contiguity.buffered,
         blocked: contiguity.blocked,
         frozen: contiguity.frozen,
+        landed: contiguity.landed ?? 0,
+        evictedOwn: contiguity.evictedOwn ?? 0,
+        evictedOther: contiguity.evictedOther ?? 0,
+        renormalizedNodes: contiguity.renormalizedNodes ?? 0,
       },
     };
     if (edges.code !== undefined) data["error"] = edges.code;

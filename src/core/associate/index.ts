@@ -131,6 +131,9 @@ export interface FlushReport {
   readonly rows: number;
   readonly evictions: readonly Eviction[];
   readonly renormalized: number;
+  /** Which nodes were scaled back, on a flush that landed (2026-09-28) — so a
+   *  caller can say which of its deltas pushed a node to its bound. */
+  readonly renormalizedNodes?: readonly string[];
   readonly nodesTouched: number;
   /** Pairs dropped because an endpoint stopped conducting between the turn and
    *  the boundary — archived, superseded, or taken dark. */
@@ -157,6 +160,8 @@ export interface ContiguityReport {
   readonly blocked: number;
   /** Pairs refused because an endpoint is pinned (G9). */
   readonly frozen: number;
+  /** The pairs buffered, so a caller can say after the flush which landed. */
+  readonly accepted: readonly PairDelta[];
 }
 
 export type ProposeReason = "linked" | "no-room" | "observer" | "nothing-to-link" | "failed";
@@ -344,10 +349,10 @@ export class Associate {
   contiguity(deltas: readonly PairDelta[]): ContiguityReport {
     if (this.observer) {
       this.emit("associate.observer.skip", undefined, { site: "contiguity", pairs: deltas.length });
-      return { reason: "observer", pairs: 0, blocked: 0, frozen: 0 };
+      return { reason: "observer", pairs: 0, blocked: 0, frozen: 0, accepted: [] };
     }
     const conductor = this.conductor();
-    let pairs = 0;
+    const accepted: PairDelta[] = [];
     let blocked = 0;
     let frozen = 0;
     for (const d of deltas) {
@@ -361,10 +366,11 @@ export class Associate {
         continue;
       }
       this.buffer.add(d.a, d.b, d.delta, d.back ?? d.delta);
-      pairs += 1;
+      accepted.push(d);
     }
+    const pairs = accepted.length;
     this.emit("associate.contiguity", undefined, { pairs, blocked, frozen, buffered: this.buffer.size });
-    return { reason: pairs > 0 ? "buffered" : "nothing-to-link", pairs, blocked, frozen };
+    return { reason: pairs > 0 ? "buffered" : "nothing-to-link", pairs, blocked, frozen, accepted };
   }
 
   /** What is buffered right now — copies, for telemetry and tests. */
@@ -495,6 +501,7 @@ export class Associate {
       rows: rows.length,
       evictions: plan.evictions,
       renormalized: plan.renormalized.length,
+      renormalizedNodes: plan.renormalized,
       nodesTouched: plan.nodesTouched,
       blocked,
       dropped: 0,

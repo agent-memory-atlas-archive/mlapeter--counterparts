@@ -505,6 +505,7 @@ describe("4. temporal contiguity: adjacent only, lag-weighted, forward where the
     expect(report.contiguity.sessions).toBe(2);
     expect(report.contiguity.pairs).toBe(1);
     expect(report.contiguity.timed).toBe(1);
+    expect(report.contiguity.landed).toBe(1);
     // Stored weights, as the flush wrote them (the boundary's cycle then moves the clock).
     const w = (src: string, dst: string): number => c.store.edgesFrom(src).find((e) => e.dst === dst)?.weight ?? 0;
     expect(w(a, b)).toBeCloseTo(rate, 10);
@@ -592,6 +593,7 @@ describe("4. temporal contiguity: adjacent only, lag-weighted, forward where the
     c.store.linkMany(others.map((o) => ({ src: hub, dst: o, weight: T.MAX_OUT_WEIGHT / n, day })));
     const report = await c.sessionEnd({ date: "2026-09-28", budgetBytes: 9000 });
     expect(report.edges.renormalized).toBeGreaterThanOrEqual(1);
+    expect(report.contiguity.renormalizedNodes).toBeGreaterThanOrEqual(1);
     const live = c.store.edgesFrom(hub).filter((e) => e.weight > T.EDGE_FLOOR);
     expect(live.length).toBeLessThanOrEqual(T.MAX_EDGES_PER_NODE);
     expect(live.reduce((s, e) => s + e.weight, 0)).toBeLessThanOrEqual(T.MAX_OUT_WEIGHT + 1e-9);
@@ -614,6 +616,31 @@ describe("4. temporal contiguity: adjacent only, lag-weighted, forward where the
     const report = await c.sessionEnd({ date: "2026-09-28", budgetBytes: 9000 });
     expect(report.edges.evictions.some((e) => e.src === hub && e.dst === next)).toBe(true);
     expect(c.store.edgesFrom(hub).filter((e) => e.weight > T.EDGE_FLOOR).length).toBe(T.MAX_EDGES_PER_NODE);
+    // Said on the pass (review of #281, finding 2): its own link out of the hub
+    // was evicted; the link back from `next` still conducts, so the pair landed.
+    expect(report.contiguity.evictedOwn).toBe(1);
+    expect(report.contiguity.evictedOther).toBe(0);
+    expect(report.contiguity.landed).toBe(1);
+  });
+
+  test("a contiguity pair that pushes out a WAKING-LEARNED link at a full node is counted as such (review of #281, finding 9)", async () => {
+    const clock = { now: Date.UTC(2026, 8, 28, 12) };
+    const c = brainAt(clock);
+    const hub = memoryIn(c, "s1", "The hub memory everything already links to.");
+    memoryIn(c, "s1", "The memory written right after the hub.");
+    const day = c.store.livedDay();
+    const others = Array.from({ length: T.MAX_EDGES_PER_NODE }, (_, i) =>
+      c.store.put({ type: "memory", kind: "fact", body: `Learned neighbour ${String(i)} of the hub.` }),
+    );
+    // 31 learned links at 0.1 and one faded co-use at 0.03: the new 0.045 is not the weakest.
+    c.store.linkMany(others.map((o, i) => ({ src: hub, dst: o, weight: i === others.length - 1 ? 0.03 : 0.1, day })));
+    const report = await c.sessionEnd({ date: "2026-09-28", budgetBytes: 9000 });
+    expect(report.contiguity.evictedOther).toBe(1);
+    expect(report.contiguity.evictedOwn).toBe(0);
+    expect(report.contiguity.landed).toBe(1);
+    const rows = c.store.eventLog({ name: "associate.flush" });
+    const last = JSON.parse(rows[rows.length - 1]?.payload ?? "{}") as { contiguity?: Record<string, unknown> };
+    expect(last.contiguity?.["evictedOther"]).toBe(1);
   });
 
   test("an observer plans nothing, buffers nothing, and moves no cursor", async () => {

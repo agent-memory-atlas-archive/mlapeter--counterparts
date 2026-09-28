@@ -2699,6 +2699,10 @@ export function associationFindings(store: Store): Finding[] {
   let pointersShown = 0;
   let pointersExpanded = 0;
   let contiguityPairs = 0;
+  let contiguityLanded = 0;
+  let contiguityEvictedOther = 0;
+  let contiguityScaled = 0;
+  let contiguityExcluded = 0;
   const census = { total: 0, conducting: 0, gist: 0, dream: 0, hebbian: 0 };
   try {
     const rows = store.eventLog({ name: "recall.decision", sinceDay: since, order: "desc", limit: ASSOCIATION_ROWS });
@@ -2724,13 +2728,19 @@ export function associationFindings(store: Store): Finding[] {
       const n = num(payloadOf(row), "pointersExpanded");
       if (n !== null) pointersExpanded += n;
     }
-    // Temporal contiguity (2026-09-28): the pairs the boundaries buffered,
-    // from their own `associate.flush` rows.
+    // Temporal contiguity (2026-09-28): what the boundaries buffered, what of
+    // it LANDED as a conducting link, and what it cost — other links evicted
+    // at the nodes it touched, those nodes scaled back — from their own
+    // `associate.flush` rows (review of #281, findings 2 and 9).
     for (const row of store.eventLog({ name: "associate.flush", sinceDay: since, order: "desc", limit: ASSOCIATION_ROWS })) {
       const c = payloadOf(row)["contiguity"];
       if (c === null || typeof c !== "object") continue;
-      const n = num(c as Record<string, unknown>, "buffered");
-      if (n !== null) contiguityPairs += n;
+      const cr = c as Record<string, unknown>;
+      contiguityPairs += num(cr, "buffered") ?? 0;
+      contiguityLanded += num(cr, "landed") ?? 0;
+      contiguityEvictedOther += num(cr, "evictedOther") ?? 0;
+      contiguityScaled += num(cr, "renormalizedNodes") ?? 0;
+      contiguityExcluded += num(cr, "excluded") ?? 0;
     }
     const dreamed = new Set<string>();
     const dreamPairs = new Set<string>();
@@ -2762,7 +2772,7 @@ export function associationFindings(store: Store): Finding[] {
       "green",
       "Association",
       `${spreadSaid}. Edges: ${String(census.total)} rows, ${String(census.conducting)} conducting — ${String(census.hebbian)} learned from use or contiguity, ${String(census.dream)} dream links, ${String(census.gist)} gist ties (derived: a row touching a dream's gist is a gist tie, a pair a dream linked is a dream link, the rest were learned from use or from memories made next to each other)` +
-        `. Temporal contiguity linked ${String(contiguityPairs)} ${contiguityPairs === 1 ? "pair" : "pairs"} of neighbouring memories at the boundaries` +
+        `. Temporal contiguity buffered ${String(contiguityPairs)} ${contiguityPairs === 1 ? "pair" : "pairs"} of neighbouring memories at the boundaries, ${String(contiguityLanded)} landed as links; it pushed out ${String(contiguityEvictedOther)} other ${contiguityEvictedOther === 1 ? "link" : "links"} and scaled back ${String(contiguityScaled)} ${contiguityScaled === 1 ? "memory's" : "memories'"} links at full memories; ${String(contiguityExcluded)} ${contiguityExcluded === 1 ? "memory" : "memories"} the nightly run wrote left out` +
         (dropped > 0 ? `. The candidate cut left out ${String(dropped)} scored memories, summed over all ${String(allTurns)} recall turns in the window` : "") +
         (unread ? ". More turns than were read: the counts are a floor" : ""),
       "",
@@ -2777,6 +2787,10 @@ export function associationFindings(store: Store): Finding[] {
         pointersShown,
         pointersExpanded,
         contiguityPairs,
+        contiguityLanded,
+        contiguityEvictedOther,
+        contiguityScaled,
+        contiguityExcluded,
         edges: census.total,
         conducting: census.conducting,
         hebbian: census.hebbian,
