@@ -1,5 +1,94 @@
 # Changelog
 
+## 0.3.6 — 2026-09-28
+
+The nightly run: once a day, Claude writes its page, dreams and reflects in one
+background run, and starts it on its own. **The store's format does not change** (it
+stays v9), so nothing is copied or upgraded. Close every session before installing
+anyway: a session left open keeps the old memory server while the hooks switch to the
+new code at once, and the new dream start needs both. Run `/mcp` → Reconnect in any
+you missed.
+
+The nightly run.
+
+- **One background run, once a calendar day: the page writer, then the dream, then
+  the reflection.** The first prompt of a new day tells Claude to start it, when at
+  least 3 memories are new since the last dream. Claude hands it to one background
+  agent and tells you one line: "Dreaming in the background (a few minutes). Say 'no
+  dreams' anytime to turn it off." With fewer than 3 new memories nothing runs, and
+  they carry over to the next day.
+- **Dreaming has a setting: auto, ask or off.** `auto` is the default: the run starts
+  on its own and says so. `ask` asks you first, as 0.3.5 did. `off` asks nothing.
+  Say "no dreams" in a session, or run `counterparts dream --setting off`; turn it
+  back on the same way (`--setting auto`). `counterparts dream` and doctor's Dreaming
+  line say which it is.
+- **The page writer is back in the run.** It no longer waits for room in the session
+  start, which is why it had stopped. It is handed the page whole and the day it
+  reads, as the first step of the run.
+- **Who wrote each version of the page.** A version the reflection wrote is now
+  labelled "reflection", apart from the writer's. Both may write the page on the same
+  night, and every version is kept. `counterparts self-page --versions` and the
+  dashboard's Self tab say which.
+- **A dream that was cut off picks up where it stopped.** If a dream began, changed
+  something and then went quiet for 30 minutes (its session closed, say), the next
+  session starts the run again and the dream resumes: what it already did stands. A
+  dream that began and changed nothing is closed and a fresh one starts. A run that
+  dreamed but was cut off before it reflected finishes only the reflection. At most
+  twice a day.
+- **"Dreamed today" and "reflected today" are calendar days**, not days of use.
+- **The reflection sees what the dream saw**, every memory the dream was shown and
+  what it made, and can cite them. It gets the self page whole. When all of that is
+  too long for one answer, it comes in parts ("part 1 of 3"), and nothing is cut.
+- **Page sections.** The self page's own headings ("Us", "How I work", anything) are
+  read as sections, not only Core and Lately. The dashboard's Self tab, the `self_page`
+  tool and the CLI list every one.
+- Doctor no longer marks the page writer amber just because a night is owed. It is
+  amber only when nightly runs went on for days without the writer, or it failed.
+
+Fewer refusals.
+
+- **Dreams and reflections are refused less, and repaired more.** An over-long or
+  two-part feeling ("steadied: after the long week") is split: the first word is the
+  feeling, the rest goes to what carried it. Texts over their limit are kept to the
+  limit and the result says so; the limits for a morning share, a reflection's entry,
+  a dream's journal and a merged memory are higher. Many refusals that protected
+  nothing now write, with a note. The ones that stay (dream words never become lived
+  memory, a confidential memory's words stay off the page, the page cites real
+  memories) now say why, with the words or the id that tripped them.
+- **The self page may quote a lived memory a dream also quoted.** The old check
+  refused it.
+- **A reflection can finish a second time the same day**, to supply what the first
+  finish left out or had refused: the page, the share, feelings, what a memory is
+  about, traits. It never writes a second entry. A share already told can't be
+  replaced. The same feeling sent twice is recorded once.
+- The instructions Claude reads now say which feeling field is which, before it
+  writes.
+
+Seeing it.
+
+- **Newest first.** When a record held more events than a view read, several views
+  kept the oldest and called them the newest: the dashboard's feed, a memory's days
+  of use, Health's heatmap (today read empty), the flow view, contested beliefs, the
+  page's version reasons, and a few doctor counts. They read the newest now.
+- **"Of N".** A list that is cut says so: search says "the closest 25 of N matches",
+  Health's archive "the newest 200 of N", dreams "the newest 12 of N".
+  `counterparts dream --list --all` lists every dream.
+
+**The dashboard's Home tab, round 4.** Home now holds the best pictures from the other
+tabs, each a way in. A headline (the day, your name, how many memories, how many new
+today) with a health dot that links to Health. The brain beside **Today**: a few plain
+lines about what happened to memory today, each opening that thing. **How it feels**
+(the feelings radar) and **Around the core** (the Self tab's map). Gone from Home: the
+four tiles, the written/came-back strip, the Tonight box and the live feed. The
+mechanism pills and "how it works" moved to the end of Health.
+
+**Other dashboard fixes.** "How I act" puts the faint week-ago mark where it really
+stood a week ago, counting memories archived since, and fits a phone. Day counts are
+whole ("14 days of use", not "14.00"). Health names archived memories in words
+("merged in a dream", not "dream-merge"), and says its memory count leaves out the
+cards for people and projects. Home's chapter count matches Self's. The Self map's
+ready dots no longer sit on top of each other.
+
 ## 0.3.5 — 2026-09-27
 
 Claude reflects after a dream, tells you about it in the morning, and rewrites its self
