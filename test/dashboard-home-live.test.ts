@@ -7,6 +7,6 @@ import { liveScenario } from "./live/harness.js";
 
 liveScenario({
   label: "dashboard-home-live",
-  title: "the home tab, live > a poll after the store moves redraws the counts, feeds only memory events, and closes nothing",
+  title: "the home tab, live > a poll after the store moves redraws the headline and Today, and closes nothing; the brain opens Health",
   scenario: "dashboard-home.live.ts",
 });
