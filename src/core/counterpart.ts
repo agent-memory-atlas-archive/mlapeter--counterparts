@@ -1327,10 +1327,13 @@ export function surfaceSetFields(): readonly SurfaceSetField[] {
 function tierRows(
   ids: readonly string[],
   verdicts: readonly CandidateVerdict[],
-): { id: string; sal: number | null; activation: number | null }[] {
+): { id: string; sal: number | null; activation: number | null; via?: "link" }[] {
   return ids.map((id) => {
     const v = verdicts.find((x) => x.id === id);
-    return { id, sal: v?.sal ?? null, activation: v?.activation ?? null };
+    // A quiet pointer says so on the durable row (review of #281, finding 5),
+    // so replay and readers of footnotes can tell it from a cued footnote. Only
+    // present when the verdict has it; the row's field list does not move.
+    return { id, sal: v?.sal ?? null, activation: v?.activation ?? null, ...(v?.via === undefined ? {} : { via: v.via }) };
   });
 }
 

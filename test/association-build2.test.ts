@@ -24,6 +24,7 @@ import {
 } from "../src/core/associate/index.js";
 import type { EdgeState } from "../src/core/associate/index.js";
 import { Recall, activate, freshGateState, gate, withTunables } from "../src/core/recall/index.js";
+import { probeOQ4 } from "../src/core/recall/probe.js";
 import type { Candidate } from "../src/core/recall/index.js";
 import { recallTurn } from "../src/core/retrieval.js";
 import { CONTIGUITY_CURSOR_META, Counterpart } from "../src/core/counterpart.js";
@@ -275,6 +276,15 @@ describe("1. quiet pointers: a few per turn, footnote tier only, over a threshol
     expect(summary.pointersExpanded).toBe(1);
     expect(summary.credited).toBe(1);
     expect(summary.ids).toContain(behind);
+    // The durable row says WHICH footnote was a pointer (review of #281, finding 5),
+    // and the OQ4 probe, which reads the same rows, still counts it as a footnote.
+    const rows = c.store.eventLog({ name: "recall.decision" });
+    const payload = JSON.parse(rows[rows.length - 1]?.payload ?? "{}") as { footnotes?: { id: string; via?: string }[] };
+    expect(payload.footnotes?.find((f) => f.id === behind)?.via).toBe("link");
+    expect(payload.footnotes?.filter((f) => f.id !== behind).every((f) => f.via === undefined)).toBe(true);
+    const probe = probeOQ4(c.store.eventLog({ limit: 1_000 }).filter((r) => r.name === "recall.decision"));
+    expect(probe.decisions).toBe(1);
+    expect(probe.unparseable).toBe(0);
   });
 });
 
