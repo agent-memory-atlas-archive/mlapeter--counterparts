@@ -2484,6 +2484,35 @@ export class Store {
     return this.ops.all<DreamChangeRow>("SELECT * FROM dream_changes WHERE dream_id = ? ORDER BY seq", dreamId);
   }
 
+  /**
+   * OPEN CHANGES OF ONE KIND, across every dream that stands (2026-09-28,
+   * build B; the audit's #6): not undone, of a dream not undone, newest dream
+   * first — with the dream's date. Read by open state, not through a window of
+   * the newest N dreams, so a pair flagged eleven dreams ago is still open.
+   */
+  openDreamChanges(action: string, limit = 1_000): (DreamChangeRow & { dream_date: string | null })[] {
+    return this.ops.all<DreamChangeRow & { dream_date: string | null }>(
+      `SELECT c.*, d.date AS dream_date FROM dream_changes c JOIN dreams d ON d.id = c.dream_id
+        WHERE c.action = ? AND c.undone = 0 AND d.state != 'undone'
+        ORDER BY d.started_at DESC, d.rowid DESC, c.seq ASC LIMIT ?`,
+      action,
+      limit,
+    );
+  }
+
+  /**
+   * Reflections whose morning share is in this state, newest first (2026-09-28,
+   * build B): an offered share older than the newest few reflections is still
+   * found — read by state, not through a window.
+   */
+  reflectionsWithShare(shareState: string, limit = 50): ReflectionRow[] {
+    return this.ops.all<ReflectionRow>(
+      "SELECT * FROM reflections WHERE state = 'reflected' AND share_state = ? ORDER BY started_at DESC, rowid DESC LIMIT ?",
+      shareState,
+      limit,
+    );
+  }
+
   /** The day's ask row, when one was raised. */
   dreamAsk(date: string): DreamAskRow | undefined {
     return this.ops.get<DreamAskRow>("SELECT * FROM dream_asks WHERE date = ?", date);

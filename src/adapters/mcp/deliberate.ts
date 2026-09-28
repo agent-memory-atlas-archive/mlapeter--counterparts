@@ -24,6 +24,7 @@
  * into fuzzy search is how a precise question quietly becomes a vibe.
  */
 import type { Counterpart } from "../../core/counterpart.js";
+import { wireChars } from "../../core/fit/index.js";
 import { strength } from "../../core/physics/index.js";
 import { isConfidential, isSelfPage } from "../../core/recall/index.js";
 import type { CandidateVerdict, SemanticSource, Verdict } from "../../core/recall/index.js";
@@ -95,12 +96,32 @@ export const DELIBERATE_DIM_CAP = 5;
 
 /** Characters of body per memory in a LIST answer (the question path). */
 export const RECALL_EXCERPT_CHARS = 300;
-/** Characters of body per memory when the caller asked for it BY ID. */
-export const RECALL_BODY_CHARS = 4000;
-/** Total characters of memory content in one result, across every memory. */
+/**
+ * Characters of body per memory when the caller asked for it BY ID: ONE PART
+ * of it (2026-09-28, build B: was 4,000 with no way to read further). A longer
+ * body comes in parts — `part: 2`, `3`, … — so a dream's merge, a journal or a
+ * multi-chapter episode can be read whole through this door.
+ */
+export const RECALL_BODY_CHARS = 8_000;
+/** Total characters of memory content in one LIST (question) result, across every memory. */
 export const RECALL_RESULT_CHARS = 12_000;
-/** How many ids one `ids` call may expand. Effort, not enumeration. */
-export const RECALL_MAX_IDS = 3;
+/**
+ * THE BY-ID RESULT'S ROOM (2026-09-28; review of #278: a 40,000-character
+ * content cap came to 72,900 on the wire). Measured on the SERIALISED
+ * memories, as they leave — pretty-printed JSON, a non-ASCII character
+ * counted as three (`fit/wireChars`: the ceiling is in tokens) — and counted
+ * TWICE, because a result carries its payload as text and as
+ * `structuredContent` and a host may count both. About 19k tokens, under the
+ * ~25k-token ceiling with room for the rest of the result. Ids past it WAIT,
+ * named, for the next call.
+ */
+export const RECALL_ID_RESULT_CHARS = 56_000;
+/**
+ * How many ids one `ids` call may expand (2026-09-28: was 3). An index — a
+ * dream's, a reflection's — offers lines and names this lookup; a batch of
+ * them is the lookup's normal shape. Still effort, not enumeration.
+ */
+export const RECALL_MAX_IDS = 10;
 
 /** One memory as it goes on the wire: an excerpt, plus what was left off. */
 export interface BoundedMemory {
@@ -117,6 +138,9 @@ export interface BoundedMemory {
   /** True when `excerpt` is shorter than the body. */
   readonly truncated: boolean;
   readonly admittedUnder?: Verdict;
+  /** By id: which part of the body this is, and how many parts it has. */
+  readonly part?: number;
+  readonly parts?: number;
 }
 
 export interface BoundedResult {
@@ -127,6 +151,57 @@ export interface BoundedResult {
    *  preserved, so what is dropped is always the least activated. */
   readonly droppedForBudget: number;
   readonly chars: number;
+  /** By id: the ids the result had no room for, in the order asked — ask again for them. */
+  readonly waiting?: readonly string[];
+}
+
+/**
+ * BY ID, IN PARTS (2026-09-28, build B). Each body is read as parts of
+ * `pageChars`; `part` (from 1) picks which part of every body asked for. The
+ * parts are exact slices, so they join back into the whole. Ids past the total
+ * WAIT — named, in order — rather than being cut or dropped. The first always
+ * fits (a part is smaller than the total).
+ */
+export function boundById(
+  memories: readonly Recalled[],
+  part: number = 1,
+  pageChars: number = RECALL_BODY_CHARS,
+  totalChars: number = RECALL_ID_RESULT_CHARS,
+): BoundedResult {
+  const out: BoundedMemory[] = [];
+  const waiting: string[] = [];
+  let chars = 0;
+  let truncated = false;
+  const p = Number.isInteger(part) && part >= 1 ? part : 1;
+  let wire = 0;
+  for (const m of memories) {
+    const parts = Math.max(1, Math.ceil(m.body.length / pageChars));
+    const excerpt = p > parts ? "" : m.body.slice((p - 1) * pageChars, p * pageChars);
+    const item: BoundedMemory = {
+      id: m.id,
+      tier: m.tier,
+      kind: m.kind,
+      title: m.title,
+      journal: m.journal,
+      excerpt,
+      bodyChars: m.body.length,
+      truncated: parts > 1,
+      part: p,
+      parts,
+      ...(m.admittedUnder === undefined ? {} : { admittedUnder: m.admittedUnder }),
+    };
+    // As it leaves: serialised, weighted, both copies.
+    const cost = 2 * wireChars(JSON.stringify(item, null, 2));
+    if (waiting.length > 0 || (out.length > 0 && wire + cost > totalChars)) {
+      waiting.push(m.id);
+      continue;
+    }
+    if (parts > 1) truncated = true;
+    chars += excerpt.length;
+    wire += cost;
+    out.push(item);
+  }
+  return { memories: out, truncated, droppedForBudget: 0, chars, ...(waiting.length > 0 ? { waiting } : {}) };
 }
 
 function cut(body: string, limit: number): string {

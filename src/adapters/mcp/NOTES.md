@@ -758,3 +758,20 @@ poles, says "only when this memory really shows how you acted; most carry none" 
 "Don't make up depth", and says the nudges are shown on the dashboard only. The axis and
 pole enums in `tools.ts` are literal (the tools file imports nothing from the core); a
 test holds them equal to `TRAIT_AXES`.
+
+## 2026-09-28 — recall by id reads whole, in parts (build B, held lightly)
+
+By id, a body stopped at 4,000 characters with no way to read further, and the `budget` hint
+promised "full bodies". Now: `ids` takes up to `RECALL_MAX_IDS` (10, was 3) — an index's
+lines name this lookup, and a batch is its normal shape; each body comes a part of
+`RECALL_BODY_CHARS` (8,000) at a time (`part: 2, 3, …`; `part` and `parts` on each memory;
+the parts join back exactly); ids past `RECALL_ID_RESULT_CHARS` (40,000) wait, named, with the
+call that fetches them. The list path is unchanged. The `mcp.recall` row counts expansions an
+index offered only in part (`fromIndex`), per mechanism — `core/fit/`.
+
+After the adversarial review of #278 (2026-09-28): the by-id room is measured on the SERIALISED
+memories (pretty JSON, a non-ASCII character counted as three, both the text and the
+`structuredContent` copy counted — a host may count both), `RECALL_ID_RESULT_CHARS` 56,000 in
+those units; the old content cap came to ~73k on the wire. Lookups are counted from the ids the
+result DELIVERED, once per index; an id is fetched whole only when its last part went out.
+

@@ -2597,7 +2597,9 @@ const LOOKUP_WINDOW_DAYS = 14;
  * bundles show most memories as a line or an excerpt and name the lookup (the
  * recall tool, by id). This counts, over the last two weeks of lived days,
  * what each offered only in part and how many of those a receiver fetched
- * whole. If it stays near none, the lines are too thin or the instruction is
+ * whole — each id counted once per run's index (`fit/noteLookups`), from
+ * what the recall result delivered, so the rows' counts sum to distinct ids
+ * looked up. If it stays near none, the lines are too thin or the instruction is
  * unclear — the check against "we just truncated again". Informational:
  * green, with the numbers.
  */

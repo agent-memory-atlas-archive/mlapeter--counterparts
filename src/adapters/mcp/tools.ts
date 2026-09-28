@@ -449,8 +449,8 @@ const RECALL: ToolSpec = {
     },
     {
       claim:
-        `Pass ids to get a few of those memories in full. It takes up to ${RECALL_MAX_IDS}, each resolved as an exact address with the same confidentiality boundary, and the total stays bounded.`,
-      mechanizedBy: "src/adapters/mcp/deliberate.ts#expandIds (RECALL_MAX_IDS, expandHandle per id)",
+        `Pass ids to read those memories whole. It takes up to ${RECALL_MAX_IDS}, each resolved as an exact address with the same confidentiality boundary; a long body comes in parts, and ids past the result's room wait, named.`,
+      mechanizedBy: "src/adapters/mcp/deliberate.ts#expandIds (RECALL_MAX_IDS, expandHandle per id) + src/adapters/mcp/deliberate.ts#boundById (RECALL_BODY_CHARS parts, RECALL_ID_RESULT_CHARS)",
     },
     {
       claim:
@@ -485,7 +485,12 @@ const RECALL: ToolSpec = {
         // The cap is one number, imported. A literal here and a constant in
         // `deliberate.ts` is the drift the registry audit exists to prevent.
         maxItems: RECALL_MAX_IDS,
-        description: `Memory ids from an earlier result, to return in full. At most ${RECALL_MAX_IDS}. Not combinable with handle or question.`,
+        description: `Memory ids from an earlier result or an index (a dream's, a reflection's), to read whole — up to ${RECALL_MAX_IDS} at once. A long body comes in parts: see part. Not combinable with handle or question.`,
+      },
+      part: {
+        type: "integer",
+        minimum: 1,
+        description: "With ids or handle: which part of each body to return (1 is the first). A result says part and parts on each memory, and which part comes next.",
       },
     },
     required: [],

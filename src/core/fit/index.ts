@@ -362,6 +362,8 @@ export interface FitIndex {
    * run sends only what was added since. The mechanism's own bookkeeping.
    */
   readonly entries?: Readonly<Record<string, number>>;
+  /** Offered ids a lookup has reached at all (counted once each). */
+  readonly counted?: readonly string[];
   /** Entries below that count this run did not take — the next run sends them. */
   readonly unread?: Readonly<Record<string, readonly number[]>>;
 }
@@ -394,6 +396,7 @@ export function readIndex(store: Pick<Store, "getMeta">, mechanism: FitMechanism
       offered: { whole: ids(o["whole"]), excerpt: ids(o["excerpt"]), line: ids(o["line"]), id: ids(o["id"]) },
       ...(Array.isArray(v.parts) ? { parts: v.parts.map(ids) } : {}),
       looked: ids(v.looked),
+      counted: ids(v.counted),
       ...(v.entries !== undefined && v.entries !== null && typeof v.entries === "object"
         ? { entries: Object.fromEntries(Object.entries(v.entries).filter((e): e is [string, number] => typeof e[1] === "number")) }
         : {}),
@@ -424,9 +427,12 @@ export function offeredInPart(index: Pick<FitIndex, "offered">): number {
  * a change made from one reads as made from the whole text. Counts come back
  * per mechanism; zero mechanisms are left out. Never throws.
  */
-export function noteLookups(store: Pick<Store, "getMeta" | "setMeta" | "now" | "dream" | "reflection">, ids: readonly string[]): Partial<Record<FitMechanism, number>> {
+export function noteLookups(
+  store: Pick<Store, "getMeta" | "setMeta" | "now" | "dream" | "reflection">,
+  delivered: readonly { readonly id: string; readonly whole: boolean }[],
+): Partial<Record<FitMechanism, number>> {
   const out: Partial<Record<FitMechanism, number>> = {};
-  if (ids.length === 0) return out;
+  if (delivered.length === 0) return out;
   let now: number;
   try {
     now = store.now();
@@ -437,10 +443,18 @@ export function noteLookups(store: Pick<Store, "getMeta" | "setMeta" | "now" | "
     const index = readIndex(store, m);
     if (index === null || now - index.at > FIT_TUNABLES.LOOKUP_WINDOW_MS || !runOpen(store, m, index.ref, now)) continue;
     const inPart = new Set([...index.offered.excerpt, ...index.offered.line, ...index.offered.id]);
-    const hits = [...new Set(ids)].filter((id) => inPart.has(id));
-    if (hits.length === 0) continue;
-    out[m] = hits.length;
-    writeIndex(store, m, { ...index, looked: [...new Set([...(index.looked ?? []), ...hits])] });
+    const mine = delivered.filter((d) => inPart.has(d.id));
+    if (mine.length === 0) continue;
+    // COUNTED ONCE PER INDEX (review of #278): an id fetched in three parts,
+    // or asked for again, is one lookup — so the rows' counts sum to the
+    // distinct ids each run's index had looked up.
+    const counted = new Set(index.counted ?? []);
+    const fresh = [...new Set(mine.map((d) => d.id))].filter((id) => !counted.has(id));
+    // FETCHED WHOLE only when its last part was delivered.
+    const whole = mine.filter((d) => d.whole).map((d) => d.id);
+    if (fresh.length > 0) out[m] = fresh.length;
+    if (fresh.length === 0 && whole.every((id) => (index.looked ?? []).includes(id))) continue;
+    writeIndex(store, m, { ...index, counted: [...counted, ...fresh], looked: [...new Set([...(index.looked ?? []), ...whole])] });
   }
   return out;
 }
