@@ -347,6 +347,49 @@ describe("2. best-first across depths, a threshold stop, the node budget recorde
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// 3. A ceiling on the hop score: links suggest, they don't take over
+// ═══════════════════════════════════════════════════════════════════════════
+describe("3. the hop ceiling: at most HOP_CEILING × the candidate's own cue + semantic; pointers held lower", () => {
+  function scoredTurn(tunables: Partial<Parameters<typeof withTunables>[0]>, contribution: number) {
+    const { s, cued } = seeded();
+    const t = withTunables({ SPREAD_SEEDS: 0, ...tunables });
+    const turn = { text: TURN, day: 0, selfFelt: false, maxCandidates: 24, storeSize: 18 };
+    const plain = activate(s, turn, t).candidates.find((c) => c.id === cued);
+    const out = activate(s, { ...turn, spread: () => ({ contributions: [{ id: cued, activation: contribution }] }) }, t);
+    return { plain, hopped: out.candidates.find((c) => c.id === cued), spread: out.spread };
+  }
+
+  test("a contribution bigger than the candidate's own evidence is capped at it, and the cap is counted", () => {
+    const { plain, hopped, spread: stats } = scoredTurn({}, 1_000);
+    const own = (plain?.cue ?? 0) + (plain?.semantic ?? 0);
+    expect(own).toBeGreaterThan(0);
+    expect(hopped?.hops).toBeCloseTo(own * withTunables().HOP_CEILING, 10);
+    expect(hopped?.activation).toBeCloseTo((plain?.activation ?? 0) + own, 10);
+    expect(stats?.hopsCapped).toBe(1);
+  });
+
+  test("a contribution under the ceiling lands whole, and nothing is counted as capped", () => {
+    const { plain, hopped, spread: stats } = scoredTurn({}, 0.001);
+    expect(hopped?.hops).toBeCloseTo(0.001, 12);
+    expect(hopped?.activation).toBeCloseTo((plain?.activation ?? 0) + 0.001, 12);
+    expect(stats?.hopsCapped).toBe(0);
+  });
+
+  test("a pointer carries at most LINK_POINTER_CAP_FRACTION of the strongest seed, however many paths reach it", () => {
+    const { s, cued } = seeded();
+    const behind = s.put({ type: "memory", kind: "fact", body: FOREIGN[3] as string });
+    const t = withTunables();
+    const turn = { text: TURN, day: 0, selfFelt: false, maxCandidates: 24, storeSize: 18 };
+    const out = activate(s, { ...turn, spread: () => ({ contributions: [{ id: behind, activation: 1_000 }] }) }, t);
+    const strongest = Math.max(...out.candidates.filter((c) => c.linkOnly !== true).map((c) => c.activation));
+    const p = out.candidates.find((c) => c.id === behind);
+    expect(p?.linkOnly).toBe(true);
+    expect(p?.activation).toBeCloseTo(strongest * t.LINK_POINTER_CAP_FRACTION, 10);
+    expect(out.spread?.pointersCapped).toBe(1);
+    expect(out.candidates.some((c) => c.id === cued)).toBe(true);
+  });
+});
+// ═══════════════════════════════════════════════════════════════════════════
 // 4. Temporal contiguity — adjacent memories of one session, weakly linked
 // ═══════════════════════════════════════════════════════════════════════════
 describe("4. temporal contiguity: adjacent only, lag-weighted, forward where the order is real, flat in a batch", () => {
@@ -541,45 +584,35 @@ describe("4. temporal contiguity: adjacent only, lag-weighted, forward where the
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 3. A ceiling on the hop score: links suggest, they don't take over
+// 5. Index co-credit: ids expanded together from one lookup are one pair set
 // ═══════════════════════════════════════════════════════════════════════════
-describe("3. the hop ceiling: at most HOP_CEILING × the candidate's own cue + semantic; pointers held lower", () => {
-  function scoredTurn(tunables: Partial<Parameters<typeof withTunables>[0]>, contribution: number) {
-    const { s, cued } = seeded();
-    const t = withTunables({ SPREAD_SEEDS: 0, ...tunables });
-    const turn = { text: TURN, day: 0, selfFelt: false, maxCandidates: 24, storeSize: 18 };
-    const plain = activate(s, turn, t).candidates.find((c) => c.id === cued);
-    const out = activate(s, { ...turn, spread: () => ({ contributions: [{ id: cued, activation: contribution }] }) }, t);
-    return { plain, hopped: out.candidates.find((c) => c.id === cued), spread: out.spread };
-  }
-
-  test("a contribution bigger than the candidate's own evidence is capped at it, and the cap is counted", () => {
-    const { plain, hopped, spread: stats } = scoredTurn({}, 1_000);
-    const own = (plain?.cue ?? 0) + (plain?.semantic ?? 0);
-    expect(own).toBeGreaterThan(0);
-    expect(hopped?.hops).toBeCloseTo(own * withTunables().HOP_CEILING, 10);
-    expect(hopped?.activation).toBeCloseTo((plain?.activation ?? 0) + own, 10);
-    expect(stats?.hopsCapped).toBe(1);
-  });
-
-  test("a contribution under the ceiling lands whole, and nothing is counted as capped", () => {
-    const { plain, hopped, spread: stats } = scoredTurn({}, 0.001);
-    expect(hopped?.hops).toBeCloseTo(0.001, 12);
-    expect(hopped?.activation).toBeCloseTo((plain?.activation ?? 0) + 0.001, 12);
-    expect(stats?.hopsCapped).toBe(0);
-  });
-
-  test("a pointer carries at most LINK_POINTER_CAP_FRACTION of the strongest seed, however many paths reach it", () => {
-    const { s, cued } = seeded();
-    const behind = s.put({ type: "memory", kind: "fact", body: FOREIGN[3] as string });
-    const t = withTunables();
-    const turn = { text: TURN, day: 0, selfFelt: false, maxCandidates: 24, storeSize: 18 };
-    const out = activate(s, { ...turn, spread: () => ({ contributions: [{ id: behind, activation: 1_000 }] }) }, t);
-    const strongest = Math.max(...out.candidates.filter((c) => c.linkOnly !== true).map((c) => c.activation));
-    const p = out.candidates.find((c) => c.id === behind);
-    expect(p?.linkOnly).toBe(true);
-    expect(p?.activation).toBeCloseTo(strongest * t.LINK_POINTER_CAP_FRACTION, 10);
-    expect(out.spread?.pointersCapped).toBe(1);
-    expect(out.candidates.some((c) => c.id === cued)).toBe(true);
+describe("5. index co-credit: one batch lookup co-credits as a pair set, and the once-a-day rule does not block it", () => {
+  test("three ids read in one `recall ids:[…]` link pairwise, today's first time and again later the same day", async () => {
+    const c = Counterpart.open({ dir, owner: true });
+    brains.push(c);
+    const ids = ["An index line about the kiln.", "An index line about the glaze.", "An index line about the firing."].map((body) =>
+      c.store.put({ type: "memory", kind: "fact", body, physics: { birthDay: 0, lastUsedDay: 0 } }),
+    );
+    c.store.advanceClock("2026-09-28");
+    // The hook flattens one batch lookup's ids into the slice's expansions
+    // (`hooks.ts#creditAtBoundary`); the credit pass co-credits every use.
+    const first = c.creditReferences("s1", { assistantTurns: [], expansions: ids });
+    expect(first.credited).toBe(3);
+    expect(first.linkedDespite).toBe(0);
+    // Later the same lived day, the same three read together again: strength is
+    // credited once a day, links are not held to that (associate NOTES §13).
+    const again = c.creditReferences("s1", { assistantTurns: [], expansions: ids });
+    expect(again.credited).toBe(0);
+    expect(again.refused["already-credited-at-or-above"]).toBe(3);
+    expect(again.linkedDespite).toBe(3);
+    const applied = c.applyPendingAssociations();
+    expect(applied.reason).toBe("flushed");
+    // Two passes of three pairs each: every pair was credited twice.
+    expect(applied.pairs).toBe(6);
+    const [a, b, d] = ids as [string, string, string];
+    for (const [x, y] of [[a, b], [a, d], [b, d]] as const) {
+      expect(c.associate.weightAt(x, y)).toBeCloseTo(2 * ASSOCIATE_TUNABLES.HEBB_RATE, 10);
+    }
   });
 });
+
