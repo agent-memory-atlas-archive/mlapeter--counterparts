@@ -37,6 +37,7 @@ import {
   RECALL_BODY_CHARS,
   RECALL_EXCERPT_CHARS,
   RECALL_MAX_IDS,
+  RECALL_ID_RESULT_CHARS,
   RECALL_RESULT_CHARS,
   SERVER_VERSION,
   TOOLS,
@@ -141,6 +142,10 @@ function fingerprint(root: string, parts?: readonly string[]): string {
 
 function payload(result: ToolResult): Record<string, unknown> {
   return result.structuredContent;
+}
+
+function textOfResult(result: ToolResult): string {
+  return result.content[0]?.text ?? "";
 }
 
 /** Drive a list of already-framed lines through the real stdio pump. */
@@ -954,7 +959,7 @@ describe("recall — deliberate retrieval", () => {
     expect(result["considered"] as number).toBeLessThanOrEqual(RECALL_TUNABLES.MAX_CANDIDATES);
   });
 
-  test("ids expands a few of those in full, capped, and refuses a fourth", async () => {
+  test("ids expands a few of those in full, capped, and refuses one past the cap", async () => {
     const s = server();
     seed(s.counterpart);
     const bodies = [
@@ -976,8 +981,11 @@ describe("recall — deliberate retrieval", () => {
     for (const m of got) expect(m.truncated).toBe(false);
     expect(got.map((m) => m.excerpt).join("")).toContain("banneton");
 
-    // A fourth is a refusal by name, not a silent slice.
-    const four = payload(await s.call("recall", { ids }));
+    // One past the cap is a refusal by name, not a silent slice.
+    const extra = Array.from({ length: RECALL_MAX_IDS + 1 - ids.length }, (_, i) =>
+      s.counterpart.store.put({ type: "memory", kind: "skill", title: `Crumb ${i}`, body: `A crumb, number ${i}.` }),
+    );
+    const four = payload(await s.call("recall", { ids: [...ids, ...extra] }));
     expect(four["reason"]).toBe("ids-too-many");
     expect((four["memories"] as unknown[]).length).toBe(0);
     expect(four["refused"] as string).toContain(String(RECALL_MAX_IDS));
@@ -999,11 +1007,48 @@ describe("recall — deliberate retrieval", () => {
       s.counterpart.store.put({ type: "memory", kind: "fact", title: `Hub ${i}`, body: `${huge} ${i}` }),
     );
     const result = payload(await s.call("recall", { ids }));
-    expect(result["chars"] as number).toBeLessThanOrEqual(RECALL_RESULT_CHARS);
+    expect(result["chars"] as number).toBeLessThanOrEqual(RECALL_ID_RESULT_CHARS);
+    expect(textOfResult(await s.call("recall", { ids })).length).toBeLessThan(RECALL_ID_RESULT_CHARS * 1.3);
     expect(result["truncated"]).toBe(true);
     for (const m of result["memories"] as { excerpt: string }[]) {
       expect(m.excerpt.length).toBeLessThanOrEqual(RECALL_BODY_CHARS);
     }
+  });
+
+  test("by id, a long body is read whole in parts (build B, 2026-09-28): the parts join back into the body, and the result names the next", async () => {
+    const s = server();
+    seed(s.counterpart);
+    const body = Array.from({ length: 900 }, (_, i) => `Sentence ${i} of a long journal.`).join(" ");
+    const id = s.counterpart.store.put({ type: "memory", kind: "fact", title: "A long one", body });
+    const first = payload(await s.call("recall", { ids: [id] }));
+    const [m1] = first["memories"] as { excerpt: string; part: number; parts: number; bodyChars: number }[];
+    expect(m1?.part).toBe(1);
+    expect(m1?.bodyChars).toBe(body.length);
+    const parts = m1?.parts ?? 1;
+    expect(parts).toBe(Math.ceil(body.length / RECALL_BODY_CHARS));
+    expect(first["budget"] as string).toContain("part: 2");
+    let whole = m1?.excerpt ?? "";
+    for (let k = 2; k <= parts; k += 1) {
+      const r = payload(await s.call("recall", { ids: [id], part: k }));
+      whole += (r["memories"] as { excerpt: string }[])[0]?.excerpt ?? "";
+    }
+    expect(whole).toBe(body);
+    const bad = await s.call("recall", { ids: [id], part: 0 });
+    expect(bad.isError).toBe(true);
+  });
+
+  test("by id, ids past the result's room wait, named, rather than being cut", async () => {
+    const s = server();
+    seed(s.counterpart);
+    const big = "x".repeat(RECALL_BODY_CHARS);
+    const ids = Array.from({ length: 7 }, (_, i) => s.counterpart.store.put({ type: "memory", kind: "fact", title: `Big ${i}`, body: `${big}${i}` }));
+    const r = payload(await s.call("recall", { ids }));
+    const got = (r["memories"] as { id: string }[]).map((m) => m.id);
+    const waiting = r["waiting"] as string[];
+    expect(got.length).toBeGreaterThan(0);
+    expect(waiting.length).toBeGreaterThan(0);
+    expect([...got, ...waiting]).toEqual(ids);
+    expect(r["more"] as string).toContain(waiting[0] as string);
   });
 
   test("a chapter comes back, and comes back LABELED journal — on every path (I14)", async () => {

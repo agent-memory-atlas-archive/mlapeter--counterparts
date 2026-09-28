@@ -34,8 +34,6 @@ export const MIND_TUNABLES = {
   COMING_UP_DAYS: 14,
   /** Bytes of each item's line. */
   TEXT_CHARS: 200,
-  /** Flagged pairs are read from this many of the newest dreams. */
-  DREAMS_READ: 10,
 } as const;
 
 export interface MindItem {
@@ -103,16 +101,14 @@ export function mindRanked(store: Store, input: MindInput): { items: MindItem[];
   // UNSETTLED: flagged pairs, newest dream first, both still standing.
   try {
     let n = 0;
-    for (const dream of store.dreams({ limit: T.DREAMS_READ })) {
-      if (dream.state === "undone") continue;
-      for (const c of store.dreamChanges(dream.id)) {
-        if (c.action !== "contradiction" || c.undone === 1 || c.ref === null || c.ref2 === null) continue;
-        const a = words(c.ref);
-        const b = words(c.ref2);
-        if (a === null || b === null) continue;
-        push({ kind: "unsettled", text: `"${a}" / "${b}"`, ids: [c.ref, c.ref2] }, 1.5 - n * 0.001);
-        n += 1;
-      }
+    // By open state (2026-09-28): every flagged pair of a dream that stands.
+    for (const c of store.openDreamChanges("contradiction")) {
+      if (c.ref === null || c.ref2 === null) continue;
+      const a = words(c.ref);
+      const b = words(c.ref2);
+      if (a === null || b === null) continue;
+      push({ kind: "unsettled", text: `"${a}" / "${b}"`, ids: [c.ref, c.ref2] }, 1.5 - n * 0.001);
+      n += 1;
     }
   } catch {
     /* no dreams, nothing flagged */

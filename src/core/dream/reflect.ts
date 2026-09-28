@@ -957,7 +957,8 @@ export class Reflections {
     // ── returns: every memory it cited came back (once) ────────────────────
     const returned: { id: string; counted: boolean; reason: string }[] = [];
     const returnsLeft = Math.max(0, T.LIMITS.returns - used("returned"));
-    for (const id of [...new Set([...cites, ...shareCites, ...pageCites])].slice(0, returnsLeft)) {
+    const citedAll = [...new Set([...cites, ...shareCites, ...pageCites])];
+    for (const id of citedAll.slice(0, returnsLeft)) {
       // WHAT A DREAM OR A REFLECTION WROTE does not come back by being cited
       // here: a dream's gist rises only by proving true in an organic use
       // (the dream's own `dreamed-rises-only-awake`), and a reflection
@@ -975,6 +976,9 @@ export class Reflections {
         returned.push({ id, counted: false, reason: errName(err) });
       }
     }
+    // Cites past the night's returns are SAID (2026-09-28, build B): each is
+    // listed, not counted, with why — not left out without a word.
+    for (const id of citedAll.slice(returnsLeft)) returned.push({ id, counted: false, reason: "returns-limit-reached" });
 
     // ── (a) the entry ──────────────────────────────────────────────────────
     const priorTitle = typeof prior["title"] === "string" ? prior["title"] : null;
@@ -1318,7 +1322,9 @@ export class Reflections {
   /** The newest share offered and never told nor carried, from another session. A read. */
   pendingShare(input: { session: string }): ReflectionRow | null {
     if (this.ctx.observer) return null;
-    const row = this.store.reflections({ limit: 5 }).find((r) => r.state === "reflected" && r.share_state === "offered");
+    // By state (2026-09-28, build B): an offered share older than the newest
+    // five reflections is still found.
+    const row = this.store.reflectionsWithShare("offered", 1)[0];
     if (row === undefined || row.share === null || row.session === input.session) return null;
     // Not into a session that is not the owner's when it rests on something
     // confidential (review of #256, S2).

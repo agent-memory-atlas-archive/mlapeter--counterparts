@@ -84,7 +84,9 @@ import {
   RECALL_BODY_CHARS,
   RECALL_EXCERPT_CHARS,
   RECALL_MAX_IDS,
+  RECALL_ID_RESULT_CHARS,
   RECALL_RESULT_CHARS,
+  boundById,
   boundMemories,
   deliberateRecall,
   embedQuestion,
@@ -998,6 +1000,11 @@ export class McpServer {
     if (ids !== undefined && (!Array.isArray(ids) || ids.some((v) => typeof v !== "string"))) {
       return this.refuse("recall", "ids-not-a-string-array", {});
     }
+    // PARTS (2026-09-28): which part of each body asked for by id.
+    const part = args["part"];
+    if (part !== undefined && (typeof part !== "number" || !Number.isInteger(part) || part < 1)) {
+      return this.refuse("recall", "part-not-a-positive-integer", {});
+    }
     const askedIds = ((ids as string[] | undefined) ?? []).map((s) => s.trim()).filter((s) => s.length > 0);
     // IN LINE, and only for a question: the handle and `ids` paths are exact
     // addresses and embedding them would buy nothing but a round trip. A refusal
@@ -1033,7 +1040,7 @@ export class McpServer {
     // THE MEASUREMENT (2026-09-28): did this lookup fetch what a mechanism's
     // index offered only in part? Counted per mechanism, never the ids.
     const fromIndex = result.path === "handle" && result.memories.length > 0 ? this.lookupsFromIndex(result.memories.map((m) => m.id)) : {};
-    const payload = this.recallPayload(result);
+    const payload = this.recallPayload(result, typeof part === "number" ? part : 1);
     this.emit("mcp.recall", undefined, {
       path: result.path,
       reason: result.reason,
@@ -1227,12 +1234,12 @@ export class McpServer {
    * body as the total budget allows. See `deliberate.ts`'s size constants for
    * the measurement that set them.
    */
-  private recallPayload(result: DeliberateResult): Record<string, unknown> {
+  private recallPayload(result: DeliberateResult, part = 1): Record<string, unknown> {
     const byAddress = result.path === "handle";
-    const bounded = boundMemories(
-      result.memories,
-      byAddress ? RECALL_BODY_CHARS : RECALL_EXCERPT_CHARS,
-    );
+    // By address, IN PARTS (2026-09-28): each body a part at a time, the ids
+    // past the total waiting by name; a list, excerpts.
+    const bounded = byAddress ? boundById(result.memories, part) : boundMemories(result.memories, RECALL_EXCERPT_CHARS);
+    const lastPart = Math.max(1, ...bounded.memories.map((m) => m.parts ?? 1));
     return {
       path: result.path,
       reason: result.reason,
@@ -1253,7 +1260,15 @@ export class McpServer {
       ...(bounded.droppedForBudget > 0 ? { droppedForBudget: bounded.droppedForBudget } : {}),
       ...(bounded.truncated || bounded.droppedForBudget > 0
         ? {
-            budget: `Result bounded to ${RECALL_RESULT_CHARS} characters (${RECALL_EXCERPT_CHARS} per memory in a list, ${RECALL_BODY_CHARS} when asked for by id). Ask again with ids: [...] for up to ${RECALL_MAX_IDS} full bodies.`,
+            budget: byAddress
+              ? `By id, a body comes in parts of ${RECALL_BODY_CHARS} characters ("part" of "parts" on each; bodyChars is the whole length).${part < lastPart ? ` Ask again with the same ids and part: ${String(part + 1)} for the next.` : " That was the last part."}`
+              : `A list is bounded to ${RECALL_RESULT_CHARS} characters, ${RECALL_EXCERPT_CHARS} per memory. To read any whole, ask again with ids: [...] — up to ${RECALL_MAX_IDS} at once; a long body comes in parts (part: 2, 3, …).`,
+          }
+        : {}),
+      ...(bounded.waiting !== undefined
+        ? {
+            waiting: [...bounded.waiting],
+            more: `No room for ${String(bounded.waiting.length)} of the ids in one result (${RECALL_ID_RESULT_CHARS} characters): ask again with ids: [${bounded.waiting.join(", ")}].`,
           }
         : {}),
       ...(result.ambiguous.length > 0 ? { ambiguous: [...result.ambiguous] } : {}),

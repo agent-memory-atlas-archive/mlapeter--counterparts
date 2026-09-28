@@ -1310,24 +1310,23 @@ export class Dreams {
     if (this.ctx.observer) return [];
     const out: string[] = [];
     const owner = ownerNames(this.store);
-    for (const dream of this.store.dreams({ limit: 10 })) {
-      if (dream.state === "undone") continue;
-      for (const c of this.store.dreamChanges(dream.id)) {
-        if (c.action !== "contradiction" || c.undone === 1 || c.ref === null || c.ref2 === null) continue;
-        const key = `${RAISED_PREFIX}${dream.id}.${String(c.seq)}`;
-        if (this.store.getMeta(key) !== undefined) continue;
-        const a = this.store.row(c.ref);
-        const b = this.store.row(c.ref2);
-        if (a === undefined || b === undefined || !this.showable(a) || !this.showable(b)) continue;
-        this.store.setMeta(key, String(this.store.livedDay()));
-        const theirs = (r: MemoryRow): boolean => r.about === "us" || r.about === "owner" || namesOwner(this.store, r, owner);
-        const who = this.ctx.ownerName?.() ?? "the owner";
-        const raise = theirs(a) || theirs(b) ? ` It is about ${who}, or the two of you: raise it with ${who}.` : "";
-        out.push(
-          `Counterparts: a dream on ${dream.date ?? "a recent night"} flagged two memories that disagree — ${c.ref} and ${c.ref2}. Look them up (recall by id) and settle which holds, awake; the dream did not.${raise}`,
-        );
-        if (out.length >= 2) return out;
-      }
+    // BY OPEN STATE (2026-09-28, build B): every flagged pair of a dream that
+    // stands, not only the newest ten dreams'.
+    for (const c of this.store.openDreamChanges("contradiction")) {
+      if (c.ref === null || c.ref2 === null) continue;
+      const key = `${RAISED_PREFIX}${c.dream_id}.${String(c.seq)}`;
+      if (this.store.getMeta(key) !== undefined) continue;
+      const a = this.store.row(c.ref);
+      const b = this.store.row(c.ref2);
+      if (a === undefined || b === undefined || !this.showable(a) || !this.showable(b)) continue;
+      this.store.setMeta(key, String(this.store.livedDay()));
+      const theirs = (r: MemoryRow): boolean => r.about === "us" || r.about === "owner" || namesOwner(this.store, r, owner);
+      const who = this.ctx.ownerName?.() ?? "the owner";
+      const raise = theirs(a) || theirs(b) ? ` It is about ${who}, or the two of you: raise it with ${who}.` : "";
+      out.push(
+        `Counterparts: a dream on ${c.dream_date ?? "a recent night"} flagged two memories that disagree — ${c.ref} and ${c.ref2}. Look them up (recall by id) and settle which holds, awake; the dream did not.${raise}`,
+      );
+      if (out.length >= 2) return out;
     }
     void input;
     return out;

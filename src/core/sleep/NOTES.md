@@ -891,3 +891,14 @@ Held lightly.
   `coreDemoted`), which a read-only store satisfies. Consolidation reads the door once a
   night and hands it in (`acceptsReflectedFeeling` option); a caller that omits it reads
   the meta row per call.
+
+## 2026-09-28 — prune and decay resume where they stopped (build B, held lightly)
+
+The paragraph above left `decay` and `prune` without a cursor pending a measurement. The
+2026-09-28 audit (#4) took the other side: ids are random and `store.list()` is `ORDER BY
+id`, so past ~1,000 live memories the same slice is examined for pruning every night and the
+rest never is; graded forgetting only works if everything gets turned down. Both now keep a
+cursor the way `consolidate` does (`markers.ts`): start strictly after it, wrap, move only
+under `apply`. `dedup` (pairs, rebuilt each run) and `fade` (`schemas/`' own sweep) are
+unchanged; `log` needs none.
+

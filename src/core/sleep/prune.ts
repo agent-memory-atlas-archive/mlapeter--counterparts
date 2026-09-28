@@ -28,6 +28,11 @@ import { rowToPhysics } from "../store/operational.js";
 import { PRUNE_ARCHIVE_REASON, PRUNE_RECORD_PREFIX } from "./tunables.js";
 import type { MemoryRow, PhaseCtx, PhaseOutcome, PrunedRecord } from "./types.js";
 import { countSkip, emptyOutcome, isEntityCard, isJournal } from "./types.js";
+import type { Phase } from "./types.js";
+import { readCursor, resumeIndex, writeCursor } from "./markers.js";
+
+/** This phase's own name, for the cursor it keeps (typed: a rename fails `tsc`). */
+const PRUNE_PHASE: Phase = "prune";
 
 export interface PruneResult extends PhaseOutcome {
   readonly pruned: readonly PrunedRecord[];
@@ -77,15 +82,24 @@ export function runPrune(ctx: PhaseCtx): PruneResult {
   const { store, day } = ctx;
   const denied = new Set(store.deniedIds());
   const ids = store.list();
+  // WHERE THE LAST RUN STOPPED (2026-09-28, build B; the audit's #4). `store.list()`
+  // is `ORDER BY id` and ids are random, so without a resume point a budget
+  // smaller than the store examined the same slice every night and the rest
+  // never. Like `consolidate`: this run starts strictly after the cursor and
+  // wraps; the cursor moves only under `apply`.
+  const start = resumeIndex(ids, readCursor(store, PRUNE_PHASE));
+  const order = start === 0 ? ids : [...ids.slice(start), ...ids.slice(0, start)];
+  let stoppedAt: string | null = null;
 
   let index = 0;
-  for (const id of ids) {
+  for (const id of order) {
     if (out.examined >= ctx.budget) {
       out.budgetExhausted = true;
       out.skippedForBudget = ids.length - index;
       break;
     }
     index += 1;
+    stoppedAt = id;
     const row = store.row(id);
     if (row === undefined) continue;
     if (denied.has(id)) {
@@ -164,6 +178,7 @@ export function runPrune(ctx: PhaseCtx): PruneResult {
     ctx.step("item", { index, id });
   }
 
+  if (ctx.apply && stoppedAt !== null) writeCursor(store, PRUNE_PHASE, stoppedAt);
   return { ...out, pruned, blocked, recordFailures };
 }
 

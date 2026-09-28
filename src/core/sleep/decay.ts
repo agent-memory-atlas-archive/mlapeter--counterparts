@@ -70,6 +70,11 @@ import type { BandTransition, PhaseCtx, PhaseOutcome } from "./types.js";
 import { countSkip, emptyOutcome, isJournal, recordBandTransition } from "./types.js";
 import { censusDue, upgradeCensus } from "./upgrade.js";
 import type { StrengthCache, StrengthRow } from "./strength-cache.js";
+import type { Phase } from "./types.js";
+import { readCursor, resumeIndex, writeCursor } from "./markers.js";
+
+/** This phase's own name, for the cursor it keeps (typed: a rename fails `tsc`). */
+const DECAY_PHASE: Phase = "decay";
 
 /** Skip categories, enumerated so a zero is distinguishable from an absence. */
 export const DECAY_SKIPS = [
@@ -133,15 +138,24 @@ export function runDecay(ctx: PhaseCtx, cache: StrengthCache | null): DecayResul
   const transitions: BandTransition[] = [];
   let bandsReconciled = 0;
   const ids = store.list();
+  // WHERE THE LAST RUN STOPPED (2026-09-28, build B; the audit's #4). `store.list()`
+  // is `ORDER BY id` and ids are random, so without a resume point a budget
+  // smaller than the store examined the same slice every night and the rest
+  // never. Like `consolidate`: this run starts strictly after the cursor and
+  // wraps; the cursor moves only under `apply`.
+  const start = resumeIndex(ids, readCursor(store, DECAY_PHASE));
+  const order = start === 0 ? ids : [...ids.slice(start), ...ids.slice(0, start)];
+  let stoppedAt: string | null = null;
 
   let index = 0;
-  for (const id of ids) {
+  for (const id of order) {
     if (out.examined >= ctx.budget) {
       out.budgetExhausted = true;
       out.skippedForBudget = ids.length - index;
       break;
     }
     index += 1;
+    stoppedAt = id;
     const row = store.row(id);
     if (row === undefined) continue;
     if (denied.has(id)) {
@@ -244,5 +258,6 @@ export function runDecay(ctx: PhaseCtx, cache: StrengthCache | null): DecayResul
       day,
     });
   }
+  if (ctx.apply && stoppedAt !== null) writeCursor(store, DECAY_PHASE, stoppedAt);
   return { ...out, reconciled: bandsReconciled, written, transitions, bandsReconciled };
 }
