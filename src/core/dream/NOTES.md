@@ -318,3 +318,32 @@ writer, the dream and the reflection. What the build learned:
    reflection and its dream, and no longer records a page-writer run: that row existed to
    stand the old session-start writer down, and with the writer in the same run it would
    say the writer revised on a night it may have refused.
+
+## 2026-09-28 — after the adversarial review of #271
+
+- A dream that began, changed nothing and went quiet no longer counts as "a dream
+  followed the launch": the line goes out again, and `begin` closes it and opens a fresh
+  one.
+- A resumed dream's start moves to the moment it resumed (`updateDream` takes
+  `startedAt`): it reads as busy at once, so another session cannot take it over, and the
+  next dream's "new since" counts from there (the resumed bundle carried what came before).
+- The writer's claim labels a `self_page` write only when the call NAMES the claimed
+  session — never the session the server happens to be bound to (the run binds it
+  early, and the owner's own page edit in that session is an ordinary amendment). When
+  the run moves past the writer without a write, the dream's `begin` (or the
+  reflection's) answers the night `nothing-to-say`.
+- `launch` marks the day `launched` (claiming it, or flipping an accepted `ask`), so a run
+  that dies before its dream begins is started again under either setting.
+- A dream journaled today whose reflection never finished: the next line starts the
+  REFLECTION alone (`reflect launch` with the dream id; `reflect begin` accepts another
+  session's dream once it has been quiet `ABANDONED_AFTER_MS`), under the same latch and
+  cap.
+- The relaunch count is one meta key, `<date>:<n>`, overwritten by a new day.
+- The reflection's result is measured as it leaves the MCP server (the bundle re-escaped
+  inside the result's JSON, beside `how` and the questions): `RESULT_CHARS` 54,000 and
+  `PART_CHARS` 24,000 of that text. Tested at the real limit. A part still fetches after
+  a finish. Not changed here: the DREAM's own begin result can pass 60,000 characters on a
+  busy night (seen in that test) — PR B's fitter.
+- Headless runs (`claude -p`) still get the `auto` line: the hook cannot tell one that
+  will exit from an interactive session reliably, and the 30-minute relaunch recovers a
+  run that died with it.

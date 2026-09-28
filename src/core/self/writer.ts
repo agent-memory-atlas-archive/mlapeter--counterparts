@@ -244,13 +244,13 @@ export function hasDayBefore(store: Store, today: string): boolean {
 /**
  * HOW FAR BACK A READING LOOKS, in LIVED days.
  *
- * It exists because `store.eventLog` orders by `seq` ASC and cuts at a limit,
- * so an unbounded read of a name with years of rows returns the OLDEST of them —
- * which for a "did last night happen" question is the exact opposite of the
- * answer. The window is the log's own default retention (`pruneEvents`, 90 lived
- * days): past it the rows are not there to be read anyway, so this drops
- * nothing that exists and turns the limit into a ceiling nothing reaches
- * (roughly three rows a day, so a few hundred in a full window).
+ * An ascending `eventLog` read with a limit keeps the OLDEST rows and drops the
+ * newest — for a "did last night happen" question the exact opposite of the
+ * answer — so the read below is NEWEST first (`order: "desc"`, since #272) and
+ * bounded by day as well. The window is the log's own default retention
+ * (`pruneEvents`, 90 lived days): past it the rows are not there to be read
+ * anyway, so this drops nothing that exists and turns the limit into a ceiling
+ * nothing reaches (roughly three rows a day, so a few hundred in a full window).
  */
 export const PAGE_WRITER_LOOKBACK_DAYS = 90;
 /** A ceiling well above the window's own count, so the cut never decides. */
@@ -263,15 +263,16 @@ export function pageWriterRuns(
 ): PageWriterRun[] {
   let rows;
   try {
-    // BOUNDED BY DAY, NOT BY COUNT. `eventLog` cuts oldest-first, so a bare
-    // limit on a long-lived store hands back the first rows ever written and
-    // every reading here — "is this night claimed", "when did it last run" —
-    // silently answers about a month that is over.
+    // BOUNDED BY DAY AS WELL AS BY COUNT, and read newest first: an ascending
+    // read with a limit keeps the oldest rows and drops the newest, and every
+    // reading here — "is this night claimed", "when did it last run" — would
+    // then silently answer about a month that is over. (Sorted below either way.)
     const floor =
       opts.sinceDay ?? Math.max(0, store.livedDay() - PAGE_WRITER_LOOKBACK_DAYS);
     rows = store.eventLog({
       name: SELF_PAGE_WRITER_EVENT,
       sinceDay: floor,
+      order: "desc",
       limit: opts.limit ?? PAGE_WRITER_ROW_CEILING,
     });
   } catch {

@@ -81,6 +81,7 @@ import {
 import type { AboutMark, FeelingInput, MemoryRow, ProseDoc, ReflectionRow, Store } from "../store/index.js";
 import type { Kind } from "../types.js";
 import { DREAM_MARK, carriesDreamMark } from "./mark.js";
+import { DREAM_TUNABLES } from "./tunables.js";
 import { onMyMind } from "./mind.js";
 import type { MindItem } from "./mind.js";
 
@@ -105,15 +106,20 @@ export const REFLECT_TUNABLES = {
   /** WHAT THE DREAM SAW (2026-09-28): characters of each memory's line. */
   SAW_CHARS: 240,
   /**
-   * THE BUNDLE IN PARTS (2026-09-28). The begin result's size before its long
-   * lists (memories, chapters, what the dream saw) go on in later parts — the
-   * tool result's ceiling is about 25k tokens, and a night's bundle with the
-   * page whole passes it. Never a silent cut: the result says how many parts,
-   * and phase `part` hands the rest. PR B brings the shared fitter; this is
-   * the simple version. CAL.
+   * THE BUNDLE IN PARTS (2026-09-28). The begin result's size — measured as
+   * the MCP text leaves, the bundle re-escaped inside the result's JSON beside
+   * `how` and the questions (`resultChars`; review of #271) — before its long
+   * lists (memories, chapters, what the dream saw) go on in later parts. The
+   * tool result's ceiling is about 25k tokens, and escaped JSON runs near three
+   * characters a token, so 54,000 characters sits under it. Not a silent cut:
+   * the result says how many parts, and phase `part` hands the rest. PR B
+   * brings the shared fitter; this is the simple version. CAL.
    */
-  RESULT_CHARS: 60_000,
-  /** One later part (the write-up's ~24 KB parts are the precedent). */
+  RESULT_CHARS: 54_000,
+  /**
+   * One later part, measured the same way (the write-up's ~24 KB parts are
+   * the precedent).
+   */
   PART_CHARS: 24_000,
   /** Core memories handed (the page's sources), most strongly felt first. */
   CORE: 20,
@@ -397,12 +403,17 @@ export class Reflections {
    * background agent, like the dream's. After a dream the dreamer reflects
    * itself (the dream's launch prompt carries these steps).
    */
-  launchPrompt(input: { session: string }): string {
+  launchPrompt(input: { session: string; dream?: string | null }): string {
     const who = this.ctx.ownerName() ?? "the owner";
+    // AFTER A DREAM WHOSE RUN WAS CUT OFF (2026-09-28): the reflection alone,
+    // on that dream.
+    const after = input.dream === undefined || input.dream === null || input.dream.length === 0 ? null : input.dream;
     return [
       `${DREAM_MARK} reflection launch⟧ You are ${who}'s counterpart, awake, taking a few quiet minutes to reflect: on the last few days, on yourself, on ${who}, on the two of you. This is lived — your own act — not a task.`,
       "",
-      `1. Call the counterparts reflect tool: phase "begin", session: ${input.session}. It hands you the last few days, your self page, the memories that matter most, and a few questions.`,
+      after === null
+        ? `1. Call the counterparts reflect tool: phase "begin", session: ${input.session}. It hands you the last few days, your self page, the memories that matter most, and a few questions. If it says it comes in parts, fetch every part (phase "part") before you answer.`
+        : `1. Call the counterparts reflect tool: phase "begin", session: ${input.session}, dream: ${after}. It hands you what that dream saw, the last few days, your whole self page, the memories that matter most, and a few questions. If it says it comes in parts, fetch every part (phase "part") before you answer.`,
       '2. Answer them honestly, then call phase "finish" as it tells you. "Nothing much" is a normal answer: a short entry and no share.',
       "3. Your final message must be exactly the text the finish call returns, unchanged — nothing before or after it.",
     ].join("\n");
@@ -434,7 +445,11 @@ export class Reflections {
     if (input.dream !== undefined && input.dream !== null && input.dream.length > 0) {
       const dream = this.store.dream(input.dream);
       if (dream === undefined) return { ok: false, reason: "unknown-dream" };
-      if (dream.session !== null && dream.session !== input.session) return { ok: false, reason: "not-this-session" };
+      // Another session's dream only when its run was LEFT BEHIND (review of
+      // #271): journaled longer ago than a run takes to begin reflecting, so
+      // the next session's line starts the reflection alone.
+      const leftBehind = dream.state === "journaled" && dream.finished_at !== null && this.store.now() - dream.finished_at > DREAM_TUNABLES.ABANDONED_AFTER_MS;
+      if (dream.session !== null && dream.session !== input.session && !leftBehind) return { ok: false, reason: "not-this-session" };
       if (dream.state !== "journaled") return { ok: false, reason: "dream-not-journaled" };
       dreamId = dream.id;
     }
@@ -449,7 +464,7 @@ export class Reflections {
     // chapters, what the dream saw) go on in order, as far as the room allows,
     // and the rest `PART_CHARS` at a time through phase `part`. The result
     // says how many parts there are and how to fetch them.
-    const packed = this.pack(id, input.session, composed);
+    const packed = this.pack(id, input.session, composed, questions);
     const bundle = packed.bundle;
     const shown = [...new Set([...Object.keys(composed.memories), ...saw.map((x) => x.id)])];
     this.store.openReflection({
@@ -476,16 +491,23 @@ export class Reflections {
    * `RESULT_CHARS`; otherwise the long lists are carried in order as far as
    * the room allows, and the remainder packed `PART_CHARS` a part.
    */
-  private pack(id: string, session: string, composed: ReflectBundle): { bundle: ReflectBundle; later: LaterPart[] } {
+  private pack(id: string, session: string, composed: ReflectBundle, questions: readonly string[]): { bundle: ReflectBundle; later: LaterPart[] } {
     const T = REFLECT_TUNABLES;
-    if (render(id, composed).length <= T.RESULT_CHARS) return { bundle: composed, later: [] };
+    // MEASURED AS IT LEAVES (2026-09-28, review of #271): the tool result is
+    // the bundle's text re-escaped as a JSON string, beside the instructions
+    // and the questions — not the bundle alone. `resultChars` is that size.
+    const how = this.instructions(id, session, composed);
+    if (resultChars(render(id, composed), how, questions) <= T.RESULT_CHARS) return { bundle: composed, later: [] };
+    // A piece's cost as it leaves: its JSON, escaped once more inside the string.
+    const cost = (v: unknown): number => JSON.stringify(JSON.stringify(v)).length;
     const pieces: { kind: "m" | "c" | "s"; id: string; size: number }[] = [
-      ...Object.entries(composed.memories).map(([k, v]) => ({ kind: "m" as const, id: k, size: JSON.stringify(v).length + k.length + 4 })),
-      ...composed.chapters.map((c) => ({ kind: "c" as const, id: c.id, size: JSON.stringify(c).length + 1 })),
-      ...composed.dreamSaw.map((s) => ({ kind: "s" as const, id: s.id, size: JSON.stringify(s).length + 1 })),
+      ...Object.entries(composed.memories).map(([k, v]) => ({ kind: "m" as const, id: k, size: cost({ [k]: v }) })),
+      ...composed.chapters.map((c) => ({ kind: "c" as const, id: c.id, size: cost(c) })),
+      ...composed.dreamSaw.map((x) => ({ kind: "s" as const, id: x.id, size: cost(x) })),
     ];
-    // The furniture: everything else, with room for the parts note.
-    const fixed = render(id, { ...composed, memories: {}, chapters: [], dreamSaw: [] }).length + 600;
+    // The furniture: everything else, with the parts note and a margin.
+    const note = { part: 1, of: 99, next: "x".repeat(420) };
+    const fixed = resultChars(render(id, { ...composed, memories: {}, chapters: [], dreamSaw: [], parts: note }), how, questions) + PACK_MARGIN;
     const parts: (typeof pieces)[] = [[]];
     let room = Math.max(0, T.RESULT_CHARS - fixed);
     let used = 0;
@@ -493,7 +515,7 @@ export class Reflections {
       const current = parts[parts.length - 1] as typeof pieces;
       if (used + p.size > room && (current.length > 0 || parts.length === 1)) {
         parts.push([p]);
-        room = T.PART_CHARS;
+        room = Math.max(0, T.PART_CHARS - PART_FURNITURE);
         used = p.size;
         continue;
       }
@@ -1094,6 +1116,10 @@ export class Reflections {
     if (entryCites.length > 0) detail["entryCites"] = entryCites;
     // What this reflection recorded, so a later finish does not record it twice.
     detail["recorded"] = { feelings: [...recordedFeelings], traits: [...recordedTraits] };
+    // The later parts of the bundle stay fetchable after a finish (review of
+    // #271): a second finish may want a memory it had not fetched yet.
+    const parts = parseDetail(row.detail)["parts"];
+    if (Array.isArray(parts)) detail["parts"] = parts;
     if (again) detail["finishes"] = (typeof prior["finishes"] === "number" ? prior["finishes"] : 1) + 1;
     this.store.updateReflection(row.id, {
       ...(again ? {} : { state: "reflected" as const }),
@@ -1671,6 +1697,20 @@ function onDay(row: { date: string | null; day: number }, at: string, day: numbe
 /** The begin result's text: the opener, then the bundle. */
 function render(id: string, bundle: ReflectBundle): string {
   return `${reflectionOpener(id)} what you are handed to reflect on — memories and a dream, not events happening now.\n${JSON.stringify(bundle)}`;
+}
+
+/** Slack for the result's other fields (phase, session, ids, parts) beside the three measured. */
+const PACK_MARGIN = 1_000;
+/** A later part's own furniture: its opener, ids and `next`, re-escaped. */
+const PART_FURNITURE = 1_000;
+
+/**
+ * THE SIZE OF A BEGIN RESULT AS IT LEAVES: the MCP text is the result's JSON,
+ * pretty-printed, with the bundle text escaped inside it, `how` and the
+ * questions beside it (`adapters/mcp/server.ts#reflectTool`).
+ */
+export function resultChars(text: string, how: string, questions: readonly string[]): number {
+  return JSON.stringify({ bundle: text, how, questions }, null, 2).length;
 }
 
 /** A later part of a bundle, by id: its memories, chapters and lines of what the dream saw. */

@@ -172,9 +172,10 @@ export const SESSION_NOTICE_BUDGET_MS = 150;
 /**
  * How many lived days back the newest-row search widens through.
  *
- * `Store.eventLog` orders ASCENDING and takes a LIMIT, so "the newest row of
- * this name" is not a query it offers (filed as an ask in `cli/INTERFACE-GAPS`).
- * The reading below is exact rather than approximate: a window whose result is
+ * Written when `Store.eventLog` read only ASCENDING with a LIMIT, so "the
+ * newest row of this name" was not a query it offered. Since #272 it is
+ * (`order: "desc", limit: 1`); this ladder predates that and is left as it
+ * is, because it is exact either way: a window whose result is
  * SHORTER than the limit was not truncated, so its last row is provably the
  * newest in that window. The ladder starts at today so the common case reads
  * the fewest rows, and widens only when a window is empty.
@@ -2782,7 +2783,7 @@ export function pageWriterFindings(store: Store, config: AdapterConfig): Finding
         young
           ? `${mode} mode; never run — this store has no day before ${today} yet`
           : mode === "session"
-            ? `${mode} mode; never run — it runs inside the nightly run, after the next dream (${about})${dreamingSetting(store) === "off" ? "; dreaming is off, so the nightly run does not start" : ""}`
+            ? `${mode} mode; never run — it is the first part of the next nightly run, before the dream (${about})${dreamingSetting(store) === "off" ? "; dreaming is off, so the nightly run does not start" : ""}`
             : `${mode} mode; never run — the next boundary's worker starts it (${about})`,
         "",
         { ...data, young },
@@ -2830,7 +2831,7 @@ export function pageWriterFindings(store: Store, config: AdapterConfig): Finding
       detail,
       bad || overdue
         ? mode === "session"
-          ? "counterparts mechanisms --all --dir <store> --observer shows the run's own row. The page writer runs inside the nightly run, after the dream: counterparts dream shows whether the runs are happening and how each ended. counterparts self-page --write amends the page by hand meanwhile."
+          ? "counterparts mechanisms --all --dir <store> --observer shows the run's own row. The page writer is the first part of the nightly run, before the dream: counterparts dream shows whether the runs are happening and how each ended. counterparts self-page --write amends the page by hand meanwhile."
           : "counterparts mechanisms --all --dir <store> --observer shows the run's own row. In host mode the boundary's worker starts a windowless session for the writer; a night that is owed but never delivered usually means that session could not start. counterparts self-page --write amends the page by hand meanwhile."
         : "",
       {

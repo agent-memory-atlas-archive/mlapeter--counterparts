@@ -60,8 +60,8 @@ export const SELF_PAGE_REFUSED_EVENT = "self.page.refused";
  * WHO WROTE THIS REVISION, and the distinction is the reason the field exists:
  * a page the owner typed and a page a nightly writer composed are both
  * legitimate and are not the same claim. `writer` is the nightly writer —
- * sleep's quiet self-update (S2; since 2026-09-28 the middle of the nightly
- * run). `reflection` (2026-09-28) is the reflection after it — waking up and
+ * sleep's quiet self-update (S2; since 2026-09-28 the first part of the
+ * nightly run). `reflection` (2026-09-28) is the run's last part — waking up and
  * thinking about yourself — which had written as `writer` until then: two jobs,
  * both allowed to write the page for now, told apart in the version history.
  * The label is stored in the page's own meta, so a new one needs no schema.

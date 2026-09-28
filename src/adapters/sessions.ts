@@ -202,6 +202,11 @@ export interface SessionRecord {
    *     rather than a boolean so a stale mark cannot re-label tomorrow's write.
    *
    * Still host state, still no content: one date beside the id and the scope.
+   *
+   * NOTHING WRITES IT since 2026-09-28: the SessionStart writer ask was retired
+   * and the writer runs inside the nightly run, whose claim is a store row
+   * naming the session (`self/writer.ts#nightClaimFor`). A mark on an older
+   * record is still read, and only while its night's claim is open.
    */
   readonly pageWriterFor?: string;
   /**

@@ -1137,7 +1137,7 @@ const REFLECT: ToolSpec = {
         description: "`part`: which part of the bundle to fetch (2 and up), when `begin` said it came in parts.",
       },
       session: { type: "string", description: "The session this reflection belongs to." },
-      dream: { type: "string", description: "`begin`, after a dream: the dream id it follows." },
+      dream: { type: "string", description: "`begin`, after a dream: the dream id it follows. `launch` too, when the line says a run was cut off before it reflected." },
       reflection: {
         type: "string",
         description:

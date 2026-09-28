@@ -2792,7 +2792,24 @@ export class Counterpart {
       const open = this.self.nightClaimFor(input.session);
       if (open !== null) return { claimed: true, about: open.about, reason: "claimed-earlier" };
       const due = this.self.pageWriterDue({ mode: "session" });
-      if (!due.due) return { claimed: false, about: due.about, reason: due.reason };
+      if (!due.due) {
+        // A NIGHT THE WRITER LOOKED AT AND HAD NOTHING TO READ is written down
+        // (review of #271): a `skipped` row, which never closes a night, so
+        // doctor does not read a store used every other day as a writer that
+        // stopped. One per night and reason.
+        if (due.reason === "no-memories" || due.reason === "asks-spent") {
+          this.self.recordPageWriterRun({
+            about: due.about,
+            mode: "session",
+            outcome: "skipped",
+            detail: due.reason,
+            session: input.session,
+            run: input.run,
+            dedupKey: `self.page.writer.ran:night:${due.about}:${due.reason}`,
+          });
+        }
+        return { claimed: false, about: due.about, reason: due.reason };
+      }
       const built = this.pageWriterInput({ about: due.about, budgetBytes: NIGHT_WRITER_MEMORY_BYTES, max: NIGHT_WRITER_MEMORY_MAX });
       const ok = this.self.recordPageWriterRun({
         about: due.about,
@@ -2808,6 +2825,37 @@ export class Counterpart {
       return { claimed: ok, about: due.about, reason: ok ? "claimed" : "unrecorded" };
     } catch (err) {
       return { claimed: false, about: "", reason: err instanceof Error ? err.name : "UNKNOWN" };
+    }
+  }
+
+  /**
+   * THE RUN MOVED PAST THE WRITER WITHOUT A WRITE (review of #271): this
+   * session's open claim is closed as `nothing-to-say`, so the night is
+   * answered and a later `self_page` write by the session is an ordinary
+   * amendment, not the writer's. Called at the phase after the writer (the
+   * dream's `begin`, the reflection's `begin`). Nothing when there is no open
+   * claim — the writer wrote, or never claimed. Never throws.
+   */
+  closeNightWriter(input: { session: string; phase: string }): boolean {
+    try {
+      if (this.observer) return false;
+      const open = this.self.nightClaimFor(input.session);
+      if (open === null) return false;
+      const page = this.self.page();
+      return this.self.recordPageWriterRun({
+        about: open.about,
+        mode: open.mode,
+        outcome: "nothing-to-say",
+        detail: `the run moved on to ${input.phase} without writing`,
+        bytesBefore: open.bytesBefore,
+        bytesAfter: page === null ? 0 : byteLength(page.body),
+        considered: open.considered,
+        omitted: open.omitted,
+        session: input.session,
+        run: open.run,
+      });
+    } catch {
+      return false;
     }
   }
 

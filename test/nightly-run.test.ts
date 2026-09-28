@@ -19,8 +19,8 @@ import { run } from "../src/adapters/cli/index.js";
 import { McpServer } from "../src/adapters/mcp/index.js";
 import { recordSession } from "../src/adapters/sessions.js";
 import { Counterpart } from "../src/core/counterpart.js";
-import { DREAMING_SETTING_KEY, DREAM_TUNABLES, REFLECT_TUNABLES, dreamingSetting, nightNext, nightOrder } from "../src/core/dream/index.js";
-import { pageSections } from "../src/core/self/index.js";
+import { DREAMING_SETTING_KEY, DREAM_TUNABLES, REFLECT_TUNABLES, RELAUNCHED_KEY, dreamingSetting, nightNext, nightOrder } from "../src/core/dream/index.js";
+import { dayBefore, pageSections, pageWriterNight } from "../src/core/self/index.js";
 import type { PutInput } from "../src/core/store/index.js";
 
 let dir: string;
@@ -429,6 +429,203 @@ describe("the reflection sees what the dream saw, and the whole page", () => {
     expect(page?.reason).toContain(r.bundle.reflection);
     expect(c.pageWriterRuns()).toEqual([]);
   });
+});
+
+// ---------------------------------------------------------------------------
+// the review of #271
+// ---------------------------------------------------------------------------
+
+function textOf(res: { content?: readonly { text?: string }[] }): string {
+  return res.content?.[0]?.text ?? "";
+}
+
+/** Memories learned on the night the writer will read. */
+function seedYesterday(c: Counterpart, bodies: readonly string[]): void {
+  const about = pageWriterNight(c.store).about;
+  for (const body of bodies) c.store.put({ type: "memory", kind: "fact", body, learnedOn: about });
+}
+
+describe("review of #271: a run left behind, and the writer's claim", () => {
+  test("A: a dream that began, changed nothing and died does NOT use up the day — the line goes out again and a fresh dream opens", () => {
+    const c = brain();
+    lived(c);
+    const today = c.store.today();
+    expect(c.dreams.askLine({ at: today, session: "s-a" })).not.toBeNull();
+    const dead = c.dreams.begin({ session: "s-a" });
+    if (!dead.ok) throw new Error(dead.reason);
+    // It changed nothing, and its session closed.
+    offsetMs += DREAM_TUNABLES.ABANDONED_AFTER_MS + 60_000;
+    expect(c.dreams.status(today).reason).toBe("due");
+    expect(c.dreams.askLine({ at: today, session: "s-b" })).not.toBeNull();
+    const fresh = c.dreams.begin({ session: "s-b" });
+    if (!fresh.ok) throw new Error(fresh.reason);
+    expect(fresh.resumed).toBe(false);
+    expect(fresh.bundle.dream).not.toBe(dead.bundle.dream);
+    expect(c.store.dream(dead.bundle.dream)?.state).toBe("undone");
+  });
+
+  test("B: a resumed dream is busy again at once — another session cannot take it, and the agent that resumed it keeps it", () => {
+    const c = brain();
+    const ids = lived(c);
+    const a = c.dreams.begin({ session: "s-a" });
+    if (!a.ok) throw new Error(a.reason);
+    c.dreams.propose({ dream: a.bundle.dream, session: "s-a", changes: [{ action: "link", a: ids[0] as string, b: ids[1] as string }] });
+    offsetMs += DREAM_TUNABLES.ABANDONED_AFTER_MS + 60_000;
+    const b = c.dreams.begin({ session: "s-b" });
+    if (!b.ok) throw new Error(b.reason);
+    expect(b.resumed).toBe(true);
+    const started = c.store.dream(a.bundle.dream)?.started_at ?? 0;
+    expect(started).toBeGreaterThan(Date.now() + offsetMs - 5_000);
+    // A third session a minute later: the run is under way.
+    offsetMs += 60_000;
+    expect(c.dreams.begin({ session: "s-c" })).toEqual({ ok: false, reason: "dreaming-now" });
+    expect(c.dreams.status(c.store.today()).reason).toBe("dreaming-now");
+    // The resuming agent goes on as its own.
+    const more = c.dreams.propose({ dream: a.bundle.dream, session: "s-b", changes: [{ action: "replayed", id: ids[2] as string }] });
+    expect(more.ok).toBe(true);
+    // "New since" for the next dream counts from the resume.
+    const later = mem(c, "Learned after the resumed dream began.");
+    expect(c.store.newMemoryIds({ sinceAt: started, sinceDay: c.store.livedDay(), limit: 10 })).toEqual([later]);
+  });
+
+  test("D(a): with the night's claim open, a page write that does not NAME the session is the session's, even on a server the run bound", async () => {
+    const c = brain();
+    seedYesterday(c, ["A placeholder thing noticed yesterday."]);
+    const s = server(c, SESSION);
+    const w = await s.call("dream", { phase: "writer", session: SESSION });
+    expect(w.structuredContent["writer"]).toBe(true);
+    // The run's call bound the server to SESSION; the owner now asks the
+    // session to edit the page, and the call names no session.
+    expect(s.session).toBe(SESSION);
+    await s.call("self_page", { body: "## Core\n\nThe owner's edit.", reason: "the owner asked" });
+    expect(c.selfPage()?.by).toBe("session");
+    // The writer, naming the session, is still the writer.
+    const version = c.selfPage()?.version ?? -1;
+    await s.call("self_page", { body: "## Core\n\nThe night's revision.", reason: "the night", session: SESSION, ifVersion: version });
+    expect(c.selfPage()?.by).toBe("writer");
+  });
+
+  test("D(b): the run moving on from the writer without a write answers the night `nothing-to-say`, and a later page write is ordinary", async () => {
+    const c = brain();
+    const about = pageWriterNight(c.store).about;
+    seedYesterday(c, ["A placeholder thing noticed yesterday."]);
+    lived(c);
+    const s = server(c, SESSION);
+    expect((await s.call("dream", { phase: "writer", session: SESSION })).structuredContent["writer"]).toBe(true);
+    // No self_page write. The run goes on to its dream.
+    await s.call("dream", { phase: "begin", session: SESSION });
+    const status = c.pageWriterStatus(about);
+    expect(status.outcome).toBe("nothing-to-say");
+    expect(status.derived).toBe(false);
+    expect(c.nightClaimFor(SESSION)).toBeNull();
+    await s.call("self_page", { body: "## Core\n\nLater that day, a page written by the session itself, long enough to pass the gate.", session: SESSION });
+    expect(c.selfPage()?.by).toBe("session");
+  });
+
+  test("a writer phase with nothing to read leaves a non-closing `skipped` row, so doctor reads an every-other-day store as working", () => {
+    const c = brain();
+    lived(c);
+    // Two days ago was lived; yesterday had nothing in it — a store used every other day.
+    c.store.put({ type: "memory", kind: "fact", body: "Something from two days back.", learnedOn: dayBefore(pageWriterNight(c.store).about) });
+    const out = c.claimNightWriter({ session: SESSION, run: "drm_x" });
+    expect(out).toMatchObject({ claimed: false, reason: "no-memories" });
+    const runs = c.pageWriterRuns();
+    expect(runs.map((r) => [r.outcome, r.detail])).toEqual([["skipped", "no-memories"]]);
+    // Once a night.
+    c.claimNightWriter({ session: SESSION, run: "drm_x" });
+    expect(c.pageWriterRuns()).toHaveLength(1);
+  });
+});
+
+describe("review of #271: retries", () => {
+  test("ask: a launch after the owner's yes flips the day to `launched`, so a run that dies before its dream begins is started again", async () => {
+    const c = brain();
+    lived(c);
+    c.dreams.setSetting("ask", { by: "owner" });
+    const today = c.store.today();
+    expect(c.dreams.askLine({ at: today, session: "s-1" })).toContain("OK if I dream");
+    const s = server(c, "s-1");
+    await s.call("dream", { phase: "launch", session: "s-1" });
+    expect(c.store.dreamAsk(today)?.state).toBe("launched");
+    // The session closed before the agent began.
+    offsetMs += DREAM_TUNABLES.ABANDONED_AFTER_MS + 60_000;
+    expect(c.dreams.askLine({ at: today, session: "s-2" })).not.toBeNull();
+  });
+
+  test("a dream journaled today whose reflection was cut off: the next line starts the REFLECTION alone, under the same cap", async () => {
+    const c = brain();
+    lived(c);
+    const today = c.store.today();
+    expect(c.dreams.askLine({ at: today, session: "s-a" })).not.toBeNull();
+    const d = c.dreams.begin({ session: "s-a" });
+    if (!d.ok) throw new Error(d.reason);
+    c.dreams.journal({ dream: d.bundle.dream, session: "s-a", text: "A dream." });
+    // Right after: the run is about to reflect.
+    expect(c.dreams.status(today).reason).toBe("dreamed-today");
+    offsetMs += DREAM_TUNABLES.ABANDONED_AFTER_MS + 60_000;
+    const st = c.dreams.status(today);
+    expect(st).toMatchObject({ due: true, reason: "due" });
+    expect(st.reflectOnly?.id).toBe(d.bundle.dream);
+    const line = c.dreams.askLine({ at: today, session: "s-b" }) ?? "";
+    expect(line).toContain("cut off before it reflected");
+    expect(line).toContain(`reflect tool with phase "launch", session: s-b, dream: ${d.bundle.dream}`);
+    expect(line).not.toContain('dream tool with phase "launch"');
+    // The reflect launch names the dream.
+    const s = server(c, "s-b");
+    const launch = await s.call("reflect", { phase: "launch", session: "s-b", dream: d.bundle.dream });
+    expect(String(launch.structuredContent["prompt"])).toContain(`dream: ${d.bundle.dream}`);
+    // Once the reflection finishes, the day is done.
+    const r = c.reflections.begin({ session: "s-b", dream: d.bundle.dream });
+    if (!r.ok) throw new Error(r.reason);
+    c.reflections.finish({ reflection: r.bundle.reflection, session: "s-b", entry: "Nothing much tonight." });
+    offsetMs += DREAM_TUNABLES.ABANDONED_AFTER_MS + 60_000;
+    expect(c.dreams.status(today).reason).toBe("dreamed-today");
+  });
+
+  test("the relaunch count is ONE key, overwritten by a new day — nothing to prune", () => {
+    const c = brain();
+    lived(c);
+    const today = c.store.today();
+    c.dreams.askLine({ at: today, session: "s-1" });
+    offsetMs += DREAM_TUNABLES.ABANDONED_AFTER_MS + 60_000;
+    expect(c.dreams.askLine({ at: today, session: "s-2" })).not.toBeNull();
+    expect(c.store.getMeta(RELAUNCHED_KEY)).toBe(`${today}:1`);
+    expect([...c.store.metaWithPrefix("dream.relaunched").keys()]).toEqual([RELAUNCHED_KEY]);
+  });
+});
+
+describe("review of #271: the reflection's result at the REAL limit", () => {
+  test("a big night's begin result, AS IT LEAVES the MCP server, stays under RESULT_CHARS; every part under PART_CHARS; a part still fetches after a finish", async () => {
+    const c = brain();
+    c.store.advanceClock("2026-09-10");
+    const long = "\"said\" \"so\" \"plainly\" ".repeat(20);
+    // Older memories, outside a first dream's week: each new one is shown its neighbours among them.
+    for (let i = 0; i < 120; i += 1) mem(c, `Older memory ${String(i)} of a busy week: ${long}`, { kind: "fact" });
+    for (let d = 11; d <= 20; d += 1) c.store.advanceClock(`2026-09-${String(d)}`);
+    for (let i = 0; i < 90; i += 1) {
+      mem(c, `Memory ${String(i)} of a busy day: ${long}`, { kind: i % 3 === 0 ? "person" : i % 3 === 1 ? "self" : "fact", about: i % 2 === 0 ? "us" : "me" });
+    }
+    const page = `## Core\n\n${"\"A\" \"quoted\" \"page\". ".repeat(700)}`;
+    expect(c.revisePage(page, { reason: "a long page", by: "owner" }).written).toBe(true);
+    const s = server(c, SESSION);
+    const d = await s.call("dream", { phase: "begin", session: SESSION });
+    const dreamId = d.structuredContent["dream"] as string;
+    await s.call("dream", { phase: "journal", session: SESSION, dream: dreamId, text: "A long dream." });
+    const begin = await s.call("reflect", { phase: "begin", session: SESSION, dream: dreamId });
+    expect(begin.isError ?? false).toBe(false);
+    const parts = begin.structuredContent["parts"] as { of: number } | undefined;
+    expect(parts?.of ?? 1).toBeGreaterThan(1);
+    expect(textOf(begin).length).toBeLessThanOrEqual(REFLECT_TUNABLES.RESULT_CHARS);
+    const rid = begin.structuredContent["reflection"] as string;
+    for (let k = 2; k <= (parts?.of ?? 1); k += 1) {
+      const p = await s.call("reflect", { phase: "part", session: SESSION, reflection: rid, part: k });
+      expect(p.isError ?? false).toBe(false);
+      expect(textOf(p).length).toBeLessThanOrEqual(REFLECT_TUNABLES.PART_CHARS);
+    }
+    await s.call("reflect", { phase: "finish", session: SESSION, reflection: rid, entry: "A full day." });
+    const after = await s.call("reflect", { phase: "part", session: SESSION, reflection: rid, part: 2 });
+    expect(after.isError ?? false).toBe(false);
+  }, 60_000);
 });
 
 // ---------------------------------------------------------------------------

@@ -2303,7 +2303,8 @@ export class Store {
    * Change a dream's state, journal or title. `journaled` / `undone` stamp their
    * moment. A RESUMED dream (2026-09-28: a dream left behind by a session that
    * closed is picked up by the next one) also moves to the session, lived day
-   * and calendar date that resumed it, and its shown set grows.
+   * and calendar date that resumed it, its start moves to the moment it was
+   * resumed (`startedAt`), and its shown set grows.
    */
   updateDream(
     id: string,
@@ -2315,6 +2316,7 @@ export class Store {
       day?: number;
       date?: string | null;
       shown?: readonly string[];
+      startedAt?: number;
     },
   ): void {
     this.mutate("updateDream", () => {
@@ -2324,7 +2326,7 @@ export class Store {
       const state = patch.state ?? row.state;
       this.ops.run(
         `UPDATE dreams SET state = ?, title = ?, journal = ?, finished_at = ?, undone_at = ?,
-                session = ?, day = ?, date = ?, shown = ? WHERE id = ?`,
+                session = ?, day = ?, date = ?, shown = ?, started_at = ? WHERE id = ?`,
         state,
         patch.title === undefined ? row.title : patch.title,
         patch.journal === undefined ? row.journal : patch.journal,
@@ -2334,6 +2336,7 @@ export class Store {
         patch.day ?? row.day,
         patch.date === undefined ? row.date : patch.date,
         patch.shown === undefined ? row.shown : JSON.stringify(patch.shown),
+        patch.startedAt ?? row.started_at,
         id,
       );
     });

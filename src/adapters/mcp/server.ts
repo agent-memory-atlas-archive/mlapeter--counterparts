@@ -97,7 +97,7 @@ import {
   success,
 } from "./protocol.js";
 import type { Id, Request, Response } from "./protocol.js";
-import { DREAMING_SETTINGS, nightNext } from "../../core/dream/index.js";
+import { DREAMING_SETTINGS, nightNext, nightOrder } from "../../core/dream/index.js";
 import type { DreamingSetting, NightPart } from "../../core/dream/index.js";
 import { NO_PAGE_VERSION, pageSections } from "../../core/self/index.js";
 import type { PageWriterMode } from "../../core/self/index.js";
@@ -1794,6 +1794,10 @@ export class McpServer {
     try {
       switch (phase) {
         case "launch":
+          // The day's row becomes `launched` (claimed, or flipped from an
+          // accepted ask), so a run that dies before its dream begins is
+          // started again (review of #271).
+          dreams.launched({ at, session });
           this.emit("mcp.dream", undefined, { phase: "launch", session });
           return this.result(
             {
@@ -1832,6 +1836,10 @@ export class McpServer {
         }
         case "begin": {
           const model = readSession(this.registryDir, session)?.model;
+          // THE RUN MOVED PAST THE WRITER (review of #271): an open claim this
+          // session still holds is answered `nothing-to-say` here, when the
+          // writer comes before the dream in the run.
+          if (nightOrder().indexOf("writer") < nightOrder().indexOf("dream")) this.counterpart.closeNightWriter({ session, phase: "the dream" });
           const out = dreams.begin({ session, scope: this.scope, ...(model === undefined ? {} : { model }) });
           if (!out.ok) {
             return refused(
@@ -1987,7 +1995,9 @@ export class McpServer {
             {
               phase,
               session,
-              prompt: reflections.launchPrompt({ session }),
+              // After a dream whose run was cut off before it reflected
+              // (review of #271): the reflection alone, on that dream.
+              prompt: reflections.launchPrompt({ session, dream: typeof args["dream"] === "string" ? args["dream"] : null }),
               how: "Hand `prompt` to a background agent (the Agent tool), unchanged, and carry on. When it finishes, if it left a morning share, tell it to the owner in your own words, then call this tool with phase \"told\".",
             },
             false,
@@ -1995,6 +2005,8 @@ export class McpServer {
         case "begin": {
           const model = readSession(this.registryDir, session)?.model;
           const dream = typeof args["dream"] === "string" ? args["dream"] : null;
+          // The same at the reflection, when the writer comes before it.
+          if (nightOrder().indexOf("writer") < nightOrder().indexOf("reflection")) this.counterpart.closeNightWriter({ session, phase: "the reflection" });
           const out = reflections.begin({ session, dream, scope: this.scope, ...(model === undefined ? {} : { model }) });
           if (!out.ok) {
             return refused(
@@ -2317,7 +2329,8 @@ export class McpServer {
    * `by` on a page revision is the DOOR's and is not claimable from outside
    * (`self/page.ts`), so this server may not take a tool argument's word for it.
    * The evidence, since 2026-09-28, is the NIGHTLY RUN's claim row in the
-   * store — written when the run's dream began, naming this session — and,
+   * store — written by the run's `writer` phase, naming this session, and
+   * counted only when the write names that session itself — and,
    * kept readable for host mode and older records, the mark the SessionStart
    * hook used to write (`pageWriterFor`, a DATE, on this session's registry
    * record, `adapters/sessions.ts`; nothing writes it now). Either counts only
@@ -2396,12 +2409,15 @@ export class McpServer {
   ): { about: string; mode: PageWriterMode } | null {
     try {
       // THE NIGHTLY RUN'S CLAIM (2026-09-28), the channel the default mode
-      // uses now: the run's background agent shares its session's id, and
-      // the claim its dream wrote at `begin` names that session. Host mode's
-      // environment pin, when present, is the child's and outranks it.
+      // uses now: the claim the run's `writer` phase wrote names the session.
+      // Only a write that NAMES that session in its call counts — the writer
+      // instruction says to — never the session this server happens to be
+      // bound to: the run binds it early, and a page edit the owner directs in
+      // the same session must stay an ordinary amendment (review of #271).
+      // Host mode's environment pin, when present, is the child's and
+      // outranks it.
       if (!/^\d{4}-\d{2}-\d{2}$/.test((this.env[PAGE_WRITER_ENV] ?? "").trim())) {
-        const id = claimedSession ?? this.session;
-        const night = id === null ? null : this.counterpart.nightClaimFor(id);
+        const night = claimedSession === null ? null : this.counterpart.nightClaimFor(claimedSession);
         if (night !== null) return { about: night.about, mode: night.mode };
       }
       const about = this.pageWriterClaim(claimedSession);

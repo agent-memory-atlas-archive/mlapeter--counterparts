@@ -1038,7 +1038,7 @@ export class ClaudeCodeAdapter {
    * ending in a newline: a contradiction a dream flagged, raised once awake,
    * and the day's line, which follows the owner's dreaming setting
    * (2026-09-28): `auto` (the default) tells the model to start the nightly
-   * run now — dream, page writer, reflection, one background agent — and to
+   * run now — page writer, dream, reflection, one background agent — and to
    * tell the owner in one line that it is dreaming and how to say "no dreams";
    * `ask` asks the owner first, as it did from 2026-09-26; `off` says nothing.
    * The line is at most once a CALENDAR day across every session (the store's

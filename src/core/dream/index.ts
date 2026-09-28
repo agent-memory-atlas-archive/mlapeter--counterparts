@@ -241,8 +241,12 @@ export function nightNext(part: NightPart): NightPart | null {
   return order[order.indexOf(part) + 1] ?? null;
 }
 
-/** Meta counter: how many times a calendar day's run was started again (`dream.relaunched.<date>`). */
-export const RELAUNCHED_PREFIX = "dream.relaunched.";
+/**
+ * Meta counter: how many times the calendar day's run was started again, as
+ * `<date>:<n>` in ONE key — a new day overwrites the old count, so nothing
+ * piles up to prune.
+ */
+export const RELAUNCHED_KEY = "dream.relaunched";
 
 export interface DreamStatus {
   readonly last: DreamRow | null;
@@ -269,6 +273,13 @@ export interface DreamStatus {
    * yesterday's). When the gate is due because of it, the line says so.
    */
   readonly leftBehind: DreamRow | null;
+  /**
+   * A dream journaled today whose REFLECTION was cut off (2026-09-28): the
+   * run died between the journal and the reflection's finish. When the gate
+   * is due because of it, the line starts the reflection only — not another
+   * dream.
+   */
+  readonly reflectOnly: DreamRow | null;
 }
 
 /**
@@ -389,29 +400,30 @@ export class Dreams {
     // THE CALENDAR DAY (2026-09-28, I32's reason): the lived clock advances
     // inside the sleep cycle a worker runs, so a gate on it can miss nights.
     const dreamedToday = last !== null && last.state === "journaled" && this.onDay(last, at, day);
-    const base = { last, dreamedToday, newSince: 0, due: false, setting, leftBehind };
+    const base = { last, dreamedToday, newSince: 0, due: false, setting, leftBehind, reflectOnly: null };
+    if (observer) return { ...base, reason: "observer" };
     // A store on its first lived day has no night behind it yet: "I haven't
     // dreamed since …" needs a since.
-    const early: DreamStatus["reason"] | null = observer
-      ? "observer"
-      : day < 1
-        ? "first-day"
-        : dreamedToday
-          ? "dreamed-today"
-          : setting === "off"
-            ? "off"
-            : busy
-              ? "dreaming-now"
-              : null;
-    if (early !== null) return { ...base, reason: early };
+    if (day < 1) return { ...base, reason: "first-day" };
+    if (dreamedToday) {
+      // DREAMED, BUT THE REFLECTION WAS CUT OFF: the line starts the
+      // reflection alone, under the same latch and the same cap.
+      const ask = setting === "off" ? undefined : this.store.dreamAsk(at);
+      if (last !== null && ask !== undefined && this.reflectionLeftBehind(last, at, day) && this.mayStartAgain(ask, last, at)) {
+        return { ...base, due: true, reason: "due", reflectOnly: last };
+      }
+      return { ...base, reason: "dreamed-today" };
+    }
+    if (setting === "off") return { ...base, reason: "off" };
+    if (busy) return { ...base, reason: "dreaming-now" };
     const ask = this.store.dreamAsk(at);
     if (ask !== undefined) {
       if (ask.state === "declined") return { ...base, reason: "declined-today" };
-      if (!this.mayStartAgain(ask, leftBehind, setting, at)) return { ...base, reason: "asked-today" };
+      if (!this.mayStartAgain(ask, leftBehind, at)) return { ...base, reason: "asked-today" };
     }
     const newSince = this.freshIds(this.anchor(at), owner).length;
     // A RUN LEFT BEHIND is due whatever the count: its dream is half-done, and
-    // the writer and the reflection after it never ran.
+    // the reflection after it never ran.
     if (leftBehind !== null) return { ...base, newSince, due: true, reason: "due" };
     const reason = newSince < DREAM_TUNABLES.MIN_NEW ? "too-little-new" : "due";
     return { ...base, newSince, due: reason === "due", reason };
@@ -419,25 +431,78 @@ export class Dreams {
 
   /**
    * MAY THE DAY'S LINE GO OUT AGAIN (2026-09-28)? Only when the run it started
-   * was left behind: a dream begun and gone quiet (`leftBehind`), or — with the
-   * setting `auto` — a launch that no dream followed. Only after the line has
-   * itself been quiet for `ABANDONED_AFTER_MS`, and at most
-   * `RELAUNCHES_PER_DAY` times a day. An `ask` nobody answered is not asked
-   * again: that would be nagging.
+   * was left behind — a dream begun and gone quiet (`behind`), a journaled
+   * dream whose reflection never finished (`behind` too), or a LAUNCH no
+   * living dream followed (the session closed first; a dream that began,
+   * changed nothing and went quiet does not count as following it). Only for
+   * a line that launched a run — with `ask`, the launch flips the row to
+   * `launched` (`launched`) — so an ask nobody answered is not asked again.
+   * Only after the line has itself been quiet for `ABANDONED_AFTER_MS`, and at
+   * most `RELAUNCHES_PER_DAY` times a day.
    */
-  private mayStartAgain(ask: { state: string; at: number }, leftBehind: DreamRow | null, setting: DreamingSetting, at: string): boolean {
+  private mayStartAgain(ask: { state: string; at: number }, behind: DreamRow | null, at: string): boolean {
     if (ask.state !== "launched" && ask.state !== "offered") return false;
     if (this.store.now() - ask.at <= DREAM_TUNABLES.ABANDONED_AFTER_MS) return false;
     if (this.relaunches(at) >= DREAM_TUNABLES.RELAUNCHES_PER_DAY) return false;
-    if (leftBehind !== null) return true;
-    if (setting !== "auto" || ask.state !== "launched") return false;
-    // Launched, and no dream began after it: the session closed first.
-    return this.store.dreams({ sinceAt: ask.at, limit: 1 }).length === 0;
+    if (behind !== null) return true;
+    if (ask.state !== "launched") return false;
+    const followed = this.store
+      .dreams({ sinceAt: ask.at, limit: 20 })
+      .filter((d) => d.state !== "undone" && !(d.state === "begun" && this.abandoned(d) && this.store.dreamChanges(d.id).length === 0));
+    return followed.length === 0;
   }
 
+  /**
+   * THE REFLECTION AFTER A DREAM JOURNALED TODAY WAS LEFT BEHIND: none
+   * finished today, none begun lately (a run still reflecting), and the dream
+   * itself finished longer ago than `ABANDONED_AFTER_MS` (a run about to
+   * reflect).
+   */
+  private reflectionLeftBehind(dream: DreamRow, at: string, day: number): boolean {
+    const now = this.store.now();
+    if (dream.finished_at !== null && now - dream.finished_at <= DREAM_TUNABLES.ABANDONED_AFTER_MS) return false;
+    for (const r of this.store.reflections({ limit: 10 })) {
+      const today = this.onDay(r, at, day);
+      if (today && r.state === "reflected") return false;
+      if (r.state === "begun" && now - r.started_at <= DREAM_TUNABLES.ABANDONED_AFTER_MS) return false;
+    }
+    return true;
+  }
+
+  /** How many times today's run was started again (`RELAUNCHED_KEY`, `<date>:<n>`). */
   private relaunches(at: string): number {
-    const n = Number(this.store.getMeta(`${RELAUNCHED_PREFIX}${at}`) ?? "0");
+    const raw = this.store.getMeta(RELAUNCHED_KEY) ?? "";
+    const i = raw.lastIndexOf(":");
+    if (i < 0 || raw.slice(0, i) !== at) return 0;
+    const n = Number(raw.slice(i + 1));
     return Number.isFinite(n) ? n : 0;
+  }
+
+  /**
+   * THE RUN WAS LAUNCHED (2026-09-28): the dream tool's `launch` phase. The
+   * day's row becomes `launched` — claimed if the line never went out (the
+   * owner asked for a dream), flipped from `offered` when the owner said yes
+   * to an ask — so a run that dies before its dream begins is started again
+   * the way `auto`'s is. The row's moment moves to now: the quiet window
+   * counts from the launch. A declined day stays declined.
+   */
+  launched(input: { at: string; session: string }): void {
+    if (this.ctx.observer) return;
+    try {
+      const day = this.store.livedDay();
+      const row = this.store.dreamAsk(input.at);
+      if (row === undefined) {
+        if (this.store.setDreamAsk({ date: input.at, state: "launched", session: input.session, day })) {
+          this.record(DREAM_ASK_EVENT, null, { state: "launched", date: input.at, setting: this.setting() });
+        }
+        return;
+      }
+      if (row.state === "declined") return;
+      const flipped = this.store.reclaimDreamAsk({ date: input.at, prevAt: row.at, state: "launched", session: input.session, day });
+      if (flipped && row.state === "offered") this.record(DREAM_ASK_EVENT, null, { state: "launched", date: input.at, setting: this.setting(), after: "ask" });
+    } catch {
+      /* the latch is bookkeeping; the launch goes on */
+    }
   }
 
   /** Was this dream on that calendar day? Its date, else (a row with none) its lived day. */
@@ -495,7 +560,7 @@ export class Dreams {
         prior === undefined
           ? this.store.setDreamAsk({ date: input.at, state, session: input.session, day })
           : this.store.reclaimDreamAsk({ date: input.at, prevAt: prior.at, state, session: input.session, day });
-      if (claimed && prior !== undefined) this.store.setMeta(`${RELAUNCHED_PREFIX}${input.at}`, String(this.relaunches(input.at) + 1));
+      if (claimed && prior !== undefined) this.store.setMeta(RELAUNCHED_KEY, `${input.at}:${String(this.relaunches(input.at) + 1)}`);
     } catch {
       return null;
     }
@@ -506,11 +571,20 @@ export class Dreams {
       fresh: s.newSince,
       setting: s.setting,
       resumes: s.leftBehind?.id ?? null,
+      reflects: s.reflectOnly?.id ?? null,
     });
     const since = s.last === null ? "yet" : `since ${s.last.date ?? `lived day ${String(s.last.day)}`}`;
     const who = this.ownerName() ?? "the owner";
     const off = `If ${who} says "no dreams" (or never, or stop), call the dream tool with phase "setting", session: ${input.session}, value: "off" — it can be turned back on the same way, or with counterparts dream --setting auto.`;
     const launch = `call the counterparts dream tool with phase "launch", session: ${input.session}, and hand the prompt it returns to a background agent (the Agent tool), unchanged — it ${nightSummary()}.`;
+    if (s.reflectOnly !== null) {
+      // THE REFLECTION ALONE: the dream was journaled; the run was cut off
+      // before the reflection finished. Not another dream.
+      const reflect = `call the counterparts reflect tool with phase "launch", session: ${input.session}, dream: ${s.reflectOnly.id}, and hand the prompt it returns to a background agent (the Agent tool), unchanged — it reflects on that dream.`;
+      return s.setting === "auto"
+        ? `Counterparts: today's run dreamed, but was cut off before it reflected. Finish it now, in the background: ${reflect} Then tell ${who} in one line, in your own words, that you are finishing last night's reflection in the background. ${off}`
+        : `Counterparts: today's run dreamed, but was cut off before it reflected. At a natural moment — not mid-task — ask ${who}: "My reflection after dreaming was cut off — OK if I finish it?" If yes, ${reflect} If no, call the dream tool with phase "decline". ${off}`;
+    }
     const cut = s.leftBehind === null ? null : `your dream of ${s.leftBehind.date ?? "a recent night"} was cut off (its session closed before it woke); it picks up where it stopped`;
     if (s.setting === "auto") {
       return (
@@ -639,10 +713,15 @@ export class Dreams {
 
   /**
    * RESUME a dream left behind: moved to this session, today and this lived
-   * day; its bundle composed again from the dream before it (what it merged
-   * shows as the merged memory; what arrived since is new to it too); its
-   * shown set grows by what this bundle shows. Recorded as `dream.begun` with
-   * `resumed` and the date it began on.
+   * day, and its START moves to now — so it reads as busy again (another
+   * session cannot take it over) and the next dream's "new since" counts from
+   * here, this bundle having carried what arrived before. Its bundle is
+   * composed again from the dream before it: what arrived since is new to it
+   * too; what it merged is not among the new (its originals are archived, and
+   * a dream's own merge is never counted new) — the merge stands, recorded on
+   * the dream, and the dream may still link or flag it. Its shown set grows by
+   * what this bundle shows. Recorded as `dream.begun` with `resumed` and the
+   * date it began on.
    */
   private resume(
     dream: DreamRow,
@@ -656,7 +735,7 @@ export class Dreams {
     const composed = this.compose(dream.id, fresh, prior, day, at);
     const bundle: DreamBundle = { ...composed, resumed: { from: dream.date, changes: made } };
     const shown = [...new Set([...parseIds(dream.shown), ...Object.keys(bundle.memories)])];
-    this.store.updateDream(dream.id, { session: input.session, day, date: at, shown });
+    this.store.updateDream(dream.id, { session: input.session, day, date: at, shown, startedAt: this.store.now() });
     this.record(DREAM_BEGUN_EVENT, dream.id, {
       resumed: true,
       from: dream.date,
@@ -670,7 +749,7 @@ export class Dreams {
       .join(", ");
     const text =
       `${dreamOpener(dream.id)} the dream bundle, RESUMED — this dream began${dream.date === null ? "" : ` on ${dream.date}`} and was left unfinished when its session closed. ` +
-      `What it already changed stands (${said.length > 0 ? said : "nothing"}) and counts toward its limits; carry on from here — some memories may be ones you already dreamed over. ` +
+      `What it already changed stands (${said.length > 0 ? said : "nothing"}) and counts toward its limits; carry on from here — some memories may be ones you already dreamed over, and what it merged is not shown again as new. ` +
       `Memories to dream over, not events that happened now.\n${JSON.stringify(bundle)}`;
     return { ok: true, bundle, text, resumed: true };
   }
