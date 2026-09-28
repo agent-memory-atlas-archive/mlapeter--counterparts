@@ -35,7 +35,7 @@ export const ARCHIVE_WORDS: readonly ArchiveReasonWords[] = [
   { reason: SCHEMA_TUNABLES.REVISED_REASON, many: "revised", one: "revised — a newer version replaced it", group: "replaced" },
   { reason: SCHEMA_TUNABLES.REPLACED_REASON, many: "replaced by a correction", one: "replaced by a correction", group: "replaced" },
   { reason: "supersede", many: "replaced by a newer version", one: "replaced by a newer version", group: "replaced" },
-  { reason: "episode-regrown", many: "rebuilt from the journal", one: "regrown from its episode — a newer reading replaced it", group: "replaced" },
+  { reason: "episode-regrown", many: "rebuilt from the journal", one: "replaced by a newer version", group: "replaced" },
   { reason: SCHEMA_TUNABLES.FADE_REASON, many: "faded from use", one: "faded away — nothing mentions it any more", group: "let-go" },
   { reason: PRUNE_ARCHIVE_REASON, many: "let go at the floor", one: "let go at the floor — too weak for too long", group: "let-go" },
   { reason: MERGE_ARCHIVE_REASON, many: "merged duplicates", one: "merged into a near-duplicate", group: "replaced" },

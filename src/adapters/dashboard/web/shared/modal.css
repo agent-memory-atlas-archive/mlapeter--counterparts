@@ -89,3 +89,8 @@
   .mc-kind{margin-left:0}
   #modal .mc-buttons .copy,.mc-details summary{min-height:44px}
 }
+/* Round 4: the date once, and the details fold holding the parts a first look does not need. */
+.mc-written{color:var(--dim);font-size:12.5px;margin:0 0 12px}
+.mc-details[open]{flex-basis:100%;order:2}
+.mc-details>.mc-part:first-of-type{margin-top:12px}
+#modal .mc-rawh{margin:4px 0 0}

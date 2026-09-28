@@ -85,8 +85,8 @@ describe("the home tab, live", () => {
         expect(`${gone}: ${await page.locator("#tab-home " + gone).count()}`).toBe(`${gone}: 0`);
       }
       expect(await page.locator("#home-health").getAttribute("href")).toBe("#health");
-      // The header keeps one chip.
-      expect(await page.locator("header .hright .badge").allTextContents()).toEqual(["Reading here changes nothing"]);
+      // The header carries no chip (round 4 Memories, M8: looking changes nothing, and says nothing about it).
+      expect(await page.locator("header .badge").count()).toBe(0);
       // No point's name shows until it is hovered.
       expect(await page.locator(".brain-pin-name:visible").count()).toBe(0);
 

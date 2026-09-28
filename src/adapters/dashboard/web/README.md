@@ -104,7 +104,7 @@ hover) beside "Today" (`sections/today.js`, `views/today.ts`: a few plain lines
 about memory — written today, became core, the day's dream, let go — each a
 memory card or a place on another tab; no event names, bytes or paths; an
 empty today falls back to the most recent lived day and says which); then "How
-it feels" (the memories tab's radar, `pages/memories/sections/feel.js#radarSvg`,
+it feels" (the one feelings chart both tabs draw, `shared/widgets/feel-radar.js`;
 a click opens `#memories?feeling=<core>`) beside "Around the core" (the Self
 tab's map, `pages/self/sections/map.js`, with `{ legend: "min" }`). No tips.
 The memory count is `views/shared.ts#memoriesLive` — what the memories list's
@@ -142,37 +142,45 @@ firing line, built / in development, Lately, the Field Guide link) is behind a
 `promotionEligibility`; nothing here re-derives eligibility. A sleep that only
 checked and found nothing due (`lanes.ts#isSleepCheck`) goes to the flow feed.
 
-`pages/memories/` — the memories tab (round 2, 2026-09-26, an experiment:
-brighter = held more firmly, everywhere on the tab). `state.js` holds the
-page's filters (live/archived/all, kind, core, journal, hold, feeling, sort, page
-offset) and notifies the list when a filter changes; a live refresh redraws
-from it and puts the scroll back, and `counterparts:changed` (a window event,
-fired after a note and after a removal on the memory card) makes the page
-re-read at once. `row.js` is the one row shape the list, search hits and Ask's
-answers share. Sections: `search.js` (search by words,
-plus Ask via `act("ask", {json:true})`, its tiers drawn as brightness; a
-journal chapter and the memory drawn from it are folded into one answer by
-`fold.js`, with a "from chapter …" link, from `/api/chapters` in
-`views/search.ts`; the question is turned into my voice server side by
-`ask-voice.ts`, and when it was, a grey "searched as: …" line sits under the
-answers with "search exactly as typed", which holds until the box changes),
-`tools.js` (write a note, and the back-up/export folder dialog),
-`hold.js` ("How firmly it's held": one bar, firm / settling / fading, from
-`holdOf` in `views/memories.ts`; a part clicked filters the list), `feel.js`
-("How it feels": an SVG radar of the wheel's six cores, yours and mine; an axis or a feeling word clicked filters the list), `list.js` (every
-memory, newest or oldest first, kinds as chips, paged on the server by
-`/api/memories/list` in `views/memories.ts`). `views/memory-words.ts` says how
-a row's words are shown (a date at their front lifted off, journal chapters,
-feelings in words); archive reasons come from `views/archive-words.ts`.
-`shared/memory-marks.{js,css}` are the kind icons and colours, feeling dots,
-the strength meter and the badges, used by the rows and the memory card
-(`shared/memory-modal.js`, whose strength curve comes from `fadeCurve` in
-`views/mechanism-panel.ts`, the Forgetting panel's own maths). The card's
-sentences that read the payload — the road to the core (the engine's verdict,
-`views/memory.ts#coreRoad`, from `physics#promotionEligibility`; the fast lane
-named when it applies), where the curve starts ("written" until a real use),
-and the Versions rows (a dream's near-copy merges named and grouped) — are
-pure functions in `shared/memory-card-words.js`, checked in `bun test`.
+`pages/memories/` — the memories tab (round 4, 2026-09-28, a try: it reads for
+someone who knows roughly what it is). The top says who "I" am once (the name
+lives in `shared/voice.js`, nowhere else) and the count once, like Home.
+`state.js` holds the page's filters (live/archived/all — "kept · put away ·
+both" on the page — kind, core, journal, hold, feeling, sort, page offset) and
+`find` (the find box is answering); any filter change ends a find. A live
+refresh redraws from it and puts the scroll back, and `counterparts:changed` (a
+window event, fired after a note and after a removal on the memory card) makes
+the page re-read at once. `row.js` is the one row shape the list and the find
+box's answers share: every row the same brightness, "fading" as a word only
+when it applies, no kind tag on a plain fact, a journal chapter titled
+"Journal · Sun 27 Sep". Sections: `hold.js` ("How well I remember": one bar,
+firm / settling / fading from `holdOf` in `views/memories.ts`, and the journal
+as a grey fourth part, so the parts add up to the count; a part clicked filters
+the list), `feel.js` (the shared feelings chart, `shared/widgets/feel-radar.js`,
+which Home draws too; an axis clicked filters the list), `list.js` (every
+memory, newest or oldest first, twenty a page, two rows of chips with a few
+words each on hover, paged on the server by `/api/memories/list` in
+`views/memories.ts`, which also groups several put-away versions of one memory
+into one row), `search.js` (ONE box: typing finds by words, `/api/search`;
+Enter asks by meaning via `act("ask", {json:true})`; the answers take the
+list's place and "×" gives it back; a journal chapter and the memory drawn from
+it are folded into one answer by `fold.js`, with a "from chapter …" link, from
+`/api/chapters` in `views/search.ts`; the question is turned into my voice
+server side by `ask-voice.ts`), and `tools.js` (add a memory, and the
+back-up/export folder dialog). `views/memory-words.ts` says how a row's words
+are shown (a date at their front lifted off, a journal chapter's heading lifted
+off, feelings in words); archive reasons come from `views/archive-words.ts`.
+`shared/memory-marks.{js,css}` are the kind icons and colours, feeling dots and
+the badges, used by the rows and the memory card (`shared/memory-modal.js`: the
+words, how well I remember it — a chart from `fadeCurve` in
+`views/mechanism-panel.ts`, the Forgetting panel's own maths, and one plain
+sentence — why it mattered, the day it was written, then everything else under
+"details"). The card's sentences that read the payload — the road to the core
+(the engine's verdict, `views/memory.ts#coreRoad`, from
+`physics#promotionEligibility`; the fast lane named when it applies), where the
+curve starts ("written" until a real use), and the Versions rows (a dream's
+near-copy merges named and grouped) — are pure functions in
+`shared/memory-card-words.js`, checked in `bun test`.
 
 `pages/self/`: the self tab (reworked 2026-09-26 as an experiment; round 3b,
 2026-09-27, prefers a picture to a paragraph). The top is two columns: the self

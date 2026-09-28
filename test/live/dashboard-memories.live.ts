@@ -1,7 +1,7 @@
 /**
  * The memories tab refreshes live and closes nothing (2026-09-26, an experiment).
  *
- * In a real browser: choose the oldest-first order, the "all" filter and the
+ * In a real browser: choose the oldest-first order, the "both" filter and the
  * list's second page, pin a `?`, open a memory card, and scroll; then write a
  * memory into the store and force a refresh through the pulse's own hook
  * (`refreshCounters`). The list is redrawn — its count moves by one — and every
@@ -80,8 +80,10 @@ describe("the memories tab, live", () => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(String(e)));
     page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
-    const sub = async (): Promise<string> => (await page.textContent("#mlist-sub")) ?? "";
-    const total = async (): Promise<number> => Number(/of (\d+)/.exec(await sub())?.[1] ?? "-1");
+    // The list's range is said once, by the pager: "21–40 of 158" (round 4).
+    const sub = async (): Promise<string> => (await page.textContent("#mpager")) ?? "";
+    const total = async (): Promise<number> => Number(/\d+–\d+ of (\d+)/.exec(await sub())?.[1] ?? "-1");
+    const RANGE = (n: number): string => "\\d+–\\d+ of " + n + "(?!\\d)";
     const refresh = (): Promise<void> => page.evaluate(async (path) => {
       const m = await import(path);
       await m.refreshCounters();
@@ -97,11 +99,11 @@ describe("the memories tab, live", () => {
       await page.waitForSelector('#msort button[data-sort="oldest"].on');
       await page.click('#mfilters button[data-f="state"][data-v="all"]');
       await page.waitForSelector('#mfilters button[data-f="state"][data-v="all"].on');
-      await page.click('#mpager button[data-off="50"]');
+      await page.click('#mpager button[data-off="20"]');
       await page.waitForFunction(() => /page 2 of/.test(document.getElementById("mpager")?.textContent ?? ""));
       const firstOnPage2 = await page.locator("#mlist .mrow").first().getAttribute("data-id");
-      await page.click('#mfilters .q-wrap[data-tip="kinds"] .q');
-      expect(await page.locator('.q-wrap.open[data-tip="kinds"]').count()).toBe(1);
+      await page.click('#hold-q .q-wrap[data-tip="hold"] .q');
+      expect(await page.locator('.q-wrap.open[data-tip="hold"]').count()).toBe(1);
       await page.locator("#mlist .mrow").nth(3).click();
       await page.waitForSelector("#overlay.show .mc");
       const cardTitle = await page.textContent("#modal .mc-title");
@@ -115,14 +117,14 @@ describe("the memories tab, live", () => {
       // ── the store moves ──
       write("A memory written while the tab was open.");
       await refresh();
-      await page.waitForFunction((n) => new RegExp("of " + (n + 1)).test(document.getElementById("mlist-sub")?.textContent ?? ""), before);
+      await page.waitForFunction((re) => new RegExp(re).test(document.getElementById("mpager")?.textContent ?? ""), RANGE(before + 1));
 
       // ...and nothing closed.
       expect(await page.locator('#msort button[data-sort="oldest"].on').count()).toBe(1);
       expect(await page.locator('#mfilters button[data-f="state"][data-v="all"].on').count()).toBe(1);
       expect(await page.textContent("#mpager")).toContain("page 2 of");
       expect(await page.locator("#mlist .mrow").first().getAttribute("data-id")).toBe(firstOnPage2);
-      expect(await page.locator('.q-wrap.open[data-tip="kinds"]').count()).toBe(1);
+      expect(await page.locator('.q-wrap.open[data-tip="hold"]').count()).toBe(1);
       expect(await page.isVisible("#overlay.show .mc")).toBe(true);
       expect(await page.textContent("#modal .mc-title")).toBe(cardTitle);
       expect(Math.abs((await page.evaluate(() => scrollY)) - y)).toBeLessThanOrEqual(2);
@@ -133,7 +135,7 @@ describe("the memories tab, live", () => {
         await m.default.render();
       }, "/pages/memories/index.js");
       expect(await page.textContent("#mpager")).toContain("page 2 of");
-      expect(await page.locator('.q-wrap.open[data-tip="kinds"]').count()).toBe(1);
+      expect(await page.locator('.q-wrap.open[data-tip="hold"]').count()).toBe(1);
       expect(Math.abs((await page.evaluate(() => scrollY)) - y)).toBeLessThanOrEqual(2);
 
       // A kind chip chosen now survives the next refresh.
@@ -143,11 +145,11 @@ describe("the memories tab, live", () => {
       const persons = await total();
       write("Someone new, met while the tab was open.", "person");
       await refresh();
-      await page.waitForFunction((n) => new RegExp("of " + (n + 1)).test(document.getElementById("mlist-sub")?.textContent ?? ""), persons);
+      await page.waitForFunction((re) => new RegExp(re).test(document.getElementById("mpager")?.textContent ?? ""), RANGE(persons + 1));
       expect(await page.locator('#mfilters button[data-f="kind"][data-v="person"].on').count()).toBe(1);
       expect(await page.locator('#msort button[data-sort="oldest"].on').count()).toBe(1);
 
-      // A part of "How firmly it's held", clicked, filters the list — and survives too.
+      // A part of "How well I remember", clicked, filters the list — and survives too.
       await page.click('#hold .hkey.firm');
       await page.waitForSelector('#mfilters button[data-f="hold"][data-v="firm"].on');
       write("One more fact, written while the firm filter was on.");
@@ -165,53 +167,55 @@ describe("the memories tab, live", () => {
       // ── the radar filters the list ──
       await page.click('#mfilters button[data-f="clear"]');
       await page.waitForFunction(() => !document.querySelector('#mfilters button[data-f="kind"].on'));
-      // A core: pins its words and filters to every memory with a feeling under it.
+      // A feeling on the chart filters to every memory with a feeling under it,
+      // and lights the same feeling's chip (round 4: one filter, two ways in).
       await page.click('#feel g.feel-axis[data-core="happy"] text');
-      await page.waitForSelector('#mfilters button[data-f="feeling"].on');
-      expect(await page.textContent('#mfilters button[data-f="feeling"]')).toContain("feeling: happy");
-      await page.waitForFunction(() => /of 2\b/.test(document.getElementById("mlist-sub")?.textContent ?? ""));
+      await page.waitForSelector('#mfilters button[data-f="feelingCore"][data-v="happy"].on');
+      await page.waitForFunction(() => /\d+–\d+ of 2(?!\d)/.test(document.getElementById("mpager")?.textContent ?? ""));
       const happyIds = (await page.locator("#mlist .mrow").evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.id))).sort();
       expect(happyIds).toEqual(feltIds.slice(0, 2).sort());
-      // A word in the pinned readout: that feeling, from that side.
-      await page.click('#feel-detail button[data-word="proud"][data-whose="owner"]');
-      await page.waitForFunction(() => /feeling: proud · yours/.test(document.querySelector('#mfilters button[data-f="feeling"]')?.textContent ?? ""));
-      expect(await total()).toBe(2);
-      // It survives a refresh, and the readout is still pinned with the word on.
+      expect(await page.locator('#feel g.feel-axis[data-core="happy"].on').count()).toBe(1);
+      // No readout of raw feeling words is pinned anywhere.
+      expect(await page.locator("#feel-detail").count()).toBe(0);
+      // It survives a refresh.
       write("A note written while the feeling filter was on.");
       await refresh();
-      expect(await page.textContent('#mfilters button[data-f="feeling"]')).toContain("feeling: proud · yours");
-      expect(await page.locator('#feel-detail button[data-word="proud"].on').count()).toBe(1);
+      expect(await page.locator('#mfilters button[data-f="feelingCore"][data-v="happy"].on').count()).toBe(1);
       expect(await total()).toBe(2);
-      // Clicked again, the word clears the filter.
-      await page.click('#feel-detail button[data-word="proud"][data-whose="owner"]');
-      await page.waitForFunction(() => !document.querySelector('#mfilters button[data-f="feeling"]'));
+      // "show all" clears it, and nothing on the chart stays lit.
+      await page.click('#mfilters button[data-f="clear"]');
+      await page.waitForFunction(() => !document.querySelector('#mfilters button[data-f="feelingCore"].on'));
+      expect(await page.locator("#feel g.feel-axis.on").count()).toBe(0);
       expect(await total()).toBeGreaterThan(2);
 
-      // ── Ask folds a chapter and its memory into one answer (round 3), and a refresh keeps it ──
-      await page.fill("#ask-q", "the first day inside Halfmoon, reading the rota solver");
-      await page.click("#ask-go");
-      await page.waitForSelector("#ask-out .mchapter", { timeout: 30_000 });
+      // ── Enter in the find box asks by meaning; the answers take the list's place.
+      // Ask folds a chapter and its memory into one answer (round 3), and a refresh keeps it ──
+      await page.fill("#q", "the first day inside Halfmoon, reading the rota solver");
+      await page.press("#q", "Enter");
+      await page.waitForSelector("#mlist .mchapter", { timeout: 30_000 });
+      expect(await page.isHidden("#mfilters")).toBe(true);
       const answers = async (): Promise<string[]> =>
-        page.locator("#ask-out .mrow").evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.id ?? ""));
+        page.locator("#mlist .mrow").evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.id ?? ""));
       const folded = await answers();
-      const chapterOf = await page.locator("#ask-out .mchapter").first().getAttribute("data-open");
+      const chapterOf = await page.locator("#mlist .mchapter").first().getAttribute("data-open");
       // The chapter the link names is not also listed as an answer of its own.
       expect(folded).not.toContain(chapterOf);
       expect(new Set(folded).size).toBe(folded.length);
-      expect(await page.textContent("#ask-out .ask-head")).toContain(`${folded.length} memor`);
+      expect(await page.textContent("#find-head")).toContain(`${folded.length} memor`);
+      expect(await page.locator("#mlist .mtier").first().textContent()).toMatch(/^(strong match|match|weak match)$/);
       write("A fact written while the answer was open.");
       await refresh();
       expect(await answers()).toEqual(folded);
       // The link opens the chapter, not the memory it sits in.
-      await page.locator("#ask-out .mchapter").first().click();
+      await page.locator("#mlist .mchapter").first().click();
       await page.waitForSelector("#overlay.show .mc");
-      expect(await page.textContent("#modal .mc")).toContain("A journal entry, not a memory");
+      expect(await page.textContent("#modal .mc")).toContain("My journal, kept as written");
       await page.keyboard.press("Escape");
 
       // ── no sideways scroll, with the list, the answers and a card open ──
       for (const width of [1440, 1000, 390]) {
         await page.setViewportSize({ width, height: 800 });
-        await page.locator("#ask-out .mrow").first().click();
+        await page.locator("#mlist .mrow").first().click();
         await page.waitForSelector("#overlay.show .mc");
         const w = await page.evaluate(() => ({
           page: document.documentElement.scrollWidth - innerWidth,
@@ -220,6 +224,10 @@ describe("the memories tab, live", () => {
         expect(w).toEqual({ page: 0, modal: 0 });
         await page.keyboard.press("Escape");
       }
+      // The "×" gives the list back.
+      await page.click("#q-x");
+      await page.waitForSelector("#mfilters:not([hidden])");
+      expect(await total()).toBeGreaterThan(2);
       expect(errors).toEqual([]);
     } finally {
       await ctx.close();

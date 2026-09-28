@@ -1,6 +1,5 @@
 /* The small marks a memory carries wherever it is shown — its kind (an icon and
-   a colour), how firmly it is held (a brightness level and one quiet meter),
-   its feelings (coloured dots) and its special cases (★ core, a lock for
+   a colour), its feelings (coloured dots) and its special cases (★ core, a lock for
    protected, "journal"). The memories tab's rows and the memory card both draw
    from here, so a kind looks the same in a chip, a row and a card.
    (2026-09-26: an experiment — change freely.) */
@@ -11,7 +10,7 @@ const svg = (paths) =>
 
 /** Each kind: the words, a colour, and a 16px line icon drawn in currentColor. */
 export const KINDS = {
-  self: { label: "about me", colour: "#b388ff",
+  self: { label: "about myself", colour: "#b388ff",
     icon: svg('<circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="1.8" class="f"/>') },
   person: { label: "people", colour: "#ffb74d",
     icon: svg('<circle cx="8" cy="5.2" r="2.6"/><path d="M3 14c.6-3 2.6-4.6 5-4.6s4.4 1.6 5 4.6"/>') },
@@ -47,19 +46,6 @@ export function feelingDots(feelings) {
   const words = feelings.map((f) => f.word).join(", ");
   return '<span class="fdots" title="' + esc("felt: " + words) + '" aria-label="' + esc("felt: " + words) + '">' +
     feelings.map((f) => '<i style="background:' + (FEELING_COLOURS[f.core] || "#8a95a3") + '"></i>').join("") + "</span>";
-}
-
-/** Brightness 1 (dim, still readable) … 5 (bright), from strength 0…1. */
-export function litLevel(strength) {
-  const s = Math.max(0, Math.min(1, Number(strength) || 0));
-  return s < 0.2 ? 1 : s < 0.4 ? 2 : s < 0.6 ? 3 : s < 0.8 ? 4 : 5;
-}
-
-/** The one quiet meter: how firmly it is held. */
-export function strengthMeter(strength) {
-  const pct = Math.round(Math.max(0, Math.min(1, Number(strength) || 0)) * 100);
-  return '<span class="smeter" title="held firmly — grows when used, fades when not (' + pct + '%)" role="img" aria-label="held ' +
-    pct + '%"><span style="width:' + pct + '%"></span></span>';
 }
 
 /** The special cases only: ★ core, a lock for protected, journal. */

@@ -242,3 +242,5 @@
   .mech-n{font-size:40px}
 }
 @media(prefers-reduced-motion:reduce){.mech-card,.mech-how-arrow{transition:none}}
+/* The kinds' fading and correcting, in words (round 4, from the memories tab). */
+.mech-kinds{color:var(--dim);font-size:13px;line-height:1.6;margin:0 0 10px;max-width:60rem}
