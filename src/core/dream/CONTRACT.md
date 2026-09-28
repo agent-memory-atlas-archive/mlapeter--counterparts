@@ -106,16 +106,23 @@ dreamer is the model (a background agent the session launches), outside this pro
   shown are recorded on the dream; nothing else can be changed by it.
 - `propose` applies each change on its own, within per-dream `LIMITS`, and records it
   with what undo needs (ids and numbers only):
-  `merge` (2–3 near-copies of one kind, not core, into one memory in better words; the
+  `merge` (two or more near-copies, not core, into one memory in better words, under
+  the strongest original's kind when the kinds differ; the
   merged memory stands where the strongest original stood, carries their returns,
   feelings and trait nudges — each nudge keeping its source, model and moment — and
   inherits their links), `link` (both ways, `LINK_WEIGHT`), `replayed` (a
   return at `DREAM_RETURN_WEIGHT`, never a use), `gist` (source `dreamed`, citing and
   linked to its sources, salience capped at `DREAMED_CLAIM_CEILING`), `contradiction`,
-  `feeling-now` (the self's feeling today, capped at the memory's peak), `nominate-core`
-  (the dream's SUGGESTION of what a memory is about — since v9 any memory but a `skill`
-  and one something awake already marked `work` or `world`, because a dream cannot set
-  the mark; recorded in `core_events` with the dream's reason).
+  `feeling-now` (the self's feeling today, capped at the memory's peak; the same
+  feeling twice in one dream is one record), `nominate-core`
+  (the dream's SUGGESTION of what a memory is about — any memory not already core,
+  because a dream cannot set the mark and a nomination promotes nothing; recorded in
+  `core_events` with the dream's reason).
+- **Accept and repair; every refusal names what tripped it** (owner direction
+  2026-09-28). A change that is refused says the rule and the id or field in `detail`;
+  one that was written with something to say (a split emotion, a capped strength, a
+  text kept to its cap) says it in `note`. A text over its cap is kept to the cap and
+  said, never cut without a word.
 - `journal` closes the dream with its entry (kept in `dreams.journal`, never a memory)
   and returns the hand-back line, which begins with the mark — and tells the dreamer to
   wake and reflect (§5.4). The launch prompt runs dream → journal → reflect as three
@@ -167,14 +174,21 @@ dream having run.
 - `finish` takes an entry, what it cites, and optionally a page, a share, feelings,
   about marks and trait nudges, each on its own. Everything it names must be something it was shown and
   still standing.
+  - **It may be called again** the same lived day on the same reflection (2026-09-28):
+    a second call supplies the parts the first refused or left out without re-minting
+    the entry, and may replace the share while it has not been told or carried. The
+    limits count across both. Every part not written names its rule and what tripped
+    it, and the result says it can be sent again (`retry`).
   - **An insight cites real memories.** An entry that cites something becomes a memory,
     source `reflection`, titled "Reflected: …". **A night that cites nothing is "nothing
     much"** — a normal outcome: the entry stays on the record, and nothing else is
     written or shared.
   - **The page** is rewritten whole through `Self#revisePage` (by `writer`), from what it
-    cites — at least one core memory when there is a core — never from a dreamed gist
-    or a confidential memory, and never carrying the words of a recent dream's gist or
-    of a confidential memory it was shown (review of #256); the old page is context. With
+    cites — meant to rest on at least one core memory when there is a core (a page that
+    cites none is written with a note, since 2026-09-28) — never from a dreamed gist
+    or a confidential memory, and never carrying the words of a confidential memory it
+    was shown (review of #256); the old page is context. (The check on a recent gist's
+    words was removed 2026-09-28 — NOTES.) With
     the host's `pageWriter.mode: off` the page is not written at all (owner ruling D3); the
     entry and the share still are. The write records
     the night's page-writer run.
@@ -184,9 +198,10 @@ dream having run.
   - **Feelings** are the self's, recorded later (`source: reflection`, `recorded_later`
     = today), and may be stronger than anything felt at the time (at most 5) — on a
     lived memory only: not on a dream's gist or a reflection's own entry (review of #256).
-  - **About marks** (at most 8): `me`, `us`, `owner`, `work`, `world`, each with a why; a
-    core mark on a `skill`, a dream's gist or a reflection's own entry is refused
-    (`work`/`world` stay open on those). With the door open it may re-label either way
+  - **About marks** (at most 8): `me`, `us`, `owner`, `work`, `world`, each with a why
+    (one not given is recorded as "no why given"); a core mark on a dream's gist or a
+    reflection's own entry is refused (`work`/`world` stay open on those); one on a
+    `skill` is written with a note — a skill never becomes core. With the door open it may re-label either way
     (owner ruling D2 on #256: "it's me reflecting; it may catch labeling bugs"): every
     re-label is recorded in `core_events` with what it was and the reflection's why,
     doctor counts them (and apart, the moves into me/us/owner), and a move into me, us or

@@ -1534,7 +1534,9 @@ entity id can join later without a migration), `core` (one of six), `emotion` (a
 the wheel, `core/feelings-wheel.ts`, or `other` with the word in `other_word`),
 `strength` 0..1 as recorded and never rewritten, `beneath_id` (another feeling on the
 SAME memory it sits on top of), `carried_by` (≤280 chars: what in the moment carried
-it), `model`, and the two moments. Indexed on `memory_id`, `(whose, core)`,
+it; 1,000 since 2026-09-28, and longer is kept to that with a repair notice, never
+refused — an `emotion` that carries a phrase is split into the word and `carried_by`,
+`checkFeelings`' `repairs`), `model`, and the two moments. Indexed on `memory_id`, `(whose, core)`,
 `(whose, emotion)`. `CREATE TABLE IF NOT EXISTS` in `DDL`, so a v6 store gains it in the
 migration transaction and a fresh store has it from birth.
 

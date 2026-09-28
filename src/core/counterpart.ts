@@ -2451,8 +2451,11 @@ export class Counterpart {
    * Throws what the store throws (`FEELING_INVALID`).
    */
   addFeelings(memoryId: string, inputs: readonly FeelingInput[], opts: { model?: string } = {}): AddFeelingsResult {
+    // The emotion too (2026-09-28): an emotion that carries a phrase is split
+    // and its tail lands in `carried_by`, so it crosses the same scan.
     const clean = inputs.map((f) => ({
       ...f,
+      ...(typeof f.emotion === "string" ? { emotion: redactSecrets(f.emotion) } : {}),
       ...(typeof f.carriedBy === "string" ? { carriedBy: redactSecrets(f.carriedBy) } : {}),
       ...(typeof f.otherWord === "string" ? { otherWord: redactSecrets(f.otherWord) } : {}),
     }));
@@ -2465,7 +2468,7 @@ export class Counterpart {
    * Display only — nothing in the core reads them. Throws what the store
    * throws (`TRAIT_INVALID`).
    */
-  addTraits(memoryId: string, inputs: readonly TraitInput[], opts: { model?: string } = {}): { ids: readonly string[] } {
+  addTraits(memoryId: string, inputs: readonly TraitInput[], opts: { model?: string } = {}): { ids: readonly string[]; repairs: readonly { index: number; note: string }[] } {
     const clean = inputs.map((t) => ({
       ...t,
       ...(typeof t.carriedBy === "string" ? { carriedBy: redactSecrets(t.carriedBy) } : {}),

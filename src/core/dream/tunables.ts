@@ -46,10 +46,19 @@ export const DREAM_TUNABLES = {
   },
   /** The weight of a link a dream draws, both ways (about three co-activations). CAL. */
   LINK_WEIGHT: 0.3,
-  /** Longest merged or dreamed text, in characters. */
-  MAX_TEXT_CHARS: 2_000,
-  /** Longest journal entry, in characters. */
-  MAX_JOURNAL_CHARS: 12_000,
+  /**
+   * TEXT CAPS, raised 2026-09-28 (owner direction: loosen the limits; design a
+   * real answer when something really grows too long). Longer is kept to the
+   * cap and the result says so — never cut without a word.
+   */
+  /** Longest merged or dreamed text, in characters (was 2,000). */
+  MAX_TEXT_CHARS: 8_000,
+  /** Longest journal entry, in characters (was 12,000). */
+  MAX_JOURNAL_CHARS: 30_000,
+  /** Longest title of a merge, a gist or the journal (were 200, 180 and 120). */
+  MAX_TITLE_CHARS: 200,
+  /** Longest nomination why (was 300). */
+  MAX_WHY_CHARS: 1_000,
 } as const;
 
 export type DreamAction = keyof typeof DREAM_TUNABLES.LIMITS;

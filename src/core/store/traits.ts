@@ -61,8 +61,8 @@ export function polesOf(axis: string): readonly [string, string] | undefined {
 export const TRAIT_SOURCES = ["session", "reflection"] as const;
 export type TraitSource = (typeof TRAIT_SOURCES)[number];
 
-/** `carried_by` is a short pointer at the moment, not a transcript. */
-export const TRAIT_CARRIED_BY_MAX_CHARS = 280;
+/** `carried_by`, what in the moment showed it. Raised 280 → 1,000 with a feeling's (2026-09-28). */
+export const TRAIT_CARRIED_BY_MAX_CHARS = 1_000;
 
 export interface TraitInput {
   readonly axis: string;
@@ -130,7 +130,20 @@ function invalid(index: number, reason: string, extra: Record<string, string | n
  * and the reason (with what is allowed); returns the checked rows.
  */
 export function checkTraits(inputs: readonly TraitInput[]): CheckedTrait[] {
+  return checkTraitsRepaired(inputs).rows;
+}
+
+/** A nudge the check repaired rather than refused (2026-09-28): a `carried_by` kept to its length. */
+export interface TraitRepair {
+  readonly index: number;
+  readonly field: "carried_by";
+  readonly note: string;
+}
+
+/** `checkTraits`, with what it repaired said: an over-long `carried_by` is kept to its length, never refused. */
+export function checkTraitsRepaired(inputs: readonly TraitInput[]): { rows: CheckedTrait[]; repairs: TraitRepair[] } {
   const out: CheckedTrait[] = [];
+  const repairs: TraitRepair[] = [];
   inputs.forEach((t, i) => {
     if (t === null || typeof t !== "object") invalid(i, "not-an-object");
     if (typeof t.axis !== "string" || polesOf(t.axis) === undefined) {
@@ -152,10 +165,15 @@ export function checkTraits(inputs: readonly TraitInput[]): CheckedTrait[] {
     if (typeof t.strength !== "number" || !Number.isFinite(t.strength) || t.strength < 0 || t.strength > 1) {
       invalid(i, "strength-out-of-range");
     }
-    const carriedBy = t.carriedBy ?? "";
-    if (typeof carriedBy !== "string") invalid(i, "carried-by-not-a-string");
-    if (carriedBy.length > TRAIT_CARRIED_BY_MAX_CHARS) invalid(i, "carried-by-too-long", { max: TRAIT_CARRIED_BY_MAX_CHARS });
+    const sent = t.carriedBy ?? "";
+    if (typeof sent !== "string") invalid(i, "carried-by-not-a-string");
+    // ACCEPT AND REPAIR (2026-09-28): kept to its length, never refused.
+    let carriedBy = sent;
+    if (sent.length > TRAIT_CARRIED_BY_MAX_CHARS) {
+      carriedBy = `${sent.slice(0, TRAIT_CARRIED_BY_MAX_CHARS - 1)}…`;
+      repairs.push({ index: i, field: "carried_by", note: `carried_by was kept to its first ${String(TRAIT_CARRIED_BY_MAX_CHARS)} characters.` });
+    }
     out.push({ axis: t.axis as TraitAxis, toward: t.toward as TraitPole, strength: t.strength, carriedBy });
   });
-  return out;
+  return { rows: out, repairs };
 }

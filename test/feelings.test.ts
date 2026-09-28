@@ -142,7 +142,8 @@ describe("the store", () => {
     expect(code(() => s.addFeelings(id, [ok, { ...ok, core: "boredom" }]))).toBe("FEELING_INVALID:core-unknown");
     expect(code(() => s.addFeelings(id, [{ ...ok, whose: "the dog" }]))).toBe("FEELING_INVALID:whose-unknown");
     expect(code(() => s.addFeelings(id, [{ ...ok, strength: 1.5 }]))).toBe("FEELING_INVALID:strength-out-of-range");
-    expect(code(() => s.addFeelings(id, [{ ...ok, emotion: "furious" }]))).toBe("FEELING_INVALID:emotion-under-another-core");
+    // A wheel word under another core is stored under its own, and said (owner, 2026-09-28).
+    expect(s.addFeelings(mem(s), [{ ...ok, emotion: "furious" }]).repairs).toMatchObject([{ field: "core", was: "happy", now: "anger" }]);
     expect(code(() => s.addFeelings(id, [{ ...ok, beneath: 1 }, { ...ok, beneath: 0 }]))).toBe("FEELING_INVALID:beneath-cycle");
     expect(s.feelingsFor(id)).toEqual([]);
   });
@@ -247,7 +248,6 @@ describe("the MCP doors", () => {
       [{ whose: "owner", core: "happy", emotion: "other", other_word: 7, strength: 0.5 }],
       [{ whose: 1, core: "happy", emotion: "hopeful", strength: 0.5 }],
       [{ whose: "owner", core: ["happy"], emotion: "hopeful", strength: 0.5 }],
-      [{ whose: "owner", core: "happy", emotion: "x".repeat(10_000), strength: 0.5 }],
       [{ whose: "owner", core: "happy", emotion: "hopeful", strength: 0.5, beneath: "fel_abc" }],
       [{ whose: "owner", core: "happy", emotion: "hopeful", strength: 0.5, beneath: 0.5 }],
     ];

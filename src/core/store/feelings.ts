@@ -45,10 +45,18 @@ export type FeelingWhose = (typeof FEELING_WHOSE)[number];
 export const FEELING_SOURCES = ["session", "dream", "reflection"] as const;
 export type FeelingSource = (typeof FEELING_SOURCES)[number];
 
-/** `carried_by` is a short pointer at the moment, not a transcript. */
-export const CARRIED_BY_MAX_CHARS = 280;
-/** The free word kept when the emotion is not on the wheel. */
-export const OTHER_WORD_MAX_CHARS = 40;
+/**
+ * `carried_by` is the nuance in the writer's own words — what in the moment
+ * carried it. Raised 280 → 1,000 (owner direction 2026-09-28: loosen the
+ * limits); longer is kept to this length with a repair notice, never refused.
+ */
+export const CARRIED_BY_MAX_CHARS = 1_000;
+/**
+ * The free word kept when the emotion is not on the wheel. Raised 40 → 80
+ * (2026-09-28). An emotion longer than this, or one that carries a phrase
+ * (`steadied: the guard held`), is SPLIT, never refused (`repairEmotion`).
+ */
+export const OTHER_WORD_MAX_CHARS = 80;
 
 export interface FeelingInput {
   readonly whose: string;
@@ -101,9 +109,91 @@ export interface FeelingNotice {
   readonly readAs?: string;
 }
 
+/**
+ * ACCEPT AND REPAIR (owner direction 2026-09-28): what the check changed so
+ * the feeling could be stored rather than refused — an emotion that carried a
+ * phrase split into the word and the nuance, or a `carried_by` kept to its
+ * length. `was` is what was sent, `now` what was stored in that field.
+ */
+export interface FeelingRepair {
+  readonly index: number;
+  readonly field: "emotion" | "other_word" | "carried_by" | "core";
+  readonly was: string;
+  readonly now: string;
+  readonly note: string;
+}
+
 export interface AddFeelingsResult {
   readonly ids: readonly string[];
   readonly notices: readonly FeelingNotice[];
+  readonly repairs: readonly FeelingRepair[];
+}
+
+/** Where an emotion that carries a phrase is cut: the word before, the nuance after. */
+const STRONG_BREAK = /\s*(?:[:;—–]|\s-\s)\s*/u;
+const ANY_BREAK = /\s*(?:[:;,—–]|\s-\s)\s*/u;
+
+/**
+ * SPLIT AN EMOTION THAT CARRIES A PHRASE (2026-09-28). A model that writes
+ * `emotion: "steadied: the guard has held every time since…"` meant the word
+ * `steadied` and the nuance after it, which belongs in `carried_by`. Split
+ * when the text is longer than `OTHER_WORD_MAX_CHARS`, or carries a strong
+ * break (`:`, `;`, a dash): the head — up to the first `:`, `—`, `–`, `;` or
+ * `,` (a comma only when over-long) — is the emotion, and the rest goes to
+ * `carried_by` (set when empty, else appended). With no break, an over-long
+ * phrase is cut at the last word boundary within the cap ("a deep and abiding
+ * sense of gratitude for…" keeps its first words, not just "a"); punctuation
+ * alone is kept to the cap. The emotion that comes back is never longer than
+ * the cap. Pure; null when nothing needed splitting.
+ */
+export function repairEmotion(emotion: string, carriedBy: string): { emotion: string; carriedBy: string; tail: string } | null {
+  const raw = emotion.trim();
+  const long = raw.length > OTHER_WORD_MAX_CHARS;
+  if (!long && !STRONG_BREAK.test(raw)) return null;
+  const cut = (long ? ANY_BREAK : STRONG_BREAK).exec(raw);
+  let head: string;
+  let tail: string;
+  if (cut !== null && cut.index > 0) {
+    head = raw.slice(0, cut.index).trim();
+    tail = raw.slice(cut.index + cut[0].length).trim();
+  } else {
+    // A break before any words (": steadied — …"): drop the leading
+    // punctuation and read what is left. No break at all: the whole of it.
+    const stripped = raw.replace(/^[\s:;,—–-]+/u, "").trim();
+    if (stripped.length > 0 && stripped !== raw) {
+      const again = repairEmotion(stripped, carriedBy);
+      return again ?? { emotion: stripped, carriedBy: carriedBy.trim(), tail: "" };
+    }
+    head = stripped.length > 0 ? stripped : raw;
+    tail = "";
+  }
+  if (head.length > OTHER_WORD_MAX_CHARS) {
+    const [kept, rest] = fitWords(head, OTHER_WORD_MAX_CHARS);
+    head = kept;
+    tail = [rest, tail].filter((x) => x.length > 0).join(" ");
+  }
+  if (head.length === 0) return null;
+  const carried = carriedBy.trim();
+  const joined = tail.length === 0 ? carried : carried.length === 0 ? tail : `${carried}; ${tail}`;
+  return { emotion: head, carriedBy: joined, tail };
+}
+
+/** `text` cut at the last word boundary within `max` (or at `max` when one word is longer), and the rest. */
+function fitWords(text: string, max: number): [string, string] {
+  if (text.length <= max) return [text, ""];
+  const at = text.lastIndexOf(" ", max);
+  if (at > 0) return [text.slice(0, at).trim(), text.slice(at).trim()];
+  return [text.slice(0, max), text.slice(max)];
+}
+
+/** What a split says to the writer, so the next one is written right. */
+export function splitNote(split: { emotion: string; tail: string }, field: "emotion" | "other_word" = "emotion"): string {
+  return `"${split.emotion}" was kept as the ${field === "emotion" ? "emotion" : "word"}${split.tail.length > 0 ? " and the rest went to carried_by" : ""}: ${field} is one word, carried_by holds the nuance.`;
+}
+
+/** A `carried_by` kept to its length, whole where it fits. */
+function keepCarried(text: string): string {
+  return text.length <= CARRIED_BY_MAX_CHARS ? text : `${text.slice(0, CARRIED_BY_MAX_CHARS - 1)}…`;
 }
 
 /** One input, checked and spelled as it will be stored. `beneath` still unresolved. */
@@ -128,10 +218,12 @@ function invalid(index: number, reason: string, extra: Record<string, string | n
  * `FEELING_INVALID` naming the input and the reason; returns the checked rows
  * and the `other` notices.
  */
-export function checkFeelings(inputs: readonly FeelingInput[]): { rows: CheckedFeeling[]; notices: FeelingNotice[] } {
+export function checkFeelings(inputs: readonly FeelingInput[]): { rows: CheckedFeeling[]; notices: FeelingNotice[]; repairs: FeelingRepair[] } {
   const rows: CheckedFeeling[] = [];
   const notices: FeelingNotice[] = [];
-  inputs.forEach((f, i) => {
+  const repairs: FeelingRepair[] = [];
+  inputs.forEach((given, i) => {
+    let f = given;
     if (f === null || typeof f !== "object") invalid(i, "not-an-object");
     if (typeof f.whose !== "string" || !(FEELING_WHOSE as readonly string[]).includes(f.whose)) {
       invalid(i, "whose-unknown", { allowed: FEELING_WHOSE.join("|") });
@@ -141,17 +233,39 @@ export function checkFeelings(inputs: readonly FeelingInput[]): { rows: CheckedF
     if (typeof f.strength !== "number" || !Number.isFinite(f.strength) || f.strength < 0 || f.strength > 1) {
       invalid(i, "strength-out-of-range");
     }
-    const carriedBy = f.carriedBy ?? "";
-    if (typeof carriedBy !== "string") invalid(i, "carried-by-not-a-string");
-    if (carriedBy.length > CARRIED_BY_MAX_CHARS) invalid(i, "carried-by-too-long", { max: CARRIED_BY_MAX_CHARS });
-    // TYPES AND LENGTHS BEFORE ANY WORK (review S2): a non-string `otherWord`
-    // used to throw a TypeError out of `.trim()`, and a huge `emotion` was
-    // scored by edit distance before it was refused.
+    if (f.carriedBy !== undefined && typeof f.carriedBy !== "string") invalid(i, "carried-by-not-a-string");
+    // TYPES BEFORE ANY WORK (review S2): a non-string `otherWord` used to
+    // throw a TypeError out of `.trim()`.
     if (typeof f.emotion !== "string" || f.emotion.trim().length === 0) invalid(i, "emotion-missing");
-    if (f.emotion.trim().length > OTHER_WORD_MAX_CHARS) invalid(i, "emotion-too-long", { max: OTHER_WORD_MAX_CHARS });
     if (f.otherWord !== undefined && typeof f.otherWord !== "string") invalid(i, "other-word-not-a-string");
-    if (typeof f.otherWord === "string" && f.otherWord.trim().length > OTHER_WORD_MAX_CHARS) {
-      invalid(i, "other-word-too-long", { max: OTHER_WORD_MAX_CHARS });
+    // ACCEPT AND REPAIR, never refuse for length (2026-09-28): an emotion (or
+    // an `other` word) that carries a phrase is split into the word and the
+    // nuance BEFORE the wheel reads it — so a huge `emotion` is still never
+    // scored by edit distance (review S2's other half).
+    const split = (field: "emotion" | "other_word", text: string): void => {
+      const fixed = repairEmotion(text, f.carriedBy ?? "");
+      if (fixed === null) return;
+      f = field === "emotion" ? { ...f, emotion: fixed.emotion, carriedBy: fixed.carriedBy } : { ...f, otherWord: fixed.emotion, carriedBy: fixed.carriedBy };
+      repairs.push({
+        index: i,
+        field,
+        was: text.trim(),
+        now: fixed.emotion,
+        note: splitNote(fixed, field),
+      });
+    };
+    split("emotion", f.emotion);
+    if (typeof f.otherWord === "string") split("other_word", f.otherWord);
+    const sentCarried = f.carriedBy ?? "";
+    const carriedBy = keepCarried(sentCarried);
+    if (carriedBy !== sentCarried) {
+      repairs.push({
+        index: i,
+        field: "carried_by",
+        was: sentCarried,
+        now: carriedBy,
+        note: `carried_by was kept to its first ${String(CARRIED_BY_MAX_CHARS)} characters.`,
+      });
     }
     if (f.beneath !== undefined && typeof f.beneath !== "string" && typeof f.beneath !== "number") {
       invalid(i, "beneath-not-an-id-or-index");
@@ -168,9 +282,19 @@ export function checkFeelings(inputs: readonly FeelingInput[]): { rows: CheckedF
     } else {
       const read = resolveEmotion(core, f.emotion);
       if (read.kind === "wrong-core") {
-        invalid(i, "emotion-under-another-core", { emotion: read.entry.key, core: read.entry.core });
-      }
-      if (read.kind === "wheel") {
+        // ACCEPT AND REPAIR (owner, 2026-09-28): a wheel word named under
+        // another core is stored under its own, and said (it was refused
+        // `emotion-under-another-core`).
+        emotion = read.entry.key;
+        storedCore = read.entry.core;
+        repairs.push({
+          index: i,
+          field: "core",
+          was: core,
+          now: read.entry.core,
+          note: `"${read.entry.word}" sits under ${read.entry.core} on the wheel, not ${core}, so it was stored under ${read.entry.core}.`,
+        });
+      } else if (read.kind === "wheel") {
         emotion = read.entry.key;
         // A blend named under its second core is stored under its primary.
         storedCore = read.entry.core;
@@ -182,9 +306,6 @@ export function checkFeelings(inputs: readonly FeelingInput[]): { rows: CheckedF
         otherWord = read.kind === "other" ? read.word : f.emotion.trim();
         notices.push({ index: i, word: otherWord, core, closest: read.kind === "other" ? read.closest : [] });
       }
-    }
-    if (otherWord !== null && otherWord.length > OTHER_WORD_MAX_CHARS) {
-      invalid(i, "other-word-too-long", { max: OTHER_WORD_MAX_CHARS });
     }
     if (typeof f.beneath === "number") {
       if (!Number.isInteger(f.beneath) || f.beneath < 0 || f.beneath >= inputs.length || f.beneath === i) {
@@ -211,5 +332,5 @@ export function checkFeelings(inputs: readonly FeelingInput[]): { rows: CheckedF
       at = rows[at]?.beneath;
     }
   });
-  return { rows, notices };
+  return { rows, notices, repairs };
 }

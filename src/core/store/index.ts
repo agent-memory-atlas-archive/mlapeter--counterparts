@@ -54,7 +54,8 @@ import {
 } from "../time.js";
 import { checkFeelings } from "./feelings.js";
 import type { AddFeelingsResult, FeelingInput, FeelingRow, FeelingSource } from "./feelings.js";
-import { checkTraits } from "./traits.js";
+import { checkTraitsRepaired } from "./traits.js";
+import type { TraitRepair } from "./traits.js";
 import type { TraitInput, TraitRead, TraitRow, TraitSource } from "./traits.js";
 import { creditReturn, creditUse } from "../physics/index.js";
 import type { CreditOutcome, ReturnOutcome, UseTier } from "../physics/index.js";
@@ -1916,7 +1917,7 @@ export class Store {
 
   /**
    * One original FOLDED INTO an already-written successor — a dream's merge of
-   * two or three near-copies. The original keeps its id, its words (a version
+   * two or more near-copies. The original keeps its id, its words (a version
    * row carries them, with the successor named) and a forwarding address, and
    * is archived `reason`; nothing is deleted. With `carryReturns`, its return
    * history is copied onto the successor (a return day both had is kept once),
@@ -2521,7 +2522,7 @@ export class Store {
       provenance?: readonly ({ source?: string | null; recordedLater?: string | null } | undefined)[];
     } = {},
   ): AddFeelingsResult {
-    const { rows, notices } = checkFeelings(inputs);
+    const { rows, notices, repairs } = checkFeelings(inputs);
     const ids = rows.map(() => `fel_${randomBytes(6).toString("hex")}`);
     this.mutate("addFeelings", () => {
       this.requireRow(memoryId);
@@ -2570,7 +2571,7 @@ export class Store {
       });
     });
     this.emit("store.feelings", memoryId, { count: rows.length, other: notices.filter((n) => n.readAs === undefined).length });
-    return { ids, notices };
+    return { ids, notices, repairs };
   }
 
   /**
@@ -2591,8 +2592,8 @@ export class Store {
        *  `inputs`. */
       provenance?: readonly ({ source?: string | null; model?: string | null; createdAt?: number | null } | undefined)[];
     } = {},
-  ): { ids: readonly string[] } {
-    const rows = checkTraits(inputs);
+  ): { ids: readonly string[]; repairs: readonly TraitRepair[] } {
+    const { rows, repairs } = checkTraitsRepaired(inputs);
     const ids = rows.map(() => `trt_${randomBytes(6).toString("hex")}`);
     this.mutate("addTraits", () => {
       this.requireRow(memoryId);
@@ -2620,7 +2621,7 @@ export class Store {
       });
     });
     this.emit("store.traits", memoryId, { count: rows.length });
-    return { ids };
+    return { ids, repairs };
   }
 
   /** The active-day clock (scar E8): days actually lived, not calendar days. */

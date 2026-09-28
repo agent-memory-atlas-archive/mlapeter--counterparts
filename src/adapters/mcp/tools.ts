@@ -151,6 +151,18 @@ const ABOUT_PROPERTY = {
     "Optional: what this is about, by meaning — me (who I am), us (the owner and me), owner (the owner, as a person), work (the craft: how a job is done), world (anything else). Leave it out when unsure. Only me, us and owner can become part of who I am.",
 };
 
+/**
+ * WHAT GOES IN `emotion` AND WHAT IN `carried_by` — said the same way at every
+ * door a model writes a feeling through (note, session_end, a dream's
+ * feeling-now, a reflection's feelings), 2026-09-28: a dream put a phrase in
+ * `emotion` because nothing it read said the word goes there and the nuance
+ * in `carried_by`. A phrase that still arrives there is split, not refused.
+ */
+export const EMOTION_TEXT =
+  "ONE word: the feeling on the wheel under that core (e.g. hopeful, anxious, frustrated, grateful, curious, relieved, fond, moved, peaceful) or your own word (steadied), kept as yours. Never a phrase — the nuance goes in carried_by. Blends go under either core: tender and wistful (sad or happy), bittersweet (happy or sad), sheepish (fear or sad).";
+export const CARRIED_BY_TEXT =
+  "The nuance, in your own words: what carried the feeling — the words, what happened, why it sits the way it does.";
+
 const FEELINGS_PROPERTY = {
   type: "array",
   description:
@@ -162,13 +174,12 @@ const FEELINGS_PROPERTY = {
       core: { type: "string", enum: ["happy", "sad", "fear", "anger", "surprise", "disgust"] },
       emotion: {
         type: "string",
-        description:
-          "The specific feeling on the wheel under that core (e.g. hopeful, anxious, frustrated, grateful, curious, relieved, fond, moved), or your own word, kept as yours. Blends go under either core: tender and wistful (sad or happy), bittersweet (happy or sad), sheepish (fear or sad).",
+        description: EMOTION_TEXT,
       },
       strength: { type: "number", minimum: 0, maximum: 1 },
       carried_by: {
         type: "string",
-        description: "Briefly, what in the moment carried it — the words, what happened. Not a statement of feeling.",
+        description: `${CARRIED_BY_TEXT} Not a statement of feeling.`,
       },
       other_word: {
         type: "string",
@@ -1014,7 +1025,7 @@ const DREAM: ToolSpec = {
       changes: {
         type: "array",
         description:
-          "`propose`: the changes, each an object with `action` — `merge` (ids: two or three near-copies, text: the one memory in better words, title?), `link` (a, b), `replayed` (id), `gist` (text, sources: ids, title?, kind?), `contradiction` (a, b), `feeling-now` (id, core, emotion, strength, carried_by?), `nominate-core` (id, why).",
+          "`propose`: the changes, each an object with `action` — `merge` (ids: two or more near-copies, text: the one memory in better words, title?), `link` (a, b), `replayed` (id), `gist` (text, sources: ids, title?, kind?), `contradiction` (a, b), `feeling-now` (id, core, emotion: ONE word, strength, carried_by: the nuance in your own words), `nominate-core` (id, why). Usually far fewer changes than the limits; none is fine.",
         items: {
           type: "object",
           properties: {
@@ -1031,9 +1042,9 @@ const DREAM: ToolSpec = {
             kind: { type: "string", enum: ["self", "person", "entity", "skill", "place", "fact"] },
             sources: { type: "array", items: { type: "string" } },
             core: { type: "string", enum: ["happy", "sad", "fear", "anger", "surprise", "disgust"] },
-            emotion: { type: "string" },
+            emotion: { type: "string", description: `\`feeling-now\`: ${EMOTION_TEXT}` },
             strength: { type: "number", minimum: 0, maximum: 1 },
-            carried_by: { type: "string" },
+            carried_by: { type: "string", description: `\`feeling-now\`: ${CARRIED_BY_TEXT}` },
             why: { type: "string" },
           },
           required: ["action"],
@@ -1118,9 +1129,13 @@ const REFLECT: ToolSpec = {
       },
       session: { type: "string", description: "The session this reflection belongs to." },
       dream: { type: "string", description: "`begin`, after a dream: the dream id it follows." },
-      reflection: { type: "string", description: "`finish` and `told`: the reflection id `begin` returned." },
+      reflection: {
+        type: "string",
+        description:
+          "`finish` and `told`: the reflection id `begin` returned. `finish` may be called again the same day with the same id to send the parts a first call did not write (page, share, feelings, about, traits); the entry stands, and a share not yet told may be replaced.",
+      },
       title: { type: "string", description: "`finish`: a short title for the entry." },
-      entry: { type: "string", description: "`finish`: your reflection, first person." },
+      entry: { type: "string", description: "`finish`: your reflection, first person. Required the first time; may be left out on a second finish." },
       cites: { type: "array", items: { type: "string" }, description: "`finish`: the memory ids the entry rests on." },
       page: {
         type: "object",
@@ -1140,9 +1155,9 @@ const REFLECT: ToolSpec = {
           properties: {
             id: { type: "string" },
             core: { type: "string", enum: ["happy", "sad", "fear", "anger", "surprise", "disgust"] },
-            emotion: { type: "string" },
+            emotion: { type: "string", description: EMOTION_TEXT },
             strength: { type: "number", minimum: 0, maximum: 1 },
-            carried_by: { type: "string" },
+            carried_by: { type: "string", description: CARRIED_BY_TEXT },
           },
           required: ["id", "core", "emotion", "strength"],
         },
