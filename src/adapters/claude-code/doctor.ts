@@ -2589,6 +2589,86 @@ export function reflectionFindings(input: DoctorInput, store: Store): Finding[] 
   ];
 }
 
+/** How far back the lookup count reads, in lived days. */
+const LOOKUP_WINDOW_DAYS = 14;
+
+/**
+ * THE LOOKUP, MEASURED (2026-09-28, build B). A dream's and a reflection's
+ * bundles show most memories as a line or an excerpt and name the lookup (the
+ * recall tool, by id). This counts, over the last two weeks of lived days,
+ * what each offered only in part and how many of those a receiver fetched
+ * whole. If it stays near none, the lines are too thin or the instruction is
+ * unclear — the check against "we just truncated again". Informational:
+ * green, with the numbers.
+ */
+export function lookupFindings(store: Store): Finding[] {
+  const since = Math.max(0, store.livedDay() - LOOKUP_WINDOW_DAYS);
+  const offered = { dream: 0, reflection: 0 };
+  const runs = { dream: 0, reflection: 0 };
+  const looked = { dream: 0, reflection: 0 };
+  let unread = false;
+  try {
+    const begun = store.eventLog({ name: "dream.begun", sinceDay: since, order: "desc", limit: LOOKUP_ROWS });
+    const recalls = store.eventLog({ name: "mcp.recall", sinceDay: since, order: "desc", limit: LOOKUP_ROWS });
+    unread = begun.length >= LOOKUP_ROWS || recalls.length >= LOOKUP_ROWS;
+    for (const row of begun) {
+      const n = num(payloadOf(row), "offered");
+      if (n === null) continue;
+      runs.dream += 1;
+      offered.dream += n;
+    }
+    for (const r of store.reflections({ limit: 60 })) {
+      if (r.day < since) continue;
+      try {
+        const fit = (JSON.parse(r.detail) as { fit?: { offered?: unknown } }).fit;
+        if (typeof fit?.offered !== "number") continue;
+        runs.reflection += 1;
+        offered.reflection += fit.offered;
+      } catch {
+        continue;
+      }
+    }
+    for (const row of recalls) {
+      const from = payloadOf(row)["fromIndex"];
+      if (from === null || typeof from !== "object") continue;
+      for (const m of ["dream", "reflection"] as const) {
+        const v = (from as Record<string, unknown>)[m];
+        if (typeof v === "number") looked[m] += v;
+      }
+    }
+  } catch {
+    return [];
+  }
+  const say = (m: "dream" | "reflection", runWord: string): string =>
+    runs[m] === 0
+      ? `${m}: no ${runWord} measured yet`
+      : `${m}: ${String(looked[m])} looked up of ${String(offered[m])} offered in part, over ${String(runs[m])} ${runWord}${runs[m] === 1 ? "" : "s"}`;
+  const none = runs.dream + runs.reflection > 0 && offered.dream + offered.reflection > 0 && looked.dream + looked.reflection === 0;
+  return [
+    finding(
+      "lookups",
+      "green",
+      "Lookups",
+      `last ${String(LOOKUP_WINDOW_DAYS)} lived days — ${say("dream", "night")}; ${say("reflection", "reflection")}` +
+        (none ? ". None looked up yet: if that holds, the lines may be too thin or the lookup unclear" : "") +
+        (unread ? ". More rows than were read: the counts are a floor" : ""),
+      "",
+      {
+        dreamOffered: offered.dream,
+        dreamLooked: looked.dream,
+        dreamNights: runs.dream,
+        reflectionOffered: offered.reflection,
+        reflectionLooked: looked.reflection,
+        reflections: runs.reflection,
+        floor: unread,
+      },
+    ),
+  ];
+}
+
+/** Rows each lookup read takes, newest first; a read that comes back full is a floor. */
+const LOOKUP_ROWS = 2_000;
+
 /**
  * DREAMING, informational (2026-09-26): the owner's setting (2026-09-28:
  * auto, ask or off), when the counterpart last dreamed, and what today's line
@@ -3404,6 +3484,8 @@ export function doctorFindings(input: DoctorInput): Finding[] {
     // v9 (2026-09-27): what the upgrade carried, and the reflection.
     ["upgrade-v9", () => upgradeV9Findings(store)],
     ["reflection", () => reflectionFindings(input, store)],
+    // Build B (2026-09-28): does anyone read what an index offers in part?
+    ["lookups", () => lookupFindings(store)],
     // LAST, and deliberately: it is the widest read here — the whole event log,
     // plus a pass over the ids for the table probes — so when the console's
     // reading is cut short this is the group that goes, and the `Budget` finding

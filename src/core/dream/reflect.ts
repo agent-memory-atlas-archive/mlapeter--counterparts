@@ -80,19 +80,22 @@ import {
 } from "../store/index.js";
 import type { AboutMark, FeelingInput, MemoryRow, ProseDoc, ReflectionRow, Store } from "../store/index.js";
 import type { Kind } from "../types.js";
+import { clipWire, fit, lineOf, offeredInPart, offeredOf, readIndex, wireChars, writeIndex } from "../fit/index.js";
+import type { Fidelity, FitCandidate, Placed } from "../fit/index.js";
+import { ownerNames } from "../sleep/index.js";
 import { DREAM_MARK, carriesDreamMark } from "./mark.js";
+import { chapterEntries, entryKey, fitEpisodes, shownEntry } from "./slices.js";
+import type { ChapterEntry, EpisodeInView, EpisodesFit, ShownChapter } from "./slices.js";
 import { DREAM_TUNABLES } from "./tunables.js";
-import { onMyMind } from "./mind.js";
+import { mindRanked } from "./mind.js";
 import type { MindItem } from "./mind.js";
 
 /** Every `reflect` knob, in one place. Working defaults of 2026-09-27; CAL = not yet measured. */
 export const REFLECT_TUNABLES = {
   /** Questions a night (the brief's "2–3"). */
   QUESTIONS: 3,
-  /** Chapters from this many lived days back are handed (the last few days). */
+  /** Chapters from this many lived days back are handed (the last few days), as entries (2026-09-28: were 6 chapters of 2,000 characters). */
   CHAPTER_DAYS: 3,
-  MAX_CHAPTERS: 6,
-  CHAPTER_CHARS: 2_000,
   /** Its own recent reflections, so it does not repeat itself. */
   EARLIER: 3,
   EARLIER_CHARS: 1_200,
@@ -121,16 +124,26 @@ export const REFLECT_TUNABLES = {
    * the precedent).
    */
   PART_CHARS: 24_000,
-  /** Core memories handed (the page's sources), most strongly felt first. */
-  CORE: 20,
-  /** Core candidates handed (marked about me, us or the owner; not core). */
-  CANDIDATES: 12,
-  /** The most strongly felt memories that could be about me, marked or not. */
+  /**
+   * THE LISTS, FITTED (2026-09-28, build B; the research note's P6). The
+   * whole core is handed — every core memory is the page's evidence, so the
+   * page can cite any of it — and so are every core candidate and everything
+   * lived in the last `CHAPTER_DAYS` days: a line each at least, the whole
+   * text for the most strongly felt, ids alone when even the lines outgrow
+   * the room. Was: core 20, candidates 12, recent 12, cut by count.
+   */
+  /** The most strongly felt memories that could be about me, marked or not — a whole-store list, so a page of it, with its full count said. */
   FELT: 10,
-  /** Memories made in the last `CHAPTER_DAYS` lived days, most strongly felt first, then newest. */
-  RECENT: 12,
-  /** Characters of each memory's words. */
-  TEXT_CHARS: 400,
+  /** The room the memories' and chapters' words share, across the parts, in characters. CAL. */
+  ROOM_CHARS: 80_000,
+  /** The share of the room the chapters' new entries may take. CAL. */
+  CHAPTER_SHARE: 0.3,
+  /** The most of one memory shown whole; longer is an excerpt with its whole length said (was a flat 400). */
+  DETAIL_CHARS: 4_000,
+  /** The longest chapter entry shown whole. */
+  ENTRY_CHARS: 6_000,
+  /** Bytes of a line. */
+  LINE_BYTES: 200,
   /** Feelings shown per memory, and the characters of each one's carried_by. */
   FEELINGS_SHOWN: 3,
   FEELING_CARRIED_CHARS: 160,
@@ -174,11 +187,18 @@ export function reflectionOpener(id: string): string {
 /** Meta latch: a memory promoted on reflection alone, already named in a share. */
 export const CORE_MENTIONED_PREFIX = "reflection.coreMentioned.";
 
-/** One memory as the reflection is shown it — words and feelings, no lane arithmetic. */
+/**
+ * One memory as the reflection is shown it — words and feelings, no lane
+ * arithmetic. Its words at the fidelity the room gave it (2026-09-28):
+ * `whole`, an `excerpt`, its `line`, or its `id` alone (text empty); `chars`
+ * is the whole length.
+ */
 export interface ReflectItem {
   readonly id: string;
   readonly kind: Kind;
+  readonly fidelity: Fidelity;
   readonly text: string;
+  readonly chars: number;
   /** How strongly it is felt (the strongest recorded feeling, or its emotional score), rounded. */
   readonly felt: number;
   /**
@@ -221,19 +241,42 @@ export interface ReflectBundle {
   readonly parts: { readonly part: number; readonly of: number; readonly next: string } | null;
   /** The self page, whole. */
   readonly selfPage: string | null;
-  readonly chapters: readonly { id: string; title: string | null; text: string }[];
+  /** The last few days' chapters, as entries (in this part; later parts carry the rest). */
+  readonly chapters: readonly ShownChapter[];
   readonly earlier: readonly { date: string | null; entry: string }[];
   readonly onMind: readonly MindItem[];
+  /** Open things beyond the few shown, counted (they stay open). */
+  readonly onMindMore?: number;
+  /** The whole core (2026-09-28: was the 20 most felt), most strongly felt first. */
   readonly core: readonly string[];
+  /** Every core candidate, most strongly felt first. */
   readonly candidates: readonly string[];
+  /** A page of the most strongly felt memories that could be about me; `feltOf` is how many there are. */
   readonly felt: readonly string[];
-  /** What was lived in the last few days: memories made since, most felt first. */
+  readonly feltOf: number;
+  /** What was lived in the last few days: every memory made since, most felt first. */
   readonly recent: readonly string[];
   /** Became core on reflection alone since it was last said: the share says it. */
   readonly becameCore: readonly string[];
   readonly memories: Readonly<Record<string, ReflectItem>>;
+  /**
+   * How the room was spent (2026-09-28): memories and entries shown whole, as
+   * an excerpt, as a line, as an id alone; and `notShown`, what the room could
+   * not take at all.
+   */
+  readonly shownAs: { readonly whole: number; readonly excerpt: number; readonly line: number; readonly ids: number; readonly notShown: number };
+  /** How to read the rest, in words. */
+  readonly lookup: string;
   readonly limits: typeof REFLECT_TUNABLES.LIMITS;
 }
+
+/**
+ * THE LOOKUP, NAMED IN THE BUNDLE (2026-09-28). The MCP tool's `how` adds the
+ * numbers (how many ids at once).
+ */
+export const REFLECT_LOOKUP =
+  'The most strongly felt memories come whole; the rest as an excerpt, a line, or an id alone ("fidelity"; "chars" is the whole length). ' +
+  "Read any you need whole with the recall tool, ids: [...] — several at once — before you cite, feel or mark it. A chapter entry shown as a line is read by its chapter's id.";
 
 export type ReflectRefusal =
   | "observer"
@@ -455,7 +498,8 @@ export class Reflections {
     }
     const id = `rfl_${randomBytes(6).toString("hex")}`;
     const questions = this.questionsFor(dreamId !== null);
-    const composed = this.compose(id, dreamId, questions, day, at);
+    const fitted = this.compose(id, dreamId, questions, day, at);
+    const composed = fitted.bundle;
     const saw = composed.dreamSaw;
     // IN PARTS, NEVER CUT (2026-09-28). A night's bundle — the page whole, what
     // the dream saw, the memories that matter most — can pass the tool
@@ -478,10 +522,14 @@ export class Reflections {
       questions,
       shown,
     });
-    // The later parts' ids are kept on the row until the first finish, so a
-    // later `part` hands exactly the part it names.
-    if (packed.later.length > 0) this.store.updateReflection(id, { detail: { parts: packed.later } });
-    this.record("reflection.begun", id, { dream: dreamId, shown: shown.length, parts: packed.later.length + 1 });
+    // The later parts' ids are kept on the row, so a later `part` hands
+    // exactly the part it names; and how the room was spent (2026-09-28) —
+    // what was offered only in part is the lookup's denominator.
+    const s = composed.shownAs;
+    const fitRecord = { whole: s.whole, excerpt: s.excerpt, lined: s.line, ids: s.ids, notShown: s.notShown, offered: offeredInPart(fitted), parts: packed.later.length + 1 };
+    this.store.updateReflection(id, { detail: { ...(packed.later.length > 0 ? { parts: packed.later } : {}), fit: fitRecord } });
+    writeIndex(this.store, "reflection", { ref: id, at: this.store.now(), offered: fitted.offered, looked: [] });
+    this.record("reflection.begun", id, { dream: dreamId, shown: shown.length, ...fitRecord });
     const instructions = this.instructions(id, input.session, bundle);
     return { ok: true, bundle, text: render(id, bundle), instructions };
   }
@@ -499,7 +547,7 @@ export class Reflections {
     const how = this.instructions(id, session, composed);
     if (resultChars(render(id, composed), how, questions) <= T.RESULT_CHARS) return { bundle: composed, later: [] };
     // A piece's cost as it leaves: its JSON, escaped once more inside the string.
-    const cost = (v: unknown): number => JSON.stringify(JSON.stringify(v)).length;
+    const cost = (v: unknown): number => wireChars(JSON.stringify(JSON.stringify(v)));
     const pieces: { kind: "m" | "c" | "s"; id: string; size: number }[] = [
       ...Object.entries(composed.memories).map(([k, v]) => ({ kind: "m" as const, id: k, size: cost({ [k]: v }) })),
       ...composed.chapters.map((c) => ({ kind: "c" as const, id: c.id, size: cost(c) })),
@@ -580,17 +628,49 @@ export class Reflections {
     }
     const denied = new Set(this.store.deniedIds());
     const gone = "(gone since you began: archived, merged or made private)";
+    // Each at the fidelity its fit gave it (the reflection's index).
+    const index = readIndex(this.store, "reflection");
+    const offered = index !== null && index.ref === row.id ? index.offered : null;
+    const fidelityOf = (key: string): Fidelity | null =>
+      offered === null
+        ? "line"
+        : offered.whole.includes(key)
+          ? "whole"
+          : offered.excerpt.includes(key)
+            ? "excerpt"
+            : offered.line.includes(key)
+              ? "line"
+              : offered.id.includes(key)
+                ? "id"
+                : null;
+    const T = REFLECT_TUNABLES;
     const memories: Record<string, ReflectItem | string> = {};
     for (const mid of ids.m) {
       const r = this.store.row(mid);
-      const item = r !== undefined && !denied.has(mid) && this.showable(r) && r.source !== "reflection" ? this.item(r) : null;
-      memories[mid] = item ?? gone;
+      const v = r !== undefined && !denied.has(mid) && this.showable(r) && r.source !== "reflection" ? this.view(r) : null;
+      if (v === null) {
+        memories[mid] = gone;
+        continue;
+      }
+      const f = fidelityOf(mid) ?? "line";
+      // Bounded whatever its fidelity (review of build B).
+      const text = f === "line" ? v.line : f === "id" ? "" : clipWire(v.whole, T.DETAIL_CHARS);
+      memories[mid] = this.item(v.row, { fidelity: f === "line" || f === "id" ? f : text === v.whole ? "whole" : "excerpt", text, chars: v.whole.length });
     }
-    const chapters = ids.c.map((cid) => {
+    const chapters = ids.c.map((cid): ShownChapter => {
       const r = this.store.row(cid);
-      return r === undefined || (r.confidential === 1 && !this.ctx.owner)
-        ? { id: cid, title: null, text: gone }
-        : { id: cid, title: r.title, text: cut(r.body, REFLECT_TUNABLES.CHAPTER_CHARS) ?? "" };
+      if (r === undefined || (r.confidential === 1 && !this.ctx.owner)) return { id: cid, title: null, entries: [{ chapter: null, day: null, fidelity: "line", text: gone, chars: 0 }], earlier: 0 };
+      const all = chapterEntries(r.body);
+      const entries = [];
+      for (const e of all) {
+        const f = fidelityOf(entryKey(cid, e.index));
+        if (f === null || f === "id") continue;
+        // An entry whose place moved since begin (the body was rewritten) is
+        // still bounded: whatever it holds now reads within ENTRY_CHARS.
+        const text = f === "line" ? lineOf({ body: e.text }, T.LINE_BYTES) : clipWire(e.text, T.ENTRY_CHARS);
+        entries.push(shownEntry(e, { fidelity: f === "line" ? "line" : text === e.text ? "whole" : "excerpt", text, chars: e.text.length }));
+      }
+      return { id: cid, title: r.title, entries, earlier: all.length - entries.length };
     });
     const dreamSaw = ids.s.map((sid) => this.sawLine(sid, denied) ?? { id: sid, text: gone });
     const body = { reflection: row.id, part: input.part, of, memories, chapters, dreamSaw };
@@ -1120,6 +1200,9 @@ export class Reflections {
     // #271): a second finish may want a memory it had not fetched yet.
     const parts = parseDetail(row.detail)["parts"];
     if (Array.isArray(parts)) detail["parts"] = parts;
+    // And how its room was spent (2026-09-28): doctor reads it.
+    const fitRecord = parseDetail(row.detail)["fit"];
+    if (isRecord(fitRecord)) detail["fit"] = fitRecord;
     if (again) detail["finishes"] = (typeof prior["finishes"] === "number" ? prior["finishes"] : 1) + 1;
     this.store.updateReflection(row.id, {
       ...(again ? {} : { state: "reflected" as const }),
@@ -1292,21 +1375,32 @@ export class Reflections {
     return out;
   }
 
-  private compose(id: string, dreamId: string | null, questions: readonly string[], day: number, at: string): ReflectBundle {
+  /**
+   * THE BUNDLE, FITTED (2026-09-28, build B). The lists name every memory
+   * they rest on — the whole core, every core candidate, everything lived in
+   * the last few days, a page of the most strongly felt — and the fitter
+   * spends the room: the most strongly felt whole, a line for the rest, ids
+   * alone past that. Nothing is cut by count; what the room could not take at
+   * all is counted (`shownAs.notShown`).
+   */
+  private compose(id: string, dreamId: string | null, questions: readonly string[], day: number, at: string): Composed {
     const T = REFLECT_TUNABLES;
-    const memories: Record<string, ReflectItem> = {};
     const denied = new Set(this.store.deniedIds());
-    const take = (mid: string): boolean => {
-      if (memories[mid] !== undefined) return true;
-      if (denied.has(mid)) return false;
-      const row = this.store.row(mid);
-      if (row === undefined || !this.showable(row)) return false;
-      // Its own entries come as words (`earlier`), never as a memory — not
-      // even when a dream nominated one or it is on my mind (review of #256, B1).
-      if (row.source === "reflection") return false;
-      const item = this.item(row);
-      if (item === null) return false;
-      memories[mid] = item;
+    const priority = new Map<string, number>();
+    const views = new Map<string, { row: MemoryRow; whole: string; line: string } | null>();
+    const see = (mid: string): { row: MemoryRow; whole: string; line: string } | null => {
+      if (!views.has(mid)) {
+        const row = denied.has(mid) ? undefined : this.store.row(mid);
+        // Its own entries come as words (`earlier`), never as a memory — not
+        // even when a dream nominated one or it is on my mind (review of #256, B1).
+        views.set(mid, row === undefined || !this.showable(row) || row.source === "reflection" ? null : this.view(row));
+      }
+      return views.get(mid) ?? null;
+    };
+    const take = (base: number) => (mid: string): boolean => {
+      if (see(mid) === null) return false;
+      const p = base * 10 + emotionalIntensity(this.store.physicsOf(mid));
+      priority.set(mid, Math.max(priority.get(mid) ?? -Infinity, p));
       return true;
     };
 
@@ -1315,14 +1409,14 @@ export class Reflections {
     if (dreamId !== null) {
       const dream = this.store.dream(dreamId);
       const changes = this.store.dreamChanges(dreamId).filter((c) => c.undone === 0);
-      const gists = changes.filter((c) => c.action === "gist" && c.ref !== null).map((c) => c.ref as string).filter(take);
+      const gists = changes.filter((c) => c.action === "gist" && c.ref !== null).map((c) => c.ref as string).filter(take(5));
       const nominations = this.store
         .coreEvents({ action: "nominated" })
-        .filter((e) => e.dream_id === dreamId && take(e.memory_id))
+        .filter((e) => e.dream_id === dreamId && take(5)(e.memory_id))
         .map((e) => ({ id: e.memory_id, why: e.reason }));
       dreamed = {
         title: dream?.title ?? null,
-        journal: cut(dream?.journal ?? null, T.JOURNAL_CHARS),
+        journal: dream?.journal == null ? null : clipWire(dream.journal, T.JOURNAL_CHARS),
         gists,
         nominations,
       };
@@ -1351,33 +1445,31 @@ export class Reflections {
       if (f > 0 && (candidate || KINDS_FELT.includes(row.kind))) felt.push({ id: mid, felt: f });
     }
     const byFelt = (a: { id: string; felt: number }, b: { id: string; felt: number }): number => b.felt - a.felt || (a.id < b.id ? -1 : 1);
-    const coreIds = core.sort(byFelt).map((c) => c.id).filter(take).slice(0, T.CORE);
+    const coreIds = core.sort(byFelt).map((c) => c.id).filter(take(4));
     const candidateIds = candidates
       .sort((a, b) => b.felt - a.felt || b.at - a.at || (a.id < b.id ? -1 : 1))
       .map((c) => c.id)
       .filter((x) => !coreIds.includes(x))
-      .slice(0, T.CANDIDATES)
-      .filter(take);
-    const feltIds = felt
+      .filter(take(2));
+    const feltAll = felt
       .sort(byFelt)
       .map((c) => c.id)
-      .filter((x) => !candidateIds.includes(x))
-      .slice(0, T.FELT)
-      .filter(take);
+      .filter((x) => !candidateIds.includes(x));
+    const feltIds = feltAll.slice(0, T.FELT).filter(take(1));
     const recentIds = recent
       .sort((a, b) => b.felt - a.felt || b.at - a.at || (a.id < b.id ? -1 : 1))
-      .slice(0, T.RECENT)
       .map((c) => c.id)
-      .filter(take);
+      .filter(take(3));
 
-    const onMind = onMyMind(this.store, {
+    const mindRead = mindRanked(this.store, {
       today: at,
       day,
       showable: (row) => !denied.has(row.id) && this.showable(row),
       owner: this.ctx.owner,
-    }).filter((item) => item.ids.every((mid) => take(mid)));
+    });
+    const onMind = mindRead.items.filter((item) => item.ids.every(take(3)));
 
-    const becameCore = this.becameCoreUnsaid().filter(take);
+    const becameCore = this.becameCoreUnsaid().filter(take(5));
 
     // WHAT THE DREAM SAW (2026-09-28): what it was shown and what it made, in
     // the order it was shown, a line each — so the reflection reads the night
@@ -1395,33 +1487,91 @@ export class Reflections {
       }
     }
 
-    return {
+    const chaptersFit = this.recentChapters(day, T.ROOM_CHARS * T.CHAPTER_SHARE);
+    const page = this.ctx.page();
+    const earlier = this.store
+      .reflections({ limit: T.EARLIER + 4 })
+      .filter((r) => r.state === "reflected" && r.entry !== null && r.id !== id)
+      .filter((r) => this.ctx.owner || !this.touchesConfidential(r))
+      .slice(0, T.EARLIER)
+      .map((r) => ({ date: r.date, entry: clipWire(r.entry ?? "", T.EARLIER_CHARS) }));
+    const spent =
+      chaptersFit.used +
+      wireChars(page ?? "") +
+      wireChars(dreamed?.journal ?? "") +
+      earlier.reduce((n, e) => n + wireChars(e.entry), 0) +
+      dreamSaw.reduce((n, s) => n + wireChars(s.text) + 30, 0);
+    const room = Math.max(0, T.ROOM_CHARS - spent - REFLECT_FURNITURE);
+    const cands: FitCandidate[] = [...priority].map(([mid, p]) => {
+      const v = see(mid) as { whole: string; line: string };
+      return { id: mid, priority: p, line: v.line, whole: v.whole };
+    });
+    const fitted = fit(cands, { room, excerptChars: T.DETAIL_CHARS });
+    const left = new Set(fitted.waiting);
+    const kept = (x: string): boolean => !left.has(x);
+    const memories: Record<string, ReflectItem> = {};
+    for (const p of fitted.placed) memories[p.id] = this.item((see(p.id) as { row: MemoryRow }).row, p);
+    const o = offeredOf(fitted.placed);
+    const offered = {
+      whole: [...o.whole, ...chaptersFit.offered.whole],
+      excerpt: [...o.excerpt, ...chaptersFit.offered.excerpt],
+      line: [...o.line, ...chaptersFit.offered.line, ...dreamSaw.map((s) => s.id)],
+      id: [...o.id, ...chaptersFit.offered.id],
+    };
+    const bundle: ReflectBundle = {
       reflection: id,
       dream: dreamId,
       date: at,
       owner: this.ctx.ownerName(),
       questions,
-      dreamed,
+      dreamed:
+        dreamed === null
+          ? null
+          : { ...dreamed, gists: dreamed.gists.filter(kept), nominations: dreamed.nominations.filter((n) => kept(n.id)) },
       dreamSaw,
       parts: null,
       // WHOLE (2026-09-28: was cut at 6,000 characters).
-      selfPage: this.ctx.page(),
-      chapters: this.recentChapters(day),
-      earlier: this.store
-        .reflections({ limit: T.EARLIER + 4 })
-        .filter((r) => r.state === "reflected" && r.entry !== null && r.id !== id)
-        .filter((r) => this.ctx.owner || !this.touchesConfidential(r))
-        .slice(0, T.EARLIER)
-        .map((r) => ({ date: r.date, entry: cut(r.entry, T.EARLIER_CHARS) ?? "" })),
-      onMind,
-      core: coreIds,
-      candidates: candidateIds,
-      felt: feltIds,
-      recent: recentIds,
-      becameCore,
+      selfPage: page,
+      chapters: chaptersFit.chapters,
+      earlier,
+      onMind: onMind.filter((item) => item.ids.every(kept)),
+      ...(mindRead.more > 0 ? { onMindMore: mindRead.more } : {}),
+      core: coreIds.filter(kept),
+      candidates: candidateIds.filter(kept),
+      felt: feltIds.filter(kept),
+      recent: recentIds.filter(kept),
+      becameCore: becameCore.filter(kept),
       memories,
+      feltOf: feltAll.length,
+      shownAs: {
+        whole: fitted.report.whole + chaptersFit.report.whole,
+        excerpt: fitted.report.excerpt + chaptersFit.report.excerpt,
+        line: fitted.report.lined + chaptersFit.report.lined,
+        ids: fitted.report.ids,
+        notShown: fitted.waiting.length + chaptersFit.notShown,
+      },
+      lookup: REFLECT_LOOKUP,
       limits: { ...T.LIMITS },
     };
+    return { bundle, offered };
+  }
+
+  /**
+   * A memory's words as the reflection may see them — its whole text (title,
+   * then body, on one line) and its line — or null (unreadable, the self
+   * page, a handoff).
+   */
+  private view(row: MemoryRow): { row: MemoryRow; whole: string; line: string } | null {
+    let doc: ProseDoc;
+    try {
+      doc = this.store.readProse(row.id);
+    } catch {
+      return null;
+    }
+    if (isSelfPage(doc) || isHandoff(doc)) return null;
+    const title = doc.title !== undefined && doc.title.trim().length > 0 ? doc.title.trim() : "";
+    const whole = `${title.length > 0 ? `${title} — ` : ""}${doc.body}`.replace(/\s+/g, " ").trim();
+    return { row, whole, line: lineOf({ title, body: doc.body }, REFLECT_TUNABLES.LINE_BYTES) };
   }
 
   /**
@@ -1442,7 +1592,7 @@ export class Reflections {
     if (isSelfPage(doc) || isHandoff(doc)) return null;
     const head = doc.title !== undefined && doc.title.trim().length > 0 ? `${doc.title.trim()} — ` : "";
     const flat = `${head}${doc.body}`.replace(/\s+/g, " ").trim();
-    return { id, text: cut(flat, REFLECT_TUNABLES.SAW_CHARS) ?? "" };
+    return { id, text: clipWire(flat, REFLECT_TUNABLES.SAW_CHARS) };
   }
 
   /**
@@ -1508,10 +1658,15 @@ export class Reflections {
     }
   }
 
-  /** Chapters written or extended in the last few lived days, newest first. */
-  private recentChapters(day: number): { id: string; title: string | null; text: string }[] {
+  /**
+   * THE LAST FEW DAYS' CHAPTERS, AS SLICES (2026-09-28: were six chapters of
+   * 2,000 characters, cut from the end). Every episode begun or written to in
+   * the last few days, its entries of those days in view — a line for each,
+   * the whole of the most important, in `room`; the older entries counted.
+   */
+  private recentChapters(day: number, room: number): EpisodesFit {
     const T = REFLECT_TUNABLES;
-    const out: { id: string; title: string | null; text: string; at: number }[] = [];
+    const episodes: EpisodeInView[] = [];
     for (const id of this.store.list({ type: "episode", archived: false })) {
       const row = this.store.row(id);
       if (row === undefined) continue;
@@ -1520,21 +1675,20 @@ export class Reflections {
       // calendar days (a chapter grows while its session runs).
       const at = row.updated_at ?? row.created_at ?? 0;
       if (row.birth_day < day - T.CHAPTER_DAYS && at < this.store.now() - T.CHAPTER_DAYS * DAY_MS) continue;
-      out.push({ id, title: row.title, text: cut(row.body, T.CHAPTER_CHARS) ?? "", at: row.updated_at ?? row.created_at ?? 0 });
+      const entries = chapterEntries(row.body);
+      const fresh = entries.filter((e) => this.entryInView(e, day));
+      if (fresh.length > 0) episodes.push({ row, at, fresh, earlier: entries.length - fresh.length });
     }
-    out.sort((a, b) => b.at - a.at);
-    return out.slice(0, T.MAX_CHAPTERS).map(({ id, title, text }) => ({ id, title, text }));
+    return fitEpisodes(episodes, { room, owner: ownerNames(this.store), day, lineBytes: T.LINE_BYTES, entryChars: T.ENTRY_CHARS });
   }
 
-  private item(row: MemoryRow): ReflectItem | null {
-    let doc: ProseDoc;
-    try {
-      doc = this.store.readProse(row.id);
-    } catch {
-      return null;
-    }
-    if (isSelfPage(doc) || isHandoff(doc)) return null;
-    const head = doc.title !== undefined && doc.title.trim().length > 0 ? `${doc.title.trim()} — ` : "";
+  /** An entry of the last few lived days (one with no day in its heading counts as recent). */
+  private entryInView(e: ChapterEntry, day: number): boolean {
+    return e.day === null || e.day >= day - REFLECT_TUNABLES.CHAPTER_DAYS;
+  }
+
+  /** One memory as the reflection is shown it, at the fidelity its fit gave it. */
+  private item(row: MemoryRow, placed: Pick<Placed, "fidelity" | "text" | "chars">): ReflectItem {
     const feelings = this.store
       .feelingsFor(row.id)
       .sort((a, b) => b.strength - a.strength)
@@ -1551,7 +1705,9 @@ export class Reflections {
     return {
       id: row.id,
       kind: row.kind,
-      text: (cut(`${head}${doc.body}`, REFLECT_TUNABLES.TEXT_CHARS) ?? "").replace(/\s+/g, " "),
+      fidelity: placed.fidelity,
+      text: placed.text,
+      chars: placed.chars,
       felt: round(emotionalIntensity(this.store.physicsOf(row.id))),
       feelings,
       about,
@@ -1689,6 +1845,20 @@ function cut(text: string | null, max: number): string | null {
   return text.length <= max ? text : `${text.slice(0, max)}…`;
 }
 
+/** `text` kept to `max` characters, the last one "…" — the fitter's excerpt. */
+function excerpt(text: string, max: number): string {
+  return text.length <= max ? text : `${text.slice(0, Math.max(0, max - 1))}…`;
+}
+
+/** A composed bundle and what its fit offered (for the lookup ledger). */
+interface Composed {
+  readonly bundle: ReflectBundle;
+  readonly offered: { whole: string[]; excerpt: string[]; line: string[]; id: string[] };
+}
+
+/** The bundle's other furniture, reserved from the room: ids, lists, the questions, the limits. */
+const REFLECT_FURNITURE = 4_000;
+
 /** Was this row on that calendar day? Its date, else (a row with none) its lived day. */
 function onDay(row: { date: string | null; day: number }, at: string, day: number): boolean {
   return row.date !== null && row.date.length > 0 ? row.date === at : row.day >= day;
@@ -1710,7 +1880,7 @@ const PART_FURNITURE = 1_000;
  * questions beside it (the MCP adapter's `reflect` tool).
  */
 export function resultChars(text: string, how: string, questions: readonly string[]): number {
-  return JSON.stringify({ bundle: text, how, questions }, null, 2).length;
+  return wireChars(JSON.stringify({ bundle: text, how, questions }, null, 2));
 }
 
 /** A later part of a bundle, by id: its memories, chapters and lines of what the dream saw. */

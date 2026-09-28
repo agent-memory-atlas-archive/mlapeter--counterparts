@@ -93,7 +93,12 @@ function agree(c: Counterpart, owner: boolean): DreamPreview {
   const live = c.dreams.previewAsk({ at: AT });
   expect(live.wouldAsk).toBe(s.due);
   expect(live.reason).toBe(s.reason as DreamPreview["reason"]);
-  if (s.reason === "due" || s.reason === "too-little-new") expect(live.newSince).toBe(s.newSince);
+  // The per-prompt gate counts only as far as MIN_NEW (review of build B) and
+  // says when its count is a floor; below that it is exact.
+  if (s.reason === "due" || s.reason === "too-little-new") {
+    if (s.newSinceAtLeast === true) expect(live.newSince).toBeGreaterThanOrEqual(s.newSince);
+    else expect(live.newSince).toBe(s.newSince);
+  }
   const seen = observed((o) => {
     // The observer's own gate stands down, as it always did.
     expect(o.dreams.status(AT).reason).toBe("observer");
@@ -198,12 +203,12 @@ describe("the preview and the real gate agree", () => {
     realAsk(owner, o);
   });
 
-  test("the cap: new since never reads past MAX_NEW", () => {
+  test("the queue is counted whole: what one night cannot take still counts (build B, 2026-09-28; was capped at MAX_NEW 40)", () => {
     const c = brain(false);
     days(c);
-    fresh(c, DREAM_TUNABLES.MAX_NEW + 5);
+    fresh(c, 45);
     const p = agree(c, false);
-    expect(p).toEqual({ wouldAsk: true, reason: "due", newSince: DREAM_TUNABLES.MAX_NEW });
+    expect(p).toEqual({ wouldAsk: true, reason: "due", newSince: 45 });
     realAsk(c, p);
   });
 });

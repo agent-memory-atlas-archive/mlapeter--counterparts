@@ -343,7 +343,30 @@ writer, the dream and the reflection. What the build learned:
   inside the result's JSON, beside `how` and the questions): `RESULT_CHARS` 54,000 and
   `PART_CHARS` 24,000 of that text. Tested at the real limit. A part still fetches after
   a finish. Not changed here: the DREAM's own begin result can pass 60,000 characters on a
-  busy night (seen in that test) — PR B's fitter.
+  busy night (seen in that test) — PR B's fitter (done in build B: parts, below).
 - Headless runs (`claude -p`) still get the `auto` line: the hook cannot tell one that
   will exit from an interactive session reliably, and the 30-minute relaunch recovers a
   run that died with it.
+
+## 2026-09-28 — build B: fitting (working defaults, held lightly)
+
+- `MAX_NEW` 40 (newest first, the rest never shown to any dream), `TEXT_CHARS` 400,
+  `CHAPTER_CHARS` 3,000 and `MAX_CHAPTERS` 6 are gone. In their place: the QUEUE (undreamed
+  = in no standing dream's `shown`, within `QUEUE_DAYS`), ranked by replay priority;
+  TONIGHT'S ROOM (`NIGHT_CHARS`, across parts); detail by importance (`DETAIL_CHARS`); and
+  chapter ENTRIES as slices. See `fit/` CONTRACT for the principle.
+- The chapter cut used to drop exactly the new chapters: a grown episode was re-sent from
+  chapter 1 and cut at 3,000 characters. Now only the entries added since the last dream are
+  sent; how far the last dream read each episode is kept in its index (exact), and without
+  one the headings' lived days decide (an entry of the last dream's own day is sent again —
+  over-shown rather than dropped).
+- The begin result is measured as it leaves (`dreamResultChars`) and comes in parts past
+  `RESULT_CHARS`; the busy-night fixture of #271 now passes through the MCP server under it
+  (`test/fitting.test.ts`).
+- `onMyMind` is ranked across its three kinds (it filled coming-up first, so five dated
+  items hid every flagged pair); `onMindMore` counts the rest.
+- The page and the wake are still cut at 6,000 characters in the bundle; their whole lengths
+  are said (`selfPageChars`, `wakeChars`). The wake mostly repeats the page (audit note B);
+  sending only its non-page lanes is a follow-up.
+- Unsure: `FRESH_SHARE` 0.5 and `CHAPTER_SHARE` 0.3 of the night are guesses. A real
+  night's `dream.begun` row now carries the queue and how the room was spent.
