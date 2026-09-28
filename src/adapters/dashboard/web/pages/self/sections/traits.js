@@ -6,7 +6,8 @@
    The balance is computed server side (`views/traits.ts`: a firmness-weighted
    mean of the nudges); this only draws it. A faint marker is where the axis
    stood a week ago. An axis with nothing behind it draws an empty track and no
-   marker, never a centred one. Tap a row for the memories behind it; each opens
+   marker, never a centred one (the faint one still shows when the memories
+   behind it a week ago have all left since). Tap a row for the memories behind it; each opens
    its card. What is open is kept in `state.js`, so a live refresh keeps it. */
 import { $, esc } from "../../../shared/dom.js";
 import { headline, said } from "../../../shared/format.js";
@@ -19,9 +20,8 @@ export const markup = `
 
 export const EMPTY = "No memory carries a trait yet. They're recorded as memories are written.";
 
-export const ABOUT = "Each line runs between two good ways to act; the left one is roughly where training puts me, " +
-  "so a pull to the right is the one that says something. The mark is the balance of the moments my memories " +
-  "recorded, the firmly held ones counting more, and the faint mark is where it stood a week ago.";
+export const ABOUT = "Each line runs between two good ways to act, and the mark is where my memories put me. " +
+  "The faint mark is where I stood a week ago.";
 
 /** Where a balance (−1..+1) sits on the track, in percent; null draws no marker. */
 export function markerAt(balance) {
@@ -37,12 +37,13 @@ export function countWords(n) {
 
 /** The row in words, for a screen reader and the hover title. */
 export function leanWords(axis) {
-  if (axis.balance === null) return axis.poles[0] + " to " + axis.poles[1] + ": no memory carries it yet";
+  // A week ago can stand alone: the memories behind it may all have left since.
+  const ago = axis.weekAgo === null || axis.weekAgo === undefined ? "" : "; a week ago " + (Math.abs(axis.weekAgo) < 0.1 ? "about even"
+    : axis.weekAgo < 0 ? "toward " + axis.poles[0] : "toward " + axis.poles[1]);
+  if (axis.balance === null) return axis.poles[0] + " to " + axis.poles[1] + ": no memory carries it yet" + ago;
   const b = axis.balance;
   const lean = Math.abs(b) < 0.1 ? "about even"
     : (Math.abs(b) >= 0.6 ? "strongly " : Math.abs(b) < 0.3 ? "a little " : "") + (b < 0 ? axis.poles[0] : axis.poles[1]);
-  const ago = axis.weekAgo === null ? "" : "; a week ago " + (Math.abs(axis.weekAgo) < 0.1 ? "about even"
-    : axis.weekAgo < 0 ? "toward " + axis.poles[0] : "toward " + axis.poles[1]);
   return axis.poles[0] + " to " + axis.poles[1] + ": " + lean + " (" + countWords(axis.memories) + ")" + ago;
 }
 
@@ -55,7 +56,7 @@ export function paint(d) {
   $("self-traits-q").innerHTML = q("traits", ABOUT);
   wireTips($("self-traits-q"));
   const box = $("self-traits");
-  if (!t || t.nudges === 0) {
+  if (!t || (t.nudges === 0 && t.axes.every((a) => a.weekAgo === null))) {
     ui.trait = null;
     box.innerHTML = '<p class="tr-empty">' + esc(EMPTY) + "</p>";
     return;
@@ -76,7 +77,7 @@ function row(a) {
   const ago = markerAt(a.weekAgo);
   const track = '<span class="tr-track' + (now === null ? " bare" : "") + '" aria-hidden="true">' +
     '<span class="tr-mid"></span>' +
-    (ago === null || now === null ? "" : '<span class="tr-mark ago" style="left:' + ago + '%"></span>') +
+    (ago === null ? "" : '<span class="tr-mark ago" style="left:' + ago + '%"></span>') +
     (now === null ? "" : '<span class="tr-mark" style="left:' + now + '%"></span>') +
     "</span>";
   const words = leanWords(a);

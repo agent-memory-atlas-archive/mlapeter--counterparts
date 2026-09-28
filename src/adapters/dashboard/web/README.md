@@ -213,10 +213,14 @@ a track, a marker, the right pole's word, and how many memories stand behind
 it; an axis's gloss is behind a `?`. The balance is `views/traits.ts`
 (`balanceOf`): each nudge counts `strength × firmness` (the memory's strength on
 today's lived day; a core memory counts 1), signed −1 toward `poles[0]` and +1
-toward `poles[1]`, over Σ unsigned. A faint marker is the same over the nudges
-recorded 7 or more calendar days ago, with today's firmness. Nudges come from
-`traitsAll()` (live memories only, so a merge is not counted twice); a
-confidential memory's nudge moves the bar and its words show as "withheld". An
+toward `poles[1]`, over Σ unsigned; the bar, its list and its count are the
+live memories. A faint marker is the same over the nudges recorded 7 or more
+calendar days ago, weighed by each memory's firmness 7 lived days ago
+(`firmnessThen`: core membership, returns and feelings rolled back exactly; a
+memory used since reads as used that day, a ceiling, since uses keep no
+history), and it still counts memories archived or merged away since (a merge's
+copied nudge counted once). A confidential memory's nudge moves the bar and its
+words show as "withheld". An
 axis with nothing behind it draws an empty track and no marker. Tapping a row
 lists its memories (each opens its card); `state.js#trait` keeps it open.
 `sections/wake.js`

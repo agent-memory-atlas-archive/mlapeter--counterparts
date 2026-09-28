@@ -17,7 +17,8 @@ import { TRAIT_AXES } from "../src/core/store/index.js";
 import { localDate } from "../src/core/time.js";
 import { Dashboard } from "../src/adapters/dashboard/index.js";
 import type { DashboardSource } from "../src/adapters/dashboard/index.js";
-import { balanceOf, mindView, traitsView } from "../src/adapters/dashboard/web/views.js";
+import { balanceOf, firmnessThen, mindView, traitsView } from "../src/adapters/dashboard/web/views.js";
+import { strength } from "../src/core/physics/index.js";
 import type { TraitAxisView, TraitsView } from "../src/adapters/dashboard/web/views.js";
 // @ts-expect-error — a plain browser module, no declarations
 import { EMPTY, countWords, leanWords, markerAt } from "../src/adapters/dashboard/web/pages/self/sections/traits.js";
@@ -217,6 +218,152 @@ describe("the view, on a store", () => {
   });
 });
 
+describe("a week ago: firmness then, and memories that have left since", () => {
+  // A store ten lived days old, one active day per calendar day, so seven
+  // lived days back is a day these memories had lived through.
+  let wk: string;
+  let d = 0;
+  const w: Record<string, string> = {};
+  const OLD = (): number => Date.now() - 10 * DAY;
+
+  beforeAll(() => {
+    wk = fresh("counterparts-self-traits-week-");
+    Counterpart.open({ dir: wk, owner: true, identity: { name: "Mike" } }).close();
+    // An archive BEFORE the week-ago date needs the store's clock back then.
+    const past = Counterpart.open({ dir: wk, owner: true, now: () => Date.now() - 9 * DAY });
+    try {
+      for (let k = 10; k >= 9; k--) past.store.advanceClock(localDate(Date.now() - k * DAY, past.store.zone()));
+      w["gone-long"] = past.store.put({
+        type: "memory", kind: "self", body: "I chased a tangent about fonts.", about: "me",
+        salience: { relevance: 0.6, emotional: 0.4, predictive: 0.6 },
+        physics: { birthDay: 1, lastUsedDay: 1 },
+      });
+      past.store.addTraits(w["gone-long"] as string, [{ axis: "focused-curious", toward: "curious", strength: 1, carriedBy: "fonts" }], {
+        provenance: [{ createdAt: OLD() }],
+      });
+      past.store.archive(w["gone-long"] as string, "pruned");
+    } finally {
+      past.close();
+    }
+    const c = Counterpart.open({ dir: wk, owner: true });
+    try {
+      for (let k = 8; k >= 0; k--) c.store.advanceClock(localDate(Date.now() - k * DAY, c.store.zone()));
+      d = c.store.livedDay();
+      const put = (body: string, emotional: number): string =>
+        c.store.put({
+          type: "memory", kind: "self", body, about: "me",
+          salience: { relevance: 0.6, emotional, predictive: 0.6 },
+          physics: { birthDay: 2, lastUsedDay: 2 },
+        });
+      const nudge = (id: string, axisId: string, toward: string, strength: number): void => {
+        c.store.addTraits(id, [{ axis: axisId, toward, strength, carriedBy: toward }], { provenance: [{ createdAt: OLD() }] });
+      };
+      // careful-bold: A fading untouched since day 2; B made core TODAY.
+      w["A"] = put("I checked the backups twice before the upgrade.", 0.3);
+      w["B"] = put("I pushed the fix without waiting for review.", 0.8);
+      nudge(w["A"] as string, "careful-bold", "careful", 1);
+      nudge(w["B"] as string, "careful-bold", "bold", 1);
+      c.store.updatePhysics(w["B"] as string, { promotedIdentity: true });
+      c.store.appendCoreEvent({ memoryId: w["B"] as string, action: "promoted", day: d, lane: "fast" });
+      // focused-curious: C live; D archived today; `gone-long` archived nine days ago.
+      w["C"] = put("I stayed on the migration all day.", 0.5);
+      w["D"] = put("I wandered into the sqlite docs.", 0.5);
+      nudge(w["C"] as string, "focused-curious", "focused", 1);
+      nudge(w["D"] as string, "focused-curious", "curious", 1);
+      c.store.archive(w["D"] as string, "pruned");
+      // serious-playful: E live; F merged into G today, G carrying F's nudge with its moment.
+      w["E"] = put("I kept the release notes plain.", 0.5);
+      w["F"] = put("I joked about the flaky test.", 0.5);
+      nudge(w["E"] as string, "serious-playful", "serious", 0.6);
+      const at = OLD();
+      c.store.addTraits(w["F"] as string, [{ axis: "serious-playful", toward: "playful", strength: 0.6, carriedBy: "a joke" }], {
+        provenance: [{ createdAt: at }],
+      });
+      w["G"] = c.store.put({
+        type: "memory", kind: "self", body: "I joke about the flaky test, every time.", about: "me",
+        salience: { relevance: 0.6, emotional: 0.5, predictive: 0.6 },
+        physics: { birthDay: d, lastUsedDay: d },
+      });
+      c.store.addTraits(w["G"] as string, [{ axis: "serious-playful", toward: "playful", strength: 0.6, carriedBy: "a joke" }], {
+        provenance: [{ createdAt: at }],
+      });
+      c.store.supersedeInto(w["F"] as string, w["G"] as string, "merged");
+      // guarded-open: T records the same nudge twice in one write (one
+      // moment); U pulls the other way at twice the strength.
+      w["T"] = put("I told him how the week had felt.", 0.5);
+      w["U"] = put("I kept my worry to myself.", 0.5);
+      c.store.addTraits(w["T"] as string, [
+        { axis: "guarded-open", toward: "open", strength: 0.5, carriedBy: "said it" },
+        { axis: "guarded-open", toward: "open", strength: 0.5, carriedBy: "said it" },
+      ], { provenance: [{ createdAt: at }, { createdAt: at }] });
+      nudge(w["U"] as string, "guarded-open", "guarded", 1);
+    } finally {
+      c.close();
+    }
+  });
+
+  test("firmness then: a memory left alone had faded less; a core memory promoted since was not core", () => {
+    withSource(wk, (src) => {
+      const s = src.store;
+      const then = d - 7;
+      const a = s.physicsOf(w["A"] as string);
+      expect(firmnessThen(s, w["A"] as string, then, Date.now() - 7 * DAY)).toBeCloseTo(strength(a, then), 6);
+      expect(strength(a, then)).toBeGreaterThan(strength(a, d));
+      const b = s.physicsOf(w["B"] as string);
+      const bThen = firmnessThen(s, w["B"] as string, then, Date.now() - 7 * DAY);
+      expect(bThen).toBeCloseTo(strength({ ...b, promotedIdentity: false }, then), 6);
+      expect(bThen).toBeLessThan(1);
+      // On or after the promotion's day it was core.
+      expect(firmnessThen(s, w["B"] as string, d, Date.now())).toBe(1);
+    });
+  });
+
+  test("the faint marker weighs each memory as it was held then, not today", () => {
+    withSource(wk, (src) => {
+      const s = src.store;
+      const a = axis(traitsView(src), "careful-bold");
+      const fA = strength(s.physicsOf(w["A"] as string), d - 7);
+      const fB = strength({ ...s.physicsOf(w["B"] as string), promotedIdentity: false }, d - 7);
+      expect(a.weekAgo as number).toBeCloseTo((fB - fA) / (fA + fB), 2);
+      // Today's firmness would give a different answer (B counts 1 now).
+      const fAToday = strength(s.physicsOf(w["A"] as string), d);
+      const todays = (1 - fAToday) / (1 + fAToday);
+      expect(Math.abs((a.weekAgo as number) - todays)).toBeGreaterThan(0.05);
+      expect(a.balance as number).toBeCloseTo(todays, 2);
+    });
+  });
+
+  test("a memory archived since last week counts a week ago, not today", () => {
+    const v = withSource(wk, (src) => traitsView(src));
+    const a = axis(v, "focused-curious");
+    // Today: only C, toward "focused".
+    expect(a.balance).toBe(-1);
+    expect(a.memories).toBe(1);
+    expect(a.rows.map((r) => r.id)).toEqual([w["C"] as string]);
+    // A week ago: C and D, held alike, one each way; the one archived nine
+    // days ago had already left and does not count.
+    expect(a.weekAgo as number).toBeCloseTo(0, 2);
+  });
+
+  test("a merge since last week: the carried nudge counts once a week ago", () => {
+    const v = withSource(wk, (src) => traitsView(src));
+    const a = axis(v, "serious-playful");
+    // Today: E and the merged G.
+    expect(a.rows.map((r) => r.id).sort()).toEqual([w["E"] as string, w["G"] as string].sort());
+    // A week ago: E and F (the original, born then), held alike, one each
+    // way; counting G's copy too would pull it toward "playful".
+    expect(a.weekAgo as number).toBeCloseTo(0, 2);
+  });
+
+  test("the same nudge twice on ONE memory is two nudges a week ago, as it is today", () => {
+    const v = withSource(wk, (src) => traitsView(src));
+    const a = axis(v, "guarded-open");
+    expect(a.nudges).toBe(3);
+    expect(a.balance as number).toBeCloseTo(0, 2);
+    expect(a.weekAgo as number).toBeCloseTo(0, 2);
+  });
+});
+
 describe("the bars, as the page draws them", () => {
   test("a balance is a place on the track; null draws nothing", () => {
     expect(markerAt(-1)).toBe(0);
@@ -234,6 +381,10 @@ describe("the bars, as the page draws them", () => {
     const a = { poles: ["careful", "bold"], balance: 0.7, weekAgo: -0.4, memories: 4 };
     expect(leanWords(a)).toBe("careful to bold: strongly bold (4 memories); a week ago toward careful");
     expect(leanWords({ ...a, balance: 0.05, weekAgo: null })).toBe("careful to bold: about even (4 memories)");
-    expect(leanWords({ ...a, balance: null, memories: 0 })).toBe("careful to bold: no memory carries it yet");
+    expect(leanWords({ ...a, balance: null, weekAgo: null, memories: 0 })).toBe("careful to bold: no memory carries it yet");
+    // Every memory behind it a week ago has left since: the faint mark stands alone.
+    expect(leanWords({ ...a, balance: null, memories: 0 })).toBe(
+      "careful to bold: no memory carries it yet; a week ago toward careful",
+    );
   });
 });
