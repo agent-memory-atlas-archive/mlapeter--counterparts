@@ -1318,6 +1318,15 @@ export class Dreams {
       if (this.store.getMeta(key) !== undefined) continue;
       const a = this.store.row(c.ref);
       const b = this.store.row(c.ref2);
+      // A pair one of whose memories is gone for good (removed, archived,
+      // merged on) can never be raised: latched, so this per-prompt read does
+      // not pass over it again. One only confidential here stays open — the
+      // owner's own session may raise it.
+      const gone = (r: MemoryRow | undefined): boolean => r === undefined || r.archived === 1 || r.superseded_by !== null;
+      if (gone(a) || gone(b)) {
+        this.store.setMeta(key, String(this.store.livedDay()));
+        continue;
+      }
       if (a === undefined || b === undefined || !this.showable(a) || !this.showable(b)) continue;
       this.store.setMeta(key, String(this.store.livedDay()));
       const theirs = (r: MemoryRow): boolean => r.about === "us" || r.about === "owner" || namesOwner(this.store, r, owner);
