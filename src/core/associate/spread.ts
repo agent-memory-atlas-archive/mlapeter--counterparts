@@ -59,6 +59,14 @@ export interface Contribution {
   /** Shallowest hop at which it was reached. */
   readonly depth: number;
   readonly paths: number;
+  /**
+   * Who passed it what: each EXPANDED node whose edge reached it, and the
+   * activation that edge carried (2026-09-28). For a first-hop contribution
+   * these are seeds. Recall reads it to show a quiet pointer only beside a
+   * memory the turn actually shows — pattern completion of something that came
+   * to mind, not of a candidate the gate turned away.
+   */
+  readonly from: Readonly<Record<string, number>>;
 }
 
 /**
@@ -104,7 +112,7 @@ export interface SpreadResult {
  * is expanded only if a shorter path reaches it before its turn.
  */
 export function spread(input: SpreadInput, t: AssociateTunables): SpreadResult {
-  const acc = new Map<string, { activation: number; depth: number; paths: number }>();
+  const acc = new Map<string, { activation: number; depth: number; paths: number; from: Map<string, number> }>();
   /** Seeds receive NO contribution: their activation is the caller's own, and a
    *  round trip (a → b → a) would hand it back to them as new evidence. The
    *  contributions are what the graph ADDS, never an echo (NOTES.md §6). */
@@ -181,13 +189,15 @@ export function spread(input: SpreadInput, t: AssociateTunables): SpreadResult {
       const gain = next.carried * t.HOP_DECAY * (e.weight / fan);
       if (gain <= 0) continue;
       const have = acc.get(e.dst);
-      if (have === undefined) acc.set(e.dst, { activation: gain, depth: next.level, paths: 1 });
-      else {
+      if (have === undefined) {
+        acc.set(e.dst, { activation: gain, depth: next.level, paths: 1, from: new Map([[next.id, gain]]) });
+      } else {
         // Contributions SUM across paths — two co-active seeds pointing at the
         // same memory say more than one does — while `depth` keeps the
         // shallowest arrival (NOTES.md §6).
         have.activation += gain;
         have.paths += 1;
+        have.from.set(next.id, (have.from.get(next.id) ?? 0) + gain);
         if (next.level < have.depth) have.depth = next.level;
       }
       if (expandedAt.has(e.dst)) continue;
@@ -207,7 +217,7 @@ export function spread(input: SpreadInput, t: AssociateTunables): SpreadResult {
   let waiting = 0;
   if (stop === "node-limit") for (const q of queue.values()) if (q.carried >= threshold) waiting += 1;
   const contributions = [...acc]
-    .map(([id, v]) => ({ id, activation: v.activation, depth: v.depth, paths: v.paths }))
+    .map(([id, v]) => ({ id, activation: v.activation, depth: v.depth, paths: v.paths, from: Object.fromEntries(v.from) }))
     .sort((a, b) => b.activation - a.activation || (a.id < b.id ? -1 : 1));
   return { contributions, expanded, blocked, stop, depth: reached, waiting };
 }

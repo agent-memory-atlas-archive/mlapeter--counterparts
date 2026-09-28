@@ -115,8 +115,11 @@ describe("1. quiet pointers: a few per turn, footnote tier only, over a threshol
     expect(shown.length).toBe(max);
     expect(d.spread?.linkOnly).toBe(4);
     expect(d.spread?.pointerCandidates).toBe(4);
-    expect(d.spread?.pointers).toBe(max);
     expect(d.spread?.pointersShown).toBe(max);
+    expect(d.spread?.pointersUnanchored).toBe(0);
+    // Past the cap: recorded by name, never silently gone.
+    expect(d.verdicts.filter((v) => v.via === "link" && v.verdict === "capped").length).toBe(4 - max);
+    expect([...d.surfaced, ...d.footnotes]).toContain(cued);
     // Only the quiet tier, and each says how it came.
     for (const id of shown) {
       const v = d.verdicts.find((x) => x.id === id);
@@ -126,43 +129,66 @@ describe("1. quiet pointers: a few per turn, footnote tier only, over a threshol
     expect(d.surfaced.some((id) => behind.includes(id))).toBe(false);
   });
 
-  test("NEVER LOUD: a pointer with any activation at all is footnoted, never surfaced", () => {
-    const { s } = seeded();
-    const id = s.put({ type: "memory", kind: "fact", body: FOREIGN[0] as string });
-    const row = s.row(id);
-    expect(row).toBeDefined();
-    const doc = s.readProse(id);
-    const pointer: Candidate = {
+  /** A bare candidate for driving the gate directly. */
+  function candidate(s: Store, id: string, over: Partial<Candidate>): Candidate {
+    return {
       id,
       kind: "fact",
-      doc,
-      physics: { kind: "fact" } as never,
+      doc: s.readProse(id),
+      physics: { kind: "fact", salience: { novelty: null, relevance: 0.5, emotional: 0, predictive: 0.5 } } as never,
       strength: 1,
-      sal: 1,
+      sal: 0.5,
       mood: 0,
       cue: 0,
       temporal: 0,
       semantic: 0,
       arrival: 0,
-      hops: 1_000,
-      activation: 1_000,
+      hops: 0,
+      activation: 0,
       cueFraction: 0,
       matched: 0,
       trains: true,
-      maxTier: "footnoted",
+      maxTier: "surfaced",
       confidential: false,
-      linkOnly: true,
+      ...over,
     };
+  }
+
+  test("NEVER LOUD: an anchored pointer with any activation at all is footnoted, never surfaced", () => {
+    const { s, cued } = seeded();
+    const id = s.put({ type: "memory", kind: "fact", body: FOREIGN[0] as string });
+    // Thin background (one cued candidate): the absolute regime, whose floor
+    // a cue of 50 clears — so the anchor is shown.
+    const anchor = candidate(s, cued, { cue: 50, activation: 50, cueFraction: 1 });
+    const pointer = candidate(s, id, { hops: 1_000, activation: 1_000, maxTier: "footnoted", linkOnly: true, linkedFrom: { [cued]: 1_000 } });
     const out = gate(
-      { candidates: [pointer], state: freshGateState("g"), storeSize: 500, owner: true, affectStated: false, turn: 1 },
+      { candidates: [anchor, pointer], state: freshGateState("g"), storeSize: 500, owner: true, affectStated: false, turn: 1 },
       withTunables(),
     );
-    expect(out.surfaced).toEqual([]);
-    expect(out.footnotes.map((c) => c.id)).toEqual([id]);
-    expect(out.verdicts[0]?.verdict).toBe("footnoted");
-    expect(out.verdicts[0]?.via).toBe("link");
+    expect(out.surfaced.map((c) => c.id)).not.toContain(id);
+    expect(out.footnotes.map((c) => c.id)).toContain(id);
+    const v = out.verdicts.find((x) => x.id === id);
+    expect(v?.verdict).toBe("footnoted");
+    expect(v?.via).toBe("link");
     // A pointer is no cue: it is outside the background the bar is built from.
-    expect(out.background.n).toBe(0);
+    expect(out.background.n).toBe(1);
+  });
+
+  test("THE ANCHOR: a pointer carried only by a memory the gate turned away is not shown, and says why", () => {
+    const { s, cued } = seeded();
+    const id = s.put({ type: "memory", kind: "fact", body: FOREIGN[0] as string });
+    // The only memory that passed it anything sits under the absolute floor.
+    const turnedAway = candidate(s, cued, { cue: 0.0001, activation: 0.0001, cueFraction: 1 });
+    const pointer = candidate(s, id, { hops: 1, activation: 1, maxTier: "footnoted", linkOnly: true, linkedFrom: { [cued]: 1 } });
+    const out = gate(
+      { candidates: [turnedAway, pointer], state: freshGateState("g"), storeSize: 500, owner: true, affectStated: false, turn: 1 },
+      withTunables(),
+    );
+    expect(out.verdicts.find((x) => x.id === cued)?.verdict).toBe("below-floor");
+    expect(out.footnotes).toEqual([]);
+    const v = out.verdicts.find((x) => x.id === id);
+    expect(v?.verdict).toBe("dark-uncued");
+    expect(v?.via).toBe("link");
   });
 
   test("a pointer never displaces a memory the words found: its own slots, after the cued footnotes", () => {

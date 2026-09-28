@@ -347,7 +347,8 @@ export function gate(input: GateInput, t: RecallTunables): GateResult {
     // a memory only links reached (`linkOnly`) — is not dark. It skips the
     // floor and the bar (neither is in its units: it carries no cue), charges
     // no affect flag (the turn did not touch it), and goes to its own few
-    // quiet slots below, never the loud tier. Every other uncued candidate is
+    // quiet slots below — only when a memory the turn SHOWS passed it enough
+    // (the anchor), and never the loud tier. Every other uncued candidate is
     // dark, as before.
     if (c.cue + c.semantic <= 0) {
       if (c.linkOnly !== true) {
@@ -449,12 +450,32 @@ export function gate(input: GateInput, t: RecallTunables): GateResult {
   const cuedFootnotes = footnotePool.slice(0, t.MAX_FOOTNOTES).map((k) => k.c);
 
   // ── quiet pointers: their own slots, after what the words found ─────────
+  // THE ANCHOR (2026-09-28, after the bench — working default). Pattern
+  // completion completes something that came to mind: a pointer is shown only
+  // when the activation that reached it FROM MEMORIES THIS TURN SHOWS (loud or
+  // quiet) is at least `LINK_POINTER_MIN_FRACTION` of the strongest shown
+  // memory's activation. A pointer carried there by candidates the gate turned
+  // away would sit in the render with nothing visible to complete — on the
+  // bench it was most of them — and it is `dark-uncued`, which is what it is
+  // once its anchors went dark. Anchored pointers go strongest-anchored first.
   // Lateral inhibition applies to them as to anything admitted: a pointer that
   // is a near-duplicate of something already shown tells the reader nothing.
   // `LINK_POINTERS_MAX` slots of their own, so a pointer never displaces a
   // memory the conversation reached; the rest are `capped`, recorded.
+  const shownCued = [...surfaced, ...cuedFootnotes];
+  const shownIds = new Set(shownCued.map((c) => c.id));
+  const anchorBar = shownCued.reduce((m, c) => Math.max(m, c.activation), 0) * t.LINK_POINTER_MIN_FRACTION;
+  const anchored = (p: Candidate): number =>
+    Object.entries(p.linkedFrom ?? {}).reduce((sum, [id, a]) => (shownIds.has(id) ? sum + a : sum), 0);
+  const ranked = pointerPool
+    .map((p) => ({ p, a: anchored(p) }))
+    .sort((x, y) => y.a - x.a || (x.p.id < y.p.id ? -1 : 1));
   const pointers: Candidate[] = [];
-  for (const p of pointerPool) {
+  for (const { p, a } of ranked) {
+    if (!(a > 0) || a < anchorBar) {
+      record(p, "dark-uncued");
+      continue;
+    }
     if (kept.some((k) => similarity(k.c, p) >= t.NEAR_DUPLICATE) || pointers.some((q) => similarity(q, p) >= t.NEAR_DUPLICATE)) {
       record(p, "inhibited");
       continue;

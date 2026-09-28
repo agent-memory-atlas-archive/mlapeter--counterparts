@@ -210,7 +210,9 @@ credit at the boundary; reinforcement deltas handed to `physics/`.
    only links reached — a QUIET POINTER (`activate.ts#Candidate.linkOnly`), pattern
    completion — may join the quiet tier: at most `LINK_POINTERS_MAX` (2) a turn, in slots
    of its own after the cued footnotes, only when the activation that arrived is at least
-   `LINK_POINTER_MIN_FRACTION` (0.05) of the strongest seed's, never the loud tier, and
+   `LINK_POINTER_MIN_FRACTION` (0.05) of the strongest seed's AND the part of it that came
+   from memories this turn SHOWS is at least that fraction of the strongest shown one's
+   (the anchor: a pointer completes something that came to mind), never the loud tier, and
    still behind confidentiality and session dedup. For that lane gate (a) is CHECKED
    rather than structural (the memory is fetched); for every other uncued memory it is
    structural as before. Tests: `association-build2.test.ts` › "1. quiet pointers".*

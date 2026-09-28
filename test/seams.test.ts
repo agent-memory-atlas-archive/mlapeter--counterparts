@@ -1416,7 +1416,8 @@ describe("SEAMS L — hops raise what the conversation reached; links may add a 
     const r = new Recall({ store: s, owner: true });
     const out = recallTurn(r, { sessionId: "s1", text: "my sourdough starter died" }, { associate });
 
-    expect(out.decision.verdicts.some((v) => v.id === cued)).toBe(true);
+    // The anchor is SHOWN — a pointer completes something that came to mind.
+    expect([...out.decision.surfaced, ...out.decision.footnotes]).toContain(cued);
     const v = out.decision.verdicts.find((x) => x.id === dark);
     expect(v?.verdict).toBe("footnoted");
     expect(v?.via).toBe("link");
@@ -1525,7 +1526,7 @@ describe("SEAMS L — hops raise what the conversation reached; links may add a 
     // The link-only half, counted end to end.
     expect(d.spread?.linkOnly).toBe(1);
     expect(d.spread?.pointerCandidates).toBe(1);
-    expect(d.spread?.pointers).toBe(1);
+    expect(d.spread?.pointersUnanchored).toBe(0);
     expect(d.spread?.pointersShown).toBe(1);
     expect(d.footnotes).toContain(dark);
     // No traversal injected: nothing to report, and it says null rather than 0.

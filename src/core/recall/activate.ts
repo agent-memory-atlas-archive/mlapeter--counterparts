@@ -32,9 +32,11 @@
  *   "a memory no cue and no embedding touched"; build 1 took (a), modulate only,
  *   which kept hard gate (a) STRUCTURAL. This build takes (b): such a memory may
  *   join the turn as a footnote-tier POINTER — pattern completion, a partial cue
- *   recovering what goes with it — bounded to `LINK_POINTERS_MAX`, ranked by
- *   the activation that arrived, above `LINK_POINTER_MIN_FRACTION` of the
- *   strongest seed, `maxTier: "footnoted"`, marked `linkOnly`. Hard gate (a)
+ *   recovering what goes with it — above `LINK_POINTER_MIN_FRACTION` of the
+ *   strongest seed, `maxTier: "footnoted"`, marked `linkOnly`, carrying who
+ *   passed it what (`linkedFrom`); the gate shows it only beside a memory the
+ *   turn shows that passed it enough (the anchor), at most `LINK_POINTERS_MAX`
+ *   a turn. Hard gate (a)
  *   is therefore CHECKED for this one lane rather than structural: the gate
  *   admits a `linkOnly` candidate to its own quiet slots and to nothing else,
  *   and every other uncued candidate is still dark.
@@ -101,6 +103,10 @@ export interface Candidate {
    * never the loud one. Absent on every candidate the conversation reached.
    */
   readonly linkOnly?: true;
+  /** For a quiet pointer: which memories passed it activation, and how much
+   *  (`associate` `Contribution.from`). The gate shows a pointer only when
+   *  enough of it came from memories the turn SHOWS (2026-09-28). */
+  readonly linkedFrom?: Readonly<Record<string, number>>;
 }
 
 /**
@@ -113,7 +119,7 @@ export type SpreadFn = (
   seeds: readonly { id: string; activation: number }[],
   day: number,
 ) => {
-  contributions: readonly { id: string; activation: number }[];
+  contributions: readonly { id: string; activation: number; from?: Readonly<Record<string, number>> }[];
   expanded?: number;
   stop?: string;
   depth?: number;
@@ -151,16 +157,17 @@ export interface SpreadStats {
    * The link-only half (association build 2, 2026-09-28). `linkOnly`: memories
    * the graph reached that no cue and no embedding did. `pointerCandidates`: of
    * those, the live ones at or above the pointer threshold
-   * (`LINK_POINTER_MIN_FRACTION` of the strongest seed). `pointers`: how many
-   * of them were handed to the gate (at most `LINK_POINTERS_MAX`); the rest are
-   * counted here, never cut silently. Which of them the gate SHOWED is on the
-   * decision (`pointersShown`).
+   * (`LINK_POINTER_MIN_FRACTION` of the strongest seed) — every one of them is
+   * handed to the gate. What the gate did with them is on the decision, filled
+   * in by `Recall.build`: `pointersShown` in the quiet tier, and
+   * `pointersUnanchored` refused because too little of what reached them came
+   * from a memory the turn shows. The rest (dedup, inhibition, the
+   * `LINK_POINTERS_MAX` cap) are in the verdicts, by name.
    */
   readonly linkOnly: number;
   readonly pointerCandidates: number;
-  readonly pointers: number;
-  /** Pointers the gate put in the quiet tier (filled in by `Recall.build`). */
   readonly pointersShown?: number;
+  readonly pointersUnanchored?: number;
 }
 
 export interface ActivationInput {
@@ -619,9 +626,11 @@ export function activate(
   // quiet pointer, below). Inside the seeds, links do not reorder: that is the
   // conversation's to decide.
   const linkOnlyScore = new Map<string, number>();
+  /** Who passed each link-only memory what (`Contribution.from`), for the anchor. */
+  const linkOnlyFrom = new Map<string, Readonly<Record<string, number>>>();
   let strongestSeed = 0;
   let hopsCapped = 0;
-  let spreadRun: Omit<SpreadStats, "landed" | "pointerCandidates" | "pointers" | "hopsCapped" | "pointersCapped"> | null = null;
+  let spreadRun: Omit<SpreadStats, "landed" | "pointerCandidates" | "hopsCapped" | "pointersCapped"> | null = null;
   if (input.spread !== undefined && scored.length > 0) {
     const seeds = scored
       .filter((c) => c.cue + c.semantic > 0)
@@ -637,7 +646,10 @@ export function activate(
       // link-only memory is SHOWN is decided below, after the cut — it has to
       // be live, above the threshold, and among the few.
       if (ids.has(c.id)) hopScore.set(c.id, (hopScore.get(c.id) ?? 0) + c.activation);
-      else linkOnlyScore.set(c.id, (linkOnlyScore.get(c.id) ?? 0) + c.activation);
+      else {
+        linkOnlyScore.set(c.id, (linkOnlyScore.get(c.id) ?? 0) + c.activation);
+        if (c.from !== undefined) linkOnlyFrom.set(c.id, c.from);
+      }
     }
     if (hopScore.size > 0) {
       scored = scored.map((c) => {
@@ -722,19 +734,19 @@ export function activate(
 
   // ── quiet pointers: pattern completion, held to a few (2026-09-28) ──────
   // A memory the words and the meaning did not reach, that the graph did. It
-  // may join the turn as a footnote-tier pointer when it is live, recallable
-  // memory and the activation that arrived is at least
-  // `LINK_POINTER_MIN_FRACTION` of the strongest seed's — strongest first,
-  // `LINK_POINTERS_MAX` of them. Everything the threshold or the count left out
-  // is counted on the turn's record (`linkOnly`, `pointerCandidates`), never
-  // cut silently. The gate decides whether each is SHOWN (confidentiality,
-  // dedup, inhibition) and gives it the quiet tier only.
+  // is handed to the gate as a possible footnote-tier pointer when it is live,
+  // recallable memory and the activation that arrived is at least
+  // `LINK_POINTER_MIN_FRACTION` of the strongest seed's — the first cut, and
+  // every one of those goes to the gate. The gate decides which are SHOWN: only
+  // one a memory the turn shows passed enough to (the anchor, `gate.ts`), then
+  // confidentiality, dedup, inhibition, `LINK_POINTERS_MAX`. What the threshold
+  // left out is counted on the turn's record (`linkOnly` against
+  // `pointerCandidates`), never cut silently.
   const threshold = strongestSeed * t.LINK_POINTER_MIN_FRACTION;
   const pool = [...linkOnlyScore]
     .filter(([, a]) => a >= threshold)
     .sort((x, y) => y[1] - x[1] || (x[0] < y[0] ? -1 : 1));
   let pointerCandidates = 0;
-  let pointers = 0;
   let pointersCapped = 0;
   // A pointer's own, smaller ceiling (2026-09-28): whatever arrived, it carries
   // at most `LINK_POINTER_CAP_FRACTION` of the strongest seed — ranked by what
@@ -744,8 +756,6 @@ export function activate(
     const row = recallable(id);
     if (row === undefined) continue;
     pointerCandidates += 1;
-    if (pointers >= t.LINK_POINTERS_MAX) continue;
-    pointers += 1;
     const carried = Math.min(arrived, pointerCap);
     if (arrived > pointerCap) pointersCapped += 1;
     const physics = rowToPhysics(row);
@@ -774,6 +784,7 @@ export function activate(
       maxTier: "footnoted",
       confidential: stored.confidential,
       linkOnly: true,
+      linkedFrom: linkOnlyFrom.get(id) ?? {},
     });
   }
 
@@ -795,7 +806,6 @@ export function activate(
             landed: kept.filter((c) => c.hops > 0).length,
             hopsCapped,
             pointerCandidates,
-            pointers,
             pointersCapped,
           },
     dropped,

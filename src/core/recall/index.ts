@@ -488,7 +488,11 @@ export class Recall {
       spread:
         act.spread === null
           ? null
-          : { ...act.spread, pointersShown: rendered.footnotes.filter((id) => linked.has(id)).length },
+          : {
+              ...act.spread,
+              pointersShown: rendered.footnotes.filter((id) => linked.has(id)).length,
+              pointersUnanchored: gated.verdicts.filter((v) => v.via === "link" && v.verdict === "dark-uncued").length,
+            },
       dropped: act.dropped,
       bytes: rendered.bytes,
       budgetBytes,
