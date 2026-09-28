@@ -507,6 +507,11 @@ export interface ContiguityPass {
    *  entry), which carry the launching session's id and are left out of
    *  contiguity — counted, never cut silently (review of #281, finding 1). */
   readonly excluded: number;
+  /** Pairs an EARLIER pass planned whose boundary never recorded its flush —
+   *  the process died between moving the cursor and writing the row, so they
+   *  were dropped (at most once, by design) and are counted here instead of
+   *  nowhere (review of #281, finding 3). */
+  readonly lostEarlier: number;
   /** Pairs planned: with a real order between them (forward bias), or one batch (flat). */
   readonly pairs: number;
   readonly timed: number;
@@ -1394,13 +1399,14 @@ function recallDecisionRecord(
 
 /** The contiguity cursor, read leniently: anything unreadable is "no cursor",
  *  which re-reads only the current lived day's memories — never a history. */
-function readContiguityCursor(raw: string | undefined): { at: number; ids: string[] } | null {
+function readContiguityCursor(raw: string | undefined): { at: number; ids: string[]; pending: number } | null {
   if (raw === undefined) return null;
   try {
-    const v = JSON.parse(raw) as { at?: unknown; ids?: unknown };
+    const v = JSON.parse(raw) as { at?: unknown; ids?: unknown; pending?: unknown };
     if (typeof v.at !== "number" || !Number.isFinite(v.at)) return null;
     const ids = Array.isArray(v.ids) ? v.ids.filter((x): x is string => typeof x === "string") : [];
-    return { at: v.at, ids };
+    const pending = typeof v.pending === "number" && Number.isFinite(v.pending) && v.pending > 0 ? Math.floor(v.pending) : 0;
+    return { at: v.at, ids, pending };
   } catch {
     return null;
   }
@@ -3135,7 +3141,7 @@ export class Counterpart {
     // What the buffered pairs BECAME, now the flush has landed (review of
     // #281, findings 2 and 9): links that conduct, and what they cost.
     const contiguity = this.contiguityOutcome(planned, edges);
-    this.recordBoundaryFlush(edges, contiguity);
+    if (this.recordBoundaryFlush(edges, contiguity) && planned.pairs.length > 0) this.clearContiguityPending();
     // The hooks' own co-activation, applied in the process that can afford to
     // wait on the write lock. After the in-process flush, so a single-process
     // caller's own deltas are not sitting in the buffer when a claim is
@@ -3258,13 +3264,27 @@ export class Counterpart {
       blocked: 0,
       frozen: 0,
       excluded: 0,
+      lostEarlier: 0,
     };
     if (this.observer) return { pass: { ...zero, reason: "observer" }, pairs: [] };
     try {
       const cursor = readContiguityCursor(this.store.getMeta(CONTIGUITY_CURSOR_META));
+      // THE LAST PASS'S PAIRS NEVER RECORDED (review of #281, finding 3): the
+      // cursor carries how many pairs its pass planned until the boundary's
+      // row about them lands. Still there now means that process died between
+      // moving the cursor and recording its flush — those pairs are lost (at
+      // most once, by design), and this pass says so on its row. A crash
+      // after the row landed but before the mark was cleared over-reports
+      // one pass: the safe direction.
+      const lostEarlier = cursor?.pending ?? 0;
       const day = this.store.livedDay();
       const rows = this.store.memoriesWrittenSince(cursor?.at ?? 0);
-      if (rows.length === 0) return { pass: zero, pairs: [] };
+      if (rows.length === 0) {
+        if (cursor !== null && lostEarlier > 0) {
+          this.store.setMeta(CONTIGUITY_CURSOR_META, JSON.stringify({ at: cursor.at, ids: cursor.ids }));
+        }
+        return { pass: { ...zero, lostEarlier }, pairs: [] };
+      }
       const seen = new Set(cursor?.ids ?? []);
       const unread = rows.filter((r) => (cursor === null ? r.bornDay >= day : !(r.at === cursor.at && seen.has(r.id))));
       // THE NIGHTLY RUN'S ROWS ARE NOT THE SESSION'S (review of #281, finding
@@ -3275,11 +3295,7 @@ export class Counterpart {
       const fresh = unread.filter((r) => !r.nightly);
       const excluded = unread.length - fresh.length;
       const newest = rows.reduce((m, r) => Math.max(m, r.at), 0);
-      this.store.setMeta(
-        CONTIGUITY_CURSOR_META,
-        JSON.stringify({ at: newest, ids: rows.filter((r) => r.at === newest).map((r) => r.id) }),
-      );
-      if (fresh.length === 0) return { pass: { ...zero, excluded }, pairs: [] };
+      // Planned first (reads only), so the cursor can carry the count.
       const freshIds = new Set(fresh.map((r) => r.id));
       const sessions = [...new Set(fresh.map((r) => r.session))].sort();
       const deltas: PairDelta[] = [];
@@ -3296,12 +3312,22 @@ export class Counterpart {
         batch += plan.batch;
         underFloor += plan.underFloor;
       }
+      this.store.setMeta(
+        CONTIGUITY_CURSOR_META,
+        JSON.stringify({
+          at: newest,
+          ids: rows.filter((r) => r.at === newest).map((r) => r.id),
+          ...(deltas.length > 0 ? { pending: deltas.length } : {}),
+        }),
+      );
+      if (fresh.length === 0) return { pass: { ...zero, excluded, lostEarlier }, pairs: [] };
       const buffered = this.associate.contiguity(deltas);
       const out: ContiguityPass = {
         reason: buffered.pairs > 0 ? "buffered" : "nothing-new",
         sessions: sessions.length,
         memories: fresh.length,
         excluded,
+        lostEarlier,
         pairs: deltas.length,
         timed,
         batch,
@@ -3362,11 +3388,18 @@ export class Counterpart {
   /**
    * The boundary's own flush, on the durable log (2026-09-28) — the same
    * `associate.flush` row the carried claims write, with `source: "boundary"`
-   * and what contiguity did. Only when the flush flushed something (or
-   * failed), for the reason `ASSOCIATE_FLUSH_EVENT` gives. Never throws.
+   * and what contiguity did. When the flush flushed something (or failed), for
+   * the reason `ASSOCIATE_FLUSH_EVENT` gives — and, since the review of #281
+   * (finding 3), ALSO when contiguity itself has something to say that no
+   * other row would: the pass failed, it buffered pairs this flush did not
+   * write (busy), or an earlier pass's pairs were lost. The same row shape,
+   * so no new event name; `rows` 0 on those. Never throws; true when a row
+   * landed, which is what clears the cursor's pending mark.
    */
-  private recordBoundaryFlush(edges: FlushReport, contiguity: ContiguityPass): void {
-    if (edges.reason !== "flushed" && edges.reason !== "failed") return;
+  private recordBoundaryFlush(edges: FlushReport, contiguity: ContiguityPass): boolean {
+    const flushed = edges.reason === "flushed" || edges.reason === "failed";
+    const contiguitySays = contiguity.reason === "failed" || contiguity.buffered > 0 || contiguity.lostEarlier > 0;
+    if (!flushed && !contiguitySays) return false;
     const data: Record<string, unknown> = {
       reason: edges.reason,
       source: "boundary",
@@ -3385,9 +3418,12 @@ export class Counterpart {
       stuck: 0,
       oldestMs: 0,
       contiguity: {
+        reason: contiguity.reason,
+        ...(contiguity.code === undefined ? {} : { code: contiguity.code }),
         sessions: contiguity.sessions,
         memories: contiguity.memories,
         excluded: contiguity.excluded,
+        lostEarlier: contiguity.lostEarlier,
         pairs: contiguity.pairs,
         timed: contiguity.timed,
         batch: contiguity.batch,
@@ -3404,8 +3440,23 @@ export class Counterpart {
     if (edges.code !== undefined) data["error"] = edges.code;
     try {
       this.store.appendEvent({ name: ASSOCIATE_FLUSH_EVENT, day: edges.day, payload: data });
+      return true;
     } catch (err) {
       this.emit("counterpart.associate.flush.unrecorded", undefined, { code: errCode(err) });
+      return false;
+    }
+  }
+
+  /** The row about this boundary's contiguity landed: clear the cursor's
+   *  pending mark, so the next pass does not count these pairs as lost. A
+   *  failure here over-reports one pass as lost later — the safe direction. */
+  private clearContiguityPending(): void {
+    try {
+      const cursor = readContiguityCursor(this.store.getMeta(CONTIGUITY_CURSOR_META));
+      if (cursor === null || cursor.pending === 0) return;
+      this.store.setMeta(CONTIGUITY_CURSOR_META, JSON.stringify({ at: cursor.at, ids: cursor.ids }));
+    } catch (err) {
+      this.emit("counterpart.associate.contiguity.pending.failed", undefined, { code: errCode(err) });
     }
   }
 

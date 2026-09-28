@@ -562,6 +562,47 @@ describe("4. temporal contiguity: adjacent only, lag-weighted, forward where the
     expect(last.contiguity?.["excluded"]).toBe(4);
   });
 
+  test("a pass that FAILS leaves a durable row saying so (review of #281, finding 3)", async () => {
+    const clock = { now: Date.UTC(2026, 8, 28, 12) };
+    const c = brainAt(clock);
+    memoryIn(c, "s1", "First memory of the session.");
+    memoryIn(c, "s1", "Second memory of the session.");
+    (c.store as unknown as { memoriesWrittenSince: () => never }).memoriesWrittenSince = () => {
+      throw Object.assign(new Error("database is locked"), { code: "SQLITE_BUSY" });
+    };
+    const report = await c.sessionEnd({ date: "2026-09-28", budgetBytes: 9000 });
+    expect(report.contiguity.reason).toBe("failed");
+    const rows = c.store.eventLog({ name: "associate.flush" });
+    const last = JSON.parse(rows[rows.length - 1]?.payload ?? "{}") as { rows?: number; contiguity?: Record<string, unknown> };
+    expect(last.rows).toBe(0);
+    expect(last.contiguity?.["reason"]).toBe("failed");
+    expect(last.contiguity?.["code"]).toBe("SQLITE_BUSY");
+  });
+
+  test("pairs lost between the cursor's move and the flush's row are counted at the next pass (review of #281, finding 3)", async () => {
+    const clock = { now: Date.UTC(2026, 8, 28, 12) };
+    const first = brainAt(clock);
+    memoryIn(first, "s1", "First memory of the session.");
+    memoryIn(first, "s1", "Second memory of the session.");
+    memoryIn(first, "s1", "Third memory of the session.");
+    // The cursor moves and the pairs are buffered — then the process dies
+    // before any flush: the buffer goes with it.
+    const pass = first.contiguityPass();
+    expect(pass.buffered).toBe(3);
+    first.associate.drain();
+    first.close();
+    clock.now += 60 * 60_000;
+    const worker = brainAt(clock);
+    const report = await worker.sessionEnd({ date: "2026-09-28", budgetBytes: 9000 });
+    expect(report.contiguity.lostEarlier).toBe(3);
+    const rows = worker.store.eventLog({ name: "associate.flush" });
+    const last = JSON.parse(rows[rows.length - 1]?.payload ?? "{}") as { contiguity?: Record<string, unknown> };
+    expect(last.contiguity?.["lostEarlier"]).toBe(3);
+    // Said once: the mark is cleared once the row about it has landed.
+    const again = await worker.sessionEnd({ date: "2026-09-29", budgetBytes: 9000 });
+    expect(again.contiguity.lostEarlier).toBe(0);
+  });
+
   test("a first pass on a store with history links only what was born today — never the whole past", async () => {
     const clock = { now: Date.UTC(2026, 8, 20, 12) };
     const c = brainAt(clock);

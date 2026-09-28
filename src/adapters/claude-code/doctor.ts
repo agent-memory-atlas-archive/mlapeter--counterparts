@@ -2703,6 +2703,8 @@ export function associationFindings(store: Store): Finding[] {
   let contiguityEvictedOther = 0;
   let contiguityScaled = 0;
   let contiguityExcluded = 0;
+  let contiguityLost = 0;
+  let contiguityFailed = 0;
   const census = { total: 0, conducting: 0, gist: 0, dream: 0, hebbian: 0 };
   try {
     const rows = store.eventLog({ name: "recall.decision", sinceDay: since, order: "desc", limit: ASSOCIATION_ROWS });
@@ -2741,6 +2743,8 @@ export function associationFindings(store: Store): Finding[] {
       contiguityEvictedOther += num(cr, "evictedOther") ?? 0;
       contiguityScaled += num(cr, "renormalizedNodes") ?? 0;
       contiguityExcluded += num(cr, "excluded") ?? 0;
+      contiguityLost += num(cr, "lostEarlier") ?? 0;
+      if (cr["reason"] === "failed") contiguityFailed += 1;
     }
     const dreamed = new Set<string>();
     const dreamPairs = new Set<string>();
@@ -2773,6 +2777,8 @@ export function associationFindings(store: Store): Finding[] {
       "Association",
       `${spreadSaid}. Edges: ${String(census.total)} rows, ${String(census.conducting)} conducting — ${String(census.hebbian)} learned from use or contiguity, ${String(census.dream)} dream links, ${String(census.gist)} gist ties (derived: a row touching a dream's gist is a gist tie, a pair a dream linked is a dream link, the rest were learned from use or from memories made next to each other)` +
         `. Temporal contiguity buffered ${String(contiguityPairs)} ${contiguityPairs === 1 ? "pair" : "pairs"} of neighbouring memories at the boundaries, ${String(contiguityLanded)} landed as links; it pushed out ${String(contiguityEvictedOther)} other ${contiguityEvictedOther === 1 ? "link" : "links"} and scaled back ${String(contiguityScaled)} ${contiguityScaled === 1 ? "memory's" : "memories'"} links at full memories; ${String(contiguityExcluded)} ${contiguityExcluded === 1 ? "memory" : "memories"} the nightly run wrote left out` +
+        (contiguityFailed > 0 ? `; the pass failed at ${String(contiguityFailed)} ${contiguityFailed === 1 ? "boundary" : "boundaries"}` : "") +
+        (contiguityLost > 0 ? `; ${String(contiguityLost)} planned ${contiguityLost === 1 ? "pair was" : "pairs were"} lost before a flush recorded them` : "") +
         (dropped > 0 ? `. The candidate cut left out ${String(dropped)} scored memories, summed over all ${String(allTurns)} recall turns in the window` : "") +
         (unread ? ". More turns than were read: the counts are a floor" : ""),
       "",
@@ -2791,6 +2797,8 @@ export function associationFindings(store: Store): Finding[] {
         contiguityEvictedOther,
         contiguityScaled,
         contiguityExcluded,
+        contiguityLost,
+        contiguityFailed,
         edges: census.total,
         conducting: census.conducting,
         hebbian: census.hebbian,

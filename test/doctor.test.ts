@@ -2646,5 +2646,11 @@ describe("Association (2026-09-28): what spreading did, and the edges", () => {
     expect(f.detail).toContain("Temporal contiguity buffered 3 pairs of neighbouring memories at the boundaries, 2 landed as links");
     expect(f.detail).toContain("pushed out 1 other link and scaled back 1 memory's links");
     expect(f.detail).toContain("2 memories the nightly run wrote left out");
+    expect(f.detail).not.toContain("the pass failed");
+    // A failed pass and pairs lost before a flush recorded them are said too.
+    s.appendEvent({ name: "associate.flush", day, payload: { reason: "nothing-buffered", source: "boundary", rows: 0, contiguity: { reason: "failed", code: "SQLITE_BUSY", lostEarlier: 4 } } });
+    const g = by(doctorFindings(input({ store: s })), "association");
+    expect(g.data["contiguityFailed"]).toBe(1);
+    expect(g.detail).toContain("the pass failed at 1 boundary; 4 planned pairs were lost before a flush recorded them");
   });
 });
