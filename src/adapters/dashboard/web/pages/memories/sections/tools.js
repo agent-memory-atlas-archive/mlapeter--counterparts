@@ -1,13 +1,15 @@
-/* The page's own buttons: write a note, back up, export. Each runs the
+/* The page's own buttons: add a memory (a note the owner writes, the same as
+   `counterparts note`), back up, export. Each runs the
    console's own command through `shared/actions.js` and says what it said.
    (Remove lives on the memory card, where the memory is.) */
 import { act, resultHtml } from "../../../shared/actions.js";
 import { $, esc } from "../../../shared/dom.js";
+import { MY_NAME } from "../../../shared/voice.js";
 import { changed } from "../state.js";
 
 export const markup = `
     <div class="tools">
-      <button class="mbtn primary" id="note-open" type="button" aria-expanded="false">+ Write a note</button>
+      <button class="mbtn primary" id="note-open" type="button" aria-expanded="false">+ Add a memory</button>
       <button class="mbtn" id="backup-open" type="button">Back up…</button>
       <button class="mbtn" id="export-open" type="button">Export…</button>
     </div>`;
@@ -15,13 +17,12 @@ export const markup = `
 export const notePanel = `
     <div class="card pad note-panel" id="note-panel" hidden>
       <div class="np-head">Remember this, on purpose</div>
-      <textarea id="note-text" rows="3" spellcheck="true" placeholder="the thing to remember, in your own words"></textarea>
+      <textarea id="note-text" rows="3" spellcheck="true" placeholder="something for ${MY_NAME} to remember"></textarea>
       <div class="np-row">
         <input id="note-title" type="text" autocomplete="off" placeholder="a title (optional)">
         <button class="mbtn primary" id="note-go" type="button">Remember</button>
         <button class="mbtn" id="note-cancel" type="button">Close</button>
       </div>
-      <div class="np-hint">Filed in this store as a note you wrote, the same as <code>counterparts note</code>.</div>
       <div id="note-out"></div>
     </div>`;
 

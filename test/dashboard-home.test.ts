@@ -22,8 +22,6 @@ import { mergeRepeats } from "../src/adapters/dashboard/web/views/mechanism-pane
 import { heroHeadline, ownerName } from "../src/adapters/dashboard/web/views/overview.js";
 import { memoriesHeld, memoriesLive } from "../src/adapters/dashboard/web/views/shared.js";
 import { MECHANISM_PROOFS, mechanismsView } from "../src/adapters/dashboard/web/views/mechanisms.js";
-// @ts-expect-error — a plain browser module, no declarations
-import { journalNote } from "../src/adapters/dashboard/web/pages/memories/sections/hold.js";
 import { seedDemo, seedEmpty } from "../tools/demo/seed.js";
 
 const WEB = fileURLToPath(new URL("../src/adapters/dashboard/web/", import.meta.url));
@@ -111,13 +109,7 @@ describe("the headline (round 4, 2026-09-28)", () => {
       expect(memoriesLive(src)).toBeGreaterThan(memoriesHeld(src));
     });
     const page = readFileSync(join(WEB, "pages/memories/index.js"), "utf8");
-    expect(page).toContain('return d.total + (d.total === 1 ? " memory" : " memories");');
-  });
-
-  test("the memories tab's note counts the journal's rows, so it says entries", () => {
-    expect(journalNote({ journal: 26 })).toContain("The journal's 26 entries aren't scored, so they're left out.");
-    expect(journalNote({ journal: 1 })).toContain("The journal's one entry isn't scored, so it's left out.");
-    expect(journalNote({ journal: 0 })).toBe("");
+    expect(page).toContain('return d.total + (d.total === 1 ? " memory" : " memories")');
   });
 
   test("home's memory count is doctor's plus the people and project cards (the health line says so)", () => {

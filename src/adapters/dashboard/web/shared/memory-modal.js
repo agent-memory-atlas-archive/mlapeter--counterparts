@@ -1,18 +1,18 @@
 /* One memory, opened — from any row, dot or reference on any page. Resolved at
    the moment it is opened, so a memory that left the store says so.
 
-   Top to bottom (2026-09-26, an experiment): the title and the words; how
-   strong it is and where it heads if unused; why it mattered; the days it was
-   used; its standing in plain words; its feelings; what it is linked to; its
-   versions; a few small chips (model, the date it is about, when it was
-   recorded); and a "details" fold with the raw numbers. A part with nothing in
-   it is left out. */
+   Top to bottom (round 4, 2026-09-28 — the same card on every page): the
+   title and the words; how well I remember it, as a chart and one plain
+   sentence; why it mattered (the bars); the day it was written, once. Then a
+   folded "details": the days it was used, its standing, its feelings, what it
+   is linked to, its versions, the small chips (the model among them) and the
+   raw record. A part with nothing in it is left out. */
 import { act, resultHtml } from "./actions.js";
 import { api, fail } from "./api.js";
 import { emptyBox } from "./absence.js";
 import { esc } from "./dom.js";
 import { headline, n2, n3, said } from "./format.js";
-import { coreRoadLine, curveStart, fadingSince, versionRows } from "./memory-card-words.js";
+import { coreRoadLine, curveStart, versionRows } from "./memory-card-words.js";
 import { FEELING_COLOURS, kindMark, kindOf, shortDate } from "./memory-marks.js";
 import { openModal } from "./modal.js";
 import { confirmTyped } from "./widgets/confirm.js";
@@ -36,21 +36,26 @@ export function memoryCard(d) {
   return '<div class="mc' + (d.archived ? " mc-arch" : "") + '">' +
     '<h3 class="mc-title">' + kindMark(d.kind, false) + "<span>" + title + "</span></h3>" +
     '<div class="mc-kind">' + esc(k.label) + (d.askedFor ? " · you asked for " + esc(d.askedFor) + ", which forwards here" : "") + "</div>" +
-    (d.archived ? '<div class="mc-archived">Archived — ' + esc(d.archivedWords || d.archived) + ". Kept, not deleted.</div>" : "") +
+    (d.archived ? '<div class="mc-archived">Put away — ' + esc(d.archivedWords || d.archived) + ". Kept, not deleted.</div>" : "") +
     "<div class='body'>" + (d.confidential ? '<span class="withheld">' + esc(d.text) + "</span>" : esc(d.shownText || d.text)) + "</div>" +
-    (d.journal
-      ? '<p class="mc-note">A journal entry, not a memory: the account memories are made from. It sits outside every sleep phase, and nothing here decays.</p>'
-      : "") +
-    part("How strong", curvePart(d)) +
+    (d.journal ? '<p class="mc-note">My journal, kept as written. Nothing in it fades.</p>' : "") +
+    part("How well I remember", curvePart(d)) +
     part("Why it mattered", fingerprint(d)) +
-    part("Use", usePart(d)) +
-    part("Standing", standing(d)) +
-    part("Feelings", feelingsPart(d)) +
-    part("Linked memories", linked(d)) +
-    part("Versions", versions(d)) +
-    chips(d) +
+    written(d) +
     footer(d) +
     "</div>";
+}
+
+/** The day it was written, once: "Written 28 Sep 2026" — the moment it entered
+ *  the store (v7 `created_at`), else the calendar day it was recorded. */
+export function writtenOn(d) {
+  if (typeof d.createdAt === "number" && d.createdAt > 0) return new Date(d.createdAt).toISOString().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(d.learnedOn || "")) ? d.learnedOn : null;
+}
+
+function written(d) {
+  const day = writtenOn(d);
+  return day ? '<p class="mc-written">Written ' + esc(shortDate(day)) + "</p>" : "";
 }
 
 /** A titled part, or nothing at all when it has nothing in it. */
@@ -82,11 +87,17 @@ function curvePart(d) {
   const axis = '<div class="mc-axis">' + (c.from === c.day
     ? "<span>" + esc(curveStart(d)) + "</span>"
     : "<span>" + esc(curveStart(d)) + "</span><span>today</span>") + "<span>day " + c.to + "</span></div>";
-  const words = "Held " + pct(now) + " now" + (c.from < c.day ? ", " + fadingSince(d) : "") + ". " + (c.archiveDay !== null
-    ? "Unused, it falls to the let-go line around lived day " + c.archiveDay + "."
-    : now < c.archiveLine ? "It is already under the let-go line." : "Unused, it stays above the let-go line for the next " + (c.to - c.day) + " lived days.");
-  return svg + axis + '<p class="mc-line">' + esc(words) +
-    ' <span class="mc-dim">Solid is what happened; dashed is where it heads if nobody uses it; the faint line is where it could be let go.</span></p>';
+  return svg + axis + '<p class="mc-line">' + esc(rememberLine(now, c)) + "</p>";
+}
+
+/** The one plain sentence under the chart (round 4): "I remember this at 41%.
+ *  If nobody uses it, I'll put it away around day 67." `c` is the card's curve. */
+export function rememberLine(now, c) {
+  const head = "I remember this at " + pct(now) + ". ";
+  if (c.archiveDay !== null) return head + "If nobody uses it, I'll put it away around day " + c.archiveDay + ".";
+  if (now < c.archiveLine) return head + "That's low enough that I could put it away soon.";
+  const ahead = c.to - c.day;
+  return head + "Even if nobody uses it, I'll keep it for at least the next " + ahead + (ahead === 1 ? " day." : " days.");
 }
 
 // ── why it mattered: a four-part fingerprint ────────────────────────────────
@@ -224,6 +235,16 @@ function chips(d) {
 
 // ── the details fold, and the two buttons ──────────────────────────────────
 
+/** Everything under "details", folded: the parts a first look doesn't need. */
+function detailParts(d) {
+  return part("Use", usePart(d)) +
+    part("Standing", standing(d)) +
+    part("Feelings", feelingsPart(d)) +
+    part("Linked memories", linked(d)) +
+    part("Versions", versions(d)) +
+    chips(d);
+}
+
 function footer(d) {
   const kv = (k, v) => '<div class="k">' + esc(k) + '</div><div class="v">' + v + "</div>";
   const s = d.salience;
@@ -245,7 +266,7 @@ function footer(d) {
     d.removal.map((r) => kv("removal", esc(r.stage) + " by " + esc(r.actor) + " — " + esc(r.reason || "no reason recorded"))).join("") +
     "</div>";
   return '<div class="mc-foot">' +
-    '<details class="mc-details"><summary>details</summary>' + raw + "</details>" +
+    '<details class="mc-details"><summary>details</summary>' + detailParts(d) + '<h4 class="mc-rawh">The record</h4>' + raw + "</details>" +
     '<div class="mc-buttons">' +
       "<button class='copy' data-id=\"" + esc(d.id) + "\" onclick=\"copyId(this)\">copy id</button>" +
       "<button class='copy act-danger' data-id=\"" + esc(d.id) + "\" onclick=\"removeMemory(this)\">remove…</button>" +

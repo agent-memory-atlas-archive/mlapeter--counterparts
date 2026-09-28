@@ -1,57 +1,72 @@
-/* Find a memory: search by its words (live, as you type) and ask a question
-   (the console's own `counterparts ask`, through the actions seam). Both lists
-   use the list's row shape and open the memory on click; Ask's answers are
-   bright when they came clearly to mind and dim when they are a faint lead.
-   Ask is the owner talking to me, so the server turns their question into my
-   voice before it searches (`web/ask-voice.ts`); when it did, one grey line
-   under the answers says what was searched, with "search exactly as typed". */
+/* Find a memory: ONE box (round 4, 2026-09-28). Typing finds memories by their
+   words, live (`/api/search`); Enter asks by meaning (the console's own
+   `counterparts ask`, through the actions seam). Either way the answers take
+   the list's place — never a second list — and the "×" gives the list back.
+   How close an answer came is said plainly: strong match, match, weak match.
+   Ask is the owner talking to me, so the server turns the question into my
+   voice before it searches (`web/ask-voice.ts`); that is not shown. */
 import { absenceLine } from "../../../shared/absence.js";
 import { act, resultHtml } from "../../../shared/actions.js";
 import { api, fail } from "../../../shared/api.js";
 import { $, esc } from "../../../shared/dom.js";
 import { foldChapters, fromWords } from "../fold.js";
-import { memRow, wireRows } from "../row.js";
+import { memRow } from "../row.js";
+import { find, onFilter, setFilter } from "../state.js";
 
 export const markup = `
-    <div class="find">
-      <div class="find-col">
-        <label class="find-lab" for="q">Search by words</label>
-        <div class="find-row">
-          <input id="q" type="search" autocomplete="off" spellcheck="false"
-            placeholder="a word the memory would use…">
-          <span id="qn"></span>
-        </div>
-        <div class="card mlist" id="qout" hidden></div>
-      </div>
-      <div class="find-col">
-        <label class="find-lab" for="ask-q">Ask your memory a question</label>
-        <div class="find-row">
-          <input id="ask-q" type="text" autocomplete="off" spellcheck="false"
-            placeholder="ask me something — what do you remember about…?">
-          <button class="mbtn primary" id="ask-go" type="button">Ask</button>
-        </div>
-        <div id="ask-out"></div>
-      </div>
-    </div>`;
+        <div class="find">
+          <label class="find-lab" for="q">Find a memory</label>
+          <div class="find-row">
+            <input id="q" type="search" autocomplete="off" spellcheck="false"
+              placeholder="a word, or ask a question and press Enter">
+            <button class="find-x" id="q-x" type="button" aria-label="clear, and show every memory" title="clear" hidden>×</button>
+          </div>
+          <div class="find-head" id="find-head" hidden></div>
+        </div>`;
 
 let qtimer = null;
+let seq = 0;
+
 export function mount() {
-  wireRows($("qout"));
-  wireRows($("ask-out"));
-  $("q").addEventListener("input", () => {
+  const box = $("q");
+  box.addEventListener("input", () => {
     clearTimeout(qtimer);
+    $("q-x").hidden = box.value.length === 0;
     qtimer = setTimeout(runSearch, 180);
   });
-  $("ask-go").addEventListener("click", () => ask());
-  $("ask-q").addEventListener("keydown", (e) => { if (e.key === "Enter") ask(); });
-  // "Search exactly as typed" holds until the question changes.
-  $("ask-q").addEventListener("input", () => { exact = false; });
-  $("ask-out").addEventListener("click", (e) => {
-    const b = e.target instanceof Element ? e.target.closest("[data-ask-exact]") : null;
-    if (!b) return;
-    exact = b.getAttribute("data-ask-exact") === "1";
-    ask();
+  box.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); clearTimeout(qtimer); ask(); }
+    else if (e.key === "Escape" && box.value) { e.preventDefault(); clear(); }
   });
+  $("q-x").addEventListener("click", () => { clear(); box.focus(); });
+  // A filter chosen anywhere else (a chip, the chart, a link from Home) ends
+  // the find: the box empties so it never shows words the list isn't answering.
+  onFilter(() => {
+    if (find.on || !box.value) return;
+    seq++;
+    box.value = "";
+    $("q-x").hidden = true;
+    $("find-head").hidden = true;
+  });
+}
+
+/** Give the list back: the box emptied, the list redrawn as it was. */
+function clear() {
+  seq++; // an answer still on its way is dropped
+  $("q").value = "";
+  $("q-x").hidden = true;
+  $("find-head").hidden = true;
+  setFilter({});
+}
+
+/** The list's own parts hide while the answers stand in its place. */
+function takeList(head) {
+  find.on = true;
+  $("mfilters").hidden = true;
+  $("msort").hidden = true;
+  $("mpager").innerHTML = "";
+  $("find-head").hidden = false;
+  $("find-head").innerHTML = head;
 }
 
 /** How many matched, said honestly: "the closest 25 of 143 matches" when the list
@@ -62,39 +77,22 @@ export function matchCount(shown, total) {
   return shown + (shown === 1 ? " match" : " matches");
 }
 
-/** The owner chose "search exactly as typed" for the question in the box. */
-let exact = false;
-
-/** The grey line under the answers: what was searched, and the way back. */
-export function searchedLine(searched) {
-  if (!searched) return "";
-  if (searched.exact) {
-    return '<div class="ask-as">searched exactly as typed · ' +
-      '<button type="button" class="linkbtn" data-ask-exact="0">undo</button></div>';
-  }
-  if (!searched.changed) return "";
-  return '<div class="ask-as">searched as: <span class="ask-as-text">' + esc(searched.text) + "</span> · " +
-    '<button type="button" class="linkbtn" data-ask-exact="1">search exactly as typed</button></div>';
-}
-
 async function runSearch() {
   const q = $("q").value.trim();
-  const out = $("qout");
-  if (q.length === 0) { out.hidden = true; $("qn").textContent = ""; return; }
+  if (q.length === 0) { if (find.on) clear(); return; }
+  const mine = ++seq;
   let d;
   try { d = await api("/api/search?limit=25&q=" + encodeURIComponent(q)); }
   catch (e) { return fail("Search", e); }
-  out.hidden = false;
-  $("qn").textContent = matchCount(d.hits.length, d.total);
-  out.innerHTML = d.absent
-    ? absenceLine(d.absent, "nothing I hold matches those words")
+  if (mine !== seq || $("q").value.trim() !== q) return;
+  takeList(esc(matchCount(d.hits.length, d.total)) + ' <span class="find-hint">· press Enter to ask by meaning instead</span>');
+  $("mlist").innerHTML = d.absent
+    ? absenceLine(d.absent, "nothing I hold uses those words — press Enter to ask by meaning")
     : d.hits.map((h) => memRow({ ...h, text: h.shown, archived: null })).join("");
 }
 
-/** The tiers `ask` sorts answers into, in the words a person would use, and
- *  the brightness each is drawn at. */
-const TIER = { vivid: "came clearly to mind", quiet: "came quietly", dim: "a faint lead" };
-const TIER_LIT = { vivid: 5, quiet: 3, dim: 1 };
+/** The tiers `ask` sorts answers into, in plain words. */
+export const TIER = { vivid: "strong match", quiet: "match", dim: "weak match" };
 
 /** An answer's words as a row shows them: headings dropped, a date written at
  *  the front lifted off (display only — the memory is untouched). */
@@ -107,19 +105,18 @@ export function answerWords(body) {
 }
 
 async function ask() {
-  const q = $("ask-q").value.trim();
-  const out = $("ask-out");
+  const q = $("q").value.trim();
   if (!q) return;
-  $("ask-go").disabled = true;
-  out.innerHTML = '<div class="act-out">thinking…</div>';
-  const r = await act("ask", exact ? { question: q, json: true, exact: true } : { question: q, json: true });
-  $("ask-go").disabled = false;
-  const as = searchedLine(r && r.searched);
+  const mine = ++seq;
+  takeList("thinking…");
+  $("mlist").innerHTML = "";
+  const r = await act("ask", { question: q, json: true });
+  if (mine !== seq) return;
   let result = null;
   if (r && r.ok && Array.isArray(r.out)) {
     try { result = JSON.parse(r.out.join("\n")); } catch (e) { result = null; }
   }
-  if (!result) { out.innerHTML = resultHtml(r) + as; return; }
+  if (!result) { takeList("I couldn't ask that"); $("mlist").innerHTML = resultHtml(r); return; }
   const raw = Array.isArray(result.memories) ? result.memories : [];
   // A chapter and the memory drawn from it are one answer (`fold.js`). The
   // links are a read; without them the answers show as they came.
@@ -128,26 +125,26 @@ async function ask() {
     try { links = (await api("/api/chapters?ids=" + encodeURIComponent(raw.map((m) => m.id).join(",")))).links || {}; }
     catch (e) { links = {}; }
   }
+  if (mine !== seq) return;
   const mems = foldChapters(raw, links);
   if (mems.length === 0) {
-    out.innerHTML = '<div class="empty"><b>Nothing came back.</b> ' +
+    takeList("nothing came to mind");
+    $("mlist").innerHTML = '<div class="empty">' +
       (result.considered === 0
         ? "Nothing I hold shared a word with the question."
         : esc(String(result.considered)) + " memories were weighed and none was close enough.") +
-      " Try the words the memory itself would use.</div>" + as;
+      " Try the words the memory itself would use.</div>";
     return;
   }
-  out.innerHTML = '<div class="ask-head">What came to mind — ' + mems.length +
-    (mems.length === 1 ? " memory" : " memories") + ", best first</div>" +
-    '<div class="card mlist ask-list">' + mems.map((m) => {
-      const w = answerWords(m.body);
-      return memRow({
-        id: m.id, title: m.title, text: w.text, confidential: false, kind: m.kind, strength: m.strength,
-        date: w.date, dateFrom: w.date ? "text" : null, journal: !!m.journal || m.chapter, feelings: [], archived: null,
-      }, {
-        lit: TIER_LIT[m.tier] || 3,
-        tier: TIER[m.tier] || m.tier,
-        from: m.from ? { id: m.from.episodeId, words: fromWords(m.from) } : null,
-      });
-    }).join("") + "</div>" + as;
+  takeList(mems.length + (mems.length === 1 ? " memory came to mind" : " memories came to mind") + ", best match first");
+  $("mlist").innerHTML = mems.map((m) => {
+    const w = answerWords(m.body);
+    return memRow({
+      id: m.id, title: m.title, text: w.text, confidential: false, kind: m.kind,
+      date: w.date, dateFrom: w.date ? "text" : null, journal: false, core: false, feelings: [], archived: null,
+    }, {
+      tier: TIER[m.tier] || m.tier,
+      from: m.from ? { id: m.from.episodeId, words: fromWords(m.from) } : null,
+    });
+  }).join("");
 }

@@ -39,8 +39,17 @@ const LEGEND =
   "Amber is built but quiet. Grey is not built yet. \"Partly built\" means some of it works and some is still to come. " +
   "The line scrolls sideways.";
 
+/** How each kind of memory fades and gives way to a correction, in plain words
+ *  (moved here from the memories tab's kinds `?`, round 4, 2026-09-28). The
+ *  ordering is the physics' κ/ι said aloud (`views/memories.ts#KIND_PLAIN`). */
+export const KINDS_LINE =
+  "Kinds of memory fade at different speeds. Plain facts fade fastest, things and places fairly fast, " +
+  "people and what I know about myself slowly, and skills slowest of all. Facts and places are the easiest " +
+  "to correct; what I know about myself is the hardest to argue me out of.";
+
 export const markup = `
     <h2 id="h-mechanisms-h">How the memory works</h2>
+    <p class="mech-kinds">${KINDS_LINE}</p>
     <section class="mech-card" id="mech-panel" aria-labelledby="mech-title">
       <div class="mech-top">
         <div class="mechs" id="mech-strip" role="group" aria-label="Memory mechanisms"></div>

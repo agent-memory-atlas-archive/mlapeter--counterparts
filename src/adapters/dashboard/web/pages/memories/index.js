@@ -1,25 +1,30 @@
-/* The memories tab: everything it holds — find it (search + ask), see it (two
-   small pictures: how firmly it's held, and how it feels), read and manage it
-   (every memory as a paged list, the page's buttons). `/api/memories` feeds the
-   pictures; the list fetches its own page (`/api/memories/list`).
+/* The memories tab (round 4, 2026-09-28): who is talking and what this is, in
+   one line; the count once ("320 memories · 23 new today"); two small pictures
+   (how well I remember, how it feels); then every memory, with one box to find
+   one. `/api/memories` feeds the top and the pictures; the list fetches its own
+   page (`/api/memories/list`).
 
    LIVE. The pulse calls `refresh()` when the store moves. Everything is re-read
    and redrawn from `state.js`, so the chosen filters, sort and page (and any
-   pinned `?`, kept by the shared tip widget) come back as they were; an open memory card lives in the overlay
-   and is left alone; the scroll position is put back. */
+   pinned `?`, kept by the shared tip widget) come back as they were; an open
+   memory card lives in the overlay and is left alone; the scroll position is
+   put back; answers in the find box stay until it is cleared. */
 import { api, fail } from "../../shared/api.js";
 import { $ } from "../../shared/dom.js";
+import { MY_NAME, ownerOr } from "../../shared/voice.js";
 import * as feel from "./sections/feel.js";
 import * as hold from "./sections/hold.js";
 import * as list from "./sections/list.js";
-import * as search from "./sections/search.js";
 import * as tools from "./sections/tools.js";
 import { setFilter } from "./state.js";
 
 const markup = `
     <div class="mem-top">
-      <p class="mem-count" id="mem-lede"></p>${tools.markup}
-    </div>${tools.notePanel}${search.markup}
+      <div class="mem-head">
+        <p class="mem-count" id="mem-lede"></p>
+        <p class="mem-intro" id="mem-intro"></p>
+      </div>${tools.markup}
+    </div>${tools.notePanel}
     <div class="glance2">${hold.markup}${feel.markup}
     </div>
     ${list.markup}
@@ -30,18 +35,25 @@ async function render() {
   try { d = await api("/api/memories"); } catch (e) { return fail("The memories page", e); }
   const x = scrollX, y = scrollY;
   $("mem-lede").textContent = count(d);
+  $("mem-intro").textContent = intro(d.owner);
   hold.paint(d);
   feel.paint(d);
   await list.render();
   if (scrollX !== x || scrollY !== y) scrollTo(x, y);
 }
 
-/** "145 memories" — the dashboard's one count (2026-09-26): every live row but
- *  the journal's, people and project cards included, the same number the
- *  list's "live" chip and the home page say. */
-function count(d) {
-  if (d.total === 0) return "Nothing held yet. Write a note, or just talk.";
-  return d.total + (d.total === 1 ? " memory" : " memories");
+/** "145 memories · 12 new today" — the dashboard's one count (2026-09-26):
+ *  every live row, people and project cards and journal chapters included, the
+ *  same number the list's "kept" chip and the home headline say. A zero "new
+ *  today" is left out, as on Home. */
+export function count(d) {
+  if (d.total === 0) return "Nothing held yet. Add a memory, or just talk.";
+  return d.total + (d.total === 1 ? " memory" : " memories") + (d.newToday > 0 ? " · " + d.newToday + " new today" : "");
+}
+
+/** Who "I" am, once: "I'm Claude. This is what I've kept from working with Mike." */
+export function intro(owner) {
+  return "I'm " + MY_NAME + ". This is what I've kept from working with " + ownerOr(owner) + ".";
 }
 
 export default {
@@ -51,7 +63,6 @@ export default {
     hold.mount();
     feel.mount();
     list.mount();
-    search.mount();
     tools.mount();
     // A note or a removal made on purpose: re-read now rather than on the next poll.
     addEventListener("counterparts:changed", () => { render(); });
@@ -60,8 +71,8 @@ export default {
   /** The store moved (the pulse): re-read everything this page shows. */
   refresh: render,
   /** `#memories?state=archived` (or live/all): open the list at that filter.
-   *  `#memories?feeling=joy` (the home tab's radar): the live memories carrying
-   *  a feeling under that core, as a click on this tab's radar would show them. */
+   *  `#memories?feeling=joy` (the home tab's chart): the live memories carrying
+   *  a feeling under that core, as a click on this tab's chart would show them. */
   route({ params }) {
     const state = params.get("state");
     const feeling = params.get("feeling");

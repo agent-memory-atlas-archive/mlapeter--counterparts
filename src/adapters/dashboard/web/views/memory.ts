@@ -14,7 +14,7 @@ import type { DashboardSource } from "../../source.js";
 import { WITHHELD, gistOfDoc, reveal, revealHere } from "../reveal.js";
 import { archiveWords } from "./archive-words.js";
 import { fadeCurve } from "./mechanism-panel.js";
-import { chapterDate, feelingsShown, isChapterMemory, liftDate } from "./memory-words.js";
+import { chapterDate, feelingsShown, isChapterMemory, liftDate, stripChapterLead } from "./memory-words.js";
 import { readChapterLead } from "../../../../core/self/index.js";
 import type { FeelingShown } from "./memory-words.js";
 import { LOG_CEILING } from "./shared.js";
@@ -492,7 +492,8 @@ function cardWords(body: string, chapter: boolean, confidential: boolean): { sho
   if (confidential) return { shownText: WITHHELD, writtenDate: null };
   if (chapter) {
     const lead = readChapterLead(body);
-    return { shownText: lead.rest.trim() || body, writtenDate: chapterDate(lead.date) };
+    const bare = stripChapterLead(lead.rest.trim());
+    return { shownText: bare.rest || lead.rest.trim() || body, writtenDate: chapterDate(lead.date) ?? bare.date };
   }
   const lifted = liftDate(body);
   return { shownText: lifted.rest, writtenDate: lifted.date };

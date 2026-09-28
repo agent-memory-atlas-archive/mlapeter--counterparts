@@ -265,10 +265,14 @@ describe("3. Health: How the memory works, at the bottom", () => {
 
 describe("4. the radar and the self map are their tabs' own components", () => {
   test("Home imports them rather than copying them, and its payload carries their data", () => {
-    const feel = read("pages/home/sections/feel.js");
-    expect(feel).toContain('from "../../memories/sections/feel.js"');
-    expect(feel).toContain("radarSvg(");
-    expect(feel).toContain('go("memories?feeling="');
+    // The radar is ONE shared component both tabs draw (Memories round 4, M3).
+    for (const f of ["pages/home/sections/feel.js", "pages/memories/sections/feel.js"]) {
+      const feel = read(f);
+      expect(feel).toContain('from "../../../shared/widgets/feel-radar.js"');
+      expect(feel).toContain("radarHtml(");
+      expect(feel).not.toContain("<svg");
+    }
+    expect(read("pages/home/sections/feel.js")).toContain('go("memories?feeling="');
     const map = read("pages/home/sections/map.js");
     expect(map).toContain('from "../../self/sections/map.js"');
     expect(map).toContain('{ count: false }');
@@ -285,7 +289,7 @@ describe("4. the radar and the self map are their tabs' own components", () => {
   });
 
   test("the radar draws the same SVG on both tabs", async () => {
-    const { radarSvg } = (await import(join(WEB, "pages/memories/sections/feel.js"))) as { radarSvg(f: unknown, picked: string | null): string };
+    const { radarSvg } = (await import(join(WEB, "shared/widgets/feel-radar.js"))) as { radarSvg(f: unknown, picked: string | null): string };
     withSource(dir, (src) => {
       const f = get(src, "/api/overview")["feelings"];
       const svg = radarSvg(f, null);
@@ -319,10 +323,10 @@ describe("5. the health dot is doctor's reading in a few words", () => {
 });
 
 describe("6. the header", () => {
-  test("no store chip, no day chip, no last-event chip; one reassurance, reworded", () => {
+  test("no store chip, no day chip, no last-event chip, and no reassurance badge (Memories round 4, M8)", () => {
     const html = read("app.html");
-    expect(html).toContain(">Reading here changes nothing</span>");
-    expect(html).not.toContain("looking changes nothing");
+    expect(html).not.toContain("Reading here changes nothing");
+    expect(html).not.toContain('class="badge');
     for (const id of ['id="dir"', 'id="clock"', 'id="seen"']) expect(html).not.toContain(id);
     for (const f of ["app.js", "shell/pulse.js"]) {
       const s = read(f);

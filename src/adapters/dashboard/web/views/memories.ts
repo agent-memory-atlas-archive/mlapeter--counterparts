@@ -8,18 +8,20 @@
  */
 import { CORE_EMOTIONS } from "../../../../core/feelings-wheel.js";
 import { TUNABLES as PHYSICS, band as bandOf, strength as strengthOf } from "../../../../core/physics/index.js";
-import { isEntityCard, isJournal } from "../../../../core/sleep/index.js";
+import { isEntityCard, isJournal, ownerNames } from "../../../../core/sleep/index.js";
 import { rowToPhysics } from "../../../../core/store/index.js";
 import type { Band, Kind, MemoryPhysics } from "../../../../core/types.js";
 import { NEVER, NONE } from "../../layout.js";
 import { BANDS, KINDS } from "../../registries.js";
 import type { DashboardSource } from "../../source.js";
+import { displayName } from "../ask-voice.js";
 import { WITHHELD, revealHere } from "../reveal.js";
 import { archiveWords } from "./archive-words.js";
 import { letGoDay } from "./mechanism-panel.js";
-import { feelingsShown, isChapterMemory, shownOf } from "./memory-words.js";
+import { feelingsShown, firstSentence, isChapterMemory, shownOf } from "./memory-words.js";
 import type { DateFrom, FeelingShown } from "./memory-words.js";
 import { absenceFor, census, countMap } from "./shared.js";
+import { todayView } from "./today.js";
 import type { MemoryLine } from "./shared.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -47,6 +49,10 @@ export interface KindRow {
 export interface MemoriesView {
   readonly day: number;
   readonly total: number;
+  /** Memories written today (`todayView`'s `newToday`, the home headline's number). */
+  readonly newToday: number;
+  /** The owner's name as the store knows it, written as a name; null when none. */
+  readonly owner: string | null;
   /** Of `total`: memories proper — the number `counterparts status` prints. */
   readonly memories: number;
   /** Of `total`: entities and beliefs about them (schema rows). */
@@ -81,6 +87,9 @@ export interface FeelingSide {
 export interface FeelingsView {
   /** Live memories carrying at least one feeling. */
   readonly carrying: number;
+  /** Whose "yours" is: the owner's name as the store knows it, or null
+   *  (the legend then says "yours"). */
+  readonly owner: string | null;
   /** In the wheel's order (`CORE_EMOTIONS`): yours (`whose = owner`) and mine (`whose = self`). */
   readonly cores: { readonly core: string; readonly yours: FeelingSide; readonly mine: FeelingSide }[];
 }
@@ -178,6 +187,8 @@ export function memoriesView(src: DashboardSource, opts: { limit?: number } = {}
   return {
     day,
     total: rows.length,
+    newToday: newTodayOf(src),
+    owner: ownerOf(src),
     memories: rows.filter((r) => !r.schema).length,
     schemas: rows.filter((r) => r.schema).length,
     hold,
@@ -208,6 +219,26 @@ export function memoriesView(src: DashboardSource, opts: { limit?: number } = {}
   };
 }
 
+/** Memories written today, as the home headline counts them; 0 when that read fails. */
+function newTodayOf(src: DashboardSource): number {
+  try {
+    return todayView(src).newToday;
+  } catch {
+    return 0;
+  }
+}
+
+/** The owner's name (sleep's `ownerNames`, first entry), written as a name; null when none.
+ *  The same reading as `overview.ts#ownerName`, spelled here because that
+ *  module imports this one. */
+export function ownerOf(src: DashboardSource): string | null {
+  try {
+    return displayName(ownerNames(src.store)[0] ?? null);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * How it feels: the feelings recorded on `rows` (the live census), by the
  * wheel's six cores, yours and mine. The memories tab's radar draws it, and
@@ -232,6 +263,7 @@ export function feelingsView(src: DashboardSource, rows: readonly { readonly id:
   }
   return {
     carrying,
+    owner: ownerOf(src),
     cores: CORE_EMOTIONS.map((core) => {
       const at = sides.get(core) ?? { yours: side(), mine: side() };
       return { core, yours: sideOut(at.yours), mine: sideOut(at.mine) };
@@ -297,6 +329,9 @@ export interface ListRow {
   readonly createdAt: number | null;
   /** How firmly it is held (`holdOf`); null for an archived row or a journal chapter. */
   readonly hold: Hold | null;
+  /** Put-away rows only: how many put-away versions of the same memory this
+   *  one row stands for (itself included) — 1 for most. See `versionKey`. */
+  readonly versions: number;
 }
 
 export type ListSort = "newest" | "oldest";
@@ -328,6 +363,9 @@ export interface MemoryListView {
     readonly journal: number;
     /** Firm / settling / fading — live rows only, journal chapters left out. */
     readonly hold: Record<Hold, number>;
+    /** Memories carrying a feeling under each of the wheel's six cores (either
+     *  side), within the live/archived choice. */
+    readonly feelings: Record<string, number>;
   };
   readonly rows: ListRow[];
   readonly absent: string | null;
@@ -346,6 +384,33 @@ function schemaRole(meta: string): string {
   } catch {
     return "entity";
   }
+}
+
+/**
+ * The key a put-away row's other versions share, or null when it stands alone:
+ * a journal-chapter memory's episode (each regrowing puts the last reading
+ * away), else the memory its `superseded_by` chain ends at. Read from the row
+ * and its successors — display only.
+ */
+function versionKey(store: DashboardSource["store"], row: Parameters<typeof isChapterMemory>[0] & { superseded_by: string | null }): string | null {
+  if (isChapterMemory(row)) {
+    try {
+      const ep = (JSON.parse(row.meta) as Record<string, unknown>)["episodeId"];
+      if (typeof ep === "string") return `episode:${ep}`;
+    } catch {
+      /* no episode to group by */
+    }
+  }
+  let next = row.superseded_by;
+  if (next === null) return null;
+  const seen = new Set<string>();
+  for (let i = 0; i < 50 && !seen.has(next); i++) {
+    seen.add(next);
+    const r = store.row(next);
+    if (r === undefined || r.superseded_by === null) break;
+    next = r.superseded_by;
+  }
+  return `head:${next}`;
 }
 
 function firstLine(body: string, width: number): string {
@@ -418,6 +483,10 @@ export function memoryListView(
     core: boolean;
     journal: boolean;
     hold: Hold | null;
+    /** Put-away rows only: the key its other versions share, or null. */
+    group: string | null;
+    versions: number;
+    cores: Set<string>;
   }
   const all: Slim[] = [];
   let live = 0;
@@ -455,6 +524,9 @@ export function memoryListView(
       core: row.promoted_identity === 1,
       journal: chapter,
       hold,
+      group: isArchived ? versionKey(store, row) : null,
+      versions: 1,
+      cores: new Set(feelingsShown(store, id).map((f) => f.core)),
     });
   }
   const kinds: Record<string, number> = Object.fromEntries(KINDS.map((k) => [k, 0]));
@@ -462,21 +534,23 @@ export function memoryListView(
   let core = 0;
   let journal = 0;
   const holds: Record<Hold, number> = { firm: 0, settling: 0, fading: 0 };
+  const feelingCounts: Record<string, number> = Object.fromEntries(CORE_EMOTIONS.map((c) => [c, 0]));
   for (const r of all) {
+    for (const c of r.cores) feelingCounts[c] = (feelingCounts[c] ?? 0) + 1;
     if (r.hold !== null) holds[r.hold] += 1;
     kinds[r.kind] = (kinds[r.kind] ?? 0) + 1;
     bands[r.band] = (bands[r.band] ?? 0) + 1;
     if (r.core) core += 1;
     if (r.journal) journal += 1;
   }
-  const matching = all.filter(
+  const filtered = all.filter(
     (r) =>
       (kind === null || r.kind === kind) &&
       (band === null || r.band === band) &&
       (!onlyCore || r.core) &&
       (!onlyJournal || r.journal) &&
       (onlyHold === null || r.hold === onlyHold) &&
-      felt(r.id),
+      (feelingCore !== null && feeling === null ? r.cores.has(feelingCore) : felt(r.id)),
   );
   // Newest first: the lived day it was born, then the moment it was written
   // (v7 `created_at`; a row from before v7 has none and counts as the older),
@@ -487,7 +561,21 @@ export function memoryListView(
     (b.createdAt ?? -Infinity) - (a.createdAt ?? -Infinity) ||
     (a.learnedOn < b.learnedOn ? 1 : a.learnedOn > b.learnedOn ? -1 : 0) ||
     (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-  matching.sort(sort === "oldest" ? (a, b) => newestFirst(b, a) : newestFirst);
+  filtered.sort(newestFirst);
+  // Several put-away versions of the same memory are one row: the newest
+  // stands for them, with how many there are (2026-09-28, round 4).
+  const lead = new Map<string, Slim>();
+  const matching: Slim[] = [];
+  for (const r of filtered) {
+    const first = r.group === null ? undefined : lead.get(r.group);
+    if (first !== undefined) {
+      first.versions += 1;
+      continue;
+    }
+    if (r.group !== null) lead.set(r.group, r);
+    matching.push(r);
+  }
+  if (sort === "oldest") matching.reverse();
   const rows: ListRow[] = matching.slice(offset, offset + limit).map((r) => {
     const row = store.row(r.id);
     const here = revealHere(store, r.id, 160);
@@ -508,6 +596,8 @@ export function memoryListView(
       confidential: here.confidential || !here.present,
       withheld: text,
     });
+    // A journal chapter reads as its first real sentence under "Journal · <day>".
+    const words = r.journal && !here.confidential && here.present ? firstSentence(shown.text) : shown.text;
     return {
       id: r.id,
       title,
@@ -522,7 +612,7 @@ export function memoryListView(
       archivedReason: r.archived ? (row?.archived_reason ?? null) : null,
       schema: row?.type === "schema",
       schemaRole: row?.type === "schema" ? schemaRole(row.meta) : null,
-      text: shown.text || line,
+      text: words || line,
       date: shown.date,
       dateFrom: shown.dateFrom,
       core: r.core,
@@ -531,6 +621,7 @@ export function memoryListView(
       feelings: feelingsShown(store, r.id),
       createdAt: r.createdAt,
       hold: r.hold,
+      versions: r.versions,
     };
   });
   const everLived = day > 0 || live + archived > 0;
@@ -548,7 +639,7 @@ export function memoryListView(
     offset,
     limit,
     total: matching.length,
-    counts: { live, archived, kinds, bands, core, journal, hold: holds },
+    counts: { live, archived, kinds, bands, core, journal, hold: holds, feelings: feelingCounts },
     rows,
     absent: matching.length === 0 ? (everLived ? NONE : NEVER) : null,
   };

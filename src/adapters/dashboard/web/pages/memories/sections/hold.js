@@ -1,20 +1,26 @@
-/* "How firmly it's held": one bar in three parts — firm, settling, fading —
-   with their counts. Brighter is firmer (the tab's one visual language), and
-   fading is amber. Click a part to filter the list to it; click it again for
-   everything. The journal's entries aren't scored, so they are a note, not a part. */
+/* "How well I remember": one bar in four parts — firm, settling, fading, and
+   the journal (grey: its chapters are kept as written and not scored) — so the
+   parts add up to the count at the top of the page. Fading is amber. Click a
+   part to filter the list to it; click it again for everything. */
 import { $, esc } from "../../../shared/dom.js";
 import { q, wireTips } from "../../../shared/widgets/tips.js";
 import { filters, onFilter, toggle } from "../state.js";
 
+/** [key, words, hover hint]. The journal part filters by the journal chip. */
 const PARTS = [
-  ["firm", "firm"],
-  ["settling", "settling"],
-  ["fading", "fading"],
+  ["firm", "firm", "I'll still know it in a month"],
+  ["settling", "settling", "between firm and fading"],
+  ["fading", "fading", "put away soon unless it's used"],
+  ["journal", "journal", "my journal, kept as written"],
 ];
+
+/** The `?`: two plain sentences (round 4). */
+export const HOLD_TIP = "Firm: I'll still know it a month from now even if it's never used. " +
+  "Fading: unless it's used, I'll put it away within two weeks.";
 
 export const markup = `
           <div class="glance-card">
-            <h2 id="hold-h">How firmly it's held<span id="hold-q"></span></h2>
+            <h2 id="hold-h">How well I remember<span id="hold-q"></span></h2>
             <div class="card pad hold" id="hold"></div>
           </div>`;
 
@@ -23,50 +29,42 @@ let data = null;
 export function mount() {
   $("hold").addEventListener("click", (e) => {
     const b = e.target.closest("[data-hold]");
-    if (b && !b.disabled) toggle("hold", b.dataset.hold);
+    if (!b || b.disabled) return;
+    if (b.dataset.hold === "journal") toggle("journal");
+    else toggle("hold", b.dataset.hold);
   });
   onFilter(paintParts);
 }
 
 export function paint(d) {
   data = d;
-  $("hold-q").innerHTML = q("hold",
-    "Firm: in the core, protected, or strong enough that — even unused — it is still settled knowledge " + d.firmAheadDays +
-    " lived days from now. Fading: if nobody uses it, it will be let go (archived — kept, not deleted) within " + d.nearLetGoDays +
-    " lived days. Settling: everything between. Using a memory makes it firmer. Click a part to see those memories below.");
+  $("hold-q").innerHTML = q("hold", HOLD_TIP);
   wireTips($("hold-q"));
   paintParts();
 }
 
+const isOn = (k) => (k === "journal" ? filters.journal : filters.hold === k);
+
 function paintParts() {
   if (!data) return;
   const h = data.hold;
-  const scored = h.firm + h.settling + h.fading;
-  if (scored === 0) {
-    $("hold").innerHTML = '<p class="glance-empty">Nothing held yet. It fills in as we talk.</p>' + journalNote(h);
+  const all = h.firm + h.settling + h.fading + h.journal;
+  if (all === 0) {
+    $("hold").innerHTML = '<p class="glance-empty">Nothing held yet. It fills in as we talk.</p>';
     return;
   }
-  const seg = PARTS.filter(([k]) => h[k] > 0).map(([k, label]) => {
-    const on = filters.hold === k;
-    return '<button type="button" class="hseg ' + k + (on ? " on" : "") + (filters.hold && !on ? " off" : "") +
-      '" style="flex:' + h[k] + '" data-hold="' + k + '" aria-pressed="' + on + '" title="' + esc(label + ": " + h[k]) + '">' +
-      '<span class="hn">' + (h[k] / scored >= 0.08 ? h[k] : "") + "</span></button>";
+  const any = PARTS.some(([k]) => isOn(k));
+  const seg = PARTS.filter(([k]) => h[k] > 0).map(([k, label, hint]) => {
+    const on = isOn(k);
+    return '<button type="button" class="hseg ' + k + (on ? " on" : "") + (any && !on ? " off" : "") +
+      '" style="flex:' + h[k] + '" data-hold="' + k + '" aria-pressed="' + on + '" title="' + esc(label + " " + h[k] + " — " + hint) + '">' +
+      '<span class="hn">' + (h[k] / all >= 0.08 ? h[k] : "") + "</span></button>";
   }).join("");
-  const keys = PARTS.map(([k, label]) => {
-    const on = filters.hold === k;
+  const keys = PARTS.map(([k, label, hint]) => {
+    const on = isOn(k);
     return '<button type="button" class="hkey ' + k + (on ? " on" : "") + '" data-hold="' + k + '" aria-pressed="' + on + '"' +
-      (h[k] === 0 ? " disabled" : "") + '><i></i>' + esc(label) + ' <span class="fn">' + h[k] + "</span></button>";
+      ' title="' + esc(hint) + '"' + (h[k] === 0 ? " disabled" : "") + '><i></i>' + esc(label) + ' <span class="fn">' + h[k] + "</span></button>";
   }).join("");
-  $("hold").innerHTML = '<div class="hbar" role="group" aria-label="how firmly it is held — click a part to filter the list">' + seg + "</div>" +
-    '<div class="hkeys">' + keys + "</div>" + journalNote(h);
-}
-
-/** The note under the bar. What it counts is the journal's ENTRIES (one per
- *  session; an entry can hold several chapters), so it says entries —
- *  "chapters" here disagreed with the Self tab's chapter count (2026-09-28). */
-export function journalNote(h) {
-  if (!h.journal) return "";
-  return '<p class="glance-note">' + (h.journal === 1
-    ? "The journal's one entry isn't scored, so it's left out."
-    : "The journal's " + h.journal + " entries aren't scored, so they're left out.") + "</p>";
+  $("hold").innerHTML = '<div class="hbar" role="group" aria-label="how well I remember — click a part to filter the list">' + seg + "</div>" +
+    '<div class="hkeys">' + keys + "</div>";
 }

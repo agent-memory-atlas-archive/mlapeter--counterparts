@@ -1,11 +1,16 @@
 /* What the memories page is filtered to, kept apart from the markup so a live refresh redraws and leaves every choice as it was.
-   One filter listener: the list. */
-/** `hold`: firm / settling / fading, set from the "How firmly it's held" bar.
- *  `feeling` ({ word, whose }) and `feelingCore`: set from the "How it feels"
- *  radar — one or the other, never both. */
+   Listeners: the list, the two pictures, the find box. */
+/** `hold`: firm / settling / fading, set from the "How well I remember" bar.
+ *  `feeling` ({ word, whose }) and `feelingCore`: the feeling filter — the
+ *  chart and the feeling chips set `feelingCore`; `feeling` (one word from one
+ *  side) is still understood by the server, and nothing on the page sets it now. */
 export const filters = {
   state: "live", kind: null, core: false, journal: false, hold: null, feeling: null, feelingCore: null, sort: "newest", offset: 0,
 };
+
+/** The find box: while it holds words, its answers stand in the list's place
+ *  (round 4, 2026-09-28: results REPLACE the list). Any filter change ends it. */
+export const find = { on: false };
 
 const listeners = [];
 export function onFilter(fn) { listeners.push(fn); }
@@ -15,10 +20,11 @@ export function setFilter(patch) {
   const pageOnly = Object.keys(patch).length === 1 && "offset" in patch;
   Object.assign(filters, patch);
   if (!pageOnly) filters.offset = 0;
+  find.on = false;
   for (const fn of listeners) fn(filters);
 }
 
-/** A kind chip (or a part of the hold bar) is a toggle: click it again to
+/** A kind chip (or a part of the bar) is a toggle: click it again to
  *  show everything. Core and journal chips are on/off. */
 export function toggle(key, value) {
   if (key === "core" || key === "journal") setFilter({ [key]: !filters[key] });

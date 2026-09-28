@@ -1,5 +1,5 @@
 /* The marks a memory carries anywhere it is shown (`memory-marks.js`): its
-   kind's icon, feeling dots, the one quiet strength meter, and the badges for
+   kind's icon, feeling dots and the badges for
    special cases. The memories tab's rows and the memory card both use these. */
 .kic{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;
   vertical-align:-2px;flex:none}
@@ -7,9 +7,6 @@
 .kmark{display:inline-flex;align-items:center}
 .fdots{display:inline-flex;gap:3px;align-items:center}
 .fdots i{display:block;width:8px;height:8px;border-radius:50%}
-.smeter{display:inline-block;width:34px;height:4px;border-radius:2px;background:var(--deep);
-  border:1px solid rgba(0,229,255,.1);overflow:hidden;vertical-align:middle}
-.smeter span{display:block;height:100%;background:rgba(0,229,255,.55);border-radius:2px}
 .mbadge{display:inline-flex;align-items:center;gap:3px;font-size:11.5px;line-height:1.3;color:var(--dim);
   border:1px solid var(--border);border-radius:9px;padding:1px 7px;white-space:nowrap}
 .mbadge.core{color:#e8dcff;border-color:rgba(179,136,255,.45)}

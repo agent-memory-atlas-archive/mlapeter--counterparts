@@ -101,19 +101,47 @@ export function shownOf(
     words = lead.rest;
     fromChapter = chapterDate(lead.date);
   }
-  const flat = words
+  let flat = words
     .split("\n")
     .map((l) => l.trim())
     .filter((l) => l.length > 0 && !l.startsWith("#"))
     .join(" ")
     .replace(/\s+/g, " ")
     .trim();
+  if (opts.chapter) {
+    const bare = stripChapterLead(flat);
+    flat = bare.rest;
+    fromChapter ??= bare.date;
+  }
   const lifted = liftDate(flat);
   const width = opts.width ?? 320;
   const text = lifted.rest.length > width ? `${lifted.rest.slice(0, width - 1).trimEnd()}…` : lifted.rest;
   if (lifted.date !== null) return { text, date: lifted.date, dateFrom: "text" };
   if (fromChapter !== null) return { text, date: fromChapter, dateFrom: "chapter" };
   return { text, ...fallback };
+}
+
+/**
+ * A chapter's heading left in its words WITHOUT the markdown `#` that
+ * `readChapterLead` reads — "Sun 27 Sep 2026 · claude-opus-5-5 · lived day 6
+ * Mike wanted…" (seen on a live store, 2026-09-28) — lifted off, with its date.
+ * The model id and the lived day are the journal's bookkeeping, not its words.
+ */
+const BARE_LEAD =
+  /^(?:chapter[ \t]+\d+[ \t]*[—–-][ \t]*)?(?:([A-Za-z]{3} \d{1,2} [A-Za-z]{3} \d{4})[ \t]*·[ \t]*)?(?:[A-Za-z0-9][A-Za-z0-9._:[\]-]*[ \t]*·[ \t]*)?lived day[ \t]+\d+[ \t]*/i;
+
+export function stripChapterLead(text: string): { rest: string; date: string | null } {
+  const m = BARE_LEAD.exec(text);
+  if (m === null) return { rest: text, date: null };
+  return { rest: text.slice(m[0].length).trimStart(), date: chapterDate(m[1] ?? null) };
+}
+
+/** The first sentence of `text` (up to its first `.`, `!` or `?` followed by a
+ *  space), or all of it when there is no such end within `width`. */
+export function firstSentence(text: string, width = 240): string {
+  const m = /^(.{12,}?[.!?])(?=\s|$)/.exec(text);
+  if (m !== null && m[1] !== undefined && m[1].length <= width) return m[1];
+  return text.length > width ? `${text.slice(0, width - 1).trimEnd()}…` : text;
 }
 
 /** A memory's feelings in words, oldest first. The `carried_by` words are not here. */
