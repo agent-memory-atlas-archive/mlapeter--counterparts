@@ -126,10 +126,13 @@ import {
   BRIEFING_KEY,
   BRIEFING_TRIM_LOG_CAP,
   LANE_ORDER,
+  NIGHT_WRITER_MEMORY_BYTES,
+  NIGHT_WRITER_MEMORY_MAX,
   PREFACE_RESERVE_BYTES,
   Self,
   byteLength,
   spliceBeforeSentinel,
+  writerInstruction,
 } from "./self/index.js";
 import type {
   ChapterAppend,
@@ -1341,6 +1344,8 @@ export class Counterpart {
   /** The owner's own session? Recall's rule, kept for the plain lane: a
    *  confidential memory is said only to its owner (recall §9.1 G5). */
   private readonly owner: boolean;
+  /** The host's `pageWriter.mode` (`session` when absent): who runs the nightly writer. */
+  private readonly pageWriterModeOpt: PageWriterMode;
   private reportedBudget: number | null;
   private readonly onEvent: ((e: CounterpartEvent) => void) | undefined;
   private readonly nowFn: () => number;
@@ -1372,6 +1377,7 @@ export class Counterpart {
     if (opts.dir !== undefined) assertSafeDataDir(opts.dir);
     this.observer = isObserver(opts);
     this.owner = opts.owner === true && !this.observer;
+    this.pageWriterModeOpt = opts.pageWriterMode ?? "session";
     this.onEvent = opts.onEvent;
     this.nowFn = opts.now ?? ((): number => Date.now());
     this.reportedBudget = opts.budgetBytes ?? null;
@@ -1511,10 +1517,13 @@ export class Counterpart {
     });
 
     // REFLECTION (2026-09-27). The same credential scan as a dream's words.
-    // The page is rewritten through the one seam (`Self#revisePage`, by
-    // `writer`), and the night's page-writer run is recorded with it — that
-    // claim is what makes the SessionStart writer stand down on a night the
-    // reflection wrote the page (dream NOTES).
+    // The page is rewritten through the one seam (`Self#revisePage`), BY
+    // `reflection` since 2026-09-28 — its own author, not the nightly
+    // writer's: the writer runs just before it in the same nightly run, both
+    // may write the page for now, and the version history tells them apart.
+    // It records no page-writer run any more (that row was what made the old
+    // SessionStart writer stand down; the writer is in the run now, and the
+    // row would say the writer revised on a night it may have refused).
     this.reflections = new Reflections({
       store: this.store,
       observer: this.observer,
@@ -1531,22 +1540,11 @@ export class Counterpart {
       ownerName: () => this.ownerDisplayName(),
       dreamLine: (dreamId) => this.dreams.handBackOf(dreamId),
       writePage: (body, o) => {
-        const before = this.self.page();
         const written = this.self.revisePage(body, {
-          by: "writer",
+          by: "reflection",
           reason: o.reason,
           session: o.session,
           ...(o.model === null ? {} : { model: o.model }),
-        });
-        const night = this.self.pageWriterDue({ mode: "session" });
-        this.self.recordPageWriterRun({
-          about: night.about,
-          mode: "session",
-          outcome: written.written ? "revised" : "refused",
-          detail: written.written ? o.reason : `${o.reason}: ${written.reason}`,
-          bytesBefore: before === null ? 0 : byteLength(before.body),
-          bytesAfter: written.bytes,
-          dedupKey: `reflection.page.${o.reflection}`,
         });
         return written.written && written.version !== null
           ? { ok: true, version: written.version }
@@ -2722,6 +2720,8 @@ export class Counterpart {
     today?: string;
     day?: number;
     budgetBytes?: number;
+    /** Most memories carried (the tunable's when absent). */
+    max?: number;
     omit?: (m: { id: string; confidential: boolean; protectedRow: boolean }) => boolean;
   }): WriterInput {
     return this.self.pageWriterInput({
@@ -2760,6 +2760,127 @@ export class Counterpart {
    *  writes `by: "writer"` rather than `by: "session"`. Pure. */
   pageWriterClaimOpen(about: string, today?: string): boolean {
     return this.self.pageWriterClaimOpen(about, today);
+  }
+
+  // ── the nightly run's writer (2026-09-28) ──────────────────────────────────
+
+  /** The nightly run's open writer claim for this session, or null. What the
+   *  page's door reads to label a write `writer`. Pure. */
+  nightClaimFor(session: string): PageWriterRun | null {
+    return this.self.nightClaimFor(session);
+  }
+
+  /**
+   * CLAIM THE NIGHT FOR THE NIGHTLY RUN'S WRITER — called by the run's writer
+   * phase (the MCP server's `dream writer`), the run's first part. The writer
+   * moved out of the wake into the run: writer, then dream, then reflection,
+   * one background agent (the owner's order, 2026-09-28). The claim is the
+   * ordinary `asked` row for the night (`about` = yesterday's local calendar
+   * date, `pageWriterNight`), carrying the SESSION and the run — which is what
+   * lets the page's door record the writer's `self_page` write `by: "writer"`
+   * (`nightClaimFor`). A claim this session already holds is reused (a run
+   * started again claims nothing twice).
+   *
+   * Only in `session` mode, the default: `off` writes nothing, and `host`
+   * leaves the night to the windowless child the worker starts. Never throws.
+   */
+  claimNightWriter(input: { session: string; run: string }): { claimed: boolean; about: string; reason: string } {
+    try {
+      if (this.observer) return { claimed: false, about: "", reason: "observer" };
+      const mode = this.pageWriterModeOpt;
+      if (mode !== "session") return { claimed: false, about: "", reason: mode === "off" ? "off" : "host-mode" };
+      const open = this.self.nightClaimFor(input.session);
+      if (open !== null) return { claimed: true, about: open.about, reason: "claimed-earlier" };
+      const due = this.self.pageWriterDue({ mode: "session" });
+      if (!due.due) {
+        // A NIGHT THE WRITER LOOKED AT AND HAD NOTHING TO READ is written down
+        // (review of #271): a `skipped` row, which never closes a night, so
+        // doctor does not read a store used every other day as a writer that
+        // stopped. One per night and reason.
+        if (due.reason === "no-memories" || due.reason === "asks-spent") {
+          this.self.recordPageWriterRun({
+            about: due.about,
+            mode: "session",
+            outcome: "skipped",
+            detail: due.reason,
+            session: input.session,
+            run: input.run,
+            dedupKey: `self.page.writer.ran:night:${due.about}:${due.reason}`,
+          });
+        }
+        return { claimed: false, about: due.about, reason: due.reason };
+      }
+      const built = this.pageWriterInput({ about: due.about, budgetBytes: NIGHT_WRITER_MEMORY_BYTES, max: NIGHT_WRITER_MEMORY_MAX });
+      const ok = this.self.recordPageWriterRun({
+        about: due.about,
+        mode: "session",
+        outcome: "asked",
+        detail: `nightly run ${input.run}, attempt ${String(due.attempt)}`,
+        bytesBefore: built.page?.bytes ?? 0,
+        considered: built.memories.length,
+        omitted: built.omitted,
+        session: input.session,
+        run: input.run,
+      });
+      return { claimed: ok, about: due.about, reason: ok ? "claimed" : "unrecorded" };
+    } catch (err) {
+      return { claimed: false, about: "", reason: err instanceof Error ? err.name : "UNKNOWN" };
+    }
+  }
+
+  /**
+   * THE RUN MOVED PAST THE WRITER WITHOUT A WRITE (review of #271): this
+   * session's open claim is closed as `nothing-to-say`, so the night is
+   * answered and a later `self_page` write by the session is an ordinary
+   * amendment, not the writer's. Called at the phase after the writer (the
+   * dream's `begin`, the reflection's `begin`). Nothing when there is no open
+   * claim — the writer wrote, or never claimed. Never throws.
+   */
+  closeNightWriter(input: { session: string; phase: string }): boolean {
+    try {
+      if (this.observer) return false;
+      const open = this.self.nightClaimFor(input.session);
+      if (open === null) return false;
+      const page = this.self.page();
+      return this.self.recordPageWriterRun({
+        about: open.about,
+        mode: open.mode,
+        outcome: "nothing-to-say",
+        detail: `the run moved on to ${input.phase} without writing`,
+        bytesBefore: open.bytesBefore,
+        bytesAfter: page === null ? 0 : byteLength(page.body),
+        considered: open.considered,
+        omitted: open.omitted,
+        session: input.session,
+        run: open.run,
+      });
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * WHAT THE NIGHTLY RUN'S WRITER IS HANDED, through a tool result (the dream
+   * tool's `writer` phase) rather than the wake: the instruction, the page
+   * WHOLE (the background agent never got the wake), and the day — no
+   * injection ceiling, so no `no-room`. Null reason when this session holds no
+   * open claim. Pure: it reads and composes.
+   */
+  nightWriter(input: { session: string; tool: string }):
+    | { ok: true; about: string; text: string; considered: number; dropped: number; omitted: number; version: number | null }
+    | { ok: false; reason: string } {
+    const claim = this.self.nightClaimFor(input.session);
+    if (claim === null) return { ok: false, reason: "no-claim" };
+    const built = this.pageWriterInput({ about: claim.about, budgetBytes: NIGHT_WRITER_MEMORY_BYTES, max: NIGHT_WRITER_MEMORY_MAX });
+    return {
+      ok: true,
+      about: claim.about,
+      text: writerInstruction(built, { tool: input.tool, session: input.session, pageInline: true }),
+      considered: built.memories.length,
+      dropped: built.dropped,
+      omitted: built.omitted,
+      version: built.page?.version ?? null,
+    };
   }
 
   /** The unaskable tail — bounded and measured, never pretended away (§2 G12). */

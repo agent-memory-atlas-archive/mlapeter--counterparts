@@ -1825,6 +1825,7 @@ describe("observer mode is enforced at the store seam", () => {
     recordDreamChange: ["drm_x", { action: "link" }],
     markDreamChangeUndone: ["drm_x", 1],
     setDreamAsk: [{ date: "2026-09-26", state: "offered", day: 0 }],
+    reclaimDreamAsk: [{ date: "2026-09-26", prevAt: 0, state: "launched", day: 0 }],
     // v9 (2026-09-27, reflection + core by meaning).
     reflectReturn: ["mem_000000000000", 1],
     setAbout: ["mem_000000000000", "me", { by: "writer" }],

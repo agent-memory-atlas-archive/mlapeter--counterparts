@@ -267,7 +267,8 @@ describe("propose: what a dream may change", () => {
     const shown = JSON.parse(c.store.dream(id)?.shown ?? "[]") as string[];
     c.dreams.propose({ dream: id, session: SESSION, changes: [{ action: "link", a: shown[0] as string, b: shown[1] as string }] });
     c.dreams.journal({ dream: id, session: SESSION, text: "A dream." });
-    expect(c.dreams.status("2026-09-26").reason).toBe("dreamed-today");
+    // The CALENDAR day (2026-09-28): the dream is dated the store's today.
+    expect(c.dreams.status(c.store.today()).reason).toBe("dreamed-today");
     c.dreams.undo(id);
     expect(c.dreams.lastDream()).toBeNull();
     expect(c.dreams.status("2026-09-27").reason).toBe("due");
@@ -381,9 +382,10 @@ describe("journal and undo", () => {
 // ---------------------------------------------------------------------------
 
 describe("the ask: once a day, snoozed by a no", () => {
-  test("due with enough new memory; once per calendar day; a decline snoozes it", () => {
+  test("due with enough new memory; once per calendar day; a decline snoozes it (setting ask)", () => {
     const c = brain();
     lived(c);
+    expect(c.dreams.setSetting("ask", { by: "owner" }).ok).toBe(true);
     const line = c.dreams.askLine({ at: "2026-09-26", session: SESSION });
     expect(line).not.toBeNull();
     expect(line).toContain("OK if I dream for a few minutes?");
@@ -405,8 +407,9 @@ describe("the ask: once a day, snoozed by a no", () => {
     lived(c);
     const { id } = begin(c);
     c.dreams.journal({ dream: id, session: SESSION, text: "A dream." });
-    expect(c.dreams.askLine({ at: "2026-09-26", session: SESSION })).toBeNull();
-    expect(c.dreams.status("2026-09-26").reason).toBe("dreamed-today");
+    const today = c.store.today();
+    expect(c.dreams.askLine({ at: today, session: SESSION })).toBeNull();
+    expect(c.dreams.status(today).reason).toBe("dreamed-today");
   });
 
   test("a flagged contradiction is raised once, awake, the next session", () => {
@@ -427,9 +430,12 @@ describe("the ask: once a day, snoozed by a no", () => {
     const prompt = c.dreams.launchPrompt({ session: SESSION });
     expect(prompt.startsWith(DREAM_MARK)).toBe(true);
     expect(prompt).toContain(`session: ${SESSION}`);
-    // v9: dream → journal → reflect, as distinct acts.
+    // v9: dream → journal → reflect, as distinct acts; 2026-09-28: the page
+    // writer FIRST, in the one nightly run (the owner's order).
+    expect(prompt.indexOf('phase "writer"')).toBeLessThan(prompt.indexOf('phase "begin"'));
+    expect(prompt.indexOf('phase "begin"')).toBeLessThan(prompt.indexOf('phase "journal"'));
     expect(prompt.indexOf('phase "journal"')).toBeLessThan(prompt.indexOf("reflect tool"));
-    expect(prompt).toContain("exactly the text the finish call returns");
+    expect(prompt).toContain("exactly the text the reflection's finish call returns");
   });
 });
 
@@ -530,10 +536,12 @@ describe("the ask reaches a session through user-prompt-submit, quietly, once a 
     // The headless page writer is told nothing, and claims nothing.
     expect(a.userPromptSubmit(input({ sessionId: "pw", pageWriter: true })).injection).not.toContain("dream");
     const first = a.userPromptSubmit(input({ sessionId: "s1" }));
-    expect(first.injection).toContain("OK if I dream for a few minutes?");
+    // The default setting, `auto` (2026-09-28): start the run, say so in one line.
+    expect(first.injection).toContain('phase "launch"');
+    expect(first.injection).toContain("Dreaming in the background (a few minutes). Say 'no dreams' anytime to turn it off.");
     // Quiet: for the model, never the person's terminal line.
     expect(first.notices ?? []).toEqual([]);
-    expect(a.userPromptSubmit(input({ sessionId: "s2" })).injection).not.toContain("OK if I dream");
-    expect(a.userPromptSubmit(input({ sessionId: "s1" })).injection).not.toContain("OK if I dream");
+    expect(a.userPromptSubmit(input({ sessionId: "s2" })).injection).not.toContain("Dreaming in the background");
+    expect(a.userPromptSubmit(input({ sessionId: "s1" })).injection).not.toContain("Dreaming in the background");
   });
 });

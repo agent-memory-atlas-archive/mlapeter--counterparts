@@ -11,7 +11,7 @@
  * a dream having run.
  *
  * The shape. `begin` HANDS the reflection what it needs rather than letting it
- * search: the dream's journal, its gists and nominations (marked as dreamed —
+ * search: what the dream saw (a line each), the dream's journal, its gists and nominations (marked as dreamed —
  * suggestions it may use, reword or ignore), the last few days' chapters and
  * memories and its own recent reflections, what's on my mind, the self page, the core
  * memories, the core CANDIDATES (memories about me, us or the owner — not the
@@ -30,8 +30,10 @@
  *       dream's gist is not a source it can cite. (The check that refused a
  *       page sharing six words with any recent gist was removed 2026-09-28:
  *       its every hit was a lived quote the gist had quoted too.) It is
- *       recorded as the night's page-writer run, which is what makes the old
- *       SessionStart writer stand down on a night the reflection wrote the page.
+ *       written `by: "reflection"` (2026-09-28), its own author beside the
+ *       nightly writer's `writer`: the two are different jobs in one nightly
+ *       run (the writer first, the reflection after), both may write the page
+ *       for now, and the version history tells them apart.
  *   (c) a MORNING SHARE — two or three sentences for the owner, the way a
  *       partner would say it, citing what it rests on. Told by the session
  *       (`told`), or carried once by the next one.
@@ -46,7 +48,7 @@
  *       natural question. Display only, and the reflection is shown NO
  *       balance or totals: the arithmetic stays on the dashboard.
  *
- * `finish` MAY BE CALLED AGAIN (2026-09-28) the same lived day, on the same
+ * `finish` MAY BE CALLED AGAIN (2026-09-28) the same calendar day, on the same
  * reflection: a second call supplies the parts the first refused or left out
  * — page, share, feelings, about, traits — without re-minting the entry, and
  * may replace the share while it has not been told. Every part not written
@@ -79,6 +81,7 @@ import {
 import type { AboutMark, FeelingInput, MemoryRow, ProseDoc, ReflectionRow, Store } from "../store/index.js";
 import type { Kind } from "../types.js";
 import { DREAM_MARK, carriesDreamMark } from "./mark.js";
+import { DREAM_TUNABLES } from "./tunables.js";
 import { onMyMind } from "./mind.js";
 import type { MindItem } from "./mind.js";
 
@@ -95,7 +98,29 @@ export const REFLECT_TUNABLES = {
   EARLIER_CHARS: 1_200,
   /** The dream's journal, bounded (was 4,000; raised with the journal's own cap, 2026-09-28). */
   JOURNAL_CHARS: 12_000,
-  PAGE_CHARS: 6_000,
+  /**
+   * THE SELF PAGE IS HANDED WHOLE (2026-09-28: was cut at 6,000 characters
+   * while a page may be 16,384 bytes) — a reflection that may rewrite the page
+   * reads all of it.
+   */
+  /** WHAT THE DREAM SAW (2026-09-28): characters of each memory's line. */
+  SAW_CHARS: 240,
+  /**
+   * THE BUNDLE IN PARTS (2026-09-28). The begin result's size — measured as
+   * the MCP text leaves, the bundle re-escaped inside the result's JSON beside
+   * `how` and the questions (`resultChars`; review of #271) — before its long
+   * lists (memories, chapters, what the dream saw) go on in later parts. The
+   * tool result's ceiling is about 25k tokens, and escaped JSON runs near three
+   * characters a token, so 54,000 characters sits under it. Not a silent cut:
+   * the result says how many parts, and phase `part` hands the rest. PR B
+   * brings the shared fitter; this is the simple version. CAL.
+   */
+  RESULT_CHARS: 54_000,
+  /**
+   * One later part, measured the same way (the write-up's ~24 KB parts are
+   * the precedent).
+   */
+  PART_CHARS: 24_000,
   /** Core memories handed (the page's sources), most strongly felt first. */
   CORE: 20,
   /** Core candidates handed (marked about me, us or the owner; not core). */
@@ -183,6 +208,18 @@ export interface ReflectBundle {
     readonly gists: readonly string[];
     readonly nominations: readonly { id: string; why: string | null }[];
   } | null;
+  /**
+   * WHAT THE DREAM SAW (2026-09-28): every memory the dream was shown, and
+   * what it made, that still stands — a line each. They may be cited, felt and
+   * marked like the rest.
+   */
+  readonly dreamSaw: readonly { readonly id: string; readonly text: string }[];
+  /**
+   * IN PARTS (2026-09-28): null when the bundle came whole; otherwise this is
+   * part 1 of `of`, and `next` says how to fetch the rest (phase `part`).
+   */
+  readonly parts: { readonly part: number; readonly of: number; readonly next: string } | null;
+  /** The self page, whole. */
   readonly selfPage: string | null;
   readonly chapters: readonly { id: string; title: string | null; text: string }[];
   readonly earlier: readonly { date: string | null; entry: string }[];
@@ -228,8 +265,8 @@ export interface ReflectContext {
   /** A journaled dream's marked hand-back line (`Dreams.handBackOf`). */
   readonly dreamLine: (dreamId: string) => string | null;
   /**
-   * Rewrite the self page (`Self#revisePage`, by `writer`) and record the
-   * night's page-writer run, so the SessionStart writer stands down. Returns
+   * Rewrite the self page (`Self#revisePage`, by `reflection` — its own author
+   * since 2026-09-28, not the nightly writer's `writer`). Returns
    * the new version, or the refusal.
    */
   readonly writePage: (body: string, opts: { reason: string; session: string | null; model: string | null; reflection: string }) =>
@@ -366,12 +403,17 @@ export class Reflections {
    * background agent, like the dream's. After a dream the dreamer reflects
    * itself (the dream's launch prompt carries these steps).
    */
-  launchPrompt(input: { session: string }): string {
+  launchPrompt(input: { session: string; dream?: string | null }): string {
     const who = this.ctx.ownerName() ?? "the owner";
+    // AFTER A DREAM WHOSE RUN WAS CUT OFF (2026-09-28): the reflection alone,
+    // on that dream.
+    const after = input.dream === undefined || input.dream === null || input.dream.length === 0 ? null : input.dream;
     return [
       `${DREAM_MARK} reflection launch⟧ You are ${who}'s counterpart, awake, taking a few quiet minutes to reflect: on the last few days, on yourself, on ${who}, on the two of you. This is lived — your own act — not a task.`,
       "",
-      `1. Call the counterparts reflect tool: phase "begin", session: ${input.session}. It hands you the last few days, your self page, the memories that matter most, and a few questions.`,
+      after === null
+        ? `1. Call the counterparts reflect tool: phase "begin", session: ${input.session}. It hands you the last few days, your self page, the memories that matter most, and a few questions. If it says it comes in parts, fetch every part (phase "part") before you answer.`
+        : `1. Call the counterparts reflect tool: phase "begin", session: ${input.session}, dream: ${after}. It hands you what that dream saw, the last few days, your whole self page, the memories that matter most, and a few questions. If it says it comes in parts, fetch every part (phase "part") before you answer.`,
       '2. Answer them honestly, then call phase "finish" as it tells you. "Nothing much" is a normal answer: a short entry and no share.',
       "3. Your final message must be exactly the text the finish call returns, unchanged — nothing before or after it.",
     ].join("\n");
@@ -381,8 +423,13 @@ export class Reflections {
 
   /**
    * Open a reflection and hand it its bundle. Refuses under observer stance,
-   * and when one already finished this lived day (one a lived day, like a dream). A
-   * dream id, when given, must be a journaled dream of this session.
+   * and when one already finished this CALENDAR day (2026-09-28: was the lived
+   * day — the dream's gate and the writer's follow the calendar, I32). A dream
+   * id, when given, must be a journaled dream of this session.
+   *
+   * The bundle carries WHAT THE DREAM SAW, a line each, and the self page
+   * WHOLE (2026-09-28). When it would not fit one tool result, what the dream
+   * saw is delivered in parts — said in the result, fetched with `saw`.
    */
   begin(input: { session: string; dream?: string | null; scope?: string | null; model?: string | null; at?: string }):
     | { ok: true; bundle: ReflectBundle; text: string; instructions: string }
@@ -391,23 +438,35 @@ export class Reflections {
     const day = this.store.livedDay();
     const at = input.at ?? this.ctx.today();
     const last = this.last();
-    if (last !== null && last.day >= day) {
-      if (last.state === "reflected") return { ok: false, reason: "reflected-today" };
-      // Begun and never finished (an agent that gave up): it does not use up
-      // the day. It stays on the record as begun; the newest one is the open one.
-    }
+    // Begun and never finished (an agent that gave up) does not use up the
+    // day: it stays on the record as begun; the newest one is the open one.
+    if (last !== null && last.state === "reflected" && onDay(last, at, day)) return { ok: false, reason: "reflected-today" };
     let dreamId: string | null = null;
     if (input.dream !== undefined && input.dream !== null && input.dream.length > 0) {
       const dream = this.store.dream(input.dream);
       if (dream === undefined) return { ok: false, reason: "unknown-dream" };
-      if (dream.session !== null && dream.session !== input.session) return { ok: false, reason: "not-this-session" };
+      // Another session's dream only when its run was LEFT BEHIND (review of
+      // #271): journaled longer ago than a run takes to begin reflecting, so
+      // the next session's line starts the reflection alone.
+      const leftBehind = dream.state === "journaled" && dream.finished_at !== null && this.store.now() - dream.finished_at > DREAM_TUNABLES.ABANDONED_AFTER_MS;
+      if (dream.session !== null && dream.session !== input.session && !leftBehind) return { ok: false, reason: "not-this-session" };
       if (dream.state !== "journaled") return { ok: false, reason: "dream-not-journaled" };
       dreamId = dream.id;
     }
     const id = `rfl_${randomBytes(6).toString("hex")}`;
     const questions = this.questionsFor(dreamId !== null);
-    const bundle = this.compose(id, dreamId, questions, day, at);
-    const shown = Object.keys(bundle.memories);
+    const composed = this.compose(id, dreamId, questions, day, at);
+    const saw = composed.dreamSaw;
+    // IN PARTS, NEVER CUT (2026-09-28). A night's bundle — the page whole, what
+    // the dream saw, the memories that matter most — can pass the tool
+    // result's ceiling (about 25k tokens). When it would, the first part is
+    // this result, with everything but the long lists; the lists (memories,
+    // chapters, what the dream saw) go on in order, as far as the room allows,
+    // and the rest `PART_CHARS` at a time through phase `part`. The result
+    // says how many parts there are and how to fetch them.
+    const packed = this.pack(id, input.session, composed, questions);
+    const bundle = packed.bundle;
+    const shown = [...new Set([...Object.keys(composed.memories), ...saw.map((x) => x.id)])];
     this.store.openReflection({
       id,
       dreamId,
@@ -419,10 +478,124 @@ export class Reflections {
       questions,
       shown,
     });
-    this.record("reflection.begun", id, { dream: dreamId, shown: shown.length });
+    // The later parts' ids are kept on the row until the first finish, so a
+    // later `part` hands exactly the part it names.
+    if (packed.later.length > 0) this.store.updateReflection(id, { detail: { parts: packed.later } });
+    this.record("reflection.begun", id, { dream: dreamId, shown: shown.length, parts: packed.later.length + 1 });
     const instructions = this.instructions(id, input.session, bundle);
-    const text = `${reflectionOpener(id)} what you are handed to reflect on — memories and a dream, not events happening now.\n${JSON.stringify(bundle)}`;
-    return { ok: true, bundle, text, instructions };
+    return { ok: true, bundle, text: render(id, bundle), instructions };
+  }
+
+  /**
+   * THE FIRST PART, and the ids of the rest. Whole when it fits
+   * `RESULT_CHARS`; otherwise the long lists are carried in order as far as
+   * the room allows, and the remainder packed `PART_CHARS` a part.
+   */
+  private pack(id: string, session: string, composed: ReflectBundle, questions: readonly string[]): { bundle: ReflectBundle; later: LaterPart[] } {
+    const T = REFLECT_TUNABLES;
+    // MEASURED AS IT LEAVES (2026-09-28, review of #271): the tool result is
+    // the bundle's text re-escaped as a JSON string, beside the instructions
+    // and the questions — not the bundle alone. `resultChars` is that size.
+    const how = this.instructions(id, session, composed);
+    if (resultChars(render(id, composed), how, questions) <= T.RESULT_CHARS) return { bundle: composed, later: [] };
+    // A piece's cost as it leaves: its JSON, escaped once more inside the string.
+    const cost = (v: unknown): number => JSON.stringify(JSON.stringify(v)).length;
+    const pieces: { kind: "m" | "c" | "s"; id: string; size: number }[] = [
+      ...Object.entries(composed.memories).map(([k, v]) => ({ kind: "m" as const, id: k, size: cost({ [k]: v }) })),
+      ...composed.chapters.map((c) => ({ kind: "c" as const, id: c.id, size: cost(c) })),
+      ...composed.dreamSaw.map((x) => ({ kind: "s" as const, id: x.id, size: cost(x) })),
+    ];
+    // The furniture: everything else, with the parts note and a margin.
+    const note = { part: 1, of: 99, next: "x".repeat(420) };
+    const fixed = resultChars(render(id, { ...composed, memories: {}, chapters: [], dreamSaw: [], parts: note }), how, questions) + PACK_MARGIN;
+    const parts: (typeof pieces)[] = [[]];
+    let room = Math.max(0, T.RESULT_CHARS - fixed);
+    let used = 0;
+    for (const p of pieces) {
+      const current = parts[parts.length - 1] as typeof pieces;
+      if (used + p.size > room && (current.length > 0 || parts.length === 1)) {
+        parts.push([p]);
+        room = Math.max(0, T.PART_CHARS - PART_FURNITURE);
+        used = p.size;
+        continue;
+      }
+      current.push(p);
+      used += p.size;
+    }
+    // Everything fitted after all (the furniture's margin was generous): whole.
+    if (parts.length === 1) return { bundle: composed, later: [] };
+    const first = parts[0] ?? [];
+    const has =(kind: "m" | "c" | "s", x: string): boolean => first.some((p) => p.kind === kind && p.id === x);
+    const later: LaterPart[] = parts.slice(1).map((ps) => ({
+      m: ps.filter((p) => p.kind === "m").map((p) => p.id),
+      c: ps.filter((p) => p.kind === "c").map((p) => p.id),
+      s: ps.filter((p) => p.kind === "s").map((p) => p.id),
+    }));
+    const of = parts.length;
+    const bundle: ReflectBundle = {
+      ...composed,
+      memories: Object.fromEntries(Object.entries(composed.memories).filter(([k]) => has("m", k))),
+      chapters: composed.chapters.filter((c) => has("c", c.id)),
+      dreamSaw: composed.dreamSaw.filter((s) => has("s", s.id)),
+      parts: {
+        part: 1,
+        of,
+        next:
+          `This bundle is too long for one result, so it comes in ${String(of)} parts; this is part 1. ` +
+          `Some memories named in the lists above, some chapters and some of what the dream saw are in the later parts. ` +
+          `Before you answer, call the reflect tool with phase "part", reflection: ${id}, session: ${session}, part: 2${of > 2 ? `, then each part up to ${String(of)}` : ""}.`,
+      },
+    };
+    return { bundle, later };
+  }
+
+  /**
+   * ONE LATER PART OF THE BUNDLE (2026-09-28), for a reflection whose begin
+   * said it came in parts: its memories, chapters and lines of what the dream
+   * saw, each as it reads now. One gone since begin is said to be gone, not
+   * left out.
+   */
+  part(input: { reflection: string; session?: string; part: number }):
+    | { ok: true; part: number; of: number; text: string }
+    | { ok: false; reason: ReflectRefusal | "no-such-part"; detail?: string } {
+    const open = this.openFor(input.reflection, input.session);
+    if (!open.ok) return open;
+    const row = open.reflection;
+    const raw = parseDetail(row.detail)["parts"];
+    const later: LaterPart[] = Array.isArray(raw)
+      ? raw.map((p) => {
+          const r = isRecord(p) ? p : {};
+          const ids = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+          return { m: ids(r["m"]), c: ids(r["c"]), s: ids(r["s"]) };
+        })
+      : [];
+    const of = later.length + 1;
+    const ids = Number.isInteger(input.part) && input.part >= 2 ? later[input.part - 2] : undefined;
+    if (ids === undefined) {
+      return {
+        ok: false,
+        reason: "no-such-part",
+        detail: later.length === 0 ? "The bundle came whole in begin; there are no more parts." : `part is 2 to ${String(of)} (part 1 was begin's result).`,
+      };
+    }
+    const denied = new Set(this.store.deniedIds());
+    const gone = "(gone since you began: archived, merged or made private)";
+    const memories: Record<string, ReflectItem | string> = {};
+    for (const mid of ids.m) {
+      const r = this.store.row(mid);
+      const item = r !== undefined && !denied.has(mid) && this.showable(r) && r.source !== "reflection" ? this.item(r) : null;
+      memories[mid] = item ?? gone;
+    }
+    const chapters = ids.c.map((cid) => {
+      const r = this.store.row(cid);
+      return r === undefined || (r.confidential === 1 && !this.ctx.owner)
+        ? { id: cid, title: null, text: gone }
+        : { id: cid, title: r.title, text: cut(r.body, REFLECT_TUNABLES.CHAPTER_CHARS) ?? "" };
+    });
+    const dreamSaw = ids.s.map((sid) => this.sawLine(sid, denied) ?? { id: sid, text: gone });
+    const body = { reflection: row.id, part: input.part, of, memories, chapters, dreamSaw };
+    const text = `${reflectionOpener(row.id)} part ${String(input.part)} of ${String(of)} of what you are handed to reflect on — memories, not events happening now.\n${JSON.stringify(body)}`;
+    return { ok: true, part: input.part, of, text };
   }
 
   /** How to answer, in plain words (returned beside the bundle). */
@@ -456,7 +629,7 @@ export class Reflections {
     const open = this.openFor(input.reflection, input.session);
     if (!open.ok) return open;
     const row = open.reflection;
-    // A SECOND `finish` (2026-09-28): the same reflection, the same lived day.
+    // A SECOND `finish` (2026-09-28): the same reflection, the same calendar day.
     // It supplies what the first refused or left out; what the first wrote stands.
     const again = open.again;
     const session = row.session ?? row.id;
@@ -943,6 +1116,10 @@ export class Reflections {
     if (entryCites.length > 0) detail["entryCites"] = entryCites;
     // What this reflection recorded, so a later finish does not record it twice.
     detail["recorded"] = { feelings: [...recordedFeelings], traits: [...recordedTraits] };
+    // The later parts of the bundle stay fetchable after a finish (review of
+    // #271): a second finish may want a memory it had not fetched yet.
+    const parts = parseDetail(row.detail)["parts"];
+    if (Array.isArray(parts)) detail["parts"] = parts;
     if (again) detail["finishes"] = (typeof prior["finishes"] === "number" ? prior["finishes"] : 1) + 1;
     this.store.updateReflection(row.id, {
       ...(again ? {} : { state: "reflected" as const }),
@@ -1202,6 +1379,22 @@ export class Reflections {
 
     const becameCore = this.becameCoreUnsaid().filter(take);
 
+    // WHAT THE DREAM SAW (2026-09-28): what it was shown and what it made, in
+    // the order it was shown, a line each — so the reflection reads the night
+    // the dream read, not only the parts the lanes pick.
+    const dreamSaw: { id: string; text: string }[] = [];
+    if (dreamId !== null) {
+      const dream = this.store.dream(dreamId);
+      const ids = dream === undefined ? [] : parseIds(dream.shown);
+      for (const c of this.store.dreamChanges(dreamId)) {
+        if ((c.action === "merge" || c.action === "gist") && c.undone === 0 && c.ref !== null) ids.push(c.ref);
+      }
+      for (const mid of [...new Set(ids)]) {
+        const line = this.sawLine(mid, denied);
+        if (line !== null) dreamSaw.push(line);
+      }
+    }
+
     return {
       reflection: id,
       dream: dreamId,
@@ -1209,7 +1402,10 @@ export class Reflections {
       owner: this.ctx.ownerName(),
       questions,
       dreamed,
-      selfPage: cut(this.ctx.page(), T.PAGE_CHARS),
+      dreamSaw,
+      parts: null,
+      // WHOLE (2026-09-28: was cut at 6,000 characters).
+      selfPage: this.ctx.page(),
       chapters: this.recentChapters(day),
       earlier: this.store
         .reflections({ limit: T.EARLIER + 4 })
@@ -1226,6 +1422,27 @@ export class Reflections {
       memories,
       limits: { ...T.LIMITS },
     };
+  }
+
+  /**
+   * One memory the dream saw, as a line — or null when it is not the
+   * reflection's to see now (gone, denied, confidential outside the owner's
+   * session, the page or a handoff, or a reflection's own entry).
+   */
+  private sawLine(id: string, denied: ReadonlySet<string>): { id: string; text: string } | null {
+    if (denied.has(id)) return null;
+    const row = this.store.row(id);
+    if (row === undefined || !this.showable(row) || row.source === "reflection") return null;
+    let doc: ProseDoc;
+    try {
+      doc = this.store.readProse(id);
+    } catch {
+      return null;
+    }
+    if (isSelfPage(doc) || isHandoff(doc)) return null;
+    const head = doc.title !== undefined && doc.title.trim().length > 0 ? `${doc.title.trim()} — ` : "";
+    const flat = `${head}${doc.body}`.replace(/\s+/g, " ").trim();
+    return { id, text: cut(flat, REFLECT_TUNABLES.SAW_CHARS) ?? "" };
   }
 
   /**
@@ -1364,7 +1581,7 @@ export class Reflections {
 
   /**
    * A reflection this session may still finish: this session's and the
-   * newest; begun — or already finished THIS lived day, when `again` (a
+   * newest; begun — or already finished THIS calendar day, when `again` (a
    * second `finish` supplies what the first refused or left out, 2026-09-28).
    * An older one, or one a newer reflection followed, is closed.
    */
@@ -1376,7 +1593,8 @@ export class Reflections {
     const newest = this.last();
     if (newest !== null && newest.id !== row.id) return { ok: false, reason: "reflection-closed" };
     if (row.state === "begun") return { ok: true, reflection: row, again: false };
-    if (row.state === "reflected" && row.day >= this.store.livedDay()) return { ok: true, reflection: row, again: true };
+    // The same CALENDAR day (2026-09-28: was the lived day).
+    if (row.state === "reflected" && onDay(row, this.ctx.today(), this.store.livedDay())) return { ok: true, reflection: row, again: true };
     return { ok: false, reason: "reflection-closed" };
   }
 
@@ -1469,6 +1687,37 @@ function confidentialityOf(rows: readonly MemoryRow[]): Record<string, unknown> 
 function cut(text: string | null, max: number): string | null {
   if (text === null) return null;
   return text.length <= max ? text : `${text.slice(0, max)}…`;
+}
+
+/** Was this row on that calendar day? Its date, else (a row with none) its lived day. */
+function onDay(row: { date: string | null; day: number }, at: string, day: number): boolean {
+  return row.date !== null && row.date.length > 0 ? row.date === at : row.day >= day;
+}
+
+/** The begin result's text: the opener, then the bundle. */
+function render(id: string, bundle: ReflectBundle): string {
+  return `${reflectionOpener(id)} what you are handed to reflect on — memories and a dream, not events happening now.\n${JSON.stringify(bundle)}`;
+}
+
+/** Slack for the result's other fields (phase, session, ids, parts) beside the three measured. */
+const PACK_MARGIN = 1_000;
+/** A later part's own furniture: its opener, ids and `next`, re-escaped. */
+const PART_FURNITURE = 1_000;
+
+/**
+ * THE SIZE OF A BEGIN RESULT AS IT LEAVES: the MCP text is the result's JSON,
+ * pretty-printed, with the bundle text escaped inside it, `how` and the
+ * questions beside it (the MCP adapter's `reflect` tool).
+ */
+export function resultChars(text: string, how: string, questions: readonly string[]): number {
+  return JSON.stringify({ bundle: text, how, questions }, null, 2).length;
+}
+
+/** A later part of a bundle, by id: its memories, chapters and lines of what the dream saw. */
+interface LaterPart {
+  readonly m: string[];
+  readonly c: string[];
+  readonly s: string[];
 }
 
 function firstLine(text: string): string {

@@ -307,7 +307,7 @@ export const DURABLE_EVENTS = {
   "dream.changed": "a dream changed memories (how many changes landed and were refused, by kind: merges, links, replays, gists, contradictions, feelings, nominations)",
   "dream.journaled": "a dream ended with its journal entry written (how long, and what it changed)",
   "dream.undone": "the owner reversed a whole dream (how many of its changes were put back)",
-  "dream.ask": "the day's dream ask was put to a session, or the owner said not today",
+  "dream.ask": "the day's dream line started the nightly run or asked first (or again, for a run cut off), the owner said not today, or the dreaming setting changed",
   // The owner's door out of the core (2026-09-26).
   "band.demoted": "the owner sent a core memory back to ordinary fading (and why is kept beside it)",
   // The v8 upgrade's one-time proof (2026-09-26).

@@ -58,7 +58,6 @@ import {
   PAGE_WRITER_ENV,
   PAGE_WRITER_FALLBACK_MODE,
   REAP_GRACE_MS,
-  SCOPE_PATIENCE_DEFERRALS,
   loadConfig,
   openAdapter,
   pageWriterFindings,
@@ -443,64 +442,29 @@ describe("what the writer reads", () => {
     expect(text).toContain('never as "the day was empty"');
   });
 
-  test("THE BUDGET BAND THE REVIEW MEASURED: no budget makes the block claim an empty day", () => {
-    const seeder = counterpart();
+  test("THE NIGHTLY RUN'S BLOCK CARRIES A BUSY DAY WHOLE, beside the page whole — no wake ceiling to size it to", () => {
+    // The budget band the S2 review measured (a 260-byte band of ceilings
+    // where the SessionStart block said the day was empty) belonged to the
+    // ask beside the wake, retired 2026-09-28. The run's writer reads its day
+    // in a tool result, so the day that did not fit the wake fits here.
+    const c = counterpart();
     const page = `## ${PAGE_CORE_HEADING}\n\n${"A placeholder core sentence of realistic length. ".repeat(32)}\n\n## ${PAGE_LATELY_HEADING}\n\n${"A placeholder lately sentence. ".repeat(32)}`;
-    seeder.revisePage(page, { reason: "a placeholder page", by: "owner" });
+    c.revisePage(page, { reason: "a placeholder page", by: "owner" });
     seedYesterday(
-      seeder,
+      c,
       Array.from({ length: 20 }, (_, i) => `Placeholder memory ${String(i)}: ${"something learned at a realistic length. ".repeat(6)}`),
     );
-    seeder.rebrief({ budgetBytes: 9000 });
-    const about = pageWriterNight(seeder.store).about;
-    const wake = seeder.wake(9000).bytes;
-    seeder.close();
-
-    // The reviewer swept slack 1240–2100 in steps of 20 and found a 260-byte
-    // band where the delivered block said the day was empty, and a tail above
-    // it where the composition ran over the reported ceiling. Each budget gets
-    // its own store, because the first ask of a run claims the night.
-    const base = dir;
-    const made: string[] = [];
-    try {
-      for (let slack = 1200; slack <= 2200; slack += 20) {
-        const budget = wake + slack;
-        const label = `slack=${String(slack)} budget=${String(budget)}`;
-        dir = mkdtempSync(join(tmpdir(), "counterparts-writer-band-"));
-        made.push(dir);
-        const seed = counterpart();
-        seed.revisePage(page, { reason: "a placeholder page", by: "owner" });
-        seedYesterday(
-          seed,
-          Array.from({ length: 20 }, (_, i) => `Placeholder memory ${String(i)}: ${"something learned at a realistic length. ".repeat(6)}`),
-        );
-        seed.rebrief({ budgetBytes: 9000 });
-        seed.close();
-
-        const a = adapter({ pageWriter: { mode: "session" }, injectionBudgetBytes: budget });
-        const out = a.sessionStart(hook("sess_band"));
-        const ask = out.ask ?? "";
-        // 1. It never claims an empty day about a day with 20 memories in it.
-        expect(ask.includes(`Nothing was written down on ${about}`), label).toBe(false);
-        // 2. It never goes over the ceiling it was told about.
-        const total = out.bytes + (ask.length === 0 ? 0 : Buffer.byteLength(`\n\n${ask}`, "utf8"));
-        expect(total, label).toBeLessThanOrEqual(budget);
-        // 3. A block that was delivered carried some of the day; one that could
-        //    not is deferred, with a durable row rather than a silence.
-        const rows = pageWriterRuns(a.counterpart.store, { about });
-        if (ask.length > 0) {
-          expect(rows[0]?.outcome, label).toBe("asked");
-          expect(rows[0]?.considered, label).toBeGreaterThan(0);
-        } else {
-          expect(rows[0]?.outcome, label).toBe("skipped");
-        }
-        a.counterpart.close();
-      }
-    } finally {
-      dir = base;
-      for (const d of made) rmSync(d, { recursive: true, force: true });
-    }
-  }, 120_000);
+    const about = pageWriterNight(c.store).about;
+    expect(c.claimNightWriter({ session: "sess_busy", run: "drm_busy" })).toMatchObject({ claimed: true, about });
+    const out = c.nightWriter({ session: "sess_busy", tool: "counterparts self_page" });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.considered).toBe(20);
+    expect(out.dropped).toBe(0);
+    expect(out.text).toContain("A placeholder core sentence of realistic length.");
+    expect(out.text).not.toContain(`Nothing was written down on ${about}`);
+    expect(out.text).not.toContain("did not fit");
+  });
 
   test("a memory whose prose will not read is skipped, never a throw", () => {
     const c = counterpart();
@@ -646,10 +610,10 @@ describe("the instruction the writer reads", () => {
   });
 });
 
-// ── the ask, beside the wake ─────────────────────────────────────────────────
+// ── the writer in the nightly run (2026-09-28) ───────────────────────────────
 
-describe("session mode: the ask at SessionStart", () => {
-  test("THE WAKE IS UNTOUCHED — byte for byte, with the writer off and with it on", () => {
+describe("session mode: the writer in the nightly run", () => {
+  test("THE WAKE CARRIES NO WRITER ASK any more — session start is the same with the writer off and on, and claims nothing", () => {
     const seeder = counterpart();
     seedYesterday(seeder, ["A placeholder thing noticed yesterday."]);
     seeder.revisePage(PAGE, { reason: "a placeholder first page", by: "owner" });
@@ -666,145 +630,111 @@ describe("session mode: the ask at SessionStart", () => {
     expect(on.injection).toBe(off.injection);
     expect(on.bytes).toBe(off.bytes);
     expect(on.sentinel).toBe(off.sentinel);
-    // The ONLY difference is the field that was always the channel for an ask.
     expect(off.ask).toBeNull();
-    expect(on.ask).not.toBeNull();
-    expect(on.ask ?? "").toContain(PAGE_WRITER_OPEN);
+    expect(on.ask).toBeNull();
+    // The writer moved into the nightly run: nothing is claimed at session start.
+    expect(pageWriterRuns(onAdapter.counterpart.store)).toEqual([]);
+    expect(readSession(dir, "sess_on")?.pageWriterFor).toBeUndefined();
   });
 
-  test("off writes no row at all; session mode claims the night and records the ask", () => {
-    const seeder = counterpart();
-    seedYesterday(seeder, ["A placeholder thing noticed yesterday."]);
-    const about = pageWriterNight(seeder.store).about;
-    seeder.close();
-
-    const offAdapter = adapter({ pageWriter: { mode: "off" } });
-    offAdapter.sessionStart(hook("sess_off"));
-    expect(pageWriterRuns(offAdapter.counterpart.store)).toEqual([]);
-    offAdapter.counterpart.close();
-
-    const a = adapter({ pageWriter: { mode: "session" } });
-    a.sessionStart(hook("sess_on"));
-    const runs = pageWriterRuns(a.counterpart.store);
-    expect(runs).toHaveLength(1);
-    expect(runs[0]?.outcome).toBe("asked");
-    expect(runs[0]?.about).toBe(about);
-    expect(runs[0]?.mode).toBe("session");
-    expect(runs[0]?.considered).toBe(1);
-    expect(readSession(dir, "sess_on")?.pageWriterFor).toBe(about);
-  });
-
-  test("the SAME session is not asked twice — a compaction re-firing SessionStart asks nothing", () => {
+  test("the first-launch scope question has the ask field to itself", () => {
     const seeder = counterpart();
     seedYesterday(seeder, ["A placeholder thing noticed yesterday."]);
     seeder.close();
-    const a = adapter({ pageWriter: { mode: "session" } });
-    const first = a.sessionStart(hook("sess_one"));
-    const second = a.sessionStart(hook("sess_one"));
-    expect(first.ask).not.toBeNull();
-    expect(second.ask).toBeNull();
-    expect(pageWriterRuns(a.counterpart.store)).toHaveLength(1);
-  });
-
-  test("a THIRD session on the same day is not asked: the allowance is two", () => {
-    const seeder = counterpart();
-    seedYesterday(seeder, ["A placeholder thing noticed yesterday."]);
-    seeder.close();
-    const a = adapter({ pageWriter: { mode: "session" } });
-    expect(a.sessionStart(hook("sess_1")).ask).not.toBeNull();
-    expect(a.sessionStart(hook("sess_2")).ask).not.toBeNull();
-    expect(a.sessionStart(hook("sess_3")).ask).toBeNull();
-    expect(pageWriterRuns(a.counterpart.store)).toHaveLength(2);
-  });
-
-  test("A REAL PAGE AND A REAL DAY STILL FIT — the day is sized to the room the wake left, not to the tunable", () => {
-    const seeder = counterpart();
-    // Day 3 of an ordinary store: a 4 KB page in the wake and a productive day
-    // behind it. Composing the whole 8 KB tunable and deferring on the total
-    // would defer this morning, and every morning after it, with nothing
-    // durable to say so.
-    const page = `## ${PAGE_CORE_HEADING}\n\n${"A placeholder core sentence that is long enough to be realistic. ".repeat(32)}\n\n## ${PAGE_LATELY_HEADING}\n\n${"A placeholder lately sentence. ".repeat(32)}`;
-    expect(Buffer.byteLength(page, "utf8")).toBeGreaterThan(3000);
-    seeder.revisePage(page, { reason: "a placeholder page", by: "owner" });
-    seedYesterday(
-      seeder,
-      Array.from(
-        { length: 20 },
-        (_, i) => `Placeholder memory ${String(i)}: ${"something learned at a realistic length. ".repeat(6)}`,
-      ),
-    );
-    seeder.rebrief({ budgetBytes: BUDGET_BYTES });
-    const about = pageWriterNight(seeder.store).about;
-    seeder.close();
-
-    const a = adapter({ pageWriter: { mode: "session" } });
-    const out = a.sessionStart(hook("sess_real"));
-    expect(out.ask).not.toBeNull();
-    expect(out.ask ?? "").toContain(PAGE_WRITER_OPEN);
-    // The whole block fits under the host's reported ceiling beside the wake.
-    const askBytes = Buffer.byteLength(`\n\n${out.ask ?? ""}`, "utf8");
-    expect(out.bytes + askBytes).toBeLessThanOrEqual(BUDGET_BYTES);
-    // ...and the day it could not all carry is counted, not silently lost.
-    const run = pageWriterRuns(a.counterpart.store, { about })[0];
-    expect(run?.outcome).toBe("asked");
-    expect(run?.considered).toBeGreaterThan(0);
-    expect(run?.considered).toBeLessThan(20);
-    expect(run?.detail).toContain("did not fit");
-  });
-
-  test("no room under the reported ceiling: DEFERRED, never truncated, and the night stays owed", () => {
-    const seeder = counterpart();
-    seedYesterday(seeder, ["A placeholder thing noticed yesterday."]);
-    seeder.rebrief({ budgetBytes: 900 });
-    seeder.close();
-    const a = adapter({ pageWriter: { mode: "session" }, injectionBudgetBytes: 900 });
-    const out = a.sessionStart(hook("sess_tight"));
-    expect(out.ask).toBeNull();
-    // NOTHING CLAIMED — the next session is offered the same day — but the
-    // deferral is DURABLE now: before, it left only a ring event that dies with
-    // the hook process, which is the same silence I32 was about.
-    const rows = pageWriterRuns(a.counterpart.store);
-    expect(rows.map((r) => [r.outcome, r.detail])).toEqual([["skipped", "no-room"]]);
-    expect(a.counterpart.pageWriterDue({ mode: "session" }).due).toBe(true);
-    // ...and one row however many sessions meet the same ceiling.
-    a.sessionStart(hook("sess_tight2"));
-    expect(pageWriterRuns(a.counterpart.store)).toHaveLength(1);
-    // ...and the wake itself still went.
-    expect(out.bytes).toBeGreaterThan(0);
-  });
-
-  test("the first-launch scope question wins the field, and the night stays owed", () => {
-    const seeder = counterpart();
-    seedYesterday(seeder, ["A placeholder thing noticed yesterday."]);
-    seeder.close();
-    // `unset` ⇒ the first-launch question is due, and it takes the field.
     const a = adapter({ pageWriter: { mode: "session" } }, "unset");
     const out = a.sessionStart(hook("sess_scope"));
     expect(out.ask ?? "").toContain("<counterparts-scope>");
     expect(out.ask ?? "").not.toContain(PAGE_WRITER_OPEN);
-    // The night stays owed — and, unlike before, it leaves a durable trace.
-    const rows = pageWriterRuns(a.counterpart.store);
-    expect(rows.map((r) => [r.outcome, r.detail])).toEqual([["skipped", "scope-question"]]);
+    expect(pageWriterRuns(a.counterpart.store)).toEqual([]);
     expect(a.counterpart.pageWriterDue({ mode: "session" }).due).toBe(true);
   });
 
-  test("...but it does not starve the writer for ever: after two mornings the writer goes first", () => {
+  test("the run's `writer` phase claims the night for ITS session, hands the page WHOLE and the day, and that session's page write is `by: writer`", async () => {
+    const seeder = counterpart();
+    seedYesterday(seeder, ["A placeholder thing noticed yesterday.", "Another placeholder from the same day."]);
+    seeder.revisePage(PAGE, { reason: "a placeholder first page", by: "owner" });
+    const about = pageWriterNight(seeder.store).about;
+    seeder.close();
+    recordSession(dir, { sessionId: "sess_night", scope: SCOPE, phase: "start" });
+
+    const s = openServer({ dir, scope: SCOPE, owner: true });
+    open.push(s.counterpart);
+    const res = await s.call("dream", { phase: "writer", session: "sess_night" });
+    expect(res.isError ?? false).toBe(false);
+    const sc = res.structuredContent;
+    expect(sc["writer"]).toBe(true);
+    expect(sc["about"]).toBe(about);
+    const read = String(sc["read"]);
+    expect(read).toContain(PAGE_WRITER_OPEN);
+    // The page is IN the block — the background agent never got the wake.
+    expect(read).toContain("Core: placeholder.");
+    expect(read).not.toContain("head of your wake");
+    expect(read).toContain("A placeholder thing noticed yesterday.");
+    // Its next step, in the owner's order: the dream.
+    expect(String(sc["next"])).toContain('phase "begin"');
+    // The claim: one `asked` row, carrying the session and the run.
+    const runs = pageWriterRuns(s.counterpart.store, { about });
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({ outcome: "asked", mode: "session", session: "sess_night", considered: 2 });
+    expect(runs[0]?.run.length).toBeGreaterThan(0);
+
+    // The write, from the same session: labelled the writer's, and the night closes.
+    const wrote = await s.call("self_page", { body: `${PAGE}\n\nAmended.`, reason: "the night's revision", session: "sess_night", ifVersion: sc["ifVersion"] });
+    expect(wrote.isError ?? false).toBe(false);
+    expect(s.counterpart.selfPage()?.by).toBe("writer");
+    expect(s.counterpart.pageWriterStatus(about).outcome).toBe("revised");
+
+    // A second `writer` call claims nothing twice, and says there is nothing to do.
+    const again = await s.call("dream", { phase: "writer", session: "sess_night" });
+    expect(again.structuredContent["writer"]).toBe(false);
+    expect(again.structuredContent["reason"]).toBe("already-claimed");
+    expect(pageWriterRuns(s.counterpart.store, { about }).filter((r) => r.outcome === "asked")).toHaveLength(1);
+  });
+
+  test("the claim labels ONLY its own session's write: another live session amends as a session", async () => {
     const seeder = counterpart();
     seedYesterday(seeder, ["A placeholder thing noticed yesterday."]);
     seeder.close();
-    const a = adapter({ pageWriter: { mode: "session" } }, "unset");
-    // Session 1: the first-launch question, which nobody answers. The writer's
-    // deferral is recorded.
-    expect(a.sessionStart(hook("sess_s1")).ask ?? "").toContain("<counterparts-scope>");
-    // Session 2: this night has already lost the field once. The scope question
-    // is per-session and comes back at no cost; a night that passes is a day
-    // missing from the page for good, so the writer goes first.
-    const second = a.sessionStart(hook("sess_s2")).ask ?? "";
-    expect(second).toContain(PAGE_WRITER_OPEN);
-    expect(second).not.toContain("<counterparts-scope>");
-    // Session 3: the night is claimed, so the scope question has the field back.
-    expect(a.sessionStart(hook("sess_s3")).ask ?? "").toContain("<counterparts-scope>");
-    expect(SCOPE_PATIENCE_DEFERRALS).toBe(1);
+    recordSession(dir, { sessionId: "sess_a", scope: SCOPE, phase: "start" });
+    recordSession(dir, { sessionId: "sess_b", scope: SCOPE, phase: "start" });
+    const s = openServer({ dir, scope: SCOPE, owner: true });
+    open.push(s.counterpart);
+    expect(s.counterpart.claimNightWriter({ session: "sess_a", run: "drm_test" }).claimed).toBe(true);
+    await s.call("self_page", { body: PAGE, session: "sess_b" });
+    expect(s.counterpart.selfPage()?.by).toBe("session");
+  });
+
+  test("off: the `writer` phase writes no row and says there is no page writing tonight", async () => {
+    const seeder = counterpart();
+    seedYesterday(seeder, ["A placeholder thing noticed yesterday."]);
+    seeder.close();
+    recordSession(dir, { sessionId: "sess_off", scope: SCOPE, phase: "start" });
+    const s = openServer({ dir, scope: SCOPE, owner: true, pageWriterMode: "off" });
+    open.push(s.counterpart);
+    const res = await s.call("dream", { phase: "writer", session: "sess_off" });
+    expect(res.structuredContent["writer"]).toBe(false);
+    expect(res.structuredContent["reason"]).toBe("off");
+    expect(String(res.structuredContent["said"])).toContain("No page writing tonight");
+    expect(pageWriterRuns(s.counterpart.store)).toEqual([]);
+  });
+
+  test("A DAY A DREAM MERGED IS STILL THE WRITER'S DAY: a merge of yesterday's memories reads as yesterday", () => {
+    const c = counterpart();
+    const [a, b] = seedYesterday(c, [
+      "The placeholder deploy step runs before the container starts.",
+      "Run the placeholder deploy step before the container starts.",
+    ]);
+    const about = pageWriterNight(c.store).about;
+    // As a dream's merge leaves it: the originals archived with a forwarding
+    // address, the merged memory stamped the day it was made (today).
+    const merged = c.store.put({ type: "memory", kind: "fact", body: "The placeholder deploy step runs before the container.", meta: { mergedFrom: [a, b] } });
+    c.store.supersedeInto(a as string, merged, "dream-merge", { carryReturns: true });
+    c.store.supersedeInto(b as string, merged, "dream-merge", { carryReturns: true });
+    expect(c.store.row(merged)?.learned_on).not.toBe(about);
+    const input = c.pageWriterInput({ about });
+    expect(input.memories.map((m) => m.id)).toEqual([merged]);
+    expect(dayMemories(c.store, { about, day: c.store.livedDay(), budgetBytes: 8_192, max: 40 }).memories).toHaveLength(1);
+    expect(c.pageWriterDue({ mode: "session" }).due).toBe(true);
   });
 });
 
@@ -1196,28 +1126,40 @@ describe("the surfaces that report it", () => {
     expect(f?.detail).toContain("only when somebody writes it");
   });
 
-  test("doctor goes AMBER when a night has been OWED for days with nothing delivered — the failure with no row behind it", () => {
+  test("doctor stays GREEN when a night is owed only because no nightly run started — fewer than three new, a quiet week", () => {
     const c = counterpart();
     seedYesterday(c, ["A placeholder thing noticed yesterday."]);
-    // The night doctor reads is the mechanism's own (LOCAL, `pageWriterNight`).
     const { today } = pageWriterNight(c.store);
-    // It ran, four days ago, and has been silently deferred ever since — which
-    // is what an ask that will not fit the host's ceiling looks like from here.
+    // It ran four days ago; no nightly run has started since (2026-09-28: the
+    // writer runs inside the run, and a night with too little new runs nothing).
     c.store.appendEvent({
       name: SELF_PAGE_WRITER_EVENT,
       day: c.store.livedDay(),
-      payload: {
-        about: dayBefore(today, 5),
-        on: dayBefore(today, 4),
-        mode: "session",
-        outcome: "revised",
-      },
+      payload: { about: dayBefore(today, 5), on: dayBefore(today, 4), mode: "session", outcome: "revised" },
     });
+    const f = pageWriterFindings(c.store, config())[0];
+    expect(f?.severity).toBe("green");
+    expect(f?.detail).toContain("is owed");
+  });
+
+  test("doctor goes AMBER when nightly runs went on for days and the writer delivered nothing", () => {
+    const c = counterpart();
+    seedYesterday(c, ["A placeholder thing noticed yesterday."]);
+    const { today } = pageWriterNight(c.store);
+    c.store.appendEvent({
+      name: SELF_PAGE_WRITER_EVENT,
+      day: c.store.livedDay(),
+      payload: { about: dayBefore(today, 5), on: dayBefore(today, 4), mode: "session", outcome: "revised" },
+    });
+    // A nightly run's dream, two days ago: the run went, the writer did not.
+    c.store.openDream({ id: "drm_ran", session: "s", day: c.store.livedDay(), date: dayBefore(today, 2), shown: [] });
+    c.store.updateDream("drm_ran", { state: "journaled", title: "A placeholder dream", journal: "A placeholder." });
     const f = pageWriterFindings(c.store, config())[0];
     expect(f?.severity).toBe("amber");
     expect(f?.detail).toContain("is owed");
     expect(f?.detail).toContain("nothing has been delivered for 4 days");
-    expect(f?.fix).toContain("injectionBudgetBytes");
+    expect(f?.fix).toContain("nightly run");
+    expect(f?.fix).not.toContain("injectionBudgetBytes");
     expect(f?.data["owedFor"]).toBe(pageWriterNight(c.store).about);
   });
 

@@ -101,8 +101,8 @@ describe("the self tab, round 3b", () => {
     expect(d4?.reason).toBe("by hand");
     expect(d4?.seqs).toEqual([v.pageHistory[1]?.seq as number]);
     expect(d2?.why).toBe(pageDayWords(writerWords({ about: "2026-09-01", outcome: "skipped", derived: false, run: { detail: "no-room" } }, "")));
-    expect(d2?.why).toMatch(/^Not rewritten — the session start had no room left to ask\./);
-    expect(d2?.more).toMatch(/injectionBudgetBytes/);
+    expect(d2?.why).toMatch(/^Not rewritten — the session start had no room left to ask \(the old way\)\./);
+    expect(d2?.more).toMatch(/runs inside the nightly run now/);
     expect(d3?.why).toBe("The page writer read the day and kept it as is.");
     expect(d5?.why).toBe(pageDayUnrecorded(d5?.today === true).why);
     expect(d5?.date).toBe("2026-09-05");

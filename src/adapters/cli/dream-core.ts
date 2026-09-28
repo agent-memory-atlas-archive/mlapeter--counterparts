@@ -9,6 +9,7 @@
  * tests can check the words without a store.
  */
 import type { Counterpart } from "../../core/counterpart.js";
+import type { DreamingSetting } from "../../core/dream/index.js";
 import { acceptsReflectedFeeling } from "../../core/sleep/index.js";
 import type { ReflectionRow } from "../../core/store/index.js";
 
@@ -31,24 +32,37 @@ function countsLine(counts: Readonly<Record<string, number>>): string {
   return parts.length === 0 ? "no changes" : parts.join(", ");
 }
 
+/** What each dreaming setting means, in one sentence (2026-09-28). */
+export function dreamingSettingWords(setting: DreamingSetting): string {
+  switch (setting) {
+    case "auto":
+      return "Once a day, the first session starts the nightly run in the background — the page writer, then a dream, then a reflection — and says so in one line. Say 'no dreams' in a session, or counterparts dream --setting off, to turn it off.";
+    case "ask":
+      return "Once a day, a session asks you before it starts the nightly run; you say yes or not today.";
+    case "off":
+      return "No dreams: nothing starts the nightly run and nothing asks. counterparts dream --setting auto turns it back on.";
+  }
+}
+
 /** How many dreams `dream --list` prints without `--all`. */
 export const DREAM_LIST_LIMIT = 20;
 
 /**
- * `counterparts dream --list`: newest first, one line each — the newest
- * `DREAM_LIST_LIMIT`, or every one with `--all` (`limit: "all"`). The header
- * says how many of how many, so a list that stops is never read as all there is.
+ * `counterparts dream --list`: the setting (2026-09-28), then newest first,
+ * one line each — the newest `DREAM_LIST_LIMIT`, or every one with `--all`
+ * (`limit: "all"`). The header says how many of how many, so a list that stops
+ * is never read as all there is.
  */
 export function dreamListLines(counterpart: Counterpart, limit: number | "all" = DREAM_LIST_LIMIT): string[] {
   const total = counterpart.store.dreamCount();
   const dreams = counterpart.dreams.list(limit === "all" ? Math.max(1, total) : limit);
+  const setting = counterpart.dreams.setting();
+  const head = [`Dreaming: ${setting}. ${dreamingSettingWords(setting)}`, ""];
   if (dreams.length === 0) {
-    return [
-      "No dreams yet.",
-      "A session is asked, at most once a day, whether it may dream; the owner says yes or not today.",
-    ];
+    return [...head, "No dreams yet."];
   }
   const out = [
+    ...head,
     dreams.length < total
       ? `Dreams — newest first (${String(dreams.length)} of ${String(total)} shown; every one: counterparts dream --list --all)`
       : `Dreams — newest first (all ${String(dreams.length)})`,

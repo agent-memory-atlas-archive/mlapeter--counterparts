@@ -109,6 +109,7 @@ import type { SelfPage, SelfPageAuthor } from "./page.js";
 import {
   SELF_PAGE_WRITER_EVENT,
   dayMemories,
+  nightClaimFor,
   pageWriterClaimOpen,
   pageWriterDue,
   pageWriterNight,
@@ -990,6 +991,7 @@ export class Self {
     today?: string;
     day?: number;
     budgetBytes?: number;
+    max?: number;
     omit?: (m: { id: string; confidential: boolean; protectedRow: boolean }) => boolean;
   }): WriterInput {
     const day = opts.day ?? this.store.livedDay();
@@ -997,7 +999,7 @@ export class Self {
       about: opts.about,
       day,
       budgetBytes: opts.budgetBytes ?? this.tunables.PAGE_WRITER_MEMORY_BYTES,
-      max: this.tunables.PAGE_WRITER_MEMORY_MAX,
+      max: opts.max ?? this.tunables.PAGE_WRITER_MEMORY_MAX,
       ...(opts.omit === undefined ? {} : { omit: opts.omit }),
     });
     return {
@@ -1032,6 +1034,9 @@ export class Self {
     /** One row per key, ever. For the rows that would otherwise repeat at every
      *  session start of every day — a deferral has no other bound. */
     dedupKey?: string;
+    /** The nightly run's claim (2026-09-28): the session that claimed the night, and the run (its dream). */
+    session?: string;
+    run?: string;
   }): boolean {
     const day = run.day ?? this.store.livedDay();
     const payload = {
@@ -1048,6 +1053,8 @@ export class Self {
       bytesAfter: run.bytesAfter ?? 0,
       considered: run.considered ?? 0,
       omitted: run.omitted ?? 0,
+      ...(run.session === undefined || run.session.length === 0 ? {} : { session: run.session }),
+      ...(run.run === undefined || run.run.length === 0 ? {} : { run: run.run }),
     };
     if (this.observer) {
       this.emit("self.observer.standdown", undefined, { site: "recordPageWriterRun" });
@@ -1087,6 +1094,11 @@ export class Self {
    *  before it writes `by: "writer"` on a revision. Pure. */
   pageWriterClaimOpen(about: string, today?: string): boolean {
     return pageWriterClaimOpen(this.store, about, today ?? this.calendarToday());
+  }
+
+  /** The nightly run's open claim for this session, or null (2026-09-28). Pure. */
+  nightClaimFor(session: string, today?: string): PageWriterRun | null {
+    return nightClaimFor(this.store, session, today ?? this.calendarToday());
   }
 
   /**

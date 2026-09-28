@@ -724,6 +724,8 @@ export const WRITE_METHODS = [
   "recordDreamChange",
   "markDreamChangeUndone",
   "setDreamAsk",
+  // 2026-09-28 (the nightly run): start a left-behind run again.
+  "reclaimDreamAsk",
   // v9 (2026-09-27, reflection + core by meaning).
   "reflectReturn",
   "setAbout",
@@ -2297,20 +2299,44 @@ export class Store {
     this.emit("store.dream", input.id, { state: "begun", day: input.day });
   }
 
-  /** Change a dream's state, journal or title. `journaled` / `undone` stamp their moment. */
-  updateDream(id: string, patch: { state?: "begun" | "journaled" | "undone"; title?: string | null; journal?: string | null }): void {
+  /**
+   * Change a dream's state, journal or title. `journaled` / `undone` stamp their
+   * moment. A RESUMED dream (2026-09-28: a dream left behind by a session that
+   * closed is picked up by the next one) also moves to the session, lived day
+   * and calendar date that resumed it, its start moves to the moment it was
+   * resumed (`startedAt`), and its shown set grows.
+   */
+  updateDream(
+    id: string,
+    patch: {
+      state?: "begun" | "journaled" | "undone";
+      title?: string | null;
+      journal?: string | null;
+      session?: string | null;
+      day?: number;
+      date?: string | null;
+      shown?: readonly string[];
+      startedAt?: number;
+    },
+  ): void {
     this.mutate("updateDream", () => {
       const row = this.ops.get<DreamRow>("SELECT * FROM dreams WHERE id = ?", id);
       if (row === undefined) throw new StoreError("ID_UNKNOWN", { id });
       const at = this.nowFn();
       const state = patch.state ?? row.state;
       this.ops.run(
-        `UPDATE dreams SET state = ?, title = ?, journal = ?, finished_at = ?, undone_at = ? WHERE id = ?`,
+        `UPDATE dreams SET state = ?, title = ?, journal = ?, finished_at = ?, undone_at = ?,
+                session = ?, day = ?, date = ?, shown = ?, started_at = ? WHERE id = ?`,
         state,
         patch.title === undefined ? row.title : patch.title,
         patch.journal === undefined ? row.journal : patch.journal,
         patch.state === "journaled" ? at : row.finished_at,
         patch.state === "undone" ? at : row.undone_at,
+        patch.session === undefined ? row.session : patch.session,
+        patch.day ?? row.day,
+        patch.date === undefined ? row.date : patch.date,
+        patch.shown === undefined ? row.shown : JSON.stringify(patch.shown),
+        patch.startedAt ?? row.started_at,
         id,
       );
     });
@@ -2345,13 +2371,18 @@ export class Store {
     });
   }
 
-  /** Raise or snooze the day's dream ask: one row per calendar date. */
-  setDreamAsk(input: { date: string; state: "offered" | "declined"; session?: string | null; day: number }): boolean {
+  /**
+   * Raise or snooze the day's dream line: one row per calendar date. `offered`
+   * (the ask, setting `ask`) and `launched` (the run was started, setting
+   * `auto`, 2026-09-28) are CLAIMS — of two sessions racing, one writes the row.
+   */
+  setDreamAsk(input: { date: string; state: "offered" | "launched" | "declined"; session?: string | null; day: number }): boolean {
     const wrote = this.mutate("setDreamAsk", () => {
-      if (input.state === "offered") {
+      if (input.state === "offered" || input.state === "launched") {
         this.ops.run(
-          "INSERT OR IGNORE INTO dream_asks (date, state, session, day, at) VALUES (?, 'offered', ?, ?, ?)",
+          "INSERT OR IGNORE INTO dream_asks (date, state, session, day, at) VALUES (?, ?, ?, ?, ?)",
           input.date,
+          input.state,
           input.session ?? null,
           input.day,
           this.nowFn(),
@@ -2369,6 +2400,29 @@ export class Store {
       return true;
     });
     this.emit("store.dream.ask", undefined, { date: input.date, state: input.state, wrote });
+    return wrote;
+  }
+
+  /**
+   * CLAIM THE DAY'S LINE AGAIN (2026-09-28): a run that was started and left
+   * behind may be started once more. A compare-and-set on the row's moment —
+   * only the write that still finds `prevAt` there lands, so of two sessions
+   * racing to restart one run, one does. A declined day is never reclaimed.
+   */
+  reclaimDreamAsk(input: { date: string; prevAt: number; state: "offered" | "launched"; session?: string | null; day: number }): boolean {
+    const wrote = this.mutate("reclaimDreamAsk", () => {
+      this.ops.run(
+        "UPDATE dream_asks SET state = ?, session = ?, day = ?, at = ? WHERE date = ? AND at = ? AND state != 'declined'",
+        input.state,
+        input.session ?? null,
+        input.day,
+        this.nowFn(),
+        input.date,
+        input.prevAt,
+      );
+      return (this.ops.get<{ n: number }>("SELECT changes() AS n")?.n ?? 0) > 0;
+    });
+    this.emit("store.dream.ask", undefined, { date: input.date, state: input.state, wrote, again: true });
     return wrote;
   }
 

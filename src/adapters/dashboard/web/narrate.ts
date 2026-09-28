@@ -224,8 +224,23 @@ export const NARRATORS = {
   },
   "dream.journaled": () => notable("I woke from a dream and wrote it in the dream journal."),
   "dream.undone": (t) => notable(`The owner undid a dream — ${n(t, "reversed") ?? 0} of its changes were put back.`),
-  "dream.ask": (t) =>
-    calm(s(t, "state") === "declined" ? "The owner said not today to a dream." : "I asked whether I could dream."),
+  "dream.ask": (t) => {
+    // The day's line follows the owner's setting (2026-09-28): `launched`
+    // (auto), `offered` (ask), `relaunched` (a run left behind, started
+    // again), `declined`, and `setting` (the owner changed it).
+    switch (s(t, "state")) {
+      case "declined":
+        return calm("The owner said not today to a dream.");
+      case "launched":
+        return calm("I started the nightly run in the background: the page writer, a dream, a reflection.");
+      case "relaunched":
+        return calm("My last run was cut off, so I started it again.");
+      case "setting":
+        return notable(`Dreaming was set to ${s(t, "setting") ?? "a new setting"}${s(t, "before") === null ? "" : ` (it was ${s(t, "before") ?? ""})`}.`);
+      default:
+        return calm("I asked whether I could dream.");
+    }
+  },
   "band.transition": (t) => {
     // The payload's key names are TAKEN FROM the core's own pinned field tuple
     // rather than retyped as literals — the same rule `registries.ts` keeps for
@@ -576,12 +591,16 @@ export const NARRATORS = {
     const by = s(t, "by") ?? "someone";
     const bytes = n(t, "bytes") ?? 0;
     const why = s(t, "reason");
+    // Two nightly authors since 2026-09-28: the writer (sleep's quiet
+    // self-update, first in the nightly run) and the reflection after it.
     const who =
       by === "owner"
         ? "the owner wrote my page"
         : by === "writer"
           ? "the nightly writer revised my page"
-          : "I amended my page";
+          : by === "reflection"
+            ? "I rewrote my page on reflection"
+            : "I amended my page";
     const because = why === null || why.length === 0 ? "" : `, ${why}`;
     return calm(`${who}: ${num(bytes, 0)} bytes${because}.`);
   },
@@ -605,7 +624,7 @@ export const NARRATORS = {
     const read = considered === 0 ? "" : ` after reading ${considered} memor${considered === 1 ? "y" : "ies"} from it`;
     switch (outcome) {
       case "asked":
-        return calm(`I was asked to revise my page from ${about}${read}.`);
+        return calm(`In the nightly run, I was handed ${about} to revise my page from${read}.`);
       case "started":
         return calm(`A windowless session of me was started to revise my page from ${about}.`);
       case "revised":

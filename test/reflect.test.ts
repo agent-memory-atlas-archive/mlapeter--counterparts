@@ -51,7 +51,9 @@ function brain(opts: { owner?: boolean; observer?: boolean } = {}): Counterpart 
     dir,
     owner: opts.owner ?? true,
     ...(opts.observer === true ? { observer: true } : { identity: { name: "Mike" } }),
-    now: () => Date.now() + offsetMs,
+    // The calendar follows the test's days (the reflection's once-a-day gate
+    // is the calendar date since 2026-09-28).
+    now: () => Date.now() + offsetMs + dateN * 86_400_000,
   });
   open.push(c);
   return c;
@@ -430,7 +432,11 @@ describe("reflect: dream → journal → reflect", () => {
     expect(o.page).toMatchObject({ written: true, reason: "rewritten" });
     expect(o.refusedCites).toContain(`${d.gist}:dreamed-is-not-a-source`);
     expect(c.self.page()?.body).toContain("understood");
-    expect(c.pageWriterDue({ mode: "session" })).toMatchObject({ due: false, reason: "already-claimed" });
+    // BY THE REFLECTION (2026-09-28): its own author, not the nightly
+    // writer's, and it records no page-writer run — the writer runs first in
+    // the same nightly run and keeps its own row.
+    expect(c.self.page()?.by).toBe("reflection");
+    expect(c.pageWriterRuns().filter((r) => r.outcome === "revised")).toEqual([]);
     // (c) the share, offered; the hand-back opens with the dream's marked line.
     expect(o.share).toEqual({ offered: true, reason: "offered" });
     expect(o.handBack.startsWith(DREAM_MARK)).toBe(true);
@@ -608,7 +614,8 @@ describe("what's on my mind, beside the day", () => {
     const c = brain();
     nextDay(c);
     const today = c.store.today();
-    const soon = new Date(Date.parse(`${today}T00:00:00Z`) + 3 * 86_400_000).toISOString().slice(0, 10);
+    // Three days after the dream below, which comes nine calendar days on.
+    const soon = new Date(Date.parse(`${today}T00:00:00Z`) + 12 * 86_400_000).toISOString().slice(0, 10);
     const dated = mem(c, "Pay the quarterly taxes.", { eventDate: soon });
     for (let i = 0; i < 9; i += 1) nextDay(c);
     for (let i = 0; i < 3; i += 1) mem(c, `A new memory about the deploy, number ${String(i)}.`);

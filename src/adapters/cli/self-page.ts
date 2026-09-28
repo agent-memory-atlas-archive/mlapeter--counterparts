@@ -28,7 +28,7 @@ export const NO_PAGE_LINES: readonly string[] = [
   "No page has been written here yet — still forming.",
   "",
   "A page is written by a woken session (the `self_page` tool), by the nightly",
-  "writer, or by you:",
+  "run (its page writer, then its reflection), or by you:",
   "",
   "  counterparts self-page --write --file <path> --reason \"why\"",
   "  … | counterparts self-page --write --stdin --reason \"why\"",
@@ -52,7 +52,10 @@ export function pageLines(page: SelfPage, stale: boolean, versions: number): str
     ...(versions === 0
       ? ["No earlier versions yet."]
       : [`${versions} earlier version${versions === 1 ? "" : "s"} — 'self-page --versions'.`]),
-    ...(parts.headed ? [] : ["(No `## Core` / `## Lately` headings — printed as it stands.)"]),
+    // ANY heading is a section (2026-09-28): "## Us" and "## How I work" count.
+    ...(parts.headed
+      ? [`Sections: ${parts.sections.map((s) => s.heading).join(" · ")}.`]
+      : ["(No `##` headings — printed as it stands.)"]),
     "",
   ];
   return [...head, ...page.body.split("\n")];

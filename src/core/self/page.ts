@@ -57,15 +57,23 @@ export const SELF_PAGE_REVISED_EVENT = "self.page.revised";
 export const SELF_PAGE_REFUSED_EVENT = "self.page.refused";
 
 /**
- * WHO WROTE THIS REVISION. Three authors, and the distinction is the reason the
- * field exists: a page the owner typed and a page a nightly writer composed are
- * both legitimate and are not the same claim. `writer` has no caller yet — it is
- * S2's, and it is enumerated here so the row S2 writes needs no new vocabulary.
+ * WHO WROTE THIS REVISION, and the distinction is the reason the field exists:
+ * a page the owner typed and a page a nightly writer composed are both
+ * legitimate and are not the same claim. `writer` is the nightly writer —
+ * sleep's quiet self-update (S2; since 2026-09-28 the first part of the
+ * nightly run). `reflection` (2026-09-28) is the run's last part — waking up and
+ * thinking about yourself — which had written as `writer` until then: two jobs,
+ * both allowed to write the page for now, told apart in the version history.
+ * The label is stored in the page's own meta, so a new one needs no schema.
  */
-export const SELF_PAGE_AUTHORS = ["session", "owner", "writer"] as const;
+export const SELF_PAGE_AUTHORS = ["session", "owner", "writer", "reflection"] as const;
 export type SelfPageAuthor = (typeof SELF_PAGE_AUTHORS)[number];
 
-/** The two headed sections (spec §15 item 1). The page carries them as prose. */
+/**
+ * The two CONVENTIONAL headed sections (spec §15 item 1). The page carries
+ * them as prose — a convention, not a requirement: any `##` heading is a
+ * section (2026-09-28, `pageSections`).
+ */
 export const PAGE_CORE_HEADING = "Core";
 export const PAGE_LATELY_HEADING = "Lately";
 
@@ -362,43 +370,65 @@ function cutAtBoundary(body: string, room: number): string {
 
 // ── reading the page's own shape ────────────────────────────────────────────
 
+/** One headed section of the page, in the page's own order. */
+export interface PageSection {
+  /** The heading's words, as written (without the `#`s). */
+  readonly heading: string;
+  /** The heading's level: 2 for `##`. */
+  readonly level: number;
+  /** Its words, up to the next heading of any level, trimmed. */
+  readonly body: string;
+}
+
 export interface PageSections {
+  /** The `## Core` section's words, or "" — the convention's first half. */
   readonly core: string;
+  /** The `## Lately` section's words, or "" — the convention's second half. */
   readonly lately: string;
   /** Anything before the first heading, or the whole body when it has none. */
   readonly preamble: string;
-  /** False when the page carries neither heading — still a page, just prose. */
+  /** False when the page carries no heading at all — still a page, just prose. */
   readonly headed: boolean;
+  /**
+   * EVERY HEADED SECTION, in order (2026-09-28): "Us", "How I work", or
+   * whatever the page grew — Core and Lately among them when present. A
+   * surface that shows the page in parts shows all of these, so a section
+   * outside the convention does not fall out.
+   */
+  readonly sections: readonly PageSection[];
 }
 
+/** A heading line: `#`…`######`, a space, words. `##Core` (no space) is read too, as it always was. */
+const HEADING = /^(#{1,6})(?:[ \t]+(\S.*?)|[ \t]*(core|lately))[ \t]*#*[ \t]*$/i;
+
 /**
- * Split a page at its own headings, for the surfaces that show the two parts
- * apart (the dashboard, the console). The WAKE never calls this: it prints the
- * page as is, because a page reassembled from parts is a page this engine wrote.
+ * Split a page at its own headings, for the surfaces that show it in parts
+ * (the dashboard, the console). ANY heading makes a section (2026-09-28: only
+ * Core and Lately did, so "Us" and "How I work" fell out of every view that
+ * read the parts); Core and Lately are the convention, kept by name. The WAKE
+ * never calls this: it prints the page as is, because a page reassembled from
+ * parts is a page this engine wrote.
  */
 export function pageSections(body: string): PageSections {
-  const find = (heading: string): number => {
-    const re = new RegExp(`^#{1,6}\\s*${heading}\\s*$`, "im");
-    return body.search(re);
-  };
-  const core = find(PAGE_CORE_HEADING);
-  const lately = find(PAGE_LATELY_HEADING);
-  if (core < 0 && lately < 0) {
-    return { core: "", lately: "", preamble: body.trim(), headed: false };
+  const lines = body.split("\n");
+  const starts: { line: number; heading: string; level: number }[] = [];
+  lines.forEach((line, i) => {
+    const m = HEADING.exec(line.trimEnd());
+    if (m !== null) starts.push({ line: i, heading: (m[2] ?? m[3] ?? "").trim(), level: (m[1] ?? "").length });
+  });
+  if (starts.length === 0) {
+    return { core: "", lately: "", preamble: body.trim(), headed: false, sections: [] };
   }
-  const first = core < 0 ? lately : lately < 0 ? core : Math.min(core, lately);
-  const section = (start: number): string => {
-    if (start < 0) return "";
-    const rest = body.slice(start);
-    const nl = rest.indexOf("\n");
-    const afterHeading = nl < 0 ? "" : rest.slice(nl + 1);
-    const next = afterHeading.search(/^#{1,6}\s+\S/m);
-    return (next < 0 ? afterHeading : afterHeading.slice(0, next)).trim();
-  };
+  const sections: PageSection[] = starts.map((s, i) => {
+    const end = starts[i + 1]?.line ?? lines.length;
+    return { heading: s.heading, level: s.level, body: lines.slice(s.line + 1, end).join("\n").trim() };
+  });
+  const named = (name: string): string => sections.find((s) => s.heading.toLowerCase() === name.toLowerCase())?.body ?? "";
   return {
-    core: section(core),
-    lately: section(lately),
-    preamble: body.slice(0, first).trim(),
+    core: named(PAGE_CORE_HEADING),
+    lately: named(PAGE_LATELY_HEADING),
+    preamble: lines.slice(0, starts[0]?.line ?? 0).join("\n").trim(),
     headed: true,
+    sections,
   };
 }

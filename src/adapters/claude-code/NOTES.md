@@ -1634,3 +1634,28 @@ reflection rewrote the page it finds the night claimed and stands down.
 
 - **2026-09-27, owner ruling D3 on #256:** `openAdapter` passes `pageWriter.mode` to
   `Counterpart.open`, so `off` stops the reflection's page write in the hooks' process too.
+
+## 2026-09-28 — the nightly run starts on its own; the writer's ask leaves the wake
+
+Working defaults, held lightly. The dream line (`dreamLines`, UserPromptSubmit) follows
+the owner's dreaming setting: `auto` (the default) tells the model to call the dream
+tool's `launch` now, hand the prompt to one background agent — the page writer, the
+dream, the reflection — and tell the owner in one line how to say "no dreams"; `ask`
+keeps the 09-26 ask; `off` says nothing. The line claims the day once across sessions
+and again only for a run left behind (dream CONTRACT §5.1).
+
+The SessionStart page-writer ask is RETIRED (`deliverPageWriterAsk`,
+`writerStarvedByScope`, `noteWriterDeferred`, `SCOPE_PATIENCE_DEFERRALS`,
+`ASK_SEPARATOR_BYTES`): the writer gets its day through the dream tool's `writer`
+phase, where no injection ceiling applies, so `no-room` cannot happen and the
+first-launch scope question has the ask field to itself. The registry mark
+(`pageWriterFor`) is still read by the MCP door, and nothing writes it now. Host mode
+is left in place, not the default.
+
+Doctor's Page writer line: a night owed because no run started (fewer than three new
+memories, dreaming off or declined) is GREEN — the ordinary state of a quiet week; it is
+amber only when nightly runs went on for days without the writer, or on a failure, a
+refusal or an unreadable block. The fix text no longer names `injectionBudgetBytes` or
+host mode. The CONTRACT's old "amber while off and a page stands" was drift — the code
+had said green since the S2 review — and the CONTRACT now says what the code does.
+Doctor's Dreaming line leads with the setting.

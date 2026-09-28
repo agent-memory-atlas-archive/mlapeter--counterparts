@@ -27,7 +27,7 @@ let days = [];
 let undated = 0;
 let earlier = 0;
 
-const WHO = { owner: "you, by hand", session: "a session", writer: "the page writer" };
+const WHO = { owner: "you, by hand", session: "a session", writer: "the page writer", reflection: "the reflection" };
 export const who = (by) => (by ? WHO[by] || by : "someone unrecorded");
 
 /** "2026-09-24" → "Sep 24" (and the year when it is not this one). */
@@ -42,7 +42,7 @@ export function shortDate(iso) {
 export function paintPage(d) {
   const p = d.page;
   $("self-page").innerHTML = d.pageAbsent
-    ? absenceLine(d.pageAbsent, "no page yet — once a day, the first session of the morning writes it from the day before; you can also write it by hand")
+    ? absenceLine(d.pageAbsent, "no page yet — once a day, the nightly run writes it from the day before; you can also write it by hand")
     : '<div class="sp-body">' + renderMarkdown(p.body) + "</div>";
 }
 

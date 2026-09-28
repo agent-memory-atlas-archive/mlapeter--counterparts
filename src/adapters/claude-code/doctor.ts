@@ -68,6 +68,8 @@ import type { EventRow } from "../../core/store/index.js";
 // The ask allowance the amber hint names, read rather than retyped: a number in
 // a diagnostic's prose is a number that goes stale silently.
 import { SELF_TUNABLES } from "../../core/self/tunables.js";
+import { dreamingSetting } from "../../core/dream/index.js";
+import type { DreamingSetting } from "../../core/dream/index.js";
 // The page's own reader, so this line cannot drift from what the wake prints.
 import { clearedMarker, findPageRow, readSelfPage } from "../../core/self/page.js";
 import {
@@ -170,9 +172,10 @@ export const SESSION_NOTICE_BUDGET_MS = 150;
 /**
  * How many lived days back the newest-row search widens through.
  *
- * `Store.eventLog` orders ASCENDING and takes a LIMIT, so "the newest row of
- * this name" is not a query it offers (filed as an ask in `cli/INTERFACE-GAPS`).
- * The reading below is exact rather than approximate: a window whose result is
+ * Written when `Store.eventLog` read only ASCENDING with a LIMIT, so "the
+ * newest row of this name" was not a query it offered. Since #272 it is
+ * (`order: "desc", limit: 1`); this ladder predates that and is left as it
+ * is, because it is exact either way: a window whose result is
  * SHORTER than the limit was not truncated, so its last row is provably the
  * newest in that window. The ladder starts at today so the common case reads
  * the fewest rows, and widens only when a window is empty.
@@ -2587,30 +2590,42 @@ export function reflectionFindings(input: DoctorInput, store: Store): Finding[] 
 }
 
 /**
- * DREAMING, informational (2026-09-26): when the counterpart last dreamed, and
- * whether today's ask went out or was declined. Never amber: not dreaming is
- * the owner's choice, and a quiet week is not a fault.
+ * DREAMING, informational (2026-09-26): the owner's setting (2026-09-28:
+ * auto, ask or off), when the counterpart last dreamed, and what today's line
+ * did — started the nightly run, asked, or was declined. Never amber: not
+ * dreaming is the owner's choice, and a quiet week is not a fault.
  */
 export function dreamingFindings(input: DoctorInput, store: Store): Finding[] {
   let last: ReturnType<Store["dreams"]>[number] | undefined;
   let ask: ReturnType<Store["dreamAsk"]>;
+  let setting: DreamingSetting;
   try {
     last = store.dreams({ limit: 5 }).find((d) => d.state !== "undone");
     ask = store.dreamAsk(input.today);
+    setting = dreamingSetting(store);
   } catch {
     return [];
   }
   const when = last === undefined ? null : (last.date ?? `lived day ${String(last.day)}`);
   const today =
-    ask === undefined ? "not asked today" : ask.state === "declined" ? "asked today; the owner said not today" : "asked today";
+    setting === "off"
+      ? "off — no dreams (counterparts dream --setting auto turns it back on)"
+      : ask === undefined
+        ? "not started today"
+        : ask.state === "declined"
+          ? "asked today; the owner said not today"
+          : ask.state === "launched"
+            ? "started today, in the background"
+            : "asked today";
+  const unfinished = last !== undefined && last.state === "begun" ? `; dream ${last.id} is begun and not yet journaled` : "";
   return [
     finding(
       "dreaming",
       "green",
       "Dreaming",
-      `${when === null ? "has not dreamed yet" : `last dreamed ${when}${last?.title ? ` — "${last.title}"` : ""}`}; ${today}`,
+      `${setting}; ${when === null ? "has not dreamed yet" : `last dreamed ${when}${last?.title ? ` — "${last.title}"` : ""}`}; ${today}${unfinished}`,
       "",
-      { last: when, dream: last?.id ?? null, ask: ask?.state ?? null },
+      { setting, last: when, dream: last?.id ?? null, ask: ask?.state ?? null },
     ),
   ];
 }
@@ -2692,10 +2707,18 @@ export function selfPageFindings(store: Store): Finding[] {
  * Green also for a night that read the day and had nothing to say: that is the
  * mechanism working, and it is stated in words rather than left as a silence.
  *
- * AMBER, with a fix, on the two readings that mean something has stopped: the
- * writer is switched off while a page exists (somebody turned it off and the
- * page will now only move by hand), and a run that failed or was refused. Never
- * red: nothing here can cost a session its memory.
+ * Green when it is OFF, too — a deliberate choice is not a fault — with the
+ * line saying what off means. (This comment and the adapter CONTRACT used to
+ * say "amber while a page stands"; the code has said green since the S2
+ * review, and the words now follow the code, 2026-09-28.)
+ *
+ * AMBER, with a fix, on the readings that mean something has stopped: a run
+ * that failed or was refused, a pageWriter block that could not be read, and
+ * — since the writer moved into the nightly run (2026-09-28) — a night owed
+ * for days while nightly runs went on without it. A night owed because no run
+ * started (fewer than three new memories, dreaming off or declined) is the
+ * ordinary state of a quiet week and stays green. Never red: nothing here can
+ * cost a session its memory.
  */
 export function pageWriterFindings(store: Store, config: AdapterConfig): Finding[] {
   const mode = pageWriterMode(config);
@@ -2759,7 +2782,9 @@ export function pageWriterFindings(store: Store, config: AdapterConfig): Finding
         "Page writer",
         young
           ? `${mode} mode; never run — this store has no day before ${today} yet`
-          : `${mode} mode; never run — the next session start is its first turn (${about})`,
+          : mode === "session"
+            ? `${mode} mode; never run — it is the first part of the next nightly run, before the dream (${about})${dreamingSetting(store) === "off" ? "; dreaming is off, so the nightly run does not start" : ""}`
+            : `${mode} mode; never run — the next boundary's worker starts it (${about})`,
         "",
         { ...data, young },
       ),
@@ -2781,7 +2806,14 @@ export function pageWriterFindings(store: Store, config: AdapterConfig): Finding
     asksPerDay: SELF_TUNABLES.PAGE_WRITER_ASKS_PER_DAY,
   });
   const staleFor = last.on === "" ? 0 : daysBetween(last.on, today);
-  const overdue = owed.due && staleFor > PAGE_WRITER_STALE_DAYS;
+  // OWED IS NOT OVERDUE on its own any more (2026-09-28). The writer runs
+  // inside the nightly run, and a night with fewer than three new memories
+  // runs nothing — the day carries over — so "owed for days" is the ordinary
+  // state of a quiet week. It is amber only when nightly runs HAPPENED since
+  // (a dream dated after the writer's last row, before today) and the writer
+  // still left nothing: the run is going without it.
+  const ranSince = mode === "session" && last.on !== "" ? dreamsBetween(store, last.on, today) : 0;
+  const overdue = owed.due && staleFor > PAGE_WRITER_STALE_DAYS && (mode !== "session" || ranSince > 0);
   const bad = status.outcome === "failed" || status.outcome === "refused";
   const detail =
     `${mode} mode; ${when} — ${status.outcome}` +
@@ -2798,7 +2830,9 @@ export function pageWriterFindings(store: Store, config: AdapterConfig): Finding
       "Page writer",
       detail,
       bad || overdue
-        ? "counterparts mechanisms --all --dir <store> --observer shows the run's own row. A night that is owed but never delivered is usually the host's injection ceiling: the block is deferred rather than truncated, so raise injectionBudgetBytes or run the writer in host mode. counterparts self-page --write amends the page by hand meanwhile."
+        ? mode === "session"
+          ? "counterparts mechanisms --all --dir <store> --observer shows the run's own row. The page writer is the first part of the nightly run, before the dream: counterparts dream shows whether the runs are happening and how each ended. counterparts self-page --write amends the page by hand meanwhile."
+          : "counterparts mechanisms --all --dir <store> --observer shows the run's own row. In host mode the boundary's worker starts a windowless session for the writer; a night that is owed but never delivered usually means that session could not start. counterparts self-page --write amends the page by hand meanwhile."
         : "",
       {
         ...data,
@@ -2822,6 +2856,15 @@ export function pageWriterFindings(store: Store, config: AdapterConfig): Finding
 /** Calendar days a night may be owed before the line says so. A writer that
  *  missed last night has not failed; one that has missed three has. */
 export const PAGE_WRITER_STALE_DAYS = 2;
+
+/** Dreams begun on a calendar date after `after` and before `before` (not undone). Never throws. */
+function dreamsBetween(store: Store, after: string, before: string): number {
+  try {
+    return store.dreams({ limit: 50 }).filter((d) => d.state !== "undone" && d.date !== null && d.date > after && d.date < before).length;
+  } catch {
+    return 0;
+  }
+}
 
 /** A page that was written and then cleared: when, why, and what is restorable.
  *  Null when no page row exists at all. */

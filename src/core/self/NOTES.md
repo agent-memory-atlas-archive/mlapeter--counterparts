@@ -1253,3 +1253,29 @@ records the night's page-writer run, which claims the night: the SessionStart wr
 finds it claimed and stands down, and on a night with no reflection it runs as before.
 Left in place because it does no harm and dreamless nights still have it. Craft belongs
 under "## How I work", not the core; the reflection's instructions say so.
+
+## 28. The writer moves into the nightly run; the reflection gets its own name (2026-09-28)
+
+Working defaults, held lightly. §27's diagnosis stood (the SessionStart ask deferred
+`no-room` as the wake grew), and the owner's fix is to take the writer off the wake
+entirely: once a calendar day one background agent runs the page writer, then the dream,
+then the reflection (dream CONTRACT §5.2; the order is the owner's call — the writer
+first reads yesterday raw, survives a cut-off session, and the dream and the reflection
+see the fresh page).
+
+- The writer's day arrives through the dream tool's `writer` phase, a tool result: the
+  page whole (`pageInline`, since the agent never got the wake) and up to
+  `NIGHT_WRITER_MEMORY_BYTES` (40,000) of the day. The claim is the ordinary `asked` row,
+  now carrying `session` and `run` in its payload; `nightClaimFor` is what the MCP door
+  reads to write `by: "writer"`. No new event name, no schema change.
+- The writer and the reflection are different jobs and both may write the page for now:
+  the reflection writes as `reflection` (a new `SELF_PAGE_AUTHORS` value — the label lives
+  in the page's own meta, so no schema), and it no longer records a page-writer run. After
+  a few days the owner compares versions to see whether they overwrite each other.
+- `pageSections` reads ANY heading: "## Us" and "## How I work" fell out of every view
+  that read the parts. Core and Lately are kept by name, as the convention.
+- The day survives a dream's merge (`isOfDay`, `hasDayBefore` counting archived rows) —
+  found while the order was still dream-first, kept for a dream left behind or resumed.
+- Retired with the session-start ask: its sizing against the wake's ceiling, the durable
+  `no-room` / `scope-question` deferral rows (old rows still read), and the scope
+  question's patience counter. Host mode is untouched and not the default.

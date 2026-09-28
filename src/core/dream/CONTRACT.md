@@ -68,14 +68,38 @@ dreamer is the model (a background agent the session launches), outside this pro
 
 ## 5. Contract
 
-### 5.1 The ask
+### 5.1 The line — the nightly run starts (2026-09-28, working defaults, held lightly)
 
-- Due when: not observer; the store has lived more than one day; no dream this lived
-  day; the day's ask neither raised nor declined; and at least `MIN_NEW` showable
-  memories made since the last dream.
-- Raised as ONE quiet line for the model (the hook's `additionalContext`), at most once
-  per CALENDAR day across every session (the `dream_asks` latch). It asks the model to
-  ask the owner at a natural moment. A "no" is phase `decline`: snoozed for the day.
+- **The owner's setting**, `auto` | `ask` | `off`, default `auto` — in the store's meta
+  (`dream.setting`), so the hook, the MCP server and the console read one value. Set by
+  the dream tool's phase `setting` (the owner saying "no dreams" in conversation is
+  `off`) and by `counterparts dream --setting`; reversible the same way; recorded on the
+  `dream.ask` row with what it was; shown by doctor's Dreaming line and by
+  `counterparts dream`.
+- Due when: not observer; the store has lived more than one day; no dream journaled
+  this CALENDAR day (the I32 reason the writer already followed: the lived clock
+  advances inside the sleep cycle, so a gate on it can miss nights); the setting not
+  `off`; no run under way (a dream begun and busy within `ABANDONED_AFTER_MS`); the
+  day's line neither given nor declined — or given to a run that was LEFT BEHIND
+  (below); and at least `MIN_NEW` showable memories made since the last dream. Fewer:
+  nothing runs, and they carry over (new is since the last dream).
+- Raised as ONE quiet line for the model (the hook's `additionalContext`, on the first
+  prompt), at most once per calendar day across every session (the `dream_asks` latch,
+  `launched` or `offered`). `auto`: start the run now — call `launch`, hand the prompt
+  to a background agent — and tell the owner in one line: "Dreaming in the background
+  (a few minutes). Say 'no dreams' anytime to turn it off." `ask`: ask the owner at a
+  natural moment, as from 2026-09-26; a "no" is phase `decline`, snoozed for the day.
+  `off`: nothing.
+- **A run left behind does not use up the day.** A dream begun, never journaled and
+  quiet for `ABANDONED_AFTER_MS` (30 minutes: its session closed and the background
+  agent went with it), today's or yesterday's, makes the line due again once the line
+  itself has been quiet as long — and with `auto`, so does a launch no dream followed.
+  At most `RELAUNCHES_PER_DAY` (2) a day, a compare-and-set on the latch
+  (`reclaimDreamAsk`); an `ask` nobody answered is not asked again, but one the owner said
+  yes to is (`launch` flips the day to `launched`). A dream that began, changed nothing and
+  went quiet does not count as following a launch. A dream journaled today whose
+  reflection never finished makes the line start the REFLECTION alone (`reflect launch`
+  with the dream's id), under the same latch and cap.
 - Never in the host-mode page writer's headless session. (The reflection that follows a
   dream is the DREAMER's, in the background agent the session launched — not the page
   writer's child, and not a phase of the dream: see §5.4.)
@@ -90,12 +114,27 @@ dreamer is the model (a background agent the session launches), outside this pro
   (confidential memories not counted) unless it passes `owner: true`. Only a count comes
   back.
 
-### 5.2 The dream
+### 5.2 The nightly run, and the dream in it
 
-- `launch` returns a prompt for a background agent (same model, same MCP server, the
-  session's id), written by this module (`launchPrompt`).
-- `begin` refuses under observer, when a dream already ran this lived day, and when
-  nothing is new; otherwise it records the dream and returns the bundle: the self page,
+- `launch` returns the prompt for ONE background agent (same model, same MCP server,
+  the session's id), written by this module (`launchPrompt`): the NIGHTLY RUN, in the
+  order `NIGHT_ORDER` gives — the owner's call, 2026-09-28: **the page writer, then the
+  dream, then the reflection**. The writer first: it reads yesterday before any merge
+  archives an original, it survives a session cut off mid-run, and the dream and the
+  reflection see the fresh page. Each phase's `next` follows the same list, so another
+  order is one line. The writer is the dream tool's phase `writer` (self CONTRACT; it
+  claims the night for this session and hands the day and the page whole through the
+  tool result); writer and reflection are DIFFERENT jobs and both may write the page
+  for now, with their own author labels (`writer`, `reflection`), every version kept.
+- `begin` refuses under observer, when a dream was journaled this CALENDAR day, while
+  another session's run is busy (`dreaming-now`), and when nothing is new. A dream LEFT
+  BEHIND — begun, never journaled, quiet for `ABANDONED_AFTER_MS` — is RESUMED when it
+  changed something and is today's or yesterday's: the same dream, moved to this
+  session, today and this lived day, its changes standing and counting toward its
+  limits, its bundle composed again (marked `resumed`, with what it had changed). One
+  that changed nothing is closed (`undone`) and a fresh one opens; one older than
+  yesterday stands as it is and new-since counts from it. Otherwise it records the dream
+  and returns the bundle: the self page,
   the wake, journal chapters since the last dream, the owner's names and the memories
   about him, every new memory with its `NEIGHBOURS` nearest older ones (the static
   embedder's vectors, or the token index), `MIXING` loosely related older ones, the
@@ -125,8 +164,7 @@ dreamer is the model (a background agent the session launches), outside this pro
   said, never cut without a word.
 - `journal` closes the dream with its entry (kept in `dreams.journal`, never a memory)
   and returns the hand-back line, which begins with the mark — and tells the dreamer to
-  wake and reflect (§5.4). The launch prompt runs dream → journal → reflect as three
-  steps of two acts; the dreamer's final message is the reflection's hand-back, which
+  wake and reflect (§5.4). The run's final message is the reflection's hand-back, which
   opens with the dream's line.
 - Every word a dream writes is redacted of credentials first.
 
@@ -134,7 +172,8 @@ dreamer is the model (a background agent the session launches), outside this pro
 
 1. **[M]** A dream cannot delete, edit the self page, promote, rewrite a memory in place,
    or change a memory it was not shown (`apply`'s action list and `shown`).
-2. **[M]** At most one dream per lived day (`begin`).
+2. **[M]** At most one dream journaled per calendar day (`begin`); a dream left behind
+   is resumed, not counted (2026-09-28).
 3. **[M]** A dream's words never become a lived memory: the bundle and the hand-back carry
    `DREAM_MARK`; `remember/spans.ts#enters` refuses any turn carrying it; the Claude Code
    reader tags such a block `dream`. Tested end to end: seed, dream, sweep, zero rows.
@@ -162,19 +201,27 @@ a reflection is LIVED, has its own record (`reflections`, with an optional dream
 usually follows a dream and can run on its own, so the self page does not depend on a
 dream having run.
 
-- `begin` refuses under observer and when one already finished this lived day; given a
-  dream, it must be this session's and journaled. It HANDS the reflection, rather than
-  letting it search: the dream (journal, gists, nominations — marked as dreamed), the
+- `begin` refuses under observer and when one already finished this CALENDAR day
+  (2026-09-28); given a dream, it must be this session's and journaled. It HANDS the
+  reflection, rather than letting it search: WHAT THE DREAM SAW (2026-09-28: every
+  memory the dream was shown and what it made, still standing, a line each — citable
+  like the rest), the SELF PAGE WHOLE (it was cut at 6,000 characters while a page may
+  be 16,384 bytes), the dream (journal, gists, nominations — marked as dreamed), the
   last few days' chapters and memories, its own last few reflections, what's on my mind,
   the self page, the core, the core candidates, the most strongly felt memories that
   could be about me (marked or not), and memories that became core on reflection alone
   since a share last said so — as memories and feelings, **never the lane arithmetic**.
   Three questions, rotated so consecutive nights share none (the dream question only
-  after a dream).
+  after a dream). **In parts, not cut** (2026-09-28): a bundle longer than
+  `RESULT_CHARS` (the tool result's ceiling is about 25k tokens) comes as part 1 of N —
+  everything but the long lists, which go on in order as far as the room allows — and
+  the result says so; phase `part` hands the rest, `PART_CHARS` at a time, each memory
+  as it reads now (one gone since is said to be gone). The parts' ids are kept on the
+  row until the first finish. PR B brings a shared fitter; this is the simple version.
 - `finish` takes an entry, what it cites, and optionally a page, a share, feelings,
   about marks and trait nudges, each on its own. Everything it names must be something it was shown and
   still standing.
-  - **It may be called again** the same lived day on the same reflection (2026-09-28):
+  - **It may be called again** the same calendar day on the same reflection (2026-09-28):
     a second call supplies the parts the first refused or left out without re-minting
     the entry, and may replace the share while it has not been told or carried. The
     limits count across both. Every part not written names its rule and what tripped
@@ -183,15 +230,19 @@ dream having run.
     source `reflection`, titled "Reflected: …". **A night that cites nothing is "nothing
     much"** — a normal outcome: the entry stays on the record, and nothing else is
     written or shared.
-  - **The page** is rewritten whole through `Self#revisePage` (by `writer`), from what it
+  - **The page** is rewritten whole through `Self#revisePage` — BY `reflection`
+    (2026-09-28: it wrote as `writer` until then; the writer and the reflection are two
+    jobs and the version history tells them apart), with a reason naming the
+    reflection and its dream — from what it
     cites — meant to rest on at least one core memory when there is a core (a page that
     cites none is written with a note, since 2026-09-28) — never from a dreamed gist
     or a confidential memory, and never carrying the words of a confidential memory it
     was shown (review of #256); the old page is context. (The check on a recent gist's
     words was removed 2026-09-28 — NOTES.) With
     the host's `pageWriter.mode: off` the page is not written at all (owner ruling D3); the
-    entry and the share still are. The write records
-    the night's page-writer run.
+    entry and the share still are. It records no page-writer run (that row made the
+    retired session-start writer stand down; the writer runs in the same nightly run
+    now, first, and keeps its own row).
   - **The share** — two or three sentences, citing what it rests on — is offered in the
     hand-back; `told` records `told` on the memories it cites; a later session carries
     an untold one once. A memory promoted on reflection alone is named in the next share.
@@ -214,7 +265,7 @@ dream having run.
     **It is shown no balance or totals** — no trait appears in what `begin` hands it
     (only the limit): the arithmetic stays on the dashboard. Nudges feed nothing.
   - Every memory it cites comes back: a reflection return (physics §5.11).
-- Guarantees: **[M]** at most one reflection a lived day; **[M]** it can cite, feel or
+- Guarantees: **[M]** at most one reflection a calendar day; **[M]** it can cite, feel or
   mark only what it was shown; **[M]** nothing under observer; **[M]** a reflection is
   not undone with its dream (it was lived); **[M]** what a dream or a reflection wrote
   earns no return by being cited; **[M]** its hand-back carries the mark, so
@@ -230,8 +281,11 @@ examples) · **§2.19** (every change enumerable: `counterparts dream --show`) �
 
 ## 7. Open questions
 
-1. How often will the owner say yes? The ask is once a day at most; if it is a nag, a
-   longer snooze or a weekly rhythm is the next knob.
+1. The run starts on its own now (`auto`, 2026-09-28). Watch for runs cut off by short
+   sessions (`dream --list` shows `begun` rows; doctor names one begun and not
+   journaled) and for writer and reflection overwriting each other's page — the owner
+   compares page versions after a few days, and may decide the reflection stops writing
+   the page.
 2. Should a gist that proves true awake be promoted out of `dreamed` provenance?
    Related (owner ruling D6 on #256, left open): should `sleep/consolidate.ts#aboutMe`
    also refuse a `dreamed` row outright, as defence in depth? Today no road reaches the

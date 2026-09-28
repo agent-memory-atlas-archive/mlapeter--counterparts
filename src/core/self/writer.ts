@@ -150,6 +150,14 @@ export interface PageWriterRun {
   readonly considered: number;
   /** Confidential rows held back from an egress composition. */
   readonly omitted: number;
+  /**
+   * THE NIGHTLY RUN'S CLAIM (2026-09-28): the session whose background run
+   * claimed the night, and the run (the dream's id). The MCP server labels a
+   * `self_page` write from that session `writer` while this claim is open.
+   * "" on every other row, and on rows written before.
+   */
+  readonly session: string;
+  readonly run: string;
   readonly at: number;
   /** The log's own order, which is the only TOTAL order these rows have: two
    *  rows written in one millisecond share an `at`, and "newest first" has to
@@ -213,13 +221,18 @@ export function pageWriterNight(store: Store, zone?: string): { today: string; a
   return { today, about: pageWriterAbout(today, dayBefore(store.today())) };
 }
 
-/** Does this store hold anything from before `today`? Two counts, no prose. */
+/**
+ * Does this store hold anything from before `today`? Two counts, no prose.
+ * Archived rows count (2026-09-28): a dream's merge archives its originals and
+ * stamps the merged memory today, and a store whose only earlier memories a
+ * dream merged still has a day before — `dayIsEmpty` then asks whether that
+ * day holds anything live, merges included.
+ */
 export function hasDayBefore(store: Store, today: string): boolean {
   try {
-    const all = store.countMemories({ type: "memory", archived: false });
+    const all = store.countMemories({ type: "memory" });
     const fromToday = store.countMemories({
       type: "memory",
-      archived: false,
       learnedOnFrom: today,
     });
     return all > fromToday;
@@ -231,13 +244,13 @@ export function hasDayBefore(store: Store, today: string): boolean {
 /**
  * HOW FAR BACK A READING LOOKS, in LIVED days.
  *
- * It exists because `store.eventLog` orders by `seq` ASC and cuts at a limit,
- * so an unbounded read of a name with years of rows returns the OLDEST of them —
- * which for a "did last night happen" question is the exact opposite of the
- * answer. The window is the log's own default retention (`pruneEvents`, 90 lived
- * days): past it the rows are not there to be read anyway, so this drops
- * nothing that exists and turns the limit into a ceiling nothing reaches
- * (roughly three rows a day, so a few hundred in a full window).
+ * An ascending `eventLog` read with a limit keeps the OLDEST rows and drops the
+ * newest — for a "did last night happen" question the exact opposite of the
+ * answer — so the read below is NEWEST first (`order: "desc"`, since #272) and
+ * bounded by day as well. The window is the log's own default retention
+ * (`pruneEvents`, 90 lived days): past it the rows are not there to be read
+ * anyway, so this drops nothing that exists and turns the limit into a ceiling
+ * nothing reaches (roughly three rows a day, so a few hundred in a full window).
  */
 export const PAGE_WRITER_LOOKBACK_DAYS = 90;
 /** A ceiling well above the window's own count, so the cut never decides. */
@@ -250,15 +263,16 @@ export function pageWriterRuns(
 ): PageWriterRun[] {
   let rows;
   try {
-    // BOUNDED BY DAY, NOT BY COUNT. `eventLog` cuts oldest-first, so a bare
-    // limit on a long-lived store hands back the first rows ever written and
-    // every reading here — "is this night claimed", "when did it last run" —
-    // silently answers about a month that is over.
+    // BOUNDED BY DAY AS WELL AS BY COUNT, and read newest first: an ascending
+    // read with a limit keeps the oldest rows and drops the newest, and every
+    // reading here — "is this night claimed", "when did it last run" — would
+    // then silently answer about a month that is over. (Sorted below either way.)
     const floor =
       opts.sinceDay ?? Math.max(0, store.livedDay() - PAGE_WRITER_LOOKBACK_DAYS);
     rows = store.eventLog({
       name: SELF_PAGE_WRITER_EVENT,
       sinceDay: floor,
+      order: "desc",
       limit: opts.limit ?? PAGE_WRITER_ROW_CEILING,
     });
   } catch {
@@ -292,6 +306,8 @@ export function pageWriterRuns(
       bytesAfter: numberOr(payload["bytesAfter"], 0),
       considered: numberOr(payload["considered"], 0),
       omitted: numberOr(payload["omitted"], 0),
+      session: typeof payload["session"] === "string" ? payload["session"] : "",
+      run: typeof payload["run"] === "string" ? payload["run"] : "",
       at: row.at,
       seq: row.seq,
     });
@@ -392,6 +408,20 @@ export function pageWriterClaimOpen(store: Store, about: string, today: string):
   );
 }
 
+/**
+ * THE NIGHTLY RUN'S OPEN CLAIM FOR THIS SESSION (2026-09-28), or null: an
+ * `asked` row carrying this session, whose night is still open
+ * (`pageWriterClaimOpen`). The third channel the page's door reads, beside
+ * host mode's environment pin and session mode's registry mark: the run's
+ * background agent shares its session's id, and the claim is in the store.
+ */
+export function nightClaimFor(store: Store, session: string, today: string): PageWriterRun | null {
+  if (session.length === 0) return null;
+  const claim = pageWriterRuns(store).find((r) => r.outcome === "asked" && r.session === session && (r.on === "" || r.on >= today));
+  if (claim === undefined || !pageWriterClaimOpen(store, claim.about, today)) return null;
+  return claim;
+}
+
 /** The newest attempt inside the window, whatever date it was about. Null if
  *  none — which on a store that has not run for longer than the log keeps its
  *  rows is the truth the log can still support. */
@@ -479,7 +509,8 @@ export function pageWriterDue(
 export function dayIsEmpty(store: Store, about: string): boolean {
   try {
     for (const id of store.list({ type: "memory", archived: false, learnedOnFrom: about })) {
-      if (store.row(id)?.learned_on === about) return false;
+      const row = store.row(id);
+      if (row !== undefined && isOfDay(store, row, about)) return false;
     }
   } catch {
     // A store that will not answer is not a store with an empty day; the safe
@@ -487,6 +518,36 @@ export function dayIsEmpty(store: Store, about: string): boolean {
     return false;
   }
   return true;
+}
+
+/** How deep a chain of dream merges is followed back to its originals' day. */
+const MERGE_DEPTH = 4;
+
+/**
+ * IS THIS LIVE ROW PART OF THAT DAY? Learned on it — or, since the writer
+ * moved into the nightly run AFTER the dream (2026-09-28), a DREAM'S MERGE of
+ * memories learned on it. A merge archives its originals (they drop out of a
+ * live read) and the merged memory is stamped the day it was made, so without
+ * this a night whose dream merged some of yesterday handed the writer a day
+ * with holes in it. Followed through `meta.mergedFrom`, a few merges deep (a
+ * dream may merge its own merged memory).
+ */
+export function isOfDay(store: Store, row: { learned_on: string; meta: string }, about: string, depth = 0): boolean {
+  if (row.learned_on === about) return true;
+  if (depth >= MERGE_DEPTH) return false;
+  let from: unknown;
+  try {
+    from = (JSON.parse(row.meta) as Record<string, unknown>)["mergedFrom"];
+  } catch {
+    return false;
+  }
+  if (!Array.isArray(from)) return false;
+  for (const id of from) {
+    if (typeof id !== "string") continue;
+    const orig = store.row(id);
+    if (orig !== undefined && isOfDay(store, orig, about, depth + 1)) return true;
+  }
+  return false;
 }
 
 // ── what the writer is handed ───────────────────────────────────────────────
@@ -554,8 +615,10 @@ export function dayMemories(
   for (const id of ids) {
     const row = store.row(id);
     // `learnedOnFrom` is ">=", so today's rows come back too and are dropped
-    // here: the writer reads the day that is OVER, never the one it is in.
-    if (row === undefined || row.learned_on !== opts.about) continue;
+    // here: the writer reads the day that is OVER, never the one it is in —
+    // except a dream's merge of that day's memories, which is stamped the
+    // night it was made and still IS that day (`isOfDay`, 2026-09-28).
+    if (row === undefined || !isOfDay(store, row, opts.about)) continue;
     let statement: string;
     let confidential: boolean;
     try {
@@ -616,6 +679,15 @@ export function dayMemories(
   return { memories: kept, dropped: picked.length - kept.length, omitted, bytes };
 }
 
+/**
+ * THE NIGHTLY RUN'S ROOM FOR THE DAY (2026-09-28). The writer reads the day in
+ * a tool result, not beside the wake, so the wake's ceiling does not bind it —
+ * only the tool result's (about 25k tokens), shared with the page carried
+ * whole (at most 16 KB). What does not fit is counted and said, as always. CAL.
+ */
+export const NIGHT_WRITER_MEMORY_BYTES = 40_000;
+export const NIGHT_WRITER_MEMORY_MAX = 150;
+
 /** What one bullet costs beside its statement: `- `, a newline, and slack. */
 const MEMORY_LINE_OVERHEAD = 16;
 
@@ -662,10 +734,23 @@ function byteLengthOf(s: string): number {
  */
 export const PAGE_WRITER_OPEN = "<counterparts-page-writer>";
 export const PAGE_WRITER_CLOSE = "</counterparts-page-writer>";
+/** Around the page when it is carried whole (`pageInline`). */
+export const PAGE_INLINE_OPEN = "--- your page, as it stands ---";
+export const PAGE_INLINE_CLOSE = "--- end of your page ---";
 
 export function writerInstruction(
   input: WriterInput,
-  opts: { tool: string; session?: string | null },
+  opts: {
+    tool: string;
+    session?: string | null;
+    /**
+     * THE PAGE, WHOLE, IN THE BLOCK (2026-09-28). The nightly run's writer is
+     * a background agent: it never got the SessionStart wake, so "your page is
+     * at the head of your wake" would be false there. It reads this block in a
+     * tool result, where there is no injection ceiling to save room for.
+     */
+    pageInline?: boolean;
+  },
 ): string {
   const session =
     opts.session === undefined || opts.session === null || opts.session.length === 0
@@ -698,7 +783,17 @@ export function writerInstruction(
   // the one thing the wake does not carry.
   if (input.page === null) {
     lines.push(
-      "Nothing has been written on your page yet — your wake says so too. Pass `ifVersion: -1` if you write the first one.",
+      opts.pageInline === true
+        ? "Nothing has been written on your page yet. Pass `ifVersion: -1` if you write the first one."
+        : "Nothing has been written on your page yet — your wake says so too. Pass `ifVersion: -1` if you write the first one.",
+      "",
+    );
+  } else if (opts.pageInline === true) {
+    lines.push(
+      `Your page as it stands — version ${String(input.page.version)}, ${String(input.page.bytes)} bytes, last revised ${input.page.revisedOn === "" ? "on an unrecorded date" : `on ${input.page.revisedOn}`}${input.page.by === null ? "" : ` by the ${input.page.by}`} — is below, whole. Pass \`ifVersion: ${String(input.page.version)}\` when you write, so a revision that crossed with somebody else's is refused rather than quietly reverting it.`,
+      PAGE_INLINE_OPEN,
+      input.page.body.replace(MARKERS, MARKER_REDACTION),
+      PAGE_INLINE_CLOSE,
       "",
     );
   } else {

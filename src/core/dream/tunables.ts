@@ -10,6 +10,26 @@ export const DREAM_TUNABLES = {
   MIN_NEW: 3,
   /** A store that has never dreamed looks back this many lived days for "new". */
   FIRST_DREAM_DAYS: 7,
+  /**
+   * THE NIGHTLY RUN (2026-09-28, held lightly). A dream begun and quiet this
+   * long — no change, no journal — was left behind (its session closed and the
+   * background agent went with it). It no longer holds the day: the next
+   * session's line may start the run again, and `begin` resumes it. CAL.
+   */
+  ABANDONED_AFTER_MS: 30 * 60_000,
+  /** How many times one calendar day's run may be started again after it was left behind. CAL. */
+  RELAUNCHES_PER_DAY: 2,
+  /**
+   * THE NIGHTLY RUN'S ORDER — the page writer, then the dream, then the
+   * reflection (the owner's call, 2026-09-28; held lightly). The writer goes
+   * FIRST: it reads yesterday's memories before any merge archives the
+   * originals, it survives a session cut off mid-run because it ran first,
+   * and the dream and the reflection both see the fresh page. The launch
+   * prompt and each phase's `next` follow this list, and the writer claims its
+   * night whenever it runs, so another order is this one line. The reflection
+   * stays after the dream: it reads what the dream saw.
+   */
+  NIGHT_ORDER: ["writer", "dream", "reflection"] as readonly ("dream" | "writer" | "reflection")[],
 
   // ── the bundle ────────────────────────────────────────────────────────────
   /** Most new memories one dream is shown (newest first). CAL. */

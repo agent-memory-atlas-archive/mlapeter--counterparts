@@ -240,7 +240,7 @@ describe("the self tab's side column (round 2, an experiment)", () => {
     expect(w("failed", "", true).what).toBe("started and never finished");
     expect(w("refused", "too-large").what).toBe("tried, but the rewrite was turned away — too large");
     expect(w("refused", "too-large").next).toBeNull();
-    expect(w("asked").what).toBe("was asked at today's first session; no answer yet");
+    expect(w("asked").what).toBe("was handed the day in today's nightly run; no answer yet");
     expect(w("started").what).toBe("is running now");
     const older = w("revised", "", false, "2026-07-09");
     expect(older.lastNight).toBe(false);
@@ -259,22 +259,17 @@ describe("the self tab's side column (round 2, an experiment)", () => {
     const y = "2026-09-26";
     const read = (detail: string, about = y, on?: string) =>
       writerWords({ about, outcome: "skipped", derived: false, run: { detail, ...(on === undefined ? {} : { on }) } }, y);
-    // The live store's night: deferred for want of room. Still today's to catch.
+    // A night the RETIRED session-start ask deferred for want of room (2026-09-28:
+    // the writer runs inside the nightly run now). Old rows still read, in words
+    // that say it was the old way and what happens now.
     const room = read("no-room", y, "2026-09-27");
-    expect(room.line).toBe("Last night: not rewritten — the session start had no room left to ask. A later session today still can.");
-    expect(room.next).toBe("A later session today still can.");
-    // The `?` carries the record's own reason, the fix doctor gives, and when it was recorded.
+    expect(room.line).toBe("Last night: not rewritten — the session start had no room left to ask (the old way). It runs inside the nightly run now, where there is room.");
+    expect(room.next).toBe("It runs inside the nightly run now, where there is room.");
     expect(room.more).toContain("held back rather than cut short");
-    expect(room.more).toContain("injectionBudgetBytes");
-    expect(room.more).toContain("host");
+    expect(room.more).not.toContain("injectionBudgetBytes");
     expect(room.more).toContain("Recorded Sep 27.");
-    expect(room.more).toContain("still today's to catch");
-    // An older night can no longer be caught; what would make it happen is more room.
-    const older = read("no-room", "2026-09-20");
-    expect(older.next).toBe("More room, or host mode, would let it run.");
-    expect(older.more).not.toContain("still today's");
     expect(read("scope-question").line).toBe(
-      "Last night: not rewritten — the first-launch question took its turn. The next session asks the writer first.",
+      "Last night: not rewritten — the first-launch question took its turn (the old way). It runs inside the nightly run now, and waits for no question.",
     );
     // A code nobody mapped keeps its own words and no remedy is invented for it.
     const unknown = read("some-new-code");
