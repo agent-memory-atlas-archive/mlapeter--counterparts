@@ -49,7 +49,7 @@ import {
 import { SCALAR_REF, loadGateState, saveGateState } from "../src/core/recall/index.js";
 import { Associate } from "../src/core/associate/index.js";
 import { Prospective } from "../src/core/prospective/index.js";
-import { Recall, TUNABLES as RECALL_TUNABLES, freshGateState, gate, withTunables } from "../src/core/recall/index.js";
+import { Recall, TUNABLES as RECALL_TUNABLES, activate, freshGateState, gate, withTunables } from "../src/core/recall/index.js";
 
 /**
  * FIXTURE SCALE. These gate fixtures hand-build candidates with activations near
@@ -166,10 +166,15 @@ function unitCandidate(spec: {
   semantic: number;
   arrival: number;
   sal: number;
+  hops?: number;
   maxTier: RecallCandidate["maxTier"];
   kind?: RecallCandidate["kind"];
 }): RecallCandidate {
-  const activation = spec.cue + spec.semantic + spec.arrival;
+  const hops = spec.hops ?? 0;
+  // `activate`'s rule: hops raise activation and sit in neither half of the
+  // cue fraction (2026-09-28).
+  const base = spec.cue + spec.semantic + spec.arrival;
+  const activation = base + hops;
   return {
     id: spec.id,
     kind: spec.kind ?? "fact",
@@ -201,9 +206,9 @@ function unitCandidate(spec: {
     temporal: spec.temporal,
     semantic: spec.semantic,
     arrival: spec.arrival,
-    hops: 0,
+    hops,
     activation,
-    cueFraction: activation > 0 ? (spec.cue + spec.semantic) / activation : 0,
+    cueFraction: base > 0 ? (spec.cue + spec.semantic) / base : 0,
     matched: 1,
     trains: true,
     maxTier: spec.maxTier,
@@ -424,6 +429,7 @@ describe("SEAMS A — the observer predicate is hoisted, and stand-down totality
       supersedeInto: [seedId, seedId, "dream-merge"],
       restoreSuperseded: [seedId, "dream-merge"],
       restoreEdge: [seedId, seedId, null],
+      sweepEdges: [{ floor: 0.02, staleOnOrBefore: 0 }, () => true],
       retractFeelings: [["fel_x"]],
       retractDreamReturns: ["drm_x"],
       retractDreamNominations: ["drm_x"],
@@ -1454,13 +1460,99 @@ describe("SEAMS L — hops raise a candidate the conversation reached, and mint 
     expect(b?.hops).toBe(0);
     expect(a?.hops).toBeGreaterThan(0);
     expect(a?.activation).toBeGreaterThan(b?.activation as number);
-    // And the cue fraction went DOWN, never up: the graph cannot buy loudness.
-    expect(a?.cueFraction).toBeLessThan(b?.cueFraction as number);
+    // And the cue fraction did not move (2026-09-28): the graph can neither buy
+    // loudness nor take it away — hops are in neither half of the fraction.
+    expect(a?.cueFraction).toBeCloseTo(b?.cueFraction as number, 10);
   });
 
-  test("hops are excluded from cueFraction's NUMERATOR, so they push AWAY from loud", () => {
+  test("a hop cannot DEMOTE a loud memory: hops are in neither half of cueFraction", () => {
+    const s = store();
+    for (const body of FILLER) s.put({ type: "memory", kind: "fact", body });
+    const id = s.put({
+      type: "memory",
+      kind: "fact",
+      body: "The sourdough starter died after two weeks of neglect.",
+      physics: { birthDay: 0, lastUsedDay: 0 },
+    });
+    const turn = { text: "my sourdough starter died", day: 0, selfFelt: false, maxCandidates: 24, storeSize: 12 };
+    const plain = activate(s, turn, FIXTURE_TUNABLES).candidates.find((c) => c.id === id);
+    // A traversal that hands the memory a contribution larger than its cue.
+    const hopped = activate(
+      s,
+      { ...turn, spread: () => ({ contributions: [{ id, activation: 50 }] }) },
+      FIXTURE_TUNABLES,
+    ).candidates.find((c) => c.id === id);
+    expect(plain).toBeDefined();
+    // It is a seed-free call here (the fake ignores seeds), so the hop lands.
+    expect(hopped?.hops).toBe(50);
+    expect(hopped?.cueFraction).toBeCloseTo(plain?.cueFraction as number, 10);
+    expect(hopped?.cueFraction).toBeGreaterThanOrEqual(FIXTURE_TUNABLES.MIN_CUE_FRACTION);
+  });
+
+  test("the turn's record says what spreading did: seeds, depth, stop, computed, landed", () => {
+    const embed = (text: string): number[] =>
+      text.toLowerCase().includes("vellichor") ? [1, 0] : [0, 1];
+    const s = store({ embed });
+    for (const body of FILLER) s.put({ type: "memory", kind: "fact", body });
+    const cued = s.put({ type: "memory", kind: "fact", body: "The sourdough starter died after two weeks of neglect." });
+    const semantic = s.put({ type: "memory", kind: "fact", body: "Vellichor marks the strange wistfulness of second-hand bookshops." });
+    const associate = new Associate({ store: s });
+    associate.coactivate([
+      { id: cued, tier: "referenced" },
+      { id: semantic, tier: "referenced" },
+    ]);
+    associate.flush();
+    const turn = { sessionId: "a", text: "my sourdough starter died", vector: [1, 0] };
+    const d = new Recall({ store: s, owner: true }).recall(composeTurn(turn, { associate })).decision;
+    expect(d.spread).not.toBeNull();
+    expect(d.spread?.seeds).toBeGreaterThanOrEqual(1);
+    expect(d.spread?.depth).toBeGreaterThanOrEqual(1);
+    expect(["exhausted", "hop-limit", "node-limit"]).toContain(d.spread?.stop as string);
+    expect(d.spread?.computed).toBeGreaterThanOrEqual(1);
+    expect(d.spread?.landed).toBe(1);
+    // No traversal injected: nothing to report, and it says null rather than 0.
+    expect(new Recall({ store: s, owner: true }).recall({ ...turn, sessionId: "b" }).decision.spread).toBeNull();
+  });
+
+  test("salience ranks the candidate cut, and the cut is counted, never silent", () => {
+    const s = store();
+    for (const body of FILLER) s.put({ type: "memory", kind: "fact", body });
+    const dull = (body: string): string =>
+      s.put({
+        type: "memory",
+        kind: "fact",
+        body,
+        salience: { relevance: 0.05, emotional: 0, predictive: 0.05 },
+        physics: { birthDay: 0, lastUsedDay: 0 },
+      });
+    dull("The sourdough starter died after two weeks.");
+    dull("A sourdough starter died on the windowsill.");
+    dull("The rye sourdough starter died in the cold.");
+    const salient = s.put({
+      type: "memory",
+      kind: "fact",
+      body: "The sourdough starter died after two long weeks of quiet neglect, and it mattered more than it should have.",
+      salience: { relevance: 0.95, emotional: 0, predictive: 0.95 },
+      physics: { birthDay: 0, lastUsedDay: 0 },
+    });
+    const turn = { text: "sourdough starter died", day: 0, selfFelt: false, storeSize: 20 };
+    const all = activate(s, { ...turn, maxCandidates: 100 }, FIXTURE_TUNABLES).candidates;
+    const byActivation = [...all].sort((a, b) => b.activation - a.activation).map((c) => c.id);
+    // On activation alone the salient one is NOT in the top three — the old cut
+    // left it out.
+    expect(byActivation.slice(0, 3)).not.toContain(salient);
+    const cut = activate(s, { ...turn, maxCandidates: 3 }, FIXTURE_TUNABLES);
+    expect(cut.candidates.map((c) => c.id)).toContain(salient);
+    expect(cut.dropped).toBe(all.length - 3);
+    // Cold start: the bar is absolute and salience never lowers it, so the cut
+    // ranks by activation alone there.
+    const cold = activate(s, { ...turn, storeSize: 10, maxCandidates: 3 }, FIXTURE_TUNABLES);
+    expect(cold.candidates.map((c) => c.id)).not.toContain(salient);
+  });
+
+  test("hops are excluded from cueFraction's NUMERATOR, so they cannot buy loud", () => {
     // Unit-level, where the arithmetic is visible: identical cue and semantic,
-    // one with hop weight. The hop can only lower the cue fraction.
+    // one with hop weight. The hop never raises the cue fraction.
     const withoutHops = unitCandidate({
       id: "mem_plain",
       cue: 0.7,
@@ -1483,10 +1575,20 @@ describe("SEAMS L — hops raise a candidate the conversation reached, and mint 
     );
     const v = g.verdicts.find((x) => x.id === "mem_plain");
     expect(v?.cueFraction).toBeCloseTo(0.7 / 0.75, 10);
-    // Adding hop weight raises `activation` and lowers `cueFraction` — hard gate
-    // (c) therefore gets STRICTER, never looser, when the graph contributes.
-    const hopped = { ...withoutHops, hops: 0.6, activation: 1.35, cueFraction: 0.7 / 1.35 };
-    expect(hopped.cueFraction).toBeLessThan(v?.cueFraction as number);
+    // Adding hop weight raises `activation` and leaves `cueFraction` where it
+    // was — hard gate (c) is decided by the conversation alone (2026-09-28).
+    const hopped = unitCandidate({
+      id: "mem_hopped",
+      cue: 0.7,
+      temporal: 0,
+      semantic: 0,
+      arrival: 0.05,
+      hops: 0.6,
+      sal: 0.5,
+      maxTier: "surfaced",
+    });
+    expect(hopped.activation).toBeCloseTo(1.35, 10);
+    expect(hopped.cueFraction).toBeCloseTo(v?.cueFraction as number, 10);
   });
 });
 

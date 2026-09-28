@@ -17,6 +17,11 @@ redefined here.
 
 **Closed 2026-09-24** — hops modulate only (answer a): `recall/activate.ts` adds `spread(seeds, day)` contributions to existing candidates; wired by `core/retrieval.ts#composeTurn`.
 
+**Still open, 2026-09-28:** answer (b) — hops may add footnote-only pointers — is the
+next build's question. Build 1 measured first (`recall.decision.spread`, doctor's
+Association line) and fixed the arithmetic under it (NOTES §13); under (a), `landed` is
+0 on any turn with no semantic or temporal hit, by construction.
+
 **Owner:** `recall/` (its NOTES.md §7 already names the seam: "when `associate/`
 ships, its hops feed a fourth channel and the gate does not change").
 **Have:** `spread(input, tunables)` — a pure function — and `Associate.spreadFrom()`,
@@ -62,6 +67,11 @@ the returned report, both of which are in-memory and bounded.
 **Consequence, stated plainly:** an eviction that happens in a process that then
 dies leaves the row at zero with no durable record of what it used to be. That is
 weaker than G3 asks for.
+**2026-09-28:** the zeroed row itself is now swept at the flush (`Store.sweepEdges`),
+counted on the flush report and the `associate.flush` row. That removes a row that
+already carried nothing; the prior weight's durable record is the same open ask as
+before (the `edges_archive` below). Note the store did have one delete before this:
+`restoreEdge`, a dream's undo.
 **Real fix (store's call):** an `edges_archive` table in box 2 —
 `(src, dst, weight, last_day, evicted_day, reason)`, append-only — written inside
 the same transaction as the zeroing row, so the archive lands before (or with) the
@@ -159,6 +169,9 @@ the read surface, not a decision.
 **Real fix if a dashboard or a hygiene sweep needs it:** `edgesInto(dst)` and an
 `edgeCount()`/`edges(limit, offset)` enumeration. A dead-edge sweep (rows sitting at
 zero forever) also has no home today.
+**Partly closed 2026-09-28:** `Store.allEdges()` (a read, for doctor's census) and
+`Store.sweepEdges(dead)` (the flush's sweep of rows that carry nothing; the predicate is
+this module's). Still no `edgesInto`.
 
 ## 7. Guarantee 9 is half-reachable: there is no "under audit" flag
 
@@ -179,3 +192,29 @@ Not a defect, and recorded so nobody "fixes" it: `Associate.observer` reads
 `store.observer` and never re-derives it. `docs/SEAMS.md` queued item 4 already says
 the hoist to `src/core/observer.ts` is a MOVE, not a rewrite; associate is now the
 third consumer and will follow the move without changing behavior.
+
+## 9. Eviction is one-way (noted 2026-09-28, not changed)
+
+**Owner:** this module, with `store/`'s read surface (§6).
+**Have:** the count cap evicts on the BUSY node only — its row to the quiet node goes to
+zero (and is now swept at the flush), while the quiet node's row back stays and still
+conducts until its own homeostasis or decay settles it. So after an eviction a pair can
+conduct one way and not the other.
+**Why it is left:** removing both directions would mean the busy node's cap reaching
+into the quiet node's edges, which the quiet node may value (it is one of few), and it
+is not the build-1 question. If replay shows one-way ghosts mattering, the fix is to
+zero the back row inside the same plan (`planFlush` already loads both endpoints of
+every delta), counted as its own eviction reason.
+
+## 10. Left for the next build (from the adversarial review of #279, 2026-09-28)
+
+Recorded, not built — build 1 was measure-and-fix only:
+
+- **A best-first queue across depths, with an activation threshold.** Today each hop's
+  frontier is ranked, but depth 1 still finishes before depth 2 starts, and a node is
+  expanded however little it carries. A single priority queue over (carried) across
+  depths, stopping under a threshold, would spend the node budget where activation is.
+- **A ceiling on the per-candidate hop score.** Contributions sum across paths with no
+  cap, so a candidate reached by many seeds can gather a hop score out of proportion to
+  its own cue. A ceiling (relative to the candidate's cue + semantic, say) belongs with
+  option (b) of §1, when hops start to matter for what is shown.

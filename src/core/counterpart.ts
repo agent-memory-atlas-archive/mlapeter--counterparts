@@ -597,6 +597,9 @@ export interface CreditSummary {
   /** Refusals keyed by the physics `CreditReason` (or recall's own gate reason). */
   readonly refused: Record<string, number>;
   readonly ids: string[];
+  /** Uses refused strength credit only for their day cadence that still joined
+   *  the turn's links (2026-09-28; associate NOTES §13). */
+  readonly linkedDespite: number;
   /** Every id the assistant EXPANDED this boundary, credited or refused — the
    *  OQ4 probe's input (`recall/probe.ts`): footnotes delivered ∩ later expanded. */
   readonly expandedIds: string[];
@@ -616,6 +619,8 @@ export interface PendingApplyReport {
   readonly rows: number;
   readonly blocked: number;
   readonly evicted: number;
+  /** Dead edge rows the flushes swept (2026-09-28). */
+  readonly swept: number;
   /** Deltas drained and not landed — the failed arm's chosen direction. */
   readonly dropped: number;
   /** Pairs the pending file's cap refused while the hooks were writing it. */
@@ -1243,6 +1248,9 @@ export const RECALL_DECISION_FIELDS = [
   "footnotes",
   "elapsedMs",
   "aborted",
+  // Association build 1 (2026-09-28): what spreading did, and the cut's count.
+  "spread",
+  "dropped",
 ] as const;
 
 export type SurfaceSetField = (typeof RECALL_DECISION_FIELDS)[number];
@@ -1289,7 +1297,7 @@ function recallDecisionRecord(
   d: RecallDecision,
   ctx: { date: string | null },
 ): Record<string, unknown> {
-  return {
+  const surfaceSet = {
     // The raw session id, as `gate.chunk` records it and as `gate_session` has
     // keyed its rows since SEAMS item B: hashing here would buy no privacy the
     // same store does not already give away, and would cost the join between a
@@ -1319,7 +1327,25 @@ function recallDecisionRecord(
     // adapter's own `adapter.recall {reason: "latency-abort"}`.
     elapsedMs: d.elapsedMs,
     aborted: d.aborted,
+    // What spreading did this turn and how many scored candidates the cut left
+    // out — counts only (association build 1, 2026-09-28). `spread` is null on
+    // a turn it did not run.
+    spread: d.spread,
+    dropped: d.dropped,
   } satisfies Record<SurfaceSetField, unknown>;
+  return surfaceSet;
+}
+
+/**
+ * A use whose STRENGTH credit was refused only for its day cadence — recall's
+ * once-per-lived-day gate, or physics' birth-day / stale-day / already-today —
+ * still counts as co-activation for links (2026-09-28, associate NOTES §8).
+ */
+function linksDespite(r: CreditResult): boolean {
+  if (r.reason === "already-credited-at-or-above") return true;
+  if (r.reason !== "physics-refused") return false;
+  const why = r.outcome?.reason;
+  return why === "birth-day" || why === "stale-day" || why === "already-credited-today";
 }
 
 export class Counterpart {
@@ -1512,6 +1538,8 @@ export class Counterpart {
       retarget: (oldId, newId, day) => {
         this.associate.retargetOnSupersede(oldId, newId, day);
       },
+      // A dream's links go through the edge module's rules (2026-09-28).
+      link: (pairs, weight, day) => this.associate.propose(pairs, weight, day),
       emit: (name, ref, data) => this.emit(name, ref, data),
       ownerName: () => this.ownerDisplayName(),
     });
@@ -2143,6 +2171,10 @@ export class Counterpart {
     const ids: string[] = [];
     const coactivated: Credited[] = [];
     let credited = 0;
+    /** Uses whose strength credit was refused for its day cadence and that
+     *  joined the turn's links anyway (2026-09-28) — counted, so the decoupling
+     *  is visible on the credit row. */
+    let linkedDespite = 0;
     for (const u of uses) {
       try {
         // A QUOTED use was a loud candidate recall surfaced on a turn's own cue
@@ -2150,10 +2182,19 @@ export class Counterpart {
         // EXPANDED id may have been read off the wake — the display decides
         // whether it is a return (physics §5.11).
         const r = this.resolveUse(sessionId, u.memoryId, "referenced", u.how === "quoted" ? { cued: true } : {});
+        // LINKS DO NOT INHERIT THE ONCE-A-DAY RULE (2026-09-28; associate NOTES
+        // §8). Strength is credited once per lived day; a PAIR is a different
+        // question — a memory used on turn 1 and again on turn 5 beside a new
+        // one was thought together with it. So every use that was refused only
+        // for its day cadence still joins this turn's pair set. What stays out:
+        // an ambiguous handle (it trains nothing, edges included — §9 G5), an
+        // observer, and a use that threw. Pairs are still at most once per turn:
+        // `coactivate` takes each id once.
+        if (r.credited || linksDespite(r)) coactivated.push({ id: u.memoryId, tier: "referenced" });
+        if (!r.credited && linksDespite(r)) linkedDespite += 1;
         if (r.credited) {
           credited += 1;
           ids.push(u.memoryId);
-          coactivated.push({ id: u.memoryId, tier: "referenced" });
           continue;
         }
         // The physics enum where physics refused, recall's own reason
@@ -2184,6 +2225,7 @@ export class Counterpart {
       unreadable,
       refused,
       ids,
+      linkedDespite,
     };
     this.emit("counterpart.credit", sessionId, {
       reason,
@@ -2192,6 +2234,7 @@ export class Counterpart {
       expanded: summary.expanded,
       quoted: summary.quoted,
       credited,
+      linkedDespite,
     });
     return summary;
   }
@@ -2295,6 +2338,7 @@ export class Counterpart {
       rows: 0,
       blocked: 0,
       evicted: 0,
+      swept: 0,
       dropped: 0,
       pendingDropped: 0,
       corrupt: 0,
@@ -2345,6 +2389,7 @@ export class Counterpart {
         out.rows += report.rows;
         out.blocked += report.blocked;
         out.evicted += report.evictions.length;
+        out.swept += report.swept;
         out.dropped += report.dropped;
       }
       // `busy` is not applied either, and it is the subtle one: `flush()`
@@ -2391,6 +2436,7 @@ export class Counterpart {
       rows: out.rows,
       blocked: out.blocked,
       evicted: out.evicted,
+      swept: out.swept,
       dropped: out.dropped,
       pendingDropped: out.pendingDropped,
       corrupt: out.corrupt,
@@ -2427,7 +2473,9 @@ export class Counterpart {
     for (const use of uses) {
       const result = this.resolveUse(sessionId, use.memoryId, use.tier);
       results.push(result);
-      if (result.credited) credited.push({ id: use.memoryId, tier: use.tier });
+      // The same rule as `creditReferences` (2026-09-28): links do not inherit
+      // the once-a-day credit cadence.
+      if (result.credited || linksDespite(result)) credited.push({ id: use.memoryId, tier: use.tier });
     }
     this.associate.coactivate(credited);
     return results;

@@ -75,6 +75,10 @@ export interface ToolRow {
 
 export interface BenchConfig {
   readonly name: string;
+  /** Wire the associate traversal into each turn, as the live hook does
+   *  (`--spread`, 2026-09-28). Absent: the hop channel is dark, which is how
+   *  every bench before this flag ran. */
+  readonly spread?: boolean;
   /** BM25 b. 0 reproduces the pre-normalization scorer exactly. */
   readonly b: number;
   /** BM25 k1. */

@@ -16,10 +16,17 @@
  * Bounds, all three of them structural:
  *   - **depth** — `HOPS` hops, and a node is expanded once, at the shallowest
  *     depth it was reached;
- *   - **fan** — a node's contribution is shared across its live edges
- *     (`FAN_NORMALIZATION`), so a hub cannot flood;
+ *   - **fan** — a node passes activation in proportion to each edge's ABSOLUTE
+ *     weight against the homeostatic bound (`MAX_OUT_WEIGHT`), and never more
+ *     than its whole outgoing weight allows, so a hub cannot flood
+ *     (`FAN_NORMALIZATION`, NOTES.md §6, 2026-09-28);
  *   - **size** — `MAX_SPREAD_NODES` expansions, and the result says when it hit
  *     the ceiling instead of quietly returning less.
+ *
+ * ORDER (2026-09-28): seeds are expanded strongest first, and each hop's
+ * frontier by the activation it carries — not in the order the caller happened
+ * to list them. On a big store the node budget is spent before the seeds run
+ * out, so insertion order decided which memories ever got to spread.
  */
 import { conducts, edgeWeightAt } from "./edges.js";
 import type { EdgeState } from "./edges.js";
@@ -64,6 +71,10 @@ export interface SpreadResult {
   /** Seeds and destinations refused by `conducts`. */
   readonly blocked: number;
   readonly stop: SpreadStop;
+  /** The deepest hop at which a node was EXPANDED (0: nothing was). Depth 1 is
+   *  the seeds themselves; 2 means the traversal got past them. Measured
+   *  2026-09-28, so a turn can say how far spreading actually reached. */
+  readonly depth: number;
 }
 
 export function spread(input: SpreadInput, t: AssociateTunables): SpreadResult {
@@ -75,27 +86,34 @@ export function spread(input: SpreadInput, t: AssociateTunables): SpreadResult {
   const seedIds = new Set(input.seeds.map((s) => s.id));
   let blocked = 0;
   let expanded = 0;
+  let reached = 0;
   let stop: SpreadStop = "exhausted";
 
-  let frontier: { id: string; carried: number }[] = [];
+  // One entry per seed id (a repeated seed carries its summed activation),
+  // strongest first: the node budget goes to the loudest memories.
+  const seedCarry = new Map<string, number>();
   for (const s of input.seeds) {
     if (!input.conducts(s.id)) {
       blocked += 1;
       continue;
     }
-    if (s.activation > 0) frontier.push({ id: s.id, carried: s.activation });
+    if (s.activation > 0) seedCarry.set(s.id, (seedCarry.get(s.id) ?? 0) + s.activation);
   }
+  let frontier = byCarried(seedCarry);
 
   for (let depth = 1; depth <= t.HOPS && frontier.length > 0; depth++) {
-    const next: { id: string; carried: number }[] = [];
+    /** The nodes reached at THIS depth, carrying what they received over every
+     *  path — not whichever path happened to arrive first. */
+    const reachedNow = new Map<string, number>();
     for (const node of frontier) {
       if (expandedAt.has(node.id)) continue;
       if (expanded >= t.MAX_SPREAD_NODES) {
         stop = "node-limit";
-        return finish(acc, expanded, blocked, stop);
+        return finish(acc, expanded, blocked, stop, reached);
       }
       expandedAt.set(node.id, depth);
       expanded += 1;
+      reached = depth;
 
       const live: { dst: string; weight: number }[] = [];
       for (const e of input.edgesFrom(node.id)) {
@@ -110,8 +128,16 @@ export function spread(input: SpreadInput, t: AssociateTunables): SpreadResult {
       }
       if (live.length === 0) continue;
 
-      const fan = t.FAN_NORMALIZATION ? live.reduce((sum, e) => sum + e.weight, 0) : 1;
-      if (fan <= 0) continue;
+      // ABSOLUTE weight (2026-09-28): an edge passes `w / MAX_OUT_WEIGHT` of
+      // what the node carries, before hop decay — a fresh 0.1 edge passes 2.5%
+      // whether or not it has siblings. It used to be `w / (the node's live
+      // sum)`, which let a lone 0.03 edge pass everything. The divisor never
+      // drops below the node's own outgoing sum, so a node whose edges were
+      // written outside homeostasis (a legacy dream gist) still passes at most
+      // what it carries.
+      const sum = live.reduce((total, e) => total + e.weight, 0);
+      const fan = t.FAN_NORMALIZATION ? Math.max(t.MAX_OUT_WEIGHT, sum) : 1;
+      if (!(fan > 0)) continue;
       for (const e of live) {
         if (seedIds.has(e.dst)) continue;
         const gain = node.carried * t.HOP_DECAY * (e.weight / fan);
@@ -126,14 +152,21 @@ export function spread(input: SpreadInput, t: AssociateTunables): SpreadResult {
           have.paths += 1;
           if (depth < have.depth) have.depth = depth;
         }
-        if (!expandedAt.has(e.dst)) next.push({ id: e.dst, carried: gain });
+        if (!expandedAt.has(e.dst)) reachedNow.set(e.dst, (reachedNow.get(e.dst) ?? 0) + gain);
       }
     }
-    frontier = next;
+    frontier = byCarried(reachedNow);
     if (frontier.length > 0 && depth === t.HOPS) stop = "hop-limit";
   }
 
-  return finish(acc, expanded, blocked, stop);
+  return finish(acc, expanded, blocked, stop, reached);
+}
+
+/** A frontier, strongest first; ties broken by id so a traversal is deterministic. */
+function byCarried(m: ReadonlyMap<string, number>): { id: string; carried: number }[] {
+  return [...m]
+    .map(([id, carried]) => ({ id, carried }))
+    .sort((a, b) => b.carried - a.carried || (a.id < b.id ? -1 : 1));
 }
 
 function finish(
@@ -141,9 +174,10 @@ function finish(
   expanded: number,
   blocked: number,
   stop: SpreadStop,
+  depth: number,
 ): SpreadResult {
   const contributions = [...acc]
     .map(([id, v]) => ({ id, activation: v.activation, depth: v.depth, paths: v.paths }))
     .sort((a, b) => b.activation - a.activation || (a.id < b.id ? -1 : 1));
-  return { contributions, expanded, blocked, stop };
+  return { contributions, expanded, blocked, stop, depth };
 }

@@ -72,8 +72,19 @@ for `recall/`; telemetry by reference.
 
 1. **[M] Footnotes never train.** The ignorable tier is ignorable in both directions.
 2. **[M] Per node, the edge count is capped and the total outgoing weight is bounded**,
-   with proportional renormalization.
-3. **[M] Every eviction is archived before the edge is removed.**
+   with proportional renormalization. Since 2026-09-28 this covers every edge a dream
+   writes too: a dream's `link` and a gist's ties to its sources go through
+   `Associate.propose` (live endpoints, pinned frozen, the DECAYED weight) at about one
+   co-activation, instead of a raw upsert at 0.3 — and land ONLY WHERE THERE IS ROOM:
+   a proposal never evicts or scales down another edge; a pair with no room is refused
+   `no-room` and counted. Homeostasis stays the Hebbian flush's. The flush also sweeps
+   the rows that carry nothing (an eviction's zero, a weight decayed to the floor;
+   never a pinned memory's) and counts them.
+3. **[M] Every eviction is archived before the edge is removed.** *Not met today, and
+   weaker since 2026-09-28:* an eviction is reported and evented (in-process, bounded)
+   and its row zeroed — and the flush's sweep now DELETES that zeroed row, so the table
+   no longer keeps even the zero that said which pair was evicted. The durable archive is
+   the open ask in INTERFACE-GAPS §2.
 4. **[M] At most once**: the flush ordering guarantees a crash loses deltas rather than
    double-applying them, and a test asserts the direction, not merely the invariant.
 5. **[M] A contended flush skips and stays buffered**; the drain is bounded to what was
@@ -86,7 +97,10 @@ for `recall/`; telemetry by reference.
 9. **[M] Pinned or under-audit memories are frozen in both directions** — an arc under
    audit does not change mid-audit.
 10. **[A] Hop count, hop decay, and fan normalization are knobs**, recorded with v1's
-    calibration and re-earned here.
+    calibration and re-earned here. Working default since 2026-09-28: an edge passes
+    `w / max(MAX_OUT_WEIGHT, the node's live sum)` of what its node carries — ABSOLUTE
+    weight, not its share of the siblings (NOTES §13) — and each turn's record says what
+    the traversal did (seeds, expanded, stop, depth, computed, landed).
 11. **[M] The durability exemption is declared in this contract and nowhere else.** Any
     second place that buffers non-reconstructible state fails review.
 

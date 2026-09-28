@@ -167,7 +167,8 @@ dreamer is the model (a background agent the session launches), outside this pro
   the strongest original's kind when the kinds differ; the
   merged memory stands where the strongest original stood, carries their returns,
   feelings and trait nudges — each nudge keeping its source, model and moment — and
-  inherits their links), `link` (both ways, `LINK_WEIGHT`), `replayed` (a
+  inherits their links), `link` (both ways, proposed at `LINK_WEIGHT` through
+  `associate`, only where there is room, since 2026-09-28), `replayed` (a
   return at `DREAM_RETURN_WEIGHT`, never a use), `gist` (source `dreamed`, citing and
   linked to its sources, salience capped at `DREAMED_CLAIM_CEILING`), `contradiction`,
   `feeling-now` (the self's feeling today, capped at the memory's peak; the same
@@ -317,4 +318,10 @@ examples) · **§2.19** (every change enumerable: `counterparts dream --show`) �
    but the v9 upgrade marked a `self`-kind gist `me` when it carried the old rule.
 3. Should dream links be stored differently from Hebbian links (a marker, a hop
    weight)? A session designing association with the owner may decide; today they are
-   ordinary edges at `LINK_WEIGHT`.
+   ordinary edges at `LINK_WEIGHT`. Since 2026-09-28 (association build 1) that is 0.1,
+   about one co-activation, written through `Associate.propose`: live endpoints, the
+   pinned freeze, raised from the decayed weight, and ONLY WHERE THERE IS ROOM — a
+   proposal never evicts or scales down what waking use learned. A `link` with no room
+   is refused `no-room`; a gist keeps its first-named ties that fit and records which
+   landed. The dream row always counts `gistLinks`, `linkNoRoom`, `linkFrozen`,
+   `linkFailed` (associate NOTES §13).

@@ -68,9 +68,12 @@ export interface AssociateTunables {
   HOPS: number;
   /** Per-hop decay. [v1: 0.5] CAL. */
   HOP_DECAY: number;
-  /** Fan normalization: a node's outgoing weight is shared among its edges, so a
-   *  hub cannot flood. [v1: on] Structural-ish — off is an A/B arm, not a
-   *  shipping mode. */
+  /** Fan normalization: an edge passes `w / max(MAX_OUT_WEIGHT, node's live
+   *  sum)` of what its node carries, so a hub cannot flood and a weight means
+   *  the same thing on a node with one edge as on a node with thirty
+   *  (2026-09-28; it was `w / live sum`, relative to the siblings, which made a
+   *  lone 0.03 edge pass everything). [v1: on] Structural-ish — off (raw
+   *  weight) is an A/B arm, not a shipping mode. */
   FAN_NORMALIZATION: boolean;
   /** Nodes expanded in one traversal — a latency bound, and the reason a dense
    *  graph cannot turn one seed into a whole-store sweep. CAL. */

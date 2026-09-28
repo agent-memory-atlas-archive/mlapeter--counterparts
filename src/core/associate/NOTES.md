@@ -192,3 +192,78 @@ are worth writing down:
   store's constructor, so a new top-level name would stop every store opened by code
   that predates it — and after a deploy, the MCP servers of running sessions are that
   code. `sessions/` is already classified, and the file is a subdirectory inside it.
+
+## 13. Association build 1: measure, then fix the plumbing (2026-09-28)
+
+Working defaults, held lightly. No new behaviour: the traversal is measured, its
+arithmetic made to mean something, and five bugs closed, so the next build (quiet
+pointers from hops, temporal contiguity, index co-credit) stands on something sound.
+
+**Measured.** Every turn's `recall.decision` row carries `spread`: seeds, nodes
+expanded, where it stopped and why (`exhausted` / `hop-limit` / `node-limit`), the
+deepest hop expanded, contributions computed, and how many LANDED on a candidate the
+24-cut kept —
+plus `dropped`, the scored candidates the 24-cut left out. Doctor's Association line
+reads the last week of them and a census of the edges (total, conducting, and by
+source — derived, since the table records none: a gist's ties, a dream's links, the
+rest learned from use). Read `landed` knowing the rule: seeds are the cued candidates
+and a seed receives nothing (§6), so hops can only land on a candidate that meaning or
+the calendar reached and the words did not. On a lexical-only turn `landed` is 0 by
+construction. That is option (a) of INTERFACE-GAPS §1 working as chosen; option (b) is
+the next build's question.
+
+**Frontier order.** Seeds expand strongest first and each hop's frontier by the
+activation it carries (summed over every path that reached the node), not in the order
+the first cue's postings happened to list them. On a big store the 64-node budget is
+spent before the seeds run out, so insertion order used to decide which memories ever
+spread.
+
+**Absolute weight.** An edge passes `w / max(MAX_OUT_WEIGHT, node's live sum)` of what
+its node carries (then `HOP_DECAY`). The old rule divided by the node's live sum, so a
+lone 0.03 edge passed 100% and a weight meant nothing on its own. Homeostasis keeps a
+node's sum ≤ 4, so hubs still cannot flood; the `max` keeps a legacy node written
+outside homeostasis (an old gist at 40 × 0.3 = 12) at most at what it carries. What it
+does to a fresh edge: one Hebbian credit (0.1) passes 0.5 × 0.1 / 4 = 1.25% of the
+seed's activation — near-silent until use trains it, which is the intent. A trained
+edge at 1.0 passes 12.5%.
+
+**Dream and gist links go through this module** (`Associate.propose`). Both endpoints
+live, a pinned endpoint frozen (the dream's bundle never shows a pinned memory, so this
+is the second line), each direction raised to at least the proposal from its DECAYED
+weight — the old `Math.max(w, stored weight)` with `day = today` resurrected what an
+old pair weighed before it faded. And a proposal lands ONLY WHERE THERE IS ROOM
+(adversarial review of #279): it never evicts an edge and never scales one down, so
+nothing waking use learned is ever paid for by a dream. A pair lands when both ends
+have room — a new live edge under `MAX_EDGES_PER_NODE`, the outgoing sum after the raise
+within `MAX_OUT_WEIGHT` — and otherwise is refused `no-room` (a `link` answers ok:false
+`no-room`; a gist's tie is counted). Pairs are taken in the dream's own order, so a gist
+with more sources than room keeps the FIRST NAMED, and its change records the sources
+that actually landed. The dream row always carries `gistLinks`, `linkNoRoom`,
+`linkFrozen` and `linkFailed`, zeros included. Homeostasis stays the Hebbian flush's.
+The proposal is `HEBB_RATE` (0.1, the dream's `LINK_WEIGHT`), not 0.3: the dream
+proposes, waking use confirms, `S_EDGE` fades the rest. Because a proposal touches
+only its own pair's two rows, a dream's undo (which restores that pair) is complete.
+
+**Links no longer inherit the once-a-day credit rule** (§8 said they must not; the
+credit seam did it anyway). The pair set is built from every use whose strength credit
+was refused only for its day cadence, not from the credited ones alone, so a memory used
+on turn 1 and again on turn 5 beside a new one links to it. An ambiguous handle still
+trains nothing, edges included. Pairs stay at most once per turn. The count of uses
+that joined links this way is `linkedDespite`, on the credit summary and the
+`recall.credit` row; `Counterpart.resolveUses` follows the same rule.
+
+**Recall's side**, recorded here because it is this module's channel: hops are now in
+neither half of `cueFraction` (in the denominator, a neighbour could push a well-cued
+memory under `MIN_CUE_FRACTION` and footnote it), and the 24-cut ranks by activation over
+the gate's own salience factor, so the cut keeps what the salience-modulated bar would.
+
+**Hygiene.** The flush sweeps rows that carry nothing — an eviction's zero, a weight
+decayed to the floor — after its write lands, and counts them (`swept` on the flush
+report and the `associate.flush` row). The write transaction reads only SQL-prefiltered
+candidates: rows at or below the floor, or last written at least `fadeHorizon` lived
+days ago (the days a full-weight edge takes to fade under the floor, ≈118 at today's
+constants); `isDead` decides on that subset, and a row that faded more recently is swept
+on a later flush. A row touching a PINNED memory is never swept (G9, frozen both ways).
+A sweep that fails costs only the tidying. The cost, stated: sweeping an eviction's zero
+removes the last trace in the table of which pair was evicted (CONTRACT G3,
+INTERFACE-GAPS §2). Eviction stays one-way (INTERFACE-GAPS §9).

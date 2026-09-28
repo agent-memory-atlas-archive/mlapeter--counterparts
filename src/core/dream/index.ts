@@ -36,6 +36,7 @@
  */
 import { createHash, randomBytes } from "node:crypto";
 
+import { Associate } from "../associate/index.js";
 import { FIT_TUNABLES, clipWire, fidelityOf, fit, lineOf, offeredOf, packParts, readIndex, wireChars, writeIndex } from "../fit/index.js";
 import type { Fidelity, FitCandidate, Placed } from "../fit/index.js";
 import { emotionalIntensity, sal, strength } from "../physics/index.js";
@@ -201,6 +202,19 @@ export type DreamRefusal =
   | "dream-closed"
   | "no-such-part";
 
+/** `associate.ProposeReport`, structurally — what a proposed link did. */
+export interface DreamLinkReport {
+  readonly reason: string;
+  /** Pairs that landed. */
+  readonly pairs: number;
+  /** The pairs that landed, in the order proposed. */
+  readonly landed: readonly { a: string; b: string }[];
+  /** Pairs refused because an endpoint had no room — a proposal never evicts. */
+  readonly noRoom: number;
+  readonly blocked: number;
+  readonly frozen: number;
+}
+
 /** What the composition root hands this module. */
 export interface DreamContext {
   readonly store: Store;
@@ -215,7 +229,15 @@ export interface DreamContext {
   readonly today: () => string;
   /** `associate.retargetOnSupersede`, so a merged memory inherits its originals' links. */
   readonly retarget?: (oldId: string, newId: string, day: number) => void;
-  readonly emit?: (name: string, ref?: string, data?: Record<string, string | number | boolean | null>) => void;
+  /**
+   * `associate.propose` — a link or a gist's ties, written through the edge
+   * module's rules (live endpoints, pinned frozen, decayed weight, count cap,
+   * outgoing bound) instead of a raw upsert (2026-09-28). Absent, this module
+   * binds its own `Associate` over the same store: there is no path that
+   * writes an edge around homeostasis.
+   */
+  readonly link?: (pairs: readonly { a: string; b: string }[], weight: number, day: number) => DreamLinkReport;
+  readonly emit?:(name: string, ref?: string, data?: Record<string, string | number | boolean | null>) => void;
   /**
    * The owner's name as the store knows it (the identity core's `name`, `init
    * --name`), for lines that speak of the owner. Null or absent: "the owner".
@@ -373,6 +395,27 @@ export class Dreams {
 
   private get store(): Store {
     return this.ctx.store;
+  }
+
+  private ownLinker: Associate | null = null;
+  /** What this propose call's links did, for the dream row (2026-09-28). */
+  private linkTally = { gistLinks: 0, linkNoRoom: 0, linkFrozen: 0, linkFailed: 0 };
+
+  /** Every edge a dream writes goes through here (`DreamContext.link`). */
+  private proposeLinks(pairs: readonly { a: string; b: string }[], day: number): DreamLinkReport {
+    let r: DreamLinkReport;
+    try {
+      r =
+        this.ctx.link !== undefined
+          ? this.ctx.link(pairs, DREAM_TUNABLES.LINK_WEIGHT, day)
+          : (this.ownLinker ??= new Associate({ store: this.store })).propose(pairs, DREAM_TUNABLES.LINK_WEIGHT, day);
+    } catch {
+      r = { reason: "failed", pairs: 0, landed: [], noRoom: 0, blocked: 0, frozen: 0 };
+    }
+    this.linkTally.linkNoRoom += r.noRoom;
+    this.linkTally.linkFrozen += r.frozen;
+    if (r.reason === "failed" || r.reason === "observer") this.linkTally.linkFailed += 1;
+    return r;
   }
 
   private emit(name: string, ref?: string, data?: Record<string, string | number | boolean | null>): void {
@@ -867,6 +910,7 @@ export class Dreams {
       if ((c.action === "merge" || c.action === "gist") && c.undone === 0 && c.ref !== null) shown.add(c.ref);
     }
     const results: ChangeResult[] = [];
+    this.linkTally = { gistLinks: 0, linkNoRoom: 0, linkFrozen: 0, linkFailed: 0 };
     input.changes.forEach((change, index) => {
       let r: Omit<ChangeResult, "index">;
       try {
@@ -882,6 +926,14 @@ export class Dreams {
       applied: results.filter((r) => r.ok).length,
       refused: results.filter((r) => !r.ok).length,
       ...counts,
+      // What the links did (2026-09-28), ALWAYS written, zeros included: the
+      // gists' ties that landed, pairs refused for want of room (a proposal
+      // never evicts), pairs refused for a pinned end, and proposals that
+      // failed outright — counts, no gate.
+      gistLinks: this.linkTally.gistLinks,
+      linkNoRoom: this.linkTally.linkNoRoom,
+      linkFrozen: this.linkTally.linkFrozen,
+      linkFailed: this.linkTally.linkFailed,
     });
     return { ok: true, results };
   }
@@ -1023,13 +1075,17 @@ export class Dreams {
         const b = live(change.b);
         if (a === null || b === null) return { action, ok: false, reason: "not-shown-or-gone", detail: this.notLive([a === null ? change.a : null, b === null ? change.b : null], shown) };
         if (a.id === b.id) return { action, ok: false, reason: "same-memory", detail: `a and b are both ${a.id}.` };
+        // The STORED rows, for undo: what goes back is exactly what was there.
         const ab = this.store.edgesFrom(a.id).find((e) => e.dst === b.id) ?? null;
         const ba = this.store.edgesFrom(b.id).find((e) => e.dst === a.id) ?? null;
-        const w = DREAM_TUNABLES.LINK_WEIGHT;
-        this.store.linkMany([
-          { src: a.id, dst: b.id, weight: Math.max(w, ab?.weight ?? 0), day },
-          { src: b.id, dst: a.id, weight: Math.max(w, ba?.weight ?? 0), day },
-        ]);
+        // THROUGH THE EDGE MODULE (2026-09-28): at about one co-activation,
+        // raised from the DECAYED weight (a re-link no longer resurrects what
+        // an old pair weighed before it faded), and ONLY WHERE THERE IS ROOM —
+        // a dream never evicts or scales down what waking use has learned.
+        const linked = this.proposeLinks([{ a: a.id, b: b.id }], day);
+        if (linked.frozen > 0) return { action, ok: false, reason: "pinned-is-frozen", detail: `${[a, b].filter((r) => r.protected === 1).map((r) => r.id).join(", ")} is pinned; its links do not change.` };
+        if (linked.noRoom > 0) return { action, ok: false, reason: "no-room", detail: `${a.id} or ${b.id} has no room for another link (its links are full); a dream does not push out what waking use learned.` };
+        if (linked.reason !== "linked") return { action, ok: false, reason: linked.reason === "failed" ? "link-failed" : "not-linked", detail: `the link was not written (${linked.reason}).` };
         this.store.recordDreamChange(dream.id, {
           action,
           ref: a.id,
@@ -1080,15 +1136,37 @@ export class Dreams {
           origin: { ...(dream.session === null ? {} : { session: dream.session }), ...(dream.scope === null ? {} : { scope: dream.scope }), ref: `dream:${dream.id}` },
           ...(dream.model === null ? {} : { model: dream.model }),
         });
-        this.store.linkMany(
-          sources.flatMap((s) => [
-            { src: id, dst: s, weight: DREAM_TUNABLES.LINK_WEIGHT, day },
-            { src: s, dst: id, weight: DREAM_TUNABLES.LINK_WEIGHT, day },
-          ]),
-        );
-        this.store.recordDreamChange(dream.id, { action, ref: id, detail: { sources, fidelity: fidelityOf(readIndex(this.store, "dream"), dream.id, sources) } });
+        // The gist's ties to its sources, through the edge module, in the
+        // dream's own source order: each lands only where both ends have room
+        // (the first named are kept when the gist fills), so the gist is never
+        // over its bound and no source loses a learned link to make space. A
+        // tie that finds no room, or a pinned source, is counted, not refused:
+        // the pattern still stands.
+        const ties = this.proposeLinks(sources.map((s) => ({ a: id, b: s })), day);
+        this.linkTally.gistLinks += ties.landed.length;
+        const linkedSources = ties.landed.map((p) => (p.a === id ? p.b : p.a));
+        this.store.recordDreamChange(dream.id, {
+          action,
+          ref: id,
+          detail: {
+            sources,
+            fidelity: fidelityOf(readIndex(this.store, "dream"), dream.id, sources),
+            linked: linkedSources,
+            noRoom: ties.noRoom,
+            frozen: ties.frozen,
+            linkReason: ties.reason,
+          },
+        });
         shown.add(id);
-        const gistNotes = [...(words.cut ? [`text was kept to its first ${String(DREAM_TUNABLES.MAX_TEXT_CHARS)} characters.`] : []), ...((change.title ?? "").trim().length > DREAM_TUNABLES.MAX_TITLE_CHARS ? [titleNote()] : [])];
+        const gistNotes = [
+          ...(words.cut ? [`text was kept to its first ${String(DREAM_TUNABLES.MAX_TEXT_CHARS)} characters.`] : []),
+          ...((change.title ?? "").trim().length > DREAM_TUNABLES.MAX_TITLE_CHARS ? [titleNote()] : []),
+          ...(ties.reason === "failed" || ties.reason === "observer"
+            ? [`its ties to its sources were not written (${ties.reason}).`]
+            : ties.noRoom + ties.frozen > 0
+              ? [`linked to ${String(linkedSources.length)} of ${String(sources.length)} sources (${String(ties.noRoom)} had no room, ${String(ties.frozen)} pinned).`]
+              : []),
+        ];
         return { action, ok: true, reason: "dreamed", id, ...(gistNotes.length > 0 ? { note: gistNotes.join(" ") } : {}) };
       }
       case "contradiction": {

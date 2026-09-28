@@ -25,8 +25,10 @@
  *      The conservative default (SEAMS L, = option (a) of `associate/`'s gap §1):
  *      hops MODULATE candidates the conversation already reached and never mint
  *      one, which is the only reading that keeps recall's hard gate (a)
- *      structural. Excluded from `cueFraction`'s numerator, so hop weight can
- *      only push a candidate away from the loud tier.
+ *      structural. Excluded from `cueFraction` entirely (2026-09-28: it was in
+ *      the denominator, which let a hop take the loud tier away), so hop weight
+ *      can neither buy nor revoke the loud tier. The traversal's own account of
+ *      itself — expanded, stop, depth — rides through to the turn's record.
  */
 import type { RecallResult, Turn } from "./recall/index.js";
 import type { Recall } from "./recall/index.js";
@@ -49,7 +51,12 @@ export interface SpreadSource {
   spreadFrom(
     seeds: readonly { id: string; activation: number }[],
     day?: number,
-  ): { contributions: readonly { id: string; activation: number }[] };
+  ): {
+    contributions: readonly { id: string; activation: number }[];
+    expanded?: number;
+    stop?: string;
+    depth?: number;
+  };
 }
 
 export interface RetrievalSources {

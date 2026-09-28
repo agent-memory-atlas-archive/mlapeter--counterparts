@@ -51,6 +51,7 @@ import { join, resolve } from "node:path";
 import { DELIBERATE_DIM_CAP, tierOf } from "../../src/adapters/mcp/deliberate.js";
 import { Recall, TUNABLES, withTunables } from "../../src/core/recall/index.js";
 import { activate } from "../../src/core/recall/index.js";
+import { Associate } from "../../src/core/associate/index.js";
 import { DEFAULT_DATA_DIR_NAME, Store, forbiddenRoots, isWithin } from "../../src/core/store/index.js";
 import type { BenchConfig, BenchInput, BenchReport, Delivered, QueryRow, ToolRow } from "./types.js";
 
@@ -180,6 +181,13 @@ export function benchOverStore(store: Store, input: BenchInput, config: BenchCon
     BUDGET_MS: 600_000,
   });
   const recall = new Recall({ store, owner: true, tunables });
+  // The hop channel, as the live turn wires it (`--spread`): a READ of the
+  // edge graph, so the bench still writes nothing.
+  const associate = config.spread === true ? new Associate({ store }) : null;
+  const hop =
+    associate === null
+      ? {}
+      : { spread: (seeds: readonly { id: string; activation: number }[], d: number) => associate.spreadFrom(seeds, d) };
   const hubs = new Set(input.known_hubs ?? []);
   const day = store.livedDay();
   const storeSize = store.list({ archived: false }).length;
@@ -188,7 +196,7 @@ export function benchOverStore(store: Store, input: BenchInput, config: BenchCon
   for (const [i, q] of input.queries.entries()) {
     const label = q.turn === undefined ? `q${i + 1}` : `turn ${q.turn}`;
     // A FRESH session per query: no dedup, no cue carry-over, no refractory.
-    const built = recall.build({ sessionId: `bench-${config.name}-${i}`, text: q.text, owner: true, day });
+    const built = recall.build({ sessionId: `bench-${config.name}-${i}`, text: q.text, owner: true, day, ...hop });
     const d = built.decision;
     const delivered: Delivered[] = [
       ...d.surfaced.map((id) => ({ id, tier: "surfaced" })),
@@ -205,6 +213,7 @@ export function benchOverStore(store: Store, input: BenchInput, config: BenchCon
         selfFelt: false,
         maxCandidates: tunables.MAX_CANDIDATES,
         storeSize: d.storeSize > 0 ? d.storeSize : storeSize,
+        ...hop,
       },
       tunables,
     );

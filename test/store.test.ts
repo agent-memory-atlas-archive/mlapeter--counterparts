@@ -1816,6 +1816,7 @@ describe("observer mode is enforced at the store seam", () => {
     supersedeInto: ["mem_000000000000", "mem_000000000000", "dream-merge"],
     restoreSuperseded: ["mem_000000000000", "dream-merge"],
     restoreEdge: ["mem_000000000000", "mem_000000000000", null],
+    sweepEdges: [{ floor: 0.02, staleOnOrBefore: 0 }, () => true],
     retractFeelings: [["fel_x"]],
     retractDreamReturns: ["drm_x"],
     retractDreamNominations: ["drm_x"],

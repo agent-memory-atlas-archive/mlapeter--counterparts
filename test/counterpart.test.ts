@@ -688,6 +688,30 @@ describe("co-activation crosses the process line on disk", () => {
     for (const id of [a, b, d]) expect(text).not.toContain(id);
   });
 
+  test("links do NOT inherit the once-a-day credit rule: a memory used again later links to a new one", () => {
+    const c = brain();
+    const [a, b, d] = memories(c, 3) as [string, string, string];
+    c.store.advanceClock("2026-08-26");
+
+    // Turn 1: a and b, both credited.
+    const first = c.creditReferences("s1", { assistantTurns: [], expansions: [a, b] });
+    expect(first.credited).toBe(2);
+    // Turn 5, the same lived day: a again (its strength credit is refused — once
+    // a day) beside d, which is new.
+    const later = c.creditReferences("s1", { assistantTurns: [], expansions: [a, d] });
+    expect(later.credited).toBe(1);
+    expect(later.refused["already-credited-at-or-above"]).toBe(1);
+    expect(later.linkedDespite).toBe(1);
+    expect(first.linkedDespite).toBe(0);
+
+    c.applyPendingAssociations();
+    expect(c.associate.linked(a, b)).toBe(true);
+    // The pair a–d was thought together, and the edge says so.
+    expect(c.associate.linked(a, d)).toBe(true);
+    // At most once per turn: the a–d pair carries one co-activation, not two.
+    expect(c.associate.weightAt(a, d)).toBeCloseTo(c.associate.tunables.HEBB_RATE, 10);
+  });
+
   test("a single-memory pass buffers nothing, writes no file, and leaves no row", () => {
     const c = brain();
     const [a] = memories(c, 1) as [string];

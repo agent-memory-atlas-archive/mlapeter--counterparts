@@ -715,6 +715,8 @@ export const WRITE_METHODS = [
   "supersedeInto",
   "restoreSuperseded",
   "restoreEdge",
+  // 2026-09-28 (association build 1): the flush sweeps edge rows that carry nothing.
+  "sweepEdges",
   "retractFeelings",
   "retractDreamReturns",
   "retractDreamNominations",
@@ -2554,6 +2556,44 @@ export class Store {
     this.emit("store.link", undefined, { count: edges.length });
   }
 
+  /**
+   * Remove the edge rows `dead` names — `associate/`'s sweep of rows that
+   * already carry nothing (an eviction's zero, a weight decayed to the floor;
+   * 2026-09-28). The predicate is the caller's, because the decay arithmetic is
+   * `associate/`'s, not the store's. One transaction; returns the count.
+   *
+   * PREFILTERED IN SQL, so the write transaction reads only candidates: rows
+   * at or below `floor`, or last written on or before `staleOnOrBefore` (the
+   * caller's day by which even a full-weight edge has decayed under the
+   * floor). `dead` decides on that subset. A row that has faded more recently
+   * is swept on a later flush, once it is old enough to be a candidate. Rows
+   * touching a PINNED memory are never candidates: a pinned memory's edges are
+   * frozen both ways (associate G9), and that includes their removal.
+   */
+  sweepEdges(
+    filter: { floor: number; staleOnOrBefore: number },
+    dead: (e: EdgeRow) => boolean,
+  ): number {
+    const n = this.mutate("sweepEdges", () => {
+      const doomed = this.ops
+        .all<EdgeRow>(
+          `SELECT e.* FROM edges e
+            WHERE (e.weight <= ? OR e.last_day <= ?)
+              AND NOT EXISTS (SELECT 1 FROM memories m
+                               WHERE m.id IN (e.src, e.dst) AND m.protected = 1)`,
+          filter.floor,
+          filter.staleOnOrBefore,
+        )
+        .filter(dead);
+      if (doomed.length === 0) return 0;
+      const st = this.ops.prepare("DELETE FROM edges WHERE src = ? AND dst = ?");
+      for (const e of doomed) st.run(e.src, e.dst);
+      return doomed.length;
+    });
+    if (n > 0) this.emit("store.edge.swept", undefined, { count: n });
+    return n;
+  }
+
   setProspective(entry: ProspectiveInput): void {
     this.mutate("setProspective", () => {
       this.requireRow(entry.memoryId);
@@ -3924,6 +3964,11 @@ export class Store {
 
   edgesFrom(src: string): EdgeRow[] {
     return this.ops.all<EdgeRow>("SELECT * FROM edges WHERE src = ? ORDER BY dst", src);
+  }
+
+  /** Every edge row, for a census (doctor's Association line, 2026-09-28). A read. */
+  allEdges(): EdgeRow[] {
+    return this.ops.all<EdgeRow>("SELECT * FROM edges ORDER BY src, dst");
   }
 
   prospectiveFor(id: string): ProspectiveRow[] {

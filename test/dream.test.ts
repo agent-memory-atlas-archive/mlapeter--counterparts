@@ -236,6 +236,92 @@ describe("propose: what a dream may change", () => {
     expect(r[6]?.note).toContain("marked work");
   });
 
+  test("links go through the edge module: about one co-activation, from the DECAYED weight, and counted on the row", () => {
+    const c = brain();
+    const m = lived(c);
+    const day = c.store.livedDay();
+    // An old strong a–old edge, long faded: a re-link must not bring it back.
+    c.store.linkMany([
+      { src: m.a, dst: m.old, weight: 0.9, day: day - 120 },
+      { src: m.old, dst: m.a, weight: 0.9, day: day - 120 },
+    ]);
+    const { id } = begin(c);
+    const out = c.dreams.propose({
+      dream: id,
+      session: SESSION,
+      changes: [
+        { action: "link", a: m.a, b: m.old },
+        { action: "link", a: m.a, b: m.b },
+        { action: "gist", text: "Migrations before boot, every time.", sources: [m.a, m.b, m.old] },
+      ],
+    });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.results.every((r) => r.ok)).toBe(true);
+    expect(DREAM_TUNABLES.LINK_WEIGHT).toBeCloseTo(c.associate.tunables.HEBB_RATE, 10);
+    // Raised to the proposal from the DECAYED weight, not the stored 0.9.
+    expect(c.associate.weightAt(m.a, m.old, day)).toBeCloseTo(DREAM_TUNABLES.LINK_WEIGHT, 10);
+    expect(c.associate.weightAt(m.a, m.b, day)).toBeCloseTo(DREAM_TUNABLES.LINK_WEIGHT, 10);
+    const gist = out.results[2]?.id as string;
+    expect(c.associate.weightAt(gist, m.old, day)).toBeCloseTo(DREAM_TUNABLES.LINK_WEIGHT, 10);
+    const row = c.store.eventLog({ name: "dream.changed", order: "desc", limit: 1 })[0];
+    const payload = JSON.parse(String(row?.payload ?? "{}")) as Record<string, unknown>;
+    expect(payload["gistLinks"]).toBe(3);
+  });
+
+  test("a proposal lands only where there is room: a full memory gets no-room, and learned links stay", () => {
+    const c = brain();
+    const m = lived(c);
+    const day = c.store.livedDay();
+    // `old` is full: 32 learned links at 0.1 (sum 3.2, at the count cap).
+    const others = Array.from({ length: 32 }, (_, i) => mem(c, `unrelated filler memory number ${String(i)} about gardening`));
+    c.store.linkMany(others.flatMap((o) => [{ src: m.old, dst: o, weight: 0.1, day }]));
+    const learned = c.store.edgesFrom(m.old).map((e) => [e.dst, e.weight]);
+    const { id } = begin(c);
+    const out = c.dreams.propose({
+      dream: id,
+      session: SESSION,
+      changes: [
+        { action: "link", a: m.a, b: m.old },
+        { action: "gist", text: "Migrations before boot, every time.", sources: [m.a, m.old, m.b] },
+      ],
+    });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.results[0]?.ok).toBe(false);
+    expect(out.results[0]?.reason).toBe("no-room");
+    expect(out.results[1]?.ok).toBe(true);
+    expect(out.results[1]?.note).toContain("linked to 2 of 3 sources");
+    // Nothing waking use learned was evicted or scaled.
+    expect(c.store.edgesFrom(m.old).map((e) => [e.dst, e.weight])).toEqual(learned);
+    const gist = out.results[1]?.id as string;
+    const change = c.store.dreamChanges(id).find((x) => x.action === "gist");
+    expect(JSON.parse(String(change?.detail))["linked"]).toEqual([m.a, m.b]);
+    expect(JSON.parse(String(change?.detail))["noRoom"]).toBe(1);
+    expect(c.store.edgesFrom(gist).map((e) => e.dst).sort()).toEqual([m.a, m.b].sort());
+    const row = c.store.eventLog({ name: "dream.changed", order: "desc", limit: 1 })[0];
+    const payload = JSON.parse(String(row?.payload ?? "{}")) as Record<string, unknown>;
+    expect(payload["gistLinks"]).toBe(2);
+    expect(payload["linkNoRoom"]).toBe(2);
+    expect(payload["linkFrozen"]).toBe(0);
+    expect(payload["linkFailed"]).toBe(0);
+  });
+
+  test("a memory pinned after it was shown gets no link: its edges are frozen", () => {
+    const c = brain();
+    const m = lived(c);
+    const { id } = begin(c);
+    // Pinned mid-dream: the bundle's own gate refuses it first (a dream never
+    // sees a pinned memory), and the edge module's freeze stands behind that.
+    c.store.updatePhysics(m.b, { protected: true });
+    const out = c.dreams.propose({ dream: id, session: SESSION, changes: [{ action: "link", a: m.a, b: m.b }] });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.results[0]?.ok).toBe(false);
+    expect(c.store.edgesFrom(m.a).some((e) => e.dst === m.b)).toBe(false);
+    expect(c.associate.propose([{ a: m.a, b: m.b }]).frozen).toBe(1);
+  });
+
   test("a dream cannot strengthen what a dream wrote: its gist rises only awake", () => {
     const c = brain();
     const m = lived(c);

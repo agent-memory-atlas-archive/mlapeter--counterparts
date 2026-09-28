@@ -64,6 +64,7 @@ import {
   preMigrationDir,
 } from "../../core/store/index.js";
 import { BUSY_TIMEOUT_MS, journalModeOf } from "../../core/store/db.js";
+import { TUNABLES as ASSOCIATE_TUNABLES, isDead, pairKey } from "../../core/associate/index.js";
 import type { EventRow } from "../../core/store/index.js";
 // The ask allowance the amber hint names, read rather than retyped: a number in
 // a diagnostic's prose is a number that goes stale silently.
@@ -2671,6 +2672,103 @@ export function lookupFindings(store: Store): Finding[] {
 /** Rows each lookup read takes, newest first; a read that comes back full is a floor. */
 const LOOKUP_ROWS = 2_000;
 
+/** How far back the Association line reads turns, in lived days. */
+const ASSOCIATION_WINDOW_DAYS = 7;
+
+/**
+ * ASSOCIATION, MEASURED (2026-09-28, association build 1). What spreading
+ * activation actually did on the last week's turns — how often it got past its
+ * seeds (depth 2), how often the node budget stopped it, and how many of its
+ * contributions LANDED on a candidate — and a census of the edges: how many,
+ * how many still conduct, and where they came from. The source split is
+ * DERIVED (the edge table records no source): an edge touching a dreamed gist
+ * is a gist tie, a pair a dream's `link` named (not undone) is a dream link,
+ * and the rest were learned from use. Informational: green, with the numbers.
+ */
+export function associationFindings(store: Store): Finding[] {
+  const day = store.livedDay();
+  const since = Math.max(0, day - ASSOCIATION_WINDOW_DAYS);
+  let turns = 0;
+  let deep = 0;
+  let nodeLimit = 0;
+  let landed = 0;
+  let computed = 0;
+  let dropped = 0;
+  let allTurns = 0;
+  let unread = false;
+  const census = { total: 0, conducting: 0, gist: 0, dream: 0, hebbian: 0 };
+  try {
+    const rows = store.eventLog({ name: "recall.decision", sinceDay: since, order: "desc", limit: ASSOCIATION_ROWS });
+    unread = rows.length >= ASSOCIATION_ROWS;
+    allTurns = rows.length;
+    for (const row of rows) {
+      const p = payloadOf(row);
+      const d = num(p, "dropped");
+      if (d !== null) dropped += d;
+      const s = p["spread"];
+      if (s === null || typeof s !== "object") continue;
+      const sp = s as Record<string, unknown>;
+      turns += 1;
+      if (typeof sp["depth"] === "number" && sp["depth"] >= 2) deep += 1;
+      if (sp["stop"] === "node-limit") nodeLimit += 1;
+      if (typeof sp["landed"] === "number") landed += sp["landed"];
+      if (typeof sp["computed"] === "number") computed += sp["computed"];
+    }
+    const dreamed = new Set<string>();
+    const dreamPairs = new Set<string>();
+    for (const dream of store.dreams({ limit: 10_000 })) {
+      for (const c of store.dreamChanges(dream.id)) {
+        if (c.undone !== 0 || c.ref === null) continue;
+        if (c.action === "gist") dreamed.add(c.ref);
+        if (c.action === "link" && c.ref2 !== null) dreamPairs.add(pairKey(c.ref, c.ref2));
+      }
+    }
+    for (const e of store.allEdges()) {
+      census.total += 1;
+      if (!isDead({ src: e.src, dst: e.dst, weight: e.weight, lastDay: e.last_day }, day, ASSOCIATE_TUNABLES)) census.conducting += 1;
+      if (dreamed.has(e.src) || dreamed.has(e.dst)) census.gist += 1;
+      else if (dreamPairs.has(pairKey(e.src, e.dst))) census.dream += 1;
+      else census.hebbian += 1;
+    }
+  } catch {
+    return [];
+  }
+  const pct = (n: number): string => (turns === 0 ? "0%" : `${String(Math.round((100 * n) / turns))}%`);
+  const spreadSaid =
+    turns === 0
+      ? `last ${String(ASSOCIATION_WINDOW_DAYS)} lived days — no spreading measured yet`
+      : `last ${String(ASSOCIATION_WINDOW_DAYS)} lived days — spread got past its seeds (depth 2) on ${pct(deep)} of ${String(turns)} turns it ran; stopped at the node limit on ${pct(nodeLimit)}; ${String(landed)} of ${String(computed)} contributions landed on a candidate the cut kept`;
+  return [
+    finding(
+      "association",
+      "green",
+      "Association",
+      `${spreadSaid}. Edges: ${String(census.total)} rows, ${String(census.conducting)} conducting — ${String(census.hebbian)} learned from use, ${String(census.dream)} dream links, ${String(census.gist)} gist ties (derived: a row touching a dream's gist is a gist tie, a pair a dream linked is a dream link, the rest were learned from use)` +
+        (dropped > 0 ? `. The candidate cut left out ${String(dropped)} scored memories, summed over all ${String(allTurns)} recall turns in the window` : "") +
+        (unread ? ". More turns than were read: the counts are a floor" : ""),
+      "",
+      {
+        turns,
+        deep,
+        nodeLimit,
+        landed,
+        computed,
+        dropped,
+        allTurns,
+        edges: census.total,
+        conducting: census.conducting,
+        hebbian: census.hebbian,
+        dreamLinks: census.dream,
+        gistTies: census.gist,
+        floor: unread,
+      },
+    ),
+  ];
+}
+
+/** Turn rows the Association line reads, newest first; a full read is a floor. */
+const ASSOCIATION_ROWS = 5_000;
+
 /**
  * DREAMING, informational (2026-09-26): the owner's setting (2026-09-28:
  * auto, ask or off), when the counterpart last dreamed, and what today's line
@@ -3488,6 +3586,8 @@ export function doctorFindings(input: DoctorInput): Finding[] {
     ["reflection", () => reflectionFindings(input, store)],
     // Build B (2026-09-28): does anyone read what an index offers in part?
     ["lookups", () => lookupFindings(store)],
+    // Association build 1 (2026-09-28): what spreading did, and the edges.
+    ["association", () => associationFindings(store)],
     // LAST, and deliberately: it is the widest read here — the whole event log,
     // plus a pass over the ids for the table probes — so when the console's
     // reading is cut short this is the group that goes, and the `Budget` finding

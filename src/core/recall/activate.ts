@@ -26,10 +26,11 @@
  *   one that keeps hard gate (a) STRUCTURAL — a hop reaches "a memory no cue and
  *   no embedding touched", and in this contract's vocabulary that memory is
  *   uncued and therefore dark. So a hop is added to a candidate that already
- *   exists, never mints one, and is excluded from `cueFraction`'s NUMERATOR —
+ *   exists, never mints one, and is excluded from `cueFraction` altogether —
  *   which is what makes "spreading never creates a loud-tier candidate without a
- *   cue" arithmetic rather than a promise: hop weight sits in the denominator and
- *   pushes the candidate AWAY from the loud tier, never toward it.
+ *   cue" arithmetic rather than a promise. (Until 2026-09-28 hop weight sat in
+ *   the DENOMINATOR, which also let a hop push a well-cued memory under the
+ *   loud tier's cue fraction: a hop can neither buy the loud tier nor revoke it.)
  *
  * The candidate set is exactly the union of the token index's hits and the vector
  * index's hits. NO MODEL CALL: the turn's vector is an INPUT. Its absence degrades
@@ -71,7 +72,8 @@ export interface Candidate {
    *  `cueFraction`'s numerator, and never able to mint a candidate. */
   readonly hops: number;
   readonly activation: number;
-  /** (cue + semantic) / activation — hard gate (c)'s input. */
+  /** (cue + semantic) / (cue + semantic + arrival) — hard gate (c)'s input. Hops are
+   *  in neither half (2026-09-28). */
   readonly cueFraction: number;
   readonly matched: number;
   /** Every matching cue was an ambiguous handle and nothing corroborated it:
@@ -83,6 +85,42 @@ export interface Candidate {
    *  by design — it caps, it never admits. */
   readonly maxTier: "surfaced" | "footnoted";
   readonly confidential: boolean;
+}
+
+/**
+ * The injected traversal's shape, structurally `Associate.spreadFrom`. Only
+ * `contributions` is required; the rest is what the traversal says about
+ * ITSELF — how far it got and why it stopped — carried onto the turn's record
+ * (`SpreadStats`) so nobody has to guess what spreading did (2026-09-28).
+ */
+export type SpreadFn = (
+  seeds: readonly { id: string; activation: number }[],
+  day: number,
+) => {
+  contributions: readonly { id: string; activation: number }[];
+  expanded?: number;
+  stop?: string;
+  depth?: number;
+};
+
+/**
+ * What spreading did on one turn — counts only (2026-09-28, association
+ * build 1). `computed` is every memory the graph reached; `landed` is how many
+ * of those were already candidates and so actually moved a number. Under hops
+ * modulate only (`associate/INTERFACE-GAPS.md` §1 answer (a)) a seed receives
+ * nothing, so on a turn with no semantic or temporal hit `landed` is 0 by
+ * construction — that is the rule, not a fault.
+ */
+export interface SpreadStats {
+  readonly seeds: number;
+  readonly expanded: number | null;
+  /** `exhausted` / `hop-limit` / `node-limit`, as the traversal reported it. */
+  readonly stop: string | null;
+  /** Deepest hop expanded: 1 = seeds only, 2 = got past them. */
+  readonly depth: number | null;
+  readonly computed: number;
+  /** Contributions that landed on a candidate the cut KEPT (what the gate saw). */
+  readonly landed: number;
 }
 
 export interface ActivationInput {
@@ -101,11 +139,7 @@ export interface ActivationInput {
    *  import `associate/`. Seeded with the CUED candidates and their own
    *  activation; contributions to anything that is not already a candidate are
    *  DROPPED here, which is where "hops modulate only" is enforced. */
-  readonly spread?:
-    | ((seeds: readonly { id: string; activation: number }[], day: number) => {
-        contributions: readonly { id: string; activation: number }[];
-      })
-    | undefined;
+  readonly spread?: SpreadFn | undefined;
   readonly day: number;
   /** Whether the turn stated a FIRST-PERSON feeling. Gates emotional salience. */
   readonly selfFelt: boolean;
@@ -138,6 +172,12 @@ export interface ActivationResult {
    * came at all. Reported, not recorded (the same reason as `capped`).
    */
   readonly semantic: { identity: string | null; path: SemanticPath; floor: number; weight: number } | null;
+  /** What spreading did this turn; null when it did not run (no traversal
+   *  injected, or nothing was cued to seed it). */
+  readonly spread: SpreadStats | null;
+  /** Scored candidates the `maxCandidates` cut left out — counted, never
+   *  silent (2026-09-28). */
+  readonly dropped: number;
 }
 
 /**
@@ -415,9 +455,22 @@ export function activate(
   // graph can actually raise is a candidate the OTHER channels reached: a
   // semantic hit, or a temporal one, that the conversation's own words did not.
   const hopScore = new Map<string, number>();
+  let spreadRun: Omit<SpreadStats, "landed"> | null = null;
   if (input.spread !== undefined && cueScore.size > 0) {
-    const seeds = [...cueScore.entries()].map(([id, activation]) => ({ id, activation }));
-    for (const c of input.spread(seeds, input.day).contributions) {
+    // Strongest first (2026-09-28): the traversal ranks them too, but the list
+    // it is handed should not depend on which cue's postings came first.
+    const seeds = [...cueScore.entries()]
+      .map(([id, activation]) => ({ id, activation }))
+      .sort((a, b) => b.activation - a.activation || (a.id < b.id ? -1 : 1));
+    const out = input.spread(seeds, input.day);
+    spreadRun = {
+      seeds: seeds.length,
+      expanded: typeof out.expanded === "number" ? out.expanded : null,
+      stop: typeof out.stop === "string" ? out.stop : null,
+      depth: typeof out.depth === "number" ? out.depth : null,
+      computed: out.contributions.length,
+    };
+    for (const c of out.contributions) {
       // Dropped unless it is ALREADY a candidate. This line is hard gate (a):
       // a hop is not a cue, and an uncued memory is dark whatever reached it.
       if (!ids.has(c.id) || !(c.activation > 0)) continue;
@@ -450,6 +503,8 @@ export function activate(
     readonly arrival: number;
     readonly hops: number;
     readonly activation: number;
+    /** The rank the cut uses: activation over the gate's own salience factor. */
+    readonly cutKey: number;
   }
   const scored: Scored[] = [];
   let skipped = 0;
@@ -491,6 +546,7 @@ export function activate(
     const s = strength(physics, input.day);
     const arrival = cue + semantic > 0 ? t.ARRIVAL_WEIGHT * s : 0;
     const hops = cue + semantic > 0 ? hopScore.get(id) ?? 0 : 0;
+    const activation = cue + semantic + arrival + hops;
     scored.push({
       id,
       physics,
@@ -500,12 +556,42 @@ export function activate(
       semantic,
       arrival,
       hops,
-      activation: cue + semantic + arrival + hops,
+      activation,
+      cutKey: salienceRank(activation, gatedSal(physics, input.selfFelt), t),
     });
   }
-  scored.sort((a, b) => b.activation - a.activation || (a.id < b.id ? -1 : 1));
+  // SALIENCE BEFORE THE CUT (2026-09-28). The gate lowers a salient candidate's
+  // relative bar and raises a dull one's (`gate.ts#modulate`), but it can only
+  // do that for candidates that reach it — and the cut to `maxCandidates` used
+  // to rank on activation alone, so a salient memory ranked 25th never met the
+  // bar that would have let it in. The cut now ranks by what the gate will ask
+  // of it: activation over the gate's own salience factor. Mood's lift is NOT
+  // in this key — it needs the feelings read, which stays after the cut (below);
+  // the turn-gated emotional dimension is.
+  //
+  // Only where the gate WILL modulate: the relative regime. On a cold-start
+  // store, or a turn too thin for a background (`gate.ts#background`), the bar
+  // is absolute and salience never lowers it — ranking by salience there would
+  // let a quieter memory displace the one the absolute bar would admit, and
+  // cold start is stricter, not looser. The regime test mirrors
+  // `gate.ts#background`: the gate's sample is the kept candidates with
+  // `cue + semantic > 0` (at most `maxCandidates` of them), and a sample with
+  // no spread (sd 0) is thin too. Estimated here on the cued candidates an
+  // activation-ranked cut would keep.
+  const sample = scored
+    .filter((c) => c.cue + c.semantic > 0)
+    .map((c) => c.activation)
+    .sort((x, y) => y - x)
+    .slice(0, input.maxCandidates);
+  const relative = storeSize >= t.COLD_START_MIN_STORE && sample.length >= t.MIN_BACKGROUND_SAMPLE && spreadOf(sample) > 0;
+  scored.sort((a, b) =>
+    relative
+      ? b.cutKey - a.cutKey || b.activation - a.activation || (a.id < b.id ? -1 : 1)
+      : b.activation - a.activation || (a.id < b.id ? -1 : 1),
+  );
 
   const kept = scored.slice(0, input.maxCandidates);
+  const dropped = scored.length - kept.length;
   // MOOD (recall G18): one batched read, and only when someone has a mood — and only
   // for CUED candidates. An uncued candidate is dark at hard gate (a) before
   // salience is ever read, so it is not even asked (the guarantee is the gate's;
@@ -539,9 +625,11 @@ export function activate(
       arrival,
       hops,
       activation,
-      // Hops are in the DENOMINATOR only: they can raise a candidate's standing
-      // and can never buy it the loud tier.
-      cueFraction: activation > 0 ? (cue + semantic) / activation : 0,
+      // Hops are in NEITHER half (2026-09-28): they can raise a candidate's
+      // standing, can never buy it the loud tier, and can no longer REVOKE it
+      // either — with hops in the denominator, a neighbour's activation could
+      // push a well-cued memory under `MIN_CUE_FRACTION` and footnote it.
+      cueFraction: cue + semantic + arrival > 0 ? (cue + semantic) / (cue + semantic + arrival) : 0,
       matched: matchCount.get(id) ?? 0,
       // A temporal cue is id-addressed: no handle is involved, so nothing about
       // it is ambiguous, and an unambiguous cue trains. Without this clause a
@@ -562,7 +650,29 @@ export function activate(
     semanticDegraded,
     capped,
     semantic: ranked === null ? null : { identity, path, floor: tuning.floor, weight: tuning.weight },
+    // `landed` is counted AFTER the cut: a hop on a candidate the cut left out
+    // reached nothing the gate saw.
+    spread: spreadRun === null ? null : { ...spreadRun, landed: kept.filter((c) => c.hops > 0).length },
+    dropped,
   };
+}
+
+/** Population standard deviation — the gate's own (`gate.ts#background`). */
+function spreadOf(xs: readonly number[]): number {
+  if (xs.length === 0) return 0;
+  const mean = xs.reduce((a, b) => a + b, 0) / xs.length;
+  return Math.sqrt(xs.reduce((acc, x) => acc + (x - mean) * (x - mean), 0) / xs.length);
+}
+
+/**
+ * The cut's rank: activation divided by the factor the gate's relative bar is
+ * multiplied by (`gate.ts#modulate`, `1 − SAL_BAR_WEIGHT·(2·sal − 1)`), so the
+ * order the cut keeps is the order in which candidates would clear that bar.
+ * Guarded so a tunable pushing the factor to zero ranks by activation alone.
+ */
+export function salienceRank(activation: number, sal: number, t: RecallTunables): number {
+  const factor = 1 - t.SAL_BAR_WEIGHT * (2 * sal - 1);
+  return factor > 0 ? activation / factor : activation;
 }
 
 /**

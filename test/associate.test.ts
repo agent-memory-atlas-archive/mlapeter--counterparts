@@ -26,6 +26,7 @@ import {
   TUNABLES,
   conducts,
   edgeWeightAt,
+  fadeHorizon,
   homeostasis,
   pairCredit,
   pairKey,
@@ -580,7 +581,7 @@ describe("spreading activation", () => {
     expect(out.contributions.find((c) => c.id === "c")?.depth).toBe(2);
   });
 
-  test("hop decay and fan normalization: a hub shares its activation, it does not flood", () => {
+  test("hop decay and ABSOLUTE weight: an edge passes w / MAX_OUT_WEIGHT, siblings or not", () => {
     const single = spread(
       {
         seeds: [{ id: "a", activation: 1 }],
@@ -590,7 +591,11 @@ describe("spreading activation", () => {
       },
       withTunables({ HOPS: 1 }),
     );
-    expect(single.contributions[0]?.activation).toBeCloseTo(TUNABLES.HOP_DECAY, 10);
+    // 0.5 × 0.4 / 4 — a lone edge no longer passes everything it carries.
+    expect(single.contributions[0]?.activation).toBeCloseTo(
+      (TUNABLES.HOP_DECAY * 0.4) / TUNABLES.MAX_OUT_WEIGHT,
+      10,
+    );
 
     const hub = spread(
       {
@@ -605,9 +610,64 @@ describe("spreading activation", () => {
       withTunables({ HOPS: 1 }),
     );
     expect(hub.contributions).toHaveLength(2);
-    for (const c of hub.contributions) expect(c.activation).toBeCloseTo(0.25, 10);
-    const total = hub.contributions.reduce((sum, c) => sum + c.activation, 0);
+    // A sibling does not dilute: each edge passes what its own weight says.
+    for (const c of hub.contributions) expect(c.activation).toBeCloseTo(0.05, 10);
+  });
+
+  test("a hub written outside homeostasis still cannot pass more than it carries", () => {
+    // A legacy dream gist: 40 raw 0.3 edges, sum 12 — three times the bound.
+    const edges: [string, string, number][] = [];
+    for (let i = 0; i < 40; i++) edges.push(["g", `s${String(i)}`, 0.3]);
+    const out = spread(
+      { seeds: [{ id: "g", activation: 1 }], day: 0, edgesFrom: graph(edges), conducts: ALL_CONDUCT },
+      withTunables({ HOPS: 1 }),
+    );
+    const total = out.contributions.reduce((sum, c) => sum + c.activation, 0);
     expect(total).toBeCloseTo(TUNABLES.HOP_DECAY, 10);
+  });
+
+  test("seeds expand strongest first, whatever order the caller listed them in", () => {
+    const out = spread(
+      {
+        seeds: [
+          { id: "weak", activation: 0.1 },
+          { id: "loud", activation: 5 },
+        ],
+        day: 0,
+        edgesFrom: graph([
+          ["weak", "w1", 0.5],
+          ["loud", "l1", 0.5],
+        ]),
+        conducts: ALL_CONDUCT,
+      },
+      withTunables({ MAX_SPREAD_NODES: 1 }),
+    );
+    expect(out.stop).toBe("node-limit");
+    expect(out.contributions.map((c) => c.id)).toEqual(["l1"]);
+    expect(out.depth).toBe(1);
+  });
+
+  test("a second-hop node carries what it received over EVERY path, and depth is reported", () => {
+    const out = spread(
+      {
+        seeds: [
+          { id: "a", activation: 1 },
+          { id: "b", activation: 1 },
+        ],
+        day: 0,
+        edgesFrom: graph([
+          ["a", "m", 1],
+          ["b", "m", 1],
+          ["m", "z", 1],
+        ]),
+        conducts: ALL_CONDUCT,
+      },
+      TUNABLES,
+    );
+    const per = (TUNABLES.HOP_DECAY * 1) / TUNABLES.MAX_OUT_WEIGHT;
+    expect(out.contributions.find((c) => c.id === "m")?.activation).toBeCloseTo(2 * per, 10);
+    expect(out.contributions.find((c) => c.id === "z")?.activation).toBeCloseTo(2 * per * per, 10);
+    expect(out.depth).toBe(2);
   });
 
   test("contributions SUM across paths and keep the shallowest depth", () => {
@@ -629,7 +689,7 @@ describe("spreading activation", () => {
     const t = out.contributions.find((c) => c.id === "t");
     expect(t?.paths).toBe(2);
     expect(t?.depth).toBe(1);
-    expect(t?.activation).toBeCloseTo(1.0, 10);
+    expect(t?.activation).toBeCloseTo((2 * TUNABLES.HOP_DECAY * 0.5) / TUNABLES.MAX_OUT_WEIGHT, 10);
   });
 
   test("a faded edge conducts nothing — decay applies inside the traversal too", () => {
@@ -797,6 +857,163 @@ describe("observer", () => {
     const probe = store({ observer: true });
     const g = assoc(probe);
     expect(g.retargetOnSupersede("mem_a", "mem_b", 0).reason).toBe("observer");
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Proposed links (a dream's) and the flush's sweep — 2026-09-28
+// ───────────────────────────────────────────────────────────────────────────
+
+describe("proposed links land only where there is room", () => {
+  test("a gist with forty sources keeps the FIRST-NAMED ties that fit, never over the bound", () => {
+    const s = store();
+    const [gist, ...sources] = memories(s, 41) as [string, ...string[]];
+    const g = assoc(s);
+    // At 0.3 each, thirteen fit under the outgoing bound of 4 (3.9).
+    const r = g.propose(
+      sources.map((id) => ({ a: gist, b: id })),
+      0.3,
+      0,
+    );
+    expect(r.reason).toBe("linked");
+    expect(r.pairs).toBe(13);
+    expect(r.noRoom).toBe(27);
+    expect(r.landed.map((p) => p.b)).toEqual(sources.slice(0, 13));
+    const live = s.edgesFrom(gist).filter((e) => conducts(e.weight, TUNABLES));
+    expect(live.length).toBe(13);
+    expect(live.reduce((t, e) => t + e.weight, 0)).toBeLessThanOrEqual(TUNABLES.MAX_OUT_WEIGHT + 1e-9);
+
+    // At one co-activation each, the count cap is what binds: the first 32.
+    const [gist2, ...more] = memories(s, 41) as [string, ...string[]];
+    const r2 = g.propose(more.map((id) => ({ a: gist2, b: id })), 0.1, 0);
+    expect(r2.pairs).toBe(TUNABLES.MAX_EDGES_PER_NODE);
+    expect(r2.noRoom).toBe(40 - TUNABLES.MAX_EDGES_PER_NODE);
+    expect(r2.landed.map((p) => p.b)).toEqual(more.slice(0, TUNABLES.MAX_EDGES_PER_NODE));
+  });
+
+  test("a full node: no-room, and NOTHING it learned is evicted or scaled", () => {
+    const s = store();
+    const [hub, newcomer, ...others] = memories(s, 34) as [string, string, ...string[]];
+    s.linkMany(others.flatMap((o) => [{ src: hub, dst: o, weight: 0.5, day: 0 }]));
+    const before = s.edgesFrom(hub).map((e) => [e.dst, e.weight, e.last_day]);
+    const r = assoc(s).propose([{ a: newcomer, b: hub }], 0.1, 0);
+    expect(r.reason).toBe("no-room");
+    expect(r.noRoom).toBe(1);
+    expect(r.pairs).toBe(0);
+    expect(s.edgesFrom(hub).map((e) => [e.dst, e.weight, e.last_day])).toEqual(before);
+    expect(s.edgesFrom(newcomer)).toHaveLength(0);
+  });
+
+  test("defaults to about one co-activation (HEBB_RATE), both ways", () => {
+    const s = store();
+    const [a, b] = memories(s, 2) as [string, string];
+    const g = assoc(s);
+    g.propose([{ a, b }], undefined, 0);
+    expect(g.weightAt(a, b, 0)).toBeCloseTo(TUNABLES.HEBB_RATE, 10);
+    expect(g.weightAt(b, a, 0)).toBeCloseTo(TUNABLES.HEBB_RATE, 10);
+  });
+
+  test("a re-proposal starts from the DECAYED weight — it never resurrects a faded one", () => {
+    const s = store();
+    const [a, b] = memories(s, 2) as [string, string];
+    s.linkMany([
+      { src: a, dst: b, weight: 0.9, day: 0 },
+      { src: b, dst: a, weight: 0.9, day: 0 },
+    ]);
+    const g = assoc(s);
+    const later = TUNABLES.S_EDGE * 3; // 0.9 × e^-3 ≈ 0.045
+    g.propose([{ a, b }], 0.1, later);
+    expect(g.weightAt(a, b, later)).toBeCloseTo(0.1, 10);
+    const row = s.edgesFrom(a).find((e) => e.dst === b);
+    expect(row?.last_day).toBe(later);
+  });
+
+  test("a proposal never LOWERS an edge that is already stronger", () => {
+    const s = store();
+    const [a, b] = memories(s, 2) as [string, string];
+    const g = assoc(s);
+    g.propose([{ a, b }], 0.5, 0);
+    g.propose([{ a, b }], 0.1, 0);
+    expect(g.weightAt(a, b, 0)).toBeCloseTo(0.5, 10);
+  });
+
+  test("a pinned endpoint is frozen; a dead one is blocked; an observer writes nothing", () => {
+    const s = store();
+    const a = s.put(mem("an ordinary working memory"));
+    const pinned = s.put(mem("a pinned memory under audit", { physics: { protected: true } }));
+    const gone = s.put(mem("a memory that was archived"));
+    s.archive(gone, "consolidated away");
+    const g = assoc(s);
+    const r = g.propose([{ a, b: pinned }, { a, b: gone }], 0.1, 0);
+    expect(r.reason).toBe("nothing-to-link");
+    expect(r.frozen).toBe(1);
+    expect(r.blocked).toBe(1);
+    expect(s.edgesFrom(a)).toHaveLength(0);
+
+    s.close();
+    const probe = store({ observer: true });
+    expect(assoc(probe).propose([{ a, b: pinned }]).reason).toBe("observer");
+  });
+});
+
+describe("the flush sweeps rows that carry nothing", () => {
+  test("an eviction's zero and a decayed-to-the-floor row are swept, and counted", () => {
+    const s = store();
+    const ids = memories(s, 5);
+    const [a, b, c, d, e] = ids as [string, string, string, string, string];
+    const pinned = s.put(mem("a pinned memory under audit", { physics: { protected: true } }));
+    // A long-faded edge between c and d, stored at day 0 — and one to a PINNED
+    // memory, equally faded, which the sweep must leave alone (G9).
+    s.linkMany([
+      { src: c, dst: d, weight: 0.2, day: 0 },
+      { src: d, dst: c, weight: 0.2, day: 0 },
+      { src: e, dst: pinned, weight: 0.2, day: 0 },
+    ]);
+    // A cap of two live edges per node, so the third co-credit evicts one.
+    const g = assoc(s, { MAX_EDGES_PER_NODE: 2 });
+    // Past the horizon at which even a full edge is dead: the SQL prefilter
+    // names every row stored at day 0.
+    const day = fadeHorizon(TUNABLES) + 1;
+    g.coactivate([ref(a), ref(b)]);
+    g.coactivate([ref(a), ref(e)]);
+    g.coactivate([ref(a), ref(c)]);
+    const r = g.flush(day);
+    expect(r.reason).toBe("flushed");
+    expect(r.evictions.length).toBeGreaterThan(0);
+    // The zeroed evictions and the faded c↔d pair are gone from the table.
+    expect(r.swept).toBeGreaterThanOrEqual(r.evictions.length + 2);
+    for (const row of s.allEdges()) {
+      if (row.dst === pinned) continue;
+      expect(row.weight).toBeGreaterThan(TUNABLES.EDGE_FLOOR);
+    }
+    expect(s.edgesFrom(d).find((x) => x.dst === c)).toBeUndefined();
+    // Frozen both ways: a pinned memory's dead edge is not swept.
+    expect(s.edgesFrom(e).find((x) => x.dst === pinned)).toBeDefined();
+  });
+
+  test("the fade horizon is where a FULL edge reaches the floor", () => {
+    const h = fadeHorizon(TUNABLES);
+    const full = { src: "a", dst: "b", weight: TUNABLES.EDGE_CAP, lastDay: 0 };
+    expect(conducts(edgeWeightAt(full, h - 1, TUNABLES), TUNABLES)).toBe(true);
+    expect(conducts(edgeWeightAt(full, h, TUNABLES), TUNABLES)).toBe(false);
+  });
+
+  test("a store without the sweep keeps its dead rows and the flush still stands", () => {
+    const s = store();
+    const [a, b] = memories(s, 2) as [string, string];
+    const narrow: AssociateStore = {
+      observer: false,
+      livedDay: () => s.livedDay(),
+      row: (id) => s.row(id),
+      deniedIds: () => s.deniedIds(),
+      edgesFrom: (id) => s.edgesFrom(id),
+      linkMany: (rows) => s.linkMany(rows),
+    };
+    const g = assoc(narrow);
+    g.coactivate([ref(a), ref(b)]);
+    const r = g.flush(0);
+    expect(r.reason).toBe("flushed");
+    expect(r.swept).toBe(0);
   });
 });
 

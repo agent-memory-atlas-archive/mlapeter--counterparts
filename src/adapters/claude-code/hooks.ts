@@ -1611,6 +1611,9 @@ export class ClaudeCodeAdapter {
         expanded: summary.expanded,
         quoted: summary.quoted,
         credited: summary.credited,
+        /** Uses refused strength credit for their day cadence that still joined
+         *  the turn's links (2026-09-28). */
+        linkedDespite: summary.linkedDespite,
         unresolvedHandles: summary.unresolvedHandles,
         /** G50: expansions the handle-resolution log translated on the way in.
          *  Beside `unresolvedHandles`, it is the pair that says whether a
