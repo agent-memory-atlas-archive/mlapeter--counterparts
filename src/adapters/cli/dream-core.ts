@@ -31,16 +31,29 @@ function countsLine(counts: Readonly<Record<string, number>>): string {
   return parts.length === 0 ? "no changes" : parts.join(", ");
 }
 
-/** `counterparts dream --list`: newest first, one line each. */
-export function dreamListLines(counterpart: Counterpart, limit = 20): string[] {
-  const dreams = counterpart.dreams.list(limit);
+/** How many dreams `dream --list` prints without `--all`. */
+export const DREAM_LIST_LIMIT = 20;
+
+/**
+ * `counterparts dream --list`: newest first, one line each — the newest
+ * `DREAM_LIST_LIMIT`, or every one with `--all` (`limit: "all"`). The header
+ * says how many of how many, so a list that stops is never read as all there is.
+ */
+export function dreamListLines(counterpart: Counterpart, limit: number | "all" = DREAM_LIST_LIMIT): string[] {
+  const total = counterpart.store.dreamCount();
+  const dreams = counterpart.dreams.list(limit === "all" ? Math.max(1, total) : limit);
   if (dreams.length === 0) {
     return [
       "No dreams yet.",
       "A session is asked, at most once a day, whether it may dream; the owner says yes or not today.",
     ];
   }
-  const out = [`Dreams — newest first (${String(dreams.length)} shown)`, ""];
+  const out = [
+    dreams.length < total
+      ? `Dreams — newest first (${String(dreams.length)} of ${String(total)} shown; every one: counterparts dream --list --all)`
+      : `Dreams — newest first (all ${String(dreams.length)})`,
+    "",
+  ];
   for (const { dream, counts } of dreams) {
     const when = dream.date ?? `lived day ${String(dream.day)}`;
     const title = dream.title === null || dream.title.length === 0 ? "(no journal)" : `"${dream.title}"`;

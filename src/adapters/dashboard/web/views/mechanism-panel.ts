@@ -136,6 +136,8 @@ export type Picture =
       readonly came: readonly (Said & { readonly day: number; readonly plain: boolean })[];
       /** Dated memories whose day is today or ahead, soonest first (fills the rest of the rows). */
       readonly waiting: readonly (Said & { readonly date: string })[];
+      /** How many came back in the window, and how many are waiting — the lists above are the first of these. */
+      readonly counts: { readonly came: number; readonly waiting: number };
     }
   | {
       readonly kind: "dreaming";
@@ -151,7 +153,11 @@ export type Picture =
     }
   | {
       readonly kind: "salience";
+      /** The most salient of the memories written in the window, highest first. */
       readonly memories: readonly (Said & { readonly salience: number; readonly bornDay: number; readonly memKind: Kind })[];
+      /** How many memories were written in the window — `memories` is the top of these. */
+      readonly written: number;
+      readonly days: number;
     }
   | {
       readonly kind: "association";
@@ -256,7 +262,7 @@ function pictureOf(src: DashboardSource, id: string, day: number): Picture | nul
     case "consolidation":
       return consolidationPicture(src, day);
     case "salience":
-      return saliencePicture(src);
+      return saliencePicture(src, day);
     case "emotional":
       return emotionalPicture(src);
     case "association":
@@ -570,12 +576,13 @@ function prospectivePicture(src: DashboardSource, day: number): Picture {
   }
   const today = store.getMeta("lastActiveDate");
   const from = typeof today === "string" && /^\d{4}-\d{2}-\d{2}$/.test(today) ? today : "0001-01-01";
-  const waiting = store
-    .datedMemories(from, "9999-12-31")
-    .filter((d) => !seen.has(d.id))
+  // Every one that came back is counted, not only the rows listed.
+  for (const { r } of rows) if (r.ref !== null) seen.add(r.ref);
+  const ahead = store.datedMemories(from, "9999-12-31").filter((d) => !seen.has(d.id));
+  const waiting = ahead
     .slice(0, Math.max(0, PICTURE_ROWS - came.length))
     .map((d) => ({ ...said(src, d.id), date: d.eventDate }));
-  return { kind: "prospective", came, waiting };
+  return { kind: "prospective", came, waiting, counts: { came: seen.size, waiting: ahead.length } };
 }
 
 // ── dreaming ────────────────────────────────────────────────────────────────
@@ -629,14 +636,20 @@ function gistPicture(src: DashboardSource): Picture {
 
 // ── salience ────────────────────────────────────────────────────────────────
 
-/** The most recent memories, newest first, with the score each was written with. */
-function saliencePicture(src: DashboardSource): Picture {
-  const memories = census(src)
-    .filter((m) => !m.schema && !m.unreadable)
-    .sort((a, b) => b.bornDay - a.bornDay || (a.id < b.id ? -1 : 1))
+/**
+ * The memories written this week, MOST SALIENT first, with the score each was
+ * written with — and how many were written, so the page can say these are the
+ * top of that many. (It showed the newest five, which ranked a panel named for
+ * salience by recency.)
+ */
+function saliencePicture(src: DashboardSource, day: number): Picture {
+  const since = windowStart(day);
+  const written = census(src).filter((m) => !m.schema && !m.unreadable && m.bornDay >= since);
+  const memories = written
+    .sort((a, b) => b.salience - a.salience || b.bornDay - a.bornDay || (a.id < b.id ? -1 : 1))
     .slice(0, PICTURE_ROWS)
     .map((m) => ({ ...saidLine(m), salience: round(m.salience), bornDay: m.bornDay, memKind: m.kind }));
-  return { kind: "salience", memories };
+  return { kind: "salience", memories, written: written.length, days: MECHANISM_DAYS };
 }
 
 // ── association ─────────────────────────────────────────────────────────────

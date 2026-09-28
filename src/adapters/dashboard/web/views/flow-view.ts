@@ -13,7 +13,7 @@ import type { NodeKey } from "../flow.js";
 import { narrate } from "../narrate.js";
 import type { NarratedEvent } from "../narrate.js";
 import { activityView } from "./activity.js";
-import { LOG_CEILING, census, memoriesHeld } from "./shared.js";
+import { LOG_CEILING, census, eventCountsByName, memoriesHeld } from "./shared.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // flow
@@ -130,11 +130,11 @@ function nodeState(src: DashboardSource, key: NodeKey, count: number, memories: 
     case "session": {
       const sessions = new Set<string>();
       for (const name of eventsOfNode("session")) {
-        for (const row of store.eventLog({ name, limit: LOG_CEILING })) if (row.ref !== null) sessions.add(row.ref);
+        for (const row of store.eventLog({ name, order: "desc", limit: LOG_CEILING })) if (row.ref !== null) sessions.add(row.ref);
       }
       // The surfacing log names its session, so a store whose host wrote no
       // boundary rows can still say how many conversations it has seen.
-      for (const row of store.eventLog({ name: "recall.decision", limit: LOG_CEILING })) {
+      for (const row of store.eventLog({ name: "recall.decision", order: "desc", limit: LOG_CEILING })) {
         if (row.ref !== null) sessions.add(row.ref);
       }
       return sessions.size === 0 ? (day === 0 ? NEVER : NONE) : `${sessions.size} sessions seen`;
@@ -196,10 +196,14 @@ export function nodeDetail(src: DashboardSource, key: string, limit = 8): NodeDe
   const store = src.store;
   const names = eventsOfNode(node.key);
   const rows = [];
-  for (const name of names) rows.push(...store.eventLog({ name, limit: LOG_CEILING }));
+  // Newest first per name, so "recent" is recent past the ceiling too; then one order.
+  for (const name of names) rows.push(...store.eventLog({ name, order: "desc", limit: LOG_CEILING }));
   rows.sort((a, b) => a.seq - b.seq);
   const recent = rows.slice(-limit).reverse().map((row) => narrate(store, row));
   const everLived = store.livedDay() > 0 || store.list().length > 0;
+  // The count is the log's own, not the length of reads that stop at a ceiling.
+  const counts = eventCountsByName(src);
+  const recorded = names.reduce((n, name) => n + (counts.get(name) ?? 0), 0);
   return {
     found: true,
     key: node.key,
@@ -212,6 +216,6 @@ export function nodeDetail(src: DashboardSource, key: string, limit = 8): NodeDe
     unloggedPath: UNLOGGED_PATH[node.key] ?? null,
     recent,
     recentAbsent: recent.length === 0 ? (names.length === 0 ? null : everLived ? NONE : NEVER) : null,
-    state: nodeState(src, node.key, rows.length, memoriesHeld(src), store.livedDay()),
+    state: nodeState(src, node.key, recorded, memoriesHeld(src), store.livedDay()),
   };
 }

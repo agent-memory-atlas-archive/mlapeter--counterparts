@@ -37,6 +37,8 @@ export interface SearchView {
     journal: boolean;
     feelings: FeelingShown[];
   }[];
+  /** Every memory the words match, of which `hits` are the best-ranked (journal excluded). */
+  readonly total: number;
   readonly absent: string | null;
 }
 
@@ -87,15 +89,21 @@ export function searchView(src: DashboardSource, q: string, limit = 25): SearchV
   const store = src.store;
   const day = store.livedDay();
   const query = q.trim();
-  if (query.length === 0) return { q: "", hits: [], absent: NEVER };
+  if (query.length === 0) return { q: "", hits: [], total: 0, absent: NEVER };
+  // EVERY match, ranked, so the page can say "the first 25 of N" rather than
+  // calling the first 25 all there is. One grouped query either way; the rows
+  // are ids and scores. The journal is left out by one id read, not a row each.
   let raw: { id: string; score: number }[];
+  let journal: Set<string>;
   try {
-    raw = store.search(query, limit * 2);
+    raw = store.search(query, Math.max(limit * 2, store.countMemories() + 1));
+    journal = new Set(store.list({ type: "episode" }));
   } catch {
-    return { q: query, hits: [], absent: NONE };
+    return { q: query, hits: [], total: 0, absent: NONE };
   }
+  const matched = raw.filter((hit) => !journal.has(hit.id));
   const hits: SearchView["hits"] = [];
-  for (const hit of raw) {
+  for (const hit of matched) {
     const row = store.row(hit.id);
     // The journal is searchable in the owner's editor; it is not a memory here.
     if (row === undefined || isJournal(row)) continue;
@@ -135,5 +143,5 @@ export function searchView(src: DashboardSource, q: string, limit = 25): SearchV
     });
     if (hits.length >= limit) break;
   }
-  return { q: query, hits, absent: hits.length === 0 ? NONE : null };
+  return { q: query, hits, total: Math.max(hits.length, matched.length), absent: hits.length === 0 ? NONE : null };
 }

@@ -1,7 +1,16 @@
 /* Prospective memory, pictured (home round 3b, 2026-09-27): the reminders that
-   came back this week, then the dated memories still waiting for their day. */
+   came back this week, then the dated memories still waiting for their day —
+   with how many of each, so a short list never reads as all there is. */
 import { esc } from "../../shared/dom.js";
 import { memLink, nothingYet } from "../picture.js";
+
+/** The line under the rows: how many came back, how many wait, and how many of them are listed. */
+export function caption(p) {
+  const c = p.counts || { came: p.came.length, waiting: p.waiting.length };
+  const listed = p.came.length + p.waiting.length;
+  const line = c.came + " came back this week · " + c.waiting + " waiting for their day";
+  return listed < c.came + c.waiting ? line + " (" + listed + " listed)" : line;
+}
 
 export function picture(p) {
   if (!p || (p.came.length === 0 && p.waiting.length === 0)) {
@@ -14,5 +23,5 @@ export function picture(p) {
     p.waiting.map((m) =>
       "<li>" + memLink(m, 90) + '<span class="pic-meta pic-dim">waiting for ' + esc(m.date) + "</span></li>"
     ).join("") +
-    "</ul>";
+    '</ul><p class="pic-cap">' + esc(caption(p)) + "</p>";
 }

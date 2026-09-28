@@ -462,6 +462,8 @@ function daysBetween(from: string, to: string): number | null {
 }
 
 const EVENT_RING = 500;
+/** How many `self.page.revised` rows `pageVersions` reads, newest first. */
+const PAGE_REVISION_ROWS = 5000;
 
 export class Self {
   readonly store: Store;
@@ -650,10 +652,15 @@ export class Self {
     if (id === null) return [];
     const wrote = new Map<number, { reason: string | null; by: string | null }>();
     try {
-      for (const row of this.store.eventLog({ name: SELF_PAGE_REVISED_EVENT, ref: id })) {
+      // Newest first, with a named ceiling, and the newest row for a version
+      // wins: the ascending read with the default 500 was the OLDEST rows, so
+      // past it the newest versions — the ones anyone opens — read as
+      // unattributed. Versions are kept for a window of lived days, so the
+      // ceiling is far past what one page's revisions reach.
+      for (const row of this.store.eventLog({ name: SELF_PAGE_REVISED_EVENT, ref: id, order: "desc", limit: PAGE_REVISION_ROWS })) {
         const payload = JSON.parse(row.payload ?? "{}") as Record<string, unknown>;
         const v = payload["version"];
-        if (typeof v !== "number") continue;
+        if (typeof v !== "number" || wrote.has(v)) continue;
         wrote.set(v, {
           reason: typeof payload["reason"] === "string" ? payload["reason"] : null,
           by: typeof payload["by"] === "string" ? payload["by"] : null,
