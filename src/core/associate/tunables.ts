@@ -91,6 +91,37 @@ export interface AssociateTunables {
    * about 0.16 or more (`0.5 · w / 4 ≥ 0.02`). CAL, unmeasured on a live store.
    */
   SPREAD_MIN_FRACTION: number;
+
+  // ── temporal contiguity (association build 2, 2026-09-28) ────────────────
+  /**
+   * The weak, ubiquitous signal: memories one session made next to each other
+   * get a small link (TCM — the temporal context model: recall of one item
+   * cues its neighbours in the order they were lived, forward more than back).
+   * This is the FORWARD lag-1 delta for a pair with a real order between them.
+   * Co-use (`HEBB_RATE`, 0.1) stays the strong signal; at 0.06 a contiguity
+   * link passes 0.75% of what its node carries — near silent until use
+   * confirms it — and fades under the floor in about 32 lived days
+   * (`30 · ln(0.06 / 0.02)`) if nothing does. CAL, no ancestry.
+   */
+  CONTIGUITY_RATE: number;
+  /** Neighbours on each side a memory links to: lag 1 and lag 2. Adjacent
+   *  pairs only, never all pairs in a session. CAL. */
+  CONTIGUITY_WINDOW: number;
+  /** The backward delta as a fraction of the forward one (TCM's forward bias:
+   *  in free recall a lag of +1 follows about twice as often as −1). CAL. */
+  CONTIGUITY_BACKWARD: number;
+  /** Each further lag keeps this fraction of the one before (lag 2 = half of
+   *  lag 1). CAL. */
+  CONTIGUITY_LAG_DECAY: number;
+  /**
+   * Two memories written closer together than this are ONE BATCH — most
+   * memories are written in one go at session end, in the order the model
+   * listed them, which is not the order things happened. Within a batch there
+   * is no forward: the pair gets the same delta both ways, the mean of forward
+   * and backward. Further apart, the write order is real time (a note made
+   * mid-session, then the session's end) and the forward bias applies. CAL.
+   */
+  CONTIGUITY_BATCH_MS: number;
 }
 
 export const TUNABLES: AssociateTunables = {
@@ -110,6 +141,12 @@ export const TUNABLES: AssociateTunables = {
   FAN_NORMALIZATION: true,
   MAX_SPREAD_NODES: 64,
   SPREAD_MIN_FRACTION: 0.02,
+
+  CONTIGUITY_RATE: 0.06,
+  CONTIGUITY_WINDOW: 2,
+  CONTIGUITY_BACKWARD: 0.5,
+  CONTIGUITY_LAG_DECAY: 0.5,
+  CONTIGUITY_BATCH_MS: 60_000,
 };
 
 export function withTunables(overrides: Partial<AssociateTunables> = {}): AssociateTunables {

@@ -7,7 +7,9 @@
  *   `tunables.ts`  every knob, in one visible place (CAL where uncalibrated)
  *   `edges.ts`     the edge arithmetic — increment, cap, lived-day decay, homeostasis
  *   `buffer.ts`    the DECLARED durability exemption: per-turn deltas in memory
- *   `spread.ts`    a pure traversal `recall/` can consume as a fourth channel
+ *   `spread.ts`    a pure traversal `recall/` consumes as its hop channel
+ *   `contiguity.ts` a pure planner: memories a session made next to each other
+ *                  (temporal contiguity, 2026-09-28)
  *   `index.ts`     the binding: observer stance, the flush ordering, telemetry
  *
  * Three properties are structural here and worth stating at the top:
@@ -41,6 +43,7 @@ import { pairCredit, tierFactor, withTunables } from "./tunables.js";
 import type { AssociateTunables } from "./tunables.js";
 
 export * from "./buffer.js";
+export * from "./contiguity.js";
 export * from "./edges.js";
 export * from "./pending.js";
 export * from "./spread.js";
@@ -143,6 +146,17 @@ export interface FlushReport {
   /** Dead rows (zeroed by an eviction, or decayed to the floor) the flush swept
    *  away after it landed (2026-09-28). */
   readonly swept: number;
+}
+
+/** What buffering one pass of temporal contiguity did (2026-09-28). */
+export interface ContiguityReport {
+  readonly reason: "buffered" | "observer" | "nothing-to-link";
+  /** Pair deltas buffered for the next flush. */
+  readonly pairs: number;
+  /** Pairs refused because an endpoint is not live memory. */
+  readonly blocked: number;
+  /** Pairs refused because an endpoint is pinned (G9). */
+  readonly frozen: number;
 }
 
 export type ProposeReason = "linked" | "no-room" | "observer" | "nothing-to-link" | "failed";
@@ -309,11 +323,48 @@ export class Associate {
     for (const d of deltas) {
       // The buffer ignores these two, so counting them as absorbed would report
       // work that no flush can ever do.
-      if (d.delta <= 0 || d.a === d.b) continue;
-      this.buffer.add(d.a, d.b, d.delta);
+      if ((d.delta <= 0 && (d.back ?? d.delta) <= 0) || d.a === d.b) continue;
+      this.buffer.add(d.a, d.b, d.delta, d.back ?? d.delta);
       added += 1;
     }
     return added;
+  }
+
+  /**
+   * TEMPORAL CONTIGUITY (association build 2, 2026-09-28): buffer the deltas
+   * `planContiguity` made for memories one session wrote next to each other.
+   * The weak, ubiquitous signal beside co-use's strong one; it goes into the
+   * same buffer and out through the same flush, so the count cap, the
+   * outgoing bound, decay and the sweep apply exactly as for a co-use.
+   *
+   * Each endpoint must be live memory and not pinned (G9: frozen both ways) —
+   * checked here and again at the flush, as for any delta. An observer
+   * buffers nothing, checked first (G7).
+   */
+  contiguity(deltas: readonly PairDelta[]): ContiguityReport {
+    if (this.observer) {
+      this.emit("associate.observer.skip", undefined, { site: "contiguity", pairs: deltas.length });
+      return { reason: "observer", pairs: 0, blocked: 0, frozen: 0 };
+    }
+    const conductor = this.conductor();
+    let pairs = 0;
+    let blocked = 0;
+    let frozen = 0;
+    for (const d of deltas) {
+      if (d.a === d.b) continue;
+      if (!conductor(d.a) || !conductor(d.b)) {
+        blocked += 1;
+        continue;
+      }
+      if (this.store.row(d.a)?.protected === 1 || this.store.row(d.b)?.protected === 1) {
+        frozen += 1;
+        continue;
+      }
+      this.buffer.add(d.a, d.b, d.delta, d.back ?? d.delta);
+      pairs += 1;
+    }
+    this.emit("associate.contiguity", undefined, { pairs, blocked, frozen, buffered: this.buffer.size });
+    return { reason: pairs > 0 ? "buffered" : "nothing-to-link", pairs, blocked, frozen };
   }
 
   /** What is buffered right now — copies, for telemetry and tests. */

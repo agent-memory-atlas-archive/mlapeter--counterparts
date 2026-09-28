@@ -216,7 +216,10 @@ export function appendPendingDeltas(
       const line = JSON.stringify({
         at: opts.at,
         day: opts.day,
-        p: chunk.map((d) => [d.a, d.b, d.delta]),
+        // A directed delta (2026-09-28) carries its b → a half as a fourth
+        // element; a reader that predates it applies the first three, as a
+        // symmetric pair — the delta survives, only its forward bias does not.
+        p: chunk.map((d) => (d.back === undefined ? [d.a, d.b, d.delta] : [d.a, d.b, d.delta, d.back])),
       });
       appendFileSync(path, `${line}\n`, { encoding: "utf8", mode: 0o600 });
       lines += 1;
@@ -245,10 +248,11 @@ function parseLine(raw: string): PendingLine | null {
   if (Array.isArray(p)) {
     for (const item of p) {
       if (!Array.isArray(item) || item.length < 3) continue;
-      const [a, b, delta] = item as [unknown, unknown, unknown];
+      const [a, b, delta, back] = item as [unknown, unknown, unknown, unknown];
       if (typeof a !== "string" || typeof b !== "string" || typeof delta !== "number") continue;
       if (a.length === 0 || b.length === 0 || !Number.isFinite(delta) || delta <= 0) continue;
-      pairs.push({ a, b, delta });
+      if (typeof back === "number" && Number.isFinite(back) && back >= 0 && back !== delta) pairs.push({ a, b, delta, back });
+      else pairs.push({ a, b, delta });
     }
   }
   return { at, day, pairs, dropped };

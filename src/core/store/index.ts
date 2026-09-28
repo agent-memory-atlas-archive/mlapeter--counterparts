@@ -3971,6 +3971,39 @@ export class Store {
     return this.ops.all<EdgeRow>("SELECT * FROM edges ORDER BY src, dst");
   }
 
+  /**
+   * Live MEMORY rows written at or after a moment (`created_at`, UTC ms), with
+   * their session and their place in write order — temporal contiguity's read
+   * (association build 2, 2026-09-28). Ids, sessions, moments and days only.
+   * Rows with no session, no moment (pre-v7), archived or superseded are left
+   * out: contiguity links what one session made, in the order it made it.
+   */
+  memoriesWrittenSince(at: number): { id: string; session: string; at: number; bornDay: number }[] {
+    return this.ops
+      .all<{ id: string; origin_session: string; created_at: number; birth_day: number }>(
+        `SELECT id, origin_session, created_at, birth_day FROM memories
+          WHERE type = 'memory' AND created_at >= ? AND origin_session IS NOT NULL
+            AND archived = 0 AND superseded_by IS NULL
+          ORDER BY created_at, rowid`,
+        at,
+      )
+      .map((r) => ({ id: r.id, session: r.origin_session, at: r.created_at, bornDay: r.birth_day }));
+  }
+
+  /** The same rows for ONE session, in write order — the neighbours a newly
+   *  written memory sits beside (2026-09-28). */
+  memoriesOfSession(session: string): { id: string; session: string; at: number; bornDay: number }[] {
+    return this.ops
+      .all<{ id: string; origin_session: string; created_at: number; birth_day: number }>(
+        `SELECT id, origin_session, created_at, birth_day FROM memories
+          WHERE type = 'memory' AND origin_session = ? AND created_at IS NOT NULL
+            AND archived = 0 AND superseded_by IS NULL
+          ORDER BY created_at, rowid`,
+        session,
+      )
+      .map((r) => ({ id: r.id, session: r.origin_session, at: r.created_at, bornDay: r.birth_day }));
+  }
+
   prospectiveFor(id: string): ProspectiveRow[] {
     return this.ops.all<ProspectiveRow>(
       "SELECT * FROM prospective WHERE memory_id = ? ORDER BY window_key",

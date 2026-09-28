@@ -2615,6 +2615,8 @@ describe("Association (2026-09-28): what spreading did, and the edges", () => {
     // Quiet pointers (association build 2): shown on the turns, expanded at credit.
     s.appendEvent({ name: "recall.decision", day, payload: { spread: { seeds: 1, expanded: 1, stop: "exhausted", depth: 1, computed: 2, landed: 0, pointersShown: 2 }, dropped: 0 } });
     s.appendEvent({ name: "recall.credit", day, payload: { reason: "credited", pointersExpanded: 1 } });
+    // Temporal contiguity: the boundary's own flush row says what it buffered.
+    s.appendEvent({ name: "associate.flush", day, payload: { reason: "flushed", source: "boundary", rows: 4, contiguity: { pairs: 3, buffered: 3 } } });
     const f = by(doctorFindings(input({ store: s })), "association");
     expect(f.severity).toBe("green");
     expect(f.data["turns"]).toBe(3);
@@ -2634,5 +2636,7 @@ describe("Association (2026-09-28): what spreading did, and the edges", () => {
     expect(f.data["pointersShown"]).toBe(2);
     expect(f.data["pointersExpanded"]).toBe(1);
     expect(f.detail).toContain("2 quiet pointers shown (memories only links reached), 1 later expanded");
+    expect(f.data["contiguityPairs"]).toBe(3);
+    expect(f.detail).toContain("Temporal contiguity linked 3 pairs of neighbouring memories");
   });
 });

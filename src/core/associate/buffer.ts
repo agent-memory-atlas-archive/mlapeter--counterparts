@@ -32,17 +32,20 @@ import type { PairDelta } from "./edges.js";
 export class DeltaBuffer {
   private pairs = new Map<string, PairDelta>();
 
-  /** Accumulate one unordered pair's delta. Ordering of (a, b) never matters. */
-  add(a: string, b: string, delta: number): void {
-    if (delta <= 0 || a === b) return;
+  /**
+   * Accumulate one unordered pair's delta. Ordering of (a, b) never matters —
+   * unless `back` is given (2026-09-28): then `delta` is a → b and `back` is
+   * b → a, the one directed case (temporal contiguity's forward bias). The
+   * slot stays canonical (a < b), with the two directions swapped to match.
+   */
+  add(a: string, b: string, delta: number, back: number = delta): void {
+    if ((delta <= 0 && back <= 0) || a === b) return;
     const key = pairKey(a, b);
+    const [lo, hi, ab, ba] = a < b ? [a, b, delta, back] : [b, a, back, delta];
     const have = this.pairs.get(key);
-    if (have === undefined) {
-      const [lo, hi] = a < b ? [a, b] : [b, a];
-      this.pairs.set(key, { a: lo, b: hi, delta });
-      return;
-    }
-    this.pairs.set(key, { a: have.a, b: have.b, delta: have.delta + delta });
+    const nextAb = (have?.delta ?? 0) + ab;
+    const nextBa = (have === undefined ? 0 : have.back ?? have.delta) + ba;
+    this.pairs.set(key, nextAb === nextBa ? { a: lo, b: hi, delta: nextAb } : { a: lo, b: hi, delta: nextAb, back: nextBa });
   }
 
   get size(): number {

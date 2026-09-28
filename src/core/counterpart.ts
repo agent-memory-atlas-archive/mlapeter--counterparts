@@ -37,7 +37,7 @@
  */
 import { randomUUID } from "node:crypto";
 
-import { Associate, appendPendingDeltas, claimPending, releasePending } from "./associate/index.js";
+import { Associate, appendPendingDeltas, claimPending, planContiguity, releasePending } from "./associate/index.js";
 import type { CoactivateResult, Credited, FlushReport, PairDelta, PendingClaim } from "./associate/index.js";
 import { selfRenderer } from "./briefing.js";
 import { batteryGate, episodeGate, gateSweepChunk } from "./bridge.js";
@@ -480,8 +480,41 @@ export const RECALL_CREDIT_EVENT = "recall.credit";
  * with. A run that carried nothing writes no row at all — the mechanism's
  * roll-call reads this name, and a daily row saying "nothing pending" would make
  * an idle graph read as a working one.
+ *
+ * Since 2026-09-28 the boundary's OWN flush writes one too, with the same
+ * fields plus `source: "boundary"` and `contiguity` (what temporal contiguity
+ * planned and buffered) — but only when it flushed something: the same rule.
  */
 export const ASSOCIATE_FLUSH_EVENT = "associate.flush";
+
+/**
+ * Where temporal contiguity has got to (2026-09-28): the newest `created_at`
+ * its last pass read, and the ids written at exactly that moment, as JSON in
+ * the `meta` table. A moment rather than a rowid, so a table rebuild by a
+ * future migration cannot move it. Absent on a store no pass has run on: the
+ * first pass links only the memories born on the current lived day — a new
+ * store's first session, never an old store's whole history.
+ */
+export const CONTIGUITY_CURSOR_META = "associateContiguityCursor";
+
+/** What one boundary's temporal contiguity pass did. Counts only. */
+export interface ContiguityPass {
+  readonly reason: "buffered" | "nothing-new" | "observer" | "failed";
+  /** Sessions with a new memory, and the new memories themselves. */
+  readonly sessions: number;
+  readonly memories: number;
+  /** Pairs planned: with a real order between them (forward bias), or one batch (flat). */
+  readonly pairs: number;
+  readonly timed: number;
+  readonly batch: number;
+  /** Directed deltas at or under the conduct floor (see `ContiguityPlan`). */
+  readonly underFloor: number;
+  /** Pairs buffered for the flush, and refused (an endpoint not live, or pinned). */
+  readonly buffered: number;
+  readonly blocked: number;
+  readonly frozen: number;
+  readonly code?: string;
+}
 export const SPAWN_REFUSED_EVENT = "adapter.spawn.refused";
 export const SPAWN_FAILED_EVENT = "adapter.spawn.failed";
 export const RUNNER_FAILED_EVENT = "adapter.runner.failed";
@@ -908,6 +941,9 @@ export interface ChapterResult {
 export interface SessionEndReport {
   readonly sweeps: readonly SweepReport[];
   readonly edges: FlushReport;
+  /** Temporal contiguity: what this boundary planned and buffered before its
+   *  flush (2026-09-28). */
+  readonly contiguity: ContiguityPass;
   /** The co-activation the hooks left on disk, applied here. Null if it threw. */
   readonly carried: PendingApplyReport | null;
   readonly cycle: CycleReport;
@@ -1339,6 +1375,20 @@ function recallDecisionRecord(
     dropped: d.dropped,
   } satisfies Record<SurfaceSetField, unknown>;
   return surfaceSet;
+}
+
+/** The contiguity cursor, read leniently: anything unreadable is "no cursor",
+ *  which re-reads only the current lived day's memories — never a history. */
+function readContiguityCursor(raw: string | undefined): { at: number; ids: string[] } | null {
+  if (raw === undefined) return null;
+  try {
+    const v = JSON.parse(raw) as { at?: unknown; ids?: unknown };
+    if (typeof v.at !== "number" || !Number.isFinite(v.at)) return null;
+    const ids = Array.isArray(v.ids) ? v.ids.filter((x): x is string => typeof x === "string") : [];
+    return { at: v.at, ids };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -3062,7 +3112,12 @@ export class Counterpart {
             ...(input.sweep as SweepEntry),
           });
     if (skipped !== null) this.recordSweepGate([], input.date ?? null, skipped);
+    // TEMPORAL CONTIGUITY (2026-09-28), before the flush so its deltas go out
+    // through the same plan, homeostasis and sweep as a co-use, and are
+    // counted on the boundary's own `associate.flush` row.
+    const contiguity = this.contiguityPass();
     const edges = this.associate.flush();
+    this.recordBoundaryFlush(edges, contiguity);
     // The hooks' own co-activation, applied in the process that can afford to
     // wait on the write lock. After the in-process flush, so a single-process
     // caller's own deltas are not sitting in the buffer when a claim is
@@ -3144,7 +3199,134 @@ export class Counterpart {
       observer: cycle.observer,
       episodesIngested: episodes.ingested + episodes.regrown,
     });
-    return { sweeps, edges, carried, cycle, budgetBytes, episodes };
+    return { sweeps, edges, contiguity, carried, cycle, budgetBytes, episodes };
+  }
+
+  /**
+   * TEMPORAL CONTIGUITY — the boundary's half (association build 2,
+   * 2026-09-28). Reads the memories written since the last pass
+   * (`CONTIGUITY_CURSOR_META`), and for each session that has one, that
+   * session's memories in write order; `associate/contiguity.ts` plans the
+   * adjacent pairs that touch a new memory, and `Associate.contiguity` buffers
+   * them for this boundary's flush.
+   *
+   * THE CURSOR MOVES FIRST, before anything is buffered: a flush that then
+   * fails drops this pass's deltas (bounded loss), and a crash after the flush
+   * cannot re-plan pairs that already landed — at most once, the direction
+   * `associate/CONTRACT.md` §5 G4 chooses. A cursor that cannot be written
+   * means nothing is buffered; the memories wait for the next boundary.
+   *
+   * Fail-open, like every other step of the boundary: a pass that throws is a
+   * `failed` report and the boundary goes on. An observer does nothing.
+   */
+  contiguityPass(): ContiguityPass {
+    const zero: ContiguityPass = {
+      reason: "nothing-new",
+      sessions: 0,
+      memories: 0,
+      pairs: 0,
+      timed: 0,
+      batch: 0,
+      underFloor: 0,
+      buffered: 0,
+      blocked: 0,
+      frozen: 0,
+    };
+    if (this.observer) return { ...zero, reason: "observer" };
+    try {
+      const cursor = readContiguityCursor(this.store.getMeta(CONTIGUITY_CURSOR_META));
+      const day = this.store.livedDay();
+      const rows = this.store.memoriesWrittenSince(cursor?.at ?? 0);
+      if (rows.length === 0) return zero;
+      const seen = new Set(cursor?.ids ?? []);
+      const fresh = rows.filter((r) => (cursor === null ? r.bornDay >= day : !(r.at === cursor.at && seen.has(r.id))));
+      const newest = rows.reduce((m, r) => Math.max(m, r.at), 0);
+      this.store.setMeta(
+        CONTIGUITY_CURSOR_META,
+        JSON.stringify({ at: newest, ids: rows.filter((r) => r.at === newest).map((r) => r.id) }),
+      );
+      if (fresh.length === 0) return zero;
+      const freshIds = new Set(fresh.map((r) => r.id));
+      const sessions = [...new Set(fresh.map((r) => r.session))].sort();
+      const deltas: PairDelta[] = [];
+      let timed = 0;
+      let batch = 0;
+      let underFloor = 0;
+      for (const session of sessions) {
+        const plan = planContiguity(
+          this.store.memoriesOfSession(session).map((r) => ({ id: r.id, at: r.at, fresh: freshIds.has(r.id) })),
+          this.associate.tunables,
+        );
+        deltas.push(...plan.deltas);
+        timed += plan.timed;
+        batch += plan.batch;
+        underFloor += plan.underFloor;
+      }
+      const buffered = this.associate.contiguity(deltas);
+      const out: ContiguityPass = {
+        reason: buffered.pairs > 0 ? "buffered" : "nothing-new",
+        sessions: sessions.length,
+        memories: fresh.length,
+        pairs: deltas.length,
+        timed,
+        batch,
+        underFloor,
+        buffered: buffered.pairs,
+        blocked: buffered.blocked,
+        frozen: buffered.frozen,
+      };
+      this.emit("counterpart.associate.contiguity", undefined, { ...out });
+      return out;
+    } catch (err) {
+      const code = errCode(err);
+      this.emit("counterpart.associate.contiguity.failed", undefined, { code });
+      return { ...zero, reason: "failed", code };
+    }
+  }
+
+  /**
+   * The boundary's own flush, on the durable log (2026-09-28) — the same
+   * `associate.flush` row the carried claims write, with `source: "boundary"`
+   * and what contiguity did. Only when the flush flushed something (or
+   * failed), for the reason `ASSOCIATE_FLUSH_EVENT` gives. Never throws.
+   */
+  private recordBoundaryFlush(edges: FlushReport, contiguity: ContiguityPass): void {
+    if (edges.reason !== "flushed" && edges.reason !== "failed") return;
+    const data: Record<string, unknown> = {
+      reason: edges.reason,
+      source: "boundary",
+      day: edges.day,
+      dayFrom: "clock",
+      claims: 0,
+      passes: 0,
+      pairs: edges.pairs,
+      rows: edges.rows,
+      blocked: edges.blocked,
+      evicted: edges.evictions.length,
+      swept: edges.swept,
+      dropped: edges.dropped,
+      pendingDropped: 0,
+      corrupt: 0,
+      stuck: 0,
+      oldestMs: 0,
+      contiguity: {
+        sessions: contiguity.sessions,
+        memories: contiguity.memories,
+        pairs: contiguity.pairs,
+        timed: contiguity.timed,
+        batch: contiguity.batch,
+        underFloor: contiguity.underFloor,
+        buffered: contiguity.buffered,
+        blocked: contiguity.blocked,
+        frozen: contiguity.frozen,
+      },
+    };
+    if (edges.code !== undefined) data["error"] = edges.code;
+    try {
+      this.store.appendEvent({ name: ASSOCIATE_FLUSH_EVENT, day: edges.day, payload: data });
+    } catch (err) {
+      this.emit("counterpart.associate.flush.unrecorded", undefined, { code: errCode(err) });
+    }
   }
 
   /**
