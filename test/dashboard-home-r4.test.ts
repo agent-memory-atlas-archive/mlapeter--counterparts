@@ -268,7 +268,7 @@ describe("4. the radar and the self map are their tabs' own components", () => {
     expect(feel).toContain('go("memories?feeling="');
     const map = read("pages/home/sections/map.js");
     expect(map).toContain('from "../../self/sections/map.js"');
-    expect(map).toContain('{ legend: "min" }');
+    expect(map).toContain('{ count: false }');
     expect(map).toContain('href="#self"');
     // The memories tab opens at a feeling.
     expect(read("pages/memories/index.js")).toContain('params.get("feeling")');

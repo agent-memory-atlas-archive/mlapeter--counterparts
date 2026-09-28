@@ -193,8 +193,8 @@ describe("the self tab, round 3b", () => {
     expect(dist(x, "c1")).toBeLessThan(x.rc);
     expect(dist(x, "near")).toBeLessThan(dist(x, "far"));
     expect(dist(x, "far")).toBeCloseTo(x.R, 5);
-    expect(nodeWords({ core: true, strength: 0.5 })).toBe("in the core · held 50%");
-    expect(nodeWords({ oneReturnAway: true, strength: 0.72 })).toBe("one return away from the core · held 72%");
+    expect(nodeWords({ core: true, strength: 0.5 })).toBe("who I am · held 50%");
+    expect(nodeWords({ oneReturnAway: true, strength: 0.72 })).toBe("almost there: one more return and it can join · held 72%");
   });
 
   test("4: ready dots share the innermost ring but never sit on top of each other (2026-09-28)", () => {
@@ -211,7 +211,7 @@ describe("the self tab, round 3b", () => {
     }
     for (let i = 0; i < 30; i++) links.push({ a: `mem_o${i}`, b: `mem_ready${i % 6}`, weight: 0.3 });
     type P = { x: number; y: number; r: number };
-    type L = { pos: Map<string, P>; cx: number; cy: number; inner: number };
+    type L = { pos: Map<string, P>; cx: number; cy: number; rA: number };
     for (const [w, h] of [[700, 380], [360, 342]] as const) {
       const x = layout({ nodes, links }, w, h) as L;
       const again = layout({ nodes, links }, w, h) as L;
@@ -223,9 +223,9 @@ describe("the self tab, round 3b", () => {
           expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThanOrEqual(MIN_APART - 0.5);
         }
       }
-      // Still at the radius their closeness gives them: only the angle moved.
+      // Still on their ring ("almost there", round 4): only the angle moved.
       for (const d of drawn.filter((n) => n.id.startsWith("mem_ready"))) {
-        expect(Math.hypot(d.p.x - x.cx, d.p.y - x.cy)).toBeCloseTo(x.inner, 5);
+        expect(Math.hypot(d.p.x - x.cx, d.p.y - x.cy)).toBeCloseTo(x.rA, 5);
       }
     }
   });

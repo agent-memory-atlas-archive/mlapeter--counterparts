@@ -80,6 +80,8 @@ export default {
   refresh: () => draw(false),
   /** The self map is drawn to its box's width: a new width redraws it. */
   resize: () => settling.resize(),
+  /** A window resized while this tab was hidden left the map at its old width: coming back redraws it to fit. */
+  show: () => settling.resize(),
   /** `#self/settling`, `#self/traits`, `#self/journal`: open the tab at that section. */
   route({ anchor }) {
     const h = anchor && $("self-" + anchor + "-h");
