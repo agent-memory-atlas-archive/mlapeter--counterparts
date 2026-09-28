@@ -169,10 +169,12 @@ describe("4. dreams: how many, and a way to every one", () => {
     const c = Counterpart.open({ dir, owner: true });
     try {
       const some = dreamListLines(c);
-      expect(some[0]).toBe(`Dreams — newest first (${DREAM_LIST_LIMIT} of ${TOTAL} shown; every one: counterparts dream --list --all)`);
+      // The dreaming setting leads the list (2026-09-28, #271); the count line follows it.
+      expect(some[0]).toStartWith("Dreaming: auto.");
+      expect(some[2]).toBe(`Dreams — newest first (${DREAM_LIST_LIMIT} of ${TOTAL} shown; every one: counterparts dream --list --all)`);
       expect(some.filter((l) => l.startsWith("drm_")).length).toBe(DREAM_LIST_LIMIT);
       const all = dreamListLines(c, "all");
-      expect(all[0]).toBe(`Dreams — newest first (all ${TOTAL})`);
+      expect(all[2]).toBe(`Dreams — newest first (all ${TOTAL})`);
       expect(all.filter((l) => l.startsWith("drm_")).length).toBe(TOTAL);
     } finally {
       c.close();

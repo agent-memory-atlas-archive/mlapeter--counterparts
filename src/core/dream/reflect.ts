@@ -1707,7 +1707,7 @@ const PART_FURNITURE = 1_000;
 /**
  * THE SIZE OF A BEGIN RESULT AS IT LEAVES: the MCP text is the result's JSON,
  * pretty-printed, with the bundle text escaped inside it, `how` and the
- * questions beside it (`adapters/mcp/server.ts#reflectTool`).
+ * questions beside it (the MCP adapter's `reflect` tool).
  */
 export function resultChars(text: string, how: string, questions: readonly string[]): number {
   return JSON.stringify({ bundle: text, how, questions }, null, 2).length;
