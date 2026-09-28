@@ -32,6 +32,17 @@ export interface AssociateTunables {
    * disabled", and no such fixture exists yet. v1's reinforcement weight for the
    * weak tier was 0.25 (`physics.TUNABLES.W_SURFACED`) — recorded here as the
    * calibration to re-earn, deliberately NOT wired in. See NOTES.md §2. CAL.
+   *
+   * Considered again 2026-09-28 (association build 2) and LEFT AT 0, with the
+   * fixture contract §4 asked for (`association-build2.test.ts` › "6."): at
+   * 0.25 a referenced × surfaced pair (0.025) conducts on its first meeting —
+   * "shown beside" linked to "thought with" at once, the squared factor not
+   * binding for that pair type — while surfaced × surfaced (0.00625) is swept
+   * at every flush and can never accumulate across boundaries. The credit pass
+   * passes no `surfaced` member today in any case (`counterpart.ts`
+   * `creditReferences` credits `referenced` only), and with one loud slot a
+   * turn (`recall` `MAX_SURFACED` 1) surfaced × surfaced cannot occur in one
+   * reply. The weak, ubiquitous signal is temporal contiguity now.
    */
   EDGE_WEAK_CREDIT: number;
   /** Per-edge ceiling. An edge is a readiness, not an unbounded counter. */

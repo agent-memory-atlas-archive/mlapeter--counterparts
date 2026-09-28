@@ -616,3 +616,62 @@ describe("5. index co-credit: one batch lookup co-credits as a pair set, and the
   });
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 6. Weak credit: the fixture contract §4 asks for, naming what breaks on each side
+// ═══════════════════════════════════════════════════════════════════════════
+describe("6. weak credit stays 0 (2026-09-28): what v1's 0.25 would do, on each side", () => {
+  function three(): { s: Store; a: string; b: string; c: string } {
+    const s = store();
+    const [a, b, c] = ["A memory the reply used.", "A memory shown loud and not used.", "Another shown and not used."].map((body) =>
+      s.put({ type: "memory", kind: "fact", body }),
+    ) as [string, string, string];
+    return { s, a, b, c };
+  }
+
+  test("as shipped (0): a surfaced-but-unused memory trains no link, whatever it was shown beside", () => {
+    const { s, a, b } = three();
+    const g = new Associate({ store: s });
+    const co = g.coactivate([
+      { id: a, tier: "referenced" },
+      { id: b, tier: "surfaced" },
+    ]);
+    expect(co.reason).toBe("too-few-members");
+    expect(co.members.find((m) => m.id === b)?.reason).toBe("ignorable-tier");
+  });
+
+  test("the NOISE side at 0.25: 'shown' links to 'thought' on the first meeting (0.1 × 1 × 0.25 = 0.025 conducts)", () => {
+    const { s, a, b } = three();
+    const g = new Associate({ store: s, tunables: { EDGE_WEAK_CREDIT: 0.25 } });
+    g.coactivate([
+      { id: a, tier: "referenced" },
+      { id: b, tier: "surfaced" },
+    ]);
+    g.flush();
+    // The squared factor was meant as the guard; for this pair type it does not bind.
+    expect(g.linked(a, b)).toBe(true);
+  });
+
+  test("the DEAD side at 0.25: surfaced × surfaced (0.00625) never survives a flush — the sweep takes it — so 're-met before it conducts' cannot accumulate across boundaries", () => {
+    const { s, b, c } = three();
+    const g = new Associate({ store: s, tunables: { EDGE_WEAK_CREDIT: 0.25 } });
+    for (let i = 0; i < 4; i++) {
+      g.coactivate([
+        { id: b, tier: "surfaced" },
+        { id: c, tier: "surfaced" },
+      ]);
+      g.flush();
+    }
+    expect(g.linked(b, c)).toBe(false);
+    expect(s.edgesFrom(b)).toEqual([]);
+    // Only four meetings inside ONE flush reach the floor's other side.
+    for (let i = 0; i < 4; i++) {
+      g.coactivate([
+        { id: b, tier: "surfaced" },
+        { id: c, tier: "surfaced" },
+      ]);
+    }
+    g.flush();
+    expect(g.weightAt(b, c)).toBeCloseTo(4 * 0.1 * 0.25 * 0.25, 12);
+  });
+});
+
