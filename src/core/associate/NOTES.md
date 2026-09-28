@@ -340,7 +340,65 @@ sweep as a co-use, and are counted on the boundary's own `associate.flush` row
   would not do that): 152 pairs across 30 sessions, all one-batch; 596 rows written, 8
   nodes renormalized; delivered memories unchanged, candidates touched by a hop up about
   a quarter. Near silent until use confirms a link, as intended: a 0.045 edge passes 0.6%
-  of what its node carries.
+  of what its node carries. 596 rows for 152 pairs is 304 directed rows plus siblings
+  `plan()` rewrote (touching a node realizes the decay of all its edges) and the
+  renormalized nodes — so a count of `rows` ("links written") counts rewrites too.
+- *How long they live* (review of #281, finding 7; `S_EDGE` 30, floor 0.02), if no use
+  confirms them:
+
+  | edge | weight | lived days above the floor |
+  |---|---|---|
+  | lag 1, real order, forward | 0.06 | 33 |
+  | lag 1, one batch | 0.045 | 24 |
+  | lag 1, real order, back | 0.03 | 12 |
+  | lag 2, real order, forward | 0.03 | 12 |
+  | lag 2, one batch | 0.0225 | 3.5 |
+  | lag 2, real order, back | 0.015 | swept at once |
+
+  Lag 2 in the common one-batch case lives three and a half lived days and passes 0.28%
+  of its node's activation meanwhile — under the spread threshold even from the
+  strongest seed. Kept as built for now; whether it earns its rows (dropping it halves
+  contiguity's rows) is the owner's decision.
+
+**After the adversarial review of #281 (same day).**
+- *The nightly run's rows are left out* (finding 1). A dream's gists and merges and a
+  reflection's entry carry the launching session's id; they were read as that session's
+  newest memories and chained to its notes with full waking homeostasis and no waking use
+  — the thing #279 refused for dream links. Both reads now know a nightly row by origin
+  (`dream:` / `reflection:`, which also catches merges) and by source (`dreamed` /
+  `reflection`); the session's sequence skips them and the pass counts them
+  (`excluded`).
+- *What landed, and what it cost* (findings 2 and 9). The boundary keeps the pairs it
+  buffered and, after its flush, says which LANDED as a conducting link, which lost
+  their own new link to the count cap (`evictedOwn`), how many OTHER links the cap
+  pushed out at nodes contiguity touched (`evictedOther` — possibly waking-learned, which
+  is the number to watch while contiguity goes through full homeostasis), and how many
+  of those nodes the outgoing bound scaled back (`renormalizedNodes`). Exact on the host,
+  where co-use flushes on its own; attributed to contiguity's nodes when a single-process
+  caller also co-activated in-process. Doctor now says "buffered … landed", not "linked".
+- *A failed pass, and pairs lost before a flush recorded them, leave a row* (finding 3).
+  The boundary's `associate.flush` row is also written when the pass failed, buffered
+  pairs its flush did not write, or finds an earlier pass's pairs lost; the cursor
+  carries a `pending` count until the row about them lands. A crash after the row and
+  before the mark is cleared over-reports one pass as lost — the safe direction.
+- *Known gaps, stated and not fixed:*
+  - **A memory committed behind the cursor is never linked** (finding 6). `created_at`
+    is stamped before the write lock is taken, so a writer that stamped earlier and
+    committed after a pass read a newer row lands below the cursor: never fresh, never
+    linked, not counted. Needs lock contention (which I38 shows happens). A fix would
+    re-read from `cursor.at − CONTIGUITY_BATCH_MS` against a small seen set.
+  - **Two runners at once could plan one pass twice** (finding 11). The cursor read, the
+    row read and the cursor write are not one transaction and the runner has no lock;
+    two boundaries inside about a millisecond could buffer the same deltas, doubling one
+    pass's weights. A session that ends twice is fine (the second pass is `nothing-new`).
+  - **A superseding row is linked as new** (review decision F). `Store.supersede` writes
+    a new row with a new `created_at`, so when the successor carries a session it is
+    linked next to whatever that session wrote last — up to two contiguity links it did
+    not earn. The old row's learned links stop conducting; they are carried over
+    (`retargetOnSupersede`) on the paths that go through the composition root — a schema
+    revision (`counterpart.ts`, both `supersede` callers) and a dream merge — but not by a
+    bare `Store.supersede`, which is what the review's probe called (its successor had no
+    edge). An in-place `Store.revise` keeps `created_at` and is never re-linked.
 
 **Index co-credit** was already built by #279 (§13): the hook flattens a reply's
 `recall ids:[…]` batches into the credit pass's expansions, every expansion is a

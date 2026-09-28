@@ -645,6 +645,8 @@ Working defaults, held lightly; the association side is `associate/NOTES.md` §1
   conversation gave it. It bound on about one modulated candidate in ten on the bench.
   `hopsCapped` is on the turn's `spread`.
 - **The turn's `spread`** now also carries `linkOnly`, `pointerCandidates`,
-  `pointersShown`, `pointersUnanchored`, `hopsCapped`, and `waiting`
-  when the node budget bound — all inside the one `spread` field of
-  `RECALL_DECISION_FIELDS`, so the field list did not move.
+  `pointersShown`, `pointersUnanchored`, `hopsCapped`, and `waiting` when the node
+  budget bound — all inside the one `spread` field of `RECALL_DECISION_FIELDS`, so the
+  field list did not move. Since the review of #281 (finding 5) the durable row's
+  `footnotes` entries also carry `via: "link"` on a pointer, inside the existing
+  arrays, so which footnote was one survives the gate state's pruning.

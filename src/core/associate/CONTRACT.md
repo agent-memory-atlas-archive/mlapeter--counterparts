@@ -114,7 +114,10 @@ for `recall/`; telemetry by reference.
     order is real time, the same both ways inside one batch. Through the same buffer,
     plan, homeostasis and sweep as a co-use (G2), frozen at a pinned endpoint (G9),
     nothing under observer (G7), and at most once (G4): the pass's cursor moves before
-    anything is buffered. Counted on the boundary's `associate.flush` row.
+    anything is buffered. Counted on the boundary's `associate.flush` row — what was
+    buffered, what landed, what it pushed out, a failed pass, pairs lost before a flush
+    recorded them. The nightly run's rows (a dream's gists and merges, a reflection's
+    entry) are not the session's and are left out, counted (review of #281).
 
 ## 6. Scars honored
 

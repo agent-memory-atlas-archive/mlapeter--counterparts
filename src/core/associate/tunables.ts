@@ -111,8 +111,13 @@ export interface AssociateTunables {
    * This is the FORWARD lag-1 delta for a pair with a real order between them.
    * Co-use (`HEBB_RATE`, 0.1) stays the strong signal; at 0.06 a contiguity
    * link passes 0.75% of what its node carries — near silent until use
-   * confirms it — and fades under the floor in about 32 lived days
-   * (`30 · ln(0.06 / 0.02)`) if nothing does. CAL, no ancestry.
+   * confirms it. How long each kind lives above the floor if nothing confirms
+   * it (`S_EDGE` 30, floor 0.02; review of #281, finding 7): lag 1 forward
+   * with a real order 0.06, 33 lived days; lag 1 in one batch 0.045, 24; lag 1
+   * back 0.03, 12; lag 2 forward 0.03, 12; lag 2 in one batch 0.0225, 3.5;
+   * lag 2 back 0.015, swept at once. Lag 2 in the common one-batch case is
+   * close to inert (it passes 0.28% of its node) — whether it earns its rows
+   * is the owner's call (associate NOTES §14). CAL, no ancestry.
    */
   CONTIGUITY_RATE: number;
   /** Neighbours on each side a memory links to: lag 1 and lag 2. Adjacent
