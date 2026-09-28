@@ -1519,7 +1519,7 @@ describe("SEAMS L — hops raise what the conversation reached; links may add a 
     expect(d.spread).not.toBeNull();
     expect(d.spread?.seeds).toBeGreaterThanOrEqual(1);
     expect(d.spread?.depth).toBeGreaterThanOrEqual(1);
-    expect(typeof d.spread?.stop).toBe("string");
+    expect(["exhausted", "hop-limit", "threshold", "node-limit"]).toContain(d.spread?.stop as string);
     expect(d.spread?.computed).toBeGreaterThanOrEqual(1);
     // Every candidate here is a seed, and a seed receives nothing: no landing.
     expect(d.spread?.landed).toBe(0);
