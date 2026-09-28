@@ -149,10 +149,8 @@ export interface SpreadStats {
   /** Contributions that landed on a candidate the cut KEPT (what the gate saw). */
   readonly landed: number;
   /** Candidates whose hop score the ceiling cut (`HOP_CEILING` × their own
-   *  cue + semantic), and pointers held to `LINK_POINTER_CAP_FRACTION` of the
-   *  strongest seed — 2026-09-28, counted rather than silent. */
+   *  cue + semantic) — 2026-09-28, counted rather than silent. */
   readonly hopsCapped: number;
-  readonly pointersCapped: number;
   /**
    * The link-only half (association build 2, 2026-09-28). `linkOnly`: memories
    * the graph reached that no cue and no embedding did. `pointerCandidates`: of
@@ -630,7 +628,7 @@ export function activate(
   const linkOnlyFrom = new Map<string, Readonly<Record<string, number>>>();
   let strongestSeed = 0;
   let hopsCapped = 0;
-  let spreadRun: Omit<SpreadStats, "landed" | "pointerCandidates" | "hopsCapped" | "pointersCapped"> | null = null;
+  let spreadRun: Omit<SpreadStats, "landed" | "pointerCandidates" | "hopsCapped"> | null = null;
   if (input.spread !== undefined && scored.length > 0) {
     const seeds = scored
       .filter((c) => c.cue + c.semantic > 0)
@@ -747,17 +745,13 @@ export function activate(
     .filter(([, a]) => a >= threshold)
     .sort((x, y) => y[1] - x[1] || (x[0] < y[0] ? -1 : 1));
   let pointerCandidates = 0;
-  let pointersCapped = 0;
-  // A pointer's own, smaller ceiling (2026-09-28): whatever arrived, it carries
-  // at most `LINK_POINTER_CAP_FRACTION` of the strongest seed — ranked by what
-  // arrived, recorded at the cap, and the cap counted (`pointersCapped`).
-  const pointerCap = strongestSeed * t.LINK_POINTER_CAP_FRACTION;
+  // No ceiling of its own (review of #281, finding 4): the gate ranks and
+  // admits a pointer by what its SHOWN anchors passed it, never by this
+  // number, so a cap here would bind nothing. Its activation is what arrived.
   for (const [id, arrived] of pool) {
     const row = recallable(id);
     if (row === undefined) continue;
     pointerCandidates += 1;
-    const carried = Math.min(arrived, pointerCap);
-    if (arrived > pointerCap) pointersCapped += 1;
     const physics = rowToPhysics(row);
     const stored = store.read(id);
     candidates.push({
@@ -774,8 +768,8 @@ export function activate(
       temporal: 0,
       semantic: 0,
       arrival: 0,
-      hops: carried,
-      activation: carried,
+      hops: arrived,
+      activation: arrived,
       cueFraction: 0,
       matched: 0,
       // A link is an id, not an ambiguous handle: an expansion of a pointer is
@@ -806,7 +800,6 @@ export function activate(
             landed: kept.filter((c) => c.hops > 0).length,
             hopsCapped,
             pointerCandidates,
-            pointersCapped,
           },
     dropped,
   };

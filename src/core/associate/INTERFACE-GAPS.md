@@ -213,7 +213,7 @@ every delta), counted as its own eviction reason.
 
 **Both built in association build 2 (2026-09-28, NOTES §14):** the best-first queue with
 a threshold (`SPREAD_MIN_FRACTION`, the node budget a recorded backstop), and the
-ceiling (recall's `HOP_CEILING`, with a smaller one for quiet pointers). Recorded, as
+ceiling (recall's `HOP_CEILING`; a pointer's own cap was dropped after the review of #281). Recorded, as
 they were left — build 1 was measure-and-fix only:
 
 - **A best-first queue across depths, with an activation threshold.** Today each hop's

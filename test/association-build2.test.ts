@@ -376,7 +376,7 @@ describe("2. best-first across depths, a threshold stop, the node budget recorde
 // ═══════════════════════════════════════════════════════════════════════════
 // 3. A ceiling on the hop score: links suggest, they don't take over
 // ═══════════════════════════════════════════════════════════════════════════
-describe("3. the hop ceiling: at most HOP_CEILING × the candidate's own cue + semantic; pointers held lower", () => {
+describe("3. the hop ceiling: at most HOP_CEILING × the candidate's own cue + semantic", () => {
   function scoredTurn(tunables: Partial<Parameters<typeof withTunables>[0]>, contribution: number) {
     const { s, cued } = seeded();
     const t = withTunables({ SPREAD_SEEDS: 0, ...tunables });
@@ -402,17 +402,14 @@ describe("3. the hop ceiling: at most HOP_CEILING × the candidate's own cue + s
     expect(stats?.hopsCapped).toBe(0);
   });
 
-  test("a pointer carries at most LINK_POINTER_CAP_FRACTION of the strongest seed, however many paths reach it", () => {
+  test("a pointer has no ceiling of its own: it carries what arrived, and the gate never reads that number (review of #281, finding 4)", () => {
     const { s, cued } = seeded();
     const behind = s.put({ type: "memory", kind: "fact", body: FOREIGN[3] as string });
-    const t = withTunables();
     const turn = { text: TURN, day: 0, selfFelt: false, maxCandidates: 24, storeSize: 18 };
-    const out = activate(s, { ...turn, spread: () => ({ contributions: [{ id: behind, activation: 1_000 }] }) }, t);
-    const strongest = Math.max(...out.candidates.filter((c) => c.linkOnly !== true).map((c) => c.activation));
+    const out = activate(s, { ...turn, spread: () => ({ contributions: [{ id: behind, activation: 1_000 }] }) }, withTunables());
     const p = out.candidates.find((c) => c.id === behind);
     expect(p?.linkOnly).toBe(true);
-    expect(p?.activation).toBeCloseTo(strongest * t.LINK_POINTER_CAP_FRACTION, 10);
-    expect(out.spread?.pointersCapped).toBe(1);
+    expect(p?.activation).toBe(1_000);
     expect(out.candidates.some((c) => c.id === cued)).toBe(true);
   });
 });

@@ -612,9 +612,12 @@ Working defaults, held lightly; the association side is `associate/NOTES.md` §1
   of its own after the cued footnotes (`LINK_POINTERS_MAX`, 2), labelled `Linked:`,
   footnote tier only, behind confidentiality and dedup like anything else, and recorded with
   `via: "link"` on its verdict and in the session's gate state (the `surfaced` row's
-  `value` column — no schema change). Its activation is capped at
-  `LINK_POINTER_CAP_FRACTION` (0.25) of the strongest seed. Hard gate (a) is CHECKED for
-  this one lane rather than structural (CONTRACT §5 G5).
+  `value` column — no schema change). Its activation is what arrived. (The first build
+  capped it at a quarter of the strongest seed; the review of #281, finding 4, found that
+  the gate ranks and admits pointers by their anchored sum and never reads the capped
+  number, so the cap bound nothing and was removed. A real bound, if live use shows a
+  need, caps the anchored sum in the gate.) Hard gate (a) is CHECKED for this one lane
+  rather than structural (CONTRACT §5 G5).
 - **The anchor** (after the bench). A pointer is shown only when the activation that
   reached it FROM MEMORIES THE TURN SHOWS is at least that same fraction of the strongest
   shown memory's. The first rule, without it, showed 63 pointers over 40 bench turns and
@@ -628,17 +631,20 @@ Working defaults, held lightly; the association side is `associate/NOTES.md` §1
   with no one-co-use distractor and no other pointer riding along. Whether pointers earn
   their slot is measured live: `spread.pointersShown` on each `recall.decision`, and
   `pointersExpanded` on `recall.credit` (the pointers a reply went on to expand, which
-  also credits them — a pointer `trains`). Doctor's Association line says both. If the
-  live ratio stays near the bench's, raise the fraction or drop the lane; at 0.1 a
-  five-co-use link would no longer make a pointer.
+  also credits them — a pointer `trains`). Doctor's Association line says both. The
+  lever is on or off, not the number (review of #281, decision A): the fixture's link
+  passes w/8 = 0.0625 of the strongest seed, so every fraction that keeps it (≤ 0.0625)
+  keeps 22–32 bench pointers, and every one that cuts them much loses it; the bench's
+  pointers are 8 hub memories (a self-belief cluster and three chapters) shown again and
+  again. `LINK_POINTERS_MAX: 0` is a clean off switch. The owner decides on or off.
 - **Seeds are the top `SPREAD_SEEDS`** (24) candidates, words and meaning, ranked the way
   the cut ranks them; a seed receives nothing, so hops lift only candidates past the
   seeds (associate NOTES §14 says why, and what it costs).
 - **The hop ceiling.** A candidate's hop score is at most `HOP_CEILING` (1) × its own
   cue + semantic: however many paths reach it, links can at most double what the
   conversation gave it. It bound on about one modulated candidate in ten on the bench.
-  `hopsCapped` and `pointersCapped` are on the turn's `spread`.
+  `hopsCapped` is on the turn's `spread`.
 - **The turn's `spread`** now also carries `linkOnly`, `pointerCandidates`,
-  `pointersShown`, `pointersUnanchored`, `hopsCapped`, `pointersCapped`, and `waiting`
+  `pointersShown`, `pointersUnanchored`, `hopsCapped`, and `waiting`
   when the node budget bound — all inside the one `spread` field of
   `RECALL_DECISION_FIELDS`, so the field list did not move.
