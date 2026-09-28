@@ -4,11 +4,15 @@
  * 2026-09-26). CONTRACT.md has the lineage and the guarantees; this file is the
  * mechanism.
  *
- * The shape, in one paragraph. A session is told, once a day, that its
- * counterpart has not dreamed (`askLine`). If the owner says yes, the session
- * asks this module for the LAUNCH PROMPT (`launchPrompt`) and hands it to a
- * background agent — same model, same tools, its writes attributed to the
- * session that launched it. The dreamer calls `begin` and is SHOWN a bundle:
+ * The shape, in one paragraph. Once a CALENDAR day (2026-09-28: the NIGHTLY
+ * RUN), the first session is handed a line (`askLine`) that follows the
+ * owner's setting: `auto` (the default) — start the run now in the
+ * background and tell the owner in one line how to say "no dreams"; `ask` —
+ * ask the owner first; `off` — nothing. The session asks this module for the
+ * LAUNCH PROMPT (`launchPrompt`) and hands it to ONE background agent — same
+ * model, same tools, its writes attributed to the session that launched it —
+ * which runs the page writer, then the dream, then the reflection
+ * (`NIGHT_ORDER`). The dreamer calls `begin` and is SHOWN a bundle:
  * the self page, the wake, the journal since the last dream, the owner's card,
  * every memory made since the last dream with its nearest older neighbours, a
  * few loosely related older ones, and the strongest-feeling memories of about a

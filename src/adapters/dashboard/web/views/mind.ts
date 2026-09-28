@@ -105,6 +105,8 @@ export interface MindView {
     readonly core: string;
     readonly lately: string;
     readonly headed: boolean;
+    /** Every `#`-headed section, in order — any heading, not only Core and Lately (2026-09-28). */
+    readonly sections: readonly { readonly heading: string; readonly body: string }[];
   } | null;
   /** The honest absence line when no page has been written. */
   readonly pageAbsent: string | null;
@@ -406,6 +408,9 @@ export function mindView(src: DashboardSource): MindView {
             core: sections.core,
             lately: sections.lately,
             headed: sections.headed,
+            // EVERY SECTION, in the page's order (2026-09-28): "Us" and "How
+            // I work" are sections too, not only the Core/Lately convention.
+            sections: sections.sections.map((x) => ({ heading: x.heading, body: x.body })),
           },
     pageAbsent: page === null ? (everLived ? NONE : NEVER) : null,
     // NOT guarded on the live page: a CLEARED page has no live row and still has
@@ -469,24 +474,26 @@ const TONIGHT = "Tonight's run tries again.";
 
 const WRITER_REASON: Record<string, WriterReasonWords> = {
   watchdog: { why: "it ran out of time", next: () => TONIGHT },
+  // The two reasons of the RETIRED session-start ask (2026-09-28): rows
+  // written before still carry them. The writer runs inside the nightly run
+  // now, which has neither limit.
   "no-room": {
-    why: "the session start had no room left to ask",
-    next: (lastNight) => (lastNight ? "A later session today still can." : "More room, or host mode, would let it run."),
-    more: (lastNight) =>
-      "The page writer is asked at the start of a session, beside the wake, and only when the ask fits in what the host lets a session start with. " +
-      "It did not fit, so it was held back rather than cut short. " +
-      (lastNight ? "The night is still today's to catch. " : "") +
-      "What makes room (the fix doctor gives): a larger injectionBudgetBytes in claude-code.json, or pageWriter.mode \"host\", where a windowless session does the writing.",
+    why: "the session start had no room left to ask (the old way)",
+    next: () => "It runs inside the nightly run now, where there is room.",
+    more: () =>
+      "Until 2026-09-28 the page writer was asked at the start of a session, beside the wake, and only when the ask fitted what the host lets a session start with. " +
+      "This night it did not fit, so it was held back rather than cut short. The writer runs inside the nightly run now, handed its day in a tool result, with no such limit.",
   },
   "scope-question": {
-    why: "the first-launch question took its turn",
-    next: () => "The next session asks the writer first.",
-    more: () => "A session start carries one question at most. The first-launch question went first; after that, the writer goes first.",
+    why: "the first-launch question took its turn (the old way)",
+    next: () => "It runs inside the nightly run now, and waits for no question.",
+    more: () => "Until 2026-09-28 a session start carried one question at most, and the first-launch question could go first. The writer runs inside the nightly run now.",
   },
   off: {
     why: "the writer is switched off",
     next: () => "Turning it on (pageWriter.mode in claude-code.json) brings it back.",
   },
+  "host-mode": { why: "it runs in host mode, from its own windowless session" },
   observer: { why: "the session was read-only", next: () => "An ordinary session will be asked." },
   "no-previous-day": { why: "there was no earlier day to read" },
   "already-claimed": { why: "that night was already handled" },
@@ -515,7 +522,7 @@ function writerNext(detail: string, lastNight: boolean): string | null {
 }
 
 const WRITER_IS =
-  "The page writer reads the day just gone, once a night, and rewrites the page when something about who I am moved.";
+  "The page writer reads the day just gone, once a night — the first part of the nightly run, before the dream and the reflection — and rewrites the page when something about who I am moved.";
 const WRITER_ABOUT = `${WRITER_IS} This is its newest night.`;
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -576,7 +583,7 @@ export function writerWords(status: WriterReading, yesterday: string): WriterLin
       }
       break;
     case "asked":
-      what = "was asked at today's first session; no answer yet";
+      what = "was handed the day in today's nightly run; no answer yet";
       break;
     case "started":
       what = "is running now";

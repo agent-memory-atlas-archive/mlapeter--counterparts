@@ -433,6 +433,7 @@ describe("SEAMS A — the observer predicate is hoisted, and stand-down totality
       recordDreamChange: ["drm_x", { action: "link" }],
       markDreamChangeUndone: ["drm_x", 1],
       setDreamAsk: [{ date: "2026-09-26", state: "offered", day: 0 }],
+      reclaimDreamAsk: [{ date: "2026-09-26", prevAt: 0, state: "launched", day: 0 }],
       reflectReturn: [seedId, 1],
       setAbout: [seedId, "me", { by: "writer" }],
       openReflection: [{ id: "rfl_x", day: 0, questions: [], shown: [] }],

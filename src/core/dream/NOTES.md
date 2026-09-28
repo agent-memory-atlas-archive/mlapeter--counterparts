@@ -268,3 +268,53 @@ never a gist; one dream a lived day; observer stance; the live-store rules.
      word's own core, with a note — and the note door's `skill-is-how-i-work` is loosened
      like the reflection's. A trait's over-long `carried_by` is kept to its length at the
      note door too. Titles and whys over their caps are said.
+
+## 2026-09-28 — the nightly run (working defaults, held lightly)
+
+The owner's shape, agreed that day: the day's memories are stored during the day; once
+per calendar day the first session starts ONE background agent that runs the page
+writer, the dream and the reflection. What the build learned:
+
+1. **The order is the owner's call: writer, then dream, then reflection.** The first
+   build had dream → writer → reflection (the brief's), and it met the problem the brief
+   asked to verify: a dream's merge archives yesterday's originals and stamps the merged
+   memory today, so the writer's day (`learned_on === about`) came back with holes. The
+   owner then moved the writer first (it reads yesterday raw, survives a session cut off
+   mid-run, and the dream and the reflection see the fresh page). The merge fix stays
+   anyway (`self/writer.ts#isOfDay`, following `meta.mergedFrom` a few merges deep, and
+   `hasDayBefore` counting archived rows): a dream left behind from an earlier night, or
+   a resumed one, can still have merged some of the day. `NIGHT_ORDER` is one line, and
+   each phase's `next` reads it.
+2. **The setting is store meta, not config** (`dream.setting`): the hook, the MCP server
+   and the console already open the store, and "no dreams" said in conversation has to
+   reach it from the MCP server, which does not write the host's config. Recorded on the
+   existing `dream.ask` row (state `setting`) rather than a new durable event name, so no
+   registry grew. No schema change: `dream_asks.state` is free text, and `launched` and
+   `relaunched` are new values of it.
+3. **A dream left behind is RESUMED, not restarted.** Its changes are real (a merge stands,
+   a link is drawn); closing it `undone` without undoing them would lie in the log, and
+   undoing them would throw away work. So the same dream moves to the session that picks
+   it up, today and this lived day, its limits counting what it did, its bundle composed
+   again from the dream before it. "Left behind" is TIME-based — begun and quiet (no
+   change) for 30 minutes — because core cannot see session liveness; the line going out
+   again is a compare-and-set on the day's latch (`reclaimDreamAsk`) so two sessions do
+   not both restart it, at most twice a day. With `auto`, a launch no dream followed is
+   started again the same way (the session closed before the agent began); with `ask`, an
+   ask nobody answered is not asked again. Watch: a short session that closes mid-dream
+   every time would resume the same dream three times a day — the cap holds that.
+4. **The calendar gate.** The dream's "dreamed today" and the reflection's "reflected
+   today" (and `finish` again) compare the row's `date` with the calendar today (the row's
+   lived `day` when it has no date). Rows already carried both. Tests that moved only the
+   lived clock (`advanceClock`) to mean "the next night" now move the calendar too.
+5. **The reflection's bundle in parts.** It carries what the dream saw (every shown id and
+   what the dream made, a line each, citable) and the page whole. Measured before: about
+   21–23k tokens worst case already. Over `RESULT_CHARS` (60,000 characters) the first
+   result holds everything but the long lists, as far as they fit, and says `part 1 of N`;
+   phase `part` hands the rest at `PART_CHARS` (24,000, the write-up's precedent). The
+   later parts' ids are kept in the reflection row's `detail` until the first finish, and
+   each memory is read as it is now (gone since: said). The dream's own bundle still cuts
+   its page view at `PAGE_CHARS` with a marker, unchanged — a candidate for PR B's fitter.
+6. **The reflection writes the page as `reflection`**, with a reason naming the
+   reflection and its dream, and no longer records a page-writer run: that row existed to
+   stand the old session-start writer down, and with the writer in the same run it would
+   say the writer revised on a night it may have refused.

@@ -43,7 +43,8 @@ afterEach(() => {
 });
 
 function brain(): Counterpart {
-  const c = Counterpart.open({ dir, owner: true, identity: { name: "Mike" } });
+  // The calendar follows the test's days (the once-a-day gates are the calendar date since 2026-09-28).
+  const c = Counterpart.open({ dir, owner: true, identity: { name: "Mike" }, now: () => Date.now() + dateN * 86_400_000 });
   open.push(c);
   return c;
 }

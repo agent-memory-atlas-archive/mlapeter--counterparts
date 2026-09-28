@@ -339,9 +339,19 @@ proposals and their archive; render and delivery telemetry.
     date is the CLAIM**, so two boundaries — or two machines' worth of hooks against one
     store — do not both set a night going; at most `PAGE_WRITER_ASKS_PER_DAY` sessions are
     offered one day. That is a COUNT and not a pacer: guarantee 3's scar is about the
-    BLOCKED MOMENT at Stop, where one ask on one conjunction is the rule, and this ask
-    rides beside the wake at SessionStart the way the first-launch scope question does,
-    consulting no substance and spending none of `MAX_ASKS_PER_SESSION`.
+    BLOCKED MOMENT at Stop, where one ask on one conjunction is the rule, and this one
+    consults no substance and spends none of `MAX_ASKS_PER_SESSION`.
+    **Since 2026-09-28 the session-mode writer runs INSIDE THE NIGHTLY RUN** (working
+    default, held lightly): one background agent runs the page writer, then the dream,
+    then the reflection (dream CONTRACT §5.2). The writer is the dream tool's `writer`
+    phase, the run's first call: it writes the night's claim — the `asked` row, carrying
+    the SESSION and the run (`PageWriterRun.session`, `.run`) — and hands the writer the
+    day and the page WHOLE through the tool result (`writerInstruction`'s `pageInline`;
+    `NIGHT_WRITER_MEMORY_BYTES`, since no wake ceiling binds it). The session-start ask
+    that used to hand the day beside the wake is retired, with its `no-room` deferral.
+    Writer and reflection are different jobs — sleep's quiet self-update, and waking up
+    thinking about yourself — and both may write the page for now, as `writer` and as
+    `reflection`, every version kept.
     **A store with no yesterday writes nothing and leaves no row**, so a line about it
     cannot nag from the day a fresh install is made. **No revision is a first-class
     outcome**: host mode reports it (a windowless session handed one tool that did not use
@@ -350,19 +360,21 @@ proposals and their archive; render and delivery telemetry.
     `nothing-to-say`, marked `derived` wherever it is shown — except an abandoned
     `started`, which reads `failed`, because host mode closes its own claim on every path
     it can reach. `by: "writer"` is the DOOR's and is not claimable from a tool call: the
-    evidence is a date the SessionStart hook wrote on the session's registry record, or
-    one the launcher pinned onto a windowless child's environment, honoured only while
-    that night's claim is open.
-    **The block does not repeat the page**: the reader woke with it at the head of its own
-    wake in both modes, and sending it twice would spend up to `PAGE_MAX_BYTES` of the
-    very ceiling the block has to fit inside — which on a real page and a real day is the
-    difference between an ask that is delivered and one deferred every morning. What it
-    names instead is the version, which is what `ifVersion` needs and the one thing the
-    wake does not carry. The day is sized to the room the wake left and then the composed
-    block is MEASURED against the ceiling, because the estimate is the block's shortest
-    shape and the delivered one is longer; a day that did not all fit is delivered SHORT
-    with the count on the row, and a block that can carry none of the day is deferred
-    rather than spending a night's claim.
+    evidence is the nightly run's open claim naming this session (`nightClaimFor`,
+    2026-09-28), or — still read — a date the SessionStart hook wrote on the session's
+    registry record (nothing writes it since the ask was retired), or one the launcher
+    pinned onto a windowless child's environment, honoured only while that night's claim
+    is open. The run's agent shares its session's id, so that session's own page write
+    while the claim is open is labelled `writer` too; the registry mark had the same
+    property.
+    **In the nightly run the block carries the page whole**: the background agent never
+    got the wake. Beside the wake (host mode's child) it names the version instead of
+    repeating a page the reader already woke with. A day that did not all fit is delivered
+    SHORT with the count on the row.
+    **The day is the day, merges included** (`isOfDay`, 2026-09-28): a dream's merge
+    archives its originals and is stamped the day it was made, so a live row whose
+    `meta.mergedFrom` reaches a memory learned on the night is part of the night; and
+    `hasDayBefore` counts archived rows, so a night a dream merged whole is still a night.
     **It never says a day was empty that was not.** "The day was empty" and "I could not
     see the day" are different things, and `dropped` is what tells them apart; a room too
     small for the largest memory still carries the smaller ones. **Quoted material carries
@@ -371,8 +383,9 @@ proposals and their archive; render and delivery telemetry.
     instruction sits WITH the list.
     **A day with nothing in it is not a night**: `no-memories` is returned before anything
     is claimed or asked, so a machine used twice a week is not asked about five empty days.
-    A DEFERRAL leaves a durable `skipped` row — deduped one per night per reason — which
-    claims nothing and can never close a night; a REFUSAL does not close one either, since
+    A DEFERRAL (the retired session-start ask's; rows written before still read) leaves a
+    durable `skipped` row which claims nothing and can never close a night; a REFUSAL does
+    not close one either, since
     a refusal is the writer still trying, and a later success supersedes it in the reading
     while both rows stay.
     **Order is salience, then the store's own id order.** Nothing claims "newest": within

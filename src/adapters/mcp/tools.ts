@@ -850,7 +850,7 @@ const SCOPE: ToolSpec = {
 const SELF_PAGE: ToolSpec = {
   name: "self_page",
   summary:
-    "Your own page — the prose that opens every wake under 'Who I am'. Call it with no arguments to read the page and when it was last revised; call it with a body to write the whole page anew. It has two headed parts by convention: a stable `## Core` that has to be earned, and a `## Lately` for what the last while has actually been like. While there is nothing to say, the honest page says it is still forming.",
+    "Your own page — the prose that opens every wake under 'Who I am'. Call it with no arguments to read the page and when it was last revised; call it with a body to write the whole page anew. It has two headed parts by convention: a stable `## Core` that has to be earned, and a `## Lately` for what the last while has actually been like; any other `##` section the page grows (Us, How I work) is kept and shown the same way. While there is nothing to say, the honest page says it is still forming.",
   admission:
     "Call it to READ when you want the page as it stands rather than as the wake abridged it. Call it to WRITE when something you now know about yourself is not on the page and will still be true next month: a way of working that has held up, a correction the user made about you, a standing preference of theirs you keep rediscovering. Date the claims that need dating, say what made you believe them, and phrase what you have learned as practice — what you do now — rather than as praise.",
   negativeExamples: [

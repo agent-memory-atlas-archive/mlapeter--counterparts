@@ -709,8 +709,8 @@ export const MECHANISMS: readonly Mechanism[] = [
   },
   {
     id: "dream-ask",
-    label: "a session was handed the day's dream ask, or the owner said not today",
-    module: "dream/ (askLine, decline), claude-code/hooks.ts",
+    label: "the day's line started the nightly run (or asked first), or the owner said not today or changed the setting",
+    module: "dream/ (askLine, decline, setSetting), claude-code/hooks.ts",
     evidence: { kind: "event", names: ["dream.ask"] },
     since: "2026-09-26",
   },
@@ -756,16 +756,15 @@ export const MECHANISMS: readonly Mechanism[] = [
   // of most of every day: after the first ask, `already-claimed` is what a
   // healthy store says at every session start until midnight. Declaring them
   // would reproduce the `dwell-too-short ×240` false alarm one namespace over.
-  // The one that is arguably a real gate — `no-room`, the host's ceiling
-  // turning away a block that qualified — already has a louder and better-aimed
-  // surface: doctor's Page writer line goes amber after two owed days and names
-  // `injectionBudgetBytes` in its fix. A second surface saying `blocked` for
-  // ever on a store with a tight ceiling would be the duplication E2's own
-  // review warned about.
+  // The one that was arguably a real gate — `no-room`, the host's ceiling
+  // turning away the session-start ask — went with that ask on 2026-09-28: the
+  // writer runs inside the nightly run now (writer, dream, reflection), handed
+  // its day in a tool result, and doctor's Page writer line goes amber when
+  // nightly runs go on for days without it.
   {
     id: "page-writer",
-    label: "the day just lived was read back and my page was offered a revision",
-    module: "self/writer.ts",
+    label: "the day just lived was read back and my page was offered a revision — the first part of the nightly run",
+    module: "self/writer.ts, dream tool (writer phase)",
     evidence: { kind: "event", names: ["self.page.writer.ran"] },
     since: "2026-09-20",
   },

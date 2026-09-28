@@ -99,7 +99,7 @@ import {
 import type { Id, Request, Response } from "./protocol.js";
 import { DREAMING_SETTINGS, nightNext } from "../../core/dream/index.js";
 import type { DreamingSetting, NightPart } from "../../core/dream/index.js";
-import { NO_PAGE_VERSION } from "../../core/self/index.js";
+import { NO_PAGE_VERSION, pageSections } from "../../core/self/index.js";
 import type { PageWriterMode } from "../../core/self/index.js";
 import { TOOL_NAMES, toolDefinitions, toolSpec } from "./tools.js";
 import { writeUpDoor } from "./write-up.js";
@@ -2281,6 +2281,9 @@ export class McpServer {
         revisedOn: page.revisedOn,
         by: page.by,
         version: page.version,
+        // EVERY SECTION'S HEADING, in order (2026-09-28): any `##`, not only
+        // Core and Lately.
+        sections: pageSections(page.body).sections.map((s) => s.heading),
         stale: this.counterpart.self.pageStale(page),
         // COUNTED, not read: `selfPageVersions().length` read every archived
         // body off disk to print one number, on every read a session makes
