@@ -32,6 +32,9 @@ not the same thing — one is structural and permanent (a footnote must never tr
 the other is a disabled knob. `tierFactor()` keeps them separate in the code:
 `footnoted` returns a literal `0`, `surfaced` returns the tunable.
 
+*2026-09-28:* considered again in association build 2 and left at 0, now with the
+fixture this section said was missing — see §14.
+
 ## 3. `HEBB_RATE` has no ancestry, and says so
 
 v1's harvest records the tier STRUCTURE of credit (§10 G1) and never an edge
@@ -82,7 +85,8 @@ are visible: `linked()` is symmetric-by-conjunction, `weightAt()` is directional
    difference inspectable.
 3. **A node is expanded once**, at the shallowest depth it was reached. With the
    hop limit at 2 the difference is small; it is what keeps a dense graph from
-   re-walking itself.
+   re-walking itself. (2026-09-28, best-first: once, when it reaches the head of the
+   queue — §14.)
 
 Also: a non-conducting destination is excluded from the **fan denominator**, not
 merely from the output. An erased id must not even shape the arithmetic between its
@@ -267,3 +271,85 @@ on a later flush. A row touching a PINNED memory is never swept (G9, frozen both
 A sweep that fails costs only the tidying. The cost, stated: sweeping an eviction's zero
 removes the last trace in the table of which pair was evicted (CONTRACT G3,
 INTERFACE-GAPS §2). Eviction stays one-way (INTERFACE-GAPS §9).
+
+## 14. Association build 2: links change what comes to mind (2026-09-28)
+
+Working defaults, held lightly: build, watch, adjust. Measured on the seeded demo bench
+(40 labelled queries, a pattern-completion fixture); unmeasured on a live store.
+
+**Best-first across depths, with a threshold** (`spread.ts`). One queue over what each
+node carries — a seed by its own activation, a reached node by the sum of everything
+that arrived — and the strongest node is expanded next, whatever its depth, so a strong
+first-hop node goes before a weak seed. The walk stops at the first node carrying less
+than `SPREAD_MIN_FRACTION` (0.02) of the strongest seed (stop `threshold`), relative so
+it means the same on any store size. `MAX_SPREAD_NODES` (64) is a backstop behind it;
+when it binds the result says how many nodes over the threshold were still `waiting`.
+A node is expanded once, at the carried it had when it reached the head of the queue;
+later paths still add to its contribution. On the bench the walk stopped at the
+threshold on 40 of 40 turns (it hit the node budget on 33 of 40 before), with 31 nodes
+expanded a turn instead of 62, and got past the seeds on every turn.
+
+**Seeds** are recall's: the `SPREAD_SEEDS` (24) strongest candidates, words and meaning
+both, ranked the way the cut ranks them — not the ~1,000-id cue union. **A seed still
+receives nothing** (§6), a choice kept on purpose and worth arguing with: links can
+lift a candidate ranked past the seeds into the cut, and can add a quiet pointer, but
+they do not reorder the seeds themselves — inside the conversation's own top 24 the
+conversation decides. The cost, on the bench: links landed on a kept candidate about
+once every other turn (24 in 40 lexical turns, where master's modulate-only rule landed
+0; 23 in the semantic arm, where master landed 47 on semantic hits that are seeds now),
+and no memory a link lifted reached delivery in either arm. The alternative
+is to let a seed receive from OTHER seeds (never its own round trip); it needs
+per-origin bookkeeping to exclude the echo, and it is the first thing to try if links
+turn out to matter more inside the top than past it.
+
+**Who passed what** (`Contribution.from`): each contribution names the expanded nodes
+whose edges reached it and how much each passed. Recall uses it for the quiet pointer's
+anchor (recall NOTES §19).
+
+**Temporal contiguity** (`contiguity.ts`, the boundary's `Counterpart.contiguityPass`).
+The weak, ubiquitous signal beside co-use's strong one. At each boundary, before its
+flush, the memories written since the last pass are placed in their session's write
+order and each is linked to its neighbours at lag 1 and 2 (`CONTIGUITY_WINDOW`) —
+not all pairs. `CONTIGUITY_RATE` 0.06 at lag 1, `CONTIGUITY_LAG_DECAY` 0.5 at lag 2.
+The deltas go into the same buffer and out through the same plan, homeostasis and
+sweep as a co-use, and are counted on the boundary's own `associate.flush` row
+(`source: "boundary"`, `contiguity`).
+- *The order signal, as found.* A memory row carries `origin_session` and `created_at`
+  and nothing finer: no span, turn or chapter position. The proposal's own instant
+  (`proposal.at`) sets `learned_on` only; `origin.spanHash` exists only on a note (a
+  jot), and a proposal's `covers` claims every unclaimed span of the session at once, so
+  it orders nothing. Chapter entries carry no memory ids. On the seeded store every
+  session's memories share ONE `created_at` (one batch at session end) and insertion
+  order is the only order. So: `created_at` then rowid is the sequence; two memories
+  written more than `CONTIGUITY_BATCH_MS` (60 s) apart have a real order and get the
+  forward bias (forward = the rate, back = `CONTIGUITY_BACKWARD` 0.5 of it); inside one
+  batch — the order the model listed them in — both directions get the mean (0.75 of
+  the rate). A delta therefore may carry a different b→a half (`PairDelta.back`).
+- *At most once.* The cursor (`CONTIGUITY_CURSOR_META`: the newest `created_at` read and
+  the ids written at that moment) moves BEFORE anything is buffered, so a failed flush
+  drops the pass and a crash after the flush cannot re-plan pairs that landed. A pass
+  reads a session again to find a new memory's older neighbours but plans only pairs
+  that touch a new memory.
+- *The first pass.* With no cursor, only the memories born on the current lived day are
+  linked: a new store's first session, not an old store's whole history.
+- *Under the floor.* A delta at or under `EDGE_FLOOR` (0.02) on a pair with no live edge
+  is written and swept by the same flush (§13's sweep); at 0.06 only a real-order lag-2
+  backward delta (0.015) is that small, and it is counted (`underFloor`). It reinforces
+  a pair that already conducts.
+- *On the bench* (every session linked as if written under this build — the product
+  would not do that): 152 pairs across 30 sessions, all one-batch; 596 rows written, 8
+  nodes renormalized; delivered memories unchanged, candidates touched by a hop up about
+  a quarter. Near silent until use confirms a link, as intended: a 0.045 edge passes 0.6%
+  of what its node carries.
+
+**Index co-credit** was already built by #279 (§13): the hook flattens a reply's
+`recall ids:[…]` batches into the credit pass's expansions, every expansion is a
+referenced use, and the pair set takes the uses whose strength credit was refused only
+for its day cadence. Verified with a test; nothing added.
+
+**Weak credit stays 0** (§2, and the tunable's comment): at v1's 0.25 a
+referenced × surfaced pair conducts on its first meeting — "shown beside" linked to
+"thought with" — and surfaced × surfaced is swept at every flush, so it can never
+accumulate across boundaries; the credit pass passes no surfaced member in any case, and
+one loud slot a turn means surfaced × surfaced cannot occur in one reply. The fixture
+contract §4 asks for is `association-build2.test.ts` › "6.".

@@ -56,7 +56,8 @@ metabolic limits.
   intended for *stated* relations. Whether learned edges should be privileged over stated
   ones is a real question; this contract asks it rather than inheriting an answer.
 - **Weak credit's numeric weight is not inherited.** It ships bounded by fixtures naming
-  what breaks on each side, or disabled (scar §2.8).
+  what breaks on each side, or disabled (scar §2.8). *2026-09-28: still disabled, and the
+  fixture now exists (`association-build2.test.ts` › "6.", NOTES §14).*
 
 ## 5. Contract
 
@@ -100,9 +101,20 @@ for `recall/`; telemetry by reference.
     calibration and re-earned here. Working default since 2026-09-28: an edge passes
     `w / max(MAX_OUT_WEIGHT, the node's live sum)` of what its node carries — ABSOLUTE
     weight, not its share of the siblings (NOTES §13) — and each turn's record says what
-    the traversal did (seeds, expanded, stop, depth, computed, landed).
+    the traversal did (seeds, expanded, stop, depth, computed, landed). *Since build 2
+    (same day, NOTES §14): the walk is best-first across depths and stops under
+    `SPREAD_MIN_FRACTION` of the strongest seed; `MAX_SPREAD_NODES` is a backstop whose
+    binding is recorded (`waiting`); a contribution says who passed it what (`from`).*
 11. **[M] The durability exemption is declared in this contract and nowhere else.** Any
     second place that buffers non-reconstructible state fails review.
+12. **[A] Temporal contiguity is the weak signal, co-use the strong one** (working default,
+    2026-09-28, NOTES §14). At each boundary, memories one session wrote next to each
+    other are linked to their neighbours at lag 1 and 2 only — not all pairs — at
+    `CONTIGUITY_RATE` (0.06, under a co-use's 0.1), forward over back where the write
+    order is real time, the same both ways inside one batch. Through the same buffer,
+    plan, homeostasis and sweep as a co-use (G2), frozen at a pinned endpoint (G9),
+    nothing under observer (G7), and at most once (G4): the pass's cursor moves before
+    anything is buffered. Counted on the boundary's `associate.flush` row.
 
 ## 6. Scars honored
 

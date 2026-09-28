@@ -261,3 +261,13 @@ slips, lexical 10/10). Every number, the grid and the confirmation run:
   alone; one topic-change partner per query.
 - The MCP `recall` tool builds rather than records, so its pair rides `BuildOutput.semantic`
   but reaches no telemetry ring until `server.ts` logs it.
+
+## 9. Whether a quiet pointer was USED is measured on one host only — OPEN 2026-09-28
+
+**Owner:** the adapters. Pointers shown are on every `recall.decision` row
+(`spread.pointersShown`), whatever the host. Pointers EXPANDED are counted by
+`Counterpart.creditReferences` (`CreditSummary.pointersExpanded`) and reach the durable
+log only through the Claude Code hook's `recall.credit` row. A host without that credit
+pass shows pointers and never says whether they were used. Also: a pointer the model
+reads by title (a handle) counts only if the handle log translated it (G50), as for any
+expansion.

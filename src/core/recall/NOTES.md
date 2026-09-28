@@ -601,3 +601,44 @@ Working defaults, held lightly; the association side is `associate/NOTES.md` §1
 - **The decision record carries `spread`** — seeds, expanded, stop, depth, computed,
   and `landed` (on candidates the cut KEPT) — and `dropped`, both added to `RECALL_DECISION_FIELDS` the way `moodMatched`
   was (the parallel run that froze that list is over).
+
+## 19. Links change what comes to mind — 2026-09-28 (association build 2)
+
+Working defaults, held lightly; the association side is `associate/NOTES.md` §14.
+
+- **Quiet pointers** (associate INTERFACE-GAPS §1, answer (b)). A memory only links
+  reached may join the quiet tier: handed to the gate when what arrived is at least
+  `LINK_POINTER_MIN_FRACTION` (0.05) of the strongest seed's activation, shown in slots
+  of its own after the cued footnotes (`LINK_POINTERS_MAX`, 2), labelled `Linked:`,
+  footnote tier only, behind confidentiality and dedup like anything else, and recorded with
+  `via: "link"` on its verdict and in the session's gate state (the `surfaced` row's
+  `value` column — no schema change). Its activation is capped at
+  `LINK_POINTER_CAP_FRACTION` (0.25) of the strongest seed. Hard gate (a) is CHECKED for
+  this one lane rather than structural (CONTRACT §5 G5).
+- **The anchor** (after the bench). A pointer is shown only when the activation that
+  reached it FROM MEMORIES THE TURN SHOWS is at least that same fraction of the strongest
+  shown memory's. The first rule, without it, showed 63 pointers over 40 bench turns and
+  1 was relevant: most were carried by seeds the gate then turned away, so they sat in
+  the render with nothing visible to complete. With the anchor: 32 over 20 turns, still
+  1 relevant — **still noisy on that store**, whose links are demo links and whose labels
+  are narrow phrase matches (a pointer to an associated but unlabelled memory counts as
+  irrelevant). The pattern-completion fixture (a target sharing no words and no meaning
+  with the query, reachable only through a link at 0.5 — about five co-uses — from a
+  memory the query finds) recovered 6 of 6 in both the lexical and the semantic arm,
+  with no one-co-use distractor and no other pointer riding along. Whether pointers earn
+  their slot is measured live: `spread.pointersShown` on each `recall.decision`, and
+  `pointersExpanded` on `recall.credit` (the pointers a reply went on to expand, which
+  also credits them — a pointer `trains`). Doctor's Association line says both. If the
+  live ratio stays near the bench's, raise the fraction or drop the lane; at 0.1 a
+  five-co-use link would no longer make a pointer.
+- **Seeds are the top `SPREAD_SEEDS`** (24) candidates, words and meaning, ranked the way
+  the cut ranks them; a seed receives nothing, so hops lift only candidates past the
+  seeds (associate NOTES §14 says why, and what it costs).
+- **The hop ceiling.** A candidate's hop score is at most `HOP_CEILING` (1) × its own
+  cue + semantic: however many paths reach it, links can at most double what the
+  conversation gave it. It bound on about one modulated candidate in ten on the bench.
+  `hopsCapped` and `pointersCapped` are on the turn's `spread`.
+- **The turn's `spread`** now also carries `linkOnly`, `pointerCandidates`,
+  `pointersShown`, `pointersUnanchored`, `hopsCapped`, `pointersCapped`, and `waiting`
+  when the node budget bound — all inside the one `spread` field of
+  `RECALL_DECISION_FIELDS`, so the field list did not move.

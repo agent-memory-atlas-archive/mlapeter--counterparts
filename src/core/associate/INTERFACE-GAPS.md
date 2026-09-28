@@ -17,10 +17,13 @@ redefined here.
 
 **Closed 2026-09-24** — hops modulate only (answer a): `recall/activate.ts` adds `spread(seeds, day)` contributions to existing candidates; wired by `core/retrieval.ts#composeTurn`.
 
-**Still open, 2026-09-28:** answer (b) — hops may add footnote-only pointers — is the
-next build's question. Build 1 measured first (`recall.decision.spread`, doctor's
-Association line) and fixed the arithmetic under it (NOTES §13); under (a), `landed` is
-0 on any turn with no semantic or temporal hit, by construction.
+**Answer (b) taken, 2026-09-28 (association build 2), as a working default:** a memory
+only links reached may join the turn as a footnote-tier QUIET POINTER — a few a turn,
+over a threshold, only beside a memory the turn shows (the anchor, which reads
+`Contribution.from`), footnote tier only. Recall's gate names that one lane past hard gate (a)
+and keeps every other uncued memory dark (recall CONTRACT §5 G5, NOTES §19). Build 1
+measured first (`recall.decision.spread`, doctor's Association line) and fixed the
+arithmetic under it (NOTES §13). The rest of this entry is the record of the choice.
 
 **Owner:** `recall/` (its NOTES.md §7 already names the seam: "when `associate/`
 ships, its hops feed a fourth channel and the gate does not change").
@@ -208,7 +211,10 @@ every delta), counted as its own eviction reason.
 
 ## 10. Left for the next build (from the adversarial review of #279, 2026-09-28)
 
-Recorded, not built — build 1 was measure-and-fix only:
+**Both built in association build 2 (2026-09-28, NOTES §14):** the best-first queue with
+a threshold (`SPREAD_MIN_FRACTION`, the node budget a recorded backstop), and the
+ceiling (recall's `HOP_CEILING`, with a smaller one for quiet pointers). Recorded, as
+they were left — build 1 was measure-and-fix only:
 
 - **A best-first queue across depths, with an activation threshold.** Today each hop's
   frontier is ranked, but depth 1 still finishes before depth 2 starts, and a node is
@@ -218,3 +224,28 @@ Recorded, not built — build 1 was measure-and-fix only:
   cap, so a candidate reached by many seeds can gather a hop score out of proportion to
   its own cue. A ceiling (relative to the candidate's cue + semantic, say) belongs with
   option (b) of §1, when hops start to matter for what is shown.
+
+## 11. Nearby by context — not built in build 2 (2026-09-28)
+
+**Owner:** `self/` (the wake's hints lane, `self/identity.ts#rankLanes`).
+**Wanted:** the missing half of #238 — seed the wake's "Nearby" from what this
+directory last used (its last credited ids, or its handoff) and blend that with
+habituation, so links shape what the wake offers too.
+**Why not now:** it was the brief's optional item, "only if cheap", and it is not. The
+wake is composed once, at the first boundary of a lived day, and read from every
+directory (`self/INTERFACE-GAPS.md` §12), so a per-directory seed has nowhere to run
+without putting ranking on the wake path, which is meant to compute nothing; the last
+credited ids are per session on `recall.credit` rows, not per directory. A per-directory
+lane rendered at wake, or a small per-directory cache the boundary writes, would each
+be its own design.
+
+## 12. A dream's lookups never reach the credit pass (noted 2026-09-28)
+
+**Owner:** the Claude Code adapter (`transcript.ts`, `hooks.ts#creditAtBoundary`).
+**Have:** index co-credit works where the lookups are in the session's own transcript:
+the hook flattens every `recall ids:[…]` batch in a reply's slice into the credit pass's
+expansions (tested, `association-build2.test.ts` › "5."). **Gap:** the nightly run —
+page writer, dream, reflection — runs in a background agent, and a subagent's tool calls
+are on a sidechain `parseTranscript` skips (`isSidechain`, `transcript.ts` ~473), so the
+ids a dream looks up together never co-credit. That may be right as it stands (the dream
+proposes, waking use confirms), and it is recorded so nobody assumes the opposite.

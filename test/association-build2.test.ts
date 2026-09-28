@@ -234,6 +234,33 @@ describe("1. quiet pointers: a few per turn, footnote tier only, over a threshol
     expect(second.verdicts.find((v) => v.id === secret)?.verdict).toBe("dedup-suppressed");
   });
 
+  test("PATTERN COMPLETION: a target sharing no words and no meaning with the query, reachable only by a trained link, is recovered; a one-co-use distractor is not", () => {
+    // The bench's fixture, in miniature and hermetic. The embedding puts the
+    // query and the cue memory on one axis and everything else on the other,
+    // so the target is unreachable by meaning as well as by words.
+    const embed = (text: string): number[] => (/sourdough/i.test(text) ? [1, 0] : [0, 1]);
+    const s = store({ embed });
+    for (const body of FILLER) s.put({ type: "memory", kind: "fact", body });
+    const cued = s.put({ type: "memory", kind: "fact", body: CUED, physics: { birthDay: 0, lastUsedDay: 0 } });
+    const target = s.put({ type: "memory", kind: "fact", body: FOREIGN[0] as string });
+    const distractor = s.put({ type: "memory", kind: "fact", body: FOREIGN[1] as string });
+    const associate = new Associate({ store: s });
+    coUse(associate, cued, target, 5); // trained: about five co-uses (0.5)
+    coUse(associate, cued, distractor, 1); // one co-use (0.1): under the threshold
+    for (const [arm, vector] of [["lexical", undefined], ["semantic", [1, 0]]] as const) {
+      const d = recallTurn(
+        new Recall({ store: s, owner: true }),
+        { sessionId: `pc-${arm}`, text: TURN, ...(vector === undefined ? {} : { vector: [...vector] }) },
+        { associate },
+      ).decision;
+      const t = d.verdicts.find((v) => v.id === target);
+      expect(`${arm}: ${t?.verdict} via ${t?.via} cue ${t?.cue} semantic ${t?.semantic}`).toBe(`${arm}: footnoted via link cue 0 semantic 0`);
+      expect(d.footnotes).not.toContain(distractor);
+      // Nothing else rides along.
+      expect(d.verdicts.filter((v) => v.via === "link" && v.verdict === "footnoted").map((v) => v.id)).toEqual([target]);
+    }
+  });
+
   test("a pointer the reply expands is COUNTED as used, and the expansion credits it (trains)", () => {
     const c = Counterpart.open({ dir, owner: true });
     brains.push(c);
