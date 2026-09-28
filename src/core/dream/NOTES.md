@@ -193,8 +193,8 @@ The dashboard's Tonight box asked `status`, got "observer", and fell back to cou
 
 ## 2026-09-28 — loosening the guards (owner direction)
 
-The owner's direction after the morning's dream `drm_0cead381e69a` and reflection
-`rfl_86a13d83326d` failed three ways, all ours: **err on the side of removing guards and
+The owner's direction after the morning's dream and reflection (on the live store)
+failed three ways, all ours: **err on the side of removing guards and
 limits; add or tighten one only after a real issue is seen; fix the root cause (clearer
 instructions, fields shown in advance) — accept and repair beats refuse.** Kept, because
 each protects something real: the dream's mark never carries dream text into lived
