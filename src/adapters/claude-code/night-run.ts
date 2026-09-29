@@ -56,7 +56,7 @@
 import { existsSync } from "node:fs";
 
 import { Counterpart } from "../../core/counterpart.js";
-import type { NightRun } from "../../core/dream/index.js";
+import type { NightPart, NightRun } from "../../core/dream/index.js";
 import { CONFIG_ENV as CONFIG_PATH_ENV } from "../config-path.js";
 import { PAGE_WRITER_ENV } from "../sessions.js";
 import { OBSERVER_ENV } from "../stance-env.js";
@@ -323,7 +323,7 @@ export async function runNight(input: NightRunInput): Promise<NightRun> {
     }
     return run;
   };
-  const ended = (fields: Pick<NightRun, "state" | "reason" | "detail" | "code"> & Partial<Pick<NightRun, "dream" | "reflection">>): NightRun =>
+  const ended = (fields: Pick<NightRun, "state" | "reason" | "detail" | "code"> & Partial<Pick<NightRun, "dream" | "reflection" | "parts">>): NightRun =>
     record({ ...base(null), endedAt: now(), dream: null, reflection: null, ...fields });
 
   // A STORE THAT WILL NOT OPEN is not opened a second time just to say so:
@@ -379,12 +379,17 @@ export async function runNight(input: NightRunInput): Promise<NightRun> {
   let dream: string | null = null;
   let reflection: string | null = null;
   let began = false;
+  let writerRan = false;
+  let dreamed = false;
   try {
     const c = input.open();
     try {
       const dreams = c.store.dreams({ sinceAt: startedAt, limit: 5 });
       const reflections = c.store.reflections({ limit: 5 }).filter((r) => r.started_at >= startedAt);
       began = dreams.length > 0 || reflections.length > 0;
+      // The writer's phase was REACHED: it leaves a row carrying the session.
+      writerRan = c.pageWriterRuns({ limit: 20 }).some((r) => r.at >= startedAt && r.session === input.session);
+      dreamed = dreams.some((d) => d.state === "journaled");
       const journaled = dreams.find((d) => d.state === "journaled");
       const reflected = reflections.find((r) => r.state === "reflected");
       reflection = reflected?.id ?? null;
@@ -395,21 +400,29 @@ export async function runNight(input: NightRunInput): Promise<NightRun> {
   } catch {
     /* read nothing: the exit decides alone */
   }
-  const found = { dream, reflection };
+  // WHICH PARTS RAN (2026-09-29, owner): the dream counts once journaled, the
+  // reflection once finished. All the run was for: done. Some: partial —
+  // whatever the exit said, which rides along as the reason.
+  const parts: NightPart[] = [...(writerRan ? ["writer" as const] : []), ...(dreamed ? ["dream" as const] : []), ...(reflection !== null ? ["reflection" as const] : [])];
+  const complete = input.kind.kind === "reflection" ? reflection !== null : parts.includes("dream") && reflection !== null;
+  const found = { dream, reflection, parts };
 
   if (result.spawnCode !== undefined || (result.code === null && !result.timedOut && result.error !== null)) {
     const missing = result.spawnCode === "ENOENT";
     return ended({ state: "could-not-start", reason: missing ? "no-claude" : "spawn-failed", detail: result.spawnCode ?? result.error, code: null });
+  }
+  if (complete) return ended({ state: "done", reason: null, detail: null, code: result.code, ...found });
+  if (parts.length > 0) {
+    const reason = result.timedOut ? "watchdog" : result.code !== 0 ? "exit" : "unfinished";
+    return ended({ state: "partial", reason, detail: result.timedOut ? result.error : null, code: result.code, ...found });
   }
   if (result.timedOut) return ended({ state: "timed-out", reason: "watchdog", detail: result.error, code: result.code, ...found });
   if (result.code !== 0) {
     if (!began && ms < TUNABLES.NIGHT_QUICK_EXIT_MS) return ended({ state: "could-not-start", reason: "quick-exit", detail: null, code: result.code });
     return ended({ state: "failed", reason: "exit", detail: null, code: result.code, ...found });
   }
-  // A clean exit: done when the run finished its reflection (or, for a whole
-  // night, at least journaled its dream); a clean exit that began nothing
-  // could not do the job at all — the tools were not there for it.
-  if (reflection !== null || (input.kind.kind === "night" && dream !== null)) return ended({ state: "done", reason: null, detail: null, code: 0, ...found });
+  // A clean exit that began nothing could not do the job at all — the tools
+  // were not there for it.
   if (!began) return ended({ state: "could-not-start", reason: "nothing-ran", detail: null, code: 0 });
   return ended({ state: "failed", reason: "unfinished", detail: null, code: 0, ...found });
 }

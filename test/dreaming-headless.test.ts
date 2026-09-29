@@ -38,9 +38,11 @@ import { recordSession } from "../src/adapters/sessions.js";
 import { McpServer } from "../src/adapters/mcp/index.js";
 import { launchOptions } from "../src/adapters/mcp/bin/serve.js";
 import { toolDefinitions } from "../src/adapters/mcp/tools.js";
+import { dreamShowLines, nightRunLine } from "../src/adapters/cli/dream-core.js";
+import { pageWriterNight } from "../src/core/self/index.js";
 import { Counterpart as CounterpartClass } from "../src/core/counterpart.js";
 import type { Counterpart } from "../src/core/counterpart.js";
-import { DREAMING_DEFAULT, DREAM_MARK, DREAM_TUNABLES, RELAUNCHED_KEY, nightRunOf, nightRunWords } from "../src/core/dream/index.js";
+import { DREAMING_DEFAULT, DREAM_MARK, DREAM_TUNABLES, RELAUNCHED_KEY, nightPartsWords, nightRunOf, nightRunWords } from "../src/core/dream/index.js";
 import type { PutInput } from "../src/core/store/index.js";
 
 let dir: string;
@@ -396,6 +398,41 @@ describe("B. the headless run: the child's plan, and what becomes of a run", () 
     );
     expect(out).toMatchObject({ state: "failed", reason: "exit", code: 3 });
   });
+
+  test("a run that wrote the page and dreamed, but did not reflect, is PARTIAL — with which parts ran (owner; review finding 5)", async () => {
+    const seed = openNight();
+    // A day before today for the page writer to read.
+    seed.store.put({ type: "memory", kind: "fact", body: "A placeholder thing noticed yesterday.", learnedOn: pageWriterNight(seed.store).about });
+    lived(seed);
+    recordSession(dir, { sessionId: "s1", scope: binDir, phase: "start" });
+    const out = await runNight(
+      nightOf({
+        start: async () => {
+          const c = openNightCounterpart(config());
+          try {
+            // The writer's phase, as the child's MCP server (pinned to s1) answers it.
+            const s = new McpServer({ counterpart: c, scope: binDir, owner: true, registryDir: dir, session: "s1" });
+            await s.call("dream", { phase: "writer", session: "s1" });
+            const d = c.dreams.begin({ session: "s1" });
+            if (!d.ok) throw new Error(d.reason);
+            c.dreams.journal({ dream: d.bundle.dream, session: "s1", text: "A dream." });
+          } finally {
+            c.close();
+          }
+          return { code: 0, timedOut: false, error: null };
+        },
+      }),
+    );
+    expect(out).toMatchObject({ state: "partial", reason: "unfinished", code: 0, parts: ["writer", "dream"] });
+    expect(out.dream).toMatch(/^drm_/);
+    expect(nightPartsWords(out)).toBe("the page writer and the dream ran; the reflection did not");
+    expect(nightRunLine(out)).toContain("partial (the whole night) — the page writer and the dream ran; the reflection did not");
+    const f = nightRunFindings({ today: AT, config: config() } as unknown as DoctorInput, openNight().store)[0];
+    expect(f?.detail).toContain("was partial");
+    expect(f?.detail).toContain("the page writer and the dream ran; the reflection did not");
+    // And the dream's own `--show` names the run it was part of.
+    expect((dreamShowLines(openNight(), out.dream ?? "") ?? []).join("\n")).toContain("Latest headless run:");
+  });
 });
 
 describe("B. the quiet child: the headless run's own hooks capture nothing and ask nothing", () => {
@@ -582,6 +619,26 @@ describe("B. auto: the first prompt of the day starts the headless run itself", 
     expect(a.counterpart.dreams.nightRun()?.handedAt).toBeGreaterThan(0);
     expect(a.counterpart.store.eventLog({ name: "dream.night.handed" })).toHaveLength(1);
     expect(a.counterpart.store.eventLog({ name: "dream.night" }).filter((e) => e.ref === started.run)).toHaveLength(2);
+  });
+
+  test("a partial run's hand-back says it was partial; the reflection-alone run after it hands back no second dream line (review finding 5)", () => {
+    const a = autoHooks();
+    setAuto(a);
+    a.userPromptSubmit(input());
+    const started = a.counterpart.dreams.nightRun();
+    if (started === null) throw new Error("no run");
+    const d = a.counterpart.dreams.begin({ session: "s1", at: AT });
+    if (!d.ok) throw new Error(d.reason);
+    a.counterpart.dreams.journal({ dream: d.bundle.dream, session: "s1", title: "Boot order", text: "A dream." });
+    a.counterpart.dreams.recordNightRun({ ...started, state: "partial", reason: "unfinished", code: 0, endedAt: a.counterpart.store.now(), dream: d.bundle.dream, parts: ["dream"] });
+    const told = a.userPromptSubmit(input({ prompt: "back" }));
+    expect(told.injection).toContain("(only part of it: the dream ran; the reflection did not)");
+    expect(told.injection).toContain('"Boot order"');
+    // The reflection alone, later, headless: its hand-back is the share only.
+    a.counterpart.dreams.recordNightRun({ ...started, run: "nrn_refl", kind: "reflection", state: "done", startedAt: a.counterpart.store.now() + 1, endedAt: a.counterpart.store.now() + 2, code: 0, dream: d.bundle.dream, reflection: "rfl_none", parts: ["reflection"] });
+    const later = a.userPromptSubmit(input({ sessionId: "s2", prompt: "later" }));
+    expect(later.injection).not.toContain('"Boot order"');
+    expect(a.counterpart.dreams.nightRun()?.handedAt).toBeGreaterThan(0);
   });
 
   test("the next calendar day tries headless again, whatever happened the day before", () => {

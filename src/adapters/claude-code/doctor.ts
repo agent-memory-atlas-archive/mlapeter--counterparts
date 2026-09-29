@@ -69,7 +69,7 @@ import type { EventRow } from "../../core/store/index.js";
 // The ask allowance the amber hint names, read rather than retyped: a number in
 // a diagnostic's prose is a number that goes stale silently.
 import { SELF_TUNABLES } from "../../core/self/tunables.js";
-import { dreamingSetting, nightRunLost, nightRunOf, nightRunWords } from "../../core/dream/index.js";
+import { dreamingSetting, nightPartsWords, nightRunLost, nightRunOf, nightRunWords } from "../../core/dream/index.js";
 import type { DreamingSetting } from "../../core/dream/index.js";
 // The page's own reader, so this line cannot drift from what the wake prints.
 import { clearedMarker, findPageRow, readSelfPage } from "../../core/self/page.js";
@@ -2885,6 +2885,21 @@ export function nightRunFindings(input: DoctorInput, store: Store): Finding[] {
   if (run.state === "done") {
     const ids = [run.dream, run.reflection].filter((x): x is string => x !== null).join(", ");
     return [finding("night-run", "green", "Nightly run", `${setting}; last run ${run.date} (${what}) finished${took}${ids.length > 0 ? ` — ${ids}` : ""}`, "", data)];
+  }
+  if (run.state === "partial") {
+    // PART OF THE RUN RAN (2026-09-29, owner): which parts, and — when the
+    // exit said more than "it stopped" — why.
+    const why = run.reason === "unfinished" ? "" : ` (${nightRunWords(run)})`;
+    return [
+      finding(
+        "night-run",
+        setting === "auto" ? "amber" : "green",
+        "Nightly run",
+        `${setting}; the run of ${run.date} (${what}) was partial${took}: ${nightPartsWords(run)}${why}`,
+        "Nothing to do by hand: a later session picks up what did not run — a dream cut off is resumed, a reflection cut off runs alone.",
+        { ...data, parts: (run.parts ?? []).join(",") },
+      ),
+    ];
   }
   if (run.state === "started") {
     const lost = nightRunLost(run, now);

@@ -343,7 +343,7 @@ export function nightNext(part: NightPart): NightPart | null {
  */
 export const NIGHT_RUN_KEY = "dream.night";
 export const NIGHT_RUN_EVENT = "dream.night";
-export const NIGHT_RUN_STATES = ["started", "done", "failed", "timed-out", "could-not-start"] as const;
+export const NIGHT_RUN_STATES = ["started", "done", "partial", "failed", "timed-out", "could-not-start"] as const;
 export type NightRunState = (typeof NIGHT_RUN_STATES)[number];
 
 export interface NightRun {
@@ -371,6 +371,12 @@ export interface NightRun {
   /** The dream this run journaled (or finished reflecting on), and its reflection. */
   readonly dream: string | null;
   readonly reflection: string | null;
+  /**
+   * WHICH PARTS OF THE RUN RAN (2026-09-29, owner): the page writer (its phase
+   * was reached), the dream (journaled), the reflection (finished) — in the
+   * run's order. A run that did some but not all is `partial`.
+   */
+  readonly parts?: readonly NightPart[];
   /** The child's watchdog, ms, as the host started it — what makes a `started` row LOST past it. */
   readonly timeoutMs?: number;
   /**
@@ -388,6 +394,23 @@ export interface NightRun {
 export function nightRunLost(run: Pick<NightRun, "state" | "startedAt" | "timeoutMs">, now: number): boolean {
   if (run.state !== "started") return false;
   return now - run.startedAt > (run.timeoutMs ?? DREAM_TUNABLES.NIGHT_RUN_ASSUMED_MS) + DREAM_TUNABLES.NIGHT_LOST_GRACE_MS;
+}
+
+/**
+ * What a run did, in parts: "the page writer and the dream ran; the reflection
+ * did not". What a run is FOR is the dream and the reflection (or the
+ * reflection alone); the page writer is named when it ran, and never counted
+ * missing — a night with no day before it has nothing for the writer to read.
+ */
+export function nightPartsWords(run: Pick<NightRun, "kind"> & Partial<Pick<NightRun, "parts">>): string {
+  const names: Record<NightPart, string> = { writer: "the page writer", dream: "the dream", reflection: "the reflection" };
+  const required: NightPart[] = run.kind === "reflection" ? ["reflection"] : ["dream", "reflection"];
+  const ran = nightOrder().filter((p) => (run.parts ?? []).includes(p));
+  const not = nightOrder().filter((p) => required.includes(p) && !ran.includes(p));
+  const list = (ps: NightPart[]): string => ps.map((p) => names[p]).join(ps.length === 2 ? " and " : ", ");
+  if (not.length === 0) return `${list(ran)} ran`;
+  if (ran.length === 0) return `${list(not)} did not run`;
+  return `${list(ran)} ran; ${list(not)} did not`;
 }
 
 /** A fresh run id. */
@@ -418,6 +441,7 @@ export function nightRunOf(store: Pick<Store, "getMeta">): NightRun | null {
       reflection: typeof v.reflection === "string" ? v.reflection : null,
       ...(typeof v.handedAt === "number" ? { handedAt: v.handedAt } : {}),
       ...(typeof v.timeoutMs === "number" ? { timeoutMs: v.timeoutMs } : {}),
+      ...(Array.isArray(v.parts) ? { parts: v.parts.filter((p): p is NightPart => p === "writer" || p === "dream" || p === "reflection") } : {}),
     };
   } catch {
     return null;
@@ -449,7 +473,7 @@ export function nightRunWords(run: Pick<NightRun, "state" | "reason" | "detail" 
     case "exit":
       return `claude exited with an error${code}`;
     default:
-      return run.state === "done" ? "it finished" : run.state === "started" ? "it is running" : `it ended ${run.state}${code}`;
+      return run.state === "done" ? "it finished" : run.state === "started" ? "it is running" : run.state === "partial" ? "it did part of the run" : `it ended ${run.state}${code}`;
   }
 }
 
@@ -651,6 +675,7 @@ export class Dreams {
           code: run.code,
           dream: run.dream,
           reflection: run.reflection,
+          parts: run.parts === undefined ? null : run.parts.join(","),
           ms: run.endedAt === null ? null : run.endedAt - run.startedAt,
         },
         dedupKey: `${NIGHT_RUN_EVENT}:${run.run}:${run.state}`,
@@ -1008,10 +1033,13 @@ export class Dreams {
    * tell. The share, if any, is carried beside it (`Reflections.carryLine`).
    */
   nightHandBackLine(run: NightRun): string | null {
+    // THE REFLECTION ALONE hands back its share only: the dream's line went out
+    // with the run that dreamed it (review of #282, finding 5).
+    if (run.kind === "reflection") return null;
     const dreamLine = run.dream === null ? null : this.handBackOf(run.dream);
     if (dreamLine === null) return null;
     const who = this.ownerName() ?? "the owner";
-    const unfinished = run.state === "done" ? "" : " (it did not finish everything)";
+    const unfinished = run.state === "done" ? "" : ` (only part of it: ${nightPartsWords(run)})`;
     return `Counterparts: the nightly run finished in the background, on its own${unfinished}. At a natural moment — not mid-task — tell ${who} in your own words what it did: ${dreamLine}`;
   }
 

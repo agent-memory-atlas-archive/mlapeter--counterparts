@@ -9,7 +9,8 @@
  * tests can check the words without a store.
  */
 import type { Counterpart } from "../../core/counterpart.js";
-import type { DreamingSetting } from "../../core/dream/index.js";
+import { nightPartsWords, nightRunWords } from "../../core/dream/index.js";
+import type { DreamingSetting, NightRun } from "../../core/dream/index.js";
 import { acceptsReflectedFeeling } from "../../core/sleep/index.js";
 import type { ReflectionRow } from "../../core/store/index.js";
 
@@ -44,6 +45,18 @@ export function dreamingSettingWords(setting: DreamingSetting): string {
   }
 }
 
+/**
+ * THE LATEST HEADLESS RUN, in one line (2026-09-29): its date and state, which
+ * parts ran when it was partial (or done), and why it ended when it did not
+ * finish.
+ */
+export function nightRunLine(run: NightRun): string {
+  const what = run.kind === "reflection" ? "the reflection alone" : "the whole night";
+  const parts = run.state === "done" || run.state === "partial" ? ` — ${nightPartsWords(run)}` : "";
+  const why = run.state === "done" || run.state === "started" || (run.state === "partial" && run.reason === "unfinished") ? "" : `: ${nightRunWords(run)}`;
+  return `Latest headless run: ${run.run}  ${run.date}  ${run.state} (${what})${parts}${why}`;
+}
+
 /** How many dreams `dream --list` prints without `--all`. */
 export const DREAM_LIST_LIMIT = 20;
 
@@ -57,7 +70,8 @@ export function dreamListLines(counterpart: Counterpart, limit: number | "all" =
   const total = counterpart.store.dreamCount();
   const dreams = counterpart.dreams.list(limit === "all" ? Math.max(1, total) : limit);
   const setting = counterpart.dreams.setting();
-  const head = [`Dreaming: ${setting}. ${dreamingSettingWords(setting)}`, ""];
+  const night = counterpart.dreams.nightRun();
+  const head = [`Dreaming: ${setting}. ${dreamingSettingWords(setting)}`, ...(night === null ? [] : [nightRunLine(night)]), ""];
   if (dreams.length === 0) {
     return [...head, "No dreams yet."];
   }
@@ -140,6 +154,11 @@ export function dreamShowLines(counterpart: Counterpart, id: string): string[] |
   const out = [
     `Dream ${dream.id} — ${dream.date ?? `lived day ${String(dream.day)}`}, ${dream.state}`,
     ...(dream.session === null ? [] : [`  for session ${dream.session}`]),
+    // The headless run this dream was part of, when it is the latest (2026-09-29).
+    ...((): string[] => {
+      const night = counterpart.dreams.nightRun();
+      return night !== null && night.dream === dream.id ? [`  ${nightRunLine(night)}`] : [];
+    })(),
     "",
     dream.title === null ? "Journal: (not written)" : `Journal: "${dream.title}"`,
   ];
