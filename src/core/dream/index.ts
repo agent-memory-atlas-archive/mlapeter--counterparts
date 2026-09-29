@@ -5,10 +5,11 @@
  * mechanism.
  *
  * The shape, in one paragraph. Once a CALENDAR day (2026-09-28: the NIGHTLY
- * RUN), the first session is handed a line (`askLine`) that follows the
- * owner's setting: `auto` (the default) — start the run now in the
- * background and tell the owner in one line how to say "no dreams"; `ask` —
- * ask the owner first; `off` — nothing. The session asks this module for the
+ * RUN), the first session is handed a line (`offer`, claimed by `claimOffer`;
+ * `askLine` is both) that follows the owner's setting: `ask` (the default,
+ * 2026-09-29) — the person is shown the question in the terminal and says
+ * "dream"; `auto` — the run starts on its own in the background; `off` —
+ * nothing. The session asks this module for the
  * LAUNCH PROMPT (`launchPrompt`) and hands it to ONE background agent — same
  * model, same tools, its writes attributed to the session that launched it —
  * which runs the page writer, then the dream, then the reflection
@@ -285,12 +286,16 @@ export interface ChangeResult {
  * one line; `ask` — the session asks first, as it did from 2026-09-26; `off` —
  * nothing is started or asked. Kept in the store's meta, so the hook, the MCP
  * server and the console all read one value; "no dreams" in conversation is
- * the dream tool's `setting` phase.
+ * the dream tool's `setting` phase, and so is "dream on your own" (`auto`).
+ *
+ * THE DEFAULT IS `ask` (2026-09-29, held lightly): the person says yes at
+ * least once, in the terminal where they can see the question; `auto` is
+ * theirs to choose.
  */
 export const DREAMING_SETTINGS = ["auto", "ask", "off"] as const;
 export type DreamingSetting = (typeof DREAMING_SETTINGS)[number];
 export const DREAMING_SETTING_KEY = "dream.setting";
-export const DREAMING_DEFAULT: DreamingSetting = "auto";
+export const DREAMING_DEFAULT: DreamingSetting = "ask";
 
 /** The store's dreaming setting; the default when none was set or it will not read. */
 export function dreamingSetting(store: Pick<Store, "getMeta">): DreamingSetting {
@@ -388,6 +393,32 @@ export interface DreamPreview {
   readonly newSince: number;
 }
 
+/**
+ * THE DAY'S LINE, OFFERED and not yet claimed (`Dreams.offer`, 2026-09-29):
+ * what the model is told, what the person is shown, and what the claim will
+ * write. The host claims it (`Dreams.claimOffer`) only once it knows the
+ * person's line is leaving; unclaimed, it is offered again at the next prompt.
+ */
+export interface DreamOffer {
+  readonly at: string;
+  readonly session: string;
+  /** What the claim writes on the day's row: `launched` (auto) or `offered` (ask). */
+  readonly state: "launched" | "offered";
+  readonly setting: DreamingSetting;
+  /** For the MODEL: what to do, and what each answer means. */
+  readonly context: string;
+  /** For the PERSON, shown in the terminal. Null: nothing to show. */
+  readonly notice: string | null;
+  /** The queue's length when offered. */
+  readonly fresh: number;
+  /** A dream left behind the run resumes, or null. */
+  readonly resumes: string | null;
+  /** A dream whose reflection the run finishes alone, or null. */
+  readonly reflects: string | null;
+  /** The moment of the day's row the offer read — the claim reclaims it — or null when the day is unclaimed. */
+  readonly priorAt: number | null;
+}
+
 const KINDS: readonly Kind[] = ["self", "person", "entity", "skill", "place", "fact"];
 
 export class Dreams {
@@ -434,7 +465,7 @@ export class Dreams {
     return this.store.dreams({ limit: 20 }).find((d) => d.state !== "undone") ?? null;
   }
 
-  /** The owner's dreaming setting: `auto` (the default), `ask` or `off`. */
+  /** The owner's dreaming setting: `auto`, `ask` (the default) or `off`. */
   setting(): DreamingSetting {
     return dreamingSetting(this.store);
   }
@@ -652,64 +683,123 @@ export class Dreams {
   }
 
   /**
-   * THE LINE — one quiet line for the session, at most once per calendar day
-   * across every session (the `dream_asks` latch is the claim: of two sessions
-   * racing, one gets the line), and again only for a run that was left behind.
-   * Null when it is not due. What it says follows the owner's setting
-   * (2026-09-28): `auto` tells the model to start the nightly run now in the
-   * background and tell the owner in one line how to turn it off; `ask` asks
-   * the model to ask the owner, at a natural moment — a no is `decline`.
+   * THE LINE, OFFERED — at most once per calendar day across every session
+   * (the `dream_asks` latch is the claim, `claimOffer`: of two sessions racing,
+   * one gets it), and again only for a run that was left behind. Null when it
+   * is not due. A READ (2026-09-29): nothing is claimed or recorded here, so
+   * the host can claim the day only once it knows the person will see the
+   * line (the same rule as a plain reminder's beat).
+   *
+   * Two renderings, from the same gate: `notice`, for the PERSON — the host
+   * shows it in the terminal — and `context`, for the MODEL. What they say
+   * follows the owner's setting: `ask` shows the question and tells the model
+   * what "dream", "dream on your own", not today and "no dreams" each mean;
+   * `auto` tells the model to start the nightly run now in the background.
    */
-  askLine(input: { at: string; session: string }): string | null {
+  offer(input: { at: string; session: string }): DreamOffer | null {
     const gated = this.status(input.at);
     if (!gated.due) return null;
     // The line says how many: the whole queue, counted once, here.
     const s = gated.newSinceAtLeast === true ? { ...gated, newSince: this.queue({ owner: this.ctx.owner, skip: (d) => this.passedOver(d, input.at) }).ids.length } : gated;
     const state = s.setting === "auto" ? "launched" : "offered";
-    const day = this.store.livedDay();
     const prior = this.store.dreamAsk(input.at);
+    const base = {
+      at: input.at,
+      session: input.session,
+      state,
+      setting: s.setting,
+      fresh: s.newSince,
+      resumes: s.leftBehind?.id ?? null,
+      reflects: s.reflectOnly?.id ?? null,
+      priorAt: prior?.at ?? null,
+    } as const;
+    const since = s.last === null ? "yet" : `since ${s.last.date ?? `lived day ${String(s.last.day)}`}`;
+    const who = this.ownerName() ?? "the owner";
+    const off = `If ${who} says "no dreams" (or never, or stop), call the dream tool with phase "setting", session: ${input.session}, value: "off" — it can be turned back on the same way, or with counterparts dream --setting ask.`;
+    const launch = `call the counterparts dream tool with phase "launch", session: ${input.session}, and hand the prompt it returns to a background agent (the Agent tool), unchanged — it ${nightSummary()}.`;
+    const reflect = s.reflectOnly === null ? "" : `call the counterparts reflect tool with phase "launch", session: ${input.session}, dream: ${s.reflectOnly.id}, and hand the prompt it returns to a background agent (the Agent tool), unchanged — it reflects on that dream.`;
+    const cut = s.leftBehind === null ? null : `your dream of ${s.leftBehind.date ?? "a recent night"} was cut off (its session closed before it woke); it picks up where it stopped`;
+    if (s.setting === "auto") {
+      // THE IN-SESSION AUTO LINE — the model starts the run. Retired for the
+      // headless run in a later commit of this change.
+      if (s.reflectOnly !== null) {
+        return {
+          ...base,
+          context: `Counterparts: today's run dreamed, but was cut off before it reflected. Finish it now, in the background: ${reflect} Then tell ${who} in one line, in your own words, that you are finishing last night's reflection in the background. ${off}`,
+          notice: null,
+        };
+      }
+      return {
+        ...base,
+        context:
+          `Counterparts: ${cut === null ? `a new day, and you haven't dreamed ${since} (${String(s.newSince)} new memories)` : cut}. Start tonight's run now, in the background: ${launch} ` +
+          `Then tell ${who} in one line, in your own words: "Dreaming in the background (a few minutes). Say 'no dreams' anytime to turn it off." ${off}`,
+        notice: null,
+      };
+    }
+    // ASK (2026-09-29): the PERSON is shown the question in the terminal, so
+    // the model does not ask it again — it waits for their word.
+    const onYourOwn = `If ${who} says "dream on your own", call the dream tool with phase "setting", session: ${input.session}, value: "auto", then start today's run exactly as for "dream", and tell ${who} in one line that from now on the first session of each day starts it by itself in the background (and "no dreams" turns it off).`;
+    const noticeFor = (what: string): string => `Counterparts: ${what} Say "dream" to start, or "dream on your own" to let me do it each day.`;
+    if (s.reflectOnly !== null) {
+      const notice = noticeFor("my reflection after dreaming was cut off.");
+      return {
+        ...base,
+        notice,
+        context:
+          `Counterparts: today's run dreamed, but was cut off before it reflected. Shown to ${who} just now, in the terminal: "${notice}" Do not ask again — wait for their word. If they say "dream" (or yes), ${reflect} ${onYourOwn} If they say not today, call the dream tool with phase "decline". ${off}`,
+      };
+    }
+    const notice = noticeFor(cut === null ? `I haven't dreamed ${since} (${String(s.newSince)} new memories).` : `my dream of ${s.leftBehind?.date ?? "a recent night"} was cut off.`);
+    return {
+      ...base,
+      notice,
+      context:
+        `Counterparts: ${cut === null ? `you haven't dreamed ${since} (${String(s.newSince)} new memories)` : cut}. Shown to ${who} just now, in the terminal: "${notice}" Do not ask again — wait for their word. ` +
+        `If they say "dream" (or yes), ${launch} ${onYourOwn} If they say not today, call it with phase "decline" and don't bring it up again today. ${off}`,
+    };
+  }
+
+  /**
+   * CLAIM THE DAY for an offer the host is certainly delivering: the
+   * `dream_asks` latch (a fresh row, or a reclaim of the row the offer read —
+   * of two racing, one wins), the relaunch count, and the `dream.ask` row.
+   * False when another session got there first or the write would not land.
+   */
+  claimOffer(offer: DreamOffer): boolean {
+    if (this.ctx.observer) return false;
+    const day = this.store.livedDay();
     let claimed = false;
     try {
       claimed =
-        prior === undefined
-          ? this.store.setDreamAsk({ date: input.at, state, session: input.session, day })
-          : this.store.reclaimDreamAsk({ date: input.at, prevAt: prior.at, state, session: input.session, day });
-      if (claimed && prior !== undefined) this.store.setMeta(RELAUNCHED_KEY, `${input.at}:${String(this.relaunches(input.at) + 1)}`);
+        offer.priorAt === null
+          ? this.store.setDreamAsk({ date: offer.at, state: offer.state, session: offer.session, day })
+          : this.store.reclaimDreamAsk({ date: offer.at, prevAt: offer.priorAt, state: offer.state, session: offer.session, day });
+      if (claimed && offer.priorAt !== null) this.store.setMeta(RELAUNCHED_KEY, `${offer.at}:${String(this.relaunches(offer.at) + 1)}`);
     } catch {
-      return null;
+      return false;
     }
-    if (!claimed) return null;
+    if (!claimed) return false;
     this.record(DREAM_ASK_EVENT, null, {
-      state: prior === undefined ? state : "relaunched",
-      date: input.at,
-      fresh: s.newSince,
-      setting: s.setting,
-      resumes: s.leftBehind?.id ?? null,
-      reflects: s.reflectOnly?.id ?? null,
+      state: offer.priorAt === null ? offer.state : "relaunched",
+      date: offer.at,
+      fresh: offer.fresh,
+      setting: offer.setting,
+      resumes: offer.resumes,
+      reflects: offer.reflects,
     });
-    const since = s.last === null ? "yet" : `since ${s.last.date ?? `lived day ${String(s.last.day)}`}`;
-    const who = this.ownerName() ?? "the owner";
-    const off = `If ${who} says "no dreams" (or never, or stop), call the dream tool with phase "setting", session: ${input.session}, value: "off" — it can be turned back on the same way, or with counterparts dream --setting auto.`;
-    const launch = `call the counterparts dream tool with phase "launch", session: ${input.session}, and hand the prompt it returns to a background agent (the Agent tool), unchanged — it ${nightSummary()}.`;
-    if (s.reflectOnly !== null) {
-      // THE REFLECTION ALONE: the dream was journaled; the run was cut off
-      // before the reflection finished. Not another dream.
-      const reflect = `call the counterparts reflect tool with phase "launch", session: ${input.session}, dream: ${s.reflectOnly.id}, and hand the prompt it returns to a background agent (the Agent tool), unchanged — it reflects on that dream.`;
-      return s.setting === "auto"
-        ? `Counterparts: today's run dreamed, but was cut off before it reflected. Finish it now, in the background: ${reflect} Then tell ${who} in one line, in your own words, that you are finishing last night's reflection in the background. ${off}`
-        : `Counterparts: today's run dreamed, but was cut off before it reflected. At a natural moment — not mid-task — ask ${who}: "My reflection after dreaming was cut off — OK if I finish it?" If yes, ${reflect} If no, call the dream tool with phase "decline". ${off}`;
-    }
-    const cut = s.leftBehind === null ? null : `your dream of ${s.leftBehind.date ?? "a recent night"} was cut off (its session closed before it woke); it picks up where it stopped`;
-    if (s.setting === "auto") {
-      return (
-        `Counterparts: ${cut === null ? `a new day, and you haven't dreamed ${since} (${String(s.newSince)} new memories)` : cut}. Start tonight's run now, in the background: ${launch} ` +
-        `Then tell ${who} in one line, in your own words: "Dreaming in the background (a few minutes). Say 'no dreams' anytime to turn it off." ${off}`
-      );
-    }
-    return cut === null
-      ? `Counterparts: you haven't dreamed ${since} (${String(s.newSince)} new memories). At a natural moment — not mid-task — ask ${who}: ` +
-          `"I haven't dreamed ${since} — OK if I dream for a few minutes?" If yes, ${launch} If no, call it with phase "decline" and don't ask again today. ${off}`
-      : `Counterparts: ${cut}. At a natural moment — not mid-task — ask ${who}: "My dream was cut off — OK if I finish it?" If yes, ${launch} If no, call it with phase "decline". ${off}`;
+    return true;
+  }
+
+  /**
+   * THE LINE, offered and claimed in one step — the model's line, or null.
+   * For a caller with no terminal to wait on (and the tests); the hook offers
+   * and claims separately (`offer`, `claimOffer`).
+   */
+  askLine(input: { at: string; session: string }): string | null {
+    const o = this.offer(input);
+    if (o === null || !this.claimOffer(o)) return null;
+    return o.context;
   }
 
   /** "Not today": the day's line is snoozed. */

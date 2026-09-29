@@ -1872,8 +1872,8 @@ export class McpServer {
           this.emit("mcp.dream", undefined, { phase: "setting", setting: out.setting, before: out.before });
           const said: Record<DreamingSetting, string> = {
             auto: "Dreaming is on: once a day, the first session starts the nightly run in the background and says so in one line.",
-            ask: "Dreaming asks first: once a day, a session asks the owner before starting the nightly run.",
-            off: "No dreams: nothing starts the nightly run and nothing asks. It can be turned back on with this phase (value auto or ask) or with counterparts dream --setting auto.",
+            ask: "Dreaming asks first: once a day, the first session shows the owner the question in the terminal and waits for their word.",
+            off: "No dreams: nothing starts the nightly run and nothing asks. It can be turned back on with this phase (value ask or auto) or with counterparts dream --setting ask.",
           };
           return this.result({ phase, setting: out.setting, before: out.before, said: said[out.setting] }, false);
         }

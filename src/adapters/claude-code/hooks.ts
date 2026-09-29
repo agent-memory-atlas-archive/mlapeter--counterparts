@@ -52,6 +52,7 @@ import {
   WAKE_INJECTED_EVENT,
 } from "../../core/counterpart.js";
 import type { AdapterDurableEventName, PlainReminder } from "../../core/counterpart.js";
+import type { DreamOffer } from "../../core/dream/index.js";
 import type {
   BoundaryKind,
   CaptureResult,
@@ -237,6 +238,25 @@ export interface HookResult {
    */
   readonly notices?: readonly string[];
   readonly plain?: readonly PlainReminder[];
+  /**
+   * THE DAY'S DREAM LINE FOR THE PERSON (2026-09-29), at a prompt: shown in
+   * the terminal beside the model's line, which already rides in `injection`.
+   * NOT YET CLAIMED when `offer` is set — the delivery claims the day only once
+   * it knows the envelope carries the person's line (`bin/hook.ts#deliverTurn`
+   * → `claimDream`), and otherwise strips the model's line (`withoutDream`) so
+   * the next prompt offers it again.
+   */
+  readonly dream?: DreamTold;
+}
+
+/** The day's dream line, as a prompt carries it (`HookResult.dream`). */
+export interface DreamTold {
+  /** The person's line, for the terminal. */
+  readonly notice: string;
+  /** The model's line exactly as it sits in `injection` (one line). */
+  readonly context: string;
+  /** The offer still to claim at delivery, or null when the day is already claimed. */
+  readonly offer: DreamOffer | null;
 }
 
 export interface AdapterEvent {
@@ -967,10 +987,15 @@ export class ClaudeCodeAdapter {
       // the session that runs past midnight — or that SessionStart had no room
       // for, is said at the next prompt, once (claimed at delivery).
       const plain = this.plainFor(input);
-      const told = plain.due.length === 0 ? {} : { notices: plain.notices, plain: plain.due };
-      // The DREAM lines (2026-09-26): the once-a-day ask, and any contradiction
-      // a dream flagged that is still unraised — for the model, quietly.
-      const context = `${plain.context}${this.dreamLines(input)}`;
+      const told: { notices?: readonly string[]; plain?: readonly PlainReminder[]; dream?: DreamTold } =
+        plain.due.length === 0 ? {} : { notices: plain.notices, plain: plain.due };
+      // The DREAM lines (2026-09-26): the once-a-day line, and any contradiction
+      // a dream flagged that is still unraised — for the model; since
+      // 2026-09-29 the day's line is shown to the PERSON too (`dream`), and
+      // claimed only once the delivery knows it is leaving.
+      const dream = this.dreamLines(input);
+      const context = `${plain.context}${dream.text}`;
+      if (dream.told !== null) Object.assign(told, { dream: dream.told });
       const text = input.prompt ?? "";
       if (text.trim().length === 0) {
         return { ...out, ok: true, reason: "empty-prompt", injection: `${this.nowLine()}${context.length === 0 ? "" : `\n${context.trimEnd()}`}`, ...told };
@@ -1034,13 +1059,13 @@ export class ClaudeCodeAdapter {
   }
 
   /**
-   * THE DREAM LINES (2026-09-26, `core/dream/`), for the MODEL only, each
+   * THE DREAM LINES (2026-09-26, `core/dream/`), for the MODEL, each
    * ending in a newline: a contradiction a dream flagged, raised once awake,
    * and the day's line, which follows the owner's dreaming setting
-   * (2026-09-28): `auto` (the default) tells the model to start the nightly
-   * run now — page writer, dream, reflection, one background agent — and to
-   * tell the owner in one line that it is dreaming and how to say "no dreams";
-   * `ask` asks the owner first, as it did from 2026-09-26; `off` says nothing.
+   * (2026-09-28): `ask` (the default since 2026-09-29) shows the PERSON the
+   * question in the terminal (`told`, claimed at delivery) and tells the model
+   * what each answer means; `auto` tells the model the nightly run is
+   * starting in the background; `off` says nothing.
    * The line is at most once a CALENDAR day across every session (the store's
    * `dream_asks` latch decides, so of two sessions racing one gets it), and
    * again only for a run that was left behind; a "no" is the dream tool's
@@ -1055,8 +1080,9 @@ export class ClaudeCodeAdapter {
    * do not both tell it. Here, on the prompt, rather than in the SessionStart
    * wake, whose byte ceiling is what stranded the page writer.
    */
-  private dreamLines(input: HookInput): string {
-    if (this.observer || input.at === undefined || input.pageWriter === true || input.sessionId.length === 0) return "";
+  private dreamLines(input: HookInput): { text: string; told: DreamTold | null } {
+    const none = { text: "", told: null };
+    if (this.observer || input.at === undefined || input.pageWriter === true || input.sessionId.length === 0) return none;
     try {
       const dreams = this.counterpart.dreams;
       const lines = [...dreams.raiseLines({ session: input.sessionId })];
@@ -1068,12 +1094,37 @@ export class ClaudeCodeAdapter {
           if (carried !== null) lines.push(carried);
         }
       }
-      const ask = dreams.askLine({ at: input.at, session: input.sessionId });
-      if (ask !== null) lines.push(ask);
-      if (lines.length > 0) this.emit("adapter.dream.lines", { asked: ask !== null, raised: lines.length - (ask === null ? 0 : 1) });
-      return lines.map((l) => `${l}\n`).join("");
+      // THE DAY'S LINE, OFFERED (2026-09-29). With a line for the person it is
+      // NOT claimed here: the delivery claims it once the envelope is known to
+      // carry the person's line (`claimDream`). With none, it is claimed now,
+      // as it always was.
+      const offer = dreams.offer({ at: input.at, session: input.sessionId });
+      let told: DreamTold | null = null;
+      let asked = false;
+      if (offer !== null) {
+        if (offer.notice !== null) told = { notice: offer.notice, context: offer.context, offer };
+        asked = told !== null || dreams.claimOffer(offer);
+        if (asked) lines.push(offer.context);
+      }
+      if (lines.length > 0) this.emit("adapter.dream.lines", { asked, raised: lines.length - (asked ? 1 : 0) });
+      return { text: lines.map((l) => `${l}\n`).join(""), told };
     } catch {
-      return "";
+      return none;
+    }
+  }
+
+  /**
+   * CLAIM THE DAY'S DREAM LINE the delivery is certainly about to show — the
+   * `dream_asks` latch decides (`Dreams.claimOffer`), so of two processes
+   * racing exactly one gets it. Never throws.
+   */
+  claimDream(input: HookInput, offer: DreamOffer): boolean {
+    try {
+      const claimed = this.counterpart.dreams.claimOffer(offer);
+      this.emit(claimed ? "adapter.dream.told" : "adapter.dream.lost", { state: offer.state, session: input.sessionId });
+      return claimed;
+    } catch {
+      return false;
     }
   }
 
@@ -2475,6 +2526,26 @@ export function withoutPlain<R extends { injection: string | null; notices?: rea
   delete (rest as { notices?: unknown }).notices;
   delete (rest as { plain?: unknown }).plain;
   return plain.length === 0 ? rest : { ...rest, notices: plain.map(plainLine), plain };
+}
+
+/**
+ * A hook result WITHOUT the day's dream line — its terminal line and its model
+ * line — for a delivery that could not carry it or lost the race to claim it
+ * (`bin/hook.ts#deliverTurn`). Not spent: the next prompt offers it again.
+ */
+export function withoutDream<R extends { injection: string | null; dream?: DreamTold }>(result: R): R {
+  const told = result.dream;
+  if (told === undefined) return result;
+  const injection =
+    result.injection === null
+      ? null
+      : result.injection
+          .split("\n")
+          .filter((l) => l !== told.context)
+          .join("\n");
+  const rest: R = { ...result, injection };
+  delete (rest as { dream?: unknown }).dream;
+  return rest;
 }
 
 function codeOf(err: unknown): string {

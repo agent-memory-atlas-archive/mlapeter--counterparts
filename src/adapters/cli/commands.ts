@@ -1026,7 +1026,7 @@ const DREAM_FLAG_HELP: Record<string, string> = {
   show: "one dream, by id: its journal and every change it made",
   undo: "reverse one dream's whole batch, by id (the id follows the flag); its journal is kept, marked undone",
   setting:
-    "auto, ask or off — the nightly run (page writer, dream, reflection). auto (the default): the first session of a day starts it in the background and says so in one line; ask: the session asks you first; off: no dreams. `counterparts dream` prints the setting.",
+    "auto, ask or off — the nightly run (page writer, dream, reflection). ask (the default): the first session of a day shows you the question in the terminal and waits for you to say \"dream\" (or \"dream on your own\", which turns on auto); auto: the first session of a day starts it in the background and says so in one line; off: no dreams. `counterparts dream` prints the setting.",
 };
 
 /** `core`'s own four. */

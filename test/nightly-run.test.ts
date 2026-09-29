@@ -108,10 +108,11 @@ describe("the run's order: writer, then dream, then reflection (the owner's call
 // ---------------------------------------------------------------------------
 
 describe("dreaming: auto | ask | off, durable and reversible", () => {
-  test("auto by default: the line starts the run and says how to turn it off", () => {
+  test("ask by default (2026-09-29); auto: the line starts the run and says how to turn it off", () => {
     const c = brain();
     lived(c);
-    expect(c.dreams.setting()).toBe("auto");
+    expect(c.dreams.setting()).toBe("ask");
+    expect(c.dreams.setSetting("auto", { by: "owner" })).toEqual({ ok: true, setting: "auto", before: "ask" });
     const line = c.dreams.askLine({ at: c.store.today(), session: SESSION }) ?? "";
     expect(line).toContain('phase "launch"');
     expect(line).toContain("it updates your self page, then dreams, then reflects");
@@ -123,21 +124,26 @@ describe("dreaming: auto | ask | off, durable and reversible", () => {
   test("off: nothing is started and nothing asks; on again, the line comes back", () => {
     const c = brain();
     lived(c);
-    expect(c.dreams.setSetting("off", { by: "session", session: SESSION })).toEqual({ ok: true, setting: "off", before: "auto" });
+    expect(c.dreams.setSetting("off", { by: "session", session: SESSION })).toEqual({ ok: true, setting: "off", before: "ask" });
     expect(c.store.getMeta(DREAMING_SETTING_KEY)).toBe("off");
     expect(c.dreams.status(c.store.today()).reason).toBe("off");
     expect(c.dreams.previewAsk().reason).toBe("off");
     expect(c.dreams.askLine({ at: c.store.today(), session: SESSION })).toBeNull();
-    expect(c.dreams.setSetting("auto", { by: "owner" }).ok).toBe(true);
+    expect(c.dreams.setSetting("ask", { by: "owner" }).ok).toBe(true);
     expect(c.dreams.askLine({ at: c.store.today(), session: SESSION })).not.toBeNull();
   });
 
-  test("ask: the line asks the owner first, as it did before", () => {
+  test("ask: the person is shown the question; the model waits for their word", () => {
     const c = brain();
     lived(c);
     c.dreams.setSetting("ask", { by: "owner" });
+    const offer = c.dreams.offer({ at: c.store.today(), session: SESSION });
+    expect(offer?.notice).toBe('Counterparts: I haven\'t dreamed yet (4 new memories). Say "dream" to start, or "dream on your own" to let me do it each day.');
+    // An offer claims nothing: the host claims it once the person's line is leaving.
+    expect(c.store.dreamAsk(c.store.today())).toBeUndefined();
     const line = c.dreams.askLine({ at: c.store.today(), session: SESSION }) ?? "";
-    expect(line).toContain("OK if I dream for a few minutes?");
+    expect(line).toContain("Do not ask again — wait for their word.");
+    expect(line).toContain('value: "auto", then start today\'s run exactly as for "dream"');
     expect(c.store.dreamAsk(c.store.today())?.state).toBe("offered");
   });
 
@@ -145,7 +151,7 @@ describe("dreaming: auto | ask | off, durable and reversible", () => {
     const c = brain();
     expect(c.dreams.setSetting("sometimes", { by: "owner" })).toEqual({ ok: false, reason: "not-a-setting" });
     c.store.setMeta(DREAMING_SETTING_KEY, "garbled");
-    expect(dreamingSetting(c.store)).toBe("auto");
+    expect(dreamingSetting(c.store)).toBe("ask");
     c.close();
     open.splice(0);
     const o = brain({ observer: true });
@@ -170,11 +176,11 @@ describe("dreaming: auto | ask | off, durable and reversible", () => {
     const out: string[] = [];
     const err: string[] = [];
     const io = { io: { out: (l: string) => out.push(l), err: (l: string) => err.push(l) } };
-    expect(await run(["dream", "--setting", "ask", "--dir", dir], io)).toBe(0);
-    expect(out.join("\n")).toContain("Dreaming: ask (was auto).");
+    expect(await run(["dream", "--setting", "auto", "--dir", dir], io)).toBe(0);
+    expect(out.join("\n")).toContain("Dreaming: auto (was ask).");
     out.length = 0;
     expect(await run(["dream", "--dir", dir], io)).toBe(0);
-    expect(out[0]).toStartWith("Dreaming: ask.");
+    expect(out[0]).toStartWith("Dreaming: auto.");
     expect(await run(["dream", "--setting", "maybe", "--dir", dir], io)).not.toBe(0);
     expect(err.join("\n")).toContain("--setting takes auto, ask or off");
   });
@@ -296,6 +302,7 @@ describe("a dream left behind does not use up the day", () => {
   test("auto: a launch no dream followed is started again after a while — at most RELAUNCHES_PER_DAY times", () => {
     const c = brain();
     lived(c);
+    c.dreams.setSetting("auto", { by: "owner" });
     const today = c.store.today();
     expect(c.dreams.askLine({ at: today, session: "s-1" })).not.toBeNull();
     // Soon after: the run may still be starting.
@@ -449,6 +456,7 @@ describe("review of #271: a run left behind, and the writer's claim", () => {
   test("A: a dream that began, changed nothing and died does NOT use up the day — the line goes out again and a fresh dream opens", () => {
     const c = brain();
     lived(c);
+    c.dreams.setSetting("auto", { by: "owner" });
     const today = c.store.today();
     expect(c.dreams.askLine({ at: today, session: "s-a" })).not.toBeNull();
     const dead = c.dreams.begin({ session: "s-a" });
@@ -543,7 +551,7 @@ describe("review of #271: retries", () => {
     lived(c);
     c.dreams.setSetting("ask", { by: "owner" });
     const today = c.store.today();
-    expect(c.dreams.askLine({ at: today, session: "s-1" })).toContain("OK if I dream");
+    expect(c.dreams.askLine({ at: today, session: "s-1" })).toContain('Say "dream" to start');
     const s = server(c, "s-1");
     await s.call("dream", { phase: "launch", session: "s-1" });
     expect(c.store.dreamAsk(today)?.state).toBe("launched");
@@ -585,6 +593,7 @@ describe("review of #271: retries", () => {
   test("the relaunch count is ONE key, overwritten by a new day — nothing to prune", () => {
     const c = brain();
     lived(c);
+    c.dreams.setSetting("auto", { by: "owner" });
     const today = c.store.today();
     c.dreams.askLine({ at: today, session: "s-1" });
     offsetMs += DREAM_TUNABLES.ABANDONED_AFTER_MS + 60_000;

@@ -39,9 +39,10 @@ import { resolveZone, todayIn } from "../../../core/time.js";
 import { loadConfig, withEmbedderDefault } from "../config.js";
 import type { AdapterConfig } from "../config.js";
 import { HOOKS, openAdapter } from "../index.js";
-import { STOP_HUMAN_LINE, plainLine, withoutPlain } from "../hooks.js";
+import { STOP_HUMAN_LINE, plainLine, withoutDream, withoutPlain } from "../hooks.js";
 import type { PlainReminder } from "../../../core/counterpart.js";
-import type { HookInput, HookName } from "../hooks.js";
+import type { DreamTold, HookInput, HookName } from "../hooks.js";
+import type { DreamOffer } from "../../../core/dream/index.js";
 import {
   CONFIG_REFUSED,
   CONFIG_UNREADABLE,
@@ -798,6 +799,12 @@ export interface UpdateNoticeDoors {
    * claimed, so nothing is shown and every one waits for a later turn.
    */
   claimPlain?(input: HookInput, due: readonly PlainReminder[]): readonly PlainReminder[];
+  /**
+   * Claim the day's dream line this delivery is certainly about to show
+   * (`ClaudeCodeAdapter#claimDream`). Absent: nothing can be claimed, so the
+   * line is not shown and waits for a later prompt.
+   */
+  claimDream?(input: HookInput, offer: DreamOffer): boolean;
 }
 
 /**
@@ -828,6 +835,7 @@ export function deliverTurn(
     ask: string | null;
     notices?: readonly string[];
     plain?: readonly PlainReminder[];
+    dream?: DreamTold;
   },
   payload: Record<string, unknown>,
   /** SessionStart's priority-ordered notices (after any plain reminders), or
@@ -866,6 +874,31 @@ export function deliverTurn(
     const shownPlain = due.filter((d) => kept.has(beat(d)));
     r = withoutPlain(r, due.filter((d) => !kept.has(beat(d))));
     if (shownPlain.length > 0) ordered = [shownPlain.map(plainLine).join("\n"), ...(notices ?? [])];
+  }
+  // THE DAY'S DREAM LINE (2026-09-29), after the plain reminders and under
+  // their rule: an ask is CLAIMED only once the envelope is known to carry the
+  // person's line, and without room it waits — its model line stripped too, so
+  // the model never answers a question the person was not shown. A line whose
+  // day is already claimed (the headless run has started) keeps its model line
+  // and only loses the terminal one.
+  const told = r.dream;
+  if (told !== undefined) {
+    const probe = hostDelivery(name, r, payload, [...(ordered ?? []), told.notice]);
+    let showDream = false;
+    if (probe.dropped === null) {
+      if (told.offer === null) showDream = true;
+      else {
+        try {
+          showDream = doors.claimDream?.(input, told.offer) ?? false;
+        } catch {
+          showDream = false;
+        }
+      }
+    } else if (deferred === null) {
+      deferred = probe.dropped;
+    }
+    if (showDream) ordered = [...(ordered ?? []), told.notice];
+    else if (told.offer !== null) r = withoutDream(r);
   }
   const shown = hostDelivery(name, r, payload, ordered);
   const base = shown.dropped === null && deferred !== null ? { ...shown, dropped: deferred } : shown;

@@ -2833,7 +2833,7 @@ export function dreamingFindings(input: DoctorInput, store: Store): Finding[] {
   const when = last === undefined ? null : (last.date ?? `lived day ${String(last.day)}`);
   const today =
     setting === "off"
-      ? "off — no dreams (counterparts dream --setting auto turns it back on)"
+      ? "off — no dreams (counterparts dream --setting ask turns it back on)"
       : ask === undefined
         ? "not started today"
         : ask.state === "declined"

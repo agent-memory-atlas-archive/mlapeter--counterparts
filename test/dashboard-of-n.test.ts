@@ -170,7 +170,7 @@ describe("4. dreams: how many, and a way to every one", () => {
     try {
       const some = dreamListLines(c);
       // The dreaming setting leads the list (2026-09-28, #271); the count line follows it.
-      expect(some[0]).toStartWith("Dreaming: auto.");
+      expect(some[0]).toStartWith("Dreaming: ask.");
       expect(some[2]).toBe(`Dreams — newest first (${DREAM_LIST_LIMIT} of ${TOTAL} shown; every one: counterparts dream --list --all)`);
       expect(some.filter((l) => l.startsWith("drm_")).length).toBe(DREAM_LIST_LIMIT);
       const all = dreamListLines(c, "all");
