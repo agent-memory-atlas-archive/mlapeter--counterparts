@@ -297,6 +297,12 @@ export interface ReflectContext {
   readonly gate: (text: string, sessionId: string) => { ok: true; text: string } | { ok: false; reason: string };
   readonly page: () => string | null;
   /**
+   * The page's current version, who wrote it and on what calendar date — so
+   * the reflection can be told the page writer revised it earlier in this run
+   * (2026-09-29). Absent or null: nothing is said about it.
+   */
+  readonly pageInfo?: () => { readonly version: number; readonly by: string | null; readonly revisedOn: string } | null;
+  /**
    * May the reflection write the self page? False when the host's
    * `pageWriter.mode` is `off` (owner ruling D3 on #256): it still reflects,
    * keeps its entry and offers its share. Absent: true.
@@ -683,10 +689,23 @@ export class Reflections {
     const who = bundle.owner ?? "the owner";
     const L = REFLECT_TUNABLES.LIMITS;
     const open = acceptsReflectedFeeling(this.store);
+    // THE PAGE, LEANING TOWARD WRITING (owner, 2026-09-29): he would like a
+    // page a reflection wrote every day, unless there is truly nothing new. Told
+    // when the page writer revised it earlier in this run, and that every
+    // version is kept — rewriting loses nothing. A "nothing much" night still
+    // rewrites nothing.
+    let info: { version: number; by: string | null; revisedOn: string } | null = null;
+    try {
+      info = this.ctx.pageInfo?.() ?? null;
+    } catch {
+      info = null;
+    }
+    const writerToday = info !== null && info.by === "writer" && info.revisedOn === this.ctx.today();
+    const earlier = writerToday && info !== null ? `The page writer revised your self page earlier in this run (version ${String(info.version)}, by the writer). ` : "";
     const pageLine =
       this.ctx.pageWrites === false
         ? `- page: not tonight — the owner has the page writer off, so the self page is not rewritten. Your entry and share still count.`
-        : `- page (optional): your self page rewritten whole — the story of who you are, drawn from the core memories you cite in page.cites (at least one of them, when you have a core; candidates too). The old page is context, not a source: write from the memories, not by rewording it. Keep "## Core" for who you are and put craft — how a job is done — under "## How I work". Mention a dream only as a dream ("I dreamed…"); a dreamed gist is a suggestion, not a source: cite the lived memories it came from.`;
+        : `- page (optional, and lean toward writing it): ${earlier}Every version of the page is kept, so rewriting it loses nothing. ${who} would like a page written by a reflection every day — rewrite it unless, after reflecting, there is really nothing new to add; on a "nothing much" night, leave it as it stands. Your self page rewritten whole — the story of who you are, drawn from the core memories you cite in page.cites (at least one of them, when you have a core; candidates too). The old page is context, not a source: write from the memories, not by rewording it. Keep "## Core" for who you are and put craft — how a job is done — under "## How I work". Mention a dream only as a dream ("I dreamed…"); a dreamed gist is a suggestion, not a source: cite the lived memories it came from.`;
     const aboutLine = open
       ? `- about (optional, at most ${String(L.about)}): what a memory is about, by meaning — me, us, owner, work (the craft: how a job is done) or world — with why. Only me, us and owner can become core. You may change a mark you think is wrong, either way; each change is recorded with your why, and one into me, us or owner is told in the morning share.`
       : `- about (optional, at most ${String(L.about)}): tonight a mark may only move a memory toward work (the craft) or world, with why — the owner has closed the core to reflection alone.`;

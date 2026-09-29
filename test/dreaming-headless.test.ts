@@ -173,6 +173,37 @@ describe("A. the day's ask is shown to the person, and claimed only when it leav
     expect(JSON.stringify(launch.structuredContent).toLowerCase()).not.toContain("last night");
   });
 
+  test("the reflection is told the writer revised the page earlier in this run, that every version is kept, and leans toward writing (owner)", async () => {
+    const a = hooks({ identity: { name: "Mike" } });
+    const c = a.counterpart;
+    c.store.put({ type: "memory", kind: "fact", body: "A placeholder thing noticed yesterday.", learnedOn: pageWriterNight(c.store).about });
+    lived(c);
+    recordSession(dir, { sessionId: "s1", scope: "proj", phase: "start" });
+    const s = new McpServer({ counterpart: c, scope: "proj", owner: true, registryDir: dir, session: "s1" });
+    expect((await s.call("dream", { phase: "writer", session: "s1" })).structuredContent["writer"]).toBe(true);
+    await s.call("self_page", { body: "## Core\n\nThe night's revision.", reason: "the night", session: "s1" });
+    expect(c.selfPage()?.by).toBe("writer");
+    const version = c.selfPage()?.version ?? -1;
+    const d = c.dreams.begin({ session: "s1" });
+    if (!d.ok) throw new Error(d.reason);
+    c.dreams.journal({ dream: d.bundle.dream, session: "s1", text: "A dream." });
+    const r = c.reflections.begin({ session: "s1", dream: d.bundle.dream });
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.instructions).toContain(`The page writer revised your self page earlier in this run (version ${String(version)}, by the writer).`);
+    expect(r.instructions).toContain("Every version of the page is kept, so rewriting it loses nothing.");
+    expect(r.instructions).toContain("Mike would like a page written by a reflection every day");
+    expect(r.instructions).toContain('on a "nothing much" night, leave it as it stands');
+  });
+
+  test("without a writer revision today, the page line still leans toward writing and says nothing about one", () => {
+    const a = hooks({ identity: { name: "Mike" } });
+    lived(a.counterpart);
+    const r = a.counterpart.reflections.begin({ session: "s1" });
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.instructions).not.toContain("revised your self page earlier in this run");
+    expect(r.instructions).toContain("lean toward writing it");
+  });
+
   test("the dream tool's own description never ties `launch` to `auto` (review finding 2)", () => {
     const dream = toolDefinitions().find((t) => t["name"] === "dream");
     const text = JSON.stringify(dream);
