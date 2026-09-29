@@ -129,8 +129,9 @@ export function nightTimeoutMs(config: AdapterConfig): number {
  * `SpawnPlan` so `spawnDetached` starts it like the worker. Its OWN planner,
  * not `planSpawn`: that one checks the watchdog against `remember/`'s claim
  * staleness, which is about spans this process never claims — and a run's
- * watchdog is longer. The process's outer timeout outlasts the child's
- * watchdog and both of its kill graces, so the row is always written first.
+ * watchdog is longer. The outer timeout is set past the child's watchdog and
+ * both kill graces; in practice the hook exits at once and takes that timer
+ * with it, so the watchdog that counts is `runNight`'s.
  */
 export type NightRunnerPlan = Omit<SpawnPlan, "reason"> & { readonly reason: NightRunnerRefusal | "ready" };
 

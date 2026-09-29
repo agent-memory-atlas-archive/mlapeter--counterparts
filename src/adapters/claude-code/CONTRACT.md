@@ -567,16 +567,17 @@ row, saying which source answered, existed until the keys were removed — §1a.
 
 **[M] Once per local calendar day, the first session's line starts the nightly run.** On the
 first prompt of a calendar day (`hooks.ts#dreamLines`, UserPromptSubmit), when at least three
-memories are new since the last dream, the line tells the model to call the dream tool's
-`launch` and hand the prompt to ONE background agent, then tell the owner in one line:
-"Dreaming in the background (a few minutes). Say 'no dreams' anytime to turn it off." The
+memories are new since the last dream, the run starts — since 2026-09-29 either on the
+person's "dream" (the model calls the dream tool's `launch` and hands the prompt to ONE
+background agent) or, with `auto`, headless, started by the hook itself (next section). The
 run is, in order (`DREAM_TUNABLES.NIGHT_ORDER`, the owner's call): the page writer, the dream,
 the reflection — the writer first so it reads yesterday before any merge archives an
 original, survives a session cut off mid-run, and the dream and the reflection see the fresh
 page.
 Fewer than three new: nothing runs, and they carry over (new = since the last dream). The
-owner's setting decides the line — `auto` (the default) starts the run, `ask` asks first as
-it did from 2026-09-26, `off` says nothing — kept in the store's meta, set by the dream
+owner's setting decides the line — `ask` (the default since 2026-09-29) shows the PERSON
+the question in the terminal and waits for "dream", `auto` starts the run HEADLESS (below),
+`off` says nothing — kept in the store's meta, set by the dream
 tool's `setting` phase ("no dreams") or `counterparts dream --setting`, shown by doctor. The
 line is claimed once a day across sessions (`dream_asks`), and again only for a run left
 behind (a dream begun and quiet for 30 minutes, or — `auto` — a launch no dream followed),
@@ -637,6 +638,40 @@ group and then given up on, so the worker cannot be held past its own watchdog.
 Everything above about host mode is proved against a stub executable. What a real machine
 has to answer is keychain access from a background process (`claude setup-token` is the
 documented route, spec §16), which is why `session` is the default.
+
+### The headless nightly run (2026-09-29 — working defaults, held lightly)
+
+**[M] With the setting `auto` the hook starts the nightly run itself; nothing in the working
+session launches anything.** On the first prompt of a calendar day that is due
+(`hooks.ts#dreamLines` → `startNightRun`), the hook claims the day, starts
+`bin/nightly.ts` DETACHED (`night-run.ts#planNightRunner`, `spawn.ts#spawnDetached`) and
+records the run `started`. That process composes the launch prompt from the store, starts
+`claude -p` with it on STDIN (`planNightChild`): `--permission-mode default`,
+`--allowedTools` exactly `mcp__counterparts__dream`, `…reflect`, `…self_page`, `…recall`,
+`--model` only when `dreaming.model` is configured; in the launching session's directory;
+the parent's session, scope, stance, page-writer, `CLAUDE_PROJECT_DIR` and `CLAUDECODE`
+variables removed and this package's data dir, configuration and `COUNTERPARTS_NIGHT_RUN`
+written last. It waits under the run's own watchdog (`dreaming.timeoutMs`, default
+`NIGHT_RUN_MS` 20 minutes) and records the end: `done`, `failed`, `timed-out`, or
+`could-not-start` (`no-claude`, `spawn-failed`, `quick-exit` — non-zero inside
+`NIGHT_QUICK_EXIT_MS` with nothing begun — or `nothing-ran`, a clean exit that began no
+dream and no reflection). The outcome is read from the exit and the store, never from the
+child's output.
+
+**[M] Session binding: the run is attributed to the session that started it.** The launch
+prompt names that session's id; the child's MCP server lazy-binds to it on its first call
+(known, live, same scope — hence the child's directory). The child's own host-minted session
+is QUIET (`HookInput.nightRun`, from `COUNTERPARTS_NIGHT_RUN`): its hooks capture nothing
+(so it owes no write-up) and give no dream lines, plain reminders, Stop ask, write-up pointer
+or first-launch question. It still wakes with the ordinary wake.
+
+**[M] The person sees it, and a run that cannot start falls back to asking.** The prompt
+hook's `systemMessage` carries "dreaming in the background (a few minutes). Say "no dreams"
+to turn it off." If the detached process cannot be started, or later records
+`could-not-start`, the next offer (the same prompt, or the next one) is an ask with the
+reason. A run that ended hands back its dream's line and share at the next prompt anywhere,
+once. Doctor's Nightly run line reads the record; amber only while `auto` and the latest run
+did not finish. Observer: nothing starts. Proved against a stub executable only.
 
 ### The next-session write-up (C2, 2026-09-23 — true for now)
 

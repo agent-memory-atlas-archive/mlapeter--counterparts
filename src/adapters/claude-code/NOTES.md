@@ -1659,3 +1659,39 @@ refusal or an unreadable block. The fix text no longer names `injectionBudgetByt
 host mode. The CONTRACT's old "amber while off and a page stands" was drift — the code
 had said green since the S2 review — and the CONTRACT now says what the code does.
 Doctor's Dreaming line leads with the setting.
+
+## 2026-09-29 — the ask the person sees; the headless nightly run
+
+Working defaults, held lightly (dream NOTES has the why).
+
+- **A — the ask.** `dreamLines` no longer claims an ask: it returns the offer as
+  `HookResult.dream`, and `bin/hook.ts#deliverTurn` claims it (`claimDream`) only when the
+  envelope carries the person's line, after the plain reminders and before the update
+  notice. Without room, or on a lost race, the model's line is stripped (`withoutDream`)
+  and the next prompt offers it again.
+- **B — where the spawn lives.** In the hook process, beside the worker's spawn, through
+  the same `spawnDetached` and the same injected `spawner` — so the tests see the plan and
+  nothing starts. The detached process is `bin/nightly.ts`, not the session-end worker
+  (whose watchdog is five minutes; a run is about five). Its own planner, not `planSpawn`:
+  `validateWatchdog` guards span claims this process never makes, and would refuse a
+  20-minute watchdog. Its outer `timeout` is set past the child's watchdog plus both kill
+  graces, though in practice it is moot — `spawn`'s timeout lives in the hook process,
+  which exits at once; the watchdog that matters is `runNight`'s, inside `bin/nightly.ts`.
+- **The watchdog** is `page-writer.ts#startChild`, now exported and shared (plus `cwd` and
+  the OS spawn code): SIGTERM to the group, SIGKILL after `KILL_GRACE_MS`, stop waiting
+  after `REAP_GRACE_MS`.
+- **Two opens, not one held open.** `runNight` opens the store to compose and record
+  `started`, closes it for the run (the child's own MCP server writes meanwhile), and opens
+  it again to record the end.
+- **`nightArgs` is required to start a run.** An adapter built without it (every test, any
+  other host) records `could-not-start` / `runner` and asks instead — so no test can start
+  a real `claude` by accident. `bin/hook.ts` passes `["run", NIGHTLY_PATH]`.
+- **The page writer's child is unchanged** apart from sharing `startChild`: its `pageWriter`
+  flag still means only "no dream lines, no plain reminders". The quiet set is the night
+  run's.
+- **Unproven until a real run** (the coordinator's, against a temp store): that a detached
+  `claude -p` reaches the subscription login; that removing `CLAUDECODE` is enough for a
+  nested start; that the child's MCP server sees the launching session as live and in the
+  same scope (it reads `CLAUDE_PROJECT_DIR` first — removed here — then its directory);
+  whether `claude -p` fires UserPromptSubmit/Stop inside the child (the quiet flag covers
+  both either way); and how long a real run takes against `NIGHT_RUN_MS`.
