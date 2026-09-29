@@ -64,6 +64,11 @@ export const LANES = {
   "memory.merged": "home",
   "memory.unmerged": "home",
   "revision.pressure": "home",
+  // Contradictions (2026-09-29): a settle changes what a memory stands for;
+  // a flag and an undo are the mechanism's housekeeping.
+  "contradiction.settled": "home",
+  "contradiction.flagged": "flow",
+  "contradiction.undone": "flow",
   // A session end that strengthened nothing is housekeeping — unless the credit
   // itself failed, which is a real problem about memories and stays home.
   "recall.credit": (p) =>
@@ -147,6 +152,7 @@ export function iconOf(name: string, p: Payload): Icon | null {
     case "memory.merged":
     case "memory.unmerged":
     case "revision.pressure":
+    case "contradiction.settled":
       return "replaced";
     case "journal.copy.written":
     case "journal.copy.failed":

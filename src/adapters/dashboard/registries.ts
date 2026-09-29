@@ -103,6 +103,12 @@ import {
   DREAM_UNDONE_EVENT,
 } from "../../core/dream/index.js";
 import { V8_CENSUS_EVENT } from "../../core/sleep/index.js";
+// Contradictions (2026-09-29, `core/contradictions.ts`): a flag, a settle, an undo.
+import {
+  CONTRADICTION_FLAGGED_EVENT,
+  CONTRADICTION_SETTLED_EVENT,
+  CONTRADICTION_UNDONE_EVENT,
+} from "../../core/contradictions.js";
 
 /** Display order for the bands, weakest commitment first. EXHAUSTIVE BY TYPE. */
 const BAND_ORDER = {
@@ -202,7 +208,10 @@ export type DurableEventName =
   // The owner's demotion (`Counterpart.demoteCore`) writes this name as a
   // literal; it is the mirror of `band.promoted`.
   | "band.demoted"
-  | typeof V8_CENSUS_EVENT;
+  | typeof V8_CENSUS_EVENT
+  | typeof CONTRADICTION_FLAGGED_EVENT
+  | typeof CONTRADICTION_SETTLED_EVENT
+  | typeof CONTRADICTION_UNDONE_EVENT;
 
 export const DURABLE_EVENTS = {
   "adapter.ask": "the Stop ask was evaluated (asked, paced out, or capped for the day)",
@@ -312,6 +321,10 @@ export const DURABLE_EVENTS = {
   "band.demoted": "the owner sent a core memory back to ordinary fading (and why is kept beside it)",
   // The v8 upgrade's one-time proof (2026-09-26).
   "physics.upgrade.census": "after the v8 upgrade, every memory was measured by the old arithmetic and the new (how many moved a band, down or up, and how many would be let go sooner or later)",
+  // Contradictions (2026-09-29). Ids and counts only; the why is on the pair's trail.
+  "contradiction.flagged": "two memories that disagree were flagged as a pair, unsettled (by a dream, today)",
+  "contradiction.settled": "a pair of memories that disagree was settled — changed, corrected or open — and by whom (a session, a dream, a reflection, the page writer or the owner)",
+  "contradiction.undone": "a settle was undone: strength put back, a corrected memory back in recall, the pair unsettled again",
 } as const satisfies Record<DurableEventName, string>;
 
 export const DURABLE_EVENT_NAMES: readonly DurableEventName[] = Object.keys(

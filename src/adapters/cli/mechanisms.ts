@@ -296,12 +296,19 @@ export const MEMORY_MECHANISMS: readonly MemoryMechanism[] = [
     name: "Reconsolidation",
     group: "Transformation",
     id: "reconsolidation",
-    evidence: ["revision", "accommodation"],
+    evidence: ["revision", "accommodation", "contradictions"],
     read: (v) => {
       const pressed = part(v, "pressure");
-      return v.fired
-        ? { light: LIGHT.working, says: `${plural(pressed, "correction")} weighed against old memories` }
-        : { light: LIGHT.idle, says: "built, not firing yet: nothing corrected this week" };
+      const settled = part(v, "settled");
+      const flagged = part(v, "flagged");
+      const said = [
+        ...(pressed > 0 ? [`${plural(pressed, "correction")} weighed against old memories`] : []),
+        ...(settled > 0 ? [`${plural(settled, "contradiction")} settled`] : []),
+        ...(flagged > 0 ? [`${plural(flagged, "contradiction")} flagged`] : []),
+      ];
+      return v.fired && said.length > 0
+        ? { light: LIGHT.working, says: said.join("; ") }
+        : { light: LIGHT.idle, says: "built, not firing yet: nothing corrected or settled this week" };
     },
   },
   {

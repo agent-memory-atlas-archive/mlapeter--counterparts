@@ -666,6 +666,18 @@ export const MECHANISMS: readonly Mechanism[] = [
     evidence: { kind: "event", names: ["revision.pressure"] },
   },
   {
+    // Built 2026-09-29: contradictions as a mechanism. Two memories that
+    // disagree are flagged (a dream, today) and settled — changed, corrected
+    // or open — by whoever has a clear reason, with a record and an undo. The
+    // evidence is the settle rows; the flags and the undos are covered.
+    id: "contradictions",
+    label: "two memories that disagree were settled — changed, corrected or kept open — or flagged, or a settle undone",
+    module: "core/contradictions.ts (revision.ts, dream/, mcp note, cli settle)",
+    evidence: { kind: "event", names: ["contradiction.settled"] },
+    covers: ["contradiction.flagged", "contradiction.undone"],
+    since: "2026-09-29",
+  },
+  {
     // NARROWED 2026-09-20 (E2). This used to name all four. Promotion, prune
     // and dedup now carry their refusals on the rows above, read out of the
     // cycle row's per-phase skip map under each phase's own reason namespace.

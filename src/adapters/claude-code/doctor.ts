@@ -2492,6 +2492,107 @@ export function upgradeV9Findings(store: Store): Finding[] {
   ];
 }
 
+/** The meta row the v10 upgrade writes (`store/operational.ts#V10_UPGRADE_KEY`). */
+const V10_UPGRADE_META = "contradictions.v10.upgrade";
+
+/**
+ * WHAT THE v10 UPGRADE CARRIED (2026-09-29, contradictions), informational:
+ * every dream flag that stood became an unsettled pair, raised and habituated
+ * as it was. Silent on a store born at v10.
+ */
+export function upgradeV10Findings(store: Store): Finding[] {
+  const upgrade = metaJson(store, V10_UPGRADE_META);
+  if (upgrade === null) return [];
+  const flags = metaNum(upgrade["flags"]);
+  const pairs = metaNum(upgrade["pairs"]);
+  const raised = metaNum(upgrade["raised"]);
+  const standing = metaNum(upgrade["standing"]);
+  return [
+    finding(
+      "upgrade-v10",
+      "green",
+      "Upgrade",
+      `Upgrade to v10: a contradiction is a pair now, settled changed, corrected or open, with its record — ${String(flags)} dream ${flags === 1 ? "flag" : "flags"} carried as ${String(pairs)} unsettled ${pairs === 1 ? "pair" : "pairs"} (${String(raised)} already raised awake, ${String(standing)} with both memories still standing)`,
+      "",
+      { flags, pairs, raised, standing },
+    ),
+  ];
+}
+
+/** The lived days the Contradictions line covers. */
+export const CONTRADICTION_WINDOW_DAYS = 7;
+
+/**
+ * CONTRADICTIONS, informational (2026-09-29): over the last
+ * `CONTRADICTION_WINDOW_DAYS` lived days, how many pairs were flagged, how
+ * many settled and how (changed, corrected, open), how many undone, and who
+ * settled them; and, standing now, how many are open and how many unsettled
+ * (both memories still live). Read off `contradictions` and its trail — ids
+ * and counts only.
+ */
+export function contradictionFindings(store: Store): Finding[] {
+  let pairs: ReturnType<Store["contradictions"]>;
+  let trail: ReturnType<Store["contradictionSettles"]>;
+  let today: number;
+  try {
+    pairs = store.contradictions({ limit: 100_000 });
+    trail = store.contradictionSettles({ limit: 100_000 });
+    today = store.livedDay();
+  } catch {
+    return [];
+  }
+  const since = today - CONTRADICTION_WINDOW_DAYS + 1;
+  const flagged = pairs.filter((p) => p.source === "dream" && p.flagged_day >= since).length;
+  const settles = trail.filter((s) => s.action === "settle" && s.day >= since);
+  const kept = settles.filter((s) => s.undone === 0);
+  const by = (list: readonly { how?: string | null; actor?: string }[], key: "how" | "actor"): Record<string, number> => {
+    const out: Record<string, number> = {};
+    for (const x of list) {
+      const k = String(x[key] ?? "?");
+      out[k] = (out[k] ?? 0) + 1;
+    }
+    return out;
+  };
+  const how = by(kept, "how");
+  const who = by(kept, "actor");
+  const undone = trail.filter((s) => s.action === "undo" && s.day >= since).length;
+  const live = (id: string): boolean => {
+    const r = store.row(id);
+    return r !== undefined && r.archived === 0 && r.superseded_by === null && r.body !== "";
+  };
+  const open = pairs.filter((p) => p.state === "settled" && p.how === "open" && p.via === null).length;
+  const unsettled = pairs.filter((p) => p.state === "unsettled" && live(p.a) && live(p.b)).length;
+  const kinds = ["changed", "corrected", "open"].map((k) => `${String(how[k] ?? 0)} ${k}`).join(", ");
+  const whoWords = Object.entries(who)
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, n]) => `${k === "owner" ? "you" : k} ${String(n)}`)
+    .join(", ");
+  return [
+    finding(
+      "contradictions",
+      "green",
+      "Contradictions",
+      `last ${String(CONTRADICTION_WINDOW_DAYS)} lived days: ${String(flagged)} flagged, ${String(kept.length)} settled (${kinds})${kept.length > 0 ? ` by ${whoWords}` : ""}${undone > 0 ? `, ${String(undone)} undone` : ""}; standing: ${String(open)} open, ${String(unsettled)} unsettled${unsettled > 0 ? " (counterparts settle lists them)" : ""}`,
+      "",
+      {
+        flagged,
+        settled: kept.length,
+        changed: how["changed"] ?? 0,
+        corrected: how["corrected"] ?? 0,
+        open: how["open"] ?? 0,
+        undone,
+        bySession: who["session"] ?? 0,
+        byDream: who["dream"] ?? 0,
+        byReflection: who["reflection"] ?? 0,
+        byPageWriter: who["page-writer"] ?? 0,
+        byOwner: who["owner"] ?? 0,
+        standingOpen: open,
+        standingUnsettled: unsettled,
+      },
+    ),
+  ];
+}
+
 /** How many `band.promoted` rows the reflection finding reads, newest first. */
 export const PROMOTED_ROWS = 5000;
 
@@ -3705,6 +3806,9 @@ export function doctorFindings(input: DoctorInput): Finding[] {
     // v9 (2026-09-27): what the upgrade carried, and the reflection.
     ["upgrade-v9", () => upgradeV9Findings(store)],
     ["reflection", () => reflectionFindings(input, store)],
+    // v10 (2026-09-29): what the upgrade carried, and the week's contradictions.
+    ["upgrade-v10", () => upgradeV10Findings(store)],
+    ["contradictions", () => contradictionFindings(store)],
     // Build B (2026-09-28): does anyone read what an index offers in part?
     ["lookups", () => lookupFindings(store)],
     // Association build 1 (2026-09-28): what spreading did, and the edges.

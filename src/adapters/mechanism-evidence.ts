@@ -266,12 +266,20 @@ export const MECHANISM_EVIDENCE: readonly MechanismEvidence[] = [
     },
   },
   {
-    // PARTLY (audit): it revises only what a writer declared with `updates:`,
-    // for beliefs and identity lines, under pressure over several days.
+    // PARTLY: a belief or an identity line is revised under pressure over
+    // several days; since 2026-09-29 an ordinary memory is SETTLED —
+    // changed, corrected or open — by a new memory that updates it, a dream,
+    // or the owner, and a dream flags pairs that disagree. What is not built:
+    // noticing a disagreement nobody wrote down, outside the write-time list
+    // and the dream.
     id: "reconsolidation",
     family: "transformation",
     build: "partly",
-    proofs: [{ key: "pressure", event: "revision.pressure", says: ["correction weighed against an old memory", "corrections weighed against old memories"] }],
+    proofs: [
+      { key: "pressure", event: "revision.pressure", says: ["correction weighed against an old memory", "corrections weighed against old memories"] },
+      { key: "settled", event: "contradiction.settled", stands: settleStands, says: ["contradiction settled", "contradictions settled"] },
+      { key: "flagged", event: "contradiction.flagged", says: ["contradiction flagged", "contradictions flagged"] },
+    ],
   },
   {
     // PARTLY (2026-09-26): a dream can write the pattern it sees across
@@ -361,6 +369,11 @@ export function counted(proof: Proof, row: EventRow, store: ReadOnlyStore): numb
   } catch {
     return n;
   }
+}
+
+/** A settle's row counts while its pair is still settled — an undo takes it back. */
+function settleStands(store: ReadOnlyStore, row: EventRow): boolean {
+  return row.ref === null || store.contradiction(row.ref)?.state === "settled";
 }
 
 /** A dream's row counts while the dream is not undone (review of #251). */
