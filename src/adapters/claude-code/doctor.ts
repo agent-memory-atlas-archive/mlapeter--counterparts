@@ -3951,10 +3951,22 @@ function crashWriteUpFindings(input: DoctorInput, store: Store, owedReading: Owe
   // session there would only defer again, so the advice says why and by how much.
   if (pointer !== null && pointer.outcome === "deferred" && (waiting ?? 0) > 0) {
     const short = Math.max(0, pointer.need - pointer.room);
+    // WHAT TOOK THE ROOM, named (review of #285, M3): beside a full wake the
+    // first-launch question or a plain reminder can be what left the pointer
+    // no room — and then the wake's budget is not the thing to lower.
+    const beside = pointer.beside ?? "";
+    const cap =
+      pointer.limit !== undefined && pointer.limit !== TUNABLES.HOST_OUTPUT_CHARS
+        ? `the ${pointer.limit.toLocaleString("en-US")}-character envelope that carries today's reminders`
+        : "the host's 10,000-character cap";
     const why =
       pointer.reason === "host-cap"
-        ? `the pointer did not fit on ${pointer.date}: it needs ${String(pointer.need)} bytes and the wake left ${String(Math.max(0, pointer.room))} under the host's 10,000-character cap (${String(short)} short)`
+        ? `the pointer did not fit on ${pointer.date}: it needs ${String(pointer.need)} bytes and the wake${beside.length === 0 ? "" : ` and ${beside}`} left ${String(Math.max(0, pointer.room))} under ${cap} (${String(short)} short)`
         : `the pointer could not be recorded on ${pointer.date} (${pointer.reason ?? "unknown"})`;
+    const hostCapFix =
+      beside.length === 0
+        ? `The wake is too full: lower "injectionBudgetBytes" in ${tilde(input.configPath)} by ${String(short)} or more.`
+        : `It was ${beside} beside the wake that took the room that morning, not the wake alone; the pointer is offered again at the next session start with room. If it keeps deferring, lower "injectionBudgetBytes" in ${tilde(input.configPath)} by ${String(short)} or more.`;
     return [
       finding(
         "crash-write-up",
@@ -3962,7 +3974,7 @@ function crashWriteUpFindings(input: DoctorInput, store: Store, owedReading: Owe
         "Crash write-up",
         `${who}${count} — ${why}`,
         pointer.reason === "host-cap"
-          ? `The wake is too full: lower "injectionBudgetBytes" in ${tilde(input.configPath)} by ${String(short)} or more.`
+          ? hostCapFix
           : "The session registry under the store could not be written; read the Store line.",
         data,
       ),

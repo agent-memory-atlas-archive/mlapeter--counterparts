@@ -34,7 +34,7 @@ import {
   stanceOfMode,
 } from "../../scopes.js";
 import type { ScopeRead, ScopeVerdict } from "../../scopes.js";
-import { canonicalScope, readSession } from "../../sessions.js";
+import { canonicalScope, isEntrypoint, readSession } from "../../sessions.js";
 import { resolveZone, todayIn } from "../../../core/time.js";
 import { TUNABLES, loadConfig, withEmbedderDefault } from "../config.js";
 import type { AdapterConfig } from "../config.js";
@@ -56,18 +56,12 @@ import type { SaysSoHook, StandDownFault } from "../standdown.js";
 import { readTranscript } from "../transcript.js";
 
 /**
- * The host's own spelling of the one event that carries a notice. It appears
- * twice — as a key below, and as `hookSpecificOutput.hookEventName` in the JSON
- * form — and the host matches that field against its own name, so the two
- * spellings must be one constant.
+ * The host's own spellings of the two events that carry a notice — one
+ * constant each, shared with `hooks.ts`, which measures the same envelope
+ * before it decides what rides beside the wake (`../envelope.ts`).
  */
-export const HOST_SESSION_START = "SessionStart";
-
-/**
- * The same, for the second event that carries one since roadmap E
- * (2026-09-23): the update notice, at a prompt (`hostDelivery`).
- */
-export const HOST_USER_PROMPT_SUBMIT = "UserPromptSubmit";
+import { HOST_SESSION_START, HOST_USER_PROMPT_SUBMIT, envelopeJson } from "../envelope.js";
+export { HOST_SESSION_START, HOST_USER_PROMPT_SUBMIT } from "../envelope.js";
 
 /**
  * THE MOST STDOUT THIS HOOK MAY PRINT AS JSON, and why the number is 9,500.
@@ -401,6 +395,12 @@ export function toHookInput(
     // The headless nightly run's child (`night-run.ts` sets this, 2026-09-29):
     // a windowless session our hooks keep QUIET — no capture, no asks.
     ...(((opts.env ?? process.env)[NIGHT_RUN_ENV] ?? "").trim().length > 0 ? { nightRun: true } : {}),
+    // HOW THE HOST WAS STARTED (review of #285, N2): the host sets
+    // `CLAUDE_CODE_ENTRYPOINT` at startup — `cli` at a terminal, `sdk-cli` for
+    // `claude -p` — and its hooks inherit it. Absent or odd: not carried.
+    ...(isEntrypoint((opts.env ?? process.env)["CLAUDE_CODE_ENTRYPOINT"])
+      ? { entrypoint: (opts.env ?? process.env)["CLAUDE_CODE_ENTRYPOINT"] as string }
+      : {}),
     // THE PERSON'S DAY (docs/time.md, 2026-09-25; UTC before). It dates the
     // hook's rows, the wake preface, the prospective "today" and the date the
     // boundary hands the lived clock — which is why the lived clock can see a
@@ -817,6 +817,12 @@ export interface UpdateNoticeDoors {
   claimDream?(input: HookInput, offer: DreamOffer): boolean;
   /** Claim the one-time line about `auto` set back to `ask` (`ClaudeCodeAdapter#claimDreamNote`). */
   claimDreamNote?(input: HookInput): boolean;
+  /**
+   * Record what this delivery left for later for want of ROOM — `plain`
+   * reminders (how many), the `dream` offer, the `update-notice`
+   * (`ClaudeCodeAdapter#noteGaveWay`). Absent: nothing is recorded.
+   */
+  noteGaveWay?(input: HookInput, part: string, count: number): void;
 }
 
 /**
@@ -885,6 +891,9 @@ export function deliverTurn(
     const beat = (x: PlainReminder): string => `${x.memoryId} ${x.windowKey} ${x.beat}`;
     const kept = new Set(claimed.map(beat));
     const shownPlain = due.filter((d) => kept.has(beat(d)));
+    // WHAT GAVE WAY, as delivered: the reminders the envelope had no room for
+    // (a lost claim race is not room, and is recorded by `claimPlain`).
+    if (fits < due.length) gaveWay(doors, input, "plain", due.length - fits);
     r = withoutPlain(r, due.filter((d) => !kept.has(beat(d))));
     if (shownPlain.length > 0) ordered = [shownPlain.map(plainLine).join("\n"), ...(notices ?? [])];
   }
@@ -907,8 +916,9 @@ export function deliverTurn(
           showDream = false;
         }
       }
-    } else if (deferred === null) {
-      deferred = probe.dropped;
+    } else {
+      if (deferred === null) deferred = probe.dropped;
+      gaveWay(doors, input, "dream", 1);
     }
     if (showDream) ordered = [...(ordered ?? []), told.notice];
     else if (told.offer !== null) r = withoutDream(r);
@@ -937,10 +947,22 @@ export function deliverTurn(
     const update = doors.updateNotice(input);
     if (update === null) return base;
     const carried = hostDelivery(name, r, payload, [...(ordered ?? []), update]);
-    if (carried.dropped !== null) return { ...base, dropped: base.dropped ?? carried.dropped };
+    if (carried.dropped !== null) {
+      gaveWay(doors, input, "update-notice", 1);
+      return { ...base, dropped: base.dropped ?? carried.dropped };
+    }
     return doors.markUpdateNotice(input) ? carried : base;
   } catch {
     return base;
+  }
+}
+
+/** `doors.noteGaveWay`, fail-open: a record that cannot be made costs nothing. */
+function gaveWay(doors: UpdateNoticeDoors, input: HookInput, part: string, count: number): void {
+  try {
+    doors.noteGaveWay?.(input, part, count);
+  } catch {
+    /* bookkeeping */
   }
 }
 
@@ -1045,11 +1067,7 @@ export function hostDelivery(
       (n): n is string => n !== null && n.length > 0,
     );
     if (name === "session-start" && notices.length > 0) {
-      const envelopeOf = (message: string): string =>
-        JSON.stringify({
-          systemMessage: message,
-          hookSpecificOutput: { hookEventName: HOST_SESSION_START, additionalContext: out },
-        });
+      const envelopeOf = (message: string): string => envelopeJson(HOST_SESSION_START, message, out);
       // THE WAKE WINS. Over `ENVELOPE_MAX_CHARS` the host would replace this
       // whole string with a preview, the JSON would stop parsing, and the
       // session would start with no memory at all — a worse outcome than not

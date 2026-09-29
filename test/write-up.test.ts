@@ -42,6 +42,7 @@ import { WRITE_UP_ASK_COUNT_KEY, WRITE_UP_ASK_DATE_KEY, WRITE_UP_OPEN, WRITE_UP_
 import { TUNABLES, loadConfig } from "../src/adapters/claude-code/config.js";
 import type { AdapterConfig } from "../src/adapters/claude-code/config.js";
 import { runOnce } from "../src/adapters/claude-code/bin/runner.js";
+import { toHookInput } from "../src/adapters/claude-code/bin/hook.js";
 import { WRITE_UP_WAIT_DAYS, doctorFindings } from "../src/adapters/claude-code/doctor.js";
 import { openServer, toolSpec } from "../src/adapters/mcp/index.js";
 import type { McpServer, ToolResult } from "../src/adapters/mcp/server.js";
@@ -1109,6 +1110,109 @@ describe("the short write-up: a session under the first-ask threshold (2026-09-2
     c.close();
     expect(held?.owesShort).toBe(true);
     expect(start("new-1").ask).toBeNull();
+  });
+
+  test("STORE-WIDE, NOT PER PROJECT (review of #285, S1 / probe P1): a full debt in another project is pointed at before any short one here", () => {
+    const s = seeder();
+    ended(s, "full-other", { at: Date.now() - 2 * DAY, scope: OTHER, bytes: 900 });
+    ended(s, "short-a", { at: Date.now() - 2 * DAY + 10_000, bytes: 200, asked: false });
+    ended(s, "short-b", { at: Date.now() - 2 * DAY + 20_000, bytes: 200, asked: false });
+    s.done();
+    // Two quick starts here: no pointer, so the day's allowance is kept.
+    expect(start("s1").ask).toBeNull();
+    expect(start("s2").ask).toBeNull();
+    // The start in OTHER gets the full debt.
+    expect(start("s3", { scope: OTHER }).ask ?? "").toContain("writeUp: full-other");
+    // Now the full one has had today's pointer: the short ones may have what is left.
+    expect(start("s4").ask ?? "").toContain(WRITE_UP_SHORT_LINE);
+  });
+
+  test("A WRITTEN-UP short session keeps its text up to 7 days after the write-up (review of #285, M1 / probe P2)", async () => {
+    const s = seeder();
+    ended(s, "short-x", { at: Date.now() - 6 * DAY, bytes: 200, asked: false });
+    s.done();
+    const { s: srv, fetched } = await pointAndFetch("live-x");
+    expect(fetched).toMatchObject({ reason: "part", ended: "short-x" });
+    expect(payload(await srv.call("session_end", { session: "live-x", writeUp: "short-x", memories: [] }))).toMatchObject({
+      reason: "written-up",
+    });
+    srv.counterpart.close();
+    open.length = 0;
+    const c = Counterpart.open({ dir: storeDir, owner: true });
+    const sources = writeUpSources(c.store, FIRST_ASK);
+    const v = (t: number): string | undefined =>
+      planRetention(new SpanBuffer({ dir: storeDir, now: () => t }), sources).find((h) => h.session === "short-x")?.verdict;
+    const at5 = v(Date.now() + 5 * DAY);
+    const at8 = v(Date.now() + 8 * DAY);
+    c.close();
+    // The write-up restarts the week, as it does for a full debt: kept at +5
+    // days (11 after it ended), gone at +8 — bounded, about 14 days at most.
+    expect(at5).toBe("kept-young");
+    expect(at8).toBe("deleted");
+  });
+
+  test("NOT A PERSON'S INTERACTIVE CONVERSATION (review of #285, N2): `claude -p` / the Agent SDK owe no one-line write-up", () => {
+    // The hook reads the host's entrypoint from its environment.
+    expect(toHookInput({ session_id: "p1" }, { scope: PROJ, env: { CLAUDE_CODE_ENTRYPOINT: "sdk-cli" } }).entrypoint).toBe("sdk-cli");
+    expect(toHookInput({ session_id: "p1" }, { scope: PROJ, env: {} }).entrypoint).toBeUndefined();
+    const s = seeder();
+    for (const [id, entrypoint] of [["print-1", "sdk-cli"], ["sdk-1", "sdk-ts"], ["person-1", "cli"]] as const) {
+      ended(s, id, { at: Date.now() - 2 * DAY, bytes: 200, asked: false });
+      recordSession(storeDir, { sessionId: id, scope: PROJ, phase: "boundary", entrypoint });
+      expect(readSession(storeDir, id)?.entrypoint).toBe(entrypoint);
+    }
+    s.done();
+    const ask = start("new-1").ask ?? "";
+    expect(ask).toContain("writeUp: person-1");
+    newDay();
+    // ...and nothing else is ever offered: the other two are not a person's.
+    expect(start("new-2").ask ?? "").not.toMatch(/writeUp: (print-1|sdk-1)/);
+  });
+
+  test("DOCTOR NAMES WHAT TOOK THE ROOM (review of #285, M3 / probe P4): a pointer deferred beside the first-launch question is not told to lower the wake", () => {
+    const s = seeder();
+    ended(s, "old-full", { at: Date.now() - 2 * DAY, bytes: 900 });
+    s.done();
+    const a = openAdapter(config({ injectionBudgetBytes: 9000 }), {
+      command: "/bin/true",
+      args: ["runner"],
+      spawner: () => ({ pid: 4242 }),
+    });
+    try {
+      // A full wake in an unset directory: the question fits, the pointer does not.
+      const text = "w".repeat(9_200);
+      (a.counterpart as unknown as { wake: () => unknown }).wake = () => ({
+        text,
+        ok: true,
+        reason: "loaded",
+        bytes: text.length,
+        sentinel: null,
+        reading: null,
+        preface: null,
+        budgetBytes: 9_000,
+      });
+      const out = a.sessionStart({ sessionId: "0d3f7a52-9c1e-4b8e-9a51-2f7c1f0e9b11", scope: PROJ, at: new Date().toISOString().slice(0, 10) });
+      expect(out.ask ?? "").toContain("<counterparts-scope>");
+      expect(out.ask ?? "").not.toContain(WRITE_UP_OPEN);
+      expect(readWriteUpPointer(a.counterpart.store)).toMatchObject({ outcome: "deferred", reason: "host-cap", beside: "the first-launch question" });
+    } finally {
+      a.counterpart.close();
+    }
+    const c = Counterpart.open({ dir: storeDir, owner: true });
+    open.push(c);
+    const f = doctorFindings({
+      configPath: join(root, "claude-code.json"),
+      configReason: "loaded",
+      config: config(),
+      dir: storeDir,
+      store: c.store,
+      today: "2026-09-23",
+      refusals: {},
+    }).find((x) => x.key === "crash-write-up");
+    expect(f?.severity).toBe("amber");
+    expect(f?.detail).toContain("the wake and the first-launch question left");
+    expect(f?.fix).toContain("It was the first-launch question beside the wake that took the room");
+    expect(f?.fix).not.toContain("The wake is too full");
   });
 
   test("doctor's awaiting count stays the FULL debts: a short one ages out, it is not a wait to flag", () => {

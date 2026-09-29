@@ -8,6 +8,9 @@
  *   SessionStart — notices, then the write-up pointer, then the first-launch
  *   question, then today's plain reminders (to the first prompt); the wake is
  *   never cut at delivery (it trims itself at the boundary, identity last).
+ *   Proved through the real delivery (`deliverTurn`): a reminder reaches the
+ *   person only in the JSON form, so the asks are measured against THAT form
+ *   when one is due (review of #285, S2).
  *
  *   UserPromptSubmit — the update notice, then the turn's recall (sized to what
  *   the other lines leave), and last the reserved lines: the dream's, today's
@@ -29,13 +32,14 @@ import { Counterpart } from "../src/core/counterpart.js";
 import { CUE_MODE_META } from "../src/core/prospective/index.js";
 import { SELF_TUNABLES } from "../src/core/self/index.js";
 import type { WakeResult } from "../src/core/self/index.js";
-import { SCOPE_ASK, SCOPE_ASK_BYTES, TUNABLES, openAdapter } from "../src/adapters/claude-code/index.js";
+import { SCOPE_ASK, TUNABLES, openAdapter } from "../src/adapters/claude-code/index.js";
 import type { AdapterConfig, ClaudeCodeAdapter, HookInput } from "../src/adapters/claude-code/index.js";
-import { WRITE_UP_OPEN } from "../src/adapters/claude-code/hooks.js";
-import { hostDelivery } from "../src/adapters/claude-code/bin/hook.js";
+import { WRITE_UP_ASK_COUNT_KEY, WRITE_UP_ASK_DATE_KEY, WRITE_UP_OPEN } from "../src/adapters/claude-code/hooks.js";
+import { deliverTurn, hostDelivery } from "../src/adapters/claude-code/bin/hook.js";
 import { recordSession } from "../src/adapters/sessions.js";
 
 const DAY = 86_400_000;
+const bytes = (s: string): number => Buffer.byteLength(s, "utf8");
 let root: string;
 let storeDir: string;
 let PROJ: string;
@@ -65,9 +69,16 @@ function adapter(mode: "on" | "unset"): ClaudeCodeAdapter {
   });
 }
 
-/** A wake of exactly `bytes` bytes, whatever the store holds. */
+/**
+ * A wake of exactly `bytes` bytes, whatever the store holds — made of ordinary
+ * wake-shaped lines (a newline and quotes on each, which the JSON form escapes),
+ * padded to the byte.
+ */
 function fixWake(a: ClaudeCodeAdapter, bytes: number): void {
-  const text = `${"w".repeat(Math.max(0, bytes - 1))}\n`.slice(0, bytes);
+  const line = '- 2026-09-01 · The relief valve is seated first, or the loop loses "pressure".\n';
+  let text = "";
+  while (Buffer.byteLength(text + line, "utf8") <= bytes) text += line;
+  text += "w".repeat(bytes - Buffer.byteLength(text, "utf8"));
   const fake: WakeResult & { budgetBytes: number | null } = {
     text,
     ok: true,
@@ -112,86 +123,100 @@ function seed(): void {
   }
 }
 
-interface Start {
-  injection: string;
-  ask: string;
-  plain: number;
-  wake: number;
-  events: string[];
+interface Delivered {
+  /** Everything printed. */
+  stdout: string;
+  /** The JSON form was printed (a person-facing line rode it). */
+  json: boolean;
+  /** Today's reminder reached the person. */
+  reminderShown: boolean;
+  question: boolean;
+  pointer: boolean;
+  /** `part`s of the `adapter.envelope.gave-way` events, in order. */
+  gaveWay: string[];
+  /** The reminder is still due afterwards (not claimed). */
+  stillDue: boolean;
 }
 
-function start(sessionId: string, wakeBytes: number): Start {
+/** One SessionStart THROUGH THE REAL DELIVERY (`deliverTurn`), in an unset directory. */
+function startDelivered(sessionId: string, wakeBytes: number): Delivered {
+  // A fresh day's pointer allowance for each start, so a walk over wake sizes
+  // measures room and never the day's count.
+  const c = Counterpart.open({ dir: storeDir, owner: true });
+  c.store.setMeta(WRITE_UP_ASK_DATE_KEY, "1999-01-01");
+  c.store.setMeta(WRITE_UP_ASK_COUNT_KEY, "0");
+  c.close();
   const a = adapter("unset");
   try {
     fixWake(a, wakeBytes);
     const input: HookInput = { sessionId, scope: PROJ, at: today() };
     const out = a.sessionStart(input);
+    const d = deliverTurn("session-start", out, {}, [null, null], a, input);
+    const json = d.stdout.startsWith("{");
+    const context = json ? (JSON.parse(d.stdout) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput.additionalContext : d.stdout;
+    const message = json ? (JSON.parse(d.stdout) as { systemMessage: string }).systemMessage : "";
     return {
-      injection: out.injection ?? "",
-      ask: out.ask ?? "",
-      plain: out.plain?.length ?? 0,
-      wake: wakeBytes,
-      events: a.events().map((e) => `${e.name}${e.name === "adapter.envelope.gave-way" ? `:${String(e.data["part"])}` : ""}`),
+      stdout: d.stdout,
+      json,
+      reminderShown: message.includes("pay the quarterly estimate"),
+      question: context.includes(SCOPE_ASK),
+      pointer: context.includes(WRITE_UP_OPEN),
+      gaveWay: a.events("adapter.envelope.gave-way").map((e) => String(e.data["part"])),
+      stillDue: a.counterpart.plainDueToday({ at: today() }).length > 0,
     };
   } finally {
     a.counterpart.close();
   }
 }
 
-const bytes = (s: string): number => Buffer.byteLength(s, "utf8");
-
-describe("SessionStart: one budget, and a crowded morning gives way in order", () => {
-  test("pointer first, then the scope question, then plain reminders — the wake is never cut", () => {
+describe("SessionStart, THROUGH THE DELIVERY: the reminder is the last thing to give way (review of #285, S2)", () => {
+  test("a roomy morning: the reminder, the question and the pointer all go out", () => {
     seed();
-    const cap = TUNABLES.HOST_OUTPUT_CHARS;
-    // A normal morning: everything fits.
-    const roomy = start("s-roomy", 4_000);
-    expect(roomy.plain).toBe(1);
-    expect(roomy.ask).toContain(SCOPE_ASK);
-    expect(roomy.ask).toContain(WRITE_UP_OPEN);
-    const lead = bytes(roomy.injection) - roomy.wake;
-    const pointer = bytes(roomy.ask) - bytes(SCOPE_ASK) + 2; // "\n\n" + pointer, as the adapter counts it
-    expect(lead).toBeGreaterThan(0);
-    expect(bytes(roomy.injection) + bytes(`\n\n${roomy.ask}`)).toBeLessThanOrEqual(cap);
-
-    // 1. No room for the pointer: it defers, the question and the reminder stay.
-    const w1 = cap - lead - SCOPE_ASK_BYTES - pointer + 20;
-    const one = start("s-one", w1);
-    expect(one.ask).toContain(SCOPE_ASK);
-    expect(one.ask).not.toContain(WRITE_UP_OPEN);
-    expect(one.plain).toBe(1);
-    expect(one.events).toContain("adapter.writeup.deferred");
-
-    // 2. Room for neither: both defer; the reminder stays. (With room for one
-    // of the two, the question has first claim on it — case 1.)
-    const w2 = cap - lead - Math.min(SCOPE_ASK_BYTES, pointer) + 20;
-    const two = start("s-two", w2);
-    expect(two.ask).toBe("");
-    expect(two.plain).toBe(1);
-    expect(two.events).toContain("adapter.scope.ask.deferred");
-
-    // 3. No room for the reminder: it waits for the first prompt (unclaimed),
-    // and the wake still goes whole.
-    const w3 = cap - lead + 20;
-    const three = start("s-three", w3);
-    expect(three.plain).toBe(0);
-    expect(three.injection).not.toContain("pay the quarterly estimate");
-    expect(three.events).toContain("adapter.envelope.gave-way:plain");
-    expect(bytes(three.injection)).toBeGreaterThanOrEqual(w3);
-
-    // Every envelope that could fit, did.
-    for (const s of [roomy, one, two]) {
-      expect(bytes(s.injection) + (s.ask.length === 0 ? 0 : bytes(`\n\n${s.ask}`))).toBeLessThanOrEqual(cap);
-    }
-    // The reminder was not spent on the start that could not carry it: the
-    // next prompt still has it to say.
-    const a = adapter("on");
-    try {
-      expect(a.counterpart.plainDueToday({ at: today() })).toHaveLength(1);
-    } finally {
-      a.counterpart.close();
-    }
+    const d = startDelivered("s-roomy", 3_000);
+    expect(d).toMatchObject({ json: true, reminderShown: true, question: true, pointer: true, stillDue: false });
+    expect(d.gaveWay).toEqual([]);
   });
+
+  test("THE ASKS GIVE WAY TO THE REMINDER: on the largest wake the reminder still fits beside, neither ask goes; with room for the question but not both, the question goes and the pointer waits", () => {
+    // Walk down from a wake the reminder cannot fit beside at all — a FRESH
+    // store each step, since a reminder shown once is claimed for the day.
+    let largest: { w: number; d: Delivered } | null = null;
+    let oneAsk: Delivered | null = null;
+    for (let w = 9_400; w >= 7_000 && oneAsk === null; w -= 10) {
+      storeDir = join(root, `store-${String(w)}`);
+      seed();
+      const d = startDelivered(`s-walk-${String(w)}`, w);
+      if (largest === null && d.reminderShown) largest = { w, d };
+      // (Walking down, a pointer-only morning can come first: the pointer is
+      // smaller than the question and may take room the question could not
+      // use. That is not the order being broken; the question is never the
+      // one displaced. The case that shows the order is room for the question
+      // but not both.)
+      if (largest !== null && d.question && !d.pointer) oneAsk = d;
+      if (largest !== null && d.question && d.pointer) break;
+    }
+    expect(largest).not.toBeNull();
+    // The reminder is shown and claimed, and it is the ASKS that gave way.
+    expect(largest?.d).toMatchObject({ json: true, reminderShown: true, question: false, pointer: false, stillDue: false });
+    expect(largest?.d.gaveWay).toEqual(["question", "pointer"]);
+    expect(largest?.d.stdout.length ?? 0).toBeLessThanOrEqual(TUNABLES.ENVELOPE_CHARS);
+    // With room for one of the two, the question has it and the pointer waits.
+    expect(oneAsk).not.toBeNull();
+    expect(oneAsk).toMatchObject({ reminderShown: true, question: true, pointer: false });
+    expect(oneAsk?.gaveWay).toEqual(["pointer"]);
+  });
+
+  test("the review's P3 morning — a 9,000-byte wake of ordinary lines: the reminder cannot fit beside the WAKE even alone, so it waits for the first prompt (unclaimed, recorded by the delivery), and the asks use the plain room", () => {
+    seed();
+    const d = startDelivered("s-full", 9_000);
+    expect(d.json).toBe(false);
+    expect(d.reminderShown).toBe(false);
+    expect(d.stillDue).toBe(true);
+    expect(d.gaveWay).toEqual(["plain"]);
+    expect(d.question).toBe(true);
+    expect(bytes(d.stdout)).toBeLessThanOrEqual(TUNABLES.HOST_OUTPUT_CHARS);
+  });
+
 });
 
 describe("UserPromptSubmit: the turn's recall is what gives way", () => {
@@ -257,8 +282,9 @@ describe("UserPromptSubmit: a turn with NO room left for recall", () => {
           salience: { relevance: 0.9, emotional: 0.6, predictive: 0.9 },
         });
       }
-      const share = `${"A morning share, carried whole, about the night's dream. ".repeat(172)}\n`;
-      expect(bytes(share)).toBeGreaterThan(9_700);
+      // Past the whole host cap on its own: no room is left for recall at all.
+      const share = `${"A morning share, carried whole, about the night's dream. ".repeat(177)}\n`;
+      expect(bytes(share)).toBeGreaterThan(TUNABLES.HOST_OUTPUT_CHARS);
       (a as unknown as { dreamLines: () => unknown }).dreamLines = () => ({ text: share, told: null, note: null });
       recordSession(storeDir, { sessionId: "s-full", scope: PROJ, phase: "start" });
       const out = a.userPromptSubmit({ sessionId: "s-full", scope: PROJ, at: today(), prompt: "the relief valve on the reservoir loop?" });
