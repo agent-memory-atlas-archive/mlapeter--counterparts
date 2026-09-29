@@ -1871,7 +1871,7 @@ export class McpServer {
           if (!out.ok) return refused(out.reason, `value is one of ${DREAMING_SETTINGS.join(", ")}. It is ${dreams.setting()} now.`);
           this.emit("mcp.dream", undefined, { phase: "setting", setting: out.setting, before: out.before });
           const said: Record<DreamingSetting, string> = {
-            auto: "Dreaming is on: once a day, the first session starts the nightly run in the background and says so in one line.",
+            auto: "Dreaming on its own: once a day, the first session starts the nightly run by itself, in a separate windowless session in the background, and says so in one line. Today's run is still yours to start, if the owner asked for it.",
             ask: "Dreaming asks first: once a day, the first session shows the owner the question in the terminal and waits for their word.",
             off: "No dreams: nothing starts the nightly run and nothing asks. It can be turned back on with this phase (value ask or auto) or with counterparts dream --setting ask.",
           };

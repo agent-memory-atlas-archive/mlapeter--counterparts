@@ -147,6 +147,8 @@ export const CONFIG_PATH = defaultConfigPath();
 /** The worker script this hook's spawn runs. Resolved from THIS file's location,
  *  never from a working directory the host chose. */
 export const RUNNER_PATH = fileURLToPath(new URL("./runner.ts", import.meta.url));
+/** The headless nightly run's own process (2026-09-29, `night-run.ts`). */
+export const NIGHTLY_PATH = fileURLToPath(new URL("./nightly.ts", import.meta.url));
 
 async function readStdin(): Promise<string> {
   const chunks: Buffer[] = [];
@@ -707,6 +709,7 @@ async function runHook(
   const adapter = openAdapter(config, {
     command: process.execPath,
     args: ["run", RUNNER_PATH],
+    nightArgs: ["run", NIGHTLY_PATH],
     // WHICH FILE THIS RUN READ, carried into the adapter so it can be RECORDED:
     // a hook cannot print to the owner (its stdout is the model's context), so
     // the answer goes into the session registry record and the event ring

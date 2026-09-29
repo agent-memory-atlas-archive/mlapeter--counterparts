@@ -29,11 +29,13 @@ import {
   readKind,
   runNight,
 } from "../src/adapters/claude-code/index.js";
-import type { AdapterConfig, HookInput } from "../src/adapters/claude-code/index.js";
+import { ClaudeCodeAdapter } from "../src/adapters/claude-code/index.js";
+import type { AdapterConfig, HookInput, SpawnPlan } from "../src/adapters/claude-code/index.js";
 import { ENVELOPE_MAX_CHARS, deliverTurn, toHookInput } from "../src/adapters/claude-code/bin/hook.js";
 import { recordSession } from "../src/adapters/sessions.js";
+import { Counterpart as CounterpartClass } from "../src/core/counterpart.js";
 import type { Counterpart } from "../src/core/counterpart.js";
-import { DREAMING_DEFAULT, DREAM_MARK, nightRunOf, nightRunWords } from "../src/core/dream/index.js";
+import { DREAMING_DEFAULT, DREAM_MARK, DREAM_TUNABLES, RELAUNCHED_KEY, nightRunOf, nightRunWords } from "../src/core/dream/index.js";
 import type { PutInput } from "../src/core/store/index.js";
 
 let dir: string;
@@ -392,5 +394,164 @@ describe("B. the quiet child: the headless run's own hooks capture nothing and a
     expect(stop.spansAppended).toBe(0);
     // The same turns in an ordinary session are captured.
     expect(a.stop({ ...input({ sessionId: "ordinary" }), turns }).spansAppended).toBeGreaterThan(0);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// B. `auto` is headless: the hook starts the run, the model launches nothing
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("B. auto: the first prompt of the day starts the headless run itself", () => {
+  let offsetMs = 0;
+  let plans: SpawnPlan[] = [];
+  beforeEach(() => {
+    offsetMs = 0;
+    plans = [];
+  });
+
+  /** An adapter whose clock the test moves, and whose spawner records instead of starting. */
+  function autoHooks(opts: { nightArgs?: readonly string[] | null; observer?: boolean } = {}): ClaudeCodeAdapter {
+    const config: AdapterConfig = { dataDir: dir, injectionBudgetBytes: 20_000, owner: true, identity: { name: "Mike" }, ...(opts.observer === true ? { observer: true } : {}) };
+    const counterpart = CounterpartClass.open({
+      dir,
+      owner: true,
+      identity: { name: "Mike" },
+      ...(opts.observer === true ? { observer: true } : {}),
+      now: () => Date.now() + offsetMs,
+    });
+    open.push(counterpart);
+    const nightArgs = opts.nightArgs === undefined ? ["run", "/pkg/bin/nightly.ts"] : opts.nightArgs;
+    return new ClaudeCodeAdapter({
+      counterpart,
+      config,
+      command: "/usr/bin/bun",
+      args: ["run", "/pkg/bin/runner.ts"],
+      ...(nightArgs === null ? {} : { nightArgs }),
+      spawner: (p) => {
+        plans.push(p);
+        return { pid: 4242 };
+      },
+      now: () => Date.now() + offsetMs,
+    });
+  }
+
+  const nightPlans = (): SpawnPlan[] => plans.filter((p) => p.args.includes("/pkg/bin/nightly.ts"));
+
+  function setAuto(a: ClaudeCodeAdapter): void {
+    lived(a.counterpart);
+    expect(a.counterpart.dreams.setSetting("auto", { by: "owner" }).ok).toBe(true);
+  }
+
+  test("the day's first prompt claims the day and starts ONE detached run; the person is told, the model is told it has nothing to launch", () => {
+    const a = autoHooks();
+    setAuto(a);
+    const turn = a.userPromptSubmit(input());
+    expect(nightPlans()).toHaveLength(1);
+    const plan = nightPlans()[0] as SpawnPlan;
+    expect(plan.command).toBe("/usr/bin/bun");
+    expect(plan.env[NIGHT_RUN_ENV]).toMatch(/^nrn_/);
+    expect(plan.env[NIGHT_KIND_ENV]).toBe("night");
+    expect(plan.env["COUNTERPARTS_SESSION"]).toBe("s1");
+    expect(plan.env["COUNTERPARTS_SCOPE"]).toBe("proj");
+    expect(plan.env["COUNTERPARTS_DATA_DIR"]).toBe(dir);
+    expect(a.counterpart.store.dreamAsk(AT)?.state).toBe("launched");
+    expect(a.counterpart.dreams.nightRun()).toMatchObject({ state: "started", session: "s1", date: AT, kind: "night", run: plan.env[NIGHT_RUN_ENV] });
+    // The terminal line; already claimed, so the delivery only shows it.
+    expect(turn.dream?.notice).toBe('Counterparts: dreaming in the background (a few minutes). Say "no dreams" to turn it off.');
+    expect(turn.dream?.offer).toBeNull();
+    expect(turn.injection).toContain("there is nothing for you to launch");
+    expect(turn.injection).not.toContain('phase "launch"');
+    const out = deliverTurn("user-prompt-submit", turn, {}, null, doorsOf(a as unknown as ReturnType<typeof openAdapter>), input());
+    expect((JSON.parse(out.stdout) as { systemMessage: string }).systemMessage).toBe(turn.dream?.notice ?? "-");
+    // Once a day: another session, another prompt — no second run.
+    expect(a.userPromptSubmit(input({ sessionId: "s2" })).dream).toBeUndefined();
+    expect(nightPlans()).toHaveLength(1);
+  });
+
+  test("a run that could not even be started (no runner) falls back to the ask in the SAME prompt, and says why", () => {
+    const a = autoHooks({ nightArgs: null });
+    setAuto(a);
+    const turn = a.userPromptSubmit(input());
+    expect(nightPlans()).toHaveLength(0);
+    expect(a.counterpart.dreams.nightRun()).toMatchObject({ state: "could-not-start", reason: "runner", detail: "NO_RUNNER" });
+    expect(turn.dream?.notice).toBe('Counterparts: I couldn\'t dream on my own last time: the background process could not start (NO_RUNNER). Say "dream" to do it here.');
+    // An ask: claimed at delivery.
+    expect(turn.dream?.offer).not.toBeNull();
+    expect(turn.injection).toContain('phase "launch"');
+    deliverTurn("user-prompt-submit", turn, {}, null, doorsOf(a as unknown as ReturnType<typeof openAdapter>), input());
+    expect(a.counterpart.store.dreamAsk(AT)?.state).toBe("offered");
+    // Asked once: the next prompt says nothing.
+    expect(a.userPromptSubmit(input({ sessionId: "s2" })).dream).toBeUndefined();
+  });
+
+  test("a run the detached process reports could not start: the NEXT prompt asks at once, with the reason — no second run", () => {
+    const a = autoHooks();
+    setAuto(a);
+    a.userPromptSubmit(input());
+    const started = a.counterpart.dreams.nightRun();
+    if (started === null) throw new Error("no run");
+    // What `bin/nightly.ts` writes when `claude -p` exits 1 at once.
+    a.counterpart.dreams.recordNightRun({ ...started, state: "could-not-start", reason: "quick-exit", code: 1, endedAt: started.startedAt + 2_000 });
+    offsetMs += 5_000;
+    const next = a.userPromptSubmit(input({ sessionId: "s2" }));
+    expect(next.dream?.notice).toBe('Counterparts: I couldn\'t dream on my own last time: claude stopped straight away (exit 1) — is it logged in? Say "dream" to do it here.');
+    expect(nightPlans()).toHaveLength(1);
+    deliverTurn("user-prompt-submit", next, {}, null, doorsOf(a as unknown as ReturnType<typeof openAdapter>), input({ sessionId: "s2" }));
+    expect(a.counterpart.store.dreamAsk(AT)).toMatchObject({ state: "offered", session: "s2" });
+    expect(a.counterpart.store.getMeta(RELAUNCHED_KEY)).toBe(`${AT}:1`);
+    expect(a.userPromptSubmit(input({ sessionId: "s3" })).dream).toBeUndefined();
+  });
+
+  test("a headless run cut off after its dream: the next first session starts the REFLECTION alone, headless", () => {
+    const a = autoHooks();
+    setAuto(a);
+    a.userPromptSubmit(input());
+    const d = a.counterpart.dreams.begin({ session: "s1", at: AT });
+    if (!d.ok) throw new Error(d.reason);
+    a.counterpart.dreams.journal({ dream: d.bundle.dream, session: "s1", text: "A dream." });
+    offsetMs += DREAM_TUNABLES.ABANDONED_AFTER_MS + 60_000;
+    const turn = a.userPromptSubmit(input({ sessionId: "s2" }));
+    expect(nightPlans()).toHaveLength(2);
+    expect(nightPlans()[1]?.env[NIGHT_KIND_ENV]).toBe(`reflection:${d.bundle.dream}`);
+    expect(turn.dream?.notice).toContain("finishing my reflection in the background");
+  });
+
+  test("a finished run's hand-back reaches the next prompt ONCE — even in the session that started it", () => {
+    const a = autoHooks();
+    setAuto(a);
+    a.userPromptSubmit(input());
+    const started = a.counterpart.dreams.nightRun();
+    if (started === null) throw new Error("no run");
+    // The run, as the headless child would do it through the MCP tools.
+    const d = a.counterpart.dreams.begin({ session: "s1", at: AT });
+    if (!d.ok) throw new Error(d.reason);
+    a.counterpart.dreams.journal({ dream: d.bundle.dream, session: "s1", title: "Boot order", text: "A dream." });
+    a.counterpart.dreams.recordNightRun({ ...started, state: "done", code: 0, endedAt: a.counterpart.store.now(), dream: d.bundle.dream });
+    const next = a.userPromptSubmit(input({ prompt: "back again" }));
+    expect(next.injection).toContain("the nightly run finished in the background, on its own");
+    expect(next.injection).toContain('"Boot order"');
+    expect(next.injection).toContain(`counterparts dream --show ${d.bundle.dream}`);
+    expect(a.userPromptSubmit(input({ sessionId: "s2", prompt: "and again" })).injection).not.toContain("the nightly run finished");
+  });
+
+  test("the next calendar day tries headless again, whatever happened the day before", () => {
+    const a = autoHooks({ nightArgs: null });
+    setAuto(a);
+    a.userPromptSubmit(input());
+    expect(a.counterpart.dreams.nightRun()?.state).toBe("could-not-start");
+    const b = autoHooks();
+    const tomorrow = b.userPromptSubmit(input({ sessionId: "t1", at: "2026-09-30" }));
+    expect(nightPlans()).toHaveLength(1);
+    expect(tomorrow.dream?.notice).toContain("dreaming in the background");
+  });
+
+  test("an observer starts nothing and says nothing", () => {
+    const a = autoHooks();
+    setAuto(a);
+    a.counterpart.close();
+    open.splice(open.indexOf(a.counterpart), 1);
+    const o = autoHooks({ observer: true });
+    expect(o.userPromptSubmit(input()).dream).toBeUndefined();
+    expect(nightPlans()).toHaveLength(0);
   });
 });

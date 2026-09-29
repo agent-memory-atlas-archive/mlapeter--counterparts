@@ -52,6 +52,7 @@ import {
   WAKE_INJECTED_EVENT,
 } from "../../core/counterpart.js";
 import type { AdapterDurableEventName, PlainReminder } from "../../core/counterpart.js";
+import { newNightRunId } from "../../core/dream/index.js";
 import type { DreamOffer } from "../../core/dream/index.js";
 import type {
   BoundaryKind,
@@ -101,6 +102,8 @@ import type { AdapterConfig, CapabilityReport } from "./config.js";
 import { SESSION_NOTICE_BUDGET_MS, checkoutIsGraded, doctorFindings, noticeMessage, readCheckout } from "./doctor.js";
 import type { CheckoutReading } from "./doctor.js";
 import { primacy } from "./primacy.js";
+import { planNightRunner } from "./night-run.js";
+import type { NightKind } from "./night-run.js";
 import { planSpawn, spawnDetached } from "./spawn.js";
 import type { SpawnOutcome, Spawner } from "./spawn.js";
 import { NO_ARRIVAL, STOP_ASK_OPENER, readWakeArrival } from "./transcript.js";
@@ -280,6 +283,12 @@ export interface AdapterOptions {
   /** The interpreter the detached worker runs under. */
   readonly command?: string;
   readonly args?: readonly string[];
+  /**
+   * The args that run `bin/nightly.ts` under `command` — the headless nightly
+   * run's own process (2026-09-29). Absent: the headless run cannot start, and
+   * the day's line asks instead (`could-not-start`, reason `runner`).
+   */
+  readonly nightArgs?: readonly string[];
   readonly spawner?: Spawner;
   readonly onEvent?: (e: AdapterEvent) => void;
   readonly now?: () => number;
@@ -557,6 +566,7 @@ export class ClaudeCodeAdapter {
 
   private readonly command: string;
   private readonly args: readonly string[];
+  private readonly nightArgs: readonly string[] | undefined;
   private readonly spawner: Spawner | undefined;
   private readonly onEvent: ((e: AdapterEvent) => void) | undefined;
   private readonly nowFn: () => number;
@@ -594,6 +604,7 @@ export class ClaudeCodeAdapter {
     this.observer = opts.counterpart.observer;
     this.command = opts.command ?? process.execPath;
     this.args = opts.args ?? [];
+    this.nightArgs = opts.nightArgs;
     this.spawner = opts.spawner;
     this.onEvent = opts.onEvent;
     this.nowFn = opts.now ?? ((): number => Date.now());
@@ -1073,8 +1084,11 @@ export class ClaudeCodeAdapter {
    * and the day's line, which follows the owner's dreaming setting
    * (2026-09-28): `ask` (the default since 2026-09-29) shows the PERSON the
    * question in the terminal (`told`, claimed at delivery) and tells the model
-   * what each answer means; `auto` tells the model the nightly run is
-   * starting in the background; `off` says nothing.
+   * what each answer means; `auto` STARTS the nightly run here, headless
+   * (`startNightRun`), and tells both that it has — or, when the run cannot
+   * start, asks instead and says why; `off` says nothing. A headless run that
+   * ended hands back its dream's line and share at the next prompt
+   * (`nightHandBack`).
    * The line is at most once a CALENDAR day across every session (the store's
    * `dream_asks` latch decides, so of two sessions racing one gets it), and
    * again only for a run that was left behind; a "no" is the dream tool's
@@ -1095,6 +1109,10 @@ export class ClaudeCodeAdapter {
     try {
       const dreams = this.counterpart.dreams;
       const lines = [...dreams.raiseLines({ session: input.sessionId })];
+      // A HEADLESS RUN'S HAND-BACK (2026-09-29): no agent handed its last
+      // message to a session, so the next prompt anywhere carries the dream's
+      // line and the share — once, ever (`claimNightHandBack`).
+      lines.push(...this.nightHandBack(input));
       const pending = this.counterpart.reflections.pendingShare({ session: input.sessionId });
       if (pending !== null) {
         const record = pending.session === null ? null : readSession(this.counterpart.store.dir, pending.session);
@@ -1103,15 +1121,24 @@ export class ClaudeCodeAdapter {
           if (carried !== null) lines.push(carried);
         }
       }
-      // THE DAY'S LINE, OFFERED (2026-09-29). With a line for the person it is
-      // NOT claimed here: the delivery claims it once the envelope is known to
-      // carry the person's line (`claimDream`). With none, it is claimed now,
-      // as it always was.
-      const offer = dreams.offer({ at: input.at, session: input.sessionId });
+      // THE DAY'S LINE, OFFERED (2026-09-29). An ASK is not claimed here: the
+      // delivery claims it once the envelope is known to carry the person's
+      // line (`claimDream`). HEADLESS (`auto`) is claimed now and the run
+      // started now — the start is the point, the terminal line a courtesy —
+      // and a run that cannot even be started falls back to the ask at once.
+      let offer = dreams.offer({ at: input.at, session: input.sessionId });
+      if (offer !== null && offer.headless) {
+        const started = dreams.claimOffer(offer) ? this.startNightRun(input, offer) : null;
+        if (started === null) offer = null;
+        else if (!started) {
+          const again = dreams.offer({ at: input.at, session: input.sessionId });
+          offer = again !== null && !again.headless ? again : null;
+        }
+      }
       let told: DreamTold | null = null;
       let asked = false;
       if (offer !== null) {
-        if (offer.notice !== null) told = { notice: offer.notice, context: offer.context, offer };
+        if (offer.notice !== null) told = { notice: offer.notice, context: offer.context, offer: offer.headless ? null : offer };
         asked = told !== null || dreams.claimOffer(offer);
         if (asked) lines.push(offer.context);
       }
@@ -1120,6 +1147,83 @@ export class ClaudeCodeAdapter {
     } catch {
       return none;
     }
+  }
+
+  /**
+   * START THE HEADLESS NIGHTLY RUN (2026-09-29) for a day this process just
+   * claimed: the detached process (`night-run.ts#planNightRunner`, run by
+   * `bin/nightly.ts`) that starts `claude -p` and waits for it. True when it
+   * started; false — with a `could-not-start` row saying why — when it did
+   * not, so the next offer asks instead. Never throws.
+   */
+  private startNightRun(input: HookInput, offer: DreamOffer): boolean {
+    const dreams = this.counterpart.dreams;
+    const store = this.counterpart.store;
+    const run = newNightRunId();
+    const kind: NightKind = offer.reflects === null ? { kind: "night" } : { kind: "reflection", dream: offer.reflects };
+    const base = {
+      run,
+      date: offer.at,
+      kind: kind.kind,
+      session: input.sessionId,
+      startedAt: store.now(),
+      endedAt: null,
+      reason: null,
+      detail: null,
+      code: null,
+      dream: null,
+      reflection: null,
+    };
+    const couldNot = (reason: string, detail: string | null): false => {
+      dreams.recordNightRun({ ...base, state: "could-not-start", endedAt: store.now(), reason, detail });
+      this.emit("adapter.night.failed", { run, reason, detail });
+      return false;
+    };
+    try {
+      const plan = planNightRunner({
+        config: this.config,
+        command: this.command,
+        args: this.nightArgs,
+        run,
+        session: input.sessionId,
+        scope: input.scope,
+        kind,
+        ...(this.configPath === undefined ? {} : { configPath: this.configPath }),
+      });
+      if (!plan.ok) return couldNot(plan.reason === "NO_RUNNER" ? "runner" : "refused", plan.reason);
+      const out = spawnDetached({ ...plan, reason: "ready" }, {
+        ...(this.spawner === undefined ? {} : { spawner: this.spawner }),
+        onEvent: (name, data) => this.emit(`night.${name}`, data),
+      });
+      if (!out.started) return couldNot("runner", out.code ?? String(out.reason));
+      dreams.recordNightRun({ ...base, state: "started" });
+      this.emit("adapter.night.started", { run, pid: out.pid, kind: kind.kind });
+      return true;
+    } catch (err) {
+      return couldNot("runner", codeOf(err));
+    }
+  }
+
+  /**
+   * THE HAND-BACK OF A HEADLESS RUN THAT ENDED — the dream's line, then the
+   * morning share if there is one — claimed once across every session. Empty
+   * when there is nothing to hand back, or another prompt already did.
+   */
+  private nightHandBack(input: HookInput): string[] {
+    const dreams = this.counterpart.dreams;
+    const night = dreams.nightRun();
+    if (night === null || night.state === "started" || night.state === "could-not-start") return [];
+    if (night.dream === null && night.reflection === null) return [];
+    if (!dreams.claimNightHandBack(night.run, input.sessionId)) return [];
+    const out: string[] = [];
+    const line = dreams.nightHandBackLine(night);
+    if (line !== null) out.push(line);
+    if (night.reflection !== null) {
+      const share = this.counterpart.reflections.carryLine({ session: input.sessionId, reflection: night.reflection });
+      if (share !== null) out.push(share);
+    }
+    this.emit("adapter.night.handed", { run: night.run, lines: out.length });
+    return out;
   }
 
   /**

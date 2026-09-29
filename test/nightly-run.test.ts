@@ -113,10 +113,14 @@ describe("dreaming: auto | ask | off, durable and reversible", () => {
     lived(c);
     expect(c.dreams.setting()).toBe("ask");
     expect(c.dreams.setSetting("auto", { by: "owner" })).toEqual({ ok: true, setting: "auto", before: "ask" });
+    // HEADLESS since 2026-09-29: the host starts the run; the model launches nothing.
+    const offer = c.dreams.offer({ at: c.store.today(), session: SESSION });
+    expect(offer?.headless).toBe(true);
+    expect(offer?.notice).toBe('Counterparts: dreaming in the background (a few minutes). Say "no dreams" to turn it off.');
     const line = c.dreams.askLine({ at: c.store.today(), session: SESSION }) ?? "";
-    expect(line).toContain('phase "launch"');
+    expect(line).not.toContain('phase "launch"');
+    expect(line).toContain("there is nothing for you to launch");
     expect(line).toContain("it updates your self page, then dreams, then reflects");
-    expect(line).toContain("Dreaming in the background (a few minutes). Say 'no dreams' anytime to turn it off.");
     expect(line).toContain('phase "setting"');
     expect(c.store.dreamAsk(c.store.today())?.state).toBe("launched");
   });
