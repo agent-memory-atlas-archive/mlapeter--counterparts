@@ -225,6 +225,14 @@ export interface Resolved {
    * nothing in the row to tell the two apart. See `datePrefix`.
    */
   readonly boundedDate?: boolean;
+  /**
+   * Its STANDING in a contradiction (2026-09-29, review of #284 S3 —
+   * `recall/standing.ts`): a qualifier before the statement (`Earlier (now
+   * [id]): `, `Unsettled — may be out of date, see [id]: `) and a pointer
+   * after (` (disagrees with [id])`), so a lane never shows an old fact as
+   * current. Absent: nothing to say.
+   */
+  readonly standing?: { readonly prefix: string; readonly suffix: string };
 }
 
 export type Resolve = (id: string) => Resolved;
@@ -397,7 +405,7 @@ export function datePrefix(r: Resolved): string {
  */
 export function elementLine(item: Ranked, resolve: Resolve): string {
   const r = resolve(item.id);
-  return `- ${datePrefix(r)}${flatten(r.statement)}`;
+  return `- ${datePrefix(r)}${r.standing?.prefix ?? ""}${flatten(r.statement)}${r.standing?.suffix ?? ""}`;
 }
 
 type Kept = Record<LaneName, Ranked[]>;
