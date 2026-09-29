@@ -11,7 +11,7 @@
  * started for real anywhere in this file except the stub executables it writes.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmodSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -20,6 +20,7 @@ import {
   NIGHT_KIND_ENV,
   NIGHT_RUN_ENV,
   REAP_GRACE_MS,
+  SCOPE_ASK,
   loadConfig,
   nightTimeoutMs,
   openAdapter,
@@ -810,4 +811,99 @@ describe("B. doctor: the Nightly run line reads the one-row record", () => {
     a.counterpart.dreams.recordNightRun({ ...base, run: "nrn_old", state: "failed", startedAt: now - 2 * 60 * 60_000, endedAt: now, reason: "exit", code: 1 });
     expect(nightRunOf(s)?.run).toBe("nrn_d");
   });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Test gaps the review named (finding 14)
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("gaps: the quiet child at SessionStart, SessionEnd and PreCompact", () => {
+  test("no first-launch question at SessionStart; nothing captured at SessionEnd or PreCompact", () => {
+    const a = hooks();
+    const turns = [
+      { role: "user" as const, text: "A long enough prompt that would ordinarily be captured as the day's words, twice over.", entry: 1 },
+      { role: "assistant" as const, text: "And a long enough answer that would ordinarily be captured as well, with more words.", entry: 2 },
+    ];
+    // An ordinary session in an unregistered directory is asked the scope question…
+    expect(a.sessionStart(input({ sessionId: "ordinary" })).ask ?? "").toContain(SCOPE_ASK);
+    // …the headless run's child is not.
+    expect(a.sessionStart(input({ sessionId: "child", nightRun: true })).ask ?? "").not.toContain(SCOPE_ASK);
+    expect(a.sessionEnd({ ...input({ sessionId: "child", nightRun: true }), turns }).spansAppended).toBe(0);
+    expect(a.preCompact({ ...input({ sessionId: "child2", nightRun: true }), turns }).spansAppended).toBe(0);
+    expect(a.sessionEnd({ ...input({ sessionId: "ordinary" }), turns }).spansAppended).toBeGreaterThan(0);
+  });
+});
+
+describe("gaps: bin/nightly.ts end to end, against a stub `claude` first on PATH", () => {
+  test("the real entry point composes, starts the stub with the pinned session, and records the run", () => {
+    const bin = mkdtempSync(join(tmpdir(), "counterparts-nightly-e2e-"));
+    try {
+      const scope = join(bin, "project");
+      mkdirSync(scope);
+      const stubDir = join(bin, "stub");
+      mkdirSync(stubDir);
+      const stub = join(stubDir, "claude");
+      writeFileSync(
+        stub,
+        ["#!/bin/sh", `printf '%s\\n' "$@" > ${JSON.stringify(join(bin, "argv"))}`, `env > ${JSON.stringify(join(bin, "env"))}`, `cat > ${JSON.stringify(join(bin, "stdin"))}`, "exit 0"].join("\n"),
+        "utf8",
+      );
+      chmodSync(stub, 0o755);
+      const configPath = join(bin, "claude-code.json");
+      writeFileSync(configPath, JSON.stringify({ dataDir: dir, owner: true, identity: { name: "Mike" } }), "utf8");
+      const seed = openNightCounterpart({ dataDir: dir });
+      lived(seed);
+      seed.close();
+      const nightly = join(import.meta.dir, "..", "src", "adapters", "claude-code", "bin", "nightly.ts");
+      const out = Bun.spawnSync([process.execPath, "run", nightly], {
+        env: {
+          PATH: `${stubDir}:/usr/bin:/bin`,
+          HOME: bin,
+          COUNTERPARTS_REQUIRE_EXPLICIT_DIR: "1",
+          COUNTERPARTS_CONFIG: configPath,
+          COUNTERPARTS_DATA_DIR: dir,
+          COUNTERPARTS_SESSION: "s1",
+          COUNTERPARTS_SCOPE: scope,
+          COUNTERPARTS_NIGHT_RUN: "nrn_e2e",
+          COUNTERPARTS_NIGHT_KIND: "night",
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      expect(out.exitCode).toBe(0);
+      const argv = readFileSync(join(bin, "argv"), "utf8");
+      expect(argv).toContain("--disallowedTools");
+      expect(argv).not.toContain("session: s1");
+      expect(readFileSync(join(bin, "stdin"), "utf8")).toContain("session: s1");
+      const env = readFileSync(join(bin, "env"), "utf8");
+      expect(env).toContain("COUNTERPARTS_SESSION=s1\n");
+      expect(env).toContain("COUNTERPARTS_NIGHT_RUN=nrn_e2e\n");
+      const c = openNightCounterpart({ dataDir: dir });
+      open.push(c);
+      // The stub called no tool: the run could not do its job, and says why.
+      expect(c.dreams.nightRun()).toMatchObject({ run: "nrn_e2e", state: "could-not-start", reason: "nothing-ran", session: "s1" });
+    } finally {
+      rmSync(bin, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test("stood down with no session, it still records the run so the next prompt can ask", () => {
+    const bin = mkdtempSync(join(tmpdir(), "counterparts-nightly-e2e-"));
+    try {
+      const configPath = join(bin, "claude-code.json");
+      writeFileSync(configPath, JSON.stringify({ dataDir: dir }), "utf8");
+      const nightly = join(import.meta.dir, "..", "src", "adapters", "claude-code", "bin", "nightly.ts");
+      const out = Bun.spawnSync([process.execPath, "run", nightly], {
+        env: { PATH: "/usr/bin:/bin", HOME: bin, COUNTERPARTS_REQUIRE_EXPLICIT_DIR: "1", COUNTERPARTS_CONFIG: configPath, COUNTERPARTS_DATA_DIR: dir, COUNTERPARTS_NIGHT_RUN: "nrn_nosession" },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      expect(out.exitCode).toBe(0);
+      const c = openNightCounterpart({ dataDir: dir });
+      open.push(c);
+      expect(c.dreams.nightRun()).toMatchObject({ run: "nrn_nosession", state: "could-not-start", reason: "refused", detail: "NO_SESSION" });
+    } finally {
+      rmSync(bin, { recursive: true, force: true });
+    }
+  }, 30_000);
 });
