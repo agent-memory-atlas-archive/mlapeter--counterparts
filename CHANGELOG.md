@@ -56,8 +56,8 @@ Fitting more into a night.
 - **New memories wait their turn instead of being dropped.** Memories not yet dreamed
   form a queue, ranked by how much they matter, not by how new they are. What fits in
   tonight's room is dreamed; the rest wait for the next night, and the dream says how
-  many ("12 new memories wait for the next night"). A memory that waits more than a
-  week without being dreamed ages out, counted.
+  many ("12 new memories wait for the next night"). A memory still not dreamed after
+  seven days of use ages out, counted.
 - **Detail by importance.** Every memory the dream is shown gets a line (what it is,
   its date, its strongest feeling, why it's here); the most important come whole.
   The reflection now sees the whole core and every memory from the last few days.
