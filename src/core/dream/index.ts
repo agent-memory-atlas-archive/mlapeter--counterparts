@@ -333,6 +333,106 @@ export function nightNext(part: NightPart): NightPart | null {
 }
 
 /**
+ * THE HEADLESS NIGHTLY RUN'S RECORD (2026-09-29). With the setting `auto` the
+ * host starts the run itself, in a windowless session nobody watches — so what
+ * became of it is written down: ONE row per run, the latest in the store's meta
+ * under `NIGHT_RUN_KEY` (what the gate, doctor and the dashboard read, one
+ * lookup), and each state it passed through on the `dream.night` event log,
+ * latched by run and state so a replay adds nothing. Ids, codes, counts and
+ * times only — never words from the run.
+ */
+export const NIGHT_RUN_KEY = "dream.night";
+export const NIGHT_RUN_EVENT = "dream.night";
+export const NIGHT_RUN_STATES = ["started", "done", "failed", "timed-out", "could-not-start"] as const;
+export type NightRunState = (typeof NIGHT_RUN_STATES)[number];
+
+export interface NightRun {
+  /** `nrn_…`, minted by the host when it starts the run. */
+  readonly run: string;
+  /** The calendar date whose run this is. */
+  readonly date: string;
+  readonly state: NightRunState;
+  /** The whole night, or the reflection alone after a dream whose run was cut off. */
+  readonly kind: "night" | "reflection";
+  /** The session that started it; the run's writes are attributed to it. */
+  readonly session: string;
+  readonly startedAt: number;
+  readonly endedAt: number | null;
+  /**
+   * Why it ended the way it did, as a short code: `no-claude`, `spawn-failed`,
+   * `quick-exit`, `nothing-ran`, `unfinished`, `exit`, `watchdog`, `refused`,
+   * `runner` (the host's own background process could not start) — or null.
+   */
+  readonly reason: string | null;
+  /** A little more, when there is more: an error code, a refusal's name. Never prose from the run. */
+  readonly detail: string | null;
+  /** The child's exit code, when it exited. */
+  readonly code: number | null;
+  /** The dream this run journaled (or finished reflecting on), and its reflection. */
+  readonly dream: string | null;
+  readonly reflection: string | null;
+}
+
+/** A fresh run id. */
+export function newNightRunId(): string {
+  return `nrn_${randomBytes(6).toString("hex")}`;
+}
+
+/** The store's latest headless run, or null when none was ever started (or it will not read). */
+export function nightRunOf(store: Pick<Store, "getMeta">): NightRun | null {
+  try {
+    const raw = store.getMeta(NIGHT_RUN_KEY);
+    if (raw === undefined || raw.length === 0) return null;
+    const v = JSON.parse(raw) as Partial<NightRun>;
+    if (typeof v.run !== "string" || typeof v.date !== "string" || typeof v.session !== "string") return null;
+    if (!(NIGHT_RUN_STATES as readonly string[]).includes(String(v.state))) return null;
+    return {
+      run: v.run,
+      date: v.date,
+      state: v.state as NightRunState,
+      kind: v.kind === "reflection" ? "reflection" : "night",
+      session: v.session,
+      startedAt: typeof v.startedAt === "number" ? v.startedAt : 0,
+      endedAt: typeof v.endedAt === "number" ? v.endedAt : null,
+      reason: typeof v.reason === "string" ? v.reason : null,
+      detail: typeof v.detail === "string" ? v.detail : null,
+      code: typeof v.code === "number" ? v.code : null,
+      dream: typeof v.dream === "string" ? v.dream : null,
+      reflection: typeof v.reflection === "string" ? v.reflection : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Why a run ended as it did, in a few words for a person ("the claude command was not found"). */
+export function nightRunWords(run: Pick<NightRun, "state" | "reason" | "detail" | "code">): string {
+  const code = run.code === null ? "" : ` (exit ${String(run.code)})`;
+  switch (run.reason) {
+    case "no-claude":
+      return "the claude command was not found";
+    case "spawn-failed":
+      return `claude could not be started${run.detail === null ? "" : ` (${run.detail})`}`;
+    case "quick-exit":
+      return `claude stopped straight away${code} — is it logged in?`;
+    case "nothing-ran":
+      return "claude ran but used none of the dream tools — is the counterparts MCP server registered for it?";
+    case "unfinished":
+      return "it began but did not finish";
+    case "watchdog":
+      return "it ran too long and was stopped";
+    case "refused":
+      return `it was refused before it started${run.detail === null ? "" : ` (${run.detail})`}`;
+    case "runner":
+      return `the background process could not start${run.detail === null ? "" : ` (${run.detail})`}`;
+    case "exit":
+      return `claude exited with an error${code}`;
+    default:
+      return run.state === "done" ? "it finished" : run.state === "started" ? "it is running" : `it ended ${run.state}${code}`;
+  }
+}
+
+/**
  * Meta counter: how many times the calendar day's run was started again, as
  * `<date>:<n>` in ONE key — a new day overwrites the old count, so nothing
  * piles up to prune.
@@ -487,6 +587,68 @@ export class Dreams {
     this.store.setMeta(DREAMING_SETTING_KEY, v);
     this.record(DREAM_ASK_EVENT, null, { state: "setting", setting: v, before, by: input.by });
     return { ok: true, setting: v as DreamingSetting, before };
+  }
+
+  // ── the headless run's record (2026-09-29) ─────────────────────────────────
+
+  /** The latest headless run, or null. A read: one meta lookup. */
+  nightRun(): NightRun | null {
+    return nightRunOf(this.store);
+  }
+
+  /**
+   * RECORD WHAT BECAME OF A HEADLESS RUN: the latest-run row (meta) and one
+   * `dream.night` event for this state, latched by run and state. A terminal
+   * state for an older run never overwrites a newer run's row. Never throws;
+   * nothing under observer.
+   */
+  recordNightRun(run: NightRun): void {
+    if (this.ctx.observer) return;
+    try {
+      const current = this.nightRun();
+      if (current === null || current.run === run.run || current.startedAt <= run.startedAt) {
+        this.store.setMeta(NIGHT_RUN_KEY, JSON.stringify(run));
+      }
+    } catch {
+      /* the record is evidence; the run goes on */
+    }
+    this.emit(NIGHT_RUN_EVENT, run.run, { state: run.state, reason: run.reason });
+    try {
+      this.store.appendEvent({
+        name: NIGHT_RUN_EVENT,
+        day: this.store.livedDay(),
+        ref: run.run,
+        payload: {
+          state: run.state,
+          date: run.date,
+          kind: run.kind,
+          session: run.session,
+          reason: run.reason,
+          detail: run.detail,
+          code: run.code,
+          dream: run.dream,
+          reflection: run.reflection,
+          ms: run.endedAt === null ? null : run.endedAt - run.startedAt,
+        },
+        dedupKey: `${NIGHT_RUN_EVENT}:${run.run}:${run.state}`,
+      });
+    } catch {
+      /* the log is evidence, never a reason to fail the run */
+    }
+  }
+
+  /**
+   * CLAIM THE HAND-BACK of a headless run — once, ever, across every session:
+   * an event latched by the run's id (`appendEvent` answers 0 when the latch
+   * held). True for the one caller that gets it.
+   */
+  claimNightHandBack(run: string, session: string): boolean {
+    if (this.ctx.observer) return false;
+    try {
+      return this.store.appendEvent({ name: `${NIGHT_RUN_EVENT}.handed`, day: this.store.livedDay(), ref: run, payload: { session }, dedupKey: `${NIGHT_RUN_EVENT}.handed:${run}` }) > 0;
+    } catch {
+      return false;
+    }
   }
 
   /**

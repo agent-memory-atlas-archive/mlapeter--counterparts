@@ -42,6 +42,7 @@ import { HOOKS, openAdapter } from "../index.js";
 import { STOP_HUMAN_LINE, plainLine, withoutDream, withoutPlain } from "../hooks.js";
 import type { PlainReminder } from "../../../core/counterpart.js";
 import type { DreamTold, HookInput, HookName } from "../hooks.js";
+import { NIGHT_RUN_ENV } from "../night-run.js";
 import type { DreamOffer } from "../../../core/dream/index.js";
 import {
   CONFIG_REFUSED,
@@ -398,6 +399,9 @@ export function toHookInput(
     // The host-mode page writer's headless child (`page-writer.ts` sets this):
     // no one reads its terminal, so it must not spend a plain reminder's beat.
     ...(((opts.env ?? process.env)[PAGE_WRITER_ENV] ?? "").trim().length > 0 ? { pageWriter: true } : {}),
+    // The headless nightly run's child (`night-run.ts` sets this, 2026-09-29):
+    // a windowless session our hooks keep QUIET — no capture, no asks.
+    ...(((opts.env ?? process.env)[NIGHT_RUN_ENV] ?? "").trim().length > 0 ? { nightRun: true } : {}),
     // THE PERSON'S DAY (docs/time.md, 2026-09-25; UTC before). It dates the
     // hook's rows, the wake preface, the prospective "today" and the date the
     // boundary hands the lived clock — which is why the lived clock can see a

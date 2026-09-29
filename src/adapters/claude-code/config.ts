@@ -64,6 +64,19 @@ export const TUNABLES = {
    *  worker's it is not validated against `remember/`'s claim staleness, because
    *  it claims no spans. */
   PAGE_WRITER_MS: 10 * 60_000,
+  /**
+   * THE HEADLESS NIGHTLY RUN'S WATCHDOG (2026-09-29), ms: `claude -p` running
+   * the page writer, the dream and the reflection in one windowless session.
+   * A run measured ~4.5 minutes on 2026-09-29; this is generous on purpose.
+   * `dreaming.timeoutMs` in the configuration overrides it.
+   */
+  NIGHT_RUN_MS: 20 * 60_000,
+  /**
+   * A headless run that exits non-zero sooner than this "could not start"
+   * (not logged in, a bad flag) rather than failed partway: the next prompt
+   * falls back to asking, with the reason.
+   */
+  NIGHT_QUICK_EXIT_MS: 60_000,
   /** Reference resolution at a session-ending boundary (recall §9.2), ms. The
    *  resolver stops between candidates past it and the row says so
    *  (`recall.credit` reason `budget-exceeded`); nothing is truncated silently. */
@@ -225,6 +238,19 @@ export interface AdapterConfig {
     readonly ignored?: readonly string[];
   };
   /**
+   * THE HEADLESS NIGHTLY RUN (2026-09-29), read leniently like `pageWriter`:
+   * `model` pins the model the run uses (`claude -p --model …`; absent, the
+   * user's default), `timeoutMs` its watchdog (absent, `TUNABLES.NIGHT_RUN_MS`).
+   * Whether the run is headless at all is the dreaming SETTING (`auto`), which
+   * lives in the store, not here.
+   */
+  readonly dreaming?: {
+    readonly model?: string;
+    readonly timeoutMs?: number;
+    /** What this file could not read inside the block, phrased for a person. */
+    readonly ignored?: readonly string[];
+  };
+  /**
    * SETTINGS THIS BUILD NO LONGER READS, phrased for a person — e.g.
    * `"credentialsFile" is no longer used …`. Present only when the file named
    * one. A REPORT, not a stance: the setting was ignored and nothing else
@@ -290,6 +316,7 @@ export function loadConfig(raw: unknown): LoadedConfig {
     parallel?: { enabled: boolean };
     snapshots?: { dir?: string; keep?: number; mirror?: string; ignored?: string[] };
     pageWriter?: { mode: PageWriterMode; timeoutMs?: number; ignored?: string[] };
+    dreaming?: { model?: string; timeoutMs?: number; ignored?: string[] };
     retired?: string[];
     owner?: boolean;
     timeZone?: string;
@@ -448,6 +475,13 @@ export function loadConfig(raw: unknown): LoadedConfig {
       retired.push(`"pageWriter.command" is no longer used — the page writer always starts claude`);
     }
   }
+  // THE THIRD LENIENT BLOCK (2026-09-29): the headless nightly run's model pin
+  // and watchdog. A bad field costs that field and is named; nothing here
+  // ever sets `unreadable`.
+  const dreaming = rec["dreaming"];
+  if (dreaming !== undefined) {
+    out.dreaming = readDreaming(dreaming);
+  }
   // THE FIRST LENIENT BLOCK. See the `snapshots` knob above for why: a backup
   // preference that could not be read must cost the backup preference and
   // nothing else. Nothing in here ever sets `unreadable`.
@@ -538,6 +572,38 @@ function readPageWriter(raw: unknown): {
     if (key !== "mode" && key !== "command" && key !== "timeoutMs") {
       raws.push(`"pageWriter.${key}" is not a setting this reads; it was ignored`);
     }
+  }
+  return done();
+}
+
+/**
+ * The `dreaming` block, read leniently. A model name is one token that does
+ * not start with a dash — it goes on a command line (`--model <name>`), and a
+ * value that looked like a flag would be read as one.
+ */
+function readDreaming(raw: unknown): { model?: string; timeoutMs?: number; ignored?: string[] } {
+  const raws: string[] = [];
+  const out: { model?: string; timeoutMs?: number } = {};
+  const done = (): typeof out & { ignored?: string[] } => (raws.length === 0 ? out : { ...out, ignored: tidy(raws) });
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    raws.push(`"dreaming" was not an object; it was ignored`);
+    return done();
+  }
+  const d = raw as Record<string, unknown>;
+  const model = d["model"];
+  if (typeof model === "string" && /^[A-Za-z0-9][A-Za-z0-9._:[\]/-]*$/.test(model.trim())) {
+    out.model = model.trim();
+  } else if (model !== undefined) {
+    raws.push(`"dreaming.model" was ${JSON.stringify(model)}, which is not a model name; the default model is used`);
+  }
+  const timeoutMs = d["timeoutMs"];
+  if (typeof timeoutMs === "number" && Number.isFinite(timeoutMs) && timeoutMs > 0) {
+    out.timeoutMs = timeoutMs;
+  } else if (timeoutMs !== undefined) {
+    raws.push(`"dreaming.timeoutMs" was ${JSON.stringify(timeoutMs)}; using the default watchdog`);
+  }
+  for (const key of Object.keys(d)) {
+    if (key !== "model" && key !== "timeoutMs") raws.push(`"dreaming.${key}" is not a setting this reads; it was ignored`);
   }
   return done();
 }

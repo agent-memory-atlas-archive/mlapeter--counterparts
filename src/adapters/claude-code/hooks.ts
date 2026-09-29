@@ -171,6 +171,15 @@ export interface HookInput {
    */
   readonly pageWriter?: boolean;
   /**
+   * This session is the HEADLESS NIGHTLY RUN this package started
+   * (`night-run.ts`, `COUNTERPARTS_NIGHT_RUN` in its environment, 2026-09-29):
+   * `claude -p` running the page writer, the dream and the reflection, which
+   * nobody watches. It is kept QUIET — it still wakes with the ordinary wake,
+   * and nothing else: no capture (so it owes no write-up), no dream lines, no
+   * plain reminders, no Stop ask, no write-up pointer, no first-launch question.
+   */
+  readonly nightRun?: boolean;
+  /**
    * THE HOST'S RE-FIRE. A blocked Stop comes back with `stop_hook_active`, and
    * that pass must ask nothing — v1's anti-loop, kept for the same reason. It is
    * checked HERE, not only at delivery, so the re-fire also burns no pacing and
@@ -784,7 +793,7 @@ export class ClaudeCodeAdapter {
       this.emit("adapter.scope.ask.skipped", { reason: "observer" });
       return false;
     }
-    if (input.sessionId.length === 0) return false;
+    if (input.sessionId.length === 0 || input.nightRun === true) return false;
     try {
       return readSession(this.counterpart.store.dir, input.sessionId)?.askedScope !== true;
     } catch {
@@ -846,7 +855,7 @@ export class ClaudeCodeAdapter {
       // Never under observer: an instrument asks nobody to write into a store
       // it may not write, and has no registry mark to remember that it did.
       if (this.observer) return "";
-      if (input.sessionId.length === 0) return "";
+      if (input.sessionId.length === 0 || input.nightRun === true) return "";
       const store = this.counterpart.store;
       const dir = store.dir;
       // ONE PER SESSION. A compaction re-fires SessionStart, and the record
@@ -1082,7 +1091,7 @@ export class ClaudeCodeAdapter {
    */
   private dreamLines(input: HookInput): { text: string; told: DreamTold | null } {
     const none = { text: "", told: null };
-    if (this.observer || input.at === undefined || input.pageWriter === true || input.sessionId.length === 0) return none;
+    if (this.observer || input.at === undefined || input.pageWriter === true || input.nightRun === true || input.sessionId.length === 0) return none;
     try {
       const dreams = this.counterpart.dreams;
       const lines = [...dreams.raiseLines({ session: input.sessionId })];
@@ -1151,7 +1160,7 @@ export class ClaudeCodeAdapter {
    */
   private plainFor(input: HookInput): { context: string; notices: string[]; due: PlainReminder[] } {
     const none = { context: "", notices: [], due: [] };
-    if (input.at === undefined || input.pageWriter === true) return none;
+    if (input.at === undefined || input.pageWriter === true || input.nightRun === true) return none;
     try {
       const due = this.counterpart.plainDueToday({ at: input.at });
       return {
@@ -1298,7 +1307,8 @@ export class ClaudeCodeAdapter {
       // silent past `CRASH_STALE_MS`). Before that gate this line was a comment
       // the code did not keep: one evening's Stops billed 13 chunks and minted
       // 61 memories beside 34 the model had authored itself.
-      const ask = deliver ? this.askAtStop(input) : null;
+      // The headless nightly run is asked nothing (`HookInput.nightRun`).
+      const ask = deliver && input.nightRun !== true ? this.askAtStop(input) : null;
       const spawn = this.spawnWorker(input);
       return { ...claimed, ask, spawn };
     });
@@ -1404,7 +1414,10 @@ export class ClaudeCodeAdapter {
    * shape (G3).
    */
   private claim(hook: SessionEndingHook, input: HookInput, out: HookResult): HookResult {
-    const turns = input.turns ?? [];
+    // THE HEADLESS NIGHTLY RUN CAPTURES NOTHING (2026-09-29): its turns are the
+    // launch prompt and the run's own tool calls — sleep, not lived — and a
+    // session with no captured text owes no write-up (`remember/owes.ts`).
+    const turns = input.nightRun === true ? [] : (input.turns ?? []);
     // THE STRETCH THIS MEMORY WAS TOLD NOT TO HAVE, sealed before anything is
     // captured. After a `sealed` the ordinary capture below reads NOTHING_NEW;
     // after a `failed` it does not run at all, because a cursor that would not

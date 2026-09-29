@@ -189,6 +189,24 @@ export interface ChildResult {
   readonly code: number | null;
   readonly timedOut: boolean;
   readonly error: string | null;
+  /** The OS's code when the child could not be started at all (`ENOENT` for a
+   *  command that is not there). Absent otherwise. */
+  readonly spawnCode?: string;
+}
+
+/**
+ * WHAT `startChild` NEEDS OF A PLAN — the page writer's, and since 2026-09-29
+ * the headless nightly run's (`night-run.ts`), which also names the directory
+ * the child starts in.
+ */
+export interface ChildPlan {
+  readonly command: string;
+  readonly args: readonly string[];
+  readonly stdin: string;
+  readonly env: Readonly<Record<string, string>>;
+  readonly timeoutMs: number;
+  /** The child's working directory; absent, this process's. */
+  readonly cwd?: string;
 }
 export type PageWriterStarter = (
   plan: PageWriterPlan,
@@ -368,8 +386,9 @@ function code(err: unknown): string {
 export const KILL_GRACE_MS = 5_000;
 export const REAP_GRACE_MS = 2_000;
 
-/** The real starter: one child, two alarms, and an end that does not need it. */
-async function startChild(plan: PageWriterPlan, abort?: AbortSignal): Promise<ChildResult> {
+/** The real starter: one child, two alarms, and an end that does not need it.
+ *  Shared with the headless nightly run (`night-run.ts`). */
+export async function startChild(plan: ChildPlan, abort?: AbortSignal): Promise<ChildResult> {
   return await new Promise<ChildResult>((resolve) => {
     let settled = false;
     let terminated = false;
@@ -382,19 +401,28 @@ async function startChild(plan: PageWriterPlan, abort?: AbortSignal): Promise<Ch
       off?.();
       resolve(r);
     };
-    const child = spawn(plan.command, [...plan.args], {
-      // DETACHED ONLY SO THERE IS A PROCESS GROUP TO KILL. The worker still
-      // awaits this child — `unref` is deliberately not called — so a writer
-      // whose outcome nobody can record is still impossible. What `detached`
-      // buys is that a host CLI which spawned helpers of its own cannot survive
-      // in them after the watchdog fires.
-      detached: true,
-      // THE PROMPT GOES ON STDIN, not in `argv`: the day's memories in a command
-      // line are readable by every process on the machine through `ps` (S2
-      // review, NIT-2). `claude -p` with no positional prompt reads stdin.
-      stdio: ["pipe", "ignore", "ignore"],
-      env: { ...plan.env },
-    });
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(plan.command, [...plan.args], {
+        // DETACHED ONLY SO THERE IS A PROCESS GROUP TO KILL. The worker still
+        // awaits this child — `unref` is deliberately not called — so a writer
+        // whose outcome nobody can record is still impossible. What `detached`
+        // buys is that a host CLI which spawned helpers of its own cannot survive
+        // in them after the watchdog fires.
+        detached: true,
+        // THE PROMPT GOES ON STDIN, not in `argv`: the day's memories in a command
+        // line are readable by every process on the machine through `ps` (S2
+        // review, NIT-2). `claude -p` with no positional prompt reads stdin.
+        stdio: ["pipe", "ignore", "ignore"],
+        env: { ...plan.env },
+        ...(plan.cwd === undefined ? {} : { cwd: plan.cwd }),
+      });
+    } catch (err) {
+      // A runtime that refuses synchronously rather than by `error` (a command
+      // that is not there, on some runtimes): the same answer, now.
+      done({ code: null, timedOut: false, error: err instanceof Error ? err.name : "UNKNOWN", ...spawnCodeOf(err) });
+      return;
+    }
     try {
       child.stdin?.end(plan.stdin);
     } catch {
@@ -444,7 +472,7 @@ async function startChild(plan: PageWriterPlan, abort?: AbortSignal): Promise<Ch
       }
     }
     child.on("error", (err) => {
-      done({ code: null, timedOut: false, error: err.name });
+      done({ code: null, timedOut: false, error: err.name, ...spawnCodeOf(err) });
     });
     child.on("close", (exit, sig) => {
       done({
@@ -454,6 +482,12 @@ async function startChild(plan: PageWriterPlan, abort?: AbortSignal): Promise<Ch
       });
     });
   });
+}
+
+/** The OS error code on a failed start (`ENOENT`, `EACCES`), as a field or nothing. */
+function spawnCodeOf(err: unknown): { spawnCode?: string } {
+  const c = err !== null && typeof err === "object" ? (err as { code?: unknown }).code : undefined;
+  return typeof c === "string" && c.length > 0 ? { spawnCode: c } : {};
 }
 
 /** A timer that never keeps the process alive on its own. */

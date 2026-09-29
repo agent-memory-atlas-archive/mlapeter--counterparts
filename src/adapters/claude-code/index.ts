@@ -87,7 +87,22 @@ export {
   planPageWriter,
   runPageWriter,
 } from "./page-writer.js";
+export {
+  HOST_SESSION_ENV,
+  NIGHT_KIND_ENV,
+  NIGHT_RUN_ENV,
+  NIGHT_TOOLS,
+  kindValue,
+  nightTimeoutMs,
+  openNightCounterpart,
+  planNightChild,
+  planNightRunner,
+  readKind,
+  runNight,
+} from "./night-run.js";
+export type { NightChildPlan, NightKind, NightRunInput, NightRunnerPlan, NightStarter } from "./night-run.js";
 export type {
+  ChildPlan,
   ChildResult,
   PageWriterPlan,
   PageWriterPlanInput,
