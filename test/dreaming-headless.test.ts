@@ -32,6 +32,8 @@ import {
 import { ClaudeCodeAdapter } from "../src/adapters/claude-code/index.js";
 import type { AdapterConfig, HookInput, SpawnPlan } from "../src/adapters/claude-code/index.js";
 import { ENVELOPE_MAX_CHARS, deliverTurn, toHookInput } from "../src/adapters/claude-code/bin/hook.js";
+import { nightRunFindings } from "../src/adapters/claude-code/doctor.js";
+import type { DoctorInput } from "../src/adapters/claude-code/doctor.js";
 import { recordSession } from "../src/adapters/sessions.js";
 import { Counterpart as CounterpartClass } from "../src/core/counterpart.js";
 import type { Counterpart } from "../src/core/counterpart.js";
@@ -553,5 +555,59 @@ describe("B. auto: the first prompt of the day starts the headless run itself", 
     const o = autoHooks({ observer: true });
     expect(o.userPromptSubmit(input()).dream).toBeUndefined();
     expect(nightPlans()).toHaveLength(0);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// B. doctor's Nightly run line
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("B. doctor: the Nightly run line reads the one-row record", () => {
+  const doctorInput = { today: AT, config: { dataDir: dir } } as unknown as DoctorInput;
+  const base = { run: "nrn_d", date: AT, kind: "night" as const, session: "s1", reason: null, detail: null, code: null, dream: null, reflection: null };
+
+  test("silent with no run and no auto; green with auto and no run yet; green when a run finished", () => {
+    const a = hooks();
+    const s = a.counterpart.store;
+    expect(nightRunFindings(doctorInput, s)).toEqual([]);
+    a.counterpart.dreams.setSetting("auto", { by: "owner" });
+    expect(nightRunFindings(doctorInput, s)[0]).toMatchObject({ severity: "green", title: "Nightly run" });
+    const now = s.now();
+    a.counterpart.dreams.recordNightRun({ ...base, state: "done", startedAt: now - 5 * 60_000, endedAt: now, code: 0, dream: "drm_1", reflection: "rfl_1" });
+    const done = nightRunFindings(doctorInput, s)[0];
+    expect(done?.severity).toBe("green");
+    expect(done?.detail).toBe(`auto; last run ${AT} (the whole night) finished after 5 min — drm_1, rfl_1`);
+  });
+
+  test("amber while auto and the latest run could not start — with the reason and what to look at", () => {
+    const a = hooks();
+    const s = a.counterpart.store;
+    a.counterpart.dreams.setSetting("auto", { by: "owner" });
+    const now = s.now();
+    a.counterpart.dreams.recordNightRun({ ...base, state: "could-not-start", startedAt: now, endedAt: now + 1_000, reason: "no-claude" });
+    const f = nightRunFindings(doctorInput, s)[0];
+    expect(f?.severity).toBe("amber");
+    expect(f?.detail).toContain("could not start");
+    expect(f?.detail).toContain("the claude command was not found");
+    expect(f?.fix).toContain("PATH");
+    // The owner's setting moved to ask: informational.
+    a.counterpart.dreams.setSetting("ask", { by: "owner" });
+    expect(nightRunFindings(doctorInput, s)[0]?.severity).toBe("green");
+  });
+
+  test("a run started long ago that never reported an end is amber; one started just now is running", () => {
+    const a = hooks();
+    const s = a.counterpart.store;
+    a.counterpart.dreams.setSetting("auto", { by: "owner" });
+    const now = s.now();
+    a.counterpart.dreams.recordNightRun({ ...base, run: "nrn_old", state: "started", startedAt: now - 2 * 60 * 60_000, endedAt: null });
+    const lost = nightRunFindings(doctorInput, s)[0];
+    expect(lost?.severity).toBe("amber");
+    expect(lost?.detail).toContain("never reported an end");
+    a.counterpart.dreams.recordNightRun({ ...base, state: "started", startedAt: now - 60_000, endedAt: null });
+    expect(nightRunFindings(doctorInput, s)[0]?.detail).toContain("running now");
+    // A late word from the older run never overwrites the newer run's row.
+    a.counterpart.dreams.recordNightRun({ ...base, run: "nrn_old", state: "failed", startedAt: now - 2 * 60 * 60_000, endedAt: now, reason: "exit", code: 1 });
+    expect(nightRunOf(s)?.run).toBe("nrn_d");
   });
 });
