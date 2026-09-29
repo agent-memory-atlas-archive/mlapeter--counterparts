@@ -710,7 +710,7 @@ export const MECHANISMS: readonly Mechanism[] = [
   {
     id: "dream-ask",
     label: "the day's line started the nightly run (or asked first), or the owner said not today or changed the setting",
-    module: "dream/ (askLine, decline, setSetting), claude-code/hooks.ts",
+    module: "dream/ (offer, claimOffer, decline, setSetting), claude-code/hooks.ts",
     evidence: { kind: "event", names: ["dream.ask"] },
     since: "2026-09-26",
   },

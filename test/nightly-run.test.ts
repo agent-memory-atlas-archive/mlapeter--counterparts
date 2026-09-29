@@ -81,6 +81,12 @@ function lived(c: Counterpart): string[] {
   ];
 }
 
+/** The day's line as the HOOK takes it: offered, then claimed — a headless offer included. */
+function takeLine(c: Counterpart, input: { at: string; session: string }): string | null {
+  const o = c.dreams.offer(input);
+  return o !== null && c.dreams.claimOffer(o) ? o.context : null;
+}
+
 function server(c: Counterpart, session?: string): McpServer {
   if (session !== undefined) recordSession(dir, { sessionId: session, scope: "/proj", phase: "start" });
   return new McpServer({ counterpart: c, scope: "/proj", owner: true, registryDir: dir, now: () => Date.now() + offsetMs });
@@ -117,7 +123,10 @@ describe("dreaming: auto | ask | off, durable and reversible", () => {
     const offer = c.dreams.offer({ at: c.store.today(), session: SESSION });
     expect(offer?.headless).toBe(true);
     expect(offer?.notice).toBe('Counterparts: dreaming in the background (a few minutes). Say "no dreams" to turn it off.');
-    const line = c.dreams.askLine({ at: c.store.today(), session: SESSION }) ?? "";
+    // `askLine` starts nothing, so it neither claims nor says a headless offer (review finding 9).
+    expect(c.dreams.askLine({ at: c.store.today(), session: SESSION })).toBeNull();
+    expect(c.store.dreamAsk(c.store.today())).toBeUndefined();
+    const line = takeLine(c, { at: c.store.today(), session: SESSION }) ?? "";
     expect(line).not.toContain('phase "launch"');
     expect(line).toContain("there is nothing for you to launch");
     expect(line).toContain("it updates your self page, then dreams, then reflects");
@@ -308,13 +317,13 @@ describe("a dream left behind does not use up the day", () => {
     lived(c);
     c.dreams.setSetting("auto", { by: "owner" });
     const today = c.store.today();
-    expect(c.dreams.askLine({ at: today, session: "s-1" })).not.toBeNull();
+    expect(takeLine(c, { at: today, session: "s-1" })).not.toBeNull();
     // Soon after: the run may still be starting.
-    expect(c.dreams.askLine({ at: today, session: "s-2" })).toBeNull();
+    expect(takeLine(c, { at: today, session: "s-2" })).toBeNull();
     let again = 0;
     for (let i = 0; i < DREAM_TUNABLES.RELAUNCHES_PER_DAY + 2; i += 1) {
       offsetMs += DREAM_TUNABLES.ABANDONED_AFTER_MS + 60_000;
-      if (c.dreams.askLine({ at: today, session: `s-r${String(i)}` }) !== null) again += 1;
+      if (takeLine(c, { at: today, session: `s-r${String(i)}` }) !== null) again += 1;
     }
     expect(again).toBe(DREAM_TUNABLES.RELAUNCHES_PER_DAY);
   });
@@ -462,13 +471,13 @@ describe("review of #271: a run left behind, and the writer's claim", () => {
     lived(c);
     c.dreams.setSetting("auto", { by: "owner" });
     const today = c.store.today();
-    expect(c.dreams.askLine({ at: today, session: "s-a" })).not.toBeNull();
+    expect(takeLine(c, { at: today, session: "s-a" })).not.toBeNull();
     const dead = c.dreams.begin({ session: "s-a" });
     if (!dead.ok) throw new Error(dead.reason);
     // It changed nothing, and its session closed.
     offsetMs += DREAM_TUNABLES.ABANDONED_AFTER_MS + 60_000;
     expect(c.dreams.status(today).reason).toBe("due");
-    expect(c.dreams.askLine({ at: today, session: "s-b" })).not.toBeNull();
+    expect(takeLine(c, { at: today, session: "s-b" })).not.toBeNull();
     const fresh = c.dreams.begin({ session: "s-b" });
     if (!fresh.ok) throw new Error(fresh.reason);
     expect(fresh.resumed).toBe(false);
@@ -599,9 +608,9 @@ describe("review of #271: retries", () => {
     lived(c);
     c.dreams.setSetting("auto", { by: "owner" });
     const today = c.store.today();
-    c.dreams.askLine({ at: today, session: "s-1" });
+    takeLine(c, { at: today, session: "s-1" });
     offsetMs += DREAM_TUNABLES.ABANDONED_AFTER_MS + 60_000;
-    expect(c.dreams.askLine({ at: today, session: "s-2" })).not.toBeNull();
+    expect(takeLine(c, { at: today, session: "s-2" })).not.toBeNull();
     expect(c.store.getMeta(RELAUNCHED_KEY)).toBe(`${today}:1`);
     expect([...c.store.metaWithPrefix("dream.relaunched").keys()]).toEqual([RELAUNCHED_KEY]);
   });

@@ -1091,11 +1091,15 @@ export class Dreams {
   /**
    * THE LINE, offered and claimed in one step — the model's line, or null.
    * For a caller with no terminal to wait on (and the tests); the hook offers
-   * and claims separately (`offer`, `claimOffer`).
+   * and claims separately (`offer`, `claimOffer`). Null for a headless offer:
+   * that one only the host may claim, as it starts the run.
    */
   askLine(input: { at: string; session: string }): string | null {
     const o = this.offer(input);
-    if (o === null || !this.claimOffer(o)) return null;
+    // A HEADLESS offer is the host's to claim, because claiming it means
+    // starting a run (review of #282, finding 9): here it is neither claimed
+    // nor said — this door starts nothing.
+    if (o === null || o.headless || !this.claimOffer(o)) return null;
     return o.context;
   }
 
