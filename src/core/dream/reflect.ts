@@ -89,6 +89,8 @@ import type { ChapterEntry, EpisodeInView, EpisodesFit, ShownChapter } from "./s
 import { DREAM_TUNABLES } from "./tunables.js";
 import { mindRanked, noteMindShown } from "./mind.js";
 import type { MindItem } from "./mind.js";
+import { settle as settleContradiction } from "../contradictions.js";
+import type { SettleOutcome } from "../contradictions.js";
 
 /** Every `reflect` knob, in one place. Working defaults of 2026-09-27; CAL = not yet measured. */
 export const REFLECT_TUNABLES = {
@@ -719,6 +721,12 @@ export class Reflections {
       aboutLine,
       `- traits (optional, at most ${String(L.traits)}): only where a memory you were shown really shows how you acted — often where you acted unlike your page; most carry none, and a quiet night has none. Each: id, axis, toward (one of its two poles), strength 0-1, carried_by (briefly, what showed it). The axes, the first pole roughly where training puts you: ${TRAIT_AXES.map((a) => `${a.id} (${a.poles[0]} or ${a.poles[1]}${a.gloss.length > 0 ? `, ${a.gloss}` : ""})`).join(", ")}. Don't make up depth.`,
       `If a part comes back not written, its reason says what tripped it: fix that and call finish again with the same reflection and just that part — the entry and everything written stand. Never say a part was written when it was not.`,
+      // 2026-09-29: an unsettled pair on my mind may be settled here, with a plain reason.
+      ...(bundle.onMind.some((i) => i.kind === "unsettled")
+        ? [
+            `Two memories on your mind disagree. If which holds is plain, you may settle them: the reflect tool, phase "settle", reflection: ${id}, holds, over, how (changed: both were true at their time; corrected: the older was wrong; open: a real disagreement) and why in a line. If it is not plain, leave it for the waking session.`,
+          ]
+        : []),
     ].join("\n");
   }
 
@@ -1767,6 +1775,27 @@ export class Reflections {
    * second `finish` supplies what the first refused or left out, 2026-09-28).
    * An older one, or one a newer reflection followed, is closed.
    */
+  /**
+   * THE REFLECTION MAY SETTLE (2026-09-29, held lightly): two memories it was
+   * shown that disagree — a pair on "my mind", usually — when the reason is
+   * plain. The waking write-up and sleep are the usual home; this is the
+   * reflection's door, and the trail names it (`reflection`, its id). The
+   * settle itself is `contradictions.ts#settle`'s; `why` crosses the
+   * credential scan first, and a settle with no reason is refused.
+   */
+  settle(input: { reflection: string; session?: string; holds: string; over: string; how: string; why: string }): SettleOutcome {
+    const open = this.openFor(input.reflection, input.session);
+    if (!open.ok) return { ok: false, reason: open.reason === "observer" ? "observer" : "failed", detail: `The reflection is not open for a settle (${open.reason}).` };
+    const row = open.reflection;
+    const shown = new Set(parseIds(row.shown));
+    for (const id of [input.holds, input.over]) {
+      if (!shown.has(id)) return { ok: false, reason: "unknown-memory", detail: `${id} was not shown to this reflection; settle only what it was shown.` };
+    }
+    const why = this.words(input.why, row.session ?? row.id, DREAM_TUNABLES.MAX_WHY_CHARS);
+    if (!why.ok) return { ok: false, reason: "failed", detail: `A reflection settles only with a plain reason, in \`why\` — ${why.detail}` };
+    return settleContradiction(this.store, { holds: input.holds, over: input.over, how: input.how, why: why.text, actor: "reflection", actorId: row.id });
+  }
+
   private openFor(id: string, session: string | undefined): { ok: true; reflection: ReflectionRow; again: boolean } | { ok: false; reason: ReflectRefusal } {
     if (this.ctx.observer) return { ok: false, reason: "observer" };
     const row = this.store.reflection(id);

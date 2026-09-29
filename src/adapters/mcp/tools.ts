@@ -291,6 +291,48 @@ const DATE_PRIVILEGES: readonly Privilege[] = [
  * `note`'s privileges. Each one is a sentence v1 would have shipped in a prompt
  * and left unenforced; each one names the file that enforces it here.
  */
+/**
+ * HOW a new memory settles the one it `updates` (2026-09-29, contradictions).
+ * Shared by `note` and each `session_end` entry. Working defaults, held
+ * lightly: the words say what each kind does and ask for the journey.
+ */
+const HOW_PROPERTY = {
+  type: "string",
+  enum: ["changed", "corrected", "open"],
+  description:
+    "With `updates`: how this settles the memory it revises. `changed` (the default): both were true at their time — the old one fades once and is shown as earlier. `corrected`: the old one was wrong — it leaves recall, still readable by its id. `open`: a real disagreement — both stay, each shown with the other. For changed or corrected, say the journey in your own words (\"I used to think X, now Y\").",
+} as const;
+
+/** Settling two memories that already exist, on `note` (2026-09-29). */
+const SETTLE_PROPERTY = {
+  type: "object",
+  description:
+    "Settle two memories that already exist — a pair a dream flagged, or two a write showed you — without writing a new one; `text` may be left out. Name the pair by `pair` (its id), or the two by `holds` (the one that holds now) and `over` (the one it changes, corrects or disagrees with). `how` as for `updates`; `why` in a short line. No memory is rewritten.",
+  properties: {
+    pair: { type: "string", description: "A contradiction's id (ctr_…)." },
+    holds: { type: "string", description: "The id of the memory that holds now." },
+    over: { type: "string", description: "The id of the memory it changes, corrects or disagrees with." },
+    how: { type: "string", enum: ["changed", "corrected", "open"] },
+    why: { type: "string", description: "Why, in a short line." },
+  },
+  required: ["how"],
+  additionalProperties: false,
+} as const;
+
+/** The privileges `note` and `session_end` share about settling. */
+const SETTLE_PRIVILEGES: readonly Privilege[] = [
+  {
+    claim:
+      "`how` beside `updates` settles the memory it revises — changed (it fades once and is shown as earlier), corrected (archived: out of recall, readable by its id, never deleted), or open (both kept, shown together) — and every settle is recorded (who, how, why, when) and can be undone. A belief, a core memory, a current-state fact and a protected memory keep their own revision path, and the result says so.",
+    mechanizedBy: "src/core/revision.ts#applyRevision -> src/core/contradictions.ts#settleOnWrite",
+  },
+  {
+    claim:
+      "A stored memory comes back with its nearest few existing memories, when any are close, so you can settle one there and then.",
+    mechanizedBy: "src/core/contradictions.ts#writeNeighbours",
+  },
+];
+
 const NOTE: ToolSpec = {
   name: "note",
   summary:
@@ -347,6 +389,12 @@ const NOTE: ToolSpec = {
       mechanizedBy:
         "src/core/remember/updates.ts#resolveUpdates -> src/core/mint.ts#mintProposal (UPDATES_META_KEY)",
     },
+    ...SETTLE_PRIVILEGES,
+    {
+      claim:
+        "`settle` settles two memories that already exist, by the same rules, and rewrites neither: the pair and a short why are the record.",
+      mechanizedBy: "src/core/counterpart.ts#settleContradiction -> src/core/contradictions.ts#settle",
+    },
     ...DATE_PRIVILEGES,
     {
       claim: "Under observer stance nothing is written and the refusal says so.",
@@ -356,12 +404,14 @@ const NOTE: ToolSpec = {
   inputSchema: {
     type: "object",
     properties: {
-      text: { type: "string", description: "What to remember, in your own words." },
+      text: { type: "string", description: "What to remember, in your own words. Required unless `settle` is sent." },
       updates: {
         type: "string",
         description:
           "The id or handle of a memory this revises, if it revises one. A field — never written into the text.",
       },
+      how: HOW_PROPERTY,
+      settle: SETTLE_PROPERTY,
       salience: {
         type: "number",
         minimum: 0,
@@ -399,7 +449,10 @@ const NOTE: ToolSpec = {
       about: ABOUT_PROPERTY,
       traits: TRAITS_PROPERTY,
     },
-    required: ["text"],
+    // `text` is not required in the published schema (2026-09-29): a `settle`
+    // alone writes no memory. The server refuses `text-required` when neither
+    // is sent.
+    required: [],
     additionalProperties: false,
   },
 };
@@ -618,6 +671,7 @@ const SESSION_END: ToolSpec = {
       mechanizedBy:
         "src/adapters/mcp/write-up.ts#writeUpDoor -> src/adapters/sessions.ts#writeUpStanding -> src/core/remember/write-up-seam.ts#recordWriteUp",
     },
+    ...SETTLE_PRIVILEGES,
   ],
   inputSchema: {
     type: "object",
@@ -685,6 +739,7 @@ const SESSION_END: ToolSpec = {
               description:
                 "The id or handle of a memory this revises, if it revises one. A field — never written into `content`.",
             },
+            how: HOW_PROPERTY,
             eventDate: EVENT_DATE_PROPERTY,
             remind: REMIND_PROPERTY,
             feelings: FEELINGS_PROPERTY,
@@ -1056,13 +1111,13 @@ const DREAM: ToolSpec = {
       changes: {
         type: "array",
         description:
-          "`propose`: the changes, each an object with `action` — `merge` (ids: two or more near-copies, text: the one memory in better words, title?), `link` (a, b), `replayed` (id), `gist` (text, sources: ids, title?, kind?), `contradiction` (a, b), `feeling-now` (id, core, emotion: ONE word, strength, carried_by: the nuance in your own words), `nominate-core` (id, why). Usually far fewer changes than the limits; none is fine.",
+          "`propose`: the changes, each an object with `action` — `merge` (ids: two or more near-copies, text: the one memory in better words, title?), `link` (a, b), `replayed` (id), `gist` (text, sources: ids, title?, kind?), `contradiction` (a, b), `settle` (holds, over, how: changed|corrected|open, why — only when the reason is plain; flag otherwise), `feeling-now` (id, core, emotion: ONE word, strength, carried_by: the nuance in your own words), `nominate-core` (id, why). Usually far fewer changes than the limits; none is fine.",
         items: {
           type: "object",
           properties: {
             action: {
               type: "string",
-              enum: ["merge", "link", "replayed", "gist", "contradiction", "feeling-now", "nominate-core"],
+              enum: ["merge", "link", "replayed", "gist", "contradiction", "settle", "feeling-now", "nominate-core"],
             },
             ids: { type: "array", items: { type: "string" } },
             id: { type: "string" },
@@ -1077,6 +1132,9 @@ const DREAM: ToolSpec = {
             strength: { type: "number", minimum: 0, maximum: 1 },
             carried_by: { type: "string", description: `\`feeling-now\`: ${CARRIED_BY_TEXT}` },
             why: { type: "string" },
+            holds: { type: "string", description: "`settle`: the memory that holds." },
+            over: { type: "string", description: "`settle`: the memory it changes, corrects or disagrees with." },
+            how: { type: "string", enum: ["changed", "corrected", "open"] },
           },
           required: ["action"],
         },
@@ -1105,7 +1163,7 @@ const DREAM: ToolSpec = {
 const REFLECT: ToolSpec = {
   name: "reflect",
   summary:
-    "Reflection: a few quiet, awake minutes — usually at the end of the nightly run, after the dream — answering two or three questions about yourself, the owner and the two of you, citing the memories your thoughts rest on. It keeps a lived entry, may rewrite your self page from the memories it cites, leaves a short morning share for the owner, can record how a memory feels to you now and what a memory is about. Phases: `launch` (a reflection on its own, for a background agent), `begin` / `part` / `finish` (the reflecting mind's — `part` fetches the rest of a bundle that came in parts), `told` (the share was told).",
+    "Reflection: a few quiet, awake minutes — usually at the end of the nightly run, after the dream — answering two or three questions about yourself, the owner and the two of you, citing the memories your thoughts rest on. It keeps a lived entry, may rewrite your self page from the memories it cites, leaves a short morning share for the owner, can record how a memory feels to you now and what a memory is about. Phases: `launch` (a reflection on its own, for a background agent), `begin` / `part` / `finish` (the reflecting mind's — `part` fetches the rest of a bundle that came in parts), `settle` (two memories it was shown that disagree, when the reason is plain), `told` (the share was told).",
   admission:
     "The nightly run calls `begin` and `finish` after the dream, as its prompt says. Call `launch` only when the owner asks you to reflect, and hand its prompt to a background agent. Call `told` after you told the owner a morning share, in your own words.",
   negativeExamples: [
@@ -1149,15 +1207,24 @@ const REFLECT: ToolSpec = {
         "Every word it writes is scanned for credentials first; its hand-back carries the mark capture refuses, so the share is told in the session's own words rather than filed from the tool's.",
       mechanizedBy: "src/core/dream/reflect.ts#Reflections.words + src/core/dream/mark.ts#DREAM_MARK -> src/core/remember/spans.ts#enters",
     },
+    {
+      claim:
+        "`settle` settles two memories it was shown — changed, corrected or open — only with a plain reason, and the record names the reflection; it can be undone like any settle.",
+      mechanizedBy: "src/core/dream/reflect.ts#Reflections.settle -> src/core/contradictions.ts#settle",
+    },
   ],
   inputSchema: {
     type: "object",
     properties: {
       phase: {
         type: "string",
-        enum: ["launch", "begin", "part", "finish", "told"],
-        description: "Which step: launch, begin, part, finish, or told.",
+        enum: ["launch", "begin", "part", "finish", "settle", "told"],
+        description: "Which step: launch, begin, part, finish, settle, or told.",
       },
+      holds: { type: "string", description: "`settle`: the memory that holds now." },
+      over: { type: "string", description: "`settle`: the memory it changes, corrects or disagrees with." },
+      how: { type: "string", enum: ["changed", "corrected", "open"], description: "`settle`: changed (both true at their time), corrected (the older was wrong) or open (a real disagreement)." },
+      why: { type: "string", description: "`settle`: the plain reason, in a short line." },
       part: {
         type: "number",
         description: "`part`: which part of the bundle to fetch (2 and up), when `begin` said it came in parts.",
