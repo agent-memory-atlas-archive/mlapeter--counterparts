@@ -959,7 +959,10 @@ export class Dreams {
         notice,
         context:
           `Counterparts: ${why}. The nightly run ${s.reflectOnly !== null ? "(the reflection alone)" : `(it ${nightSummary()})`} is starting now in the background, on its own — a separate, windowless session this host starts; there is nothing for you to launch. ` +
-          `Shown to ${who} just now, in the terminal: "${notice}" What it did comes to a later prompt. ${off}`,
+          // NEUTRAL about the terminal (review of #282, finding 6): the run has
+          // started either way, and the host shows the person's line only when
+          // the envelope has room for it.
+          `${who} is told in the terminal when there is room ("${notice}"); if they ask, that is what is happening. What it did comes to a later prompt. ${off}`,
       };
     }
     if (fell !== null) {

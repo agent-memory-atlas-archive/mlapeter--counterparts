@@ -519,6 +519,14 @@ describe("B. auto: the first prompt of the day starts the headless run itself", 
     expect(turn.dream?.notice).toBe('Counterparts: dreaming in the background (a few minutes). Say "no dreams" to turn it off.');
     expect(turn.dream?.offer).toBeNull();
     expect(turn.injection).toContain("there is nothing for you to launch");
+    // Neutral about the terminal: the envelope may have had no room (review finding 6).
+    expect(turn.injection).not.toContain("Shown to Mike just now");
+    expect(turn.injection).toContain("Mike is told in the terminal when there is room");
+    // With no room, the run has still started, the model's line stays, and only the terminal line waits.
+    const full = { ...turn, injection: `${turn.injection ?? ""}\n${"x".repeat(ENVELOPE_MAX_CHARS)}` };
+    const crowded = deliverTurn("user-prompt-submit", full, {}, null, doorsOf(a as unknown as ReturnType<typeof openAdapter>), input());
+    expect(crowded.stdout).toContain("there is nothing for you to launch");
+    expect(crowded.stdout).not.toContain("systemMessage");
     expect(turn.injection).not.toContain('phase "launch"');
     const out = deliverTurn("user-prompt-submit", turn, {}, null, doorsOf(a as unknown as ReturnType<typeof openAdapter>), input());
     expect((JSON.parse(out.stdout) as { systemMessage: string }).systemMessage).toBe(turn.dream?.notice ?? "-");
