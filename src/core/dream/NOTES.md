@@ -49,6 +49,8 @@ What the build learned, and every choice the brief left open (2026-09-26).
    already crossed the battery.
 10. **Contradictions are raised once each**, by a meta latch (`dream.raised.<dream>.<seq>`),
     at most two a session, and only when both memories are showable in that session.
+    (Since v10, 2026-09-29, the latch is the pair's `raised_day`; the upgrade carried every
+    meta latch onto its pair.)
 
 11. **The ask is cheap, because it runs on every prompt.** `status` answers observer,
     first day, dreamed today and the day's ask row before it counts anything, and "new
@@ -412,3 +414,28 @@ writer, the dream and the reflection. What the build learned:
   relaunch; the gate reads a live `started` row as `dreaming-now`; `askLine` no longer
   claims a headless offer; an explicit `auto` from before is reset once. Why each: the
   review, findings 4, 5, 7, 9, 10, and owner decisions A and D.
+
+## 2026-09-29 — contradictions: the flag is a pair, and a dream may settle (held lightly)
+
+- **The flag is a row in `contradictions`** (schema v10), unsettled, beside the
+  `dream_changes` row that undo reads. Raising awake (`raiseLines`) and "my mind"
+  (`mind.ts`) read unsettled pairs from that table, so an undone settle reopens a pair
+  and it is raised again; settling it — a new memory that `updates` one of the two, a
+  `note` settle, a reflection's or the dream's own, the owner's `counterparts settle` —
+  takes it off both. Habituation keys on the pair id (`mind.seen.<ctr_…>`).
+- **`settle` is a dream action** rather than a use of the flag: the flag stays a flag.
+  It needs a `why` (a dream settles only with a clear reason) and two ids it was shown;
+  limit 5. The trail's actor is `dream` with the dream id.
+- **Undo** withdraws a pair this dream CREATED while it is still unsettled (a pair that
+  already stood, or one settled since, stands), and undoes this dream's settle only while
+  it is the pair's standing settle — otherwise it is counted as kept, like a merge that
+  moved on. A flag the v10 upgrade carried is found by `dream_id` + `dream_seq`.
+- **The reflection** settles through its own phase (`Reflections.settle`, reflect phase
+  `settle`): only ids it was shown, a `why` through the credential scan, actor
+  `reflection`. Its instructions mention it only when an unsettled pair is on its mind.
+
+### After the review of #284
+
+- An undone dream's settle leaves its pair `withdrawn` when nobody had flagged it, and
+  `unsettled` when it was a flag; the trail's actor is `dream-undo` with the dream id (M4).
+- A reopened flag starts fresh on "my mind" (its `mind.seen.<pair>` count is reset, M5).

@@ -176,6 +176,17 @@ export function dreamShowLines(counterpart: Counterpart, id: string): string[] |
       case "contradiction":
         out.push(`${mark}${c.action}: ${words(a)}  ↔  ${words(b)}`);
         break;
+      case "settle": {
+        let how = "settled";
+        try {
+          const d = JSON.parse(c.detail) as { how?: unknown };
+          if (typeof d.how === "string") how = d.how;
+        } catch {
+          how = "settled";
+        }
+        out.push(`${mark}settle (${how}): ${words(a)} holds over ${words(b)}`);
+        break;
+      }
       case "merge": {
         let from: string[] = [];
         try {

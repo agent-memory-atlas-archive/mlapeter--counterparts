@@ -434,3 +434,13 @@ Held lightly.
   pinned by `test/reflect-review.test.ts` "D5"). Look again after a few weeks of live
   reflections; if it shows up, the next step is to count reflection days toward the fast
   lane's return only.
+
+## 2026-09-29 — the changed cut is a multiplier (review of #284)
+
+`strength = clamp01(base × D × fade)`. `fade` is a column (v10, default 1), read by
+`rowToPhysics`, written only by a `changed` settle (`changedFade`: fade × factor) and its
+undo (`unfade`: ÷ factor, snapped to 1). The first build moved `lastUsedDay` instead; the
+review's probes showed the turn's own credit erasing it, a second credit on one lived day,
+a shortened prune dwell and impossible history (§5.12 has the list). The multiplier is
+outside `base` and outside `D`, so guarantees 3, 5 and 10 read as before; `hintReading`
+and every other reader go through `strength()` and see it without change.

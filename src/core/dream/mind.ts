@@ -9,7 +9,8 @@
  *
  *   - COMING UP — a memory dated in the next `COMING_UP_DAYS` calendar days
  *     (a reminder `prospective/` will raise);
- *   - UNSETTLED — a pair a dream flagged as disagreeing, both still standing;
+ *   - UNSETTLED — a pair of memories that disagree and nobody has settled
+ *     (`contradictions`, v10: a dream's flag today), both still standing;
  *   - OPEN LOOPS — where the work stands in a directory (its handoff's first
  *     line), while the pointer is still showing.
  *
@@ -21,8 +22,9 @@
  * could surface in the session anyway (the caller's `showable`); a handoff is
  * words for context only, never an id a dream may change. `mindRanked` is a
  * read; `noteMindShown` records a flagged pair's habituation when a bundle
- * shows it. A pair is SETTLED awake the ordinary way: an `updates` mark (note
- * or session_end) that supersedes either memory takes it off the list.
+ * shows it. A pair leaves the list when it is SETTLED (2026-09-29): a new
+ * memory that `updates` one of the two, a `note` with `settle`, the owner's
+ * `counterparts settle`, or a dream or reflection with a clear reason.
  */
 import { HANDOFF_LIFE_DAYS, daysLeft, liveHandoffRows, newestPerScope } from "../handoff/index.js";
 import { lineOf } from "../fit/index.js";
@@ -48,7 +50,7 @@ export interface MindItem {
   readonly ids: readonly string[];
   /** A dated memory's date, as said. */
   readonly date?: string;
-  /** A flagged pair's address (`<dream>.<seq>`), for its habituation. */
+  /** A flagged pair's id (`ctr_…`, v10), for its habituation. */
   readonly pair?: string;
 }
 
@@ -140,31 +142,30 @@ export function mindRanked(store: Store, input: MindInput): { items: MindItem[];
     }
   }
 
-  // UNSETTLED: flagged pairs, newest dream first, both still standing.
+  // UNSETTLED: pairs nobody has settled, newest first, both still standing.
   try {
     let n = 0;
-    // By open state (2026-09-28): every flagged pair of a dream that stands.
-    for (const c of store.openDreamChanges("contradiction")) {
-      if (c.ref === null || c.ref2 === null) continue;
-      const a = words(c.ref);
-      const b = words(c.ref2);
+    // By open state (v10): every unsettled pair in `contradictions`.
+    for (const c of store.contradictions({ state: "unsettled" })) {
+      const a = words(c.a);
+      const b = words(c.b);
       if (a === null || b === null) continue;
       // HABITUATION (review of #278, held lightly): each time a pair is put
       // on my mind and nothing is done about it, it weighs less — half, each
       // time — the way the wake's hints habituate. Touched again (either
       // memory used since it was last shown), it rises back to full.
-      const pair = `${c.dream_id}.${String(c.seq)}`;
+      const pair = c.id;
       const seen = readMindSeen(store, pair);
       let times = seen?.times ?? 0;
       if (seen !== null) {
         try {
-          const used = Math.max(store.physicsOf(c.ref).lastUsedDay, store.physicsOf(c.ref2).lastUsedDay);
+          const used = Math.max(store.physicsOf(c.a).lastUsedDay, store.physicsOf(c.b).lastUsedDay);
           if (used > seen.day) times = 0;
         } catch {
           /* unreadable physics: keep the count */
         }
       }
-      push({ kind: "unsettled", text: `"${a}" / "${b}"`, ids: [c.ref, c.ref2], pair }, 1.5 * T.HABITUATION ** times - n * 0.001);
+      push({ kind: "unsettled", text: `"${a}" / "${b}"`, ids: [c.a, c.b], pair }, 1.5 * T.HABITUATION ** times - n * 0.001);
       n += 1;
     }
   } catch {

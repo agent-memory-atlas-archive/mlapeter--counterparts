@@ -47,3 +47,9 @@ What this module still owes, or asks of others (2026-09-26).
    (or `traitsOn(ids)` for the memories it already holds); until it does, nudges are
    visible only in `export --markdown` and the `fired` row. A dream backfill of older
    memories is not built.
+
+10. **Contradictions (2026-09-29).** The dream flags and may settle; the reflection may
+    settle. Not built: the PAGE WRITER has no settle door of its own — a night-run
+    `note` settle is attributed to the launching session on the trail. The dream bundle
+    shows unsettled pairs on "my mind" by their two memories, not by pair id (the settle
+    action takes `holds` / `over`, so it does not need it).

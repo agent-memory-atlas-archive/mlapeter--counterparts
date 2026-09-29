@@ -236,8 +236,8 @@ describe("the store: recorded once, read by the dashboard, feeding nothing", () 
 // ---------------------------------------------------------------------------
 
 describe("the schema: folded into the unreleased v9", () => {
-  test("still v9", () => {
-    expect(SCHEMA_VERSION).toBe(9);
+  test("the version is v9 or later (v10 added contradictions beside it)", () => {
+    expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(9);
   });
 
   test("a development store stamped v9 before the table existed gains it at its next writer open; an observer reads it as empty until then", () => {
@@ -258,7 +258,7 @@ describe("the schema: folded into the unreleased v9", () => {
     open.splice(0);
     // A writer adds it, with no copy taken (nothing that exists changes shape).
     const w = store();
-    expect(w.getMeta("schemaVersion")).toBe("9");
+    expect(w.getMeta("schemaVersion")).toBe(String(SCHEMA_VERSION));
     w.addTraits(id, [candid]);
     expect(w.traitsFor(id).length).toBe(1);
     const check = new Database(paths.operational(dir), { readonly: true });
@@ -276,7 +276,7 @@ describe("the schema: folded into the unreleased v9", () => {
     db.run("UPDATE meta SET value = '8' WHERE key = 'schemaVersion'");
     db.close();
     const after = store();
-    expect(after.getMeta("schemaVersion")).toBe("9");
+    expect(after.getMeta("schemaVersion")).toBe(String(SCHEMA_VERSION));
     expect(after.traitsFor(id)).toEqual([]);
     expect(after.traitCensus()).toEqual({ memories: 0, nudges: 0 });
     after.addTraits(id, [candid]);

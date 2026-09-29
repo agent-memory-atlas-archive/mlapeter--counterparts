@@ -375,3 +375,18 @@ word, the same exposure preselection already has.
 
 Also: `fadedNamed` now matches only cards archived by the fade (`FADE_REASON`), so a card
 archived for another reason no longer labels the next birth `schema.birth.after-fade`.
+
+## 16. The ordinary-memory arm settles (2026-09-29, contradictions)
+
+`revision.ts`'s last arm was "link only" for an ordinary memory (owner ruling
+2026-09-04): the loser stayed live and in recall, and nothing said it was over. An
+AUTHORED `updates` now carries `how` (`changed` by default) and the arm calls
+`contradictions.ts#settleOnWrite`, which writes a pair and its trail row: `changed` cuts
+the old memory's strength once through `physics.changedFade` and recall labels it
+earlier; `corrected` archives it `corrected`; `open` keeps both and labels each with the
+other. The rows above it are untouched — belief and identity take pressure, a
+current-state fact is replaced, an entity links, protected refuses — and a `how` sent at
+one of them is reported as not applied rather than bent to fit. A swept declaration
+(`applySweep`) sends no `how`: a retelling of a transcript does not settle what the
+experiencer did not, so it stays a link. A journal chapter (`type` episode) stays a link
+too: it is not a claim.

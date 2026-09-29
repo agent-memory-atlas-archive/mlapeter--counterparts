@@ -963,6 +963,18 @@ export const NARRATORS = {
     );
   },
 
+  // ── two memories that disagree (2026-09-29) ────────────────────────────────
+  "contradiction.flagged": (t) => calm(`A dream flagged two memories that disagree (${s(t, "pair") ?? "a pair"}); nobody has said which holds yet.`),
+  "contradiction.settled": (t) => {
+    const how = s(t, "how") ?? "settled";
+    const by = s(t, "actor") ?? "someone";
+    const who = by === "owner" ? "The owner" : by === "session" ? "A session" : `The ${by}`;
+    return how === "open"
+      ? calm(`${who} kept two memories that disagree open, each shown with the other (${s(t, "pair") ?? "a pair"}).`)
+      : notable(`${who} settled a contradiction as ${how}: ${s(t, "holds") ?? "one"} holds over ${s(t, "over") ?? "the other"}.`);
+  },
+  "contradiction.undone": (t) => calm(`A settle was undone (${s(t, "pair") ?? "a pair"}); the pair is unsettled again.`),
+
   // ── being argued with ──────────────────────────────────────────────────────
   "revision.pressure": (t) => {
     const force = n(t, "force") ?? 0;
@@ -1101,6 +1113,10 @@ export const REF_KIND = {
   "dream.ask": "none",
   "band.demoted": "memory",
   "physics.upgrade.census": "none",
+  // A contradiction's rows point at the PAIR (`ctr_…`), which is not a memory.
+  "contradiction.flagged": "none",
+  "contradiction.settled": "none",
+  "contradiction.undone": "none",
 } as const satisfies Record<
   DurableEventName,
   "memory" | "session" | "chunk" | "proposal" | "handoff" | "none"

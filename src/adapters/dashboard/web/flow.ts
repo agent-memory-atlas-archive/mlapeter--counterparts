@@ -459,6 +459,10 @@ export const EVENT_NODE = {
   "band.demoted": "store",
   // The v8 upgrade's census runs in the decay phase.
   "physics.upgrade.census": "sleep",
+  // Contradictions (2026-09-29): a pair argued over, like the revision arm.
+  "contradiction.flagged": "schemas",
+  "contradiction.settled": "schemas",
+  "contradiction.undone": "schemas",
 } as const satisfies Record<DurableEventName, NodeKey>;
 
 export function nodeOf(name: string): NodeKey | null {

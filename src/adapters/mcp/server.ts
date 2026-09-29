@@ -44,6 +44,8 @@
  * No body text, no question text, no note text ever reaches an event.
  */
 import { MCP_RECALL_EVENT } from "../../core/counterpart.js";
+import { CONTRADICTION_TUNABLES, NEIGHBOURS_HINT } from "../../core/contradictions.js";
+import type { Neighbour } from "../../core/contradictions.js";
 import { localDate, parseCalendarDate, todayIn } from "../../core/time.js";
 import type { ChapterResult, Counterpart, DepositResult } from "../../core/counterpart.js";
 import type { SemanticSource } from "../../core/recall/index.js";
@@ -919,6 +921,16 @@ export class McpServer {
   private async noteTool(args: Record<string, unknown>): Promise<ToolResult> {
     if (this.observer) return this.standDown("note");
     const text = args["text"];
+    // SETTLE (2026-09-29, contradictions): two memories that already exist,
+    // settled without writing a new one. With `text` too, both happen.
+    const settleArg = args["settle"];
+    if (settleArg !== undefined && (settleArg === null || typeof settleArg !== "object" || Array.isArray(settleArg))) {
+      return this.refuse("note", "settle-malformed", {
+        detail: "settle is an object: {pair} or {holds, over}, with how (changed, corrected or open) and a short why.",
+      });
+    }
+    const hasText = typeof text === "string" && text.trim().length > 0;
+    if (!hasText && settleArg !== undefined) return this.settleOnly(settleArg as Record<string, unknown>);
     if (typeof text !== "string" || text.trim().length === 0) {
       return this.refuse("note", "text-required", {});
     }
@@ -952,6 +964,9 @@ export class McpServer {
     // validates it, `mint.ts` writes the RESOLVED id — and one that resolves to
     // nothing lands unlinked rather than refusing the note.
     if (typeof args["updates"] === "string") draft["updates"] = args["updates"];
+    // HOW it settles the memory it updates (2026-09-29). Validated by intake:
+    // an unknown kind is refused `HOW_UNKNOWN`, and one without `updates` is dropped.
+    if (args["how"] !== undefined) draft["how"] = args["how"];
     if (salience !== undefined) draft["claimed"] = salience;
     if (Object.keys(dims).length > 0) draft["salience"] = dims;
     Object.assign(draft, dated.fields);
@@ -971,12 +986,114 @@ export class McpServer {
       ownSpanHash,
       ...(model === undefined ? {} : { model }),
     });
+    const neighbours = this.neighboursOf(deposit);
+    // WITH A SETTLE TOO (review of #284, M2): the call is an error only when
+    // NOTHING landed — a refused note beside a settle that landed is not one,
+    // so a retry does not run into `already-settled`.
+    const settle = settleArg === undefined ? null : this.settleOutcome(settleArg as Record<string, unknown>);
     return this.depositResult("note", deposit, {
       ...this.recordFeelings(deposit, feelings.inputs, model),
       ...this.recordAbout(deposit, about.mark),
       ...this.recordTraits(deposit, traits.inputs, model),
       ...reminderEcho(deposit, dated, this.today()),
+      ...this.settledOf(deposit, args["how"] !== undefined),
+      // IN THE PAYLOAD, so it rides in `structuredContent` — which is what
+      // Claude Code hands the model (the #282 lesson, f387f55).
+      ...(neighbours.length === 0 ? {} : { neighbours, neighboursHint: NEIGHBOURS_HINT }),
+      ...(settle === null ? {} : { settle }),
+    }, settle === null ? undefined : !deposit.deposited && settle["ok"] !== true);
+  }
+
+  /**
+   * `note` with `settle` and no `text` (2026-09-29): settle two memories that
+   * already exist — a flagged pair, or two a write showed — and write nothing
+   * else. The settle is `contradictions.ts#settle`'s, attributed to this
+   * session on the trail.
+   */
+  private settleOnly(arg: Record<string, unknown>): ToolResult {
+    const outcome = this.settleOutcome(arg);
+    this.emit("mcp.note.settle", typeof outcome["pair"] === "string" ? outcome["pair"] : undefined, {
+      ok: outcome["ok"] === true,
+      reason: typeof outcome["reason"] === "string" ? outcome["reason"] : null,
     });
+    return this.result({ stored: false, reason: "settle-only", settle: outcome }, outcome["ok"] !== true);
+  }
+
+  /** One settle through the core, as the result carries it. Never throws. */
+  private settleOutcome(arg: Record<string, unknown>): Record<string, unknown> {
+    const str = (v: unknown): string | undefined => (typeof v === "string" && v.trim().length > 0 ? v.trim() : undefined);
+    try {
+      const pair = str(arg["pair"]);
+      const holds = str(arg["holds"]);
+      const over = str(arg["over"]);
+      const out = this.counterpart.settleContradiction({
+        ...(pair === undefined ? {} : { pair }),
+        ...(holds === undefined ? {} : { holds }),
+        ...(over === undefined ? {} : { over }),
+        how: typeof arg["how"] === "string" ? arg["how"] : "",
+        why: typeof arg["why"] === "string" ? arg["why"] : null,
+        actor: "session",
+        actorId: this.session ?? null,
+      });
+      return { ...out };
+    } catch (err) {
+      return { ok: false, reason: "threw", detail: String((err as Error).message ?? err) };
+    }
+  }
+
+  /**
+   * WHAT THE `updates` DID (2026-09-29): on an ordinary memory, how it was
+   * settled or why it was not; on a belief, a core memory, a current-state
+   * fact, an entity or a protected memory, when the writer SENT a `how`, that
+   * it was not applied and which path ran instead. Nothing when nothing was
+   * declared.
+   */
+  private settledOf(deposit: DepositResult, sentHow: boolean): Record<string, unknown> {
+    const r = deposit.revision;
+    if (r === undefined) return {};
+    const o = r.settle;
+    if (o !== undefined) {
+      if (!o.ok) return { settled: { ok: false, reason: o.reason, detail: o.detail } };
+      return {
+        settled: {
+          ok: true,
+          pair: o.pair,
+          how: o.how,
+          ...(o.how === "open" ? { with: r.targetId } : { over: o.over }),
+          ...(o.faded === null ? {} : { faded: { before: o.faded.before, after: o.faded.after } }),
+          ...(o.archived === null ? {} : { archived: o.archived }),
+          ...(o.closed.length === 0 ? {} : { closedFlags: o.closed }),
+          ...(o.note === undefined ? {} : { note: o.note }),
+        },
+      };
+    }
+    if (!sentHow) return {};
+    const why =
+      r.path === "belief"
+        ? "the memory it updates is a belief, which changes by pressure over days"
+        : r.path === "identity"
+          ? `the memory it updates is a core memory, which changes by pressure over days${r.pressurePair === undefined ? "" : `; meanwhile the pair is recorded unsettled (${r.pressurePair}), so recall shows the older one as possibly out of date`}`
+          : r.path === "current-state"
+            ? "the memory it updates is a current-state fact, which is replaced now"
+            : r.reason === "target-is-an-entity"
+              ? "the memory it updates is an entity card, which only links"
+              : r.reason === "protected-refuses-revision"
+                ? "the memory it updates is protected by the owner"
+                : `the update did not reach an ordinary memory (${r.reason})`;
+    return { settled: { ok: false, applied: false, path: r.path, reason: r.reason, detail: `how was not applied: ${why}.` } };
+  }
+
+  /**
+   * THE NEAREST FEW EXISTING MEMORIES of one just stored (2026-09-29), when
+   * any clear the similarity bar — minus the one it updates. Ids, titles and
+   * a short excerpt; empty when nothing is close or nothing was stored.
+   */
+  private neighboursOf(deposit: DepositResult, siblings: readonly string[] = [], room: number = CONTRADICTION_TUNABLES.NEIGHBOURS): readonly Neighbour[] {
+    if (!deposit.deposited || deposit.memoryId === null || room <= 0) return [];
+    // Not the memory it updates, and not a sibling written by the same call
+    // (review of #284, M1): those are this writer's own words, not existing ones.
+    const exclude = [deposit.revision?.targetId, deposit.mint?.updates, ...siblings].filter((x): x is string => typeof x === "string");
+    return this.counterpart.writeNeighbours(deposit.memoryId, { exclude, owner: this.owner }).slice(0, room);
   }
 
   /**
@@ -1538,6 +1655,8 @@ export class McpServer {
         deposited,
         refused: entries.length - deposited,
         outcomes,
+        // One line for the whole dump, when any entry came back with neighbours.
+        ...(outcomes.some((o) => o["neighbours"] !== undefined) ? { neighboursHint: NEIGHBOURS_HINT } : {}),
         ...(handoff === null ? {} : { handoff }),
       },
       deposited === 0,
@@ -1577,6 +1696,7 @@ export class McpServer {
       if (typeof rec["kind"] === "string") draft["kind"] = rec["kind"];
       if (typeof rec["title"] === "string") draft["title"] = rec["title"];
       if (typeof rec["updates"] === "string") draft["updates"] = rec["updates"];
+      if (rec["how"] !== undefined) draft["how"] = rec["how"];
       if (rec["salience"] !== undefined) draft["claimed"] = rec["salience"];
       // A bad dimension does NOT fail the batch and is not silently dropped:
       // the dimensions ride into the draft and `remember/intake` refuses that
@@ -1597,6 +1717,9 @@ export class McpServer {
     const outcomes: Record<string, unknown>[] = [];
     let deposited = 0;
     let duplicates = 0;
+    // The ids this call has written so far, and how many neighbours it listed (M1).
+    const batch: string[] = [];
+    let listed = 0;
     const model = this.sessionModel();
     for (const [n, draft] of entries.entries()) {
       // Feelings that cannot be stored refuse THEIR entry before it mints, so
@@ -1642,6 +1765,10 @@ export class McpServer {
       // "malformed"); intake's own reason rides out, and an unknown kind lists
       // the kinds that exist.
       const malformed = result.malformed ?? null;
+      // Bounded per dump (M1): a long dump shares NEIGHBOURS_PER_CALL between its entries.
+      const neighbours = this.neighboursOf(result, batch, Math.min(CONTRADICTION_TUNABLES.NEIGHBOURS, CONTRADICTION_TUNABLES.NEIGHBOURS_PER_CALL - listed));
+      listed += neighbours.length;
+      if (result.memoryId !== null) batch.push(result.memoryId);
       outcomes.push({
         stored: result.deposited,
         reason: result.reason,
@@ -1653,6 +1780,8 @@ export class McpServer {
         ...this.recordAbout(result, about.mark),
         ...this.recordTraits(result, traits.inputs, model),
         ...reminderEcho(result, dated, this.today()),
+        ...this.settledOf(result, draft["how"] !== undefined),
+        ...(neighbours.length === 0 ? {} : { neighbours }),
       });
     }
     return { outcomes, deposited, duplicates, entries };
@@ -2184,6 +2313,26 @@ export class McpServer {
             false,
           );
         }
+        case "settle": {
+          // THE REFLECTION MAY SETTLE (2026-09-29): two memories it was shown,
+          // with a plain reason; the trail names the reflection.
+          const reflection = args["reflection"];
+          const holds = args["holds"];
+          const over = args["over"];
+          if (typeof reflection !== "string" || typeof holds !== "string" || typeof over !== "string") {
+            return refused("reflection-holds-over-required", "Pass `reflection`, `holds` and `over` (two ids it was shown), `how` and `why`.");
+          }
+          const out = reflections.settle({
+            reflection,
+            session,
+            holds,
+            over,
+            how: typeof args["how"] === "string" ? args["how"] : "",
+            why: typeof args["why"] === "string" ? args["why"] : "",
+          });
+          this.emit("mcp.reflect", reflection, { phase: "settle", ok: out.ok });
+          return this.result({ phase, reflection, settle: { ...out } }, !out.ok);
+        }
         case "told": {
           const reflection = args["reflection"];
           if (typeof reflection !== "string") return refused("reflection-required", "Pass `reflection`, the id the share named.");
@@ -2193,7 +2342,7 @@ export class McpServer {
           return this.result({ phase, reflection, told: true, cited: out.cited }, false);
         }
         default:
-          return refused("phase-unknown", "phase is one of launch, begin, part, finish, told.");
+          return refused("phase-unknown", "phase is one of launch, begin, part, finish, settle, told.");
       }
     } catch (err) {
       return refused("threw", String((err as Error).message ?? err));
@@ -2716,7 +2865,7 @@ export class McpServer {
     }
   }
 
-  private depositResult(tool: string, deposit: DepositResult, extra: Record<string, unknown> = {}): ToolResult {
+  private depositResult(tool: string, deposit: DepositResult, extra: Record<string, unknown> = {}, isError?: boolean): ToolResult {
     this.emit(`mcp.${tool}`, deposit.memoryId ?? undefined, {
       stored: deposit.deposited,
       reason: deposit.reason,
@@ -2733,7 +2882,7 @@ export class McpServer {
         ...(lifted ? { salienceLifted: true } : {}),
         ...extra,
       },
-      !deposit.deposited,
+      isError ?? !deposit.deposited,
     );
   }
 

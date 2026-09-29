@@ -298,6 +298,16 @@ recall threshold ships measured, or disabled) · **§2.9** (context assembly log
 showed, by id) · **§2.18** (the injection ceiling is a host capability) · **§2.20** (the
 decision record carries ids, never bodies).
 
+## 6b. A memory's standing is a label (2026-09-29, contradictions)
+
+**[M]** Recall renders a memory's standing in a contradiction (`standing.ts`, read off
+`contradictions`): the OLDER of an unsettled pair as `Unsettled — may be out of date, see
+[id]`, a `changed` one as `Earlier (now [id])` (and `(earlier: [id])` after the one that
+holds), a `corrected` one as `Corrected by [id]`, an `open` pair as `(disagrees with
+[id])`. Outside the clip, like `Journal:` — a label, never a filter: nothing about what
+is recallable, ranked or gated moves. The deliberate path carries the same as a
+`standing` field, and by id a replaced row says `replaced by [id]`.
+
 ## 7. Open questions
 
 1. **Is per-session gate state the right lifetime?** Persisting it is this contract's

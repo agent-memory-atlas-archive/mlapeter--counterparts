@@ -1730,3 +1730,17 @@ Working defaults, held lightly (dream NOTES has the why).
 - **Still open:** the dashboard's vocabulary does not name `dream.night` or the two latch
   events yet (every reader guards unknown names). The host-mode page writer's child has the
   same exposure finding 3 describes and is not locked down here.
+
+## 2026-09-29 — doctor's Contradictions and Upgrade to v10 lines
+
+`contradictionFindings`: green, always printed — over the last 7 lived days, how many
+pairs a dream flagged, how many settled and how (changed, corrected, open) and by whom
+(sessions, dreams, reflections, the page writer, the owner), how many undone; standing
+now, how many open and how many unsettled with both memories live (pointing at
+`counterparts settle`). `upgradeV10Findings`: what the v10 carry found (flags, pairs,
+already raised, still standing); silent on a store born at v10. Both are read-only table
+and meta reads. The awake raise line (`dreams.raiseLines`) now names the pair's id and
+the `note` settle.
+
+After the review of #284: the Contradictions line counts a pair recorded while pressure
+builds on a core memory (`source` pressure) as flagged, beside a dream's flags.

@@ -101,9 +101,12 @@ name/alias resolution; birth and death telemetry.
    A **belief** and an **identity element** accumulate PRESSURE and are superseded only
    past the bar. A **current-state** row — a "now" fact — is REPLACED immediately with
    lineage (`replaceCurrentState`), because world-state flips on one clear correction
-   (§4.3) and a stale status has no reason to climb a bar. An **entity** row and any
-   **ordinary memory** are LINKED and nothing else (`meta.updates` already records the
-   relation). A **protected** element refuses every one of those paths. Authored
+   (§4.3) and a stale status has no reason to climb a bar. An **entity** row is LINKED and
+   nothing else (`meta.updates` already records the relation). An **ordinary memory** is
+   SETTLED when an author declared it (2026-09-29, `src/core/contradictions.ts`): `how` is
+   `changed` (the default — one strength cut, labelled earlier), `corrected` (archived:
+   out of recall, readable by its id) or `open` (both kept); a SWEPT declaration carries no
+   `how` and stays a link. A **protected** element refuses every one of those paths. Authored
    declarations count for more than swept ones through the PHYSICS alone — a fallback
    challenger's claim was already cut at the minting seam — and no second weighting
    exists here. A CONFIRMATION (the engine matched a restatement rather than an author

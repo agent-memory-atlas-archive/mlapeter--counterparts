@@ -42,6 +42,7 @@
  */
 import { StoreError } from "./errors.js";
 import { hashText } from "./prose.js";
+import { unfade } from "../physics/index.js";
 import type { Db } from "./db.js";
 import type { MemoryRow } from "./operational.js";
 import type { RemovalNote, Store } from "./index.js";
@@ -170,7 +171,12 @@ export function chaseRemoved(store: Store, id: string): ChaseReport {
     throw new StoreError("REMOVAL_NOT_DARK", { id, site: "chaseRemoved" });
   }
 
-  return access.ownerMutate("chaseRemoved", (db) => {
+  // What the pairs' unwinding touched (v10, S6): counted for the report, and
+  // the unarchived rows re-indexed after the commit, box 2 first.
+  let restoredFade = 0;
+  let pairsGone = 0;
+  const unarchived: string[] = [];
+  const report = access.ownerMutate("chaseRemoved", (db) => {
     const row = access.rawRow(id);
     const already = db.get<{ n: number }>(
       "SELECT COUNT(*) AS n FROM removal_tombstone WHERE memory_id = ?",
@@ -222,6 +228,60 @@ export function chaseRemoved(store: Store, id: string): ChaseReport {
     const reflections = redactReflections(db, id, row?.title ?? null, row?.body ?? "");
     db.run("UPDATE dream_changes SET ref = NULL WHERE ref = ?", id);
     db.run("UPDATE dream_changes SET ref2 = NULL WHERE ref2 = ?", id);
+    // v10: its contradiction pairs go, and their trail with them — a settle's
+    // `why` is words about the two memories. FIRST, THE OTHER MEMORY IS NOT
+    // STRANDED (review of #284, S6; working default): a standing settle is put
+    // back before its record goes — a `changed` memory's fade has that
+    // settle's factor divided out, a `corrected` one comes back into recall,
+    // and the flags it closed through itself are unsettled again. Removing the
+    // correction is read as "the correction was wrong", and the owner can
+    // settle the survivor afresh. A store without the tables has nothing here.
+    if (db.get<{ n: number }>("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = 'contradictions'")?.n) {
+      const pairs = db.all<{ id: string; state: string; via: string | null }>(
+        "SELECT id, state, via FROM contradictions WHERE a = ? OR b = ?",
+        id,
+        id,
+      );
+      for (const pair of pairs) {
+        if (pair.state === "settled" && pair.via === null) {
+          const last = db.get<{ detail: string }>(
+            "SELECT detail FROM contradiction_settles WHERE pair_id = ? AND action = 'settle' AND undone = 0 ORDER BY seq DESC LIMIT 1",
+            pair.id,
+          );
+          let d: Record<string, unknown> = {};
+          try {
+            d = JSON.parse(last?.detail ?? "{}") as Record<string, unknown>;
+          } catch {
+            d = {};
+          }
+          const fade = d["fade"] as { id?: unknown; factor?: unknown } | undefined;
+          if (fade !== undefined && typeof fade.id === "string" && fade.id !== id && typeof fade.factor === "number") {
+            const now = db.get<{ fade: number }>("SELECT fade FROM memories WHERE id = ?", fade.id)?.fade ?? 1;
+            db.run("UPDATE memories SET fade = ? WHERE id = ?", unfade(now, fade.factor), fade.id);
+            restoredFade += 1;
+          }
+          const archived = d["archived"];
+          if (typeof archived === "string" && archived !== id) {
+            db.run(
+              `UPDATE memories SET archived = 0, archived_reason = NULL, updated_at = ?
+                WHERE id = ? AND archived = 1 AND archived_reason = 'corrected' AND superseded_by IS NULL`,
+              Date.now(),
+              archived,
+            );
+            if ((db.get<{ n: number }>("SELECT changes() AS n")?.n ?? 0) > 0) unarchived.push(archived);
+          }
+        }
+        db.run("DELETE FROM contradiction_settles WHERE pair_id = ?", pair.id);
+        db.run(
+          `UPDATE contradictions SET state = 'unsettled', how = NULL, holds = NULL, over = NULL, via = NULL,
+                  settled_day = NULL, raised_day = NULL, updated_at = ? WHERE via = ?`,
+          Date.now(),
+          pair.id,
+        );
+        db.run("DELETE FROM contradictions WHERE id = ?", pair.id);
+        pairsGone += 1;
+      }
+    }
 
     // Version rows stay (a successor's predecessor pointer lives here) and lose
     // every word they held. `reason`, `version_day` and `successor_id` are
@@ -299,11 +359,15 @@ export function chaseRemoved(store: Store, id: string): ChaseReport {
         { surface: "operational.versions", count: versions },
         ...(journals > 0 ? [{ surface: "operational.dreams", count: journals }] : []),
         ...(reflections > 0 ? [{ surface: "operational.reflections", count: reflections }] : []),
+        ...(pairsGone > 0 ? [{ surface: "operational.contradictions", count: pairsGone }] : []),
+        ...(restoredFade + unarchived.length > 0 ? [{ surface: "operational.contradictions.restored", count: restoredFade + unarchived.length }] : []),
       ],
       survives: ["removal_record", "deny-list", "removal_tombstone"],
       noop,
     };
   });
+  for (const back of unarchived) access.reindexLexical(back);
+  return report;
 }
 
 /** What a redacted dream journal says instead, title and entry. */

@@ -198,6 +198,7 @@ import { repairDates } from "./repair-dates.js";
 import type { Confidence } from "./repair-dates.js";
 import { NO_PAGE_LINES, bodyFrom, pageLines, versionLines, writeLines } from "./self-page.js";
 import { coreListLines, dreamListLines, dreamShowLines, dreamingSettingWords } from "./dream-core.js";
+import { settleListLines } from "./settle.js";
 import { DREAMING_SETTINGS, NIGHT_RUN_FINISHES } from "../../core/dream/index.js";
 import { REFLECTED_FEELING_KEY } from "../../core/sleep/index.js";
 // The console's shared manners (2026-09-21): is there a person here, ask them,
@@ -308,6 +309,10 @@ export const COMMANDS = [
   // under observer, and the write refuses at the core's own seam.
   "dream",
   "core",
+  // Contradictions (2026-09-29): what is unsettled and what was settled, and
+  // the owner's settle and undo. Reads and writes, like `dream`; the write
+  // refuses at the core's own seam under observer.
+  "settle",
   // The owner's window, started on the store the CONFIGURATION names — no
   // `--dir` to get wrong, and the browser opened for you (2026-09-22, item 4).
   // `counterparts-dashboard serve` is still there and still refuses an unnamed
@@ -720,6 +725,7 @@ export const COMMAND_FLAGS: Record<Command, readonly string[]> = {
   "self-page": ["write", "file", "stdin", "reason", "versions", "version", "restore", "clear", "if-version"],
   dream: ["list", "show", "undo", "all", "setting"],
   core: ["list", "demote", "reason", "reflected-feeling"],
+  settle: ["list", "pair", "holds", "against", "how", "why", "undo"],
   // `--config` because the store it opens is the one the CONFIGURATION names —
   // that is the whole point of the command over `counterparts-dashboard serve`,
   // which refuses until you name a store. `--dir` still parses (it is common)
@@ -787,6 +793,8 @@ export const COMMAND_BLURB: Record<Command, string> = {
     "What each dream did, and its undo — and what the waking self made of it. With no flags (or --list), the newest 20 dreams (--list --all for every one): date, state, title and what changed, then the recent reflections; --show <id> prints one dream's journal, every change it made and the reflection after it (--show <rfl_…> prints one reflection: its questions, entry, what it rests on and its morning share); --undo <id> reverses that dream's whole batch (merges come apart, links and gists go, replays and nominations are taken back) and keeps its journal, marked undone — a reflection is lived and stays. Reading works under observer; --undo refuses there.",
   core:
     "The core — the memories about me, about us and about the owner that do not fade. With no flags (or --list), what it holds and which lane carried each one there, what dreams have nominated, and what you sent back; --demote <id> --reason \"...\" sends one back to ordinary fading from today, records why, and keeps the lanes from promoting it again; --reflected-feeling on|off opens or closes the core to reflection alone. On (the default): a feeling a reflection records later and a reflection citing a memory both count toward the fast lane, and a reflection may re-label what a memory is about either way — each re-label is recorded with its reason, and one into me, us or the owner is told in the next morning share. Off: nothing reaches the core on a reflection alone — the fast lane needs a feeling felt at the time (not one a reflection recorded later) and an ordinary use after a gap (not a reflection citing it), and a reflection may only move what a memory is about toward work or world. Reading works under observer; the two changes refuse there.",
+  settle:
+    "Two memories that disagree. With no flags (or --list), the pairs nobody has settled — a dream flags them — and the ones settled lately: how, which holds, who settled it and why. --pair <id> --holds <memory id> --how changed|corrected|open --why \"...\" settles one as you (or --holds <id> --against <id> for two memories no dream flagged): changed — both were true at their time, the older fades once and is shown as earlier; corrected — the older was wrong, it leaves recall and stays readable by its id; open — a real disagreement, both kept and shown together. No memory is rewritten. --undo <pair> reverses a settle: the strength comes back, a corrected memory comes back into recall, and the pair is unsettled again. Reading works under observer; the two changes refuse there.",
   dashboard:
     "Open the dashboard in your browser: the web view of the store your configuration names, served on 127.0.0.1 and nowhere else. Ctrl-C stops it. Looking is read-only — it strengthens nothing and deposits nothing. What you do there on purpose (write a note, remove a memory, back up, …) runs through these same commands, and a removal asks you to type the id back.",
   version: "The version of Counterparts you have. It opens nothing.",
@@ -812,6 +820,7 @@ const COMMAND_ARGS: Partial<Record<Command, string>> = {
   help: " [advanced | <command>]",
   dream: " [--list [--all] | --show <id> | --undo <id>]",
   core: " [--demote <id> --reason \"...\" | --reflected-feeling on|off]",
+  settle: " [--list | --pair <id> --holds <id> --how changed|corrected|open --why \"...\" | --undo <pair>]",
 };
 
 /**
@@ -1029,6 +1038,17 @@ const DREAM_FLAG_HELP: Record<string, string> = {
     "auto, ask or off — the nightly run (page writer, dream, reflection). ask (the default): the first session of a day shows you the question in the terminal and waits for you to say \"dream\" (or \"dream on your own\", which turns on auto); auto: the first session of a day starts it by itself, in a separate windowless claude -p in the background, and says so in one line; off: no dreams. `counterparts dream` prints the setting.",
 };
 
+/** `settle`'s own seven (2026-09-29): `--list` and `--undo` mean something else on other pages. */
+const SETTLE_FLAG_HELP: Record<string, string> = {
+  list: "what is unsettled, and what was settled lately — the default",
+  pair: "the pair to settle, by its id (ctr_…), as the list shows it",
+  holds: "the memory that holds now (changed, corrected); with --pair, one of its two",
+  against: "without --pair: the memory it changes, corrects or disagrees with",
+  how: "changed (both were true at their time: the older fades once, shown as earlier), corrected (the older was wrong: out of recall, readable by its id) or open (both kept, shown together)",
+  why: "why, in a short line — kept on the pair's record",
+  undo: "reverse one settle, by the pair's id (the id follows the flag): strength back, a corrected memory back in recall, the pair unsettled again",
+};
+
 /** `core`'s own four. */
 const CORE_FLAG_HELP: Record<string, string> = {
   list: "what the core holds, with lanes, nominations and demotions — the default",
@@ -1074,7 +1094,9 @@ export function commandHelp(command: Command): string {
                 ? DREAM_FLAG_HELP
                 : command === "core"
                   ? CORE_FLAG_HELP
-                  : {};
+                  : command === "settle"
+                    ? SETTLE_FLAG_HELP
+                    : {};
   const flagLine = (name: string): string => {
     const shown = `--${name}${VALUED_FLAGS.includes(name) ? " <value>" : ""}`;
     return `  ${shown.padEnd(20)} ${override[name] ?? FLAG_HELP[name] ?? "(undocumented)"}`;
@@ -1133,6 +1155,11 @@ const VALUED_FLAGS: readonly string[] = [
   "if-version",
   "show",
   "demote",
+  "pair",
+  "holds",
+  "against",
+  "how",
+  "why",
 ];
 
 /** Levenshtein, small and local. Only ever used to say "did you mean". */
@@ -1327,6 +1354,13 @@ export function parse(argv: readonly string[]): Parsed {
       // --undo` reuses `start-fresh`'s boolean and takes the id positionally.
       show: { type: "string" },
       demote: { type: "string" },
+      // `settle`'s five valued flags (2026-09-29): strings, so a trailing flag
+      // is a refusal rather than a `true` read as "none named".
+      pair: { type: "string" },
+      holds: { type: "string" },
+      against: { type: "string" },
+      how: { type: "string" },
+      why: { type: "string" },
       // `core --reflected-feeling on|off` (2026-09-27): a string, so a bare
       // flag is a refusal rather than a `true` read as a choice.
       "reflected-feeling": { type: "string" },
@@ -1794,6 +1828,8 @@ export async function run(argv: readonly string[], opts: RunOptions): Promise<nu
         return dreamCommand(dir, io, parsed, observer, typeof parsed.flags["dir"] === "string");
       case "core":
         return coreCommand(dir, io, parsed, observer, typeof parsed.flags["dir"] === "string");
+      case "settle":
+        return settleCommand(dir, io, parsed, observer, typeof parsed.flags["dir"] === "string");
     }
   } catch (err) {
     io.err(upgradePending(err) ?? `${command} failed: ${describeDirRefusal(err)}`);
@@ -2090,6 +2126,99 @@ function dreamCommand(dir: string, io: Io, parsed: Parsed, observer: boolean, na
       return EXIT.ok;
     }
     for (const line of dreamListLines(counterpart, parsed.flags["all"] === true ? "all" : undefined)) io.out(line);
+    return EXIT.ok;
+  } finally {
+    counterpart.close();
+  }
+}
+
+/**
+ * `settle` — contradictions, the owner's door (2026-09-29). The list reads
+ * under any stance; a settle and an undo go through `Counterpart
+ * .settleContradiction` / `.undoContradiction`, which decide everything and
+ * refuse under observer. The owner is the actor on the trail.
+ */
+function settleCommand(dir: string, io: Io, parsed: Parsed, observer: boolean, namedDir: boolean): number {
+  if (!storeExists(dir)) {
+    io.err(`No store at ${dir}. Run 'counterparts init${namedDir ? ` --dir ${dir}` : ""}' to create one.`);
+    return EXIT.usage;
+  }
+  const str = (name: string): string | undefined => {
+    const v = parsed.flags[name];
+    return typeof v === "string" && v.trim().length > 0 ? v.trim() : undefined;
+  };
+  const undo = parsed.flags["undo"] === true;
+  const how = str("how");
+  const writing = undo || how !== undefined || str("pair") !== undefined || str("holds") !== undefined || str("against") !== undefined;
+  if (undo && how !== undefined) {
+    io.err("refused: --undo and --how are two different things to do. Pass one.");
+    return EXIT.usage;
+  }
+  if (!writing) {
+    const counterpart = openCounterpart(dir, true);
+    try {
+      for (const line of settleListLines(counterpart)) io.out(line);
+      return EXIT.ok;
+    } finally {
+      counterpart.close();
+    }
+  }
+  if (observer) {
+    io.err("refused: this console is an observer; it reads and changes nothing. Nothing was settled.");
+    return EXIT.refused;
+  }
+  const counterpart = openCounterpart(dir, observer);
+  try {
+    if (undo) {
+      const id = parsed.positional[0];
+      if (id === undefined || id.length === 0) {
+        io.err("refused: --undo needs the pair's id after it (counterparts settle lists them).");
+        return EXIT.usage;
+      }
+      const out = counterpart.undoContradiction({ pair: id, actor: "owner", why: str("why") ?? null });
+      if (!out.ok) {
+        io.err(`refused: ${out.reason} — ${out.detail} Nothing was undone.`);
+        return EXIT.refused;
+      }
+      io.out(
+        out.state === "unsettled"
+          ? `Undid the settle of ${out.pair} (${out.how ?? "settled"}); the pair is unsettled again — a question to settle.`
+          : `Undid the settle of ${out.pair} (${out.how ?? "settled"}); the pair is withdrawn — nobody had flagged it, so nothing is left to settle.`,
+      );
+      if (out.restored !== null) io.out(`  ${out.restored}'s strength is back to what it was.`);
+      if (out.unarchived !== null) io.out(`  ${out.unarchived} is back in recall.`);
+      if (out.reopened.length > 0) io.out(`  Reopened too: ${out.reopened.join(", ")}.`);
+      if (out.note !== undefined) io.out(`  ${out.note}`);
+      return EXIT.ok;
+    }
+    if (how === undefined) {
+      io.err("refused: say how it settles: --how changed, corrected or open.");
+      return EXIT.usage;
+    }
+    const pair = str("pair");
+    const holds = str("holds");
+    const over = str("against");
+    const out = counterpart.settleContradiction({
+      ...(pair === undefined ? {} : { pair }),
+      ...(holds === undefined ? {} : { holds }),
+      ...(over === undefined ? {} : { over }),
+      how,
+      why: str("why") ?? null,
+      actor: "owner",
+    });
+    if (!out.ok) {
+      io.err(`refused: ${out.reason} — ${out.detail} Nothing was settled.`);
+      return EXIT.refused;
+    }
+    io.out(
+      out.how === "open"
+        ? `Settled ${out.pair}: open — both memories stay, each shown with the other.`
+        : `Settled ${out.pair}: ${out.how} — ${String(out.holds)} holds over ${String(out.over)}.`,
+    );
+    if (out.faded !== null) io.out(`  ${out.faded.id} fades once (strength ${String(out.faded.before)} → ${String(out.faded.after)}) and is shown as earlier; use can hold it.`);
+    if (out.archived !== null) io.out(`  ${out.archived} leaves recall; it stays readable by its id (counterparts ask --id ${out.archived}).`);
+    if (out.note !== undefined) io.out(`  ${out.note}`);
+    io.out(`  Undo: counterparts settle --undo ${out.pair}`);
     return EXIT.ok;
   } finally {
     counterpart.close();
@@ -5429,6 +5558,9 @@ async function recallCommand(
       // rides in front of the kind, where the tier already is.
       const journal = m.journal ? "[journal] " : "";
       io.out(`  ${m.id}  [${m.tier}] ${journal}${m.kind}${m.title === null ? "" : ` — ${m.title}`}`);
+      // ITS STANDING, before the words (2026-09-29): earlier, corrected by,
+      // replaced by, disagrees with, unsettled — so an old memory never reads as current.
+      if (m.standing !== undefined) io.out(`    (${m.standing})`);
       for (const line of m.body.split("\n")) io.out(`    ${line}`);
       // The feelings on it, `you: … · me: …` (emotion part A). Read-only, and
       // a store that cannot answer simply shows none.

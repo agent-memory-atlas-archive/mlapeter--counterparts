@@ -63,8 +63,10 @@ dreamer is the model (a background agent the session launches), outside this pro
   agent the session launches with its own tools.
 - **No dreaming nobody chose.** The default asks the person, in their terminal; only the
   owner's `auto` lets the host start the run on its own (2026-09-29).
-- **No settling of contradictions.** A dream flags a pair; the pair is raised awake next
-  session, and to the owner when it is about him.
+- **Settling is mostly not the dream's** (2026-09-29, held lightly). A dream flags a pair
+  (an unsettled row in `contradictions`); the pair is raised awake next session, and to
+  the owner when it is about him. A dream MAY settle a pair it was shown when the reason
+  is plain (`settle`, `why` required), and the trail names the dream.
 - **No promotion.** A dream nominates; only a core lane at consolidation promotes.
 
 ## 5. Contract
@@ -138,8 +140,9 @@ dreamer is the model (a background agent the session launches), outside this pro
 - Never in the host-mode page writer's headless session. (The reflection that follows a
   dream is the DREAMER's, in the background agent the session launched — not the page
   writer's child, and not a phase of the dream: see §5.4.)
-- A contradiction a dream flagged is raised the same way, once, when both memories are
-  showable.
+- An unsettled pair (a dream's flag, or a settle that was undone) is raised the same way,
+  once — the pair's `raised_day` is the latch since v10 — when both memories are
+  showable, naming the pair's id and the `note` settle.
 - **The ask, previewed** (2026-09-27, `previewAsk`, for the dashboard's Tonight box):
   `{ wouldAsk, reason, newSince }` from the same gate `status` and `askLine` run — the
   same dreamed / declined / asked-today checks, the same showable filter, the same
@@ -205,7 +208,10 @@ dreamer is the model (a background agent the session launches), outside this pro
   inherits their links), `link` (both ways, proposed at `LINK_WEIGHT` through
   `associate`, only where there is room, since 2026-09-28), `replayed` (a
   return at `DREAM_RETURN_WEIGHT`, never a use), `gist` (source `dreamed`, citing and
-  linked to its sources, salience capped at `DREAMED_CLAIM_CEILING`), `contradiction`,
+  linked to its sources, salience capped at `DREAMED_CLAIM_CEILING`), `contradiction`
+  (an unsettled pair in `contradictions`; a pair already standing is left as it is),
+  `settle` (2026-09-29: two memories it was shown, `holds` / `over` / `how` / `why`,
+  through `contradictions.ts#settle`; undone with the dream unless settled since),
   `feeling-now` (the self's feeling today, capped at the memory's peak; the same
   feeling twice in one dream is one record), `nominate-core`
   (the dream's SUGGESTION of what a memory is about — any memory not already core,

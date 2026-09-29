@@ -118,7 +118,8 @@ describe("counterparts mechanisms", () => {
       Salience: "●",
       Emotion: "◐",
       Forgetting: "●",
-      Interference: "○",
+      // Partly built since 2026-09-29 (merges, flags, the changed fade): idle here.
+      Interference: "◐",
       Retrieval: "●",
       Association: "◐",
       // Built, holding nothing dated: idle, never "not built" (2026-09-26).

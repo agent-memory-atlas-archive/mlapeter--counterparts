@@ -8,8 +8,12 @@ export default {
   name: "Interference",
   short: "Interference",
   tagline: "New memories crowd out old ones. Old ones distort new ones. They compete.",
-  does: "Similar memories would compete for the same place. Not built yet.",
-  explainer: "Not built yet. Today only exact duplicates are merged; similar memories sit side by side without competing.",
-  built: [],
-  inDevelopment: ["Nothing yet: only byte-identical memories merge, and similar ones sit side by side without competing."],
+  does: "Near-copies merge in a dream; an earlier memory fades under the newer one.",
+  explainer: "Partly built: a dream merges near-copies, and two memories that disagree are flagged and settled — the older fades, leaves recall, or both are kept. Similar memories do not yet compete when they are recalled.",
+  built: [
+    "A dream merges near-copies into one memory, keeping the originals readable.",
+    "Two memories that disagree are flagged as a pair, and shown as unsettled until someone settles them.",
+    "A memory settled as changed fades once under the one that holds.",
+  ],
+  inDevelopment: ["Similar memories competing when they are recalled (one pushing the other down)."],
 };

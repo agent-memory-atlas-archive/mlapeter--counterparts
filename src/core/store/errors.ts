@@ -83,6 +83,12 @@ export type StoreErrorCode =
   | "ABOUT_UNKNOWN"
   /** v9: an about-mark on a schema row or a removed memory. `detail` carries `{ id }`. */
   | "ABOUT_NOT_A_MEMORY"
+  /** v10: a contradiction pair of a memory with itself. `detail` carries `{ id }`. */
+  | "CONTRADICTION_SAME_MEMORY"
+  /** v10: a settle named no pair and not both of its memories. */
+  | "CONTRADICTION_PAIR_REQUIRED"
+  /** v10: no contradiction pair has this id. `detail` carries `{ id }`. */
+  | "CONTRADICTION_UNKNOWN"
   | "ID_MALFORMED"
   | "ID_UNKNOWN"
   | "ID_CYCLE"

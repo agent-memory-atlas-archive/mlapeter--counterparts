@@ -270,6 +270,17 @@ export const TUNABLES = {
    *  (scar §2.4: "did not fire" and "was never asked" are different records). */
   SYMMETRY_MIN_SAMPLE: 20,
 
+  // --- §5.12 a changed fact fades once (2026-09-29, contradictions) ---
+  /**
+   * What a memory's DECAY is multiplied by, once, when it is settled as
+   * `changed` — true at its time, not now ("used React, now Vue"). 0.5 halves
+   * its strength today; ordinary forgetting does the rest, and a real use
+   * re-anchors the curve like any other (FadeMem's graded weakening, not a
+   * switch). Working default from the 2026-09-29 brief ("start around half").
+   * CAL.
+   */
+  CHANGED_FADE: 0.5,
+
   // --- §5.2 per-kind physics [v1 §4.3] ---
   /** CAL, all of it. v1 recorded which ARM DRIVES, not a weight, so every
    *  non-driving omega below is a proposed reading, not a measurement
@@ -620,7 +631,73 @@ export function decay(m: MemoryPhysics, d: number, shape: DecayShape = TUNABLES.
 }
 
 export function strength(m: MemoryPhysics, d: number, shape: DecayShape = TUNABLES.DECAY_SHAPE): number {
-  return clamp01(base(m) * decay(m, d, shape));
+  return clamp01(base(m) * decay(m, d, shape) * fadeOf(m));
+}
+
+/**
+ * The memory's FADE (§5.12): a multiplier on strength, 1 for every memory
+ * until a settle marks it `changed`. Outside `base` (guarantee 3 holds: base is
+ * still monotone) and outside `decay` (guarantee 5: decay is still a pure
+ * function of d and the last use). Absent, or anything but a number in (0, 1],
+ * reads as 1.
+ */
+export function fadeOf(m: Pick<MemoryPhysics, "fade">): number {
+  const f = m.fade;
+  return typeof f === "number" && Number.isFinite(f) && f > 0 && f < 1 ? f : 1;
+}
+
+// ---------------------------------------------------------------------------
+// §5.12 A changed fact fades once
+// ---------------------------------------------------------------------------
+
+/** What `changedFade` proposes: the new fade, and strength today before and after. */
+export interface FadeOutcome {
+  /** The patch: the memory's fade after this settle (its fade before x `factor`). */
+  readonly fade: number;
+  /** The factor applied — what an undo divides back out. */
+  readonly factor: number;
+  readonly before: number;
+  readonly after: number;
+}
+
+/**
+ * ONE STRENGTH CUT FOR A MEMORY SETTLED AS `changed` (2026-09-29; reworked
+ * after the review of #284): the memory's `fade` multiplier is multiplied by
+ * `factor`, so its strength today — and on every later day — is `factor` x
+ * what it would have been. Nothing else moves: not `lastUsedDay` (the prune's
+ * dwell still counts from the real last use, and the history stays true), not
+ * `base`, not the uses. Ordinary decay carries on; a use resets decay as always
+ * and leaves the fade alone, so a used "earlier" memory is held at the cut
+ * height. Two settles multiply; an undo divides its own factor back out, in
+ * any order. Null when there is nothing to cut: a core memory (decay-exempt;
+ * its path is pressure) or a factor of 1 or more.
+ */
+export function changedFade(
+  m: MemoryPhysics,
+  d: number,
+  factor: number = TUNABLES.CHANGED_FADE,
+  shape: DecayShape = TUNABLES.DECAY_SHAPE,
+): FadeOutcome | null {
+  if (m.promotedIdentity) return null;
+  if (!Number.isFinite(factor) || factor <= 0 || factor >= 1) return null;
+  const fade = fadeOf(m) * factor;
+  return {
+    fade,
+    factor,
+    before: strength(m, d, shape),
+    after: strength({ ...m, fade }, d, shape),
+  };
+}
+
+/**
+ * THE UNDO OF ONE `changedFade`: the fade with `factor` divided back out,
+ * snapped to exactly 1 when that is what is left (floating point), and never
+ * above 1.
+ */
+export function unfade(fade: number, factor: number): number {
+  if (!Number.isFinite(factor) || factor <= 0) return fade;
+  const next = fade / factor;
+  return next >= 1 - 1e-9 ? 1 : next;
 }
 
 // ---------------------------------------------------------------------------

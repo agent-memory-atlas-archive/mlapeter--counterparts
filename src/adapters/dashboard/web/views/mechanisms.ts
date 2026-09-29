@@ -152,7 +152,15 @@ export const LEADS: Readonly<Record<string, readonly LeadCandidate[]>> = {
     lead(["changes"], "change a dream made", "changes dreams made"),
     lead(["dreams"], "dream", "dreams"),
   ],
-  reconsolidation: [lead(["pressure"], "correction weighed against an old memory", "corrections weighed against old memories")],
+  reconsolidation: [
+    lead(["pressure"], "correction weighed against an old memory", "corrections weighed against old memories"),
+    lead(["settled"], "contradiction settled", "contradictions settled"),
+  ],
+  interference: [
+    lead(["dreamMerged"], "near-copy merged in a dream", "near-copies merged in a dream"),
+    lead(["flagged"], "pair that disagrees flagged", "pairs that disagree flagged"),
+    lead(["faded"], "earlier memory faded under a newer one", "earlier memories faded under newer ones"),
+  ],
   "episodic-semantic": [lead(["gist"], "pattern dreamed into a memory of its own", "patterns dreamed into memories of their own")],
 };
 

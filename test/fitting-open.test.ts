@@ -15,6 +15,7 @@ import { McpServer, RECALL_BODY_CHARS, RECALL_ID_RESULT_CHARS } from "../src/ada
 import { recordSession } from "../src/adapters/sessions.js";
 import { Counterpart } from "../src/core/counterpart.js";
 import { MIND_SEEN_PREFIX, mindRanked, noteMindShown } from "../src/core/dream/mind.js";
+import { flag } from "../src/core/contradictions.js";
 import { readIndex, wireChars } from "../src/core/fit/index.js";
 import { onMyMind } from "../src/core/dream/index.js";
 import { readCursor, runDecay, runPrune } from "../src/core/sleep/index.js";
@@ -99,6 +100,8 @@ describe("open lists read by open state, not through the newest N", () => {
     const b = mem(c, "The deploy runs the migration last.");
     dreamRow(c, "drm_old", "2026-09-01", 0);
     c.store.recordDreamChange("drm_old", { action: "contradiction", ref: a, ref2: b, detail: {} });
+    // v10: the flag is a pair; what raises and what "my mind" reads.
+    flag(c.store, { x: a, y: b, source: "dream", dreamId: "drm_old" });
     for (let i = 1; i <= 11; i += 1) dreamRow(c, `drm_${String(i).padStart(3, "0")}`, "2026-09-02", i);
     expect(c.store.dreams({ limit: 10 }).some((d) => d.id === "drm_old")).toBe(false);
     const mind = onMyMind(c.store, { today: "2026-09-12", day: c.store.livedDay(), showable: () => true, owner: true });
@@ -223,6 +226,8 @@ describe("review of #278: a flagged pair habituates on my mind, and rises again 
     c.store.openDream({ id: "drm_flag", session: "s", day: c.store.livedDay(), date: "2026-09-01", shown: [] });
     c.store.updateDream("drm_flag", { state: "journaled" });
     c.store.recordDreamChange("drm_flag", { action: "contradiction", ref: a, ref2: b, detail: {} });
+    const flagged = flag(c.store, { x: a, y: b, source: "dream", dreamId: "drm_flag" });
+    const pairId = flagged.ok ? flagged.pair : "";
     const input = { today: "2026-09-02", day: c.store.livedDay(), showable: () => true, owner: true };
     const score = (): number => {
       const items = mindRanked(c.store, input).items;
@@ -231,7 +236,7 @@ describe("review of #278: a flagged pair habituates on my mind, and rises again 
     expect(score()).toBe(0);
     const [item] = mindRanked(c.store, input).items;
     noteMindShown(c.store, item === undefined ? [] : [item], c.store.livedDay());
-    const seen = JSON.parse(c.store.getMeta(`${MIND_SEEN_PREFIX}drm_flag.1`) ?? "{}") as { times: number };
+    const seen = JSON.parse(c.store.getMeta(`${MIND_SEEN_PREFIX}${pairId}`) ?? "{}") as { times: number };
     expect(seen.times).toBe(1);
     // Still listed (no hide, no hard limit), at half the weight.
     expect(mindRanked(c.store, input).items.some((m) => m.kind === "unsettled")).toBe(true);
@@ -239,7 +244,7 @@ describe("review of #278: a flagged pair habituates on my mind, and rises again 
     c.store.advanceClock("2026-09-02");
     c.store.updatePhysics(a, { ...c.store.physicsOf(a), lastUsedDay: c.store.livedDay() });
     noteMindShown(c.store, item === undefined ? [] : [item], c.store.livedDay());
-    expect((JSON.parse(c.store.getMeta(`${MIND_SEEN_PREFIX}drm_flag.1`) ?? "{}") as { times: number }).times).toBe(1);
+    expect((JSON.parse(c.store.getMeta(`${MIND_SEEN_PREFIX}${pairId}`) ?? "{}") as { times: number }).times).toBe(1);
   });
 
   test("same-millisecond dreams are ordered by when they were written, not by their random ids", () => {

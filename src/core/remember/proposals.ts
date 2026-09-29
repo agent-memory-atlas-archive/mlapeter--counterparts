@@ -19,7 +19,8 @@
  * carry. `protect`, `promote`, `schema.create` and friends are not "rejected" — the
  * minting function has nowhere to put them, and it counts what it dropped.
  */
-import type { Kind, Salience } from "../types.js";
+import { SETTLE_HOWS } from "../types.js";
+import type { Kind, Salience, SettleHow } from "../types.js";
 import { hashText } from "../store/prose.js";
 import { parseCalendarDate } from "../time.js";
 import { randomBytes } from "node:crypto";
@@ -60,6 +61,13 @@ export interface ProposalDraft {
   aliases?: string[];
   /** The declared address of the memory this one revises. Validated, never trusted. */
   updates?: string;
+  /**
+   * HOW this memory settles the one it `updates` (2026-09-29): `changed` (both
+   * were true at their time — the default when unsaid), `corrected` (the old
+   * one was wrong) or `open` (a real disagreement, both kept). Meaningful only
+   * beside `updates`; without one it is dropped and counted.
+   */
+  how?: SettleHow;
   /** An open loop is an ordinary memory with a flag, not a special structure (§4). */
   unresolved?: boolean;
   /**
@@ -99,6 +107,13 @@ export interface Proposal {
   feeling: Feeling | null;
   aliases: string[];
   updates: UpdatesResolution | null;
+  /**
+   * How the author settles the memory it `updates` (`ProposalDraft.how`,
+   * defaulted to `changed` beside an `updates`). Absent on a proposal no
+   * author wrote (the sweep): a retelling does not settle anything, and its
+   * declaration stays a link (`revision.ts`).
+   */
+  how?: SettleHow;
   unresolved: boolean;
   /** The reminder date as the author wrote it (already read by `time.ts`), or null. */
   eventDate: string | null;
@@ -145,7 +160,9 @@ export type MalformedReason =
   /** `eventDate` is not a day, month, year or `a..b` range `time.ts` can read. */
   | "EVENT_DATE_UNREADABLE"
   /** `remind` is not `plain` or `quiet`. */
-  | "REMIND_UNKNOWN";
+  | "REMIND_UNKNOWN"
+  /** `how` is not `changed`, `corrected` or `open`. */
+  | "HOW_UNKNOWN";
 
 const KIND_SET: Record<Kind, true> = {
   self: true,
@@ -171,6 +188,7 @@ export const DRAFT_FIELDS = [
   "feeling",
   "aliases",
   "updates",
+  "how",
   "unresolved",
   "eventDate",
   "remind",
@@ -218,6 +236,9 @@ export function intake(raw: unknown): IntakeResult {
   }
   if (rec["updates"] !== undefined && typeof rec["updates"] !== "string") {
     return bad("UPDATES_NOT_STRING");
+  }
+  if (rec["how"] !== undefined && rec["how"] !== null) {
+    if (typeof rec["how"] !== "string" || !(SETTLE_HOWS as readonly string[]).includes(rec["how"])) return bad("HOW_UNKNOWN");
   }
   // The author's three dimensions are validated HERE, at the one front door,
   // rather than at each adapter: `sal()` clamps at read time, but `store.put`
@@ -287,6 +308,12 @@ export function intake(raw: unknown): IntakeResult {
   if (rec["feeling"] !== undefined) draft.feeling = rec["feeling"] as Feeling;
   if (rec["aliases"] !== undefined) draft.aliases = rec["aliases"] as string[];
   if (typeof rec["updates"] === "string") draft.updates = rec["updates"];
+  // HOW travels only with an `updates` (2026-09-29): without one there is
+  // nothing to settle, so it is dropped and counted like `remind` without a date.
+  if (typeof rec["how"] === "string") {
+    if (draft.updates !== undefined) draft.how = rec["how"] as SettleHow;
+    else dropped.push("how");
+  }
   draft.unresolved = rec["unresolved"] === true;
   // What was SAID, before the quiet default above: a revision carries over
   // whatever its author left out (review N7), so "left out" and "said quiet"
@@ -606,6 +633,8 @@ export async function submitProposal(
     feeling: verdict.feeling !== undefined ? verdict.feeling : draft.feeling ?? null,
     aliases: [...(verdict.aliases ?? draft.aliases ?? [])],
     updates,
+    // An AUTHORED `updates` settles: `changed` when the author did not say.
+    ...(draft.updates === undefined ? {} : { how: draft.how ?? "changed" }),
     unresolved: draft.unresolved === true,
     eventDate: draft.eventDate ?? null,
     remind: draft.eventDate === undefined ? null : draft.remind ?? "quiet",

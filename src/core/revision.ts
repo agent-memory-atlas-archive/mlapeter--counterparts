@@ -30,8 +30,22 @@
  *   | schema CURRENT-STATE element ("now" fact) | REPLACE now, with lineage       |
  *   | schema ENTITY row                        | link only — an entity dies by   |
  *   |                                          | decay and no model rewrites one |
- *   | any other memory                         | link only (`meta.updates`)      |
+ *   | any other memory, AUTHORED (`how`)       | SETTLED: changed / corrected /  |
+ *   |                                          | open (`contradictions.ts`)      |
+ *   | any other memory, swept (no `how`)       | link only (`meta.updates`)      |
  *   | protected element                        | REFUSED, on every path          |
+ *
+ * **The ordinary-memory arm settles (2026-09-29, contradictions).** It was
+ * link-only: the loser stayed live and in recall with nothing to say it was
+ * over. An AUTHORED `updates` now carries `how` (`changed` by default) and the
+ * arm hands it to `contradictions.ts#settleOnWrite`: `changed` cuts the old
+ * memory's strength once and labels it earlier, `corrected` archives it,
+ * `open` keeps both and shows them together. The rows above are unchanged —
+ * a belief, an identity memory, a current-state fact, an entity and a
+ * protected element take the arm they always did, and a `how` sent at one of
+ * them is not applied (the deposit says so). A SWEPT declaration carries no
+ * `how` and stays a link: a retelling of a transcript does not settle what
+ * the experiencer did not.
  *
  * "One declaration adds pressure; the element is superseded only when the bar is
  * crossed; the old version is retained with lineage" (constitution 7) — that is
@@ -74,11 +88,14 @@ import { hashText } from "./store/index.js";
 import type { MemoryRow, Store } from "./store/index.js";
 import { applyChallenge, successorSeed, supersedeRecord } from "./physics/index.js";
 import { directionOf } from "./mint.js";
+import { flag, settleOnWrite } from "./contradictions.js";
+import type { SettleOutcome } from "./contradictions.js";
+import type { SettleHow } from "./types.js";
 import type { Schemas } from "./schemas/index.js";
 import type { PressureIncrement, RevisionReason } from "./schemas/index.js";
 
 /** Which arm of the dispatch table ran. */
-export type RevisionPath = "belief" | "identity" | "current-state" | "link-only" | "none";
+export type RevisionPath = "belief" | "identity" | "current-state" | "changed" | "corrected" | "open" | "link-only" | "none";
 
 /**
  * Every ground an application can name. The pressure paths speak `schemas/`'s
@@ -90,6 +107,7 @@ export type RevisionApplyReason =
   | "replaced"
   | "target-not-current-state"
   | "linked-only"
+  | "settled"
   | "target-is-an-entity"
   | "confirmation-not-a-challenge"
   | "observer";
@@ -112,6 +130,13 @@ export interface RevisionInput {
   method?: string;
   /** The successor's prose. Defaults to the challenger's own body. */
   statement?: string;
+  /**
+   * How an AUTHORED declaration settles an ordinary memory (2026-09-29).
+   * Absent — a swept declaration — the ordinary-memory arm is a link, as before.
+   */
+  how?: SettleHow;
+  /** The writing session, for the settle's trail. */
+  session?: string | null;
 }
 
 export interface RevisionOptions {
@@ -144,6 +169,10 @@ export interface RevisionApplication {
   pressureAfter: number;
   bar: number;
   increment: PressureIncrement | null;
+  /** The ordinary-memory arm's settle, when `how` reached it: done, or refused and why. */
+  settle?: SettleOutcome;
+  /** The identity arm, with a `how`: the pair recorded unsettled while pressure builds. */
+  pressurePair?: string;
 }
 
 const NOTHING = {
@@ -308,7 +337,35 @@ export function applyRevision(
   // both). An identity claim is exactly the case the slow-kind daily force cap
   // exists for — three lived days of pressure, not one loud sentence.
   if (row.type === "memory" && (row.band === "identity" || target.promotedIdentity)) {
-    return identityChallenge(store, row, input, opts, settle, retargeted);
+    const out = identityChallenge(store, row, input, opts, settle, retargeted);
+    // WHILE PRESSURE BUILDS (review of #284, M9): an authored `how` at a core
+    // memory is not applied — its path is pressure over days — but the pair is
+    // recorded UNSETTLED, so recall labels the older one as possibly out of
+    // date until the bar is crossed (then it is superseded and the pair stops
+    // standing). Latched as raised: the writer declared it, so there is
+    // nothing to raise awake.
+    if (input.how !== undefined && out.successorId === null && store.has(input.challengerId)) {
+      const f = flag(store, { x: row.id, y: input.challengerId, source: "pressure", day: input.day });
+      if (f.ok) {
+        if (f.created) store.markContradictionRaised(f.pair, input.day);
+        return { ...out, pressurePair: f.pair };
+      }
+    }
+    return out;
+  }
+
+  // An ordinary memory, AUTHORED: the settle (2026-09-29). A journal chapter
+  // (`type` episode) is not a claim and stays a link.
+  if (input.how !== undefined && row.type === "memory") {
+    const out = settleOnWrite(store, {
+      newId: input.challengerId,
+      targetId,
+      how: input.how,
+      actorId: input.session ?? null,
+      day: input.day,
+    });
+    if (out.ok) return settle(out.how, "settled", targetId, { moved: true, retargeted, settle: out });
+    return settle("link-only", "linked-only", targetId, { retargeted, settle: out });
   }
 
   // Everything else: the link is the whole effect (owner ruling 2026-09-04).

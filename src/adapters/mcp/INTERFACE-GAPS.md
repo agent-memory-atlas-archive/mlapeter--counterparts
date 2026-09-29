@@ -322,3 +322,11 @@ JSON" was narrowed to what stays true: never without a notice, and never the doc
   its own open, once a day. If a pre-migration copy is wanted, the place is the writer path
   of `openOperational`, just before the migrate transaction — a store decision, not this
   adapter's.
+
+## 11. The page writer has no settle door — OPEN 2026-09-29
+
+The trail names who settled: a session (`note`), a dream (`propose` `settle`), a
+reflection (`reflect` phase `settle`), the owner (`counterparts settle`). The page writer
+writes through `self_page`, which takes no settle; if it settles through `note`, the
+trail says the launching session. A `settle` on `self_page`, or a page-writer claim on
+`note`, would close it — neither is built until the writer is seen wanting one.

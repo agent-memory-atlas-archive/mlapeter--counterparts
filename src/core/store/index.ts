@@ -67,11 +67,13 @@ import type { Stance } from "../observer.js";
 import {
   DEFAULT_RETENTION_DAYS,
   SCHEMA_VERSION,
+  olderFirst,
   openOperational,
   rowToPhysics,
   rowTombstoned,
 } from "./operational.js";
 import type {
+  ContradictionRow,
   CoreEventRow,
   DreamAskRow,
   DreamChangeRow,
@@ -86,6 +88,7 @@ import type {
   ReflectionRow,
   RemovalRow,
   ReturnRow,
+  SettleRow,
   TombstoneRow,
   VersionRow,
   WakeDisplayRow,
@@ -142,6 +145,8 @@ export * from "./feelings.js";
 export * from "./traits.js";
 export type { Db, Statement, WalFold } from "./db.js";
 export type {
+  ContradictionRow,
+  SettleRow,
   CoreEventRow,
   DreamAskRow,
   DreamChangeRow,
@@ -179,6 +184,9 @@ export {
   SCHEMA_VERSION,
   V8_UPGRADE_KEY,
   V9_UPGRADE_KEY,
+  V10_UPGRADE_KEY,
+  carriedPairId,
+  olderFirst,
   rowToPhysics,
   rowTombstoned,
 } from "./operational.js";
@@ -733,6 +741,12 @@ export const WRITE_METHODS = [
   "setAbout",
   "openReflection",
   "updateReflection",
+  // v10 (2026-09-29, contradictions).
+  "flagContradiction",
+  "markContradictionRaised",
+  "withdrawContradiction",
+  "settleContradiction",
+  "undoContradictionSettle",
 ] as const;
 
 export type WriteMethod = (typeof WRITE_METHODS)[number];
@@ -1646,6 +1660,8 @@ export class Store {
       if (patch.pressure !== undefined) put("pressure", patch.pressure);
       if (patch.lastChallengedDay !== undefined)
         put("last_challenged_day", patch.lastChallengedDay);
+      // v10: the settle's multiplier (physics §5.12). Written only by a settle and its undo.
+      if (patch.fade !== undefined) put("fade", patch.fade);
       if (sets.length === 0) return;
       this.ops.run(`UPDATE memories SET ${sets.join(", ")} WHERE id = ?`, ...args, id);
     });
@@ -2275,6 +2291,329 @@ export class Store {
       id,
     );
     return last?.action === "demoted";
+  }
+
+  // ── contradictions (v10, `core/contradictions.ts`) ─────────────────────────
+
+  /** One pair. */
+  contradiction(id: string): ContradictionRow | undefined {
+    if (!this.hasTable("contradictions")) return undefined;
+    return this.ops.get<ContradictionRow>("SELECT * FROM contradictions WHERE id = ?", id);
+  }
+
+  /** The standing pair between two memories, either order (not withdrawn), newest first. */
+  contradictionBetween(x: string, y: string): ContradictionRow | undefined {
+    if (!this.hasTable("contradictions")) return undefined;
+    return this.ops.get<ContradictionRow>(
+      `SELECT * FROM contradictions
+        WHERE state != 'withdrawn' AND ((a = ? AND b = ?) OR (a = ? AND b = ?))
+        ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+      x,
+      y,
+      y,
+      x,
+    );
+  }
+
+  /**
+   * Every standing pair (not withdrawn) that names any of these memories,
+   * keyed by memory — one indexed read per id. What recall's labels read.
+   */
+  contradictionsOf(ids: readonly string[]): Map<string, ContradictionRow[]> {
+    const out = new Map<string, ContradictionRow[]>();
+    if (ids.length === 0 || !this.hasTable("contradictions")) return out;
+    const stmt = this.ops.prepare(
+      `SELECT * FROM contradictions WHERE state != 'withdrawn' AND (a = ? OR b = ?)
+        ORDER BY created_at DESC, rowid DESC`,
+    );
+    for (const id of new Set(ids)) {
+      const rows = stmt.all<ContradictionRow>(id, id);
+      if (rows.length > 0) out.set(id, rows);
+    }
+    return out;
+  }
+
+  /** Pairs, newest first — by state, since a moment (created or changed). */
+  contradictions(filter: { state?: string; sinceAt?: number; limit?: number } = {}): ContradictionRow[] {
+    if (!this.hasTable("contradictions")) return [];
+    const where: string[] = [];
+    const args: (string | number)[] = [];
+    if (filter.state !== undefined) {
+      where.push("state = ?");
+      args.push(filter.state);
+    }
+    if (filter.sinceAt !== undefined) {
+      where.push("updated_at >= ?");
+      args.push(filter.sinceAt);
+    }
+    args.push(filter.limit ?? 1_000);
+    return this.ops.all<ContradictionRow>(
+      `SELECT * FROM contradictions${where.length > 0 ? ` WHERE ${where.join(" AND ")}` : ""}
+        ORDER BY created_at DESC, rowid DESC LIMIT ?`,
+      ...args,
+    );
+  }
+
+  /** The trail, in order: one pair's, or everything since a moment. */
+  contradictionSettles(filter: { pairId?: string; sinceAt?: number; limit?: number } = {}): SettleRow[] {
+    if (!this.hasTable("contradiction_settles")) return [];
+    const where: string[] = [];
+    const args: (string | number)[] = [];
+    if (filter.pairId !== undefined) {
+      where.push("pair_id = ?");
+      args.push(filter.pairId);
+    }
+    if (filter.sinceAt !== undefined) {
+      where.push("at >= ?");
+      args.push(filter.sinceAt);
+    }
+    args.push(filter.limit ?? 1_000);
+    return this.ops.all<SettleRow>(
+      `SELECT * FROM contradiction_settles${where.length > 0 ? ` WHERE ${where.join(" AND ")}` : ""} ORDER BY seq LIMIT ?`,
+      ...args,
+    );
+  }
+
+  /**
+   * RECORD A PAIR THAT DISAGREES, unsettled. Idempotent on its two memories:
+   * a standing pair between them (unsettled or settled) is returned as it is,
+   * never re-opened. Both must be rows in the store; the older is `a`.
+   */
+  flagContradiction(input: {
+    id: string;
+    x: string;
+    y: string;
+    source: string;
+    day: number;
+    dreamId?: string | null;
+    dreamSeq?: number | null;
+  }): { id: string; created: boolean; state: string } {
+    const out = this.mutate("flagContradiction", () => {
+      if (input.x === input.y) throw new StoreError("CONTRADICTION_SAME_MEMORY", { id: input.x });
+      const standing = this.contradictionBetween(input.x, input.y);
+      if (standing !== undefined) return { id: standing.id, created: false, state: standing.state };
+      const [a, b] = olderFirst(this.ageOf(input.x), this.ageOf(input.y));
+      const at = this.nowFn();
+      this.ops.run(
+        `INSERT INTO contradictions
+           (id, a, b, state, how, holds, over, via, source, dream_id, dream_seq, flagged_day, raised_day, settled_day, created_at, updated_at)
+         VALUES (?, ?, ?, 'unsettled', NULL, NULL, NULL, NULL, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
+        input.id,
+        a,
+        b,
+        input.source,
+        input.dreamId ?? null,
+        input.dreamSeq ?? null,
+        input.day,
+        at,
+        at,
+      );
+      return { id: input.id, created: true, state: "unsettled" };
+    });
+    this.emit("store.contradiction", out.id, { action: "flag", created: out.created, source: input.source });
+    return out;
+  }
+
+  /** What `olderFirst` reads of a memory, insertion order included; throws for an unknown id. */
+  private ageOf(id: string): { id: string; birth_day: number; created_at: number | null; rid: number } {
+    this.requireRow(id);
+    const r = this.ops.get<{ birth_day: number; created_at: number | null; rid: number }>(
+      "SELECT birth_day, created_at, rowid AS rid FROM memories WHERE id = ?",
+      id,
+    );
+    return { id, birth_day: r?.birth_day ?? 0, created_at: r?.created_at ?? null, rid: r?.rid ?? 0 };
+  }
+
+  /** The once-only awake line was handed out for this pair, on this lived day. */
+  markContradictionRaised(id: string, day: number): void {
+    this.mutate("markContradictionRaised", () => {
+      this.ops.run("UPDATE contradictions SET raised_day = ? WHERE id = ? AND raised_day IS NULL", day, id);
+    });
+  }
+
+  /** The dream that flagged an UNSETTLED pair was undone: the pair is withdrawn. Settled pairs stand. */
+  withdrawContradiction(id: string): boolean {
+    const n = this.mutate("withdrawContradiction", () => {
+      this.ops.run(
+        "UPDATE contradictions SET state = 'withdrawn', updated_at = ? WHERE id = ? AND state = 'unsettled'",
+        this.nowFn(),
+        id,
+      );
+      return this.ops.get<{ n: number }>("SELECT changes() AS n")?.n ?? 0;
+    });
+    if (n > 0) this.emit("store.contradiction", id, { action: "withdraw" });
+    return n > 0;
+  }
+
+  /**
+   * SETTLE A PAIR, in one transaction: the pair's standing, the trail row, and
+   * what the settle does to the memory it is over — a physics patch the caller
+   * computed through `physics/` (`fade`, a `changed` memory's one cut), or an
+   * archive (`corrected`: out of recall, readable by its own id, never
+   * deleted). `pairId` names an existing pair; absent, a new settled pair of
+   * `x` and `y` is written (the older is `a`). `closes` are unsettled pairs
+   * this settle closes through itself (`via`). Returns the pair id and the
+   * trail row's sequence number.
+   */
+  settleContradiction(input: {
+    pairId?: string;
+    newId?: string;
+    x?: string;
+    y?: string;
+    source?: string;
+    how: string;
+    holds: string | null;
+    over: string | null;
+    actor: string;
+    actorId: string | null;
+    why: string | null;
+    day: number;
+    fade?: { id: string; fade: number } | null;
+    archive?: { id: string; reason: string } | null;
+    closes?: readonly string[];
+    detail?: Record<string, unknown>;
+  }): { pairId: string; seq: number } {
+    const out = this.mutate("settleContradiction", () => {
+      const at = this.nowFn();
+      let pairId = input.pairId;
+      if (pairId === undefined) {
+        if (input.x === undefined || input.y === undefined || input.newId === undefined) {
+          throw new StoreError("CONTRADICTION_PAIR_REQUIRED", {});
+        }
+        const [a, b] = olderFirst(this.ageOf(input.x), this.ageOf(input.y));
+        pairId = input.newId;
+        this.ops.run(
+          `INSERT INTO contradictions
+             (id, a, b, state, how, holds, over, via, source, dream_id, dream_seq, flagged_day, raised_day, settled_day, created_at, updated_at)
+           VALUES (?, ?, ?, 'settled', ?, ?, ?, NULL, ?, NULL, NULL, ?, NULL, ?, ?, ?)`,
+          pairId,
+          a,
+          b,
+          input.how,
+          input.holds,
+          input.over,
+          input.source ?? input.actor,
+          input.day,
+          input.day,
+          at,
+          at,
+        );
+      } else {
+        if (this.contradiction(pairId) === undefined) throw new StoreError("CONTRADICTION_UNKNOWN", { id: pairId });
+        this.ops.run(
+          `UPDATE contradictions SET state = 'settled', how = ?, holds = ?, over = ?, via = NULL,
+                  settled_day = ?, updated_at = ? WHERE id = ?`,
+          input.how,
+          input.holds,
+          input.over,
+          input.day,
+          at,
+          pairId,
+        );
+      }
+      const closes = (input.closes ?? []).filter((c) => c !== pairId);
+      for (const c of closes) {
+        this.ops.run(
+          `UPDATE contradictions SET state = 'settled', how = ?, via = ?, settled_day = ?, updated_at = ?
+            WHERE id = ? AND state = 'unsettled'`,
+          input.how,
+          pairId,
+          input.day,
+          at,
+          c,
+        );
+      }
+      this.ops.run(
+        `INSERT INTO contradiction_settles (pair_id, action, how, holds, over, actor, actor_id, why, day, at, undone, detail)
+         VALUES (?, 'settle', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+        pairId,
+        input.how,
+        input.holds,
+        input.over,
+        input.actor,
+        input.actorId,
+        input.why,
+        input.day,
+        at,
+        JSON.stringify({ ...(input.detail ?? {}), closes }),
+      );
+      const seq = this.ops.get<{ seq: number }>("SELECT last_insert_rowid() AS seq")?.seq ?? 0;
+      // What it does to the memory it is over, LAST, so a refusal above has
+      // staged nothing on the memory itself.
+      if (input.fade !== undefined && input.fade !== null) {
+        this.updatePhysics(input.fade.id, { fade: input.fade.fade });
+      }
+      if (input.archive !== undefined && input.archive !== null) {
+        this.archive(input.archive.id, input.archive.reason);
+      }
+      return { pairId, seq };
+    });
+    this.emit("store.contradiction", out.pairId, { action: "settle", how: input.how, actor: input.actor });
+    return out;
+  }
+
+  /**
+   * UNDO A SETTLE, in one transaction: the settle's trail row is marked undone
+   * and an `undo` row follows it; the pair — and every pair the settle closed
+   * through itself — is unsettled again; a `changed` memory's cut is put back
+   * (`restore`, only when the caller found the cut still standing) and a
+   * `corrected` one comes back into recall (`unarchive`).
+   */
+  undoContradictionSettle(input: {
+    pairId: string;
+    settleSeq: number;
+    actor: string;
+    actorId: string | null;
+    why: string | null;
+    day: number;
+    /** Where the pair goes: `unsettled` (it was a flag) or `withdrawn` (it never was). */
+    state?: "unsettled" | "withdrawn";
+    restore?: { id: string; fade: number } | null;
+    unarchive?: { id: string; reason: string } | null;
+    reopen?: readonly string[];
+    detail?: Record<string, unknown>;
+  }): { seq: number; unarchived: boolean } {
+    const out = this.mutate("undoContradictionSettle", () => {
+      const at = this.nowFn();
+      const pair = this.contradiction(input.pairId);
+      if (pair === undefined) throw new StoreError("CONTRADICTION_UNKNOWN", { id: input.pairId });
+      this.ops.run("UPDATE contradiction_settles SET undone = 1 WHERE seq = ? AND pair_id = ?", input.settleSeq, input.pairId);
+      this.ops.run(
+        `INSERT INTO contradiction_settles (pair_id, action, how, holds, over, actor, actor_id, why, day, at, undone, detail)
+         VALUES (?, 'undo', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+        input.pairId,
+        pair.how,
+        pair.holds,
+        pair.over,
+        input.actor,
+        input.actorId,
+        input.why,
+        input.day,
+        at,
+        JSON.stringify({ ...(input.detail ?? {}), undoes: input.settleSeq }),
+      );
+      const seq = this.ops.get<{ seq: number }>("SELECT last_insert_rowid() AS seq")?.seq ?? 0;
+      const states: [string, string][] = [[input.pairId, input.state ?? "unsettled"], ...(input.reopen ?? []).map((id): [string, string] => [id, "unsettled"])];
+      for (const [id, state] of states) {
+        this.ops.run(
+          `UPDATE contradictions SET state = ?, how = NULL, holds = NULL, over = NULL, via = NULL,
+                  settled_day = NULL, raised_day = NULL, updated_at = ? WHERE id = ?`,
+          state,
+          at,
+          id,
+        );
+      }
+      if (input.restore !== undefined && input.restore !== null) {
+        this.updatePhysics(input.restore.id, { fade: input.restore.fade });
+      }
+      let unarchived = false;
+      if (input.unarchive !== undefined && input.unarchive !== null) {
+        unarchived = this.restoreSuperseded(input.unarchive.id, input.unarchive.reason);
+      }
+      return { seq, unarchived };
+    });
+    this.emit("store.contradiction", input.pairId, { action: "undo", actor: input.actor });
+    return out;
   }
 
   // ── dreams (v8, `core/dream/`) ─────────────────────────────────────────────

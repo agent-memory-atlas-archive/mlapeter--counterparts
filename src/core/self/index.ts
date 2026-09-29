@@ -160,6 +160,7 @@ import type { JournalCopyOutcome } from "./journal-file.js";
 import { withTunables } from "./tunables.js";
 import type { SelfTunables } from "./tunables.js";
 import { calendarDate } from "./calendar.js";
+import { standingOf } from "../recall/standing.js";
 
 export * from "./briefing.js";
 export * from "./calendar.js";
@@ -2152,7 +2153,16 @@ export class Self {
       learnedOn?: string;
       happenedOn?: string;
       boundedDate?: boolean;
+      standing?: { prefix: string; suffix: string };
     } = { statement: statement.length > 0 ? statement : id };
+    // Its standing in a contradiction — the same words recall uses (review of
+    // #284, S3): hints, threads and identity alike. Never fails a render.
+    try {
+      const st = standingOf(this.store, id);
+      if (st !== null) out.standing = { prefix: st.prefix, suffix: st.suffix };
+    } catch {
+      /* no standing */
+    }
     // Blank is how a chased row reads (`owner-op-seam`), and blank is not a date.
     if (doc.learnedOn.trim() !== "") out.learnedOn = doc.learnedOn;
     if (doc.happenedOn !== undefined && doc.happenedOn.trim() !== "") {

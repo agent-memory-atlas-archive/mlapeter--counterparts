@@ -8,6 +8,7 @@
  *
  * Every multi-row mutation is wrapped in a transaction by the seam in `index.ts`.
  */
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 
 import { spacingWeight } from "../physics/index.js";
@@ -20,6 +21,22 @@ import { preMigrationDir, snapshotBeforeMigration } from "./pre-migration.js";
 import type { ProseType } from "./prose.js";
 
 /**
+ * Bumped to 10 (2026-09-29, contradictions as a mechanism): ADDITIVE, through
+ * the same copy-first seam. `memories` gains `fade` (REAL, default 1): the
+ * multiplier a `changed` settle puts on strength (physics §5.12) — folded in
+ * after the review of #284, before any store migrated. Two tables are new. `contradictions` holds a PAIR
+ * of memories that disagree — flagged (a dream's `contradiction`, carried over
+ * from `dream_changes` by the upgrade) or recorded when it was settled — with
+ * its standing: `unsettled`, `settled` (`changed`, `corrected` or `open`, which
+ * one holds and which one it is over), or `withdrawn` (the dream that flagged
+ * it was undone). `contradiction_settles` is the TRAIL: every settle and every
+ * undo, who did it (a session, a dream, a reflection, the page writer, the
+ * owner), why in a short line, the ids, the day, and what undoing it needs
+ * (ids and numbers). The upgrade carries every open dream flag onto a pair,
+ * with the latch that said it was raised awake and the habituation "my mind"
+ * kept for it, so nothing is raised twice or weighs anew the morning after;
+ * doctor says what it carried. `store/NOTES.md` 2026-09-29.
+ *
  * Bumped to 9 (2026-09-27, reflection + core by meaning): ADDITIVE, through the
  * same copy-first seam. `memories` gains `about` — WHAT A MEMORY IS ABOUT, a
  * neutral mark (`me`, `us`, `owner`, `work`, `world`, or NULL) an awake model
@@ -92,7 +109,7 @@ import type { ProseType } from "./prose.js";
  * migrated open MUST converge on the identical schema; a test asserts
  * table_info equality.
  */
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 /**
  * The oldest schema an OBSERVER may open without a migration having run.
  *
@@ -120,8 +137,11 @@ export const SCHEMA_VERSION = 9;
  * Raised to 9 with v9 (2026-09-27), for the same reason again: the
  * `reflections` table is read by instruments (doctor's reflection line), and a
  * v8 file has none.
+ *
+ * Raised to 10 with v10 (2026-09-29): recall's labels, doctor's Contradictions
+ * line and the dashboard read `contradictions`, and a v9 file has none.
  */
-export const OBSERVER_READ_FLOOR = 9;
+export const OBSERVER_READ_FLOOR = 10;
 /** Retention for superseded-version rows, in LIVED days. TUNABLE (module-map ruling 2).
  *
  *  Owner ruling 1, 2026-09-18: the prune STAYS, at 90. It now deletes the words
@@ -218,7 +238,8 @@ export const DDL: readonly string[] = [
      last_return_day   INTEGER,
      last_dream_day    INTEGER,
      about             TEXT,
-     about_by          TEXT
+     about_by          TEXT,
+     fade              REAL NOT NULL DEFAULT 1
    )`,
   `CREATE INDEX IF NOT EXISTS memories_band ON memories (band, archived)`,
   `CREATE INDEX IF NOT EXISTS memories_kind ON memories (kind, archived)`,
@@ -442,6 +463,60 @@ export const DDL: readonly string[] = [
      detail       TEXT NOT NULL DEFAULT '{}'
    )`,
   `CREATE INDEX IF NOT EXISTS reflections_day ON reflections (day)`,
+  // v10 (2026-09-29): CONTRADICTIONS — a pair of memories that disagree, one
+  // row per pair (`a` the older, `b` the newer). `state`: `unsettled` (flagged,
+  // nobody has said which holds), `settled`, or `withdrawn` (the dream that
+  // flagged it was undone). A settled pair says `how` — `changed` (both were
+  // true at their time), `corrected` (one was wrong) or `open` (a real
+  // disagreement, both kept) — and, for the first two, which memory `holds`
+  // and which it is `over`. `via` names the pair whose settle closed this one
+  // (a flagged pair closed by a new memory that `updates` one of its two).
+  // Ids and numbers only; the words are in the trail. Not foreign-keyed: the
+  // owner's removal deletes a removed memory's pairs itself.
+  `CREATE TABLE IF NOT EXISTS contradictions (
+     id          TEXT PRIMARY KEY,
+     a           TEXT NOT NULL,
+     b           TEXT NOT NULL,
+     state       TEXT NOT NULL,
+     how         TEXT,
+     holds       TEXT,
+     over        TEXT,
+     via         TEXT,
+     source      TEXT NOT NULL,
+     dream_id    TEXT,
+     dream_seq   INTEGER,
+     flagged_day INTEGER NOT NULL,
+     raised_day  INTEGER,
+     settled_day INTEGER,
+     created_at  INTEGER NOT NULL,
+     updated_at  INTEGER NOT NULL
+   )`,
+  `CREATE INDEX IF NOT EXISTS contradictions_a ON contradictions (a)`,
+  `CREATE INDEX IF NOT EXISTS contradictions_b ON contradictions (b)`,
+  `CREATE INDEX IF NOT EXISTS contradictions_state ON contradictions (state)`,
+  // v10: THE TRAIL — every settle and every undo of a pair, in order: who
+  // (`actor`: session, dream, reflection, page-writer, owner; `actor_id` the
+  // session / dream / reflection id), the kind, why (a short line in the
+  // settler's words — content-bearing, so the owner's removal deletes the
+  // rows of a removed memory's pairs), the ids, the lived day and the moment,
+  // and in `detail` what undoing it needs (ids and numbers only).
+  `CREATE TABLE IF NOT EXISTS contradiction_settles (
+     seq      INTEGER PRIMARY KEY AUTOINCREMENT,
+     pair_id  TEXT NOT NULL,
+     action   TEXT NOT NULL,
+     how      TEXT,
+     holds    TEXT,
+     over     TEXT,
+     actor    TEXT NOT NULL,
+     actor_id TEXT,
+     why      TEXT,
+     day      INTEGER NOT NULL,
+     at       INTEGER NOT NULL,
+     undone   INTEGER NOT NULL DEFAULT 0,
+     detail   TEXT NOT NULL DEFAULT '{}'
+   )`,
+  `CREATE INDEX IF NOT EXISTS contradiction_settles_pair ON contradiction_settles (pair_id)`,
+  `CREATE INDEX IF NOT EXISTS contradiction_settles_at ON contradiction_settles (at)`,
   `CREATE INDEX IF NOT EXISTS core_events_memory ON core_events (memory_id)`,
   `CREATE INDEX IF NOT EXISTS core_events_at ON core_events (at)`,
   `CREATE INDEX IF NOT EXISTS feelings_whose_core ON feelings (whose, core)`,
@@ -606,6 +681,8 @@ export interface MemoryRow extends Row {
   about: string | null;
   /** v9: who set `about` — `writer`, `reflection`, `owner`, `upgrade`. */
   about_by: string | null;
+  /** v10: the strength multiplier a `changed` settle sets (physics §5.12); 1 otherwise. */
+  fade: number;
 }
 
 export interface ReflectionRow extends Row {
@@ -638,6 +715,56 @@ export interface ReflectionRow extends Row {
   share_session: string | null;
   page_version: number | null;
   /** JSON: counts and reasons, ids and numbers only. */
+  detail: string;
+}
+
+/** v10: one pair of memories that disagree (`contradictions`). */
+export interface ContradictionRow extends Row {
+  id: string;
+  /** The older of the two (by birth day, then moment, then id). */
+  a: string;
+  /** The newer. */
+  b: string;
+  /** `unsettled`, `settled` or `withdrawn`. */
+  state: string;
+  /** `changed`, `corrected` or `open`, once settled. */
+  how: string | null;
+  /** The one that holds (changed / corrected), else null. */
+  holds: string | null;
+  /** The one it is over (changed / corrected), else null. */
+  over: string | null;
+  /** The pair whose settle closed this one, when it was closed that way. */
+  via: string | null;
+  /** Who first recorded it: `dream` (a flag), `write` (a new memory's `updates`), `settle` (a settle of two memories no flag named). */
+  source: string;
+  dream_id: string | null;
+  dream_seq: number | null;
+  flagged_day: number;
+  /** The lived day it was raised awake (the once-only line), or null. */
+  raised_day: number | null;
+  settled_day: number | null;
+  created_at: number;
+  updated_at: number;
+}
+
+/** v10: one settle or undo of a pair (`contradiction_settles`, the trail). */
+export interface SettleRow extends Row {
+  seq: number;
+  pair_id: string;
+  /** `settle` or `undo`. */
+  action: string;
+  how: string | null;
+  holds: string | null;
+  over: string | null;
+  /** `session`, `dream`, `reflection`, `page-writer`, `owner`. */
+  actor: string;
+  actor_id: string | null;
+  why: string | null;
+  day: number;
+  at: number;
+  /** 1 once a later undo reversed this settle. */
+  undone: number;
+  /** JSON: what undoing it needs — ids and numbers only. */
   detail: string;
 }
 
@@ -1108,6 +1235,27 @@ export function openOperational(path: string, opts: OpenOperationalOptions = {})
           }),
         );
       }
+      // v10 (2026-09-29): EVERY OPEN DREAM FLAG BECOMES A PAIR, unsettled,
+      // carrying the latch that said it was raised awake and the habituation
+      // "my mind" kept for it — so the morning after the upgrade raises and
+      // weighs exactly what the night before did (`carryDreamFlags`).
+      if (now !== null && Number.parseInt(now, 10) < 10) {
+        const carried = carryDreamFlags(db);
+        const lived = db.get<{ value: string }>("SELECT value FROM meta WHERE key = 'livedDay'")?.value ?? "0";
+        db.run(
+          "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+          V10_UPGRADE_KEY,
+          JSON.stringify({
+            from: now,
+            day: Number.parseInt(lived, 10) || 0,
+            at: Date.now(),
+            flags: carried.flags,
+            pairs: carried.pairs,
+            raised: carried.raised,
+            standing: carried.standing,
+          }),
+        );
+      }
       const put = db.prepare("INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)");
       put.run("livedDay", "0");
       put.run("lastActiveDate", "");
@@ -1250,6 +1398,10 @@ export const ADDED_COLUMNS: readonly { table: string; column: string; ddl: strin
   { table: "memories", column: "about_by", ddl: "ALTER TABLE memories ADD COLUMN about_by TEXT" },
   { table: "feelings", column: "source", ddl: "ALTER TABLE feelings ADD COLUMN source TEXT" },
   { table: "feelings", column: "recorded_later", ddl: "ALTER TABLE feelings ADD COLUMN recorded_later TEXT" },
+  // v10 (2026-09-29, contradictions): a memory's FADE, the multiplier a
+  // `changed` settle puts on its strength (physics §5.12). 1 on every row the
+  // upgrade finds: nothing was settled before.
+  { table: "memories", column: "fade", ddl: "ALTER TABLE memories ADD COLUMN fade REAL NOT NULL DEFAULT 1" },
 ];
 
 /**
@@ -1309,6 +1461,97 @@ export const V8_UPGRADE_KEY = "physics.v8.upgrade";
 
 /** Meta key: what the v9 upgrade found (`physics.v9.upgrade`), for doctor. */
 export const V9_UPGRADE_KEY = "physics.v9.upgrade";
+
+/** Meta key: what the v10 upgrade carried (`contradictions.v10.upgrade`), for doctor. */
+export const V10_UPGRADE_KEY = "contradictions.v10.upgrade";
+
+/** The id a carried dream flag's pair gets: the same flag, the same id, on every run. */
+export function carriedPairId(dreamId: string, seq: number): string {
+  return `ctr_${createHash("sha256").update(`${dreamId}.${String(seq)}`).digest("hex").slice(0, 12)}`;
+}
+
+/**
+ * THE v10 CARRY: every contradiction a dream flagged that still stands (the
+ * change not undone, the dream not undone, both addresses still there) becomes
+ * a pair in `contradictions`, `unsettled`, `source = 'dream'`. The same two
+ * memories flagged by two dreams are ONE pair (the first flag's). The latch
+ * `dream.raised.<dream>.<seq>` becomes the pair's `raised_day`, and
+ * `mind.seen.<dream>.<seq>` is copied to `mind.seen.<pair>`, so what was raised
+ * stays raised and what habituated stays habituated. Idempotent (the pair's id
+ * is derived from the flag). `standing` counts the carried pairs whose two
+ * memories are both still live — the ones that will show as unsettled.
+ */
+export function carryDreamFlags(db: Db): { flags: number; pairs: number; raised: number; standing: number } {
+  const flags = db.all<{ dream_id: string; seq: number; ref: string; ref2: string; at: number; day: number }>(
+    `SELECT c.dream_id, c.seq, c.ref, c.ref2, c.at, d.day FROM dream_changes c JOIN dreams d ON d.id = c.dream_id
+      WHERE c.action = 'contradiction' AND c.undone = 0 AND d.state != 'undone'
+        AND c.ref IS NOT NULL AND c.ref2 IS NOT NULL AND c.ref != c.ref2
+      ORDER BY d.started_at, d.rowid, c.seq`,
+  );
+  type Age = { birth_day: number; created_at: number | null; rid: number; archived: number; superseded_by: string | null; body: string };
+  const age = db.prepare("SELECT birth_day, created_at, rowid AS rid, archived, superseded_by, body FROM memories WHERE id = ?");
+  const meta = db.prepare("SELECT value FROM meta WHERE key = ?");
+  const putMeta = db.prepare("INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)");
+  const insert = db.prepare(
+    `INSERT OR IGNORE INTO contradictions
+       (id, a, b, state, how, holds, over, via, source, dream_id, dream_seq, flagged_day, raised_day, settled_day, created_at, updated_at)
+     VALUES (?, ?, ?, 'unsettled', NULL, NULL, NULL, NULL, 'dream', ?, ?, ?, ?, NULL, ?, ?)`,
+  );
+  // The same two memories flagged by several dreams are ONE pair, the first
+  // flag's; it counts as raised when ANY of its flags was raised, and keeps the
+  // first habituation found (review of #284, M6: only the first flag's latch
+  // was read, so a pair raised through a later flag was raised again).
+  const groups = new Map<string, typeof flags>();
+  for (const f of flags) {
+    const key = [f.ref, f.ref2].sort().join("|");
+    const g = groups.get(key);
+    if (g === undefined) groups.set(key, [f]);
+    else g.push(f);
+  }
+  let pairs = 0;
+  let raised = 0;
+  let standing = 0;
+  for (const group of groups.values()) {
+    const f = group[0] as (typeof flags)[number];
+    const x = age.get<Age>(f.ref);
+    const y = age.get<Age>(f.ref2);
+    if (x === undefined || y === undefined) continue;
+    const [a, b] = olderFirst({ id: f.ref, ...x }, { id: f.ref2, ...y });
+    const id = carriedPairId(f.dream_id, f.seq);
+    let raisedDay: number | null = null;
+    let habit: string | undefined;
+    for (const g of group) {
+      const latch = meta.get<{ value: string }>(`dream.raised.${g.dream_id}.${String(g.seq)}`)?.value;
+      if (latch !== undefined) raisedDay = Math.max(raisedDay ?? 0, Number.parseInt(latch, 10) || 0);
+      if (habit === undefined) habit = meta.get<{ value: string }>(`mind.seen.${g.dream_id}.${String(g.seq)}`)?.value;
+    }
+    insert.run(id, a, b, f.dream_id, f.seq, f.day, raisedDay, f.at, f.at);
+    pairs += 1;
+    if (raisedDay !== null) raised += 1;
+    if (habit !== undefined) putMeta.run(`mind.seen.${id}`, habit);
+    const live = (r: Age): boolean => r.archived === 0 && r.superseded_by === null && r.body !== "";
+    if (live(x) && live(y)) standing += 1;
+  }
+  return { flags: flags.length, pairs, raised, standing };
+}
+
+/**
+ * The two memories of a pair, older first: by lived birth day, then by the
+ * moment written (a pre-v7 row with none counts as earliest), then by the
+ * order the rows were inserted (`rid`, when the caller read it), then by id.
+ */
+export function olderFirst(
+  x: { id: string; birth_day: number; created_at: number | null; rid?: number },
+  y: { id: string; birth_day: number; created_at: number | null; rid?: number },
+): [string, string] {
+  if (x.birth_day !== y.birth_day) return x.birth_day < y.birth_day ? [x.id, y.id] : [y.id, x.id];
+  const xa = x.created_at ?? 0;
+  const ya = y.created_at ?? 0;
+  if (xa !== ya) return xa < ya ? [x.id, y.id] : [y.id, x.id];
+  // Written in the same millisecond: the order they were inserted in.
+  if (x.rid !== undefined && y.rid !== undefined && x.rid !== y.rid) return x.rid < y.rid ? [x.id, y.id] : [y.id, x.id];
+  return x.id < y.id ? [x.id, y.id] : [y.id, x.id];
+}
 
 /**
  * THE OLD KIND RULE, CARRIED as marks at the v9 upgrade: every `self` memory
@@ -1481,6 +1724,8 @@ export function rowToPhysics(row: MemoryRow & FeelingPeak): MemoryPhysics {
     // compute it — then physics falls back to `feelingPeak`.
     ...(row.feeling_peak_lived === undefined ? {} : { feelingPeakLived: row.feeling_peak_lived }),
     consolidated: row.consolidated === 1,
+    // v10 (physics §5.12): the settle's multiplier. Read tolerantly — a bare row reads 1.
+    fade: typeof row.fade === "number" ? row.fade : 1,
     // v8 (physics §5.2/§5.11). Read tolerantly — a bare row built by a test or
     // a tool without the columns reads as a post-upgrade memory with no returns.
     legacy: row.legacy === 1,
