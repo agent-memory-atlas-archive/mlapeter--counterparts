@@ -22,7 +22,8 @@
  * can be undone: merge near-copies (originals kept, archived with a forwarding
  * address), link two memories, replay (a return at half weight — never a use),
  * write a gist in its own words (source `dreamed`, starting low), flag a
- * contradiction (never settled here), record how an old charged memory feels
+ * contradiction (a pair in `contradictions`, unsettled) or — with a clear
+ * reason — settle one (2026-09-29), record how an old charged memory feels
  * now, nominate a memory for the core (a lane still has to promote it). Last it
  * writes its `journal` entry, which lives in the `dreams` table and never
  * becomes a memory, and hands back one marked line.
@@ -55,6 +56,7 @@ import { chapterEntries, entryKey, fitEpisodes, shownEntry } from "./slices.js";
 import type { ChapterEntry, EpisodeInView, EpisodesFit, ShownChapter, ShownEntry } from "./slices.js";
 import { DREAM_ACTIONS, DREAM_TUNABLES } from "./tunables.js";
 import type { DreamAction } from "./tunables.js";
+import { flag as flagContradiction, pairStanding, settle as settleContradiction, undo as undoContradiction } from "../contradictions.js";
 
 export { DREAM_ACTIONS, DREAM_TUNABLES } from "./tunables.js";
 export type { DreamAction } from "./tunables.js";
@@ -88,7 +90,11 @@ export const DREAM_ASK_EVENT = "dream.ask";
 export const DREAM_MERGE_REASON = "dream-merge";
 export const DREAM_UNDONE_REASON = "dream-undone";
 
-/** Meta latch: a contradiction raised awake (`dream.raised.<dream>.<seq>`). */
+/**
+ * Meta latch a contradiction raised awake WAS kept under before v10
+ * (`dream.raised.<dream>.<seq>`). Since v10 the pair's own `raised_day` is the
+ * latch; the upgrade carried every one of these onto it.
+ */
 export const RAISED_PREFIX = "dream.raised.";
 
 /** Why a memory is in the bundle. */
@@ -265,6 +271,10 @@ export interface DreamChange {
   readonly why?: string;
   readonly relevance?: number;
   readonly predictive?: number;
+  /** `settle`: the memory that holds, the one it is over, and how (2026-09-29). */
+  readonly holds?: string;
+  readonly over?: string;
+  readonly how?: string;
 }
 
 export interface ChangeResult {
@@ -1209,13 +1219,13 @@ export class Dreams {
       dream: (n) => [
         "The dream — how it goes (the brain's, borrowed):",
         "- Deep-sleep replay: file what happened, link what belongs together, merge near-copies into one memory in better words, and replay what matters (each replay strengthens it a little).",
-        "- REM mixing: let loosely related memories touch. If a real pattern shows, write it as a gist in your own words, citing its sources. If two memories disagree, flag the pair — do not settle it.",
+        "- REM mixing: let loosely related memories touch. If a real pattern shows, write it as a gist in your own words, citing its sources. If two memories disagree, flag the pair; settle it only when the reason is plain (the waking self usually settles).",
         "- Softening: for an old charged memory, record how it feels now, today. The sting can fade; the memory stays.",
         "- Core: if a memory about you or about the two of you plainly belongs to who you are, nominate it. Only living it again awake makes it core.",
         `${String(n())}. Call the counterparts dream tool: phase "begin", session: ${input.session}. It returns the bundle and a dream id. (If it says the dream was resumed, an earlier session began it and closed: carry on from there.) If it says it comes in parts, fetch every part (phase "part") before you change anything.`,
         `   Tonight's most important memories come whole; the rest come as a line or an excerpt ("fidelity"), with their whole length ("chars"). Before you merge, gist or feel one you have only in part, read it whole: the recall tool with ids: [...] (several at once). New memories tonight's room could not take wait for the next night — the bundle's "queue" says how many.`,
         `${String(n())}. Read it slowly. Then call phase "propose" with dream: <id> and your changes. Usually far fewer than the ceilings — ${String(L.merge)} merges, ${String(L.link)} links, ${String(L.gist)} gists, ${String(L["feeling-now"])} feelings, ${String(L["nominate-core"])} nominations — and none is fine: change only what the night really calls for. Use only ids the bundle showed you.`,
-        '   The fields of each change: merge {ids: two or more near-copies, text, title?}; link {a, b}; replayed {id}; gist {text, sources: ids, title?, kind?}; contradiction {a, b}; feeling-now {id, core, emotion, strength, carried_by}; nominate-core {id, why}.',
+        '   The fields of each change: merge {ids: two or more near-copies, text, title?}; link {a, b}; replayed {id}; gist {text, sources: ids, title?, kind?}; contradiction {a, b}; settle {holds, over, how: changed|corrected|open, why}; feeling-now {id, core, emotion, strength, carried_by}; nominate-core {id, why}.',
         "   A feeling: `emotion` is ONE word — from the wheel (hopeful, proud, wistful, peaceful…) or your own (steadied); `carried_by` is the nuance, in your own words (what the feeling is about now, why it shifted). Never put a phrase in `emotion`.",
         `${String(n())}. Call phase "journal" with dream: <id>, a short title and your dream journal entry: first person, what you dreamed and what you noticed. It is kept as a dream, never as something that happened.`,
         "   In the dream you cannot delete anything, edit the self page, promote a memory, or rewrite one in place — the tool refuses. Nothing you write in the dream is a lived event.",
@@ -1645,8 +1655,34 @@ export class Dreams {
         const b = live(change.b);
         if (a === null || b === null) return { action, ok: false, reason: "not-shown-or-gone", detail: this.notLive([a === null ? change.a : null, b === null ? change.b : null], shown) };
         if (a.id === b.id) return { action, ok: false, reason: "same-memory", detail: `a and b are both ${a.id}.` };
-        this.store.recordDreamChange(dream.id, { action, ref: a.id, ref2: b.id, detail: {} });
+        // THE FLAG IS A PAIR (v10): unsettled in `contradictions`, where the
+        // awake raise, "my mind" and recall's label read it. A pair already
+        // standing between the two is left as it is — settled stays settled.
+        const flagged = flagContradiction(this.store, { x: a.id, y: b.id, source: "dream", day, dreamId: dream.id });
+        const pair = flagged.ok ? flagged.pair : null;
+        this.store.recordDreamChange(dream.id, { action, ref: a.id, ref2: b.id, detail: { pair, created: flagged.ok && flagged.created } });
+        if (flagged.ok && !flagged.created) {
+          return { action, ok: true, reason: "already-a-pair", note: `${a.id} and ${b.id} are already a pair (${flagged.pair}, ${flagged.state}); nothing new was flagged.` };
+        }
         return { action, ok: true, reason: "flagged" };
+      }
+      case "settle": {
+        // A DREAM MAY SETTLE, with a clear reason (2026-09-29, held lightly):
+        // the awake write-up and sleep are the usual home, and a dream mostly
+        // flags. Two memories this dream was shown; the trail names the dream.
+        const holds = live(change.holds);
+        const over = live(change.over);
+        if (holds === null || over === null) {
+          return { action, ok: false, reason: "not-shown-or-gone", detail: this.notLive([holds === null ? change.holds : null, over === null ? change.over : null], shown) };
+        }
+        const why = this.words(change.why ?? "", dream, true, DREAM_TUNABLES.MAX_WHY_CHARS);
+        if (!why.ok || why.text.trim().length === 0) {
+          return { action, ok: false, reason: "why-required", detail: "A dream settles only with a clear reason: say it in `why`. Otherwise flag the pair (contradiction {a, b}) and let the waking self settle it." };
+        }
+        const out = settleContradiction(this.store, { holds: holds.id, over: over.id, how: String(change.how ?? ""), why: why.text, actor: "dream", actorId: dream.id, day });
+        if (!out.ok) return { action, ok: false, reason: out.reason, detail: out.detail };
+        this.store.recordDreamChange(dream.id, { action, ref: holds.id, ref2: over.id, detail: { pair: out.pair, how: out.how } });
+        return { action, ok: true, reason: `settled-${out.how}`, id: out.pair, ...(out.note === undefined ? {} : { note: out.note }) };
       }
       case "feeling-now": {
         const row = live(change.id);
@@ -1777,9 +1813,10 @@ export class Dreams {
    * REVERSE A DREAM'S BATCH, newest change first: merged originals come back
    * (their versions stay as history) and the merged memory is archived; links
    * go back to what they were; a gist is archived; a dream's feelings,
-   * replays and nominations are removed; a flagged contradiction stops being
-   * raised. The journal stays, marked undone. Idempotent: a change already
-   * undone is skipped.
+   * replays and nominations are removed; a pair it flagged is withdrawn while
+   * still unsettled, and a pair it settled is unsettled again unless someone
+   * settled it since. The journal stays, marked undone. Idempotent: a change
+   * already undone is skipped.
    */
   undo(id: string): { ok: boolean; reason: string; reversed: number; kept: number } {
     if (this.ctx.observer) return { ok: false, reason: "observer", reversed: 0, kept: 0 };
@@ -1836,8 +1873,35 @@ export class Dreams {
           if (ids.length > 0) this.store.retractFeelings(ids);
           break;
         }
+        case "contradiction": {
+          // A pair THIS dream flagged is withdrawn while it is still unsettled
+          // (a settle made since stands). A flag the v10 upgrade carried names
+          // its dream and sequence on the pair instead of the change.
+          const pairId =
+            typeof detail["pair"] === "string"
+              ? detail["created"] === true
+                ? (detail["pair"] as string)
+                : null
+              : (this.store.contradictions().find((p) => p.dream_id === id && p.dream_seq === c.seq)?.id ?? null);
+          if (pairId !== null) this.store.withdrawContradiction(pairId);
+          break;
+        }
+        case "settle": {
+          // The dream's settle is undone the way any settle is — when it is
+          // still the pair's standing settle.
+          const pairId = typeof detail["pair"] === "string" ? (detail["pair"] as string) : null;
+          const pair = pairId === null ? undefined : this.store.contradiction(pairId);
+          const last = pair === undefined ? undefined : this.store.contradictionSettles({ pairId: pair.id }).filter((x) => x.action === "settle" && x.undone === 0).pop();
+          if (pair !== undefined && pair.state === "settled" && last?.actor === "dream" && last.actor_id === id) {
+            undoContradiction(this.store, { pair: pair.id, actor: "owner", why: `dream ${id} was undone` });
+          } else if (pairId !== null) {
+            kept += 1;
+            continue;
+          }
+          break;
+        }
         default:
-          // replayed, nominate-core: removed in bulk below; contradiction: no effect to reverse.
+          // replayed, nominate-core: removed in bulk below.
           break;
       }
       this.store.markDreamChangeUndone(id, c.seq);
@@ -1851,38 +1915,34 @@ export class Dreams {
   }
 
   /**
-   * CONTRADICTIONS A DREAM FLAGGED, NOT YET RAISED AWAKE — one line each for
-   * the next session, claimed by a meta latch so each is raised once. Only a
-   * pair this session could be shown is raised (recall's gates).
+   * UNSETTLED PAIRS, NOT YET RAISED AWAKE — one line each for the next
+   * session, latched on the pair (`raised_day`, v10) so each is raised once.
+   * A dream's flag today; any unsettled pair the store holds (an undone
+   * settle reopens one). Only a pair this session could be shown is raised
+   * (recall's gates); a pair one of whose memories is gone for good is
+   * latched and passed over.
    */
   raiseLines(input: { session: string }): string[] {
     if (this.ctx.observer) return [];
     const out: string[] = [];
     const owner = ownerNames(this.store);
-    // BY OPEN STATE (2026-09-28, build B): every flagged pair of a dream that
-    // stands, not only the newest ten dreams'.
-    for (const c of this.store.openDreamChanges("contradiction")) {
-      if (c.ref === null || c.ref2 === null) continue;
-      const key = `${RAISED_PREFIX}${c.dream_id}.${String(c.seq)}`;
-      if (this.store.getMeta(key) !== undefined) continue;
-      const a = this.store.row(c.ref);
-      const b = this.store.row(c.ref2);
-      // A pair one of whose memories is gone for good (removed, archived,
-      // merged on) can never be raised: latched, so this per-prompt read does
-      // not pass over it again. One only confidential here stays open — the
-      // owner's own session may raise it.
-      const gone = (r: MemoryRow | undefined): boolean => r === undefined || r.archived === 1 || r.superseded_by !== null;
-      if (gone(a) || gone(b)) {
-        this.store.setMeta(key, String(this.store.livedDay()));
+    const day = this.store.livedDay();
+    for (const c of this.store.contradictions({ state: "unsettled" })) {
+      if (c.raised_day !== null) continue;
+      const a = this.store.row(c.a);
+      const b = this.store.row(c.b);
+      if (!pairStanding(this.store, c)) {
+        this.store.markContradictionRaised(c.id, day);
         continue;
       }
       if (a === undefined || b === undefined || !this.showable(a) || !this.showable(b)) continue;
-      this.store.setMeta(key, String(this.store.livedDay()));
+      this.store.markContradictionRaised(c.id, day);
       const theirs = (r: MemoryRow): boolean => r.about === "us" || r.about === "owner" || namesOwner(this.store, r, owner);
       const who = this.ctx.ownerName?.() ?? "the owner";
       const raise = theirs(a) || theirs(b) ? ` It is about ${who}, or the two of you: raise it with ${who}.` : "";
+      const when = c.dream_id === null ? "" : ` a dream on ${this.store.dream(c.dream_id)?.date ?? "a recent night"} flagged them;`;
       out.push(
-        `Counterparts: a dream on ${c.dream_date ?? "a recent night"} flagged two memories that disagree — ${c.ref} and ${c.ref2}. Look them up (recall by id) and settle which holds, awake; the dream did not.${raise}`,
+        `Counterparts: two memories disagree —${when} ${c.a} (the older) and ${c.b}. Look them up (recall by id) and settle which holds, awake: the note tool with settle {pair: ${c.id}, holds, how, why} — changed, corrected or open.${raise}`,
       );
       if (out.length >= 2) return out;
     }

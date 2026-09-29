@@ -115,6 +115,9 @@ export const DREAM_TUNABLES = {
     gist: 3,
     replayed: 60,
     contradiction: 10,
+    // 2026-09-29: a dream may settle a pair when the reason is plain; it
+    // mostly flags, so few.
+    settle: 5,
     "feeling-now": 10,
     "nominate-core": 3,
   },
