@@ -2766,18 +2766,18 @@ export class McpServer {
   }
 
   private result(payload: Record<string, unknown>, isError: boolean): ToolResult {
-    // A BUNDLE IS SENT ONCE (2026-09-28, review of build B). A result carries
-    // its payload twice — as the text the model reads and as
-    // `structuredContent` — and a host may count both against its ~25k-token
-    // ceiling. The long text a dream or a reflection is handed (`bundle`)
-    // rides only in the text; the structured copy says its length instead.
-    // Nothing in this package reads `structuredContent`; the text is the
-    // contract.
-    const bundle = payload["bundle"];
-    const structured = typeof bundle === "string" ? { ...Object.fromEntries(Object.entries(payload).filter(([k]) => k !== "bundle")), bundleChars: bundle.length } : payload;
+    // THE WHOLE PAYLOAD IN BOTH (2026-09-29, the first real headless run).
+    // From 2026-09-28 the long `bundle` rode only in the text, with
+    // `bundleChars` in its place in `structuredContent`, on the guess that a
+    // host counts both copies. Claude Code (2.1.284) does not count both: when
+    // a result carries `structuredContent` it hands the MODEL that — serialized
+    // — and drops the text items. So every dream and reflection was shown
+    // counts and no memories: the run said "the bundles came back to me as
+    // counts only", and missed a contradiction it was seeded with. The text
+    // stays the whole payload too, for a host that reads only the text.
     return {
       content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],
-      structuredContent: structured,
+      structuredContent: payload,
       ...(isError ? { isError: true } : {}),
     };
   }

@@ -38,7 +38,7 @@ import { ENVELOPE_MAX_CHARS, deliverTurn, toHookInput } from "../src/adapters/cl
 import { nightRunFindings } from "../src/adapters/claude-code/doctor.js";
 import type { DoctorInput } from "../src/adapters/claude-code/doctor.js";
 import { recordSession } from "../src/adapters/sessions.js";
-import { McpServer } from "../src/adapters/mcp/index.js";
+import { McpServer, openServer } from "../src/adapters/mcp/index.js";
 import { launchOptions } from "../src/adapters/mcp/bin/serve.js";
 import { toolDefinitions } from "../src/adapters/mcp/tools.js";
 import { dreamShowLines, nightRunLine } from "../src/adapters/cli/dream-core.js";
@@ -927,6 +927,50 @@ describe("gaps: the quiet child at SessionStart, SessionEnd and PreCompact", () 
     expect(a.sessionEnd({ ...input({ sessionId: "child", nightRun: true }), turns }).spansAppended).toBe(0);
     expect(a.preCompact({ ...input({ sessionId: "child2", nightRun: true }), turns }).spansAppended).toBe(0);
     expect(a.sessionEnd({ ...input({ sessionId: "ordinary" }), turns }).spansAppended).toBeGreaterThan(0);
+  });
+});
+
+describe("the headless child's bundles carry the memories — in what Claude Code hands the model (the first real run, 2026-09-29)", () => {
+  test("a server opened from the child's own --mcp-config env: dream begin and reflect begin carry the bodies in structuredContent", async () => {
+    // The coordinator's seed, as in the real run.
+    const scope = mkdtempSync(join(tmpdir(), "counterparts-bodies-project-"));
+    try {
+      const seed = openNightCounterpart({ dataDir: dir });
+      seed.store.advanceClock("2026-09-10");
+      for (let d = 11; d <= 28; d += 1) seed.store.advanceClock(`2026-09-${String(d).padStart(2, "0")}`);
+      const day = seed.store.livedDay();
+      const put = (body: string, kind: "fact" | "person" | "self" = "fact"): void => {
+        seed.store.put({ type: "memory", kind, body, salience: { relevance: 0.6, emotional: 0.4, predictive: 0.6 }, physics: { birthDay: day, lastUsedDay: day } });
+      };
+      put("The migration step must run before the container boots, or it boots empty.");
+      put("Run the migration before starting the container, otherwise the container starts empty.");
+      put("Mike likes to talk decisions through out loud before he commits to one.", "person");
+      put("I say what I do not know before I guess.", "self");
+      put("Tiny Castles upkeep is 8 food a day per spearman.");
+      put("Tiny Castles upkeep is 16 food a day per spearman.");
+      seed.close();
+      recordSession(dir, { sessionId: "e2e-s1", scope, phase: "start" });
+      // Exactly what bin/nightly.ts hands `claude -p` for its one MCP server.
+      const child = planNightChild({ config: { dataDir: dir, owner: true, identity: { name: "Mike" } }, run: "nrn_b", prompt: "p", scope, session: "e2e-s1", runtime: process.execPath });
+      const mcp = JSON.parse(child.args[child.args.indexOf("--mcp-config") + 1] ?? "{}") as { mcpServers: { counterparts: { env: Record<string, string> } } };
+      const launch = launchOptions([], mcp.mcpServers.counterparts.env);
+      const s = openServer({ ...launch, dir });
+      open.push(s.counterpart);
+      const begin = await s.call("dream", { phase: "begin", session: "e2e-s1" });
+      expect(begin.isError ?? false).toBe(false);
+      // What the host shows the model is the structured copy, serialized.
+      const seen = JSON.stringify(begin.structuredContent);
+      expect(seen).toContain("Tiny Castles upkeep is 8 food a day per spearman.");
+      expect(seen).toContain("Tiny Castles upkeep is 16 food a day per spearman.");
+      expect(seen).toContain("Run the migration before starting the container");
+      const dreamId = String(begin.structuredContent["dream"]);
+      await s.call("dream", { phase: "journal", session: "e2e-s1", dream: dreamId, text: "A dream." });
+      const r = await s.call("reflect", { phase: "begin", session: "e2e-s1", dream: dreamId });
+      expect(r.isError ?? false).toBe(false);
+      expect(JSON.stringify(r.structuredContent)).toContain("Tiny Castles upkeep is 16 food a day per spearman.");
+    } finally {
+      rmSync(scope, { recursive: true, force: true });
+    }
   });
 });
 
