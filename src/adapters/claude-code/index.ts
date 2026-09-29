@@ -90,6 +90,7 @@ export {
 export {
   HOST_SESSION_ENV,
   NIGHT_KIND_ENV,
+  NIGHT_DENIED_TOOLS,
   NIGHT_RUN_ENV,
   NIGHT_TOOLS,
   kindValue,

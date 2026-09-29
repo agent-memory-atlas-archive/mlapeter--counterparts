@@ -23,11 +23,17 @@
  *      start" need a witness.
  *
  * The child is the page writer's shape (`page-writer.ts`): `-p`, the prompt on
- * stdin, `--permission-mode default`, and `--allowedTools` EXACTLY the four
- * counterparts tools the run needs — anything else it tries stops at a prompt
- * nobody can answer, which is the direction this should fail in. The parent's
- * session, scope and stance variables are removed from its environment; this
- * package's own values are written last.
+ * stdin, `--permission-mode default`, and `--allowedTools` the four
+ * counterparts tools the run needs. `--allowedTools` only ADDS allow rules — the
+ * user's and the project's own allow rules still apply inside the child (review
+ * of #282, finding 3) — so the built-in tools that run commands, write files or
+ * reach the network are DENIED outright (`--disallowedTools`, `NIGHT_DENIED_TOOLS`;
+ * a deny beats an allow). What is left and not allowed stops at a prompt nobody
+ * can answer, which is the direction this should fail in. How much stricter to
+ * be (an empty built-in set, a strict MCP config, no project settings) is the
+ * owner's call; other MCP servers the user allowed are NOT denied here. The
+ * parent's stance variables are removed from its environment; this package's
+ * own values are written last.
  *
  * SESSION BINDING (the choice, 2026-09-29): the run is ATTRIBUTED TO THE
  * SESSION THAT STARTED IT, as the in-session Agent path always was. The launch
@@ -81,6 +87,25 @@ export const NIGHT_TOOLS = [
   "mcp__counterparts__reflect",
   "mcp__counterparts__self_page",
   "mcp__counterparts__recall",
+] as const;
+
+/**
+ * THE BUILT-IN TOOLS THE RUN MAY NEVER USE, denied outright (review of #282,
+ * finding 3): the ones that run commands or code, write or edit files, reach
+ * the network, or start another agent. Spelled as `claude --help` (2.1.284)
+ * documents `--disallowedTools`: a comma-separated list of tool names.
+ */
+export const NIGHT_DENIED_TOOLS = [
+  "Bash",
+  "PowerShell",
+  "Edit",
+  "Write",
+  "MultiEdit",
+  "NotebookEdit",
+  "WebFetch",
+  "WebSearch",
+  "Task",
+  "Agent",
 ] as const;
 
 /**
@@ -206,6 +231,8 @@ export function planNightChild(input: NightChildInput): NightChildPlan {
     "-p",
     "--allowedTools",
     NIGHT_TOOLS.join(","),
+    "--disallowedTools",
+    NIGHT_DENIED_TOOLS.join(","),
     "--permission-mode",
     PERMISSION_MODE,
     ...(model === undefined ? [] : ["--model", model]),

@@ -266,6 +266,9 @@ describe("B. the headless run: the child's plan, and what becomes of a run", () 
       "-p",
       "--allowedTools",
       "mcp__counterparts__dream,mcp__counterparts__reflect,mcp__counterparts__self_page,mcp__counterparts__recall",
+      // Deny beats allow: the user's own allow rules cannot reach these (review finding 3).
+      "--disallowedTools",
+      "Bash,PowerShell,Edit,Write,MultiEdit,NotebookEdit,WebFetch,WebSearch,Task,Agent",
       "--permission-mode",
       "default",
       "--model",
