@@ -13,8 +13,8 @@
  *
  *   | how         | the memory it is over                                    |
  *   |-------------|----------------------------------------------------------|
- *   | `changed`   | one strength cut through physics (`changedFade`), stays   |
- *   |             | recallable, labelled `earlier`; use can hold it           |
+ *   | `changed`   | its fade multiplier x CHANGED_FADE (`changedFade`), stays |
+ *   |             | recallable, labelled `earlier`; a use leaves the fade     |
  *   | `corrected` | archived `corrected` — out of recall, readable by its own |
  *   |             | id, never deleted                                         |
  *   | `open`      | nothing moves; both are shown with each other             |
@@ -26,8 +26,9 @@
  * the awake `note` tool, the dream's `settle` action, the reflection and the
  * owner's `counterparts settle` all reach. No gate on who: a TRAIL instead
  * (`contradiction_settles`: who, the kind, why, the ids, when), and every
- * settle can be undone (`undo`): the strength back for `changed`, back into
- * recall for `corrected`, and the pair is unsettled again.
+ * settle can be undone (`undo`): the fade divided back out for `changed`, back
+ * into recall for `corrected`, and the pair unsettled again when it was a flag
+ * — withdrawn when nobody had flagged it (review of #284, S5).
  *
  * **Settling an existing pair rewrites no body.** Appending the journey line
  * to the winner would be a revision (a supersede, a forwarding address), which

@@ -810,3 +810,14 @@ headless child's own `--mcp-config` env and checks the bodies reach `structuredC
   in the writer's own words. `session_end`'s two settle privileges sit at the end of its
   list, because the host serves the first 2,048 characters and the salience claims must
   stay inside them (`test/stop-ask-quiet.test.ts`).
+
+### After the review of #284
+
+- **Neighbours**: a `session_end` entry never lists a sibling written by the same call,
+  and one call lists at most `NEIGHBOURS_PER_CALL` (12) across its entries (M1).
+- **`note` with `text` and `settle`** is an error only when nothing landed (M2).
+- **`already-settled`** tells a session to raise it with the owner, whose `counterparts
+  settle --undo` it is; the owner is told to undo first (M3).
+- **A `how` sent at a core memory** reports that pressure runs and that the pair is
+  recorded unsettled meanwhile (M9). The published `note` schema has `required: []`;
+  watch whether empty notes rise (M10).

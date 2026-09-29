@@ -451,8 +451,10 @@ store property is the `VACUUM INTO`, and that is G19. The code's numbering wins.
     what it does to the memory it is over (a physics patch computed by `physics/`, or an
     archive `corrected`), and an undo puts that back through `updatePhysics` /
     `restoreSuperseded`. A corrected memory is archived, not superseded: no forwarding
-    address, readable by its own id. The owner's removal deletes a memory's pairs and
-    their trail. The v10 migration carries every open dream flag onto an unsettled pair.
+    address, readable by its own id. `memories.fade` is the multiplier a `changed` settle
+    sets (1 otherwise); a settle never moves `last_used_day`. The owner's removal puts a
+    standing settle back (fade, archive, closed flags) and then deletes the memory's pairs
+    and their trail. The v10 migration carries every open dream flag onto an unsettled pair.
 
 ## 6. Scars honored
 

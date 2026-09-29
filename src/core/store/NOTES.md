@@ -1774,3 +1774,20 @@ Working defaults from the owner's conversation of 2026-09-27 and its design revi
   Sleep's prune skips archived rows and itself only archives. `resolve` is unchanged.
 - **Removal** deletes a removed memory's pairs and their trail (a `why` is words about
   the two), and blanks `via` on pairs they had closed.
+
+### After the review of #284 (2026-09-29, before any store migrated)
+
+- **`memories.fade`** (REAL NOT NULL DEFAULT 1) joins v10 through `ADDED_COLUMNS`: the
+  strength multiplier a `changed` settle sets (physics §5.12). `settleContradiction` writes
+  it through `updatePhysics({ fade })`; `undoContradictionSettle` writes the fade with the
+  factor divided out. The trail's detail records `{ id, factor }` — not a day.
+- **Undo puts a pair back where it came from**: `unsettled` when it was a flag (`source`
+  `dream` or `pressure`, or a dream id), `withdrawn` otherwise (`undoContradictionSettle`
+  takes `state`).
+- **Removal unwinds before it deletes** (S6): for each standing settle on a removed
+  memory's pairs, the survivor's fade is divided back and a corrected survivor is
+  unarchived (and re-indexed after the commit); flags closed through the pair are
+  unsettled again. Then the pairs and their trail go.
+- **The carry** counts a pair raised when any of its duplicate flags was raised (M6).
+- **`source = pressure`**: an authored `updates` at a core memory records its pair
+  unsettled, latched as raised, while pressure builds (revision.ts, M9).

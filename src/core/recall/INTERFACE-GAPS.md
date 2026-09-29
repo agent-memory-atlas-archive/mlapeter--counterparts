@@ -272,8 +272,9 @@ pass shows pointers and never says whether they were used. Also: a pointer the m
 reads by title (a handle) counts only if the handle log translated it (G50), as for any
 expansion.
 
-## 10. Standing labels reach recall and ask, not the wake's lanes — OPEN 2026-09-29
+## 10. Standing labels reach recall and ask, not the wake's lanes — CLOSED 2026-09-29
 
 `standing.ts` labels the ambient injection and the deliberate path (MCP `recall`, the
-console's `ask`). The wake's own lanes (`self/briefing.ts`, the Nearby hints) render
-memories without it; an old side of an unsettled pair shown there reads as current.
+console's `ask`), and since the review of #284 (S3) the wake's lanes too: `self/`'s
+resolver hands `briefing.ts#elementLine` the same prefix and suffix, in every lane
+(identity, craft, threads, hints, horizon).

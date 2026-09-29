@@ -1741,3 +1741,6 @@ now, how many open and how many unsettled with both memories live (pointing at
 already raised, still standing); silent on a store born at v10. Both are read-only table
 and meta reads. The awake raise line (`dreams.raiseLines`) now names the pair's id and
 the `note` settle.
+
+After the review of #284: the Contradictions line counts a pair recorded while pressure
+builds on a core memory (`source` pressure) as flagged, beside a dream's flags.

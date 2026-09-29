@@ -122,7 +122,7 @@ explicit claim — however low — is never overridden. See NOTES.md item 16.
 rep(m)  = min( 0.12 × uses(m), 0.5 )                                # v0, verbatim; TUNABLE
 cons(m) = 0.2 if consolidated(m) else 0                             # v0; LEGACY rows only (§5.11)
 base(m) = max( ω_sal(k) × sal(m),  ω_rep(k) × rep(m) ) + cons(m)    # MAX, not product
-strength(m, d) = clamp01( base(m) × D(m, d) )
+strength(m, d) = clamp01( base(m) × D(m, d) × fade(m) )          # fade: §5.12, 1 unless settled changed
 ```
 
 `base` is monotone non-decreasing (salience is fixed, `uses` only rises). **Identity is
@@ -443,15 +443,25 @@ R(m)            = 1 + RETURN_GAIN × ln(1 + returns(m))              RETURN_GAIN
 
 ### 5.12 A changed fact fades once (2026-09-29, contradictions — a working default)
 
-When a memory is settled as `changed` — true at its time, not now — its forgetting curve
-takes ONE cut: `changedFade(m, d, CHANGED_FADE)` returns the `lastUsedDay` at which
-`decay` reads `CHANGED_FADE` × what it reads today (the curve inverted for the shape in
-use, rounded to a whole lived day, never less of a cut). Strength today is cut by about
-that factor (0.5, CAL); ordinary decay carries on from there, the prune's dwell counts
-from there, and a credited use re-anchors it (`creditUse` sets `lastUsedDay := d`) —
-graded weakening, not a switch (FadeMem). A decay-exempt (core) memory has nothing to
-cut and is never settled `changed` (its path is pressure). The caller applies the patch
-through `Store.updatePhysics` and records the prior day, so an undo can put it back.
+When a memory is settled as `changed` — true at its time, not now — it takes ONE cut:
+its `fade` (a per-row multiplier on strength, 1 for every memory until then; schema v10)
+is multiplied by `CHANGED_FADE` (0.5, CAL), so its strength today and on every later day
+is half what it would have been — graded weakening, not a switch (FadeMem). Nothing else
+moves: not `base` (G3 holds), not `lastUsedDay` (D stays a pure function of d and the real
+last use, G5; the prune's dwell counts real lived days, G10), not the uses. A credited use
+resets decay as always and leaves the fade alone, so a used "earlier" memory is held at
+the cut height; one credited occasion per lived day still holds. Two settles multiply;
+`unfade` divides one settle's factor back out, exactly, in any order. A core memory is
+never settled `changed` (its path is pressure). The caller applies the patch through
+`Store.updatePhysics` and records the factor on the trail.
+
+**Why a multiplier, not a clock move** (review of PR #284, B1). The first build moved
+`lastUsedDay` back so the curve read half. The Stop's retrospective credit of the read
+that preceded the settle then set it to today and erased the cut (the memory ended
+stronger than before, with a return and a reinforced day besides); the moved day
+shortened the prune's 90-day dwell, so a weak old memory was archived the next night;
+and the dashboard showed a last use before birth. The multiplier has none of these.
+Open for the owner: whether a later use should lift the fade back toward 1.
 
 ## 6. Scars honored
 

@@ -1279,3 +1279,12 @@ see the fresh page).
 - Retired with the session-start ask: its sizing against the wake's ceiling, the durable
   `no-room` / `scope-question` deferral rows (old rows still read), and the scope
   question's patience counter. Host mode is untouched and not the default.
+
+## 2026-09-29 — a memory's standing in the wake's lanes (review of #284, S3)
+
+`resolveStatement` reads `recall/standing.ts#standingOf` for each element and
+`elementLine` puts its prefix before the statement and its suffix after, so the hints,
+threads and identity lanes say `Earlier (now [id])`, `Unsettled — may be out of date,
+see [id]` or `(disagrees with [id])` exactly as recall does. The byte accounting reads
+the same line, so it counts the label. The hints ranking needs nothing: `hintReading`
+goes through `strength()`, which carries a `changed` memory's fade.

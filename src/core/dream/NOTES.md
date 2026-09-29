@@ -433,3 +433,9 @@ writer, the dream and the reflection. What the build learned:
 - **The reflection** settles through its own phase (`Reflections.settle`, reflect phase
   `settle`): only ids it was shown, a `why` through the credential scan, actor
   `reflection`. Its instructions mention it only when an unsettled pair is on its mind.
+
+### After the review of #284
+
+- An undone dream's settle leaves its pair `withdrawn` when nobody had flagged it, and
+  `unsettled` when it was a flag; the trail's actor is `dream-undo` with the dream id (M4).
+- A reopened flag starts fresh on "my mind" (its `mind.seen.<pair>` count is reset, M5).
