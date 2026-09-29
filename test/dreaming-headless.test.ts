@@ -726,6 +726,27 @@ describe("B. auto: the first prompt of the day starts the headless run itself", 
     expect(nightPlans()).toHaveLength(1);
   });
 
+  test("\"no dreams\" while a run is going: the setting is off from the next run, the run in flight finishes, and both doors say so (owner decision D)", async () => {
+    const a = autoHooks();
+    setAuto(a);
+    const turn = a.userPromptSubmit(input());
+    expect(turn.injection).toContain("it takes effect from the next run (a run already under way finishes)");
+    expect(a.counterpart.dreams.nightRunUnderWay()).toBe(true);
+    const s = new McpServer({ counterpart: a.counterpart, scope: "proj", owner: true, registryDir: dir, session: "s1" });
+    const off = await s.call("dream", { phase: "setting", session: "s1", value: "off" });
+    expect(String(off.structuredContent["said"])).toContain("A run already under way in the background finishes; the setting takes effect from the next run.");
+    // Nothing was stopped: the run's row is still `started`.
+    expect(a.counterpart.dreams.nightRun()?.state).toBe("started");
+    expect(a.counterpart.dreams.setting()).toBe("off");
+    // With no run going, "off" says nothing about one.
+    const started = a.counterpart.dreams.nightRun();
+    if (started === null) throw new Error("no run");
+    a.counterpart.dreams.recordNightRun({ ...started, state: "done", endedAt: a.counterpart.store.now(), code: 0 });
+    a.counterpart.dreams.setSetting("auto", { by: "owner" });
+    const again = await s.call("dream", { phase: "setting", session: "s1", value: "off" });
+    expect(String(again.structuredContent["said"])).not.toContain("under way");
+  });
+
   test("an observer starts nothing and says nothing", () => {
     const a = autoHooks();
     setAuto(a);

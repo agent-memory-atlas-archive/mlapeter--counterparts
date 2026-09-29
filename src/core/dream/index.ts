@@ -413,6 +413,9 @@ export function nightPartsWords(run: Pick<NightRun, "kind"> & Partial<Pick<Night
   return `${list(ran)} ran; ${list(not)} did not`;
 }
 
+/** What "no dreams" says about a run already going (owner decision D, 2026-09-29). */
+export const NIGHT_RUN_FINISHES = "A run already under way in the background finishes; the setting takes effect from the next run.";
+
 /** A fresh run id. */
 export function newNightRunId(): string {
   return `nrn_${randomBytes(6).toString("hex")}`;
@@ -647,6 +650,17 @@ export class Dreams {
   /** The latest headless run, or null. A read: one meta lookup. */
   nightRun(): NightRun | null {
     return nightRunOf(this.store);
+  }
+
+  /**
+   * A HEADLESS RUN IS UNDER WAY: the latest run is `started` and not lost.
+   * "No dreams" does not stop it (owner decision D, 2026-09-29): the setting
+   * takes effect from the next run, and whoever turns it off is told so
+   * (`NIGHT_RUN_FINISHES`).
+   */
+  nightRunUnderWay(): boolean {
+    const night = this.nightRun();
+    return night !== null && night.state === "started" && !nightRunLost(night, this.store.now());
   }
 
   /**
@@ -949,7 +963,7 @@ export class Dreams {
     } as const;
     const since = s.last === null ? "yet" : `since ${s.last.date ?? `lived day ${String(s.last.day)}`}`;
     const who = this.ownerName() ?? "the owner";
-    const off = `If ${who} says "no dreams" (or never, or stop), call the dream tool with phase "setting", session: ${input.session}, value: "off" — it can be turned back on the same way, or with counterparts dream --setting ask.`;
+    const off = `If ${who} says "no dreams" (or never, or stop), call the dream tool with phase "setting", session: ${input.session}, value: "off" — it takes effect from the next run (a run already under way finishes), and it can be turned back on the same way, or with counterparts dream --setting ask.`;
     const launch = `call the counterparts dream tool with phase "launch", session: ${input.session}, and hand the prompt it returns to a background agent (the Agent tool), unchanged — it ${nightSummary()}.`;
     const reflect = s.reflectOnly === null ? "" : `call the counterparts reflect tool with phase "launch", session: ${input.session}, dream: ${s.reflectOnly.id}, and hand the prompt it returns to a background agent (the Agent tool), unchanged — it reflects on that dream.`;
     const cut = s.leftBehind === null ? null : `your dream of ${s.leftBehind.date ?? "a recent night"} was cut off (its session closed before it woke); it picks up where it stopped`;

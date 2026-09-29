@@ -99,7 +99,7 @@ import {
   success,
 } from "./protocol.js";
 import type { Id, Request, Response } from "./protocol.js";
-import { DREAMING_SETTINGS, nightNext, nightOrder } from "../../core/dream/index.js";
+import { DREAMING_SETTINGS, NIGHT_RUN_FINISHES, nightNext, nightOrder } from "../../core/dream/index.js";
 import type { DreamBundle, DreamingSetting, NightPart } from "../../core/dream/index.js";
 import { noteLookups } from "../../core/fit/index.js";
 import type { FitMechanism } from "../../core/fit/index.js";
@@ -1875,7 +1875,9 @@ export class McpServer {
             ask: "Dreaming asks first: once a day, the first session shows the owner the question in the terminal and waits for their word.",
             off: "No dreams: nothing starts the nightly run and nothing asks. It can be turned back on with this phase (value ask or auto) or with counterparts dream --setting ask.",
           };
-          return this.result({ phase, setting: out.setting, before: out.before, said: said[out.setting] }, false);
+          // "No dreams" does not stop a run already going (owner decision D): said.
+          const finishes = out.setting === "off" && dreams.nightRunUnderWay() ? ` ${NIGHT_RUN_FINISHES}` : "";
+          return this.result({ phase, setting: out.setting, before: out.before, said: `${said[out.setting]}${finishes}` }, false);
         }
         case "begin": {
           const model = readSession(this.registryDir, session)?.model;

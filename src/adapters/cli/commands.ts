@@ -198,7 +198,7 @@ import { repairDates } from "./repair-dates.js";
 import type { Confidence } from "./repair-dates.js";
 import { NO_PAGE_LINES, bodyFrom, pageLines, versionLines, writeLines } from "./self-page.js";
 import { coreListLines, dreamListLines, dreamShowLines, dreamingSettingWords } from "./dream-core.js";
-import { DREAMING_SETTINGS } from "../../core/dream/index.js";
+import { DREAMING_SETTINGS, NIGHT_RUN_FINISHES } from "../../core/dream/index.js";
 import { REFLECTED_FEELING_KEY } from "../../core/sleep/index.js";
 // The console's shared manners (2026-09-21): is there a person here, ask them,
 // and say one marked line back.
@@ -2034,6 +2034,8 @@ function dreamCommand(dir: string, io: Io, parsed: Parsed, observer: boolean, na
       }
       io.out(`Dreaming: ${out.setting}${out.before === out.setting ? " (it already was)" : ` (was ${out.before})`}.`);
       io.out(`  ${dreamingSettingWords(out.setting)}`);
+      // Owner decision D (2026-09-29): "off" does not stop a run already going.
+      if (out.setting === "off" && counterpart.dreams.nightRunUnderWay()) io.out(`  ${NIGHT_RUN_FINISHES}`);
       return EXIT.ok;
     } finally {
       counterpart.close();
