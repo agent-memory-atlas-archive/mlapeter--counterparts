@@ -241,14 +241,13 @@ describe("the three kinds, written as a new memory with updates + how", () => {
   });
 
   test("a swept declaration (no how) stays a link, as before", () => {
-    const store = Store.open({ dir });
-    open.push(store);
+    const c = Counterpart.open({ dir, owner: true });
+    open.push(c);
+    const store = c.store;
     aged(store);
     const old = put(store, "The cat is called Miso.");
     const neu = put(store, "The cat is called Mochi.");
-    const s = openServer({ dir: mkdtempSync(join(tmpdir(), "counterparts-contradictions-unused-")), session: "x", scope: "/x", owner: true });
-    open.push(s.counterpart);
-    const out = applyRevision(store, s.counterpart.schemas, { updates: old, challengerId: neu, day: store.livedDay(), method: "id" });
+    const out = applyRevision(store, c.schemas, { updates: old, challengerId: neu, day: store.livedDay(), method: "id" });
     expect(out.path).toBe("link-only");
     expect(store.contradictions()).toHaveLength(0);
   });
