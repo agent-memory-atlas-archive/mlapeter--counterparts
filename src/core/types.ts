@@ -119,6 +119,12 @@ export interface MemoryPhysics {
   feelingPeakLived?: number | null;
   consolidated: boolean;
   /**
+   * v10 (2026-09-29, physics §5.12): a multiplier on strength, 1 until a
+   * settle marks the memory `changed` (then `CHANGED_FADE`, stacking), and
+   * back when that settle is undone. A use never moves it. Absent reads 1.
+   */
+  fade?: number;
+  /**
    * Born before schema v8 (the dreaming + consolidation redesign, 2026-09-26):
    * the one-time `+CONS_BONUS` consolidation path stays open for it, exactly as
    * it was, so the upgrade moves no memory down (physics §5.2). Absent reads

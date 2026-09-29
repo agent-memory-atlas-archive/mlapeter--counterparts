@@ -2180,7 +2180,11 @@ function settleCommand(dir: string, io: Io, parsed: Parsed, observer: boolean, n
         io.err(`refused: ${out.reason} — ${out.detail} Nothing was undone.`);
         return EXIT.refused;
       }
-      io.out(`Undid the settle of ${out.pair} (${out.how ?? "settled"}); the pair is unsettled again.`);
+      io.out(
+        out.state === "unsettled"
+          ? `Undid the settle of ${out.pair} (${out.how ?? "settled"}); the pair is unsettled again — a question to settle.`
+          : `Undid the settle of ${out.pair} (${out.how ?? "settled"}); the pair is withdrawn — nobody had flagged it, so nothing is left to settle.`,
+      );
       if (out.restored !== null) io.out(`  ${out.restored}'s strength is back to what it was.`);
       if (out.unarchived !== null) io.out(`  ${out.unarchived} is back in recall.`);
       if (out.reopened.length > 0) io.out(`  Reopened too: ${out.reopened.join(", ")}.`);

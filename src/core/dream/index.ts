@@ -1893,7 +1893,8 @@ export class Dreams {
           const pair = pairId === null ? undefined : this.store.contradiction(pairId);
           const last = pair === undefined ? undefined : this.store.contradictionSettles({ pairId: pair.id }).filter((x) => x.action === "settle" && x.undone === 0).pop();
           if (pair !== undefined && pair.state === "settled" && last?.actor === "dream" && last.actor_id === id) {
-            undoContradiction(this.store, { pair: pair.id, actor: "owner", why: `dream ${id} was undone` });
+            // The trail says a dream's undo did it (review of #284, M4), not the owner.
+            undoContradiction(this.store, { pair: pair.id, actor: "dream-undo", actorId: id, why: `dream ${id} was undone` });
           } else if (pairId !== null) {
             kept += 1;
             continue;

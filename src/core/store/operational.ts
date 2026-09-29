@@ -22,7 +22,9 @@ import type { ProseType } from "./prose.js";
 
 /**
  * Bumped to 10 (2026-09-29, contradictions as a mechanism): ADDITIVE, through
- * the same copy-first seam. Two tables are new. `contradictions` holds a PAIR
+ * the same copy-first seam. `memories` gains `fade` (REAL, default 1): the
+ * multiplier a `changed` settle puts on strength (physics §5.12) — folded in
+ * after the review of #284, before any store migrated. Two tables are new. `contradictions` holds a PAIR
  * of memories that disagree — flagged (a dream's `contradiction`, carried over
  * from `dream_changes` by the upgrade) or recorded when it was settled — with
  * its standing: `unsettled`, `settled` (`changed`, `corrected` or `open`, which
@@ -236,7 +238,8 @@ export const DDL: readonly string[] = [
      last_return_day   INTEGER,
      last_dream_day    INTEGER,
      about             TEXT,
-     about_by          TEXT
+     about_by          TEXT,
+     fade              REAL NOT NULL DEFAULT 1
    )`,
   `CREATE INDEX IF NOT EXISTS memories_band ON memories (band, archived)`,
   `CREATE INDEX IF NOT EXISTS memories_kind ON memories (kind, archived)`,
@@ -678,6 +681,8 @@ export interface MemoryRow extends Row {
   about: string | null;
   /** v9: who set `about` — `writer`, `reflection`, `owner`, `upgrade`. */
   about_by: string | null;
+  /** v10: the strength multiplier a `changed` settle sets (physics §5.12); 1 otherwise. */
+  fade: number;
 }
 
 export interface ReflectionRow extends Row {
@@ -1393,6 +1398,10 @@ export const ADDED_COLUMNS: readonly { table: string; column: string; ddl: strin
   { table: "memories", column: "about_by", ddl: "ALTER TABLE memories ADD COLUMN about_by TEXT" },
   { table: "feelings", column: "source", ddl: "ALTER TABLE feelings ADD COLUMN source TEXT" },
   { table: "feelings", column: "recorded_later", ddl: "ALTER TABLE feelings ADD COLUMN recorded_later TEXT" },
+  // v10 (2026-09-29, contradictions): a memory's FADE, the multiplier a
+  // `changed` settle puts on its strength (physics §5.12). 1 on every row the
+  // upgrade finds: nothing was settled before.
+  { table: "memories", column: "fade", ddl: "ALTER TABLE memories ADD COLUMN fade REAL NOT NULL DEFAULT 1" },
 ];
 
 /**
@@ -1488,25 +1497,37 @@ export function carryDreamFlags(db: Db): { flags: number; pairs: number; raised:
        (id, a, b, state, how, holds, over, via, source, dream_id, dream_seq, flagged_day, raised_day, settled_day, created_at, updated_at)
      VALUES (?, ?, ?, 'unsettled', NULL, NULL, NULL, NULL, 'dream', ?, ?, ?, ?, NULL, ?, ?)`,
   );
-  const seen = new Set<string>();
+  // The same two memories flagged by several dreams are ONE pair, the first
+  // flag's; it counts as raised when ANY of its flags was raised, and keeps the
+  // first habituation found (review of #284, M6: only the first flag's latch
+  // was read, so a pair raised through a later flag was raised again).
+  const groups = new Map<string, typeof flags>();
+  for (const f of flags) {
+    const key = [f.ref, f.ref2].sort().join("|");
+    const g = groups.get(key);
+    if (g === undefined) groups.set(key, [f]);
+    else g.push(f);
+  }
   let pairs = 0;
   let raised = 0;
   let standing = 0;
-  for (const f of flags) {
+  for (const group of groups.values()) {
+    const f = group[0] as (typeof flags)[number];
     const x = age.get<Age>(f.ref);
     const y = age.get<Age>(f.ref2);
     if (x === undefined || y === undefined) continue;
-    const key = [f.ref, f.ref2].sort().join("|");
-    if (seen.has(key)) continue;
-    seen.add(key);
     const [a, b] = olderFirst({ id: f.ref, ...x }, { id: f.ref2, ...y });
     const id = carriedPairId(f.dream_id, f.seq);
-    const latch = meta.get<{ value: string }>(`dream.raised.${f.dream_id}.${String(f.seq)}`)?.value;
-    const raisedDay = latch === undefined ? null : Number.parseInt(latch, 10) || 0;
+    let raisedDay: number | null = null;
+    let habit: string | undefined;
+    for (const g of group) {
+      const latch = meta.get<{ value: string }>(`dream.raised.${g.dream_id}.${String(g.seq)}`)?.value;
+      if (latch !== undefined) raisedDay = Math.max(raisedDay ?? 0, Number.parseInt(latch, 10) || 0);
+      if (habit === undefined) habit = meta.get<{ value: string }>(`mind.seen.${g.dream_id}.${String(g.seq)}`)?.value;
+    }
     insert.run(id, a, b, f.dream_id, f.seq, f.day, raisedDay, f.at, f.at);
     pairs += 1;
     if (raisedDay !== null) raised += 1;
-    const habit = meta.get<{ value: string }>(`mind.seen.${f.dream_id}.${String(f.seq)}`)?.value;
     if (habit !== undefined) putMeta.run(`mind.seen.${id}`, habit);
     const live = (r: Age): boolean => r.archived === 0 && r.superseded_by === null && r.body !== "";
     if (live(x) && live(y)) standing += 1;
@@ -1703,6 +1724,8 @@ export function rowToPhysics(row: MemoryRow & FeelingPeak): MemoryPhysics {
     // compute it — then physics falls back to `feelingPeak`.
     ...(row.feeling_peak_lived === undefined ? {} : { feelingPeakLived: row.feeling_peak_lived }),
     consolidated: row.consolidated === 1,
+    // v10 (physics §5.12): the settle's multiplier. Read tolerantly — a bare row reads 1.
+    fade: typeof row.fade === "number" ? row.fade : 1,
     // v8 (physics §5.2/§5.11). Read tolerantly — a bare row built by a test or
     // a tool without the columns reads as a post-upgrade memory with no returns.
     legacy: row.legacy === 1,

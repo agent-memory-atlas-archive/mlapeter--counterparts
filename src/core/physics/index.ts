@@ -631,31 +631,46 @@ export function decay(m: MemoryPhysics, d: number, shape: DecayShape = TUNABLES.
 }
 
 export function strength(m: MemoryPhysics, d: number, shape: DecayShape = TUNABLES.DECAY_SHAPE): number {
-  return clamp01(base(m) * decay(m, d, shape));
+  return clamp01(base(m) * decay(m, d, shape) * fadeOf(m));
+}
+
+/**
+ * The memory's FADE (§5.12): a multiplier on strength, 1 for every memory
+ * until a settle marks it `changed`. Outside `base` (guarantee 3 holds: base is
+ * still monotone) and outside `decay` (guarantee 5: decay is still a pure
+ * function of d and the last use). Absent, or anything but a number in (0, 1],
+ * reads as 1.
+ */
+export function fadeOf(m: Pick<MemoryPhysics, "fade">): number {
+  const f = m.fade;
+  return typeof f === "number" && Number.isFinite(f) && f > 0 && f < 1 ? f : 1;
 }
 
 // ---------------------------------------------------------------------------
 // §5.12 A changed fact fades once
 // ---------------------------------------------------------------------------
 
-/** What `changedFade` proposes: the new `lastUsedDay`, and strength before and after. */
+/** What `changedFade` proposes: the new fade, and strength today before and after. */
 export interface FadeOutcome {
-  /** The patch: the memory reads as last used this lived day. */
-  readonly lastUsedDay: number;
+  /** The patch: the memory's fade after this settle (its fade before x `factor`). */
+  readonly fade: number;
+  /** The factor applied — what an undo divides back out. */
+  readonly factor: number;
   readonly before: number;
   readonly after: number;
 }
 
 /**
- * ONE STRENGTH CUT FOR A MEMORY SETTLED AS `changed` (2026-09-29): the
- * `lastUsedDay` at which the forgetting curve reads `factor` x what it reads
- * now — the curve inverted for the shape in use — so strength today is cut by
- * about `factor` (rounded to a whole lived day, never less of a cut) and
- * nothing else about the memory moves. Ordinary decay carries on from there,
- * the prune's dwell counts from there, and a credited use re-anchors it
- * (`creditUse` sets `lastUsedDay := d`), which is what "use can hold it"
- * means. Null when there is nothing to cut: a decay-exempt memory (core), a
- * factor of 1 or more, or a curve already at zero.
+ * ONE STRENGTH CUT FOR A MEMORY SETTLED AS `changed` (2026-09-29; reworked
+ * after the review of #284): the memory's `fade` multiplier is multiplied by
+ * `factor`, so its strength today — and on every later day — is `factor` x
+ * what it would have been. Nothing else moves: not `lastUsedDay` (the prune's
+ * dwell still counts from the real last use, and the history stays true), not
+ * `base`, not the uses. Ordinary decay carries on; a use resets decay as always
+ * and leaves the fade alone, so a used "earlier" memory is held at the cut
+ * height. Two settles multiply; an undo divides its own factor back out, in
+ * any order. Null when there is nothing to cut: a core memory (decay-exempt;
+ * its path is pressure) or a factor of 1 or more.
  */
 export function changedFade(
   m: MemoryPhysics,
@@ -664,31 +679,25 @@ export function changedFade(
   shape: DecayShape = TUNABLES.DECAY_SHAPE,
 ): FadeOutcome | null {
   if (m.promotedIdentity) return null;
-  if (!Number.isFinite(factor) || factor >= 1) return null;
-  const f = Math.max(factor, 1e-6);
-  const now = decay(m, d, shape);
-  if (!(now > 0)) return null;
-  const s = stability(m);
-  const dt = Math.max(0, d - m.lastUsedDay);
-  let dtNext: number;
-  switch (shape) {
-    case "flat":
-      dtNext = s * (1 - f * (1 - dt / s));
-      break;
-    case "power-law":
-      dtNext = s * ((1 + dt / s) * Math.pow(f, -1 / TUNABLES.POWER_LAW_PSI) - 1);
-      break;
-    case "exponential":
-    default:
-      dtNext = dt - s * Math.log(f);
-      break;
-  }
-  const lastUsedDay = Math.min(Math.floor(d - dtNext), m.lastUsedDay - 1);
+  if (!Number.isFinite(factor) || factor <= 0 || factor >= 1) return null;
+  const fade = fadeOf(m) * factor;
   return {
-    lastUsedDay,
+    fade,
+    factor,
     before: strength(m, d, shape),
-    after: strength({ ...m, lastUsedDay }, d, shape),
+    after: strength({ ...m, fade }, d, shape),
   };
+}
+
+/**
+ * THE UNDO OF ONE `changedFade`: the fade with `factor` divided back out,
+ * snapped to exactly 1 when that is what is left (floating point), and never
+ * above 1.
+ */
+export function unfade(fade: number, factor: number): number {
+  if (!Number.isFinite(factor) || factor <= 0) return fade;
+  const next = fade / factor;
+  return next >= 1 - 1e-9 ? 1 : next;
 }
 
 // ---------------------------------------------------------------------------

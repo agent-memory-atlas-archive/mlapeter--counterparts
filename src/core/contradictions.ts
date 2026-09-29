@@ -46,7 +46,7 @@
 import { randomBytes } from "node:crypto";
 
 import { lineOf } from "./fit/index.js";
-import { changedFade, cosine } from "./physics/index.js";
+import { changedFade, cosine, unfade } from "./physics/index.js";
 import { isHandoff } from "./recall/index.js";
 import { similarity } from "./remember/index.js";
 import { isStoreError, rowTombstoned } from "./store/index.js";
@@ -58,7 +58,7 @@ export { SETTLE_HOWS } from "./types.js";
 export type { SettleHow } from "./types.js";
 
 /** Who settled: the trail's `actor`. */
-export const SETTLE_ACTORS = ["session", "dream", "reflection", "page-writer", "owner"] as const;
+export const SETTLE_ACTORS = ["session", "dream", "reflection", "page-writer", "owner", "dream-undo"] as const;
 export type SettleActor = (typeof SETTLE_ACTORS)[number];
 
 /** Working defaults, held lightly. */
@@ -84,6 +84,8 @@ export const CONTRADICTION_TUNABLES = {
   NEIGHBOUR_COSINE: 0.7,
   /** Characters of each neighbour's excerpt. */
   EXCERPT_CHARS: 160,
+  /** Most neighbours one `session_end` call lists across all its entries (review of #284, M1). */
+  NEIGHBOURS_PER_CALL: 12,
 } as const;
 
 /** The archive reason a `corrected` memory carries. */
@@ -247,17 +249,20 @@ export function settle(store: Store, input: SettleInput, opts: { closeFlags?: bo
     pair = store.contradictionBetween(holds, over);
   }
   if (pair !== undefined && pair.state === "settled") {
-    return refuse(
-      "already-settled",
-      `${pair.id} is already settled (${pair.how ?? "settled"}${pair.via === null ? "" : `, through ${pair.via}`}). Undo it first — counterparts settle --undo ${pair.via ?? pair.id} — then settle again.`,
-    );
+    // Said in the caller's own terms (review of #284, M3): the owner has the
+    // undo; anyone else is told to raise it with the owner.
+    const again =
+      input.actor === "owner"
+        ? `Undo it first — counterparts settle --undo ${pair.via ?? pair.id} — then settle again.`
+        : `If it is settled wrongly, tell the owner: undoing a settle is theirs (counterparts settle --undo ${pair.via ?? pair.id}).`;
+    return refuse("already-settled", `${pair.id} is already settled (${pair.how ?? "settled"}${pair.via === null ? "" : `, through ${pair.via}`}). ${again}`);
   }
   const moves = how !== "open";
   const bad = memoryRefusal(store, over, moves) ?? memoryRefusal(store, holds, false);
   if (bad !== null) return bad;
 
   const why = cleanWhy(input.why);
-  let fade: { id: string; lastUsedDay: number } | null = null;
+  let fade: { id: string; fade: number } | null = null;
   let faded: { id: string; before: number; after: number } | null = null;
   const notes: string[] = [];
   const detail: Record<string, unknown> = {};
@@ -265,11 +270,14 @@ export function settle(store: Store, input: SettleInput, opts: { closeFlags?: bo
     const physics = store.physicsOf(over);
     const cut = changedFade(physics, day);
     if (cut === null) {
-      notes.push(`${over} had no strength left to cut; it keeps its place as the earlier one.`);
+      notes.push(`${over} has nothing to cut; it keeps its place as the earlier one.`);
     } else {
-      fade = { id: over, lastUsedDay: cut.lastUsedDay };
+      // THE FADE MULTIPLIER (review of #284, B1): the cut is a factor on
+      // strength, recorded so an undo divides exactly that factor back out —
+      // in any order, whatever uses came since. `lastUsedDay` is not touched.
+      fade = { id: over, fade: cut.fade };
       faded = { id: over, before: round(cut.before), after: round(cut.after) };
-      detail["fade"] = { id: over, from: physics.lastUsedDay, to: cut.lastUsedDay, before: faded.before, after: faded.after };
+      detail["fade"] = { id: over, factor: cut.factor, before: faded.before, after: faded.after };
     }
   }
   const archive = how === "corrected" ? { id: over, reason: CORRECTED_REASON } : null;
@@ -386,6 +394,8 @@ export type UndoOutcome =
       readonly ok: true;
       readonly pair: string;
       readonly how: string | null;
+      /** Where the pair went: `unsettled` (it was a flag) or `withdrawn` (it never was). */
+      readonly state: "unsettled" | "withdrawn";
       /** The `changed` memory's strength was put back. */
       readonly restored: string | null;
       /** The `corrected` memory is back in recall. */
@@ -397,10 +407,14 @@ export type UndoOutcome =
   | { readonly ok: false; readonly reason: string; readonly detail: string };
 
 /**
- * UNDO A SETTLE: the `changed` cut is put back when it still stands (a use
- * since has already lifted it, and that is left alone), a `corrected` memory
- * comes back into recall, and the pair — with every pair it closed — is
- * unsettled again, to be raised afresh. Recorded on the trail.
+ * UNDO A SETTLE: a `changed` memory's fade has this settle's factor divided
+ * back out (exact, in any order, whatever uses came since — review of #284,
+ * S4), a `corrected` memory comes back into recall, and the pair goes back to
+ * where it came from: UNSETTLED when it was a flag (a dream's, or one that
+ * pressure recorded), so it is raised afresh with its habituation reset, and
+ * WITHDRAWN when it was never flagged — a write-time or a direct settle, which
+ * nobody raised as a question (S5). Flags the settle closed through itself
+ * are unsettled again. Recorded on the trail.
  */
 export function undo(
   store: Store,
@@ -419,23 +433,15 @@ export function undo(
     .filter((s) => s.action === "settle" && s.undone === 0)
     .pop();
   if (last === undefined) return { ok: false, reason: "no-settle", detail: `${pair.id} has no settle on its trail to undo.` };
-  let d: Record<string, unknown> = {};
-  try {
-    d = JSON.parse(last.detail) as Record<string, unknown>;
-  } catch {
-    d = {};
-  }
+  const d = settleDetail(last.detail);
   const notes: string[] = [];
-  let restore: { id: string; lastUsedDay: number } | null = null;
-  const fade = d["fade"] as { id?: unknown; from?: unknown; to?: unknown } | undefined;
-  if (fade !== undefined && typeof fade.id === "string" && typeof fade.from === "number" && typeof fade.to === "number") {
-    const now = store.row(fade.id);
-    if (now !== undefined && now.last_used_day === fade.to) restore = { id: fade.id, lastUsedDay: fade.from };
-    else notes.push(`${fade.id} was used since it was settled, so its strength had already come back; it is left as it is.`);
+  let restore: { id: string; fade: number } | null = null;
+  if (d.fade !== null) {
+    const now = store.row(d.fade.id);
+    if (now !== undefined) restore = { id: d.fade.id, fade: unfade(typeof now.fade === "number" ? now.fade : 1, d.fade.factor) };
   }
-  const archived = typeof d["archived"] === "string" ? (d["archived"] as string) : null;
-  const closes = Array.isArray(d["closes"]) ? (d["closes"] as unknown[]).filter((x): x is string => typeof x === "string") : [];
-  const reopen = closes.filter((c) => store.contradiction(c)?.via === pair.id);
+  const reopen = d.closes.filter((c) => store.contradiction(c)?.via === pair.id);
+  const back = wasFlagged(pair) ? "unsettled" : "withdrawn";
   let unarchived = false;
   try {
     const out = store.undoContradictionSettle({
@@ -445,32 +451,71 @@ export function undo(
       actorId: input.actorId ?? null,
       why: cleanWhy(input.why),
       day,
+      state: back,
       restore,
-      unarchive: archived === null ? null : { id: archived, reason: CORRECTED_REASON },
+      unarchive: d.archived === null ? null : { id: d.archived, reason: CORRECTED_REASON },
       reopen,
-      detail: { restored: restore?.id ?? null, archived, reopened: reopen },
+      detail: { restored: restore?.id ?? null, archived: d.archived, reopened: reopen, state: back },
     });
     unarchived = out.unarchived;
   } catch (err) {
     return { ok: false, reason: "failed", detail: `Nothing was undone: ${isStoreError(err) ? err.code : String((err as Error).message ?? err)}.` };
   }
-  if (archived !== null && !unarchived) notes.push(`${archived} has moved on since it was archived, so it was not brought back.`);
+  // A reopened question starts fresh on "my mind" (review of #284, M5).
+  for (const id of back === "unsettled" ? [pair.id, ...reopen] : reopen) resetHabituation(store, id, day);
+  if (d.archived !== null && !unarchived) notes.push(`${d.archived} has moved on since it was archived, so it was not brought back.`);
   store.appendEvent({
     name: CONTRADICTION_UNDONE_EVENT,
     day,
     ref: pair.id,
-    payload: { pair: pair.id, how: pair.how, actor: input.actor, restored: restore !== null, unarchived, reopened: reopen.length, day },
+    payload: { pair: pair.id, how: pair.how, actor: input.actor, restored: restore !== null, unarchived, reopened: reopen.length, state: back, day },
   });
   return {
     ok: true,
     pair: pair.id,
     how: pair.how,
+    state: back,
     restored: restore?.id ?? null,
-    unarchived: unarchived ? archived : null,
+    unarchived: unarchived ? d.archived : null,
     reopened: reopen,
     ...(notes.length > 0 ? { note: notes.join(" ") } : {}),
   };
 }
+
+/** Was this pair a question somebody raised — a dream's flag, or one pressure recorded — rather than a settle's own row? */
+export function wasFlagged(pair: Pick<ContradictionRow, "source" | "dream_id">): boolean {
+  return pair.source === "dream" || pair.source === "pressure" || pair.dream_id !== null;
+}
+
+/** A settle's trail detail, read tolerantly: the fade it applied, the memory it archived, the flags it closed. */
+export function settleDetail(raw: string): { fade: { id: string; factor: number } | null; archived: string | null; closes: string[] } {
+  let d: Record<string, unknown> = {};
+  try {
+    d = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    d = {};
+  }
+  const f = d["fade"] as { id?: unknown; factor?: unknown } | undefined;
+  return {
+    fade: f !== undefined && typeof f.id === "string" && typeof f.factor === "number" ? { id: f.id, factor: f.factor } : null,
+    archived: typeof d["archived"] === "string" ? (d["archived"] as string) : null,
+    closes: Array.isArray(d["closes"]) ? (d["closes"] as unknown[]).filter((x): x is string => typeof x === "string") : [],
+  };
+}
+
+/** "My mind"'s habituation for a pair, back to none. Bookkeeping only; never throws. */
+function resetHabituation(store: Store, pairId: string, day: number): void {
+  try {
+    if (store.getMeta(`${MIND_SEEN_KEY_PREFIX}${pairId}`) !== undefined) {
+      store.setMeta(`${MIND_SEEN_KEY_PREFIX}${pairId}`, JSON.stringify({ times: 0, day }));
+    }
+  } catch {
+    /* bookkeeping */
+  }
+}
+
+/** `dream/mind.ts#MIND_SEEN_PREFIX`, spelled here because this file sits below `dream/`. */
+const MIND_SEEN_KEY_PREFIX = "mind.seen.";
 
 /** One neighbour of a memory just written: enough to recognise it and decide. */
 export interface Neighbour {

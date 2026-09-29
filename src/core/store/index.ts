@@ -1660,6 +1660,8 @@ export class Store {
       if (patch.pressure !== undefined) put("pressure", patch.pressure);
       if (patch.lastChallengedDay !== undefined)
         put("last_challenged_day", patch.lastChallengedDay);
+      // v10: the settle's multiplier (physics §5.12). Written only by a settle and its undo.
+      if (patch.fade !== undefined) put("fade", patch.fade);
       if (sets.length === 0) return;
       this.ops.run(`UPDATE memories SET ${sets.join(", ")} WHERE id = ?`, ...args, id);
     });
@@ -2466,7 +2468,7 @@ export class Store {
     actorId: string | null;
     why: string | null;
     day: number;
-    fade?: { id: string; lastUsedDay: number } | null;
+    fade?: { id: string; fade: number } | null;
     archive?: { id: string; reason: string } | null;
     closes?: readonly string[];
     detail?: Record<string, unknown>;
@@ -2539,7 +2541,7 @@ export class Store {
       // What it does to the memory it is over, LAST, so a refusal above has
       // staged nothing on the memory itself.
       if (input.fade !== undefined && input.fade !== null) {
-        this.updatePhysics(input.fade.id, { lastUsedDay: input.fade.lastUsedDay });
+        this.updatePhysics(input.fade.id, { fade: input.fade.fade });
       }
       if (input.archive !== undefined && input.archive !== null) {
         this.archive(input.archive.id, input.archive.reason);
@@ -2564,7 +2566,9 @@ export class Store {
     actorId: string | null;
     why: string | null;
     day: number;
-    restore?: { id: string; lastUsedDay: number } | null;
+    /** Where the pair goes: `unsettled` (it was a flag) or `withdrawn` (it never was). */
+    state?: "unsettled" | "withdrawn";
+    restore?: { id: string; fade: number } | null;
     unarchive?: { id: string; reason: string } | null;
     reopen?: readonly string[];
     detail?: Record<string, unknown>;
@@ -2589,16 +2593,18 @@ export class Store {
         JSON.stringify({ ...(input.detail ?? {}), undoes: input.settleSeq }),
       );
       const seq = this.ops.get<{ seq: number }>("SELECT last_insert_rowid() AS seq")?.seq ?? 0;
-      for (const id of [input.pairId, ...(input.reopen ?? [])]) {
+      const states: [string, string][] = [[input.pairId, input.state ?? "unsettled"], ...(input.reopen ?? []).map((id): [string, string] => [id, "unsettled"])];
+      for (const [id, state] of states) {
         this.ops.run(
-          `UPDATE contradictions SET state = 'unsettled', how = NULL, holds = NULL, over = NULL, via = NULL,
+          `UPDATE contradictions SET state = ?, how = NULL, holds = NULL, over = NULL, via = NULL,
                   settled_day = NULL, raised_day = NULL, updated_at = ? WHERE id = ?`,
+          state,
           at,
           id,
         );
       }
       if (input.restore !== undefined && input.restore !== null) {
-        this.updatePhysics(input.restore.id, { lastUsedDay: input.restore.lastUsedDay });
+        this.updatePhysics(input.restore.id, { fade: input.restore.fade });
       }
       let unarchived = false;
       if (input.unarchive !== undefined && input.unarchive !== null) {

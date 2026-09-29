@@ -1660,6 +1660,8 @@ describe("an instrument does not write at open (live-verify 2026-08-25)", () => 
       "memories.about_by",
       "feelings.source",
       "feelings.recorded_later",
+      // v10 (2026-09-29): a memory's fade — a multiplier, 1 on every row found.
+      "memories.fade",
     ]);
     for (const spec of ADDED_COLUMNS) {
       expect({ column: spec.column, namesAFloorColumn: V6_COLUMNS.includes(spec.column) }).toEqual({

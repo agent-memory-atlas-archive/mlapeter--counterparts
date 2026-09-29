@@ -31,7 +31,7 @@ import {
   undo,
   writeNeighbours,
 } from "../src/core/contradictions.js";
-import { changedFade, creditUse, strength } from "../src/core/physics/index.js";
+import { changedFade, creditUse, strength, unfade } from "../src/core/physics/index.js";
 import { applyRevision } from "../src/core/revision.js";
 import { Store, V10_UPGRADE_KEY } from "../src/core/store/index.js";
 
@@ -113,11 +113,12 @@ describe("the three kinds, written as a new memory with updates + how", () => {
     expect(settled["ok"]).toBe(true);
     expect(settled["how"]).toBe("changed");
     expect(settled["over"]).toBe(old);
-    // One cut, about half, through physics: the curve reads as if last used earlier.
+    // One cut, half, through physics: a multiplier on strength. The last use
+    // (and so the prune's dwell and the history) is untouched (review of #284, B1).
     const after = strengthOf(store, old);
-    expect(after).toBeLessThan(before * 0.55);
-    expect(after).toBeGreaterThan(before * 0.4);
-    expect(store.physicsOf(old).lastUsedDay).toBeLessThan(lastUsed);
+    expect(after).toBeCloseTo(before * 0.5, 6);
+    expect(store.physicsOf(old).fade).toBe(0.5);
+    expect(store.physicsOf(old).lastUsedDay).toBe(lastUsed);
     // Still live, still indexed.
     const row = store.row(old);
     expect(row?.archived).toBe(0);
@@ -226,7 +227,7 @@ describe("the three kinds, written as a new memory with updates + how", () => {
     expect(store.row(a)?.archived).toBe(0);
   });
 
-  test("a belief, a protected memory and a core memory keep their own path; a sent how says it was not applied", async () => {
+  test("a protected memory keeps its own path; a sent how says it was not applied", async () => {
     const s = server();
     const store = s.counterpart.store;
     aged(store);
@@ -333,7 +334,7 @@ describe("settling a pair that already exists", () => {
 });
 
 describe("undo", () => {
-  test("changed: the cut is put back; the pair is unsettled again, to be raised afresh", () => {
+  test("changed: the fade is divided back out; a pair nobody flagged is WITHDRAWN, not left as a question (S5)", () => {
     const store = Store.open({ dir });
     open.push(store);
     aged(store);
@@ -342,21 +343,26 @@ describe("undo", () => {
     const before = store.physicsOf(a).lastUsedDay;
     const out = settle(store, { holds: b, over: a, how: "changed", actor: "session", actorId: "s1" });
     expect(out.ok).toBe(true);
-    expect(store.physicsOf(a).lastUsedDay).toBeLessThan(before);
+    expect(store.physicsOf(a).fade).toBe(0.5);
     const u = undo(store, { pair: out.ok ? out.pair : "", actor: "owner", why: "not a change" });
     expect(u.ok).toBe(true);
-    if (u.ok) expect(u.restored).toBe(a);
+    if (u.ok) {
+      expect(u.restored).toBe(a);
+      expect(u.state).toBe("withdrawn");
+    }
+    expect(store.physicsOf(a).fade).toBe(1);
     expect(store.physicsOf(a).lastUsedDay).toBe(before);
-    const pair = store.contradictionBetween(a, b);
-    expect(pair?.state).toBe("unsettled");
-    expect(pair?.raised_day).toBeNull();
-    const trail = store.contradictionSettles({ pairId: pair?.id as string });
+    const pairId = out.ok ? out.pair : "";
+    const pair = store.contradiction(pairId);
+    expect(pair?.state).toBe("withdrawn");
+    expect(store.contradictionBetween(a, b)).toBeUndefined();
+    const trail = store.contradictionSettles({ pairId });
     expect(trail.map((t) => t.action)).toEqual(["settle", "undo"]);
     expect(trail[0]?.undone).toBe(1);
     expect(trail[1]?.actor).toBe("owner");
   });
 
-  test("changed, then used: use holds it (the curve re-anchors), and an undo leaves the use alone", () => {
+  test("changed, then used: a use resets decay and leaves the fade alone; an undo divides the fade out and keeps the use", () => {
     const store = Store.open({ dir });
     open.push(store);
     const day0 = aged(store);
@@ -371,13 +377,12 @@ describe("undo", () => {
     const credit = creditUse(store.physicsOf(a), d, "referenced");
     expect(credit.credited).toBe(true);
     store.updatePhysics(a, credit.next);
-    expect(strength(store.physicsOf(a), d)).toBeGreaterThan(cut);
+    expect(strength(store.physicsOf(a), d)).toBeGreaterThanOrEqual(cut);
+    expect(store.physicsOf(a).fade).toBe(0.5);
     const u = undo(store, { pair: out.ok ? out.pair : "", actor: "owner" });
     expect(u.ok).toBe(true);
-    if (u.ok) {
-      expect(u.restored).toBeNull();
-      expect(u.note).toContain("used since");
-    }
+    if (u.ok) expect(u.restored).toBe(a);
+    expect(store.physicsOf(a).fade).toBe(1);
     expect(store.physicsOf(a).lastUsedDay).toBe(d);
   });
 
@@ -423,7 +428,7 @@ describe("undo", () => {
 });
 
 describe("physics: the changed cut", () => {
-  test("inverts each curve shape: about half today, never less of a cut, and none for a core memory", () => {
+  test("a multiplier: exactly the factor today and every later day, whatever the curve; stacks; none for a core memory", () => {
     const m = {
       kind: "fact" as const,
       salience: { novelty: null, relevance: 0.6, emotional: 0.2, predictive: 0.6, claimed: 0.6 },
@@ -441,10 +446,15 @@ describe("physics: the changed cut", () => {
       const out = changedFade(m, 25, 0.5, shape);
       expect(out).not.toBeNull();
       if (out === null) continue;
-      expect(out.lastUsedDay).toBeLessThan(20);
-      expect(out.after / out.before).toBeLessThanOrEqual(0.5 + 1e-9);
-      expect(out.after / out.before).toBeGreaterThan(0.4);
+      expect(out.fade).toBe(0.5);
+      expect(out.after / out.before).toBeCloseTo(0.5, 9);
+      for (const later of [30, 60, 120]) {
+        expect(strength({ ...m, fade: out.fade }, later, shape) / strength(m, later, shape)).toBeCloseTo(0.5, 9);
+      }
     }
+    const twice = changedFade({ ...m, fade: 0.5 }, 25);
+    expect(twice?.fade).toBe(0.25);
+    expect(unfade(unfade(0.25, 0.5), 0.5)).toBe(1);
     expect(changedFade({ ...m, promotedIdentity: true }, 25)).toBeNull();
   });
 });
@@ -524,7 +534,7 @@ describe("the dream: a flag is a pair; a dream may settle with a reason; its und
     expect(c.store.contradiction(pair?.id as string)?.state).toBe("withdrawn");
   });
 
-  test("settle {holds, over, how, why}: the trail names the dream; without a why it is refused; an undo of the dream unsettles it", () => {
+  test("settle {holds, over, how, why}: the trail names the dream; without a why it is refused; an undo of the dream takes it back as dream-undo", () => {
     const c = Counterpart.open({ dir, owner: true, identity: { name: "Mike" } });
     open.push(c);
     const m = lived(c);
@@ -547,8 +557,13 @@ describe("the dream: a flag is a pair; a dream may settle with a reason; its und
     expect(c.store.row(m.a)?.archived_reason).toBe(CORRECTED_REASON);
     c.dreams.journal({ dream: id, session: SESSION, text: "A dream." });
     c.dreams.undo(id);
-    expect(c.store.contradiction(pair?.id as string)?.state).toBe("unsettled");
+    // Nobody had flagged the pair: the undo withdraws it rather than leaving a question (S5).
+    expect(c.store.contradiction(pair?.id as string)?.state).toBe("withdrawn");
     expect(c.store.row(m.a)?.archived).toBe(0);
+    // The trail says a dream's undo did it (M4).
+    const undoRow = c.store.contradictionSettles({ pairId: pair?.id as string }).find((t) => t.action === "undo");
+    expect(undoRow?.actor).toBe("dream-undo");
+    expect(undoRow?.actor_id).toBe(id);
   });
 });
 

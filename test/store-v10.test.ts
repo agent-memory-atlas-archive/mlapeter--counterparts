@@ -63,6 +63,7 @@ function backToV9(): void {
   const db = new Database(paths.operational(dir));
   db.run("DROP TABLE contradictions");
   db.run("DROP TABLE contradiction_settles");
+  db.run("ALTER TABLE memories DROP COLUMN fade");
   db.run("UPDATE meta SET value = '9' WHERE key = 'schemaVersion'");
   db.close();
 }
