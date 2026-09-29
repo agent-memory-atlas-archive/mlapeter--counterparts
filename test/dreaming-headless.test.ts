@@ -432,8 +432,8 @@ describe("B. auto: the first prompt of the day starts the headless run itself", 
   });
 
   /** An adapter whose clock the test moves, and whose spawner records instead of starting. */
-  function autoHooks(opts: { nightArgs?: readonly string[] | null; observer?: boolean } = {}): ClaudeCodeAdapter {
-    const config: AdapterConfig = { dataDir: dir, injectionBudgetBytes: 20_000, owner: true, identity: { name: "Mike" }, ...(opts.observer === true ? { observer: true } : {}) };
+  function autoHooks(opts: { nightArgs?: readonly string[] | null; observer?: boolean; config?: Partial<AdapterConfig> } = {}): ClaudeCodeAdapter {
+    const config: AdapterConfig = { dataDir: dir, injectionBudgetBytes: 20_000, owner: true, identity: { name: "Mike" }, ...(opts.observer === true ? { observer: true } : {}), ...(opts.config ?? {}) };
     const counterpart = CounterpartClass.open({
       dir,
       owner: true,
@@ -639,6 +639,21 @@ describe("B. auto: the first prompt of the day starts the headless run itself", 
     const later = a.userPromptSubmit(input({ sessionId: "s3" }));
     expect(nightPlans()).toHaveLength(2);
     expect(later.dream?.notice).toContain("picking up my dream where it was cut off");
+  });
+
+  test("a long watchdog: a run still inside it is under way — no second run starts beside it (review finding 10)", () => {
+    const a = autoHooks({ config: { dreaming: { timeoutMs: 60 * 60_000 } } });
+    setAuto(a);
+    a.userPromptSubmit(input());
+    // Slow: 31 minutes in, no dream begun yet.
+    offsetMs += DREAM_TUNABLES.ABANDONED_AFTER_MS + 60_000;
+    expect(a.counterpart.dreams.status(AT).reason).toBe("dreaming-now");
+    expect(a.userPromptSubmit(input({ sessionId: "s2" })).dream).toBeUndefined();
+    expect(nightPlans()).toHaveLength(1);
+    // Past its own watchdog and the grace, it is lost, and the line asks.
+    offsetMs += 40 * 60_000;
+    expect(a.userPromptSubmit(input({ sessionId: "s3" })).dream?.notice).toContain("it never reported back");
+    expect(nightPlans()).toHaveLength(1);
   });
 
   test("an observer starts nothing and says nothing", () => {

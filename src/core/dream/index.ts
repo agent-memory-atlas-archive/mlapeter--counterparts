@@ -742,6 +742,11 @@ export class Dreams {
     }
     if (setting === "off") return { ...base, reason: "off" };
     if (busy) return { ...base, reason: "dreaming-now" };
+    // A HEADLESS RUN STILL INSIDE ITS WATCHDOG is under way, whether or not its
+    // dream has begun yet (review of #282, finding 10): a watchdog longer than
+    // `ABANDONED_AFTER_MS` must not let a second run start beside it.
+    const night = this.nightRun();
+    if (night !== null && night.state === "started" && night.date === at && !nightRunLost(night, this.store.now())) return { ...base, reason: "dreaming-now" };
     const ask = this.store.dreamAsk(at);
     if (ask !== undefined) {
       if (ask.state === "declined") return { ...base, reason: "declined-today" };
