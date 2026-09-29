@@ -1288,3 +1288,26 @@ threads and identity lanes say `Earlier (now [id])`, `Unsettled — may be out o
 see [id]` or `(disagrees with [id])` exactly as recall does. The byte accounting reads
 the same line, so it counts the label. The hints ranking needs nothing: `hintReading`
 goes through `strength()`, which carries a `changed` memory's fade.
+
+## 29. The wake says what it left out; host mode's rows (2026-09-29)
+
+**"N more" lines.** The lane caps (identity 24, craft 8, threads 12, hints 8, horizon 6)
+cut silently, and the budget trim's count lived only in telemetry. Now `rankLanes` carries
+what each cap left out (`Lanes.overflow`, optional so hand-built lanes still compose), and
+`render` gives each lane that lost something — to its cap, the identity share, or the trim
+— at most one furniture line: `(3 more still open; recall ids: mem_…, …)`, up to
+`MORE_LINE_IDS` (5) ids, "the first 5" when there are more. Choices: the ids are recall's
+`ids` argument because that is the handle that reads a memory whole by address (a question
+could miss them); the line is furniture — no bullet, not in `counts` or `elements` — so
+the header and sentinel stay true; lines are offered room in the reverse of the trim
+order (identity, horizon, threads, craft, hints) and only AFTER the identity leftover, so
+they take only room nothing else wanted; a line that does not fit is dropped and the next
+lane's tried. Identity says nothing while the page replaces the list. On a normal day this
+does change the wake: a store with more than eight warm hints will carry a "nearby" line.
+The test that proves the ids work goes through the real MCP `recall` handler.
+
+**Host mode's rows.** `PAGE_WRITER_MODES` is `off` and `session` now. A row an old build
+wrote with `mode: "host"` stays in the log as written and READS as `session` (the reader's
+fallback for a mode it does not know), rather than keeping a third mode alive in the type
+for rows that, as far as anyone knows, were never written on a real store. An abandoned
+`started` — host mode's claim — still reads `failed`.

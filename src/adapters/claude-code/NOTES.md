@@ -1744,3 +1744,47 @@ the `note` settle.
 
 After the review of #284: the Contradictions line counts a pair recorded while pressure
 builds on a core memory (`source` pressure) as flagged, beside a dream's flags.
+
+## 2026-09-29 — cleanup batch: host mode out, one envelope budget, short write-ups
+
+Working defaults, held lightly.
+
+- **Host mode removed.** `page-writer.ts` is gone; what the headless nightly run shared
+  with it (the plan / starter shape, `startChild`, the kill and reap graces, the host
+  command, the permission mode) moved unchanged to `child.ts`, with its own test
+  (`test/child.test.ts`, the SIGTERM-ignoring stub included). Also gone: the worker's step
+  5 and its `configPath` / `startPageWriter` inputs, `COUNTERPARTS_PAGE_WRITER` (the
+  MCP door no longer reads it, the night child no longer scrubs it), `HookInput.pageWriter`,
+  `PAGE_WRITER_MS`, and doctor's host-mode fix text. Old configurations load:
+  `pageWriter.mode: "host"`, `pageWriter.timeoutMs` and `pageWriter.command` go to the
+  old-settings line (`retired`), never also to the block's `ignored`, and the mode reads
+  `session`. The dashboard's why-map still carries the `host-mode` / `not-host-mode`
+  labels; nothing produces them now (a dashboard follow-up).
+- **One size budget per envelope.** The order, first to go → last: SessionStart —
+  notices → write-up pointer → first-launch question → plain reminders (to the first
+  prompt, unclaimed) → the wake (never cut here). UserPromptSubmit — update notice → the
+  turn's recall (`recallRoom`: the configured budget, or less when the clock, plain lines,
+  dream lines and person lines leave less; the JSON envelope's 9,500 when a person-facing
+  line rides the prompt) → the dream's lines → plain reminders and the clock. The audit's
+  "`nowLine` and plain reminders aren't reserved" was already untrue at SessionStart (`sent`
+  counted them since #271); what changed there is that the first-launch question is now
+  measured against the host's cap, like the pointer, instead of the reported injection
+  budget — a second ceiling. The dream's lines are reserved, not shed, because they are
+  claimed when composed (a hand-back, a carried share, a raise line); shedding them after
+  the claim would lose them. `adapter.envelope.gave-way` names what gave way.
+- **The fallback is a tripwire.** `hostDelivery`'s plain form is now measured against
+  `HOST_OUTPUT_CHARS`; past it the delivery carries `overCap`, the hook records
+  `adapter.envelope.overcap` and prints it on stderr. It does not cut: by then the asks are
+  marked, and the pure function cannot tell a wake from an ask. What can still reach it
+  is a wake composed past the cap by a misconfigured budget.
+- **Short write-ups.** The pointer offers a session under the first-ask threshold a
+  one-line write-up (`WRITE_UP_SHORT_LINE`). Order: a full debt not yet pointed at today,
+  then short ones, then a full one already pointed at today — a plain "full before short"
+  would let one unwritten full session hold every short one back for ever. A short debt is
+  offered only for a session the registry knows, so the unbound MCP server's shared `mcp`
+  id is passed by; it is not in doctor's awaiting count (it ages out in a week, and
+  `WRITE_UP_WAIT_DAYS` is 3, so counting it would turn doctor amber for a debt that clears
+  itself).
+- **Unproven:** how often short pointers fire on the owner's machine (every quick session,
+  including any `claude` sessions other tools start in a project with hooks on, now owes
+  one line); whether one-line answers are worth the pointer's room.

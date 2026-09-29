@@ -259,7 +259,8 @@ anyone knew the envelope would carry it — was FIXED by the review (below).
   says them instead. A claim lost to another process strips the same way. The update
   notice can no longer cost a plain line that fit: when the two do not fit together, the
   delivery without the update notice stands.
-- *The page writer's headless child* (`COUNTERPARTS_PAGE_WRITER`) is told nothing, so it
+- *The page writer's headless child* (`COUNTERPARTS_PAGE_WRITER`; removed with host mode
+  2026-09-29 — the nightly run's child, `COUNTERPARTS_NIGHT_RUN`, is told nothing the same way) is told nothing, so it
   cannot spend a beat nobody sees (`HookInput.pageWriter`). Any OTHER headless `claude -p`
   with the hooks on still can: SessionStart gives no sign it is headless.
 - *Said outright means not also cued* on the same prompt: the plain ids are withheld from
@@ -329,3 +330,17 @@ Still open, left alone: the old memory's firing rows stay where they are, so `ex
 can count a moved window twice (once per memory); and a failed clear (`moved: false`,
 evented, `unmoved: true` in the reply) leaves the reminder on both rows — a double, never a
 loss, because the successor is minted first.
+
+## 14. A told plain reminder leaves "Arriving" (2026-09-29)
+
+A dated memory stays in the wake's horizon lane from `LEAD_DAYS` before its date to
+`GRACE_DAYS` after. A PLAIN reminder that was said outright on its day then sat in
+"Arriving:" for a week more, as though still to come. `horizon()` now leaves out a plain
+arrival whose window's LAST beat is told (`toldForGood`: `day` for a day item, `last-day`
+for a month or range). Only the lane: `arrivals()` is unchanged, so recall's cue path still
+finds it; quiet reminders are unchanged; a plain reminder whose day passed UNTOLD (no
+session that day) keeps its grace week in the lane.
+
+Named, not proved through the lane: month and range items take no wake line at all
+(tune question c), so the `last-day` half of the rule has no visible effect today. It is
+written for both precisions so the two cannot drift if that changes.

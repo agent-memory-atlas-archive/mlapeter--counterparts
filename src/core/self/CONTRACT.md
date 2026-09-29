@@ -173,7 +173,13 @@ proposals and their archive; render and delivery telemetry.
    deterministic at a fixed budget — the host's case — but does not preserve the
    smaller-budget-is-a-subset property across budgets when one element is larger than the
    difference between them (NOTES §9, with the measurement). Truncating a belief to keep
-   that property is the worse trade.* **An identity lane with no elements renders ONE line
+   that property is the worse trade.* **A lane that lost elements says so** (2026-09-29,
+   a working default): what its cap (`rankLanes`' `overflow`), the identity share or the
+   trim left out gets at most one furniture line under the lane — how many more, and up
+   to `MORE_LINE_IDS` ids the recall tool reads whole (`briefing.ts#moreLine`). It goes in
+   only while the whole still fits the budget, lanes that trim last first; one that does
+   not fit is left out and the trim's count stays in telemetry. Identity says nothing
+   while the page replaces the list. **An identity lane with no elements renders ONE line
    of furniture naming the identity core** (`briefing.ts#identityCoreLine`) when a core
    exists, and nothing when none does — the core is `type: "schema"` and no lane can reach
    it, so a store seeded by `install --name` composed a wake that named nobody (measured
@@ -354,24 +360,23 @@ proposals and their archive; render and delivery telemetry.
     `reflection`, every version kept.
     **A store with no yesterday writes nothing and leaves no row**, so a line about it
     cannot nag from the day a fresh install is made. **No revision is a first-class
-    outcome**: host mode reports it (a windowless session handed one tool that did not use
-    it has answered), session mode cannot tell it from "never got to it" and so does not
-    claim to — it stores the claim, and the READING of a claim whose day has ended is
-    `nothing-to-say`, marked `derived` wherever it is shown — except an abandoned
-    `started`, which reads `failed`, because host mode closes its own claim on every path
-    it can reach. `by: "writer"` is the DOOR's and is not claimable from a tool call: the
+    outcome**: the run says it when it moves past the writer without a write; a claim
+    nobody closed cannot tell it from "never got to it" and so does not claim to — the
+    READING of a claim whose day has ended is `nothing-to-say`, marked `derived` wherever
+    it is shown — except an abandoned `started` (a row only the removed host mode wrote),
+    which reads `failed`. `by: "writer"` is the DOOR's and is not claimable from a tool call: the
     evidence is the nightly run's open claim naming this session (`nightClaimFor`,
     2026-09-28), or — still read — a date the SessionStart hook wrote on the session's
-    registry record (nothing writes it since the ask was retired), or one the launcher
-    pinned onto a windowless child's environment, honoured only while that night's claim
-    is open. The run's claim counts only for a write that NAMES the session in its call
+    registry record (nothing writes it since the ask was retired), honoured only while
+    that night's claim is open. (A date pinned onto a windowless child's environment was
+    the removed host mode's channel, until 2026-09-29.) The run's claim counts only for a write that NAMES the session in its call
     (the writer instruction says to), not for the session the server is bound to — the
     run's agent shares its session's id, and the owner's own page edit in that session
     stays an ordinary amendment (review of #271). When the run moves past the writer
     without a write, the next phase answers the night `nothing-to-say`.
     **In the nightly run the block carries the page whole**: the background agent never
-    got the wake. Beside the wake (host mode's child) it names the version instead of
-    repeating a page the reader already woke with. A day that did not all fit is delivered
+    got the wake. Beside the wake it names the version instead of repeating a page the
+    reader already woke with. A day that did not all fit is delivered
     SHORT with the count on the row.
     **The day is the day, merges included** (`isOfDay`, 2026-09-28): a dream's merge
     archives its originals and is stamped the day it was made, so a live row whose

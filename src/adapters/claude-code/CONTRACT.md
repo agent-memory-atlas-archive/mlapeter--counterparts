@@ -594,50 +594,29 @@ The MCP server labels a `self_page` write `by: "writer"` when the write NAMES a 
 that holds that open claim (`self/writer.ts#nightClaimFor`) — not the session the server is
 bound to, so the owner's own page edit in the run's session stays an ordinary amendment;
 and when the run moves past the writer without a write, its next phase answers the night
-`nothing-to-say`. The registry mark and host mode's environment pin are still read. The wake's `injection`, `bytes` and `sentinel` are untouched by any of it.
+`nothing-to-say`. The retired ask's registry mark is still read. The wake's `injection`, `bytes` and `sentinel` are untouched by any of it.
 
-**[M] Host mode (not the default; left in place) starts a windowless session of the self,
-and reads the outcome from the store.** With `pageWriter.mode: host` the nightly run claims
-nothing for the writer (its `writer` phase says so) and the worker's child writes instead.
-`claude -p`, so the ordinary SessionStart hook fires inside the child and the
-writer wakes with the wake; exactly one pre-approved tool, the page's. The plan is pure and
-decides everything; the starter is six lines. The package's own values go onto the child's
-environment LAST (§2.13), and `COUNTERPARTS_SESSION` / `COUNTERPARTS_SCOPE` are REMOVED
-rather than inherited — a whole new host session that inherited the parent's session id
-would bind its MCP server to a session that has already ended. The night it is writing rides
-as a pinned DATE (`COUNTERPARTS_PAGE_WRITER`), because a windowless child's session id is
-minted by the host after the launcher is gone. **The child's stdout is never parsed into a
-verdict**: what the run did is read from the page's version chain and from the row the tool
-left, and the exit code decides only between "nothing to say" and "could not run". The
-child is told nothing on its prompts (`HookInput.pageWriter`): no dream line, no reminders.
+**Host mode is removed (2026-09-29).** The windowless `claude -p` the boundary's worker
+started for the writer alone (`pageWriter.mode: host`, off by default since the nightly run)
+is gone, with its `COUNTERPARTS_PAGE_WRITER` environment pin, `HookInput.pageWriter` and the
+worker's fifth step. A configuration that still names it loads: `pageWriter.mode: "host"`,
+`pageWriter.timeoutMs` and `pageWriter.command` are ignored and named on doctor's "Old
+settings" line, and the mode reads as `session`. A stored row written with `mode: "host"`
+stays as written and reads as `session`. What the headless nightly run shared with it —
+the pure plan / starter shape, the prompt on STDIN, the SIGTERM → SIGKILL → stop-waiting
+watchdog — is `child.ts` now, unchanged.
 
 (Retired with the SessionStart ask, 2026-09-28: the measured-not-predicted sizing against the
 host's ceiling, the durable `skipped` deferral rows, and the first-launch question's
 once-per-night patience. `skipped` rows written before still read as they always did.)
 
-**[M] It never costs anything else.** The writer runs last in the detached worker, inside
-the same `finally` as the snapshot, so a day whose sweep broke is still a day that gets
-written about; it never throws; and a failure never fails a wake, a boundary or a session.
-Doctor's `Page writer` line is GREEN when it has never run on a store with no yesterday,
+**[M] Doctor's line.** Doctor's `Page writer` line is GREEN when it has never run on a store with no yesterday,
 GREEN on a night that had nothing to say, GREEN when it is off (a deliberate choice; this
 page used to say amber while a page stands, which the code has not done since the S2 review
 — the words follow the code as of 2026-09-28), AMBER on a failure, a refusal, an unreadable
 `pageWriter` block, or — in session mode — a night owed for days while nightly runs went on
 without it, and never RED. A night owed because no run started (fewer than three new
 memories, dreaming off or declined) is green: the writer runs inside the nightly run now.
-
-**[M] The child gets the day on STDIN and a stance this package chose.** The instruction is
-not in `argv`, where `ps` shows it to every process on the machine, and
-`COUNTERPARTS_OBSERVER` is deleted from the child's environment beside the two session
-variables: a shell that exported it would hand the child an observer store whose
-`self_page` refuses, and the night would then read `nothing-to-say` — fail-closed, but a
-silently wrong answer. A child that ignores SIGTERM is escalated to SIGKILL on its process
-group and then given up on, so the worker cannot be held past its own watchdog.
-
-**UNVERIFIED, and named rather than claimed:** no build has started a real `claude -p`.
-Everything above about host mode is proved against a stub executable. What a real machine
-has to answer is keychain access from a background process (`claude setup-token` is the
-documented route, spec §16), which is why `session` is the default.
 
 ### The headless nightly run (2026-09-29 — working defaults, held lightly)
 
@@ -668,7 +647,7 @@ deny beats the user's own allow rules; `ToolSearch` stays, for hosts that defer 
 install registers it (`nightMcpConfig`); `--max-turns` (`NIGHT_MAX_TURNS` 60,
 `dreaming.maxTurns`); `--model` only when `dreaming.model` is set. It starts in a NEUTRAL
 directory — the store's own — so no project's CLAUDE.md, hooks or MCP servers load. The
-parent's stance, page-writer, `CLAUDE_PROJECT_DIR` and `CLAUDECODE` variables are removed;
+parent's stance, `CLAUDE_PROJECT_DIR` and `CLAUDECODE` variables are removed;
 this package's values are written last.
 
 **[M] Session binding: the run is attributed to the session that started it.** The launch
@@ -700,6 +679,27 @@ meaning changed, so a store with `auto` written explicitly is reset on the first
 this version, recorded (`dream.ask`, `by: upgrade`), and the owner is told once in the
 terminal; "dream on your own" sets it again. Any setting chosen on this version is kept.
 
+### One size budget per hook envelope (2026-09-29 — a working default)
+
+**[M] Everything one SessionStart or one UserPromptSubmit prints is measured against one
+budget**, the host's cap (`TUNABLES.HOST_OUTPUT_CHARS`, 10,000, counted in bytes; the JSON
+form `ENVELOPE_CHARS`, 9,500), and a crowded envelope gives way in a stated order, first to
+last. Each part that gives way is DEFERRED, never cut, and never spent on a line the session
+did not get.
+- **SessionStart:** the owner's notices (dropped before the JSON envelope passes 9,500) →
+  the write-up pointer → the first-launch question (measured against this budget, no
+  longer the reported injection budget) → plain reminders due today (they wait for the
+  first prompt, unclaimed) → the wake, which is never cut at delivery: it was composed to
+  its own budget at the boundary, trimming hints → craft → threads → horizon → identity.
+- **UserPromptSubmit:** the update notice → the turn's recall, sized to what the lines
+  below leave (`hooks.ts#recallRoom`), trimming itself to that → the dream's lines (a
+  hand-back, a carried share, a raise line, the day's offer), reserved because they are
+  claimed when composed → plain reminders and the clock line, last.
+- **The plain-stdout fallback is checked:** past the cap, `bin/hook.ts#hostDelivery` says
+  so (`overCap`) and the hook records `adapter.envelope.overcap` and prints it on stderr.
+  It is a tripwire, not a cut — by then the asks are marked; the budget above is what
+  keeps it from firing. On a normal day nothing here changes what is printed.
+
 ### The next-session write-up (C2, 2026-09-23 — true for now)
 
 **[M] A session that ended owing a write-up is written up by the next session that starts
@@ -727,6 +727,17 @@ door and doctor all read:
 Sessions never pointed at go first, then the least recently pointed at or fetched, oldest
 first among equals, so one session nobody writes up cannot stand in front of the rest.
 
+**[M] A short session owes a SHORT write-up (2026-09-29, a working default).** A session
+under the first-ask threshold — never asked — that left text, was not written up and gave
+no answer owes a one-line write-up (`remember/owes.ts#owesShortWriteUp`). Same pointer,
+same door, one plain sentence more (`WRITE_UP_SHORT_LINE`: one line is enough, or
+`memories: []`). Full write-ups first: a full one not yet pointed at today, then the short
+ones, then a full one already pointed at today — so short ones take what is left of the
+day's allowance. It is offered only for a session the host's registry knows (one our
+hooks saw start), so the unbound MCP server's shared `mcp` id is passed by. It is not a
+retention debt (text still ages out with its week) and not in doctor's awaiting count. The
+headless nightly run's child and an observer capture nothing, so they owe nothing.
+
 **[M] SessionStart carries a POINTER, not the words** (owner's choice of 2026-09-23,
 INTERFACE-GAPS §15 option (b)). In `HookResult.ask`, after whichever other ask took the
 field, it says how many sessions here are waiting, the oldest one's date, size and "part k
@@ -735,7 +746,7 @@ of N", and the call that fetches it, naming the ended session once and this sess
 MCP door (`mcp/CONTRACT` guarantee 16), at most `WRITE_UP_PART_BYTES` (~24 KB) per
 session, because an MCP result is not under the host's 10,000-character cap on a hook's
 output and the wake is. The pointer is measured against that cap as PLAIN stdout
-(`WRITE_UP_HOST_OUTPUT_CHARS` = 10,000; bytes ≥ characters): with no owner notice
+(`HOST_OUTPUT_CHARS` = 10,000; bytes ≥ characters): with no owner notice
 `bin/hook.ts#hostDelivery` prints plain text, and with one it drops the notice before it
 lets the JSON envelope pass `ENVELOPE_MAX_CHARS`. It is NOT held to the reported budget,
 which is what the wake is composed to; a 9,038-byte wake leaves room (tested with host
