@@ -94,6 +94,25 @@ export function owesWriteUp(f: WriteUpFacts): boolean {
   return !f.answered || !f.endedNormally;
 }
 
+/**
+ * THE SHORT DEBT (2026-09-29) — a session under the first-ask threshold, so
+ * never asked, that left text, was not written up and gave no answer of any
+ * kind. It is offered a ONE-LINE write-up by the next session (`[]` is an
+ * answer too), after every full one and only from what is left of the day's
+ * pointers.
+ *
+ *   owesShort = capturedText ∧ ¬writtenUp ∧ ¬asked ∧ ¬answered
+ *
+ * **It is not a retention debt.** `owesWriteUp` is still the only predicate
+ * that keeps text past its seven days (`planRetention`'s `kept-owed`); a short
+ * session nobody gets to is `kept-young` for its week and then deleted, exactly
+ * as before. The raw-text limit is the point of retention, and one-line asks
+ * must not grow it. Pure.
+ */
+export function owesShortWriteUp(f: WriteUpFacts): boolean {
+  return f.capturedText && !f.writtenUp && !f.asked && !f.answered;
+}
+
 // ── the facts' sources ──────────────────────────────────────────────────────
 
 /** The pacer's record of one session (`self/episodes.ts#episodeFacts`). */
@@ -230,6 +249,9 @@ export interface HeldSession {
   readonly scopes: readonly string[];
   readonly facts: WriteUpFacts;
   readonly owes: boolean;
+  /** It owes only a one-line write-up (`owesShortWriteUp`) — which never keeps
+   *  its text: the verdict reads `owes` alone. */
+  readonly owesShort: boolean;
   /** The host's registry holds it open. */
   readonly open: boolean;
   /** When its retention clock started. */
@@ -384,6 +406,7 @@ export function planRetention(buffer: SpanBuffer, sources: RetentionSources): He
       writtenUp: t.writtenUpAt !== null && t.writtenUpAt >= t.lastCaptureAt,
     };
     const owes = owesWriteUp(facts);
+    const owesShort = owesShortWriteUp(facts);
     const clockFrom = Math.max(t.lastActivityAt, t.writtenUpAt ?? 0, host.endedAt ?? 0);
     const verdict: RetentionVerdict = host.open
       ? "kept-live"
@@ -397,6 +420,7 @@ export function planRetention(buffer: SpanBuffer, sources: RetentionSources): He
       scopes: [...t.scopes].sort(),
       facts,
       owes,
+      owesShort,
       open: host.open,
       clockFrom,
       lines: t.lines,

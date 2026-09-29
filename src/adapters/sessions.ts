@@ -1380,10 +1380,12 @@ export function waitingForWriteUp(h: HeldSession, dataDir: string, now: number):
  *     words, or this project's share of it is done and another project's is
  *     not (`waiting` in the progress record);
  *   - `owes-nothing` — B3's predicate says so, or it is open-and-answered;
- *   - `owed`, with `here`: the buffer's own spelling of this project's scope.
+ *   - `owed`, with `here`: the buffer's own spelling of this project's scope,
+ *     and `short` when all it owes is a one-line write-up (a session under the
+ *     first-ask threshold, `remember/owes.ts#owesShortWriteUp`, 2026-09-29).
  */
 export type WriteUpStanding =
-  | { readonly status: "owed"; readonly held: HeldSession; readonly here: string }
+  | { readonly status: "owed"; readonly held: HeldSession; readonly here: string; readonly short: boolean }
   | { readonly status: "unknown-session" }
   | { readonly status: "live-session" }
   | { readonly status: "other-project" }
@@ -1414,14 +1416,15 @@ export function writeUpStanding(
   if (here === undefined) return { status: "other-project" };
   if (held.facts.writtenUp) return { status: "already-written-up" };
   if (opts.progress?.[progressKey(session, here)]?.waiting === true) return { status: "already-written-up" };
-  if (!held.owes) {
-    return {
-      status: "owes-nothing",
-      why: !held.facts.capturedText ? "no-text" : !held.facts.asked ? "below-threshold" : "answered",
-    };
+  if (!held.owes && !held.owesShort) {
+    // Since the short write-up (2026-09-29) a session with text that owes
+    // neither debt has ANSWERED (or been written up, caught above), so
+    // `below-threshold` is no longer produced; the name stays in the type for
+    // readers of older results.
+    return { status: "owes-nothing", why: !held.facts.capturedText ? "no-text" : "answered" };
   }
   if (openAndAnswered(dataDir, held)) return { status: "owes-nothing", why: "answered" };
-  return { status: "owed", held, here };
+  return { status: "owed", held, here, short: !held.owes };
 }
 
 /**
@@ -1437,10 +1440,19 @@ export function awaitingWriteUp(plan: readonly HeldSession[], dataDir: string, n
  * THE SESSIONS A NEW SESSION IN `scope` MAY BE POINTED AT, in the order they
  * are offered — every `owed` standing, minus the asking session itself.
  *
- * **Least recently pointed at first, then oldest first.** A session never
- * pointed at comes before one that was, and among equals the one that ended
- * longest ago goes first. Without the first key, one session nobody writes up
- * would stand in front of every other session in its project for ever.
+ * **Full write-ups first, then short ones** (2026-09-29): a full one not yet
+ * pointed at TODAY (`pointedToday`, the caller's calendar) goes first; then the
+ * short ones; then a full one already pointed at today — so a short session
+ * gets whatever the day's allowance has left, and one full session nobody
+ * writes up cannot hold every short one back for ever. **Within each, least
+ * recently pointed at first, then oldest first.** A session never pointed at comes before one that
+ * was, and among equals the one that ended longest ago goes first. Without
+ * that key, one session nobody writes up would stand in front of every other
+ * session in its project for ever.
+ *
+ * A short one is eligible on the same terms as a full one (not running, not
+ * open-and-answered), but it is not in `waitingForWriteUp` — doctor's count —
+ * because it is not a debt that keeps its text: it ages out with its week.
  */
 export function owedWriteUps(
   plan: readonly HeldSession[],
@@ -1450,21 +1462,28 @@ export function owedWriteUps(
   opts: {
     exclude?: string;
     progress?: Readonly<Record<string, WriteUpProgress>>;
+    /** Was this hand-over time on the caller's today? Absent: never. */
+    pointedToday?: (handedAt: number) => boolean;
   } = {},
-): { held: HeldSession; here: string }[] {
-  const out: { held: HeldSession; here: string }[] = [];
+): { held: HeldSession; here: string; short: boolean }[] {
+  const out: { held: HeldSession; here: string; short: boolean }[] = [];
   for (const h of plan) {
     if (h.session === opts.exclude) continue;
-    if (!waitingForWriteUp(h, dataDir, now)) continue;
+    const eligible = waitingForWriteUp(h, dataDir, now) || (h.owesShort && !runningNow(dataDir, h.session, now));
+    if (!eligible) continue;
     const standing = writeUpStanding(plan, dataDir, h.session, scope, now, {
       ...(opts.progress === undefined ? {} : { progress: opts.progress }),
     });
-    if (standing.status === "owed") out.push({ held: h, here: standing.here });
+    if (standing.status === "owed") out.push({ held: h, here: standing.here, short: standing.short });
   }
   const handed = (o: { held: HeldSession; here: string }): number =>
     opts.progress?.[progressKey(o.held.session, o.here)]?.handedAt ?? 0;
+  const tier = (o: { held: HeldSession; here: string; short: boolean }): number =>
+    o.short ? 1 : handed(o) > 0 && opts.pointedToday?.(handed(o)) === true ? 2 : 0;
   return out.sort((a, b) =>
-    handed(a) !== handed(b)
+    tier(a) !== tier(b)
+      ? tier(a) - tier(b)
+      : handed(a) !== handed(b)
       ? handed(a) - handed(b)
       : a.held.clockFrom !== b.held.clockFrom
         ? a.held.clockFrom - b.held.clockFrom
@@ -1675,7 +1694,7 @@ export function pruneWriteUpProgress(
 ): number {
   try {
     const all = readWriteUpProgress(store);
-    const owing = new Set(plan.filter((h) => h.owes).map((h) => h.session));
+    const owing = new Set(plan.filter((h) => h.owes || h.owesShort).map((h) => h.session));
     let dropped = 0;
     for (const key of Object.keys(all)) {
       if (owing.has(key.slice(0, key.indexOf("|")))) continue;

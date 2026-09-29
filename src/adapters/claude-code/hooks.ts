@@ -423,8 +423,12 @@ export const WRITE_UP_TOOL = "counterparts session_end";
 export const WRITE_UP_ASK_DATE_KEY = "adapter.writeup.asks.date";
 export const WRITE_UP_ASK_COUNT_KEY = "adapter.writeup.asks.count";
 
+/** What the pointer adds for a SHORT session (2026-09-29): one plain sentence. */
+export const WRITE_UP_SHORT_LINE = "It was a short session: one line is enough, or memories: [] if nothing in it is worth keeping.";
+
 /** THE POINTER the model reads — short, because the words come from the door,
- *  and naming the ended session once. */
+ *  and naming the ended session once. A session under the first-ask threshold
+ *  (`short`) gets the same pointer and one sentence more. */
 export function writeUpPointer(input: {
   waiting: number;
   ended: string;
@@ -433,6 +437,7 @@ export function writeUpPointer(input: {
   part: number;
   of: number;
   live: string;
+  short?: boolean;
 }): string {
   const some =
     input.waiting === 1
@@ -442,7 +447,7 @@ export function writeUpPointer(input: {
   const part = input.of <= 1 ? "" : `, part ${String(input.part)} of ${String(input.of)}`;
   return [
     WRITE_UP_OPEN,
-    `${some}; the oldest, from ${input.endedOn}, left ${size} of what was said to it${part}. To write it up, call ${WRITE_UP_TOOL} with session: ${input.live}, writeUp: ${input.ended} and no memories to get the words, then again with the memories worth keeping (or memories: []).`,
+    `${some}; the oldest, from ${input.endedOn}, left ${size} of what was said to it${part}. To write it up, call ${WRITE_UP_TOOL} with session: ${input.live}, writeUp: ${input.ended} and no memories to get the words, then again with the memories worth keeping (or memories: []).${input.short === true ? ` ${WRITE_UP_SHORT_LINE}` : ""}`,
     WRITE_UP_CLOSE,
   ].join("\n");
 }
@@ -891,13 +896,18 @@ export class ClaudeCodeAdapter {
       // Entries whose session stopped owing some other way go first.
       pruneWriteUpProgress(store, plan);
       const inFlight = readWriteUpProgress(store);
+      const zone = this.counterpart.store.zone();
       const owed = owedWriteUps(plan, dir, input.scope, now, {
         exclude: input.sessionId,
         progress: inFlight,
+        pointedToday: (at) => calendarDate(at, zone) === today,
       });
+      // Full write-ups come first (`owedWriteUps`), so a SHORT one is pointed
+      // at only when no full one here is waiting: it takes what is left of the
+      // day's allowance.
       const first = owed[0];
       if (first === undefined) return "";
-      const { held, here } = first;
+      const { held, here, short } = first;
       // THIS PROJECT'S WORDS ONLY (MAJOR 6).
       const entries = writeUpEntries(this.counterpart.spans, { session: held.session, scopes: [here] });
       if (entries.length === 0) return "";
@@ -921,6 +931,7 @@ export class ClaudeCodeAdapter {
         part: Math.min(done + 1, partsCount),
         of: partsCount,
         live: input.sessionId,
+        short,
       });
       const bytes = Buffer.byteLength(`\n\n${text}`, "utf8");
       const room = TUNABLES.WRITE_UP_HOST_OUTPUT_CHARS - spent;
@@ -977,6 +988,7 @@ export class ClaudeCodeAdapter {
         of: partsCount,
         bytes,
         owed: owed.length,
+        short,
       });
       return text;
     } catch (err) {
