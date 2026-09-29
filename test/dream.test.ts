@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { openAdapter } from "../src/adapters/claude-code/index.js";
+import { deliverTurn } from "../src/adapters/claude-code/bin/hook.js";
 import type { HookInput } from "../src/adapters/claude-code/index.js";
 import type { SpawnPlan } from "../src/adapters/claude-code/spawn.js";
 import { parseTranscript } from "../src/adapters/claude-code/transcript.js";
@@ -474,7 +475,7 @@ describe("the ask: once a day, snoozed by a no", () => {
     expect(c.dreams.setSetting("ask", { by: "owner" }).ok).toBe(true);
     const line = c.dreams.askLine({ at: "2026-09-26", session: SESSION });
     expect(line).not.toBeNull();
-    expect(line).toContain("OK if I dream for a few minutes?");
+    expect(line).toContain('Say "dream" to start, or "dream on your own" to let me do it each day.');
     expect(line).toContain('phase "launch"');
     // Once a day, across sessions.
     expect(c.dreams.askLine({ at: "2026-09-26", session: "s-other" })).toBeNull();
@@ -606,8 +607,8 @@ describe("a dream never becomes a lived memory through the sweep", () => {
 // the ask, through the real hook
 // ---------------------------------------------------------------------------
 
-describe("the ask reaches a session through user-prompt-submit, quietly, once a day", () => {
-  test("the model's context carries it once; a second session that day does not; the page writer never does", () => {
+describe("the ask reaches a session through user-prompt-submit, once a day — the person sees it (2026-09-29)", () => {
+  test("the model's context and the person's terminal carry it once; a second session that day does not; the page writer never does", () => {
     const a = openAdapter(
       { dataDir: dir, injectionBudgetBytes: 9_000, owner: true },
       { command: "/bin/true", args: ["runner"], spawner: (_p: SpawnPlan) => ({ pid: 4242 }) },
@@ -622,12 +623,17 @@ describe("the ask reaches a session through user-prompt-submit, quietly, once a 
     // The headless page writer is told nothing, and claims nothing.
     expect(a.userPromptSubmit(input({ sessionId: "pw", pageWriter: true })).injection).not.toContain("dream");
     const first = a.userPromptSubmit(input({ sessionId: "s1" }));
-    // The default setting, `auto` (2026-09-28): start the run, say so in one line.
+    // The default setting, `ask` (2026-09-29): the model is told what each
+    // answer means, and the PERSON is shown the question.
     expect(first.injection).toContain('phase "launch"');
-    expect(first.injection).toContain("Dreaming in the background (a few minutes). Say 'no dreams' anytime to turn it off.");
-    // Quiet: for the model, never the person's terminal line.
-    expect(first.notices ?? []).toEqual([]);
-    expect(a.userPromptSubmit(input({ sessionId: "s2" })).injection).not.toContain("Dreaming in the background");
-    expect(a.userPromptSubmit(input({ sessionId: "s1" })).injection).not.toContain("Dreaming in the background");
+    expect(first.dream?.notice).toContain('Say "dream" to start, or "dream on your own"');
+    // Nothing claimed until the delivery carries the person's line.
+    expect(a.counterpart.store.dreamAsk("2026-09-26")).toBeUndefined();
+    const doors = { updateNotice: () => null, markUpdateNotice: () => false, claimDream: a.claimDream.bind(a) };
+    const out = deliverTurn("user-prompt-submit", first, {}, null, doors, input({ sessionId: "s1" }));
+    expect((JSON.parse(out.stdout) as { systemMessage: string }).systemMessage).toBe(first.dream?.notice ?? "-");
+    expect(a.counterpart.store.dreamAsk("2026-09-26")?.state).toBe("offered");
+    expect(a.userPromptSubmit(input({ sessionId: "s2" })).dream).toBeUndefined();
+    expect(a.userPromptSubmit(input({ sessionId: "s1" })).injection).not.toContain('Say "dream"');
   });
 });

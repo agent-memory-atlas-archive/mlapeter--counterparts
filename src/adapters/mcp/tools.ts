@@ -974,9 +974,9 @@ const DREAM: ToolSpec = {
   summary:
     "Dreaming, in the nightly run: a few minutes of replay over what was lived since the last dream — merging near-copies, linking what belongs together, replaying what matters, writing a pattern you notice, flagging a contradiction, recording how an old feeling sits now — kept in a dream journal and reversible as a whole — with the page writer before it and a reflection after it, in one background run. Phases: `launch` (the prompt for the background run), `begin` / `propose` / `journal` (the dreamer's), `writer` (the night's page writer: the day to read), `decline` (not today), `setting` (auto, ask or off — 'no dreams' is off).",
   admission:
-    "Call `launch` when the line at the start of a session says to (the owner's setting `auto`), or after the owner said yes to the dream ask (setting `ask`), and hand the prompt it returns to a background agent unchanged. Call `setting` with value `off` when the owner says 'no dreams' (and `auto` or `ask` when they turn it back on); `decline` when they say not today. `begin`, `propose`, `journal` and `writer` are the background run's, following that prompt.",
+    "Call `launch` only after the owner said \"dream\" (or yes, or \"dream on your own\") to the day's dream line, and hand the prompt it returns to a background agent unchanged. With the owner's setting `auto` the host runs the night itself, in a separate session: this session launches nothing. Call `setting` with value `auto` when the owner says \"dream on your own\" or turns it on, `off` when they say 'no dreams', `ask` when they want to be asked; `decline` when they say not today. `begin`, `propose`, `journal` and `writer` are the background run's, following that prompt.",
   negativeExamples: [
-    "Do NOT start a dream the line did not start: it arrives as a quiet line at the start of a session, once a day at most, and the owner's setting decides whether it starts the run or asks first.",
+    "Do NOT start a dream the owner did not ask for: the day's line shows them the question (setting `ask`) and you launch only on their word; with `auto` the host starts the run on its own and there is nothing for you to launch.",
     "Do NOT run the dream yourself in this conversation: `launch` returns a prompt for a background agent, and the dream's words must stay out of this transcript.",
     "Do NOT use `propose` to correct or delete a memory — a dream cannot rewrite one in place, delete one, edit the self page or promote one, and it touches only memories its bundle showed it.",
   ],
@@ -1051,7 +1051,7 @@ const DREAM: ToolSpec = {
       value: {
         type: "string",
         enum: ["auto", "ask", "off"],
-        description: "`setting`: auto (the run starts on its own, once a day, and says so), ask (ask the owner first), or off (no dreams).",
+        description: "`setting`: auto (\"dream on your own\": the host starts the run itself once a day, in a separate session, and says so), ask (the owner is asked first), or off (no dreams).",
       },
       changes: {
         type: "array",

@@ -21,6 +21,15 @@ export const DREAM_TUNABLES = {
   /** How many times one calendar day's run may be started again after it was left behind. CAL. */
   RELAUNCHES_PER_DAY: 2,
   /**
+   * A HEADLESS RUN THAT NEVER REPORTED (2026-09-29, review of #282): a row
+   * still `started` this long past its own watchdog (the row carries it) is
+   * LOST — its process died, slept or was killed — and the day's line falls
+   * back to asking. CAL.
+   */
+  NIGHT_LOST_GRACE_MS: 10 * 60_000,
+  /** The watchdog assumed for a `started` row that does not carry its own. */
+  NIGHT_RUN_ASSUMED_MS: 20 * 60_000,
+  /**
    * THE NIGHTLY RUN'S ORDER — the page writer, then the dream, then the
    * reflection (the owner's call, 2026-09-28; held lightly). The writer goes
    * FIRST: it reads yesterday's memories before any merge archives the

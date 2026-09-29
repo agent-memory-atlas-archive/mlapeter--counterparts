@@ -99,7 +99,7 @@ import {
   success,
 } from "./protocol.js";
 import type { Id, Request, Response } from "./protocol.js";
-import { DREAMING_SETTINGS, nightNext, nightOrder } from "../../core/dream/index.js";
+import { DREAMING_SETTINGS, NIGHT_RUN_FINISHES, nightNext, nightOrder } from "../../core/dream/index.js";
 import type { DreamBundle, DreamingSetting, NightPart } from "../../core/dream/index.js";
 import { noteLookups } from "../../core/fit/index.js";
 import type { FitMechanism } from "../../core/fit/index.js";
@@ -1852,7 +1852,7 @@ export class McpServer {
               // retelling in the session's own words would carry none, and the
               // dream's title and changes would read as something that
               // happened (adversarial review of #251).
-              how: "Hand `prompt` to a background agent (the Agent tool), unchanged, and carry on. When it finishes, show the owner its first line (the dream's) exactly as it came back — it carries the dream's mark, which keeps the dream out of lived memory. If a morning share follows, tell it to the owner in your own words, as a telling (\"Last night I dreamed…\"), then call the reflect tool with phase \"told\" — never state what was dreamed as something that happened.",
+              how: "Hand `prompt` to a background agent (the Agent tool), unchanged, and carry on. When it finishes, show the owner its first line (the dream's) exactly as it came back — it carries the dream's mark, which keeps the dream out of lived memory. If a morning share follows, tell it to the owner in your own words, as a telling (\"While I slept I dreamed…\"), then call the reflect tool with phase \"told\" — never state what was dreamed as something that happened.",
             },
             false,
           );
@@ -1871,11 +1871,13 @@ export class McpServer {
           if (!out.ok) return refused(out.reason, `value is one of ${DREAMING_SETTINGS.join(", ")}. It is ${dreams.setting()} now.`);
           this.emit("mcp.dream", undefined, { phase: "setting", setting: out.setting, before: out.before });
           const said: Record<DreamingSetting, string> = {
-            auto: "Dreaming is on: once a day, the first session starts the nightly run in the background and says so in one line.",
-            ask: "Dreaming asks first: once a day, a session asks the owner before starting the nightly run.",
-            off: "No dreams: nothing starts the nightly run and nothing asks. It can be turned back on with this phase (value auto or ask) or with counterparts dream --setting auto.",
+            auto: "Dreaming on its own: once a day, the first session starts the nightly run by itself, in a separate windowless session in the background, and says so in one line. Today's run is still yours to start, if the owner asked for it.",
+            ask: "Dreaming asks first: once a day, the first session shows the owner the question in the terminal and waits for their word.",
+            off: "No dreams: nothing starts the nightly run and nothing asks. It can be turned back on with this phase (value ask or auto) or with counterparts dream --setting ask.",
           };
-          return this.result({ phase, setting: out.setting, before: out.before, said: said[out.setting] }, false);
+          // "No dreams" does not stop a run already going (owner decision D): said.
+          const finishes = out.setting === "off" && dreams.nightRunUnderWay() ? ` ${NIGHT_RUN_FINISHES}` : "";
+          return this.result({ phase, setting: out.setting, before: out.before, said: `${said[out.setting]}${finishes}` }, false);
         }
         case "begin": {
           const model = readSession(this.registryDir, session)?.model;
@@ -2764,18 +2766,18 @@ export class McpServer {
   }
 
   private result(payload: Record<string, unknown>, isError: boolean): ToolResult {
-    // A BUNDLE IS SENT ONCE (2026-09-28, review of build B). A result carries
-    // its payload twice — as the text the model reads and as
-    // `structuredContent` — and a host may count both against its ~25k-token
-    // ceiling. The long text a dream or a reflection is handed (`bundle`)
-    // rides only in the text; the structured copy says its length instead.
-    // Nothing in this package reads `structuredContent`; the text is the
-    // contract.
-    const bundle = payload["bundle"];
-    const structured = typeof bundle === "string" ? { ...Object.fromEntries(Object.entries(payload).filter(([k]) => k !== "bundle")), bundleChars: bundle.length } : payload;
+    // THE WHOLE PAYLOAD IN BOTH (2026-09-29, the first real headless run).
+    // From 2026-09-28 the long `bundle` rode only in the text, with
+    // `bundleChars` in its place in `structuredContent`, on the guess that a
+    // host counts both copies. Claude Code (2.1.284) does not count both: when
+    // a result carries `structuredContent` it hands the MODEL that — serialized
+    // — and drops the text items. So every dream and reflection was shown
+    // counts and no memories: the run said "the bundles came back to me as
+    // counts only", and missed a contradiction it was seeded with. The text
+    // stays the whole payload too, for a host that reads only the text.
     return {
       content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],
-      structuredContent: structured,
+      structuredContent: payload,
       ...(isError ? { isError: true } : {}),
     };
   }

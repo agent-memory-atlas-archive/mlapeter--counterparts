@@ -52,6 +52,8 @@ import {
   WAKE_INJECTED_EVENT,
 } from "../../core/counterpart.js";
 import type { AdapterDurableEventName, PlainReminder } from "../../core/counterpart.js";
+import { newNightRunId } from "../../core/dream/index.js";
+import type { DreamOffer } from "../../core/dream/index.js";
 import type {
   BoundaryKind,
   CaptureResult,
@@ -100,6 +102,8 @@ import type { AdapterConfig, CapabilityReport } from "./config.js";
 import { SESSION_NOTICE_BUDGET_MS, checkoutIsGraded, doctorFindings, noticeMessage, readCheckout } from "./doctor.js";
 import type { CheckoutReading } from "./doctor.js";
 import { primacy } from "./primacy.js";
+import { nightTimeoutMs, planNightRunner } from "./night-run.js";
+import type { NightKind } from "./night-run.js";
 import { planSpawn, spawnDetached } from "./spawn.js";
 import type { SpawnOutcome, Spawner } from "./spawn.js";
 import { NO_ARRIVAL, STOP_ASK_OPENER, readWakeArrival } from "./transcript.js";
@@ -170,6 +174,15 @@ export interface HookInput {
    */
   readonly pageWriter?: boolean;
   /**
+   * This session is the HEADLESS NIGHTLY RUN this package started
+   * (`night-run.ts`, `COUNTERPARTS_NIGHT_RUN` in its environment, 2026-09-29):
+   * `claude -p` running the page writer, the dream and the reflection, which
+   * nobody watches. It is kept QUIET — it still wakes with the ordinary wake,
+   * and nothing else: no capture (so it owes no write-up), no dream lines, no
+   * plain reminders, no Stop ask, no write-up pointer, no first-launch question.
+   */
+  readonly nightRun?: boolean;
+  /**
    * THE HOST'S RE-FIRE. A blocked Stop comes back with `stop_hook_active`, and
    * that pass must ask nothing — v1's anti-loop, kept for the same reason. It is
    * checked HERE, not only at delivery, so the re-fire also burns no pacing and
@@ -237,6 +250,31 @@ export interface HookResult {
    */
   readonly notices?: readonly string[];
   readonly plain?: readonly PlainReminder[];
+  /**
+   * THE DAY'S DREAM LINE FOR THE PERSON (2026-09-29), at a prompt: shown in
+   * the terminal beside the model's line, which already rides in `injection`.
+   * NOT YET CLAIMED when `offer` is set — the delivery claims the day only once
+   * it knows the envelope carries the person's line (`bin/hook.ts#deliverTurn`
+   * → `claimDream`), and otherwise strips the model's line (`withoutDream`) so
+   * the next prompt offers it again.
+   */
+  readonly dream?: DreamTold;
+  /**
+   * THE ONE-TIME LINE about `auto` set back to `ask` on this version (owner
+   * decision A, 2026-09-29): shown in the terminal once, claimed at delivery
+   * (`claimDreamNote`); its model line is stripped when it cannot be shown.
+   */
+  readonly dreamNote?: { readonly notice: string; readonly context: string };
+}
+
+/** The day's dream line, as a prompt carries it (`HookResult.dream`). */
+export interface DreamTold {
+  /** The person's line, for the terminal. */
+  readonly notice: string;
+  /** The model's line exactly as it sits in `injection` (one line). */
+  readonly context: string;
+  /** The offer still to claim at delivery, or null when the day is already claimed. */
+  readonly offer: DreamOffer | null;
 }
 
 export interface AdapterEvent {
@@ -251,6 +289,12 @@ export interface AdapterOptions {
   /** The interpreter the detached worker runs under. */
   readonly command?: string;
   readonly args?: readonly string[];
+  /**
+   * The args that run `bin/nightly.ts` under `command` — the headless nightly
+   * run's own process (2026-09-29). Absent: the headless run cannot start, and
+   * the day's line asks instead (`could-not-start`, reason `runner`).
+   */
+  readonly nightArgs?: readonly string[];
   readonly spawner?: Spawner;
   readonly onEvent?: (e: AdapterEvent) => void;
   readonly now?: () => number;
@@ -528,6 +572,7 @@ export class ClaudeCodeAdapter {
 
   private readonly command: string;
   private readonly args: readonly string[];
+  private readonly nightArgs: readonly string[] | undefined;
   private readonly spawner: Spawner | undefined;
   private readonly onEvent: ((e: AdapterEvent) => void) | undefined;
   private readonly nowFn: () => number;
@@ -565,6 +610,7 @@ export class ClaudeCodeAdapter {
     this.observer = opts.counterpart.observer;
     this.command = opts.command ?? process.execPath;
     this.args = opts.args ?? [];
+    this.nightArgs = opts.nightArgs;
     this.spawner = opts.spawner;
     this.onEvent = opts.onEvent;
     this.nowFn = opts.now ?? ((): number => Date.now());
@@ -764,7 +810,7 @@ export class ClaudeCodeAdapter {
       this.emit("adapter.scope.ask.skipped", { reason: "observer" });
       return false;
     }
-    if (input.sessionId.length === 0) return false;
+    if (input.sessionId.length === 0 || input.nightRun === true) return false;
     try {
       return readSession(this.counterpart.store.dir, input.sessionId)?.askedScope !== true;
     } catch {
@@ -826,7 +872,7 @@ export class ClaudeCodeAdapter {
       // Never under observer: an instrument asks nobody to write into a store
       // it may not write, and has no registry mark to remember that it did.
       if (this.observer) return "";
-      if (input.sessionId.length === 0) return "";
+      if (input.sessionId.length === 0 || input.nightRun === true) return "";
       const store = this.counterpart.store;
       const dir = store.dir;
       // ONE PER SESSION. A compaction re-fires SessionStart, and the record
@@ -967,10 +1013,16 @@ export class ClaudeCodeAdapter {
       // the session that runs past midnight — or that SessionStart had no room
       // for, is said at the next prompt, once (claimed at delivery).
       const plain = this.plainFor(input);
-      const told = plain.due.length === 0 ? {} : { notices: plain.notices, plain: plain.due };
-      // The DREAM lines (2026-09-26): the once-a-day ask, and any contradiction
-      // a dream flagged that is still unraised — for the model, quietly.
-      const context = `${plain.context}${this.dreamLines(input)}`;
+      const told: { notices?: readonly string[]; plain?: readonly PlainReminder[]; dream?: DreamTold; dreamNote?: { notice: string; context: string } } =
+        plain.due.length === 0 ? {} : { notices: plain.notices, plain: plain.due };
+      // The DREAM lines (2026-09-26): the once-a-day line, and any contradiction
+      // a dream flagged that is still unraised — for the model; since
+      // 2026-09-29 the day's line is shown to the PERSON too (`dream`), and
+      // claimed only once the delivery knows it is leaving.
+      const dream = this.dreamLines(input);
+      const context = `${plain.context}${dream.text}`;
+      if (dream.told !== null) Object.assign(told, { dream: dream.told });
+      if (dream.note !== null) Object.assign(told, { dreamNote: dream.note });
       const text = input.prompt ?? "";
       if (text.trim().length === 0) {
         return { ...out, ok: true, reason: "empty-prompt", injection: `${this.nowLine()}${context.length === 0 ? "" : `\n${context.trimEnd()}`}`, ...told };
@@ -1034,13 +1086,16 @@ export class ClaudeCodeAdapter {
   }
 
   /**
-   * THE DREAM LINES (2026-09-26, `core/dream/`), for the MODEL only, each
+   * THE DREAM LINES (2026-09-26, `core/dream/`), for the MODEL, each
    * ending in a newline: a contradiction a dream flagged, raised once awake,
    * and the day's line, which follows the owner's dreaming setting
-   * (2026-09-28): `auto` (the default) tells the model to start the nightly
-   * run now — page writer, dream, reflection, one background agent — and to
-   * tell the owner in one line that it is dreaming and how to say "no dreams";
-   * `ask` asks the owner first, as it did from 2026-09-26; `off` says nothing.
+   * (2026-09-28): `ask` (the default since 2026-09-29) shows the PERSON the
+   * question in the terminal (`told`, claimed at delivery) and tells the model
+   * what each answer means; `auto` STARTS the nightly run here, headless
+   * (`startNightRun`), and tells both that it has — or, when the run cannot
+   * start, asks instead and says why; `off` says nothing. A headless run that
+   * ended hands back its dream's line and share at the next prompt
+   * (`nightHandBack`).
    * The line is at most once a CALENDAR day across every session (the store's
    * `dream_asks` latch decides, so of two sessions racing one gets it), and
    * again only for a run that was left behind; a "no" is the dream tool's
@@ -1055,11 +1110,22 @@ export class ClaudeCodeAdapter {
    * do not both tell it. Here, on the prompt, rather than in the SessionStart
    * wake, whose byte ceiling is what stranded the page writer.
    */
-  private dreamLines(input: HookInput): string {
-    if (this.observer || input.at === undefined || input.pageWriter === true || input.sessionId.length === 0) return "";
+  private dreamLines(input: HookInput): { text: string; told: DreamTold | null; note: { notice: string; context: string } | null } {
+    const none = { text: "", told: null, note: null };
+    if (this.observer || input.at === undefined || input.pageWriter === true || input.nightRun === true || input.sessionId.length === 0) return none;
     try {
       const dreams = this.counterpart.dreams;
+      // `auto` CHANGED MEANING on this version: an explicit one is set back to
+      // `ask` once, before anything is offered, and the owner is told once
+      // (owner decision A, 2026-09-29).
+      dreams.resetAutoOnce();
+      const note = dreams.autoResetNotice();
       const lines = [...dreams.raiseLines({ session: input.sessionId })];
+      if (note !== null) lines.push(note.context);
+      // A HEADLESS RUN'S HAND-BACK (2026-09-29): no agent handed its last
+      // message to a session, so the next prompt anywhere carries the dream's
+      // line and the share — once, ever (`claimNightHandBack`).
+      lines.push(...this.nightHandBack(input));
       const pending = this.counterpart.reflections.pendingShare({ session: input.sessionId });
       if (pending !== null) {
         const record = pending.session === null ? null : readSession(this.counterpart.store.dir, pending.session);
@@ -1068,12 +1134,139 @@ export class ClaudeCodeAdapter {
           if (carried !== null) lines.push(carried);
         }
       }
-      const ask = dreams.askLine({ at: input.at, session: input.sessionId });
-      if (ask !== null) lines.push(ask);
-      if (lines.length > 0) this.emit("adapter.dream.lines", { asked: ask !== null, raised: lines.length - (ask === null ? 0 : 1) });
-      return lines.map((l) => `${l}\n`).join("");
+      // THE DAY'S LINE, OFFERED (2026-09-29). An ASK is not claimed here: the
+      // delivery claims it once the envelope is known to carry the person's
+      // line (`claimDream`). HEADLESS (`auto`) is claimed now and the run
+      // started now — the start is the point, the terminal line a courtesy —
+      // and a run that cannot even be started falls back to the ask at once.
+      let offer = dreams.offer({ at: input.at, session: input.sessionId });
+      if (offer !== null && offer.headless) {
+        const started = dreams.claimOffer(offer) ? this.startNightRun(input, offer) : null;
+        if (started === null) offer = null;
+        else if (!started) {
+          const again = dreams.offer({ at: input.at, session: input.sessionId });
+          offer = again !== null && !again.headless ? again : null;
+        }
+      }
+      let told: DreamTold | null = null;
+      let asked = false;
+      if (offer !== null) {
+        if (offer.notice !== null) told = { notice: offer.notice, context: offer.context, offer: offer.headless ? null : offer };
+        asked = told !== null || dreams.claimOffer(offer);
+        if (asked) lines.push(offer.context);
+      }
+      if (lines.length > 0) this.emit("adapter.dream.lines", { asked, raised: lines.length - (asked ? 1 : 0) });
+      return { text: lines.map((l) => `${l}\n`).join(""), told, note };
     } catch {
-      return "";
+      return none;
+    }
+  }
+
+  /** The reset line was shown: claimed once, ever. Never throws. */
+  claimDreamNote(input: HookInput): boolean {
+    try {
+      return this.counterpart.dreams.claimAutoResetNotice(input.sessionId);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * START THE HEADLESS NIGHTLY RUN (2026-09-29) for a day this process just
+   * claimed: the detached process (`night-run.ts#planNightRunner`, run by
+   * `bin/nightly.ts`) that starts `claude -p` and waits for it. True when it
+   * started; false — with a `could-not-start` row saying why — when it did
+   * not, so the next offer asks instead. Never throws.
+   */
+  private startNightRun(input: HookInput, offer: DreamOffer): boolean {
+    const dreams = this.counterpart.dreams;
+    const store = this.counterpart.store;
+    const run = newNightRunId();
+    const kind: NightKind = offer.reflects === null ? { kind: "night" } : { kind: "reflection", dream: offer.reflects };
+    const base = {
+      run,
+      date: offer.at,
+      kind: kind.kind,
+      session: input.sessionId,
+      startedAt: store.now(),
+      timeoutMs: nightTimeoutMs(this.config),
+      endedAt: null,
+      reason: null,
+      detail: null,
+      code: null,
+      dream: null,
+      reflection: null,
+    };
+    const couldNot = (reason: string, detail: string | null): false => {
+      dreams.recordNightRun({ ...base, state: "could-not-start", endedAt: store.now(), reason, detail });
+      this.emit("adapter.night.failed", { run, reason, detail });
+      return false;
+    };
+    try {
+      const plan = planNightRunner({
+        config: this.config,
+        command: this.command,
+        args: this.nightArgs,
+        run,
+        session: input.sessionId,
+        scope: input.scope,
+        kind,
+        ...(this.configPath === undefined ? {} : { configPath: this.configPath }),
+      });
+      if (!plan.ok) return couldNot(plan.reason === "NO_RUNNER" ? "runner" : "refused", plan.reason);
+      const out = spawnDetached({ ...plan, reason: "ready" }, {
+        ...(this.spawner === undefined ? {} : { spawner: this.spawner }),
+        onEvent: (name, data) => this.emit(`night.${name}`, data),
+      });
+      if (!out.started) return couldNot("runner", out.code ?? String(out.reason));
+      dreams.recordNightRun({ ...base, state: "started" });
+      this.emit("adapter.night.started", { run, pid: out.pid, kind: kind.kind });
+      return true;
+    } catch (err) {
+      return couldNot("runner", codeOf(err));
+    }
+  }
+
+  /**
+   * THE HAND-BACK OF A HEADLESS RUN THAT ENDED — the dream's line, then the
+   * morning share if there is one — claimed once across every session. Empty
+   * when there is nothing to hand back, or another prompt already did.
+   */
+  private nightHandBack(input: HookInput): string[] {
+    const dreams = this.counterpart.dreams;
+    const night = dreams.nightRun();
+    if (night === null || night.state === "started" || night.state === "could-not-start") return [];
+    if (night.dream === null && night.reflection === null) return [];
+    // A READ on the per-prompt path once it is handed: nothing is written again.
+    if (night.handedAt !== undefined) return [];
+    const claimed = dreams.claimNightHandBack(night.run, input.sessionId);
+    // Marked whether this prompt won the latch or found it held, so no later
+    // prompt tries again (the same run and state: the event latch adds no row).
+    dreams.recordNightRun({ ...night, handedAt: this.counterpart.store.now() });
+    if (!claimed) return [];
+    const out: string[] = [];
+    const line = dreams.nightHandBackLine(night);
+    if (line !== null) out.push(line);
+    if (night.reflection !== null) {
+      const share = this.counterpart.reflections.carryLine({ session: input.sessionId, reflection: night.reflection });
+      if (share !== null) out.push(share);
+    }
+    this.emit("adapter.night.handed", { run: night.run, lines: out.length });
+    return out;
+  }
+
+  /**
+   * CLAIM THE DAY'S DREAM LINE the delivery is certainly about to show — the
+   * `dream_asks` latch decides (`Dreams.claimOffer`), so of two processes
+   * racing exactly one gets it. Never throws.
+   */
+  claimDream(input: HookInput, offer: DreamOffer): boolean {
+    try {
+      const claimed = this.counterpart.dreams.claimOffer(offer);
+      this.emit(claimed ? "adapter.dream.told" : "adapter.dream.lost", { state: offer.state, session: input.sessionId });
+      return claimed;
+    } catch {
+      return false;
     }
   }
 
@@ -1100,7 +1293,7 @@ export class ClaudeCodeAdapter {
    */
   private plainFor(input: HookInput): { context: string; notices: string[]; due: PlainReminder[] } {
     const none = { context: "", notices: [], due: [] };
-    if (input.at === undefined || input.pageWriter === true) return none;
+    if (input.at === undefined || input.pageWriter === true || input.nightRun === true) return none;
     try {
       const due = this.counterpart.plainDueToday({ at: input.at });
       return {
@@ -1247,7 +1440,8 @@ export class ClaudeCodeAdapter {
       // silent past `CRASH_STALE_MS`). Before that gate this line was a comment
       // the code did not keep: one evening's Stops billed 13 chunks and minted
       // 61 memories beside 34 the model had authored itself.
-      const ask = deliver ? this.askAtStop(input) : null;
+      // The headless nightly run is asked nothing (`HookInput.nightRun`).
+      const ask = deliver && input.nightRun !== true ? this.askAtStop(input) : null;
       const spawn = this.spawnWorker(input);
       return { ...claimed, ask, spawn };
     });
@@ -1353,7 +1547,10 @@ export class ClaudeCodeAdapter {
    * shape (G3).
    */
   private claim(hook: SessionEndingHook, input: HookInput, out: HookResult): HookResult {
-    const turns = input.turns ?? [];
+    // THE HEADLESS NIGHTLY RUN CAPTURES NOTHING (2026-09-29): its turns are the
+    // launch prompt and the run's own tool calls — sleep, not lived — and a
+    // session with no captured text owes no write-up (`remember/owes.ts`).
+    const turns = input.nightRun === true ? [] : (input.turns ?? []);
     // THE STRETCH THIS MEMORY WAS TOLD NOT TO HAVE, sealed before anything is
     // captured. After a `sealed` the ordinary capture below reads NOTHING_NEW;
     // after a `failed` it does not run at all, because a cursor that would not
@@ -2475,6 +2672,35 @@ export function withoutPlain<R extends { injection: string | null; notices?: rea
   delete (rest as { notices?: unknown }).notices;
   delete (rest as { plain?: unknown }).plain;
   return plain.length === 0 ? rest : { ...rest, notices: plain.map(plainLine), plain };
+}
+
+/**
+ * A hook result WITHOUT the day's dream line — its terminal line and its model
+ * line — for a delivery that could not carry it or lost the race to claim it
+ * (`bin/hook.ts#deliverTurn`). Not spent: the next prompt offers it again.
+ */
+export function withoutDreamNote<R extends { injection: string | null; dreamNote?: { notice: string; context: string } }>(result: R): R {
+  const note = result.dreamNote;
+  if (note === undefined) return result;
+  const injection = result.injection === null ? null : result.injection.split("\n").filter((l) => l !== note.context).join("\n");
+  const rest: R = { ...result, injection };
+  delete (rest as { dreamNote?: unknown }).dreamNote;
+  return rest;
+}
+
+export function withoutDream<R extends { injection: string | null; dream?: DreamTold }>(result: R): R {
+  const told = result.dream;
+  if (told === undefined) return result;
+  const injection =
+    result.injection === null
+      ? null
+      : result.injection
+          .split("\n")
+          .filter((l) => l !== told.context)
+          .join("\n");
+  const rest: R = { ...result, injection };
+  delete (rest as { dream?: unknown }).dream;
+  return rest;
 }
 
 function codeOf(err: unknown): string {

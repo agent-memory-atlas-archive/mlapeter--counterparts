@@ -1642,6 +1642,10 @@ export class Counterpart {
           : { ok: true, text: redacted };
       },
       page: () => this.self.page()?.body ?? null,
+      pageInfo: () => {
+        const p = this.self.page();
+        return p === null ? null : { version: p.version, by: p.by, revisedOn: p.revisedOn };
+      },
       pageWrites: opts.pageWriterMode !== "off",
       today: () => this.store.today(),
       ownerName: () => this.ownerDisplayName(),

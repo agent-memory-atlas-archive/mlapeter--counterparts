@@ -69,7 +69,7 @@ import type { EventRow } from "../../core/store/index.js";
 // The ask allowance the amber hint names, read rather than retyped: a number in
 // a diagnostic's prose is a number that goes stale silently.
 import { SELF_TUNABLES } from "../../core/self/tunables.js";
-import { dreamingSetting } from "../../core/dream/index.js";
+import { dreamingSetting, nightPartsWords, nightRunLost, nightRunOf, nightRunWords } from "../../core/dream/index.js";
 import type { DreamingSetting } from "../../core/dream/index.js";
 // The page's own reader, so this line cannot drift from what the wake prints.
 import { clearedMarker, findPageRow, readSelfPage } from "../../core/self/page.js";
@@ -2833,7 +2833,7 @@ export function dreamingFindings(input: DoctorInput, store: Store): Finding[] {
   const when = last === undefined ? null : (last.date ?? `lived day ${String(last.day)}`);
   const today =
     setting === "off"
-      ? "off — no dreams (counterparts dream --setting auto turns it back on)"
+      ? "off — no dreams (counterparts dream --setting ask turns it back on)"
       : ask === undefined
         ? "not started today"
         : ask.state === "declined"
@@ -2852,6 +2852,81 @@ export function dreamingFindings(input: DoctorInput, store: Store): Finding[] {
       { setting, last: when, dream: last?.id ?? null, ask: ask?.state ?? null },
     ),
   ];
+}
+
+/**
+ * THE NIGHTLY RUN, headless (2026-09-29): what became of the latest run the
+ * host started itself (setting `auto`) — the store's one-row record
+ * (`dream/#nightRunOf`). Silent when no run was ever started and the setting
+ * is not `auto`. AMBER only while the setting is `auto` and the latest run
+ * did not finish (could not start, failed, timed out, or started and never
+ * reported an end past its watchdog): a mechanism the owner chose is not
+ * working. The fix says what to look at.
+ */
+export function nightRunFindings(input: DoctorInput, store: Store): Finding[] {
+  let setting: DreamingSetting;
+  let run: ReturnType<typeof nightRunOf>;
+  let now: number;
+  try {
+    setting = dreamingSetting(store);
+    run = nightRunOf(store);
+    now = store.now();
+  } catch {
+    return [];
+  }
+  if (run === null) {
+    if (setting !== "auto") return [];
+    return [finding("night-run", "green", "Nightly run", "auto; no headless run yet — the first session of a day with enough new memory starts one", "", { setting, state: null })];
+  }
+  const data = { setting, run: run.run, state: run.state, date: run.date, reason: run.reason, code: run.code, dream: run.dream, reflection: run.reflection };
+  const mins = (ms: number): string => `${String(Math.max(1, Math.round(ms / 60_000)))} min`;
+  const took = run.endedAt === null ? "" : ` after ${mins(run.endedAt - run.startedAt)}`;
+  const what = run.kind === "reflection" ? "the reflection alone" : "the whole night";
+  if (run.state === "done") {
+    const ids = [run.dream, run.reflection].filter((x): x is string => x !== null).join(", ");
+    return [finding("night-run", "green", "Nightly run", `${setting}; last run ${run.date} (${what}) finished${took}${ids.length > 0 ? ` — ${ids}` : ""}`, "", data)];
+  }
+  if (run.state === "partial") {
+    // PART OF THE RUN RAN (2026-09-29, owner): which parts, and — when the
+    // exit said more than "it stopped" — why.
+    const why = run.reason === "unfinished" ? "" : ` (${nightRunWords(run)})`;
+    return [
+      finding(
+        "night-run",
+        setting === "auto" ? "amber" : "green",
+        "Nightly run",
+        `${setting}; the run of ${run.date} (${what}) was partial${took}: ${nightPartsWords(run)}${why}`,
+        "Nothing to do by hand: a later session picks up what did not run — a dream cut off is resumed, a reflection cut off runs alone.",
+        { ...data, parts: (run.parts ?? []).join(",") },
+      ),
+    ];
+  }
+  if (run.state === "started") {
+    const lost = nightRunLost(run, now);
+    return [
+      finding(
+        "night-run",
+        lost && setting === "auto" ? "amber" : "green",
+        "Nightly run",
+        lost
+          ? `${setting}; the run of ${run.date} started ${mins(now - run.startedAt)} ago and never reported an end — its process went away (a sleep, a restart, a kill)`
+          : `${setting}; running now (${what}), started ${mins(now - run.startedAt)} ago`,
+        lost ? "The next session asks instead of starting another headless run. If this repeats, run claude -p once by hand in a terminal to see whether it hangs (a login, an update prompt)." : "",
+        data,
+      ),
+    ];
+  }
+  const words = nightRunWords(run);
+  const ended = run.state === "could-not-start" ? "could not start" : run.state === "timed-out" ? "timed out" : "failed";
+  const fix =
+    run.reason === "no-claude"
+      ? "The headless run starts claude -p: put the claude command on the PATH the hooks see, or set dreaming to ask (counterparts dream --setting ask)."
+      : run.reason === "quick-exit"
+        ? "Run claude -p once by hand in a terminal to see why it stops (a login, an update prompt). Meanwhile the session asks instead."
+        : run.reason === "nothing-ran"
+          ? "The headless run needs the counterparts MCP server registered for claude at user scope (claude mcp list shows it); the server's own mcp.session rows say whether it refused the session."
+          : "A later session starts it again, or asks when it cannot. counterparts dream --setting ask stops the headless runs.";
+  return [finding("night-run", setting === "auto" ? "amber" : "green", "Nightly run", `${setting}; the run of ${run.date} (${what}) ${ended}${took}: ${words}`, fix, data)];
 }
 
 export function selfPageFindings(store: Store): Finding[] {
@@ -3625,6 +3700,8 @@ export function doctorFindings(input: DoctorInput): Finding[] {
     ["upgrade-v8", () => upgradeV8Findings(store)],
     // Dreaming (2026-09-26): informational — last dreamed, and today's ask.
     ["dreaming", () => dreamingFindings(input, store)],
+    // The headless nightly run (2026-09-29): one meta read.
+    ["night-run", () => nightRunFindings(input, store)],
     // v9 (2026-09-27): what the upgrade carried, and the reflection.
     ["upgrade-v9", () => upgradeV9Findings(store)],
     ["reflection", () => reflectionFindings(input, store)],

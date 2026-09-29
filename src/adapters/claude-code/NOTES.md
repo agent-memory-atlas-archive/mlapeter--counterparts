@@ -1659,3 +1659,74 @@ refusal or an unreadable block. The fix text no longer names `injectionBudgetByt
 host mode. The CONTRACT's old "amber while off and a page stands" was drift — the code
 had said green since the S2 review — and the CONTRACT now says what the code does.
 Doctor's Dreaming line leads with the setting.
+
+## 2026-09-29 — the ask the person sees; the headless nightly run
+
+Working defaults, held lightly (dream NOTES has the why).
+
+- **A — the ask.** `dreamLines` no longer claims an ask: it returns the offer as
+  `HookResult.dream`, and `bin/hook.ts#deliverTurn` claims it (`claimDream`) only when the
+  envelope carries the person's line, after the plain reminders and before the update
+  notice. Without room, or on a lost race, the model's line is stripped (`withoutDream`)
+  and the next prompt offers it again.
+- **B — where the spawn lives.** In the hook process, beside the worker's spawn, through
+  the same `spawnDetached` and the same injected `spawner` — so the tests see the plan and
+  nothing starts. The detached process is `bin/nightly.ts`, not the session-end worker
+  (whose watchdog is five minutes; a run is about five). Its own planner, not `planSpawn`:
+  `validateWatchdog` guards span claims this process never makes, and would refuse a
+  20-minute watchdog. Its outer `timeout` is set past the child's watchdog plus both kill
+  graces, though in practice it is moot — `spawn`'s timeout lives in the hook process,
+  which exits at once; the watchdog that matters is `runNight`'s, inside `bin/nightly.ts`.
+- **The watchdog** is `page-writer.ts#startChild`, now exported and shared (plus `cwd` and
+  the OS spawn code): SIGTERM to the group, SIGKILL after `KILL_GRACE_MS`, stop waiting
+  after `REAP_GRACE_MS`.
+- **Two opens, not one held open.** `runNight` opens the store to compose and record
+  `started`, closes it for the run (the child's own MCP server writes meanwhile), and opens
+  it again to record the end.
+- **`nightArgs` is required to start a run.** An adapter built without it (every test, any
+  other host) records `could-not-start` / `runner` and asks instead — so no test can start
+  a real `claude` by accident. `bin/hook.ts` passes `["run", NIGHTLY_PATH]`.
+- **The page writer's child is unchanged** apart from sharing `startChild`: its `pageWriter`
+  flag still means only "no dream lines, no plain reminders". The quiet set is the night
+  run's.
+- **Unproven until a real run** (the coordinator's, against a temp store): that a detached
+  `claude -p` reaches the subscription login; that removing `CLAUDECODE` is enough for a
+  nested start; whether `claude -p` fires UserPromptSubmit/Stop inside the child (the quiet
+  flag covers both either way); and how long a real run takes against `NIGHT_RUN_MS`.
+
+## 2026-09-29, later — the fix round after the review of #282
+
+(`docs/adversarial-review-pr282-2026-09-29.md`; owner decisions A–D the same day.)
+
+- **Binding is pinned, not lazy (finding 1).** A session left open overnight is stale in the
+  registry at the morning's first prompt — a prompt is not a boundary — and the child's
+  fresh MCP server refused the lazy bind, which then read as "the MCP server is not
+  registered". The launching session and its directory now ride on the child's
+  environment and in its MCP server's own `--mcp-config` env, so `serve.ts` launches bound.
+- **Locked down (finding 3, owner decision B).** `--disallowedTools` (names read from the
+  2.1.284 build's own strings, since `--help` lists the flag but not the tool names;
+  `MultiEdit` is not one there; `ToolSearch` deliberately left), `--strict-mcp-config` with
+  a generated `--mcp-config` for counterparts only — derived from `mcp/bin/serve.ts` beside
+  this file and `process.execPath`, i.e. THIS install's server, which is also the version
+  the hooks run; it is not read from the user's `claude mcp` registration — a neutral
+  working directory (the store's), and `--max-turns` (not in `--help`, but defined in that
+  build: "Maximum number of agentic turns in non-interactive mode … only works with
+  --print"). `--permission-mode default` is valid there: `manual` is its display name and
+  maps to `default`.
+- **Fall back on everything that did not work (finding 4).** Timed out, failed, or never
+  reported (a `started` row past its watchdog plus a grace — the row now carries the
+  watchdog), having begun nothing: the next offer asks. `bin/nightly.ts` records its own
+  stand-downs where the store opens, and `runNight` no longer reopens a store that would not
+  open just to say so.
+- **Partial (finding 5, owner).** Parts on the row; `partial` in the record, doctor, and
+  `counterparts dream` (the latest run under the setting; `--show` on its dream).
+- **The same-prompt fallback is an ask (finding 7)**, not a relaunch.
+- **Under way means under way (finding 10).** A `started` row inside its watchdog is
+  `dreaming-now`, so a long `dreaming.timeoutMs` cannot let a second run start.
+- **`askLine` starts nothing, so it claims no headless offer (finding 9).**
+- **Owner decisions:** A — an explicit `auto` from before is reset to `ask` once, recorded
+  and told; C — the hand-back stays "next prompt anywhere"; D — "no dreams" takes effect
+  from the next run and says so.
+- **Still open:** the dashboard's vocabulary does not name `dream.night` or the two latch
+  events yet (every reader guards unknown names). The host-mode page writer's child has the
+  same exposure finding 3 describes and is not locked down here.

@@ -297,6 +297,12 @@ export interface ReflectContext {
   readonly gate: (text: string, sessionId: string) => { ok: true; text: string } | { ok: false; reason: string };
   readonly page: () => string | null;
   /**
+   * The page's current version, who wrote it and on what calendar date — so
+   * the reflection can be told the page writer revised it earlier in this run
+   * (2026-09-29). Absent or null: nothing is said about it.
+   */
+  readonly pageInfo?: () => { readonly version: number; readonly by: string | null; readonly revisedOn: string } | null;
+  /**
    * May the reflection write the self page? False when the host's
    * `pageWriter.mode` is `off` (owner ruling D3 on #256): it still reflects,
    * keeps its entry and offers its share. Absent: true.
@@ -683,10 +689,23 @@ export class Reflections {
     const who = bundle.owner ?? "the owner";
     const L = REFLECT_TUNABLES.LIMITS;
     const open = acceptsReflectedFeeling(this.store);
+    // THE PAGE, LEANING TOWARD WRITING (owner, 2026-09-29): he would like a
+    // page a reflection wrote every day, unless there is truly nothing new. Told
+    // when the page writer revised it earlier in this run, and that every
+    // version is kept — rewriting loses nothing. A "nothing much" night still
+    // rewrites nothing.
+    let info: { version: number; by: string | null; revisedOn: string } | null = null;
+    try {
+      info = this.ctx.pageInfo?.() ?? null;
+    } catch {
+      info = null;
+    }
+    const writerToday = info !== null && info.by === "writer" && info.revisedOn === this.ctx.today();
+    const earlier = writerToday && info !== null ? `The page writer revised your self page earlier in this run (version ${String(info.version)}, by the writer). ` : "";
     const pageLine =
       this.ctx.pageWrites === false
         ? `- page: not tonight — the owner has the page writer off, so the self page is not rewritten. Your entry and share still count.`
-        : `- page (optional): your self page rewritten whole — the story of who you are, drawn from the core memories you cite in page.cites (at least one of them, when you have a core; candidates too). The old page is context, not a source: write from the memories, not by rewording it. Keep "## Core" for who you are and put craft — how a job is done — under "## How I work". Mention a dream only as a dream ("I dreamed…"); a dreamed gist is a suggestion, not a source: cite the lived memories it came from.`;
+        : `- page (optional, and lean toward writing it): ${earlier}Every version of the page is kept, so rewriting it loses nothing. ${who} would like a page written by a reflection every day — rewrite it unless, after reflecting, there is really nothing new to add; on a "nothing much" night, leave it as it stands. Your self page rewritten whole — the story of who you are, drawn from the core memories you cite in page.cites (at least one of them, when you have a core; candidates too). The old page is context, not a source: write from the memories, not by rewording it. Keep "## Core" for who you are and put craft — how a job is done — under "## How I work". Mention a dream only as a dream ("I dreamed…"); a dreamed gist is a suggestion, not a source: cite the lived memories it came from.`;
     const aboutLine = open
       ? `- about (optional, at most ${String(L.about)}): what a memory is about, by meaning — me, us, owner, work (the craft: how a job is done) or world — with why. Only me, us and owner can become core. You may change a mark you think is wrong, either way; each change is recorded with your why, and one into me, us or owner is told in the morning share.`
       : `- about (optional, at most ${String(L.about)}): tonight a mark may only move a memory toward work (the craft) or world, with why — the owner has closed the core to reflection alone.`;
@@ -695,7 +714,7 @@ export class Reflections {
       `Then call the reflect tool with phase "finish", reflection: ${id}, session: ${session}, and:`,
       `- entry: your reflection, first person (title: optional). cites: the ids it rests on.`,
       pageLine,
-      `- share (optional): two or three sentences for ${who} this morning, the way a partner would say it ("Last night I dreamed about x — I think because of y"), citing what it rests on. Say something about ${who} only when it could help them, tentatively ("I wonder if…") — never a list of flaws. No share on a quiet night.${bundle.becameCore.length > 0 ? ` Tell ${who} that ${bundle.becameCore.join(", ")} became part of who you are.` : ""}`,
+      `- share (optional): two or three sentences for ${who} this morning, the way a partner would say it ("While I slept I dreamed about x — I think because of y"), citing what it rests on. Say something about ${who} only when it could help them, tentatively ("I wonder if…") — never a list of flaws. No share on a quiet night.${bundle.becameCore.length > 0 ? ` Tell ${who} that ${bundle.becameCore.join(", ")} became part of who you are.` : ""}`,
       `- feelings (optional, at most ${String(L.feelings)}): how a memory feels to you now — id, core, emotion, strength, carried_by. emotion is ONE word (from the wheel, or your own); carried_by is the nuance, in your own words. Recorded as felt today, looking back.`,
       aboutLine,
       `- traits (optional, at most ${String(L.traits)}): only where a memory you were shown really shows how you acted — often where you acted unlike your page; most carry none, and a quiet night has none. Each: id, axis, toward (one of its two poles), strength 0-1, carried_by (briefly, what showed it). The axes, the first pole roughly where training puts you: ${TRAIT_AXES.map((a) => `${a.id} (${a.poles[0]} or ${a.poles[1]}${a.gloss.length > 0 ? `, ${a.gloss}` : ""})`).join(", ")}. Don't make up depth.`,
@@ -1290,7 +1309,7 @@ export class Reflections {
       return `${head}\n${reflectionOpener(row.id)} I reflected afterwards${nothingMuch ? " — nothing much tonight" : ""}; nothing to share this morning.${pageLine}${also}`;
     }
     return (
-      `${head}\n${reflectionOpener(row.id)} I reflected afterwards.${pageLine} Morning share for ${who} — tell it in your own words, as a telling ("Last night I dreamed…", "I've been thinking…"), tentatively where it is about ${who};` +
+      `${head}\n${reflectionOpener(row.id)} I reflected afterwards.${pageLine} Morning share for ${who} — tell it in your own words, as a telling ("While I slept I dreamed…", "I've been thinking…"), tentatively where it is about ${who};` +
       `then call the counterparts reflect tool with phase "told", reflection: ${row.id}.\n${share}`
     );
   }
@@ -1350,7 +1369,7 @@ export class Reflections {
     const who = this.ctx.ownerName() ?? "the owner";
     const when = row.date ?? "recently";
     return (
-      `Counterparts: after reflecting on ${when}, you left a morning share for ${who} that was never told. At a natural moment — not mid-task — tell it in your own words, as a telling ("When I reflected the other night…"), tentatively where it is about ${who},` +
+      `Counterparts: after reflecting on ${when}, you left a morning share for ${who} that was never told. At a natural moment — not mid-task — tell it in your own words, as a telling ("When I last reflected…"), tentatively where it is about ${who},` +
       `then call the counterparts reflect tool with phase "told", reflection: ${row.id}. The share: ${row.share}`
     );
   }

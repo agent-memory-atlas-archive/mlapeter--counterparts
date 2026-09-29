@@ -87,8 +87,8 @@ describe("counterparts dream", () => {
   test("--list on a store that never dreamed says so", async () => {
     const { code, out } = await cli(["dream"]);
     expect(code).toBe(0);
-    // The setting comes first (2026-09-28), then the list.
-    expect(out[0]).toStartWith("Dreaming: auto.");
+    // The setting comes first (2026-09-28), then the list; `ask` by default (2026-09-29).
+    expect(out[0]).toStartWith("Dreaming: ask.");
     expect(out).toContain("No dreams yet.");
   });
 
@@ -294,7 +294,7 @@ describe("doctor: the v8 upgrade and dreaming", () => {
   test("the dreaming line says when it last dreamed and what today's ask did", () => {
     const input = { today: "2026-09-21" } as unknown as DoctorInput;
     // The setting leads the line (2026-09-28).
-    withStore((s) => expect(dreamingFindings(input, s)[0]?.detail).toBe("auto; has not dreamed yet; not started today"));
+    withStore((s) => expect(dreamingFindings(input, s)[0]?.detail).toBe("ask; has not dreamed yet; not started today"));
     dreamed();
     withStore((s) => {
       s.setDreamAsk({ date: "2026-09-21", state: "declined", day: s.livedDay() });

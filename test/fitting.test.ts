@@ -425,9 +425,10 @@ describe("review of build B (#277)", () => {
       const p = await s.call("dream", { phase: "part", session: SESSION, dream: dreamId, part: k });
       expect(wireChars(textOf(p))).toBeLessThanOrEqual(DREAM_TUNABLES.PART_CHARS);
     }
-    // The bundle rides once: the structured copy carries its length, not its text.
-    expect(begin.structuredContent["bundle"]).toBeUndefined();
-    expect(begin.structuredContent["bundleChars"]).toBeGreaterThan(0);
+    // The bundle rides in the structured copy too — it is what Claude Code hands
+    // the model (2026-09-29) — and that copy, serialized, is under the ceiling as well.
+    expect(typeof begin.structuredContent["bundle"]).toBe("string");
+    expect(wireChars(JSON.stringify(begin.structuredContent))).toBeLessThanOrEqual(DREAM_TUNABLES.RESULT_CHARS);
     await s.call("dream", { phase: "journal", session: SESSION, dream: dreamId, text: "梦。" });
     const r = await s.call("reflect", { phase: "begin", session: SESSION, dream: dreamId });
     expect(r.isError ?? false).toBe(false);

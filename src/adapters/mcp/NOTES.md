@@ -775,3 +775,15 @@ memories (pretty JSON, a non-ASCII character counted as three, both the text and
 those units; the old content cap came to ~73k on the wire. Lookups are counted from the ids the
 result DELIVERED, once per index; an id is fetched whole only when its last part went out.
 
+
+## 2026-09-29 — the bundle rides in structuredContent again
+
+The first real headless run (PR #282) reported that "the dream and reflection bundles came back
+to me as counts only". Cause: since acd5c9a (review of build B, after 0.3.6) the long `bundle`
+rode only in the text content, with `bundleChars` in its place in `structuredContent` — and
+Claude Code 2.1.284, when a result carries `structuredContent`, hands the model that
+(serialized) and drops the text items (read in the host build's own result conversion). Every
+dream and reflection on master was blind; 0.3.6 was not, which is why the in-session run on the
+live store saw everything. The whole payload is now in both, and the fitting test measures the
+structured copy against the ceiling too. `test/dreaming-headless.test.ts` opens a server from the
+headless child's own `--mcp-config` env and checks the bodies reach `structuredContent`.

@@ -198,7 +198,7 @@ import { repairDates } from "./repair-dates.js";
 import type { Confidence } from "./repair-dates.js";
 import { NO_PAGE_LINES, bodyFrom, pageLines, versionLines, writeLines } from "./self-page.js";
 import { coreListLines, dreamListLines, dreamShowLines, dreamingSettingWords } from "./dream-core.js";
-import { DREAMING_SETTINGS } from "../../core/dream/index.js";
+import { DREAMING_SETTINGS, NIGHT_RUN_FINISHES } from "../../core/dream/index.js";
 import { REFLECTED_FEELING_KEY } from "../../core/sleep/index.js";
 // The console's shared manners (2026-09-21): is there a person here, ask them,
 // and say one marked line back.
@@ -1026,7 +1026,7 @@ const DREAM_FLAG_HELP: Record<string, string> = {
   show: "one dream, by id: its journal and every change it made",
   undo: "reverse one dream's whole batch, by id (the id follows the flag); its journal is kept, marked undone",
   setting:
-    "auto, ask or off — the nightly run (page writer, dream, reflection). auto (the default): the first session of a day starts it in the background and says so in one line; ask: the session asks you first; off: no dreams. `counterparts dream` prints the setting.",
+    "auto, ask or off — the nightly run (page writer, dream, reflection). ask (the default): the first session of a day shows you the question in the terminal and waits for you to say \"dream\" (or \"dream on your own\", which turns on auto); auto: the first session of a day starts it by itself, in a separate windowless claude -p in the background, and says so in one line; off: no dreams. `counterparts dream` prints the setting.",
 };
 
 /** `core`'s own four. */
@@ -2034,6 +2034,8 @@ function dreamCommand(dir: string, io: Io, parsed: Parsed, observer: boolean, na
       }
       io.out(`Dreaming: ${out.setting}${out.before === out.setting ? " (it already was)" : ` (was ${out.before})`}.`);
       io.out(`  ${dreamingSettingWords(out.setting)}`);
+      // Owner decision D (2026-09-29): "off" does not stop a run already going.
+      if (out.setting === "off" && counterpart.dreams.nightRunUnderWay()) io.out(`  ${NIGHT_RUN_FINISHES}`);
       return EXIT.ok;
     } finally {
       counterpart.close();

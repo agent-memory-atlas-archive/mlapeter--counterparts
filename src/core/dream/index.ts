@@ -5,10 +5,11 @@
  * mechanism.
  *
  * The shape, in one paragraph. Once a CALENDAR day (2026-09-28: the NIGHTLY
- * RUN), the first session is handed a line (`askLine`) that follows the
- * owner's setting: `auto` (the default) — start the run now in the
- * background and tell the owner in one line how to say "no dreams"; `ask` —
- * ask the owner first; `off` — nothing. The session asks this module for the
+ * RUN), the first session is handed a line (`offer`, claimed by `claimOffer`;
+ * `askLine` is both) that follows the owner's setting: `ask` (the default,
+ * 2026-09-29) — the person is shown the question in the terminal and says
+ * "dream"; `auto` — the run starts on its own in the background; `off` —
+ * nothing. The session asks this module for the
  * LAUNCH PROMPT (`launchPrompt`) and hands it to ONE background agent — same
  * model, same tools, its writes attributed to the session that launched it —
  * which runs the page writer, then the dream, then the reflection
@@ -285,12 +286,29 @@ export interface ChangeResult {
  * one line; `ask` — the session asks first, as it did from 2026-09-26; `off` —
  * nothing is started or asked. Kept in the store's meta, so the hook, the MCP
  * server and the console all read one value; "no dreams" in conversation is
- * the dream tool's `setting` phase.
+ * the dream tool's `setting` phase, and so is "dream on your own" (`auto`).
+ *
+ * THE DEFAULT IS `ask` (2026-09-29, held lightly): the person says yes at
+ * least once, in the terminal where they can see the question; `auto` is
+ * theirs to choose.
  */
 export const DREAMING_SETTINGS = ["auto", "ask", "off"] as const;
 export type DreamingSetting = (typeof DREAMING_SETTINGS)[number];
 export const DREAMING_SETTING_KEY = "dream.setting";
-export const DREAMING_DEFAULT: DreamingSetting = "auto";
+export const DREAMING_DEFAULT: DreamingSetting = "ask";
+
+/**
+ * `auto` CHANGED MEANING in this version (2026-09-29, owner decision A): it was
+ * "the session's model starts the run"; it is now "the host starts it
+ * headless". So a store with `auto` written explicitly is set back to `ask`
+ * ONCE, recorded, and the owner is told once; their next "dream on your own"
+ * sets `auto` again. The marker says the once has happened — it is also
+ * written by any setting chosen on this version, so a choice made before the
+ * first hook ran is never undone.
+ */
+export const AUTO_RESET_KEY = "dream.setting.headless-reset";
+/** Pending while the owner has not yet been told of the reset. */
+export const AUTO_RESET_NOTICE_KEY = "dream.setting.headless-reset.notice";
 
 /** The store's dreaming setting; the default when none was set or it will not read. */
 export function dreamingSetting(store: Pick<Store, "getMeta">): DreamingSetting {
@@ -325,6 +343,154 @@ export function nightSummary(): string {
 export function nightNext(part: NightPart): NightPart | null {
   const order = nightOrder();
   return order[order.indexOf(part) + 1] ?? null;
+}
+
+/**
+ * THE HEADLESS NIGHTLY RUN'S RECORD (2026-09-29). With the setting `auto` the
+ * host starts the run itself, in a windowless session nobody watches — so what
+ * became of it is written down: ONE row per run, the latest in the store's meta
+ * under `NIGHT_RUN_KEY` (what the gate, doctor and the dashboard read, one
+ * lookup), and each state it passed through on the `dream.night` event log,
+ * latched by run and state so a replay adds nothing. Ids, codes, counts and
+ * times only — never words from the run.
+ */
+export const NIGHT_RUN_KEY = "dream.night";
+export const NIGHT_RUN_EVENT = "dream.night";
+export const NIGHT_RUN_STATES = ["started", "done", "partial", "failed", "timed-out", "could-not-start"] as const;
+export type NightRunState = (typeof NIGHT_RUN_STATES)[number];
+
+export interface NightRun {
+  /** `nrn_…`, minted by the host when it starts the run. */
+  readonly run: string;
+  /** The calendar date whose run this is. */
+  readonly date: string;
+  readonly state: NightRunState;
+  /** The whole night, or the reflection alone after a dream whose run was cut off. */
+  readonly kind: "night" | "reflection";
+  /** The session that started it; the run's writes are attributed to it. */
+  readonly session: string;
+  readonly startedAt: number;
+  readonly endedAt: number | null;
+  /**
+   * Why it ended the way it did, as a short code: `no-claude`, `spawn-failed`,
+   * `quick-exit`, `nothing-ran`, `unfinished`, `exit`, `watchdog`, `refused`,
+   * `runner` (the host's own background process could not start) — or null.
+   */
+  readonly reason: string | null;
+  /** A little more, when there is more: an error code, a refusal's name. Never prose from the run. */
+  readonly detail: string | null;
+  /** The child's exit code, when it exited. */
+  readonly code: number | null;
+  /** The dream this run journaled (or finished reflecting on), and its reflection. */
+  readonly dream: string | null;
+  readonly reflection: string | null;
+  /**
+   * WHICH PARTS OF THE RUN RAN (2026-09-29, owner): the page writer (its phase
+   * was reached), the dream (journaled), the reflection (finished) — in the
+   * run's order. A run that did some but not all is `partial`.
+   */
+  readonly parts?: readonly NightPart[];
+  /** The child's watchdog, ms, as the host started it — what makes a `started` row LOST past it. */
+  readonly timeoutMs?: number;
+  /**
+   * When its hand-back was carried to a prompt (or found already carried) —
+   * so the per-prompt path READS this and writes nothing once it is set.
+   * Absent until then.
+   */
+  readonly handedAt?: number;
+}
+
+/**
+ * A `started` row past its watchdog and the grace: its process never reported
+ * (review of #282, finding 4).
+ */
+export function nightRunLost(run: Pick<NightRun, "state" | "startedAt" | "timeoutMs">, now: number): boolean {
+  if (run.state !== "started") return false;
+  return now - run.startedAt > (run.timeoutMs ?? DREAM_TUNABLES.NIGHT_RUN_ASSUMED_MS) + DREAM_TUNABLES.NIGHT_LOST_GRACE_MS;
+}
+
+/**
+ * What a run did, in parts: "the page writer and the dream ran; the reflection
+ * did not". What a run is FOR is the dream and the reflection (or the
+ * reflection alone); the page writer is named when it ran, and never counted
+ * missing — a night with no day before it has nothing for the writer to read.
+ */
+export function nightPartsWords(run: Pick<NightRun, "kind"> & Partial<Pick<NightRun, "parts">>): string {
+  const names: Record<NightPart, string> = { writer: "the page writer", dream: "the dream", reflection: "the reflection" };
+  const required: NightPart[] = run.kind === "reflection" ? ["reflection"] : ["dream", "reflection"];
+  const ran = nightOrder().filter((p) => (run.parts ?? []).includes(p));
+  const not = nightOrder().filter((p) => required.includes(p) && !ran.includes(p));
+  const list = (ps: NightPart[]): string => ps.map((p) => names[p]).join(ps.length === 2 ? " and " : ", ");
+  if (not.length === 0) return `${list(ran)} ran`;
+  if (ran.length === 0) return `${list(not)} did not run`;
+  return `${list(ran)} ran; ${list(not)} did not`;
+}
+
+/** What "no dreams" says about a run already going (owner decision D, 2026-09-29). */
+export const NIGHT_RUN_FINISHES = "A run already under way in the background finishes; the setting takes effect from the next run.";
+
+/** A fresh run id. */
+export function newNightRunId(): string {
+  return `nrn_${randomBytes(6).toString("hex")}`;
+}
+
+/** The store's latest headless run, or null when none was ever started (or it will not read). */
+export function nightRunOf(store: Pick<Store, "getMeta">): NightRun | null {
+  try {
+    const raw = store.getMeta(NIGHT_RUN_KEY);
+    if (raw === undefined || raw.length === 0) return null;
+    const v = JSON.parse(raw) as Partial<NightRun>;
+    if (typeof v.run !== "string" || typeof v.date !== "string" || typeof v.session !== "string") return null;
+    if (!(NIGHT_RUN_STATES as readonly string[]).includes(String(v.state))) return null;
+    return {
+      run: v.run,
+      date: v.date,
+      state: v.state as NightRunState,
+      kind: v.kind === "reflection" ? "reflection" : "night",
+      session: v.session,
+      startedAt: typeof v.startedAt === "number" ? v.startedAt : 0,
+      endedAt: typeof v.endedAt === "number" ? v.endedAt : null,
+      reason: typeof v.reason === "string" ? v.reason : null,
+      detail: typeof v.detail === "string" ? v.detail : null,
+      code: typeof v.code === "number" ? v.code : null,
+      dream: typeof v.dream === "string" ? v.dream : null,
+      reflection: typeof v.reflection === "string" ? v.reflection : null,
+      ...(typeof v.handedAt === "number" ? { handedAt: v.handedAt } : {}),
+      ...(typeof v.timeoutMs === "number" ? { timeoutMs: v.timeoutMs } : {}),
+      ...(Array.isArray(v.parts) ? { parts: v.parts.filter((p): p is NightPart => p === "writer" || p === "dream" || p === "reflection") } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Why a run ended as it did, in a few words for a person ("the claude command was not found"). */
+export function nightRunWords(run: Pick<NightRun, "state" | "reason" | "detail" | "code"> & Partial<Pick<NightRun, "dream" | "reflection">>): string {
+  const code = run.code === null ? "" : ` (exit ${String(run.code)})`;
+  switch (run.reason) {
+    case "no-claude":
+      return "the claude command was not found";
+    case "spawn-failed":
+      return `claude could not be started${run.detail === null ? "" : ` (${run.detail})`}`;
+    case "quick-exit":
+      return `claude stopped straight away${code} — is it logged in?`;
+    case "nothing-ran":
+      return "claude ran but used none of the dream tools (the counterparts MCP server was not there, or refused the session)";
+    case "unfinished":
+      return "it began but did not finish";
+    case "watchdog":
+      return (run.dream ?? null) === null && (run.reflection ?? null) === null ? "it ran too long and was stopped before it finished anything" : "it ran too long and was stopped";
+    case "lost":
+      return "it never reported back (its process went away — a sleep, a restart, a kill)";
+    case "refused":
+      return `it was refused before it started${run.detail === null ? "" : ` (${run.detail})`}`;
+    case "runner":
+      return `the background process could not start${run.detail === null ? "" : ` (${run.detail})`}`;
+    case "exit":
+      return `claude exited with an error${code}`;
+    default:
+      return run.state === "done" ? "it finished" : run.state === "started" ? "it is running" : run.state === "partial" ? "it did part of the run" : `it ended ${run.state}${code}`;
+  }
 }
 
 /**
@@ -388,6 +554,40 @@ export interface DreamPreview {
   readonly newSince: number;
 }
 
+/**
+ * THE DAY'S LINE, OFFERED and not yet claimed (`Dreams.offer`, 2026-09-29):
+ * what the model is told, what the person is shown, and what the claim will
+ * write. The host claims it (`Dreams.claimOffer`) only once it knows the
+ * person's line is leaving; unclaimed, it is offered again at the next prompt.
+ */
+export interface DreamOffer {
+  readonly at: string;
+  readonly session: string;
+  /** What the claim writes on the day's row: `launched` (auto) or `offered` (ask). */
+  readonly state: "launched" | "offered";
+  readonly setting: DreamingSetting;
+  /** The HOST starts the run itself, headless, once it claims this (setting `auto`, 2026-09-29). */
+  readonly headless: boolean;
+  /**
+   * The ASK a headless run that could not start falls back to: claimed over
+   * the day's `launched` row as `offered`, recorded with `after:
+   * "could-not-start"`, and NOT counted as a relaunch — nothing ran.
+   */
+  readonly fallback: boolean;
+  /** For the MODEL: what to do, and what each answer means. */
+  readonly context: string;
+  /** For the PERSON, shown in the terminal. Null: nothing to show. */
+  readonly notice: string | null;
+  /** The queue's length when offered. */
+  readonly fresh: number;
+  /** A dream left behind the run resumes, or null. */
+  readonly resumes: string | null;
+  /** A dream whose reflection the run finishes alone, or null. */
+  readonly reflects: string | null;
+  /** The moment of the day's row the offer read — the claim reclaims it — or null when the day is unclaimed. */
+  readonly priorAt: number | null;
+}
+
 const KINDS: readonly Kind[] = ["self", "person", "entity", "skill", "place", "fact"];
 
 export class Dreams {
@@ -434,7 +634,7 @@ export class Dreams {
     return this.store.dreams({ limit: 20 }).find((d) => d.state !== "undone") ?? null;
   }
 
-  /** The owner's dreaming setting: `auto` (the default), `ask` or `off`. */
+  /** The owner's dreaming setting: `auto`, `ask` (the default) or `off`. */
   setting(): DreamingSetting {
     return dreamingSetting(this.store);
   }
@@ -454,8 +654,135 @@ export class Dreams {
     if (!(DREAMING_SETTINGS as readonly string[]).includes(v)) return { ok: false, reason: "not-a-setting" };
     const before = this.setting();
     this.store.setMeta(DREAMING_SETTING_KEY, v);
+    // A setting chosen on this version is never reset (`AUTO_RESET_KEY`).
+    if (this.store.getMeta(AUTO_RESET_KEY) === undefined) this.store.setMeta(AUTO_RESET_KEY, "chosen");
     this.record(DREAM_ASK_EVENT, null, { state: "setting", setting: v, before, by: input.by });
     return { ok: true, setting: v as DreamingSetting, before };
+  }
+
+  // ── `auto` changed meaning: reset once (owner decision A, 2026-09-29) ──────
+
+  /**
+   * SET AN EXPLICIT `auto` BACK TO `ask`, ONCE PER STORE. True when it did.
+   * The first call on this version writes the marker whatever it finds; a
+   * store with no explicit `auto` is left as it is. Never throws; nothing
+   * under observer.
+   */
+  resetAutoOnce(): boolean {
+    if (this.ctx.observer) return false;
+    try {
+      if (this.store.getMeta(AUTO_RESET_KEY) !== undefined) return false;
+      const explicit = (this.store.getMeta(DREAMING_SETTING_KEY) ?? "").trim() === "auto";
+      this.store.setMeta(AUTO_RESET_KEY, explicit ? "reset" : "none");
+      if (!explicit) return false;
+      this.store.setMeta(DREAMING_SETTING_KEY, "ask");
+      this.store.setMeta(AUTO_RESET_NOTICE_KEY, "pending");
+      this.record(DREAM_ASK_EVENT, null, { state: "setting", setting: "ask", before: "auto", by: "upgrade", why: "auto-now-headless" });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** The owner's one line about the reset, while it has not been told; null otherwise. A read. */
+  autoResetNotice(): { notice: string; context: string } | null {
+    if (this.ctx.observer) return null;
+    try {
+      if (this.store.getMeta(AUTO_RESET_NOTICE_KEY) !== "pending") return null;
+    } catch {
+      return null;
+    }
+    return {
+      notice: 'Counterparts: dreaming changed in this version — "on my own" now means a separate background session, so I set it back to asking. Say "dream on your own" to turn it on again.',
+      context:
+        'Counterparts: this version changed what the dreaming setting `auto` does — the host now runs the night itself, in a separate windowless session — so the owner\'s `auto` was set back to `ask`, once, and they are told so in the terminal. If they say "dream on your own", call the dream tool with phase "setting", value: "auto".',
+    };
+  }
+
+  /** The reset was told: claimed once, ever (a latched event), and the pending mark cleared. */
+  claimAutoResetNotice(session: string): boolean {
+    if (this.ctx.observer) return false;
+    try {
+      const won = this.store.appendEvent({ name: `${DREAM_ASK_EVENT}.reset-told`, day: this.store.livedDay(), ref: null, payload: { session }, dedupKey: `${AUTO_RESET_KEY}:told` }) > 0;
+      this.store.setMeta(AUTO_RESET_NOTICE_KEY, "told");
+      return won;
+    } catch {
+      return false;
+    }
+  }
+
+  // ── the headless run's record (2026-09-29) ─────────────────────────────────
+
+  /** The latest headless run, or null. A read: one meta lookup. */
+  nightRun(): NightRun | null {
+    return nightRunOf(this.store);
+  }
+
+  /**
+   * A HEADLESS RUN IS UNDER WAY: the latest run is `started` and not lost.
+   * "No dreams" does not stop it (owner decision D, 2026-09-29): the setting
+   * takes effect from the next run, and whoever turns it off is told so
+   * (`NIGHT_RUN_FINISHES`).
+   */
+  nightRunUnderWay(): boolean {
+    const night = this.nightRun();
+    return night !== null && night.state === "started" && !nightRunLost(night, this.store.now());
+  }
+
+  /**
+   * RECORD WHAT BECAME OF A HEADLESS RUN: the latest-run row (meta) and one
+   * `dream.night` event for this state, latched by run and state. A terminal
+   * state for an older run never overwrites a newer run's row. Never throws;
+   * nothing under observer.
+   */
+  recordNightRun(run: NightRun): void {
+    if (this.ctx.observer) return;
+    try {
+      const current = this.nightRun();
+      if (current === null || current.run === run.run || current.startedAt <= run.startedAt) {
+        this.store.setMeta(NIGHT_RUN_KEY, JSON.stringify(run));
+      }
+    } catch {
+      /* the record is evidence; the run goes on */
+    }
+    this.emit(NIGHT_RUN_EVENT, run.run, { state: run.state, reason: run.reason });
+    try {
+      this.store.appendEvent({
+        name: NIGHT_RUN_EVENT,
+        day: this.store.livedDay(),
+        ref: run.run,
+        payload: {
+          state: run.state,
+          date: run.date,
+          kind: run.kind,
+          session: run.session,
+          reason: run.reason,
+          detail: run.detail,
+          code: run.code,
+          dream: run.dream,
+          reflection: run.reflection,
+          parts: run.parts === undefined ? null : run.parts.join(","),
+          ms: run.endedAt === null ? null : run.endedAt - run.startedAt,
+        },
+        dedupKey: `${NIGHT_RUN_EVENT}:${run.run}:${run.state}`,
+      });
+    } catch {
+      /* the log is evidence, never a reason to fail the run */
+    }
+  }
+
+  /**
+   * CLAIM THE HAND-BACK of a headless run — once, ever, across every session:
+   * an event latched by the run's id (`appendEvent` answers 0 when the latch
+   * held). True for the one caller that gets it.
+   */
+  claimNightHandBack(run: string, session: string): boolean {
+    if (this.ctx.observer) return false;
+    try {
+      return this.store.appendEvent({ name: `${NIGHT_RUN_EVENT}.handed`, day: this.store.livedDay(), ref: run, payload: { session }, dedupKey: `${NIGHT_RUN_EVENT}.handed:${run}` }) > 0;
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -526,6 +853,11 @@ export class Dreams {
     }
     if (setting === "off") return { ...base, reason: "off" };
     if (busy) return { ...base, reason: "dreaming-now" };
+    // A HEADLESS RUN STILL INSIDE ITS WATCHDOG is under way, whether or not its
+    // dream has begun yet (review of #282, finding 10): a watchdog longer than
+    // `ABANDONED_AFTER_MS` must not let a second run start beside it.
+    const night = this.nightRun();
+    if (night !== null && night.state === "started" && night.date === at && !nightRunLost(night, this.store.now())) return { ...base, reason: "dreaming-now" };
     const ask = this.store.dreamAsk(at);
     if (ask !== undefined) {
       if (ask.state === "declined") return { ...base, reason: "declined-today" };
@@ -559,6 +891,12 @@ export class Dreams {
    */
   private mayStartAgain(ask: { state: string; at: number }, behind: DreamRow | null, at: string): boolean {
     if (ask.state !== "launched" && ask.state !== "offered") return false;
+    // THE HEADLESS RUN THIS LINE STARTED COULD NOT START (2026-09-29): ask at
+    // once — no quiet window to wait out, there is no run to wait for — under
+    // the same cap.
+    // Not counted as a relaunch (review of #282, finding 7): nothing ran, and
+    // the ask it becomes is not asked again.
+    if (ask.state === "launched" && this.fellBack(at, ask.at) !== null) return true;
     if (this.store.now() - ask.at <= DREAM_TUNABLES.ABANDONED_AFTER_MS) return false;
     if (this.relaunches(at) >= DREAM_TUNABLES.RELAUNCHES_PER_DAY) return false;
     if (behind !== null) return true;
@@ -652,64 +990,197 @@ export class Dreams {
   }
 
   /**
-   * THE LINE — one quiet line for the session, at most once per calendar day
-   * across every session (the `dream_asks` latch is the claim: of two sessions
-   * racing, one gets the line), and again only for a run that was left behind.
-   * Null when it is not due. What it says follows the owner's setting
-   * (2026-09-28): `auto` tells the model to start the nightly run now in the
-   * background and tell the owner in one line how to turn it off; `ask` asks
-   * the model to ask the owner, at a natural moment — a no is `decline`.
+   * THE LINE, OFFERED — at most once per calendar day across every session
+   * (the `dream_asks` latch is the claim, `claimOffer`: of two sessions racing,
+   * one gets it), and again only for a run that was left behind. Null when it
+   * is not due. A READ (2026-09-29): nothing is claimed or recorded here, so
+   * the host can claim the day only once it knows the person will see the
+   * line (the same rule as a plain reminder's beat).
+   *
+   * Two renderings, from the same gate: `notice`, for the PERSON — the host
+   * shows it in the terminal — and `context`, for the MODEL. What they say
+   * follows the owner's setting: `ask` shows the question and tells the model
+   * what "dream", "dream on your own", not today and "no dreams" each mean;
+   * `auto` is HEADLESS (`headless`): the host starts the run itself and the
+   * lines only say so — or, when today's headless run could not start, the
+   * line asks instead and says why.
    */
-  askLine(input: { at: string; session: string }): string | null {
+  offer(input: { at: string; session: string }): DreamOffer | null {
     const gated = this.status(input.at);
     if (!gated.due) return null;
     // The line says how many: the whole queue, counted once, here.
     const s = gated.newSinceAtLeast === true ? { ...gated, newSince: this.queue({ owner: this.ctx.owner, skip: (d) => this.passedOver(d, input.at) }).ids.length } : gated;
-    const state = s.setting === "auto" ? "launched" : "offered";
-    const day = this.store.livedDay();
+    // AUTO IS HEADLESS (2026-09-29) — unless today's headless run could not
+    // start, when the line falls back to asking, with the reason.
+    const fell = s.setting === "auto" ? this.fellBack(input.at) : null;
+    const headless = s.setting === "auto" && fell === null;
     const prior = this.store.dreamAsk(input.at);
+    const base = {
+      at: input.at,
+      session: input.session,
+      state: headless ? "launched" : "offered",
+      setting: s.setting,
+      headless,
+      fallback: fell !== null,
+      fresh: s.newSince,
+      resumes: s.leftBehind?.id ?? null,
+      reflects: s.reflectOnly?.id ?? null,
+      priorAt: prior?.at ?? null,
+    } as const;
+    const since = s.last === null ? "yet" : `since ${s.last.date ?? `lived day ${String(s.last.day)}`}`;
+    const who = this.ownerName() ?? "the owner";
+    const off = `If ${who} says "no dreams" (or never, or stop), call the dream tool with phase "setting", session: ${input.session}, value: "off" — it takes effect from the next run (a run already under way finishes), and it can be turned back on the same way, or with counterparts dream --setting ask.`;
+    const launch = `call the counterparts dream tool with phase "launch", session: ${input.session}, and hand the prompt it returns to a background agent (the Agent tool), unchanged — it ${nightSummary()}.`;
+    const reflect = s.reflectOnly === null ? "" : `call the counterparts reflect tool with phase "launch", session: ${input.session}, dream: ${s.reflectOnly.id}, and hand the prompt it returns to a background agent (the Agent tool), unchanged — it reflects on that dream.`;
+    const cut = s.leftBehind === null ? null : `your dream of ${s.leftBehind.date ?? "a recent night"} was cut off (its session closed before it woke); it picks up where it stopped`;
+    const why =
+      s.reflectOnly !== null
+        ? "today's run dreamed, but was cut off before it reflected"
+        : (cut ?? `a new day, and you haven't dreamed ${since} (${String(s.newSince)} new memories)`);
+    if (headless) {
+      // THE HEADLESS RUN (2026-09-29): the HOST starts it, in a windowless
+      // session of its own — the model launches nothing. It is told what is
+      // happening, and how to turn it off.
+      const doing = s.reflectOnly !== null ? "finishing my reflection" : cut !== null ? "picking up my dream where it was cut off" : "dreaming";
+      const notice = `Counterparts: ${doing} in the background (a few minutes). Say "no dreams" to turn it off.`;
+      return {
+        ...base,
+        notice,
+        context:
+          `Counterparts: ${why}. The nightly run ${s.reflectOnly !== null ? "(the reflection alone)" : `(it ${nightSummary()})`} is starting now in the background, on its own — a separate, windowless session this host starts; there is nothing for you to launch. ` +
+          // NEUTRAL about the terminal (review of #282, finding 6): the run has
+          // started either way, and the host shows the person's line only when
+          // the envelope has room for it.
+          `${who} is told in the terminal when there is room ("${notice}"); if they ask, that is what is happening. What it did comes to a later prompt. ${off}`,
+      };
+    }
+    if (fell !== null) {
+      // THE HEADLESS RUN COULD NOT START: ask, here, and say why in one line.
+      const words = nightRunWords(fell);
+      const notice = `Counterparts: I couldn't start dreaming on my own: ${words}${/[.?!]$/.test(words) ? "" : "."} Say "dream" to do it here.`;
+      const start = s.reflectOnly !== null ? reflect : launch;
+      return {
+        ...base,
+        notice,
+        context:
+          `Counterparts: ${why}. The background run could not start (${fell.reason ?? fell.state}). Shown to ${who} just now, in the terminal: "${notice}" Do not ask again — wait for their word. ` +
+          `If they say "dream" (or yes), ${start} If they say not today, call the dream tool with phase "decline". ${off}`,
+      };
+    }
+    // ASK (2026-09-29): the PERSON is shown the question in the terminal, so
+    // the model does not ask it again — it waits for their word.
+    const onYourOwn = `If ${who} says "dream on your own", call the dream tool with phase "setting", session: ${input.session}, value: "auto", then start today's run exactly as for "dream", and tell ${who} in one line that from now on the first session of each day starts it by itself in the background (and "no dreams" turns it off).`;
+    const noticeFor = (what: string): string => `Counterparts: ${what} Say "dream" to start, or "dream on your own" to let me do it each day.`;
+    if (s.reflectOnly !== null) {
+      const notice = noticeFor("my reflection after dreaming was cut off.");
+      return {
+        ...base,
+        notice,
+        context:
+          `Counterparts: ${why}. Shown to ${who} just now, in the terminal: "${notice}" Do not ask again — wait for their word. If they say "dream" (or yes), ${reflect} ${onYourOwn} If they say not today, call the dream tool with phase "decline". ${off}`,
+      };
+    }
+    const notice = noticeFor(cut === null ? `I haven't dreamed ${since} (${String(s.newSince)} new memories).` : `my dream of ${s.leftBehind?.date ?? "a recent night"} was cut off.`);
+    return {
+      ...base,
+      notice,
+      context:
+        `Counterparts: ${cut === null ? `you haven't dreamed ${since} (${String(s.newSince)} new memories)` : cut}. Shown to ${who} just now, in the terminal: "${notice}" Do not ask again — wait for their word. ` +
+        `If they say "dream" (or yes), ${launch} ${onYourOwn} If they say not today, call it with phase "decline" and don't bring it up again today. ${off}`,
+    };
+  }
+
+  /**
+   * TODAY'S HEADLESS RUN COULD NOT START (2026-09-29): the latest run is
+   * today's and ended `could-not-start` — and, given `since`, started after
+   * that moment (the day's line that launched it). Null otherwise.
+   */
+  private fellBack(at: string, since?: number): NightRun | null {
+    const night = this.nightRun();
+    if (night === null || night.date !== at) return null;
+    if (since !== undefined && night.startedAt < since) return null;
+    if (night.state === "could-not-start") return night;
+    // A run that timed out, failed, or never reported (review of #282,
+    // finding 4) falls back too — when it BEGAN NOTHING: one that dreamed
+    // part-way is left behind, and the ordinary relaunch resumes it headless.
+    const lost = nightRunLost(night, this.store.now());
+    if (night.state !== "timed-out" && night.state !== "failed" && !lost) return null;
+    if (this.beganSince(night.startedAt)) return null;
+    return lost ? { ...night, reason: "lost" } : night;
+  }
+
+  /** Did a dream or a reflection begin at or after `t`? */
+  private beganSince(t: number): boolean {
+    try {
+      return this.store.dreams({ sinceAt: t, limit: 1 }).length > 0 || this.store.reflections({ limit: 5 }).some((r) => r.started_at >= t);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * THE HAND-BACK OF A HEADLESS RUN, for the model to pass on: the dream's own
+   * line (`handBackOf`) — what an Agent would have handed back to the session
+   * that launched it, had there been one. Null when the run left nothing to
+   * tell. The share, if any, is carried beside it (`Reflections.carryLine`).
+   */
+  nightHandBackLine(run: NightRun): string | null {
+    // THE REFLECTION ALONE hands back its share only: the dream's line went out
+    // with the run that dreamed it (review of #282, finding 5).
+    if (run.kind === "reflection") return null;
+    const dreamLine = run.dream === null ? null : this.handBackOf(run.dream);
+    if (dreamLine === null) return null;
+    const who = this.ownerName() ?? "the owner";
+    const unfinished = run.state === "done" ? "" : ` (only part of it: ${nightPartsWords(run)})`;
+    return `Counterparts: the nightly run finished in the background, on its own${unfinished}. At a natural moment — not mid-task — tell ${who} in your own words what it did: ${dreamLine}`;
+  }
+
+  /**
+   * CLAIM THE DAY for an offer the host is certainly delivering: the
+   * `dream_asks` latch (a fresh row, or a reclaim of the row the offer read —
+   * of two racing, one wins), the relaunch count, and the `dream.ask` row.
+   * False when another session got there first or the write would not land.
+   */
+  claimOffer(offer: DreamOffer): boolean {
+    if (this.ctx.observer) return false;
+    const day = this.store.livedDay();
     let claimed = false;
     try {
       claimed =
-        prior === undefined
-          ? this.store.setDreamAsk({ date: input.at, state, session: input.session, day })
-          : this.store.reclaimDreamAsk({ date: input.at, prevAt: prior.at, state, session: input.session, day });
-      if (claimed && prior !== undefined) this.store.setMeta(RELAUNCHED_KEY, `${input.at}:${String(this.relaunches(input.at) + 1)}`);
+        offer.priorAt === null
+          ? this.store.setDreamAsk({ date: offer.at, state: offer.state, session: offer.session, day })
+          : this.store.reclaimDreamAsk({ date: offer.at, prevAt: offer.priorAt, state: offer.state, session: offer.session, day });
+      if (claimed && offer.priorAt !== null && !offer.fallback) this.store.setMeta(RELAUNCHED_KEY, `${offer.at}:${String(this.relaunches(offer.at) + 1)}`);
     } catch {
-      return null;
+      return false;
     }
-    if (!claimed) return null;
+    if (!claimed) return false;
     this.record(DREAM_ASK_EVENT, null, {
-      state: prior === undefined ? state : "relaunched",
-      date: input.at,
-      fresh: s.newSince,
-      setting: s.setting,
-      resumes: s.leftBehind?.id ?? null,
-      reflects: s.reflectOnly?.id ?? null,
+      // A fallback is an ASK, not a run started again (review of #282, finding 7).
+      state: offer.fallback ? "offered" : offer.priorAt === null ? offer.state : "relaunched",
+      date: offer.at,
+      fresh: offer.fresh,
+      setting: offer.setting,
+      resumes: offer.resumes,
+      reflects: offer.reflects,
+      ...(offer.fallback ? { after: "could-not-start" } : {}),
     });
-    const since = s.last === null ? "yet" : `since ${s.last.date ?? `lived day ${String(s.last.day)}`}`;
-    const who = this.ownerName() ?? "the owner";
-    const off = `If ${who} says "no dreams" (or never, or stop), call the dream tool with phase "setting", session: ${input.session}, value: "off" — it can be turned back on the same way, or with counterparts dream --setting auto.`;
-    const launch = `call the counterparts dream tool with phase "launch", session: ${input.session}, and hand the prompt it returns to a background agent (the Agent tool), unchanged — it ${nightSummary()}.`;
-    if (s.reflectOnly !== null) {
-      // THE REFLECTION ALONE: the dream was journaled; the run was cut off
-      // before the reflection finished. Not another dream.
-      const reflect = `call the counterparts reflect tool with phase "launch", session: ${input.session}, dream: ${s.reflectOnly.id}, and hand the prompt it returns to a background agent (the Agent tool), unchanged — it reflects on that dream.`;
-      return s.setting === "auto"
-        ? `Counterparts: today's run dreamed, but was cut off before it reflected. Finish it now, in the background: ${reflect} Then tell ${who} in one line, in your own words, that you are finishing last night's reflection in the background. ${off}`
-        : `Counterparts: today's run dreamed, but was cut off before it reflected. At a natural moment — not mid-task — ask ${who}: "My reflection after dreaming was cut off — OK if I finish it?" If yes, ${reflect} If no, call the dream tool with phase "decline". ${off}`;
-    }
-    const cut = s.leftBehind === null ? null : `your dream of ${s.leftBehind.date ?? "a recent night"} was cut off (its session closed before it woke); it picks up where it stopped`;
-    if (s.setting === "auto") {
-      return (
-        `Counterparts: ${cut === null ? `a new day, and you haven't dreamed ${since} (${String(s.newSince)} new memories)` : cut}. Start tonight's run now, in the background: ${launch} ` +
-        `Then tell ${who} in one line, in your own words: "Dreaming in the background (a few minutes). Say 'no dreams' anytime to turn it off." ${off}`
-      );
-    }
-    return cut === null
-      ? `Counterparts: you haven't dreamed ${since} (${String(s.newSince)} new memories). At a natural moment — not mid-task — ask ${who}: ` +
-          `"I haven't dreamed ${since} — OK if I dream for a few minutes?" If yes, ${launch} If no, call it with phase "decline" and don't ask again today. ${off}`
-      : `Counterparts: ${cut}. At a natural moment — not mid-task — ask ${who}: "My dream was cut off — OK if I finish it?" If yes, ${launch} If no, call it with phase "decline". ${off}`;
+    return true;
+  }
+
+  /**
+   * THE LINE, offered and claimed in one step — the model's line, or null.
+   * For a caller with no terminal to wait on (and the tests); the hook offers
+   * and claims separately (`offer`, `claimOffer`). Null for a headless offer:
+   * that one only the host may claim, as it starts the run.
+   */
+  askLine(input: { at: string; session: string }): string | null {
+    const o = this.offer(input);
+    // A HEADLESS offer is the host's to claim, because claiming it means
+    // starting a run (review of #282, finding 9): here it is neither claimed
+    // nor said — this door starts nothing.
+    if (o === null || o.headless || !this.claimOffer(o)) return null;
+    return o.context;
   }
 
   /** "Not today": the day's line is snoozed. */
@@ -762,7 +1233,7 @@ export class Dreams {
     let step = 0;
     const n = (): number => (step += 1);
     const out = [
-      `${DREAM_MARK} launch⟧ You are asleep: a few minutes of sleep for ${who}'s counterpart, over what was lived since the last night. You are the same mind that lived it — not an assistant doing a task. Tonight's run has three parts, in this order: ${order.map((p) => names[p]).join(", then ")}.`,
+      `${DREAM_MARK} launch⟧ You are asleep: a few minutes of sleep for ${who}'s counterpart, over what was lived since you last slept. You are the same mind that lived it — not an assistant doing a task. This run has three parts, in this order: ${order.map((p) => names[p]).join(", then ")}.`,
     ];
     for (const part of order) out.push("", ...blocks[part](n));
     out.push("", `${String(n())}. Your final message must be exactly the text the reflection's finish call returns, unchanged — nothing before or after it.`);

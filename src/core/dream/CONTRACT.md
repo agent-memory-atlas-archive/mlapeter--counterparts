@@ -61,7 +61,8 @@ dreamer is the model (a background agent the session launches), outside this pro
 
 - **No model call in this module**, and none in `sleep/`: the dreamer is a background
   agent the session launches with its own tools.
-- **No automatic dreaming.** The ask is a quiet line; no hook dreams on its own.
+- **No dreaming nobody chose.** The default asks the person, in their terminal; only the
+  owner's `auto` lets the host start the run on its own (2026-09-29).
 - **No settling of contradictions.** A dream flags a pair; the pair is raised awake next
   session, and to the owner when it is about him.
 - **No promotion.** A dream nominates; only a core lane at consolidation promotes.
@@ -70,7 +71,8 @@ dreamer is the model (a background agent the session launches), outside this pro
 
 ### 5.1 The line — the nightly run starts (2026-09-28, working defaults, held lightly)
 
-- **The owner's setting**, `auto` | `ask` | `off`, default `auto` — in the store's meta
+- **The owner's setting**, `auto` | `ask` | `off`, default `ask` (2026-09-29; `auto`
+  until then) — in the store's meta
   (`dream.setting`), so the hook, the MCP server and the console read one value. Set by
   the dream tool's phase `setting` (the owner saying "no dreams" in conversation is
   `off`) and by `counterparts dream --setting`; reversible the same way; recorded on the
@@ -83,17 +85,50 @@ dreamer is the model (a background agent the session launches), outside this pro
   day's line neither given nor declined — or given to a run that was LEFT BEHIND
   (below); and at least `MIN_NEW` showable memories made since the last dream. Fewer:
   nothing runs, and they carry over (new is since the last dream).
-- Raised as ONE quiet line for the model (the hook's `additionalContext`, on the first
-  prompt), at most once per calendar day across every session (the `dream_asks` latch,
-  `launched` or `offered`). `auto`: start the run now — call `launch`, hand the prompt
-  to a background agent — and tell the owner in one line: "Dreaming in the background
-  (a few minutes). Say 'no dreams' anytime to turn it off." `ask`: ask the owner at a
-  natural moment, as from 2026-09-26; a "no" is phase `decline`, snoozed for the day.
+- Raised on the first prompt, at most once per calendar day across every session (the
+  `dream_asks` latch, `launched` or `offered`), in TWO renderings from one gate
+  (`offer`, 2026-09-29): a line for the MODEL (the hook's `additionalContext`) and a
+  line for the PERSON (the prompt hook's `systemMessage`, shown in the terminal). The
+  host claims the day (`claimOffer`) only once it knows the person's line is leaving;
+  unclaimed, the model's line is taken back too and the next prompt offers it again.
+  `askLine` is offer-then-claim, for callers with no terminal.
+  `ask` (the default): the person is shown "I haven't dreamed since … (N new memories).
+  Say "dream" to start, or "dream on your own" to let me do it each day." The model
+  does not ask again; "dream" is `launch` → one background agent, "dream on your own" is
+  `setting auto` and then today's run the same way, not today is `decline`.
+  `auto` (2026-09-29): HEADLESS — the host claims the day and starts the run itself in a
+  windowless session (claude-code `night-run.ts`); the model launches nothing and is
+  told so, and the person is shown "dreaming in the background (a few minutes). Say
+  "no dreams" to turn it off." when there is room. When that run could not do its job —
+  `could-not-start`, or `timed-out` / `failed` / LOST (a `started` row past its watchdog
+  and `NIGHT_LOST_GRACE_MS`) having begun nothing — the line falls back to an ask with the
+  reason, at once: "I couldn't start dreaming on my own: <reason>. Say "dream" to do it
+  here." — recorded `offered` after `could-not-start`, not counted as a relaunch. A run
+  still inside its watchdog makes the gate `dreaming-now`. The next calendar day tries
+  headless again. "No dreams" takes effect from the next run; a run in flight finishes,
+  and the owner is told so (owner decision D).
   `off`: nothing.
+- **`auto` from before 2026-09-29 is reset once** (owner decision A): its meaning changed,
+  so an explicit `auto` in a store's meta becomes `ask` on the first hook prompt of this
+  version (`resetAutoOnce`), recorded on `dream.ask` (`by: upgrade`), and the owner is told
+  once. A setting chosen on this version is never reset.
+- **The headless run's record** (2026-09-29): one row per run, the latest in the store's
+  meta (`dream.night`: run, date, state `started` | `done` | `partial` | `failed` |
+  `timed-out` | `could-not-start`, reason, exit code, its watchdog, the PARTS that ran —
+  writer, dream, reflection — and the dream and reflection it produced), each state
+  on the `dream.night` event log latched by run and state. Ids, codes and times only.
+  Doctor's Nightly run line reads it; the dashboard can later.
+- **The hand-back of a headless run** — the dream's own line (`handBackOf`) and the
+  morning share — has no agent to return to a session, so once the run has ended the
+  next prompt anywhere, the launching session included, carries both, once ever (a
+  latched `dream.night.handed` event, then `handedAt` on the row so later prompts only
+  read; the share through `Reflections.carryLine`). A partial run's line says it was
+  partial; a reflection-alone run hands back its share only.
 - **A run left behind does not use up the day.** A dream begun, never journaled and
   quiet for `ABANDONED_AFTER_MS` (30 minutes: its session closed and the background
   agent went with it), today's or yesterday's, makes the line due again once the line
-  itself has been quiet as long — and with `auto`, so does a launch no dream followed.
+  itself has been quiet as long — and with `auto`, so does a launch no dream followed
+  (headless or not: a headless run cut off is started again headless).
   At most `RELAUNCHES_PER_DAY` (2) a day, a compare-and-set on the latch
   (`reclaimDreamAsk`); an `ask` nobody answered is not asked again, but one the owner said
   yes to is (`launch` flips the day to `launched`). A dream that began, changed nothing and

@@ -370,3 +370,45 @@ writer, the dream and the reflection. What the build learned:
   sending only its non-page lanes is a follow-up.
 - Unsure: `FRESH_SHARE` 0.5 and `CHAPTER_SHARE` 0.3 of the night are guesses. A real
   night's `dream.begun` row now carries the queue and how the room was spent.
+
+## 2026-09-29 — the ask the person sees; `auto` becomes headless (held lightly)
+
+- Why: on 09-29 the first session of the day ran in the host's auto permission mode, and
+  the host's classifier refused the `auto` line's instruction to start a background agent
+  ("a hook-injected instruction to start an agent, with no user yes in the transcript").
+  With the owner's yes in the session the same launch went through. Two weak points
+  besides: the run lived in whichever session happened to be first, and a launch that
+  was refused never reached the store, so nothing recorded it.
+- So: the default is `ask`, and the ask is shown to the PERSON (terminal), not only the
+  model. `offer` / `claimOffer` split the old `askLine` so the host claims the day only
+  when the person's line is certainly leaving — the plain reminder's rule. `askLine`
+  remains, as the two together.
+- `auto` is headless. The in-session "Start tonight's run now…" line is RETIRED. The
+  relaunch rules are unchanged, with one exception: a `launched` day whose headless run
+  recorded `could-not-start` may be offered again AT ONCE (no 30-minute window — there is
+  no run to wait for), as an ask with the reason. The cap still counts it.
+- "dream on your own" = `setting auto` AND today's run in the session (the person just
+  said yes); from the next day the host starts it.
+- The record is meta (the latest run, one lookup on the per-prompt path) plus a latched
+  event per state. A late terminal state from an older run never overwrites a newer
+  run's row.
+- Unsure: whether a headless run that exits 0 having begun nothing should fall back to
+  asking (it does: `could-not-start`, reason `nothing-ran` — most likely the MCP server is
+  not registered for a bare `claude -p`). And whether the person should see the fallback
+  line in the same session the "dreaming in the background" line appeared in, seconds
+  later — it reads a little abrupt; the alternative was 30 minutes of silence.
+
+## 2026-09-29, later — after the review of #282 (held lightly)
+
+- Wording: the run happens at the day's first session, usually the morning, so nothing it
+  tells says "last night": the launch prompt says "since you last slept", the share's
+  telling "While I slept I dreamed…".
+- The reflection's page line leans toward writing (the owner would like a page a
+  reflection wrote every day unless there is truly nothing new), says the writer revised
+  the page earlier in this run when it did (version, by the writer), and that every
+  version is kept. A "nothing much" night still rewrites nothing.
+- The run's record grew `partial` and `parts`, and its watchdog (for LOST); the fallback
+  covers timed-out, failed and lost runs that began nothing; an ask it becomes is not a
+  relaunch; the gate reads a live `started` row as `dreaming-now`; `askLine` no longer
+  claims a headless offer; an explicit `auto` from before is reset once. Why each: the
+  review, findings 4, 5, 7, 9, 10, and owner decisions A and D.
