@@ -156,13 +156,19 @@ export const MECHANISM_EVIDENCE: readonly MechanismEvidence[] = [
     ],
   },
   {
-    // Only byte-identical bodies merge (consolidation's); near-duplicates are
-    // left alone on purpose. Nothing competes.
+    // PARTLY (2026-09-29, after the review of #284): similar memories meet
+    // now — a dream merges near-copies into one, a dream flags two that
+    // disagree, and a memory settled `changed` fades once under the one that
+    // holds (physics §5.12). Not built: similar memories competing when they
+    // are recalled (retrieval-induced forgetting).
     id: "interference",
     family: "storage",
-    build: "not",
-    proofs: [],
-    grey: "In development: similar memories do not compete yet.",
+    build: "partly",
+    proofs: [
+      { key: "dreamMerged", event: "dream.changed", sum: "merge", stands: dreamStands, says: ["near-copy merged in a dream", "near-copies merged in a dream"] },
+      { key: "flagged", event: "contradiction.flagged", says: ["pair that disagrees flagged", "pairs that disagree flagged"] },
+      { key: "faded", event: "contradiction.settled", where: (p) => p["how"] === "changed", stands: settleStands, says: ["earlier memory faded under a newer one", "earlier memories faded under newer ones"] },
+    ],
   },
   // ── Retrieval ──
   {
@@ -266,19 +272,19 @@ export const MECHANISM_EVIDENCE: readonly MechanismEvidence[] = [
     },
   },
   {
-    // PARTLY: a belief or an identity line is revised under pressure over
-    // several days; since 2026-09-29 an ordinary memory is SETTLED —
-    // changed, corrected or open — by a new memory that updates it, a dream,
-    // or the owner, and a dream flags pairs that disagree. What is not built:
-    // noticing a disagreement nobody wrote down, outside the write-time list
-    // and the dream.
+    // BUILT (2026-09-29, owner's call after the review of #284): a belief or an
+    // identity line is revised under pressure over several days, and an
+    // ordinary memory is SETTLED — changed, corrected or open — by a new memory
+    // that updates it, a `note` settle, a dream or reflection with a reason, or
+    // the owner, with a record and an undo. Noticing a disagreement nobody
+    // wrote down near the first memory is the part that stays thin (the dream
+    // and the write-time list are the two ways in).
     id: "reconsolidation",
     family: "transformation",
-    build: "partly",
+    build: "built",
     proofs: [
       { key: "pressure", event: "revision.pressure", says: ["correction weighed against an old memory", "corrections weighed against old memories"] },
       { key: "settled", event: "contradiction.settled", stands: settleStands, says: ["contradiction settled", "contradictions settled"] },
-      { key: "flagged", event: "contradiction.flagged", says: ["contradiction flagged", "contradictions flagged"] },
     ],
   },
   {

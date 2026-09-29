@@ -163,8 +163,9 @@ describe("the lights, on a seeded store", () => {
   test("grey never claims activity — even when the log holds rows that look like it", () => {
     const v = viewOf(richDir);
     const greys = v.mechanisms.filter((m) => m.status === "grey");
-    // Gist is partly built since 2026-09-26 (a dream's pattern), so not grey.
-    expect(greys.map((m) => m.id).sort()).toEqual(["interference", "schema"]);
+    // Gist is partly built since 2026-09-26 (a dream's pattern), and
+    // interference since 2026-09-29 (merges, flags, the changed fade): not grey.
+    expect(greys.map((m) => m.id).sort()).toEqual(["schema"]);
     for (const m of greys) {
       expect(m.events).toEqual([]);
       expect(m.evidence).not.toMatch(/\d/);

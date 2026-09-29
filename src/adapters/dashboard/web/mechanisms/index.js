@@ -32,6 +32,7 @@ import * as emotionalPanel from "./emotional/panel.js";
 import * as gistPanel from "./episodic-semantic/panel.js";
 import * as prospectivePanel from "./prospective/panel.js";
 import * as reconsolidationPanel from "./reconsolidation/panel.js";
+import * as interferencePanel from "./interference/panel.js";
 import * as retrievalPanel from "./retrieval/panel.js";
 import * as saliencePanel from "./salience/panel.js";
 
@@ -57,6 +58,7 @@ export const PANELS = {
   consolidation: consolidationPanel,
   dreaming: dreamingPanel,
   reconsolidation: reconsolidationPanel,
+  interference: interferencePanel,
   "episodic-semantic": gistPanel,
 };
 

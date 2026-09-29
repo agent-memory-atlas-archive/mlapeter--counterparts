@@ -165,6 +165,20 @@ export type Picture =
       readonly links: number;
     }
   | {
+      readonly kind: "interference";
+      /** The newest pairs of memories that disagree (2026-09-29), older first in each. */
+      readonly pairs: readonly {
+        readonly id: string;
+        readonly day: number;
+        /** `unsettled` or `settled`. */
+        readonly state: string;
+        /** `changed`, `corrected` or `open` once settled. */
+        readonly how: string | null;
+        readonly older: Said;
+        readonly newer: Said;
+      }[];
+    }
+  | {
       readonly kind: "reconsolidation";
       readonly revisions: readonly {
         readonly seq: number;
@@ -275,6 +289,8 @@ function pictureOf(src: DashboardSource, id: string, day: number): Picture | nul
       return gistPicture(src);
     case "reconsolidation":
       return reconsolidationPicture(src);
+    case "interference":
+      return interferencePicture(src);
     default:
       return null;
   }
@@ -677,6 +693,29 @@ function associationPicture(src: DashboardSource): Picture {
     .slice(0, PICTURE_ROWS)
     .map(([id, v]) => ({ ...said(src, id), weight: round(v.w), degree: v.d }));
   return { kind: "association", hubs, links };
+}
+
+// ── interference ────────────────────────────────────────────────────────────
+
+/**
+ * The newest pairs of memories that disagree (2026-09-29): flagged, or settled
+ * and how. Two memories a pair, so half as many pairs as the other pictures'
+ * rows. Withdrawn pairs and ones closed through another are left out.
+ */
+function interferencePicture(src: DashboardSource): Picture {
+  const pairs = src.store
+    .contradictions({ limit: PICTURE_ROWS * 4 })
+    .filter((p) => p.state !== "withdrawn" && p.via === null)
+    .slice(0, Math.max(1, Math.floor(PICTURE_ROWS / 2)))
+    .map((p) => ({
+      id: p.id,
+      day: p.settled_day ?? p.flagged_day,
+      state: p.state,
+      how: p.how,
+      older: said(src, p.a),
+      newer: said(src, p.b),
+    }));
+  return { kind: "interference", pairs };
 }
 
 // ── reconsolidation ─────────────────────────────────────────────────────────

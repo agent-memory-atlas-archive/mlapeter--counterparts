@@ -165,8 +165,20 @@ export const MEMORY_MECHANISMS: readonly MemoryMechanism[] = [
     name: "Interference",
     group: "Storage",
     id: "interference",
-    evidence: [],
-    read: NOT_BUILT("only exact duplicates are merged"),
+    evidence: ["dream-changes", "contradictions"],
+    read: (v) => {
+      const merged = part(v, "dreamMerged");
+      const flagged = part(v, "flagged");
+      const faded = part(v, "faded");
+      const said = [
+        ...(merged > 0 ? [`${plural(merged, "near-copy", "near-copies")} merged in a dream`] : []),
+        ...(flagged > 0 ? [`${plural(flagged, "pair")} that disagree flagged`] : []),
+        ...(faded > 0 ? [`${plural(faded, "earlier memory", "earlier memories")} faded under a newer one`] : []),
+      ];
+      return v.fired && said.length > 0
+        ? { light: LIGHT.working, says: `partly built: ${said.join("; ")}` }
+        : { light: LIGHT.idle, says: "partly built, not firing this week: similar memories meet in a dream and when one is settled changed; they do not compete at recall yet" };
+    },
   },
   // ── Retrieval ──
   {
@@ -300,11 +312,9 @@ export const MEMORY_MECHANISMS: readonly MemoryMechanism[] = [
     read: (v) => {
       const pressed = part(v, "pressure");
       const settled = part(v, "settled");
-      const flagged = part(v, "flagged");
       const said = [
         ...(pressed > 0 ? [`${plural(pressed, "correction")} weighed against old memories`] : []),
         ...(settled > 0 ? [`${plural(settled, "contradiction")} settled`] : []),
-        ...(flagged > 0 ? [`${plural(flagged, "contradiction")} flagged`] : []),
       ];
       return v.fired && said.length > 0
         ? { light: LIGHT.working, says: said.join("; ") }
