@@ -77,6 +77,12 @@ export const TUNABLES = {
    * falls back to asking, with the reason.
    */
   NIGHT_QUICK_EXIT_MS: 60_000,
+  /**
+   * The headless run's turn ceiling (`claude -p --max-turns`), beside its
+   * watchdog (owner decision B, 2026-09-29). A night is some tens of tool calls;
+   * this is generous. `dreaming.maxTurns` overrides it.
+   */
+  NIGHT_MAX_TURNS: 60,
   /** Reference resolution at a session-ending boundary (recall §9.2), ms. The
    *  resolver stops between candidates past it and the row says so
    *  (`recall.credit` reason `budget-exceeded`); nothing is truncated silently. */
@@ -247,6 +253,8 @@ export interface AdapterConfig {
   readonly dreaming?: {
     readonly model?: string;
     readonly timeoutMs?: number;
+    /** The run's turn ceiling; absent, `TUNABLES.NIGHT_MAX_TURNS`. */
+    readonly maxTurns?: number;
     /** What this file could not read inside the block, phrased for a person. */
     readonly ignored?: readonly string[];
   };
@@ -316,7 +324,7 @@ export function loadConfig(raw: unknown): LoadedConfig {
     parallel?: { enabled: boolean };
     snapshots?: { dir?: string; keep?: number; mirror?: string; ignored?: string[] };
     pageWriter?: { mode: PageWriterMode; timeoutMs?: number; ignored?: string[] };
-    dreaming?: { model?: string; timeoutMs?: number; ignored?: string[] };
+    dreaming?: { model?: string; timeoutMs?: number; maxTurns?: number; ignored?: string[] };
     retired?: string[];
     owner?: boolean;
     timeZone?: string;
@@ -581,9 +589,9 @@ function readPageWriter(raw: unknown): {
  * not start with a dash — it goes on a command line (`--model <name>`), and a
  * value that looked like a flag would be read as one.
  */
-function readDreaming(raw: unknown): { model?: string; timeoutMs?: number; ignored?: string[] } {
+function readDreaming(raw: unknown): { model?: string; timeoutMs?: number; maxTurns?: number; ignored?: string[] } {
   const raws: string[] = [];
-  const out: { model?: string; timeoutMs?: number } = {};
+  const out: { model?: string; timeoutMs?: number; maxTurns?: number } = {};
   const done = (): typeof out & { ignored?: string[] } => (raws.length === 0 ? out : { ...out, ignored: tidy(raws) });
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     raws.push(`"dreaming" was not an object; it was ignored`);
@@ -602,8 +610,14 @@ function readDreaming(raw: unknown): { model?: string; timeoutMs?: number; ignor
   } else if (timeoutMs !== undefined) {
     raws.push(`"dreaming.timeoutMs" was ${JSON.stringify(timeoutMs)}; using the default watchdog`);
   }
+  const maxTurns = d["maxTurns"];
+  if (typeof maxTurns === "number" && Number.isInteger(maxTurns) && maxTurns > 0) {
+    out.maxTurns = maxTurns;
+  } else if (maxTurns !== undefined) {
+    raws.push(`"dreaming.maxTurns" was ${JSON.stringify(maxTurns)}; using the default`);
+  }
   for (const key of Object.keys(d)) {
-    if (key !== "model" && key !== "timeoutMs") raws.push(`"dreaming.${key}" is not a setting this reads; it was ignored`);
+    if (key !== "model" && key !== "timeoutMs" && key !== "maxTurns") raws.push(`"dreaming.${key}" is not a setting this reads; it was ignored`);
   }
   return done();
 }

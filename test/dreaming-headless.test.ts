@@ -18,10 +18,12 @@ import { join } from "node:path";
 import {
   KILL_GRACE_MS,
   NIGHT_KIND_ENV,
+  NIGHT_MCP_SCRIPT,
   NIGHT_RUN_ENV,
   REAP_GRACE_MS,
   SCOPE_ASK,
   loadConfig,
+  nightMcpConfig,
   nightTimeoutMs,
   openAdapter,
   openNightCounterpart,
@@ -287,13 +289,14 @@ describe("B. the headless run: the child's plan, and what becomes of a run", () 
     }
   }
 
-  test("the child's plan: `-p`, exactly four tools, permission `default`, the prompt on stdin, the launching session's directory", () => {
+  test("the child's plan, locked down: four tools, the built-ins denied, only counterparts' MCP server, a turn ceiling, a neutral directory, the prompt on stdin", () => {
     const plan = planNightChild({
       config: config({ dreaming: { model: "claude-opus-5-5" } }),
       run: "nrn_1",
       prompt: "THE PROMPT",
       scope: "/proj/here",
       session: "s-launch",
+      runtime: "/usr/local/bin/bun",
       configPath: "/cfg/claude-code.json",
       baseEnv: {
         PATH: "/usr/bin",
@@ -312,17 +315,33 @@ describe("B. the headless run: the child's plan, and what becomes of a run", () 
       "-p",
       "--allowedTools",
       "mcp__counterparts__dream,mcp__counterparts__reflect,mcp__counterparts__self_page,mcp__counterparts__recall",
-      // Deny beats allow: the user's own allow rules cannot reach these (review finding 3).
+      // Deny beats allow: the user's own allow rules cannot reach these (review finding 3; owner B).
       "--disallowedTools",
-      "Bash,PowerShell,Edit,Write,MultiEdit,NotebookEdit,WebFetch,WebSearch,Task,Agent",
+      "Bash,PowerShell,REPL,Read,Write,Edit,NotebookEdit,Glob,Grep,LSP,WebFetch,WebSearch,Task,Agent,Skill,Workflow,SendMessage,Monitor,TaskStop,EnterWorktree,CronCreate,RemoteTrigger,Artifact",
       "--permission-mode",
       "default",
+      "--max-turns",
+      "60",
+      "--mcp-config",
+      nightMcpConfig({ runtime: "/usr/local/bin/bun", dataDir: dir, configPath: "/cfg/claude-code.json", session: "s-launch", scope: "/proj/here" }),
+      "--strict-mcp-config",
       "--model",
       "claude-opus-5-5",
     ]);
+    // ToolSearch stays: a host that defers MCP tools needs it to reach the four.
+    expect(plan.args.join(" ")).not.toContain("ToolSearch");
+    // The one MCP server: counterparts, as the install registers it, with the run's session and scope pinned.
+    const mcp = JSON.parse(plan.args[plan.args.indexOf("--mcp-config") + 1] ?? "{}") as { mcpServers: Record<string, { command: string; args: string[]; env: Record<string, string> }> };
+    expect(Object.keys(mcp.mcpServers)).toEqual(["counterparts"]);
+    expect(mcp.mcpServers["counterparts"]?.command).toBe("/usr/local/bin/bun");
+    expect(mcp.mcpServers["counterparts"]?.args[1]).toBe(NIGHT_MCP_SCRIPT);
+    expect(mcp.mcpServers["counterparts"]?.args[1]?.endsWith(join("adapters", "mcp", "bin", "serve.ts"))).toBe(true);
+    expect(mcp.mcpServers["counterparts"]?.env).toEqual({ COUNTERPARTS_DATA_DIR: dir, COUNTERPARTS_CONFIG: "/cfg/claude-code.json", COUNTERPARTS_SESSION: "s-launch", COUNTERPARTS_SCOPE: "/proj/here" });
     expect(plan.args.join(" ")).not.toContain("THE PROMPT");
     expect(plan.stdin).toBe("THE PROMPT");
-    expect(plan.cwd).toBe("/proj/here");
+    // A NEUTRAL directory, the store's own: no project's CLAUDE.md, hooks or MCP servers.
+    expect(plan.cwd).toBe(dir);
+    expect(planNightChild({ config: config({ dreaming: { maxTurns: 12 } }), run: "r", prompt: "p", scope: "/x", session: "s" }).args.join(" ")).toContain("--max-turns 12");
     expect(plan.timeoutMs).toBe(20 * 60_000);
     for (const gone of ["COUNTERPARTS_OBSERVER", "COUNTERPARTS_PAGE_WRITER", "CLAUDE_PROJECT_DIR", "CLAUDECODE"]) {
       expect(plan.env[gone]).toBeUndefined();
@@ -363,7 +382,7 @@ describe("B. the headless run: the child's plan, and what becomes of a run", () 
     expect(planNightRunner({ ...base, args: ["x"], config: config({ observer: true }) }).reason).toBe("OBSERVER");
   });
 
-  test("a stub that exits 0 having called no tool: the run could not do its job — `nothing-ran`; the prompt went on stdin, the child ran in the session's directory", async () => {
+  test("a stub that exits 0 having called no tool: the run could not do its job — `nothing-ran`; the prompt went on stdin, the child ran in the store's own directory", async () => {
     const out = await runNight(nightOf({ command: stub("exit 0") }));
     expect(out).toMatchObject({ state: "could-not-start", reason: "nothing-ran", code: 0, run: "nrn_test", date: AT, session: "s1" });
     expect(latest()).toMatchObject({ run: "nrn_test", state: "could-not-start", reason: "nothing-ran" });
@@ -373,7 +392,8 @@ describe("B. the headless run: the child's plan, and what becomes of a run", () 
     expect(readFileSync(join(binDir, "argv"), "utf8")).not.toContain("session: s1");
     expect(readFileSync(join(binDir, "env"), "utf8")).toContain(`${NIGHT_RUN_ENV}=nrn_test`);
     expect(readFileSync(join(binDir, "env"), "utf8")).toContain("COUNTERPARTS_SESSION=s1\n");
-    expect(realpathSync(readFileSync(join(binDir, "cwd"), "utf8").trim())).toBe(realpathSync(binDir));
+    // The neutral directory: the store's own, not the launching project (owner decision B).
+    expect(realpathSync(readFileSync(join(binDir, "cwd"), "utf8").trim())).toBe(realpathSync(dir));
   });
 
   test("a stub that exits 1 at once: could not start (`quick-exit`) — is it logged in?", async () => {
@@ -916,6 +936,8 @@ describe("gaps: bin/nightly.ts end to end, against a stub `claude` first on PATH
       expect(out.exitCode).toBe(0);
       const argv = readFileSync(join(bin, "argv"), "utf8");
       expect(argv).toContain("--disallowedTools");
+      expect(argv).toContain("--strict-mcp-config");
+      expect(argv).toContain("--max-turns");
       expect(argv).not.toContain("session: s1");
       expect(readFileSync(join(bin, "stdin"), "utf8")).toContain("session: s1");
       const env = readFileSync(join(bin, "env"), "utf8");

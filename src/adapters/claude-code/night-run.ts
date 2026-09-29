@@ -22,18 +22,25 @@
  *      process that waits there is no row: "done", "timed out" and "could not
  *      start" need a witness.
  *
- * The child is the page writer's shape (`page-writer.ts`): `-p`, the prompt on
+ * THE CHILD, LOCKED DOWN (owner decision B, 2026-09-29): `-p`, the prompt on
  * stdin, `--permission-mode default`, and `--allowedTools` the four
- * counterparts tools the run needs. `--allowedTools` only ADDS allow rules — the
- * user's and the project's own allow rules still apply inside the child (review
- * of #282, finding 3) — so the built-in tools that run commands, write files or
- * reach the network are DENIED outright (`--disallowedTools`, `NIGHT_DENIED_TOOLS`;
- * a deny beats an allow). What is left and not allowed stops at a prompt nobody
- * can answer, which is the direction this should fail in. How much stricter to
- * be (an empty built-in set, a strict MCP config, no project settings) is the
- * owner's call; other MCP servers the user allowed are NOT denied here. The
- * parent's stance variables are removed from its environment; this package's
- * own values are written last.
+ * counterparts tools the run needs. `--allowedTools` only ADDS allow rules —
+ * the user's own allow rules still apply inside the child (review of #282,
+ * finding 3) — so:
+ *   - the built-in tools that run commands, read or write files, reach the
+ *     network or start agents are DENIED outright (`--disallowedTools`,
+ *     `NIGHT_DENIED_TOOLS`; a deny beats an allow);
+ *   - ONLY the counterparts MCP server loads (`--strict-mcp-config` with an
+ *     `--mcp-config` naming just it — `nightMcpConfig`, the same server the
+ *     install registers, `mcp/bin/serve.ts` beside this file), so no other MCP
+ *     server the user allowed is reachable;
+ *   - the child starts in a NEUTRAL directory, the store's own, so no
+ *     project's CLAUDE.md, hooks or MCP servers load; the launching session's
+ *     directory reaches the MCP server as its pinned scope instead;
+ *   - `--max-turns` bounds it beside the watchdog.
+ * What is left and not allowed stops at a prompt nobody can answer, which is
+ * the direction this should fail in. The parent's stance variables are
+ * removed from its environment; this package's own values are written last.
  *
  * SESSION BINDING (the choice, 2026-09-29): the run is ATTRIBUTED TO THE
  * SESSION THAT STARTED IT, as the in-session Agent path always was. The launch
@@ -53,7 +60,7 @@
  * server binding as above, the host not refusing a nested `claude` — is
  * written in the PR, not claimed here.
  */
-import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 import { Counterpart } from "../../core/counterpart.js";
 import type { NightPart, NightRun } from "../../core/dream/index.js";
@@ -91,22 +98,65 @@ export const NIGHT_TOOLS = [
 
 /**
  * THE BUILT-IN TOOLS THE RUN MAY NEVER USE, denied outright (review of #282,
- * finding 3): the ones that run commands or code, write or edit files, reach
- * the network, or start another agent. Spelled as `claude --help` (2.1.284)
- * documents `--disallowedTools`: a comma-separated list of tool names.
+ * finding 3; owner decision B): the ones that run commands or code, read,
+ * search or write files, reach the network, start agents or workflows, or
+ * schedule work. `--disallowedTools` as `claude --help` (2.1.284) documents it,
+ * a comma-separated list; the names are the host's own tool names, checked
+ * against that build (not against a running session). NOT denied: `ToolSearch`,
+ * which a host that defers MCP tools needs to reach the four above.
  */
 export const NIGHT_DENIED_TOOLS = [
   "Bash",
   "PowerShell",
-  "Edit",
+  "REPL",
+  "Read",
   "Write",
-  "MultiEdit",
+  "Edit",
   "NotebookEdit",
+  "Glob",
+  "Grep",
+  "LSP",
   "WebFetch",
   "WebSearch",
   "Task",
   "Agent",
+  "Skill",
+  "Workflow",
+  "SendMessage",
+  "Monitor",
+  "TaskStop",
+  "EnterWorktree",
+  "CronCreate",
+  "RemoteTrigger",
+  "Artifact",
 ] as const;
+
+/** The MCP server's name — the `mcp__counterparts__…` in every tool name above. */
+export const NIGHT_MCP_SERVER = "counterparts";
+
+/** The MCP entry point beside this adapter — what the install registers (`cli/install.ts#MCP_SCRIPT`). */
+export const NIGHT_MCP_SCRIPT = fileURLToPath(new URL("../mcp/bin/serve.ts", import.meta.url));
+
+/**
+ * THE ONE MCP SERVER THE CHILD LOADS (owner decision B): counterparts, as the
+ * install registers it (`<runtime> run <serve.ts>`, the data dir and the
+ * configuration on its environment), plus the launching session and its
+ * directory pinned — so the server binds to the run's session whatever the
+ * host passes through (review of #282, finding 1). No secret in it: paths and
+ * a session id.
+ */
+export function nightMcpConfig(input: { runtime: string; dataDir: string; configPath?: string; session: string; scope: string }): string {
+  const env: Record<string, string> = { [DATA_DIR_ENV]: input.dataDir };
+  if (input.configPath !== undefined && input.configPath.length > 0) env[CONFIG_PATH_ENV] = input.configPath;
+  if (input.session.length > 0) env[SESSION_ENV] = input.session;
+  if (input.scope.length > 0) env[SCOPE_ENV] = input.scope;
+  return JSON.stringify({ mcpServers: { [NIGHT_MCP_SERVER]: { type: "stdio", command: input.runtime, args: ["run", NIGHT_MCP_SCRIPT], env } } });
+}
+
+/** The run's turn ceiling, from the configuration or the default. */
+export function nightMaxTurns(config: AdapterConfig): number {
+  return config.dreaming?.maxTurns ?? TUNABLES.NIGHT_MAX_TURNS;
+}
 
 /**
  * VARIABLES OF THE HOST THAT STARTED THE HOOK, removed from the child's
@@ -211,6 +261,8 @@ export interface NightChildInput {
   readonly scope: string;
   /** The launching session: the child's MCP server is launched bound to it. */
   readonly session: string;
+  /** The runtime the MCP server runs under (`process.execPath`, bun). */
+  readonly runtime?: string;
   readonly configPath?: string;
   readonly baseEnv?: Readonly<Record<string, string | undefined>>;
   /** TESTS ONLY: the program to start instead of `claude`. Code only — no configuration reaches it. */
@@ -227,6 +279,7 @@ export function planNightChild(input: NightChildInput): NightChildPlan {
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(input.baseEnv ?? process.env)) if (v !== undefined) env[k] = v;
   const model = input.config.dreaming?.model;
+  const dataDir = input.config.dataDir ?? "";
   const args = [
     "-p",
     "--allowedTools",
@@ -235,6 +288,17 @@ export function planNightChild(input: NightChildInput): NightChildPlan {
     NIGHT_DENIED_TOOLS.join(","),
     "--permission-mode",
     PERMISSION_MODE,
+    "--max-turns",
+    String(nightMaxTurns(input.config)),
+    "--mcp-config",
+    nightMcpConfig({
+      runtime: input.runtime ?? process.execPath,
+      dataDir,
+      session: input.session,
+      scope: input.scope,
+      ...(input.configPath === undefined ? {} : { configPath: input.configPath }),
+    }),
+    "--strict-mcp-config",
     ...(model === undefined ? [] : ["--model", model]),
   ];
   const plan = (ok: boolean, reason: NightChildRefusal | "ready"): NightChildPlan => ({
@@ -245,7 +309,9 @@ export function planNightChild(input: NightChildInput): NightChildPlan {
     stdin: input.prompt,
     env,
     timeoutMs,
-    ...(input.scope.length === 0 ? {} : { cwd: input.scope }),
+    // A NEUTRAL DIRECTORY, the store's own (owner decision B): no project's
+    // CLAUDE.md, hooks or MCP servers load in the child.
+    ...(dataDir.trim().length === 0 ? {} : { cwd: dataDir }),
   });
   if (input.config.observer === true) return plan(false, "OBSERVER");
   if (input.config.dataDir === undefined || input.config.dataDir.trim().length === 0) return plan(false, "NO_DATA_DIR");
@@ -351,9 +417,6 @@ export async function runNight(input: NightRunInput): Promise<NightRun> {
     }
   } catch (err) {
     return ended({ state: "could-not-start", reason: "refused", detail: err instanceof Error ? err.name : "UNKNOWN", code: null });
-  }
-  if (input.scope.length > 0 && !existsSync(input.scope)) {
-    return ended({ state: "could-not-start", reason: "refused", detail: "NO_SCOPE_DIR", code: null });
   }
   const plan = planNightChild({
     config: input.config,
