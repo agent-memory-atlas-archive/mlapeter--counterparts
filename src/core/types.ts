@@ -40,6 +40,25 @@ export const MEMORY_SOURCES = [
 export type MemorySource = (typeof MEMORY_SOURCES)[number];
 
 /**
+ * HOW A CONTRADICTION IS SETTLED (2026-09-29, `core/contradictions.ts`) — the
+ * three kinds, each with its own outcome, working defaults:
+ *
+ *   - `changed`: both were true at their time ("used React, now Vue"). The
+ *     older memory takes one strength cut and stays recallable, labelled
+ *     `earlier`. The default when the kind is unclear.
+ *   - `corrected`: I was wrong ("thought Google, actually Meta"). The wrong
+ *     one is archived — out of recall, readable by its own id, never deleted.
+ *   - `open`: a real disagreement. Both stay live, and recall shows each with
+ *     the other ("disagrees with").
+ *
+ * Here, beside the kind and band vocabulary, because two modules read it —
+ * `remember/` validates the `how` field on a draft, and the contradictions
+ * mechanism acts on it — and neither should import the other for a word list.
+ */
+export const SETTLE_HOWS = ["changed", "corrected", "open"] as const;
+export type SettleHow = (typeof SETTLE_HOWS)[number];
+
+/**
  * A model id as the host reports it (`claude-opus-5-5`, `claude-opus-5-5[1m]`),
  * and nothing else: it is printed into a chapter heading and stored on a row
  * (`memories.model`, schema v7), so no spaces, no `·`, no `<synthetic>`.

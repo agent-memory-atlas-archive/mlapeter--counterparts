@@ -444,6 +444,12 @@ describe("SEAMS A — the observer predicate is hoisted, and stand-down totality
       setAbout: [seedId, "me", { by: "writer" }],
       openReflection: [{ id: "rfl_x", day: 0, questions: [], shown: [] }],
       updateReflection: ["rfl_x", { state: "reflected" }],
+      // v10 (2026-09-29, contradictions).
+      flagContradiction: [{ id: "ctr_x", x: seedId, y: seedId, source: "dream", day: 0 }],
+      markContradictionRaised: ["ctr_x", 1],
+      withdrawContradiction: ["ctr_x"],
+      settleContradiction: [{ pairId: "ctr_x", how: "open", holds: null, over: null, actor: "owner", actorId: null, why: null, day: 0 }],
+      undoContradictionSettle: [{ pairId: "ctr_x", settleSeq: 1, actor: "owner", actorId: null, why: null, day: 0 }],
     };
     for (const method of WRITE_METHODS) {
       const fn = (s as unknown as Record<string, ((...a: unknown[]) => unknown) | undefined>)[
@@ -2639,8 +2645,12 @@ describe("O. a declared updates: reaches the engine — by door, and by target k
     expect(c.store.eventLog({ name: "revision.pressure" })).toEqual([]);
   });
 
-  // ── everything else: the link IS the effect ───────────────────────────────
-  test("an ORDINARY memory is LINKED and nothing else — no supersede, no pressure", async () => {
+  // ── an ordinary memory: SETTLED (2026-09-29, contradictions) ───────────────
+  // It was link-only (owner ruling 2026-09-04); an AUTHORED `updates` now
+  // carries `how` (`changed` by default) and the arm settles. The link stays;
+  // nothing is superseded and no pressure moves. A SWEPT declaration is still
+  // a link (`test/contradictions.test.ts`).
+  test("an ORDINARY memory is SETTLED (changed by default) and linked — no supersede, no pressure", async () => {
     const c = brain();
     const targetId = c.store.put({
       type: "memory",
@@ -2660,10 +2670,11 @@ describe("O. a declared updates: reaches the engine — by door, and by target k
     );
 
     expect(revisions(c)).toEqual([
-      expect.objectContaining({ path: "link-only", reason: "linked-only" }),
+      expect.objectContaining({ path: "changed", reason: "settled" }),
     ]);
-    // The link already exists, and it is the whole effect (owner ruling).
+    // The link is written, and the pair records how it was settled.
     expect(c.store.readProse(out.memoryId as string).meta[UPDATES_META_KEY]).toBe(targetId);
+    expect(c.store.contradictionBetween(targetId, out.memoryId as string)?.how).toBe("changed");
     expect(c.store.row(targetId)?.superseded_by).toBeNull();
     expect(c.store.physicsOf(targetId).pressure).toBe(0);
   });

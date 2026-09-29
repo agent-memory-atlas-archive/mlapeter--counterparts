@@ -1832,6 +1832,12 @@ describe("observer mode is enforced at the store seam", () => {
     setAbout: ["mem_000000000000", "me", { by: "writer" }],
     openReflection: [{ id: "rfl_x", day: 0, questions: [], shown: [] }],
     updateReflection: ["rfl_x", { state: "reflected" }],
+    // v10 (2026-09-29, contradictions).
+    flagContradiction: [{ id: "ctr_x", x: "mem_000000000000", y: "mem_000000000001", source: "dream", day: 0 }],
+    markContradictionRaised: ["ctr_x", 1],
+    withdrawContradiction: ["ctr_x"],
+    settleContradiction: [{ pairId: "ctr_x", how: "open", holds: null, over: null, actor: "owner", actorId: null, why: null, day: 0 }],
+    undoContradictionSettle: [{ pairId: "ctr_x", settleSeq: 1, actor: "owner", actorId: null, why: null, day: 0 }],
   };
 
   function populated(): { id: string; snapshot: string } {

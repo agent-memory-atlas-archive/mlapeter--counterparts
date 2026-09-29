@@ -119,8 +119,9 @@ export function cueModeOf(doc: Pick<ProseDoc, "meta">): CueMode {
  *     move is not a new reminder (`lineage`);
  *   - the old memory's `reminderMovedTo` names where it went, so a later
  *     revision that addresses the OLD id (which stays live: revising an
- *     ordinary memory is link-only) still finds the reminder to reschedule or
- *     drop, instead of finding nothing.
+ *     ordinary memory settles it `changed` or `open` without superseding it —
+ *     a `corrected` one is archived, and a revision of it is refused) still
+ *     finds the reminder to reschedule or drop, instead of finding nothing.
  */
 export const DATE_FROM_META = "reminderFrom";
 export const DATE_MOVED_TO_META = "reminderMovedTo";

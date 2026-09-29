@@ -270,6 +270,17 @@ export const TUNABLES = {
    *  (scar §2.4: "did not fire" and "was never asked" are different records). */
   SYMMETRY_MIN_SAMPLE: 20,
 
+  // --- §5.12 a changed fact fades once (2026-09-29, contradictions) ---
+  /**
+   * What a memory's DECAY is multiplied by, once, when it is settled as
+   * `changed` — true at its time, not now ("used React, now Vue"). 0.5 halves
+   * its strength today; ordinary forgetting does the rest, and a real use
+   * re-anchors the curve like any other (FadeMem's graded weakening, not a
+   * switch). Working default from the 2026-09-29 brief ("start around half").
+   * CAL.
+   */
+  CHANGED_FADE: 0.5,
+
   // --- §5.2 per-kind physics [v1 §4.3] ---
   /** CAL, all of it. v1 recorded which ARM DRIVES, not a weight, so every
    *  non-driving omega below is a proposed reading, not a measurement
@@ -621,6 +632,63 @@ export function decay(m: MemoryPhysics, d: number, shape: DecayShape = TUNABLES.
 
 export function strength(m: MemoryPhysics, d: number, shape: DecayShape = TUNABLES.DECAY_SHAPE): number {
   return clamp01(base(m) * decay(m, d, shape));
+}
+
+// ---------------------------------------------------------------------------
+// §5.12 A changed fact fades once
+// ---------------------------------------------------------------------------
+
+/** What `changedFade` proposes: the new `lastUsedDay`, and strength before and after. */
+export interface FadeOutcome {
+  /** The patch: the memory reads as last used this lived day. */
+  readonly lastUsedDay: number;
+  readonly before: number;
+  readonly after: number;
+}
+
+/**
+ * ONE STRENGTH CUT FOR A MEMORY SETTLED AS `changed` (2026-09-29): the
+ * `lastUsedDay` at which the forgetting curve reads `factor` x what it reads
+ * now — the curve inverted for the shape in use — so strength today is cut by
+ * about `factor` (rounded to a whole lived day, never less of a cut) and
+ * nothing else about the memory moves. Ordinary decay carries on from there,
+ * the prune's dwell counts from there, and a credited use re-anchors it
+ * (`creditUse` sets `lastUsedDay := d`), which is what "use can hold it"
+ * means. Null when there is nothing to cut: a decay-exempt memory (core), a
+ * factor of 1 or more, or a curve already at zero.
+ */
+export function changedFade(
+  m: MemoryPhysics,
+  d: number,
+  factor: number = TUNABLES.CHANGED_FADE,
+  shape: DecayShape = TUNABLES.DECAY_SHAPE,
+): FadeOutcome | null {
+  if (m.promotedIdentity) return null;
+  if (!Number.isFinite(factor) || factor >= 1) return null;
+  const f = Math.max(factor, 1e-6);
+  const now = decay(m, d, shape);
+  if (!(now > 0)) return null;
+  const s = stability(m);
+  const dt = Math.max(0, d - m.lastUsedDay);
+  let dtNext: number;
+  switch (shape) {
+    case "flat":
+      dtNext = s * (1 - f * (1 - dt / s));
+      break;
+    case "power-law":
+      dtNext = s * ((1 + dt / s) * Math.pow(f, -1 / TUNABLES.POWER_LAW_PSI) - 1);
+      break;
+    case "exponential":
+    default:
+      dtNext = dt - s * Math.log(f);
+      break;
+  }
+  const lastUsedDay = Math.min(Math.floor(d - dtNext), m.lastUsedDay - 1);
+  return {
+    lastUsedDay,
+    before: strength(m, d, shape),
+    after: strength({ ...m, lastUsedDay }, d, shape),
+  };
 }
 
 // ---------------------------------------------------------------------------

@@ -222,6 +222,18 @@ export function chaseRemoved(store: Store, id: string): ChaseReport {
     const reflections = redactReflections(db, id, row?.title ?? null, row?.body ?? "");
     db.run("UPDATE dream_changes SET ref = NULL WHERE ref = ?", id);
     db.run("UPDATE dream_changes SET ref2 = NULL WHERE ref2 = ?", id);
+    // v10: its contradiction pairs go, and their trail with them — a settle's
+    // `why` is words about the two memories. A pair another settle closed
+    // through one of these loses its `via` (it stays settled; the address is
+    // blanked). A store that has not yet gained the tables has nothing to delete.
+    if (db.get<{ n: number }>("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = 'contradictions'")?.n) {
+      const pairs = db.all<{ id: string }>("SELECT id FROM contradictions WHERE a = ? OR b = ?", id, id).map((r) => r.id);
+      for (const pair of pairs) {
+        db.run("DELETE FROM contradiction_settles WHERE pair_id = ?", pair);
+        db.run("UPDATE contradictions SET via = NULL WHERE via = ?", pair);
+        db.run("DELETE FROM contradictions WHERE id = ?", pair);
+      }
+    }
 
     // Version rows stay (a successor's predecessor pointer lives here) and lose
     // every word they held. `reason`, `version_day` and `successor_id` are

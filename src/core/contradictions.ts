@@ -1,0 +1,561 @@
+/**
+ * CONTRADICTIONS — the mechanism (2026-09-29). Reconsolidation and
+ * interference: two memories that disagree are noticed, settled, and the
+ * settlement is kept and can be undone. A file beside `revision.ts`, not a
+ * module, for the reason `revision.ts` is one: it is the seam where a memory
+ * that argues with another one lands, and every door reaches it. Its docs sit
+ * with the revision dispatch (`schemas/CONTRACT.md` §5 and `schemas/NOTES.md`),
+ * its table with the store (`contradictions`, `contradiction_settles`, schema
+ * v10), its labels with recall (`recall/standing.ts`).
+ *
+ * **Three kinds, each with its own outcome** (`SETTLE_HOWS`, working
+ * defaults from the 2026-09-29 brief, held lightly):
+ *
+ *   | how         | the memory it is over                                    |
+ *   |-------------|----------------------------------------------------------|
+ *   | `changed`   | one strength cut through physics (`changedFade`), stays   |
+ *   |             | recallable, labelled `earlier`; use can hold it           |
+ *   | `corrected` | archived `corrected` — out of recall, readable by its own |
+ *   |             | id, never deleted                                         |
+ *   | `open`      | nothing moves; both are shown with each other             |
+ *
+ * **One way to settle, from anywhere.** A new memory settles the one it
+ * `updates` as it is written (`settleOnWrite`, called by `revision.ts` in
+ * place of the ordinary-memory "link-only" arm); a pair that already exists —
+ * a dream's flag, where both memories are old — is settled by `settle`, which
+ * the awake `note` tool, the dream's `settle` action, the reflection and the
+ * owner's `counterparts settle` all reach. No gate on who: a TRAIL instead
+ * (`contradiction_settles`: who, the kind, why, the ids, when), and every
+ * settle can be undone (`undo`): the strength back for `changed`, back into
+ * recall for `corrected`, and the pair is unsettled again.
+ *
+ * **Settling an existing pair rewrites no body.** Appending the journey line
+ * to the winner would be a revision (a supersede, a forwarding address), which
+ * fights the rule that an old id reads as itself. The record of an existing
+ * pair is its trail row's `why` and the link; recall reads the rest off the
+ * pair (`recall/standing.ts`). A new memory carries its journey line in its
+ * own words, written by the model — the tool descriptions ask for it.
+ *
+ * **Noticing at write time** (`writeNeighbours`): the nearest few live
+ * memories of one just written, above a similarity bar, handed back with the
+ * write so the writer can settle there and then. No model call.
+ *
+ * Arithmetic and bookkeeping only. Refusals are RETURNED with a reason and a
+ * sentence, never thrown; an observer writes nothing and says so.
+ */
+import { randomBytes } from "node:crypto";
+
+import { lineOf } from "./fit/index.js";
+import { changedFade, cosine } from "./physics/index.js";
+import { isHandoff } from "./recall/index.js";
+import { similarity } from "./remember/index.js";
+import { isStoreError, rowTombstoned } from "./store/index.js";
+import type { ContradictionRow, MemoryRow, Store } from "./store/index.js";
+import { SETTLE_HOWS } from "./types.js";
+import type { SettleHow } from "./types.js";
+
+export { SETTLE_HOWS } from "./types.js";
+export type { SettleHow } from "./types.js";
+
+/** Who settled: the trail's `actor`. */
+export const SETTLE_ACTORS = ["session", "dream", "reflection", "page-writer", "owner"] as const;
+export type SettleActor = (typeof SETTLE_ACTORS)[number];
+
+/** Working defaults, held lightly. */
+export const CONTRADICTION_TUNABLES = {
+  /** Characters of a settle's `why` kept (a short reason, not an essay). */
+  WHY_CHARS: 300,
+  /** Most neighbours handed back with a write (the brief's "2–3"). */
+  NEIGHBOURS: 3,
+  /** Candidates read per neighbour search, from each channel. */
+  NEIGHBOUR_CANDIDATES: 8,
+  /**
+   * Word-overlap bar (token cosine, `remember/similarity`) a neighbour must
+   * clear. `updates:` resolution takes 0.55 as "the same memory"; a memory
+   * that might disagree shares the subject, not the wording, so lower. CAL.
+   */
+  NEIGHBOUR_LEXICAL: 0.4,
+  /**
+   * Meaning bar (the embedder's cosine) a neighbour may clear instead. The
+   * static table's related pairs averaged 0.58 in the 2026-09-23 trial and
+   * unrelated ones 0.06; a disagreement about the same thing sits well above
+   * the related mean. CAL.
+   */
+  NEIGHBOUR_COSINE: 0.7,
+  /** Characters of each neighbour's excerpt. */
+  EXCERPT_CHARS: 160,
+} as const;
+
+/** The archive reason a `corrected` memory carries. */
+export const CORRECTED_REASON = "corrected";
+
+/** Durable event names (`dashboard/registries.ts` and `fired.ts` read them). */
+export const CONTRADICTION_FLAGGED_EVENT = "contradiction.flagged";
+export const CONTRADICTION_SETTLED_EVENT = "contradiction.settled";
+export const CONTRADICTION_UNDONE_EVENT = "contradiction.undone";
+
+/** The one line a write's result carries beside its neighbours. */
+export const NEIGHBOURS_HINT =
+  "These existing memories are close to what you just wrote. If the new memory changes, corrects or disagrees with one of them, settle it now: note with settle {holds, over, how, why}.";
+
+export type SettleRefusal =
+  | "observer"
+  | "how-unknown"
+  | "pair-unknown"
+  | "pair-withdrawn"
+  | "already-settled"
+  | "holds-required"
+  | "not-in-pair"
+  | "same-memory"
+  | "unknown-memory"
+  | "removed"
+  | "not-a-memory"
+  | "moved-on"
+  | "archived"
+  | "protected"
+  | "core-takes-pressure"
+  | "failed";
+
+export type SettleOutcome =
+  | {
+      readonly ok: true;
+      readonly pair: string;
+      readonly how: SettleHow;
+      readonly holds: string | null;
+      readonly over: string | null;
+      /** A `changed` memory's cut: strength before and after, rounded. Null when there was nothing to cut. */
+      readonly faded: { readonly id: string; readonly before: number; readonly after: number } | null;
+      /** A `corrected` memory, now archived. */
+      readonly archived: string | null;
+      /** Unsettled pairs this settle closed through itself. */
+      readonly closed: readonly string[];
+      readonly note?: string;
+    }
+  | { readonly ok: false; readonly reason: SettleRefusal; readonly detail: string };
+
+export interface SettleInput {
+  /** An existing pair, by id (`ctr_…`). */
+  readonly pair?: string;
+  /** The memory that holds (changed / corrected); for `open`, one of the two. */
+  readonly holds?: string;
+  /** The memory it is over; for `open`, the other. */
+  readonly over?: string;
+  readonly how: string;
+  readonly why?: string | null;
+  readonly actor: SettleActor;
+  /** The session, dream or reflection id. */
+  readonly actorId?: string | null;
+  readonly day?: number;
+}
+
+function refuse(reason: SettleRefusal, detail: string): SettleOutcome {
+  return { ok: false, reason, detail };
+}
+
+function round(n: number): number {
+  return Math.round(n * 1000) / 1000;
+}
+
+function newPairId(): string {
+  return `ctr_${randomBytes(6).toString("hex")}`;
+}
+
+/** A settle's reason, trimmed and kept to its length; null when empty. */
+export function cleanWhy(why: string | null | undefined): string | null {
+  const t = (why ?? "").replace(/\s+/g, " ").trim();
+  return t.length === 0 ? null : t.slice(0, CONTRADICTION_TUNABLES.WHY_CHARS);
+}
+
+/** Read a `how` field: a known kind, or null. */
+export function readHow(v: unknown): SettleHow | null {
+  return typeof v === "string" && (SETTLE_HOWS as readonly string[]).includes(v) ? (v as SettleHow) : null;
+}
+
+/** Can this pair show — both its memories live, un-superseded, with words? */
+export function pairStanding(store: Pick<Store, "row">, pair: ContradictionRow): boolean {
+  const live = (id: string): boolean => {
+    const r = store.row(id);
+    return r !== undefined && r.archived === 0 && r.superseded_by === null && !rowTombstoned(r);
+  };
+  return live(pair.a) && live(pair.b);
+}
+
+/**
+ * The checks a memory in a settle must pass, as a refusal or null. `moves` is
+ * true for the memory a `changed` / `corrected` settle is OVER — the one whose
+ * standing changes, which the owner's protection and the core's slower path
+ * guard (`revision.ts`'s dispatch: protected refuses, identity takes pressure).
+ */
+function memoryRefusal(store: Store, id: string, moves: boolean): SettleOutcome | null {
+  const row = store.row(id);
+  if (row === undefined) return refuse("unknown-memory", `There is no memory ${id}.`);
+  if (rowTombstoned(row)) return refuse("removed", `${id} was removed by the owner.`);
+  if (row.type !== "memory") {
+    return refuse(
+      "not-a-memory",
+      `${id} is not a memory (a ${row.type} row): a belief or an entity changes through a new memory that updates it, and a journal chapter is not a claim.`,
+    );
+  }
+  if (row.superseded_by !== null) {
+    return refuse("moved-on", `${id} was replaced by ${row.superseded_by}; settle with that one.`);
+  }
+  if (row.archived === 1) return refuse("archived", `${id} is archived (${row.archived_reason ?? "archived"}), so it is out of recall already.`);
+  if (moves && row.protected === 1) return refuse("protected", `${id} is protected by the owner: it can be marked open, never changed or corrected.`);
+  if (moves && (row.band === "identity" || row.promoted_identity === 1)) {
+    return refuse(
+      "core-takes-pressure",
+      `${id} is a core memory: it changes only slowly, through a new memory that updates it (pressure over days). It can be marked open now.`,
+    );
+  }
+  return null;
+}
+
+/**
+ * SETTLE A PAIR — the one settle, whoever calls it. An existing pair by
+ * `pair` (a dream's flag, say), or two memories by `holds` and `over` (a
+ * standing pair between them is found and used). `changed` cuts the strength
+ * of the one it is over through physics; `corrected` archives it; `open`
+ * moves nothing. Writes the pair, the trail row and a durable event.
+ */
+export function settle(store: Store, input: SettleInput, opts: { closeFlags?: boolean; source?: string } = {}): SettleOutcome {
+  if (store.observer) return refuse("observer", "This session is an observer: it reads the store and writes nothing. Nothing was settled.");
+  const how = readHow(input.how);
+  if (how === null) return refuse("how-unknown", `how is one of ${SETTLE_HOWS.join(", ")}.`);
+  const day = input.day ?? store.livedDay();
+
+  let pair: ContradictionRow | undefined;
+  let holds = input.holds?.trim() || undefined;
+  let over = input.over?.trim() || undefined;
+  if (input.pair !== undefined && input.pair.trim().length > 0) {
+    pair = store.contradiction(input.pair.trim());
+    if (pair === undefined) return refuse("pair-unknown", `There is no contradiction ${input.pair}.`);
+    if (pair.state === "withdrawn") return refuse("pair-withdrawn", `${pair.id} was withdrawn: the dream that flagged it was undone.`);
+    const members = [pair.a, pair.b];
+    if (holds !== undefined && !members.includes(holds)) return refuse("not-in-pair", `${holds} is not one of ${pair.id}'s two memories (${pair.a}, ${pair.b}).`);
+    if (over !== undefined && !members.includes(over)) return refuse("not-in-pair", `${over} is not one of ${pair.id}'s two memories (${pair.a}, ${pair.b}).`);
+    if (holds === undefined && over !== undefined) holds = over === pair.a ? pair.b : pair.a;
+    if (holds === undefined) {
+      if (how !== "open") return refuse("holds-required", `Say which memory holds now: holds is ${pair.a} or ${pair.b}.`);
+      holds = pair.b;
+    }
+    over = holds === pair.a ? pair.b : pair.a;
+  } else {
+    if (holds === undefined || over === undefined) {
+      return refuse("holds-required", "Name the pair (pair: its id), or both memories: holds (the one that holds now) and over (the one it changes, corrects or disagrees with).");
+    }
+    if (holds === over) return refuse("same-memory", `holds and over are both ${holds}.`);
+    pair = store.contradictionBetween(holds, over);
+  }
+  if (pair !== undefined && pair.state === "settled") {
+    return refuse(
+      "already-settled",
+      `${pair.id} is already settled (${pair.how ?? "settled"}${pair.via === null ? "" : `, through ${pair.via}`}). Undo it first — counterparts settle --undo ${pair.via ?? pair.id} — then settle again.`,
+    );
+  }
+  const moves = how !== "open";
+  const bad = memoryRefusal(store, over, moves) ?? memoryRefusal(store, holds, false);
+  if (bad !== null) return bad;
+
+  const why = cleanWhy(input.why);
+  let fade: { id: string; lastUsedDay: number } | null = null;
+  let faded: { id: string; before: number; after: number } | null = null;
+  const notes: string[] = [];
+  const detail: Record<string, unknown> = {};
+  if (how === "changed") {
+    const physics = store.physicsOf(over);
+    const cut = changedFade(physics, day);
+    if (cut === null) {
+      notes.push(`${over} had no strength left to cut; it keeps its place as the earlier one.`);
+    } else {
+      fade = { id: over, lastUsedDay: cut.lastUsedDay };
+      faded = { id: over, before: round(cut.before), after: round(cut.after) };
+      detail["fade"] = { id: over, from: physics.lastUsedDay, to: cut.lastUsedDay, before: faded.before, after: faded.after };
+    }
+  }
+  const archive = how === "corrected" ? { id: over, reason: CORRECTED_REASON } : null;
+  if (archive !== null) detail["archived"] = over;
+  // A FLAG CLOSES WHEN ITS QUESTION IS ANSWERED ELSEWHERE (write-time): a new
+  // memory that settles one of an unsettled pair's two closes that pair
+  // through its own, so the older memory is not labelled twice.
+  const closes =
+    opts.closeFlags === true
+      ? (store.contradictionsOf([over]).get(over) ?? []).filter((c) => c.state === "unsettled" && c.id !== pair?.id).map((c) => c.id)
+      : [];
+  const holdsCol = how === "open" ? null : holds;
+  const overCol = how === "open" ? null : over;
+  let pairId: string;
+  try {
+    const out = store.settleContradiction({
+      ...(pair === undefined ? { newId: newPairId(), x: holds, y: over, source: opts.source ?? "settle" } : { pairId: pair.id }),
+      how,
+      holds: holdsCol,
+      over: overCol,
+      actor: input.actor,
+      actorId: input.actorId ?? null,
+      why,
+      day,
+      fade,
+      archive,
+      closes,
+      detail,
+    });
+    pairId = out.pairId;
+  } catch (err) {
+    return refuse("failed", `Nothing was settled: ${isStoreError(err) ? err.code : String((err as Error).message ?? err)}.`);
+  }
+  store.appendEvent({
+    name: CONTRADICTION_SETTLED_EVENT,
+    day,
+    ref: pairId,
+    payload: {
+      pair: pairId,
+      how,
+      holds: holdsCol,
+      over: overCol,
+      actor: input.actor,
+      actorId: input.actorId ?? null,
+      faded: faded !== null,
+      archived: archive !== null,
+      closed: closes.length,
+      day,
+    },
+  });
+  return {
+    ok: true,
+    pair: pairId,
+    how,
+    holds: holdsCol,
+    over: overCol,
+    faded,
+    archived: archive?.id ?? null,
+    closed: closes,
+    ...(notes.length > 0 ? { note: notes.join(" ") } : {}),
+  };
+}
+
+/**
+ * A NEW MEMORY SETTLES THE ONE IT `updates`, as it is written — the arm of
+ * `revision.ts` that used to be "link only" for an ordinary memory. `holds`
+ * is the new memory; `over` the one it updates. Closes any unsettled pair
+ * that named the old one. The link itself is already written (`meta.updates`).
+ */
+export function settleOnWrite(
+  store: Store,
+  input: { newId: string; targetId: string; how: SettleHow; actorId: string | null; day: number },
+): SettleOutcome {
+  return settle(
+    store,
+    { holds: input.newId, over: input.targetId, how: input.how, actor: "session", actorId: input.actorId, day: input.day },
+    { closeFlags: true, source: "write" },
+  );
+}
+
+/** FLAG A PAIR that disagrees (a dream's `contradiction`, today): unsettled, idempotent. */
+export function flag(
+  store: Store,
+  input: { x: string; y: string; source: string; day?: number; dreamId?: string | null; dreamSeq?: number | null },
+): { ok: true; pair: string; created: boolean; state: string } | { ok: false; reason: string; detail: string } {
+  if (store.observer) return { ok: false, reason: "observer", detail: "This session is an observer: nothing was flagged." };
+  const day = input.day ?? store.livedDay();
+  try {
+    const out = store.flagContradiction({
+      id: newPairId(),
+      x: input.x,
+      y: input.y,
+      source: input.source,
+      day,
+      dreamId: input.dreamId ?? null,
+      dreamSeq: input.dreamSeq ?? null,
+    });
+    if (out.created) {
+      store.appendEvent({
+        name: CONTRADICTION_FLAGGED_EVENT,
+        day,
+        ref: out.id,
+        payload: { pair: out.id, source: input.source, dream: input.dreamId ?? null, day },
+      });
+    }
+    return { ok: true, pair: out.id, created: out.created, state: out.state };
+  } catch (err) {
+    return { ok: false, reason: "failed", detail: isStoreError(err) ? err.code : String((err as Error).message ?? err) };
+  }
+}
+
+export type UndoOutcome =
+  | {
+      readonly ok: true;
+      readonly pair: string;
+      readonly how: string | null;
+      /** The `changed` memory's strength was put back. */
+      readonly restored: string | null;
+      /** The `corrected` memory is back in recall. */
+      readonly unarchived: string | null;
+      /** Pairs the settle had closed, unsettled again. */
+      readonly reopened: readonly string[];
+      readonly note?: string;
+    }
+  | { readonly ok: false; readonly reason: string; readonly detail: string };
+
+/**
+ * UNDO A SETTLE: the `changed` cut is put back when it still stands (a use
+ * since has already lifted it, and that is left alone), a `corrected` memory
+ * comes back into recall, and the pair — with every pair it closed — is
+ * unsettled again, to be raised afresh. Recorded on the trail.
+ */
+export function undo(
+  store: Store,
+  input: { pair: string; actor: SettleActor; actorId?: string | null; why?: string | null; day?: number },
+): UndoOutcome {
+  if (store.observer) return { ok: false, reason: "observer", detail: "This session is an observer: nothing was undone." };
+  const day = input.day ?? store.livedDay();
+  const pair = store.contradiction(input.pair.trim());
+  if (pair === undefined) return { ok: false, reason: "pair-unknown", detail: `There is no contradiction ${input.pair}.` };
+  if (pair.via !== null) {
+    return { ok: false, reason: "closed-through", detail: `${pair.id} was closed through ${pair.via}; undo that one.` };
+  }
+  if (pair.state !== "settled") return { ok: false, reason: "not-settled", detail: `${pair.id} is ${pair.state}; there is no settle to undo.` };
+  const last = store
+    .contradictionSettles({ pairId: pair.id })
+    .filter((s) => s.action === "settle" && s.undone === 0)
+    .pop();
+  if (last === undefined) return { ok: false, reason: "no-settle", detail: `${pair.id} has no settle on its trail to undo.` };
+  let d: Record<string, unknown> = {};
+  try {
+    d = JSON.parse(last.detail) as Record<string, unknown>;
+  } catch {
+    d = {};
+  }
+  const notes: string[] = [];
+  let restore: { id: string; lastUsedDay: number } | null = null;
+  const fade = d["fade"] as { id?: unknown; from?: unknown; to?: unknown } | undefined;
+  if (fade !== undefined && typeof fade.id === "string" && typeof fade.from === "number" && typeof fade.to === "number") {
+    const now = store.row(fade.id);
+    if (now !== undefined && now.last_used_day === fade.to) restore = { id: fade.id, lastUsedDay: fade.from };
+    else notes.push(`${fade.id} was used since it was settled, so its strength had already come back; it is left as it is.`);
+  }
+  const archived = typeof d["archived"] === "string" ? (d["archived"] as string) : null;
+  const closes = Array.isArray(d["closes"]) ? (d["closes"] as unknown[]).filter((x): x is string => typeof x === "string") : [];
+  const reopen = closes.filter((c) => store.contradiction(c)?.via === pair.id);
+  let unarchived = false;
+  try {
+    const out = store.undoContradictionSettle({
+      pairId: pair.id,
+      settleSeq: last.seq,
+      actor: input.actor,
+      actorId: input.actorId ?? null,
+      why: cleanWhy(input.why),
+      day,
+      restore,
+      unarchive: archived === null ? null : { id: archived, reason: CORRECTED_REASON },
+      reopen,
+      detail: { restored: restore?.id ?? null, archived, reopened: reopen },
+    });
+    unarchived = out.unarchived;
+  } catch (err) {
+    return { ok: false, reason: "failed", detail: `Nothing was undone: ${isStoreError(err) ? err.code : String((err as Error).message ?? err)}.` };
+  }
+  if (archived !== null && !unarchived) notes.push(`${archived} has moved on since it was archived, so it was not brought back.`);
+  store.appendEvent({
+    name: CONTRADICTION_UNDONE_EVENT,
+    day,
+    ref: pair.id,
+    payload: { pair: pair.id, how: pair.how, actor: input.actor, restored: restore !== null, unarchived, reopened: reopen.length, day },
+  });
+  return {
+    ok: true,
+    pair: pair.id,
+    how: pair.how,
+    restored: restore?.id ?? null,
+    unarchived: unarchived ? archived : null,
+    reopened: reopen,
+    ...(notes.length > 0 ? { note: notes.join(" ") } : {}),
+  };
+}
+
+/** One neighbour of a memory just written: enough to recognise it and decide. */
+export interface Neighbour {
+  readonly id: string;
+  readonly title: string | null;
+  readonly excerpt: string;
+}
+
+function excerptOf(body: string, chars: number): string {
+  const flat = body.replace(/\s+/g, " ").trim();
+  if (flat.length <= chars) return flat;
+  const hard = flat.slice(0, Math.max(0, chars - 1));
+  const space = hard.lastIndexOf(" ");
+  return `${space > chars * 0.6 ? hard.slice(0, space) : hard}…`;
+}
+
+/**
+ * THE NEAREST FEW LIVE MEMORIES of one just written (2026-09-29), for the
+ * writer to settle there and then. Candidates from both channels — the
+ * embedder's nearest vectors when there are any, and the token index — and a
+ * candidate is kept when it clears either bar: word overlap
+ * (`NEIGHBOUR_LEXICAL`) or meaning (`NEIGHBOUR_COSINE`). Only what could
+ * surface for this writer: live, un-superseded memory rows with words — not a
+ * journal chapter, a handoff, a schema row, the memory it `updates`, or a
+ * confidential one outside the owner's session. No model call; bounded.
+ */
+export function writeNeighbours(
+  store: Store,
+  input: { id: string; exclude?: readonly string[]; owner: boolean; limit?: number },
+): Neighbour[] {
+  const T = CONTRADICTION_TUNABLES;
+  const row = store.row(input.id);
+  if (row === undefined || rowTombstoned(row)) return [];
+  const text = `${row.title ?? ""}\n${row.body}`;
+  const skip = new Set<string>([input.id, ...(input.exclude ?? [])]);
+  const vec = (() => {
+    try {
+      return store.vectorOf(input.id);
+    } catch {
+      return null;
+    }
+  })();
+  const cosByHit = new Map<string, number>();
+  const candidates: string[] = [];
+  if (vec !== null) {
+    try {
+      for (const h of store.nearestTo(vec, T.NEIGHBOUR_CANDIDATES + skip.size)) {
+        cosByHit.set(h.id, h.score);
+        candidates.push(h.id);
+      }
+    } catch {
+      /* no vectors to rank: the words decide */
+    }
+  }
+  try {
+    for (const h of store.search(text, T.NEIGHBOUR_CANDIDATES + skip.size)) candidates.push(h.id);
+  } catch {
+    /* an unreadable index answers nothing */
+  }
+  const scored: { id: string; score: number; row: MemoryRow }[] = [];
+  const seen = new Set<string>();
+  for (const id of candidates) {
+    if (seen.has(id) || skip.has(id)) continue;
+    seen.add(id);
+    const c = store.row(id);
+    if (c === undefined || c.type !== "memory" || c.archived === 1 || c.superseded_by !== null || rowTombstoned(c)) continue;
+    if (c.confidential === 1 && !input.owner) continue;
+    try {
+      if (isHandoff(store.readProse(id))) continue;
+    } catch {
+      continue;
+    }
+    const lex = similarity(text, `${c.title ?? ""}\n${c.body}`);
+    let cos = cosByHit.get(id) ?? null;
+    if (cos === null && vec !== null) {
+      const other = store.vectorOf(id);
+      if (other !== null && other.length === vec.length) cos = cosine(vec, other);
+    }
+    if (lex < T.NEIGHBOUR_LEXICAL && (cos === null || cos < T.NEIGHBOUR_COSINE)) continue;
+    scored.push({ id, score: Math.max(lex, cos ?? 0), row: c });
+  }
+  scored.sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1));
+  return scored.slice(0, input.limit ?? T.NEIGHBOURS).map((s) => ({
+    id: s.id,
+    title: s.row.title === null || s.row.title.trim().length === 0 ? lineOf({ body: s.row.body }) || null : s.row.title,
+    excerpt: excerptOf(s.row.body, T.EXCERPT_CHARS),
+  }));
+}

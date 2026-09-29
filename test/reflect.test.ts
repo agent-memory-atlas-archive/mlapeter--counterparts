@@ -22,7 +22,7 @@ import { Counterpart } from "../src/core/counterpart.js";
 import { DREAM_MARK, REFLECT_QUESTIONS, REFLECT_TUNABLES } from "../src/core/dream/index.js";
 import { TUNABLES as PHYSICS, promotionEligibility } from "../src/core/physics/index.js";
 import { REFLECTED_FEELING_KEY, aboutMe, promotionRecordKey, runCycle } from "../src/core/sleep/index.js";
-import { V9_UPGRADE_KEY, paths } from "../src/core/store/index.js";
+import { SCHEMA_VERSION, V9_UPGRADE_KEY, paths } from "../src/core/store/index.js";
 import type { PutInput } from "../src/core/store/index.js";
 
 let dir: string;
@@ -229,7 +229,7 @@ describe("the v9 upgrade carries today's rule, and says so", () => {
 
       const after = Counterpart.open({ dir, owner: true, snapshotsDir: join(root, "snaps") });
       open.push(after);
-      expect(after.store.getMeta("schemaVersion")).toBe("9");
+      expect(after.store.getMeta("schemaVersion")).toBe(String(SCHEMA_VERSION));
       expect(after.store.migration?.from).toBe("8");
       expect(after.store.read(self)).toMatchObject({ about: "me", aboutBy: "upgrade" });
       expect(after.store.read(him)).toMatchObject({ about: "owner", aboutBy: "upgrade" });

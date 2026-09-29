@@ -111,6 +111,9 @@ import type {
 } from "./encode/index.js";
 import { recallTurn } from "./retrieval.js";
 import { applyRevision } from "./revision.js";
+import type { RevisionApplication } from "./revision.js";
+import { settle as settleContradiction, undo as undoContradiction, writeNeighbours } from "./contradictions.js";
+import type { Neighbour, SettleInput, SettleOutcome, UndoOutcome } from "./contradictions.js";
 import { Schemas } from "./schemas/index.js";
 import {
   HANDOFF_CLEARED_EVENT,
@@ -870,6 +873,12 @@ export interface DepositResult {
    * where it came from (`Counterpart#carryReminder`, review N7).
    */
   readonly reminder?: DepositReminder;
+  /**
+   * What the declared `updates:` did (2026-09-29): which arm of the revision
+   * dispatch ran, and — on the ordinary-memory arm — how the old memory was
+   * settled, or why it was not. Absent when nothing was declared.
+   */
+  readonly revision?: RevisionApplication;
 }
 
 /** A revision's reminder: carried over, replaced, or dropped — and moved. */
@@ -2607,6 +2616,40 @@ export class Counterpart {
       ...(typeof t.carriedBy === "string" ? { carriedBy: redactSecrets(t.carriedBy) } : {}),
     }));
     return this.store.addTraits(memoryId, clean, opts);
+  }
+
+  /**
+   * SETTLE A CONTRADICTION (2026-09-29, `contradictions.ts`) — an existing
+   * pair, or two memories by `holds` and `over` — with the `why` through the
+   * SECRETS half of the battery: a reason is words, and a credential must not
+   * land in the trail any more than in a body.
+   */
+  settleContradiction(input: SettleInput): SettleOutcome {
+    return settleContradiction(this.store, {
+      ...input,
+      ...(typeof input.why === "string" ? { why: redactSecrets(input.why) } : {}),
+    });
+  }
+
+  /** Undo a settle (`contradictions.ts#undo`), the reason through the same scan. */
+  undoContradiction(input: Parameters<typeof undoContradiction>[1]): UndoOutcome {
+    return undoContradiction(this.store, {
+      ...input,
+      ...(typeof input.why === "string" ? { why: redactSecrets(input.why) } : {}),
+    });
+  }
+
+  /**
+   * The nearest few live memories of one just written (`contradictions.ts
+   * #writeNeighbours`), for the write's result — minus the memory it updates.
+   */
+  writeNeighbours(id: string, opts: { exclude?: readonly string[]; owner: boolean }): Neighbour[] {
+    try {
+      return writeNeighbours(this.store, { id, owner: opts.owner, ...(opts.exclude === undefined ? {} : { exclude: opts.exclude }) });
+    } catch {
+      // A neighbour search that fails costs the list, never the write.
+      return [];
+    }
   }
 
   /** An in-the-moment deliberate deposit. Channel: `authored`. Always covers
@@ -4455,7 +4498,7 @@ export class Counterpart {
     this.recordDeposit(result, ctx, source, mint);
     const titled = this.mentionFromProposal(proposal, `deposit:${mint.id}`);
     this.creditNamedIn(proposal.title ?? null, proposal.content, proposal.day, mint.id, source, titled);
-    this.applyDeclaredRevision(proposal, mint, source);
+    const revision = this.applyDeclaredRevision(proposal, mint, source, ctx.session);
     return {
       deposited: true,
       reason: "minted",
@@ -4465,6 +4508,7 @@ export class Counterpart {
       gate: null,
       covers: proposal.covers,
       ...(reminder === null ? {} : { reminder }),
+      ...(revision === null ? {} : { revision }),
     };
   }
 
@@ -4789,9 +4833,9 @@ export class Counterpart {
    * one with `encode/`'s `revision.challenge` effects — an address that resolves
    * to nothing becomes a countable refusal instead of silence.
    */
-  private applyDeclaredRevision(proposal: Proposal, mint: MintResult, door: string): void {
+  private applyDeclaredRevision(proposal: Proposal, mint: MintResult, door: string, session: string | null = null): RevisionApplication | null {
     const address = mint.updates ?? proposal.updates?.declared ?? null;
-    if (address === null) return;
+    if (address === null) return null;
     const out = applyRevision(
       this.store,
       this.schemas,
@@ -4803,6 +4847,10 @@ export class Counterpart {
         // whether this is a softening or a confirmation, for the freeze seam and
         // for the pressure path alike (SEAMS N — the two must not disagree).
         ...(proposal.updates?.method === undefined ? {} : { method: proposal.updates.method }),
+        // HOW an authored declaration settles an ordinary memory (2026-09-29);
+        // a swept proposal carries none and its declaration stays a link.
+        ...(proposal.how === undefined ? {} : { how: proposal.how }),
+        session,
       },
       {
         // SEAMS E again, for the memory paths `schemas/` does not own.
@@ -4821,7 +4869,9 @@ export class Counterpart {
       verdict: out.verdict,
       successor: out.successorId,
       day: proposal.day,
+      settled: out.settle?.ok === true ? out.settle.pair : null,
     });
+    return out;
   }
 
   /**
