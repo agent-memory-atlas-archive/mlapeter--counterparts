@@ -1358,6 +1358,14 @@ function openAndAnswered(dataDir: string, h: HeldSession): boolean {
  * clause left a crashed session to the opt-in API sweep; that sweep was removed
  * with its key.)
  */
+/** A SHORT debt the pointer may offer: known to the registry, not running. */
+function shortWriteUpDue(h: HeldSession, dataDir: string, now: number): boolean {
+  if (!h.owesShort) return false;
+  const path = sessionPath(dataDir, h.session);
+  if (path === null || !existsSync(path)) return false;
+  return !runningNow(dataDir, h.session, now);
+}
+
 export function waitingForWriteUp(h: HeldSession, dataDir: string, now: number): boolean {
   if (!h.owes) return false;
   if (runningNow(dataDir, h.session, now)) return false;
@@ -1450,9 +1458,11 @@ export function awaitingWriteUp(plan: readonly HeldSession[], dataDir: string, n
  * that key, one session nobody writes up would stand in front of every other
  * session in its project for ever.
  *
- * A short one is eligible on the same terms as a full one (not running, not
- * open-and-answered), but it is not in `waitingForWriteUp` — doctor's count —
- * because it is not a debt that keeps its text: it ages out with its week.
+ * A short one is eligible when the host's registry KNOWS it — a session our
+ * hooks saw start, which is what a person's conversation is; the unbound MCP
+ * server's shared `"mcp"` id (remember NOTES §16, n2) has no record — and is not
+ * running. It is not in `waitingForWriteUp` — doctor's count — because it is
+ * not a debt that keeps its text: it ages out with its week.
  */
 export function owedWriteUps(
   plan: readonly HeldSession[],
@@ -1469,7 +1479,7 @@ export function owedWriteUps(
   const out: { held: HeldSession; here: string; short: boolean }[] = [];
   for (const h of plan) {
     if (h.session === opts.exclude) continue;
-    const eligible = waitingForWriteUp(h, dataDir, now) || (h.owesShort && !runningNow(dataDir, h.session, now));
+    const eligible = waitingForWriteUp(h, dataDir, now) || shortWriteUpDue(h, dataDir, now);
     if (!eligible) continue;
     const standing = writeUpStanding(plan, dataDir, h.session, scope, now, {
       ...(opts.progress === undefined ? {} : { progress: opts.progress }),

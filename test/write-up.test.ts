@@ -1099,6 +1099,18 @@ describe("the short write-up: a session under the first-ask threshold (2026-09-2
     expect(plan.find((h) => h.session === "night-child")).toBeUndefined();
   });
 
+  test("a short debt with NO registry record — the unbound MCP server's shared `mcp` id — is never pointed at", () => {
+    const s = seeder();
+    s.set(Date.now() - 2 * DAY);
+    s.c.captureJot({ session: "mcp", scope: PROJ, text: "A note that would not parse, kept as a jot." });
+    s.done();
+    const c = Counterpart.open({ dir: storeDir, owner: true });
+    const held = planRetention(c.spans, writeUpSources(c.store, FIRST_ASK)).find((h) => h.session === "mcp");
+    c.close();
+    expect(held?.owesShort).toBe(true);
+    expect(start("new-1").ask).toBeNull();
+  });
+
   test("doctor's awaiting count stays the FULL debts: a short one ages out, it is not a wait to flag", () => {
     const s = seeder();
     ended(s, "short-old", { at: Date.now() - (WRITE_UP_WAIT_DAYS + 2) * DAY, bytes: 200, asked: false });
