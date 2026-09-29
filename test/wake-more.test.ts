@@ -105,6 +105,27 @@ describe("the line", () => {
   });
 });
 
+describe("beside #284's standing labels", () => {
+  test("a lane whose elements carry standing labels and a 'more' line still fits the budget, and the labels are counted", () => {
+    const labelled: Resolve = (id) => ({
+      statement: `The open question numbered ${id}.`,
+      learnedOn: "2026-09-01",
+      standing: { prefix: "Unsettled — may be out of date, see [ctr_0001]: ", suffix: " (disagrees with [mem_other])" },
+    });
+    const roomy = render(lanes(12, 3), { budgetBytes: 100_000, day: 5 }, labelled, SELF_TUNABLES);
+    expect(roomy.text).toContain("Unsettled — may be out of date");
+    expect(roomy.text).toContain("(3 more still open; recall ids: mem_t12, mem_t13, mem_t14)");
+    // At every budget from roomy down to well under it: never over, sentinel true.
+    for (let budget = roomy.bytes; budget >= roomy.bytes - 600; budget -= 37) {
+      const out = render(lanes(12, 3), { budgetBytes: budget, day: 5 }, labelled, SELF_TUNABLES);
+      expect(out.bytes, String(budget)).toBeLessThanOrEqual(budget);
+      expect(readSentinel(out.text).intact, String(budget)).toBe(true);
+      // Whatever the trim took is named in the line when the line fits.
+      if (out.more.threads !== undefined) expect(out.more.threads).toBe(3 + out.trimmed.filter((t) => t.lane === "threads").length);
+    }
+  });
+});
+
 describe("the ids work through the recall tool", () => {
   test("a real store past the threads cap: every id the wake names comes back from `recall ids`", async () => {
     const c = Counterpart.open({ dir, owner: true });
