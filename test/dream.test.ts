@@ -620,8 +620,8 @@ describe("the ask reaches a session through user-prompt-submit, once a day — t
       recordSession(dir, { sessionId: hook.sessionId, scope: hook.scope, phase: "start" });
       return hook;
     };
-    // The headless page writer is told nothing, and claims nothing.
-    expect(a.userPromptSubmit(input({ sessionId: "pw", pageWriter: true })).injection).not.toContain("dream");
+    // The headless nightly run's child is told nothing, and claims nothing.
+    expect(a.userPromptSubmit(input({ sessionId: "pw", nightRun: true })).injection).not.toContain("dream");
     const first = a.userPromptSubmit(input({ sessionId: "s1" }));
     // The default setting, `ask` (2026-09-29): the model is told what each
     // answer means, and the PERSON is shown the question.

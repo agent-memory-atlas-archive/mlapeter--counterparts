@@ -508,6 +508,29 @@ describe("plain reminders", () => {
     expect(c.prospective.arrivals({ at: "2026-10-16", day: 4 }).arrivals.map((a) => a.memoryId)).toEqual([id]);
   });
 
+  test("TOLD ON ITS DAY, a plain reminder leaves Arriving for the grace week — still a cue for recall; a quiet one stays (2026-09-29)", () => {
+    const { c, id } = counterpartWithDate("2026-10-15", "plain");
+    const quiet = dated(c.store, "2026-10-15", { title: "the quiet one", meta: { [CUE_MODE_META]: "quiet" } });
+    const lane = (at: string, day: number): string[] => c.prospective.horizon({ at, day }).items.map((i) => i.memoryId);
+    // Before its day it is arriving, like any day item.
+    expect(lane("2026-10-13", 1).sort()).toEqual([id, quiet].sort());
+    // Told on its day...
+    expect(c.plainReminders({ at: "2026-10-15" }).map((r) => r.memoryId)).toEqual([id]);
+    // ...it is gone from the lane for every day of grace, while the quiet one
+    // stays, and the told one still ARRIVES — recall's cue path still has it.
+    for (let k = 1; k <= T.GRACE_DAYS; k++) {
+      const at = `2026-10-${String(15 + k).padStart(2, "0")}`;
+      expect(lane(at, 3 + k), at).toEqual([quiet]);
+      expect(c.prospective.arrivals({ at, day: 3 + k }).arrivals.map((a) => a.memoryId), at).toContain(id);
+    }
+  });
+
+  test("a plain reminder whose day passed UNTOLD stays in Arriving through grace", () => {
+    const { c, id } = counterpartWithDate("2026-10-15", "plain");
+    // Nobody opened a session on the 15th: no beat was told.
+    expect(c.prospective.horizon({ at: "2026-10-16", day: 4 }).items.map((i) => i.memoryId)).toEqual([id]);
+  });
+
   test("a CONFIDENTIAL plain item is told only in the owner's own session", () => {
     const c = Counterpart.open({ dir });
     open.push(c);

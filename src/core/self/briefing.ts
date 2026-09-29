@@ -100,6 +100,47 @@ export const FRAMING = {
 } as const;
 
 /**
+ * THE WAKE SAYS WHAT IT LEFT OUT (2026-09-29, audit item 5). A lane that lost
+ * elements — to its cap (`identity.ts#rankLanes`), to the identity share, or to
+ * the budget trim — gets at most ONE short line saying how many more there are
+ * and the ids `recall` can fetch whole (its `ids` argument). Furniture, like the
+ * day-0 line: no `- ` bullet, not counted in `counts` or `elements`. It goes in
+ * only while the composition still fits the budget; a line that does not fit is
+ * dropped without a word, and the trim's own count stays in telemetry
+ * (`self.briefing.trim`) as before.
+ *
+ * How many ids one line names. `recall` takes up to ten at once; five keeps the
+ * line near 120 bytes, and the count says when there are more than it names.
+ */
+export const MORE_LINE_IDS = 5;
+
+/** What each lane's line calls the rest — the lane's heading, as a phrase. */
+export const MORE_NOUN: Readonly<Record<LaneName, string>> = {
+  identity: "about who I am",
+  craft: "on how I work",
+  threads: "still open",
+  hints: "nearby",
+  horizon: "arriving",
+};
+
+/** The order lanes are offered room for their line: the reverse of the trim
+ *  order, so the lanes that are cut last are also told about first. */
+const MORE_ORDER: readonly LaneName[] = [
+  "identity",
+  "horizon",
+  "threads",
+  "craft",
+  "hints",
+];
+
+/** `(3 more still open; recall ids: mem_…, mem_…, mem_…)` */
+export function moreLine(lane: LaneName, ids: readonly string[]): string {
+  const shown = ids.slice(0, MORE_LINE_IDS);
+  const which = ids.length > shown.length ? `recall ids (the first ${String(shown.length)})` : "recall ids";
+  return `(${String(ids.length)} more ${MORE_NOUN[lane]}; ${which}: ${shown.join(", ")})`;
+}
+
+/**
  * THE DAY-0 LANE — what "Who I am:" says before an identity element exists.
  *
  * Measured 2026-09-04 on a store opened the way `install --budget 9000 --name
@@ -291,6 +332,13 @@ export interface BriefingResult extends Composed {
   /** Ids kept, per lane, in rendered order. */
   readonly kept: Record<LaneName, string[]>;
   readonly trimmed: TrimEvent[];
+  /**
+   * The lanes that carry a "N more" line (`moreLine`), and N for each — what
+   * the lane lost to its cap, the identity share or the trim, and that this
+   * render had room to say. A lane that lost something with no room for the
+   * line is absent here; its trim is still in `trimmed`.
+   */
+  readonly more: Partial<Record<LaneName, number>>;
   /** True when the render crossed the pressure ratio — the tripwire that fires
    *  when a budget is APPROACHED, not only when it blows (scar §2.4). */
   readonly pressure: boolean;
@@ -440,6 +488,8 @@ export function compose(
   resolve: Resolve,
   coreName?: string,
   identity?: IdentityBlock,
+  /** A lane's "N more" line (`moreLine`), printed under its elements. */
+  more: Partial<Record<LaneName, string>> = {},
 ): Composed {
   const counts = emptyCounts();
   for (const lane of LANE_ORDER) counts[lane] = kept[lane].length;
@@ -461,7 +511,7 @@ export function compose(
       const items = kept[lane];
       if (lane === "identity") {
         const furniture = page !== null || forming !== null || dayZero !== null;
-        if (items.length === 0 && !furniture) continue;
+        if (items.length === 0 && !furniture && more.identity === undefined) continue;
         lines.push("", laneHeading(lane));
         // THE PAGE FIRST, and then nothing else that speaks for the same thing:
         // `render` empties the lane when a page exists, so the loop below is a
@@ -476,11 +526,14 @@ export function compose(
           if (dayZero !== null) lines.push(identityCoreLine(dayZero));
         }
         for (const item of items) lines.push(elementLine(item, resolve));
+        if (more.identity !== undefined) lines.push(more.identity);
         continue;
       }
-      if (items.length === 0) continue;
+      const tail = more[lane];
+      if (items.length === 0 && tail === undefined) continue;
       lines.push("", laneHeading(lane));
       for (const item of items) lines.push(elementLine(item, resolve));
+      if (tail !== undefined) lines.push(tail);
     }
     lines.push("", sentinelLine(day, counts, elements, bytes));
     return lines.join("\n");
@@ -577,6 +630,65 @@ function offerLeftover(
 }
 
 /**
+ * WHAT EACH LANE LOST, by id, in the lane's rank order: the budget trim's
+ * (popped from the end, so reversed back), then — identity only — what the
+ * share held back and the leftover did not return, then what the lane's cap
+ * left out. Identity says nothing while the page replaces the list.
+ */
+function lostByLane(
+  overflow: Partial<Record<LaneName, readonly string[]>> | undefined,
+  trimmed: readonly TrimEvent[],
+  held: readonly Ranked[],
+  suppressList: boolean,
+): Partial<Record<LaneName, string[]>> {
+  const out: Partial<Record<LaneName, string[]>> = {};
+  for (const lane of LANE_ORDER) {
+    if (lane === "identity" && suppressList) continue;
+    const ids = [
+      ...trimmed.filter((e) => e.lane === lane).map((e) => e.id).reverse(),
+      ...(lane === "identity" ? held.map((r) => r.id) : []),
+      ...(overflow?.[lane] ?? []),
+    ];
+    if (ids.length > 0) out[lane] = ids;
+  }
+  return out;
+}
+
+/**
+ * Add each lane's "N more" line, in `MORE_ORDER`, only while the whole
+ * composition still fits the budget. A line that does not fit is left out and
+ * the next lane's is tried: they are one line each, and a shorter one may fit.
+ */
+function withMoreLines(
+  composed: Composed,
+  ctx: {
+    kept: Kept;
+    lost: Partial<Record<LaneName, string[]>>;
+    req: BriefingRequest;
+    resolve: Resolve;
+    coreName: string | undefined;
+    identity: IdentityBlock;
+  },
+): { composed: Composed; more: Partial<Record<LaneName, number>> } {
+  let current = composed;
+  const lines: Partial<Record<LaneName, string>> = {};
+  const more: Partial<Record<LaneName, number>> = {};
+  for (const lane of MORE_ORDER) {
+    const ids = ctx.lost[lane];
+    if (ids === undefined || ids.length === 0) continue;
+    lines[lane] = moreLine(lane, ids);
+    const candidate = compose(ctx.kept, ctx.req.day, ctx.resolve, ctx.coreName, ctx.identity, lines);
+    if (candidate.bytes > ctx.req.budgetBytes) {
+      delete lines[lane];
+      continue;
+    }
+    current = candidate;
+    more[lane] = ids.length;
+  }
+  return { composed: current, more };
+}
+
+/**
  * Compose within the caller's budget, trimming in `TRIM_ORDER` until it fits.
  *
  * Trimming pops the LAST item of the lane — the lane's own ordering decides who
@@ -591,7 +703,7 @@ function offerLeftover(
  * install (scar §2.3). A misconfigured ceiling gets a tripwire, not a lobotomy.
  */
 export function render(
-  lanes: Kept,
+  lanes: Kept & { readonly overflow?: Partial<Record<LaneName, readonly string[]>> },
   req: BriefingRequest,
   resolve: Resolve,
   t: SelfTunables,
@@ -677,8 +789,18 @@ export function render(
       // would make the share decide the opposite of what it was set for. When
       // the other lanes are all present and the budget is still not spent, the
       // held-back identity elements take it back, in rank order, whole.
-      const composed =
+      const offered =
         trimmed.length === 0 ? offerLeftover(kept, held, c, req, resolve, coreName, identity) : c;
+      // THE "N MORE" LINES, last: they take only room nothing else wanted.
+      const told = withMoreLines(offered, {
+        kept,
+        lost: lostByLane(lanes.overflow, trimmed, held, suppressList),
+        req,
+        resolve,
+        coreName,
+        identity,
+      });
+      const composed = told.composed;
       return {
         ...composed,
         budgetBytes: req.budgetBytes,
@@ -691,6 +813,7 @@ export function render(
           horizon: kept.horizon.map((r) => r.id),
         },
         trimmed,
+        more: told.more,
         pressure: composed.bytes >= req.budgetBytes * t.BUDGET_PRESSURE,
         overBudget: !fits,
         page:

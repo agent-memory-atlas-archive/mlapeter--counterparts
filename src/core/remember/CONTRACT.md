@@ -256,7 +256,9 @@ INTERFACE-GAPS §2a; this module still never gates and never reads them).
     chapter that caught up with the ask count, a `session_end` memory, a handoff, a
     "nothing new" mark) or it has no normal end after its last capture in any scope or the
     host's registry; and it has not been marked written up since. A short session owes
-    nothing. A session that owes is kept however old, and one the host's registry still
+    no retention debt: since 2026-09-29 it is offered a ONE-LINE write-up
+    (`owesShortWriteUp`: text, never asked, not written up, no answer), but that offer
+    never keeps its text — it ages out with its week like any session that owes nothing. A session that owes is kept however old, and one the host's registry still
     holds open is kept for as long as the registry keeps its record; one that owes nothing
     loses every text line — its turns, jots, the assistant's
     replies, quarantine, claims — 7 days after the latest thing known about it. The

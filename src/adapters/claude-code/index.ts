@@ -77,16 +77,8 @@ export type {
 export { openEmbedder } from "./embed-client.js";
 export type { ChunkFailure, EmbedderStats, LiveEmbedder } from "./embed-client.js";
 
-export {
-  DEFAULT_HOST_COMMAND,
-  KILL_GRACE_MS,
-  MCP_SELF_PAGE_TOOL,
-  PAGE_WRITER_ENV,
-  PERMISSION_MODE,
-  REAP_GRACE_MS,
-  planPageWriter,
-  runPageWriter,
-} from "./page-writer.js";
+export { DEFAULT_HOST_COMMAND, KILL_GRACE_MS, PERMISSION_MODE, REAP_GRACE_MS, startChild } from "./child.js";
+export type { ChildPlan, ChildResult } from "./child.js";
 export {
   HOST_SESSION_ENV,
   NIGHT_KIND_ENV,
@@ -106,15 +98,6 @@ export {
   runNight,
 } from "./night-run.js";
 export type { NightChildPlan, NightKind, NightRunInput, NightRunnerPlan, NightStarter } from "./night-run.js";
-export type {
-  ChildPlan,
-  ChildResult,
-  PageWriterPlan,
-  PageWriterPlanInput,
-  PageWriterRefusal,
-  PageWriterRunResult,
-  PageWriterStarter,
-} from "./page-writer.js";
 
 export { DATA_DIR_ENV, SCOPE_ENV, SESSION_ENV, WATCHDOG_ENV, planSpawn, spawnDetached } from "./spawn.js";
 export type { PlanInput, SpawnOutcome, SpawnPlan, SpawnRefusal, Spawner } from "./spawn.js";

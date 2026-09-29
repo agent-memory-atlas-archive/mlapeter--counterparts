@@ -255,6 +255,35 @@ export interface SessionRecord {
    * Still host state, still no content: an id.
    */
   readonly model?: string;
+  /**
+   * HOW THE HOST WAS STARTED, as it says in `CLAUDE_CODE_ENTRYPOINT` (review
+   * of #285, N2): `cli` for a person at a terminal; `sdk-cli` for `claude -p`
+   * (or any start with no terminal), `sdk-ts` / `sdk-py` for the Agent SDK,
+   * `mcp`, `claude-code-github-action`, and others. Read from the 2.1.285 host
+   * binary, not from a document: it sets the variable at startup and its
+   * children inherit it. Carried like `config`. Absent on a record written
+   * before, or by a host that does not set it — which reads as a person's.
+   */
+  readonly entrypoint?: string;
+}
+
+/**
+ * THE HOST ENTRYPOINTS THAT ARE NOT A PERSON'S INTERACTIVE CONVERSATION — a
+ * short session started this way owes no one-line write-up (review of #285,
+ * N2). Only these names, so an unknown or absent value is treated as a
+ * person's, the direction that keeps asking rather than silently skipping.
+ */
+export const NON_INTERACTIVE_ENTRYPOINTS: ReadonlySet<string> = new Set([
+  "sdk-cli",
+  "sdk-ts",
+  "sdk-py",
+  "mcp",
+  "claude-code-github-action",
+]);
+
+/** A host entrypoint name as the record keeps it: short, one token. */
+export function isEntrypoint(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9._-]{1,48}$/.test(value);
 }
 
 /** The part of an ended session the MCP door handed a live one. */
@@ -286,19 +315,6 @@ export function isSessionId(value: unknown): value is string {
     /^[A-Za-z0-9._-]+$/.test(value)
   );
 }
-
-/**
- * THE OTHER HALF OF `pageWriterFor`, for a session that has no record to carry
- * it: the date a WINDOWLESS nightly writer is writing about, pinned onto its
- * environment by the launcher (`claude-code/page-writer.ts`).
- *
- * It lives beside the record's field rather than in the launcher, because the
- * two are one mechanism read from two directions — the MCP server asks "is this
- * the night's writer" and must not have to know which mode started it — and
- * because a name read in one adapter and written in another is exactly the pair
- * that drifts when it is spelled twice.
- */
-export const PAGE_WRITER_ENV = "COUNTERPARTS_PAGE_WRITER";
 
 export function sessionsDir(dataDir: string): string {
   return join(dataDir, SESSIONS_DIR);
@@ -397,6 +413,8 @@ export function recordSession(
     writeUpPointer?: string;
     /** The model that last answered. Carried like `config`; newest wins. */
     model?: string;
+    /** How the host was started (`CLAUDE_CODE_ENTRYPOINT`). Carried like `config`. */
+    entrypoint?: string;
   },
 ): SessionRecord | null {
   if (!isSessionId(input.sessionId)) return null;
@@ -487,6 +505,11 @@ export function recordSession(
       ? { model: input.model }
       : prior?.model !== undefined
         ? { model: prior.model }
+        : {}),
+    ...(isEntrypoint(input.entrypoint)
+      ? { entrypoint: input.entrypoint }
+      : prior?.entrypoint !== undefined
+        ? { entrypoint: prior.entrypoint }
         : {}),
   };
 
@@ -1151,6 +1174,7 @@ function parseRecord(raw: unknown): SessionRecord | null {
     })(),
     // A value that is not a plain model id is no mark: it goes into a heading.
     ...(isModelId(rec["model"]) ? { model: rec["model"] } : {}),
+    ...(isEntrypoint(rec["entrypoint"]) ? { entrypoint: rec["entrypoint"] } : {}),
   };
 }
 
@@ -1371,6 +1395,18 @@ function openAndAnswered(dataDir: string, h: HeldSession): boolean {
  * clause left a crashed session to the opt-in API sweep; that sweep was removed
  * with its key.)
  */
+/** A SHORT debt the pointer may offer: known to the registry, a person's
+ *  interactive conversation (not `claude -p`, not the Agent SDK — the
+ *  record's `entrypoint`, review of #285 N2), and not running. */
+function shortWriteUpDue(h: HeldSession, dataDir: string, now: number): boolean {
+  if (!h.owesShort) return false;
+  const path = sessionPath(dataDir, h.session);
+  if (path === null || !existsSync(path)) return false;
+  const entrypoint = readSession(dataDir, h.session)?.entrypoint;
+  if (entrypoint !== undefined && NON_INTERACTIVE_ENTRYPOINTS.has(entrypoint)) return false;
+  return !runningNow(dataDir, h.session, now);
+}
+
 export function waitingForWriteUp(h: HeldSession, dataDir: string, now: number): boolean {
   if (!h.owes) return false;
   if (runningNow(dataDir, h.session, now)) return false;
@@ -1393,10 +1429,12 @@ export function waitingForWriteUp(h: HeldSession, dataDir: string, now: number):
  *     words, or this project's share of it is done and another project's is
  *     not (`waiting` in the progress record);
  *   - `owes-nothing` — B3's predicate says so, or it is open-and-answered;
- *   - `owed`, with `here`: the buffer's own spelling of this project's scope.
+ *   - `owed`, with `here`: the buffer's own spelling of this project's scope,
+ *     and `short` when all it owes is a one-line write-up (a session under the
+ *     first-ask threshold, `remember/owes.ts#owesShortWriteUp`, 2026-09-29).
  */
 export type WriteUpStanding =
-  | { readonly status: "owed"; readonly held: HeldSession; readonly here: string }
+  | { readonly status: "owed"; readonly held: HeldSession; readonly here: string; readonly short: boolean }
   | { readonly status: "unknown-session" }
   | { readonly status: "live-session" }
   | { readonly status: "other-project" }
@@ -1427,14 +1465,15 @@ export function writeUpStanding(
   if (here === undefined) return { status: "other-project" };
   if (held.facts.writtenUp) return { status: "already-written-up" };
   if (opts.progress?.[progressKey(session, here)]?.waiting === true) return { status: "already-written-up" };
-  if (!held.owes) {
-    return {
-      status: "owes-nothing",
-      why: !held.facts.capturedText ? "no-text" : !held.facts.asked ? "below-threshold" : "answered",
-    };
+  if (!held.owes && !held.owesShort) {
+    // Since the short write-up (2026-09-29) a session with text that owes
+    // neither debt has ANSWERED (or been written up, caught above), so
+    // `below-threshold` is no longer produced; the name stays in the type for
+    // readers of older results.
+    return { status: "owes-nothing", why: !held.facts.capturedText ? "no-text" : "answered" };
   }
   if (openAndAnswered(dataDir, held)) return { status: "owes-nothing", why: "answered" };
-  return { status: "owed", held, here };
+  return { status: "owed", held, here, short: !held.owes };
 }
 
 /**
@@ -1450,10 +1489,31 @@ export function awaitingWriteUp(plan: readonly HeldSession[], dataDir: string, n
  * THE SESSIONS A NEW SESSION IN `scope` MAY BE POINTED AT, in the order they
  * are offered — every `owed` standing, minus the asking session itself.
  *
- * **Least recently pointed at first, then oldest first.** A session never
- * pointed at comes before one that was, and among equals the one that ended
- * longest ago goes first. Without the first key, one session nobody writes up
- * would stand in front of every other session in its project for ever.
+ * **Full write-ups first, then short ones** (2026-09-29): a full one not yet
+ * pointed at TODAY (`pointedToday`, the caller's calendar) goes first; then the
+ * short ones; then a full one already pointed at today — so a short session
+ * gets whatever the day's allowance has left, and one full session nobody
+ * writes up cannot hold every short one back for ever. **Within each, least
+ * recently pointed at first, then oldest first.** A session never pointed at comes before one that
+ * was, and among equals the one that ended longest ago goes first. Without
+ * that key, one session nobody writes up would stand in front of every other
+ * session in its project for ever.
+ *
+ * **A short one waits for the whole STORE** (review of #285, S1): the day's
+ * allowance is one count for the store, so a short debt is offered only when
+ * NO full debt anywhere — any project — is waiting and not yet pointed at
+ * today. Otherwise the first two quick starts of a day in one project would
+ * spend both pointers on one-line write-ups while a full debt elsewhere, whose
+ * text is kept until it is written up, waited another day. The cost, named: a
+ * full debt in a project nobody reopens holds every short one back; doctor's
+ * awaiting count turns amber on it after `WRITE_UP_WAIT_DAYS`, and the short
+ * ones age out with their week as they always did.
+ *
+ * A short one is eligible when the host's registry KNOWS it — a session our
+ * hooks saw start, which is what a person's conversation is; the unbound MCP
+ * server's shared `"mcp"` id (remember NOTES §16, n2) has no record — and is not
+ * running. It is not in `waitingForWriteUp` — doctor's count — because it is
+ * not a debt that keeps its text: it ages out with its week.
  */
 export function owedWriteUps(
   plan: readonly HeldSession[],
@@ -1463,21 +1523,37 @@ export function owedWriteUps(
   opts: {
     exclude?: string;
     progress?: Readonly<Record<string, WriteUpProgress>>;
+    /** Was this hand-over time on the caller's today? Absent: never. */
+    pointedToday?: (handedAt: number) => boolean;
   } = {},
-): { held: HeldSession; here: string }[] {
-  const out: { held: HeldSession; here: string }[] = [];
+): { held: HeldSession; here: string; short: boolean }[] {
+  const out: { held: HeldSession; here: string; short: boolean }[] = [];
+  const pointedToday = (session: string): boolean =>
+    Object.entries(opts.progress ?? {}).some(
+      ([key, p]) => key.startsWith(`${session}|`) && p.handedAt > 0 && opts.pointedToday?.(p.handedAt) === true,
+    );
+  // STORE-WIDE, not this project's: is a full debt anywhere still owed its
+  // pointer today? (`opts.exclude` is the asking session, never a debt.)
+  const fullFirst = plan.some(
+    (h) => h.session !== opts.exclude && waitingForWriteUp(h, dataDir, now) && !pointedToday(h.session),
+  );
   for (const h of plan) {
     if (h.session === opts.exclude) continue;
-    if (!waitingForWriteUp(h, dataDir, now)) continue;
+    const eligible = waitingForWriteUp(h, dataDir, now) || (!fullFirst && shortWriteUpDue(h, dataDir, now));
+    if (!eligible) continue;
     const standing = writeUpStanding(plan, dataDir, h.session, scope, now, {
       ...(opts.progress === undefined ? {} : { progress: opts.progress }),
     });
-    if (standing.status === "owed") out.push({ held: h, here: standing.here });
+    if (standing.status === "owed") out.push({ held: h, here: standing.here, short: standing.short });
   }
   const handed = (o: { held: HeldSession; here: string }): number =>
     opts.progress?.[progressKey(o.held.session, o.here)]?.handedAt ?? 0;
+  const tier = (o: { held: HeldSession; here: string; short: boolean }): number =>
+    o.short ? 1 : handed(o) > 0 && opts.pointedToday?.(handed(o)) === true ? 2 : 0;
   return out.sort((a, b) =>
-    handed(a) !== handed(b)
+    tier(a) !== tier(b)
+      ? tier(a) - tier(b)
+      : handed(a) !== handed(b)
       ? handed(a) - handed(b)
       : a.held.clockFrom !== b.held.clockFrom
         ? a.held.clockFrom - b.held.clockFrom
@@ -1688,7 +1764,7 @@ export function pruneWriteUpProgress(
 ): number {
   try {
     const all = readWriteUpProgress(store);
-    const owing = new Set(plan.filter((h) => h.owes).map((h) => h.session));
+    const owing = new Set(plan.filter((h) => h.owes || h.owesShort).map((h) => h.session));
     let dropped = 0;
     for (const key of Object.keys(all)) {
       if (owing.has(key.slice(0, key.indexOf("|")))) continue;
@@ -1745,6 +1821,12 @@ export interface WriteUpPointerRecord {
   /** The bytes the pointer needed, and what the wake and other asks left. */
   readonly need: number;
   readonly room: number;
+  /** The budget it was measured against when not the host's plain cap: the
+   *  JSON envelope's, when a plain reminder rode (review of #285, S2). */
+  readonly limit?: number;
+  /** What else rode beside the wake, in words — "the first-launch question
+   *  and 1 plain reminder" — so doctor names the real cause (M3). */
+  readonly beside?: string;
 }
 
 export function readWriteUpPointer(store: Pick<Store, "getMeta">): WriteUpPointerRecord | null {
@@ -1761,6 +1843,8 @@ export function readWriteUpPointer(store: Pick<Store, "getMeta">): WriteUpPointe
       ...(typeof v["reason"] === "string" ? { reason: v["reason"] } : {}),
       need: num("need"),
       room: num("room"),
+      ...(typeof v["limit"] === "number" && Number.isFinite(v["limit"]) ? { limit: v["limit"] } : {}),
+      ...(typeof v["beside"] === "string" && v["beside"].length > 0 ? { beside: v["beside"] } : {}),
     };
   } catch {
     return null;

@@ -99,6 +99,8 @@ import { localClock, localDate, readableDate } from "../../core/time.js";
 import { capabilities } from "./config.js";
 import { TUNABLES } from "./config.js";
 import type { AdapterConfig, CapabilityReport } from "./config.js";
+import { TUNABLES as RECALL_TUNABLES } from "../../core/recall/tunables.js";
+import { HOST_SESSION_START, HOST_USER_PROMPT_SUBMIT, envelopeJson, escapedBytes } from "./envelope.js";
 import { SESSION_NOTICE_BUDGET_MS, checkoutIsGraded, doctorFindings, noticeMessage, readCheckout } from "./doctor.js";
 import type { CheckoutReading } from "./doctor.js";
 import { primacy } from "./primacy.js";
@@ -167,13 +169,6 @@ export interface HookInput {
   /** Today's calendar date, for the temporal channel and the horizon lane. */
   readonly at?: string;
   /**
-   * This session is the host-mode NIGHTLY PAGE WRITER this package started
-   * (`page-writer.ts`, `COUNTERPARTS_PAGE_WRITER` in its environment): a
-   * headless `claude -p` nobody watches. A plain reminder is never claimed in
-   * it — its beat would be spent on a terminal no one reads (2026-09-26 review).
-   */
-  readonly pageWriter?: boolean;
-  /**
    * This session is the HEADLESS NIGHTLY RUN this package started
    * (`night-run.ts`, `COUNTERPARTS_NIGHT_RUN` in its environment, 2026-09-29):
    * `claude -p` running the page writer, the dream and the reflection, which
@@ -182,6 +177,14 @@ export interface HookInput {
    * plain reminders, no Stop ask, no write-up pointer, no first-launch question.
    */
   readonly nightRun?: boolean;
+  /**
+   * How the host was started, from `CLAUDE_CODE_ENTRYPOINT` in the hook's
+   * environment (`cli`, `sdk-cli` for `claude -p`, `sdk-ts` / `sdk-py` for the
+   * Agent SDK, …). Kept on the session's registry record; a short session
+   * that was not a person's interactive conversation owes no one-line
+   * write-up (`sessions.ts#NON_INTERACTIVE_ENTRYPOINTS`, review of #285 N2).
+   */
+  readonly entrypoint?: string;
   /**
    * THE HOST'S RE-FIRE. A blocked Stop comes back with `stop_hook_active`, and
    * that pass must ask nothing — v1's anti-loop, kept for the same reason. It is
@@ -367,14 +370,50 @@ export const SCOPE_ASK = [
 export const SCOPE_ASK_BYTES = Buffer.byteLength(`\n\n${SCOPE_ASK}`, "utf8");
 
 /**
+ * The room a prompt's JSON envelope keeps for the escaping of RECALL'S OWN
+ * text (its newlines and quotes), when sizing the turn's recall (`recallRoom`).
+ * Everything else in the envelope is measured exactly — the clock, the context
+ * lines, the person's lines and the envelope's own keys, each escaped (review
+ * of #285, M2). Recall's text is the one part that does not exist yet when its
+ * budget is set, and composing it twice would spend its fires twice, so this
+ * stays an estimate: about two hundred escaped characters, against a block
+ * whose own item caps keep it to a few dozen lines. Past it, the delivery
+ * measures the real envelope and the person's line waits for the next prompt,
+ * unclaimed — deferred, never lost. Only the JSON form reserves it; plain
+ * stdout escapes nothing.
+ */
+export const ENVELOPE_ESCAPE_RESERVE = 200;
+
+/** The budget a SessionStart's asks are measured against: the form the
+ *  envelope will take, what the wake and its lead already cost in it, and how
+ *  a piece of text is counted there. `plain` is how many reminders ride. */
+interface EnvelopeRoom {
+  readonly form: "json" | "plain";
+  readonly spent: number;
+  readonly limit: number;
+  readonly cost: (text: string) => number;
+  readonly plain: number;
+}
+
+/** What rode beside the wake when the pointer was measured, in words for
+ *  doctor ("the first-launch question and 1 plain reminder"), or "". */
+function besideWords(question: boolean, plain: number): string {
+  const parts = [
+    ...(question ? ["the first-launch question"] : []),
+    ...(plain > 0 ? [`${String(plain)} plain reminder${plain === 1 ? "" : "s"}`] : []),
+  ];
+  return parts.join(" and ");
+}
+
+/**
  * THE PAGE'S TOOL, as a session's model names it. The nightly page writer's
  * SessionStart ask (S2, 2026-09-20 — "the first session of the next day is
  * handed that day") was RETIRED on 2026-09-28: the writer moved into the
  * nightly run (writer, then dream, then reflection, one background agent) and
  * gets its day through the dream tool's `writer` phase — a tool result, with
  * no injection ceiling, so no `no-room` deferral and no contest with the
- * first-launch question for the ask field. Host mode (`page-writer.ts`) is
- * left in place, not the default.
+ * first-launch question for the ask field. (Host mode, a windowless child
+ * for the writer alone, was removed on 2026-09-29.)
  */
 export const PAGE_WRITER_TOOL = "counterparts self_page";
 
@@ -430,8 +469,12 @@ export const WRITE_UP_TOOL = "counterparts session_end";
 export const WRITE_UP_ASK_DATE_KEY = "adapter.writeup.asks.date";
 export const WRITE_UP_ASK_COUNT_KEY = "adapter.writeup.asks.count";
 
+/** What the pointer adds for a SHORT session (2026-09-29): one plain sentence. */
+export const WRITE_UP_SHORT_LINE = "It was a short session: one line is enough, or memories: [] if nothing in it is worth keeping.";
+
 /** THE POINTER the model reads — short, because the words come from the door,
- *  and naming the ended session once. */
+ *  and naming the ended session once. A session under the first-ask threshold
+ *  (`short`) gets the same pointer and one sentence more. */
 export function writeUpPointer(input: {
   waiting: number;
   ended: string;
@@ -440,6 +483,7 @@ export function writeUpPointer(input: {
   part: number;
   of: number;
   live: string;
+  short?: boolean;
 }): string {
   const some =
     input.waiting === 1
@@ -449,7 +493,7 @@ export function writeUpPointer(input: {
   const part = input.of <= 1 ? "" : `, part ${String(input.part)} of ${String(input.of)}`;
   return [
     WRITE_UP_OPEN,
-    `${some}; the oldest, from ${input.endedOn}, left ${size} of what was said to it${part}. To write it up, call ${WRITE_UP_TOOL} with session: ${input.live}, writeUp: ${input.ended} and no memories to get the words, then again with the memories worth keeping (or memories: []).`,
+    `${some}; the oldest, from ${input.endedOn}, left ${size} of what was said to it${part}. To write it up, call ${WRITE_UP_TOOL} with session: ${input.live}, writeUp: ${input.ended} and no memories to get the words, then again with the memories worth keeping (or memories: []).${input.short === true ? ` ${WRITE_UP_SHORT_LINE}` : ""}`,
     WRITE_UP_CLOSE,
   ].join("\n");
 }
@@ -729,9 +773,41 @@ export class ClaudeCodeAdapter {
       // (`notices`). NOT claimed here: the delivery claims them once it knows
       // the envelope carries them, and a full wake that leaves no room sends
       // them to the first prompt instead (`bin/hook.ts#deliverTurn`).
+      //
+      // ONE BUDGET FOR THIS ENVELOPE (2026-09-29, audit item 9; made real by the
+      // review of #285, S2): everything this event prints is measured against
+      // one budget, and gives way in this order, first to last — each
+      // DEFERRED, never cut, so nothing is spent on a line the session did
+      // not get:
+      //   1. the owner's notices (doctor, registry) — `bin/hook.ts#hostDelivery`
+      //      drops them before the JSON envelope passes `ENVELOPE_CHARS`;
+      //   2. the write-up pointer — the next start in this project is pointed;
+      //   3. the first-launch scope question — the next session asks;
+      //   4. plain reminders due today — the first prompt says them, its
+      //      envelope is small, and their beat is not spent here;
+      //   5. the wake, never cut here: it was composed to its own budget at the
+      //      boundary, where it trims hints → craft → threads → horizon →
+      //      identity, identity last. The clock line rides with it.
+      // THE BUDGET IS THE FORM THE ENVELOPE WILL TAKE. A plain reminder reaches
+      // the person only inside the JSON form (its line is the `systemMessage`),
+      // so when one is due and the wake and the reminders fit that form, the
+      // two asks are measured against IT — escaped, under `ENVELOPE_CHARS` —
+      // and it is they that give way, not the reminder. Otherwise (nothing due,
+      // or reminders that cannot fit even beside the wake alone, which the
+      // delivery then sends to the first prompt) the form is plain stdout,
+      // under `HOST_OUTPUT_CHARS`. What actually gave way is recorded by the
+      // delivery (`noteGaveWay`) and by each ask's own deferral.
       const plain = this.plainFor(input);
       const lead = `${woke.text.length === 0 && plain.context.length === 0 ? "" : `${this.nowLine()}\n`}${plain.context}`;
       const sent = woke.bytes + Buffer.byteLength(lead, "utf8");
+      const jsonBase =
+        plain.due.length === 0
+          ? null
+          : Buffer.byteLength(envelopeJson(HOST_SESSION_START, plain.notices.join("\n"), `${lead}${woke.text}`), "utf8");
+      const room: EnvelopeRoom =
+        jsonBase !== null && jsonBase <= TUNABLES.ENVELOPE_CHARS
+          ? { form: "json", spent: jsonBase, limit: TUNABLES.ENVELOPE_CHARS, cost: escapedBytes, plain: plain.due.length }
+          : { form: "plain", spent: sent, limit: TUNABLES.HOST_OUTPUT_CHARS, cost: (t) => Buffer.byteLength(t, "utf8"), plain: 0 };
       if (budget !== undefined && sent > budget) {
         // Exceeding a reported limit is an EVENT, never silent degradation. The
         // bundle still goes: truncated-and-detectable beats absent.
@@ -774,13 +850,17 @@ export class ClaudeCodeAdapter {
       // page writer's ask used to contend for it (and after two mornings of
       // losing went first); since 2026-09-28 the writer runs inside the
       // nightly run and is handed its day through a tool result instead.
-      const chosen = wantsAsk ? this.deliverScopeAsk(input, sent, budget) : "";
+      const chosen = wantsAsk ? this.deliverScopeAsk(input, room) : "";
       // THE WRITE-UP POINTER RIDES AFTER WHICHEVER ASK TOOK THE FIELD, never
       // instead of it (C2): it may coincide with either, it is measured against
       // the room BOTH of them left, and it is fail-open by construction — a
       // throw inside it costs the pointer and never the wake or the other ask.
-      const chosenBytes = chosen.length === 0 ? 0 : Buffer.byteLength(`\n\n${chosen}`, "utf8");
-      const writeUp = this.deliverWriteUpAsk(input, sent + chosenBytes);
+      const chosenBytes = chosen.length === 0 ? 0 : room.cost(`\n\n${chosen}`);
+      const writeUp = this.deliverWriteUpAsk(input, room.spent + chosenBytes, {
+        limit: room.limit,
+        cost: room.cost,
+        beside: besideWords(chosen.length > 0, room.plain),
+      });
       const asks = [chosen, writeUp].filter((a) => a.length > 0).join("\n\n");
       return {
         ...out,
@@ -822,15 +902,20 @@ export class ClaudeCodeAdapter {
 
   /**
    * Deliver the question, and remember that it was delivered. Returns the block
-   * to append, or the empty string when there was no room for it.
+   * to append, or the empty string when there was no room for it. `budget` is
+   * the envelope's one budget (the host's cap) since 2026-09-29; it was the
+   * reported injection budget before, a second ceiling beside the pointer's.
    */
-  private deliverScopeAsk(input: HookInput, wakeBytes: number, budget: number | undefined): string {
-    if (budget !== undefined && wakeBytes + SCOPE_ASK_BYTES > budget) {
+  private deliverScopeAsk(input: HookInput, room: EnvelopeRoom): string {
+    const need = room.cost(`\n\n${SCOPE_ASK}`);
+    if (room.spent + need > room.limit) {
       this.emit("adapter.scope.ask.deferred", {
-        wakeBytes,
-        budget,
-        need: SCOPE_ASK_BYTES,
+        wakeBytes: room.spent,
+        budget: room.limit,
+        need,
+        form: room.form,
       });
+      this.emit("adapter.envelope.gave-way", { hook: "session-start", part: "question", form: room.form });
       return "";
     }
     // The mark is a SECOND write of the same phase rather than a field folded
@@ -867,7 +952,11 @@ export class ClaudeCodeAdapter {
    * fetch that session's words — then the day's count and the durable outcome.
    * A mark that will not land hands nothing over.
    */
-  private deliverWriteUpAsk(input: HookInput, spent: number): string {
+  private deliverWriteUpAsk(
+    input: HookInput,
+    spent: number,
+    opts: { limit?: number; cost?: (text: string) => number; beside?: string } = {},
+  ): string {
     try {
       // Never under observer: an instrument asks nobody to write into a store
       // it may not write, and has no registry mark to remember that it did.
@@ -898,13 +987,18 @@ export class ClaudeCodeAdapter {
       // Entries whose session stopped owing some other way go first.
       pruneWriteUpProgress(store, plan);
       const inFlight = readWriteUpProgress(store);
+      const zone = this.counterpart.store.zone();
       const owed = owedWriteUps(plan, dir, input.scope, now, {
         exclude: input.sessionId,
         progress: inFlight,
+        pointedToday: (at) => calendarDate(at, zone) === today,
       });
+      // Full write-ups come first (`owedWriteUps`), so a SHORT one is pointed
+      // at only when no full one here is waiting: it takes what is left of the
+      // day's allowance.
       const first = owed[0];
       if (first === undefined) return "";
-      const { held, here } = first;
+      const { held, here, short } = first;
       // THIS PROJECT'S WORDS ONLY (MAJOR 6).
       const entries = writeUpEntries(this.counterpart.spans, { session: held.session, scopes: [here] });
       if (entries.length === 0) return "";
@@ -928,9 +1022,11 @@ export class ClaudeCodeAdapter {
         part: Math.min(done + 1, partsCount),
         of: partsCount,
         live: input.sessionId,
+        short,
       });
-      const bytes = Buffer.byteLength(`\n\n${text}`, "utf8");
-      const room = TUNABLES.WRITE_UP_HOST_OUTPUT_CHARS - spent;
+      const bytes = (opts.cost ?? ((t: string): number => Buffer.byteLength(t, "utf8")))(`\n\n${text}`);
+      const limit = opts.limit ?? TUNABLES.HOST_OUTPUT_CHARS;
+      const room = limit - spent;
       const outcome = (o: "pointed" | "deferred", reason?: string): void => {
         saveWriteUpPointer(store, {
           at: now,
@@ -939,6 +1035,8 @@ export class ClaudeCodeAdapter {
           ...(reason === undefined ? {} : { reason }),
           need: bytes,
           room,
+          ...(limit === TUNABLES.HOST_OUTPUT_CHARS ? {} : { limit }),
+          ...(opts.beside === undefined || opts.beside.length === 0 ? {} : { beside: opts.beside }),
         });
       };
       if (bytes > room) {
@@ -946,6 +1044,7 @@ export class ClaudeCodeAdapter {
         // this project is pointed instead — and the deferral is DURABLE, so
         // doctor can say the wake is too full and by how much.
         this.emit("adapter.writeup.deferred", { reason: "host-cap", need: bytes, room });
+        this.emit("adapter.envelope.gave-way", { hook: "session-start", part: "pointer", need: bytes, room });
         outcome("deferred", "host-cap");
         return "";
       }
@@ -984,6 +1083,7 @@ export class ClaudeCodeAdapter {
         of: partsCount,
         bytes,
         owed: owed.length,
+        short,
       });
       return text;
     } catch (err) {
@@ -1027,13 +1127,16 @@ export class ClaudeCodeAdapter {
       if (text.trim().length === 0) {
         return { ...out, ok: true, reason: "empty-prompt", injection: `${this.nowLine()}${context.length === 0 ? "" : `\n${context.trimEnd()}`}`, ...told };
       }
+      const budgetBytes = this.recallRoom(context, [
+        ...plain.notices,
+        ...(dream.told === null ? [] : [dream.told.notice]),
+        ...(dream.note === null ? [] : [dream.note.notice]),
+      ]);
       const result = this.counterpart.recallForTurn(
         {
           sessionId: input.sessionId,
           text,
-          ...(this.config.injectionBudgetBytes === undefined
-            ? {}
-            : { budgetBytes: this.config.injectionBudgetBytes }),
+          ...(budgetBytes === undefined ? {} : { budgetBytes }),
         },
         {
           ...(input.at === undefined ? {} : { at: input.at }),
@@ -1086,6 +1189,43 @@ export class ClaudeCodeAdapter {
   }
 
   /**
+   * THE TURN'S RECALL BUDGET, AFTER EVERYTHING ELSE THIS ENVELOPE CARRIES
+   * (2026-09-29, audit item 9). One budget per envelope, and at a prompt the
+   * order it gives way in is, first to last:
+   *   1. the update notice — all or nothing, and it waits for the next prompt
+   *      (`bin/hook.ts#deliverTurn`);
+   *   2. the turn's RECALL — sized here to what the host's cap leaves after
+   *      the lines below, and it trims itself to that (its own tiers), because
+   *      the next turn recalls afresh;
+   *   3. the dream's hand-back and carried share, a contradiction's raise
+   *      line, the day's dream offer — claimed when composed (or, the offer,
+   *      at delivery), so they are reserved rather than cut;
+   *   4. plain reminders due today and the clock line — last.
+   * The limit is the host's cap, or the JSON envelope's (`ENVELOPE_CHARS`)
+   * when a person-facing line rides this prompt, so it is not that line
+   * which gives way. Undefined means "recall's own default" (nothing to
+   * shrink); a number is the configured budget or less.
+   */
+  private recallRoom(context: string, personLines: readonly string[]): number | undefined {
+    const configured = this.config.injectionBudgetBytes;
+    const base = configured ?? RECALL_TUNABLES.BUDGET_BYTES;
+    const json = personLines.length > 0;
+    const limit = json ? TUNABLES.ENVELOPE_CHARS : TUNABLES.HOST_OUTPUT_CHARS;
+    // What rides with recall, MEASURED in the form the envelope will take: in
+    // JSON, the clock and context lines escaped, the person's lines escaped,
+    // the envelope's own keys, and the reserve for recall's own escaping; in
+    // plain stdout, the clock and context lines as bytes.
+    const lead = `${this.nowLine()}\n${context}`;
+    const extras = json
+      ? Buffer.byteLength(envelopeJson(HOST_USER_PROMPT_SUBMIT, personLines.join("\n"), lead), "utf8") + ENVELOPE_ESCAPE_RESERVE
+      : Buffer.byteLength(lead, "utf8");
+    const room = Math.max(0, limit - extras);
+    if (room >= base) return configured;
+    this.emit("adapter.envelope.gave-way", { hook: "user-prompt-submit", part: "recall", budget: room, base });
+    return room;
+  }
+
+  /**
    * THE DREAM LINES (2026-09-26, `core/dream/`), for the MODEL, each
    * ending in a newline: a contradiction a dream flagged, raised once awake,
    * and the day's line, which follows the owner's dreaming setting
@@ -1100,7 +1240,7 @@ export class ClaudeCodeAdapter {
    * `dream_asks` latch decides, so of two sessions racing one gets it), and
    * again only for a run that was left behind; a "no" is the dream tool's
    * `decline`, "no dreams" its `setting`. Never in
-   * the host-mode page writer's headless child, never under observer, never
+   * the headless nightly run's child, never under observer, never
    * without a date. Only what could surface here anyway is counted or raised
    * (the dream module applies recall's gates). Never throws.
    *
@@ -1112,7 +1252,7 @@ export class ClaudeCodeAdapter {
    */
   private dreamLines(input: HookInput): { text: string; told: DreamTold | null; note: { notice: string; context: string } | null } {
     const none = { text: "", told: null, note: null };
-    if (this.observer || input.at === undefined || input.pageWriter === true || input.nightRun === true || input.sessionId.length === 0) return none;
+    if (this.observer || input.at === undefined || input.nightRun === true || input.sessionId.length === 0) return none;
     try {
       const dreams = this.counterpart.dreams;
       // `auto` CHANGED MEANING on this version: an explicit one is set back to
@@ -1288,12 +1428,12 @@ export class ClaudeCodeAdapter {
    * what its envelope will certainly carry (`claimPlain`, from
    * `bin/hook.ts#deliverTurn`) and strips the rest, so a beat is never spent
    * on a line the person did not get. No date (`input.at` absent) means no
-   * calendar, and so nothing; the host-mode page writer's headless child is
-   * told nothing (`HookInput.pageWriter`). Never throws.
+   * calendar, and so nothing; the headless nightly run is told nothing
+   * (`HookInput.nightRun`). Never throws.
    */
   private plainFor(input: HookInput): { context: string; notices: string[]; due: PlainReminder[] } {
     const none = { context: "", notices: [], due: [] };
-    if (input.at === undefined || input.pageWriter === true || input.nightRun === true) return none;
+    if (input.at === undefined || input.nightRun === true) return none;
     try {
       const due = this.counterpart.plainDueToday({ at: input.at });
       return {
@@ -1943,6 +2083,7 @@ export class ClaudeCodeAdapter {
       // Which model answered last. A Stop writes this before its ask goes out,
       // so the chapter that answers the ask finds it on the record.
       ...(input.model === undefined ? {} : { model: input.model }),
+      ...(input.entrypoint === undefined ? {} : { entrypoint: input.entrypoint }),
     });
     this.emit("adapter.session.registry", { phase, ok: record !== null });
     // Bounded growth, once per session rather than once per turn — and never on
@@ -2428,6 +2569,21 @@ export class ClaudeCodeAdapter {
    */
   noteNoticeDropped(chars: { noticeChars: number; envelopeChars: number; limitChars: number }): void {
     this.emit("adapter.notice.dropped", { ...chars });
+  }
+
+  /** RECORD THAT EVEN THE PLAIN FORM WAS PAST THE HOST'S CAP
+   *  (`bin/hook.ts#Delivery.overCap`, 2026-09-29). Counts only. */
+  noteOverCap(chars: { chars: number; limitChars: number }): void {
+    this.emit("adapter.envelope.overcap", { ...chars });
+  }
+
+  /** RECORD WHAT THE DELIVERY LEFT FOR LATER for want of room — plain
+   *  reminders, the dream offer, the update notice (`bin/hook.ts#deliverTurn`).
+   *  Recorded where it happened, so the event says what was actually
+   *  delivered (review of #285, S2). Counts only. */
+  noteGaveWay(input: HookInput, part: string, count: number): void {
+    void input;
+    this.emit("adapter.envelope.gave-way", { hook: "delivery", part, count });
   }
 
   private refusalCount(reason: string): number {

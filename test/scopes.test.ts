@@ -30,7 +30,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { openAdapter } from "../src/adapters/claude-code/index.js";
-import { SCOPE_ASK } from "../src/adapters/claude-code/index.js";
+import { SCOPE_ASK, TUNABLES } from "../src/adapters/claude-code/index.js";
 import type { AdapterConfig } from "../src/adapters/claude-code/index.js";
 import {
   FRESH_SESSION_SOURCES,
@@ -1157,8 +1157,20 @@ describe("the first-launch question", () => {
   test("it is DEFERRED rather than smuggled past the host's ceiling", () => {
     // A ceiling with no room for the question: the wake still goes, the
     // question waits for a session where it fits, and the deferral is an event
-    // rather than a silence.
-    const a = adapterFor({ injectionBudgetBytes: 10 });
+    // rather than a silence. The ceiling is the envelope's ONE budget, the
+    // host's cap (2026-09-29): a wake that fills it leaves no room.
+    const a = adapterFor();
+    const text = "w".repeat(TUNABLES.HOST_OUTPUT_CHARS - 50);
+    (a.counterpart as unknown as { wake: () => unknown }).wake = () => ({
+      text,
+      ok: true,
+      reason: "loaded",
+      bytes: text.length,
+      sentinel: null,
+      reading: null,
+      preface: null,
+      budgetBytes: BUDGET_BYTES,
+    });
     const result = a.sessionStart({ sessionId: "tight", scope: join(work, "p"), at: "2026-09-10" });
     expect(result.ask).toBe(null);
     expect(a.events("adapter.scope.ask.deferred")).toHaveLength(1);

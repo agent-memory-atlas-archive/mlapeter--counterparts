@@ -65,13 +65,12 @@ import { fileURLToPath } from "node:url";
 import { Counterpart } from "../../core/counterpart.js";
 import type { NightPart, NightRun } from "../../core/dream/index.js";
 import { CONFIG_ENV as CONFIG_PATH_ENV } from "../config-path.js";
-import { PAGE_WRITER_ENV } from "../sessions.js";
 import { OBSERVER_ENV } from "../stance-env.js";
 
 import { TUNABLES } from "./config.js";
 import type { AdapterConfig } from "./config.js";
-import { DEFAULT_HOST_COMMAND, KILL_GRACE_MS, PERMISSION_MODE, REAP_GRACE_MS, startChild } from "./page-writer.js";
-import type { ChildPlan, ChildResult } from "./page-writer.js";
+import { DEFAULT_HOST_COMMAND, KILL_GRACE_MS, PERMISSION_MODE, REAP_GRACE_MS, startChild } from "./child.js";
+import type { ChildPlan, ChildResult } from "./child.js";
 import { DATA_DIR_ENV, SCOPE_ENV, SESSION_ENV, WATCHDOG_ENV } from "./spawn.js";
 import type { SpawnPlan } from "./spawn.js";
 
@@ -233,7 +232,6 @@ export function planNightRunner(input: NightRunnerInput): NightRunnerPlan {
   if (input.session.length === 0) return no("NO_SESSION");
   delete env[OBSERVER_ENV];
   delete env[WATCHDOG_ENV];
-  delete env[PAGE_WRITER_ENV];
   env[DATA_DIR_ENV] = input.config.dataDir;
   env[SESSION_ENV] = input.session;
   env[SCOPE_ENV] = input.scope;
@@ -270,7 +268,7 @@ export interface NightChildInput {
 }
 
 /**
- * THE `claude -p` CHILD, DECIDED. Pure. The same order as `planPageWriter`:
+ * THE `claude -p` CHILD, DECIDED. Pure. The same order as `planNightRunner`:
  * refusals first, then the environment, this package's values last.
  */
 export function planNightChild(input: NightChildInput): NightChildPlan {
@@ -325,7 +323,6 @@ export function planNightChild(input: NightChildInput): NightChildPlan {
   delete env[SCOPE_ENV];
   delete env[WATCHDOG_ENV];
   delete env[OBSERVER_ENV];
-  delete env[PAGE_WRITER_ENV];
   for (const k of HOST_SESSION_ENV) delete env[k];
   env[DATA_DIR_ENV] = input.config.dataDir;
   env[NIGHT_RUN_ENV] = input.run;

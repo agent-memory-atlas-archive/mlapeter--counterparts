@@ -632,8 +632,18 @@ export class Prospective {
     // or a range lives as footnote warmth and context corroboration only; it
     // still arrives as a cue every day of its window, it just never takes a
     // wake line.
+    //
+    // A PLAIN reminder that has been TOLD leaves the lane (2026-09-29): it was
+    // said outright on its day, and "Arriving:" for the grace week after is the
+    // same thing said again as a thing still to come. It leaves once its LAST
+    // beat is told — `day` for a day item, `last-day` for a month or a range
+    // (which, by the filter above, take no wake line today anyway; the rule is
+    // written for both so the two cannot drift if that changes). Only the lane:
+    // `arrivals()` is untouched, so recall's cue path still finds it, and a
+    // quiet item is unchanged.
     const items = considered.arrivals
       .filter((a) => a.precision === "day")
+      .filter((a) => !this.toldForGood(a))
       .slice(0, this.tunables.HORIZON_ITEMS);
     const reason: HorizonReason = items.length === 0 ? "nothing-arrived" : "selected";
     this.emit("prospective.horizon", undefined, {
@@ -737,6 +747,14 @@ export class Prospective {
       // A lost mark costs this line, never the turn (§12 G12's budget).
       return false;
     }
+  }
+
+  /** A PLAIN arrival whose window's LAST beat has been told: `day` for a day
+   *  item, `last-day` for a month or a range (`plainDue`'s beats). A quiet
+   *  arrival never is. A read. */
+  private toldForGood(a: Arrival): boolean {
+    if (a.mode !== "plain") return false;
+    return this.plainTold(a.memoryId, a.windowKey, a.precision === "day" ? "day" : "last-day");
   }
 
   /** Has this beat already been told? A read of the latch `claimPlain` writes,

@@ -33,7 +33,10 @@ clothes. **Hold debts, lose deadlines.**
   only by a host about to show it (the Claude Code hooks claim after the envelope is known
   to carry the line, 2026-09-26 review). Quiet — the default —
   is everything above, unchanged. A plain item told today is not also offered as a quiet
-  cue that day (`told-plainly-today`).
+  cue that day (`told-plainly-today`), and once its LAST beat is told (the day; a month's
+  or range's last day) it leaves the wake's horizon lane for the rest of its grace
+  (2026-09-29): it was said, and "Arriving:" would say it again as still to come. It
+  still arrives as a cue, so recall still finds it.
 - **Prospectivity is DERIVED, never stored.** [v1] §12 G2 — eligibility is a predicate over
   the event date, the encode date, salience, and flags, so the property expires by itself
   when the window passes: no cleanup pass, no second source of truth, nothing for decay to

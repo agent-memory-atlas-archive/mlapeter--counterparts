@@ -387,7 +387,10 @@ describe("the wake briefing — the day-0 lane", () => {
     expect(out.trimmed.map((t) => t.lane)).toEqual(["identity", "identity"]);
     expect(out.text).not.toContain(identityCoreLine("Dana"));
     expect(out.text).not.toContain("No identity has formed here yet");
-    expect(out.text).not.toContain(FRAMING.identity);
+    // What the lane says instead (2026-09-29): that it left two out, and where
+    // they are — never that there is nothing.
+    expect(out.text).toContain(`${FRAMING.identity}\n(2 more about who I am; recall ids: id_one, id_two)`);
+    expect(out.more).toEqual({ identity: 2 });
   });
 
   /**

@@ -113,6 +113,7 @@ export {
   NO_HOST_EVIDENCE,
   RETENTION_EVENT,
   lastRetentionRun,
+  owesShortWriteUp,
   owesWriteUp,
   planRetention,
   retentionRow,

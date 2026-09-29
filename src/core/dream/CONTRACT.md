@@ -137,9 +137,9 @@ dreamer is the model (a background agent the session launches), outside this pro
   went quiet does not count as following a launch. A dream journaled today whose
   reflection never finished makes the line start the REFLECTION alone (`reflect launch`
   with the dream's id), under the same latch and cap.
-- Never in the host-mode page writer's headless session. (The reflection that follows a
-  dream is the DREAMER's, in the background agent the session launched — not the page
-  writer's child, and not a phase of the dream: see §5.4.)
+- Never in the headless nightly run's own child. (The reflection that follows a dream is
+  the DREAMER's, in the run that dreamed — not a phase of the dream: see §5.4. The page
+  writer's separate host-mode child was removed on 2026-09-29.)
 - An unsettled pair (a dream's flag, or a settle that was undone) is raised the same way,
   once — the pair's `raised_day` is the latch since v10 — when both memories are
   showable, naming the pair's id and the `note` settle.

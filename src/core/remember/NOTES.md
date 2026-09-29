@@ -591,3 +591,33 @@ in a project and the ended session on the last, because a claim takes every unco
 of that session in the scope: on an earlier part it would mark parts not yet served as
 kept. A claim is by whole span and whole scope; one that could name span hashes (a part's
 own) would need `SpanBuffer#claimCoverage` to take them — not needed yet.
+
+## 2026-09-29 — the short write-up, and why it does not grow retention
+
+A session under the first-ask threshold used to owe nothing: never asked, so never
+written up, and its text struck 7 days after it ended, uninterpreted. It now owes a SHORT
+write-up — `owesShortWriteUp`: captured text, not written up, never asked, no answer of any
+kind — which the next session's pointer offers with one sentence more ("one line is
+enough, or `[]`"), after every full write-up (`adapters/sessions.ts#owedWriteUps`).
+
+**How a short session nobody gets to still ages out.** `planRetention` computes both flags,
+but the verdict reads `owes` alone: `kept-owed` is still only `owesWriteUp`. A short
+session is `kept-young` while its week runs and `deleted` after, exactly as before — the
+test "RETENTION IS UNCHANGED" pins it at +8 days beside a full debt that is still
+`kept-owed`. So the raw-transcript limit (7 days, 21 with snapshots) is the same bound it
+was; a short debt is an offer inside that week, never a reason to keep. A short session
+the pointer never reaches (two pointers a day, full ones first) simply ages out
+unwritten, which is what happened to all of them before. When its text goes, the plan no
+longer holds it, so it stops being offered and its progress entry is pruned.
+
+**A short session that IS written up keeps its text up to 7 days after the write-up**
+(correction after the review of #285, M1; probe P2). The retention clock starts from the
+latest thing known about a session, the write-up mark included (`clockFrom` reads
+`writtenUpAt`), the same rule a full debt has always had. So a short session written up
+on day 6 is `kept-young` until day 13 — about 14 days after it ended at most, never
+unbounded. "Exactly as before" above is true only of a short session nobody gets to.
+Left as it is for now: whether a short write-up should restart the week is Mike's call.
+
+Working defaults, held lightly. `below-threshold` is no longer produced as a door's
+`owes-nothing` reason (a session with text that owes neither debt has answered); the name
+stays in the type for older results.

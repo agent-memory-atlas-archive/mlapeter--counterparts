@@ -267,6 +267,13 @@ export interface Lanes {
   threads: Ranked[];
   hints: Ranked[];
   horizon: Ranked[];
+  /**
+   * WHAT EACH LANE'S CAP LEFT OUT, by id, in the lane's own rank order
+   * (2026-09-29). The caps used to cut silently; the renderer now says, in one
+   * short line per lane that lost something, how many more there are and
+   * which ids recall can fetch whole — `briefing.ts#moreLine`.
+   */
+  overflow?: Record<LaneName, string[]>;
 }
 
 /**
@@ -324,12 +331,20 @@ export function rankLanes(
   threads.sort(byThreadAge);
   hints.sort(byHint);
 
+  const past = (lane: readonly Ranked[], cap: number): string[] => lane.slice(cap).map((r) => r.id);
   return {
     identity: identity.slice(0, t.IDENTITY_MAX),
     craft: craft.slice(0, t.CRAFT_MAX),
     threads: threads.slice(0, t.THREADS_MAX),
     hints: hints.slice(0, t.HINTS_MAX),
     horizon: horizon.slice(0, t.HORIZON_MAX),
+    overflow: {
+      identity: past(identity, t.IDENTITY_MAX),
+      craft: past(craft, t.CRAFT_MAX),
+      threads: past(threads, t.THREADS_MAX),
+      hints: past(hints, t.HINTS_MAX),
+      horizon: past(horizon, t.HORIZON_MAX),
+    },
   };
 }
 

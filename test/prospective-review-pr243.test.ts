@@ -219,18 +219,21 @@ describe("a plain beat is claimed only when its line is certainly leaving", () =
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// The host-mode page writer's headless child is told nothing
+// The headless nightly run's child is told nothing
 // ═══════════════════════════════════════════════════════════════════════════
 
-describe("the page writer's headless session", () => {
+describe("the nightly run's headless session", () => {
   test("toHookInput marks it, and SessionStart and a prompt then offer no plain line", () => {
-    const marked = toHookInput({ session_id: "s9" }, { scope: "proj", env: { COUNTERPARTS_PAGE_WRITER: "2026-10-14" } });
-    expect(marked.pageWriter).toBe(true);
-    expect(toHookInput({ session_id: "s9" }, { scope: "proj", env: {} }).pageWriter).toBeUndefined();
+    const marked = toHookInput({ session_id: "s9" }, { scope: "proj", env: { COUNTERPARTS_NIGHT_RUN: "run-1" } });
+    expect(marked.nightRun).toBe(true);
+    expect(toHookInput({ session_id: "s9" }, { scope: "proj", env: {} }).nightRun).toBeUndefined();
+    // The removed host-mode writer's variable marks nothing any more (2026-09-29).
+    const old = toHookInput({ session_id: "s9" }, { scope: "proj", env: { COUNTERPARTS_PAGE_WRITER: "2026-10-14" } });
+    expect(old.nightRun).toBeUndefined();
 
     const a = hooks();
     dated(a.counterpart.store, "2026-10-15", { title: "pay your taxes", meta: { [CUE_MODE_META]: "plain" } });
-    const child = input({ pageWriter: true });
+    const child = input({ nightRun: true });
     expect(a.sessionStart(child).plain).toBeUndefined();
     expect(a.userPromptSubmit({ ...child, prompt: "write the page" }).plain).toBeUndefined();
     expect(plainRows(a.counterpart.store)).toBe(0);

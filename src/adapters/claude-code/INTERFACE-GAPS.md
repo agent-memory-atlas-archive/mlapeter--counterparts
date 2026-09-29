@@ -606,9 +606,14 @@ That is a different mechanism, not a wider parameter, and it is not built.
    fourth severity is the honest shape, and it touches the report, the JSON, the
    dashboard and every caller that partitions on three.
 
-## 12. Nobody has run a windowless host session, and this adapter cannot prove one from inside the suite (2026-09-20, S2)
+## 12. Nobody has run a windowless host session, and this adapter cannot prove one from inside the suite (2026-09-20, S2) — CLOSED 2026-09-29: host mode removed
 
-Host mode is the owner's pick for the nightly page writer, and every part of it that is
+**Closed by removal.** The page writer's host mode was removed on 2026-09-29 (the nightly
+run carries the writer). The questions below now belong to the headless nightly run, which
+starts a windowless `claude -p` of its own (`night-run.ts`, the "Unproven until a real run"
+list in NOTES 2026-09-29); they are kept as they were written.
+
+Host mode was the owner's pick for the nightly page writer, and every part of it that is
 this package's — the plan, the argument and environment shape, the watchdog, the claim, how
 the outcome is read back — is under test against a stub executable. Three things are not,
 and cannot be without a real machine and a real login:
@@ -638,7 +643,7 @@ known to work.
 
 **Closed for the mechanism by #189 (roadmap B3, the owner's ruling of 2026-09-23).** The
 writer's night is now decided on the machine's LOCAL calendar — `core/self/calendar.ts`
-and `self/writer.ts#pageWriterNight`, one function shared by `Self`, host mode and
+and `self/writer.ts#pageWriterNight`, one function shared by `Self`, the nightly run and
 doctor's Page writer line — so from US Pacific the night rolls over at local midnight,
 not at 5 p.m. East of UTC the night waits for its UTC date to close
 (`pageWriterAbout`: `min(local yesterday, UTC yesterday)`), because of what remains below.

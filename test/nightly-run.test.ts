@@ -45,7 +45,7 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-function brain(opts: { owner?: boolean; observer?: boolean; pageWriterMode?: "off" | "session" | "host" } = {}): Counterpart {
+function brain(opts: { owner?: boolean; observer?: boolean; pageWriterMode?: "off" | "session" } = {}): Counterpart {
   const c = Counterpart.open({
     dir,
     owner: opts.owner ?? true,

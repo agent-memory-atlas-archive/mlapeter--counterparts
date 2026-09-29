@@ -66,7 +66,6 @@ import {
 } from "../scopes.js";
 import type { ScopeMode, ScopeRegistry, ScopeVerdict } from "../scopes.js";
 import {
-  PAGE_WRITER_ENV,
   RECONNECT_REMEDY,
   SERVER_HEARTBEAT_MS,
   SESSION_TTL_MS,
@@ -186,14 +185,6 @@ export interface McpServerOptions {
   scope?: string;
   /** Is this the owner's own session? Withholding is the safe direction. */
   owner?: boolean;
-  /**
-   * This process's environment, injected. Read for exactly one thing today —
-   * `COUNTERPARTS_PAGE_WRITER`, the date a windowless nightly writer is writing
-   * about (`claude-code/page-writer.ts`) — and injected rather than reached for
-   * so a test can prove that path without exporting anything into the suite's
-   * own environment.
-   */
-  env?: Readonly<Record<string, string | undefined>>;
   /**
    * The embedder, for ONE purpose: embedding a deliberate question in line.
    *
@@ -352,7 +343,6 @@ export class McpServer {
   private readonly sessionTtlMs: number;
   private readonly onEvent: ((e: McpEvent) => void) | undefined;
   private readonly nowFn: () => number;
-  private readonly env: Readonly<Record<string, string | undefined>>;
   private readonly ring: McpEvent[] = [];
   private initialized = false;
   /** The lazy bind's result: null until a claim is corroborated, then frozen. */
@@ -386,7 +376,6 @@ export class McpServer {
     this.embedder = this.observer ? null : opts.embedder ?? null;
     this.onEvent = opts.onEvent;
     this.nowFn = opts.now ?? ((): number => Date.now());
-    this.env = opts.env ?? process.env;
     // LAST in the constructor — `emit` needs `nowFn`. A scope nobody chose is
     // the bug this run measured, so which default won is on the record from the
     // first event rather than inferable only from the memories it stamped.
@@ -2130,7 +2119,6 @@ export class McpServer {
             this.emit("mcp.dream", dreamArg ?? undefined, { phase: "writer", writer: claim.reason });
             const why: Record<string, string> = {
               off: "the owner has the page writer off",
-              "host-mode": "the page writer runs in host mode here, from its own windowless session",
               "no-previous-day": "this store has no day before today yet",
               "no-memories": `nothing was written down on ${claim.about}`,
               "already-claimed": `${claim.about} was already written or answered`,
@@ -2552,7 +2540,7 @@ export class McpServer {
    * The evidence, since 2026-09-28, is the NIGHTLY RUN's claim row in the
    * store — written by the run's `writer` phase, naming this session, and
    * counted only when the write names that session itself — and,
-   * kept readable for host mode and older records, the mark the SessionStart
+   * kept readable for older records, the mark the SessionStart
    * hook used to write (`pageWriterFor`, a DATE, on this session's registry
    * record, `adapters/sessions.ts`; nothing writes it now). Either counts only
    * while that night's claim is still open: a session that lives past
@@ -2635,19 +2623,12 @@ export class McpServer {
       // instruction says to — never the session this server happens to be
       // bound to: the run binds it early, and a page edit the owner directs in
       // the same session must stay an ordinary amendment (review of #271).
-      // Host mode's environment pin, when present, is the child's and
-      // outranks it.
-      if (!/^\d{4}-\d{2}-\d{2}$/.test((this.env[PAGE_WRITER_ENV] ?? "").trim())) {
-        const night = claimedSession === null ? null : this.counterpart.nightClaimFor(claimedSession);
-        if (night !== null) return { about: night.about, mode: night.mode };
-      }
+      const night = claimedSession === null ? null : this.counterpart.nightClaimFor(claimedSession);
+      if (night !== null) return { about: night.about, mode: night.mode };
       const about = this.pageWriterClaim(claimedSession);
       if (about === null) return null;
       // THE MODE COMES FROM THE CLAIM THIS IS CLOSING, not from the channel the
-      // mark arrived by (S2 review, MINOR-2). The env var used to assert
-      // `mode: "host"` on its own, so a session-mode night closed by a process
-      // with that variable exported wrote `mode: host` on a durable row about a
-      // night nothing started in host mode. The open claim knows which it was.
+      // mark arrived by (S2 review, MINOR-2): the open claim knows which it was.
       const open = this.counterpart
         .pageWriterRuns({ about })
         .find((r) => r.outcome === "asked" || r.outcome === "started");
@@ -2659,18 +2640,13 @@ export class McpServer {
   }
 
   /**
-   * The two channels the mark can arrive by, and neither is the tool call.
-   *
-   * The ENVIRONMENT is host mode's: the launcher pins the date onto the
-   * windowless child (`claude-code/page-writer.ts`), whose session id the host
-   * mints after the launcher is gone, so there is no registry record to mark.
-   * The REGISTRY is session mode's, written by the SessionStart hook at the
-   * moment it hands the ask over. Both are checked against the night's claim by
-   * the caller, so a value left lying in a shell reaches nothing.
+   * The older channel the mark can arrive by, and it is not the tool call: the
+   * REGISTRY mark the retired SessionStart ask wrote (nothing writes it now; it
+   * is still read). Checked against the night's claim by the caller. (The
+   * removed host mode's ENVIRONMENT pin, `COUNTERPARTS_PAGE_WRITER`, was the
+   * other channel until 2026-09-29.)
    */
   private pageWriterClaim(claimedSession: string | null): string | null {
-    const pinned = (this.env[PAGE_WRITER_ENV] ?? "").trim();
-    if (/^\d{4}-\d{2}-\d{2}$/.test(pinned)) return pinned;
     // The session this call NAMED and that corroborated, else the one this
     // server was launched bound to. Never an uncorroborated claim.
     const id = claimedSession ?? this.session;
