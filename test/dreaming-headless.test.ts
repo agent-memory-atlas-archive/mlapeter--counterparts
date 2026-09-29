@@ -37,6 +37,7 @@ import type { DoctorInput } from "../src/adapters/claude-code/doctor.js";
 import { recordSession } from "../src/adapters/sessions.js";
 import { McpServer } from "../src/adapters/mcp/index.js";
 import { launchOptions } from "../src/adapters/mcp/bin/serve.js";
+import { toolDefinitions } from "../src/adapters/mcp/tools.js";
 import { Counterpart as CounterpartClass } from "../src/core/counterpart.js";
 import type { Counterpart } from "../src/core/counterpart.js";
 import { DREAMING_DEFAULT, DREAM_MARK, DREAM_TUNABLES, RELAUNCHED_KEY, nightRunOf, nightRunWords } from "../src/core/dream/index.js";
@@ -155,6 +156,15 @@ describe("A. the day's ask is shown to the person, and claimed only when it leav
     const out = deliverTurn("user-prompt-submit", mine, {}, null, doorsOf(a), input());
     expect(out.stdout).not.toContain("systemMessage");
     expect(out.stdout).not.toContain("dream on your own");
+  });
+
+  test("the dream tool's own description never ties `launch` to `auto` (review finding 2)", () => {
+    const dream = toolDefinitions().find((t) => t["name"] === "dream");
+    const text = JSON.stringify(dream);
+    expect(text).toContain("Call `launch` only after the owner said");
+    expect(text).toContain("this session launches nothing");
+    expect(text).toContain("dream on your own");
+    expect(text).not.toContain("the owner's setting `auto`), or after");
   });
 
   test("the page writer's headless child and an observer are offered nothing", () => {
