@@ -39,6 +39,7 @@ import { currentMood } from "./mood.js";
 import { loadGateState, saveGateState } from "./session.js";
 import type { GateState, SemanticSource } from "./session.js";
 import { render } from "./render.js";
+import { standingOf } from "./standing.js";
 import type { RenderResult, Resolve, Resolved } from "./render.js";
 import { withTunables } from "./tunables.js";
 import type { RecallTunables } from "./tunables.js";
@@ -48,6 +49,7 @@ export * from "./gate.js";
 export * from "./mood.js";
 export * from "./render.js";
 export * from "./session.js";
+export * from "./standing.js";
 export * from "./tunables.js";
 export { activate, isConfidential, isHandoff, isSelfPage, gatedSal, recordedIdentity, salienceRank } from "./activate.js";
 export type { SpreadFn, SpreadStats } from "./activate.js";
@@ -429,9 +431,26 @@ export class Recall {
     for (const c of act.candidates) docs.set(c.id, c.doc);
     // Quiet pointers render with their one-word label (`FRAMING.linked`).
     const linked = new Set(act.candidates.filter((c) => c.linkOnly === true).map((c) => c.id));
+    // A memory's standing in a contradiction (2026-09-29): read once per id per
+    // build — the trim loop composes more than once.
+    const standings = new Map<string, { prefix: string; suffix: string } | null>();
+    const standing = (id: string): { prefix: string; suffix: string } | null => {
+      if (!standings.has(id)) {
+        let s: { prefix: string; suffix: string } | null = null;
+        try {
+          s = standingOf(this.store, id);
+        } catch {
+          s = null;
+        }
+        standings.set(id, s);
+      }
+      return standings.get(id) ?? null;
+    };
     const resolve: Resolve = (id) => {
       const r = resolveDoc(docs.get(id), id);
-      return linked.has(id) ? { ...r, linked: true } : r;
+      const st = standing(id);
+      const withStanding = st === null ? r : { ...r, standing: { prefix: st.prefix, suffix: st.suffix } };
+      return linked.has(id) ? { ...withStanding, linked: true } : withStanding;
     };
 
     const rendered = render(

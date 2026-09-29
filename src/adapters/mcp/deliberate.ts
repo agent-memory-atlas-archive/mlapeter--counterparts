@@ -26,7 +26,7 @@
 import type { Counterpart } from "../../core/counterpart.js";
 import { wireChars } from "../../core/fit/index.js";
 import { strength } from "../../core/physics/index.js";
-import { isConfidential, isSelfPage } from "../../core/recall/index.js";
+import { isConfidential, isSelfPage, standingOf } from "../../core/recall/index.js";
 import type { CandidateVerdict, SemanticSource, Verdict } from "../../core/recall/index.js";
 
 /**
@@ -141,6 +141,8 @@ export interface BoundedMemory {
   /** By id: which part of the body this is, and how many parts it has. */
   readonly part?: number;
   readonly parts?: number;
+  /** Its standing in a contradiction, or that it was replaced (`recall/standing.ts`). */
+  readonly standing?: string;
 }
 
 export interface BoundedResult {
@@ -189,6 +191,7 @@ export function boundById(
       part: p,
       parts,
       ...(m.admittedUnder === undefined ? {} : { admittedUnder: m.admittedUnder }),
+      ...(m.standing === undefined ? {} : { standing: m.standing }),
     };
     // As it leaves: serialised, weighted, both copies.
     const cost = 2 * wireChars(JSON.stringify(item, null, 2));
@@ -246,6 +249,7 @@ export function boundMemories(
       bodyChars: m.body.length,
       truncated: excerpt.length < m.body.length,
       ...(m.admittedUnder === undefined ? {} : { admittedUnder: m.admittedUnder }),
+      ...(m.standing === undefined ? {} : { standing: m.standing }),
     });
   }
   return { memories: out, truncated, droppedForBudget: dropped, chars };
@@ -296,6 +300,12 @@ export interface Recalled {
   readonly activation: number;
   /** For a dim item: which loud-tier check the ambient path stopped it at. */
   readonly admittedUnder?: Verdict;
+  /**
+   * Its standing (2026-09-29, `recall/standing.ts`): earlier, corrected by,
+   * disagrees with, unsettled — and, asked for by id, replaced by. Read
+   * before the body, so an old memory never reads as current.
+   */
+  readonly standing?: string;
 }
 
 export type DeliberateReason =
@@ -478,8 +488,23 @@ export function expandHandle(
   };
 
   const matches: string[] = [];
+  // AN OLD ID READS AS ITSELF (2026-09-29, contradictions): a replaced row
+  // asked for by its own id is shown — its own words, with `replaced by` —
+  // rather than forwarded to its successor's body. `store.resolve` still
+  // follows the chain (store §5 G4 / §16 G3; every write resolution relies on
+  // it); this is the display path, and only for an id that names a row.
+  const own = (() => {
+    try {
+      return store.row(handle);
+    } catch {
+      return undefined;
+    }
+  })();
+  if (own !== undefined && own.superseded_by !== null && !(own.body === "" && own.content_hash === "")) {
+    matches.push(own.id);
+  }
   try {
-    matches.push(store.resolve(handle));
+    if (matches.length === 0) matches.push(store.resolve(handle));
   } catch {
     // Not an id, or an id that no longer resolves. Fall through to titles —
     // which is NOT a fuzzy fallback: it is the other exact address a memory has.
@@ -545,9 +570,20 @@ export function expandHandle(
         // compared across them.
         strength: strength(read.physics, store.livedDay()),
         activation: 1,
+        ...standingField(store, id, true),
       },
     ],
   };
+}
+
+/** A memory's standing as a result field, or nothing. Never throws. */
+function standingField(store: Counterpart["store"], id: string, byId: boolean): { standing?: string } {
+  try {
+    const s = standingOf(store, id, { byId });
+    return s === null ? {} : { standing: s.note };
+  } catch {
+    return {};
+  }
 }
 
 /**
@@ -691,6 +727,7 @@ export function answerQuestion(
       strength: verdict.strength,
       activation: verdict.activation,
       ...(tier === "dim" ? { admittedUnder: verdict.verdict } : {}),
+      ...standingField(store, verdict.id, false),
     });
   }
 

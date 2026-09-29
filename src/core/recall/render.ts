@@ -92,6 +92,13 @@ export interface Resolved {
   /** True for a quiet pointer (`Candidate.linkOnly`), which renders with
    *  `FRAMING.linked` in front of it. Absent reads as false. */
   readonly linked?: boolean;
+  /**
+   * The memory's STANDING in a contradiction (2026-09-29, `standing.ts`): a
+   * qualifier in front (`Earlier (now [id]): `, `Unsettled — may be out of
+   * date, see [id]: `) and a pointer after (` (disagrees with [id])`).
+   * Outside the clip, like the journal word. Absent: nothing to say.
+   */
+  readonly standing?: { readonly prefix: string; readonly suffix: string };
 }
 
 /** Id -> text, at render time. */
@@ -157,7 +164,12 @@ export function clip(text: string, maxBytes: number): string {
  * belongs.
  */
 function label(r: Resolved): string {
-  return `${r.linked === true ? `${FRAMING.linked} ` : ""}${r.journal === true ? `${FRAMING.journal} ` : ""}`;
+  return `${r.linked === true ? `${FRAMING.linked} ` : ""}${r.journal === true ? `${FRAMING.journal} ` : ""}${r.standing?.prefix ?? ""}`;
+}
+
+/** The standing's pointer, after the text and outside the clip, like the label. */
+function after(r: Resolved): string {
+  return r.standing?.suffix ?? "";
 }
 
 function openMarker(turn: number): string {
@@ -192,7 +204,7 @@ function compose(
     lines.push("", FRAMING.surfacedHeader);
     for (const id of surfaced) {
       const r = resolve(id);
-      lines.push(`- ${label(r)}${clip(r.gist, input.gistBytes)}`);
+      lines.push(`- ${label(r)}${clip(r.gist, input.gistBytes)}${after(r)}`);
     }
   }
   if (footnotes.length > 0) {
@@ -200,7 +212,7 @@ function compose(
     // Pointers with short titles, NEVER bodies (§9 OUTPUTS).
     for (const id of footnotes) {
       const r = resolve(id);
-      lines.push(`- ${label(r)}${clip(r.title, input.titleBytes)} [${id}]`);
+      lines.push(`- ${label(r)}${clip(r.title, input.titleBytes)} [${id}]${after(r)}`);
     }
   }
   const body = lines.join("\n");
