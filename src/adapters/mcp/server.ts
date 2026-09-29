@@ -1852,7 +1852,7 @@ export class McpServer {
               // retelling in the session's own words would carry none, and the
               // dream's title and changes would read as something that
               // happened (adversarial review of #251).
-              how: "Hand `prompt` to a background agent (the Agent tool), unchanged, and carry on. When it finishes, show the owner its first line (the dream's) exactly as it came back — it carries the dream's mark, which keeps the dream out of lived memory. If a morning share follows, tell it to the owner in your own words, as a telling (\"Last night I dreamed…\"), then call the reflect tool with phase \"told\" — never state what was dreamed as something that happened.",
+              how: "Hand `prompt` to a background agent (the Agent tool), unchanged, and carry on. When it finishes, show the owner its first line (the dream's) exactly as it came back — it carries the dream's mark, which keeps the dream out of lived memory. If a morning share follows, tell it to the owner in your own words, as a telling (\"While I slept I dreamed…\"), then call the reflect tool with phase \"told\" — never state what was dreamed as something that happened.",
             },
             false,
           );

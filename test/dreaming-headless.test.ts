@@ -161,6 +161,18 @@ describe("A. the day's ask is shown to the person, and claimed only when it leav
     expect(out.stdout).not.toContain("dream on your own");
   });
 
+  test("the run happens at the day's first session, so nothing it tells says \"last night\" (owner, 2026-09-29)", async () => {
+    const a = hooks({ identity: { name: "Mike" } });
+    lived(a.counterpart);
+    const prompt = a.counterpart.dreams.launchPrompt({ session: "s1" });
+    expect(prompt).toContain("since you last slept");
+    expect(prompt.toLowerCase()).not.toContain("last night");
+    const s = new McpServer({ counterpart: a.counterpart, scope: "proj", owner: true, registryDir: dir, session: "s1" });
+    const launch = await s.call("dream", { phase: "launch", session: "s1" });
+    expect(String(launch.structuredContent["how"])).toContain("While I slept I dreamed…");
+    expect(JSON.stringify(launch.structuredContent).toLowerCase()).not.toContain("last night");
+  });
+
   test("the dream tool's own description never ties `launch` to `auto` (review finding 2)", () => {
     const dream = toolDefinitions().find((t) => t["name"] === "dream");
     const text = JSON.stringify(dream);

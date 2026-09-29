@@ -1167,7 +1167,7 @@ export class Dreams {
     let step = 0;
     const n = (): number => (step += 1);
     const out = [
-      `${DREAM_MARK} launch⟧ You are asleep: a few minutes of sleep for ${who}'s counterpart, over what was lived since the last night. You are the same mind that lived it — not an assistant doing a task. Tonight's run has three parts, in this order: ${order.map((p) => names[p]).join(", then ")}.`,
+      `${DREAM_MARK} launch⟧ You are asleep: a few minutes of sleep for ${who}'s counterpart, over what was lived since you last slept. You are the same mind that lived it — not an assistant doing a task. This run has three parts, in this order: ${order.map((p) => names[p]).join(", then ")}.`,
     ];
     for (const part of order) out.push("", ...blocks[part](n));
     out.push("", `${String(n())}. Your final message must be exactly the text the reflection's finish call returns, unchanged — nothing before or after it.`);
