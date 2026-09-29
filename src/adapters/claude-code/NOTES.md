@@ -1788,3 +1788,47 @@ Working defaults, held lightly.
 - **Unproven:** how often short pointers fire on the owner's machine (every quick session,
   including any `claude` sessions other tools start in a project with hooks on, now owes
   one line); whether one-line answers are worth the pointer's room.
+
+## 2026-09-29, later — the fix round after the review of #285
+
+(`docs/adversarial-review-pr285-2026-09-29.md`; the probes are regression tests now.)
+
+- **S1, the short write-up waits for the whole store.** The allowance is one count for the
+  store, so a short debt is offered only when no full debt in ANY project is waiting and
+  not yet pointed at today (`owedWriteUps`' `fullFirst`). Named cost: a full debt in a
+  project nobody reopens holds every short one back; doctor turns amber on it after
+  `WRITE_UP_WAIT_DAYS`, and the short ones age out with their week, as before.
+- **S2, the SessionStart order is real now.** A reminder reaches the person only in the
+  JSON form, so when one is due and fits beside the wake in that form, the question and the
+  pointer are measured against it (`EnvelopeRoom`, `envelope.ts` — the one envelope shape
+  both `hooks.ts` and `bin/hook.ts` use). Measured: on a 9,000-byte wake of ordinary
+  lines the JSON form of the wake and one reminder is already past 9,500, so on the
+  owner's near-full wake a reminder cannot be shown at SessionStart whatever the asks do;
+  it moves to the first prompt, which was already the behaviour, and the asks use the plain
+  room. The ordering shows on a smaller wake (tested by walking wake sizes through the real
+  `deliverTurn`). `adapter.envelope.gave-way` is now recorded where the giving way
+  happens: each ask's deferral (`question`, `pointer`) and the delivery (`plain`, `dream`,
+  `update-notice`, through the `noteGaveWay` door). The adapter no longer guesses it.
+- **M2, recall's room is measured.** In the JSON form, `recallRoom` measures the escaped
+  envelope of the clock, the context and the person's lines, keys included. The one
+  estimate left is recall's own escaping (`ENVELOPE_ESCAPE_RESERVE`, 200): its text does
+  not exist when its budget is set, and composing twice would spend its fires twice. Plain
+  stdout reserves nothing.
+- **M3, doctor names the cause.** A deferred pointer's record carries `beside` (the
+  question, the reminders) and `limit`; doctor says "the wake and the first-launch question
+  left …" and advises lowering `injectionBudgetBytes` only if it keeps happening.
+- **N2, entrypoints.** Read from the 2.1.285 host binary (strings, not docs): the host sets
+  `CLAUDE_CODE_ENTRYPOINT` at startup — `cli` for a terminal session, `sdk-cli` when the
+  start is non-interactive (`-p`/`--print`, `--init-only`, `--sdk-url`, or stdout not a
+  TTY), `sdk-ts` / `sdk-py` from the Agent SDK, `mcp` for `claude mcp serve`,
+  `claude-code-github-action` under `CLAUDE_CODE_ACTION`; an inherited `cli` becomes
+  `sdk-cli` for a non-interactive start. This session's own Bash environment carries
+  `CLAUDE_CODE_ENTRYPOINT=cli`, so the host exports it to children. What is NOT verified:
+  a hook process's environment on a real `claude -p` run (running one here would fire the
+  owner's live hooks). The hook records the value on the session's registry record; a
+  short debt whose entrypoint is one of the five non-interactive names is not offered.
+  Unknown or absent reads as a person's. A long `claude -p` session still owes a full
+  write-up; only the short offer is skipped.
+- **N1** (the first-launch question can now fit beside a full wake): kept as built, on
+  Mike's word — once per session in each unscoped directory until he answers there, the
+  original G41 design.

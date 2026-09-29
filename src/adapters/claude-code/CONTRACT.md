@@ -691,8 +691,16 @@ did not get.
   longer the reported injection budget) → plain reminders due today (they wait for the
   first prompt, unclaimed) → the wake, which is never cut at delivery: it was composed to
   its own budget at the boundary, trimming hints → craft → threads → horizon → identity.
+  A reminder reaches the person only in the JSON form, so when one is due and it fits
+  beside the wake in that form, the two asks are measured against THAT form (escaped,
+  under 9,500) and it is they that give way (review of #285, S2). A wake too full for the
+  reminder even alone sends the reminder to the first prompt and the asks use the plain
+  room. What gave way is recorded where it happened: each ask's deferral, and the
+  delivery for reminders, the dream offer and the update notice
+  (`adapter.envelope.gave-way`).
 - **UserPromptSubmit:** the update notice → the turn's recall, sized to what the lines
-  below leave (`hooks.ts#recallRoom`), trimming itself to that → the dream's lines (a
+  below leave (`hooks.ts#recallRoom`, measured in the envelope's own form — every part
+  but recall's own escaping, which is a named reserve), trimming itself to that → the dream's lines (a
   hand-back, a carried share, a raise line, the day's offer), reserved because they are
   claimed when composed → plain reminders and the clock line, last.
 - **The plain-stdout fallback is checked:** past the cap, `bin/hook.ts#hostDelivery` says
@@ -731,12 +739,18 @@ first among equals, so one session nobody writes up cannot stand in front of the
 under the first-ask threshold — never asked — that left text, was not written up and gave
 no answer owes a one-line write-up (`remember/owes.ts#owesShortWriteUp`). Same pointer,
 same door, one plain sentence more (`WRITE_UP_SHORT_LINE`: one line is enough, or
-`memories: []`). Full write-ups first: a full one not yet pointed at today, then the short
-ones, then a full one already pointed at today — so short ones take what is left of the
-day's allowance. It is offered only for a session the host's registry knows (one our
-hooks saw start), so the unbound MCP server's shared `mcp` id is passed by. It is not a
-retention debt (text still ages out with its week) and not in doctor's awaiting count. The
-headless nightly run's child and an observer capture nothing, so they owe nothing.
+`memories: []`). Full write-ups first, STORE-WIDE (review of #285, S1): a short one is
+offered only when no full debt anywhere in the store is waiting and not yet pointed at
+today, because the day's allowance is one count for the store. It is offered only for a
+session the host's registry knows (one our hooks saw start), so the unbound MCP server's
+shared `mcp` id is passed by, and only for a person's interactive conversation: a session
+whose host entrypoint (`CLAUDE_CODE_ENTRYPOINT`, kept on the registry record) says
+`claude -p`, the Agent SDK, `mcp` or a GitHub action owes no short write-up (N2). It is
+not a retention debt (text ages out with its week; a written-up one keeps it up to 7 days
+after the write-up, like a full debt) and not in doctor's awaiting count. The headless
+nightly run's child and an observer capture nothing, so they owe nothing. When a pointer
+defers for room, its record names what else rode beside the wake, and doctor's advice
+names that rather than the wake's budget (M3).
 
 **[M] SessionStart carries a POINTER, not the words** (owner's choice of 2026-09-23,
 INTERFACE-GAPS §15 option (b)). In `HookResult.ask`, after whichever other ask took the

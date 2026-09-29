@@ -610,6 +610,14 @@ the pointer never reaches (two pointers a day, full ones first) simply ages out
 unwritten, which is what happened to all of them before. When its text goes, the plan no
 longer holds it, so it stops being offered and its progress entry is pruned.
 
+**A short session that IS written up keeps its text up to 7 days after the write-up**
+(correction after the review of #285, M1; probe P2). The retention clock starts from the
+latest thing known about a session, the write-up mark included (`clockFrom` reads
+`writtenUpAt`), the same rule a full debt has always had. So a short session written up
+on day 6 is `kept-young` until day 13 — about 14 days after it ended at most, never
+unbounded. "Exactly as before" above is true only of a short session nobody gets to.
+Left as it is for now: whether a short write-up should restart the week is Mike's call.
+
 Working defaults, held lightly. `below-threshold` is no longer produced as a door's
 `owes-nothing` reason (a session with text that owes neither debt has answered); the name
 stays in the type for older results.
