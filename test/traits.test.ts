@@ -236,7 +236,7 @@ describe("the store: recorded once, read by the dashboard, feeding nothing", () 
 // ---------------------------------------------------------------------------
 
 describe("the schema: folded into the unreleased v9", () => {
-  test("still v9", () => {
+  test("the version is v9 or later (v10 added contradictions beside it)", () => {
     expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(9);
   });
 

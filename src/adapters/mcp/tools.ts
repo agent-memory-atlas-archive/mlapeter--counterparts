@@ -389,16 +389,16 @@ const NOTE: ToolSpec = {
       mechanizedBy:
         "src/core/remember/updates.ts#resolveUpdates -> src/core/mint.ts#mintProposal (UPDATES_META_KEY)",
     },
+    ...DATE_PRIVILEGES,
+    {
+      claim: "Under observer stance nothing is written and the refusal says so.",
+      mechanizedBy: "src/core/store/index.ts#mutate (observer stand-down)",
+    },
     ...SETTLE_PRIVILEGES,
     {
       claim:
         "`settle` settles two memories that already exist, by the same rules, and rewrites neither: the pair and a short why are the record.",
       mechanizedBy: "src/core/counterpart.ts#settleContradiction -> src/core/contradictions.ts#settle",
-    },
-    ...DATE_PRIVILEGES,
-    {
-      claim: "Under observer stance nothing is written and the refusal says so.",
-      mechanizedBy: "src/core/store/index.ts#mutate (observer stand-down)",
     },
   ],
   inputSchema: {

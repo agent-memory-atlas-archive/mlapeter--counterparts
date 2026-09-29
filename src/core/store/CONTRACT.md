@@ -443,6 +443,16 @@ store property is the `VACUUM INTO`, and that is G19. The code's numbering wins.
     deletes them with the memory. A dev store stamped v9 before the table existed gains
     it at its next writer open (`operational.ts#ensureCurrentTables`); an observer reads
     it as empty until then.
+25. **[M] A contradiction is a pair row with a trail** (schema v10, 2026-09-29; working
+    default, held lightly). `contradictions` holds the two memories (older first), the
+    pair's standing (`unsettled`, `settled`, `withdrawn`), how it was settled and which
+    holds — ids and numbers; `contradiction_settles` holds every settle and undo with its
+    actor and a short `why`, which is words. Each settle or undo is one transaction with
+    what it does to the memory it is over (a physics patch computed by `physics/`, or an
+    archive `corrected`), and an undo puts that back through `updatePhysics` /
+    `restoreSuperseded`. A corrected memory is archived, not superseded: no forwarding
+    address, readable by its own id. The owner's removal deletes a memory's pairs and
+    their trail. The v10 migration carries every open dream flag onto an unsettled pair.
 
 ## 6. Scars honored
 
