@@ -565,7 +565,7 @@ describe("B. auto: the first prompt of the day starts the headless run itself", 
     const turn = a.userPromptSubmit(input());
     expect(nightPlans()).toHaveLength(0);
     expect(a.counterpart.dreams.nightRun()).toMatchObject({ state: "could-not-start", reason: "runner", detail: "NO_RUNNER" });
-    expect(turn.dream?.notice).toBe('Counterparts: I couldn\'t dream on my own last time: the background process could not start (NO_RUNNER). Say "dream" to do it here.');
+    expect(turn.dream?.notice).toBe('Counterparts: I couldn\'t start dreaming on my own: the background process could not start (NO_RUNNER). Say "dream" to do it here.');
     // An ask: claimed at delivery.
     expect(turn.dream?.offer).not.toBeNull();
     expect(turn.injection).toContain('phase "launch"');
@@ -585,11 +585,16 @@ describe("B. auto: the first prompt of the day starts the headless run itself", 
     a.counterpart.dreams.recordNightRun({ ...started, state: "could-not-start", reason: "quick-exit", code: 1, endedAt: started.startedAt + 2_000 });
     offsetMs += 5_000;
     const next = a.userPromptSubmit(input({ sessionId: "s2" }));
-    expect(next.dream?.notice).toBe('Counterparts: I couldn\'t dream on my own last time: claude stopped straight away (exit 1) — is it logged in? Say "dream" to do it here.');
+    expect(next.dream?.notice).toBe('Counterparts: I couldn\'t start dreaming on my own: claude stopped straight away (exit 1) — is it logged in? Say "dream" to do it here.');
     expect(nightPlans()).toHaveLength(1);
     deliverTurn("user-prompt-submit", next, {}, null, doorsOf(a as unknown as ReturnType<typeof openAdapter>), input({ sessionId: "s2" }));
     expect(a.counterpart.store.dreamAsk(AT)).toMatchObject({ state: "offered", session: "s2" });
-    expect(a.counterpart.store.getMeta(RELAUNCHED_KEY)).toBe(`${AT}:1`);
+    // An ask, not a run started again: no relaunch spent, recorded as `offered` after could-not-start (review finding 7).
+    expect(a.counterpart.store.getMeta(RELAUNCHED_KEY)).toBeUndefined();
+    const asks = a.counterpart.store.eventLog({ name: "dream.ask" }).map((e) => JSON.parse(e.payload ?? "{}") as Record<string, unknown>);
+    expect(asks.map((p) => p["state"])).toEqual(expect.arrayContaining(["launched", "offered"]));
+    expect(asks.some((p) => p["state"] === "relaunched")).toBe(false);
+    expect(asks.find((p) => p["state"] === "offered")?.["after"]).toBe("could-not-start");
     expect(a.userPromptSubmit(input({ sessionId: "s3" })).dream).toBeUndefined();
   });
 

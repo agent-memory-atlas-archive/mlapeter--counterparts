@@ -552,6 +552,12 @@ export interface DreamOffer {
   readonly setting: DreamingSetting;
   /** The HOST starts the run itself, headless, once it claims this (setting `auto`, 2026-09-29). */
   readonly headless: boolean;
+  /**
+   * The ASK a headless run that could not start falls back to: claimed over
+   * the day's `launched` row as `offered`, recorded with `after:
+   * "could-not-start"`, and NOT counted as a relaunch — nothing ran.
+   */
+  readonly fallback: boolean;
   /** For the MODEL: what to do, and what each answer means. */
   readonly context: string;
   /** For the PERSON, shown in the terminal. Null: nothing to show. */
@@ -808,7 +814,9 @@ export class Dreams {
     // THE HEADLESS RUN THIS LINE STARTED COULD NOT START (2026-09-29): ask at
     // once — no quiet window to wait out, there is no run to wait for — under
     // the same cap.
-    if (ask.state === "launched" && this.fellBack(at, ask.at) !== null) return this.relaunches(at) < DREAM_TUNABLES.RELAUNCHES_PER_DAY;
+    // Not counted as a relaunch (review of #282, finding 7): nothing ran, and
+    // the ask it becomes is not asked again.
+    if (ask.state === "launched" && this.fellBack(at, ask.at) !== null) return true;
     if (this.store.now() - ask.at <= DREAM_TUNABLES.ABANDONED_AFTER_MS) return false;
     if (this.relaunches(at) >= DREAM_TUNABLES.RELAUNCHES_PER_DAY) return false;
     if (behind !== null) return true;
@@ -933,6 +941,7 @@ export class Dreams {
       state: headless ? "launched" : "offered",
       setting: s.setting,
       headless,
+      fallback: fell !== null,
       fresh: s.newSince,
       resumes: s.leftBehind?.id ?? null,
       reflects: s.reflectOnly?.id ?? null,
@@ -968,7 +977,7 @@ export class Dreams {
     if (fell !== null) {
       // THE HEADLESS RUN COULD NOT START: ask, here, and say why in one line.
       const words = nightRunWords(fell);
-      const notice = `Counterparts: I couldn't dream on my own last time: ${words}${/[.?!]$/.test(words) ? "" : "."} Say "dream" to do it here.`;
+      const notice = `Counterparts: I couldn't start dreaming on my own: ${words}${/[.?!]$/.test(words) ? "" : "."} Say "dream" to do it here.`;
       const start = s.reflectOnly !== null ? reflect : launch;
       return {
         ...base,
@@ -1061,18 +1070,20 @@ export class Dreams {
         offer.priorAt === null
           ? this.store.setDreamAsk({ date: offer.at, state: offer.state, session: offer.session, day })
           : this.store.reclaimDreamAsk({ date: offer.at, prevAt: offer.priorAt, state: offer.state, session: offer.session, day });
-      if (claimed && offer.priorAt !== null) this.store.setMeta(RELAUNCHED_KEY, `${offer.at}:${String(this.relaunches(offer.at) + 1)}`);
+      if (claimed && offer.priorAt !== null && !offer.fallback) this.store.setMeta(RELAUNCHED_KEY, `${offer.at}:${String(this.relaunches(offer.at) + 1)}`);
     } catch {
       return false;
     }
     if (!claimed) return false;
     this.record(DREAM_ASK_EVENT, null, {
-      state: offer.priorAt === null ? offer.state : "relaunched",
+      // A fallback is an ASK, not a run started again (review of #282, finding 7).
+      state: offer.fallback ? "offered" : offer.priorAt === null ? offer.state : "relaunched",
       date: offer.at,
       fresh: offer.fresh,
       setting: offer.setting,
       resumes: offer.resumes,
       reflects: offer.reflects,
+      ...(offer.fallback ? { after: "could-not-start" } : {}),
     });
     return true;
   }
