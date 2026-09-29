@@ -282,6 +282,17 @@ this scar's direct descendant) · **§2.7** (the note traverses the one write ch
 **§2.16** (every model-facing operation carries an admission test and a negative example) ·
 **§2.20** (the census is content-by-reference).
 
+## 6b. Settling contradictions at the doors (2026-09-29)
+
+**[M]** `note` and each `session_end` entry take `how` beside `updates` (`changed` by
+default, `corrected`, `open`) and answer with what the settle did, or that the target's
+own path ran instead. A stored memory comes back with its nearest few live memories
+(`neighbours`) and one line inviting a settle — in the payload, so in
+`structuredContent`. `note` with `settle` settles two memories that already exist without
+writing one; `reflect` phase `settle` is the reflection's door; the dream's `propose`
+takes a `settle` action. Every settle is `core/contradictions.ts#settle`'s, recorded with
+who, how, why and when; an observer writes nothing and says so.
+
 ## 7. Open questions
 
 1. **Does `note` still need to exist** once the experiencer writes at every session end?

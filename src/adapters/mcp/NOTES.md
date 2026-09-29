@@ -787,3 +787,26 @@ dream and reflection on master was blind; 0.3.6 was not, which is why the in-ses
 live store saw everything. The whole payload is now in both, and the fitting test measures the
 structured copy against the ceiling too. `test/dreaming-headless.test.ts` opens a server from the
 headless child's own `--mcp-config` env and checks the bodies reach `structuredContent`.
+
+## 2026-09-29 — contradictions at the doors (held lightly)
+
+- **`how` beside `updates`** on `note` and each `session_end` entry: `changed` (the
+  default), `corrected`, `open`. Intake validates it (`HOW_UNKNOWN`) and drops one sent
+  without `updates`. The result's `settled` says what happened — the pair, the kind, the
+  cut (strength before and after) or the archive, flags it closed — or, when the writer
+  sent a `how` at a belief, a core memory, a current-state fact, an entity or a protected
+  memory, that it was not applied and which path ran.
+- **Neighbours at write time**: a stored memory comes back with up to three of its
+  nearest live memories (`neighbours`: id, title, excerpt) and one `neighboursHint` line
+  (once per `session_end` call). In the PAYLOAD, so in `structuredContent`, which is what
+  Claude Code hands the model (f387f55). Nothing when nothing clears the bar.
+- **Settling a pair that exists: `note` with `settle`** (`pair` or `holds` + `over`,
+  `how`, `why`), with or without `text`, rather than a new tool — every tool costs
+  context, and `note` is already the deliberate door. `text` is no longer `required` in
+  the published schema; the server still refuses `text-required` when neither is sent.
+  When both are sent, `isError` follows the note. The reflection settles through its own
+  phase (`reflect` phase `settle`) so the trail can name it.
+- **Descriptions**: the `how` field says what each kind means and asks for the journey
+  in the writer's own words. `session_end`'s two settle privileges sit at the end of its
+  list, because the host serves the first 2,048 characters and the salience claims must
+  stay inside them (`test/stop-ask-quiet.test.ts`).

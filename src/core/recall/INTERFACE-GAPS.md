@@ -271,3 +271,9 @@ log only through the Claude Code hook's `recall.credit` row. A host without that
 pass shows pointers and never says whether they were used. Also: a pointer the model
 reads by title (a handle) counts only if the handle log translated it (G50), as for any
 expansion.
+
+## 10. Standing labels reach recall and ask, not the wake's lanes — OPEN 2026-09-29
+
+`standing.ts` labels the ambient injection and the deliberate path (MCP `recall`, the
+console's `ask`). The wake's own lanes (`self/briefing.ts`, the Nearby hints) render
+memories without it; an old side of an unsettled pair shown there reads as current.

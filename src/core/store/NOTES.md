@@ -1739,3 +1739,38 @@ Working defaults from the owner's conversation of 2026-09-27 and its design revi
   copies do not count the moment twice.
 - **No profile here.** `traitCensus` is counts only (the fired row); the balance per axis
   is the dashboard's arithmetic, weighted by firmness there.
+
+## 2026-09-29 — schema v10: contradiction pairs and their trail (working defaults, held lightly)
+
+- **Two tables, additive, through the copy-first seam.** `contradictions`: one row per
+  pair of memories that disagree — `a` the older (birth day, then moment, then insertion
+  order), `b` the newer, `state` (`unsettled`, `settled`, `withdrawn`), `how` (`changed`,
+  `corrected`, `open`), `holds` / `over` for the first two, `via` when another pair's
+  settle closed it, who first recorded it (`source`: `dream`, `write`, `settle`), the
+  flagging dream, `flagged_day`, `raised_day` (the once-only awake line's latch) and
+  `settled_day`. Ids and numbers only. `contradiction_settles`: the TRAIL — every settle
+  and undo, the actor (`session`, `dream`, `reflection`, `page-writer`, `owner`) and its
+  id, the kind, `why` (a short line — content), the ids, lived day and moment, `undone`,
+  and in `detail` what undoing it needs (the cut's from/to day, the archived id, the
+  flags it closed).
+- **The upgrade carries every open dream flag** (`carryDreamFlags`): a
+  `dream_changes` contradiction whose change and dream are not undone becomes one
+  unsettled pair (the same two memories flagged twice are one pair; the pair's id is
+  derived from the flag, so a re-run inserts nothing), the meta latch
+  `dream.raised.<dream>.<seq>` becomes `raised_day`, and `mind.seen.<dream>.<seq>` is
+  copied to `mind.seen.<pair>`. It records `contradictions.v10.upgrade` (flags, pairs,
+  raised, standing); doctor prints it. `OBSERVER_READ_FLOOR` rises to 10, as before: an
+  instrument says "not initialized" on a v9 store until the next hook migrates it.
+- **Writes**: `flagContradiction` (idempotent on its two memories — a standing pair,
+  settled or not, is returned as it is), `markContradictionRaised`,
+  `withdrawContradiction` (only an unsettled pair), `settleContradiction` and
+  `undoContradictionSettle`, each one transaction: the pair, the trail row, and what the
+  settle does to the memory it is over — a physics patch the caller computed through
+  `physics/` (`updatePhysics`) or an `archive(id, "corrected")` — last, so a refusal
+  stages nothing on the memory. The undo puts the day back only when the cut still
+  stands, and unarchives through `restoreSuperseded(id, "corrected")`.
+- **A corrected memory is archived, not superseded**: no forwarding address, no version
+  row (so the 90-day version prune never touches its words), readable by its own id.
+  Sleep's prune skips archived rows and itself only archives. `resolve` is unchanged.
+- **Removal** deletes a removed memory's pairs and their trail (a `why` is words about
+  the two), and blanks `via` on pairs they had closed.

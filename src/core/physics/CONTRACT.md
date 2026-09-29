@@ -441,6 +441,18 @@ R(m)            = 1 + RETURN_GAIN × ln(1 + returns(m))              RETURN_GAIN
   born before schema v8 and is closed to every row made since. At zero returns, R = 1:
   the upgrade changes no memory's arithmetic.
 
+### 5.12 A changed fact fades once (2026-09-29, contradictions — a working default)
+
+When a memory is settled as `changed` — true at its time, not now — its forgetting curve
+takes ONE cut: `changedFade(m, d, CHANGED_FADE)` returns the `lastUsedDay` at which
+`decay` reads `CHANGED_FADE` × what it reads today (the curve inverted for the shape in
+use, rounded to a whole lived day, never less of a cut). Strength today is cut by about
+that factor (0.5, CAL); ordinary decay carries on from there, the prune's dwell counts
+from there, and a credited use re-anchors it (`creditUse` sets `lastUsedDay := d`) —
+graded weakening, not a switch (FadeMem). A decay-exempt (core) memory has nothing to
+cut and is never settled `changed` (its path is pressure). The caller applies the patch
+through `Store.updatePhysics` and records the prior day, so an undo can put it back.
+
 ## 6. Scars honored
 
 **E8** (active-day clock, idempotent under replay) · **§2.2** (supersede is a graph

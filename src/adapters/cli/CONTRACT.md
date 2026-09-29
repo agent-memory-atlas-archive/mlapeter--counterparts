@@ -605,6 +605,15 @@ and a curation path that has never fired is unproven — see open question 2) ·
 (permanence and write bar scale together — everything permanent is enumerable here) ·
 **§2.20** (the removal record carries no body and no content hash).
 
+## 6b. `settle` (2026-09-29)
+
+**[M]** `counterparts settle` lists what is unsettled and what was settled lately (how,
+which holds, who, why); `--pair <id> --holds <id> --how changed|corrected|open --why
+"..."` (or `--holds <id> --against <id>`) settles one as the owner, rewriting no memory;
+`--undo <pair>` reverses a settle. Reading works under observer; the two changes refuse
+there. `ask` prints a memory's standing (earlier, corrected by, replaced by, disagrees
+with, unsettled) above its words.
+
 ## 7. Open questions
 
 1. **Does `export` encrypt to a key the owner already has, or does it mint one?** Minting

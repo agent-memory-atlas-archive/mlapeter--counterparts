@@ -50,12 +50,13 @@ a badge or softer copy when the site is next touched.
    the static embedder's tuning on real turns. (The bug where schema cards never faded is fixed:
    #215 gave `fadeSweep` a caller, the sleep `fade` phase.) Prospective needs a date field, which
    is a schema change; the Reconnect recipe (E) and the snapshot before migration (#214) are in.
-   - Contradictions nobody declared (raised on Reddit, 09-24). A conflict resolves only when
-     the writer marks it with `updates:`. Two memories that disagree without that link both
-     stay live, and recall can surface both. A possible fix, if it shows up in real use: a
-     sleep pass that finds close neighbours whose content disagrees and puts the pair in front
-     of the writer at the next boundary (reconsolidation). The gauge counts how many such
-     pairs it finds and how many get resolved.
+   - Contradictions (raised on Reddit, 09-24; built 2026-09-29 as a mechanism — changed,
+     corrected or open, with a record and an undo; schema v10). A disagreement is noticed
+     when it is written (a stored memory comes back with its nearest few live memories), or
+     when a dream flags a pair; an unsettled pair is raised awake and labelled in recall.
+     Still not built: finding two memories that disagree when nobody wrote the second one
+     near the first and no dream saw them together — a sleep pass over close neighbours is
+     the candidate, if it shows up in real use. Doctor's Contradictions line is the gauge.
    - Later: interactive `counterparts ask` in the terminal (arrow keys, Enter expands; the
      owner's idea, after the ask-readable change lands).
 

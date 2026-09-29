@@ -650,3 +650,14 @@ Working defaults, held lightly; the association side is `associate/NOTES.md` §1
   field list did not move. Since the review of #281 (finding 5) the durable row's
   `footnotes` entries also carry `via: "link"` on a pointer, inside the existing
   arrays, so which footnote was one survives the gate state's pruning.
+
+## 20. A memory's standing — 2026-09-29 (contradictions)
+
+`standing.ts` turns the pair rows into a qualifier in front and a pointer after
+(`Resolved.standing`), composed outside the clip so the budget never eats the part that
+says a memory is not current. One indexed read per rendered id, memoised within a build
+(the trim loop composes more than once). A pair closed through another (`via`) and a
+withdrawn one say nothing. The corrected label is seen only by id: an archived memory
+never surfaces. `deliberate.ts#expandHandle` shows a superseded row asked for by its own
+id as itself, with `replaced by` — the display path only; `store.resolve` still forwards,
+and a use of that row is not credited (the credit pass refuses archived rows).
