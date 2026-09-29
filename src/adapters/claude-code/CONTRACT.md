@@ -610,7 +610,7 @@ watchdog — is `child.ts` now, unchanged.
 host's ceiling, the durable `skipped` deferral rows, and the first-launch question's
 once-per-night patience. `skipped` rows written before still read as they always did.)
 
-**[M] Doctor's line.** Doctor's `Page writer` line is GREEN when it has never run on a store with no yesterday,
+**[M] Doctor's line.** The `Page writer` line is GREEN when it has never run on a store with no yesterday,
 GREEN on a night that had nothing to say, GREEN when it is off (a deliberate choice; this
 page used to say amber while a page stands, which the code has not done since the S2 review
 — the words follow the code as of 2026-09-28), AMBER on a failure, a refusal, an unreadable

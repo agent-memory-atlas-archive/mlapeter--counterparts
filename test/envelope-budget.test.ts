@@ -244,6 +244,36 @@ describe("UserPromptSubmit: the turn's recall is what gives way", () => {
   });
 });
 
+describe("UserPromptSubmit: a turn with NO room left for recall", () => {
+  test("recall goes quiet at a budget of 0 — nothing throws, and the reserved lines still go out", () => {
+    const a = adapter("on");
+    try {
+      const c = a.counterpart;
+      for (let i = 0; i < 6; i += 1) {
+        c.store.put({
+          type: "memory",
+          kind: "fact",
+          body: `The relief valve on loop ${String(i)} must be seated before the reservoir is filled.`,
+          salience: { relevance: 0.9, emotional: 0.6, predictive: 0.9 },
+        });
+      }
+      const share = `${"A morning share, carried whole, about the night's dream. ".repeat(172)}\n`;
+      expect(bytes(share)).toBeGreaterThan(9_700);
+      (a as unknown as { dreamLines: () => unknown }).dreamLines = () => ({ text: share, told: null, note: null });
+      recordSession(storeDir, { sessionId: "s-full", scope: PROJ, phase: "start" });
+      const out = a.userPromptSubmit({ sessionId: "s-full", scope: PROJ, at: today(), prompt: "the relief valve on the reservoir loop?" });
+      expect(out.ok).toBe(true);
+      expect(out.injection ?? "").toContain(share.trimEnd());
+      const budget = a.events().find((e) => e.name === "adapter.recall")?.data["budget"];
+      expect(budget).toBe(0);
+      expect(out.surfaced ?? []).toEqual([]);
+      expect(out.footnotes ?? []).toEqual([]);
+    } finally {
+      a.counterpart.close();
+    }
+  });
+});
+
 describe("the plain-stdout fallback is checked", () => {
   test("past the host's cap the delivery says so; under it, nothing is said", () => {
     const over = hostDelivery("user-prompt-submit", { injection: "x".repeat(TUNABLES.HOST_OUTPUT_CHARS + 1), ask: null }, {});
