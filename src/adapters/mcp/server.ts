@@ -44,7 +44,7 @@
  * No body text, no question text, no note text ever reaches an event.
  */
 import { MCP_RECALL_EVENT } from "../../core/counterpart.js";
-import { NEIGHBOURS_HINT } from "../../core/contradictions.js";
+import { CONTRADICTION_TUNABLES, NEIGHBOURS_HINT } from "../../core/contradictions.js";
 import type { Neighbour } from "../../core/contradictions.js";
 import { localDate, parseCalendarDate, todayIn } from "../../core/time.js";
 import type { ChapterResult, Counterpart, DepositResult } from "../../core/counterpart.js";
@@ -987,6 +987,10 @@ export class McpServer {
       ...(model === undefined ? {} : { model }),
     });
     const neighbours = this.neighboursOf(deposit);
+    // WITH A SETTLE TOO (review of #284, M2): the call is an error only when
+    // NOTHING landed — a refused note beside a settle that landed is not one,
+    // so a retry does not run into `already-settled`.
+    const settle = settleArg === undefined ? null : this.settleOutcome(settleArg as Record<string, unknown>);
     return this.depositResult("note", deposit, {
       ...this.recordFeelings(deposit, feelings.inputs, model),
       ...this.recordAbout(deposit, about.mark),
@@ -996,8 +1000,8 @@ export class McpServer {
       // IN THE PAYLOAD, so it rides in `structuredContent` — which is what
       // Claude Code hands the model (the #282 lesson, f387f55).
       ...(neighbours.length === 0 ? {} : { neighbours, neighboursHint: NEIGHBOURS_HINT }),
-      ...(settleArg === undefined ? {} : { settle: this.settleOutcome(settleArg as Record<string, unknown>) }),
-    });
+      ...(settle === null ? {} : { settle }),
+    }, settle === null ? undefined : !deposit.deposited && settle["ok"] !== true);
   }
 
   /**
@@ -1068,7 +1072,7 @@ export class McpServer {
       r.path === "belief"
         ? "the memory it updates is a belief, which changes by pressure over days"
         : r.path === "identity"
-          ? "the memory it updates is a core memory, which changes by pressure over days"
+          ? `the memory it updates is a core memory, which changes by pressure over days${r.pressurePair === undefined ? "" : `; meanwhile the pair is recorded unsettled (${r.pressurePair}), so recall shows the older one as possibly out of date`}`
           : r.path === "current-state"
             ? "the memory it updates is a current-state fact, which is replaced now"
             : r.reason === "target-is-an-entity"
@@ -1084,10 +1088,12 @@ export class McpServer {
    * any clear the similarity bar — minus the one it updates. Ids, titles and
    * a short excerpt; empty when nothing is close or nothing was stored.
    */
-  private neighboursOf(deposit: DepositResult): readonly Neighbour[] {
-    if (!deposit.deposited || deposit.memoryId === null) return [];
-    const exclude = [deposit.revision?.targetId, deposit.mint?.updates].filter((x): x is string => typeof x === "string");
-    return this.counterpart.writeNeighbours(deposit.memoryId, { exclude, owner: this.owner });
+  private neighboursOf(deposit: DepositResult, siblings: readonly string[] = [], room: number = CONTRADICTION_TUNABLES.NEIGHBOURS): readonly Neighbour[] {
+    if (!deposit.deposited || deposit.memoryId === null || room <= 0) return [];
+    // Not the memory it updates, and not a sibling written by the same call
+    // (review of #284, M1): those are this writer's own words, not existing ones.
+    const exclude = [deposit.revision?.targetId, deposit.mint?.updates, ...siblings].filter((x): x is string => typeof x === "string");
+    return this.counterpart.writeNeighbours(deposit.memoryId, { exclude, owner: this.owner }).slice(0, room);
   }
 
   /**
@@ -1711,6 +1717,9 @@ export class McpServer {
     const outcomes: Record<string, unknown>[] = [];
     let deposited = 0;
     let duplicates = 0;
+    // The ids this call has written so far, and how many neighbours it listed (M1).
+    const batch: string[] = [];
+    let listed = 0;
     const model = this.sessionModel();
     for (const [n, draft] of entries.entries()) {
       // Feelings that cannot be stored refuse THEIR entry before it mints, so
@@ -1756,7 +1765,10 @@ export class McpServer {
       // "malformed"); intake's own reason rides out, and an unknown kind lists
       // the kinds that exist.
       const malformed = result.malformed ?? null;
-      const neighbours = this.neighboursOf(result);
+      // Bounded per dump (M1): a long dump shares NEIGHBOURS_PER_CALL between its entries.
+      const neighbours = this.neighboursOf(result, batch, Math.min(CONTRADICTION_TUNABLES.NEIGHBOURS, CONTRADICTION_TUNABLES.NEIGHBOURS_PER_CALL - listed));
+      listed += neighbours.length;
+      if (result.memoryId !== null) batch.push(result.memoryId);
       outcomes.push({
         stored: result.deposited,
         reason: result.reason,
@@ -2853,7 +2865,7 @@ export class McpServer {
     }
   }
 
-  private depositResult(tool: string, deposit: DepositResult, extra: Record<string, unknown> = {}): ToolResult {
+  private depositResult(tool: string, deposit: DepositResult, extra: Record<string, unknown> = {}, isError?: boolean): ToolResult {
     this.emit(`mcp.${tool}`, deposit.memoryId ?? undefined, {
       stored: deposit.deposited,
       reason: deposit.reason,
@@ -2870,7 +2882,7 @@ export class McpServer {
         ...(lifted ? { salienceLifted: true } : {}),
         ...extra,
       },
-      !deposit.deposited,
+      isError ?? !deposit.deposited,
     );
   }
 

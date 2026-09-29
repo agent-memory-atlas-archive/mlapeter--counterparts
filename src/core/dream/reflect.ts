@@ -1770,12 +1770,6 @@ export class Reflections {
   }
 
   /**
-   * A reflection this session may still finish: this session's and the
-   * newest; begun — or already finished THIS calendar day, when `again` (a
-   * second `finish` supplies what the first refused or left out, 2026-09-28).
-   * An older one, or one a newer reflection followed, is closed.
-   */
-  /**
    * THE REFLECTION MAY SETTLE (2026-09-29, held lightly): two memories it was
    * shown that disagree — a pair on "my mind", usually — when the reason is
    * plain. The waking write-up and sleep are the usual home; this is the
@@ -1796,6 +1790,12 @@ export class Reflections {
     return settleContradiction(this.store, { holds: input.holds, over: input.over, how: input.how, why: why.text, actor: "reflection", actorId: row.id });
   }
 
+  /**
+   * A reflection this session may still finish: this session's and the
+   * newest; begun — or already finished THIS calendar day, when `again` (a
+   * second `finish` supplies what the first refused or left out, 2026-09-28).
+   * An older one, or one a newer reflection followed, is closed.
+   */
   private openFor(id: string, session: string | undefined): { ok: true; reflection: ReflectionRow; again: boolean } | { ok: false; reason: ReflectRefusal } {
     if (this.ctx.observer) return { ok: false, reason: "observer" };
     const row = this.store.reflection(id);

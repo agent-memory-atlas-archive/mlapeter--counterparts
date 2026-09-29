@@ -88,7 +88,7 @@ import { hashText } from "./store/index.js";
 import type { MemoryRow, Store } from "./store/index.js";
 import { applyChallenge, successorSeed, supersedeRecord } from "./physics/index.js";
 import { directionOf } from "./mint.js";
-import { settleOnWrite } from "./contradictions.js";
+import { flag, settleOnWrite } from "./contradictions.js";
 import type { SettleOutcome } from "./contradictions.js";
 import type { SettleHow } from "./types.js";
 import type { Schemas } from "./schemas/index.js";
@@ -171,6 +171,8 @@ export interface RevisionApplication {
   increment: PressureIncrement | null;
   /** The ordinary-memory arm's settle, when `how` reached it: done, or refused and why. */
   settle?: SettleOutcome;
+  /** The identity arm, with a `how`: the pair recorded unsettled while pressure builds. */
+  pressurePair?: string;
 }
 
 const NOTHING = {
@@ -335,7 +337,21 @@ export function applyRevision(
   // both). An identity claim is exactly the case the slow-kind daily force cap
   // exists for — three lived days of pressure, not one loud sentence.
   if (row.type === "memory" && (row.band === "identity" || target.promotedIdentity)) {
-    return identityChallenge(store, row, input, opts, settle, retargeted);
+    const out = identityChallenge(store, row, input, opts, settle, retargeted);
+    // WHILE PRESSURE BUILDS (review of #284, M9): an authored `how` at a core
+    // memory is not applied — its path is pressure over days — but the pair is
+    // recorded UNSETTLED, so recall labels the older one as possibly out of
+    // date until the bar is crossed (then it is superseded and the pair stops
+    // standing). Latched as raised: the writer declared it, so there is
+    // nothing to raise awake.
+    if (input.how !== undefined && out.successorId === null && store.has(input.challengerId)) {
+      const f = flag(store, { x: row.id, y: input.challengerId, source: "pressure", day: input.day });
+      if (f.ok) {
+        if (f.created) store.markContradictionRaised(f.pair, input.day);
+        return { ...out, pressurePair: f.pair };
+      }
+    }
+    return out;
   }
 
   // An ordinary memory, AUTHORED: the settle (2026-09-29). A journal chapter

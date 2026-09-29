@@ -2542,7 +2542,7 @@ export function contradictionFindings(store: Store): Finding[] {
     return [];
   }
   const since = today - CONTRADICTION_WINDOW_DAYS + 1;
-  const flagged = pairs.filter((p) => p.source === "dream" && p.flagged_day >= since).length;
+  const flagged = pairs.filter((p) => (p.source === "dream" || p.source === "pressure") && p.flagged_day >= since).length;
   const settles = trail.filter((s) => s.action === "settle" && s.day >= since);
   const kept = settles.filter((s) => s.undone === 0);
   const by = (list: readonly { how?: string | null; actor?: string }[], key: "how" | "actor"): Record<string, number> => {
