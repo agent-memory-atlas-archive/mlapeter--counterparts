@@ -99,20 +99,31 @@ dreamer is the model (a background agent the session launches), outside this pro
   `auto` (2026-09-29): HEADLESS — the host claims the day and starts the run itself in a
   windowless session (claude-code `night-run.ts`); the model launches nothing and is
   told so, and the person is shown "dreaming in the background (a few minutes). Say
-  "no dreams" to turn it off." When that run CANNOT START (its row says
-  `could-not-start`), the line falls back to an ask with the reason — at once, not after
-  a quiet window, under the same relaunch cap — "I couldn't dream on my own last time:
-  <reason>. Say "dream" to do it here." The next calendar day tries headless again.
+  "no dreams" to turn it off." when there is room. When that run could not do its job —
+  `could-not-start`, or `timed-out` / `failed` / LOST (a `started` row past its watchdog
+  and `NIGHT_LOST_GRACE_MS`) having begun nothing — the line falls back to an ask with the
+  reason, at once: "I couldn't start dreaming on my own: <reason>. Say "dream" to do it
+  here." — recorded `offered` after `could-not-start`, not counted as a relaunch. A run
+  still inside its watchdog makes the gate `dreaming-now`. The next calendar day tries
+  headless again. "No dreams" takes effect from the next run; a run in flight finishes,
+  and the owner is told so (owner decision D).
   `off`: nothing.
+- **`auto` from before 2026-09-29 is reset once** (owner decision A): its meaning changed,
+  so an explicit `auto` in a store's meta becomes `ask` on the first hook prompt of this
+  version (`resetAutoOnce`), recorded on `dream.ask` (`by: upgrade`), and the owner is told
+  once. A setting chosen on this version is never reset.
 - **The headless run's record** (2026-09-29): one row per run, the latest in the store's
-  meta (`dream.night`: run, date, state `started` | `done` | `failed` | `timed-out` |
-  `could-not-start`, reason, exit code, the dream and reflection it produced), each state
+  meta (`dream.night`: run, date, state `started` | `done` | `partial` | `failed` |
+  `timed-out` | `could-not-start`, reason, exit code, its watchdog, the PARTS that ran —
+  writer, dream, reflection — and the dream and reflection it produced), each state
   on the `dream.night` event log latched by run and state. Ids, codes and times only.
   Doctor's Nightly run line reads it; the dashboard can later.
 - **The hand-back of a headless run** — the dream's own line (`handBackOf`) and the
   morning share — has no agent to return to a session, so once the run has ended the
   next prompt anywhere, the launching session included, carries both, once ever (a
-  latched `dream.night.handed` event; the share through `Reflections.carryLine`).
+  latched `dream.night.handed` event, then `handedAt` on the row so later prompts only
+  read; the share through `Reflections.carryLine`). A partial run's line says it was
+  partial; a reflection-alone run hands back its share only.
 - **A run left behind does not use up the day.** A dream begun, never journaled and
   quiet for `ABANDONED_AFTER_MS` (30 minutes: its session closed and the background
   agent went with it), today's or yesterday's, makes the line due again once the line

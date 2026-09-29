@@ -397,3 +397,18 @@ writer, the dream and the reflection. What the build learned:
   not registered for a bare `claude -p`). And whether the person should see the fallback
   line in the same session the "dreaming in the background" line appeared in, seconds
   later — it reads a little abrupt; the alternative was 30 minutes of silence.
+
+## 2026-09-29, later — after the review of #282 (held lightly)
+
+- Wording: the run happens at the day's first session, usually the morning, so nothing it
+  tells says "last night": the launch prompt says "since you last slept", the share's
+  telling "While I slept I dreamed…".
+- The reflection's page line leans toward writing (the owner would like a page a
+  reflection wrote every day unless there is truly nothing new), says the writer revised
+  the page earlier in this run when it did (version, by the writer), and that every
+  version is kept. A "nothing much" night still rewrites nothing.
+- The run's record grew `partial` and `parts`, and its watchdog (for LOST); the fallback
+  covers timed-out, failed and lost runs that began nothing; an ask it becomes is not a
+  relaunch; the gate reads a live `started` row as `dreaming-now`; `askLine` no longer
+  claims a headless offer; an explicit `auto` from before is reset once. Why each: the
+  review, findings 4, 5, 7, 9, 10, and owner decisions A and D.
