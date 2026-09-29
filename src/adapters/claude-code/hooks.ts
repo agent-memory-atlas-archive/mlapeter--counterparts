@@ -1214,7 +1214,13 @@ export class ClaudeCodeAdapter {
     const night = dreams.nightRun();
     if (night === null || night.state === "started" || night.state === "could-not-start") return [];
     if (night.dream === null && night.reflection === null) return [];
-    if (!dreams.claimNightHandBack(night.run, input.sessionId)) return [];
+    // A READ on the per-prompt path once it is handed: nothing is written again.
+    if (night.handedAt !== undefined) return [];
+    const claimed = dreams.claimNightHandBack(night.run, input.sessionId);
+    // Marked whether this prompt won the latch or found it held, so no later
+    // prompt tries again (the same run and state: the event latch adds no row).
+    dreams.recordNightRun({ ...night, handedAt: this.counterpart.store.now() });
+    if (!claimed) return [];
     const out: string[] = [];
     const line = dreams.nightHandBackLine(night);
     if (line !== null) out.push(line);

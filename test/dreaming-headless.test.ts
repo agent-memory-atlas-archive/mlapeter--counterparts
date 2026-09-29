@@ -534,6 +534,10 @@ describe("B. auto: the first prompt of the day starts the headless run itself", 
     expect(next.injection).toContain('"Boot order"');
     expect(next.injection).toContain(`counterparts dream --show ${d.bundle.dream}`);
     expect(a.userPromptSubmit(input({ sessionId: "s2", prompt: "and again" })).injection).not.toContain("the nightly run finished");
+    // Handed: the row says so, and later prompts only read it — one latch row, ever.
+    expect(a.counterpart.dreams.nightRun()?.handedAt).toBeGreaterThan(0);
+    expect(a.counterpart.store.eventLog({ name: "dream.night.handed" })).toHaveLength(1);
+    expect(a.counterpart.store.eventLog({ name: "dream.night" }).filter((e) => e.ref === started.run)).toHaveLength(2);
   });
 
   test("the next calendar day tries headless again, whatever happened the day before", () => {

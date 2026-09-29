@@ -371,6 +371,12 @@ export interface NightRun {
   /** The dream this run journaled (or finished reflecting on), and its reflection. */
   readonly dream: string | null;
   readonly reflection: string | null;
+  /**
+   * When its hand-back was carried to a prompt (or found already carried) —
+   * so the per-prompt path READS this and writes nothing once it is set.
+   * Absent until then.
+   */
+  readonly handedAt?: number;
 }
 
 /** A fresh run id. */
@@ -399,6 +405,7 @@ export function nightRunOf(store: Pick<Store, "getMeta">): NightRun | null {
       code: typeof v.code === "number" ? v.code : null,
       dream: typeof v.dream === "string" ? v.dream : null,
       reflection: typeof v.reflection === "string" ? v.reflection : null,
+      ...(typeof v.handedAt === "number" ? { handedAt: v.handedAt } : {}),
     };
   } catch {
     return null;
