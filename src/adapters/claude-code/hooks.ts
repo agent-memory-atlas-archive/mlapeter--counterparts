@@ -259,6 +259,12 @@ export interface HookResult {
    * the next prompt offers it again.
    */
   readonly dream?: DreamTold;
+  /**
+   * THE ONE-TIME LINE about `auto` set back to `ask` on this version (owner
+   * decision A, 2026-09-29): shown in the terminal once, claimed at delivery
+   * (`claimDreamNote`); its model line is stripped when it cannot be shown.
+   */
+  readonly dreamNote?: { readonly notice: string; readonly context: string };
 }
 
 /** The day's dream line, as a prompt carries it (`HookResult.dream`). */
@@ -1007,7 +1013,7 @@ export class ClaudeCodeAdapter {
       // the session that runs past midnight — or that SessionStart had no room
       // for, is said at the next prompt, once (claimed at delivery).
       const plain = this.plainFor(input);
-      const told: { notices?: readonly string[]; plain?: readonly PlainReminder[]; dream?: DreamTold } =
+      const told: { notices?: readonly string[]; plain?: readonly PlainReminder[]; dream?: DreamTold; dreamNote?: { notice: string; context: string } } =
         plain.due.length === 0 ? {} : { notices: plain.notices, plain: plain.due };
       // The DREAM lines (2026-09-26): the once-a-day line, and any contradiction
       // a dream flagged that is still unraised — for the model; since
@@ -1016,6 +1022,7 @@ export class ClaudeCodeAdapter {
       const dream = this.dreamLines(input);
       const context = `${plain.context}${dream.text}`;
       if (dream.told !== null) Object.assign(told, { dream: dream.told });
+      if (dream.note !== null) Object.assign(told, { dreamNote: dream.note });
       const text = input.prompt ?? "";
       if (text.trim().length === 0) {
         return { ...out, ok: true, reason: "empty-prompt", injection: `${this.nowLine()}${context.length === 0 ? "" : `\n${context.trimEnd()}`}`, ...told };
@@ -1103,12 +1110,18 @@ export class ClaudeCodeAdapter {
    * do not both tell it. Here, on the prompt, rather than in the SessionStart
    * wake, whose byte ceiling is what stranded the page writer.
    */
-  private dreamLines(input: HookInput): { text: string; told: DreamTold | null } {
-    const none = { text: "", told: null };
+  private dreamLines(input: HookInput): { text: string; told: DreamTold | null; note: { notice: string; context: string } | null } {
+    const none = { text: "", told: null, note: null };
     if (this.observer || input.at === undefined || input.pageWriter === true || input.nightRun === true || input.sessionId.length === 0) return none;
     try {
       const dreams = this.counterpart.dreams;
+      // `auto` CHANGED MEANING on this version: an explicit one is set back to
+      // `ask` once, before anything is offered, and the owner is told once
+      // (owner decision A, 2026-09-29).
+      dreams.resetAutoOnce();
+      const note = dreams.autoResetNotice();
       const lines = [...dreams.raiseLines({ session: input.sessionId })];
+      if (note !== null) lines.push(note.context);
       // A HEADLESS RUN'S HAND-BACK (2026-09-29): no agent handed its last
       // message to a session, so the next prompt anywhere carries the dream's
       // line and the share — once, ever (`claimNightHandBack`).
@@ -1143,9 +1156,18 @@ export class ClaudeCodeAdapter {
         if (asked) lines.push(offer.context);
       }
       if (lines.length > 0) this.emit("adapter.dream.lines", { asked, raised: lines.length - (asked ? 1 : 0) });
-      return { text: lines.map((l) => `${l}\n`).join(""), told };
+      return { text: lines.map((l) => `${l}\n`).join(""), told, note };
     } catch {
       return none;
+    }
+  }
+
+  /** The reset line was shown: claimed once, ever. Never throws. */
+  claimDreamNote(input: HookInput): boolean {
+    try {
+      return this.counterpart.dreams.claimAutoResetNotice(input.sessionId);
+    } catch {
+      return false;
     }
   }
 
@@ -2657,6 +2679,15 @@ export function withoutPlain<R extends { injection: string | null; notices?: rea
  * line — for a delivery that could not carry it or lost the race to claim it
  * (`bin/hook.ts#deliverTurn`). Not spent: the next prompt offers it again.
  */
+export function withoutDreamNote<R extends { injection: string | null; dreamNote?: { notice: string; context: string } }>(result: R): R {
+  const note = result.dreamNote;
+  if (note === undefined) return result;
+  const injection = result.injection === null ? null : result.injection.split("\n").filter((l) => l !== note.context).join("\n");
+  const rest: R = { ...result, injection };
+  delete (rest as { dreamNote?: unknown }).dreamNote;
+  return rest;
+}
+
 export function withoutDream<R extends { injection: string | null; dream?: DreamTold }>(result: R): R {
   const told = result.dream;
   if (told === undefined) return result;

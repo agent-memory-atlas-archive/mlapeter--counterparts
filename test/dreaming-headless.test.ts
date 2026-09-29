@@ -811,6 +811,39 @@ describe("B. auto: the first prompt of the day starts the headless run itself", 
     expect(String(again.structuredContent["said"])).not.toContain("under way");
   });
 
+  test("a store with `auto` written before this version is set back to `ask` ONCE, recorded, and the owner told once (owner decision A)", () => {
+    const a = autoHooks();
+    lived(a.counterpart);
+    // As 0.3.6 left it: `auto` in the meta, no marker.
+    a.counterpart.store.setMeta("dream.setting", "auto");
+    const first = a.userPromptSubmit(input());
+    expect(a.counterpart.dreams.setting()).toBe("ask");
+    // No headless run on the first prompt after the upgrade: the day's line is the ask.
+    expect(nightPlans()).toHaveLength(0);
+    expect(first.dreamNote?.notice).toContain('I set it back to asking. Say "dream on your own" to turn it on again.');
+    expect(first.injection).toContain("the owner's `auto` was set back to `ask`, once");
+    const reset = a.counterpart.store.eventLog({ name: "dream.ask" }).map((e) => JSON.parse(e.payload ?? "{}") as Record<string, unknown>).find((p) => p["by"] === "upgrade");
+    expect(reset).toMatchObject({ state: "setting", setting: "ask", before: "auto" });
+    const doors = { updateNotice: () => null, markUpdateNotice: () => false, claimDream: a.claimDream.bind(a), claimDreamNote: a.claimDreamNote.bind(a) };
+    const out = deliverTurn("user-prompt-submit", first, {}, null, doors, input());
+    expect((JSON.parse(out.stdout) as { systemMessage: string }).systemMessage).toContain("dreaming changed in this version");
+    // Told once: the next prompt has no note.
+    expect(a.userPromptSubmit(input({ sessionId: "s2" })).dreamNote).toBeUndefined();
+    // The owner's next "dream on your own" sets auto again, and it stays.
+    a.counterpart.dreams.setSetting("auto", { by: "session", session: "s2" });
+    a.userPromptSubmit(input({ sessionId: "s3" }));
+    expect(a.counterpart.dreams.setting()).toBe("auto");
+  });
+
+  test("a store that chose `auto` on this version, or never wrote a setting, is not reset", () => {
+    const a = autoHooks();
+    lived(a.counterpart);
+    a.counterpart.dreams.setSetting("auto", { by: "owner" });
+    expect(a.userPromptSubmit(input()).dreamNote).toBeUndefined();
+    expect(a.counterpart.dreams.setting()).toBe("auto");
+    expect(nightPlans()).toHaveLength(1);
+  });
+
   test("an observer starts nothing and says nothing", () => {
     const a = autoHooks();
     setAuto(a);

@@ -39,7 +39,7 @@ import { resolveZone, todayIn } from "../../../core/time.js";
 import { loadConfig, withEmbedderDefault } from "../config.js";
 import type { AdapterConfig } from "../config.js";
 import { HOOKS, openAdapter } from "../index.js";
-import { STOP_HUMAN_LINE, plainLine, withoutDream, withoutPlain } from "../hooks.js";
+import { STOP_HUMAN_LINE, plainLine, withoutDream, withoutDreamNote, withoutPlain } from "../hooks.js";
 import type { PlainReminder } from "../../../core/counterpart.js";
 import type { DreamTold, HookInput, HookName } from "../hooks.js";
 import { NIGHT_RUN_ENV } from "../night-run.js";
@@ -812,6 +812,8 @@ export interface UpdateNoticeDoors {
    * line is not shown and waits for a later prompt.
    */
   claimDream?(input: HookInput, offer: DreamOffer): boolean;
+  /** Claim the one-time line about `auto` set back to `ask` (`ClaudeCodeAdapter#claimDreamNote`). */
+  claimDreamNote?(input: HookInput): boolean;
 }
 
 /**
@@ -843,6 +845,7 @@ export function deliverTurn(
     notices?: readonly string[];
     plain?: readonly PlainReminder[];
     dream?: DreamTold;
+    dreamNote?: { notice: string; context: string };
   },
   payload: Record<string, unknown>,
   /** SessionStart's priority-ordered notices (after any plain reminders), or
@@ -906,6 +909,23 @@ export function deliverTurn(
     }
     if (showDream) ordered = [...(ordered ?? []), told.notice];
     else if (told.offer !== null) r = withoutDream(r);
+  }
+  // THE ONE-TIME RESET LINE (owner decision A), under the same rule.
+  const note = r.dreamNote;
+  if (note !== undefined) {
+    const probe = hostDelivery(name, r, payload, [...(ordered ?? []), note.notice]);
+    let shownNote = false;
+    if (probe.dropped === null) {
+      try {
+        shownNote = doors.claimDreamNote?.(input) ?? false;
+      } catch {
+        shownNote = false;
+      }
+    } else if (deferred === null) {
+      deferred = probe.dropped;
+    }
+    if (shownNote) ordered = [...(ordered ?? []), note.notice];
+    else r = withoutDreamNote(r);
   }
   const shown = hostDelivery(name, r, payload, ordered);
   const base = shown.dropped === null && deferred !== null ? { ...shown, dropped: deferred } : shown;

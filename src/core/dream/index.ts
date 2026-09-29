@@ -297,6 +297,19 @@ export type DreamingSetting = (typeof DREAMING_SETTINGS)[number];
 export const DREAMING_SETTING_KEY = "dream.setting";
 export const DREAMING_DEFAULT: DreamingSetting = "ask";
 
+/**
+ * `auto` CHANGED MEANING in this version (2026-09-29, owner decision A): it was
+ * "the session's model starts the run"; it is now "the host starts it
+ * headless". So a store with `auto` written explicitly is set back to `ask`
+ * ONCE, recorded, and the owner is told once; their next "dream on your own"
+ * sets `auto` again. The marker says the once has happened — it is also
+ * written by any setting chosen on this version, so a choice made before the
+ * first hook ran is never undone.
+ */
+export const AUTO_RESET_KEY = "dream.setting.headless-reset";
+/** Pending while the owner has not yet been told of the reset. */
+export const AUTO_RESET_NOTICE_KEY = "dream.setting.headless-reset.notice";
+
 /** The store's dreaming setting; the default when none was set or it will not read. */
 export function dreamingSetting(store: Pick<Store, "getMeta">): DreamingSetting {
   try {
@@ -641,8 +654,61 @@ export class Dreams {
     if (!(DREAMING_SETTINGS as readonly string[]).includes(v)) return { ok: false, reason: "not-a-setting" };
     const before = this.setting();
     this.store.setMeta(DREAMING_SETTING_KEY, v);
+    // A setting chosen on this version is never reset (`AUTO_RESET_KEY`).
+    if (this.store.getMeta(AUTO_RESET_KEY) === undefined) this.store.setMeta(AUTO_RESET_KEY, "chosen");
     this.record(DREAM_ASK_EVENT, null, { state: "setting", setting: v, before, by: input.by });
     return { ok: true, setting: v as DreamingSetting, before };
+  }
+
+  // ── `auto` changed meaning: reset once (owner decision A, 2026-09-29) ──────
+
+  /**
+   * SET AN EXPLICIT `auto` BACK TO `ask`, ONCE PER STORE. True when it did.
+   * The first call on this version writes the marker whatever it finds; a
+   * store with no explicit `auto` is left as it is. Never throws; nothing
+   * under observer.
+   */
+  resetAutoOnce(): boolean {
+    if (this.ctx.observer) return false;
+    try {
+      if (this.store.getMeta(AUTO_RESET_KEY) !== undefined) return false;
+      const explicit = (this.store.getMeta(DREAMING_SETTING_KEY) ?? "").trim() === "auto";
+      this.store.setMeta(AUTO_RESET_KEY, explicit ? "reset" : "none");
+      if (!explicit) return false;
+      this.store.setMeta(DREAMING_SETTING_KEY, "ask");
+      this.store.setMeta(AUTO_RESET_NOTICE_KEY, "pending");
+      this.record(DREAM_ASK_EVENT, null, { state: "setting", setting: "ask", before: "auto", by: "upgrade", why: "auto-now-headless" });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** The owner's one line about the reset, while it has not been told; null otherwise. A read. */
+  autoResetNotice(): { notice: string; context: string } | null {
+    if (this.ctx.observer) return null;
+    try {
+      if (this.store.getMeta(AUTO_RESET_NOTICE_KEY) !== "pending") return null;
+    } catch {
+      return null;
+    }
+    return {
+      notice: 'Counterparts: dreaming changed in this version — "on my own" now means a separate background session, so I set it back to asking. Say "dream on your own" to turn it on again.',
+      context:
+        'Counterparts: this version changed what the dreaming setting `auto` does — the host now runs the night itself, in a separate windowless session — so the owner\'s `auto` was set back to `ask`, once, and they are told so in the terminal. If they say "dream on your own", call the dream tool with phase "setting", value: "auto".',
+    };
+  }
+
+  /** The reset was told: claimed once, ever (a latched event), and the pending mark cleared. */
+  claimAutoResetNotice(session: string): boolean {
+    if (this.ctx.observer) return false;
+    try {
+      const won = this.store.appendEvent({ name: `${DREAM_ASK_EVENT}.reset-told`, day: this.store.livedDay(), ref: null, payload: { session }, dedupKey: `${AUTO_RESET_KEY}:told` }) > 0;
+      this.store.setMeta(AUTO_RESET_NOTICE_KEY, "told");
+      return won;
+    } catch {
+      return false;
+    }
   }
 
   // ── the headless run's record (2026-09-29) ─────────────────────────────────
