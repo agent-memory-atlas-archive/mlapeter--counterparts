@@ -1,5 +1,121 @@
 # Changelog
 
+## 0.3.7 — 2026-09-29
+
+Dreaming asks where you can see it, and "on its own" now means a separate background
+session the hook starts itself. Memory also fits more into a night, reads long
+memories whole, and lets links bring a memory to mind. **The store's format does not
+change** (it stays v9), so nothing is copied or upgraded. Close every session before
+installing anyway: the hooks switch to the new code at once, while a session left open
+keeps the old memory server. Run `/mcp` → Reconnect in any you missed.
+
+Dreaming.
+
+- **The day's question shows in your terminal.** On the first prompt of a new day, with
+  memories waiting to be dreamed, you see: `Counterparts: I haven't dreamed since …
+  (N new memories). Say "dream" to start, or "dream on your own" to let me do it each
+  day.` Claude doesn't ask it again; it waits for your word.
+- **`ask` is the default now** (it was `auto`). Say "dream" and the run starts in a
+  background agent, as before.
+- **"Dream on your own" means a headless nightly run.** With the setting `auto`, the
+  first prompt of the day starts the run itself, in a separate, windowless `claude`
+  session, and tells you: `Counterparts: dreaming in the background (a few minutes).
+  Say "no dreams" to turn it off.` Nothing is asked of the session you're in. That
+  session is locked down: it can use only the counterparts memory tools (dream,
+  reflect, self page, recall), Claude Code's own tools that run commands, read or
+  write files, reach the network or start agents are turned off, it loads only the
+  counterparts MCP server, it starts in a neutral folder (the store's own, so no
+  project's instructions or hooks load), and it has a turn limit and a 20-minute
+  watchdog.
+- **Every run leaves one record**: done, partial (with the parts that ran: writer,
+  dream, reflection), failed, timed out, or could not start, with the reason. What the
+  run did is told on the next prompt, in any session, once. `counterparts dream` and
+  doctor's new **Nightly run** line show the latest run.
+- **If the run can't start, it asks instead**, with the reason in one line: `I
+  couldn't start dreaming on my own: the claude command was not found. Say "dream" to
+  do it here.` The next day tries on its own again.
+- **If you had set `auto` yourself before this version, it is set back to `ask`
+  once**, and you're told once, in the terminal. `auto` used to mean "Claude starts a
+  background agent in your session"; it now means a separate session, so it's yours to
+  choose again ("dream on your own"). A store that never chose a setting simply gets
+  the new default, `ask`.
+- **"No dreams" takes effect from the next run**; a run already under way finishes,
+  and it says so.
+- The run's words say "while I slept" and "since you last slept", not "last night":
+  it runs at the day's first session, usually the morning.
+- **The reflection leans toward rewriting the page** each day, unless there's really
+  nothing new; it's told when the page writer already revised it earlier in the run,
+  and that every version is kept.
+- **Fixed before release:** since 0.3.6, on the development branch, the dream and
+  the reflection were shown only the counts of what they were handed, not the
+  memories themselves. They see the memories again. (0.3.6 as published was not
+  affected.)
+
+Fitting more into a night.
+
+- **New memories wait their turn instead of being dropped.** Memories not yet dreamed
+  form a queue, ranked by how much they matter, not by how new they are. What fits in
+  tonight's room is dreamed; the rest wait for the next night, and the dream says how
+  many ("12 new memories wait for the next night"). A memory still not dreamed after
+  seven days of use ages out, counted.
+- **Detail by importance.** Every memory the dream is shown gets a line (what it is,
+  its date, its strongest feeling, why it's here); the most important come whole.
+  The reflection now sees the whole core and every memory from the last few days.
+- **Journals as chapters.** A long journal is sent a chapter at a time, only the
+  chapters added since the last dream, and entries that didn't fit are carried to the
+  next night. Before, a grown journal was re-sent from chapter 1 and the newest
+  chapters were the ones cut.
+- **Long answers come in parts** ("part 1 of 3") rather than cut.
+- **Recall by id reads up to 10 memories at once, each whole**, in parts when it is
+  long, so a dream merge, a journal or a long episode can be read through the memory
+  tool. Ids past the room wait, named, with the call that fetches them.
+- **Doctor's new Lookups line** says how often the dream and the reflection looked up
+  a memory they were shown only in part.
+- `note`, `session_end` and `chapter` ask Claude for a one-line title.
+- **Nightly upkeep resumes where it stopped.** Pruning and fading pick up after the
+  last memory they looked at, instead of the same random slice each night.
+- **Open things are found by state**, not among the newest few: a contradiction a
+  dream flagged many nights ago is still raised, and a morning share not yet told is
+  still carried. A flagged contradiction that keeps coming up is shown less each
+  time, until one of its memories is used again.
+
+Links between memories.
+
+- **Links can bring a memory to mind.** When the memories a prompt calls up are
+  strongly linked to another one that shares none of its words, that one may be shown
+  quietly, at the end, marked `Linked:` (at most two). Doctor's **Association** line
+  says how many were shown and how many Claude then opened.
+- **Memories written close together in a session are linked**, lightly, when the
+  session ends: each to the next one or two. Links still fade unless use strengthens
+  them. What the nightly run writes is left out.
+- **Steadier links.** A new link starts faint and a link's strength no longer depends
+  on how many others its memory has. Links a dream or a summary proposes are added
+  only where there's room; they never push out a link learned from use. Spreading
+  goes strongest-first and stops when what it carries gets faint. Dead links are
+  swept.
+- Four fixes: a dream re-linking two memories no longer brought back a link's old
+  strength; a memory used twice in one day still links with what it was used with;
+  a link could no longer push a memory the prompt found strongly down the list; and
+  importance is weighed before the list is cut, not after.
+
+The dashboard.
+
+- **Memories, round 4, so it reads for anyone.** One search box, "Find a memory"
+  (type to find by words, Enter to ask by meaning; the answers replace the list).
+  **How well I remember** (renamed, journal counted as its own part). Two rows of
+  filters: kinds (about myself, people, things, skills, places, facts, journal, core)
+  and the six feelings, with "kept · put away · both" beside them. Every row the same
+  brightness; "fading" only where it is. The card is trimmed to the text, the
+  feelings chart, one sentence on how well it's remembered and when it would be put
+  away, why it mattered, and when it was written; the rest is under "details".
+  "Archived" reads "put away". **"+ Add a memory"**. The "Reading here changes
+  nothing" badge is gone from every page. Home and Memories share one feelings
+  chart.
+- **The Self map reads at a glance** (on Home and Self): its rings are named on the
+  map ("who I am", "almost there", "about me and us"), the core and almost-there
+  memories carry short names, and links show only when you hover or tap a dot. On
+  Home, the brain is back on the right, beside Today.
+
 ## 0.3.6 — 2026-09-28
 
 The nightly run: once a day, Claude writes its page, dreams and reflects in one
