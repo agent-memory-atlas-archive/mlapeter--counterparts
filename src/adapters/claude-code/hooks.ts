@@ -102,7 +102,7 @@ import type { AdapterConfig, CapabilityReport } from "./config.js";
 import { SESSION_NOTICE_BUDGET_MS, checkoutIsGraded, doctorFindings, noticeMessage, readCheckout } from "./doctor.js";
 import type { CheckoutReading } from "./doctor.js";
 import { primacy } from "./primacy.js";
-import { planNightRunner } from "./night-run.js";
+import { nightTimeoutMs, planNightRunner } from "./night-run.js";
 import type { NightKind } from "./night-run.js";
 import { planSpawn, spawnDetached } from "./spawn.js";
 import type { SpawnOutcome, Spawner } from "./spawn.js";
@@ -1167,6 +1167,7 @@ export class ClaudeCodeAdapter {
       kind: kind.kind,
       session: input.sessionId,
       startedAt: store.now(),
+      timeoutMs: nightTimeoutMs(this.config),
       endedAt: null,
       reason: null,
       detail: null,

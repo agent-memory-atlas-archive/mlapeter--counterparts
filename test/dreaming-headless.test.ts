@@ -595,6 +595,52 @@ describe("B. auto: the first prompt of the day starts the headless run itself", 
     expect(tomorrow.dream?.notice).toContain("dreaming in the background");
   });
 
+  test("a run that never reports falls back to ASKING once it is past its watchdog — not another headless start (review finding 4)", () => {
+    const a = autoHooks();
+    setAuto(a);
+    a.userPromptSubmit(input());
+    expect(nightPlans()).toHaveLength(1);
+    expect(a.counterpart.dreams.nightRun()?.timeoutMs).toBe(20 * 60_000);
+    // Nothing ran: the detached process died without a word.
+    offsetMs += 31 * 60_000;
+    const next = a.userPromptSubmit(input({ sessionId: "s2" }));
+    expect(nightPlans()).toHaveLength(1);
+    expect(next.dream?.offer).not.toBeNull();
+    expect(next.dream?.notice).toContain("it never reported back");
+    const f = nightRunFindings({ today: AT, config: { dataDir: dir } } as unknown as DoctorInput, a.counterpart.store)[0];
+    expect(f?.severity).toBe("amber");
+    expect(f?.fix).toContain("The next session asks instead");
+  });
+
+  test("a run that timed out having begun nothing asks at once; one that began a dream is left behind and relaunched headless", () => {
+    const a = autoHooks();
+    setAuto(a);
+    a.userPromptSubmit(input());
+    const started = a.counterpart.dreams.nightRun();
+    if (started === null) throw new Error("no run");
+    a.counterpart.dreams.recordNightRun({ ...started, state: "timed-out", reason: "watchdog", endedAt: started.startedAt + 20 * 60_000 });
+    const next = a.userPromptSubmit(input({ sessionId: "s2" }));
+    expect(next.dream?.notice).toContain("it ran too long and was stopped before it finished anything");
+    expect(nightPlans()).toHaveLength(1);
+  });
+
+  test("a run that failed after beginning its dream does not fall back: the ordinary relaunch resumes it headless", () => {
+    const a = autoHooks();
+    setAuto(a);
+    a.userPromptSubmit(input());
+    const started = a.counterpart.dreams.nightRun();
+    if (started === null) throw new Error("no run");
+    const d = a.counterpart.dreams.begin({ session: "s1", at: AT });
+    if (!d.ok) throw new Error(d.reason);
+    a.counterpart.dreams.propose({ dream: d.bundle.dream, session: "s1", changes: [{ action: "replayed", id: (d.bundle.fresh[0]?.id ?? "") }] });
+    a.counterpart.dreams.recordNightRun({ ...started, state: "failed", reason: "exit", code: 1, endedAt: a.counterpart.store.now() });
+    expect(a.userPromptSubmit(input({ sessionId: "s2" })).dream).toBeUndefined();
+    offsetMs += DREAM_TUNABLES.ABANDONED_AFTER_MS + 60_000;
+    const later = a.userPromptSubmit(input({ sessionId: "s3" }));
+    expect(nightPlans()).toHaveLength(2);
+    expect(later.dream?.notice).toContain("picking up my dream where it was cut off");
+  });
+
   test("an observer starts nothing and says nothing", () => {
     const a = autoHooks();
     setAuto(a);

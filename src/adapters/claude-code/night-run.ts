@@ -308,6 +308,7 @@ export async function runNight(input: NightRunInput): Promise<NightRun> {
     kind: input.kind.kind,
     session: input.session,
     startedAt,
+    timeoutMs: nightTimeoutMs(input.config),
   });
   const record = (run: NightRun): NightRun => {
     try {
@@ -325,8 +326,17 @@ export async function runNight(input: NightRunInput): Promise<NightRun> {
   const ended = (fields: Pick<NightRun, "state" | "reason" | "detail" | "code"> & Partial<Pick<NightRun, "dream" | "reflection">>): NightRun =>
     record({ ...base(null), endedAt: now(), dream: null, reflection: null, ...fields });
 
+  // A STORE THAT WILL NOT OPEN is not opened a second time just to say so:
+  // the row stays `started`, and past its watchdog the gate reads it as LOST
+  // and asks instead (review of #282, finding 4).
+  let first: Counterpart;
   try {
-    const c = input.open();
+    first = input.open();
+  } catch (err) {
+    return { ...base(null), state: "could-not-start", endedAt: now(), reason: "refused", detail: err instanceof Error ? err.name : "UNKNOWN", code: null, dream: null, reflection: null };
+  }
+  try {
+    const c = first;
     try {
       if (date.length === 0) date = c.store.today();
       prompt =

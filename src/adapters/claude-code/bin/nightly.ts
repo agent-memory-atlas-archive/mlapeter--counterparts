@@ -33,6 +33,10 @@ async function main(): Promise<void> {
   const session = pinnedSession();
   if (run.length === 0 || session === null || config.observer === true) {
     process.stderr.write("[counterparts] nightly run stood down: no run, no session, or an observer\n");
+    // SAID WHERE IT CAN BE (review of #282, finding 4): a run the hook started
+    // and this process will not carry is recorded `could-not-start`, so the
+    // next prompt asks instead of waiting on a row that stays `started`.
+    if (run.length > 0 && config.observer !== true) standDown(config, run, session ?? "", readKind(process.env[NIGHT_KIND_ENV]).kind);
     return;
   }
   await runNight({
@@ -44,6 +48,21 @@ async function main(): Promise<void> {
     kind: readKind(process.env[NIGHT_KIND_ENV]),
     configPath: choice.path,
   });
+}
+
+/** One `could-not-start` row for a run this process stood down from. Never throws. */
+function standDown(config: Parameters<typeof openNightCounterpart>[0], run: string, session: string, kind: "night" | "reflection"): void {
+  try {
+    const c = openNightCounterpart(config);
+    try {
+      const now = c.store.now();
+      c.dreams.recordNightRun({ run, date: c.store.today(), state: "could-not-start", kind, session, startedAt: now, endedAt: now, reason: "refused", detail: session.length === 0 ? "NO_SESSION" : "STOOD_DOWN", code: null, dream: null, reflection: null });
+    } finally {
+      c.close();
+    }
+  } catch {
+    /* a store that will not open: the row stays `started` and reads as lost later */
+  }
 }
 
 if (isEntryPoint(process.argv[1], import.meta.url)) {

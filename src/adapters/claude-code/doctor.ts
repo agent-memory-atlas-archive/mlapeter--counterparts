@@ -69,7 +69,7 @@ import type { EventRow } from "../../core/store/index.js";
 // The ask allowance the amber hint names, read rather than retyped: a number in
 // a diagnostic's prose is a number that goes stale silently.
 import { SELF_TUNABLES } from "../../core/self/tunables.js";
-import { dreamingSetting, nightRunOf, nightRunWords } from "../../core/dream/index.js";
+import { dreamingSetting, nightRunLost, nightRunOf, nightRunWords } from "../../core/dream/index.js";
 import type { DreamingSetting } from "../../core/dream/index.js";
 // The page's own reader, so this line cannot drift from what the wake prints.
 import { clearedMarker, findPageRow, readSelfPage } from "../../core/self/page.js";
@@ -2880,7 +2880,6 @@ export function nightRunFindings(input: DoctorInput, store: Store): Finding[] {
   }
   const data = { setting, run: run.run, state: run.state, date: run.date, reason: run.reason, code: run.code, dream: run.dream, reflection: run.reflection };
   const mins = (ms: number): string => `${String(Math.max(1, Math.round(ms / 60_000)))} min`;
-  const limit = (input.config.dreaming?.timeoutMs ?? TUNABLES.NIGHT_RUN_MS) + 10 * 60_000;
   const took = run.endedAt === null ? "" : ` after ${mins(run.endedAt - run.startedAt)}`;
   const what = run.kind === "reflection" ? "the reflection alone" : "the whole night";
   if (run.state === "done") {
@@ -2888,7 +2887,7 @@ export function nightRunFindings(input: DoctorInput, store: Store): Finding[] {
     return [finding("night-run", "green", "Nightly run", `${setting}; last run ${run.date} (${what}) finished${took}${ids.length > 0 ? ` — ${ids}` : ""}`, "", data)];
   }
   if (run.state === "started") {
-    const lost = now - run.startedAt > limit;
+    const lost = nightRunLost(run, now);
     return [
       finding(
         "night-run",
@@ -2897,7 +2896,7 @@ export function nightRunFindings(input: DoctorInput, store: Store): Finding[] {
         lost
           ? `${setting}; the run of ${run.date} started ${mins(now - run.startedAt)} ago and never reported an end — its process went away (a sleep, a restart, a kill)`
           : `${setting}; running now (${what}), started ${mins(now - run.startedAt)} ago`,
-        lost ? "Nothing to do by hand: a later session starts a run left behind again, and asks instead when one cannot start." : "",
+        lost ? "The next session asks instead of starting another headless run. If this repeats, run claude -p once by hand in a terminal to see whether it hangs (a login, an update prompt)." : "",
         data,
       ),
     ];

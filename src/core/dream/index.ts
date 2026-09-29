@@ -371,12 +371,23 @@ export interface NightRun {
   /** The dream this run journaled (or finished reflecting on), and its reflection. */
   readonly dream: string | null;
   readonly reflection: string | null;
+  /** The child's watchdog, ms, as the host started it — what makes a `started` row LOST past it. */
+  readonly timeoutMs?: number;
   /**
    * When its hand-back was carried to a prompt (or found already carried) —
    * so the per-prompt path READS this and writes nothing once it is set.
    * Absent until then.
    */
   readonly handedAt?: number;
+}
+
+/**
+ * A `started` row past its watchdog and the grace: its process never reported
+ * (review of #282, finding 4).
+ */
+export function nightRunLost(run: Pick<NightRun, "state" | "startedAt" | "timeoutMs">, now: number): boolean {
+  if (run.state !== "started") return false;
+  return now - run.startedAt > (run.timeoutMs ?? DREAM_TUNABLES.NIGHT_RUN_ASSUMED_MS) + DREAM_TUNABLES.NIGHT_LOST_GRACE_MS;
 }
 
 /** A fresh run id. */
@@ -406,6 +417,7 @@ export function nightRunOf(store: Pick<Store, "getMeta">): NightRun | null {
       dream: typeof v.dream === "string" ? v.dream : null,
       reflection: typeof v.reflection === "string" ? v.reflection : null,
       ...(typeof v.handedAt === "number" ? { handedAt: v.handedAt } : {}),
+      ...(typeof v.timeoutMs === "number" ? { timeoutMs: v.timeoutMs } : {}),
     };
   } catch {
     return null;
@@ -413,7 +425,7 @@ export function nightRunOf(store: Pick<Store, "getMeta">): NightRun | null {
 }
 
 /** Why a run ended as it did, in a few words for a person ("the claude command was not found"). */
-export function nightRunWords(run: Pick<NightRun, "state" | "reason" | "detail" | "code">): string {
+export function nightRunWords(run: Pick<NightRun, "state" | "reason" | "detail" | "code"> & Partial<Pick<NightRun, "dream" | "reflection">>): string {
   const code = run.code === null ? "" : ` (exit ${String(run.code)})`;
   switch (run.reason) {
     case "no-claude":
@@ -427,7 +439,9 @@ export function nightRunWords(run: Pick<NightRun, "state" | "reason" | "detail" 
     case "unfinished":
       return "it began but did not finish";
     case "watchdog":
-      return "it ran too long and was stopped";
+      return (run.dream ?? null) === null && (run.reflection ?? null) === null ? "it ran too long and was stopped before it finished anything" : "it ran too long and was stopped";
+    case "lost":
+      return "it never reported back (its process went away — a sleep, a restart, a kill)";
     case "refused":
       return `it was refused before it started${run.detail === null ? "" : ` (${run.detail})`}`;
     case "runner":
@@ -961,9 +975,25 @@ export class Dreams {
    */
   private fellBack(at: string, since?: number): NightRun | null {
     const night = this.nightRun();
-    if (night === null || night.date !== at || night.state !== "could-not-start") return null;
+    if (night === null || night.date !== at) return null;
     if (since !== undefined && night.startedAt < since) return null;
-    return night;
+    if (night.state === "could-not-start") return night;
+    // A run that timed out, failed, or never reported (review of #282,
+    // finding 4) falls back too — when it BEGAN NOTHING: one that dreamed
+    // part-way is left behind, and the ordinary relaunch resumes it headless.
+    const lost = nightRunLost(night, this.store.now());
+    if (night.state !== "timed-out" && night.state !== "failed" && !lost) return null;
+    if (this.beganSince(night.startedAt)) return null;
+    return lost ? { ...night, reason: "lost" } : night;
+  }
+
+  /** Did a dream or a reflection begin at or after `t`? */
+  private beganSince(t: number): boolean {
+    try {
+      return this.store.dreams({ sinceAt: t, limit: 1 }).length > 0 || this.store.reflections({ limit: 5 }).some((r) => r.started_at >= t);
+    } catch {
+      return false;
+    }
   }
 
   /**
