@@ -31,11 +31,14 @@
  *
  * SESSION BINDING (the choice, 2026-09-29): the run is ATTRIBUTED TO THE
  * SESSION THAT STARTED IT, as the in-session Agent path always was. The launch
- * prompt names that session's id; the child's MCP server lazy-binds to it on
- * the first call (`mcp/server.ts#requireBoundSession`: known to the registry,
- * live, same scope), which is why the child starts IN that session's
- * directory and without the host's `CLAUDE_PROJECT_DIR`. No new binding
- * channel. The child's own session id — minted by the host after this process
+ * prompt names that session's id, and the child's environment PINS it
+ * (`COUNTERPARTS_SESSION`, `COUNTERPARTS_SCOPE`), so the child's MCP server is
+ * launched bound to it (`mcp/bin/serve.ts`) rather than lazy-binding through
+ * the registry — whose liveness check refused the overnight case: a session
+ * left open overnight is "stale" at the morning's first prompt, because a
+ * prompt is not a boundary (review of #282, finding 1). The id is our own
+ * hook's, so no corroboration is lost. The child also starts IN that session's
+ * directory, without the host's `CLAUDE_PROJECT_DIR`. The child's own session id — minted by the host after this process
  * is gone — is flagged QUIET (`NIGHT_RUN_ENV`): our hooks inside it capture
  * nothing and ask nothing (`hooks.ts`), so it owes no write-up either.
  *
@@ -179,8 +182,10 @@ export interface NightChildInput {
   readonly run: string;
   /** The launch prompt — on STDIN, never in argv. */
   readonly prompt: string;
-  /** The launching session's directory: the child starts there (the bind needs it). */
+  /** The launching session's directory: the child starts there, and its MCP server is pinned to it. */
   readonly scope: string;
+  /** The launching session: the child's MCP server is launched bound to it. */
+  readonly session: string;
   readonly configPath?: string;
   readonly baseEnv?: Readonly<Record<string, string | undefined>>;
   /** TESTS ONLY: the program to start instead of `claude`. Code only — no configuration reaches it. */
@@ -219,8 +224,10 @@ export function planNightChild(input: NightChildInput): NightChildPlan {
   if (input.config.dataDir === undefined || input.config.dataDir.trim().length === 0) return plan(false, "NO_DATA_DIR");
   if (command.trim().length === 0) return plan(false, "NO_COMMAND");
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return plan(false, "TIMEOUT_NOT_FINITE");
-  // THE PARENT'S SESSION IS NOT THE CHILD'S: the host mints the child's own id,
-  // and the launch prompt names the session the run is attributed to.
+  // THE RUN'S SESSION IS THE LAUNCHING ONE, pinned rather than inherited: the
+  // child's MCP server reads these two at launch and binds without the
+  // registry's liveness check (review of #282, finding 1). No hook reads them —
+  // the child's own worker is pinned to the child's own session by `planSpawn`.
   delete env[SESSION_ENV];
   delete env[SCOPE_ENV];
   delete env[WATCHDOG_ENV];
@@ -229,6 +236,8 @@ export function planNightChild(input: NightChildInput): NightChildPlan {
   for (const k of HOST_SESSION_ENV) delete env[k];
   env[DATA_DIR_ENV] = input.config.dataDir;
   env[NIGHT_RUN_ENV] = input.run;
+  if (input.session.length > 0) env[SESSION_ENV] = input.session;
+  if (input.scope.length > 0) env[SCOPE_ENV] = input.scope;
   if (input.configPath !== undefined && input.configPath.length > 0) env[CONFIG_PATH_ENV] = input.configPath;
   return plan(true, "ready");
 }
@@ -314,6 +323,7 @@ export async function runNight(input: NightRunInput): Promise<NightRun> {
     run: input.run,
     prompt,
     scope: input.scope,
+    session: input.session,
     ...(input.configPath === undefined ? {} : { configPath: input.configPath }),
     ...(input.baseEnv === undefined ? {} : { baseEnv: input.baseEnv }),
     ...(input.command === undefined ? {} : { command: input.command }),

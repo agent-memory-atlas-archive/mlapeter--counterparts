@@ -423,7 +423,7 @@ export function nightRunWords(run: Pick<NightRun, "state" | "reason" | "detail" 
     case "quick-exit":
       return `claude stopped straight away${code} — is it logged in?`;
     case "nothing-ran":
-      return "claude ran but used none of the dream tools — is the counterparts MCP server registered for it?";
+      return "claude ran but used none of the dream tools (the counterparts MCP server was not there, or refused the session)";
     case "unfinished":
       return "it began but did not finish";
     case "watchdog":

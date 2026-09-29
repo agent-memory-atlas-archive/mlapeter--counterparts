@@ -35,6 +35,8 @@ import { ENVELOPE_MAX_CHARS, deliverTurn, toHookInput } from "../src/adapters/cl
 import { nightRunFindings } from "../src/adapters/claude-code/doctor.js";
 import type { DoctorInput } from "../src/adapters/claude-code/doctor.js";
 import { recordSession } from "../src/adapters/sessions.js";
+import { McpServer } from "../src/adapters/mcp/index.js";
+import { launchOptions } from "../src/adapters/mcp/bin/serve.js";
 import { Counterpart as CounterpartClass } from "../src/core/counterpart.js";
 import type { Counterpart } from "../src/core/counterpart.js";
 import { DREAMING_DEFAULT, DREAM_MARK, DREAM_TUNABLES, RELAUNCHED_KEY, nightRunOf, nightRunWords } from "../src/core/dream/index.js";
@@ -235,6 +237,7 @@ describe("B. the headless run: the child's plan, and what becomes of a run", () 
       run: "nrn_1",
       prompt: "THE PROMPT",
       scope: "/proj/here",
+      session: "s-launch",
       configPath: "/cfg/claude-code.json",
       baseEnv: {
         PATH: "/usr/bin",
@@ -262,15 +265,18 @@ describe("B. the headless run: the child's plan, and what becomes of a run", () 
     expect(plan.stdin).toBe("THE PROMPT");
     expect(plan.cwd).toBe("/proj/here");
     expect(plan.timeoutMs).toBe(20 * 60_000);
-    for (const gone of ["COUNTERPARTS_SESSION", "COUNTERPARTS_SCOPE", "COUNTERPARTS_OBSERVER", "COUNTERPARTS_PAGE_WRITER", "CLAUDE_PROJECT_DIR", "CLAUDECODE"]) {
+    for (const gone of ["COUNTERPARTS_OBSERVER", "COUNTERPARTS_PAGE_WRITER", "CLAUDE_PROJECT_DIR", "CLAUDECODE"]) {
       expect(plan.env[gone]).toBeUndefined();
     }
+    // The LAUNCHING session and its directory, pinned over the parent's (finding 1 of the review).
+    expect(plan.env["COUNTERPARTS_SESSION"]).toBe("s-launch");
+    expect(plan.env["COUNTERPARTS_SCOPE"]).toBe("/proj/here");
     expect(plan.env[NIGHT_RUN_ENV]).toBe("nrn_1");
     expect(plan.env["COUNTERPARTS_DATA_DIR"]).toBe(dir);
     expect(plan.env["COUNTERPARTS_CONFIG"]).toBe("/cfg/claude-code.json");
     // No model pinned: no flag.
-    expect(planNightChild({ config: config(), run: "r", prompt: "p", scope: "/x" }).args).not.toContain("--model");
-    expect(planNightChild({ config: config({ observer: true }), run: "r", prompt: "p", scope: "/x" }).reason).toBe("OBSERVER");
+    expect(planNightChild({ config: config(), run: "r", prompt: "p", scope: "/x", session: "s" }).args).not.toContain("--model");
+    expect(planNightChild({ config: config({ observer: true }), run: "r", prompt: "p", scope: "/x", session: "s" }).reason).toBe("OBSERVER");
   });
 
   test("a model pin that looks like a flag is not read", () => {
@@ -307,6 +313,7 @@ describe("B. the headless run: the child's plan, and what becomes of a run", () 
     expect(stdin).toContain("session: s1");
     expect(readFileSync(join(binDir, "argv"), "utf8")).not.toContain("session: s1");
     expect(readFileSync(join(binDir, "env"), "utf8")).toContain(`${NIGHT_RUN_ENV}=nrn_test`);
+    expect(readFileSync(join(binDir, "env"), "utf8")).toContain("COUNTERPARTS_SESSION=s1\n");
     expect(realpathSync(readFileSync(join(binDir, "cwd"), "utf8").trim())).toBe(realpathSync(binDir));
   });
 
@@ -468,6 +475,30 @@ describe("B. auto: the first prompt of the day starts the headless run itself", 
     // Once a day: another session, another prompt — no second run.
     expect(a.userPromptSubmit(input({ sessionId: "s2" })).dream).toBeUndefined();
     expect(nightPlans()).toHaveLength(1);
+  });
+
+  test("a session left open overnight (stale in the registry) still starts a run the child's MCP server will serve — the session is PINNED, not lazy-bound", async () => {
+    const a = autoHooks();
+    setAuto(a);
+    // The session's last boundary was nine hours ago; a prompt is not a boundary.
+    recordSession(dir, { sessionId: "s1", scope: "proj", phase: "start" });
+    offsetMs = 9 * 60 * 60_000;
+    a.userPromptSubmit({ sessionId: "s1", scope: "proj", turns: [], at: AT, prompt: "morning" });
+    const runner = nightPlans()[0];
+    if (runner === undefined) throw new Error("no run started");
+    // What bin/nightly.ts hands its child, and how the child's server reads it.
+    const child = planNightChild({ config: { dataDir: dir }, run: "nrn_x", prompt: "p", scope: String(runner.env["COUNTERPARTS_SCOPE"]), session: String(runner.env["COUNTERPARTS_SESSION"]) });
+    const launched = launchOptions([], child.env);
+    expect(launched.session).toBe("s1");
+    const later = (): number => Date.now() + offsetMs;
+    const pinned = new McpServer({ counterpart: a.counterpart, scope: "proj", owner: true, registryDir: dir, now: later, ...(launched.session === undefined ? {} : { session: launched.session }) });
+    const ok = await pinned.call("dream", { phase: "writer", session: "s1" });
+    expect(ok.isError ?? false).toBe(false);
+    // The lazy bind the child used to rely on refuses the same call.
+    const lazy = new McpServer({ counterpart: a.counterpart, scope: "proj", owner: true, registryDir: dir, now: later });
+    const refused = await lazy.call("dream", { phase: "writer", session: "s1" });
+    expect(refused.isError).toBe(true);
+    expect(JSON.stringify(refused.structuredContent)).toContain("session-not-live");
   });
 
   test("a run that could not even be started (no runner) falls back to the ask in the SAME prompt, and says why", () => {
