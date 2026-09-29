@@ -99,19 +99,32 @@ export const TUNABLES = {
    */
   PLAIN_WHAT_MAX_CHARS: 120,
   /**
-   * The host's cap on a hook's whole output, in characters. The host's own
-   * words: "Hook output strings, including `additionalContext`, `systemMessage`,
-   * and plain stdout, are capped at 10,000 characters. Output that exceeds this
-   * limit is saved to a file and replaced with a preview and file path." Past
-   * it, what the session would read is a preview — of the WAKE — so the
-   * write-up pointer is measured so the wake, every ask and itself stay under
-   * this. With no owner notice the hook prints PLAIN text, so there is no JSON
-   * escaping to leave room for (PR #192 review, MAJOR 1); with one,
-   * `bin/hook.ts#hostDelivery` drops the notice before it lets the envelope
-   * pass `ENVELOPE_MAX_CHARS`. It is also why the words themselves travel
-   * through the MCP door.
+   * ONE BUDGET PER HOOK ENVELOPE (2026-09-29, audit item 9): the host's cap on
+   * a hook's whole output, in characters. The host's own words: "Hook output
+   * strings, including `additionalContext`, `systemMessage`, and plain stdout,
+   * are capped at 10,000 characters. Output that exceeds this limit is saved to
+   * a file and replaced with a preview and file path." Past it, what the
+   * session would read is a preview — of the WAKE, or of the turn's recall.
+   *
+   * Everything one SessionStart or one UserPromptSubmit prints is measured
+   * against this one number, in a stated order of what gives way first
+   * (`hooks.ts#sessionStart`, `hooks.ts#userPromptSubmit`; adapter NOTES
+   * 2026-09-29). Measured in BYTES (bytes ≥ characters), the safe direction.
+   * With no owner notice the hook prints PLAIN text, so there is no JSON
+   * escaping to leave room for (PR #192 review, MAJOR 1); with one, the JSON
+   * envelope is held to `ENVELOPE_CHARS` below. It is also why the write-up's
+   * words travel through the MCP door.
    */
-  WRITE_UP_HOST_OUTPUT_CHARS: 10_000,
+  HOST_OUTPUT_CHARS: 10_000,
+  /**
+   * The same budget for the JSON form (`bin/hook.ts#ENVELOPE_MAX_CHARS`): 500
+   * characters under the host's cap, for the escaping (a newline is two
+   * characters in JSON). Over it the notices are dropped and the plain form
+   * printed — never the wake. At a prompt that carries a person-facing line (a
+   * plain reminder, the dream offer), the turn's recall is sized to this, so
+   * the line is not what gives way.
+   */
+  ENVELOPE_CHARS: 9_500,
   // The Stop ask's pacing is NOT here: two pacers on one blocked moment drew
   // about a dozen asks in 13 owner turns (2026-09-04). The one pacer lives in
   // `self/tunables.ts` (FIRST_ASK_* / REASK_*).

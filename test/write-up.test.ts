@@ -385,7 +385,7 @@ describe("the pointer: the next session start in that project is pointed at it",
       const bytes = Buffer.byteLength(`\n\n${text}`, "utf8");
       // The measured size with host ids, and the plain-stdout cap it answers to.
       expect(bytes).toBeLessThan(480);
-      expect(9_038 + bytes).toBeLessThanOrEqual(TUNABLES.WRITE_UP_HOST_OUTPUT_CHARS);
+      expect(9_038 + bytes).toBeLessThanOrEqual(TUNABLES.HOST_OUTPUT_CHARS);
       expect(readWriteUpPointer(a.counterpart.store)).toMatchObject({ outcome: "pointed", need: bytes, room: 10_000 - 9_038 });
 
       // Past the host's cap: deferred, nothing claimed, and the outcome is DURABLE.

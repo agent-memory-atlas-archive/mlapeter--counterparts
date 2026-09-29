@@ -36,7 +36,7 @@ import {
 import type { ScopeRead, ScopeVerdict } from "../../scopes.js";
 import { canonicalScope, readSession } from "../../sessions.js";
 import { resolveZone, todayIn } from "../../../core/time.js";
-import { loadConfig, withEmbedderDefault } from "../config.js";
+import { TUNABLES, loadConfig, withEmbedderDefault } from "../config.js";
 import type { AdapterConfig } from "../config.js";
 import { HOOKS, openAdapter } from "../index.js";
 import { STOP_HUMAN_LINE, plainLine, withoutDream, withoutDreamNote, withoutPlain } from "../hooks.js";
@@ -89,7 +89,7 @@ export const HOST_USER_PROMPT_SUBMIT = "UserPromptSubmit";
  * of margin for the escaping, and the fallback is the plain wake: the notice is
  * what gets dropped, never the memory. `counterparts doctor` still prints it.
  */
-export const ENVELOPE_MAX_CHARS = 9500;
+export const ENVELOPE_MAX_CHARS: number = TUNABLES.ENVELOPE_CHARS;
 
 /**
  * HOW A DUE STOP ASK LEAVES THIS PROCESS — ONE shape (owner, 2026-09-24).
@@ -765,6 +765,12 @@ async function runHook(
     // "the terminal said nothing" and "there was nothing to say" are different
     // facts about the same morning (scar §2.4).
     if (delivery.dropped !== null) adapter.noteNoticeDropped(delivery.dropped);
+    // PAST THE HOST'S CAP EVEN IN PLAIN FORM: the host shows a preview. Said
+    // where a person can find it (the host's debug log), and on the ring.
+    if (delivery.overCap !== undefined) {
+      adapter.noteOverCap(delivery.overCap);
+      process.stderr.write(`[counterparts] adapter.envelope.overcap: ${JSON.stringify(delivery.overCap)}\n`);
+    }
     if (delivery.stdout.length > 0) {
       process.stdout.write(delivery.stdout);
       // Recorded, not inferred: a fault thrown after this point (the close in
@@ -997,6 +1003,24 @@ export interface Delivery {
   /** Non-null when a notice was left out to keep the wake whole — all of them,
    *  or (with several) the lower ones that no longer fit. */
   readonly dropped: { readonly noticeChars: number; readonly envelopeChars: number; readonly limitChars: number } | null;
+  /**
+   * THE PLAIN FALLBACK, CHECKED (2026-09-29, audit item 9). Set when the plain
+   * stdout this prints is itself past the host's cap (`HOST_OUTPUT_CHARS`), so
+   * the host will show a preview in its place. A TRIPWIRE, not a cut: by here
+   * the asks are already marked as delivered and this function cannot tell a
+   * wake from an ask, so it reports and the caller records it. The adapter's
+   * one budget per envelope is what keeps it from happening; what can still
+   * reach it is a wake composed past the cap by a misconfigured budget.
+   */
+  readonly overCap?: { readonly chars: number; readonly limitChars: number };
+}
+
+/** The plain form of an envelope, with the over-cap tripwire read. */
+function plainOut(out: string, dropped: Delivery["dropped"]): Delivery {
+  const chars = out.length;
+  return chars > TUNABLES.HOST_OUTPUT_CHARS
+    ? { stdout: out, stderr: "", exitCode: 0, dropped, overCap: { chars, limitChars: TUNABLES.HOST_OUTPUT_CHARS } }
+    : { stdout: out, stderr: "", exitCode: 0, dropped };
 }
 
 export function hostDelivery(
@@ -1045,7 +1069,7 @@ export function hostDelivery(
               envelopeChars: envelopeOf(notices.join("\n")).length,
               limitChars: ENVELOPE_MAX_CHARS,
             };
-      if (kept.length === 0) return { stdout: out, stderr: "", exitCode: 0, dropped };
+      if (kept.length === 0) return plainOut(out, dropped);
       return { stdout: envelopeOf(kept.join("\n")), stderr: "", exitCode: 0, dropped };
     }
     // THE UPDATE NOTICE, AT A PROMPT (roadmap E, 2026-09-23) — the same
@@ -1065,16 +1089,11 @@ export function hostDelivery(
           : { hookSpecificOutput: { hookEventName: HOST_USER_PROMPT_SUBMIT, additionalContext: out } }),
       });
       if (envelope.length > ENVELOPE_MAX_CHARS) {
-        return {
-          stdout: out,
-          stderr: "",
-          exitCode: 0,
-          dropped: { noticeChars: message.length, envelopeChars: envelope.length, limitChars: ENVELOPE_MAX_CHARS },
-        };
+        return plainOut(out, { noticeChars: message.length, envelopeChars: envelope.length, limitChars: ENVELOPE_MAX_CHARS });
       }
       return { stdout: envelope, stderr: "", exitCode: 0, dropped: null };
     }
-    return { stdout: out, stderr: "", exitCode: 0, dropped: null };
+    return plainOut(out, null);
   }
   // The re-fire is refused twice on purpose: the adapter asks nothing on it, and
   // this channel would not carry it even if something did.

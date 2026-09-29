@@ -99,6 +99,7 @@ import { localClock, localDate, readableDate } from "../../core/time.js";
 import { capabilities } from "./config.js";
 import { TUNABLES } from "./config.js";
 import type { AdapterConfig, CapabilityReport } from "./config.js";
+import { TUNABLES as RECALL_TUNABLES } from "../../core/recall/tunables.js";
 import { SESSION_NOTICE_BUDGET_MS, checkoutIsGraded, doctorFindings, noticeMessage, readCheckout } from "./doctor.js";
 import type { CheckoutReading } from "./doctor.js";
 import { primacy } from "./primacy.js";
@@ -358,6 +359,14 @@ export const SCOPE_ASK = [
 
 /** The room the question needs, separator included. Measured, never guessed. */
 export const SCOPE_ASK_BYTES = Buffer.byteLength(`\n\n${SCOPE_ASK}`, "utf8");
+
+/**
+ * The room a prompt's envelope keeps back for JSON escaping and its own keys
+ * beyond one character per newline, when sizing the turn's recall
+ * (`recallRoom`). The delivery measures the real envelope anyway; this only
+ * keeps the estimate on the safe side of it.
+ */
+export const ENVELOPE_ESCAPE_RESERVE = 200;
 
 /**
  * THE PAGE'S TOOL, as a session's model names it. The nightly page writer's
@@ -727,8 +736,29 @@ export class ClaudeCodeAdapter {
       // (`notices`). NOT claimed here: the delivery claims them once it knows
       // the envelope carries them, and a full wake that leaves no room sends
       // them to the first prompt instead (`bin/hook.ts#deliverTurn`).
-      const plain = this.plainFor(input);
-      const lead = `${woke.text.length === 0 && plain.context.length === 0 ? "" : `${this.nowLine()}\n`}${plain.context}`;
+      //
+      // ONE BUDGET FOR THIS ENVELOPE (2026-09-29, audit item 9): everything this
+      // event prints is measured against the host's one cap,
+      // `TUNABLES.HOST_OUTPUT_CHARS`, and gives way in this order, first to
+      // last — each DEFERRED, never cut, so nothing is spent on a line the
+      // session did not get:
+      //   1. the owner's notices (doctor, registry) — `bin/hook.ts#hostDelivery`
+      //      drops them before the JSON envelope passes `ENVELOPE_CHARS`;
+      //   2. the write-up pointer — the next start in this project is pointed;
+      //   3. the first-launch scope question — the next session asks;
+      //   4. plain reminders due today — the first prompt says them, its
+      //      envelope is small, and their beat is not spent here;
+      //   5. the wake, never cut here: it was composed to its own budget at the
+      //      boundary, where it trims hints → craft → threads → horizon →
+      //      identity, identity last. The clock line rides with it.
+      let plain = this.plainFor(input);
+      const leadOf = (context: string): string =>
+        `${woke.text.length === 0 && context.length === 0 ? "" : `${this.nowLine()}\n`}${context}`;
+      if (plain.due.length > 0 && woke.bytes + Buffer.byteLength(leadOf(plain.context), "utf8") > TUNABLES.HOST_OUTPUT_CHARS) {
+        this.emit("adapter.envelope.gave-way", { hook: "session-start", part: "plain", count: plain.due.length });
+        plain = { context: "", notices: [], due: [] };
+      }
+      const lead = leadOf(plain.context);
       const sent = woke.bytes + Buffer.byteLength(lead, "utf8");
       if (budget !== undefined && sent > budget) {
         // Exceeding a reported limit is an EVENT, never silent degradation. The
@@ -772,7 +802,7 @@ export class ClaudeCodeAdapter {
       // page writer's ask used to contend for it (and after two mornings of
       // losing went first); since 2026-09-28 the writer runs inside the
       // nightly run and is handed its day through a tool result instead.
-      const chosen = wantsAsk ? this.deliverScopeAsk(input, sent, budget) : "";
+      const chosen = wantsAsk ? this.deliverScopeAsk(input, sent, TUNABLES.HOST_OUTPUT_CHARS) : "";
       // THE WRITE-UP POINTER RIDES AFTER WHICHEVER ASK TOOK THE FIELD, never
       // instead of it (C2): it may coincide with either, it is measured against
       // the room BOTH of them left, and it is fail-open by construction — a
@@ -820,10 +850,12 @@ export class ClaudeCodeAdapter {
 
   /**
    * Deliver the question, and remember that it was delivered. Returns the block
-   * to append, or the empty string when there was no room for it.
+   * to append, or the empty string when there was no room for it. `budget` is
+   * the envelope's one budget (the host's cap) since 2026-09-29; it was the
+   * reported injection budget before, a second ceiling beside the pointer's.
    */
-  private deliverScopeAsk(input: HookInput, wakeBytes: number, budget: number | undefined): string {
-    if (budget !== undefined && wakeBytes + SCOPE_ASK_BYTES > budget) {
+  private deliverScopeAsk(input: HookInput, wakeBytes: number, budget: number): string {
+    if (wakeBytes + SCOPE_ASK_BYTES > budget) {
       this.emit("adapter.scope.ask.deferred", {
         wakeBytes,
         budget,
@@ -934,7 +966,7 @@ export class ClaudeCodeAdapter {
         short,
       });
       const bytes = Buffer.byteLength(`\n\n${text}`, "utf8");
-      const room = TUNABLES.WRITE_UP_HOST_OUTPUT_CHARS - spent;
+      const room = TUNABLES.HOST_OUTPUT_CHARS - spent;
       const outcome = (o: "pointed" | "deferred", reason?: string): void => {
         saveWriteUpPointer(store, {
           at: now,
@@ -1032,13 +1064,16 @@ export class ClaudeCodeAdapter {
       if (text.trim().length === 0) {
         return { ...out, ok: true, reason: "empty-prompt", injection: `${this.nowLine()}${context.length === 0 ? "" : `\n${context.trimEnd()}`}`, ...told };
       }
+      const budgetBytes = this.recallRoom(context, [
+        ...plain.notices,
+        ...(dream.told === null ? [] : [dream.told.notice]),
+        ...(dream.note === null ? [] : [dream.note.notice]),
+      ]);
       const result = this.counterpart.recallForTurn(
         {
           sessionId: input.sessionId,
           text,
-          ...(this.config.injectionBudgetBytes === undefined
-            ? {}
-            : { budgetBytes: this.config.injectionBudgetBytes }),
+          ...(budgetBytes === undefined ? {} : { budgetBytes }),
         },
         {
           ...(input.at === undefined ? {} : { at: input.at }),
@@ -1088,6 +1123,43 @@ export class ClaudeCodeAdapter {
         ...told,
       };
     });
+  }
+
+  /**
+   * THE TURN'S RECALL BUDGET, AFTER EVERYTHING ELSE THIS ENVELOPE CARRIES
+   * (2026-09-29, audit item 9). One budget per envelope, and at a prompt the
+   * order it gives way in is, first to last:
+   *   1. the update notice — all or nothing, and it waits for the next prompt
+   *      (`bin/hook.ts#deliverTurn`);
+   *   2. the turn's RECALL — sized here to what the host's cap leaves after
+   *      the lines below, and it trims itself to that (its own tiers), because
+   *      the next turn recalls afresh;
+   *   3. the dream's hand-back and carried share, a contradiction's raise
+   *      line, the day's dream offer — claimed when composed (or, the offer,
+   *      at delivery), so they are reserved rather than cut;
+   *   4. plain reminders due today and the clock line — last.
+   * The limit is the host's cap, or the JSON envelope's (`ENVELOPE_CHARS`)
+   * when a person-facing line rides this prompt, so it is not that line
+   * which gives way. Undefined means "recall's own default" (nothing to
+   * shrink); a number is the configured budget or less.
+   */
+  private recallRoom(context: string, personLines: readonly string[]): number | undefined {
+    const configured = this.config.injectionBudgetBytes;
+    const base = configured ?? RECALL_TUNABLES.BUDGET_BYTES;
+    const limit = personLines.length > 0 ? TUNABLES.ENVELOPE_CHARS : TUNABLES.HOST_OUTPUT_CHARS;
+    // What rides with recall: the clock line and the context lines, the
+    // person's lines (in the JSON form they share the envelope), and a margin
+    // for JSON escaping — one character per newline, plus a fixed reserve.
+    const newlines = (context.match(/\n/g) ?? []).length + personLines.length;
+    const extras =
+      Buffer.byteLength(`${this.nowLine()}\n${context}`, "utf8") +
+      Buffer.byteLength(personLines.join("\n"), "utf8") +
+      newlines +
+      ENVELOPE_ESCAPE_RESERVE;
+    const room = Math.max(0, limit - extras);
+    if (room >= base) return configured;
+    this.emit("adapter.envelope.gave-way", { hook: "user-prompt-submit", part: "recall", budget: room, base });
+    return room;
   }
 
   /**
@@ -2433,6 +2505,12 @@ export class ClaudeCodeAdapter {
    */
   noteNoticeDropped(chars: { noticeChars: number; envelopeChars: number; limitChars: number }): void {
     this.emit("adapter.notice.dropped", { ...chars });
+  }
+
+  /** RECORD THAT EVEN THE PLAIN FORM WAS PAST THE HOST'S CAP
+   *  (`bin/hook.ts#Delivery.overCap`, 2026-09-29). Counts only. */
+  noteOverCap(chars: { chars: number; limitChars: number }): void {
+    this.emit("adapter.envelope.overcap", { ...chars });
   }
 
   private refusalCount(reason: string): number {
