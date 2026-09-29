@@ -95,7 +95,7 @@ export interface OpenServerOptions extends Omit<McpServerOptions, "counterpart">
   timeZone?: string;
   /** The host config's `pageWriter.mode` — `off` stops the reflection's page
    *  write too (owner ruling D3 on #256). Absent: `session`. */
-  pageWriterMode?: "session" | "host" | "off";
+  pageWriterMode?: "session" | "off";
 }
 
 /** The sync face of a live embedder, when `embedder` is one. Duck-typed on purpose: this file must not import the claude-code adapter. */
@@ -133,6 +133,5 @@ export function openServer(opts: OpenServerOptions = {}): McpServer {
     ...(opts.sessionTtlMs === undefined ? {} : { sessionTtlMs: opts.sessionTtlMs }),
     ...(opts.onEvent === undefined ? {} : { onEvent: opts.onEvent }),
     ...(opts.now === undefined ? {} : { now: opts.now }),
-    ...(opts.env === undefined ? {} : { env: opts.env }),
   });
 }

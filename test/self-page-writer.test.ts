@@ -16,12 +16,12 @@
  * later mistakes for one.
  *
  * NO TEST HERE STARTS A REAL HOST SESSION, launches `claude`, or reaches a
- * network. Host mode is proved against a stub executable this file writes into
- * its own temp directory; what genuinely needs a real machine is written down
- * in the PR, not run.
+ * network. (Host mode, and the stub-executable tests that proved it, were
+ * removed on 2026-09-29; the shared child starter is proved in
+ * `test/child.test.ts`.)
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -52,18 +52,11 @@ import {
 } from "../src/core/self/index.js";
 import {
   ClaudeCodeAdapter,
-  DEFAULT_HOST_COMMAND,
-  KILL_GRACE_MS,
-  MCP_SELF_PAGE_TOOL,
-  PAGE_WRITER_ENV,
   PAGE_WRITER_FALLBACK_MODE,
-  REAP_GRACE_MS,
   loadConfig,
   openAdapter,
   pageWriterFindings,
   pageWriterMode,
-  planPageWriter,
-  runPageWriter,
 } from "../src/adapters/claude-code/index.js";
 import type { AdapterConfig, HookInput } from "../src/adapters/claude-code/index.js";
 import type { ScopeVerdict } from "../src/adapters/scopes.js";
@@ -236,7 +229,7 @@ describe("the once-a-night claim", () => {
     const c = counterpart();
     seedYesterday(c, ["A placeholder thing noticed yesterday."]);
     const about = pageWriterNight(c.store).about;
-    c.recordPageWriterRun({ about, mode: "host", outcome: "nothing-to-say" });
+    c.recordPageWriterRun({ about, mode: "session", outcome: "nothing-to-say" });
     const due = c.pageWriterDue({ mode: "session" });
     expect(due.due === false ? due.reason : "").toBe("already-claimed");
   });
@@ -801,28 +794,6 @@ describe("the writer's own door on the page", () => {
     expect(s.events("mcp.session.unbound").length).toBeGreaterThan(0);
   });
 
-  test("THE MODE COMES FROM THE CLAIM, not from the channel the mark arrived by", async () => {
-    const seeder = counterpart();
-    seedYesterday(seeder, ["A placeholder thing noticed yesterday."]);
-    const about = pageWriterNight(seeder.store).about;
-    // A SESSION-mode night, and a process that happens to carry the host-mode
-    // environment variable. The variable used to assert `mode: "host"` on its
-    // own, putting a lie on a durable row about a night nothing started in host
-    // mode (S2 review, MINOR-2).
-    seeder.recordPageWriterRun({ about, mode: "session", outcome: "asked" });
-    seeder.close();
-    const s = openServer({
-      dir,
-      scope: SCOPE,
-      owner: true,
-      env: { [PAGE_WRITER_ENV]: about },
-    });
-    open.push(s.counterpart);
-    await s.call("self_page", { body: PAGE });
-    expect(s.counterpart.selfPage()?.by).toBe("writer");
-    expect(s.counterpart.pageWriterRuns({ about })[0]?.mode).toBe("session");
-  });
-
   test("the `session` argument LABELS the write and does not bind the server to it", async () => {
     const seeder = counterpart();
     seedYesterday(seeder, ["A placeholder thing noticed yesterday."]);
@@ -908,13 +879,13 @@ describe("the writer's own door on the page", () => {
 describe("the mode switch", () => {
   test("absent means `session`, because a page that only forms for people who found a config key is not the product", () => {
     expect(pageWriterMode({})).toBe("session");
-    expect(pageWriterMode({ pageWriter: { mode: "host" } })).toBe("host");
+    expect(pageWriterMode({ pageWriter: { mode: "session" } })).toBe("session");
     expect(pageWriterMode({ pageWriter: { mode: "off" } })).toBe("off");
     // An instrument is off whatever the file says.
-    expect(pageWriterMode({ observer: true, pageWriter: { mode: "host" } })).toBe("off");
+    expect(pageWriterMode({ observer: true, pageWriter: { mode: "session" } })).toBe("off");
   });
 
-  test("ONE TYPO MUST NOT TURN MEMORY OFF — the block is lenient, and the fallback is never `host`", () => {
+  test("ONE TYPO MUST NOT TURN MEMORY OFF — the block is lenient, and falls back to `session`", () => {
     expect(loadConfig({ dataDir: "/x", pageWriter: { mode: "session" } }).ok).toBe(true);
     for (const bad of [{ mode: "sesion" }, { mode: "hosts" }, { mode: 1 }, [], "host", { modes: "host" }]) {
       const loaded = loadConfig({ dataDir: "/x", pageWriter: bad });
@@ -923,35 +894,43 @@ describe("the mode switch", () => {
       expect(loaded.ok, label).toBe(true);
       expect(loaded.config.observer, label).toBeUndefined();
       expect(loaded.config.dataDir, label).toBe("/x");
-      // The fallback is PINNED — a block this could not read can never start a
-      // background process, which is the one thing strictness was protecting.
       expect(pageWriterMode(loaded.config), label).toBe(PAGE_WRITER_FALLBACK_MODE);
-      expect(PAGE_WRITER_FALLBACK_MODE).not.toBe("host");
+      expect(PAGE_WRITER_FALLBACK_MODE).toBe("session");
       // ...and the setting that was lost names itself.
       expect(loaded.config.pageWriter?.ignored?.length ?? 0, label).toBeGreaterThan(0);
     }
     // A bad SIDE field costs that field and not the mode somebody did spell
     // right: the block is read key by key, not all-or-nothing.
-    const bad = { mode: "host", timeoutMs: 0 };
+    const bad = { mode: "off", modes: "session" };
     const loaded = loadConfig({ dataDir: "/x", pageWriter: bad });
     expect(loaded.ok).toBe(true);
-    expect(pageWriterMode(loaded.config)).toBe("host");
+    expect(pageWriterMode(loaded.config)).toBe("off");
     expect(loaded.config.pageWriter?.ignored?.length ?? 0).toBeGreaterThan(0);
   });
 
-  test("`pageWriter.command` in a configuration is IGNORED — the writer always starts claude — and named as retired", () => {
-    // Removed 2026-09-24: a configuration that could name the program the
-    // worker starts was "runs a command named by config". An old file still
-    // carrying the key is read, not refused, and the plan starts `claude`.
-    for (const command of ["/bin/true", "", 42]) {
-      const loaded = loadConfig({ dataDir: dir, pageWriter: { mode: "host", command } });
-      const label = JSON.stringify(command);
+  test("THE REMOVED HOST MODE'S KEYS still load — ignored, named once among the old settings, and the writer runs in session mode", () => {
+    // `command` went on 2026-09-24; `mode: "host"` and `timeoutMs` with the
+    // mode itself on 2026-09-29. An old file carrying them is read, not
+    // refused, and doctor's "Old settings" line names each; none is ALSO
+    // reported as a bad field of the block.
+    for (const block of [
+      { mode: "host" },
+      { mode: "host", timeoutMs: 600_000 },
+      { mode: "host", command: "/bin/true" },
+      { mode: "session", command: 42 },
+      { timeoutMs: 0 },
+    ]) {
+      const loaded = loadConfig({ dataDir: dir, pageWriter: block });
+      const label = JSON.stringify(block);
       expect(loaded.ok, label).toBe(true);
-      expect(pageWriterMode(loaded.config), label).toBe("host");
+      expect(loaded.config.dataDir, label).toBe(dir);
+      expect(pageWriterMode(loaded.config), label).toBe("session");
       expect(loaded.config.pageWriter?.ignored ?? [], label).toEqual([]);
-      expect((loaded.config.retired ?? []).join(" "), label).toContain('"pageWriter.command" is no longer used');
-      const plan = planPageWriter({ config: loaded.config, about: "2026-09-23", prompt: "x" });
-      expect(plan.command, label).toBe(DEFAULT_HOST_COMMAND);
+      const retired = (loaded.config.retired ?? []).join(" ");
+      if ("command" in block) expect(retired, label).toContain('"pageWriter.command" is no longer used');
+      if (block.mode === "host") expect(retired, label).toContain('"pageWriter.mode" "host" is no longer used');
+      if ("timeoutMs" in block) expect(retired, label).toContain('"pageWriter.timeoutMs" is no longer used');
+      expect(loaded.config.retired?.length ?? 0, label).toBe(Object.keys(block).filter((k) => k !== "mode" || block.mode === "host").length);
     }
   });
 
@@ -1093,7 +1072,7 @@ describe("the surfaces that report it", () => {
     const c = counterpart();
     seedYesterday(c, ["A placeholder thing noticed yesterday."]);
     const about = pageWriterNight(c.store).about;
-    c.recordPageWriterRun({ about, mode: "host", outcome: "nothing-to-say" });
+    c.recordPageWriterRun({ about, mode: "session", outcome: "nothing-to-say" });
     const f = pageWriterFindings(c.store, config())[0];
     expect(f?.severity).toBe("green");
     expect(f?.detail).toContain("nothing-to-say");
@@ -1105,7 +1084,7 @@ describe("the surfaces that report it", () => {
     seedYesterday(c, ["A placeholder thing noticed yesterday."]);
     c.recordPageWriterRun({
       about: pageWriterNight(c.store).about,
-      mode: "host",
+      mode: "session",
       outcome: "failed",
       detail: "watchdog",
     });
@@ -1185,7 +1164,7 @@ describe("the surfaces that report it", () => {
     expect(f?.detail).toContain("is owed");
   });
 
-  test("an abandoned `started` claim reads as FAILED, not as a quiet night", () => {
+  test("an abandoned `started` claim — an old build's host-mode row — reads as FAILED, not as a quiet night", () => {
     const c = counterpart();
     // The night doctor reads is the mechanism's own (LOCAL, `pageWriterNight`).
     const { today } = pageWriterNight(c.store);
@@ -1196,11 +1175,12 @@ describe("the surfaces that report it", () => {
       payload: { about, on: dayBefore(today), mode: "host", outcome: "started" },
     });
     const status = pageWriterStatus(c.store, about, today);
-    // Host mode closes its own claim on every path it can reach, so a `started`
-    // still standing is a launcher that died — the worker's own SIGTERM landing
-    // between the claim and the record is how.
+    // The removed host mode closed its own claim on every path it could reach,
+    // so a `started` still standing is a launcher that died.
     expect(status.outcome).toBe("failed");
     expect(status.derived).toBe(true);
+    // The row stays as written; its removed mode READS as `session`.
+    expect(status.run?.mode).toBe("session");
   });
 });
 
@@ -1249,237 +1229,5 @@ describe("on the floor F5 laid", () => {
     // why the writer needs no special case for it.
     expect(() => chaseRemoved(c.store, id)).toThrow();
     expect(findPageRow(c.store)).toBe(id);
-  });
-});
-
-// ── host mode, against a STUB ────────────────────────────────────────────────
-
-describe("host mode, proved against a stub `claude`", () => {
-  let binDir: string;
-
-  /** The configuration under test here: host mode, and a stub for the CLI. */
-  function host(over: Partial<AdapterConfig> = {}): AdapterConfig {
-    return config({ pageWriter: { mode: "host" }, ...over });
-  }
-
-  beforeEach(() => {
-    binDir = mkdtempSync(join(tmpdir(), "counterparts-writer-bin-"));
-  });
-  afterEach(() => {
-    rmSync(binDir, { recursive: true, force: true });
-  });
-
-  /** A stub that records the argv, the environment and STDIN, then exits. */
-  function stub(body: string): string {
-    const path = join(binDir, "claude-stub");
-    writeFileSync(
-      path,
-      [
-        "#!/bin/sh",
-        `printf '%s\\n' "$@" > ${JSON.stringify(join(binDir, "argv"))}`,
-        `env > ${JSON.stringify(join(binDir, "env"))}`,
-        `cat > ${JSON.stringify(join(binDir, "stdin"))}`,
-        body,
-      ].join("\n"),
-      "utf8",
-    );
-    chmodSync(path, 0o755);
-    return path;
-  }
-
-  test("the launcher's plan: one pre-approved tool, no window, the data dir pinned last", () => {
-    const c = counterpart();
-    seedYesterday(c, ["A placeholder thing noticed yesterday."]);
-    const about = pageWriterNight(c.store).about;
-    const plan = planPageWriter({
-      config: config({ pageWriter: { mode: "host" } }),
-      about,
-      prompt: writerInstruction(c.pageWriterInput({ about }), { tool: "self_page" }),
-      baseEnv: { PATH: "/usr/bin", COUNTERPARTS_DATA_DIR: "/somewhere/else" },
-    });
-    expect(plan.ok).toBe(true);
-    expect(plan.command).toBe(DEFAULT_HOST_COMMAND);
-    // The test-only injection point is CODE, not configuration.
-    expect(
-      planPageWriter({ config: config({ pageWriter: { mode: "host" } }), about, prompt: "x", command: "/usr/local/bin/claude" })
-        .command,
-    ).toBe("/usr/local/bin/claude");
-    // `-p` is what makes it windowless and what makes SessionStart hooks run.
-    expect(plan.args).toContain("-p");
-    expect(plan.args.join(" ")).toContain("--allowedTools");
-    expect(plan.args.join(" ")).toContain(MCP_SELF_PAGE_TOOL);
-    // ONE tool, and it is the page's. A writer that could call anything else
-    // would be a session, not a writer.
-    const allowed = plan.args[plan.args.indexOf("--allowedTools") + 1] ?? "";
-    expect(allowed.split(",")).toEqual([MCP_SELF_PAGE_TOOL]);
-    // The package's own values are written LAST, so nothing a caller exported
-    // can redirect the run (§2.13).
-    expect(plan.env["COUNTERPARTS_DATA_DIR"]).toBe(dir);
-    expect(plan.env["PATH"]).toBe("/usr/bin");
-    expect(plan.timeoutMs).toBeGreaterThan(0);
-  });
-
-  test("it refuses by NAME rather than starting something it cannot account for", () => {
-    const c = counterpart();
-    const about = pageWriterNight(c.store).about;
-    expect(
-      planPageWriter({ config: { ...host(), observer: true }, about, prompt: "x" }).reason,
-    ).toBe("OBSERVER");
-    expect(planPageWriter({ config: { ...host(), dataDir: "" }, about, prompt: "x" }).reason).toBe(
-      "NO_DATA_DIR",
-    );
-    expect(
-      planPageWriter({
-        config: config({ pageWriter: { mode: "session" } }),
-        about,
-        prompt: "x",
-      }).reason,
-    ).toBe("NOT_HOST_MODE");
-  });
-
-  test("a run against the stub claims the night, then closes it from the STORE and not from stdout", async () => {
-    const c = counterpart();
-    seedYesterday(c, ["A placeholder thing noticed yesterday."]);
-    const about = pageWriterNight(c.store).about;
-    const command = stub("exit 0");
-    const outcome = await runPageWriter({
-      counterpart: c,
-      config: config({ pageWriter: { mode: "host" } }),
-      command,
-    });
-    expect(outcome.ran).toBe(true);
-    // The stub wrote nothing, so the night had nothing to say — and that is
-    // read from the page, not from anything the child printed.
-    expect(outcome.outcome).toBe("nothing-to-say");
-    const runs = pageWriterRuns(c.store, { about });
-    expect(runs.map((r) => r.outcome)).toEqual(["nothing-to-say", "started"]);
-    // THE DAY GOES ON STDIN, NOT IN `argv`: a command line is readable by every
-    // process on the machine through `ps`, and the day's memories are the
-    // owner's.
-    expect(readFileSync(join(binDir, "stdin"), "utf8")).toContain(PAGE_WRITER_OPEN);
-    expect(readFileSync(join(binDir, "argv"), "utf8")).not.toContain(PAGE_WRITER_OPEN);
-    // ...and the stance variable does not reach the child either.
-    expect(readFileSync(join(binDir, "env"), "utf8")).not.toContain("COUNTERPARTS_OBSERVER");
-  });
-
-  test("a SIGTERM-IGNORING CHILD does not hang the worker: SIGTERM, then SIGKILL, then stop waiting", async () => {
-    const c = counterpart();
-    seedYesterday(c, ["A placeholder thing noticed yesterday."]);
-    const about = pageWriterNight(c.store).about;
-    // The reviewer's payload. Both alarms sent SIGTERM and nothing else, and
-    // the promise resolved only on `close`, so the worker sat in its `finally`
-    // holding the store open for as long as the child lived — measured at 25
-    // seconds against a 3-second child watchdog and a 1.2-second abort.
-    const command = stub("trap '' TERM; sleep 60");
-    const started = Date.now();
-    const outcome = await runPageWriter({
-      counterpart: c,
-      config: config({ pageWriter: { mode: "host", timeoutMs: 300 } }),
-      command,
-    });
-    const elapsed = Date.now() - started;
-    expect(outcome.ran).toBe(true);
-    expect(outcome.outcome).toBe("failed");
-    // SIGKILL cannot be trapped, so the child dies at the grace boundary; the
-    // reap timer behind it is what covers a child that cannot even be killed.
-    expect(elapsed).toBeLessThan(KILL_GRACE_MS + REAP_GRACE_MS + 3_000);
-    // ...and the night is CLOSED, so tomorrow does not read an abandoned claim.
-    const status = c.pageWriterStatus(about);
-    expect(status.outcome).toBe("failed");
-    expect(status.derived).toBe(false);
-  }, 30_000);
-
-  test("a child that DID write the page closes the night as revised, read from the page and not from stdout", async () => {
-    const c = counterpart();
-    seedYesterday(c, ["A placeholder thing noticed yesterday."]);
-    const about = pageWriterNight(c.store).about;
-    // The starter stands in for the child at the one seam that matters: it
-    // writes the page through the real door, as the MCP tool inside a real
-    // child would, and then exits clean. What proves the design is that
-    // `runPageWriter` reads the OUTCOME from the store afterwards.
-    const outcome = await runPageWriter({
-      counterpart: c,
-      config: config({ pageWriter: { mode: "host" } }),
-      command: stub("exit 0"),
-      start: async () => {
-        c.revisePage(PAGE, { reason: "the night's revision", by: "writer" });
-        return await Promise.resolve({ code: 0, timedOut: false, error: null });
-      },
-    });
-    expect(outcome.outcome).toBe("revised");
-    expect(c.pageWriterStatus(about).outcome).toBe("revised");
-    expect(c.selfPage()?.by).toBe("writer");
-  });
-
-  test("the windowless child's own door: the pinned date, not the tool's word, is what writes `by: writer`", async () => {
-    const seeder = counterpart();
-    seedYesterday(seeder, ["A placeholder thing noticed yesterday."]);
-    const about = pageWriterNight(seeder.store).about;
-    seeder.recordPageWriterRun({ about, mode: "host", outcome: "started" });
-    seeder.close();
-    // No session record at all — a windowless child's id is minted by the host
-    // after the launcher is gone, which is exactly why the date is pinned.
-    const s = openServer({
-      dir,
-      session: "sess_host",
-      scope: SCOPE,
-      owner: true,
-      env: { [PAGE_WRITER_ENV]: about },
-    });
-    open.push(s.counterpart);
-    await s.call("self_page", { body: PAGE, reason: "the night's revision" });
-    expect(s.counterpart.selfPage()?.by).toBe("writer");
-    expect(s.counterpart.pageWriterStatus(about).outcome).toBe("revised");
-  });
-
-  test("a stub that fails is recorded as failed, and the page is untouched", async () => {
-    const c = counterpart();
-    seedYesterday(c, ["A placeholder thing noticed yesterday."]);
-    c.revisePage(PAGE, { reason: "a placeholder first page", by: "owner" });
-    const about = pageWriterNight(c.store).about;
-    const command = stub("exit 3");
-    const outcome = await runPageWriter({
-      counterpart: c,
-      config: config({ pageWriter: { mode: "host" } }),
-      command,
-    });
-    expect(outcome.outcome).toBe("failed");
-    expect(c.pageWriterStatus(about).outcome).toBe("failed");
-    expect(c.selfPage()?.body).toBe(PAGE);
-  });
-
-  test("the WORKER's watchdog outranks the child's: an abort kills it and the night reads `failed`", async () => {
-    const c = counterpart();
-    seedYesterday(c, ["A placeholder thing noticed yesterday."]);
-    c.revisePage(PAGE, { reason: "a placeholder first page", by: "owner" });
-    const about = pageWriterNight(c.store).about;
-    const controller = new AbortController();
-    // A stub that would outlive the worker if nothing stopped it. The worker's
-    // watchdog is five minutes and the child's ten; without the signal the
-    // worker would hold the store open for twice the life it promises.
-    const command = stub("sleep 30");
-    const run = runPageWriter({
-      counterpart: c,
-      config: config({ pageWriter: { mode: "host" } }),
-      command,
-      signal: controller.signal,
-    });
-    controller.abort();
-    const outcome = await run;
-    expect(outcome.outcome).toBe("failed");
-    expect(outcome.detail).toBe("watchdog");
-    expect(c.pageWriterStatus(about).outcome).toBe("failed");
-    expect(c.selfPage()?.body).toBe(PAGE);
-  });
-
-  test("two runs cannot both claim one night", async () => {
-    const c = counterpart();
-    seedYesterday(c, ["A placeholder thing noticed yesterday."]);
-    const command = stub("exit 0");
-    const cfg = config({ pageWriter: { mode: "host" } });
-    await runPageWriter({ counterpart: c, config: cfg, command });
-    const second = await runPageWriter({ counterpart: c, config: cfg, command });
-    expect(second.ran).toBe(false);
-    expect(second.outcome).toBe("skipped");
   });
 });

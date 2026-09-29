@@ -56,14 +56,6 @@ export const TUNABLES = {
   /** Detached-worker watchdog, ms. Validated against `remember/`'s staleness
    *  window by `validateWatchdog` before any spawn (scars E4/E5). */
   WATCHDOG_MS: 5 * 60_000,
-  /** The nightly page writer's own watchdog in `host` mode, ms. Longer than the
-   *  worker's because the child is a whole host session — it loads MCP servers,
-   *  runs SessionStart hooks and then makes a model call — and shorter than any
-   *  person would wait, because a writer still running at the next boundary is a
-   *  writer that failed. It bounds a process this package STARTED; unlike the
-   *  worker's it is not validated against `remember/`'s claim staleness, because
-   *  it claims no spans. */
-  PAGE_WRITER_MS: 10 * 60_000,
   /**
    * THE HEADLESS NIGHTLY RUN'S WATCHDOG (2026-09-29), ms: `claude -p` running
    * the page writer, the dream and the reflection in one windowless session.
@@ -212,32 +204,24 @@ export interface AdapterConfig {
   /**
    * THE NIGHTLY PAGE WRITER (2026-09-20, S2), and it defaults to `session`.
    *
-   * `session` — the plan's fallback, and the one that needs no background
-   * process: the first session of the next day is asked, beside its wake, to
-   * revise the page from the day just gone. `host` — the owner's pick: a
-   * windowless `claude -p` started by the boundary's worker, woken by the
-   * ordinary SessionStart hook, with one pre-approved tool. `off` — nothing
-   * runs and nothing is written.
+   * `session` — the page writer runs as the first part of the nightly run
+   * (the dream tool's `writer` phase, since 2026-09-28). `off` — nothing runs
+   * and nothing is written. (`host` — a windowless `claude -p` the boundary's
+   * worker started for the writer alone — was removed on 2026-09-29: the
+   * nightly run does that job now. A configuration that still names it loads;
+   * the value is ignored and named among the old settings, as is
+   * `pageWriter.timeoutMs`, which only that mode read.)
    *
-   * **Absent means `session`, not off**, and that is a deliberate choice rather
-   * than an oversight: S2 is how a new user's page forms at all (plan §3), and
-   * a mechanism that only works for people who found a configuration key is not
-   * the product. The cost of the default being wrong is one extra block beside
-   * the wake, at most twice a day, deferred rather than truncated when the
-   * ceiling has no room for it — and `"mode": "off"` is one line.
+   * **Absent means `session`, not off**: S2 is how a new user's page forms at
+   * all (plan §3), and a mechanism that only works for people who found a
+   * configuration key is not the product. `"mode": "off"` is one line.
    *
-   * **Read LENIENTLY**, the second of the two blocks here that are (S2 review,
-   * 2026-09-20). It was written strict — `host` starts a process — and the
-   * argument does not hold on its own terms: `mode` is an exact-string
-   * allowlist, so a typo cannot resolve to `host` under a lenient reading
-   * either. Strictness bought nothing and cost the owner his memory for one
-   * misspelling in an optional block. The fallback is PINNED to `session`, each
-   * bad field names itself in `ignored`, and doctor's Page writer line says so.
+   * **Read LENIENTLY** (S2 review, 2026-09-20): a bad field costs that field,
+   * the fallback is `session`, each bad field names itself in `ignored`, and
+   * doctor's Page writer line says so.
    */
   readonly pageWriter?: {
     readonly mode: PageWriterMode;
-    /** The watchdog for that child, ms. Absent ⇒ `TUNABLES.PAGE_WRITER_MS`. */
-    readonly timeoutMs?: number;
     /** What this file could not read inside the block, phrased for a person.
      *  Empty is absent. A REPORT, not a stance — doctor is what puts it in
      *  front of somebody. */
@@ -323,7 +307,7 @@ export function loadConfig(raw: unknown): LoadedConfig {
     embedder?: { enabled: boolean; kind?: EmbedderKind };
     parallel?: { enabled: boolean };
     snapshots?: { dir?: string; keep?: number; mirror?: string; ignored?: string[] };
-    pageWriter?: { mode: PageWriterMode; timeoutMs?: number; ignored?: string[] };
+    pageWriter?: { mode: PageWriterMode; ignored?: string[] };
     dreaming?: { model?: string; timeoutMs?: number; maxTurns?: number; ignored?: string[] };
     retired?: string[];
     owner?: boolean;
@@ -467,20 +451,27 @@ export function loadConfig(raw: unknown): LoadedConfig {
   // That is precisely the failure the F2 ruling moved `snapshots` out of
   // strictness to avoid.
   //
-  // So it falls back, and **the fallback is pinned to `session` and can never
-  // be `host`** — which is the one protection strictness was for, kept. Each
-  // bad field names itself in `ignored`, and doctor's Page writer line prints
-  // it. Nothing in here ever sets `unreadable`.
+  // So it falls back, to `session`. Each bad field names itself in `ignored`,
+  // and doctor's Page writer line prints it. Nothing in here ever sets
+  // `unreadable`.
   const pageWriter = rec["pageWriter"];
   if (pageWriter !== undefined) {
     out.pageWriter = readPageWriter(pageWriter);
-    // THE CHILD'S COMMAND IS NOT CONFIGURABLE ANY MORE (2026-09-24): a
-    // configuration file that could name the program the worker starts was a
-    // "runs a command named by config" finding. The writer always starts
-    // `claude` (`page-writer.ts#DEFAULT_HOST_COMMAND`); an old key is ignored.
+    // THREE KEYS FROM THE REMOVED HOST MODE, each read as an OLD SETTING —
+    // ignored and named, never a reason to refuse the file. `command` went on
+    // 2026-09-24 (a "runs a command named by config" finding); `mode: "host"`
+    // and `timeoutMs`, its child's watchdog, went with the mode on 2026-09-29.
     const w = pageWriter as Record<string, unknown> | null;
-    if (typeof w === "object" && w !== null && !Array.isArray(w) && w["command"] !== undefined) {
-      retired.push(`"pageWriter.command" is no longer used — the page writer always starts claude`);
+    if (typeof w === "object" && w !== null && !Array.isArray(w)) {
+      if (w["command"] !== undefined) {
+        retired.push(`"pageWriter.command" is no longer used — the page writer runs inside the nightly run`);
+      }
+      if (w["mode"] === "host") {
+        retired.push(`"pageWriter.mode" "host" is no longer used — the page writer runs inside the nightly run (mode session)`);
+      }
+      if (w["timeoutMs"] !== undefined) {
+        retired.push(`"pageWriter.timeoutMs" is no longer used — the nightly run's watchdog is "dreaming.timeoutMs"`);
+      }
     }
   }
   // THE THIRD LENIENT BLOCK (2026-09-29): the headless nightly run's model pin
@@ -530,26 +521,25 @@ export function loadConfig(raw: unknown): LoadedConfig {
 }
 
 /**
- * THE FALLBACK MODE, and it is never `host`.
- *
- * A block this could not read resolves to the mode that needs no background
- * process and no watchdog. "Fall back to the safe thing" and
- * "fall back to the default" happen to be the same value today; they are
- * written as one constant so they stay the same value if the default moves.
+ * THE FALLBACK MODE: what a block this could not read resolves to. "Fall back
+ * to the safe thing" and "fall back to the default" happen to be the same value
+ * today; they are written as one constant so they stay the same value if the
+ * default moves.
  */
 export const PAGE_WRITER_FALLBACK_MODE: PageWriterMode = "session";
 
 /**
  * The `pageWriter` block, read leniently — every rejection names the field,
- * what was in it, and what is being used instead.
+ * what was in it, and what is being used instead. The removed host mode's keys
+ * (`mode: "host"`, `timeoutMs`, `command`) are named by `loadConfig` among the
+ * old settings instead, and not twice.
  */
 function readPageWriter(raw: unknown): {
   mode: PageWriterMode;
-  timeoutMs?: number;
   ignored?: string[];
 } {
   const raws: string[] = [];
-  const out: { mode: PageWriterMode; timeoutMs?: number } = {
+  const out: { mode: PageWriterMode } = {
     mode: PAGE_WRITER_FALLBACK_MODE,
   };
   const done = (): typeof out & { ignored?: string[] } =>
@@ -562,20 +552,14 @@ function readPageWriter(raw: unknown): {
   const mode = w["mode"];
   if (typeof mode === "string" && (PAGE_WRITER_MODES as readonly string[]).includes(mode)) {
     out.mode = mode as PageWriterMode;
-  } else if (mode !== undefined) {
+  } else if (mode !== undefined && mode !== "host") {
     raws.push(
       `"pageWriter.mode" was ${JSON.stringify(mode)}, which is not ${PAGE_WRITER_MODES.join(", ")}; using ${PAGE_WRITER_FALLBACK_MODE}`,
     );
   }
-  const timeoutMs = w["timeoutMs"];
-  if (typeof timeoutMs === "number" && Number.isFinite(timeoutMs) && timeoutMs > 0) {
-    out.timeoutMs = timeoutMs;
-  } else if (timeoutMs !== undefined) {
-    raws.push(`"pageWriter.timeoutMs" was ${JSON.stringify(timeoutMs)}; using the default watchdog`);
-  }
   // A key nobody here knows is named rather than passed over: a person who
   // typed `"modes"` gets told so instead of watching the block do nothing.
-  // (`command` is named by `loadConfig`, among the retired settings.)
+  // (`command` and `timeoutMs` are named by `loadConfig`, among the old settings.)
   for (const key of Object.keys(w)) {
     if (key !== "mode" && key !== "command" && key !== "timeoutMs") {
       raws.push(`"pageWriter.${key}" is not a setting this reads; it was ignored`);

@@ -2959,14 +2959,13 @@ export class Counterpart {
    * (`nightClaimFor`). A claim this session already holds is reused (a run
    * started again claims nothing twice).
    *
-   * Only in `session` mode, the default: `off` writes nothing, and `host`
-   * leaves the night to the windowless child the worker starts. Never throws.
+   * Only in `session` mode, the default: `off` writes nothing. Never throws.
    */
   claimNightWriter(input: { session: string; run: string }): { claimed: boolean; about: string; reason: string } {
     try {
       if (this.observer) return { claimed: false, about: "", reason: "observer" };
       const mode = this.pageWriterModeOpt;
-      if (mode !== "session") return { claimed: false, about: "", reason: mode === "off" ? "off" : "host-mode" };
+      if (mode !== "session") return { claimed: false, about: "", reason: "off" };
       const open = this.self.nightClaimFor(input.session);
       if (open !== null) return { claimed: true, about: open.about, reason: "claimed-earlier" };
       const due = this.self.pageWriterDue({ mode: "session" });

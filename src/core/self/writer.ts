@@ -12,9 +12,8 @@
  * stays free of network (CONTRACT §1 G1), exactly as the crash-fallback sweep
  * does: `counterpart.ts#sweepWake` composes the wake and the ADAPTER makes the
  * call. This module composes what the writer is handed, reads whether it is
- * owed a run, and records what happened. Who runs it — the first session of the
- * next day, or a windowless `claude -p` — is the adapter's business
- * (`adapters/claude-code/page-writer.ts`).
+ * owed a run, and records what happened. Who runs it — since 2026-09-28 the
+ * nightly run's `writer` phase — is the adapter's business.
  *
  * **It can write exactly two things, and one of them is not the page.** The
  * page goes through `Self#revisePage` — the one seam, with its caps, its gate
@@ -66,10 +65,10 @@
  * ── "NOTHING TO SAY" IS AN ANSWER ─────────────────────────────────────────
  *
  * On a day that changed nothing about who the self is, the right output is no
- * revision, and it is recorded rather than inferred from silence. Host mode can
- * say it outright: a windowless session handed one tool and one instruction
- * that exits without calling the tool has answered. Session mode cannot tell
- * "nothing to say" from "the session never got to it", so it does not claim to:
+ * revision, and it is recorded rather than inferred from silence. The nightly
+ * run says it outright when it moves past the writer without a write. A claim
+ * nobody closed cannot tell "nothing to say" from "never got to it", so it does
+ * not claim to:
  * it stores `asked`, and `pageWriterStatus` READS an `asked` row whose date has
  * passed as `nothing-to-say`, derived and labelled as derived. A stored outcome
  * that pretends to knowledge nobody has is the thing §2.4 is about.
@@ -88,13 +87,16 @@ export const SELF_PAGE_WRITER_EVENT = "self.page.writer.ran";
 /**
  * WHO RUNS IT.
  *
- * `session` — the fallback the plan names, and the one that needs no background
- * process: the first session of the next day is asked, at SessionStart, to do
- * the night's work. `host` — the owner's pick: a windowless `claude -p` woken
- * by the ordinary SessionStart hook with one pre-approved tool. `off` — the
- * mechanism stands down and writes nothing at all.
+ * `session` — the default: since 2026-09-28 the night's work is the nightly
+ * run's first part (the dream tool's `writer` phase), in the session that runs
+ * it. `off` — the mechanism stands down and writes nothing at all.
+ *
+ * (`host` — a windowless `claude -p` started by the adapter's worker for the
+ * writer alone — was removed on 2026-09-29. A row an old build wrote with
+ * `mode: "host"` stays in the log as written and READS as `session`, the
+ * reader's fallback for any mode it does not know; nothing is rewritten.)
  */
-export const PAGE_WRITER_MODES = ["off", "session", "host"] as const;
+export const PAGE_WRITER_MODES = ["off", "session"] as const;
 export type PageWriterMode = (typeof PAGE_WRITER_MODES)[number];
 
 /**
@@ -212,7 +214,7 @@ export function pageWriterAbout(today: string, closedThrough?: string): string {
 /**
  * THE NIGHT, AS THE PERSON LIVES IT: today's LOCAL calendar date and the date a
  * run on it is about (owner's ruling 2026-09-23, `calendar.ts`). One function,
- * so `Self`, host mode and doctor cannot each derive their own night — the
+ * so `Self`, the nightly run and doctor cannot each derive their own night — the
  * mechanism and the line that reports on it agreeing about which night is owed
  * is the whole reason it exists.
  */
@@ -365,12 +367,12 @@ export function pageWriterStatus(store: Store, about: string, today: string): Pa
     };
   }
   const over = claim.on !== "" && claim.on < today;
-  // AN ABANDONED `started` IS A FAILURE, NOT A QUIET NIGHT. Host mode closes
-  // its own claim on every path it can reach, so a `started` still standing when
-  // the day is over means the launcher died between the claim and the record —
-  // the worker's own watchdog SIGTERM landing in that window is the way it
-  // happens. `asked` is the other case and genuinely cannot be told apart from
-  // a session that had nothing to say.
+  // AN ABANDONED `started` IS A FAILURE, NOT A QUIET NIGHT. `started` was the
+  // removed host mode's claim (2026-09-29), which closed itself on every path
+  // it could reach, so one still standing when the day is over means its
+  // launcher died between the claim and the record. Old rows keep reading so.
+  // `asked` is the other case and genuinely cannot be told apart from a
+  // session that had nothing to say.
   return {
     about,
     outcome: over ? (claim.outcome === "started" ? "failed" : "nothing-to-say") : claim.outcome,
@@ -411,8 +413,8 @@ export function pageWriterClaimOpen(store: Store, about: string, today: string):
 /**
  * THE NIGHTLY RUN'S OPEN CLAIM FOR THIS SESSION (2026-09-28), or null: an
  * `asked` row carrying this session, whose night is still open
- * (`pageWriterClaimOpen`). The third channel the page's door reads, beside
- * host mode's environment pin and session mode's registry mark: the run's
+ * (`pageWriterClaimOpen`). The channel the page's door reads, beside the old
+ * SessionStart ask's registry mark (still read, no longer written): the run's
  * background agent shares its session's id, and the claim is in the store.
  */
 export function nightClaimFor(store: Store, session: string, today: string): PageWriterRun | null {
@@ -772,10 +774,8 @@ export function writerInstruction(
     "",
   );
   // THE PAGE ITSELF IS NOT REPEATED HERE, and that is the point rather than an
-  // economy. It is already at the head of the wake this reader woke with, in
-  // BOTH modes — session mode's reader is an ordinary session, and host mode's
-  // child runs the ordinary SessionStart hook, which is the whole reason for
-  // starting a real host session at all. Sending it a second time would spend
+  // economy. It is already at the head of the wake this reader woke with — the
+  // reader is an ordinary session. Sending it a second time would spend
   // up to `PAGE_MAX_BYTES` of the very ceiling this block has to fit inside,
   // and on a real page and a real day that is the difference between an ask
   // that is delivered and one that is deferred every single morning. What is

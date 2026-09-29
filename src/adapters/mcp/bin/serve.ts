@@ -175,7 +175,7 @@ export function questionEmbedder(path = CONFIG_PATH): {
   timeZone?: string;
   /** The configuration's `pageWriter.mode`: `off` stops the reflection's page
    *  write too (owner ruling D3 on #256). */
-  pageWriterMode?: "session" | "host" | "off";
+  pageWriterMode?: "session" | "off";
 } {
   let raw: unknown;
   try {

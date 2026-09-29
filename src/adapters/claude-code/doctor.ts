@@ -3124,7 +3124,7 @@ export function pageWriterFindings(store: Store, config: AdapterConfig): Finding
   const mode = pageWriterMode(config);
   // THE MECHANISM'S OWN NIGHT, not one this line derives (PR #189 review, M2):
   // the local calendar day, held back east of UTC to a provenance date that has
-  // closed — the one function `Self`, host mode and this line all read, so the
+  // closed — the one function `Self`, the nightly run and this line all read, so the
   // claim's local `on` is never compared with a UTC `today`.
   const { today, about } = pageWriterNight(store);
   const last = lastPageWriterRun(store);
@@ -3182,9 +3182,7 @@ export function pageWriterFindings(store: Store, config: AdapterConfig): Finding
         "Page writer",
         young
           ? `${mode} mode; never run — this store has no day before ${today} yet`
-          : mode === "session"
-            ? `${mode} mode; never run — it is the first part of the next nightly run, before the dream (${about})${dreamingSetting(store) === "off" ? "; dreaming is off, so the nightly run does not start" : ""}`
-            : `${mode} mode; never run — the next boundary's worker starts it (${about})`,
+          : `${mode} mode; never run — it is the first part of the next nightly run, before the dream (${about})${dreamingSetting(store) === "off" ? "; dreaming is off, so the nightly run does not start" : ""}`,
         "",
         { ...data, young },
       ),
@@ -3212,8 +3210,8 @@ export function pageWriterFindings(store: Store, config: AdapterConfig): Finding
   // state of a quiet week. It is amber only when nightly runs HAPPENED since
   // (a dream dated after the writer's last row, before today) and the writer
   // still left nothing: the run is going without it.
-  const ranSince = mode === "session" && last.on !== "" ? dreamsBetween(store, last.on, today) : 0;
-  const overdue = owed.due && staleFor > PAGE_WRITER_STALE_DAYS && (mode !== "session" || ranSince > 0);
+  const ranSince = last.on !== "" ? dreamsBetween(store, last.on, today) : 0;
+  const overdue = owed.due && staleFor > PAGE_WRITER_STALE_DAYS && ranSince > 0;
   const bad = status.outcome === "failed" || status.outcome === "refused";
   const detail =
     `${mode} mode; ${when} — ${status.outcome}` +
@@ -3230,9 +3228,7 @@ export function pageWriterFindings(store: Store, config: AdapterConfig): Finding
       "Page writer",
       detail,
       bad || overdue
-        ? mode === "session"
-          ? "counterparts mechanisms --all --dir <store> --observer shows the run's own row. The page writer is the first part of the nightly run, before the dream: counterparts dream shows whether the runs are happening and how each ended. counterparts self-page --write amends the page by hand meanwhile."
-          : "counterparts mechanisms --all --dir <store> --observer shows the run's own row. In host mode the boundary's worker starts a windowless session for the writer; a night that is owed but never delivered usually means that session could not start. counterparts self-page --write amends the page by hand meanwhile."
+        ? "counterparts mechanisms --all --dir <store> --observer shows the run's own row. The page writer is the first part of the nightly run, before the dream: counterparts dream shows whether the runs are happening and how each ended. counterparts self-page --write amends the page by hand meanwhile."
         : "",
       {
         ...data,

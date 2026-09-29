@@ -34,7 +34,7 @@ import {
   stanceOfMode,
 } from "../../scopes.js";
 import type { ScopeRead, ScopeVerdict } from "../../scopes.js";
-import { PAGE_WRITER_ENV, canonicalScope, readSession } from "../../sessions.js";
+import { canonicalScope, readSession } from "../../sessions.js";
 import { resolveZone, todayIn } from "../../../core/time.js";
 import { loadConfig, withEmbedderDefault } from "../config.js";
 import type { AdapterConfig } from "../config.js";
@@ -398,9 +398,6 @@ export function toHookInput(
     // nothing (`hooks.ts#askAtStop`).
     ...(payload["stop_hook_active"] === true ? { reFired: true } : {}),
     ...(typeof payload["prompt"] === "string" ? { prompt: payload["prompt"] } : {}),
-    // The host-mode page writer's headless child (`page-writer.ts` sets this):
-    // no one reads its terminal, so it must not spend a plain reminder's beat.
-    ...(((opts.env ?? process.env)[PAGE_WRITER_ENV] ?? "").trim().length > 0 ? { pageWriter: true } : {}),
     // The headless nightly run's child (`night-run.ts` sets this, 2026-09-29):
     // a windowless session our hooks keep QUIET — no capture, no asks.
     ...(((opts.env ?? process.env)[NIGHT_RUN_ENV] ?? "").trim().length > 0 ? { nightRun: true } : {}),

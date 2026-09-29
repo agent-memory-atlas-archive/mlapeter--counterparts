@@ -215,10 +215,10 @@ describe("A. the day's ask is shown to the person, and claimed only when it leav
     expect(text).not.toContain("the owner's setting `auto`), or after");
   });
 
-  test("the page writer's headless child and an observer are offered nothing", () => {
+  test("the nightly run's headless child and an observer are offered nothing", () => {
     const a = hooks();
     lived(a.counterpart);
-    expect(a.userPromptSubmit(input({ sessionId: "pw", pageWriter: true })).dream).toBeUndefined();
+    expect(a.userPromptSubmit(input({ sessionId: "pw", nightRun: true })).dream).toBeUndefined();
     const o = hooks({ observer: true });
     expect(o.userPromptSubmit(input({ sessionId: "o1" })).dream).toBeUndefined();
   });
@@ -304,7 +304,6 @@ describe("B. the headless run: the child's plan, and what becomes of a run", () 
         COUNTERPARTS_SESSION: "parent",
         COUNTERPARTS_SCOPE: "/parent",
         COUNTERPARTS_OBSERVER: "1",
-        COUNTERPARTS_PAGE_WRITER: "2026-09-28",
         CLAUDE_PROJECT_DIR: "/parent",
         CLAUDECODE: "1",
       },
@@ -343,7 +342,7 @@ describe("B. the headless run: the child's plan, and what becomes of a run", () 
     expect(plan.cwd).toBe(dir);
     expect(planNightChild({ config: config({ dreaming: { maxTurns: 12 } }), run: "r", prompt: "p", scope: "/x", session: "s" }).args.join(" ")).toContain("--max-turns 12");
     expect(plan.timeoutMs).toBe(20 * 60_000);
-    for (const gone of ["COUNTERPARTS_OBSERVER", "COUNTERPARTS_PAGE_WRITER", "CLAUDE_PROJECT_DIR", "CLAUDECODE"]) {
+    for (const gone of ["COUNTERPARTS_OBSERVER", "CLAUDE_PROJECT_DIR", "CLAUDECODE"]) {
       expect(plan.env[gone]).toBeUndefined();
     }
     // The LAUNCHING session and its directory, pinned over the parent's (finding 1 of the review).

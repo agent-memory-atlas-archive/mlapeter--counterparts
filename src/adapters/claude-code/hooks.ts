@@ -167,13 +167,6 @@ export interface HookInput {
   /** Today's calendar date, for the temporal channel and the horizon lane. */
   readonly at?: string;
   /**
-   * This session is the host-mode NIGHTLY PAGE WRITER this package started
-   * (`page-writer.ts`, `COUNTERPARTS_PAGE_WRITER` in its environment): a
-   * headless `claude -p` nobody watches. A plain reminder is never claimed in
-   * it — its beat would be spent on a terminal no one reads (2026-09-26 review).
-   */
-  readonly pageWriter?: boolean;
-  /**
    * This session is the HEADLESS NIGHTLY RUN this package started
    * (`night-run.ts`, `COUNTERPARTS_NIGHT_RUN` in its environment, 2026-09-29):
    * `claude -p` running the page writer, the dream and the reflection, which
@@ -373,8 +366,8 @@ export const SCOPE_ASK_BYTES = Buffer.byteLength(`\n\n${SCOPE_ASK}`, "utf8");
  * nightly run (writer, then dream, then reflection, one background agent) and
  * gets its day through the dream tool's `writer` phase — a tool result, with
  * no injection ceiling, so no `no-room` deferral and no contest with the
- * first-launch question for the ask field. Host mode (`page-writer.ts`) is
- * left in place, not the default.
+ * first-launch question for the ask field. (Host mode, a windowless child
+ * for the writer alone, was removed on 2026-09-29.)
  */
 export const PAGE_WRITER_TOOL = "counterparts self_page";
 
@@ -1100,7 +1093,7 @@ export class ClaudeCodeAdapter {
    * `dream_asks` latch decides, so of two sessions racing one gets it), and
    * again only for a run that was left behind; a "no" is the dream tool's
    * `decline`, "no dreams" its `setting`. Never in
-   * the host-mode page writer's headless child, never under observer, never
+   * the headless nightly run's child, never under observer, never
    * without a date. Only what could surface here anyway is counted or raised
    * (the dream module applies recall's gates). Never throws.
    *
@@ -1112,7 +1105,7 @@ export class ClaudeCodeAdapter {
    */
   private dreamLines(input: HookInput): { text: string; told: DreamTold | null; note: { notice: string; context: string } | null } {
     const none = { text: "", told: null, note: null };
-    if (this.observer || input.at === undefined || input.pageWriter === true || input.nightRun === true || input.sessionId.length === 0) return none;
+    if (this.observer || input.at === undefined || input.nightRun === true || input.sessionId.length === 0) return none;
     try {
       const dreams = this.counterpart.dreams;
       // `auto` CHANGED MEANING on this version: an explicit one is set back to
@@ -1288,12 +1281,12 @@ export class ClaudeCodeAdapter {
    * what its envelope will certainly carry (`claimPlain`, from
    * `bin/hook.ts#deliverTurn`) and strips the rest, so a beat is never spent
    * on a line the person did not get. No date (`input.at` absent) means no
-   * calendar, and so nothing; the host-mode page writer's headless child is
-   * told nothing (`HookInput.pageWriter`). Never throws.
+   * calendar, and so nothing; the headless nightly run is told nothing
+   * (`HookInput.nightRun`). Never throws.
    */
   private plainFor(input: HookInput): { context: string; notices: string[]; due: PlainReminder[] } {
     const none = { context: "", notices: [], due: [] };
-    if (input.at === undefined || input.pageWriter === true || input.nightRun === true) return none;
+    if (input.at === undefined || input.nightRun === true) return none;
     try {
       const due = this.counterpart.plainDueToday({ at: input.at });
       return {
