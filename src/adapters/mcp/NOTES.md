@@ -844,7 +844,11 @@ What the build learned and decided; the rules themselves are CONTRACT §5 G13–
   So `install --host claude-desktop` passes nothing that says "desktop": a flag would be
   false in the Code tab. The client's name decides, at `initialize`, and everything else
   stays exactly as a Claude Code client has always seen it (`test/desktop-chat.test.ts`
-  pins the handshake, the nine tools and the `prompts/*` method-not-found).
+  pins the handshake, the nine tools and the `prompts/*` method-not-found). A belt under
+  it: the Code tab's client name was never measured, so a process started by Claude Code
+  (its environment carries `CLAUDE_PROJECT_DIR`, `CLAUDECODE` or `CLAUDE_CODE_ENTRYPOINT`)
+  stays Claude Code's even if its client said `claude-ai`, and logs `mcp.host.kept`. If
+  Cowork's server turns out to carry one of those, Cowork falls back to today's behaviour.
 - **The place is a name.** `claude-desktop:` (`hosts.ts#DESKTOP_SCOPE`) is one pseudo-scope
   for every Desktop chat and Cowork (owner, 2026-09-30). It is never resolved against a
   working directory (`isPseudoScope` in `canonicalScope` and `canonicalScopePath`), and

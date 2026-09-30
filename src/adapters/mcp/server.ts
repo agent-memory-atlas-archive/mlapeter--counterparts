@@ -74,7 +74,7 @@ import {
 import type { ScopeMode, ScopeRegistry, ScopeVerdict } from "../scopes.js";
 import { randomUUID } from "node:crypto";
 
-import { DEFAULT_HOST, DESKTOP_HOST, DESKTOP_SCOPE, hostOfClient, wordingFor } from "../hosts.js";
+import { DEFAULT_HOST, DESKTOP_HOST, DESKTOP_SCOPE, claudeCodeEnvMarker, hostOfClient, wordingFor } from "../hosts.js";
 import { TUNABLES as ADAPTER_TUNABLES } from "../config.js";
 import type { AdapterConfig } from "../config.js";
 import { Lifecycle, plainContextLine } from "../lifecycle.js";
@@ -291,6 +291,10 @@ export interface McpServerOptions {
   /** The package version on disk now (`sessions.ts#manifestVersionOnDisk`),
    *  injectable so the update line is provable without reinstalling. */
   manifestVersion?: () => string | null;
+  /** This process's environment, read once at `initialize` for Claude Code's
+   *  markers (`hosts.ts#claudeCodeEnvMarker`). Injectable for a test; absent,
+   *  `process.env`. */
+  env?: Readonly<Record<string, string | undefined>>;
   onEvent?: (e: McpEvent) => void;
   now?: () => number;
 }
@@ -491,6 +495,7 @@ export class McpServer {
   private lifecycleInst: Lifecycle | null = null;
   private readonly wakeNotice: (() => string | null) | undefined;
   private readonly manifestVersion: () => string | null;
+  private readonly env: Readonly<Record<string, string | undefined>>;
 
   constructor(opts: McpServerOptions) {
     this.counterpart = opts.counterpart;
@@ -507,6 +512,7 @@ export class McpServer {
     this.lifecycleOpts = opts.lifecycle ?? {};
     this.wakeNotice = opts.wakeNotice;
     this.manifestVersion = opts.manifestVersion ?? manifestVersionOnDisk;
+    this.env = opts.env ?? process.env;
     // A server TOLD it serves Desktop takes Desktop's place from the start; the
     // one a Desktop client reveals itself to takes it at `initialize`.
     if (this.host === DESKTOP_HOST && opts.scope === undefined) {
@@ -599,7 +605,14 @@ export class McpServer {
             ? (clientInfo as Record<string, unknown>)["name"]
             : undefined;
         this.clientName = typeof clientName === "string" ? clientName.slice(0, 128) : null;
-        if (hostOfClient(clientName) === DESKTOP_HOST) this.becomeDesktop(this.clientName ?? "");
+        if (hostOfClient(clientName) === DESKTOP_HOST) {
+          // THE BELT: a process Claude Code started stays Claude Code's, whatever
+          // its client says (`hosts.ts#claudeCodeEnvMarker`) — and the log says
+          // which signal won.
+          const marker = claudeCodeEnvMarker(this.env);
+          if (marker === null) this.becomeDesktop(this.clientName ?? "");
+          else this.emit("mcp.host.kept", undefined, { client: this.clientName, host: this.host, marker });
+        }
         this.emit("mcp.initialize", undefined, {
           protocolVersion: version,
           observer: this.observer,

@@ -181,7 +181,7 @@ describe("end to end over stdio, as Claude Desktop's chat (client `claude-ai`)",
   test("initialize → wake → a call with no id binds to it → chapter and session_end twice each append → the ask arrives after the threshold", async () => {
     const t = clock();
     const spawn = stubSpawner();
-    const s = server({ now: t.now, lifecycle: { spawner: spawn.spawner }, manifestVersion: () => null });
+    const s = server({ now: t.now, lifecycle: { spawner: spawn.spawner }, manifestVersion: () => null, env: {} });
 
     // ── the handshake: the client's name makes this Desktop's server ─────────
     const [init] = await pump(s, [
@@ -262,7 +262,7 @@ describe("end to end over stdio, as Claude Desktop's chat (client `claude-ai`)",
   });
 
   test("Cowork (`local-agent-mode-…`) is Desktop too, for now: the same wake, the same place", async () => {
-    const s = server({ lifecycle: { spawner: stubSpawner().spawner }, manifestVersion: () => null });
+    const s = server({ lifecycle: { spawner: stubSpawner().spawner }, manifestVersion: () => null, env: {} });
     await pump(s, [rpc(1, "initialize", { clientInfo: { name: "local-agent-mode-counterparts" } })]);
     expect(s.host).toBe(DESKTOP_HOST);
     expect(s.scope).toBe(DESKTOP_SCOPE);
@@ -310,6 +310,24 @@ describe("a Claude Code client sees exactly what it saw before", () => {
     // No Desktop behaviour leaked in: no bind note, no refresh bookkeeping.
     expect(out["boundBy"]).toBeUndefined();
     expect(readSession(dir, "cc-1")?.desk).toBeUndefined();
+  });
+
+  test("the belt: a process Claude Code started stays Claude Code's even if its client says `claude-ai`", async () => {
+    const project = join(root, "proj");
+    mkdirSync(project, { recursive: true });
+    recordSession(dir, { sessionId: "cc-1", scope: project, phase: "start" });
+    for (const env of [{ CLAUDECODE: "1" }, { CLAUDE_PROJECT_DIR: project }, { CLAUDE_CODE_ENTRYPOINT: "cli" }]) {
+      const s = server({ scope: project, env, lifecycle: { spawner: stubSpawner().spawner } });
+      const [init, list] = await pump(s, [rpc(1, "initialize", { clientInfo: { name: "claude-ai" } }), rpc(2, "tools/list")]);
+      expect(resultOf(init)["instructions"]).toBeUndefined();
+      expect((resultOf(list)["tools"] as { name: string }[]).map((x) => x.name)).toEqual([...TOOL_NAMES]);
+      expect(s.host).toBe("claude-code");
+      expect(s.scope).toBe(project);
+      expect(s.events("mcp.host.kept")[0]?.data?.["marker"]).toBe(Object.keys(env)[0] as string);
+      // The hook-registered session still binds, lazily.
+      const said = payload(await s.call("chapter", { session: "cc-1", text: `Still Claude Code's, under ${Object.keys(env)[0] as string}.` }));
+      expect({ stored: said["stored"], reason: said["reason"] }).toMatchObject({ stored: true });
+    }
   });
 });
 

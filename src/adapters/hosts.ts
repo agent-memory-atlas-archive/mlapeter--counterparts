@@ -74,6 +74,26 @@ export function isPseudoScope(scope: string): boolean {
  * `local-agent-mode-<entry name>` for Cowork. Anything else — Claude Code, any
  * other client, no name at all — is null: today's behaviour, unchanged.
  */
+/**
+ * THE BELT UNDER THE CLIENT'S NAME: what Claude Code exports to every process it
+ * starts, stdio MCP servers included (`claude-code/night-run.ts#HOST_SESSION_ENV`
+ * strips the same three from a child for the same reason). A server whose
+ * environment carries any of them was started BY Claude Code — Desktop's Code
+ * tab included — whatever name its client sends, and keeps Claude Code's
+ * behaviour: the Code tab's client name was never measured, and a Code-tab
+ * server turned into Desktop's would refuse every hook-registered session.
+ * Returns the variable that said so, or null.
+ */
+export const CLAUDE_CODE_ENV_MARKERS = ["CLAUDE_PROJECT_DIR", "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"] as const;
+
+export function claudeCodeEnvMarker(env: Readonly<Record<string, string | undefined>>): string | null {
+  for (const name of CLAUDE_CODE_ENV_MARKERS) {
+    const value = env[name];
+    if (typeof value === "string" && value.length > 0) return name;
+  }
+  return null;
+}
+
 export function hostOfClient(clientName: unknown): string | null {
   if (typeof clientName !== "string") return null;
   if (clientName === "claude-ai" || clientName.startsWith("local-agent-mode-")) return DESKTOP_HOST;

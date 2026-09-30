@@ -283,7 +283,11 @@ actually wrote (chapter), the written self page or the version a write to it pro
     place becomes `claude-desktop:` (unless the launch declared `--scope`), its launch
     record is re-filed there, `initialize` adds an `instructions` line and a `prompts`
     capability ("Start with Counterparts"), `tools/list` adds `wake`, and results speak
-    Desktop's words (`hosts.ts`). Any other client — Claude Code, Desktop's Code tab off
+    Desktop's words (`hosts.ts`). A process whose environment carries Claude Code's
+    markers (`CLAUDE_PROJECT_DIR`, `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT` —
+    `hosts.ts#claudeCodeEnvMarker`) was started by Claude Code and stays Claude Code's
+    whatever its client says (event `mcp.host.kept`): the Code tab's client name was never
+    measured, and this makes that not matter. Any other client — Claude Code, Desktop's Code tab off
     the same config entry, an unnamed one — gets the handshake, tools and refusals it
     always got; `wake` is an unknown tool there, and `prompts/*` method-not-found.
 19. **[M] Desktop binds PER CALL, and says when it guessed** (2026-09-30). Guarantee 10's
