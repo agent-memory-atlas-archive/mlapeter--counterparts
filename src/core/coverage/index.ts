@@ -442,7 +442,10 @@ export interface CoverageRecordReport {
   readonly rows: number;
 }
 
-type RowStore = Pick<Store, "appendEvent" | "livedDay" | "getMeta" | "setMeta">;
+type RowStore = Pick<Store, "appendEvent" | "eventLog" | "livedDay" | "getMeta" | "setMeta">;
+
+/** How many of a name's newest rows are read to skip a repeat before writing. */
+const KNOWN_ROW_CEILING = 5_000;
 
 /**
  * THE ROWS — one per stretch per state, each under a dedup key, so a pass
@@ -466,7 +469,18 @@ export function recordCoverage(
   let written = 0;
   try {
     const day = store.livedDay();
+    // A stretch stays owed or lapsed for as long as its text is held, and this
+    // runs at every turn-end: the keys already written are read once, so a
+    // repeat costs a set lookup rather than a refused write.
+    const known = new Set<string>();
+    for (const name of [COVERAGE_OWED_EVENT, COVERAGE_LAPSED_EVENT, COVERAGE_WRITTEN_EVENT]) {
+      for (const row of store.eventLog({ name, order: "desc", limit: KNOWN_ROW_CEILING })) {
+        if (row.dedup_key !== null) known.add(row.dedup_key);
+      }
+    }
     const append = (name: string, dedupKey: string, payload: Record<string, unknown>, ref?: string): void => {
+      if (known.has(dedupKey)) return;
+      known.add(dedupKey);
       if (store.appendEvent({ name, day, dedupKey, payload, ...(ref === undefined ? {} : { ref }) }) !== 0) rows += 1;
     };
     for (const e of ledger(buffer, opts)) {
