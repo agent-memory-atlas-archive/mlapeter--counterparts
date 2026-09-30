@@ -82,6 +82,6 @@ export function memRow(r, opts = {}) {
       put + "</div>" +
     '<div class="mside">' +
       '<span class="mline">' + held + date + "</span>" +
-      '<span class="mline">' + badges({ ...r, journal: false }) + feelingDots(r.feelings) + kindTag + "</span>" +
+      '<span class="mline">' + badges({ ...r, journal: false }) + feelingDots(r.feelings, true) + kindTag + "</span>" +
     "</div></div>";
 }

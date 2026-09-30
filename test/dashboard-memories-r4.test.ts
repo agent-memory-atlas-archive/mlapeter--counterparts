@@ -179,8 +179,28 @@ describe("M3 one feelings chart", () => {
       const f = get<MemoriesJson>(src, "/api/memories").feelings;
       expect((radarSvg(f, null).match(/class="feel-axis on/g) ?? []).length).toBe(0);
       expect((radarSvg(f, "happy").match(/class="feel-axis on/g) ?? []).length).toBe(1);
+      // M1 (2026-09-30): "disgust" reads "dislike"; the axis still carries the stored core.
+      const svg = radarSvg(f, "disgust");
+      expect(svg).toContain('data-core="disgust"');
+      expect(svg).toContain(">dislike</text>");
+      expect(svg).not.toMatch(/>disgust</);
     });
     expect(read("pages/memories/sections/feel.js")).toContain("radarHtml(data, filters.feelingCore)");
+  });
+
+  test("M1: a memory shows its own feeling word; a bare core falls back to its display name", async () => {
+    const { feelingName, feelingWord, feelingDots } = (await import(join(WEB, "shared/memory-marks.js"))) as {
+      feelingName(c: string): string; feelingWord(f: unknown): string; feelingDots(f: unknown[], w?: boolean): string;
+    };
+    expect(feelingName("disgust")).toBe("dislike");
+    expect(feelingName("sad")).toBe("sad");
+    expect(feelingWord({ core: "disgust", word: "disappointed" })).toBe("disappointed");
+    expect(feelingWord({ core: "disgust", word: "disgust" })).toBe("dislike");
+    expect(feelingWord({ core: "disgust", word: "" })).toBe("dislike");
+    const dots = feelingDots([{ core: "disgust", word: "disappointed" }, { core: "happy", word: "proud" }, { core: "fear", word: "fear" }], true);
+    expect(dots).toContain('title="felt: disappointed, proud, fear"');
+    expect(dots).toContain('<span class="fwords">disappointed, proud +1</span>');
+    expect(feelingDots([{ core: "disgust", word: "disgust" }])).not.toContain("disgust");
   });
 });
 

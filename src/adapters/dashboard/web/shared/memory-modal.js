@@ -14,7 +14,7 @@ import { esc } from "./dom.js";
 import { headline, n2, n3, said } from "./format.js";
 import { coreRoadLine, curveStart, versionRows } from "./memory-card-words.js";
 import { dateOr, stampWords } from "./dates.js";
-import { FEELING_COLOURS, kindMark, kindOf } from "./memory-marks.js";
+import { FEELING_COLOURS, feelingName, feelingWord, kindMark, kindOf } from "./memory-marks.js";
 import { openModal } from "./modal.js";
 import { confirmTyped } from "./widgets/confirm.js";
 
@@ -174,8 +174,8 @@ function feelingsPart(d) {
   if (!d.feelings || d.feelings.length === 0) return held;
   return '<ul class="mc-list">' + d.feelings.map((f) =>
     '<li><i class="mc-fdot" style="background:' + (FEELING_COLOURS[f.core] || "#8a95a3") + '"></i><span>' +
-    (f.whose === "owner" ? "you felt " : f.whose === "self" ? "I felt " : esc(f.whose) + " felt ") + "<b>" + esc(f.word) + "</b>" +
-    '<span class="mc-dim"> · ' + esc(f.core) + (f.carriedBy ? " — " + esc(f.carriedBy) : "") + "</span></span></li>").join("") + "</ul>" + held;
+    (f.whose === "owner" ? "you felt " : f.whose === "self" ? "I felt " : esc(f.whose) + " felt ") + "<b>" + esc(feelingWord(f)) + "</b>" +
+    '<span class="mc-dim"> · ' + esc(feelingName(f.core)) + (f.carriedBy ? " — " + esc(f.carriedBy) : "") + "</span></span></li>").join("") + "</ul>" + held;
 }
 
 // ── linked memories ────────────────────────────────────────────────────────

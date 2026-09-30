@@ -3,14 +3,14 @@
    matching mood brought closer is counted per turn but not recorded per memory,
    so they are not guessed at here. */
 import { esc } from "../../shared/dom.js";
-import { FEELING_COLOURS } from "../../shared/memory-marks.js";
+import { FEELING_COLOURS, feelingWord } from "../../shared/memory-marks.js";
 import { memLink, nothingYet, two } from "../picture.js";
 
 const WHOSE = { owner: "you", self: "me" };
 
 function chip(f) {
   return '<span class="pic-feel"><i style="background:' + (FEELING_COLOURS[f.core] || "#8a95a3") + '"></i>' +
-    esc(f.word) + (WHOSE[f.whose] ? " · " + WHOSE[f.whose] : "") + "</span>";
+    esc(feelingWord(f)) + (WHOSE[f.whose] ? " · " + WHOSE[f.whose] : "") + "</span>";
 }
 
 export function picture(p) {
