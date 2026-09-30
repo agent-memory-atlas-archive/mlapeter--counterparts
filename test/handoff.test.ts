@@ -38,6 +38,7 @@ import {
   pointerBlock,
   readHandoff,
   reserveBytes,
+  WIDEST_POINTER_SINCE,
 } from "../src/core/handoff/index.js";
 import type { Handoff } from "../src/core/handoff/index.js";
 import { isHandoff } from "../src/core/recall/index.js";
@@ -61,6 +62,11 @@ const BODY_TWO = "Placeholder: the parser rewrite landed; next is the error mess
 // date a wake is composed for — so the pointer's date is the day the suite runs.
 // Pinning it to the day these tests were written made them fail the next morning.
 const WRITTEN_ON = localDate(Date.now()); // the person's day since 2026-09-25 (docs/time.md)
+// Since 2026-09-30 the line says WHEN it was written, to the minute, in the
+// store's zone — "written 09-30 14:05" — computed at delivery (`PointerSince`).
+const WRITTEN_LINE = new RegExp(
+  `Where I left off in this directory \\(written ${WRITTEN_ON.slice(5)} \\d{2}:\\d{2}\\): `,
+);
 
 let dir: string;
 let priorEnv: string | undefined;
@@ -386,7 +392,7 @@ describe("the pointer at the wake", () => {
     c.rebrief({ budgetBytes: 9_000, at: "2026-09-20" });
     const woke = c.wake(9_000, { date: "2026-09-20" }, { scope: HERE, session: "s2" });
     const id = c.readHandoff(HERE)?.id as string;
-    expect(woke.text).toContain(`Where I left off in this directory (${WRITTEN_ON}):`);
+    expect(woke.text).toMatch(WRITTEN_LINE);
     expect(woke.text).toContain(BODY);
     expect(woke.text).toContain(id);
     expect(woke.text).toContain("expand it with the counterparts recall tool");
@@ -488,6 +494,9 @@ describe("the pointer at the wake", () => {
     const block = pointerBlock(widest, 999_999) as string;
     expect(block).not.toBeNull();
     expect(new TextEncoder().encode(block).length).toBeLessThanOrEqual(HANDOFF_RESERVE_MAX_BYTES);
+    // …with the widest "how current" words the delivery can add, too.
+    const current = pointerBlock(widest, 999_999, HANDOFF_LIFE_DAYS, WIDEST_POINTER_SINCE) as string;
+    expect(new TextEncoder().encode(current).length).toBeLessThanOrEqual(HANDOFF_RESERVE_MAX_BYTES);
     // And the excerpt itself stays inside its own cap.
     expect(new TextEncoder().encode(excerpt(widest.body)).length).toBeLessThanOrEqual(
       HANDOFF_EXCERPT_BYTES,
@@ -665,7 +674,10 @@ describe("the reserve is conditional, which is what keeps a blank store honest",
       });
     }
     c.writeHandoff(BODY, { scope: HERE });
-    for (const budget of [2_500, 4_096, 9_000]) {
+    // 3,072, not 2,500: since the pointer says how current it is (2026-09-30)
+    // its reserve is sized to the widest of those words, and the share rule
+    // turns it on from about 3,000 bytes.
+    for (const budget of [3_072, 4_096, 9_000]) {
       c.rebrief({ budgetBytes: budget, at: "2026-09-20" });
       const woke = c.wake(budget, { date: "2026-09-20" }, { scope: HERE });
       expect(woke.text).toContain("Where I left off in this directory");
@@ -1361,7 +1373,7 @@ describe("the session that writes it and the session that reads it", () => {
         at: "2026-09-20",
       });
       expect(out.ok).toBe(true);
-      expect(out.injection).toContain(`Where I left off in this directory (${WRITTEN_ON}):`);
+      expect(out.injection).toMatch(WRITTEN_LINE);
       expect(out.injection).toContain(BODY);
       // The sentinel the hook records as the delivery expectation is the
       // DELIVERED one — the pointer included.

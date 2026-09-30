@@ -94,7 +94,10 @@ function fixWake(a: ClaudeCodeAdapter, bytes: number): void {
 
 /** Seed: one plain reminder due today, and one session that ended owing a write-up. */
 function seed(): void {
-  const c = Counterpart.open({ dir: storeDir, owner: true });
+  // A clock the seed turns: the ended session's six pieces are ten minutes
+  // apart, so what it left unwritten owes a write-up (`core/coverage/`).
+  let clock = Date.now();
+  const c = Counterpart.open({ dir: storeDir, owner: true, now: () => clock });
   try {
     c.store.put({
       type: "memory",
@@ -107,14 +110,15 @@ function seed(): void {
     });
     const at = Date.now() - 2 * DAY;
     recordSession(storeDir, { sessionId: "old-1", scope: PROJ, phase: "start", at });
-    c.captureSpans({
-      session: "old-1",
-      scope: PROJ,
-      turns: [
-        { role: "user", text: "The reservoir loop keeps its pressure only when the relief valve is seated first. ".repeat(10) },
+    const turns: { role: "user" | "assistant"; text: string }[] = [];
+    for (let i = 0; i < 6; i++) {
+      clock = at + i * 10 * 60_000;
+      turns.push(
+        { role: "user", text: `${String(i)}: the reservoir loop keeps its pressure only when the relief valve is seated first. `.repeat(2) },
         { role: "assistant", text: "Understood." },
-      ],
-    });
+      );
+      c.captureSpans({ session: "old-1", scope: PROJ, turns: [...turns] });
+    }
     expect(c.episodeAsk("old-1", { turns: 9, bytes: 6_000 }).asked).toBe(true);
     c.boundary({ session: "old-1", scope: PROJ, kind: "session-end" });
     recordSession(storeDir, { sessionId: "old-1", scope: PROJ, phase: "end", at: at + 1_000 });

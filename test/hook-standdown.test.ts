@@ -1385,17 +1385,20 @@ describe("the write-up pointer never costs the wake", () => {
    *  so the next SessionStart there is handed its words. */
   function owedSessionInWork(): void {
     const scope = canonicalScope(work);
-    const c = Counterpart.open({ dir: store, owner: true });
+    // Six pieces ten minutes apart: a stretch past the floor (`core/coverage/`).
+    let clock = Date.now() - 86_400_000;
+    const c = Counterpart.open({ dir: store, owner: true, now: () => clock });
     try {
       recordSession(store, { sessionId: "ended-owing", scope, phase: "start", at: Date.now() - 86_400_000 });
-      c.captureSpans({
-        session: "ended-owing",
-        scope,
-        turns: [
-          { role: "user", text: "The relief valve is seated before the reservoir loop is pressurised, every time." },
+      const turns: { role: "user" | "assistant"; text: string }[] = [];
+      for (let i = 0; i < 6; i++) {
+        clock = Date.now() - 86_400_000 + i * 600_000;
+        turns.push(
+          { role: "user", text: `${String(i)}: the relief valve is seated before the reservoir loop is pressurised, every time.` },
           { role: "assistant", text: "Understood." },
-        ],
-      });
+        );
+        c.captureSpans({ session: "ended-owing", scope, turns: [...turns] });
+      }
       expect(c.episodeAsk("ended-owing", { turns: 9, bytes: 6_000 }).asked).toBe(true);
       c.boundary({ session: "ended-owing", scope, kind: "stop" });
       c.boundary({ session: "ended-owing", scope, kind: "session-end" });
@@ -1415,7 +1418,7 @@ describe("the write-up pointer never costs the wake", () => {
     expect(tail.startsWith(`\n\n${WRITE_UP_OPEN}`)).toBe(true);
     expect(tail).toContain("writeUp: ended-owing");
     // A pointer: the words come from the MCP door, never beside the wake.
-    expect(tail).not.toContain("The relief valve is seated");
+    expect(tail).not.toContain("the relief valve is seated");
     expect(run.stdout.length).toBeLessThan(10_000);
   });
 

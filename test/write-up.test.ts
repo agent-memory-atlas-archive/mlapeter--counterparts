@@ -1,8 +1,9 @@
 /**
  * THE NEXT-SESSION WRITE-UP — roadmap C2, owner's decisions of 2026-09-23.
  *
- * A session that ended before it was written up (B3's `owesWriteUp`) is
- * written up by the NEXT session that starts in its project: the SessionStart
+ * A session that ended before it was written up (it owes, by
+ * `core/coverage/`'s rule since 2026-09-30) is written up by the NEXT session
+ * that starts in its project: the SessionStart
  * hook puts a short POINTER beside the wake, the assistant FETCHES the words
  * through a `writeUp` field on `session_end` (no memories), ANSWERS with
  * memories — or `[]`, nothing worth keeping — and the last part marks the old
@@ -11,8 +12,8 @@
  * and the write-up know each other's marks.
  *
  * The acceptance, one describe each:
- *   1. the pointer — one owing session, exactly one pointer; a below-threshold
- *      session, none; two, oldest first; a 60 KB session, "part 1 of N"; and it
+ *   1. the pointer — one owing session, exactly one pointer; a small stretch,
+ *      the same and one sentence more; two, oldest first; a 60 KB session, "part 1 of N"; and it
  *      fits beside a 9 KB wake;
  *   2. the door — every refusal by name; a fetch that returns the words; an
  *      answer that mints authored memories under the WRITING session and marks
@@ -21,7 +22,7 @@
  *   3. the sweep — off without the knob, on with it and a key; it skips what
  *      the next session wrote up, and marks what it swept only when every word
  *      in every project was read — never a quarantined session;
- *   4. doctor — the `Crash write-up` line.
+ *   4. doctor — the `Write-ups` line (#192's `Crash write-up`).
  *
  * Hermetic: a fresh temp directory per test, removed after. The only key any
  * test holds is a fake string, set and restored around the one test that
@@ -43,7 +44,11 @@ import { TUNABLES, loadConfig } from "../src/adapters/claude-code/config.js";
 import type { AdapterConfig } from "../src/adapters/claude-code/config.js";
 import { runOnce } from "../src/adapters/claude-code/bin/runner.js";
 import { toHookInput } from "../src/adapters/claude-code/bin/hook.js";
-import { WRITE_UP_WAIT_DAYS, doctorFindings } from "../src/adapters/claude-code/doctor.js";
+import { doctorFindings } from "../src/adapters/claude-code/doctor.js";
+
+/** How old a debt the old line turned amber on — now the stretch is from
+ *  yesterday or earlier (`Write-ups`, 2026-09-30); kept as a length of time. */
+const WRITE_UP_WAIT_DAYS = 3;
 import { openServer, toolSpec } from "../src/adapters/mcp/index.js";
 import type { McpServer, ToolResult } from "../src/adapters/mcp/server.js";
 import {
@@ -60,10 +65,27 @@ import {
   writeUpSources,
 } from "../src/adapters/sessions.js";
 import { keyFor } from "../src/core/remember/index.js";
+import { CLAIM_NOTHING_NEW, claimUnwritten } from "../src/core/coverage/index.js";
+import { localDate } from "../src/core/time.js";
 import { ALREADY_AUTHORED_MARK } from "../src/core/remember/index.js";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
+/** Eight minutes between one piece of a seeded session and the next: three
+ *  pieces span sixteen minutes, past the floor's fifteen. */
+const PIECE_GAP = 8 * 60_000;
+/** Local midnight today — the date `core/coverage/` keys "at work" on. */
+function todayStart(): number {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+/** A moment today, late enough before now that a seeded session's pieces sit today. */
+function earlierToday(): number {
+  return Math.max(todayStart() + 60_000, Date.now() - 45 * 60_000);
+}
+/** The person's today, as doctor is handed it. */
+const TODAY = (): string => localDate(Date.now());
 const FIRST_ASK = {
   turns: SELF_TUNABLES.FIRST_ASK_TURNS,
   textBytes: SELF_TUNABLES.FIRST_ASK_TEXT_BYTES,
@@ -120,8 +142,11 @@ function wordsOf(tag: string, bytes: number): string {
 
 /**
  * A session that talked in `scope`, then ENDED — normally, or by going silent
- * past the registry's window (a crash has no end on this host). `asked` is the
- * pacer finding substance; without it the session is below the threshold.
+ * (a crash has no end on this host). Its pieces are five minutes apart, and
+ * six of them by default, so what it left unwritten is past the floor and not
+ * small (`core/coverage/`, 2026-09-30); `asked: false` leaves three — a small
+ * stretch, which the pointer says one line is enough for. `answered` writes a
+ * chapter, which writes the stretch up.
  */
 function ended(
   s: { c: Counterpart; set(at: number): void },
@@ -137,25 +162,25 @@ function ended(
   },
 ): void {
   const scope = opts.scope ?? PROJ;
-  const captures = opts.captures ?? 1;
+  const captures = opts.captures ?? (opts.asked === false ? 3 : 6);
   const per = Math.ceil((opts.bytes ?? 600) / captures);
   recordSession(storeDir, { sessionId: id, scope, phase: "start", at: opts.at });
   const turns: { role: "user" | "assistant"; text: string }[] = [];
   for (let i = 0; i < captures; i++) {
-    s.set(opts.at + i * 1000);
+    s.set(opts.at + i * PIECE_GAP);
     turns.push({ role: "user", text: wordsOf(`${id} #${String(i)}`, per) });
     turns.push({ role: "assistant", text: `(${id} #${String(i)}) understood.` });
     s.c.captureSpans({ session: id, scope, turns: [...turns] });
   }
   if (opts.asked !== false) expect(s.c.episodeAsk(id, { turns: 9, bytes: 6_000 }).asked).toBe(true);
   s.c.boundary({ session: id, scope, kind: "stop" });
-  recordSession(storeDir, { sessionId: id, scope, phase: "boundary", at: opts.at + captures * 1000 });
+  recordSession(storeDir, { sessionId: id, scope, phase: "boundary", at: opts.at + captures * PIECE_GAP });
   if (opts.answered === true) {
     expect(s.c.appendEpisode(id, `A chapter from ${id}.`).appended).toBe(true);
   }
   if ((opts.end ?? "normal") === "normal") {
     s.c.boundary({ session: id, scope, kind: "session-end" });
-    recordSession(storeDir, { sessionId: id, scope, phase: "end", at: opts.at + captures * 1000 + 1 });
+    recordSession(storeDir, { sessionId: id, scope, phase: "end", at: opts.at + captures * PIECE_GAP + 1 });
   }
 }
 
@@ -216,9 +241,27 @@ async function pointAndFetch(live: string): Promise<{ s: McpServer; fetched: Rec
 
 const MEMORY = { content: "The reservoir loop holds pressure only when the relief valve is seated first.", kind: "fact" };
 
+/**
+ * One session that talked in TWO projects: three pieces in each, eight minutes
+ * apart and interleaved, so the share left in either after the other is
+ * written up is still past the floor on its own.
+ */
+function multiIn(seed: { c: Counterpart; set(at: number): void }, at: number, here: string, there: string): void {
+  const inHere: { role: "user"; text: string }[] = [];
+  const inThere: { role: "user"; text: string }[] = [];
+  for (let i = 0; i < 3; i++) {
+    seed.set(at + 2 * i * PIECE_GAP);
+    inHere.push({ role: "user", text: wordsOf(`${here}-${String(i)}`, 300) });
+    seed.c.captureSpans({ session: "multi", scope: PROJ, turns: [...inHere] });
+    seed.set(at + (2 * i + 1) * PIECE_GAP);
+    inThere.push({ role: "user", text: wordsOf(`${there}-${String(i)}`, 300) });
+    seed.c.captureSpans({ session: "multi", scope: OTHER, turns: [...inThere] });
+  }
+}
+
 /** B3's retention, read now and after the seven days. */
 function verdicts(c: Counterpart): { now: Map<string, string>; later: Map<string, string> } {
-  const sources = writeUpSources(c.store, FIRST_ASK);
+  const sources = writeUpSources(c.store);
   const at = (t: number): Map<string, string> =>
     new Map(planRetention(new SpanBuffer({ dir: storeDir, now: () => t }), sources).map((h) => [h.session, h.verdict]));
   return { now: at(Date.now()), later: at(Date.now() + 8 * DAY) };
@@ -255,18 +298,18 @@ describe("the pointer: the next session start in that project is pointed at it",
     expect(start("new-1").ask).toBeNull();
   });
 
-  test("a session BELOW the pacer's threshold owes a SHORT write-up: the same pointer and one plain sentence more (2026-09-29)", () => {
+  test("a SMALL owed stretch — under six pieces — gets the same pointer and one plain sentence more (2026-09-29; small since 2026-09-30)", () => {
     const s = seeder();
     ended(s, "short-1", { at: Date.now() - 2 * DAY, bytes: 200, asked: false });
     s.done();
     const ask = start("new-1").ask ?? "";
     expect(ask).toContain("session: new-1, writeUp: short-1 and no memories");
     expect(ask).toContain(WRITE_UP_SHORT_LINE);
-    // It is not a retention debt: B3's own predicate still says it owes nothing.
+    // A debt like any other since 2026-09-30 (`core/coverage/`): it owes, and it is small.
     const c = Counterpart.open({ dir: storeDir, owner: true });
-    const held = planRetention(c.spans, writeUpSources(c.store, FIRST_ASK)).find((h) => h.session === "short-1");
+    const held = planRetention(c.spans, writeUpSources(c.store)).find((h) => h.session === "short-1");
     c.close();
-    expect(held).toMatchObject({ owes: false, owesShort: true });
+    expect(held).toMatchObject({ owes: true, small: true });
   });
 
   test("a session below the threshold that ANSWERED — a chapter — owes nothing, short or full", () => {
@@ -283,43 +326,42 @@ describe("the pointer: the next session start in that project is pointed at it",
     expect(start("new-1").ask).toBeNull();
   });
 
-  test("a CRASHED session is pointed at only once it is silent past the sweep's 12 hours — never inside the bind's 4", () => {
+  test("a session with NO END is pointed at once it has captured nothing since the date changed — no silence window (2026-09-30)", () => {
     const s = seeder();
-    ended(s, "crash-now", { at: Date.now() - 60_000, end: "crash" });
-    ended(s, "crash-5h", { at: Date.now() - 5 * HOUR, end: "crash" });
+    // Talking today and not ended: at work, whatever the silence.
+    ended(s, "open-today", { at: earlierToday(), end: "crash" });
     s.done();
     expect(start("new-1").ask).toBeNull();
 
+    // Left open last night: quiet since the date changed, and it owes.
     const t = seeder();
-    ended(t, "crash-old", { at: Date.now() - 13 * HOUR, end: "crash" });
+    ended(t, "open-overnight", { at: todayStart() - 3 * HOUR, end: "crash" });
     t.done();
     const ask = start("new-2").ask ?? "";
-    expect(ask).toContain("writeUp: crash-old");
-    expect(ask).not.toContain("crash-now");
-    expect(ask).not.toContain("crash-5h");
+    expect(ask).toContain("writeUp: open-overnight");
+    expect(ask).not.toContain("open-today");
   });
 
-  test("the review's idle repro: a session open 5 hours — or a day — that ANSWERED its ask is never offered (MAJOR 3)", async () => {
+  test("the review's idle repro: a session open a day that WROTE ITS STRETCH UP — a chapter, or \"nothing new\" — is never offered (MAJOR 3)", async () => {
     const s = seeder();
-    // Asked, answered with a chapter, still open in the registry (no end).
-    ended(s, "idle-5h", { at: Date.now() - 5 * HOUR, end: "crash", answered: true });
+    // Answered with a chapter, still open in the registry (no end).
     ended(s, "idle-1d", { at: Date.now() - 1 * DAY, end: "crash", answered: true });
     s.done();
-    // Answered with "nothing new" instead of a chapter reads the same.
+    // Answered with "nothing new" instead of a chapter reads the same: since
+    // 2026-09-30 that answer claims the session's pieces.
     const t = seeder();
     ended(t, "idle-nn", { at: Date.now() - 1 * DAY, end: "crash" });
-    t.done();
     expect(markNothingNew(storeDir, "idle-nn", Date.now() - 1 * DAY + 60_000)).not.toBeNull();
+    claimUnwritten(t.c.spans, { session: "idle-nn", by: CLAIM_NOTHING_NEW, ref: "idle-nn" });
+    t.done();
     const c = Counterpart.open({ dir: storeDir, owner: true });
-    const facts = planRetention(c.spans, writeUpSources(c.store, FIRST_ASK)).find((h) => h.session === "idle-1d");
+    const plan = planRetention(c.spans, writeUpSources(c.store));
     c.close();
-    // B3 still says it owes (no normal end) — the pointer is what declines.
-    expect(facts?.owes).toBe(true);
+    expect(plan.filter((h) => h.owes)).toEqual([]);
     expect(start("new-1").ask).toBeNull();
-    // And the door agrees: the 5-hour one is still running, the day-old ones owe nothing to another session.
+    // And the door agrees: both owe nothing to another session.
     recordSession(storeDir, { sessionId: "new-9", scope: PROJ, phase: "start" });
     const s2 = server();
-    expect(payload(await s2.call("session_end", { session: "new-9", writeUp: "idle-5h" }))["reason"]).toBe("live-session");
     for (const id of ["idle-1d", "idle-nn"]) {
       expect(payload(await s2.call("session_end", { session: "new-9", writeUp: id }))).toMatchObject({
         reason: "owes-nothing",
@@ -405,7 +447,7 @@ describe("the pointer: the next session start in that project is pointed at it",
       config: config(),
       dir: storeDir,
       store: c.store,
-      today: "2026-09-23",
+      today: TODAY(),
       refusals: {},
     }).find((x) => x.key === "crash-write-up");
     expect(f?.severity).toBe("amber");
@@ -480,8 +522,11 @@ describe("the door: `session_end` with `writeUp`", () => {
     ended(s, "short-1", { at: Date.now() - 1 * DAY, asked: false });
     ended(s, "far-1", { at: Date.now() - 1 * DAY, scope: OTHER });
     s.done();
-    // A second session running in this project, right now.
+    // A second session at work in this project, right now: it has said something today.
     recordSession(storeDir, { sessionId: "live-2", scope: PROJ, phase: "start" });
+    const w = Counterpart.open({ dir: storeDir, owner: true });
+    w.captureSpans({ session: "live-2", scope: PROJ, turns: [{ role: "user", text: "The live session's own first turn about the pump." }] });
+    w.close();
   }
 
   test("each refusal by name — and a refusal writes nothing", async () => {
@@ -647,7 +692,7 @@ describe("the door: `session_end` with `writeUp`", () => {
     d.close();
   });
 
-  test("a failed final mark is finished by the NEXT session's fetch, depositing nothing (MAJOR 2)", async () => {
+  test("a failed final mark still leaves the session written up: its words were claimed, so nobody is pointed at it again (MAJOR 2, since 2026-09-30)", async () => {
     const seed = seeder();
     ended(seed, "old-1", { at: Date.now() - 2 * DAY });
     seed.done();
@@ -661,17 +706,14 @@ describe("the door: `session_end` with `writeUp`", () => {
     s.counterpart.close();
     open.splice(open.indexOf(s.counterpart), 1);
 
-    // Three later sessions: the first finishes it, the other two are not pointed at it.
-    const later = await pointAndFetch("new-2");
-    expect(later.fetched).toMatchObject({ reason: "written-up", marked: true, deposited: 0 });
-    const minted = later.s.counterpart.spans
-      .proposalRecords<ProposalRecord>(PROJ)
-      .filter((p) => p.accepted === true && (p.session === "new-1" || p.session === "new-2"));
+    // The memories claimed its words (`cover`), so by `core/coverage/`'s rule
+    // it owes nothing: no later session is pointed at it, nothing is minted twice.
+    const c = Counterpart.open({ dir: storeDir, owner: true });
+    expect(planRetention(c.spans, writeUpSources(c.store)).find((h) => h.session === "old-1")?.owes).toBe(false);
+    const minted = c.spans.proposalRecords<ProposalRecord>(PROJ).filter((p) => p.accepted === true);
     expect(minted.map((p) => p.session)).toEqual(["new-1"]);
-    later.s.counterpart.close();
-    open.splice(open.indexOf(later.s.counterpart), 1);
-    newDay();
-    for (const id of ["new-3", "new-4"]) expect(start(id).ask ?? "").not.toContain("writeUp: old-1");
+    c.close();
+    for (const id of ["new-2", "new-3"]) expect(start(id).ask ?? "").not.toContain("writeUp: old-1");
   });
 
   test("near the 24 KB boundary, a failed final mark is still finished by the next fetch — the kept marks do not add a part (m-B)", async () => {
@@ -697,34 +739,26 @@ describe("the door: `session_end` with `writeUp`", () => {
     s.counterpart.close();
     open.splice(open.indexOf(s.counterpart), 1);
 
-    // The next session is not handed "part 2 of 2": its fetch finishes the mark.
+    // The next session is not handed "part 2 of 2": since 2026-09-30 the words
+    // the memories claimed are written up, and it is not pointed at it at all.
     newDay();
     const again = start("new-2").ask ?? "";
-    expect(again).toContain("writeUp: near");
+    expect(again).not.toContain("writeUp: near");
     expect(again).not.toContain("part 2");
-    const t = server();
-    expect(payload(await t.call("session_end", { session: "new-2", writeUp: "near" }))).toMatchObject({
-      reason: "written-up",
-      marked: true,
-      deposited: 0,
-    });
   });
 
   test("a session with words in TWO projects: each project's writer is served only its own, and the mark waits for both (MAJOR 6)", async () => {
     const seed = seeder();
     const at = Date.now() - 2 * DAY;
-    seed.set(at);
     recordSession(storeDir, { sessionId: "multi", scope: PROJ, phase: "start", at });
-    seed.c.captureSpans({ session: "multi", scope: PROJ, turns: [{ role: "user", text: wordsOf("PROJ-WORDS", 600) }] });
-    seed.c.captureSpans({ session: "multi", scope: OTHER, turns: [{ role: "user", text: wordsOf("SECRET-OTHER-PROJECT", 600) }] });
-    expect(seed.c.episodeAsk("multi", { turns: 9, bytes: 6_000 }).asked).toBe(true);
+    multiIn(seed, at, "PROJ-WORDS", "SECRET-OTHER-PROJECT");
     seed.c.boundary({ session: "multi", scope: PROJ, kind: "stop" });
     seed.c.boundary({ session: "multi", scope: PROJ, kind: "session-end" });
-    recordSession(storeDir, { sessionId: "multi", scope: PROJ, phase: "end", at: at + 1000 });
+    recordSession(storeDir, { sessionId: "multi", scope: PROJ, phase: "end", at: at + HOUR });
     seed.done();
 
     const { s, fetched } = await pointAndFetch("proj-writer");
-    expect(String(fetched["text"])).toContain("PROJ-WORDS");
+    expect(String(fetched["text"])).toContain("PROJ-WORDS-0");
     expect(String(fetched["text"])).not.toContain("SECRET-OTHER-PROJECT");
     const here = payload(await s.call("session_end", { session: "proj-writer", writeUp: "multi", memories: [MEMORY] }));
     expect(here).toMatchObject({ reason: "written-up-here", marked: false, elsewhere: 1 });
@@ -901,7 +935,7 @@ describe("the worker never sweeps — a crashed session waits for the next sessi
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-describe("doctor: one line, `Crash write-up`", () => {
+describe("doctor: one line, `Write-ups` (#192's `Crash write-up`, re-read off the coverage ledger 2026-09-30)", () => {
   function line(over: Partial<AdapterConfig> = {}): { severity: string; detail: string } {
     const c = Counterpart.open({ dir: storeDir, owner: true });
     open.push(c);
@@ -911,7 +945,7 @@ describe("doctor: one line, `Crash write-up`", () => {
       config: config(over),
       dir: storeDir,
       store: c.store,
-      today: "2026-09-23",
+      today: TODAY(),
       refusals: {},
     });
     const f = findings.find((x) => x.key === "crash-write-up");
@@ -920,29 +954,31 @@ describe("doctor: one line, `Crash write-up`", () => {
     return { severity: f?.severity ?? "missing", detail: f?.detail ?? "" };
   }
 
-  test("green `next session` by default — the only route", () => {
-    expect(line()).toEqual({ severity: "green", detail: "next session" });
+  test("green on an empty store: nothing captured yesterday, nothing owed", () => {
+    expect(line()).toEqual({
+      severity: "green",
+      detail: `yesterday (${localDate(todayStart() - HOUR)}): nothing captured; nothing owed`,
+    });
   });
 
-  test("a crashed session counts as waiting like any other", () => {
+  test("a session with no end counts as owing like any other", () => {
     const s = seeder();
     ended(s, "crashed", { at: Date.now() - 5 * DAY, end: "crash" });
-    ended(s, "unanswered", { at: Date.now() - 1 * DAY, end: "normal" });
+    ended(s, "unanswered", { at: Date.now() - 2 * DAY, end: "normal" });
     s.done();
-    expect(line().detail).toBe("next session — 2 sessions awaiting a write-up, 1 older than 3 days");
+    const got = line();
+    expect(got.severity).toBe("amber");
+    expect(got.detail).toContain("2 sessions owe a write-up, 2 from yesterday or earlier");
   });
 
   test("a session finished here and waiting on another project names that project (m-C)", async () => {
     const seed = seeder();
     const at = Date.now() - 5 * DAY;
-    seed.set(at);
     recordSession(storeDir, { sessionId: "multi", scope: PROJ, phase: "start", at });
-    seed.c.captureSpans({ session: "multi", scope: PROJ, turns: [{ role: "user", text: wordsOf("PROJ-WORDS", 600) }] });
-    seed.c.captureSpans({ session: "multi", scope: OTHER, turns: [{ role: "user", text: wordsOf("OTHER-WORDS", 600) }] });
-    expect(seed.c.episodeAsk("multi", { turns: 9, bytes: 6_000 }).asked).toBe(true);
+    multiIn(seed, at, "PROJ-WORDS", "OTHER-WORDS");
     seed.c.boundary({ session: "multi", scope: PROJ, kind: "stop" });
     seed.c.boundary({ session: "multi", scope: PROJ, kind: "session-end" });
-    recordSession(storeDir, { sessionId: "multi", scope: PROJ, phase: "end", at: at + 1000 });
+    recordSession(storeDir, { sessionId: "multi", scope: PROJ, phase: "end", at: at + HOUR });
     seed.done();
     const { s } = await pointAndFetch("proj-writer");
     expect(payload(await s.call("session_end", { session: "proj-writer", writeUp: "multi", memories: [] }))["reason"]).toBe("written-up-here");
@@ -956,7 +992,7 @@ describe("doctor: one line, `Crash write-up`", () => {
       config: config(),
       dir: storeDir,
       store: c.store,
-      today: "2026-09-23",
+      today: TODAY(),
       refusals: {},
     }).find((x) => x.key === "crash-write-up");
     expect(f?.severity).toBe("amber");
@@ -965,21 +1001,23 @@ describe("doctor: one line, `Crash write-up`", () => {
     expect(f?.fix).toContain("no command yet to close a session by hand");
   });
 
-  test("counts the sessions awaiting a write-up, and turns amber once one has waited past 3 days", () => {
+  test("counts the sessions that owe, and turns amber once one is from yesterday or earlier", () => {
     const s = seeder();
-    ended(s, "fresh", { at: Date.now() - 1 * DAY });
+    ended(s, "fresh", { at: earlierToday() });
     s.done();
-    expect(line()).toEqual({ severity: "green", detail: "next session — 1 session awaiting a write-up" });
+    const green = line();
+    expect(green.severity).toBe("green");
+    expect(green.detail).toContain("; 1 session owes a write-up");
+    expect(green.detail).not.toContain("from yesterday");
     const t = seeder();
     ended(t, "stale", { at: Date.now() - 5 * DAY, scope: OTHER });
     t.done();
-    expect(line()).toEqual({
-      severity: "amber",
-      detail: "next session — 2 sessions awaiting a write-up, 1 older than 3 days",
-    });
+    const amber = line();
+    expect(amber.severity).toBe("amber");
+    expect(amber.detail).toContain("; 2 sessions owe a write-up, 1 from yesterday or earlier");
   });
 
-  test("Authorship carries the owed count as detail and stays green — the loss is Crash write-up's one amber", () => {
+  test("Authorship carries the owed count as detail and stays green — the loss is Write-ups' one amber", () => {
     const lines = (): { authorship: { severity: string; detail: string; stale: unknown }; crash: string } => {
       const c = Counterpart.open({ dir: storeDir, owner: true });
       open.push(c);
@@ -989,7 +1027,7 @@ describe("doctor: one line, `Crash write-up`", () => {
         config: config(),
         dir: storeDir,
         store: c.store,
-        today: "2026-09-23",
+        today: TODAY(),
         refusals: {},
       });
       c.close();
@@ -1007,12 +1045,12 @@ describe("doctor: one line, `Crash write-up`", () => {
     expect(late.crash).toBe("amber");
     expect(late.authorship.severity).toBe("green");
     expect(late.authorship.stale).toBe(1);
-    expect(late.authorship.detail).toContain(`1 session awaiting a write-up, 1 older than ${String(WRITE_UP_WAIT_DAYS)} days`);
+    expect(late.authorship.detail).toContain("1 session awaiting a write-up, 1 from yesterday or earlier");
   });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-describe("the short write-up: a session under the first-ask threshold (2026-09-29)", () => {
+describe("the short write-up: a small owed stretch (2026-09-29; since 2026-09-30, under six pieces)", () => {
   test("FULL WRITE-UPS FIRST: a short one takes only what is left of the day's two pointers", () => {
     const s = seeder();
     // The short one is OLDER, so only the full-first key can put the full one ahead.
@@ -1048,27 +1086,28 @@ describe("the short write-up: a session under the first-ask threshold (2026-09-2
     two.s.counterpart.close();
     open.length = 0;
     const c = Counterpart.open({ dir: storeDir, owner: true });
-    const plan = planRetention(c.spans, writeUpSources(c.store, FIRST_ASK));
+    const plan = planRetention(c.spans, writeUpSources(c.store));
     c.close();
     for (const id of ["short-a", "short-b"]) {
-      expect(plan.find((h) => h.session === id), id).toMatchObject({ owesShort: false, owes: false });
+      expect(plan.find((h) => h.session === id), id).toMatchObject({ small: false, owes: false });
     }
     newDay();
     expect(start("new-3").ask).toBeNull();
   });
 
-  test("RETENTION IS UNCHANGED: a short session nobody gets to is kept for its week and then deleted", () => {
+  test("RETENTION, since 2026-09-30: a small owed stretch is a debt like a full one; a tail under the floor goes after its week", () => {
     const s = seeder();
-    ended(s, "short-lost", { at: Date.now() - 2 * DAY, bytes: 200, asked: false });
+    ended(s, "short-kept", { at: Date.now() - 2 * DAY, bytes: 200, asked: false });
     ended(s, "full-kept", { at: Date.now() - 2 * DAY, bytes: 900 });
+    ended(s, "tail", { at: Date.now() - 2 * DAY, bytes: 200, captures: 1 });
     s.done();
     const c = Counterpart.open({ dir: storeDir, owner: true });
     const v = verdicts(c);
     c.close();
-    expect(v.now.get("short-lost")).toBe("kept-young");
-    expect(v.later.get("short-lost")).toBe("deleted");
-    // ...while a full debt is still kept however old, as before.
+    expect(v.later.get("short-kept")).toBe("kept-owed");
     expect(v.later.get("full-kept")).toBe("kept-owed");
+    expect(v.now.get("tail")).toBe("kept-young");
+    expect(v.later.get("tail")).toBe("deleted");
   });
 
   test("NOT A PERSON'S CONVERSATION: the headless nightly run's child captures nothing, so it owes nothing", () => {
@@ -1095,20 +1134,22 @@ describe("the short write-up: a session under the first-ask threshold (2026-09-2
       a.counterpart.close();
     }
     const c = Counterpart.open({ dir: storeDir, owner: true });
-    const plan = planRetention(c.spans, writeUpSources(c.store, FIRST_ASK));
+    const plan = planRetention(c.spans, writeUpSources(c.store));
     c.close();
     expect(plan.find((h) => h.session === "night-child")).toBeUndefined();
   });
 
   test("a short debt with NO registry record — the unbound MCP server's shared `mcp` id — is never pointed at", () => {
     const s = seeder();
-    s.set(Date.now() - 2 * DAY);
-    s.c.captureJot({ session: "mcp", scope: PROJ, text: "A note that would not parse, kept as a jot." });
+    for (let i = 0; i < 3; i++) {
+      s.set(Date.now() - 2 * DAY + i * PIECE_GAP);
+      s.c.captureJot({ session: "mcp", scope: PROJ, text: `A note that would not parse, kept as a jot (${String(i)}).` });
+    }
     s.done();
     const c = Counterpart.open({ dir: storeDir, owner: true });
-    const held = planRetention(c.spans, writeUpSources(c.store, FIRST_ASK)).find((h) => h.session === "mcp");
+    const held = planRetention(c.spans, writeUpSources(c.store)).find((h) => h.session === "mcp");
     c.close();
-    expect(held?.owesShort).toBe(true);
+    expect(held).toMatchObject({ owes: true, small: true });
     expect(start("new-1").ask).toBeNull();
   });
 
@@ -1139,7 +1180,7 @@ describe("the short write-up: a session under the first-ask threshold (2026-09-2
     srv.counterpart.close();
     open.length = 0;
     const c = Counterpart.open({ dir: storeDir, owner: true });
-    const sources = writeUpSources(c.store, FIRST_ASK);
+    const sources = writeUpSources(c.store);
     const v = (t: number): string | undefined =>
       planRetention(new SpanBuffer({ dir: storeDir, now: () => t }), sources).find((h) => h.session === "short-x")?.verdict;
     const at5 = v(Date.now() + 5 * DAY);
@@ -1206,7 +1247,7 @@ describe("the short write-up: a session under the first-ask threshold (2026-09-2
       config: config(),
       dir: storeDir,
       store: c.store,
-      today: "2026-09-23",
+      today: TODAY(),
       refusals: {},
     }).find((x) => x.key === "crash-write-up");
     expect(f?.severity).toBe("amber");
@@ -1215,7 +1256,7 @@ describe("the short write-up: a session under the first-ask threshold (2026-09-2
     expect(f?.fix).not.toContain("The wake is too full");
   });
 
-  test("doctor's awaiting count stays the FULL debts: a short one ages out, it is not a wait to flag", () => {
+  test("doctor counts a small owed stretch like any debt: amber from the day after (2026-09-30)", () => {
     const s = seeder();
     ended(s, "short-old", { at: Date.now() - (WRITE_UP_WAIT_DAYS + 2) * DAY, bytes: 200, asked: false });
     s.done();
@@ -1227,10 +1268,11 @@ describe("the short write-up: a session under the first-ask threshold (2026-09-2
         config: config(),
         dir: storeDir,
         store: c.store,
-        today: "2026-09-23",
+        today: TODAY(),
         refusals: {},
       }).find((x) => x.key === "crash-write-up");
-      expect(f).toMatchObject({ severity: "green", detail: "next session" });
+      expect(f?.severity).toBe("amber");
+      expect(f?.detail).toContain("1 session owes a write-up, 1 from yesterday or earlier");
     } finally {
       c.close();
     }

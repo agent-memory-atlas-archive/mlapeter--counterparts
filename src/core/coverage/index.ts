@@ -138,6 +138,23 @@ function stretchOf(pieces: readonly Piece[]): Stretch | null {
 const atOf = (s: Span): number => (typeof s.at === "number" && Number.isFinite(s.at) ? s.at : 0);
 
 /**
+ * ONE SCOPE'S PIECES: the live conversation and jots, and any a claim holds
+ * in flight — a claim is the buffer renamed aside, and nothing in flight may
+ * make a session look written up. Quarantine is not here: it is the sweep's
+ * terminal give-up, not something said that waits for a writer.
+ */
+function piecesIn(buffer: SpanBuffer, scope: string): Span[] {
+  const seen = new Set<string>();
+  const out: Span[] = [];
+  for (const s of [...buffer.spans(scope), ...buffer.claimedSpans(scope).filter((x) => x.kind !== "assistant")]) {
+    if (seen.has(s.hash)) continue;
+    seen.add(s.hash);
+    out.push(s);
+  }
+  return out;
+}
+
+/**
  * ONE SESSION'S UNWRITTEN STRETCH, in the scopes named (all of them when
  * none are) — the pacer reads its own project's, at every Stop.
  */
@@ -145,7 +162,7 @@ export function sessionStretch(buffer: SpanBuffer, session: string, scopes?: rea
   const pieces: Piece[] = [];
   for (const scope of scopes ?? buffer.scopes()) {
     const covered = buffer.coveredHashes(scope);
-    for (const s of buffer.spans(scope)) {
+    for (const s of piecesIn(buffer, scope)) {
       if (s.session !== session || covered.has(s.hash)) continue;
       pieces.push({ at: atOf(s), bytes: Buffer.byteLength(s.text, "utf8"), scope });
     }
@@ -236,7 +253,7 @@ export function ledger(buffer: SpanBuffer, opts: LedgerOptions): LedgerEntry[] {
 
   for (const scope of buffer.scopes()) {
     const covered = buffer.coveredHashes(scope);
-    for (const s of buffer.spans(scope)) {
+    for (const s of piecesIn(buffer, scope)) {
       const t = tally(s.session);
       if (t === null) continue;
       const at = atOf(s);
@@ -390,7 +407,7 @@ export function workSince(
   for (const held of buffer.scopes()) {
     if (norm(held) !== norm(scope)) continue;
     const covered = buffer.coveredHashes(held);
-    for (const s of buffer.spans(held)) {
+    for (const s of piecesIn(buffer, held)) {
       const at = atOf(s);
       if (at <= since) continue;
       pieces += 1;
