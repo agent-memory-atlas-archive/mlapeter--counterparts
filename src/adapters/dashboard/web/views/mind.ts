@@ -1187,17 +1187,63 @@ export interface WakeList {
   /** The self page the wake leads with, and how old it is; null when the wake carries none. */
   readonly page: { date: string | null; writtenDay: number | null; livedDaysAgo: number | null; newerThanWake: boolean } | null;
   /** The nearby memories the published wake showed, by id (the hints lane's open showings). */
-  readonly nearby: { id: string; text: string; confidential: boolean }[];
+  readonly nearby: WakeMemory[];
   /** Their lines as the wake prints them, when no showing was recorded (a wake from before v8). */
   readonly nearbyLines: string[];
-  /** What is arriving (the horizon lane), as the wake prints it. */
-  readonly arriving: string[];
+  /** What is arriving (the horizon lane): each line, with the memory it is when one is found. */
+  readonly arriving: (Omit<WakeMemory, "id"> & { id: string | null })[];
   /** The other lanes it carries, counted: "how I work", "still open", "who I am". */
   readonly also: { label: string; lines: number }[];
 }
 
+/** One memory the wake list names: its words (withheld when confidential) and its title, if it has one. */
+export interface WakeMemory {
+  readonly id: string;
+  readonly text: string;
+  readonly title: string | null;
+  readonly confidential: boolean;
+}
+
 /** A wake line's leading date (`2026-07-10 · `, `by Jul 9 · `) lifted off. */
 const lineText = (item: string): string => item.replace(/^(\S+\s·\s|by\s\S+\s·\s)/, "");
+
+/** A memory as the wake list shows it, by id. Null when it is gone or put away. */
+function wakeMemory(store: DashboardSource["store"], id: string): WakeMemory | null {
+  const row = store.row(id);
+  if (row === undefined || row.archived === 1) return null;
+  const t = reveal(store, id, 110);
+  const title = t.confidential || row.title === null || row.title.trim() === "" ? null : row.title.trim();
+  return { id, text: t.text ?? t.label, title, confidential: t.confidential };
+}
+
+/**
+ * WHICH MEMORY AN ARRIVING LINE IS (2026-09-30). The published wake keeps no
+ * record of its horizon lane's ids (`wake_display` is the hints lane's), so
+ * the line is matched back to a dated memory by its words: the lane prints a
+ * memory's first paragraph, flattened, after its date. A line nothing matches
+ * is still listed, as its words. Reads rows only (`row()`, no read event).
+ */
+function arrivingOf(store: DashboardSource["store"], lines: readonly string[]): WakeList["arriving"] {
+  if (lines.length === 0) return [];
+  const known: { id: string; said: string }[] = [];
+  try {
+    const ids = new Set([...store.datedMemories("0000-01-01", "9999-12-31").map((d) => d.id), ...store.prospectiveMemoryIds()]);
+    for (const id of ids) {
+      const row = store.row(id);
+      if (row === undefined || row.archived === 1) continue;
+      const first = row.body.split(/\n\s*\n/).find((p) => p.trim().length > 0) ?? row.body;
+      const said = first.replace(/\s+/g, " ").trim();
+      if (said.length >= 8) known.push({ id, said });
+    }
+  } catch {
+    /* no dated memories to read: every line is listed as its words */
+  }
+  return lines.map((line) => {
+    const hit = known.find((k) => line === k.said) ?? known.find((k) => line.includes(k.said.slice(0, 80)));
+    const m = hit === undefined ? null : wakeMemory(store, hit.id);
+    return m ?? { id: null, text: line, title: null, confidential: false };
+  });
+}
 
 /**
  * The wake as a list of what is in it. The nearby memories are read from the
@@ -1229,10 +1275,8 @@ function wakeList(src: DashboardSource, text: string | null, page: ReturnType<Da
       .filter((r) => r.lane === "hints" && r.closed_day === null)
       .sort((a, b) => b.shown_day - a.shown_day || (a.memory_id < b.memory_id ? -1 : 1));
     nearby = open.flatMap((r) => {
-      const row = store.row(r.memory_id);
-      if (row === undefined || row.archived === 1) return [];
-      const t = reveal(store, r.memory_id, 110);
-      return [{ id: r.memory_id, text: t.text ?? t.label, confidential: t.confidential }];
+      const m = wakeMemory(store, r.memory_id);
+      return m === null ? [] : [m];
     });
   } catch {
     /* no showings to read (a store before v8): the lane's own lines stand in */
@@ -1247,7 +1291,7 @@ function wakeList(src: DashboardSource, text: string | null, page: ReturnType<Da
     page: pageLine,
     nearby,
     nearbyLines: nearby.length > 0 ? [] : lines("hints").map(lineText),
-    arriving: lines("horizon").map(lineText),
+    arriving: arrivingOf(store, lines("horizon").map(lineText)),
     also,
   };
 }

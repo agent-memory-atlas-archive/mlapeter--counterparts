@@ -17,7 +17,7 @@ import { MAP_MAX } from "../src/adapters/dashboard/web/views/self-map.js";
 // @ts-expect-error — a plain browser module, no declarations
 import { dayWords, stripSummary } from "../src/adapters/dashboard/web/pages/self/sections/page.js";
 // @ts-expect-error — a plain browser module, no declarations
-import { pageAge } from "../src/adapters/dashboard/web/pages/self/sections/wake.js";
+import { memoryItem, pageAge } from "../src/adapters/dashboard/web/pages/self/sections/wake.js";
 // @ts-expect-error — a plain browser module, no declarations
 import { MIN_APART, layout, nodeWords } from "../src/adapters/dashboard/web/pages/self/sections/map.js";
 // @ts-expect-error — a plain browser module, no declarations
@@ -148,6 +148,50 @@ describe("the self tab, round 3b", () => {
     expect(l.nearbyLines).toEqual([]);
     expect(pageAge({ date: "2026-09-04", livedDaysAgo: 1, newerThanWake: false })).toMatch(/^written Sep 4th(, 2026)?, 1 lived day ago$/);
     expect(pageAge({ date: null, livedDaysAgo: 0, newerThanWake: true })).toBe("written today — rewritten since; the next wake carries the new one");
+  });
+
+  test("2 (2026-09-30): an arriving line is its memory, by title, opening its card — not its whole body", () => {
+    const dir = mkdtempSync(join(tmpdir(), "counterparts-self-arriving-"));
+    try {
+      const c = Counterpart.open({ dir, owner: true, budgetBytes: 9000 });
+      let titled: string;
+      let bare: string;
+      try {
+        const salience = { novelty: null, relevance: 0.8, emotional: 0.8, predictive: 0.8 };
+        titled = c.store.put({
+          type: "memory", kind: "person", title: "Portland move",
+          body: "The Portland move lands on the fourth and the truck is booked. (1) pack the kitchen (2) call the movers `move --confirm`.\n\nA second paragraph the wake never prints.",
+          learnedOn: "2026-09-01", eventDate: "2026-10-04", salience,
+        });
+        bare = c.store.put({
+          type: "memory", kind: "fact", body: "The dentist is at nine on the fourth. Bring the form.",
+          learnedOn: "2026-09-01", eventDate: "2026-10-04", salience,
+        });
+        c.rebrief({ budgetBytes: 9000, at: "2026-10-04" });
+      } finally {
+        c.close();
+      }
+      const dash = Dashboard.open({ dir });
+      let arriving;
+      try {
+        arriving = mindView(dash.source).wakeList.arriving;
+      } finally {
+        dash.close();
+      }
+      expect(arriving.map((a) => a.id).sort()).toEqual([titled, bare].sort());
+      const move = arriving.find((a) => a.id === titled);
+      expect(move?.title).toBe("Portland move");
+      const html = arriving.map(memoryItem).join("");
+      expect(html).toContain(`openMemory('${titled}')`);
+      expect(html).toContain(">Portland move</button>");
+      // No title: the first sentence stands in; the rest is on hover only.
+      expect(html).toContain(">The dentist is at nine on the fourth.</button>");
+      // A line no memory was found for is still listed, as its first sentence.
+      expect(memoryItem({ id: null, text: "Something arrives. More words.", title: null, confidential: false }))
+        .toBe('<li class="wk-line-i" title="Something arrives. More words.">Something arrives.</li>');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test("3: the health row says whether the wake fits, and what was trimmed when it did not", () => {

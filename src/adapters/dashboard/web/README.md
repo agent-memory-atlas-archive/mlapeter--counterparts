@@ -245,7 +245,10 @@ lists its memories (each opens its card); `state.js#trait` keeps it open.
 is "Next time I wake, I start with:" — the page and its age, the nearby
 memories by title (the hints lane's open `wake_display` rows, each opening its
 card; the lane's own lines on an older store), anything arriving (the horizon
-lane) — and "read it" for the whole wake. `sections/journal.js` is a strip of days, each with its date in one
+lane: the wake keeps no ids for it, so `views/mind.ts#arrivingOf` matches each
+line back to a dated memory by its words; shown like the nearby ones, by title
+or first sentence, and a line nothing matches is its first sentence) — and
+"read it" for the whole wake. `sections/journal.js` is a strip of days, each with its date in one
 format (the view's `iso`: the chapter heading's date, else the entry's own), its
 lived day and "N chapters"; a day lists its chapters, a chapter opens in place. The `?` that holds each explaining line is
 `shared/widgets/tips.js`; `state.js` holds what is open, so the pulse's `refresh()` (which redraws only
