@@ -18,6 +18,21 @@
  * nothing else, which is why `store/paths.ts` classifies it `backup: false`.
  * The writes are the host lifecycle's (`lifecycle.ts`) and the MCP door's.
  *
+ * **Claude Desktop's chat writes here through the MCP server itself**
+ * (2026-09-30): it has no hooks, so its `wake` tool writes the record (host
+ * `claude-desktop`, scope `hosts.ts#DESKTOP_SCOPE`) with the same lifecycle,
+ * and every tool call from that session refreshes it (`touchDesktopSession`),
+ * because nothing else would. A call that names no session binds to the most
+ * recent live Desktop record (`latestLiveSession`).
+ *
+ * **Who may write up whose session** (the binding shape agreed for build 3,
+ * 2026-09-30): a runner's OWN record lists the ended sessions it was launched
+ * to write up (`mayWriteUp`), written by the launcher and never by a model
+ * (`grantWriteUps`); the MCP door accepts a subject only if it is listed there,
+ * has ended, and is owed per `owedWriteUps` — and on that path it stores the
+ * memories under the SUBJECT's scope, skipping the runner's own
+ * (`mcp/write-up.ts`, `mcp/CONTRACT.md`).
+ *
  * **The MCP server leaves one note of its own here** (2026-09-23):
  * `mcp-server@<pid>.json`, the build it was launched with, so the
  * UserPromptSubmit hook — which runs the INSTALLED build every turn — can tell
@@ -77,7 +92,7 @@ import { isModelId } from "../core/self/index.js";
 import { CACHE_SCHEMA_VERSION, SCHEMA_VERSION } from "../core/store/index.js";
 import type { Store } from "../core/store/index.js";
 
-import { DEFAULT_HOST, isHostName, wordingFor } from "./hosts.js";
+import { DEFAULT_HOST, isHostName, isPseudoScope, wordingFor } from "./hosts.js";
 
 /** The one directory name. Classified in `store/paths.ts` LAYOUT. */
 export const SESSIONS_DIR = "sessions";
@@ -277,6 +292,38 @@ export interface SessionRecord {
    * was written. Carried like `entrypoint`. Still host state: one word.
    */
   readonly host?: string;
+  /**
+   * THE ENDED SESSIONS THIS SESSION WAS LAUNCHED TO WRITE UP (2026-09-30, the
+   * binding shape agreed with build 3; desktop-chat design §2). Written by the
+   * LAUNCHER — a process that starts a runner session on another session's
+   * behalf — through `grantWriteUps`, and never by a tool: a model cannot put
+   * an id here. The MCP write-up door reads it off the WRITING session's own
+   * record (`mcp/write-up.ts`): a subject listed here, ended, and owed per
+   * `owedWriteUps` may be written up from any directory, and its memories are
+   * stored under the subject's scope. The same pattern as `pageWriterFor`.
+   *
+   * Named `mayWriteUp` and not `writeUpFor`, because `writeUpFor` above is
+   * already the door's mark of which PART a session fetched. Carried like
+   * `config`; the newest grant wins. Still host state: ids.
+   */
+  readonly mayWriteUp?: readonly string[];
+  /**
+   * CLAUDE DESKTOP'S WRITE-UP PACER (2026-09-30), on a Desktop session's record
+   * only: tool calls since `since`, which is the later of its wake, its last
+   * `session_end`/`chapter`, and its last write-up ask. Desktop has no Stop
+   * and no transcript, so the ask rides on a tool result once the session has
+   * gone `DESKTOP_ASK_CALLS` calls and `DESKTOP_ASK_AFTER_MS` since `since`
+   * (`config.ts#TUNABLES`, `touchDesktopSession`). Carried like `config`.
+   */
+  readonly desk?: DeskPace;
+}
+
+/** Claude Desktop's write-up pacer, as a record keeps it (`SessionRecord.desk`). */
+export interface DeskPace {
+  /** Tool calls from this session since `since`. */
+  readonly calls: number;
+  /** Epoch ms: the later of the wake, the last write-up, and the last ask. */
+  readonly since: number;
 }
 
 /** The host a record belongs to: its own `host`, or — absent, as on every
@@ -348,9 +395,12 @@ export function sessionPath(dataDir: string, sessionId: string): string | null {
  * `getcwd()` while `os.tmpdir()` says `/tmp`, and a scope comparison that got
  * that wrong would refuse every bind on this host. `realpath` first; `resolve`
  * when the path does not exist (a scope may name a directory this process
- * cannot see).
+ * cannot see). A PSEUDO-SCOPE (`hosts.ts#isPseudoScope`, Claude Desktop's
+ * `claude-desktop:`) is a name and comes back as it is: `resolve` would file
+ * it under whichever directory each process happened to start in.
  */
 export function canonicalScope(scope: string): string {
+  if (isPseudoScope(scope)) return scope;
   try {
     return realpathSync(resolve(scope));
   } catch {
@@ -436,6 +486,11 @@ export function recordSession(
     /** Which host the session lives in (`hosts.ts`). Carried like `config`;
      *  never written when nobody names one, so absent still reads as Claude Code. */
     host?: string;
+    /** The ended sessions a launcher granted this one (`grantWriteUps`).
+     *  Carried like `config`; the newest grant wins. */
+    mayWriteUp?: readonly string[];
+    /** Claude Desktop's write-up pacer (`touchDesktopSession`). Carried like `config`. */
+    desk?: DeskPace;
   },
 ): SessionRecord | null {
   if (!isSessionId(input.sessionId)) return null;
@@ -540,9 +595,171 @@ export function recordSession(
       : prior?.host !== undefined
         ? { host: prior.host }
         : {}),
+    // Both carried like `config`, and both MUST be: every Stop rewrites the
+    // record whole, and a runner's grant has to survive its own hooks.
+    ...((): { mayWriteUp?: readonly string[] } => {
+      const granted = parseMayWriteUp(input.mayWriteUp);
+      if (granted !== null) return { mayWriteUp: granted };
+      return prior?.mayWriteUp !== undefined ? { mayWriteUp: prior.mayWriteUp } : {};
+    })(),
+    ...((): { desk?: DeskPace } => {
+      const desk = parseDesk(input.desk);
+      if (desk !== null) return { desk };
+      return prior?.desk !== undefined ? { desk: prior.desk } : {};
+    })(),
   };
 
   return writeRecord(dataDir, path, record);
+}
+
+/** A `mayWriteUp` list, or null: an array whose every entry passes
+ *  `isSessionId`, at most 64 of them. Anything else is no grant at all. */
+function parseMayWriteUp(raw: unknown): readonly string[] | null {
+  if (!Array.isArray(raw) || raw.length > 64) return null;
+  if (!raw.every((id) => isSessionId(id))) return null;
+  return [...new Set(raw as string[])];
+}
+
+/** A Desktop pacer, or null: two finite non-negative numbers. */
+function parseDesk(raw: unknown): DeskPace | null {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const d = raw as Record<string, unknown>;
+  const calls = d["calls"];
+  const since = d["since"];
+  if (typeof calls !== "number" || !Number.isSafeInteger(calls) || calls < 0) return null;
+  if (typeof since !== "number" || !Number.isFinite(since) || since < 0) return null;
+  return { calls, since };
+}
+
+/**
+ * GRANT A RUNNER SESSION THE ENDED SESSIONS IT WAS LAUNCHED TO WRITE UP
+ * (`SessionRecord.mayWriteUp`). The LAUNCHER's call — a process that starts a
+ * session on others' behalf (build 3's headless catch-up run) — and nothing a
+ * tool reaches: the MCP server never calls it, so no model can list an id.
+ *
+ * Onto the runner's record when it exists (into the raw JSON, like every mark
+ * a process other than the hooks writes); a record is created, at `scope`, when
+ * the launcher writes before the runner's first hook. Returns false on any
+ * failure, including a subject that is not an id. Never throws.
+ */
+export function grantWriteUps(
+  dataDir: string,
+  input: { runner: string; scope: string; subjects: readonly string[]; at?: number },
+): boolean {
+  const granted = parseMayWriteUp(input.subjects);
+  if (granted === null || !isSessionId(input.runner)) return false;
+  try {
+    if (readSession(dataDir, input.runner) !== null) {
+      return mergeIntoRecord(dataDir, input.runner, { mayWriteUp: granted });
+    }
+    return (
+      recordSession(dataDir, {
+        sessionId: input.runner,
+        scope: input.scope,
+        phase: "start",
+        ...(input.at === undefined ? {} : { at: input.at }),
+        mayWriteUp: granted,
+      }) !== null
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * EVERY SESSION RECORD IN THE REGISTRY, newest activity first. The MCP
+ * server's launch records beside them are not session records and are skipped
+ * (`parseRecord` refuses them). Never throws: an unreadable directory is none.
+ */
+export function listSessions(dataDir: string): SessionRecord[] {
+  const out: SessionRecord[] = [];
+  let names: string[];
+  try {
+    names = readdirSync(sessionsDir(dataDir));
+  } catch {
+    return out;
+  }
+  for (const name of names) {
+    if (!name.endsWith(".json") || serverPidOf(name) !== null) continue;
+    const id = name.slice(0, -".json".length);
+    const record = readSession(dataDir, id);
+    if (record !== null && record.sessionId === id) out.push(record);
+  }
+  return out.sort((a, b) => b.lastBoundaryAt - a.lastBoundaryAt);
+}
+
+/**
+ * THE MOST RECENT LIVE SESSION OF ONE HOST — what a Claude Desktop call that
+ * names no session binds to (2026-09-30). One server serves every Desktop chat
+ * and the wire carries no conversation id, so when the model does not carry
+ * the id `wake` gave it, this is the best the server can know; the tool result
+ * says it was chosen this way. Null when none is live.
+ */
+export function latestLiveSession(
+  dataDir: string,
+  host: string,
+  now: number,
+  ttlMs: number = SESSION_TTL_MS,
+): SessionRecord | null {
+  return listSessions(dataDir).find((r) => hostOf(r) === host && isLive(r, now, ttlMs)) ?? null;
+}
+
+/**
+ * WHEN CLAUDE DESKTOP LAST WOKE, in box 2's meta (epoch ms, as a string) —
+ * written by the MCP server's `wake`, read by doctor's Desktop line. In the
+ * store rather than read off the registry, because the registry keeps a week.
+ */
+export const DESKTOP_WAKE_KEY = "adapter.desktop.wake.at";
+
+/**
+ * ONE TOOL CALL FROM A CLAUDE DESKTOP SESSION (2026-09-30): the record's
+ * liveness refreshed — nothing else would, with no hooks — and its write-up
+ * pacer moved. Returns whether this call carries the write-up ask, or null
+ * when the record could not be read or written (the call goes on either way).
+ *
+ *   - `wroteUp` — a `session_end` or `chapter` that landed: the pacer restarts
+ *     from now, and nothing is asked on it;
+ *   - otherwise the call is counted, and the ask is DUE when the session has
+ *     made `askCalls` calls AND `askAfterMs` has passed since the later of its
+ *     wake, its last write-up and its last ask. An ask restarts the pacer too,
+ *     so it is not repeated until both arms are met again.
+ *
+ * Only an existing record is touched (`boundary` creates one if missing, and
+ * the id reached here from a model): the caller found it live first.
+ */
+export function touchDesktopSession(
+  dataDir: string,
+  sessionId: string,
+  input: {
+    now: number;
+    wroteUp: boolean;
+    /** False on a call that must not carry the ask (a write-up that was
+     *  refused): it is counted, and the ask waits for the next call. */
+    mayAsk?: boolean;
+    askCalls: number;
+    askAfterMs: number;
+  },
+): { ask: boolean; desk: DeskPace } | null {
+  const prior = readSession(dataDir, sessionId);
+  if (prior === null) return null;
+  const pace = prior.desk ?? { calls: 0, since: prior.startedAt };
+  let desk: DeskPace;
+  let ask = false;
+  if (input.wroteUp) {
+    desk = { calls: 0, since: input.now };
+  } else {
+    const calls = pace.calls + 1;
+    ask = input.mayAsk !== false && calls >= input.askCalls && input.now - pace.since >= input.askAfterMs;
+    desk = ask ? { calls: 0, since: input.now } : { calls, since: pace.since };
+  }
+  const written = recordSession(dataDir, {
+    sessionId,
+    scope: prior.scope,
+    phase: "boundary",
+    at: input.now,
+    desk,
+  });
+  return written === null ? null : { ask, desk };
 }
 
 /** The atomic write both writers share: a temp sibling, then `rename`. */
@@ -662,14 +879,25 @@ let manifestVersion: string | null | undefined;
  */
 export function installedVersion(): string | null {
   if (manifestVersion !== undefined) return manifestVersion;
+  manifestVersion = manifestVersionOnDisk();
+  return manifestVersion;
+}
+
+/**
+ * The package version ON DISK NOW — the same file, read again rather than
+ * remembered. For the one process that has to compare what it loaded with what
+ * is installed since: Claude Desktop's MCP server, which is started with the
+ * app and has no per-turn hook to run the installed build for it (its `wake`
+ * says "Counterparts was updated" when the two differ). Null when unreadable.
+ */
+export function manifestVersionOnDisk(): string | null {
   try {
     const raw = readFileSync(fileURLToPath(new URL("../../package.json", import.meta.url)), "utf8");
     const said = (JSON.parse(raw) as Record<string, unknown>)["version"];
-    manifestVersion = typeof said === "string" && said.length > 0 ? said : null;
+    return typeof said === "string" && said.length > 0 ? said : null;
   } catch {
-    manifestVersion = null;
+    return null;
   }
-  return manifestVersion;
 }
 
 /**
@@ -1210,6 +1438,16 @@ function parseRecord(raw: unknown): SessionRecord | null {
     // Optional for the same reason, and its absence is NOT filled in here: a
     // record with no host is Claude Code's, and `hostOf` is where that is said.
     ...(isHostName(rec["host"]) ? { host: rec["host"] } : {}),
+    // Optional for the same reason; a malformed grant is no grant at all, so a
+    // hand-edited record cannot talk the write-up door into anything.
+    ...((): { mayWriteUp?: readonly string[] } => {
+      const granted = parseMayWriteUp(rec["mayWriteUp"]);
+      return granted === null ? {} : { mayWriteUp: granted };
+    })(),
+    ...((): { desk?: DeskPace } => {
+      const desk = parseDesk(rec["desk"]);
+      return desk === null ? {} : { desk };
+    })(),
   };
 }
 

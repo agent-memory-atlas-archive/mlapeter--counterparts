@@ -62,6 +62,8 @@ import {
 } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
 
+import { isPseudoScope } from "./hosts.js";
+
 /**
  * `sessions.ts#canonicalScope`, extended by one step this rule needs and that
  * one does not.
@@ -77,6 +79,10 @@ import { basename, dirname, join, resolve, sep } from "node:path";
  * leaf has been created.
  */
 export function canonicalScopePath(dir: string): string {
+  // A PSEUDO-SCOPE (Claude Desktop's `claude-desktop:`) is a name: it is its own
+  // key, governed only by an entry under that exact name — no directory is its
+  // ancestor, because it is not a path (`hosts.ts#isPseudoScope`).
+  if (isPseudoScope(dir)) return dir;
   const abs = resolve(dir);
   let head = abs;
   const tail: string[] = [];
@@ -272,7 +278,9 @@ export function parseRegistry(raw: unknown): {
     refused.push({ key, detail });
   };
   for (const [path, value] of Object.entries(scopesRaw as Record<string, unknown>)) {
-    if (!path.startsWith("/")) {
+    // An absolute path, or a pseudo-scope (Claude Desktop's `claude-desktop:`,
+    // which its `scope` tool writes under that name).
+    if (!path.startsWith("/") && !isPseudoScope(path)) {
       refuse(path, "the key is not an absolute path");
       continue;
     }

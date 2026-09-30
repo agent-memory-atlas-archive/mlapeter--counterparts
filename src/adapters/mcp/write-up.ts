@@ -76,6 +76,19 @@
  * The first six are `sessions.ts#writeUpStanding` — the same function the
  * hook's pointer filters with, so the pointer never names a session the door
  * would refuse.
+ *
+ * **The granted path** (2026-09-30, the shape agreed with build 3, desktop-chat
+ * design §2). A runner launched to write up OTHER sessions — build 3's headless
+ * catch-up, or a later Desktop session writing up a chat that went quiet — may
+ * be in another directory from them. Its OWN registry record lists them
+ * (`SessionRecord.mayWriteUp`, written by the launcher through
+ * `sessions.ts#grantWriteUps`, never by a tool), and for a subject listed there
+ * the door's rule is exactly: listed, AND ended (`endedAt` set), AND owed per
+ * `owedWriteUps` asked in the SUBJECT's scope. On that path `sameScope` against
+ * this server's scope is skipped, the grant stands in for the SessionStart
+ * pointer as the evidence a fetch needs, and the memories are filed under the
+ * subject's scope. Everything else — parts, marks, `cover`, the refusals — is
+ * the ordinary path's.
  */
 import type { Counterpart } from "../../core/counterpart.js";
 // THE MARK, by path — `remember/index.ts` does not re-export it (PR #189
@@ -88,6 +101,7 @@ import {
   WRITE_UP_PART_BYTES,
   isSessionId,
   markWriteUpFetched,
+  owedWriteUps,
   progressKey,
   readSession,
   readWriteUpProgress,
@@ -141,8 +155,14 @@ export interface WriteUpDoorInput {
   readonly now: number;
   readonly args: Record<string, unknown>;
   /** `session_end`'s own per-entry loop, under the WRITING session's name,
-   *  covering whose words `cover` says (`SessionEndDepositContext.cover`). */
-  readonly deposit: (raw: readonly unknown[], cover: false | { readonly session: string }) => Promise<WriteUpDeposits>;
+   *  covering whose words `cover` says (`SessionEndDepositContext.cover`), and
+   *  filed under `scope` when given — a GRANTED write-up's memories go where the
+   *  subject was lived; absent, this server's scope. */
+  readonly deposit: (
+    raw: readonly unknown[],
+    cover: false | { readonly session: string },
+    scope?: string,
+  ) => Promise<WriteUpDeposits>;
 }
 
 export interface WriteUpOutcome {
@@ -170,6 +190,14 @@ interface Standing {
   readonly key: string;
   readonly progress: WriteUpProgress | undefined;
   readonly all: Readonly<Record<string, WriteUpProgress>>;
+  /**
+   * TRUE ON THE GRANTED PATH (`sessions.ts#SessionRecord.mayWriteUp`): the
+   * writing session's own record lists this subject, so the grant — written by
+   * a launcher, never a model — stands in for the SessionStart pointer, the
+   * project is the subject's rather than this server's, and the memories are
+   * filed under it (`here`).
+   */
+  readonly granted: boolean;
 }
 
 /**
@@ -191,20 +219,49 @@ export async function writeUpDoor(input: WriteUpDoorInput): Promise<WriteUpOutco
 
   const plan = writeUpPlan({ store: counterpart.store, spans: counterpart.spans });
   const all = readWriteUpProgress(counterpart.store);
-  const standing = writeUpStanding(plan, input.registryDir, ended, input.scope, input.now, { progress: all });
-  if (standing.status === "owes-nothing") return refused("owes-nothing", { writeUp: ended, why: standing.why });
-  if (standing.status !== "owed") return refused(standing.status, { writeUp: ended });
-  const key = progressKey(ended, standing.here);
-  const st: Standing = { held: standing.held, here: standing.here, key, progress: all[key], all };
-
   const record = readSession(input.registryDir, input.session);
+
+  // THE GRANTED PATH (2026-09-30; the binding shape agreed with build 3). The
+  // exact door rule: the subject is listed in the WRITING session's OWN record
+  // (`mayWriteUp`, which only a launcher writes), AND it has ended, AND it is
+  // owed per `owedWriteUps` — asked in the subject's own project, so the
+  // `sameScope` test against THIS server's scope is skipped, and the memories
+  // are filed where the subject was lived (`here`).
+  let st: Standing;
+  if (record?.mayWriteUp?.includes(ended) === true) {
+    const subject = readSession(input.registryDir, ended);
+    if (subject === null) return refused("unknown-session", { writeUp: ended });
+    if (subject.endedAt === null) {
+      return refused("live-session", { writeUp: ended, detail: "That session has not ended. It is written up once it has." });
+    }
+    const owed = owedWriteUps(plan, input.registryDir, subject.scope, input.now, {
+      exclude: input.session,
+      progress: all,
+    }).find((o) => o.held.session === ended);
+    if (owed === undefined) {
+      // Not owed: say why, by the same function the ordinary path asks.
+      const why = writeUpStanding(plan, input.registryDir, ended, subject.scope, input.now, { progress: all });
+      if (why.status === "owes-nothing") return refused("owes-nothing", { writeUp: ended, why: why.why });
+      return refused(why.status === "owed" ? "owes-nothing" : why.status, { writeUp: ended });
+    }
+    const key = progressKey(ended, owed.here);
+    st = { held: owed.held, here: owed.here, key, progress: all[key], all, granted: true };
+  } else {
+    const standing = writeUpStanding(plan, input.registryDir, ended, input.scope, input.now, { progress: all });
+    if (standing.status === "owes-nothing") return refused("owes-nothing", { writeUp: ended, why: standing.why });
+    if (standing.status !== "owed") return refused(standing.status, { writeUp: ended });
+    const key = progressKey(ended, standing.here);
+    st = { held: standing.held, here: standing.here, key, progress: all[key], all, granted: false };
+  }
+
   const mine = record?.writeUpFor?.session === ended ? record.writeUpFor : undefined;
   const raw = args["memories"];
   // A FETCH is no `memories` — or an empty list before any fetch is on record
   // (m2): a host that honours `required` sends `[]`, and with nothing fetched
   // there is nothing yet that `[]` could be the answer to.
   const fetching = raw === undefined || (Array.isArray(raw) && raw.length === 0 && mine === undefined);
-  if (fetching) return handOver(input, ended, st, record?.writeUpPointer, mine);
+  // On the granted path the grant is the evidence the pointer is otherwise.
+  if (fetching) return handOver(input, ended, st, st.granted ? ended : record?.writeUpPointer, mine);
   return takeBack(input, ended, st, mine, raw);
 }
 
@@ -314,7 +371,10 @@ async function takeBack(
   // never the writer's own. On the LAST part here, the ended session's words in
   // this project — every part has now been served, so all of them were read;
   // on an earlier part, none, or parts not yet served would read as kept.
-  const deposits = raw.length === 0 ? NO_DEPOSITS : await input.deposit(raw, final ? { session: ended } : false);
+  const deposits =
+    raw.length === 0
+      ? NO_DEPOSITS
+      : await input.deposit(raw, final ? { session: ended } : false, st.granted ? st.here : undefined);
   if (said2 === "memories" && deposits.deposited === 0 && deposits.duplicates === 0) {
     return {
       reason: "nothing-landed",

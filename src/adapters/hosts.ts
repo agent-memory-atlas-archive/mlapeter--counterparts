@@ -36,6 +36,64 @@ export function isHostName(value: unknown): value is string {
   return typeof value === "string" && /^[a-z0-9][a-z0-9._-]{0,47}$/.test(value);
 }
 
+/**
+ * CLAUDE DESKTOP'S CHAT (2026-09-30, PR B of the host groundwork). One MCP
+ * server per app, shared by every chat; no hooks, no conversation id on the
+ * wire, no transcript. The server is its own "hook" there: a `wake` tool mints
+ * the session, and a call that names none binds to the most recent live one
+ * (`mcp/server.ts`). Cowork (local agent mode) is treated the same for now.
+ */
+export const DESKTOP_HOST = "claude-desktop";
+
+/**
+ * THE ONE PLACE EVERY DESKTOP CHAT SHARES (owner, 2026-09-30: one pseudo-scope
+ * for now, per-Project only if real use calls for it). Not a directory: it
+ * never goes through `resolve` or `realpath` (`isPseudoScope`), so every
+ * process spells it the same whatever its working directory.
+ */
+export const DESKTOP_SCOPE = "claude-desktop:";
+
+/**
+ * A SCOPE THAT IS A NAME, NOT A PATH — `claude-desktop:`, or a later
+ * `claude-desktop:<something>`. A lowercase host-shaped token of two or more
+ * characters, then a colon, and no path separator anywhere: no absolute path,
+ * relative path or Windows drive (`c:`) reads as one. `sessions.ts#canonicalScope`
+ * and `scopes.ts#canonicalScopePath` hand it back unchanged — resolved against a
+ * working directory it would be a different string in every process.
+ */
+export function isPseudoScope(scope: string): boolean {
+  return /^[a-z][a-z0-9._-]+:[^/\\]*$/.test(scope);
+}
+
+/**
+ * WHICH HOST AN MCP CLIENT IS, from the `clientInfo.name` it sends at
+ * `initialize` — the one signal a server has about who is talking to it, and
+ * the one that holds when Desktop's config entry is ALSO loaded by Desktop's
+ * Code tab (there the client is Claude Code, and the answer is null). Measured
+ * 2026-09-30 (desktop-chat design §10): `claude-ai` for chat, and
+ * `local-agent-mode-<entry name>` for Cowork. Anything else — Claude Code, any
+ * other client, no name at all — is null: today's behaviour, unchanged.
+ */
+export function hostOfClient(clientName: unknown): string | null {
+  if (typeof clientName !== "string") return null;
+  if (clientName === "claude-ai" || clientName.startsWith("local-agent-mode-")) return DESKTOP_HOST;
+  return null;
+}
+
+/**
+ * A "NO FOLDER" SCRATCH WORKSPACE OF DESKTOP'S CODE TAB (2026-09-30, brief item
+ * 10). A Code-tab session started without a folder runs in a directory Desktop
+ * makes for it and deletes with the session —
+ * `~/Library/Application Support/Claude/scratch-workspaces/<id>/<id>/scratch-<date>-<hex>`,
+ * the shape seen in Claude Code's own project list on 2026-09-30 — so asking
+ * the first-launch scope question there would leave a `scopes.json` entry for
+ * a folder that is about to vanish. The hooks skip the question inside one;
+ * everything else runs there as in any directory.
+ */
+export function isDesktopScratchWorkspace(dir: string): boolean {
+  return /\/Library\/Application Support\/Claude\/scratch-workspaces(\/|$)/.test(dir);
+}
+
 /** The sentences a tool result or a notice says about the host it is read in. */
 export interface HostWording {
   /**
@@ -49,20 +107,52 @@ export interface HostWording {
    * ("<this>; if that does not help, run `counterparts doctor`.").
    */
   readonly reconnectFirst: string;
+  /**
+   * What switching this place OFF (or pausing it) does, as the `scope` tool's
+   * result says it — the host's machinery named in the host's terms.
+   */
+  readonly scopeOff: string;
+  /** What switching it back ON does, the same way. */
+  readonly scopeOn: string;
 }
 
 /**
- * THE TABLE. One entry today; a host added later brings its own entry, and
- * `wordingFor` gives any host without one the default host's words.
+ * THE TABLE. Claude Code's and Claude Desktop's; a host added later brings its
+ * own entry, and `wordingFor` gives any host without one the default host's words.
  */
 export const HOST_WORDING: Readonly<Record<string, HostWording>> = {
   [DEFAULT_HOST]: {
     reconnect: "Run /mcp and Reconnect to load it.",
     reconnectFirst: "Run /mcp and Reconnect",
+    scopeOff:
+      "This directory is no longer recorded or read. The hooks will produce nothing here and every other tool will refuse until it is turned back on — including in a new session, which is the point.",
+    // WHAT TURNING IT BACK ON ACTUALLY DOES, said exactly (#92 review, F1). It
+    // is not "the next session": the hooks act at their next boundary in THIS
+    // one. What they do not do is reach back — a session that started outside
+    // the memory has its first boundary move the read cursor past everything
+    // already said, recording none of it, so the stretch that ran while this
+    // directory was off or paused stays out of the memory for good.
+    scopeOn:
+      "Recorded. This takes effect for the tools immediately, and for the hooks at their next boundary in this session. Nothing said before now is recorded — the conversation that happened while this directory was off or paused is passed over, not collected — and remembering starts from here.",
+  },
+  // Desktop has no `/mcp` and no hooks: the one server every chat talks to is
+  // started with the app, so a newer build loads when the app does.
+  [DESKTOP_HOST]: {
+    reconnect: "Quit and reopen Claude Desktop to load it.",
+    reconnectFirst: "Quit and reopen Claude Desktop",
+    scopeOff:
+      "Claude Desktop's chats are no longer recorded or read. Every other tool will refuse until it is turned back on — including in a new chat, which is the point.",
+    scopeOn:
+      "Recorded. This takes effect immediately, for every tool in every Claude Desktop chat. Nothing is collected from before now: Desktop chat keeps no transcript here, so only what is written through the tools is remembered.",
   },
 };
 
 /** The words for `host`, or the default host's when it has none of its own. */
 export function wordingFor(host: string = DEFAULT_HOST): HostWording {
   return HOST_WORDING[host] ?? (HOST_WORDING[DEFAULT_HOST] as HostWording);
+}
+
+/** The owner's app, in the words a person reads ("Claude Code", "Claude Desktop"). */
+export function hostTitle(host: string = DEFAULT_HOST): string {
+  return host === DESKTOP_HOST ? "Claude Desktop" : "Claude Code";
 }

@@ -125,6 +125,28 @@ export const TUNABLES = {
    * the line is not what gives way.
    */
   ENVELOPE_CHARS: 9_500,
+  /**
+   * WHAT ONE MCP TOOL RESULT IS MEASURED AGAINST, in characters (2026-09-30):
+   * the room Claude Desktop's `wake` has for the wake and what rides beside it
+   * (the write-up pointer is measured against this, not `HOST_OUTPUT_CHARS`,
+   * which is Claude Code's cap on a HOOK's output). No host documents a cap on
+   * a tool result that this package has measured; this is the size the
+   * write-up door already hands over in one part (`WRITE_UP_PART_BYTES`, ~24
+   * KB), so a wake plus a pointer is never the first thing to find the real one.
+   */
+  TOOL_RESULT_CHARS: 24_000,
+  /**
+   * CLAUDE DESKTOP'S WRITE-UP ASK (2026-09-30): it rides on a tool result once
+   * a Desktop session has made this many tool calls AND `DESKTOP_ASK_AFTER_MS`
+   * has passed since the later of its wake, its last `session_end`/`chapter`,
+   * and its last ask (`sessions.ts#touchDesktopSession`). Desktop has no Stop
+   * and no transcript, so calls and time are the only measure a server has;
+   * three calls is `core/coverage/`'s `ASK_PIECES`, and the time is shorter
+   * than its 30 minutes because a Desktop chat has no crash fallback — what is
+   * not written up during the chat is never written up.
+   */
+  DESKTOP_ASK_CALLS: 3,
+  DESKTOP_ASK_AFTER_MS: 20 * 60_000,
   // The Stop ask's pacing is NOT here: two pacers on one blocked moment drew
   // about a dozen asks in 13 owner turns (2026-09-04). The one pacer lives in
   // `self/tunables.ts` (FIRST_ASK_* / REASK_*).

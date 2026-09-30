@@ -46,8 +46,14 @@ import {
   scopesPath,
 } from "../../scopes.js";
 import { loadConfig, withEmbedderDefault } from "../../config.js";
+import type { AdapterConfig } from "../../config.js";
 import { openEmbedder } from "../../claude-code/embed-client.js";
 import type { LiveEmbedder } from "../../claude-code/embed-client.js";
+import { SESSION_NOTICE_BUDGET_MS, doctorFindings, noticeMessage } from "../../claude-code/doctor.js";
+import { SPAWN_REFUSAL_PREFIX, SPAWN_START_COUNT_KEY, SPAWN_START_DATE_KEY } from "../../lifecycle.js";
+import { WORKER_RUNNER_PATH } from "../../spawn.js";
+import { localDate } from "../../../core/time.js";
+import type { Store } from "../../../core/store/index.js";
 import { hostScope, openServer } from "../index.js";
 import { openLog } from "../../log/index.js";
 import type { LogEvent, ProcessLog } from "../../log/index.js";
@@ -178,6 +184,9 @@ export function questionEmbedder(path = CONFIG_PATH): {
   /** The configuration's `pageWriter.mode`: `off` stops the reflection's page
    *  write too (owner ruling D3 on #256). */
   pageWriterMode?: "session" | "off";
+  /** The whole configuration as read (embedder default applied) — what Claude
+   *  Desktop's `wake` runs its session start with (2026-09-30). */
+  config: AdapterConfig;
 } {
   let raw: unknown;
   try {
@@ -199,7 +208,46 @@ export function questionEmbedder(path = CONFIG_PATH): {
     // `openEmbedder` is the ONE answer to "is there an embedder": the knob is
     // the gate and an observer gets none.
     embedder: openEmbedder(config),
+    config,
   };
+}
+
+/**
+ * CLAUDE DESKTOP'S DOCTOR NOTICE (2026-09-30): the red-only line Claude Code's
+ * SessionStart shows the owner (`claude-code/hooks.ts#notice`), for the `wake`
+ * tool to carry as a plain line. Built here because the server library may not
+ * import `claude-code/`; this entry point already does. Bounded like the
+ * hook's (`SESSION_NOTICE_BUDGET_MS`), and never throws — a reading that
+ * failed is no line at all.
+ */
+export function desktopDoctorNotice(input: {
+  store: Store;
+  config: AdapterConfig;
+  configPath: string;
+  today: string;
+}): string | null {
+  try {
+    const refusals: Record<string, number> = {};
+    for (const [key, value] of input.store.metaWithPrefix(SPAWN_REFUSAL_PREFIX)) {
+      const n = Number(value);
+      if (n > 0) refusals[key.slice(SPAWN_REFUSAL_PREFIX.length)] = n;
+    }
+    const startsDate = input.store.getMeta(SPAWN_START_DATE_KEY) ?? null;
+    const findings = doctorFindings({
+      configPath: input.configPath,
+      configReason: null,
+      config: input.config,
+      dir: input.config.dataDir ?? input.store.dir,
+      store: input.store,
+      today: input.today,
+      refusals,
+      starts: { date: startsDate, count: Number(input.store.getMeta(SPAWN_START_COUNT_KEY) ?? "0") },
+      budgetMs: SESSION_NOTICE_BUDGET_MS,
+    });
+    return noticeMessage(findings);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -240,7 +288,7 @@ async function main(): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  const { embedder, reason, snapshotsDir, timeZone, pageWriterMode } = questionEmbedder(choice.path);
+  const { embedder, reason, snapshotsDir, timeZone, pageWriterMode, config } = questionEmbedder(choice.path);
   const unreadable = namedUnreadableRefusal(choice, reason);
   if (unreadable !== null) {
     process.stderr.write(`${unreadable}\n`);
@@ -293,6 +341,12 @@ async function main(): Promise<void> {
   // Off for an observer, and off in a directory set `off`, like the hooks.
   let log: ProcessLog | null = null;
   const toLog = (e: LogEvent): void => log?.event(e);
+  // WHAT CLAUDE DESKTOP'S `wake` RUNS WITH (2026-09-30). Nothing here decides
+  // the host: a Desktop client says who it is at `initialize`, and a Claude
+  // Code client — Desktop's Code tab included, off this same config entry —
+  // never touches any of it. Handed in so the server library imports no
+  // other adapter: the configuration this process read, the worker's command,
+  // and the doctor's notice, which lives in `claude-code/`.
   const server = openServer({
     ...opts,
     onEvent: toLog,
@@ -312,6 +366,22 @@ async function main(): Promise<void> {
     ...(snapshotsDir === undefined ? {} : { snapshotsDir }),
     ...(timeZone === undefined ? {} : { timeZone }),
     ...(pageWriterMode === undefined ? {} : { pageWriterMode }),
+    lifecycle: {
+      config,
+      configPath: choice.path,
+      command: process.execPath,
+      args: ["run", WORKER_RUNNER_PATH],
+    },
+    // Called only from a `wake`, long after `server` below is assigned.
+    wakeNotice: () => {
+      const store = server.counterpart.store;
+      return desktopDoctorNotice({
+        store,
+        config,
+        configPath: choice.path,
+        today: localDate(Date.now(), store.zone()),
+      });
+    },
   });
   // THE BUILD THIS PROCESS WILL KEEP FOR THE REST OF THE SESSION, left where
   // the hooks can compare it with the installed one every turn

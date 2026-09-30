@@ -21,7 +21,7 @@ export {
 } from "./protocol.js";
 export type { ErrorResponse, Id, ParsedLine, Request, Response, SuccessResponse } from "./protocol.js";
 
-export { TOOLS, TOOL_NAMES, renderDescription, toolDefinitions, toolSpec } from "./tools.js";
+export { DESKTOP_TOOLS, TOOLS, TOOL_NAMES, WAKE, renderDescription, toolDefinitions, toolSpec } from "./tools.js";
 export type { Privilege, ToolName, ToolSpec } from "./tools.js";
 
 export {
@@ -52,7 +52,18 @@ export type {
   Tier,
 } from "./deliberate.js";
 
-export { McpServer, SERVER_NAME, SERVER_VERSION, hostScope, resolveScope } from "./server.js";
+export {
+  DESKTOP_DREAM_NOTE,
+  DESKTOP_INSTRUCTIONS,
+  McpServer,
+  OWNER_FALSE_NOTE,
+  SERVER_NAME,
+  SERVER_VERSION,
+  START_PROMPT,
+  desktopWriteUpAsk,
+  hostScope,
+  resolveScope,
+} from "./server.js";
 export type {
   McpEvent,
   McpServerOptions,
@@ -135,6 +146,12 @@ export function openServer(opts: OpenServerOptions = {}): McpServer {
     ...(opts.registryDir === undefined ? {} : { registryDir: opts.registryDir }),
     ...(opts.scopesFile === undefined ? {} : { scopesFile: opts.scopesFile }),
     ...(opts.sessionTtlMs === undefined ? {} : { sessionTtlMs: opts.sessionTtlMs }),
+    // Which host, and what Claude Desktop's `wake` needs (2026-09-30) — carried
+    // through unchanged; the server decides what to do with them.
+    ...(opts.host === undefined ? {} : { host: opts.host }),
+    ...(opts.lifecycle === undefined ? {} : { lifecycle: opts.lifecycle }),
+    ...(opts.wakeNotice === undefined ? {} : { wakeNotice: opts.wakeNotice }),
+    ...(opts.manifestVersion === undefined ? {} : { manifestVersion: opts.manifestVersion }),
     ...(opts.onEvent === undefined ? {} : { onEvent: opts.onEvent }),
     ...(opts.now === undefined ? {} : { now: opts.now }),
   });

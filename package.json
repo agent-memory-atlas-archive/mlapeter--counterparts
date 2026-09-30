@@ -39,6 +39,8 @@
     "./dashboard": "./src/adapters/dashboard/index.ts",
     "./sessions": "./src/adapters/sessions.ts",
     "./scopes": "./src/adapters/scopes.ts",
+    "./lifecycle": "./src/adapters/lifecycle.ts",
+    "./hosts": "./src/adapters/hosts.ts",
     "./package.json": "./package.json"
   },
   "files": [

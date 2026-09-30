@@ -15,8 +15,9 @@ import { COVERAGE_TUNABLES, lapsesSince, ledger } from "../../core/coverage/inde
 import type { LedgerEntry } from "../../core/coverage/index.js";
 import { SpanBuffer } from "../../core/remember/index.js";
 import type { Store } from "../../core/store/index.js";
-import { localStamp, readableDate } from "../../core/time.js";
-import { hostSessionEvidence } from "../sessions.js";
+import { localDate, localStamp, readableDate } from "../../core/time.js";
+import { DESKTOP_HOST } from "../hosts.js";
+import { hostOf, hostSessionEvidence, listSessions } from "../sessions.js";
 
 /** How far back the closing line counts lapses, in days. */
 export const COVERAGE_LAPSE_WINDOW_DAYS = 7;
@@ -84,6 +85,19 @@ export function coverageLines(input: { store: Store; date: string; today: string
         `    that day: ${String(cell.written)} of ${plural(cell.pieces, "piece", "pieces")} written up; now ${standing(e, zone)}`,
       );
     }
+  }
+  // CLAUDE DESKTOP'S SESSIONS ARE UNMEASURED, NEVER LOST (2026-09-30). Nothing
+  // is captured in Desktop chat — no transcript reaches this machine — so the
+  // ledger above holds no stretch for them to owe or to have written up; they
+  // are counted here from the registry (which keeps a week) and named as what
+  // they are. What they wrote through the tools is in memory like anything else.
+  const desktop = listSessions(store.dir).filter(
+    (r) => hostOf(r) === DESKTOP_HOST && (localDate(r.startedAt, zone) === date || localDate(r.lastBoundaryAt, zone) === date),
+  );
+  if (desktop.length > 0) {
+    out.push(
+      `Claude Desktop: ${plural(desktop.length, "session", "sessions")} that day — unmeasured: Desktop chat keeps no transcript, so what ${desktop.length === 1 ? "it" : "they"} did not write up cannot be counted (not lost; what was written through the tools is kept).`,
+    );
   }
   const owed = entries.filter((e) => e.owed);
   out.push(

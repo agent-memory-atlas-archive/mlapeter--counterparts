@@ -387,11 +387,13 @@ export interface HostLifecycle {
   paceAsk(input: SessionInput): number | null;
 
   /** The next-session write-up pointer, measured against the room the caller
-   *  names; the empty string when there is none, or no room for it. */
+   *  names; the empty string when there is none, or no room for it. `label`
+   *  is the host's name for the moment it rides on, recorded as `hook` when it
+   *  gives way (Claude Code: `session-start`, the default; Desktop: `wake`). */
   deliverWriteUpAsk(
     input: SessionInput,
     spent: number,
-    opts?: { limit?: number; cost?: (text: string) => number; beside?: string },
+    opts?: { limit?: number; cost?: (text: string) => number; beside?: string; label?: string },
   ): string;
 
   /** The detached worker, planned, started and counted. */
@@ -641,7 +643,7 @@ export class Lifecycle implements HostLifecycle {
   deliverWriteUpAsk(
     input: SessionInput,
     spent: number,
-    opts: { limit?: number; cost?: (text: string) => number; beside?: string } = {},
+    opts: { limit?: number; cost?: (text: string) => number; beside?: string; label?: string } = {},
   ): string {
     try {
       // Never under observer: an instrument asks nobody to write into a store
@@ -725,7 +727,9 @@ export class Lifecycle implements HostLifecycle {
         // this project is pointed instead — and the deferral is DURABLE, so
         // doctor can say the wake is too full and by how much.
         this.emit("adapter.writeup.deferred", { reason: "host-cap", need: bytes, room });
-        this.emit("adapter.envelope.gave-way", { hook: "session-start", part: "pointer", need: bytes, room });
+        // WHICH MOMENT gave way is the host's word for it (2026-09-30): Claude
+        // Code's SessionStart, or Desktop's `wake` tool result.
+        this.emit("adapter.envelope.gave-way", { hook: opts.label ?? "session-start", part: "pointer", need: bytes, room });
         outcome("deferred", "host-cap");
         return "";
       }
