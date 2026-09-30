@@ -125,7 +125,9 @@ export const HANDOFF_RESERVE_MARGIN_BYTES = 48;
  * reserved, nothing is trimmed, and the splice at delivery simply finds no room
  * and drops the pointer whole. Eight is chosen so that the reserve can never
  * cost more than an eighth of the bundle, which at the measured block size
- * turns the reserve on from about 2,400 bytes up.
+ * turned the reserve on from about 2,400 bytes up — about 3,000 since the
+ * pointer says how current it is (2026-09-30), whose widest words the reserve
+ * is sized to.
  *
  * One comparison, not a second budgeter: nothing here decides what to trim.
  */

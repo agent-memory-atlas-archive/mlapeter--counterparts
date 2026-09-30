@@ -56,6 +56,8 @@ every boundary for a number that is the same shape as the one in hand.
 - **Below a share of the budget the reserve is not taken at all.** A pointer is a fortnight
   of working context; it is not worth a third of a small wake's memories. The rule is one
   comparison (`want * 8 <= budget`), which turns the reserve on from about 2,400 bytes up
+  (about 3,000 since 2026-09-30, when the reserve was sized to the widest "how current"
+  words the delivery adds)
   and leaves every smaller ceiling composing exactly what it composed before. At that size
   the pointer is simply not carried, and `handoff.refused{reason:"no-room"}` says so rather
   than leaving it to be noticed.

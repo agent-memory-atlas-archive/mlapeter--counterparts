@@ -118,7 +118,10 @@ block for a given directory and day; four durable event names (`written`, `shown
 9. **[M] Nothing in a payload is a directory path or a body.** Telemetry is ids, counts,
    bytes, reasons and flags (store §5 G10); which directory a row is about is on the row.
 10. **[A] The wording of the pointer's two lines is advisory.** What is mechanized is that a
-    pointer states its date, a first line of SUBSTANCE (headings are skipped) and its id,
+    pointer states when it was written (since 2026-09-30 to the minute, and whether work
+    captured here after that is written up — computed at delivery from piece times, by
+    `coverage/#workSince`), the first sentence of its first line of SUBSTANCE (headings are
+    skipped) and its id,
     names the door to the whole of it, and carries no control or bidi-override character
     into the bundle.
 
@@ -178,7 +181,8 @@ does not log its own refusal) · **§13 G3** (one ask at the blocked moment).
 ## 8. Open questions
 
 1. **Is the share rule's threshold right?** `HANDOFF_RESERVE_MIN_BUDGET_MULTIPLE` is 8,
-   which turns the reserve on from about 2,400 bytes of ceiling. It is a judgement about
+   which turns the reserve on from about 3,000 bytes of ceiling (2,400 until 2026-09-30,
+   when the pointer began saying how current it is and the reserve was sized to those words). It is a judgement about
    what a pointer is worth against a memory, made once, in numbers; the owner's hosts all
    report far more than that, so nothing he runs is near it today.
 2. **Does the host's own file memory duplicate this?** The spec names it as the thing to

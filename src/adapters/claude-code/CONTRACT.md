@@ -711,7 +711,7 @@ did not get.
 ### The next-session write-up (C2, 2026-09-23 — true for now)
 
 **[M] A session that ended owing a write-up is written up by the next session that starts
-in its project.** "Owes" is B3's predicate (`remember/owes.ts#owesWriteUp`, read across
+in its project.** "Owes" is `core/coverage/`'s rule since 2026-09-30 (read through `remember/owes.ts#planRetention`; before it, B3's predicate `owesWriteUp`, read across
 every scope through `adapters/sessions.ts#writeUpPlan`, the retention pass's own sources),
 narrowed by one shared eligibility (`sessions.ts#waitingForWriteUp`) that the pointer, the
 door and doctor all read:
@@ -737,7 +737,7 @@ first among equals, so one session nobody writes up cannot stand in front of the
 
 **[M] A short session owes a SHORT write-up (2026-09-29, a working default).** A session
 under the first-ask threshold — never asked — that left text, was not written up and gave
-no answer owes a one-line write-up (`remember/owes.ts#owesShortWriteUp`). Same pointer,
+no answer owed a one-line write-up (#285's `owesShortWriteUp`; since 2026-09-30 a small owed stretch, `coverage/`'s `small`). Same pointer,
 same door, one plain sentence more (`WRITE_UP_SHORT_LINE`: one line is enough, or
 `memories: []`). Full write-ups first, STORE-WIDE (review of #285, S1): a short one is
 offered only when no full debt anywhere in the store is waiting and not yet pointed at
@@ -786,7 +786,7 @@ the sweep no interpreter; its gate row says `not-opted-in` and `runner.done` say
 next-session`. A crashed session is pointed at like any other. An old `crashWriteUp` value
 is ignored and named in `retired`.
 
-**[M] Doctor: `Crash write-up`, and the `Sweep` line.** `Crash write-up`: `next session`
+**[M] Doctor: `Write-ups` (was `Crash write-up`, same key), and the `Sweep` line.** Since 2026-09-30 `Write-ups` reads the coverage ledger — yesterday's state, amber on a stretch owed from yesterday or earlier, the week's lapses (`core/coverage/NOTES.md` §8). Before it, `Crash write-up`: `next session`
 green; amber when a session is finished in one project and waiting on words it left in
 another, naming that project (re-review m-C); amber when the newest pointer outcome is a
 DEFERRAL and sessions are waiting — saying the wake was too full, by how many bytes, and to lower

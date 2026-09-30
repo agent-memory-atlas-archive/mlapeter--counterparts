@@ -249,16 +249,14 @@ INTERFACE-GAPS §2a; this module still never gates and never reads them).
     memory finishes its arc (NOTES §14).
 15. **[M] Raw transcript is kept 7 days after a session ends, unless it owes a write-up
     or the host still holds it open** (owner's ruling 2026-09-23; `owes.ts`,
-    `retention.ts`, NOTES §16). ONE predicate decides what is owed — `owesWriteUp`, judged
-    once per session across every scope: the session still holds captured text; the pacer
-    found substance in it (an ask was committed, or its substance reached the first-ask
-    threshold with no ask on record); and either no answer came AFTER ITS LAST ASK (a
-    chapter that caught up with the ask count, a `session_end` memory, a handoff, a
-    "nothing new" mark) or it has no normal end after its last capture in any scope or the
-    host's registry; and it has not been marked written up since. A short session owes
-    no retention debt: since 2026-09-29 it is offered a ONE-LINE write-up
-    (`owesShortWriteUp`: text, never asked, not written up, no answer), but that offer
-    never keeps its text — it ages out with its week like any session that owes nothing. A session that owes is kept however old, and one the host's registry still
+    `retention.ts`, NOTES §16). ONE rule decides what is owed, and since 2026-09-30 it is
+    `core/coverage/`'s, read by `planRetention` once per session across every scope: an
+    unwritten stretch (pieces with no claim in `coverage.jsonl`) of three pieces over
+    fifteen minutes or more, in a session that is not at work (it ended, or it has captured
+    nothing since the date changed), that has not lapsed (two days of use after the day of
+    its latest piece). It replaced the asked / answered predicate and #285's short debt:
+    an accepted memory, "nothing new" and a chapter claim; a handoff alone does not. A
+    session that owes is kept however old until it is written up or lapses, and one the host's registry still
     holds open is kept for as long as the registry keeps its record; one that owes nothing
     loses every text line — its turns, jots, the assistant's
     replies, quarantine, claims — 7 days after the latest thing known about it. The
