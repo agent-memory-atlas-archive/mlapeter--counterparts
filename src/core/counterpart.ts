@@ -134,7 +134,10 @@ import {
   PREFACE_RESERVE_BYTES,
   Self,
   byteLength,
+  markWakeBehind,
+  noteWakeCaught,
   spliceBeforeSentinel,
+  wakeBehind,
   writerInstruction,
 } from "./self/index.js";
 import type {
@@ -153,6 +156,7 @@ import type {
   SelfPage,
   WakeDelivery,
   WakeResult,
+  WakeTrigger,
   WriterInput,
 } from "./self/index.js";
 import { cyclePartial, runCycle } from "./sleep/index.js";
@@ -1011,6 +1015,14 @@ export interface RebriefReport {
   readonly counts: Record<string, number>;
 }
 
+/** What `refreshWake` came to: `current` when nothing put the wake behind. */
+export interface WakeRefreshReport {
+  readonly reason: "current" | "rendered" | "no-budget" | "observer";
+  readonly triggers: readonly WakeTrigger[];
+  readonly day: number;
+  readonly bytes: number;
+}
+
 export interface EpisodeReconcileReport {
   readonly considered: number;
   readonly ingested: number;
@@ -1047,6 +1059,7 @@ const EVENT_RING = REMEMBER.CONSUMED_LEDGER_MAX;
  * `sleep.cycle`'s `reason` into a permanent `ran`.
  */
 const RENDERED_EVENT = "self.briefing.rendered";
+const BRIEFING_PUBLISHED_EVENT = "self.briefing.published";
 const TRIM_EVENT = "self.briefing.trim";
 const TRIMMED_FIELD = "trimmed";
 const CLOCK_PHASE: Phase = "clock";
@@ -2628,7 +2641,13 @@ export class Counterpart {
 
   /** The experiencer's end-of-session dump. Channel: `authored` (SEAMS N). */
   async submitSessionEnd(draft: unknown, ctx: SessionEndDepositContext): Promise<DepositResult> {
-    return this.deposit(draft, "session-end", ctx);
+    const result = await this.deposit(draft, "session-end", ctx);
+    // A WRITE-UP LANDED — this door is the one both the Stop ask's answer and
+    // the next-session write-up take — so the wake is behind it (2026-09-30,
+    // `self/behind.ts`). The host re-fires Stop after the answer, and that
+    // Stop's worker catches the wake up.
+    if (result.deposited) markWakeBehind(this.store, "write-up");
+    return result;
   }
 
   /**
@@ -3278,6 +3297,10 @@ export class Counterpart {
     // differently from the run they describe — `sweep.gate`'s nullable `date` is
     // a hole this pair does not have.
     const date = input.date ?? this.store.today();
+    // The wake's mark as it stood BEFORE the cycle (`self/behind.ts`): a render
+    // this cycle publishes has caught up to it, and a mark set while it ran has
+    // not.
+    const behind = wakeBehind(this.store);
     // Armed for the cycle and taken back on BOTH exits: see the field's own
     // note. `self/`'s briefing events are the only thing it collects.
     this.briefingEvents = [];
@@ -3308,6 +3331,9 @@ export class Counterpart {
     const briefingEvents = this.takeBriefingEvents();
     this.recordSleepCycle(cycle, date, briefingEvents, null);
     this.recordSelfBriefing(briefingEvents, date);
+    if (behind !== null && briefingEvents.some((e) => e.name === BRIEFING_PUBLISHED_EVENT)) {
+      noteWakeCaught(this.store, behind.raw);
+    }
 
     this.emit("counterpart.sessionEnd", undefined, {
       day: cycle.day,
@@ -3572,9 +3598,10 @@ export class Counterpart {
   /**
    * RE-RENDER THE WAKE NOW — the owner's lever, and nothing else.
    *
-   * The briefing is re-rendered once per lived day, at the boundary, so a change
-   * to the lane rules merged mid-day is invisible until tomorrow and an owner
-   * who wants their wake regenerated has to wait for one (measured 2026-09-04,
+   * The briefing is re-rendered at the day's first boundary and again only when
+   * a page write or a write-up puts it behind (`refreshWake`), so a change to
+   * the lane rules merged mid-day is invisible until one of those, and an owner
+   * who wants their wake regenerated would have to wait (measured 2026-09-04,
    * the day the identity share shipped). This is the same render the sleep step
    * runs — `briefing.selfRenderer`, SEAMS G, one renderer and not a second — and
    * it reserves the delivery preface's room exactly as `sessionEnd` does,
@@ -3586,15 +3613,54 @@ export class Counterpart {
    * are the boundary's work and stay the boundary's; this republishes the
    * bundle over the store as it is. A marker moved here would silently cost the
    * next boundary its own re-render (scar E8: a marker is a completion record).
+   * It does catch the wake up to a pending mark (`refreshWake`), since it
+   * renders the store as it is.
    */
   rebrief(input: { budgetBytes?: number; at?: string } = {}): RebriefReport {
+    return this.republish(input, "rebrief", []);
+  }
+
+  /**
+   * CATCH THE WAKE UP (2026-09-30) — re-render and republish when the wake is
+   * behind (`self/behind.ts`: the page was written, a write-up landed), or
+   * when the caller names a trigger of its own (the nightly run's end, which
+   * renders whatever its state). Nothing to catch up to: nothing rendered,
+   * `current`.
+   *
+   * The same render as `rebrief` — one renderer, the preface reserved, no
+   * marker moved, no other sleep phase — with a budget or not at all: the
+   * no-budget refusal stands. Called where a process holding the host's
+   * ceiling next runs: the turn-end worker (`runner.ts`, after the cycle) and
+   * the nightly process (`night-run.ts`, after the child returns). Not at
+   * SessionStart, whose wake ranks nothing and writes nothing (self CONTRACT
+   * §5 G1). Its `self.briefing` row says `refresh` and which triggers.
+   */
+  refreshWake(input: { budgetBytes?: number; at?: string; trigger?: WakeTrigger } = {}): WakeRefreshReport {
+    const pending = wakeBehind(this.store)?.triggers ?? [];
+    const triggers = input.trigger === undefined || pending.includes(input.trigger) ? [...pending] : [...pending, input.trigger];
+    if (triggers.length === 0) return { reason: "current", triggers, day: this.store.livedDay(), bytes: 0 };
+    const report = this.republish(input, "refresh", triggers);
+    return {
+      reason: !report.rendered ? "no-budget" : report.published ? "rendered" : "observer",
+      triggers,
+      day: report.day,
+      bytes: report.bytes,
+    };
+  }
+
+  /** `rebrief` and `refreshWake`, which differ only in the row's reason. */
+  private republish(
+    input: { budgetBytes?: number; at?: string },
+    why: "rebrief" | "refresh",
+    triggers: readonly WakeTrigger[],
+  ): RebriefReport {
     const budgetBytes = input.budgetBytes ?? this.reportedBudget;
     if (input.budgetBytes !== undefined) this.reportedBudget = input.budgetBytes;
     const day = this.store.livedDay();
     if (budgetBytes === null) {
       // The §2.18 refusal, here as everywhere: an invented ceiling publishes a
       // briefing the host silently truncates.
-      this.emit("counterpart.rebrief.refused", undefined, { reason: "no-budget", day });
+      this.emit("counterpart.rebrief.refused", undefined, { reason: "no-budget", day, why });
       return {
         rendered: false,
         reason: "no-budget",
@@ -3613,6 +3679,8 @@ export class Counterpart {
       ...(input.at === undefined ? {} : { at: input.at }),
       onEvent: (name, data) => this.emit(name, undefined, data),
     });
+    // Read before the render, as the boundary reads it (`self/behind.ts`).
+    const behind = wakeBehind(this.store);
     // The collector, armed here for the same reason it is armed at a boundary:
     // a rebrief RENDERS, TRIMS AND PUBLISHES, so without a row of its own the
     // last `self.briefing` in the store describes a bundle that is no longer the
@@ -3630,10 +3698,16 @@ export class Counterpart {
     } finally {
       collected = this.takeBriefingEvents();
     }
-    // `rebrief`, not `rendered`: the boundary's row is the DAY's record and this
-    // one is the owner pulling the lever mid-day. A reader counting wake renders
-    // per day must be able to tell them apart.
-    this.recordSelfBriefing(collected, this.store.today(), "rebrief");
+    // `rebrief` or `refresh`, not `rendered`: the boundary's row is the DAY's
+    // record, and these are the owner pulling the lever mid-day and the wake
+    // catching up to a write. A reader counting wake renders per day must be
+    // able to tell them apart.
+    // The caller's date when it passed one: every row a run writes carries the
+    // run's one date (review of #287).
+    this.recordSelfBriefing(collected, input.at ?? this.store.today(), why, triggers);
+    if (behind !== null && collected.some((e) => e.name === BRIEFING_PUBLISHED_EVENT)) {
+      noteWakeCaught(this.store, behind.raw);
+    }
     // The lane counts as the RENDER recorded them — the one place they exist,
     // rather than a second count taken here that could disagree with the event.
     const last = this.self.events("self.briefing.rendered").pop();
@@ -3643,6 +3717,8 @@ export class Counterpart {
       counts[lane] = typeof n === "number" ? n : 0;
     }
     this.emit("counterpart.rebrief", undefined, {
+      why,
+      ...(triggers.length === 0 ? {} : { triggers: triggers.join(",") }),
       day,
       budgetBytes,
       composeBudget,
@@ -3998,7 +4074,9 @@ export class Counterpart {
    *
    * No render, no row: the briefing phase is cadenced daily, so a second
    * boundary on one lived day renders nothing and this writes nothing — an
-   * absence that `sleep.cycle`'s own `phases` already explains by name.
+   * absence that `sleep.cycle`'s own `phases` already explains by name. A
+   * render between boundaries writes its own row: `rebrief` (the owner's
+   * lever) or `refresh` with its `triggers` (`refreshWake`).
    *
    * Ids and counts. The trim list is capped at `self/`'s
    * `BRIEFING_TRIM_LOG_CAP` with the full number beside it, so a capped list is
@@ -4007,7 +4085,8 @@ export class Counterpart {
   private recordSelfBriefing(
     briefing: readonly CounterpartEvent[],
     date: string,
-    reason: "rendered" | "rebrief" = "rendered",
+    reason: "rendered" | "rebrief" | "refresh" = "rendered",
+    triggers: readonly WakeTrigger[] = [],
   ): void {
     if (this.observer) return;
     const rendered = renderedEvent(briefing);
@@ -4023,6 +4102,9 @@ export class Counterpart {
         day: this.store.livedDay(),
         payload: {
           reason,
+          // WHAT PUT THE WAKE BEHIND, on a `refresh` (2026-09-30): the page
+          // written, a write-up landed, the nightly run ended.
+          ...(triggers.length === 0 ? {} : { triggers: [...triggers] }),
           date,
           day: numberField(rendered, "day") ?? this.store.livedDay(),
           bytes,

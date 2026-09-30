@@ -973,8 +973,8 @@ const SELF_PAGE: ToolSpec = {
     },
     {
       claim:
-        "What you write reaches the wake at the next boundary that re-renders it — once per lived day — and not this instant: the bundle every session reads is composed when a session ends and served unchanged until the next render.",
-      mechanizedBy: "src/core/self/index.ts#boundary (compose and publish) -> #wake (read and verify, no write)",
+        "What you write reaches the wake when the next turn ends — in this session or any other — and not this instant: the bundle every session reads is composed by the worker a turn's end starts, and served unchanged until the next render. A session already open keeps the wake it started with.",
+      mechanizedBy: "src/core/self/behind.ts#markWakeBehind -> src/adapters/claude-code/bin/runner.ts (Counterpart.refreshWake) -> src/core/self/index.ts#boundary (compose and publish) -> #wake (read and verify, no write)",
     },
     {
       claim:

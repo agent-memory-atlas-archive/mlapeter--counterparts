@@ -1832,3 +1832,20 @@ Working defaults, held lightly.
 - **N1** (the first-launch question can now fit beside a full wake): kept as built, on
   Mike's word — once per session in each unscoped directory until he answers there, the
   original G41 design.
+
+## 2026-09-30 — the wake keeps up (self NOTES §30)
+
+- **The worker** calls `Counterpart.refreshWake({ at: today })` after its cycle (step 3a in
+  `bin/runner.ts`), in its own try: nothing marked, nothing rendered; a failure is a
+  `runner.failed` row with `step: "wake"` and the mark stays. The re-fired Stop after a
+  session answers the ask still spawns a worker (`stop()`: `askAtStop` is skipped, the
+  spawn is not), which is what catches a write-up; tested.
+- **The nightly process** refreshes with `trigger: "run-end"` after the child returns,
+  whatever the run's state, in the `finally` of the store read in `runNight`, before the
+  run's row is written. `openNightCounterpart` already carried the host's budget; a config
+  without one refuses the render, as `rebrief` does. The child is quiet, so no turn-end of
+  its own follows the page it wrote — the run's end is the trigger that matters under
+  `auto`, where the day's first worker renders before the writer writes (tested with a
+  `start` that runs the worker first).
+- **Delivery.** The delivery check compares each session's wake with the sentinel recorded
+  at ITS start, so a session that woke before a rebuild still reads `delivered` (tested).

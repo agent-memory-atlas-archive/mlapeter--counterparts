@@ -265,6 +265,16 @@ proposals and their archive; render and delivery telemetry.
    does, refusing under observer, and advancing no sleep marker and running no other sleep
    phase. It exists because a change to the lane rules merged mid-day cannot reach a single
    session's wake until the next boundary (measured 2026-09-04, the day the share shipped).
+   **Between boundaries the wake keeps up** (2026-09-30, a working default): the page
+   written and a write-up accepted through `session_end` mark it behind (`behind.ts`), and
+   `Counterpart.refreshWake` — the same render, with a budget or not at all — republishes
+   it at the next turn-end worker; the nightly process calls it when its child returns,
+   with no mark, naming `run-end` as the trigger. Either way the row records
+   `reason: "refresh"` and the triggers. So the bundle is no longer
+   rendered once per lived day; it is rendered at the day's first boundary and again when
+   one of those writes lands. A same-day re-render is stable: a hint an earlier render
+   today showed is scored at its load from before today's step and takes no second step, and identity elements already rendered today keep their place, so the lane rotates
+   once a day (NOTES §30).
 13. **[A]** The ask's wording is a preference and a probe. That an ask exists at
     every session-ending path, that there is exactly ONE of it per blocked moment, and that
     its orphanable tail is bounded and logged, is mechanized. Tool names and session ids are

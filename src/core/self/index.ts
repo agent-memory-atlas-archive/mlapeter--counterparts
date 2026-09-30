@@ -160,8 +160,10 @@ import type { JournalCopyOutcome } from "./journal-file.js";
 import { withTunables } from "./tunables.js";
 import type { SelfTunables } from "./tunables.js";
 import { calendarDate } from "./calendar.js";
+import { markWakeBehind } from "./behind.js";
 import { standingOf } from "../recall/standing.js";
 
+export * from "./behind.js";
 export * from "./briefing.js";
 export * from "./calendar.js";
 export * from "./journal-file.js";
@@ -940,6 +942,9 @@ export class Self {
       created: existing === null,
       ...(warning === null ? {} : { warning }),
     });
+    // The wake leads with this page, so it is now behind (`behind.ts`): the
+    // next process with a budget re-renders rather than the next lived day.
+    markWakeBehind(this.store, "page");
     return {
       written: true,
       reason: existing === null ? "created" : "revised",
@@ -1180,6 +1185,7 @@ export class Self {
       },
     });
     this.emit("self.page.revised", page.id, { by: "owner", cleared: true, version });
+    markWakeBehind(this.store, "page");
     return { ...none, written: true, reason: "cleared", id: page.id, version, bytes: page.bytes };
   }
 

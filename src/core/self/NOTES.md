@@ -1311,3 +1311,57 @@ wrote with `mode: "host"` stays in the log as written and READS as `session` (th
 fallback for a mode it does not know), rather than keeping a third mode alive in the type
 for rows that, as far as anyone knows, were never written on a real store. An abandoned
 `started` — host mode's claim — still reads `failed`.
+
+## 30. The wake keeps up with the day (2026-09-30)
+
+**Why.** The bundle was rendered once per lived day, by the cycle, at the day's first
+worker run. On 2026-09-30 the owner's first session of the morning woke with the page one
+version back: under dreaming `auto` the nightly run starts at the day's first prompt, the
+first turn-end a minute later runs the cycle while the run is still going, and phase 7
+renders before the run's writer writes. Nine `self.briefing` rows for nine lived days.
+
+**What.** Two writes mark the wake behind (`behind.ts`): the page written (`revisePage`,
+`clearPage`; every writer arrives there) and memories accepted through `session_end` (the
+door both the Stop ask's answer and the next-session write-up take —
+`Counterpart.submitSessionEnd`). `Counterpart.refreshWake` re-renders through `rebrief`'s
+path (one renderer, the preface reserved, no marker moved) where a process holding the
+host's budget next runs: the turn-end worker after its cycle, when marked; and the nightly
+process after the child returns, whatever the run's state — that one writes no mark and
+passes `run-end` straight in as a trigger. The host
+re-fires Stop after a session answers the ask, and that Stop still spawns a worker, so the
+write-up case needs nothing of its own. The `self.briefing` row says `reason: "refresh"`
+and `triggers`. No budget, no render: the refusal stands and the mark waits.
+
+**The mark.** Two meta keys, so the renderer never writes the key a writer sets:
+`self.wake.behind` (`{ n, at, triggers }`) and `self.wake.caught` (the raw mark a render
+read before it composed). A mark set during a render has a new value and survives the
+catch-up; `n` keeps two marks apart under a clock that stands still. The cycle's own
+render catches up too, so the day's first worker renders once.
+
+**Same-day stability.** A re-render the same lived day used to score a hint shown that
+morning at its already-stepped load — half, at `HINT_STEP` 1 and `HINT_HABITUATION` 1 —
+and hand Nearby to the runners-up (`counterparts rebrief` had the quirk). `hintReading`
+now scores a hint an earlier render today showed at `load - HINT_STEP` — open or closed
+since, because a row a later render today dropped carries the same step, and scoring it
+stepped reordered the "N more" ids between two refreshes with nothing new (review of
+#287); `nextLoad` already kept the step to one a day. The identity rotation put the elements stamped today
+LAST and so rotated again; now they go first. Their order among themselves falls to
+strength, because the stamp overwrote the day each was chosen by — so the first extra
+render of a day can reorder identity lines against phase 7 while keeping the set. Moot
+while a page replaces the list.
+
+**Cost.** One refresh on a temp store: ~40 ms at 300 memories, ~77 ms at 600, ~180 ms at
+1,500 (median of 15, this machine). The worker renders only when marked; the run's end
+renders unconditionally, once a night.
+
+**The page writer's "yesterday" under `auto`.** `pageWriterNight` reads the wall clock in
+the store's zone, not the lived day, so a run that starts before the day's first worker is
+about the same calendar yesterday as one that starts after (tested). The lived day reaches
+the writer only in `dayMemories`' strength read (order within one day) and the `day`
+stamped on the claim row and on the page's `revisedDay` — the dashboard's `newerThanWake`
+compares that lived day with the last render's, and reads a same-day page as not newer.
+
+**A gap, for now.** Once #286 (the per-date log) is merged, `counterpart.rebrief` — carrying
+`why` and `triggers` — is on the log's allowlist, but `counterpart.rebrief.refused`
+(`no-budget`) is not, so a refresh refused for want of a budget is silent in the log. The
+mark stays and the next process with a budget renders; fine for now.

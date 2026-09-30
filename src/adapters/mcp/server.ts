@@ -2472,11 +2472,11 @@ export class McpServer {
             }),
         ...(written.warning === null ? {} : { warning: written.warning }),
         // WHEN IT WILL BE READ, precisely. The bundle every session wakes with
-        // is composed at a boundary and served unchanged until the next one, so
-        // "it is live now" would be false for as long as this session lasts —
-        // and the briefing phase is cadenced once per LIVED day, so a second
-        // boundary today renders nothing at all.
-        appearsAtWake: "the next boundary that re-renders the wake — once per lived day",
+        // is composed by a worker and served unchanged until the next render,
+        // so "it is live now" would be false for as long as this session lasts.
+        // Since 2026-09-30 the write marks the wake behind and the next turn's
+        // end re-renders it (`self/behind.ts`).
+        appearsAtWake: "the next session's wake, once a turn has ended — the worker a turn's end starts re-renders it",
       },
       false,
     );
