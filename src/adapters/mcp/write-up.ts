@@ -2,7 +2,7 @@
  * THE WRITE-UP DOOR — how a live session writes up a session that ended before
  * it was written up (roadmap C2, owner 2026-09-23).
  *
- * The SessionStart hook (`claude-code/hooks.ts#deliverWriteUpAsk`) points the
+ * The SessionStart hook (`claude-code/hooks.ts`, through `lifecycle.ts#deliverWriteUpAsk`) points the
  * next session in a project at the oldest session there that owes a write-up.
  * Everything else happens here, through a `writeUp` FIELD on `session_end`
  * naming the ended session, beside the ordinary `session` (the live one, bound

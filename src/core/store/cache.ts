@@ -357,7 +357,7 @@ export interface EmbedderIdentity {
   /**
    * The output width when it is KNOWN before the first vector: a static table
    * always knows; a paid seat knows for the models this package names
-   * (`claude-code/config.ts#EMBED_MODEL_DIMS`). Null only for a paid id this
+   * (`adapters/config.ts#EMBED_MODEL_DIMS`). Null only for a paid id this
    * package has never heard of — then the width is learned from the first
    * vector written, and untagged rows are never adopted under it.
    */

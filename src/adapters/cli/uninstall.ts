@@ -75,7 +75,7 @@ import { Store, assertSafeDataDir, dateOf, isWithin, storeExists } from "../../c
 import { isJournal } from "../../core/sleep/index.js";
 import { SCOPES_FILE_NAME } from "../scopes.js";
 import { SNAPSHOTS_DIR_NAME, resolveSnapshotsDir } from "../snapshots.js";
-import type { AdapterConfig } from "../claude-code/config.js";
+import type { AdapterConfig } from "../config.js";
 import type { Io } from "./commands.js";
 import { BIN, CONFIG_FILE, LEGACY_CREDENTIALS_FILE, MCP_SERVER_NAME } from "./install.js";
 import {

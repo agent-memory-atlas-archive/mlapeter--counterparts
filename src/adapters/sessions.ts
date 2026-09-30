@@ -11,10 +11,12 @@
  *
  * **It is host state, never memory** (constitution 5). It carries no content: an
  * id, a scope, three timestamps, and a few marks about what this session's hooks
- * have already done — which configuration they read, whether the first-launch
- * question went out, the wake's sentinel of counts and whether its arrival has
- * been checked. Losing the whole directory costs a lazy bind and nothing else,
- * which is why `store/paths.ts` classifies it `backup: false`.
+ * have already done — which configuration they read, which host the session
+ * lives in (2026-09-30; absent is Claude Code, `hostOf`), whether the
+ * first-launch question went out, the wake's sentinel of counts and whether its
+ * arrival has been checked. Losing the whole directory costs a lazy bind and
+ * nothing else, which is why `store/paths.ts` classifies it `backup: false`.
+ * The writes are the host lifecycle's (`lifecycle.ts`) and the MCP door's.
  *
  * **The MCP server leaves one note of its own here** (2026-09-23):
  * `mcp-server@<pid>.json`, the build it was launched with, so the
@@ -28,7 +30,9 @@
  * **Neither adapter imports the other.** `mcp/INTERFACE-GAPS.md` §7 keeps
  * adapters as leaves; a sibling module both may import is the shape that rule
  * allows, and it is the reason this file sits beside them rather than inside
- * `claude-code/`.
+ * `claude-code/`. (True of the libraries; one entry point is the exception
+ * today — `mcp/bin/serve.ts` opens its embedder through
+ * `claude-code/embed-client.ts`.)
  *
  * Three rules the code below mechanizes:
  *
@@ -72,6 +76,8 @@ import type {
 import { isModelId } from "../core/self/index.js";
 import { CACHE_SCHEMA_VERSION, SCHEMA_VERSION } from "../core/store/index.js";
 import type { Store } from "../core/store/index.js";
+
+import { DEFAULT_HOST, isHostName, wordingFor } from "./hosts.js";
 
 /** The one directory name. Classified in `store/paths.ts` LAYOUT. */
 export const SESSIONS_DIR = "sessions";
@@ -262,6 +268,21 @@ export interface SessionRecord {
    * before, or by a host that does not set it — which reads as a person's.
    */
   readonly entrypoint?: string;
+  /**
+   * WHICH HOST THIS SESSION LIVES IN (`hosts.ts`, 2026-09-30): `claude-code`
+   * today, written by the host lifecycle (`lifecycle.ts#Lifecycle`) on every
+   * record it writes. ABSENT means Claude Code — every record written before
+   * the field existed was written by its hooks — and is read that way by
+   * `hostOf`, never filled in here, so a record read back is the record that
+   * was written. Carried like `entrypoint`. Still host state: one word.
+   */
+  readonly host?: string;
+}
+
+/** The host a record belongs to: its own `host`, or — absent, as on every
+ *  record written before 2026-09-30 — Claude Code's (`hosts.ts#DEFAULT_HOST`). */
+export function hostOf(record: Pick<SessionRecord, "host">): string {
+  return record.host ?? DEFAULT_HOST;
 }
 
 /**
@@ -412,6 +433,9 @@ export function recordSession(
     model?: string;
     /** How the host was started (`CLAUDE_CODE_ENTRYPOINT`). Carried like `config`. */
     entrypoint?: string;
+    /** Which host the session lives in (`hosts.ts`). Carried like `config`;
+     *  never written when nobody names one, so absent still reads as Claude Code. */
+    host?: string;
   },
 ): SessionRecord | null {
   if (!isSessionId(input.sessionId)) return null;
@@ -507,6 +531,14 @@ export function recordSession(
       ? { entrypoint: input.entrypoint }
       : prior?.entrypoint !== undefined
         ? { entrypoint: prior.entrypoint }
+        : {}),
+    // Carried like `entrypoint`: a phase written by a process that named no
+    // host keeps the one already there, and a record nobody named one for has
+    // none — which `hostOf` reads as Claude Code.
+    ...(isHostName(input.host)
+      ? { host: input.host }
+      : prior?.host !== undefined
+        ? { host: prior.host }
         : {}),
   };
 
@@ -662,9 +694,12 @@ export function sameBuild(a: BuildStamp, b: BuildStamp): boolean {
 
 /**
  * The remedy, spelled once: the notice ends with it and so does the MCP
- * schema gate's refusal (`mcp/server.ts#STALE_SERVER_REFUSAL`).
+ * schema gate's refusal (`mcp/server.ts#STALE_SERVER_REFUSAL`). It is Claude
+ * Code's words — `/mcp` is its command — so since 2026-09-30 it is read from
+ * that host's entry in the wording table (`hosts.ts`), where another host
+ * keeps its own; the text is unchanged.
  */
-export const RECONNECT_REMEDY = "Run /mcp and Reconnect to load it.";
+export const RECONNECT_REMEDY = wordingFor(DEFAULT_HOST).reconnect;
 
 /** The owner's words (2026-09-23), shown once per session, never every turn. */
 export const UPDATE_NOTICE = `Counterparts was updated. ${RECONNECT_REMEDY}`;
@@ -1172,6 +1207,9 @@ function parseRecord(raw: unknown): SessionRecord | null {
     // A value that is not a plain model id is no mark: it goes into a heading.
     ...(isModelId(rec["model"]) ? { model: rec["model"] } : {}),
     ...(isEntrypoint(rec["entrypoint"]) ? { entrypoint: rec["entrypoint"] } : {}),
+    // Optional for the same reason, and its absence is NOT filled in here: a
+    // record with no host is Claude Code's, and `hostOf` is where that is said.
+    ...(isHostName(rec["host"]) ? { host: rec["host"] } : {}),
   };
 }
 
@@ -1211,7 +1249,7 @@ export function markWriteUpFetched(dataDir: string, sessionId: string, writeUpFo
 // ── the next-session write-up (roadmap C2, 2026-09-23) ──────────────────────
 //
 // A session that ended before it was written up is written up by the NEXT
-// session in its project: the SessionStart hook (`claude-code/hooks.ts`) hands
+// session in its project: the SessionStart hook (`claude-code/hooks.ts`, through `lifecycle.ts#deliverWriteUpAsk`) hands
 // the live assistant the ended session's captured words, and the MCP server's
 // door (`mcp/write-up.ts`) takes the memories back and marks the old session
 // written up. Two adapters, and neither imports the other — so the facts they

@@ -110,7 +110,7 @@ export const PARTIAL_NAME_RE = /^\.partial-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\
 
 /**
  * How old an abandoned `.partial-…` directory must be before a later run removes
- * it. Comfortably past the worker's watchdog (`claude-code/config.ts` TUNABLES,
+ * it. Comfortably past the worker's watchdog (`adapters/config.ts` TUNABLES,
  * 5 minutes), because the one thing this must not do is delete the directory a
  * CONCURRENT run is still writing into.
  *

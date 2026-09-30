@@ -13,8 +13,8 @@ export {
   PAGE_WRITER_FALLBACK_MODE,
   loadConfig,
   pageWriterMode,
-} from "./config.js";
-export type { AdapterConfig, CapabilityName, CapabilityReport, LoadedConfig } from "./config.js";
+} from "../config.js";
+export type { AdapterConfig, CapabilityName, CapabilityReport, LoadedConfig } from "../config.js";
 
 export {
   AUTHORSHIP_DAYS,
@@ -99,8 +99,8 @@ export {
 } from "./night-run.js";
 export type { NightChildPlan, NightKind, NightRunInput, NightRunnerPlan, NightStarter } from "./night-run.js";
 
-export { DATA_DIR_ENV, SCOPE_ENV, SESSION_ENV, WATCHDOG_ENV, planSpawn, spawnDetached } from "./spawn.js";
-export type { PlanInput, SpawnOutcome, SpawnPlan, SpawnRefusal, Spawner } from "./spawn.js";
+export { DATA_DIR_ENV, SCOPE_ENV, SESSION_ENV, WATCHDOG_ENV, planSpawn, spawnDetached } from "../spawn.js";
+export type { PlanInput, SpawnOutcome, SpawnPlan, SpawnRefusal, Spawner } from "../spawn.js";
 
 export {
   BACKFILL_LIMIT,
@@ -136,7 +136,7 @@ export type { Assignment, AssignmentHealth, AssignmentState, Primacy, PrimacyRea
 
 import { Counterpart } from "../../core/counterpart.js";
 import type { CounterpartEvent } from "../../core/counterpart.js";
-import type { AdapterConfig } from "./config.js";
+import type { AdapterConfig } from "../config.js";
 import { openEmbedder } from "./embed-client.js";
 import type { LiveEmbedder } from "./embed-client.js";
 import { ClaudeCodeAdapter } from "./hooks.js";

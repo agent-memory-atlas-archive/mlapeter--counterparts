@@ -39,7 +39,7 @@ import { toHookInput } from "../src/adapters/claude-code/bin/hook.js";
 import { recordSession } from "../src/adapters/sessions.js";
 import { expansionSalt, expansionsPath, handleKey, readHandleResolutions } from "../src/adapters/expansions.js";
 import { McpServer } from "../src/adapters/mcp/index.js";
-import type { SpawnPlan } from "../src/adapters/claude-code/spawn.js";
+import type { SpawnPlan } from "../src/adapters/spawn.js";
 import { chmodSync, writeFileSync } from "node:fs";
 
 const ENV = "COUNTERPARTS_DATA_DIR";

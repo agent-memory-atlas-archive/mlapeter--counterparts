@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Counterpart } from "../src/core/counterpart.js";
-import { EMBEDDER_KINDS, loadConfig } from "../src/adapters/claude-code/config.js";
+import { EMBEDDER_KINDS, loadConfig } from "../src/adapters/config.js";
 import { STATIC_BACKFILL_LIMIT, backfillVectors, laggedSemantic } from "../src/adapters/claude-code/vectors.js";
 import { createStaticEmbedder, openEmbedder, openStaticEmbedder } from "../src/adapters/claude-code/embed-client.js";
 import { loadStaticModel } from "../src/core/embed/static.js";

@@ -45,7 +45,7 @@ import {
   readScopes,
   scopesPath,
 } from "../../scopes.js";
-import { loadConfig, withEmbedderDefault } from "../../claude-code/config.js";
+import { loadConfig, withEmbedderDefault } from "../../config.js";
 import { openEmbedder } from "../../claude-code/embed-client.js";
 import type { LiveEmbedder } from "../../claude-code/embed-client.js";
 import { hostScope, openServer } from "../index.js";

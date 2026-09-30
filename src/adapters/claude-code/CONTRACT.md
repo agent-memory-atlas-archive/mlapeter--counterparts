@@ -10,6 +10,24 @@ same composer, minus the prospective lane and minus anything protected or confid
 and this adapter's interpret client put that prompt on the wire until 2026-09-24 (see
 §1a: the sweep no longer interprets here).
 
+**Where the parts live (2026-09-30, the host seam).** What a session is to this memory
+whatever the host — the wake's composition and the registry's expectation of it, plain
+reminders, recall for a turn and its row, the boundary (capture, the retroactive-capture
+seal, credit, the orphan tail), the ask's *pacing*, the next-session write-up pointer,
+every registry write, and the worker spawn with its counters — is the shared leaf
+`adapters/lifecycle.ts`: the `HostLifecycle` interface and its one implementation,
+`Lifecycle`. `ClaudeCodeAdapter` **extends** it, so each hook body calls those methods
+where it called its own, in the same order, with the same rows. What stays here is this
+host's: the five event names and their dispatch (`hooks.ts`), the payload translation, the
+JSON envelope and the room it measures (`bin/hook.ts`, `envelope.ts`), the transcript
+reader and the wake-arrival check against it (`transcript.ts`), the Stop ask's words
+(`stopAsk`, `STOP_HUMAN_LINE`), the first-launch question, the parallel run's primacy, the
+update and doctor notices, the dream line and the headless nightly run. The configuration
+(`AdapterConfig`, `loadConfig`) and the worker spawn (`planSpawn`, `spawnDetached`) moved to
+the shared leaves `adapters/config.ts` and `adapters/spawn.ts` the same day; `index.ts`
+still re-exports them. Every registry record the lifecycle writes carries `host:
+"claude-code"` (`sessions.ts#hostOf` reads an absent one the same way).
+
 ## 1a. Keyless (owner, 2026-09-24)
 
 The package reads no API key and calls no model API of its own. Removed that day: the
@@ -112,16 +130,19 @@ credential — belongs here, discovered at runtime, never assumed by the core.
   v1's own assignment file and lets the delivering hooks speak only when that file names the
   slot v2 occupies; it **fails toward mute** where v1 fails toward inject, so the joint
   failure state is v1-only rather than two voices or none. Absent flag ⇒ v2 delivers, which
-  is the ordinary build. The flag, the resolver, and the two durable events are **retired at
-  PROMOTE** — they are scaffolding for a comparison, not a feature.
+  is the ordinary build. The flag, the resolver, and the two durable events were meant to be
+  **retired at PROMOTE** — they are scaffolding for a comparison, not a feature. The parallel
+  run ended on 2026-09-21 and nothing retired them: they are **still wired**
+  (`hooks.ts#deliveryVerdict`, config `parallel`), and inert on every install that does not
+  set the flag. Removing them is a separate change.
 - **The 9,000-byte wake budget is not a constant here or anywhere.** The adapter
   **discovers or asserts** its host's injection ceiling and reports it as a capability;
   the core composes to whatever it is told (scar §2.18). v1's number was 90% of one host's
   cliff, encoded as though it were physiology.
-- **Multi-file API-key rotation and per-key cursor bookkeeping are dropped**; credentials
-  come from one configured source the package owns, not from an inherited shell
-  environment (scar §2.18: "nothing in the core depends on a tool, file, or environment the
-  host may not provide"). Settled by the scar.
+- **Multi-file API-key rotation and per-key cursor bookkeeping are dropped** — and since
+  2026-09-24 there are no keys at all (§1a), so there is nothing to rotate and no credential
+  source to configure. (Until then credentials came from one configured source the package
+  owned, never an inherited shell environment — scar §2.18.)
 - **Model-seat pins are dropped.** **PROPOSED** — owner call at check-in. Constitution
   line 2 says which seat runs which job is a design choice, never doctrine, and the model
   lineup will have moved. What is **kept** is the bake-off *method* (earned-mechanism #20:
@@ -193,9 +214,12 @@ row, saying which source answered, existed until the keys were removed — §1a.
    checkable values**, never assumed; exceeding one is an event, not silent degradation
    (scar §2.18).
 5. **[M] The spawner pins the child's environment last**, so no caller can leak a run into
-   the wrong store (scar §2.13).
-6. **[M] A long call proves it survives this host's ceilings, once, in this host** —
-   adapter-level evidence, per scar E3's rescope.
+   the wrong store (scar §2.13). (`adapters/spawn.ts` since 2026-09-30, shared so another
+   host's adapter can start the same worker.)
+6. ~~**[M] A long call proves it survives this host's ceilings, once, in this host**~~ —
+   **moot since 2026-09-24 (§1a).** The package makes no model call of its own, so there is
+   no long call to prove; the headless nightly run is `claude -p` — the host's own call,
+   under its own watchdog (`night-run.ts`), not one this adapter streams.
 7. **[M] Under observer, the boundary appends no span, resolves no references, spawns no
    worker, and asks for no episode** — and logs that it stood down (scar E7, §2.4).
 8. **[M] The read cursor is per-session and advances only after a successful append**, and
@@ -803,9 +827,9 @@ charter).
 
 ## 7. Open questions
 
-1. **Does the host offer an in-the-moment jot channel at all?** The owner's decision allows
-   jots "where the host allows"; whether this host does, and at what cost to the turn, is
-   unmeasured.
+1. ~~**Does the host offer an in-the-moment jot channel at all?**~~ **ANSWERED.** Not
+   through a hook: the jot channel is the MCP adapter's `note` tool (`mcp/CONTRACT.md`),
+   which the model calls mid-session; no hook calls `submitJot`.
 2. **What is the honest bound on the orphanable tail** — the stretch after the last
    session-ending event nobody can ask about — in this host specifically? v1 bounded it by
    its re-ask threshold and logged it, which is the right shape; the number is host-local.

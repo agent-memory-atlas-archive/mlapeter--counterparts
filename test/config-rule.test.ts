@@ -56,7 +56,7 @@ import {
   CONFIG_PATH as SERVE_CONFIG_PATH,
   serverConfigChoice,
 } from "../src/adapters/mcp/bin/serve.js";
-import { CONFIG_ENV as SPAWN_CONFIG_ENV, planSpawn } from "../src/adapters/claude-code/spawn.js";
+import { CONFIG_ENV as SPAWN_CONFIG_ENV, planSpawn } from "../src/adapters/spawn.js";
 import { openAdapter } from "../src/adapters/claude-code/index.js";
 import { EXIT, hostCeiling, run } from "../src/adapters/cli/commands.js";
 import type { Io } from "../src/adapters/cli/commands.js";

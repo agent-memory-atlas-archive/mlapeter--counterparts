@@ -557,7 +557,7 @@ The standalone verb does not ask either: typing it is the yes.*
     says that instead (MINOR 4). Every configuration edit keeps the file's indent, line
     endings and final newline, and a one-line file stays one line (NIT 7).
 41. **[M] An absent `embedder` block is the local table, ON** (coordinator's ruling
-    2026-09-23; `claude-code/config.ts#resolveEmbedder`). *(Until 2026-09-24 a Voyage key
+    2026-09-23; `adapters/config.ts#resolveEmbedder`). *(Until 2026-09-24 a Voyage key
     saved in the credentials file kept an absent block off; the rest of this paragraph
     describes that exception, which went with the keys.)* The privacy reason absent meant off was the paid seat; the table
     has no egress, and every 0.2.0 configuration has no block, so this is what switches

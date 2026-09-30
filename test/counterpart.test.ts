@@ -46,7 +46,7 @@ import {
   claimsDir,
   pendingPath,
 } from "../src/core/associate/index.js";
-import { TUNABLES as CLAUDE_CODE_TUNABLES } from "../src/adapters/claude-code/config.js";
+import { TUNABLES as CLAUDE_CODE_TUNABLES } from "../src/adapters/config.js";
 import { SWEEP_REASONS, TUNABLES as REMEMBER_TUNABLES } from "../src/core/remember/index.js";
 import type { InterpretFn, SweepChunk } from "../src/core/remember/index.js";
 import { BOOTSTRAP, LANE_ORDER, PREFACE_RESERVE_BYTES } from "../src/core/self/index.js";

@@ -10,11 +10,15 @@
  *     BESIDE it. Nothing here is a host file and nothing here belongs to another
  *     program. (An empty `credentials.env` at 0600 was the third until the API
  *     keys were removed on 2026-09-24; nothing reads one now.)
- *   - **The host's, so we only PRINT them**: the `settings.json` hooks block and
- *     the `claude mcp add` line. An installer that edits somebody's editor
- *     configuration without being asked is the same class of surprise as a
- *     memory layer that writes without being asked. `install` never opens
- *     `~/.claude/settings.json` — not to read it, not to back it up, not at all.
+ *   - **The host's**: the `settings.json` hooks block and the `claude mcp add`
+ *     line. THIS FILE only builds them (`settingsBlock`, `mcpCommand`), and
+ *     they are printed as the manual fallback — a pipe, a script, a CI job, or
+ *     `--no-connect`. At a terminal the console's `install` goes on to connect
+ *     the host itself (`wire.ts#wire`, 2026-09-22): it merges the hooks block
+ *     into `~/.claude/settings.json`, backing the file up first and keeping
+ *     every other key, and runs `claude mcp add`; `counterparts disconnect`
+ *     undoes both. (Until then this said `install` never opened that file at
+ *     all, which stopped being true that day.)
  *
  * Three rules the code below mechanizes:
  *
@@ -51,8 +55,8 @@ import { fileURLToPath } from "node:url";
 /** The store directory under the base. Named, because three files agree on it. */
 export const DEFAULT_STORE_DIR = "store";
 
-import { EMBEDDER_KINDS } from "../claude-code/config.js";
-import type { EmbedderKind } from "../claude-code/config.js";
+import { EMBEDDER_KINDS } from "../config.js";
+import type { EmbedderKind } from "../config.js";
 import { CONFIG_ENV, CONFIG_FLAG, defaultConfigPath } from "../config-path.js";
 // `preRowsMarkersIn` reads FILENAMES and opens nothing, which is the only
 // reason a module that promises never to open a parked store may call it —
@@ -361,7 +365,7 @@ export function configObject(input: ConfigInput): Record<string, unknown> {
 }
 
 /** The `embedder` block `install` writes: `{ enabled, kind? }`, the shape
- *  `claude-code/config.ts#loadConfig` reads strictly. */
+ *  `adapters/config.ts#loadConfig` reads strictly. */
 export interface EmbedderBlock {
   readonly enabled: boolean;
   readonly kind?: EmbedderKind;
@@ -420,7 +424,8 @@ function embedderBlockIn(configPath: string): Record<string, unknown> | null {
     : null;
 }
 
-/** The hooks block to paste into `~/.claude/settings.json`. Printed, never written. */
+/** The hooks block to paste into `~/.claude/settings.json` — the manual fallback
+ *  prints it; `connect` (`wire.ts`) merges the same entries itself. */
 export function settingsBlock(hookCommand = runCommand(HOOK_SCRIPT)): string {
   const hooks: Record<string, unknown> = {};
   for (const event of HOST_EVENTS) {
@@ -430,7 +435,8 @@ export function settingsBlock(hookCommand = runCommand(HOOK_SCRIPT)): string {
 }
 
 /**
- * The MCP registration line. Printed, never run — it edits the host's config.
+ * The MCP registration line — printed by the manual fallback; `connect`
+ * (`wire.ts`) runs the same registration itself.
  *
  * A non-default configuration travels as `-e COUNTERPARTS_CONFIG=…`, not as a
  * flag, and that is the whole reason the environment variable exists: this host

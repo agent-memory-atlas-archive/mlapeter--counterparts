@@ -45,9 +45,9 @@
  */
 import { spawn } from "node:child_process";
 
-import { TUNABLES as REMEMBER, validateWatchdog } from "../../core/remember/index.js";
+import { TUNABLES as REMEMBER, validateWatchdog } from "../core/remember/index.js";
 
-import { CONFIG_ENV as CONFIG_PATH_ENV } from "../config-path.js";
+import { CONFIG_ENV as CONFIG_PATH_ENV } from "./config-path.js";
 
 import { TUNABLES } from "./config.js";
 import type { AdapterConfig } from "./config.js";
@@ -79,7 +79,7 @@ export const SCOPE_ENV = "COUNTERPARTS_SCOPE";
  * imported from `adapters/config-path.ts` rather than retyped, because a second
  * spelling of a variable that redirects a store is a bug nobody would see.
  */
-export { CONFIG_ENV } from "../config-path.js";
+export { CONFIG_ENV } from "./config-path.js";
 
 export type SpawnRefusal =
   | "NO_DATA_DIR"

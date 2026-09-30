@@ -140,8 +140,9 @@ import type { LogEntry } from "../log/index.js";
 // The two snapshot readers `status` shares with doctor: the DIRECTORY is what
 // says how many copies you have, and a row only says what a run once wrote.
 import { readSnapshotsDir, resolveSnapshotsDir } from "../snapshots.js";
-// THE HOST ADAPTER'S OWN READINGS, imported rather than re-derived — the same
-// direction `install.ts` already takes (`../claude-code/config.js`). `doctor` is
+// THE HOST ADAPTER'S OWN READINGS, imported rather than re-derived — the console
+// reads the claude-code adapter here, and its configuration from the shared
+// `../config.js` (moved out of `claude-code/` on 2026-09-30). `doctor` is
 // the console's face on the file and the store that adapter owns, and a console
 // with its own idea of "what counts as red" is exactly the drift I32 ran inside of.
 import {
@@ -149,7 +150,7 @@ import {
   SPAWN_START_COUNT_KEY,
   SPAWN_START_DATE_KEY,
 } from "../claude-code/hooks.js";
-import { loadConfig, withEmbedderDefault } from "../claude-code/config.js";
+import { loadConfig, withEmbedderDefault } from "../config.js";
 // The one answer to "is there an embedder", shared with the hook, the worker and
 // the MCP server's entry point — `ask` embeds its question with it.
 import { openEmbedder } from "../claude-code/embed-client.js";
@@ -157,7 +158,7 @@ import type { LiveEmbedder } from "../claude-code/embed-client.js";
 // The local table's locator, for install's one check that the weights the new
 // configuration asks for are where the hooks will look.
 import { MODEL_FILE, STATIC_WEIGHTS_ENV, STATIC_WEIGHTS_PACKAGE, resolveStaticWeights } from "../../core/embed/static.js";
-import type { AdapterConfig } from "../claude-code/config.js";
+import type { AdapterConfig } from "../config.js";
 import {
   anyRed,
   doctorFindings,

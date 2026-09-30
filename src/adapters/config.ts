@@ -25,11 +25,11 @@
  */
 import { isAbsolute } from "node:path";
 
-import { isZone } from "../../core/time.js";
+import { isZone } from "../core/time.js";
 
-import { PAGE_WRITER_MODES } from "../../core/self/index.js";
-import type { PageWriterMode } from "../../core/self/index.js";
-import { DEFAULT_KEEP as SNAPSHOT_DEFAULT_KEEP } from "../snapshots.js";
+import { PAGE_WRITER_MODES } from "../core/self/index.js";
+import type { PageWriterMode } from "../core/self/index.js";
+import { DEFAULT_KEEP as SNAPSHOT_DEFAULT_KEEP } from "./snapshots.js";
 
 
 /** Every host-dependent limit this adapter depends on. One row each. */

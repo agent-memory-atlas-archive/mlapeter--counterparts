@@ -299,7 +299,7 @@ export const MECHANISMS: readonly Mechanism[] = [
   {
     id: "ask",
     label: "the session is asked to write its own memories before it stops",
-    module: "claude-code/hooks.ts",
+    module: "lifecycle.ts (the pacer), claude-code/hooks.ts (the words)",
     evidence: { kind: "event", names: ["adapter.ask"] },
     // The next session's pointer to a write-up it could not compose (2026-09-30).
     covers: ["adapter.writeup.failed"],
@@ -442,7 +442,7 @@ export const MECHANISMS: readonly Mechanism[] = [
   {
     id: "recall-injected",
     label: "what came to mind was handed to the host for the model to read",
-    module: "claude-code/hooks.ts",
+    module: "lifecycle.ts, claude-code/hooks.ts",
     evidence: { kind: "event", names: ["adapter.recall"] },
   },
   {
@@ -889,7 +889,7 @@ export const MECHANISMS: readonly Mechanism[] = [
     // memory, window and beat, latched.
     id: "prospective-plain",
     label: "a reminder marked plain was said plainly on its day",
-    module: "prospective/, claude-code/hooks.ts",
+    module: "prospective/, lifecycle.ts",
     evidence: { kind: "event", names: ["prospective.plain"] },
     since: "2026-09-26",
   },
@@ -918,7 +918,7 @@ export const MECHANISMS: readonly Mechanism[] = [
     // of silence from `never` into `blocked, by NO_CREDENTIAL`.
     id: "worker-start",
     label: "the background worker started when a session reached a boundary",
-    module: "claude-code/hooks.ts, bin/runner.ts",
+    module: "lifecycle.ts, bin/runner.ts",
     evidence: { kind: "event", names: ["adapter.spawn.started"] },
     refusals: {
       names: ["adapter.spawn.refused", "adapter.spawn.failed", "adapter.runner.failed"],
@@ -928,7 +928,7 @@ export const MECHANISMS: readonly Mechanism[] = [
   {
     id: "worker-trouble",
     label: "the worker was refused, could not be started, or failed after starting",
-    module: "claude-code/hooks.ts, bin/runner.ts",
+    module: "lifecycle.ts, bin/runner.ts",
     evidence: {
       kind: "event",
       names: ["adapter.spawn.refused", "adapter.spawn.failed", "adapter.runner.failed"],

@@ -1849,3 +1849,34 @@ Working defaults, held lightly.
   `start` that runs the worker first).
 - **Delivery.** The delivery check compares each session's wake with the sentinel recorded
   at ITS start, so a session that woke before a rebuild still reads `delivered` (tested).
+
+## 2026-09-30 — the host seam (PR A of the host groundwork)
+
+- **What moved.** The host-neutral half of `ClaudeCodeAdapter` is `adapters/lifecycle.ts`:
+  the `HostLifecycle` interface and its implementation `Lifecycle` — `composeWake` (the
+  wake plus the registry's sentinel), `plainFor` / `claimPlain` / `nowLine`, `recallTurn`
+  (recall plus the `recall.delivered` row), `captureBoundary` (capture, the seal, credit,
+  the `adapter.boundary` row), `noteTail`, `paceAsk` (the pacer and the `adapter.ask` row;
+  the words stay here in `stopAsk`), `deliverWriteUpAsk`, `noteSession`, `spawnWorker` and
+  its counters. `config.ts` and `spawn.ts` became the shared leaves `adapters/config.ts`
+  and `adapters/spawn.ts`. The bodies moved verbatim; only their `this.` receiver changed.
+- **Extends, not holds.** `ClaudeCodeAdapter extends Lifecycle`. Two tests reach into the
+  adapter by name (`envelope-budget.test.ts` stubs `a.dreamLines`, `write-up.test.ts`
+  binds `a.deliverWriteUpAsk`); a held lifecycle would have made both stubs inert, and a
+  refactor that has to change a test to pass is not a proof of no change.
+- **What stayed.** The re-fired Stop is refused in `askAtStop` before the pacer is asked
+  (it was the first line of the old `askAtStop`'s try; same effect). The first-launch
+  question, the wake-arrival check, the dream line and the headless nightly run, the
+  update and doctor notices, primacy and every envelope measurement are still here —
+  they are Claude Code's, or not yet needed by a second host.
+- **On disk.** Every registry record the lifecycle writes now carries `host:
+  "claude-code"`; a record without one reads the same (`sessions.ts#hostOf`). That is the
+  only on-disk change. A neutral config name (`counterparts.json`, read first when present)
+  was built and taken back out before merge: the default path's identity checks
+  (`throwawayDefaultRefusal`, `isNamed`, the console's `=== defaultConfigPath` tests)
+  assume one fixed default, and a default that depends on which files exist let a named
+  config slip past them. Nothing needs the new name yet; the config stays `claude-code.json`.
+- **Left for the Desktop work (PR B).** The worker script (`bin/runner.ts`) and the
+  nightly run's planner still live here; a host that starts either from the MCP server
+  needs their paths, not an import. `deliverWriteUpAsk`'s default limit is still this
+  host's `HOST_OUTPUT_CHARS`; a tool result has no such cap and should pass its own.

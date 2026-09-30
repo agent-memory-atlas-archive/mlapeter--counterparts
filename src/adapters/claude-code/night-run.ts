@@ -50,8 +50,10 @@
  * the registry — whose liveness check refused the overnight case: a session
  * left open overnight is "stale" at the morning's first prompt, because a
  * prompt is not a boundary (review of #282, finding 1). The id is our own
- * hook's, so no corroboration is lost. The child also starts IN that session's
- * directory, without the host's `CLAUDE_PROJECT_DIR`. The child's own session id — minted by the host after this process
+ * hook's, so no corroboration is lost. The child starts in the STORE's own
+ * directory, a neutral one (owner decision B, `planNightChild`), without the
+ * host's `CLAUDE_PROJECT_DIR`; the session's directory reaches it only as
+ * `COUNTERPARTS_SCOPE`. The child's own session id — minted by the host after this process
  * is gone — is flagged QUIET (`NIGHT_RUN_ENV`): our hooks inside it capture
  * nothing and ask nothing (`hooks.ts`), so it owes no write-up either.
  *
@@ -68,12 +70,12 @@ import type { NightPart, NightRun } from "../../core/dream/index.js";
 import { CONFIG_ENV as CONFIG_PATH_ENV } from "../config-path.js";
 import { OBSERVER_ENV } from "../stance-env.js";
 
-import { TUNABLES } from "./config.js";
-import type { AdapterConfig } from "./config.js";
+import { TUNABLES } from "../config.js";
+import type { AdapterConfig } from "../config.js";
 import { DEFAULT_HOST_COMMAND, KILL_GRACE_MS, PERMISSION_MODE, REAP_GRACE_MS, startChild } from "./child.js";
 import type { ChildPlan, ChildResult } from "./child.js";
-import { DATA_DIR_ENV, SCOPE_ENV, SESSION_ENV, WATCHDOG_ENV } from "./spawn.js";
-import type { SpawnPlan } from "./spawn.js";
+import { DATA_DIR_ENV, SCOPE_ENV, SESSION_ENV, WATCHDOG_ENV } from "../spawn.js";
+import type { SpawnPlan } from "../spawn.js";
 
 /**
  * THE QUIET-CHILD FLAG, and the run's id: set on the headless run's

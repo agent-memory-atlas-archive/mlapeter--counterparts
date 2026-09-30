@@ -99,9 +99,11 @@ entrance and prove the gate battery covers each (encode's caller-side half)."
 | `sweepFallback` → apply | `bridge.gateSweepChunk()` (CHUNK level) | `counterpart.ts` `applySweep()` |
 
 **Not yet covered, and named so it is not mistaken for covered:** anything an
-adapter other than this one adds. `mcp/`, `cli/` and `dashboard/` do not exist
-yet; when they do, the table above is the thing to extend, and the totality test
-in `test/claude-code.test.ts` is the shape to copy.
+adapter other than this one adds. `mcp/`, `cli/` and `dashboard/` exist now, and
+reach the core through the same `Counterpart` entrances above (the MCP tools
+through `submitSessionEnd`, `submitJot` and `appendEpisode`); an entrance one of
+them adds is the thing to extend this table with, and the totality test in
+`test/claude-code.test.ts` is the shape to copy.
 
 ## 5. `kind` defaults in two places (SEAMS queued item 9, still open)
 
@@ -177,11 +179,9 @@ into the wrapper.
 
 ## Host-side gaps — this adapter's own open questions (CONTRACT §7)
 
-1. **Is there a jot channel in this host?** `Counterpart.captureJot` and
-   `submitJot` exist and are tested; no hook calls them, because the host offers
-   no in-the-moment deposit surface this adapter can see. The MCP adapter is the
-   likely home (`mcp/CONTRACT.md`: note, recall, status). Cost to the turn:
-   unmeasured.
+1. **Is there a jot channel in this host? — CLOSED.** Yes, and not through a
+   hook: the MCP adapter's `note` tool is the jot channel (`mcp/CONTRACT.md`),
+   which the model calls mid-session. No hook calls `submitJot`.
 2. **The orphanable tail is measured, not bounded by anything host-specific.**
    `noteOrphanTail` runs on `session-end` and `pre-compact`, and its bound is
    `self/`'s re-ask thresholds — a memory number, not a host one. The host-local
@@ -195,11 +195,10 @@ into the wrapper.
    primary path in fact: it ran after every Stop, and on 2026-09-04 one evening's
    sweeps billed 13 chunks and minted 61 memories beside 34 authored ones.
    `pre-compact` is still wired and still captures; it is not by itself a crash.
-4. **Long-call survival is asserted, not proven in this host (CONTRACT §5 G6).**
-   The call streams (scar E3) and `socketLifetimeMs` is a reported capability
-   with no reporter. The proof G6 asks for — one long call surviving this host's
-   ceilings, in this host — needs a live run with a real credential, which no
-   test here is entitled to make.
+4. **Long-call survival — MOOT since 2026-09-24 (keyless, CONTRACT §1a).** The
+   package makes no model call of its own, so there is no long call to prove and
+   no credential to prove it with (CONTRACT §5 G6 is struck).
+   `socketLifetimeMs` is still a reported capability with no reporter.
 5. **`executionCeilingMs` has no consumer.** It is reported and checkable; no
    code compares against it yet, because every foreground path is an appender and
    the heavy work is already detached. When something in the foreground can grow,

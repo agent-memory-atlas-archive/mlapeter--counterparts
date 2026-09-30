@@ -4,7 +4,14 @@
 
 The deliberate tools — note, recall, status — plus the two return channels the Stop ask
 needs (`session_end` for memories, `chapter` for the episode), exposed over MCP to any host
-that speaks it.
+that speaks it. Nine tools today: those five, and `scope` (this directory's setting,
+2026-09-15), `self_page` (the page the wake opens with, 2026-09-18), `dream` (the
+dreamer's phases, 2026-09-26) and `reflect` (the waking self's, 2026-09-27) — each added
+on purpose (`tools.ts#TOOL_NAMES`).
+
+**Which host (2026-09-30).** A result's words ABOUT the host — today, how to reconnect after
+an update — come from the host this server serves (`McpServerOptions.host`, looked up in
+`adapters/hosts.ts`), and every launch today is Claude Code's, whose words are unchanged.
 
 ## 2. Brain analog
 
@@ -66,9 +73,10 @@ load-bearing, and this adapter is designed on the assumption that it will be use
   counter-argument.
 - **No tool writes an entity, a belief, or a revision.** Entities are born by mention and
   die by decay; revision is `updates:` plus arithmetic (owner decisions, settled). The
-  vocabulary this adapter exposes is deliberately three verbs wide, plus the return
+  vocabulary this adapter exposes was deliberately three verbs wide, plus the return
   channels — a return channel is not a fourth verb, it is the other end of an ask the
-  system already makes.
+  system already makes. It is nine tools now (§1); none of the four added since writes an
+  entity, a belief or a revision either.
 - **`chapter` is NOT the self-store tool coming back** (added 2026-09-04). The dropped v1
   tool wrote identity prose directly. This one appends to the session's own journal, and
   what it writes becomes memory only through `ingestEpisode`'s ordinary gated path at the
@@ -95,8 +103,11 @@ that is not text is a named, durable refusal. A handoff that LANDED with an empt
 refused. The no-scope rule (an empty scope, or one
 that is the store's own directory) is asked here because this side has the canonicaliser,
 and the durable row is written by `core/handoff/`, which owns that guarantee —
-`chapter(session, text[, title])`; the session's observer
-role; the launch's session, scope and data dir when the host can supply them.
+`chapter(session, text[, title])`; `scope(mode)` for this directory; `self_page` (read,
+or write with `ifVersion`); `dream(session, phase, …)` and `reflect(session, phase, …)`,
+each bound to one session as `session_end` is (their fields are `tools.ts`'s); the
+session's observer role; the launch's session, scope, data dir and host when the host can
+supply them.
 **Outputs** — a stored memory (note), ranked memories with a confidence label (recall), a
 census (status), an appended chapter with the episode's id and the chapter number the store
 actually wrote (chapter), the written self page or the version a write to it produced

@@ -80,9 +80,11 @@ export type ToolName =
   | "reflect";
 
 /**
- * The tool vocabulary, ENUMERATED. Three deliberate verbs plus the TWO return
- * channels the one Stop ask needs (`claude-code/INTERFACE-GAPS.md` §7). The
- * audit asserts the shipped list equals this one exactly, so a sixth tool is a
+ * The tool vocabulary, ENUMERATED — nine tools today. It began as three
+ * deliberate verbs plus the TWO return channels the one Stop ask needs
+ * (`claude-code/INTERFACE-GAPS.md` §7), and each since (`scope`, `self_page`,
+ * `dream`, `reflect`) was added on purpose, with its own entry below. The
+ * audit asserts the shipped list equals this one exactly, so a tenth tool is a
  * decision somebody makes on purpose rather than one that accretes.
  *
  * **`chapter` is the fifth, added 2026-09-04, and it is not a re-opened door.**
@@ -473,7 +475,7 @@ const RECALL: ToolSpec = {
       claim:
         "A search strengthens nothing — exposure is not recording, and a memory you were only shown in a list is no stronger for having been listed. EXPANDING one in full, by id or by title handle, is USING it: that is credited at the session boundary, once per lived day. The tool itself never writes a memory; what it writes is host bookkeeping — one line saying which memory a title reached.",
       mechanizedBy:
-        "src/core/recall/index.ts#build (the search half: pure; no resolveUse, no coactivate) + src/adapters/expansions.ts#recordHandleResolution -> src/adapters/claude-code/hooks.ts#creditAtBoundary -> src/core/recall/reference.ts (the expansion door) -> src/core/recall/index.ts#resolveUse (once per lived day)",
+        "src/core/recall/index.ts#build (the search half: pure; no resolveUse, no coactivate) + src/adapters/expansions.ts#recordHandleResolution -> src/adapters/lifecycle.ts#creditAtBoundary -> src/core/recall/reference.ts (the expansion door) -> src/core/recall/index.ts#resolveUse (once per lived day)",
     },
     {
       claim:

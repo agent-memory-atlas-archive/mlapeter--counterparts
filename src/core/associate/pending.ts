@@ -108,7 +108,7 @@ export const PENDING_MARKER_SLACK_BYTES = 16 * 1024;
  * which let a second worker steal it from a live one and apply the same deltas
  * twice (second adversarial review, 2026-09-17). The window has to outlive the
  * whole worker, not only one apply: the worker's watchdog is five minutes
- * (`claude-code/config.ts` WATCHDOG_MS), a worker the watchdog killed releases
+ * (`adapters/config.ts` WATCHDOG_MS), a worker the watchdog killed releases
  * nothing, and a live one may still be inside its apply. Ten minutes is twice
  * that. Shorter than `remember/`'s span window on purpose: a claim that failed
  * is work already earned and waiting, and it should land soon after.
