@@ -103,6 +103,8 @@ export const LANES = {
   "adapter.primacy.standdown": "flow",
   "adapter.recall": "flow",
   "adapter.runner.failed": "flow",
+  "adapter.writeup.failed": "flow",
+  "remember.capture.failed": "flow",
   "adapter.semantic.lag": "flow",
   "adapter.spawn.failed": "flow",
   "adapter.spawn.refused": "flow",

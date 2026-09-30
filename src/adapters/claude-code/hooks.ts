@@ -50,6 +50,7 @@ import {
   SPAWN_STARTED_EVENT,
   WAKE_DELIVERED_EVENT,
   WAKE_INJECTED_EVENT,
+  WRITE_UP_FAILED_EVENT,
 } from "../../core/counterpart.js";
 import type { AdapterDurableEventName, PlainReminder } from "../../core/counterpart.js";
 import { newNightRunId } from "../../core/dream/index.js";
@@ -1088,7 +1089,9 @@ export class ClaudeCodeAdapter {
       });
       return text;
     } catch (err) {
-      this.emit("adapter.writeup.failed", { code: codeOf(err) });
+      // DURABLE since 2026-09-30: whether a session was ever offered its
+      // write-up is a fact a later reading needs, and this ring dies with the hook.
+      this.record(WRITE_UP_FAILED_EVENT, input, { code: codeOf(err) });
       return "";
     }
   }

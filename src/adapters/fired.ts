@@ -293,12 +293,16 @@ export const MECHANISMS: readonly Mechanism[] = [
     label: "the conversation is captured when a session pauses or ends",
     module: "remember/spans",
     evidence: { kind: "event", names: ["adapter.boundary"] },
+    // A turn the buffer would not take (2026-09-30): a failure of this row.
+    covers: ["remember.capture.failed"],
   },
   {
     id: "ask",
     label: "the session is asked to write its own memories before it stops",
     module: "claude-code/hooks.ts",
     evidence: { kind: "event", names: ["adapter.ask"] },
+    // The next session's pointer to a write-up it could not compose (2026-09-30).
+    covers: ["adapter.writeup.failed"],
   },
   {
     id: "ask-two-part",

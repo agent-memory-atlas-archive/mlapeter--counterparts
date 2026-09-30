@@ -542,6 +542,20 @@ export const SPAWN_REFUSED_EVENT = "adapter.spawn.refused";
 export const SPAWN_FAILED_EVENT = "adapter.spawn.failed";
 export const RUNNER_FAILED_EVENT = "adapter.runner.failed";
 /**
+ * A WRITE-UP POINTER THAT COULD NOT BE COMPOSED (2026-09-30), durable because
+ * "was this session ever offered its write-up" is a fact a later reading needs
+ * and the ring that said so died with the SessionStart that failed.
+ */
+export const WRITE_UP_FAILED_EVENT = "adapter.writeup.failed";
+/**
+ * A TURN'S CAPTURE THAT FAILED (2026-09-30): the span buffer would not take
+ * the turn (`remember/spans.ts` — a failed write, or the outermost swallow).
+ * Written by `captureSpans`, which is where a store is. Code and site, never
+ * the words: `remember.capture.failed` and `remember.write.failed` are both
+ * this one row, told apart by `site`.
+ */
+export const CAPTURE_FAILED_EVENT = "remember.capture.failed";
+/**
  * THE WORKER THAT DID START (2026-09-20, E2).
  *
  * The three rows above prove a door that failed; none of them proves a door
@@ -708,6 +722,7 @@ export type AdapterDurableEventName =
   | typeof SPAWN_FAILED_EVENT
   | typeof SPAWN_STARTED_EVENT
   | typeof RUNNER_FAILED_EVENT
+  | typeof WRITE_UP_FAILED_EVENT
   | typeof MCP_RECALL_EVENT
   | typeof CHECKOUT_EVENT
   | typeof SNAPSHOT_TAKEN_EVENT
@@ -1881,7 +1896,39 @@ export class Counterpart {
    * failures and returns a reason (§2 G1/G12).
    */
   captureSpans(input: { session: string; scope: string; turns: readonly CapturedTurn[] }): CaptureResult {
-    return this.spans.capture(input);
+    const out = this.spans.capture(input);
+    if (out.reason === "IO_FAILED") this.noteCaptureFailed(input.session);
+    return out;
+  }
+
+  /**
+   * A TURN THE BUFFER WOULD NOT TAKE, as a durable row (2026-09-30). The
+   * buffer holds no store, so its failure is read off its own ring — the
+   * newest `remember.write.failed` or `remember.capture.failed`, which this
+   * synchronous call just emitted — and written here. Never throws.
+   */
+  private noteCaptureFailed(session: string): void {
+    if (this.observer) return;
+    const failed = this.spans
+      .events()
+      .reverse()
+      .find((e) => e.name === "remember.write.failed" || e.name === "remember.capture.failed");
+    const site = failed?.data?.["site"];
+    const code = failed?.data?.["code"];
+    try {
+      this.store.appendEvent({
+        name: CAPTURE_FAILED_EVENT,
+        day: this.store.livedDay(),
+        payload: {
+          session,
+          site: typeof site === "string" ? site : "capture",
+          code: typeof code === "string" ? code : "UNKNOWN",
+          date: this.store.today(),
+        },
+      });
+    } catch (err) {
+      this.emit("counterpart.capture.record.failed", undefined, { code: errCode(err) });
+    }
   }
 
   /** An in-the-moment jot, riding in the buffer with ordinary spans. */

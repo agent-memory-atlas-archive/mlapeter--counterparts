@@ -338,6 +338,14 @@ export const NARRATORS = {
     amber(
       `My background worker opened the store and then failed at ${String(t.p["step"] ?? "an unnamed step")} (${String(t.p["code"] ?? "no code")}).`,
     ),
+  "adapter.writeup.failed": (t) =>
+    amber(
+      `A session started and I could not hand it the pointer to an earlier session's write-up (${String(t.p["code"] ?? "no code")}). The next session start tries again.`,
+    ),
+  "remember.capture.failed": (t) =>
+    amber(
+      `I could not keep a turn's words for its write-up — ${String(t.p["site"] ?? "the capture")} failed (${String(t.p["code"] ?? "no code")}). The next boundary reads the same turns again.`,
+    ),
   // WHICH CODE WAS LIVE. Calm on master, amber otherwise: the hooks run whatever
   // the install tree has checked out, so a branch sitting in it is not a
   // development state — it is the memory layer that ran that day.
@@ -1027,6 +1035,8 @@ export const REF_KIND = {
   "adapter.primacy.standdown": "none",
   "adapter.recall": "none",
   "adapter.runner.failed": "none",
+  "adapter.writeup.failed": "none",
+  "remember.capture.failed": "none",
   "adapter.semantic.lag": "none",
   "adapter.spawn.failed": "none",
   "adapter.spawn.refused": "none",
