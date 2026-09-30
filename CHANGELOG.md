@@ -1,5 +1,147 @@
 # Changelog
 
+## 0.3.8 — 2026-09-30
+
+When two memories disagree, Claude can now say how: the fact changed, the old one was
+wrong, or it's still open, with a trail and an undo. What hasn't been written up is
+counted in one place, and a debt lapses after a few days of use instead of waiting
+forever. The wake keeps up with the day, a process log records what the hooks, the
+worker, the nightly run and the memory server did, and the dashboard takes the 09-30
+feedback. **The store's format changes (v9 → v10).**
+
+**The format change, and why every session must be closed.** The first Claude Code
+session after installing copies the store (as every upgrade since 0.3.1 has) and
+upgrades it: two new tables for contradictions and their trail, and one new column on
+every memory (`fade`, 1 unless a memory was settled as changed). Every contradiction a
+dream flagged and nobody settled is carried onto the new table, with its "already
+raised" mark. Nothing else changes, and all memories come through. Until that first
+session, `counterparts doctor` and the dashboard can't read the store yet (a v9 store is
+older than they read) and say so; the next session's hook does the upgrade. **Close
+every Claude Code session before installing.** A v10 store can't be opened by 0.3.7:
+anything of 0.3.7's that opens it afterwards refuses at once (`SCHEMA_AHEAD`), and its
+hooks stand down. But a session that was already open when you installed keeps its own
+memory server, still running 0.3.7's code with the store already open, and that open was
+the one place the check ran. Its memory tools re-read the format on every call and
+refuse ("Counterparts was updated and this server is still running the old version, so
+this tool did nothing. Run /mcp and Reconnect to load it."), so in a session opened
+before the install, don't rely on the memory tools: quit it and start a new one, or run
+`/mcp` → Reconnect. The hooks are fresh processes at every event, so they run the new
+code at once and are fine. To go back to 0.3.7 you reinstall it and put back the copy
+the upgrade took; anything remembered since is lost.
+
+Contradictions.
+
+- **Three ways a disagreement is settled, each with its own outcome.** When Claude
+  writes a memory that `updates` an older one, it says `how` (`changed` is the default):
+  - **changed** — true then, not now. The older memory takes one strength cut (half) and
+    stays recallable, labelled `Earlier (now [id])`. A later use resets its fading as
+    always but doesn't lift the cut.
+  - **corrected** — the older one was wrong. It is put away (archived): it leaves recall
+    and stays readable by its own id, `Corrected by [id]`. Nothing is deleted.
+  - **open** — both stand, and recall shows each with `(disagrees with [id])`.
+- Beliefs, the core, current-state and protected memories keep their own paths; a `how`
+  sent at one of those is not applied, and the answer says which path ran.
+- **Claude notices at write time.** A `note` or `session_end` memory comes back with up to
+  three of its nearest live memories and one line inviting a settle, if one of them
+  disagrees. No model call.
+- **Settling a pair that already exists**, from anywhere: `note` with `settle` (no new
+  memory needed), the dream's new `settle` action (a reason is required), the
+  reflection's `settle` phase (only on memories it was shown), and yours:
+  **`counterparts settle`** lists what's unsettled and what was settled lately, settles
+  one (`--pair … --holds … --how … --why "…"`), or undoes one (`--undo`). Settling an
+  existing pair rewrites no memory.
+- **Every settle and every undo leaves a trail row**: who (a session, a dream, the
+  reflection, you), how, why, which memories, and when. An undo puts back exactly what
+  the settle did: the strength, the archive, the flags it closed. Removing the memory
+  that settled a pair puts the other one back.
+- **Unsettled pairs are labelled.** The older memory of a pair nobody has settled reads
+  `Unsettled — may be out of date, see [id]`, in recall and in the wake's lanes. Dream
+  flags are raised once awake, as before, now naming the pair and the `note` settle.
+- **A replaced memory is readable by its own id**, with `replaced by [id]`; `counterparts
+  ask` prints a memory's standing above its words.
+- Doctor has a **Contradictions** line (the last 7 days: flagged, settled by kind and by
+  whom, undone, still open or unsettled) and an **Upgrade to v10** line.
+  `counterparts mechanisms` counts reconsolidation as built and interference as partly
+  built.
+
+What is written up, and what is owed.
+
+- **One place says what hasn't been written up yet.** A piece of conversation counts as
+  written up only when something claims it: a memory from it, a write-up answered
+  "nothing new" (`memories: []`), or a chapter. A handoff alone doesn't. Each claim is
+  for the project it was made in.
+- **One rule for what a session owes**: at least 3 unwritten pieces spanning 15 minutes
+  or more, in a session that has ended or captured nothing since the date changed. It
+  replaces the old asked/answered rule and the 12-hour silence window. Short sessions
+  (1–2 pieces, or 3 or more inside 15 minutes) owe nothing. A small debt (under 6 pieces)
+  gets the same pointer with one more sentence: "It was a short session: one line is
+  enough, or memories: [] if nothing in it is worth keeping." The next session's pointer
+  and caps are unchanged: two pointers a day across the store, this project only.
+- **A debt lapses instead of waiting forever.** An owed stretch has two more days of use
+  (days with a turn end) after the day of its latest piece; at the first turn end of the
+  third, it lapses. Nothing is deleted: the session stops owing, and its text goes on the
+  ordinary 7-day retention. On a store with old unwritten stretches, the first pass
+  lapses them, one record each.
+- **The in-session ask has a third reason**: three pieces not yet written up, half an
+  hour after the later of the first of them and the last ask (`due-unwritten`). The
+  day's cap on asks is unchanged, and an unanswered ask isn't repeated without new
+  pieces.
+- **The handoff pointer says how current it is**: `Where I left off in this directory
+  (written 09-29 12:47): …`, and when work here ran after it, `(written 09-29 12:47; work
+  here 13:02–15:41 since, not yet written up)` or `…, written up since`. The excerpt is
+  the first real sentence, without a leading list marker.
+- **`counterparts coverage [--date YYYY-MM-DD]`** says, in plain words, what was written
+  up and what is not yet, for a day. Doctor's **Crash write-up** line is now **Write-ups**:
+  yesterday's state, amber when a stretch the pointer can offer is still owed from
+  yesterday or earlier, small debts it never offers named apart as "left to lapse", and
+  the week's lapses. The 3-day wait is gone.
+
+The wake.
+
+- **The wake keeps up with the day.** It used to be written once, at the day's first
+  turn end, so a self page written later, a write-up that landed, or the nightly run's
+  page reached no session until the next day. Now each of those marks the wake behind,
+  and the next turn end re-renders it; the nightly run re-renders it when it finishes.
+  Re-renders on the same day are stable: the same Nearby memories, the identity lane
+  rotating once a day.
+- **The wake says what it trimmed.** A lane that lost memories to its cap or to the size
+  budget gets one quiet line, like `(3 more still open; recall ids: mem_…, mem_…, mem_…)`,
+  up to five ids that recall reads whole. Most wakes will carry a "(N more nearby…)"
+  line.
+- **A plain reminder, once told, leaves "Arriving"** for the rest of its grace week.
+  Recall still finds it.
+- **One size budget per hook message** (10,000 bytes; 9,500 for the JSON form). When a
+  session start or a prompt is crowded, parts give way in a stated order and wait for a
+  later turn; nothing is cut, and nothing is marked told that wasn't shown. The
+  first-launch question is now measured against this budget, so it can fit beside a full
+  wake.
+
+The log.
+
+- **A process log**: one line per event from the hooks, the turn-end worker, the nightly
+  run and the memory server, in `sessions/log/<date>.log` inside the store (kept 7
+  days). Ids, counts and codes, no conversation text. **`counterparts log [--date
+  YYYY-MM-DD]`** prints a day, oldest first. Doctor has a green **Log** line (where it
+  is, how many days it holds, today's failures).
+- Two failures now leave a durable record: capture failing to write, and a write-up
+  failing.
+
+Cleanup.
+
+- **The page writer's host mode is removed** (the windowless `claude -p` the worker
+  started for the self page alone, off by default since the nightly run). A config that
+  still says `pageWriter.mode: "host"` loads, reads as `session`, and doctor's "Old
+  settings" line names what it ignores.
+
+The dashboard.
+
+- **Dates** in one style ("Sep 30th", with the year when it isn't this year). **Self**:
+  the day-by-day note reads as a sentence, and Arriving items are titles that open the
+  memory. **Memories**: a "by word | by meaning" switch beside the search box, matched
+  words highlighted, close matches for typos, readable line lengths, and a row no longer
+  repeats its own date. **Feelings**: "disgust" reads "dislike". **How well I remember**:
+  one square per memory, scaling as memories grow.
+
 ## 0.3.7 — 2026-09-29
 
 Dreaming asks where you can see it, and "on its own" now means a separate background

@@ -31,7 +31,7 @@ let earlier = 0;
 const WHO = { owner: "you, by hand", session: "a session", writer: "the page writer", reflection: "the reflection" };
 export const who = (by) => (by ? WHO[by] || by : "someone unrecorded");
 
-/** An id as the record writes it: `rfl_06c7d252c3c7`, `drm_5c16061f0f96`, `mem_…`. */
+/** An id as the record writes it: `rfl_…`, `drm_…`, `mem_…` (a prefix, then hex). */
 const RAW_ID = /\b[a-z]{2,6}_[0-9a-f]{6,}\b/g;
 
 /** A reason's own words with the ids taken out, and what that leaves tidied. */
