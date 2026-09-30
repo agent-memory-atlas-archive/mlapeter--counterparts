@@ -185,10 +185,9 @@ export const retentionHost: (store: Store) => (session: string) => HostSessionEv
  * (review n1, named rather than moved).
  *
  * What it may delete is decided by `remember/owes.ts` and nothing here: the
- * pacer's record (`self/episodes.ts#episodeFacts`), the handoff rows, and this
- * host's registry and ask rows (`retentionHost`) are the facts, and a session
- * that owes a write-up, or that the registry holds open, is never in any
- * request.
+ * coverage ledger (`core/coverage/`) and this host's registry
+ * (`retentionHost`) are the facts, and a session that owes a write-up, or that
+ * the registry holds open, is never in any request.
  */
 export function retentionJob(input: {
   counterpart: Counterpart;
@@ -202,14 +201,10 @@ export function retentionJob(input: {
   const store = counterpart.store;
   try {
     if (retentionRuns(store).some((r) => r.date === date)) return { ...none, reason: "already-ran" };
-    const t = counterpart.self.tunables;
     // THE SAME SOURCES THE WRITE-UP READS (`sessions.ts#writeUpSources`), so
     // what this pass keeps as owed and what the next session is asked to write
     // up are one set, by construction rather than by two copies agreeing.
-    const sources = writeUpSources(store, {
-      turns: t.FIRST_ASK_TURNS,
-      textBytes: t.FIRST_ASK_TEXT_BYTES,
-    });
+    const sources = writeUpSources(store);
     // THE DATE IS VISIBLE FROM THE MOMENT IT IS HELD (re-review R7): a
     // `STARTED` row goes in as soon as the latch is taken, before anything is
     // planned, so a run the watchdog kills halfway leaves "started, never

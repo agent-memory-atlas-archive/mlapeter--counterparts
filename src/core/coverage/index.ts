@@ -88,6 +88,9 @@ export interface LedgerEntry {
   readonly small: boolean;
   /** Days of use recorded after the date of the stretch's latest piece. */
   readonly daysOfUseSince: number;
+  /** Its pieces by the date they were captured on (store zone), and how many
+   *  of each date's are written up — what a per-date reading keys on. */
+  readonly perDate: Readonly<Record<string, { readonly pieces: number; readonly written: number }>>;
 }
 
 /** What the host knows about how a session ended. `null`: no end it knows of. */
@@ -204,9 +207,9 @@ function usesAfter(uses: readonly string[], date: string): number {
 
 interface Tally {
   scopes: Set<string>;
+  all: Piece[];
   unwritten: Piece[];
   pieces: number;
-  written: number;
   lastCaptureAt: number;
   endAt: number | null;
   writtenUpAt: number | null;
@@ -225,7 +228,7 @@ export function ledger(buffer: SpanBuffer, opts: LedgerOptions): LedgerEntry[] {
     if (typeof session !== "string" || session.length === 0) return null;
     let t = tallies.get(session);
     if (t === undefined) {
-      t = { scopes: new Set(), unwritten: [], pieces: 0, written: 0, lastCaptureAt: 0, endAt: null, writtenUpAt: null };
+      t = { scopes: new Set(), all: [], unwritten: [], pieces: 0, lastCaptureAt: 0, endAt: null, writtenUpAt: null };
       tallies.set(session, t);
     }
     return t;
@@ -240,8 +243,9 @@ export function ledger(buffer: SpanBuffer, opts: LedgerOptions): LedgerEntry[] {
       t.scopes.add(scope);
       t.pieces += 1;
       t.lastCaptureAt = Math.max(t.lastCaptureAt, at);
-      if (covered.has(s.hash)) t.written += 1;
-      else t.unwritten.push({ at, bytes: Buffer.byteLength(s.text, "utf8"), scope });
+      const piece = { at, bytes: Buffer.byteLength(s.text, "utf8"), scope };
+      t.all.push(piece);
+      if (!covered.has(s.hash)) t.unwritten.push(piece);
     }
     // The rest is read into a tally too, whichever scope comes first: a
     // session with no piece at all is dropped below.
@@ -280,6 +284,14 @@ export function ledger(buffer: SpanBuffer, opts: LedgerOptions): LedgerEntry[] {
     const since = stretch === null ? 0 : usesAfter(uses, localDate(stretch.lastAt, opts.zone));
     const lapsed = floor && since >= COVERAGE_TUNABLES.LAPSE_DAYS_OF_USE;
     const owed = floor && state !== "active" && !lapsed;
+    const perDate: Record<string, { pieces: number; written: number }> = {};
+    const open = new Set(unwritten);
+    for (const p of t.all) {
+      const d = localDate(p.at, opts.zone);
+      const cell = (perDate[d] ??= { pieces: 0, written: 0 });
+      cell.pieces += 1;
+      if (!open.has(p)) cell.written += 1;
+    }
     out.push({
       session,
       scopes: [...t.scopes].sort(),
@@ -294,6 +306,7 @@ export function ledger(buffer: SpanBuffer, opts: LedgerOptions): LedgerEntry[] {
       lapsed,
       small: owed && (stretch?.pieces ?? 0) < COVERAGE_TUNABLES.SMALL_STRETCH_PIECES,
       daysOfUseSince: since,
+      perDate,
     });
   }
   return out;

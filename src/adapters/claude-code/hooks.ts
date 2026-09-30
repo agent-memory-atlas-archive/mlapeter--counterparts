@@ -182,9 +182,9 @@ export interface HookInput {
   /**
    * How the host was started, from `CLAUDE_CODE_ENTRYPOINT` in the hook's
    * environment (`cli`, `sdk-cli` for `claude -p`, `sdk-ts` / `sdk-py` for the
-   * Agent SDK, …). Kept on the session's registry record; a short session
-   * that was not a person's interactive conversation owes no one-line
-   * write-up (`sessions.ts#NON_INTERACTIVE_ENTRYPOINTS`, review of #285 N2).
+   * Agent SDK, …). Kept on the session's registry record; a small owed
+   * stretch from one that was not a person's interactive conversation is not
+   * pointed at (`sessions.ts#NON_INTERACTIVE_ENTRYPOINTS`, review of #285 N2).
    */
   readonly entrypoint?: string;
   /**
@@ -422,9 +422,9 @@ export const PAGE_WRITER_TOOL = "counterparts self_page";
 /**
  * THE NEXT-SESSION WRITE-UP'S POINTER (roadmap C2, owner 2026-09-23).
  *
- * A session that ended before it was written up — `remember/owes.ts#owesWriteUp`
- * says it owes, defined once by B3 — is written up by the NEXT session that
- * starts in its project. This hook does not carry its words: it puts a short
+ * A session that ended before it was written up — it owes, by `core/coverage/`'s
+ * rule, read through `remember/owes.ts#planRetention` — is written up by the
+ * NEXT session that starts in its project. This hook does not carry its words: it puts a short
  * POINTER beside the wake in `HookResult.ask` (how many sessions here are
  * waiting, the oldest one's id, date and size, and the call that fetches it),
  * and the words come back through the MCP door (`mcp/write-up.ts`):
@@ -471,12 +471,13 @@ export const WRITE_UP_TOOL = "counterparts session_end";
 export const WRITE_UP_ASK_DATE_KEY = "adapter.writeup.asks.date";
 export const WRITE_UP_ASK_COUNT_KEY = "adapter.writeup.asks.count";
 
-/** What the pointer adds for a SHORT session (2026-09-29): one plain sentence. */
+/** What the pointer adds for a SMALL owed stretch (2026-09-29; since
+ *  2026-09-30 `coverage/`'s `small`, under six pieces): one plain sentence. */
 export const WRITE_UP_SHORT_LINE = "It was a short session: one line is enough, or memories: [] if nothing in it is worth keeping.";
 
 /** THE POINTER the model reads — short, because the words come from the door,
- *  and naming the ended session once. A session under the first-ask threshold
- *  (`short`) gets the same pointer and one sentence more. */
+ *  and naming the ended session once. A small owed stretch (`short`) gets the
+ *  same pointer and one sentence more. */
 export function writeUpPointer(input: {
   waiting: number;
   ended: string;
@@ -980,12 +981,7 @@ export class ClaudeCodeAdapter {
         return "";
       }
       const now = this.nowFn();
-      const t = this.counterpart.self.tunables;
-      const plan = writeUpPlan({
-        store,
-        spans: this.counterpart.spans,
-        firstAsk: { turns: t.FIRST_ASK_TURNS, textBytes: t.FIRST_ASK_TEXT_BYTES },
-      });
+      const plan = writeUpPlan({ store, spans: this.counterpart.spans });
       // Entries whose session stopped owing some other way go first.
       pruneWriteUpProgress(store, plan);
       const inFlight = readWriteUpProgress(store);
@@ -995,8 +991,8 @@ export class ClaudeCodeAdapter {
         progress: inFlight,
         pointedToday: (at) => calendarDate(at, zone) === today,
       });
-      // Full write-ups come first (`owedWriteUps`), so a SHORT one is pointed
-      // at only when no full one here is waiting: it takes what is left of the
+      // Full write-ups come first (`owedWriteUps`), so a SMALL one is pointed
+      // at only when no full one is waiting: it takes what is left of the
       // day's allowance.
       const first = owed[0];
       if (first === undefined) return "";
