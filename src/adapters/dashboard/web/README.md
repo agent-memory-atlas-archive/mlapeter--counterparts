@@ -194,7 +194,10 @@ column with the page's history as ONE strip and the wake as a short list.
 page's first version to the newest lived day (`pageDays` in `views/mind.ts`). A
 filled dot is a day it was rewritten; clicking it opens that day's newest
 version above the page, diffed against the one before with `diff.js` (line
-comparison, then words, no deps). A hollow dot is a day it was not; hover or
+comparison, then words, no deps). Who rewrote it and why is said in plain
+words (`rewriteWords`: the reasons a door writes by itself, like the
+reflection's, become words; anything else is quoted with its ids left out;
+the record is untouched). A hollow dot is a day it was not; hover or
 tap it for why, in the page writer's own recorded words (the newest
 `pageWriterRuns` row that happened that lived day, read through `self/`'s
 `pageWriterStatus` and worded by `writerWords`), or "no record" when there is

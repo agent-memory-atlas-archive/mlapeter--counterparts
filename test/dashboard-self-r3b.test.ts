@@ -117,6 +117,23 @@ describe("the self tab, round 3b", () => {
     expect(dayWords(hollow)).toMatch(/^Sep 2nd(, 2026)? · lived day 2 — Not rewritten — x\.$/);
     expect(dayWords({ ...hollow, date: null })).toBe("Lived day 2 — Not rewritten — x.");
     expect(stripSummary([filled, hollow])).toMatch(/^Rewritten on 1 of 2 lived days · newest Sep 4th/);
+    // 2026-09-30: every kind of reason a version carries, as a person would say it, no ids.
+    const today = { ...filled, date: null, today: true, day: 9 };
+    expect(dayWords({ ...today, seqs: [5, 6], by: "reflection", reason: "reflection rfl_06c7d252c3c7 after dream drm_5c16061f0f96" }))
+      .toBe("Today · lived day 9 — rewritten twice, last by the reflection after today's dream.");
+    expect(dayWords({ ...filled, by: "reflection", reason: "reflection rfl_06c7d252c3c7 after dream drm_5c16061f0f96" }))
+      .toMatch(/— rewritten by the reflection after that night's dream\.$/);
+    expect(dayWords({ ...filled, by: "reflection", reason: "reflection rfl_06c7d252c3c7" })).toMatch(/— rewritten by the reflection\.$/);
+    expect(dayWords({ ...filled, seqs: [1, 2, 3], by: "owner", reason: "owner edit" })).toMatch(/— rewritten 3 times, last by you, by hand\.$/);
+    expect(dayWords({ ...filled, by: "owner", reason: "restored version 4" })).toMatch(/— rewritten by you, putting an earlier version back\.$/);
+    expect(dayWords({ ...filled, by: "writer", reason: "the day moved how I hold the castle game (mem_cb6eea7a6b9f)" }))
+      .toMatch(/— rewritten by the page writer: “the day moved how I hold the castle game”$/);
+    expect(dayWords({ ...filled, by: "session", reason: "folded in drm_5c16061f0f96, as asked" }))
+      .toMatch(/— rewritten by a session: “folded in, as asked”$/);
+    expect(dayWords({ ...filled, by: null, reason: null })).toMatch(/— rewritten by someone unrecorded\.$/);
+    for (const r of ["reflection rfl_06c7d252c3c7 after dream drm_5c16061f0f96", "x mem_cb6eea7a6b9f y"]) {
+      expect(dayWords({ ...filled, by: "session", reason: r })).not.toMatch(/[a-z]{2,6}_[0-9a-f]{6,}/);
+    }
     expect(pageDayWords({ what: "rewrote it", next: null })).toBe("The page writer rewrote it.");
     expect(pageDayWords({ what: "nothing ran, and nothing says why", next: null })).toBe("Nothing ran, and nothing says why.");
   });

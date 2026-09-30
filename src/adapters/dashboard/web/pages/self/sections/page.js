@@ -31,6 +31,40 @@ let earlier = 0;
 const WHO = { owner: "you, by hand", session: "a session", writer: "the page writer", reflection: "the reflection" };
 export const who = (by) => (by ? WHO[by] || by : "someone unrecorded");
 
+/** An id as the record writes it: `rfl_06c7d252c3c7`, `drm_5c16061f0f96`, `mem_…`. */
+const RAW_ID = /\b[a-z]{2,6}_[0-9a-f]{6,}\b/g;
+
+/** A reason's own words with the ids taken out, and what that leaves tidied. */
+export function withoutIds(text) {
+  return String(text || "").replace(RAW_ID, "").replace(/\(\s*\)/g, "").replace(/\s+([,.;:)])/g, "$1")
+    .replace(/\s{2,}/g, " ").trim();
+}
+
+/**
+ * Who rewrote the page and why, as a person would say it (2026-09-30). The
+ * record's reason is a string each door writes its own way: the ones a door
+ * writes by itself are said in plain words and need no quote; anything else (a
+ * session's or the page writer's own sentence, the owner's `--reason`) is
+ * quoted with its ids left out. Display only: the record is untouched. Pure.
+ * `today`: the day being described is today.
+ */
+export function rewriteWords(by, reason, today) {
+  const r = String(reason || "").trim();
+  if (by === "reflection") {
+    const m = /^reflection\s+\S+(\s+after dream\s+\S+)?$/.exec(r);
+    if (m || r === "") return { who: who(by) + (m && m[1] ? " after " + (today ? "today's" : "that night's") + " dream" : ""), quote: null };
+  }
+  if (by === "owner") {
+    if (r === "" || r === "owner edit") return { who: who(by), quote: null };
+    if (/^restored version \d+$/.test(r)) return { who: "you, putting an earlier version back", quote: null };
+  }
+  const words = withoutIds(r);
+  return { who: who(by), quote: words === "" ? null : words };
+}
+
+/** "rewritten twice, last by …": how many times, in words a person uses. */
+const TIMES = { 2: "twice, last " };
+
 export function paintPage(d) {
   const p = d.page;
   $("self-page").innerHTML = d.pageAbsent
@@ -64,13 +98,16 @@ export function dayName(x) {
 
 /**
  * What the strip's caption says for one day: when, and either who rewrote the
- * page (and the reason they gave) or the view's own words for why it was not.
+ * page (and the reason they gave, said by `rewriteWords`) or the view's own
+ * words for why it was not.
  * Pure, so it is tested without a page.
  */
 export function dayWords(x) {
   if (x.seqs && x.seqs.length > 0) {
-    const times = x.seqs.length > 1 ? x.seqs.length + " times, last " : "";
-    return dayName(x) + " — rewritten " + times + "by " + who(x.by) + (x.reason ? ": “" + x.reason + "”" : ".");
+    const n = x.seqs.length;
+    const times = n > 1 ? TIMES[n] || n + " times, last " : "";
+    const w = rewriteWords(x.by, x.reason, x.today);
+    return dayName(x) + " — rewritten " + times + "by " + w.who + (w.quote ? ": “" + w.quote + "”" : ".");
   }
   return dayName(x) + " — " + (x.why || "not rewritten.");
 }
@@ -167,12 +204,13 @@ function paintVersion() {
   box.hidden = false;
   const s = steps[i];
   const prev = i > 0 ? steps[i - 1] : null;
+  const w = rewriteWords(s.by, s.reason, days.some((x) => x.day === s.day && x.today));
   const head =
     '<div class="tl-vhead"><b>' + (s.current ? "The page as it stands" : "Version " + (s.seq - 1)) + "</b>" +
     '<span class="tl-meta">' + esc(dateWords(s.date) || "undated") + (s.day !== null ? " · lived day " + s.day : "") +
-    " · written by " + esc(who(s.by)) + (s.bytes !== null ? " · " + s.bytes + " bytes" : "") + "</span>" +
+    " · written by " + esc(w.who) + (s.bytes !== null ? " · " + s.bytes + " bytes" : "") + "</span>" +
     '<button type="button" class="tl-close" id="self-version-close" aria-label="Close this version">close</button></div>' +
-    (s.reason ? '<div class="tl-why">“' + esc(s.reason) + "”</div>" : "");
+    (w.quote ? '<div class="tl-why">“' + esc(w.quote) + "”</div>" : "");
   let toggle = "";
   let body;
   if (s.body === null) {
