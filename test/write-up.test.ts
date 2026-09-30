@@ -343,15 +343,19 @@ describe("the pointer: the next session start in that project is pointed at it",
   });
 
   test("the review's idle repro: a session open a day that WROTE ITS STRETCH UP — a chapter, or \"nothing new\" — is never offered (MAJOR 3)", async () => {
+    // Opened yesterday morning, not "now minus a day": its pieces run forty
+    // minutes past `at`, and in the last forty minutes of a day that put the
+    // last one in today, where the session reads as still at work.
+    const opened = todayStart() - DAY + 3 * HOUR;
     const s = seeder();
     // Answered with a chapter, still open in the registry (no end).
-    ended(s, "idle-1d", { at: Date.now() - 1 * DAY, end: "crash", answered: true });
+    ended(s, "idle-1d", { at: opened, end: "crash", answered: true });
     s.done();
     // Answered with "nothing new" instead of a chapter reads the same: since
     // 2026-09-30 that answer claims the session's pieces.
     const t = seeder();
-    ended(t, "idle-nn", { at: Date.now() - 1 * DAY, end: "crash" });
-    expect(markNothingNew(storeDir, "idle-nn", Date.now() - 1 * DAY + 60_000)).not.toBeNull();
+    ended(t, "idle-nn", { at: opened, end: "crash" });
+    expect(markNothingNew(storeDir, "idle-nn", opened + 60_000)).not.toBeNull();
     claimUnwritten(t.c.spans, { session: "idle-nn", scope: PROJ, by: CLAIM_NOTHING_NEW, ref: "idle-nn" });
     t.done();
     const c = Counterpart.open({ dir: storeDir, owner: true });
