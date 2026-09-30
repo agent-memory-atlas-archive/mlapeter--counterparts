@@ -455,6 +455,17 @@ export async function runNight(input: NightRunInput): Promise<NightRun> {
       reflection = reflected?.id ?? null;
       dream = journaled?.id ?? reflected?.dream_id ?? (input.kind.kind === "reflection" && reflected !== undefined ? input.kind.dream : null);
     } finally {
+      // THE WAKE CATCHES UP TO THE RUN (2026-09-30), whatever state it ended
+      // in: the page it wrote, the dream's merges. Nothing else follows it —
+      // the child is quiet — and under `auto` the day's first worker has
+      // usually rendered the morning's wake before the writer wrote. The
+      // host's budget came with the store (`openNightCounterpart`); without
+      // one the render refuses, as everywhere. Its own try: never the record.
+      try {
+        c.refreshWake({ at: c.store.today(), trigger: "run-end" });
+      } catch {
+        /* the wake catches up at the next worker or the next lived day */
+      }
       c.close();
     }
   } catch {

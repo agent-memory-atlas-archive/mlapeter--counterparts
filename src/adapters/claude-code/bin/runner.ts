@@ -29,6 +29,8 @@
  *      2026-09-04, `remember/fallback.ts`);
  *   2. the Hebbian flush;
  *   3. the sleep cycle, whose last content write is the wake briefing;
+ *   3a. the wake's catch-up (2026-09-30): re-rendered again when the page was
+ *      written or a write-up landed since its last render (`refreshWake`);
  *   3b. RAW TRANSCRIPT RETENTION (owner's ruling 2026-09-23): once per date —
  *      behind an `O_EXCL` latch under `spans/retention/` — a session's captured
  *      text is deleted 7 days after it ended when it owes no write-up and the
@@ -398,6 +400,17 @@ export async function runOnce(input: {
       carriedRows: report.carried?.rows ?? 0,
       sweep: "next-session",
     });
+    // 3a. THE WAKE CATCHES UP (2026-09-30): a page written or a write-up
+    // landed since the last render re-renders it now, not at the next lived
+    // day. After the cycle, whose own render already caught up to what was
+    // marked before it; nothing marked, nothing rendered.
+    // Its own try: a render that fails costs the refresh, and the mark stays.
+    try {
+      const wake = counterpart.refreshWake({ at: today });
+      if (wake.reason !== "current") emit("runner.wake", { reason: wake.reason, triggers: wake.triggers.join(","), bytes: wake.bytes });
+    } catch (err) {
+      noteFailure(counterpart, emit, err instanceof Error ? err.name : "UNKNOWN", "wake", today);
+    }
     result = { ran: true, reason: "ran", swept, minted, code: null, lag, backfill, snapshot: null, retention: null };
   } catch (err) {
     const code =
