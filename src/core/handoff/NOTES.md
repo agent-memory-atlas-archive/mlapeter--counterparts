@@ -152,6 +152,9 @@ a fresh row rather than reviving a retired one.
 A session that finished work in a directory that never had a handoff said something true,
 and the honest answer is a named fact rather than a silent success.
 
+Since 2026-09-30 all of this is per SESSION (§8): a blank field archives the caller's own
+row and leaves every other session's standing, and "no pointer" means "none of mine".
+
 ## 5c. No refusal channel on either fired row, and why
 
 `Mechanism.refusals` (E2) exists because reading a namespace wholesale made a healthy store
@@ -206,3 +209,55 @@ space.
 `…` is U+2026 and is three bytes in UTF-8. The first draft reserved one character's worth and
 a 160-byte cap rendered 161. Measured, not reasoned about — and the same class of mistake as
 every other byte cap in this tree that counts characters somewhere and bytes somewhere else.
+
+## 8. Why one handoff per session, and what the wake does with several (2026-09-30)
+
+Several sessions often work in one repo at once. With one row per directory, the last to
+end overwrote the others: on 2026-09-30 a pointer saying two builds were in flight was
+replaced by a session that knew nothing of either. The owner's ask was a "from" field and
+room for more than one. What was built, and the choices the brief left open:
+
+- **The key is (directory, session), read from meta that was already there.** Every row
+  written since 2026-09-20 carries `meta.session`, so no migration and no schema change:
+  a row from before keys to the session that last wrote it, that session's next write
+  revises it, and anyone else's mints a fresh row beside it. Only a row with a null
+  session (a direct caller that named none) reads "an earlier session". Two new meta
+  fields ride on new writes: `model` (host state, via the MCP server's session record, as a
+  chapter's model does) and `writtenAt` (this module's clock).
+- **Newest first by lived day, then `writtenAt`, then id.** The lived day alone ties all
+  day; a row from before `writtenAt` existed ranks as the older of two on one day.
+- **Who, in the words the host gives.** The first eight characters of the session id —
+  "this session" for the waking session's own — and the model as a person says it
+  (`claude-opus-5-5` → `Opus 5.5`, anything unfamiliar printed as it came). A name the
+  person gave the session is not in the hook input or the registry; deferred (CONTRACT §8
+  question 6). A single handoff with no session reads exactly as it did before.
+- **The several-handoff block is a count line, up to three one-line entries, the rest by
+  id, one door.** One line each (who, when, the first sentence, the id) rather than three
+  copies of the two-line block, which would cost a third more for the same words. Only the
+  newest says whether work ran here since: for the older ones the newer handoffs are that
+  work. Numbered `1)`, never `- `, because the pointer is furniture.
+- **A LADDER, not one block.** The reserve lags a boundary (§2); a directory's first
+  second author appears at a boundary whose reserve was sized for one pointer, and without
+  the ladder that wake would drop the pointer whole. So the delivery tries three shown,
+  two, one, then the newest's own two-line block, and carries the first that fits;
+  `no-room` is written only when the last rung does not. The last rung says nothing of the
+  others — a shorter pointer that fits beats a fuller one dropped whole, for one boundary.
+- **`reserveBytes` takes the widest candidate that passes the share rule**, where it took
+  the widest and then asked. With one block per directory that is the same answer except
+  in one case: a narrow block in one directory is now reserved for when a wider one
+  elsewhere fails the share, where before the wider one turned the reserve off for both.
+  The ceiling constant grew from 448 to 1,344 because the widest block grew; the share rule
+  is what binds in practice (at 9,000, nothing past 1,125).
+- **`handoff.shown` is one row per handoff shown in full**, deduped per row per lived day
+  as before, and the block's bytes are split so the rows sum to the cost — each entry its
+  own line, the newest the rest (count line and door). `among` says how many were live, so
+  the fired view can see whether handoffs pile up.
+- **Retire by id** was small enough to build: `retireHandoff` on `session_end`, any live
+  handoff filed under the caller's directory, `not-here` for anything else. It exists
+  because per-session rows accumulate — a session that finishes another's work could
+  otherwise only leave the stale pointer standing for its fortnight. It rides the same
+  field rules as `handoff`: before the memories check, counts as landing something, and
+  refused beside `writeUp`.
+- **`dream/mind.ts` still reads one open loop per directory** (`newestPerScope`, now the
+  newest across sessions). Showing every session's there is a question for the mind's own
+  budget, not this change.

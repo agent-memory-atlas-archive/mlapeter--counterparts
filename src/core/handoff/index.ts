@@ -1171,7 +1171,9 @@ export class Handoffs {
   }
 
   /**
-   * The durable row a SHOWN pointer leaves — ONCE per directory per lived day.
+   * The durable row a SHOWN pointer leaves — ONCE per handoff per lived day
+   * (one per directory until 2026-09-30, when a directory began to hold one
+   * per session; each shown in full gets its own row).
    *
    * It was one row per wake, which is consistent with `wake.injected` and is
    * still the wrong shape for the one question the row exists to answer.
