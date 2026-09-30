@@ -31,7 +31,15 @@ write-ups (and arbitration between two writers claiming first) is a later build.
 row (`not-opted-in`). Nothing in this module reaches it, and nothing claims what it would
 have.
 
-## 5. "Nothing new" before 2026-09-30
+## 5. A piece in a claim file can only be closed by the write-up mark
+
+The ledger counts what a claim file holds in flight (NOTES §4), but
+`SpanBuffer.claimCoverage` marks only the live buffer's pieces: a memory, "nothing new" or
+a chapter cannot claim a piece while it sits in a claim file. The door's write-up mark
+(`writtenUpAt`) does close it. Keyless, claim files are only a crashed run's orphans, which
+the next claim merges back.
+
+## 6. "Nothing new" before 2026-09-30
 
 Before this build a `memories: []` answer marked the registry (`nothingNewAt`) and claimed
 nothing. Those sessions' stretches read unwritten now, and lapse with their days of use.

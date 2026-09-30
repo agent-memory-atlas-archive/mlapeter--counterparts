@@ -509,7 +509,11 @@ export function recordCoverage(
     }
     const through = Number(store.getMeta(COVERAGE_WRITTEN_THROUGH_KEY) ?? "NaN");
     if (Number.isFinite(through)) written = writtenRows(buffer, through - WRITTEN_SLACK_MS, opts, append);
-    store.setMeta(COVERAGE_WRITTEN_THROUGH_KEY, String(opts.now));
+    // Moved only when it has fallen a slack behind (or on the first pass), so a
+    // quiet turn-end writes nothing; the window re-read stays two slacks wide.
+    if (!Number.isFinite(through) || opts.now - through >= WRITTEN_SLACK_MS) {
+      store.setMeta(COVERAGE_WRITTEN_THROUGH_KEY, String(opts.now));
+    }
     return { reason: "recorded", owed, lapsed, written, rows };
   } catch {
     return { reason: "failed", owed, lapsed, written, rows };
