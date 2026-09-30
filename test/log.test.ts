@@ -54,6 +54,7 @@ import { logFindings } from "../src/adapters/claude-code/doctor.js";
 import type { DoctorInput } from "../src/adapters/claude-code/doctor.js";
 import { EXIT, run } from "../src/adapters/cli/index.js";
 import type { Io } from "../src/adapters/cli/index.js";
+import { openServer } from "../src/adapters/mcp/index.js";
 
 const SRC = resolve(import.meta.dir, "..", "src");
 const HOOK = join(SRC, "adapters", "claude-code", "bin", "hook.ts");
@@ -274,6 +275,22 @@ describe("the content rule (store §5 G10)", () => {
     expect(text).not.toContain("7f3a9c");
   });
 
+  test("a model-typed write-up id reaches the log only when the registry knows the session", async () => {
+    makeStore();
+    recordSession(dir, { sessionId: "s-live", scope: "proj", phase: "start" });
+    recordSession(dir, { sessionId: "s-old", scope: "proj", phase: "start" });
+    const log = openLog({ dataDir: dir, proc: "mcp" });
+    const s = openServer({ dir, scope: "proj", owner: true, onEvent: log.event, onCounterpartEvent: log.event });
+    open.push(s.counterpart);
+    await s.call("session_end", { session: "s-live", writeUp: "SecretWordBravo" });
+    await s.call("session_end", { session: "s-live", writeUp: "s-old" });
+    const writeUps = lines().filter((l) => l["name"] === "mcp.write_up");
+    expect(writeUps).toHaveLength(2);
+    expect(writeUps[0]?.["ref"]).toBeUndefined();
+    expect(writeUps[1]?.["ref"]).toBe("s-old");
+    expect(everything()).not.toContain("SecretWordBravo");
+  });
+
   test("a value that is not an id, a code or a count is written as its length", () => {
     expect(
       clean({
@@ -445,6 +462,18 @@ describe("each of the four processes writes its lines", () => {
     for (const l of got) expect(l).toMatchObject({ proc: "hook:session-start", session: "s-hook" });
     // The allowlist held across a real process, where many more names fired.
     for (const name of names) expect(logged(String(name)), String(name)).toBe(true);
+
+    // A prompt, the most frequent event, writes its end and no start.
+    const prompt = spawnSync(process.execPath, ["run", HOOK, "--config", configPath], {
+      input: JSON.stringify({ hook_event_name: "UserPromptSubmit", session_id: "s-hook", cwd: work, prompt: "hello" }),
+      encoding: "utf8",
+      env: spawnEnv(),
+      timeout: 60_000,
+    });
+    expect(prompt.status).toBe(0);
+    const promptLines = lines().filter((l) => l["proc"] === "hook:user-prompt-submit");
+    expect(promptLines.map((l) => l["name"])).toContain("process.end");
+    expect(promptLines.map((l) => l["name"])).not.toContain("process.start");
   }, 60_000);
 
   test("the worker: start, the day's summary, end", () => {
@@ -559,10 +588,16 @@ describe("counterparts log", () => {
     log.start();
     log.event({ at: now, name: "adapter.boundary", data: { spans: 2, captured: true, reason: "APPENDED" } });
     log.event({ at: now, name: "adapter.tail.failed", data: { code: "EACCES" } });
+    // A ring-shaped handoff: its durable sentence would misread these fields,
+    // so it prints them as they are.
+    log.event({ at: now, name: "handoff.written", data: { bytes: 120, version: 1, created: true } });
     log.end("APPENDED");
     const c = consoleWith();
     expect(await run(["log", "--dir", dir], { io: c.io, env: {}, now: () => now })).toBe(EXIT.ok);
-    expect(c.out).toHaveLength(4);
+    expect(c.out).toHaveLength(5);
+    expect(c.out[3]).toContain("handoff.written  bytes=120 version=1 created=true");
+    expect(c.out[3]).not.toContain("showing for");
+    c.out.splice(3, 1);
     expect(c.out[0]).toMatch(/^\d{2}:\d{2}:\d{2}  hook:stop\s+3f2a9c1e  process\.start/);
     expect(c.out[1]).toContain("adapter.boundary");
     expect(c.out[1]).toContain("A session reached its boundary — 2 turns captured");
