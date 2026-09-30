@@ -63,9 +63,10 @@ const BODY_TWO = "Placeholder: the parser rewrite landed; next is the error mess
 // Pinning it to the day these tests were written made them fail the next morning.
 const WRITTEN_ON = localDate(Date.now()); // the person's day since 2026-09-25 (docs/time.md)
 // Since 2026-09-30 the line says WHEN it was written, to the minute, in the
-// store's zone — "written 09-30 14:05" — computed at delivery (`PointerSince`).
+// store's zone — "written 09-30 14:05" — computed at delivery (`PointerSince`),
+// and, when the row names its session, WHO: "… by session sess_a".
 const WRITTEN_LINE = new RegExp(
-  `Where I left off in this directory \\(written ${WRITTEN_ON.slice(5)} \\d{2}:\\d{2}\\): `,
+  `Where I left off in this directory \\(written ${WRITTEN_ON.slice(5)} \\d{2}:\\d{2}(?: by [^)]*)?\\): `,
 );
 
 let dir: string;
@@ -198,11 +199,11 @@ describe("the handoff's row", () => {
     expect(s.list({ type: "schema", kind: HANDOFF_KIND, archived: false })).toHaveLength(2);
   });
 
-  test("a newer handoff REVISES the same row; the one it replaced is kept as a version", () => {
+  test("a newer handoff from the SAME session REVISES its row; the one it replaced is kept as a version", () => {
     const s = store();
     const h = handoffs(s);
     const first = h.write({ body: BODY, scope: HERE, session: "s1" });
-    const second = h.write({ body: BODY_TWO, scope: HERE, session: "s2" });
+    const second = h.write({ body: BODY_TWO, scope: HERE, session: "s1" });
     expect(second.reason).toBe("revised");
     expect(second.id).toBe(first.id as string);
     expect(second.version).toBe(1);
@@ -210,7 +211,7 @@ describe("the handoff's row", () => {
     expect(s.list({ type: "schema", kind: HANDOFF_KIND, archived: false })).toHaveLength(1);
     expect(h.read(HERE)?.body).toBe(BODY_TWO);
     // And the loser is readable, which is what "last writer wins, loser kept"
-    // means: two sessions closing in one directory at the same moment.
+    // means: one session revising its own pointer at a later ask.
     const versions = s.versions(first.id as string);
     expect(versions).toHaveLength(1);
     expect(s.readVersion(first.id as string, versions[0]?.seq as number).body).toBe(BODY);
@@ -969,7 +970,7 @@ describe("the review's findings, each with the thing that was wrong", () => {
     const h = handoffs(s);
     h.write({ body: BODY, scope: HERE, session: "s1" });
     expect(h.read(HERE)?.body).toBe(BODY);
-    const out = h.clear(HERE, { session: "s2" });
+    const out = h.clear(HERE, { session: "s1" });
     expect(out.written).toBe(true);
     expect(out.reason).toBe("cleared");
     // Gone from every read, gone from the reserve, and the words are still
@@ -981,7 +982,7 @@ describe("the review's findings, each with the thing that was wrong", () => {
     expect(s.readProse(out.id as string).body).toBe(BODY);
     expect(eventNames(s)).toContain(HANDOFF_CLEARED_EVENT);
     // And the next handoff here mints a fresh row rather than reviving one.
-    const again = h.write({ body: BODY_TWO, scope: HERE });
+    const again = h.write({ body: BODY_TWO, scope: HERE, session: "s1" });
     expect(again.reason).toBe("created");
     expect(again.id).not.toBe(out.id as string);
   });

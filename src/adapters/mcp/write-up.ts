@@ -52,8 +52,9 @@
  * **What it refuses, each by name** (a refusal writes nothing — no memory, no
  * progress, no mark):
  *
- *   - `handoff-not-accepted` — a `handoff` beside `writeUp`: the pointer is
- *     THIS directory's, written by the live session for itself;
+ *   - `handoff-not-accepted` — a `handoff` (or a `retireHandoff`) beside
+ *     `writeUp`: the pointer is THIS directory's, written by the live session
+ *     for itself;
  *   - `unknown-session` — not an id, or one the hooks never recorded and the
  *     buffer holds no words for;
  *   - `live-session` — this session's own id, or one still at work (it
@@ -207,7 +208,8 @@ interface Standing {
 export async function writeUpDoor(input: WriteUpDoorInput): Promise<WriteUpOutcome> {
   const { args, counterpart } = input;
   const ended = args["writeUp"];
-  if (args["handoff"] !== undefined && args["handoff"] !== null) {
+  const present = (v: unknown): boolean => v !== undefined && v !== null;
+  if (present(args["handoff"]) || present(args["retireHandoff"])) {
     return refused("handoff-not-accepted", {
       detail: "A handoff is this directory's pointer, written by this session for itself. Send it on its own `session_end`, without `writeUp`.",
     });

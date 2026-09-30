@@ -34,22 +34,27 @@
  *     has dwelt `D_FLOOR_DAYS`. Nothing new forgets it; the existing forgetting
  *     does.
  *
- * **One live pointer per directory.** A newer handoff for the same scope is an
- * ordinary `store.revise` of the SAME row, so the one it replaces becomes an
- * ordinary version and the row keeps its whole chain — the self page's
- * precedent (`self/page.ts`, "ONE ROW FOR THE LIFE OF THE PAGE"), chosen over an
- * archived row because a superseded row is one more thing `revise`'s readers
- * have to find and because `pruneSupersededVersions` already bounds versions at
- * the ordinary retention. Two sessions ending at once: last writer wins, and the
- * loser is kept as the version underneath it.
+ * **One live pointer per directory PER SESSION** (2026-09-30). A session writing
+ * again for the same scope is an ordinary `store.revise` of ITS OWN row, so the
+ * one it replaces becomes an ordinary version and the row keeps its whole chain
+ * — the self page's precedent (`self/page.ts`, "ONE ROW FOR THE LIFE OF THE
+ * PAGE"), chosen over an archived row because a superseded row is one more thing
+ * `revise`'s readers have to find and because `pruneSupersededVersions` already
+ * bounds versions at the ordinary retention. A DIFFERENT session writing in the
+ * same directory mints its own row: until 2026-09-30 it revised the same one,
+ * and several sessions often work in one repo at once, so the last to end
+ * overwrote the others' pointers (that day, "Two builds are in flight" was
+ * replaced by a session that knew nothing of either). The wake shows every live
+ * one for the directory, newest first, each saying which session wrote it.
  *
  * **It expires in LIVED days** (`store.livedDay()`), not calendar days, because
  * a fortnight of holidays is not a fortnight of work. An expired handoff stops
  * being shown and stops being written over: the row is simply left to the prune.
  */
 import type { ProseDoc, Store } from "../store/index.js";
+import { isModelId } from "../types.js";
 
-/** The `meta.role` that makes a schema row a handoff. One per scope. */
+/** The `meta.role` that makes a schema row a handoff. One per scope and session. */
 export const HANDOFF_ROLE = "handoff";
 
 /**
@@ -97,8 +102,15 @@ export const HANDOFF_EXCERPT_BYTES = 160;
  * THE CEILING ON THE RESERVE, in bytes — the widest block this module can
  * produce, measured by a test at a full-width excerpt, a real id and a six-digit
  * lived day. It is a CEILING and not the reserve: see `reserveBytes`.
+ *
+ * 448 while a directory held one pointer. Since 2026-09-30 the widest block is
+ * the several-handoff one — three shown in full at full-width excerpts, the
+ * widest model id `isModelId` admits, five more named by id — measured at 1,319.
+ * In practice the share rule binds first: at the 9,000 bytes the owner's hosts
+ * report, no reserve can pass 1,125, so a block that wide is carried with two
+ * shown rather than three.
  */
-export const HANDOFF_RESERVE_MAX_BYTES = 448;
+export const HANDOFF_RESERVE_MAX_BYTES = 1344;
 
 /**
  * Slack on top of the block that actually exists, so a reserve taken at one
@@ -151,13 +163,26 @@ export const HANDOFF_RESERVE_MIN_BUDGET_MULTIPLE = 8;
  *      and the bundle is one: a directory that will never be shown a pointer
  *      pays for it otherwise, and on a small ceiling it pays in memories.
  *
- * Pure. The caller passes the live blocks' byte lengths and its ceiling.
+ * Since 2026-09-30 a directory can hold several handoffs, and the caller
+ * passes every block a delivery might splice — for such a directory, each
+ * rung of its ladder (three shown, two, one, the newest alone). The reserve
+ * is the WIDEST of them the share rule allows, so a ceiling too small for
+ * three still reserves for one, and several handoffs can never take more than
+ * the eighth one could. With one block per directory this is the rule as it
+ * was, with one difference: a narrow block in one directory is reserved for
+ * even when a wider one elsewhere fails the share, where before the wider one
+ * turned the reserve off for both.
+ *
+ * Pure. The caller passes the candidate blocks' byte lengths and its ceiling.
  */
 export function reserveBytes(blockBytes: readonly number[], budgetBytes: number): number {
-  const widest = blockBytes.reduce((n, b) => Math.max(n, b), 0);
-  if (widest <= 0) return 0;
-  const want = Math.min(widest + HANDOFF_RESERVE_MARGIN_BYTES, HANDOFF_RESERVE_MAX_BYTES);
-  return want * HANDOFF_RESERVE_MIN_BUDGET_MULTIPLE <= budgetBytes ? want : 0;
+  let best = 0;
+  for (const b of blockBytes) {
+    if (b <= 0) continue;
+    const want = Math.min(b + HANDOFF_RESERVE_MARGIN_BYTES, HANDOFF_RESERVE_MAX_BYTES);
+    if (want * HANDOFF_RESERVE_MIN_BUDGET_MULTIPLE <= budgetBytes && want > best) best = want;
+  }
+  return best;
 }
 
 /**
@@ -173,6 +198,28 @@ export const HANDOFF_META_SCOPE = "scope";
 export const HANDOFF_META_WRITTEN_ON = "writtenOn";
 export const HANDOFF_META_WRITTEN_DAY = "writtenDay";
 export const HANDOFF_META_SESSION = "session";
+/** The model the writing session was answering with, when the host said
+ *  (`sessions.ts#SessionRecord.model`); absent on a row written before
+ *  2026-09-30 or by a caller that knew none. */
+export const HANDOFF_META_MODEL = "model";
+/** Epoch ms of the write, from this module's clock — what "newest first"
+ *  ranks by within a lived day. Absent on a row written before 2026-09-30,
+ *  which then ranks by its lived day and falls back to its `handoff.written`
+ *  row for the time it prints. */
+export const HANDOFF_META_WRITTEN_AT = "writtenAt";
+
+/**
+ * HOW MANY HANDOFFS ONE WAKE SHOWS IN FULL for a directory, newest first. The
+ * rest are named by id on one line (`HANDOFF_WAKE_LISTED` of them) so a
+ * session can still expand or retire them. Three is a working default: enough
+ * for the builds that are really in flight in one repo on a busy day, few
+ * enough that the reserve stays inside the share rule at the ceilings the
+ * owner's hosts report.
+ */
+export const HANDOFF_WAKE_SHOWN = 3;
+
+/** How many further handoffs the "+N older" line names by id; past it, a count. */
+export const HANDOFF_WAKE_LISTED = 5;
 
 /**
  * The wake's own structural markers, refused in a handoff body for the reason
@@ -191,6 +238,7 @@ export type HandoffRefusal =
   | "empty-after-gate"
   | "not-text"
   | "nothing-to-clear"
+  | "not-here"
   | "no-room"
   | "store-refused"
   | "too-large"
@@ -223,6 +271,10 @@ export interface Handoff {
   /** The lived day it was written; null when unrecorded. */
   readonly writtenDay: number | null;
   readonly session: string | null;
+  /** The writing session's model id (`claude-opus-5-5`); null when unrecorded. */
+  readonly model?: string | null;
+  /** Epoch ms of the write, from the row's meta; null on an older row. */
+  readonly writtenAt?: number | null;
   /** `revision` on the row: 0 for one written once and never replaced. */
   readonly version: number;
 }
@@ -293,11 +345,15 @@ interface LiveRow {
   readonly id: string;
   readonly scope: string;
   readonly writtenDay: number | null;
+  /** The writing session, or null — the other half of the row's key. */
+  readonly session: string | null;
+  /** Epoch ms of the write, when the row recorded it (2026-09-30 on). */
+  readonly writtenAt: number | null;
 }
 
 /**
- * Every live handoff row in the store, whatever its scope, with the two fields
- * every caller here ranks by. One walk, one prose read per row.
+ * Every live handoff row in the store, whatever its scope, with the fields
+ * every caller here ranks and keys by. One walk, one prose read per row.
  */
 export function liveHandoffRows(store: Store): LiveRow[] {
   const out: LiveRow[] = [];
@@ -307,10 +363,14 @@ export function liveHandoffRows(store: Store): LiveRow[] {
       if (meta["role"] !== HANDOFF_ROLE) continue;
       const scope = meta[HANDOFF_META_SCOPE];
       const day = meta[HANDOFF_META_WRITTEN_DAY];
+      const session = meta[HANDOFF_META_SESSION];
+      const at = meta[HANDOFF_META_WRITTEN_AT];
       out.push({
         id,
         scope: typeof scope === "string" ? scope : "",
         writtenDay: typeof day === "number" ? day : null,
+        session: typeof session === "string" && session.length > 0 ? session : null,
+        writtenAt: typeof at === "number" && Number.isFinite(at) ? at : null,
       });
     } catch {
       continue;
@@ -325,60 +385,123 @@ export function handoffRows(store: Store): string[] {
 }
 
 /**
- * THE NEWEST live row per scope. Two rows for one directory should be
- * impossible — `write` mints only when `findHandoffRow` returns null — but
- * `findHandoffRow` → `put` is not one transaction, and the deployment is one
- * process per hook and one server per session, so a cross-process race is
- * narrow rather than closed (adversarial review MINOR-8). When it happens the
- * loser used to be picked by `list()`'s id ordering, silently, and went on
- * holding the reserve open while being invisible to every read.
- *
- * Newest `writtenDay` wins, id as the tiebreak so the answer is stable. The
- * losers are named so `write` can retire them.
+ * IS `a` NEWER THAN `b`? The lived day first, then the write's own time (a
+ * row from before 2026-09-30 has none and ranks as the older of two on one
+ * day), then the id, so the answer is stable.
  */
-export function newestPerScope(rows: readonly LiveRow[]): Map<string, LiveRow> {
+function newer(a: LiveRow, b: LiveRow): boolean {
+  const da = a.writtenDay ?? -1;
+  const db = b.writtenDay ?? -1;
+  if (da !== db) return da > db;
+  const ta = a.writtenAt ?? -1;
+  const tb = b.writtenAt ?? -1;
+  if (ta !== tb) return ta > tb;
+  return a.id > b.id;
+}
+
+/** The newest row per key, by `newer`. Rows with no scope are no one's. */
+function newestBy(rows: readonly LiveRow[], key: (r: LiveRow) => string): Map<string, LiveRow> {
   const best = new Map<string, LiveRow>();
   for (const r of rows) {
     if (r.scope.length === 0) continue;
-    const held = best.get(r.scope);
-    if (
-      held === undefined ||
-      (r.writtenDay ?? -1) > (held.writtenDay ?? -1) ||
-      ((r.writtenDay ?? -1) === (held.writtenDay ?? -1) && r.id > held.id)
-    ) {
-      best.set(r.scope, r);
-    }
+    const k = key(r);
+    const held = best.get(k);
+    if (held === undefined || newer(r, held)) best.set(k, r);
   }
   return best;
 }
 
 /**
- * THIS DIRECTORY'S row, live or expired, or null — the newest one when a race
- * has left more than one.
+ * THE NEWEST live row per scope, whoever wrote it — what `dream/mind.ts` reads
+ * for its one open loop per directory.
+ *
+ * Two rows for one directory AND one session should be impossible — `write`
+ * mints only when `findHandoffRow` returns null — but `findHandoffRow` → `put`
+ * is not one transaction, and the deployment is one process per hook and one
+ * server per session, so a cross-process race is narrow rather than closed
+ * (adversarial review MINOR-8). `newestPerKey` is where that is handled; this
+ * is the per-directory view over it.
+ */
+export function newestPerScope(rows: readonly LiveRow[]): Map<string, LiveRow> {
+  return newestBy(rows, (r) => r.scope);
+}
+
+/**
+ * THE NEWEST live row per (directory, session) — the unit a write revises and
+ * a wake shows. When a race leaves two rows for one key the loser used to be
+ * picked by `list()`'s id ordering, silently, and went on holding the reserve
+ * open while invisible to every read; the losers are named by
+ * `duplicateHandoffRows` so `write` can retire them.
+ */
+export function newestPerKey(rows: readonly LiveRow[]): Map<string, LiveRow> {
+  return newestBy(rows, (r) => `${r.scope}\u0000${r.session ?? ""}`);
+}
+
+/**
+ * A handoff row, live or expired, or null — the newest one when a race has
+ * left more than one.
+ *
+ * With `session` left out: this directory's NEWEST row, whoever wrote it. With
+ * `session` given (null included): THAT session's row here — the one its next
+ * write revises and its blank field retires.
  *
  * Box 2 has no meta query (`schemas/INTERFACE-GAPS §2`), so the scope match is a
  * body read, exactly as `findSelfPage` reads for the role.
  */
-export function findHandoffRow(store: Store, scope: string): string | null {
+export function findHandoffRow(store: Store, scope: string, session?: string | null): string | null {
   const want = scope.trim();
   if (want.length === 0) return null;
-  return newestPerScope(liveHandoffRows(store)).get(want)?.id ?? null;
+  const rows = liveHandoffRows(store).filter(
+    (r) => r.scope === want && (session === undefined || r.session === (session ?? null)),
+  );
+  return newestPerScope(rows).get(want)?.id ?? null;
 }
 
-/** The OTHER live rows for this scope — a race's losers, which `write` retires. */
-export function duplicateHandoffRows(store: Store, scope: string): string[] {
+/** The OTHER live rows for this directory and session — a race's losers,
+ *  which `write` retires. */
+export function duplicateHandoffRows(store: Store, scope: string, session: string | null = null): string[] {
   const want = scope.trim();
   if (want.length === 0) return [];
-  const rows = liveHandoffRows(store).filter((r) => r.scope === want);
+  const rows = liveHandoffRows(store).filter((r) => r.scope === want && r.session === session);
   const winner = newestPerScope(rows).get(want)?.id ?? null;
   return rows.filter((r) => r.id !== winner).map((r) => r.id);
 }
 
-/** The handoff as a value, or null. A row whose prose will not read is absent
- *  to every reader here, never a throw (`self/` §5 G7's rule, borrowed). */
-export function readHandoff(store: Store, scope: string): Handoff | null {
-  const id = findHandoffRow(store, scope);
-  return id === null ? null : handoffOf(store, { id, scope, writtenDay: null });
+/** A handoff as a value, or null — `findHandoffRow`'s pick. A row whose prose
+ *  will not read is absent to every reader here, never a throw (`self/` §5
+ *  G7's rule, borrowed). */
+export function readHandoff(store: Store, scope: string, session?: string | null): Handoff | null {
+  const id = findHandoffRow(store, scope, session);
+  if (id === null) return null;
+  return handoffOf(store, { id, scope: scope.trim(), writtenDay: null, session: null, writtenAt: null });
+}
+
+/**
+ * EVERY UNEXPIRED HANDOFF FOR THIS DIRECTORY, one per writing session, newest
+ * first. One walk; the prose is read once more per row kept.
+ */
+export function liveHandoffsFor(store: Store, scope: string, day: number, lifeDays = HANDOFF_LIFE_DAYS): Handoff[] {
+  const want = scope.trim();
+  if (want.length === 0) return [];
+  return handoffsNewestFirst(
+    store,
+    liveHandoffRows(store).filter((r) => r.scope === want),
+    day,
+    lifeDays,
+  );
+}
+
+/** One key's newest row each, unexpired, as values, newest first. */
+function handoffsNewestFirst(store: Store, rows: readonly LiveRow[], day: number, lifeDays: number): Handoff[] {
+  const kept = [...newestPerKey(rows).values()]
+    .filter((r) => r.writtenDay !== null && daysLeft(r.writtenDay, day, lifeDays) > 0)
+    .sort((a, b) => (newer(a, b) ? -1 : newer(b, a) ? 1 : 0));
+  const out: Handoff[] = [];
+  for (const r of kept) {
+    const h = handoffOf(store, r);
+    if (h !== null && !expired(h, day, lifeDays)) out.push(h);
+  }
+  return out;
 }
 
 /** The same read, for a caller that has already walked and holds the row. */
@@ -395,6 +518,8 @@ function handoffOf(store: Store, live: LiveRow): Handoff | null {
   const writtenDay = doc.meta[HANDOFF_META_WRITTEN_DAY];
   const writtenOn = doc.meta[HANDOFF_META_WRITTEN_ON];
   const session = doc.meta[HANDOFF_META_SESSION];
+  const model = doc.meta[HANDOFF_META_MODEL];
+  const writtenAt = doc.meta[HANDOFF_META_WRITTEN_AT];
   return {
     id,
     scope,
@@ -403,6 +528,8 @@ function handoffOf(store: Store, live: LiveRow): Handoff | null {
     writtenOn: typeof writtenOn === "string" ? writtenOn : "",
     writtenDay: typeof writtenDay === "number" ? writtenDay : null,
     session: typeof session === "string" && session.length > 0 ? session : null,
+    model: isModelId(model) ? model : null,
+    writtenAt: typeof writtenAt === "number" && Number.isFinite(writtenAt) ? writtenAt : null,
     version: row?.revision ?? 0,
   };
 }
@@ -511,20 +638,64 @@ export const WIDEST_POINTER_SINCE: PointerSince = {
   after: { from: "12-31 23:59", to: "12-31 23:59", writtenUp: false },
 };
 
-/** What the brackets after "Where I left off" say. */
-function whenWords(h: Handoff, since: PointerSince | null): string {
+/** The widest stamp an OLDER entry of a several-handoff block can carry —
+ *  what the reserve sizes the entries after the newest to. */
+const WIDEST_OLDER_SINCE: PointerSince = { written: "12-31 23:59", after: null };
+
+/**
+ * A model id as a person says it: `claude-opus-5-5` → `Opus 5.5`, with a
+ * context suffix (`[1m]`) and a date stamp dropped. Anything that does not
+ * read as family-then-version is printed as it came, so an unfamiliar id is
+ * never guessed at.
+ */
+export function modelWords(id: string): string {
+  const bare = id.replace(/^claude-/, "").replace(/\[[^\]]*\]$/, "").replace(/-\d{8}$/, "");
+  const m = /^([a-z]+)-(\d{1,2}(?:-\d{1,2})*)$/.exec(bare);
+  const family = m?.[1];
+  const version = m?.[2];
+  if (family === undefined || version === undefined) return flatten(id);
+  return `${family.charAt(0).toUpperCase()}${family.slice(1)} ${version.replace(/-/g, ".")}`;
+}
+
+/**
+ * WHO LEFT IT, for the reader (2026-09-30): "this session" when it is the one
+ * waking, the session's short id otherwise, and "an earlier session" when the
+ * row names none (a caller that passed no session). The model, when the row
+ * recorded one, rides beside it. The short id is the first eight characters —
+ * enough to tell a handful of sessions apart, and the full id is on the row.
+ */
+export function authorWords(h: Handoff, reader: string | null = null): string {
+  const who =
+    h.session === null
+      ? "an earlier session"
+      : reader !== null && h.session === reader
+        ? "this session"
+        : `session ${flatten(h.session).slice(0, 8)}`;
+  return h.model === undefined || h.model === null ? who : `${who} on ${modelWords(h.model)}`;
+}
+
+/** When it was written, and — for the newest — how current it is. */
+function whenWords(h: Handoff, since: PointerSince | null, author: string | null = null): string {
+  const by = author === null ? "" : ` by ${author}`;
   if (since === null || since.written.length === 0) {
-    return /^\d{4}-\d{2}-\d{2}$/.test(h.writtenOn.trim()) ? h.writtenOn.trim() : "an unrecorded date";
+    const on = /^\d{4}-\d{2}-\d{2}$/.test(h.writtenOn.trim()) ? h.writtenOn.trim() : "an unrecorded date";
+    return `${on}${by}`;
   }
-  const written = `written ${since.written}`;
+  const written = `written ${since.written}${by}`;
   if (since.after === null) return written;
   return `${written}; work here ${since.after.from}\u2013${since.after.to} since, ${since.after.writtenUp ? "written up since" : "not yet written up"}`;
 }
 
-/** The pointer's first line: when it was written, how current it is, and the
- *  first sentence of what was written. */
-export function pointerLine(h: Handoff, capBytes = HANDOFF_EXCERPT_BYTES, since: PointerSince | null = null): string {
-  return `Where I left off in this directory (${whenWords(h, since)}): ${excerpt(h.body, capBytes)}`;
+/** The pointer's first line: when it was written, by whom, how current it is,
+ *  and the first sentence of what was written. `author` is left out for a row
+ *  that names no session, which is the line as it read before 2026-09-30. */
+export function pointerLine(
+  h: Handoff,
+  capBytes = HANDOFF_EXCERPT_BYTES,
+  since: PointerSince | null = null,
+  author: string | null = null,
+): string {
+  return `Where I left off in this directory (${whenWords(h, since, author)}): ${excerpt(h.body, capBytes)}`;
 }
 
 /** The pointer's second line: the door to the whole of it, and its life. */
@@ -537,22 +708,116 @@ export function pointerDoor(h: Handoff, day: number, lifeDays = HANDOFF_LIFE_DAY
 }
 
 /**
- * THE BLOCK the wake splices in, or null when this one has run out.
+ * THE BLOCK the wake splices in for a directory with ONE live handoff, or null
+ * when it has run out.
  *
  * Two lines and no heading: the pointer is FURNITURE, and furniture that opens
  * its own section costs a blank line and a heading for two lines of content.
  * Both lines are flattened, so a handoff body can never inject a line into the
  * bundle — the scar `identityCoreLine` carries (a name with newlines in it
- * forged a resolved statement into the wake).
+ * forged a resolved statement into the wake). `reader` is the waking session,
+ * so its own handoff reads "by this session".
  */
 export function pointerBlock(
   h: Handoff,
   day: number,
   lifeDays = HANDOFF_LIFE_DAYS,
   since: PointerSince | null = null,
+  reader: string | null = null,
 ): string | null {
   if (expired(h, day, lifeDays)) return null;
-  return [flatten(pointerLine(h, HANDOFF_EXCERPT_BYTES, since)), flatten(pointerDoor(h, day, lifeDays))].join("\n");
+  const author = h.session === null ? null : authorWords(h, reader);
+  return [
+    flatten(pointerLine(h, HANDOFF_EXCERPT_BYTES, since, author)),
+    flatten(pointerDoor(h, day, lifeDays)),
+  ].join("\n");
+}
+
+/**
+ * THE BLOCK FOR A DIRECTORY WITH SEVERAL (2026-09-30): a line saying how many,
+ * the newest `shown` of them one line each — who, when, the first sentence and
+ * the id — then the rest by id on one line, and one door for all of them.
+ * Every line flattened, for `pointerBlock`'s reason; no `- ` bullet, because
+ * the pointer is furniture and a bullet is what an element looks like.
+ *
+ * `since[i]` is how current the i-th one is. Only the NEWEST says whether work
+ * ran here after it: for an older one the answer is always yes — the newer
+ * handoffs are that work — and the words would cost a line's worth of bytes
+ * each to say so.
+ */
+export function pointerBlockMany(
+  hs: readonly Handoff[],
+  day: number,
+  opts: {
+    readonly shown?: number;
+    readonly since?: readonly (PointerSince | null)[];
+    readonly reader?: string | null;
+    readonly lifeDays?: number;
+  } = {},
+): string | null {
+  const lifeDays = opts.lifeDays ?? HANDOFF_LIFE_DAYS;
+  const live = hs.filter((h) => !expired(h, day, lifeDays));
+  if (live.length === 0) return null;
+  const shown = Math.max(1, Math.min(opts.shown ?? HANDOFF_WAKE_SHOWN, live.length));
+  const reader = opts.reader ?? null;
+  const lines = [
+    `Where the work in this directory was left off \u2014 ${live.length} handoffs, one per session, newest first:`,
+  ];
+  live.slice(0, shown).forEach((h, i) => {
+    const raw = opts.since?.[i] ?? null;
+    const since = raw === null || i === 0 ? raw : { written: raw.written, after: null };
+    const when = whenWords(h, since);
+    lines.push(`${i + 1}) From ${authorWords(h, reader)}, ${since === null ? `on ${when}` : when}: ${excerpt(h.body)} (${h.id})`);
+  });
+  const rest = live.slice(shown);
+  if (rest.length > 0) {
+    const named = rest.slice(0, HANDOFF_WAKE_LISTED).map((h) => {
+      const on = /^\d{4}-(\d{2}-\d{2})$/.exec(h.writtenOn.trim())?.[1];
+      return on === undefined ? h.id : `${h.id} (${on})`;
+    });
+    const unnamed = rest.length - named.length;
+    lines.push(`+${rest.length} older here: ${named.join(", ")}${unnamed > 0 ? `, and ${unnamed} more` : ""}.`);
+  }
+  lines.push(
+    `(Expand any of them by id with the counterparts recall tool. Each stops showing ${lifeDays} days of use after it was written.)`,
+  );
+  return lines.map(flatten).join("\n");
+}
+
+/**
+ * THE BLOCKS A DELIVERY MAY TRY, widest first — the ladder `Counterpart` walks
+ * until one fits the ceiling.
+ *
+ * One live handoff: its two-line block. Several: the several-handoff block
+ * showing `HANDOFF_WAKE_SHOWN` of them in full, then fewer, then — last — the
+ * newest one's own two-line block, which says nothing of the others. That last
+ * rung is for the one-boundary lag (NOTES §2): a directory's first second
+ * author appears at a boundary whose reserve was sized to one handoff, and a
+ * shorter pointer that fits beats a fuller one dropped whole.
+ */
+export function pointerLadder(
+  hs: readonly Handoff[],
+  day: number,
+  opts: {
+    readonly since?: readonly (PointerSince | null)[];
+    readonly reader?: string | null;
+    readonly lifeDays?: number;
+  } = {},
+): { block: string; shown: readonly Handoff[] }[] {
+  const lifeDays = opts.lifeDays ?? HANDOFF_LIFE_DAYS;
+  const live = hs.filter((h) => !expired(h, day, lifeDays));
+  const first = live[0];
+  if (first === undefined) return [];
+  const single = pointerBlock(first, day, lifeDays, opts.since?.[0] ?? null, opts.reader ?? null);
+  const out: { block: string; shown: readonly Handoff[] }[] = [];
+  if (live.length > 1) {
+    for (let k = Math.min(HANDOFF_WAKE_SHOWN, live.length); k >= 1; k--) {
+      const block = pointerBlockMany(live, day, { ...opts, shown: k });
+      if (block !== null) out.push({ block, shown: live.slice(0, k) });
+    }
+  }
+  if (single !== null) out.push({ block: single, shown: [first] });
+  return out;
 }
 
 // ── the module ──────────────────────────────────────────────────────────────
@@ -575,6 +840,8 @@ export interface WriteInput {
   /** The canonical directory this handoff is about. Required and non-empty. */
   readonly scope: string;
   readonly session?: string | null;
+  /** The writing session's model id, when the host said which (2026-09-30). */
+  readonly model?: string | null;
   readonly day?: number;
 }
 
@@ -606,16 +873,21 @@ export class Handoffs {
     });
   }
 
-  /** This directory's live, unexpired handoff, or null. */
+  /** This directory's NEWEST live, unexpired handoff, whoever wrote it, or null. */
   read(scope: string, day?: number): Handoff | null {
-    const h = readHandoff(this.store, scope);
-    if (h === null) return null;
-    return expired(h, day ?? this.store.livedDay()) ? null : h;
+    return this.readAll(scope, day)[0] ?? null;
   }
 
-  /** This directory's row whatever its age — the door `write` revises. */
-  readAny(scope: string): Handoff | null {
-    return readHandoff(this.store, scope);
+  /** Every live, unexpired handoff for this directory — one per writing
+   *  session, newest first (2026-09-30). */
+  readAll(scope: string, day?: number): Handoff[] {
+    return liveHandoffsFor(this.store, scope, day ?? this.store.livedDay());
+  }
+
+  /** A row whatever its age — this directory's newest, or with `session`
+   *  given, THAT session's: the door `write` revises. */
+  readAny(scope: string, session?: string | null): Handoff | null {
+    return readHandoff(this.store, scope, session);
   }
 
   /**
@@ -627,14 +899,19 @@ export class Handoffs {
   }
 
   /**
-   * THE BYTE LENGTHS OF EVERY LIVE POINTER BLOCK, one per DIRECTORY — what the
-   * boundary hands `reserveBytes`.
+   * THE BYTE LENGTHS OF EVERY BLOCK A DELIVERY MIGHT SPLICE — what the boundary
+   * hands `reserveBytes`, which reserves for the widest one the share rule
+   * allows.
    *
-   * Per directory and not per row: a race's loser is invisible to every read,
-   * and before `newestPerScope` it went on holding the reserve open until it
-   * expired (adversarial review MINOR-8). The walk is bounded by the number of
-   * directories the owner has worked in, and it never throws — a store that
-   * will not answer reserves nothing, which composes the wake master composes.
+   * Per DIRECTORY, and for a directory with several handoffs every rung of its
+   * ladder (`pointerLadder`: three shown, two, one, and the newest alone), so
+   * a ceiling that cannot afford room for three can still afford room for one.
+   * Per directory and per writing session, never per row: a race's loser is
+   * invisible to every read, and before `newestPerScope` it went on holding
+   * the reserve open until it expired (adversarial review MINOR-8). The walk is
+   * bounded by the number of directories the owner has worked in, and it never
+   * throws — a store that will not answer reserves nothing, which composes the
+   * wake master composes.
    */
   liveBlockBytes(day?: number): number[] {
     const d = day ?? this.store.livedDay();
@@ -643,14 +920,17 @@ export class Handoffs {
     // per scope, and each of those walks the store again — D+1 walks for D
     // directories, at every boundary, for a number that is the same shape as
     // the one already in hand.
-    for (const [, row] of newestPerScope(liveHandoffRows(this.store))) {
-      if (row.writtenDay === null || daysLeft(row.writtenDay, d) <= 0) continue;
-      const h = handoffOf(this.store, row);
-      if (h === null) continue;
+    const byScope = new Map<string, LiveRow[]>();
+    for (const row of liveHandoffRows(this.store)) {
+      if (row.scope.length === 0) continue;
+      byScope.set(row.scope, [...(byScope.get(row.scope) ?? []), row]);
+    }
+    for (const rows of byScope.values()) {
+      const hs = handoffsNewestFirst(this.store, rows, d, HANDOFF_LIFE_DAYS);
       // Sized to the widest "how current" words the delivery can add, which
-      // it computes only then.
-      const block = pointerBlock(h, d, HANDOFF_LIFE_DAYS, WIDEST_POINTER_SINCE);
-      if (block !== null) out.push(byteLengthOf(block));
+      // it computes only then — on the newest in full, the rest a stamp.
+      const since = hs.map((_, i) => (i === 0 ? WIDEST_POINTER_SINCE : WIDEST_OLDER_SINCE));
+      for (const rung of pointerLadder(hs, d, { since })) out.push(byteLengthOf(rung.block));
     }
     return out;
   }
@@ -730,8 +1010,17 @@ export class Handoffs {
       [HANDOFF_META_WRITTEN_ON]: this.store.today(),
       [HANDOFF_META_WRITTEN_DAY]: day,
       [HANDOFF_META_SESSION]: session,
+      [HANDOFF_META_WRITTEN_AT]: this.nowFn(),
+      // A value that is not a plain model id is no mark: it would be printed
+      // into the wake. Left out rather than stored as null, so a row says
+      // nothing it does not know.
+      ...(isModelId(input.model) ? { [HANDOFF_META_MODEL]: input.model } : {}),
     };
-    const existing = findHandoffRow(this.store, scope);
+    // THIS SESSION'S row here, and only its own (2026-09-30): a different
+    // session in the same directory mints its own rather than overwriting the
+    // one that stood, which is what "last writer wins" cost when several
+    // sessions work in one repo at once.
+    const existing = findHandoffRow(this.store, scope, session);
     let id: string;
     let version: number;
     // THE STORE'S OWN REFUSALS ARE NAMED TOO. `put` and `revise` refuse inputs
@@ -779,7 +1068,7 @@ export class Handoffs {
     // happening. `findHandoffRow` now picks the newest, so a duplicate is
     // already invisible to every read; archiving it is what stops it holding
     // the reserve open until it expires (adversarial review MINOR-8).
-    for (const stale of duplicateHandoffRows(this.store, scope)) {
+    for (const stale of duplicateHandoffRows(this.store, scope, session)) {
       if (stale === id) continue;
       try {
         this.store.archive(stale, "handoff-duplicate");
@@ -822,27 +1111,49 @@ export class Handoffs {
   }
 
   /**
-   * THE POINTER FOR THIS WAKE, or null. Pure — it writes nothing, so a caller
-   * that finds no room can drop it without having claimed it was shown.
-   * `since` is how current it is (`PointerSince`), from the handoff and the
-   * time it was written — which the caller gets from `writtenAt`.
+   * THE POINTER FOR THIS WAKE, or null — the first rung of `pointerChoices`,
+   * for a caller that does not need to fit a ceiling. Pure.
    */
   pointer(
     scope: string,
     day?: number,
-    since?: (h: Handoff) => PointerSince | null,
-  ): { block: string; handoff: Handoff } | null {
+    since?: (h: Handoff, newest: boolean) => PointerSince | null,
+    reader?: string | null,
+  ): { block: string; handoff: Handoff; shown: readonly Handoff[]; live: number } | null {
+    return this.pointerChoices(scope, day, since, reader)[0] ?? null;
+  }
+
+  /**
+   * EVERY BLOCK THIS WAKE MAY SPLICE, widest first (`pointerLadder`), or none.
+   * Pure — it writes nothing, so a caller that finds no room can drop it
+   * without having claimed it was shown. `since` is how current each shown one
+   * is (`PointerSince`), asked with `newest` so the caller can skip the work
+   * count for the older ones, which never print it. `reader` is the waking
+   * session, so its own handoff reads "by this session".
+   */
+  pointerChoices(
+    scope: string,
+    day?: number,
+    since?: (h: Handoff, newest: boolean) => PointerSince | null,
+    reader?: string | null,
+  ): { block: string; handoff: Handoff; shown: readonly Handoff[]; live: number }[] {
     const d = day ?? this.store.livedDay();
-    const h = this.read(scope, d);
-    if (h === null) return null;
-    let current: PointerSince | null = null;
-    try {
-      current = since?.(h) ?? null;
-    } catch {
-      current = null;
-    }
-    const block = pointerBlock(h, d, HANDOFF_LIFE_DAYS, current);
-    return block === null ? null : { block, handoff: h };
+    const hs = this.readAll(scope, d);
+    const first = hs[0];
+    if (first === undefined) return [];
+    const current = hs.slice(0, HANDOFF_WAKE_SHOWN).map((h, i) => {
+      try {
+        return since?.(h, i === 0) ?? null;
+      } catch {
+        return null;
+      }
+    });
+    return pointerLadder(hs, d, { since: current, reader: reader ?? null }).map((rung) => ({
+      block: rung.block,
+      handoff: first,
+      shown: rung.shown,
+      live: hs.length,
+    }));
   }
 
   /**
@@ -853,9 +1164,9 @@ export class Handoffs {
   writtenAt(h: Handoff): number | null {
     try {
       const row = this.store.eventLog({ name: HANDOFF_WRITTEN_EVENT, ref: h.id, order: "desc", limit: 1 })[0];
-      return row === undefined ? null : row.at;
+      return row === undefined ? (h.writtenAt ?? null) : row.at;
     } catch {
-      return null;
+      return h.writtenAt ?? null;
     }
   }
 
@@ -874,7 +1185,7 @@ export class Handoffs {
    * the ROW's id and the lived day — never the directory, which is a path
    * (§5 G10).
    */
-  noteShown(h: Handoff, opts: { bytes: number; session?: string | null; day?: number }): void {
+  noteShown(h: Handoff, opts: { bytes: number; session?: string | null; day?: number; among?: number }): void {
     if (this.observer) {
       this.emit("handoff.observer.standdown", undefined, { site: "noteShown" });
       return;
@@ -892,6 +1203,9 @@ export class Handoffs {
           bytes: opts.bytes,
           ageDays: h.writtenDay === null ? null : day - h.writtenDay,
           version: h.version,
+          // How many live handoffs the directory held when this one was shown
+          // (2026-09-30) — absent when it was the only one.
+          ...(opts.among === undefined || opts.among <= 1 ? {} : { among: opts.among }),
         },
       });
     } catch {
@@ -926,7 +1240,10 @@ export class Handoffs {
   }
 
   /**
-   * CLEAR THIS DIRECTORY'S POINTER — the retirement that had no door.
+   * CLEAR THIS SESSION'S POINTER FOR THIS DIRECTORY — the retirement that had
+   * no door. Only the caller's own (2026-09-30): the others standing here were
+   * written by sessions that may still be working, and `retire` is the door for
+   * one whose work this session finished.
    *
    * CONTRACT open question 3, closed: the ask fires up to six times a session,
    * so a session can write "half done" at the first and finish the work by the
@@ -954,14 +1271,14 @@ export class Handoffs {
     if (trimmed.length === 0 || sameDirectory(trimmed, this.store.dir)) {
       return this.refuse("no-scope", { day, session, bytes: 0 }, none);
     }
-    const h = readHandoff(this.store, trimmed);
+    const h = readHandoff(this.store, trimmed, session);
     if (h === null) {
       // NOTHING TO CLEAR is not a failure and not a silence: a session that
-      // finished work in a directory that never had a pointer said something
-      // true, and the row says so.
+      // finished work in a directory where it never left a pointer said
+      // something true, and the row says so.
       return this.refuse("nothing-to-clear", { day, session, bytes: 0 }, none);
     }
-    for (const id of [h.id, ...duplicateHandoffRows(this.store, trimmed)]) {
+    for (const id of [h.id, ...duplicateHandoffRows(this.store, trimmed, session)]) {
       this.store.archive(id, "handoff-cleared");
     }
     this.store.appendEvent({
@@ -971,6 +1288,45 @@ export class Handoffs {
       payload: { session, bytes: h.bytes, version: h.version },
     });
     this.emit(HANDOFF_CLEARED_EVENT, h.id, { bytes: h.bytes });
+    return { ...none, written: true, reason: "cleared", id: h.id, bytes: h.bytes };
+  }
+
+  /**
+   * RETIRE ONE HANDOFF IN THIS DIRECTORY BY ITS ID, whoever wrote it
+   * (2026-09-30). Per-session handoffs accumulate — a session that picks up
+   * another's work and finishes it could otherwise only leave the old pointer
+   * standing for the rest of its fortnight. The id is what the wake prints.
+   *
+   * Only a live handoff filed under THIS directory: an id that is anything
+   * else — another directory's, an archived one, not a handoff — is `not-here`,
+   * one durable refusal, and nothing is touched. Retiring is the same archive
+   * `clear` does, and leaves the same `handoff.cleared` row, which says whose
+   * it was and that it went by id.
+   */
+  retire(id: string, opts: { scope: string; session?: string | null; day?: number }): HandoffWrite {
+    const day = opts.day ?? this.store.livedDay();
+    const session = opts.session ?? null;
+    const none = { id: null, version: null, gate: null, redacted: null, showsForDays: null } as const;
+    if (this.observer) {
+      this.emit("handoff.observer.standdown", undefined, { site: "retire" });
+      return { ...none, written: false, reason: "observer", bytes: 0 };
+    }
+    const scope = opts.scope.trim();
+    if (scope.length === 0 || sameDirectory(scope, this.store.dir)) {
+      return this.refuse("no-scope", { day, session, bytes: 0 }, none);
+    }
+    const want = id.trim();
+    const live = liveHandoffRows(this.store).find((r) => r.id === want && r.scope === scope);
+    const h = live === undefined ? null : handoffOf(this.store, live);
+    if (h === null) return this.refuse("not-here", { day, session, bytes: 0 }, none);
+    this.store.archive(h.id, "handoff-cleared");
+    this.store.appendEvent({
+      name: HANDOFF_CLEARED_EVENT,
+      day,
+      ref: h.id,
+      payload: { session, bytes: h.bytes, version: h.version, byId: true, author: h.session },
+    });
+    this.emit(HANDOFF_CLEARED_EVENT, h.id, { bytes: h.bytes, byId: true });
     return { ...none, written: true, reason: "cleared", id: h.id, bytes: h.bytes };
   }
 

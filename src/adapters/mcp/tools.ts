@@ -657,13 +657,18 @@ const SESSION_END: ToolSpec = {
     },
     {
       claim:
-        "`handoff` is a FIELD on this call and NEVER a memory: it is filed against this directory alone, is never recalled, never embedded, never consolidated, never becomes identity, and stops being shown after about a fortnight of use. A newer one replaces the older, which is kept as a version.",
+        "`handoff` is a FIELD on this call and NEVER a memory: it is filed against this directory and this session, is never recalled, never embedded, never consolidated, never becomes identity, and stops being shown after about a fortnight of use. This session's newer one replaces its older, which is kept as a version; other sessions' handoffs in the same directory stand beside it, and the next session here is shown every live one, newest first, each saying which session wrote it.",
       mechanizedBy: "src/core/handoff/index.ts#Handoffs.write",
     },
     {
       claim:
-        "Sending `handoff` empty RETIRES this directory's pointer rather than doing nothing: the row is archived, its words stay readable by id, and a durable row says it happened. Leaving the field out leaves what stands.",
+        "Sending `handoff` empty RETIRES this session's pointer for this directory rather than doing nothing: the row is archived, its words stay readable by id, and a durable row says it happened. Other sessions' handoffs here stand. Leaving the field out leaves what stands.",
       mechanizedBy: "src/core/handoff/index.ts#Handoffs.clear",
+    },
+    {
+      claim:
+        "`retireHandoff` retires handoffs in THIS directory by id, whoever wrote them — for one whose work this session finished. An id that is not a live handoff here is refused by name and nothing is touched.",
+      mechanizedBy: "src/core/handoff/index.ts#Handoffs.retire",
     },
     {
       claim:
@@ -695,7 +700,13 @@ const SESSION_END: ToolSpec = {
       handoff: {
         type: "string",
         description:
-          "Optional, and not a memory: where the work in THIS directory stands and what the next session here should pick up, in your own words. A paragraph or two, and lead with the sentence you want the next session to read first — that first line is what it sees. It can expand the rest by id; the pointer stops showing after about two weeks of use. Setting it REPLACES whatever handoff this directory had. Send it EMPTY (\"\") to retire the pointer when the work here is finished — that is the only way to clear a stale one. Leaving the field out leaves the previous one standing.",
+          "Optional, and not a memory: where the work in THIS directory stands and what the next session here should pick up, in your own words. A paragraph or two, and lead with the sentence you want the next session to read first — that first line is what it sees. It can expand the rest by id; the pointer stops showing after about two weeks of use. It is THIS session's handoff for this directory: setting it again replaces this session's earlier one, and never another session's — several sessions working here each leave their own, and the next session is shown them all, newest first. Send it EMPTY (\"\") to retire this session's handoff when its work is finished. Leaving the field out leaves the previous one standing.",
+      },
+      retireHandoff: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "Optional: ids of handoffs in THIS directory to retire, whoever wrote them — the ids the session-start pointer prints (`sch_…`). Use it when this session finished the work an older handoff describes, so the next session is not handed a stale one. Not needed for this session's own: send `handoff` empty for that.",
       },
       writeUp: {
         type: "string",

@@ -564,15 +564,15 @@ describe("the handoff pointer says how current it is", () => {
     const k = clocked(T0 + 47 * MIN); // 12:47 UTC
     k.c.writeHandoff("The relief valve is seated. The loop test is next, then the gauges.", { scope: PROJ, session: "writer" });
     // 1. Nothing captured here since.
-    expect(wake(k.c)).toBe("written 09-29 12:47");
+    expect(wake(k.c)).toBe("written 09-29 12:47 by session writer");
     // 2. Three hours of work here since, not written up.
     const t = talker(k, "later");
     for (let i = 0; i <= 6; i++) t.piece(T0 + 47 * MIN + MIN + i * 30 * MIN);
     k.set(T0 + 4 * HOUR);
-    expect(wake(k.c)).toBe("written 09-29 12:47; work here 12:48\u201315:48 since, not yet written up");
+    expect(wake(k.c)).toBe("written 09-29 12:47 by session writer; work here 12:48\u201315:48 since, not yet written up");
     // 3. The same work, written up.
     k.c.spans.claimCoverage({ scope: PROJ, session: "later", proposalId: "prp_later" });
-    expect(wake(k.c)).toBe("written 09-29 12:47; work here 12:48\u201315:48 since, written up since");
+    expect(wake(k.c)).toBe("written 09-29 12:47 by session writer; work here 12:48\u201315:48 since, written up since");
   });
 
   test("the WRITER'S OWN TURN is not work since, and work under the floor is not named (review of #289)", () => {
@@ -582,14 +582,14 @@ describe("the handoff pointer says how current it is", () => {
     // The same turn's Stop captures the prompt that asked for the handoff.
     w.piece(T0 + 48 * MIN);
     k.set(T0 + HOUR);
-    expect(wake(k.c)).toBe("written 09-29 12:47");
+    expect(wake(k.c)).toBe("written 09-29 12:47 by session writer");
     // Two more pieces of the writer's after that Stop: under the floor.
     w.piece(T0 + HOUR);
     w.piece(T0 + HOUR + 10 * MIN);
-    expect(wake(k.c)).toBe("written 09-29 12:47");
+    expect(wake(k.c)).toBe("written 09-29 12:47 by session writer");
     // A third, past fifteen minutes: now it is work here since.
     w.piece(T0 + HOUR + 20 * MIN);
-    expect(wake(k.c)).toBe("written 09-29 12:47; work here 13:00\u201313:20 since, not yet written up");
+    expect(wake(k.c)).toBe("written 09-29 12:47 by session writer; work here 13:00\u201313:20 since, not yet written up");
   });
 
   test("the excerpt skips a list marker and will not stop at a short run — \"1.\", \"Step 2.\", \"e.g.\" (review of #289)", () => {
