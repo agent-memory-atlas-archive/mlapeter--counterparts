@@ -164,10 +164,16 @@ box's answers share: every row the same brightness, "fading" as a word only
 when it applies, no kind tag on a plain fact, a journal chapter titled
 "Journal · Sun, Sep 27th", and the row's own date left out of its title's
 trailing brackets and its words' front when the right-hand column already
-shows it (`withoutRowDate`, 2026-09-30; the card shows the memory as stored). Sections: `hold.js` ("How well I remember": one bar,
-firm / settling / fading from `holdOf` in `views/memories.ts`, and the journal
-as a grey fourth part, so the parts add up to the count; a part clicked filters
-the list), `feel.js` (the shared feelings chart, `shared/widgets/feel-radar.js`,
+shows it (`withoutRowDate`, 2026-09-30; the card shows the memory as stored). Sections: `hold.js` ("How well I remember", 2026-09-30:
+one square per memory, firm / settling / fading from `holdOf` in
+`views/memories.ts`, each keyed underneath with its exact count and a sentence
+true to that rule; beside the feelings chart the grid keeps to the height that
+chart takes, and when it would not fit a square stands for 2, 5, 10, 20 …
+memories, `waffleScale`, the smallest that fits, every state with a memory
+keeping at least one square, and the key says "each square is N memories"; the
+journal is a line of its own under the key, not in the grid; a square, a key or
+the journal line clicked filters the list; the grid is laid out again on
+`show`/`resize`), `feel.js` (the shared feelings chart, `shared/widgets/feel-radar.js`,
 which Home draws too; an axis clicked filters the list), `list.js` (every
 memory, newest or oldest first, twenty a page, two rows of chips with a few
 words each on hover, paged on the server by `/api/memories/list` in

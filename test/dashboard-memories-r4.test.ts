@@ -28,6 +28,7 @@ import { Dashboard } from "../src/adapters/dashboard/index.js";
 import type { DashboardSource } from "../src/adapters/dashboard/index.js";
 import { router } from "../src/adapters/dashboard/web/server.js";
 import type { MemoryListView } from "../src/adapters/dashboard/web/views.js";
+import { FIRM_AHEAD_DAYS, NEAR_LET_GO_DAYS } from "../src/adapters/dashboard/web/views/memories.js";
 import { archiveWords } from "../src/adapters/dashboard/web/views/archive-words.js";
 import { firstSentence, shownOf, stripChapterLead } from "../src/adapters/dashboard/web/views/memory-words.js";
 import { seedDemo } from "../tools/demo/seed.js";
@@ -222,10 +223,38 @@ describe("M4 how well I remember", () => {
     });
     const hold = read("pages/memories/sections/hold.js");
     expect(hold).toContain(">How well I remember<");
-    expect(hold).toContain('["journal", "journal"');
-    expect(hold).not.toContain("aren't scored, so");
-    const { HOLD_TIP } = (await import(join(WEB, "pages/memories/sections/hold.js"))) as { HOLD_TIP: string };
-    expect(HOLD_TIP).toBe("Firm: I'll still know it a month from now even if it's never used. Fading: unless it's used, I'll put it away within two weeks.");
+    expect(hold).toContain('data-hold="journal"');
+    const { HOLD_TIP, PARTS, NONE_FADING } = (await import(join(WEB, "pages/memories/sections/hold.js"))) as {
+      HOLD_TIP: string; PARTS: [string, string, string][]; NONE_FADING: string;
+    };
+    expect(HOLD_TIP).toBe("Firm: I'll still know it a month from now even if it's never used. " +
+      "Fading: unless it's used, I may put it away within the next two weeks I'm in use.");
+    // Each sentence says what `holdOf` measures: firm is 30 lived days ahead, fading is prune within 14.
+    expect(FIRM_AHEAD_DAYS).toBe(30);
+    expect(NEAR_LET_GO_DAYS).toBe(14);
+    expect(PARTS.map((p) => p[0])).toEqual(["firm", "settling", "fading"]);
+    expect(PARTS[0]?.[2]).toContain("a month from now");
+    expect(PARTS[2]?.[2]).toContain("two weeks I'm in use");
+    expect(NONE_FADING).toBe("None right now; nothing is about to be put away.");
+  });
+
+  test("one square per memory while it fits; past that a square is 2, 5, 10, 20 … memories, and no state vanishes", async () => {
+    const { waffleScale, scaleSteps, scaleWords } = (await import(join(WEB, "pages/memories/sections/hold.js"))) as {
+      waffleScale(c: Record<string, number>, cap: number): { per: number; squares: { firm: number; settling: number; fading: number } };
+      scaleSteps(max: number): number[];
+      scaleWords(per: number): string;
+    };
+    expect(scaleSteps(2000).slice(0, 11)).toEqual([1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000]);
+    const mike = { firm: 87, settling: 277, fading: 0 };
+    expect(waffleScale(mike, 600)).toEqual({ per: 1, squares: { firm: 87, settling: 277, fading: 0 } });
+    expect(waffleScale(mike, 300)).toEqual({ per: 2, squares: { firm: 44, settling: 139, fading: 0 } });
+    const big = { firm: 700, settling: 1290, fading: 3 };
+    const s = waffleScale(big, 400);
+    expect(s.per).toBe(5);
+    expect(s.squares).toEqual({ firm: 140, settling: 258, fading: 1 });
+    expect(s.squares.firm + s.squares.settling + s.squares.fading).toBeLessThanOrEqual(400);
+    expect(scaleWords(1)).toBe("");
+    expect(scaleWords(5)).toBe("each square is 5 memories");
   });
 });
 

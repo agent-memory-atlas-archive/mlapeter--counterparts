@@ -90,7 +90,7 @@ export function memRow(r, opts = {}) {
   const kindTag = (r.kind === "fact" && !r.schemaRole) || r.journal ? ""
     : '<span class="mkind" title="' + esc(kindWords) + '">' + kindMark(r.kind, false) + '<span class="klabel">' + esc(kindWords) + "</span></span>";
   const held = opts.tier ? '<span class="mtier">' + esc(opts.tier) + "</span>"
-    : r.hold === "fading" ? '<span class="mfading" title="unless it is used, I will put it away within two weeks">fading</span>' : "";
+    : r.hold === "fading" ? '<span class="mfading" title="unless it is used, I may put it away within the next two weeks I am in use">fading</span>' : "";
   const date = r.date && !r.journal
     ? '<span class="mdate" title="' + esc(DATE_WORDS[r.dateFrom] || "") + '">' + esc(dateOr(r.date)) + "</span>" : "";
   const put = r.archived

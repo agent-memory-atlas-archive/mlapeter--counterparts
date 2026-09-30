@@ -70,6 +70,11 @@ export default {
   render,
   /** The store moved (the pulse): re-read everything this page shows. */
   refresh: render,
+  /** The squares are laid out to the width and the chart beside them: again
+   *  when the tab comes back into view, the window changes or the fonts land. */
+  show: hold.redraw,
+  resize: hold.redraw,
+  redraw: hold.redraw,
   /** `#memories?state=archived` (or live/all): open the list at that filter.
    *  `#memories?feeling=joy` (the home tab's chart): the live memories carrying
    *  a feeling under that core, as a click on this tab's chart would show them. */
