@@ -28,7 +28,9 @@
  *   3. else the documented default, unchanged: `~/.counterparts/claude-code.json`
  *      for the hook, the worker and the server; and for the console, whose
  *      `--dir` may name any store, `<dir>/../claude-code.json` first and that
- *      same home path second (`cli/commands.ts#hostCeiling`).
+ *      same home path second (`cli/commands.ts#hostCeiling`). In each of those
+ *      directories `counterparts.json` answers first when it exists, and
+ *      `claude-code.json` otherwise (`configFileIn`, 2026-09-30).
  *
  * Two properties this file exists to keep:
  *
@@ -60,7 +62,7 @@
  * need it, and neither adapter may import the other (`mcp/INTERFACE-GAPS.md`
  * §7). A sibling both may import is the shape that rule allows.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 
@@ -83,8 +85,32 @@ export const CONFIG_FLAG = "--config";
  */
 export const CONFIG_ENV = "COUNTERPARTS_CONFIG";
 
-/** The file's name under the home directory. `install` writes exactly this. */
+/**
+ * The file's name under the home directory, as it has been since the hooks
+ * first read it — and what `install` writes on a machine that has neither
+ * name. The fallback of the two below.
+ */
 export const CONFIG_FILE_NAME = "claude-code.json";
+
+/**
+ * THE NEUTRAL NAME (2026-09-30). The configuration is no longer only Claude
+ * Code's — the MCP server, the worker and the console read it too, and a second
+ * host will — so a directory that holds `counterparts.json` is read from THAT,
+ * and one that does not is read from `claude-code.json` exactly as before.
+ * Nothing renames anybody's file: an existing install keeps working on the name
+ * it has, and moving to the new one is a rename a person may make or not.
+ */
+export const NEUTRAL_CONFIG_FILE_NAME = "counterparts.json";
+
+/**
+ * Which of the two names a configuration directory answers with: the neutral
+ * one when it is there, else `claude-code.json`. One stat, no read. `exists` is
+ * injected so the rule is provable without a real directory.
+ */
+export function configFileIn(dir: string, exists: (path: string) => boolean = existsSync): string {
+  const neutral = join(dir, NEUTRAL_CONFIG_FILE_NAME);
+  return exists(neutral) ? neutral : join(dir, CONFIG_FILE_NAME);
+}
 
 /**
  * The RING event a hook adapter leaves naming the file it read — ring-only, like
@@ -109,10 +135,15 @@ export interface ConfigChoice {
 /**
  * `~/.counterparts/claude-code.json` — the one default, unchanged since the
  * hooks first read it, and the only place a home directory is resolved for a
- * configuration path.
+ * configuration path. Since 2026-09-30, `~/.counterparts/counterparts.json`
+ * instead when that file exists (`configFileIn`); a machine without one
+ * resolves exactly what it always did.
  */
-export function defaultConfigPath(home: string = homedir()): string {
-  return join(home, DEFAULT_DATA_DIR_NAME, CONFIG_FILE_NAME);
+export function defaultConfigPath(
+  home: string = homedir(),
+  exists: (path: string) => boolean = existsSync,
+): string {
+  return configFileIn(join(home, DEFAULT_DATA_DIR_NAME), exists);
 }
 
 /**

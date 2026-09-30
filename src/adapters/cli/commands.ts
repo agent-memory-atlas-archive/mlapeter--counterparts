@@ -108,6 +108,7 @@ import { deliberateRecall, embedQuestion } from "../mcp/deliberate.js";
 import {
   CONFIG_ENV,
   CONFIG_FLAG,
+  configFileIn,
   defaultConfigPath,
   implicitConfigRefusal,
   resolveConfigPath,
@@ -8519,7 +8520,7 @@ export function hostCeiling(
     }
     return { bytes: n, source: "--budget", searched: [] };
   }
-  const beside = join(dir, "..", "claude-code.json");
+  const beside = configFileIn(join(dir, ".."));
   const hooksConfig = defaultConfigPath(home);
   // De-duplicated, because on a default install these are the same file and a
   // refusal that named it twice would read as two separate misses.
@@ -8600,7 +8601,7 @@ export function openCounterpart(
  * undefined, and the store follows the machine's zone.
  */
 export function zoneBeside(dir: string): string | undefined {
-  const beside = join(dir, "..", "claude-code.json");
+  const beside = configFileIn(join(dir, ".."));
   if (!existsSync(beside)) return undefined;
   try {
     return loadConfig(JSON.parse(readFileSync(beside, "utf8"))).config.timeZone;
@@ -8616,7 +8617,7 @@ function openStoreAt(opts: { dir: string; observer?: boolean }): Store {
 }
 
 export function snapshotsDirBeside(dir: string): string | undefined {
-  const beside = join(dir, "..", "claude-code.json");
+  const beside = configFileIn(join(dir, ".."));
   if (!existsSync(beside)) return undefined;
   try {
     return loadConfig(JSON.parse(readFileSync(beside, "utf8"))).config.snapshots?.dir;
