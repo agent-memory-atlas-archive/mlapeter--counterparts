@@ -33,7 +33,7 @@ import {
   todayIn,
   utcDate,
 } from "../src/core/time.js";
-import { loadConfig } from "../src/adapters/claude-code/config.js";
+import { loadConfig } from "../src/adapters/config.js";
 
 /** 2026-09-26 05:50 UTC = 2026-09-25 23:50 in Denver (MDT, UTC−6). */
 const LATE_EVENING_DENVER = Date.UTC(2026, 8, 26, 5, 50);

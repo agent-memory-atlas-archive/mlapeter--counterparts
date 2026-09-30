@@ -21,7 +21,7 @@ import type { StaticModel } from "../../core/embed/static.js";
 import type { Embedder, EmbedderIdentity } from "../../core/store/index.js";
 import { hashText } from "../../core/store/index.js";
 
-import type { AdapterConfig, EmbedderKind } from "./config.js";
+import type { AdapterConfig, EmbedderKind } from "../config.js";
 
 /** One fill's failure, named — what the worker's backfill row persists as `codes`. */
 export interface ChunkFailure {

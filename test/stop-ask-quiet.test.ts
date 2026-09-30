@@ -26,7 +26,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { ENVELOPE_MAX_CHARS, HOST_STOP, hostDelivery, toHookInput } from "../src/adapters/claude-code/bin/hook.js";
-import { loadConfig } from "../src/adapters/claude-code/config.js";
+import { loadConfig } from "../src/adapters/config.js";
 import { STOP_HUMAN_LINE, stopAsk, substanceOf } from "../src/adapters/claude-code/hooks.js";
 import type { HookInput } from "../src/adapters/claude-code/hooks.js";
 import { openAdapter } from "../src/adapters/claude-code/index.js";

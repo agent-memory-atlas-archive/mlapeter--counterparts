@@ -90,11 +90,11 @@ import {
 } from "../../config-path.js";
 import type { ConfigChoice } from "../../config-path.js";
 
-import { loadConfig, withEmbedderDefault } from "../config.js";
-import type { AdapterConfig } from "../config.js";
+import { loadConfig, withEmbedderDefault } from "../../config.js";
+import type { AdapterConfig } from "../../config.js";
 import { openEmbedder } from "../index.js";
 import type { LiveEmbedder } from "../embed-client.js";
-import { DATA_DIR_ENV, SCOPE_ENV, SESSION_ENV, WATCHDOG_ENV } from "../spawn.js";
+import { DATA_DIR_ENV, SCOPE_ENV, SESSION_ENV, WATCHDOG_ENV } from "../../spawn.js";
 import { backfillVectors, laggedSemantic } from "../vectors.js";
 import type { BackfillReport, LagReport } from "../vectors.js";
 import { runSnapshot } from "../../snapshots.js";

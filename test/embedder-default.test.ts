@@ -20,7 +20,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { STATIC_WEIGHTS_ENV } from "../src/core/embed/static.js";
-import { DEFAULT_EMBEDDER, loadConfig, resolveEmbedder, withEmbedderDefault } from "../src/adapters/claude-code/config.js";
+import { DEFAULT_EMBEDDER, loadConfig, resolveEmbedder, withEmbedderDefault } from "../src/adapters/config.js";
 import { hostConfig } from "../src/adapters/claude-code/bin/hook.js";
 import { runnerConfig } from "../src/adapters/claude-code/bin/runner.js";
 import { questionEmbedder } from "../src/adapters/mcp/bin/serve.js";

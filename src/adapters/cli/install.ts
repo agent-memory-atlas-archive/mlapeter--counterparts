@@ -51,8 +51,8 @@ import { fileURLToPath } from "node:url";
 /** The store directory under the base. Named, because three files agree on it. */
 export const DEFAULT_STORE_DIR = "store";
 
-import { EMBEDDER_KINDS } from "../claude-code/config.js";
-import type { EmbedderKind } from "../claude-code/config.js";
+import { EMBEDDER_KINDS } from "../config.js";
+import type { EmbedderKind } from "../config.js";
 import { CONFIG_ENV, CONFIG_FLAG, defaultConfigPath } from "../config-path.js";
 // `preRowsMarkersIn` reads FILENAMES and opens nothing, which is the only
 // reason a module that promises never to open a parked store may call it —

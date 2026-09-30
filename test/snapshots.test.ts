@@ -48,7 +48,7 @@ import {
 import { journalModeOf, openDb } from "../src/core/store/db.js";
 import { Store, paths } from "../src/core/store/index.js";
 import type { EventRow } from "../src/core/store/index.js";
-import { loadConfig } from "../src/adapters/claude-code/config.js";
+import { loadConfig } from "../src/adapters/config.js";
 import { RESTORE_STEPS } from "../src/adapters/claude-code/doctor.js";
 import { runOnce } from "../src/adapters/claude-code/bin/runner.js";
 import {

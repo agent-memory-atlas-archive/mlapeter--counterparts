@@ -19,7 +19,7 @@ import { toHookInput } from "../src/adapters/claude-code/bin/hook.js";
 import { substanceOf } from "../src/adapters/claude-code/hooks.js";
 import { openAdapter, parseTranscript } from "../src/adapters/claude-code/index.js";
 import type { ClaudeCodeAdapter } from "../src/adapters/claude-code/index.js";
-import type { SpawnPlan } from "../src/adapters/claude-code/spawn.js";
+import type { SpawnPlan } from "../src/adapters/spawn.js";
 import { recordSession } from "../src/adapters/sessions.js";
 
 const ENV = "COUNTERPARTS_DATA_DIR";

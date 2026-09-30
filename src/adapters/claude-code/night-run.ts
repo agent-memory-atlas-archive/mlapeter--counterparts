@@ -68,12 +68,12 @@ import type { NightPart, NightRun } from "../../core/dream/index.js";
 import { CONFIG_ENV as CONFIG_PATH_ENV } from "../config-path.js";
 import { OBSERVER_ENV } from "../stance-env.js";
 
-import { TUNABLES } from "./config.js";
-import type { AdapterConfig } from "./config.js";
+import { TUNABLES } from "../config.js";
+import type { AdapterConfig } from "../config.js";
 import { DEFAULT_HOST_COMMAND, KILL_GRACE_MS, PERMISSION_MODE, REAP_GRACE_MS, startChild } from "./child.js";
 import type { ChildPlan, ChildResult } from "./child.js";
-import { DATA_DIR_ENV, SCOPE_ENV, SESSION_ENV, WATCHDOG_ENV } from "./spawn.js";
-import type { SpawnPlan } from "./spawn.js";
+import { DATA_DIR_ENV, SCOPE_ENV, SESSION_ENV, WATCHDOG_ENV } from "../spawn.js";
+import type { SpawnPlan } from "../spawn.js";
 
 /**
  * THE QUIET-CHILD FLAG, and the run's id: set on the headless run's

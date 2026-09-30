@@ -149,7 +149,7 @@ import {
   SPAWN_START_COUNT_KEY,
   SPAWN_START_DATE_KEY,
 } from "../claude-code/hooks.js";
-import { loadConfig, withEmbedderDefault } from "../claude-code/config.js";
+import { loadConfig, withEmbedderDefault } from "../config.js";
 // The one answer to "is there an embedder", shared with the hook, the worker and
 // the MCP server's entry point — `ask` embeds its question with it.
 import { openEmbedder } from "../claude-code/embed-client.js";
@@ -157,7 +157,7 @@ import type { LiveEmbedder } from "../claude-code/embed-client.js";
 // The local table's locator, for install's one check that the weights the new
 // configuration asks for are where the hooks will look.
 import { MODEL_FILE, STATIC_WEIGHTS_ENV, STATIC_WEIGHTS_PACKAGE, resolveStaticWeights } from "../../core/embed/static.js";
-import type { AdapterConfig } from "../claude-code/config.js";
+import type { AdapterConfig } from "../config.js";
 import {
   anyRed,
   doctorFindings,

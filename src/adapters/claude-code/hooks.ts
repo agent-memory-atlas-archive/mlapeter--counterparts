@@ -98,9 +98,9 @@ import { pruneLog } from "../log/index.js";
 
 import { calendarDate } from "../../core/self/index.js";
 import { localClock, localDate, readableDate } from "../../core/time.js";
-import { capabilities } from "./config.js";
-import { TUNABLES } from "./config.js";
-import type { AdapterConfig, CapabilityReport } from "./config.js";
+import { capabilities } from "../config.js";
+import { TUNABLES } from "../config.js";
+import type { AdapterConfig, CapabilityReport } from "../config.js";
 import { TUNABLES as RECALL_TUNABLES } from "../../core/recall/tunables.js";
 import { HOST_SESSION_START, HOST_USER_PROMPT_SUBMIT, envelopeJson, escapedBytes } from "./envelope.js";
 import { SESSION_NOTICE_BUDGET_MS, checkoutIsGraded, doctorFindings, noticeMessage, readCheckout } from "./doctor.js";
@@ -108,8 +108,8 @@ import type { CheckoutReading } from "./doctor.js";
 import { primacy } from "./primacy.js";
 import { nightTimeoutMs, planNightRunner } from "./night-run.js";
 import type { NightKind } from "./night-run.js";
-import { planSpawn, spawnDetached } from "./spawn.js";
-import type { SpawnOutcome, Spawner } from "./spawn.js";
+import { planSpawn, spawnDetached } from "../spawn.js";
+import type { SpawnOutcome, Spawner } from "../spawn.js";
 import { NO_ARRIVAL, STOP_ASK_OPENER, readWakeArrival } from "./transcript.js";
 import type { Expansion, WakeArrival } from "./transcript.js";
 

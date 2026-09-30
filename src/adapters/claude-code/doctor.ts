@@ -100,8 +100,8 @@ import {
   readSnapshotsDir,
   resolveSnapshotsDir,
 } from "../snapshots.js";
-import { TUNABLES, pageWriterMode, resolveEmbedder, withEmbedderDefault } from "./config.js";
-import type { EmbedderSource } from "./config.js";
+import { TUNABLES, pageWriterMode, resolveEmbedder, withEmbedderDefault } from "../config.js";
+import type { EmbedderSource } from "../config.js";
 import { MODEL_FILE, STATIC_WEIGHTS_ENV, STATIC_WEIGHTS_PACKAGE, resolveStaticWeights } from "../../core/embed/static.js";
 import { heldExits } from "../../core/store/index.js";
 // Retention's own reading and its own week, so the Raw transcripts line cannot
@@ -120,7 +120,7 @@ import {
   writeUpEntries,
   writeUpPlan,
 } from "../sessions.js";
-import type { AdapterConfig } from "./config.js";
+import type { AdapterConfig } from "../config.js";
 // The same vocabulary the hook's stand-down uses, so the terminal and the
 // console cannot end up with two answers to "why did it not open".
 import { describeFault, faultId, faultPath } from "./standdown.js";

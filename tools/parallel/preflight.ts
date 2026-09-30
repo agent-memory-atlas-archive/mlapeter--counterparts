@@ -34,7 +34,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { loadConfig } from "../../src/adapters/claude-code/config.js";
+import { loadConfig } from "../../src/adapters/config.js";
 import { SELF_TUNABLES } from "../../src/core/self/tunables.js";
 
 import { RECALL_DECISION_EVENT } from "../../src/core/counterpart.js";

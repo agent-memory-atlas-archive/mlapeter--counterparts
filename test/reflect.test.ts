@@ -15,7 +15,7 @@ import { join } from "node:path";
 
 import { openAdapter } from "../src/adapters/claude-code/index.js";
 import type { HookInput } from "../src/adapters/claude-code/index.js";
-import type { SpawnPlan } from "../src/adapters/claude-code/spawn.js";
+import type { SpawnPlan } from "../src/adapters/spawn.js";
 import { openServer } from "../src/adapters/mcp/index.js";
 import { recordSession } from "../src/adapters/sessions.js";
 import { Counterpart } from "../src/core/counterpart.js";
