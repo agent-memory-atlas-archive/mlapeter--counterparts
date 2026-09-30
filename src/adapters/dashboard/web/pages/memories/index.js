@@ -36,8 +36,8 @@ async function render() {
   const x = scrollX, y = scrollY;
   $("mem-lede").textContent = count(d);
   $("mem-intro").textContent = intro(d.owner);
+  feel.paint(d); // first: the squares are laid out to the chart's height
   hold.paint(d);
-  feel.paint(d);
   await list.render();
   if (scrollX !== x || scrollY !== y) scrollTo(x, y);
 }

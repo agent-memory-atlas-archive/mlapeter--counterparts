@@ -64,7 +64,7 @@ const SQ = 9, GAP = 3;
 /** Room kept for the "each square is N memories" line, which shows only once the grid is scaled. */
 const HSCALE = 22;
 /** Rows the grid may take when nothing beside it sets a height (a phone, one column). */
-const ROWS_ALONE = 12;
+const ROWS_ALONE = 16;
 
 export const markup = `
           <div class="glance-card">
@@ -135,8 +135,9 @@ function paintParts() {
 
 /**
  * How many rows of squares fit. Beside the feelings chart: the height that
- * chart takes on its own, less what the key under the grid needs. Alone (a
- * narrow window, one column): a fixed few rows.
+ * chart takes on its own, less what the key under the grid needs, and never
+ * under half the chart's height. Alone (a narrow window, one column): a fixed
+ * few rows.
  */
 function rowsAllowed(box, grid) {
   const feel = document.getElementById("feel");
@@ -149,6 +150,9 @@ function rowsAllowed(box, grid) {
     const s = getComputedStyle(c);
     return sum + c.getBoundingClientRect().height + parseFloat(s.marginTop) + parseFloat(s.marginBottom);
   }, 0) + parseFloat(getComputedStyle(el).paddingTop) + parseFloat(getComputedStyle(el).paddingBottom);
-  const room = inner(feel) - inner(box, grid) - HSCALE;
+  // What the key leaves of the chart's height, but never less than half of it:
+  // the key's sentences are tall, and a grid squeezed to a strip says little.
+  const chart = inner(feel);
+  const room = Math.max(chart - inner(box, grid) - HSCALE, chart / 2);
   return Math.max(3, Math.floor((room + GAP) / (SQ + GAP)));
 }
