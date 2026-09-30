@@ -222,10 +222,10 @@ export function writeLines(
         : [
             `warning: past the wake's ${wakeCap}-byte cap, so the wake will show a cut of it with a marker. The page itself is kept whole.`,
           ]),
-      // The briefing phase is cadenced once per LIVED day, so "the next
-      // boundary" is not the whole truth: a boundary that has already rendered
-      // today renders nothing, and the page waits. `rebrief` is the lever.
-      "It reaches the wake at the next boundary that re-renders it — once per lived day. To put it there now: counterparts rebrief.",
+      // The write marks the wake behind (2026-09-30, `self/behind.ts`), and
+      // the worker the next turn's end starts re-renders it. With no session
+      // running, `rebrief` is the lever.
+      "It reaches the wake when a turn next ends in any session. To put it there now: counterparts rebrief.",
     ],
     ok: true,
   };

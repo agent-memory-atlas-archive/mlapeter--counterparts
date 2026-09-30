@@ -90,7 +90,7 @@ describe("counterparts self-page", () => {
     );
     expect(code).toBe(EXIT.ok);
     expect(c.out.join("\n")).toContain("Wrote the page");
-    expect(c.out.join("\n")).toContain("next boundary");
+    expect(c.out.join("\n")).toContain("when a turn next ends");
 
     const store = Store.open({ dir, observer: true });
     const page = Counterpart.open({ dir, observer: true });
