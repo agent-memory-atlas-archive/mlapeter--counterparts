@@ -11,7 +11,9 @@
  *
  *   - **Substance-paced, never wall-clock-paced.** An ask is due on turns the
  *     person typed OR on conversation text from both roles, whichever comes
- *     first — so a one-prompt agentic session still journals.
+ *     first — so a one-prompt agentic session still journals. One more way
+ *     since 2026-09-30, and it is pieces AND time: what the session has not
+ *     written up (`core/coverage/`, handed in as `PaceOptions.unwritten`).
  *   - **Live append.** The ritual hands the model its chapter for the REST of the
  *     session. v1's once-per-session ask fired at the first stop, so everything
  *     after turn one was first-person-invisible; one session's episode missed the
@@ -153,6 +155,20 @@ export interface Substance {
  *  watermark is moved on its account. */
 export interface PaceOptions {
   readonly rebase?: boolean;
+  /**
+   * What this session has not written up, restated as a seam for the reason
+   * `EpisodeProposal` is one: `self/` does not import `remember/` or
+   * `coverage/`. `due` is `coverage/#askFromStretch` with the stretch and the
+   * clock already bound; the pacer hands it the session's last ask.
+   */
+  readonly unwritten?: UnwrittenStretch | null;
+}
+
+/** The pacer's view of a session's unwritten stretch (2026-09-30). */
+export interface UnwrittenStretch {
+  readonly pieces: number;
+  readonly minutes: number;
+  due(lastAskAt: number | null): boolean;
 }
 
 export interface EpisodeState {
@@ -295,6 +311,8 @@ export function episodeFacts(
 export type AskReason =
   | "due-first"
   | "due-substance"
+  /** Neither turns nor bytes, but what is not written up (2026-09-30). */
+  | "due-unwritten"
   | "not-enough-substance"
   | "session-ask-cap"
   | "anonymous-session"
@@ -309,6 +327,8 @@ export interface AskVerdict {
    *  pretend). */
   readonly sinceTurns: number;
   readonly sinceBytes: number;
+  /** The unwritten stretch the pacer was shown, when it was shown one. */
+  readonly unwritten?: { readonly pieces: number; readonly minutes: number };
 }
 
 /**
@@ -339,20 +359,35 @@ export function askDue(
   state: EpisodeState,
   substance: Substance,
   t: SelfTunables,
-  opts: { observer: boolean; today: string },
+  opts: { observer: boolean; today: string; unwritten?: UnwrittenStretch | null },
 ): AskVerdict {
   const sinceTurns = Math.max(0, substance.turns - state.askedAtTurns);
   const sinceBytes = Math.max(0, substance.bytes - state.askedAtBytes);
   // The ask names the NEXT chapter that would exist — one past what was
   // written, never one past what was asked.
   const chapter = state.chapters + 1;
+  const stretch = opts.unwritten ?? null;
+  const shown = stretch === null ? {} : { unwritten: { pieces: stretch.pieces, minutes: stretch.minutes } };
   const no = (reason: AskReason): AskVerdict => ({
     due: false,
     reason,
     chapter,
     sinceTurns,
     sinceBytes,
+    ...shown,
   });
+  const yes = (reason: AskReason): AskVerdict => ({ due: true, reason, chapter, sinceTurns, sinceBytes, ...shown });
+  // THE THIRD ARM (2026-09-30), on the first ask and every later one alike:
+  // the session holds pieces nobody has written up, and time has passed since
+  // the later of the first of them and the last ask. Checked after turns and
+  // bytes, so a verdict those already make keeps its old reason.
+  const unwrittenDue = (): boolean => {
+    try {
+      return stretch !== null && stretch.due(state.lastAskAt);
+    } catch {
+      return false;
+    }
+  };
 
   // Observers are never asked (§13 G14, scar E7). Accepted cost, on the record:
   // instrument runs leave no episode.
@@ -368,14 +403,10 @@ export function askDue(
   // threshold. History: AND-paced until 2026-09-24, both roles counted as turns.
   if (state.asks === 0) {
     const paced = substance.turns >= t.FIRST_ASK_TURNS || substance.bytes >= t.FIRST_ASK_TEXT_BYTES;
-    return paced
-      ? { due: true, reason: "due-first", chapter, sinceTurns, sinceBytes }
-      : no("not-enough-substance");
+    return paced ? yes("due-first") : unwrittenDue() ? yes("due-unwritten") : no("not-enough-substance");
   }
   const paced = sinceTurns >= t.REASK_TURNS || sinceBytes >= t.REASK_TEXT_BYTES;
-  return paced
-    ? { due: true, reason: "due-substance", chapter, sinceTurns, sinceBytes }
-    : no("not-enough-substance");
+  return paced ? yes("due-substance") : unwrittenDue() ? yes("due-unwritten") : no("not-enough-substance");
 }
 
 /**

@@ -1679,6 +1679,7 @@ export class Self {
     return askDue(this.pacedState(sessionId, substance, d, opts).state, substance, this.tunables, {
       observer: this.observer,
       today: this.calendarToday(),
+      unwritten: opts.unwritten ?? null,
     });
   }
 
@@ -1723,6 +1724,7 @@ export class Self {
     const verdict = askDue(state, substance, this.tunables, {
       observer: this.observer,
       today,
+      unwritten: opts.unwritten ?? null,
     });
     if (!verdict.due) {
       this.emit("self.episode.ask.skipped", sessionId, {

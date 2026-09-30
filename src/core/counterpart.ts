@@ -125,6 +125,7 @@ import {
   isHandoffRow,
 } from "./handoff/index.js";
 import type { Handoff, HandoffRefusal, HandoffWrite } from "./handoff/index.js";
+import { CLAIM_CHAPTER, askFromStretch, claimUnwritten, sessionStretch } from "./coverage/index.js";
 import {
   BRIEFING_KEY,
   BRIEFING_TRIM_LOG_CAP,
@@ -2732,14 +2733,39 @@ export class Counterpart {
 
   // ── episodes ───────────────────────────────────────────────────────────────
 
-  /** ONE ask, and the advance is committed before it blocks (§13 G3–G4). */
+  /**
+   * ONE ask, and the advance is committed before it blocks (§13 G3–G4).
+   * `scope` hands the pacer this session's unwritten stretch there
+   * (`coverage/`, 2026-09-30); without it, turns and bytes decide alone.
+   */
   episodeAsk(
     sessionId: string,
     substance: { turns: number; bytes: number },
     day?: number,
-    opts: { rebase?: boolean } = {},
+    opts: { rebase?: boolean; scope?: string } = {},
   ): ChapterAsk {
-    return this.self.openChapter(sessionId, substance, day, opts);
+    const { scope, ...pace } = opts;
+    let stretch: ReturnType<typeof sessionStretch> = null;
+    if (scope !== undefined && scope.length > 0 && sessionId.length > 0) {
+      try {
+        stretch = sessionStretch(this.spans, sessionId, [scope]);
+      } catch {
+        stretch = null;
+      }
+    }
+    const now = this.nowFn();
+    return this.self.openChapter(sessionId, substance, day, {
+      ...pace,
+      ...(stretch === null
+        ? {}
+        : {
+            unwritten: {
+              pieces: stretch.pieces,
+              minutes: stretch.minutes,
+              due: (lastAskAt: number | null) => askFromStretch(stretch, lastAskAt, now),
+            },
+          }),
+    });
   }
 
   /**
@@ -2779,6 +2805,12 @@ export class Counterpart {
     // The GATE's text, never the draft — the same rule ingestion follows.
     const body = verdict.text !== undefined && verdict.text.length > 0 ? verdict.text : text;
     const written = this.self.appendChapter(sessionId, body, opts);
+    // A CHAPTER WRITES THE SESSION'S STRETCH UP (2026-09-30): a claim naming
+    // the episode, with no proposal behind it, in the one file the coverage
+    // ledger reads.
+    if (written.reason === "appended" && written.episodeId !== null && !this.observer) {
+      claimUnwritten(this.spans, { session: sessionId, by: CLAIM_CHAPTER, ref: written.episodeId });
+    }
     return {
       appended: written.reason === "appended",
       reason: written.reason,

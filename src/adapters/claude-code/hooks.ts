@@ -2005,8 +2005,11 @@ export class ClaudeCodeAdapter {
       // history of both is in self NOTES. The date on every `adapter.ask` row
       // below answers "how often was the pen offered today" across sessions.
       const substance = substanceOf(input.turns ?? []);
+      // `scope`: what this session has not written up here is the pacer's
+      // third arm (`core/coverage/`, 2026-09-30), `due-unwritten` on the row.
       const chapter = this.counterpart.episodeAsk(input.sessionId, substance, undefined, {
         rebase: input.turnsUnread !== true,
+        scope: input.scope,
       });
       const outcome = chapter.asked
         ? "asked"
@@ -2036,6 +2039,8 @@ export class ClaudeCodeAdapter {
         uncovered: coverage?.uncovered ?? null,
         unaskableSpans: coverage?.unaskableSpans ?? null,
         unaskableBytes: coverage?.unaskableBytes ?? null,
+        unwritten: chapter.verdict.unwritten?.pieces ?? null,
+        unwrittenMinutes: chapter.verdict.unwritten?.minutes ?? null,
       });
       // The ask NAMES this session and its chapter: the id is what the MCP
       // server binds itself with, so an ask that omitted it would be an
