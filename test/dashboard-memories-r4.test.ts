@@ -147,8 +147,17 @@ describe("M2 one find box", () => {
     expect(search).toContain('e.key === "Enter"');
     expect(search).toContain('$("mlist").innerHTML');
     expect(search).toContain('id="q-x"');
-    const { TIER } = (await import(join(WEB, "pages/memories/sections/search.js"))) as { TIER: Record<string, string> };
+    const { TIER, MODES } = (await import(join(WEB, "pages/memories/sections/search.js"))) as {
+      TIER: Record<string, string>; MODES: Record<string, { label: string; placeholder: string }>;
+    };
     expect(TIER).toEqual({ vivid: "strong match", quiet: "match", dim: "weak match" });
+    // 2026-09-30: a visible switch beside the one box; Enter never flips it.
+    expect(Object.keys(MODES)).toEqual(["word", "meaning"]);
+    expect(MODES["word"]?.label).toBe("by word");
+    expect(MODES["meaning"]?.label).toBe("by meaning");
+    expect(search).toContain('id="q-mode"');
+    expect(search).toContain('if (find.mode === "word") runSearch(); else ask();');
+    expect(read("pages/memories/state.js")).toContain('mode: "word"');
     // The box sits with the list, under the charts, not above them.
     const list = read("pages/memories/sections/list.js");
     expect(list).toContain("${search.markup}");

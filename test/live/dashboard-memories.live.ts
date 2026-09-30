@@ -188,8 +188,11 @@ describe("the memories tab, live", () => {
       expect(await page.locator("#feel g.feel-axis.on").count()).toBe(0);
       expect(await total()).toBeGreaterThan(2);
 
-      // ── Enter in the find box asks by meaning; the answers take the list's place.
+      // ── "by meaning" (the switch, 2026-09-30), then Enter, asks; the answers take the list's place.
       // Ask folds a chapter and its memory into one answer (round 3), and a refresh keeps it ──
+      expect(await page.getAttribute('#q-mode button[data-mode="word"]', "aria-pressed")).toBe("true");
+      await page.click('#q-mode button[data-mode="meaning"]');
+      expect(await page.getAttribute("#q", "placeholder")).toContain("press Enter");
       await page.fill("#q", "the first day inside Halfmoon, reading the rota solver");
       await page.press("#q", "Enter");
       await page.waitForSelector("#mlist .mchapter", { timeout: 30_000 });

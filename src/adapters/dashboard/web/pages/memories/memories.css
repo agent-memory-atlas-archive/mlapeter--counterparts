@@ -31,7 +31,9 @@
 /* ── find a memory: one box over the list ── */
 .find{margin-bottom:10px;min-width:0}
 .find-lab{display:block;font-size:13px;font-weight:600;color:var(--ink);margin-bottom:6px}
-.find-row{position:relative;display:flex;align-items:center}
+.find-bar{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap}
+.find-row{position:relative;display:flex;align-items:center;flex:1 1 18rem;min-width:0}
+.find-mode{flex:none}
 #q{flex:1;min-width:0;background:var(--card);border:1px solid rgba(0,229,255,.34);border-radius:6px;
   color:inherit;font:inherit;font-size:14px;padding:11px 44px 11px 14px;outline:none}
 #q:focus{border-color:var(--cyan);box-shadow:0 0 12px rgba(0,229,255,.12)}

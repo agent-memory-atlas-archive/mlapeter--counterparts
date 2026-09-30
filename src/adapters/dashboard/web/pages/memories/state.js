@@ -9,8 +9,9 @@ export const filters = {
 };
 
 /** The find box: while it holds words, its answers stand in the list's place
- *  (round 4, 2026-09-28: results REPLACE the list). Any filter change ends it. */
-export const find = { on: false };
+ *  (round 4, 2026-09-28: results REPLACE the list). Any filter change ends it.
+ *  `mode`: the switch beside it, "word" or "meaning" (2026-09-30). */
+export const find = { on: false, mode: "word" };
 
 const listeners = [];
 export function onFilter(fn) { listeners.push(fn); }
