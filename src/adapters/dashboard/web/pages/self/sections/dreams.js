@@ -7,7 +7,7 @@ import { absenceLine } from "../../../shared/absence.js";
 import { $, esc } from "../../../shared/dom.js";
 import { said } from "../../../shared/format.js";
 import { renderMarkdown } from "../markdown.js";
-import { shortDate } from "./page.js";
+import { dateOr } from "../../../shared/dates.js";
 import { q, wireTips } from "../../../shared/widgets/tips.js";
 
 export const markup = `
@@ -52,7 +52,7 @@ export function paint(d) {
     const open = openIds.has(x.id);
     return '<div class="dr' + (open ? " open" : "") + (x.state === "undone" ? " undone" : "") + '">' +
       '<button type="button" class="dr-top" data-id="' + esc(x.id) + '" aria-expanded="' + open + '">' +
-        '<span class="dr-date">' + esc(shortDate(x.date) || x.date || "lived day " + x.day) + "</span>" +
+        '<span class="dr-date">' + esc(dateOr(x.date) || "lived day " + x.day) + "</span>" +
         '<span class="dr-title">' + esc(x.title || "(no journal yet)") + "</span>" +
         '<span class="chip">' + esc(STATE[x.state] || x.state) + "</span>" +
         '<span class="dr-counts">' + esc(countsLine(x.counts)) + "</span>" +

@@ -5,11 +5,11 @@
    budget is the health tab's now; the rebuild button comes back when it is
    built (the console's `counterparts rebrief` is unchanged). */
 import { absenceLine } from "../../../shared/absence.js";
+import { dateWords } from "../../../shared/dates.js";
 import { $, esc } from "../../../shared/dom.js";
 import { headline, said } from "../../../shared/format.js";
 import { ui } from "../state.js";
 import { q, wireTips } from "../../../shared/widgets/tips.js";
-import { shortDate } from "./page.js";
 
 export const markup = `
       <div class="side-block">
@@ -26,10 +26,22 @@ let last = null;
 /** The page's line: when it was written, and how many lived days ago. Pure. */
 export function pageAge(p) {
   if (!p) return "";
-  const date = shortDate(p.date);
+  const date = dateWords(p.date);
   const ago = p.livedDaysAgo === null ? "" : p.livedDaysAgo === 0 ? "today" : p.livedDaysAgo === 1 ? "1 lived day ago" : p.livedDaysAgo + " lived days ago";
   const when = date && ago ? "written " + date + ", " + ago : date ? "written " + date : ago ? "written " + ago : "";
   return when + (p.newerThanWake ? (when ? " — " : "") + "rewritten since; the next wake carries the new one" : "");
+}
+
+/**
+ * One memory in the list, the same for nearby and arriving (2026-09-30): its
+ * title, or its first sentence when it has none, opening its card; the whole
+ * words on hover. A line no memory was found for is its first sentence, plain.
+ */
+export function memoryItem(m) {
+  const name = m.title || headline(m.text);
+  if (!m.id) return '<li class="wk-line-i" title="' + esc(m.text) + '">' + esc(name) + "</li>";
+  return '<li><button type="button" class="wk-mem" onclick="openMemory(\'' + esc(m.id) + '\')" title="' +
+    esc(m.confidential ? "withheld" : m.text) + '">' + said(name, m.confidential) + "</button></li>";
 }
 
 export function paint(d) {
@@ -49,8 +61,7 @@ export function paint(d) {
       (pageAge(l.page) ? '<span class="wk-sub">' + esc(pageAge(l.page)) + "</span>" : "") + "</li>");
   }
   const nearby = l.nearby.length > 0
-    ? l.nearby.map((m) => '<li><button type="button" class="wk-mem" onclick="openMemory(\'' + esc(m.id) + '\')" title="' +
-        esc(m.confidential ? "withheld" : m.text) + '">' + said(headline(m.text), m.confidential) + "</button></li>").join("")
+    ? l.nearby.map(memoryItem).join("")
     : l.nearbyLines.map((t) => '<li class="wk-line-i">' + esc(headline(t)) + "</li>").join("");
   const nNear = l.nearby.length || l.nearbyLines.length;
   if (nNear > 0) {
@@ -59,7 +70,7 @@ export function paint(d) {
   }
   items.push(l.arriving.length > 0
     ? '<li class="wk-it"><span class="wk-what">Arriving</span><ul class="wk-sublist">' +
-        l.arriving.map((t) => '<li class="wk-line-i">' + esc(t) + "</li>").join("") + "</ul></li>"
+        l.arriving.map(memoryItem).join("") + "</ul></li>"
     : '<li class="wk-it wk-none"><span class="wk-what">Nothing arriving</span></li>');
   const also = l.also.length > 0
     ? '<p class="wk-also">Also ' + l.also.map((a) => a.lines + " line" + (a.lines === 1 ? "" : "s") + " of " + esc(a.label)).join(", ") + ".</p>"

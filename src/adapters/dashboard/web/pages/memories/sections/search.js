@@ -1,7 +1,9 @@
-/* Find a memory: ONE box (round 4, 2026-09-28). Typing finds memories by their
-   words, live (`/api/search`); Enter asks by meaning (the console's own
-   `counterparts ask`, through the actions seam). Either way the answers take
-   the list's place — never a second list — and the "×" gives the list back.
+/* Find a memory: ONE box (round 4, 2026-09-28) with a switch beside it
+   (2026-09-30): "by word" finds memories by their words as you type
+   (`/api/search`), Enter only runs it at once; "by meaning" asks, on Enter (the
+   console's own `counterparts ask`, through the actions seam). The switch never
+   flips by itself. Either way the answers take the list's place — never a
+   second list — and the "×" gives the list back.
    How close an answer came is said plainly: strong match, match, weak match.
    Ask is the owner talking to me, so the server turns the question into my
    voice before it searches (`web/ask-voice.ts`); that is not shown. */
@@ -10,16 +12,18 @@ import { act, resultHtml } from "../../../shared/actions.js";
 import { api, fail } from "../../../shared/api.js";
 import { $, esc } from "../../../shared/dom.js";
 import { foldChapters, fromWords } from "../fold.js";
-import { memRow } from "../row.js";
+import { memRow, searchWords } from "../row.js";
 import { find, onFilter, setFilter } from "../state.js";
 
 export const markup = `
         <div class="find">
           <label class="find-lab" for="q">Find a memory</label>
-          <div class="find-row">
-            <input id="q" type="search" autocomplete="off" spellcheck="false"
-              placeholder="a word, or ask a question and press Enter">
-            <button class="find-x" id="q-x" type="button" aria-label="clear, and show every memory" title="clear" hidden>×</button>
+          <div class="find-bar">
+            <div class="find-row">
+              <input id="q" type="search" autocomplete="off" spellcheck="false">
+              <button class="find-x" id="q-x" type="button" aria-label="clear, and show every memory" title="clear" hidden>×</button>
+            </div>
+            <div class="seggroup find-mode" id="q-mode" role="group" aria-label="find by"></div>
           </div>
           <div class="find-head" id="find-head" hidden></div>
         </div>`;
@@ -27,18 +31,53 @@ export const markup = `
 let qtimer = null;
 let seq = 0;
 
+/** The two ways to find, as the switch says them, and what the box says for each. */
+export const MODES = {
+  word: { label: "by word", placeholder: "a word or two — the answers come as you type" },
+  meaning: { label: "by meaning", placeholder: "ask a question, then press Enter" },
+};
+
+/** The switch and the box's placeholder, as `find.mode` says. */
+function paintMode() {
+  $("q-mode").innerHTML = Object.entries(MODES).map(([m, x]) =>
+    '<button type="button" class="fchip' + (find.mode === m ? " on" : "") + '" data-mode="' + m + '" aria-pressed="' +
+      (find.mode === m) + '">' + x.label + "</button>").join("");
+  $("q").placeholder = MODES[find.mode].placeholder;
+}
+
 export function mount() {
   const box = $("q");
+  paintMode();
   box.addEventListener("input", () => {
     clearTimeout(qtimer);
     $("q-x").hidden = box.value.length === 0;
-    qtimer = setTimeout(runSearch, 180);
+    if (find.mode === "word") qtimer = setTimeout(runSearch, 180);
   });
   box.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") { e.preventDefault(); clearTimeout(qtimer); ask(); }
-    else if (e.key === "Escape" && box.value) { e.preventDefault(); clear(); }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      clearTimeout(qtimer);
+      if (find.mode === "word") runSearch(); else ask();
+    } else if (e.key === "Escape" && box.value) { e.preventDefault(); clear(); }
   });
   $("q-x").addEventListener("click", () => { clear(); box.focus(); });
+  $("q-mode").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-mode]");
+    if (!b || b.dataset.mode === find.mode) return;
+    find.mode = b.dataset.mode;
+    paintMode();
+    box.focus();
+    const words = box.value;
+    if (!words.trim()) return;
+    if (find.mode === "word") { runSearch(); return; }
+    // By meaning waits for Enter: the list comes back, the question stays.
+    seq++;
+    if (find.on) setFilter({});
+    box.value = words;
+    $("q-x").hidden = false;
+    $("find-head").hidden = false;
+    $("find-head").innerHTML = '<span class="find-hint">press Enter to ask</span>';
+  });
   // A filter chosen anywhere else (a chip, the chart, a link from Home) ends
   // the find: the box empties so it never shows words the list isn't answering.
   onFilter(() => {
@@ -85,10 +124,30 @@ async function runSearch() {
   try { d = await api("/api/search?limit=25&q=" + encodeURIComponent(q)); }
   catch (e) { return fail("Search", e); }
   if (mine !== seq || $("q").value.trim() !== q) return;
-  takeList(esc(matchCount(d.hits.length, d.total)) + ' <span class="find-hint">· press Enter to ask by meaning instead</span>');
+  const close = d.close || [];
+  takeList(esc(findHead(d.hits.length, d.total, close.length)));
   $("mlist").innerHTML = d.absent
-    ? absenceLine(d.absent, "nothing I hold uses those words — press Enter to ask by meaning")
-    : d.hits.map((h) => memRow({ ...h, text: h.shown, archived: null })).join("");
+    ? absenceLine(d.absent, "nothing I hold uses those words — try finding it by meaning")
+    : d.hits.map((h) => memRow({ ...h, text: h.shown, archived: null }, { mark: searchWords(q) })).join("") +
+      (close.length > 0
+        ? '<div class="mclose-h">Close matches <span>· a letter or two off</span></div>' +
+          close.map((h) => memRow({ ...h, text: h.shown, archived: null }, { mark: h.matched })).join("")
+        : "");
+}
+
+/** The line over the answers: the exact matches, then the close ones (M4, 2026-09-30). */
+export function findHead(shown, total, close) {
+  const exact = shown === 0 && close > 0 ? "no exact match" : matchCount(shown, total);
+  return exact + (close > 0 ? " · " + close + (close === 1 ? " close match" : " close matches") : "");
+}
+
+/** Words too common to be worth marking in an answer to a question. */
+const QUESTION_WORDS = new Set(("what when where which while that this these those there their they them then than " +
+  "with from have does did about your you remember know said would could should been were into just some much many also ever").split(" "));
+
+/** Ask's question, as words to mark in its answers: the longer ones, the common ones left out. */
+export function questionWords(q) {
+  return searchWords(q).filter((w) => w.length >= 4 && !QUESTION_WORDS.has(w));
 }
 
 /** The tiers `ask` sorts answers into, in plain words. */
@@ -145,6 +204,7 @@ async function ask() {
     }, {
       tier: TIER[m.tier] || m.tier,
       from: m.from ? { id: m.from.episodeId, words: fromWords(m.from) } : null,
+      mark: questionWords(q),
     });
   }).join("");
 }

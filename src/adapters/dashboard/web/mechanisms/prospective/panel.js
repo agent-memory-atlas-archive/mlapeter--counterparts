@@ -1,6 +1,7 @@
 /* Prospective memory, pictured (home round 3b, 2026-09-27): the reminders that
    came back this week, then the dated memories still waiting for their day —
    with how many of each, so a short list never reads as all there is. */
+import { dateOr } from "../../shared/dates.js";
 import { esc } from "../../shared/dom.js";
 import { memLink, nothingYet } from "../picture.js";
 
@@ -21,7 +22,7 @@ export function picture(p) {
       "<li>" + memLink(m, 90) + '<span class="pic-meta">' + (m.plain ? "said plainly" : "came back as a quiet footnote") + " · day " + m.day + "</span></li>"
     ).join("") +
     p.waiting.map((m) =>
-      "<li>" + memLink(m, 90) + '<span class="pic-meta pic-dim">waiting for ' + esc(m.date) + "</span></li>"
+      "<li>" + memLink(m, 90) + '<span class="pic-meta pic-dim">waiting for ' + esc(dateOr(m.date)) + "</span></li>"
     ).join("") +
     '</ul><p class="pic-cap">' + esc(caption(p)) + "</p>";
 }

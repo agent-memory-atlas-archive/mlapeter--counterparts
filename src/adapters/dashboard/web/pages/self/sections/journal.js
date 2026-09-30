@@ -7,7 +7,7 @@ import { absenceLine } from "../../../shared/absence.js";
 import { $, esc } from "../../../shared/dom.js";
 import { renderMarkdown } from "../markdown.js";
 import { chapterKey, ui } from "../state.js";
-import { shortDate } from "./page.js";
+import { dateWords } from "../../../shared/dates.js";
 import { q, wireTips } from "../../../shared/widgets/tips.js";
 
 export const markup = `
@@ -18,20 +18,16 @@ let last = null;
 
 /**
  * A day's date in the strip, in ONE format for every day (round 3, S4): the
- * side column's "Jul 16", from the view's `iso` (the chapter heading's date,
+ * side column's "Jul 16th", from the view's `iso` (the chapter heading's date,
  * else the entry's own). "lived day 3" only when no date reads at all.
  */
 export function dayLabel(day) {
-  return shortDate(day.iso) || "lived day " + day.day;
+  return dateWords(day.iso) || "lived day " + day.day;
 }
 
-/** The picked day's heading: "Thu, Jul 16" (the year when it is not this one). */
+/** The picked day's heading: "Thu, Jul 16th" (the year when it is not this one). */
 export function dayTitle(day) {
-  if (!day.iso || !/^\d{4}-\d{2}-\d{2}$/.test(day.iso)) return "lived day " + day.day;
-  const dt = new Date(day.iso + "T12:00:00Z");
-  const opts = { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" };
-  if (dt.getUTCFullYear() !== new Date().getFullYear()) opts.year = "numeric";
-  return dt.toLocaleDateString("en-US", opts);
+  return dateWords(day.iso, { weekday: true }) || "lived day " + day.day;
 }
 
 /** "1 chapter" / "7 chapters": what the number in a day's cell counts. */
@@ -62,7 +58,7 @@ export function paint(d) {
     // The count says what it counts, the same way on every day.
     const marks = '<span class="jd-count" aria-hidden="true"><span class="jd-n">' + n + '</span> ' +
       (n === 1 ? "chapter" : "chapters") + "</span>";
-    const dated = !!shortDate(x.iso);
+    const dated = !!dateWords(x.iso);
     return '<button type="button" class="jd-day' + (on ? " on" : "") + '" data-day="' + x.day + '" aria-pressed="' + on + '"' +
       ' aria-label="' + esc(dayTitle(x) + (dated ? ", lived day " + x.day : "") + ", " + chapterCount(n)) + '">' +
       '<b>' + esc(dayLabel(x)) + "</b>" +
@@ -87,7 +83,7 @@ export function paint(d) {
   box.innerHTML =
     '<div class="jd-strip" role="group" aria-label="Days">' + cells + "</div>" +
     '<div class="jd-head"><b>' + esc(dayTitle(picked)) + "</b>" +
-      (shortDate(picked.iso) ? "<span>lived day " + picked.day + " · " + esc(chapterCount(picked.chapters.length)) + "</span>" : "<span>" + esc(chapterCount(picked.chapters.length)) + "</span>") + "</div>" +
+      (dateWords(picked.iso) ? "<span>lived day " + picked.day + " · " + esc(chapterCount(picked.chapters.length)) + "</span>" : "<span>" + esc(chapterCount(picked.chapters.length)) + "</span>") + "</div>" +
     '<div class="jd-list">' + chapters + "</div>" +
     (d.journalMore > 0 ? '<p class="foot">' + d.journalMore + " older chapters are not shown here.</p>" : "");
   box.querySelector(".jd-strip").scrollLeft = scrollLeft;

@@ -44,6 +44,8 @@ import { iconOf, isSleepCheck, laneOf } from "./lanes.js";
 import type { Icon, Lane } from "./lanes.js";
 import type { NodeKey } from "./flow.js";
 import { reveal, revealHere, revealPayload, shortOf } from "./reveal.js";
+// @ts-expect-error — a plain browser module, no declarations
+import { dateOr } from "./shared/dates.js";
 
 /** `calm` — ordinary machinery. `notable` — a real change of state.
  *  `amber` — the owner should look. Nothing else exists. */
@@ -625,7 +627,7 @@ export const NARRATORS = {
    * the outcome a silence would otherwise be mistaken for.
    */
   "self.page.writer.ran": (t) => {
-    const about = s(t, "about") ?? "a day";
+    const about = dateOr(s(t, "about")) || "a day";
     const mode = s(t, "mode") ?? "session";
     const outcome = s(t, "outcome") ?? "ran";
     const considered = n(t, "considered") ?? 0;
@@ -878,7 +880,7 @@ export const NARRATORS = {
     const oldest = s(t, "oldest");
     return calm(
       `A whole copy of me was set aside — ${String(n(t, "files") ?? 0)} files. ${String(kept)} copies are kept` +
-        (oldest === null ? "." : `, the oldest from ${oldest.slice(0, 10)}.`),
+        (oldest === null ? "." : `, the oldest from ${dateOr(oldest.slice(0, 10))}.`),
     );
   },
   "snapshot.failed": (t) =>
@@ -891,7 +893,7 @@ export const NARRATORS = {
     return calm(
       `${String(deleted)} old cop${deleted === 1 ? "y" : "ies"} of me ${deleted === 1 ? "was" : "were"} let go; ` +
         `${String(n(t, "kept") ?? 0)} remain` +
-        (oldest === null ? "." : `, back to ${oldest.slice(0, 10)}.`),
+        (oldest === null ? "." : `, back to ${dateOr(oldest.slice(0, 10))}.`),
     );
   },
 
@@ -914,7 +916,7 @@ export const NARRATORS = {
   // ── the raw capture, let go after a week ──────────────────────────────────
   "remember.prune": (t) => {
     const reason = s(t, "reason") ?? "";
-    const date = s(t, "date") ?? "that day";
+    const date = dateOr(s(t, "date")) || "that day";
     if (reason === "STARTED") {
       return calm(`A pass over the raw transcripts started for ${date}; its result is the next line for that date.`);
     }

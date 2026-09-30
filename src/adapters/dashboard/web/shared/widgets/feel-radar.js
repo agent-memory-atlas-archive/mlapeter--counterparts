@@ -10,10 +10,13 @@
    the caller says it: on Home it opens Memories filtered to that feeling; on
    Memories it filters the list. Hover shows the counts in words. Plain SVG.
 
+   The axes carry the stored cores (`data-core`); what they are CALLED is
+   `memory-marks.js#feelingName` ("disgust" reads "dislike", 2026-09-30).
+
    Data: `/api/overview`'s or `/api/memories`'s `feelings`
    (`views/memories.ts#feelingsView`) — the same numbers on both. */
 import { esc } from "../dom.js";
-import { FEELING_COLOURS } from "../memory-marks.js";
+import { FEELING_COLOURS, feelingName } from "../memory-marks.js";
 import { hideTip, showTip } from "../tip.js";
 import { ownersWord } from "../voice.js";
 import { q, wireTips } from "./tips.js";
@@ -48,7 +51,7 @@ export function radarSvg(f, picked) {
   const fmt = (p) => p[0].toFixed(1) + "," + p[1].toFixed(1);
   const theirs = ownersWord(f.owner);
   let svg = '<svg class="feel-svg" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="' +
-    esc("how it feels: " + cores.map((c) => c.core + " " + theirs + " " + c.yours.count + ", mine " + c.mine.count).join("; ")) + '">';
+    esc("how it feels: " + cores.map((c) => feelingName(c.core) + " " + theirs + " " + c.yours.count + ", mine " + c.mine.count).join("; ")) + '">';
   for (const k of [1 / 3, 2 / 3, 1]) {
     svg += '<polygon class="feel-ring" points="' + cores.map((_, i) => fmt(pt(i, R * k))).join(" ") + '"/>';
   }
@@ -76,11 +79,11 @@ export function radarSvg(f, picked) {
     const anchor = Math.abs(lx - cx) < 4 ? "middle" : lx > cx ? "start" : "end";
     const on = picked === c.core;
     svg += '<g class="feel-axis' + (on ? " on filtering" : "") + '" data-core="' + esc(c.core) + '" tabindex="0" role="button" aria-pressed="' + on +
-      '" aria-label="' + esc(c.core) + '">' +
+      '" aria-label="' + esc(feelingName(c.core)) + '">' +
       '<polygon class="feel-hit" points="' + w.map(fmt).join(" ") + '"/>' +
       '<circle cx="' + (lx + (anchor === "start" ? -8 : anchor === "end" ? 8 : 0)).toFixed(1) + '" cy="' + (ly - (anchor === "middle" ? 12 : 4)).toFixed(1) +
         '" r="3" fill="' + (FEELING_COLOURS[c.core] || "#8a95a3") + '"/>' +
-      '<text class="feel-label" x="' + lx.toFixed(1) + '" y="' + (ly + (anchor === "middle" && ly > cy ? 8 : 0)).toFixed(1) + '" text-anchor="' + anchor + '">' + esc(c.core) + "</text></g>";
+      '<text class="feel-label" x="' + lx.toFixed(1) + '" y="' + (ly + (anchor === "middle" && ly > cy ? 8 : 0)).toFixed(1) + '" text-anchor="' + anchor + '">' + esc(feelingName(c.core)) + "</text></g>";
   });
   return svg + "</svg>";
 }
@@ -103,7 +106,7 @@ export function radarHtml(f, picked) {
 
 /** One axis on hover, in words: "happy — Mike's 3 · mine 2". */
 function hoverHtml(c, owner) {
-  return '<b style="color:' + (FEELING_COLOURS[c.core] || "inherit") + '">' + esc(c.core) + "</b> — " +
+  return '<b style="color:' + (FEELING_COLOURS[c.core] || "inherit") + '">' + esc(feelingName(c.core)) + "</b> — " +
     esc(ownersWord(owner)) + " " + c.yours.count + " · mine " + c.mine.count;
 }
 

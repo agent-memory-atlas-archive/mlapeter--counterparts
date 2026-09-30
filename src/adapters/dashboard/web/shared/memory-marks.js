@@ -40,12 +40,31 @@ export const FEELING_COLOURS = {
   happy: "#ffd740", sad: "#64b5f6", fear: "#ffa45c", anger: "#ff6b6b", surprise: "#d59cf0", disgust: "#8bd17c",
 };
 
-/** One dot per feeling, its word on hover. Empty string when there are none. */
-export function feelingDots(feelings) {
+/**
+ * What the dashboard CALLS each core (M1, 2026-09-30, "fine for now"): a display
+ * name only. The stored cores stay the wheel's six, and every filter and link
+ * still carries the stored one; only the words on the page change.
+ */
+const FEELING_NAMES = { disgust: "dislike" };
+export const feelingName = (core) => FEELING_NAMES[core] || String(core || "");
+
+/** A memory's feeling in one word: its own ("disappointed"), else its core's name. */
+export function feelingWord(f) {
+  const w = f && f.word ? String(f.word) : "";
+  return w && w !== f.core ? w : feelingName(f && f.core);
+}
+
+/** One dot per feeling, its word on hover; `withWords` also prints the words
+ *  (two at most, then "+N"). Empty string when there are none. */
+export function feelingDots(feelings, withWords) {
   if (!feelings || feelings.length === 0) return "";
-  const words = feelings.map((f) => f.word).join(", ");
+  const list = feelings.map(feelingWord);
+  const words = list.join(", ");
+  const shown = withWords
+    ? '<span class="fwords">' + esc(list.slice(0, 2).join(", ") + (list.length > 2 ? " +" + (list.length - 2) : "")) + "</span>"
+    : "";
   return '<span class="fdots" title="' + esc("felt: " + words) + '" aria-label="' + esc("felt: " + words) + '">' +
-    feelings.map((f) => '<i style="background:' + (FEELING_COLOURS[f.core] || "#8a95a3") + '"></i>').join("") + "</span>";
+    feelings.map((f) => '<i style="background:' + (FEELING_COLOURS[f.core] || "#8a95a3") + '"></i>').join("") + shown + "</span>";
 }
 
 /** The special cases only: ★ core, a lock for protected, journal. */
@@ -57,11 +76,3 @@ export function badges(r) {
 
 const LOCK = '<svg class="kic" viewBox="0 0 16 16" aria-label="protected"><rect x="3.5" y="7" width="9" height="7" rx="1.3"/>' +
   '<path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg>';
-
-/** `2026-09-26` → `26 Sep 2026`; anything else as it came. */
-export function shortDate(iso) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ""));
-  if (!m) return String(iso || "");
-  const mon = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number(m[2]) - 1];
-  return Number(m[3]) + " " + mon + " " + m[1];
-}

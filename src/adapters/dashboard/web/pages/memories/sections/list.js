@@ -8,7 +8,7 @@
 import { absenceLine } from "../../../shared/absence.js";
 import { api, fail } from "../../../shared/api.js";
 import { $, esc } from "../../../shared/dom.js";
-import { FEELING_COLOURS, kindMark, kindOf } from "../../../shared/memory-marks.js";
+import { FEELING_COLOURS, feelingName, kindMark, kindOf } from "../../../shared/memory-marks.js";
 import { memRow, wireRows } from "../row.js";
 import { filters, find, onFilter, setFilter, toggle } from "../state.js";
 import * as search from "./search.js";
@@ -122,8 +122,8 @@ function paintFilters(d) {
     chip("journal", null, "journal" + count(c.journal), d.journal, c.journal === 0 ? "zero" : "", JOURNAL_HINT) +
     chip("core", null, '<span class="star">★</span>core' + count(c.core), d.core, c.core === 0 ? "zero" : "", CORE_HINT);
   const feelings = Object.keys(c.feelings || {}).map((core) => chip("feelingCore", core,
-    '<i class="fcdot" style="background:' + (FEELING_COLOURS[core] || "#8a95a3") + '"></i>' + esc(core) + count(c.feelings[core]),
-    d.feelingCore === core, c.feelings[core] === 0 ? "zero" : "", "memories that felt " + core)).join("");
+    '<i class="fcdot" style="background:' + (FEELING_COLOURS[core] || "#8a95a3") + '"></i>' + esc(feelingName(core)) + count(c.feelings[core]),
+    d.feelingCore === core, c.feelings[core] === 0 ? "zero" : "", "memories that felt " + feelingName(core))).join("");
   const any = d.kind || d.core || d.journal || d.hold || d.feeling || d.feelingCore;
   const holdChip = d.hold ? chip("hold", d.hold, '<span class="hdot ' + esc(d.hold) + '"></span>' + esc(HOLD_WORDS[d.hold] || d.hold) +
     count(c.hold[d.hold]) + ' <span class="fx" aria-hidden="true">✕</span>', true, "", "from the bar above — click to clear") : "";

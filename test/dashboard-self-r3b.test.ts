@@ -17,7 +17,7 @@ import { MAP_MAX } from "../src/adapters/dashboard/web/views/self-map.js";
 // @ts-expect-error — a plain browser module, no declarations
 import { dayWords, stripSummary } from "../src/adapters/dashboard/web/pages/self/sections/page.js";
 // @ts-expect-error — a plain browser module, no declarations
-import { pageAge } from "../src/adapters/dashboard/web/pages/self/sections/wake.js";
+import { memoryItem, pageAge } from "../src/adapters/dashboard/web/pages/self/sections/wake.js";
 // @ts-expect-error — a plain browser module, no declarations
 import { MIN_APART, layout, nodeWords } from "../src/adapters/dashboard/web/pages/self/sections/map.js";
 // @ts-expect-error — a plain browser module, no declarations
@@ -113,10 +113,27 @@ describe("the self tab, round 3b", () => {
   test("1: the strip's words, as the page draws them", () => {
     const filled = { day: 4, date: "2026-09-04", today: false, seqs: [3], by: "owner", reason: "by hand", why: null };
     const hollow = { day: 2, date: "2026-09-02", today: false, seqs: [], by: null, reason: null, why: "Not rewritten — x." };
-    expect(dayWords(filled)).toMatch(/^Sep 4(, 2026)? · lived day 4 — rewritten by you, by hand: “by hand”$/);
-    expect(dayWords(hollow)).toMatch(/^Sep 2(, 2026)? · lived day 2 — Not rewritten — x\.$/);
+    expect(dayWords(filled)).toMatch(/^Sep 4th(, 2026)? · lived day 4 — rewritten by you, by hand: “by hand”$/);
+    expect(dayWords(hollow)).toMatch(/^Sep 2nd(, 2026)? · lived day 2 — Not rewritten — x\.$/);
     expect(dayWords({ ...hollow, date: null })).toBe("Lived day 2 — Not rewritten — x.");
-    expect(stripSummary([filled, hollow])).toMatch(/^Rewritten on 1 of 2 lived days · newest Sep 4/);
+    expect(stripSummary([filled, hollow])).toMatch(/^Rewritten on 1 of 2 lived days · newest Sep 4th/);
+    // 2026-09-30: every kind of reason a version carries, as a person would say it, no ids.
+    const today = { ...filled, date: null, today: true, day: 9 };
+    expect(dayWords({ ...today, seqs: [5, 6], by: "reflection", reason: "reflection rfl_06c7d252c3c7 after dream drm_5c16061f0f96" }))
+      .toBe("Today · lived day 9 — rewritten twice, last by the reflection after today's dream.");
+    expect(dayWords({ ...filled, by: "reflection", reason: "reflection rfl_06c7d252c3c7 after dream drm_5c16061f0f96" }))
+      .toMatch(/— rewritten by the reflection after that night's dream\.$/);
+    expect(dayWords({ ...filled, by: "reflection", reason: "reflection rfl_06c7d252c3c7" })).toMatch(/— rewritten by the reflection\.$/);
+    expect(dayWords({ ...filled, seqs: [1, 2, 3], by: "owner", reason: "owner edit" })).toMatch(/— rewritten 3 times, last by you, by hand\.$/);
+    expect(dayWords({ ...filled, by: "owner", reason: "restored version 4" })).toMatch(/— rewritten by you, putting an earlier version back\.$/);
+    expect(dayWords({ ...filled, by: "writer", reason: "the day moved how I hold the castle game (mem_cb6eea7a6b9f)" }))
+      .toMatch(/— rewritten by the page writer: “the day moved how I hold the castle game”$/);
+    expect(dayWords({ ...filled, by: "session", reason: "folded in drm_5c16061f0f96, as asked" }))
+      .toMatch(/— rewritten by a session: “folded in, as asked”$/);
+    expect(dayWords({ ...filled, by: null, reason: null })).toMatch(/— rewritten by someone unrecorded\.$/);
+    for (const r of ["reflection rfl_06c7d252c3c7 after dream drm_5c16061f0f96", "x mem_cb6eea7a6b9f y"]) {
+      expect(dayWords({ ...filled, by: "session", reason: r })).not.toMatch(/[a-z]{2,6}_[0-9a-f]{6,}/);
+    }
     expect(pageDayWords({ what: "rewrote it", next: null })).toBe("The page writer rewrote it.");
     expect(pageDayWords({ what: "nothing ran, and nothing says why", next: null })).toBe("Nothing ran, and nothing says why.");
   });
@@ -129,8 +146,52 @@ describe("the self tab, round 3b", () => {
     expect(l.nearby.map((m) => m.id)).toEqual([ids["mild"] as string]);
     expect(l.nearby[0]?.text).toBe("I like short sentences.");
     expect(l.nearbyLines).toEqual([]);
-    expect(pageAge({ date: "2026-09-04", livedDaysAgo: 1, newerThanWake: false })).toMatch(/^written Sep 4(, 2026)?, 1 lived day ago$/);
+    expect(pageAge({ date: "2026-09-04", livedDaysAgo: 1, newerThanWake: false })).toMatch(/^written Sep 4th(, 2026)?, 1 lived day ago$/);
     expect(pageAge({ date: null, livedDaysAgo: 0, newerThanWake: true })).toBe("written today — rewritten since; the next wake carries the new one");
+  });
+
+  test("2 (2026-09-30): an arriving line is its memory, by title, opening its card — not its whole body", () => {
+    const dir = mkdtempSync(join(tmpdir(), "counterparts-self-arriving-"));
+    try {
+      const c = Counterpart.open({ dir, owner: true, budgetBytes: 9000 });
+      let titled: string;
+      let bare: string;
+      try {
+        const salience = { novelty: null, relevance: 0.8, emotional: 0.8, predictive: 0.8 };
+        titled = c.store.put({
+          type: "memory", kind: "person", title: "Portland move",
+          body: "The Portland move lands on the fourth and the truck is booked. (1) pack the kitchen (2) call the movers `move --confirm`.\n\nA second paragraph the wake never prints.",
+          learnedOn: "2026-09-01", eventDate: "2026-10-04", salience,
+        });
+        bare = c.store.put({
+          type: "memory", kind: "fact", body: "The dentist is at nine on the fourth. Bring the form.",
+          learnedOn: "2026-09-01", eventDate: "2026-10-04", salience,
+        });
+        c.rebrief({ budgetBytes: 9000, at: "2026-10-04" });
+      } finally {
+        c.close();
+      }
+      const dash = Dashboard.open({ dir });
+      let arriving;
+      try {
+        arriving = mindView(dash.source).wakeList.arriving;
+      } finally {
+        dash.close();
+      }
+      expect(arriving.map((a) => a.id).sort()).toEqual([titled, bare].sort());
+      const move = arriving.find((a) => a.id === titled);
+      expect(move?.title).toBe("Portland move");
+      const html = arriving.map(memoryItem).join("");
+      expect(html).toContain(`openMemory('${titled}')`);
+      expect(html).toContain(">Portland move</button>");
+      // No title: the first sentence stands in; the rest is on hover only.
+      expect(html).toContain(">The dentist is at nine on the fourth.</button>");
+      // A line no memory was found for is still listed, as its first sentence.
+      expect(memoryItem({ id: null, text: "Something arrives. More words.", title: null, confidential: false }))
+        .toBe('<li class="wk-line-i" title="Something arrives. More words.">Something arrives.</li>');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test("3: the health row says whether the wake fits, and what was trimmed when it did not", () => {

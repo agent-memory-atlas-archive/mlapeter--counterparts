@@ -28,6 +28,7 @@ import { Dashboard } from "../src/adapters/dashboard/index.js";
 import type { DashboardSource } from "../src/adapters/dashboard/index.js";
 import { router } from "../src/adapters/dashboard/web/server.js";
 import type { MemoryListView } from "../src/adapters/dashboard/web/views.js";
+import { FIRM_AHEAD_DAYS, NEAR_LET_GO_DAYS } from "../src/adapters/dashboard/web/views/memories.js";
 import { archiveWords } from "../src/adapters/dashboard/web/views/archive-words.js";
 import { firstSentence, shownOf, stripChapterLead } from "../src/adapters/dashboard/web/views/memory-words.js";
 import { seedDemo } from "../tools/demo/seed.js";
@@ -139,7 +140,7 @@ describe("M1 who is talking", () => {
 });
 
 describe("M2 one find box", () => {
-  test("one box: typing searches, Enter asks; the answers go where the list is; plain match words", async () => {
+  test("one box and a by word / by meaning switch; the answers go where the list is; plain match words", async () => {
     const search = read("pages/memories/sections/search.js");
     expect(search).toContain(">Find a memory</label>");
     expect(search).not.toContain('id="ask-q"');
@@ -147,8 +148,17 @@ describe("M2 one find box", () => {
     expect(search).toContain('e.key === "Enter"');
     expect(search).toContain('$("mlist").innerHTML');
     expect(search).toContain('id="q-x"');
-    const { TIER } = (await import(join(WEB, "pages/memories/sections/search.js"))) as { TIER: Record<string, string> };
+    const { TIER, MODES } = (await import(join(WEB, "pages/memories/sections/search.js"))) as {
+      TIER: Record<string, string>; MODES: Record<string, { label: string; placeholder: string }>;
+    };
     expect(TIER).toEqual({ vivid: "strong match", quiet: "match", dim: "weak match" });
+    // 2026-09-30: a visible switch beside the one box; Enter never flips it.
+    expect(Object.keys(MODES)).toEqual(["word", "meaning"]);
+    expect(MODES["word"]?.label).toBe("by word");
+    expect(MODES["meaning"]?.label).toBe("by meaning");
+    expect(search).toContain('id="q-mode"');
+    expect(search).toContain('if (find.mode === "word") runSearch(); else ask();');
+    expect(read("pages/memories/state.js")).toContain('mode: "word"');
     // The box sits with the list, under the charts, not above them.
     const list = read("pages/memories/sections/list.js");
     expect(list).toContain("${search.markup}");
@@ -179,8 +189,28 @@ describe("M3 one feelings chart", () => {
       const f = get<MemoriesJson>(src, "/api/memories").feelings;
       expect((radarSvg(f, null).match(/class="feel-axis on/g) ?? []).length).toBe(0);
       expect((radarSvg(f, "happy").match(/class="feel-axis on/g) ?? []).length).toBe(1);
+      // M1 (2026-09-30): "disgust" reads "dislike"; the axis still carries the stored core.
+      const svg = radarSvg(f, "disgust");
+      expect(svg).toContain('data-core="disgust"');
+      expect(svg).toContain(">dislike</text>");
+      expect(svg).not.toMatch(/>disgust</);
     });
     expect(read("pages/memories/sections/feel.js")).toContain("radarHtml(data, filters.feelingCore)");
+  });
+
+  test("M1: a memory shows its own feeling word; a bare core falls back to its display name", async () => {
+    const { feelingName, feelingWord, feelingDots } = (await import(join(WEB, "shared/memory-marks.js"))) as {
+      feelingName(c: string): string; feelingWord(f: unknown): string; feelingDots(f: unknown[], w?: boolean): string;
+    };
+    expect(feelingName("disgust")).toBe("dislike");
+    expect(feelingName("sad")).toBe("sad");
+    expect(feelingWord({ core: "disgust", word: "disappointed" })).toBe("disappointed");
+    expect(feelingWord({ core: "disgust", word: "disgust" })).toBe("dislike");
+    expect(feelingWord({ core: "disgust", word: "" })).toBe("dislike");
+    const dots = feelingDots([{ core: "disgust", word: "disappointed" }, { core: "happy", word: "proud" }, { core: "fear", word: "fear" }], true);
+    expect(dots).toContain('title="felt: disappointed, proud, fear"');
+    expect(dots).toContain('<span class="fwords">disappointed, proud +1</span>');
+    expect(feelingDots([{ core: "disgust", word: "disgust" }])).not.toContain("disgust");
   });
 });
 
@@ -193,10 +223,38 @@ describe("M4 how well I remember", () => {
     });
     const hold = read("pages/memories/sections/hold.js");
     expect(hold).toContain(">How well I remember<");
-    expect(hold).toContain('["journal", "journal"');
-    expect(hold).not.toContain("aren't scored, so");
-    const { HOLD_TIP } = (await import(join(WEB, "pages/memories/sections/hold.js"))) as { HOLD_TIP: string };
-    expect(HOLD_TIP).toBe("Firm: I'll still know it a month from now even if it's never used. Fading: unless it's used, I'll put it away within two weeks.");
+    expect(hold).toContain('data-hold="journal"');
+    const { HOLD_TIP, PARTS, NONE_FADING } = (await import(join(WEB, "pages/memories/sections/hold.js"))) as {
+      HOLD_TIP: string; PARTS: [string, string, string][]; NONE_FADING: string;
+    };
+    expect(HOLD_TIP).toBe("Firm: I'll still know it a month from now even if it's never used. " +
+      "Fading: unless it's used, I may put it away within my next two weeks of use.");
+    // Each sentence says what `holdOf` measures: firm is 30 lived days ahead, fading is prune within 14.
+    expect(FIRM_AHEAD_DAYS).toBe(30);
+    expect(NEAR_LET_GO_DAYS).toBe(14);
+    expect(PARTS.map((p) => p[0])).toEqual(["firm", "settling", "fading"]);
+    expect(PARTS[0]?.[2]).toContain("a month from now");
+    expect(PARTS[2]?.[2]).toContain("two weeks of use");
+    expect(NONE_FADING).toBe("None right now; nothing is about to be put away.");
+  });
+
+  test("one square per memory while it fits; past that a square is 2, 5, 10, 20 … memories, and no state vanishes", async () => {
+    const { waffleScale, scaleSteps, scaleWords } = (await import(join(WEB, "pages/memories/sections/hold.js"))) as {
+      waffleScale(c: Record<string, number>, cap: number): { per: number; squares: { firm: number; settling: number; fading: number } };
+      scaleSteps(max: number): number[];
+      scaleWords(per: number): string;
+    };
+    expect(scaleSteps(2000).slice(0, 11)).toEqual([1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000]);
+    const mike = { firm: 87, settling: 277, fading: 0 };
+    expect(waffleScale(mike, 600)).toEqual({ per: 1, squares: { firm: 87, settling: 277, fading: 0 } });
+    expect(waffleScale(mike, 300)).toEqual({ per: 2, squares: { firm: 44, settling: 139, fading: 0 } });
+    const big = { firm: 700, settling: 1290, fading: 3 };
+    const s = waffleScale(big, 400);
+    expect(s.per).toBe(5);
+    expect(s.squares).toEqual({ firm: 140, settling: 258, fading: 1 });
+    expect(s.squares.firm + s.squares.settling + s.squares.fading).toBeLessThanOrEqual(400);
+    expect(scaleWords(1)).toBe("");
+    expect(scaleWords(5)).toBe("each square is 5 memories");
   });
 });
 
@@ -252,10 +310,45 @@ describe("M6 rows", () => {
     expect(plain).not.toContain("fading");
     expect(memRow({ ...base, hold: "fading" })).toContain('class="mfading"');
     expect(memRow({ ...base, kind: "person" })).toContain("people");
-    expect(journalTitle("2026-09-27")).toBe("Journal · Sun 27 Sep");
+    expect(journalTitle("2026-09-27")).toMatch(/^Journal · Sun, Sep 27th(, 2026)?$/);
+    expect(journalTitle(null)).toBe("Journal");
     const j = memRow({ ...base, kind: "self", journal: true, text: "Mike came back to the castle game." });
-    expect(j).toContain("Journal · Sun 27 Sep");
+    expect(j).toContain("Journal · Sun, Sep 27th");
     expect(j).not.toContain("mkind");
+    // M5 (2026-09-30): a search's words are marked in the title and the words, escaped first.
+    const found = memRow({ ...base, title: "The castle <game>", text: "A castle & a moat; castles differ. CASTLE." }, { mark: ["castle"] });
+    expect(found).toContain('<div class="mtitle">The <mark>castle</mark> &lt;game&gt;</div>');
+    expect(found).toContain("A <mark>castle</mark> &amp; a moat; castles differ. <mark>CASTLE</mark>.");
+    expect(memRow({ ...base, text: "<b>amp</b>" }, { mark: ["amp", "b"] })).toContain("&lt;<mark>b</mark>&gt;<mark>amp</mark>&lt;/<mark>b</mark>&gt;");
+    expect(memRow({ ...base, confidential: true, text: "withheld" }, { mark: ["withheld"] })).not.toContain("<mark>");
+    const { searchWords } = (await import(join(WEB, "pages/memories/row.js"))) as { searchWords(q: string): string[] };
+    expect(searchWords("The castle-game, a 2nd try")).toEqual(["the", "castle", "game", "2nd", "try"]);
+    const { questionWords, findHead } = (await import(join(WEB, "pages/memories/sections/search.js"))) as {
+      questionWords(q: string): string[]; findHead(s: number, t: number, c: number): string;
+    };
+    // M4: the close matches are counted apart from the exact ones.
+    expect(findHead(0, 0, 3)).toBe("no exact match · 3 close matches");
+    expect(findHead(2, 2, 1)).toBe("2 matches · 1 close match");
+    expect(findHead(25, 40, 0)).toBe("the closest 25 of 40 matches");
+    expect(questionWords("What do you remember about the castle game?")).toEqual(["castle", "game"]);
+    // M6 (2026-09-30): the row's own date, said again in its words, is left out of the row only.
+    const { withoutRowDate } = (await import(join(WEB, "pages/memories/row.js"))) as {
+      withoutRowDate(t: string | null, x: string, d: string | null): { title: string | null; text: string };
+    };
+    const same = withoutRowDate("Working as second opinion to a Fable session (2026-09-30)",
+      "On 2026-09-30 Mike ran two sessions on the morning's problems.", "2026-09-30");
+    expect(same).toEqual({ title: "Working as second opinion to a Fable session", text: "Mike ran two sessions on the morning's problems." });
+    expect(withoutRowDate(null, "2026-09-30: the build passed.", "2026-09-30").text).toBe("The build passed.");
+    expect(withoutRowDate("Title [2026-09-30]", "x", "2026-09-30").title).toBe("Title");
+    // A different date stays; so does a date in the middle, and anything with no row date.
+    expect(withoutRowDate("An older date stays (2026-06-12)", "On 2026-06-12 it began.", "2026-09-30"))
+      .toEqual({ title: "An older date stays (2026-06-12)", text: "On 2026-06-12 it began." });
+    expect(withoutRowDate("Seen (2026-09-30) twice", "Late on 2026-09-30 it ran.", "2026-09-30"))
+      .toEqual({ title: "Seen (2026-09-30) twice", text: "Late on 2026-09-30 it ran." });
+    expect(withoutRowDate("T (2026-09-30)", "On 2026-09-30 x", null)).toEqual({ title: "T (2026-09-30)", text: "On 2026-09-30 x" });
+    const dated = memRow({ ...base, date: "2026-09-30", title: "A session (2026-09-30)", text: "On 2026-09-30 Mike ran two." });
+    expect(dated).toContain('<div class="mtitle">A session</div>');
+    expect(dated).toContain('<div class="mtext">Mike ran two.</div>');
     const away = memRow({ ...base, archived: "replaced by a newer version", versions: 3 });
     expect(away).toContain("put away: replaced by a newer version · 3 versions");
   });

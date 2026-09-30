@@ -5,7 +5,8 @@
    it is not the usual — the one word "fading". A plain fact carries no kind
    tag (the quiet default); a journal chapter is titled by its day. */
 import { esc } from "../../shared/dom.js";
-import { badges, feelingDots, kindMark, kindOf, shortDate } from "../../shared/memory-marks.js";
+import { dateOr, dateWords } from "../../shared/dates.js";
+import { badges, feelingDots, kindMark, kindOf } from "../../shared/memory-marks.js";
 import { openMemory } from "../../shared/memory-modal.js";
 
 /** Rows under `container` open their memory on a click or Enter (one listener
@@ -24,28 +25,64 @@ export function wireRows(container) {
 }
 
 const DATE_WORDS = { text: "the date written in the memory", chapter: "the day its journal chapter names", recorded: "the day it was recorded" };
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-/** A journal chapter's title: "Journal · Sun 27 Sep", or "Journal" with no day. */
+/** A journal chapter's title: "Journal · Sun, Sep 27th", or "Journal" with no day. */
 export function journalTitle(date) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(date || ""));
-  if (!m) return "Journal";
-  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
-  return "Journal · " + WEEKDAYS[d.getUTCDay()] + " " + d.getUTCDate() + " " + MONTHS[d.getUTCMonth()];
+  const day = dateWords(date, { weekday: true });
+  return day ? "Journal · " + day : "Journal";
+}
+
+/** A search's words as the word index splits them (`store/cache.ts#tokenize`):
+ *  lower case, letters and digits, two or more. */
+export function searchWords(q) {
+  return String(q || "").toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length >= 2);
+}
+
+/**
+ * `text` with every whole word that is one of `words` (any case) in a
+ * `<mark>` (M5, 2026-09-30). Escaped piece by piece BEFORE marking, so nothing
+ * unescaped reaches the page and no mark lands inside an entity.
+ */
+export function marked(text, words) {
+  const want = new Set((words || []).map((w) => String(w).toLowerCase()));
+  if (want.size === 0) return esc(text || "");
+  return String(text || "").split(/([A-Za-z0-9]+)/)
+    .map((part, i) => (i % 2 === 1 && want.has(part.toLowerCase()) ? "<mark>" + esc(part) + "</mark>" : esc(part)))
+    .join("");
+}
+
+/**
+ * A row's title and words without the date the right-hand column already
+ * shows (M6, 2026-09-30): "… session (2026-09-30)" at the end of a title, and
+ * "On 2026-09-30 …" or "2026-09-30: …" at the start of the words, only when
+ * that date IS the row's date. Anything else is left as written. Display only:
+ * the card and the memory keep every date.
+ */
+export function withoutRowDate(title, text, date) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))) return { title, text };
+  const t = /^(.*\S)\s*[([]\s*(\d{4}-\d{2}-\d{2})\s*[)\]]$/.exec(String(title || ""));
+  const w = /^(?:on\s+)?(\d{4}-\d{2}-\d{2})(?:\s*[:,—–-]\s*|\s+)(?=\S)/i.exec(String(text || ""));
+  const rest = w && w[1] === date ? String(text).slice(w[0].length) : null;
+  return {
+    title: t && t[2] === date ? t[1] : title,
+    text: rest === null ? text : rest.charAt(0).toUpperCase() + rest.slice(1),
+  };
 }
 
 /**
  * `r`: { id, title, text, confidential, kind, date, dateFrom, core, protected,
  * journal, feelings, archived, hold, versions, schemaRole }. `opts.tier` adds a
  * small match word ("strong match"); `opts.from` ({ id, words }) adds a small
- * link under the words to the journal chapter the memory was drawn from.
+ * link under the words to the journal chapter the memory was drawn from;
+ * `opts.mark` (words) marks where a search's words appear.
  */
 export function memRow(r, opts = {}) {
-  const words = r.confidential ? '<span class="withheld">' + esc(r.text) + "</span>" : esc(r.text || "");
-  const title = r.journal && !r.confidential ? journalTitle(r.date) : r.title;
+  // The date on the right is not said again in the words beside it.
+  const own = r.journal || r.confidential ? { title: r.title, text: r.text } : withoutRowDate(r.title, r.text, r.date);
+  const words = r.confidential ? '<span class="withheld">' + esc(r.text) + "</span>" : marked(own.text, opts.mark);
+  const title = r.journal && !r.confidential ? journalTitle(r.date) : own.title;
   const main = title
-    ? '<div class="mtitle">' + esc(title) + "</div>" + (r.text ? '<div class="mtext">' + words + "</div>" : "")
+    ? '<div class="mtitle">' + marked(title, opts.mark) + "</div>" + (own.text ? '<div class="mtext">' + words + "</div>" : "")
     : '<div class="mtext solo">' + words + "</div>";
   const k = kindOf(r.kind);
   const kindWords = k.label + (r.schemaRole ? " · " + r.schemaRole : "");
@@ -53,9 +90,9 @@ export function memRow(r, opts = {}) {
   const kindTag = (r.kind === "fact" && !r.schemaRole) || r.journal ? ""
     : '<span class="mkind" title="' + esc(kindWords) + '">' + kindMark(r.kind, false) + '<span class="klabel">' + esc(kindWords) + "</span></span>";
   const held = opts.tier ? '<span class="mtier">' + esc(opts.tier) + "</span>"
-    : r.hold === "fading" ? '<span class="mfading" title="unless it is used, I will put it away within two weeks">fading</span>' : "";
+    : r.hold === "fading" ? '<span class="mfading" title="unless it is used, I may put it away within my next two weeks of use">fading</span>' : "";
   const date = r.date && !r.journal
-    ? '<span class="mdate" title="' + esc(DATE_WORDS[r.dateFrom] || "") + '">' + esc(shortDate(r.date)) + "</span>" : "";
+    ? '<span class="mdate" title="' + esc(DATE_WORDS[r.dateFrom] || "") + '">' + esc(dateOr(r.date)) + "</span>" : "";
   const put = r.archived
     ? '<div class="mwhy">put away: ' + esc(r.archived) + (r.versions > 1 ? " · " + r.versions + " versions" : "") + "</div>" : "";
   const id = esc(r.id);
@@ -65,6 +102,6 @@ export function memRow(r, opts = {}) {
       put + "</div>" +
     '<div class="mside">' +
       '<span class="mline">' + held + date + "</span>" +
-      '<span class="mline">' + badges({ ...r, journal: false }) + feelingDots(r.feelings) + kindTag + "</span>" +
+      '<span class="mline">' + badges({ ...r, journal: false }) + feelingDots(r.feelings, true) + kindTag + "</span>" +
     "</div></div>";
 }

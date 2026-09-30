@@ -13,7 +13,8 @@ import { emptyBox } from "./absence.js";
 import { esc } from "./dom.js";
 import { headline, n2, n3, said } from "./format.js";
 import { coreRoadLine, curveStart, versionRows } from "./memory-card-words.js";
-import { FEELING_COLOURS, kindMark, kindOf, shortDate } from "./memory-marks.js";
+import { dateOr, stampWords } from "./dates.js";
+import { FEELING_COLOURS, feelingName, feelingWord, kindMark, kindOf } from "./memory-marks.js";
 import { openModal } from "./modal.js";
 import { confirmTyped } from "./widgets/confirm.js";
 
@@ -46,16 +47,19 @@ export function memoryCard(d) {
     "</div>";
 }
 
-/** The day it was written, once: "Written 28 Sep 2026" — the moment it entered
+/** The day it was written, once: "Written Sep 28th, 2026" — the moment it entered
  *  the store (v7 `created_at`), else the calendar day it was recorded. */
 export function writtenOn(d) {
   if (typeof d.createdAt === "number" && d.createdAt > 0) return new Date(d.createdAt).toISOString().slice(0, 10);
   return /^\d{4}-\d{2}-\d{2}$/.test(String(d.learnedOn || "")) ? d.learnedOn : null;
 }
 
+/** The card is read on its own, so its dates always carry their year. */
+const FULL = { year: true };
+
 function written(d) {
   const day = writtenOn(d);
-  return day ? '<p class="mc-written">Written ' + esc(shortDate(day)) + "</p>" : "";
+  return day ? '<p class="mc-written">Written ' + esc(dateOr(day, FULL)) + "</p>" : "";
 }
 
 /** A titled part, or nothing at all when it has nothing in it. */
@@ -170,8 +174,8 @@ function feelingsPart(d) {
   if (!d.feelings || d.feelings.length === 0) return held;
   return '<ul class="mc-list">' + d.feelings.map((f) =>
     '<li><i class="mc-fdot" style="background:' + (FEELING_COLOURS[f.core] || "#8a95a3") + '"></i><span>' +
-    (f.whose === "owner" ? "you felt " : f.whose === "self" ? "I felt " : esc(f.whose) + " felt ") + "<b>" + esc(f.word) + "</b>" +
-    '<span class="mc-dim"> · ' + esc(f.core) + (f.carriedBy ? " — " + esc(f.carriedBy) : "") + "</span></span></li>").join("") + "</ul>" + held;
+    (f.whose === "owner" ? "you felt " : f.whose === "self" ? "I felt " : esc(f.whose) + " felt ") + "<b>" + esc(feelingWord(f)) + "</b>" +
+    '<span class="mc-dim"> · ' + esc(feelingName(f.core)) + (f.carriedBy ? " — " + esc(f.carriedBy) : "") + "</span></span></li>").join("") + "</ul>" + held;
 }
 
 // ── linked memories ────────────────────────────────────────────────────────
@@ -217,18 +221,18 @@ function chips(d) {
   const c = [];
   if (d.writtenDate) {
     c.push('<span class="mc-chip dated" title="' + (d.chapter ? "the day its journal chapter names" : "the date written at the front of the memory") +
-      '">' + esc(shortDate(d.writtenDate)) + "</span>");
+      '">' + esc(dateOr(d.writtenDate, FULL)) + "</span>");
   }
   if (d.model) c.push('<span class="mc-chip model" title="the model that wrote these words">' + esc(d.model) + "</span>");
-  if (d.eventDate) c.push('<span class="mc-chip" title="the date this memory is about">about ' + esc(d.eventDate) + "</span>");
-  if (d.happenedOn) c.push('<span class="mc-chip" title="when it happened">happened ' + esc(d.happenedOn) + "</span>");
+  if (d.eventDate) c.push('<span class="mc-chip" title="the date this memory is about">about ' + esc(dateOr(d.eventDate, FULL)) + "</span>");
+  if (d.happenedOn) c.push('<span class="mc-chip" title="when it happened">happened ' + esc(dateOr(d.happenedOn, FULL)) + "</span>");
   if (d.learnedOn && d.learnedOn !== "—") {
     c.push('<span class="mc-chip" title="the calendar day it entered the store (on a migrated or seeded store, the day of the import)">recorded ' +
-      esc(d.learnedOn) + "</span>");
+      esc(dateOr(d.learnedOn, FULL)) + "</span>");
   }
   c.push('<span class="mc-chip" title="the lived day it was born">lived day ' + esc(String(d.bornDay)) + "</span>");
   for (const p of d.prospective || []) {
-    c.push('<span class="mc-chip" title="a reminder it holds">reminder ' + esc(p.date) + " · " + esc(p.state) + "</span>");
+    c.push('<span class="mc-chip" title="a reminder it holds">reminder ' + esc(dateOr(p.date, FULL)) + " · " + esc(p.state) + "</span>");
   }
   return '<div class="mc-chips">' + c.join("") + "</div>";
 }
@@ -260,7 +264,7 @@ function footer(d) {
     kv("lived", "born day " + d.bornDay + " · used " + d.uses + "× over " + d.reinforcedDays + " days · last used day " + d.lastUsedDay) +
     kv("standing", (d.consolidated ? "consolidated" : "not consolidated") + " · " + (d.promoted ? "promoted" : "not promoted") +
       " · " + (d.protected ? "protected" : "revisable") + " · pressure " + n3(d.pressure) + (d.bar === null ? "" : " / bar " + n3(d.bar))) +
-    (d.createdAt ? kv("written", esc(new Date(d.createdAt).toISOString())) : "") +
+    (d.createdAt ? kv("written", esc(stampWords(new Date(d.createdAt).toISOString()))) : "") +
     (d.archived ? kv("archived", esc(d.archived)) : "") +
     d.points.map((p) => kv(p.role, esc(p.id))).join("") +
     d.removal.map((r) => kv("removal", esc(r.stage) + " by " + esc(r.actor) + " — " + esc(r.reason || "no reason recorded"))).join("") +

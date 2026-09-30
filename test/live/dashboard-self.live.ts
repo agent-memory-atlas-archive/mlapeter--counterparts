@@ -192,7 +192,7 @@ describe("the self tab, live", () => {
       const dates = await page.locator(".jd-day b").allTextContents();
       const counts = await page.locator(".jd-day .jd-count").allTextContents();
       expect(dates.length).toBe(4);
-      for (const t of dates) expect(t).toMatch(/^[A-Z][a-z]{2} \d{1,2}(, \d{4})?$/);
+      for (const t of dates) expect(t).toMatch(/^[A-Z][a-z]{2} \d{1,2}(st|nd|rd|th)(, \d{4})?$/);
       expect(counts.length).toBe(4);
       for (const t of counts) expect(t).toMatch(/^\d+ chapters?$/);
       for (const width of [1440, 1000, 390]) {

@@ -6,6 +6,7 @@
    is no write door here (the doors are the MCP tool and the console's
    `self-page`). */
 import { absenceLine } from "../../../shared/absence.js";
+import { dateWords } from "../../../shared/dates.js";
 import { $, esc } from "../../../shared/dom.js";
 import { diffStats, diffText } from "../diff.js";
 import { renderMarkdown } from "../markdown.js";
@@ -30,14 +31,39 @@ let earlier = 0;
 const WHO = { owner: "you, by hand", session: "a session", writer: "the page writer", reflection: "the reflection" };
 export const who = (by) => (by ? WHO[by] || by : "someone unrecorded");
 
-/** "2026-09-24" → "Sep 24" (and the year when it is not this one). */
-export function shortDate(iso) {
-  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
-  const d = new Date(iso + "T12:00:00Z");
-  const opts = { month: "short", day: "numeric", timeZone: "UTC" };
-  if (d.getUTCFullYear() !== new Date().getFullYear()) opts.year = "numeric";
-  return d.toLocaleDateString("en-US", opts);
+/** An id as the record writes it: `rfl_06c7d252c3c7`, `drm_5c16061f0f96`, `mem_…`. */
+const RAW_ID = /\b[a-z]{2,6}_[0-9a-f]{6,}\b/g;
+
+/** A reason's own words with the ids taken out, and what that leaves tidied. */
+export function withoutIds(text) {
+  return String(text || "").replace(RAW_ID, "").replace(/\(\s*\)/g, "").replace(/\s+([,.;:)])/g, "$1")
+    .replace(/\s{2,}/g, " ").trim();
 }
+
+/**
+ * Who rewrote the page and why, as a person would say it (2026-09-30). The
+ * record's reason is a string each door writes its own way: the ones a door
+ * writes by itself are said in plain words and need no quote; anything else (a
+ * session's or the page writer's own sentence, the owner's `--reason`) is
+ * quoted with its ids left out. Display only: the record is untouched. Pure.
+ * `today`: the day being described is today.
+ */
+export function rewriteWords(by, reason, today) {
+  const r = String(reason || "").trim();
+  if (by === "reflection") {
+    const m = /^reflection\s+\S+(\s+after dream\s+\S+)?$/.exec(r);
+    if (m || r === "") return { who: who(by) + (m && m[1] ? " after " + (today ? "today's" : "that night's") + " dream" : ""), quote: null };
+  }
+  if (by === "owner") {
+    if (r === "" || r === "owner edit") return { who: who(by), quote: null };
+    if (/^restored version \d+$/.test(r)) return { who: "you, putting an earlier version back", quote: null };
+  }
+  const words = withoutIds(r);
+  return { who: who(by), quote: words === "" ? null : words };
+}
+
+/** "rewritten twice, last by …": how many times, in words a person uses. */
+const TIMES = { 2: "twice, last " };
 
 export function paintPage(d) {
   const p = d.page;
@@ -65,20 +91,23 @@ export function paintBehind(d) {
 
 /** A day's name on the strip: its date when the record gives one, else its lived day. */
 export function dayName(x) {
-  const date = shortDate(x.date);
+  const date = dateWords(x.date);
   return (x.today ? "Today" + (date ? ", " + date : "") : date || "Lived day " + x.day) +
     (date || x.today ? " · lived day " + x.day : "");
 }
 
 /**
  * What the strip's caption says for one day: when, and either who rewrote the
- * page (and the reason they gave) or the view's own words for why it was not.
+ * page (and the reason they gave, said by `rewriteWords`) or the view's own
+ * words for why it was not.
  * Pure, so it is tested without a page.
  */
 export function dayWords(x) {
   if (x.seqs && x.seqs.length > 0) {
-    const times = x.seqs.length > 1 ? x.seqs.length + " times, last " : "";
-    return dayName(x) + " — rewritten " + times + "by " + who(x.by) + (x.reason ? ": “" + x.reason + "”" : ".");
+    const n = x.seqs.length;
+    const times = n > 1 ? TIMES[n] || n + " times, last " : "";
+    const w = rewriteWords(x.by, x.reason, x.today);
+    return dayName(x) + " — rewritten " + times + "by " + w.who + (w.quote ? ": “" + w.quote + "”" : ".");
   }
   return dayName(x) + " — " + (x.why || "not rewritten.");
 }
@@ -90,7 +119,7 @@ export function stripSummary(list) {
   const newest = written[written.length - 1];
   const n = list.length;
   return "Rewritten on " + written.length + " of " + n + " lived day" + (n === 1 ? "" : "s") +
-    (newest ? " · newest " + (shortDate(newest.date) || "lived day " + newest.day) : "") + ".";
+    (newest ? " · newest " + (dateWords(newest.date) || "lived day " + newest.day) : "") + ".";
 }
 
 /** A filled day opens its newest version. */
@@ -118,8 +147,8 @@ export function paintHistory(d) {
       '" data-day="' + x.day + '" aria-pressed="' + on + '" aria-label="' + esc(dayWords(x)) + '"><i></i></button>';
   }).join("");
   const first = days[0], last = days[days.length - 1];
-  const ends = '<div class="ps-ends"><span>' + esc(shortDate(first.date) || "lived day " + first.day) + "</span>" +
-    (days.length > 1 ? "<span>" + esc(last.today ? "today" : shortDate(last.date) || "lived day " + last.day) + "</span>" : "") + "</div>";
+  const ends = '<div class="ps-ends"><span>' + esc(dateWords(first.date) || "lived day " + first.day) + "</span>" +
+    (days.length > 1 ? "<span>" + esc(last.today ? "today" : dateWords(last.date) || "lived day " + last.day) + "</span>" : "") + "</div>";
   el.innerHTML =
     '<h3 class="sb-h">The page, day by day ' +
       q("history", "One dot per lived day since the page was first written. A filled dot is a day it was rewritten: click it to see what changed. " +
@@ -175,12 +204,13 @@ function paintVersion() {
   box.hidden = false;
   const s = steps[i];
   const prev = i > 0 ? steps[i - 1] : null;
+  const w = rewriteWords(s.by, s.reason, days.some((x) => x.day === s.day && x.today));
   const head =
     '<div class="tl-vhead"><b>' + (s.current ? "The page as it stands" : "Version " + (s.seq - 1)) + "</b>" +
-    '<span class="tl-meta">' + esc(shortDate(s.date) || "undated") + (s.day !== null ? " · lived day " + s.day : "") +
-    " · written by " + esc(who(s.by)) + (s.bytes !== null ? " · " + s.bytes + " bytes" : "") + "</span>" +
+    '<span class="tl-meta">' + esc(dateWords(s.date) || "undated") + (s.day !== null ? " · lived day " + s.day : "") +
+    " · written by " + esc(w.who) + (s.bytes !== null ? " · " + s.bytes + " bytes" : "") + "</span>" +
     '<button type="button" class="tl-close" id="self-version-close" aria-label="Close this version">close</button></div>' +
-    (s.reason ? '<div class="tl-why">“' + esc(s.reason) + "”</div>" : "");
+    (w.quote ? '<div class="tl-why">“' + esc(w.quote) + "”</div>" : "");
   let toggle = "";
   let body;
   if (s.body === null) {

@@ -45,6 +45,10 @@ shared/
   tip.css modal.css   the tooltip and the overlay card
   dom.js              $  esc
   format.js           n2 n3 pct said livedSpan headline
+  dates.js            dateWords dateOr stampWords: every date the dashboard prints itself, one style
+                      ("Sep 30th", the year when it is not this one; "Wed, Sep 30th" for a title).
+                      No DOM, so views/mind.ts and narrate.ts use it too. Dates inside stored
+                      words (memories, the journal, the wake) are shown as written
   colors.js           COL BANDCOL ACCENT (canvas needs JS values)
   absence.js          emptyBox absenceLine — the "(none yet)" / "(never run)" block
   api.js              api() (looking: GET only) and fail()
@@ -52,7 +56,10 @@ shared/
   canvas.js           FACE (the canvas's face, Outfit) fit hitTest roundRect clip wrapText
   tip.js modal.js     showTip/hideTip; openModal/closeModal/section
   memory-modal.js     openMemory, copyId, removeMemory (window globals: rows use inline onclick)
-  memory-marks.js .css  a memory's kind icon/colour, feeling dots, strength meter, badges
+  memory-marks.js .css  a memory's kind icon/colour, feeling dots, strength meter, badges;
+                      feelingName (what the page CALLS a stored core: "disgust" reads
+                      "dislike", 2026-09-30, a display name only) and feelingWord (a
+                      memory's own feeling word, else its core's name)
   event-modal.js      openEvent (window global)
   doctor.js           one `doctor --json` run shared by Health's checklist and Home's health dot
   state.js            tabs {current, loaded}; live {lastSeq, fingerprint}
@@ -143,7 +150,9 @@ firing line, built / in development, Lately, the Field Guide link) is behind a
 checked and found nothing due (`lanes.ts#isSleepCheck`) goes to the flow feed.
 
 `pages/memories/` — the memories tab (round 4, 2026-09-28, a try: it reads for
-someone who knows roughly what it is). The top says who "I" am once (the name
+someone who knows roughly what it is). The whole tab is one column capped at
+60rem (`#tab-memories` in `memories.css`, 2026-09-30), so a row's words keep a
+readable length on a wide window. The top says who "I" am once (the name
 lives in `shared/voice.js`, nowhere else) and the count once, like Home.
 `state.js` holds the page's filters (live/archived/all — "kept · put away ·
 both" on the page — kind, core, journal, hold, feeling, sort, page offset) and
@@ -153,17 +162,32 @@ window event, fired after a note and after a removal on the memory card) makes
 the page re-read at once. `row.js` is the one row shape the list and the find
 box's answers share: every row the same brightness, "fading" as a word only
 when it applies, no kind tag on a plain fact, a journal chapter titled
-"Journal · Sun 27 Sep". Sections: `hold.js` ("How well I remember": one bar,
-firm / settling / fading from `holdOf` in `views/memories.ts`, and the journal
-as a grey fourth part, so the parts add up to the count; a part clicked filters
-the list), `feel.js` (the shared feelings chart, `shared/widgets/feel-radar.js`,
+"Journal · Sun, Sep 27th", and the row's own date left out of its title's
+trailing brackets and its words' front when the right-hand column already
+shows it (`withoutRowDate`, 2026-09-30; the card shows the memory as stored). Sections: `hold.js` ("How well I remember", 2026-09-30:
+one square per memory, firm / settling / fading from `holdOf` in
+`views/memories.ts`, each keyed underneath with its exact count and a sentence
+true to that rule; beside the feelings chart the grid keeps to the height that
+chart takes, and when it would not fit a square stands for 2, 5, 10, 20 …
+memories, `waffleScale`, the smallest that fits, every state with a memory
+keeping at least one square, and the key says "each square is N memories"; the
+journal is a line of its own under the key, not in the grid; a square, a key or
+the journal line clicked filters the list; the grid is laid out again on
+`show`/`resize`), `feel.js` (the shared feelings chart, `shared/widgets/feel-radar.js`,
 which Home draws too; an axis clicked filters the list), `list.js` (every
 memory, newest or oldest first, twenty a page, two rows of chips with a few
 words each on hover, paged on the server by `/api/memories/list` in
 `views/memories.ts`, which also groups several put-away versions of one memory
-into one row), `search.js` (ONE box: typing finds by words, `/api/search`;
-Enter asks by meaning via `act("ask", {json:true})`; the answers take the
-list's place and "×" gives it back; a journal chapter and the memory drawn from
+into one row), `search.js` (ONE box with a "by word | by meaning" switch
+beside it, `state.js#find.mode`, 2026-09-30: by word finds as you type,
+`/api/search`, and Enter only runs it at once; by meaning asks on Enter via
+`act("ask", {json:true})`; the switch never flips by itself; when the words
+find fewer than `CLOSE_BELOW`, `views/search.ts#closeMatches` adds "close
+matches", a typo or two away over titles and words, the dashboard's own pass
+with `store.search` untouched; the answers take the
+list's place and "×" gives it back; the search's words are marked where they
+appear in an answer (`row.js#marked`, whole words as the word index splits
+them, escaped first; for Ask, the question's longer words); a journal chapter and the memory drawn from
 it are folded into one answer by `fold.js`, with a "from chapter …" link, from
 `/api/chapters` in `views/search.ts`; the question is turned into my voice
 server side by `ask-voice.ts`), and `tools.js` (add a memory, and the
@@ -190,7 +214,10 @@ column with the page's history as ONE strip and the wake as a short list.
 page's first version to the newest lived day (`pageDays` in `views/mind.ts`). A
 filled dot is a day it was rewritten; clicking it opens that day's newest
 version above the page, diffed against the one before with `diff.js` (line
-comparison, then words, no deps). A hollow dot is a day it was not; hover or
+comparison, then words, no deps). Who rewrote it and why is said in plain
+words (`rewriteWords`: the reasons a door writes by itself, like the
+reflection's, become words; anything else is quoted with its ids left out;
+the record is untouched). A hollow dot is a day it was not; hover or
 tap it for why, in the page writer's own recorded words (the newest
 `pageWriterRuns` row that happened that lived day, read through `self/`'s
 `pageWriterStatus` and worded by `writerWords`), or "no record" when there is
@@ -238,7 +265,10 @@ lists its memories (each opens its card); `state.js#trait` keeps it open.
 is "Next time I wake, I start with:" — the page and its age, the nearby
 memories by title (the hints lane's open `wake_display` rows, each opening its
 card; the lane's own lines on an older store), anything arriving (the horizon
-lane) — and "read it" for the whole wake. `sections/journal.js` is a strip of days, each with its date in one
+lane: the wake keeps no ids for it, so `views/mind.ts#arrivingOf` matches each
+line back to a dated memory by its words; shown like the nearby ones, by title
+or first sentence, and a line nothing matches is its first sentence) — and
+"read it" for the whole wake. `sections/journal.js` is a strip of days, each with its date in one
 format (the view's `iso`: the chapter heading's date, else the entry's own), its
 lived day and "N chapters"; a day lists its chapters, a chapter opens in place. The `?` that holds each explaining line is
 `shared/widgets/tips.js`; `state.js` holds what is open, so the pulse's `refresh()` (which redraws only
