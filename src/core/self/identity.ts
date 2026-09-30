@@ -77,7 +77,8 @@ export interface HintReading {
   readonly score: number;
   /** Strength decayed from the last organic use. */
   readonly organic: number;
-  /** The load as it stands on `day`, before this render. */
+  /** The load as it stands on `day`, before this render — and, for a hint
+   *  showing since an earlier render today, before today's one step. */
   readonly load: number;
   readonly habituation: number;
   readonly habit: "fresh" | "habituated" | "reset";
@@ -110,7 +111,14 @@ export function hintReading(
     if (leftOn !== null && lastReturn !== null && lastReturn > leftOn) {
       habit = "reset";
     } else {
-      load = display.load * Math.exp(-Math.max(0, day - display.shown_day) / t.HINT_RECOVERY_DAYS);
+      // SHOWING SINCE AN EARLIER RENDER TODAY (2026-09-30): the stored load
+      // already carries today's step, so a same-day re-render scoring it at
+      // that would score the morning's hints at half and hand Nearby to the
+      // runners-up. It is scored at the load from before the step; the step
+      // itself stands (`nextLoad` below). A row closed today is not showing.
+      const stepped = display.shown_day === day && display.closed_day === null;
+      const stored = stepped ? Math.max(0, display.load - t.HINT_STEP) : display.load;
+      load = stored * Math.exp(-Math.max(0, day - display.shown_day) / t.HINT_RECOVERY_DAYS);
       habit = load > 0 ? "habituated" : "fresh";
     }
   }
@@ -221,9 +229,20 @@ function byContentThenId(a: Ranked, b: Ranked): number {
  * rendered. A strength sort with a smarter tie-break would rotate the eight;
  * this rotates all of them.
  */
-function byRotation(a: Ranked, b: Ranked): number {
-  if (a.lastRendered !== b.lastRendered) return a.lastRendered - b.lastRendered;
-  return byStrength(a, b);
+function byRotation(day: number | undefined): (a: Ranked, b: Ranked) => number {
+  return (a, b) => {
+    // RENDERED ALREADY TODAY goes first (2026-09-30): a later render the same
+    // lived day — a page written, a write-up landed, the nightly run ended —
+    // keeps the elements the day's first render chose, so the lane rotates
+    // once a day however often the wake is rebuilt. Their order among
+    // themselves falls to strength: the stamp overwrote the day each was
+    // chosen by. The day's first render has nothing stamped today.
+    const ta = a.lastRendered === day;
+    const tb = b.lastRendered === day;
+    if (ta !== tb) return ta ? -1 : 1;
+    if (a.lastRendered !== b.lastRendered) return a.lastRendered - b.lastRendered;
+    return byStrength(a, b);
+  };
 }
 
 /**
@@ -326,7 +345,7 @@ export function rankLanes(
     hints.push(rank(s, "hints", hintReading(s.physics, s.display, s.day ?? s.doc.bornDay, t)));
   }
 
-  identity.sort(byRotation);
+  identity.sort(byRotation(scanned.find((s) => s.day !== undefined)?.day));
   craft.sort(byStrength);
   threads.sort(byThreadAge);
   hints.sort(byHint);
