@@ -252,9 +252,10 @@ describe("M6 rows", () => {
     expect(plain).not.toContain("fading");
     expect(memRow({ ...base, hold: "fading" })).toContain('class="mfading"');
     expect(memRow({ ...base, kind: "person" })).toContain("people");
-    expect(journalTitle("2026-09-27")).toBe("Journal · Sun 27 Sep");
+    expect(journalTitle("2026-09-27")).toMatch(/^Journal · Sun, Sep 27th(, 2026)?$/);
+    expect(journalTitle(null)).toBe("Journal");
     const j = memRow({ ...base, kind: "self", journal: true, text: "Mike came back to the castle game." });
-    expect(j).toContain("Journal · Sun 27 Sep");
+    expect(j).toContain("Journal · Sun, Sep 27th");
     expect(j).not.toContain("mkind");
     const away = memRow({ ...base, archived: "replaced by a newer version", versions: 3 });
     expect(away).toContain("put away: replaced by a newer version · 3 versions");

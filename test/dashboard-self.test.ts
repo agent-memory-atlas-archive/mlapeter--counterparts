@@ -244,7 +244,7 @@ describe("the self tab's side column (round 2, an experiment)", () => {
     expect(w("started").what).toBe("is running now");
     const older = w("revised", "", false, "2026-07-09");
     expect(older.lastNight).toBe(false);
-    expect(older.line).toBe("The night of Jul 9: rewrote it.");
+    expect(older.line).toMatch(/^The night of Jul 9th(, 2026)?: rewrote it\.$/);
     // Every line has a longer story behind its `?`.
     for (const o of ["revised", "nothing-to-say", "failed", "refused", "skipped", "asked", "started"]) {
       expect(w(o, "no-room").more.length).toBeGreaterThan(0);
@@ -267,7 +267,7 @@ describe("the self tab's side column (round 2, an experiment)", () => {
     expect(room.next).toBe("It runs inside the nightly run now, where there is room.");
     expect(room.more).toContain("held back rather than cut short");
     expect(room.more).not.toContain("injectionBudgetBytes");
-    expect(room.more).toContain("Recorded Sep 27.");
+    expect(room.more).toMatch(/Recorded Sep 27th(, 2026)?\./);
     expect(read("scope-question").line).toBe(
       "Last night: not rewritten — the first-launch question took its turn (the old way). It runs inside the nightly run now, and waits for no question.",
     );
@@ -296,7 +296,7 @@ describe("the self tab's side column (round 2, an experiment)", () => {
       expect(v.writer.ran).toBe(true);
       expect(v.writer.outcome).toBe("nothing-to-say");
       expect(v.writer.derived).toBe(true);
-      expect(v.writer.line).toBe("The night of Sep 1: was handed the day and left it as is.");
+      expect(v.writer.line).toMatch(/^The night of Sep 1st(, 2026)?: was handed the day and left it as is\.$/);
       expect(v.page?.stale).toBe(true);
     } finally {
       rmSync(at, { recursive: true, force: true });
@@ -408,16 +408,17 @@ describe("the self tab, round 3", () => {
     expect(b.chapters).toBe(2);
     expect(b.dreams).toBe(1);
     expect(b.line).toBe(pageBehindWords(b));
-    expect(b.line).toMatch(/^Written [A-Z][a-z]{2} \d{1,2} — 3 lived days, 2 chapters and a dream since\.$/);
+    expect(b.line).toMatch(/^Written [A-Z][a-z]{2} \d{1,2}(st|nd|rd|th)(, \d{4})? — 3 lived days, 2 chapters and a dream since\.$/);
   });
 
   test("S1: the words read naturally for one of a thing, many, and none", () => {
     const w = (livedDays: number, chapters: number, dreams: number, date = "2026-09-24"): string =>
       pageBehindWords({ date, writtenDay: 3, livedDays, chapters, dreams });
-    expect(w(3, 14, 1)).toBe("Written Sep 24 — 3 lived days, 14 chapters and a dream since.");
-    expect(w(2, 1, 0)).toBe("Written Sep 24 — 2 lived days and a chapter since.");
-    expect(w(4, 0, 2)).toBe("Written Sep 24 — 4 lived days and 2 dreams since.");
-    expect(w(2, 0, 0)).toBe("Written Sep 24 — 2 lived days since.");
+    // The date is the dashboard's one style ("Sep 24th", the year when it is not this one).
+    expect(w(3, 14, 1)).toMatch(/^Written Sep 24th(, 2026)? — 3 lived days, 14 chapters and a dream since\.$/);
+    expect(w(2, 1, 0)).toMatch(/^Written Sep 24th(, 2026)? — 2 lived days and a chapter since\.$/);
+    expect(w(4, 0, 2)).toMatch(/^Written Sep 24th(, 2026)? — 4 lived days and 2 dreams since\.$/);
+    expect(w(2, 0, 0)).toMatch(/^Written Sep 24th(, 2026)? — 2 lived days since\.$/);
     expect(w(2, 0, 0, "")).toBe("Written on lived day 3 — 2 lived days since.");
   });
 
@@ -483,7 +484,7 @@ describe("the self tab, round 3", () => {
     expect(headingIso("lived day 3")).toBeNull();
     expect(headingIso(null)).toBeNull();
     // A dated day shows its date the side column's way; a lived day is never passed off as a date.
-    expect(dayLabel({ day: 3, iso: "2026-09-04" })).toMatch(/^Sep 4/);
+    expect(dayLabel({ day: 3, iso: "2026-09-04" })).toMatch(/^Sep 4th(, 2026)?$/);
     expect(dayLabel({ day: 3, iso: null })).toBe("lived day 3");
     expect(chapterCount(1)).toBe("1 chapter");
     expect(chapterCount(11)).toBe("11 chapters");

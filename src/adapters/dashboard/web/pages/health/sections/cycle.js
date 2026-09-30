@@ -1,4 +1,5 @@
 /* The last sleep cycle, as one line with a dot per step. */
+import { dateWords, localIso } from "../../../shared/dates.js";
 import { $, esc } from "../../../shared/dom.js";
 
 export const markup = `
@@ -12,10 +13,7 @@ function sameLocalDay(ms) {
 
 function when(c) {
   if (c.at !== null && sameLocalDay(c.at)) return "today";
-  if (c.at !== null) {
-    const d = new Date(c.at);
-    return "on " + d.toLocaleDateString([], { month: "short", day: "numeric" }) + " (lived day " + c.day + ")";
-  }
+  if (c.at !== null) return "on " + dateWords(localIso(c.at)) + " (lived day " + c.day + ")";
   return "on lived day " + c.day;
 }
 

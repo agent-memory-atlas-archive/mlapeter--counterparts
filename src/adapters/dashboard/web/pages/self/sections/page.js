@@ -6,6 +6,7 @@
    is no write door here (the doors are the MCP tool and the console's
    `self-page`). */
 import { absenceLine } from "../../../shared/absence.js";
+import { dateWords } from "../../../shared/dates.js";
 import { $, esc } from "../../../shared/dom.js";
 import { diffStats, diffText } from "../diff.js";
 import { renderMarkdown } from "../markdown.js";
@@ -29,15 +30,6 @@ let earlier = 0;
 
 const WHO = { owner: "you, by hand", session: "a session", writer: "the page writer", reflection: "the reflection" };
 export const who = (by) => (by ? WHO[by] || by : "someone unrecorded");
-
-/** "2026-09-24" → "Sep 24" (and the year when it is not this one). */
-export function shortDate(iso) {
-  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
-  const d = new Date(iso + "T12:00:00Z");
-  const opts = { month: "short", day: "numeric", timeZone: "UTC" };
-  if (d.getUTCFullYear() !== new Date().getFullYear()) opts.year = "numeric";
-  return d.toLocaleDateString("en-US", opts);
-}
 
 export function paintPage(d) {
   const p = d.page;
@@ -65,7 +57,7 @@ export function paintBehind(d) {
 
 /** A day's name on the strip: its date when the record gives one, else its lived day. */
 export function dayName(x) {
-  const date = shortDate(x.date);
+  const date = dateWords(x.date);
   return (x.today ? "Today" + (date ? ", " + date : "") : date || "Lived day " + x.day) +
     (date || x.today ? " · lived day " + x.day : "");
 }
@@ -90,7 +82,7 @@ export function stripSummary(list) {
   const newest = written[written.length - 1];
   const n = list.length;
   return "Rewritten on " + written.length + " of " + n + " lived day" + (n === 1 ? "" : "s") +
-    (newest ? " · newest " + (shortDate(newest.date) || "lived day " + newest.day) : "") + ".";
+    (newest ? " · newest " + (dateWords(newest.date) || "lived day " + newest.day) : "") + ".";
 }
 
 /** A filled day opens its newest version. */
@@ -118,8 +110,8 @@ export function paintHistory(d) {
       '" data-day="' + x.day + '" aria-pressed="' + on + '" aria-label="' + esc(dayWords(x)) + '"><i></i></button>';
   }).join("");
   const first = days[0], last = days[days.length - 1];
-  const ends = '<div class="ps-ends"><span>' + esc(shortDate(first.date) || "lived day " + first.day) + "</span>" +
-    (days.length > 1 ? "<span>" + esc(last.today ? "today" : shortDate(last.date) || "lived day " + last.day) + "</span>" : "") + "</div>";
+  const ends = '<div class="ps-ends"><span>' + esc(dateWords(first.date) || "lived day " + first.day) + "</span>" +
+    (days.length > 1 ? "<span>" + esc(last.today ? "today" : dateWords(last.date) || "lived day " + last.day) + "</span>" : "") + "</div>";
   el.innerHTML =
     '<h3 class="sb-h">The page, day by day ' +
       q("history", "One dot per lived day since the page was first written. A filled dot is a day it was rewritten: click it to see what changed. " +
@@ -177,7 +169,7 @@ function paintVersion() {
   const prev = i > 0 ? steps[i - 1] : null;
   const head =
     '<div class="tl-vhead"><b>' + (s.current ? "The page as it stands" : "Version " + (s.seq - 1)) + "</b>" +
-    '<span class="tl-meta">' + esc(shortDate(s.date) || "undated") + (s.day !== null ? " · lived day " + s.day : "") +
+    '<span class="tl-meta">' + esc(dateWords(s.date) || "undated") + (s.day !== null ? " · lived day " + s.day : "") +
     " · written by " + esc(who(s.by)) + (s.bytes !== null ? " · " + s.bytes + " bytes" : "") + "</span>" +
     '<button type="button" class="tl-close" id="self-version-close" aria-label="Close this version">close</button></div>' +
     (s.reason ? '<div class="tl-why">“' + esc(s.reason) + "”</div>" : "");

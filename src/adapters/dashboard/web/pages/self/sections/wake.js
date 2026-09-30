@@ -5,11 +5,11 @@
    budget is the health tab's now; the rebuild button comes back when it is
    built (the console's `counterparts rebrief` is unchanged). */
 import { absenceLine } from "../../../shared/absence.js";
+import { dateWords } from "../../../shared/dates.js";
 import { $, esc } from "../../../shared/dom.js";
 import { headline, said } from "../../../shared/format.js";
 import { ui } from "../state.js";
 import { q, wireTips } from "../../../shared/widgets/tips.js";
-import { shortDate } from "./page.js";
 
 export const markup = `
       <div class="side-block">
@@ -26,7 +26,7 @@ let last = null;
 /** The page's line: when it was written, and how many lived days ago. Pure. */
 export function pageAge(p) {
   if (!p) return "";
-  const date = shortDate(p.date);
+  const date = dateWords(p.date);
   const ago = p.livedDaysAgo === null ? "" : p.livedDaysAgo === 0 ? "today" : p.livedDaysAgo === 1 ? "1 lived day ago" : p.livedDaysAgo + " lived days ago";
   const when = date && ago ? "written " + date + ", " + ago : date ? "written " + date : ago ? "written " + ago : "";
   return when + (p.newerThanWake ? (when ? " — " : "") + "rewritten since; the next wake carries the new one" : "");

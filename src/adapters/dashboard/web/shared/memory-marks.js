@@ -57,11 +57,3 @@ export function badges(r) {
 
 const LOCK = '<svg class="kic" viewBox="0 0 16 16" aria-label="protected"><rect x="3.5" y="7" width="9" height="7" rx="1.3"/>' +
   '<path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg>';
-
-/** `2026-09-26` → `26 Sep 2026`; anything else as it came. */
-export function shortDate(iso) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ""));
-  if (!m) return String(iso || "");
-  const mon = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number(m[2]) - 1];
-  return Number(m[3]) + " " + mon + " " + m[1];
-}

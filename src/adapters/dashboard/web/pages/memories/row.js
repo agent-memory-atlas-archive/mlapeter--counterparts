@@ -5,7 +5,8 @@
    it is not the usual — the one word "fading". A plain fact carries no kind
    tag (the quiet default); a journal chapter is titled by its day. */
 import { esc } from "../../shared/dom.js";
-import { badges, feelingDots, kindMark, kindOf, shortDate } from "../../shared/memory-marks.js";
+import { dateOr, dateWords } from "../../shared/dates.js";
+import { badges, feelingDots, kindMark, kindOf } from "../../shared/memory-marks.js";
 import { openMemory } from "../../shared/memory-modal.js";
 
 /** Rows under `container` open their memory on a click or Enter (one listener
@@ -24,15 +25,11 @@ export function wireRows(container) {
 }
 
 const DATE_WORDS = { text: "the date written in the memory", chapter: "the day its journal chapter names", recorded: "the day it was recorded" };
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-/** A journal chapter's title: "Journal · Sun 27 Sep", or "Journal" with no day. */
+/** A journal chapter's title: "Journal · Sun, Sep 27th", or "Journal" with no day. */
 export function journalTitle(date) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(date || ""));
-  if (!m) return "Journal";
-  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
-  return "Journal · " + WEEKDAYS[d.getUTCDay()] + " " + d.getUTCDate() + " " + MONTHS[d.getUTCMonth()];
+  const day = dateWords(date, { weekday: true });
+  return day ? "Journal · " + day : "Journal";
 }
 
 /**
@@ -55,7 +52,7 @@ export function memRow(r, opts = {}) {
   const held = opts.tier ? '<span class="mtier">' + esc(opts.tier) + "</span>"
     : r.hold === "fading" ? '<span class="mfading" title="unless it is used, I will put it away within two weeks">fading</span>' : "";
   const date = r.date && !r.journal
-    ? '<span class="mdate" title="' + esc(DATE_WORDS[r.dateFrom] || "") + '">' + esc(shortDate(r.date)) + "</span>" : "";
+    ? '<span class="mdate" title="' + esc(DATE_WORDS[r.dateFrom] || "") + '">' + esc(dateOr(r.date)) + "</span>" : "";
   const put = r.archived
     ? '<div class="mwhy">put away: ' + esc(r.archived) + (r.versions > 1 ? " · " + r.versions + " versions" : "") + "</div>" : "";
   const id = esc(r.id);

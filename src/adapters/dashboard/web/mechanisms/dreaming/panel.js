@@ -1,6 +1,7 @@
 /* Dreaming, pictured (home round 3b, 2026-09-27): the memories the last dream
    changed, and a link to the dream journal on the Self tab, where each dream is
    told in full. The journal is not repeated here. */
+import { dateOr } from "../../shared/dates.js";
 import { esc } from "../../shared/dom.js";
 import { memLink, nothingYet } from "../picture.js";
 
@@ -10,7 +11,7 @@ export function picture(p) {
   if (!p || !p.dream) return nothingYet("No dream yet. A session asks once a day, when there is something new.") + JOURNAL;
   const d = p.dream;
   const head = '<div class="pic-head">The last dream' + (d.title ? ", “" + esc(d.title) + "”" : "") +
-    " · " + esc(d.date || "day " + d.day) + "</div>";
+    " · " + esc(dateOr(d.date) || "day " + d.day) + "</div>";
   const rows = p.memories.length === 0
     ? nothingYet("It changed no memory.")
     : '<ul class="pic-list pic-rows">' + p.memories.map((m) =>

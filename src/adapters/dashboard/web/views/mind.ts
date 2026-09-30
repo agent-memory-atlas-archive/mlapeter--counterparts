@@ -23,6 +23,8 @@ import { NEVER, NONE } from "../../layout.js";
 import { localDate } from "../../../../core/time.js";
 import type { DashboardSource } from "../../source.js";
 import { WITHHELD, reveal } from "../reveal.js";
+// @ts-expect-error — a plain browser module, no declarations
+import { dateOr } from "../shared/dates.js";
 import { chapters, contestedRows, livedDays } from "./rows.js";
 import { coreHistory, dreamsView } from "./dreams.js";
 import type { CoreHistory, DreamsView } from "./dreams.js";
@@ -525,14 +527,8 @@ const WRITER_IS =
   "The page writer reads the day just gone, once a night — the first part of the nightly run, before the dream and the reflection — and rewrites the page when something about who I am moved.";
 const WRITER_ABOUT = `${WRITER_IS} This is its newest night.`;
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-/** "2026-07-09" → "Jul 9"; anything else as it came. */
-function shortDay(iso: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-  if (m === null) return iso;
-  return `${MONTHS[Number(m[2]) - 1] ?? (m[2] as string)} ${Number(m[3])}`;
-}
+/** "2026-07-09" → "Jul 9th" (the dashboard's one date style); anything else as it came. */
+const shortDay = (iso: string): string => dateOr(iso) as string;
 
 /** What `writerWords` reads: `pageWriterStatus`'s answer, or null when the log
  *  holds no run at all. */
@@ -653,7 +649,7 @@ function countOf(n: number, one: string, many: string): string {
 }
 
 /**
- * The line, in words: "Written Sep 24 — 3 lived days, 14 chapters and a dream
+ * The line, in words: "Written Sep 24th — 3 lived days, 14 chapters and a dream
  * since." Calm on purpose: a page a few days behind is information, not an
  * alarm. Pure, so every shape is tested without a store.
  */

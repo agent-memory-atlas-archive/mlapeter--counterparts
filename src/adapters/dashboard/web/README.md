@@ -45,6 +45,10 @@ shared/
   tip.css modal.css   the tooltip and the overlay card
   dom.js              $  esc
   format.js           n2 n3 pct said livedSpan headline
+  dates.js            dateWords dateOr stampWords: every date the dashboard prints itself, one style
+                      ("Sep 30th", the year when it is not this one; "Wed, Sep 30th" for a title).
+                      No DOM, so views/mind.ts and narrate.ts use it too. Dates inside stored
+                      words (memories, the journal, the wake) are shown as written
   colors.js           COL BANDCOL ACCENT (canvas needs JS values)
   absence.js          emptyBox absenceLine — the "(none yet)" / "(never run)" block
   api.js              api() (looking: GET only) and fail()
@@ -153,7 +157,7 @@ window event, fired after a note and after a removal on the memory card) makes
 the page re-read at once. `row.js` is the one row shape the list and the find
 box's answers share: every row the same brightness, "fading" as a word only
 when it applies, no kind tag on a plain fact, a journal chapter titled
-"Journal · Sun 27 Sep". Sections: `hold.js` ("How well I remember": one bar,
+"Journal · Sun, Sep 27th". Sections: `hold.js` ("How well I remember": one bar,
 firm / settling / fading from `holdOf` in `views/memories.ts`, and the journal
 as a grey fourth part, so the parts add up to the count; a part clicked filters
 the list), `feel.js` (the shared feelings chart, `shared/widgets/feel-radar.js`,

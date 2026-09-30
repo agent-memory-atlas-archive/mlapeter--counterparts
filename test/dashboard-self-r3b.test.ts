@@ -113,10 +113,10 @@ describe("the self tab, round 3b", () => {
   test("1: the strip's words, as the page draws them", () => {
     const filled = { day: 4, date: "2026-09-04", today: false, seqs: [3], by: "owner", reason: "by hand", why: null };
     const hollow = { day: 2, date: "2026-09-02", today: false, seqs: [], by: null, reason: null, why: "Not rewritten — x." };
-    expect(dayWords(filled)).toMatch(/^Sep 4(, 2026)? · lived day 4 — rewritten by you, by hand: “by hand”$/);
-    expect(dayWords(hollow)).toMatch(/^Sep 2(, 2026)? · lived day 2 — Not rewritten — x\.$/);
+    expect(dayWords(filled)).toMatch(/^Sep 4th(, 2026)? · lived day 4 — rewritten by you, by hand: “by hand”$/);
+    expect(dayWords(hollow)).toMatch(/^Sep 2nd(, 2026)? · lived day 2 — Not rewritten — x\.$/);
     expect(dayWords({ ...hollow, date: null })).toBe("Lived day 2 — Not rewritten — x.");
-    expect(stripSummary([filled, hollow])).toMatch(/^Rewritten on 1 of 2 lived days · newest Sep 4/);
+    expect(stripSummary([filled, hollow])).toMatch(/^Rewritten on 1 of 2 lived days · newest Sep 4th/);
     expect(pageDayWords({ what: "rewrote it", next: null })).toBe("The page writer rewrote it.");
     expect(pageDayWords({ what: "nothing ran, and nothing says why", next: null })).toBe("Nothing ran, and nothing says why.");
   });
@@ -129,7 +129,7 @@ describe("the self tab, round 3b", () => {
     expect(l.nearby.map((m) => m.id)).toEqual([ids["mild"] as string]);
     expect(l.nearby[0]?.text).toBe("I like short sentences.");
     expect(l.nearbyLines).toEqual([]);
-    expect(pageAge({ date: "2026-09-04", livedDaysAgo: 1, newerThanWake: false })).toMatch(/^written Sep 4(, 2026)?, 1 lived day ago$/);
+    expect(pageAge({ date: "2026-09-04", livedDaysAgo: 1, newerThanWake: false })).toMatch(/^written Sep 4th(, 2026)?, 1 lived day ago$/);
     expect(pageAge({ date: null, livedDaysAgo: 0, newerThanWake: true })).toBe("written today — rewritten since; the next wake carries the new one");
   });
 
