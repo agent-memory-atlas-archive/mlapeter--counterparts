@@ -51,20 +51,24 @@ stretch, owed, lapsed, small, per-date counts); `askFromStretch`; `claimUnwritte
    least `OWED_PIECES` pieces spanning `OWED_SPAN_MS`, it is not active (it ended, or it has
    captured nothing since the calendar date changed in the store's zone), and the stretch
    has not lapsed. `remember/owes.ts#planRetention` reads it; nothing else decides it.
-2. **[M] The pacer's third arm is pieces AND time**: `ASK_PIECES` unwritten pieces and
-   `ASK_AFTER_MS` since the later of the stretch's first piece and the last ask. One piece,
-   however large, is never an ask on its own. The 12-a-day cap is the pacer's and stands.
+2. **[M] The pacer's third arm is pieces AND time**: `ASK_PIECES` unwritten pieces
+   captured since the last ask (all of them, before a first ask) and `ASK_AFTER_MS` since
+   the later of the stretch's first piece and the last ask. One piece, however large, is
+   never an ask on its own, and an unanswered ask is not repeated without new pieces. The
+   12-a-day cap is the pacer's and stands.
 3. **[M] Lapse deletes nothing.** An owed stretch lapses at the first turn-end of the
-   `LAPSE_DAYS_OF_USE`th day of use after the date of its latest piece; the session stops
-   owing and its text goes on retention's ordinary week.
-4. **[M] One row per stretch per state** — `coverage.owed`, `coverage.written` (with its
-   writer: the session, nothing-new, a chapter, the next session), `coverage.lapsed` —
-   each under a dedup key. The first pass on a store writes no written-up rows for claims
-   made before it.
+   `LAPSE_DAYS_OF_USE`th day of use (a date with a `stop` boundary) after the date of its
+   latest piece; the session stops owing and its text goes on retention's ordinary week.
+4. **[M] One row per stretch per state** — `coverage.owed` and `coverage.lapsed` under a
+   dedup key, `coverage.written` (with its writer: the session, nothing-new, a chapter,
+   the next session) one per claim and without one, so the log's prune applies. The first
+   pass on a store writes no written-up rows for claims made before it.
 5. **[M] Dates are the pieces' own**, read in the store's zone — never the lived day on a
    piece, which lags on a date's first turn-end.
 6. **[M] Read-only but for two claims**: "nothing new" and a chapter, each under
-   `<by>:<id>` in the same `coverage.jsonl`, refused under observer by the buffer's seam.
+   `<by>:<id>:<time>` in the same `coverage.jsonl`, refused under observer by the buffer's
+   seam — and each in ONE scope, the project it was given in, as a memory's claim is: a
+   "nothing new" in project A never writes up what the same session said in B.
 7. **[A] "Written up" / "not yet written up"** in anything a person reads; never "covered".
 
 ## 6. Tunables

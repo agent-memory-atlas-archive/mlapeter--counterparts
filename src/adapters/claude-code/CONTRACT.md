@@ -713,19 +713,14 @@ did not get.
 **[M] A session that ended owing a write-up is written up by the next session that starts
 in its project.** "Owes" is `core/coverage/`'s rule since 2026-09-30 (read through `remember/owes.ts#planRetention`; before it, B3's predicate `owesWriteUp`, read across
 every scope through `adapters/sessions.ts#writeUpPlan`, the retention pass's own sources),
-narrowed by one shared eligibility (`sessions.ts#waitingForWriteUp`) that the pointer, the
-door and doctor all read:
-- **ended** means a registry end, or silence past `WRITE_UP_SILENCE_MS` — the sweep's
-  12-hour `CRASH_STALE_MS`, never the bind's 4-hour window (PR #192 review, MAJOR 3) — or no
-  record at all (the registry forgets one a week after its last write; a debt outlives
-  that);
-- a session the registry still holds OPEN that ANSWERED its last ask is never pointed at:
-  B3 counts it as owing (no normal end), but while its record stands it is most likely a
-  terminal nobody has closed (MAJOR 3). **Known, and accepted as the default:** words it
-  captured AFTER that answer, at a later Stop that asked nothing, wait with it — invisible
-  to the pointer and to doctor's count — until the registry forgets the record, up to a
-  week after its last write; then it is pointed at and the fetch carries them
-  (INTERFACE-GAPS §17);
+narrowed by one shared eligibility (`sessions.ts#waitingForWriteUp`, `pointable`) that the
+pointer, the door and doctor all read:
+- **not at work** replaced "ended" on 2026-09-30: a session owes once it has ended (a
+  registry end or a `session-end` boundary) OR has captured nothing since the date changed.
+  There is no silence window any more (the 12-hour `WRITE_UP_SILENCE_MS` and the
+  open-and-answered exception of PR #192's MAJOR 3 are gone with the asked / answered
+  predicate they guarded): a session open overnight owes the next date, and one at work
+  today is `live-session` to the door;
 - with the API sweep on, a crashed session whose words the sweep will still read is the
   sweep's (`sweepOwns`); one whose only words left are in quarantine is not (MAJOR 5);
 - **in its project** means the session holds words filed under this project's scope. A
@@ -791,8 +786,9 @@ green; amber when a session is finished in one project and waiting on words it l
 another, naming that project (re-review m-C); amber when the newest pointer outcome is a
 DEFERRAL and sessions are waiting — saying the wake was too full, by how many bytes, and to lower
 `injectionBudgetBytes` by that much (never "open a session", which would defer again);
-amber when a session has waited past `WRITE_UP_WAIT_DAYS` (3). Counted with the pointer's
-own eligibility. Never red; not in the session-start reading. `Sweep`: `not-opted-in` —
+and (until 2026-09-30, when the `Write-ups` rule above replaced it) amber when a session had
+waited past a 3-day `WRITE_UP_WAIT_DAYS`. Counted with the pointer's own eligibility: a small
+debt the pointer never offers (not a person's session) is named apart, as left to lapse. Never red; not in the session-start reading. `Sweep`: `not-opted-in` —
 and an older build's `no-credential` — is green `next session`.
 
 ## 6. Scars honored

@@ -3,6 +3,12 @@
 What the build (2026-09-30, `coverage/0930`) decided where the brief left room. Each is a
 working default.
 
+## 0. The pacer's arm needs new pieces
+
+After an ask, the arm fires again only when `ASK_PIECES` pieces have been captured since
+it, as well as the half hour: an ask nobody answers is not repeated on the clock alone
+(review of #289 — before, an unanswered ask came back every 30 minutes, 12 by hour six).
+
 ## 1. Where "owed" and "lapsed" are evaluated
 
 Two places, one rule. The rule is pure over the buffer (`ledger`), so whoever reads it
@@ -18,7 +24,8 @@ decide; they are the record.
 The lived day on a piece lags on a date's first turn-end (the capture runs before the
 worker advances the clock). The lapse therefore does not read the lived day at all: days of
 use are the distinct dates, in the store's zone, on which a turn-end was recorded
-(`boundaries.jsonl`, every scope). That is what the lived clock counts — `advanceClock`
+(`stop` boundaries in `boundaries.jsonl`, every scope — a session's end or a compaction is
+not a turn-end; review of #289). That is what the lived clock counts — `advanceClock`
 moves once per new date with a worker run, and a worker runs at every turn-end — without
 its lag. A stretch whose latest piece is on date D lapses when three later dates of use
 exist, which is the first turn-end of the third one. Retention never strikes boundaries,
@@ -29,9 +36,11 @@ the two counts differ by a day; not measured.
 
 The ledger is per session, from each piece's own `session`, not the scope-wide
 `CoverageReport`. A session with words in two projects has one stretch over both (the
-floor is on the session); the pacer reads its own project's only. A claim is per scope,
-so after the door writes up one project's share, the other's is owed on its own — if it is
-still past the floor. A share under the floor is owed by nobody and goes on its week.
+floor is on the session); the pacer reads its own project's only. A claim is per scope —
+a memory's, the door's, and since the review of #289 "nothing new" and a chapter's too,
+each in the project it was given in — so after one project's share is written up, the
+other's is owed on its own if it is still past the floor. A share under the floor is owed
+by nobody and goes on its week.
 
 ## 4. What counts as a piece
 
@@ -47,27 +56,42 @@ An owed stretch under `SMALL_STRETCH_PIECES` (6, the first-ask turn count) is sm
 pointer keeps #285's "one line is enough" sentence, it is offered only after every full
 debt has had today's pointer, and only for a session the registry knows and a person
 drove. Unlike #285's short debt it is a retention debt like any other, until written up
-or lapsed.
+or lapsed. Doctor counts only what the pointer can offer (`sessions.ts#pointable`); a small
+debt from `claude -p` or the SDK is named apart, as left to lapse.
 
 ## 6. Written-up rows
 
 Read off `coverage.jsonl` by claim (`proposalId` and session): one row per claim. The
-writer is the claim's prefix — `nothing-new:`, `chapter:`, `writeup:` (the door's own
-claim) — or, for a `prp_` proposal, the session itself unless the proposal's session is
-another one (the door's last part deposits under the writer and covers the ended
-session). A watermark in meta (`coverage.written.through`) starts at the first pass, so
-an old store gets no backfill; each pass re-reads from ten minutes before the watermark
-(moved only once it has fallen that far behind, so a quiet turn-end writes nothing), and
-the keys already written are read once per pass, so a re-read is free. Dedup-keyed rows are kept by the log's prune for good; the written-up row is the
-busiest, one per answer — a few dozen a day on the owner's store.
+writer is the claim's prefix — `nothing-new:<session>:<time>`, `chapter:<episode>#<n>:<time>`,
+`writeup:` (the door's own claim) — or, for a `prp_` proposal, the session itself unless
+the proposal's session is another one (the door's last part deposits under the writer and
+covers the ended session). The time and the chapter number are in the claim so that every
+answer is its own claim and its own row (review of #289: with `chapter:<episode>` only the
+first chapter per session per scope ever got one). A watermark in meta
+(`coverage.written.through`) starts at the first pass, so an old store gets no backfill;
+each pass re-reads from ten minutes before the watermark (moved only once it has fallen
+that far behind, so a quiet turn-end writes nothing). Written-up rows carry NO dedup key,
+so the log's ordinary 90-lived-day prune lets them go; a repeat in the re-read window is
+found by rebuilding each recent row's key (scope, session, claim) from the row itself.
+Owed and lapsed rows keep theirs: one per stretch, bounded by the stretches.
+
+**The owed key shifts with its stretch** (named, accepted — review of #289, C8). It is
+`session:firstAt`. When a per-scope claim writes up part of a stretch that spans two
+projects, the first unclaimed piece moves and the rest gets a second owed row. Keying on
+the first piece's hash would stop that, but a hash of said words does not belong in the
+log (store §5 G10); a second row for a real remainder is the smaller cost.
 
 ## 7. The handoff pointer
 
 `handoff/` stays a module that depends on `store/` alone: the words "how current" are
 computed by the composition root at delivery (`Counterpart#handoffSince`, from the newest
-`handoff.written` row's time and `workSince`) and passed in. The reserve is sized to the
-widest of those words, so the share rule now turns the reserve on from about 3,000 bytes
-of ceiling instead of 2,400.
+`handoff.written` row's time and `workSince`) and passed in. After the review of #289:
+the writing session's own pieces up to its next boundary after the write are not "work
+since" (a handoff is written mid-turn, and that turn's Stop captures the prompt that asked
+for it); work is named only past the owed floor; and it is named by its times —
+"work here 13:02–15:41 since" — not by a length. The reserve is sized to the widest of
+those words, so the share rule turns the reserve on from about 3,000 bytes of ceiling
+instead of 2,400.
 
 ## 8. Doctor
 

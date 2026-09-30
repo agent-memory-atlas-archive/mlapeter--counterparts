@@ -118,10 +118,12 @@ block for a given directory and day; four durable event names (`written`, `shown
 9. **[M] Nothing in a payload is a directory path or a body.** Telemetry is ids, counts,
    bytes, reasons and flags (store §5 G10); which directory a row is about is on the row.
 10. **[A] The wording of the pointer's two lines is advisory.** What is mechanized is that a
-    pointer states when it was written (since 2026-09-30 to the minute, and whether work
-    captured here after that is written up — computed at delivery from piece times, by
-    `coverage/#workSince`), the first sentence of its first line of SUBSTANCE (headings are
-    skipped) and its id,
+    pointer states when it was written (since 2026-09-30 to the minute, and — when work past
+    the owed floor was captured here after that, not counting the writing session's own
+    turn — when that work ran and whether it is written up, computed at delivery from piece
+    times by `coverage/#workSince`), the first sentence of at least
+    `EXCERPT_MIN_SENTENCE` characters of its first line of SUBSTANCE (headings and a leading
+    list marker are skipped) and its id,
     names the door to the whole of it, and carries no control or bidi-override character
     into the bundle.
 
