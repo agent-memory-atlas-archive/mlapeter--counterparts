@@ -147,7 +147,9 @@ firing line, built / in development, Lately, the Field Guide link) is behind a
 checked and found nothing due (`lanes.ts#isSleepCheck`) goes to the flow feed.
 
 `pages/memories/` — the memories tab (round 4, 2026-09-28, a try: it reads for
-someone who knows roughly what it is). The top says who "I" am once (the name
+someone who knows roughly what it is). The whole tab is one column capped at
+60rem (`#tab-memories` in `memories.css`, 2026-09-30), so a row's words keep a
+readable length on a wide window. The top says who "I" am once (the name
 lives in `shared/voice.js`, nowhere else) and the count once, like Home.
 `state.js` holds the page's filters (live/archived/all — "kept · put away ·
 both" on the page — kind, core, journal, hold, feeling, sort, page offset) and

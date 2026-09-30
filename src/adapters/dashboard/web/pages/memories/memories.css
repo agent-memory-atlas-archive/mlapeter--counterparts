@@ -1,5 +1,11 @@
 /* The memories tab. */
 
+/* A readable line (M7, 2026-09-30): on a wide window the rows ran ~1,340px of
+   text a line. The whole tab is one column, capped, so the pictures, the find
+   box, the chips and the rows keep one right edge and the date column stays
+   beside its words. */
+#tab-memories{max-width:60rem}
+
 /* ── the top: the count, who I am, and the page's buttons ── */
 .mem-top{display:flex;align-items:center;justify-content:space-between;gap:10px 12px;flex-wrap:wrap;margin-bottom:14px}
 .mem-head{flex:1 1 16rem;min-width:0}
