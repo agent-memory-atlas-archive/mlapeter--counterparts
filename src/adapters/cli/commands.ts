@@ -679,8 +679,8 @@ export const COMMAND_FLAGS: Record<Command, readonly string[]> = {
   note: ["kind", "title", "salience", "config"],
   // Two names, ONE row each and the same one: a flag that worked under `recall`
   // and not under `ask` would be the rename leaking into behaviour.
-  ask: ["id", "json", "full", "config"],
-  recall: ["id", "json", "full", "config"],
+  ask: ["id", "json", "full", "config", "voiced"],
+  recall: ["id", "json", "full", "config", "voiced"],
   export: [
     "out",
     "passphrase",
@@ -889,6 +889,8 @@ const FLAG_HELP: Record<string, string> = {
   // `doctor --json` is the findings): the table is keyed by flag NAME, so the
   // sentence has to be true of both.
   json: "machine-readable output — the structured payload rather than the console's rendering",
+  voiced:
+    "the question is already in the counterpart's own voice (the dashboard's rewrite), so \"I\" in a question about feeling means the counterpart, not you",
   out: "the directory to write into",
   passphrase: "encrypt the export with this secret",
   plaintext: "do not encrypt the export (said on purpose, never by default)",
@@ -1316,6 +1318,8 @@ export function parse(argv: readonly string[]): Parsed {
       id: { type: "string" },
       json: { type: "boolean" },
       full: { type: "boolean" },
+      // `ask`'s: the question is already in the counterpart's voice (U13).
+      voiced: { type: "boolean" },
       apply: { type: "boolean" },
       // `verify`'s two: the rebuild is opt-in, and dropping vectors this console
       // cannot recompute is opt-in on top of that. Declared rather than left to
@@ -5647,6 +5651,10 @@ async function recallCommand(
         owner: true,
         vector: embedded.vector,
         semantic: embedded.semantic,
+        // WHOSE "I" (U13): the owner is the one typing here, so "what have I
+        // felt" is his — unless the dashboard rewrote the question into the
+        // counterpart's voice first (`--voiced`), and then "I" is the counterpart.
+        asker: parsed.flags["voiced"] === true ? "self" : "owner",
       },
     );
     if (parsed.flags["json"] === true) {

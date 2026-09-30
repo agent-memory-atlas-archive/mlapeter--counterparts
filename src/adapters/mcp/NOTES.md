@@ -843,3 +843,6 @@ same one the dashboard's archive words take their groups from; the server asks i
 `counterpart.leftAs` so this change adds no import to `server.ts`. `exited` CHANGED MEANING
 without a version marker (nothing in the code reads it): a daily or a note comparing it
 across days sees a step on the day this is installed. The CHANGELOG says so.
+
+The `recall` tool's description now says that in a question about feeling "I" is the
+counterpart and "you" the owner (review of #293, B1).

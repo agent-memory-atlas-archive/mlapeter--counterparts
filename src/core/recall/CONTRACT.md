@@ -298,6 +298,31 @@ credit at the boundary; reinforcement deltas handed to `physics/`.
     person) is unchanged; when it opens, the dimension now reads as the memory's emotional
     INTENSITY (physics §5.10), so a feeling held in the `feelings` table is not read as
     unfelt. The affect flag's "charged" test reads the same intensity.
+19. **[M]** **A deliberate question about feeling is answered from the stamps** (U13,
+    2026-09-30, revised after the review of #293 — working default; `feeling-ask.ts`,
+    `activate.ts`). Only when the turn carries a `feeling` ask, which only the deliberate
+    path sets: the ambient turn, its affect gate (G10/G11) and mood-matching (G18) are
+    unchanged. A stamp answers to its emotion word, the aliases pointing at it, its wheel
+    core(s), and the writer's own word when that is ONE word. Two cases:
+    **Ranked** — a real question about feeling: a feel-word (`FEEL_WORDS`) or a word naming
+    a feeling, used about a PERSON (first person singular or second person, the owner by
+    word or name, and "we" for a feel-word only; `detectAffect`'s look-back, widened two
+    words forward for "what moved ME"). The pool is the stamps its named words answer to,
+    or every stamp when none is named, of the person asked about (first person is the
+    asker; nothing said, both). The strongest `FEELING_CANDIDATES_MAX` (6) memories by
+    SOFTENED strength are nominated with `FEELING_CUE_UNITS` (4) cue units × that strength,
+    kept past the cut, and answered as one block, strongest first, after the vivid tier and
+    ahead of the quiet and dim ones, exempt from the dim cap. **Named only** — a feeling word used about no one ("the happy path"): its stamps
+    nominate their memories as an ordinary word would (its rarity among the stamps), and
+    nothing is reordered. A feeling word followed by a determiner is a verb on a thing
+    ("moved THE parser") and names nothing.
+    Either way the stamps' cue is in the CUE channel (the temporal channel's shape: hard
+    gate (a) stays structural, the floor (b) still applies) and is kept OUT of the gate's
+    background (`Candidate.stamp`): the relative bar is what the words and meaning found.
+    Every scope rule of `recallable` and the confidentiality gate apply; a confidential
+    stamp takes no slot for a non-owner; a chapter and its copy take one slot. Ids and
+    numbers only reach `BuildOutput.feeling`; no feeling's word reaches the decision
+    record. Tests: `recall-feelings.test.ts`.
 
 ## 6. Scars honored
 

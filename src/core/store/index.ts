@@ -4062,6 +4062,21 @@ export class Store {
   }
 
   /**
+   * Every feeling on a LIVE memory, with its memory's birth day beside it — the
+   * pool a deliberate question about feeling ranks from (recall, 2026-09-30,
+   * U13). One scan of the `feelings` table, which is small (a few per memory at
+   * most), the same scan `feelingsSince` makes. An archived or superseded
+   * memory's feelings are not in it.
+   */
+  feelingsLive(): (FeelingRow & { birth_day: number })[] {
+    return this.ops.all<FeelingRow & { birth_day: number }>(
+      `SELECT f.*, m.birth_day AS birth_day FROM feelings f JOIN memories m ON m.id = f.memory_id
+        WHERE m.archived = 0 AND m.superseded_by IS NULL
+        ORDER BY f.created_at, f.rowid`,
+    );
+  }
+
+  /**
    * The feelings on several memories in ONE query, with each memory's birth
    * day beside them (a feeling softens from the day its memory was born —
    * physics §5.10). Recall's mood-matching reads this for its candidates only,
