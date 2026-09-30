@@ -322,6 +322,13 @@ export const COMMAND_DETAIL: Record<string, readonly string[]> = {
     "otherwise). --dir moves the STORE only. --config <absolute path> moves the",
     "CONFIG and the default store beneath it, and the lines this command prints",
     "then carry it.",
+    "",
+    "--host claude-desktop connects Claude Desktop's chat instead of Claude",
+    "Code: the same store and configuration, then one `counterparts` entry in",
+    "~/Library/Application Support/Claude/claude_desktop_config.json (backed up",
+    "first; every other server left as it was). Quit and reopen Desktop, then",
+    "start a chat with the \"Start with Counterparts\" prompt, or ask it to",
+    "call the counterparts wake tool.",
   ],
   init: [
     "No host config, nothing under ~/.counterparts/ — that",

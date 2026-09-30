@@ -9,9 +9,15 @@ that speaks it. Nine tools today: those five, and `scope` (this directory's sett
 dreamer's phases, 2026-09-26) and `reflect` (the waking self's, 2026-09-27) — each added
 on purpose (`tools.ts#TOOL_NAMES`).
 
-**Which host (2026-09-30).** A result's words ABOUT the host — today, how to reconnect after
-an update — come from the host this server serves (`McpServerOptions.host`, looked up in
-`adapters/hosts.ts`), and every launch today is Claude Code's, whose words are unchanged.
+**Which host (2026-09-30).** A result's words ABOUT the host — how to reconnect after an
+update, what switching the scope does — come from the host this server serves
+(`McpServerOptions.host`, looked up in `adapters/hosts.ts`). Claude Code's are unchanged.
+
+**Claude Desktop's chat (2026-09-30, PR B).** Desktop has no hooks, so for a client that
+says it is Desktop (§5 G18) this server is its own hook: a tenth tool, `wake` — offered to
+Desktop only, never in `TOOL_NAMES` — mints the session and returns the briefing
+SessionStart composes (G20); calls bind per call (G19); and the write-up ask rides on a tool
+result. Every Desktop chat shares one place, the pseudo-scope `claude-desktop:`.
 
 ## 2. Brain analog
 
@@ -105,7 +111,8 @@ that is the store's own directory) is asked here because this side has the canon
 and the durable row is written by `core/handoff/`, which owns that guarantee —
 `chapter(session, text[, title])`; `scope(mode)` for this directory; `self_page` (read,
 or write with `ifVersion`); `dream(session, phase, …)` and `reflect(session, phase, …)`,
-each bound to one session as `session_end` is (their fields are `tools.ts`'s); the
+each bound to one session as `session_end` is (their fields are `tools.ts`'s); for a
+Claude Desktop client only, `wake()` (§5 G20) and the `prompts/list` / `prompts/get` pair; the
 session's observer role; the launch's session, scope, data dir and host when the host can
 supply them.
 **Outputs** — a stored memory (note), ranked memories with a confidence label (recall), a
@@ -154,7 +161,7 @@ actually wrote (chapter), the written self page or the version a write to it pro
     process's lifetime; a second, different id is refused. A claim with no id, an
     unknown id, a dead id or a foreign scope is refused with WHICH of the four it was,
     because a model that cannot tell "unknown id" from "wrong project" cannot act on
-    either.
+    either. (Claude Desktop is the one exception, and binds per call: guarantee 19.)
 11. **[M] The scope is the one the HOST names, never silently the store — and it is the
     same string the hooks file that session under.** In order: `--scope` /
     `COUNTERPARTS_SCOPE`, then `CLAUDE_PROJECT_DIR`, then `process.cwd()`. The middle one
@@ -241,9 +248,11 @@ actually wrote (chapter), the written self page or the version a write to it pro
     waits (`written-up-here`) for that project's writer (MAJOR 6). How it was answered
     (`memories` / `nothing-new`) is recorded on the writing session's record and in the
     progress. It accepts an ended id only when `sessions.ts#writeUpStanding` — the same
-    function the SessionStart pointer filters with — says it ended (12 h of silence, not
-    4) in this project, owes, and is not open-and-answered, and only for the session the
-    hook POINTED this one at (`writeUpPointer`, evidence the model cannot write).
+    function the SessionStart pointer filters with — says it is no longer at work and
+    owes in this project by `core/coverage/`'s rule (2026-09-30), and only for the
+    session the hook POINTED this one at (`writeUpPointer`, evidence the model cannot
+    write) — or, on the GRANTED path (guarantee 17), one the writing session's own record
+    lists.
     Refused, each by name, writing nothing: `handoff-not-accepted`, `unknown-session`,
     `live-session` (this session's own id included), `other-project`,
     `already-written-up`, `owes-nothing` (with `why`: below-threshold, answered, no-text),
@@ -255,6 +264,49 @@ actually wrote (chapter), the written self page or the version a write to it pro
     fetch of it — by any session — finishes the mark without depositing (MAJOR 2). This
     file is one of the seam's two importers outside `remember/` (`test/cli.test.ts` pins
     it; the other is the worker's API sweep, which marks `by: "api"`).
+17. **[M] Who may write up whose session: `mayWriteUp` on the runner's OWN record**
+    (2026-09-30, the binding shape agreed with build 3; desktop-chat design §2). A
+    session launched to write up OTHER sessions — build 3's headless catch-up, or a later
+    Desktop session writing up a chat that went quiet — carries on its registry record
+    the ended sessions it may write up (`sessions.ts#SessionRecord.mayWriteUp`). Only a
+    LAUNCHER writes it (`sessions.ts#grantWriteUps`); no tool does, so no model can list
+    an id (a `mayWriteUp` argument is ignored). The door's rule, exactly: the subject is
+    listed in the WRITING session's own record, AND it has ended (`endedAt` set), AND it
+    is owed per `sessions.ts#owedWriteUps` asked in the SUBJECT's scope. On that path
+    `sameScope` against this server's scope is skipped, the grant stands in for the
+    SessionStart pointer, and the memories are filed under the subject's scope (the
+    project where it was lived). Everything else is guarantee 16's. Named `mayWriteUp`
+    because `writeUpFor` was already the door's per-part mark.
+18. **[M] Claude Desktop is decided by the CLIENT, and a Claude Code client sees nothing
+    new** (2026-09-30). A client whose `clientInfo.name` at `initialize` is `claude-ai`
+    or `local-agent-mode-*` (`hosts.ts#hostOfClient`) makes this Desktop's server: its
+    place becomes `claude-desktop:` (unless the launch declared `--scope`), its launch
+    record is re-filed there, `initialize` adds an `instructions` line and a `prompts`
+    capability ("Start with Counterparts"), `tools/list` adds `wake`, and results speak
+    Desktop's words (`hosts.ts`). Any other client — Claude Code, Desktop's Code tab off
+    the same config entry, an unnamed one — gets the handshake, tools and refusals it
+    always got; `wake` is an unknown tool there, and `prompts/*` method-not-found.
+19. **[M] Desktop binds PER CALL, and says when it guessed** (2026-09-30). Guarantee 10's
+    once-for-the-process bind would file every Desktop chat under the first; one server
+    serves them all and the wire carries no conversation id. So each Desktop call binds
+    afresh: the `session` it names, when that is a live Desktop session in the registry
+    (else refused by name — `session-unknown`, `session-not-live` — never substituted),
+    or, when it names none, the most recent live Desktop session, and the result carries
+    `boundTo` / `boundBy: "most-recent"` and a line saying so. With none live, a tool that
+    needs a session refuses `session-required` and names `wake`. Every bound call
+    refreshes the session's record (its liveness) — with no hooks, a call is the only sign
+    of life — and moves its write-up pacer: after `DESKTOP_ASK_CALLS` calls AND
+    `DESKTOP_ASK_AFTER_MS` since the later of its wake, last `session_end`/`chapter` and
+    last ask, the next result (never a write-up's own) carries `writeUpAsk`.
+20. **[M] `wake` is Desktop's session start** (2026-09-30). It mints a fresh session id
+    per call and writes that session's record through the shared lifecycle
+    (`lifecycle.ts`, host `claude-desktop`), and returns the wake SessionStart composes,
+    the clock, today's plain reminders (claimed), the day's dream line only when it is an
+    ask (a headless `auto` offer is left unclaimed for Claude Code), the update and doctor
+    notices as plain lines, and the write-up pointer measured against
+    `TOOL_RESULT_CHARS`; it starts the worker. It never asks the first-launch question,
+    never touches primacy, and never starts the headless nightly run. It sits under the
+    schema gate like every tool.
 
 ### The residual risk of the lazy bind, named
 

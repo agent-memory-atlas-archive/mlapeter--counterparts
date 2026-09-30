@@ -82,12 +82,14 @@ export type ToolName =
   | "wake";
 
 /**
- * The tool vocabulary, ENUMERATED — nine tools today. It began as three
- * deliberate verbs plus the TWO return channels the one Stop ask needs
+ * The tool vocabulary EVERY host is offered, ENUMERATED — nine tools. It began
+ * as three deliberate verbs plus the TWO return channels the one Stop ask needs
  * (`claude-code/INTERFACE-GAPS.md` §7), and each since (`scope`, `self_page`,
  * `dream`, `reflect`) was added on purpose, with its own entry below. The
  * audit asserts the shipped list equals this one exactly, so a tenth tool is a
- * decision somebody makes on purpose rather than one that accretes.
+ * decision somebody makes on purpose rather than one that accretes. The one
+ * tenth so far is `wake` (2026-09-30), offered to Claude Desktop only and kept
+ * OUT of this list on purpose (`WAKE`, `DESKTOP_TOOLS`).
  *
  * **`chapter` is the fifth, added 2026-09-04, and it is not a re-opened door.**
  * The dropped v1 self-store tool wrote IDENTITY prose directly; this one appends

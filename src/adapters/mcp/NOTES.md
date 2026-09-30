@@ -53,8 +53,10 @@ from becoming the second front door CONTRACT §7 OQ1 warns about.
   by mention; revision is `updates:` plus arithmetic. `session_end` accepts an
   `updates` field on an entry, which is the experiencer DECLARING a revision, not
   a tool performing one — the arithmetic still happens in `physics/`.
-- **No `tools/list` change notifications, no resources, no prompts.** The
-  capability block advertises `tools` only.
+- **No `tools/list` change notifications, no resources.** The capability block
+  advertises `tools` only — to every client but Claude Desktop's, which since
+  2026-09-30 is also offered one prompt ("Start with Counterparts") and an
+  `instructions` line (below).
 
 ## Host wiring the owner still has to do
 
@@ -831,3 +833,47 @@ headless child's own `--mcp-config` env and checks the bodies reach `structuredC
 - **A `how` sent at a core memory** reports that pressure runs and that the pair is
   recorded unsettled meanwhile (M9). The published `note` schema has `required: []`;
   watch whether empty notes rise (M10).
+
+## Claude Desktop's chat (2026-09-30, host groundwork PR B)
+
+What the build learned and decided; the rules themselves are CONTRACT §5 G13–G16.
+
+- **The client's name is the signal.** Desktop sends `clientInfo.name` `claude-ai` (chat)
+  and `local-agent-mode-<entry>` (Cowork) at `initialize` (measured, design §10), and the
+  same config entry is ALSO loaded by Desktop's Code tab, where the client is Claude Code.
+  So `install --host claude-desktop` passes nothing that says "desktop": a flag would be
+  false in the Code tab. The client's name decides, at `initialize`, and everything else
+  stays exactly as a Claude Code client has always seen it (`test/desktop-chat.test.ts`
+  pins the handshake, the nine tools and the `prompts/*` method-not-found).
+- **The place is a name.** `claude-desktop:` (`hosts.ts#DESKTOP_SCOPE`) is one pseudo-scope
+  for every Desktop chat and Cowork (owner, 2026-09-30). It is never resolved against a
+  working directory (`isPseudoScope` in `canonicalScope` and `canonicalScopePath`), and
+  `scopes.json` accepts it as a key, so the `scope` tool can set Desktop on, observer or off.
+  A launch that declared `--scope` keeps it.
+- **Binding is per call.** The lazy bind froze one session for the life of the process;
+  Desktop's one process serves every chat, so a Desktop call binds afresh each time — the
+  id it names, else the most recent live Desktop session, and the result says so. Every
+  bound call refreshes the record (`sessions.ts#touchDesktopSession`): with no hooks, a
+  tool call is the only sign of life.
+- **The write-up ask** rides on a tool result: `DESKTOP_ASK_CALLS` (3) calls AND
+  `DESKTOP_ASK_AFTER_MS` (20 min) since the later of the wake, the last `session_end` /
+  `chapter`, and the last ask (`config.ts#TUNABLES`). Never on a `session_end` or `chapter`
+  result. `session_end` could always be called more than once; in Desktop it is how a long
+  chat keeps being written up, and the e2e test calls it twice.
+- **What `wake` includes, and what it leaves.** In: the wake, the clock, today's plain
+  reminders (claimed — a tool result is certain delivery), the worker spawn (the runner's
+  path is `spawn.ts#WORKER_RUNNER_PATH` now, equal to the hook's), the day's dream line when
+  it is an ASK, the update line (the loaded build against `package.json` on disk now) and
+  doctor's red-only notice (a closure from `bin/serve.ts`, since this library may not import
+  `claude-code/`), and the write-up pointer measured against `TOOL_RESULT_CHARS`. Out: the
+  first-launch question, primacy, and the headless nightly run. Under the owner's `auto`
+  a headless offer is left UNCLAIMED and unsaid, for Claude Code's first prompt — a
+  Desktop-only person on `auto` therefore gets no dream line in Desktop (a known limit).
+  Core's ask says "shown … in the terminal" and "a background agent (the Agent tool)";
+  Desktop has neither, so the wake adds one line (`DESKTOP_DREAM_NOTE`) rather than
+  rewriting core's words.
+- **`status`'s `owner: false`** confused both Desktop chats in the experiment; it now
+  carries one phrase saying what it means (`ownerMeans`). Kept to one key in the census,
+  because another session's branch edits the status body.
+- **Not built:** the SKILL.md (brief item 9, deferred), Cowork's `roots` as a real
+  per-folder scope, pruning `scopes.json`.

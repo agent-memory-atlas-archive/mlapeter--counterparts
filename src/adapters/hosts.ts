@@ -151,8 +151,3 @@ export const HOST_WORDING: Readonly<Record<string, HostWording>> = {
 export function wordingFor(host: string = DEFAULT_HOST): HostWording {
   return HOST_WORDING[host] ?? (HOST_WORDING[DEFAULT_HOST] as HostWording);
 }
-
-/** The owner's app, in the words a person reads ("Claude Code", "Claude Desktop"). */
-export function hostTitle(host: string = DEFAULT_HOST): string {
-  return host === DESKTOP_HOST ? "Claude Desktop" : "Claude Code";
-}

@@ -31,6 +31,12 @@
  *      process's lifetime; a second, different id is refused exactly as it
  *      always was. The explicit `--session` path is unchanged and still wins:
  *      a server told which session it is never consults the registry.
+ *
+ *      **Claude Desktop binds per call** (2026-09-30). One server there serves
+ *      every chat, so a bind frozen for the process would file every chat under
+ *      the first. A Desktop call binds the live Desktop session it names, or —
+ *      naming none — the most recent one, and says so; its `wake` tool writes
+ *      the registry record the hooks would have (`bindDesktopCall`, `wakeTool`).
  *   2. **Stand-down over the wire** (§5 G5, scar E7/§2.4). Under observer every
  *      tool returns a result that SAYS it stood down, plus telemetry. A silent
  *      no-op would be indistinguishable from a broken server, which is the

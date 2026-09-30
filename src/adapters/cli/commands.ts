@@ -3558,7 +3558,7 @@ function installDesktop(
       io.out(`Claude Desktop: ${result.outcome === "added" ? "connected" : "entry updated"} in ${tilde(result.path, home_)}.`);
       if (result.backup !== null) io.out(`  backed up first: ${result.backup}`);
       io.out("  Every other server in that file was left as it was.");
-      io.out("Quit and reopen Claude Desktop. In a new chat, pick \"Start with Counterparts\" from the + menu, or ask it to call the counterparts wake tool.");
+      io.out("Quit and reopen Claude Desktop. In a new chat, ask it to call the counterparts wake tool first (or pick the \"Start with Counterparts\" prompt where Desktop lists it).");
       io.out(`Then run \`${BIN.cli} doctor\`: its Claude Desktop line shows the entry, and the last wake once there has been one.`);
       return EXIT.ok;
     case "refused":

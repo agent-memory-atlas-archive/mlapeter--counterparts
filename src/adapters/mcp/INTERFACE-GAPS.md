@@ -172,6 +172,17 @@ variable, or an MCP launch the host parameterizes per session, would restore the
 still earn its place as the liveness fact (`session-not-live`), which no launch
 argument can carry.
 
+**Claude Desktop's chat (2026-09-30, PR B) is the same seam, wider.** One server per APP,
+shared by every chat, no hooks and no conversation id on the wire (measured 13:16–13:27:
+`tools/call` params are `name` + `arguments` only). So there is no hook to write the
+registry, and no launch the host could parameterize even in principle. The server writes
+the record itself — the `wake` tool mints the id — and the model carries it; a call that
+names none binds to the most recent live Desktop session and SAYS it did (`boundBy:
+"most-recent"`). Binding is per call, never frozen for the process. What this cannot do:
+tell two chats apart when the model drops the id. Two chats open at once, and one that
+forgets its id, will file under the other's session. The remaining authority is the same
+as above — only an id the registry holds, live, and a Desktop one.
+
 ## 9. An expansion BY TITLE earned no credit — CLOSED 2026-09-15 (LAUNCH-STATUS G50)
 
 **The gap.** `recall/reference.ts` decides which memories a session actually USED, and
