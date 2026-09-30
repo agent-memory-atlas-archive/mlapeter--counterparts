@@ -724,6 +724,9 @@ export const DESKTOP_WAKE_KEY = "adapter.desktop.wake.at";
  *     wake, its last write-up and its last ask. An ask restarts the pacer too,
  *     so it is not repeated until both arms are met again.
  *
+ * All of this only for a call that NAMED the session (`named`): a call bound
+ * by the most-recent fallback leaves the record exactly as it was.
+ *
  * Only an existing record is touched (`boundary` creates one if missing, and
  * the id reached here from a model): the caller found it live first.
  */
@@ -736,6 +739,14 @@ export function touchDesktopSession(
     /** False on a call that must not carry the ask (a write-up that was
      *  refused): it is counted, and the ask waits for the next call. */
     mayAsk?: boolean;
+    /**
+     * Did the call NAME this session (review of #294, finding 1)? Only a call
+     * that named it is evidence it came from this session's chat. A call bound
+     * by the most-recent fallback may be another chat's, so it touches nothing:
+     * no refresh (the "most recent" would flap between chats), no count, no ask.
+     * Absent: named.
+     */
+    named?: boolean;
     askCalls: number;
     askAfterMs: number;
   },
@@ -743,6 +754,7 @@ export function touchDesktopSession(
   const prior = readSession(dataDir, sessionId);
   if (prior === null) return null;
   const pace = prior.desk ?? { calls: 0, since: prior.startedAt };
+  if (input.named === false) return { ask: false, desk: pace };
   let desk: DeskPace;
   let ask = false;
   if (input.wroteUp) {

@@ -295,6 +295,14 @@ export interface McpServerOptions {
    *  markers (`hosts.ts#claudeCodeEnvMarker`). Injectable for a test; absent,
    *  `process.env`. */
   env?: Readonly<Record<string, string | undefined>>;
+  /**
+   * The launch directory's scope entry said `observer`, and the launch could not
+   * tell whether Claude Code started it (`bin/serve.ts`, review of #294 finding
+   * 2): the store was opened as a writer, and this server stands every tool
+   * down itself — unless a Claude Desktop client shows up, whose place is
+   * `claude-desktop:` and is read per call instead.
+   */
+  launchObserver?: boolean;
   onEvent?: (e: McpEvent) => void;
   now?: () => number;
 }
@@ -452,16 +460,26 @@ export class McpServer {
    *  Claude Desktop client turns it into `claude-desktop:` at `initialize`. */
   scope: string;
   scopeSource: ScopeSource;
-  readonly owner: boolean;
-  /** One predicate, one definition: the store's (observer-mode G7). */
-  readonly observer: boolean;
+  /** Did the host say this is the owner's session? Read through `owner`. */
+  private readonly ownerClaimed: boolean;
+  /** The store's own observer bit (observer-mode G7): set at open, never lifted. */
+  private readonly storeObserver: boolean;
+  /**
+   * THE LAUNCH DIRECTORY'S `observer` ENTRY, when the launch could not tell
+   * whether Claude Code started it (review of #294, finding 2; `bin/serve.ts`).
+   * Applied here, per call, to every client but Claude Desktop's — whose place
+   * is `claude-desktop:`, never the directory the app started it in.
+   */
+  private readonly launchObserver: boolean;
+  /** This call's Desktop observer verdict, read once per call; null outside one. */
+  private callObserver: boolean | null = null;
   /** The host this server serves, for its words about the host (`hosts.ts`).
    *  Set at construction, and by a Claude Desktop client at `initialize`. */
   host: string;
   /** The `clientInfo.name` the client sent at `initialize`, or null. */
   clientName: string | null = null;
 
-  private readonly embedder: QuestionEmbedder | null;
+  private readonly embedderGiven: QuestionEmbedder | null;
   private readonly registryDir: string;
   private readonly scopesFile: string | null;
   private readonly sessionTtlMs: number;
@@ -519,12 +537,10 @@ export class McpServer {
       this.scope = DESKTOP_SCOPE;
       this.scopeSource = "host";
     }
-    this.observer = opts.counterpart.observer;
-    // An observer is a non-owner regardless of what the host claimed
-    // (observer-mode G7): an instrument reading somebody's store is not them.
-    this.owner = opts.owner === true && !this.observer;
-    // An instrument opens no sockets, whatever the host handed it (scar E7).
-    this.embedder = this.observer ? null : opts.embedder ?? null;
+    this.storeObserver = opts.counterpart.observer;
+    this.launchObserver = opts.launchObserver === true;
+    this.ownerClaimed = opts.owner === true;
+    this.embedderGiven = opts.embedder ?? null;
     this.onEvent = opts.onEvent;
     this.nowFn = opts.now ?? ((): number => Date.now());
     // LAST in the constructor — `emit` needs `nowFn`. A scope nobody chose is
@@ -547,6 +563,30 @@ export class McpServer {
    *  claim — which, for Claude Desktop, is this call's (`bindDesktopCall`). */
   get session(): string | null {
     return this.launchedSession ?? (this.desktop ? this.callSession : this.lazySession);
+  }
+
+  /**
+   * ONE PREDICATE (observer-mode G7): the store's bit, always. Beside it, for
+   * Claude Desktop, what `scopes.json` says about `claude-desktop:` NOW — read
+   * per call, as `off` and `paused` are, so the `scope` tool's `observer` takes
+   * effect at once (review of #294, finding 2); for every other client, the
+   * launch directory's `observer` when the launch deferred it here.
+   */
+  get observer(): boolean {
+    if (this.storeObserver) return true;
+    if (this.desktop) return this.callObserver ?? stanceOfMode(this.scopeVerdict().mode) === "observer";
+    return this.launchObserver;
+  }
+
+  /** An observer is a non-owner regardless of what the host claimed
+   *  (observer-mode G7): an instrument reading somebody's store is not them. */
+  get owner(): boolean {
+    return this.ownerClaimed && !this.observer;
+  }
+
+  /** An instrument opens no sockets, whatever the host handed it (scar E7). */
+  private get embedder(): QuestionEmbedder | null {
+    return this.observer ? null : this.embedderGiven;
   }
 
   /** Is this server talking to Claude Desktop's chat (or Cowork)? */
@@ -709,8 +749,11 @@ export class McpServer {
     // before anything reads `this.session`, and let go when the call ends.
     // `wake` binds nothing: it makes the session. Nothing here writes in a place
     // set `off` (every tool but `scope` refuses there anyway), or as an observer.
-    const desktopCall =
-      this.desktop && name !== "wake" && !this.observer && stanceOfMode(this.scopeVerdict().mode) !== "off";
+    // Desktop's place is read ONCE for the call: `off` here, `observer` for
+    // every stand-down check the tool makes (`observer`).
+    const place = this.desktop ? stanceOfMode(this.scopeVerdict().mode) : null;
+    this.callObserver = place === null ? null : place === "observer";
+    const desktopCall = this.desktop && name !== "wake" && !this.observer && place !== "off";
     if (desktopCall) this.bindDesktopCall(args);
     let result: ToolResult | null = null;
     try {
@@ -727,6 +770,7 @@ export class McpServer {
       this.callSession = null;
       this.callBoundBy = null;
       this.callRefusal = null;
+      this.callObserver = null;
     }
   }
 
@@ -780,12 +824,15 @@ export class McpServer {
   }
 
   /**
-   * AFTER A DESKTOP CALL THAT WAS BOUND: the session's record is refreshed —
-   * with no hooks, a tool call is the only sign a Desktop session is alive —
-   * and its write-up pacer moves (`sessions.ts#touchDesktopSession`). The
-   * result then says, when it happened, that this call was filed under the most
-   * recent session, and carries the write-up ask when one is due. Fail-open: a
-   * registry that will not write costs the refresh, never the call.
+   * AFTER A DESKTOP CALL THAT WAS BOUND. A call that NAMED its session
+   * refreshes that session's record — with no hooks, a tool call is the only
+   * sign a Desktop session is alive — and moves its write-up pacer
+   * (`sessions.ts#touchDesktopSession`), and only such a call carries the
+   * write-up ask. A call bound by the most-recent FALLBACK moves nothing and is
+   * never asked (review of #294, finding 1): it may be another chat's, and the
+   * ask would tell chat A to write up chat B. Its result says it was filed that
+   * way, and how to name the session instead. Fail-open: a registry that will
+   * not write costs the refresh, never the call.
    */
   private afterDesktopCall(name: string, result: ToolResult): ToolResult {
     const session = this.callSession;
@@ -797,6 +844,10 @@ export class McpServer {
         now: this.nowFn(),
         wroteUp: writing && result.isError !== true,
         mayAsk: !writing,
+        // Only a call that NAMED its session moves that session's record or
+        // carries its ask (review of #294, finding 1): a fallback-bound call
+        // may be another chat's.
+        named: this.callBoundBy === "named",
         askCalls: ADAPTER_TUNABLES.DESKTOP_ASK_CALLS,
         askAfterMs: ADAPTER_TUNABLES.DESKTOP_ASK_AFTER_MS,
       });
@@ -804,7 +855,7 @@ export class McpServer {
       this.emit("mcp.desktop.call", session, {
         tool: name,
         boundBy: this.callBoundBy,
-        refreshed: touched !== null,
+        refreshed: touched !== null && this.callBoundBy === "named",
         calls: touched?.desk.calls ?? null,
         ask,
       });
@@ -815,7 +866,7 @@ export class McpServer {
     if (this.callBoundBy === "most-recent") {
       extra["boundTo"] = session;
       extra["boundBy"] = "most-recent";
-      extra["bindNote"] = `No session was named, so this call was filed under the most recent Claude Desktop session (${session}). Pass session: <the id wake gave this chat> to keep this chat's calls together.`;
+      extra["bindNote"] = `No session was named, so this call was filed under the most recent Claude Desktop session (${session}). Every tool takes "session" here: pass the id wake gave this chat, so its calls stay together — and no other chat's write-up ask reaches it.`;
     }
     if (ask) extra["writeUpAsk"] = desktopWriteUpAsk(session);
     if (Object.keys(extra).length === 0) return result;
@@ -1110,10 +1161,9 @@ export class McpServer {
     return this.refuse(tool, "scope-off", {
       scope: this.scope,
       ...(verdict.matched === null ? {} : { setBy: verdict.matched }),
-      detail:
-        verdict.mode === "paused"
-          ? "Counterparts is paused for this directory. Nothing is recorded or read here until it is resumed — call `scope` with mode `resume`, or run `counterparts scope . --resume`."
-          : "Counterparts is off for this directory. Nothing is recorded or read here — call `scope` with mode `on`, or run `counterparts scope . --on`.",
+      // In the host's words (`hosts.ts`): Claude Code's name a directory and
+      // `counterparts scope .`; Desktop's name its own place.
+      detail: verdict.mode === "paused" ? wordingFor(this.host).pausedRefusal : wordingFor(this.host).offRefusal,
     });
   }
 
@@ -1165,7 +1215,11 @@ export class McpServer {
         detail: "`mode` takes on, observer, off, pause or resume — or omit it to read the setting.",
       });
     }
-    if (this.observer) return this.standDown("scope");
+    // In Desktop an `observer` that comes only from `claude-desktop:`'s own
+    // entry does not lock this door: the scope tool is how that entry is
+    // changed back, as it is the one door an `off` leaves open. The store's own
+    // observer bit still does.
+    if (this.desktop ? this.storeObserver : this.observer) return this.standDown("scope");
     if (file === null) {
       return this.refuse("scope", "no-registry", {
         detail:

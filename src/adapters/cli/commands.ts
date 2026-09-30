@@ -978,7 +978,7 @@ const FLAG_HELP: Record<string, string> = {
  * question added later should not find the flag missing.
  */
 const INSTALL_FLAG_HELP: Record<string, string> = {
-  host: "claude-desktop connects Claude Desktop's chat instead of Claude Code: the store and configuration as usual, then a counterparts entry merged into Desktop's claude_desktop_config.json (backed up first, other servers untouched). claude-code, or no --host, is the ordinary install",
+  host: "claude-desktop connects Claude Desktop's chat instead of Claude Code: the store and configuration as usual, then a counterparts entry merged into Desktop's claude_desktop_config.json (backed up first, other servers untouched). Quit Claude Desktop before running it: Desktop rewrites that file while it runs. claude-code, or no --host, is the ordinary install",
   yes: "kept so a scripted caller need not change, and it answers nothing this command asks: your name and a memory a parked uninstall set aside are questions only a person can answer, and moving somebody's data is never something a flag decides",
 };
 
@@ -3556,9 +3556,17 @@ function installDesktop(
     case "added":
     case "updated":
       io.out(`Claude Desktop: ${result.outcome === "added" ? "connected" : "entry updated"} in ${tilde(result.path, home_)}.`);
+      // A REPLACED ENTRY THAT NAMED ANOTHER STORE IS NAMED (review of #294):
+      // Desktop's memory moves with this line, and the old one is not gone.
+      if (result.previousStore !== undefined && result.previousStore !== null && result.previousStore !== store) {
+        io.out(`  It named another store before: ${result.previousStore} — that memory is still there; Desktop now uses ${store}.`);
+      }
       if (result.backup !== null) io.out(`  backed up first: ${result.backup}`);
       io.out("  Every other server in that file was left as it was.");
-      io.out("Quit and reopen Claude Desktop. In a new chat, ask it to call the counterparts wake tool first (or pick the \"Start with Counterparts\" prompt where Desktop lists it).");
+      // Desktop rewrites its own config file while it runs, so a change made
+      // under a running Desktop can be written over.
+      io.out("If Claude Desktop was open while this ran, quit it and run this again — it rewrites its own config file while it runs.");
+      io.out("Then open Claude Desktop. In a new chat, ask it to call the counterparts wake tool first (or pick the \"Start with Counterparts\" prompt where Desktop lists it).");
       io.out(`Then run \`${BIN.cli} doctor\`: its Claude Desktop line shows the entry, and the last wake once there has been one.`);
       return EXIT.ok;
     case "refused":

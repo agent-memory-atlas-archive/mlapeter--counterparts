@@ -153,6 +153,7 @@ export function openServer(opts: OpenServerOptions = {}): McpServer {
     ...(opts.wakeNotice === undefined ? {} : { wakeNotice: opts.wakeNotice }),
     ...(opts.manifestVersion === undefined ? {} : { manifestVersion: opts.manifestVersion }),
     ...(opts.env === undefined ? {} : { env: opts.env }),
+    ...(opts.launchObserver === undefined ? {} : { launchObserver: opts.launchObserver }),
     ...(opts.onEvent === undefined ? {} : { onEvent: opts.onEvent }),
     ...(opts.now === undefined ? {} : { now: opts.now }),
   });

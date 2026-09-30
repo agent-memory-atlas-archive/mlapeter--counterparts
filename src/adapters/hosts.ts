@@ -134,6 +134,10 @@ export interface HostWording {
   readonly scopeOff: string;
   /** What switching it back ON does, the same way. */
   readonly scopeOn: string;
+  /** Every other tool's refusal while this place is OFF, and the way back on. */
+  readonly offRefusal: string;
+  /** The same while it is PAUSED. */
+  readonly pausedRefusal: string;
 }
 
 /**
@@ -154,6 +158,10 @@ export const HOST_WORDING: Readonly<Record<string, HostWording>> = {
     // directory was off or paused stays out of the memory for good.
     scopeOn:
       "Recorded. This takes effect for the tools immediately, and for the hooks at their next boundary in this session. Nothing said before now is recorded — the conversation that happened while this directory was off or paused is passed over, not collected — and remembering starts from here.",
+    offRefusal:
+      "Counterparts is off for this directory. Nothing is recorded or read here — call `scope` with mode `on`, or run `counterparts scope . --on`.",
+    pausedRefusal:
+      "Counterparts is paused for this directory. Nothing is recorded or read here until it is resumed — call `scope` with mode `resume`, or run `counterparts scope . --resume`.",
   },
   // Desktop has no `/mcp` and no hooks: the one server every chat talks to is
   // started with the app, so a newer build loads when the app does.
@@ -164,6 +172,10 @@ export const HOST_WORDING: Readonly<Record<string, HostWording>> = {
       "Claude Desktop's chats are no longer recorded or read. Every other tool will refuse until it is turned back on — including in a new chat, which is the point.",
     scopeOn:
       "Recorded. This takes effect immediately, for every tool in every Claude Desktop chat. Nothing is collected from before now: Desktop chat keeps no transcript here, so only what is written through the tools is remembered.",
+    offRefusal:
+      "Counterparts is off for Claude Desktop's chats. Nothing is recorded or read here — call `scope` with mode `on`, or run `counterparts scope claude-desktop: --on`.",
+    pausedRefusal:
+      "Counterparts is paused for Claude Desktop's chats. Nothing is recorded or read here until it is resumed — call `scope` with mode `resume`, or run `counterparts scope claude-desktop: --resume`.",
   },
 };
 

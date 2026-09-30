@@ -44,6 +44,7 @@ import {
   lookupScope,
   readScopes,
   scopesPath,
+  stanceOfMode,
 } from "../../scopes.js";
 import { loadConfig, withEmbedderDefault } from "../../config.js";
 import type { AdapterConfig } from "../../config.js";
@@ -52,6 +53,7 @@ import type { LiveEmbedder } from "../../claude-code/embed-client.js";
 import { SESSION_NOTICE_BUDGET_MS, doctorFindings, noticeMessage } from "../../claude-code/doctor.js";
 import { SPAWN_REFUSAL_PREFIX, SPAWN_START_COUNT_KEY, SPAWN_START_DATE_KEY } from "../../lifecycle.js";
 import { WORKER_RUNNER_PATH } from "../../spawn.js";
+import { claudeCodeEnvMarker } from "../../hosts.js";
 import { localDate } from "../../../core/time.js";
 import type { Store } from "../../../core/store/index.js";
 import { hostScope, openServer } from "../index.js";
@@ -341,6 +343,8 @@ async function main(): Promise<void> {
   // Off for an observer, and off in a directory set `off`, like the hooks.
   let log: ProcessLog | null = null;
   const toLog = (e: LogEvent): void => log?.event(e);
+  const registryObserver = stanceOfMode(scopeVerdict.mode) === "observer";
+  const startedByClaudeCode = claudeCodeEnvMarker(process.env) !== null;
   // WHAT CLAUDE DESKTOP'S `wake` RUNS WITH (2026-09-30). Nothing here decides
   // the host: a Desktop client says who it is at `initialize`, and a Claude
   // Code client — Desktop's Code tab included, off this same config entry —
@@ -360,7 +364,16 @@ async function main(): Promise<void> {
     // that has to keep working in an off directory or the switch only turns one
     // way. Nothing is at risk: every other tool refuses `scope-off` one layer
     // above, per call, before it can reach a store.
-    observer: stance === "observer" || opts.observer,
+    //
+    // THE REGISTRY'S `observer` IS BAKED INTO THE STORE ONLY WHEN CLAUDE CODE
+    // STARTED THIS PROCESS (review of #294, finding 2): its environment then
+    // names the project, and the cwd verdict is that project's. Otherwise the
+    // client may be Claude Desktop, whose place is `claude-desktop:` and not
+    // the directory the app started the server in — so the store opens as a
+    // writer and the server applies the launch directory's `observer` itself,
+    // per call, to any client but Desktop's (`McpServerOptions.launchObserver`).
+    observer: opts.observer || (registryObserver && startedByClaudeCode),
+    ...(registryObserver && !startedByClaudeCode && !opts.observer ? { launchObserver: true } : {}),
     scopesFile,
     embedder,
     ...(snapshotsDir === undefined ? {} : { snapshotsDir }),

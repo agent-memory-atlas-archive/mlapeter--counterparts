@@ -881,3 +881,26 @@ What the build learned and decided; the rules themselves are CONTRACT §5 G13–
   because another session's branch edits the status body.
 - **Not built:** the SKILL.md (brief item 9, deferred), Cowork's `roots` as a real
   per-folder scope, pruning `scopes.json`.
+
+### After the review of #294
+
+- **The ask only for a chat's OWN calls.** Desktop's `note`, `recall`, `status` and `scope`
+  had no `session` in their schemas, so a chat could not name its session there, fell back
+  to the most recent one — possibly another chat's — and after three calls and twenty
+  minutes carried THAT chat's write-up ask. Now every Desktop schema takes an optional
+  `session`, only named calls count toward and carry the ask, and a fallback-bound call
+  moves nothing on the record it borrowed (which also stops "most recent" flapping between
+  chats). A model that never passes its id is never asked, and its session goes quiet
+  after `SESSION_TTL_MS`; tools that need a session then say to call `wake`.
+- **Observer, per call.** A registry `observer` used to be fixed at launch from the
+  process's working directory, which for Desktop is wherever the app started it — so the
+  `scope` tool's `observer` never took effect, and an `observer` on that directory muted
+  Desktop. The store now gets the registry's `observer` only when Claude Code started the
+  process; otherwise the server holds it (`launchObserver`) for non-Desktop clients, and a
+  Desktop client reads `claude-desktop:`'s entry per call. A cost, named: with no Claude
+  Code markers and an `observer` launch directory, the process log stays off even if the
+  client turns out to be Desktop.
+- **Wording.** `ownerMeans` stays for Claude Code too (one of two deliberate Claude Code
+  changes, with the scratch-workspace skip). The scope-off/paused refusal is per host.
+  `install --host claude-desktop` names the store a replaced entry pointed at, and says to
+  quit Desktop first (it rewrites its own config file while it runs).

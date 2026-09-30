@@ -74,6 +74,8 @@ export interface DesktopConnect {
   readonly backup: string | null;
   /** Why it was refused or failed; null otherwise. */
   readonly detail: string | null;
+  /** On `updated`: the store the replaced entry named, when it named one. */
+  readonly previousStore?: string | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -117,7 +119,9 @@ export function connectDesktop(input: {
     const value = { ...sight.value, mcpServers: { ...(servers ?? {}), [MCP_SERVER_NAME]: entry } };
     const wrote = writeSettings(sight, value, input.now);
     if (wrote.error !== null) return { outcome: "failed", path, backup: wrote.backup, detail: wrote.error };
-    return { outcome: prior === undefined ? "added" : "updated", path, backup: wrote.backup, detail: null };
+    return prior === undefined
+      ? { outcome: "added", path, backup: wrote.backup, detail: null }
+      : { outcome: "updated", path, backup: wrote.backup, detail: null, previousStore: dataDirOf(prior) };
   } catch (err) {
     return { outcome: "failed", path, backup: null, detail: String((err as Error).message ?? err) };
   }

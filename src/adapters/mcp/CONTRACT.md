@@ -297,11 +297,21 @@ actually wrote (chapter), the written self page or the version a write to it pro
     (else refused by name — `session-unknown`, `session-not-live` — never substituted),
     or, when it names none, the most recent live Desktop session, and the result carries
     `boundTo` / `boundBy: "most-recent"` and a line saying so. With none live, a tool that
-    needs a session refuses `session-required` and names `wake`. Every bound call
-    refreshes the session's record (its liveness) — with no hooks, a call is the only sign
-    of life — and moves its write-up pacer: after `DESKTOP_ASK_CALLS` calls AND
+    needs a session refuses `session-required` and names `wake`. Every Desktop tool schema
+    carries an optional `session` (`tools.ts#DESKTOP_TOOLS`; Claude Code's are untouched),
+    so a chat can always name its own. Only a call that NAMED its session refreshes that
+    session's record (its liveness — with no hooks, a call is the only sign of life) and
+    moves its write-up pacer: after `DESKTOP_ASK_CALLS` such calls AND
     `DESKTOP_ASK_AFTER_MS` since the later of its wake, last `session_end`/`chapter` and
-    last ask, the next result (never a write-up's own) carries `writeUpAsk`.
+    last ask, the next NAMED result (never a write-up's own) carries `writeUpAsk`. A call
+    bound by the fallback touches nothing and never carries an ask — it may be another
+    chat's, and the ask would tell chat A to write up chat B (review of #294, finding 1).
+    **Observer is read per call** from `claude-desktop:`'s entry, as `off`/`paused` are,
+    so the `scope` tool's `observer` takes effect at once (and that tool can still set it
+    back); Desktop never inherits the launch directory's `observer` — `bin/serve.ts` bakes
+    a registry `observer` into the store only when Claude Code's markers show it started
+    the process, and otherwise hands it to the server (`launchObserver`), which applies it
+    to every client but Desktop's (review of #294, finding 2).
 20. **[M] `wake` is Desktop's session start** (2026-09-30). It mints a fresh session id
     per call and writes that session's record through the shared lifecycle
     (`lifecycle.ts`, host `claude-desktop`), and returns the wake SessionStart composes,

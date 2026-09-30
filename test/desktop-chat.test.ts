@@ -226,7 +226,10 @@ describe("end to end over stdio, as Claude Desktop's chat (client `claude-ai`)",
     expect(noted["boundTo"]).toBe(session);
     expect(noted["boundBy"]).toBe("most-recent");
     expect(String(noted["bindNote"])).toContain("most recent Claude Desktop session");
-    // …and refreshed the record: a tool call is the only sign of life Desktop gives.
+    // …and moved NOTHING on that record: a fallback-bound call may be another
+    // chat's (review of #294, finding 1). A call that NAMES it refreshes it.
+    expect(readSession(dir, session)?.lastBoundaryAt).toBe(t.now() - MIN);
+    await wireCall(s, 60, "status", { session });
     expect(readSession(dir, session)?.lastBoundaryAt).toBe(t.now());
 
     // ── chapter twice, session_end twice: each appends ───────────────────────
@@ -249,15 +252,15 @@ describe("end to end over stdio, as Claude Desktop's chat (client `claude-ai`)",
 
     // ── the ask: DESKTOP_ASK_CALLS calls AND DESKTOP_ASK_AFTER_MS since the last write-up
     t.advance(TUNABLES.DESKTOP_ASK_AFTER_MS + MIN);
-    const r1 = await wireCall(s, 11, "recall", { question: "how long is the reservoir loop" });
-    const r2 = await wireCall(s, 12, "status");
+    const r1 = await wireCall(s, 11, "recall", { session, question: "how long is the reservoir loop" });
+    const r2 = await wireCall(s, 12, "status", { session });
     expect(r1["writeUpAsk"]).toBeUndefined();
     expect(r2["writeUpAsk"]).toBeUndefined();
-    const r3 = await wireCall(s, 13, "note", { text: "The pump schedule runs at dawn in the summer months." });
+    const r3 = await wireCall(s, 13, "note", { session, text: "The pump schedule runs at dawn in the summer months." });
     expect(TUNABLES.DESKTOP_ASK_CALLS).toBe(3);
     expect(String(r3["writeUpAsk"])).toContain(`session_end (session: ${session}`);
     // Once asked, not again until both arms are met again.
-    const r4 = await wireCall(s, 14, "status");
+    const r4 = await wireCall(s, 14, "status", { session });
     expect(r4["writeUpAsk"]).toBeUndefined();
   });
 
@@ -368,6 +371,49 @@ describe("binding, per call", () => {
     expect(String(stale["detail"])).toContain("wake");
   });
 
+  test("two chats (review of #294, finding 1): chat A's unnamed calls fall back to B but never carry B's ask or move B; named calls ask A about A", async () => {
+    const t = clock();
+    const s = desktopServer({ now: t.now });
+    const a = payload(await s.call("wake", {}))["session"] as string;
+    t.advance(MIN);
+    const b = payload(await s.call("wake", {}))["session"] as string;
+    const bBefore = readSession(dir, b);
+    // Chat A forgets its id: every call lands on B, the most recent — and says so.
+    t.advance(TUNABLES.DESKTOP_ASK_AFTER_MS + MIN);
+    for (let i = 0; i < 6; i++) {
+      const out = payload(await s.call(i % 2 === 0 ? "status" : "recall", i % 2 === 0 ? {} : { question: `the reservoir loop ${String(i)}` }));
+      expect(out["boundTo"]).toBe(b);
+      expect(out["writeUpAsk"]).toBeUndefined();
+      t.advance(MIN);
+    }
+    // B's record is exactly as it was: no refresh, no count — so "most recent" cannot flap.
+    expect(readSession(dir, b)).toEqual(bBefore);
+    // Chat A names its session on every tool — `status`, `scope` and `note` included.
+    const named = [
+      payload(await s.call("status", { session: a })),
+      payload(await s.call("scope", { session: a })),
+      payload(await s.call("note", { session: a, text: "Chat A's own note about the relief valve and the pump." })),
+    ];
+    expect(named.map((o) => o["boundTo"])).toEqual([undefined, undefined, undefined]);
+    expect(named[0]?.["writeUpAsk"]).toBeUndefined();
+    expect(named[1]?.["writeUpAsk"]).toBeUndefined();
+    expect(String(named[2]?.["writeUpAsk"])).toContain(`session_end (session: ${a}`);
+    expect(String(named[2]?.["writeUpAsk"])).not.toContain(b);
+  });
+
+  test("every Desktop tool schema takes an optional `session`; Claude Code's schemas are untouched", () => {
+    const props = (t: Record<string, unknown>): Record<string, unknown> =>
+      ((t["inputSchema"] as { properties?: Record<string, unknown> }).properties ?? {});
+    for (const t of toolDefinitions(true)) {
+      if (t["name"] === "wake") continue;
+      expect(props(t)["session"]).toBeDefined();
+      expect(((t["inputSchema"] as { required?: string[] }).required ?? []).includes("session")).toBe(false);
+    }
+    for (const name of ["note", "recall", "status", "scope"]) {
+      expect(props(toolDefinitions(false).find((t) => t["name"] === name) as Record<string, unknown>)["session"]).toBeUndefined();
+    }
+  });
+
   test("the most recent live Desktop session is the one a bare call takes", () => {
     const now = Date.now();
     recordSession(dir, { sessionId: "d-old", scope: DESKTOP_SCOPE, phase: "start", at: now - 2 * HOUR, host: DESKTOP_HOST });
@@ -392,6 +438,10 @@ describe("binding, per call", () => {
     for (let i = 0; i < 5; i++) {
       expect(touchDesktopSession(dir, "d-1", { now: t0 + 60 * MIN, wroteUp: false, mayAsk: false, ...opts })?.ask).toBe(false);
     }
+    // A call that did not NAME the session touches nothing at all.
+    const before = readSession(dir, "d-1");
+    expect(touchDesktopSession(dir, "d-1", { now: t0 + 90 * MIN, wroteUp: false, named: false, ...opts })?.ask).toBe(false);
+    expect(readSession(dir, "d-1")).toEqual(before);
     // Only an existing record is touched.
     expect(touchDesktopSession(dir, "nobody", { now: t0, wroteUp: false, ...opts })).toBeNull();
     expect(existsSync(join(dir, "sessions", "nobody.json"))).toBe(false);
@@ -499,6 +549,57 @@ describe("the place: `claude-desktop:` is a name, not a directory", () => {
     const on = payload(await s.call("scope", { mode: "on" }));
     expect(on["detail"]).toBe(wordingFor(DESKTOP_HOST).scopeOn);
     expect(payload(await s.call("wake", {}))["session"]).toBeDefined();
+  });
+
+  test("`off` in Desktop's words: the refusal names claude-desktop:, never `counterparts scope .`", async () => {
+    const scopesFile = join(root, "config", "scopes.json");
+    mkdirSync(dirname(scopesFile), { recursive: true });
+    const s = desktopServer({ scopesFile });
+    await s.call("scope", { mode: "off" });
+    const refused = payload(await s.call("note", { text: "Should not land." }));
+    expect(refused["detail"]).toBe(wordingFor(DESKTOP_HOST).offRefusal);
+    expect(String(refused["detail"])).toContain("counterparts scope claude-desktop: --on");
+    expect(String(refused["detail"])).not.toContain("scope . ");
+    await s.call("scope", { mode: "pause" });
+    expect(String(payload(await s.call("note", { text: "Nor this." }))["detail"])).toContain("claude-desktop: --resume");
+    // Claude Code's refusal is what it was.
+    expect(wordingFor("claude-code").offRefusal).toBe(
+      "Counterparts is off for this directory. Nothing is recorded or read here — call `scope` with mode `on`, or run `counterparts scope . --on`.",
+    );
+  });
+
+  test("observer on claude-desktop: takes effect at once, per call — and the scope tool can still set it back", async () => {
+    const scopesFile = join(root, "config", "scopes.json");
+    mkdirSync(dirname(scopesFile), { recursive: true });
+    const s = desktopServer({ scopesFile, owner: true });
+    const session = payload(await s.call("wake", {}))["session"] as string;
+    expect(payload(await s.call("scope", { mode: "observer" }))["set"]).toBe(true);
+    expect(s.observer).toBe(true);
+    expect(s.owner).toBe(false);
+    expect(payload(await s.call("note", { session, text: "An observer writes nothing." }))["stoodDown"]).toBe(true);
+    expect(payload(await s.call("wake", {}))["stoodDown"]).toBe(true);
+    expect(payload(await s.call("scope", { mode: "on" }))["set"]).toBe(true);
+    expect(s.observer).toBe(false);
+    expect(payload(await s.call("note", { session, text: "Back on: this note lands in Desktop's place." }))["stored"]).toBe(true);
+  });
+
+  test("Desktop never inherits the launch directory's observer; any other client still gets it", async () => {
+    const scopesFile = join(root, "config", "scopes.json");
+    mkdirSync(dirname(scopesFile), { recursive: true });
+    const cwd = join(root, "somewhere");
+    mkdirSync(cwd, { recursive: true });
+    writeScopes(scopesFile, setScope(null, cwd, "observer", { at: new Date().toISOString() }));
+    // What `bin/serve.ts` does when Claude Code did not start the process: the
+    // store opens as a writer and the server holds the launch directory's observer.
+    const desktop = server({ scopesFile, launchObserver: true, env: {}, lifecycle: { spawner: stubSpawner().spawner }, manifestVersion: () => null });
+    expect(desktop.observer).toBe(true);
+    await pump(desktop, [rpc(1, "initialize", { clientInfo: { name: "claude-ai" } })]);
+    expect(desktop.observer).toBe(false);
+    expect(payload(await desktop.call("wake", {}))["session"]).toBeDefined();
+    const other = server({ scope: cwd, scopesFile, launchObserver: true, env: {} });
+    await pump(other, [rpc(1, "initialize", { clientInfo: { name: "cursor" } })]);
+    expect(other.observer).toBe(true);
+    expect(payload(await other.call("note", { text: "An observer directory writes nothing." }))["stoodDown"]).toBe(true);
   });
 
   test("a root `off` does not reach it — it has no parent directory", () => {
@@ -682,6 +783,20 @@ describe("install --host claude-desktop", () => {
     expect(again.out.join("\n")).toContain("already connected");
     expect(readFileSync(path, "utf8")).toBe(after);
     expect(readdirSync(dirname(path)).filter((n) => n.includes("counterparts-backup")).length).toBe(1);
+  });
+
+  test("replacing an entry that named another store says which store that was, and tells people to quit Desktop first", async () => {
+    const home = join(root, "home");
+    const configPath = join(root, "elsewhere", "claude-code.json");
+    seedDesktopConfig(home, {});
+    connectDesktop({ home, store: "/old/store", exe: "/bun", now: Date.now() });
+    const c = consoleWith();
+    const code = await run(["install", "--host", "claude-desktop", "--config", configPath], { io: c.io, env: {}, home });
+    expect(code).toBe(EXIT.ok);
+    const said = c.out.join("\n");
+    expect(said).toContain("entry updated");
+    expect(said).toContain("It named another store before: /old/store");
+    expect(said).toContain("quit it and run this again");
   });
 
   test("with no Desktop config yet, one is created; a config that is not JSON is refused and left alone; an unknown host is a usage error", async () => {

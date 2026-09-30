@@ -1359,8 +1359,31 @@ export const WAKE: ToolSpec = {
   inputSchema: { type: "object", properties: {}, required: [], additionalProperties: false },
 };
 
-/** The tools a Claude Desktop client is offered: every host's, and `wake`. */
-export const DESKTOP_TOOLS: readonly ToolSpec[] = [...TOOLS, WAKE];
+/**
+ * THE `session` A DESKTOP CHAT CAN ALWAYS NAME (review of #294, finding 1). In
+ * Claude Code `note`, `recall`, `status` and `scope` take no session — the
+ * server binds by the Stop ask's id — and their schemas forbid extra fields.
+ * In Desktop every call binds per call, and a call that cannot name its session
+ * falls back to the most recent one, which may be ANOTHER chat's. So the
+ * Desktop copy of every tool's schema carries an optional `session`; Claude
+ * Code's schemas are untouched.
+ */
+const DESKTOP_SESSION_PROPERTY = {
+  type: "string",
+  description:
+    "This chat's session id — the one the wake tool returned. Pass it on every call, so the call is filed under this chat and not the most recent Desktop session.",
+};
+
+function withDesktopSession(spec: ToolSpec): ToolSpec {
+  const schema = spec.inputSchema as { properties?: Record<string, unknown> };
+  const properties = schema.properties ?? {};
+  if ("session" in properties) return spec;
+  return { ...spec, inputSchema: { ...spec.inputSchema, properties: { ...properties, session: DESKTOP_SESSION_PROPERTY } } };
+}
+
+/** The tools a Claude Desktop client is offered: every host's — each able to
+ *  name its session — and `wake`. */
+export const DESKTOP_TOOLS: readonly ToolSpec[] = [...TOOLS.map(withDesktopSession), WAKE];
 
 /**
  * The spec a CLIENT may call by this name. `desktop` is whether this server is
