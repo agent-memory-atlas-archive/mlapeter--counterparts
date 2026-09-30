@@ -27,7 +27,7 @@
  * is testable against a temp dir with a faked console.
  */
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { localDate, resolveZone, todayIn } from "../../core/time.js";
+import { isDay, localDate, localTime, resolveZone, todayIn } from "../../core/time.js";
 import { homedir, tmpdir } from "node:os";
 import { basename, delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { spawn } from "node:child_process";
@@ -134,6 +134,9 @@ import { STATE_MEANING, STATE_ORDER, firedReport } from "../fired.js";
 import type { FiredReport, FiredState } from "../fired.js";
 // The short view over the same reading: one line per memory mechanism.
 import { consoleVerdicts, mechanismsLines } from "./mechanisms.js";
+// The process log `log` prints (`adapters/log/`).
+import { LOG_DAYS, logDates, readLog } from "../log/index.js";
+import type { LogEntry } from "../log/index.js";
 // The two snapshot readers `status` shares with doctor: the DIRECTORY is what
 // says how many copies you have, and a row only says what a run once wrote.
 import { readSnapshotsDir, resolveSnapshotsDir } from "../snapshots.js";
@@ -296,6 +299,9 @@ export const COMMANDS = [
   // dispatches for good. `--all` on either prints the full `fired` report.
   "mechanisms",
   "fired",
+  // What the four processes did, in order, one line each — the process log
+  // (`adapters/log/`), a day at a time. Read-only (2026-09-30).
+  "log",
   // I32's reading: whether the background half is alive. (Its partner, the
   // `credentials` command, went with the API keys on 2026-09-24.)
   "doctor",
@@ -704,6 +710,7 @@ export const COMMAND_FLAGS: Record<Command, readonly string[]> = {
   "probe-oq4": [],
   mechanisms: ["all"],
   fired: ["all"],
+  log: ["date"],
   // `doctor` takes `--config` for the same reason `rebrief` does: it reports on
   // the host configuration, and on a machine with two of them the reading is
   // about whichever one the hooks read.
@@ -783,6 +790,7 @@ export const COMMAND_BLURB: Record<Command, string> = {
     "Is each memory mechanism working? One line per mechanism, with a light (● working this week, ◐ built but not firing, ○ not built yet) and the count from the store behind it, then the plumbing in one line that names only what is failing. --all prints the full report: every part, silent first, when it last fired, how often in the last 7 days, what it turned away, and why the store cannot tell for the ones nothing records. Read-only.",
   fired:
     "The older name of `mechanisms` — the same command, the same output. --all prints the full report. Read-only.",
+  log: "What happened today, in order: one line per thing the hooks, the background worker, the nightly run and the memory tools did — failures, stand-downs, each turn's end, write-ups, the nightly run, the wake. Kept 7 days. Read-only.",
   doctor:
     "Is the background half alive? The config, the two clocks, the newest sweep, sleep, backfill and credit rows, the spawn refusals and the vector coverage — worst first, each with the line that fixes it. Read-only; exit 1 if anything is red.",
   scope:
@@ -915,6 +923,7 @@ const FLAG_HELP: Record<string, string> = {
   confidence: "high, medium or low — the weakest evidence --apply is allowed to write (default high)",
   "import-day": "YYYY-MM-DD — the day the import ran, instead of the one the store recorded or shows",
   sample: "how many proposed rows to print (default 20)",
+  date: "YYYY-MM-DD — which day to print, instead of today (the last 7 days are kept)",
   // TRUE OF EVERY COMMAND THAT PRINTS IT, which is the point (review of #77:
   // the first version said "a command that writes still requires --dir", which
   // was false of `note` and of `migrate-cache` itself). `migrate-cache` is the
@@ -1160,6 +1169,7 @@ const VALUED_FLAGS: readonly string[] = [
   "against",
   "how",
   "why",
+  "date",
 ];
 
 /** Levenshtein, small and local. Only ever used to say "did you mean". */
@@ -1367,6 +1377,8 @@ export function parse(argv: readonly string[]): Parsed {
       // `dream --setting auto|ask|off` (2026-09-28): a string, like
       // `--reflected-feeling`. `counterparts dream` prints the setting.
       setting: { type: "string" },
+      // `log --date YYYY-MM-DD`: which day's file to print.
+      date: { type: "string" },
       observer: { type: "boolean" },
       help: { type: "boolean" },
       // `scope`'s five. Declared as booleans for the same reason `rebuild` is:
@@ -1815,6 +1827,8 @@ export async function run(argv: readonly string[], opts: RunOptions): Promise<nu
           now,
           parsed.flags["all"] === true,
         );
+      case "log":
+        return await logCommand(dir, io, parsed.flags["date"], now);
       case "self-page":
         return await selfPageCommand(
           dir,
@@ -2029,6 +2043,80 @@ function firedCommand(
   } finally {
     store.close();
   }
+}
+
+/**
+ * `log` — one day of the process log (`adapters/log/`), oldest first, one plain
+ * line per entry: the time, which process, the session, the name, and what it
+ * said. A name the dashboard has a sentence for is told in that sentence
+ * (`dashboard/web/narrate.ts`); any other prints its data as `key=value`.
+ *
+ * The store is opened as an instrument, only to read the zone and to let a
+ * sentence resolve the memory it names; a store that will not open still gets
+ * its log printed, raw.
+ */
+async function logCommand(dir: string, io: Io, dateFlag: unknown, now: () => number): Promise<number> {
+  if (dateFlag !== undefined && (typeof dateFlag !== "string" || !isDay(dateFlag))) {
+    io.err("refused: --date takes a day, YYYY-MM-DD.");
+    return EXIT.usage;
+  }
+  if (!storeExists(dir)) {
+    io.err(`No store at ${dir}.`);
+    return EXIT.usage;
+  }
+  let store: Store | null = null;
+  try {
+    store = openStoreAt({ dir, observer: true });
+  } catch {
+    store = null;
+  }
+  try {
+    const zone = store?.zone() ?? resolveZone(zoneBeside(dir));
+    const date = typeof dateFlag === "string" ? dateFlag : localDate(now(), zone);
+    const read = readLog(dir, date);
+    if (!read.exists) {
+      const held = logDates(dir);
+      io.out(
+        `Nothing logged on ${date}.` +
+          (held.length === 0
+            ? " The log is empty — it fills as sessions run."
+            : ` The log keeps ${String(LOG_DAYS)} days; it holds ${held.join(", ")}.`),
+      );
+      return EXIT.ok;
+    }
+    const narrator = store === null ? null : await import("../dashboard/web/narrate.js");
+    for (const entry of read.entries) {
+      let said: string | null = null;
+      if (narrator !== null && store !== null && narrator.NARRATED_NAMES.includes(entry.name)) {
+        said = narrator.narrate(store, {
+          seq: 0,
+          at: Date.parse(entry.at),
+          day: 0,
+          name: entry.name,
+          ref: entry.ref,
+          dedup_key: null,
+          payload: JSON.stringify(entry.data),
+        }).text;
+      }
+      io.out(logEntryLine(entry, zone, said));
+    }
+    if (read.unreadable > 0) io.out(`(${String(read.unreadable)} line${read.unreadable === 1 ? "" : "s"} in the file could not be read)`);
+    return EXIT.ok;
+  } finally {
+    store?.close();
+  }
+}
+
+/** One entry, one line: `14:03:12  hook:stop  3f2a9c1e  adapter.boundary  <what it said>`. */
+export function logEntryLine(entry: LogEntry, zone: string, said: string | null = null): string {
+  const at = Date.parse(entry.at);
+  const time = Number.isFinite(at) ? localTime(at, zone) : entry.at;
+  const session = entry.session === null ? "-" : entry.session.slice(0, 8);
+  const data = Object.entries(entry.data)
+    .map(([k, v]) => `${k}=${v === null ? "null" : String(v)}`)
+    .join(" ");
+  const ref = entry.ref === null ? "" : ` [${entry.ref}]`;
+  return `${time}  ${entry.proc.padEnd(24)}  ${session.padEnd(8)}  ${entry.name}${ref}  ${said ?? data}`.trimEnd();
 }
 
 /**
