@@ -73,6 +73,7 @@ import {
   forgetServerLaunch,
   installedBuild,
   isLive,
+  isSessionId,
   markNothingNew,
   readSession,
   recordServerLaunch,
@@ -1793,7 +1794,12 @@ export class McpServer {
       deposit: (raw, cover) => this.depositEntries(raw, session, cover),
     });
     const body = out.body;
-    this.emit("mcp.write_up", typeof args["writeUp"] === "string" ? args["writeUp"] : undefined, {
+    // The ref is the ENDED session's id only when it is one this registry
+    // knows: the argument is model-typed, and a word shaped like an id is
+    // still a word (store §5 G10; review of #286).
+    const ended = args["writeUp"];
+    const known = isSessionId(ended) && readSession(this.registryDir, ended) !== null;
+    this.emit("mcp.write_up", known ? ended : undefined, {
       reason: out.reason,
       part: typeof body["part"] === "number" ? body["part"] : null,
       of: typeof body["of"] === "number" ? body["of"] : null,
