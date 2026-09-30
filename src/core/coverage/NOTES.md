@@ -56,8 +56,9 @@ writer is the claim's prefix — `nothing-new:`, `chapter:`, `writeup:` (the doo
 claim) — or, for a `prp_` proposal, the session itself unless the proposal's session is
 another one (the door's last part deposits under the writer and covers the ended
 session). A watermark in meta (`coverage.written.through`) starts at the first pass, so
-an old store gets no backfill; each pass re-reads ten minutes back, and the dedup key makes
-that free. Dedup-keyed rows are kept by the log's prune for good; the written-up row is the
+an old store gets no backfill; each pass re-reads from ten minutes before the watermark
+(moved only once it has fallen that far behind, so a quiet turn-end writes nothing), and
+the keys already written are read once per pass, so a re-read is free. Dedup-keyed rows are kept by the log's prune for good; the written-up row is the
 busiest, one per answer — a few dozen a day on the owner's store.
 
 ## 7. The handoff pointer
