@@ -208,7 +208,9 @@ interface Standing {
 export async function writeUpDoor(input: WriteUpDoorInput): Promise<WriteUpOutcome> {
   const { args, counterpart } = input;
   const ended = args["writeUp"];
-  const present = (v: unknown): boolean => v !== undefined && v !== null;
+  // An empty list is an unused optional field, as `retireHandoffField` reads it
+  // (PR #192 review, m1): a host that sends one must not have a write-up refused.
+  const present = (v: unknown): boolean => v !== undefined && v !== null && !(Array.isArray(v) && v.length === 0);
   if (present(args["handoff"]) || present(args["retireHandoff"])) {
     return refused("handoff-not-accepted", {
       detail: "A handoff is this directory's pointer, written by this session for itself. Send it on its own `session_end`, without `writeUp`.",
