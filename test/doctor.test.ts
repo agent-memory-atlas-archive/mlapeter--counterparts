@@ -337,7 +337,7 @@ describe("doctor — the reading", () => {
     expect(f.detail).not.toContain("opens fine"); // no `open` reading was handed in
   });
 
-  test("there is no Credentials line at all, and the crash write-up line is the next session's (keyless, 2026-09-24)", () => {
+  test("there is no Credentials line at all, and the write-up line (`Write-ups` since 2026-09-30) keeps #192's key", () => {
     mintStore();
     writeConfig();
     const findings = doctorFindings(input());
@@ -345,9 +345,9 @@ describe("doctor — the reading", () => {
     expect(findings.find((f) => f.key === "credentials-mode")).toBeUndefined();
     expect(findings.find((f) => f.key === "crash-writeup")).toBeUndefined();
     const crash = by(findings, "crash-write-up");
-    expect(crash.title).toBe("Crash write-up");
+    expect(crash.title).toBe("Write-ups");
     expect(crash.severity).toBe("green");
-    expect(crash.detail).toContain("next session");
+    expect(crash.detail).toContain("nothing owed");
     expect(anyRed(findings)).toBe(false);
     expect(noticeMessage(findings)).toBe(null);
   });
@@ -1031,7 +1031,7 @@ describe("doctor — the reading", () => {
       expect(f.severity).toBe("green");
       expect(f.detail).toContain("sessions awaiting a write-up: unknown");
       expect(f.data["owedStale"]).toBeNull();
-      expect(by(findings, "crash-write-up").detail).toContain("could not count the sessions waiting");
+      expect(by(findings, "crash-write-up").detail).toContain("could not read what is written up");
     });
 
     test("the session-start reading does not read the owed sessions, and says counts only", () => {

@@ -986,6 +986,18 @@ export const MECHANISMS: readonly Mechanism[] = [
     since: "2026-09-23",
   },
   {
+    // What is not written up (2026-09-30, `core/coverage/`). A written-up row
+    // is the mechanism firing; the owed and lapsed rows are the same ledger
+    // saying what is waiting and what it let go, which doctor's `Write-ups`
+    // line reads.
+    id: "write-ups",
+    label: "what a session said was written up — by the session itself, a \"nothing new\", a chapter, or the next session",
+    module: "coverage/ (rows written by the worker)",
+    evidence: { kind: "event", names: ["coverage.written"] },
+    covers: ["coverage.owed", "coverage.lapsed"],
+    since: "2026-09-30",
+  },
+  {
     id: "backup",
     label: "the store was backed up BY HAND, from the console",
     module: "cli/commands.ts",

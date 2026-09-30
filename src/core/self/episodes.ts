@@ -11,7 +11,9 @@
  *
  *   - **Substance-paced, never wall-clock-paced.** An ask is due on turns the
  *     person typed OR on conversation text from both roles, whichever comes
- *     first — so a one-prompt agentic session still journals.
+ *     first — so a one-prompt agentic session still journals. One more way
+ *     since 2026-09-30, and it is pieces AND time: what the session has not
+ *     written up (`core/coverage/`, handed in as `PaceOptions.unwritten`).
  *   - **Live append.** The ritual hands the model its chapter for the REST of the
  *     session. v1's once-per-session ask fired at the first stop, so everything
  *     after turn one was first-person-invisible; one session's episode missed the
@@ -153,6 +155,20 @@ export interface Substance {
  *  watermark is moved on its account. */
 export interface PaceOptions {
   readonly rebase?: boolean;
+  /**
+   * What this session has not written up, restated as a seam for the reason
+   * `EpisodeProposal` is one: `self/` does not import `remember/` or
+   * `coverage/`. `due` is `coverage/#askFromStretch` with the stretch and the
+   * clock already bound; the pacer hands it the session's last ask.
+   */
+  readonly unwritten?: UnwrittenStretch | null;
+}
+
+/** The pacer's view of a session's unwritten stretch (2026-09-30). */
+export interface UnwrittenStretch {
+  readonly pieces: number;
+  readonly minutes: number;
+  due(lastAskAt: number | null): boolean;
 }
 
 export interface EpisodeState {
@@ -186,10 +202,10 @@ export interface EpisodeState {
   appendedAtAsk: number;
   /**
    * WHEN the last ask was committed, epoch ms on the store's clock — null
-   * until one is, and on every state written before 2026-09-23. Read by
-   * `remember/owes.ts`: an answer counts only if it came AFTER the last ask,
-   * so one early answer cannot cover the asks that followed it (PR #189
-   * review, M1).
+   * until one is, and on every state written before 2026-09-23. Read by the
+   * pacer's third arm (`PaceOptions.unwritten`, 2026-09-30): the half hour, and
+   * the new pieces, are counted from it. (Until then `remember/owes.ts` read it
+   * for the asked / answered rule, PR #189 review M1.)
    */
   lastAskAt: number | null;
   /** Substance at the last COMMITTED ask (committed before the ask blocks). */
@@ -254,47 +270,13 @@ export function loadEpisodeState(
   }
 }
 
-/**
- * THE PACER'S RECORD OF ONE SESSION, for a reader outside `self/` —
- * `remember/retention.ts#owesWriteUp` asks "did the pacer find substance here,
- * and did a chapter answer it?". `asks > 0` is the pacer's own verdict that the
- * session crossed its threshold (an ask is committed only when one was due);
- * `chapters` is what the model actually wrote. `unreadable` is returned as
- * such, so the caller can take the safe direction rather than read a corrupt
- * state as "never asked".
- */
-export function episodeFacts(
-  store: Store,
-  sessionId: string,
-): {
-  status: "loaded" | "absent" | "unreadable";
-  asks: number;
-  chapters: number;
-  /** The ask count when a chapter was last appended: a chapter answers the
-   *  LAST ask only when this has caught up with `asks`. */
-  appendedAtAsk: number;
-  lastAskAt: number | null;
-} {
-  try {
-    const { state, status } = loadEpisodeState(store, sessionId, 0);
-    return {
-      status,
-      asks: state.asks,
-      chapters: state.chapters,
-      appendedAtAsk: state.appendedAtAsk,
-      lastAskAt:
-        typeof state.lastAskAt === "number" && Number.isFinite(state.lastAskAt) ? state.lastAskAt : null,
-    };
-  } catch {
-    return { status: "unreadable", asks: 0, chapters: 0, appendedAtAsk: 0, lastAskAt: null };
-  }
-}
-
 // ── pacing (§13 G1) ─────────────────────────────────────────────────────────
 
 export type AskReason =
   | "due-first"
   | "due-substance"
+  /** Neither turns nor bytes, but what is not written up (2026-09-30). */
+  | "due-unwritten"
   | "not-enough-substance"
   | "session-ask-cap"
   | "anonymous-session"
@@ -309,6 +291,8 @@ export interface AskVerdict {
    *  pretend). */
   readonly sinceTurns: number;
   readonly sinceBytes: number;
+  /** The unwritten stretch the pacer was shown, when it was shown one. */
+  readonly unwritten?: { readonly pieces: number; readonly minutes: number };
 }
 
 /**
@@ -339,20 +323,35 @@ export function askDue(
   state: EpisodeState,
   substance: Substance,
   t: SelfTunables,
-  opts: { observer: boolean; today: string },
+  opts: { observer: boolean; today: string; unwritten?: UnwrittenStretch | null },
 ): AskVerdict {
   const sinceTurns = Math.max(0, substance.turns - state.askedAtTurns);
   const sinceBytes = Math.max(0, substance.bytes - state.askedAtBytes);
   // The ask names the NEXT chapter that would exist — one past what was
   // written, never one past what was asked.
   const chapter = state.chapters + 1;
+  const stretch = opts.unwritten ?? null;
+  const shown = stretch === null ? {} : { unwritten: { pieces: stretch.pieces, minutes: stretch.minutes } };
   const no = (reason: AskReason): AskVerdict => ({
     due: false,
     reason,
     chapter,
     sinceTurns,
     sinceBytes,
+    ...shown,
   });
+  const yes = (reason: AskReason): AskVerdict => ({ due: true, reason, chapter, sinceTurns, sinceBytes, ...shown });
+  // THE THIRD ARM (2026-09-30), on the first ask and every later one alike:
+  // the session holds pieces nobody has written up, and time has passed since
+  // the later of the first of them and the last ask. Checked after turns and
+  // bytes, so a verdict those already make keeps its old reason.
+  const unwrittenDue = (): boolean => {
+    try {
+      return stretch !== null && stretch.due(state.lastAskAt);
+    } catch {
+      return false;
+    }
+  };
 
   // Observers are never asked (§13 G14, scar E7). Accepted cost, on the record:
   // instrument runs leave no episode.
@@ -368,14 +367,10 @@ export function askDue(
   // threshold. History: AND-paced until 2026-09-24, both roles counted as turns.
   if (state.asks === 0) {
     const paced = substance.turns >= t.FIRST_ASK_TURNS || substance.bytes >= t.FIRST_ASK_TEXT_BYTES;
-    return paced
-      ? { due: true, reason: "due-first", chapter, sinceTurns, sinceBytes }
-      : no("not-enough-substance");
+    return paced ? yes("due-first") : unwrittenDue() ? yes("due-unwritten") : no("not-enough-substance");
   }
   const paced = sinceTurns >= t.REASK_TURNS || sinceBytes >= t.REASK_TEXT_BYTES;
-  return paced
-    ? { due: true, reason: "due-substance", chapter, sinceTurns, sinceBytes }
-    : no("not-enough-substance");
+  return paced ? yes("due-substance") : unwrittenDue() ? yes("due-unwritten") : no("not-enough-substance");
 }
 
 /**

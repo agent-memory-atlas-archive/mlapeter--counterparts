@@ -56,11 +56,12 @@
  *     THIS directory's, written by the live session for itself;
  *   - `unknown-session` — not an id, or one the hooks never recorded and the
  *     buffer holds no words for;
- *   - `live-session` — this session's own id, or one the registry holds running;
+ *   - `live-session` — this session's own id, or one still at work (it
+ *     captured something today and has not ended — `core/coverage/`);
  *   - `other-project` — ended in another directory;
  *   - `already-written-up` — so a second write-up of the same id is refused;
- *   - `owes-nothing` — B3's predicate says it owes nothing (`why`:
- *     below-threshold, answered, no-text);
+ *   - `owes-nothing` — `core/coverage/`'s rule says it owes nothing (`why`:
+ *     below-threshold, answered, lapsed, no-text);
  *   - `not-asked` — a fetch for a session the hook did not point this one at,
  *     or memories from a session that fetched nothing of it;
  *   - `wrong-part` — an answer naming a part other than the one fetched;
@@ -188,12 +189,7 @@ export async function writeUpDoor(input: WriteUpDoorInput): Promise<WriteUpOutco
     return refused("live-session", { writeUp: ended, detail: "That is this session. Its own memories go on an ordinary `session_end`." });
   }
 
-  const t = counterpart.self.tunables;
-  const plan = writeUpPlan({
-    store: counterpart.store,
-    spans: counterpart.spans,
-    firstAsk: { turns: t.FIRST_ASK_TURNS, textBytes: t.FIRST_ASK_TEXT_BYTES },
-  });
+  const plan = writeUpPlan({ store: counterpart.store, spans: counterpart.spans });
   const all = readWriteUpProgress(counterpart.store);
   const standing = writeUpStanding(plan, input.registryDir, ended, input.scope, input.now, { progress: all });
   if (standing.status === "owes-nothing") return refused("owes-nothing", { writeUp: ended, why: standing.why });

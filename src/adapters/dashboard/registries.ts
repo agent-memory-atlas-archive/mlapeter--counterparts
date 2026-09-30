@@ -111,6 +111,8 @@ import {
   CONTRADICTION_SETTLED_EVENT,
   CONTRADICTION_UNDONE_EVENT,
 } from "../../core/contradictions.js";
+// What is not written up (2026-09-30, `core/coverage/`): one row per stretch per state.
+import { COVERAGE_LAPSED_EVENT, COVERAGE_OWED_EVENT, COVERAGE_WRITTEN_EVENT } from "../../core/coverage/index.js";
 
 /** Display order for the bands, weakest commitment first. EXHAUSTIVE BY TYPE. */
 const BAND_ORDER = {
@@ -215,7 +217,10 @@ export type DurableEventName =
   | typeof V8_CENSUS_EVENT
   | typeof CONTRADICTION_FLAGGED_EVENT
   | typeof CONTRADICTION_SETTLED_EVENT
-  | typeof CONTRADICTION_UNDONE_EVENT;
+  | typeof CONTRADICTION_UNDONE_EVENT
+  | typeof COVERAGE_OWED_EVENT
+  | typeof COVERAGE_WRITTEN_EVENT
+  | typeof COVERAGE_LAPSED_EVENT;
 
 export const DURABLE_EVENTS = {
   "adapter.ask": "the Stop ask was evaluated (asked, paced out, or capped for the day)",
@@ -331,6 +336,10 @@ export const DURABLE_EVENTS = {
   "contradiction.flagged": "two memories that disagree were flagged as a pair, unsettled (by a dream, today)",
   "contradiction.settled": "a pair of memories that disagree was settled — changed, corrected or open — and by whom (a session, a dream, a reflection, the page writer or the owner)",
   "contradiction.undone": "a settle was undone: strength put back, a corrected memory back in recall, the pair unsettled again",
+  // What is not written up (2026-09-30). Ids and counts only; one row per stretch per state.
+  "coverage.owed": "a session left a stretch that is not written up — three pieces or more over a quarter of an hour — and is no longer at work, so it owes a write-up (how many pieces, over how long)",
+  "coverage.written": "a stretch of a session was written up (how many pieces, and by whom: the session itself, a \"nothing new\", a chapter, or the next session)",
+  "coverage.lapsed": "an owed stretch nobody wrote up in two days of use lapsed — nothing deleted; its text goes on the ordinary week",
 } as const satisfies Record<DurableEventName, string>;
 
 export const DURABLE_EVENT_NAMES: readonly DurableEventName[] = Object.keys(

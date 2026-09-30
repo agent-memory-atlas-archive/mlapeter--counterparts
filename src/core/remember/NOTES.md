@@ -621,3 +621,14 @@ Left as it is for now: whether a short write-up should restart the week is Mike'
 Working defaults, held lightly. `below-threshold` is no longer produced as a door's
 `owes-nothing` reason (a session with text that owes neither debt has answered); the name
 stays in the type for older results.
+
+## 2026-09-30 — "owes" moved to `core/coverage/`
+
+The asked / answered predicate (`owesWriteUp`, §16) and the short debt above are gone.
+What a session owes is `core/coverage/`'s rule, read by `planRetention`: an unwritten
+stretch — pieces with no claim in `coverage.jsonl` — of three pieces over fifteen minutes,
+in a session not at work, not lapsed. `HeldSession.owes` is that rule; `small` replaces
+`owesShort` and, unlike it, IS a retention debt (until written up or lapsed). "Nothing new"
+and a chapter now claim (`coverage/#claimUnwritten`); a handoff alone does not.
+`RetentionSources` is the host's evidence and the store's zone, nothing else;
+`retention.ts` did not change. Why, and the choices: `core/coverage/NOTES.md`.

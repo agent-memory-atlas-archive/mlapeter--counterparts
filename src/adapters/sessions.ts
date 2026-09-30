@@ -57,22 +57,19 @@ import {
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { ADAPTER_ASK_EVENT } from "../core/counterpart.js";
 import {
   NO_HOST_EVIDENCE,
-  TUNABLES as REMEMBER_TUNABLES,
   planRetention,
   retentionSources,
 } from "../core/remember/index.js";
 import type {
-  FirstAskThreshold,
   HeldSession,
   HostSessionEvidence,
   RetentionSources,
   Span,
   SpanBuffer,
 } from "../core/remember/index.js";
-import { episodeFacts, isModelId } from "../core/self/index.js";
+import { isModelId } from "../core/self/index.js";
 import { CACHE_SCHEMA_VERSION, SCHEMA_VERSION } from "../core/store/index.js";
 import type { Store } from "../core/store/index.js";
 
@@ -1223,10 +1220,10 @@ export function markWriteUpFetched(dataDir: string, sessionId: string, writeUpFo
 // which sessions owe, the hook would hand over a session the door refuses, at
 // every start, for ever.
 //
-// What "owes" means is NOT decided here. It is `remember/owes.ts#owesWriteUp`,
-// defined once (roadmap B3); this file only gathers the host's half of the
-// facts it reads and adds the two things only a host can know — whether the
-// session is still running, and which project it belongs to.
+// What "owes" means is NOT decided here. It is `core/coverage/`'s rule
+// (2026-09-30), read through `remember/owes.ts#planRetention`; this file only
+// gathers the host's half of the facts — whether the registry holds a session
+// open, and when it ended — and adds which project a session belongs to.
 
 /**
  * What an `adapter.ask` row's `turns` counts, stamped on every row since
@@ -1235,68 +1232,20 @@ export function markWriteUpFetched(dataDir: string, sessionId: string, writeUpFo
  */
 export const ASK_ROW_COUNTING = "typed";
 
-/** Ceiling on the `adapter.ask` rows read at once: a Stop each, ~90 lived days
- *  of them (the log's own retention). */
-const ASK_ROW_CEILING = 200_000;
-const ASK_ROW_LOOKBACK_DAYS = 90;
-
 /**
  * WHAT THIS HOST KNOWS ABOUT A SESSION, for `remember/owes.ts`: its registry
- * record (open or ended, and #186's "nothing new" mark) and its `adapter.ask`
- * rows (when the last ask was issued, and the substance the pacer measured at
- * its newest evaluation). Read once per call; never throws. Every read that
- * fails reads as the fact that KEEPS text.
+ * record — open, or ended and when. Never throws; a record that will not read
+ * reads as open, the fact that KEEPS text.
  *
  * Moved here from `claude-code/bin/runner.ts` (C2) so the retention pass, the
  * SessionStart ask and the MCP door read ONE definition of the host's facts;
- * the runner re-exports it under its old name, `retentionHost`.
+ * the runner re-exports it under its old name, `retentionHost`. Until
+ * 2026-09-30 it also read the `adapter.ask` rows and the "nothing new" mark,
+ * for the asked / answered rule `coverage/` replaced.
  */
-export function hostSessionEvidence(store: Store): (session: string) => HostSessionEvidence {
-  const asks = new Map<
-    string,
-    { lastAskedAt: number | null; lastEvaluation: { at: number; turns: number; bytes: number } | null }
-  >();
-  try {
-    const rows = store.eventLog({
-      name: ADAPTER_ASK_EVENT,
-      sinceDay: Math.max(0, store.livedDay() - ASK_ROW_LOOKBACK_DAYS),
-      limit: ASK_ROW_CEILING,
-    });
-    for (const row of rows) {
-      let p: Record<string, unknown>;
-      try {
-        p = JSON.parse(row.payload ?? "{}") as Record<string, unknown>;
-      } catch {
-        continue;
-      }
-      const session = p["session"];
-      if (typeof session !== "string" || session.length === 0) continue;
-      const cur = asks.get(session) ?? { lastAskedAt: null, lastEvaluation: null };
-      if (p["asked"] === true) cur.lastAskedAt = Math.max(cur.lastAskedAt ?? 0, row.at);
-      const turns = p["turns"];
-      const bytes = p["bytes"];
-      if (
-        typeof turns === "number" &&
-        typeof bytes === "number" &&
-        (cur.lastEvaluation === null || row.at >= cur.lastEvaluation.at)
-      ) {
-        cur.lastEvaluation = { at: row.at, turns: p["counting"] === ASK_ROW_COUNTING ? turns : 0, bytes };
-      }
-      asks.set(session, cur);
-    }
-  } catch {
-    /* no ask rows: the pacer's own state and the substance count still decide */
-  }
+export function hostSessionEvidence(store: Pick<Store, "dir">): (session: string) => HostSessionEvidence {
   const dir = store.dir;
-  return (session) => {
-    const a = asks.get(session);
-    return {
-      ...NO_HOST_EVIDENCE,
-      ...registryFacts(dir, session),
-      lastAskedAt: a?.lastAskedAt ?? null,
-      lastEvaluation: a?.lastEvaluation ?? null,
-    };
-  };
+  return (session) => registryFacts(dir, session);
 }
 
 /**
@@ -1305,113 +1254,70 @@ export function hostSessionEvidence(store: Store): (session: string) => HostSess
  * treated as open too: it may be a live session's, and the safe reading of
  * "cannot tell" is "keep".
  */
-function registryFacts(
-  dir: string,
-  session: string,
-): Pick<HostSessionEvidence, "open" | "endedAt" | "nothingNewAt"> {
+function registryFacts(dir: string, session: string): HostSessionEvidence {
   const path = sessionPath(dir, session);
-  if (path === null || !existsSync(path)) return { open: false, endedAt: null, nothingNewAt: null };
+  if (path === null || !existsSync(path)) return NO_HOST_EVIDENCE;
   const rec = readSession(dir, session);
-  if (rec === null) return { open: true, endedAt: null, nothingNewAt: null };
-  return {
-    open: rec.endedAt === null,
-    endedAt: rec.endedAt,
-    nothingNewAt: typeof rec.nothingNewAt === "number" && Number.isFinite(rec.nothingNewAt) ? rec.nothingNewAt : null,
-  };
+  if (rec === null) return { open: true, endedAt: null };
+  return { open: rec.endedAt === null, endedAt: rec.endedAt };
 }
 
 /**
- * THE SOURCES `remember/owes.ts` DECIDES ON, as this host supplies them — the
- * pacer's record (`self/episodes.ts#episodeFacts`), the handoff rows, and
- * `hostSessionEvidence`. The retention pass and the write-up both build theirs
- * here, so "what may be deleted" and "what the next session is asked to write"
- * are read off one set of facts (B3's rule, kept by construction).
+ * THE SOURCES `remember/owes.ts` DECIDES ON, as this host supplies them. The
+ * retention pass and the write-up both build theirs here, so "what may be
+ * deleted" and "what the next session is asked to write" are read off one set
+ * of facts (B3's rule, kept by construction).
  */
-export function writeUpSources(store: Store, firstAsk: FirstAskThreshold): RetentionSources {
-  return retentionSources(store, {
-    episode: (session) => episodeFacts(store, session),
-    host: hostSessionEvidence(store),
-    firstAsk,
-  });
+export function writeUpSources(store: Store): RetentionSources {
+  return retentionSources(store, { host: hostSessionEvidence(store) });
 }
 
 /** Every session the store holds text for, judged by `remember/owes.ts`. Read-only. */
-export function writeUpPlan(input: {
-  store: Store;
-  spans: SpanBuffer;
-  firstAsk: FirstAskThreshold;
-}): HeldSession[] {
-  return planRetention(input.spans, writeUpSources(input.store, input.firstAsk));
+export function writeUpPlan(input: { store: Store; spans: SpanBuffer }): HeldSession[] {
+  return planRetention(input.spans, writeUpSources(input.store));
 }
 
 /**
- * HOW LONG A SESSION WITH NO END MUST BE SILENT BEFORE THE WRITE-UP TREATS IT
- * AS ENDED — the sweep's own definition of crashed (`remember/tunables.ts#
- * CRASH_STALE_MS`, 12 h), never the bind's `SESSION_TTL_MS` (4 h), whose own
- * comment says it covers "the gap between an ask and the answer", not death. A
- * terminal left open over a long lunch is not written up by another session
- * (PR #192 review, MAJOR 3).
+ * IS THIS SESSION STILL AT WORK, for the write-up — the ledger's `active`:
+ * it captured something today and has not ended (`core/coverage/`). A session
+ * left open overnight is not; nor is one that ended an hour ago. No silence
+ * window: the 12-hour rule this replaced (PR #192 review, MAJOR 3) is gone
+ * with the asked / answered predicate it guarded.
  */
-export const WRITE_UP_SILENCE_MS: number = REMEMBER_TUNABLES.CRASH_STALE_MS;
-
-/**
- * DOES THE REGISTRY HOLD THIS SESSION RUNNING, for the write-up — a record with
- * no end whose last boundary is inside `windowMs`, or a record that is there
- * and will not read (cannot tell is keep). No record is not running: the
- * registry forgets a record a week after its last write.
- */
-export function runningNow(
-  dataDir: string,
-  session: string,
-  now: number,
-  windowMs: number = WRITE_UP_SILENCE_MS,
-): boolean {
-  const path = sessionPath(dataDir, session);
-  if (path === null || !existsSync(path)) return false;
-  const record = readSession(dataDir, session);
-  return record === null || isLive(record, now, windowMs);
+function atWork(h: HeldSession): boolean {
+  return h.facts.state === "active";
 }
 
 /**
- * A SESSION THE REGISTRY STILL HOLDS OPEN — no end — THAT ANSWERED ITS LAST
- * ASK. B3 counts it as owing (it has no normal end), and it will be written up
- * if it never comes back; but while its record stands, nobody else writes it
- * up (MAJOR 3, coordinator's default): a session that answered is most likely
- * a terminal nobody has closed yet, and another session's write-up of it would
- * be re-served in full when it resumes.
+ * A SMALL debt the pointer may offer: known to the registry, a person's
+ * interactive conversation (not `claude -p`, not the Agent SDK — the record's
+ * `entrypoint`, review of #285 N2). A small stretch from anything else owes
+ * all the same and lapses with its days of use.
  */
-function openAndAnswered(dataDir: string, h: HeldSession): boolean {
-  if (!h.facts.answered) return false;
+function smallWriteUpDue(h: HeldSession, dataDir: string): boolean {
+  return h.small && pointable(h, dataDir);
+}
+
+/**
+ * CAN THE POINTER EVER OFFER THIS DEBT? A full one, always; a small one only
+ * as `smallWriteUpDue` says. Doctor's count reads it, so a debt the pointer
+ * will never name is not reported as one waiting for it (review of #289).
+ */
+export function pointable(h: { readonly session: string; readonly small: boolean }, dataDir: string): boolean {
+  if (!h.small) return true;
   const path = sessionPath(dataDir, h.session);
   if (path === null || !existsSync(path)) return false;
-  const record = readSession(dataDir, h.session);
-  return record === null || record.endedAt === null;
+  const entrypoint = readSession(dataDir, h.session)?.entrypoint;
+  return entrypoint === undefined || !NON_INTERACTIVE_ENTRYPOINTS.has(entrypoint);
 }
 
 /**
  * THE SCOPE-FREE HALF OF "WAITING FOR A WRITE-UP", one definition for the
- * pointer, the door and doctor's count: B3 says it owes; the registry does not
- * hold it running; and it is not open-and-answered. (Until 2026-09-24 a fourth
- * clause left a crashed session to the opt-in API sweep; that sweep was removed
- * with its key.)
+ * pointer, the door and doctor's count: it owes a write-up that is not small.
+ * (Its owing already means it is not at work.)
  */
-/** A SHORT debt the pointer may offer: known to the registry, a person's
- *  interactive conversation (not `claude -p`, not the Agent SDK — the
- *  record's `entrypoint`, review of #285 N2), and not running. */
-function shortWriteUpDue(h: HeldSession, dataDir: string, now: number): boolean {
-  if (!h.owesShort) return false;
-  const path = sessionPath(dataDir, h.session);
-  if (path === null || !existsSync(path)) return false;
-  const entrypoint = readSession(dataDir, h.session)?.entrypoint;
-  if (entrypoint !== undefined && NON_INTERACTIVE_ENTRYPOINTS.has(entrypoint)) return false;
-  return !runningNow(dataDir, h.session, now);
-}
-
-export function waitingForWriteUp(h: HeldSession, dataDir: string, now: number): boolean {
-  if (!h.owes) return false;
-  if (runningNow(dataDir, h.session, now)) return false;
-  if (openAndAnswered(dataDir, h)) return false;
-  return true;
+export function waitingForWriteUp(h: HeldSession): boolean {
+  return h.owes && !h.small;
 }
 
 /**
@@ -1419,8 +1325,8 @@ export function waitingForWriteUp(h: HeldSession, dataDir: string, now: number):
  * refusals by name, and the pointer's filter. One function, both callers.
  *
  *   - `unknown-session` — not an id, or no registry record and no text anywhere;
- *   - `live-session` — the registry holds it running (`runningNow`, 12 h), or
- *     it is the asking session itself;
+ *   - `live-session` — it is still at work (the ledger's `active`), or it is
+ *     the asking session itself;
  *   - `other-project` — it holds no words in THIS project. A session is written
  *     up where its words are: one that left words under two projects is
  *     written up in each by a session there, and neither is served the other's
@@ -1428,10 +1334,10 @@ export function waitingForWriteUp(h: HeldSession, dataDir: string, now: number):
  *   - `already-written-up` — marked through the seam at or after its last
  *     words, or this project's share of it is done and another project's is
  *     not (`waiting` in the progress record);
- *   - `owes-nothing` — B3's predicate says so, or it is open-and-answered;
+ *   - `owes-nothing` — `coverage/`'s rule says so: written up (`answered`),
+ *     under the floor (`below-threshold`), lapsed (`lapsed`), or no text;
  *   - `owed`, with `here`: the buffer's own spelling of this project's scope,
- *     and `short` when all it owes is a one-line write-up (a session under the
- *     first-ask threshold, `remember/owes.ts#owesShortWriteUp`, 2026-09-29).
+ *     and `short` when what it owes is small — one line is enough.
  */
 export type WriteUpStanding =
   | { readonly status: "owed"; readonly held: HeldSession; readonly here: string; readonly short: boolean }
@@ -1439,14 +1345,14 @@ export type WriteUpStanding =
   | { readonly status: "live-session" }
   | { readonly status: "other-project" }
   | { readonly status: "already-written-up" }
-  | { readonly status: "owes-nothing"; readonly why: "below-threshold" | "answered" | "no-text" };
+  | { readonly status: "owes-nothing"; readonly why: "below-threshold" | "answered" | "lapsed" | "no-text" };
 
 export function writeUpStanding(
   plan: readonly HeldSession[],
   dataDir: string,
   session: string,
   scope: string,
-  now: number,
+  _now: number,
   opts: { progress?: Readonly<Record<string, WriteUpProgress>> } = {},
 ): WriteUpStanding {
   if (!isSessionId(session)) return { status: "unknown-session" };
@@ -1454,66 +1360,62 @@ export function writeUpStanding(
   const path = sessionPath(dataDir, session);
   const exists = path !== null && existsSync(path);
   if (!exists && held === undefined) return { status: "unknown-session" };
-  if (runningNow(dataDir, session, now)) return { status: "live-session" };
   if (held === undefined) {
     const record = readSession(dataDir, session);
     return record !== null && sameScope(record.scope, scope)
       ? { status: "owes-nothing", why: "no-text" }
       : { status: "other-project" };
   }
+  if (atWork(held)) return { status: "live-session" };
   const here = held.scopes.find((x) => sameScope(x, scope));
   if (here === undefined) return { status: "other-project" };
   if (held.facts.writtenUp) return { status: "already-written-up" };
   if (opts.progress?.[progressKey(session, here)]?.waiting === true) return { status: "already-written-up" };
-  if (!held.owes && !held.owesShort) {
-    // Since the short write-up (2026-09-29) a session with text that owes
-    // neither debt has ANSWERED (or been written up, caught above), so
-    // `below-threshold` is no longer produced; the name stays in the type for
-    // readers of older results.
-    return { status: "owes-nothing", why: !held.facts.capturedText ? "no-text" : "answered" };
+  if (!held.owes) {
+    const why = !held.facts.capturedText
+      ? "no-text"
+      : held.facts.lapsed
+        ? "lapsed"
+        : held.facts.unwritten === 0
+          ? "answered"
+          : "below-threshold";
+    return { status: "owes-nothing", why };
   }
-  if (openAndAnswered(dataDir, held)) return { status: "owes-nothing", why: "answered" };
-  return { status: "owed", held, here, short: !held.owes };
+  return { status: "owed", held, here, short: held.small };
 }
 
 /**
- * EVERY SESSION, IN ANY PROJECT, WAITING FOR A WRITE-UP — `waitingForWriteUp`
- * over the plan. Doctor's count: a project never reopened is never written up,
- * and this is where that shows.
+ * EVERY SESSION, IN ANY PROJECT, WAITING FOR A WRITE-UP that is not small —
+ * `waitingForWriteUp` over the plan. Doctor's count: a project never reopened
+ * is never written up, and this is where that shows until its stretch lapses.
  */
-export function awaitingWriteUp(plan: readonly HeldSession[], dataDir: string, now: number): HeldSession[] {
-  return plan.filter((h) => waitingForWriteUp(h, dataDir, now));
+export function awaitingWriteUp(plan: readonly HeldSession[]): HeldSession[] {
+  return plan.filter((h) => waitingForWriteUp(h));
 }
 
 /**
  * THE SESSIONS A NEW SESSION IN `scope` MAY BE POINTED AT, in the order they
  * are offered — every `owed` standing, minus the asking session itself.
  *
- * **Full write-ups first, then short ones** (2026-09-29): a full one not yet
+ * **Full write-ups first, then small ones** (2026-09-29): a full one not yet
  * pointed at TODAY (`pointedToday`, the caller's calendar) goes first; then the
- * short ones; then a full one already pointed at today — so a short session
+ * small ones; then a full one already pointed at today — so a small stretch
  * gets whatever the day's allowance has left, and one full session nobody
- * writes up cannot hold every short one back for ever. **Within each, least
- * recently pointed at first, then oldest first.** A session never pointed at comes before one that
- * was, and among equals the one that ended longest ago goes first. Without
- * that key, one session nobody writes up would stand in front of every other
- * session in its project for ever.
+ * writes up cannot hold every small one back for ever. **Within each, least
+ * recently pointed at first, then oldest first.** A session never pointed at
+ * comes before one that was, and among equals the one that ended longest ago
+ * goes first. Without that key, one session nobody writes up would stand in
+ * front of every other session in its project for ever.
  *
- * **A short one waits for the whole STORE** (review of #285, S1): the day's
- * allowance is one count for the store, so a short debt is offered only when
+ * **A small one waits for the whole STORE** (review of #285, S1): the day's
+ * allowance is one count for the store, so a small debt is offered only when
  * NO full debt anywhere — any project — is waiting and not yet pointed at
- * today. Otherwise the first two quick starts of a day in one project would
- * spend both pointers on one-line write-ups while a full debt elsewhere, whose
- * text is kept until it is written up, waited another day. The cost, named: a
- * full debt in a project nobody reopens holds every short one back; doctor's
- * awaiting count turns amber on it after `WRITE_UP_WAIT_DAYS`, and the short
- * ones age out with their week as they always did.
+ * today. The cost, named: a full debt in a project nobody reopens holds every
+ * small one back until it lapses; doctor's line shows it meanwhile.
  *
- * A short one is eligible when the host's registry KNOWS it — a session our
+ * A small one is eligible when the host's registry KNOWS it — a session our
  * hooks saw start, which is what a person's conversation is; the unbound MCP
- * server's shared `"mcp"` id (remember NOTES §16, n2) has no record — and is not
- * running. It is not in `waitingForWriteUp` — doctor's count — because it is
- * not a debt that keeps its text: it ages out with its week.
+ * server's shared `"mcp"` id (remember NOTES §16, n2) has no record.
  */
 export function owedWriteUps(
   plan: readonly HeldSession[],
@@ -1535,11 +1437,11 @@ export function owedWriteUps(
   // STORE-WIDE, not this project's: is a full debt anywhere still owed its
   // pointer today? (`opts.exclude` is the asking session, never a debt.)
   const fullFirst = plan.some(
-    (h) => h.session !== opts.exclude && waitingForWriteUp(h, dataDir, now) && !pointedToday(h.session),
+    (h) => h.session !== opts.exclude && waitingForWriteUp(h) && !pointedToday(h.session),
   );
   for (const h of plan) {
     if (h.session === opts.exclude) continue;
-    const eligible = waitingForWriteUp(h, dataDir, now) || (!fullFirst && shortWriteUpDue(h, dataDir, now));
+    const eligible = waitingForWriteUp(h) || (!fullFirst && smallWriteUpDue(h, dataDir));
     if (!eligible) continue;
     const standing = writeUpStanding(plan, dataDir, h.session, scope, now, {
       ...(opts.progress === undefined ? {} : { progress: opts.progress }),
@@ -1764,7 +1666,7 @@ export function pruneWriteUpProgress(
 ): number {
   try {
     const all = readWriteUpProgress(store);
-    const owing = new Set(plan.filter((h) => h.owes || h.owesShort).map((h) => h.session));
+    const owing = new Set(plan.filter((h) => h.owes).map((h) => h.session));
     let dropped = 0;
     for (const key of Object.keys(all)) {
       if (owing.has(key.slice(0, key.indexOf("|")))) continue;

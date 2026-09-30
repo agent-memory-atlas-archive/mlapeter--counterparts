@@ -43,6 +43,7 @@
  * Telemetry is content-by-reference throughout: ids, counts, tiers, reasons.
  * No body text, no question text, no note text ever reaches an event.
  */
+import { CLAIM_NOTHING_NEW, claimUnwritten } from "../../core/coverage/index.js";
 import { MCP_RECALL_EVENT } from "../../core/counterpart.js";
 import { CONTRADICTION_TUNABLES, NEIGHBOURS_HINT } from "../../core/contradictions.js";
 import type { Neighbour } from "../../core/contradictions.js";
@@ -1600,6 +1601,10 @@ export class McpServer {
     const emptyList = Array.isArray(raw) && raw.length === 0;
     if ((landed && noMemories) || emptyList) {
       const marked = markNothingNew(this.registryDir, session, this.nowFn()) !== null;
+      // "NOTHING NEW" WRITES THE STRETCH UP (2026-09-30): a claim with no
+      // proposal behind it, in `coverage.jsonl`, so the ledger reads one file —
+      // in THIS project only, as a memory's claim is. A handoff alone claims nothing.
+      if (emptyList) claimUnwritten(this.counterpart.spans, { session, scope: this.scope, by: CLAIM_NOTHING_NEW, ref: session });
       const handoffFailed = handoff !== null && !landed && handoff["reason"] !== "nothing-to-clear";
       this.emit("mcp.session_end", session, {
         entries: 0,
@@ -1904,6 +1909,8 @@ export class McpServer {
     let written: ChapterResult;
     try {
       written = this.counterpart.appendEpisode(session, text, {
+        // The project the chapter was written in: what it writes up (`coverage/`).
+        scope: this.scope,
         ...(typeof title === "string" && title.length > 0 ? { title } : {}),
         ...(model === undefined ? {} : { model }),
       });

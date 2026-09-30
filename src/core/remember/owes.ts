@@ -9,38 +9,18 @@
  * a `Counterpart` — and so its public `SpanBuffer` — reaches the plan and never
  * the strike.
  *
- * ── THE PREDICATE, DEFINED ONCE ───────────────────────────────────────────
+ * ── WHAT "OWES" MEANS, DEFINED ONCE — AND NOT HERE ────────────────────────
  *
- * `owesWriteUp` is the one definition of "this session ended and was never
- * written up". Retention reads it, doctor reads the counts it produces, and the
- * next-session write-up (roadmap C2) is meant to read it too — so "what may be
- * deleted" and "what the next session is asked to write" are one set. It
- * decides on FACTS, never on text:
- *
- *   owes = capturedText ∧ ¬writtenUp ∧ asked ∧ (¬answered ∨ ¬endedNormally)
- *
- *   - `capturedText` — conversation or jot text is still held for it somewhere
- *     in the store (buffer, jots, quarantine, a claim in flight). The
- *     assistant's own turns do not count: nothing writes a session up from them.
- *   - `asked` — the pacer found substance. TRUE when an ask was committed (the
- *     pacer's state, or the host's own ask rows), when the pacer's state will
- *     not read, and — PR #189 review m1 — when no ask was committed but the
- *     session's substance reached the first-ask threshold anyway: a stood-down,
- *     failed or never-reached ask is not evidence the session was short. Only a
- *     session the pacer SAW, in full, and found short — or whose captured text
- *     is under the threshold by any count — is "never asked".
- *   - `answered` — an answer LATER THAN THE LAST ASK (review M1, the rule #186
- *     writes for its own mark): a chapter that caught up with the ask count
- *     (`appendedAtAsk >= asks`), or an accepted `session_end` memory, a handoff
- *     written or cleared, or a "nothing new" mark (#186) at or after the last
- *     committed ask. One early answer does not cover the asks that followed it.
- *     With no ask committed at all, any answer counts. With an ask committed at
- *     an unknown time, only the chapter rule can prove an answer.
- *   - `endedNormally` — a normal end at or after the session's last capture, in
- *     ANY scope of the store or in the host's registry (review m2): an end
- *     recorded in one directory settles the text the session left in another.
- *   - `writtenUp` — marked written up (`SpanBuffer#recordWriteUp`, C2's door)
- *     at or after its last capture.
+ * Since 2026-09-30 it is `core/coverage/`'s rule, read off its ledger: a
+ * session owes a write-up when it holds an unwritten stretch of three pieces
+ * over fifteen minutes or more, it is not active (it ended, or it has captured
+ * nothing since the calendar date changed), and the stretch has not lapsed.
+ * Retention reads it here, the next-session write-up reads it through
+ * `planRetention` (`adapters/sessions.ts`), and doctor reads the counts — so
+ * "what may be deleted" and "what the next session is asked to write" are
+ * still one set. It replaced the asked / answered predicate of B3 and #285's
+ * separate short debt: an ask, a chapter, a handoff or a "nothing new" are no
+ * longer facts this file weighs — what they claimed in `coverage.jsonl` is.
  *
  * ── AND ONE THING THAT IS NOT A DEBT BUT STILL KEEPS ──────────────────────
  *
@@ -56,18 +36,19 @@
  *
  * Seven days (`TUNABLES.RETENTION_MS`) from the LATEST thing known about the
  * session anywhere in the store: its last capture or boundary in any scope, its
- * write-up mark, its registry end. It is the buffer's own clock.
+ * write-up mark, its registry end. It is the buffer's own clock. A lapsed
+ * stretch owes nothing, so its text goes on this same week.
  *
- * Every failure to read a fact moves toward KEEPING: an unreadable pacer state
- * counts as asked, an unreadable log as no answers, a missing ask time as "no
- * time-based answer can be proved".
+ * Every failure to read a fact moves toward KEEPING: a host that cannot answer
+ * is read as holding the session open.
  */
 import { Buffer } from "node:buffer";
 
-import { HANDOFF_CLEARED_EVENT, HANDOFF_WRITTEN_EVENT } from "../handoff/index.js";
+import { ledger } from "../coverage/index.js";
+import type { LedgerEntry, SessionState } from "../coverage/index.js";
 import type { Store } from "../store/index.js";
+import { resolveZone } from "../time.js";
 
-import type { ProposalRecord } from "./proposals.js";
 import type { Span, SpanBuffer } from "./spans.js";
 import { TUNABLES } from "./tunables.js";
 
@@ -75,57 +56,25 @@ import { TUNABLES } from "./tunables.js";
  *  never a hash, never a word (§16 G9's rule for a record of destruction). */
 export const RETENTION_EVENT = "remember.prune";
 
-// ── the predicate ───────────────────────────────────────────────────────────
+// ── the facts ───────────────────────────────────────────────────────────────
 
-/** What `owesWriteUp` decides on. Facts, no text. */
+/** What a session's standing is read from. Facts, no text. */
 export interface WriteUpFacts {
+  /** Conversation or jot text is still held for it somewhere in the store
+   *  (buffer, jots, quarantine, a claim in flight). */
   readonly capturedText: boolean;
-  readonly asked: boolean;
-  readonly answered: boolean;
-  readonly endedNormally: boolean;
+  /** Marked written up (`write-up-seam.ts`) at or after its last capture. */
   readonly writtenUp: boolean;
+  /** The ledger's state; null when it holds no piece in the live streams. */
+  readonly state: SessionState | null;
+  /** Pieces in its unwritten stretch, and the minutes it spans. */
+  readonly unwritten: number;
+  readonly minutes: number;
+  readonly lapsed: boolean;
 }
 
-/** THE predicate — see the header. Pure. */
-export function owesWriteUp(f: WriteUpFacts): boolean {
-  if (!f.capturedText) return false;
-  if (f.writtenUp) return false;
-  if (!f.asked) return false;
-  return !f.answered || !f.endedNormally;
-}
-
-/**
- * THE SHORT DEBT (2026-09-29) — a session under the first-ask threshold, so
- * never asked, that left text, was not written up and gave no answer of any
- * kind. It is offered a ONE-LINE write-up by the next session (`[]` is an
- * answer too), after every full one and only from what is left of the day's
- * pointers.
- *
- *   owesShort = capturedText ∧ ¬writtenUp ∧ ¬asked ∧ ¬answered
- *
- * **It is not a retention debt.** `owesWriteUp` is still the only predicate
- * that keeps text past its seven days (`planRetention`'s `kept-owed`); a short
- * session nobody gets to is `kept-young` for its week and then deleted, exactly
- * as before. The raw-text limit is the point of retention, and one-line asks
- * must not grow it. Pure.
- */
-export function owesShortWriteUp(f: WriteUpFacts): boolean {
-  return f.capturedText && !f.writtenUp && !f.asked && !f.answered;
-}
-
-// ── the facts' sources ──────────────────────────────────────────────────────
-
-/** The pacer's record of one session (`self/episodes.ts#episodeFacts`). */
-export interface EpisodeFactsReading {
-  readonly status: "loaded" | "absent" | "unreadable";
-  readonly asks: number;
-  readonly chapters: number;
-  readonly appendedAtAsk: number;
-  readonly lastAskAt: number | null;
-}
-
-/** What the HOST knows about one session. Every field is optional evidence;
- *  `NO_HOST_EVIDENCE` is what a host that knows nothing says. */
+/** What the HOST knows about one session. `NO_HOST_EVIDENCE` is what a host
+ *  that knows nothing says. */
 export interface HostSessionEvidence {
   /**
    * The host's registry holds a record for this session with no end. Kept while
@@ -137,104 +86,43 @@ export interface HostSessionEvidence {
   readonly open: boolean;
   /** The registry's end, epoch ms. */
   readonly endedAt: number | null;
-  /** A "nothing new" answer (#186), epoch ms. */
-  readonly nothingNewAt: number | null;
-  /** The newest ask the host recorded as ISSUED, epoch ms. */
-  readonly lastAskedAt: number | null;
-  /** The host's newest pacer evaluation — when, and the substance it measured.
-   *  `turns` is typed turns, or 0 when the host cannot say what its row counted
-   *  (then the bytes decide alone). */
-  readonly lastEvaluation: { readonly at: number; readonly turns: number; readonly bytes: number } | null;
 }
 
 export const NO_HOST_EVIDENCE: HostSessionEvidence = {
   open: false,
   endedAt: null,
-  nothingNewAt: null,
-  lastAskedAt: null,
-  lastEvaluation: null,
 };
 
-/** The pacer's first-ask thresholds (`self/tunables.ts`), passed in so this
- *  module never re-derives them: typed turns OR conversation text bytes. */
-export interface FirstAskThreshold {
-  readonly turns: number;
-  readonly textBytes: number;
-}
-
-/**
- * Everything retention reads from outside the buffer. Injected, because the
- * pacer is `self/`'s, the registry and the ask rows are the host's, and
- * `remember/` reads their facts and never their code.
- */
+/** Everything retention reads from outside the buffer: the host's evidence,
+ *  and the zone the store names its days in. */
 export interface RetentionSources {
-  episode(session: string): EpisodeFactsReading;
-  /** When this session wrote or cleared a handoff — each an answer. */
-  handoffAnswers(session: string): readonly number[];
   host(session: string): HostSessionEvidence;
-  readonly firstAsk: FirstAskThreshold;
+  readonly zone: string;
 }
 
-/** Ceiling on the handoff rows read — the log keeps ~90 lived days of them. */
-const HANDOFF_ROW_CEILING = 50_000;
-
-const UNREADABLE_EPISODE: EpisodeFactsReading = {
-  status: "unreadable",
-  asks: 0,
-  chapters: 0,
-  appendedAtAsk: 0,
-  lastAskAt: null,
-};
-
 /**
- * The store-backed sources. The handoff rows are read here; the pacer and the
- * host are the caller's. Never throws: every read that fails reads as the fact
- * that keeps text.
+ * The sources as a host supplies them. Never throws: a host that cannot answer
+ * may be holding the session open, so it is read as open.
  */
 export function retentionSources(
-  store: Pick<Store, "eventLog">,
-  opts: {
-    episode: (session: string) => EpisodeFactsReading;
-    host?: (session: string) => HostSessionEvidence;
-    firstAsk: FirstAskThreshold;
-  },
+  store: Partial<Pick<Store, "zone">>,
+  opts: { host?: (session: string) => HostSessionEvidence } = {},
 ): RetentionSources {
-  const handoffs = new Map<string, number[]>();
-  for (const name of [HANDOFF_WRITTEN_EVENT, HANDOFF_CLEARED_EVENT]) {
-    try {
-      for (const row of store.eventLog({ name, limit: HANDOFF_ROW_CEILING })) {
-        try {
-          const session = (JSON.parse(row.payload ?? "{}") as { session?: unknown }).session;
-          if (typeof session !== "string" || session.length === 0) continue;
-          const list = handoffs.get(session) ?? [];
-          list.push(row.at);
-          handoffs.set(session, list);
-        } catch {
-          /* a row that will not parse answers nothing */
-        }
-      }
-    } catch {
-      /* an unreadable log is no answers, never a throw */
-    }
+  let zone: string;
+  try {
+    zone = store.zone?.() ?? resolveZone();
+  } catch {
+    zone = resolveZone();
   }
   return {
-    episode: (session) => {
-      try {
-        return opts.episode(session);
-      } catch {
-        return UNREADABLE_EPISODE;
-      }
-    },
-    handoffAnswers: (session) => handoffs.get(session) ?? [],
     host: (session) => {
       try {
         return opts.host?.(session) ?? NO_HOST_EVIDENCE;
       } catch {
-        // A host that cannot answer may be holding the session open: keep it.
         return { ...NO_HOST_EVIDENCE, open: true };
       }
     },
-    firstAsk: opts.firstAsk,
+    zone,
   };
 }
 
@@ -248,10 +136,11 @@ export interface HeldSession {
   /** Every scope that holds text for it — the strike runs once per scope. */
   readonly scopes: readonly string[];
   readonly facts: WriteUpFacts;
+  /** It owes a write-up — `coverage/`'s rule, and the only thing that keeps
+   *  its text past its week. */
   readonly owes: boolean;
-  /** It owes only a one-line write-up (`owesShortWriteUp`) — which never keeps
-   *  its text: the verdict reads `owes` alone. */
-  readonly owesShort: boolean;
+  /** It owes, and what it owes is small: one line is enough. */
+  readonly small: boolean;
   /** The host's registry holds it open. */
   readonly open: boolean;
   /** When its retention clock started. */
@@ -269,12 +158,7 @@ interface Tally {
   captured: number;
   lastCaptureAt: number;
   lastActivityAt: number;
-  lastNormalEndAt: number | null;
   writtenUpAt: number | null;
-  /** The furthest cursor any of its spans reached — an UPPER bound on turns. */
-  maxTo: number;
-  /** Conversation, jot and assistant text — an upper bound on its bytes. */
-  textBytes: number;
 }
 
 const numberOr = (v: unknown, fallback: number): number =>
@@ -287,7 +171,6 @@ const numberOr = (v: unknown, fallback: number): number =>
 export function planRetention(buffer: SpanBuffer, sources: RetentionSources): HeldSession[] {
   const now = buffer.now();
   const tallies = new Map<string, Tally>();
-  const answersBySession = new Map<string, number[]>();
   const tally = (session: unknown): Tally | null => {
     if (typeof session !== "string" || session.length === 0) return null;
     let t = tallies.get(session);
@@ -299,10 +182,7 @@ export function planRetention(buffer: SpanBuffer, sources: RetentionSources): He
         captured: 0,
         lastCaptureAt: 0,
         lastActivityAt: 0,
-        lastNormalEndAt: null,
         writtenUpAt: null,
-        maxTo: 0,
-        textBytes: 0,
       };
       tallies.set(session, t);
     }
@@ -314,23 +194,17 @@ export function planRetention(buffer: SpanBuffer, sources: RetentionSources): He
       const t = tally(span.session);
       if (t === null) return;
       const at = numberOr(span.at, 0);
-      // UTF-8 BYTES, the pacer's own unit (`hooks.ts#substanceOf`) — never UTF-16
-      // code units, which under-count every non-Latin script by up to three
-      // times and would read a substantive session as short (re-review R5).
-      const size = Buffer.byteLength(span.text, "utf8");
       t.scopes.add(scope);
       t.lines += 1;
-      t.bytes += size;
-      t.textBytes += size;
-      t.maxTo = Math.max(t.maxTo, numberOr(span.to, 0));
+      t.bytes += Buffer.byteLength(span.text, "utf8");
       if (captured) t.captured += 1;
       t.lastCaptureAt = Math.max(t.lastCaptureAt, at);
       t.lastActivityAt = Math.max(t.lastActivityAt, at);
     };
-    // Conversation and jots (the sweep's input), the assistant's own turns,
-    // quarantine, and anything a claim holds right now: all of it is text this
-    // session still has on disk. Only the non-assistant kinds are text a
-    // write-up could be made FROM.
+    // Conversation and jots, the assistant's own turns, quarantine, and
+    // anything a claim holds right now: all of it is text this session still
+    // has on disk. Only the non-assistant kinds are text a write-up could be
+    // made FROM.
     for (const s of buffer.spans(scope)) text(s, true);
     for (const s of buffer.assistantSpans(scope)) text(s, false);
     for (const s of buffer.quarantined(scope)) text(s, s.kind !== "assistant");
@@ -338,77 +212,48 @@ export function planRetention(buffer: SpanBuffer, sources: RetentionSources): He
     for (const b of buffer.boundaries(scope)) {
       const t = tally(b.session);
       if (t === null) continue;
-      const at = numberOr(b.at, 0);
-      t.lastActivityAt = Math.max(t.lastActivityAt, at);
-      if (b.kind === "session-end") t.lastNormalEndAt = Math.max(t.lastNormalEndAt ?? 0, at);
+      t.lastActivityAt = Math.max(t.lastActivityAt, numberOr(b.at, 0));
     }
     for (const w of buffer.writeUps(scope)) {
       const t = tally(w.session);
       if (t === null) continue;
       t.writtenUpAt = Math.max(t.writtenUpAt ?? 0, w.at);
     }
-    // An accepted `session_end` memory is an answer WHEREVER it was recorded,
-    // and when it was recorded is what decides whether it answered the last ask.
-    for (const p of buffer.proposalRecords<ProposalRecord>(scope)) {
-      if (p === null || typeof p !== "object" || p.accepted !== true || p.source !== "session-end") continue;
-      if (typeof p.session !== "string") continue;
-      const list = answersBySession.get(p.session) ?? [];
-      list.push(numberOr(p.at, 0));
-      answersBySession.set(p.session, list);
-    }
   }
 
-  const out: HeldSession[] = [];
-  const first = sources.firstAsk;
-  // The pacer's own rule (`self/episodes.ts#askDue`), whichever comes first.
-  const paced = (turns: number, bytes: number): boolean => turns >= first.turns || bytes >= first.textBytes;
+  // The host is asked once per session, whoever asks.
+  const hostFacts = new Map<string, HostSessionEvidence>();
+  const host = (session: string): HostSessionEvidence => {
+    let h = hostFacts.get(session);
+    if (h === undefined) {
+      h = sources.host(session);
+      hostFacts.set(session, h);
+    }
+    return h;
+  };
+  // THE ONE RULE, `coverage/`'s — read, never restated.
+  const entries = new Map<string, LedgerEntry>(
+    ledger(buffer, { now, zone: sources.zone, host: (s) => ({ endedAt: host(s).endedAt }) }).map((e) => [e.session, e]),
+  );
 
+  const out: HeldSession[] = [];
   for (const [session, t] of [...tallies.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
     // A session that holds no text anywhere has nothing to delete and nothing
     // to write up from; it is not counted at all.
     if (t.lines === 0) continue;
-    const episode = sources.episode(session);
-    const host = sources.host(session);
-
-    // ASKED — see the header. Committed, unreadable, or substantive by any count.
-    const committed = episode.status === "unreadable" || episode.asks > 0 || host.lastAskedAt !== null;
-    let asked = committed;
-    if (!asked) {
-      const ev = host.lastEvaluation;
-      // The pacer saw everything captured: its word. It did not: the bytes
-      // decide alone — the cursor counts every piece of both roles, which is
-      // no measure of what the person typed.
-      asked =
-        ev !== null && ev.at >= t.lastCaptureAt ? paced(ev.turns, ev.bytes) : paced(0, t.textBytes);
-    }
-
-    // ANSWERED — later than the last ask (review M1).
-    const lastAskAt = maxOf(episode.lastAskAt, host.lastAskedAt);
-    const chapterAnswer =
-      episode.status === "loaded" && episode.chapters > 0 && episode.appendedAtAsk >= episode.asks;
-    const times = [
-      ...(answersBySession.get(session) ?? []),
-      ...sources.handoffAnswers(session),
-      ...(host.nothingNewAt === null ? [] : [host.nothingNewAt]),
-    ];
-    const answered = !committed
-      ? chapterAnswer || times.length > 0
-      : lastAskAt === null
-        ? chapterAnswer
-        : chapterAnswer || times.some((at) => at >= lastAskAt);
-
-    const lastNormalEnd = maxOf(t.lastNormalEndAt, host.endedAt);
+    const h = host(session);
+    const entry = entries.get(session);
     const facts: WriteUpFacts = {
       capturedText: t.captured > 0,
-      asked,
-      answered,
-      endedNormally: lastNormalEnd !== null && lastNormalEnd >= t.lastCaptureAt,
       writtenUp: t.writtenUpAt !== null && t.writtenUpAt >= t.lastCaptureAt,
+      state: entry?.state ?? null,
+      unwritten: entry?.stretch?.pieces ?? 0,
+      minutes: entry?.stretch?.minutes ?? 0,
+      lapsed: entry?.lapsed === true,
     };
-    const owes = owesWriteUp(facts);
-    const owesShort = owesShortWriteUp(facts);
-    const clockFrom = Math.max(t.lastActivityAt, t.writtenUpAt ?? 0, host.endedAt ?? 0);
-    const verdict: RetentionVerdict = host.open
+    const owes = entry?.owed === true && !facts.writtenUp;
+    const clockFrom = Math.max(t.lastActivityAt, t.writtenUpAt ?? 0, h.endedAt ?? 0);
+    const verdict: RetentionVerdict = h.open
       ? "kept-live"
       : owes
         ? "kept-owed"
@@ -420,8 +265,8 @@ export function planRetention(buffer: SpanBuffer, sources: RetentionSources): He
       scopes: [...t.scopes].sort(),
       facts,
       owes,
-      owesShort,
-      open: host.open,
+      small: owes && entry?.small === true,
+      open: h.open,
       clockFrom,
       lines: t.lines,
       bytes: t.bytes,
@@ -429,12 +274,6 @@ export function planRetention(buffer: SpanBuffer, sources: RetentionSources): He
     });
   }
   return out;
-}
-
-function maxOf(a: number | null, b: number | null): number | null {
-  if (a === null) return b;
-  if (b === null) return a;
-  return Math.max(a, b);
 }
 
 // ── the report, the record, and its readers ─────────────────────────────────

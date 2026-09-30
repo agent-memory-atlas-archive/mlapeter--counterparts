@@ -41,12 +41,21 @@ export const FALLBACK_ZONE = "UTC";
 const formatters = new Map<string, Intl.DateTimeFormat>();
 
 /** One formatter per (zone, shape), because building one costs ~50 µs. */
-function formatter(zone: string, shape: "date" | "clock"): Intl.DateTimeFormat {
+function formatter(zone: string, shape: "date" | "clock" | "stamp"): Intl.DateTimeFormat {
   const key = `${shape}|${zone}`;
   let f = formatters.get(key);
   if (f === undefined) {
     f =
-      shape === "date"
+      shape === "stamp"
+        ? new Intl.DateTimeFormat("en-US", {
+            timeZone: zone,
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            hourCycle: "h23",
+          })
+        : shape === "date"
         ? new Intl.DateTimeFormat("en-US", {
             timeZone: zone,
             year: "numeric",
@@ -117,7 +126,7 @@ interface Parts {
   timeZoneName: string;
 }
 
-function partsOf(at: number, zone: string, shape: "date" | "clock"): Parts | null {
+function partsOf(at: number, zone: string, shape: "date" | "clock" | "stamp"): Parts | null {
   const d = new Date(at);
   if (!Number.isFinite(d.getTime())) return null;
   let raw: Intl.DateTimeFormatPart[];
@@ -185,6 +194,32 @@ export function localTime(at: number, zone?: string): string {
   const out: Record<string, string> = {};
   for (const p of f.formatToParts(d)) out[p.type] = p.value;
   return `${out["hour"] ?? ""}:${out["minute"] ?? ""}:${out["second"] ?? ""}`;
+}
+
+/**
+ * The moment as a short stamp: `09-29 12:47` — month, day and a 24-hour clock
+ * in `zone`. For a line that says when something was written, where the year
+ * and the zone's name would be noise (the handoff pointer, 2026-09-30).
+ */
+export function localStamp(at: number, zone?: string): string {
+  const z = zone === undefined || !isZoneCached(zone) ? machineZone() : zone;
+  const p = partsOf(at, z, "stamp");
+  if (p === null) return "";
+  return `${p.month}-${p.day} ${p.hour}:${p.minute}`;
+}
+
+/**
+ * The same stamp, shortened to the clock (`13:02`) when the moment falls on
+ * the same date as `after` in `zone` — a time in a run of times that already
+ * named its day (the handoff pointer's "work here 13:02–15:41", 2026-09-30).
+ */
+export function localStampAfter(at: number, after: number, zone?: string): string {
+  const z = zone === undefined || !isZoneCached(zone) ? machineZone() : zone;
+  const p = partsOf(at, z, "stamp");
+  const q = partsOf(after, z, "stamp");
+  if (p === null) return "";
+  const clock = `${p.hour}:${p.minute}`;
+  return q !== null && q.month === p.month && q.day === p.day ? clock : `${p.month}-${p.day} ${clock}`;
 }
 
 /** Today's `YYYY-MM-DD` in `zone`. A store passes its own clock; the default is

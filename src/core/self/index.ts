@@ -1679,6 +1679,7 @@ export class Self {
     return askDue(this.pacedState(sessionId, substance, d, opts).state, substance, this.tunables, {
       observer: this.observer,
       today: this.calendarToday(),
+      unwritten: opts.unwritten ?? null,
     });
   }
 
@@ -1723,6 +1724,7 @@ export class Self {
     const verdict = askDue(state, substance, this.tunables, {
       observer: this.observer,
       today,
+      unwritten: opts.unwritten ?? null,
     });
     if (!verdict.due) {
       this.emit("self.episode.ask.skipped", sessionId, {
@@ -1741,8 +1743,8 @@ export class Self {
       asks: state.asks + 1,
       asksToday: asksSpentOn(state, today) + 1,
       asksDay: today,
-      // WHEN, as well as how many: an answer counts only if it came after the
-      // last ask (`remember/owes.ts`, PR #189 review M1).
+      // WHEN, as well as how many: the third arm counts its half hour and its
+      // new pieces from here (`PaceOptions.unwritten`, 2026-09-30).
       lastAskAt: this.store.now(),
       askedAtTurns: substance.turns,
       askedAtBytes: substance.bytes,

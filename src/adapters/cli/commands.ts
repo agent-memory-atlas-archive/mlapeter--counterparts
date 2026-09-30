@@ -202,6 +202,7 @@ import type { Confidence } from "./repair-dates.js";
 import { NO_PAGE_LINES, bodyFrom, pageLines, versionLines, writeLines } from "./self-page.js";
 import { coreListLines, dreamListLines, dreamShowLines, dreamingSettingWords } from "./dream-core.js";
 import { settleListLines } from "./settle.js";
+import { coverageLines } from "./coverage.js";
 import { DREAMING_SETTINGS, NIGHT_RUN_FINISHES } from "../../core/dream/index.js";
 import { REFLECTED_FEELING_KEY } from "../../core/sleep/index.js";
 // The console's shared manners (2026-09-21): is there a person here, ask them,
@@ -319,6 +320,9 @@ export const COMMANDS = [
   // the owner's settle and undo. Reads and writes, like `dream`; the write
   // refuses at the core's own seam under observer.
   "settle",
+  // What is written up and what is not yet, for one date (2026-09-30,
+  // `core/coverage/`). Read-only.
+  "coverage",
   // The owner's window, started on the store the CONFIGURATION names — no
   // `--dir` to get wrong, and the browser opened for you (2026-09-22, item 4).
   // `counterparts-dashboard serve` is still there and still refuses an unnamed
@@ -733,6 +737,7 @@ export const COMMAND_FLAGS: Record<Command, readonly string[]> = {
   dream: ["list", "show", "undo", "all", "setting"],
   core: ["list", "demote", "reason", "reflected-feeling"],
   settle: ["list", "pair", "holds", "against", "how", "why", "undo"],
+  coverage: ["date"],
   // `--config` because the store it opens is the one the CONFIGURATION names —
   // that is the whole point of the command over `counterparts-dashboard serve`,
   // which refuses until you name a store. `--dir` still parses (it is common)
@@ -803,6 +808,8 @@ export const COMMAND_BLURB: Record<Command, string> = {
     "The core — the memories about me, about us and about the owner that do not fade. With no flags (or --list), what it holds and which lane carried each one there, what dreams have nominated, and what you sent back; --demote <id> --reason \"...\" sends one back to ordinary fading from today, records why, and keeps the lanes from promoting it again; --reflected-feeling on|off opens or closes the core to reflection alone. On (the default): a feeling a reflection records later and a reflection citing a memory both count toward the fast lane, and a reflection may re-label what a memory is about either way — each re-label is recorded with its reason, and one into me, us or the owner is told in the next morning share. Off: nothing reaches the core on a reflection alone — the fast lane needs a feeling felt at the time (not one a reflection recorded later) and an ordinary use after a gap (not a reflection citing it), and a reflection may only move what a memory is about toward work or world. Reading works under observer; the two changes refuse there.",
   settle:
     "Two memories that disagree. With no flags (or --list), the pairs nobody has settled — a dream flags them — and the ones settled lately: how, which holds, who settled it and why. --pair <id> --holds <memory id> --how changed|corrected|open --why \"...\" settles one as you (or --holds <id> --against <id> for two memories no dream flagged): changed — both were true at their time, the older fades once and is shown as earlier; corrected — the older was wrong, it leaves recall and stays readable by its id; open — a real disagreement, both kept and shown together. No memory is rewritten. --undo <pair> reverses a settle: the strength comes back, a corrected memory comes back into recall, and the pair is unsettled again. Reading works under observer; the two changes refuse there.",
+  coverage:
+    "What is written up, and what is not yet, for one date (default today): each session that captured something that day, how much of it is written up, and what is not yet written up — how many pieces, over how long, since when — and whether that is owed (the next session in its project is asked to write it up), lapsed (nobody did in two days of use; nothing is deleted), under the floor, or still at work. Read-only.",
   dashboard:
     "Open the dashboard in your browser: the web view of the store your configuration names, served on 127.0.0.1 and nowhere else. Ctrl-C stops it. Looking is read-only — it strengthens nothing and deposits nothing. What you do there on purpose (write a note, remove a memory, back up, …) runs through these same commands, and a removal asks you to type the id back.",
   version: "The version of Counterparts you have. It opens nothing.",
@@ -829,6 +836,7 @@ const COMMAND_ARGS: Partial<Record<Command, string>> = {
   dream: " [--list [--all] | --show <id> | --undo <id>]",
   core: " [--demote <id> --reason \"...\" | --reflected-feeling on|off]",
   settle: " [--list | --pair <id> --holds <id> --how changed|corrected|open --why \"...\" | --undo <pair>]",
+  coverage: " [--date YYYY-MM-DD]",
 };
 
 /**
@@ -923,7 +931,8 @@ const FLAG_HELP: Record<string, string> = {
   confidence: "high, medium or low — the weakest evidence --apply is allowed to write (default high)",
   "import-day": "YYYY-MM-DD — the day the import ran, instead of the one the store recorded or shows",
   sample: "how many proposed rows to print (default 20)",
-  date: "YYYY-MM-DD — which day to print, instead of today (the last 7 days are kept)",
+  // TWO COMMANDS, ONE SENTENCE: `log --date` and `coverage --date` (2026-09-30).
+  date: "YYYY-MM-DD — another day instead of today, in the store's zone (the log keeps 7 days; coverage reads what is still held)",
   // TRUE OF EVERY COMMAND THAT PRINTS IT, which is the point (review of #77:
   // the first version said "a command that writes still requires --dir", which
   // was false of `note` and of `migrate-cache` itself). `migrate-cache` is the
@@ -1377,7 +1386,8 @@ export function parse(argv: readonly string[]): Parsed {
       // `dream --setting auto|ask|off` (2026-09-28): a string, like
       // `--reflected-feeling`. `counterparts dream` prints the setting.
       setting: { type: "string" },
-      // `log --date YYYY-MM-DD`: which day's file to print.
+      // `log --date YYYY-MM-DD` (which day's file to print) and `coverage
+      // --date` (which day to read): a string, so a bare flag is a refusal.
       date: { type: "string" },
       observer: { type: "boolean" },
       help: { type: "boolean" },
@@ -1844,6 +1854,8 @@ export async function run(argv: readonly string[], opts: RunOptions): Promise<nu
         return coreCommand(dir, io, parsed, observer, typeof parsed.flags["dir"] === "string");
       case "settle":
         return settleCommand(dir, io, parsed, observer, typeof parsed.flags["dir"] === "string");
+      case "coverage":
+        return coverageCommand(dir, io, parsed, now, typeof parsed.flags["dir"] === "string");
     }
   } catch (err) {
     io.err(upgradePending(err) ?? `${command} failed: ${describeDirRefusal(err)}`);
@@ -2131,6 +2143,37 @@ export function logEntryLine(entry: LogEntry, zone: string, said: string | null 
     .join(" ");
   const ref = entry.ref === null ? "" : ` [${entry.ref}]`;
   return `${time}  ${entry.proc.padEnd(24)}  ${session.padEnd(8)}  ${entry.name}${ref}  ${said ?? data}`.trimEnd();
+}
+
+/**
+ * `coverage` — what is written up and what is not yet, for one date
+ * (2026-09-30). Read-only: the store and the span buffer open as instruments,
+ * and every decision is `core/coverage/`'s (`coverage.ts` prints it).
+ */
+function coverageCommand(dir: string, io: Io, parsed: Parsed, now: () => number, namedDir: boolean): number {
+  if (!storeExists(dir)) {
+    io.err(`No store at ${dir}. Run 'counterparts init${namedDir ? ` --dir ${dir}` : ""}' to create one.`);
+    return EXIT.usage;
+  }
+  const asked = parsed.flags["date"];
+  if (asked !== undefined && (typeof asked !== "string" || !isDay(asked))) {
+    io.err("refused: --date takes a day as YYYY-MM-DD.");
+    return EXIT.usage;
+  }
+  let store: Store;
+  try {
+    store = openStoreAt({ dir, observer: true });
+  } catch (err) {
+    io.err(openRefusalLine(err, dir));
+    return EXIT.failed;
+  }
+  try {
+    const today = localDate(now(), store.zone());
+    for (const line of coverageLines({ store, date: typeof asked === "string" ? asked : today, today })) io.out(line);
+    return EXIT.ok;
+  } finally {
+    store.close();
+  }
 }
 
 /**

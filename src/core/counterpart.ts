@@ -124,7 +124,9 @@ import {
   Handoffs,
   isHandoffRow,
 } from "./handoff/index.js";
-import type { Handoff, HandoffRefusal, HandoffWrite } from "./handoff/index.js";
+import type { Handoff, HandoffRefusal, HandoffWrite, PointerSince } from "./handoff/index.js";
+import { CLAIM_CHAPTER, askFromStretch, claimUnwritten, sessionStretch, workSince } from "./coverage/index.js";
+import { localStamp, localStampAfter } from "./time.js";
 import {
   BRIEFING_KEY,
   BRIEFING_TRIM_LOG_CAP,
@@ -1793,7 +1795,7 @@ export class Counterpart {
     if (scope.length === 0 || !result.ok) return result;
     let pointer: { block: string; handoff: Handoff } | null = null;
     try {
-      pointer = this.handoffs.pointer(scope);
+      pointer = this.handoffs.pointer(scope, undefined, (h) => this.handoffSince(h, scope));
     } catch {
       // A store that will not answer is not a reason to fail a wake (§1 G7).
       return result;
@@ -1820,6 +1822,34 @@ export class Counterpart {
       text: spliced.text,
       bytes: spliced.bytes,
       sentinel: spliced.sentinel,
+    };
+  }
+
+  /**
+   * HOW CURRENT THIS DIRECTORY'S POINTER IS, at delivery (2026-09-30): when
+   * it was written, in the store's zone, and — when sessions here captured work
+   * past the owed floor after that, not counting the writing session's own turn
+   * — when that work ran, by the pieces' own times, and whether it is written up
+   * (`coverage/#workSince`). Null when the write time is unknown: the line then
+   * says the date alone, as it always did.
+   */
+  private handoffSince(h: Handoff, scope: string): PointerSince | null {
+    const writtenAt = this.handoffs.writtenAt(h);
+    if (writtenAt === null) return null;
+    const zone = this.store.zone();
+    const work = workSince(this.spans, scope, writtenAt, { writer: h.session });
+    if (!work.overFloor || work.firstAt === null || work.lastAt === null) {
+      return { written: localStamp(writtenAt, zone), after: null };
+    }
+    // A clock time alone while the day is the one before it; the day as well
+    // when it is not.
+    return {
+      written: localStamp(writtenAt, zone),
+      after: {
+        from: localStampAfter(work.firstAt, writtenAt, zone),
+        to: localStampAfter(work.lastAt, work.firstAt, zone),
+        writtenUp: work.unwritten === 0,
+      },
     };
   }
 
@@ -2732,14 +2762,39 @@ export class Counterpart {
 
   // ── episodes ───────────────────────────────────────────────────────────────
 
-  /** ONE ask, and the advance is committed before it blocks (§13 G3–G4). */
+  /**
+   * ONE ask, and the advance is committed before it blocks (§13 G3–G4).
+   * `scope` hands the pacer this session's unwritten stretch there
+   * (`coverage/`, 2026-09-30); without it, turns and bytes decide alone.
+   */
   episodeAsk(
     sessionId: string,
     substance: { turns: number; bytes: number },
     day?: number,
-    opts: { rebase?: boolean } = {},
+    opts: { rebase?: boolean; scope?: string } = {},
   ): ChapterAsk {
-    return this.self.openChapter(sessionId, substance, day, opts);
+    const { scope, ...pace } = opts;
+    let stretch: ReturnType<typeof sessionStretch> = null;
+    if (scope !== undefined && scope.length > 0 && sessionId.length > 0) {
+      try {
+        stretch = sessionStretch(this.spans, sessionId, [scope]);
+      } catch {
+        stretch = null;
+      }
+    }
+    const now = this.nowFn();
+    return this.self.openChapter(sessionId, substance, day, {
+      ...pace,
+      ...(stretch === null
+        ? {}
+        : {
+            unwritten: {
+              pieces: stretch.pieces,
+              minutes: stretch.minutes,
+              due: (lastAskAt: number | null) => askFromStretch(stretch, lastAskAt, now),
+            },
+          }),
+    });
   }
 
   /**
@@ -2758,8 +2813,10 @@ export class Counterpart {
   appendEpisode(
     sessionId: string,
     text: string,
-    /** `model`: the model writing this chapter, when the host knows it. */
-    opts: { day?: number; title?: string; happenedOn?: string; model?: string } = {},
+    /** `model`: the model writing this chapter, when the host knows it.
+     *  `scope`: the project it was written in — the one whose unwritten pieces
+     *  it writes up (`coverage/`); without it, a chapter claims nothing. */
+    opts: { day?: number; title?: string; happenedOn?: string; model?: string; scope?: string } = {},
   ): ChapterResult {
     const verdict = episodeGate()({ text, handles: [], sessionId });
     if (!verdict.ok) {
@@ -2778,7 +2835,19 @@ export class Counterpart {
     }
     // The GATE's text, never the draft — the same rule ingestion follows.
     const body = verdict.text !== undefined && verdict.text.length > 0 ? verdict.text : text;
-    const written = this.self.appendChapter(sessionId, body, opts);
+    const { scope, ...chapterOpts } = opts;
+    const written = this.self.appendChapter(sessionId, body, chapterOpts);
+    // A CHAPTER WRITES THE SESSION'S STRETCH UP (2026-09-30): a claim naming
+    // the episode and the chapter, with no proposal behind it, in the one file
+    // the coverage ledger reads — in the project it was written in only.
+    if (written.reason === "appended" && written.episodeId !== null && !this.observer && scope !== undefined && scope.length > 0) {
+      claimUnwritten(this.spans, {
+        session: sessionId,
+        scope,
+        by: CLAIM_CHAPTER,
+        ref: `${written.episodeId}#${String(written.chapter)}`,
+      });
+    }
     return {
       appended: written.reason === "appended",
       reason: written.reason,

@@ -108,8 +108,11 @@ import { heldExits } from "../../core/store/index.js";
 // promise a different number from the job that does the deleting. READ-ONLY:
 // `remember/index.ts` re-exports the plan and the readers, never the deleter.
 import { SpanBuffer, TUNABLES as REMEMBER_TUNABLES, lastRetentionRun } from "../../core/remember/index.js";
+import { lapsesSince, ledger } from "../../core/coverage/index.js";
+import type { LedgerEntry } from "../../core/coverage/index.js";
 import {
-  awaitingWriteUp,
+  hostSessionEvidence,
+  pointable,
   progressKey,
   readWriteUpPointer,
   readWriteUpProgress,
@@ -1557,9 +1560,9 @@ function rowFindings(input: DoctorInput, store: Store): Finding[] {
  *     session wrote itself, against those the fallback sweep wrote for it.
  *
  * GREEN, with counts: cap refusals and the sweep's share are not losses, and
- * the one loss it could name — a session that owes a write-up (B3's
- * predicate) unwritten past `WRITE_UP_WAIT_DAYS` — is the `Crash write-up`
- * line's amber. This line carries that count as detail, or says "unknown"
+ * the one loss it could name — a session that owes a write-up
+ * (`core/coverage/`) from yesterday or earlier — is the `Write-ups` line's
+ * amber. This line carries that count as detail, or says "unknown"
  * when it could not be read. The session-start reading does not read the owed
  * sessions (it walks every scope's words), so there the line omits them.
  *
@@ -1798,7 +1801,7 @@ function authorshipFindings(input: DoctorInput, store: Store, owedReading: OwedS
         : owed.waiting === 0
           ? ""
           : `; ${plural(owed.waiting, "session", "sessions")} awaiting a write-up` +
-            (owed.stale === 0 ? "" : `, ${String(owed.stale)} older than ${String(WRITE_UP_WAIT_DAYS)} days`);
+            (owed.stale === 0 ? "" : `, ${String(owed.stale)} from yesterday or earlier`);
   const detail =
     `${windowPhrase(shown, input.today)}: invited to write ${plural(asked, "time", "times")}, ` +
     `${plural(paced, "Stop", "Stops")} paced out, ${String(capped)} over the day's allowance` +
@@ -1830,8 +1833,8 @@ function authorshipFindings(input: DoctorInput, store: Store, owedReading: OwedS
     livedDay,
   };
   // Green, always: a session waiting too long for its write-up is the one
-  // loss this line could name, and the Crash write-up line already turns amber
-  // on it — one loss, one amber line.
+  // loss this line could name, and the Write-ups line already turns amber on
+  // it — one loss, one amber line.
   return [finding("authorship", "green", "Authorship", detail, "", data)];
 }
 
@@ -3791,7 +3794,7 @@ export function doctorFindings(input: DoctorInput): Finding[] {
   let owedCache: { value: OwedReading | "failed" } | null = null;
   const owedReading: OwedSource = () => {
     if (!owedAllowed) return null;
-    owedCache ??= { value: readOwed(store) };
+    owedCache ??= { value: readOwed(store, input.today) };
     return owedCache.value;
   };
   const groups: (readonly [string, () => Finding[]])[] = [
@@ -3806,8 +3809,9 @@ export function doctorFindings(input: DoctorInput): Finding[] {
     ...(unread ? [] : [["snapshot", (): Finding[] => snapshotFindings(input, store)] as const]),
     ["self-page", () => selfPageFindings(store)],
     ["page-writer", () => pageWriterFindings(store, input.config)],
-    // C2's one line. Not in the session-start reading: it is never red, which
-    // is all that notice prints, and it reads every scope's captured words.
+    // C2's one line, `Write-ups` since 2026-09-30. Not in the session-start
+    // reading: it is never red, which is all that notice prints, and it reads
+    // every scope's captured words.
     ...(unread || input.budgetMs !== undefined
       ? []
       : [["crash-write-up", (): Finding[] => crashWriteUpFindings(input, store, owedReading)] as const]),
@@ -3868,54 +3872,55 @@ export function doctorFindings(input: DoctorInput): Finding[] {
 
 // ── rendering ───────────────────────────────────────────────────────────────
 
-/** How long a session may wait for its write-up before this line turns amber. */
-export const WRITE_UP_WAIT_DAYS = 3;
+/** How far back the line counts lapses, in days. */
+export const WRITE_UP_LAPSE_WINDOW_DAYS = 7;
 
 /**
- * CRASH WRITE-UP (roadmap C2, owner 2026-09-23) — who writes up a session that
- * ended before it was written up, and how many are waiting.
+ * WRITE-UPS (2026-09-30; before it, #192's `Crash write-up`, whose key it
+ * keeps) — what is not written up, read off `core/coverage/`'s ledger.
  *
- * `next session` (green): the next session that starts in that project is
- * handed the words. It is the only route since 2026-09-24, when the opt-in
- * API sweep was removed with its key. The count is B3's (`remember/owes.ts`, through
- * `sessions.ts#awaitingWriteUp`), over every project in the store, minus what
- * the registry holds running; AMBER only when one has waited past
- * `WRITE_UP_WAIT_DAYS` — a project never reopened is never written up, and this
- * is where that shows. Never red: nothing is lost while a session waits, which
- * is what the wait is for.
+ * It says yesterday's state: how many sessions captured something that date
+ * and how much of it is written up; how many sessions owe a write-up now; and
+ * how many stretches lapsed in the last week. AMBER when a stretch from
+ * yesterday or earlier is owed — the next session in that project is pointed
+ * at it, so one still owed the morning after is one whose project nobody has
+ * opened. Never red: nothing is deleted while a stretch is owed, and a lapse
+ * deletes nothing either. The two ambers #192 added for the pointer itself —
+ * deferred for room, and a session finished here waiting on another project —
+ * are kept as they were.
  */
-/** The sessions awaiting a write-up, read once per reading and shared by the
- *  `Crash write-up` and `Authorship` lines. */
+/** The ledger and the plan, read once per reading and shared by the
+ *  `Write-ups` and `Authorship` lines. */
 interface OwedReading {
   readonly spans: SpanBuffer;
   readonly plan: ReturnType<typeof writeUpPlan>;
+  readonly entries: readonly LedgerEntry[];
   readonly now: number;
-  /** Sessions awaiting a write-up (B3's count, `sessions.ts#awaitingWriteUp`). */
+  /** Sessions that owe a write-up the pointer can offer (`coverage/`'s rule). */
   readonly waiting: number;
-  /** ...of which have waited past `WRITE_UP_WAIT_DAYS`. */
+  /** ...of which the stretch is from yesterday or earlier. */
   readonly stale: number;
+  /** Small debts the pointer never offers (no registry record, or not a
+   *  person's session): they owe, and lapse with their days of use. */
+  readonly unpointed: number;
 }
 
 /** `failed` when it cannot be read. It reads every scope's captured words, so
  *  the budgeted session-start reading never calls it. */
-function readOwed(store: Store): OwedReading | "failed" {
+function readOwed(store: Store, today: string): OwedReading | "failed" {
   try {
     const now = store.now();
     // READ-ONLY by construction: an observer buffer writes nothing, and it
-    // is B3's own reader (`planRetention`) that opens the files.
+    // is the ledger's own reader that opens the files.
     const spans = new SpanBuffer({ dir: store.dir, observer: true, now: () => now });
-    const plan = writeUpPlan({
-      store,
-      spans,
-      firstAsk: {
-        turns: SELF_TUNABLES.FIRST_ASK_TURNS,
-        textBytes: SELF_TUNABLES.FIRST_ASK_TEXT_BYTES,
-      },
-    });
-    // The same eligibility the pointer uses.
-    const owed = awaitingWriteUp(plan, store.dir, now);
-    const stale = owed.filter((h) => now - h.clockFrom >= WRITE_UP_WAIT_DAYS * 86_400_000).length;
-    return { spans, plan, now, waiting: owed.length, stale };
+    const plan = writeUpPlan({ store, spans });
+    const zone = store.zone();
+    const host = hostSessionEvidence(store);
+    const entries = ledger(spans, { now, zone, host: (s) => ({ endedAt: host(s).endedAt }) });
+    const all = entries.filter((e) => e.owed);
+    const owed = all.filter((e) => pointable(e, store.dir));
+    const stale = owed.filter((e) => e.stretch !== null && localDate(e.stretch.lastAt, zone) < today).length;
+    return { spans, plan, entries, now, waiting: owed.length, stale, unpointed: all.length - owed.length };
   } catch {
     return "failed";
   }
@@ -3926,18 +3931,37 @@ function readOwed(store: Store): OwedReading | "failed" {
 type OwedSource = () => OwedReading | "failed" | null;
 
 function crashWriteUpFindings(input: DoctorInput, store: Store, owedReading: OwedSource): Finding[] {
-  const who = "next session";
+  const title = "Write-ups";
+  const yesterday = isDay(input.today) ? addDays(input.today, -1) : input.today;
   let waiting: number | null = null;
   let stale = 0;
+  let unpointed = 0;
+  let yesterdayWords = "";
+  let yesterdayData: { sessions: number; pieces: number; written: number } | null = null;
   /** Sessions FINISHED in one project and waiting on words they left in
    *  another (the door's `written-up-here`), stale ones first. */
   const shares: { session: string; here: string; elsewhere: string[]; stale: boolean }[] = [];
   try {
     const reading = owedReading();
     if (reading === null || reading === "failed") throw new Error("owed reading unavailable");
-    const { spans, plan, now } = reading;
+    const { spans, plan, entries } = reading;
     waiting = reading.waiting;
     stale = reading.stale;
+    unpointed = reading.unpointed;
+    // YESTERDAY, keyed on the pieces' own dates in the store's zone.
+    const day = entries
+      .map((e) => e.perDate[yesterday])
+      .filter((c): c is { pieces: number; written: number } => c !== undefined);
+    yesterdayData = {
+      sessions: day.length,
+      pieces: day.reduce((n, c) => n + c.pieces, 0),
+      written: day.reduce((n, c) => n + c.written, 0),
+    };
+    yesterdayWords =
+      day.length === 0
+        ? `yesterday (${yesterday}): nothing captured`
+        : `yesterday (${yesterday}): ${String(day.length)} session${day.length === 1 ? "" : "s"}, ` +
+          `${String(yesterdayData.written)} of ${String(yesterdayData.pieces)} pieces written up`;
     const progress = readWriteUpProgress(store);
     for (const [key, p] of Object.entries(progress)) {
       if (p.waiting !== true) continue;
@@ -3953,24 +3977,42 @@ function crashWriteUpFindings(input: DoctorInput, store: Store, owedReading: Owe
           writeUpEntries(spans, { session, scopes: [scope] }).length > 0,
       );
       if (elsewhere.length === 0) continue;
-      shares.push({ session, here, elsewhere, stale: now - h.clockFrom >= WRITE_UP_WAIT_DAYS * 86_400_000 });
+      const e = entries.find((x) => x.session === session);
+      const from = e?.stretch === null || e === undefined ? input.today : localDate(e.stretch.lastAt, store.zone());
+      shares.push({ session, here, elsewhere, stale: from < input.today });
     }
     shares.sort((a, b) => Number(b.stale) - Number(a.stale));
   } catch {
     waiting = null;
   }
-  const count =
+  const lapses = lapsesSince(store, store.now() - WRITE_UP_LAPSE_WINDOW_DAYS * 86_400_000).length;
+  const owedWords =
     waiting === null
-      ? " (could not count the sessions waiting)"
+      ? "could not read what is written up"
       : waiting === 0
-        ? ""
-        : ` — ${String(waiting)} session${waiting === 1 ? "" : "s"} awaiting a write-up` +
-          (stale === 0 ? "" : `, ${String(stale)} older than ${String(WRITE_UP_WAIT_DAYS)} days`);
+        ? "nothing owed"
+        : `${String(waiting)} session${waiting === 1 ? " owes" : "s owe"} a write-up` +
+          (stale === 0 ? "" : `, ${String(stale)} from yesterday or earlier`);
+  const detail =
+    [
+      yesterdayWords,
+      owedWords,
+      unpointed === 0 ? "" : `${String(unpointed)} small, not a person's session: left to lapse`,
+      lapses === 0 ? "" : `${String(lapses)} lapsed this week`,
+    ]
+      .filter((w) => w.length > 0)
+      .join("; ");
   const pointer = readWriteUpPointer(store);
   const data = {
     mode: "next-session",
     waiting,
     stale,
+    unpointed,
+    lapsedWeek: lapses,
+    yesterday,
+    yesterdaySessions: yesterdayData?.sessions ?? null,
+    yesterdayPieces: yesterdayData?.pieces ?? null,
+    yesterdayWritten: yesterdayData?.written ?? null,
     pointer: pointer?.outcome ?? null,
     pointerDate: pointer?.date ?? null,
   };
@@ -3998,8 +4040,8 @@ function crashWriteUpFindings(input: DoctorInput, store: Store, owedReading: Owe
       finding(
         "crash-write-up",
         "amber",
-        "Crash write-up",
-        `${who}${count} — ${why}`,
+        title,
+        `${detail} — ${why}`,
         pointer.reason === "host-cap"
           ? hostCapFix
           : "The session registry under the store could not be written; read the Store line.",
@@ -4016,8 +4058,8 @@ function crashWriteUpFindings(input: DoctorInput, store: Store, owedReading: Owe
       finding(
         "crash-write-up",
         "amber",
-        "Crash write-up",
-        `${who}${count} — session ${share.session} is finished in ${tilde(share.here)} and waiting on words it left in ${where}` +
+        title,
+        `${detail} — session ${share.session} is finished in ${tilde(share.here)} and waiting on words it left in ${where}` +
           (shares.length > 1 ? ` (${String(shares.length)} such sessions)` : ""),
         `Open a session in ${where}: its start points at the rest. A directory set off never will, and there is no command yet to close a session by hand.`,
         { ...data, sharesWaiting: shares.length },
@@ -4029,14 +4071,14 @@ function crashWriteUpFindings(input: DoctorInput, store: Store, owedReading: Owe
       finding(
         "crash-write-up",
         "amber",
-        "Crash write-up",
-        `${who}${count}`,
-        "Open a session in the project each one ended in: its start points at the oldest. A project never reopened is never written up.",
+        title,
+        detail,
+        "Open a session in the project each one is in: its start points at the oldest. counterparts coverage says which. A stretch nobody writes up lapses after two more days of use — nothing is deleted, it stops being owed.",
         data,
       ),
     ];
   }
-  return [finding("crash-write-up", "green", "Crash write-up", `${who}${count}`, "", data)];
+  return [finding("crash-write-up", "green", title, detail, "", data)];
 }
 
 /**
