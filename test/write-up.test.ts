@@ -176,7 +176,7 @@ function ended(
   s.c.boundary({ session: id, scope, kind: "stop" });
   recordSession(storeDir, { sessionId: id, scope, phase: "boundary", at: opts.at + captures * PIECE_GAP });
   if (opts.answered === true) {
-    expect(s.c.appendEpisode(id, `A chapter from ${id}.`).appended).toBe(true);
+    expect(s.c.appendEpisode(id, `A chapter from ${id}.`, { scope }).appended).toBe(true);
   }
   if ((opts.end ?? "normal") === "normal") {
     s.c.boundary({ session: id, scope, kind: "session-end" });
@@ -352,7 +352,7 @@ describe("the pointer: the next session start in that project is pointed at it",
     const t = seeder();
     ended(t, "idle-nn", { at: Date.now() - 1 * DAY, end: "crash" });
     expect(markNothingNew(storeDir, "idle-nn", Date.now() - 1 * DAY + 60_000)).not.toBeNull();
-    claimUnwritten(t.c.spans, { session: "idle-nn", by: CLAIM_NOTHING_NEW, ref: "idle-nn" });
+    claimUnwritten(t.c.spans, { session: "idle-nn", scope: PROJ, by: CLAIM_NOTHING_NEW, ref: "idle-nn" });
     t.done();
     const c = Counterpart.open({ dir: storeDir, owner: true });
     const plan = planRetention(c.spans, writeUpSources(c.store));
@@ -714,6 +714,29 @@ describe("the door: `session_end` with `writeUp`", () => {
     expect(minted.map((p) => p.session)).toEqual(["new-1"]);
     c.close();
     for (const id of ["new-2", "new-3"]) expect(start(id).ask ?? "").not.toContain("writeUp: old-1");
+  });
+
+  test("the RETRY PATH: when the door's own claim AND its mark hit an IO failure, the next session's fetch finishes both, depositing nothing (MAJOR 2)", async () => {
+    const seed = seeder();
+    ended(seed, "old-1", { at: Date.now() - 2 * DAY });
+    seed.done();
+    const { s } = await pointAndFetch("new-1");
+    // Neither `coverage.jsonl` nor `writeups.jsonl` can be written.
+    const scopeDir = join(storeDir, "spans", keyFor(PROJ));
+    const blocked = [join(scopeDir, "coverage.jsonl"), join(scopeDir, "writeups.jsonl")];
+    for (const f of blocked) mkdirSync(f, { recursive: true });
+    const first = payload(await s.call("session_end", { session: "new-1", writeUp: "old-1", memories: [] }));
+    expect(first).toMatchObject({ reason: "written-up", marked: false });
+    for (const f of blocked) rmSync(f, { recursive: true, force: true });
+    s.counterpart.close();
+    open.splice(open.indexOf(s.counterpart), 1);
+    // Nothing claimed it, so it still owes: the next start is pointed at it,
+    // and its fetch finishes the claim and the mark (`p.answer` in `handOver`).
+    const later = await pointAndFetch("new-2");
+    expect(later.fetched).toMatchObject({ reason: "written-up", marked: true, deposited: 0 });
+    const covered = later.s.counterpart.spans.coveredHashes(PROJ);
+    expect(later.s.counterpart.spans.spans(PROJ).filter((x) => x.session === "old-1").every((x) => covered.has(x.hash))).toBe(true);
+    expect(later.s.counterpart.spans.writeUps(PROJ).map((w) => w.session)).toEqual(["old-1"]);
   });
 
   test("near the 24 KB boundary, a failed final mark is still finished by the next fetch — the kept marks do not add a part (m-B)", async () => {

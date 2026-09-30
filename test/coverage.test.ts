@@ -36,6 +36,7 @@ import {
 } from "../src/core/coverage/index.js";
 import type { LedgerEntry } from "../src/core/coverage/index.js";
 import { SpanBuffer, planRetention, retentionSources } from "../src/core/remember/index.js";
+import { HANDOFF_EXCERPT_BYTES, excerpt } from "../src/core/handoff/index.js";
 import type { Store } from "../src/core/store/index.js";
 import { openAdapter } from "../src/adapters/claude-code/index.js";
 import type { HookInput } from "../src/adapters/claude-code/hooks.js";
@@ -196,10 +197,31 @@ describe("the pacer's third arm: pieces and time", () => {
     const v = k.c.episodeAsk("paste", { turns: 7, bytes: 3_100 }, undefined, { scope: PROJ });
     expect(v.asked).toBe(false);
     expect(v.verdict.unwritten?.pieces).toBe(1);
-    expect(askFromStretch({ pieces: 1, firstAt: T0 }, null, T0 + DAY)).toBe(false);
-    expect(askFromStretch({ pieces: 3, firstAt: T0 }, null, T0 + 29 * MIN)).toBe(false);
-    expect(askFromStretch({ pieces: 3, firstAt: T0 }, T0 + 10 * MIN, T0 + 31 * MIN)).toBe(false);
-    expect(askFromStretch({ pieces: 3, firstAt: T0 }, T0 + 10 * MIN, T0 + 40 * MIN)).toBe(true);
+    const three = { pieces: 3, firstAt: T0, times: [T0, T0 + 11 * MIN, T0 + 12 * MIN] };
+    expect(askFromStretch({ pieces: 1, firstAt: T0, times: [T0] }, null, T0 + DAY)).toBe(false);
+    expect(askFromStretch(three, null, T0 + 29 * MIN)).toBe(false);
+    expect(askFromStretch(three, null, T0 + 30 * MIN)).toBe(true);
+    // Since an ask: three NEW pieces as well as the half hour.
+    expect(askFromStretch(three, T0 - MIN, T0 + 31 * MIN)).toBe(true);
+    expect(askFromStretch(three, T0 + 10 * MIN, T0 + 2 * HOUR)).toBe(false);
+  });
+
+  test("AN ASK NOBODY ANSWERS IS NOT ASKED AGAIN ON THE CLOCK ALONE: three new pieces since it, as well as the half hour (review of #289)", () => {
+    const k = clocked();
+    const t = talker(k, "quiet");
+    for (let i = 0; i < 3; i++) t.piece(T0 + i * 16 * MIN);
+    expect(k.c.episodeAsk("quiet", { turns: 1, bytes: 1_800 }, undefined, { scope: PROJ }).verdict.reason).toBe("due-unwritten");
+    // Six hours, no new piece: never again.
+    for (let h = 1; h <= 6; h++) {
+      k.set(T0 + 32 * MIN + h * HOUR);
+      expect(k.c.episodeAsk("quiet", { turns: 1, bytes: 1_800 }, undefined, { scope: PROJ }).asked).toBe(false);
+    }
+    // Two new pieces: still not. The third: asked.
+    t.piece(T0 + 7 * HOUR);
+    t.piece(T0 + 7 * HOUR + MIN);
+    expect(k.c.episodeAsk("quiet", { turns: 1, bytes: 1_800 }, undefined, { scope: PROJ }).asked).toBe(false);
+    t.piece(T0 + 7 * HOUR + 2 * MIN);
+    expect(k.c.episodeAsk("quiet", { turns: 1, bytes: 1_800 }, undefined, { scope: PROJ }).asked).toBe(true);
   });
 
   test("the adapter.ask row says which rule fired", () => {
@@ -309,18 +331,58 @@ describe("what writes a stretch up", () => {
     expect(e?.owed).toBe(false);
     const c = Counterpart.open({ dir: storeDir, owner: true });
     open.push(c);
-    const claims = c.spans.coverage(PROJ).map((m) => m.proposalId);
-    expect(new Set(claims)).toEqual(new Set(["nothing-new:nn"]));
+    const claims = [...new Set(c.spans.coverage(PROJ).map((m) => m.proposalId))];
+    expect(claims).toHaveLength(1);
+    expect(claims[0]).toMatch(/^nothing-new:nn:\d+$/);
+  });
+
+  test("\"nothing new\" in one project does not write up what the same session said in another", async () => {
+    seeded("two");
+    const OTHER = join(root, "other");
+    mkdirSync(OTHER, { recursive: true });
+    const k = clocked(Date.now() - HOUR);
+    const t = talker(k, "two", OTHER);
+    for (let i = 0; i < 3; i++) t.piece(Date.now() - HOUR + i * 10 * MIN);
+    k.c.close();
+    open.splice(0);
+    expect(payload(await server().call("session_end", { session: "two", memories: [] }))["reason"]).toBe("nothing-new");
+    const e = ended("two");
+    expect(e?.stretch?.pieces).toBe(3);
+    expect(e?.stretch?.scopes).toEqual([OTHER]);
   });
 
   test("A CHAPTER claims them, naming the episode", () => {
     seeded("ch");
     const c = Counterpart.open({ dir: storeDir, owner: true });
     open.push(c);
-    const written = c.appendEpisode("ch", "A chapter from ch: the relief valve went in first, and the loop held.");
+    const written = c.appendEpisode("ch", "A chapter from ch: the relief valve went in first, and the loop held.", { scope: PROJ });
     expect(written.appended).toBe(true);
-    expect(new Set(c.spans.coverage(PROJ).map((m) => m.proposalId))).toEqual(new Set([`chapter:${written.episodeId ?? ""}`]));
+    const claims = [...new Set(c.spans.coverage(PROJ).map((m) => m.proposalId))];
+    expect(claims).toHaveLength(1);
+    expect(claims[0]).toMatch(new RegExp(`^chapter:${written.episodeId ?? ""}#1:\\d+$`));
     expect(ended("ch")?.owed).toBe(false);
+  });
+
+  test("EVERY chapter's claim is its own written-up row, not just the first (review of #289)", () => {
+    const k = clocked();
+    const t = talker(k, "many");
+    recordCoverage(k.c.spans, k.c.store, { now: T0, zone: ZONE });
+    for (let round = 0; round < 3; round++) {
+      for (let i = 0; i < 3; i++) t.piece(T0 + round * HOUR + i * 10 * MIN);
+      k.set(T0 + round * HOUR + 25 * MIN);
+      expect(k.c.appendEpisode("many", `Chapter ${String(round)}: the loop held again.`, { scope: PROJ }).appended).toBe(true);
+    }
+    recordCoverage(k.c.spans, k.c.store, { now: T0 + 3 * HOUR, zone: ZONE });
+    const written = rows(k.c.store, COVERAGE_WRITTEN_EVENT).filter((r) => r["session"] === "many");
+    expect(written.map((r) => [r["by"], r["pieces"]])).toEqual([
+      ["chapter", 3],
+      ["chapter", 3],
+      ["chapter", 3],
+    ]);
+    // No dedup key on them: the log's ordinary prune lets them go.
+    expect(k.c.store.eventLog({ name: COVERAGE_WRITTEN_EVENT }).every((r) => r.dedup_key === null)).toBe(true);
+    recordCoverage(k.c.spans, k.c.store, { now: T0 + 3 * HOUR + MIN, zone: ZONE });
+    expect(rows(k.c.store, COVERAGE_WRITTEN_EVENT)).toHaveLength(3);
   });
 
   test("A HANDOFF ALONE claims nothing: the session still owes", async () => {
@@ -507,10 +569,41 @@ describe("the handoff pointer says how current it is", () => {
     const t = talker(k, "later");
     for (let i = 0; i <= 6; i++) t.piece(T0 + 47 * MIN + MIN + i * 30 * MIN);
     k.set(T0 + 4 * HOUR);
-    expect(wake(k.c)).toBe("written 09-29 12:47; about 3 hours of work here since, not yet written up");
+    expect(wake(k.c)).toBe("written 09-29 12:47; work here 12:48\u201315:48 since, not yet written up");
     // 3. The same work, written up.
     k.c.spans.claimCoverage({ scope: PROJ, session: "later", proposalId: "prp_later" });
-    expect(wake(k.c)).toBe("written 09-29 12:47; about 3 hours of work here since, written up since");
+    expect(wake(k.c)).toBe("written 09-29 12:47; work here 12:48\u201315:48 since, written up since");
+  });
+
+  test("the WRITER'S OWN TURN is not work since, and work under the floor is not named (review of #289)", () => {
+    const k = clocked(T0 + 47 * MIN);
+    const w = talker(k, "writer");
+    k.c.writeHandoff("The relief valve is seated. The loop test is next, then the gauges.", { scope: PROJ, session: "writer" });
+    // The same turn's Stop captures the prompt that asked for the handoff.
+    w.piece(T0 + 48 * MIN);
+    k.set(T0 + HOUR);
+    expect(wake(k.c)).toBe("written 09-29 12:47");
+    // Two more pieces of the writer's after that Stop: under the floor.
+    w.piece(T0 + HOUR);
+    w.piece(T0 + HOUR + 10 * MIN);
+    expect(wake(k.c)).toBe("written 09-29 12:47");
+    // A third, past fifteen minutes: now it is work here since.
+    w.piece(T0 + HOUR + 20 * MIN);
+    expect(wake(k.c)).toBe("written 09-29 12:47; work here 13:00\u201313:20 since, not yet written up");
+  });
+
+  test("the excerpt skips a list marker and will not stop at a short run — \"1.\", \"Step 2.\", \"e.g.\" (review of #289)", () => {
+    expect(excerpt("1. Merge #289 after the review. Then rebase the log branch.")).toBe("Merge #289 after the review.");
+    expect(excerpt("Step 2. Rebase onto master and run the suite again. Then push.")).toBe(
+      "Step 2. Rebase onto master and run the suite again.",
+    );
+    expect(excerpt("e.g. the parser rewrite, which is half done. The loop test is next.")).toBe(
+      "e.g. the parser rewrite, which is half done.",
+    );
+    expect(excerpt("- Rebase first. Then push.")).toBe("Rebase first. Then push.");
+    const long = `Step 2. ${"word ".repeat(60)}`;
+    expect(new TextEncoder().encode(excerpt(long)).length).toBeLessThanOrEqual(HANDOFF_EXCERPT_BYTES);
+    expect(excerpt(long).endsWith("\u2026")).toBe(true);
   });
 
   test("the excerpt is the FIRST SENTENCE of the first substantive line, still capped", () => {
@@ -535,6 +628,8 @@ describe("reading it: `counterparts coverage` and the doctor line", () => {
     for (let i = 0; i < 4; i++) done.piece(noonYesterday + i * 10 * MIN);
     k.c.spans.claimCoverage({ scope: PROJ, session: "done-one", proposalId: "prp_done" });
     done.end(noonYesterday + 31 * MIN);
+    // A person's session, which the hooks saw start: the pointer can offer it.
+    recordSession(storeDir, { sessionId: "owing-one", scope: PROJ, phase: "start", at: noonYesterday + HOUR });
     const owing = talker(k, "owing-one");
     for (let i = 0; i < 5; i++) owing.piece(noonYesterday + HOUR + i * 20 * MIN);
     owing.end(noonYesterday + 3 * HOUR);
@@ -592,5 +687,14 @@ describe("reading it: `counterparts coverage` and the doctor line", () => {
     const g = read();
     expect(g?.severity).toBe("green");
     expect(g?.detail).toContain("9 of 9 pieces written up; nothing owed; 1 lapsed this week");
+    // A small debt the pointer never offers — `claude -p` — is named apart, not waited on.
+    recordSession(storeDir, { sessionId: "print-1", scope: PROJ, phase: "start", entrypoint: "sdk-cli" });
+    const k = clocked(Date.now() - 2 * DAY);
+    const p = talker(k, "print-1");
+    for (let i = 0; i < 3; i++) p.piece(Date.now() - 2 * DAY + i * 10 * MIN);
+    p.end(Date.now() - 2 * DAY + 25 * MIN);
+    const h = read();
+    expect(h?.severity).toBe("green");
+    expect(h?.detail).toContain("nothing owed; 1 small, not a person's session: left to lapse");
   });
 });

@@ -114,7 +114,7 @@ async function live(
     b.c.boundary({ session, scope: SCOPE, kind: "stop" });
   }
   if (opts.answer === "chapter") {
-    expect(b.c.appendEpisode(session, `The migration plan came together today (${session}).`).appended).toBe(true);
+    expect(b.c.appendEpisode(session, `The migration plan came together today (${session}).`, { scope: SCOPE }).appended).toBe(true);
   } else if (opts.answer === "session-end") {
     const landed = await b.c.submitSessionEnd(
       { content: `The migration keeps the store format and drops the second index (${session}).`, kind: "fact" },
@@ -419,7 +419,7 @@ describe("the PR #189 review's findings, each held by a test", () => {
     expect(planRetention(b.c.spans, sources(b.c))[0]?.verdict).toBe("kept-live");
   });
 
-  test("m2: an end — and a write-up — recorded in one directory settle the text the session left in another", async () => {
+  test("m2: an end recorded in one directory settles the text the session left in another — and a word under the floor there owes nothing", async () => {
     const b = brain();
     const OTHER = "/scope/retention-worktree";
     b.set(NOW - 10 * DAY);
@@ -430,7 +430,10 @@ describe("the PR #189 review's findings, each held by a test", () => {
     const plan = planRetention(b.c.spans, sources(b.c));
     expect(plan).toHaveLength(1);
     expect(plan[0]?.scopes).toEqual([OTHER, SCOPE].sort());
-    expect(plan[0]?.facts).toMatchObject({ state: "ended", unwritten: 0 });
+    // The chapter wrote up SCOPE only (2026-09-30, review of #289); the one word
+    // in the worktree is under the floor, so nothing is owed.
+    expect(plan[0]?.facts).toMatchObject({ state: "ended", unwritten: 1 });
+    expect(plan[0]?.owes).toBe(false);
     expect(plan[0]?.verdict).toBe("deleted");
     const report = prune(b.c.spans, sources(b.c));
     expect(report.deleted).toBe(1);
@@ -444,7 +447,7 @@ describe("the PR #189 review's findings, each held by a test", () => {
       await live(b, "nothing-new", NOW - 10 * DAY, { answer: null });
       recordSession(dir, { sessionId: "nothing-new", scope: SCOPE, phase: "end", at: NOW - 10 * DAY });
       expect(markNothingNew(dir, "nothing-new", NOW - 10 * DAY + 60_000)).not.toBeNull();
-      if (claim) expect(claimUnwritten(b.c.spans, { session: "nothing-new", by: CLAIM_NOTHING_NEW, ref: "nothing-new" }).pieces).toBe(TALK.length);
+      if (claim) expect(claimUnwritten(b.c.spans, { session: "nothing-new", scope: SCOPE, by: CLAIM_NOTHING_NEW, ref: "nothing-new" }).pieces).toBe(TALK.length);
       b.set(NOW);
       const verdict = planRetention(b.c.spans, sources(b.c))[0]?.verdict;
       b.c.close();
