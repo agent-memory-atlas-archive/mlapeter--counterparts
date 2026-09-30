@@ -44,6 +44,7 @@ import { strength } from "../physics/index.js";
 import type { CreditOutcome, UseTier } from "../physics/index.js";
 import type { ProseDoc, Store } from "../store/index.js";
 import { hashText } from "../store/index.js";
+import { scanSecrets } from "../encode/secrets.js";
 import {
   IDENTITY_CORE_ROLE,
   byteLength,
@@ -1975,7 +1976,25 @@ export class Self {
       source: "episode",
       origin: { session: sessionId, ref: state.episodeId },
     };
+    // THE COPY KEEPS THE CHAPTER'S TITLE (2026-09-30, U13). The boundary caller
+    // never fills `proposal.title`, so every copy was minted untitled — a row
+    // that read, in a recall result, as the less useful twin of its own chapter.
+    // Nothing is invented: the chapter's own title, when it has one. A copy
+    // minted before this picks the title up when its chapter next regrows.
+    //
+    // THE SECRETS SCAN ONLY, not the whole battery (review of #293, B3): the
+    // battery's content floor (20 characters, three words) is a rule for a
+    // memory's BODY, and it refused almost every real title — "Launch day",
+    // "The first week". A credential is still redacted (the chapter door gates
+    // only the text, so a title may carry one); a title that is nothing BUT a
+    // credential is dropped, and says so.
     if (proposal.title !== undefined) put.title = proposal.title;
+    else if (doc.title !== undefined && doc.title.trim().length > 0) {
+      const scan = scanSecrets(doc.title.trim(), "title");
+      if (scan.emptyAfterRedaction) {
+        this.emit("self.episode.title.dropped", state.episodeId, { reason: "empty-after-redaction" });
+      } else put.title = scan.redacted;
+    }
     if (proposal.happenedOn !== undefined) put.happenedOn = proposal.happenedOn;
     else if (doc.happenedOn !== undefined) put.happenedOn = doc.happenedOn;
     if (proposal.salience !== undefined || proposal.claimed !== undefined) {

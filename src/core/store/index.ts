@@ -836,6 +836,12 @@ export interface MemoryFilter {
    * right: a row with no date is not a row born in a window.
    */
   learnedOnFrom?: string;
+  /**
+   * MINTED FROM THIS id — the `origin_ref` column (a proposal, a trace, or a
+   * journal chapter's `epi_` id for its copy). Exact match. Added 2026-09-30 so
+   * recall can credit a chapter's copy without reading every prose file.
+   */
+  originRef?: string;
 }
 
 function memoryWhere(filter: MemoryFilter): { clause: string; args: (string | number)[] } {
@@ -864,6 +870,10 @@ function memoryWhere(filter: MemoryFilter): { clause: string; args: (string | nu
   if (filter.learnedOnFrom !== undefined) {
     where.push("learned_on >= ?");
     args.push(filter.learnedOnFrom);
+  }
+  if (filter.originRef !== undefined) {
+    where.push("origin_ref = ?");
+    args.push(filter.originRef);
   }
   return { clause: where.length ? `WHERE ${where.join(" AND ")}` : "", args };
 }

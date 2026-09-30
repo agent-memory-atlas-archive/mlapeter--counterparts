@@ -224,6 +224,9 @@ export interface ActivationResult {
   /** Scored candidates the `maxCandidates` cut left out — counted, never
    *  silent (2026-09-28). */
   readonly dropped: number;
+  /** Journal copies folded into their own chapter before the cut (2026-09-30,
+   *  U13). Reported, not recorded, for `capped`'s reason. */
+  readonly collapsed: number;
 }
 
 /**
@@ -544,14 +547,19 @@ export function activate(
     if (row.type === "schema" && row.kind === "place" && isHandoffRow(store, id)) return undefined;
     return row;
   };
+
   let scored: Scored[] = [];
   let skipped = 0;
+  /** A journal copy (copy id -> its chapter's id), read off box 2's own columns. */
+  const copyOf = new Map<string, string>();
   for (const id of ids) {
     const row = recallable(id);
     if (row === undefined) {
       skipped += 1;
       continue;
     }
+    const chapter = journalCopyOf(row);
+    if (chapter !== null) copyOf.set(id, chapter);
     const physics = rowToPhysics(row);
     const cue = cueScore.get(id) ?? 0;
     const temporal = temporalScore.get(id) ?? 0;
@@ -573,6 +581,53 @@ export function activate(
       activation,
       cutKey: salienceRank(activation, gatedS, t),
     });
+  }
+  // ── a chapter and its own copy are ONE result (2026-09-30, U13) ─────────
+  // Every journal chapter (`epi_`, `type: "episode"`) is also ingested once as
+  // an ordinary self-kind memory with the same body (`self/index.ts#
+  // ingestEpisode`: source `episode`, `origin_ref` = the chapter's id). Both
+  // matched every cue the text held, so a pair took two of about eight slots
+  // in every deliberate answer the U13 session asked. Lateral inhibition does
+  // not catch it: it runs only on ADMITTED candidates, and a pair below this
+  // turn's bar reached the deliberate dim tier as two rows.
+  //
+  // WHICH ROW IS SHOWN: the chapter — it carries the title and the `Journal:`
+  // label, and it is what the rest of the system calls the account. It is
+  // scored as the pair: each channel's STRONGER half (cue, temporal, semantic),
+  // the higher salience of the two, and the mood lift of either (the copy is
+  // the row that carries `proposal.salience` and most stamps), with arrival
+  // from the chapter's own strength. The copy's links are the pair's: a hop to
+  // the copy lands on the chapter, and the copy seeds the spread beside it
+  // (existing edges point at the copy). The copy leaves the pool HERE, before
+  // the cut, so the slot it held goes to the next candidate. A use of a chapter
+  // recall showed is also a use of its copy (`Recall.resolveUse`). A copy
+  // whose chapter was not reached stays itself.
+  let collapsed = 0;
+  /** copy id -> the chapter it was folded into, and the reverse. */
+  const collapsedInto = new Map<string, string>();
+  const absorbed = new Map<string, string[]>();
+  if (copyOf.size > 0) {
+    const byId = new Map(scored.map((c) => [c.id, c]));
+    const gone = new Set<string>();
+    for (const [copyId, chapterId] of copyOf) {
+      const copy = byId.get(copyId);
+      const chapter = byId.get(chapterId);
+      if (copy === undefined || chapter === undefined) continue;
+      const cue = Math.max(chapter.cue, copy.cue);
+      const temporal = Math.max(chapter.temporal, copy.temporal);
+      const semantic = Math.max(chapter.semantic, copy.semantic);
+      const arrival = cue + semantic > 0 ? t.ARRIVAL_WEIGHT * chapter.strength : 0;
+      const activation = cue + semantic + arrival;
+      const sal = Math.max(chapter.sal, copy.sal);
+      byId.set(chapterId, { ...chapter, cue, temporal, semantic, arrival, activation, sal, cutKey: salienceRank(activation, sal, t) });
+      collapsedInto.set(copyId, chapterId);
+      absorbed.set(chapterId, [...(absorbed.get(chapterId) ?? []), copyId]);
+      matchCount.set(chapterId, Math.max(matchCount.get(chapterId) ?? 0, matchCount.get(copyId) ?? 0));
+      if (unambiguousMatch.has(copyId)) unambiguousMatch.add(chapterId);
+      gone.add(copyId);
+      collapsed += 1;
+    }
+    scored = scored.filter((c) => !gone.has(c.id)).map((c) => byId.get(c.id) ?? c);
   }
   // SALIENCE BEFORE THE CUT (2026-09-28). The gate lowers a salient candidate's
   // relative bar and raises a dull one's (`gate.ts#modulate`), but it can only
@@ -633,20 +688,29 @@ export function activate(
     const seeds = scored
       .filter((c) => c.cue + c.semantic > 0)
       .slice(0, t.SPREAD_SEEDS)
-      .map((c) => ({ id: c.id, activation: c.activation }));
+      .flatMap((c) => [c.id, ...(absorbed.get(c.id) ?? [])].map((id) => ({ id, activation: c.activation })));
     const seedIds = new Set(seeds.map((s) => s.id));
     for (const s of seeds) strongestSeed = Math.max(strongestSeed, s.activation);
     const out = input.spread(seeds, input.day);
     const hopScore = new Map<string, number>();
     for (const c of out.contributions) {
-      if (!(c.activation > 0) || seedIds.has(c.id)) continue;
+      // A folded copy's share is its chapter's (the pair is one result).
+      const to = collapsedInto.get(c.id) ?? c.id;
+      if (!(c.activation > 0) || seedIds.has(to)) continue;
       // A candidate is modulated; anything else is link-only. Whether a
       // link-only memory is SHOWN is decided below, after the cut — it has to
       // be live, above the threshold, and among the few.
-      if (ids.has(c.id)) hopScore.set(c.id, (hopScore.get(c.id) ?? 0) + c.activation);
+      if (ids.has(c.id)) hopScore.set(to, (hopScore.get(to) ?? 0) + c.activation);
       else {
         linkOnlyScore.set(c.id, (linkOnlyScore.get(c.id) ?? 0) + c.activation);
-        if (c.from !== undefined) linkOnlyFrom.set(c.id, c.from);
+        if (c.from !== undefined) {
+          const from: Record<string, number> = {};
+          for (const [id, a] of Object.entries(c.from)) {
+            const k = collapsedInto.get(id) ?? id;
+            from[k] = (from[k] ?? 0) + a;
+          }
+          linkOnlyFrom.set(c.id, from);
+        }
       }
     }
     if (hopScore.size > 0) {
@@ -686,13 +750,17 @@ export function activate(
   // this just declines to do work the gate would throw away).
   const mood = input.mood ?? NO_MOOD;
   const feelingsById = hasMood(mood)
-    ? store.feelingsOn(kept.filter((c) => c.cue + c.semantic > 0).map((c) => c.id))
+    ? store.feelingsOn(kept.filter((c) => c.cue + c.semantic > 0).flatMap((c) => [c.id, ...(absorbed.get(c.id) ?? [])]))
     : new Map<string, never[]>();
   const candidates: Candidate[] = [];
   for (const c of kept) {
     const { id, physics, cue, temporal, semantic, arrival, hops, activation } = c;
-    const lift = cue + semantic > 0 ? moodLift(feelingsById.get(id), mood, input.day, t) : 0;
-    const gated = gatedSal(physics, input.selfFelt);
+    const lift =
+      cue + semantic > 0
+        ? Math.max(...[id, ...(absorbed.get(id) ?? [])].map((x) => moodLift(feelingsById.get(x), mood, input.day, t)))
+        : 0;
+    // The turn-gated salience scored above — for a folded pair, the higher half's.
+    const gated = c.sal;
     // `readProse` is `read().doc`, so taking the whole read costs nothing and
     // brings the confidentiality flag with it instead of re-deriving it.
     const stored = store.read(id);
@@ -745,12 +813,18 @@ export function activate(
     .filter(([, a]) => a >= threshold)
     .sort((x, y) => y[1] - x[1] || (x[0] < y[0] ? -1 : 1));
   let pointerCandidates = 0;
+  // A pointer never re-opens a pair the collapse above closed: a copy whose
+  // chapter is a candidate, or a chapter whose copy is, is the same result.
+  const keptIds = new Set(kept.map((c) => c.id));
+  const chaptersKept = new Set(kept.map((c) => copyOf.get(c.id)).filter((x): x is string => x !== undefined));
   // No ceiling of its own (review of #281, finding 4): the gate ranks and
   // admits a pointer by what its SHOWN anchors passed it, never by this
   // number, so a cap here would bind nothing. Its activation is what arrived.
   for (const [id, arrived] of pool) {
     const row = recallable(id);
     if (row === undefined) continue;
+    const chapter = journalCopyOf(row);
+    if ((chapter !== null && keptIds.has(chapter)) || chaptersKept.has(id)) continue;
     pointerCandidates += 1;
     const physics = rowToPhysics(row);
     const stored = store.read(id);
@@ -802,7 +876,20 @@ export function activate(
             pointerCandidates,
           },
     dropped,
+    collapsed,
   };
+}
+
+/**
+ * The chapter a JOURNAL COPY was minted from, or null for any other row — read
+ * off box 2's own columns (`source` + `origin_ref`, stamped by
+ * `self/index.ts#ingestEpisode`), so the scan pays no prose read for it. The
+ * copy's `meta.episodeId` says the same thing one file read later.
+ */
+export function journalCopyOf(row: { type: string; source: string | null; origin_ref: string | null }): string | null {
+  return row.type === "memory" && row.source === "episode" && row.origin_ref !== null && row.origin_ref.length > 0
+    ? row.origin_ref
+    : null;
 }
 
 /** Population standard deviation — the gate's own (`gate.ts#background`). */

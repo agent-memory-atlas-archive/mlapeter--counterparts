@@ -1822,6 +1822,14 @@ export class McpServer {
    * The symmetry counters are the useful minimum CONTRACT §7 OQ2 names —
    * created versus exited per kind. They are the numbers that made v1's
    * pathologies visible; a store census on its own never did.
+   *
+   * REPLACED IS NOT EXITED (2026-09-30, U13). A row a newer reading carries — a
+   * revision, a merge, a chapter's copy rebuilt when the chapter grew — is
+   * counted under `replaced`, apart from the real exits (let go, removed).
+   * Until then every archived row was an exit, and a store whose chapters kept
+   * growing read as forgetting its self-kind memories. Which is which is
+   * `core/leaving.ts`'s table, asked through `counterpart.leftAs` — the same
+   * table the dashboard's archive words read.
    */
   /**
    * `wake` — CLAUDE DESKTOP'S SESSION START (2026-09-30, brief item 1).
@@ -1976,6 +1984,7 @@ export class McpServer {
     const denied = new Set(store.deniedIds());
     const created: Record<string, number> = {};
     const exited: Record<string, number> = {};
+    const replaced: Record<string, number> = {};
     const byBand: Record<string, number> = {};
     let live = 0;
     let archived = 0;
@@ -1992,6 +2001,7 @@ export class McpServer {
       const ids = store.list({ kind });
       let born = 0;
       let gone = 0;
+      let swapped = 0;
       for (const id of ids) {
         const row = store.row(id);
         if (row === undefined) continue;
@@ -2005,12 +2015,15 @@ export class McpServer {
           continue;
         }
         if (row.archived === 1) {
-          gone += 1;
           archived += 1;
+          // An unknown reason with nothing superseding it counts as an exit:
+          // never hidden under "nothing was forgotten".
+          if (this.counterpart.leftAs(row.archived_reason, row.superseded_by !== null) === "replaced") swapped += 1;
+          else gone += 1;
           continue;
         }
         if (row.superseded_by !== null) {
-          gone += 1;
+          swapped += 1;
           superseded += 1;
           continue;
         }
@@ -2019,6 +2032,7 @@ export class McpServer {
       }
       created[kind] = born;
       exited[kind] = gone;
+      replaced[kind] = swapped;
     }
     for (const band of bands) byBand[band] = byBand[band] ?? 0;
 
@@ -2042,15 +2056,16 @@ export class McpServer {
       journal,
       byKind: created,
       byBand,
-      /** OQ2's symmetry counters: born versus left, per kind. */
-      symmetry: { created, exited },
+      /** OQ2's symmetry counters: born versus left, per kind — and, apart from
+       *  the exits, the rows a newer reading replaced. */
+      symmetry: { created, exited, replaced },
       removed: {
         count: removedIds.size,
         kinds: removedKinds,
         dates: [...dates].sort(),
         note: "Counts, kinds and dates only. No ids, no bodies, no hashes.",
       },
-      counts: "Every number above is MEMORIES. `journal` is the first-person episodes those memories were made from: it is the source, not a memory, and it neither decays nor is pruned.",
+      counts: "Every number above is MEMORIES. `journal` is the first-person episodes those memories were made from: it is the source, not a memory, and it neither decays nor is pruned. In `symmetry`, `exited` is only what left for good (let go, or removed); `replaced` is what a newer reading carries (a revision, a merge, a journal copy rebuilt when its chapter grew) — nothing there was forgotten.",
       clock: {
         livedDay: store.livedDay(),
         lastActiveDate: store.getMeta("lastActiveDate") ?? null,

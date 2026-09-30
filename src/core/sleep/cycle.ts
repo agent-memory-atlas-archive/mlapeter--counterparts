@@ -581,6 +581,14 @@ export function symmetryVerdicts(store: SleepStore, day: number, emit: Emit): Sy
  * §5 G13 / scar §2.17 — created versus exited, per kind, every cycle. A kind
  * with a zero exit count after the bake-in window is a defect to investigate:
  * a curation path that never fires is indistinguishable from one that is broken.
+ *
+ * NOT SPLIT like the `status` census (2026-09-30, U13; `core/leaving.ts`). The
+ * exits here are this cycle's own curation ACTIONS — prune, merge, fade — and
+ * the question is whether each path fires, so a merge counts even though a live
+ * row carries what it merged. A journal copy archived `episode-regrown` never
+ * lands here: that happens at ingestion, not in the cycle. What does reach this
+ * count is the regrown copy's BIRTH (a new row, born today), so a self kind
+ * whose chapters grew reads a little high on `created`.
  */
 export function census(
   store: SleepStore,

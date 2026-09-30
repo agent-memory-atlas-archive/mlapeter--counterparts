@@ -904,3 +904,15 @@ What the build learned and decided; the rules themselves are CONTRACT §5 G13–
   changes, with the scratch-workspace skip). The scope-off/paused refusal is per host.
   `install --host claude-desktop` names the store a replaced entry pointed at, and says to
   quit Desktop first (it rewrites its own config file while it runs).
+
+## 2026-09-30 — the census counts replaced apart from exited (U13)
+
+`status`'s `symmetry` gains `replaced` per kind, and `exited` narrows to what left for
+good: let go (pruned, faded), removed, or archived under a reason nobody mapped. A
+revision, a merge (sleep's or a dream's), a handoff cleared and a journal copy rebuilt when
+its chapter grew (`episode-regrown`) are `replaced` — a live row carries them. On the live
+store 72 of 74 self-kind "exits" were rebuilt copies. The table is `core/leaving.ts`, the
+same one the dashboard's archive words take their groups from; the server asks it through
+`counterpart.leftAs` so this change adds no import to `server.ts`. `exited` CHANGED MEANING
+without a version marker (nothing in the code reads it): a daily or a note comparing it
+across days sees a step on the day this is installed. The CHANGELOG says so.

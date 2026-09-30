@@ -128,6 +128,16 @@ reply actually used reconsolidates, where in humans every retrieval does.
   "here is something" but "this is arriving": a chapter's date is a day already lived, so
   it is refused outright there (`prospective/` CONTRACT §3). Label where the reader can
   discount; filter where the frame itself would be a lie.
+- **A chapter and its own copy are one result** (2026-09-30, U13; working default). The
+  self-kind memory ingested from a chapter (`source: "episode"`, `origin_ref` = the
+  chapter) is folded into the chapter before the candidate cut, on every path
+  (`activate.ts`); the chapter is the row shown, scored with each channel's stronger half,
+  the higher salience and either half's mood lift, and the copy's links are the pair's. A
+  use of a chapter RECALL SHOWED this session is credited to its live copy too
+  (`Recall.resolveUse`, the copy's own `trains` respected), so the copy — the one that
+  decays — earns what it earned while it was shown; a chapter used off the wake or the
+  `chapter` tool credits itself only. A copy whose chapter was not reached is shown as
+  itself.
 
 ## 4. Drops / simplifies
 
