@@ -124,8 +124,9 @@ import {
   Handoffs,
   isHandoffRow,
 } from "./handoff/index.js";
-import type { Handoff, HandoffRefusal, HandoffWrite } from "./handoff/index.js";
-import { CLAIM_CHAPTER, askFromStretch, claimUnwritten, sessionStretch } from "./coverage/index.js";
+import type { Handoff, HandoffRefusal, HandoffWrite, PointerSince } from "./handoff/index.js";
+import { CLAIM_CHAPTER, askFromStretch, claimUnwritten, sessionStretch, workSince } from "./coverage/index.js";
+import { localStamp } from "./time.js";
 import {
   BRIEFING_KEY,
   BRIEFING_TRIM_LOG_CAP,
@@ -1794,7 +1795,7 @@ export class Counterpart {
     if (scope.length === 0 || !result.ok) return result;
     let pointer: { block: string; handoff: Handoff } | null = null;
     try {
-      pointer = this.handoffs.pointer(scope);
+      pointer = this.handoffs.pointer(scope, undefined, (h) => this.handoffSince(h, scope));
     } catch {
       // A store that will not answer is not a reason to fail a wake (§1 G7).
       return result;
@@ -1821,6 +1822,26 @@ export class Counterpart {
       text: spliced.text,
       bytes: spliced.bytes,
       sentinel: spliced.sentinel,
+    };
+  }
+
+  /**
+   * HOW CURRENT THIS DIRECTORY'S POINTER IS, at delivery (2026-09-30): when
+   * it was written, in the store's zone, and what sessions here captured after
+   * that — how long the work went on, by the pieces' own times, and whether it
+   * is written up (`coverage/#workSince`). Null when the write time is unknown:
+   * the line then says the date alone, as it always did.
+   */
+  private handoffSince(h: Handoff, scope: string): PointerSince | null {
+    const writtenAt = this.handoffs.writtenAt(h);
+    if (writtenAt === null) return null;
+    const work = workSince(this.spans, scope, writtenAt);
+    return {
+      written: localStamp(writtenAt, this.store.zone()),
+      after:
+        work.pieces === 0 || work.lastAt === null
+          ? null
+          : { minutes: Math.max(1, Math.round((work.lastAt - writtenAt) / 60_000)), writtenUp: work.unwritten === 0 },
     };
   }
 

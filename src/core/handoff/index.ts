@@ -443,9 +443,16 @@ function isHeading(line: string): boolean {
   return t.length === 0 || /^#{1,6}\s/.test(t) || /^[=-]{3,}$/.test(t);
 }
 
-/** The first line of a handoff, flattened and cut to fit, with an ellipsis when
- *  it was cut. Cuts at a word where one is near the end, never mid-word when a
- *  space is within the last fifth of the room. */
+/**
+ * The first SENTENCE of a handoff's first substantive line, flattened and cut
+ * to fit, with an ellipsis when it was cut. Cuts at a word where one is near
+ * the end, never mid-word when a space is within the last fifth of the room.
+ *
+ * A sentence, not the line (2026-09-30): a pointer that stops at 160 bytes in
+ * the middle of a second sentence reads as a fragment of something the reader
+ * was not shown. A sentence ends at `.`, `!` or `?` followed by a space; a
+ * version number or a path keeps its dots.
+ */
 export function excerpt(body: string, capBytes = HANDOFF_EXCERPT_BYTES): string {
   const lines = body.split("\n");
   // The first line with SUBSTANCE on it: not blank, and not the title the
@@ -454,7 +461,8 @@ export function excerpt(body: string, capBytes = HANDOFF_EXCERPT_BYTES): string 
   // case still fails…"` produced a pointer that said nothing at all
   // (adversarial review MINOR-6).
   const line = lines.find((l) => !isHeading(l)) ?? lines.find((l) => l.trim().length > 0) ?? body;
-  const first = flatten(line);
+  const flat = flatten(line);
+  const first = /^.*?[.!?](?=\s)/u.exec(flat)?.[0] ?? flat;
   if (byteLengthOf(first) <= capBytes) return first;
   // The ellipsis is THREE bytes, not one: `…` is U+2026. Reserving a character
   // rather than its bytes is how a cap that says 160 renders 161 — measured,
@@ -468,10 +476,43 @@ export function excerpt(body: string, capBytes = HANDOFF_EXCERPT_BYTES): string 
   return `${kept.trimEnd()}${ELLIPSIS}`;
 }
 
-/** The pointer's first line: the date and the first line of what was written. */
-export function pointerLine(h: Handoff, capBytes = HANDOFF_EXCERPT_BYTES): string {
-  const when = /^\d{4}-\d{2}-\d{2}$/.test(h.writtenOn.trim()) ? h.writtenOn.trim() : "an unrecorded date";
-  return `Where I left off in this directory (${when}): ${excerpt(h.body, capBytes)}`;
+/**
+ * HOW CURRENT THE POINTER IS (2026-09-30), computed at delivery by whoever
+ * splices it: when it was written, as a person reads it in the store's zone,
+ * and — when sessions here captured anything after that — how long the work
+ * went on (from the pieces' own times, never the registry's boundary clock,
+ * which a close bumps) and whether it has been written up since.
+ */
+export interface PointerSince {
+  /** `09-29 12:47`. */
+  readonly written: string;
+  readonly after: { readonly minutes: number; readonly writtenUp: boolean } | null;
+}
+
+/** The widest `PointerSince` the words can take — what the reserve is sized to. */
+export const WIDEST_POINTER_SINCE: PointerSince = { written: "12-31 23:59", after: { minutes: 89, writtenUp: false } };
+
+function aboutWords(minutes: number): string {
+  if (minutes < 90) return minutes <= 1 ? "about a minute" : `about ${String(minutes)} minutes`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `about ${String(hours)} hours`;
+  return `about ${String(Math.round(hours / 24))} days`;
+}
+
+/** What the brackets after "Where I left off" say. */
+function whenWords(h: Handoff, since: PointerSince | null): string {
+  if (since === null || since.written.length === 0) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(h.writtenOn.trim()) ? h.writtenOn.trim() : "an unrecorded date";
+  }
+  const written = `written ${since.written}`;
+  if (since.after === null) return written;
+  return `${written}; ${aboutWords(since.after.minutes)} of work here since, ${since.after.writtenUp ? "written up since" : "not yet written up"}`;
+}
+
+/** The pointer's first line: when it was written, how current it is, and the
+ *  first sentence of what was written. */
+export function pointerLine(h: Handoff, capBytes = HANDOFF_EXCERPT_BYTES, since: PointerSince | null = null): string {
+  return `Where I left off in this directory (${whenWords(h, since)}): ${excerpt(h.body, capBytes)}`;
 }
 
 /** The pointer's second line: the door to the whole of it, and its life. */
@@ -492,9 +533,14 @@ export function pointerDoor(h: Handoff, day: number, lifeDays = HANDOFF_LIFE_DAY
  * bundle — the scar `identityCoreLine` carries (a name with newlines in it
  * forged a resolved statement into the wake).
  */
-export function pointerBlock(h: Handoff, day: number, lifeDays = HANDOFF_LIFE_DAYS): string | null {
+export function pointerBlock(
+  h: Handoff,
+  day: number,
+  lifeDays = HANDOFF_LIFE_DAYS,
+  since: PointerSince | null = null,
+): string | null {
   if (expired(h, day, lifeDays)) return null;
-  return [flatten(pointerLine(h)), flatten(pointerDoor(h, day, lifeDays))].join("\n");
+  return [flatten(pointerLine(h, HANDOFF_EXCERPT_BYTES, since)), flatten(pointerDoor(h, day, lifeDays))].join("\n");
 }
 
 // ── the module ──────────────────────────────────────────────────────────────
@@ -589,7 +635,9 @@ export class Handoffs {
       if (row.writtenDay === null || daysLeft(row.writtenDay, d) <= 0) continue;
       const h = handoffOf(this.store, row);
       if (h === null) continue;
-      const block = pointerBlock(h, d);
+      // Sized to the widest "how current" words the delivery can add, which
+      // it computes only then.
+      const block = pointerBlock(h, d, HANDOFF_LIFE_DAYS, WIDEST_POINTER_SINCE);
       if (block !== null) out.push(byteLengthOf(block));
     }
     return out;
@@ -764,13 +812,39 @@ export class Handoffs {
   /**
    * THE POINTER FOR THIS WAKE, or null. Pure — it writes nothing, so a caller
    * that finds no room can drop it without having claimed it was shown.
+   * `since` is how current it is (`PointerSince`), from the handoff and the
+   * time it was written — which the caller gets from `writtenAt`.
    */
-  pointer(scope: string, day?: number): { block: string; handoff: Handoff } | null {
+  pointer(
+    scope: string,
+    day?: number,
+    since?: (h: Handoff) => PointerSince | null,
+  ): { block: string; handoff: Handoff } | null {
     const d = day ?? this.store.livedDay();
     const h = this.read(scope, d);
     if (h === null) return null;
-    const block = pointerBlock(h, d);
+    let current: PointerSince | null = null;
+    try {
+      current = since?.(h) ?? null;
+    } catch {
+      current = null;
+    }
+    const block = pointerBlock(h, d, HANDOFF_LIFE_DAYS, current);
     return block === null ? null : { block, handoff: h };
+  }
+
+  /**
+   * WHEN THIS HANDOFF'S WORDS WERE WRITTEN, epoch ms: its newest
+   * `handoff.written` row (the log keeps ~90 lived days; a pointer lives 14).
+   * Null when no row says.
+   */
+  writtenAt(h: Handoff): number | null {
+    try {
+      const row = this.store.eventLog({ name: HANDOFF_WRITTEN_EVENT, ref: h.id, order: "desc", limit: 1 })[0];
+      return row === undefined ? null : row.at;
+    } catch {
+      return null;
+    }
   }
 
   /**
