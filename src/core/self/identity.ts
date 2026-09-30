@@ -78,7 +78,7 @@ export interface HintReading {
   /** Strength decayed from the last organic use. */
   readonly organic: number;
   /** The load as it stands on `day`, before this render — and, for a hint
-   *  showing since an earlier render today, before today's one step. */
+   *  an earlier render today showed, before today's one step. */
   readonly load: number;
   readonly habituation: number;
   readonly habit: "fresh" | "habituated" | "reset";
@@ -111,12 +111,14 @@ export function hintReading(
     if (leftOn !== null && lastReturn !== null && lastReturn > leftOn) {
       habit = "reset";
     } else {
-      // SHOWING SINCE AN EARLIER RENDER TODAY (2026-09-30): the stored load
+      // SHOWN BY AN EARLIER RENDER TODAY (2026-09-30): the stored load
       // already carries today's step, so a same-day re-render scoring it at
       // that would score the morning's hints at half and hand Nearby to the
       // runners-up. It is scored at the load from before the step; the step
-      // itself stands (`nextLoad` below). A row closed today is not showing.
-      const stepped = display.shown_day === day && display.closed_day === null;
+      // itself stands (`nextLoad` below). Open or closed since: a row a later
+      // render today dropped carries the same step, and scoring it at the
+      // stepped load would reorder what that render left out (review of #287).
+      const stepped = display.shown_day === day;
       const stored = stepped ? Math.max(0, display.load - t.HINT_STEP) : display.load;
       load = stored * Math.exp(-Math.max(0, day - display.shown_day) / t.HINT_RECOVERY_DAYS);
       habit = load > 0 ? "habituated" : "fresh";

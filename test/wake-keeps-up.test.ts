@@ -231,7 +231,8 @@ describe("the wake keeps up: page, write-up, run end", () => {
     expect(published()).not.toContain("mid-afternoon");
     await worker("2026-09-29");
     expect(published()).toContain("A page written mid-afternoon, after the morning's render.");
-    expect(briefingRows().at(-1)).toMatchObject({ reason: "refresh", triggers: ["page"] });
+    // The row carries the run's one date, not the wall clock's.
+    expect(briefingRows().at(-1)).toMatchObject({ reason: "refresh", triggers: ["page"], date: "2026-09-29" });
 
     // Nothing new: the next worker renders nothing.
     await worker("2026-09-29");
@@ -414,6 +415,29 @@ describe("a same-day re-render is stable", () => {
     const out = dropped[0] as string;
     expect(after[out]).toMatchObject({ closed_day: 2, load: before[out]?.load });
     for (const id of kept.filter((k) => k !== fresh)) expect(after[id]).toEqual(before[id]);
+  });
+
+  test("after new memories, a second refresh with no change publishes identical bytes (review of #287)", async () => {
+    const c = counterpart();
+    for (let i = 0; i < 12; i += 1) warm(c.store, `A warm memory, number ${String(i)}, about the morning.`, 0.5 + i * 0.03);
+    await c.sessionEnd({ date: "2026-09-28", at: "2026-09-28" });
+    await c.sessionEnd({ date: "2026-09-29", at: "2026-09-29" });
+    for (let i = 0; i < 4; i += 1) warm(c.store, `Fresh this afternoon, strong, number ${String(i)}.`, 1.0);
+    await c.submitSessionEnd({ content: "A write-up memory about the afternoon's build, strongly worded." }, { session: "s1", scope: "proj" });
+    expect(c.refreshWake({ at: "2026-09-29" }).reason).toBe("rendered");
+    // The open display rows are exactly what the render kept.
+    const rendered = c.self.events("self.briefing.rendered").pop();
+    const bundle = c.store.getMeta(BRIEFING_KEY) ?? "";
+    const open = [...c.store.wakeDisplays().values()].filter((r) => r.closed_day === null).map((r) => r.memory_id);
+    expect(open.length).toBe(Number(rendered?.data?.["hints"] ?? -1));
+    for (const id of open) expect(bundle).toContain(c.store.readProse(id).body.slice(0, 30));
+    // Hints the afternoon's render dropped are closed today and carry today's
+    // step; a second refresh with nothing new must not reorder them.
+    markWakeBehind(c.store, "page");
+    const before = displays(c.store);
+    expect(c.refreshWake({ at: "2026-09-29" }).reason).toBe("rendered");
+    expect(c.store.getMeta(BRIEFING_KEY)).toBe(bundle);
+    expect(displays(c.store)).toEqual(before);
   });
 
   test("identity rotates once a day however often the wake is rebuilt", () => {
