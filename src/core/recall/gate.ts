@@ -283,18 +283,30 @@ export function looBar(
 }
 
 export function gate(input: GateInput, t: RecallTunables): GateResult {
-  const acts = input.candidates.filter((c) => c.cue + c.semantic > 0).map((c) => c.activation);
+  // THE BACKGROUND IS WHAT THE WORDS AND MEANING FOUND (review of #293, B2).
+  // A deliberate question about feeling lets stamps bring cue
+  // (`Candidate.stamp`); that part is measured AGAINST this turn's background,
+  // never part of it — six nominations at several cue units each raised the
+  // relative bar sevenfold and dropped every answer the words had found a
+  // tier. A candidate only stamps reached, or one kept only because of a stamp
+  // (`pastCut` — the words reached it too weakly to make the cut), is outside
+  // the sample; its bar is the whole sample's. Absent on every ambient turn, so there nothing changes.
+  const own = (c: Candidate): number => c.activation - (c.stamp ?? 0);
+  const inSample = (c: Candidate): boolean => c.pastCut !== true && c.cue - (c.stamp ?? 0) + c.semantic > 0;
+  const acts = input.candidates.filter(inSample).map(own);
   const bg = background(acts, input.storeSize, t);
   /** The loud-tier floors are in the same unit as hard gate (b)'s (`floorUnit`). */
   const loudUnit = floorUnit(input.storeSize);
   const sum = acts.reduce((a, b) => a + b, 0);
   const sumSq = acts.reduce((a, b) => a + b * b, 0);
   const n = acts.length;
+  const barOf = (c: Candidate, snr: number): number =>
+    inSample(c) ? looBar(own(c), sum, sumSq, n, snr) : bg.mean + snr * bg.sd;
   const barsFor = (c: Candidate): { admit: number; loud: number } =>
     bg.regime === "relative"
       ? {
-          admit: modulate(looBar(c.activation, sum, sumSq, n, t.SNR_GLOBAL), c.sal, bg.regime, t),
-          loud: modulate(looBar(c.activation, sum, sumSq, n, t.SNR_STRONG), c.sal, bg.regime, t),
+          admit: modulate(barOf(c, t.SNR_GLOBAL), c.sal, bg.regime, t),
+          loud: modulate(barOf(c, t.SNR_STRONG), c.sal, bg.regime, t),
         }
       : { admit: bg.bar, loud: bg.strongBar };
 

@@ -360,6 +360,10 @@ function argvFor(name: ActionName, body: Body, ctx: ActionContext): Built {
       const typed = words(question as string, "question");
       const exact = flag(body, "exact");
       const voiced = exact ? { text: typed, changed: false } : toMyVoice(typed, ctx.ownerName ?? null);
+      // In MY voice, "I" is me: a question about feeling asks about the
+      // counterpart's own feelings (`--voiced`, U13). `exact` keeps the owner's
+      // words, and his "I".
+      if (!exact) argv.push("--voiced");
       return {
         argv: [...argv, "--", words(voiced.text, "question")],
         searched: { text: voiced.text, changed: voiced.changed, exact },

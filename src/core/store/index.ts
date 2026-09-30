@@ -836,6 +836,12 @@ export interface MemoryFilter {
    * right: a row with no date is not a row born in a window.
    */
   learnedOnFrom?: string;
+  /**
+   * MINTED FROM THIS id — the `origin_ref` column (a proposal, a trace, or a
+   * journal chapter's `epi_` id for its copy). Exact match. Added 2026-09-30 so
+   * recall can credit a chapter's copy without reading every prose file.
+   */
+  originRef?: string;
 }
 
 function memoryWhere(filter: MemoryFilter): { clause: string; args: (string | number)[] } {
@@ -864,6 +870,10 @@ function memoryWhere(filter: MemoryFilter): { clause: string; args: (string | nu
   if (filter.learnedOnFrom !== undefined) {
     where.push("learned_on >= ?");
     args.push(filter.learnedOnFrom);
+  }
+  if (filter.originRef !== undefined) {
+    where.push("origin_ref = ?");
+    args.push(filter.originRef);
   }
   return { clause: where.length ? `WHERE ${where.join(" AND ")}` : "", args };
 }
@@ -4048,6 +4058,21 @@ export class Store {
         WHERE f.created_at >= ? AND m.archived = 0 AND m.superseded_by IS NULL
         ORDER BY f.created_at DESC, f.rowid DESC`,
       sinceMs,
+    );
+  }
+
+  /**
+   * Every feeling on a LIVE memory, with its memory's birth day beside it — the
+   * pool a deliberate question about feeling ranks from (recall, 2026-09-30,
+   * U13). One scan of the `feelings` table, which is small (a few per memory at
+   * most), the same scan `feelingsSince` makes. An archived or superseded
+   * memory's feelings are not in it.
+   */
+  feelingsLive(): (FeelingRow & { birth_day: number })[] {
+    return this.ops.all<FeelingRow & { birth_day: number }>(
+      `SELECT f.*, m.birth_day AS birth_day FROM feelings f JOIN memories m ON m.id = f.memory_id
+        WHERE m.archived = 0 AND m.superseded_by IS NULL
+        ORDER BY f.created_at, f.rowid`,
     );
   }
 

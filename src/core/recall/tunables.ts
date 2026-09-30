@@ -213,6 +213,15 @@ export interface RecallTunables {
   /** The same for the OTHER person's matching feeling: the light cross-link. CAL. */
   MOOD_CROSS_WEIGHT: number;
 
+  // ── a deliberate question about feeling (2026-09-30, U13 — WORKING DEFAULTS) ─
+  /** The cue a nominated stamp brings, in cue units (one maximally-rare word),
+   *  times its softened strength. Sized to clear the floor and compete for the
+   *  gate's slots; the ORDER is the softened strength's (`deliberate.ts`). CAL. */
+  FEELING_CUE_UNITS: number;
+  /** How many of the strongest stamped memories a question about feeling
+   *  nominates on its own — the lane's bound, beside the words' candidates. CAL. */
+  FEELING_CANDIDATES_MAX: number;
+
   // ── render ───────────────────────────────────────────────────────────────
   /** Composed byte budget for the WHOLE injection, sentinel included. The host
    *  owns the real ceiling (scar §2.18) and passes it in; this is the default. CAL. */
@@ -429,6 +438,13 @@ export const TUNABLES: RecallTunables = {
   MOOD_MIN_STRENGTH: 0.3,
   MOOD_SAME_WEIGHT: 0.3,
   MOOD_CROSS_WEIGHT: 0.1,
+
+  // U13 (2026-09-30). A fresh stamp at 0.4 brings 1.6 cue units — eight times
+  // the global floor (0.2) and under the loud floor (4.5), so a feeling alone
+  // is quietly available and the words decide what is loud. Six nominations
+  // leave room in a 12-row answer for what the words found. Unmeasured.
+  FEELING_CUE_UNITS: 4,
+  FEELING_CANDIDATES_MAX: 6,
 
   BUDGET_BYTES: 2048,
   GIST_BYTES: 240,

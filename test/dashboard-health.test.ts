@@ -30,6 +30,7 @@ import { Dashboard } from "../src/adapters/dashboard/index.js";
 import { NO_CONFIG_HOME, buildArgv, runAction } from "../src/adapters/dashboard/web/actions.js";
 import { ARCHIVE_PHRASES } from "../src/adapters/dashboard/web/views/archive-words.js";
 import { healthView } from "../src/adapters/dashboard/web/views/health.js";
+import { CORRECTED_REASON } from "../src/core/contradictions.js";
 import { DREAM_MERGE_REASON, DREAM_UNDONE_REASON } from "../src/core/dream/index.js";
 import { TUNABLES as SCHEMA_TUNABLES } from "../src/core/schemas/index.js";
 import { MERGE_ARCHIVE_REASON, PRUNE_ARCHIVE_REASON, markerKey } from "../src/core/sleep/index.js";
@@ -205,6 +206,7 @@ describe("where archived memories went", () => {
       SCHEMA_TUNABLES.FADE_REASON,
       SCHEMA_TUNABLES.REVISED_REASON,
       SCHEMA_TUNABLES.REPLACED_REASON,
+      CORRECTED_REASON,
       REMOVED_REASON,
       "handoff-cleared",
       "handoff-duplicate",

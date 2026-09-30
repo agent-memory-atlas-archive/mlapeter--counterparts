@@ -661,3 +661,97 @@ withdrawn one say nothing. The corrected label is seen only by id: an archived m
 never surfaces. `deliberate.ts#expandHandle` shows a superseded row asked for by its own
 id as itself, with `replaced by` — the display path only; `store.resolve` still forwards,
 and a use of that row is not credited (the credit pass refuses archived rows).
+
+## 21. A chapter and its copy, one result — 2026-09-30 (U13)
+
+The U13 session saw every chapter twice in deliberate answers: the `epi_` row and the
+untitled self-kind copy `self/` ingests from it, two of about eight slots in all six
+questions. Lateral inhibition did not catch the pair because it runs only on ADMITTED
+candidates; a pair below the turn's bar reached the deliberate dim tier as two rows, and a
+titled chapter against an untitled copy can fall under `NEAR_DUPLICATE` anyway.
+
+- **Where**: `activate.ts`, after scoring and before the cut — the step the ambient turn and
+  the deliberate ask share, so the two agree and the freed slot goes to the next candidate.
+  The gates are untouched. The link is read off box 2's own columns (`journalCopyOf`:
+  `type: "memory"`, `source: "episode"`, `origin_ref`), so the scan pays no prose read.
+- **Which row**: the chapter (the brief's working default: it has the title and the
+  `Journal:` label). It is scored as the pair — the stronger half of cue, temporal and
+  semantic, arrival from the chapter's own strength. A pointer never re-opens the pair.
+  Flipping to the copy is one line in that block.
+- **Credit**: `Recall.resolveUse` credits the chapter and then each live copy
+  (`MemoryFilter.originRef`), same tier, same once-a-day rule per copy, the copy's own
+  `trains` respected; a copy's `recall.credit` event carries `via: "chapter"`. The
+  chapter's own credit is recorded and never acted on (it is outside decay); the copy's is
+  the one that moves physics. SCOPED (review of #293, S4): only for a chapter this
+  session's gate state holds — recall showed the pair. A chapter used off the wake or the
+  `chapter` tool credits itself only, as before (forwarding those would make copies fade
+  slower than they used to). A chapter read through the deliberate ask leaves no gate
+  state, so its use credits the chapter only; a copy listed on its own there used to earn
+  that use — the one place a copy now earns less.
+- **The pair's other halves** (S1, S2): the higher salience of the two, either half's
+  mood lift (the copy carries `proposal.salience` and most stamps), and the copy's links —
+  a hop to the copy lands on the chapter, and the copy seeds the spread beside it, since
+  existing edges point at the copy.
+- **The dashboard**: its ask view had folded the pair the other way since round 3 (the
+  memory, with a "from chapter …" link). It now receives the chapter alone and shows it as
+  a journal row; `pages/memories/fold.js` still links a copy whose chapter was not shown.
+
+## 22. Recall by feeling, deliberate only — 2026-09-30 (U13 items 1 and 2)
+
+U13: asked by feeling, recall answered with plumbing. Stamps only reweighted what the words
+had found (`gatedSal` needs `selfFelt`, `moodLift` needs a cue and a mood); nothing let a
+stamp NOMINATE a memory, and "moved" could not reach a memory stamped `moved` whose text
+never says it.
+
+- **Read at question time, not indexed.** The stamps are not folded into `doc_tokens`:
+  that needs a reindex on every `addFeelings`/`retractFeelings` and on rebuild, and would
+  leave every stamp already on a live store unreachable until a cache rebuild — a
+  backfill by another name. `Store.feelingsLive()` is one scan of a small table, the scan
+  `mood.ts` already pays each turn; the deliberate path has a 15 s budget.
+- **One lane for both items** (`feeling-ask.ts`, then `activate.ts`). Item 1 is the pool
+  filter: a question word a stamp answers to (its emotion word, aliases pointing at it,
+  wheel core(s) — a blend under both — and the writer's own word, the coordinator's
+  addition: `unsettled`, `validated`, `wistful` kept as `other_word`) names a feeling.
+  Item 2 is the ranking: the pool's strongest memories by softened strength, top six.
+- **Detection, after the review of #293 (B2).** The first cut ranked on any feel-word or
+  wheel word, and the wheel is full of everyday words (`open`, `happy`, `moved`,
+  `critical`): "what is the happy path for the importer" put six stamped memories ahead
+  of the answer, and their cue raised the gate's relative bar sevenfold, dropping every
+  answer the words found a tier. Now ranking needs a feeling word used about a PERSON
+  (the look-back of `detectAffect`, widened two words forward for "what moved me"; "we"
+  counts only beside a feel-word, so "where we moved the parser" does not); a feeling
+  word followed by a determiner is a verb on a thing and names nothing; a writer's own
+  word answers only when it is one word ("at the edge of something" made "something" a
+  feeling word). A feeling named about no one still nominates, as an ordinary cue.
+- **Out of the background.** The stamps' cue is `Candidate.stamp`; `gate.ts` samples each
+  candidate's activation WITHOUT it, and a candidate only stamps reached faces the whole
+  sample's bar. On an ambient turn `stamp` is absent and the gate is byte-identical.
+- **Whose.** First person is the asker — the counterpart in its own `recall` (said so in
+  the tool's description), the owner at the console's `ask` (`DeliberateOptions.asker`) —
+  EXCEPT the dashboard's Ask, which rewrites the owner's words into the counterpart's
+  voice and so passes `--voiced` (asker `self`; review B1); `exact` keeps the owner's.
+  Second person is the other one; the owner's names (`sleep#ownerNames`, injected through
+  the turn: `recall/` imports no other core module) or "owner"/"user" the owner; "we", or
+  nothing said, both.
+- **Ranking.** The gate orders by activation and caps tiers (1 loud, 6 quiet, 5 dim), so
+  the order is set in `deliberate.ts#answerQuestion`: vivid; the felt quiet rows, then
+  the other quiet ones; the felt dim rows, then the other dim ones — felt rows by the
+  softened strength that nominated them, the rest of activation breaking a tie, exempt
+  from the dim cap (review of #293, S3 and R2: the first cut put the felt rows above
+  everything, and the second above the quiet tier, so a quiet text answer — the usual
+  shape of a deliberate answer — landed seventh under six dim stamps).
+- **The cut (R1).** The 24-candidate cut is taken over the rows the words and meaning
+  reached, ranked WITHOUT their stamps, and every stamped row is appended after it, marked
+  `pastCut` when only its stamp kept it, so the gate samples none of it. Before
+  that, six nominations sat inside the cut, evicted six text rows, and moved the gate's
+  background whenever the cut bound — which on a live store it always does.
+- **Everyday phrasings (R3).** A feeling word followed by a possessive or "it"/"them" is
+  a verb on a thing ("moved my parser", "I moved it to src"); a possessive near a feeling
+  word is not a person feeling it ("is my build open", "my happy path test fails"); a
+  feel-word followed by "like"/"that" is an opinion ("I feel like the test is flaky").
+  `afraid` joined the wheel's aliases (→ `scared`).
+- **Known limits.** "how does Katie feel about the move" names no person the store holds
+  feelings for, so it ranks nothing. Wrong-core repairs kept the writer's word but not the
+  core they named, and an alias kept the wheel word (`touched` → `moved`) — both answer
+  through the alias table, not the original input. No stemming.
+  Item 3 (a feeling's journey over time) is still open.

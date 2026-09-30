@@ -1365,3 +1365,13 @@ compares that lived day with the last render's, and reads a same-day page as not
 `why` and `triggers` — is on the log's allowlist, but `counterpart.rebrief.refused`
 (`no-budget`) is not, so a refresh refused for want of a budget is silent in the log. The
 mark stays and the next process with a budget renders; fine for now.
+
+## 2026-09-30 — a chapter's copy keeps the chapter's title (U13)
+
+`ingestEpisode` minted every copy untitled: `put.title` came only from `proposal.title`,
+which the boundary caller never fills. The copy now takes the chapter's own title when it
+has one, through the SECRETS SCAN only (the chapter door gates only the text); none is
+invented. Not the whole battery (review of #293, B3): its content floor (20 characters,
+three words) is a rule for bodies and refused almost every real title ("Launch day"). A
+title that is nothing but a credential is dropped with `self.episode.title.dropped`. A copy minted before this picks the title up when its chapter next regrows —
+no backfill. `ingestKey` is the episode id and body, so the title starts no regrowth.

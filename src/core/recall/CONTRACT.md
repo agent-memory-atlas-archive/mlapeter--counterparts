@@ -128,6 +128,16 @@ reply actually used reconsolidates, where in humans every retrieval does.
   "here is something" but "this is arriving": a chapter's date is a day already lived, so
   it is refused outright there (`prospective/` CONTRACT §3). Label where the reader can
   discount; filter where the frame itself would be a lie.
+- **A chapter and its own copy are one result** (2026-09-30, U13; working default). The
+  self-kind memory ingested from a chapter (`source: "episode"`, `origin_ref` = the
+  chapter) is folded into the chapter before the candidate cut, on every path
+  (`activate.ts`); the chapter is the row shown, scored with each channel's stronger half,
+  the higher salience and either half's mood lift, and the copy's links are the pair's. A
+  use of a chapter RECALL SHOWED this session is credited to its live copy too
+  (`Recall.resolveUse`, the copy's own `trains` respected), so the copy — the one that
+  decays — earns what it earned while it was shown; a chapter used off the wake or the
+  `chapter` tool credits itself only. A copy whose chapter was not reached is shown as
+  itself.
 
 ## 4. Drops / simplifies
 
@@ -288,6 +298,35 @@ credit at the boundary; reinforcement deltas handed to `physics/`.
     person) is unchanged; when it opens, the dimension now reads as the memory's emotional
     INTENSITY (physics §5.10), so a feeling held in the `feelings` table is not read as
     unfelt. The affect flag's "charged" test reads the same intensity.
+19. **[M]** **A deliberate question about feeling is answered from the stamps** (U13,
+    2026-09-30, revised after the review of #293 — working default; `feeling-ask.ts`,
+    `activate.ts`). Only when the turn carries a `feeling` ask, which only the deliberate
+    path sets: the ambient turn, its affect gate (G10/G11) and mood-matching (G18) are
+    unchanged. A stamp answers to its emotion word, the aliases pointing at it, its wheel
+    core(s), and the writer's own word when that is ONE word. Two cases:
+    **Ranked** — a real question about feeling: a feel-word (`FEEL_WORDS`) or a word naming
+    a feeling, used about a PERSON (first person singular or second person, the owner by
+    word or name, and "we" for a feel-word only; `detectAffect`'s look-back, widened two
+    words forward for "what moved ME"). The pool is the stamps its named words answer to,
+    or every stamp when none is named, of the person asked about (first person is the
+    asker; nothing said, both). The strongest `FEELING_CANDIDATES_MAX` (6) memories by
+    SOFTENED strength are nominated with `FEELING_CUE_UNITS` (4) cue units × that strength,
+    appended after the cut (which is taken over the words' and meaning's rows, ranked
+    without stamps, so it keeps what it keeps with no lane), and answered first within the
+    tier the gate gave them — vivid, felt-quiet, quiet, felt-dim, dim — strongest first,
+    exempt from the dim cap. **Named only** — a feeling word used about no one ("the happy path"): its stamps
+    nominate their memories as an ordinary word would (its rarity among the stamps), and
+    nothing is reordered. A feeling word followed by a determiner, a possessive or
+    "it"/"them" is a verb on a thing ("moved THE parser", "moved MY parser") and names
+    nothing; a possessive is not a person ("is MY build open"); "feel like" / "felt that"
+    is an opinion.
+    Either way the stamps' cue is in the CUE channel (the temporal channel's shape: hard
+    gate (a) stays structural, the floor (b) still applies) and is kept OUT of the gate's
+    background (`Candidate.stamp`): the relative bar is what the words and meaning found.
+    Every scope rule of `recallable` and the confidentiality gate apply; a confidential
+    stamp takes no slot for a non-owner; a chapter and its copy take one slot. Ids and
+    numbers only reach `BuildOutput.feeling`; no feeling's word reaches the decision
+    record. Tests: `recall-feelings.test.ts`.
 
 ## 6. Scars honored
 

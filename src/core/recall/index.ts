@@ -6,6 +6,7 @@
  * The module's spine, and where each piece lives:
  *
  *   `cues.ts`      strip host boilerplate, then rarity-weighted, word-bounded cues
+ *   `feeling-ask.ts` a deliberate question about feeling, and what a stamp answers to
  *   `activate.ts`  three channels — cue, semantic, arrival — against the cache box
  *   `gate.ts`      the hard gates, this turn's own background bar, the tiers
  *   `session.ts`   per-session gate state, PERSISTED (the ruling this module exists to honor)
@@ -32,6 +33,7 @@ import type { CreditOutcome, UseTier } from "../physics/index.js";
 import type { ProseDoc, Store } from "../store/index.js";
 import { activate } from "./activate.js";
 import type { Candidate, SpreadFn, SpreadStats } from "./activate.js";
+import type { FeelingAskInput } from "./feeling-ask.js";
 import { detectAffect, stripBoilerplate } from "./cues.js";
 import { floorUnit, gate } from "./gate.js";
 import type { Background, CandidateVerdict, Verdict } from "./gate.js";
@@ -45,6 +47,7 @@ import { withTunables } from "./tunables.js";
 import type { RecallTunables } from "./tunables.js";
 
 export * from "./cues.js";
+export * from "./feeling-ask.js";
 export * from "./gate.js";
 export * from "./mood.js";
 export * from "./render.js";
@@ -52,7 +55,7 @@ export * from "./session.js";
 export * from "./standing.js";
 export * from "./tunables.js";
 export { activate, isConfidential, isHandoff, isSelfPage, gatedSal, recordedIdentity, salienceRank } from "./activate.js";
-export type { SpreadFn, SpreadStats } from "./activate.js";
+export type { FeelingLane, SpreadFn, SpreadStats } from "./activate.js";
 export type { Candidate, ActivationResult } from "./activate.js";
 import type { ActivationResult } from "./activate.js";
 
@@ -126,6 +129,14 @@ export interface Turn {
    * 590-1040 ms of vector scan on a live-sized index all by itself.
    */
   budgetMs?: number;
+  /**
+   * A DELIBERATE question, which may be about feeling (2026-09-30, U13): who is
+   * asking, and the owner's names. Set only by the deliberate ask
+   * (`mcp/deliberate.ts#answerQuestion`); absent on every ambient turn, so the
+   * feeling lane (`activate.ts`, `feeling-ask.ts`) never runs there and the
+   * ambient affect gates (§9 G10/G11) are untouched.
+   */
+  feeling?: FeelingAskInput;
 }
 
 export type DecisionReason =
@@ -235,6 +246,13 @@ interface BuildOutput {
    * set is hashed); it rides the recording half's telemetry instead.
    */
   semantic?: ActivationResult["semantic"];
+  /**
+   * The feeling lane on a deliberate ask (`ActivationResult.feeling`): whether
+   * the question was about feeling, and the nominated candidates' softened
+   * strengths by id. Like `semantic`, NOT a decision-record field. Absent on an
+   * ambient turn and on a quiet build.
+   */
+  feeling?: ActivationResult["feeling"];
   injection: string;
   state: GateState;
   /** Cue tokens to carry into the next turn. State, not telemetry (see NOTES.md). */
@@ -391,6 +409,7 @@ export class Recall {
         mood,
         maxCandidates,
         storeSize,
+        ...(turn.feeling === undefined ? {} : { feeling: { ...turn.feeling, owner } }),
       },
       this.tunables,
     );
@@ -528,6 +547,7 @@ export class Recall {
       render: rendered,
       gateStatus: loaded.status,
       semantic: act.semantic,
+      ...(act.feeling === null ? {} : { feeling: act.feeling }),
     };
   }
 
@@ -649,8 +669,12 @@ export class Recall {
     const outcome = this.store.reinforce(memoryId, today, tier, cued ? { cued: true } : {});
     if (outcome.credited) {
       state.credited[memoryId] = { turn: state.turn, tier, day: today };
-      this.persist(state, "resolveUse");
     }
+    // Only when RECALL showed the chapter this session (review of #293, S4):
+    // then it was the collapsed pair. A chapter credited from the wake or the
+    // `chapter` tool credits the chapter alone, as before.
+    const copies = surfaced !== undefined ? this.creditCopies(state, memoryId, today, tier, cued) : 0;
+    if (outcome.credited || copies > 0) this.persist(state, "resolveUse");
     this.emit("recall.credit", memoryId, {
       tier,
       w,
@@ -693,6 +717,54 @@ export class Recall {
   }
 
   // ── internals ────────────────────────────────────────────────────────────
+
+  /**
+   * A CHAPTER'S USE IS ALSO ITS COPY'S — when recall showed it (2026-09-30,
+   * U13). Recall shows a chapter and its own copy as one result — the chapter
+   * (`activate.ts`, the collapse) — and a chapter's physics are recorded and
+   * never acted on (`JOURNAL_GLOSS`): it sits outside decay. The copy is the
+   * memory that fades, so without this the collapse would starve it of every
+   * use it used to earn by being shown.
+   *
+   * SCOPED (review of #293, S4): the caller forwards only when this session's
+   * gate state holds the chapter — recall surfaced or footnoted it, which is
+   * the collapsed pair. A chapter used off the wake or the `chapter` tool
+   * credits itself only, as it always did; forwarding those too would make
+   * copies fade SLOWER than before. A chapter read through the deliberate ask
+   * leaves no gate state (that path records nothing), so its use credits the
+   * chapter only — a copy listed on its own there used to earn that use.
+   *
+   * Same tier, same once-a-day rule per copy, the copy's OWN `trains` check (a
+   * copy this session saw only through an ambiguous handle trains nothing), and
+   * physics decides; a copy that throws is skipped and the chapter's own credit
+   * stands. Returns how many copies were credited.
+   */
+  private creditCopies(state: GateState, memoryId: string, today: number, tier: UseTier, cued: boolean): number {
+    let copies: string[];
+    try {
+      if (this.store.row(memoryId)?.type !== "episode") return 0;
+      copies = this.store.list({ type: "memory", source: "episode", originRef: memoryId, archived: false });
+    } catch {
+      return 0;
+    }
+    const w = USE_TIER_WEIGHT[tier];
+    let n = 0;
+    for (const copy of copies) {
+      if (state.surfaced[copy]?.trains === false) continue;
+      const prior = state.credited[copy];
+      if (prior !== undefined && prior.day === today && USE_TIER_WEIGHT[prior.tier] >= w) continue;
+      try {
+        const out = this.store.reinforce(copy, today, tier, cued ? { cued: true } : {});
+        this.emit("recall.credit", copy, { tier, w, credited: out.credited, reason: out.reason, via: "chapter" });
+        if (!out.credited) continue;
+        state.credited[copy] = { turn: state.turn, tier, day: today };
+        n += 1;
+      } catch {
+        continue;
+      }
+    }
+    return n;
+  }
 
   private readonly ring: RecallEvent[] = [];
 
