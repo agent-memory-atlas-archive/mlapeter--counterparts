@@ -162,9 +162,11 @@ const AFTER = 2;
 function aboutAPerson(toks: readonly string[], at: number, feelWord: boolean, names: ReadonlySet<string>): boolean {
   // A POSSESSIVE is not a person feeling something: "is MY build open", "MY
   // happy path test fails" (review of #293, R3). The subject and object forms are.
+  // Beside a feel-word the possessive IS the person: "what are MY feelings",
+  // "what's YOUR mood" — the shape the dashboard's rewrite hands over (final check, F1).
   const person = (w: string): boolean =>
-    (FIRST.has(w) && !POSSESSIVE.has(w)) ||
-    (SECOND.has(w) && !POSSESSIVE.has(w)) ||
+    (FIRST.has(w) && (feelWord || !POSSESSIVE.has(w))) ||
+    (SECOND.has(w) && (feelWord || !POSSESSIVE.has(w))) ||
     OWNER_WORDS.has(w) ||
     names.has(w) ||
     (feelWord && PLURAL.has(w));

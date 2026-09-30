@@ -471,7 +471,17 @@ describe("R3: everyday phrasings do not rank; real feeling questions still do", 
       expect(readFeelingAsk(q, self, new Set(), 3).ranked).toBe(false);
     });
   }
-  for (const q of ["what moved me this week", "times I felt moved or sad", "what have I felt most strongly", "when was I afraid"]) {
+  for (const q of [
+    "what moved me this week",
+    "times I felt moved or sad",
+    "what have I felt most strongly",
+    "when was I afraid",
+    // A possessive beside a feel-word is the person (final check, F1) — the
+    // shape the dashboard's rewrite hands over.
+    "what are my feelings lately",
+    "what's your mood",
+    "how are my feelings",
+  ]) {
     test(`"${q}" still ranks`, () => {
       expect(readFeelingAsk(q, self, new Set(), 3).ranked).toBe(true);
     });
