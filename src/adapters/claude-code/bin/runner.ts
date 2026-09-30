@@ -31,7 +31,10 @@
  *   3. the sleep cycle, whose last content write is the wake briefing;
  *   3a. the wake's catch-up (2026-09-30): re-rendered again when the page was
  *      written or a write-up landed since its last render (`refreshWake`);
- *   3b. RAW TRANSCRIPT RETENTION (owner's ruling 2026-09-23): once per date —
+ *   3b. WHAT IS NOT WRITTEN UP (2026-09-30): the coverage ledger's rows — a
+ *      stretch owed, written up, lapsed — one per stretch per state
+ *      (`core/coverage/`);
+ *   3c. RAW TRANSCRIPT RETENTION (owner's ruling 2026-09-23): once per date —
  *      behind an `O_EXCL` latch under `spans/retention/` — a session's captured
  *      text is deleted 7 days after it ended when it owes no write-up and the
  *      registry does not hold it open (`remember/owes.ts` decides,
@@ -65,6 +68,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { Counterpart, RUNNER_FAILED_EVENT } from "../../../core/counterpart.js";
+import { recordCoverage } from "../../../core/coverage/index.js";
 import { RETENTION_EVENT, retentionRow, retentionRuns } from "../../../core/remember/index.js";
 import type { HostSessionEvidence, RetentionReport } from "../../../core/remember/index.js";
 // THE DELETING HALF, by path, and from this file alone (PR #189 review, B1):
@@ -420,7 +424,22 @@ export async function runOnce(input: {
     noteFailure(counterpart, emit, code, "sessionEnd", today);
     result = { ran: false, reason: "failed", swept: 0, minted: 0, code, lag, backfill, snapshot: null, retention: null };
   } finally {
-    // 3b. RETENTION — on the failed path as well as the good one (a day whose
+    // 3b. WHAT IS NOT WRITTEN UP (2026-09-30, `core/coverage/`): one row per
+    // stretch per state — owed, written up, lapsed — at every turn-end, keyless.
+    // Before retention, so a lapse is recorded while its pieces are there to
+    // count. Its own try: a ledger that will not read may not cost the rest.
+    try {
+      const host = hostSessionEvidence(counterpart.store);
+      const covered = recordCoverage(counterpart.spans, counterpart.store, {
+        now: counterpart.store.now(),
+        zone: counterpart.store.zone(),
+        host: (s) => ({ endedAt: host(s).endedAt }),
+      });
+      emit("runner.coverage", { ...covered });
+    } catch (err) {
+      emit("coverage.threw", { code: err instanceof Error ? err.name : "UNKNOWN" });
+    }
+    // 3c. RETENTION — on the failed path as well as the good one (a day whose
     // sweep broke still ages the week-old text of sessions that owe nothing),
     // and BEFORE the copy below, so the day's backup never carries raw text
     // past its week. Its own try: a retention pass may not cost the snapshot.

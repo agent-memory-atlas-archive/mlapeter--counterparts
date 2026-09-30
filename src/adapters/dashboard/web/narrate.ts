@@ -985,6 +985,31 @@ export const NARRATORS = {
   },
   "contradiction.undone": (t) => calm(`A settle was undone (${s(t, "pair") ?? "a pair"}); the pair is unsettled again.`),
 
+  // ── what is not written up (2026-09-30) ─────────────────────────────────
+  "coverage.owed": (t) =>
+    calm(
+      `Session ${s(t, "session") ?? "?"} left ${String(n(t, "pieces") ?? 0)} pieces over ${String(n(t, "minutes") ?? 0)} minutes ` +
+        "not yet written up; the next session in that project is asked to write them up.",
+    ),
+  "coverage.written": (t) => {
+    const by = s(t, "by");
+    const who =
+      by === "nothing-new"
+        ? "with a \"nothing new\""
+        : by === "chapter"
+          ? "by a chapter"
+          : by === "next-session"
+            ? "by the next session"
+            : "by the session itself";
+    const pieces = n(t, "pieces") ?? 0;
+    return calm(`${String(pieces)} piece${pieces === 1 ? "" : "s"} of session ${s(t, "session") ?? "?"} ${pieces === 1 ? "was" : "were"} written up ${who}.`);
+  },
+  "coverage.lapsed": (t) =>
+    amber(
+      `Session ${s(t, "session") ?? "?"} left ${String(n(t, "pieces") ?? 0)} pieces nobody wrote up in two days of use; ` +
+        "they are no longer owed, and their text goes on the ordinary week. Nothing was deleted by this.",
+    ),
+
   // ── being argued with ──────────────────────────────────────────────────────
   "revision.pressure": (t) => {
     const force = n(t, "force") ?? 0;
@@ -1129,6 +1154,11 @@ export const REF_KIND = {
   "contradiction.flagged": "none",
   "contradiction.settled": "none",
   "contradiction.undone": "none",
+  // A coverage row names a session in its payload; a written row's ref is the
+  // claim (a proposal id, or `nothing-new:` / `chapter:` / `writeup:` and an id).
+  "coverage.owed": "none",
+  "coverage.written": "none",
+  "coverage.lapsed": "none",
 } as const satisfies Record<
   DurableEventName,
   "memory" | "session" | "chunk" | "proposal" | "handoff" | "none"
