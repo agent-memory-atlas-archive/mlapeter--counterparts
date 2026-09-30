@@ -119,6 +119,9 @@ export interface Candidate {
   /** The part of `cue` its stamps brought (either feeling case). The gate
    *  leaves it out of this turn's background (review of #293, B2). */
   readonly stamp?: number;
+  /** Kept only because a stamp brought it, past the cut the words and meaning
+   *  made (R1): the gate leaves it out of the background whole. */
+  readonly pastCut?: true;
 }
 
 /**
@@ -773,10 +776,15 @@ export function activate(
       .sort((x, y) => y - x)
       .slice(0, input.maxCandidates);
     const relative = storeSize >= t.COLD_START_MIN_STORE && sample.length >= t.MIN_BACKGROUND_SAMPLE && spreadOf(sample) > 0;
+    // The rank leaves the stamps out (review of #293, R1): a nomination must
+    // never take a text row's place in the cut, or the gate's background —
+    // sampled from what the cut kept — moves. Every row with a stamp is
+    // appended after the cut instead (below).
+    const key = (c: Scored): number => (c.stamp > 0 ? salienceRank(c.activation - c.stamp, c.sal, t) : c.cutKey);
     list.sort((a, b) =>
       relative
-        ? b.cutKey - a.cutKey || b.activation - a.activation || (a.id < b.id ? -1 : 1)
-        : b.activation - a.activation || (a.id < b.id ? -1 : 1),
+        ? key(b) - key(a) || b.activation - b.stamp - (a.activation - a.stamp) || (a.id < b.id ? -1 : 1)
+        : b.activation - b.stamp - (a.activation - a.stamp) || (a.id < b.id ? -1 : 1),
     );
   };
   rankForCut(scored);
@@ -861,12 +869,15 @@ export function activate(
     };
   }
 
-  // The feeling lane's nominations are kept past the cut, as quiet pointers
-  // are added after it: bounded by `FEELING_CANDIDATES_MAX`, and absent on
-  // every turn that did not ask about feeling.
-  const top = scored.slice(0, input.maxCandidates);
+  // THE CUT IS THE WORDS' AND MEANING'S (review of #293, R1). It is taken over
+  // the rows those reached, ranked without their stamps, so it keeps exactly
+  // what it keeps with no feeling lane at all; then every row a stamp brought
+  // cue to is appended, as quiet pointers are added after it — bounded by
+  // `FEELING_CANDIDATES_MAX`, and absent on every turn that did not ask about
+  // feeling.
+  const top = scored.filter((c) => c.cue - c.stamp + c.semantic > 0).slice(0, input.maxCandidates);
   const topIds = new Set(top.map((c) => c.id));
-  const kept = [...top, ...scored.filter((c) => c.feeling > 0 && !topIds.has(c.id))];
+  const kept = [...top, ...scored.filter((c) => c.stamp > 0 && !topIds.has(c.id))];
   const dropped = scored.length - kept.length;
   // MOOD (recall G18): one batched read, and only when someone has a mood — and only
   // for CUED candidates. An uncued candidate is dark at hard gate (a) before
@@ -922,6 +933,7 @@ export function activate(
       confidential: stored.confidential,
       ...(c.feeling > 0 ? { feeling: c.feeling } : {}),
       ...(c.stamp > 0 ? { stamp: c.stamp } : {}),
+      ...(topIds.has(id) ? {} : { pastCut: true as const }),
     });
   }
 

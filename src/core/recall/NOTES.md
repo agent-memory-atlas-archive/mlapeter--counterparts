@@ -734,13 +734,22 @@ never says it.
   the turn: `recall/` imports no other core module) or "owner"/"user" the owner; "we", or
   nothing said, both.
 - **Ranking.** The gate orders by activation and caps tiers (1 loud, 6 quiet, 5 dim), so
-  the order is set in `deliberate.ts#answerQuestion`: the nominated memories are one
-  block, by the softened strength that nominated them, the rest of activation breaking a
-  tie, exempt from the dim cap. The block comes AFTER the vivid tier and AHEAD of quiet
-  and dim (review of #293, S3: the first cut put it above everything, so a vivid answer
-  the words found could land seventh). On the U13 fixture the stamped Han and card
-  memories now come ahead of the quiet "moved the sad-path tests" note. Safe because the
-  lane ranks only a real question about feeling (B2).
+  the order is set in `deliberate.ts#answerQuestion`: vivid; the felt quiet rows, then
+  the other quiet ones; the felt dim rows, then the other dim ones — felt rows by the
+  softened strength that nominated them, the rest of activation breaking a tie, exempt
+  from the dim cap (review of #293, S3 and R2: the first cut put the felt rows above
+  everything, and the second above the quiet tier, so a quiet text answer — the usual
+  shape of a deliberate answer — landed seventh under six dim stamps).
+- **The cut (R1).** The 24-candidate cut is taken over the rows the words and meaning
+  reached, ranked WITHOUT their stamps, and every stamped row is appended after it, marked
+  `pastCut` when only its stamp kept it, so the gate samples none of it. Before
+  that, six nominations sat inside the cut, evicted six text rows, and moved the gate's
+  background whenever the cut bound — which on a live store it always does.
+- **Everyday phrasings (R3).** A feeling word followed by a possessive or "it"/"them" is
+  a verb on a thing ("moved my parser", "I moved it to src"); a possessive near a feeling
+  word is not a person feeling it ("is my build open", "my happy path test fails"); a
+  feel-word followed by "like"/"that" is an opinion ("I feel like the test is flaky").
+  `afraid` joined the wheel's aliases (→ `scared`).
 - **Known limits.** "how does Katie feel about the move" names no person the store holds
   feelings for, so it ranks nothing. Wrong-core repairs kept the writer's word but not the
   core they named, and an alias kept the wheel word (`touched` → `moved`) — both answer

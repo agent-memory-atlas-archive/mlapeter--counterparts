@@ -311,11 +311,15 @@ credit at the boundary; reinforcement deltas handed to `physics/`.
     or every stamp when none is named, of the person asked about (first person is the
     asker; nothing said, both). The strongest `FEELING_CANDIDATES_MAX` (6) memories by
     SOFTENED strength are nominated with `FEELING_CUE_UNITS` (4) cue units × that strength,
-    kept past the cut, and answered as one block, strongest first, after the vivid tier and
-    ahead of the quiet and dim ones, exempt from the dim cap. **Named only** — a feeling word used about no one ("the happy path"): its stamps
+    appended after the cut (which is taken over the words' and meaning's rows, ranked
+    without stamps, so it keeps what it keeps with no lane), and answered first within the
+    tier the gate gave them — vivid, felt-quiet, quiet, felt-dim, dim — strongest first,
+    exempt from the dim cap. **Named only** — a feeling word used about no one ("the happy path"): its stamps
     nominate their memories as an ordinary word would (its rarity among the stamps), and
-    nothing is reordered. A feeling word followed by a determiner is a verb on a thing
-    ("moved THE parser") and names nothing.
+    nothing is reordered. A feeling word followed by a determiner, a possessive or
+    "it"/"them" is a verb on a thing ("moved THE parser", "moved MY parser") and names
+    nothing; a possessive is not a person ("is MY build open"); "feel like" / "felt that"
+    is an opinion.
     Either way the stamps' cue is in the CUE channel (the temporal channel's shape: hard
     gate (a) stays structural, the floor (b) still applies) and is kept OUT of the gate's
     background (`Candidate.stamp`): the relative bar is what the words and meaning found.

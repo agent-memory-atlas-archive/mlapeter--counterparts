@@ -714,13 +714,13 @@ export function answerQuestion(
   // A QUESTION ABOUT FEELING (2026-09-30, U13), when it is a RANKED one (a
   // real question about feeling, `recall/feeling-ask.ts`): the memories its
   // stamps nominated have their own bound (`FEELING_CANDIDATES_MAX`), so the
-  // dim cap is for the rest, and they are answered as ONE BLOCK, strongest
-  // stamp first — the words, meaning and recency (the rest of activation) only
-  // break a tie — AFTER the vivid tier and AHEAD of the quiet and dim ones
-  // (review of #293, S3): a loud answer the words found is never put below a
-  // stamped one, and a quiet note that merely says "moved" is. That is safe
-  // because the lane only ranks a real question about feeling (B2). A felt row
-  // the gate made vivid stays in the vivid tier, first there. Everything a hard
+  // dim cap is for the rest, and they lead the tier the gate gave them,
+  // strongest stamp first — the words, meaning and recency (the rest of
+  // activation) only break a tie. The tiers keep their order (review of #293,
+  // S3 and R2): vivid; the felt quiet rows, then the other quiet ones; the felt
+  // dim rows, then the other dim ones. So a quiet note that merely says "moved"
+  // follows the quiet stamped rows, and no answer the words found is put below
+  // a row the gate thought less of. Everything a hard
   // gate or confidentiality refused above stays refused. A feeling named about
   // no one ("the happy path") nominates as an ordinary cue and changes nothing
   // here.
@@ -734,9 +734,10 @@ export function answerQuestion(
   // effort and the cap is what stopped them.
   for (const v of plainDim.slice(DELIBERATE_DIM_CAP)) blocked(`dim-cap:${v.verdict}`);
   if (felt.size > 0) {
-    // Vivid, then the felt block, then quiet, then dim.
+    // Vivid; felt-quiet, quiet; felt-dim, dim (review of #293, R2): a quiet
+    // answer the words found is never put below a stamped row the gate left dim.
     const group = (a: { verdict: CandidateVerdict; tier: Tier }): number =>
-      a.tier === "vivid" ? 0 : felt.has(a.verdict.id) ? 1 : a.tier === "quiet" ? 2 : 3;
+      a.tier === "vivid" ? 0 : a.tier === "quiet" ? (felt.has(a.verdict.id) ? 1 : 2) : felt.has(a.verdict.id) ? 3 : 4;
     const order = new Map(admitted.map((a, i) => [a.verdict.id, i]));
     admitted.sort((a, b) => {
       const ga = group(a) - group(b);

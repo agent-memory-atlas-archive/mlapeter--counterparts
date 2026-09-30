@@ -24,7 +24,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { Counterpart } from "../src/core/counterpart.js";
-import { feelingTokens, readFeelingAsk, whoseAsked } from "../src/core/recall/index.js";
+import { TUNABLES as RECALL, feelingTokens, readFeelingAsk, whoseAsked } from "../src/core/recall/index.js";
 import { deliberateRecall, openServer } from "../src/adapters/mcp/index.js";
 import type { McpServer, ToolResult } from "../src/adapters/mcp/index.js";
 import { buildArgv } from "../src/adapters/dashboard/web/actions.js";
@@ -138,21 +138,25 @@ describe("U13's two failing questions return the stamped memories", () => {
     expect(ids.some((id) => f.decoys.includes(id))).toBe(true);
   });
 
-  test("'times I felt moved or sad' — the stamps named, strongest first, ahead of the text that says the words", async () => {
+  test("'times I felt moved or sad' — the stamps named, strongest first, leading their tier", async () => {
     const s = server();
     const f = seed(s.counterpart);
     const out = payload(await s.call("recall", { question: "times I felt moved or sad" }));
     const rows = out["memories"] as { id: string; tier: string }[];
     const ids = rows.map((m) => m.id);
     // tender is a blend under sad; moved is its own word. Neither body says either.
-    // The felt block comes after the vivid tier and ahead of quiet and dim
-    // (review of #293, S3): the "moved … sad-path" decoy the gate made quiet
-    // follows them. Only a vivid answer may stand above.
+    // Felt rows lead the tier the gate gave them, strongest first (review of
+    // #293, S3 and R2: vivid; felt-quiet, quiet; felt-dim, dim). On this small
+    // fixture the gate leaves both stamped memories dim, so the one decoy it
+    // made quiet ("the times the tiles moved and the sad empty state") comes
+    // first, and every dim decoy follows them.
+    const rank: Record<string, number> = { vivid: 0, quiet: 1, dim: 2 };
     const at = ids.indexOf(f.han);
+    expect(at).toBeGreaterThanOrEqual(0);
     expect(ids[at + 1]).toBe(f.card);
-    for (const r of rows.slice(0, at)) expect(r.tier).toBe("vivid");
-    const decoy = ids.findIndex((id) => f.decoys.includes(id) && rows[ids.indexOf(id)]?.tier !== "vivid");
-    expect(decoy).toBeGreaterThan(at + 1);
+    const hanTier = rank[rows[at]?.tier ?? "dim"] as number;
+    for (const r of rows.slice(0, at)) expect(rank[r.tier] as number).toBeLessThan(hanTier);
+    for (const r of rows.slice(at + 2)) expect(rank[r.tier] as number).toBeGreaterThanOrEqual(hanTier);
     // A stamp the question did not name is not nominated.
     expect(ids).not.toContain(f.week);
   });
@@ -403,5 +407,94 @@ describe("the minors", () => {
       s.counterpart.store.addFeelings(id, [{ whose: "self", core: "fear", emotion: "worried", strength: 0.99 }]);
     }
     expect((await ask(s, "what have I felt most strongly")).length).toBeGreaterThan(0);
+  });
+});
+
+// ── the verification of the fix round (R1-R3) ───────────────────────────────
+
+describe("R1: the cut is the words' — stamps never take a text row's place", () => {
+  test("with more text hits than the cut holds, the background is the same with and without the lane", () => {
+    const s = server();
+    const c = s.counterpart;
+    const f = importerStore(c);
+    // Thirty more notes the words reach: the 24-candidate cut binds.
+    for (let i = 0; i < 30; i++) {
+      c.store.put({ type: "memory", kind: "fact", body: `Importer note ${String(i)}: the parser step ${"x".repeat(i % 5)} handles row ${String(i * 3)} of the header batch.` });
+    }
+    const q = "what moved me about the importer parser step";
+    const withLane = c.recall.build({ sessionId: "r1a", text: q, owner: true, feeling: { asker: "self" } });
+    const without = c.recall.build({ sessionId: "r1b", text: q, owner: true });
+    expect(withLane.feeling?.ranked).toBe(true);
+    expect(without.decision.candidates).toBeGreaterThanOrEqual(RECALL.MAX_CANDIDATES);
+    const bgWith = withLane.decision.background;
+    const bgWithout = without.decision.background;
+    expect(bgWith.n).toBe(bgWithout.n);
+    expect(bgWith.mean).toBeCloseTo(bgWithout.mean, 9);
+    expect(bgWith.sd).toBeCloseTo(bgWithout.sd, 9);
+    // Every text row the cut kept without the lane is still there with it.
+    const textWith = new Set(withLane.decision.verdicts.map((v) => v.id));
+    for (const v of without.decision.verdicts) expect(textWith.has(v.id)).toBe(true);
+    // And the stamps came too, after the cut.
+    expect(withLane.decision.verdicts.some((v) => f.stamped.includes(v.id))).toBe(true);
+  });
+});
+
+describe("R2: a quiet text answer is not buried under dim stamped rows", () => {
+  test("'how did I feel after Han asked whether I remember him' — the Han memory leads what the gate left quiet", () => {
+    const s = server();
+    const c = s.counterpart;
+    const f = importerStore(c);
+    const han = c.store.put({ type: "memory", kind: "person", body: "Han asked whether I remember him from one conversation to the next." });
+    const out = deliberateRecall(c, { question: "how did I feel after Han asked whether I remember him" }, { sessionId: "r2", owner: true });
+    const rank: Record<string, number> = { vivid: 0, quiet: 1, dim: 2 };
+    const at = out.memories.findIndex((m) => m.id === han);
+    expect(at).toBeGreaterThanOrEqual(0);
+    const hanTier = rank[out.memories[at]?.tier ?? "dim"] as number;
+    // Nothing the gate thought less of stands above it.
+    for (const m of out.memories.slice(0, at)) expect(rank[m.tier] as number).toBeLessThanOrEqual(hanTier);
+    // Stamped rows in a lower tier come after it.
+    for (const m of out.memories.slice(at + 1)) if (f.stamped.includes(m.id)) expect(rank[m.tier] as number).toBeGreaterThanOrEqual(hanTier);
+  });
+});
+
+describe("R3: everyday phrasings do not rank; real feeling questions still do", () => {
+  const self = { asker: "self" as const, ownerNames: ["mike"] };
+  for (const q of [
+    "I feel like the importer test is flaky",
+    "moved my parser into its own file",
+    "my happy path test fails",
+    "I moved it to src",
+    "is my build open",
+    "I felt that the review was too long",
+  ]) {
+    test(`"${q}" does not rank`, () => {
+      expect(readFeelingAsk(q, self, new Set(), 3).ranked).toBe(false);
+    });
+  }
+  for (const q of ["what moved me this week", "times I felt moved or sad", "what have I felt most strongly", "when was I afraid"]) {
+    test(`"${q}" still ranks`, () => {
+      expect(readFeelingAsk(q, self, new Set(), 3).ranked).toBe(true);
+    });
+  }
+
+  for (const q of ["I feel like the importer parser test is flaky", "moved my parser into its own file in the importer", "my happy path test fails in the importer"]) {
+    test(`end to end: "${q}" — the importer answer stays first, in its own tier`, () => {
+      const s = server();
+      const f = importerStore(s.counterpart);
+      const out = deliberateRecall(s.counterpart, { question: q }, { sessionId: "r3", owner: true });
+      expect(out.memories[0]?.id).toBe(f.target);
+      const without = s.counterpart.recall.build({ sessionId: "r3-plain", text: q, owner: true });
+      const verdict = without.decision.verdicts.find((v) => v.id === f.target)?.verdict ?? "";
+      expect(out.memories[0]?.tier).toBe((TIER_OF[verdict] ?? "dim") as "vivid");
+    });
+  }
+
+  test("'afraid' is an alias of scared: 'when was I afraid' reaches a memory stamped scared", () => {
+    const s = server();
+    seed(s.counterpart);
+    const scary = s.counterpart.store.put({ type: "memory", kind: "self", body: "The night the disk filled up during the backup." });
+    s.counterpart.store.addFeelings(scary, [{ whose: "self", core: "fear", emotion: "scared", strength: 0.8 }]);
+    const out = deliberateRecall(s.counterpart, { question: "when was I afraid" }, { sessionId: "afraid", owner: true });
+    expect(out.memories[0]?.id).toBe(scary);
   });
 });

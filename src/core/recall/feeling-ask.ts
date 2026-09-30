@@ -67,6 +67,8 @@ const FIRST = new Set(["i", "im", "ive", "me", "my", "mine", "myself"]);
 const SECOND = new Set(["you", "youre", "youve", "your", "yours", "yourself"]);
 const PLURAL = new Set(["we", "weve", "us", "our", "ours", "ourselves"]);
 const OWNER_WORDS = new Set(["owner", "user"]);
+/** First- and second-person words that own a thing rather than feel one. */
+const POSSESSIVE = new Set(["my", "mine", "your", "yours"]);
 
 /** Lower-case words, apostrophes dropped, "I" kept (`cues.ts#words`'s rule). */
 function words(text: string): string[] {
@@ -133,8 +135,17 @@ export interface FeelingAsk {
   readonly whose: FeelingWhose | null;
 }
 
-/** A word that, right after a feeling word, makes it a verb acting on a thing. */
-const DETERMINERS = new Set(["the", "a", "an", "this", "that", "these", "those", "our", "their", "its", "some"]);
+/**
+ * A word that, right after a feeling word, makes it a verb acting on a thing
+ * ("moved THE parser", "moved MY parser", "I moved IT to src"). Not "me", "him"
+ * or "us": "what moved ME" is the case this lane exists for.
+ */
+const DETERMINERS = new Set([
+  "the", "a", "an", "this", "that", "these", "those", "some",
+  "my", "your", "his", "her", "its", "it", "them", "our", "their",
+]);
+/** A feel-word followed by one of these is an OPINION: "I feel like the test is flaky". */
+const OPINION = new Set(["like", "that"]);
 /** Scanning back stops here: another subject owns what follows (`cues.ts`'s rule). */
 const THIRD = new Set(["he", "she", "they", "it", "its", "his", "her", "their", "theyre"]);
 /** How far a person word may stand from the feeling word: before, and after. */
@@ -149,8 +160,14 @@ const AFTER = 2;
  * moved the parser" is not. Scanning back stops at a third-person subject.
  */
 function aboutAPerson(toks: readonly string[], at: number, feelWord: boolean, names: ReadonlySet<string>): boolean {
+  // A POSSESSIVE is not a person feeling something: "is MY build open", "MY
+  // happy path test fails" (review of #293, R3). The subject and object forms are.
   const person = (w: string): boolean =>
-    FIRST.has(w) || SECOND.has(w) || OWNER_WORDS.has(w) || names.has(w) || (feelWord && PLURAL.has(w));
+    (FIRST.has(w) && !POSSESSIVE.has(w)) ||
+    (SECOND.has(w) && !POSSESSIVE.has(w)) ||
+    OWNER_WORDS.has(w) ||
+    names.has(w) ||
+    (feelWord && PLURAL.has(w));
   for (let j = at - 1; j >= Math.max(0, at - BEFORE); j--) {
     const w = toks[j] as string;
     if (THIRD.has(w)) break;
@@ -184,6 +201,7 @@ export function readFeelingAsk(
   let ranked = false;
   toks.forEach((w, i) => {
     if (FEEL_WORDS.includes(w)) {
+      if (OPINION.has(toks[i + 1] ?? "")) return; // "I feel like…", "I felt that…": an opinion
       if (aboutAPerson(toks, i, true, names)) ranked = true;
       return;
     }

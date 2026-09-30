@@ -180,6 +180,8 @@ export const ALIASES: Readonly<Record<string, string>> = {
   touched: "moved",
   nostalgic: "wistful",
   inquiring: "curious",
+  // 2026-09-30 (U13): "when was I afraid" named nothing.
+  afraid: "scared",
 };
 
 function valenceOf(core: CoreEmotion, word: string, ring: WheelRing): Valence {
