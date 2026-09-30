@@ -1,0 +1,553 @@
+/**
+ * COVERAGE — what is not written up yet, read in one place (2026-09-30).
+ *
+ * A captured piece of conversation (a line of `buffer.jsonl` or `jots.jsonl`)
+ * counts as WRITTEN UP only when a claim for it stands in `coverage.jsonl`. An
+ * accepted memory claims every piece of its session not yet claimed; since this
+ * module, so do "nothing new" and a chapter, as claims with no proposal behind
+ * them. What a session said after its last claim is its unwritten STRETCH.
+ *
+ * This module is the one reader of that. It does not change how pieces are
+ * claimed — `SpanBuffer.claimCoverage` still does all of it — and it knows no
+ * host: whether a session has ended is evidence the caller hands in, the way
+ * `remember/owes.ts` has always taken it.
+ *
+ *   - **The ledger** (`ledger`): per session, what it captured, what is written
+ *     up, the unwritten stretch (pieces, first and last piece, minutes), and
+ *     its state — `active` (captured today and not ended), `quiet` (captured
+ *     nothing since the calendar date changed) or `ended`.
+ *   - **The pacer's third arm** (`askFromStretch`): three unwritten pieces and
+ *     half an hour since the later of the stretch's first piece and the last ask.
+ *   - **What a session owes** (the `owed` field): a stretch of three pieces over
+ *     fifteen minutes, in a session that is not active, that has not lapsed.
+ *     `remember/owes.ts` reads it for retention and the write-up; nothing else
+ *     decides it.
+ *   - **Lapse**: at the first turn-end of the third day of use after the day the
+ *     stretch's latest piece was lived. Nothing is deleted by a lapse; the
+ *     session only stops owing, so its text goes on retention's ordinary week.
+ *   - **Rows** (`recordCoverage`): one durable row per stretch per state —
+ *     owed, written up (and by whom), lapsed — written by the turn-end worker.
+ *
+ * Every date here is the piece's own `at` read in the store's zone, never the
+ * lived day on the piece: the lived day advances in the worker AFTER the first
+ * turn-end of a date, so the pieces and boundaries of that turn-end carry the
+ * day before. Days of use are counted the same way — distinct dates on which a
+ * turn-end was recorded (`boundaries.jsonl`, which retention never strikes) —
+ * which is what the lived clock counts, without its lag.
+ */
+import { Buffer } from "node:buffer";
+
+import { keyFor } from "../remember/spans.js";
+import type { Span, SpanBuffer } from "../remember/spans.js";
+import type { Store } from "../store/index.js";
+import { localDate } from "../time.js";
+
+import { COVERAGE_TUNABLES } from "./tunables.js";
+
+export { COVERAGE_TUNABLES } from "./tunables.js";
+export type { CoverageTunables } from "./tunables.js";
+
+// ── vocabulary ──────────────────────────────────────────────────────────────
+
+/** A session's state, from what it captured and what the host says ended. */
+export type SessionState = "active" | "quiet" | "ended";
+
+/** What a session said that is not written up yet. Counts and times, no text. */
+export interface Stretch {
+  readonly pieces: number;
+  /** UTF-8 bytes of those pieces — the pacer's own unit. */
+  readonly bytes: number;
+  readonly firstAt: number;
+  readonly lastAt: number;
+  /** First piece to last, rounded down. */
+  readonly minutes: number;
+  /** The scopes its pieces are in. */
+  readonly scopes: readonly string[];
+}
+
+/** One session, as the ledger reads it. */
+export interface LedgerEntry {
+  readonly session: string;
+  /** Every scope that holds a piece of it. */
+  readonly scopes: readonly string[];
+  readonly state: SessionState;
+  /** Its latest piece of any kind, the assistant's own turns included. */
+  readonly lastCaptureAt: number;
+  /** When it ended, when an end is at or after its latest capture. */
+  readonly endedAt: number | null;
+  /** Pieces captured (conversation and jots), and how many are written up. */
+  readonly pieces: number;
+  readonly written: number;
+  /** What is not written up, or null. */
+  readonly stretch: Stretch | null;
+  /** The stretch is past the floor (pieces and minutes). */
+  readonly overFloor: boolean;
+  readonly owed: boolean;
+  readonly lapsed: boolean;
+  /** Owed, and under `SMALL_STRETCH_PIECES`: one line is enough. */
+  readonly small: boolean;
+  /** Days of use recorded after the date of the stretch's latest piece. */
+  readonly daysOfUseSince: number;
+}
+
+/** What the host knows about how a session ended. `null`: no end it knows of. */
+export interface HostEnd {
+  readonly endedAt: number | null;
+}
+
+export interface LedgerOptions {
+  readonly now: number;
+  /** The store's zone: every date here is read in it. */
+  readonly zone: string;
+  readonly host?: (session: string) => HostEnd;
+}
+
+// ── the stretch ─────────────────────────────────────────────────────────────
+
+interface Piece {
+  readonly at: number;
+  readonly bytes: number;
+  readonly scope: string;
+}
+
+function stretchOf(pieces: readonly Piece[]): Stretch | null {
+  if (pieces.length === 0) return null;
+  let firstAt = Infinity;
+  let lastAt = -Infinity;
+  let bytes = 0;
+  const scopes = new Set<string>();
+  for (const p of pieces) {
+    firstAt = Math.min(firstAt, p.at);
+    lastAt = Math.max(lastAt, p.at);
+    bytes += p.bytes;
+    scopes.add(p.scope);
+  }
+  return {
+    pieces: pieces.length,
+    bytes,
+    firstAt,
+    lastAt,
+    minutes: Math.floor((lastAt - firstAt) / 60_000),
+    scopes: [...scopes].sort(),
+  };
+}
+
+const atOf = (s: Span): number => (typeof s.at === "number" && Number.isFinite(s.at) ? s.at : 0);
+
+/**
+ * ONE SESSION'S UNWRITTEN STRETCH, in the scopes named (all of them when
+ * none are) — the pacer reads its own project's, at every Stop.
+ */
+export function sessionStretch(buffer: SpanBuffer, session: string, scopes?: readonly string[]): Stretch | null {
+  const pieces: Piece[] = [];
+  for (const scope of scopes ?? buffer.scopes()) {
+    const covered = buffer.coveredHashes(scope);
+    for (const s of buffer.spans(scope)) {
+      if (s.session !== session || covered.has(s.hash)) continue;
+      pieces.push({ at: atOf(s), bytes: Buffer.byteLength(s.text, "utf8"), scope });
+    }
+  }
+  return stretchOf(pieces);
+}
+
+/**
+ * THE PACER'S THIRD ARM, beside typed turns and bytes: `ASK_PIECES` unwritten
+ * pieces, and `ASK_AFTER_MS` since the later of the stretch's first piece and
+ * the session's last ask. It applies to a first ask as well. Pure.
+ */
+export function askFromStretch(
+  stretch: Pick<Stretch, "pieces" | "firstAt"> | null,
+  lastAskAt: number | null,
+  now: number,
+  t: Pick<typeof COVERAGE_TUNABLES, "ASK_PIECES" | "ASK_AFTER_MS"> = COVERAGE_TUNABLES,
+): boolean {
+  if (stretch === null || stretch.pieces < t.ASK_PIECES) return false;
+  return now - Math.max(stretch.firstAt, lastAskAt ?? -Infinity) >= t.ASK_AFTER_MS;
+}
+
+/** Past the floor that makes a stretch a debt: pieces AND minutes. Pure. */
+export function overFloor(stretch: Pick<Stretch, "pieces" | "firstAt" | "lastAt"> | null): boolean {
+  if (stretch === null) return false;
+  return (
+    stretch.pieces >= COVERAGE_TUNABLES.OWED_PIECES &&
+    stretch.lastAt - stretch.firstAt >= COVERAGE_TUNABLES.OWED_SPAN_MS
+  );
+}
+
+// ── days of use ─────────────────────────────────────────────────────────────
+
+/**
+ * EVERY DATE A TURN-END WAS RECORDED ON, in the store's zone, sorted — the
+ * days of use. Read from `boundaries.jsonl` in every scope: a boundary is
+ * written at every turn-end before the worker runs, and retention strikes text,
+ * never boundaries.
+ */
+export function daysOfUse(buffer: SpanBuffer, zone: string): string[] {
+  const dates = new Set<string>();
+  for (const scope of buffer.scopes()) {
+    for (const b of buffer.boundaries(scope)) {
+      if (typeof b.at !== "number" || !Number.isFinite(b.at)) continue;
+      const d = localDate(b.at, zone);
+      if (d.length > 0) dates.add(d);
+    }
+  }
+  return [...dates].sort();
+}
+
+function usesAfter(uses: readonly string[], date: string): number {
+  let n = 0;
+  for (const d of uses) if (d > date) n += 1;
+  return n;
+}
+
+// ── the ledger ──────────────────────────────────────────────────────────────
+
+interface Tally {
+  scopes: Set<string>;
+  unwritten: Piece[];
+  pieces: number;
+  written: number;
+  lastCaptureAt: number;
+  endAt: number | null;
+  writtenUpAt: number | null;
+}
+
+/**
+ * THE LEDGER: every session holding a captured piece, judged once. Read-only.
+ * Sessions with only the assistant's own turns are not in it: nothing is
+ * written up from those.
+ */
+export function ledger(buffer: SpanBuffer, opts: LedgerOptions): LedgerEntry[] {
+  const today = localDate(opts.now, opts.zone);
+  const uses = daysOfUse(buffer, opts.zone);
+  const tallies = new Map<string, Tally>();
+  const tally = (session: unknown): Tally | null => {
+    if (typeof session !== "string" || session.length === 0) return null;
+    let t = tallies.get(session);
+    if (t === undefined) {
+      t = { scopes: new Set(), unwritten: [], pieces: 0, written: 0, lastCaptureAt: 0, endAt: null, writtenUpAt: null };
+      tallies.set(session, t);
+    }
+    return t;
+  };
+
+  for (const scope of buffer.scopes()) {
+    const covered = buffer.coveredHashes(scope);
+    for (const s of buffer.spans(scope)) {
+      const t = tally(s.session);
+      if (t === null) continue;
+      const at = atOf(s);
+      t.scopes.add(scope);
+      t.pieces += 1;
+      t.lastCaptureAt = Math.max(t.lastCaptureAt, at);
+      if (covered.has(s.hash)) t.written += 1;
+      else t.unwritten.push({ at, bytes: Buffer.byteLength(s.text, "utf8"), scope });
+    }
+    // The rest is read into a tally too, whichever scope comes first: a
+    // session with no piece at all is dropped below.
+    for (const s of buffer.assistantSpans(scope)) {
+      const t = tally(s.session);
+      if (t !== null) t.lastCaptureAt = Math.max(t.lastCaptureAt, atOf(s));
+    }
+    for (const b of buffer.boundaries(scope)) {
+      if (b.kind !== "session-end" || typeof b.at !== "number") continue;
+      const t = tally(b.session);
+      if (t !== null) t.endAt = Math.max(t.endAt ?? 0, b.at);
+    }
+    for (const w of buffer.writeUps(scope)) {
+      const t = tally(w.session);
+      if (t !== null) t.writtenUpAt = Math.max(t.writtenUpAt ?? 0, w.at);
+    }
+  }
+
+  const out: LedgerEntry[] = [];
+  for (const [session, t] of [...tallies.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+    if (t.pieces === 0) continue;
+    let hostEnd: number | null = null;
+    try {
+      hostEnd = opts.host?.(session).endedAt ?? null;
+    } catch {
+      hostEnd = null;
+    }
+    const endAt = maxOf(t.endAt, hostEnd);
+    const ended = endAt !== null && endAt >= t.lastCaptureAt;
+    const state: SessionState = ended ? "ended" : localDate(t.lastCaptureAt, opts.zone) < today ? "quiet" : "active";
+    // A write-up mark at or after a piece covers it, whatever the claim file
+    // says: the door's own claim is the ordinary road, the mark its fallback.
+    const unwritten = t.writtenUpAt === null ? t.unwritten : t.unwritten.filter((p) => p.at > (t.writtenUpAt as number));
+    const stretch = stretchOf(unwritten);
+    const floor = overFloor(stretch);
+    const since = stretch === null ? 0 : usesAfter(uses, localDate(stretch.lastAt, opts.zone));
+    const lapsed = floor && since >= COVERAGE_TUNABLES.LAPSE_DAYS_OF_USE;
+    const owed = floor && state !== "active" && !lapsed;
+    out.push({
+      session,
+      scopes: [...t.scopes].sort(),
+      state,
+      lastCaptureAt: t.lastCaptureAt,
+      endedAt: ended ? endAt : null,
+      pieces: t.pieces,
+      written: t.pieces - unwritten.length,
+      stretch,
+      overFloor: floor,
+      owed,
+      lapsed,
+      small: owed && (stretch?.pieces ?? 0) < COVERAGE_TUNABLES.SMALL_STRETCH_PIECES,
+      daysOfUseSince: since,
+    });
+  }
+  return out;
+}
+
+function maxOf(a: number | null, b: number | null): number | null {
+  if (a === null) return b;
+  if (b === null) return a;
+  return Math.max(a, b);
+}
+
+// ── claims with no proposal behind them ─────────────────────────────────────
+
+/**
+ * WHO A CLAIM IN `coverage.jsonl` SAYS WROTE A STRETCH UP. A claim's
+ * `proposalId` is a proposal's id (`prp_…`) when a memory made it; these
+ * prefixes name the other writers, each followed by `:` and an id.
+ */
+export const CLAIM_NOTHING_NEW = "nothing-new";
+export const CLAIM_CHAPTER = "chapter";
+/** The write-up door's own claim (`mcp/write-up.ts#finish`), `writeup:<writer>`. */
+export const CLAIM_WRITE_UP = "writeup";
+
+/**
+ * CLAIM A SESSION'S UNWRITTEN PIECES for a writer with no proposal — "nothing
+ * new" or a chapter — in every scope that holds any, under `<by>:<ref>`.
+ * Returns what it claimed; never throws (a claim that did not land costs a
+ * later reader a stretch that still reads unwritten, never words).
+ */
+export function claimUnwritten(
+  buffer: SpanBuffer,
+  input: { session: string; by: typeof CLAIM_NOTHING_NEW | typeof CLAIM_CHAPTER; ref: string },
+): { pieces: number; scopes: number } {
+  let pieces = 0;
+  let scopes = 0;
+  try {
+    for (const scope of buffer.scopes()) {
+      if (sessionStretch(buffer, input.session, [scope]) === null) continue;
+      const marks = buffer.claimCoverage({ scope, session: input.session, proposalId: `${input.by}:${input.ref}` });
+      if (marks.length === 0) continue;
+      pieces += marks.length;
+      scopes += 1;
+    }
+  } catch {
+    /* see above */
+  }
+  return { pieces, scopes };
+}
+
+/** The writer a claim names, in the words the rows and the console use. */
+export type Writer = "session" | "nothing-new" | "chapter" | "next-session" | "other";
+
+function writerOf(claim: string, markSession: string, proposalSession: string | undefined): Writer {
+  if (claim.startsWith(`${CLAIM_NOTHING_NEW}:`)) return "nothing-new";
+  if (claim.startsWith(`${CLAIM_CHAPTER}:`)) return "chapter";
+  if (claim.startsWith(`${CLAIM_WRITE_UP}:`)) return "next-session";
+  if (claim.startsWith("prp_")) {
+    // A write-up's last part deposits under the WRITING session and covers the
+    // ended one's words (`cover: { session }`): the proposal names the writer.
+    return proposalSession === undefined || proposalSession === markSession ? "session" : "next-session";
+  }
+  return "other";
+}
+
+// ── the work since a moment, for the handoff pointer ────────────────────────
+
+/**
+ * WHAT WAS CAPTURED IN ONE SCOPE AFTER `since`, by any session: how many
+ * pieces, how many of them are not written up, and the latest piece's time —
+ * piece times, never the registry's boundary clock, which a close bumps.
+ */
+export function workSince(
+  buffer: SpanBuffer,
+  scope: string,
+  since: number,
+): { pieces: number; unwritten: number; lastAt: number | null } {
+  const norm = (s: string): string => s.trim().replace(/\/+$/, "");
+  let pieces = 0;
+  let unwritten = 0;
+  let lastAt: number | null = null;
+  for (const held of buffer.scopes()) {
+    if (norm(held) !== norm(scope)) continue;
+    const covered = buffer.coveredHashes(held);
+    for (const s of buffer.spans(held)) {
+      const at = atOf(s);
+      if (at <= since) continue;
+      pieces += 1;
+      if (!covered.has(s.hash)) unwritten += 1;
+      lastAt = Math.max(lastAt ?? 0, at);
+    }
+  }
+  return { pieces, unwritten, lastAt };
+}
+
+// ── the rows ────────────────────────────────────────────────────────────────
+
+/** A stretch became owed. */
+export const COVERAGE_OWED_EVENT = "coverage.owed";
+/** A stretch was written up, and by whom. */
+export const COVERAGE_WRITTEN_EVENT = "coverage.written";
+/** An owed stretch lapsed: nothing deleted, nothing owed any more. */
+export const COVERAGE_LAPSED_EVENT = "coverage.lapsed";
+
+/** Where the written-up rows have been read up to, in box 2's meta. */
+export const COVERAGE_WRITTEN_THROUGH_KEY = "coverage.written.through";
+/** How far back each pass re-reads claims, so one appended by another process
+ *  a moment late is still seen. The dedup key makes a re-read free. */
+const WRITTEN_SLACK_MS = 10 * 60_000;
+
+export interface CoverageRecordReport {
+  readonly reason: "recorded" | "observer" | "failed";
+  readonly owed: number;
+  readonly lapsed: number;
+  readonly written: number;
+  /** Rows that landed this pass (a repeat is refused by its dedup key). */
+  readonly rows: number;
+}
+
+type RowStore = Pick<Store, "appendEvent" | "livedDay" | "getMeta" | "setMeta">;
+
+/**
+ * THE ROWS — one per stretch per state, each under a dedup key, so a pass
+ * that runs at every turn-end writes each fact once. Ids, counts and a code:
+ * the scope as its buffer key (`keyFor`), never the path; no text.
+ *
+ * Written-up rows are read off `coverage.jsonl` from a watermark in meta. On a
+ * store that has never run this, the watermark starts NOW: no backfill of old
+ * claims. Owed and lapsed rows are the ledger's, so an old store's standing
+ * stretches get one row each the first time — owed, or lapsed — and no more.
+ */
+export function recordCoverage(
+  buffer: SpanBuffer,
+  store: RowStore,
+  opts: LedgerOptions,
+): CoverageRecordReport {
+  if (buffer.observer) return { reason: "observer", owed: 0, lapsed: 0, written: 0, rows: 0 };
+  let rows = 0;
+  let owed = 0;
+  let lapsed = 0;
+  let written = 0;
+  try {
+    const day = store.livedDay();
+    const append = (name: string, dedupKey: string, payload: Record<string, unknown>, ref?: string): void => {
+      if (store.appendEvent({ name, day, dedupKey, payload, ...(ref === undefined ? {} : { ref }) }) !== 0) rows += 1;
+    };
+    for (const e of ledger(buffer, opts)) {
+      const s = e.stretch;
+      if (s === null || !(e.owed || e.lapsed)) continue;
+      const payload = {
+        session: e.session,
+        scope: keyFor(s.scopes[0] ?? ""),
+        scopes: s.scopes.length,
+        pieces: s.pieces,
+        minutes: s.minutes,
+        from: localDate(s.firstAt, opts.zone),
+        to: localDate(s.lastAt, opts.zone),
+        state: e.state,
+      };
+      if (e.owed) {
+        owed += 1;
+        append(COVERAGE_OWED_EVENT, `${COVERAGE_OWED_EVENT}:${e.session}:${String(s.firstAt)}`, payload);
+      } else {
+        lapsed += 1;
+        append(COVERAGE_LAPSED_EVENT, `${COVERAGE_LAPSED_EVENT}:${e.session}:${String(s.firstAt)}`, {
+          ...payload,
+          daysOfUse: e.daysOfUseSince,
+        });
+      }
+    }
+    const through = Number(store.getMeta(COVERAGE_WRITTEN_THROUGH_KEY) ?? "NaN");
+    if (Number.isFinite(through)) written = writtenRows(buffer, through - WRITTEN_SLACK_MS, opts, append);
+    store.setMeta(COVERAGE_WRITTEN_THROUGH_KEY, String(opts.now));
+    return { reason: "recorded", owed, lapsed, written, rows };
+  } catch {
+    return { reason: "failed", owed, lapsed, written, rows };
+  }
+}
+
+/** One row per claim made after `from`: a claim is one stretch written up. */
+function writtenRows(
+  buffer: SpanBuffer,
+  from: number,
+  opts: LedgerOptions,
+  append: (name: string, dedupKey: string, payload: Record<string, unknown>, ref?: string) => void,
+): number {
+  let n = 0;
+  for (const scope of buffer.scopes()) {
+    const marks = buffer.coverage(scope).filter((m) => typeof m.at === "number" && m.at > from && m.at <= opts.now);
+    if (marks.length === 0) continue;
+    const pieceAt = new Map(buffer.spans(scope).map((s) => [s.hash, atOf(s)] as const));
+    const proposals = new Map<string, string>();
+    for (const p of buffer.proposalRecords<{ id?: unknown; session?: unknown }>(scope)) {
+      if (typeof p?.id === "string" && typeof p.session === "string") proposals.set(p.id, p.session);
+    }
+    const groups = new Map<string, { session: string; claim: string; hashes: string[] }>();
+    for (const m of marks) {
+      if (typeof m.session !== "string" || typeof m.proposalId !== "string") continue;
+      const key = `${m.session}\u0000${m.proposalId}`;
+      const g = groups.get(key) ?? { session: m.session, claim: m.proposalId, hashes: [] };
+      g.hashes.push(m.spanHash);
+      groups.set(key, g);
+    }
+    for (const g of groups.values()) {
+      const times = g.hashes.map((h) => pieceAt.get(h)).filter((t): t is number => t !== undefined);
+      const minutes = times.length === 0 ? 0 : Math.floor((Math.max(...times) - Math.min(...times)) / 60_000);
+      append(
+        COVERAGE_WRITTEN_EVENT,
+        `${COVERAGE_WRITTEN_EVENT}:${keyFor(scope)}:${g.session}:${g.claim}`,
+        {
+          session: g.session,
+          scope: keyFor(scope),
+          pieces: g.hashes.length,
+          minutes,
+          by: writerOf(g.claim, g.session, proposals.get(g.claim)),
+        },
+        g.claim,
+      );
+      n += 1;
+    }
+  }
+  return n;
+}
+
+// ── reading the rows ────────────────────────────────────────────────────────
+
+/** One lapse, as the log holds it. */
+export interface LapseRow {
+  readonly session: string;
+  readonly pieces: number;
+  readonly minutes: number;
+  readonly at: number;
+}
+
+/** Lapses recorded since `sinceAt`, newest first. Never throws. */
+export function lapsesSince(store: Pick<Store, "eventLog">, sinceAt: number): LapseRow[] {
+  try {
+    const out: LapseRow[] = [];
+    for (const row of store.eventLog({ name: COVERAGE_LAPSED_EVENT, order: "desc", limit: 5_000 })) {
+      if (row.at < sinceAt) break;
+      let p: Record<string, unknown> = {};
+      try {
+        p = JSON.parse(row.payload ?? "{}") as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      out.push({
+        session: typeof p["session"] === "string" ? p["session"] : "",
+        pieces: typeof p["pieces"] === "number" ? p["pieces"] : 0,
+        minutes: typeof p["minutes"] === "number" ? p["minutes"] : 0,
+        at: row.at,
+      });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
