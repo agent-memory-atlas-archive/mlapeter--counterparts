@@ -65,6 +65,7 @@ export { serveStdio } from "./stdio.js";
 export type { StdioOptions } from "./stdio.js";
 
 import { Counterpart } from "../../core/counterpart.js";
+import type { CounterpartEvent } from "../../core/counterpart.js";
 import type { Embedder } from "../../core/store/index.js";
 import { McpServer } from "./server.js";
 import type { McpServerOptions } from "./server.js";
@@ -96,6 +97,8 @@ export interface OpenServerOptions extends Omit<McpServerOptions, "counterpart">
   /** The host config's `pageWriter.mode` — `off` stops the reflection's page
    *  write too (owner ruling D3 on #256). Absent: `session`. */
   pageWriterMode?: "session" | "off";
+  /** The brain's own events, for the process log (`adapters/log/`). */
+  onCounterpartEvent?: (e: CounterpartEvent) => void;
 }
 
 /** The sync face of a live embedder, when `embedder` is one. Duck-typed on purpose: this file must not import the claude-code adapter. */
@@ -119,6 +122,7 @@ export function openServer(opts: OpenServerOptions = {}): McpServer {
     ...(opts.pageWriterMode === undefined ? {} : { pageWriterMode: opts.pageWriterMode }),
     ...(opts.observer === undefined ? {} : { observer: opts.observer }),
     ...(opts.owner === undefined ? {} : { owner: opts.owner }),
+    ...(opts.onCounterpartEvent === undefined ? {} : { onEvent: opts.onCounterpartEvent }),
   });
   return new McpServer({
     counterpart,

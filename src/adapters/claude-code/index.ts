@@ -135,6 +135,7 @@ export { AB_DIR_ENV, V2_OVERRIDE, abDir, assignmentHealth, assignmentPath, prima
 export type { Assignment, AssignmentHealth, AssignmentState, Primacy, PrimacyReason } from "./primacy.js";
 
 import { Counterpart } from "../../core/counterpart.js";
+import type { CounterpartEvent } from "../../core/counterpart.js";
 import type { AdapterConfig } from "./config.js";
 import { openEmbedder } from "./embed-client.js";
 import type { LiveEmbedder } from "./embed-client.js";
@@ -154,9 +155,11 @@ export function openAdapter(
   opts: Omit<AdapterOptions, "counterpart" | "config"> & {
     /** Injected so a test can supply vectors without the weights. */
     embedder?: LiveEmbedder | null;
+    /** The brain's own events, for the process log (`adapters/log/`). */
+    onCounterpartEvent?: (e: CounterpartEvent) => void;
   } = {},
 ): ClaudeCodeAdapter {
-  const { embedder: injected, ...adapterOpts } = opts;
+  const { embedder: injected, onCounterpartEvent, ...adapterOpts } = opts;
   const embedder = injected !== undefined ? injected : openEmbedder(config);
   const counterpart = Counterpart.open({
     // Both halves of the same embedder: the SYNC face the store's index holds,
@@ -175,6 +178,7 @@ export function openAdapter(
     ...(config.identity === undefined
       ? {}
       : { identity: { name: config.identity.name, aliases: [...(config.identity.aliases ?? [])] } }),
+    ...(onCounterpartEvent === undefined ? {} : { onEvent: onCounterpartEvent }),
   });
   return new ClaudeCodeAdapter({ counterpart, config, ...adapterOpts });
 }

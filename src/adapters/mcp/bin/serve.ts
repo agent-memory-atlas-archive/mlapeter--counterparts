@@ -49,6 +49,8 @@ import { loadConfig, withEmbedderDefault } from "../../claude-code/config.js";
 import { openEmbedder } from "../../claude-code/embed-client.js";
 import type { LiveEmbedder } from "../../claude-code/embed-client.js";
 import { hostScope, openServer } from "../index.js";
+import { openLog } from "../../log/index.js";
+import type { LogEvent, ProcessLog } from "../../log/index.js";
 import { serveStdio } from "../stdio.js";
 import { DATA_DIR_ENV, describeGuardRefusal } from "../../../core/store/index.js";
 import {
@@ -286,8 +288,15 @@ async function main(): Promise<void> {
         ` — this server runs ${stance}.\n`,
     );
   }
+  // THE PROCESS LOG (`adapters/log/`), opened once the store has resolved its
+  // own directory; the forwarding closures hand it every event from the start.
+  // Off for an observer, and off in a directory set `off`, like the hooks.
+  let log: ProcessLog | null = null;
+  const toLog = (e: LogEvent): void => log?.event(e);
   const server = openServer({
     ...opts,
+    onEvent: toLog,
+    onCounterpartEvent: toLog,
     // THE COMBINATION, most restrictive wins: a registry that says `observer`
     // stands the server down even when the configuration did not, and a
     // configuration that already said so is never relaxed by a registry.
@@ -309,12 +318,25 @@ async function main(): Promise<void> {
   // (`server.ts#recordLaunch`). Taken away again at a clean exit; a server the
   // host kills outright leaves a record that reads as dead and is pruned.
   server.recordLaunch();
+  const opened = openLog({
+    dataDir: server.counterpart.store.dir,
+    proc: "mcp",
+    session: () => server.session,
+    ...(timeZone === undefined ? {} : { timeZone }),
+    observer: server.observer || stance === "off",
+  });
+  log = opened;
+  opened.start({ boundSession: server.launchedSession !== null });
   try {
     await serveStdio(server, process.stdin, {
       write: (chunk) => {
         process.stdout.write(chunk);
       },
     });
+    opened.end("stdin-closed");
+  } catch (err) {
+    opened.threw(err);
+    throw err;
   } finally {
     server.forgetLaunch();
     server.counterpart.close();

@@ -93,6 +93,7 @@ import {
   writeUpPlan,
 } from "../sessions.js";
 import type { SessionPhase, SessionRecord } from "../sessions.js";
+import { pruneLog } from "../log/index.js";
 
 import { calendarDate } from "../../core/self/index.js";
 import { localClock, localDate, readableDate } from "../../core/time.js";
@@ -2091,6 +2092,9 @@ export class ClaudeCodeAdapter {
     if (phase === "start") {
       const pruned = pruneSessions(dir, this.nowFn());
       if (pruned > 0) this.emit("adapter.session.registry.pruned", { removed: pruned });
+      // The process log's week (`adapters/log/`), by the dates in its file names.
+      const logs = pruneLog(dir, localDate(this.nowFn(), this.counterpart.store.zone()));
+      if (logs > 0) this.emit("adapter.log.pruned", { removed: logs });
     }
   }
 

@@ -72,6 +72,7 @@ import { pruneRetention } from "../../../core/remember/retention.js";
 import { dataDir, describeGuardRefusal } from "../../../core/store/index.js";
 import type { Store } from "../../../core/store/index.js";
 import { hostSessionEvidence, writeUpSources } from "../../sessions.js";
+import { openLog } from "../../log/index.js";
 
 import {
   configLine,
@@ -582,13 +583,28 @@ async function main(): Promise<void> {
           controller.abort();
         }, timeout);
   timer?.unref?.();
+  // THE PROCESS LOG (`adapters/log/`) — the one place this detached run's
+  // events outlive it, since its stdio goes nowhere.
+  const log = openLog({
+    dataDir: config.dataDir,
+    proc: "worker",
+    session: pinnedSession(),
+    ...(config.timeZone === undefined ? {} : { timeZone: config.timeZone }),
+    observer: config.observer === true,
+  });
+  log.start();
   try {
-    await runOnce({
+    const report = await runOnce({
       config,
       signal: controller.signal,
       ...(pinnedSession() === null ? {} : { session: pinnedSession() as string }),
       ...(pinnedScope() === null ? {} : { scope: pinnedScope() as string }),
+      onEvent: (name, data) => log.event({ name, data }),
     });
+    log.end(report.reason, { swept: report.swept, minted: report.minted, code: report.code });
+  } catch (err) {
+    log.threw(err);
+    throw err;
   } finally {
     if (timer !== null) clearTimeout(timer);
   }
