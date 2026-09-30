@@ -33,6 +33,7 @@ import {
   ASSOCIATE_FLUSH_EVENT,
   AUTHORSHIP_ASK_EVENT,
   BOUNDARY_EVENT,
+  CAPTURE_FAILED_EVENT,
   CHECKOUT_EVENT,
   EMBED_BACKFILL_EVENT,
   EPISODE_ASK_EVENT,
@@ -59,6 +60,7 @@ import {
   SWEEP_WAKE_EVENT,
   WAKE_DELIVERED_EVENT,
   WAKE_INJECTED_EVENT,
+  WRITE_UP_FAILED_EVENT,
 } from "../../core/counterpart.js";
 import { BAND_TRANSITION_EVENT } from "../../core/sleep/index.js";
 // Prospective memory's two (2026-09-20, E2). The module had no durable row at
@@ -187,6 +189,8 @@ export type DurableEventName =
   | typeof SPAWN_FAILED_EVENT
   | typeof SPAWN_STARTED_EVENT
   | typeof RUNNER_FAILED_EVENT
+  | typeof WRITE_UP_FAILED_EVENT
+  | typeof CAPTURE_FAILED_EVENT
   | typeof MCP_RECALL_EVENT
   | typeof CHECKOUT_EVENT
   | typeof SNAPSHOT_TAKEN_EVENT
@@ -227,6 +231,8 @@ export const DURABLE_EVENTS = {
   // worker was refused at every boundary and the only record was a ring that
   // died with the hook process. One row per reason per date.
   "adapter.runner.failed": "the detached worker failed after opening the store (which step, and the code)",
+  "adapter.writeup.failed": "a session start could not compose the pointer to an earlier session's write-up (the code) — that session was not offered its write-up this time",
+  "remember.capture.failed": "a turn's words could not be kept for its write-up (which step of the capture, and the code) — the next boundary reads the same turns again",
   "adapter.spawn.failed": "the detached worker could not be started at all (the OS said why)",
   "adapter.spawn.refused": "the detached worker was not started, by name (and how many times running)",
   // The other half of those three (2026-09-20, E2): until it existed, a worker

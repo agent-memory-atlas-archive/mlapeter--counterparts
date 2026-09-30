@@ -12,6 +12,7 @@
  * the ROW is how the next session hears of it.
  */
 import { implicitConfigRefusal, namedConfigRefusal, namedUnreadableRefusal } from "../../config-path.js";
+import { openLog } from "../../log/index.js";
 
 import { NIGHT_KIND_ENV, NIGHT_RUN_ENV, openNightCounterpart, readKind, runNight } from "../night-run.js";
 import { isEntryPoint, pinnedScope, pinnedSession, runnerConfig, runnerConfigChoice } from "./runner.js";
@@ -31,22 +32,40 @@ async function main(): Promise<void> {
   }
   const run = (process.env[NIGHT_RUN_ENV] ?? "").trim();
   const session = pinnedSession();
+  // THE PROCESS LOG (`adapters/log/`): this process's stdio is discarded, so
+  // its start, its end and the run's state are written here.
+  const log = openLog({
+    dataDir: config.dataDir,
+    proc: "nightly",
+    session,
+    ...(config.timeZone === undefined ? {} : { timeZone: config.timeZone }),
+    observer: config.observer === true,
+  });
+  log.start({ run: run.length > 0 ? run : null, kind: readKind(process.env[NIGHT_KIND_ENV]).kind });
   if (run.length === 0 || session === null || config.observer === true) {
     process.stderr.write("[counterparts] nightly run stood down: no run, no session, or an observer\n");
     // SAID WHERE IT CAN BE (review of #282, finding 4): a run the hook started
     // and this process will not carry is recorded `could-not-start`, so the
     // next prompt asks instead of waiting on a row that stays `started`.
     if (run.length > 0 && config.observer !== true) standDown(config, run, session ?? "", readKind(process.env[NIGHT_KIND_ENV]).kind);
+    log.end("stood-down", { run: run.length > 0 ? run : null });
     return;
   }
-  await runNight({
-    open: () => openNightCounterpart(config),
+  const out = await runNight({
+    open: () => openNightCounterpart(config, log.event),
     config,
     run,
     session,
     scope: pinnedScope() ?? "",
     kind: readKind(process.env[NIGHT_KIND_ENV]),
     configPath: choice.path,
+  });
+  log.end(out.state, {
+    run: out.run,
+    why: out.reason,
+    detail: out.detail,
+    code: out.code,
+    parts: (out.parts ?? []).join(","),
   });
 }
 

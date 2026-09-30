@@ -63,6 +63,7 @@
 import { fileURLToPath } from "node:url";
 
 import { Counterpart } from "../../core/counterpart.js";
+import type { CounterpartEvent } from "../../core/counterpart.js";
 import type { NightPart, NightRun } from "../../core/dream/index.js";
 import { CONFIG_ENV as CONFIG_PATH_ENV } from "../config-path.js";
 import { OBSERVER_ENV } from "../stance-env.js";
@@ -487,8 +488,9 @@ export async function runNight(input: NightRunInput): Promise<NightRun> {
   return ended({ state: "failed", reason: "unfinished", detail: null, code: 0, ...found });
 }
 
-/** The store as the run's process opens it — the hook's options, no embedder. */
-export function openNightCounterpart(config: AdapterConfig): Counterpart {
+/** The store as the run's process opens it — the hook's options, no embedder.
+ *  `onEvent` is the process log's (`adapters/log/`), when there is one. */
+export function openNightCounterpart(config: AdapterConfig, onEvent?: (e: CounterpartEvent) => void): Counterpart {
   return Counterpart.open({
     ...(config.dataDir === undefined ? {} : { dir: config.dataDir }),
     ...(config.snapshots?.dir === undefined ? {} : { snapshotsDir: config.snapshots.dir }),
@@ -497,5 +499,6 @@ export function openNightCounterpart(config: AdapterConfig): Counterpart {
     ...(config.timeZone === undefined ? {} : { timeZone: config.timeZone }),
     ...(config.pageWriter?.mode === undefined ? {} : { pageWriterMode: config.pageWriter.mode }),
     ...(config.identity === undefined ? {} : { identity: { name: config.identity.name, aliases: [...(config.identity.aliases ?? [])] } }),
+    ...(onEvent === undefined ? {} : { onEvent }),
   });
 }

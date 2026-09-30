@@ -50,6 +50,7 @@ import {
   SPAWN_STARTED_EVENT,
   WAKE_DELIVERED_EVENT,
   WAKE_INJECTED_EVENT,
+  WRITE_UP_FAILED_EVENT,
 } from "../../core/counterpart.js";
 import type { AdapterDurableEventName, PlainReminder } from "../../core/counterpart.js";
 import { newNightRunId } from "../../core/dream/index.js";
@@ -93,6 +94,7 @@ import {
   writeUpPlan,
 } from "../sessions.js";
 import type { SessionPhase, SessionRecord } from "../sessions.js";
+import { pruneLog } from "../log/index.js";
 
 import { calendarDate } from "../../core/self/index.js";
 import { localClock, localDate, readableDate } from "../../core/time.js";
@@ -1087,7 +1089,9 @@ export class ClaudeCodeAdapter {
       });
       return text;
     } catch (err) {
-      this.emit("adapter.writeup.failed", { code: codeOf(err) });
+      // DURABLE since 2026-09-30: whether a session was ever offered its
+      // write-up is a fact a later reading needs, and this ring dies with the hook.
+      this.record(WRITE_UP_FAILED_EVENT, input, { code: codeOf(err) });
       return "";
     }
   }
@@ -2091,6 +2095,9 @@ export class ClaudeCodeAdapter {
     if (phase === "start") {
       const pruned = pruneSessions(dir, this.nowFn());
       if (pruned > 0) this.emit("adapter.session.registry.pruned", { removed: pruned });
+      // The process log's week (`adapters/log/`), by the dates in its file names.
+      const logs = pruneLog(dir, localDate(this.nowFn(), this.counterpart.store.zone()));
+      if (logs > 0) this.emit("adapter.log.pruned", { removed: logs });
     }
   }
 

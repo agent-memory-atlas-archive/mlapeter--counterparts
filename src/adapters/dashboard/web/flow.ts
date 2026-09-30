@@ -414,6 +414,10 @@ export const EVENT_NODE = {
   "adapter.spawn.refused": "sweep",
   "adapter.spawn.failed": "sweep",
   "adapter.runner.failed": "sweep",
+  // The two failures the process log promoted to rows (2026-09-30): a turn the
+  // buffer would not take, and a write-up pointer that could not be composed.
+  "remember.capture.failed": "spans",
+  "adapter.writeup.failed": "remember",
   // The other half of those three: the worker that DID start, same node.
   "adapter.spawn.started": "sweep",
   // The deliberate look is a retrieval, so it lands where the ambient one does.

@@ -121,6 +121,7 @@ import type { AdapterConfig } from "./config.js";
 // The same vocabulary the hook's stand-down uses, so the terminal and the
 // console cannot end up with two answers to "why did it not open".
 import { describeFault, faultId, faultPath } from "./standdown.js";
+import { LOG_DAYS, logReading } from "../log/index.js";
 
 /** Worst first. The order of this array IS the report's order. */
 export const SEVERITIES = ["red", "amber", "green"] as const;
@@ -2329,6 +2330,29 @@ export function journalCopyFindings(store: Store): Finding[] {
 }
 
 /**
+ * THE PROCESS LOG (`adapters/log/`, 2026-09-30) — where it is, how many days it
+ * holds, and how many failures it recorded today. Green whatever the count: the
+ * failures are each some other line's to grade, and this one says where to read
+ * them (`counterparts log`). Folds into `Background` like the other greens.
+ */
+export function logFindings(input: DoctorInput): Finding[] {
+  const r = logReading(input.dir, input.today);
+  const failures = `${String(r.failuresToday)} failure${r.failuresToday === 1 ? "" : "s"} today`;
+  const detail =
+    r.days === 0
+      ? `${tilde(r.dir)} · nothing written yet`
+      : `${tilde(r.dir)} · holds ${String(r.days)} day${r.days === 1 ? "" : "s"} (kept ${String(LOG_DAYS)}) · ${failures}`;
+  return [
+    finding("log", "green", "Log", detail, r.failuresToday > 0 ? "Read them: counterparts log" : "", {
+      dir: r.dir,
+      days: r.days,
+      failuresToday: r.failuresToday,
+      linesToday: r.linesToday,
+    }),
+  ];
+}
+
+/**
  * THE SELF PAGE (2026-09-18, S1) — one line: is there one, how big, how old.
  *
  * GREEN when absent, amber when stale, and never red. A store with no page has
@@ -3789,6 +3813,9 @@ export function doctorFindings(input: DoctorInput): Finding[] {
       : [["crash-write-up", (): Finding[] => crashWriteUpFindings(input, store, owedReading)] as const]),
     // F6: silent unless a copy failure is standing. Two bounded event reads.
     ["journal-copy", () => journalCopyFindings(store)],
+    // The process log (2026-09-30): one directory listing and today's file.
+    // Not in the session-start reading: it is never red, and it reads a file.
+    ...(input.budgetMs !== undefined ? [] : [["log", (): Finding[] => logFindings(input)] as const]),
     // B3's week: one bounded read of the newest `remember.prune` row. Folds into
     // `Background` while green.
     ["retention", () => retentionFindings(input, store)],

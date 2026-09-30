@@ -130,6 +130,7 @@ export const SHORT: Record<string, string | readonly string[]> = {
   //    installed the package.
   note: "Remember something on purpose, right now",
   mechanisms: "Which parts of memory are working, one line each",
+  log: "What happened today, in order, one line each (kept 7 days)",
   dream: "What each dream did — and undo one",
   core: "What became part of who I am — and send one back",
   settle: "Two memories that disagree: which holds — and undo one",
@@ -179,6 +180,7 @@ export const GROUPS: readonly HelpGroup[] = [
 export const ADVANCED: readonly string[] = [
   "note",
   "mechanisms",
+  "log",
   "dream",
   "core",
   "settle",
