@@ -40,6 +40,10 @@
  *   is therefore CHECKED for this one lane rather than structural: the gate
  *   admits a `linkOnly` candidate to its own quiet slots and to nothing else,
  *   and every other uncued candidate is still dark.
+ *   **Stamps** (the feeling lane, 2026-09-30, U13 — DELIBERATE ONLY). A
+ *   deliberate question about feeling lets the stamps that answer it nominate
+ *   their memories, folded into the CUE channel like a temporal cue, so hard
+ *   gate (a) stays structural (`feeling-ask.ts`, and the block below).
  *
  * The candidate set is exactly the union of the token index's hits and the vector
  * index's hits. NO MODEL CALL: the turn's vector is an INPUT. Its absence degrades
@@ -48,8 +52,10 @@
  * fail.
  */
 import type { Kind, MemoryPhysics } from "../types.js";
-import { emotionalIntensity, sal, strength } from "../physics/index.js";
-import type { Hit, ProseDoc, Store } from "../store/index.js";
+import { emotionalIntensity, sal, softenedFeeling, strength } from "../physics/index.js";
+import type { FeelingRow, Hit, ProseDoc, Store } from "../store/index.js";
+import { feelingTokens, readFeelingAsk } from "./feeling-ask.js";
+import type { FeelingAskInput } from "./feeling-ask.js";
 import { confidentialByMeta, rowToPhysics, tokenize } from "../store/index.js";
 import { buildCues, informativeness } from "./cues.js";
 import type { Cue } from "./cues.js";
@@ -107,6 +113,12 @@ export interface Candidate {
    *  (`associate` `Contribution.from`). The gate shows a pointer only when
    *  enough of it came from memories the turn SHOWS (2026-09-28). */
   readonly linkedFrom?: Readonly<Record<string, number>>;
+  /** Nominated by a RANKED question about feeling (2026-09-30, U13): the
+   *  softened strength of its strongest stamp that answered. Absent otherwise. */
+  readonly feeling?: number;
+  /** The part of `cue` its stamps brought (either feeling case). The gate
+   *  leaves it out of this turn's background (review of #293, B2). */
+  readonly stamp?: number;
 }
 
 /**
@@ -191,6 +203,9 @@ export interface ActivationInput {
   readonly selfFelt: boolean;
   /** How each person feels now (`mood.ts#currentMood`). Absent: no mood. */
   readonly mood?: Mood | undefined;
+  /** A DELIBERATE question, which may be about feeling (`feeling-ask.ts`).
+   *  Absent on every ambient turn, and then the feeling lane never runs. */
+  readonly feeling?: FeelingAskInput | undefined;
   readonly maxCandidates: number;
   /** Live memory count, for informativeness and the cold-start regime. */
   readonly storeSize: number;
@@ -227,6 +242,22 @@ export interface ActivationResult {
   /** Journal copies folded into their own chapter before the cut (2026-09-30,
    *  U13). Reported, not recorded, for `capped`'s reason. */
   readonly collapsed: number;
+  /**
+   * The feeling lane (2026-09-30, U13), when the turn was a deliberate ask:
+   * whether the question was about feeling, how many of its words named one,
+   * how many stamped memories answered, and — by id, for the candidates kept —
+   * the softened strength that nominated each. Ids and numbers, never a
+   * feeling's word. Null on an ambient turn. Not a decision-record field.
+   */
+  readonly feeling: FeelingLane | null;
+}
+
+export interface FeelingLane {
+  /** A real question about feeling: the answer is ranked by the stamps. */
+  readonly ranked: boolean;
+  readonly named: number;
+  readonly pool: number;
+  readonly strengths: ReadonlyMap<string, number>;
 }
 
 /**
@@ -523,6 +554,10 @@ export function activate(
     readonly activation: number;
     /** The rank the cut uses: activation over the gate's own salience factor. */
     readonly cutKey: number;
+    /** A nominated stamp's softened strength (the RANKED feeling lane); 0 otherwise. */
+    readonly feeling: number;
+    /** The part of `cue` the stamps brought — kept out of the background. */
+    readonly stamp: number;
   }
   /** The row, when this id is live memory that may be recalled at all; the
    *  same test for a candidate and for a link-only pointer. */
@@ -547,6 +582,86 @@ export function activate(
     if (row.type === "schema" && row.kind === "place" && isHandoffRow(store, id)) return undefined;
     return row;
   };
+
+  // ── a question about feeling: stamps nominate (2026-09-30, U13) ─────────
+  // Deliberate only — `input.feeling` is set by the deliberate ask and nothing
+  // else, so the ambient turn never reaches this block (§9 G10/G11 stand).
+  // `feeling-ask.ts` reads the question. Two cases:
+  //
+  //   RANKED — a real question about feeling (a feel-word or a named feeling
+  //   used about a person). The stamps that answer it (the named feelings', or
+  //   every stamp when none is named), of the person asked about, rank their
+  //   memories by softened strength; the strongest `FEELING_CANDIDATES_MAX` are
+  //   nominated, each bringing `FEELING_CUE_UNITS` cue units × that strength,
+  //   and `deliberate.ts` answers them strongest first within each tier.
+  //   NAMED ONLY — a feeling word used about no one ("the happy path"). Its
+  //   stamps may still find their memories, as an ordinary word would: the
+  //   word's rarity among the stamps, once per word. Nothing is reordered.
+  //
+  // Either way the stamps' cue goes into the CUE channel, the temporal
+  // channel's shape: it creates the candidate and counts as cue, and hard gate
+  // (a) stays structural — an unstamped memory no word reached is still not
+  // fetched. It is kept OUT of the gate's background (`Candidate.stamp`,
+  // review of #293 B2): the bar is what the words and meaning found, and the
+  // stamps are measured against it, never part of it. Only `recallable` rows
+  // are nominated; a confidential one takes no slot for a non-owner (the gate
+  // withholds it anyway); a chapter and its copy take one slot between them.
+  const feelingOf = new Map<string, number>();
+  const stampCue = new Map<string, number>();
+  let feelingAsk: { ranked: boolean; named: number; pool: number } | null = null;
+  if (input.feeling !== undefined) {
+    let stamps: (FeelingRow & { birth_day: number })[] = [];
+    try {
+      stamps = store.feelingsLive();
+    } catch {
+      // A store without the table has no stamps; the question goes on without them.
+      stamps = [];
+    }
+    const tokensOf = stamps.map((f) => feelingTokens(f));
+    const stored = new Set(tokensOf.flatMap((x) => [...x]));
+    const ask = readFeelingAsk(input.text, input.feeling, stored, t.MIN_CUE_LENGTH);
+    const best = new Map<string, number>();
+    /** memory -> the question's feeling words its stamps answer to. */
+    const answered = new Map<string, Set<string>>();
+    const everyStamp = ask.ranked && ask.named.size === 0;
+    if (ask.ranked || ask.named.size > 0) {
+      stamps.forEach((f, i) => {
+        if (ask.whose !== null && f.whose !== ask.whose) return;
+        const answers = tokensOf[i] as Set<string>;
+        const hit = [...ask.named].filter((w) => answers.has(w));
+        if (!everyStamp && hit.length === 0) return;
+        const soft = softenedFeeling(f.strength, input.day - f.birth_day);
+        if (!(soft > 0)) return;
+        if (soft > (best.get(f.memory_id) ?? 0)) best.set(f.memory_id, soft);
+        const words = answered.get(f.memory_id) ?? new Set<string>();
+        for (const w of hit) words.add(w);
+        answered.set(f.memory_id, words);
+      });
+      // A named word's rarity AMONG THE STAMPS: how many memories it reaches.
+      const stampDf = new Map<string, number>();
+      for (const words of answered.values()) for (const w of words) stampDf.set(w, (stampDf.get(w) ?? 0) + 1);
+      const order = [...best].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+      const slots = new Set<string>();
+      for (const [id, soft] of order) {
+        if (slots.size >= t.FEELING_CANDIDATES_MAX) break;
+        const row = recallable(id);
+        if (row === undefined) continue;
+        if (input.feeling.owner !== true && row.confidential === 1) continue;
+        const slot = journalCopyOf(row) ?? id;
+        if (slots.has(slot)) continue;
+        const add = ask.ranked
+          ? t.FEELING_CUE_UNITS * cueUnit * soft
+          : [...(answered.get(id) ?? [])].reduce((sum, w) => sum + informativeness(stampDf.get(w) ?? 1, storeSize), 0);
+        if (!(add > 0)) continue;
+        slots.add(slot);
+        if (ask.ranked) feelingOf.set(id, soft);
+        stampCue.set(id, add);
+        cueScore.set(id, (cueScore.get(id) ?? 0) + add);
+        ids.add(id);
+      }
+    }
+    feelingAsk = { ranked: ask.ranked, named: ask.named.size, pool: best.size };
+  }
 
   let scored: Scored[] = [];
   let skipped = 0;
@@ -580,6 +695,8 @@ export function activate(
       hops: 0,
       activation,
       cutKey: salienceRank(activation, gatedS, t),
+      feeling: feelingOf.get(id) ?? 0,
+      stamp: stampCue.get(id) ?? 0,
     });
   }
   // ── a chapter and its own copy are ONE result (2026-09-30, U13) ─────────
@@ -618,8 +735,10 @@ export function activate(
       const semantic = Math.max(chapter.semantic, copy.semantic);
       const arrival = cue + semantic > 0 ? t.ARRIVAL_WEIGHT * chapter.strength : 0;
       const activation = cue + semantic + arrival;
+      const feeling = Math.max(chapter.feeling, copy.feeling);
+      const stamp = copy.cue >= chapter.cue ? copy.stamp : chapter.stamp;
       const sal = Math.max(chapter.sal, copy.sal);
-      byId.set(chapterId, { ...chapter, cue, temporal, semantic, arrival, activation, sal, cutKey: salienceRank(activation, sal, t) });
+      byId.set(chapterId, { ...chapter, cue, temporal, semantic, arrival, activation, sal, cutKey: salienceRank(activation, sal, t), feeling, stamp });
       collapsedInto.set(copyId, chapterId);
       absorbed.set(chapterId, [...(absorbed.get(chapterId) ?? []), copyId]);
       matchCount.set(chapterId, Math.max(matchCount.get(chapterId) ?? 0, matchCount.get(copyId) ?? 0));
@@ -649,8 +768,8 @@ export function activate(
   // activation-ranked cut would keep.
   const rankForCut = (list: Scored[]): void => {
     const sample = list
-      .filter((c) => c.cue + c.semantic > 0)
-      .map((c) => c.activation)
+      .filter((c) => c.cue - c.stamp + c.semantic > 0)
+      .map((c) => c.activation - c.stamp)
       .sort((x, y) => y - x)
       .slice(0, input.maxCandidates);
     const relative = storeSize >= t.COLD_START_MIN_STORE && sample.length >= t.MIN_BACKGROUND_SAMPLE && spreadOf(sample) > 0;
@@ -686,7 +805,7 @@ export function activate(
   let spreadRun: Omit<SpreadStats, "landed" | "pointerCandidates" | "hopsCapped"> | null = null;
   if (input.spread !== undefined && scored.length > 0) {
     const seeds = scored
-      .filter((c) => c.cue + c.semantic > 0)
+      .filter((c) => c.cue - c.stamp + c.semantic > 0)
       .slice(0, t.SPREAD_SEEDS)
       .flatMap((c) => [c.id, ...(absorbed.get(c.id) ?? [])].map((id) => ({ id, activation: c.activation })));
     const seedIds = new Set(seeds.map((s) => s.id));
@@ -742,7 +861,12 @@ export function activate(
     };
   }
 
-  const kept = scored.slice(0, input.maxCandidates);
+  // The feeling lane's nominations are kept past the cut, as quiet pointers
+  // are added after it: bounded by `FEELING_CANDIDATES_MAX`, and absent on
+  // every turn that did not ask about feeling.
+  const top = scored.slice(0, input.maxCandidates);
+  const topIds = new Set(top.map((c) => c.id));
+  const kept = [...top, ...scored.filter((c) => c.feeling > 0 && !topIds.has(c.id))];
   const dropped = scored.length - kept.length;
   // MOOD (recall G18): one batched read, and only when someone has a mood — and only
   // for CUED candidates. An uncued candidate is dark at hard gate (a) before
@@ -790,11 +914,14 @@ export function activate(
       // A temporal cue is id-addressed: no handle is involved, so nothing about
       // it is ambiguous, and an unambiguous cue trains. Without this clause a
       // temporal-only surface would be refused as "ambiguous-handle-trains-
-      // nothing" — a true refusal under a false name (scar §2.4).
-      trains: unambiguousMatch.has(id) || semantic > 0 || temporal > 0,
+      // nothing" — a true refusal under a false name (scar §2.4). A stamp is
+      // id-addressed the same way (the feeling lane).
+      trains: unambiguousMatch.has(id) || semantic > 0 || temporal > 0 || c.feeling > 0,
       // §12 G5: temporal ALONE reaches the footnote tier at most.
       maxTier: temporal > 0 && cue - temporal <= 0 && semantic <= 0 ? "footnoted" : "surfaced",
       confidential: stored.confidential,
+      ...(c.feeling > 0 ? { feeling: c.feeling } : {}),
+      ...(c.stamp > 0 ? { stamp: c.stamp } : {}),
     });
   }
 
@@ -877,6 +1004,13 @@ export function activate(
           },
     dropped,
     collapsed,
+    feeling:
+      feelingAsk === null
+        ? null
+        : {
+            ...feelingAsk,
+            strengths: new Map(candidates.filter((c) => c.feeling !== undefined).map((c) => [c.id, c.feeling as number])),
+          },
   };
 }
 

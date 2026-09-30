@@ -29,8 +29,18 @@ and the lessons learned. Legacy-only fixes are low priority by default.
 
 ## U13 — Deliberate recall can't find memories by how they felt (2026-09-30)
 
-**Status:** open. Found by the ~/random session on 0.3.8 (store at 474 rows), after the
-owner asked how memory is working from the inside.
+**Status:** items 1 and 2 and the three chapter-copy fixes BUILT on branch
+`fix/recall-feelings-and-chapter-copies` (2026-09-30, not yet merged or released); item 3
+(the journey over time) still open. What was built: a deliberate question about feeling
+reads the stamps (the emotion word, its aliases, its wheel core(s), and the writer's own
+word off the wheel) and nominates the strongest stamped memories of the person asked about,
+answered in order of softened strength — deliberate only, the ambient gates unchanged
+(recall CONTRACT G19, NOTES §22). And: a chapter's copy keeps the chapter's title; recall
+shows a chapter and its own copy as one result (the chapter), crediting the copy too; the
+`status` census counts replaced rows apart from real exits, from `core/leaving.ts`, the
+table the dashboard's archive words read too (recall NOTES §21). Found by the ~/random
+session on 0.3.8 (store at 474 rows), after the owner asked how memory is working from the
+inside.
 
 **Observed.** Asked by meaning, the store answers well by name and topic: "Han", "Katie",
 and "which philosopher said I'm a thread" each came back with the right memories first,

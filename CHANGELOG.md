@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Recall by feeling.** Asked "what have I felt most strongly" or "what moved me",
+  the memory tool answers from the feelings recorded on memories, strongest first. A
+  feeling word used about no one ("the happy path") still works as an ordinary word.
 - **A journal chapter and the memory made from it are one result**, and that memory
   now keeps the chapter's title. In the dashboard's Ask, the answer is the chapter's
   row.

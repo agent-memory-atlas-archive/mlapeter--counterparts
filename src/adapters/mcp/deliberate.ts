@@ -27,7 +27,8 @@ import type { Counterpart } from "../../core/counterpart.js";
 import { wireChars } from "../../core/fit/index.js";
 import { strength } from "../../core/physics/index.js";
 import { isConfidential, isSelfPage, standingOf } from "../../core/recall/index.js";
-import type { CandidateVerdict, SemanticSource, Verdict } from "../../core/recall/index.js";
+import type { CandidateVerdict, FeelingWhose, SemanticSource, Verdict } from "../../core/recall/index.js";
+import { ownerNames } from "../../core/sleep/index.js";
 
 /**
  * The confidence tiers this adapter reports. Named, not numeric: v1 labeled its
@@ -389,6 +390,12 @@ export interface DeliberateOptions {
   /** Why there is no vector, when there is none — the caller knows and this
    *  file cannot. Defaults to `embedder-off`, the ordinary case. */
   readonly semantic?: SemanticSource;
+  /**
+   * Whose "I" a question about feeling means (2026-09-30, U13): `self` — the
+   * default — for the counterpart's own `recall`, `owner` for the console's
+   * `ask`, where the owner is the one typing.
+   */
+  readonly asker?: FeelingWhose;
 }
 
 /**
@@ -664,6 +671,9 @@ export function answerQuestion(
     budgetMs: DELIBERATE_BUDGET_MS,
     ...(vector === null || vector.length === 0 ? {} : { vector }),
     ...(opts.day === undefined ? {} : { day: opts.day }),
+    // A DELIBERATE question may be about feeling (U13): the one caller that
+    // opens the feeling lane (`recall/feeling-ask.ts`). Never the ambient turn.
+    feeling: { asker: opts.asker ?? "self", ownerNames: safeOwnerNames(counterpart) },
   });
   const decision = built.decision;
   const surfaced = new Set(decision.surfaced);
@@ -701,11 +711,43 @@ export function answerQuestion(
     // an unexplained gap between `considered` and what came back.
     else blocked(v.verdict);
   }
-  dim.sort((a, b) => b.activation - a.activation);
-  for (const v of dim.slice(0, DELIBERATE_DIM_CAP)) admitted.push({ verdict: v, tier: "dim" });
+  // A QUESTION ABOUT FEELING (2026-09-30, U13), when it is a RANKED one (a
+  // real question about feeling, `recall/feeling-ask.ts`): the memories its
+  // stamps nominated have their own bound (`FEELING_CANDIDATES_MAX`), so the
+  // dim cap is for the rest, and they are answered as ONE BLOCK, strongest
+  // stamp first — the words, meaning and recency (the rest of activation) only
+  // break a tie — AFTER the vivid tier and AHEAD of the quiet and dim ones
+  // (review of #293, S3): a loud answer the words found is never put below a
+  // stamped one, and a quiet note that merely says "moved" is. That is safe
+  // because the lane only ranks a real question about feeling (B2). A felt row
+  // the gate made vivid stays in the vivid tier, first there. Everything a hard
+  // gate or confidentiality refused above stays refused. A feeling named about
+  // no one ("the happy path") nominates as an ordinary cue and changes nothing
+  // here.
+  const felt = built.feeling?.ranked === true ? built.feeling.strengths : new Map<string, number>();
+  const feltDim = dim.filter((v) => felt.has(v.id));
+  const plainDim = dim.filter((v) => !felt.has(v.id));
+  plainDim.sort((a, b) => b.activation - a.activation);
+  for (const v of feltDim) admitted.push({ verdict: v, tier: "dim" });
+  for (const v of plainDim.slice(0, DELIBERATE_DIM_CAP)) admitted.push({ verdict: v, tier: "dim" });
   // The dim tier's own cap is a refusal like any other: these were reachable by
   // effort and the cap is what stopped them.
-  for (const v of dim.slice(DELIBERATE_DIM_CAP)) blocked(`dim-cap:${v.verdict}`);
+  for (const v of plainDim.slice(DELIBERATE_DIM_CAP)) blocked(`dim-cap:${v.verdict}`);
+  if (felt.size > 0) {
+    // Vivid, then the felt block, then quiet, then dim.
+    const group = (a: { verdict: CandidateVerdict; tier: Tier }): number =>
+      a.tier === "vivid" ? 0 : felt.has(a.verdict.id) ? 1 : a.tier === "quiet" ? 2 : 3;
+    const order = new Map(admitted.map((a, i) => [a.verdict.id, i]));
+    admitted.sort((a, b) => {
+      const ga = group(a) - group(b);
+      if (ga !== 0) return ga;
+      const fa = felt.get(a.verdict.id) ?? -1;
+      const fb = felt.get(b.verdict.id) ?? -1;
+      if (fa !== fb) return fb - fa;
+      if (fa >= 0) return b.verdict.activation - a.verdict.activation;
+      return (order.get(a.verdict.id) ?? 0) - (order.get(b.verdict.id) ?? 0);
+    });
+  }
 
   const memories: Recalled[] = [];
   for (const { verdict, tier } of admitted) {
@@ -741,6 +783,15 @@ export function answerQuestion(
     ambiguous: [],
     blockedBy,
   };
+}
+
+/** The owner's names, for "whose" in a question about feeling. Never throws. */
+function safeOwnerNames(counterpart: Counterpart): string[] {
+  try {
+    return ownerNames(counterpart.store);
+  } catch {
+    return [];
+  }
 }
 
 /** The tier a verdict earns, exposed for the audit test's mechanization proof. */

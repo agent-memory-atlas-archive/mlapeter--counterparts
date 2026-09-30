@@ -522,6 +522,11 @@ const RECALL: ToolSpec = {
       mechanizedBy: "src/adapters/mcp/deliberate.ts#JOURNAL_GLOSS (ProseDoc.type === episode)",
     },
     {
+      claim:
+        "A question about feeling is answered from the feelings recorded on memories, strongest first. In it, \"I\" and \"me\" mean YOU, the counterpart, and \"you\" means the owner: to ask about the owner's feelings, say \"the owner\" or the owner's name — do not pass the owner's own words through unchanged.",
+      mechanizedBy: "src/core/recall/feeling-ask.ts#whoseAsked (asker: self) + src/adapters/mcp/deliberate.ts#answerQuestion",
+    },
+    {
       claim: "Under observer stance it stands down over the wire and says so.",
       mechanizedBy: "src/adapters/mcp/server.ts#standDown",
     },

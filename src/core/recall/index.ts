@@ -6,6 +6,7 @@
  * The module's spine, and where each piece lives:
  *
  *   `cues.ts`      strip host boilerplate, then rarity-weighted, word-bounded cues
+ *   `feeling-ask.ts` a deliberate question about feeling, and what a stamp answers to
  *   `activate.ts`  three channels — cue, semantic, arrival — against the cache box
  *   `gate.ts`      the hard gates, this turn's own background bar, the tiers
  *   `session.ts`   per-session gate state, PERSISTED (the ruling this module exists to honor)
@@ -32,6 +33,7 @@ import type { CreditOutcome, UseTier } from "../physics/index.js";
 import type { ProseDoc, Store } from "../store/index.js";
 import { activate } from "./activate.js";
 import type { Candidate, SpreadFn, SpreadStats } from "./activate.js";
+import type { FeelingAskInput } from "./feeling-ask.js";
 import { detectAffect, stripBoilerplate } from "./cues.js";
 import { floorUnit, gate } from "./gate.js";
 import type { Background, CandidateVerdict, Verdict } from "./gate.js";
@@ -45,6 +47,7 @@ import { withTunables } from "./tunables.js";
 import type { RecallTunables } from "./tunables.js";
 
 export * from "./cues.js";
+export * from "./feeling-ask.js";
 export * from "./gate.js";
 export * from "./mood.js";
 export * from "./render.js";
@@ -52,7 +55,7 @@ export * from "./session.js";
 export * from "./standing.js";
 export * from "./tunables.js";
 export { activate, isConfidential, isHandoff, isSelfPage, gatedSal, recordedIdentity, salienceRank } from "./activate.js";
-export type { SpreadFn, SpreadStats } from "./activate.js";
+export type { FeelingLane, SpreadFn, SpreadStats } from "./activate.js";
 export type { Candidate, ActivationResult } from "./activate.js";
 import type { ActivationResult } from "./activate.js";
 
@@ -126,6 +129,14 @@ export interface Turn {
    * 590-1040 ms of vector scan on a live-sized index all by itself.
    */
   budgetMs?: number;
+  /**
+   * A DELIBERATE question, which may be about feeling (2026-09-30, U13): who is
+   * asking, and the owner's names. Set only by the deliberate ask
+   * (`mcp/deliberate.ts#answerQuestion`); absent on every ambient turn, so the
+   * feeling lane (`activate.ts`, `feeling-ask.ts`) never runs there and the
+   * ambient affect gates (§9 G10/G11) are untouched.
+   */
+  feeling?: FeelingAskInput;
 }
 
 export type DecisionReason =
@@ -235,6 +246,13 @@ interface BuildOutput {
    * set is hashed); it rides the recording half's telemetry instead.
    */
   semantic?: ActivationResult["semantic"];
+  /**
+   * The feeling lane on a deliberate ask (`ActivationResult.feeling`): whether
+   * the question was about feeling, and the nominated candidates' softened
+   * strengths by id. Like `semantic`, NOT a decision-record field. Absent on an
+   * ambient turn and on a quiet build.
+   */
+  feeling?: ActivationResult["feeling"];
   injection: string;
   state: GateState;
   /** Cue tokens to carry into the next turn. State, not telemetry (see NOTES.md). */
@@ -391,6 +409,7 @@ export class Recall {
         mood,
         maxCandidates,
         storeSize,
+        ...(turn.feeling === undefined ? {} : { feeling: { ...turn.feeling, owner } }),
       },
       this.tunables,
     );
@@ -528,6 +547,7 @@ export class Recall {
       render: rendered,
       gateStatus: loaded.status,
       semantic: act.semantic,
+      ...(act.feeling === null ? {} : { feeling: act.feeling }),
     };
   }
 
