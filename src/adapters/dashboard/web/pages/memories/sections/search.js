@@ -142,9 +142,8 @@ export function findHead(shown, total, close) {
 }
 
 /** Words too common to be worth marking in an answer to a question. */
-const QUESTION_WORDS = new Set(["what", "when", "where", "which", "while", "that", "this", "these", "those", "there", "their",
-  "they", "them", "then", "than", "with", "from", "have", "does", "did", "about", "your", "you", "remember", "know", "said",
-  "would", "could", "should", "been", "were", "into", "just", "some", "much", "many", "also", "ever"]);
+const QUESTION_WORDS = new Set(("what when where which while that this these those there their they them then than " +
+  "with from have does did about your you remember know said would could should been were into just some much many also ever").split(" "));
 
 /** Ask's question, as words to mark in its answers: the longer ones, the common ones left out. */
 export function questionWords(q) {
