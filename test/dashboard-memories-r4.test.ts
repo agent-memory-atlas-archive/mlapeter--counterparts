@@ -257,6 +257,16 @@ describe("M6 rows", () => {
     const j = memRow({ ...base, kind: "self", journal: true, text: "Mike came back to the castle game." });
     expect(j).toContain("Journal · Sun, Sep 27th");
     expect(j).not.toContain("mkind");
+    // M5 (2026-09-30): a search's words are marked in the title and the words, escaped first.
+    const found = memRow({ ...base, title: "The castle <game>", text: "A castle & a moat; castles differ. CASTLE." }, { mark: ["castle"] });
+    expect(found).toContain('<div class="mtitle">The <mark>castle</mark> &lt;game&gt;</div>');
+    expect(found).toContain("A <mark>castle</mark> &amp; a moat; castles differ. <mark>CASTLE</mark>.");
+    expect(memRow({ ...base, text: "<b>amp</b>" }, { mark: ["amp", "b"] })).toContain("&lt;<mark>b</mark>&gt;<mark>amp</mark>&lt;/<mark>b</mark>&gt;");
+    expect(memRow({ ...base, confidential: true, text: "withheld" }, { mark: ["withheld"] })).not.toContain("<mark>");
+    const { searchWords } = (await import(join(WEB, "pages/memories/row.js"))) as { searchWords(q: string): string[] };
+    expect(searchWords("The castle-game, a 2nd try")).toEqual(["the", "castle", "game", "2nd", "try"]);
+    const { questionWords } = (await import(join(WEB, "pages/memories/sections/search.js"))) as { questionWords(q: string): string[] };
+    expect(questionWords("What do you remember about the castle game?")).toEqual(["castle", "game"]);
     const away = memRow({ ...base, archived: "replaced by a newer version", versions: 3 });
     expect(away).toContain("put away: replaced by a newer version · 3 versions");
   });

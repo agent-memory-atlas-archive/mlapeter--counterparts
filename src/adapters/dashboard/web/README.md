@@ -167,7 +167,9 @@ words each on hover, paged on the server by `/api/memories/list` in
 `views/memories.ts`, which also groups several put-away versions of one memory
 into one row), `search.js` (ONE box: typing finds by words, `/api/search`;
 Enter asks by meaning via `act("ask", {json:true})`; the answers take the
-list's place and "×" gives it back; a journal chapter and the memory drawn from
+list's place and "×" gives it back; the search's words are marked where they
+appear in an answer (`row.js#marked`, whole words as the word index splits
+them, escaped first; for Ask, the question's longer words); a journal chapter and the memory drawn from
 it are folded into one answer by `fold.js`, with a "from chapter …" link, from
 `/api/chapters` in `views/search.ts`; the question is turned into my voice
 server side by `ask-voice.ts`), and `tools.js` (add a memory, and the

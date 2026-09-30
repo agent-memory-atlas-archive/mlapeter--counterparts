@@ -32,17 +32,37 @@ export function journalTitle(date) {
   return day ? "Journal · " + day : "Journal";
 }
 
+/** A search's words as the word index splits them (`store/cache.ts#tokenize`):
+ *  lower case, letters and digits, two or more. */
+export function searchWords(q) {
+  return String(q || "").toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length >= 2);
+}
+
+/**
+ * `text` with every whole word that is one of `words` (any case) in a
+ * `<mark>` (M5, 2026-09-30). Escaped piece by piece BEFORE marking, so nothing
+ * unescaped reaches the page and no mark lands inside an entity.
+ */
+export function marked(text, words) {
+  const want = new Set((words || []).map((w) => String(w).toLowerCase()));
+  if (want.size === 0) return esc(text || "");
+  return String(text || "").split(/([A-Za-z0-9]+)/)
+    .map((part, i) => (i % 2 === 1 && want.has(part.toLowerCase()) ? "<mark>" + esc(part) + "</mark>" : esc(part)))
+    .join("");
+}
+
 /**
  * `r`: { id, title, text, confidential, kind, date, dateFrom, core, protected,
  * journal, feelings, archived, hold, versions, schemaRole }. `opts.tier` adds a
  * small match word ("strong match"); `opts.from` ({ id, words }) adds a small
- * link under the words to the journal chapter the memory was drawn from.
+ * link under the words to the journal chapter the memory was drawn from;
+ * `opts.mark` (words) marks where a search's words appear.
  */
 export function memRow(r, opts = {}) {
-  const words = r.confidential ? '<span class="withheld">' + esc(r.text) + "</span>" : esc(r.text || "");
+  const words = r.confidential ? '<span class="withheld">' + esc(r.text) + "</span>" : marked(r.text, opts.mark);
   const title = r.journal && !r.confidential ? journalTitle(r.date) : r.title;
   const main = title
-    ? '<div class="mtitle">' + esc(title) + "</div>" + (r.text ? '<div class="mtext">' + words + "</div>" : "")
+    ? '<div class="mtitle">' + marked(title, opts.mark) + "</div>" + (r.text ? '<div class="mtext">' + words + "</div>" : "")
     : '<div class="mtext solo">' + words + "</div>";
   const k = kindOf(r.kind);
   const kindWords = k.label + (r.schemaRole ? " · " + r.schemaRole : "");

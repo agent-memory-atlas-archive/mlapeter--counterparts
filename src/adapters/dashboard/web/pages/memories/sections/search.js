@@ -10,7 +10,7 @@ import { act, resultHtml } from "../../../shared/actions.js";
 import { api, fail } from "../../../shared/api.js";
 import { $, esc } from "../../../shared/dom.js";
 import { foldChapters, fromWords } from "../fold.js";
-import { memRow } from "../row.js";
+import { memRow, searchWords } from "../row.js";
 import { find, onFilter, setFilter } from "../state.js";
 
 export const markup = `
@@ -88,7 +88,17 @@ async function runSearch() {
   takeList(esc(matchCount(d.hits.length, d.total)) + ' <span class="find-hint">· press Enter to ask by meaning instead</span>');
   $("mlist").innerHTML = d.absent
     ? absenceLine(d.absent, "nothing I hold uses those words — press Enter to ask by meaning")
-    : d.hits.map((h) => memRow({ ...h, text: h.shown, archived: null })).join("");
+    : d.hits.map((h) => memRow({ ...h, text: h.shown, archived: null }, { mark: searchWords(q) })).join("");
+}
+
+/** Words too common to be worth marking in an answer to a question. */
+const QUESTION_WORDS = new Set(["what", "when", "where", "which", "while", "that", "this", "these", "those", "there", "their",
+  "they", "them", "then", "than", "with", "from", "have", "does", "did", "about", "your", "you", "remember", "know", "said",
+  "would", "could", "should", "been", "were", "into", "just", "some", "much", "many", "also", "ever"]);
+
+/** Ask's question, as words to mark in its answers: the longer ones, the common ones left out. */
+export function questionWords(q) {
+  return searchWords(q).filter((w) => w.length >= 4 && !QUESTION_WORDS.has(w));
 }
 
 /** The tiers `ask` sorts answers into, in plain words. */
@@ -145,6 +155,7 @@ async function ask() {
     }, {
       tier: TIER[m.tier] || m.tier,
       from: m.from ? { id: m.from.episodeId, words: fromWords(m.from) } : null,
+      mark: questionWords(q),
     });
   }).join("");
 }
