@@ -443,6 +443,8 @@ describe("each of the four processes writes its lines", () => {
     expect(names).toContain("adapter.wake.injected");
     expect(names[names.length - 1]).toBe("process.end");
     for (const l of got) expect(l).toMatchObject({ proc: "hook:session-start", session: "s-hook" });
+    // The allowlist held across a real process, where many more names fired.
+    for (const name of names) expect(logged(String(name)), String(name)).toBe(true);
   }, 60_000);
 
   test("the worker: start, the day's summary, end", () => {

@@ -275,9 +275,19 @@ describe("a store written before the floor", () => {
     // this store and `assertLayout` still passes there. Nothing canonical moved
     // — no `counterparts.sqlite` minted beside the old one, no `cache/`, no v6
     // DDL, and the prose and the database are byte-identical.
+    //
+    // And, since 2026-09-30, the process log's day file (`adapters/log/`): the
+    // same kind of host state in the same classified directory, saying the hook
+    // started and ended by a throw — a code, never the store's words.
     const after = fingerprint(store);
     const added = Object.keys(after).filter((k) => !(k in before));
-    expect(added).toEqual(["sessions/s-pre-rows-1.standdown.json"]);
+    const logFiles = added.filter((k) => k.startsWith("sessions/log/"));
+    expect(added.filter((k) => !k.startsWith("sessions/log/"))).toEqual(["sessions/s-pre-rows-1.standdown.json"]);
+    expect(logFiles).toHaveLength(1);
+    const logged = readFileSync(join(store, logFiles[0] as string), "utf8");
+    expect(logged).toContain('"reason":"threw"');
+    expect(logged).toContain('"code":"STORE_PRE_ROWS"');
+    expect(logged).not.toContain("words in a file");
     for (const [path, hash] of Object.entries(before)) {
       expect({ path, hash: after[path] }).toEqual({ path, hash });
     }
