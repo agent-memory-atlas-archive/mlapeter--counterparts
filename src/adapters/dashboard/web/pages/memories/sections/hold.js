@@ -19,7 +19,7 @@ import { filters, onFilter, toggle } from "../state.js";
 export const PARTS = [
   ["firm", "firm", "I'll still know these a month from now, even if they're never used."],
   ["settling", "settling", "Held for now. Used, they grow firmer; left alone, they slowly fade."],
-  ["fading", "fading", "Unless one is used, I may put it away within the next two weeks I'm in use."],
+  ["fading", "fading", "Unless one is used, I may put it away within my next two weeks of use."],
 ];
 /** What the fading key says when there are none. */
 export const NONE_FADING = "None right now; nothing is about to be put away.";
@@ -27,7 +27,7 @@ export const JOURNAL_WORDS = "kept as written — they aren't scored and never f
 
 /** The `?`: two plain sentences (round 4). */
 export const HOLD_TIP = "Firm: I'll still know it a month from now even if it's never used. " +
-  "Fading: unless it's used, I may put it away within the next two weeks I'm in use.";
+  "Fading: unless it's used, I may put it away within my next two weeks of use.";
 
 /** How many memories a square may stand for, smallest first: 1, 2, 5, 10, 20, 50, 100, … */
 export function scaleSteps(max) {

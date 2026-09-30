@@ -228,13 +228,13 @@ describe("M4 how well I remember", () => {
       HOLD_TIP: string; PARTS: [string, string, string][]; NONE_FADING: string;
     };
     expect(HOLD_TIP).toBe("Firm: I'll still know it a month from now even if it's never used. " +
-      "Fading: unless it's used, I may put it away within the next two weeks I'm in use.");
+      "Fading: unless it's used, I may put it away within my next two weeks of use.");
     // Each sentence says what `holdOf` measures: firm is 30 lived days ahead, fading is prune within 14.
     expect(FIRM_AHEAD_DAYS).toBe(30);
     expect(NEAR_LET_GO_DAYS).toBe(14);
     expect(PARTS.map((p) => p[0])).toEqual(["firm", "settling", "fading"]);
     expect(PARTS[0]?.[2]).toContain("a month from now");
-    expect(PARTS[2]?.[2]).toContain("two weeks I'm in use");
+    expect(PARTS[2]?.[2]).toContain("two weeks of use");
     expect(NONE_FADING).toBe("None right now; nothing is about to be put away.");
   });
 
