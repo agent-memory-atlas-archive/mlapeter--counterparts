@@ -1870,10 +1870,12 @@ Working defaults, held lightly.
   update and doctor notices, primacy and every envelope measurement are still here —
   they are Claude Code's, or not yet needed by a second host.
 - **On disk.** Every registry record the lifecycle writes now carries `host:
-  "claude-code"`; a record without one reads the same (`sessions.ts#hostOf`). The default
-  configuration is `~/.counterparts/counterparts.json` when it exists, else
-  `claude-code.json` as before (`config-path.ts#configFileIn`) — one extra stat when a
-  bin loads; no file is renamed.
+  "claude-code"`; a record without one reads the same (`sessions.ts#hostOf`). That is the
+  only on-disk change. A neutral config name (`counterparts.json`, read first when present)
+  was built and taken back out before merge: the default path's identity checks
+  (`throwawayDefaultRefusal`, `isNamed`, the console's `=== defaultConfigPath` tests)
+  assume one fixed default, and a default that depends on which files exist let a named
+  config slip past them. Nothing needs the new name yet; the config stays `claude-code.json`.
 - **Left for the Desktop work (PR B).** The worker script (`bin/runner.ts`) and the
   nightly run's planner still live here; a host that starts either from the MCP server
   needs their paths, not an import. `deliverWriteUpAsk`'s default limit is still this

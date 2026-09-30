@@ -7,11 +7,9 @@
  * are the HOST'S, and the split is the whole design of this command:
  *
  *   - **Ours, so we write them**: the data directory and `claude-code.json`
- *     BESIDE it (or `counterparts.json`, when one is already there —
- *     `config-path.ts#configFileIn`, 2026-09-30). Nothing here is a host file
- *     and nothing here belongs to another program. (An empty `credentials.env`
- *     at 0600 was the third until the API keys were removed on 2026-09-24;
- *     nothing reads one now.)
+ *     BESIDE it. Nothing here is a host file and nothing here belongs to another
+ *     program. (An empty `credentials.env` at 0600 was the third until the API
+ *     keys were removed on 2026-09-24; nothing reads one now.)
  *   - **The host's**: the `settings.json` hooks block and the `claude mcp add`
  *     line. THIS FILE only builds them (`settingsBlock`, `mcpCommand`), and
  *     they are printed as the manual fallback — a pipe, a script, a CI job, or
@@ -59,7 +57,7 @@ export const DEFAULT_STORE_DIR = "store";
 
 import { EMBEDDER_KINDS } from "../config.js";
 import type { EmbedderKind } from "../config.js";
-import { CONFIG_ENV, CONFIG_FLAG, configFileIn, defaultConfigPath } from "../config-path.js";
+import { CONFIG_ENV, CONFIG_FLAG, defaultConfigPath } from "../config-path.js";
 // `preRowsMarkersIn` reads FILENAMES and opens nothing, which is the only
 // reason a module that promises never to open a parked store may call it —
 // the same clause `start-fresh.ts` states over its own import of it.
@@ -181,11 +179,6 @@ export interface InstallLayout {
  * The default store is `~/.counterparts/store`, deliberately NOT `dataDir()`'s
  * `~/.counterparts` — that is the directory holding the two unclassifiable
  * files, and rule 1 is why.
- *
- * The default CONFIG is the file the readers will read (`configFileIn`):
- * `counterparts.json` when one is already in the base, else `claude-code.json`
- * — so an install never writes a file the hooks then ignore, and never renames
- * one (2026-09-30).
  */
 export function installLayout(
   dirFlag: string | undefined,
@@ -214,7 +207,7 @@ export function installLayout(
     store,
     config:
       configPath === undefined || configPath.length === 0
-        ? configFileIn(base)
+        ? join(base, CONFIG_FILE)
         : resolve(configPath),
   };
 }

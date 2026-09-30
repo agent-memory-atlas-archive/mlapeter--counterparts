@@ -114,8 +114,7 @@ export interface SessionRecord {
   /** Set once, by SessionEnd. A record with an end is never live again. */
   readonly endedAt: number | null;
   /**
-   * The configuration file (`counterparts.json`, else `claude-code.json` —
-   * `config-path.ts`) the HOOK that wrote this record read — absolute, and
+   * The `claude-code.json` the HOOK that wrote this record read — absolute, and
    * present only when the hook was told (`claude-code/bin/hook.ts` resolves it
    * through `adapters/config-path.ts` and passes it in).
    *

@@ -1,10 +1,7 @@
 /**
- * THE HOST SEAM (2026-09-30) — the two on-disk shape changes it makes, and the
+ * THE HOST SEAM (2026-09-30) — the one on-disk shape change it makes, and the
  * seam itself.
  *
- *   - **The neutral config name.** `counterparts.json` is read when it exists,
- *     `claude-code.json` otherwise, at every place a default configuration is
- *     resolved — and nobody's file is renamed.
  *   - **`host` on registry records.** Written by the lifecycle; a record with no
  *     `host` (every record before this) reads as Claude Code's.
  *   - **Per-host wording**, and the lifecycle being a thing a second host can
@@ -14,21 +11,11 @@
  * real store.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Counterpart } from "../src/core/counterpart.js";
-import {
-  CONFIG_FILE_NAME,
-  NEUTRAL_CONFIG_FILE_NAME,
-  configFileIn,
-  defaultConfigPath,
-  isNamed,
-  resolveConfigPath,
-} from "../src/adapters/config-path.js";
-import { installLayout, throwawayDefaultRefusal } from "../src/adapters/cli/install.js";
-import { snapshotsDirBeside, zoneBeside } from "../src/adapters/cli/commands.js";
 import { DEFAULT_HOST, HOST_WORDING, isHostName, wordingFor } from "../src/adapters/hosts.js";
 import { Lifecycle } from "../src/adapters/lifecycle.js";
 import type { HostLifecycle } from "../src/adapters/lifecycle.js";
@@ -52,80 +39,6 @@ afterEach(() => {
 });
 
 const T0 = 1_800_000_000_000;
-
-/** A fake home with `~/.counterparts/` and whichever of the two files are named. */
-function home(files: readonly string[]): { home: string; base: string } {
-  const h = join(root, "home");
-  const base = join(h, ".counterparts");
-  mkdirSync(base, { recursive: true });
-  for (const f of files) writeFileSync(join(base, f), "{}\n");
-  return { home: h, base };
-}
-
-describe("the neutral config name — counterparts.json if present, else claude-code.json", () => {
-  test("no file at all: the default is claude-code.json, exactly as before", () => {
-    const { home: h, base } = home([]);
-    expect(defaultConfigPath(h)).toBe(join(base, CONFIG_FILE_NAME));
-    expect(resolveConfigPath([], {}, h)).toEqual({ path: join(base, CONFIG_FILE_NAME), source: "default", refusal: null });
-    expect(installLayout(undefined, {}, h).config).toBe(join(base, CONFIG_FILE_NAME));
-  });
-
-  test("only claude-code.json: it is read, and nothing is renamed", () => {
-    const { home: h, base } = home([CONFIG_FILE_NAME]);
-    expect(defaultConfigPath(h)).toBe(join(base, CONFIG_FILE_NAME));
-    expect(installLayout(undefined, {}, h).config).toBe(join(base, CONFIG_FILE_NAME));
-    expect(existsSync(join(base, CONFIG_FILE_NAME))).toBe(true);
-    expect(existsSync(join(base, NEUTRAL_CONFIG_FILE_NAME))).toBe(false);
-  });
-
-  test("counterparts.json present: it wins, beside a claude-code.json or alone — and neither file moves", () => {
-    for (const files of [[NEUTRAL_CONFIG_FILE_NAME], [CONFIG_FILE_NAME, NEUTRAL_CONFIG_FILE_NAME]]) {
-      rmSync(join(root, "home"), { recursive: true, force: true });
-      const { home: h, base } = home(files);
-      const neutral = join(base, NEUTRAL_CONFIG_FILE_NAME);
-      expect(defaultConfigPath(h)).toBe(neutral);
-      expect(resolveConfigPath([], {}, h).path).toBe(neutral);
-      expect(resolveConfigPath([], {}, h).source).toBe("default");
-      // The pin a worker gets is the resolved default, so it is not "named".
-      expect(isNamed({ path: neutral, source: "COUNTERPARTS_CONFIG", refusal: null }, h)).toBe(false);
-      // An install writes the file the readers will read.
-      expect(installLayout(undefined, {}, h).config).toBe(neutral);
-      for (const f of files) expect(existsSync(join(base, f))).toBe(true);
-    }
-  });
-
-  test("the throwaway-default guard compares against the same default the readers resolve", () => {
-    const { home: h } = home([NEUTRAL_CONFIG_FILE_NAME]);
-    const layout = installLayout(undefined, {}, h);
-    expect(layout.config).toBe(defaultConfigPath(h));
-    // A store outside every temp root is not a throwaway, so the guard is silent.
-    expect(throwawayDefaultRefusal({ ...layout, store: "/var/permanent/store" }, {}, h)).toBeNull();
-  });
-
-  test("the console's beside-the-store reads follow the same rule", () => {
-    const base = join(root, "install");
-    const store = join(base, "store");
-    mkdirSync(store, { recursive: true });
-    writeFileSync(join(base, CONFIG_FILE_NAME), JSON.stringify({ timeZone: "America/Denver", snapshots: { dir: join(base, "old") } }));
-    expect(configFileIn(base)).toBe(join(base, CONFIG_FILE_NAME));
-    expect(zoneBeside(store)).toBe("America/Denver");
-    expect(snapshotsDirBeside(store)).toBe(join(base, "old"));
-    writeFileSync(join(base, NEUTRAL_CONFIG_FILE_NAME), JSON.stringify({ timeZone: "Europe/Paris", snapshots: { dir: join(base, "new") } }));
-    expect(configFileIn(base)).toBe(join(base, NEUTRAL_CONFIG_FILE_NAME));
-    expect(zoneBeside(store)).toBe("Europe/Paris");
-    expect(snapshotsDirBeside(store)).toBe(join(base, "new"));
-  });
-
-  test("the rule is one stat, injectable", () => {
-    const seen: string[] = [];
-    const path = configFileIn("/nowhere", (p) => {
-      seen.push(p);
-      return false;
-    });
-    expect(path).toBe(join("/nowhere", CONFIG_FILE_NAME));
-    expect(seen).toEqual([join("/nowhere", NEUTRAL_CONFIG_FILE_NAME)]);
-  });
-});
 
 describe("host on registry records — absent reads as claude-code", () => {
   test("a record written with no host has no host key on disk, and reads as claude-code", () => {

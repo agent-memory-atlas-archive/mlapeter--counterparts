@@ -108,7 +108,6 @@ import { deliberateRecall, embedQuestion } from "../mcp/deliberate.js";
 import {
   CONFIG_ENV,
   CONFIG_FLAG,
-  configFileIn,
   defaultConfigPath,
   implicitConfigRefusal,
   resolveConfigPath,
@@ -141,8 +140,9 @@ import type { LogEntry } from "../log/index.js";
 // The two snapshot readers `status` shares with doctor: the DIRECTORY is what
 // says how many copies you have, and a row only says what a run once wrote.
 import { readSnapshotsDir, resolveSnapshotsDir } from "../snapshots.js";
-// THE HOST ADAPTER'S OWN READINGS, imported rather than re-derived — the same
-// direction `install.ts` already takes (`../claude-code/config.js`). `doctor` is
+// THE HOST ADAPTER'S OWN READINGS, imported rather than re-derived — the console
+// reads the claude-code adapter here, and its configuration from the shared
+// `../config.js` (moved out of `claude-code/` on 2026-09-30). `doctor` is
 // the console's face on the file and the store that adapter owns, and a console
 // with its own idea of "what counts as red" is exactly the drift I32 ran inside of.
 import {
@@ -8520,7 +8520,7 @@ export function hostCeiling(
     }
     return { bytes: n, source: "--budget", searched: [] };
   }
-  const beside = configFileIn(join(dir, ".."));
+  const beside = join(dir, "..", "claude-code.json");
   const hooksConfig = defaultConfigPath(home);
   // De-duplicated, because on a default install these are the same file and a
   // refusal that named it twice would read as two separate misses.
@@ -8601,7 +8601,7 @@ export function openCounterpart(
  * undefined, and the store follows the machine's zone.
  */
 export function zoneBeside(dir: string): string | undefined {
-  const beside = configFileIn(join(dir, ".."));
+  const beside = join(dir, "..", "claude-code.json");
   if (!existsSync(beside)) return undefined;
   try {
     return loadConfig(JSON.parse(readFileSync(beside, "utf8"))).config.timeZone;
@@ -8617,7 +8617,7 @@ function openStoreAt(opts: { dir: string; observer?: boolean }): Store {
 }
 
 export function snapshotsDirBeside(dir: string): string | undefined {
-  const beside = configFileIn(join(dir, ".."));
+  const beside = join(dir, "..", "claude-code.json");
   if (!existsSync(beside)) return undefined;
   try {
     return loadConfig(JSON.parse(readFileSync(beside, "utf8"))).config.snapshots?.dir;
