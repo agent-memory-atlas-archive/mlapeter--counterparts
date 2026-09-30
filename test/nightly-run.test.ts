@@ -29,6 +29,17 @@ let offsetMs = 0;
 const DAY_MS = 86_400_000;
 const SESSION = "s-night";
 
+/**
+ * Moves the test clock to noon today. A test that steps the clock past
+ * ABANDONED_AFTER_MS and still expects `today` fails in the last half hour of
+ * a day (bun test runs in UTC: 23:30-24:00) unless it starts well inside one.
+ */
+function atNoon(): void {
+  const noon = new Date();
+  noon.setHours(12, 0, 0, 0);
+  offsetMs = noon.getTime() - Date.now();
+}
+
 beforeEach(() => {
   offsetMs = 0;
   dir = mkdtempSync(join(tmpdir(), "counterparts-nightly-"));
@@ -253,6 +264,7 @@ describe("a dream left behind does not use up the day", () => {
   });
 
   test("begun, changed something, and gone quiet: the next session's line starts it again and `begin` RESUMES it", () => {
+    atNoon();
     const c = brain();
     const ids = lived(c);
     const today = c.store.today();
@@ -574,6 +586,7 @@ describe("review of #271: retries", () => {
   });
 
   test("a dream journaled today whose reflection was cut off: the next line starts the REFLECTION alone, under the same cap", async () => {
+    atNoon();
     const c = brain();
     lived(c);
     const today = c.store.today();
