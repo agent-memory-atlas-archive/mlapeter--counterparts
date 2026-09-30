@@ -680,10 +680,11 @@ describe("the reserve is conditional, which is what keeps a blank store honest",
       });
     }
     c.writeHandoff(BODY, { scope: HERE });
-    // 3,072, not 2,500: since the pointer says how current it is (2026-09-30)
-    // its reserve is sized to the widest of those words, and the share rule
-    // turns it on from about 3,000 bytes.
-    for (const budget of [3_072, 4_096, 9_000]) {
+    // 3,640, not 2,500: since the pointer says how current it is (2026-09-30)
+    // its reserve is sized to the widest of those words, and since it says how
+    // to retire it (review of #295) the share rule turns it on from 3,640 bytes
+    // for this one (a 407-byte block, plus the margin, times eight).
+    for (const budget of [3_640, 4_096, 9_000]) {
       c.rebrief({ budgetBytes: budget, at: "2026-09-20" });
       const woke = c.wake(budget, { date: "2026-09-20" }, { scope: HERE });
       expect(woke.text).toContain("Where I left off in this directory");
@@ -1612,6 +1613,86 @@ describe("several sessions leave handoffs in one directory", () => {
     expect(h.retire(theirs.id as string, { scope: HERE, session: "sess_mine" }).reason).toBe("not-here");
   });
 
+  test("a blank session is no session: it keys, clears and retires as null (review of #295, MINOR-2)", () => {
+    const s = store();
+    const { h, tick } = clocked(s);
+    const blank = h.write({ body: BODY, scope: HERE, session: "" });
+    expect(s.readProse(blank.id as string).meta["session"]).toBeNull();
+    tick();
+    // The same key as a null session: it revises, not mints.
+    expect(h.write({ body: BODY_TWO, scope: HERE, session: null }).id).toBe(blank.id as string);
+    tick();
+    expect(h.write({ body: BODY_THREE, scope: HERE, session: "   " }).id).toBe(blank.id as string);
+    expect(h.clear(HERE, { session: "" }).id).toBe(blank.id as string);
+    expect(h.read(HERE)).toBeNull();
+    const again = h.write({ body: BODY, scope: HERE });
+    const retired = h.retire(again.id as string, { scope: HERE, session: "" });
+    expect(retired.reason).toBe("cleared");
+    const payload = JSON.parse(s.eventLog({ name: HANDOFF_CLEARED_EVENT, limit: 1, order: "desc" })[0]?.payload ?? "{}") as Record<string, unknown>;
+    expect(payload["session"]).toBeNull();
+  });
+
+  test("a write names the OTHER sessions' handoffs standing here, so a finished one can be retired in the same call", () => {
+    const s = store();
+    const { h, tick } = clocked(s);
+    const theirs = h.write({ body: BODY, scope: HERE, session: "sess_theirs" });
+    tick();
+    h.write({ body: BODY_TWO, scope: THERE, session: "sess_elsewhere" });
+    tick();
+    const mine = h.write({ body: BODY_THREE, scope: HERE, session: "sess_mine" });
+    expect(mine.others?.map((o) => o.id)).toEqual([theirs.id as string]);
+    expect(mine.others?.[0]?.session).toBe("sess_theirs");
+    expect(mine.others?.[0]?.excerpt).toBe(excerpt(BODY));
+    // Its own row is never among them, on a revise either.
+    tick();
+    expect(h.write({ body: BODY_FOUR, scope: HERE, session: "sess_mine" }).others?.map((o) => o.id)).toEqual([
+      theirs.id as string,
+    ]);
+    // Alone here, there are none to name.
+    expect(h.write({ body: BODY, scope: THERE, session: "sess_elsewhere" }).others).toEqual([]);
+  });
+
+  test("the doors say how a finished one is retired", () => {
+    const s = store();
+    const { h, tick } = clocked(s);
+    h.write({ body: BODY, scope: HERE, session: "sess_1" });
+    expect(h.pointer(HERE)?.block).toContain("retireHandoff: [id]");
+    tick();
+    h.write({ body: BODY_TWO, scope: HERE, session: "sess_2" });
+    expect(h.pointer(HERE)?.block).toContain("retire one whose work is done with session_end's retireHandoff: [id]");
+  });
+
+  test("retiring by id takes the race's duplicates of that row's key with it (review of #295, NIT-1)", () => {
+    const s = store();
+    const h = handoffs(s);
+    const meta = (day: number): Record<string, unknown> => ({
+      role: HANDOFF_ROLE, scope: HERE, writtenOn: s.today(), writtenDay: day, session: "sess_raced",
+    });
+    const older = s.put({ type: "schema", kind: HANDOFF_KIND, title: handoffTitle(HERE), body: BODY, meta: meta(1) });
+    const newer = s.put({ type: "schema", kind: HANDOFF_KIND, title: handoffTitle(HERE), body: BODY_TWO, meta: meta(2) });
+    expect(h.retire(newer, { scope: HERE, session: "sess_other", day: 2 }).reason).toBe("cleared");
+    expect(s.row(newer)?.archived).toBe(1);
+    expect(s.row(older)?.archived).toBe(1);
+    expect(h.read(HERE, 2)).toBeNull();
+  });
+
+  test("no room at all reports the SMALLEST rung's bytes (review of #295, NIT-3)", () => {
+    const c = counterpart({ budgetBytes: 9_000 });
+    c.writeHandoff(BODY, { scope: HERE, session: "sess_1" });
+    c.writeHandoff(BODY_TWO, { scope: HERE, session: "sess_2" });
+    c.rebrief({ budgetBytes: 9_000, at: "2026-09-20" });
+    const plain = c.wake(9_000, { date: "2026-09-20" }, { scope: THERE }).bytes;
+    c.wake(plain + 8, { date: "2026-09-20" }, { scope: HERE });
+    const row = c.store.eventLog({ name: HANDOFF_REFUSED_EVENT, limit: 1 })[0];
+    const reported = (JSON.parse(row?.payload ?? "{}") as Record<string, unknown>)["bytes"] as number;
+    const rungs = c.handoffs.pointerChoices(HERE).map((r) => bytesOf(r.block));
+    const smallest = Math.min(...rungs);
+    // The spliced bundle with the smallest rung: the plain one, the block and
+    // its separating lines, and a byte count that may gain a digit.
+    expect(reported).toBeGreaterThan(plain + smallest);
+    expect(reported).toBeLessThan(plain + smallest + 16);
+  });
+
   test("a row from before 2026-09-30 keeps working: labelled by the session it names, no model, no backfill", () => {
     const s = store();
     const legacy = s.put({
@@ -1762,7 +1843,9 @@ describe("several sessions leave handoffs in one directory", () => {
     const body = retired.structuredContent as Record<string, unknown>;
     const outcomes = body["retired"] as Record<string, unknown>[];
     expect(outcomes.map((o) => o["reason"])).toEqual(["cleared", "not-here"]);
-    expect(retired.isError).toBe(true);
+    // `not-here` is the retire's `nothing-to-clear`, not a failure to fix
+    // (review of #295, MINOR-1).
+    expect(retired.isError ?? false).toBe(false);
     expect(second.counterpart.readHandoffs(HERE)).toHaveLength(0);
 
     // And the schema advertises it, as a field.

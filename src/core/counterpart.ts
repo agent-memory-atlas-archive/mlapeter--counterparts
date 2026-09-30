@@ -1820,11 +1820,13 @@ export class Counterpart {
     const newest = ladder[0];
     if (newest === undefined) return result;
     const budget = this.reportedBudget;
-    let widest: ReturnType<typeof spliceBeforeSentinel> | null = null;
+    // What `no-room` reports: the SMALLEST rung, which is the one that decided
+    // there was no room at all (review of #295, NIT-3).
+    let smallest: ReturnType<typeof spliceBeforeSentinel> | null = null;
     for (const rung of ladder) {
       const spliced = spliceBeforeSentinel(result.text, rung.block);
       if (!spliced.applied) return result;
-      widest ??= spliced;
+      smallest = spliced;
       if (budget !== null && spliced.bytes > budget) continue;
       const cost = spliced.bytes - result.bytes;
       const lines = rung.block.split("\n");
@@ -1845,7 +1847,7 @@ export class Counterpart {
         sentinel: spliced.sentinel,
       };
     }
-    const bytes = widest?.bytes ?? result.bytes;
+    const bytes = smallest?.bytes ?? result.bytes;
     this.emit("counterpart.handoff.noroom", newest.handoff.id, {
       bytes,
       budget,

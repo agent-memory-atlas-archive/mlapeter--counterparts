@@ -667,7 +667,7 @@ const SESSION_END: ToolSpec = {
     },
     {
       claim:
-        "`retireHandoff` retires handoffs in THIS directory by id, whoever wrote them — for one whose work this session finished. An id that is not a live handoff here is refused by name and nothing is touched.",
+        "`retireHandoff` retires handoffs in THIS directory by id, whoever wrote them — for one whose work this session finished. An id that is not a handoff here not yet retired is refused by name and nothing is touched. A successful `handoff` write lists the other sessions' handoffs standing here (`others`), so a finished one can be retired in the same call.",
       mechanizedBy: "src/core/handoff/index.ts#Handoffs.retire",
     },
     {

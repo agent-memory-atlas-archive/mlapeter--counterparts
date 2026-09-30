@@ -401,6 +401,74 @@ describe("binding, per call", () => {
     expect(String(named[2]?.["writeUpAsk"])).not.toContain(b);
   });
 
+  test("two chats (review of #295, MINOR-4): a session_end that names no session leaves no handoff — B's stands, A's memories land", async () => {
+    const t = clock();
+    const s = desktopServer({ now: t.now });
+    const a = payload(await s.call("wake", {}))["session"] as string;
+    t.advance(MIN);
+    const b = payload(await s.call("wake", {}))["session"] as string;
+    // Chat B leaves its handoff, naming itself.
+    const left = payload(await s.call("session_end", { session: b, memories: [], handoff: "Chat B: the pump schedule is half rewritten; dawn runs next." }));
+    expect((left["handoff"] as Record<string, unknown>)["written"]).toBe(true);
+    const bRow = s.counterpart.readHandoffs(DESKTOP_SCOPE);
+    expect(bRow.map((h) => h.session)).toEqual([b]);
+    // Chat A forgets its id: the call falls back to B, the most recent. Its
+    // handoff is refused by name; its memories land as they always did.
+    t.advance(MIN);
+    const out = payload(
+      await s.call("session_end", {
+        memories: [{ content: "Chat A found the relief valve seats only after the loop is drained.", kind: "fact" }],
+        handoff: "Chat A: the relief valve is done; nothing left here.",
+      }),
+    );
+    expect(out["boundBy"]).toBe("most-recent");
+    expect(out["deposited"]).toBe(1);
+    const refused = out["handoff"] as Record<string, unknown>;
+    expect(refused["written"]).toBe(false);
+    expect(refused["reason"]).toBe("session-unnamed");
+    expect(String(refused["detail"])).toContain("Name your session to leave or retire a handoff: session:");
+    // B's handoff is exactly as B left it: same row, same words, same version.
+    const after = s.counterpart.readHandoffs(DESKTOP_SCOPE);
+    expect(after.map((h) => [h.id, h.body, h.version])).toEqual(bRow.map((h) => [h.id, h.body, h.version]));
+    // A blank field (a clear) is refused the same way, and clears nothing.
+    const cleared = payload(await s.call("session_end", { memories: [], handoff: "" }));
+    expect((cleared["handoff"] as Record<string, unknown>)["reason"]).toBe("session-unnamed");
+    expect(s.counterpart.readHandoffs(DESKTOP_SCOPE).map((h) => h.id)).toEqual(bRow.map((h) => h.id));
+    // Named, chat A leaves its own beside B's.
+    const named = payload(await s.call("session_end", { session: a, memories: [], handoff: "Chat A: the valve is seated; the gauges are next." }));
+    expect((named["handoff"] as Record<string, unknown>)["written"]).toBe(true);
+    expect((named["handoff"] as Record<string, unknown>)["others"]).toEqual([
+      expect.objectContaining({ id: bRow[0]?.id, session: b }),
+    ]);
+    expect(s.counterpart.readHandoffs(DESKTOP_SCOPE)).toHaveLength(2);
+  });
+
+  test("two chats (review of #295, MINOR-4): retireHandoff with no session named retires nothing", async () => {
+    const t = clock();
+    const s = desktopServer({ now: t.now });
+    payload(await s.call("wake", {}));
+    t.advance(MIN);
+    const b = payload(await s.call("wake", {}))["session"] as string;
+    await s.call("session_end", { session: b, memories: [], handoff: "Chat B: the pump schedule is half rewritten; dawn runs next." });
+    const id = s.counterpart.readHandoff(DESKTOP_SCOPE)?.id as string;
+    t.advance(MIN);
+    const out = payload(
+      await s.call("session_end", {
+        memories: [{ content: "Chat A learned the gauges read low until the loop warms up.", kind: "fact" }],
+        retireHandoff: [id],
+      }),
+    );
+    expect(out["deposited"]).toBe(1);
+    const retired = out["retired"] as Record<string, unknown>[];
+    expect(retired).toHaveLength(1);
+    expect(retired[0]?.["reason"]).toBe("session-unnamed");
+    expect(s.counterpart.store.row(id)?.archived).toBe(0);
+    expect(s.counterpart.readHandoff(DESKTOP_SCOPE)?.id).toBe(id);
+    // An empty list is an unused field, not an ask to retire.
+    const quiet = payload(await s.call("session_end", { memories: [], retireHandoff: [] }));
+    expect(quiet["retired"]).toBeUndefined();
+  });
+
   test("every Desktop tool schema takes an optional `session`; Claude Code's schemas are untouched", () => {
     const props = (t: Record<string, unknown>): Record<string, unknown> =>
       ((t["inputSchema"] as { properties?: Record<string, unknown> }).properties ?? {});

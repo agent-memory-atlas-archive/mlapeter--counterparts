@@ -57,7 +57,8 @@ every boundary for a number that is the same shape as the one in hand.
   of working context; it is not worth a third of a small wake's memories. The rule is one
   comparison (`want * 8 <= budget`), which turns the reserve on from about 2,400 bytes up
   (about 3,000 since 2026-09-30, when the reserve was sized to the widest "how current"
-  words the delivery adds)
+  words the delivery adds; about 3,650 since the pointer says who left it and how to
+  retire it)
   and leaves every smaller ceiling composing exactly what it composed before. At that size
   the pointer is simply not carried, and `handoff.refused{reason:"no-room"}` says so rather
   than leaving it to be noticed.
@@ -246,18 +247,37 @@ room for more than one. What was built, and the choices the brief left open:
   the widest and then asked. With one block per directory that is the same answer except
   in one case: a narrow block in one directory is now reserved for when a wider one
   elsewhere fails the share, where before the wider one turned the reserve off for both.
-  The ceiling constant grew from 448 to 1,344 because the widest block grew; the share rule
-  is what binds in practice (at 9,000, nothing past 1,125).
+  The ceiling constant grew from 448 to 1,408 because the widest block grew (1,389 measured
+  once the door named `retireHandoff`); the share rule is what binds in practice (at 9,000,
+  nothing past 1,125). Measured with sixty identity elements, one handoff against three:
+  a reserve of 487 against 735 bytes at 6,000 (the share rule binds), 487 against 855 at
+  7,000 and 9,000; all three carried, every wake keeping its 24 elements — a fixture whose
+  wake composes to about 2,860 bytes, so the lane caps bind first there.
 - **`handoff.shown` is one row per handoff shown in full**, deduped per row per lived day
   as before, and the block's bytes are split so the rows sum to the cost — each entry its
   own line, the newest the rest (count line and door). `among` says how many were live, so
   the fired view can see whether handoffs pile up.
-- **Retire by id** was small enough to build: `retireHandoff` on `session_end`, any live
-  handoff filed under the caller's directory, `not-here` for anything else. It exists
-  because per-session rows accumulate — a session that finishes another's work could
-  otherwise only leave the stale pointer standing for its fortnight. It rides the same
-  field rules as `handoff`: before the memories check, counts as landing something, and
-  refused beside `writeUp`.
+- **Retire by id** was small enough to build: `retireHandoff` on `session_end`, any
+  handoff filed under the caller's directory and not yet retired, `not-here` for anything
+  else (and `not-here` is not a failure the result flags, as `nothing-to-clear` is not). It
+  exists because per-session rows accumulate — a session that finishes another's work
+  could otherwise only leave the stale pointer standing for its fortnight. It rides the
+  same field rules as `handoff`: before the memories check, counts as landing something,
+  and refused beside `writeUp`. Review of #295 (MAJOR-1) added the two nudges that make it
+  findable: both door lines say `retireHandoff: [id]`, and a successful write returns the
+  other sessions' live handoffs here (`others`: id, session, date, first sentence).
+- **Follow-up, not built: a shorter life for an older handoff** once a newer one stands in
+  the same directory. It is the next answer if `among` still runs high with the nudges in
+  place; left until the row says it is needed.
+- **A blank session id is no session** — keyed, cleared and retired as null, the rule
+  `Lifecycle#composeWake` applies to what it is handed.
+- **A Claude Desktop call that names no session leaves and retires no handoff** (review of
+  #295, MINOR-4, asked for by the hosts session). Desktop's server is shared by every chat,
+  and a call with no `session` binds to the most recent live Desktop session, which may
+  be another chat's; a handoff is keyed by its session, so chat A's `handoff` would have
+  revised chat B's and its blank field would have cleared it. `session_end` refuses both
+  fields `session-unnamed` there (durably, with "name your session" words) and lets the
+  rest of the call through; nothing else about the fallback changes.
 - **`dream/mind.ts` still reads one open loop per directory** (`newestPerScope`, now the
   newest across sessions). Showing every session's there is a question for the mind's own
   budget, not this change.

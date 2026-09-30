@@ -2101,11 +2101,26 @@ export class McpServer {
     // array is malformed must not also throw away the one line telling the next
     // session in this directory where the work stands. The outcome rides out on
     // the refusal too, so nothing is lost silently either way.
-    const handoff = this.writeHandoffField(args["handoff"]);
+    //
+    // A DESKTOP CALL THAT NAMED NO SESSION leaves and retires no handoff
+    // (review of #295, MINOR-4, at the hosts session's ask). It was bound to
+    // the most recent live Desktop session, which may be another chat's — and
+    // a handoff is keyed by its session, so chat A's would revise or clear
+    // chat B's. Both fields are refused by name; the rest of the call, the
+    // memories included, goes through as it always did.
+    const unnamed = this.callBoundBy === "most-recent";
+    const handoff = unnamed ? this.unnamedHandoffField(args["handoff"]) : this.writeHandoffField(args["handoff"]);
     // Retiring others' handoffs here by id (2026-09-30) rides the same rules:
     // it lands before the memories check, it counts as landing something, and
     // its outcomes ride out beside the answer.
-    const retired = this.retireHandoffField(args["retireHandoff"]);
+    const retiredRaw = args["retireHandoff"];
+    let retired: Record<string, unknown>[] | null = null;
+    if (!unnamed) {
+      retired = this.retireHandoffField(retiredRaw);
+    } else if (!(Array.isArray(retiredRaw) && retiredRaw.length === 0)) {
+      const refused = this.unnamedHandoffField(retiredRaw);
+      retired = refused === null ? null : [refused];
+    }
 
     const raw = args["memories"];
     // NOTHING WORTH KEEPING IS A REAL ANSWER — and until 2026-09-21 it was not
@@ -2166,7 +2181,9 @@ export class McpServer {
       if (emptyList) claimUnwritten(this.counterpart.spans, { session, scope: this.scope, by: CLAIM_NOTHING_NEW, ref: session });
       const handoffFailed =
         (handoff !== null && handoff["written"] !== true && handoff["reason"] !== "nothing-to-clear") ||
-        (retired !== null && retired.some((r) => r["written"] !== true));
+        // `not-here` is the retire's `nothing-to-clear`: an id already
+        // retired (by its writer or another session) is not a failure to fix.
+        (retired !== null && retired.some((r) => r["written"] !== true && r["reason"] !== "not-here"));
       this.emit("mcp.session_end", session, {
         entries: 0,
         deposited: 0,
@@ -2451,7 +2468,27 @@ export class McpServer {
       ...(out.gate === null ? {} : { gate: out.gate }),
       ...(out.redacted === null ? {} : { redacted: true }),
       ...(out.showsForDays === null ? {} : { showsForDays: out.showsForDays }),
+      // The other sessions' live handoffs here, so a finished one can be
+      // retired in the same call (`retireHandoff`).
+      ...(out.others === undefined || out.others.length === 0 ? {} : { others: out.others }),
     };
+  }
+
+  /**
+   * A `handoff` or `retireHandoff` field on a Desktop call bound by the
+   * most-recent fallback: refused by name, durably (`handoff/` owns the row),
+   * with the words that fix it. Null when the field was not sent.
+   */
+  private unnamedHandoffField(raw: unknown): Record<string, unknown> | null {
+    if (raw === undefined || raw === null) return null;
+    const detail = `Name your session to leave or retire a handoff: session: <the id wake gave this chat>. This call named none, so it was filed under the most recent Claude Desktop session (${this.session ?? "none"}), which may be another chat's.`;
+    try {
+      const out = this.counterpart.refuseHandoff("session-unnamed", { session: this.session });
+      this.emit("mcp.handoff", undefined, { written: false, reason: out.reason, bytes: 0 });
+      return { written: false, reason: out.reason, bytes: 0, detail };
+    } catch (err) {
+      return { written: false, reason: "threw", detail: String((err as Error).message ?? err) };
+    }
   }
 
   /**

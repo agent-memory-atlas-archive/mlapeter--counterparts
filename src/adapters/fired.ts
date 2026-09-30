@@ -801,7 +801,7 @@ export const MECHANISMS: readonly Mechanism[] = [
   },
   {
     id: "handoff-shown",
-    label: "a session waking in that directory was handed the pointer to its handoff",
+    label: "a session waking in that directory was handed the pointer to a handoff",
     module: "handoff/index.ts",
     evidence: { kind: "event", names: ["handoff.shown"] },
     since: "2026-09-20",

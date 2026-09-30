@@ -100,8 +100,17 @@ newest-first list for several; four durable event names (`written`, `shown`, `cl
    "leave what stands"; a field that is not text is a named, durable refusal.
 3c. **[M] `retireHandoff` retires a handoff in THIS directory by id, whoever wrote it**
    (2026-09-30) — the door for one whose work a later session finished. An id that is not
-   a live handoff filed under the caller's directory is `not-here`, durable, and nothing
-   is touched. Its `handoff.cleared` row says `byId` and whose it was.
+   a handoff filed under the caller's directory and not yet retired is `not-here`,
+   durable, and nothing is touched (a race's duplicates of the retired row's key go with
+   it, as `clear` takes them). Its `handoff.cleared` row says `byId` and whose it was. A
+   successful write names the other sessions' handoffs standing here (`others`), and both
+   door lines of the pointer say how to retire one, so the session that finishes the
+   work is told they are there.
+3d. **[M] A Claude Desktop call that named no session leaves and retires no handoff.**
+   It was bound to the most recent live Desktop session, which may be another chat's, and
+   a handoff is keyed by its session. `handoff` and `retireHandoff` are refused
+   `session-unnamed`, durably, with the words that fix it; the rest of the call goes
+   through as it always did.
 4. **[M] Credentials are redacted or the write is refused**, by the same battery every other
    entrance passes, and the writer is told which happened.
 5. **[M] The pointer expires in LIVED days.** After `HANDOFF_LIFE_DAYS` it is not shown and
@@ -179,9 +188,14 @@ true:
   alone — and the reserve is the widest of them the share rule allows, so it can never
   pass an eighth of the ceiling however many sessions left one. At delivery the ladder is
   walked widest first and the first rung that fits is carried; the pointer is dropped
-  (and `no-room` written) only when not even the newest alone fits. Measured at 9,000 with
-  sixty identity elements: three handoffs shrink the compose budget and a session in
-  another directory keeps every element it had, because the lane caps bind first.
+  (and `no-room` written, with the smallest rung's bytes) only when not even the newest
+  alone fits. Measured with sixty identity elements, one handoff against three (each
+  naming a session and a model): the reserve is 487 against 735 bytes at a 6,000-byte
+  ceiling (the share rule's 750 binds), and 487 against 855 at 7,000 and at 9,000. All
+  three are carried at each ceiling, and the directory's own wake and a wake elsewhere
+  keep all 24 of their elements at each — but that fixture composes to about 2,860 bytes,
+  so the lane caps bind before the byte ceiling does; on a store whose lanes fill the
+  ceiling, the compose-budget difference is what the lanes give up, never past an eighth.
 
 So the order of who gives up bytes, stated plainly: **above the share rule's threshold the
 pointer is paid for first, out of the compose budget, by whatever lane the trim order
@@ -208,8 +222,10 @@ does not log its own refusal) · **§13 G3** (one ask at the blocked moment).
 ## 8. Open questions
 
 1. **Is the share rule's threshold right?** `HANDOFF_RESERVE_MIN_BUDGET_MULTIPLE` is 8,
-   which turns the reserve on from about 3,000 bytes of ceiling (2,400 until 2026-09-30,
-   when the pointer began saying how current it is and the reserve was sized to those words). It is a judgement about
+   which turns the reserve on from about 3,650 bytes of ceiling — about 3,900 for a pointer
+   naming a session and a model (2,400 until 2026-09-30, when the pointer began saying how
+   current it is, then who left it and how to retire it, and the reserve was sized to
+   those words). It is a judgement about
    what a pointer is worth against a memory, made once, in numbers; the owner's hosts all
    report far more than that, so nothing he runs is near it today.
 2. **Does the host's own file memory duplicate this?** The spec names it as the thing to
@@ -227,9 +243,10 @@ does not log its own refusal) · **§13 G3** (one ask at the blocked moment).
    `handoff.cleared` against `handoff.written`.
 5. **Do per-session handoffs pile up?** Before 2026-09-30 a directory could hold one; now
    it holds one per session that left one and did not retire it, for a fortnight each. The
-   row to watch is `handoff.shown`'s `among`. If it runs high, the answers are a shorter
-   life for an older one, or a nudge at the Stop ask to retire what a session finished —
-   not a cap that silently drops someone's pointer.
+   row to watch is `handoff.shown`'s `among`. Two nudges are built (the doors say how to
+   retire one, and a write names the others standing). If it still runs high, the next
+   answer is a shorter life for an older one (a follow-up, NOTES §8) — not a cap that
+   silently drops someone's pointer.
 6. **Should the pointer name a session in words a person uses?** It prints the first
    eight characters of the session id. The host lets a person name a session, but that
    name is not in the hook input or the session registry today; reading it means a

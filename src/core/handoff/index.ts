@@ -105,12 +105,13 @@ export const HANDOFF_EXCERPT_BYTES = 160;
  *
  * 448 while a directory held one pointer. Since 2026-09-30 the widest block is
  * the several-handoff one — three shown in full at full-width excerpts, the
- * widest model id `isModelId` admits, five more named by id — measured at 1,319.
+ * widest model id `isModelId` admits, five more named by id — measured at 1,389
+ * (1,319 before the door line named `retireHandoff`, review of #295).
  * In practice the share rule binds first: at the 9,000 bytes the owner's hosts
  * report, no reserve can pass 1,125, so a block that wide is carried with two
  * shown rather than three.
  */
-export const HANDOFF_RESERVE_MAX_BYTES = 1344;
+export const HANDOFF_RESERVE_MAX_BYTES = 1408;
 
 /**
  * Slack on top of the block that actually exists, so a reserve taken at one
@@ -139,7 +140,8 @@ export const HANDOFF_RESERVE_MARGIN_BYTES = 48;
  * cost more than an eighth of the bundle, which at the measured block size
  * turned the reserve on from about 2,400 bytes up — about 3,000 since the
  * pointer says how current it is (2026-09-30), whose widest words the reserve
- * is sized to.
+ * is sized to, and about 3,650 since the pointer says who left it and how to
+ * retire it (about 3,900 when it names a session and a model).
  *
  * One comparison, not a second budgeter: nothing here decides what to trim.
  */
@@ -239,6 +241,7 @@ export type HandoffRefusal =
   | "not-text"
   | "nothing-to-clear"
   | "not-here"
+  | "session-unnamed"
   | "no-room"
   | "store-refused"
   | "too-large"
@@ -258,6 +261,27 @@ export interface HandoffWrite {
   readonly redacted: { readonly gate: string; readonly bytesBefore: number } | null;
   /** Lived days this pointer will show for, counting the day it was written. */
   readonly showsForDays: number | null;
+  /**
+   * After a write: the OTHER sessions' live handoffs in this directory, newest
+   * first (2026-09-30), so the writer can retire any whose work is finished in
+   * the same call. Absent on every other outcome.
+   */
+  readonly others?: readonly HandoffNeighbour[];
+}
+
+/** Another session's live handoff here, as a write's result names it. */
+export interface HandoffNeighbour {
+  readonly id: string;
+  readonly session: string | null;
+  readonly writtenOn: string;
+  /** Its first sentence, as the wake prints it. */
+  readonly excerpt: string;
+}
+
+/** A session id as this module keys it: a blank one is no session (the rule
+ *  `Lifecycle#composeWake` applies to what it is handed). */
+function sessionKey(session: string | null | undefined): string | null {
+  return typeof session === "string" && session.trim().length > 0 ? session : null;
 }
 
 export interface Handoff {
@@ -704,7 +728,7 @@ export function pointerDoor(h: Handoff, day: number, lifeDays = HANDOFF_LIFE_DAY
   // Never "0 more days": `pointerBlock` returns null once `daysLeft` reaches 0,
   // so the smallest number this line can print is 1 — the last day it shows.
   const days = left === 1 ? "one more day" : `${Math.max(1, left)} more days`;
-  return `(The whole of it is ${h.id} — expand it with the counterparts recall tool. It stops showing after ${days} of use.)`;
+  return `(The whole of it is ${h.id} — expand it with the counterparts recall tool; once its work is done, retire it with session_end's retireHandoff: [id]. It stops showing after ${days} of use.)`;
 }
 
 /**
@@ -779,7 +803,7 @@ export function pointerBlockMany(
     lines.push(`+${rest.length} older here: ${named.join(", ")}${unnamed > 0 ? `, and ${unnamed} more` : ""}.`);
   }
   lines.push(
-    `(Expand any of them by id with the counterparts recall tool. Each stops showing ${lifeDays} days of use after it was written.)`,
+    `(Expand any of them by id with the counterparts recall tool; retire one whose work is done with session_end's retireHandoff: [id]. Each stops showing ${lifeDays} days of use after it was written.)`,
   );
   return lines.map(flatten).join("\n");
 }
@@ -923,7 +947,9 @@ export class Handoffs {
     const byScope = new Map<string, LiveRow[]>();
     for (const row of liveHandoffRows(this.store)) {
       if (row.scope.length === 0) continue;
-      byScope.set(row.scope, [...(byScope.get(row.scope) ?? []), row]);
+      const held = byScope.get(row.scope);
+      if (held === undefined) byScope.set(row.scope, [row]);
+      else held.push(row);
     }
     for (const rows of byScope.values()) {
       const hs = handoffsNewestFirst(this.store, rows, d, HANDOFF_LIFE_DAYS);
@@ -944,7 +970,7 @@ export class Handoffs {
     const draft = input.body.replace(/\r\n/g, "\n").trim();
     let bytes = byteLengthOf(draft);
     const scope = input.scope.trim();
-    const session = input.session ?? null;
+    const session = sessionKey(input.session);
     const none = { id: null, version: null, gate: null, redacted: null, showsForDays: null } as const;
     const refuse = (
       reason: HandoffRefusal,
@@ -1107,7 +1133,25 @@ export class Handoffs {
       gate: null,
       redacted,
       showsForDays: HANDOFF_LIFE_DAYS,
+      others: this.neighbours(scope, session, day),
     };
+  }
+
+  /**
+   * THE OTHER SESSIONS' LIVE HANDOFFS HERE, newest first — what a write hands
+   * back so the writer can retire, in the same call, any whose work it has
+   * finished (review of #295, MAJOR-1: per-session handoffs pile up unless
+   * the session that finishes the work is told they are there). Never throws;
+   * a store that will not answer names none.
+   */
+  private neighbours(scope: string, session: string | null, day: number): HandoffNeighbour[] {
+    try {
+      return this.readAll(scope, day)
+        .filter((h) => h.session !== session)
+        .map((h) => ({ id: h.id, session: h.session, writtenOn: h.writtenOn, excerpt: excerpt(h.body) }));
+    } catch {
+      return [];
+    }
   }
 
   /**
@@ -1263,7 +1307,7 @@ export class Handoffs {
    */
   clear(scope: string, opts: { session?: string | null; day?: number } = {}): HandoffWrite {
     const day = opts.day ?? this.store.livedDay();
-    const session = opts.session ?? null;
+    const session = sessionKey(opts.session);
     const none = { id: null, version: null, gate: null, redacted: null, showsForDays: null } as const;
     if (this.observer) {
       this.emit("handoff.observer.standdown", undefined, { site: "clear" });
@@ -1299,15 +1343,15 @@ export class Handoffs {
    * another's work and finishes it could otherwise only leave the old pointer
    * standing for the rest of its fortnight. The id is what the wake prints.
    *
-   * Only a live handoff filed under THIS directory: an id that is anything
-   * else — another directory's, an archived one, not a handoff — is `not-here`,
+   * Only a handoff filed under THIS directory and not yet retired: an id that
+   * is anything else — another directory's, an archived one, not a handoff — is `not-here`,
    * one durable refusal, and nothing is touched. Retiring is the same archive
    * `clear` does, and leaves the same `handoff.cleared` row, which says whose
    * it was and that it went by id.
    */
   retire(id: string, opts: { scope: string; session?: string | null; day?: number }): HandoffWrite {
     const day = opts.day ?? this.store.livedDay();
-    const session = opts.session ?? null;
+    const session = sessionKey(opts.session);
     const none = { id: null, version: null, gate: null, redacted: null, showsForDays: null } as const;
     if (this.observer) {
       this.emit("handoff.observer.standdown", undefined, { site: "retire" });
@@ -1321,7 +1365,11 @@ export class Handoffs {
     const live = liveHandoffRows(this.store).find((r) => r.id === want && r.scope === scope);
     const h = live === undefined ? null : handoffOf(this.store, live);
     if (h === null) return this.refuse("not-here", { day, session, bytes: 0 }, none);
-    this.store.archive(h.id, "handoff-cleared");
+    // A race's losers for the retired row's own key go with it, as `clear`
+    // takes them: left standing, one would surface as the pointer just retired.
+    for (const stale of [h.id, ...duplicateHandoffRows(this.store, scope, h.session).filter((d) => d !== h.id)]) {
+      this.store.archive(stale, "handoff-cleared");
+    }
     this.store.appendEvent({
       name: HANDOFF_CLEARED_EVENT,
       day,
