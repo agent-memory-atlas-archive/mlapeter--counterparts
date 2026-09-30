@@ -7975,8 +7975,9 @@ function oneLine(body: string, max: number): string {
 /**
  * THE OWNER'S RE-RENDER.
  *
- * The wake bundle is composed once per lived day, at the boundary, and served
- * unchanged to every session until the next one. That is a feature — cold start
+ * The wake bundle is composed at the day's first boundary — and again when a
+ * page write or a write-up puts it behind (2026-09-30) — and served unchanged
+ * to every session until the next render. That is a feature — cold start
  * costs one meta read — right up until the render itself changes: the identity
  * share merged mid-day on 2026-09-04 and could not reach a single session's wake
  * until the following boundary, and an owner who wanted their wake regenerated

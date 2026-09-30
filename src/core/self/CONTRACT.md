@@ -266,14 +266,14 @@ proposals and their archive; render and delivery telemetry.
    phase. It exists because a change to the lane rules merged mid-day cannot reach a single
    session's wake until the next boundary (measured 2026-09-04, the day the share shipped).
    **Between boundaries the wake keeps up** (2026-09-30, a working default): the page
-   written, a write-up accepted through `session_end`, and the nightly run's end mark it
-   behind (`behind.ts`), and `Counterpart.refreshWake` — the same render, with a budget or
-   not at all — republishes it at the next turn-end worker or when the nightly process's
-   child returns, recording `reason: "refresh"` and the triggers. So the bundle is no longer
+   written and a write-up accepted through `session_end` mark it behind (`behind.ts`), and
+   `Counterpart.refreshWake` — the same render, with a budget or not at all — republishes
+   it at the next turn-end worker; the nightly process calls it when its child returns,
+   with no mark, naming `run-end` as the trigger. Either way the row records
+   `reason: "refresh"` and the triggers. So the bundle is no longer
    rendered once per lived day; it is rendered at the day's first boundary and again when
-   one of those writes lands. A same-day re-render is stable: a hint showing since an
-   earlier render today is scored at its load from before today's step and takes no second
-   step, and identity elements already rendered today keep their place, so the lane rotates
+   one of those writes lands. A same-day re-render is stable: a hint an earlier render
+   today showed is scored at its load from before today's step and takes no second step, and identity elements already rendered today keep their place, so the lane rotates
    once a day (NOTES §30).
 13. **[A]** The ask's wording is a preference and a probe. That an ask exists at
     every session-ending path, that there is exactly ONE of it per blocked moment, and that

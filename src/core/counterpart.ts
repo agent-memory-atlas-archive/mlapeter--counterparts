@@ -3551,9 +3551,10 @@ export class Counterpart {
   /**
    * RE-RENDER THE WAKE NOW — the owner's lever, and nothing else.
    *
-   * The briefing is re-rendered once per lived day, at the boundary, so a change
-   * to the lane rules merged mid-day is invisible until tomorrow and an owner
-   * who wants their wake regenerated has to wait for one (measured 2026-09-04,
+   * The briefing is re-rendered at the day's first boundary and again only when
+   * a page write or a write-up puts it behind (`refreshWake`), so a change to
+   * the lane rules merged mid-day is invisible until one of those, and an owner
+   * who wants their wake regenerated would have to wait (measured 2026-09-04,
    * the day the identity share shipped). This is the same render the sleep step
    * runs — `briefing.selfRenderer`, SEAMS G, one renderer and not a second — and
    * it reserves the delivery preface's room exactly as `sessionEnd` does,
@@ -3654,7 +3655,9 @@ export class Counterpart {
     // record, and these are the owner pulling the lever mid-day and the wake
     // catching up to a write. A reader counting wake renders per day must be
     // able to tell them apart.
-    this.recordSelfBriefing(collected, this.store.today(), why, triggers);
+    // The caller's date when it passed one: every row a run writes carries the
+    // run's one date (review of #287).
+    this.recordSelfBriefing(collected, input.at ?? this.store.today(), why, triggers);
     if (behind !== null && collected.some((e) => e.name === BRIEFING_PUBLISHED_EVENT)) {
       noteWakeCaught(this.store, behind.raw);
     }

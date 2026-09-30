@@ -3,17 +3,18 @@
  * the next session should wake to, and read by whichever process with a budget
  * runs next.
  *
- * The bundle is rendered once per lived day by the sleep cycle, at the day's
- * first worker run. A page written after that, a write-up that lands, or the
- * nightly run's page did not reach a wake until the next lived day: on
- * 2026-09-30 the owner's first session of the morning woke with the page from
- * one version back. So the writes that matter set this mark, and the turn-end
- * worker and the nightly process re-render when they find it
- * (`Counterpart.refreshWake`). Not at SessionStart: the wake ranks nothing and
- * writes nothing (CONTRACT §5 G1).
+ * Until this, the bundle was rendered once per lived day by the sleep cycle, at
+ * the day's first worker run, and a page written after that, a write-up that
+ * landed, or the nightly run's page reached no wake until the next lived day:
+ * on 2026-09-30 the owner's first session of the morning woke with the page
+ * from one version back. Now the page write and the write-up set this mark,
+ * and the turn-end worker re-renders when it finds it
+ * (`Counterpart.refreshWake`); the nightly process re-renders at the run's end
+ * without a mark, naming `run-end` as its trigger. Not at SessionStart: the
+ * wake ranks nothing and writes nothing (CONTRACT §5 G1).
  *
  * Two meta keys, so a renderer never writes the key a writer sets: `behind` is
- * the mark (`{ at, triggers }`), `caught` is the raw mark value the last render
+ * the mark (`{ n, at, triggers }`), `caught` is the raw mark value the last render
  * read BEFORE it composed. Behind iff the two differ. A mark set while a render
  * is composing has a new value, so it is not swallowed by that render's catch-up.
  */
