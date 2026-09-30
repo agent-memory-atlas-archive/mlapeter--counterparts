@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **A journal chapter and the memory made from it are one result**, and that memory
+  now keeps the chapter's title. In the dashboard's Ask, the answer is the chapter's
+  row.
+- **`status` counts `replaced` apart from `exited`.** `symmetry.exited` now means only
+  what left for good (let go, removed); a revision, a merge, a correction, or a journal
+  copy rebuilt when its chapter grew is counted under the new `symmetry.replaced`. A
+  store whose chapters keep growing used to read as losing its self-kind memories, so
+  **any note comparing `exited` across days sees a step on the day this is installed.**
+
 ## 0.3.8 — 2026-09-30
 
 When two memories disagree, Claude can now say how: the fact changed, the old one was

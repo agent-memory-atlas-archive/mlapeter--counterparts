@@ -6,7 +6,12 @@
    same words. The page shows the memory once, where the better of the two was
    ranked, with a small "from chapter …" link to the entry. Pure (no DOM), so
    `bun test` checks it; the links come from `/api/chapters`
-   (`views/search.ts#chapterLinks`). */
+   (`views/search.ts#chapterLinks`).
+
+   Since 2026-09-30 (U13) recall itself returns the pair as ONE answer — the
+   chapter (`core/recall/activate.ts`, the collapse) — so the fold below sees a
+   pair only from an older build's answer. A memory whose chapter was not in
+   the answer still gets its "from chapter …" link. */
 
 const TIER_ORDER = { vivid: 0, quiet: 1, dim: 2 };
 

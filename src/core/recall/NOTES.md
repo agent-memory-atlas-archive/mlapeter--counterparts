@@ -661,3 +661,38 @@ withdrawn one say nothing. The corrected label is seen only by id: an archived m
 never surfaces. `deliberate.ts#expandHandle` shows a superseded row asked for by its own
 id as itself, with `replaced by` — the display path only; `store.resolve` still forwards,
 and a use of that row is not credited (the credit pass refuses archived rows).
+
+## 21. A chapter and its copy, one result — 2026-09-30 (U13)
+
+The U13 session saw every chapter twice in deliberate answers: the `epi_` row and the
+untitled self-kind copy `self/` ingests from it, two of about eight slots in all six
+questions. Lateral inhibition did not catch the pair because it runs only on ADMITTED
+candidates; a pair below the turn's bar reached the deliberate dim tier as two rows, and a
+titled chapter against an untitled copy can fall under `NEAR_DUPLICATE` anyway.
+
+- **Where**: `activate.ts`, after scoring and before the cut — the step the ambient turn and
+  the deliberate ask share, so the two agree and the freed slot goes to the next candidate.
+  The gates are untouched. The link is read off box 2's own columns (`journalCopyOf`:
+  `type: "memory"`, `source: "episode"`, `origin_ref`), so the scan pays no prose read.
+- **Which row**: the chapter (the brief's working default: it has the title and the
+  `Journal:` label). It is scored as the pair — the stronger half of cue, temporal and
+  semantic, arrival from the chapter's own strength. A pointer never re-opens the pair.
+  Flipping to the copy is one line in that block.
+- **Credit**: `Recall.resolveUse` credits the chapter and then each live copy
+  (`MemoryFilter.originRef`), same tier, same once-a-day rule per copy, the copy's own
+  `trains` respected; a copy's `recall.credit` event carries `via: "chapter"`. The
+  chapter's own credit is recorded and never acted on (it is outside decay); the copy's is
+  the one that moves physics. SCOPED (review of #293, S4): only for a chapter this
+  session's gate state holds — recall showed the pair. A chapter used off the wake or the
+  `chapter` tool credits itself only, as before (forwarding those would make copies fade
+  slower than they used to). A chapter read through the deliberate ask leaves no gate
+  state, so its use credits the chapter only; a copy listed on its own there used to earn
+  that use — the one place a copy now earns less.
+- **The pair's other halves** (S1, S2): the higher salience of the two, either half's
+  mood lift (the copy carries `proposal.salience` and most stamps), and the copy's links —
+  a hop to the copy lands on the chapter, and the copy seeds the spread beside it, since
+  existing edges point at the copy.
+- **The dashboard**: its ask view had folded the pair the other way since round 3 (the
+  memory, with a "from chapter …" link). It now receives the chapter alone and shows it as
+  a journal row; `pages/memories/fold.js` still links a copy whose chapter was not shown.
+

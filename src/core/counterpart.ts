@@ -127,6 +127,8 @@ import {
 import type { Handoff, HandoffRefusal, HandoffWrite, PointerSince } from "./handoff/index.js";
 import { CLAIM_CHAPTER, askFromStretch, claimUnwritten, sessionStretch, workSince } from "./coverage/index.js";
 import { localStamp, localStampAfter } from "./time.js";
+import { leftAs } from "./leaving.js";
+import type { LeftAs } from "./leaving.js";
 import {
   BRIEFING_KEY,
   BRIEFING_TRIM_LOG_CAP,
@@ -2861,6 +2863,16 @@ export class Counterpart {
   /** Through the REAL battery: a first-person reflection is not exempt (SEAMS H). */
   ingestEpisode(input: { sessionId: string; day?: number; handles?: readonly string[] }): IngestResult {
     return this.self.ingestEpisode(input);
+  }
+
+  /**
+   * How an archived row LEFT — replaced by a newer reading, let go, or removed
+   * (`leaving.ts`, the one table the `status` census and the dashboard read).
+   * A door on the composition root, so an adapter asks it through the object it
+   * already holds.
+   */
+  leftAs(reason: string | null, superseded = false): LeftAs | null {
+    return leftAs(reason, superseded);
   }
 
   /** The owner's name as written on the identity core (not lower-cased), or null. */

@@ -831,3 +831,15 @@ headless child's own `--mcp-config` env and checks the bodies reach `structuredC
 - **A `how` sent at a core memory** reports that pressure runs and that the pair is
   recorded unsettled meanwhile (M9). The published `note` schema has `required: []`;
   watch whether empty notes rise (M10).
+
+## 2026-09-30 — the census counts replaced apart from exited (U13)
+
+`status`'s `symmetry` gains `replaced` per kind, and `exited` narrows to what left for
+good: let go (pruned, faded), removed, or archived under a reason nobody mapped. A
+revision, a merge (sleep's or a dream's), a handoff cleared and a journal copy rebuilt when
+its chapter grew (`episode-regrown`) are `replaced` — a live row carries them. On the live
+store 72 of 74 self-kind "exits" were rebuilt copies. The table is `core/leaving.ts`, the
+same one the dashboard's archive words take their groups from; the server asks it through
+`counterpart.leftAs` so this change adds no import to `server.ts`. `exited` CHANGED MEANING
+without a version marker (nothing in the code reads it): a daily or a note comparing it
+across days sees a step on the day this is installed. The CHANGELOG says so.

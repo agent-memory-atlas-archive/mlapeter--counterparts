@@ -649,8 +649,12 @@ export class Recall {
     const outcome = this.store.reinforce(memoryId, today, tier, cued ? { cued: true } : {});
     if (outcome.credited) {
       state.credited[memoryId] = { turn: state.turn, tier, day: today };
-      this.persist(state, "resolveUse");
     }
+    // Only when RECALL showed the chapter this session (review of #293, S4):
+    // then it was the collapsed pair. A chapter credited from the wake or the
+    // `chapter` tool credits the chapter alone, as before.
+    const copies = surfaced !== undefined ? this.creditCopies(state, memoryId, today, tier, cued) : 0;
+    if (outcome.credited || copies > 0) this.persist(state, "resolveUse");
     this.emit("recall.credit", memoryId, {
       tier,
       w,
@@ -693,6 +697,54 @@ export class Recall {
   }
 
   // ── internals ────────────────────────────────────────────────────────────
+
+  /**
+   * A CHAPTER'S USE IS ALSO ITS COPY'S — when recall showed it (2026-09-30,
+   * U13). Recall shows a chapter and its own copy as one result — the chapter
+   * (`activate.ts`, the collapse) — and a chapter's physics are recorded and
+   * never acted on (`JOURNAL_GLOSS`): it sits outside decay. The copy is the
+   * memory that fades, so without this the collapse would starve it of every
+   * use it used to earn by being shown.
+   *
+   * SCOPED (review of #293, S4): the caller forwards only when this session's
+   * gate state holds the chapter — recall surfaced or footnoted it, which is
+   * the collapsed pair. A chapter used off the wake or the `chapter` tool
+   * credits itself only, as it always did; forwarding those too would make
+   * copies fade SLOWER than before. A chapter read through the deliberate ask
+   * leaves no gate state (that path records nothing), so its use credits the
+   * chapter only — a copy listed on its own there used to earn that use.
+   *
+   * Same tier, same once-a-day rule per copy, the copy's OWN `trains` check (a
+   * copy this session saw only through an ambiguous handle trains nothing), and
+   * physics decides; a copy that throws is skipped and the chapter's own credit
+   * stands. Returns how many copies were credited.
+   */
+  private creditCopies(state: GateState, memoryId: string, today: number, tier: UseTier, cued: boolean): number {
+    let copies: string[];
+    try {
+      if (this.store.row(memoryId)?.type !== "episode") return 0;
+      copies = this.store.list({ type: "memory", source: "episode", originRef: memoryId, archived: false });
+    } catch {
+      return 0;
+    }
+    const w = USE_TIER_WEIGHT[tier];
+    let n = 0;
+    for (const copy of copies) {
+      if (state.surfaced[copy]?.trains === false) continue;
+      const prior = state.credited[copy];
+      if (prior !== undefined && prior.day === today && USE_TIER_WEIGHT[prior.tier] >= w) continue;
+      try {
+        const out = this.store.reinforce(copy, today, tier, cued ? { cued: true } : {});
+        this.emit("recall.credit", copy, { tier, w, credited: out.credited, reason: out.reason, via: "chapter" });
+        if (!out.credited) continue;
+        state.credited[copy] = { turn: state.turn, tier, day: today };
+        n += 1;
+      } catch {
+        continue;
+      }
+    }
+    return n;
+  }
 
   private readonly ring: RecallEvent[] = [];
 

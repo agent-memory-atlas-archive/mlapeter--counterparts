@@ -36,6 +36,9 @@ let browser: Browser | null = null;
 let dir: string;
 let running: RunningDashboard | null = null;
 const feltIds: string[] = [];
+/** Journal chapters, and each chapter's copy (the memory drawn from it). */
+const chapterIds: string[] = [];
+const copyOf = new Map<string, string>();
 
 beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), "counterparts-memories-live-"));
@@ -48,6 +51,11 @@ beforeAll(async () => {
     c.store.addFeelings(people[0] as string, [{ whose: "owner", core: "happy", emotion: "proud", strength: 0.8 }]);
     c.store.addFeelings(people[1] as string, [{ whose: "owner", core: "happy", emotion: "proud", strength: 0.6 }]);
     c.store.addFeelings(people[2] as string, [{ whose: "self", core: "sad", emotion: "lonely", strength: 0.4 }]);
+    chapterIds.push(...c.store.list({ type: "episode", archived: false }));
+    for (const id of c.store.list({ type: "memory", source: "episode", archived: false })) {
+      const ref = c.store.row(id)?.origin_ref;
+      if (typeof ref === "string") copyOf.set(ref, id);
+    }
   } finally {
     c.close();
   }
@@ -189,28 +197,33 @@ describe("the memories tab, live", () => {
       expect(await total()).toBeGreaterThan(2);
 
       // ── "by meaning" (the switch, 2026-09-30), then Enter, asks; the answers take the list's place.
-      // Ask folds a chapter and its memory into one answer (round 3), and a refresh keeps it ──
+      // A chapter and the memory drawn from it come back as ONE answer — the
+      // chapter (recall's collapse, 2026-09-30, U13) — and a refresh keeps it ──
       expect(await page.getAttribute('#q-mode button[data-mode="word"]', "aria-pressed")).toBe("true");
       await page.click('#q-mode button[data-mode="meaning"]');
       expect(await page.getAttribute("#q", "placeholder")).toContain("press Enter");
       await page.fill("#q", "the first day inside Halfmoon, reading the rota solver");
       await page.press("#q", "Enter");
-      await page.waitForSelector("#mlist .mchapter", { timeout: 30_000 });
+      await page.waitForFunction(
+        (ids) => ids.some((id) => document.querySelector(`#mlist .mrow[data-id="${id}"]`) !== null),
+        chapterIds,
+        { timeout: 30_000 },
+      );
       expect(await page.isHidden("#mfilters")).toBe(true);
       const answers = async (): Promise<string[]> =>
         page.locator("#mlist .mrow").evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.id ?? ""));
       const folded = await answers();
-      const chapterOf = await page.locator("#mlist .mchapter").first().getAttribute("data-open");
-      // The chapter the link names is not also listed as an answer of its own.
-      expect(folded).not.toContain(chapterOf);
+      const chapter = folded.find((id) => chapterIds.includes(id)) as string;
+      // The memory drawn from the chapter is not also listed as an answer of its own.
+      expect(folded).not.toContain(copyOf.get(chapter));
       expect(new Set(folded).size).toBe(folded.length);
       expect(await page.textContent("#find-head")).toContain(`${folded.length} memor`);
       expect(await page.locator("#mlist .mtier").first().textContent()).toMatch(/^(strong match|match|weak match)$/);
       write("A fact written while the answer was open.");
       await refresh();
       expect(await answers()).toEqual(folded);
-      // The link opens the chapter, not the memory it sits in.
-      await page.locator("#mlist .mchapter").first().click();
+      // The chapter's row opens the chapter.
+      await page.locator(`#mlist .mrow[data-id="${chapter}"]`).click();
       await page.waitForSelector("#overlay.show .mc");
       expect(await page.textContent("#modal .mc")).toContain("My journal, kept as written");
       await page.keyboard.press("Escape");
