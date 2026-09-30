@@ -446,7 +446,10 @@ row, saying which source answered, existed until the keys were removed — §1a.
     smuggled past the limit. `SessionRecord.askedScope` is what makes "once" true
     across a resume or a compaction. The WORDING is advisory; that an unset directory
     raises the question exactly once and that any recorded mode ends it are the
-    mechanized parts.
+    mechanized parts. Not asked at all in a Claude Desktop Code-tab "No folder"
+    scratch workspace (`hosts.ts#isDesktopScratchWorkspace`, 2026-09-30): Desktop
+    deletes that directory with the session, and an answer recorded for it would
+    outlive the folder it names (event `adapter.scope.ask.skipped`, `scratch-workspace`).
 
 22. **[M] TURNING A DIRECTORY BACK ON NEVER REACHES BACK.** A session that lived
     under `off` or `paused` left no session record and no span cursor, because the

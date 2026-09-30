@@ -56,6 +56,7 @@ import { newNightRunId } from "../../core/dream/index.js";
 import type { DreamOffer } from "../../core/dream/index.js";
 import type { BoundaryKind } from "../../core/remember/index.js";
 
+import { isDesktopScratchWorkspace } from "../hosts.js";
 import { stanceOfMode } from "../scopes.js";
 import {
   decideUpdateNotice,
@@ -629,6 +630,13 @@ export class ClaudeCodeAdapter extends Lifecycle {
       return false;
     }
     if (input.sessionId.length === 0 || input.nightRun === true) return false;
+    // A FOURTH (2026-09-30): Claude Desktop's Code tab, started with "No
+    // folder", runs in a scratch directory it deletes with the session — an
+    // answer recorded for it would outlive the folder it names.
+    if (isDesktopScratchWorkspace(input.scope)) {
+      this.emit("adapter.scope.ask.skipped", { reason: "scratch-workspace" });
+      return false;
+    }
     try {
       return readSession(this.counterpart.store.dir, input.sessionId)?.askedScope !== true;
     } catch {

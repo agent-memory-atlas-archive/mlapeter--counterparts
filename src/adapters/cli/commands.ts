@@ -233,6 +233,8 @@ import type { ParkStep, StartFreshPlan, UndoPlan } from "./start-fresh.js";
 // A's two modules: the host's files, and leaving. They import nothing from here
 // but the `Io` type, so this direction is one-way.
 import { realProcessLister, realSpawner, sessionsNote, tilde, unwire, wire } from "./wire.js";
+import { connectDesktop, readDesktop } from "./desktop.js";
+import { DESKTOP_HOST } from "../hosts.js";
 import type {
   Outcome as WireOutcome,
   ProcessLister,
@@ -649,7 +651,7 @@ export const COMMAND_FLAGS: Record<Command, readonly string[]> = {
   // `--no-connect` was `--no-wire` until 2026-09-22 (item 3 renamed the verbs,
   // item 9 made connecting the default). Both are new in 0.2.0 and neither has
   // shipped, so there is no compatibility to keep and no alias to carry.
-  install: ["budget", "name", "embedder", "no-embedder", "force", "config", "no-connect", "yes"],
+  install: ["budget", "name", "embedder", "no-embedder", "force", "config", "no-connect", "yes", "host"],
   // `--dir` is deliberately absent from all three, exactly as it is from
   // `start-fresh`: it is a COMMON flag, so it parses either way, and these
   // commands refuse it in words rather than ignoring it. The store they name is
@@ -976,6 +978,7 @@ const FLAG_HELP: Record<string, string> = {
  * question added later should not find the flag missing.
  */
 const INSTALL_FLAG_HELP: Record<string, string> = {
+  host: "claude-desktop connects Claude Desktop's chat instead of Claude Code: the store and configuration as usual, then a counterparts entry merged into Desktop's claude_desktop_config.json (backed up first, other servers untouched). Quit Claude Desktop before running it: Desktop rewrites that file while it runs. claude-code, or no --host, is the ordinary install",
   yes: "kept so a scripted caller need not change, and it answers nothing this command asks: your name and a memory a parked uninstall set aside are questions only a person can answer, and moving somebody's data is never something a flag decides",
 };
 
@@ -1180,6 +1183,7 @@ const VALUED_FLAGS: readonly string[] = [
   "how",
   "why",
   "date",
+  "host",
 ];
 
 /** Levenshtein, small and local. Only ever used to say "did you mean". */
@@ -1390,6 +1394,7 @@ export function parse(argv: readonly string[]): Parsed {
       // `log --date YYYY-MM-DD` (which day's file to print) and `coverage
       // --date` (which day to read): a string, so a bare flag is a refusal.
       date: { type: "string" },
+      host: { type: "string" },
       observer: { type: "boolean" },
       help: { type: "boolean" },
       // `scope`'s five. Declared as booleans for the same reason `rebuild` is:
@@ -1608,6 +1613,23 @@ export async function run(argv: readonly string[], opts: RunOptions): Promise<nu
     if (implicit !== null) {
       io.err(implicit);
       return EXIT.refused;
+    }
+    // `--host claude-desktop` (2026-09-30): the store and the configuration as
+    // any install makes them, then Claude Desktop's config entry instead of
+    // Claude Code's hooks. No `--host`, or `--host claude-code`, is the install
+    // below, untouched.
+    const hostFlag = parsed.flags["host"];
+    if (hostFlag !== undefined && hostFlag !== "claude-code") {
+      if (hostFlag !== DESKTOP_HOST) {
+        io.err(`--host takes claude-code or ${DESKTOP_HOST}; got ${JSON.stringify(hostFlag)}.`);
+        return EXIT.usage;
+      }
+      try {
+        return installDesktop(parsed, io, env, opts.home, named, now);
+      } catch (err) {
+        io.err(`install failed: ${describeDirRefusal(err)}`);
+        return EXIT.failed;
+      }
     }
     try {
       // A PERSON AT A TERMINAL GETS A CONVERSATION; EVERYTHING ELSE GETS
@@ -3494,6 +3516,68 @@ function printHostSteps(io: Io, resolved: string, custom: string | undefined, ho
  * already there greets you instead of asking your name again, and a connection
  * that is already in place says so instead of being redone.
  */
+/**
+ * `install --host claude-desktop` (2026-09-30, brief item 7). The store and
+ * the configuration exactly as the scripted install makes them — kept when they
+ * exist, as always — and then, instead of Claude Code's hooks and `claude mcp
+ * add`, a `counterparts` entry merged into Claude Desktop's own config file
+ * (`desktop.ts#connectDesktop`: backed up first, every other server left as it
+ * was, nothing written at all when the same entry is already there). The
+ * Desktop file is found under the home directory this command was given, never
+ * `os.homedir()` behind its back.
+ */
+function installDesktop(
+  parsed: Parsed,
+  io: Io,
+  env: Record<string, string | undefined>,
+  home: string | undefined,
+  named: ConfigChoice | undefined,
+  now: () => number,
+): number {
+  const home_ = home ?? homedir();
+  const code = installCommand(parsed, io, env, home_, named, { hostSteps: false });
+  if (code !== EXIT.ok) return code;
+  const custom = customConfigPath(named, home_);
+  const dirFlag = typeof parsed.flags["dir"] === "string" ? parsed.flags["dir"] : undefined;
+  const layout = installLayout(dirFlag, env, home_, custom);
+  const store = hostConfigFor(layout.config).config.dataDir ?? layout.store;
+  const result = connectDesktop({
+    home: home_,
+    store,
+    exe: process.execPath,
+    ...(custom === undefined ? {} : { configPath: custom }),
+    now: now(),
+  });
+  io.out("");
+  switch (result.outcome) {
+    case "already":
+      io.out(`Claude Desktop: already connected — ${tilde(result.path, home_)} has this entry, and nothing was changed.`);
+      return EXIT.ok;
+    case "added":
+    case "updated":
+      io.out(`Claude Desktop: ${result.outcome === "added" ? "connected" : "entry updated"} in ${tilde(result.path, home_)}.`);
+      // A REPLACED ENTRY THAT NAMED ANOTHER STORE IS NAMED (review of #294):
+      // Desktop's memory moves with this line, and the old one is not gone.
+      if (result.previousStore !== undefined && result.previousStore !== null && result.previousStore !== store) {
+        io.out(`  It named another store before: ${result.previousStore} — that memory is still there; Desktop now uses ${store}.`);
+      }
+      if (result.backup !== null) io.out(`  backed up first: ${result.backup}`);
+      io.out("  Every other server in that file was left as it was.");
+      // Desktop rewrites its own config file while it runs, so a change made
+      // under a running Desktop can be written over.
+      io.out("If Claude Desktop was open while this ran, quit it and run this again — it rewrites its own config file while it runs.");
+      io.out("Then open Claude Desktop. In a new chat, ask it to call the counterparts wake tool first (or pick the \"Start with Counterparts\" prompt where Desktop lists it).");
+      io.out(`Then run \`${BIN.cli} doctor\`: its Claude Desktop line shows the entry, and the last wake once there has been one.`);
+      return EXIT.ok;
+    case "refused":
+      io.err(result.detail ?? "refused");
+      return EXIT.refused;
+    default:
+      io.err(`Claude Desktop's config could not be written: ${result.detail ?? "unknown"}${result.backup === null ? "" : ` (a backup was taken first: ${result.backup})`}.`);
+      return EXIT.failed;
+  }
+}
+
 async function installInteractive(
   parsed: Parsed,
   io: Io,
@@ -8863,6 +8947,9 @@ function doctorCommand(
         claudeOnPath: claudeOnPath(env),
         mcpAddLine: mcpCommand(dir, undefined, customConfigPath(named, home ?? homedir())),
       },
+      // CLAUDE DESKTOP'S ENTRY (2026-09-30): two small reads of the host's
+      // files, like `host` above. Quiet in the report when there is none.
+      desktop: readDesktop(home ?? homedir(), env),
       ...(open === undefined ? {} : { open }),
     });
     if (parsed.flags["json"] === true) {

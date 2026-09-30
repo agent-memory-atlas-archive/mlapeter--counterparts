@@ -230,6 +230,20 @@ describe("the schema gate: a store a newer build migrated refuses every tool", (
     expect(one["cache"]).toEqual({ expected: CACHE_SCHEMA_VERSION, found: String(CACHE_SCHEMA_VERSION), ahead: false });
   });
 
+  test("Claude Desktop's `wake` sits under the same gate: it refuses, in Desktop's words, and writes no session", async () => {
+    // A Desktop server (2026-09-30): no launched session, the Desktop place.
+    const s = server({ host: "claude-desktop", session: "", scope: undefined, lifecycle: { spawner: () => ({ pid: 1 }) } });
+    seed(s);
+    const ops = outside(paths.operational(dir));
+    outside(paths.cache(dir));
+    ops.run("UPDATE meta SET value = ? WHERE key = 'schemaVersion'", String(SCHEMA_VERSION + 1));
+    const out = (await s.call("wake", {})).structuredContent;
+    expect(out).toMatchObject({ reason: "schema-ahead", tool: "wake" });
+    expect(String(out["detail"])).toContain("Quit and reopen Claude Desktop");
+    expect(String(out["detail"])).not.toContain("/mcp");
+    expect(existsSync(sessionsDir(dir)) ? readdirSync(sessionsDir(dir)).filter((n) => !n.startsWith("mcp-server@")) : []).toEqual([]);
+  });
+
   test("a CACHE stamp bumped from outside refuses the same way", async () => {
     const s = server();
     seed(s);

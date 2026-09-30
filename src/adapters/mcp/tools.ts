@@ -77,15 +77,19 @@ export type ToolName =
   | "scope"
   | "self_page"
   | "dream"
-  | "reflect";
+  | "reflect"
+  /** Claude Desktop only (`WAKE`); never in `TOOL_NAMES`. */
+  | "wake";
 
 /**
- * The tool vocabulary, ENUMERATED — nine tools today. It began as three
- * deliberate verbs plus the TWO return channels the one Stop ask needs
+ * The tool vocabulary EVERY host is offered, ENUMERATED — nine tools. It began
+ * as three deliberate verbs plus the TWO return channels the one Stop ask needs
  * (`claude-code/INTERFACE-GAPS.md` §7), and each since (`scope`, `self_page`,
  * `dream`, `reflect`) was added on purpose, with its own entry below. The
  * audit asserts the shipped list equals this one exactly, so a tenth tool is a
- * decision somebody makes on purpose rather than one that accretes.
+ * decision somebody makes on purpose rather than one that accretes. The one
+ * tenth so far is `wake` (2026-09-30), offered to Claude Desktop only and kept
+ * OUT of this list on purpose (`WAKE`, `DESKTOP_TOOLS`).
  *
  * **`chapter` is the fifth, added 2026-09-04, and it is not a re-opened door.**
  * The dropped v1 self-store tool wrote IDENTITY prose directly; this one appends
@@ -1312,8 +1316,82 @@ export const TOOLS: readonly ToolSpec[] = [
   REFLECT,
 ];
 
-export function toolSpec(name: string): ToolSpec | undefined {
-  return TOOLS.find((t) => t.name === name);
+/**
+ * `wake` — CLAUDE DESKTOP'S START (2026-09-30, host groundwork PR B). Not one
+ * of `TOOL_NAMES`: that list is what every host is offered, and in Claude Code
+ * the SessionStart hook has already woken the session, so a tool that woke it
+ * again would start a second session beside the real one. It is offered only
+ * to a client that says it is Claude Desktop's chat or Cowork
+ * (`hosts.ts#hostOfClient`, read at `initialize`), where there is no hook to
+ * do it: the server is its own hook there.
+ */
+export const WAKE: ToolSpec = {
+  name: "wake",
+  summary:
+    "Start here in Claude Desktop: wakes this chat's memory. Returns the same briefing a Claude Code session gets when it starts — who I am, what is nearby and arriving, any reminder due today — and a session id for this chat.",
+  admission:
+    "Call it once, at the start of a chat, before answering the first message. Then pass the session id it returns as `session` on session_end, chapter, dream and reflect in this chat; a call that leaves it out is filed under the most recent Desktop session, and says so.",
+  negativeExamples: [
+    "Do NOT call it again later in the same chat to refresh what you know — it starts a new session. Ask `recall` a question instead.",
+    "Do NOT call it in Claude Code: it is not offered there, because the host's hook already woke the session.",
+  ],
+  privileges: [
+    {
+      claim:
+        "Each call starts a NEW session: it mints the id and writes that session's registry record itself (host claude-desktop, the shared place claude-desktop:), because Desktop has no hook to do it.",
+      mechanizedBy: "src/adapters/mcp/server.ts#wakeTool -> src/adapters/lifecycle.ts#noteSession",
+    },
+    {
+      claim:
+        "What it returns is composed by the same code as Claude Code's session start — the published wake, the clock, today's plain reminders — never re-written for this host.",
+      mechanizedBy: "src/adapters/lifecycle.ts#composeWake + src/adapters/lifecycle.ts#plainFor",
+    },
+    {
+      claim:
+        "It starts the background worker that sleeps and fades memories, as a session start does, and offers the day's dream line when one is due — but never starts the headless nightly run, which stays with Claude Code.",
+      mechanizedBy: "src/adapters/lifecycle.ts#spawnWorker + src/adapters/mcp/server.ts#wakeDreamLine",
+    },
+    {
+      claim: "Under observer stance it stands down over the wire and says so.",
+      mechanizedBy: "src/adapters/mcp/server.ts#standDown",
+    },
+  ],
+  inputSchema: { type: "object", properties: {}, required: [], additionalProperties: false },
+};
+
+/**
+ * THE `session` A DESKTOP CHAT CAN ALWAYS NAME (review of #294, finding 1). In
+ * Claude Code `note`, `recall`, `status` and `scope` take no session — the
+ * server binds by the Stop ask's id — and their schemas forbid extra fields.
+ * In Desktop every call binds per call, and a call that cannot name its session
+ * falls back to the most recent one, which may be ANOTHER chat's. So the
+ * Desktop copy of every tool's schema carries an optional `session`; Claude
+ * Code's schemas are untouched.
+ */
+const DESKTOP_SESSION_PROPERTY = {
+  type: "string",
+  description:
+    "This chat's session id — the one the wake tool returned. Pass it on every call, so the call is filed under this chat and not the most recent Desktop session.",
+};
+
+function withDesktopSession(spec: ToolSpec): ToolSpec {
+  const schema = spec.inputSchema as { properties?: Record<string, unknown> };
+  const properties = schema.properties ?? {};
+  if ("session" in properties) return spec;
+  return { ...spec, inputSchema: { ...spec.inputSchema, properties: { ...properties, session: DESKTOP_SESSION_PROPERTY } } };
+}
+
+/** The tools a Claude Desktop client is offered: every host's — each able to
+ *  name its session — and `wake`. */
+export const DESKTOP_TOOLS: readonly ToolSpec[] = [...TOOLS.map(withDesktopSession), WAKE];
+
+/**
+ * The spec a CLIENT may call by this name. `desktop` is whether this server is
+ * talking to Claude Desktop (`McpServer`'s host); only then is `wake` a tool,
+ * so a Claude Code client calling it gets today's unknown-tool answer.
+ */
+export function toolSpec(name: string, desktop = false): ToolSpec | undefined {
+  return (desktop ? DESKTOP_TOOLS : TOOLS).find((t) => t.name === name);
 }
 
 /**
@@ -1330,9 +1408,10 @@ export function renderDescription(spec: ToolSpec): string {
   return lines.join("\n");
 }
 
-/** The `tools/list` payload. Shape is MCP's; content is the registry's. */
-export function toolDefinitions(): Record<string, unknown>[] {
-  return TOOLS.map((spec) => ({
+/** The `tools/list` payload. Shape is MCP's; content is the registry's. A
+ *  Claude Desktop client (`desktop`) is offered `wake` too, last. */
+export function toolDefinitions(desktop = false): Record<string, unknown>[] {
+  return (desktop ? DESKTOP_TOOLS : TOOLS).map((spec) => ({
     name: spec.name,
     description: renderDescription(spec),
     inputSchema: spec.inputSchema,

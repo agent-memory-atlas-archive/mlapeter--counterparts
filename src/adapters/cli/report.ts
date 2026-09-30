@@ -85,6 +85,7 @@ function painter(p: Paint, grade: GradeWord): (s: string) => string {
 const HEADLINE: readonly string[] = [
   "store",
   "host",
+  "desktop",
   "embedder",
   "crash-write-up",
   "snapshot",
@@ -109,6 +110,7 @@ const BACKGROUND_KEY = "background";
 const GREEN_ORDER: readonly string[] = [
   "store",
   "host",
+  "desktop",
   "embedder",
   "crash-write-up",
   BACKGROUND_KEY,

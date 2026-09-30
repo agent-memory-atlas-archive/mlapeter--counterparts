@@ -111,7 +111,10 @@ import { SpanBuffer, TUNABLES as REMEMBER_TUNABLES, lastRetentionRun } from "../
 import { lapsesSince, ledger } from "../../core/coverage/index.js";
 import type { LedgerEntry } from "../../core/coverage/index.js";
 import {
+  DESKTOP_WAKE_KEY,
+  hostOf,
   hostSessionEvidence,
+  listSessions,
   pointable,
   progressKey,
   readWriteUpPointer,
@@ -120,6 +123,8 @@ import {
   writeUpEntries,
   writeUpPlan,
 } from "../sessions.js";
+import { DESKTOP_HOST } from "../hosts.js";
+import { localStamp } from "../../core/time.js";
 import type { AdapterConfig } from "../config.js";
 // The same vocabulary the hook's stand-down uses, so the terminal and the
 // console cannot end up with two answers to "why did it not open".
@@ -261,6 +266,13 @@ export interface DoctorInput {
    * four more file reads.
    */
   readonly host?: HostReading;
+  /**
+   * CLAUDE DESKTOP'S CONFIG ENTRY (2026-09-30), read by the console
+   * (`cli/desktop.ts#readDesktop`). Absent: not read, no finding — the hook's
+   * case, and Desktop's `wake`. No entry: no finding either — Desktop is
+   * optional, and a line about it would be noise to everyone without it.
+   */
+  readonly desktop?: DesktopReading;
   /** Bound the whole reading. Absent: no bound (the console's case). */
   readonly budgetMs?: number;
   readonly now?: () => number;
@@ -3578,6 +3590,100 @@ export interface HostReading {
   readonly mcpAddLine?: string;
 }
 
+/** What the console read of Claude Desktop's config (`cli/desktop.ts#readDesktop`). */
+export interface DesktopReading {
+  readonly path: string;
+  readonly state: "absent" | "no-entry" | "entry" | "unreadable";
+  /** The store Desktop's `counterparts` entry names, or null. */
+  readonly dataDir: string | null;
+  /** Claude Code's own registration names `counterparts` too — the Code-tab clash. */
+  readonly codeTab: boolean;
+  /** The store Claude Code's registration names, or null. */
+  readonly codeDataDir: string | null;
+}
+
+/**
+ * THE CLAUDE DESKTOP LINE (2026-09-30, brief item 8): whether its config entry
+ * is present, and when the last Desktop wake and session were. QUIET when there
+ * is no entry — Desktop is optional — and never amber for that. Amber only for
+ * an entry that is there and names another store than this one, directly or
+ * through the Code tab's name clash (`cli/desktop.ts`'s header). Desktop
+ * sessions are named as NOT MEASURED for write-ups: nothing is captured there,
+ * so there is no stretch to count as written up or not — never as lost.
+ */
+function desktopFindings(reading: DesktopReading, store: Store | null, dir: string): Finding[] {
+  if (reading.state === "absent" || reading.state === "no-entry") return [];
+  const data: Record<string, string | number | boolean | null> = {
+    path: reading.path,
+    state: reading.state,
+    dataDir: reading.dataDir,
+    codeTab: reading.codeTab,
+    codeDataDir: reading.codeDataDir,
+  };
+  if (reading.state === "unreadable") {
+    return [
+      finding(
+        "desktop",
+        "green",
+        "Claude Desktop",
+        `${reading.path} could not be read as JSON, so whether Counterparts is connected there is not known`,
+        "",
+        data,
+      ),
+    ];
+  }
+  const same = (a: string | null, b: string | null): boolean => a === null || b === null || sameScope(a, b);
+  const fix = "Run: counterparts install --host claude-desktop — then quit and reopen Claude Desktop.";
+  if (!same(reading.dataDir, dir)) {
+    return [
+      finding(
+        "desktop",
+        "amber",
+        "Claude Desktop",
+        `connected, but its entry names a different store (${reading.dataDir ?? "?"}) from this one (${dir})`,
+        fix,
+        data,
+      ),
+    ];
+  }
+  if (reading.codeTab && !same(reading.dataDir, reading.codeDataDir)) {
+    return [
+      finding(
+        "desktop",
+        "amber",
+        "Claude Desktop",
+        `Desktop's Code tab loads Desktop's counterparts entry in place of ~/.claude.json's, and the two name different stores (${reading.dataDir ?? "?"} and ${reading.codeDataDir ?? "?"})`,
+        fix,
+        data,
+      ),
+    ];
+  }
+  // WHEN IT LAST WOKE, AND WHAT IS LIVE — one meta read and the registry's week.
+  const zone = store?.zone() ?? "UTC";
+  let lastWake: number | null = null;
+  try {
+    const raw = store?.getMeta(DESKTOP_WAKE_KEY);
+    lastWake = raw === undefined || raw === null || !Number.isFinite(Number(raw)) ? null : Number(raw);
+  } catch {
+    lastWake = null;
+  }
+  const desktop = listSessions(dir).filter((r) => hostOf(r) === DESKTOP_HOST);
+  const lastSession = desktop[0]?.lastBoundaryAt ?? null;
+  data["lastWake"] = lastWake;
+  data["lastSession"] = lastSession;
+  data["sessions"] = desktop.length;
+  const parts = [
+    `connected (${reading.path.split("/").pop() ?? reading.path})`,
+    lastWake === null ? "no wake yet" : `last wake ${localStamp(lastWake, zone)}`,
+    ...(lastSession === null ? [] : [`last session active ${localStamp(lastSession, zone)}`]),
+    ...(desktop.length === 0
+      ? []
+      : [`${String(desktop.length)} Desktop ${desktop.length === 1 ? "session" : "sessions"} this week, not measured for write-ups (Desktop chat keeps no transcript)`]),
+    ...(reading.codeTab ? ["its Code tab uses this entry in place of ~/.claude.json's — both name this store"] : []),
+  ];
+  return [finding("desktop", "green", "Claude Desktop", parts.join("; "), "", data)];
+}
+
 function hostFindings(reading: HostReading): Finding[] {
   const total = reading.expected.length;
   const missing = reading.expected.filter((e) => !reading.events.includes(e));
@@ -3784,6 +3890,8 @@ export function doctorFindings(input: DoctorInput): Finding[] {
     // DID THE HOST STEPS TAKE (finding 4). Also read by the caller — it is four
     // small file reads outside this store, and the hook does not pay for them.
     ...(input.host === undefined ? [] : hostFindings(input.host)),
+    // CLAUDE DESKTOP (2026-09-30): its config entry, and when it last woke.
+    ...(input.desktop === undefined ? [] : desktopFindings(input.desktop, input.store, input.dir)),
   ];
   const store = input.store;
   if (store === null) return worstFirst(out);

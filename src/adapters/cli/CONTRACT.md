@@ -614,6 +614,24 @@ which holds, who, why); `--pair <id> --holds <id> --how changed|corrected|open -
 there. `ask` prints a memory's standing (earlier, corrected by, replaced by, disagrees
 with, unsettled) above its words.
 
+## 6c. Claude Desktop (2026-09-30, host groundwork PR B)
+
+**[M]** `install --host claude-desktop` makes the store and configuration exactly as the
+scripted install does (kept when they exist), then merges ONE `counterparts` entry into
+Claude Desktop's `claude_desktop_config.json`, found under the home the command was given
+(`desktop.ts`): backed up first beside itself, every other key and server written back as
+it was, the file's own indentation and line endings kept, a file that is not a JSON object
+refused and left alone. The same entry again writes nothing and backs nothing up. The entry
+is the bun-run `counterparts-mcp` by absolute path with `COUNTERPARTS_DATA_DIR` (and
+`COUNTERPARTS_CONFIG` for a non-default configuration) — nothing in it says "desktop": the
+server knows its client by name at `initialize`, and Desktop's Code tab loads the same entry
+as Claude Code. No `--host`, or `--host claude-code`, is the ordinary install, unchanged.
+**[M]** `doctor` has a Claude Desktop line: nothing at all when there is no Desktop config
+or no entry in it; green with the last wake and the last Desktop session when there is;
+amber only when the entry names another store, directly or through the Code tab's name clash
+with `~/.claude.json`'s `counterparts`. `counterparts coverage` names a day's Desktop sessions
+as unmeasured — never lost.
+
 ## 7. Open questions
 
 1. **Does `export` encrypt to a key the owner already has, or does it mint one?** Minting
