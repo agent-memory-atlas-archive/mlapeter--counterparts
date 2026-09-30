@@ -16,6 +16,11 @@
   counts; the guard is there so a future emitter's path or sentence reaches the file as
   `[text:N]`, not as itself. `/` is allowed in the middle of a value (for the error location,
   `adapters/claude-code/hooks.ts:123`); a leading `/` or `~`, and `..`, are not.
+- **`errorFields` never reads a message.** For something thrown that is not an `Error` it
+  writes the value's type (`error: "string"`, `code: "UNKNOWN"`) and no location.
+- **A store this build refuses to open still gets its lines**: the hook's start, and an end
+  by a throw with the store's code (`STORE_PRE_ROWS`), beside the stand-down marker in the
+  same classified directory. `hook-standdown.test.ts` names the file.
 - **Bun's `rmSync(dir, { force: true })` throws on a directory**, empty or not (measured,
   bun 1.3.10), so `pruneSessions` cannot remove `sessions/log/`. The test pins it with the
   directory's mtime set a month back.
