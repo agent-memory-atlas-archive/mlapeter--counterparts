@@ -2046,9 +2046,23 @@ function firedCommand(
 }
 
 /**
+ * The names `log` tells in the dashboard's sentence. Those sentences were
+ * written for durable payloads, and only these names carry the same fields on
+ * the ring as in their row — checked one by one (review of #286: `handoff.*`
+ * from the ring read "showing for 0 days"). Every other name prints its data.
+ */
+const LOG_NARRATED: readonly string[] = [
+  "adapter.boundary",
+  "adapter.ask",
+  "adapter.wake.injected",
+  "adapter.writeup.failed",
+  "remember.capture.failed",
+];
+
+/**
  * `log` — one day of the process log (`adapters/log/`), oldest first, one plain
  * line per entry: the time, which process, the session, the name, and what it
- * said. A name the dashboard has a sentence for is told in that sentence
+ * said. A name in `LOG_NARRATED` is told in the dashboard's sentence
  * (`dashboard/web/narrate.ts`); any other prints its data as `key=value`.
  *
  * The store is opened as an instrument, only to read the zone and to let a
@@ -2087,7 +2101,7 @@ async function logCommand(dir: string, io: Io, dateFlag: unknown, now: () => num
     const narrator = store === null ? null : await import("../dashboard/web/narrate.js");
     for (const entry of read.entries) {
       let said: string | null = null;
-      if (narrator !== null && store !== null && narrator.NARRATED_NAMES.includes(entry.name)) {
+      if (narrator !== null && store !== null && LOG_NARRATED.includes(entry.name)) {
         said = narrator.narrate(store, {
           seq: 0,
           at: Date.parse(entry.at),
