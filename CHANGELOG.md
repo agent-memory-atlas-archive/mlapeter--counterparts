@@ -1,18 +1,131 @@
 # Changelog
 
-## Unreleased
+## 0.3.9 — 2026-09-30
 
-- **Recall by feeling.** Asked "what have I felt most strongly" or "what moved me",
-  the memory tool answers from the feelings recorded on memories, strongest first. A
-  feeling word used about no one ("the happy path") still works as an ordinary word.
-- **A journal chapter and the memory made from it are one result**, and that memory
-  now keeps the chapter's title. In the dashboard's Ask, the answer is the chapter's
-  row.
+Counterparts now reaches Claude Desktop's chat: one command connects it, a chat wakes
+with the same memory a Claude Code session does, and each call says which chat it
+belongs to. Underneath, the host-neutral part of a session moved out of the Claude Code
+adapter so a second host could use it; Claude Code behaves as it did, apart from two
+small, deliberate changes. Recall can now answer a question about how something felt,
+and a journal chapter and the memory made from it come back as one. **The store's format
+does not change** (it stays v10), so nothing is copied or upgraded. The hooks run the
+new code at once; a session left open keeps 0.3.8's memory server until it is restarted
+or `/mcp` → Reconnect.
+
+Claude Desktop chat.
+
+- **`counterparts install --host claude-desktop`** connects Desktop's chat. Quit Claude
+  Desktop first: it rewrites its own config file while it runs, and can write over the
+  change. The command makes (or keeps) the store and configuration exactly as the
+  scripted install does, then merges one `counterparts` entry into Desktop's
+  `claude_desktop_config.json`, found under the home directory it was given. The file is
+  backed up first, every other server in it is left byte-identical, and a second run
+  changes nothing ("already connected"). If it replaces an entry that named a different
+  store, it names that store: the memory there is still there. Plain `install` is
+  unchanged and doesn't touch Desktop.
+- **The `wake` tool** is Desktop's session start, and only Desktop is offered it. It
+  starts a new session (host `claude-desktop`, in the `claude-desktop:` place) and
+  returns what a Claude Code session start would: the wake, the clock, today's plain
+  reminders, the day's dream line when it is an ask, the update and doctor notices, and
+  the write-up pointer, sized for a tool result. It also starts the turn-end worker, as
+  the hook does. It doesn't ask the first-launch question and doesn't start the headless
+  nightly run. Desktop also lists one prompt, **"Start with Counterparts"**, which asks
+  the chat to call `wake` first and keep the session id it gets.
+- **Each call binds to a session, and says when it guessed.** One server serves every
+  Desktop chat, and Desktop sends no chat id, so every Desktop tool takes an optional
+  `session`. A call that names a live Desktop session is filed under it; a named session
+  that is unknown or ended is refused by name, never swapped for another. A call that
+  names none binds to the most recent live Desktop session and says so (`boundTo`,
+  `boundBy: "most-recent"`, and one line). With no live session, a tool that needs one
+  refuses and names `wake`. Only a call that names its session keeps that session alive
+  and counts toward its write-up ask; a guessed call moves nothing, because it may belong
+  to another chat.
+- **The write-up ask.** After 3 named calls and 20 minutes since the later of the wake,
+  the last `session_end` or `chapter`, and the last ask, the next named result carries a
+  write-up ask. `session_end` can be called again in the same chat; later calls add to
+  what the first one wrote.
+- **Desktop's own place.** `claude-desktop:` is a place, not a folder: `counterparts scope
+  claude-desktop: --on` and the other mode flags work on it, the off and paused refusals
+  are worded for Desktop, and observer is read on every call, so a change takes effect
+  at once. Desktop never takes on the observer setting of the folder the server was
+  started in.
+- **Doctor has a Claude Desktop line.** It is quiet when Desktop has no entry, green with
+  the last wake and last session when it has one, and amber only when the entry names
+  another store.
+- **`counterparts coverage` shows Desktop sessions as unmeasured**: "Claude Desktop: N
+  sessions that day — unmeasured: Desktop chat keeps no transcript, so what they did not
+  write up cannot be counted (not lost; what was written through the tools is kept)."
+- **A Desktop session may write up a chat that went quiet, only when its launcher grants
+  it.** A session's record can carry `mayWriteUp`, the ended sessions it may write up.
+  Only a launcher writes it (`sessions.ts#grantWriteUps`); no tool can, and a
+  `mayWriteUp` argument is ignored. The subject must be listed, ended, and owed, and its
+  memories are filed where it was lived. Nothing in this release grants it yet.
+- **How the server tells the hosts apart.** The client's name at `initialize` decides:
+  `claude-ai` (chat) or `local-agent-mode-*` (Cowork) makes it Desktop's. A process whose
+  environment carries Claude Code's markers (`CLAUDE_PROJECT_DIR`, `CLAUDECODE`,
+  `CLAUDE_CODE_ENTRYPOINT`) was started by Claude Code and stays Claude Code's whatever
+  its client says. Any other client gets the handshake, the nine tools and the refusals
+  it always got: `wake` is an unknown tool there.
+
+Claude Code: two deliberate changes.
+
+- **`status` explains `owner: false`.** When the server isn't the owner's,
+  `status.stance.ownerMeans` says in one phrase what that means: "owner: false is the
+  ordinary setting — confidential memories are left out of this server's answers;
+  nothing is wrong."
+- **No scope question in Desktop's scratch folders.** The first-launch scope question is
+  skipped in a Code-tab "No folder" workspace
+  (`…/Library/Application Support/Claude/scratch-workspaces/…`).
+
+The host seam (#292; no change in behaviour).
+
+- **The host-neutral part of a session has its own module.** `src/adapters/lifecycle.ts`
+  (`HostLifecycle`, `Lifecycle`) holds what any host does at a session's start, turn
+  boundary and end: the registry record, the wake, recall and its record, capture, the
+  ask pacer, the write-up ask, the worker. The Claude Code adapter extends it, and each
+  hook runs the same steps in the same order. `src/adapters/hosts.ts` holds the wording
+  that differs by host; Claude Code's strings are byte-identical.
+- `config.ts` and `spawn.ts` moved from `src/adapters/claude-code/` to `src/adapters/`.
+  The `./claude-code` export still re-exports everything that moved.
+- **Registry records carry `host`.** A record written before this reads as `claude-code`.
+- **New package exports**: `counterparts/lifecycle` and `counterparts/hosts`.
+
+Recall and chapters.
+
+- **Recall by feeling, for a deliberate question.** Asked "what have I felt most
+  strongly" or "what moved me", the `recall` tool (and `counterparts ask`) answers from
+  the feelings recorded on memories, strongest first. Stamps rank the answer only when
+  the question is really about a feeling: a feel-word (`feel`, `felt`, `feeling`,
+  `emotion`, `mood`), or a feeling word used about a person. Everyday phrasings don't
+  trigger it: "the happy path", "moved the parser", "I feel like…", "I moved it to src",
+  "is my build open" still work as ordinary words. "I" is whoever asks: the counterpart
+  in `recall`, you in `counterparts ask`. "afraid" is now an alias of scared. The
+  per-turn recall never opens this path.
+- **A journal chapter and the memory made from it are one result**, and that memory now
+  keeps the chapter's title (the next time its chapter grows; nothing is backfilled).
+  The chapter is the row shown; credit reaches the copy only when recall showed the
+  chapter this session.
 - **`status` counts `replaced` apart from `exited`.** `symmetry.exited` now means only
   what left for good (let go, removed); a revision, a merge, a correction, or a journal
   copy rebuilt when its chapter grew is counted under the new `symmetry.replaced`. A
   store whose chapters keep growing used to read as losing its self-kind memories, so
   **any note comparing `exited` across days sees a step on the day this is installed.**
+- **The dashboard's Ask shows a chapter as its journal entry** (it used to show the
+  memory, with a "from chapter …" link), and the questions it rewrites into the
+  counterpart's voice ask as the counterpart (`--voiced`): there "I" means the
+  counterpart. An exact ask and a typed `counterparts ask` keep you as "I".
+
+Not proven here.
+
+- Desktop has never run against a real Claude Desktop app. The client names, the
+  prompt, the per-call binding and the write-up ask were checked over stdio with a
+  client that calls itself `claude-ai`.
+- The Desktop Code tab's environment and client name were never measured live. A Code
+  tab session is expected to carry Claude Code's markers and stay Claude Code's.
+- A process that Claude Code did not launch, started in a folder set to observer, opens
+  the store writable before `initialize` tells it which host it serves.
+- A Desktop-only user on automatic dreaming gets no dream line: the wake leaves the
+  headless run for a Claude Code session to start.
 
 ## 0.3.8 — 2026-09-30
 
