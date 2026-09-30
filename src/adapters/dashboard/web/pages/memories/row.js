@@ -52,6 +52,24 @@ export function marked(text, words) {
 }
 
 /**
+ * A row's title and words without the date the right-hand column already
+ * shows (M6, 2026-09-30): "… session (2026-09-30)" at the end of a title, and
+ * "On 2026-09-30 …" or "2026-09-30: …" at the start of the words, only when
+ * that date IS the row's date. Anything else is left as written. Display only:
+ * the card and the memory keep every date.
+ */
+export function withoutRowDate(title, text, date) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))) return { title, text };
+  const t = /^(.*\S)\s*[([]\s*(\d{4}-\d{2}-\d{2})\s*[)\]]$/.exec(String(title || ""));
+  const w = /^(?:on\s+)?(\d{4}-\d{2}-\d{2})(?:\s*[:,—–-]\s*|\s+)(?=\S)/i.exec(String(text || ""));
+  const rest = w && w[1] === date ? String(text).slice(w[0].length) : null;
+  return {
+    title: t && t[2] === date ? t[1] : title,
+    text: rest === null ? text : rest.charAt(0).toUpperCase() + rest.slice(1),
+  };
+}
+
+/**
  * `r`: { id, title, text, confidential, kind, date, dateFrom, core, protected,
  * journal, feelings, archived, hold, versions, schemaRole }. `opts.tier` adds a
  * small match word ("strong match"); `opts.from` ({ id, words }) adds a small
@@ -59,10 +77,12 @@ export function marked(text, words) {
  * `opts.mark` (words) marks where a search's words appear.
  */
 export function memRow(r, opts = {}) {
-  const words = r.confidential ? '<span class="withheld">' + esc(r.text) + "</span>" : marked(r.text, opts.mark);
-  const title = r.journal && !r.confidential ? journalTitle(r.date) : r.title;
+  // The date on the right is not said again in the words beside it.
+  const own = r.journal || r.confidential ? { title: r.title, text: r.text } : withoutRowDate(r.title, r.text, r.date);
+  const words = r.confidential ? '<span class="withheld">' + esc(r.text) + "</span>" : marked(own.text, opts.mark);
+  const title = r.journal && !r.confidential ? journalTitle(r.date) : own.title;
   const main = title
-    ? '<div class="mtitle">' + marked(title, opts.mark) + "</div>" + (r.text ? '<div class="mtext">' + words + "</div>" : "")
+    ? '<div class="mtitle">' + marked(title, opts.mark) + "</div>" + (own.text ? '<div class="mtext">' + words + "</div>" : "")
     : '<div class="mtext solo">' + words + "</div>";
   const k = kindOf(r.kind);
   const kindWords = k.label + (r.schemaRole ? " · " + r.schemaRole : "");

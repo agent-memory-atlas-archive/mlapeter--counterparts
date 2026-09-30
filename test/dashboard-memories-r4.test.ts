@@ -302,6 +302,24 @@ describe("M6 rows", () => {
     expect(findHead(2, 2, 1)).toBe("2 matches · 1 close match");
     expect(findHead(25, 40, 0)).toBe("the closest 25 of 40 matches");
     expect(questionWords("What do you remember about the castle game?")).toEqual(["castle", "game"]);
+    // M6 (2026-09-30): the row's own date, said again in its words, is left out of the row only.
+    const { withoutRowDate } = (await import(join(WEB, "pages/memories/row.js"))) as {
+      withoutRowDate(t: string | null, x: string, d: string | null): { title: string | null; text: string };
+    };
+    const same = withoutRowDate("Working as second opinion to a Fable session (2026-09-30)",
+      "On 2026-09-30 Mike ran two sessions on the morning's problems.", "2026-09-30");
+    expect(same).toEqual({ title: "Working as second opinion to a Fable session", text: "Mike ran two sessions on the morning's problems." });
+    expect(withoutRowDate(null, "2026-09-30: the build passed.", "2026-09-30").text).toBe("The build passed.");
+    expect(withoutRowDate("Title [2026-09-30]", "x", "2026-09-30").title).toBe("Title");
+    // A different date stays; so does a date in the middle, and anything with no row date.
+    expect(withoutRowDate("An older date stays (2026-06-12)", "On 2026-06-12 it began.", "2026-09-30"))
+      .toEqual({ title: "An older date stays (2026-06-12)", text: "On 2026-06-12 it began." });
+    expect(withoutRowDate("Seen (2026-09-30) twice", "Late on 2026-09-30 it ran.", "2026-09-30"))
+      .toEqual({ title: "Seen (2026-09-30) twice", text: "Late on 2026-09-30 it ran." });
+    expect(withoutRowDate("T (2026-09-30)", "On 2026-09-30 x", null)).toEqual({ title: "T (2026-09-30)", text: "On 2026-09-30 x" });
+    const dated = memRow({ ...base, date: "2026-09-30", title: "A session (2026-09-30)", text: "On 2026-09-30 Mike ran two." });
+    expect(dated).toContain('<div class="mtitle">A session</div>');
+    expect(dated).toContain('<div class="mtext">Mike ran two.</div>');
     const away = memRow({ ...base, archived: "replaced by a newer version", versions: 3 });
     expect(away).toContain("put away: replaced by a newer version · 3 versions");
   });

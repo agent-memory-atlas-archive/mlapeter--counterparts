@@ -162,7 +162,9 @@ window event, fired after a note and after a removal on the memory card) makes
 the page re-read at once. `row.js` is the one row shape the list and the find
 box's answers share: every row the same brightness, "fading" as a word only
 when it applies, no kind tag on a plain fact, a journal chapter titled
-"Journal · Sun, Sep 27th". Sections: `hold.js` ("How well I remember": one bar,
+"Journal · Sun, Sep 27th", and the row's own date left out of its title's
+trailing brackets and its words' front when the right-hand column already
+shows it (`withoutRowDate`, 2026-09-30; the card shows the memory as stored). Sections: `hold.js` ("How well I remember": one bar,
 firm / settling / fading from `holdOf` in `views/memories.ts`, and the journal
 as a grey fourth part, so the parts add up to the count; a part clicked filters
 the list), `feel.js` (the shared feelings chart, `shared/widgets/feel-radar.js`,
