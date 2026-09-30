@@ -25,6 +25,7 @@ import { FIRM_AHEAD_DAYS, NEAR_LET_GO_DAYS, holdOf } from "../src/adapters/dashb
 import type { MemoryListView } from "../src/adapters/dashboard/web/views.js";
 import { fadeCurve } from "../src/adapters/dashboard/web/views/mechanism-panel.js";
 import { chapterDate, isChapterMemory, liftDate, shownOf } from "../src/adapters/dashboard/web/views/memory-words.js";
+import { typoDistance, typosAllowed } from "../src/adapters/dashboard/web/views/search.js";
 import { seedDemo } from "../tools/demo/seed.js";
 
 const HOST = "127.0.0.1:4747";
@@ -418,5 +419,27 @@ describe("search hits carry the row shape", () => {
       expect(hit?.date).toBe("2026-07-10");
       expect(hit?.feelings.length).toBe(2);
     });
+  });
+
+  test("M4 (2026-09-30): a typo finds close matches after the exact ones, with the word that matched", () => {
+    withSrc((src) => {
+      const v = searchView(src, "uneditted");
+      expect(v.hits).toEqual([]);
+      expect(v.absent).toBeNull();
+      const close = v.close.find((h) => h.id === ids.dated);
+      expect(close?.title).toBe("An unedited rota");
+      expect(close?.matched).toEqual(["unedited"]);
+      // Enough exact hits: no close pass. Short words are never guessed at.
+      expect(searchView(src, "rota").close).toEqual([]);
+      expect(searchView(src, "rto").close).toEqual([]);
+      expect(searchView(src, "rtoa").close[0]?.matched).toEqual(["rota"]);
+    });
+    expect(typosAllowed(3)).toBe(0);
+    expect(typosAllowed(5)).toBe(1);
+    expect(typosAllowed(9)).toBe(2);
+    expect(typoDistance("castle", "castel", 2)).toBe(1); // two letters swapped
+    expect(typoDistance("harbour", "harbor", 2)).toBe(1);
+    expect(typoDistance("dream", "drama", 1)).toBe(2);
+    expect(typoDistance("a", "abcdef", 2)).toBe(3);
   });
 });

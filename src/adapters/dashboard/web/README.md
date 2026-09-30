@@ -173,7 +173,10 @@ words each on hover, paged on the server by `/api/memories/list` in
 into one row), `search.js` (ONE box with a "by word | by meaning" switch
 beside it, `state.js#find.mode`, 2026-09-30: by word finds as you type,
 `/api/search`, and Enter only runs it at once; by meaning asks on Enter via
-`act("ask", {json:true})`; the switch never flips by itself; the answers take the
+`act("ask", {json:true})`; the switch never flips by itself; when the words
+find fewer than `CLOSE_BELOW`, `views/search.ts#closeMatches` adds "close
+matches", a typo or two away over titles and words, the dashboard's own pass
+with `store.search` untouched; the answers take the
 list's place and "×" gives it back; the search's words are marked where they
 appear in an answer (`row.js#marked`, whole words as the word index splits
 them, escaped first; for Ask, the question's longer words); a journal chapter and the memory drawn from

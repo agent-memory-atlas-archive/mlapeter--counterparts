@@ -84,7 +84,8 @@ describe("1. search says how many matched", () => {
       expect(searchView(src, "boats", 25).total).toBe(1);
     });
     const page = read("pages/memories/sections/search.js");
-    expect(page).toContain("matchCount(d.hits.length, d.total)");
+    expect(page).toContain("findHead(d.hits.length, d.total, close.length)");
+    expect(page).toContain("matchCount(shown, total)");
     expect(page).toContain('"the closest " + shown + " of " + all + " matches"');
   });
 });

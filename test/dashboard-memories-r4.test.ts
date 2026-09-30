@@ -294,7 +294,13 @@ describe("M6 rows", () => {
     expect(memRow({ ...base, confidential: true, text: "withheld" }, { mark: ["withheld"] })).not.toContain("<mark>");
     const { searchWords } = (await import(join(WEB, "pages/memories/row.js"))) as { searchWords(q: string): string[] };
     expect(searchWords("The castle-game, a 2nd try")).toEqual(["the", "castle", "game", "2nd", "try"]);
-    const { questionWords } = (await import(join(WEB, "pages/memories/sections/search.js"))) as { questionWords(q: string): string[] };
+    const { questionWords, findHead } = (await import(join(WEB, "pages/memories/sections/search.js"))) as {
+      questionWords(q: string): string[]; findHead(s: number, t: number, c: number): string;
+    };
+    // M4: the close matches are counted apart from the exact ones.
+    expect(findHead(0, 0, 3)).toBe("no exact match · 3 close matches");
+    expect(findHead(2, 2, 1)).toBe("2 matches · 1 close match");
+    expect(findHead(25, 40, 0)).toBe("the closest 25 of 40 matches");
     expect(questionWords("What do you remember about the castle game?")).toEqual(["castle", "game"]);
     const away = memRow({ ...base, archived: "replaced by a newer version", versions: 3 });
     expect(away).toContain("put away: replaced by a newer version · 3 versions");

@@ -124,10 +124,21 @@ async function runSearch() {
   try { d = await api("/api/search?limit=25&q=" + encodeURIComponent(q)); }
   catch (e) { return fail("Search", e); }
   if (mine !== seq || $("q").value.trim() !== q) return;
-  takeList(esc(matchCount(d.hits.length, d.total)));
+  const close = d.close || [];
+  takeList(esc(findHead(d.hits.length, d.total, close.length)));
   $("mlist").innerHTML = d.absent
     ? absenceLine(d.absent, "nothing I hold uses those words — try finding it by meaning")
-    : d.hits.map((h) => memRow({ ...h, text: h.shown, archived: null }, { mark: searchWords(q) })).join("");
+    : d.hits.map((h) => memRow({ ...h, text: h.shown, archived: null }, { mark: searchWords(q) })).join("") +
+      (close.length > 0
+        ? '<div class="mclose-h">Close matches <span>· a letter or two off</span></div>' +
+          close.map((h) => memRow({ ...h, text: h.shown, archived: null }, { mark: h.matched })).join("")
+        : "");
+}
+
+/** The line over the answers: the exact matches, then the close ones (M4, 2026-09-30). */
+export function findHead(shown, total, close) {
+  const exact = shown === 0 && close > 0 ? "no exact match" : matchCount(shown, total);
+  return exact + (close > 0 ? " · " + close + (close === 1 ? " close match" : " close matches") : "");
 }
 
 /** Words too common to be worth marking in an answer to a question. */
