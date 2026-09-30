@@ -1295,7 +1295,16 @@ function atWork(h: HeldSession): boolean {
  * all the same and lapses with its days of use.
  */
 function smallWriteUpDue(h: HeldSession, dataDir: string): boolean {
-  if (!h.small) return false;
+  return h.small && pointable(h, dataDir);
+}
+
+/**
+ * CAN THE POINTER EVER OFFER THIS DEBT? A full one, always; a small one only
+ * as `smallWriteUpDue` says. Doctor's count reads it, so a debt the pointer
+ * will never name is not reported as one waiting for it (review of #289).
+ */
+export function pointable(h: { readonly session: string; readonly small: boolean }, dataDir: string): boolean {
+  if (!h.small) return true;
   const path = sessionPath(dataDir, h.session);
   if (path === null || !existsSync(path)) return false;
   const entrypoint = readSession(dataDir, h.session)?.entrypoint;

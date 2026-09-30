@@ -112,6 +112,7 @@ import { lapsesSince, ledger } from "../../core/coverage/index.js";
 import type { LedgerEntry } from "../../core/coverage/index.js";
 import {
   hostSessionEvidence,
+  pointable,
   progressKey,
   readWriteUpPointer,
   readWriteUpProgress,
@@ -3895,10 +3896,13 @@ interface OwedReading {
   readonly plan: ReturnType<typeof writeUpPlan>;
   readonly entries: readonly LedgerEntry[];
   readonly now: number;
-  /** Sessions that owe a write-up (`coverage/`'s rule). */
+  /** Sessions that owe a write-up the pointer can offer (`coverage/`'s rule). */
   readonly waiting: number;
   /** ...of which the stretch is from yesterday or earlier. */
   readonly stale: number;
+  /** Small debts the pointer never offers (no registry record, or not a
+   *  person's session): they owe, and lapse with their days of use. */
+  readonly unpointed: number;
 }
 
 /** `failed` when it cannot be read. It reads every scope's captured words, so
@@ -3913,9 +3917,10 @@ function readOwed(store: Store, today: string): OwedReading | "failed" {
     const zone = store.zone();
     const host = hostSessionEvidence(store);
     const entries = ledger(spans, { now, zone, host: (s) => ({ endedAt: host(s).endedAt }) });
-    const owed = entries.filter((e) => e.owed);
+    const all = entries.filter((e) => e.owed);
+    const owed = all.filter((e) => pointable(e, store.dir));
     const stale = owed.filter((e) => e.stretch !== null && localDate(e.stretch.lastAt, zone) < today).length;
-    return { spans, plan, entries, now, waiting: owed.length, stale };
+    return { spans, plan, entries, now, waiting: owed.length, stale, unpointed: all.length - owed.length };
   } catch {
     return "failed";
   }
@@ -3930,6 +3935,7 @@ function crashWriteUpFindings(input: DoctorInput, store: Store, owedReading: Owe
   const yesterday = isDay(input.today) ? addDays(input.today, -1) : input.today;
   let waiting: number | null = null;
   let stale = 0;
+  let unpointed = 0;
   let yesterdayWords = "";
   let yesterdayData: { sessions: number; pieces: number; written: number } | null = null;
   /** Sessions FINISHED in one project and waiting on words they left in
@@ -3941,6 +3947,7 @@ function crashWriteUpFindings(input: DoctorInput, store: Store, owedReading: Owe
     const { spans, plan, entries } = reading;
     waiting = reading.waiting;
     stale = reading.stale;
+    unpointed = reading.unpointed;
     // YESTERDAY, keyed on the pieces' own dates in the store's zone.
     const day = entries
       .map((e) => e.perDate[yesterday])
@@ -3987,7 +3994,12 @@ function crashWriteUpFindings(input: DoctorInput, store: Store, owedReading: Owe
         : `${String(waiting)} session${waiting === 1 ? " owes" : "s owe"} a write-up` +
           (stale === 0 ? "" : `, ${String(stale)} from yesterday or earlier`);
   const detail =
-    [yesterdayWords, owedWords, lapses === 0 ? "" : `${String(lapses)} lapsed this week`]
+    [
+      yesterdayWords,
+      owedWords,
+      unpointed === 0 ? "" : `${String(unpointed)} small, not a person's session: left to lapse`,
+      lapses === 0 ? "" : `${String(lapses)} lapsed this week`,
+    ]
       .filter((w) => w.length > 0)
       .join("; ");
   const pointer = readWriteUpPointer(store);
@@ -3995,6 +4007,7 @@ function crashWriteUpFindings(input: DoctorInput, store: Store, owedReading: Owe
     mode: "next-session",
     waiting,
     stale,
+    unpointed,
     lapsedWeek: lapses,
     yesterday,
     yesterdaySessions: yesterdayData?.sessions ?? null,
