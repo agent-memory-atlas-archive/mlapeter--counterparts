@@ -661,20 +661,23 @@ export const NARRATORS = {
     const days = n(t, "lifeDays") ?? 0;
     return calm(
       `I left a handoff for the next session in this directory: ${num(bytes, 0)} bytes, ` +
-        `${created ? "the first one here" : "replacing the one that stood"}, showing for ${num(days, 0)} ${days === 1 ? "day" : "days"} of use.`,
+        `${created ? "a new one from this session" : "replacing this session's earlier one"}, showing for ${num(days, 0)} ${days === 1 ? "day" : "days"} of use.`,
     );
   },
   "handoff.shown": (t) => {
     const age = n(t, "ageDays");
     const bytes = n(t, "bytes") ?? 0;
     const when = age === null ? "" : age === 0 ? ", written today" : `, written ${num(age, 0)} ${age === 1 ? "day" : "days"} of use ago`;
-    return calm(`I woke here and was handed the pointer to this directory's handoff${when} (${num(bytes, 0)} bytes of the wake).`);
+    const among = n(t, "among");
+    const beside = among === null || among <= 1 ? "" : ` — one of ${num(among, 0)} left here by different sessions`;
+    return calm(`I woke here and was handed the pointer to a handoff in this directory${when}${beside} (${num(bytes, 0)} bytes of the wake).`);
   },
   "handoff.cleared": (t) => {
     const bytes = n(t, "bytes") ?? 0;
-    return calm(
-      `I finished the work in this directory and retired its handoff (${num(bytes, 0)} bytes). The next session here is handed nothing.`,
-    );
+    // Since 2026-09-30 a session retires its own handoff with a blank field,
+    // or another session's by id; either way others' handoffs here stand.
+    const whose = t.p["byId"] === true ? "a handoff in this directory by its id" : "my handoff for this directory";
+    return calm(`I finished the work and retired ${whose} (${num(bytes, 0)} bytes). Any others left here still stand.`);
   },
   "handoff.refused": (t) => {
     const why = s(t, "reason") ?? "refused";

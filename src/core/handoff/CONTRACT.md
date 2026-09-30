@@ -3,8 +3,8 @@
 ## 1. Purpose
 
 Carry, for one directory, *where the work stands and what to pick up next* — and stop
-carrying it. One live pointer per place, delivered at the wake of a session that opens
-there, and never a memory.
+carrying it. One live pointer per place per session that left one, delivered at the wake
+of a session that opens there, and never a memory.
 
 ## 2. Brain analog
 
@@ -44,10 +44,15 @@ this host a directory is what a piece of work *is*.
   `HANDOFF_LIFE_DAYS` lived days; the row is then let go by the ordinary prune, because it
   is born unprotected in the episodic band with nothing on any salience dimension. Adding a
   sweep for it would be a second forgetting for one row (constitution line 15).
-- **No archived row per revision.** A newer handoff for the same directory REVISES the same
-  row, so the one it replaces is an ordinary version, bounded by the ordinary version
-  retention. The self page's precedent; the alternative leaves superseded rows for every
-  reader of `list()` to skip.
+- **No archived row per revision.** A newer handoff from the same session for the same
+  directory REVISES that session's row, so the one it replaces is an ordinary version,
+  bounded by the ordinary version retention. The self page's precedent; the alternative
+  leaves superseded rows for every reader of `list()` to skip.
+- **No merging of sessions' handoffs.** Until 2026-09-30 a directory had ONE row and every
+  session's write revised it, so the last session to end replaced the others' pointer —
+  measured that day, when "Two builds are in flight" was overwritten by a session that
+  knew nothing of either. Each session now keeps its own row and the wake shows them side
+  by side; nothing tries to reconcile them.
 - **No doctor line.** The fired view carries both halves, and a handoff that nobody left is
   not a fault. A handoff row whose WORDS have gone missing is a different matter and is not
   this module's line to print: on the v6 floor a tombstoned row is skipped by
@@ -61,11 +66,12 @@ this host a directory is what a piece of work *is*.
 
 ## 5. Contract
 
-**Inputs** — a body, a canonical directory, a session id (or null), the lived-day clock,
-and a gate (`bridge.episodeGate`, injected).
-**Outputs** — one schema row per directory with `meta.role = "handoff"`; a two-line pointer
-block for a given directory and day; four durable event names (`written`, `shown`,
-`cleared`, `refused`).
+**Inputs** — a body, a canonical directory, a session id (or null), the writing session's
+model id (or null), the lived-day clock, and a gate (`bridge.episodeGate`, injected).
+**Outputs** — one schema row per (directory, session) with `meta.role = "handoff"`; a
+pointer block for a given directory and day — two lines for one live handoff, a short
+newest-first list for several; four durable event names (`written`, `shown`, `cleared`,
+`refused`).
 
 **Guarantees** — **[M]** mechanized, **[A]** advisory:
 
@@ -76,19 +82,35 @@ block for a given directory and day; four durable event names (`written`, `shown
    `scanActive` lists `{ type: "memory" }` so it can reach no briefing lane. With `uses` and
    `reinforced_days` structurally pinned at zero, `physics#promotionEligibility` can never
    be satisfied and the row can never cross into the identity band.
-2. **[M] One live row per directory.** A second write revises the first; the body it
-   replaces is a readable version on the same row. Last writer wins, loser kept.
+2. **[M] One live row per directory per session** (since 2026-09-30; per directory
+   before). The same session's second write revises its first; the body it replaces is a
+   readable version on the same row. A different session's write mints its own row and
+   touches no other. The row's key is `meta.scope` and `meta.session`, both of which every
+   row written since 2026-09-20 already carried, so the rows that existed before are keyed
+   by the session that last wrote them — no migration.
 3. **[M] The body is refused past `HANDOFF_MAX_BYTES`, never truncated**, and every refusal
    is named and durable — except under observer, where nothing at all is written. Every
    refusal in this module goes through one private seam, so that is checkable in one place;
    the two shapes that used to escape it (`no-scope` short-circuited at the MCP door, and a
    present-but-blank field, which was total silence) were the adversarial review's MAJOR-2
    and are closed.
-3b. **[M] A `handoff` field that is PRESENT and blank RETIRES the directory's pointer.**
-   The row is archived by the ordinary means, its words stay readable on it, and one
-   `handoff.cleared` row says so. An ABSENT field means "leave what stands"; a field that is
-   not text is a named, durable refusal. This is the only retirement there is, and the tool
-   description says so.
+3b. **[M] A `handoff` field that is PRESENT and blank RETIRES the caller's own pointer for
+   the directory**, and no other session's. The row is archived by the ordinary means, its
+   words stay readable on it, and one `handoff.cleared` row says so. An ABSENT field means
+   "leave what stands"; a field that is not text is a named, durable refusal.
+3c. **[M] `retireHandoff` retires a handoff in THIS directory by id, whoever wrote it**
+   (2026-09-30) — the door for one whose work a later session finished. An id that is not
+   a handoff filed under the caller's directory and not yet retired is `not-here`,
+   durable, and nothing is touched (a race's duplicates of the retired row's key go with
+   it, as `clear` takes them). Its `handoff.cleared` row says `byId` and whose it was. A
+   successful write names the other sessions' handoffs standing here (`others`), and both
+   door lines of the pointer say how to retire one, so the session that finishes the
+   work is told they are there.
+3d. **[M] A Claude Desktop call that named no session leaves and retires no handoff.**
+   It was bound to the most recent live Desktop session, which may be another chat's, and
+   a handoff is keyed by its session. `handoff` and `retireHandoff` are refused
+   `session-unnamed`, durably, with the words that fix it; the rest of the call goes
+   through as it always did.
 4. **[M] Credentials are redacted or the write is refused**, by the same battery every other
    entrance passes, and the writer is told which happened.
 5. **[M] The pointer expires in LIVED days.** After `HANDOFF_LIFE_DAYS` it is not shown and
@@ -117,7 +139,11 @@ block for a given directory and day; four durable event names (`written`, `shown
    `elements=` are untouched.
 9. **[M] Nothing in a payload is a directory path or a body.** Telemetry is ids, counts,
    bytes, reasons and flags (store §5 G10); which directory a row is about is on the row.
-10. **[A] The wording of the pointer's two lines is advisory.** What is mechanized is that a
+10. **[A] The wording of the pointer's lines is advisory.** What is mechanized is that a
+    pointer states WHO wrote it when the row names a session (the short session id, "this
+    session" for the reader's own, and the model when the host recorded one), that
+    several live handoffs are shown newest first with at most `HANDOFF_WAKE_SHOWN` in full
+    and the rest named by id, that a
     pointer states when it was written (since 2026-09-30 to the minute, and — when work past
     the owed floor was captured here after that, not counting the writing session's own
     turn — when that work ran and whether it is written up, computed at delivery from piece
@@ -157,6 +183,19 @@ true:
   {reason: "no-room"}` says so, once per row per lived day.
 - **At delivery**, a bundle that would still exceed the ceiling drops the pointer whole
   while every lane element stays.
+- **Several handoffs in one directory (2026-09-30)** do not buy more than one could. The
+  boundary passes every block a delivery might splice — three shown, two, one, the newest
+  alone — and the reserve is the widest of them the share rule allows, so it can never
+  pass an eighth of the ceiling however many sessions left one. At delivery the ladder is
+  walked widest first and the first rung that fits is carried; the pointer is dropped
+  (and `no-room` written, with the smallest rung's bytes) only when not even the newest
+  alone fits. Measured with sixty identity elements, one handoff against three (each
+  naming a session and a model): the reserve is 487 against 735 bytes at a 6,000-byte
+  ceiling (the share rule's 750 binds), and 487 against 855 at 7,000 and at 9,000. All
+  three are carried at each ceiling, and the directory's own wake and a wake elsewhere
+  keep all 24 of their elements at each — but that fixture composes to about 2,860 bytes,
+  so the lane caps bind before the byte ceiling does; on a store whose lanes fill the
+  ceiling, the compose-budget difference is what the lanes give up, never past an eighth.
 
 So the order of who gives up bytes, stated plainly: **above the share rule's threshold the
 pointer is paid for first, out of the compose budget, by whatever lane the trim order
@@ -183,8 +222,10 @@ does not log its own refusal) · **§13 G3** (one ask at the blocked moment).
 ## 8. Open questions
 
 1. **Is the share rule's threshold right?** `HANDOFF_RESERVE_MIN_BUDGET_MULTIPLE` is 8,
-   which turns the reserve on from about 3,000 bytes of ceiling (2,400 until 2026-09-30,
-   when the pointer began saying how current it is and the reserve was sized to those words). It is a judgement about
+   which turns the reserve on from about 3,650 bytes of ceiling — about 3,900 for a pointer
+   naming a session and a model (2,400 until 2026-09-30, when the pointer began saying how
+   current it is, then who left it and how to retire it, and the reserve was sized to
+   those words). It is a judgement about
    what a pointer is worth against a memory, made once, in numbers; the owner's hosts all
    report far more than that, so nothing he runs is near it today.
 2. **Does the host's own file memory duplicate this?** The spec names it as the thing to
@@ -200,6 +241,17 @@ does not log its own refusal) · **§13 G3** (one ask at the blocked moment).
    ask. Sending the field PRESENT and blank clears the directory's pointer (§5 G3b). What
    remains open is whether models actually reach for it; the row to watch is
    `handoff.cleared` against `handoff.written`.
-5. **Should an expired row be archived rather than left to the prune?** Today it sits live
+5. **Do per-session handoffs pile up?** Before 2026-09-30 a directory could hold one; now
+   it holds one per session that left one and did not retire it, for a fortnight each. The
+   row to watch is `handoff.shown`'s `among`. Two nudges are built (the doors say how to
+   retire one, and a write names the others standing). If it still runs high, the next
+   answer is a shorter life for an older one (a follow-up, NOTES §8) — not a cap that
+   silently drops someone's pointer.
+6. **Should the pointer name a session in words a person uses?** It prints the first
+   eight characters of the session id. The host lets a person name a session, but that
+   name is not in the hook input or the session registry today; reading it means a
+   transcript field threaded through `lifecycle.ts` and `sessions.ts`, which is the hosts
+   work's ground. Left as a follow-up.
+7. **Should an expired row be archived rather than left to the prune?** Today it sits live
    and unread for the 90 lived days `D_FLOOR_DAYS` asks for. That is correct and it is also
    a row `list()` walks for three months after it stopped mattering.

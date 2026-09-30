@@ -35,7 +35,12 @@ import {
   handoffRows,
   handoffTitle,
   isHandoffRow,
+  HANDOFF_WAKE_LISTED,
+  HANDOFF_WAKE_SHOWN,
+  modelWords,
   pointerBlock,
+  pointerBlockMany,
+  pointerLadder,
   readHandoff,
   reserveBytes,
   WIDEST_POINTER_SINCE,
@@ -51,7 +56,7 @@ import { DURABLE_EVENT_NAMES } from "../src/adapters/dashboard/registries.js";
 import { NARRATORS, REF_KIND } from "../src/adapters/dashboard/web/narrate.js";
 import { TOOL_NAMES, openServer, toolSpec } from "../src/adapters/mcp/index.js";
 import { openAdapter } from "../src/adapters/claude-code/index.js";
-import { canonicalScope } from "../src/adapters/sessions.js";
+import { canonicalScope, recordSession } from "../src/adapters/sessions.js";
 import { run as cliRun } from "../src/adapters/cli/index.js";
 
 const HERE = "/tmp/placeholder-project-a";
@@ -63,9 +68,10 @@ const BODY_TWO = "Placeholder: the parser rewrite landed; next is the error mess
 // Pinning it to the day these tests were written made them fail the next morning.
 const WRITTEN_ON = localDate(Date.now()); // the person's day since 2026-09-25 (docs/time.md)
 // Since 2026-09-30 the line says WHEN it was written, to the minute, in the
-// store's zone — "written 09-30 14:05" — computed at delivery (`PointerSince`).
+// store's zone — "written 09-30 14:05" — computed at delivery (`PointerSince`),
+// and, when the row names its session, WHO: "… by session sess_a".
 const WRITTEN_LINE = new RegExp(
-  `Where I left off in this directory \\(written ${WRITTEN_ON.slice(5)} \\d{2}:\\d{2}\\): `,
+  `Where I left off in this directory \\(written ${WRITTEN_ON.slice(5)} \\d{2}:\\d{2}(?: by [^)]*)?\\): `,
 );
 
 let dir: string;
@@ -198,11 +204,11 @@ describe("the handoff's row", () => {
     expect(s.list({ type: "schema", kind: HANDOFF_KIND, archived: false })).toHaveLength(2);
   });
 
-  test("a newer handoff REVISES the same row; the one it replaced is kept as a version", () => {
+  test("a newer handoff from the SAME session REVISES its row; the one it replaced is kept as a version", () => {
     const s = store();
     const h = handoffs(s);
     const first = h.write({ body: BODY, scope: HERE, session: "s1" });
-    const second = h.write({ body: BODY_TWO, scope: HERE, session: "s2" });
+    const second = h.write({ body: BODY_TWO, scope: HERE, session: "s1" });
     expect(second.reason).toBe("revised");
     expect(second.id).toBe(first.id as string);
     expect(second.version).toBe(1);
@@ -210,7 +216,7 @@ describe("the handoff's row", () => {
     expect(s.list({ type: "schema", kind: HANDOFF_KIND, archived: false })).toHaveLength(1);
     expect(h.read(HERE)?.body).toBe(BODY_TWO);
     // And the loser is readable, which is what "last writer wins, loser kept"
-    // means: two sessions closing in one directory at the same moment.
+    // means: one session revising its own pointer at a later ask.
     const versions = s.versions(first.id as string);
     expect(versions).toHaveLength(1);
     expect(s.readVersion(first.id as string, versions[0]?.seq as number).body).toBe(BODY);
@@ -674,10 +680,11 @@ describe("the reserve is conditional, which is what keeps a blank store honest",
       });
     }
     c.writeHandoff(BODY, { scope: HERE });
-    // 3,072, not 2,500: since the pointer says how current it is (2026-09-30)
-    // its reserve is sized to the widest of those words, and the share rule
-    // turns it on from about 3,000 bytes.
-    for (const budget of [3_072, 4_096, 9_000]) {
+    // 3,640, not 2,500: since the pointer says how current it is (2026-09-30)
+    // its reserve is sized to the widest of those words, and since it says how
+    // to retire it (review of #295) the share rule turns it on from 3,640 bytes
+    // for this one (a 407-byte block, plus the margin, times eight).
+    for (const budget of [3_640, 4_096, 9_000]) {
       c.rebrief({ budgetBytes: budget, at: "2026-09-20" });
       const woke = c.wake(budget, { date: "2026-09-20" }, { scope: HERE });
       expect(woke.text).toContain("Where I left off in this directory");
@@ -969,7 +976,7 @@ describe("the review's findings, each with the thing that was wrong", () => {
     const h = handoffs(s);
     h.write({ body: BODY, scope: HERE, session: "s1" });
     expect(h.read(HERE)?.body).toBe(BODY);
-    const out = h.clear(HERE, { session: "s2" });
+    const out = h.clear(HERE, { session: "s1" });
     expect(out.written).toBe(true);
     expect(out.reason).toBe("cleared");
     // Gone from every read, gone from the reserve, and the words are still
@@ -981,7 +988,7 @@ describe("the review's findings, each with the thing that was wrong", () => {
     expect(s.readProse(out.id as string).body).toBe(BODY);
     expect(eventNames(s)).toContain(HANDOFF_CLEARED_EVENT);
     // And the next handoff here mints a fresh row rather than reviving one.
-    const again = h.write({ body: BODY_TWO, scope: HERE });
+    const again = h.write({ body: BODY_TWO, scope: HERE, session: "s1" });
     expect(again.reason).toBe("created");
     expect(again.id).not.toBe(out.id as string);
   });
@@ -1424,5 +1431,446 @@ describe("the session that writes it and the session that reads it", () => {
       rmSync(here, { recursive: true, force: true });
       rmSync(there, { recursive: true, force: true });
     }
+  });
+});
+
+// ── several sessions, one directory (2026-09-30) ────────────────────────────
+
+/**
+ * ONE LIVE HANDOFF PER DIRECTORY PER SESSION. Several sessions often work in
+ * one repo at once, and until 2026-09-30 the last to end overwrote the others'
+ * pointer (that day, "Two builds are in flight" was replaced by a session that
+ * knew nothing of either). Each session now keeps its own row; the wake shows
+ * every live one, newest first, each saying who left it.
+ */
+describe("several sessions leave handoffs in one directory", () => {
+  const BODY_THREE = "Placeholder: the lexer tests are green; the fixtures still need a second pass.";
+  const BODY_FOUR = "Placeholder: the docs build is waiting on the new table of contents.";
+
+  /** A `Handoffs` on a clock the test moves, so "newest" is not a same-millisecond tie. */
+  function clocked(s: Store): { h: Handoffs; tick: () => void } {
+    let t = Date.parse("2026-09-30T12:00:00Z");
+    const h = new Handoffs({ store: s, gate: episodeGate(), now: () => t });
+    return { h, tick: () => (t += 60_000) };
+  }
+
+  function bytesOf(s: string): number {
+    return new TextEncoder().encode(s).length;
+  }
+
+  test("a second session in the same directory mints its OWN row, and neither overwrites the other", () => {
+    const s = store();
+    const { h, tick } = clocked(s);
+    const a = h.write({ body: BODY, scope: HERE, session: "sess_aaaaaaaa_1" });
+    tick();
+    const b = h.write({ body: BODY_TWO, scope: HERE, session: "sess_bbbbbbbb_2" });
+    expect(a.reason).toBe("created");
+    expect(b.reason).toBe("created");
+    expect(b.id).not.toBe(a.id as string);
+    expect(handoffRows(s)).toHaveLength(2);
+    // The newest is what a one-answer read gets; both are what the wake gets.
+    expect(h.read(HERE)?.body).toBe(BODY_TWO);
+    expect(h.readAll(HERE).map((x) => x.body)).toEqual([BODY_TWO, BODY]);
+    // A session writing again revises ITS OWN row, and moves it to the front.
+    tick();
+    const again = h.write({ body: BODY_THREE, scope: HERE, session: "sess_aaaaaaaa_1" });
+    expect(again.reason).toBe("revised");
+    expect(again.id).toBe(a.id as string);
+    expect(h.readAll(HERE).map((x) => x.body)).toEqual([BODY_THREE, BODY_TWO]);
+    expect(handoffRows(s)).toHaveLength(2);
+    // Each row names its session.
+    expect(findHandoffRow(s, HERE, "sess_bbbbbbbb_2")).toBe(b.id as string);
+    expect(readHandoff(s, HERE, "sess_aaaaaaaa_1")?.body).toBe(BODY_THREE);
+  });
+
+  test("the row says who wrote it: the session, the model when the host said, and the time", () => {
+    const s = store();
+    const { h } = clocked(s);
+    const out = h.write({ body: BODY, scope: HERE, session: "sess_a", model: "claude-opus-5-5" });
+    const doc = s.readProse(out.id as string);
+    expect(doc.meta["session"]).toBe("sess_a");
+    expect(doc.meta["model"]).toBe("claude-opus-5-5");
+    expect(doc.meta["writtenAt"]).toBe(Date.parse("2026-09-30T12:00:00Z"));
+    // A value that is not a plain model id is no mark: it would be printed.
+    const bad = h.write({ body: BODY_TWO, scope: THERE, session: "sess_a", model: "<synthetic> \n x" });
+    expect(s.readProse(bad.id as string).meta["model"]).toBeUndefined();
+  });
+
+  test("a model id reads the way a person says it, and an unfamiliar one is printed as it came", () => {
+    expect(modelWords("claude-opus-5-5")).toBe("Opus 5.5");
+    expect(modelWords("claude-opus-5-5[1m]")).toBe("Opus 5.5");
+    expect(modelWords("claude-sonnet-4-5-20250929")).toBe("Sonnet 4.5");
+    expect(modelWords("gpt-oss")).toBe("gpt-oss");
+  });
+
+  test("the wake shows every live one, newest first, each saying who left it", () => {
+    const c = counterpart({ budgetBytes: 9_000 });
+    c.writeHandoff(BODY, { scope: HERE, session: "sess_aaaaaaaa_1", model: "claude-opus-5-5", day: 0 });
+    c.store.advanceClock("2026-09-21");
+    c.writeHandoff(BODY_TWO, { scope: HERE, session: "sess_bbbbbbbb_2" });
+    c.rebrief({ budgetBytes: 9_000, at: "2026-09-21" });
+    const text = c.wake(9_000, { date: "2026-09-21" }, { scope: HERE, session: "sess_cccccccc_3" }).text;
+    const lines = text.split("\n");
+    const head = lines.findIndex((l) => l.startsWith("Where the work in this directory was left off"));
+    expect(head).toBeGreaterThan(0);
+    expect(lines[head]).toContain("2 handoffs");
+    const [newest, older] = [lines[head + 1] as string, lines[head + 2] as string];
+    expect(newest.startsWith("1) From session sess_bbb")).toBe(true);
+    expect(newest).toContain(BODY_TWO);
+    expect(newest).toContain(c.readHandoffs(HERE)[0]?.id as string);
+    expect(older.startsWith("2) From session sess_aaa")).toBe(true);
+    expect(older).toContain("on Opus 5.5");
+    expect(older).toContain(BODY);
+    expect(lines[head + 3]).toContain("counterparts recall tool");
+    // Still furniture: no bullet, and the sentinel's counts are true.
+    expect(lines.slice(head, head + 4).some((l) => l.startsWith("- "))).toBe(false);
+    expect(readSentinel(text).intact).toBe(true);
+    // Each handoff shown gets its own row, and their bytes sum to the cost.
+    const shown = c.store.eventLog({ name: HANDOFF_SHOWN_EVENT, limit: 10 });
+    expect(shown).toHaveLength(2);
+    const payloads = shown.map((r) => JSON.parse(r.payload ?? "{}") as Record<string, unknown>);
+    expect(payloads.every((p) => p["among"] === 2)).toBe(true);
+    const plain = c.wake(9_000, { date: "2026-09-21" }, { scope: THERE }).bytes;
+    const delivered = c.wake(9_000, { date: "2026-09-21" }, { scope: HERE, session: "sess_cccccccc_3" }).bytes;
+    expect(payloads.reduce((n, p) => n + (p["bytes"] as number), 0)).toBe(delivered - plain);
+  });
+
+  test("the waking session's own handoff reads 'this session'", () => {
+    const c = counterpart({ budgetBytes: 9_000 });
+    c.writeHandoff(BODY, { scope: HERE, session: "sess_mine" });
+    c.rebrief({ budgetBytes: 9_000, at: "2026-09-20" });
+    const text = c.wake(9_000, { date: "2026-09-20" }, { scope: HERE, session: "sess_mine" }).text;
+    expect(text).toMatch(/Where I left off in this directory \(written [^)]* by this session\): /);
+  });
+
+  test("past three, the newest three are shown and the rest are named by id", () => {
+    const s = store();
+    const { h, tick } = clocked(s);
+    const ids: string[] = [];
+    for (const [i, body] of [BODY, BODY_TWO, BODY_THREE, BODY_FOUR, BODY].entries()) {
+      ids.push(h.write({ body, scope: HERE, session: `sess_${i}` }).id as string);
+      tick();
+    }
+    const block = h.pointer(HERE)?.block as string;
+    const lines = block.split("\n");
+    expect(lines[0]).toContain("5 handoffs");
+    expect(lines.filter((l) => /^\d\) From /.test(l))).toHaveLength(HANDOFF_WAKE_SHOWN);
+    // Newest first: the last written is entry 1.
+    expect(lines[1]).toContain(ids[4] as string);
+    const rest = lines.find((l) => l.startsWith("+2 older here: ")) as string;
+    expect(rest).toContain(ids[1] as string);
+    expect(rest).toContain(ids[0] as string);
+    // Past the listed count, a number rather than more ids.
+    for (let i = 5; i < HANDOFF_WAKE_SHOWN + HANDOFF_WAKE_LISTED + 2; i++) {
+      h.write({ body: BODY_TWO, scope: HERE, session: `sess_${i}` });
+      tick();
+    }
+    const many = (h.pointer(HERE)?.block as string).split("\n").find((l) => l.includes("older here")) as string;
+    expect(many).toContain(", and 2 more.");
+  });
+
+  test("a blank field retires only the caller's OWN handoff; the others stand", () => {
+    const s = store();
+    const { h, tick } = clocked(s);
+    const mine = h.write({ body: BODY, scope: HERE, session: "sess_mine" });
+    tick();
+    const theirs = h.write({ body: BODY_TWO, scope: HERE, session: "sess_theirs" });
+    const out = h.clear(HERE, { session: "sess_mine" });
+    expect(out.reason).toBe("cleared");
+    expect(out.id).toBe(mine.id as string);
+    expect(s.row(mine.id as string)?.archived).toBe(1);
+    expect(s.row(theirs.id as string)?.archived).toBe(0);
+    expect(h.readAll(HERE).map((x) => x.body)).toEqual([BODY_TWO]);
+    // A session that left none here has nothing to clear, whoever else did.
+    expect(h.clear(HERE, { session: "sess_other" }).reason).toBe("nothing-to-clear");
+    expect(s.row(theirs.id as string)?.archived).toBe(0);
+  });
+
+  test("retiring by id takes any live handoff in THIS directory, and nothing else", () => {
+    const s = store();
+    const { h, tick } = clocked(s);
+    const theirs = h.write({ body: BODY, scope: HERE, session: "sess_theirs" });
+    tick();
+    const elsewhere = h.write({ body: BODY_TWO, scope: THERE, session: "sess_theirs" });
+    // Another directory's id is not this directory's to retire.
+    const refused = h.retire(elsewhere.id as string, { scope: HERE, session: "sess_mine" });
+    expect(refused.written).toBe(false);
+    expect(refused.reason).toBe("not-here");
+    expect(s.row(elsewhere.id as string)?.archived).toBe(0);
+    expect(h.retire("mem_000000000000", { scope: HERE, session: "sess_mine" }).reason).toBe("not-here");
+    // This directory's, whoever wrote it, is.
+    const out = h.retire(theirs.id as string, { scope: HERE, session: "sess_mine" });
+    expect(out.written).toBe(true);
+    expect(out.reason).toBe("cleared");
+    expect(s.row(theirs.id as string)?.archived).toBe(1);
+    expect(h.read(HERE)).toBeNull();
+    const row = s.eventLog({ name: HANDOFF_CLEARED_EVENT, limit: 5 })[0];
+    const payload = JSON.parse(row?.payload ?? "{}") as Record<string, unknown>;
+    expect(payload["byId"]).toBe(true);
+    expect(payload["author"]).toBe("sess_theirs");
+    expect(payload["session"]).toBe("sess_mine");
+    // An archived one cannot be retired twice.
+    expect(h.retire(theirs.id as string, { scope: HERE, session: "sess_mine" }).reason).toBe("not-here");
+  });
+
+  test("a blank session is no session: it keys, clears and retires as null (review of #295, MINOR-2)", () => {
+    const s = store();
+    const { h, tick } = clocked(s);
+    const blank = h.write({ body: BODY, scope: HERE, session: "" });
+    expect(s.readProse(blank.id as string).meta["session"]).toBeNull();
+    tick();
+    // The same key as a null session: it revises, not mints.
+    expect(h.write({ body: BODY_TWO, scope: HERE, session: null }).id).toBe(blank.id as string);
+    tick();
+    expect(h.write({ body: BODY_THREE, scope: HERE, session: "   " }).id).toBe(blank.id as string);
+    expect(h.clear(HERE, { session: "" }).id).toBe(blank.id as string);
+    expect(h.read(HERE)).toBeNull();
+    const again = h.write({ body: BODY, scope: HERE });
+    const retired = h.retire(again.id as string, { scope: HERE, session: "" });
+    expect(retired.reason).toBe("cleared");
+    const payload = JSON.parse(s.eventLog({ name: HANDOFF_CLEARED_EVENT, limit: 1, order: "desc" })[0]?.payload ?? "{}") as Record<string, unknown>;
+    expect(payload["session"]).toBeNull();
+  });
+
+  test("a write names the OTHER sessions' handoffs standing here, so a finished one can be retired in the same call", () => {
+    const s = store();
+    const { h, tick } = clocked(s);
+    const theirs = h.write({ body: BODY, scope: HERE, session: "sess_theirs" });
+    tick();
+    h.write({ body: BODY_TWO, scope: THERE, session: "sess_elsewhere" });
+    tick();
+    const mine = h.write({ body: BODY_THREE, scope: HERE, session: "sess_mine" });
+    expect(mine.others?.map((o) => o.id)).toEqual([theirs.id as string]);
+    expect(mine.others?.[0]?.session).toBe("sess_theirs");
+    expect(mine.others?.[0]?.excerpt).toBe(excerpt(BODY));
+    // Its own row is never among them, on a revise either.
+    tick();
+    expect(h.write({ body: BODY_FOUR, scope: HERE, session: "sess_mine" }).others?.map((o) => o.id)).toEqual([
+      theirs.id as string,
+    ]);
+    // Alone here, there are none to name.
+    expect(h.write({ body: BODY, scope: THERE, session: "sess_elsewhere" }).others).toEqual([]);
+  });
+
+  test("the doors say how a finished one is retired", () => {
+    const s = store();
+    const { h, tick } = clocked(s);
+    h.write({ body: BODY, scope: HERE, session: "sess_1" });
+    expect(h.pointer(HERE)?.block).toContain("retireHandoff: [id]");
+    tick();
+    h.write({ body: BODY_TWO, scope: HERE, session: "sess_2" });
+    expect(h.pointer(HERE)?.block).toContain("retire one whose work is done with session_end's retireHandoff: [id]");
+  });
+
+  test("retiring by id takes the race's duplicates of that row's key with it (review of #295, NIT-1)", () => {
+    const s = store();
+    const h = handoffs(s);
+    const meta = (day: number): Record<string, unknown> => ({
+      role: HANDOFF_ROLE, scope: HERE, writtenOn: s.today(), writtenDay: day, session: "sess_raced",
+    });
+    const older = s.put({ type: "schema", kind: HANDOFF_KIND, title: handoffTitle(HERE), body: BODY, meta: meta(1) });
+    const newer = s.put({ type: "schema", kind: HANDOFF_KIND, title: handoffTitle(HERE), body: BODY_TWO, meta: meta(2) });
+    expect(h.retire(newer, { scope: HERE, session: "sess_other", day: 2 }).reason).toBe("cleared");
+    expect(s.row(newer)?.archived).toBe(1);
+    expect(s.row(older)?.archived).toBe(1);
+    expect(h.read(HERE, 2)).toBeNull();
+  });
+
+  test("no room at all reports the SMALLEST rung's bytes (review of #295, NIT-3)", () => {
+    const c = counterpart({ budgetBytes: 9_000 });
+    c.writeHandoff(BODY, { scope: HERE, session: "sess_1" });
+    c.writeHandoff(BODY_TWO, { scope: HERE, session: "sess_2" });
+    c.rebrief({ budgetBytes: 9_000, at: "2026-09-20" });
+    const plain = c.wake(9_000, { date: "2026-09-20" }, { scope: THERE }).bytes;
+    c.wake(plain + 8, { date: "2026-09-20" }, { scope: HERE });
+    const row = c.store.eventLog({ name: HANDOFF_REFUSED_EVENT, limit: 1 })[0];
+    const reported = (JSON.parse(row?.payload ?? "{}") as Record<string, unknown>)["bytes"] as number;
+    const rungs = c.handoffs.pointerChoices(HERE).map((r) => bytesOf(r.block));
+    const smallest = Math.min(...rungs);
+    // The spliced bundle with the smallest rung: the plain one, the block and
+    // its separating lines, and a byte count that may gain a digit.
+    expect(reported).toBeGreaterThan(plain + smallest);
+    expect(reported).toBeLessThan(plain + smallest + 16);
+  });
+
+  test("a row from before 2026-09-30 keeps working: labelled by the session it names, no model, no backfill", () => {
+    const s = store();
+    const legacy = s.put({
+      type: "schema",
+      kind: HANDOFF_KIND,
+      title: handoffTitle(HERE),
+      body: BODY,
+      meta: { role: HANDOFF_ROLE, scope: HERE, writtenOn: s.today(), writtenDay: s.livedDay(), session: "sess_old_writer" },
+    });
+    const nameless = s.put({
+      type: "schema",
+      kind: HANDOFF_KIND,
+      title: handoffTitle(HERE),
+      body: BODY_THREE,
+      meta: { role: HANDOFF_ROLE, scope: HERE, writtenOn: s.today(), writtenDay: s.livedDay(), session: null },
+    });
+    const h = handoffs(s);
+    // Alone, the old row reads as it did, with its author added.
+    expect(pointerBlock(h.readAny(HERE, "sess_old_writer") as Handoff, s.livedDay())).toContain(
+      `(${s.today()} by session sess_old)`,
+    );
+    // The new session writes its own row beside it, rather than over it.
+    const fresh = h.write({ body: BODY_TWO, scope: HERE, session: "sess_new", model: "claude-opus-5-5" });
+    expect(fresh.reason).toBe("created");
+    expect(s.row(legacy)?.archived).toBe(0);
+    const block = h.pointer(HERE)?.block as string;
+    expect(block).toContain("3 handoffs");
+    expect(block).toContain("1) From session sess_new on Opus 5.5");
+    expect(block).toContain("From session sess_old, on ");
+    expect(block).toContain("From an earlier session, on ");
+    expect(block).toContain(nameless);
+    // And the writer the old row names revises it, as it always did.
+    expect(h.write({ body: BODY_FOUR, scope: HERE, session: "sess_old_writer" }).id).toBe(legacy);
+  });
+
+  test("the reserve covers every rung, and several handoffs cost the lanes no more than the share rule allows", () => {
+    const c = counterpart();
+    for (let i = 0; i < 60; i++) {
+      c.store.put({
+        type: "memory",
+        kind: "self",
+        body: `Placeholder identity element ${i}, written long enough to compete for the budget.`,
+        band: "identity",
+        learnedOn: c.store.today(),
+        salience: { relevance: 0.9, emotional: 0.6, predictive: 0.6 },
+        physics: { promotedIdentity: true },
+      });
+    }
+    c.writeHandoff(BODY, { scope: HERE, session: "sess_1" });
+    const one = c.rebrief({ budgetBytes: 9_000, at: "2026-09-20" });
+    const oneWake = c.wake(9_000, { date: "2026-09-20" }, { scope: THERE });
+    c.writeHandoff(BODY_TWO, { scope: HERE, session: "sess_2", model: "claude-opus-5-5" });
+    c.writeHandoff(BODY_THREE, { scope: HERE, session: "sess_3", model: "claude-opus-5-5" });
+    // Three live here: the ladder is three rungs of the several-handoff block
+    // and the newest alone.
+    expect(c.handoffs.liveBlockBytes()).toHaveLength(4);
+    const three = c.rebrief({ budgetBytes: 9_000, at: "2026-09-20" });
+    // Never more than an eighth of the ceiling, however many there are.
+    expect(9_000 - 160 - (three.composeBudget as number)).toBeLessThanOrEqual(9_000 / 8);
+    expect(three.composeBudget as number).toBeLessThan(one.composeBudget as number);
+    // At the ceiling the owner's hosts report, the lane caps bind before the
+    // byte ceiling: a session elsewhere keeps every element it had.
+    const threeWake = c.wake(9_000, { date: "2026-09-20" }, { scope: THERE });
+    expect(readSentinel(threeWake.text).statedElements).toBe(readSentinel(oneWake.text).statedElements);
+    // And the directory that holds them is handed all three, inside the ceiling.
+    const here = c.wake(9_000, { date: "2026-09-20" }, { scope: HERE });
+    expect(here.text).toContain("3 handoffs");
+    expect(here.text.split("\n").filter((l) => /^\d\) From /.test(l))).toHaveLength(3);
+    expect(here.bytes).toBeLessThanOrEqual(9_000);
+  });
+
+  test("a ceiling with room for fewer shows fewer, rather than none", () => {
+    // The one-boundary lag, when a second author appears: the published
+    // composition reserved for ONE pointer. The delivery walks the ladder down
+    // to the rung that fits instead of dropping the pointer whole.
+    const c = counterpart({ budgetBytes: 9_000 });
+    c.writeHandoff(BODY, { scope: HERE, session: "sess_1" });
+    c.writeHandoff(BODY_TWO, { scope: HERE, session: "sess_2" });
+    c.rebrief({ budgetBytes: 9_000, at: "2026-09-20" });
+    const plain = c.wake(9_000, { date: "2026-09-20" }, { scope: THERE }).bytes;
+    const ladder = c.handoffs.pointerChoices(HERE);
+    expect(ladder).toHaveLength(3); // two shown, one shown, the newest alone
+    const [full, , alone] = ladder.map((r) => bytesOf(r.block));
+    // Room for the newest alone and not for the several-handoff block.
+    const ceiling = plain + (alone as number) + 16;
+    expect(ceiling).toBeLessThan(plain + (full as number));
+    const woke = c.wake(ceiling, { date: "2026-09-20" }, { scope: HERE });
+    expect(woke.bytes).toBeLessThanOrEqual(ceiling);
+    expect(woke.text).toContain(BODY_TWO);
+    expect(woke.text).not.toContain("2 handoffs");
+    expect(c.store.eventLog({ name: HANDOFF_REFUSED_EVENT, limit: 5 })).toHaveLength(0);
+    expect(c.store.eventLog({ name: HANDOFF_SHOWN_EVENT, limit: 5 })).toHaveLength(1);
+    // Below even that, the pointer is dropped whole and the drop is a row.
+    const tight = c.wake(plain + 8, { date: "2026-09-20" }, { scope: HERE });
+    expect(tight.text).not.toContain("Where I left off");
+    expect(c.store.eventLog({ name: HANDOFF_REFUSED_EVENT, limit: 5 })).toHaveLength(1);
+  });
+
+  test("the widest several-handoff block stays inside the reserve's ceiling", () => {
+    const widest = (i: number): Handoff => ({
+      id: `sch_${String(i).padStart(12, "f")}`,
+      scope: HERE,
+      body: "Ω".repeat(HANDOFF_MAX_BYTES / 2),
+      bytes: HANDOFF_MAX_BYTES,
+      writtenOn: "2026-09-20",
+      writtenDay: 999_999,
+      session: "ffffffff-ffff-ffff-ffff-ffffffffffff",
+      // The widest id `isModelId` admits, which `modelWords` prints as it came.
+      model: "a".repeat(64),
+      version: 9,
+    });
+    const hs = Array.from({ length: 1_000 }, (_, i) => widest(i));
+    const since = hs.map((_, i) => (i === 0 ? WIDEST_POINTER_SINCE : { written: "12-31 23:59", after: null }));
+    const ladder = pointerLadder(hs, 999_999, { since });
+    expect(ladder).toHaveLength(HANDOFF_WAKE_SHOWN + 1);
+    for (const rung of ladder) expect(bytesOf(rung.block)).toBeLessThanOrEqual(HANDOFF_RESERVE_MAX_BYTES);
+    expect(bytesOf(pointerBlockMany(hs, 999_999, { since }) as string)).toBeLessThanOrEqual(HANDOFF_RESERVE_MAX_BYTES);
+  });
+
+  test("over the wire: two sessions, two handoffs; a blank field and retireHandoff each take only what they name", async () => {
+    const first = openServer({ dir, session: "sess_first", scope: HERE, owner: true });
+    open.push(first.counterpart);
+    await first.call("session_end", { session: "sess_first", memories: [], handoff: BODY });
+    first.counterpart.close();
+    open.length = 0;
+
+    const second = openServer({ dir, session: "sess_second", scope: HERE, owner: true });
+    open.push(second.counterpart);
+    await second.call("session_end", { session: "sess_second", memories: [], handoff: BODY_TWO });
+    const both = second.counterpart.readHandoffs(HERE);
+    expect(both.map((x) => x.body).sort()).toEqual([BODY, BODY_TWO].sort());
+    const firstId = both.find((x) => x.session === "sess_first")?.id as string;
+
+    // A blank field from the second session retires the second's own, only.
+    const cleared = (
+      await second.call("session_end", { session: "sess_second", memories: [], handoff: "" })
+    ).structuredContent as Record<string, unknown>;
+    expect((cleared["handoff"] as Record<string, unknown>)["reason"]).toBe("cleared");
+    expect(second.counterpart.readHandoffs(HERE).map((x) => x.body)).toEqual([BODY]);
+
+    // retireHandoff takes the first session's by its id — and refuses one
+    // that is not a live handoff here, by name.
+    const retired = await second.call("session_end", {
+      session: "sess_second",
+      memories: [],
+      retireHandoff: [firstId, "sch_000000000000"],
+    });
+    const body = retired.structuredContent as Record<string, unknown>;
+    const outcomes = body["retired"] as Record<string, unknown>[];
+    expect(outcomes.map((o) => o["reason"])).toEqual(["cleared", "not-here"]);
+    // `not-here` is the retire's `nothing-to-clear`, not a failure to fix
+    // (review of #295, MINOR-1).
+    expect(retired.isError ?? false).toBe(false);
+    expect(second.counterpart.readHandoffs(HERE)).toHaveLength(0);
+
+    // And the schema advertises it, as a field.
+    const props = (toolSpec("session_end")?.inputSchema as Record<string, unknown>)["properties"] as Record<
+      string,
+      Record<string, unknown>
+    >;
+    expect(props["retireHandoff"]?.["type"]).toBe("array");
+  });
+
+  test("the writing session's model rides from host state onto the row", async () => {
+    // No record for the session in the registry: the row records no model
+    // rather than a guess.
+    const bare = openServer({ dir, session: "sess_bare", scope: HERE, owner: true });
+    open.push(bare.counterpart);
+    await bare.call("session_end", { session: "sess_bare", memories: [], handoff: BODY });
+    expect(bare.counterpart.readHandoff(HERE)?.model ?? null).toBeNull();
+    bare.counterpart.close();
+    open.length = 0;
+    // The hooks recorded which model answered: the row carries it.
+    recordSession(dir, { sessionId: "sess_model", scope: HERE, phase: "start", model: "claude-opus-5-5" });
+    const s = openServer({ dir, session: "sess_model", scope: HERE, owner: true });
+    open.push(s.counterpart);
+    await s.call("session_end", { session: "sess_model", memories: [], handoff: BODY_TWO });
+    const mine = s.counterpart.readHandoffs(HERE).find((x) => x.session === "sess_model");
+    expect(mine?.model).toBe("claude-opus-5-5");
   });
 });

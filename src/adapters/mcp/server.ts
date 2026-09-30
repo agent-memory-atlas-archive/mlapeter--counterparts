@@ -2101,7 +2101,26 @@ export class McpServer {
     // array is malformed must not also throw away the one line telling the next
     // session in this directory where the work stands. The outcome rides out on
     // the refusal too, so nothing is lost silently either way.
-    const handoff = this.writeHandoffField(args["handoff"]);
+    //
+    // A DESKTOP CALL THAT NAMED NO SESSION leaves and retires no handoff
+    // (review of #295, MINOR-4, at the hosts session's ask). It was bound to
+    // the most recent live Desktop session, which may be another chat's — and
+    // a handoff is keyed by its session, so chat A's would revise or clear
+    // chat B's. Both fields are refused by name; the rest of the call, the
+    // memories included, goes through as it always did.
+    const unnamed = this.callBoundBy === "most-recent";
+    const handoff = unnamed ? this.unnamedHandoffField(args["handoff"]) : this.writeHandoffField(args["handoff"]);
+    // Retiring others' handoffs here by id (2026-09-30) rides the same rules:
+    // it lands before the memories check, it counts as landing something, and
+    // its outcomes ride out beside the answer.
+    const retiredRaw = args["retireHandoff"];
+    let retired: Record<string, unknown>[] | null = null;
+    if (!unnamed) {
+      retired = this.retireHandoffField(retiredRaw);
+    } else if (!(Array.isArray(retiredRaw) && retiredRaw.length === 0)) {
+      const refused = this.unnamedHandoffField(retiredRaw);
+      retired = refused === null ? null : [refused];
+    }
 
     const raw = args["memories"];
     // NOTHING WORTH KEEPING IS A REAL ANSWER — and until 2026-09-21 it was not
@@ -2149,7 +2168,9 @@ export class McpServer {
     // handoff-only included. It does not move pacing and does not need to — the
     // pacer advanced when the ask went out (`self/index.ts#openChapter`).
     const session = this.session as string;
-    const landed = handoff !== null && handoff["written"] === true;
+    const landed =
+      (handoff !== null && handoff["written"] === true) ||
+      (retired !== null && retired.some((r) => r["written"] === true));
     const noMemories = raw === undefined || (Array.isArray(raw) && raw.length === 0);
     const emptyList = Array.isArray(raw) && raw.length === 0;
     if ((landed && noMemories) || emptyList) {
@@ -2158,7 +2179,11 @@ export class McpServer {
       // proposal behind it, in `coverage.jsonl`, so the ledger reads one file —
       // in THIS project only, as a memory's claim is. A handoff alone claims nothing.
       if (emptyList) claimUnwritten(this.counterpart.spans, { session, scope: this.scope, by: CLAIM_NOTHING_NEW, ref: session });
-      const handoffFailed = handoff !== null && !landed && handoff["reason"] !== "nothing-to-clear";
+      const handoffFailed =
+        (handoff !== null && handoff["written"] !== true && handoff["reason"] !== "nothing-to-clear") ||
+        // `not-here` is the retire's `nothing-to-clear`: an id already
+        // retired (by its writer or another session) is not a failure to fix.
+        (retired !== null && retired.some((r) => r["written"] !== true && r["reason"] !== "not-here"));
       this.emit("mcp.session_end", session, {
         entries: 0,
         deposited: 0,
@@ -2180,6 +2205,7 @@ export class McpServer {
           // answer still stands, and the caller can see it was not kept.
           recorded: marked,
           ...(handoff === null ? {} : { handoff }),
+          ...(retired === null ? {} : { retired }),
         },
         handoffFailed,
       );
@@ -2187,6 +2213,7 @@ export class McpServer {
     if (!Array.isArray(raw) || raw.length === 0) {
       return this.refuse("session_end", "memories-required", {
         ...(handoff === null ? {} : { handoff }),
+        ...(retired === null ? {} : { retired }),
       });
     }
     const { outcomes, deposited, entries } = await this.depositEntries(raw, session);
@@ -2206,6 +2233,7 @@ export class McpServer {
         // One line for the whole dump, when any entry came back with neighbours.
         ...(outcomes.some((o) => o["neighbours"] !== undefined) ? { neighboursHint: NEIGHBOURS_HINT } : {}),
         ...(handoff === null ? {} : { handoff }),
+        ...(retired === null ? {} : { retired }),
       },
       deposited === 0,
     );
@@ -2415,7 +2443,13 @@ export class McpServer {
       } else if (raw.trim().length === 0) {
         out = this.counterpart.clearHandoff({ scope: this.scope, session: this.session });
       } else {
-        out = this.counterpart.writeHandoff(raw, { scope: this.scope, session: this.session });
+        // The model rides from host state, as a chapter's does, so the wake
+        // can say which session — and which model — left it (2026-09-30).
+        out = this.counterpart.writeHandoff(raw, {
+          scope: this.scope,
+          session: this.session,
+          model: this.sessionModel() ?? null,
+        });
       }
     } catch (err) {
       return { written: false, reason: "threw", detail: String((err as Error).message ?? err) };
@@ -2434,7 +2468,57 @@ export class McpServer {
       ...(out.gate === null ? {} : { gate: out.gate }),
       ...(out.redacted === null ? {} : { redacted: true }),
       ...(out.showsForDays === null ? {} : { showsForDays: out.showsForDays }),
+      // The other sessions' live handoffs here, so a finished one can be
+      // retired in the same call (`retireHandoff`).
+      ...(out.others === undefined || out.others.length === 0 ? {} : { others: out.others }),
     };
+  }
+
+  /**
+   * A `handoff` or `retireHandoff` field on a Desktop call bound by the
+   * most-recent fallback: refused by name, durably (`handoff/` owns the row),
+   * with the words that fix it. Null when the field was not sent.
+   */
+  private unnamedHandoffField(raw: unknown): Record<string, unknown> | null {
+    if (raw === undefined || raw === null) return null;
+    const detail = `Name your session to leave or retire a handoff: session: <the id wake gave this chat>. This call named none, so it was filed under the most recent Claude Desktop session (${this.session ?? "none"}), which may be another chat's.`;
+    try {
+      const out = this.counterpart.refuseHandoff("session-unnamed", { session: this.session });
+      this.emit("mcp.handoff", undefined, { written: false, reason: out.reason, bytes: 0 });
+      return { written: false, reason: out.reason, bytes: 0, detail };
+    } catch (err) {
+      return { written: false, reason: "threw", detail: String((err as Error).message ?? err) };
+    }
+  }
+
+  /**
+   * The optional `retireHandoff` field — ids of handoffs in THIS directory to
+   * retire, whoever wrote them (2026-09-30) — as the outcomes the tool result
+   * carries back, one per id. Null when the field is absent or an empty list.
+   * A lone string is read as a list of one; anything else is one `not-text`
+   * refusal. The directory rule is `writeHandoffField`'s, asked the same way.
+   */
+  private retireHandoffField(raw: unknown): Record<string, unknown>[] | null {
+    if (raw === undefined || raw === null) return null;
+    const ids = typeof raw === "string" ? [raw] : raw;
+    if (Array.isArray(ids) && ids.length === 0) return null;
+    const outcome = (id: string | null, out: ReturnType<Counterpart["retireHandoff"]>): Record<string, unknown> => {
+      this.emit("mcp.handoff.retire", out.id ?? undefined, { written: out.written, reason: out.reason });
+      return { ...(id === null ? {} : { id }), written: out.written, reason: out.reason, bytes: out.bytes };
+    };
+    try {
+      if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string")) {
+        return [outcome(null, this.counterpart.refuseHandoff("not-text", { session: this.session }))];
+      }
+      if (this.scopeSource === "store" || sameScope(this.scope, this.counterpart.store.dir)) {
+        return [outcome(null, this.counterpart.refuseHandoff("no-scope", { session: this.session }))];
+      }
+      return [...new Set(ids as string[])].map((id) =>
+        outcome(id, this.counterpart.retireHandoff(id, { scope: this.scope, session: this.session })),
+      );
+    } catch (err) {
+      return [{ written: false, reason: "threw", detail: String((err as Error).message ?? err) }];
+    }
   }
 
   /**

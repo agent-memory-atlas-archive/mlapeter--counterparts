@@ -1791,40 +1791,70 @@ export class Counterpart {
    *
    * `handoff.shown` is written here and only here: after the splice, so the row
    * says a pointer was DELIVERED rather than that one existed.
+   *
+   * SEVERAL HANDOFFS (2026-09-30): a directory holds one per writing session,
+   * and the pointer shows up to three newest-first. The blocks come as a
+   * ladder, widest first (`handoff/#pointerLadder`), and the first that fits
+   * the ceiling is delivered — so a reserve sized for fewer than the directory
+   * now holds (the one-boundary lag, when a new author appears) shows fewer
+   * rather than none. `no-room` is written only when not even the last rung
+   * fits. Each handoff shown in full gets its own `handoff.shown` row; the
+   * block's cost is split so the rows sum to it — each its own line's bytes,
+   * and the newest the rest (the header and the door).
    */
   private addHandoffPointer(result: WakeResult, here?: WakeHere): WakeResult {
     const scope = here?.scope?.trim() ?? "";
     if (scope.length === 0 || !result.ok) return result;
-    let pointer: { block: string; handoff: Handoff } | null = null;
+    let ladder: ReturnType<Handoffs["pointerChoices"]> = [];
     try {
-      pointer = this.handoffs.pointer(scope, undefined, (h) => this.handoffSince(h, scope));
+      ladder = this.handoffs.pointerChoices(
+        scope,
+        undefined,
+        (h, newest) => this.handoffSince(h, scope, newest),
+        here?.session ?? null,
+      );
     } catch {
       // A store that will not answer is not a reason to fail a wake (§1 G7).
       return result;
     }
-    if (pointer === null) return result;
-    const spliced = spliceBeforeSentinel(result.text, pointer.block);
-    if (!spliced.applied) return result;
+    const newest = ladder[0];
+    if (newest === undefined) return result;
     const budget = this.reportedBudget;
-    if (budget !== null && spliced.bytes > budget) {
-      this.emit("counterpart.handoff.noroom", pointer.handoff.id, {
-        bytes: spliced.bytes,
-        budget,
-        was: result.bytes,
+    // What `no-room` reports: the SMALLEST rung, which is the one that decided
+    // there was no room at all (review of #295, NIT-3).
+    let smallest: ReturnType<typeof spliceBeforeSentinel> | null = null;
+    for (const rung of ladder) {
+      const spliced = spliceBeforeSentinel(result.text, rung.block);
+      if (!spliced.applied) return result;
+      smallest = spliced;
+      if (budget !== null && spliced.bytes > budget) continue;
+      const cost = spliced.bytes - result.bytes;
+      const lines = rung.block.split("\n");
+      const own = (i: number): number =>
+        rung.shown.length === 1 ? cost : new TextEncoder().encode(lines[i + 1] ?? "").length + 1;
+      const others = rung.shown.slice(1).reduce((n, _, i) => n + own(i + 1), 0);
+      rung.shown.forEach((h, i) => {
+        this.handoffs.noteShown(h, {
+          bytes: i === 0 ? cost - others : own(i),
+          session: here?.session ?? null,
+          among: rung.live,
+        });
       });
-      this.handoffs.noteNoRoom(pointer.handoff, { bytes: spliced.bytes, budget });
-      return result;
+      return {
+        ...result,
+        text: spliced.text,
+        bytes: spliced.bytes,
+        sentinel: spliced.sentinel,
+      };
     }
-    this.handoffs.noteShown(pointer.handoff, {
-      bytes: spliced.bytes - result.bytes,
-      session: here?.session ?? null,
+    const bytes = smallest?.bytes ?? result.bytes;
+    this.emit("counterpart.handoff.noroom", newest.handoff.id, {
+      bytes,
+      budget,
+      was: result.bytes,
     });
-    return {
-      ...result,
-      text: spliced.text,
-      bytes: spliced.bytes,
-      sentinel: spliced.sentinel,
-    };
+    this.handoffs.noteNoRoom(newest.handoff, { bytes, budget: budget ?? 0 });
+    return result;
   }
 
   /**
@@ -1833,12 +1863,15 @@ export class Counterpart {
    * past the owed floor after that, not counting the writing session's own turn
    * — when that work ran, by the pieces' own times, and whether it is written up
    * (`coverage/#workSince`). Null when the write time is unknown: the line then
-   * says the date alone, as it always did.
+   * says the date alone, as it always did. An OLDER handoff in a directory
+   * that holds several (`newest` false) is asked only when it was written: it
+   * never prints the rest, so the span read is skipped.
    */
-  private handoffSince(h: Handoff, scope: string): PointerSince | null {
+  private handoffSince(h: Handoff, scope: string, newest = true): PointerSince | null {
     const writtenAt = this.handoffs.writtenAt(h);
     if (writtenAt === null) return null;
     const zone = this.store.zone();
+    if (!newest) return { written: localStamp(writtenAt, zone), after: null };
     const work = workSince(this.spans, scope, writtenAt, { writer: h.session });
     if (!work.overFloor || work.firstAt === null || work.lastAt === null) {
       return { written: localStamp(writtenAt, zone), after: null };
@@ -1856,13 +1889,31 @@ export class Counterpart {
   }
 
   /**
-   * WRITE THIS DIRECTORY'S HANDOFF — the one seam, reached today by the optional
-   * `handoff` field on the `session_end` tool. No second ask and no second
-   * pacer: the field rides the ask that already exists (self/CONTRACT's scar).
+   * WRITE THIS SESSION'S HANDOFF FOR THIS DIRECTORY — the one seam, reached
+   * today by the optional `handoff` field on the `session_end` tool. No second
+   * ask and no second pacer: the field rides the ask that already exists
+   * (self/CONTRACT's scar). One live row per directory per session; `model`
+   * is the writing session's, from host state, so the wake can say who.
    */
-  writeHandoff(body: string, ctx: { scope: string; session?: string | null; day?: number }): HandoffWrite {
+  writeHandoff(
+    body: string,
+    ctx: { scope: string; session?: string | null; model?: string | null; day?: number },
+  ): HandoffWrite {
     return this.handoffs.write({
       body,
+      scope: ctx.scope,
+      ...(ctx.session === undefined ? {} : { session: ctx.session }),
+      ...(ctx.model === undefined ? {} : { model: ctx.model }),
+      ...(ctx.day === undefined ? {} : { day: ctx.day }),
+    });
+  }
+
+  /**
+   * RETIRE ONE HANDOFF IN THIS DIRECTORY BY ITS ID, whoever wrote it — the
+   * `session_end` tool's `retireHandoff` field. See `Handoffs.retire`.
+   */
+  retireHandoff(id: string, ctx: { scope: string; session?: string | null; day?: number }): HandoffWrite {
+    return this.handoffs.retire(id, {
       scope: ctx.scope,
       ...(ctx.session === undefined ? {} : { session: ctx.session }),
       ...(ctx.day === undefined ? {} : { day: ctx.day }),
@@ -1870,8 +1921,9 @@ export class Counterpart {
   }
 
   /**
-   * RETIRE THIS DIRECTORY'S HANDOFF — the same seam, reached by sending the
-   * `session_end` field present and empty. See `Handoffs.clear`.
+   * RETIRE THIS SESSION'S HANDOFF FOR THIS DIRECTORY — the same seam, reached
+   * by sending the `session_end` field present and empty. Others' stand. See
+   * `Handoffs.clear`.
    */
   clearHandoff(ctx: { scope: string; session?: string | null; day?: number }): HandoffWrite {
     return this.handoffs.clear(ctx.scope, {
@@ -1888,9 +1940,15 @@ export class Counterpart {
     return this.handoffs.refuseWrite(reason, ctx);
   }
 
-  /** This directory's live handoff, or null. A read: writes nothing. */
+  /** This directory's NEWEST live handoff, whoever wrote it, or null. A read:
+   *  writes nothing. */
   readHandoff(scope: string): Handoff | null {
     return this.handoffs.read(scope);
+  }
+
+  /** Every live handoff for this directory, one per session, newest first. */
+  readHandoffs(scope: string): Handoff[] {
+    return this.handoffs.readAll(scope);
   }
 
   /**
