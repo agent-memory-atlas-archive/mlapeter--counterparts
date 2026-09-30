@@ -36,7 +36,7 @@ import {
 import type { ScopeRead, ScopeVerdict } from "../../scopes.js";
 import { canonicalScope, isEntrypoint, readSession } from "../../sessions.js";
 import { openLog } from "../../log/index.js";
-import type { ProcessLog } from "../../log/index.js";
+import type { LogEvent, ProcessLog } from "../../log/index.js";
 import { resolveZone, todayIn } from "../../../core/time.js";
 import { TUNABLES, loadConfig, withEmbedderDefault } from "../config.js";
 import type { AdapterConfig } from "../config.js";
@@ -708,18 +708,12 @@ async function runHook(
   // running on an observer CONFIG are untouched by any of this.
   const config: AdapterConfig =
     verdict.mode === "observer" ? { ...loaded, observer: true } : loaded;
-  // THE PROCESS LOG (`adapters/log/`): this event's lines, in order, where a
-  // person can read them once the process is gone. Off under observer, and a
-  // write that fails is swallowed inside it.
-  const log = openLog({
-    dataDir: config.dataDir,
-    proc: `hook:${name}`,
-    session: said.sessionId,
-    ...(config.timeZone === undefined ? {} : { timeZone: config.timeZone }),
-    observer: config.observer === true,
-  });
-  said.log = log;
-  log.start();
+  // THE PROCESS LOG (`adapters/log/`) is opened once the store has, below: a
+  // store this build refuses gets no lines (its stand-down marker, stderr and
+  // `systemMessage` say so), and every line lands where SessionStart prunes.
+  // Until then the adapter's events go through this closure to nothing.
+  let log: ProcessLog | null = null;
+  const toLog = (e: LogEvent): void => log?.event(e);
   const adapter = openAdapter(config, {
     command: process.execPath,
     args: ["run", RUNNER_PATH],
@@ -736,9 +730,20 @@ async function runHook(
     scope: verdict,
     ...(read.error === null ? {} : { scopeUnreadable: read.error }),
     ...(read.refused.length === 0 ? {} : { scopeRefused: read.refused.map((r) => r.key) }),
-    onEvent: log.event,
-    onCounterpartEvent: log.event,
+    onEvent: toLog,
+    onCounterpartEvent: toLog,
   });
+  const opened = openLog({
+    dataDir: adapter.counterpart.store.dir,
+    proc: `hook:${name}`,
+    session: said.sessionId,
+    ...(config.timeZone === undefined ? {} : { timeZone: config.timeZone }),
+    observer: config.observer === true,
+  });
+  log = opened;
+  said.log = opened;
+  // No start line at a prompt, the most frequent event: its end carries `ms`.
+  if (name !== "user-prompt-submit") opened.start();
   let outcome = "ok";
   try {
     // ONE read of the transcript, shared by the hook and the notice: `toHookInput`
@@ -818,7 +823,7 @@ async function runHook(
     adapter.counterpart.close();
   }
   // A throw above never reaches this line: `main`'s handler writes it instead.
-  log.end(outcome);
+  opened.end(outcome);
 }
 
 /** The two adapter doors `deliverTurn` needs — structural, so a test can
