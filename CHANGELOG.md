@@ -19,8 +19,9 @@ Claude Desktop chat.
   change. The command makes (or keeps) the store and configuration exactly as the
   scripted install does, then merges one `counterparts` entry into Desktop's
   `claude_desktop_config.json`, found under the home directory it was given. The file is
-  backed up first, every other server in it is left byte-identical, and a second run
-  changes nothing ("already connected"). If it replaces an entry that named a different
+  backed up first, every other server and setting in it is left exactly as it was, and
+  a second run changes nothing ("already connected"). The file is written back as
+  2-space JSON, the way Desktop writes it. If it replaces an entry that named a different
   store, it names that store: the memory there is still there. Plain `install` is
   unchanged and doesn't touch Desktop.
 - **The `wake` tool** is Desktop's session start, and only Desktop is offered it. It
@@ -33,11 +34,13 @@ Claude Desktop chat.
   the chat to call `wake` first and keep the session id it gets.
 - **Each call binds to a session, and says when it guessed.** One server serves every
   Desktop chat, and Desktop sends no chat id, so every Desktop tool takes an optional
-  `session`. A call that names a live Desktop session is filed under it; a named session
-  that is unknown or ended is refused by name, never swapped for another. A call that
+  `session`. A call that names a live Desktop session is filed under it. A call that
   names none binds to the most recent live Desktop session and says so (`boundTo`,
-  `boundBy: "most-recent"`, and one line). With no live session, a tool that needs one
-  refuses and names `wake`. Only a call that names its session keeps that session alive
+  `boundBy: "most-recent"`, and one line). A tool that needs a session (`session_end`,
+  `chapter`, `dream`, `reflect`) refuses a named id that is unknown or has gone quiet
+  (`session-unknown`, `session-not-live`), and never swaps in another; with no live
+  session at all it refuses and names `wake`. The other tools (`note`, `recall`,
+  `status`, `scope`, `self_page`) run unbound in those cases, as they always could. Only a call that names its session keeps that session alive
   and counts toward its write-up ask; a guessed call moves nothing, because it may belong
   to another chat.
 - **The write-up ask.** After 3 named calls and 20 minutes since the later of the wake,
