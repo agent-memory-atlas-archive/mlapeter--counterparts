@@ -165,6 +165,28 @@ export function localClock(at: number, zone?: string): string {
   return `${p.weekday} ${String(Number(p.day))} ${mo} ${p.year}, ${p.hour}:${p.minute} ${p.dayPeriod} ${p.timeZoneName}`.trim();
 }
 
+const timeFormatters = new Map<string, Intl.DateTimeFormat>();
+
+/**
+ * `HH:MM:SS` on a 24-hour clock — the time of day the moment falls on in
+ * `zone`. A log line's spelling, where the date is the file's and the seconds
+ * are what tell two lines apart (`adapters/log/`, 2026-09-30). Empty for a
+ * moment that is not a number.
+ */
+export function localTime(at: number, zone?: string): string {
+  const z = zone === undefined || !isZoneCached(zone) ? machineZone() : zone;
+  const d = new Date(at);
+  if (!Number.isFinite(d.getTime())) return "";
+  let f = timeFormatters.get(z);
+  if (f === undefined) {
+    f = new Intl.DateTimeFormat("en-GB", { timeZone: z, hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
+    timeFormatters.set(z, f);
+  }
+  const out: Record<string, string> = {};
+  for (const p of f.formatToParts(d)) out[p.type] = p.value;
+  return `${out["hour"] ?? ""}:${out["minute"] ?? ""}:${out["second"] ?? ""}`;
+}
+
 /** Today's `YYYY-MM-DD` in `zone`. A store passes its own clock; the default is
  *  the ambient one, for an adapter with no store open. */
 export function todayIn(zone?: string, at: number = Date.now()): string {
