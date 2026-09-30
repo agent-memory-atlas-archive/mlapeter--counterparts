@@ -139,7 +139,7 @@ describe("M1 who is talking", () => {
 });
 
 describe("M2 one find box", () => {
-  test("one box: typing searches, Enter asks; the answers go where the list is; plain match words", async () => {
+  test("one box and a by word / by meaning switch; the answers go where the list is; plain match words", async () => {
     const search = read("pages/memories/sections/search.js");
     expect(search).toContain(">Find a memory</label>");
     expect(search).not.toContain('id="ask-q"');

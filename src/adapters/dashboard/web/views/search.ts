@@ -206,14 +206,14 @@ export function typoDistance(a: string, b: string, max: number): number {
 
 /**
  * Memories whose title or words hold a word a typo or two away from one of the
- * query's (`typosAllowed`), best first: more of the query's words met, then
+ * query's (`typosAllowed`; a number is never a typo), best first: more of the query's words met, then
  * fewer typos. `exact` (the word search's own hits) are left out. Each carries
  * `matched`, the words as they are written in the memory, so the page marks
  * what matched. A confidential memory is found the way the word search finds
  * one, and listed as withheld. Reads rows only.
  */
 function closeMatches(store: DashboardSource["store"], query: string, exact: ReadonlySet<string>, day: number): CloseHit[] {
-  const wanted = [...new Set(words(query))].filter((t) => typosAllowed(t.length) > 0);
+  const wanted = [...new Set(words(query))].filter((t) => typosAllowed(t.length) > 0 && !/^\d+$/.test(t));
   if (wanted.length === 0) return [];
   const found: { id: string; met: number; typos: number; matched: string[] }[] = [];
   let ids: string[];

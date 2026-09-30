@@ -432,6 +432,8 @@ describe("search hits carry the row shape", () => {
       // Enough exact hits: no close pass. Short words are never guessed at.
       expect(searchView(src, "rota").close).toEqual([]);
       expect(searchView(src, "rto").close).toEqual([]);
+      // A number is never a typo of another number ("2027" is not "2026").
+      expect(searchView(src, "2091").close).toEqual([]);
       expect(searchView(src, "rtoa").close[0]?.matched).toEqual(["rota"]);
     });
     expect(typosAllowed(3)).toBe(0);
