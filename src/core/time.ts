@@ -208,6 +208,20 @@ export function localStamp(at: number, zone?: string): string {
   return `${p.month}-${p.day} ${p.hour}:${p.minute}`;
 }
 
+/**
+ * The same stamp, shortened to the clock (`13:02`) when the moment falls on
+ * the same date as `after` in `zone` — a time in a run of times that already
+ * named its day (the handoff pointer's "work here 13:02–15:41", 2026-09-30).
+ */
+export function localStampAfter(at: number, after: number, zone?: string): string {
+  const z = zone === undefined || !isZoneCached(zone) ? machineZone() : zone;
+  const p = partsOf(at, z, "stamp");
+  const q = partsOf(after, z, "stamp");
+  if (p === null) return "";
+  const clock = `${p.hour}:${p.minute}`;
+  return q !== null && q.month === p.month && q.day === p.day ? clock : `${p.month}-${p.day} ${clock}`;
+}
+
 /** Today's `YYYY-MM-DD` in `zone`. A store passes its own clock; the default is
  *  the ambient one, for an adapter with no store open. */
 export function todayIn(zone?: string, at: number = Date.now()): string {

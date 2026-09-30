@@ -63,6 +63,8 @@ export interface Stretch {
   readonly minutes: number;
   /** The scopes its pieces are in. */
   readonly scopes: readonly string[];
+  /** Each piece's time, ascending — what "pieces since the last ask" counts. */
+  readonly times: readonly number[];
 }
 
 /** One session, as the ledger reads it. */
@@ -132,6 +134,7 @@ function stretchOf(pieces: readonly Piece[]): Stretch | null {
     lastAt,
     minutes: Math.floor((lastAt - firstAt) / 60_000),
     scopes: [...scopes].sort(),
+    times: pieces.map((p) => p.at).sort((a, b) => a - b),
   };
 }
 
@@ -172,16 +175,20 @@ export function sessionStretch(buffer: SpanBuffer, session: string, scopes?: rea
 
 /**
  * THE PACER'S THIRD ARM, beside typed turns and bytes: `ASK_PIECES` unwritten
- * pieces, and `ASK_AFTER_MS` since the later of the stretch's first piece and
- * the session's last ask. It applies to a first ask as well. Pure.
+ * pieces captured since the session's last ask, and `ASK_AFTER_MS` since the
+ * later of the stretch's first piece and that ask. It applies to a first ask as
+ * well. New pieces AND time: an ask nobody answers is not asked again on the
+ * clock alone (review of #289). Pure.
  */
 export function askFromStretch(
-  stretch: Pick<Stretch, "pieces" | "firstAt"> | null,
+  stretch: Pick<Stretch, "pieces" | "firstAt" | "times"> | null,
   lastAskAt: number | null,
   now: number,
   t: Pick<typeof COVERAGE_TUNABLES, "ASK_PIECES" | "ASK_AFTER_MS"> = COVERAGE_TUNABLES,
 ): boolean {
-  if (stretch === null || stretch.pieces < t.ASK_PIECES) return false;
+  if (stretch === null) return false;
+  const fresh = lastAskAt === null ? stretch.pieces : stretch.times.filter((at) => at > lastAskAt).length;
+  if (fresh < t.ASK_PIECES) return false;
   return now - Math.max(stretch.firstAt, lastAskAt ?? -Infinity) >= t.ASK_AFTER_MS;
 }
 
@@ -198,15 +205,16 @@ export function overFloor(stretch: Pick<Stretch, "pieces" | "firstAt" | "lastAt"
 
 /**
  * EVERY DATE A TURN-END WAS RECORDED ON, in the store's zone, sorted — the
- * days of use. Read from `boundaries.jsonl` in every scope: a boundary is
- * written at every turn-end before the worker runs, and retention strikes text,
- * never boundaries.
+ * days of use. Read from `boundaries.jsonl` in every scope, `stop` boundaries
+ * only (a session's end or a compaction is not a turn-end): one is written at
+ * every turn-end before the worker runs, and retention strikes text, never
+ * boundaries.
  */
 export function daysOfUse(buffer: SpanBuffer, zone: string): string[] {
   const dates = new Set<string>();
   for (const scope of buffer.scopes()) {
     for (const b of buffer.boundaries(scope)) {
-      if (typeof b.at !== "number" || !Number.isFinite(b.at)) continue;
+      if (b.kind !== "stop" || typeof b.at !== "number" || !Number.isFinite(b.at)) continue;
       const d = localDate(b.at, zone);
       if (d.length > 0) dates.add(d);
     }
@@ -349,28 +357,27 @@ export const CLAIM_WRITE_UP = "writeup";
 
 /**
  * CLAIM A SESSION'S UNWRITTEN PIECES for a writer with no proposal — "nothing
- * new" or a chapter — in every scope that holds any, under `<by>:<ref>`.
- * Returns what it claimed; never throws (a claim that did not land costs a
- * later reader a stretch that still reads unwritten, never words).
+ * new" or a chapter — in the ONE scope the answer was given in, as a memory's
+ * claim is (review of #289: "nothing new" in project A must not write up what
+ * the same session said in B). The claim is `<by>:<ref>:<time>`, so every
+ * answer is its own claim. Returns how many pieces it claimed; never throws (a
+ * claim that did not land costs a later reader a stretch that still reads
+ * unwritten, never words).
  */
 export function claimUnwritten(
   buffer: SpanBuffer,
-  input: { session: string; by: typeof CLAIM_NOTHING_NEW | typeof CLAIM_CHAPTER; ref: string },
-): { pieces: number; scopes: number } {
-  let pieces = 0;
-  let scopes = 0;
+  input: { session: string; scope: string; by: typeof CLAIM_NOTHING_NEW | typeof CLAIM_CHAPTER; ref: string },
+): { pieces: number } {
   try {
-    for (const scope of buffer.scopes()) {
-      if (sessionStretch(buffer, input.session, [scope]) === null) continue;
-      const marks = buffer.claimCoverage({ scope, session: input.session, proposalId: `${input.by}:${input.ref}` });
-      if (marks.length === 0) continue;
-      pieces += marks.length;
-      scopes += 1;
-    }
+    const marks = buffer.claimCoverage({
+      scope: input.scope,
+      session: input.session,
+      proposalId: `${input.by}:${input.ref}:${String(buffer.now())}`,
+    });
+    return { pieces: marks.length };
   } catch {
-    /* see above */
+    return { pieces: 0 };
   }
-  return { pieces, scopes };
 }
 
 /** The writer a claim names, in the words the rows and the console use. */
@@ -392,30 +399,50 @@ function writerOf(claim: string, markSession: string, proposalSession: string | 
 
 /**
  * WHAT WAS CAPTURED IN ONE SCOPE AFTER `since`, by any session: how many
- * pieces, how many of them are not written up, and the latest piece's time —
- * piece times, never the registry's boundary clock, which a close bumps.
+ * pieces, how many are not written up, the first and last piece's time, and
+ * whether that is past the owed floor — piece times, never the registry's
+ * boundary clock, which a close bumps.
+ *
+ * `writer` is the session that wrote at `since` (a handoff's): its own pieces
+ * up to its next boundary after `since` are not "work since" — a handoff is
+ * written mid-turn, and that turn's Stop captures the prompt that asked for it
+ * afterwards (review of #289).
  */
 export function workSince(
   buffer: SpanBuffer,
   scope: string,
   since: number,
-): { pieces: number; unwritten: number; lastAt: number | null } {
+  opts: { writer?: string | null } = {},
+): { pieces: number; unwritten: number; firstAt: number | null; lastAt: number | null; overFloor: boolean } {
   const norm = (s: string): string => s.trim().replace(/\/+$/, "");
   let pieces = 0;
   let unwritten = 0;
+  let firstAt: number | null = null;
   let lastAt: number | null = null;
   for (const held of buffer.scopes()) {
     if (norm(held) !== norm(scope)) continue;
+    const writer = opts.writer ?? null;
+    let writerUntil = -Infinity;
+    if (writer !== null) {
+      const next = buffer
+        .boundaries(held)
+        .filter((b) => b.session === writer && typeof b.at === "number" && b.at >= since)
+        .map((b) => b.at);
+      writerUntil = next.length === 0 ? Infinity : Math.min(...next);
+    }
     const covered = buffer.coveredHashes(held);
     for (const s of piecesIn(buffer, held)) {
       const at = atOf(s);
       if (at <= since) continue;
+      if (s.session === writer && at <= writerUntil) continue;
       pieces += 1;
       if (!covered.has(s.hash)) unwritten += 1;
+      firstAt = Math.min(firstAt ?? Infinity, at);
       lastAt = Math.max(lastAt ?? 0, at);
     }
   }
-  return { pieces, unwritten, lastAt };
+  const floor = firstAt !== null && lastAt !== null && overFloor({ pieces, firstAt, lastAt });
+  return { pieces, unwritten, firstAt, lastAt, overFloor: floor };
 }
 
 // ── the rows ────────────────────────────────────────────────────────────────
@@ -448,8 +475,10 @@ type RowStore = Pick<Store, "appendEvent" | "eventLog" | "livedDay" | "getMeta" 
 const KNOWN_ROW_CEILING = 5_000;
 
 /**
- * THE ROWS — one per stretch per state, each under a dedup key, so a pass
- * that runs at every turn-end writes each fact once. Ids, counts and a code:
+ * THE ROWS — one per stretch per state, so a pass that runs at every
+ * turn-end writes each fact once: owed and lapsed under a dedup key (they are
+ * bounded, one per stretch), written-up rows with none, so the log's ordinary
+ * prune lets them go. Ids, counts and a code:
  * the scope as its buffer key (`keyFor`), never the path; no text.
  *
  * Written-up rows are read off `coverage.jsonl` from a watermark in meta. On a
@@ -473,15 +502,38 @@ export function recordCoverage(
     // runs at every turn-end: the keys already written are read once, so a
     // repeat costs a set lookup rather than a refused write.
     const known = new Set<string>();
-    for (const name of [COVERAGE_OWED_EVENT, COVERAGE_LAPSED_EVENT, COVERAGE_WRITTEN_EVENT]) {
+    for (const name of [COVERAGE_OWED_EVENT, COVERAGE_LAPSED_EVENT]) {
       for (const row of store.eventLog({ name, order: "desc", limit: KNOWN_ROW_CEILING })) {
         if (row.dedup_key !== null) known.add(row.dedup_key);
       }
     }
-    const append = (name: string, dedupKey: string, payload: Record<string, unknown>, ref?: string): void => {
-      if (known.has(dedupKey)) return;
-      known.add(dedupKey);
-      if (store.appendEvent({ name, day, dedupKey, payload, ...(ref === undefined ? {} : { ref }) }) !== 0) rows += 1;
+    // Written-up rows carry NO dedup key, so the log's ordinary prune lets them
+    // go (review of #289); a repeat inside the re-read window is found by the
+    // same key rebuilt from the recent rows themselves.
+    for (const row of store.eventLog({ name: COVERAGE_WRITTEN_EVENT, order: "desc", limit: KNOWN_ROW_CEILING })) {
+      try {
+        const p = JSON.parse(row.payload ?? "{}") as Record<string, unknown>;
+        known.add(writtenKey(String(p["scope"] ?? ""), String(p["session"] ?? ""), row.ref ?? ""));
+      } catch {
+        /* a row that will not parse is not a repeat of anything */
+      }
+    }
+    const append = (
+      name: string,
+      key: string,
+      payload: Record<string, unknown>,
+      opts: { ref?: string; dedup: boolean },
+    ): void => {
+      if (known.has(key)) return;
+      known.add(key);
+      const seq = store.appendEvent({
+        name,
+        day,
+        payload,
+        ...(opts.dedup ? { dedupKey: key } : {}),
+        ...(opts.ref === undefined ? {} : { ref: opts.ref }),
+      });
+      if (seq !== 0) rows += 1;
     };
     for (const e of ledger(buffer, opts)) {
       const s = e.stretch;
@@ -498,13 +550,15 @@ export function recordCoverage(
       };
       if (e.owed) {
         owed += 1;
-        append(COVERAGE_OWED_EVENT, `${COVERAGE_OWED_EVENT}:${e.session}:${String(s.firstAt)}`, payload);
+        append(COVERAGE_OWED_EVENT, `${COVERAGE_OWED_EVENT}:${e.session}:${String(s.firstAt)}`, payload, { dedup: true });
       } else {
         lapsed += 1;
-        append(COVERAGE_LAPSED_EVENT, `${COVERAGE_LAPSED_EVENT}:${e.session}:${String(s.firstAt)}`, {
-          ...payload,
-          daysOfUse: e.daysOfUseSince,
-        });
+        append(
+          COVERAGE_LAPSED_EVENT,
+          `${COVERAGE_LAPSED_EVENT}:${e.session}:${String(s.firstAt)}`,
+          { ...payload, daysOfUse: e.daysOfUseSince },
+          { dedup: true },
+        );
       }
     }
     const through = Number(store.getMeta(COVERAGE_WRITTEN_THROUGH_KEY) ?? "NaN");
@@ -520,12 +574,17 @@ export function recordCoverage(
   }
 }
 
+/** The key a written-up row is known by: scope key, session, claim. */
+function writtenKey(scopeKey: string, session: string, claim: string): string {
+  return `${COVERAGE_WRITTEN_EVENT}:${scopeKey}:${session}:${claim}`;
+}
+
 /** One row per claim made after `from`: a claim is one stretch written up. */
 function writtenRows(
   buffer: SpanBuffer,
   from: number,
   opts: LedgerOptions,
-  append: (name: string, dedupKey: string, payload: Record<string, unknown>, ref?: string) => void,
+  append: (name: string, key: string, payload: Record<string, unknown>, opts: { ref?: string; dedup: boolean }) => void,
 ): number {
   let n = 0;
   for (const scope of buffer.scopes()) {
@@ -549,7 +608,7 @@ function writtenRows(
       const minutes = times.length === 0 ? 0 : Math.floor((Math.max(...times) - Math.min(...times)) / 60_000);
       append(
         COVERAGE_WRITTEN_EVENT,
-        `${COVERAGE_WRITTEN_EVENT}:${keyFor(scope)}:${g.session}:${g.claim}`,
+        writtenKey(keyFor(scope), g.session, g.claim),
         {
           session: g.session,
           scope: keyFor(scope),
@@ -557,7 +616,7 @@ function writtenRows(
           minutes,
           by: writerOf(g.claim, g.session, proposals.get(g.claim)),
         },
-        g.claim,
+        { ref: g.claim, dedup: false },
       );
       n += 1;
     }

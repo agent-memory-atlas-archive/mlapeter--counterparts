@@ -433,6 +433,9 @@ export function daysLeft(writtenDay: number, day: number, lifeDays = HANDOFF_LIF
 
 // ── what the wake prints ────────────────────────────────────────────────────
 
+/** The shortest run that counts as a sentence the excerpt may stop at. */
+export const EXCERPT_MIN_SENTENCE = 20;
+
 /** The marker a cut excerpt ends with. Three bytes, and the cut reserves them. */
 export const ELLIPSIS = "\u2026";
 
@@ -452,8 +455,11 @@ function isHeading(line: string): boolean {
  *
  * A sentence, not the line (2026-09-30): a pointer that stops at 160 bytes in
  * the middle of a second sentence reads as a fragment of something the reader
- * was not shown. A sentence ends at `.`, `!` or `?` followed by a space; a
- * version number or a path keeps its dots.
+ * was not shown. A sentence ends at `.`, `!` or `?` followed by a space, and
+ * only once it is `EXCERPT_MIN_SENTENCE` characters long — so "Step 2.",
+ * "e.g." and a list number are not sentences (review of #289); a leading list
+ * marker ("1.", "2)", "-", "*") is dropped first. With no such end, the byte
+ * cap cuts. A version number or a path keeps its dots.
  */
 export function excerpt(body: string, capBytes = HANDOFF_EXCERPT_BYTES): string {
   const lines = body.split("\n");
@@ -463,8 +469,14 @@ export function excerpt(body: string, capBytes = HANDOFF_EXCERPT_BYTES): string 
   // case still fails…"` produced a pointer that said nothing at all
   // (adversarial review MINOR-6).
   const line = lines.find((l) => !isHeading(l)) ?? lines.find((l) => l.trim().length > 0) ?? body;
-  const flat = flatten(line);
-  const first = /^.*?[.!?](?=\s)/u.exec(flat)?.[0] ?? flat;
+  const flat = flatten(line).replace(/^(?:[-*+•]|\d{1,3}[.)])\s+/u, "");
+  let first = flat;
+  for (const m of flat.matchAll(/[.!?](?=\s)/gu)) {
+    const end = (m.index ?? 0) + 1;
+    if (end < EXCERPT_MIN_SENTENCE) continue;
+    first = flat.slice(0, end);
+    break;
+  }
   if (byteLengthOf(first) <= capBytes) return first;
   // The ellipsis is THREE bytes, not one: `…` is U+2026. Reserving a character
   // rather than its bytes is how a cap that says 160 renders 161 — measured,
@@ -481,25 +493,23 @@ export function excerpt(body: string, capBytes = HANDOFF_EXCERPT_BYTES): string 
 /**
  * HOW CURRENT THE POINTER IS (2026-09-30), computed at delivery by whoever
  * splices it: when it was written, as a person reads it in the store's zone,
- * and — when sessions here captured anything after that — how long the work
- * went on (from the pieces' own times, never the registry's boundary clock,
- * which a close bumps) and whether it has been written up since.
+ * and — when sessions here captured work after that, past the owed floor —
+ * when that work ran (the pieces' own times, never the registry's boundary
+ * clock, which a close bumps) and whether it has been written up since.
  */
 export interface PointerSince {
   /** `09-29 12:47`. */
   readonly written: string;
-  readonly after: { readonly minutes: number; readonly writtenUp: boolean } | null;
+  /** `from` and `to` as the caller spells them: `13:02`, or `09-30 13:02`
+   *  when the day is not the one before it. */
+  readonly after: { readonly from: string; readonly to: string; readonly writtenUp: boolean } | null;
 }
 
 /** The widest `PointerSince` the words can take — what the reserve is sized to. */
-export const WIDEST_POINTER_SINCE: PointerSince = { written: "12-31 23:59", after: { minutes: 89, writtenUp: false } };
-
-function aboutWords(minutes: number): string {
-  if (minutes < 90) return minutes <= 1 ? "about a minute" : `about ${String(minutes)} minutes`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 48) return `about ${String(hours)} hours`;
-  return `about ${String(Math.round(hours / 24))} days`;
-}
+export const WIDEST_POINTER_SINCE: PointerSince = {
+  written: "12-31 23:59",
+  after: { from: "12-31 23:59", to: "12-31 23:59", writtenUp: false },
+};
 
 /** What the brackets after "Where I left off" say. */
 function whenWords(h: Handoff, since: PointerSince | null): string {
@@ -508,7 +518,7 @@ function whenWords(h: Handoff, since: PointerSince | null): string {
   }
   const written = `written ${since.written}`;
   if (since.after === null) return written;
-  return `${written}; ${aboutWords(since.after.minutes)} of work here since, ${since.after.writtenUp ? "written up since" : "not yet written up"}`;
+  return `${written}; work here ${since.after.from}\u2013${since.after.to} since, ${since.after.writtenUp ? "written up since" : "not yet written up"}`;
 }
 
 /** The pointer's first line: when it was written, how current it is, and the

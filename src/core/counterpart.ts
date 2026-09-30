@@ -126,7 +126,7 @@ import {
 } from "./handoff/index.js";
 import type { Handoff, HandoffRefusal, HandoffWrite, PointerSince } from "./handoff/index.js";
 import { CLAIM_CHAPTER, askFromStretch, claimUnwritten, sessionStretch, workSince } from "./coverage/index.js";
-import { localStamp } from "./time.js";
+import { localStamp, localStampAfter } from "./time.js";
 import {
   BRIEFING_KEY,
   BRIEFING_TRIM_LOG_CAP,
@@ -1827,21 +1827,29 @@ export class Counterpart {
 
   /**
    * HOW CURRENT THIS DIRECTORY'S POINTER IS, at delivery (2026-09-30): when
-   * it was written, in the store's zone, and what sessions here captured after
-   * that — how long the work went on, by the pieces' own times, and whether it
-   * is written up (`coverage/#workSince`). Null when the write time is unknown:
-   * the line then says the date alone, as it always did.
+   * it was written, in the store's zone, and — when sessions here captured work
+   * past the owed floor after that, not counting the writing session's own turn
+   * — when that work ran, by the pieces' own times, and whether it is written up
+   * (`coverage/#workSince`). Null when the write time is unknown: the line then
+   * says the date alone, as it always did.
    */
   private handoffSince(h: Handoff, scope: string): PointerSince | null {
     const writtenAt = this.handoffs.writtenAt(h);
     if (writtenAt === null) return null;
-    const work = workSince(this.spans, scope, writtenAt);
+    const zone = this.store.zone();
+    const work = workSince(this.spans, scope, writtenAt, { writer: h.session });
+    if (!work.overFloor || work.firstAt === null || work.lastAt === null) {
+      return { written: localStamp(writtenAt, zone), after: null };
+    }
+    // A clock time alone while the day is the one before it; the day as well
+    // when it is not.
     return {
-      written: localStamp(writtenAt, this.store.zone()),
-      after:
-        work.pieces === 0 || work.lastAt === null
-          ? null
-          : { minutes: Math.max(1, Math.round((work.lastAt - writtenAt) / 60_000)), writtenUp: work.unwritten === 0 },
+      written: localStamp(writtenAt, zone),
+      after: {
+        from: localStampAfter(work.firstAt, writtenAt, zone),
+        to: localStampAfter(work.lastAt, work.firstAt, zone),
+        writtenUp: work.unwritten === 0,
+      },
     };
   }
 
@@ -2805,8 +2813,10 @@ export class Counterpart {
   appendEpisode(
     sessionId: string,
     text: string,
-    /** `model`: the model writing this chapter, when the host knows it. */
-    opts: { day?: number; title?: string; happenedOn?: string; model?: string } = {},
+    /** `model`: the model writing this chapter, when the host knows it.
+     *  `scope`: the project it was written in — the one whose unwritten pieces
+     *  it writes up (`coverage/`); without it, a chapter claims nothing. */
+    opts: { day?: number; title?: string; happenedOn?: string; model?: string; scope?: string } = {},
   ): ChapterResult {
     const verdict = episodeGate()({ text, handles: [], sessionId });
     if (!verdict.ok) {
@@ -2825,12 +2835,18 @@ export class Counterpart {
     }
     // The GATE's text, never the draft — the same rule ingestion follows.
     const body = verdict.text !== undefined && verdict.text.length > 0 ? verdict.text : text;
-    const written = this.self.appendChapter(sessionId, body, opts);
+    const { scope, ...chapterOpts } = opts;
+    const written = this.self.appendChapter(sessionId, body, chapterOpts);
     // A CHAPTER WRITES THE SESSION'S STRETCH UP (2026-09-30): a claim naming
-    // the episode, with no proposal behind it, in the one file the coverage
-    // ledger reads.
-    if (written.reason === "appended" && written.episodeId !== null && !this.observer) {
-      claimUnwritten(this.spans, { session: sessionId, by: CLAIM_CHAPTER, ref: written.episodeId });
+    // the episode and the chapter, with no proposal behind it, in the one file
+    // the coverage ledger reads — in the project it was written in only.
+    if (written.reason === "appended" && written.episodeId !== null && !this.observer && scope !== undefined && scope.length > 0) {
+      claimUnwritten(this.spans, {
+        session: sessionId,
+        scope,
+        by: CLAIM_CHAPTER,
+        ref: `${written.episodeId}#${String(written.chapter)}`,
+      });
     }
     return {
       appended: written.reason === "appended",
