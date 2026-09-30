@@ -361,7 +361,7 @@ export function configObject(input: ConfigInput): Record<string, unknown> {
 }
 
 /** The `embedder` block `install` writes: `{ enabled, kind? }`, the shape
- *  `claude-code/config.ts#loadConfig` reads strictly. */
+ *  `adapters/config.ts#loadConfig` reads strictly. */
 export interface EmbedderBlock {
   readonly enabled: boolean;
   readonly kind?: EmbedderKind;

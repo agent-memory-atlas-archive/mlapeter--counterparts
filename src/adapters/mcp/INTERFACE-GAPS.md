@@ -261,16 +261,12 @@ the ambiguous handle, and the confidential shadow — "the handle door, across p
 before this session started (G50 review)" for the floor, plus `test/sessions.test.ts` "the
 handle-resolution log" for the file's own rules.
 
-**What the tool DESCRIPTION still owes, and it is an owner call.** `tools.ts`'s `recall`
-privilege still reads "It writes nothing and trains nothing: ranking is not recording, so
-nothing you look at here gets stronger for having been looked at." The first half stays
-true — `build()` is pure, no `resolveUse`, no `coactivate`, and the one write is host
-state. The last clause has been false since the credit seam landed (#99, 2026-09-14): a
-memory the session EXPANDS is credited at the boundary, by id then and by handle now. It is
-left alone here on purpose, because correcting it is not a wording change: telling the
-model that expanding strengthens a memory hands it a lever on the reinforcement signal it
-is being measured by, and whether the description says so is the owner's ruling, not this
-branch's. `CONTRACT.md` §3 now carries the accurate sentence for readers of this repo.
+**The tool DESCRIPTION — corrected since.** `tools.ts`'s `recall` privilege used to read
+"It writes nothing and trains nothing: ranking is not recording, so nothing you look at here
+gets stronger for having been looked at", which was false from the credit seam (#99,
+2026-09-14) on. It now says what `CONTRACT.md` §3 says: a search strengthens nothing, and
+EXPANDING a memory in full is using it, credited at the session boundary once per lived day
+(`tools.ts`, the `recall` entry's first privilege).
 
 **What it still owes.** The `ids` path is untouched: a literal id that has been SUPERSEDED
 still credits nothing, because `Store.resolve` follows the forwarding address inside

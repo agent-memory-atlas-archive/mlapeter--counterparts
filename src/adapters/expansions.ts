@@ -12,7 +12,7 @@
  * invisible: the boundary row said `expanded: 0, unresolvedHandles: 1`.
  *
  * **Why a log and not a session field.** There is no per-session "expanded ids"
- * state the credit pass reads; `claude-code/hooks.ts#creditAtBoundary` takes its
+ * state the credit pass reads; `lifecycle.ts#creditAtBoundary` takes its
  * expansions from the TRANSCRIPT (`transcript.ts#expansionIdsOf`) and slices
  * them by the same turn cursor capture uses. That is the thing to preserve: the
  * transcript already decides WHICH handles this session used and WHEN. This file
@@ -34,8 +34,9 @@
  * against the turn cursor, so an expansion from turn 3 would be re-credited at
  * every later boundary.
  *
- * **Neither adapter imports the other.** The MCP tool writes, the Claude Code
- * hook reads, and they meet here — the same shape, and for the same reason, as
+ * **Neither adapter imports the other.** The MCP tool writes, the host
+ * lifecycle's boundary reads (`lifecycle.ts`, driven by the Claude Code hook),
+ * and they meet here — the same shape, and for the same reason, as
  * `adapters/sessions.ts` (mcp/INTERFACE-GAPS §7: adapters are leaves, a shared
  * sibling is what that rule allows).
  *

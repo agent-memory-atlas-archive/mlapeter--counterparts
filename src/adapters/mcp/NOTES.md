@@ -7,11 +7,16 @@ defaults, revisable without ceremony (constitution 13).*
 
 `protocol.ts` (JSON-RPC 2.0 framing) · `tools.ts` (the registry that makes a
 description auditable) · `deliberate.ts` (the deeper look) · `server.ts` (message
-dispatch and the four tools) · `stdio.ts` (the pump) · `bin/serve.ts` (entry).
-No SDK, no dependency: the wire is ~160 lines because newline-delimited JSON-RPC
-is a small thing to write and a large thing to depend on.
+dispatch and the tools — nine today: note, recall, status, session_end, chapter,
+scope, self_page, dream, reflect) · `write-up.ts` (the next-session write-up's door)
+· `stdio.ts` (the pump) · `bin/serve.ts` (entry). No SDK, no dependency: the wire is
+~160 lines because newline-delimited JSON-RPC is a small thing to write and a large
+thing to depend on.
 
 ## Four tools, and why not three
+
+*(Written when there were four; the section's argument is about `session_end` and
+still holds. The tools since are recorded where each was added, below.)*
 
 The contract says three verbs. `session_end` is the fourth because
 `claude-code/INTERFACE-GAPS.md` §7 filed a live gap: the boundary raises an
@@ -53,7 +58,11 @@ from becoming the second front door CONTRACT §7 OQ1 warns about.
 
 ## Host wiring the owner still has to do
 
-`package.json` has no `bin` entry for the server (this build was scoped to
+*(Now: `package.json` has the `counterparts-mcp` bin entry, and `counterparts install`
+registers it with `claude mcp add`. The paragraph below is the state when this was
+first built.)*
+
+`package.json` had no `bin` entry for the server (this build was scoped to
 `src/adapters/mcp/`, `src/adapters/cli/` and their two test files). A host
 registers it as:
 
@@ -70,12 +79,13 @@ covers rather than in another directory.
 `--owner` marks the owner's own session (confidential material is returned only
 there); `--observer` stands every tool down over the wire.
 
-## Verified live? No — and the suite says so
+## Verified live? Yes, since the parallel run
 
-Every test here runs against a temp store with a faked stdin. Nothing has spoken
-to a real MCP client. Per CLAUDE.md's definition of done, that makes this
-**merged, not verified**: the outstanding proof is one real host completing a
-handshake, listing the tools, and calling `session_end` at a real boundary.
+*(Updated 2026-09-30.)* When this was written nothing had spoken to a real MCP client.
+It has since run as the owner's live memory from 2026-09-03, through Claude Code's
+handshake, tool listing and real `session_end` / `chapter` calls at real boundaries, and
+from the published package since 2026-09-21. The suite still runs against a temp store with
+a faked stdin; the live record is the store's `mcp.*` and `adapter.*` rows, not a test.
 
 ## The configuration is named the same way everywhere now (2026-09-05)
 

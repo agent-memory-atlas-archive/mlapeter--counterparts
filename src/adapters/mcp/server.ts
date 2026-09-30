@@ -66,8 +66,8 @@ import {
   writeScopes,
 } from "../scopes.js";
 import type { ScopeMode, ScopeRegistry, ScopeVerdict } from "../scopes.js";
+import { DEFAULT_HOST, wordingFor } from "../hosts.js";
 import {
-  RECONNECT_REMEDY,
   SERVER_HEARTBEAT_MS,
   SESSION_TTL_MS,
   canonicalScope,
@@ -126,14 +126,25 @@ export const SERVER_VERSION = "0.3.8";
 /**
  * THE ONE LINE EVERY TOOL ANSWERS WITH when the store on disk is a schema AHEAD
  * of the code this process loaded — a newer build migrated it after this
- * server started (`call`'s schema gate). The same sentence for all seven
- * tools, ending in the same remedy the hook's update notice ends in.
+ * server started (`call`'s schema gate). The same sentence for every tool,
+ * ending in the same remedy the hook's update notice ends in.
+ *
+ * The remedy is the HOST's (`hosts.ts`, 2026-09-30): `/mcp` is Claude Code's
+ * command, so the sentence a server hands back is built from the wording of
+ * the host it serves (`McpServerOptions.host`). The constant is Claude Code's,
+ * unchanged.
  */
-export const STALE_SERVER_REFUSAL = `Counterparts was updated and this server is still running the old version, so this tool did nothing. ${RECONNECT_REMEDY}`;
+export function staleServerRefusal(host: string = DEFAULT_HOST): string {
+  return `Counterparts was updated and this server is still running the old version, so this tool did nothing. ${wordingFor(host).reconnect}`;
+}
+export const STALE_SERVER_REFUSAL = staleServerRefusal(DEFAULT_HOST);
 
-/** The gate's refusal when the stamps could not be read at all. */
-export const SCHEMA_UNREADABLE_REFUSAL =
-  "This server could not read which version the memory store is at, so this tool did nothing. Run /mcp and Reconnect; if that does not help, run `counterparts doctor`.";
+/** The gate's refusal when the stamps could not be read at all — the same
+ *  first step, in the host's words. */
+export function schemaUnreadableRefusal(host: string = DEFAULT_HOST): string {
+  return `This server could not read which version the memory store is at, so this tool did nothing. ${wordingFor(host).reconnectFirst}; if that does not help, run \`counterparts doctor\`.`;
+}
+export const SCHEMA_UNREADABLE_REFUSAL = schemaUnreadableRefusal(DEFAULT_HOST);
 
 /** And when the store was merely busy past the wait: a retry, not a reconnect. */
 export const STORE_BUSY_REFUSAL =
@@ -177,10 +188,12 @@ export interface McpServerOptions {
    */
   session?: string;
   /**
-   * The project this server's sessions belong to. Defaults to `process.cwd()`,
-   * which is MEASURED to be the project directory on this host: `lsof` on four
-   * running servers, 2026-09-04, showed each one's cwd was the directory its
-   * session ran in. The store's dir is the last resort, and it is a bad scope —
+   * The project this server's sessions belong to. Absent, it is what the host
+   * offered (`hostScope`): `CLAUDE_PROJECT_DIR` first — the variable the hooks
+   * file a session under — then `process.cwd()`, which is MEASURED to be the
+   * project directory on this host: `lsof` on four running servers, 2026-09-04,
+   * showed each one's cwd was the directory its session ran in. The store's dir
+   * is the last resort, and it is a bad scope —
    * every memory authored through this server carried the store path as
    * `origin_scope` for the whole run because it was the only default.
    */
@@ -219,12 +232,22 @@ export interface McpServerOptions {
    * process. The launch stderr line is the one thing computed once.
    */
   scopesFile?: string;
+  /**
+   * WHICH HOST THIS SERVER SERVES (`hosts.ts`, 2026-09-30), for the words a
+   * result says about the host — today, how to reconnect after an update.
+   * Absent: `DEFAULT_HOST`, Claude Code, which is every launch `bin/serve.ts`
+   * makes today.
+   */
+  host?: string;
   onEvent?: (e: McpEvent) => void;
   now?: () => number;
 }
 
 /** The narrow face of `claude-code/embed-client.ts`'s `LiveEmbedder` this
- *  adapter needs — structural, so `mcp/` imports no other adapter. */
+ *  adapter needs — structural, so the server library imports no other adapter.
+ *  (The entry point, `bin/serve.ts`, still opens the embedder through
+ *  `claude-code/embed-client.ts`; its configuration comes from the shared
+ *  `adapters/config.ts` since 2026-09-30.) */
 export interface QuestionEmbedder {
   vector(text: string): Promise<number[] | null>;
 }
@@ -338,6 +361,8 @@ export class McpServer {
   readonly owner: boolean;
   /** One predicate, one definition: the store's (observer-mode G7). */
   readonly observer: boolean;
+  /** The host this server serves, for its words about the host (`hosts.ts`). */
+  readonly host: string;
 
   private readonly embedder: QuestionEmbedder | null;
   private readonly registryDir: string;
@@ -370,6 +395,7 @@ export class McpServer {
     this.scopesFile =
       opts.scopesFile !== undefined && opts.scopesFile.length > 0 ? opts.scopesFile : null;
     this.sessionTtlMs = opts.sessionTtlMs ?? SESSION_TTL_MS;
+    this.host = opts.host ?? DEFAULT_HOST;
     this.observer = opts.counterpart.observer;
     // An observer is a non-owner regardless of what the host claimed
     // (observer-mode G7): an instrument reading somebody's store is not them.
@@ -611,7 +637,7 @@ export class McpServer {
     }
     if (verdict.kind === "unreadable") {
       this.emit("mcp.schema.unreadable", undefined, { tool, at });
-      return this.refuse(tool, "schema-unreadable", { detail: SCHEMA_UNREADABLE_REFUSAL });
+      return this.refuse(tool, "schema-unreadable", { detail: schemaUnreadableRefusal(this.host) });
     }
     this.emit("mcp.schema.ahead", undefined, {
       tool,
@@ -622,7 +648,7 @@ export class McpServer {
       cacheExpected: CACHE_SCHEMA_VERSION,
     });
     return this.refuse(tool, "schema-ahead", {
-      detail: STALE_SERVER_REFUSAL,
+      detail: staleServerRefusal(this.host),
       store: { expected: SCHEMA_VERSION, found: verdict.store, ahead: verdict.storeAhead },
       cache: { expected: CACHE_SCHEMA_VERSION, found: verdict.cache, ahead: verdict.cacheAhead },
     });
