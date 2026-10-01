@@ -29,9 +29,9 @@ import type { Counterpart } from "../../core/counterpart.js";
 import { sessionsHere } from "../../core/coverage/index.js";
 import { wireChars } from "../../core/fit/index.js";
 import { sessionWords } from "../../core/handoff/index.js";
-import { chaptersBySession } from "../../core/handoff/last-here.js";
+import { LAST_HERE_LIFE_DAYS, chaptersBySession, latestChapter } from "../../core/handoff/last-here.js";
 import { strength } from "../../core/physics/index.js";
-import { isConfidential, isSelfPage, readRecencyAsk, standingOf } from "../../core/recall/index.js";
+import { isConfidential, isSelfPage, localKey, readRecencyAsk, standingOf } from "../../core/recall/index.js";
 import { localStamp } from "../../core/time.js";
 import type { CandidateVerdict, FeelingWhose, SemanticSource, Verdict } from "../../core/recall/index.js";
 import { ownerNames } from "../../core/sleep/index.js";
@@ -628,7 +628,10 @@ export function expandHandle(
  * "this session" for the asker's own, the short id otherwise, "an earlier
  * session" when the row names none — the directory with the home directory
  * as `~`, and when, in the store's zone (a chapter: its latest write). Only
- * what the row already knows; nothing is backfilled. Never throws.
+ * what the row already knows; nothing is backfilled. A row the nightly run
+ * made says so — "a dream launched from session …", "a reflection" — rather
+ * than reading as that session's own words (review of #302, MAJOR-1), and one
+ * carried over from an older store says that. Never throws.
  */
 export function provenanceOf(store: Counterpart["store"], id: string, reader: string | null = null): string | null {
   try {
@@ -639,7 +642,16 @@ export function provenanceOf(store: Counterpart["store"], id: string, reader: st
       const meta = JSON.parse(row.meta || "{}") as Record<string, unknown>;
       session = typeof meta["sessionId"] === "string" ? meta["sessionId"] : null;
     }
-    const who = session === null || session.length === 0 ? "an earlier session" : sessionWords(session, null, reader);
+    const named = session === null || session.length === 0 ? null : sessionWords(session, null, reader);
+    const made = nightlyMade(row);
+    const who =
+      made === "dream"
+        ? named === null ? "a dream" : `a dream launched from ${named}`
+        : made === "reflection"
+          ? "a reflection"
+          : row.source === "migrated"
+            ? "carried over from an older store"
+            : (named ?? "an earlier session");
     const home = homedir();
     const scope = row.origin_scope;
     const where =
@@ -654,6 +666,14 @@ export function provenanceOf(store: Counterpart["store"], id: string, reader: st
   } catch {
     return null;
   }
+}
+
+/** Was this row made by the nightly run — a dream's, or a reflection's? */
+function nightlyMade(row: { source: string | null; origin_ref: string | null }): "dream" | "reflection" | null {
+  const ref = row.origin_ref ?? "";
+  if (row.source === "dreamed" || ref.startsWith("dream:")) return "dream";
+  if (row.source === "reflection" || ref.startsWith("reflection:")) return "reflection";
+  return null;
 }
 
 function fromField(store: Counterpart["store"], id: string, reader: string): { from?: string } {
@@ -853,10 +873,13 @@ export function answerQuestion(
     });
   }
 
-  // A QUESTION ABOUT TIME (2026-09-30): this directory's most recent session
-  // — its chapter, then what it wrote, newest first — leads the answer.
-  const recent = recentRows(counterpart, question, opts);
-  const answer = recent === null ? memories : leadWith(counterpart, memories, recent.ids, opts);
+  // A QUESTION ABOUT TIME (2026-09-30): the session it means — its chapter,
+  // then what it wrote, newest first — leads the answer. Not when the answer
+  // is a RANKED question about feeling: that order is the strongest stamp's,
+  // and a recency lead on top of it would answer a different question
+  // (review of #302, MINOR-3).
+  const recent = built.feeling?.ranked === true ? null : recentRows(counterpart, question, opts);
+  const answer = recent === null ? memories : leadWith(counterpart, memories, recent, opts);
 
   return {
     path: "question",
@@ -867,7 +890,15 @@ export function answerQuestion(
     storeSize: decision.storeSize,
     ambiguous: [],
     blockedBy,
-    ...(recent === null ? {} : { recent: { session: recent.session.slice(0, 8), cue: recent.cue, rows: recent.ids.length } }),
+    ...(recent === null || !answer.some((m) => m.recent === true)
+      ? {}
+      : {
+          recent: {
+            session: recent.sessions.map((s) => s.slice(0, 8)).join(", "),
+            cue: recent.cue,
+            rows: answer.filter((m) => m.recent === true).length,
+          },
+        }),
   };
 }
 
@@ -875,102 +906,183 @@ export function answerQuestion(
  *  first, after its chapter. Adapter-owned, like `DELIBERATE_DIM_CAP`. */
 export const RECENT_MEMORIES_MAX = 8;
 
-/** How many of this directory's sessions, newest first, are looked through
- *  for one that wrote something. */
+/** How many candidate sessions are looked through for one that wrote
+ *  something here. */
 export const RECENT_SESSIONS_LOOKED = 5;
+
+/** What a question about time puts first: whose rows, the phrase that asked,
+ *  the ids in order, and whether to LEAD with them or only promote the ones
+ *  the search found too. */
+interface RecentRows {
+  readonly sessions: readonly string[];
+  readonly cue: string;
+  readonly ids: readonly string[];
+  /** The chapters among `ids`, whose copies leave the rest of the list. */
+  readonly chapters: readonly string[];
+  readonly lead: boolean;
+}
 
 /**
  * THE ROWS A QUESTION ABOUT TIME PUTS FIRST, or null (2026-09-30, the
- * continuity test). Only when the question asks about the recent past
- * (`recall/recency-ask.ts`) and names a directory: the newest session that ran
- * here (`coverage/#sessionsHere`), not the asker, that left a chapter or a
- * memory — its latest chapter, then up to `RECENT_MEMORIES_MAX` of the
- * memories it wrote, newest first. A chapter's own copy is the chapter, a
- * replaced row is left for its successor, and confidential rows are withheld
- * from a session that is not the owner's, silently, as a list withholds.
- * Never throws: a store that will not answer has no recent session.
+ * continuity test; review of #302). Only when the question asks about the
+ * recent past (`recall/recency-ask.ts`) and names a directory.
+ *
+ * WHICH SESSION. A question that names a window ("this morning", "yesterday",
+ * "16:01–17:48") means the sessions here, not the asker, that were at work in
+ * it — none, no lead. Otherwise "the most recent session" is the one the
+ * wake's "Last here" line names (`Counterpart#chaptersHereFor`); failing that,
+ * the newest session here that has ENDED (a `session-end`, or work that
+ * stopped before the asker's began); a live sibling only after those.
+ *
+ * WHICH ROWS. The session's latest chapter, then up to `RECENT_MEMORIES_MAX`
+ * of the memories it wrote, newest first — in THIS directory when the row
+ * says where, never the nightly run's dreams or reflections (whose session is
+ * the one that launched them), never a chapter's copy (the chapter is shown),
+ * never a replaced row, and no confidential row for a session that is not the
+ * owner's, silently, as a list withholds. One row that will not read costs
+ * that row, not the lane.
+ *
+ * LEAD OR PROMOTE. A thin question ("what do you remember from our most
+ * recent session?") leads with them; one that also asks about something
+ * ("what did we decide about the deploy today?") only moves up those the
+ * search found as well. Never throws.
  */
-function recentRows(
-  counterpart: Counterpart,
-  question: string,
-  opts: DeliberateOptions,
-): { session: string; cue: string; ids: string[] } | null {
+function recentRows(counterpart: Counterpart, question: string, opts: DeliberateOptions): RecentRows | null {
   const scope = opts.scope?.trim() ?? "";
   if (scope.length === 0) return null;
-  const cue = readRecencyAsk(question);
-  if (cue === null) return null;
+  const store = counterpart.store;
+  let ask: ReturnType<typeof readRecencyAsk>;
   try {
-    const store = counterpart.store;
-    const sessions = sessionsHere(counterpart.spans, scope).filter((s) => s.session !== opts.sessionId);
-    const chapters = chaptersBySession(store);
-    for (const { session } of sessions.slice(0, RECENT_SESSIONS_LOOKED)) {
-      const ids: string[] = [];
-      const chapter = chapters.get(session);
-      const shown = (id: string): boolean => {
-        const read = store.read(id);
-        return opts.owner || !isConfidential(read.doc);
-      };
-      if (chapter !== undefined && shown(chapter.id)) ids.push(chapter.id);
-      const written = store
-        .list({ type: "memory", archived: false, originSession: session })
-        .map((id) => store.row(id))
-        .filter((r): r is NonNullable<typeof r> => r !== undefined && r.superseded_by === null)
-        // A chapter's copy is the chapter (recall §3, U13).
-        .filter((r) => !(r.source === "episode" && chapter !== undefined && r.origin_ref === chapter.id))
-        .sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0) || (a.id < b.id ? 1 : -1));
-      for (const r of written) {
-        if (ids.length >= RECENT_MEMORIES_MAX + (chapter === undefined ? 0 : 1)) break;
-        if (shown(r.id)) ids.push(r.id);
-      }
-      if (ids.length > 0) return { session, cue, ids };
-    }
+    ask = readRecencyAsk(question, { now: store.now(), zone: store.zone() });
   } catch {
     return null;
   }
-  return null;
+  if (ask === null) return null;
+  try {
+    const zone = store.zone();
+    const all = sessionsHere(counterpart.spans, scope);
+    const asker = all.find((s) => s.session === opts.sessionId) ?? null;
+    const others = all.filter((s) => s.session !== opts.sessionId);
+    let candidates: string[];
+    if (ask.window !== null) {
+      const w = ask.window;
+      candidates = others
+        .filter((s) => localKey(s.firstAt, zone) <= w.to && localKey(s.lastAt, zone) >= w.from)
+        .map((s) => s.session);
+      if (candidates.length === 0) return null;
+    } else {
+      const named = counterpart.chaptersHereFor(scope, opts.sessionId)[0]?.chapter.session ?? null;
+      const ended = others.filter((s) => s.ended || (asker !== null && s.lastAt < asker.firstAt)).map((s) => s.session);
+      const live = others.map((s) => s.session);
+      candidates = [...new Set([...(named === null ? [] : [named]), ...ended, ...live])];
+    }
+    const chapters = chaptersBySession(store, { fromDay: Math.max(0, store.livedDay() - LAST_HERE_LIFE_DAYS + 1) });
+    const shown = (id: string): boolean => {
+      try {
+        return opts.owner || !isConfidential(store.read(id).doc);
+      } catch {
+        return false;
+      }
+    };
+    const norm = (s: string): string => s.trim().replace(/\/+$/, "");
+    const sessions: string[] = [];
+    const ids: string[] = [];
+    const chapterIds: string[] = [];
+    let memories = 0;
+    // With a window every session in it contributes; without one, the first
+    // that wrote anything here is THE session.
+    for (const session of candidates.slice(0, RECENT_SESSIONS_LOOKED)) {
+      const before = ids.length;
+      const chapter = chapters.get(session);
+      if (chapter !== undefined && (chapter.scope === null || norm(chapter.scope) === norm(scope)) && shown(chapter.id)) {
+        ids.push(chapter.id);
+        chapterIds.push(chapter.id);
+      }
+      const written: { id: string; at: number }[] = [];
+      for (const id of store.list({ type: "memory", archived: false, originSession: session })) {
+        try {
+          const r = store.row(id);
+          if (r === undefined || r.superseded_by !== null) continue;
+          if (nightlyMade(r) !== null) continue;
+          if (r.origin_scope !== null && r.origin_scope.length > 0 && norm(r.origin_scope) !== norm(scope)) continue;
+          // A chapter's copy is the chapter (recall §3, U13).
+          if (r.source === "episode" && chapter !== undefined && r.origin_ref === chapter.id) continue;
+          written.push({ id, at: r.created_at ?? 0 });
+        } catch {
+          continue;
+        }
+      }
+      written.sort((a, b) => b.at - a.at || (a.id < b.id ? 1 : -1));
+      for (const w of written) {
+        if (memories >= RECENT_MEMORIES_MAX) break;
+        if (!shown(w.id)) continue;
+        ids.push(w.id);
+        memories += 1;
+      }
+      if (ids.length > before) sessions.push(session);
+      if (ask.window === null && ids.length > 0) break;
+    }
+    if (ids.length === 0) return null;
+    return { sessions, cue: ask.cue, ids, chapters: chapterIds, lead: ask.thin };
+  } catch {
+    return null;
+  }
 }
 
 /**
  * THE ANSWER WITH THE RECENT SESSION'S ROWS FIRST, in their order, each marked
- * `recent`; one the search also found keeps the tier it earned there, one it
- * did not comes in as `quiet`. Everything else follows as it was ranked.
+ * `recent`. Leading, a row the search did not reach comes in as `quiet` — put
+ * there by the question, not by the gate; a chapter shows its LATEST chapter,
+ * not its first (review of #302, MINOR-4). Promoting only, just the rows the
+ * search found move up, keeping the tier they earned. Either way the lead
+ * chapters' copies leave the rest of the list (MINOR-5), and everything else
+ * follows as it was ranked.
  */
-function leadWith(
-  counterpart: Counterpart,
-  memories: readonly Recalled[],
-  ids: readonly string[],
-  opts: DeliberateOptions,
-): Recalled[] {
+function leadWith(counterpart: Counterpart, memories: readonly Recalled[], recent: RecentRows, opts: DeliberateOptions): Recalled[] {
   const store = counterpart.store;
   const found = new Map(memories.map((m) => [m.id, m]));
+  const latest = (m: Recalled): Recalled => (m.journal ? { ...m, body: latestChapter(m.body).text.trim() || m.body } : m);
   const lead: Recalled[] = [];
-  for (const id of ids) {
+  for (const id of recent.ids) {
     const held = found.get(id);
     if (held !== undefined) {
-      lead.push({ ...held, recent: true });
+      lead.push(latest({ ...held, recent: true }));
       continue;
     }
+    if (!recent.lead) continue;
     try {
       const read = store.read(id);
-      lead.push({
-        id,
-        tier: "quiet",
-        kind: read.physics.kind,
-        title: read.doc.title ?? null,
-        journal: read.doc.type === "episode",
-        body: read.doc.body,
-        strength: strength(read.physics, store.livedDay()),
-        activation: 0,
-        ...standingField(store, id, false),
-        ...fromField(store, id, opts.sessionId),
-        recent: true,
-      });
+      lead.push(
+        latest({
+          id,
+          tier: "quiet",
+          kind: read.physics.kind,
+          title: read.doc.title ?? null,
+          journal: read.doc.type === "episode",
+          body: read.doc.body,
+          strength: strength(read.physics, store.livedDay()),
+          activation: 0,
+          ...standingField(store, id, false),
+          ...fromField(store, id, opts.sessionId),
+          recent: true,
+        }),
+      );
     } catch {
       continue;
     }
   }
   const led = new Set(lead.map((m) => m.id));
-  return [...lead, ...memories.filter((m) => !led.has(m.id))];
+  const shownChapters = new Set(recent.chapters.filter((c) => led.has(c)));
+  const copyOfLead = (id: string): boolean => {
+    if (shownChapters.size === 0) return false;
+    try {
+      const r = store.row(id);
+      return r !== undefined && r.source === "episode" && r.origin_ref !== null && shownChapters.has(r.origin_ref);
+    } catch {
+      return false;
+    }
+  };
+  return [...lead, ...memories.filter((m) => !led.has(m.id) && !copyOfLead(m.id))];
 }
 
 /** The owner's names, for "whose" in a question about feeling. Never throws. */

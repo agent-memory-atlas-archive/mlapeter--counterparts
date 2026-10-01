@@ -330,20 +330,29 @@ credit at the boundary; reinforcement deltas handed to `physics/`.
     numbers only reach `BuildOutput.feeling`; no feeling's word reaches the decision
     record. Tests: `recall-feelings.test.ts`.
 
-20. **[M]** **A deliberate question about time leads with this directory's most recent
-    session** (2026-09-30, the continuity test — working default; `recency-ask.ts`,
-    `mcp/deliberate.ts#recentRows`). Only on the deliberate path, and only when the
-    caller names the asking session's directory (the MCP `recall`; not the console's
-    `ask`). A fixed list of phrases ("most recent", "last session", "this evening",
-    "today", "left off", …) or a clock time is the cue; no model reads the question. The
-    session is the newest that ran here (`coverage/#sessionsHere`), not the asker, that
-    left a chapter or a memory; its latest chapter and up to `RECENT_MEMORIES_MAX` (8)
-    of its live, unreplaced memories, newest first, are put FIRST, marked `recent: true`,
-    keeping the tier the search gave them or `quiet` when it did not reach them. A
-    chapter's copy is the chapter; confidential rows are withheld from a non-owner
-    silently, as a list withholds. It ADDS rows to the answer and moves none of the
-    rest: activation, the gate and the decision record are unchanged (the rows it adds
-    are not in `considered`). Tests: `continuity.test.ts`.
+20. **[M]** **A deliberate question about time leads with the session it means**
+    (2026-09-30, the continuity test; revised after the review of #302 — working default;
+    `recency-ask.ts`, `mcp/deliberate.ts#recentRows`). Only on the deliberate path, only
+    when the caller names the asking session's directory (the MCP `recall`; not the
+    console's `ask`), and not when the answer is a RANKED question about feeling (G19),
+    which keeps its own order. A fixed list of phrases ("most recent", "last session",
+    "where did we leave off", "this evening", "today", …) or a clock time with am/pm, "at",
+    or a range is the cue; no model reads the question. WHICH SESSION: a named window
+    ("this morning", "yesterday", "16:01–17:48") means the sessions here, not the asker,
+    at work in it, and none means no lead; otherwise the session the wake's "Last here"
+    line names (`Counterpart#chaptersHereFor`), then the newest one here that ended, then
+    a live sibling. WHICH ROWS: its latest chapter, shown from that chapter, and up to
+    `RECENT_MEMORIES_MAX` (8) of the memories it wrote in this directory, newest first,
+    never a dream's or a reflection's, never a replaced row or a chapter's copy (and the
+    lead chapter's copies leave the rest of the list). LEAD OR PROMOTE: a thin question
+    (nothing left once the cue and function words are out) puts them FIRST, marked
+    `recent: true`, a row the search did not reach coming in as `quiet`; any other only
+    moves up the ones the search found too. **This lane adds rows the gate never saw**:
+    a `quiet` row marked `recent` was put there by the question, not admitted by the
+    ambient bar, and the result's glossary says so. Activation, the gate and the
+    decision record are unchanged (the rows it adds are not in `considered`).
+    Confidential rows are withheld from a non-owner silently, as a list withholds.
+    Tests: `continuity.test.ts`.
 
 ## 6. Scars honored
 
@@ -370,8 +379,10 @@ is recallable, ranked or gated moves. The deliberate path carries the same as a
 ("this session" for the asker's own, the short id otherwise), its directory (home as `~`),
 and when it was written in the store's zone (a chapter: its latest write) —
 `session a1b2c3d4, ~/random, 09-30 17:41`. Read off the row (`origin_session`,
-`origin_scope`, `created_at`/`updated_at`); a row that recorded less says less, and "an
-earlier session" when it names no session. Nothing is backfilled. A label, like standing:
+`origin_scope`, `created_at`/`updated_at`); a row the nightly run made says so ("a dream
+launched from session …", "a reflection"), one carried over from an older store says
+that, a row that recorded less says less, and "an earlier session" when it names no
+session. Nothing is backfilled. A label, like standing:
 nothing about what is recallable or ranked moves. Episodes record their directory on
 `origin_scope` from 2026-09-30 on.
 

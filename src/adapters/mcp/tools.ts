@@ -541,12 +541,12 @@ const RECALL: ToolSpec = {
     },
     {
       claim:
-        "A question about time (\"our most recent session\", \"last time\", \"this evening\", \"today\", a clock time) is answered with THIS directory's most recent other session first: its latest chapter, then the memories it wrote, newest first, each marked `recent: true`. The rest follows, ranked as usual. Ask it plainly; nothing else needs to be passed.",
+        "A question about time is answered with the session it means first, marked `recent: true`: \"our most recent session\" or \"where did we leave off\" means the session the session-start \"Last here\" line named (else the newest one here that ended); \"this morning\", \"yesterday\", \"16:01–17:48\" mean the sessions here at work then. Its latest chapter comes first, then the memories it wrote here, newest first. Asked plainly, those lead; a question that is also about something else (\"what did we decide about the deploy today\") only moves up the ones the search found too. Not with a question about feeling, which keeps its own order. Nothing else needs to be passed.",
       mechanizedBy: "src/core/recall/recency-ask.ts#readRecencyAsk + src/adapters/mcp/deliberate.ts#answerQuestion (recentRows, leadWith)",
     },
     {
       claim:
-        "Every memory returned says where it came from in `from`: the session that wrote it (\"this session\" for yours), the directory, and when it was written, as far as the row recorded them. An older row says less, and \"an earlier session\" when it names none.",
+        "Every memory returned says where it came from in `from`: the session that wrote it (\"this session\" for yours), the directory, and when it was written, as far as the row recorded them. A row the nightly run made says so (\"a dream launched from session …\", \"a reflection\"). An older row says less, and \"an earlier session\" when it names none.",
       mechanizedBy: "src/adapters/mcp/deliberate.ts#provenanceOf",
     },
     {
@@ -564,7 +564,7 @@ const RECALL: ToolSpec = {
       question: {
         type: "string",
         description:
-          "What you are trying to remember, in words. Runs the deeper retrieval and answers with excerpts. A question about time (\"what did we do in our most recent session\", \"this evening\") puts this directory's most recent session first.",
+          "What you are trying to remember, in words. Runs the deeper retrieval and answers with excerpts. A question about time (\"what did we do in our most recent session\", \"this evening\") puts the session it means in this directory first.",
       },
       ids: {
         type: "array",

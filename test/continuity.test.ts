@@ -41,6 +41,7 @@ import {
 import type { LastHere } from "../src/core/handoff/last-here.js";
 import { readRecencyAsk } from "../src/core/recall/index.js";
 import { readSentinel } from "../src/core/self/index.js";
+import { deliberateRecall } from "../src/adapters/mcp/deliberate.js";
 import { McpServer } from "../src/adapters/mcp/server.js";
 import { recordSession } from "../src/adapters/sessions.js";
 
@@ -427,18 +428,127 @@ describe("asked plainly, recall finds the last session here first (the recall ha
     const own = rows(await a.call("recall", { question: "Montaigne and his three meals" }));
     expect(own[0]?.from).toMatch(/^this session, /);
   });
+
+  test("'our most recent session' is the one Last here names, not a live sibling still at work (review of #302 MAJOR-2)", async () => {
+    const k = afternoon();
+    const { episodeId } = await mikesAfternoon(k);
+    // D is still working here, later than A, and has written a note.
+    const D = "d0d0d0d0-0000-4000-8000-00000000000d";
+    for (const m of [56, 58]) k.talk(D, at(17, m));
+    k.set(at(17, 59));
+    await k.server(D).call("note", { session: D, text: "Halfway through the parser rewrite; the empty input still fails." });
+    const got = rows(await k.server(B).call("recall", { question: "what do you remember from our most recent session?" }));
+    expect(got[0]?.id).toBe(episodeId);
+    for (const m of got.filter((x) => x.recent === true)) expect(m.from).toMatch(/^session a1b2c3d4, /);
+  });
+
+  test("a named window means the sessions at work in it; none then, no lead (review of #302 MINOR-2)", async () => {
+    const k = afternoon();
+    const { episodeId } = await mikesAfternoon(k);
+    const b = k.server(B);
+    const evening = rows(await b.call("recall", { question: "what did we do this evening?" }));
+    expect(evening[0]?.id).toBe(episodeId);
+    const morning = await b.call("recall", { question: "what did we do this morning?" });
+    expect(rows(morning).some((m) => m.recent === true)).toBe(false);
+    expect((morning.structuredContent as Record<string, unknown>)["recent"]).toBeUndefined();
+  });
+
+  test("a question that asks about something else only moves up what the search found (review of #302 MINOR-1)", async () => {
+    const k = afternoon();
+    await mikesAfternoon(k);
+    const question = "what did we decide about the parser today?";
+    const got = rows(await k.server(B).call("recall", { question }));
+    // The same question with no directory named: no recency lane at all.
+    const plain = deliberateRecall(k.c, { question }, { sessionId: B, owner: true }).memories.map((m) => m.id);
+    // Promoting adds nothing: the same rows, the recent ones moved to the front.
+    expect(new Set(got.map((m) => m.id))).toEqual(new Set(plain));
+    const marked = got.findIndex((m) => m.recent !== true);
+    expect(got.slice(marked === -1 ? got.length : marked).some((m) => m.recent === true)).toBe(false);
+  });
+
+  test("a question about feeling keeps its own order (review of #302 MINOR-3)", async () => {
+    const k = afternoon();
+    await mikesAfternoon(k);
+    const r = await k.server(B).call("recall", { question: "how did I feel this evening?" });
+    expect(rows(r).some((m) => m.recent === true)).toBe(false);
+  });
+
+  test("a dream's row is not the session's own words, and says what made it (review of #302 MAJOR-1)", async () => {
+    const k = afternoon();
+    const { episodeId } = await mikesAfternoon(k);
+    k.set(at(17, 54));
+    const dreamt = k.c.store.put({
+      type: "memory",
+      kind: "self",
+      body: "Dreamed: four tables, one grief, set for Montaigne's three meals.",
+      learnedOn: "2026-09-30",
+      source: "dreamed",
+      origin: { session: A, scope: HERE, ref: "dream:drm_000000000001" },
+    });
+    const got = rows(await k.server(B).call("recall", { question: "what do you remember from our most recent session?" }));
+    expect(got[0]?.id).toBe(episodeId);
+    expect(got.filter((m) => m.recent === true).map((m) => m.id)).not.toContain(dreamt);
+    const named = rows(await k.server(B).call("recall", { ids: [dreamt] }));
+    expect(named[0]?.from).toMatch(/^a dream launched from session a1b2c3d4, /);
+  });
+
+  test("the lead chapter shows its LATEST chapter, not its first (review of #302 MINOR-4)", async () => {
+    const k = afternoon();
+    await mikesAfternoon(k);
+    const E = "e5e5e5e5-0000-4000-8000-00000000000e";
+    k.talk(E, at(18, 0));
+    k.set(at(18, 5));
+    const epi = k.c.store.put({
+      type: "episode",
+      kind: "self",
+      title: "Two chapters",
+      body: "## chapter 1 — Wed 30 Sep 2026 · lived day 0\n\nThe first chapter, long done.\n\n## chapter 2 — Wed 30 Sep 2026 · lived day 0\n\nThe second chapter, which is where we are now.\n",
+      meta: { sessionId: E, chapters: 2 },
+      source: "episode",
+      origin: { session: E, scope: HERE },
+    });
+    const got = (await k.server(B).call("recall", { question: "where did we leave off?" })).structuredContent as Record<string, unknown>;
+    const first = (got["memories"] as { id: string; excerpt: string }[])[0];
+    expect(first?.id).toBe(epi);
+    expect(first?.excerpt).toBe("The second chapter, which is where we are now.");
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
 describe("the pieces", () => {
-  test("a question about time is read off a fixed list of phrases, or a clock time", () => {
-    expect(readRecencyAsk("what do you remember from our most recent session?")).toBe("most recent");
-    expect(readRecencyAsk("What did we do this evening, 16:01–17:48")).toBe("this evening");
-    expect(readRecencyAsk("what happened between 4pm and 6pm")).toBe("a clock time");
-    expect(readRecencyAsk("where did we leave off?")).toBeNull();
-    expect(readRecencyAsk("where we left off")).toBe("left off");
-    expect(readRecencyAsk("the recent-ish parser rewrite")).toBeNull();
-    expect(readRecencyAsk("Montaigne and his three meals")).toBeNull();
+  test("a question about time: the cue, the window it names, and whether it asks anything else", () => {
+    const clock = { now: at(18, 30), zone: ZONE };
+    const ask = (q: string) => readRecencyAsk(q, clock);
+    expect(ask("what do you remember from our most recent session?")).toEqual({ cue: "most recent", window: null, thin: true });
+    expect(ask("where did we leave off?")).toEqual({ cue: "where did we leave off", window: null, thin: true });
+    expect(ask("where were we")?.thin).toBe(true);
+    expect(ask("where we left off")?.cue).toBe("left off");
+    expect(ask("What did we do this evening, 16:01–17:48")).toEqual({
+      cue: "this evening",
+      window: { from: "2026-09-30 16:01", to: "2026-09-30 17:48" },
+      thin: true,
+    });
+    expect(ask("what did we talk about this morning")?.window).toEqual({ from: "2026-09-30 05:00", to: "2026-09-30 11:59" });
+    expect(ask("what happened yesterday")?.window).toEqual({ from: "2026-09-29 00:00", to: "2026-09-29 23:59" });
+    expect(ask("what happened between 4pm and 6pm")).toEqual({
+      cue: "a clock time",
+      window: { from: "2026-09-30 16:00", to: "2026-09-30 18:00" },
+      thin: true,
+    });
+    // Not a time: a verse, a date, a word that only looks like the cue.
+    expect(ask("what does John 3:16 say")).toBeNull();
+    expect(ask("what happened on 2026-09-30")).toBeNull();
+    expect(ask("the recent-ish parser rewrite")).toBeNull();
+    expect(ask("Montaigne and his three meals")).toBeNull();
+    // Time words narrowing a question about something else: not thin.
+    for (const q of [
+      "the last session of the conference",
+      "the last time we used Postgres",
+      "what did we decide about the deploy today?",
+      "what have I recently learned about Montaigne",
+    ]) {
+      expect(ask(q)?.thin).toBe(false);
+    }
   });
 
   test("the sessions that ran here come from the turn-ends, newest first", () => {
