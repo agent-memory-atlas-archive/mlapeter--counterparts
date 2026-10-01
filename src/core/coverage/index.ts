@@ -41,6 +41,7 @@ import { keyFor } from "../remember/spans.js";
 import type { Span, SpanBuffer } from "../remember/spans.js";
 import type { Store } from "../store/index.js";
 import { localDate } from "../time.js";
+import { isKnownSession } from "../types.js";
 
 import { COVERAGE_TUNABLES } from "./tunables.js";
 
@@ -555,8 +556,10 @@ export function sessionsHere(
 ): { session: string; firstAt: number; lastAt: number; ended: boolean }[] {
   const norm = (s: string): string => s.trim().replace(/\/+$/, "");
   const seen = new Map<string, { session: string; firstAt: number; lastAt: number; ended: boolean }>();
+  // The unbound memory server's shared id is not a session (`UNBOUND_SESSION`):
+  // its jots are every unbound server's, so it never ran "here" as one.
   const wanted = (session: unknown): session is string =>
-    typeof session === "string" && session.length > 0 && (opts.only === undefined || opts.only.has(session));
+    typeof session === "string" && isKnownSession(session) && (opts.only === undefined || opts.only.has(session));
   const note = (session: string, at: number): void => {
     if (!Number.isFinite(at) || at <= 0) return;
     const held = seen.get(session);

@@ -52,7 +52,7 @@
  * being shown and stops being written over: the row is simply left to the prune.
  */
 import type { ProseDoc, Store } from "../store/index.js";
-import { isModelId } from "../types.js";
+import { isKnownSession, isModelId } from "../types.js";
 
 /** The `meta.role` that makes a schema row a handoff. One per scope and session. */
 export const HANDOFF_ROLE = "handoff";
@@ -721,16 +721,27 @@ export function authorWords(h: Handoff, reader: string | null = null): string {
  * `authorWords` for anything that names a session and a model — a handoff, or
  * a chapter in the "Last here" line (2026-09-30), so the two say who in the
  * same words.
+ *
+ * The unbound server's shared id (`UNBOUND_SESSION`) names no session, so it
+ * is never "this session" and never `session mcp`: it reads
+ * `UNIDENTIFIED_SESSION_WORDS` (the 0.3.10 release check). Nor is a reader
+ * that IS it anyone's "this session" — a server that has not bound does not
+ * know which rows are its own.
  */
 export function sessionWords(session: string | null, model: string | null, reader: string | null = null): string {
   const who =
-    session === null
+    session === null || session.length === 0
       ? "an earlier session"
-      : reader !== null && session === reader
-        ? "this session"
-        : `session ${flatten(session).slice(0, 8)}`;
+      : !isKnownSession(session)
+        ? UNIDENTIFIED_SESSION_WORDS
+        : isKnownSession(reader) && session === reader
+          ? "this session"
+          : `session ${flatten(session).slice(0, 8)}`;
   return model === null ? who : `${who} on ${modelWords(model)}`;
 }
+
+/** Who wrote a row filed under the unbound server's id, in words. */
+export const UNIDENTIFIED_SESSION_WORDS = "a session that hadn't been identified yet";
 
 /**
  * HOW MUCH OF THE WORK SINCE IS WRITTEN UP, in words (2026-09-30). "Not yet

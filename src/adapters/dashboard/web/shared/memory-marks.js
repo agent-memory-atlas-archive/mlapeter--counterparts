@@ -38,11 +38,13 @@ export function kindMark(kind, withLabel) {
 /**
  * The seven cores of the feelings wheel (`core/feelings-wheel.ts`, v2,
  * 2026-09-30), each a colour: the pleasant four warm-to-cool around the top
- * (happy yellow, warm coral-rose, calm green, curious violet), the unpleasant
- * three below (sad blue, uneasy amber, angry red).
+ * (happy yellow, warm pink, calm green, curious violet), the unpleasant
+ * three below (sad blue, uneasy amber, angry red). Warm was coral (#ff8a80)
+ * until the 0.3.10 release check: its dot read as angry's red on the radar,
+ * so it is pink now, apart from both angry's red and curious's violet.
  */
 export const FEELING_COLOURS = {
-  happy: "#ffd740", warm: "#ff8a80", calm: "#8bd17c", curious: "#d59cf0",
+  happy: "#ffd740", warm: "#ff79c6", calm: "#8bd17c", curious: "#d59cf0",
   sad: "#64b5f6", uneasy: "#ffa45c", angry: "#ff6b6b",
 };
 

@@ -24,7 +24,7 @@
  * to the handoff — a fortnight's unfinished work outranks orientation.
  */
 import type { Store } from "../store/index.js";
-import { isModelId } from "../types.js";
+import { isKnownSession, isModelId } from "../types.js";
 import { HANDOFF_EXCERPT_BYTES, HANDOFF_LIFE_DAYS, excerpt, flatten, sessionWords } from "./index.js";
 
 /**
@@ -107,7 +107,8 @@ export function chaptersBySession(store: Store, opts: { fromDay?: number } = {})
         const meta = JSON.parse(row.meta || "{}") as Record<string, unknown>;
         session = typeof meta["sessionId"] === "string" ? meta["sessionId"] : null;
       }
-      if (session === null || session.length === 0) continue;
+      // A chapter needs a bound session, so this is a guard: the unbound id names no one.
+      if (!isKnownSession(session)) continue;
       const createdAt = row.created_at ?? 0;
       const writtenAt = row.updated_at ?? createdAt;
       const held = out.get(session);

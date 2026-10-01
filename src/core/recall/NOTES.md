@@ -857,3 +857,28 @@ at work that day, the new session also could not tell which result was whose. Br
   reflection's row says what made it.
 - **Not built:** recency for the console's `ask` (it has no directory), and provenance on
   the ambient footnotes (a footnote is a title; the brief asked for recall results).
+
+## 24. A note from before the server knew its session (2026-09-30, the 0.3.10 release check)
+
+In Claude Code the memory server learns its session only at the first `chapter` or
+`session_end` (the lazy bind). Until then a `note` is filed under the one id every unbound
+server shares (`types.ts#UNBOUND_SESSION`, "mcp"), and a recall's reader is that id too.
+§23's `from` and the recency lead took it for a session: before the bind every such note,
+any session's, read `from: "this session, …"`; after it, `"session mcp, …"`; and the lead,
+gathering rows by `origin_session`, left out every note a session wrote before it bound
+(on the throwaway check, all twelve of A's). The live store had 46 of ~430 authored
+memories under the id.
+
+- **In words it is nobody** (`handoff#sessionWords`): "a session that hadn't been
+  identified yet", with the directory and the time; never "this session", whoever asks. A
+  reader that is the unbound id owns no row. `coverage#sessionsHere` names no such session,
+  and `chaptersBySession` skips the id (a chapter always binds, so that is a guard).
+- **The lead takes them back when they can be no one else's** (`deliberate#preBindNotes`):
+  written in THIS directory, inside the stretch the session was at work here (its turn-ends
+  and held pieces), at a moment no other session — the asker included — was at work here.
+  Two sessions side by side share the stretch, so neither gets the note; it is ranked as
+  before. The label still says "not yet identified": the lead's reason is the window, not
+  the row.
+- **Not built:** nothing is backfilled onto the rows (the window could stamp them at the
+  bind, but an inference written down reads later as a fact). An unbound asker cannot tell
+  its own live session from a sibling's; the lead already prefers the one Last here names.
