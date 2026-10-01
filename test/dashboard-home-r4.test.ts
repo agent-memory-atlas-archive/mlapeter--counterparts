@@ -294,7 +294,7 @@ describe("4. the radar and the self map are their tabs' own components", () => {
       const f = get(src, "/api/overview")["feelings"];
       const svg = radarSvg(f, null);
       expect(svg).toStartWith('<svg class="feel-svg"');
-      expect((svg.match(/data-core="/g) ?? []).length).toBe(6);
+      expect((svg.match(/data-core="/g) ?? []).length).toBe(7);
     });
   });
 });

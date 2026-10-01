@@ -43,7 +43,8 @@ export function coreRoad(
   // the about-mark, the owner's demotion, the reflected-feeling door and,
   // when it is closed, the last ordinary return.
   const ctx = coreContextFor(store, row, day);
-  if (!ctx.aboutMe) return null;
+  // An unmarked memory carrying recognition is on the fast lane's road too (wheel v2).
+  if (!ctx.aboutMe && ctx.selfRelevantFeeling !== true) return null;
   let verdict: PromotionVerdict;
   try {
     const physics = store.physicsOf(row.id);

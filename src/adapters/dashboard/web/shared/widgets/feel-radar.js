@@ -1,6 +1,6 @@
 /* "How it feels": the one feelings chart, drawn the same on Home and on
    Memories (round 4, 2026-09-28 — Mike's deliberate exception to "no repeats":
-   one component, two callers). A radar of the feelings wheel's six cores, in
+   one component, two callers). A radar of the feelings wheel's seven cores, in
    wheel order, with two shapes laid over each other — the owner's (the feelings
    recorded as his) and mine. Each axis sums the recorded strengths under that
    core across the live memories; both shapes share one scale (square root, so
@@ -11,7 +11,7 @@
    Memories it filters the list. Hover shows the counts in words. Plain SVG.
 
    The axes carry the stored cores (`data-core`); what they are CALLED is
-   `memory-marks.js#feelingName` ("disgust" reads "dislike", 2026-09-30).
+   `memory-marks.js#feelingName` (the stored name, since the wheel v2).
 
    Data: `/api/overview`'s or `/api/memories`'s `feelings`
    (`views/memories.ts#feelingsView`) — the same numbers on both. */

@@ -64,7 +64,7 @@ export interface MemoriesView {
   readonly nearLetGoDays: number;
   /** How many lived days ahead "firm" looks (`FIRM_AHEAD_DAYS`). */
   readonly firmAheadDays: number;
-  /** How it feels: the feelings on live memories, by the wheel's six cores. */
+  /** How it feels: the feelings on live memories, by the wheel's seven cores. */
   readonly feelings: FeelingsView;
   /** The census, strongest first. Nothing on the page draws it now; kept for the
    *  callers and tests that read it. */
@@ -241,7 +241,7 @@ export function ownerOf(src: DashboardSource): string | null {
 
 /**
  * How it feels: the feelings recorded on `rows` (the live census), by the
- * wheel's six cores, yours and mine. The memories tab's radar draws it, and
+ * wheel's seven cores, yours and mine. The memories tab's radar draws it, and
  * the home tab draws the same radar from the same numbers.
  */
 export function feelingsView(src: DashboardSource, rows: readonly { readonly id: string }[] = census(src)): FeelingsView {
@@ -363,7 +363,7 @@ export interface MemoryListView {
     readonly journal: number;
     /** Firm / settling / fading — live rows only, journal chapters left out. */
     readonly hold: Record<Hold, number>;
-    /** Memories carrying a feeling under each of the wheel's six cores (either
+    /** Memories carrying a feeling under each of the wheel's seven cores (either
      *  side), within the live/archived choice. */
     readonly feelings: Record<string, number>;
   };

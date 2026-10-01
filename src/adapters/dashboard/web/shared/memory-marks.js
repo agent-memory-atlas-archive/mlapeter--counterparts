@@ -35,18 +35,22 @@ export function kindMark(kind, withLabel) {
     (withLabel ? '<span class="klabel">' + esc(k.label) + "</span>" : "");
 }
 
-/** The six cores of the feelings wheel (`core/feelings-wheel.ts`), each a colour. */
+/**
+ * The seven cores of the feelings wheel (`core/feelings-wheel.ts`, v2,
+ * 2026-09-30), each a colour: the pleasant four warm-to-cool around the top
+ * (happy yellow, warm coral-rose, calm green, curious violet), the unpleasant
+ * three below (sad blue, uneasy amber, angry red).
+ */
 export const FEELING_COLOURS = {
-  happy: "#ffd740", sad: "#64b5f6", fear: "#ffa45c", anger: "#ff6b6b", surprise: "#d59cf0", disgust: "#8bd17c",
+  happy: "#ffd740", warm: "#ff8a80", calm: "#8bd17c", curious: "#d59cf0",
+  sad: "#64b5f6", uneasy: "#ffa45c", angry: "#ff6b6b",
 };
 
 /**
- * What the dashboard CALLS each core (M1, 2026-09-30, "fine for now"): a display
- * name only. The stored cores stay the wheel's six, and every filter and link
- * still carries the stored one; only the words on the page change.
+ * What the dashboard CALLS each core: the stored name. (2026-09-30 to the
+ * wheel v2, "disgust" read "dislike"; disgust is a word under angry now.)
  */
-const FEELING_NAMES = { disgust: "dislike" };
-export const feelingName = (core) => FEELING_NAMES[core] || String(core || "");
+export const feelingName = (core) => String(core || "");
 
 /** A memory's feeling in one word: its own ("disappointed"), else its core's name. */
 export function feelingWord(f) {

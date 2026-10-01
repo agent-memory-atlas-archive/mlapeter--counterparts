@@ -962,7 +962,7 @@ export function coreCandidates(src: DashboardSource, pageId: string | null): { r
     if (p.promotedIdentity) continue;
     // Exactly the context sleep's consolidate builds (`coreContextFor`, #262).
     const ctx = coreContextFor(store, row, day);
-    if (!ctx.aboutMe) {
+    if (!ctx.aboutMe && ctx.selfRelevantFeeling !== true) {
       outOfReach += 1;
       continue;
     }

@@ -57,8 +57,8 @@ shared/
   tip.js modal.js     showTip/hideTip; openModal/closeModal/section
   memory-modal.js     openMemory, copyId, removeMemory (window globals: rows use inline onclick)
   memory-marks.js .css  a memory's kind icon/colour, feeling dots, strength meter, badges;
-                      feelingName (what the page CALLS a stored core: "disgust" reads
-                      "dislike", 2026-09-30, a display name only) and feelingWord (a
+                      feelingName (what the page CALLS a stored core: its own name
+                      since the wheel v2, 2026-09-30) and feelingWord (a
                       memory's own feeling word, else its core's name)
   event-modal.js      openEvent (window global)
   doctor.js           one `doctor --json` run shared by Health's checklist and Home's health dot

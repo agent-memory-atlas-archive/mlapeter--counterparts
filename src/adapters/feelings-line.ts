@@ -6,13 +6,17 @@
  *
  * "you" is the owner — the person reading — and "me" is the counterpart
  * (emotion part A, owner decision 6). The number is the strength as recorded;
- * "now" is the same feeling softened by the lived days since (physics §5.10),
- * shown only when it has moved. The word is the wheel word, or the writer's own
+ * "now" is the same feeling softened by the lived days since (physics §5.10;
+ * an unpleasant one softens faster), shown only when it has moved. The word is the wheel word, or the writer's own
  * for an `other`. `carried_by` is not shown: it is a pointer at the moment,
  * and it stays with the export.
  */
 import { softenedFeeling } from "../core/physics/index.js";
+import { feelingValence } from "../core/store/index.js";
 import type { FeelingRow } from "../core/store/index.js";
+
+/** What a feeling line reads off a row: the word, the strength, and what its valence comes from. */
+type LineRow = Pick<FeelingRow, "whose" | "core" | "emotion" | "other_word" | "strength"> & { valence?: number | null };
 
 /** What each `whose` is called on a surface the owner reads. */
 export function whoseLabel(whose: string): string {
@@ -34,14 +38,14 @@ export interface ShownFeeling {
 }
 
 export function shownFeelings(
-  rows: readonly Pick<FeelingRow, "whose" | "emotion" | "other_word" | "strength">[],
+  rows: readonly LineRow[],
   ageDays: number,
 ): ShownFeeling[] {
   return rows.map((r) => ({
     who: whoseLabel(r.whose),
     word: feelingWord(r),
     strength: r.strength,
-    now: softenedFeeling(r.strength, ageDays),
+    now: softenedFeeling(r.strength, ageDays, feelingValence(r)),
   }));
 }
 
@@ -52,7 +56,7 @@ const n1 = (x: number): string => x.toFixed(1);
  * anyone else — or "" when there are no feelings.
  */
 export function feelingsLine(
-  rows: readonly Pick<FeelingRow, "whose" | "emotion" | "other_word" | "strength">[],
+  rows: readonly LineRow[],
   ageDays: number,
 ): string {
   const shown = shownFeelings(rows, ageDays);

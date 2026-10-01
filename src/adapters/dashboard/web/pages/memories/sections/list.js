@@ -1,7 +1,7 @@
 /* Every memory, with its words — newest first (or oldest), twenty at a time.
    The server filters, sorts and pages (`/api/memories/list`), so a store of
    twenty thousand rows sends twenty. Two rows of chips (round 4, 2026-09-28):
-   the kinds (with the journal and ★ core), then the six feelings, each with its
+   the kinds (with the journal and ★ core), then the seven feelings, each with its
    count and a few words on hover; "showing: kept · put away · both" sits on
    the right. Click a row to open the memory. While the find box holds words,
    its answers stand here instead (`search.js`). */
