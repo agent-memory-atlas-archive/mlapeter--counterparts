@@ -11,6 +11,7 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 
+import { remapV10Feeling } from "../feelings-wheel.js";
 import { spacingWeight } from "../physics/index.js";
 import type { Band, Kind, MemoryPhysics, Salience } from "../types.js";
 import type { Db, Row } from "./db.js";
@@ -1276,6 +1277,24 @@ export function openOperational(path: string, opts: OpenOperationalOptions = {})
           }),
         );
       }
+      // v11 (2026-09-30): EVERY FEELING RE-FILED ONTO THE SEVEN CORES, each
+      // re-filed row keeping what the first wheel stored (`refileFeelingsV11`).
+      if (now !== null && Number.parseInt(now, 10) < 11) {
+        const refiled = refileFeelingsV11(db);
+        const lived = db.get<{ value: string }>("SELECT value FROM meta WHERE key = 'livedDay'")?.value ?? "0";
+        db.run(
+          "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+          V11_UPGRADE_KEY,
+          JSON.stringify({
+            from: now,
+            day: Number.parseInt(lived, 10) || 0,
+            at: Date.now(),
+            feelings: refiled.feelings,
+            refiled: refiled.refiled,
+            moves: refiled.moves,
+          }),
+        );
+      }
       const put = db.prepare("INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)");
       put.run("livedDay", "0");
       put.run("lastActiveDate", "");
@@ -1491,6 +1510,57 @@ export const V9_UPGRADE_KEY = "physics.v9.upgrade";
 /** Meta key: what the v10 upgrade carried (`contradictions.v10.upgrade`), for doctor. */
 export const V10_UPGRADE_KEY = "contradictions.v10.upgrade";
 
+/** Meta key: what the v11 upgrade re-filed (`feelings.v11.upgrade`), for doctor. */
+export const V11_UPGRADE_KEY = "feelings.v11.upgrade";
+
+/**
+ * THE v11 RE-FILING: every feeling the first wheel stored, moved onto the
+ * seven cores by `feelings-wheel.ts#remapV10Feeling` (pure; the rule is
+ * there). A row whose core or emotion changes keeps the old pair in
+ * `core_v10` / `emotion_v10`; a row that does not change is left exactly as it
+ * was. It runs once: the version latch says so, and so does its own record
+ * (`V11_UPGRADE_KEY`, written beside it in the same transaction) — a second
+ * call finds that and moves nothing, so a feeling written AFTER the upgrade
+ * under a core the writer chose (happy, grateful) is never re-filed by the
+ * first wheel's rule. In the migrating transaction, after the copy. Ids and
+ * counts only come back: `moves` is `"<old> → <new>"` with how many.
+ */
+export function refileFeelingsV11(db: Db): { feelings: number; refiled: number; moves: Record<string, number> } {
+  if (db.get<{ value: string }>("SELECT value FROM meta WHERE key = ?", V11_UPGRADE_KEY) !== undefined) {
+    return { feelings: 0, refiled: 0, moves: {} };
+  }
+  const rows = db.all<{ id: string; core: string; emotion: string; other_word: string | null }>(
+    "SELECT id, core, emotion, other_word FROM feelings WHERE core_v10 IS NULL",
+  );
+  const write = db.prepare("UPDATE feelings SET core = ?, emotion = ?, core_v10 = ?, emotion_v10 = ? WHERE id = ? AND core_v10 IS NULL");
+  const moves: Record<string, number> = {};
+  let refiled = 0;
+  for (const r of rows) {
+    const now = remapV10Feeling(r.core, r.emotion, r.other_word);
+    if (now.core === r.core && now.emotion === r.emotion) continue;
+    write.run(now.core, now.emotion, r.core, r.emotion, r.id);
+    refiled += 1;
+    const k = `${r.core} → ${now.core}`;
+    moves[k] = (moves[k] ?? 0) + 1;
+  }
+  return { feelings: rows.length, refiled, moves };
+}
+
+/**
+ * THE WAY BACK from the v11 re-filing, for a person who wants the first
+ * wheel's cores again: every re-filed row gets its `core_v10` / `emotion_v10`
+ * back and the marks cleared. Not wired to any command — the copy taken before
+ * migrating is the whole-store way back; this is the surgical one, and the
+ * test that proves the re-filing loses nothing. Returns how many rows.
+ */
+export function restoreFeelingsV10(db: Db): number {
+  return db.transaction(() => {
+    db.run(
+      "UPDATE feelings SET core = core_v10, emotion = COALESCE(emotion_v10, emotion), core_v10 = NULL, emotion_v10 = NULL WHERE core_v10 IS NOT NULL",
+    );
+    return db.get<{ n: number }>("SELECT changes() AS n")?.n ?? 0;
+  });
+}
 
 /** The id a carried dream flag's pair gets: the same flag, the same id, on every run. */
 export function carriedPairId(dreamId: string, seq: number): string {
