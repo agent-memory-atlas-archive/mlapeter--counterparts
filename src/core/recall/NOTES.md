@@ -808,3 +808,52 @@ never says it.
 | happy +0.7 → calm +0.5 | 0.18 | 0.18 |
 | happy +0.7 → curious +0.3 | 0.06 | 0.06 |
 
+## 24. A question about time, and where a result came from — 2026-09-30 (the continuity test)
+
+Mike ended a ~/random session (an evening's notes and a chapter), opened a new one two
+minutes later and asked "what do you remember from our most recent session?". The words
+matched "session" and "recent" across every day in the store, the cap (24) filled with
+other sessions' release work, and the evening never came back. With four or five sessions
+at work that day, the new session also could not tell which result was whose. Brief:
+`~/counterparts-notes/2026-09-30-continuity-brief.md`, items 3 and 4.
+
+- **A cue, not a filter.** A person asks this plainly, so the plain question has to work;
+  `recency-ask.ts` is a fixed phrase list plus a clock time, the shape of the feeling cues.
+  An explicit `since`/`session` argument was not added: nothing yet asks for one.
+- **In the adapter, beside the feeling lane's reordering, not in `activate.ts`.** The rows
+  it adds are not candidates the search reached: they are what one session wrote, found
+  by session (`origin_session`, a new `MemoryFilter.originSession` beside `originRef`)
+  and by the session's directory (`coverage/#sessionsHere`). Putting them into activation
+  would make them compete under a bar that is about words; leading the answer with them
+  is what the question asked for. Activation, the gate and the decision record don't move.
+- **Which session** (revised after the review of #302, MAJOR-2 and MINOR-2). The first
+  round took the newest session with turn-ends here, which with several sessions live in
+  one repo was often a sibling still at work rather than the one the person meant. Now:
+  a named window ("this morning", "yesterday", "last night", "16:01–17:48", "at 4pm" as
+  an hour either side) means the sessions here at work in it, by their `stop` turn-ends
+  and pieces against the store's local clock; none at work then means no lead rather
+  than a guess. Without a window, "the most recent session" is the one the wake's "Last
+  here" line names, so the wake and recall agree; then the newest that ENDED (a
+  `session-end`, or work that stopped before the asker's began); a live sibling last.
+- **Lead or promote** (MINOR-1). Leading is right for "what do you remember from our most
+  recent session?" and wrong for "the last time we used Postgres" or "what did we decide
+  about the deploy today?", where the time words narrow a question about something else.
+  The test is cheap: take out the cue, numbers and the words that ask nothing ("what did
+  we do", "remember", "session"); if nothing is left, lead; if anything is, only the rows
+  the search found too move up. The clock cue needs am/pm, "at" or a range, so "John
+  3:16" is not a time.
+- **Which rows.** What the session wrote in THIS directory (`origin_scope` when set),
+  never a dream's or a reflection's (their `origin_session` is the session that launched
+  the nightly run — MAJOR-1), never a replaced row; the chapter shows its LATEST chapter
+  (MINOR-4) and its copies leave the rest of the list (MINOR-5). Each row is read in its
+  own try (MINOR-6).
+- **Not with feeling** (MINOR-3). A ranked question about feeling (`feeling-ask.ts`,
+  narrower since #301) keeps its strongest-stamp order and gets no recency lead; "how did
+  I feel this evening" is answered by feeling. Chosen over ordering the lead by stamp:
+  one lane deciding the order at a time is easier to read.
+- **Provenance is a label** (`from`, CONTRACT §6c) read off the row. `origin_scope` was
+  already set on memories; episodes now set it at birth too (`self/episodes.ts`, #300),
+  so a chapter written before today says who and when but not where. A dream's or a
+  reflection's row says what made it.
+- **Not built:** recency for the console's `ask` (it has no directory), and provenance on
+  the ambient footnotes (a footnote is a title; the brief asked for recall results).

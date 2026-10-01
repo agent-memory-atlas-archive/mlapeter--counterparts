@@ -1904,12 +1904,7 @@ export class Counterpart {
     chapters?: ReadonlyMap<string, ChapterHere>,
   ): string[] {
     try {
-      const day = this.store.livedDay();
-      const all = chapters ?? this.chaptersInWindow(day);
-      if (all.size === 0) return [];
-      const only = new Set(all.keys());
-      const sessions = new Map(sessionsHere(this.spans, scope, { only }).map((s) => [s.session, s] as const));
-      const found = chaptersHere(all, { scope, claimed: chapterClaims(this.spans, scope), sessions }, day, { reader });
+      const found = this.chaptersHereFor(scope, reader, chapters);
       if (found.length === 0) return [];
       const zone = this.store.zone();
       const entries: LastHere[] = found.map((f) => ({
@@ -1922,6 +1917,26 @@ export class Counterpart {
     } catch {
       return [];
     }
+  }
+
+  /**
+   * THE CHAPTERS "LAST HERE" WOULD NAME for this directory, newest first, with
+   * when each session was here — not the reader's own. What the wake's line
+   * prints and what recall's question about time means by "the most recent
+   * session" (2026-09-30), so the two cannot disagree. Throws only what the
+   * store throws; callers wrap it.
+   */
+  chaptersHereFor(
+    scope: string,
+    reader: string | null,
+    chapters?: ReadonlyMap<string, ChapterHere>,
+  ): { chapter: ChapterHere; firstAt: number; lastAt: number }[] {
+    const day = this.store.livedDay();
+    const all = chapters ?? this.chaptersInWindow(day);
+    if (all.size === 0) return [];
+    const only = new Set(all.keys());
+    const sessions = new Map(sessionsHere(this.spans, scope, { only }).map((s) => [s.session, s] as const));
+    return chaptersHere(all, { scope, claimed: chapterClaims(this.spans, scope), sessions }, day, { reader });
   }
 
   /** Every session's latest chapter among the episodes born inside the

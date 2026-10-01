@@ -23,10 +23,16 @@
  * rather than the memory a fuzzy match would have found. Expansion degrading
  * into fuzzy search is how a precise question quietly becomes a vibe.
  */
+import { homedir } from "node:os";
+
 import type { Counterpart } from "../../core/counterpart.js";
+import { sessionsHere } from "../../core/coverage/index.js";
 import { wireChars } from "../../core/fit/index.js";
+import { sessionWords } from "../../core/handoff/index.js";
+import { LAST_HERE_LIFE_DAYS, chaptersBySession, latestChapter } from "../../core/handoff/last-here.js";
 import { strength } from "../../core/physics/index.js";
-import { isConfidential, isSelfPage, standingOf } from "../../core/recall/index.js";
+import { isConfidential, isSelfPage, localKey, readRecencyAsk, standingOf } from "../../core/recall/index.js";
+import { localStamp } from "../../core/time.js";
 import type { CandidateVerdict, FeelingWhose, SemanticSource, Verdict } from "../../core/recall/index.js";
 import { ownerNames } from "../../core/sleep/index.js";
 
@@ -144,6 +150,10 @@ export interface BoundedMemory {
   readonly parts?: number;
   /** Its standing in a contradiction, or that it was replaced (`recall/standing.ts`). */
   readonly standing?: string;
+  /** Where it came from — see `Recalled.from`. */
+  readonly from?: string;
+  /** Put first by a question about time — see `Recalled.recent`. */
+  readonly recent?: boolean;
 }
 
 export interface BoundedResult {
@@ -193,6 +203,8 @@ export function boundById(
       parts,
       ...(m.admittedUnder === undefined ? {} : { admittedUnder: m.admittedUnder }),
       ...(m.standing === undefined ? {} : { standing: m.standing }),
+      ...(m.from === undefined ? {} : { from: m.from }),
+      ...(m.recent === true ? { recent: true } : {}),
     };
     // As it leaves: serialised, weighted, both copies.
     const cost = 2 * wireChars(JSON.stringify(item, null, 2));
@@ -251,6 +263,8 @@ export function boundMemories(
       truncated: excerpt.length < m.body.length,
       ...(m.admittedUnder === undefined ? {} : { admittedUnder: m.admittedUnder }),
       ...(m.standing === undefined ? {} : { standing: m.standing }),
+      ...(m.from === undefined ? {} : { from: m.from }),
+      ...(m.recent === true ? { recent: true } : {}),
     });
   }
   return { memories: out, truncated, droppedForBudget: dropped, chars };
@@ -307,6 +321,19 @@ export interface Recalled {
    * before the body, so an old memory never reads as current.
    */
   readonly standing?: string;
+  /**
+   * WHERE IT CAME FROM (2026-09-30, the continuity test): the session that
+   * wrote it, the directory, and when — `session a1b2c3d4, ~/random, 09-30
+   * 17:41`. With several sessions at work at once, a session asking what
+   * happened could not tell its own directory's evening from the release work
+   * next door. Read off the row (`origin_session`, `origin_scope`,
+   * `created_at`); a row from before any of them was recorded says less, and
+   * "an earlier session" when it names none. Never backfilled.
+   */
+  readonly from?: string;
+  /** Put FIRST because the question asked about time and this came from this
+   *  directory's most recent session (`recall/recency-ask.ts`). */
+  readonly recent?: boolean;
 }
 
 export type DeliberateReason =
@@ -366,6 +393,12 @@ export interface DeliberateResult {
    * own store, which `server.ts` writes and `recallPayload` does not read.
    */
   readonly blockedBy?: Readonly<Record<string, number>>;
+  /**
+   * A QUESTION ABOUT TIME (2026-09-30): which session's rows were put first,
+   * by its short id, the phrase that asked, and how many rows. Absent when the
+   * question did not ask about time or no earlier session here wrote anything.
+   */
+  readonly recent?: { readonly session: string; readonly cue: string; readonly rows: number };
 }
 
 export interface DeliberateInput {
@@ -396,6 +429,12 @@ export interface DeliberateOptions {
    * `ask`, where the owner is the one typing.
    */
   readonly asker?: FeelingWhose;
+  /**
+   * The directory the asking session is in (2026-09-30). A question about time
+   * puts THIS directory's most recent session first; without a scope (the
+   * console's `ask`) it is answered as any other question.
+   */
+  readonly scope?: string;
 }
 
 /**
@@ -578,9 +617,68 @@ export function expandHandle(
         strength: strength(read.physics, store.livedDay()),
         activation: 1,
         ...standingField(store, id, true),
+        ...fromField(store, id, opts.sessionId),
       },
     ],
   };
+}
+
+/**
+ * WHERE A ROW CAME FROM, as one short string (2026-09-30): who wrote it —
+ * "this session" for the asker's own, the short id otherwise, "an earlier
+ * session" when the row names none — the directory with the home directory
+ * as `~`, and when, in the store's zone (a chapter: its latest write). Only
+ * what the row already knows; nothing is backfilled. A row the nightly run
+ * made says so — "a dream launched from session …", "a reflection" — rather
+ * than reading as that session's own words (review of #302, MAJOR-1), and one
+ * carried over from an older store says that. Never throws.
+ */
+export function provenanceOf(store: Counterpart["store"], id: string, reader: string | null = null): string | null {
+  try {
+    const row = store.row(id);
+    if (row === undefined) return null;
+    let session = row.origin_session;
+    if ((session === null || session.length === 0) && row.type === "episode") {
+      const meta = JSON.parse(row.meta || "{}") as Record<string, unknown>;
+      session = typeof meta["sessionId"] === "string" ? meta["sessionId"] : null;
+    }
+    const named = session === null || session.length === 0 ? null : sessionWords(session, null, reader);
+    const made = nightlyMade(row);
+    const who =
+      made === "dream"
+        ? named === null ? "a dream" : `a dream launched from ${named}`
+        : made === "reflection"
+          ? "a reflection"
+          : row.source === "migrated"
+            ? "carried over from an older store"
+            : (named ?? "an earlier session");
+    const home = homedir();
+    const scope = row.origin_scope;
+    const where =
+      scope === null || scope.length === 0
+        ? null
+        : home.length > 1 && (scope === home || scope.startsWith(`${home}/`))
+          ? `~${scope.slice(home.length)}`
+          : scope;
+    const at = row.type === "episode" ? (row.updated_at ?? row.created_at) : row.created_at;
+    const when = at === null ? (row.learned_on.length > 0 ? row.learned_on : null) : localStamp(at, store.zone());
+    return [who, where, when].filter((p): p is string => p !== null && p.length > 0).join(", ");
+  } catch {
+    return null;
+  }
+}
+
+/** Was this row made by the nightly run — a dream's, or a reflection's? */
+function nightlyMade(row: { source: string | null; origin_ref: string | null }): "dream" | "reflection" | null {
+  const ref = row.origin_ref ?? "";
+  if (row.source === "dreamed" || ref.startsWith("dream:")) return "dream";
+  if (row.source === "reflection" || ref.startsWith("reflection:")) return "reflection";
+  return null;
+}
+
+function fromField(store: Counterpart["store"], id: string, reader: string): { from?: string } {
+  const from = provenanceOf(store, id, reader);
+  return from === null ? {} : { from };
 }
 
 /** A memory's standing as a result field, or nothing. Never throws. */
@@ -771,19 +869,220 @@ export function answerQuestion(
       activation: verdict.activation,
       ...(tier === "dim" ? { admittedUnder: verdict.verdict } : {}),
       ...standingField(store, verdict.id, false),
+      ...fromField(store, verdict.id, opts.sessionId),
     });
   }
+
+  // A QUESTION ABOUT TIME (2026-09-30): the session it means — its chapter,
+  // then what it wrote, newest first — leads the answer. Not when the answer
+  // is a RANKED question about feeling: that order is the strongest stamp's,
+  // and a recency lead on top of it would answer a different question
+  // (review of #302, MINOR-3).
+  const recent = built.feeling?.ranked === true ? null : recentRows(counterpart, question, opts);
+  const answer = recent === null ? memories : leadWith(counterpart, memories, recent, opts);
 
   return {
     path: "question",
     semantic,
-    reason: memories.length === 0 ? "nothing-came" : "answered",
-    memories,
+    reason: answer.length === 0 ? "nothing-came" : "answered",
+    memories: answer,
     considered: decision.candidates,
     storeSize: decision.storeSize,
     ambiguous: [],
     blockedBy,
+    ...(recent === null || !answer.some((m) => m.recent === true)
+      ? {}
+      : {
+          recent: {
+            session: recent.sessions.map((s) => s.slice(0, 8)).join(", "),
+            cue: recent.cue,
+            rows: answer.filter((m) => m.recent === true).length,
+          },
+        }),
   };
+}
+
+/** How many of the recent session's memories a question about time puts
+ *  first, after its chapter. Adapter-owned, like `DELIBERATE_DIM_CAP`. */
+export const RECENT_MEMORIES_MAX = 8;
+
+/** How many candidate sessions are looked through for one that wrote
+ *  something here. */
+export const RECENT_SESSIONS_LOOKED = 5;
+
+/** What a question about time puts first: whose rows, the phrase that asked,
+ *  the ids in order, and whether to LEAD with them or only promote the ones
+ *  the search found too. */
+interface RecentRows {
+  readonly sessions: readonly string[];
+  readonly cue: string;
+  readonly ids: readonly string[];
+  /** The chapters among `ids`, whose copies leave the rest of the list. */
+  readonly chapters: readonly string[];
+  readonly lead: boolean;
+}
+
+/**
+ * THE ROWS A QUESTION ABOUT TIME PUTS FIRST, or null (2026-09-30, the
+ * continuity test; review of #302). Only when the question asks about the
+ * recent past (`recall/recency-ask.ts`) and names a directory.
+ *
+ * WHICH SESSION. A question that names a window ("this morning", "yesterday",
+ * "16:01–17:48") means the sessions here, not the asker, that were at work in
+ * it — none, no lead. Otherwise "the most recent session" is the one the
+ * wake's "Last here" line names (`Counterpart#chaptersHereFor`); failing that,
+ * the newest session here that has ENDED (a `session-end`, or work that
+ * stopped before the asker's began); a live sibling only after those.
+ *
+ * WHICH ROWS. The session's latest chapter, then up to `RECENT_MEMORIES_MAX`
+ * of the memories it wrote, newest first — in THIS directory when the row
+ * says where, never the nightly run's dreams or reflections (whose session is
+ * the one that launched them), never a chapter's copy (the chapter is shown),
+ * never a replaced row, and no confidential row for a session that is not the
+ * owner's, silently, as a list withholds. One row that will not read costs
+ * that row, not the lane.
+ *
+ * LEAD OR PROMOTE. A thin question ("what do you remember from our most
+ * recent session?") leads with them; one that also asks about something
+ * ("what did we decide about the deploy today?") only moves up those the
+ * search found as well. Never throws.
+ */
+function recentRows(counterpart: Counterpart, question: string, opts: DeliberateOptions): RecentRows | null {
+  const scope = opts.scope?.trim() ?? "";
+  if (scope.length === 0) return null;
+  const store = counterpart.store;
+  let ask: ReturnType<typeof readRecencyAsk>;
+  try {
+    ask = readRecencyAsk(question, { now: store.now(), zone: store.zone() });
+  } catch {
+    return null;
+  }
+  if (ask === null) return null;
+  try {
+    const zone = store.zone();
+    const all = sessionsHere(counterpart.spans, scope);
+    const asker = all.find((s) => s.session === opts.sessionId) ?? null;
+    const others = all.filter((s) => s.session !== opts.sessionId);
+    let candidates: string[];
+    if (ask.window !== null) {
+      const w = ask.window;
+      candidates = others
+        .filter((s) => localKey(s.firstAt, zone) <= w.to && localKey(s.lastAt, zone) >= w.from)
+        .map((s) => s.session);
+      if (candidates.length === 0) return null;
+    } else {
+      const named = counterpart.chaptersHereFor(scope, opts.sessionId)[0]?.chapter.session ?? null;
+      const ended = others.filter((s) => s.ended || (asker !== null && s.lastAt < asker.firstAt)).map((s) => s.session);
+      const live = others.map((s) => s.session);
+      candidates = [...new Set([...(named === null ? [] : [named]), ...ended, ...live])];
+    }
+    const chapters = chaptersBySession(store, { fromDay: Math.max(0, store.livedDay() - LAST_HERE_LIFE_DAYS + 1) });
+    const shown = (id: string): boolean => {
+      try {
+        return opts.owner || !isConfidential(store.read(id).doc);
+      } catch {
+        return false;
+      }
+    };
+    const norm = (s: string): string => s.trim().replace(/\/+$/, "");
+    const sessions: string[] = [];
+    const ids: string[] = [];
+    const chapterIds: string[] = [];
+    let memories = 0;
+    // With a window every session in it contributes; without one, the first
+    // that wrote anything here is THE session.
+    for (const session of candidates.slice(0, RECENT_SESSIONS_LOOKED)) {
+      const before = ids.length;
+      const chapter = chapters.get(session);
+      if (chapter !== undefined && (chapter.scope === null || norm(chapter.scope) === norm(scope)) && shown(chapter.id)) {
+        ids.push(chapter.id);
+        chapterIds.push(chapter.id);
+      }
+      const written: { id: string; at: number }[] = [];
+      for (const id of store.list({ type: "memory", archived: false, originSession: session })) {
+        try {
+          const r = store.row(id);
+          if (r === undefined || r.superseded_by !== null) continue;
+          if (nightlyMade(r) !== null) continue;
+          if (r.origin_scope !== null && r.origin_scope.length > 0 && norm(r.origin_scope) !== norm(scope)) continue;
+          // A chapter's copy is the chapter (recall §3, U13).
+          if (r.source === "episode" && chapter !== undefined && r.origin_ref === chapter.id) continue;
+          written.push({ id, at: r.created_at ?? 0 });
+        } catch {
+          continue;
+        }
+      }
+      written.sort((a, b) => b.at - a.at || (a.id < b.id ? 1 : -1));
+      for (const w of written) {
+        if (memories >= RECENT_MEMORIES_MAX) break;
+        if (!shown(w.id)) continue;
+        ids.push(w.id);
+        memories += 1;
+      }
+      if (ids.length > before) sessions.push(session);
+      if (ask.window === null && ids.length > 0) break;
+    }
+    if (ids.length === 0) return null;
+    return { sessions, cue: ask.cue, ids, chapters: chapterIds, lead: ask.thin };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * THE ANSWER WITH THE RECENT SESSION'S ROWS FIRST, in their order, each marked
+ * `recent`. Leading, a row the search did not reach comes in as `quiet` — put
+ * there by the question, not by the gate; a chapter shows its LATEST chapter,
+ * not its first (review of #302, MINOR-4). Promoting only, just the rows the
+ * search found move up, keeping the tier they earned. Either way the lead
+ * chapters' copies leave the rest of the list (MINOR-5), and everything else
+ * follows as it was ranked.
+ */
+function leadWith(counterpart: Counterpart, memories: readonly Recalled[], recent: RecentRows, opts: DeliberateOptions): Recalled[] {
+  const store = counterpart.store;
+  const found = new Map(memories.map((m) => [m.id, m]));
+  const latest = (m: Recalled): Recalled => (m.journal ? { ...m, body: latestChapter(m.body).text.trim() || m.body } : m);
+  const lead: Recalled[] = [];
+  for (const id of recent.ids) {
+    const held = found.get(id);
+    if (held !== undefined) {
+      lead.push(latest({ ...held, recent: true }));
+      continue;
+    }
+    if (!recent.lead) continue;
+    try {
+      const read = store.read(id);
+      lead.push(
+        latest({
+          id,
+          tier: "quiet",
+          kind: read.physics.kind,
+          title: read.doc.title ?? null,
+          journal: read.doc.type === "episode",
+          body: read.doc.body,
+          strength: strength(read.physics, store.livedDay()),
+          activation: 0,
+          ...standingField(store, id, false),
+          ...fromField(store, id, opts.sessionId),
+          recent: true,
+        }),
+      );
+    } catch {
+      continue;
+    }
+  }
+  const led = new Set(lead.map((m) => m.id));
+  const shownChapters = new Set(recent.chapters.filter((c) => led.has(c)));
+  const copyOfLead = (id: string): boolean => {
+    if (shownChapters.size === 0) return false;
+    try {
+      const r = store.row(id);
+      return r !== undefined && r.source === "episode" && r.origin_ref !== null && shownChapters.has(r.origin_ref);
+    } catch {
+      return false;
+    }
+  };
+  return [...lead, ...memories.filter((m) => !led.has(m.id) && !copyOfLead(m.id))];
 }
 
 /** The owner's names, for "whose" in a question about feeling. Never throws. */

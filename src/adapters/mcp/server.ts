@@ -1545,6 +1545,9 @@ export class McpServer {
         owner: this.owner,
         vector: embedded.vector,
         semantic: embedded.semantic,
+        // A question about time leads with THIS directory's most recent
+        // session (2026-09-30, `recall/recency-ask.ts`).
+        scope: this.scope,
       },
     );
     const resolved = this.noteHandleResolution(handle, result);
@@ -1805,9 +1808,19 @@ export class McpServer {
        *  bytes explaining a flag that is not on any row is the wire budget spent
        *  on a word nobody read. */
       ...(bounded.memories.some((m) => m.journal) ? { journal: JOURNAL_GLOSS } : {}),
+      /** A question about time (2026-09-30): which session's rows lead, and
+       *  why. CONDITIONAL, like `journal`. */
+      ...(result.recent === undefined
+        ? {}
+        : {
+            recent: `Rows marked recent: true come first because the question asked about time ("${result.recent.cue}"): they are what the session it means here (${result.recent.session}) wrote — its latest chapter (shown from that chapter, not the first), then its memories, newest first. A quiet one among them was put there by the question, not reached by the search. Everything after them is ranked as usual.`,
+          }),
       tiers: {
         vivid: "came clearly to mind",
-        quiet: "quietly available — the ambient path would have footnoted this",
+        quiet:
+          result.recent === undefined
+            ? "quietly available — the ambient path would have footnoted this"
+            : "quietly available — the ambient path would have footnoted this; or, marked recent: true, put first by a question about time without the search reaching it",
         dim: "reached only because you asked deliberately; lower confidence, and labeled so",
       },
     };
