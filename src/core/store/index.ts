@@ -851,6 +851,12 @@ export interface MemoryFilter {
    * so the wake's "Last here" walk reads only the episodes inside its window.
    */
   bornFromDay?: number;
+  /**
+   * WRITTEN BY THIS SESSION — the `origin_session` column. Exact match. Added
+   * 2026-09-30 so a recall asked about "the last session" can find what that
+   * session wrote without reading every row.
+   */
+  originSession?: string;
 }
 
 function memoryWhere(filter: MemoryFilter): { clause: string; args: (string | number)[] } {
@@ -887,6 +893,10 @@ function memoryWhere(filter: MemoryFilter): { clause: string; args: (string | nu
   if (filter.bornFromDay !== undefined) {
     where.push("birth_day >= ?");
     args.push(filter.bornFromDay);
+  }
+  if (filter.originSession !== undefined) {
+    where.push("origin_session = ?");
+    args.push(filter.originSession);
   }
   return { clause: where.length ? `WHERE ${where.join(" AND ")}` : "", args };
 }

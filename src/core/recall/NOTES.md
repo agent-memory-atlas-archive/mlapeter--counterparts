@@ -808,3 +808,30 @@ never says it.
 | happy +0.7 → calm +0.5 | 0.18 | 0.18 |
 | happy +0.7 → curious +0.3 | 0.06 | 0.06 |
 
+## 24. A question about time, and where a result came from — 2026-09-30 (the continuity test)
+
+Mike ended a ~/random session (an evening's notes and a chapter), opened a new one two
+minutes later and asked "what do you remember from our most recent session?". The words
+matched "session" and "recent" across every day in the store, the cap (24) filled with
+other sessions' release work, and the evening never came back. With four or five sessions
+at work that day, the new session also could not tell which result was whose. Brief:
+`~/counterparts-notes/2026-09-30-continuity-brief.md`, items 3 and 4.
+
+- **A cue, not a filter.** A person asks this plainly, so the plain question has to work;
+  `recency-ask.ts` is a fixed phrase list plus a clock time, the shape of the feeling cues.
+  An explicit `since`/`session` argument was not added: nothing yet asks for one.
+- **In the adapter, beside the feeling lane's reordering, not in `activate.ts`.** The rows
+  it adds are not candidates the search reached: they are what one session wrote, found
+  by session (`origin_session`, a new `MemoryFilter.originSession` beside `originRef`)
+  and by the session's directory (`coverage/#sessionsHere`). Putting them into activation
+  would make them compete under a bar that is about words; leading the answer with them
+  is what the question asked for. Activation, the gate and the decision record don't move.
+- **Which session.** The newest that ran in this directory and is not the asker, among the
+  newest `RECENT_SESSIONS_LOOKED` (5), that left a chapter or a memory. "Today" and "this
+  evening" are read the same way: the most recent session, not a day's worth of them.
+  Working default; a day's sessions is the obvious widening if the questions want it.
+- **Provenance is a label** (`from`, CONTRACT §6c) read off the row. `origin_scope` was
+  already set on memories; episodes now set it at birth too (`self/episodes.ts`), so a
+  chapter written before today says who and when but not where.
+- **Not built:** recency for the console's `ask` (it has no directory), and provenance on
+  the ambient footnotes (a footnote is a title; the brief asked for recall results).

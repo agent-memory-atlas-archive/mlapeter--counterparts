@@ -540,6 +540,16 @@ const RECALL: ToolSpec = {
       mechanizedBy: "src/core/recall/feeling-ask.ts#whoseAsked (asker: self) + src/adapters/mcp/deliberate.ts#answerQuestion",
     },
     {
+      claim:
+        "A question about time (\"our most recent session\", \"last time\", \"this evening\", \"today\", a clock time) is answered with THIS directory's most recent other session first: its latest chapter, then the memories it wrote, newest first, each marked `recent: true`. The rest follows, ranked as usual. Ask it plainly; nothing else needs to be passed.",
+      mechanizedBy: "src/core/recall/recency-ask.ts#readRecencyAsk + src/adapters/mcp/deliberate.ts#answerQuestion (recentRows, leadWith)",
+    },
+    {
+      claim:
+        "Every memory returned says where it came from in `from`: the session that wrote it (\"this session\" for yours), the directory, and when it was written, as far as the row recorded them. An older row says less, and \"an earlier session\" when it names none.",
+      mechanizedBy: "src/adapters/mcp/deliberate.ts#provenanceOf",
+    },
+    {
       claim: "Under observer stance it stands down over the wire and says so.",
       mechanizedBy: "src/adapters/mcp/server.ts#standDown",
     },
@@ -554,7 +564,7 @@ const RECALL: ToolSpec = {
       question: {
         type: "string",
         description:
-          "What you are trying to remember, in words. Runs the deeper retrieval and answers with excerpts.",
+          "What you are trying to remember, in words. Runs the deeper retrieval and answers with excerpts. A question about time (\"what did we do in our most recent session\", \"this evening\") puts this directory's most recent session first.",
       },
       ids: {
         type: "array",

@@ -330,6 +330,21 @@ credit at the boundary; reinforcement deltas handed to `physics/`.
     numbers only reach `BuildOutput.feeling`; no feeling's word reaches the decision
     record. Tests: `recall-feelings.test.ts`.
 
+20. **[M]** **A deliberate question about time leads with this directory's most recent
+    session** (2026-09-30, the continuity test — working default; `recency-ask.ts`,
+    `mcp/deliberate.ts#recentRows`). Only on the deliberate path, and only when the
+    caller names the asking session's directory (the MCP `recall`; not the console's
+    `ask`). A fixed list of phrases ("most recent", "last session", "this evening",
+    "today", "left off", …) or a clock time is the cue; no model reads the question. The
+    session is the newest that ran here (`coverage/#sessionsHere`), not the asker, that
+    left a chapter or a memory; its latest chapter and up to `RECENT_MEMORIES_MAX` (8)
+    of its live, unreplaced memories, newest first, are put FIRST, marked `recent: true`,
+    keeping the tier the search gave them or `quiet` when it did not reach them. A
+    chapter's copy is the chapter; confidential rows are withheld from a non-owner
+    silently, as a list withholds. It ADDS rows to the answer and moves none of the
+    rest: activation, the gate and the decision record are unchanged (the rows it adds
+    are not in `considered`). Tests: `continuity.test.ts`.
+
 ## 6. Scars honored
 
 **E7** (observers surface but strengthen nothing) · **E8** (base-level decay runs on lived
@@ -348,6 +363,17 @@ holds), a `corrected` one as `Corrected by [id]`, an `open` pair as `(disagrees 
 [id])`. Outside the clip, like `Journal:` — a label, never a filter: nothing about what
 is recallable, ranked or gated moves. The deliberate path carries the same as a
 `standing` field, and by id a replaced row says `replaced by [id]`.
+
+## 6c. A deliberate result says where it came from (2026-09-30)
+
+**[M]** Every row the deliberate path returns carries `from`: the session that wrote it
+("this session" for the asker's own, the short id otherwise), its directory (home as `~`),
+and when it was written in the store's zone (a chapter: its latest write) —
+`session a1b2c3d4, ~/random, 09-30 17:41`. Read off the row (`origin_session`,
+`origin_scope`, `created_at`/`updated_at`); a row that recorded less says less, and "an
+earlier session" when it names no session. Nothing is backfilled. A label, like standing:
+nothing about what is recallable or ranked moves. Episodes record their directory on
+`origin_scope` from 2026-09-30 on.
 
 ## 7. Open questions
 

@@ -53,6 +53,7 @@ export * from "./mood.js";
 export * from "./render.js";
 export * from "./session.js";
 export * from "./standing.js";
+export * from "./recency-ask.js";
 export * from "./tunables.js";
 export { activate, isConfidential, isHandoff, isSelfPage, gatedSal, recordedIdentity, salienceRank } from "./activate.js";
 export type { FeelingLane, SpreadFn, SpreadStats } from "./activate.js";

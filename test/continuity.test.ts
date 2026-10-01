@@ -11,11 +11,15 @@
  * written up" although a chapter had been written at 17:50.
  *
  * This file reproduces that afternoon on a temp store, through the same doors
- * the hooks and the MCP server use, and checks the wake half:
+ * the hooks and the MCP server use, and checks both halves:
  *   1. B's wake says who was last here, when, the chapter's title and id, and
  *      its first sentence — spliced at delivery, so it shows two minutes
  *      later, not only after the next boundary;
- *   2. the handoff pointer says how far the work since is written up.
+ *   2. the handoff pointer says how far the work since is written up;
+ *   3. asked plainly, "what do you remember from our most recent session?",
+ *      recall answers with A's chapter first, then what A wrote, even with a
+ *      busier session next door filling the candidate cap;
+ *   4. every recall result says which session, which directory and when.
  *
  * Hermetic: every test makes its own temp directory and removes it. The clock
  * is pinned and the zone is UTC.
@@ -35,6 +39,7 @@ import {
   lastHereLadder,
 } from "../src/core/handoff/last-here.js";
 import type { LastHere } from "../src/core/handoff/last-here.js";
+import { readRecencyAsk } from "../src/core/recall/index.js";
 import { readSentinel } from "../src/core/self/index.js";
 import { McpServer } from "../src/adapters/mcp/server.js";
 import { recordSession } from "../src/adapters/sessions.js";
@@ -361,7 +366,81 @@ describe("its room in the wake", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+describe("asked plainly, recall finds the last session here first (the recall half)", () => {
+  /** Another session, in another directory, busy with release work later the
+   *  same day — the work that filled the candidate cap on the live store. */
+  async function nextDoor(k: ReturnType<typeof afternoon>): Promise<void> {
+    const s = k.server(C, THERE);
+    for (let i = 0; i < 12; i++) {
+      k.talk(C, at(18, i * 2), THERE);
+      await s.call("note", {
+        session: C,
+        text: `Release session note ${String(i)}: the most recent session of the build cut the tarball and checked the doctor again, 2026-09-30.`,
+      });
+    }
+  }
+
+  type Row = { id: string; recent?: boolean; from?: string; journal: boolean };
+  function rows(r: { structuredContent?: unknown }): Row[] {
+    return ((r.structuredContent as Record<string, unknown>)["memories"] as Row[]) ?? [];
+  }
+
+  test("Mike's question: A's chapter first, then what A wrote, each saying where it came from", async () => {
+    const k = afternoon();
+    const { episodeId } = await mikesAfternoon(k);
+    await nextDoor(k);
+    k.set(at(18, 30));
+    const b = k.server(B);
+    const r = await b.call("recall", { question: "what do you remember from our most recent session?" });
+    const got = rows(r);
+    expect(got[0]?.id).toBe(episodeId);
+    expect(got[0]?.journal).toBe(true);
+    expect(got[0]?.recent).toBe(true);
+    expect(got[0]?.from).toBe("session a1b2c3d4, " + HERE + ", 09-30 17:50");
+    // Then the memories A wrote, newest first, all marked.
+    const lead = got.filter((m) => m.recent === true);
+    expect(lead.length).toBeGreaterThanOrEqual(3);
+    for (const m of lead.slice(1)) expect(m.from).toMatch(/^session a1b2c3d4, .*, 09-30 17:4\d$/);
+    // Nothing from next door leads, and what of it came back says where it is from.
+    const firstOther = got.findIndex((m) => m.recent !== true);
+    expect(firstOther === -1 || firstOther >= lead.length).toBe(true);
+    for (const m of got.filter((x) => x.recent !== true)) expect(m.from).toContain("session ");
+    expect((r.structuredContent as Record<string, unknown>)["recent"]).toContain("a1b2c3d4");
+  });
+
+  test("a question that is not about time is answered as before, with provenance", async () => {
+    const k = afternoon();
+    await mikesAfternoon(k);
+    const b = k.server(B);
+    const got = rows(await b.call("recall", { question: "Montaigne and his three meals" }));
+    expect(got.length).toBeGreaterThan(0);
+    expect(got.some((m) => m.recent === true)).toBe(false);
+    expect(got[0]?.from).toMatch(/^session a1b2c3d4, /);
+  });
+
+  test("the asker's own session is not 'the most recent session'; its own rows say 'this session'", async () => {
+    const k = afternoon();
+    await mikesAfternoon(k);
+    const a = k.server(A);
+    const r = await a.call("recall", { question: "what did we do in the last session?" });
+    expect(rows(r).some((m) => m.recent === true)).toBe(false);
+    const own = rows(await a.call("recall", { question: "Montaigne and his three meals" }));
+    expect(own[0]?.from).toMatch(/^this session, /);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 describe("the pieces", () => {
+  test("a question about time is read off a fixed list of phrases, or a clock time", () => {
+    expect(readRecencyAsk("what do you remember from our most recent session?")).toBe("most recent");
+    expect(readRecencyAsk("What did we do this evening, 16:01–17:48")).toBe("this evening");
+    expect(readRecencyAsk("what happened between 4pm and 6pm")).toBe("a clock time");
+    expect(readRecencyAsk("where did we leave off?")).toBeNull();
+    expect(readRecencyAsk("where we left off")).toBe("left off");
+    expect(readRecencyAsk("the recent-ish parser rewrite")).toBeNull();
+    expect(readRecencyAsk("Montaigne and his three meals")).toBeNull();
+  });
+
   test("the sessions that ran here come from the turn-ends, newest first", () => {
     const k = afternoon();
     k.talk(A, at(16, 1));
