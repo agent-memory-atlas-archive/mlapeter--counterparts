@@ -125,7 +125,7 @@ describe("feelings: an emotion that carries a phrase is split, never refused for
       { whose: "self", core: "happy", emotion: "other", otherWord: "settled — like a keel in water", strength: 0.4, carriedBy: "after the release" },
       { whose: "owner", core: "happy", emotion: "hopeful", strength: 0.5, carriedBy: "y".repeat(CARRIED_BY_MAX_CHARS + 50) },
     ]);
-    expect(out.rows[0]).toMatchObject({ emotion: "other", otherWord: "steadied", carriedBy: "the guard has held every time since the first test" });
+    expect(out.rows[0]).toMatchObject({ emotion: "steadied", otherWord: null, carriedBy: "the guard has held every time since the first test" });
     expect(out.rows[1]).toMatchObject({ emotion: "other", otherWord: "settled", carriedBy: "after the release; like a keel in water" });
     expect(out.rows[2]?.carriedBy.length).toBe(CARRIED_BY_MAX_CHARS);
     expect(out.repairs.map((r) => [r.index, r.field])).toEqual([
@@ -174,7 +174,7 @@ describe("dream feeling-now: repaired, reasons surfaced, never doubled", () => {
     expect(out.results[0]?.note).toContain('"steadied" was kept as the emotion');
     const dreamt = c.store.feelingsFor(m.guard).filter((f) => f.source === "dream");
     expect(dreamt).toHaveLength(1);
-    expect(dreamt[0]).toMatchObject({ other_word: "steadied" });
+    expect(dreamt[0]).toMatchObject({ emotion: "steadied", other_word: null });
     expect(dreamt[0]?.carried_by).toContain("the guard has held every time since the first test");
   });
 
@@ -283,7 +283,7 @@ describe("dream: refusals that protected nothing on the keep list became notes",
     const prompt = c.dreams.launchPrompt({ session: SESSION });
     expect(prompt).toContain("Usually far fewer than the ceilings");
     expect(prompt).toContain("none is fine");
-    expect(prompt).toContain("feeling-now {id, core, emotion, strength, carried_by}");
+    expect(prompt).toContain("feeling-now {id, core: happy|warm|calm|curious|sad|uneasy|angry, emotion, strength, carried_by}");
     expect(prompt).toContain("`emotion` is ONE word");
     expect(prompt).not.toContain("at most");
   });
@@ -451,10 +451,11 @@ describe("reflect: a second finish supplies what the first did not write", () =>
     const row = c.store.feelingsFor(s.open).find((x) => x.source === "reflection");
     expect(row).toMatchObject({ emotion: "grateful" });
     expect(row?.carried_by).toContain("he said thank you and meant it");
-    // A wheel word under another core is stored under its own (owner, 2026-09-28).
+    // A wheel word under another core is stored under the writer's core, with
+    // no note of a move (owner, 2026-09-30; it was moved 2026-09-28).
     expect(done.outcome.feelings[1]).toMatchObject({ ok: true, reason: "recorded-later" });
-    expect(done.outcome.feelings[1]?.note).toContain("sits under anger");
-    expect(c.store.feelingsFor(s.open).some((x) => x.core === "anger" && x.emotion === "furious")).toBe(true);
+    expect(done.outcome.feelings[1]?.note).toBeUndefined();
+    expect(c.store.feelingsFor(s.open).some((x) => x.core === "happy" && x.emotion === "furious")).toBe(true);
     // One that still will not store says why.
     const bad = c.reflections.finish({ reflection: s.reflection, session: SESSION, feelings: [{ id: s.open, core: "boredom", emotion: "flat", strength: 0.2 }] });
     if (!bad.ok) throw new Error(String(bad.reason));

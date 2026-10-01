@@ -3405,7 +3405,7 @@ export class McpServer {
       const added = this.counterpart.addFeelings(deposit.memoryId, inputs, model === undefined ? {} : { model });
       // Two kinds of notice (emotion part A): a word kept as the writer's own
       // (`other`), with a suggestion ONLY when a wheel word is genuinely close;
-      // and a word read as a wheel word (`readAs`: exposed → vulnerable).
+      // and a word read as a wheel word (`readAs`: thankful → grateful).
       const kept = added.notices.filter((n) => n.readAs === undefined);
       const read = added.notices.filter((n) => n.readAs !== undefined);
       return {
@@ -3841,7 +3841,7 @@ function readAbout(raw: unknown): AboutRead {
 }
 
 /**
- * `feelings: [{ whose, core, emotion, strength, carried_by, beneath?, other_word? }]`
+ * `feelings: [{ whose, core?, emotion, strength?, valence?, carried_by, beneath?, other_word? }]`
  * off a `note` or a `session_end` entry, read and CHECKED before anything
  * mints (`store/feelings.ts#checkFeelings`, pure). `beneath` is another
  * feeling's index in the same list. Absent is no feelings; anything that will
@@ -3866,11 +3866,17 @@ function readFeelingsOrThrow(raw: unknown): FeelingsRead {
       return { refused: `feelings[${i}] is not an object.` };
     }
     const f = item as Record<string, unknown>;
-    for (const key of ["whose", "core", "emotion"] as const) {
+    for (const key of ["whose", "emotion"] as const) {
       if (typeof f[key] !== "string") return { refused: `feelings[${i}].${key} is a word.` };
     }
+    // v11: `core` may be left out (the word's own core), and `strength` and
+    // `valence` too (the word's defaults).
+    const core = f["core"];
+    if (core !== undefined && core !== null && typeof core !== "string") return { refused: `feelings[${i}].core is a word.` };
     const carried = f["carried_by"];
     const other = f["other_word"];
+    const valence = f["valence"];
+    const strength = f["strength"];
     if (carried !== undefined && typeof carried !== "string") return { refused: `feelings[${i}].carried_by is text.` };
     if (other !== undefined && typeof other !== "string") return { refused: `feelings[${i}].other_word is a word.` };
     // AT THE DOOR, `beneath` is an INDEX into this list and nothing else (review
@@ -3882,9 +3888,10 @@ function readFeelingsOrThrow(raw: unknown): FeelingsRead {
     }
     inputs.push({
       whose: f["whose"] as string,
-      core: f["core"] as string,
+      ...(typeof core === "string" ? { core } : {}),
       emotion: f["emotion"] as string,
-      strength: f["strength"] as number,
+      ...(strength === undefined || strength === null ? {} : { strength: strength as number }),
+      ...(valence === undefined || valence === null ? {} : { valence: valence as number }),
       ...(carried === undefined ? {} : { carriedBy: carried }),
       ...(other === undefined ? {} : { otherWord: other }),
       ...(beneath === undefined || beneath === null ? {} : { beneath: beneath as number }),

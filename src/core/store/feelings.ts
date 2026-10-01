@@ -1,16 +1,20 @@
 /**
  * FEELINGS ON A MEMORY — the `feelings` table's shape and the one check every
- * write of it crosses (schema v7, owner-approved 2026-09-25).
+ * write of it crosses (schema v7, owner-approved 2026-09-25; the seven cores
+ * and the numbers, v11, 2026-09-30).
  *
  * One row per feeling. A memory can hold several: mixed feelings are several
  * rows, and the owner's and this self's feelings about the same moment sit side
- * by side, told apart by `whose`. Each names a `core` (one of six) and an
+ * by side, told apart by `whose`. Each names a `core` (one of seven) and an
  * `emotion` from the wheel (`core/feelings-wheel.ts`), or `other` with the
- * person's own word kept in `other_word`. `strength` is recorded as felt and
- * never rewritten — softening with time is for a reader to compute. A feeling
- * can sit on top of another on the same memory (`beneath_id`: anger over fear).
- * `carried_by` says briefly what in the moment carried it — the words, what
- * happened — and need not be a statement of feeling.
+ * person's own word kept in `other_word`. `strength` is the INTENSITY,
+ * recorded as felt and never rewritten — softening with time is for a reader
+ * to compute. `valence` (v11) is the writer's own reading of how pleasant it
+ * was, NULL when the writer gave none: a reader then takes the word's default
+ * (`feelingValence`), so the defaults can be tuned without rewriting a row. A
+ * feeling can sit on top of another on the same memory (`beneath_id`: angry
+ * over afraid). `carried_by` says briefly what in the moment carried it — the
+ * words, what happened — and need not be a statement of feeling.
  *
  * READ SINCE 2026-09-26 (emotion part A). The strongest recorded strength on
  * a memory joins its numeric `emotional` score as its emotional intensity,
@@ -19,12 +23,29 @@
  * that recall matches against (recall G18). The `meta.feeling` label is still
  * only a label.
  *
- * A BLEND (`tender`: sad + happy) may be named under either of its cores and is
- * stored under its PRIMARY core — `core` holds one value, and anything that
- * matches by core reads the blend as both (`feelings-wheel.ts#coresOfFeeling`).
+ * THE WRITER'S CORE WINS (owner, 2026-09-30). A wheel word named under a core
+ * it does not sit under is stored under the core the writer named, with the
+ * word and the word's numbers — `hurt` under sad stays sad. (From 2026-09-28
+ * it was moved to the word's own core and the move reported; before that,
+ * refused.) Only a feeling sent with no core takes its word's home core. A
+ * first-wheel core name (`fear`, `anger`, `surprise`, `disgust`) still
+ * reads, as the v11 upgrade would have filed it, and the caller is told.
  */
-import { CORE_EMOTIONS, OTHER_EMOTION, closestKeys, isCoreEmotion, resolveEmotion } from "../feelings-wheel.js";
+import {
+  CORE_EMOTIONS,
+  OTHER_EMOTION,
+  V10_CORES,
+  closestKeys,
+  feelingNumbers,
+  isCoreEmotion,
+  lookupWord,
+  remapV10Feeling,
+  resolveEmotion,
+} from "../feelings-wheel.js";
 import type { CoreEmotion } from "../feelings-wheel.js";
+/** Re-exported for `sleep/`, which reads the wheel only through the store (the
+ *  recognition lane, `sleep/consolidate.ts#selfRelevantFeeling`). */
+export { isSelfRelevantFeeling } from "../feelings-wheel.js";
 import type { Row } from "./db.js";
 import { StoreError } from "./errors.js";
 
@@ -60,13 +81,17 @@ export const OTHER_WORD_MAX_CHARS = 80;
 
 export interface FeelingInput {
   readonly whose: string;
-  readonly core: string;
-  /** A wheel key or bare word (`furious`, `fear.inferior`), or `other`. */
+  /** One of the seven. Left out (or empty), the word's home core — only for a
+   *  word on the wheel. A first-wheel name reads as v11 filed it. */
+  readonly core?: string;
+  /** A wheel key or bare word (`furious`, `caught out`), or `other`. */
   readonly emotion: string;
   /** The person's word, when `emotion` is `other`. */
   readonly otherWord?: string;
-  /** 0..1, as recorded. */
-  readonly strength: number;
+  /** The intensity, 0..1, as recorded. Left out: the word's default. */
+  readonly strength?: number;
+  /** v11: how pleasant, −1..+1. Left out: the word's default, read when needed. */
+  readonly valence?: number;
   /** What carried it. May be empty. */
   readonly carriedBy?: string;
   /**
@@ -93,6 +118,23 @@ export interface FeelingRow extends Row {
   source: string | null;
   /** v9: the calendar date it was recorded after the moment; null = felt at the time. */
   recorded_later: string | null;
+  /** v11: the writer's valence, −1..+1; null = the word's default (`feelingValence`). */
+  valence: number | null;
+  /** v11: the core and the emotion the first wheel stored, kept by the upgrade
+   *  on every row it re-filed (null on the rest) — so it can be undone. */
+  core_v10: string | null;
+  emotion_v10: string | null;
+}
+
+/**
+ * A recorded feeling's valence: the writer's, else its word's default (an
+ * `other` whose own word is on the wheel reads as that word), else its core's.
+ * Tolerates a row read without the v11 column.
+ */
+export function feelingValence(row: Pick<FeelingRow, "core" | "emotion" | "other_word"> & { valence?: number | null }): number {
+  const own = row.valence;
+  if (typeof own === "number" && Number.isFinite(own)) return Math.max(-1, Math.min(1, own));
+  return feelingNumbers(row.core, row.emotion, row.other_word).valence;
 }
 
 /**
@@ -105,7 +147,7 @@ export interface FeelingNotice {
   readonly word: string;
   readonly core: CoreEmotion;
   readonly closest: readonly string[];
-  /** Set when `word` was read as this wheel key (`exposed` → `vulnerable`). */
+  /** Set when `word` was read as this wheel key (`thankful` → `grateful`). */
   readonly readAs?: string;
 }
 
@@ -113,7 +155,10 @@ export interface FeelingNotice {
  * ACCEPT AND REPAIR (owner direction 2026-09-28): what the check changed so
  * the feeling could be stored rather than refused — an emotion that carried a
  * phrase split into the word and the nuance, or a `carried_by` kept to its
- * length. `was` is what was sent, `now` what was stored in that field.
+ * length — and, since v11, a first-wheel core name read as the core it is now
+ * (`fear` → `uneasy`). A wheel word under a core that is not its home is NOT
+ * a repair: it is stored as written. `was` is what was sent, `now` what was
+ * stored in that field.
  */
 export interface FeelingRepair {
   readonly index: number;
@@ -203,6 +248,8 @@ export interface CheckedFeeling {
   readonly emotion: string;
   readonly otherWord: string | null;
   readonly strength: number;
+  /** The writer's valence, or null for the word's default. */
+  readonly valence: number | null;
   readonly carriedBy: string;
   readonly beneath: string | number | null;
 }
@@ -228,10 +275,17 @@ export function checkFeelings(inputs: readonly FeelingInput[]): { rows: CheckedF
     if (typeof f.whose !== "string" || !(FEELING_WHOSE as readonly string[]).includes(f.whose)) {
       invalid(i, "whose-unknown", { allowed: FEELING_WHOSE.join("|") });
     }
-    if (!isCoreEmotion(f.core)) invalid(i, "core-unknown", { allowed: CORE_EMOTIONS.join("|") });
-    const core = f.core as CoreEmotion;
-    if (typeof f.strength !== "number" || !Number.isFinite(f.strength) || f.strength < 0 || f.strength > 1) {
+    const sentCore: unknown = f.core ?? "";
+    if (typeof sentCore !== "string") invalid(i, "core-unknown", { allowed: CORE_EMOTIONS.join("|") });
+    const named = (sentCore as string).trim();
+    if (named.length > 0 && !isCoreEmotion(named) && !(V10_CORES as readonly string[]).includes(named)) {
+      invalid(i, "core-unknown", { allowed: CORE_EMOTIONS.join("|") });
+    }
+    if (f.strength !== undefined && (typeof f.strength !== "number" || !Number.isFinite(f.strength) || f.strength < 0 || f.strength > 1)) {
       invalid(i, "strength-out-of-range");
+    }
+    if (f.valence !== undefined && (typeof f.valence !== "number" || !Number.isFinite(f.valence) || f.valence < -1 || f.valence > 1)) {
+      invalid(i, "valence-out-of-range");
     }
     if (f.carriedBy !== undefined && typeof f.carriedBy !== "string") invalid(i, "carried-by-not-a-string");
     // TYPES BEFORE ANY WORK (review S2): a non-string `otherWord` used to
@@ -270,10 +324,29 @@ export function checkFeelings(inputs: readonly FeelingInput[]): { rows: CheckedF
     if (f.beneath !== undefined && typeof f.beneath !== "string" && typeof f.beneath !== "number") {
       invalid(i, "beneath-not-an-id-or-index");
     }
+    // WHICH CORE. The writer's, as named; a first-wheel name, as the v11
+    // upgrade files it (said, as a repair); none, the word's home — and a word
+    // off the wheel with no core cannot be placed.
+    const isOther = f.emotion.trim().toLowerCase() === OTHER_EMOTION;
+    let core: CoreEmotion;
+    if (isCoreEmotion(named)) core = named;
+    else if (named.length > 0) {
+      core = remapV10Feeling(named, isOther ? OTHER_EMOTION : f.emotion, f.otherWord ?? null).core as CoreEmotion;
+      repairs.push({
+        index: i,
+        field: "core",
+        was: named,
+        now: core,
+        note: `"${named}" is not one of the cores now (${CORE_EMOTIONS.join(", ")}); it was stored under ${core}.`,
+      });
+    } else {
+      const home = lookupWord(isOther ? (f.otherWord ?? "") : f.emotion)?.entry.core;
+      if (home === undefined) invalid(i, "core-unknown", { allowed: CORE_EMOTIONS.join("|") });
+      core = home as CoreEmotion;
+    }
     let emotion: string;
     let otherWord: string | null = null;
-    let storedCore: CoreEmotion = core;
-    if (f.emotion.trim().toLowerCase() === OTHER_EMOTION) {
+    if (isOther) {
       const word = (f.otherWord ?? "").trim();
       if (word.length === 0) invalid(i, "other-word-missing");
       emotion = OTHER_EMOTION;
@@ -281,30 +354,17 @@ export function checkFeelings(inputs: readonly FeelingInput[]): { rows: CheckedF
       notices.push({ index: i, word, core, closest: closestKeys(core, word.toLowerCase()) });
     } else {
       const read = resolveEmotion(core, f.emotion);
-      if (read.kind === "wrong-core") {
-        // ACCEPT AND REPAIR (owner, 2026-09-28): a wheel word named under
-        // another core is stored under its own, and said (it was refused
-        // `emotion-under-another-core`).
+      if (read.kind === "wheel") {
+        // On the wheel — under this core or not, it is stored under the
+        // writer's core with its key (the writer's core wins, 2026-09-30).
         emotion = read.entry.key;
-        storedCore = read.entry.core;
-        repairs.push({
-          index: i,
-          field: "core",
-          was: core,
-          now: read.entry.core,
-          note: `"${read.entry.word}" sits under ${read.entry.core} on the wheel, not ${core}, so it was stored under ${read.entry.core}.`,
-        });
-      } else if (read.kind === "wheel") {
-        emotion = read.entry.key;
-        // A blend named under its second core is stored under its primary.
-        storedCore = read.entry.core;
-        if (read.alias !== undefined) notices.push({ index: i, word: read.alias, core: storedCore, closest: [], readAs: read.entry.key });
+        if (read.alias !== undefined) notices.push({ index: i, word: read.alias, core, closest: [], readAs: read.entry.key });
       } else {
         // Not on the wheel: kept, as `other`, with the word — and the caller is
         // told of a wheel word only when one is genuinely close (a misspelling).
         emotion = OTHER_EMOTION;
-        otherWord = read.kind === "other" ? read.word : f.emotion.trim();
-        notices.push({ index: i, word: otherWord, core, closest: read.kind === "other" ? read.closest : [] });
+        otherWord = read.word;
+        notices.push({ index: i, word: otherWord, core, closest: read.closest });
       }
     }
     if (typeof f.beneath === "number") {
@@ -314,10 +374,13 @@ export function checkFeelings(inputs: readonly FeelingInput[]): { rows: CheckedF
     }
     rows.push({
       whose: f.whose as FeelingWhose,
-      core: storedCore,
+      core,
       emotion,
       otherWord,
-      strength: f.strength,
+      // Left out, the word's default intensity (its core's for a word of the
+      // writer's own); the writer's when given, and never rewritten.
+      strength: f.strength ?? feelingNumbers(core, emotion, otherWord).intensity,
+      valence: f.valence ?? null,
       carriedBy,
       beneath: f.beneath ?? null,
     });
