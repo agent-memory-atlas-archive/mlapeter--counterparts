@@ -846,6 +846,11 @@ export interface MemoryFilter {
    * recall can credit a chapter's copy without reading every prose file.
    */
   originRef?: string;
+  /**
+   * BORN ON OR AFTER this LIVED day — the `birth_day` column. Added 2026-09-30
+   * so the wake's "Last here" walk reads only the episodes inside its window.
+   */
+  bornFromDay?: number;
 }
 
 function memoryWhere(filter: MemoryFilter): { clause: string; args: (string | number)[] } {
@@ -878,6 +883,10 @@ function memoryWhere(filter: MemoryFilter): { clause: string; args: (string | nu
   if (filter.originRef !== undefined) {
     where.push("origin_ref = ?");
     args.push(filter.originRef);
+  }
+  if (filter.bornFromDay !== undefined) {
+    where.push("birth_day >= ?");
+    args.push(filter.bornFromDay);
   }
   return { clause: where.length ? `WHERE ${where.join(" AND ")}` : "", args };
 }

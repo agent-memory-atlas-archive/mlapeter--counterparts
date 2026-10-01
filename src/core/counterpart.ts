@@ -125,7 +125,9 @@ import {
   isHandoffRow,
 } from "./handoff/index.js";
 import type { Handoff, HandoffRefusal, HandoffWrite, PointerSince } from "./handoff/index.js";
-import { CLAIM_CHAPTER, askFromStretch, claimUnwritten, sessionStretch, workSince } from "./coverage/index.js";
+import { CLAIM_CHAPTER, askFromStretch, chapterClaims, claimUnwritten, sessionStretch, sessionsHere, workSince } from "./coverage/index.js";
+import { LAST_HERE_LIFE_DAYS, chaptersBySession, chaptersHere, lastHereLadder } from "./handoff/last-here.js";
+import type { ChapterHere, LastHere } from "./handoff/last-here.js";
 import { localStamp, localStampAfter } from "./time.js";
 import { leftAs } from "./leaving.js";
 import type { LeftAs } from "./leaving.js";
@@ -1815,31 +1817,60 @@ export class Counterpart {
       );
     } catch {
       // A store that will not answer is not a reason to fail a wake (§1 G7).
-      return result;
+      ladder = [];
     }
+    // LAST HERE (2026-09-30): the session that last wrote a chapter in this
+    // directory, finished or not — above the handoff, and the first thing
+    // given up when there is not room for both (`handoff/last-here.ts`).
+    const lastHere = this.lastHereLadder(scope, here?.session ?? null);
     const newest = ladder[0];
-    if (newest === undefined) return result;
+    if (newest === undefined && lastHere.length === 0) return result;
     const budget = this.reportedBudget;
-    // What `no-room` reports: the SMALLEST rung, which is the one that decided
-    // there was no room at all (review of #295, NIT-3).
-    let smallest: ReturnType<typeof spliceBeforeSentinel> | null = null;
-    for (const rung of ladder) {
-      const spliced = spliceBeforeSentinel(result.text, rung.block);
-      if (!spliced.applied) return result;
-      smallest = spliced;
-      if (budget !== null && spliced.bytes > budget) continue;
-      const cost = spliced.bytes - result.bytes;
-      const lines = rung.block.split("\n");
-      const own = (i: number): number =>
-        rung.shown.length === 1 ? cost : new TextEncoder().encode(lines[i + 1] ?? "").length + 1;
-      const others = rung.shown.slice(1).reduce((n, _, i) => n + own(i + 1), 0);
-      rung.shown.forEach((h, i) => {
-        this.handoffs.noteShown(h, {
-          bytes: i === 0 ? cost - others : own(i),
-          session: here?.session ?? null,
-          among: rung.live,
+    const fits = (block: string): ReturnType<typeof spliceBeforeSentinel> | null => {
+      const spliced = spliceBeforeSentinel(result.text, block);
+      return spliced.applied && (budget === null || spliced.bytes <= budget) ? spliced : null;
+    };
+    // THE HANDOFF FIRST (review of #300 MAJOR-1): the widest handoff rung that
+    // fits ALONE is the one carried — unfinished work outranks orientation —
+    // and only then is the line tried above it, widest first, with that rung
+    // alone as the fallback. The line alone only when no handoff rung fits.
+    // With no chapter here this is the handoff ladder as it was, rung for rung.
+    // A bundle that is not a clean render is delivered as found.
+    if (!spliceBeforeSentinel(result.text, ladder[0]?.block ?? lastHere[0] ?? "").applied) return result;
+    const best = ladder.find((rung) => fits(rung.block) !== null) ?? null;
+    const tries: { rung: (typeof ladder)[number] | null; above: string | null }[] =
+      best !== null
+        ? [...lastHere.map((above) => ({ rung: best, above })), { rung: best, above: null }]
+        : lastHere.map((above) => ({ rung: null, above }));
+    // What `no-room` reports: the SMALLEST handoff rung, which is the one that
+    // decided there was no room for it (review of #295, NIT-3).
+    const last = ladder[ladder.length - 1];
+    const smallest = last === undefined ? null : spliceBeforeSentinel(result.text, last.block);
+    for (const { rung, above } of tries) {
+      const block = [above, rung?.block ?? null].filter((b): b is string => b !== null).join("\n");
+      const spliced = fits(block);
+      if (spliced === null) continue;
+      const total = spliced.bytes - result.bytes;
+      const aboveBytes = above === null ? 0 : (rung === null ? total : new TextEncoder().encode(above).length + 1);
+      if (rung !== null) {
+        const cost = total - aboveBytes;
+        const lines = rung.block.split("\n");
+        const own = (i: number): number =>
+          rung.shown.length === 1 ? cost : new TextEncoder().encode(lines[i + 1] ?? "").length + 1;
+        const others = rung.shown.slice(1).reduce((n, _, i) => n + own(i + 1), 0);
+        rung.shown.forEach((h, i) => {
+          this.handoffs.noteShown(h, {
+            bytes: i === 0 ? cost - others : own(i),
+            session: here?.session ?? null,
+            among: rung.live,
+          });
         });
-      });
+      } else if (newest !== undefined) {
+        this.noteHandoffNoRoom(newest.handoff, smallest?.bytes ?? result.bytes, budget, result.bytes);
+      }
+      if (above !== null) {
+        this.emit("counterpart.lasthere.shown", undefined, { bytes: aboveBytes, lines: above.split("\n").length });
+      }
       return {
         ...result,
         text: spliced.text,
@@ -1847,14 +1878,56 @@ export class Counterpart {
         sentinel: spliced.sentinel,
       };
     }
-    const bytes = smallest?.bytes ?? result.bytes;
-    this.emit("counterpart.handoff.noroom", newest.handoff.id, {
-      bytes,
-      budget,
-      was: result.bytes,
-    });
-    this.handoffs.noteNoRoom(newest.handoff, { bytes, budget: budget ?? 0 });
+    if (newest !== undefined) this.noteHandoffNoRoom(newest.handoff, smallest?.bytes ?? result.bytes, budget, result.bytes);
+    else this.emit("counterpart.lasthere.noroom", undefined, { budget, was: result.bytes });
     return result;
+  }
+
+  /** The handoff could not be carried at this ceiling: a ring event and the
+   *  durable `no-room` row, as the pointer has always left. */
+  private noteHandoffNoRoom(h: Handoff, bytes: number, budget: number | null, was: number): void {
+    this.emit("counterpart.handoff.noroom", h.id, { bytes, budget, was });
+    this.handoffs.noteNoRoom(h, { bytes, budget: budget ?? 0 });
+  }
+
+  /**
+   * THE "LAST HERE" BLOCKS for this directory, widest first, or none: the
+   * chapters inside the fortnight written here — by the row's directory, the
+   * chapter claims in this directory's coverage file, or failing both, the
+   * session's turn-ends (`handoff/last-here.ts#chaptersHere`) — with when
+   * each session was here. `chapters` is passed by a caller asking for every
+   * directory at once, so the episode walk is one. Never throws.
+   */
+  private lastHereLadder(
+    scope: string,
+    reader: string | null,
+    chapters?: ReadonlyMap<string, ChapterHere>,
+  ): string[] {
+    try {
+      const day = this.store.livedDay();
+      const all = chapters ?? this.chaptersInWindow(day);
+      if (all.size === 0) return [];
+      const only = new Set(all.keys());
+      const sessions = new Map(sessionsHere(this.spans, scope, { only }).map((s) => [s.session, s] as const));
+      const found = chaptersHere(all, { scope, claimed: chapterClaims(this.spans, scope), sessions }, day, { reader });
+      if (found.length === 0) return [];
+      const zone = this.store.zone();
+      const entries: LastHere[] = found.map((f) => ({
+        chapter: f.chapter,
+        when: `${localStamp(f.firstAt, zone)}–${localStampAfter(f.lastAt, f.firstAt, zone)}`,
+        // `09-30 17:50` → `09-30`.
+        date: localStamp(f.chapter.writtenAt, zone).split(" ")[0] ?? "",
+      }));
+      return lastHereLadder(entries, reader);
+    } catch {
+      return [];
+    }
+  }
+
+  /** Every session's latest chapter among the episodes born inside the
+   *  fortnight — the SQL bound on the walk (review of #300 MINOR-5). */
+  private chaptersInWindow(day: number): Map<string, ChapterHere> {
+    return chaptersBySession(this.store, { fromDay: Math.max(0, day - LAST_HERE_LIFE_DAYS + 1) });
   }
 
   /**
@@ -1884,6 +1957,12 @@ export class Counterpart {
         from: localStampAfter(work.firstAt, writtenAt, zone),
         to: localStampAfter(work.lastAt, work.firstAt, zone),
         writtenUp: work.unwritten === 0,
+        // How far, when not wholly (2026-09-30): the latest claim's time,
+        // spelled as `to` is, and what made it.
+        upTo: work.writtenUpTo === null ? null : localStampAfter(work.writtenUpTo, work.firstAt, zone),
+        by: work.writtenUpBy,
+        unwritten: work.unwritten,
+        unwrittenAfter: work.unwrittenAfter,
       },
     };
   }
@@ -1975,13 +2054,41 @@ export class Counterpart {
    * The scan is bounded by the number of DIRECTORIES the owner has worked in —
    * a handful — and it never throws: a store that will not answer reserves
    * nothing, which composes the wake that master composes.
+   *
+   * **The "Last here" line rides the same reserve (2026-09-30).** Per
+   * directory, each of its blocks is a candidate on its own and beside each of
+   * that directory's handoff rungs, exactly as delivery tries them; the share
+   * rule still takes the widest that passes, so the line can never make the
+   * pointer cost more than the eighth it could already. With no handoff and
+   * no chapter here inside the fortnight, the reserve is zero as before.
    */
   private wakeReserveBytes(budgetBytes: number): number {
-    let blocks: number[] = [];
+    const norm = (s: string): string => s.trim().replace(/\/+$/, "");
+    const blocks: number[] = [];
+    let byScope = new Map<string, number[]>();
     try {
-      blocks = this.handoffs.liveBlockBytes();
+      byScope = this.handoffs.liveBlockBytesByScope();
     } catch {
-      blocks = [];
+      byScope = new Map();
+    }
+    const handoffBytes = new Map<string, number[]>();
+    for (const [scope, rungs] of byScope) {
+      handoffBytes.set(norm(scope), [...(handoffBytes.get(norm(scope)) ?? []), ...rungs]);
+      blocks.push(...rungs);
+    }
+    try {
+      const chapters = this.chaptersInWindow(this.store.livedDay());
+      if (chapters.size > 0) {
+        for (const scope of this.spans.scopes()) {
+          const lines = this.lastHereLadder(scope, null, chapters).map((b) => byteLength(b));
+          for (const l of lines) {
+            blocks.push(l);
+            for (const h of handoffBytes.get(norm(scope)) ?? []) blocks.push(l + 1 + h);
+          }
+        }
+      }
+    } catch {
+      /* no chapter lines is the reserve as it was */
     }
     return PREFACE_RESERVE_BYTES + reserveBytes(blocks, budgetBytes);
   }
@@ -2895,8 +3002,8 @@ export class Counterpart {
     }
     // The GATE's text, never the draft — the same rule ingestion follows.
     const body = verdict.text !== undefined && verdict.text.length > 0 ? verdict.text : text;
-    const { scope, ...chapterOpts } = opts;
-    const written = this.self.appendChapter(sessionId, body, chapterOpts);
+    const { scope } = opts;
+    const written = this.self.appendChapter(sessionId, body, opts);
     // A CHAPTER WRITES THE SESSION'S STRETCH UP (2026-09-30): a claim naming
     // the episode and the chapter, with no proposal behind it, in the one file
     // the coverage ledger reads — in the project it was written in only.
@@ -2908,6 +3015,11 @@ export class Counterpart {
         ref: `${written.episodeId}#${String(written.chapter)}`,
       });
     }
+    // AND IT PUTS THE WAKE BEHIND: the "Last here" line it makes needs its
+    // room reserved, and a bundle composed before it may have none — so the
+    // turn-end worker re-renders (`refreshWake`), as it does for a write-up
+    // (review of #300 MAJOR-2).
+    if (written.reason === "appended" && !this.observer) markWakeBehind(this.store, "write-up");
     return {
       appended: written.reason === "appended",
       reason: written.reason,

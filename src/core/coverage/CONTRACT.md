@@ -43,7 +43,8 @@ counted, so it is.
 zone, a clock, and optional host evidence (`endedAt` per session).
 **Outputs** — the ledger (per session: state, pieces, what is written up, the unwritten
 stretch, owed, lapsed, small, per-date counts); `askFromStretch`; `claimUnwritten`;
-`workSince`; three durable row names written by `recordCoverage`.
+`workSince` (with how far that work is written up, 2026-09-30); `sessionsHere`; `chapterClaims`; three
+durable row names written by `recordCoverage`.
 
 **Guarantees** — **[M]** mechanized, **[A]** advisory:
 

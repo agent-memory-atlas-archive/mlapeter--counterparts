@@ -248,7 +248,8 @@ room for more than one. What was built, and the choices the brief left open:
   in one case: a narrow block in one directory is now reserved for when a wider one
   elsewhere fails the share, where before the wider one turned the reserve off for both.
   The ceiling constant grew from 448 to 1,408 because the widest block grew (1,389 measured
-  once the door named `retireHandoff`); the share rule is what binds in practice (at 9,000,
+  once the door named `retireHandoff`; 1,448 since §9's "written up to" words, measured
+  1,431); the share rule is what binds in practice (at 9,000,
   nothing past 1,125). Measured with sixty identity elements, one handoff against three:
   a reserve of 487 against 735 bytes at 6,000 (the share rule binds), 487 against 855 at
   7,000 and 9,000; all three carried, every wake keeping its 24 elements — a fixture whose
@@ -281,3 +282,71 @@ room for more than one. What was built, and the choices the brief left open:
 - **`dream/mind.ts` still reads one open loop per directory** (`newestPerScope`, now the
   newest across sessions). Showing every session's there is a question for the mind's own
   budget, not this change.
+
+## 9. "Last here", and how far the work since is written up (2026-09-30, the continuity test)
+
+Mike ended a ~/random session that had finished its work (notes, a chapter at 17:50,
+session_end memories, no handoff, as the Stop ask says), opened a new one two minutes later
+and asked what it remembered of the last session. Nothing pointed at the evening: the
+directory's pointer moves only for a handoff, and the one standing (another session's, from
+15:19) said "work here 16:01–17:53 since, not yet written up" with a chapter right there.
+The brief: `~/counterparts-notes/2026-09-30-continuity-brief.md`. What was built, and the
+choices it left open:
+
+- **Derived, not a row type.** Which directory a chapter is in, in order: the episode's
+  `origin_scope`, set at birth from 2026-09-30 (`self/episodes.ts`); with none, the
+  chapter claims in that directory's coverage file (`coverage/#chapterClaims`, the
+  `chapter:<epi>#n` claims since #289); failing both, the directories its session's
+  turn-ends are filed in (`coverage/#sessionsHere`, `boundaries.jsonl`, which retention
+  never strikes). The first round used the turn-end join alone; review of #300 (MINOR-1)
+  put it last, because a session's turn-ends are filed under where it was launched, which
+  is not always where its chapter tool was pointed. Chapters already on a store still
+  show the day this ships, by claim or turn-ends.
+- **The session's time is its `stop` turn-ends and pieces here**, first to last,
+  stretched to the chapter's own writes. Never a `session-end` boundary, whose time is
+  when the host closed the session, hours later sometimes (MINOR-2). Not the registry's
+  start: core does not read the registry, and the first Stop is within a turn of it.
+- **Not the reader's own** (MINOR-3): a session waking again after compaction is not told
+  it was last here.
+- **Several sessions here that day**: the newest with its first sentence, the one before by
+  title ("Before it: …"), the rest of that DAY by id ("+N more here on 09-30: …"). The day
+  rather than the fortnight, because ~/counterparts sees a dozen chaptered sessions a day,
+  and "+48 more" is noise. Older ones are still the newest when nothing newer exists.
+- **Its fortnight is the handoff's** (`LAST_HERE_LIFE_DAYS = HANDOFF_LIFE_DAYS`), read
+  off the latest chapter heading's lived day. The walk is bounded in SQL, not by the
+  fortnight after the fact (the first round claimed so wrongly; MINOR-5): episodes born
+  inside the window (`MemoryFilter.bornFromDay`), then only those sessions' turn-ends kept
+  while the coverage files are read (`sessionsHere`'s `only`). A session whose episode was
+  born before the window and chaptered inside it is missed; sessions that long are rare.
+- **Who gives way.** The line rides the handoff reserve (§2, CONTRACT §6): each of its
+  three rungs per directory is a candidate alone and beside each handoff rung, and the
+  share rule takes the widest that passes. At delivery the HANDOFF IS CARRIED FIRST: the
+  widest handoff rung that fits alone, then the line tried above it, widest first. The
+  first round tried every handoff rung with the line before any handoff alone, which at
+  some ceilings carried the newest handoff alone plus the line where three handoffs fit
+  (review of #300, MAJOR-1). Unfinished work beats orientation.
+- **What the reserve costs now** (MINOR-6). The reserve is store-wide, and a store in use
+  always holds a chapter inside the fortnight, so it is always taken: the widest
+  directory's line plus its handoff rungs, plus the margin, up to an eighth of the ceiling.
+  On a store whose lanes fill the ceiling, that is lane elements given up in every
+  directory, whether or not a session there is ever shown a line — the review estimated
+  roughly one to three identity elements at 9,000. Where the lane caps bind first (the
+  measured fixtures above, and the owner's store as of 2026-09-30) it costs nothing. And
+  CONTRACT §5 G6's byte-identical property, true of a store with no chapter, no longer
+  holds on a real one.
+- **A chapter puts the wake behind** (MAJOR-2). A bundle composed before a store's first
+  chapter in the window reserved nothing for the line, and on a full store the line then
+  never fit until the next lived day's render. `appendEpisode` marks `write-up`, so the
+  turn-end worker's `refreshWake` re-renders with the room reserved.
+- **Splitting `handoff.shown`'s cost** still reads the handoff rung's own lines; the
+  last-here line's bytes (its length and one newline) come off the total first.
+- **"Written up to 17:48 (chapter), 3 pieces after."** `workSince` returns the latest
+  WRITTEN-UP PIECE's time — a piece time, like the range it sits in — and what claimed it
+  (`writerOf`: the session's memories, a chapter, a later session's write-up, read off the
+  proposal's own session). "Nothing new" wrote nothing up, so it reads "nothing new to
+  write up as of 16:20". "Not yet written up" only when no claim stands on any of it;
+  "after" when every unwritten piece is later, "not yet" when some are earlier (another
+  session's — claims are per session). The first round printed the claim's time (MINOR-7).
+- **Not built**: a durable row for the line (CONTRACT §8 question 8), Desktop chats
+  (question 9), and a human session name (question 6 still holds: the line prints the
+  short id and the model, as the handoff does).

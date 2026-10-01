@@ -93,6 +93,17 @@ for it); work is named only past the owed floor; and it is named by its times �
 those words, so the share rule turns the reserve on from about 3,000 bytes of ceiling
 instead of 2,400.
 
+**How far, not whether (2026-09-30, the continuity test).** `workSince` also returns the
+latest written-up piece's time (`writtenUpTo`, a piece time like the range around it),
+what claimed it (`writtenUpBy`: memories, a chapter, "nothing new", a later session's
+write-up told apart by the proposal's own session), and how many unwritten pieces came
+after it. The pointer says "written up to 17:48 (chapter), 3 pieces after" where it said
+"not yet written up" for a session that had written a chapter and then said three more
+things. Beside it: `sessionsHere`, the sessions whose `stop` turn-ends and pieces are
+filed in a scope (first and last, and whether a `session-end` closed it), and
+`chapterClaims`, the episodes a scope's chapter claims name — how the wake's "Last here"
+line finds the chapters written in a directory (`handoff/NOTES.md` §9).
+
 ## 8. Doctor
 
 The `Write-ups` line replaces #192's `Crash write-up` and keeps its key (`crash-write-up`)

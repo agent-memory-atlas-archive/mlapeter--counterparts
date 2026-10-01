@@ -106,12 +106,14 @@ export const HANDOFF_EXCERPT_BYTES = 160;
  * 448 while a directory held one pointer. Since 2026-09-30 the widest block is
  * the several-handoff one — three shown in full at full-width excerpts, the
  * widest model id `isModelId` admits, five more named by id — measured at 1,389
- * (1,319 before the door line named `retireHandoff`, review of #295).
+ * (1,319 before the door line named `retireHandoff`, review of #295), and
+ * 1,431 since the newest says how far its work since is written up
+ * (2026-09-30).
  * In practice the share rule binds first: at the 9,000 bytes the owner's hosts
  * report, no reserve can pass 1,125, so a block that wide is carried with two
  * shown rather than three.
  */
-export const HANDOFF_RESERVE_MAX_BYTES = 1408;
+export const HANDOFF_RESERVE_MAX_BYTES = 1448;
 
 /**
  * Slack on top of the block that actually exists, so a reserve taken at one
@@ -653,13 +655,36 @@ export interface PointerSince {
   readonly written: string;
   /** `from` and `to` as the caller spells them: `13:02`, or `09-30 13:02`
    *  when the day is not the one before it. */
-  readonly after: { readonly from: string; readonly to: string; readonly writtenUp: boolean } | null;
+  readonly after: {
+    readonly from: string;
+    readonly to: string;
+    readonly writtenUp: boolean;
+    /**
+     * HOW FAR it is written up when it is not wholly (2026-09-30): the time of
+     * the latest claim on that work, spelled as `to` is, and what made it
+     * (`chapter`, `memories`, …). Absent or null: nothing of it is written up.
+     */
+    readonly upTo?: string | null;
+    readonly by?: string | null;
+    /** Pieces of that work not written up, and how many of them came after `upTo`. */
+    readonly unwritten?: number;
+    readonly unwrittenAfter?: number;
+  } | null;
 }
 
 /** The widest `PointerSince` the words can take — what the reserve is sized to. */
 export const WIDEST_POINTER_SINCE: PointerSince = {
   written: "12-31 23:59",
-  after: { from: "12-31 23:59", to: "12-31 23:59", writtenUp: false },
+  after: {
+    from: "12-31 23:59",
+    to: "12-31 23:59",
+    writtenUp: false,
+    upTo: "12-31 23:59",
+    // The widest of the written-up forms: "nothing new to write up as of …".
+    by: "nothing new",
+    unwritten: 9999,
+    unwrittenAfter: 0,
+  },
 };
 
 /** The widest stamp an OLDER entry of a several-handoff block can carry —
@@ -689,13 +714,39 @@ export function modelWords(id: string): string {
  * enough to tell a handful of sessions apart, and the full id is on the row.
  */
 export function authorWords(h: Handoff, reader: string | null = null): string {
+  return sessionWords(h.session, h.model ?? null, reader);
+}
+
+/**
+ * `authorWords` for anything that names a session and a model — a handoff, or
+ * a chapter in the "Last here" line (2026-09-30), so the two say who in the
+ * same words.
+ */
+export function sessionWords(session: string | null, model: string | null, reader: string | null = null): string {
   const who =
-    h.session === null
+    session === null
       ? "an earlier session"
-      : reader !== null && h.session === reader
+      : reader !== null && session === reader
         ? "this session"
-        : `session ${flatten(h.session).slice(0, 8)}`;
-  return h.model === undefined || h.model === null ? who : `${who} on ${modelWords(h.model)}`;
+        : `session ${flatten(session).slice(0, 8)}`;
+  return model === null ? who : `${who} on ${modelWords(model)}`;
+}
+
+/**
+ * HOW MUCH OF THE WORK SINCE IS WRITTEN UP, in words (2026-09-30). "Not yet
+ * written up" only when nothing of it is: a chapter at 17:50 and three turns
+ * after it read as "not yet written up" while the answer was yes or no, which
+ * told the next session there was nothing to read (the continuity test).
+ */
+function writtenUpWords(after: NonNullable<PointerSince["after"]>): string {
+  if (after.writtenUp) return "written up since";
+  if (after.upTo === undefined || after.upTo === null || after.upTo.length === 0) return "not yet written up";
+  const n = after.unwritten ?? 0;
+  const tail = n === 0 ? "" : `, ${String(n)} ${n === 1 ? "piece" : "pieces"} ${after.unwrittenAfter === n ? "after" : "not yet"}`;
+  // "Nothing new" wrote nothing up: it said there was nothing to (review of
+  // #300 MINOR-7).
+  if (after.by === "nothing new") return `nothing new to write up as of ${after.upTo}${tail}`;
+  return `written up to ${after.upTo}${after.by ? ` (${after.by})` : ""}${tail}`;
 }
 
 /** When it was written, and — for the newest — how current it is. */
@@ -707,7 +758,7 @@ function whenWords(h: Handoff, since: PointerSince | null, author: string | null
   }
   const written = `written ${since.written}${by}`;
   if (since.after === null) return written;
-  return `${written}; work here ${since.after.from}\u2013${since.after.to} since, ${since.after.writtenUp ? "written up since" : "not yet written up"}`;
+  return `${written}; work here ${since.after.from}\u2013${since.after.to} since, ${writtenUpWords(since.after)}`;
 }
 
 /** The pointer's first line: when it was written, by whom, how current it is,
@@ -938,8 +989,14 @@ export class Handoffs {
    * wake master composes.
    */
   liveBlockBytes(day?: number): number[] {
+    return [...this.liveBlockBytesByScope(day).values()].flat();
+  }
+
+  /** `liveBlockBytes`, kept per directory (2026-09-30) — so the boundary can
+   *  size a directory's handoff together with its "Last here" line. */
+  liveBlockBytesByScope(day?: number): Map<string, number[]> {
     const d = day ?? this.store.livedDay();
-    const out: number[] = [];
+    const out = new Map<string, number[]>();
     // ONE walk, not one per directory. The first draft called `readHandoff`
     // per scope, and each of those walks the store again — D+1 walks for D
     // directories, at every boundary, for a number that is the same shape as
@@ -951,12 +1008,13 @@ export class Handoffs {
       if (held === undefined) byScope.set(row.scope, [row]);
       else held.push(row);
     }
-    for (const rows of byScope.values()) {
+    for (const [scope, rows] of byScope) {
       const hs = handoffsNewestFirst(this.store, rows, d, HANDOFF_LIFE_DAYS);
       // Sized to the widest "how current" words the delivery can add, which
       // it computes only then — on the newest in full, the rest a stamp.
       const since = hs.map((_, i) => (i === 0 ? WIDEST_POINTER_SINCE : WIDEST_OLDER_SINCE));
-      for (const rung of pointerLadder(hs, d, { since })) out.push(byteLengthOf(rung.block));
+      const rungs = pointerLadder(hs, d, { since }).map((rung) => byteLengthOf(rung.block));
+      if (rungs.length > 0) out.set(scope, rungs);
     }
     return out;
   }

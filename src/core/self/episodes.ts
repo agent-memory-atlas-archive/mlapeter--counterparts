@@ -514,7 +514,7 @@ export function appendChapter(
   store: Store,
   state: EpisodeState,
   text: string,
-  opts: { day: number; date?: string; model?: string; title?: string; happenedOn?: string },
+  opts: { day: number; date?: string; model?: string; title?: string; happenedOn?: string; scope?: string },
 ): { episodeId: string; chapter: number; created: boolean; heading: boolean } {
   const opens = state.episodeId === null || state.asks > state.appendedAtAsk;
   const chapter = opens ? state.chapters + 1 : Math.max(1, state.chapters);
@@ -536,7 +536,10 @@ export function appendChapter(
       // The experiencer writing its own journal is the "episode" channel —
       // consistent with the memory its ingestion mints (PR-2 review nit).
       source: "episode",
-      origin: { session: state.sessionId },
+      // The directory too, when the caller knew it (2026-09-30): where the
+      // wake's "Last here" line and recall's `from` say a chapter was written.
+      // Set at birth only, like a memory's; an episode from before has none.
+      origin: { session: state.sessionId, ...(opts.scope === undefined ? {} : { scope: opts.scope }) },
       // The row's `model` column (schema v7) as well as the chapter's meta.
       ...(model === undefined ? {} : { model }),
     };
