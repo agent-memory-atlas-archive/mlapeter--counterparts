@@ -212,6 +212,10 @@ export interface RecallTunables {
   MOOD_SAME_WEIGHT: number;
   /** The same for the OTHER person's matching feeling: the light cross-link. CAL. */
   MOOD_CROSS_WEIGHT: number;
+  /** How far apart in VALENCE a memory's feeling and a mood may be and still
+   *  match (wheel v2, 2026-09-30): the match is `1 − |Δvalence| / span`,
+   *  nothing past the span. Replaced matching by core. CAL. */
+  MOOD_VALENCE_SPAN: number;
 
   // ── a deliberate question about feeling (2026-09-30, U13 — WORKING DEFAULTS) ─
   /** The cue a nominated stamp brings, in cue units (one maximally-rare word),
@@ -432,12 +436,18 @@ export const TUNABLES: RecallTunables = {
   // not today's. The weights are sized against SAL_BAR_WEIGHT = 0.5: a fresh
   // same-person match at strength 0.9 adds 0.27 to salience, which lowers that
   // candidate's relative bar by ~27%; the cross-link at 0.1 moves it ~9%. A
-  // match a month old has softened to ~0.2 of its strength (S_FEELING = 20)
-  // and moves the bar by ~6%. Unmeasured — recorded as a working default.
+  // match a month old has softened to ~0.2 of its strength (S_FEELING = 20;
+  // an unpleasant one softens faster, a pleasant one slower — physics
+  // S_FEELING_NEGATIVE) and moves the bar by ~6%. Unmeasured — recorded as a
+  // working default.
   MOOD_WINDOW_HOURS: 3,
   MOOD_MIN_STRENGTH: 0.3,
   MOOD_SAME_WEIGHT: 0.3,
   MOOD_CROSS_WEIGHT: 0.1,
+  // Wheel v2 (2026-09-30): 0.5 lets neighbours match in part — a sad mood
+  // (−0.6) meets uneasy (−0.5) at 0.8 and wistful (−0.3) at 0.4, never calm
+  // or happy; a happy one (+0.7) meets warm at 1, calm (+0.5) at 0.6.
+  MOOD_VALENCE_SPAN: 0.5,
 
   // U13 (2026-09-30). A fresh stamp at 0.4 brings 1.6 cue units — eight times
   // the global floor (0.2) and under the loud floor (4.5), so a feeling alone

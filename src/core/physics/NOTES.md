@@ -444,3 +444,23 @@ review's probes showed the turn's own credit erasing it, a second credit on one 
 a shortened prune dwell and impossible history (§5.12 has the list). The multiplier is
 outside `base` and outside `D`, so guarantees 3, 5 and 10 read as before; `hintReading`
 and every other reader go through `strength()` and see it without change.
+
+## 2026-09-30 — the feelings wheel v2: valence softens, recognition reaches the fast lane
+
+- **Valence-asymmetric softening** (`softenedFeeling(strength, age, valence)`,
+  `feelingSofteningDays`). The research for the walk (fading affect bias: the hurt goes
+  out of a bad memory sooner than the warmth out of a good one, while the memory stays)
+  gave the shape; the numbers are the brief's: S runs from `S_FEELING = 20` at valence 0
+  to `S_FEELING_NEGATIVE = 14` at −1 and `S_FEELING_POSITIVE = 28` at +1, in proportion
+  to |v|. At the cores' default valences the spread is modest (angry ~15.8, sad ~16.4,
+  calm ~24, happy/warm ~25.6) — the defaults sit at ±0.5–0.7, so the ends are only
+  reached by a writer's own valence. Read-side only: nothing that reads `feelingPeak`
+  (height, slope, the fast lane) sees valence. `test/feelings-wheel-v2.test.ts` pins an
+  angry and a happy feeling of one strength holding a memory identically.
+- **Recognition on the fast lane** (`CoreContext.selfRelevantFeeling`). Small enough to
+  build: one optional field, read by `promotionEligibility` as "about me" only when the
+  fast lane is met, and set by `sleep/consolidate.ts#coreContextFor` only for a memory
+  whose `about` is NULL (unmarked) and which carries a recognition-group feeling. The
+  dashboards' core-road readers ask the same context, so they see it too. Not built:
+  anything reading recognition for the self page (arcs from uneasy to calm, moments of
+  recognition) — that is the page's design note, not a mechanism yet.

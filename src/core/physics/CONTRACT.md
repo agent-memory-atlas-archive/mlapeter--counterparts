@@ -168,7 +168,16 @@ band(m, d) = identity  if promoted(m)                              # explicit cr
   FAST lane   = I(m) ≥ 0.6  and  an awake return ≥ 2 lived days after birth
   SLOW lane   = awake returns on ≥ 5 distinct lived days spanning ≥ 21 lived days
   promote     ⇔ about me(m) ∧ (FAST ∨ SLOW) ∧ not demoted by the owner
+  recognized  ⇔ about(m) unmarked ∧ a feeling on m in the recognition group   # wheel v2
+  promote     ⇐ recognized ∧ FAST ∧ not demoted by the owner                   # fast lane only
   ```
+
+  *(Wheel v2, 2026-09-30, working default.)* Recognising myself in something is the
+  feeling that most shapes a self, so a memory NOBODY has marked that carries a feeling
+  of the recognition group (recognized, "that's me", familiar — `feelings-wheel.ts`
+  `selfRelevant`) counts as about me for the FAST lane. A mark always wins (`work`
+  keeps it out), the slow lane still needs one, and nothing here raises confidence.
+  Read by `sleep/consolidate.ts#coreContextFor` (`CoreContext.selfRelevantFeeling`).
 
   *(v9, 2026-09-27, working defaults.)* "About me" is a MARK set by meaning — by the
   writer at `note` / `session_end` or by a reflection (`me`, `us`, `owner`, `work`,
@@ -373,7 +382,10 @@ I(m)        = max( emotional(m), max strength of the feelings recorded on m )   
 salArm(m)   = clamp01( sal(m) + EMO_LIFT × I(m) )          EMO_LIFT  = 0.15   # TUNABLE
 base(m)     = max( ω_sal(k) × salArm(m), ω_rep(k) × rep(m) ) + cons(m)       # §5.2, arm lifted
 S(m)        = §5.4's S × (1 + EMO_SLOPE × I(m))            EMO_SLOPE = 0.5    # TUNABLE
-feeling now = strength × exp( −(d − birth_day(m)) / S_FEELING )  S_FEELING = 20 # read only
+feeling now = strength × exp( −(d − birth_day(m)) / S(v) )                        # read only
+S(v)        = S_FEELING + |v| × (S_FEELING_NEGATIVE − S_FEELING)   for v < 0
+            = S_FEELING + v   × (S_FEELING_POSITIVE − S_FEELING)   for v ≥ 0
+              S_FEELING = 20, S_FEELING_NEGATIVE = 14, S_FEELING_POSITIVE = 28    # TUNABLE
 ```
 
 - **Height ADDS.** Before this, a lone `emotional: 0.9` on a note read as a mean of 0.3
@@ -388,7 +400,11 @@ feeling now = strength × exp( −(d − birth_day(m)) / S_FEELING )  S_FEELING 
   score or a recorded feeling — which is why the multiplier is modest (×1.45 at I = 0.9).
 - **The feeling softens faster than the fact.** A feeling's strength as it reads now is
   the recorded strength softened over the lived days since its MEMORY was born.
-  `S_FEELING = 20 < S_BASE = 60`. The table keeps the strength as recorded; nothing
+  `S_FEELING = 20 < S_BASE = 60`. *(Wheel v2, 2026-09-30.)* The clock depends on the
+  feeling's VALENCE `v` (the writer's, else its word's default): an unpleasant feeling
+  softens faster than a pleasant one — the fading affect bias — from ~15.8 lived days at
+  angry's −0.7 to ~25.6 at happy's +0.7; a feeling read without a valence keeps 20. The
+  table keeps the strength as recorded; nothing
   writes the softened value back. Height and slope use the RECORDED peak (affect stamps a
   trace at encoding); the softened value is what mood-matching (recall G18) and the
   displays read. **Approximation, named:** a feeling's age is counted from its memory's

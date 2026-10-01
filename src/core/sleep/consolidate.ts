@@ -33,7 +33,7 @@
  */
 
 import { TUNABLES as PHYSICS_TUNABLES, consolidationEligibility, promote, promotionEligibility, strength } from "../physics/index.js";
-import { CORE_ABOUT_MARKS } from "../store/index.js";
+import { CORE_ABOUT_MARKS, isSelfRelevantFeeling } from "../store/index.js";
 import type { CoreContext, MemoryPhysics, PromotionCrossing, PromotionReason } from "../physics/index.js";
 import { rowToPhysics } from "../store/operational.js";
 import type { MemoryRow } from "../store/operational.js";
@@ -146,15 +146,39 @@ export function aboutMe(
 ): boolean {
   void owner;
   if (row.kind === "skill") return false;
-  let mark: unknown = row.about;
-  if (mark === undefined) {
-    try {
-      mark = store.read(row.id).about;
-    } catch {
-      return false;
-    }
-  }
+  const mark = aboutMark(store, row);
   return typeof mark === "string" && (CORE_ABOUT_MARKS as readonly string[]).includes(mark);
+}
+
+/** The memory's `about` mark as it stands — null when nothing marked it, undefined when it cannot be read. */
+function aboutMark(store: ReadsDocs, row: Pick<MemoryRow, "id"> & { about?: string | null }): string | null | undefined {
+  if (row.about !== undefined) return row.about;
+  try {
+    return store.read(row.id).about ?? null;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * RECOGNITION COUNTS AS ABOUT ME (wheel v2, 2026-09-30, working default): a
+ * memory NOBODY has marked (`about` null) that carries a feeling of the
+ * recognition group — recognising myself in something — is one the fast lane
+ * may read as about me (`CoreContext.selfRelevantFeeling`). A mark always
+ * wins: `work` or `world` keeps it out. Never a `skill`. False when the port
+ * cannot read feelings.
+ */
+export function selfRelevantFeeling(
+  store: ReadsDocs & Pick<SleepStore, "feelingsFor">,
+  row: Pick<MemoryRow, "id" | "kind"> & { about?: string | null },
+): boolean {
+  if (row.kind === "skill" || store.feelingsFor === undefined) return false;
+  if (aboutMark(store, row) !== null) return false;
+  try {
+    return store.feelingsFor(row.id).some((f) => isSelfRelevantFeeling(f.emotion, f.other_word));
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -187,7 +211,7 @@ export function acceptsReflectedFeeling(store: Pick<SleepStore, "getMeta">): boo
 }
 
 /** What `coreContextFor` reads — reads only; a read-only (observer) store has them all. */
-export type ReadsCoreContext = ReadsDocs & Pick<SleepStore, "getMeta" | "returnsOf" | "coreDemoted">;
+export type ReadsCoreContext = ReadsDocs & Pick<SleepStore, "getMeta" | "returnsOf" | "coreDemoted" | "feelingsFor">;
 
 /**
  * THE CORE LANES' CONTEXT FOR ONE MEMORY (2026-09-27) — exactly what this
@@ -211,12 +235,16 @@ export function coreContextFor(
 ): CoreContext & { readonly day: number } {
   const reflected = opts.acceptsReflectedFeeling ?? acceptsReflectedFeeling(store);
   const about = aboutMe(store, row);
+  // Read only for an unmarked memory: a marked one has already answered.
+  const recognized = !about && selfRelevantFeeling(store, row);
+  const candidate = about || recognized;
   return {
     aboutMe: about,
-    demoted: about ? (store.coreDemoted?.(row.id) ?? false) : false,
+    ...(recognized ? { selfRelevantFeeling: true } : {}),
+    demoted: candidate ? (store.coreDemoted?.(row.id) ?? false) : false,
     acceptsReflectedFeeling: reflected,
     // Read only where it can matter.
-    ...(reflected || !about ? {} : { organicReturnDay: lastOrganicReturnDay(store, row.id) }),
+    ...(reflected || !candidate ? {} : { organicReturnDay: lastOrganicReturnDay(store, row.id) }),
     day,
   };
 }

@@ -14,9 +14,10 @@
  *   `readFeelingAsk` — is the question about feeling, which words of it name a
  *     feeling, and whose feeling it asks about.
  *   `feelingTokens`  — the words a stamp answers to: the emotion word as the
- *     writer's key spells it, the everyday words that alias to it, the wheel
- *     core(s) it counts under (a blend under both), and the writer's own word
- *     when it is off the wheel (`other_word`).
+ *     writer's key spells it, its group's word (wheel v2), the everyday words
+ *     that alias to it, the wheel core(s) it counts under (a blend under both),
+ *     and the writer's own word when it is off the wheel (`other_word`) — each
+ *     only when it is one word.
  *
  * **Deliberate only, and why.** The ambient path's affect gate (§9 G10/G11:
  * stated-only, first-person, turn-gated — `cues.ts#detectAffect`) is a safety
@@ -101,11 +102,19 @@ export function whoseAsked(text: string, input: FeelingAskInput): FeelingWhose |
 /** The words one stamp answers to. See the header. */
 export function feelingTokens(f: { core: string; emotion: string; other_word: string | null }): Set<string> {
   const out = new Set<string>();
+  // ONE word only, wheel words and aliases too (wheel v2): "caught out" or
+  // "that's me" would make "out" and "me" feeling words for the whole store —
+  // the same rule as the writer's own word below. A phrase answers to its cores.
   const add = (text: string): void => {
-    for (const tok of tokenize(text)) out.add(tok);
+    const toks = tokenize(text);
+    if (toks.length === 1) out.add(toks[0] as string);
   };
   if (f.emotion !== OTHER_EMOTION) {
-    add(wheelEntry(f.emotion)?.word ?? f.emotion.split(".").pop() ?? f.emotion);
+    const entry = wheelEntry(f.emotion);
+    add(entry?.word ?? f.emotion.split(".").pop() ?? f.emotion);
+    // Its group's word too (wheel v2): "when was I afraid" reaches a stamp of
+    // scared, which sits under afraid (an alias of it on the first wheel).
+    if (entry?.parent !== null && entry?.parent !== undefined) add(entry.parent);
     for (const [alias, key] of Object.entries(ALIASES)) if (key === f.emotion) add(alias);
   }
   for (const c of coresOfFeeling(f.core, f.emotion)) add(c);

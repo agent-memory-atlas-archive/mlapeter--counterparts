@@ -274,10 +274,12 @@ credit at the boundary; reinforcement deltas handed to `physics/`.
     2026-09-25/26 — working default; `mood.ts`). A person's CURRENT feeling is only what
     was RECORDED for them in the last `MOOD_WINDOW_HOURS = 3` of the store's clock at
     `MOOD_MIN_STRENGTH = 0.3` or more — no classifier reads the turn. A candidate that
-    carried a feeling sharing a core with someone's mood gets `MOOD_SAME_WEIGHT (0.3) ×`
-    that feeling's SOFTENED strength added to its `sal` when the feeling was that same
-    person's, `MOOD_CROSS_WEIGHT (0.1) ×` when it was the other's; a blend counts under
-    both its cores; a feeling recorded inside the window is the mood, never a match. The
+    carried a feeling CLOSE IN VALENCE to someone's mood (the wheel v2, 2026-09-30: the
+    match is `1 − |Δvalence| / MOOD_VALENCE_SPAN (0.5)`, nothing past the span; it was
+    core equality before) gets `MOOD_SAME_WEIGHT (0.3) × match ×` that feeling's SOFTENED
+    strength added to its `sal` when the feeling was that same person's,
+    `MOOD_CROSS_WEIGHT (0.1) ×` when it was the other's; a feeling recorded inside the
+    window is the mood, never a match. The
     lift rides `sal` ONLY: it is computed for cued candidates only, it never enters
     `activation` (so it cannot change the candidate set), hard gate (a) and the absolute
     floor (b) are both evaluated before `sal` is read, and in the absolute regimes the

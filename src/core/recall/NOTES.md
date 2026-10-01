@@ -543,7 +543,7 @@ it was built and what was decided along the way.
 - **A feeling inside the window is the mood, not a match.** Otherwise the note written five
   minutes ago matches its own feeling — and session dedup would not catch it, because it
   was never surfaced.
-- **Blends match as both cores** (`coresOfFeeling`): tender (sad + happy) matches a sad mood
+- **Blends match as both cores** (`coresOfFeeling`; by valence since the wheel v2, §23): tender (sad + happy) matches a sad mood
   and a happy one.
 - **Per candidate: one batched read** (`Store.feelingsOn`), only for CUED candidates, only
   when there is a mood, inside the latency budget.
@@ -755,3 +755,27 @@ never says it.
   core they named, and an alias kept the wheel word (`touched` → `moved`) — both answer
   through the alias table, not the original input. No stemming.
   Item 3 (a feeling's journey over time) is still open.
+
+## 23. The wheel v2 in recall — 2026-09-30
+
+- **Mood-matching reads valence, not cores** (`mood.ts`). A person's mood is the
+  valences of what was recorded for them in the window; a past feeling matches by
+  `1 − |Δvalence| / MOOD_VALENCE_SPAN (0.5)` against the closest of them. Two things
+  the core match got wrong: curious and confused (one core, opposite feelings) matched
+  as one, and sad and uneasy (close feelings, two cores) never did. Blends no longer
+  need special handling here. The weights are unchanged; it stays a light tie-breaker.
+  The page's "so a low mood can't feed itself" is carried today by the softening, not by
+  a rule here: a past unpleasant feeling softens faster (physics `S_FEELING_NEGATIVE`),
+  so an old hurt lifts less than an old warmth. A damper on negative-to-negative
+  matches is a follow-up if that proves not enough.
+- **A stamp answers to its group's word too** (`feeling-ask.ts#feelingTokens`):
+  "afraid" was an alias of scared on the first wheel and is scared's group now, so
+  "when was I afraid" still reaches a memory stamped scared — as does a stamp of
+  terrified or frightened. Every word a stamp answers to is ONE word: the wheel has
+  phrases now ("caught out", "that's me", "at ease"), and "out" or "me" must not become
+  feeling words for the whole store (the review of #293's B2 rule, applied to the
+  wheel's own words).
+- **Open**: the wheel v2 adds everyday words to `WHEEL_VOCABULARY` (close, content,
+  settled, seen, caught, engaged, sorry, familiar). A deliberate question like "I settled
+  on the second option" now names a feeling and, beside "I", ranks. Not seen in use;
+  worth watching.

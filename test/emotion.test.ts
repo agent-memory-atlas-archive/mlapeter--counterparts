@@ -20,9 +20,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  FEELINGS_WHEEL,
   closestKeys,
   coresOfFeeling,
+  lookupWord,
   resolveEmotion,
   wheelEntry,
 } from "../src/core/feelings-wheel.js";
@@ -31,6 +31,7 @@ import {
   base,
   challengeForce,
   emotionalIntensity,
+  feelingSofteningDays,
   promotionEligibility,
   sal,
   salArm,
@@ -265,19 +266,31 @@ describe("a lone emotional score is kept", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 // 5 — vocabulary from real use
 // ═══════════════════════════════════════════════════════════════════════════
-describe("the wheel's additions, blends and aliases", () => {
-  test("the words a counterpart has are on the wheel, marked as additions", () => {
-    for (const w of ["grateful", "curious", "tender", "sheepish", "relieved", "moved", "wistful", "bittersweet", "fond", "intrigued"]) {
-      expect(`${w}: ${wheelEntry(w)?.added}`).toBe(`${w}: true`);
-    }
-    // Vulnerable is the POSTER's word; only its second core is ours.
-    expect(wheelEntry("vulnerable")).toMatchObject({ core: "sad", alsoCore: "fear", secondCoreAdded: true });
-    expect(wheelEntry("vulnerable")?.added).toBeUndefined();
-    // Nothing the poster printed is marked as added.
-    expect(FEELINGS_WHEEL.filter((e) => e.added === true).every((e) => e.ring === "middle" && e.parent === null)).toBe(true);
+describe("the wheel's words from real use, blends and aliases", () => {
+  test("every word a counterpart has recorded has a home on the wheel", () => {
+    // The emotion walk's live store, 2026-09-30: every word, mine and the owner's.
+    const words = [
+      "hopeful", "sheepish", "amused", "moved", "wistful", "steadied", "curious", "fond", "grateful", "kinship",
+      "relieved", "rueful", "tender", "recognized", "unsettled", "exposed", "seen", "anticipating", "clarified",
+      "completion", "encouraged", "engaged", "glad", "settled", "trust", "trusted", "warm", "entrusted", "lonely",
+      "caught", "confused", "amazed", "recognition", "frustrated", "hurt", "wary", "interested", "validated",
+      "bummed", "guilty", "excited",
+    ];
+    for (const w of words) expect(`${w}: ${lookupWord(w) !== undefined}`).toBe(`${w}: true`);
+    expect(wheelEntry("steadied")?.core).toBe("calm");
+    expect(wheelEntry("kinship")?.core).toBe("warm");
+    expect(wheelEntry("sheepish")).toMatchObject({ core: "uneasy", parent: "caught out" });
+    expect(wheelEntry("guilty")).toMatchObject({ core: "uneasy", ring: "middle" });
+    expect(wheelEntry("rueful")?.core).toBe("sad");
+    expect(wheelEntry("hopeful")?.core).toBe("happy");
+    expect(wheelEntry("disgusted")).toMatchObject({ core: "angry", ring: "middle" });
+    // Recognition: under curious, also warm, and self-relevant — its words too.
+    expect(wheelEntry("recognized")).toMatchObject({ core: "curious", alsoCore: "warm", selfRelevant: true });
+    expect(wheelEntry("familiar")).toMatchObject({ core: "curious", alsoCore: "warm", selfRelevant: true });
+    expect(wheelEntry("clarified")?.selfRelevant).toBeUndefined();
   });
 
-  test("a blend reads under either core, is stored under its primary, and matches as both", () => {
+  test("a blend counts under both cores, and the writer's core is kept", () => {
     const s = store();
     const id = s.put({ type: "memory", kind: "fact", body: "the last firing before the studio closed" });
     s.addFeelings(id, [
@@ -287,34 +300,32 @@ describe("the wheel's additions, blends and aliases", () => {
     ]);
     const rows = s.feelingsFor(id);
     expect(rows.map((r) => [r.core, r.emotion])).toEqual([
-      ["sad", "tender"],
-      ["fear", "sheepish"],
-      ["happy", "bittersweet"],
+      ["happy", "tender"],
+      ["sad", "sheepish"],
+      ["sad", "bittersweet"],
     ]);
-    expect(coresOfFeeling("sad", "tender")).toEqual(["sad", "happy"]);
-    expect(coresOfFeeling("fear", "sheepish")).toEqual(["fear", "sad"]);
+    expect(coresOfFeeling("happy", "tender")).toEqual(["happy", "warm", "sad"]);
+    expect(coresOfFeeling("sad", "bittersweet")).toEqual(["sad", "happy"]);
     expect(coresOfFeeling("happy", "other")).toEqual(["happy"]);
-    // A blend under a core it does not have is stored under its primary, and
-    // said (owner, 2026-09-28: it was refused).
+    // A first-wheel core name is read as the core it is now, and said.
     const moved = s.addFeelings(id, [{ whose: "owner", core: "anger", emotion: "tender", strength: 0.5 }]);
-    expect(moved.repairs).toMatchObject([{ field: "core", was: "anger", now: "sad" }]);
-    expect(s.feelingsFor(id).at(-1)).toMatchObject({ core: "sad", emotion: "tender" });
+    expect(moved.repairs).toMatchObject([{ field: "core", was: "anger", now: "angry" }]);
+    expect(s.feelingsFor(id).at(-1)).toMatchObject({ core: "angry", emotion: "tender" });
   });
 
   test("an alias is read as its wheel word, and the caller is told", () => {
     const s = store();
-    const id = s.put({ type: "memory", kind: "fact", body: "showing the unfinished glaze notes" });
-    const out = s.addFeelings(id, [{ whose: "self", core: "fear", emotion: "Exposed", strength: 0.5 }]);
-    expect(s.feelingsFor(id).map((r) => [r.core, r.emotion, r.other_word])).toEqual([["sad", "vulnerable", null]]);
-    expect(out.notices).toEqual([{ index: 0, word: "Exposed", core: "sad", closest: [], readAs: "vulnerable" }]);
+    const id = s.put({ type: "memory", kind: "fact", body: "the help with the kiln wiring" });
+    const out = s.addFeelings(id, [{ whose: "self", core: "warm", emotion: "Thankful", strength: 0.5 }]);
+    expect(s.feelingsFor(id).map((r) => [r.core, r.emotion, r.other_word])).toEqual([["warm", "grateful", null]]);
+    expect(out.notices).toEqual([{ index: 0, word: "Thankful", core: "warm", closest: [], readAs: "grateful" }]);
   });
 
   test('"tender" is never offered despair — and nothing far is offered at all', () => {
-    // On the wheel now, so no suggestion is needed…
     const read = resolveEmotion("sad", "tender");
-    expect(read.kind === "wheel" ? read.entry.key : read.kind).toBe("tender");
-    // …and a word with nothing close stays the writer's own, with no nudge.
-    for (const [core, word] of [["sad", "caught"], ["happy", "clarified"], ["sad", "tenderness"], ["fear", "caught"]] as const) {
+    expect(read.kind === "wheel" ? [read.entry.key, read.home] : read.kind).toEqual(["tender", true]);
+    // A word with nothing close stays the writer's own, with no nudge.
+    for (const [core, word] of [["sad", "glowing"], ["happy", "unclenched"], ["sad", "tenderness"], ["uneasy", "jittery"]] as const) {
       const r = resolveEmotion(core, word);
       expect(`${word}: ${r.kind === "other" ? r.closest.join(",") : r.kind}`).toBe(`${word}: `);
     }
@@ -323,20 +334,20 @@ describe("the wheel's additions, blends and aliases", () => {
     expect(closestKeys("sad", "tender")).not.toContain("lonely");
   });
 
-  test("a misspelling IS offered its word — under the same core, never the opposite valence", () => {
-    expect(closestKeys("happy", "gratefull")).toEqual(["grateful"]);
-    expect(closestKeys("sad", "tendr")).toEqual(["tender"]); // a blend belongs to its core
-    expect(closestKeys("fear", "exposd")).toEqual(["vulnerable"]); // through its alias
-    expect(closestKeys("happy", "relievd")).toEqual(["relieved"]);
+  test("a misspelling IS offered its word — only a word that can be written under that core", () => {
+    expect(closestKeys("warm", "gratefull")).toEqual(["grateful"]);
+    expect(closestKeys("sad", "tendr")).toEqual(["tender"]); // a blend belongs to both its cores
+    expect(closestKeys("warm", "thankfull")).toEqual(["grateful"]); // through its alias
+    expect(closestKeys("calm", "relievd")).toEqual(["relieved"]);
+    expect(closestKeys("curious", "confussed")).toEqual(["confused"]);
     // "bord" is one letter from bored (sad): under happy it is never offered.
     expect(closestKeys("happy", "bord")).toEqual([]);
     expect(closestKeys("sad", "bord")).toEqual(["bored"]);
-    for (const core of ["happy", "sad", "fear", "anger", "disgust"] as const) {
-      const sign = core === "happy" ? 1 : -1;
-      for (const word of ["hapy", "sadd", "angyr", "joyfull", "worred", "tendr", "fnd"]) {
+    for (const core of ["happy", "warm", "calm", "curious", "sad", "uneasy", "angry"] as const) {
+      for (const word of ["hapy", "sadd", "angyr", "joyfull", "worred", "tendr", "fnd", "steadyed"]) {
         for (const key of closestKeys(core, word)) {
           const e = wheelEntry(key);
-          const ok = e !== undefined && (e.alsoCore !== undefined || e.valence === 0 || e.valence === sign);
+          const ok = e !== undefined && (e.core === core || e.alsoCore === core);
           expect(`${core}/${word} → ${key}: ${ok}`).toBe(`${core}/${word} → ${key}: true`);
         }
       }
@@ -349,18 +360,18 @@ describe("the wheel's additions, blends and aliases", () => {
     const out = (await s.call("note", {
       text: "The glaze notes finally make sense after the long evening going through them.",
       feelings: [
-        { whose: "self", core: "happy", emotion: "clarified", strength: 0.5 },
-        { whose: "self", core: "happy", emotion: "gratefull", strength: 0.5 },
-        { whose: "self", core: "fear", emotion: "exposed", strength: 0.3 },
+        { whose: "self", core: "calm", emotion: "unclenched", strength: 0.5 },
+        { whose: "self", core: "warm", emotion: "gratefull", strength: 0.5 },
+        { whose: "self", core: "warm", emotion: "thankful", strength: 0.3 },
       ],
     })).structuredContent as Record<string, unknown>;
     const f = out["feelings"] as Record<string, unknown>;
     const other = f["other"] as Record<string, unknown>[];
     expect(other.map((o) => o["note"])).toEqual([
-      '"clarified" is not on the feelings wheel, so it was kept as your own word.',
+      '"unclenched" is not on the feelings wheel, so it was kept as your own word.',
       '"gratefull" is not on the feelings wheel, so it was kept as your own word. If you meant grateful, say it that way next time.',
     ]);
-    expect((f["readAs"] as Record<string, unknown>[])[0]).toMatchObject({ word: "exposed", as: "vulnerable" });
+    expect((f["readAs"] as Record<string, unknown>[])[0]).toMatchObject({ word: "thankful", as: "grateful" });
   });
 });
 
@@ -383,21 +394,27 @@ function feeling(over: Partial<FeelingRow> & { whose: string; core: string; emot
     updated_at: 0,
     source: "session",
     recorded_later: null,
+    valence: null,
+    core_v10: null,
+    emotion_v10: null,
     birth_day: 0,
     ...over,
   };
 }
 
-const mood = (byPerson: Record<string, string[]>, sinceMs = 10 * HOUR): Mood => ({
-  byPerson: new Map(Object.entries(byPerson).map(([k, v]) => [k, new Set(v)])) as Mood["byPerson"],
+/** A mood of these valences per person. */
+const mood = (byPerson: Record<string, number[]>, sinceMs = 10 * HOUR): Mood => ({
+  byPerson: new Map(Object.entries(byPerson)),
   sinceMs,
 });
+const SAD = -0.6;
+const HAPPY = 0.7;
 
 describe("mood-matching — the lift (recall G18)", () => {
   const t = RECALL;
 
   test("same person > the other person > no match", () => {
-    const now = mood({ owner: ["sad"] });
+    const now = mood({ owner: [SAD] });
     const own = moodLift([feeling({ whose: "owner", core: "sad", emotion: "lonely", strength: 0.8 })], now, 0, t);
     const cross = moodLift([feeling({ whose: "self", core: "sad", emotion: "guilty", strength: 0.8 })], now, 0, t);
     const none = moodLift([feeling({ whose: "owner", core: "happy", emotion: "joyful", strength: 0.8 })], now, 0, t);
@@ -407,21 +424,33 @@ describe("mood-matching — the lift (recall G18)", () => {
     expect(own).toBeGreaterThan(cross);
   });
 
-  test("a blend matches BOTH of its cores", () => {
-    const tender = [feeling({ whose: "owner", core: "sad", emotion: "tender", strength: 0.6 })];
-    expect(moodLift(tender, mood({ owner: ["sad"] }), 0, t)).toBeGreaterThan(0);
-    expect(moodLift(tender, mood({ owner: ["happy"] }), 0, t)).toBeGreaterThan(0);
-    expect(moodLift(tender, mood({ owner: ["anger"] }), 0, t)).toBe(0);
+  test("by valence (wheel v2): neighbours match in part, opposites never, a writer's valence counts", () => {
+    const at = (core: string, emotion: string, valence: number | null = null): number =>
+      moodLift([feeling({ whose: "owner", core, emotion, strength: 1, valence })], mood({ owner: [SAD] }), 0, t);
+    expect(at("sad", "lonely")).toBeCloseTo(t.MOOD_SAME_WEIGHT, 10);
+    // uneasy (−0.5) is 0.1 from sad (−0.6): most of a match.
+    expect(at("uneasy", "worried")).toBeCloseTo(t.MOOD_SAME_WEIGHT * (1 - 0.1 / t.MOOD_VALENCE_SPAN), 10);
+    expect(at("happy", "joyful")).toBe(0);
+    expect(at("calm", "relieved")).toBe(0);
+    // Curious and confused, one core, are far apart in feeling: no longer one match.
+    const curious = (emotion: string): number =>
+      moodLift([feeling({ whose: "owner", core: "curious", emotion, strength: 1 })], mood({ owner: [0.3] }), 0, t);
+    expect(curious("interested")).toBeCloseTo(t.MOOD_SAME_WEIGHT, 10);
+    expect(curious("confused")).toBe(0);
+    // A "moved" the writer called mixed matches a mixed mood, not a happy one.
+    expect(moodLift([feeling({ whose: "owner", core: "warm", emotion: "moved", strength: 1, valence: 0 })], mood({ owner: [HAPPY] }), 0, t)).toBe(0);
   });
 
   test("an old match lifts less (the feeling softened), and the mood itself never matches itself", () => {
     const f = [feeling({ whose: "owner", core: "sad", emotion: "lonely", strength: 0.8, birth_day: 0 })];
-    const fresh = moodLift(f, mood({ owner: ["sad"] }), 0, t);
-    const month = moodLift(f, mood({ owner: ["sad"] }), 30, t);
-    expect(month).toBeCloseTo(fresh * Math.exp(-30 / TUNABLES.S_FEELING), 10);
+    const fresh = moodLift(f, mood({ owner: [SAD] }), 0, t);
+    const month = moodLift(f, mood({ owner: [SAD] }), 30, t);
+    // Lonely is unpleasant, so it softens on the faster clock.
+    expect(month).toBeCloseTo(fresh * Math.exp(-30 / feelingSofteningDays(-0.6)), 10);
+    expect(feelingSofteningDays(-0.6)).toBeLessThan(TUNABLES.S_FEELING);
     // Recorded INSIDE the window: it is the mood, not a memory of one.
     const inside = [feeling({ whose: "owner", core: "sad", emotion: "lonely", strength: 0.8, created_at: 11 * HOUR })];
-    expect(moodLift(inside, mood({ owner: ["sad"] }, 10 * HOUR), 0, t)).toBe(0);
+    expect(moodLift(inside, mood({ owner: [SAD] }, 10 * HOUR), 0, t)).toBe(0);
   });
 });
 
@@ -476,10 +505,11 @@ describe("mood-matching never admits an uncued memory", () => {
     const cross = put("The kiln vent needs a new filter before the winter comes.");
     const happy = put("The kiln timer beeped twice at midnight during the long bisque.");
     const uncued = put("The glaze recipe book sits on the top shelf of the studio.");
-    s.addFeelings(own, [{ whose: "owner", core: "sad", emotion: "despair", strength: 0.8 }]);
-    s.addFeelings(cross, [{ whose: "self", core: "sad", emotion: "guilty", strength: 0.8 }]);
+    // Lonely and guilty under sad carry sad's valence (−0.6), the mood's: a whole match.
+    s.addFeelings(own, [{ whose: "owner", core: "sad", emotion: "lonely", strength: 0.8 }]);
+    s.addFeelings(cross, [{ whose: "self", core: "sad", emotion: "isolated", strength: 0.8 }]);
     s.addFeelings(happy, [{ whose: "owner", core: "happy", emotion: "joyful", strength: 0.8 }]);
-    s.addFeelings(uncued, [{ whose: "owner", core: "sad", emotion: "despair", strength: 1 }]);
+    s.addFeelings(uncued, [{ whose: "owner", core: "sad", emotion: "lonely", strength: 1 }]);
 
     // No "the" in the turn: it is a (weak) cue, and it would reach every memory.
     const turn = { sessionId: "s1", text: "Any kiln news this week?", day: 0 };
@@ -559,12 +589,18 @@ const FILLER: readonly string[] = [
 describe("showing it", () => {
   test("the line: you first, then me, recorded strength and — once it has moved — now", () => {
     const rows = [
-      { whose: "self", emotion: "tender", other_word: null, strength: 0.4 },
-      { whose: "owner", emotion: "fear.insecure", other_word: null, strength: 0.6 },
-      { whose: "owner", emotion: "other", other_word: "caught", strength: 0.5 },
+      { whose: "self", core: "warm", emotion: "tender", other_word: null, strength: 0.4 },
+      { whose: "owner", core: "uneasy", emotion: "fear.insecure", other_word: null, strength: 0.6 },
+      { whose: "owner", core: "uneasy", emotion: "other", other_word: "caught", strength: 0.5 },
     ];
     expect(feelingsLine(rows, 0)).toBe("you: insecure 0.6, caught 0.5 · me: tender 0.4");
     expect(feelingsLine(rows, 14)).toBe("you: insecure 0.6 (now 0.3), caught 0.5 (now 0.2) · me: tender 0.4 (now 0.2)");
+    // The same strength, a month on: the unpleasant one has softened further (wheel v2).
+    const pair = [
+      { whose: "owner", core: "angry", emotion: "frustrated", other_word: null, strength: 0.9 },
+      { whose: "self", core: "happy", emotion: "joyful", other_word: null, strength: 0.9 },
+    ];
+    expect(feelingsLine(pair, 30)).toBe("you: frustrated 0.9 (now 0.1) · me: joyful 0.9 (now 0.3)");
     expect(feelingsLine([], 0)).toBe("");
   });
 
