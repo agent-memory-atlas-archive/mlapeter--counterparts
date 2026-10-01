@@ -32,7 +32,7 @@ import { join, resolve } from "node:path";
 
 import { CAPTURE_FAILED_EVENT, Counterpart, WRITE_UP_FAILED_EVENT } from "../src/core/counterpart.js";
 import { Store } from "../src/core/store/index.js";
-import { addDays, daysBetween, localDate } from "../src/core/time.js";
+import { addDays, daysBetween, localDate, machineZone } from "../src/core/time.js";
 import {
   LOGGED,
   LOG_DAYS,
@@ -118,9 +118,17 @@ function everything(): string {
     .join("");
 }
 
+/**
+ * A child's environment. `TZ` is this process's zone, named: bun test runs in UTC
+ * unless TZ is set, while a child given a fresh env reads the MACHINE's zone. The
+ * child names its log file by its day and `lines()` reads by this process's day,
+ * so without it the two disagree whenever UTC and the machine's date differ —
+ * every evening in America/Denver after 00:00 UTC.
+ */
 function spawnEnv(extra: Record<string, string> = {}): Record<string, string> {
   return {
     PATH: "/usr/bin:/bin",
+    TZ: machineZone(),
     HOME: home,
     USERPROFILE: home,
     BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0",

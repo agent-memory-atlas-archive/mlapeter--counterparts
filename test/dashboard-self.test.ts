@@ -352,14 +352,16 @@ describe("the self tab, round 3", () => {
 
   beforeAll(() => {
     at = mkdtempSync(join(tmpdir(), "counterparts-self-r3-"));
-    const base = Date.parse("2026-09-01T15:00:00Z");
+    // Noon UTC: the same calendar date from UTC-11 to UTC+11. 15:00Z was the
+    // next day already in Asia/Tokyo, where S4's dates read a day late.
+    const base = Date.parse("2026-09-01T12:00:00Z");
     let offset = 0;
     const now = (): number => base + offset;
     Counterpart.open({ dir: at, owner: true, identity: { name: "Mike" }, now }).close();
     const c = Counterpart.open({ dir: at, owner: true, now });
     try {
       for (const [i, date] of dates.entries()) {
-        offset = Date.parse(`${date}T15:00:00Z`) - base;
+        offset = Date.parse(`${date}T12:00:00Z`) - base;
         c.store.advanceClock(date);
         const d = c.store.livedDay();
         if (i === 0) {

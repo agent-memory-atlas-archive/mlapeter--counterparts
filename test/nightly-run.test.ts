@@ -98,8 +98,13 @@ function takeLine(c: Counterpart, input: { at: string; session: string }): strin
   return o !== null && c.dreams.claimOffer(o) ? o.context : null;
 }
 
+/**
+ * The session is stamped on the TEST clock, the one the server reads. Stamped on
+ * the real clock, a test that called `atNoon()` after 00:00 UTC (noon then lies
+ * ~12h ahead) finds its session silent past the TTL and refused as not live.
+ */
 function server(c: Counterpart, session?: string): McpServer {
-  if (session !== undefined) recordSession(dir, { sessionId: session, scope: "/proj", phase: "start" });
+  if (session !== undefined) recordSession(dir, { sessionId: session, scope: "/proj", phase: "start", at: Date.now() + offsetMs });
   return new McpServer({ counterpart: c, scope: "/proj", owner: true, registryDir: dir, now: () => Date.now() + offsetMs });
 }
 
