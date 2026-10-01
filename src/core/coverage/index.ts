@@ -409,11 +409,12 @@ function writerOf(claim: string, markSession: string, proposalSession: string | 
  * afterwards (review of #289).
  *
  * HOW FAR IT IS WRITTEN UP (2026-09-30, the continuity test): `writtenUpTo` is
- * the time of the latest claim on any of those pieces, `writtenUpBy` what made
- * it, and `unwrittenAfter` how many of the unwritten pieces came after it. A
- * chapter written at 17:50 with a few turns said after it read "not yet
- * written up" while the answer was yes or no, which told the next session
- * there was nothing to read.
+ * the time of the LATEST WRITTEN-UP PIECE (a piece time, like `from` and `to`;
+ * review of #300 MINOR-7), `writtenUpBy` what claimed it, and
+ * `unwrittenAfter` how many of the unwritten pieces came after it. A chapter
+ * written at 17:50 with a few turns said after it read "not yet written up"
+ * while the answer was yes or no, which told the next session there was
+ * nothing to read.
  */
 export function workSince(
   buffer: SpanBuffer,
@@ -435,7 +436,7 @@ export function workSince(
   let unwritten = 0;
   let firstAt: number | null = null;
   let lastAt: number | null = null;
-  let latest: { at: number; claim: string } | null = null;
+  let latest: { at: number; claim: string; session: string; scope: string } | null = null;
   const unwrittenAt: number[] = [];
   for (const held of buffer.scopes()) {
     if (norm(held) !== norm(scope)) continue;
@@ -458,8 +459,8 @@ export function workSince(
       if (mark === undefined) {
         unwritten += 1;
         unwrittenAt.push(at);
-      } else if (latest === null || mark.at > latest.at) {
-        latest = { at: mark.at, claim: mark.proposalId };
+      } else if (latest === null || at > latest.at) {
+        latest = { at, claim: mark.proposalId, session: mark.session, scope: held };
       }
       firstAt = Math.min(firstAt ?? Infinity, at);
       lastAt = Math.max(lastAt ?? 0, at);
@@ -474,9 +475,46 @@ export function workSince(
     lastAt,
     overFloor: floor,
     writtenUpTo: upTo,
-    writtenUpBy: latest === null ? null : writtenUpWords(writerOf(latest.claim, "", undefined)),
+    writtenUpBy: latest === null ? null : writtenUpWords(writerOf(latest.claim, latest.session, proposalSession(buffer, latest.scope, latest.claim))),
     unwrittenAfter: upTo === null ? unwritten : unwrittenAt.filter((at) => at > upTo).length,
   };
+}
+
+/** The session a `prp_` claim's proposal was written under, so a later
+ *  session's write-up reads as one (review of #300 MINOR-7). */
+function proposalSession(buffer: SpanBuffer, scope: string, claim: string): string | undefined {
+  if (!claim.startsWith("prp_")) return undefined;
+  try {
+    for (const p of buffer.proposalRecords<{ id?: unknown; session?: unknown }>(scope)) {
+      if (p?.id === claim && typeof p.session === "string") return p.session;
+    }
+  } catch {
+    /* unknown reads as the session's own */
+  }
+  return undefined;
+}
+
+/**
+ * THE CHAPTERS CLAIMED IN ONE SCOPE: the episode ids named by its chapter
+ * claims (`chapter:<epi>#<n>:<time>`) — the directory a chapter was written in,
+ * as the coverage file records it (review of #300 MINOR-1). Never throws.
+ */
+export function chapterClaims(buffer: SpanBuffer, scope: string): Set<string> {
+  const norm = (s: string): string => s.trim().replace(/\/+$/, "");
+  const out = new Set<string>();
+  try {
+    for (const held of buffer.scopes()) {
+      if (norm(held) !== norm(scope)) continue;
+      for (const m of buffer.coverage(held)) {
+        if (typeof m.proposalId !== "string" || !m.proposalId.startsWith(`${CLAIM_CHAPTER}:`)) continue;
+        const id = m.proposalId.slice(CLAIM_CHAPTER.length + 1).split("#")[0];
+        if (id !== undefined && id.length > 0) out.add(id);
+      }
+    }
+  } catch {
+    return out;
+  }
+  return out;
 }
 
 /** What wrote up the latest of the work since, in the words the pointer uses. */
@@ -499,36 +537,50 @@ function writtenUpWords(w: Writer): WrittenUpBy | null {
 
 /**
  * THE SESSIONS THAT RAN IN ONE SCOPE, newest first (2026-09-30, the wake's
- * "Last here" line): each with the first and last moment anything of it was
- * recorded here — its turn-ends (`boundaries.jsonl`, which retention never
- * strikes) and the pieces still held. It is what joins a chapter, which
- * records its session and no directory, to the directory it was written in.
- * Never throws: a buffer that will not answer names no session.
+ * "Last here" line): each with the first and last moment it was at work here
+ * — its turn-ends (`stop` boundaries in `boundaries.jsonl`, which retention
+ * never strikes) and the pieces still held, never a `session-end`, whose time
+ * is when the host closed it (review of #300 MINOR-2) — and whether it has
+ * ended. It is how a chapter that records no directory is joined to the one it
+ * was written in, and when that session was here.
+ *
+ * `only` keeps the walk to the sessions the caller can use; everything else is
+ * dropped while reading. Never throws: a buffer that will not answer names no
+ * session.
  */
 export function sessionsHere(
   buffer: SpanBuffer,
   scope: string,
-): { session: string; firstAt: number; lastAt: number }[] {
+  opts: { only?: ReadonlySet<string> } = {},
+): { session: string; firstAt: number; lastAt: number; ended: boolean }[] {
   const norm = (s: string): string => s.trim().replace(/\/+$/, "");
-  const seen = new Map<string, { session: string; firstAt: number; lastAt: number }>();
+  const seen = new Map<string, { session: string; firstAt: number; lastAt: number; ended: boolean }>();
+  const wanted = (session: unknown): session is string =>
+    typeof session === "string" && session.length > 0 && (opts.only === undefined || opts.only.has(session));
   const note = (session: string, at: number): void => {
-    if (typeof session !== "string" || session.length === 0 || !Number.isFinite(at) || at <= 0) return;
+    if (!Number.isFinite(at) || at <= 0) return;
     const held = seen.get(session);
-    if (held === undefined) seen.set(session, { session, firstAt: at, lastAt: at });
+    if (held === undefined) seen.set(session, { session, firstAt: at, lastAt: at, ended: false });
     else {
       held.firstAt = Math.min(held.firstAt, at);
       held.lastAt = Math.max(held.lastAt, at);
     }
   };
+  const ended = new Set<string>();
   try {
     for (const held of buffer.scopes()) {
       if (norm(held) !== norm(scope)) continue;
-      for (const b of buffer.boundaries(held)) note(b.session, b.at);
-      for (const s of piecesIn(buffer, held)) note(s.session, atOf(s));
+      for (const b of buffer.boundaries(held)) {
+        if (!wanted(b.session)) continue;
+        if (b.kind === "stop") note(b.session, b.at);
+        else if (b.kind === "session-end") ended.add(b.session);
+      }
+      for (const s of piecesIn(buffer, held)) if (wanted(s.session)) note(s.session, atOf(s));
     }
   } catch {
     return [];
   }
+  for (const s of seen.values()) s.ended = ended.has(s.session);
   return [...seen.values()].sort((a, b) => b.lastAt - a.lastAt);
 }
 

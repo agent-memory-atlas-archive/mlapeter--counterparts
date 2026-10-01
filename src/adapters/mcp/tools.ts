@@ -675,7 +675,7 @@ const SESSION_END: ToolSpec = {
     },
     {
       claim:
-        "A finished session leaves no handoff and is still found: the next session in this directory is shown a \"Last here\" line naming the session that last wrote a chapter here, when it was here, the chapter's title and id and its first sentence — derived from the chapter at that session's start, never stored.",
+        "A finished session that wrote a chapter needs no handoff to be found: the next session in this directory is shown a \"Last here\" line naming the session that last wrote a chapter here, when it was here, the chapter's title and id and its first sentence — worked out from the chapter when the next session starts, never stored. A session that wrote no chapter leaves no such line.",
       mechanizedBy: "src/core/counterpart.ts#addHandoffPointer -> src/core/handoff/last-here.ts#lastHereLadder",
     },
     {
@@ -718,7 +718,7 @@ const SESSION_END: ToolSpec = {
       handoff: {
         type: "string",
         description:
-          "Optional, and not a memory: where the work in THIS directory stands and what the next session here should pick up, in your own words. A paragraph or two, and lead with the sentence you want the next session to read first — that first line is what it sees. It can expand the rest by id; the pointer stops showing after about two weeks of use. It is THIS session's handoff for this directory: setting it again replaces this session's earlier one, and never another session's — several sessions working here each leave their own, and the next session is shown them all, newest first. Send it EMPTY (\"\") to retire this session's handoff when its work is finished. Leaving the field out leaves the previous one standing. A session that FINISHED its work needs none: the next session here is shown this session's latest chapter anyway (\"Last here\", with its title and first sentence), so a handoff is for work still open.",
+          "Optional, and not a memory: where the work in THIS directory stands and what the next session here should pick up, in your own words. A paragraph or two, and lead with the sentence you want the next session to read first — that first line is what it sees. It can expand the rest by id; the pointer stops showing after about two weeks of use. It is THIS session's handoff for this directory: setting it again replaces this session's earlier one, and never another session's — several sessions working here each leave their own, and the next session is shown them all, newest first. Send it EMPTY (\"\") to retire this session's handoff when its work is finished. Leaving the field out leaves the previous one standing. If this session FINISHED its work and wrote a chapter, it needs none: the next session here is shown that chapter anyway (\"Last here\", with its title and first sentence), so a handoff is for work still open. With no chapter, a one-line handoff is the only trace the next session here gets.",
       },
       retireHandoff: {
         type: "array",

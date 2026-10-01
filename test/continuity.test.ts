@@ -169,7 +169,9 @@ describe("the next session here is told who was last here", () => {
     // evening is written up instead of "not yet written up".
     const pointer = lines.find((l) => l.startsWith("Where I left off in this directory"));
     expect(pointer).toContain("by session c9cacbcc");
-    expect(pointer).toContain("work here 16:01–17:53 since, written up to 17:50 (chapter), 3 pieces after");
+    // "Written up to" is a piece time, like the range: the last turn the
+    // chapter covers (17:48), not the moment it was written.
+    expect(pointer).toContain("work here 16:01–17:53 since, written up to 17:48 (chapter), 3 pieces after");
     // Order: Last here above the pointer, both above the sentinel.
     expect(lines.indexOf(last as string)).toBeLessThan(lines.indexOf(pointer as string));
     // The sentinel states the delivered total.
@@ -190,11 +192,35 @@ describe("the next session here is told who was last here", () => {
     expect(text).not.toContain("Where I left off");
   });
 
-  test("the waking session's own chapter reads 'this session'; another directory is told nothing", async () => {
+  test("the waking session's own chapter is not 'last here'; another directory is told nothing", async () => {
     const k = afternoon();
     await mikesAfternoon(k);
-    expect(wake(k.c, A)).toContain("Last here: this session on Opus 5.5, 09-30 16:01");
+    expect(wake(k.c, A)).not.toContain("Last here:");
     expect(wake(k.c, B, THERE)).not.toContain("Last here:");
+  });
+
+  test("a chapter's directory is the one its row says, wherever its session's turn-ends are filed", async () => {
+    const k = afternoon();
+    k.c.rebrief({ budgetBytes: 9_000, at: "2026-09-30" });
+    // A's turns are filed under THERE; its server, and so its chapter, is HERE's.
+    for (const m of [1, 20, 40]) k.talk(A, at(16, m), THERE);
+    k.set(at(16, 45));
+    await k.server(A, HERE).call("chapter", { session: A, text: CHAPTER, title: TITLE });
+    expect(wake(k.c, B, HERE)).toContain("Last here: session a1b2c3d4");
+    expect(wake(k.c, B, THERE)).not.toContain("Last here:");
+  });
+
+  test("a session that said there was nothing new: 'nothing new to write up as of', not 'written up to'", async () => {
+    const k = afternoon();
+    k.set(at(15, 19));
+    k.c.writeHandoff("The release is cut; the tarball is in the backups folder. Mike publishes.", { scope: HERE, session: C });
+    k.c.rebrief({ budgetBytes: 9_000, at: "2026-09-30" });
+    for (const m of [1, 10, 20]) k.talk(A, at(16, m));
+    k.set(at(16, 25));
+    const r = await k.server(A).call("session_end", { session: A, memories: [] });
+    expect(r.isError).not.toBe(true);
+    k.talk(A, at(16, 30));
+    expect(wake(k.c, B)).toContain("work here 16:01–16:30 since, nothing new to write up as of 16:20, 1 piece after)");
   });
 
   test("a session that wrote no chapter here is not 'last here'", async () => {
@@ -271,6 +297,61 @@ describe("its room in the wake", () => {
     expect(woke.bytes).toBeLessThanOrEqual(tight);
   });
 
+  test("the handoff first: the widest handoff rung that fits alone is carried, and the line only above it (review of #300 MAJOR-1)", async () => {
+    const k = afternoon();
+    await mikesAfternoon(k);
+    // Three live handoffs here in all: C's and two more.
+    k.c.writeHandoff("The parser rewrite is half done; the empty input still fails.", { scope: HERE, session: "e1e1e1e1-0000" });
+    k.c.writeHandoff("The docs pass is waiting on the parser; nothing else is blocked.", { scope: HERE, session: "f2f2f2f2-0000" });
+    // The same handoff ladder with no chapter line: A's own wake, since a
+    // session's own chapter is not "last here" and A left no handoff.
+    const handoffPart = (t: string): string =>
+      t
+        .split("\n")
+        .filter((l) => l.length > 0 && !/^(Last here:|Before it:|\+\d+ more here on )/.test(l) && !/^<!-- counterparts:wake/.test(l))
+        .join("\n");
+    const base = k.c.wake(100_000, { date: "2026-09-30" }, { scope: THERE, session: B }).bytes;
+    let lineGivenUpForWider = false;
+    let lineWithHandoff = false;
+    for (let ceiling = base; ceiling <= base + 2_400; ceiling += 8) {
+      const b = k.c.wake(ceiling, { date: "2026-09-30" }, { scope: HERE, session: B });
+      const a = k.c.wake(ceiling, { date: "2026-09-30" }, { scope: HERE, session: A });
+      expect(handoffPart(b.text)).toBe(handoffPart(a.text));
+      expect(b.bytes).toBeLessThanOrEqual(ceiling);
+      const several = b.text.includes("handoffs, one per session");
+      if (several && !b.text.includes("Last here:")) lineGivenUpForWider = true;
+      if (b.text.includes("Last here:") && b.text.includes("Where ")) lineWithHandoff = true;
+    }
+    // Ceilings where the old order carried the newest handoff alone plus the
+    // line now carry the wider handoff block and no line…
+    expect(lineGivenUpForWider).toBe(true);
+    // …and with room, both.
+    expect(lineWithHandoff).toBe(true);
+  });
+
+  test("a FULL store: the chapter puts the wake behind, the turn-end refresh reserves its room, and the next wake has the line (review of #300 MAJOR-2)", async () => {
+    const k = afternoon();
+    fill(k.c);
+    // The bundle composed before session A exists, at a tight ceiling, with
+    // no chapter anywhere: nothing reserved, the lanes fill it. 2,600 rather
+    // than 3,000: this fixture's identity lane caps at 24 elements, about
+    // 2,800 bytes, so at 3,000 the cap binds before the ceiling does.
+    k.c.rebrief({ budgetBytes: 2_600, at: "2026-09-30" });
+    const s = k.server(A);
+    for (const m of [1, 20, 40]) k.talk(A, at(16, m));
+    k.set(at(16, 45));
+    await s.call("chapter", { session: A, text: "Short and to the point: the loop test passed.", title: "Loop test" });
+    // Before the worker runs, the line has no room.
+    expect(k.c.wake(2_600, { date: "2026-09-30" }, { scope: HERE, session: B }).text).not.toContain("Last here:");
+    // The turn-end worker's own call, as `runner.ts` makes it — no rebrief.
+    const refreshed = k.c.refreshWake({ budgetBytes: 2_600, at: "2026-09-30" });
+    expect(refreshed.reason).toBe("rendered");
+    expect(refreshed.triggers).toContain("write-up");
+    const woke = k.c.wake(2_600, { date: "2026-09-30" }, { scope: HERE, session: B });
+    expect(woke.text).toContain("Last here: session a1b2c3d4");
+    expect(woke.bytes).toBeLessThanOrEqual(2_600);
+  });
+
   test("past the fortnight the line is gone, and so is its reserve", async () => {
     const k = afternoon();
     await mikesAfternoon(k);
@@ -287,16 +368,24 @@ describe("the pieces", () => {
     k.talk(B, at(16, 30));
     k.talk(A, at(17, 0));
     k.talk(C, at(16, 5), THERE);
+    // A's close, hours later, is when the host closed it — not work here.
+    k.set(at(20, 0));
+    k.c.boundary({ session: A, scope: HERE, kind: "session-end" });
     expect(sessionsHere(k.c.spans, HERE)).toEqual([
-      { session: A, firstAt: at(16, 1), lastAt: at(17, 0) },
-      { session: B, firstAt: at(16, 30), lastAt: at(16, 30) },
+      { session: A, firstAt: at(16, 1), lastAt: at(17, 0), ended: true },
+      { session: B, firstAt: at(16, 30), lastAt: at(16, 30), ended: false },
     ]);
     expect(sessionsHere(k.c.spans, `${HERE}/`).map((s) => s.session)).toEqual([A, B]);
+    expect(sessionsHere(k.c.spans, HERE, { only: new Set([B]) }).map((s) => s.session)).toEqual([B]);
   });
 
-  test("an episode's latest chapter and its lived day are read off its last heading", () => {
-    const body = "## chapter 1 — Tue 29 Sep 2026 · claude-opus-5-5 · lived day 8\n\nThe first one.\n\n## chapter 2 — Wed 30 Sep 2026 · lived day 9\n\nThe second one, which is the one shown.\n";
-    expect(latestChapter(body)).toEqual({ text: "\n\nThe second one, which is the one shown.\n", day: 9 });
+  test("an episode's latest chapter and its lived day are read off its last heading — the engine's own, only", () => {
+    const body =
+      "## chapter 1 — Tue 29 Sep 2026 · claude-opus-5-5 · lived day 8\n\nThe first one.\n\n## chapter 2 — Wed 30 Sep 2026 · lived day 9\n\nThe second one, which is the one shown.\n\n## Chapter two of the book\n\nStill the second.\n";
+    expect(latestChapter(body)).toEqual({
+      text: "\n\nThe second one, which is the one shown.\n\n## Chapter two of the book\n\nStill the second.\n",
+      day: 9,
+    });
     expect(latestChapter("No heading at all.")).toEqual({ text: "No heading at all.", day: null });
   });
 
@@ -309,7 +398,9 @@ describe("the pieces", () => {
         title,
         excerpt: "It said something worth reading first.",
         writtenAt: n,
+        createdAt: n,
         writtenDay: 1,
+        scope: null,
       },
       when: "09-30 10:00–11:00",
       date: "09-30",

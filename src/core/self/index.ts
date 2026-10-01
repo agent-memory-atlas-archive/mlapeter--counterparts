@@ -1778,7 +1778,9 @@ export class Self {
   appendChapter(
     sessionId: string,
     text: string,
-    opts: { day?: number; title?: string; happenedOn?: string; model?: string } = {},
+    /** `scope`: the directory it was written in, recorded on a NEW episode's
+     *  origin (2026-09-30). */
+    opts: { day?: number; title?: string; happenedOn?: string; model?: string; scope?: string } = {},
   ): ChapterAppend {
     const d = opts.day ?? this.store.livedDay();
     if (sessionId.trim().length === 0) {
@@ -1814,6 +1816,7 @@ export class Self {
     if (opts.title !== undefined) append.title = opts.title;
     if (opts.happenedOn !== undefined) append.happenedOn = opts.happenedOn;
     if (opts.model !== undefined) append.model = opts.model;
+    if (opts.scope !== undefined && opts.scope.length > 0) append.scope = opts.scope;
     const written = appendChapter(this.store, state, gatedText, append);
     this.persistState(
       {

@@ -680,6 +680,7 @@ export const WIDEST_POINTER_SINCE: PointerSince = {
     to: "12-31 23:59",
     writtenUp: false,
     upTo: "12-31 23:59",
+    // The widest of the written-up forms: "nothing new to write up as of …".
     by: "nothing new",
     unwritten: 9999,
     unwrittenAfter: 0,
@@ -742,6 +743,9 @@ function writtenUpWords(after: NonNullable<PointerSince["after"]>): string {
   if (after.upTo === undefined || after.upTo === null || after.upTo.length === 0) return "not yet written up";
   const n = after.unwritten ?? 0;
   const tail = n === 0 ? "" : `, ${String(n)} ${n === 1 ? "piece" : "pieces"} ${after.unwrittenAfter === n ? "after" : "not yet"}`;
+  // "Nothing new" wrote nothing up: it said there was nothing to (review of
+  // #300 MINOR-7).
+  if (after.by === "nothing new") return `nothing new to write up as of ${after.upTo}${tail}`;
   return `written up to ${after.upTo}${after.by ? ` (${after.by})` : ""}${tail}`;
 }
 

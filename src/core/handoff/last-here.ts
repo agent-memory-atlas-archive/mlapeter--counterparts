@@ -11,17 +11,17 @@
  * finished or not, and the line is beside the handoff pointer, not instead of
  * it.
  *
- * **Derived, not stored.** A chapter (`epi_`) records its session and no
- * directory; the directory a session ran in is in the buffer's turn-ends
- * (`coverage/#sessionsHere`, from `boundaries.jsonl`, which retention never
- * strikes). The caller joins the two, so this works for every chapter already
- * written and adds no row, no column and no write.
+ * **Derived, not stored.** Which directory a chapter was written in is read,
+ * in order, off the episode's own `origin_scope` (set at birth since
+ * 2026-09-30), off the chapter claims in that directory's coverage file
+ * (`coverage/#chapterClaims`), and — for a chapter with neither — off the
+ * directories its session's turn-ends are filed in (`coverage/#sessionsHere`,
+ * which also gives when that session was here). No new row type, no write.
  *
  * Furniture, like the handoff pointer: spliced at delivery above it, never an
  * element, never a `- ` bullet, every line flattened. Its room comes out of
- * the same reserve, by the same share rule (`reserveBytes`), and it is the
- * first thing given up when there is not room for both — a fortnight's
- * unfinished work outranks orientation.
+ * the same reserve, by the same share rule (`reserveBytes`), and it gives way
+ * to the handoff — a fortnight's unfinished work outranks orientation.
  */
 import type { Store } from "../store/index.js";
 import { isModelId } from "../types.js";
@@ -29,8 +29,7 @@ import { HANDOFF_EXCERPT_BYTES, HANDOFF_LIFE_DAYS, excerpt, flatten, sessionWord
 
 /**
  * How long a chapter is "last here", in LIVED days since it was written — the
- * handoff's fortnight, so the two kinds of working context age alike and the
- * reserve walk stays bounded by recent work.
+ * handoff's fortnight, so the two kinds of working context age alike.
  */
 export const LAST_HERE_LIFE_DAYS = HANDOFF_LIFE_DAYS;
 
@@ -54,10 +53,13 @@ export interface ChapterHere {
   readonly title: string | null;
   /** The first sentence of its LATEST chapter. */
   readonly excerpt: string;
-  /** Epoch ms of the latest write to it. */
+  /** Epoch ms of the latest write to it, and of its first. */
   readonly writtenAt: number;
+  readonly createdAt: number;
   /** The lived day its latest chapter was written on, from the heading. */
   readonly writtenDay: number | null;
+  /** The directory it was born in, when the row recorded one (2026-09-30 on). */
+  readonly scope: string | null;
 }
 
 /** A chapter's session here, with the times the line prints, spelled by the caller. */
@@ -69,32 +71,45 @@ export interface LastHere {
   readonly date: string;
 }
 
-/** A chapter heading, either written form (`self/episodes.ts#chapterHeading`). */
-const HEADING = /^[ \t]*#{1,6}[ \t]*chapter[ \t]+\d+[^\n]*$/gim;
+/**
+ * The engine's own chapter heading (`self/episodes.ts#chapterHeading`), in
+ * both its written forms — and nothing a model writes inside a chapter's text,
+ * like "## Chapter two" (review of #300, NIT).
+ */
+const HEADING = /^## chapter \d+ — (?:[^\n]* · )?lived day \d+[ \t]*$/gm;
 
 /**
- * EVERY SESSION'S LATEST CHAPTER, by session — one walk of the live episode
- * rows. Never throws: a store that will not answer has no chapters.
+ * EVERY SESSION'S LATEST CHAPTER, by session, among the live episodes born on
+ * or after `fromDay` — one SQL-bounded walk. A row the owner removed is not
+ * read. Never throws: a store that will not answer has no chapters.
  */
-export function chaptersBySession(store: Store): Map<string, ChapterHere> {
+export function chaptersBySession(store: Store, opts: { fromDay?: number } = {}): Map<string, ChapterHere> {
   const out = new Map<string, ChapterHere>();
   let ids: string[];
+  let denied: Set<string>;
   try {
-    ids = store.list({ type: "episode", archived: false });
+    ids = store.list({
+      type: "episode",
+      archived: false,
+      ...(opts.fromDay === undefined ? {} : { bornFromDay: opts.fromDay }),
+    });
+    denied = ids.length === 0 ? new Set() : new Set(store.deniedIds());
   } catch {
     return out;
   }
   for (const id of ids) {
+    if (denied.has(id)) continue;
     try {
       const row = store.row(id);
-      if (row === undefined || row.superseded_by !== null) continue;
+      if (row === undefined || row.superseded_by !== null || row.body.length === 0) continue;
       let session = row.origin_session;
       if (session === null || session.length === 0) {
         const meta = JSON.parse(row.meta || "{}") as Record<string, unknown>;
         session = typeof meta["sessionId"] === "string" ? meta["sessionId"] : null;
       }
       if (session === null || session.length === 0) continue;
-      const writtenAt = row.updated_at ?? row.created_at ?? 0;
+      const createdAt = row.created_at ?? 0;
+      const writtenAt = row.updated_at ?? createdAt;
       const held = out.get(session);
       if (held !== undefined && held.writtenAt >= writtenAt) continue;
       const { text, day } = latestChapter(row.body);
@@ -105,7 +120,9 @@ export function chaptersBySession(store: Store): Map<string, ChapterHere> {
         title: row.title === null || row.title.trim().length === 0 ? null : row.title,
         excerpt: excerpt(text),
         writtenAt,
+        createdAt,
         writtenDay: day ?? (Number.isFinite(row.birth_day) ? row.birth_day : null),
+        scope: row.origin_scope === null || row.origin_scope.length === 0 ? null : row.origin_scope,
       });
     } catch {
       continue;
@@ -119,29 +136,44 @@ export function latestChapter(body: string): { text: string; day: number | null 
   let last: RegExpExecArray | null = null;
   for (const m of body.matchAll(HEADING)) last = m as RegExpExecArray;
   if (last === null) return { text: body, day: null };
-  const day = /lived day[ \t]+(\d+)/i.exec(last[0])?.[1];
+  const day = /lived day (\d+)/.exec(last[0])?.[1];
   return { text: body.slice((last.index ?? 0) + last[0].length), day: day === undefined ? null : Number(day) };
 }
 
+const norm = (s: string): string => s.trim().replace(/\/+$/, "");
+
 /**
- * THE CHAPTERS WRITTEN HERE, newest first: each session that ran in this
- * directory (`sessions`, from `coverage/#sessionsHere`) joined to its latest
- * chapter, kept while that chapter is inside `LAST_HERE_LIFE_DAYS`. `firstAt`
- * and `lastAt` are when the session was here; `lastAt` is never before its
- * chapter.
+ * THE CHAPTERS WRITTEN HERE, newest first, each with when its session was
+ * here. A chapter is HERE when its row says this directory; with no directory
+ * on the row, when this directory's coverage file holds its chapter claim
+ * (`claimed`), or failing that when its session's turn-ends are filed here
+ * (`sessions`). The waking session's own chapter is not "last here" (review
+ * of #300 MINOR-3). Kept while its latest chapter is inside the fortnight.
  */
 export function chaptersHere(
   chapters: ReadonlyMap<string, ChapterHere>,
-  sessions: readonly { session: string; firstAt: number; lastAt: number }[],
+  here: {
+    readonly scope: string;
+    readonly claimed: ReadonlySet<string>;
+    readonly sessions: ReadonlyMap<string, { firstAt: number; lastAt: number }>;
+  },
   day: number,
-  lifeDays = LAST_HERE_LIFE_DAYS,
+  opts: { readonly reader?: string | null; readonly lifeDays?: number } = {},
 ): { chapter: ChapterHere; firstAt: number; lastAt: number }[] {
+  const lifeDays = opts.lifeDays ?? LAST_HERE_LIFE_DAYS;
   const out: { chapter: ChapterHere; firstAt: number; lastAt: number }[] = [];
-  for (const s of sessions) {
-    const chapter = chapters.get(s.session);
-    if (chapter === undefined) continue;
+  for (const chapter of chapters.values()) {
+    if (opts.reader !== undefined && opts.reader !== null && chapter.session === opts.reader) continue;
     if (chapter.writtenDay !== null && day - chapter.writtenDay >= lifeDays) continue;
-    out.push({ chapter, firstAt: s.firstAt, lastAt: Math.max(s.lastAt, chapter.writtenAt) });
+    const s = here.sessions.get(chapter.session);
+    const isHere =
+      chapter.scope !== null ? norm(chapter.scope) === norm(here.scope) : here.claimed.has(chapter.id) || s !== undefined;
+    if (!isHere) continue;
+    out.push({
+      chapter,
+      firstAt: Math.min(s?.firstAt ?? chapter.createdAt, chapter.createdAt || Infinity),
+      lastAt: Math.max(s?.lastAt ?? 0, chapter.writtenAt),
+    });
   }
   return out.sort((a, b) => b.chapter.writtenAt - a.chapter.writtenAt || (a.chapter.id < b.chapter.id ? 1 : -1));
 }

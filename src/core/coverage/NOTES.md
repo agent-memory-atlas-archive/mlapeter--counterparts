@@ -94,13 +94,15 @@ those words, so the share rule turns the reserve on from about 3,000 bytes of ce
 instead of 2,400.
 
 **How far, not whether (2026-09-30, the continuity test).** `workSince` also returns the
-latest claim on that work (`writtenUpTo`, the claim's own time) and what made it
-(`writtenUpBy`, read off the claim's prefix), and how many unwritten pieces came after it.
-The pointer says "written up to 17:50 (chapter), 3 pieces after" where it said "not yet
-written up" for a session that had written a chapter and then said three more things.
-`sessionsHere` is new beside it: the sessions whose turn-ends are filed in a scope, first
-and last, which is how the wake's "Last here" line finds the chapters written in a
-directory (`handoff/NOTES.md` §9).
+latest written-up piece's time (`writtenUpTo`, a piece time like the range around it),
+what claimed it (`writtenUpBy`: memories, a chapter, "nothing new", a later session's
+write-up told apart by the proposal's own session), and how many unwritten pieces came
+after it. The pointer says "written up to 17:48 (chapter), 3 pieces after" where it said
+"not yet written up" for a session that had written a chapter and then said three more
+things. Beside it: `sessionsHere`, the sessions whose `stop` turn-ends and pieces are
+filed in a scope (first and last, and whether a `session-end` closed it), and
+`chapterClaims`, the episodes a scope's chapter claims name — how the wake's "Last here"
+line finds the chapters written in a directory (`handoff/NOTES.md` §9).
 
 ## 8. Doctor
 
