@@ -1,5 +1,119 @@
 # Changelog
 
+## 0.3.10 — 2026-09-30
+
+Feelings now sit on a new wheel of seven cores — happy, warm, calm, curious, sad,
+uneasy, angry — and every feeling already recorded is re-filed onto it. A feeling
+written under a core is kept under that core, and every word carries default numbers,
+so a note can name just the word. Several sessions working in one directory each keep
+their own handoff now, and the wake says who left each one. A new session's wake has a
+"Last here" line naming the latest chapter written in this directory, and asking "what
+do you remember from our most recent session?" leads with that session. Every recall
+result says which session it came from. **The store's format changes, v10 → v11, and a
+pre-migration copy is taken.**
+
+**The format change, and why every session must be closed.** The first Counterparts
+process to open the store for writing after installing copies it (as every upgrade since
+0.3.1 has) and upgrades it. Usually that is a Claude Code hook; if you only use Claude
+Desktop, it is Desktop's memory server when Desktop starts. The upgrade adds three
+columns to `feelings` (`valence`, and `core_v10` / `emotion_v10`) and re-files every
+recorded feeling onto the seven cores. A re-filed row keeps its old core and word beside
+it, and nothing else in the store changes. Until the upgrade, `counterparts doctor` and
+the dashboard can't read the store (a v10 store is older than they read) and say so.
+**Close every Claude Code session before installing, and if you have connected Claude
+Desktop, quit it.** A v11 store can't be opened by 0.3.9: anything of 0.3.9's that opens
+it afterwards refuses at once (`SCHEMA_AHEAD`), and its hooks stand down. A memory server
+that was already running keeps 0.3.9's code with the store already open. Its tools
+re-read the format on every call and refuse ("Counterparts was updated and this server
+is still running the old version, so this tool did nothing."), ending with `/mcp` →
+Reconnect in Claude Code and "Quit and reopen Claude Desktop" in Desktop. The hooks are
+fresh processes at every event, so they run the new code at once. To go back to 0.3.9
+you reinstall it and put back the copy the upgrade took; anything remembered since is
+lost.
+
+The feelings wheel, v2 (#301).
+
+- **Seven cores: happy, warm, calm, curious, sad, uneasy, angry**, in 37 groups,
+  180 words in all (a group's name is a word too). Every word from the first wheel, its additions and aliases, and
+  every word a counterpart has recorded in its own words has a home. Recognition is a
+  group under curious (also warm). Guilt sits under uneasy, disgust is a word under
+  angry, and hopeful is under happy.
+- **Every word carries default numbers**: a valence (−1 to +1) and an intensity (0 to
+  1). On `note` and `session_end`, `core` and `strength` may be left out: a feeling with
+  no core takes its word's home core, and a feeling with no strength takes the word's
+  intensity, capped at 0.55. A `valence` may be given to override the word's. A strength
+  you give is never changed.
+- **The writer's core is kept.** A word named under a core it doesn't sit under is
+  stored under the core the writer chose, with nothing reported as moved. (0.3.9 moved
+  it to the word's home and said so.) A first-wheel core name (`fear`, `anger`,
+  `surprise`, `disgust`) sent by a session or dream still running is filed the way the
+  upgrade files it, and comes back as a `core` repair.
+- **The upgrade re-files every feeling.** fear → uneasy; anger and disgust → angry; sad
+  stays sad, except guilty, remorseful and ashamed → uneasy. Rows under happy and
+  surprise, and `other` words under them, go by the word: to its home core, unless the
+  word can also be written under the old core (bittersweet under happy stays happy). A
+  word off the wheel stays happy under happy and goes to curious under surprise. Each
+  re-filed row keeps its old pair. It runs once. Doctor prints what moved ("Upgrade to
+  v11: feelings use seven cores now … N of M recorded feelings re-filed (…), each keeping
+  its old core beside it").
+- **What a feeling does, by its valence.** How high a feeling holds a memory is
+  unchanged. How fast that hold softens now depends on valence: a negative feeling's hold
+  softens fastest (angry about 16 days), a positive one's slowest (happy and warm about
+  26). Mood matching compares valence instead of core, and a low mood meeting a low
+  feeling counts a quarter as much, so a low mood can't feed itself.
+- **Recognition reaches the core's fast lane.** An unmarked memory carrying the
+  counterpart's own recognition feeling (at least 0.6, felt in a session) counts as about
+  itself for the fast lane only; a mark still wins, and the slow lane still needs one.
+  Doctor counts it ("Recognition").
+- **Readers.** The dashboard's radar, chips and dots show the seven cores in seven
+  colours ("dislike" for "disgust" is gone; disgust is a word under angry). In recall, a
+  stamp also answers to its group's word, so "when was I afraid" still reaches scared.
+  The dream and reflection prompts name the seven cores.
+
+Handoffs, one per session (#295).
+
+- **Each session in a directory keeps its own live handoff.** Writing again revises your
+  own; another session's write makes a new one beside it. Until now the last session to
+  end wrote over the others.
+- **The wake shows every live handoff here, newest first, and who wrote each** (the
+  session's short id and model, "this session" for your own). With several, a count line,
+  up to three one-line entries, the older ones by id, and how to retire one.
+- **Retiring.** `handoff: ""` retires only your own. `session_end` takes
+  `retireHandoff: [ids]` to retire any handoff in this directory, whoever wrote it. A
+  `handoff` write returns `others`, the other sessions' live handoffs here, so finished
+  ones can go in the same call.
+- **Claude Desktop:** a `session_end` with no session named can't leave or retire a
+  handoff (`session-unnamed`); the rest of the call goes through.
+
+Continuity (#300, #302).
+
+- **"Last here" on the wake.** In a directory where a session wrote a chapter within the
+  fortnight, the wake says which session it was, its model, when it ran and the
+  chapter's title and first sentence. It is read from what is already stored, so chapters
+  written before this release show at once. A finished session needs no handoff for it.
+- **The handoff pointer says how far the work since is written up**: "written up to
+  17:50 (chapter), 3 pieces after" instead of "not yet written up" when a chapter or a
+  memory covers part of it.
+- **A question about time leads with this directory's last session.** "What do you
+  remember from our most recent session?", "where did we leave off", "this evening" and
+  the like bring that session's latest chapter first, then the memories it wrote, newest
+  first, each marked `recent`. The rest of the answer is ranked as before.
+- **Every recall result says where it came from**: `from: "session a1b2c3d4, ~/random,
+  09-30 17:41"`, or "this session". Older rows say less (nothing is backfilled).
+
+Tests only (#303): child processes in the suite get the test's time zone, and two
+fixtures moved, so the suite passes at every hour in any zone. No product change.
+
+Not proven here.
+
+- Nothing ran on a real store. The re-filing of your own recorded feelings, the writer's
+  core on real notes, the softening and mood by valence, and the recognition lane were
+  checked on a seeded store and in tests only.
+- The upgrade from Claude Desktop's memory server (a Desktop-only user) was checked over
+  stdio with a client that calls itself `claude-ai`, not against the real app.
+- "Last here", the recency lead and handoffs from several sessions were checked with
+  driven sessions in one throwaway directory, not across a real day's parallel sessions.
+
 ## 0.3.9 — 2026-09-30
 
 Counterparts now reaches Claude Desktop's chat: one command connects it, a chat wakes
