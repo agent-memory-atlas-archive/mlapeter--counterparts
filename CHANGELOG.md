@@ -14,8 +14,10 @@ pre-migration copy is taken.**
 
 **The format change, and why every session must be closed.** The first Counterparts
 process to open the store for writing after installing copies it (as every upgrade since
-0.3.1 has) and upgrades it. Usually that is a Claude Code hook; if you only use Claude
-Desktop, it is Desktop's memory server when Desktop starts. The upgrade adds three
+0.3.1 has) and upgrades it. Usually that is a Claude Code hook, even the next prompt in a
+session left open. With only Claude Desktop, it is Desktop's memory server as it starts,
+or, if Desktop was left running, the background worker its next chat starts. The upgrade
+adds three
 columns to `feelings` (`valence`, and `core_v10` / `emotion_v10`) and re-files every
 recorded feeling onto the seven cores. A re-filed row keeps its old core and word beside
 it, and nothing else in the store changes. Until the upgrade, `counterparts doctor` and
@@ -98,7 +100,7 @@ Continuity (#300, #302).
   remember from our most recent session?", "where did we leave off", "this evening" and
   the like bring that session's latest chapter first, then the memories it wrote, newest
   first, each marked `recent`. The rest of the answer is ranked as before.
-- **Every recall result says where it came from**: `from: "session a1b2c3d4, ~/random,
+- **Every recall result says where it came from**: `from: "session a1b2c3d4, ~/garden,
   09-30 17:41"`, or "this session". Older rows say less (nothing is backfilled).
 
 Tests only (#303): child processes in the suite get the test's time zone, and two
