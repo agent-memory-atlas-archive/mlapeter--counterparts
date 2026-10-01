@@ -61,6 +61,7 @@ import { ABOUT_MARKS, CACHE_SCHEMA_VERSION, CORE_ABOUT_MARKS, SCHEMA_VERSION, St
 import type { AboutMark, FeelingInput, TraitInput } from "../../core/store/index.js";
 import { isLocked } from "../../core/store/db.js";
 import type { Band, Kind } from "../../core/types.js";
+import { UNBOUND_SESSION } from "../../core/types.js";
 import { recordHandleResolution } from "../expansions.js";
 import {
   lookupScope,
@@ -1343,7 +1344,7 @@ export class McpServer {
     // shapes ARE readable rather than a note that lands without its date.
     const dated = readReminder(args);
     if ("refused" in dated) return this.refuse("note", dated.refused, { detail: dated.detail });
-    const session = this.session ?? "mcp";
+    const session = this.session ?? UNBOUND_SESSION;
 
     const captured = this.counterpart.captureJot({ session, scope: this.scope, text });
     const ownSpanHash = captured.spans[0]?.hash ?? null;
@@ -1541,7 +1542,7 @@ export class McpServer {
         ...(askedIds.length > 0 ? { ids: askedIds } : {}),
       },
       {
-        sessionId: this.session ?? "mcp",
+        sessionId: this.session ?? UNBOUND_SESSION,
         owner: this.owner,
         vector: embedded.vector,
         semantic: embedded.semantic,

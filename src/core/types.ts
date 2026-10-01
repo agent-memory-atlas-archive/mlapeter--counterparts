@@ -59,6 +59,23 @@ export const SETTLE_HOWS = ["changed", "corrected", "open"] as const;
 export type SettleHow = (typeof SETTLE_HOWS)[number];
 
 /**
+ * THE SESSION ID OF A MEMORY SERVER THAT DOES NOT KNOW ITS SESSION YET. In
+ * Claude Code the server learns its session at the first `chapter` or
+ * `session_end` (the MCP server's lazy bind); a `note` before
+ * that is filed under this one shared id (remember NOTES §16, n2), and so is a
+ * recall's reader. It names NO session: every server that has not bound
+ * shares it. A reader of `origin_session` that says who wrote a row, or
+ * gathers a session's rows, treats it as unknown (2026-09-30, the 0.3.10
+ * release check: 46 of ~430 authored memories on the live store carry it).
+ */
+export const UNBOUND_SESSION = "mcp";
+
+/** Is this a real session id — not absent, empty, or the unbound server's? */
+export function isKnownSession(session: string | null | undefined): session is string {
+  return typeof session === "string" && session.length > 0 && session !== UNBOUND_SESSION;
+}
+
+/**
  * A model id as the host reports it (`claude-opus-5-5`, `claude-opus-5-5[1m]`),
  * and nothing else: it is printed into a chapter heading and stored on a row
  * (`memories.model`, schema v7), so no spaces, no `·`, no `<synthetic>`.

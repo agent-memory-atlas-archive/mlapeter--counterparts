@@ -212,7 +212,7 @@ describe("M3 one feelings chart", () => {
     const dots = feelingDots([{ core: "sad", word: "disappointed" }, { core: "happy", word: "proud" }, { core: "uneasy", word: "uneasy" }], true);
     expect(dots).toContain('title="felt: disappointed, proud, uneasy"');
     expect(dots).toContain('<span class="fwords">disappointed, proud +1</span>');
-    expect(feelingDots([{ core: "warm", word: "warm" }])).toContain("#ff8a80");
+    expect(feelingDots([{ core: "warm", word: "warm" }])).toContain("#ff79c6");
   });
 });
 

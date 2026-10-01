@@ -33,6 +33,7 @@ import { LAST_HERE_LIFE_DAYS, chaptersBySession, latestChapter } from "../../cor
 import { strength } from "../../core/physics/index.js";
 import { isConfidential, isSelfPage, localKey, readRecencyAsk, standingOf } from "../../core/recall/index.js";
 import { localStamp } from "../../core/time.js";
+import { UNBOUND_SESSION } from "../../core/types.js";
 import type { CandidateVerdict, FeelingWhose, SemanticSource, Verdict } from "../../core/recall/index.js";
 import { ownerNames } from "../../core/sleep/index.js";
 
@@ -626,7 +627,9 @@ export function expandHandle(
 /**
  * WHERE A ROW CAME FROM, as one short string (2026-09-30): who wrote it —
  * "this session" for the asker's own, the short id otherwise, "an earlier
- * session" when the row names none — the directory with the home directory
+ * session" when the row names none, and "a session that hadn't been
+ * identified yet" for a note an unbound server wrote (`UNBOUND_SESSION`; never
+ * "this session", whoever asks) — the directory with the home directory
  * as `~`, and when, in the store's zone (a chapter: its latest write). Only
  * what the row already knows; nothing is backfilled. A row the nightly run
  * made says so — "a dream launched from session …", "a reflection" — rather
@@ -1012,6 +1015,7 @@ function recentRows(counterpart: Counterpart, question: string, opts: Deliberate
           continue;
         }
       }
+      written.push(...preBindNotes(store, scope, session, all));
       written.sort((a, b) => b.at - a.at || (a.id < b.id ? 1 : -1));
       for (const w of written) {
         if (memories >= RECENT_MEMORIES_MAX) break;
@@ -1027,6 +1031,49 @@ function recentRows(counterpart: Counterpart, question: string, opts: Deliberate
   } catch {
     return null;
   }
+}
+
+/**
+ * A SESSION'S NOTES FROM BEFORE ITS SERVER KNEW IT (the 0.3.10 release check).
+ * In Claude Code the memory server learns its session only at the first
+ * `chapter` or `session_end`, so a `note` before that is filed under the
+ * shared `UNBOUND_SESSION` id, which names no one — and the lead, gathering
+ * rows by `origin_session`, missed every one of them. Such a note is counted
+ * as `session`'s only when it can be no one else's: it says it was written in
+ * THIS directory, it falls inside the stretch `session` was at work here
+ * (`coverage#sessionsHere`: its turn-ends and held pieces), and no other
+ * session — the asker included — was at work here at that moment. Two
+ * sessions side by side in one directory share the stretch, so neither gets
+ * the note; it is left to the ranking, as before. Never throws.
+ */
+function preBindNotes(
+  store: Counterpart["store"],
+  scope: string,
+  session: string,
+  here: readonly { session: string; firstAt: number; lastAt: number }[],
+): { id: string; at: number }[] {
+  const norm = (s: string): string => s.trim().replace(/\/+$/, "");
+  const own = here.find((s) => s.session === session);
+  if (own === undefined) return [];
+  const out: { id: string; at: number }[] = [];
+  try {
+    for (const id of store.list({ type: "memory", archived: false, originSession: UNBOUND_SESSION })) {
+      try {
+        const r = store.row(id);
+        if (r === undefined || r.superseded_by !== null || nightlyMade(r) !== null) continue;
+        if (r.origin_scope === null || r.origin_scope.length === 0 || norm(r.origin_scope) !== norm(scope)) continue;
+        const at = r.created_at ?? 0;
+        if (at < own.firstAt || at > own.lastAt) continue;
+        if (here.some((o) => o.session !== session && at >= o.firstAt && at <= o.lastAt)) continue;
+        out.push({ id, at });
+      } catch {
+        continue;
+      }
+    }
+  } catch {
+    return [];
+  }
+  return out;
 }
 
 /**
