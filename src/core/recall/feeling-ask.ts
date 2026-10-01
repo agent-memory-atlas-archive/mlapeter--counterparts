@@ -171,6 +171,9 @@ export const EVERYDAY_FEELING_WORDS: ReadonlySet<string> = new Set([
 ]);
 const FEELING_FRAME = new Set([...FEEL_WORDS, "am", "im", "is", "are", "was", "were", "be", "been", "being", "youre"]);
 
+/** After "to be", an everyday word followed by one of these is not a feeling ("close to done"). */
+const PREPOSITIONS = new Set(["to", "with", "on", "in", "of", "for", "at", "about"]);
+
 /** A feel-word followed by one of these is an OPINION: "I feel like the test is flaky". */
 const OPINION = new Set(["like", "that"]);
 /** Scanning back stops here: another subject owns what follows (`cues.ts`'s rule). */
@@ -237,7 +240,17 @@ export function readFeelingAsk(
     if (w.length < minLength || !(WHEEL_VOCABULARY.has(w) || stored.has(w))) return;
     if (DETERMINERS.has(toks[i + 1] ?? "")) return; // a verb on a thing, not a feeling
     // An everyday word is a feeling only in a feeling's frame ("I was content").
-    if (EVERYDAY_FEELING_WORDS.has(w) && !FEELING_FRAME.has(toks[i - 1] ?? "") && !FEELING_FRAME.has(toks[i - 2] ?? "")) return;
+    if (EVERYDAY_FEELING_WORDS.has(w)) {
+      const before = [toks[i - 1] ?? "", toks[i - 2] ?? ""];
+      const felt = before.some((b) => FEEL_WORDS.includes(b));
+      if (!felt) {
+        if (!before.some((b) => FEELING_FRAME.has(b))) return;
+        // After "to be" only: a preposition next makes it a state of a thing
+        // or a task — "close to done", "engaged with", "familiar to you". After
+        // a feel-word it stays a feeling: "felt close to Mike".
+        if (PREPOSITIONS.has(toks[i + 1] ?? "")) return;
+      }
+    }
     named.add(w);
     if (aboutAPerson(toks, i, false, names)) ranked = true;
   });

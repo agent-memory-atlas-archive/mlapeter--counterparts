@@ -549,13 +549,26 @@ describe("everyday words name a feeling only in a feeling's frame (review of #30
       "which test caught my timezone bug",
       "I engaged the retry path in which release?",
       "how close am I to finishing the importer",
+      // The reviewer's, verbatim: after "to be", a preposition next makes it a state of a thing.
+      "are you close to done with the migration",
+      "what was I engaged with last week",
+      "is this familiar to you",
     ]) {
       expect(`${q}: ${String(readFeelingAsk(q, self, new Set(), 3).ranked)}`).toBe(`${q}: false`);
     }
   });
 
   test("the same words in a feeling's frame still do", () => {
-    for (const q of ["when did I feel close to Mike", "when was I content", "times I felt seen", "was I sorry about the release"]) {
+    for (const q of [
+      "when did I feel close to Mike",
+      "was I content after the merge",
+      "when was I content",
+      "times I felt seen",
+      "when was I afraid",
+      // The reviewer's, verbatim, either way allowed: kept RANKED — "am I sorry"
+      // is a question about how I feel about a choice, not about a thing.
+      "am I sorry I picked sqlite",
+    ]) {
       expect(`${q}: ${String(readFeelingAsk(q, self, new Set(), 3).ranked)}`).toBe(`${q}: true`);
     }
   });

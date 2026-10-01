@@ -779,8 +779,11 @@ never says it.
   `EVERYDAY_FEELING_WORDS`): close, content, settled, seen, caught, engaged, open,
   important, empty, sorry, familiar and a few more are read as a feeling only when a
   feel-word or a form of "to be" is one of the two words before ("felt close", "I was
-  content", "was I sorry"). "I settled on the second option", "is my PR still open",
-  "how close am I to finishing" no longer rank. A stamp still answers to the word.
+  content", "am I sorry"). After "to be" only, a preposition next takes it back out —
+  "are you close to done", "what was I engaged with", "is this familiar to you"; after
+  a feel-word it stays ("felt close to Mike"). "I settled on the second option", "is my
+  PR still open", "how close am I to finishing" no longer rank. A stamp still answers
+  to the word.
   `dream/slices.ts` still counts these words as feeling words in a transcript (a light
   over-count of how "whole" a slice should come).
 - **Sad's `wounded` group answers to "hurt"** (the page's name for it, `WheelEntry.label`):
