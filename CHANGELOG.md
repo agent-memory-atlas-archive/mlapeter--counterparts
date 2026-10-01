@@ -68,7 +68,8 @@ The feelings wheel, v2 (#301).
   itself for the fast lane only; a mark still wins, and the slow lane still needs one.
   Doctor counts it ("Recognition").
 - **Readers.** The dashboard's radar, chips and dots show the seven cores in seven
-  colours ("dislike" for "disgust" is gone; disgust is a word under angry). In recall, a
+  colours, warm pink and angry red ("dislike" for "disgust" is gone; disgust is a word
+  under angry). In recall, a
   stamp also answers to its group's word, so "when was I afraid" still reaches scared.
   The dream and reflection prompts name the seven cores.
 
@@ -102,6 +103,13 @@ Continuity (#300, #302).
   first, each marked `recent`. The rest of the answer is ranked as before.
 - **Every recall result says where it came from**: `from: "session a1b2c3d4, ~/garden,
   09-30 17:41"`, or "this session". Older rows say less (nothing is backfilled).
+- **A note from before the session was known (#305).** In Claude Code the memory server
+  learns which session it serves only at the first `chapter` or `session_end`; a `note`
+  before that is filed under no session. Such a note now reads "a session that hadn't
+  been identified yet" with its directory and time, never "this session". A question
+  about time still brings a finished session's earlier notes back with it when they were
+  written here, while that session was at work, and no other session was working here at
+  the same moment.
 
 Tests only (#303): child processes in the suite get the test's time zone, and two
 fixtures moved, so the suite passes at every hour in any zone. No product change.
