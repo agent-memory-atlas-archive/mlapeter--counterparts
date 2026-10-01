@@ -12,26 +12,21 @@ each mechanism is working. It should run in whatever AI host people use.
 
 | | |
 |---|---|
-| **On npm** | 0.3.7 (Sep 29) |
-| **On master → 0.3.8** | contradictions (store v10), the event log, coverage, a wake that keeps up, dashboard feedback |
-| **Hosts** | Claude Code, including the Desktop app's Code tab (checked 2026-09-30) |
+| **On npm** | 0.3.9 (Sep 30) |
+| **On master, not released** | handoffs per session (#295) |
+| **Hosts** | Claude Code, including the Desktop app's Code tab; Claude Desktop chat (0.3.9) |
 | **Platforms** | Mac only |
 
 **In flight:**
-- **0.3.8**, being released.
+- **The feelings wheel, rebuilt**: seven cores (happy · warm · calm · curious · sad · uneasy · angry) replace the poster's six. Each word carries default valence and intensity, and the writer's own core is kept. Being built (branch `feelings/wheel-v2`).
 - **Session-start fixes, the rest**: morning catch-up (after the first automatic nightly run) and "the dream ask reaches you". Build 4 goes on top of the host seam.
 
 ---
 
 ## Next
 
-1. **Release 0.3.8.**
-2. **More hosts: Claude Desktop first, then claude.ai if it's doable.** The plan has three parts:
-   - **Groundwork:** a host seam, a neutral config, and host-neutral messages.
-   - **The MCP server on its own:** it gives the wake, binds sessions and starts upkeep without hooks.
-   - **One adapter per host.**
-
-   Design notes are done and the Desktop behaviour has been measured (2026-09-30): one server per app, no conversation id, so a `wake` tool mints the session. The groundwork builder is next.
+1. **More hosts.** Claude Desktop chat shipped in 0.3.9 (host seam, then a `wake` tool for Desktop). Next: the owner tries it in his own Desktop, then claude.ai if it's doable.
+2. **Emotion, the rest** after the wheel lands: negative feelings soften faster than positive ones (the memory never does), a later feeling sits beside the first, and the self page reads the pattern of feelings over weeks.
 3. **Mechanisms**, one at a time, each talked through before it's built.
 4. **Dashboard**: finish the walk (Health, Flow, mobile).
 5. **Platforms**: Linux/WSL, then Windows, then Node.
@@ -47,7 +42,7 @@ each mechanism is working. It should run in whatever AI host people use.
 | ⬜ **Not built** | schemas |
 
 **What's left:**
-- **Emotion**: feelings should add weight and slow fading. Start with a deeper look at the six feelings themselves.
+- **Emotion**: feelings already add weight and slow fading. Now: the new wheel (in flight), valence-aware softening, re-feeling on recall, and recognition feeding the self. Notes: the 2026-09-30 emotion walk.
 - **Schemas**: beliefs and entities that grow from what's lived.
 - **Episodic → semantic**: gist, where many episodes become one understanding.
 - **Interference**: similar memories competing, not just contradictions.
@@ -86,7 +81,7 @@ each mechanism is working. It should run in whatever AI host people use.
 
 ## Recently done
 
-- **09-30**: event log; coverage ("answered" isn't "written up"); the wake keeps up; dashboard feedback; Desktop's Code tab verified
+- **09-30**: Claude Desktop chat; recall by feeling (0.3.9); handoffs per session; the feelings wheel redesigned with the owner; event log; coverage ("answered" isn't "written up"); the wake keeps up; dashboard feedback; Desktop's Code tab verified
 - **09-29**: contradictions (changed / corrected / open, with undo); headless nightly run (0.3.7)
 - **09-28**: nightly run (0.3.6); association links; fitting more into a night; looser guards
 - **09-27**: reflection and the self page; traits (0.3.5)
