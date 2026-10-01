@@ -44,7 +44,7 @@ import type { Fidelity, FitCandidate, Placed } from "../fit/index.js";
 import { emotionalIntensity, sal, strength } from "../physics/index.js";
 import { isHandoff, isSelfPage } from "../recall/index.js";
 import { namesOwner, ownerNames } from "../sleep/index.js";
-import { CARRIED_BY_MAX_CHARS, checkFeelings, checkTraits, isStoreError, repairEmotion, splitNote } from "../store/index.js";
+import { CARRIED_BY_MAX_CHARS, checkFeelings, checkTraits, defaultStrength, isStoreError, repairEmotion, splitNote } from "../store/index.js";
 import type { DreamChangeRow, DreamRow, FeelingInput, MemoryRow, ProseDoc, Store } from "../store/index.js";
 import { TUNABLES as PHYSICS } from "../physics/index.js";
 import { addDays, isDay } from "../time.js";
@@ -2583,7 +2583,6 @@ export class Dreams {
     // dream records softening; it cannot manufacture a feeling that would
     // raise the memory or open the core's fast lane.
     const peak = emotionalIntensity(this.store.physicsOf(row.id));
-    const s = Math.max(0, Math.min(Number(change.strength ?? 0), peak));
     const sent = this.words(String(change.emotion ?? ""), dream, false, CARRIED_BY_MAX_CHARS);
     if (!sent.ok) return { ok: false, reason: sent.reason, detail: `emotion: ${sent.detail}` };
     const notes: string[] = [];
@@ -2593,17 +2592,23 @@ export class Dreams {
     if (split !== null) notes.push(splitNote(split));
     if (!carried.ok) notes.push(`carried_by was not kept — ${carried.detail}`);
     else if (carried.cut) notes.push(`carried_by was kept to its first ${String(CARRIED_BY_MAX_CHARS)} characters.`);
+    const core = String(change.core ?? "");
+    const emotion = split?.emotion ?? sent.text;
+    // Left out, the strength a session's feeling would get (the word's
+    // default, capped below the fast lane — review of #301, m2), not 0.
+    const given = change.strength === undefined || change.strength === null ? defaultStrength(core, emotion) : Number(change.strength);
+    const s = Math.max(0, Math.min(given, peak));
     return {
       ok: true,
       input: {
         whose: "self",
-        core: String(change.core ?? ""),
-        emotion: split?.emotion ?? sent.text,
+        core,
+        emotion,
         strength: s,
         carriedBy: `in a dream, ${dream.date ?? ""}${carried.ok && carried.text.length > 0 ? `: ${carried.text}` : ""}`.trim(),
       },
       notes,
-      capped: s < Number(change.strength ?? 0),
+      capped: s < given,
       peak,
     };
   }

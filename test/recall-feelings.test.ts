@@ -183,7 +183,9 @@ describe("item 1: a stamp answers to the words it was written in", () => {
     // Written under happy, the writer's core: it answers to happy and to its home.
     expect([...feelingTokens({ core: "happy", emotion: "moved", other_word: null })].sort()).toEqual(["happy", "moved", "touched", "warm"]);
     expect([...feelingTokens({ core: "sad", emotion: "tender", other_word: null })].sort()).toEqual(["moved", "sad", "tender", "warm"]);
-    expect([...feelingTokens({ core: "uneasy", emotion: "inferior", other_word: null })].sort()).toEqual(["inferior", "uneasy", "unsettled"]);
+    expect([...feelingTokens({ core: "uneasy", emotion: "inferior", other_word: null })].sort()).toEqual(["inferior", "insecure", "uneasy"]);
+    // The page calls sad's `wounded` group "hurt": its words answer to hurt too.
+    expect([...feelingTokens({ core: "sad", emotion: "stung", other_word: null })].sort()).toEqual(["angry", "hurt", "sad", "stung", "wounded"]);
     expect([...feelingTokens({ core: "uneasy", emotion: "other", other_word: "jittery" })].sort()).toEqual(["jittery", "uneasy"]);
     // A wheel word of more than one word answers only to its cores (wheel v2):
     // "caught out" must not make "out" a feeling word for the whole store.

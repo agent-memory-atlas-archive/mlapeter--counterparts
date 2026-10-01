@@ -99,6 +99,9 @@ export interface WheelEntry {
   readonly alsoCore?: CoreEmotion;
   /** True for the recognition group (see the header). */
   readonly selfRelevant?: true;
+  /** The page's name for a group when its key is another word (`wounded`:
+   *  "hurt"). Recall's feeling words read it; nothing is stored under it. */
+  readonly label?: string;
 }
 
 /** The one emotion key that is not on the wheel: the person's own word is kept beside it. */
@@ -167,7 +170,8 @@ const TREE: Readonly<Record<CoreEmotion, readonly Group[]>> = {
     ["wistful", ["bittersweet"]],
     ["rueful", ["sorry", "regretful"]],
     ["disappointed", ["bummed", "let down", "disillusioned", "bored", "apathetic", "indifferent"]],
-    ["lonely", ["isolated", "abandoned", "ignored", "victimized"]],
+    // Rejected and alienated came from fear's branch; being left out is loneliness.
+    ["lonely", ["isolated", "abandoned", "ignored", "victimized", "rejected", "alienated"]],
     ["grieving", ["heartbroken", "despair", "empty", "depressed", "powerless"]],
     // The page calls this group "hurt", beside angry's "hurt"; one word, one
     // key, so `hurt` is angry's (its old home, and its live count) and this
@@ -178,10 +182,9 @@ const TREE: Readonly<Record<CoreEmotion, readonly Group[]>> = {
   uneasy: [
     ["caught out", ["sheepish", "caught", "exposed", "seen", "embarrassed", "humiliated", "ridiculed", "disrespected", "vulnerable"]],
     ["guilty", ["remorseful", "ashamed"]],
-    [
-      "unsettled",
-      ["disoriented", "uncertain", "insecure", "inferior", "inadequate", "incompetent", "worthless", "insignificant", "submissive", "rejected", "alienated"],
-    ],
+    ["unsettled", ["disoriented", "uncertain"]],
+    // Self-worth shaken: fear's `insecure` branch, a middle word again.
+    ["insecure", ["inadequate", "inferior", "incompetent", "worthless", "insignificant", "submissive"]],
     ["wary", ["cautious", "suspicious", "avoidance", "hesitant"]],
     ["worried", ["anxious", "nervous", "overwhelmed"]],
     ["afraid", ["scared", "startled", "frightened", "terrified", "shocked", "dismayed"]],
@@ -253,6 +256,9 @@ const BLENDS: Readonly<Record<string, CoreEmotion>> = {
 /** Groups whose words count as about me (see the header). */
 const SELF_RELEVANT: ReadonlySet<string> = new Set(["recognized"]);
 
+/** A group the page names by another word than its key (see sad's `wounded`). */
+const LABELS: Readonly<Record<string, string>> = { wounded: "hurt" };
+
 function build(): WheelEntry[] {
   const out: WheelEntry[] = [];
   const seen = new Set<string>();
@@ -273,7 +279,8 @@ function build(): WheelEntry[] {
       const blend = BLENDS[middle];
       const self = SELF_RELEVANT.has(middle);
       const marks = { ...(blend === undefined ? {} : { alsoCore: blend }), ...(self ? { selfRelevant: true as const } : {}) };
-      add({ key: middle, word: middle, core, ring: "middle", parent: null, ...group, ...marks });
+      const label = LABELS[middle];
+      add({ key: middle, word: middle, core, ring: "middle", parent: null, ...group, ...marks, ...(label === undefined ? {} : { label }) });
       for (const word of outer) {
         const own = BLENDS[word];
         add({
@@ -335,8 +342,11 @@ export function lookupWord(word: string): { entry: WheelEntry; alias?: string } 
   const raw = word.trim().toLowerCase();
   const direct = BY_KEY.get(raw);
   if (direct !== undefined) return { entry: direct };
+  // Only behind a real core's name: the first wheel qualified `anger.insecure`
+  // and `fear.inferior`; "e.g.hopeful" is not a key.
   const dot = raw.indexOf(".");
-  if (dot > 0) {
+  const prefix = raw.slice(0, Math.max(0, dot));
+  if (dot > 0 && ((V10_CORES as readonly string[]).includes(prefix) || isCoreEmotion(prefix))) {
     const bare = BY_KEY.get(raw.slice(dot + 1));
     if (bare !== undefined) return { entry: bare };
   }
@@ -366,15 +376,24 @@ function entryOfFeeling(emotion: string, otherWord: string | null | undefined): 
 }
 
 /**
- * A recorded feeling's DEFAULT numbers: its word's (an `other` whose own word
- * is on the wheel reads as that word), else the core it was stored under,
- * else neutral. The writer's override, when there is one, is the row's own
- * `valence` — `store/feelings.ts#feelingValence` reads that first.
+ * A recorded feeling's DEFAULT numbers. The word's (an `other` whose own word
+ * is on the wheel reads as that word) when it was stored under a core the
+ * word sits under — its home or a blend's second. Under any OTHER core the
+ * writer's core wins for valence too (the page: "the word's defaults apply
+ * only when no core is given"; the review of #301, M3): `furious` written
+ * under happy reads happy's valence, with the word's intensity. A word off
+ * the wheel: its core's. No core either: neutral. The writer's override, when
+ * there is one, is the row's own `valence` — `store/feelings.ts#feelingValence`
+ * reads that first.
  */
 export function feelingNumbers(core: string, emotion: string, otherWord?: string | null): FeelingNumbers {
   const entry = entryOfFeeling(emotion, otherWord);
-  if (entry !== undefined) return { valence: entry.valence, intensity: entry.intensity };
-  return isCoreEmotion(core) ? CORE_NUMBERS[core] : { valence: 0, intensity: CORE_NUMBERS.curious.intensity };
+  const stored = isCoreEmotion(core) ? CORE_NUMBERS[core] : undefined;
+  if (entry !== undefined) {
+    const sits = stored === undefined || entry.core === core || entry.alsoCore === core;
+    return { valence: sits ? entry.valence : (stored as FeelingNumbers).valence, intensity: entry.intensity };
+  }
+  return stored ?? { valence: 0, intensity: CORE_NUMBERS.curious.intensity };
 }
 
 /** Is this stored feeling in a self-relevant group (recognition)? */
@@ -471,8 +490,10 @@ const V10_FALLBACK: Readonly<Record<(typeof V10_CORES)[number], CoreEmotion>> = 
  *   - happy and surprise → BY THE WORD: its home core, unless the word can be
  *     written under the old core as it stands (bittersweet under happy stays
  *     happy). A word off the wheel: happy stays happy, surprise → curious.
- *   - `other` (the writer's own word), under any core → by that word where it
- *     is on the wheel now (same rule), else by the old core.
+ *   - `other` (the writer's own word) the same way: by the word only under
+ *     happy and surprise, the two cores that split; under the four that map
+ *     one to one the old core decides, as for a wheel word (the review of
+ *     #301, M3: sad / "moved" stays sad — the writer's core wins).
  *
  * The emotion key changes only where the first wheel's key is not a key
  * here: a qualified key (`fear.insecure` → `insecure`) and a core named alone
@@ -490,8 +511,7 @@ export function remapV10Feeling(core: string, emotion: string, otherWord: string
     return entry.core;
   };
   let now: CoreEmotion;
-  if (emotion === OTHER_EMOTION) now = byWord() ?? V10_FALLBACK[old];
-  else if (old === "happy" || old === "surprise") now = byWord() ?? V10_FALLBACK[old];
+  if (old === "happy" || old === "surprise") now = byWord() ?? V10_FALLBACK[old];
   else if (old === "sad") now = entry !== undefined && GUILT.has(entry.key) ? "uneasy" : "sad";
   else now = V10_FALLBACK[old];
   return { core: now, emotion: key };

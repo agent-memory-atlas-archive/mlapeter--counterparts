@@ -461,6 +461,11 @@ and every other reader go through `strength()` and see it without change.
   build: one optional field, read by `promotionEligibility` as "about me" only when the
   fast lane is met, and set by `sleep/consolidate.ts#coreContextFor` only for a memory
   whose `about` is NULL (unmarked) and which carries a recognition-group feeling. The
-  dashboards' core-road readers ask the same context, so they see it too. Not built:
+  dashboards' core-road readers ask the same context, so they see it too.
+  **Which feeling counts** (the review of #301, M1): mine (`whose = self`), at least
+  `CORE_FAST_FEELING` on its own (a strong memory with a faint recognition does not
+  count), recorded in a session — or by a reflection while the reflected-feeling door
+  is open; never a dream's. The reflection's list of core candidates asks the same
+  (`dream/reflect.ts`), and doctor counts the memories on this lane ("Recognition"). Not built:
   anything reading recognition for the self page (arcs from uneasy to calm, moments of
   recognition) — that is the page's design note, not a mechanism yet.

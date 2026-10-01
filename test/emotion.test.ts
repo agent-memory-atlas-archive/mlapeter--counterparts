@@ -414,10 +414,10 @@ describe("mood-matching — the lift (recall G18)", () => {
   const t = RECALL;
 
   test("same person > the other person > no match", () => {
-    const now = mood({ owner: [SAD] });
-    const own = moodLift([feeling({ whose: "owner", core: "sad", emotion: "lonely", strength: 0.8 })], now, 0, t);
-    const cross = moodLift([feeling({ whose: "self", core: "sad", emotion: "guilty", strength: 0.8 })], now, 0, t);
-    const none = moodLift([feeling({ whose: "owner", core: "happy", emotion: "joyful", strength: 0.8 })], now, 0, t);
+    const now = mood({ owner: [HAPPY] });
+    const own = moodLift([feeling({ whose: "owner", core: "happy", emotion: "joyful", strength: 0.8 })], now, 0, t);
+    const cross = moodLift([feeling({ whose: "self", core: "warm", emotion: "grateful", strength: 0.8 })], now, 0, t);
+    const none = moodLift([feeling({ whose: "owner", core: "sad", emotion: "lonely", strength: 0.8 })], now, 0, t);
     expect(own).toBeCloseTo(t.MOOD_SAME_WEIGHT * 0.8, 10);
     expect(cross).toBeCloseTo(t.MOOD_CROSS_WEIGHT * 0.8, 10);
     expect(none).toBe(0);
@@ -427,9 +427,17 @@ describe("mood-matching — the lift (recall G18)", () => {
   test("by valence (wheel v2): neighbours match in part, opposites never, a writer's valence counts", () => {
     const at = (core: string, emotion: string, valence: number | null = null): number =>
       moodLift([feeling({ whose: "owner", core, emotion, strength: 1, valence })], mood({ owner: [SAD] }), 0, t);
-    expect(at("sad", "lonely")).toBeCloseTo(t.MOOD_SAME_WEIGHT, 10);
-    // uneasy (−0.5) is 0.1 from sad (−0.6): most of a match.
-    expect(at("uneasy", "worried")).toBeCloseTo(t.MOOD_SAME_WEIGHT * (1 - 0.1 / t.MOOD_VALENCE_SPAN), 10);
+    // A low mood meeting a low memory counts a quarter (the page: "a low mood can't feed itself").
+    expect(t.MOOD_LOW_LOW_WEIGHT).toBe(0.25);
+    expect(at("sad", "lonely")).toBeCloseTo(t.MOOD_SAME_WEIGHT * t.MOOD_LOW_LOW_WEIGHT, 10);
+    // uneasy (−0.5) is 0.1 from sad (−0.6): most of a match, then the quarter.
+    expect(at("uneasy", "worried")).toBeCloseTo(t.MOOD_SAME_WEIGHT * (1 - 0.1 / t.MOOD_VALENCE_SPAN) * t.MOOD_LOW_LOW_WEIGHT, 10);
+    // A neutral feeling under a low mood is not damped: it is not low.
+    expect(at("curious", "surprised")).toBe(0);
+    expect(moodLift([feeling({ whose: "owner", core: "sad", emotion: "bittersweet", strength: 1 })], mood({ owner: [-0.2] }), 0, t)).toBeCloseTo(
+      t.MOOD_SAME_WEIGHT * (1 - 0.2 / t.MOOD_VALENCE_SPAN),
+      10,
+    );
     expect(at("happy", "joyful")).toBe(0);
     expect(at("calm", "relieved")).toBe(0);
     // Curious and confused, one core, are far apart in feeling: no longer one match.
@@ -529,9 +537,11 @@ describe("mood-matching never admits an uncued memory", () => {
     const v = (d: typeof after, id: string) => d.verdicts.find((x) => x.id === id);
 
     expect(v(before, own)?.mood).toBeUndefined();
-    expect(v(after, own)?.mood).toBeCloseTo(RECALL.MOOD_SAME_WEIGHT * 0.8, 10);
-    expect((v(after, own)?.sal ?? 0) - (v(before, own)?.sal ?? 0)).toBeCloseTo(RECALL.MOOD_SAME_WEIGHT * 0.8, 10);
-    expect(v(after, cross)?.mood).toBeCloseTo(RECALL.MOOD_CROSS_WEIGHT * 0.8, 10);
+    // A low mood, low memories: a quarter of the lift (MOOD_LOW_LOW_WEIGHT).
+    const low = RECALL.MOOD_LOW_LOW_WEIGHT;
+    expect(v(after, own)?.mood).toBeCloseTo(RECALL.MOOD_SAME_WEIGHT * 0.8 * low, 10);
+    expect((v(after, own)?.sal ?? 0) - (v(before, own)?.sal ?? 0)).toBeCloseTo(RECALL.MOOD_SAME_WEIGHT * 0.8 * low, 10);
+    expect(v(after, cross)?.mood).toBeCloseTo(RECALL.MOOD_CROSS_WEIGHT * 0.8 * low, 10);
     expect(v(after, happy)?.mood).toBeUndefined();
     expect(v(after, twin)?.mood).toBeUndefined();
     expect(v(after, inWindow)?.mood).toBeUndefined();

@@ -79,6 +79,20 @@ export const CARRIED_BY_MAX_CHARS = 1_000;
  */
 export const OTHER_WORD_MAX_CHARS = 80;
 
+/**
+ * The most a feeling's strength can be when the writer left it out and the
+ * word's default stood in (the review of #301, m2): below the core's fast lane
+ * (`CORE_FAST_FEELING = 0.6`, physics §5.3), so a feeling nobody weighed can
+ * never by itself make a memory "strongly felt". Terrified's 0.9 written
+ * without a strength is stored at this. CAL.
+ */
+export const DEFAULT_STRENGTH_CAP = 0.55;
+
+/** The strength a feeling written without one gets: its word's intensity (its core's for a word of the writer's own), capped. */
+export function defaultStrength(core: string, emotion: string, otherWord?: string | null): number {
+  return Math.min(feelingNumbers(core, emotion, otherWord).intensity, DEFAULT_STRENGTH_CAP);
+}
+
 export interface FeelingInput {
   readonly whose: string;
   /** One of the seven. Left out (or empty), the word's home core — only for a
@@ -377,9 +391,9 @@ export function checkFeelings(inputs: readonly FeelingInput[]): { rows: CheckedF
       core,
       emotion,
       otherWord,
-      // Left out, the word's default intensity (its core's for a word of the
-      // writer's own); the writer's when given, and never rewritten.
-      strength: f.strength ?? feelingNumbers(core, emotion, otherWord).intensity,
+      // Left out, the word's default intensity, capped (`defaultStrength`);
+      // the writer's when given, and never rewritten.
+      strength: f.strength ?? defaultStrength(core, emotion, otherWord),
       valence: f.valence ?? null,
       carriedBy,
       beneath: f.beneath ?? null,

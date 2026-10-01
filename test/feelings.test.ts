@@ -74,7 +74,11 @@ describe("the wheel", () => {
   });
 
   test("a qualified first-wheel key reads as its word, under the core it was given", () => {
-    expect(wheelEntry("insecure")).toMatchObject({ core: "uneasy", parent: "unsettled" });
+    expect(wheelEntry("insecure")).toMatchObject({ core: "uneasy", ring: "middle" });
+    expect(wheelEntry("inferior")).toMatchObject({ core: "uneasy", parent: "insecure" });
+    // Only behind a real core's name: "e.g.hopeful" is not a qualified key.
+    expect(wheelEntry("e.g.hopeful")).toBeUndefined();
+    expect(resolveEmotion("happy", "e.g.hopeful").kind).toBe("other");
     expect(wheelEntry("fear.insecure")).toBeUndefined();
     const read = resolveEmotion("angry", "anger.insecure");
     expect(read.kind === "wheel" ? [read.entry.key, read.home] : read.kind).toEqual(["insecure", false]);

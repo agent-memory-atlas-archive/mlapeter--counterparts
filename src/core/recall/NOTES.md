@@ -764,10 +764,10 @@ never says it.
   the core match got wrong: curious and confused (one core, opposite feelings) matched
   as one, and sad and uneasy (close feelings, two cores) never did. Blends no longer
   need special handling here. The weights are unchanged; it stays a light tie-breaker.
-  The page's "so a low mood can't feed itself" is carried today by the softening, not by
-  a rule here: a past unpleasant feeling softens faster (physics `S_FEELING_NEGATIVE`),
-  so an old hurt lifts less than an old warmth. A damper on negative-to-negative
-  matches is a follow-up if that proves not enough.
+  The page's "so a low mood can't feed itself" is a rule here since the review of #301
+  (M2): a low mood meeting a low feeling counts `MOOD_LOW_LOW_WEIGHT = 0.25` of its
+  match. The faster softening of unpleasant feelings (physics `S_FEELING_NEGATIVE`)
+  adds to it over time.
 - **A stamp answers to its group's word too** (`feeling-ask.ts#feelingTokens`):
   "afraid" was an alias of scared on the first wheel and is scared's group now, so
   "when was I afraid" still reaches a memory stamped scared — as does a stamp of
@@ -775,7 +775,33 @@ never says it.
   phrases now ("caught out", "that's me", "at ease"), and "out" or "me" must not become
   feeling words for the whole store (the review of #293's B2 rule, applied to the
   wheel's own words).
-- **Open**: the wheel v2 adds everyday words to `WHEEL_VOCABULARY` (close, content,
-  settled, seen, caught, engaged, sorry, familiar). A deliberate question like "I settled
-  on the second option" now names a feeling and, beside "I", ranks. Not seen in use;
-  worth watching.
+- **Everyday words name a feeling only in a feeling's frame** (the review of #301, m1;
+  `EVERYDAY_FEELING_WORDS`): close, content, settled, seen, caught, engaged, open,
+  important, empty, sorry, familiar and a few more are read as a feeling only when a
+  feel-word or a form of "to be" is one of the two words before ("felt close", "I was
+  content", "was I sorry"). "I settled on the second option", "is my PR still open",
+  "how close am I to finishing" no longer rank. A stamp still answers to the word.
+  `dream/slices.ts` still counts these words as feeling words in a transcript (a light
+  over-count of how "whole" a slice should come).
+- **Sad's `wounded` group answers to "hurt"** (the page's name for it, `WheelEntry.label`):
+  "when was I hurt" reaches stung and wounded as well as angry's hurt.
+- **A mild positivity bias in the ranked lane, named** (m4): stamps rank by SOFTENED
+  strength, and an unpleasant feeling softens faster, so among stamps of one recorded
+  strength and age a pleasant one ranks higher as the weeks pass (at 30 days, 0.9
+  frustrated reads ~0.13, 0.9 joyful ~0.28). That is the fading affect bias the
+  softening was built for; a question that names the feeling ("when was I frustrated")
+  pools only those stamps, so it decides nothing there.
+
+**The lift, before and after M2** (fresh, strength 1, same person, `MOOD_SAME_WEIGHT` 0.3):
+
+| mood → memory's feeling | before | after |
+|---|---|---|
+| sad −0.6 → lonely −0.6 | 0.30 | 0.075 |
+| sad −0.6 → uneasy −0.5 / angry −0.7 | 0.24 | 0.06 |
+| sad −0.6 → wistful −0.3 | 0.12 | 0.03 |
+| sad −0.6 → calm, happy | 0 | 0 |
+| confused −0.2 → bittersweet 0 | 0.18 | 0.18 |
+| happy +0.7 → happy / warm | 0.30 | 0.30 |
+| happy +0.7 → calm +0.5 | 0.18 | 0.18 |
+| happy +0.7 → curious +0.3 | 0.06 | 0.06 |
+

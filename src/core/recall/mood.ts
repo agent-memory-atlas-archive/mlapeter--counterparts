@@ -29,7 +29,10 @@
  * **By valence, not by core** (wheel v2). The match is `1 − |Δvalence| /
  * MOOD_VALENCE_SPAN` against the closest of the person's recorded feelings —
  * so curious and confused, one core apart in feeling, no longer match as one,
- * and sad and uneasy, two cores close in feeling, match in part. Each
+ * and sad and uneasy, two cores close in feeling, match in part. A LOW mood
+ * meeting a LOW feeling (both valences below 0) counts `MOOD_LOW_LOW_WEIGHT`
+ * (0.25) of its match — the approved page: "so a low mood can't feed itself"
+ * (the review of #301, M2). Each
  * feeling's valence is the writer's, else its word's default
  * (`store/feelings.ts#feelingValence`).
  *
@@ -85,11 +88,19 @@ export function hasMood(mood: Mood): boolean {
   return mood.byPerson.size > 0;
 }
 
-/** How well one feeling's valence matches a person's mood: 0..1, the closest of their feelings. */
-export function moodMatch(valence: number, now: readonly number[], span: number): number {
+/**
+ * How well one feeling's valence matches a person's mood: 0..1, the best over
+ * their feelings. A low mood meeting a low feeling (both below 0) counts
+ * `lowLow` of its match — "so a low mood can't feed itself" (the approved
+ * page; the review of #301, M2). Pleasant and mixed matches are whole.
+ */
+export function moodMatch(valence: number, now: readonly number[], span: number, lowLow = 1): number {
   if (!(span > 0)) return 0;
   let best = 0;
-  for (const v of now) best = Math.max(best, 1 - Math.abs(valence - v) / span);
+  for (const v of now) {
+    const close = Math.max(0, 1 - Math.abs(valence - v) / span);
+    best = Math.max(best, valence < 0 && v < 0 ? close * lowLow : close);
+  }
   return best;
 }
 
@@ -104,7 +115,7 @@ export function moodLift(
   feelings: readonly (FeelingRow & { birth_day: number })[] | undefined,
   mood: Mood,
   day: number,
-  t: Pick<RecallTunables, "MOOD_SAME_WEIGHT" | "MOOD_CROSS_WEIGHT" | "MOOD_VALENCE_SPAN">,
+  t: Pick<RecallTunables, "MOOD_SAME_WEIGHT" | "MOOD_CROSS_WEIGHT" | "MOOD_VALENCE_SPAN" | "MOOD_LOW_LOW_WEIGHT">,
 ): number {
   if (feelings === undefined || feelings.length === 0 || !hasMood(mood)) return 0;
   let best = 0;
@@ -113,7 +124,7 @@ export function moodLift(
     const valence = feelingValence(f);
     const felt = softenedFeeling(f.strength, day - f.birth_day, valence);
     for (const [person, now] of mood.byPerson) {
-      const match = moodMatch(valence, now, t.MOOD_VALENCE_SPAN);
+      const match = moodMatch(valence, now, t.MOOD_VALENCE_SPAN, t.MOOD_LOW_LOW_WEIGHT);
       if (match <= 0) continue;
       const w = f.whose === person ? t.MOOD_SAME_WEIGHT : t.MOOD_CROSS_WEIGHT;
       if (w * match * felt > best) best = w * match * felt;

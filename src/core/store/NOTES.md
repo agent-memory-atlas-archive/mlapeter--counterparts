@@ -1834,8 +1834,10 @@ store does with it:
 - **Words placed by this build, not the page** (the page drew the middle ring and a few
   outer words): the first wheel's words the page left out went by their old branch
   (fear's into uneasy, anger's into angry) or by meaning — the self-worth words
-  (insecure, inferior, inadequate, incompetent, worthless, insignificant, submissive,
-  rejected, alienated) under unsettled; humiliated, ridiculed, disrespected and
+  (inadequate, inferior, incompetent, worthless, insignificant, submissive) under their
+  own group `insecure` (the owner's coordinator, after reading all 180: fear's old
+  middle word is a middle word again), rejected and alienated under sad › lonely,
+  unsettled keeping disoriented and uncertain; humiliated, ridiculed, disrespected and
   vulnerable under caught out; avoidance and hesitant under wary; startled, shocked,
   dismayed, terrified under afraid; bored, apathetic, indifferent under disappointed;
   abandoned, ignored, victimized under lonely; despair, depressed, empty, powerless under
@@ -1849,3 +1851,31 @@ store does with it:
   stays angry's (its old home and its live count), both groups blends of the two.
   `seen` sits under caught out as the page has it (its one live use); the brief also
   lists "seen-as-recognition" — open for the owner.
+
+### After the review of #301 (2026-09-30, before any store migrated)
+
+- **The writer's core wins for the numbers too** (M3; the page: "the word's defaults
+  apply only when no core is given"). Under a core the word does not sit under (its home
+  or a blend's second), a feeling's default VALENCE is the stored core's; its intensity
+  still comes from the word (`feelingNumbers`). `furious` under happy reads +0.7.
+- **The migration's `other` rows follow the old core where it maps one to one** (M3):
+  sad → sad (the guilt group → uneasy, as for a wheel word), fear → uneasy, anger and
+  disgust → angry. Only happy and surprise, which split, go by the word. So sad /
+  "moved" and sad / "sheepish" stay sad.
+- **A strength left out is capped** (m2): `defaultStrength` = the word's intensity, at
+  most `DEFAULT_STRENGTH_CAP = 0.55`, below the fast lane's 0.6, so a feeling nobody
+  weighed never makes a memory "strongly felt". The dream's feeling-now and the
+  reflection's feelings default a missing strength the same way (they read it as 0
+  before).
+- **A stray first-wheel core is swept at a writer's open** (m3, `refileStrayV10Cores`):
+  one read in the steady state; a row still under fear, anger, surprise or disgust is
+  re-filed by the upgrade's rule and keeps its old pair. Never a reason to refuse an
+  open.
+- **The way back is partial, and says so** (`restoreFeelingsV10`): the stamp stays 11,
+  so this build's sweep re-files restored rows at the next open, and a memory a dream
+  merged after the upgrade carries copies with no `core_v10`.
+- **`lookupWord` reads a qualified key only behind a real core's name** (`fear.inferior`,
+  not "e.g.hopeful").
+- **Counts by emotion split for a word that joined the wheel** (left as is): a word
+  recorded as `other` before v11 ("sorry", "steadied") counts under `other`, the same word
+  written since under its own key. `feelingCounts({ by: "emotion" })` shows both.

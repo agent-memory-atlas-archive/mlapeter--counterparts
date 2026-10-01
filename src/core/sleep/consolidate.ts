@@ -167,15 +167,31 @@ function aboutMark(store: ReadsDocs, row: Pick<MemoryRow, "id"> & { about?: stri
  * may read as about me (`CoreContext.selfRelevantFeeling`). A mark always
  * wins: `work` or `world` keeps it out. Never a `skill`. False when the port
  * cannot read feelings.
+ *
+ * Which feeling counts (the review of #301, M1): MINE (`whose = self` — it
+ * is my recognising), felt strongly ON ITS OWN (its strength at least
+ * `CORE_FAST_FEELING`, not merely a strong memory carrying a faint one), and
+ * recorded in a session — or by a reflection, only while the fast lane's
+ * door to reflected feelings is open (`acceptsReflectedFeeling`). A dream's
+ * never: a dream may nominate, it does not open a lane.
  */
 export function selfRelevantFeeling(
   store: ReadsDocs & Pick<SleepStore, "feelingsFor">,
   row: Pick<MemoryRow, "id" | "kind"> & { about?: string | null },
+  acceptsReflected: boolean,
 ): boolean {
   if (row.kind === "skill" || store.feelingsFor === undefined) return false;
   if (aboutMark(store, row) !== null) return false;
   try {
-    return store.feelingsFor(row.id).some((f) => isSelfRelevantFeeling(f.emotion, f.other_word));
+    return store
+      .feelingsFor(row.id)
+      .some(
+        (f) =>
+          f.whose === "self" &&
+          f.strength >= PHYSICS_TUNABLES.CORE_FAST_FEELING &&
+          (f.source === null || f.source === "session" || (f.source === "reflection" && acceptsReflected)) &&
+          isSelfRelevantFeeling(f.emotion, f.other_word),
+      );
   } catch {
     return false;
   }
@@ -236,7 +252,7 @@ export function coreContextFor(
   const reflected = opts.acceptsReflectedFeeling ?? acceptsReflectedFeeling(store);
   const about = aboutMe(store, row);
   // Read only for an unmarked memory: a marked one has already answered.
-  const recognized = !about && selfRelevantFeeling(store, row);
+  const recognized = !about && selfRelevantFeeling(store, row, reflected);
   const candidate = about || recognized;
   return {
     aboutMe: about,

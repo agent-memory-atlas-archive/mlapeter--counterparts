@@ -216,6 +216,10 @@ export interface RecallTunables {
    *  match (wheel v2, 2026-09-30): the match is `1 − |Δvalence| / span`,
    *  nothing past the span. Replaced matching by core. CAL. */
   MOOD_VALENCE_SPAN: number;
+  /** A low mood meeting a low memory lifts it by this share of the full lift
+   *  (both valences below 0). The approved page: "Mood-matching stays a light
+   *  tie-breaker, read from valence, so a low mood can't feed itself." CAL. */
+  MOOD_LOW_LOW_WEIGHT: number;
 
   // ── a deliberate question about feeling (2026-09-30, U13 — WORKING DEFAULTS) ─
   /** The cue a nominated stamp brings, in cue units (one maximally-rare word),
@@ -448,6 +452,10 @@ export const TUNABLES: RecallTunables = {
   // (−0.6) meets uneasy (−0.5) at 0.8 and wistful (−0.3) at 0.4, never calm
   // or happy; a happy one (+0.7) meets warm at 1, calm (+0.5) at 0.6.
   MOOD_VALENCE_SPAN: 0.5,
+  // The review of #301 (M2), the page's own words: "so a low mood can't feed
+  // itself". A sad mood still finds sad memories — a quarter as easily; a
+  // pleasant or mixed match is untouched.
+  MOOD_LOW_LOW_WEIGHT: 0.25,
 
   // U13 (2026-09-30). A fresh stamp at 0.4 brings 1.6 cue units — eight times
   // the global floor (0.2) and under the loud floor (4.5), so a feeling alone

@@ -66,7 +66,7 @@ import { randomBytes } from "node:crypto";
 
 import { emotionalIntensity } from "../physics/index.js";
 import { isHandoff, isSelfPage } from "../recall/index.js";
-import { aboutMe, acceptsReflectedFeeling, promotionRecordKey } from "../sleep/index.js";
+import { aboutMe, acceptsReflectedFeeling, promotionRecordKey, selfRelevantFeeling } from "../sleep/index.js";
 import {
   ABOUT_MARKS,
   CARRIED_BY_MAX_CHARS,
@@ -843,7 +843,9 @@ export class Reflections {
         whose: "self",
         core: String(f.core ?? ""),
         emotion: split?.emotion ?? sent.text,
-        strength: Math.max(0, Math.min(1, Number(f.strength ?? 0))),
+        // Left out, the store gives it the word's default, capped below the
+        // fast lane, as for a session's feeling (review of #301, m2) — not 0.
+        ...(f.strength === undefined || f.strength === null ? {} : { strength: Math.max(0, Math.min(1, Number(f.strength))) }),
         carriedBy: `on reflection, ${date}${carried.ok && carried.text.length > 0 ? `: ${carried.text}` : ""}`,
       };
       const same = sameFeeling(this.store, r.id, recordedFeelings, feeling);
@@ -1460,6 +1462,9 @@ export class Reflections {
     const candidates: { id: string; felt: number; at: number }[] = [];
     const felt: { id: string; felt: number }[] = [];
     const recent: { id: string; felt: number; at: number }[] = [];
+    // The candidates are consolidation's: about me by its mark, or — unmarked —
+    // by a recognition feeling the fast lane would count (wheel v2).
+    const reflectedOpen = acceptsReflectedFeeling(this.store);
     for (const mid of this.store.list({ type: "memory", archived: false })) {
       if (denied.has(mid)) continue;
       const row = this.store.row(mid);
@@ -1473,7 +1478,8 @@ export class Reflections {
         core.push({ id: mid, felt: f });
         continue;
       }
-      const candidate = aboutMe(this.store, row) && !this.store.coreDemoted(mid);
+      const candidate =
+        (aboutMe(this.store, row) || selfRelevantFeeling(this.store, row, reflectedOpen)) && !this.store.coreDemoted(mid);
       if (candidate) candidates.push({ id: mid, felt: f, at: row.created_at ?? 0 });
       if (f > 0 && (candidate || KINDS_FELT.includes(row.kind))) felt.push({ id: mid, felt: f });
     }

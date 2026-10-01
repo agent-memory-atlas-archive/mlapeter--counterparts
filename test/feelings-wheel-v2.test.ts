@@ -23,9 +23,12 @@ import { TOOLS, openServer } from "../src/adapters/mcp/index.js";
 import { CORE_EMOTIONS, remapV10Feeling } from "../src/core/feelings-wheel.js";
 import { feelingSofteningDays, promotionEligibility, salArm, softenedFeeling, stability, TUNABLES } from "../src/core/physics/index.js";
 import type { MemoryPhysics } from "../src/core/types.js";
-import { coreContextFor } from "../src/core/sleep/consolidate.js";
+import { readFeelingAsk } from "../src/core/recall/index.js";
+import { coreContextFor, selfRelevantFeeling } from "../src/core/sleep/consolidate.js";
+import { recognitionLaneFindings } from "../src/adapters/claude-code/doctor.js";
 import { openDb } from "../src/core/store/db.js";
 import {
+  DEFAULT_STRENGTH_CAP,
   OBSERVER_READ_FLOOR,
   SCHEMA_VERSION,
   Store,
@@ -34,6 +37,7 @@ import {
   isStoreError,
   paths,
   refileFeelingsV11,
+  refileStrayV10Cores,
   restoreFeelingsV10,
 } from "../src/core/store/index.js";
 import type { StoreOptions } from "../src/core/store/index.js";
@@ -93,8 +97,13 @@ describe("the writer's core wins", () => {
       ["sad", "hurt"],
       ["happy", "grateful"],
     ]);
-    // The word's numbers still apply: hurt is angry's −0.7, grateful warm's +0.7.
+    // Hurt is a blend of angry and sad, so its own −0.7 applies under sad; grateful
+    // under happy, a core it does not sit under, takes happy's valence (M3).
     expect(rows.map((r) => feelingValence(r))).toEqual([-0.7, 0.7]);
+    s.addFeelings(id, [{ whose: "self", core: "happy", emotion: "furious", strength: 0.4 }]);
+    const furious = s.feelingsFor(id).at(-1);
+    expect(furious).toMatchObject({ core: "happy", emotion: "furious" });
+    expect(feelingValence(furious!)).toBe(0.7);
   });
 
   test("no core: the word's home; a word off the wheel with no core cannot be placed", () => {
@@ -156,8 +165,22 @@ describe("numbers on each feeling", () => {
     expect(code(() => s.addFeelings(id, [{ whose: "self", core: "calm", emotion: "settled", valence: -2 }]))).toBe("FEELING_INVALID:valence-out-of-range");
   });
 
+  test("a strength left out never opens the fast lane: the default is capped below CORE_FAST_FEELING (m2)", () => {
+    expect(DEFAULT_STRENGTH_CAP).toBeLessThan(TUNABLES.CORE_FAST_FEELING);
+    const s = store();
+    const id = mem(s);
+    s.addFeelings(id, [
+      { whose: "self", core: "uneasy", emotion: "terrified" },
+      { whose: "self", core: "happy", emotion: "ecstatic" },
+      { whose: "self", core: "uneasy", emotion: "terrified", strength: 0.9 },
+    ]);
+    expect(s.feelingsFor(id).map((r) => r.strength)).toEqual([DEFAULT_STRENGTH_CAP, DEFAULT_STRENGTH_CAP, 0.9]);
+  });
+
   test("an `other` whose word is on the wheel now reads that word's numbers", () => {
     expect(feelingValence({ core: "uneasy", emotion: "other", other_word: "sheepish" })).toBe(-0.5);
+    // Under a core the word does not sit under, the writer's core decides the valence (M3).
+    expect(feelingValence({ core: "sad", emotion: "other", other_word: "moved" })).toBe(-0.6);
     expect(feelingValence({ core: "curious", emotion: "other", other_word: "confused" })).toBe(-0.2);
     expect(feelingValence({ core: "sad", emotion: "other", other_word: "glowing" })).toBe(-0.6);
   });
@@ -202,10 +225,10 @@ const LIVE: readonly (readonly [string, string, string | null, string, string])[
   // Mine, most used.
   ["happy", "hopeful", null, "happy", "hopeful"],
   ["fear", "sheepish", null, "uneasy", "sheepish"],
-  ["sad", "other", "sheepish", "uneasy", "other"],
+  ["sad", "other", "sheepish", "sad", "other"], // sad maps one to one: the writer's core wins (M3)
   ["happy", "amused", null, "happy", "amused"],
   ["happy", "moved", null, "warm", "moved"],
-  ["sad", "other", "moved", "warm", "other"],
+  ["sad", "other", "moved", "sad", "other"],
   ["sad", "wistful", null, "sad", "wistful"],
   ["happy", "other", "steadied", "calm", "other"],
   ["happy", "curious", null, "curious", "curious"],
@@ -394,6 +417,30 @@ describe("schema v11: the one migration", () => {
     expect(cols(paths.operational(dir))).toBe(cols(paths.operational(freshDir)));
   });
 
+  test("a stray first-wheel core is swept at a writer's open, keeping its old pair; a second open finds nothing (m3)", () => {
+    const s = store();
+    const id = mem(s);
+    s.close();
+    open.splice(0);
+    const db = new Database(paths.operational(dir));
+    db.run(
+      `INSERT INTO feelings (id, memory_id, whose, core, emotion, other_word, strength, carried_by, created_at, updated_at, source)
+       VALUES ('fel_stray', ?, 'self', 'fear', 'worried', NULL, 0.4, '', 1, 1, 'session')`,
+      [id],
+    );
+    db.close();
+    const again = store();
+    expect(again.feelingsFor(id)[0]).toMatchObject({ core: "uneasy", emotion: "worried", core_v10: "fear", emotion_v10: "worried" });
+    again.close();
+    open.splice(0);
+    const ops = openDb(paths.operational(dir));
+    try {
+      expect(refileStrayV10Cores(ops)).toBe(0);
+    } finally {
+      ops.close();
+    }
+  });
+
   test("doctor is silent on a store born at v11", () => {
     const s = store();
     expect(upgradeV11Findings(s)).toEqual([]);
@@ -440,6 +487,7 @@ describe("the mechanism", () => {
     s.setAbout(work, "work", { by: "writer" });
     const plain = mem(s, "The cache was warm the second time.");
     s.addFeelings(unmarked, [{ whose: "self", core: "curious", emotion: "recognized", strength: 0.7 }]);
+    expect(recognitionLaneFindings(s)[0]?.detail).toContain("1 unmarked memory is on the core's fast lane");
     s.addFeelings(work, [{ whose: "self", core: "curious", emotion: "that's me", strength: 0.7 }]);
     s.addFeelings(plain, [{ whose: "self", core: "curious", emotion: "clarified", strength: 0.7 }]);
     const day = s.livedDay();
@@ -455,5 +503,60 @@ describe("the mechanism", () => {
     // Not strongly felt: recognition alone does not open the slow lane.
     const slow = p({ feelingPeak: 0.2, salience: { relevance: 0, emotional: 0, predictive: 0, novelty: 0 }, lastReturnDay: 40, firstReturnDay: 2, returnDays: 12, birthDay: 0 });
     expect(promotionEligibility(slow, { aboutMe: false, selfRelevantFeeling: true }).blockedBy).toContain("not-about-me");
+  });
+});
+
+describe("which recognition counts (review of #301, M1)", () => {
+  test("mine, strong on its own, felt in a session — a reflection's only with the door open, a dream's never", () => {
+    const s = store();
+    const cases: [string, Parameters<Store["addFeelings"]>[1][number], Parameters<Store["addFeelings"]>[2]][] = [
+      ["mine, strong, session", { whose: "self", core: "curious", emotion: "recognized", strength: 0.6 }, {}],
+      ["the owner's", { whose: "owner", core: "curious", emotion: "recognized", strength: 0.9 }, {}],
+      ["mine, faint", { whose: "self", core: "curious", emotion: "recognized", strength: 0.5 }, {}],
+      ["a dream's", { whose: "self", core: "curious", emotion: "recognized", strength: 0.9 }, { source: "dream" }],
+      ["a reflection's", { whose: "self", core: "curious", emotion: "familiar", strength: 0.9 }, { source: "reflection", recordedLater: "2026-09-30" }],
+    ];
+    const read = (open: boolean) =>
+      cases.map(([label, input, opts]) => {
+        const id = mem(s, `A memory for the case: ${label}.`);
+        s.addFeelings(id, [input], opts);
+        return `${label}: ${String(selfRelevantFeeling(s, s.row(id) as never, open))}`;
+      });
+    expect(read(false)).toEqual([
+      "mine, strong, session: true",
+      "the owner's: false",
+      "mine, faint: false",
+      "a dream's: false",
+      "a reflection's: false",
+    ]);
+    expect(read(true).at(-1)).toBe("a reflection's: true");
+    // A strong memory carrying a faint recognition is not enough: the feeling's own strength counts.
+    const strong = s.put({ type: "memory", kind: "fact", body: "A strongly felt memory with a faint recognition on it.", salience: { relevance: 0.6, emotional: 0.9, predictive: 0.6, novelty: 0 } });
+    s.addFeelings(strong, [{ whose: "self", core: "curious", emotion: "recognized", strength: 0.3 }]);
+    expect(selfRelevantFeeling(s, s.row(strong) as never, true)).toBe(false);
+  });
+});
+
+describe("everyday words name a feeling only in a feeling's frame (review of #301, m1)", () => {
+  const self = { asker: "self" as const };
+  test("questions about things do not rank as questions about feeling", () => {
+    for (const q of [
+      "I settled on the second option, which one was it?",
+      "is my PR still open",
+      "what's the most important thing I said about the scheduler",
+      "when was the queue empty last",
+      "what have I seen about rate limits",
+      "which test caught my timezone bug",
+      "I engaged the retry path in which release?",
+      "how close am I to finishing the importer",
+    ]) {
+      expect(`${q}: ${String(readFeelingAsk(q, self, new Set(), 3).ranked)}`).toBe(`${q}: false`);
+    }
+  });
+
+  test("the same words in a feeling's frame still do", () => {
+    for (const q of ["when did I feel close to Mike", "when was I content", "times I felt seen", "was I sorry about the release"]) {
+      expect(`${q}: ${String(readFeelingAsk(q, self, new Set(), 3).ranked)}`).toBe(`${q}: true`);
+    }
   });
 });

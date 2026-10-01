@@ -178,6 +178,25 @@ describe("dream feeling-now: repaired, reasons surfaced, never doubled", () => {
     expect(dreamt[0]?.carried_by).toContain("the guard has held every time since the first test");
   });
 
+  test("a feeling-now with no strength gets a session's default (the word's, capped below the fast lane), not 0 (review of #301, m2)", () => {
+    const c = brain();
+    const m = lived(c);
+    const id = dreamOpen(c);
+    const out = c.dreams.propose({
+      dream: id,
+      session: SESSION,
+      changes: [
+        { action: "feeling-now", id: m.guard, core: "calm", emotion: "relieved" },
+        { action: "feeling-now", id: m.a, core: "uneasy", emotion: "terrified" },
+      ],
+    });
+    if (!out.ok) throw new Error(out.reason);
+    const dreamt = (id2: string) => c.store.feelingsFor(id2).filter((f) => f.source === "dream")[0];
+    expect(dreamt(m.guard)?.strength).toBe(0.35);
+    // Terrified's 0.9 is capped at 0.55, then at the memory's own peak, as any feeling-now is.
+    expect(dreamt(m.a)?.strength).toBeLessThanOrEqual(0.55);
+  });
+
   test("a feeling that still will not store names its reason; it writes nothing, and a resend of one that landed is not doubled", () => {
     const c = brain();
     const m = lived(c);
@@ -443,8 +462,11 @@ describe("reflect: a second finish supplies what the first did not write", () =>
       feelings: [
         { id: s.open, core: "happy", emotion: "grateful: he said thank you and meant it", strength: 0.6 },
         { id: s.open, core: "happy", emotion: "furious", strength: 0.6 },
+        // No strength: the word's default, as at the session doors — not 0 (review of #301, m2).
+        { id: s.open, core: "calm", emotion: "relieved" },
       ],
     });
+    expect(c.store.feelingsFor(s.open).find((x) => x.emotion === "relieved")?.strength).toBe(0.35);
     if (!done.ok) throw new Error(String(done.reason));
     expect(done.outcome.feelings[0]).toMatchObject({ ok: true, reason: "recorded-later" });
     expect(done.outcome.feelings[0]?.note).toContain('"grateful" was kept as the emotion');

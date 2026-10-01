@@ -1104,6 +1104,13 @@ export function openOperational(path: string, opts: OpenOperationalOptions = {})
         db.close();
         throw err;
       }
+      // A stray first-wheel core, re-filed (v11). Never a reason to refuse an
+      // open: a sweep that cannot run now runs at the next one.
+      try {
+        refileStrayV10Cores(db);
+      } catch {
+        /* the next writer open sweeps again */
+      }
     }
     return db;
   }
@@ -1546,12 +1553,57 @@ export function refileFeelingsV11(db: Db): { feelings: number; refiled: number; 
   return { feelings: rows.length, refiled, moves };
 }
 
+/** The first wheel's cores that are not cores now. */
+const V10_ONLY_CORES = ["fear", "anger", "surprise", "disgust"] as const;
+
+/**
+ * A STRAY FIRST-WHEEL CORE, swept at a writer's open (the review of #301, m3):
+ * a row still filed under fear, anger, surprise or disgust on a v11 store —
+ * nothing in this build writes one, but a raw insert or a copied row could —
+ * is re-filed by the same rule as the upgrade, keeping its old pair when it
+ * has none yet. One read in the steady state, and it finds nothing; a write
+ * only when a row is there. Idempotent. Returns how many it moved.
+ */
+export function refileStrayV10Cores(db: Db): number {
+  const marks = V10_ONLY_CORES.map(() => "?").join(", ");
+  const rows = db.all<{ id: string; core: string; emotion: string; other_word: string | null }>(
+    `SELECT id, core, emotion, other_word FROM feelings WHERE core IN (${marks})`,
+    ...V10_ONLY_CORES,
+  );
+  if (rows.length === 0) return 0;
+  return db.transaction(() => {
+    let moved = 0;
+    for (const r of rows) {
+      const now = remapV10Feeling(r.core, r.emotion, r.other_word);
+      if (now.core === r.core) continue;
+      db.run(
+        "UPDATE feelings SET core = ?, emotion = ?, core_v10 = COALESCE(core_v10, ?), emotion_v10 = COALESCE(emotion_v10, ?) WHERE id = ? AND core = ?",
+        now.core,
+        now.emotion,
+        r.core,
+        r.emotion,
+        r.id,
+        r.core,
+      );
+      moved += 1;
+    }
+    return moved;
+  });
+}
+
 /**
  * THE WAY BACK from the v11 re-filing, for a person who wants the first
  * wheel's cores again: every re-filed row gets its `core_v10` / `emotion_v10`
  * back and the marks cleared. Not wired to any command — the copy taken before
  * migrating is the whole-store way back; this is the surgical one, and the
  * test that proves the re-filing loses nothing. Returns how many rows.
+ *
+ * PARTIAL, named (the review of #301): the store's stamp stays 11, so this
+ * build still opens it and its writer-open sweep (`refileStrayV10Cores`)
+ * re-files the restored rows at the next open — run it on a copy, or with the
+ * build that reads v10 against the pre-migration copy instead. And a memory
+ * merged by a dream after the upgrade carries copies of its feelings with no
+ * `core_v10`: those stay on the seven.
  */
 export function restoreFeelingsV10(db: Db): number {
   return db.transaction(() => {

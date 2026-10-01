@@ -115,6 +115,10 @@ export function feelingTokens(f: { core: string; emotion: string; other_word: st
     // Its group's word too (wheel v2): "when was I afraid" reaches a stamp of
     // scared, which sits under afraid (an alias of it on the first wheel).
     if (entry?.parent !== null && entry?.parent !== undefined) add(entry.parent);
+    // And the page's name for the group when its key is another word: sad's
+    // `wounded` group is the page's "hurt", so "when was I hurt" reaches stung.
+    const label = entry?.label ?? (entry?.parent ? wheelEntry(entry.parent)?.label : undefined);
+    if (label !== undefined) add(label);
     for (const [alias, key] of Object.entries(ALIASES)) if (key === f.emotion) add(alias);
   }
   for (const c of coresOfFeeling(f.core, f.emotion)) add(c);
@@ -153,6 +157,20 @@ const DETERMINERS = new Set([
   "the", "a", "an", "this", "that", "these", "those", "some",
   "my", "your", "his", "her", "its", "it", "them", "our", "their",
 ]);
+/**
+ * EVERYDAY WORDS ON THE WHEEL (the review of #301, m1): words a question uses
+ * far more often about things than about feelings — "is my PR still open",
+ * "I settled on the second option", "the most important thing". One names a
+ * feeling only beside a feel-word or a form of "to be" (`FEELING_FRAME`) among
+ * the two words before it: "felt close", "I was content", "was I content".
+ * A stamp still answers to it; only the question's reading changes.
+ */
+export const EVERYDAY_FEELING_WORDS: ReadonlySet<string> = new Set([
+  "close", "content", "settled", "seen", "caught", "engaged", "open", "important", "empty", "sorry",
+  "familiar", "critical", "distant", "absorbed", "accepted", "satisfied", "powerful", "grounded",
+]);
+const FEELING_FRAME = new Set([...FEEL_WORDS, "am", "im", "is", "are", "was", "were", "be", "been", "being", "youre"]);
+
 /** A feel-word followed by one of these is an OPINION: "I feel like the test is flaky". */
 const OPINION = new Set(["like", "that"]);
 /** Scanning back stops here: another subject owns what follows (`cues.ts`'s rule). */
@@ -218,6 +236,8 @@ export function readFeelingAsk(
     }
     if (w.length < minLength || !(WHEEL_VOCABULARY.has(w) || stored.has(w))) return;
     if (DETERMINERS.has(toks[i + 1] ?? "")) return; // a verb on a thing, not a feeling
+    // An everyday word is a feeling only in a feeling's frame ("I was content").
+    if (EVERYDAY_FEELING_WORDS.has(w) && !FEELING_FRAME.has(toks[i - 1] ?? "") && !FEELING_FRAME.has(toks[i - 2] ?? "")) return;
     named.add(w);
     if (aboutAPerson(toks, i, false, names)) ranked = true;
   });

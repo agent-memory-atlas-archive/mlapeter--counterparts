@@ -188,6 +188,7 @@ export {
   V11_UPGRADE_KEY,
   carriedPairId,
   refileFeelingsV11,
+  refileStrayV10Cores,
   restoreFeelingsV10,
   olderFirst,
   rowToPhysics,

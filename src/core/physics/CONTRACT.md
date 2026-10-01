@@ -168,7 +168,9 @@ band(m, d) = identity  if promoted(m)                              # explicit cr
   FAST lane   = I(m) ≥ 0.6  and  an awake return ≥ 2 lived days after birth
   SLOW lane   = awake returns on ≥ 5 distinct lived days spanning ≥ 21 lived days
   promote     ⇔ about me(m) ∧ (FAST ∨ SLOW) ∧ not demoted by the owner
-  recognized  ⇔ about(m) unmarked ∧ a feeling on m in the recognition group   # wheel v2
+  recognized  ⇔ about(m) unmarked ∧ a feeling on m in the recognition group,   # wheel v2
+                mine, its own strength ≥ 0.6, felt in a session (a reflection's only
+                with the reflected-feeling door open; a dream's never)
   promote     ⇐ recognized ∧ FAST ∧ not demoted by the owner                   # fast lane only
   ```
 

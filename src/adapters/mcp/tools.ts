@@ -1296,7 +1296,7 @@ const REFLECT: ToolSpec = {
             strength: { type: "number", minimum: 0, maximum: 1 },
             carried_by: { type: "string", description: CARRIED_BY_TEXT },
           },
-          required: ["id", "core", "emotion", "strength"],
+          required: ["id", "emotion"],
         },
       },
       about: {
