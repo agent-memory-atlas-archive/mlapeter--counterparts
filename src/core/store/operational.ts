@@ -21,6 +21,19 @@ import { preMigrationDir, snapshotBeforeMigration } from "./pre-migration.js";
 import type { ProseType } from "./prose.js";
 
 /**
+ * Bumped to 11 (2026-09-30, the feelings wheel v2): ADDITIVE, through the same
+ * copy-first seam. The wheel's six cores become seven (happy, warm, calm,
+ * curious, sad, uneasy, angry — `core/feelings-wheel.ts`), and `feelings`
+ * gains three columns: `valence` (REAL, the writer's own reading; NULL = the
+ * word's default, read when needed — no backfill) and `core_v10` /
+ * `emotion_v10`, what the first wheel stored on a row the upgrade RE-FILED
+ * (NULL on the rest). The upgrade re-files every feeling onto the seven
+ * (`refileFeelingsV11`: fear → uneasy, anger and disgust → angry, sad → sad
+ * but guilt → uneasy, happy and surprise and a writer's own word by the word),
+ * keeping the old pair on the row so it can be put back
+ * (`restoreFeelingsV10`); doctor says what it moved. `store/NOTES.md`
+ * 2026-09-30.
+ *
  * Bumped to 10 (2026-09-29, contradictions as a mechanism): ADDITIVE, through
  * the same copy-first seam. `memories` gains `fade` (REAL, default 1): the
  * multiplier a `changed` settle puts on strength (physics §5.12) — folded in
@@ -109,7 +122,7 @@ import type { ProseType } from "./prose.js";
  * migrated open MUST converge on the identical schema; a test asserts
  * table_info equality.
  */
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 /**
  * The oldest schema an OBSERVER may open without a migration having run.
  *
@@ -140,8 +153,12 @@ export const SCHEMA_VERSION = 10;
  *
  * Raised to 10 with v10 (2026-09-29): recall's labels, doctor's Contradictions
  * line and the dashboard read `contradictions`, and a v9 file has none.
+ *
+ * Raised to 11 with v11 (2026-09-30): a v10 file's feelings are filed under
+ * cores this build's readers do not draw (fear, surprise, disgust), and its
+ * rows have no `valence`.
  */
-export const OBSERVER_READ_FLOOR = 10;
+export const OBSERVER_READ_FLOOR = 11;
 /** Retention for superseded-version rows, in LIVED days. TUNABLE (module-map ruling 2).
  *
  *  Owner ruling 1, 2026-09-18: the prune STAYS, at 90. It now deletes the words
@@ -313,7 +330,10 @@ export const DDL: readonly string[] = [
      created_at  INTEGER NOT NULL,
      updated_at  INTEGER NOT NULL,
      source      TEXT,
-     recorded_later TEXT
+     recorded_later TEXT,
+     valence     REAL,
+     core_v10    TEXT,
+     emotion_v10 TEXT
    )`,
   `CREATE INDEX IF NOT EXISTS feelings_memory ON feelings (memory_id)`,
   // v9, folded in before any build published it (2026-09-27, the owner's
@@ -1402,6 +1422,12 @@ export const ADDED_COLUMNS: readonly { table: string; column: string; ddl: strin
   // `changed` settle puts on its strength (physics §5.12). 1 on every row the
   // upgrade finds: nothing was settled before.
   { table: "memories", column: "fade", ddl: "ALTER TABLE memories ADD COLUMN fade REAL NOT NULL DEFAULT 1" },
+  // v11 (2026-09-30, the feelings wheel v2): a feeling's valence as the
+  // writer gave it (NULL = the word's default), and the first wheel's core and
+  // emotion on a row the upgrade re-filed.
+  { table: "feelings", column: "valence", ddl: "ALTER TABLE feelings ADD COLUMN valence REAL" },
+  { table: "feelings", column: "core_v10", ddl: "ALTER TABLE feelings ADD COLUMN core_v10 TEXT" },
+  { table: "feelings", column: "emotion_v10", ddl: "ALTER TABLE feelings ADD COLUMN emotion_v10 TEXT" },
 ];
 
 /**
@@ -1464,6 +1490,7 @@ export const V9_UPGRADE_KEY = "physics.v9.upgrade";
 
 /** Meta key: what the v10 upgrade carried (`contradictions.v10.upgrade`), for doctor. */
 export const V10_UPGRADE_KEY = "contradictions.v10.upgrade";
+
 
 /** The id a carried dream flag's pair gets: the same flag, the same id, on every run. */
 export function carriedPairId(dreamId: string, seq: number): string {

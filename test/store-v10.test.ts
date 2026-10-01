@@ -69,9 +69,9 @@ function backToV9(): void {
 }
 
 describe("schema v10", () => {
-  test("the version and the observer floor are 10", () => {
-    expect(SCHEMA_VERSION).toBe(10);
-    expect(OBSERVER_READ_FLOOR).toBe(10);
+  test("the version and the observer floor are 10 or later", () => {
+    expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(10);
+    expect(OBSERVER_READ_FLOOR).toBeGreaterThanOrEqual(10);
   });
 
   test("a v9 store with dream flags: every open flag becomes one unsettled pair, raised and habituated as it was, after a copy", () => {
@@ -95,7 +95,7 @@ describe("schema v10", () => {
     backToV9();
 
     const after = store();
-    expect(after.getMeta("schemaVersion")).toBe("10");
+    expect(after.getMeta("schemaVersion")).toBe(String(SCHEMA_VERSION));
     const pairs = after.contradictions();
     expect(pairs).toHaveLength(2);
     const ab = after.contradictionBetween(a, b);
@@ -129,7 +129,7 @@ describe("schema v10", () => {
     backToV9();
     expect(existsSync(join(root, "snaps"))).toBe(false);
     const after = store();
-    expect(after.getMeta("schemaVersion")).toBe("10");
+    expect(after.getMeta("schemaVersion")).toBe(String(SCHEMA_VERSION));
     expect(readdirSync(join(root, "snaps")).some((n) => n.includes("v9"))).toBe(true);
   });
 

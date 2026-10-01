@@ -299,7 +299,8 @@ function collectMarkdown(store: Store, opts: ExportOptions): { bundle: Bundle; c
 }
 
 /** Where one row's markdown goes in the tree. Ids only; never a title. */
-/** `\n## Feelings\n\n- owner · fear · worried · 0.6 — carried by …`, or "" when none. */
+/** `\n## Feelings\n\n1. owner · uneasy · worried · 0.6 — carried by …`, or "" when none. A
+ *  valence the writer gave (v11) follows the strength; the word's default is not written. */
 function feelingsSection(store: Store, id: string): string {
   let rows;
   try {
@@ -313,7 +314,8 @@ function feelingsSection(store: Store, id: string): string {
     const word = r.emotion === "other" ? `other: ${r.other_word ?? ""}` : r.emotion;
     const under = r.beneath_id === null ? "" : ` · over #${String(index.get(r.beneath_id) ?? "?")}`;
     const by = r.carried_by.length === 0 ? "" : ` — carried by: ${r.carried_by.replace(/\r?\n/g, " ")}`;
-    return `${String(i + 1)}. ${r.whose} · ${r.core} · ${word} · ${String(r.strength)}${under}${by}`;
+    const valence = r.valence === null || r.valence === undefined ? "" : ` · valence ${String(r.valence)}`;
+    return `${String(i + 1)}. ${r.whose} · ${r.core} · ${word} · ${String(r.strength)}${valence}${under}${by}`;
   });
   return `\n\n## Feelings\n\n${lines.join("\n")}\n`;
 }

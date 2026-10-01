@@ -403,13 +403,18 @@ store property is the `VACUUM INTO`, and that is G19. The code's numbering wins.
     zone, else the machine's current zone, resolved per call. Rows written before
     2026-09-25 keep the UTC `learned_on` they were given. `datedMemories(from, to)` answers
     which live rows carry an `event_date` overlapping a window, from an index.
-22. **[M] Feelings are rows beside a memory, spelled on the wheel** (schema v7). A
-    `feelings` row names `whose`, one of six cores, a wheel emotion or `other` with the
-    word kept, a strength recorded once, and optionally the feeling on the same memory it
-    sits beneath. A write is all-or-none and refused by name (`FEELING_INVALID`) rather
-    than guessed; an unknown emotion is kept as `other`, never mapped (a small ALIAS list
-    — `exposed` → `vulnerable` — reads as its wheel word and says so; a blend is stored
-    under its primary core). The owner's removal deletes them with the memory. *Since
+22. **[M] Feelings are rows beside a memory, spelled on the wheel** (schema v7; the
+    wheel v2, v11, 2026-09-30). A `feelings` row names `whose`, one of seven cores, a
+    wheel emotion or `other` with the word kept, a strength (the intensity) recorded once,
+    optionally the writer's own valence (NULL = the word's default, read by
+    `feelingValence`), and optionally the feeling on the same memory it sits beneath. A
+    write is all-or-none and refused by name (`FEELING_INVALID`) rather than guessed; an
+    unknown emotion is kept as `other`, never mapped (a small ALIAS list — `thankful` →
+    `grateful` — reads as its wheel word and says so). The core the writer names is the
+    core stored, whatever the word's home on the wheel; only a feeling sent with no core
+    takes its word's home, and a first-wheel core name (`fear`) reads as the v11 upgrade
+    files it, said as a repair. The v11 upgrade re-filed every feeling onto the seven
+    and kept the first wheel's pair on each row it moved (`core_v10`, `emotion_v10`). The owner's removal deletes them with the memory. *Since
     2026-09-26 (emotion part A) they move physics:* `row()` reads the strongest recorded
     strength beside the row (`feeling_peak`, not a column), which physics folds into the
     memory's emotional intensity (§5.10 there). The recorded strength is still never
