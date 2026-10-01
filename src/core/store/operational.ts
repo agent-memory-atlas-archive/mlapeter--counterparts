@@ -11,6 +11,7 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 
+import { remapV10Feeling } from "../feelings-wheel.js";
 import { spacingWeight } from "../physics/index.js";
 import type { Band, Kind, MemoryPhysics, Salience } from "../types.js";
 import type { Db, Row } from "./db.js";
@@ -21,6 +22,19 @@ import { preMigrationDir, snapshotBeforeMigration } from "./pre-migration.js";
 import type { ProseType } from "./prose.js";
 
 /**
+ * Bumped to 11 (2026-09-30, the feelings wheel v2): ADDITIVE, through the same
+ * copy-first seam. The wheel's six cores become seven (happy, warm, calm,
+ * curious, sad, uneasy, angry — `core/feelings-wheel.ts`), and `feelings`
+ * gains three columns: `valence` (REAL, the writer's own reading; NULL = the
+ * word's default, read when needed — no backfill) and `core_v10` /
+ * `emotion_v10`, what the first wheel stored on a row the upgrade RE-FILED
+ * (NULL on the rest). The upgrade re-files every feeling onto the seven
+ * (`refileFeelingsV11`: fear → uneasy, anger and disgust → angry, sad → sad
+ * but guilt → uneasy, happy and surprise and a writer's own word by the word),
+ * keeping the old pair on the row so it can be put back
+ * (`restoreFeelingsV10`); doctor says what it moved. `store/NOTES.md`
+ * 2026-09-30.
+ *
  * Bumped to 10 (2026-09-29, contradictions as a mechanism): ADDITIVE, through
  * the same copy-first seam. `memories` gains `fade` (REAL, default 1): the
  * multiplier a `changed` settle puts on strength (physics §5.12) — folded in
@@ -109,7 +123,7 @@ import type { ProseType } from "./prose.js";
  * migrated open MUST converge on the identical schema; a test asserts
  * table_info equality.
  */
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 /**
  * The oldest schema an OBSERVER may open without a migration having run.
  *
@@ -140,8 +154,12 @@ export const SCHEMA_VERSION = 10;
  *
  * Raised to 10 with v10 (2026-09-29): recall's labels, doctor's Contradictions
  * line and the dashboard read `contradictions`, and a v9 file has none.
+ *
+ * Raised to 11 with v11 (2026-09-30): a v10 file's feelings are filed under
+ * cores this build's readers do not draw (fear, surprise, disgust), and its
+ * rows have no `valence`.
  */
-export const OBSERVER_READ_FLOOR = 10;
+export const OBSERVER_READ_FLOOR = 11;
 /** Retention for superseded-version rows, in LIVED days. TUNABLE (module-map ruling 2).
  *
  *  Owner ruling 1, 2026-09-18: the prune STAYS, at 90. It now deletes the words
@@ -313,7 +331,10 @@ export const DDL: readonly string[] = [
      created_at  INTEGER NOT NULL,
      updated_at  INTEGER NOT NULL,
      source      TEXT,
-     recorded_later TEXT
+     recorded_later TEXT,
+     valence     REAL,
+     core_v10    TEXT,
+     emotion_v10 TEXT
    )`,
   `CREATE INDEX IF NOT EXISTS feelings_memory ON feelings (memory_id)`,
   // v9, folded in before any build published it (2026-09-27, the owner's
@@ -1083,6 +1104,13 @@ export function openOperational(path: string, opts: OpenOperationalOptions = {})
         db.close();
         throw err;
       }
+      // A stray first-wheel core, re-filed (v11). Never a reason to refuse an
+      // open: a sweep that cannot run now runs at the next one.
+      try {
+        refileStrayV10Cores(db);
+      } catch {
+        /* the next writer open sweeps again */
+      }
     }
     return db;
   }
@@ -1256,6 +1284,24 @@ export function openOperational(path: string, opts: OpenOperationalOptions = {})
           }),
         );
       }
+      // v11 (2026-09-30): EVERY FEELING RE-FILED ONTO THE SEVEN CORES, each
+      // re-filed row keeping what the first wheel stored (`refileFeelingsV11`).
+      if (now !== null && Number.parseInt(now, 10) < 11) {
+        const refiled = refileFeelingsV11(db);
+        const lived = db.get<{ value: string }>("SELECT value FROM meta WHERE key = 'livedDay'")?.value ?? "0";
+        db.run(
+          "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+          V11_UPGRADE_KEY,
+          JSON.stringify({
+            from: now,
+            day: Number.parseInt(lived, 10) || 0,
+            at: Date.now(),
+            feelings: refiled.feelings,
+            refiled: refiled.refiled,
+            moves: refiled.moves,
+          }),
+        );
+      }
       const put = db.prepare("INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)");
       put.run("livedDay", "0");
       put.run("lastActiveDate", "");
@@ -1402,6 +1448,12 @@ export const ADDED_COLUMNS: readonly { table: string; column: string; ddl: strin
   // `changed` settle puts on its strength (physics §5.12). 1 on every row the
   // upgrade finds: nothing was settled before.
   { table: "memories", column: "fade", ddl: "ALTER TABLE memories ADD COLUMN fade REAL NOT NULL DEFAULT 1" },
+  // v11 (2026-09-30, the feelings wheel v2): a feeling's valence as the
+  // writer gave it (NULL = the word's default), and the first wheel's core and
+  // emotion on a row the upgrade re-filed.
+  { table: "feelings", column: "valence", ddl: "ALTER TABLE feelings ADD COLUMN valence REAL" },
+  { table: "feelings", column: "core_v10", ddl: "ALTER TABLE feelings ADD COLUMN core_v10 TEXT" },
+  { table: "feelings", column: "emotion_v10", ddl: "ALTER TABLE feelings ADD COLUMN emotion_v10 TEXT" },
 ];
 
 /**
@@ -1464,6 +1516,103 @@ export const V9_UPGRADE_KEY = "physics.v9.upgrade";
 
 /** Meta key: what the v10 upgrade carried (`contradictions.v10.upgrade`), for doctor. */
 export const V10_UPGRADE_KEY = "contradictions.v10.upgrade";
+
+/** Meta key: what the v11 upgrade re-filed (`feelings.v11.upgrade`), for doctor. */
+export const V11_UPGRADE_KEY = "feelings.v11.upgrade";
+
+/**
+ * THE v11 RE-FILING: every feeling the first wheel stored, moved onto the
+ * seven cores by `feelings-wheel.ts#remapV10Feeling` (pure; the rule is
+ * there). A row whose core or emotion changes keeps the old pair in
+ * `core_v10` / `emotion_v10`; a row that does not change is left exactly as it
+ * was. It runs once: the version latch says so, and so does its own record
+ * (`V11_UPGRADE_KEY`, written beside it in the same transaction) — a second
+ * call finds that and moves nothing, so a feeling written AFTER the upgrade
+ * under a core the writer chose (happy, grateful) is never re-filed by the
+ * first wheel's rule. In the migrating transaction, after the copy. Ids and
+ * counts only come back: `moves` is `"<old> → <new>"` with how many.
+ */
+export function refileFeelingsV11(db: Db): { feelings: number; refiled: number; moves: Record<string, number> } {
+  if (db.get<{ value: string }>("SELECT value FROM meta WHERE key = ?", V11_UPGRADE_KEY) !== undefined) {
+    return { feelings: 0, refiled: 0, moves: {} };
+  }
+  const rows = db.all<{ id: string; core: string; emotion: string; other_word: string | null }>(
+    "SELECT id, core, emotion, other_word FROM feelings WHERE core_v10 IS NULL",
+  );
+  const write = db.prepare("UPDATE feelings SET core = ?, emotion = ?, core_v10 = ?, emotion_v10 = ? WHERE id = ? AND core_v10 IS NULL");
+  const moves: Record<string, number> = {};
+  let refiled = 0;
+  for (const r of rows) {
+    const now = remapV10Feeling(r.core, r.emotion, r.other_word);
+    if (now.core === r.core && now.emotion === r.emotion) continue;
+    write.run(now.core, now.emotion, r.core, r.emotion, r.id);
+    refiled += 1;
+    const k = `${r.core} → ${now.core}`;
+    moves[k] = (moves[k] ?? 0) + 1;
+  }
+  return { feelings: rows.length, refiled, moves };
+}
+
+/** The first wheel's cores that are not cores now. */
+const V10_ONLY_CORES = ["fear", "anger", "surprise", "disgust"] as const;
+
+/**
+ * A STRAY FIRST-WHEEL CORE, swept at a writer's open (the review of #301, m3):
+ * a row still filed under fear, anger, surprise or disgust on a v11 store —
+ * nothing in this build writes one, but a raw insert or a copied row could —
+ * is re-filed by the same rule as the upgrade, keeping its old pair when it
+ * has none yet. One read in the steady state, and it finds nothing; a write
+ * only when a row is there. Idempotent. Returns how many it moved.
+ */
+export function refileStrayV10Cores(db: Db): number {
+  const marks = V10_ONLY_CORES.map(() => "?").join(", ");
+  const rows = db.all<{ id: string; core: string; emotion: string; other_word: string | null }>(
+    `SELECT id, core, emotion, other_word FROM feelings WHERE core IN (${marks})`,
+    ...V10_ONLY_CORES,
+  );
+  if (rows.length === 0) return 0;
+  return db.transaction(() => {
+    let moved = 0;
+    for (const r of rows) {
+      const now = remapV10Feeling(r.core, r.emotion, r.other_word);
+      if (now.core === r.core) continue;
+      db.run(
+        "UPDATE feelings SET core = ?, emotion = ?, core_v10 = COALESCE(core_v10, ?), emotion_v10 = COALESCE(emotion_v10, ?) WHERE id = ? AND core = ?",
+        now.core,
+        now.emotion,
+        r.core,
+        r.emotion,
+        r.id,
+        r.core,
+      );
+      moved += 1;
+    }
+    return moved;
+  });
+}
+
+/**
+ * THE WAY BACK from the v11 re-filing, for a person who wants the first
+ * wheel's cores again: every re-filed row gets its `core_v10` / `emotion_v10`
+ * back and the marks cleared. Not wired to any command — the copy taken before
+ * migrating is the whole-store way back; this is the surgical one, and the
+ * test that proves the re-filing loses nothing. Returns how many rows.
+ *
+ * PARTIAL, named (the review of #301): the store's stamp stays 11, so this
+ * build still opens it and its writer-open sweep (`refileStrayV10Cores`)
+ * re-files the restored rows at the next open — run it on a copy, or with the
+ * build that reads v10 against the pre-migration copy instead. And a memory
+ * merged by a dream after the upgrade carries copies of its feelings with no
+ * `core_v10`: those stay on the seven.
+ */
+export function restoreFeelingsV10(db: Db): number {
+  return db.transaction(() => {
+    db.run(
+      "UPDATE feelings SET core = core_v10, emotion = COALESCE(emotion_v10, emotion), core_v10 = NULL, emotion_v10 = NULL WHERE core_v10 IS NOT NULL",
+    );
+    return db.get<{ n: number }>("SELECT changes() AS n")?.n ?? 0;
+  });
+}
 
 /** The id a carried dream flag's pair gets: the same flag, the same id, on every run. */
 export function carriedPairId(dreamId: string, seq: number): string {

@@ -185,7 +185,11 @@ export {
   V8_UPGRADE_KEY,
   V9_UPGRADE_KEY,
   V10_UPGRADE_KEY,
+  V11_UPGRADE_KEY,
   carriedPairId,
+  refileFeelingsV11,
+  refileStrayV10Cores,
+  restoreFeelingsV10,
   olderFirst,
   rowToPhysics,
   rowTombstoned,
@@ -3015,8 +3019,8 @@ export class Store {
       const insert = this.ops.prepare(
         `INSERT INTO feelings
            (id, memory_id, whose, core, emotion, other_word, strength, beneath_id, carried_by, model,
-            created_at, updated_at, source, recorded_later)
-         VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)`,
+            created_at, updated_at, source, recorded_later, valence)
+         VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`,
       );
       const later = opts.recordedLater !== undefined && opts.recordedLater.trim().length > 0 ? opts.recordedLater.trim() : null;
       const source = opts.source ?? "session";
@@ -3036,6 +3040,7 @@ export class Store {
           at,
           own?.source ?? source,
           own === undefined ? later : (own.recordedLater ?? null),
+          r.valence,
         );
       });
       // THEN the links, so an input may sit on one listed after it.

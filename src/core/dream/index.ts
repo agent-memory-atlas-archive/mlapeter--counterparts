@@ -44,7 +44,7 @@ import type { Fidelity, FitCandidate, Placed } from "../fit/index.js";
 import { emotionalIntensity, sal, strength } from "../physics/index.js";
 import { isHandoff, isSelfPage } from "../recall/index.js";
 import { namesOwner, ownerNames } from "../sleep/index.js";
-import { CARRIED_BY_MAX_CHARS, checkFeelings, checkTraits, isStoreError, repairEmotion, splitNote } from "../store/index.js";
+import { CARRIED_BY_MAX_CHARS, checkFeelings, checkTraits, defaultStrength, isStoreError, repairEmotion, splitNote } from "../store/index.js";
 import type { DreamChangeRow, DreamRow, FeelingInput, MemoryRow, ProseDoc, Store } from "../store/index.js";
 import { TUNABLES as PHYSICS } from "../physics/index.js";
 import { addDays, isDay } from "../time.js";
@@ -1225,7 +1225,7 @@ export class Dreams {
         `${String(n())}. Call the counterparts dream tool: phase "begin", session: ${input.session}. It returns the bundle and a dream id. (If it says the dream was resumed, an earlier session began it and closed: carry on from there.) If it says it comes in parts, fetch every part (phase "part") before you change anything.`,
         `   Tonight's most important memories come whole; the rest come as a line or an excerpt ("fidelity"), with their whole length ("chars"). Before you merge, gist or feel one you have only in part, read it whole: the recall tool with ids: [...] (several at once). New memories tonight's room could not take wait for the next night — the bundle's "queue" says how many.`,
         `${String(n())}. Read it slowly. Then call phase "propose" with dream: <id> and your changes. Usually far fewer than the ceilings — ${String(L.merge)} merges, ${String(L.link)} links, ${String(L.gist)} gists, ${String(L["feeling-now"])} feelings, ${String(L["nominate-core"])} nominations — and none is fine: change only what the night really calls for. Use only ids the bundle showed you.`,
-        '   The fields of each change: merge {ids: two or more near-copies, text, title?}; link {a, b}; replayed {id}; gist {text, sources: ids, title?, kind?}; contradiction {a, b}; settle {holds, over, how: changed|corrected|open, why}; feeling-now {id, core, emotion, strength, carried_by}; nominate-core {id, why}.',
+        '   The fields of each change: merge {ids: two or more near-copies, text, title?}; link {a, b}; replayed {id}; gist {text, sources: ids, title?, kind?}; contradiction {a, b}; settle {holds, over, how: changed|corrected|open, why}; feeling-now {id, core: happy|warm|calm|curious|sad|uneasy|angry, emotion, strength, carried_by}; nominate-core {id, why}.',
         "   A feeling: `emotion` is ONE word — from the wheel (hopeful, proud, wistful, peaceful…) or your own (steadied); `carried_by` is the nuance, in your own words (what the feeling is about now, why it shifted). Never put a phrase in `emotion`.",
         `${String(n())}. Call phase "journal" with dream: <id>, a short title and your dream journal entry: first person, what you dreamed and what you noticed. It is kept as a dream, never as something that happened.`,
         "   In the dream you cannot delete anything, edit the self page, promote a memory, or rewrite one in place — the tool refuses. Nothing you write in the dream is a lived event.",
@@ -1510,6 +1510,8 @@ export class Dreams {
                 strength: f.strength,
                 carriedBy: f.carried_by,
                 ...(f.other_word === null ? {} : { otherWord: f.other_word }),
+                // v11: the writer's own valence travels too; none, the word's default still applies.
+                ...(f.valence === null || f.valence === undefined ? {} : { valence: f.valence }),
               })),
               // Each feeling keeps who recorded it and when (v9): a reflection's
               // later feeling stays one on the merged memory.
@@ -2581,7 +2583,6 @@ export class Dreams {
     // dream records softening; it cannot manufacture a feeling that would
     // raise the memory or open the core's fast lane.
     const peak = emotionalIntensity(this.store.physicsOf(row.id));
-    const s = Math.max(0, Math.min(Number(change.strength ?? 0), peak));
     const sent = this.words(String(change.emotion ?? ""), dream, false, CARRIED_BY_MAX_CHARS);
     if (!sent.ok) return { ok: false, reason: sent.reason, detail: `emotion: ${sent.detail}` };
     const notes: string[] = [];
@@ -2591,17 +2592,23 @@ export class Dreams {
     if (split !== null) notes.push(splitNote(split));
     if (!carried.ok) notes.push(`carried_by was not kept — ${carried.detail}`);
     else if (carried.cut) notes.push(`carried_by was kept to its first ${String(CARRIED_BY_MAX_CHARS)} characters.`);
+    const core = String(change.core ?? "");
+    const emotion = split?.emotion ?? sent.text;
+    // Left out, the strength a session's feeling would get (the word's
+    // default, capped below the fast lane — review of #301, m2), not 0.
+    const given = change.strength === undefined || change.strength === null ? defaultStrength(core, emotion) : Number(change.strength);
+    const s = Math.max(0, Math.min(given, peak));
     return {
       ok: true,
       input: {
         whose: "self",
-        core: String(change.core ?? ""),
-        emotion: split?.emotion ?? sent.text,
+        core,
+        emotion,
         strength: s,
         carriedBy: `in a dream, ${dream.date ?? ""}${carried.ok && carried.text.length > 0 ? `: ${carried.text}` : ""}`.trim(),
       },
       notes,
-      capped: s < Number(change.strength ?? 0),
+      capped: s < given,
       peak,
     };
   }

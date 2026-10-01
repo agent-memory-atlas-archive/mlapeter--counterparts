@@ -55,6 +55,7 @@
  * It promotes nothing: a memory it cites comes BACK (a return), and only a
  * core lane at consolidation promotes.
  */
+import { CORE_EMOTIONS } from "../../core/feelings-wheel.js";
 import { RECALL_MAX_IDS } from "./deliberate.js";
 
 /**
@@ -155,6 +156,8 @@ export interface ToolSpec {
  * Since emotion part A (2026-09-26) they weigh: the strongest one, or
  * `emotional` if that is stronger, raises the memory and slows its fading
  * (physics §5.10), and a recent one sets the mood recall matches (recall G18).
+ * Since the wheel v2 (2026-09-30, v11): seven cores, the writer's core is kept
+ * whatever the word, and `strength` and `valence` default from the word.
  */
 /**
  * `about` on a `note` or a `session_end` entry (schema v9, 2026-09-27): what
@@ -176,7 +179,11 @@ const ABOUT_PROPERTY = {
  * in `carried_by`. A phrase that still arrives there is split, not refused.
  */
 export const EMOTION_TEXT =
-  "ONE word: the feeling on the wheel under that core (e.g. hopeful, anxious, frustrated, grateful, curious, relieved, fond, moved, peaceful) or your own word (steadied), kept as yours. Never a phrase — the nuance goes in carried_by. Blends go under either core: tender and wistful (sad or happy), bittersweet (happy or sad), sheepish (fear or sad).";
+  "ONE word: the feeling, from the wheel (happy: hopeful, eager, amused, proud; warm: grateful, fond, trusted, moved, tender; calm: steadied, relieved, settled, content; curious: interested, recognized, clarified, amazed, confused; sad: wistful, rueful, disappointed, lonely; uneasy: sheepish, caught out, guilty, unsettled, wary, worried, afraid; angry: frustrated, hurt, critical, disgusted) or your own word, kept as yours. Never a phrase — the nuance goes in carried_by. The core you name is kept even when the word sits under another: hurt can be sad or angry.";
+/** What `core` is, said the same way at every door (wheel v2, 2026-09-30). */
+export const CORE_TEXT =
+  "One of seven: happy (pleasure in a thing or what's coming), warm (toward someone), calm (things settling), curious (wanting to know, recognising — myself too), sad (loss, distance, regret), uneasy (something off: caught out, guilty, unsettled, afraid), angry (something wrong). It is kept as you name it.";
+const CORES = [...CORE_EMOTIONS];
 export const CARRIED_BY_TEXT =
   "The nuance, in your own words: what carried the feeling — the words, what happened, why it sits the way it does.";
 
@@ -188,12 +195,18 @@ const FEELINGS_PROPERTY = {
     type: "object",
     properties: {
       whose: { type: "string", enum: ["owner", "self"], description: "The owner's feeling, or yours." },
-      core: { type: "string", enum: ["happy", "sad", "fear", "anger", "surprise", "disgust"] },
+      core: { type: "string", enum: CORES, description: `${CORE_TEXT} Leave it out to use the word's own core.` },
       emotion: {
         type: "string",
         description: EMOTION_TEXT,
       },
-      strength: { type: "number", minimum: 0, maximum: 1 },
+      strength: { type: "number", minimum: 0, maximum: 1, description: "How strong, 0-1. Leave it out for the word's default." },
+      valence: {
+        type: "number",
+        minimum: -1,
+        maximum: 1,
+        description: "Optional: how pleasant, -1 to 1. Leave it out for the word's default; give it when the word alone would mislead (a mixed \"moved\" might be 0.4).",
+      },
       carried_by: {
         type: "string",
         description: `${CARRIED_BY_TEXT} Not a statement of feeling.`,
@@ -205,10 +218,10 @@ const FEELINGS_PROPERTY = {
       beneath: {
         type: "integer",
         minimum: 0,
-        description: "The index of another feeling in this list that this one sits on top of (anger over fear).",
+        description: "The index of another feeling in this list that this one sits on top of (angry over afraid).",
       },
     },
-    required: ["whose", "core", "emotion", "strength"],
+    required: ["whose", "emotion"],
     additionalProperties: false,
   },
 } as const;
@@ -1149,7 +1162,7 @@ const DREAM: ToolSpec = {
             title: { type: "string" },
             kind: { type: "string", enum: ["self", "person", "entity", "skill", "place", "fact"] },
             sources: { type: "array", items: { type: "string" } },
-            core: { type: "string", enum: ["happy", "sad", "fear", "anger", "surprise", "disgust"] },
+            core: { type: "string", enum: CORES, description: `\`feeling-now\`: ${CORE_TEXT}` },
             emotion: { type: "string", description: `\`feeling-now\`: ${EMOTION_TEXT}` },
             strength: { type: "number", minimum: 0, maximum: 1 },
             carried_by: { type: "string", description: `\`feeling-now\`: ${CARRIED_BY_TEXT}` },
@@ -1278,12 +1291,12 @@ const REFLECT: ToolSpec = {
           type: "object",
           properties: {
             id: { type: "string" },
-            core: { type: "string", enum: ["happy", "sad", "fear", "anger", "surprise", "disgust"] },
+            core: { type: "string", enum: CORES, description: CORE_TEXT },
             emotion: { type: "string", description: EMOTION_TEXT },
             strength: { type: "number", minimum: 0, maximum: 1 },
             carried_by: { type: "string", description: CARRIED_BY_TEXT },
           },
-          required: ["id", "core", "emotion", "strength"],
+          required: ["id", "emotion"],
         },
       },
       about: {

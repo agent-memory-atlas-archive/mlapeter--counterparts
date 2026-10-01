@@ -100,7 +100,7 @@ describe("the credential scan covers `emotion` at every door", () => {
     expect(JSON.stringify(rows)).not.toContain("sk-ant-api03");
     expect(c.store.feelingsFor(a)).toEqual([]);
     expect(c.store.feelingsFor(d)).toEqual([]);
-    expect(c.store.feelingsFor(b)[0]).toMatchObject({ other_word: "steadied" });
+    expect(c.store.feelingsFor(b)[0]).toMatchObject({ emotion: "steadied", other_word: null });
   });
 
   test("reflect: the same", () => {

@@ -55,7 +55,7 @@ beforeAll(async () => {
     });
     s.addFeelings(ids.dated, [
       { whose: "owner", core: "happy", emotion: "proud", strength: 0.8, carriedBy: "the rota went up untouched" },
-      { whose: "self", core: "surprise", emotion: "amazed", strength: 0.5 },
+      { whose: "self", core: "curious", emotion: "amazed", strength: 0.5 },
     ]);
     s.updatePhysics(ids.dated, { uses: 3, reinforcedDays: 2, lastUsedDay: day });
     s.appendEvent({ name: "recall.credit", day: day - 3, payload: { reason: "credited", day: day - 3, ids: [ids.dated] } });
@@ -81,7 +81,7 @@ beforeAll(async () => {
       meta: { confidential: true },
       source: "authored",
     });
-    s.addFeelings(ids.secret, [{ whose: "owner", core: "fear", emotion: "anxious", strength: 0.4, carriedBy: "a private reason" }]);
+    s.addFeelings(ids.secret, [{ whose: "owner", core: "uneasy", emotion: "anxious", strength: 0.4, carriedBy: "a private reason" }]);
   } finally {
     c.close();
   }
@@ -152,7 +152,7 @@ describe("the list's new marks, filters and sort", () => {
     withSrc((src) => {
       const rows = allRows(src, "&state=all");
       const dated = rows.find((x) => x.id === ids.dated);
-      expect(dated?.feelings.map((f) => [f.core, f.word, f.whose])).toEqual([["happy", "proud", "owner"], ["surprise", "amazed", "self"]]);
+      expect(dated?.feelings.map((f) => [f.core, f.word, f.whose])).toEqual([["happy", "proud", "owner"], ["curious", "amazed", "self"]]);
       expect(Object.keys(dated ?? {})).not.toContain("model");
       expect(rows.some((r) => r.core)).toBe(true);
       expect(rows.some((r) => r.protected)).toBe(true);
@@ -256,19 +256,19 @@ describe("how firmly it's held: firm / settling / fading", () => {
   });
 });
 
-describe("how it feels: the six cores, yours and mine", () => {
+describe("how it feels: the seven cores, yours and mine", () => {
   test("per core, in wheel order: counts, summed strengths and the words, split by whose", () => {
     withSrc((src) => {
       const f = memoriesView(src).feelings;
-      expect(f.cores.map((c) => c.core)).toEqual(["happy", "sad", "fear", "anger", "surprise", "disgust"]);
+      expect(f.cores.map((c) => c.core)).toEqual(["happy", "warm", "calm", "curious", "sad", "uneasy", "angry"]);
       expect(f.carrying).toBe(2); // the dated memory and the confidential one
       const happy = f.cores.find((c) => c.core === "happy");
       expect(happy?.yours).toEqual({ count: 1, sum: 0.8, words: [{ word: "proud", count: 1 }] });
       expect(happy?.mine.count).toBe(0);
-      const surprise = f.cores.find((c) => c.core === "surprise");
-      expect(surprise?.mine).toEqual({ count: 1, sum: 0.5, words: [{ word: "amazed", count: 1 }] });
-      const fear = f.cores.find((c) => c.core === "fear");
-      expect(fear?.yours.words).toEqual([{ word: "anxious", count: 1 }]);
+      const curious = f.cores.find((c) => c.core === "curious");
+      expect(curious?.mine).toEqual({ count: 1, sum: 0.5, words: [{ word: "amazed", count: 1 }] });
+      const uneasy = f.cores.find((c) => c.core === "uneasy");
+      expect(uneasy?.yours.words).toEqual([{ word: "anxious", count: 1 }]);
     });
   });
 
@@ -282,12 +282,12 @@ describe("how it feels: the six cores, yours and mine", () => {
       expect(ids1("&feeling=proud&whose=owner")).toEqual([ids.dated as string]);
       expect(ids1("&feeling=proud&whose=self")).toEqual([]);
       // A core covers both sides.
-      expect(ids1("&feelingCore=surprise")).toEqual([ids.dated as string]);
-      expect(ids1("&feelingCore=fear")).toEqual([ids.secret as string]);
-      expect(ids1("&feelingCore=anger")).toEqual([]);
+      expect(ids1("&feelingCore=curious")).toEqual([ids.dated as string]);
+      expect(ids1("&feelingCore=uneasy")).toEqual([ids.secret as string]);
+      expect(ids1("&feelingCore=angry")).toEqual([]);
       // It combines with the other filters.
-      expect(ids1("&feelingCore=fear&kind=fact")).toEqual([]);
-      expect(ids1("&feelingCore=fear&kind=person")).toEqual([ids.secret as string]);
+      expect(ids1("&feelingCore=uneasy&kind=fact")).toEqual([]);
+      expect(ids1("&feelingCore=uneasy&kind=person")).toEqual([ids.secret as string]);
       // A word with no side, or an unknown core, is ignored rather than guessed.
       const loose = getList(src, "?feeling=proud");
       expect(loose.feeling).toBeNull();

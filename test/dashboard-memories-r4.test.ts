@@ -61,7 +61,7 @@ beforeAll(async () => {
     const people = s.list({ type: "memory", kind: "person", archived: false });
     ids.felt = people.slice(0, 3);
     s.addFeelings(people[0] as string, [{ whose: "owner", core: "happy", emotion: "proud", strength: 0.8 }]);
-    s.addFeelings(people[1] as string, [{ whose: "self", core: "happy", emotion: "joyful", strength: 0.5 }, { whose: "owner", core: "fear", emotion: "anxious", strength: 0.4 }]);
+    s.addFeelings(people[1] as string, [{ whose: "self", core: "happy", emotion: "joyful", strength: 0.5 }, { whose: "owner", core: "uneasy", emotion: "anxious", strength: 0.4 }]);
     s.addFeelings(people[2] as string, [{ whose: "self", core: "sad", emotion: "lonely", strength: 0.4 }]);
     ids.fading = s.put({ type: "memory", kind: "fact", body: "A small thing nobody has needed in months.", salience: { relevance: 0.05, emotional: 0, predictive: 0 }, source: "authored" });
     s.updatePhysics(ids.fading, { birthDay: day - 400, lastUsedDay: day - 400 });
@@ -189,11 +189,12 @@ describe("M3 one feelings chart", () => {
       const f = get<MemoriesJson>(src, "/api/memories").feelings;
       expect((radarSvg(f, null).match(/class="feel-axis on/g) ?? []).length).toBe(0);
       expect((radarSvg(f, "happy").match(/class="feel-axis on/g) ?? []).length).toBe(1);
-      // M1 (2026-09-30): "disgust" reads "dislike"; the axis still carries the stored core.
-      const svg = radarSvg(f, "disgust");
-      expect(svg).toContain('data-core="disgust"');
-      expect(svg).toContain(">dislike</text>");
-      expect(svg).not.toMatch(/>disgust</);
+      // Wheel v2 (2026-09-30): seven axes, each called by its stored core.
+      const svg = radarSvg(f, "warm");
+      expect(svg).toContain('data-core="warm"');
+      expect(svg).toContain(">warm</text>");
+      expect((svg.match(/class="feel-axis/g) ?? []).length).toBe(7);
+      expect(svg).not.toMatch(/>dislike</);
     });
     expect(read("pages/memories/sections/feel.js")).toContain("radarHtml(data, filters.feelingCore)");
   });
@@ -202,15 +203,16 @@ describe("M3 one feelings chart", () => {
     const { feelingName, feelingWord, feelingDots } = (await import(join(WEB, "shared/memory-marks.js"))) as {
       feelingName(c: string): string; feelingWord(f: unknown): string; feelingDots(f: unknown[], w?: boolean): string;
     };
-    expect(feelingName("disgust")).toBe("dislike");
+    // Since the wheel v2 a core is called by its own name ("disgust" read "dislike" before).
+    expect(feelingName("uneasy")).toBe("uneasy");
     expect(feelingName("sad")).toBe("sad");
-    expect(feelingWord({ core: "disgust", word: "disappointed" })).toBe("disappointed");
-    expect(feelingWord({ core: "disgust", word: "disgust" })).toBe("dislike");
-    expect(feelingWord({ core: "disgust", word: "" })).toBe("dislike");
-    const dots = feelingDots([{ core: "disgust", word: "disappointed" }, { core: "happy", word: "proud" }, { core: "fear", word: "fear" }], true);
-    expect(dots).toContain('title="felt: disappointed, proud, fear"');
+    expect(feelingWord({ core: "sad", word: "disappointed" })).toBe("disappointed");
+    expect(feelingWord({ core: "uneasy", word: "uneasy" })).toBe("uneasy");
+    expect(feelingWord({ core: "uneasy", word: "" })).toBe("uneasy");
+    const dots = feelingDots([{ core: "sad", word: "disappointed" }, { core: "happy", word: "proud" }, { core: "uneasy", word: "uneasy" }], true);
+    expect(dots).toContain('title="felt: disappointed, proud, uneasy"');
     expect(dots).toContain('<span class="fwords">disappointed, proud +1</span>');
-    expect(feelingDots([{ core: "disgust", word: "disgust" }])).not.toContain("disgust");
+    expect(feelingDots([{ core: "warm", word: "warm" }])).toContain("#ff8a80");
   });
 });
 
@@ -259,7 +261,7 @@ describe("M4 how well I remember", () => {
 });
 
 describe("M5 filters", () => {
-  test("kinds with journal and core, then the six feelings with counts; every chip has a hint; no kinds `?`", async () => {
+  test("kinds with journal and core, then the seven feelings with counts; every chip has a hint; no kinds `?`", async () => {
     const { KIND_HINT, SHOWING, PAGE } = (await import(join(WEB, "pages/memories/sections/list.js"))) as {
       KIND_HINT: Record<string, string>;
       SHOWING: [string, string, string][];
@@ -276,11 +278,11 @@ describe("M5 filters", () => {
     expect(list).toContain("showing:");
     withSrc((src) => {
       const d = get<MemoryListView>(src, "/api/memories/list");
-      expect(Object.keys(d.counts.feelings)).toEqual(["happy", "sad", "fear", "anger", "surprise", "disgust"]);
+      expect(Object.keys(d.counts.feelings)).toEqual(["happy", "warm", "calm", "curious", "sad", "uneasy", "angry"]);
       expect(d.counts.feelings["happy"]).toBe(2);
-      expect(d.counts.feelings["fear"]).toBe(1);
+      expect(d.counts.feelings["uneasy"]).toBe(1);
       // A chip's count is what its filter shows.
-      for (const core of ["happy", "sad", "fear"]) {
+      for (const core of ["happy", "sad", "uneasy"]) {
         expect(get<MemoryListView>(src, `/api/memories/list?feelingCore=${core}&limit=200`).total).toBe(d.counts.feelings[core]!);
       }
       expect(get<MemoryListView>(src, "/api/memories/list?feelingCore=happy").rows.map((r) => r.id).sort()).toEqual(ids.felt.slice(0, 2).sort());

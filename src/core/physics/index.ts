@@ -214,15 +214,29 @@ export const TUNABLES = {
   EMO_SLOPE: 0.5,
   /**
    * How fast a recorded FEELING softens, in lived days: `strength x
-   * exp(-age / S_FEELING)`, age counted from the memory's birth day. 20 < 60 =
-   * S_BASE is the owner's "the feeling softens faster than the fact" as
-   * arithmetic: half the feeling is gone in ~14 lived days, while the fact
-   * itself is still at ~0.8 of its height. Softening is READ-SIDE ONLY — the
-   * table keeps the strength as recorded, and height and slope use that
-   * recorded peak; the softened value is what mood-matching and the displays
-   * read. CAL.
+   * exp(-age / S)`, age counted from the memory's birth day. 20 < 60 = S_BASE
+   * is the owner's "the feeling softens faster than the fact" as arithmetic:
+   * half the feeling is gone in ~14 lived days, while the fact itself is still
+   * at ~0.8 of its height. Softening is READ-SIDE ONLY — the table keeps the
+   * strength as recorded, and height and slope use that recorded peak; the
+   * softened value is what mood-matching, recall's feeling lane and the
+   * displays read. S_FEELING is the clock of a NEUTRAL feeling (valence 0, or
+   * one read without its valence). CAL.
    */
   S_FEELING: 20,
+  /**
+   * VALENCE-ASYMMETRIC SOFTENING (wheel v2, 2026-09-30): an unpleasant feeling
+   * softens faster than a pleasant one — the fading affect bias (the emotion
+   * research §3.2: the hurt goes out of a bad memory sooner than the warmth
+   * out of a good one, while the memory itself stays). S runs from S_FEELING
+   * at valence 0 to S_FEELING_NEGATIVE at −1 and S_FEELING_POSITIVE at +1, in
+   * proportion: at the cores' defaults angry (−0.7) softens on ~15.8 lived
+   * days, sad (−0.6) ~16.4, happy and warm (+0.7) ~25.6. Read-side only, like
+   * S_FEELING: it never touches the memory's height, slope or durability,
+   * which read the recorded peak. CAL.
+   */
+  S_FEELING_NEGATIVE: 14,
+  S_FEELING_POSITIVE: 28,
 
   // --- §5.5 reinforcement ---
   /** Retrospective credit weights by tier. The ignorable tier never trains. */
@@ -568,11 +582,20 @@ export function salArm(m: Pick<MemoryPhysics, "salience" | "feelingPeak">): numb
 /**
  * How a recorded feeling reads NOW — softened over the lived days since it was
  * recorded. `ageDays` is lived days (the one clock); a negative or non-finite
- * age reads as fresh. Never written back: the table keeps the strength as felt.
+ * age reads as fresh. `valence` (−1..+1) sets the clock — an unpleasant
+ * feeling softens faster (`feelingSofteningDays`); left out, the neutral one.
+ * Never written back: the table keeps the strength as felt.
  */
-export function softenedFeeling(strength: number, ageDays: number): number {
+export function softenedFeeling(strength: number, ageDays: number, valence?: number): number {
   const age = Number.isFinite(ageDays) ? Math.max(0, ageDays) : 0;
-  return clamp01(strength) * Math.exp(-age / TUNABLES.S_FEELING);
+  return clamp01(strength) * Math.exp(-age / feelingSofteningDays(valence));
+}
+
+/** The softening clock S, in lived days, for a feeling of this valence (`S_FEELING_NEGATIVE`). */
+export function feelingSofteningDays(valence?: number): number {
+  const v = typeof valence === "number" && Number.isFinite(valence) ? Math.max(-1, Math.min(1, valence)) : 0;
+  const end = v < 0 ? TUNABLES.S_FEELING_NEGATIVE : TUNABLES.S_FEELING_POSITIVE;
+  return TUNABLES.S_FEELING + Math.abs(v) * (end - TUNABLES.S_FEELING);
 }
 
 /**
@@ -804,6 +827,13 @@ export interface CoreContext {
    * the lane progress may leave it out.
    */
   readonly day?: number;
+  /**
+   * Wheel v2 (2026-09-30): the memory carries a SELF-RELEVANT feeling — the
+   * recognition group (`feelings-wheel.ts#isSelfRelevantFeeling`) — and nothing
+   * has marked what it is about. The fast lane alone may then count it as
+   * about me; the slow lane still needs the mark. Absent: false.
+   */
+  readonly selfRelevantFeeling?: boolean;
 }
 
 /**
@@ -845,7 +875,9 @@ export function promotionEligibility(m: MemoryPhysics, ctx: CoreContext): Promot
     (now === null || now >= TUNABLES.CORE_SLOW_FLOOR);
   const blockedBy: PromotionReason[] = [];
   if (m.promotedIdentity) blockedBy.push("already-identity");
-  if (!ctx.aboutMe) blockedBy.push("not-about-me");
+  // Recognising myself in it counts as about me, for the fast lane only, when
+  // nothing marked what it is about (wheel v2, `CoreContext.selfRelevantFeeling`).
+  if (!ctx.aboutMe && !(ctx.selfRelevantFeeling === true && fastMet)) blockedBy.push("not-about-me");
   if (ctx.demoted === true) blockedBy.push("demoted-by-owner");
   if (!fastMet && !slowMet) blockedBy.push("no-lane-yet");
   return {

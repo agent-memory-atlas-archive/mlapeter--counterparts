@@ -140,6 +140,16 @@ export interface SleepStore {
     actor?: string | null;
   }): number;
   coreDemoted?(id: string): boolean;
+  /** A memory's feelings — whose, the word, its strength and who recorded it
+   *  are all this port reads (the recognition lane, wheel v2). Absent: no
+   *  feeling counts. */
+  feelingsFor?(id: string): readonly {
+    readonly whose: string;
+    readonly emotion: string;
+    readonly other_word: string | null;
+    readonly strength: number;
+    readonly source: string | null;
+  }[];
 }
 
 // ---------------------------------------------------------------------------

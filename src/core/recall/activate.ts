@@ -56,7 +56,7 @@ import { emotionalIntensity, sal, softenedFeeling, strength } from "../physics/i
 import type { FeelingRow, Hit, ProseDoc, Store } from "../store/index.js";
 import { feelingTokens, readFeelingAsk } from "./feeling-ask.js";
 import type { FeelingAskInput } from "./feeling-ask.js";
-import { confidentialByMeta, rowToPhysics, tokenize } from "../store/index.js";
+import { confidentialByMeta, feelingValence, rowToPhysics, tokenize } from "../store/index.js";
 import { buildCues, informativeness } from "./cues.js";
 import type { Cue } from "./cues.js";
 import type { RecallTunables, SemanticPath, SemanticTuning } from "./tunables.js";
@@ -633,7 +633,7 @@ export function activate(
         const answers = tokensOf[i] as Set<string>;
         const hit = [...ask.named].filter((w) => answers.has(w));
         if (!everyStamp && hit.length === 0) return;
-        const soft = softenedFeeling(f.strength, input.day - f.birth_day);
+        const soft = softenedFeeling(f.strength, input.day - f.birth_day, feelingValence(f));
         if (!(soft > 0)) return;
         if (soft > (best.get(f.memory_id) ?? 0)) best.set(f.memory_id, soft);
         const words = answered.get(f.memory_id) ?? new Set<string>();

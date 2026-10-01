@@ -170,18 +170,27 @@ describe("item 1: a stamp answers to the words it was written in", () => {
     expect(ids[0]).toBe(f.unsettled);
   });
 
-  test("an alias and a core reach a stamp: 'touched' finds moved; 'fear' finds the unsettled one", async () => {
+  test("an alias and a core reach a stamp: 'touched' finds moved; 'uneasy' finds the unsettled one", async () => {
     const s = server();
     const f = seed(s.counterpart);
     expect((await ask(s, "touched"))[0]).toBe(f.card);
-    expect((await ask(s, "fear"))[0]).toBe(f.unsettled);
+    // Written under the first wheel's `fear`, it is filed under uneasy now.
+    expect((await ask(s, "uneasy"))[0]).toBe(f.unsettled);
   });
 
-  test("feelingTokens: the word, its aliases, its cores (a blend's both), the writer's own word", () => {
-    expect([...feelingTokens({ core: "happy", emotion: "moved", other_word: null })].sort()).toEqual(["happy", "moved", "touched"]);
-    expect([...feelingTokens({ core: "sad", emotion: "tender", other_word: null })].sort()).toEqual(["happy", "sad", "tender"]);
-    expect([...feelingTokens({ core: "fear", emotion: "fear.inferior", other_word: null })].sort()).toEqual(["fear", "inferior"]);
-    expect([...feelingTokens({ core: "fear", emotion: "other", other_word: "unsettled" })].sort()).toEqual(["fear", "unsettled"]);
+  test("feelingTokens: the word, its group's word, its aliases, its cores (a blend's both), the writer's own word", () => {
+    expect([...feelingTokens({ core: "warm", emotion: "moved", other_word: null })].sort()).toEqual(["moved", "touched", "warm"]);
+    // Written under happy, the writer's core: it answers to happy and to its home.
+    expect([...feelingTokens({ core: "happy", emotion: "moved", other_word: null })].sort()).toEqual(["happy", "moved", "touched", "warm"]);
+    expect([...feelingTokens({ core: "sad", emotion: "tender", other_word: null })].sort()).toEqual(["moved", "sad", "tender", "warm"]);
+    expect([...feelingTokens({ core: "uneasy", emotion: "inferior", other_word: null })].sort()).toEqual(["inferior", "insecure", "uneasy"]);
+    // The page calls sad's `wounded` group "hurt": its words answer to hurt too.
+    expect([...feelingTokens({ core: "sad", emotion: "stung", other_word: null })].sort()).toEqual(["angry", "hurt", "sad", "stung", "wounded"]);
+    expect([...feelingTokens({ core: "uneasy", emotion: "other", other_word: "jittery" })].sort()).toEqual(["jittery", "uneasy"]);
+    // A wheel word of more than one word answers only to its cores (wheel v2):
+    // "caught out" must not make "out" a feeling word for the whole store.
+    expect([...feelingTokens({ core: "uneasy", emotion: "caught out", other_word: null })].sort()).toEqual(["uneasy"]);
+    expect([...feelingTokens({ core: "uneasy", emotion: "sheepish", other_word: null })].sort()).toEqual(["sheepish", "uneasy"]);
     // A phrase kept as the word answers only to its longer words.
     // Only a ONE-word own word answers: a phrase would make its words feeling words for the store.
     expect(feelingTokens({ core: "fear", emotion: "other", other_word: "at the edge of something" }).has("something")).toBe(false);
@@ -499,7 +508,7 @@ describe("R3: everyday phrasings do not rank; real feeling questions still do", 
     });
   }
 
-  test("'afraid' is an alias of scared: 'when was I afraid' reaches a memory stamped scared", () => {
+  test("'afraid' is scared's group: 'when was I afraid' reaches a memory stamped scared", () => {
     const s = server();
     seed(s.counterpart);
     const scary = s.counterpart.store.put({ type: "memory", kind: "self", body: "The night the disk filled up during the backup." });

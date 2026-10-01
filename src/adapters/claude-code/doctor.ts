@@ -58,12 +58,14 @@ import {
   STORE_CREATED_KEY,
   Store,
   assertPreMigrationTarget,
+  isSelfRelevantFeeling,
   isStoreError,
   paths,
   pendingMigration,
   preMigrationDir,
 } from "../../core/store/index.js";
 import { BUSY_TIMEOUT_MS, journalModeOf } from "../../core/store/db.js";
+import { acceptsReflectedFeeling, selfRelevantFeeling } from "../../core/sleep/index.js";
 import { TUNABLES as ASSOCIATE_TUNABLES, isDead, pairKey } from "../../core/associate/index.js";
 import type { EventRow } from "../../core/store/index.js";
 // The ask allowance the amber hint names, read rather than retyped: a number in
@@ -2558,6 +2560,76 @@ export function upgradeV10Findings(store: Store): Finding[] {
   ];
 }
 
+/** The meta row the v11 upgrade writes (`store/operational.ts#V11_UPGRADE_KEY`). */
+const V11_UPGRADE_META = "feelings.v11.upgrade";
+
+/**
+ * WHAT THE v11 UPGRADE RE-FILED (2026-09-30, the feelings wheel v2),
+ * informational: how many recorded feelings it read, how many it moved onto
+ * the seven cores and from where to where. Each moved row keeps its old core
+ * beside it. Silent on a store born at v11.
+ */
+export function upgradeV11Findings(store: Store): Finding[] {
+  const upgrade = metaJson(store, V11_UPGRADE_META);
+  if (upgrade === null) return [];
+  const feelings = metaNum(upgrade["feelings"]);
+  const refiled = metaNum(upgrade["refiled"]);
+  const raw = upgrade["moves"];
+  const moves: Record<string, number> = {};
+  if (raw !== null && typeof raw === "object" && !Array.isArray(raw)) {
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) moves[k] = metaNum(v);
+  }
+  const listed = Object.entries(moves)
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+    .map(([k, n]) => `${k} ${String(n)}`)
+    .join(", ");
+  return [
+    finding(
+      "upgrade-v11",
+      "green",
+      "Upgrade",
+      `Upgrade to v11: feelings use seven cores now (happy, warm, calm, curious, sad, uneasy, angry) — ${String(refiled)} of ${String(feelings)} recorded ${feelings === 1 ? "feeling" : "feelings"} re-filed${listed.length > 0 ? ` (${listed})` : ""}, each keeping its old core beside it`,
+      "",
+      { feelings, refiled, moves: listed },
+    ),
+  ];
+}
+
+/**
+ * THE RECOGNITION LANE, informational (wheel v2, the review of #301): how
+ * many memories nobody marked are on the core's fast lane only because I
+ * recognised myself in them — a recognition feeling of mine, strong enough on
+ * its own, felt in a session (`sleep/consolidate.ts#selfRelevantFeeling`).
+ * Ids stay out; a count only. Silent at zero.
+ */
+export function recognitionLaneFindings(store: Store): Finding[] {
+  let count = 0;
+  try {
+    const door = acceptsReflectedFeeling(store);
+    const seen = new Set<string>();
+    for (const f of store.feelingsLive()) {
+      if (seen.has(f.memory_id) || !isSelfRelevantFeeling(f.emotion, f.other_word)) continue;
+      seen.add(f.memory_id);
+      const row = store.row(f.memory_id);
+      if (row === undefined || row.promoted_identity === 1) continue;
+      if (selfRelevantFeeling(store, row, door)) count += 1;
+    }
+  } catch {
+    return [];
+  }
+  if (count === 0) return [];
+  return [
+    finding(
+      "recognition-lane",
+      "green",
+      "Recognition",
+      `${String(count)} unmarked ${count === 1 ? "memory is" : "memories are"} on the core's fast lane because I recognised myself in ${count === 1 ? "it" : "them"} (a mark would decide instead)`,
+      "",
+      { candidates: count },
+    ),
+  ];
+}
+
 /** The lived days the Contradictions line covers. */
 export const CONTRADICTION_WINDOW_DAYS = 7;
 
@@ -3943,6 +4015,8 @@ export function doctorFindings(input: DoctorInput): Finding[] {
     ["reflection", () => reflectionFindings(input, store)],
     // v10 (2026-09-29): what the upgrade carried, and the week's contradictions.
     ["upgrade-v10", () => upgradeV10Findings(store)],
+    ["upgrade-v11", () => upgradeV11Findings(store)],
+    ["recognition-lane", () => recognitionLaneFindings(store)],
     ["contradictions", () => contradictionFindings(store)],
     // Build B (2026-09-28): does anyone read what an index offers in part?
     ["lookups", () => lookupFindings(store)],

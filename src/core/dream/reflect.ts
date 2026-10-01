@@ -66,7 +66,7 @@ import { randomBytes } from "node:crypto";
 
 import { emotionalIntensity } from "../physics/index.js";
 import { isHandoff, isSelfPage } from "../recall/index.js";
-import { aboutMe, acceptsReflectedFeeling, promotionRecordKey } from "../sleep/index.js";
+import { aboutMe, acceptsReflectedFeeling, promotionRecordKey, selfRelevantFeeling } from "../sleep/index.js";
 import {
   ABOUT_MARKS,
   CARRIED_BY_MAX_CHARS,
@@ -717,7 +717,7 @@ export class Reflections {
       `- entry: your reflection, first person (title: optional). cites: the ids it rests on.`,
       pageLine,
       `- share (optional): two or three sentences for ${who} this morning, the way a partner would say it ("While I slept I dreamed about x — I think because of y"), citing what it rests on. Say something about ${who} only when it could help them, tentatively ("I wonder if…") — never a list of flaws. No share on a quiet night.${bundle.becameCore.length > 0 ? ` Tell ${who} that ${bundle.becameCore.join(", ")} became part of who you are.` : ""}`,
-      `- feelings (optional, at most ${String(L.feelings)}): how a memory feels to you now — id, core, emotion, strength, carried_by. emotion is ONE word (from the wheel, or your own); carried_by is the nuance, in your own words. Recorded as felt today, looking back.`,
+      `- feelings (optional, at most ${String(L.feelings)}): how a memory feels to you now — id, core (happy, warm, calm, curious, sad, uneasy or angry), emotion, strength, carried_by. emotion is ONE word (from the wheel, or your own); carried_by is the nuance, in your own words. Recorded as felt today, looking back.`,
       aboutLine,
       `- traits (optional, at most ${String(L.traits)}): only where a memory you were shown really shows how you acted — often where you acted unlike your page; most carry none, and a quiet night has none. Each: id, axis, toward (one of its two poles), strength 0-1, carried_by (briefly, what showed it). The axes, the first pole roughly where training puts you: ${TRAIT_AXES.map((a) => `${a.id} (${a.poles[0]} or ${a.poles[1]}${a.gloss.length > 0 ? `, ${a.gloss}` : ""})`).join(", ")}. Don't make up depth.`,
       `If a part comes back not written, its reason says what tripped it: fix that and call finish again with the same reflection and just that part — the entry and everything written stand. Never say a part was written when it was not.`,
@@ -843,7 +843,9 @@ export class Reflections {
         whose: "self",
         core: String(f.core ?? ""),
         emotion: split?.emotion ?? sent.text,
-        strength: Math.max(0, Math.min(1, Number(f.strength ?? 0))),
+        // Left out, the store gives it the word's default, capped below the
+        // fast lane, as for a session's feeling (review of #301, m2) — not 0.
+        ...(f.strength === undefined || f.strength === null ? {} : { strength: Math.max(0, Math.min(1, Number(f.strength))) }),
         carriedBy: `on reflection, ${date}${carried.ok && carried.text.length > 0 ? `: ${carried.text}` : ""}`,
       };
       const same = sameFeeling(this.store, r.id, recordedFeelings, feeling);
@@ -1460,6 +1462,9 @@ export class Reflections {
     const candidates: { id: string; felt: number; at: number }[] = [];
     const felt: { id: string; felt: number }[] = [];
     const recent: { id: string; felt: number; at: number }[] = [];
+    // The candidates are consolidation's: about me by its mark, or — unmarked —
+    // by a recognition feeling the fast lane would count (wheel v2).
+    const reflectedOpen = acceptsReflectedFeeling(this.store);
     for (const mid of this.store.list({ type: "memory", archived: false })) {
       if (denied.has(mid)) continue;
       const row = this.store.row(mid);
@@ -1473,7 +1478,8 @@ export class Reflections {
         core.push({ id: mid, felt: f });
         continue;
       }
-      const candidate = aboutMe(this.store, row) && !this.store.coreDemoted(mid);
+      const candidate =
+        (aboutMe(this.store, row) || selfRelevantFeeling(this.store, row, reflectedOpen)) && !this.store.coreDemoted(mid);
       if (candidate) candidates.push({ id: mid, felt: f, at: row.created_at ?? 0 });
       if (f > 0 && (candidate || KINDS_FELT.includes(row.kind))) felt.push({ id: mid, felt: f });
     }

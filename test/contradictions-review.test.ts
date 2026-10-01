@@ -21,7 +21,7 @@ import { MIND_SEEN_PREFIX, mindRanked } from "../src/core/dream/mind.js";
 import { TUNABLES, pruneVerdict, strength } from "../src/core/physics/index.js";
 import { Self, hintReading } from "../src/core/self/index.js";
 import { runCycle } from "../src/core/sleep/index.js";
-import { Store, paths } from "../src/core/store/index.js";
+import { SCHEMA_VERSION, Store, paths } from "../src/core/store/index.js";
 import { chaseRemoved } from "../src/core/store/owner-op-seam.js";
 
 const ENV = "COUNTERPARTS_DATA_DIR";
@@ -151,7 +151,7 @@ describe("B1: the changed cut is a strength multiplier", () => {
     db.run("UPDATE meta SET value = '9' WHERE key = 'schemaVersion'");
     db.close();
     const after = storeOnly();
-    expect(after.getMeta("schemaVersion")).toBe("10");
+    expect(after.getMeta("schemaVersion")).toBe(String(SCHEMA_VERSION));
     expect(after.physicsOf(id).fade).toBe(1);
     after.close();
     open.splice(0);

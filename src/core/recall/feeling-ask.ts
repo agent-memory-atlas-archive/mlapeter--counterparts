@@ -14,9 +14,10 @@
  *   `readFeelingAsk` — is the question about feeling, which words of it name a
  *     feeling, and whose feeling it asks about.
  *   `feelingTokens`  — the words a stamp answers to: the emotion word as the
- *     writer's key spells it, the everyday words that alias to it, the wheel
- *     core(s) it counts under (a blend under both), and the writer's own word
- *     when it is off the wheel (`other_word`).
+ *     writer's key spells it, its group's word (wheel v2), the everyday words
+ *     that alias to it, the wheel core(s) it counts under (a blend under both),
+ *     and the writer's own word when it is off the wheel (`other_word`) — each
+ *     only when it is one word.
  *
  * **Deliberate only, and why.** The ambient path's affect gate (§9 G10/G11:
  * stated-only, first-person, turn-gated — `cues.ts#detectAffect`) is a safety
@@ -101,11 +102,23 @@ export function whoseAsked(text: string, input: FeelingAskInput): FeelingWhose |
 /** The words one stamp answers to. See the header. */
 export function feelingTokens(f: { core: string; emotion: string; other_word: string | null }): Set<string> {
   const out = new Set<string>();
+  // ONE word only, wheel words and aliases too (wheel v2): "caught out" or
+  // "that's me" would make "out" and "me" feeling words for the whole store —
+  // the same rule as the writer's own word below. A phrase answers to its cores.
   const add = (text: string): void => {
-    for (const tok of tokenize(text)) out.add(tok);
+    const toks = tokenize(text);
+    if (toks.length === 1) out.add(toks[0] as string);
   };
   if (f.emotion !== OTHER_EMOTION) {
-    add(wheelEntry(f.emotion)?.word ?? f.emotion.split(".").pop() ?? f.emotion);
+    const entry = wheelEntry(f.emotion);
+    add(entry?.word ?? f.emotion.split(".").pop() ?? f.emotion);
+    // Its group's word too (wheel v2): "when was I afraid" reaches a stamp of
+    // scared, which sits under afraid (an alias of it on the first wheel).
+    if (entry?.parent !== null && entry?.parent !== undefined) add(entry.parent);
+    // And the page's name for the group when its key is another word: sad's
+    // `wounded` group is the page's "hurt", so "when was I hurt" reaches stung.
+    const label = entry?.label ?? (entry?.parent ? wheelEntry(entry.parent)?.label : undefined);
+    if (label !== undefined) add(label);
     for (const [alias, key] of Object.entries(ALIASES)) if (key === f.emotion) add(alias);
   }
   for (const c of coresOfFeeling(f.core, f.emotion)) add(c);
@@ -144,6 +157,23 @@ const DETERMINERS = new Set([
   "the", "a", "an", "this", "that", "these", "those", "some",
   "my", "your", "his", "her", "its", "it", "them", "our", "their",
 ]);
+/**
+ * EVERYDAY WORDS ON THE WHEEL (the review of #301, m1): words a question uses
+ * far more often about things than about feelings — "is my PR still open",
+ * "I settled on the second option", "the most important thing". One names a
+ * feeling only beside a feel-word or a form of "to be" (`FEELING_FRAME`) among
+ * the two words before it: "felt close", "I was content", "was I content".
+ * A stamp still answers to it; only the question's reading changes.
+ */
+export const EVERYDAY_FEELING_WORDS: ReadonlySet<string> = new Set([
+  "close", "content", "settled", "seen", "caught", "engaged", "open", "important", "empty", "sorry",
+  "familiar", "critical", "distant", "absorbed", "accepted", "satisfied", "powerful", "grounded",
+]);
+const FEELING_FRAME = new Set([...FEEL_WORDS, "am", "im", "is", "are", "was", "were", "be", "been", "being", "youre"]);
+
+/** After "to be", an everyday word followed by one of these is not a feeling ("close to done"). */
+const PREPOSITIONS = new Set(["to", "with", "on", "in", "of", "for", "at", "about"]);
+
 /** A feel-word followed by one of these is an OPINION: "I feel like the test is flaky". */
 const OPINION = new Set(["like", "that"]);
 /** Scanning back stops here: another subject owns what follows (`cues.ts`'s rule). */
@@ -209,6 +239,18 @@ export function readFeelingAsk(
     }
     if (w.length < minLength || !(WHEEL_VOCABULARY.has(w) || stored.has(w))) return;
     if (DETERMINERS.has(toks[i + 1] ?? "")) return; // a verb on a thing, not a feeling
+    // An everyday word is a feeling only in a feeling's frame ("I was content").
+    if (EVERYDAY_FEELING_WORDS.has(w)) {
+      const before = [toks[i - 1] ?? "", toks[i - 2] ?? ""];
+      const felt = before.some((b) => FEEL_WORDS.includes(b));
+      if (!felt) {
+        if (!before.some((b) => FEELING_FRAME.has(b))) return;
+        // After "to be" only: a preposition next makes it a state of a thing
+        // or a task — "close to done", "engaged with", "familiar to you". After
+        // a feel-word it stays a feeling: "felt close to Mike".
+        if (PREPOSITIONS.has(toks[i + 1] ?? "")) return;
+      }
+    }
     named.add(w);
     if (aboutAPerson(toks, i, false, names)) ranked = true;
   });

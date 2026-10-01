@@ -57,37 +57,45 @@ function code(fn: () => unknown): string | null {
 const mem = (s: Store, body = "the afternoon the build went green") => s.put({ type: "memory", kind: "fact", body });
 
 describe("the wheel", () => {
-  test("six cores, every middle and outer word, one key each", () => {
-    expect(CORE_EMOTIONS).toEqual(["happy", "sad", "fear", "anger", "surprise", "disgust"]);
+  test("seven cores, one key per word, and every entry carries its numbers", () => {
+    expect(CORE_EMOTIONS).toEqual(["happy", "warm", "calm", "curious", "sad", "uneasy", "angry"]);
     const keys = FEELINGS_WHEEL.map((e) => e.key);
     expect(new Set(keys).size).toBe(keys.length);
-    // The POSTER: 6 cores + 36 middle + 72 outer, less sad's `abandoned` printed twice.
-    expect(FEELINGS_WHEEL.filter((e) => e.added !== true).length).toBe(6 + 36 + 72 - 1);
-    // Plus the words added from real use (2026-09-26), each marked as such.
-    expect(FEELINGS_WHEEL.filter((e) => e.added === true).length).toBe(10);
-    expect(wheelEntry("abandoned")).toMatchObject({ core: "sad", ring: "middle", alsoUnder: "lonely" });
-    expect(wheelEntry("furious")).toMatchObject({ core: "anger", ring: "outer", parent: "mad", valence: -1 });
-  });
-
-  test("a word under two cores is core-qualified on both sides", () => {
-    expect(wheelEntry("insecure")).toBeUndefined();
-    expect(wheelEntry("anger.insecure")).toMatchObject({ ring: "outer", parent: "threatened" });
-    expect(wheelEntry("fear.insecure")).toMatchObject({ ring: "middle" });
-    expect(wheelEntry("sad.inferior")).toMatchObject({ parent: "depressed" });
-    expect(wheelEntry("fear.inferior")).toMatchObject({ parent: "fear.insecure" });
-    // A bare ambiguous word is qualified by the core it came with.
-    const read = resolveEmotion("fear", "Insecure");
-    expect(read.kind === "wheel" ? read.entry.key : read.kind).toBe("fear.insecure");
-  });
-
-  test("valence: happy up, the four down, surprise's children their own", () => {
-    expect(wheelEntry("hopeful")?.valence).toBe(1);
-    expect(wheelEntry("worried")?.valence).toBe(-1);
-    expect(wheelEntry("surprise")?.valence).toBe(0);
-    for (const k of ["amazed", "excited", "eager", "energetic", "awe", "astonished"]) expect(wheelEntry(k)?.valence).toBe(1);
-    for (const k of ["startled", "confused", "shocked", "dismayed", "disillusioned", "perplexed"]) {
-      expect(wheelEntry(k)?.valence).toBe(-1);
+    // No key is core-qualified on this wheel: every word sits under one core.
+    expect(keys.filter((k) => k.includes("."))).toEqual([]);
+    for (const e of FEELINGS_WHEEL) {
+      expect(e.valence).toBeGreaterThanOrEqual(-1);
+      expect(e.valence).toBeLessThanOrEqual(1);
+      expect(e.intensity).toBeGreaterThanOrEqual(0);
+      expect(e.intensity).toBeLessThanOrEqual(1);
     }
+    expect(wheelEntry("furious")).toMatchObject({ core: "angry", ring: "outer", parent: "frustrated", valence: -0.8, intensity: 0.85 });
+    expect(wheelEntry("hopeful")).toMatchObject({ core: "happy", ring: "middle", parent: null, valence: 0.7, intensity: 0.5 });
+  });
+
+  test("a qualified first-wheel key reads as its word, under the core it was given", () => {
+    expect(wheelEntry("insecure")).toMatchObject({ core: "uneasy", ring: "middle" });
+    expect(wheelEntry("inferior")).toMatchObject({ core: "uneasy", parent: "insecure" });
+    // Only behind a real core's name: "e.g.hopeful" is not a qualified key.
+    expect(wheelEntry("e.g.hopeful")).toBeUndefined();
+    expect(resolveEmotion("happy", "e.g.hopeful").kind).toBe("other");
+    expect(wheelEntry("fear.insecure")).toBeUndefined();
+    const read = resolveEmotion("angry", "anger.insecure");
+    expect(read.kind === "wheel" ? [read.entry.key, read.home] : read.kind).toEqual(["insecure", false]);
+  });
+
+  test("numbers: a word takes its group's, a group its core's, unless there is a reason", () => {
+    // The core's own.
+    expect(wheelEntry("grateful")).toMatchObject({ valence: 0.7, intensity: 0.5 });
+    expect(wheelEntry("steadied")).toMatchObject({ valence: 0.5, intensity: 0.35 });
+    // A group's override carries to its words: confused and puzzled lean unpleasant under curious.
+    expect(wheelEntry("confused")?.valence).toBe(-0.2);
+    expect(wheelEntry("puzzled")?.valence).toBe(-0.2);
+    expect(wheelEntry("curious")?.valence).toBe(0.3);
+    // Quieter and stronger words.
+    expect(wheelEntry("serene")?.intensity).toBeLessThan(wheelEntry("calm")?.intensity ?? 0);
+    expect(wheelEntry("ecstatic")?.intensity).toBeGreaterThan(wheelEntry("happy")?.intensity ?? 1);
+    expect(wheelEntry("annoyed")?.intensity).toBeLessThan(wheelEntry("furious")?.intensity ?? 0);
   });
 });
 
@@ -98,8 +106,8 @@ describe("the store", () => {
     const added = s.addFeelings(
       id,
       [
-        { whose: "owner", core: "fear", emotion: "worried", strength: 0.6, carriedBy: "the deploy failed twice" },
-        { whose: "owner", core: "anger", emotion: "frustrated", strength: 0.7, carriedBy: "same error again", beneath: 0 },
+        { whose: "owner", core: "uneasy", emotion: "worried", strength: 0.6, carriedBy: "the deploy failed twice" },
+        { whose: "owner", core: "angry", emotion: "frustrated", strength: 0.7, carriedBy: "same error again", beneath: 0 },
         { whose: "self", core: "happy", emotion: "hopeful", strength: 0.4 },
       ],
       { model: "claude-opus-5-5" },
@@ -108,8 +116,8 @@ describe("the store", () => {
     expect(added.notices).toEqual([]);
     const rows = s.feelingsFor(id);
     expect(rows.map((r) => [r.whose, r.core, r.emotion])).toEqual([
-      ["owner", "fear", "worried"],
-      ["owner", "anger", "frustrated"],
+      ["owner", "uneasy", "worried"],
+      ["owner", "angry", "frustrated"],
       ["self", "happy", "hopeful"],
     ]);
     const anger = rows.find((r) => r.emotion === "frustrated");
@@ -142,8 +150,12 @@ describe("the store", () => {
     expect(code(() => s.addFeelings(id, [ok, { ...ok, core: "boredom" }]))).toBe("FEELING_INVALID:core-unknown");
     expect(code(() => s.addFeelings(id, [{ ...ok, whose: "the dog" }]))).toBe("FEELING_INVALID:whose-unknown");
     expect(code(() => s.addFeelings(id, [{ ...ok, strength: 1.5 }]))).toBe("FEELING_INVALID:strength-out-of-range");
-    // A wheel word under another core is stored under its own, and said (owner, 2026-09-28).
-    expect(s.addFeelings(mem(s), [{ ...ok, emotion: "furious" }]).repairs).toMatchObject([{ field: "core", was: "happy", now: "anger" }]);
+    // A wheel word under another core is stored under the WRITER's core, and
+    // nothing is said to have moved (owner, 2026-09-30; it was moved 09-28).
+    const other = mem(s);
+    expect(s.addFeelings(other, [{ ...ok, emotion: "furious" }]).repairs).toEqual([]);
+    expect(s.feelingsFor(other).map((r) => [r.core, r.emotion])).toEqual([["happy", "furious"]]);
+    expect(code(() => s.addFeelings(id, [{ ...ok, valence: 1.5 }]))).toBe("FEELING_INVALID:valence-out-of-range");
     expect(code(() => s.addFeelings(id, [{ ...ok, beneath: 1 }, { ...ok, beneath: 0 }]))).toBe("FEELING_INVALID:beneath-cycle");
     expect(s.feelingsFor(id)).toEqual([]);
   });
@@ -153,16 +165,16 @@ describe("the store", () => {
     const s = store({ now: () => at, timeZone: "UTC" });
     const id = mem(s);
     s.addFeelings(id, [
-      { whose: "owner", core: "fear", emotion: "worried", strength: 0.5 },
-      { whose: "owner", core: "fear", emotion: "anxious", strength: 0.5 },
+      { whose: "owner", core: "uneasy", emotion: "worried", strength: 0.5 },
+      { whose: "owner", core: "uneasy", emotion: "anxious", strength: 0.5 },
     ]);
     at = Date.parse("2026-09-25T18:00:00Z");
     s.addFeelings(id, [
-      { whose: "owner", core: "fear", emotion: "worried", strength: 0.5 },
+      { whose: "owner", core: "uneasy", emotion: "worried", strength: 0.5 },
       { whose: "self", core: "happy", emotion: "hopeful", strength: 0.5 },
     ]);
     expect(s.feelingCounts({ by: "core" })).toEqual([
-      { whose: "owner", key: "fear", count: 3 },
+      { whose: "owner", key: "uneasy", count: 3 },
       { whose: "self", key: "happy", count: 1 },
     ]);
     expect(s.feelingCounts({ by: "emotion", whose: "owner", from: "2026-09-25" })).toEqual([
@@ -179,8 +191,8 @@ describe("the store", () => {
     const id = mem(s);
     const keep = mem(s, "a memory that stays");
     s.addFeelings(id, [
-      { whose: "owner", core: "fear", emotion: "worried", strength: 0.5, carriedBy: "private words" },
-      { whose: "owner", core: "anger", emotion: "mad", strength: 0.5, beneath: 0 },
+      { whose: "owner", core: "uneasy", emotion: "worried", strength: 0.5, carriedBy: "private words" },
+      { whose: "owner", core: "angry", emotion: "mad", strength: 0.5, beneath: 0 },
     ]);
     s.addFeelings(keep, [{ whose: "self", core: "happy", emotion: "proud", strength: 0.5 }]);
     s.appendRemovalRecord({ memoryId: id, stage: "requested", actor: "owner", reason: "test" });
@@ -201,7 +213,7 @@ describe("the store", () => {
     const migrated = store({ snapshotsDir: join(dir, "..", `${dir.split("/").pop() ?? "x"}-snaps`) });
     expect(migrated.getMeta("schemaVersion")).toBe(String(SCHEMA_VERSION));
     const id = mem(migrated);
-    expect(migrated.addFeelings(id, [{ whose: "owner", core: "happy", emotion: "clarified", strength: 0.5, carriedBy: "" }]).notices.length).toBe(1);
+    expect(migrated.addFeelings(id, [{ whose: "owner", core: "happy", emotion: "unclenched", strength: 0.5, carriedBy: "" }]).notices.length).toBe(1);
     rmSync(join(dir, "..", `${dir.split("/").pop() ?? "x"}-snaps`), { recursive: true, force: true });
   });
 });
@@ -222,7 +234,7 @@ describe("the MCP doors", () => {
       await s.call("note", {
         text: "The second glaze test on the right shelf came out clean after all.",
         feelings: [
-          { whose: "owner", core: "fear", emotion: "anxious", strength: 0.5, carried_by: "waiting on the kiln" },
+          { whose: "owner", core: "uneasy", emotion: "anxious", strength: 0.5, carried_by: "waiting on the kiln" },
           { whose: "owner", core: "happy", emotion: "relievd", strength: 0.8, beneath: 0 },
         ],
       }),
@@ -280,7 +292,7 @@ describe("the MCP doors", () => {
     const text = "The kiln's left shelf runs hot, so glaze tests go on the right.";
     await s.call("note", { text });
     const again = payload(
-      await s.call("note", { text, feelings: [{ whose: "owner", core: "anger", emotion: "frustrated", strength: 0.5 }] }),
+      await s.call("note", { text, feelings: [{ whose: "owner", core: "angry", emotion: "frustrated", strength: 0.5 }] }),
     );
     expect(again["stored"]).toBe(false);
     const f = again["feelings"] as Record<string, unknown>;
@@ -332,8 +344,8 @@ describe("the console", () => {
     const s = Store.open({ dir });
     const id = s.put({ type: "memory", kind: "fact", body: "The build went green after three tries." });
     s.addFeelings(id, [
-      { whose: "owner", core: "fear", emotion: "worried", strength: 0.6, carriedBy: "two red builds" },
-      { whose: "owner", core: "happy", emotion: "other", otherWord: "unclenched", strength: 0.8, beneath: 0 },
+      { whose: "owner", core: "uneasy", emotion: "worried", strength: 0.6, carriedBy: "two red builds" },
+      { whose: "owner", core: "calm", emotion: "other", otherWord: "unclenched", strength: 0.8, beneath: 0, valence: 0.6 },
     ]);
     s.close();
     const target = mkdtempSync(join(tmpdir(), "counterparts-feelings-export-"));
@@ -342,8 +354,9 @@ describe("the console", () => {
       expect(await run(["export", "--out", join(target, "tree"), "--markdown", "--plaintext", "--dir", dir], { io: c.io })).toBe(0);
       const text = readFileSync(join(target, "tree", "memories", "fact", `${id}.md`), "utf8");
       expect(text).toContain("## Feelings");
-      expect(text).toContain("1. owner · fear · worried · 0.6 — carried by: two red builds");
-      expect(text).toContain("2. owner · happy · other: unclenched · 0.8 · over #1");
+      expect(text).toContain("1. owner · uneasy · worried · 0.6 — carried by: two red builds");
+      // The writer's own valence travels; a default one is not written.
+      expect(text).toContain("2. owner · calm · other: unclenched · 0.8 · valence 0.6 · over #1");
     } finally {
       rmSync(target, { recursive: true, force: true });
     }
