@@ -407,18 +407,36 @@ function writerOf(claim: string, markSession: string, proposalSession: string | 
  * up to its next boundary after `since` are not "work since" — a handoff is
  * written mid-turn, and that turn's Stop captures the prompt that asked for it
  * afterwards (review of #289).
+ *
+ * HOW FAR IT IS WRITTEN UP (2026-09-30, the continuity test): `writtenUpTo` is
+ * the time of the latest claim on any of those pieces, `writtenUpBy` what made
+ * it, and `unwrittenAfter` how many of the unwritten pieces came after it. A
+ * chapter written at 17:50 with a few turns said after it read "not yet
+ * written up" while the answer was yes or no, which told the next session
+ * there was nothing to read.
  */
 export function workSince(
   buffer: SpanBuffer,
   scope: string,
   since: number,
   opts: { writer?: string | null } = {},
-): { pieces: number; unwritten: number; firstAt: number | null; lastAt: number | null; overFloor: boolean } {
+): {
+  pieces: number;
+  unwritten: number;
+  firstAt: number | null;
+  lastAt: number | null;
+  overFloor: boolean;
+  writtenUpTo: number | null;
+  writtenUpBy: WrittenUpBy | null;
+  unwrittenAfter: number;
+} {
   const norm = (s: string): string => s.trim().replace(/\/+$/, "");
   let pieces = 0;
   let unwritten = 0;
   let firstAt: number | null = null;
   let lastAt: number | null = null;
+  let latest: { at: number; claim: string } | null = null;
+  const unwrittenAt: number[] = [];
   for (const held of buffer.scopes()) {
     if (norm(held) !== norm(scope)) continue;
     const writer = opts.writer ?? null;
@@ -430,19 +448,88 @@ export function workSince(
         .map((b) => b.at);
       writerUntil = next.length === 0 ? Infinity : Math.min(...next);
     }
-    const covered = buffer.coveredHashes(held);
+    const marks = new Map(buffer.coverage(held).map((m) => [m.spanHash, m]));
     for (const s of piecesIn(buffer, held)) {
       const at = atOf(s);
       if (at <= since) continue;
       if (s.session === writer && at <= writerUntil) continue;
       pieces += 1;
-      if (!covered.has(s.hash)) unwritten += 1;
+      const mark = marks.get(s.hash);
+      if (mark === undefined) {
+        unwritten += 1;
+        unwrittenAt.push(at);
+      } else if (latest === null || mark.at > latest.at) {
+        latest = { at: mark.at, claim: mark.proposalId };
+      }
       firstAt = Math.min(firstAt ?? Infinity, at);
       lastAt = Math.max(lastAt ?? 0, at);
     }
   }
   const floor = firstAt !== null && lastAt !== null && overFloor({ pieces, firstAt, lastAt });
-  return { pieces, unwritten, firstAt, lastAt, overFloor: floor };
+  const upTo = latest?.at ?? null;
+  return {
+    pieces,
+    unwritten,
+    firstAt,
+    lastAt,
+    overFloor: floor,
+    writtenUpTo: upTo,
+    writtenUpBy: latest === null ? null : writtenUpWords(writerOf(latest.claim, "", undefined)),
+    unwrittenAfter: upTo === null ? unwritten : unwrittenAt.filter((at) => at > upTo).length,
+  };
+}
+
+/** What wrote up the latest of the work since, in the words the pointer uses. */
+export type WrittenUpBy = "memories" | "chapter" | "nothing new" | "write-up";
+
+function writtenUpWords(w: Writer): WrittenUpBy | null {
+  switch (w) {
+    case "session":
+      return "memories";
+    case "chapter":
+      return "chapter";
+    case "nothing-new":
+      return "nothing new";
+    case "next-session":
+      return "write-up";
+    default:
+      return null;
+  }
+}
+
+/**
+ * THE SESSIONS THAT RAN IN ONE SCOPE, newest first (2026-09-30, the wake's
+ * "Last here" line): each with the first and last moment anything of it was
+ * recorded here — its turn-ends (`boundaries.jsonl`, which retention never
+ * strikes) and the pieces still held. It is what joins a chapter, which
+ * records its session and no directory, to the directory it was written in.
+ * Never throws: a buffer that will not answer names no session.
+ */
+export function sessionsHere(
+  buffer: SpanBuffer,
+  scope: string,
+): { session: string; firstAt: number; lastAt: number }[] {
+  const norm = (s: string): string => s.trim().replace(/\/+$/, "");
+  const seen = new Map<string, { session: string; firstAt: number; lastAt: number }>();
+  const note = (session: string, at: number): void => {
+    if (typeof session !== "string" || session.length === 0 || !Number.isFinite(at) || at <= 0) return;
+    const held = seen.get(session);
+    if (held === undefined) seen.set(session, { session, firstAt: at, lastAt: at });
+    else {
+      held.firstAt = Math.min(held.firstAt, at);
+      held.lastAt = Math.max(held.lastAt, at);
+    }
+  };
+  try {
+    for (const held of buffer.scopes()) {
+      if (norm(held) !== norm(scope)) continue;
+      for (const b of buffer.boundaries(held)) note(b.session, b.at);
+      for (const s of piecesIn(buffer, held)) note(s.session, atOf(s));
+    }
+  } catch {
+    return [];
+  }
+  return [...seen.values()].sort((a, b) => b.lastAt - a.lastAt);
 }
 
 // ── the rows ────────────────────────────────────────────────────────────────

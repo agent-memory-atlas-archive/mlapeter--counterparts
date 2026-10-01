@@ -4,7 +4,9 @@
 
 Carry, for one directory, *where the work stands and what to pick up next* — and stop
 carrying it. One live pointer per place per session that left one, delivered at the wake
-of a session that opens there, and never a memory.
+of a session that opens there, and never a memory. Beside it (2026-09-30), *who was last
+here*: the session that last wrote a chapter in this directory, finished or not, derived
+at the wake from the chapter and never stored (`last-here.ts`).
 
 ## 2. Brain analog
 
@@ -71,7 +73,8 @@ model id (or null), the lived-day clock, and a gate (`bridge.episodeGate`, injec
 **Outputs** — one schema row per (directory, session) with `meta.role = "handoff"`; a
 pointer block for a given directory and day — two lines for one live handoff, a short
 newest-first list for several; four durable event names (`written`, `shown`, `cleared`,
-`refused`).
+`refused`). And a "Last here" block for a directory where a session wrote a chapter inside
+the fortnight: one to three lines, no row and no durable event (§5 G11).
 
 **Guarantees** — **[M]** mechanized, **[A]** advisory:
 
@@ -115,10 +118,11 @@ newest-first list for several; four durable event names (`written`, `shown`, `cl
    entrance passes, and the writer is told which happened.
 5. **[M] The pointer expires in LIVED days.** After `HANDOFF_LIFE_DAYS` it is not shown and
    no row claims it was. A handoff with no recorded lived day has already expired.
-6. **[M] With no live handoff in the store, the wake is byte-identical to what this tree
-   composed before this module existed.** The delivery splice happens only when a pointer is
-   found, and the compose-budget reserve is taken only while some directory holds a live
-   one. Proved by `tools/wake-dump.ts` against another checkout, `diff` exit 0; the
+6. **[M] With no live handoff in the store and no chapter written inside the fortnight in
+   any directory, the wake is byte-identical to what this tree composed before this module
+   existed.** The delivery splice happens only when a pointer or a "Last here" line is
+   found, and the compose-budget reserve is taken only while some directory holds one (the
+   chapter clause since 2026-09-30). Proved by `tools/wake-dump.ts` against another checkout, `diff` exit 0; the
    adversarial review widened the same proof to 2,824 compositions with the same result.
 7. **[M] The pointer never puts the bundle over the host's ceiling.** Its room is reserved
    out of the compose budget at the boundary (see §6 for who pays); at delivery a bundle
@@ -146,12 +150,28 @@ newest-first list for several; four durable event names (`written`, `shown`, `cl
     and the rest named by id, that a
     pointer states when it was written (since 2026-09-30 to the minute, and — when work past
     the owed floor was captured here after that, not counting the writing session's own
-    turn — when that work ran and whether it is written up, computed at delivery from piece
-    times by `coverage/#workSince`), the first sentence of at least
+    turn — when that work ran and how far it is written up, computed at delivery from piece
+    times and claims by `coverage/#workSince`: "written up since", "written up to 17:50
+    (chapter), 3 pieces after", or "not yet written up" only when no claim stands on any of
+    it), the first sentence of at least
     `EXCERPT_MIN_SENTENCE` characters of its first line of SUBSTANCE (headings and a leading
     list marker are skipped) and its id,
     names the door to the whole of it, and carries no control or bidi-override character
     into the bundle.
+
+11. **[M] Last here (2026-09-30).** A wake in a directory where some session wrote a chapter
+    within `LAST_HERE_LIFE_DAYS` lived days (the handoff's fortnight) carries a "Last here"
+    line: who (the short session id and the model, `sessionWords`, "this session" for the
+    reader's own), when that session was here (its first and last turn-end in this
+    directory), the chapter's title and id, and the first sentence of its LATEST chapter.
+    Up to `LAST_HERE_SHOWN` sessions of that day are named (the one before by title only)
+    and the rest of that day by id. Derived at delivery: a chapter records its session, the
+    buffer's turn-ends (`coverage/#sessionsHere`, `boundaries.jsonl`) record where that
+    session ran, and the join is the line — no row, no column, no write, and it works for
+    chapters written before it existed. It is spliced above the handoff pointer, shares its
+    reserve and share rule (§6), and is the first thing given up when there is not room for
+    both. It is not a handoff: nothing retires it, and a session that finished its work
+    needs no handoff for the next one to find it.
 
 ## 6. Where it sits in the wake's order — who pays, when, and how much
 
@@ -196,6 +216,14 @@ true:
   keep all 24 of their elements at each — but that fixture composes to about 2,860 bytes,
   so the lane caps bind before the byte ceiling does; on a store whose lanes fill the
   ceiling, the compose-budget difference is what the lanes give up, never past an eighth.
+
+- **The "Last here" line (2026-09-30)** is a candidate in the same reserve: per directory,
+  each of its rungs (every session of that day, the newest with a count, the newest alone)
+  on its own and beside each of the directory's handoff rungs, as delivery tries them. At
+  delivery it is the FIRST thing given up: every handoff rung is tried with each last-here
+  rung, then the handoff rungs alone, and only then the line alone (the handoff dropped,
+  `no-room` written as before). With no chapter here the ladder is the handoff's, rung for
+  rung.
 
 So the order of who gives up bytes, stated plainly: **above the share rule's threshold the
 pointer is paid for first, out of the compose budget, by whatever lane the trim order
@@ -255,3 +283,9 @@ does not log its own refusal) · **§13 G3** (one ask at the blocked moment).
 7. **Should an expired row be archived rather than left to the prune?** Today it sits live
    and unread for the 90 lived days `D_FLOOR_DAYS` asks for. That is correct and it is also
    a row `list()` walks for three months after it stopped mattering.
+8. **Should "Last here" leave a durable row?** It writes a ring event only
+   (`counterpart.lasthere.shown`), so the fired view cannot see it fire. A `handoff.shown`
+   twin is the obvious shape if the owner wants to watch it; left out to keep it light.
+9. **Claude Desktop chats are never "last here".** The join is the buffer's turn-ends, and
+   a Desktop chat has no hook to record any. A chapter written there could carry its place
+   on the row (`origin_scope`), which an episode does not set today.

@@ -248,7 +248,8 @@ room for more than one. What was built, and the choices the brief left open:
   in one case: a narrow block in one directory is now reserved for when a wider one
   elsewhere fails the share, where before the wider one turned the reserve off for both.
   The ceiling constant grew from 448 to 1,408 because the widest block grew (1,389 measured
-  once the door named `retireHandoff`); the share rule is what binds in practice (at 9,000,
+  once the door named `retireHandoff`; 1,448 since §9's "written up to" words, measured
+  1,431); the share rule is what binds in practice (at 9,000,
   nothing past 1,125). Measured with sixty identity elements, one handoff against three:
   a reserve of 487 against 735 bytes at 6,000 (the share rule binds), 487 against 855 at
   7,000 and 9,000; all three carried, every wake keeping its 24 elements — a fixture whose
@@ -281,3 +282,46 @@ room for more than one. What was built, and the choices the brief left open:
 - **`dream/mind.ts` still reads one open loop per directory** (`newestPerScope`, now the
   newest across sessions). Showing every session's there is a question for the mind's own
   budget, not this change.
+
+## 9. "Last here", and how far the work since is written up (2026-09-30, the continuity test)
+
+Mike ended a ~/random session that had finished its work (notes, a chapter at 17:50,
+session_end memories, no handoff, as the Stop ask says), opened a new one two minutes later
+and asked what it remembered of the last session. Nothing pointed at the evening: the
+directory's pointer moves only for a handoff, and the one standing (another session's, from
+15:19) said "work here 16:01–17:53 since, not yet written up" with a chapter right there.
+The brief: `~/counterparts-notes/2026-09-30-continuity-brief.md`. What was built, and the
+choices it left open:
+
+- **Derived, not a row.** A chapter (`epi_`) records its session (`origin_session`, and
+  `meta.sessionId` on older rows) and no directory. Where a session ran is in the buffer's
+  turn-ends, `boundaries.jsonl`, which retention never strikes, so
+  `coverage/#sessionsHere` × `last-here.ts#chaptersBySession` is the join. No new row type,
+  no column and no write, and the chapters already on a store show the day this ships.
+  Stamping `origin_scope` on new episodes would make the join unnecessary for them; it was
+  not needed here.
+- **The session's time is its turn-ends here**, first to last, stretched to the chapter's
+  own write when that is later. Not the registry's start: core does not read the registry,
+  and the first Stop is within a turn of it.
+- **Several sessions here that day**: the newest with its first sentence, the one before by
+  title ("Before it: …"), the rest of that DAY by id ("+N more here on 09-30: …"). The day
+  rather than the fortnight, because ~/counterparts sees a dozen chaptered sessions a day,
+  and "+48 more" is noise. Older ones are still the newest when nothing newer exists.
+- **Its fortnight is the handoff's** (`LAST_HERE_LIFE_DAYS = HANDOFF_LIFE_DAYS`), read
+  off the latest chapter heading's lived day. It also bounds the boundary's walk.
+- **Who gives way.** The line rides the handoff reserve (§2, CONTRACT §6): each of its
+  three rungs per directory is a candidate alone and beside each handoff rung, and the
+  share rule takes the widest that passes. At delivery every handoff rung is tried with
+  each last-here rung before any handoff rung alone, and the line alone only after that:
+  a shorter "Last here" beats none, and unfinished work beats orientation.
+- **Splitting `handoff.shown`'s cost** still reads the handoff rung's own lines; the
+  last-here line's bytes (its length and one newline) come off the total first.
+- **"Written up to 17:50 (chapter), 3 pieces after."** `workSince` now returns the latest
+  claim on the work since (`CoverageMark.at`) and what made it, read off the claim's
+  prefix (`writerOf`: a memory, a chapter, "nothing new", a write-up). "Not yet written up"
+  only when no claim stands on any of it; "after" when every unwritten piece is later than
+  that claim, "not yet" when some are earlier (another session's, which a claim never
+  covers — claims are per session).
+- **Not built**: a durable row for the line (CONTRACT §8 question 8), Desktop chats
+  (question 9), and a human session name (question 6 still holds: the line prints the
+  short id and the model, as the handoff does).
