@@ -290,10 +290,43 @@ at. Then it:
     removes them and checks the plugin wakes on the same store;
 11. uninstalls the plugin and checks `~/.counterparts` is intact.
 
-So the loop tests the working tree, never the release the pin names. Last run: 20/20
-on 2.1.295.
+Along the way it also checks that the sidebar's hooks module loads, `/counterparts:doctor`
+is registered, and the server lists its tools.
+
+So the loop tests the working tree, never the release the pin names. Last run: 23/23
+on 2.1.296 (2026-10-11).
 
 It never logs in. A model turn needs a login, and the loop copies no credential.
+
+`tools/plugin-loop/run.sh --bundle [workdir]` runs the same loop on the generated bundle
+(below) instead of the working tree, and also checks that the installed copy stays inside
+the directory's file limit with no tests or module docs. Last run: 24/24 on 2.1.296
+(2026-10-11).
+
+## The bundle (for Anthropic's directory)
+
+The directory reads the plugin folder, and here that folder is the whole repository: 800+
+files against a limit of 512, with tests, docs and this repository's own `package.json`
+and `bun.lock`. So the plugin can also be generated as a folder of its own, for a
+repository whose root is the plugin (planned name: `mlapeter/counterparts-plugin`):
+
+```sh
+bun tools/plugin-bundle/build.ts <out-dir>     # or --list to print the file set
+```
+
+The file set is traced from what Claude Code reads (`plugin.json`, `hooks/hooks.json`,
+`commands/`) through the launcher and every import, and the dashboard's page from
+`app.html`; no tests, no module docs, no dev tooling. It generates `plugin.json` (this
+repository's, with the version from `package.json` and the directory listing fields), a
+`package.json` and `bun.lock` that name only `counterparts-model-potion` at an exact
+version (Claude Code installs it at plugin install), and a README with the disclosure
+below. It refuses symlinks, system files, a file over 5 MiB, or more than 512 files.
+`test/plugin-bundle.test.ts` holds those rules.
+
+To serve installs from the bundle repository, the marketplace entry's `repo` becomes
+`mlapeter/counterparts-plugin`, with the same `ref` (`v<version>`, tagged there). Nothing
+else in the entry changes, and the marketplace keeps its name, so the plugin's data
+directory (`counterparts-counterparts`) stays where it is.
 
 ## Manual checklist (needs a login or a GUI)
 
