@@ -3374,18 +3374,27 @@ export class Store {
    * only rows. A pinned memory's rows stay, as in `sweepEdges`. The caller
    * names the reasons; a decay archive is never one of them, so a memory that
    * comes back keeps its trails. Returns how many rows went.
+   *
+   * GRACE (reviewer of #423): only an end archived at least `graceMs` ago
+   * (`updated_at`, which the archive sets) is swept. The paths that archive
+   * for good carry the links in a second step (a regrown copy is archived,
+   * then retargeted; a merge's original likewise), and another process's
+   * flush landing between the two would otherwise delete rows not yet carried.
    */
-  sweepArchivedEdges(reasons: readonly string[]): number {
+  sweepArchivedEdges(reasons: readonly string[], graceMs = 0): number {
     if (reasons.length === 0) return 0;
     const marks = reasons.map(() => "?").join(", ");
+    const cutoff = this.nowFn() - Math.max(0, graceMs);
     const n = this.mutate("sweepArchivedEdges", () => {
       const doomed = this.ops.all<{ src: string; dst: string }>(
         `SELECT e.src, e.dst FROM edges e
           WHERE EXISTS (SELECT 1 FROM memories m
-                         WHERE m.id IN (e.src, e.dst) AND m.archived = 1 AND m.archived_reason IN (${marks}))
+                         WHERE m.id IN (e.src, e.dst) AND m.archived = 1 AND m.archived_reason IN (${marks})
+                           AND COALESCE(m.updated_at, 0) <= ?)
             AND NOT EXISTS (SELECT 1 FROM memories m
                              WHERE m.id IN (e.src, e.dst) AND m.protected = 1)`,
         ...reasons,
+        cutoff,
       );
       if (doomed.length === 0) return 0;
       const st = this.ops.prepare("DELETE FROM edges WHERE src = ? AND dst = ?");

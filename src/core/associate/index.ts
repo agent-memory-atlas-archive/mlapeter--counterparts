@@ -80,7 +80,7 @@ export interface AssociateStore {
    * (2026-10-11, `TERMINAL_ARCHIVE_REASONS`). Optional, like the sweep: a
    * store without it keeps those rows, which conduct nothing either way.
    */
-  sweepArchivedEdges?(reasons: readonly string[]): number;
+  sweepArchivedEdges?(reasons: readonly string[], graceMs?: number): number;
 }
 
 /**
@@ -94,6 +94,14 @@ export interface AssociateStore {
  * undo brings it back — sweeping it would drop them.
  */
 export const TERMINAL_ARCHIVE_REASONS: readonly string[] = ["episode-regrown", "dream-merge"];
+
+/**
+ * How long ago such an end must have been archived before its rows go
+ * (reviewer of #423, 2026-10-11): both paths archive first and carry the
+ * links a moment later, so a flush from another process in between must not
+ * take rows still to be carried. Ten minutes is far beyond that moment.
+ */
+export const TERMINAL_ARCHIVE_GRACE_MS = 10 * 60_000;
 
 /** Telemetry: ids, counts, weights, reasons. NEVER body text or turn text. */
 export interface AssociateEvent {
@@ -559,7 +567,7 @@ export class Associate {
     }
     if (this.store.sweepArchivedEdges !== undefined) {
       try {
-        archived = this.store.sweepArchivedEdges(TERMINAL_ARCHIVE_REASONS);
+        archived = this.store.sweepArchivedEdges(TERMINAL_ARCHIVE_REASONS, TERMINAL_ARCHIVE_GRACE_MS);
       } catch (err) {
         this.emit("associate.sweep.failed", undefined, { day, error: codeOf(err), archived: true });
       }

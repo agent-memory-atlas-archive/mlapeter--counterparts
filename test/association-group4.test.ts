@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Counterpart } from "../src/core/counterpart.js";
-import { TUNABLES as ASSOCIATE_TUNABLES, TERMINAL_ARCHIVE_REASONS, planAtWrite } from "../src/core/associate/index.js";
+import { TUNABLES as ASSOCIATE_TUNABLES, TERMINAL_ARCHIVE_GRACE_MS, TERMINAL_ARCHIVE_REASONS, planAtWrite } from "../src/core/associate/index.js";
 import { DREAM_MERGE_REASON } from "../src/core/dream/index.js";
 import { EPISODE_REGROWN_REASON } from "../src/core/leaving.js";
 import { ASKED_KIND, activate, askedTurn, freshGateState, loadGateState, saveGateState, withTunables as withRecallTunables } from "../src/core/recall/index.js";
@@ -337,6 +337,7 @@ describe("5. rows with an endpoint archived for good are swept (review 06 C3)", 
     c.store.archive(ends["decayed"]!, "pruned");
     c.store.archive(ends["corrected"]!, "corrected");
     c.store.archive(ends["pinned"]!, EPISODE_REGROWN_REASON);
+    clock.now += TERMINAL_ARCHIVE_GRACE_MS + 1;
     // Any flush sweeps: here, a co-use the boundary lands.
     c.associate.absorb([{ a: hub, b: ends["live"]!, delta: 0.1 }]);
     const report = c.associate.flush();
@@ -370,11 +371,49 @@ describe("5. rows with an endpoint archived for good are swept (review 06 C3)", 
     const merged = out.results[0]?.id as string;
     expect(c.associate.linked(merged, friend)).toBe(true);
     // A flush sweeps the originals' rows: they are archived for good.
+    clock.now += TERMINAL_ARCHIVE_GRACE_MS + 1;
     c.associate.absorb([{ a: merged, b: friend, delta: 0.01 }]);
     expect(c.associate.flush().sweptArchived).toBeGreaterThan(0);
     expect(c.store.edgesFrom(a)).toEqual([]);
     expect(c.dreams.undo(begun.bundle.dream).ok).toBe(true);
     for (const x of [a, b]) expect(c.associate.linked(x, friend)).toBe(true);
+  });
+
+  test("a flush landing between the archive and the carry takes nothing: the carry still finds every row (both reasons)", async () => {
+    for (const reason of [EPISODE_REGROWN_REASON, DREAM_MERGE_REASON]) {
+      const clock = { now: Date.UTC(2026, 8, 1, 9) };
+      const c = brainAt(clock);
+      c.store.advanceClock("2026-09-01");
+      const friend = memoryIn(c, "s0", `A memory linked to the one being replaced (${reason}).`);
+      const old = memoryIn(c, "s0", `The copy that is replaced (${reason}).`);
+      const successor = memoryIn(c, "s0", `What replaces it (${reason}).`);
+      const day = c.store.livedDay();
+      c.store.linkMany([
+        { src: old, dst: friend, weight: 0.2, day },
+        { src: friend, dst: old, weight: 0.2, day },
+      ]);
+      // The path's first step: archived (a merge folds it in; a regrown copy is archived).
+      if (reason === DREAM_MERGE_REASON) c.store.supersedeInto(old, successor, reason);
+      else c.store.archive(old, reason);
+      // Another process's boundary flushes before the second step.
+      c.associate.absorb([{ a: friend, b: successor, delta: 0.01 }]);
+      expect(c.associate.flush().sweptArchived ?? 0).toBe(0);
+      expect(c.store.edgesFrom(old).length).toBe(1);
+      // The second step: the carry.
+      c.associate.retargetOnSupersede(old, successor, day);
+      expect(c.associate.weightAt(successor, friend, day)).toBeGreaterThanOrEqual(0.2 - 1e-9);
+      // Past the grace, the next flush sweeps what is now an inert copy.
+      clock.now += TERMINAL_ARCHIVE_GRACE_MS + 1;
+      c.associate.absorb([{ a: friend, b: successor, delta: 0.01 }]);
+      expect(c.associate.flush().sweptArchived).toBeGreaterThanOrEqual(2);
+      expect(c.store.edgesFrom(old)).toEqual([]);
+      expect(c.associate.linked(successor, friend)).toBe(true);
+      c.close();
+      brains.splice(0);
+      rmSync(dir, { recursive: true, force: true });
+      dir = mkdtempSync(join(tmpdir(), "counterparts-group4-"));
+      process.env[ENV] = dir;
+    }
   });
 });
 
