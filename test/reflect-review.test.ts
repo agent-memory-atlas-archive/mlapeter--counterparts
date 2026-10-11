@@ -831,3 +831,82 @@ describe("owner rulings on the review's decisions", () => {
     expect(record).toMatchObject({ lane: "slow", reflectionOnly: true });
   });
 });
+
+// ---------------------------------------------------------------------------
+// B1 after D6 (review of #403): the nights cannot feed a marked gist to the core
+// ---------------------------------------------------------------------------
+
+describe("B1 after D6 (review of #403): a gist marked owner by its sources cannot ride the nights into the core", () => {
+  /** A dream today that wrote one gist from an owner memory and an unmarked one. */
+  function ownerGist(c: Counterpart): { dream: string; gist: string; owner: string } {
+    nextDay(c);
+    for (let i = 0; i < 3; i += 1) nextDay(c);
+    const owner = mem(c, "Mike takes the early ferry on weekdays and thinks on the crossing.", { kind: "person", about: "owner", aboutBy: "owner" });
+    const plain = mem(c, "The ferry terminal has a cafe with decent coffee.");
+    const begun = c.dreams.begin({ session: SESSION });
+    if (!begun.ok) throw new Error(`dream refused: ${begun.reason}`);
+    const g = c.dreams.propose({
+      dream: begun.bundle.dream,
+      session: SESSION,
+      changes: [{ action: "gist", kind: "person", text: "The crossing is where Mike does his thinking.", sources: [plain, owner] }],
+    });
+    if (!g.ok || g.results[0]?.ok !== true) throw new Error("gist refused");
+    c.dreams.journal({ dream: begun.bundle.dream, session: SESSION, text: "I dreamed of the ferry." });
+    return { dream: begun.bundle.dream, gist: g.results[0].id as string, owner };
+  }
+
+  test("30 nights of dreams and reflections citing, returning, feeling and marking it leave it out of the core", () => {
+    const c = brain();
+    const d = ownerGist(c);
+    expect(c.store.row(d.gist)).toMatchObject({ about: "owner", about_by: "owner", source: "dreamed" });
+    let shownNights = 0;
+    for (let night = 0; night < 30; night += 1) {
+      let dreamId: string | null = d.dream;
+      if (night > 0) {
+        nextDay(c);
+        mem(c, `A fresh memory about the ferry, night ${String(night)}.`);
+        const b = c.dreams.begin({ session: SESSION });
+        dreamId = b.ok ? b.bundle.dream : null;
+        if (b.ok) {
+          if (Object.keys(b.bundle.memories).includes(d.gist)) {
+            const p = c.dreams.propose({
+              dream: b.bundle.dream,
+              session: SESSION,
+              changes: [
+                { action: "replayed", id: d.gist },
+                { action: "feeling-now", id: d.gist, core: "happy", emotion: "proud", strength: 0.9 },
+              ],
+            });
+            if (p.ok) expect(p.results[0]?.ok).toBe(false);
+          }
+          c.dreams.journal({ dream: b.bundle.dream, session: SESSION, text: `Night ${String(night)}.` });
+        }
+      }
+      const begun = c.reflections.begin({ session: SESSION, ...(dreamId === null ? {} : { dream: dreamId }) });
+      if (!begun.ok) continue;
+      const shown = Object.keys(begun.bundle.memories).includes(d.gist);
+      if (shown) shownNights += 1;
+      const done = c.reflections.finish({
+        reflection: begun.bundle.reflection,
+        session: SESSION,
+        entry: "The crossing is where Mike does his thinking.",
+        cites: [d.gist, d.owner],
+        share: { text: "I've been thinking about the ferry.", cites: [d.gist] },
+        feelings: [{ id: d.gist, core: "happy", emotion: "proud", strength: 0.9 }],
+        about: [{ id: d.gist, about: "me" }],
+      });
+      if (!done.ok) throw new Error(String(done.reason));
+      if (shown) {
+        expect(done.outcome.returned.find((r) => r.id === d.gist)).toMatchObject({ counted: false, reason: "dreamed-rises-only-awake" });
+        expect(done.outcome.feelings[0]?.ok).toBe(false);
+        expect(done.outcome.about[0]?.ok).toBe(false);
+      }
+      if (night % 5 === 4) expect(sleepNow(c).promoted.map((p) => p.id)).not.toContain(d.gist);
+    }
+    expect(shownNights).toBeGreaterThan(0);
+    expect(c.store.physicsOf(d.gist).returnDays ?? 0).toBe(0);
+    expect(c.store.feelingsFor(d.gist).filter((f) => f.strength > 0)).toEqual([]);
+    expect(sleepNow(c).promoted.map((p) => p.id)).not.toContain(d.gist);
+    expect(c.store.row(d.gist)).toMatchObject({ promoted_identity: 0, about: "owner" });
+  });
+});

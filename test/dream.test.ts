@@ -619,25 +619,48 @@ describe("merge inherits: about, and the old-claims era", () => {
 });
 
 // ---------------------------------------------------------------------------
-// a gist takes no mark from its sources: held until D6 (2026-10-11)
+// a gist keeps a personal mark from its sources (D6 closed by Mike, 2026-10-11)
 // ---------------------------------------------------------------------------
 
-describe("gist marks: held until D6", () => {
-  test("a gist over owner and work memories comes out unmarked, its claim the cap, with no era standing", () => {
-    const c = brain();
+describe("gist marks: a personal mark among its sources wins (D6 closed)", () => {
+  /** One gist per group of sources, all in one dream; the gists' ids, in order. */
+  function gists(c: Counterpart, groups: Partial<PutInput>[][]): string[] {
     lived(c);
     const day = c.store.livedDay();
-    const sources = [{ about: "work" as const }, { about: "owner" as const, aboutBy: "owner" as const }].map((s, n) =>
-      mem(c, `They take the early ferry on weekdays, note ${String(n)}.`, { ...s, physics: { birthDay: day, lastUsedDay: day } }),
-    );
+    let n = 0;
+    const ids = groups.map((specs) => specs.map((s) => mem(c, `They take the early ferry on weekdays, note ${String(n++)}.`, { ...s, physics: { birthDay: day, lastUsedDay: day } })));
     const { id: d } = begin(c);
-    const out = c.dreams.propose({ dream: d, session: SESSION, changes: [{ action: "gist", text: "The early ferry is their weekday habit.", sources }] });
+    const out = c.dreams.propose({ dream: d, session: SESSION, changes: ids.map((sources) => ({ action: "gist", text: "The early ferry is their weekday habit.", sources })) });
     if (!out.ok) throw new Error(`propose refused: ${out.reason}`);
-    expect(out.results[0]).toMatchObject({ ok: true, reason: "dreamed" });
-    const g = out.results[0]!.id as string;
-    expect(c.store.row(g)).toMatchObject({ about: null, about_by: null, source: "dreamed" });
+    for (const r of out.results) expect(r).toMatchObject({ ok: true, reason: "dreamed" });
+    return out.results.map((r) => r.id as string);
+  }
+
+  test("over work and owner memories it is the owner's, its setter kept; its claim stays the cap, with no era standing", () => {
+    const c = brain();
+    const [g] = gists(c, [[{ about: "work" }, { about: "owner", aboutBy: "owner" }]]) as [string];
+    expect(c.store.row(g)).toMatchObject({ about: "owner", about_by: "owner", source: "dreamed" });
     expect(c.store.physicsOf(g).salience.claimed).toBe(PHYSICS.DREAMED_CLAIM_CEILING);
     expect(c.store.readProse(g).meta[ERA_WRITTEN_AT_META]).toBeUndefined();
+    expect(c.store.readProse(g).meta[CLAIMED_DEFAULT_META_KEY]).toBeUndefined();
+  });
+
+  test("over work memories it is work; over an unmarked and an us memory, us; over unmarked ones, unmarked", () => {
+    const c = brain();
+    const [work, us, plain] = gists(c, [[{ about: "work" }, { about: "work" }], [{}, { about: "us", aboutBy: "writer" }], [{}, {}]]) as [string, string, string];
+    expect(c.store.row(work)?.about).toBe("work");
+    expect(c.store.row(us)).toMatchObject({ about: "us", about_by: "writer" });
+    expect(c.store.physicsOf(us).salience.claimed).toBe(PHYSICS.DREAMED_CLAIM_CEILING);
+    expect(c.store.readProse(us).meta[ERA_WRITTEN_AT_META]).toBeUndefined();
+    expect(c.store.row(plain)?.about ?? null).toBeNull();
+  });
+
+  test("over a confidential owner memory it is the owner's and as confidential as its source (review of #403)", () => {
+    // The owner's own dream: only that one is shown a confidential memory.
+    const c = Counterpart.open({ dir, owner: true, bundlesAsOwner: true, identity: { name: "Mike" }, now: () => Date.now() + offsetMs });
+    open.push(c);
+    const [g] = gists(c, [[{}, { about: "owner", aboutBy: "owner", meta: { confidential: true } }]]) as [string];
+    expect(c.store.row(g)).toMatchObject({ about: "owner", confidential: 1, source: "dreamed" });
   });
 });
 
