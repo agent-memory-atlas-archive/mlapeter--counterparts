@@ -396,6 +396,17 @@ row, saying which source answered, existed until the keys were removed — §1a.
     or the nightly run's (the store's own directory). The wake itself is ASSEMBLED at
     delivery from reads (self CONTRACT §5 G1): no model, no network, no state written.
 
+    **AND, AT A PROMPT, WHAT CHANGED SINCE (2026-10-11).** A session already open
+    never reads a wake again, so `userPromptSubmit` may add one "Since you started"
+    line for the model (`Lifecycle#sinceLine` → `Counterpart#sinceElsewhere`): another
+    directory's session started or ended, a chapter, new memories, since this session
+    last heard. The same gate as "Today, elsewhere" (`elsewhereGate`, one code path)
+    and the same registry hand-over (`elsewhereHere`). At most once an hour, never at
+    the first prompt after a wake; the state is the session record's `sinceSeen`
+    (host state, no store change). It takes only what recall left of its budget and,
+    with no room, waits a prompt. Reads only; nothing under observer or for the
+    nightly run.
+
 19. **[M] A directory set `off` gets NO OUTPUT AND NO WRITE — because nothing is
     constructed.** The scope registry (`adapters/scopes.ts`,
     `<config dir>/scopes.json`, longest-prefix, added 2026-09-10 for owner asks

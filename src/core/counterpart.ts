@@ -141,8 +141,8 @@ import {
 } from "./handoff/index.js";
 import type { Handoff, HandoffRefusal, HandoffWrite, PointerSince } from "./handoff/index.js";
 import { CLAIM_CHAPTER, askFromStretch, chapterClaims, claimUnwritten, sessionStretch, sessionsHere, workSince } from "./coverage/index.js";
-import { LAST_HERE_LIFE_DAYS, LAST_HERE_NOROOM_EVENT, chaptersBySession, chaptersHere, chaptersOn, elsewhereLine, lastHereLadder, todayElsewhereLines, yesterdayLine, yesterdayShorter } from "./handoff/last-here.js";
-import type { ChapterHere, LastHere, TodayElsewhere } from "./handoff/last-here.js";
+import { LAST_HERE_LIFE_DAYS, LAST_HERE_NOROOM_EVENT, chaptersBySession, chaptersHere, chaptersOn, elsewhereLine, lastHereLadder, sinceElsewhereLines, todayElsewhereLines, yesterdayLine, yesterdayShorter } from "./handoff/last-here.js";
+import type { ChapterHere, LastHere, SinceElsewhere, TodayElsewhere } from "./handoff/last-here.js";
 import { addDays, isDay, localStamp, localStampAfter, startOfLocalDay } from "./time.js";
 import type { Recurrence } from "./time.js";
 import { EPISODE_REGROWN_REASON, leftAs } from "./leaving.js";
@@ -1051,6 +1051,9 @@ export interface WakeSession {
   readonly startedAt: number;
   readonly lastAt: number;
   readonly live: boolean;
+  /** When the host closed it, epoch ms; null or absent while it has not
+   *  (the "Since you started" line's "ended", 2026-10-11). */
+  readonly endedAt?: number | null;
 }
 
 /**
@@ -2212,34 +2215,17 @@ export class Counterpart {
    * Empty when there is nothing to say; never throws.
    */
   private elsewhereFor(at: string, here?: WakeHere): { elsewhere?: string; elsewhereShorter?: string[] } {
-    const exportsFrom = here?.exportsFrom;
-    if (exportsFrom === undefined) return {};
+    const gate = this.elsewhereGate(here);
+    if (gate === null) return {};
     try {
-      const norm = (scope: string): string => scope.trim().replace(/\/+$/, "");
-      const own = norm(here?.scope ?? "");
-      const reader = here?.session ?? null;
+      const { named, reader } = gate;
       const zone = this.store.zone();
       const since = startOfLocalDay(at, zone);
       const until = startOfLocalDay(addDays(at, 1), zone);
-      const allowed = new Map<string, boolean>();
-      const named = (scope: string): boolean => {
-        const key = norm(scope);
-        if (key.length === 0 || key === own || key === norm(this.store.dir)) return false;
-        let open = allowed.get(key);
-        if (open === undefined) {
-          try {
-            open = exportsFrom(scope) === true;
-          } catch {
-            open = false;
-          }
-          allowed.set(key, open);
-        }
-        return open;
-      };
       type Dir = { scope: string; firstAt: number | null; lastAt: number | null; live: boolean; chapter: ChapterHere | null; memories: number };
       const dirs = new Map<string, Dir>();
       const dirOf = (scope: string): Dir => {
-        const key = norm(scope);
+        const key = gate.norm(scope);
         let d = dirs.get(key);
         if (d === undefined) {
           d = { scope: key, firstAt: null, lastAt: null, live: false, chapter: null, memories: 0 };
@@ -2262,12 +2248,10 @@ export class Counterpart {
       // the chapters "Last here" names in this directory set aside, as that
       // line sets them aside (`lastHereLadder`) — is not named twice.
       const hereIds = new Set(this.chaptersHereFor(here?.scope ?? "", reader, chapters).map((f) => f.chapter.id));
-      const aboutMe = this.selfChapterElsewhere(chapters, hereIds, reader, exportsFrom);
+      const aboutMe = this.selfChapterElsewhere(chapters, hereIds, reader, here?.exportsFrom);
       for (const c of chapters.values()) {
         if (c.scope === null || c.writtenAt < since || c.writtenAt >= until || hereIds.has(c.id)) continue;
-        if (c.confidential === true || c.aboutMe !== true || c.id === aboutMe?.id) continue;
-        if (reader !== null && c.session === reader) continue;
-        if (!named(c.scope)) continue;
+        if (c.id === aboutMe?.id || !gate.crosses(c)) continue;
         const d = dirOf(c.scope);
         if (d.chapter === null || d.chapter.writtenAt < c.writtenAt) d.chapter = c;
       }
@@ -2276,6 +2260,115 @@ export class Counterpart {
       return lines.shorter.length === 0 ? { elsewhere: lines.line } : { elsewhere: lines.line, elsewhereShorter: lines.shorter };
     } catch {
       return {};
+    }
+  }
+
+  /**
+   * THE ONE GATE FOR BOTH ELSEWHERE LINES — "Today, elsewhere" in the wake and
+   * "Since you started" at a prompt (2026-10-11: one gate, so the two cannot
+   * drift apart). Null with no way to ask the host's scope setting: then
+   * nothing crosses.
+   *   - `named`: a directory is named only when the scope setting lets its
+   *     chapters be named elsewhere (`exportsFrom`); this session's own
+   *     directory and the nightly run's (the store's own) never are.
+   *   - `crosses`: a chapter's title only on the "About me, from another
+   *     directory" line's gate — not confidential, a copy marked about me, us
+   *     or the owner, not the reader's own, from a directory `named` lets
+   *     through.
+   * Memories cross as COUNTS only (confidential ones to the owner only); the
+   * callers read no work memory's title, no word of a span and no handoff.
+   */
+  private elsewhereGate(here?: WakeHere): {
+    named(scope: string): boolean;
+    crosses(c: ChapterHere): boolean;
+    norm(scope: string): string;
+    reader: string | null;
+  } | null {
+    const exportsFrom = here?.exportsFrom;
+    if (exportsFrom === undefined) return null;
+    const norm = (scope: string): string => scope.trim().replace(/\/+$/, "");
+    const own = norm(here?.scope ?? "");
+    const reader = here?.session ?? null;
+    const allowed = new Map<string, boolean>();
+    const named = (scope: string): boolean => {
+      const key = norm(scope);
+      if (key.length === 0 || key === own || key === norm(this.store.dir)) return false;
+      let open = allowed.get(key);
+      if (open === undefined) {
+        try {
+          open = exportsFrom(scope) === true;
+        } catch {
+          open = false;
+        }
+        allowed.set(key, open);
+      }
+      return open;
+    };
+    const crosses = (c: ChapterHere): boolean => {
+      if (c.scope === null || c.confidential === true || c.aboutMe !== true) return false;
+      if (reader !== null && c.session === reader) return false;
+      return named(c.scope);
+    };
+    return { named, crosses, norm, reader };
+  }
+
+  /**
+   * THE "SINCE YOU STARTED" LINE (2026-10-11; option C of the fresh-wake
+   * brief, which Mike approved 2026-10-10): for a session already open in
+   * `here.scope`, what changed in the other directories inside `window` —
+   * from when it last heard (its wake, or the last such line) until now: a
+   * session there that started and is still open, one that ended, a chapter,
+   * and how many memories. A directory where only time passed is not named.
+   *
+   * The same gate as "Today, elsewhere" (`elsewhereGate`), and the same reads:
+   * the host's registry, the store's counts, the fortnight's chapter walk.
+   * Reads only — no model, no embedding, no write. Both ends of the window are
+   * the CALLER's, so the hook's clock decides. The line and its shorter forms
+   * (`handoff/last-here.ts#sinceElsewhereLines`), or null when there is
+   * nothing to say; never throws.
+   */
+  sinceElsewhere(
+    window: { readonly since: number; readonly until: number; readonly started: boolean },
+    here: WakeHere,
+  ): { line: string; shorter: string[] } | null {
+    const gate = this.elsewhereGate(here);
+    if (gate === null || !(window.until > window.since)) return null;
+    try {
+      const { named, reader } = gate;
+      const { since, until } = window;
+      type Dir = { scope: string; startedAt: number | null; live: boolean; endedAt: number | null; chapter: ChapterHere | null; memories: number };
+      const dirs = new Map<string, Dir>();
+      const dirOf = (scope: string): Dir => {
+        const key = gate.norm(scope);
+        let d = dirs.get(key);
+        if (d === undefined) {
+          d = { scope: key, startedAt: null, live: false, endedAt: null, chapter: null, memories: 0 };
+          dirs.set(key, d);
+        }
+        return d;
+      };
+      for (const s of here.sessions?.() ?? []) {
+        if (s.session === reader || s.startedAt >= until || !named(s.scope)) continue;
+        const ended = s.endedAt ?? null;
+        const startedSince = s.live && s.startedAt >= since;
+        const endedSince = ended !== null && ended >= since && ended < until;
+        if (!startedSince && !endedSince && !s.live) continue;
+        const d = dirOf(s.scope);
+        d.live = d.live || s.live;
+        if (startedSince) d.startedAt = Math.max(d.startedAt ?? 0, s.startedAt);
+        if (endedSince) d.endedAt = Math.max(d.endedAt ?? 0, ended);
+      }
+      for (const { scope, count } of this.store.memoryCountsByScopeSince(since, { confidential: this.owner })) {
+        if (named(scope)) dirOf(scope).memories = count;
+      }
+      for (const c of this.chaptersInWindow(this.store.livedDay()).values()) {
+        if (c.scope === null || c.writtenAt < since || c.writtenAt >= until || !gate.crosses(c)) continue;
+        const d = dirOf(c.scope);
+        if (d.chapter === null || d.chapter.writtenAt < c.writtenAt) d.chapter = c;
+      }
+      return sinceElsewhereLines([...dirs.values()] as SinceElsewhere[], { at: since, started: window.started, now: until }, this.store.zone());
+    } catch {
+      return null;
     }
   }
 
