@@ -16,6 +16,7 @@ The repository root is the plugin. Claude Code reads four things from it:
 | `.claude-plugin/marketplace.json` | A one-plugin marketplace, so `mlapeter/counterparts` can be added as a marketplace. Its entry names this repository on GitHub at a release tag, not master (below, "Releases only") |
 | `hooks/hooks.json` | The five events `counterparts install` wires: SessionStart, UserPromptSubmit, Stop, SessionEnd, PreCompact; and, under `"modules"`, the sidebar mod (`hooks/sidebar/`, see its `NOTES.md`) |
 | `commands/doctor.md` | `/counterparts:doctor`, because a plugin install puts no `counterparts` on PATH |
+| `commands/dashboard.md` | `/counterparts:dashboard`, for the same reason: `counterparts dashboard`, as a background task of the session |
 
 Every hook and the server run `sh ${CLAUDE_PLUGIN_ROOT}/src/adapters/plugin-run.sh hook|mcp`.
 That launcher finds a runtime (below) and runs the same entry points the npm bins run.

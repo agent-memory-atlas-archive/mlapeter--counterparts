@@ -12,7 +12,9 @@
  * where the build differs and why.
  *
  * Where things come from:
- *   - the dashboard (`counterparts dashboard`, http://localhost:4747), read
+ *   - the dashboard (`counterparts dashboard`, or `/counterparts:dashboard`
+ *     for a plugin install; http://localhost:4747, or the port
+ *     `COUNTERPARTS_DASHBOARD_PORT` names, as core reads it), read
  *     only: day and count (`/api/pulse`), times fired today
  *     (`/api/mechanisms`), the last dream (`/api/dreams`), a memory opened in
  *     place (`/api/memory?id=`), a mechanism's firings (`/api/mechanism?id=`),
@@ -77,7 +79,17 @@ import {
   wrap,
 } from './feed'
 import type { DashDream, DashEvent, Firing, RecallBlock } from './feed'
-import { DASHBOARD, MECHS, hex, mechById, memoryUrl, stageOf } from './mechanisms'
+import {
+  MECHS,
+  dashboardBase,
+  dashboardPort,
+  dashboardRoutes,
+  hex,
+  isDashboardUrl,
+  mechById,
+  memoryUrl,
+  stageOf,
+} from './mechanisms'
 import type { MechId } from './mechanisms'
 import { lookup, parentOf, parseRegistry, settingsHookConfig } from './scopes'
 import type { RegistryMode } from './scopes'
@@ -224,6 +236,8 @@ const run = {
   lastPollAt: 0,
   lastSeq: -1,
   server: null as string | null,
+  /** The dashboard's port, read once (`dashPort`). */
+  port: null as number | null,
   liveSeq: 0,
   /** An unasked pane this surface could not place yet: the tail says `/counterparts opens the sidebar` until it draws. */
   hint: false,
@@ -454,8 +468,25 @@ function memoryMeta(d: { kind?: unknown; learnedOn?: unknown; journal?: unknown 
 
 // ── the engine, through `$` ────────────────────────────────────────────────
 
+/** The dashboard's port, as core's server picks it when no `--port` is given (`mechanisms.ts#dashboardPort`). */
+async function dashPort($: EngineInterface): Promise<number> {
+  if (run.port !== null) return run.port
+  let raw: string | undefined
+  try {
+    raw = await $.env.get('COUNTERPARTS_DASHBOARD_PORT')
+  } catch {
+    raw = undefined
+  }
+  run.port = dashboardPort(raw)
+  return run.port
+}
+
+async function dashUrl($: EngineInterface): Promise<string> {
+  return dashboardBase(await dashPort($))
+}
+
 async function fetchJson($: EngineInterface, path: string): Promise<unknown> {
-  const r = await $.http.fetch(`${DASHBOARD}${path}`)
+  const r = await $.http.fetch(`${await dashUrl($)}${path}`)
   if (!r.ok) throw new Error(`the dashboard answered ${String(r.status)}`)
   return JSON.parse(r.text) as unknown
 }
@@ -980,7 +1011,7 @@ async function clickBody($: EngineInterface, key: string): Promise<void> {
   // The `more` that ends a cut text: the one click that opens the dashboard, on that memory.
   if (key.startsWith('more:')) {
     const id = key.slice(5)
-    if (/^mem_[A-Za-z0-9]+$/.test(id)) await openUrl($, memoryUrl(id))
+    if (/^mem_[A-Za-z0-9]+$/.test(id)) await openUrl($, memoryUrl(id, await dashUrl($)))
     return
   }
   if (key.startsWith('head:')) {
@@ -1505,9 +1536,6 @@ async function opener($: EngineInterface): Promise<readonly string[]> {
   return run.opener
 }
 
-/** The only links the sidebar opens: the dashboard's, in a strict character set. */
-const SAFE_URL = /^http:\/\/localhost:4747\/[A-Za-z0-9#?=/_.~-]*$/
-
 /**
  * A plain click opens the dashboard in the browser (an OSC 8 link opens only
  * on ⌘-click in iTerm2). A new tab each time: no browser lets a page bring an
@@ -1515,7 +1543,8 @@ const SAFE_URL = /^http:\/\/localhost:4747\/[A-Za-z0-9#?=/_.~-]*$/
  * tab from here (AppleScript) needs an automation permission (NOTES).
  */
 async function openUrl($: EngineInterface, url: string): Promise<void> {
-  if (!SAFE_URL.test(url)) return
+  // The only links the sidebar opens: the dashboard's, on localhost and the port it read (`isDashboardUrl`).
+  if (!isDashboardUrl(url, await dashPort($))) return
   try {
     const argv = await opener($)
     const r = await $.process.run([...argv, url], { timeoutMs: 10000 })
@@ -1523,6 +1552,11 @@ async function openUrl($: EngineInterface, url: string): Promise<void> {
   } catch {
     $.ui.toast(`counterparts: couldn't open ${url}`)
   }
+}
+
+/** A dashboard page (`/`, `/#memories`), on the port the sidebar read. */
+async function openDashboard($: EngineInterface, path: string): Promise<void> {
+  await openUrl($, `${await dashUrl($)}${path}`)
 }
 
 // ── hooks ───────────────────────────────────────────────────────────────────
@@ -1770,7 +1804,7 @@ export const register: Register = on => {
       </Box>
     )
     const titleButton = (lead: boolean) => (
-      <Button key="title" plain onPress={() => openUrl($, `${DASHBOARD}/`)}>
+      <Button key="title" plain onPress={() => openDashboard($, '/')}>
         {lead ? <Text color={lit === null ? CYAN_DIM : litDot(lit)}>◉ </Text> : ''}
         <Text color={paused ? P.dim : P.cyan} bold>COUNTERPARTS</Text>
         {lead ? <Text color={CYAN_DIM}> ↗</Text> : ''}
@@ -1860,7 +1894,9 @@ export const register: Register = on => {
     // ── the body: the five sections, folded to the room left ──
     const footRows = 4
     const bodyRows = Math.max(4, fill - used - above.length - footRows)
-    const { lines } = layoutBody({ w, rows: bodyRows, now, mind, saved, today, dream: dreamNow, open, mech, focus, dash, search })
+    // Down, the chart names how THIS install starts the dashboard: which memory server the session connected says.
+    const routes = dashboardRoutes(dash === 'down' ? await memoryServer($) : run.server)
+    const { lines } = layoutBody({ w, rows: bodyRows, now, mind, saved, today, dream: dreamNow, open, mech, focus, dash, routes, search })
     if (Client !== null) {
       rows.push(<Client key="body" module="./body.tsx" width={w} props={{ lines } satisfies BodyProps} />)
     } else {
