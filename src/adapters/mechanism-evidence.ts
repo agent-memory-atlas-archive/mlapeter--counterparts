@@ -229,7 +229,10 @@ export const MECHANISM_EVIDENCE: readonly MechanismEvidence[] = [
     vitalAfter: { livedDays: 14, others: 20 },
     proofs: [
       { key: "links", event: "associate.flush", sum: "deposited", says: ["link laid", "links laid"] },
-      { key: "replayed", event: "dream.begun", sum: "replayLinks", stands: dreamStands, says: ["faint link a dream's replay laid", "faint links a dream's replay laid"] },
+      // Counted even when the dream is undone (reviewer of #423): an undo
+      // takes back what the dreamer chose, not the replay, so the trails stay
+      // in the graph and the count says what is there.
+      { key: "replayed", event: "dream.begun", sum: "replayLinks", says: ["faint link a dream's replay laid", "faint links a dream's replay laid"] },
       { key: "reached", event: "recall.decision", sum: "linksReached", says: ["memory a link brought to mind", "memories links brought to mind"] },
     ],
   },

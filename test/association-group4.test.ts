@@ -307,6 +307,21 @@ describe("3. replay deposits (review 06 C2)", () => {
     expect(c.dreams.begin({ session: "night" }).ok).toBe(true);
     for (const f of fresh) expect(c.associate.weightAt(f, old, day)).toBeCloseTo(0.3, 10);
   });
+
+  test("undoing the dream leaves the replay's trails, and the evidence still counts them", () => {
+    const clock = { now: Date.UTC(2026, 4, 30, 22) };
+    const c = brainAt(clock);
+    const { old, fresh } = night(c);
+    const out = c.dreams.begin({ session: "night" });
+    if (!out.ok) throw new Error("begin refused");
+    const linked = fresh.filter((f) => c.associate.linked(f, old));
+    expect(linked.length).toBeGreaterThan(0);
+    expect(c.dreams.undo(out.bundle.dream).ok).toBe(true);
+    for (const f of linked) expect(c.associate.linked(f, old)).toBe(true);
+    const day = c.store.livedDay();
+    const v = mechanismEvidence(c.store, { sinceDay: day - 6, today: day }).verdicts.find((x) => x.id === "association")!;
+    expect(v.parts.find((p) => p.key === "replayed")?.count).toBeGreaterThan(0);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
