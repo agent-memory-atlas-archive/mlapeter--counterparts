@@ -54,7 +54,7 @@ each version with what changed from the one before it).
 LOOKING is observer mode by construction (`docs/observer-mode.md`): every view strengthens
 nothing, deposits nothing, resolves no references, and a test asserts the adapter's own
 code holds no write handle to any canonical store. **[A]** MANAGING is the owner's own act
-and is not artificially limited: an action the CLI offers (note, remove, backup, export,
+and is not artificially limited: an action the CLI offers (note, remove, about, backup, export,
 scope, rebrief, …) may be offered here, run through the CLI's own door — the same code and
 the same checks — never through the observer source; a destructive one asks the owner to
 confirm. For now `install`, `uninstall` and `start-fresh` stay terminal-only. A known limit, not solved here: the page and its action token are served to anything that can reach the loopback port, so on a machine shared with other OS users another local user could manage this memory, not only read it. **[M]** Render-time id resolution everywhere; no memory body text is
