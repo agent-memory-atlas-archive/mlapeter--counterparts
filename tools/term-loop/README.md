@@ -25,7 +25,7 @@ from npm.
 # memories and saves to show (the sidebar reads them from the dashboard, read only)
 COUNTERPARTS_SIDEBAR_SESSION=<session id> bun tools/term-loop/shoot.ts --plugin-dir <dir> \
   shot:full click:Forgetting shot:mechanism 'cmd:/counterparts brain off' shot:no-brain \
-  'cmd:/counterparts brain turning' 'cmd:/counterparts strip' shot:strip 'cmd:/counterparts quiet' shot:quiet
+  'cmd:/counterparts brain turning' 'cmd:/counterparts quiet' shot:quiet
 
 # a switch hovered, a search typed (not run)
 bun tools/term-loop/shoot.ts --plugin-dir <dir> \
@@ -85,7 +85,7 @@ Things learned driving it (2026-10-10, Claude Code 2.1.296):
   `term-loop-<pid>-<time>` per run, at `--size`.
 - `claude --plugin-dir <dir> --settings '{"tui":"fullscreen"}'`: the
   fullscreen layout, where the sidebar opens by itself. If the sidebar was
-  stored closed (v0.1's hidden, v0.2's strip or quiet), the run opens it with
+  stored closed (v0.1's hidden, v0.2's quiet, or the dropped strip), the run opens it with
   `/counterparts` first (and puts the view back at the end); that path hasn't
   run live yet, since the store has held the sidebar throughout.
 - **`--permission-mode default`**, so the session asks before any tool: a
@@ -157,8 +157,8 @@ The sessions are real Claude Code sessions with his own login and settings.
 - **His sidebar preferences.** A `--plugin-dir` plugin's `$.store` is
   `~/.claude/plugins/store/<name>_inline-<12 hex of sha256("<name>@inline")>.json`
   (`counterparts_inline-41db9a71a546.json`), shared by every folder copy named
-  `counterparts`, his own trial copy included. So `/counterparts quiet` or
-  `strip` (or `brain off`) in a run would make his next session open that way.
+  `counterparts`, his own trial copy included. So `/counterparts quiet`
+  (or `brain off`) in a run would make his next session open that way.
   The run reads that file before it starts (read only), and before the session
   ends puts back whatever differs, through the mod: first the Claude memory
   switch ("Claude memory" in v0.2's footer, "Claude Code's own memory" in
@@ -241,7 +241,7 @@ window's edge), and his window is shorter, so his pane has fewer rows.
 
 Judge: layout and alignment, wrapping and cutting, spacing, the colours of
 text and stage dots against the `#05080c` panel, contrast, the brain's shape
-and region colours, how each view (sidebar, strip, quiet, hovered, focused)
+and region colours, how each view (sidebar, quiet, hovered, focused)
 reads. Use the full `<name>.png` for what sits outside the pane: the lines
 under the prompt (the quiet view's dim tail, a paused folder's amber line), and how wide the dock
 is beside the transcript.

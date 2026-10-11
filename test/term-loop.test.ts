@@ -356,7 +356,9 @@ describe('steps and the keyboard guard', () => {
     expect(viewOf({})).toBe('open');
     // a run that left it in the strip, or quiet, is put back with the mod's commands
     expect(restorePlan(owner, { ...owner, view: 'strip' }).cmds).toEqual(['/counterparts']);
-    expect(restorePlan({ view: 'strip' }, { view: 'sidebar' }).cmds).toEqual(['/counterparts strip']);
+    // a stored strip (dropped 2026-10-10) is quiet to the mod: put back as quiet, and quiet over it is no change
+    expect(restorePlan({ view: 'strip' }, { view: 'sidebar' }).cmds).toEqual(['/counterparts quiet']);
+    expect(restorePlan({ view: 'strip' }, { view: 'quiet' }).cmds).toEqual([]);
     expect(restorePlan({ view: 'quiet' }, { view: 'sidebar' }).cmds).toEqual(['/counterparts quiet']);
     // the brain: turning unless set
     expect(restorePlan(owner, { ...owner, brain: 'off' }).cmds).toEqual(['/counterparts brain turning']);

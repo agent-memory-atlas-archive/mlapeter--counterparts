@@ -301,13 +301,14 @@ export const MEMORY_SWITCH_LABELS = ['Claude memory', "Claude Code's own memory"
  * The stored view, by what it means across the mod's versions: `open` (the
  * pane: v0.1's `full`, v0.2's `sidebar`, or nothing stored; v0.1 read `rail`
  * as full too), `quiet` (v0.1: a narrow pane; v0.2: no pane, the dim tail),
- * `hidden` (v0.1's closed pane), `strip` (v0.2: one line above the prompt).
- * Compared by meaning, so a v0.2 run that writes `sidebar` over a stored
- * `full` changes nothing.
+ * `hidden` (v0.1's closed pane). v0.2's first `strip` (one line above the
+ * prompt, dropped 2026-10-10) reads as quiet, as the mod reads it: a run that
+ * leaves `quiet` over a stored `strip` changes nothing. Compared by meaning,
+ * so a v0.2 run that writes `sidebar` over a stored `full` changes nothing.
  */
-export function viewOf(p: Prefs | null): 'open' | 'quiet' | 'hidden' | 'strip' {
+export function viewOf(p: Prefs | null): 'open' | 'quiet' | 'hidden' {
   const v = p?.view;
-  return v === 'quiet' || v === 'hidden' || v === 'strip' ? v : 'open';
+  return v === 'strip' ? 'quiet' : v === 'quiet' || v === 'hidden' ? v : 'open';
 }
 
 /** The brain's stored mode (v0.2): `turning` unless set. */

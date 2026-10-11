@@ -698,7 +698,7 @@ async function main(): Promise<void> {
       return l.kb.focus === 'empty' || l.kb.focus === 'pane';
     }, o.timeoutMs);
     // the pane opens by itself unless the person left it closed: v0.1's hidden,
-    // v0.2's strip or quiet (v0.1's quiet was a narrow pane; opened full here
+    // v0.2's quiet (v0.1's quiet was a narrow pane; opened full here
     // all the same, and put back at the end)
     if (viewOf(before) !== 'open') {
       console.log(`  the sidebar is stored ${viewOf(before)}: opening it with /counterparts (put back at the end)`);
