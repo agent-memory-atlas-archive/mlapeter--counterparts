@@ -91,25 +91,33 @@ export const TUNABLES = {
    *  turn ceiling below holds. */
   NIGHT_WRITE_UP_BATCH_PARTS: 16,
   /**
-   * THE SANITY CEILING, parts a run, against runaway cost — not a pacer
-   * (decided by the catch-up builder, 2026-10-11, lightly held). A part costs
-   * about 7k tokens of new work (its ~5k tokens of words written to the cache,
-   * the memories it writes, a share of each child's start) and two tool calls,
-   * so 400 parts is about 2.8M tokens and 800 calls: roughly 11× the nightly
-   * run's measured baseline (246k new work, 20 calls, 2026-10-10). A typical
-   * morning owes 20–40 parts, under one baseline night. A heavy day owed in
-   * full is about 200 parts (on 10-11, 30 pieces of one session were 16
-   * parts; 10-10 had 404 pieces), so this is about twice that. What is left
-   * stays owed and the row says how much.
+   * THE SANITY CEILINGS, parts a run, against runaway cost — not pacers. A
+   * part costs about 7k tokens of new work (its ~5k tokens of words written to
+   * the cache, the memories it writes, a share of each child's start) and two
+   * tool calls; the nightly run's measured baseline is 246k new work and 20
+   * calls (2026-10-10). A typical morning owes 20–40 parts; a heavy day owed
+   * in full is about 200 (on 10-11, 30 pieces of one session were 16 parts;
+   * 10-10 had 404 pieces).
+   *
+   * THE NIGHT'S (decided by Mike, 2026-10-11, lightly held; it was 400): 100
+   * parts is about 700k tokens and 200 calls, roughly 3× the baseline, so a
+   * typical morning clears in one night and a heavy day takes two. What is
+   * left stays owed for the next night, and the row says how much.
    */
-  NIGHT_WRITE_UP_PARTS: 400,
+  NIGHT_WRITE_UP_PARTS: 100,
+  /** ...and `counterparts catch-up`'s, which the owner runs on purpose
+   *  (decided by Mike, 2026-10-11, lightly held): 400 parts, about 2.8M
+   *  tokens and 800 calls, roughly 11× the baseline — about twice a heavy
+   *  day. What is left stays owed: run it again, or the nights take it. */
+  CATCH_UP_COMMAND_PARTS: 400,
   /** One child's watchdog, ms — inside `WRITE_UP_CLAIM_MS`, so its claims
    *  outlive it. A batch measured 4–8 s a part on 2026-10-11. */
   NIGHT_WRITE_UP_MS: 10 * 60_000,
-  /** THE WHOLE RUN'S WATCHDOG, ms: no child starts that could end past it.
-   *  400 parts at the measured 4–8 s is 27–53 minutes. The night's row carries
-   *  it from the start (`night-run.ts#nightRowTimeoutMs`), so a long catch-up is
-   *  never read as a lost run. */
+  /** THE WHOLE RUN'S WATCHDOG, ms, the night's and the command's alike: no
+   *  child starts that could end past it. The command's 400 parts at the
+   *  measured 4–8 s is 27–53 minutes; the night's 100 is 7–13. The night's
+   *  row carries it from the start (`night-run.ts#nightRowTimeoutMs`), so a
+   *  long catch-up is never read as a lost run. */
   NIGHT_WRITE_UP_TOTAL_MS: 60 * 60_000,
   /** One child's turn ceiling: two calls a part for the most parts a child
    *  takes (2 × 16), and 16 more — room to look a tool up and for the odd

@@ -835,9 +835,10 @@ write-up a person's conversation left (`sessions.ts#pointable`), oldest stretch 
 BATCHES — each a fresh child, so no context grows with the morning — of at most
 `NIGHT_WRITE_UP_BYTES` (192 KB, whole parts; the first part always) and
 `NIGHT_WRITE_UP_BATCH_PARTS` (16). There is no session bound. The run stops when nothing is
-owed, when a child ends short, at the sanity ceiling `NIGHT_WRITE_UP_PARTS` (400 parts a
-run, about 11× the measured nightly baseline in new-work tokens; a heavy day owed in full is
-about 200) or before a child could outlast `NIGHT_WRITE_UP_TOTAL_MS` (an hour). Each batch's
+owed, when a child ends short, at the sanity ceiling — `NIGHT_WRITE_UP_PARTS` for the night
+(100 parts, about 3× the measured nightly baseline in new-work tokens, so a heavy day owed in
+full, about 200 parts, takes two nights), `CATCH_UP_COMMAND_PARTS` for the command (400, about
+11×; Mike, 2026-10-11, lightly held) — or before a child could outlast `NIGHT_WRITE_UP_TOTAL_MS` (an hour). Each batch's
 runner is a session id of its own, `writeup-<run>` then `writeup-<run>-2`, …: the
 launcher writes the grant on the runner's record (`grantWriteUps`) and claims every subject
 (`WriteUpProgress.claim`, with `upTo` the last part allowed that batch) before a SECOND

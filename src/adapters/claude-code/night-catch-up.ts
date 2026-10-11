@@ -35,7 +35,8 @@
  * the last part the door serves that child; the next batch goes on from there,
  * under a runner of its own (`writeup-<run>-2`, …). The run stops when nothing
  * is owed, when a child ends short, at the sanity ceiling
- * (`NIGHT_WRITE_UP_PARTS`) or before a child could outlast the run's watchdog
+ * (`NIGHT_WRITE_UP_PARTS` a night, `CATCH_UP_COMMAND_PARTS` for the command)
+ * or before a child could outlast the run's watchdog
  * (`NIGHT_WRITE_UP_TOTAL_MS`). What it wrote and what it left — sessions AND
  * parts — is one durable row (`NIGHT_WRITE_UP_EVENT`), and a line in the
  * process log.
@@ -452,7 +453,8 @@ export interface CatchUpInput {
   readonly plan: (input: { prompt: string; runner: string }) => ChildPlan & { readonly ok: boolean; readonly reason: string };
   readonly start: (plan: ChildPlan) => Promise<ChildResult>;
   readonly now: () => number;
-  /** The run's sanity ceiling, parts; absent, `NIGHT_WRITE_UP_PARTS`. */
+  /** The run's sanity ceiling, parts: the night's `NIGHT_WRITE_UP_PARTS`,
+   *  the command's `CATCH_UP_COMMAND_PARTS`; absent, the night's. */
   readonly parts?: number;
   /** The run's watchdog, ms; absent, `NIGHT_WRITE_UP_TOTAL_MS`. */
   readonly totalMs?: number;
