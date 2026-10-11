@@ -386,7 +386,7 @@ test('Mechanisms today: times each fired today, from the dashboard; a zero dim w
   }
 })
 
-test('a mechanism that fired today but whose rows the panel’s lookback missed: its own rows are read deeper, so it names what it was about', async ($, on) => {
+test('a mechanism that fired today but names fewer than three in the panel (its lookback, its merged repeats): its own rows are read deeper', async ($, on) => {
   const was = FIRED_TODAY.emotional ?? null
   FIRED_TODAY.emotional = 1
   try {

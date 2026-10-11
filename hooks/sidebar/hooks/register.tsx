@@ -927,10 +927,12 @@ async function openMech($: EngineInterface, id: MechId): Promise<void> {
       ? (((await fetchJson($, '/api/dreams?limit=3').catch(() => null)) as { dreams?: DashDream[] } | null)?.dreams ?? [])
       : []
     let firings = mechFirings(activity, id, dreams, 8)
-    // The panel looks back 200 rows an event name: a mechanism whose rows are sparse among them (Emotion's
-    // mood-matched recalls, 2026-10-10: the first of today's 27 was the 321st decision) fired today and names
-    // nothing there. Read its own rows deeper, as today's counts do, rather than say "nothing lately".
-    if (firings.length === 0 && ((await read($, todayA))?.counts[id] ?? 0) > 0) firings = await deeperFirings($, id)
+    // The panel shows four lines, its repeats merged into one (Salience's deposits all narrate alike, so one
+    // memory), from 200 rows an event name (Emotion's mood-matched recalls are sparse: the first of today's 27
+    // was the 321st decision, 2026-10-10). A mechanism that fired today and names fewer than three there reads
+    // its own rows deeper, as today's counts do.
+    const want = Math.min(3, (await read($, todayA))?.counts[id] ?? 0)
+    if (firings.length < want) firings = await deeperFirings($, id, activity, dreams, want)
     const ids = [...new Set(firings.flatMap(firingIds))]
     const read1 = await Promise.all(ids.map(async x => [x, await memoryTitle($, x)] as const))
     const titles: Record<string, string> = {}
@@ -949,19 +951,23 @@ async function openMech($: EngineInterface, id: MechId): Promise<void> {
 const NAMES_NOTHING = new Set(['mcp.recall', 'associate.flush', 'contradiction.flagged', 'sleep.cycle', 'dream.journaled', 'dream.changed'])
 
 /**
- * A mechanism's firings from its own event rows (`/api/activity?name=`, reads),
- * FALLBACK_LIMIT first, twice as deep while nothing among them names a memory,
- * to at most FALLBACK_MAX: only on a click, only when the panel named nothing.
+ * A mechanism's firings from the panel's rows and its own (`/api/activity?name=`,
+ * reads), FALLBACK_LIMIT first, twice as deep while fewer than `want` name a
+ * memory, to at most FALLBACK_MAX: only on a click, only when the panel named
+ * fewer than that.
  */
-async function deeperFirings($: EngineInterface, id: MechId): Promise<Firing[]> {
+async function deeperFirings($: EngineInterface, id: MechId, panel: readonly DashEvent[], dreams: readonly DashDream[], want: number): Promise<Firing[]> {
   const names = [...new Set(RULES.filter(r => r.mech === id && !NAMES_NOTHING.has(r.name)).map(r => r.name))]
-  if (names.length === 0) return []
+  let firings = mechFirings(panel, id, dreams, 8)
+  if (names.length === 0) return firings
   for (let limit = FALLBACK_LIMIT; ; limit *= 2) {
     const answers = await Promise.all(
       names.map(n => fetchJson($, `/api/activity?name=${encodeURIComponent(n)}&limit=${String(limit)}`).then(a => (a as { events?: DashEvent[] }).events ?? [], () => [] as DashEvent[])),
     )
-    const firings = mechFirings(answers.flat(), id, [], 8)
-    if (firings.length > 0 || answers.every(a => a.length < limit) || limit * 2 > FALLBACK_MAX) return firings
+    const seen = new Set<number>()
+    const rows = [...panel, ...answers.flat()].filter(e => (seen.has(e.seq) ? false : (seen.add(e.seq), true)))
+    firings = mechFirings(rows, id, dreams, 8)
+    if (firings.length >= want || answers.every(a => a.length < limit) || limit * 2 > FALLBACK_MAX) return firings
   }
 }
 
