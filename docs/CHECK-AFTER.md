@@ -40,6 +40,18 @@ or the CLI's read commands (`counterparts mechanisms --dir …`, `counterparts d
 - **Changes a decision if:** a reminder for something still pending is archived → its date was wrong, or the
   hold needs to key on "done" rather than on the date.
 
+### Expected on the live store until 0.3.18: personal memories at the old 0.25 default go below reach
+- **Look at:** owner/us memories below reach after the first new-curve pass (preview on a copy: 18, all at the
+  old 0.25 default, mostly learned 10-08..10-10).
+- **Why:** the live store runs 0.3.17, where the old-claims era only reads explicit claims DOWN; reading old
+  DEFAULT claims at today's default (owner/us/me → 0.40, Mike 10-11) is #395, which ships in 0.3.18. Below reach
+  is not archived: asking still finds them, and the 0.3.18 re-curve lifts them back. NOT a regression.
+- **Changes a decision if:** they're still below reach after 0.3.18 is installed and has had one pass → the era's
+  default reading isn't applying: a bug.
+- **Version facts, checked with git:** 0.3.17 (v0.3.17 @7c0d2f59) HAS the dated hold without the spent slope
+  (`afterHold: "own-curve"`) and drewOn's `repScale`; it does NOT have #395 (old defaults at today's default),
+  #398/#400 (merge and revision inherit about/era), #403 (gist marks), or catch-up (#401).
+
 ## Due 2026-10-14 (the check-in, reminder mem_8a53c5d0bc95)
 
 ### The tax deadline shows under Arriving on 10-13 and 10-14
@@ -96,6 +108,32 @@ or the CLI's read commands (`counterparts mechanisms --dir …`, `counterparts d
   which was worked out from part sizes, never measured from a catch-up transcript.
 - **Changes a decision if:** the real cost per part is far above the estimate → lower the night's cap
   (`NIGHT_WRITE_UP_PARTS`), and look again at the command's.
+
+## Due 1 lived day after the verbatim trial ships
+
+### Verbatim in the memory's body: first look
+- **Look at:** the bench 76-question slice (counterparts-07) for meaning-search blur on long bodies: do memories
+  holding a long verbatim block still come back for questions about their gist? And on the live store, any
+  memory written with a list or a table since the ship (a facts line ending "(a list, N items; read whole by
+  id)" finds them): did it come back whole by id, and was it findable by what it is, whose, when?
+- **Why:** Mike's trial (2026-10-11, very lightly held): `remember` and `session_end` now ask for a list, a
+  table or a pasted text whose specifics matter word for word in the body, with the search words in the title
+  and the first line. The body is stored and read whole, but the meaning vector is made from the title and the
+  body's first ~3,072 characters (at most 512 tokens; a numbered list reaches 512 tokens sooner), so the rest
+  of a long block is reached by words only. Also watch: a facts answer saying "near-duplicates … left out"
+  over two lists that were different (since the review of #409, a list or a table is compared by its lines,
+  not its word set; two near-identical versions of one list still fold, and the older may be the one shown).
+- **Changes a decision if:** long bodies blur meaning search, or real lists don't come back whole and findable
+  → move to an attachments table (Mike's long-run lean), with the memory holding the context and keywords
+  that find the attachment.
+
+## Due ~4 lived days after the verbatim trial ships
+
+### Verbatim in the memory's body: second look, and decide
+- **Look at:** the same as the first look, on the days since: the bench slice again if anything changed, and
+  every live memory written with a list, a table or a pasted text.
+- **Changes a decision if:** decide the trial → keep it, or → attachments (a table of the blocks, the memory
+  holding the context and keywords that find one). Record the call in `docs/IMPROVEMENTS.md`.
 
 ## Ongoing (first two weeks)
 

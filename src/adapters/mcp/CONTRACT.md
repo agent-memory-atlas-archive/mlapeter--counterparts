@@ -455,6 +455,10 @@ confidential one outside the owner's session), the two ids to settle with, and
 `HELD_HINT`, the neighbours' ask said for this case. The held memory is not listed again
 among the neighbours. Nothing else about the reply changes: the memory is stored.
 
+**[M] A neighbour a later memory settled over is marked** (2026-10-11): `standing:
+"earlier (now mem_…)"`, before its title (`recall/standing.ts#headOf`, `earlierMark`) — or
+left out when the memory that holds now is already in view or is not this writer's to see.
+
 ## 6c. Re-feeling while awake (2026-10-02, lane B)
 
 **[M]** `note` takes `feelingsNow`: how memories this session was shown feel now, recorded

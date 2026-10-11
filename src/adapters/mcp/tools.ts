@@ -595,7 +595,7 @@ const REMEMBER: ToolSpec = {
       text: {
         type: "string",
         description:
-          "One thing to remember, in your own words — with the exact quote, number or name when the words matter. Required unless `settle`, `feelingsNow` or `remark` is sent.",
+          "One thing to remember, in your own words — with the exact quote, number or name when the words matter. A list, a table or a pasted text whose specifics matter: keep it here word for word, not summarized, and put the words someone would search for (what it is, whose, when) in the title and the first line. Required unless `settle`, `feelingsNow` or `remark` is sent.",
       },
       updates: {
         type: "string",
@@ -982,7 +982,8 @@ const SESSION_END: ToolSpec = {
           properties: {
             content: {
               type: "string",
-              description: "One thing, in your own words — with the exact quote, number or name when the words matter.",
+              description:
+                "One thing, in your own words — with the exact quote, number or name when the words matter. A list, a table or a pasted text whose specifics matter: keep it here word for word, not summarized, and put the words someone would search for (what it is, whose, when) in the title and the first line.",
             },
             kind: {
               type: "string",
