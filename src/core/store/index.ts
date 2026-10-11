@@ -1170,6 +1170,10 @@ export class Store {
       const hold = rollbackHeld(this.dir);
       if (hold !== null) {
         const h = hold === "unreadable" ? null : hold;
+        // No database under the hold: the rollback stopped before its copy
+        // went in. The older version is NOT the way on there (it has no hold
+        // to read, and would start a blank store); `--undo` is.
+        const halfway = !existsSync(join(this.dir, DATABASE_FILE));
         throw new StoreError("STORE_ROLLED_BACK", {
           dir: this.dir,
           from: h?.from ?? null,
@@ -1177,11 +1181,15 @@ export class Store {
           at: h === null ? null : isoInstant(h.at),
           snapshot: h?.snapshot ?? null,
           aside: h?.aside ?? null,
-          remedy:
-            `This store was rolled back${h === null ? "" : ` to schema v${h.to}`} with counterparts rollback, ` +
-            "so this build leaves it alone: install the version you went back to, or run " +
-            `counterparts rollback --dir ${this.dir} --upgrade-again to upgrade it again ` +
-            "(or --undo to put the newer store back).",
+          halfway,
+          remedy: halfway
+            ? "A rollback of this store stopped before its copy went in, so there is no database here and the " +
+              `newer store is set aside${h === null ? "" : ` in ${h.aside}`}. Run counterparts rollback --dir ${this.dir} --undo ` +
+              "to put it back. Don't install the older version first: it would start a blank store here."
+            : `This store was rolled back${h === null ? "" : ` to schema v${h.to}`} with counterparts rollback, ` +
+              "so this build leaves it alone: install the version you went back to, or run " +
+              `counterparts rollback --dir ${this.dir} --upgrade-again to upgrade it again ` +
+              "(or --undo to put the newer store back).",
         });
       }
     }

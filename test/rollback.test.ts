@@ -12,7 +12,7 @@
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -291,6 +291,61 @@ describe("rollback", () => {
     expect(db.query("SELECT value FROM meta WHERE key = 'test.older-build-wrote'").get()).not.toBeNull();
     db.close();
     Store.open({ dir }).close();
+  });
+
+  test("a rollback killed before its copy went in: doctor says so, --upgrade-again refuses, --undo puts the newer store back whole", async () => {
+    const { after } = upgradedStore();
+    expect((await cli(["rollback", "--dir", dir, "--yes"])).code).toBe(EXIT.ok);
+    const aside = asideDir();
+    // The ground a kill between "set aside" and "rename the copy into place"
+    // leaves: the hold, the copy under its temporary name, no database — and,
+    // killed one rename earlier still, the newer store's -wal not yet moved.
+    const tmp = join(dir, `${DATABASE_FILE}.rollback-99999`);
+    renameSync(paths.operational(dir), tmp);
+    const walLeft = existsSync(join(aside, `${DATABASE_FILE}-wal`));
+    if (walLeft) renameSync(join(aside, `${DATABASE_FILE}-wal`), `${paths.operational(dir)}-wal`);
+    expect(existsSync(paths.operational(dir))).toBe(false);
+
+    // This build still refuses the store, and its words are not "install the older version".
+    let caught: unknown = null;
+    try {
+      Store.open({ dir, observer: true }).close();
+    } catch (err) {
+      caught = err;
+    }
+    expect(isStoreError(caught, "STORE_ROLLED_BACK")).toBe(true);
+    expect(describeFault(caught).reason).toContain("rollback --undo");
+    expect(existsSync(paths.operational(dir))).toBe(false);
+
+    const doc = await cli(["doctor", "--dir", dir]);
+    expect(doc.out).toContain("stopped before its copy went in");
+    expect(doc.out).toContain("--undo");
+    expect(doc.out).not.toContain("Run: counterparts install");
+
+    // Past the hold, an open with no database would mint a blank store. Refused.
+    const allow = await cli(["rollback", "--dir", dir, "--upgrade-again"]);
+    expect(allow.code).toBe(EXIT.refused);
+    expect(allow.err).toContain("rollback --undo");
+    expect(existsSync(paths.operational(dir))).toBe(false);
+    expect(existsSync(rollbackHoldPath(dir))).toBe(true);
+
+    // Rolling back again points at --undo, not at "nothing to roll back".
+    const again = await cli(["rollback", "--dir", dir, "--yes"]);
+    expect(again.code).toBe(EXIT.refused);
+    expect(again.err).toContain("Use --undo");
+
+    const undo = await cli(["rollback", "--dir", dir, "--undo"]);
+    expect(undo.err).toBe("");
+    expect(undo.code).toBe(EXIT.ok);
+    const back = probe(paths.operational(dir));
+    expect(back.stamp).toBe(NEW);
+    expect(back.ids).toContain(after);
+    expect(existsSync(rollbackHoldPath(dir))).toBe(false);
+    // The temporary copy was a duplicate of the snapshot, which stays; the aside folder is gone.
+    expect(existsSync(tmp)).toBe(false);
+    expect(preMigrationCopies().length).toBe(1);
+    expect(existsSync(aside)).toBe(false);
+    expect(openInChild()).toEqual({ ok: true, code: null, migrated: false });
   });
 
   test("asks for the word at a terminal, refuses --yes there, and refuses a pipe without --yes", async () => {

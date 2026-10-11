@@ -191,6 +191,13 @@ function migrationReason(err: unknown): string | null {
   return typeof why === "string" && why.length > 0 ? `${why} (${base})` : base;
 }
 
+/** A rollback that stopped halfway is not "install that version": the older
+ *  version would start a blank store where the database is missing. */
+function rollbackReason(err: unknown): string | null {
+  if (!isStoreError(err, "STORE_ROLLED_BACK") || err.detail["halfway"] !== true) return null;
+  return "a rollback of this store stopped halfway; run counterparts rollback --undo, and don't install the older version first";
+}
+
 export function describeFault(err: unknown): StandDownFault {
   // TOTAL, and the reason is not theoretical politeness: this runs inside the
   // handler that exists so a hook never fails the host, and everything below
@@ -214,7 +221,13 @@ function readFault(err: unknown): StandDownFault {
   if (isStoreError(err)) {
     return {
       code: err.code,
-      reason: preRowsReason(err) ?? migrationReason(err) ?? sqliteReason(err) ?? PLAIN_WORDS[err.code] ?? OPEN_FAILED_WORDS,
+      reason:
+        preRowsReason(err) ??
+        migrationReason(err) ??
+        rollbackReason(err) ??
+        sqliteReason(err) ??
+        PLAIN_WORDS[err.code] ??
+        OPEN_FAILED_WORDS,
       kind,
     };
   }

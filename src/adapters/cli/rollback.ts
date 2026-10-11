@@ -95,6 +95,9 @@ export function clearRollbackHold(storeDir: string): void {
 export const ASIDE_PREFIX = "rollback-aside-v";
 const ASIDE_NAME_RE = /^rollback-aside-v[0-9A-Za-z]+-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/;
 
+/** `counterparts.sqlite.rollback-<pid>`: the copy, before it is renamed into place. */
+const TMP_INFIX = ".rollback-";
+
 /** The database and the sidecars SQLite keeps beside it, by exact name. */
 const DB_SUFFIXES = ["", "-wal", "-shm", "-journal"] as const;
 /** `cache.sqlite`, and its sidecars by prefix, inside `cache/`. */
@@ -326,16 +329,20 @@ export function planRollback(input: RollbackInput): RollbackPlan {
     }
   }
   const dbPath = join(storeDir, DATABASE_FILE);
-  if (!existsSync(dbPath)) return refuse(`refused: there is no store database at ${dbPath}, so there is nothing to roll back.`);
-
+  // The hold first: a rollback that stopped halfway leaves no database, and
+  // "nothing to roll back" would hide the way back.
   const hold = readRollbackHold(storeDir);
   if (hold !== null) {
     const when = hold === "unreadable" ? "" : ` on ${localDate(hold.at)}`;
     return refuse(
-      `refused: this store was already rolled back${when}, and its hold is still there. ` +
-        `Use --undo to put the newer store back, or --upgrade-again to let this version upgrade it again.`,
+      !existsSync(dbPath)
+        ? `refused: a rollback of this store${when} stopped before the copy went in, so there is no database here; ` +
+            `the newer store is whole in the folder it was set aside to. Use --undo to put it back.`
+        : `refused: this store was already rolled back${when}, and its hold is still there. ` +
+            `Use --undo to put the newer store back, or --upgrade-again to let this version upgrade it again.`,
     );
   }
+  if (!existsSync(dbPath)) return refuse(`refused: there is no store database at ${dbPath}, so there is nothing to roll back.`);
 
   const current = readStamp(dbPath);
   if (current !== String(SCHEMA_VERSION)) {
@@ -459,7 +466,10 @@ export interface RollbackOutcome {
  *
  * A failure before step 3 undoes 1 and 2 (they made only copies) and the store
  * is as it was. A failure after it leaves the hold, so nothing on this build
- * opens a half-restored store, and says what moved.
+ * opens a half-restored store, and says what moved. So does a kill between 3
+ * and 4: the hold holds a store with no database, doctor says so in red, and
+ * `--undo` puts the newer store back (`--upgrade-again` refuses: an open there
+ * would mint a blank store).
  */
 export function performRollback(plan: RollbackPlan, now: number, build: string | null): RollbackOutcome {
   if (plan.copy === null || plan.current === null || plan.snapshotsDir === null) {
@@ -467,7 +477,7 @@ export function performRollback(plan: RollbackPlan, now: number, build: string |
   }
   const storeDir = plan.storeDir;
   const dbPath = join(storeDir, DATABASE_FILE);
-  const tmp = join(storeDir, `${DATABASE_FILE}.rollback-${String(process.pid)}`);
+  const tmp = join(storeDir, `${DATABASE_FILE}${TMP_INFIX}${String(process.pid)}`);
   const done: string[] = [];
   let moved = false;
   try {
@@ -545,6 +555,9 @@ export function nextStepLines(plan: RollbackPlan, previous: string | null, cli: 
     `       bun add -g counterparts@${version}     (or: npm i -g counterparts@${version})`,
     `  3. ${cli} connect && ${cli} doctor`,
     "  4. if you use Claude Desktop: quit it, then run counterparts install --host claude-desktop",
+    "  With the Claude Code plugin instead: skip step 1, install the older version with bun or",
+    "  npm as in step 2, then run counterparts install. The plugin stands down once that wiring",
+    "  is live (it stays on this version, which leaves the store alone); uninstall it to tidy up.",
     "",
     "Until step 2, this version leaves the store alone: sessions on it stand down and say why.",
     "The search index went aside with the newer store; the first session on the older version",
@@ -590,9 +603,12 @@ export function planRollbackUndo(input: { storeDir: string; configPath: string; 
   if (asideGuard !== null) return refuse(asideGuard, hold);
   if (!existsSync(join(aside, DATABASE_FILE))) return refuse(`refused: ${aside} holds no store database to put back.`, hold);
 
+  // No database here: the rollback stopped before its copy went in (killed,
+  // or failed after the newer store moved). Nothing can have written to a
+  // store that is not there, so the way back is open whatever the hash says.
   const dbPath = join(storeDir, DATABASE_FILE);
+  if (!existsSync(dbPath)) return { storeDir, hold, refusal: null };
   const written =
-    !existsSync(dbPath) ||
     hold.restoredSha256 === null ||
     sha256File(dbPath) !== hold.restoredSha256 ||
     nonEmpty(`${dbPath}-wal`) ||
@@ -633,20 +649,45 @@ export function performRollbackUndo(plan: UndoPlan): RollbackOutcome {
   try {
     const snapshotDb = join(hold.snapshotsDir, hold.snapshot, DATABASE_FILE);
     const duplicate = existsSync(snapshotDb) && sha256File(snapshotDb) === hold.restoredSha256;
-    for (const suffix of DB_SUFFIXES) {
-      const path = `${dbPath}${suffix}`;
-      if (!existsSync(path)) continue;
-      if (duplicate) {
+    // No database here: the rollback stopped halfway, so whatever sits beside
+    // where it would be is the NEWER store's, not yet moved. It stays, and
+    // nothing is renamed over it (below).
+    if (existsSync(dbPath)) {
+      for (const suffix of DB_SUFFIXES) {
+        const path = `${dbPath}${suffix}`;
+        if (!existsSync(path)) continue;
+        if (duplicate) {
+          unlinkSync(path);
+          done.push(`removed ${path} (the same bytes are in ${snapshotDb})`);
+        } else {
+          renameSync(path, join(aside, `restored-${DATABASE_FILE}${suffix}`));
+          done.push(`moved ${path} -> ${join(aside, `restored-${DATABASE_FILE}${suffix}`)}`);
+        }
+      }
+    }
+    // The copy a rollback made under a temporary name and never renamed into
+    // place (`performRollback` step 1), by the same rule as the restored one.
+    for (const name of listOrEmpty(storeDir)) {
+      if (!name.startsWith(`${DATABASE_FILE}${TMP_INFIX}`)) continue;
+      const path = join(storeDir, name);
+      if (duplicate && sha256File(path) === hold.restoredSha256) {
         unlinkSync(path);
         done.push(`removed ${path} (the same bytes are in ${snapshotDb})`);
       } else {
-        renameSync(path, join(aside, `restored-${DATABASE_FILE}${suffix}`));
-        done.push(`moved ${path} -> ${join(aside, `restored-${DATABASE_FILE}${suffix}`)}`);
+        renameSync(path, join(aside, name));
+        done.push(`moved ${path} -> ${aside}`);
       }
     }
-    for (const suffix of DB_SUFFIXES) {
+    const coming = DB_SUFFIXES.filter((s) => existsSync(join(aside, `${DATABASE_FILE}${s}`)));
+    const clash = coming.find((s) => existsSync(`${dbPath}${s}`));
+    if (clash !== undefined) {
+      throw new Error(
+        `${dbPath}${clash} is there, and so is ${join(aside, `${DATABASE_FILE}${clash}`)}; ` +
+          "this will not put one over the other. Move one of them by hand",
+      );
+    }
+    for (const suffix of coming) {
       const from = join(aside, `${DATABASE_FILE}${suffix}`);
-      if (!existsSync(from)) continue;
       renameSync(from, `${dbPath}${suffix}`);
       done.push(`moved ${from} -> ${storeDir}`);
     }
@@ -682,6 +723,14 @@ export function upgradeAgain(input: {
   readonly snapshotsDir?: string;
   readonly timeZone?: string;
 }): { migration: MigrationNote | null } {
+  // Past the hold, an open with no database mints a blank store over a
+  // rollback that stopped halfway — the case the hold refuses for. Never.
+  if (!existsSync(join(input.storeDir, DATABASE_FILE))) {
+    throw new Error(
+      `there is no database at ${join(input.storeDir, DATABASE_FILE)}: the rollback stopped before its copy went in, ` +
+        "so there is nothing to upgrade. Run counterparts rollback --undo to put the newer store back",
+    );
+  }
   const store = Store.open({
     dir: input.storeDir,
     releaseRollbackHold: true,

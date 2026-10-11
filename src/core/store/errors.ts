@@ -156,7 +156,8 @@ export type StoreErrorCode =
    * hold (`rollback-hold.ts`), so this build opens it neither to upgrade it nor
    * to read it: a read would build this build's cache beside the old store.
    * Refused in `Store`'s constructor before anything is created or opened.
-   * `detail` carries `{ dir, from, to, at, snapshot, aside, remedy }`.
+   * `detail` carries `{ dir, from, to, at, snapshot, aside, halfway, remedy }`;
+   * `halfway` is a hold over no database (the rollback stopped before its copy went in).
    */
   | "STORE_ROLLED_BACK"
   | "SQLITE_UNAVAILABLE"

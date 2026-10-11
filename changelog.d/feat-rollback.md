@@ -8,4 +8,5 @@
   puts the upgraded store back if nothing has written to the restored one, and
   `--upgrade-again` lets this version upgrade it again from a fresh copy, so rolling back
   twice on one day no longer reuses the first copy. `counterparts doctor` shows a Rollback
-  line while a rollback is in place.
+  line while a rollback is in place. After a rollback, a later version leaves the store alone
+  too, until you run `counterparts rollback --upgrade-again` once on it.

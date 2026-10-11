@@ -122,7 +122,7 @@ import {
 import { TUNABLES, pageWriterMode, resolveEmbedder, withEmbedderDefault } from "../config.js";
 import type { EmbedderSource } from "../config.js";
 import { MODEL_FILE, STATIC_WEIGHTS_ENV, STATIC_WEIGHTS_PACKAGE, resolveStaticWeights } from "../../core/embed/static.js";
-import { heldExits, readRollbackHold, rollbackHeld } from "../../core/store/index.js";
+import { DATABASE_FILE, heldExits, readRollbackHold, rollbackHeld } from "../../core/store/index.js";
 // Retention's own reading and its own week, so the Raw transcripts line cannot
 // promise a different number from the job that does the deleting. READ-ONLY:
 // `remember/index.ts` re-exports the plan and the readers, never the deleter.
@@ -924,6 +924,8 @@ function configFindings(input: DoctorInput): Finding[] {
     out.push(
       behind !== undefined
         ? behindFinding(input.dir, behind)
+        : input.store === null && rollbackHalfway(input.dir)
+        ? halfwayMemoryFinding(input.dir)
         : input.store === null
         ? finding("store", "red", MEMORY_TITLE, `no store at ${tilde(input.dir)}`, "Check the path you gave --dir.", {
             dir: input.dir,
@@ -992,6 +994,8 @@ function configFindings(input: DoctorInput): Finding[] {
   const named = input.config.dataDir;
   if (input.store === null && input.open?.migration !== undefined) {
     out.push(behindFinding(input.dir, input.open.migration));
+  } else if (input.store === null && rollbackHalfway(input.dir)) {
+    out.push(halfwayMemoryFinding(input.dir));
   } else if (input.store === null) {
     out.push(
       finding("store", "red", MEMORY_TITLE, `no store at ${tilde(input.dir)}`, "Run: counterparts install, or name the store with --dir.", {
@@ -2247,6 +2251,22 @@ export function rollbackFindings(dir: string): Finding[] {
   const hold = readRollbackHold(dir);
   if (hold === null) return [];
   const release = `counterparts rollback --dir ${dir} --upgrade-again`;
+  // Stopped halfway: the newer store is set aside and the copy never went in.
+  // Red, and the older version must not come first — it has no hold to read
+  // and would start a blank store here.
+  if (rollbackHalfway(dir)) {
+    return [
+      finding(
+        "rollback",
+        "red",
+        "Rollback",
+        `a rollback stopped before its copy went in: there is no database in ${tilde(dir)}` +
+          (hold === "unreadable" ? "" : `; the newer store is whole in ${tilde(hold.aside)}`),
+        `Run: counterparts rollback --dir ${dir} --undo (it puts the newer store back as it was), then roll back again if you still mean to. Don't install the older version first: it would start a blank store here.`,
+        { dir, holds: true, halfway: true },
+      ),
+    ];
+  }
   if (hold === "unreadable") {
     return [
       finding(
@@ -2280,6 +2300,20 @@ export function rollbackFindings(dir: string): Finding[] {
           { dir, holds: false, from: hold.from, to: hold.to },
         ),
   ];
+}
+
+/** A rollback's hold over a store with no database: it stopped before its copy went in. */
+function rollbackHalfway(dir: string): boolean {
+  return readRollbackHold(dir) !== null && !existsSync(join(dir, DATABASE_FILE));
+}
+
+/** The Memory line for that store: it is not "no store", and `install` is not the fix. */
+function halfwayMemoryFinding(dir: string): Finding {
+  return finding("store", "red", MEMORY_TITLE, `no database at ${tilde(dir)}: a rollback stopped halfway (see Rollback)`, "", {
+    dir,
+    exists: false,
+    rolledBack: true,
+  });
 }
 
 function openFindings(reading: OpenReading): Finding[] {

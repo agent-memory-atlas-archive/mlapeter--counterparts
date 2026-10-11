@@ -2077,6 +2077,8 @@ function describeDirRefusal(err: unknown, dir?: string): string {
     describePreRowsRefusal(err, `Name a store with --dir <path>.`) ??
     preRowsInDisguise(err, dir) ??
     upgradePending(err) ??
+    // A rollback's hold: its remedy is the sentence, not the JSON around it.
+    (isStoreError(err, "STORE_ROLLED_BACK") && typeof err.detail["remedy"] === "string" ? err.detail["remedy"] : null) ??
     String((err as Error).message ?? err)
   );
 }
@@ -5918,6 +5920,10 @@ async function rollbackCommand(
       "Close every Claude Code session on it, quit Claude Desktop, stop the dashboard " +
         "(and wait for a background run to finish), then run this again. Nothing has changed.",
     );
+    io.err(
+      `A session that crashed or whose terminal was closed counts for ${String(Math.round(OPEN_WINDOW_MS / 60_000))} minutes after its last hook, ` +
+        "and a memory server only while its process runs, so a record left behind stops counting by itself.",
+    );
     return EXIT.refused;
   };
   const tz = zoneBeside(absolute);
@@ -5928,6 +5934,14 @@ async function rollbackCommand(
     const hold = isAbsolute(storeDir) ? readRollbackHold(absolute) : null;
     if (hold === null) {
       io.err(`refused: ${absolute} carries no rollback hold, so there is nothing to allow.`);
+      return EXIT.refused;
+    }
+    if (!existsSync(join(absolute, DATABASE_FILE))) {
+      io.err(
+        `refused: there is no database in ${absolute}: the rollback stopped before its copy went in, so there is ` +
+          `nothing to upgrade, and an upgrade here would start a blank store. Run: ${BIN.cli} rollback --undo --dir ${absolute}`,
+      );
+      io.err("Nothing has changed.");
       return EXIT.refused;
     }
     const stop = holdersRefusal(now());
@@ -6049,7 +6063,8 @@ async function rollbackCommand(
       outcome.done.length === 0
         ? `rollback stopped before anything moved: ${outcome.error ?? "?"}. Nothing has changed.`
         : `rollback stopped: ${outcome.error ?? "?"}. What moved is listed above, into ${final.aside}; ` +
-            "the hold is in place, so this version will not open the store until it is sorted out.",
+            "the hold is in place, so this version will not open the store. " +
+            `To put the newer store back: ${BIN.cli} rollback --undo --dir ${final.storeDir}`,
     );
     return EXIT.failed;
   }
