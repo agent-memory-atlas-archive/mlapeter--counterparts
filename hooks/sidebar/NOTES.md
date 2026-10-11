@@ -57,13 +57,110 @@ paused here; `/counterparts fps [n]` reports the brain's rate (or sets its
 target). `caps` is gone: the footer's switches are dots, with no ends to draw.
 
 **Check it:** `sh hooks/sidebar/check.sh`, which runs validate on both manifests,
-`claude plugin test hooks/sidebar` (125 tests, terminal and desktop) and
+`claude plugin test hooks/sidebar` (173 tests, terminal and desktop) and
 `tsc -p hooks/sidebar`, all with a throwaway HOME. **See it:**
 `tools/term-loop/` (its README), at `--size 200x60` and `--size 160x48`. A
 term-loop session sends no message, so nothing comes to mind and nothing is
 saved in it; `COUNTERPARTS_SIDEBAR_SESSION=<session id>` in the environment
 shows that session's Memories, Subconscious and Saved instead (below,
 "Seeded").
+
+## The first meeting's trigger, a three-way switch, Claude memory opt-in (2026-10-11)
+
+Built against core's onboarding state, which core was building in parallel
+(`~/counterparts-notes/2026-10-11-onboarding-core-brief.md`). **The source is
+the SessionStart wake's marker**, `<!-- counterparts:onboarding
+meet=<state> -->` on a line of its own (right under the `Now:` clock line,
+outside the wake block; nothing in the mod reads the wake by line
+position), written on every wake, compactions included, and on a same-day
+resume's short wake (core #415: one line pointing at the wake above). The
+marker is the only thing the mod reads from the wake (day and count are the
+dashboard's), so the short form changes nothing; a resumed session has
+replayed turns, so it never speaks first (done
+included; `start-fresh` resets it to not_started); spelled once, in
+`feed.ts#ONBOARDING_MARKER`. The hooks don't start the dashboard, so it
+could not be the source. No marker: an older core, `unknown`, and the mod
+does nothing about the meeting. `GET /api/onboarding` (`{ meet, where, style
+}`, read strictly by `feed.ts#parseOnboarding`) is only a refresh while the
+dashboard is up (the cold read, and warm polls while the state can still
+move); a 404, a refusal or another shape changes nothing and never marks the
+dashboard down.
+
+**The once-only mark is keyed to the store by core's state, not an id.** No
+store identity reaches the mod without a core change (`STORE_CREATED_KEY` is
+in the store's meta, on no public surface; the data dir's path survives
+`start-fresh`). Instead: every known state past `not_started` rewrites the
+mark as `{ settled: <state> }`, a settled mark doesn't block the speak-first,
+and so a `not_started` after it, which only a new store says, gets its own
+first meeting. A `{ session }` mark (fired, never moved past not_started)
+still binds; the button covers that case.
+
+- **Speak first** (`register.tsx#speakFirst`). At an interactive start, once
+  both the folder's registry read and the wake's marker have landed (either
+  order; whichever is last decides): if the folder is `on` or unset (not
+  paused, off, observer or unknown), no binding `meetTriggered` mark is in
+  `$.store`, the marker says `not_started`, `$.session.turns()` is 0, the
+  prompt box is empty and
+  no prompt of the person's was seen (`prompt.submit`, origin `composer` or
+  `bridge`), it stores `meetTriggered: { session, at }` and then submits
+  `Counterparts is installed. Say hello and introduce yourself.` (mark first:
+  a crash in between loses the trigger rather than repeating it). `$.store`
+  is shared by every session and restart, so it goes out once per store
+  (above). The engine runs a plugin's prompt once the session is idle; if
+  the person's own prompt gets there first, the queued one is dropped
+  (`prompt.submit` hook) and core's offer at the end of that reply stands.
+  The drop keys on `run.spokeFirst`, which core's state moving on never
+  clears: that reply calls `meet` (state `offered`), and a refresh read then
+  must not let the queued line through after it (review of #416).
+  Nothing is read from the dashboard at start.
+- **What the submitted turn looks like: not observed.** No core served the
+  endpoint, and a real run would send a model turn through the live hooks.
+  From the declarations: origin `{ kind: 'plugin', name: 'counterparts' }`;
+  the model reads it framed, "The counterparts plugin sent a message: …"
+  (not `asUser`); the transcript names the plugin; it goes through the
+  UserPromptSubmit settings hooks, so core's recall block attaches as for a
+  typed prompt. Check it in the first real run.
+- **Meet your counterpart**: a cyan row at the top of the body (after the
+  header and any paused banner, before the sections) while core says `later`
+  or `offered`; a press submits the same line, once a minute at most. Also
+  shown for `not_started` when the speak-first went out in an EARLIER session
+  (its turn never reached core's `meet`: otherwise a dead end). Hidden for
+  done, skipped and unknown, and in a folder that is paused, off, observer or
+  unknown (nothing would be kept). No poll of its own: the cold dashboard read
+  and each warm poll read it, the warm ones only until done or skipped, and a
+  call of core's `meet` tool reads it again.
+- **The Counterparts switch is three-way**, `Counterparts ● on ○ paused ○
+  off` (32 cells, the dock's text width; `memory` for the word when
+  narrower). As safe as before: unknown draws `?` on every position and a
+  press on any only learns the state; only a folder's own entry is changed
+  (unset and inherited are explained); `paused` and `off` ask first (the
+  confirm row: [Pause] or [Turn off]); `on` resumes the folder's own pause at
+  once. **`on` turns a folder off by its OWN entry back on** (Mike,
+  2026-10-11 15:25, lightly held), after the same confirm row ("Turn memory
+  back on in <folder>? Nothing from while it was off was kept." [Turn on]),
+  through the `scope` tool (the one tool that answers in an off folder); an
+  observer folder gets the same confirm to go fully on. Off because a PARENT
+  is off still explains and names the parent, and nothing flips the parent
+  from here. A confirm left open acts only while the folder is still in a
+  mode it may change (`CONFIRM_FROM`), else the row hides. Any slash command
+  the person runs (`/model`, which starts no turn) counts as typed for the
+  speak-first. It stands a speak-first down that hasn't gone out, but doesn't
+  drop one already queued: only a prompt (`run.prompted`) gets a reply in
+  which core can offer the meeting instead (review of #416). **A session
+  started in a reads-only folder can't change the setting at all:** its
+  server bakes the registry's `observer` into the store, and the `scope`
+  tool stands down on every write (`serve.ts`). The confirm still shows (the
+  sidebar can't tell that launch from a folder set reads-only later); its
+  [Turn on], [Pause] or [Turn off] then names the console command
+  (`stoodDownNote`) instead of the bare refusal (review of #416).
+- **The Claude memory switch is hidden** unless opted in:
+  `COUNTERPARTS_SIDEBAR_CC_MEMORY=1` in the environment Claude Code starts
+  with (`$.env.get`; a shell export is sure to reach it), or `$.store`
+  `claudeMemorySwitch: true`. Whoever had already turned Claude memory off is
+  opted in by the store, once, at the first start of this version, so no
+  filter is left that can't be seen or undone (Mike keeps his this way). The
+  filtering (`prompt.context`, `prompt.section`, the status line) is
+  unchanged. Opted in, it is its own footer row, under the Counterparts one.
 
 ## v0.2 (2026-10-10): what memory is doing, in 35 columns
 
