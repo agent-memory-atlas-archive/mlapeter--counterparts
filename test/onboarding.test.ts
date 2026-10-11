@@ -82,8 +82,11 @@ afterEach(() => {
   for (const s of open.splice(0)) s.counterpart.close();
 });
 
+/** The server's clock, pinned to DAY1 (noon UTC is DAY1 in every zone from -11 to +11): its `meet` marks the offer with ITS day, and a test that compares that day with DAY2 must not depend on the day it runs. */
+const SERVER_NOW = Date.parse(`${DAY1}T12:00:00Z`);
+
 function server(over: Parameters<typeof openServer>[0] = {}): McpServer {
-  const s = openServer({ dir: storeDir, session: "sess-meet-1", scope: proj, owner: true, scopesFile, ...over });
+  const s = openServer({ dir: storeDir, session: "sess-meet-1", scope: proj, owner: true, scopesFile, now: () => SERVER_NOW, ...over });
   open.push(s);
   return s;
 }
