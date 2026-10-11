@@ -1634,6 +1634,17 @@ describe("episodes", () => {
     expect(self.askDue("s1", SUBSTANCE).due).toBe(true);
   });
 
+  // The core ask follows the chapter tool (2026-10-11): a diary of what
+  // happened; lessons and patterns are the nightly reflection's.
+  test("the core ask asks for a diary and leaves lessons to the nightly reflection", () => {
+    for (const n of [1, 3]) {
+      const text = askText(n);
+      expect(text).toContain("the way a person keeps a diary");
+      expect(text).toContain("lessons and patterns belong to the nightly reflection");
+      expect(text).not.toContain("what you learned");
+    }
+  });
+
   test("the advance is COMMITTED before the ask blocks — a crash cannot re-ask in a loop", () => {
     const s = store();
     const self = new Self({ store: s });
