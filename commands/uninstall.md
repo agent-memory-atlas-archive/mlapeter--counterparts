@@ -30,14 +30,15 @@ It disconnects Counterparts from Claude Code and leaves the memories where they 
 
 **Step 4: they chose delete.** Do not run anything. This command cannot delete the memories, by design: a running session holds the memory open, and the confirmation has to be typed by the person, at a real terminal, not by you. Tell them plainly, in this order:
 
-1. Quit Claude Code completely, every window and session, because a running session holds the memory open.
-2. In a terminal, run this one command. Build it from the plan: `sh`, then the launcher's full path, then `cli`, then every item of the plan's `terminalArgs` in order, each in double quotes. The launcher's full path is the one in the step 1 command you ran, the path ending in `src/adapters/plugin-run.sh`, written out in full, with no variable in it. It looks like this, with real paths:
+1. First, in Claude Code, disable the plugin: /plugin → Installed → counterparts → Disable plugin. Its files stay, so the command below still works, but it no longer starts with Claude Code. Without this, the next time Claude Code opens, the plugin sets Counterparts up again, with a new, empty memory folder.
+2. Quit Claude Code completely, every window and session, because a running session holds the memory open.
+3. In a terminal, run this one command. Build it from the plan: `sh`, then the launcher's full path, then `cli`, then every item of the plan's `terminalArgs` in order, each in double quotes. The launcher's full path is the one in the step 1 command you ran, the path ending in `src/adapters/plugin-run.sh`, written out in full, with no variable in it. It looks like this, with real paths:
 
    ```
    sh "/full/path/to/src/adapters/plugin-run.sh" cli "uninstall" "--config" "/full/path/to/claude-code.json"
    ```
 
-3. In the terminal it shows what it would delete and asks whether to delete it. They answer it themselves and type the confirmation it asks for. Nothing is deleted unless they type it.
-4. Then open Claude Code again and remove the plugin: /plugin → Installed → counterparts → Uninstall.
+4. In the terminal it shows what it would delete and asks whether to delete it. They answer it themselves and type the confirmation it asks for. Nothing is deleted unless they type it.
+5. Then open Claude Code again and remove the plugin: /plugin → Installed → counterparts → Uninstall.
 
 Give them the command in a code block so they can copy it. Do not offer to run it for them, and do not run it, even if they ask: tell them it has to be typed at their own terminal, with Claude Code closed.

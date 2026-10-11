@@ -307,6 +307,11 @@ describe("the plugin's files", () => {
     expect(text).toContain("Delete my memories too (can't be undone)");
     expect(text).toContain("terminalArgs");
     expect(text).not.toMatch(/DELETE MEMORIES/);
+    // A delete disables the plugin BEFORE the terminal run: an enabled plugin's
+    // next start installs a fresh base again (the test below proves it).
+    const disable = text.indexOf("Disable plugin");
+    expect(disable).toBeGreaterThan(-1);
+    expect(disable).toBeLessThan(text.indexOf("Quit Claude Code completely"));
   });
 
   test("no top-level bin/ (chat and Cowork refuse such a plugin) and no root .mcp.json (it would be every dev session's project config)", () => {
@@ -1534,6 +1539,15 @@ describe("/counterparts:uninstall's two calls read one configuration", () => {
     writeFileSync(other, JSON.stringify({ dataDir: join(work, "elsewhere", "store") }));
     const { plan } = planThenKeep(pluginEnv({ COUNTERPARTS_CONFIG: other }));
     expect(plan["configPath"]).toBe(other);
+  }, 120_000);
+
+  test("after a delete at the terminal, an ENABLED plugin's next session start installs a fresh base again", () => {
+    // Why the command has the person disable the plugin before the terminal delete.
+    installAt(defaultChoice());
+    const base = dirname(defaultChoice().path);
+    rmSync(base, { recursive: true, force: true });
+    launch("hook", payload("SessionStart"), pluginEnv());
+    expect(existsSync(defaultChoice().path)).toBe(true);
   }, 120_000);
 
   test("COUNTERPARTS_REQUIRE_EXPLICIT_DIR=1 refuses both calls alike, before either reads or changes anything", () => {
