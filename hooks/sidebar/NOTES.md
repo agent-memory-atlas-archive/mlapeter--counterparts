@@ -144,7 +144,9 @@ still binds; the button covers that case.
   from here. A confirm left open acts only while the folder is still in a
   mode it may change (`CONFIRM_FROM`), else the row hides. Any slash command
   the person runs (`/model`, which starts no turn) counts as typed for the
-  speak-first.
+  speak-first. It stands a speak-first down that hasn't gone out, but doesn't
+  drop one already queued: only a prompt (`run.prompted`) gets a reply in
+  which core can offer the meeting instead (review of #416).
 - **The Claude memory switch is hidden** unless opted in:
   `COUNTERPARTS_SIDEBAR_CC_MEMORY=1` in the environment Claude Code starts
   with (`$.env.get`; a shell export is sure to reach it), or `$.store`

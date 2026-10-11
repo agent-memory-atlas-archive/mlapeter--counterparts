@@ -1777,6 +1777,17 @@ test('a speak-first still queued when the person’s own prompt goes first is dr
   expect(w.submits).toEqual([MEET, 'hello'])
 })
 
+test('a speak-first still queued when the person only ran a slash command (/model: no turn, no reply) goes through', async ($, on) => {
+  const w = world(on)
+  on('command.run', { command: 'model' }, () => ({ text: 'Set model to opus' }))
+  await startWith($, w, 'not_started')
+  expect(w.submits).toEqual([MEET])
+  await $.command.run({ command: 'model', args: 'opus', origin: { kind: 'composer' } } as never)
+  const r = await $.prompt.submit({ text: MEET, origin: { kind: 'plugin', name: 'counterparts' }, wait: false })
+  expect(r).not.toEqual({ drop: 'the person spoke first' })
+  expect(w.submits).toEqual([MEET, MEET])
+})
+
 const meetRow = async (ui: Ui) => ui.find({ type: 'Button', key: 'meet' })
 
 for (const meet of ['later', 'offered'] as const) {

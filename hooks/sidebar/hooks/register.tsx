@@ -288,8 +288,13 @@ const run = {
   countedOn: '',
   /** This session's rows were looked for on the dashboard (`seedSession`), once a module life. */
   seeded: false,
-  /** The person sent a prompt of their own this session (seen at `prompt.submit`): the speak-first stands down. */
+  /** The person sent a prompt of their own, or ran a slash command, this session: the speak-first stands down. */
   typed: false,
+  /**
+   * The person sent a PROMPT of their own (`prompt.submit`), not only a command: only this drops a
+   * speak-first already queued, since only a prompt gets a reply where core can offer the meeting.
+   */
+  prompted: false,
   /** The speak-first was considered this module life (it goes out at most once per install, `MEET_FLAG`). */
   meetTried: false,
   /** The session whose start sent the speak-first, as stored; null when it never went out. */
@@ -1880,8 +1885,8 @@ export const register: Register = on => {
   // core offers the meeting in that reply instead.
   on('prompt.submit', async ($, e, next) => {
     const kind = e.origin.kind
-    if (kind === 'composer' || kind === 'bridge') run.typed = true
-    if (kind === 'plugin' && e.origin.name === 'counterparts' && e.text === MEET_PROMPT && run.typed && run.spokeFirst && run.meetPressedAt === -Infinity) {
+    if (kind === 'composer' || kind === 'bridge') run.typed = run.prompted = true
+    if (kind === 'plugin' && e.origin.name === 'counterparts' && e.text === MEET_PROMPT && run.prompted && run.spokeFirst && run.meetPressedAt === -Infinity) {
       return { drop: 'the person spoke first' }
     }
     return next(e)
