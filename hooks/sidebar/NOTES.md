@@ -129,11 +129,16 @@ still binds; the button covers that case.
   press on any only learns the state; only a folder's own entry is changed
   (unset and inherited are explained); `paused` and `off` ask first (the
   confirm row: [Pause] or [Turn off]); `on` resumes the folder's own pause at
-  once. It never turns an `off` folder on, nor an observer one fully on:
-  those say the CLI command, and the off confirm says the sidebar can't turn
-  it back on. **Loose end for Mike's trial:** an `on` that can't undo the
-  `off` you just clicked may read as broken; lifting it is one branch in
-  `pressScope` (with a confirm).
+  once. **`on` turns a folder off by its OWN entry back on** (Mike,
+  2026-10-11 15:25, lightly held), after the same confirm row ("Turn memory
+  back on in <folder>? Nothing from while it was off was kept." [Turn on]),
+  through the `scope` tool (the one tool that answers in an off folder); an
+  observer folder gets the same confirm to go fully on. Off because a PARENT
+  is off still explains and names the parent, and nothing flips the parent
+  from here. A confirm left open acts only while the folder is still in a
+  mode it may change (`CONFIRM_FROM`), else the row hides. Any slash command
+  the person runs (`/model`, which starts no turn) counts as typed for the
+  speak-first.
 - **The Claude memory switch is hidden** unless opted in:
   `COUNTERPARTS_SIDEBAR_CC_MEMORY=1` in the environment Claude Code starts
   with (`$.env.get`; a shell export is sure to reach it), or `$.store`

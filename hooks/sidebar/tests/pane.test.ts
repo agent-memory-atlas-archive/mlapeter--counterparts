@@ -1144,7 +1144,7 @@ test('the Counterparts switch asks before it pauses a folder set on, and resumes
 })
 
 for (const from of ['on', 'paused'] as const) {
-  test(`off asks first too, from ${from}, and says the sidebar cannot turn it back on; confirmed, the folder is off`, async ($, on) => {
+  test(`off asks first too, from ${from}; confirmed, the folder is off`, async ($, on) => {
     const w = world(on, { scopeMode: from })
     await start($, w)
     const ui = await mount($, w, 'terminal')
@@ -1154,7 +1154,7 @@ for (const from of ['on', 'paused'] as const) {
     expect((await ui.find({ type: 'Button', key: 'confirm-off' }))?.text).toBe('Turn off')
     const said = (await texts(ui)).replace(/\s+/g, ' ')
     expect(said).toContain(`Turn Counterparts memory off in ${HERE} for every session here?`)
-    expect(said).toContain("The sidebar can't turn it back on.")
+    expect(said).toContain("Nothing is kept or recalled while it's off.")
     await ui.press({ key: 'confirm-off' })
     expect(writes(w).at(-1)?.args).toEqual({ mode: 'off' })
     expect(w.scope.mode).toBe('off')
@@ -1180,26 +1180,72 @@ test('off: cancelled, or left unanswered, nothing is called', async ($, on) => {
   await ui.unmount()
 })
 
-test('a folder set off shows off, and the switch explains rather than turning it on, from any position', async ($, on) => {
+test('a folder set off by its own entry: on turns it back on after one confirm, through the scope tool; Cancel calls nothing; paused and off change nothing', async ($, on) => {
   const w = world(on, { scopeMode: 'off' })
   await start($, w)
   for (const surface of SURFACES) {
+    Object.assign(w.scope, { mode: 'off', setBy: HERE })
+    await w.clock.advance(61000)
+    await settle(w)
     const ui = await mount($, w, surface)
     expect(await ui.find({ type: 'Text', text: '◌ Counterparts off here' })).toBeDefined()
+    expect((await ui.find({ type: 'Button', key: 'resume-banner' }))?.text).toContain('click to turn it back on')
     expect(await cpText(ui)).toBe('○ on ○ paused ● off')
     expect(w.lastStatus()).toBe('◌ Counterparts memory off in this folder')
-    for (const p of POSITIONS) {
-      await ui.press({ key: `cp-${p}` })
-      expect(writes(w)).toHaveLength(0)
-      expect(await ui.find({ type: 'Button', key: 'confirm-pause' })).toBeUndefined()
-      const said = (await texts(ui)).replace(/\s+/g, ' ')
-      expect(said).toContain('This folder is set off')
-      expect(said).toContain(`counterparts scope ${HERE}`)
-      expect(said).toContain('--on` does.')
-    }
+    const before = writes(w).length
+    await ui.press({ key: 'cp-off' })
+    await ui.press({ key: 'cp-paused' })
+    expect(writes(w)).toHaveLength(before)
+    expect((await texts(ui)).replace(/\s+/g, ' ')).toContain('Press on to turn it back on (it asks first).')
+    await ui.press({ key: 'cp-on' })
+    expect(writes(w)).toHaveLength(before) // asked first
+    expect((await ui.find({ type: 'Button', key: 'confirm-on' }))?.text).toBe('Turn on')
+    expect((await texts(ui)).replace(/\s+/g, ' ')).toContain(`Turn memory back on in ${HERE}? Nothing from while it was off was kept.`)
+    await ui.press({ key: 'cancel-pause' })
+    expect(await ui.find({ type: 'Button', key: 'confirm-on' })).toBeUndefined()
+    expect(writes(w)).toHaveLength(before)
+    await ui.press({ key: 'resume-banner' }) // the banner is the same press as on
+    expect(await ui.find({ type: 'Button', key: 'confirm-on' })).toBeDefined()
+    await ui.press({ key: 'confirm-on' })
+    expect(writes(w).at(-1)).toEqual({ server: 'counterparts', tool: 'scope', args: { mode: 'on' } })
+    expect(w.scope.mode).toBe('on')
+    expect(await cpText(ui)).toBe('● on ○ paused ○ off')
+    expect(await ui.find({ type: 'Text', text: '◌ Counterparts off here' })).toBeUndefined()
+    expect(w.lastStatus()).toBe('')
     await ui.unmount()
   }
+})
+
+test('off because a parent is off: every position explains and names the parent, and nothing is flipped from here', async ($, on) => {
+  const w = world(on, { scopeMode: 'off', scopeSetBy: '/work' })
+  await start($, w)
+  const ui = await mount($, w, 'terminal')
+  expect(await cpText(ui)).toBe('○ on ○ paused ● off')
+  expect((await ui.find({ type: 'Button', key: 'resume-banner' }))?.text).toContain('off by /work · why')
+  for (const key of ['cp-on', 'cp-paused', 'cp-off', 'resume-banner']) {
+    await ui.press({ key })
+    expect(writes(w)).toHaveLength(0)
+    expect(await ui.find({ type: 'Button', key: 'confirm-on' })).toBeUndefined()
+    const said = (await texts(ui)).replace(/\s+/g, ' ')
+    expect(said).toContain('This folder is off because /work is set off')
+    expect(said).toContain('`counterparts scope /work --on` does.')
+  }
   expect(w.scope.mode).toBe('off')
+  await ui.unmount()
+})
+
+test('a confirm left open while the folder changes elsewhere acts on nothing: an on asked for an off folder, which another session turned on', async ($, on) => {
+  const w = world(on, { scopeMode: 'off' })
+  await start($, w)
+  const ui = await mount($, w, 'terminal')
+  await ui.press({ key: 'cp-on' })
+  expect(await ui.find({ type: 'Button', key: 'confirm-on' })).toBeDefined()
+  Object.assign(w.scope, { mode: 'paused' })
+  await w.clock.advance(16000)
+  await settle(w)
+  expect(await ui.find({ type: 'Button', key: 'confirm-on' })).toBeUndefined() // the row hides: nothing to confirm
+  expect(writes(w)).toHaveLength(0)
+  await ui.unmount()
 })
 
 test('an unset folder is on by default; the switch explains instead of writing a pause or an off that would end as an explicit on', async ($, on) => {
@@ -1236,22 +1282,32 @@ test('a folder that follows its parent: the switch explains; paused by a parent,
   await ui.unmount()
 })
 
-test('observer shows as reads-only, not on; a pause of it resumes to observer; on never turns it fully on', async ($, on) => {
+test('observer shows as reads-only, not on; a pause of it resumes to observer; on turns it fully on only after the same confirm', async ($, on) => {
   const w = world(on, { scopeMode: 'observer' })
   await start($, w)
   for (const surface of SURFACES) {
+    Object.assign(w.scope, { mode: 'observer', setBy: HERE })
+    await w.clock.advance(61000)
+    await settle(w)
     const ui = await mount($, w, surface)
     expect(await cpText(ui)).toBe('◐ on ○ paused ○ off')
     const wrote = writes(w).length
     await ui.press({ key: 'cp-on' })
     expect(writes(w)).toHaveLength(wrote)
-    expect((await texts(ui)).replace(/\s+/g, ' ')).toContain("The switch won't turn it fully on")
+    expect((await texts(ui)).replace(/\s+/g, ' ')).toContain(`Turn memory fully on in ${HERE}? New memories will be kept here, for every session.`)
+    await ui.press({ key: 'cancel-pause' })
+    expect(writes(w)).toHaveLength(wrote)
     await ui.press({ key: 'cp-paused' })
     expect(w.scope.mode).toBe('observer') // asked first
     await ui.press({ key: 'confirm-pause' })
     expect(w.scope.mode).toBe('paused')
     await ui.press({ key: 'cp-on' })
-    expect(w.scope.mode).toBe('observer')
+    expect(w.scope.mode).toBe('observer') // resumed to what it was
+    await ui.press({ key: 'cp-on' })
+    await ui.press({ key: 'confirm-on' })
+    expect(writes(w).at(-1)?.args).toEqual({ mode: 'on' })
+    expect(w.scope.mode).toBe('on')
+    expect(await cpText(ui)).toBe('● on ○ paused ○ off')
     await ui.unmount()
   }
 })
@@ -1339,9 +1395,10 @@ test('hovered, each memory switch says what a click does, over the rows above th
 
 const HOVER_CASES: [string, WorldOptions, string, string][] = [
   ['on', { env: CC_OPT_IN }, 'Paused or off holds for every session here; each asks first.', "Claude Code's MEMORY.md: a click turns it off in every session."],
-  ['observer', { scopeMode: 'observer' }, 'Reads only here. Paused or off: every session here (asks first).', ''],
+  ['observer', { scopeMode: 'observer' }, 'Reads only here. on, paused or off: each asks first.', ''],
   ['paused', { scopeMode: 'paused' }, 'Paused here, for every session. on resumes it; off asks first.', ''],
-  ['off', { scopeMode: 'off' }, "This switch can't change this folder. A click says why.", ''],
+  ['off', { scopeMode: 'off' }, 'Off here, for every session. on turns it back on (asks first).', ''],
+  ['off by a parent', { scopeMode: 'off', scopeSetBy: '/work' }, "This switch can't change this folder. A click says why.", ''],
   ['following a parent', { scopeMode: 'on', scopeSetBy: '/Users/me' }, "This switch can't change this folder. A click says why.", ''],
   ['Claude memory off', { store: { claudeMemory: false } }, '', "Claude Code's own memory is off everywhere. A click turns it on."],
 ]
@@ -1627,6 +1684,15 @@ test('the person spoke first: a prompt they sent before the start’s look stand
   await $.prompt.submit({ text: 'hello', origin: { kind: 'composer' }, wait: false })
   await startWith($, w, 'not_started')
   expect(w.submits).toEqual(['hello'])
+  expect(w.store['meetTriggered']).toBeUndefined()
+})
+
+test('a slash command the person ran first (/model: no turn) counts as having spoken: no speak-first', async ($, on) => {
+  const w = world(on)
+  on('command.run', { command: 'model' }, () => ({ text: 'Set model to opus' }))
+  await $.command.run({ command: 'model', args: 'opus', origin: { kind: 'composer' } } as never)
+  await startWith($, w, 'not_started')
+  expect(w.submits).toHaveLength(0)
   expect(w.store['meetTriggered']).toBeUndefined()
 })
 

@@ -445,10 +445,11 @@ function trimSlash(path: string): string {
  */
 function switchExplains(scope: SidebarScope): string | null {
   const here = scope.dir ?? 'this folder'
-  if (scope.mode === 'off') {
-    return scope.own || scope.setBy === null
-      ? `This folder is set off: nothing is remembered here and nothing comes to mind. The switch won't turn it back on; \`counterparts scope ${here} --on\` does.`
-      : `This folder is off because ${scope.setBy} is set off. The switch won't turn it back on; \`counterparts scope ${scope.setBy} --on\` does.`
+  // A folder off by its OWN entry: the switch turns it back on (after a confirm). Off by a parent's: never flipped from here.
+  if (scope.mode === 'off' && !scope.own) {
+    return scope.setBy === null
+      ? `This folder is off, and not by a setting of its own. \`counterparts scope ${here} --on\` turns it on.`
+      : `This folder is off because ${scope.setBy} is set off. The switch won't change that folder from here; \`counterparts scope ${scope.setBy} --on\` does.`
   }
   if (scope.mode === 'paused' && !scope.own) {
     return `Paused because ${scope.setBy ?? 'a folder above this one'} is paused. Resume it there: \`counterparts scope ${scope.setBy ?? '<that folder>'} --resume\`.`
@@ -471,7 +472,8 @@ function scopeHover(scope: SidebarScope): string {
   if (scope.mode === 'unknown') return 'Not read yet: a click checks this folder, changing nothing.'
   if (switchExplains(scope) !== null) return "This switch can't change this folder. A click says why."
   if (scope.mode === 'paused') return 'Paused here, for every session. on resumes it; off asks first.'
-  if (scope.mode === 'observer') return 'Reads only here. Paused or off: every session here (asks first).'
+  if (scope.mode === 'off') return 'Off here, for every session. on turns it back on (asks first).'
+  if (scope.mode === 'observer') return 'Reads only here. on, paused or off: each asks first.'
   return 'Paused or off holds for every session here; each asks first.'
 }
 
@@ -1374,17 +1376,20 @@ async function noteSwitch($: EngineInterface, text: string | null): Promise<void
 
 /**
  * The three-way switch, `on · paused · off` (2026-10-11; before, one
- * Counterparts dot that paused and resumed). Its safety is the old switch's:
+ * Counterparts dot that paused and resumed). Its safety is the old switch's,
+ * with one change Mike made (2026-10-11, 15:25, lightly held):
  *
  * - While the folder's state is unknown, a press on any of the three only
  *   learns it (the registry file, then the server), and says what it found.
  * - It acts only on a folder whose OWN entry holds the mode; anything else
- *   (unset, following a parent, off) is explained, not changed
- *   (`switchExplains`): the `scope` tool can't put a folder back to unset.
+ *   (unset, following a parent, off or paused by a parent) is explained, not
+ *   changed (`switchExplains`): the `scope` tool can't put a folder back to
+ *   unset, and a parent is never flipped from here.
  * - `paused` and `off` ask first (the confirm row; only its button calls the
  *   tool); `on` resumes the folder's own pause at once.
- * - It never turns an `off` folder on (nor a reads-only `observer` one fully
- *   on): those were set on purpose, from the CLI; it says the command.
+ * - `on` turns a folder that is off by its own entry back on, or a reads-only
+ *   (`observer`) one fully on, after the same confirm (Mike: the switch may
+ *   undo an off). Through the `scope` tool, which answers in an off folder.
  */
 async function pressScope($: EngineInterface, to: 'on' | 'paused' | 'off'): Promise<void> {
   const scope = await read($, scopeA)
@@ -1402,9 +1407,11 @@ async function pressScope($: EngineInterface, to: 'on' | 'paused' | 'off'): Prom
         why ??
           (now.mode === 'paused'
             ? 'Counterparts memory is paused in this folder. Press on to turn it back on.'
-            : now.mode === 'observer'
-              ? 'Counterparts reads only in this folder: memories come to mind, nothing new is kept. Paused or off asks first.'
-              : 'Counterparts memory is on in this folder. Paused or off asks first.'),
+            : now.mode === 'off'
+              ? 'Counterparts memory is off in this folder. Press on to turn it back on (it asks first).'
+              : now.mode === 'observer'
+                ? 'Counterparts reads only in this folder: memories come to mind, nothing new is kept. Paused or off asks first.'
+                : 'Counterparts memory is on in this folder. Paused or off asks first.'),
       )
     }
     return
@@ -1414,23 +1421,22 @@ async function pressScope($: EngineInterface, to: 'on' | 'paused' | 'off'): Prom
     await noteSwitch($, why)
     return
   }
-  // Here the folder's own entry is on, observer or paused.
+  // Here the folder's own entry is on, observer, paused or off.
   if (to === 'on') {
     if (scope.mode === 'paused') await setScope($, 'resume')
-    else if (scope.mode === 'observer') {
-      await noteSwitch(
-        $,
-        `Counterparts reads only in this folder (observer). The switch won't turn it fully on; \`counterparts scope ${scope.dir ?? 'this folder'} --on\` does.`,
-      )
-    }
+    else if (scope.mode === 'off' || scope.mode === 'observer') await askChange($, scope, 'on')
+    return
+  }
+  if (scope.mode === 'off') {
+    if (to === 'paused') await noteSwitch($, 'Counterparts memory is off in this folder. Press on to turn it back on (it asks first).')
     return
   }
   if (to === 'paused' && scope.mode === 'paused') return
   await askChange($, scope, to === 'paused' ? 'pause' : 'off')
 }
 
-/** A pause or an off asks first: the confirm row above the switches. Nothing is called until its button. */
-async function askChange($: EngineInterface, scope: SidebarScope, to: 'pause' | 'off'): Promise<void> {
+/** A pause, an off, or an on from off or observer asks first: the confirm row above the switches. Nothing is called until its button. */
+async function askChange($: EngineInterface, scope: SidebarScope, to: 'pause' | 'off' | 'on'): Promise<void> {
   const at = await $.clock.now()
   const ask = { dir: scope.dir ?? 'this folder', at, to }
   await noteSwitch($, null)
@@ -1444,10 +1450,17 @@ async function cancelPause($: EngineInterface): Promise<void> {
   await update($, pauseAskA, () => null)
 }
 
+/** Which own modes each confirm may change: a pause from on or observer; an off from those or paused; an on from off or observer. */
+const CONFIRM_FROM: Record<'pause' | 'off' | 'on', readonly string[]> = {
+  pause: ['on', 'observer'],
+  off: ['on', 'observer', 'paused'],
+  on: ['off', 'observer'],
+}
+
 /**
- * The confirm row's [Pause] or [Turn off]: the only presses that pause or
- * turn off, and only a folder still holding its own entry: on or observer
- * for a pause, those or paused for an off.
+ * The confirm row's [Pause], [Turn off] or [Turn on]: the only presses that
+ * pause, turn off, or turn on from off, and only a folder still holding its
+ * own entry in a mode that confirm may change (`CONFIRM_FROM`).
  */
 async function confirmChange($: EngineInterface): Promise<void> {
   const ask = await read($, pauseAskA)
@@ -1455,14 +1468,13 @@ async function confirmChange($: EngineInterface): Promise<void> {
   if (ask === null) return
   const to = ask.to ?? 'pause'
   const scope = await read($, scopeA)
-  if (scope.busy || switchExplains(scope) !== null) return
-  const from: readonly string[] = to === 'pause' ? ['on', 'observer'] : ['on', 'observer', 'paused']
-  if (!from.includes(scope.mode)) return
+  if (scope.busy || switchExplains(scope) !== null || !scope.own) return
+  if (!CONFIRM_FROM[to].includes(scope.mode)) return
   await setScope($, to)
 }
 
-/** One call: pause, resume or turn off this folder's own entry. */
-async function setScope($: EngineInterface, to: 'pause' | 'resume' | 'off'): Promise<void> {
+/** One call: pause, resume, turn off or turn on this folder's own entry. */
+async function setScope($: EngineInterface, to: 'pause' | 'resume' | 'off' | 'on'): Promise<void> {
   const scope = await read($, scopeA)
   await update($, scopeA, () => ({ ...scope, busy: true }))
   try {
@@ -1789,6 +1801,15 @@ export const register: Register = on => {
     return next(e)
   })
 
+  // A slash command the person ran (any: /model, /counterparts…) counts as having spoken: no
+  // command starts a turn, so `session.turns()` would not see it. Registered before the
+  // /counterparts hook, which answers without `next`.
+  on('command.run', async ($, e, next) => {
+    const kind = (e as { origin?: { kind?: string } }).origin?.kind
+    if (kind === 'composer' || kind === 'bridge') run.typed = true
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
   on('command.run', { command: 'counterparts' }, async ($, e) => {
     const [verb = '', arg = ''] = e.args.trim().split(/\s+/)
     await refreshScope($, true)
@@ -2078,7 +2099,7 @@ export const register: Register = on => {
       rows.push(
         <Button key="resume-banner" plain onPress={() => pressScope($, 'on')}>
           <Text color={P.amber} underline>
-            {clip(off ? 'why, and how to turn it on' : scope.own ? 'click to resume' : `paused by ${shortDir(scope.setBy)} · how to resume`, w)}
+            {clip(off ? (scope.own ? 'click to turn it back on' : `off by ${shortDir(scope.setBy)} · why`) : scope.own ? 'click to resume' : `paused by ${shortDir(scope.setBy)} · how to resume`, w)}
           </Text>
         </Button>,
       )
@@ -2099,15 +2120,21 @@ export const register: Register = on => {
 
     // ── what the switches say, above them: the pause (or off) confirm, a note ──
     const above: JSX.Element[] = []
-    if (pauseAsk !== null && scope.mode !== 'unknown' && (pauseAsk.to === 'off' ? scope.mode !== 'off' : !paused)) {
-      const toOff = pauseAsk.to === 'off'
-      const ask = toOff
-        ? `Turn Counterparts memory off in ${shortDir(pauseAsk.dir)} for every session here? The sidebar can't turn it back on.`
-        : `Pause Counterparts memory in ${shortDir(pauseAsk.dir)} for every session here?`
+    const askTo = pauseAsk?.to ?? 'pause'
+    if (pauseAsk !== null && scope.mode !== 'unknown' && CONFIRM_FROM[askTo].includes(scope.mode)) {
+      const where = shortDir(pauseAsk.dir)
+      const ask =
+        askTo === 'off'
+          ? `Turn Counterparts memory off in ${where} for every session here? Nothing is kept or recalled while it's off.`
+          : askTo === 'on'
+            ? scope.mode === 'off'
+              ? `Turn memory back on in ${where}? Nothing from while it was off was kept.`
+              : `Turn memory fully on in ${where}? New memories will be kept here, for every session.`
+            : `Pause Counterparts memory in ${where} for every session here?`
       wrap(ask, w).forEach((l, i) => above.push(<Text key={`ask${String(i)}`} color={P.amber}>{l}</Text>))
       above.push(
         <Box key="pause-ask" flexDirection="row">
-          <Button key={toOff ? 'confirm-off' : 'confirm-pause'} onPress={() => confirmChange($)}>{toOff ? 'Turn off' : 'Pause'}</Button>
+          <Button key={`confirm-${askTo}`} onPress={() => confirmChange($)}>{askTo === 'off' ? 'Turn off' : askTo === 'on' ? 'Turn on' : 'Pause'}</Button>
           <Text> </Text>
           <Button key="cancel-pause" onPress={() => cancelPause($)}>Cancel</Button>
         </Box>,

@@ -1,9 +1,9 @@
 - **The sidebar's Counterparts switch has three positions: on · paused · off.** Paused and
-  off each ask first and hold for every session in that folder; on resumes a pause at once.
-  It stays as careful as before: a state it couldn't read is never shown as on, it changes
-  only a folder with a setting of its own (anything else it explains), and it won't turn a
-  folder that is off back on (it says the `counterparts scope <folder> --on` command, and
-  the off confirm says so before you choose).
+  off each ask first and hold for every session in that folder; on resumes a pause at once,
+  and turns a folder you set off back on after one confirmation ("Nothing from while it was
+  off was kept."). It stays as careful as before: a state it couldn't read is never shown
+  as on, and it changes only a folder with a setting of its own. A folder that is off or
+  paused because a folder above it is, it explains, naming that folder, and leaves alone.
 - **The "Claude memory" switch is hidden unless you ask for it.** It turns Claude Code's
   own memory (MEMORY.md) on and off, which most people don't need beside Counterparts. If
   you had already turned Claude Code's memory off, you keep the switch. To show it anyway,

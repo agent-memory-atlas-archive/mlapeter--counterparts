@@ -299,7 +299,7 @@ declare module 'claude-code' {
        * three-way switch). Only its [Pause] / [Turn off] calls the scope
        * tool; [Cancel] or 30 s closes it.
        */
-      pauseAsk: { dir: string; at: number; to?: 'pause' | 'off' } | null;
+      pauseAsk: { dir: string; at: number; to?: 'pause' | 'off' | 'on' } | null;
     };
   }
 }
