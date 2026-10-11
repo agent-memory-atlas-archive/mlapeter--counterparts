@@ -683,9 +683,9 @@ describe("reading it: `counterparts coverage` and the doctor line", () => {
         refusals: {},
       }).find((x) => x.key === "crash-write-up");
     const f = read();
-    expect(f?.title).toBe("Write-ups");
+    expect(f?.title).toBe("Catch-up");
     expect(f?.severity).toBe("amber");
-    expect(f?.detail).toMatch(/^yesterday \(\d{4}-\d{2}-\d{2}\): 2 sessions, 4 of 9 pieces written up; 1 session owes a write-up, 1 from yesterday or earlier$/);
+    expect(f?.detail).toMatch(/^yesterday \(\d{4}-\d{2}-\d{2}\): 2 sessions, 4 of 9 pieces written up; 1 session to catch up, 1 from yesterday or earlier$/);
     expect(f?.fix).toContain("counterparts coverage");
     // Written up: green, and a lapse this week is counted.
     c.spans.claimCoverage({ scope: PROJ, session: "owing-one", proposalId: "prp_late" });

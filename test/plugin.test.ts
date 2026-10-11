@@ -45,6 +45,7 @@ import {
   firstRunLockPath,
   firstRunNoticePath,
   hookGate,
+  installRoute,
   mcpGate,
   npmDoctorCommand,
   pluginOrigin,
@@ -197,7 +198,10 @@ describe("the plugin's files", () => {
     const source = entry.source as Record<string, unknown>;
     expect(typeof source).toBe("object");
     expect(source["source"]).toBe("github");
-    expect(source["repo"]).toBe("mlapeter/counterparts");
+    // This repository, or the generated bundle's own repository
+    // (tools/plugin-bundle/build.ts; docs/plugin.md, "The bundle"), tagged
+    // with the same release.
+    expect(["mlapeter/counterparts", "mlapeter/counterparts-plugin"]).toContain(String(source["repo"]));
     const ref = String(source["ref"] ?? "");
     // A tag shaped like a release: not main, master, HEAD, refs/…, or a sha.
     expect(ref).toMatch(/^v\d+\.\d+\.\d+$/);
@@ -291,6 +295,16 @@ describe("runningAsPlugin", () => {
     const link = join(work, "link");
     symlinkSync(ROOT, link);
     expect(runningAsPlugin({ CLAUDE_PLUGIN_ROOT: link }, ROOT)).toBe(true);
+  });
+});
+
+// How doctor names a fix that installs something (2026-10-11).
+describe("installRoute", () => {
+  test("the plugin when this is its copy, npm with no plugin root at all, both when another copy is named", () => {
+    expect(installRoute({ CLAUDE_PLUGIN_ROOT: ROOT }, ROOT, null)).toBe("plugin");
+    expect(installRoute({}, ROOT, null)).toBe("npm");
+    expect(installRoute({ CLAUDE_PLUGIN_ROOT: "  " }, ROOT, null)).toBe("npm");
+    expect(installRoute({ CLAUDE_PLUGIN_ROOT: work }, ROOT, null)).toBe("either");
   });
 });
 

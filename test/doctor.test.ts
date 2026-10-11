@@ -356,7 +356,7 @@ describe("doctor — the reading", () => {
     expect(findings.find((f) => f.key === "credentials-mode")).toBeUndefined();
     expect(findings.find((f) => f.key === "crash-writeup")).toBeUndefined();
     const crash = by(findings, "crash-write-up");
-    expect(crash.title).toBe("Write-ups");
+    expect(crash.title).toBe("Catch-up");
     expect(crash.severity).toBe("green");
     expect(crash.detail).toContain("nothing owed");
     expect(anyRed(findings)).toBe(false);
@@ -1071,7 +1071,7 @@ describe("doctor — the reading", () => {
       const findings = doctorFindings(input({ store: failing }));
       const f = by(findings, "authorship");
       expect(f.severity).toBe("green");
-      expect(f.detail).toContain("sessions awaiting a write-up: unknown");
+      expect(f.detail).toContain("sessions awaiting catch-up: unknown");
       expect(f.data["owedStale"]).toBeNull();
       expect(by(findings, "crash-write-up").detail).toContain("could not read what is written up");
     });
@@ -2708,7 +2708,7 @@ describe("a store younger than the window it is graded over (findings 8, 9)", ()
         const findings = doctorFindings(input({ store: s }));
         const f = by(findings, "sweep");
         expect({ reason, severity: f.severity, fix: f.fix }).toEqual({ reason, severity: "green", fix: "" });
-        expect(f.detail).toContain("next session");
+        expect(f.detail).toContain("caught up later");
         // Neither line points at a command.
         expect(by(findings, "crash-write-up").fix).toBe("");
         s.close();
