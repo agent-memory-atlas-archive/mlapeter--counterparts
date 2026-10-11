@@ -438,3 +438,59 @@ describe("the drewOn field on session_end and chapter", () => {
     expect(JSON.parse(curveSignature())["repScale"]).toBe(TUNABLES.REP_SCALE_USES);
   });
 });
+
+// ── Group 4 item 1 (2026-10-11): what was drawn on together is linked ────────
+
+describe("drewOn deposits a link (Group 4 item 1, review 06 C1)", () => {
+  test("two named memories enter one pair set at the referenced tier: one HEBB_RATE deposit, landed by the boundary", async () => {
+    const { c, ids } = setup(3);
+    const [a, b, z] = ids as [string, string, string];
+    shown(c, "s1", 1, [a, b, z]);
+    const r = c.creditDrewOn("s1", [a, b]);
+    expect(r.credited).toEqual([a, b]);
+    expect(r.linked).toBe(1);
+    // Written to the pending file, not the table: the worker lands it.
+    expect(c.store.edgesFrom(a)).toEqual([]);
+    await c.sessionEnd({ date: "2026-08-26", budgetBytes: 9000 });
+    const day = c.store.edgesFrom(a)[0]?.last_day ?? -1;
+    expect(c.associate.weightAt(a, b, day)).toBeCloseTo(c.associate.tunables.HEBB_RATE, 10);
+    expect(c.associate.weightAt(b, a, day)).toBeCloseTo(c.associate.tunables.HEBB_RATE, 10);
+    // Shown and not named: no link.
+    expect(c.associate.weightAt(a, z)).toBe(0);
+  });
+
+  test("one named memory has no pair; a memory opened earlier today still joins the pair set (the credit pass's own rule)", async () => {
+    const { c, ids } = setup(3);
+    const [a, b, z] = ids as [string, string, string];
+    shown(c, "s1", 1, [a, b, z]);
+    expect(c.creditDrewOn("s1", [a]).linked).toBe(0);
+    // Opened first: credited above the engaged tier, so refused here — and still drawn on with z.
+    expect(c.resolveUse("s1", b, "referenced").credited).toBe(true);
+    const r = c.creditDrewOn("s1", [b, z]);
+    expect(r.credited).toEqual([z]);
+    expect(r.refused.map((x) => x.reason)).toEqual(["already-credited-at-or-above"]);
+    expect(r.linked).toBe(1);
+    await c.sessionEnd({ date: "2026-08-26", budgetBytes: 9000 });
+    expect(c.associate.linked(b, z)).toBe(true);
+    expect(c.associate.linked(a, b)).toBe(false);
+  });
+
+  test("a refused id (never shown) joins nothing, and the observer deposits nothing", () => {
+    const { c, ids } = setup(3);
+    const [a, b, z] = ids as [string, string, string];
+    shown(c, "s1", 1, [a]);
+    expect(c.creditDrewOn("s1", [a, b]).linked).toBe(0);
+    c.close();
+    open.splice(0);
+    const watcher = brain({ observer: true });
+    expect(watcher.creditDrewOn("s1", [a, z]).linked).toBe(0);
+  });
+
+  test("the drewOn credit row says how many pairs it sent", async () => {
+    const s = server();
+    const ids = seeded(s);
+    await s.call("session_end", { memories: [], drewOn: ids });
+    const [row] = drewOnRows(s);
+    expect(row?.["linked"]).toBe(1);
+  });
+});

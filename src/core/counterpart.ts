@@ -556,6 +556,14 @@ export interface DrewOnResult {
   /** Dated memories whose open reminder window this stopped
    *  (`Prospective#actedOn`): acted on, so no more footnotes this window. */
   readonly actedOn: string[];
+  /**
+   * Pairs of named memories handed to the edge module as one co-use
+   * (2026-10-11, Group 4 item 1): the ones credited, and the ones refused only
+   * for their day cadence (the credit pass's own rule, `linksDespite`), each
+   * pair at the referenced tier — one `HEBB_RATE` deposit. Written to the
+   * pending file; the boundary's worker lands them. 0 when fewer than two.
+   */
+  readonly linked: number;
 }
 /**
  * ONE ROW PER APPLY OF CARRIED CO-ACTIVATION, written by the process that
@@ -3877,7 +3885,8 @@ export class Counterpart {
     const refused: { id: string; reason: string }[] = [];
     const capped: string[] = [];
     const actedOn: string[] = [];
-    const done = (): DrewOnResult => ({ day, named: ids.length, credited, refused, capped, actedOn });
+    let linked = 0;
+    const done = (): DrewOnResult => ({ day, named: ids.length, credited, refused, capped, actedOn, linked });
     if (this.observer) {
       for (const id of ids) refused.push({ id, reason: "observer" });
       return done();
@@ -3891,6 +3900,7 @@ export class Counterpart {
     }
     // What this boundary already credited this way: the other tool's answer
     // to the same ask shares the cap.
+    const members: Credited[] = [];
     let slots =
       DREW_ON_MAX_PER_BOUNDARY -
       Object.values(state.credited).filter((c) => c.tier === "engaged" && c.day === day && c.turn === state.turn).length;
@@ -3940,6 +3950,14 @@ export class Counterpart {
       }
       try {
         const r = this.resolveUse(sessionId, id, "engaged");
+        // THE DEPOSIT (2026-10-11, Group 4 item 1; review 06 C1): what the
+        // session drew on together was thought together, so the named
+        // memories enter one pair set at the REFERENCED tier — a co-use, one
+        // `HEBB_RATE` per pair, homeostasis bounding it at the flush. Strength
+        // stays the engaged tier's half use; only the link is a full deposit.
+        // As in `creditReferences`, a memory refused only for its day cadence
+        // (opened earlier today, born today) still joins the pair set.
+        if (r.credited || linksDespite(r)) members.push({ id, tier: "referenced" });
         if (r.credited) {
           credited.push(id);
           slots -= 1;
@@ -3950,6 +3968,7 @@ export class Counterpart {
         refuse(errCode(err));
       }
     }
+    if (members.length >= 2) linked = this.publishCoactivation(members, day);
     this.emit("counterpart.drewOn", sessionId, {
       day,
       named: ids.length,
@@ -3957,6 +3976,7 @@ export class Counterpart {
       refused: refused.length,
       capped: capped.length,
       actedOn: actedOn.length,
+      linked,
     });
     return done();
   }
@@ -4053,7 +4073,7 @@ export class Counterpart {
    * evented in process, so it stays distinguishable from a hook that broke
    * (observer-mode.md G6, scar §2.4).
    */
-  private publishCoactivation(members: readonly Credited[], day: number): void {
+  private publishCoactivation(members: readonly Credited[], day: number): number {
     const started = this.store.now();
     let co: CoactivateResult | null = null;
     let deltas: PairDelta[] = [];
@@ -4066,7 +4086,7 @@ export class Counterpart {
     }
     if (this.observer) {
       this.emit("counterpart.associate.standdown", undefined, { site: "pending" });
-      return;
+      return 0;
     }
     const eligible = co?.members.filter((m) => m.reason === "eligible").length ?? 0;
     const append =
@@ -4085,6 +4105,8 @@ export class Counterpart {
       code: append.code,
       elapsedMs: this.store.now() - started,
     });
+    // What reached the file: the pairs a later boundary can land.
+    return append.pairs;
   }
 
   /**

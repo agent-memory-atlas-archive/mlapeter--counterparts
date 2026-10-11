@@ -479,3 +479,11 @@ evaporation can do it.
   and never conducted; 137 lag-2-back rows a week were written and swept by the same
   flush. The window stays a knob, and the planner still handles any width.
 
+- **drewOn deposits** (item 1, review 06 C1). `Counterpart#creditDrewOn` hands the
+  memories one `drewOn` names to `coactivate` at the `referenced` tier (not `engaged`:
+  `tierFactor` has no engaged case and would refuse them as ignorable), so a pair gets one
+  `HEBB_RATE`. Same members rule as the credit pass: credited, or refused only for its day
+  cadence (`linksDespite`). Pairs form among the named ids only — a memory opened this turn
+  and not named joins the credit pass's own set, not this one. They go to the pending file
+  (the MCP server is not the worker) and land at the next boundary; the drewOn
+  `recall.credit` row carries `linked`, the pairs sent.

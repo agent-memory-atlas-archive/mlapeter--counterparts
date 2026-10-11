@@ -75,9 +75,11 @@ for `recall/`; telemetry by reference.
    the drewOn builder, from Mike's 10-10 direction, lightly held (wording from #371).* A
    memory shown and passed by (footnoted, surfaced, on the wake) trains nothing, in either
    direction. One the session NAMES in a `drewOn` field is credited at the `engaged` tier
-   (`Counterpart#creditDrewOn`) — strength only: it joins no pair set, and the edge deposit
-   from engagement is the association group's (group 4) to add. (Was: "Footnotes never
-   train. The ignorable tier is ignorable in both directions.")
+   (`Counterpart#creditDrewOn`) for strength; *since 2026-10-11 (group 4, NOTES §17)* the
+   memories one `drewOn` names together also enter one pair set at the `referenced` tier,
+   so each pair gets a co-use's `HEBB_RATE` deposit — the tier comes from the engagement,
+   not from the lane that showed it (review 06 C1). (Was: "Footnotes never train. The
+   ignorable tier is ignorable in both directions.")
 2. **[M] Per node, the edge count is capped and the total outgoing weight is bounded**,
    with proportional renormalization. Since 2026-09-28 this covers every edge a dream
    writes too: a dream's `link` and a gist's ties to its sources go through

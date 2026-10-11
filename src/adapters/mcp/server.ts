@@ -3292,6 +3292,8 @@ export class McpServer {
         idsTotal: out.credited.length,
         refusedIds: out.refused.slice(0, 64).map((r) => r.id),
         capped: out.capped.slice(0, 64),
+        // Pairs of named memories sent to be linked as one co-use (Group 4 item 1).
+        linked: out.linked,
       });
     });
     return {
