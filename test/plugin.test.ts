@@ -198,7 +198,10 @@ describe("the plugin's files", () => {
     const source = entry.source as Record<string, unknown>;
     expect(typeof source).toBe("object");
     expect(source["source"]).toBe("github");
-    expect(source["repo"]).toBe("mlapeter/counterparts");
+    // This repository, or the generated bundle's own repository
+    // (tools/plugin-bundle/build.ts; docs/plugin.md, "The bundle"), tagged
+    // with the same release.
+    expect(["mlapeter/counterparts", "mlapeter/counterparts-plugin"]).toContain(String(source["repo"]));
     const ref = String(source["ref"] ?? "");
     // A tag shaped like a release: not main, master, HEAD, refs/…, or a sha.
     expect(ref).toMatch(/^v\d+\.\d+\.\d+$/);

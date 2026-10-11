@@ -2310,14 +2310,70 @@ export const CLAIMS_ERA_CUTOFF_KEY = "claims.era.cutoff";
 export const CLAIMS_ERA_RECORDED_KEY = "claims.era.recorded";
 /** `mint.ts#CLAIMED_DEFAULT_META_KEY`, spelled here (store imports no core module); a test holds them equal. */
 export const CLAIMED_DEFAULT_SPELLED = "claimedDefault";
+/**
+ * THE MOMENT THE ERA READS A ROW AS WRITTEN, when it is not the row's own
+ * `created_at` (2026-10-11, the dream merge): a merged memory is a new row,
+ * written after the cutoff, but its claim is its best source's stored claim,
+ * so the era reads it as it read that source. UTC ms, or null for a source
+ * written before v7 (no moment: old). Carried through a merge of a merge.
+ * `eraCarriedFrom` writes it; `eraClaimOf` reads it in place of `created_at`.
+ */
+export const ERA_WRITTEN_AT_META = "eraWrittenAt";
+
+function metaObjectOf(raw: string | null | undefined): Record<string, unknown> | null {
+  if (typeof raw !== "string" || raw.length === 0) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed !== null && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The moment the era compares with its cutoff: the carried one when present, else `created_at`. Null: unrecorded, old. */
+function eraMomentOf(createdAt: number | null | undefined, meta: Record<string, unknown> | null): number | null {
+  if (meta !== null && Object.prototype.hasOwnProperty.call(meta, ERA_WRITTEN_AT_META)) {
+    const v = meta[ERA_WRITTEN_AT_META];
+    if (v === null) return null;
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+  }
+  return typeof createdAt === "number" ? createdAt : null;
+}
+
+/**
+ * WHAT A ROW MADE FROM `source` CARRIES OF ITS ERA STANDING (2026-10-11, the
+ * dream merge; decided by random-06, 2026-10-11, lightly held), as meta keys
+ * for the new row: `claimedDefault` when the source's claim was a default (the
+ * new row takes that claim, so it is still nobody's), and — when the source is
+ * read as old against `cutoff` (the era's cutoff, or the moment first recorded
+ * while the era is off, so `--on` reads it the same) — the source's moment
+ * (`ERA_WRITTEN_AT_META`). The era then reads the new row exactly as it read
+ * the source: a default at today's default, an explicit claim down to it, the
+ * exempt as claimed. Nothing of the moment for a source written after the
+ * cutoff. The stored claim is never touched.
+ */
+export function eraCarriedFrom(
+  source: Pick<MemoryRow, "created_at" | "meta">,
+  cutoff: string | number | null | undefined,
+): Record<string, unknown> {
+  const meta = metaObjectOf(source.meta);
+  const out: Record<string, unknown> = {};
+  if (meta !== null && meta[CLAIMED_DEFAULT_SPELLED] === true) out[CLAIMED_DEFAULT_SPELLED] = true;
+  const at = typeof cutoff === "number" ? cutoff : typeof cutoff === "string" && cutoff !== "" ? Number(cutoff) : Number.NaN;
+  if (!Number.isFinite(at)) return out;
+  const moment = eraMomentOf(source.created_at, meta);
+  if (moment === null || moment < at) out[ERA_WRITTEN_AT_META] = moment;
+  return out;
+}
 
 /**
  * THE CLAIM THE CURVE READS FOR AN OLD MEMORY (2026-10-10, the old-claims era;
  * decided by Mike, 2026-10-10, loosely held; extended by Mike, 2026-10-11,
  * lightly held), or null to read the stored claim. Only when the era is on
  * (`cutoff` a moment) and the row is a `memory` written before it
- * (`created_at` earlier, or unrecorded — older than v7) that carries a claim.
- * Then the default for what it is about TODAY (`physics#defaultClaimFor`):
+ * (`created_at` earlier, or unrecorded — older than v7; a dream's merged
+ * memory, its best source's moment, `ERA_WRITTEN_AT_META`, 2026-10-11) that
+ * carries a claim. Then the default for what it is about TODAY (`physics#defaultClaimFor`):
  *
  *   - for a DEFAULT (`meta.claimedDefault` true: the writer claimed nothing
  *     and the seam filled in its day's default), in either direction and with
@@ -2345,16 +2401,11 @@ export function eraClaimOf(
   const at = typeof cutoff === "number" ? cutoff : typeof cutoff === "string" && cutoff !== "" ? Number(cutoff) : Number.NaN;
   if (!Number.isFinite(at)) return null;
   if (row.type !== "memory" || row.claimed === null || row.claimed === undefined) return null;
-  if (typeof row.created_at === "number" && row.created_at >= at) return null;
-  let meta: Record<string, unknown> | null = null;
-  if (typeof row.meta === "string" && row.meta.length > 0) {
-    try {
-      const parsed = JSON.parse(row.meta) as unknown;
-      if (parsed !== null && typeof parsed === "object") meta = parsed as Record<string, unknown>;
-    } catch {
-      /* unreadable meta: no default mark, no repeat */
-    }
-  }
+  // Unreadable meta: no default mark, no carried moment, no repeat.
+  const meta = metaObjectOf(row.meta);
+  // A merged memory is read at its best source's moment (2026-10-11, `ERA_WRITTEN_AT_META`).
+  const moment = eraMomentOf(row.created_at, meta);
+  if (moment !== null && moment >= at) return null;
   const about = row.about ?? null;
   const claim = defaultClaimFor({ about, status: row.status ?? null, saidBy: row.said_by ?? null, kind: row.kind }).claim;
   // A default: today's, either way, exempt or not (2026-10-11).
