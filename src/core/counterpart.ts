@@ -7155,7 +7155,13 @@ export class Counterpart {
       content,
       resolveId: (id: string) => {
         try {
-          return this.store.resolve(id);
+          const resolved = this.store.resolve(id);
+          // `resolve` hands back a REMOVED id as itself (so a reader can say
+          // "removed"), but a removed memory is not one a new memory can update:
+          // the mint's claim against it is refused by the store, and that refusal
+          // used to take the whole write with it (review of #400). Unresolved,
+          // exactly like a dangling address — the new memory is stored, unlinked.
+          return this.store.deniedIds().includes(resolved) ? null : resolved;
         } catch {
           // An address that does not resolve is not an error: content matching
           // is the fallback, and a refusal costs nothing durable (§5 G10).

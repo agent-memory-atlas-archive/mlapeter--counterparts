@@ -328,6 +328,26 @@ describe("the full pipeline — wake, live, write, retrieve, credit, sleep, wake
     expect(c.store.readProse(out.memoryId as string).meta["updates"]).toBeUndefined();
   });
 
+  test("`updates:` naming a REMOVED memory stores the new one unlinked, with the update reported as not landing", async () => {
+    const c = brain();
+    const gone = (
+      await c.submitJot({ content: "The garden shed key hangs on the second hook by the door.", kind: "fact" }, { session: "s1", scope: "proj" })
+    ).memoryId as string;
+    c.store.appendRemovalRecord({ memoryId: gone, stage: "requested", actor: "owner", reason: "test" });
+    c.store.appendRemovalRecord({ memoryId: gone, stage: "dark", actor: "owner", reason: "test" });
+    const out = await c.submitJot(
+      { content: "The garden shed key moved to the drawer under the hall table.", kind: "fact", updates: gone },
+      { session: "s1", scope: "proj" },
+    );
+    expect(out.deposited).toBe(true);
+    expect(out.mint?.updates).toBe(null);
+    expect(out.mint?.claim ?? null).toBe(null);
+    expect(out.proposal?.updates?.resolved ?? null).toBe(null);
+    const row = c.store.readProse(out.memoryId as string);
+    expect(row.meta["updates"]).toBeUndefined();
+    expect(row.body).toContain("drawer under the hall table");
+  });
+
   test("a jot is a deposit too, and the battery still refuses a credential in it", async () => {
     const c = brain();
     const ok = await c.submitJot(

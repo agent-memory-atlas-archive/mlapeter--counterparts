@@ -264,6 +264,9 @@ export function applyRevision(
   const retargeted = targetId !== declared;
   const row = store.row(targetId);
   if (row === undefined) return settle("none", "target-unresolvable", null, { retargeted });
+  // A REMOVED memory resolves as itself, and its row may still be here; it is
+  // not one anything can revise (review of #400) — the same answer as gone.
+  if (store.deniedIds().includes(targetId)) return settle("none", "target-unresolvable", null, { retargeted });
 
   // A CONFIRMATION IS NOT A CHALLENGE (rule 1 in the header). The engine matched
   // a restatement; saying the same thing again must never push the thing it
