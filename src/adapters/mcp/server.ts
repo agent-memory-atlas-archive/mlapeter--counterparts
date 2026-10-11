@@ -55,7 +55,7 @@
  * No body text, no question text, no note text ever reaches an event.
  */
 import { CLAIM_NOTHING_NEW, claimUnwritten } from "../../core/coverage/index.js";
-import { MCP_OVERSIZE_EVENT, MCP_PART_EVENT, MCP_RECALL_EVENT } from "../../core/counterpart.js";
+import { DREW_ON_MAX_PER_BOUNDARY, MCP_OVERSIZE_EVENT, MCP_PART_EVENT, MCP_RECALL_EVENT, RECALL_CREDIT_EVENT } from "../../core/counterpart.js";
 import { CONTRADICTION_TUNABLES, HELD_HINT, NEIGHBOURS_HINT } from "../../core/contradictions.js";
 import type { Neighbour } from "../../core/contradictions.js";
 import { isRecurrence, localDate, occurrenceOnOrAfter, parseCalendarDate, readableRecurrence, todayIn } from "../../core/time.js";
@@ -2814,7 +2814,14 @@ export class McpServer {
     // ONLY A NON-EMPTY STRING diverts (PR #192 review, m1): a host or model that
     // sends unused optional fields as `null` or `""` must not have every
     // ordinary answer refused as a write-up of nobody.
-    if (typeof args["writeUp"] === "string" && args["writeUp"].length > 0) return this.writeUpField(args);
+    //
+    // `drewOn` (2026-10-11) is read before the divert (review of #385), so a
+    // write-up that names what it drew on is credited as any other answer is:
+    // the writing session is this one, and so is the shown set the guard
+    // reads. It is credited whatever the rest of the call does, and its
+    // outcome rides out on every answer below.
+    const drewOn = this.drewOnField(args["drewOn"], "session_end");
+    if (typeof args["writeUp"] === "string" && args["writeUp"].length > 0) return this.writeUpField(args, drewOn);
 
     // THE HANDOFF FIRST, and before the memories check on purpose (E1). It is a
     // FIELD on this call and not one of the entries, so a dump whose `memories`
@@ -2926,6 +2933,7 @@ export class McpServer {
           recorded: marked,
           ...(handoff === null ? {} : { handoff }),
           ...(retired === null ? {} : { retired }),
+          ...(drewOn === null ? {} : { drewOn }),
         },
         handoffFailed,
       );
@@ -2934,6 +2942,7 @@ export class McpServer {
       return this.refuse("session_end", "memories-required", {
         ...(handoff === null ? {} : { handoff }),
         ...(retired === null ? {} : { retired }),
+        ...(drewOn === null ? {} : { drewOn }),
       });
     }
     const { outcomes, deposited, entries } = await this.depositEntries(raw, session);
@@ -2954,6 +2963,7 @@ export class McpServer {
         ...(outcomes.some((o) => o["neighbours"] !== undefined) ? { neighboursHint: NEIGHBOURS_HINT } : {}),
         ...(handoff === null ? {} : { handoff }),
         ...(retired === null ? {} : { retired }),
+        ...(drewOn === null ? {} : { drewOn }),
       },
       deposited === 0,
     );
@@ -3108,7 +3118,7 @@ export class McpServer {
    * decisions are `write-up.ts#writeUpDoor`'s; this only binds it to this
    * server's store, scope, registry and bound session, and renders the answer.
    */
-  private async writeUpField(args: Record<string, unknown>): Promise<ToolResult> {
+  private async writeUpField(args: Record<string, unknown>, drewOn: Record<string, unknown> | null): Promise<ToolResult> {
     const session = this.session as string;
     const out = await writeUpDoor({
       counterpart: this.counterpart,
@@ -3135,7 +3145,74 @@ export class McpServer {
     if (out.isError && body["stored"] === false && out.reason !== "nothing-landed") {
       this.emit("mcp.refused", undefined, { tool: "session_end", reason: out.reason });
     }
-    return this.result(body, out.isError);
+    return this.result(drewOn === null ? body : { ...body, drewOn }, out.isError);
+  }
+
+  /**
+   * THE `drewOn` FIELD on `session_end` and `chapter` (2026-10-11): the ids of
+   * memories this session was shown that shaped what it did or said, each
+   * credited at the engaged tier by `Counterpart#creditDrewOn`, which owns
+   * every rule (the shown-this-session guard, the refusals by name, the cap).
+   * Null when the field was not sent or sent empty. A value that is not a list
+   * of strings credits nothing and says so.
+   *
+   * One durable `recall.credit` row per call that named anything, beside the
+   * boundary's own: `source: "drewOn"`, `via` the tool, `how` aligned with
+   * `ids`, `refused` as counts by reason (what `fired.ts` reads) and the
+   * refused ids apart. The doctor's Credit line counts these rows.
+   */
+  private drewOnField(raw: unknown, via: "session_end" | "chapter"): Record<string, unknown> | null {
+    if (raw === undefined || raw === null) return null;
+    if (!Array.isArray(raw) || !raw.every((id) => typeof id === "string")) {
+      return { credited: [], reason: "drewOn-malformed", detail: "drewOn is a list of memory ids, as strings." };
+    }
+    if (raw.length === 0) return null;
+    // A DESKTOP CALL THAT NAMED NO SESSION credits nothing (review of #385),
+    // as it leaves no handoff: it was bound to the most recent live Desktop
+    // session, which may be another chat's, and the guard would read THAT
+    // chat's shown set and spend its boundary's cap.
+    if (this.callBoundBy === "most-recent") {
+      return {
+        credited: [],
+        reason: "session-unnamed",
+        detail: `Name your session to say what you drew on: session: <the id wake gave this chat>. This call named none, so it was filed under the most recent Claude Desktop session (${this.session ?? "none"}), which may be another chat's.`,
+      };
+    }
+    const session = this.session as string;
+    let out: ReturnType<Counterpart["creditDrewOn"]>;
+    try {
+      out = this.counterpart.creditDrewOn(session, raw as string[]);
+    } catch (err) {
+      return { credited: [], reason: "threw", detail: String((err as Error).message ?? err) };
+    }
+    const byReason: Record<string, number> = {};
+    for (const r of out.refused) byReason[r.reason] = (byReason[r.reason] ?? 0) + 1;
+    if (out.capped.length > 0) byReason["capped"] = out.capped.length;
+    this.telemetry(() => {
+      this.counterpart.noteAdapterEvent(RECALL_CREDIT_EVENT, {
+        source: "drewOn",
+        via,
+        reason: out.credited.length > 0 ? "credited" : "nothing-to-credit",
+        session,
+        date: this.today(),
+        day: out.day,
+        considered: out.named,
+        credited: out.credited.length,
+        refused: byReason,
+        ids: out.credited.slice(0, 64),
+        how: out.credited.slice(0, 64).map(() => "drewOn"),
+        idsTotal: out.credited.length,
+        refusedIds: out.refused.slice(0, 64).map((r) => r.id),
+        capped: out.capped.slice(0, 64),
+      });
+    });
+    return {
+      credited: out.credited,
+      ...(out.refused.length === 0 ? {} : { refused: out.refused }),
+      ...(out.capped.length === 0
+        ? {}
+        : { capped: out.capped, cap: `At most ${String(DREW_ON_MAX_PER_BOUNDARY)} per boundary, the first named; these were not credited.` }),
+    };
   }
 
   /**
@@ -3274,11 +3351,16 @@ export class McpServer {
     if (this.observer) return this.standDown("chapter");
     const bound = this.requireBoundSession(args["session"], "chapter");
     if (bound !== null) return bound;
+    // `drewOn` (2026-10-11): credited whatever the chapter does, and its
+    // outcome rides out on every answer below, as on `session_end`.
+    const drewOn = this.drewOnField(args["drewOn"], "chapter");
+    const withDrewOn = drewOn === null ? {} : { drewOn };
 
     const text = args["text"];
     if (typeof text !== "string" || text.trim().length === 0) {
       return this.refuse("chapter", "text-required", {
         detail: "A chapter has to say something. Nothing worth writing is a real answer — say nothing at all instead.",
+        ...withDrewOn,
       });
     }
     const session = this.session as string;
@@ -3287,7 +3369,7 @@ export class McpServer {
     // chapter's memory copy: a malformed one refuses the call before anything
     // is written, as on `remember`.
     const about = readAbout(args["about"]);
-    if ("refused" in about) return this.refuse("chapter", "about-malformed", { detail: about.refused });
+    if ("refused" in about) return this.refuse("chapter", "about-malformed", { detail: about.refused, ...withDrewOn });
     // The model the hooks last saw answer in this session. A Stop records it
     // before its ask goes out, so the chapter that answers the ask has it.
     const model = readSession(this.registryDir, session)?.model;
@@ -3302,7 +3384,7 @@ export class McpServer {
       });
     } catch (err) {
       // A journal that throws must not look like a journal that refused.
-      return this.refuse("chapter", "threw", { detail: String((err as Error).message ?? err) });
+      return this.refuse("chapter", "threw", { detail: String((err as Error).message ?? err), ...withDrewOn });
     }
     this.emit("mcp.chapter", written.episodeId ?? undefined, {
       session,
@@ -3322,6 +3404,7 @@ export class McpServer {
         created: written.created,
         ...(written.gate === null ? {} : { gate: written.gate }),
         ...(about.mark === null || !written.appended ? {} : { about: about.mark }),
+        ...withDrewOn,
       },
       !written.appended,
     );

@@ -146,11 +146,17 @@ decay pass's curve signature, so a toggle recomputes every next-change day once.
 ### 5.2 Strength — the one number
 
 ```
-rep(m)  = min( 0.12 × uses(m), 0.5 )                                # v0, verbatim; TUNABLE
+rep(m)  = 0.5 × (1 − e^(−uses(m) / 3))                              # saturating since 2026-10-11; TUNABLE
 cons(m) = 0.2 if consolidated(m) else 0                             # v0; LEGACY rows only (§5.11)
 base(m) = max( ω_sal(k) × sal(m),  ω_rep(k) × rep(m) ) + cons(m)    # MAX, not product
 strength(m, d) = clamp01( base(m) × D(m, d) × fade(m) )          # fade: §5.12, 1 unless settled changed
 ```
+
+*The repetition arm saturates since 2026-10-11 (the `drewOn` build; the shape is #371's):
+it was v0's `min(0.12 × uses, 0.5)`, linear to a wall at five uses. With the engaged tier
+(§5.5) use can come more often, so each further use adds less: 0.14 after one, 0.24 after
+two, 0.40 after five, never past 0.5 (`REP_SCALE_USES`). Built by the drewOn builder,
+2026-10-11, from Mike's 10-10 direction, lightly held.*
 
 `base` is monotone non-decreasing (salience is fixed, `uses` only rises). **Identity is
 reached only through §5.3's explicit promotion by a core lane, or declared revision —
@@ -313,9 +319,19 @@ changes with nothing else happening — the nightly turn-down's key (13 C2).
 ### 5.5 Reinforcement
 
 ```
-w = 1.00 referenced by the reply | 0.25 surfaced-unused | 0.00 footnoted    # TUNABLE
+w = 1.00 referenced by the reply | 0.50 engaged (drewOn) | 0.25 surfaced-unused | 0.00 footnoted    # TUNABLE
 uses(m) += w ;  last_used_day(m) := d   (only when w > 0)
 ```
+
+*The `engaged` tier, 2026-10-11:* the session named the memory in a `drewOn` field — it was
+shown this session and shaped what was done or said (`Counterpart#creditDrewOn`; recall
+CONTRACT, the third door). Half a use; its return is a `returns.source = 'engaged'` row
+worth `ENGAGED_RETURN_WEIGHT` × spacing, spaced from the last return of any kind, with no
+core-lane day (the lanes count `awake` and `reflection`). **The tier only goes up within a
+day:** a higher tier the same lived day LIFTS an engaged credit (`creditUse`'s
+`upgradeFrom`: `uses` gains the difference, no second reinforced day, the engaged return
+replaced by the awake one), never the other way. `ENGAGED_RECURRENCE_WEIGHT` (0.5) is what
+an engaged return will count for toward Group 3's recurrence lane, which is not built.
 
 At most one credited occasion per memory per lived day, and never on its birth day [v1 §10
 G9]. Credit is retrospective, resolved at the boundary when the reply is known [v1 §10 G1].

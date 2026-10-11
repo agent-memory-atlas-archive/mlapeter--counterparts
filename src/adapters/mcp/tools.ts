@@ -821,6 +821,27 @@ const STATUS: ToolSpec = {
   inputSchema: { type: "object", properties: {}, required: [], additionalProperties: false },
 };
 
+/**
+ * `drewOn` on `session_end` and `chapter` (2026-10-11): the session says which
+ * memories it was shown that shaped what it did or said, and each earns the
+ * engaged tier (`Counterpart#creditDrewOn`). The field text is the only prompt
+ * for it — the Stop ask says nothing (its 480-character pin). Built by the
+ * drewOn builder, 2026-10-11, from Mike's 10-10 direction, lightly held.
+ */
+const DREW_ON_PROPERTY = {
+  type: "array",
+  items: { type: "string" },
+  description:
+    "Optional: ids of memories shown to you this session — footnotes, recall results — that changed what you did or said. Each is credited as drawn on, so it holds longer. Not one you only saw; one you opened by id is credited already. Up to 3 per ask; an id this session was not shown is refused.",
+} as const;
+
+/** The claim `session_end` and `chapter` share about `drewOn`. */
+const DREW_ON_PRIVILEGE = {
+  claim:
+    "`drewOn` credits only memories this session was shown — its footnotes, loud memories and recall answers — at half a use, at most 3 per boundary and once a day each. An id it was not shown, a handoff, a superseded memory or one faded under a newer one is refused by name, and nothing is credited for it.",
+  mechanizedBy: "src/core/counterpart.ts#creditDrewOn",
+};
+
 const SESSION_END: ToolSpec = {
   name: "session_end",
   summary:
@@ -919,6 +940,7 @@ const SESSION_END: ToolSpec = {
         "src/adapters/mcp/write-up.ts#writeUpDoor -> src/adapters/sessions.ts#writeUpStanding -> src/core/remember/write-up-seam.ts#recordWriteUp",
     },
     ...SETTLE_PRIVILEGES,
+    DREW_ON_PRIVILEGE,
   ],
   inputSchema: {
     type: "object",
@@ -949,6 +971,7 @@ const SESSION_END: ToolSpec = {
         minimum: 1,
         description: "With `writeUp` and `memories`: the part number the fetch returned. Optional; it must match if sent.",
       },
+      drewOn: DREW_ON_PROPERTY,
       memories: {
         type: "array",
         description:
@@ -1072,6 +1095,7 @@ const CHAPTER: ToolSpec = {
       claim: "Under observer stance nothing is written and the refusal says so.",
       mechanizedBy: "src/adapters/mcp/server.ts#standDown",
     },
+    DREW_ON_PRIVILEGE,
   ],
   inputSchema: {
     type: "object",
@@ -1096,6 +1120,7 @@ const CHAPTER: ToolSpec = {
         description:
           "What this session was about, by meaning — me, us, owner, work or world, as for a memory. Please set it: it goes to the chapter's memory copy, and only me, us or owner carry the chapter into a wake in another directory. A session that was only building is work; one about people, feelings or life outside the work is owner or us.",
       },
+      drewOn: DREW_ON_PROPERTY,
     },
     required: ["text"],
     additionalProperties: false,

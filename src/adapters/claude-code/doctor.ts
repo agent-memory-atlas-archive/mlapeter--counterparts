@@ -1577,15 +1577,29 @@ function rowFindings(input: DoctorInput, store: Store): Finding[] {
     );
   }
 
-  const creditRead = newestRows(store, RECALL_CREDIT_EVENT, 1, livedDay);
-  const credit = creditRead.rows[0];
+  // The BOUNDARY's newest row is the reading; a `drewOn` row (the tools' own,
+  // 2026-10-11) is counted beside it, never read as the seam's verdict.
+  const creditRead = newestRows(store, RECALL_CREDIT_EVENT, CREDIT_ROWS_BACK, livedDay);
+  const credit =
+    [...creditRead.rows].reverse().find((r) => payloadOf(r)["source"] !== DREW_ON_SOURCE) ?? creditRead.rows[creditRead.rows.length - 1];
   if (creditRead.unknown) {
     out.push(unread("credit", "Credit", RECALL_CREDIT_EVENT));
   } else if (credit !== undefined) {
     const p = payloadOf(credit);
     const reason = str(p, "reason") ?? "(none)";
-    const detail = `newest recall.credit ${rowDate(credit) ?? "?"}: reason ${reason}, credited ${num(p, "credited") ?? 0} of ${num(p, "considered") ?? 0} considered`;
-    const data = { reason, credited: num(p, "credited"), considered: num(p, "considered"), date: rowDate(credit) };
+    const drewOn = drewOnWeek(store, livedDay);
+    const detail =
+      `newest recall.credit ${rowDate(credit) ?? "?"}: reason ${reason}, credited ${num(p, "credited") ?? 0} of ${num(p, "considered") ?? 0} considered` +
+      (drewOn.calls === 0 ? "" : `; drewOn ${drewOn.credited} credited of ${drewOn.named} named in ${drewOn.calls} call${drewOn.calls === 1 ? "" : "s"} over ${DREW_ON_DAYS} days`);
+    const data = {
+      reason,
+      credited: num(p, "credited"),
+      considered: num(p, "considered"),
+      date: rowDate(credit),
+      drewOnCalls: drewOn.calls,
+      drewOnNamed: drewOn.named,
+      drewOnCredited: drewOn.credited,
+    };
     // `no-candidates` and `nothing-to-credit` are the ORDINARY readings until a
     // session expands or quotes something (HANDOFF, 2026-09-14); only the seam
     // itself failing is a finding.
@@ -1596,6 +1610,37 @@ function rowFindings(input: DoctorInput, store: Store): Finding[] {
     );
   }
   return out;
+}
+
+/** The `source` a `drewOn` field's `recall.credit` row carries (`mcp/server.ts#drewOnField`). */
+const DREW_ON_SOURCE = "drewOn";
+/** How many of the newest `recall.credit` rows the Credit line looks back
+ *  through for the boundary's own, past any `drewOn` rows after it. */
+const CREDIT_ROWS_BACK = 20;
+/** The `drewOn` count's window, in lived days (for the ~10-14 check-in: is it used?). */
+const DREW_ON_DAYS = 7;
+
+/**
+ * THE `drewOn` FIELD'S WEEK (2026-10-11): how many calls named memories, how
+ * many ids they named, and how many of those were credited — summed from the
+ * tools' own `recall.credit` rows. A read; zero when nothing used it.
+ */
+function drewOnWeek(store: Store, livedDay: number): { calls: number; named: number; credited: number } {
+  let calls = 0;
+  let named = 0;
+  let credited = 0;
+  try {
+    for (const row of store.eventLog({ name: RECALL_CREDIT_EVENT, sinceDay: Math.max(0, livedDay - (DREW_ON_DAYS - 1)), order: "desc", limit: 5000 })) {
+      const p = payloadOf(row);
+      if (p["source"] !== DREW_ON_SOURCE) continue;
+      calls += 1;
+      named += num(p, "considered") ?? 0;
+      credited += num(p, "credited") ?? 0;
+    }
+  } catch {
+    // A count that cannot be read is left out, never guessed.
+  }
+  return { calls, named, credited };
 }
 
 /**

@@ -61,7 +61,7 @@ import {
   markJudged,
   saveSessionSemantic,
 } from "./recall/index.js";
-import { resolveReferences } from "./recall/reference.js";
+import { DREW_ON_MAX_PER_BOUNDARY, resolveReferences } from "./recall/reference.js";
 import type { ReferenceCandidate } from "./recall/reference.js";
 import type {
   CandidateVerdict,
@@ -202,7 +202,7 @@ import type {
   AboutMark,
   AddFeelingsResult,
   FeelingInput, Embedder, StoreEvent, TraitInput, MemoryRow, MemoryStatus, SaidBy } from "./store/index.js";
-import { TUNABLES as PHYSICS, band as bandOf } from "./physics/index.js";
+import { TUNABLES as PHYSICS, band as bandOf, fadeOf } from "./physics/index.js";
 import type { UseTier } from "./physics/index.js";
 import type { Kind } from "./types.js";
 
@@ -523,6 +523,33 @@ export const SEMANTIC_LAG_EVENT = "adapter.semantic.lag";
  * is readable from the store, not inferred. Ids only, never body text.
  */
 export const RECALL_CREDIT_EVENT = "recall.credit";
+
+/**
+ * How a credit was earned (2026-10-11): an id OPENED (`expanded`), a loud or
+ * asked memory's words QUOTED (`quoted`), or named in a `drewOn` field — the
+ * session saying it drew on a memory it was shown (`drewOn`). Carried on the
+ * `recall.credit` row as `how`, aligned with `ids`.
+ */
+export type CreditHow = "expanded" | "quoted" | "drewOn";
+
+/** The boundary's `drewOn` cap, decided in `recall/reference.ts`. */
+export { DREW_ON_MAX_PER_BOUNDARY };
+
+/** What one `drewOn` field did (`Counterpart#creditDrewOn`). */
+export interface DrewOnResult {
+  readonly day: number;
+  /** Distinct ids named, in the order given. */
+  readonly named: number;
+  /** Credited at the engaged tier, in the order given. */
+  readonly credited: string[];
+  /** Refused by name, in the order given: `not-shown`, `unknown-id`,
+   *  `archived`, `handoff`, `superseded`, `faded-under-newer`, or recall's or
+   *  physics' own reason (`already-credited-at-or-above`,
+   *  `already-credited-today`, `birth-day`, `observer`, …). */
+  readonly refused: { id: string; reason: string }[];
+  /** Past the boundary's cap (`DREW_ON_MAX_PER_BOUNDARY`), not attempted. */
+  readonly capped: string[];
+}
 /**
  * ONE ROW PER APPLY OF CARRIED CO-ACTIVATION, written by the process that
  * applies it — the boundary's detached worker.
@@ -809,6 +836,8 @@ export interface CreditSummary {
   /** Refusals keyed by the physics `CreditReason` (or recall's own gate reason). */
   readonly refused: Record<string, number>;
   readonly ids: string[];
+  /** How each of `ids` was earned, aligned with it (2026-10-11). */
+  readonly how: CreditHow[];
   /** Uses refused strength credit only for their day cadence that still joined
    *  the turn's links (2026-09-28; associate NOTES §13). */
   readonly linkedDespite: number;
@@ -3506,6 +3535,7 @@ export class Counterpart {
     // `failed` for a boundary that half-succeeded (review of #99, finding 1).
     // A throw is a refusal keyed by its code; the batch goes on.
     const ids: string[] = [];
+    const how: CreditHow[] = [];
     const coactivated: Credited[] = [];
     let credited = 0;
     /** Uses whose strength credit was refused for its day cadence and that
@@ -3532,6 +3562,7 @@ export class Counterpart {
         if (r.credited) {
           credited += 1;
           ids.push(u.memoryId);
+          how.push(u.how);
           continue;
         }
         // The physics enum where physics refused, recall's own reason
@@ -3565,6 +3596,7 @@ export class Counterpart {
       unreadable,
       refused,
       ids,
+      how,
       linkedDespite,
       shown: showings.shown,
       unused: showings.unused,
@@ -3584,6 +3616,116 @@ export class Counterpart {
       shownNotUsed: showings.shownNotUsed.length,
     });
     return summary;
+  }
+
+  /**
+   * THE `drewOn` FIELD (2026-10-11): the session SAYS which memories it was
+   * shown that shaped what it did or said, on `session_end` or `chapter`, and
+   * each is credited at the `engaged` tier — half a use, a half-weight
+   * `engaged` return, no core-lane day. The successor to #371's matcher, which
+   * guessed at it from rare title words (hand-read precision 0.17–0.33, parked
+   * 2026-10-10). Built by the drewOn builder, 2026-10-11, from Mike's 10-10
+   * direction, lightly held.
+   *
+   * THE ONE GUARD: only an id this session was actually SHOWN counts — what
+   * recall's per-session record holds: the ambient footnotes and loud
+   * memories (`surfaced`) and what a deliberate question's answer showed
+   * (`asked`). Anything else is refused `not-shown` and nothing is credited
+   * for it. The wake is not in that record (it is published per store, not
+   * per session), so a wake line is credited by opening it, as before.
+   *
+   * Then, each by name: an id that names nothing, an archived row, a handoff
+   * (E1), and — never revived by engagement — a superseded memory or one faded
+   * under a newer one (synthesis collision G). At most
+   * `DREW_ON_MAX_PER_BOUNDARY` land per boundary, the first in the order
+   * given; the rest come back `capped`. Once per lived day per memory is
+   * recall's and physics' own rule (`already-credited-at-or-above`,
+   * `already-credited-today`): an id this session opened or quoted today is
+   * already credited above this tier. An open later the same day lifts an
+   * engaged credit to a full use (`physics#creditUse`'s `upgradeFrom`).
+   *
+   * Under observer stance nothing is read or written: every id comes back
+   * refused `observer`.
+   */
+  creditDrewOn(sessionId: string, named: readonly string[]): DrewOnResult {
+    const day = this.store.livedDay();
+    const ids = [...new Set(named.map((id) => id.trim()).filter((id) => id.length > 0))];
+    const credited: string[] = [];
+    const refused: { id: string; reason: string }[] = [];
+    const capped: string[] = [];
+    const done = (): DrewOnResult => ({ day, named: ids.length, credited, refused, capped });
+    if (this.observer) {
+      for (const id of ids) refused.push({ id, reason: "observer" });
+      return done();
+    }
+    const state = this.recall.gateState(sessionId);
+    const shown = new Set(Object.keys(state.surfaced));
+    try {
+      for (const rec of this.store.gateRecords(sessionId, ASKED_KIND)) shown.add(rec.ref);
+    } catch {
+      // An unreadable `asked` record narrows what counts as shown; never wider.
+    }
+    // What this boundary already credited this way: the other tool's answer
+    // to the same ask shares the cap.
+    let slots =
+      DREW_ON_MAX_PER_BOUNDARY -
+      Object.values(state.credited).filter((c) => c.tier === "engaged" && c.day === day && c.turn === state.turn).length;
+    for (const id of ids) {
+      const refuse = (reason: string): void => {
+        refused.push({ id, reason });
+      };
+      if (!shown.has(id)) {
+        refuse("not-shown");
+        continue;
+      }
+      const row = this.store.row(id);
+      if (row === undefined) {
+        refuse("unknown-id");
+        continue;
+      }
+      if (row.archived === 1) {
+        refuse("archived");
+        continue;
+      }
+      if (isHandoffRow(this.store, id)) {
+        refuse("handoff");
+        continue;
+      }
+      // ENGAGEMENT NEVER REVIVES WHAT A NEWER MEMORY REPLACED (ported from
+      // #371; synthesis collision G). Opening an old memory on purpose still
+      // credits it, as before.
+      if (row.superseded_by !== null) {
+        refuse("superseded");
+        continue;
+      }
+      if (fadeOf({ fade: row.fade }) < 1) {
+        refuse("faded-under-newer");
+        continue;
+      }
+      if (slots <= 0) {
+        capped.push(id);
+        continue;
+      }
+      try {
+        const r = this.resolveUse(sessionId, id, "engaged");
+        if (r.credited) {
+          credited.push(id);
+          slots -= 1;
+          continue;
+        }
+        refuse(r.outcome?.reason ?? r.reason);
+      } catch (err) {
+        refuse(errCode(err));
+      }
+    }
+    this.emit("counterpart.drewOn", sessionId, {
+      day,
+      named: ids.length,
+      credited: credited.length,
+      refused: refused.length,
+      capped: capped.length,
+    });
+    return done();
   }
 
   /**
