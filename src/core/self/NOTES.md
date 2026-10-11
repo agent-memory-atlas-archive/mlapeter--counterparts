@@ -1320,7 +1320,8 @@ version back: under dreaming `auto` the nightly run starts at the day's first pr
 first turn-end a minute later runs the cycle while the run is still going, and phase 7
 renders before the run's writer writes. Nine `self.briefing` rows for nine lived days.
 
-**What.** Two writes mark the wake behind (`behind.ts`): the page written (`revisePage`,
+**What.** Two writes mark the wake behind (`behind.ts`; every accepted memory and every
+handoff change since 2026-10-10, below): the page written (`revisePage`,
 `clearPage`; every writer arrives there) and memories accepted through `session_end` (the
 door both the Stop ask's answer and the next-session write-up take —
 `Counterpart.submitSessionEnd`). `Counterpart.refreshWake` re-renders through `rebrief`'s
@@ -1360,6 +1361,26 @@ about the same calendar yesterday as one that starts after (tested). The lived d
 the writer only in `dayMemories`' strength read (order within one day) and the `day`
 stamped on the claim row and on the page's `revisedDay` — the dashboard's `newerThanWake`
 compares that lived day with the last render's, and reads a same-day page as not newer.
+
+**Every accepted memory, and every handoff change (2026-10-10).** The two writes became
+all of them. A hermetic repro (notes 2026-10-10, wake staleness) showed a memory written
+with `note` — the most common write mid-session — left Still open, Nearby and Arriving as
+they were for up to a day, in every directory, a thread it closed included: the turn-end
+worker found no mark and rendered nothing. The mark moved from `submitSessionEnd` into
+`Counterpart.deposit`, on the accept arm, so every door marks it: `write-up` for
+`session_end`, the new `memory` for the rest. `writeHandoff`, `retireHandoff` and
+`clearHandoff` mark `handoff` when the write landed, because the bundle's room for the
+handoff pointer is sized at render time (`handoff/` does not import `self/`, so the mark
+sits in the Counterpart method). Cost: one render per turn that wrote something, ~0.45 s
+on the owner's store copy and ~3 s at 10x, in the detached worker, no model call; turns
+that wrote nothing cost nothing more. **The night run marks as before:** its main child's
+tools (dream, reflect, self_page, recall) never reach `deposit` — dream and reflection
+rows mint through their own doors — and the catch-up child's only tool, `session_end`,
+already marked `write-up`. So no skip for the night: it would need a flag threaded into
+the deposit context to change nothing observable, and `run-end` still renders once at the
+end. Still not covered: the morning burst (sessions started before the day's first
+turn-end read yesterday's bundle), sessions already open, and what other directories did
+today.
 
 **A gap, for now.** Once #286 (the per-date log) is merged, `counterpart.rebrief` — carrying
 `why` and `triggers` — is on the log's allowlist, but `counterpart.rebrief.refused`
@@ -1965,3 +1986,65 @@ right after "Still open", and nothing below it was poppable.
   2026-10-10, lightly held; revisit after ~5 lived days. Why: 01 offered this or a cap of
   20; this asks only when something is owed, and the arm paces itself (three pieces, half
   an hour since the later of the first of them and the last ask).
+
+## 2026-10-10 — the wake assembled at session start, and "Today, elsewhere"
+
+Mike's symptom: morning sessions in several directories repeated the same things and seemed
+unaware of each other. The read-only investigation (`~/counterparts-notes/2026-10-10-wake-
+staleness.md`) found the bundle is composed at a turn-end and read unchanged by every session
+in every directory until the next one: a morning's first sessions read the evening's bundle,
+whose Yesterday line named the day before yesterday, and a `note`'s open question or
+reminder waited a day. Mike approved two options on 2026-10-10; details b2's and
+random-f8's, lightly held.
+
+- **What moved to session start** (`Self#assemble`, `Counterpart#assembleWake`): "Still
+  open", "Arriving:", the Yesterday line and the page — every lane that is a plain read.
+  **What stayed at the turn-end:** "Nearby" and the identity rotation, because showing them
+  writes state (`recordHintDisplay`, the `self.rendered.<id>` stamps). The publish now keeps
+  what it showed of identity, craft and Nearby, in order, and the room it composed in
+  (`WAKE_SHOWN_KEY`); the assembly reads those ids back and drops one that has gone, become
+  open, arriving or settled, or — a hint — is now covered by the page.
+- **One composition, two callers.** `build` was split at the lanes: `composeLanes` (the
+  page's ladder and borrowing, `render`, `ROOM_ORDER`, the page stepping down for a due-day
+  reminder) is shared, so a session start keeps every room rule the published bundle keeps.
+  The turn-end's horizon mapping moved into `core/briefing.ts#horizonFor` for the same
+  reason.
+- **The room is the turn-end's** (`budget`, `lend`, `handoffLend`, `handoffKeep`):
+  recomputing it at delivery means every directory's handoffs, chapters and work lines —
+  the span buffer for each — on the session's latency path. A session under another
+  ceiling than the one recorded delivers the published bundle.
+- **Still open from an index.** `Store#openThreadIds` (`meta LIKE '%"unresolved":true%'`, as
+  `planCandidates` matches it) answered by the partial index `memories_open`. No bump of its own
+  (Mike, 10-09: batch format changes): the index is in `DDL_AFTER_COLUMNS` and rides the v13
+  upgrade, so a fresh store and an upgraded one have it; a store stamped v13 before it existed
+  scans one column instead (1.7 ms at a synthetic 9,250). `memories_created` (the day's counts) and
+  `memories_origin_ref` (the chapter walks' copies) the same way.
+- **"Today, elsewhere"** (`handoff/last-here.ts#todayElsewhereLines`, composed by
+  `Counterpart#elsewhereFor`): the other directories worked in today — the host's registry
+  for when and live or ended (`WakeHere.sessions`, host state only), the store's counts
+  (`Store#memoryCountsByScopeSince`, numbers only), and today's newest chapter there on the
+  "About me, from another directory" line's gate (scope on, not confidential, a copy marked
+  me, us or owner — never the one that line already names). Skipped: this directory, this
+  session, the nightly run's directory (the store's own), any directory the scope setting
+  keeps home — named not at all, not even by count. Never span text, a work memory's title
+  or a handoff body. It sits in `ROOM_ORDER` right after Nearby (`elsewhere`): the trim
+  loop steps it down (chapters, then the line) once Nearby is empty and before it pops
+  craft; `takeRoom` does the same for a rescue.
+- **The preface says so:** "— assembled at session start" in place of "— composed at the
+  last boundary" (fewer bytes, inside `PREFACE_RESERVE_BYTES`).
+- **The record speaks for one bundle.** It is written in the same transaction as
+  `BRIEFING_KEY` (`setMetaMany`) and carries the bundle's hash; a session start whose
+  published bundle has another hash delivers it as published.
+- **Cost, measured (synthetic, hermetic; bench in the PR):** SessionStart through the hook,
+  200 registry records: 3.7 → 6.6 ms at 925 memories, 12.3 → 28.2 ms at 9,250 written in
+  one day with 250 open questions and 44 dated. `Counterpart#wake` alone: 2.1 → 6.2 and
+  9.5 → 30.6 ms.
+  The terms are the open questions (≈5 ms of it at 250), the horizon (≈4.5 ms, the same
+  read the per-turn cue path makes), the day's counts and the episode list (≈3 ms each,
+  linear until the indexes exist). One chapter walk per delivery (`deliveryWalk`), shared
+  by "Last here", the handoffs and "Today, elsewhere".
+- **No worker kick at session start.** Nearby lags by one turn-end by design, and the
+  wake-behind fix (every deposit marks the wake) makes turn-ends catch it up.
+- **Named costs.** The dashboard and doctor show the published bundle, which is no longer
+  byte for byte what a session got; a session start's trims leave no durable row (the
+  turn-end's `self.briefing` row is still the day's record).
