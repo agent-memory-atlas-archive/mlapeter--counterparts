@@ -31,6 +31,15 @@ or the CLI's read commands (`counterparts mechanisms --dir …`, `counterparts d
 - **Also send** random-06: in reach / below / archived, the era's count read at default, and any core or
   owner/us memory that moved a band.
 
+### Dated memories archived on the first pass
+- **Look at:** archives made on day 21 whose row has an `event_date` (one-off, not repeating), and whether any
+  of them is something Mike would still want (a reminder for something not done yet, a felt dated fact).
+- **Why:** since Mike's 10-11 call (cut the spent slope), a one-off dated memory is back on its own curve the
+  day after its date plus the grace week, as if never held. A routine one written weeks ahead is archived that
+  same night (readable by id, never deleted). The ~17 dated rows on the store were never counted.
+- **Changes a decision if:** a reminder for something still pending is archived → its date was wrong, or the
+  hold needs to key on "done" rather than on the date.
+
 ## Due 2026-10-14 (the check-in, reminder mem_8a53c5d0bc95)
 
 ### Decision 1: faded matches crowding fresh ones in facts recall
