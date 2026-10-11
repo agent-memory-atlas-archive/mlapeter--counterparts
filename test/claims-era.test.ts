@@ -71,6 +71,8 @@ function capture(): { io: Io; out: string[]; err: string[] } {
 }
 
 const OLD = 0.6;
+/** What the seam filled in for a silent writer before 2026-10-10: the flat 0.25, marked a default. */
+const OLD_DEFAULT = { salience: { claimed: 0.25 }, meta: { [CLAIMED_DEFAULT_META_KEY]: true } } as const;
 
 /** One memory at the old claim, with the fields a class needs. */
 function put(s: Store, extra: Partial<PutInput> = {}): string {
@@ -98,6 +100,18 @@ function seeded(): { s: Store; ids: Record<string, string> } {
     me: put(s, { about: "me" }),
     person: put(s, { kind: "person" }),
     closedDate: put(s, { eventDate: "2026-09-15", learnedOn: "2026-09-01" }),
+    work07: put(s, { about: "work", salience: { claimed: 0.7 } }),
+    // An old DEFAULT (2026-10-11): today's default for what it is about,
+    // either way, exempt or not.
+    ownerDefault: put(s, { about: "owner", ...OLD_DEFAULT }),
+    usDefault: put(s, { about: "us", ...OLD_DEFAULT }),
+    workEventDefault: put(s, { about: "work", status: "done", ...OLD_DEFAULT }),
+    protectedWorkEventDefault: put(s, {
+      about: "work",
+      status: "done",
+      ...OLD_DEFAULT,
+      physics: { birthDay: 1, lastUsedDay: 1, protected: true },
+    }),
     // Kept as claimed.
     core: put(s, { kind: "self", about: "me", physics: { birthDay: 1, lastUsedDay: 1, promotedIdentity: true } }),
     owner: put(s, { about: "owner" }),
@@ -122,7 +136,14 @@ const READ_AT: Record<string, number> = {
   me: PHYSICS.DEFAULT_CLAIM_PERSONAL,
   person: PHYSICS.DEFAULT_CLAIM_PERSONAL,
   closedDate: PHYSICS.AUTHORED_DEFAULT_CLAIM,
+  work07: PHYSICS.AUTHORED_DEFAULT_CLAIM,
+  ownerDefault: PHYSICS.DEFAULT_CLAIM_PERSONAL,
+  usDefault: PHYSICS.DEFAULT_CLAIM_PERSONAL,
+  workEventDefault: PHYSICS.DEFAULT_CLAIM_WORK_EVENT,
+  protectedWorkEventDefault: PHYSICS.DEFAULT_CLAIM_WORK_EVENT,
 };
+/** The old defaults below today's: the rest of READ_AT read lower than stored. */
+const READ_UP = ["ownerDefault", "usDefault"];
 const KEPT = ["core", "owner", "us", "saidByOwner", "protected", "pendingDate", "recurring", "defaulted", "lowWorld"];
 
 describe("the read: old claims at their default, the exempt as claimed", () => {
@@ -145,8 +166,10 @@ describe("the read: old claims at their default, the exempt as claimed", () => {
 
   test("the stored claim is never rewritten — not by the read, a cycle, or a physics write-back", () => {
     const { s, ids } = seeded();
+    const stored = Object.fromEntries(Object.keys(READ_AT).map((name) => [name, s.row(ids[name] as string)!.claimed]));
     for (let k = 1; k <= 5; k++) runCycle({ store: s, date: `2026-10-1${String(k)}` });
-    for (const name of Object.keys(READ_AT)) expect(s.row(ids[name] as string)!.claimed).toBe(OLD);
+    for (const name of Object.keys(READ_AT)) expect({ name, claimed: s.row(ids[name] as string)!.claimed }).toEqual({ name, claimed: stored[name] ?? null });
+    expect(stored["ownerDefault"]).toBe(0.25);
     // A spread physics object written back (what a challenge does) carries no era claim into the column.
     const id = ids["work"] as string;
     s.updatePhysics(id, { ...s.physicsOf(id) });
@@ -183,6 +206,56 @@ describe("the read: old claims at their default, the exempt as claimed", () => {
     expect(await run(["claims-era", "--on", "--dir", dir], { io: c.io, env: {} })).toBe(EXIT.ok);
     const again = store();
     expect(again.getMeta(CLAIMS_ERA_CUTOFF_KEY)).toBe(recorded);
+  });
+});
+
+describe("old defaults read at today's default, either way (Mike, 2026-10-11)", () => {
+  test("an old 0.25 owner default reads 0.40 and stands higher; a done work event's reads 0.20; an exempt one too", () => {
+    const { s, ids } = seeded();
+    const owner = s.physicsOf(ids["ownerDefault"] as string);
+    expect(owner.eraClaim).toBe(PHYSICS.DEFAULT_CLAIM_PERSONAL);
+    const asStored = { ...owner, eraClaim: null };
+    expect(stability(owner)).toBeGreaterThan(stability(asStored));
+    expect(strength(owner, 5)).toBeGreaterThan(strength(asStored, 5));
+    expect(s.physicsOf(ids["workEventDefault"] as string).eraClaim).toBe(PHYSICS.DEFAULT_CLAIM_WORK_EVENT);
+    // The exemptions are for explicit claims: a protected default reads today's too.
+    expect(s.physicsOf(ids["protectedWorkEventDefault"] as string).eraClaim).toBe(PHYSICS.DEFAULT_CLAIM_WORK_EVENT);
+    // An old default already at today's reads as stored.
+    expect(s.physicsOf(ids["defaulted"] as string).eraClaim ?? null).toBeNull();
+  });
+
+  test("an explicit claim keeps #377's reading: 0.7 work reads 0.25, 0.3 world reads 0.3, owner and us as claimed", () => {
+    const { s, ids } = seeded();
+    expect(s.physicsOf(ids["work07"] as string).eraClaim).toBe(PHYSICS.AUTHORED_DEFAULT_CLAIM);
+    for (const name of ["lowWorld", "owner", "us", "saidByOwner", "protected"]) {
+      expect({ name, era: s.physicsOf(ids[name] as string).eraClaim ?? null }).toEqual({ name, era: null });
+    }
+  });
+
+  test("a default written after the cutoff is untouched; --off reads every old default as stored", () => {
+    const { s, ids } = seeded();
+    const id = ids["ownerDefault"] as string;
+    s.setMeta(CLAIMS_ERA_CUTOFF_KEY, String(T - 1));
+    expect(s.physicsOf(id).eraClaim ?? null).toBeNull();
+    s.setMeta(CLAIMS_ERA_CUTOFF_KEY, String(T + 1));
+    expect(s.claimsEra()).toMatchObject({ down: Object.keys(READ_AT).length - READ_UP.length, up: READ_UP.length });
+    s.updateMeta(CLAIMS_ERA_CUTOFF_KEY, () => null);
+    for (const name of [...READ_UP, "workEventDefault"]) {
+      const p = s.physicsOf(ids[name] as string);
+      expect({ name, era: p.eraClaim ?? null }).toEqual({ name, era: null });
+      expect(curveSal(p)).toBe(sal(p.salience));
+    }
+    expect(s.claimsEra()).toMatchObject({ affected: 0, down: 0, up: 0 });
+  });
+
+  test("the signature carries the reading's version, so a store signed before it re-curves once", () => {
+    expect(JSON.parse(curveSignature("1"))).toMatchObject({ era: "1", eraReads: 2 });
+    const { s } = seeded();
+    // Signed under the 10-10 reading: the same signature without `eraReads`.
+    const { eraReads: _gone, ...before } = JSON.parse(curveSignature(String(T + 1))) as Record<string, unknown>;
+    s.setMeta(CURVE_META_KEY, JSON.stringify(before));
+    runCycle({ store: s, date: "2026-10-11" });
+    expect(s.getMeta(CURVE_META_KEY)).toBe(curveSignature(String(T + 1)));
   });
 });
 
@@ -342,6 +415,8 @@ describe("what doctor and the CLI say", () => {
     const [f] = claimsEraFindings(s);
     expect(f?.severity).toBe("green");
     expect(f?.detail).toContain(`${String(era.affected)} memories`);
+    expect(f?.detail).toContain(`(${String(era.down)} lower than stored, ${String(era.up)} higher)`);
+    expect(era.up).toBe(READ_UP.length);
     expect(f?.detail).toContain("claims-era --off");
     s.close();
     const read = capture();

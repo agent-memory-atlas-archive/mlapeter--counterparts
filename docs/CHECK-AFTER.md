@@ -92,6 +92,7 @@ or the CLI's read commands (`counterparts mechanisms --dir …`, `counterparts d
   `archived_reason` of corrected / dream-merge / episode-regrown / handoff-cleared, i.e. exits by fading, split
   by whether the era read them at default.
 - **Why:** the era (Mike 10-10) reads 468 old claims at their default; on the 10-10 copy it caused 50 more
-  archives by +30 lived days than without it (73 vs 23).
+  archives by +30 lived days than without it (73 vs 23). Since 10-11 the count has two parts, read lower
+  and read higher (old defaults below today's, e.g. owner/us at 0.25 → 0.40), so it jumps by the read-higher ones.
 - **Changes a decision if:** the era's archives include memories Mike would miss → `counterparts claims-era
   --off` reads claims as stored again (archives already made stay archived, readable by id).

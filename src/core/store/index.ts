@@ -3918,29 +3918,36 @@ export class Store {
   /**
    * THE OLD-CLAIMS ERA, as it stands (2026-10-10, `operational.ts#eraClaimOf`):
    * the cutoff the curve reads (null: off), the moment first recorded (what
-   * `--on` restores), and how many live memories the curve now reads at their
-   * default rather than their stored claim. A read; one pass over the live
-   * memory rows, each through `row()` so the hold and the cutoff are the ones
-   * the curve sees.
+   * `--on` restores), and how many live memories the curve now reads at
+   * today's default rather than their stored claim — `down` below it (an old
+   * explicit claim, or an old default above today's), `up` above it (an old
+   * default below today's, 2026-10-11); `affected` is both. A read; one pass
+   * over the live memory rows, each through `row()` so the hold and the cutoff
+   * are the ones the curve sees.
    */
-  claimsEra(): { cutoff: number | null; recorded: number | null; affected: number } {
+  claimsEra(): { cutoff: number | null; recorded: number | null; affected: number; down: number; up: number } {
     const num = (v: string | undefined): number | null => {
       const n = v === undefined || v === "" ? Number.NaN : Number(v);
       return Number.isFinite(n) ? n : null;
     };
     const cutoff = num(this.getMeta(CLAIMS_ERA_CUTOFF_KEY));
     const recorded = num(this.getMeta(CLAIMS_ERA_RECORDED_KEY));
-    let affected = 0;
+    let down = 0;
+    let up = 0;
     if (cutoff !== null) {
       for (const { id } of this.ops.all<{ id: string }>(
         "SELECT id FROM memories WHERE archived = 0 AND type = 'memory' AND claimed IS NOT NULL AND (created_at IS NULL OR created_at < ?)",
         cutoff,
       )) {
         const row = this.row(id);
-        if (row !== undefined && !reachExempt(row) && typeof rowToPhysics(row).eraClaim === "number") affected += 1;
+        if (row === undefined || reachExempt(row) || row.claimed === null) continue;
+        const era = rowToPhysics(row).eraClaim;
+        if (typeof era !== "number") continue;
+        if (era < row.claimed) down += 1;
+        else up += 1;
       }
     }
-    return { cutoff, recorded, affected };
+    return { cutoff, recorded, affected: down + up, down, up };
   }
 
   /** Every row's next-change day forgotten (a new curve: the turn-down looks at all of them once). */
