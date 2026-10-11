@@ -42,6 +42,14 @@ or the CLI's read commands (`counterparts mechanisms --dir …`, `counterparts d
 
 ## Due 2026-10-14 (the check-in, reminder mem_8a53c5d0bc95)
 
+### The tax deadline shows under Arriving on 10-13 and 10-14
+- **Look at:** the wake in a session on the morning of 10-13 and of 10-14: "Arriving:" lists the
+  Oct-15 tax deadline (a plain reminder).
+- **Why:** two quiet items due 10-14 took both of Arriving's lines from it (found by the 0.3.17
+  release check); Arriving now ranks plain reminders first, then nearest date (IMPROVEMENTS,
+  "Decided by random-06, 2026-10-11").
+- **Changes a decision if:** it is still missing → the cap needs to grow, not just reorder.
+
 ### Decision 1: faded matches crowding fresh ones in facts recall
 - **Look at:** a few real facts-mode recalls on the live store (Mike's normal questions); count how often a
   faded match ranks above a fresh one that answered the question better.

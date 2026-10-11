@@ -17,7 +17,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { EMBED_BACKFILL_EVENT } from "../src/core/counterpart.js";
+import { EMBED_BACKFILL_EVENT, SWEEP_GATE_EVENT } from "../src/core/counterpart.js";
 import { RETENTION_EVENT } from "../src/core/remember/index.js";
 import { STATIC_WEIGHTS_ENV, resolveStaticWeights } from "../src/core/embed/static.js";
 import { heldExits, Store, paths } from "../src/core/store/index.js";
@@ -270,6 +270,41 @@ describe("Recall by meaning on a FRESH static install — no worker row yet", ()
     expect(f.detail).toContain("weights were not found in");
     expect(f.fix).toContain("bun add -g counterparts-model-potion");
     expect(`${f.detail} ${f.fix}`).not.toContain(EMBED_KEY_ENV);
+  });
+});
+
+// A brand-new install's one jargon amber (2026-10-11): before the first
+// session nothing has been embedded, and that is not a fault.
+describe("Vectors before the first session, and after", () => {
+  test("memories and no backfill run yet: green, in plain words, nothing to do", () => {
+    writer().put({ type: "memory", kind: "fact", body: "one memory" });
+    opened.splice(0).forEach((s) => s.close());
+    const v = by(reading(STATIC), "vectors");
+    expect(v.severity).toBe("green");
+    expect(v.detail).toContain("builds after your first session");
+    expect(v.detail).not.toContain("per boundary");
+    expect(v.fix).toBe("");
+    expect(v.data["unembedded"]).toBe(1);
+  });
+
+  test("a store that has run the backfill and still has a shortfall: amber, as before", () => {
+    writer().put({ type: "memory", kind: "fact", body: "one memory" });
+    opened.splice(0).forEach((s) => s.close());
+    backfillRow({ embedded: 0, failed: 1, remaining: 1, attempted: 1, reason: "ran", codes: "", skipped: 0, kind: "static", weights: "package", model: "potion-base-8M" });
+    const v = by(reading(STATIC), "vectors");
+    expect(v.severity).toBe("amber");
+    expect(v.fix).toContain("must fall");
+    expect(v.detail).not.toContain("first session");
+  });
+
+  test("a store that has swept but never written a backfill row (the backfill threw): amber, not 'not built yet' (review of #393)", () => {
+    const s = writer();
+    s.put({ type: "memory", kind: "fact", body: "one memory" });
+    s.appendEvent({ name: SWEEP_GATE_EVENT, day: s.livedDay(), payload: { date: "2026-09-22" } });
+    opened.splice(0).forEach((x) => x.close());
+    const v = by(reading(STATIC), "vectors");
+    expect(v.severity).toBe("amber");
+    expect(v.detail).not.toContain("first session");
   });
 });
 
