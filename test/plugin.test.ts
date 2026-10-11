@@ -21,6 +21,7 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  rmdirSync,
   statSync,
   symlinkSync,
   utimesSync,
@@ -626,6 +627,40 @@ describe("ensureFirstRun", () => {
     utimesSync(lockIn(), old, old);
     const r = ensureFirstRun({ choice: defaultChoice(), env: firstRunEnv(), home, lockPath: lockIn(), noticePath: noticeIn() });
     expect(r.state).toBe("created");
+  });
+
+  /**
+   * A LOCK SOMEBODY ELSE PLANTED (2026-10-11, from the review of #365): in a
+   * shared `/tmp` the lock's name is known and another user can make it
+   * first. Before, it was waited on to the bound and the first run failed;
+   * now only this user's own directory is waited on, and anything else is
+   * passed over, left where it is, and the install runs.
+   */
+  test("a lock that is not this user's directory never blocks: passed over, left in place, the install made", () => {
+    const fresh = { choice: defaultChoice(), env: firstRunEnv(), home, lockPath: lockIn(), noticePath: noticeIn(), waitMs: 10_000 };
+    // Another user's directory (this test owns it, so the uid is said to be another's).
+    mkdirSync(lockIn());
+    const t0 = Date.now();
+    const r = ensureFirstRun({ ...fresh, uid: (process.getuid?.() ?? 0) + 1 });
+    expect(r.state).toBe("created");
+    expect(Date.now() - t0).toBeLessThan(5_000);
+    expect(existsSync(lockIn())).toBe(true);
+    expect(existsSync(defaultChoice().path)).toBe(true);
+    rmSync(join(home, ".counterparts"), { recursive: true, force: true });
+    rmdirSync(lockIn());
+    // A file at the lock's name, and a link there to a directory: neither is a lock.
+    for (const plant of [(): void => writeFileSync(lockIn(), "planted\n"), (): void => symlinkSync(work, lockIn())]) {
+      plant();
+      const t1 = Date.now();
+      expect(ensureFirstRun(fresh).state).toBe("created");
+      expect(Date.now() - t1).toBeLessThan(5_000);
+      expect(lstatSync(lockIn()).isDirectory()).toBe(false);
+      rmSync(join(home, ".counterparts"), { recursive: true, force: true });
+      rmSync(lockIn(), { force: true });
+    }
+    // This user's own live lock is still waited on, as before.
+    mkdirSync(lockIn());
+    expect(ensureFirstRun({ ...fresh, waitMs: 300, uid: process.getuid?.() ?? null }).state).toBe("failed");
   });
 
   test("a live lock that never yields a configuration times out, writing nothing", () => {
