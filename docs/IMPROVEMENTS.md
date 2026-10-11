@@ -471,6 +471,28 @@ were refined by b2+f8 at the review of #369, named where they were):
   directory it falls back on, so the single binary run from `/counterparts:doctor` knows
   itself for the plugin's (before, `runningAsPlugin` read false there).
 
+### Trial, Mike, 2026-10-11, very lightly held (verbatim in the memory's body)
+
+- Trial, Mike, 2026-10-11, very lightly held: verbatim in the memory's body; long-run lean is an
+  attachments table (the memory holding the context and keywords that find it). `remember`'s
+  `text` and `session_end`'s `content` ask for a list, a table or a pasted text whose specifics
+  matter word for word, with the search words in the title and the first line. Looked at after 1
+  and ~4 lived days (`docs/CHECK-AFTER.md`).
+- Decided by the verbatim-trial builder, 2026-10-11, lightly held: a facts line whose excerpt is
+  cut says when the words hold a list (5 or more bulleted or numbered lines) or a table (3 or more
+  rows between pipes, not counting the header and its rule): "… (a list, 100 items; read whole by
+  id)". Why: the excerpt flattens a list into one line of its first ~300 characters, so nothing
+  showed that the rest was worth reading; it costs about 35 characters a line, inside the result
+  budget. Counted on line shapes alone, so five lines that happen to start with a dash read as a
+  list.
+- Decided by the #409 reviewer, 2026-10-11, lightly held: facts mode's near-duplicate fold
+  compares two results by their LINES (normalized, as sets) when either holds a list or a table,
+  and by their word sets otherwise. Why: a long list's word set is mostly its shape, so three
+  different 100-item inventories read 0.99 alike and two were "left out" with no id; two weeks'
+  shift tables scored 0.78, just under the 0.85 line. By lines they score 0.0–0.05, while a list
+  pasted twice or retitled still folds (0.98–1.0). Ambient recall's gate (`gate.ts#similarity`)
+  still compares word sets; a turn could still deliver one of two similar lists.
+
 ### Decided by the mark-superseded builder, 2026-10-11, lightly held (settled-over memories where titles show)
 
 - Decided by the mark-superseded builder, 2026-10-11, lightly held: a write's `neighbours`
