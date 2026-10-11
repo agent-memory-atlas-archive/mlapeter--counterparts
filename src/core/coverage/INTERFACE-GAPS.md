@@ -19,13 +19,14 @@ the ledger classifies the claim from (`next-session`).
 
 ## 3. Throughput: debts in projects not reopened lapse
 
-Two writers now (2026-10-01): the next session in the same project (at most
-`WRITE_UP_ASKS_PER_DAY` pointers a day store-wide, one part each), and the nightly run's
-catch-up, in any project, up to `NIGHT_WRITE_UP_SESSIONS` / `NIGHT_WRITE_UP_BYTES` a
-night, claim-first between them. The catch-up rides the nightly run, so it runs only on a
-day whose first prompt starts one (`auto`, with a dream due): on `ask`, or a day with no
-dream offered, owed stretches still wait for a session in their directory. What the night
-leaves is on its `adapter.night.writeup` row.
+Writers (2026-10-01; 2026-10-11): the nightly run's catch-up, in any project, everything
+owed up to a sanity ceiling of `NIGHT_WRITE_UP_PARTS` a run; `counterparts catch-up`, the
+same on demand; and — only where no night runs (dreaming `ask` or `off`) — the next
+session in the same project (at most `WRITE_UP_ASKS_PER_DAY` pointers a day store-wide, one
+part each). Claim-first between them. The night's catch-up rides the nightly run, so it
+runs only on a day whose first prompt starts one (`auto`, with a dream due): on a day with
+no dream offered, owed stretches wait for the next night or the command. What a run leaves
+is on its `adapter.night.writeup` row, in sessions and in parts.
 
 ## 4. The crash sweep is unreachable
 

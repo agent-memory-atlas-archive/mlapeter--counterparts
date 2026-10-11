@@ -85,7 +85,8 @@ import { TUNABLES as RECALL_TUNABLES } from "../../core/recall/tunables.js";
 import { SESSION_NOTICE_BUDGET_MS, checkoutIsGraded, doctorFindings, noticeMessage, readCheckout } from "./doctor.js";
 import type { CheckoutReading } from "./doctor.js";
 import { primacy } from "./primacy.js";
-import { nightTimeoutMs, planNightRunner } from "./night-run.js";
+import { nightRowTimeoutMs, planNightRunner } from "./night-run.js";
+import { catchUpOf, catchUpWords } from "./night-catch-up.js";
 import type { NightKind } from "./night-run.js";
 import { spawnDetached } from "../spawn.js";
 import type { SpawnOutcome } from "../spawn.js";
@@ -1074,7 +1075,7 @@ export class ClaudeCodeAdapter extends Lifecycle {
       kind: kind.kind,
       session: input.sessionId,
       startedAt: store.now(),
-      timeoutMs: nightTimeoutMs(this.config),
+      timeoutMs: nightRowTimeoutMs(this.config, kind.kind),
       endedAt: null,
       reason: null,
       detail: null,
@@ -1140,6 +1141,17 @@ export class ClaudeCodeAdapter extends Lifecycle {
     }
     const spill = dreams.nightSpillLine(night);
     if (spill !== null) out.push(spill);
+    // WHAT THE NIGHT CAUGHT UP (2026-10-11), one line from its row — a read of
+    // one event, so the session knows other sessions were written up overnight
+    // (and why it was not asked to). Never the hand-back's problem.
+    try {
+      const cu = catchUpOf(this.counterpart.store, night.run);
+      if (cu !== null && cu.granted > 0) {
+        out.push(`Counterparts: before it dreamed, the nightly run caught up on sessions that had ended before they were written up — ${catchUpWords(cu)}. Nothing to do; mention it only if asked.`);
+      }
+    } catch {
+      /* the line is a courtesy */
+    }
     this.emit("adapter.night.handed", { run: night.run, lines: out.length });
     return out;
   }
