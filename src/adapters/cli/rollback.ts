@@ -74,7 +74,7 @@ import {
   writeRollbackHold,
 } from "../../core/store/index.js";
 import type { MigrationNote, RollbackHold } from "../../core/store/index.js";
-import { openDb } from "../../core/store/db.js";
+import { foldWal, openDb } from "../../core/store/db.js";
 import { listSessions, readServerRecords, serverBelieved } from "../sessions.js";
 import { pathGuard, readLiveness, realpathDeep, sameFilesystemRefusal } from "./start-fresh.js";
 import { look } from "./wire.js";
@@ -461,6 +461,10 @@ export interface RollbackOutcome {
  *      `counterparts.sqlite.*` name, which the layout classifies);
  *   2. write the hold — from here this build refuses the store, even if it
  *      finds no database at all;
+ *   2b. fold the database's write-ahead log into the main file and truncate
+ *      it (`foldBeforeMoving`), refusing if anything holds it — so a kill
+ *      between the database's rename and its `-wal`'s cannot leave committed
+ *      pages in a lone `-wal`, where an older version would start a blank store;
  *   3. rename the database, its sidecars and the cache into the aside folder;
  *   4. rename the temporary copy into place.
  *
@@ -494,6 +498,7 @@ export function performRollback(plan: RollbackPlan, now: number, build: string |
       build,
     };
     writeRollbackHold(storeDir, hold);
+    foldBeforeMoving(dbPath);
     mkdirSync(join(plan.aside, "cache"), { recursive: true });
     for (const suffix of DB_SUFFIXES) {
       const from = `${dbPath}${suffix}`;
@@ -526,6 +531,40 @@ export function performRollback(plan: RollbackPlan, now: number, build: string |
       return { ok: false, done: [], error };
     }
     return { ok: false, done, error };
+  }
+}
+
+/**
+ * `PRAGMA wal_checkpoint(TRUNCATE)` on the database about to move, on its own
+ * connection (`foldWal` never waits, so a contended fold reports `busy`), then
+ * a check that the `-wal` is empty. Throws a sentence saying what to do when
+ * it cannot: something holds the database (a session, a memory server, the
+ * dashboard, or a background run the holders check could not see).
+ */
+function foldBeforeMoving(dbPath: string): void {
+  let db;
+  let why: string | null = null;
+  try {
+    db = openDb(dbPath);
+    const fold = foldWal(db);
+    if (fold.error !== undefined) why = fold.error;
+    else if (fold.busy) why = "busy";
+  } catch (err) {
+    why = String((err as Error).message ?? err);
+  } finally {
+    try {
+      db?.close();
+    } catch {
+      /* nothing to learn from a close */
+    }
+  }
+  if (why === null && nonEmpty(`${dbPath}-wal`)) why = "the -wal is not empty after it";
+  if (why !== null) {
+    throw new Error(
+      `the database's write-ahead log could not be folded into it first (${why}), so something still holds ` +
+        "the store open. Close every session, Claude Desktop and the dashboard (and wait for a background run " +
+        "to finish), then run this again",
+    );
   }
 }
 
@@ -652,7 +691,8 @@ export function performRollbackUndo(plan: UndoPlan): RollbackOutcome {
     // No database here: the rollback stopped halfway, so whatever sits beside
     // where it would be is the NEWER store's, not yet moved. It stays, and
     // nothing is renamed over it (below).
-    if (existsSync(dbPath)) {
+    const halfway = !existsSync(dbPath);
+    if (!halfway) {
       for (const suffix of DB_SUFFIXES) {
         const path = `${dbPath}${suffix}`;
         if (!existsSync(path)) continue;
@@ -695,7 +735,11 @@ export function performRollbackUndo(plan: UndoPlan): RollbackOutcome {
     const asideCache = join(aside, "cache");
     const comingBack = listOrEmpty(asideCache).filter((n) => n.startsWith(CACHE_FILE));
     if (comingBack.length > 0) {
-      for (const name of listOrEmpty(cacheDir)) {
+      // Halfway, a cache file still here is the newer cache's own sidecar (the
+      // rollback stopped partway through moving them): it stays, and the rest
+      // comes back beside it. Otherwise it is a cache built since, on the
+      // restored store, and goes.
+      for (const name of halfway ? [] : listOrEmpty(cacheDir)) {
         if (name.startsWith(CACHE_FILE)) unlinkSync(join(cacheDir, name));
       }
       mkdirSync(cacheDir, { recursive: true });
@@ -743,6 +787,30 @@ export function upgradeAgain(input: {
   } finally {
     store.close();
   }
+  const hold = readRollbackHold(input.storeDir);
+  if (hold !== null && hold !== "unreadable") tidyAfterKill(input.storeDir, hold);
   clearRollbackHold(input.storeDir);
   return { migration };
+}
+
+/**
+ * What a rollback killed after its hold but before anything moved leaves
+ * besides the hold: the copy under its temporary name, and an empty aside
+ * folder. The copy goes only when the snapshot it came from still holds the
+ * same bytes (it is a duplicate of a file that stays); a folder only when
+ * empty, and only one of the shape this command writes beside the store.
+ */
+function tidyAfterKill(storeDir: string, hold: RollbackHold): void {
+  const snapshotDb = join(hold.snapshotsDir, hold.snapshot, DATABASE_FILE);
+  const duplicate = hold.restoredSha256 !== null && existsSync(snapshotDb) && sha256File(snapshotDb) === hold.restoredSha256;
+  for (const name of listOrEmpty(storeDir)) {
+    if (!duplicate || !name.startsWith(`${DATABASE_FILE}${TMP_INFIX}`)) continue;
+    const path = join(storeDir, name);
+    if (sha256File(path) === hold.restoredSha256) unlinkSync(path);
+  }
+  const aside = resolve(hold.aside);
+  if (dirname(aside) === dirname(resolve(storeDir)) && ASIDE_NAME_RE.test(basename(aside))) {
+    removeIfEmpty(join(aside, "cache"));
+    removeIfEmpty(aside);
+  }
 }

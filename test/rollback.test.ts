@@ -12,11 +12,12 @@
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { EXIT, run } from "../src/adapters/cli/index.js";
+import { planRollback, sha256File } from "../src/adapters/cli/rollback.js";
 import type { Io } from "../src/adapters/cli/index.js";
 import type { ProcessLister } from "../src/adapters/cli/wire.js";
 import { describeFault } from "../src/adapters/claude-code/standdown.js";
@@ -29,6 +30,7 @@ import {
   paths,
   readRollbackHold,
   rollbackHoldPath,
+  writeRollbackHold,
 } from "../src/core/store/index.js";
 
 const OLD = String(SCHEMA_VERSION - 1);
@@ -305,6 +307,10 @@ describe("rollback", () => {
     const walLeft = existsSync(join(aside, `${DATABASE_FILE}-wal`));
     if (walLeft) renameSync(join(aside, `${DATABASE_FILE}-wal`), `${paths.operational(dir)}-wal`);
     expect(existsSync(paths.operational(dir))).toBe(false);
+    // And the cache only partly moved: a sidecar of the newer cache still in place.
+    const cacheSidecar = readdirSync(join(aside, "cache")).find((n) => n.startsWith("cache.sqlite-")) ?? "";
+    expect(cacheSidecar).not.toBe("");
+    renameSync(join(aside, "cache", cacheSidecar), join(dir, "cache", cacheSidecar));
 
     // This build still refuses the store, and its words are not "install the older version".
     let caught: unknown = null;
@@ -341,11 +347,112 @@ describe("rollback", () => {
     expect(back.stamp).toBe(NEW);
     expect(back.ids).toContain(after);
     expect(existsSync(rollbackHoldPath(dir))).toBe(false);
+    // The cache came back whole: the sidecar that never moved was not deleted.
+    expect(cacheFiles().sort()).toEqual(["cache.sqlite", "cache.sqlite-shm", "cache.sqlite-wal"]);
     // The temporary copy was a duplicate of the snapshot, which stays; the aside folder is gone.
     expect(existsSync(tmp)).toBe(false);
     expect(preMigrationCopies().length).toBe(1);
     expect(existsSync(aside)).toBe(false);
     expect(openInChild()).toEqual({ ok: true, code: null, migrated: false });
+  });
+
+  test("a rollback killed after its hold went down but before anything moved: the store opens as before, and --upgrade-again tidies up", async () => {
+    const { after } = upgradedStore();
+    // The ground a kill right after `performRollback`'s step 2 (the hold, in
+    // its final form: it is written once, before anything moves) and the aside
+    // folder's mkdir leaves: the copy under its temporary name, and the newer
+    // store and its cache still where they were. Made by the same steps, so
+    // nothing in this process holds a file across a rename.
+    const plan = planRollback({ storeDir: dir, snapshotsDir: snaps, configPath: join(root, ".counterparts", "claude-code.json"), home: root, now: Date.now() });
+    expect(plan.refusal).toBeNull();
+    if (plan.copy === null || plan.current === null) throw new Error("no plan");
+    const tmp = join(dir, `${DATABASE_FILE}.rollback-99999`);
+    copyFileSync(plan.copy.db, tmp);
+    writeRollbackHold(dir, {
+      version: 1,
+      at: Date.now(),
+      from: plan.current,
+      to: plan.copy.from,
+      snapshot: plan.copy.name,
+      snapshotsDir: snaps,
+      aside: plan.aside,
+      restoredSha256: sha256File(tmp),
+      build: null,
+    });
+    mkdirSync(join(plan.aside, "cache"), { recursive: true });
+    const aside = asideDir();
+    expect(readRollbackHold(dir)).not.toBeNull();
+
+    // The hold holds nothing over a store on this build's schema: this build opens it, unchanged.
+    expect(openInChild()).toEqual({ ok: true, code: null, migrated: false });
+    expect(probe(paths.operational(dir)).ids).toContain(after);
+
+    const doc = await cli(["doctor", "--dir", dir]);
+    expect(doc.out).toContain("holds nothing");
+    expect(doc.out).toContain("--upgrade-again");
+
+    // --undo has no set-aside store to bring back, and says so without touching anything.
+    const undo = await cli(["rollback", "--dir", dir, "--undo"]);
+    expect(undo.code).toBe(EXIT.refused);
+    expect(undo.err).toContain("holds no store database to put back");
+    expect(probe(paths.operational(dir)).ids).toContain(after);
+
+    // A second rollback names both ways out.
+    const again = await cli(["rollback", "--dir", dir, "--yes"]);
+    expect(again.code).toBe(EXIT.refused);
+    expect(again.err).toContain("--upgrade-again");
+
+    const allow = await cli(["rollback", "--dir", dir, "--upgrade-again"]);
+    expect(allow.err).toBe("");
+    expect(allow.code).toBe(EXIT.ok);
+    expect(existsSync(rollbackHoldPath(dir))).toBe(false);
+    expect(probe(paths.operational(dir)).ids).toContain(after);
+    // The orphan copy is a duplicate of the snapshot, which stays: removed. The empty aside folder goes too.
+    expect(existsSync(tmp)).toBe(false);
+    expect(preMigrationCopies().length).toBe(1);
+    expect(existsSync(aside)).toBe(false);
+    expect(() => assertLayoutClassified(readdirSync(dir))).not.toThrow();
+  });
+
+  test("folds the database's -wal into it before anything moves, and stops, changing nothing, while a reader holds it", async () => {
+    upgradedStore();
+    const db = paths.operational(dir);
+    // A writer that committed and has not folded: the row is only in the -wal.
+    const writer = new Database(db);
+    writer.exec("PRAGMA wal_autocheckpoint = 0");
+    writer.run("INSERT OR REPLACE INTO meta (key, value) VALUES ('test.in-the-wal', '1')");
+    expect(statSync(`${db}-wal`).size).toBeGreaterThan(0);
+    // A reader inside a transaction: the log cannot be reset under it.
+    const reader = new Database(db);
+    reader.exec("BEGIN");
+    reader.query("SELECT count(*) FROM memories").get();
+
+    const busy = await cli(["rollback", "--dir", dir, "--yes"]);
+    expect(busy.code).toBe(EXIT.failed);
+    expect(busy.err).toContain("could not be folded into it first");
+    expect(busy.err).toContain("Nothing has changed");
+    expect(existsSync(rollbackHoldPath(dir))).toBe(false);
+    expect(readdirSync(root).filter((n) => n.startsWith("rollback-aside-v"))).toEqual([]);
+    expect(readdirSync(dir).filter((n) => n.includes(".rollback-"))).toEqual([]);
+    expect(stampOf(db)).toBe(NEW);
+    reader.exec("COMMIT");
+    reader.close();
+
+    const done = await cli(["rollback", "--dir", dir, "--yes"]);
+    expect(done.err).toBe("");
+    expect(done.code).toBe(EXIT.ok);
+    const aside = asideDir();
+    const asideWal = join(aside, `${DATABASE_FILE}-wal`);
+    expect(!existsSync(asideWal) || statSync(asideWal).size === 0).toBe(true);
+    // The kill this guards against — the database moved, its -wal not yet:
+    // the set-aside database file ALONE holds the row.
+    mkdirSync(join(root, "alone"));
+    const alone = join(root, "alone", DATABASE_FILE);
+    copyFileSync(join(aside, DATABASE_FILE), alone);
+    const lone = new Database(alone);
+    expect(lone.query("SELECT value FROM meta WHERE key = 'test.in-the-wal'").get()).toEqual({ value: "1" });
+    lone.close();
+    writer.close();
   });
 
   test("asks for the word at a terminal, refuses --yes there, and refuses a pipe without --yes", async () => {
