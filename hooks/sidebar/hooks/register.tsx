@@ -573,9 +573,12 @@ function firedIn(stored: unknown): string | null {
  */
 async function speakFirst($: EngineInterface): Promise<void> {
   if (!run.interactive || run.meetTried) return
+  const scope = await read($, scopeA)
+  // Not read yet (another read was on its way): the next registry read tries again.
+  if (scope.mode === 'unknown' && scope.unread === null) return
   run.meetTried = true
   if (run.typed || firedIn(await $.store.get(MEET_FLAG)) !== null) return
-  if (!canMeet((await read($, scopeA)).mode)) return
+  if (!canMeet(scope.mode)) return
   const { meet } = await readOnboarding($)
   if (meet === 'done' || meet === 'skipped') {
     // Settled (an upgraded store starts done): later sessions need not ask at their start.
@@ -1758,7 +1761,8 @@ export const register: Register = on => {
       // Where this folder stands, then (once per install, while core says not_started) the speak-first.
       $.clock.after(0, () => quiet(refreshScope($).then(() => speakFirst($))))
       run.scopeTimer?.cancel()
-      run.scopeTimer = $.clock.every(SCOPE_RECHECK_MS, () => quiet(refreshScope($)))
+      // (The speak-first again too: a no-op once considered, a retry if the start's read had not landed.)
+      run.scopeTimer = $.clock.every(SCOPE_RECHECK_MS, () => quiet(refreshScope($).then(() => speakFirst($))))
     }
     return next(e)
   })
