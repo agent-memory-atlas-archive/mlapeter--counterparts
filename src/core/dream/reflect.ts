@@ -806,7 +806,7 @@ export class Reflections {
         : [
             `First, read every part: this bundle comes in ${String(parts.of)} parts and this is part 1. Call the reflect tool with phase "part", reflection: ${id}, session: ${session}, part: 2${parts.of > 2 ? `, then each part up to ${String(parts.of)}` : ""}. The later parts hold memories and chapters this one does not; reflect and write only once you have read them all.`,
           ]),
-      `Reflect on the questions, in your own voice. Cite the memory ids your thoughts rest on — an insight that cites nothing is not one. If nothing much stands out tonight, say so in a line and cite nothing: that is a normal night, and it rewrites nothing.`,
+      `Reflect on the questions, in your own voice. Cite the memory ids your thoughts rest on — an insight that cites nothing is not one. The chapters hold what happened; the lessons and patterns in it are yours to draw here. If nothing much stands out tonight, say so in a line and cite nothing: that is a normal night, and it rewrites nothing.`,
       `Then call the reflect tool with phase "finish", reflection: ${id}, session: ${session}, and:`,
       `- entry: your reflection, first person (title: optional). cites: the ids it rests on.`,
       pageLine,

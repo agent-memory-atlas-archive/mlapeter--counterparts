@@ -400,6 +400,8 @@ describe("reflect: dream → journal → reflect", () => {
     for (const word of ["returnDays", "needDays", "span", "strength\":0.", "lane"]) expect(item).not.toContain(word);
     expect(begun.text.startsWith(DREAM_MARK)).toBe(true);
     expect(begun.instructions).toContain(`reflection: ${b.reflection}`);
+    // Chapters keep the diary; drawing the lessons is the reflection's job (2026-10-11).
+    expect(begun.instructions).toContain("the lessons and patterns in it are yours to draw here");
   });
 
   test("finish: a lived entry (source reflection), the page from the cited core, a share — and the hand-back relays both", () => {

@@ -376,6 +376,20 @@ were refined by b2+f8 at the review of #369, named where they were):
   record of what links to what). Rows from a caller that knows no session carry no `session` at all,
   never the unbound sentinel, so a reader falls back on its own guess.
 
+### Decided by the chapter-wording builder, 2026-10-11, lightly held (what a chapter asks for)
+
+- Decided by the chapter-wording builder, 2026-10-11, lightly held: the core ask's own wording
+  (`self/episodes.ts#askText`, the host-neutral text an embedder can show; Claude Code's Stop
+  ask stays its short line) follows the chapter tool: a diary of what happened, in order and in
+  detail, with "lessons and patterns belong to the nightly reflection" in place of "what you
+  learned about them and about yourself". Why: two texts asking for different chapters would
+  pull a host that shows the core ask back toward reflection.
+- Decided by the chapter-wording builder, 2026-10-11, lightly held: the reflection's
+  instructions gain one sentence, "The chapters hold what happened; the lessons and patterns in
+  it are yours to draw here." Why: the dream already writes a pattern it sees as a gist, but the
+  reflection named patterns only in one rotating question and lessons nowhere, so the work the
+  chapter now hands over had no stated home.
+
 ### Also noted
 
 - **A read-without-crediting mode for audits.** A way to read memories (a review, a rules
