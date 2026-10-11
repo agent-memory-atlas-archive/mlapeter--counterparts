@@ -127,13 +127,7 @@ export interface Salience {
 /** The physics-relevant state of one memory. Days are lived-day integers
  *  (active-day clock, scar E8) — never calendar timestamps. */
 /** A dated memory's hold (`MemoryPhysics.hold`). */
-export type DatedHold =
-  | { readonly state: "pending" }
-  | {
-      readonly state: "spent";
-      /** Calendar days since the window closed — an upper bound on the lived days since. */
-      readonly closedDaysAgo: number;
-    };
+export type DatedHold = { readonly state: "pending" };
 
 export interface MemoryPhysics {
   kind: Kind;
@@ -201,9 +195,10 @@ export interface MemoryPhysics {
    * computed at the read seam (`store/operational.ts#datedHold`) from
    * `event_date`, `learned_on`, the row's repeat rule and the store's calendar
    * today. `pending` while the memory's date (and its grace) is still ahead, or
-   * while its date repeats: decay reads t = 0. `spent` once that window has
-   * closed: the steep slope, t counted from the close at the latest. Absent or
-   * null: an ordinary memory.
+   * inside a repeating date's window: decay reads t = 0. Absent or null: an
+   * ordinary memory — which a one-off date is again once its window has closed:
+   * on its own curve from its own anchor, as if it had never been held
+   * (2026-10-11; the steeper "spent" slope is gone).
    */
   hold?: DatedHold | null;
   /**

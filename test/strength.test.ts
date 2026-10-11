@@ -7,7 +7,7 @@
  *   - feeling counted once: `emotional` out of `sal()`'s mean;
  *   - below reach (`REACH`) as a computed state; the core never leaves reach;
  *   - the dated hold: a memory dated a month out stays in reach until its
- *     window closes, then fades steeply;
+ *     window closes, then is on its own curve, as if it had never been held;
  *   - a chapter's copy and a live handoff are never archived;
  *   - the turn-down: the decay pass reads only the rows whose state changes;
  *   - store v13: the one additive migration, its copy, and the way back.
@@ -33,7 +33,7 @@ import {
 } from "../src/core/physics/index.js";
 import type { MemoryPhysics, Salience } from "../src/core/physics/index.js";
 import { runCycle } from "../src/core/sleep/index.js";
-import { CURVE_META_KEY, bandMoveCause } from "../src/core/sleep/decay.js";
+import { CURVE_META_KEY, bandMoveCause, curveSignature } from "../src/core/sleep/decay.js";
 import { OBSERVER_READ_FLOOR, SCHEMA_VERSION, Store, V13_UPGRADE_KEY, paths } from "../src/core/store/index.js";
 import { SELF_PAGE_ROLE_SPELLED, datedHold, rowToPhysics } from "../src/core/store/operational.js";
 import { SELF_PAGE_ROLE } from "../src/core/self/page.js";
@@ -231,11 +231,13 @@ describe("next change day (review 13 C2)", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("the dated hold (review 07 C1/C2)", () => {
-  test("datedHold: pending through the date and the grace, spent after; a past date or a repeat", () => {
+  test("datedHold: pending through the date and the grace, no hold after; a past date or a repeat", () => {
     const row = { event_date: "2026-11-01", learned_on: "2026-10-01", meta: "{}" };
     expect(datedHold(row, "2026-10-15")).toEqual({ state: "pending" });
     expect(datedHold(row, "2026-11-08")).toEqual({ state: "pending" });
-    expect(datedHold(row, "2026-11-10")).toEqual({ state: "spent", closedDaysAgo: 2 });
+    // The window has closed: an ordinary memory again (2026-10-11, no "spent" state).
+    expect(datedHold(row, "2026-11-09")).toBeNull();
+    expect(datedHold(row, "2027-06-01")).toBeNull();
     // A date already past when it was written is a note about it, not a reminder.
     expect(datedHold({ ...row, learned_on: "2026-11-05" }, "2026-11-06")).toBeNull();
     // A month: held to its last day plus grace.
@@ -253,35 +255,40 @@ describe("the dated hold (review 07 C1/C2)", () => {
     expect(datedHold(row, "")).toBeNull();
   });
 
-  test("a repeat is never spent: held in each occurrence's window, absent between, across years (b2, 2026-10-10)", () => {
+  test("a repeat is held in each occurrence's window and has no hold between, across years (b2, 2026-10-10)", () => {
     for (const rule of ["daily", "weekly", "monthly", "yearly"]) {
       const repeat = { event_date: "2026-05-14", learned_on: "2026-05-01", meta: JSON.stringify({ recurring: rule }) };
       let day = "2026-05-02";
+      let between = 0;
       for (let i = 0; i < 800; i++) {
-        expect(datedHold(repeat, day)?.state === "spent").toBe(false);
+        const hold = datedHold(repeat, day);
+        // Each occurrence's own day is held (2026-05-14, 2027-05-14, the 14th of each month…).
+        if (day.endsWith("-14") && (rule !== "yearly" || day.slice(5, 7) === "05")) expect(hold).toEqual({ state: "pending" });
+        if (hold === null) between += 1;
         day = addDays(day, 1);
       }
+      // A daily or weekly repeat is always in a window; a monthly or yearly one has days between.
+      if (rule === "daily" || rule === "weekly") expect(between).toBe(0);
+      else expect(between).toBeGreaterThan(0);
     }
   });
 
-  test("after the window: the memory's own stability / 4, not zeroed, until it is used again (b2, 2026-10-10)", () => {
-    const spent = { state: "spent", closedDaysAgo: 10 } as const;
-    // A felt 0.6 fact written 30 lived days before its date, unused since.
-    const felt = memory({ claimed: 0.6, feelingPeak: 0.6, hold: spent });
-    expect(stability(felt, { spent: true })).toBeCloseTo(stability(felt) / PHYSICS.SPENT_STABILITY_DIVISOR, 8);
-    // Ten days past its window it is still well in reach, and stays for months.
-    expect(strength(felt, 40)).toBeGreaterThan(0.6);
-    expect(belowReach({ ...felt, hold: { state: "spent", closedDaysAgo: 120 } }, 150)).toBe(false);
-    // A 0.25 reminder leaves reach within a day of its window closing.
-    const note = memory({ claimed: 0.25, hold: { state: "spent", closedDaysAgo: 1 } });
-    expect(belowReach(note, 30)).toBe(true);
-    // Used after the window (fewer lived days since its use than days since the
-    // close): an ordinary memory again, on its own curve.
-    const used = memory({ claimed: 0.25, lastUsedDay: 28, uses: 1, hold: { state: "spent", closedDaysAgo: 5 } });
-    expect(strength(used, 30)).toBeCloseTo(strength({ ...used, hold: null }, 30), 10);
+  test("after the window: its own curve from its own anchor, as if it had never been held (Mike, 2026-10-11)", () => {
+    // Pending: t = 0, whatever the lived day.
+    const held = memory({ claimed: 0.25, hold: { state: "pending" } });
+    expect(strength(held, 400)).toBeCloseTo(0.25, 10);
+    expect(daysUntilBelow(held, PHYSICS.REACH)).toBeNull();
+    // Closed: no hold, so the curve reads t = d − anchor and its own stability — no steeper slope,
+    // no count from the close.
+    const felt = memory({ claimed: 0.6, feelingPeak: 0.6, hold: null });
+    const twin = memory({ claimed: 0.6, feelingPeak: 0.6 });
+    for (const d of [0, 40, 150, 900]) expect(strength(felt, d)).toBe(strength(twin, d));
+    expect(stability(felt)).toBe(stability(twin));
+    // A routine 0.25 reminder written 38 lived days before its window closed is below reach at once.
+    expect(belowReach(memory({ claimed: 0.25, hold: null }), 38)).toBe(true);
   });
 
-  test("a memory dated a month out stays in reach until its date; then it fades steeply", () => {
+  test("a memory dated a month out stays in reach until its date and grace; the day after, it is on its own curve", () => {
     const s = store();
     let date = "2026-10-01";
     runCycle({ store: s, date });
@@ -298,15 +305,82 @@ describe("the dated hold (review 07 C1/C2)", () => {
       if (plainLeft === null && !reach(plain)) plainLeft = date;
     }
     expect(plainLeft).toBe("2026-10-03");
-    // The window has closed: below reach within two lived days, steeply.
-    let after = 0;
-    while (reach(dated) && after < 10) {
+    // The last held day was a recheck day, so the first pass after the close looks at it.
+    expect(s.row(dated)?.next_change_day).toBe(s.livedDay() + 1);
+    date = addDays(date, 1);
+    runCycle({ store: s, date });
+    // No hold: it reads exactly what its never-dated twin reads, t from its own anchor (its birth,
+    // 39 lived days back), not from the close — below reach at once, and under the prune floor
+    // with its dwell long since done, so this pass archives it, as it archived the twin weeks ago.
+    const p = rowToPhysics(s.row(dated) as NonNullable<ReturnType<Store["row"]>>);
+    expect(p.hold).toBeNull();
+    expect(strength(p, s.livedDay())).toBe(strength(rowToPhysics(s.row(plain) as NonNullable<ReturnType<Store["row"]>>), s.livedDay()));
+    expect(strength(p, s.livedDay())).toBeLessThan(PHYSICS.PHI_PRUNE);
+    expect(s.row(plain)?.archived).toBe(1);
+    expect(s.row(dated)?.archived).toBe(1);
+  });
+
+  test("a felt dated fact, after its window, reads exactly what an identical never-dated memory reads", () => {
+    const s = store();
+    let date = "2026-10-01";
+    runCycle({ store: s, date });
+    const put = (eventDate?: string): string =>
+      s.put({
+        type: "memory",
+        kind: "fact",
+        body: eventDate === undefined ? "We agreed to ship on Fridays." : "We agreed to ship on Fridays, starting the 10th.",
+        learnedOn: date,
+        ...(eventDate === undefined ? {} : { eventDate }),
+        salience: { claimed: 0.6 },
+      });
+    const dated = put("2026-10-10");
+    const plain = put();
+    for (const id of [dated, plain]) s.addFeelings(id, [{ whose: "owner", emotion: "proud", strength: 0.6 }]);
+    const phys = (id: string): MemoryPhysics => rowToPhysics(s.row(id) as NonNullable<ReturnType<Store["row"]>>);
+    // Held through its window, above its twin; then, the day after the window, level with it.
+    while (date < addDays("2026-10-10", PHYSICS.HOLD_GRACE_DAYS)) {
       date = addDays(date, 1);
       runCycle({ store: s, date });
-      after += 1;
+      expect(phys(dated).hold).toEqual({ state: "pending" });
     }
-    expect(after).toBeLessThanOrEqual(2);
+    expect(strength(phys(dated), s.livedDay())).toBeGreaterThan(strength(phys(plain), s.livedDay()));
+    for (let i = 0; i < 30; i++) {
+      date = addDays(date, 1);
+      runCycle({ store: s, date });
+      expect(phys(dated).hold).toBeNull();
+      expect(strength(phys(dated), s.livedDay())).toBe(strength(phys(plain), s.livedDay()));
+      expect(s.row(dated)?.band).toBe(s.row(plain)?.band);
+      // No longer looked at daily: its curve's own next-change day.
+      if (i === 0) {
+        expect(s.row(dated)?.next_change_day).toBe(nextChangeDay(phys(dated), s.livedDay()));
+        expect(s.row(dated)?.next_change_day).not.toBe(s.livedDay() + 1);
+      }
+    }
+    // Its own curve keeps a felt fact in reach for months.
+    expect(belowReach(phys(dated), s.livedDay())).toBe(false);
     expect(s.row(dated)?.archived).toBe(0);
+  });
+
+  test("a repeating date holds around each occurrence and is on its own curve between them", () => {
+    const s = store();
+    const date = "2026-10-01";
+    runCycle({ store: s, date });
+    const yearly = s.put({ type: "memory", kind: "fact", body: "Sam's birthday.", learnedOn: "2026-09-01", eventDate: "2026-09-20", meta: { recurring: "yearly" }, salience: { claimed: 0.25 } });
+    const twin = s.put({ type: "memory", kind: "fact", body: "Sam likes tea.", learnedOn: "2026-09-01", salience: { claimed: 0.25 } });
+    const row = (id: string): NonNullable<ReturnType<Store["row"]>> => s.row(id) as NonNullable<ReturnType<Store["row"]>>;
+    const d = s.livedDay() + 60;
+    // Between occurrences: no hold, its twin's curve — below reach.
+    const between = rowToPhysics(row(yearly), "2027-03-01");
+    expect(between.hold).toBeNull();
+    expect(strength(between, d)).toBe(strength(rowToPhysics(row(twin), "2027-03-01"), d));
+    expect(belowReach(between, d)).toBe(true);
+    // Around the next occurrence (three days before to the grace week after): held at its height.
+    for (const today of ["2027-09-17", "2027-09-20", "2027-09-27"]) {
+      const held = rowToPhysics(row(yearly), today);
+      expect(held.hold).toEqual({ state: "pending" });
+      expect(strength(held, d)).toBeCloseTo(0.25, 10);
+    }
+    expect(rowToPhysics(row(yearly), "2027-09-28").hold).toBeNull();
   });
 });
 
@@ -401,18 +475,40 @@ describe("the turn-down by next_change_day (review 13 C2)", () => {
     s.addFeelings(ids[1] as string, [{ whose: "self", emotion: "moved", strength: 0.7 }]);
     expect(s.row(ids[1] as string)?.next_change_day).toBeNull();
   });
+
+  test("cutting the spent slope changes the curve signature, so a store signed with ÷4 re-curves once (2026-10-11)", () => {
+    const now = JSON.parse(curveSignature()) as Record<string, unknown>;
+    expect(now["spent"]).toBeUndefined();
+    expect(now["afterHold"]).toBe("own-curve");
+    const { afterHold: _cut, ...rest } = now;
+    const withSpent = JSON.stringify({ ...rest, spent: 4 });
+    expect(withSpent).not.toBe(curveSignature());
+    const s = store();
+    let date = "2026-10-01";
+    runCycle({ store: s, date });
+    for (let i = 0; i < 5; i++) s.put({ type: "memory", kind: "fact", body: `A steady fact number ${String(i)}.`, salience: { claimed: 0.7 } });
+    date = addDays(date, 1);
+    runCycle({ store: s, date });
+    date = addDays(date, 1);
+    expect(runCycle({ store: s, date }).phases.find((p) => p.phase === "decay")?.examined).toBe(0);
+    // The store as the ÷4 build left it: every next-change day is forgotten and every row read again.
+    s.setMeta(CURVE_META_KEY, withSpent);
+    date = addDays(date, 1);
+    expect(runCycle({ store: s, date }).phases.find((p) => p.phase === "decay")?.examined).toBe(5);
+    const signed = JSON.parse(s.getMeta(CURVE_META_KEY) ?? "{}") as Record<string, unknown>;
+    expect(signed["afterHold"]).toBe("own-curve");
+    expect(signed["spent"]).toBeUndefined();
+  });
 });
 
 describe("why a band moved, and the up-ratchet tripwire (review of #372)", () => {
   test("bandMoveCause: a new curve's pass is `recurve`; a dated row's climb is the date's; only an input-free climb is unexplained", () => {
-    const spent = { state: "spent", closedDaysAgo: 30 } as const;
     expect(bandMoveCause("up", "semantic", 40, null, true)).toBe("recurve");
     expect(bandMoveCause("down", "episodic", 40, null, true)).toBe("recurve");
     expect(bandMoveCause("up", "identity", 40, null, true)).toBe("promoted");
     expect(bandMoveCause("down", "episodic", 40, null, false)).toBe("curve");
     expect(bandMoveCause("up", "semantic", null, null, false)).toBe("input");
     expect(bandMoveCause("up", "semantic", 40, { state: "pending" }, false)).toBe("held");
-    expect(bandMoveCause("up", "semantic", 40, spent, false)).toBe("held");
     expect(bandMoveCause("up", "semantic", 40, null, false)).toBe("unexplained");
   });
 
@@ -449,10 +545,27 @@ describe("why a band moved, and the up-ratchet tripwire (review of #372)", () =>
     expect(report.symmetry.find((v) => v.kind === "fact")).toMatchObject({ ok: true, up: 0, down: 0, unexplained: 0 });
   });
 
-  test("a spent dated memory that climbs back after a long absence is `held`, not a ratchet", () => {
+  test("a repeating date that climbs inside an occurrence's window is `held`, not a ratchet", () => {
     const s = store();
-    // Written before its date; its window closed weeks before the store's calendar, but only a
-    // lived day or two have passed since it was written, so it reads as ordinary again.
+    // A yearly date whose occurrence (2026-10-05) is three days or less ahead of the store's calendar.
+    const { id, date } = climb(s, {
+      type: "memory",
+      kind: "fact",
+      body: "The team's anniversary, every year.",
+      salience: { claimed: 0.8 },
+      learnedOn: "2025-09-01",
+      eventDate: "2025-10-05",
+      meta: { recurring: "yearly" },
+    });
+    expect(rowToPhysics(s.row(id)!).hold).toEqual({ state: "pending" });
+    const report = runCycle({ store: s, date });
+    expect(causeOf(s, id)).toBe("held");
+    expect(report.symmetry.find((v) => v.kind === "fact")?.ok).toBe(true);
+  });
+
+  test("a one-off date whose window has closed has no hold to explain a climb (2026-10-11)", () => {
+    const s = store();
+    // Its window closed weeks before the store's calendar: an ordinary memory.
     const { id, date } = climb(s, {
       type: "memory",
       kind: "fact",
@@ -461,10 +574,9 @@ describe("why a band moved, and the up-ratchet tripwire (review of #372)", () =>
       learnedOn: "2026-09-01",
       eventDate: "2026-09-10",
     });
-    expect(rowToPhysics(s.row(id)!).hold?.state).toBe("spent");
-    const report = runCycle({ store: s, date });
-    expect(causeOf(s, id)).toBe("held");
-    expect(report.symmetry.find((v) => v.kind === "fact")?.ok).toBe(true);
+    expect(rowToPhysics(s.row(id)!).hold).toBeNull();
+    runCycle({ store: s, date });
+    expect(causeOf(s, id)).toBe("unexplained");
   });
 });
 

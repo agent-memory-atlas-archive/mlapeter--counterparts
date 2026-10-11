@@ -97,7 +97,7 @@ function seeded(): { s: Store; ids: Record<string, string> } {
     world: put(s, { about: "world" }),
     me: put(s, { about: "me" }),
     person: put(s, { kind: "person" }),
-    spentDate: put(s, { eventDate: "2026-09-15", learnedOn: "2026-09-01" }),
+    closedDate: put(s, { eventDate: "2026-09-15", learnedOn: "2026-09-01" }),
     // Kept as claimed.
     core: put(s, { kind: "self", about: "me", physics: { birthDay: 1, lastUsedDay: 1, promotedIdentity: true } }),
     owner: put(s, { about: "owner" }),
@@ -121,7 +121,7 @@ const READ_AT: Record<string, number> = {
   world: PHYSICS.DEFAULT_CLAIM_WORLD,
   me: PHYSICS.DEFAULT_CLAIM_PERSONAL,
   person: PHYSICS.DEFAULT_CLAIM_PERSONAL,
-  spentDate: PHYSICS.AUTHORED_DEFAULT_CLAIM,
+  closedDate: PHYSICS.AUTHORED_DEFAULT_CLAIM,
 };
 const KEPT = ["core", "owner", "us", "saidByOwner", "protected", "pendingDate", "recurring", "defaulted", "lowWorld"];
 
