@@ -21,9 +21,14 @@ sets the version in four places:
 
 In the same commit, or a second one:
 
-- **CHANGELOG:** fold `## Unreleased` into `## <version> — <YYYY-MM-DD>`, with a short plain
+- **CHANGELOG:** first run `bun tools/changelog/stitch.ts`, which appends every
+  `changelog.d/` fragment to the end of `## Unreleased` (oldest first) and deletes them;
+  commit both. Then fold `## Unreleased` into `## <version> — <YYYY-MM-DD>`, with a short plain
   paragraph on top: what changed for someone using it, and anything they have to do after
-  upgrading. The empty Unreleased heading goes until the next change brings it back.
+  upgrading. The empty Unreleased heading goes until the next change brings it back (the
+  stitch puts it back when it is gone). A hotfix branched off a released tag can edit
+  `CHANGELOG.md` directly; fragments are for pull requests against master
+  ([changelog.d/README.md](../changelog.d/README.md)).
 - **Store format:** check `SCHEMA_VERSION` (`src/core/store/operational.ts`) and
   `CACHE_SCHEMA_VERSION` (`src/core/store/cache.ts`) against the last release. When neither
   moved, the entry can say "no store-format change". When one did, the rollback below has
