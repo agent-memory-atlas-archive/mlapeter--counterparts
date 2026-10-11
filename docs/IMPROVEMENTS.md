@@ -376,6 +376,35 @@ were refined by b2+f8 at the review of #369, named where they were):
   record of what links to what). Rows from a caller that knows no session carry no `session` at all,
   never the unbound sentinel, so a reader falls back on its own guess.
 
+### Decided by the catch-up builder, 2026-10-11, lightly held (the nightly run writes up everything owed)
+
+- Decided by the catch-up builder, 2026-10-11, lightly held: the night's catch-up has no
+  session bound; it runs in batches of at most 192 KB / 16 parts, each a fresh `claude -p`, until
+  nothing is owed. Why: every fetched part stays in a child's context, so one child for a heavy
+  morning would grow past a 200k-token model; a fresh child per batch keeps each near 50k.
+- Decided by the catch-up builder, 2026-10-11, lightly held: the sanity ceiling is 400 parts and
+  one hour a run (`NIGHT_WRITE_UP_PARTS`, `NIGHT_WRITE_UP_TOTAL_MS`). Why: a part costs about 7k
+  new-work tokens (cache write + output) and two tool calls, so 400 parts is about 2.8M tokens,
+  ~11× the measured nightly baseline (246k, 2026-10-10); a typical morning (20–40 parts) is under
+  one baseline night, and a heavy day owed in full is about 200 parts (30 pieces were 16 parts on
+  10-11). 400 parts at the measured 4–8 s a part is 27–53 minutes. The per-part cost is an
+  estimate from part sizes, not measured from a catch-up transcript: measure it on the first live
+  runs and move the ceiling if it is off.
+- Decided by the catch-up builder, 2026-10-11, lightly held: the catch-up stays BEFORE the dream.
+  Why: the page writer and the dream's "new since the last dream" read yesterday, and yesterday's
+  write-ups should be there when they do. The cost is that a heavy morning delays the dream by up
+  to the hour; the hook's `started` row now carries that hour (`nightRowTimeoutMs`), so the delay
+  is never read as a lost run.
+- Decided by the catch-up builder, 2026-10-11, lightly held: the SessionStart pointer (and
+  Desktop's wake pointer) is retired only under dreaming `auto`. Why: under `ask` or `off` no
+  nightly run happens, and without the pointer an owed session in a quiet folder would lapse
+  unless someone ran `counterparts catch-up`. The door's ordinary (pointer) path is kept for
+  that case.
+- Decided by the catch-up builder, 2026-10-11, lightly held: `counterparts catch-up` files its
+  runners and pins its child's tools to the store's own directory, not the terminal's. Why: a
+  command typed in a terminal was not started from any project, and the working directory may be
+  one set `off`.
+
 ### Also noted
 
 - **A read-without-crediting mode for audits.** A way to read memories (a review, a rules

@@ -828,26 +828,41 @@ child's own session (`--session-id`, host-minted before 2026-10-09) is QUIET (`H
 lines, plain reminders, Stop ask, write-up pointer or first-launch question. It still wakes
 with the ordinary wake.
 
-**[M] The morning catch-up runs first (2026-10-01, wake build 3 — held lightly).** A `night`
+**[M] The catch-up runs first, and takes everything owed (2026-10-01, wake build 3; unbounded 2026-10-11 — held lightly).** A `night`
 run (never a reflection-alone one) writes up owed stretches, in ANY directory, before it
 composes its launch prompt (`night-catch-up.ts#runCatchUp`): every session that owes a
-write-up a person's conversation left (`sessions.ts#pointable`), oldest stretch first,
-bounded by `NIGHT_WRITE_UP_SESSIONS` (4) and `NIGHT_WRITE_UP_BYTES` (96 KB, whole parts;
-the first part always). Its runner is a session id of its own, `writeup-<run>`: the
+write-up a person's conversation left (`sessions.ts#pointable`), oldest stretch first, in
+BATCHES — each a fresh child, so no context grows with the morning — of at most
+`NIGHT_WRITE_UP_BYTES` (192 KB, whole parts; the first part always) and
+`NIGHT_WRITE_UP_BATCH_PARTS` (16). There is no session bound. The run stops when nothing is
+owed, when a child ends short, at the sanity ceiling `NIGHT_WRITE_UP_PARTS` (400 parts a
+run, about 11× the measured nightly baseline in new-work tokens; a heavy day owed in full is
+about 200) or before a child could outlast `NIGHT_WRITE_UP_TOTAL_MS` (an hour). Each batch's
+runner is a session id of its own, `writeup-<run>` then `writeup-<run>-2`, …: the
 launcher writes the grant on the runner's record (`grantWriteUps`) and claims every subject
-(`WriteUpProgress.claim`, with `upTo` the last part allowed tonight) before a SECOND
+(`WriteUpProgress.claim`, with `upTo` the last part allowed that batch) before a SECOND
 `claude -p` starts, pinned to that runner, locked down like the first but with
 `--allowedTools` exactly `mcp__counterparts__session_end`, `NIGHT_WRITE_UP_MAX_TURNS` (40)
 and its own watchdog `NIGHT_WRITE_UP_MS` (10 minutes). When it ends, whatever became of it,
 the claims are let go, the grant withdrawn and the runner's record ended; one durable row
-(`adapter.night.writeup`: granted, written, parts, left owed, over the bound, busy elsewhere,
-state) and a process-log line record it, and doctor's Nightly run and Write-ups lines read
-it. Nothing owed: no child, no row. The run's row carries the catch-up's time on its
-watchdog, so a run still going is not read as lost. A clean exit that stopped short of
+for the whole run (`adapter.night.writeup`: granted, written, parts, left owed AND the parts
+they still owe, over the ceiling, busy elsewhere, batches, what stopped it, state) and a
+process-log line record it, and doctor's Nightly run and Catch-up lines read it through one
+renderer (`catchUpWords`). Nothing owed: no child, no row. The hook's `started` row carries
+the catch-up's whole watchdog from the start (`nightRowTimeoutMs`), so a long catch-up is
+not read as lost. A clean exit that stopped short of
 its allowance — some granted session neither written up nor brought to its `upTo` part —
-is recorded `partial`, not `done` (a usage limit exits 0 too; its output is not read); a
-bounded night that did every part it was allowed is `done`. A runner record a killed process left open is ended at the
-next run's start (`endStaleRunners`).
+is recorded `partial`, not `done` (a usage limit exits 0 too; its output is not read), and
+starts no further batch. A runner record a killed process left open is ended at the
+next run's start (`endStaleRunners`). `counterparts catch-up` runs the same launcher in the
+foreground (`cli/catch-up.ts`, run ids `cup_…`), its runners filed under the store's own
+directory. Under dreaming `auto` the SessionStart write-up pointer is retired
+(`lifecycle.ts#writeUpPointerRetired`); under `ask` or `off` no night runs and the pointer
+stays.
+
+**[M] A store that will not open once the child ended is said (2026-10-11).** The run is
+recorded `failed`, reason `unread`, with the store's code (`SCHEMA_AHEAD` when an install
+migrated the store mid-run) — never `nothing-ran` from the exit alone.
 
 **[M] The person sees it, and a run that cannot do its job falls back to asking.** The prompt
 hook's `systemMessage` carries "dreaming in the background (a few minutes). Say "no dreams"

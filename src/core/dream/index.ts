@@ -418,7 +418,9 @@ export interface NightRun {
   /**
    * Why it ended the way it did, as a short code: `no-claude`, `spawn-failed`,
    * `quick-exit`, `nothing-ran`, `unfinished`, `exit`, `watchdog`, `refused`,
-   * `runner` (the host's own background process could not start) — or null.
+   * `runner` (the host's own background process could not start), `unread`
+   * (the store would not open once the child ended; `detail` says why) — or
+   * null.
    */
   readonly reason: string | null;
   /** A little more, when there is more: an error code, a refusal's name. Never prose from the run. */
@@ -540,6 +542,10 @@ export function nightRunWords(run: Pick<NightRun, "state" | "reason" | "detail" 
       return "claude ran but used none of the dream tools (the counterparts MCP server was not there, or refused the session)";
     case "unfinished":
       return "it began but did not finish";
+    case "unread":
+      return run.detail === "SCHEMA_AHEAD"
+        ? "it ran, but a newer build took the store while it ran, so what it did could not be read (an update mid-run)"
+        : `it ran, but the store could not be read afterwards${run.detail === null ? "" : ` (${run.detail})`}`;
     case "watchdog":
       return (run.dream ?? null) === null && (run.reflection ?? null) === null ? "it ran too long and was stopped before it finished anything" : "it ran too long and was stopped";
     case "lost":

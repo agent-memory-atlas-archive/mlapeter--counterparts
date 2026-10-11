@@ -146,7 +146,7 @@ import { DESKTOP_HOST } from "../hosts.js";
 import type { PluginInstallRead } from "../host-wiring.js";
 import { localStamp } from "../../core/time.js";
 import { CLAIMS_DIR, claimsSetAside } from "./claim.js";
-import { catchUpOf, catchUpWords } from "./night-catch-up.js";
+import { CATCH_UP_RUN_PREFIX, catchUpOf, catchUpWords } from "./night-catch-up.js";
 import type { AdapterConfig } from "../config.js";
 // The same vocabulary the hook's stand-down uses, so the terminal and the
 // console cannot end up with two answers to "why did it not open".
@@ -1516,7 +1516,7 @@ function rowFindings(input: DoctorInput, store: Store): Finding[] {
               "sweep",
               "green",
               "Sweep",
-              `${detail} — next session: a session that ended unwritten is written up by the next session in its project`,
+              `${detail} — a session that ended unwritten is caught up later (counterparts catch-up)`,
               "",
               { reason, ran: num(p, "ran"), date: rowDate(sweep) },
             )
@@ -1932,10 +1932,10 @@ function authorshipFindings(input: DoctorInput, store: Store, owedReading: OwedS
     owed === null
       ? ""
       : owed === "failed"
-        ? "; sessions awaiting a write-up: unknown (could not be read)"
+        ? "; sessions awaiting catch-up: unknown (could not be read)"
         : owed.waiting === 0
           ? ""
-          : `; ${plural(owed.waiting, "session", "sessions")} awaiting a write-up` +
+          : `; ${plural(owed.waiting, "session", "sessions")} awaiting catch-up` +
             (owed.stale === 0 ? "" : `, ${String(owed.stale)} from yesterday or earlier`);
   const detail =
     `${windowPhrase(shown, input.today)}: invited to write ${plural(asked, "time", "times")}, ` +
@@ -5261,7 +5261,7 @@ function readOwed(store: Store, today: string): OwedReading | "failed" {
 type OwedSource = () => OwedReading | "failed" | null;
 
 function crashWriteUpFindings(input: DoctorInput, store: Store, owedReading: OwedSource): Finding[] {
-  const title = "Write-ups";
+  const title = "Catch-up";
   const yesterday = isDay(input.today) ? addDays(input.today, -1) : input.today;
   let waiting: number | null = null;
   let stale = 0;
@@ -5329,7 +5329,7 @@ function crashWriteUpFindings(input: DoctorInput, store: Store, owedReading: Owe
       ? "could not read what is written up"
       : waiting === 0
         ? "nothing owed"
-        : `${String(waiting)} session${waiting === 1 ? " owes" : "s owe"} a write-up` +
+        : `${String(waiting)} session${waiting === 1 ? "" : "s"} to catch up` +
           (stale === 0 ? "" : `, ${String(stale)} from yesterday or earlier`);
   // THE NIGHTLY RUN'S CATCH-UP (2026-10-01): its newest row, within two days.
   let night: ReturnType<typeof catchUpOf> = null;
@@ -5339,8 +5339,18 @@ function crashWriteUpFindings(input: DoctorInput, store: Store, owedReading: Owe
   } catch {
     night = null;
   }
+  // ONE RENDERER for the run's row (2026-10-11): on 10-11 this line said
+  // "wrote up 0 of 1" for a night that wrote 5 of a session's 17 parts.
   const nightWords =
-    night === null ? "" : `the nightly run (${localDate(night.at, store.zone())}): ${night.state === "none-granted" || night.state === "could-not-start" ? catchUpWords(night) : `wrote up ${String(night.written)} of ${String(night.granted)}`}`;
+    night === null ? "" : `${night.run.startsWith(CATCH_UP_RUN_PREFIX) ? "counterparts catch-up" : "the nightly run"} (${localDate(night.at, store.zone())}): ${catchUpWords(night)}`;
+  // WHERE THE NIGHT CATCHES UP (dreaming `auto`, 2026-10-11) the SessionStart
+  // pointer is retired: the advice is the night, or the command.
+  let auto = false;
+  try {
+    auto = dreamingSetting(store) === "auto";
+  } catch {
+    auto = false;
+  }
   const detail =
     [
       yesterdayWords,
@@ -5369,7 +5379,7 @@ function crashWriteUpFindings(input: DoctorInput, store: Store, owedReading: Owe
   };
   // THE POINTER IS NOT GETTING OUT (PR #192 review, MAJOR 1 and m4): opening a
   // session there would only defer again, so the advice says why and by how much.
-  if (pointer !== null && pointer.outcome === "deferred" && (waiting ?? 0) > 0) {
+  if (!auto && pointer !== null && pointer.outcome === "deferred" && (waiting ?? 0) > 0) {
     const short = Math.max(0, pointer.need - pointer.room);
     // WHAT TOOK THE ROOM, named (review of #285, M3): beside a full wake the
     // first-launch question or a plain reminder can be what left the pointer
@@ -5412,7 +5422,9 @@ function crashWriteUpFindings(input: DoctorInput, store: Store, owedReading: Owe
         title,
         `${detail} — session ${share.session} is finished in ${tilde(share.here)} and waiting on words it left in ${where}` +
           (shares.length > 1 ? ` (${String(shares.length)} such sessions)` : ""),
-        `Open a session in ${where}: its start points at the rest. A directory set off never will, and there is no command yet to close a session by hand.`,
+        auto
+          ? `The next nightly run writes up the rest in ${where}; counterparts catch-up does it now.`
+          : `Run counterparts catch-up, or open a session in ${where}: its start points at the rest. A directory set off never will.`,
         { ...data, sharesWaiting: shares.length },
       ),
     ];
@@ -5424,7 +5436,10 @@ function crashWriteUpFindings(input: DoctorInput, store: Store, owedReading: Owe
         "amber",
         title,
         detail,
-        "Open a session in the project each one is in: its start points at the oldest. counterparts coverage says which. A stretch nobody writes up lapses after two more days of use — nothing is deleted, it stops being owed.",
+        (auto
+          ? "The nightly run catches up on everything owed each morning; counterparts catch-up does it now. "
+          : "Run counterparts catch-up to write them up now, or open a session in the project each one is in: its start points at the oldest. ") +
+          "counterparts coverage says which. A stretch nobody writes up lapses after two more days of use — nothing is deleted, it stops being owed.",
         data,
       ),
     ];
