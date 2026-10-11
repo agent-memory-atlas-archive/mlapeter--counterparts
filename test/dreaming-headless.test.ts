@@ -327,7 +327,7 @@ describe("B. the headless run: the child's plan, and what becomes of a run", () 
       "--max-turns",
       "60",
       "--mcp-config",
-      nightMcpConfig({ runtime: "/usr/local/bin/bun", dataDir: dir, configPath: "/cfg/claude-code.json", session: "s-launch", scope: "/proj/here" }),
+      nightMcpConfig({ runtime: "/usr/local/bin/bun", dataDir: dir, configPath: "/cfg/claude-code.json", session: "s-launch", scope: "/proj/here", run: "nrn_1" }),
       "--strict-mcp-config",
       "--model",
       "claude-opus-5-5",
@@ -348,6 +348,9 @@ describe("B. the headless run: the child's plan, and what becomes of a run", () 
       COUNTERPARTS_CONFIG: "/cfg/claude-code.json",
       COUNTERPARTS_SESSION: "s-launch",
       COUNTERPARTS_SCOPE: "/proj/here",
+      // The run's id on the server's own environment, not left to the host's
+      // pass-through: its `remark` holds a night child to --reflected-feeling (review of #422).
+      COUNTERPARTS_NIGHT_RUN: "nrn_1",
     });
     expect(plan.args.join(" ")).not.toContain("THE PROMPT");
     expect(plan.stdin).toBe("THE PROMPT");
