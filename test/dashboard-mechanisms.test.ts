@@ -137,8 +137,13 @@ describe("the lights, on a seeded store", () => {
     }
     // The seeder's boundaries flush their co-use and contiguity links in-process,
     // and since 2026-09-28 the boundary writes an associate.flush row for that.
-    expect(by["association"]?.status).toBe("green");
-    expect(by["association"]?.events.length).toBeGreaterThan(0);
+    // Since 2026-10-11 (Group 4) laying links is not enough for green: one must
+    // reach recall in the window, or the light is amber and says so.
+    const assoc = by["association"];
+    expect(assoc?.events.length).toBeGreaterThan(0);
+    expect(assoc?.status).toBe("amber");
+    expect(assoc?.evidence).toContain("links laid");
+    expect(assoc?.evidence).toContain("but no memory a link brought to mind");
 
     const dash = Dashboard.open({ dir: richDir });
     try {
@@ -244,8 +249,8 @@ describe("times fired today (the sidebar's “Mechanisms today”, 2026-10-10)",
       c.store.appendEvent({ name: "gate.deposit", day, payload: { accepted: 1 } });
       // A deposit that accepted nothing is no firing at all.
       c.store.appendEvent({ name: "gate.deposit", day, payload: { accepted: 0 } });
-      // A flush that wrote eight links: one firing of Association.
-      c.store.appendEvent({ name: "associate.flush", day, payload: { rows: 8 } });
+      // A flush that laid four links (eight rows): one firing of Association.
+      c.store.appendEvent({ name: "associate.flush", day, payload: { rows: 8, deposited: 4 } });
       // One dream: its journal and its changes are ONE firing of Dreaming;
       // its merge proves Interference and Consolidation, its gist Gist.
       c.store.appendEvent({ name: "dream.journaled", day, ref: "drm_one", payload: { chars: 400 } });
@@ -295,9 +300,9 @@ describe("times fired today (the sidebar's “Mechanisms today”, 2026-10-10)",
     try {
       for (let i = 1; i <= 9; i++) c.store.advanceClock(`2026-10-0${String(i)}`);
       const day = c.store.livedDay();
-      c.store.appendEvent({ name: "associate.flush", day, payload: { rows: 2 } });
+      c.store.appendEvent({ name: "associate.flush", day, payload: { rows: 2, deposited: 1 } });
       t = Date.parse("2026-10-10T10:01:00Z"); // Oct 10, 00:01 in Honolulu
-      c.store.appendEvent({ name: "associate.flush", day, payload: { rows: 2 } });
+      c.store.appendEvent({ name: "associate.flush", day, payload: { rows: 2, deposited: 1 } });
     } finally {
       c.close();
     }

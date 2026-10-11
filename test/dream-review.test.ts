@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Counterpart } from "../src/core/counterpart.js";
+import { DREAM_TUNABLES } from "../src/core/dream/tunables.js";
 import { V8_CENSUS_KEY, runCycle, v7WouldPromote } from "../src/core/sleep/index.js";
 import type { UpgradeCensus } from "../src/core/sleep/index.js";
 import { Store, V8_UPGRADE_KEY } from "../src/core/store/index.js";
@@ -195,8 +196,8 @@ describe("review of #251: what a dream's changes must keep", () => {
     // The originals stay folded in; the awake correction stands alone.
     for (const orig of [m.a, m.b]) expect(c.store.row(orig)?.archived).toBe(1);
     expect(c.store.row(successor)?.archived).toBe(0);
-    // The rest of the dream is reversed.
-    expect(c.store.edgesFrom(m.person).some((e) => e.dst === m.old)).toBe(false);
+    // The rest of the dream is reversed (to at most the replay's faint trail, Group 4).
+    expect(c.store.edgesFrom(m.person).find((e) => e.dst === m.old)?.weight ?? 0).toBeLessThanOrEqual(DREAM_TUNABLES.REPLAY_LINK_WEIGHT);
   });
 
   test("a dream's merges and gists are not new memories for the next day's ask", () => {

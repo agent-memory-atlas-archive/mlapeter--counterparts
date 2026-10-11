@@ -176,6 +176,8 @@ const ARGS: Record<string, Record<string, unknown>> = {
   dream: { phase: "launch", session: SESSION },
   // The same: `launch` writes nothing.
   reflect: { phase: "launch", session: SESSION },
+  // A step writes (the state, and a memory for an answer).
+  meet: { step: "work", answer: "They are building a schema gate." },
 };
 
 function seed(s: McpServer): void {

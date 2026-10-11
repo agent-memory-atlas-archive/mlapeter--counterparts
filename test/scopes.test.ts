@@ -1445,9 +1445,10 @@ describe("the first-launch question", () => {
     );
     // The wake itself is untouched: its byte count and its sentinel still
     // describe the bundle and nothing else (§1 G2, scar §2.3) — not even the
-    // clock line that rides above it since 2026-09-25 (docs/time.md rule 5).
-    expect(first.injection).toMatch(/^Now: [^\n]+\n/);
-    expect(first.bytes).toBe(Buffer.byteLength(first.injection.replace(/^Now: [^\n]+\n/, ""), "utf8"));
+    // clock line that rides above it since 2026-09-25 (docs/time.md rule 5),
+    // nor the first meeting's marker under it (2026-10-11).
+    expect(first.injection).toMatch(/^Now: [^\n]+\n<!-- counterparts:onboarding meet=done -->\n/);
+    expect(first.bytes).toBe(Buffer.byteLength(first.injection.replace(/^Now: [^\n]+\n<!-- counterparts:onboarding meet=[a-z_]+ -->\n/, ""), "utf8"));
 
     // Recorded on the session, so a SessionStart that fires again — a resume, a
     // clear — does not ask a second time.

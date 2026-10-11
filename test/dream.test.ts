@@ -734,7 +734,10 @@ describe("journal and undo", () => {
     }
     expect(c.store.row(merged)?.archived).toBe(1);
     expect(c.store.row(gist)?.archived).toBe(1);
-    expect(c.store.edgesFrom(m.person).some((e) => e.dst === m.old)).toBe(false);
+    // The dream's link is taken back to what was there before it: at most the
+    // faint trail the replay laid when the bundle opened (Group 4, 2026-10-11),
+    // which is the night's mechanism, not the dream's change.
+    expect(c.store.edgesFrom(m.person).find((e) => e.dst === m.old)?.weight ?? 0).toBeLessThanOrEqual(DREAM_TUNABLES.REPLAY_LINK_WEIGHT);
     expect(c.store.physicsOf(m.old)).toMatchObject({ returns: 0, lastDreamDay: null });
     expect(c.store.feelingsFor(m.old).length).toBe(1);
     expect(c.store.coreEvents({ memoryId: m.self }).length).toBe(0);

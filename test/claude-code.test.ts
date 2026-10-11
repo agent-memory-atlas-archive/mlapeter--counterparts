@@ -92,9 +92,11 @@ import { findable } from "./store-fixture.js";
  * block underneath is compared exactly as before.
  */
 const NOW_LINE = /^Now: [A-Z][a-z]{2} \d{1,2} [A-Z][a-z]{2} \d{4}, \d{1,2}:\d{2} [ap]m \S+\n/;
+/** The first meeting's marker, on its own line under the clock at a session start (2026-10-11). */
+const MEET_MARKER = /^<!-- counterparts:onboarding meet=[a-z_]+ -->\n/;
 function withoutNow(text: string): string {
   expect(text).toMatch(NOW_LINE);
-  return text.replace(NOW_LINE, "");
+  return text.replace(NOW_LINE, "").replace(MEET_MARKER, "");
 }
 
 const ENV = "COUNTERPARTS_DATA_DIR";

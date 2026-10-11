@@ -577,6 +577,46 @@ were refined by b2+f8 at the review of #369, named where they were):
   reads `Earlier`. Accepted as built: a guest writer's neighbour whose head is confidential
   is left out; a neighbour whose head ranks below it is listed marked beside its head.
 
+### Decided by the onboarding-core builder, 2026-10-11, lightly held (the first meeting)
+
+- **Where the state lives: the store's `meta`, and absent means done.** Why: the hook, the
+  MCP server and the dashboard all read the store; the config is rewritten by
+  `install --force` with its own carry-forward rules. Only `install` writes `not_started`,
+  and only into a store it just created, so every existing store (Mike's included) reads
+  `done` with nothing written to it. `start-fresh`'s blank store gets the meeting (the
+  coordinator's ask) but not the dreaming change; `--undo` brings the parked store's own
+  state back with it. (`core/onboarding.ts`)
+- **Dreaming `auto` is written explicitly into a new install's store; the fallback stays
+  `ask`.** Why: changing `DREAMING_DEFAULT` would flip every upgraded store that never set
+  one. The once-only reset of an explicit `auto` is marked done at the same time, or the
+  first hook would set it back to `ask`.
+- **Core writes the answers, through `remember`'s own door.** `meet {step, answer}` stores
+  one memory per answer (about the owner, said by the owner, "(from onboarding)"), rather
+  than Claude calling `remember` itself. Why: the marks are mechanized, a skipped question
+  is never sent, and the second session's line has the id of the work answer. A name is a
+  memory too, never the identity core: no tool writes an entity (mcp CONTRACT §4). So a
+  plugin install, which never asks the name at install, still has no identity core; that is
+  a core ask, not built here.
+- **Where memory is on is one `/` entry in `scopes.json`:** on for every folder, or off with
+  this folder on. Why: there is no install-wide default today, `/` already matches every
+  absolute path with longest prefix winning, so existing entries keep theirs; and with
+  either answer no folder is `unset`, so the first-launch question never fires again. It
+  also waits while the meeting is pending (the meeting asks it instead); after `skipped` it
+  is back. A Claude Desktop chat has no folder, so the script leaves the question out.
+- **No double offer, with or without the mod:** the wake's line is carried whenever an
+  offer is due (at most once a calendar day, never twice in one session, none once done or
+  skipped), and its words make the mod's "say hello and introduce yourself" prompt the same
+  offer. A `meet` read marks `offered`; an `offered` from an earlier day becomes `later`, so
+  the mod sees a meeting it may offer again. Why: the install route is not the same as the
+  mod being present, and someone who types before the session goes idle can only be offered
+  it by the model, from a line already in its context.
+- **Each style bundle is its four preferences plus one shared honest-pushback line**, so
+  every bundle, the character's included, keeps the baseline in so many words. Bundle
+  memories are marked `about: owner`, so like any preference about the owner they could
+  become core through ordinary recurrence; nothing writes them there.
+- **The second session's memory rides beside the wake, once**, in the first session after
+  the one that finished the meeting: the work answer, else something loved, else the rest.
+
 ### Decided by the context-trims builder, 2026-10-11, lightly held (what a tool description serves)
 
 - Decided by the context-trims builder, 2026-10-11, lightly held; needs the bench A/B before
@@ -629,6 +669,119 @@ were refined by b2+f8 at the review of #369, named where they were):
   no more. A snapshots folder the configuration points somewhere else is named as kept,
   and so is Claude Code's own directory. Why: no widening of what a delete reaches without
   someone deciding it.
+
+### Decided by the Group 4 builder, 2026-10-11, lightly held (association; revisit after ~5 lived days)
+
+- Decided by the Group 4 builder, 2026-10-11, lightly held: a new memory's write-time links
+  go to what its session was shown in the last 3 recall turns (`WRITE_LINK_TURNS`) and what
+  a deliberate question showed within 15 minutes of the write (`WRITE_LINK_ASKED_MS`), the
+  asked ones first, at most 4 per memory (`WRITE_LINK_MAX`), at 0.05 through
+  `Associate.propose` (room-only, never evicting). The window is the session's recent turns
+  at the boundary, which is the write's own turn for a mid-session memory and the session's
+  last turns for a write-up at its close. Why: Mike's "it should, like a brain, unless
+  there's a big downside", weak because footnotes are often noise; propose rather than the
+  Hebbian buffer, so a faint footnote-grade trail never pushes out what use learned. A
+  memory shown only through an ambiguous handle (`trains: false`) and a handoff are not "in
+  mind". **Measured on the 10-11 copy, fast-forwarded 7 lived days:** 904 new write-time
+  trails, 793 (88%) of them from memories written in a session-end batch; a hand-read of 20
+  was 1 right, 3 unsure, 16 noise — the 4 from timed (mid-session) writes 1/1/2, the 16 from
+  batches 0/2/14. Kept as built for now because it is harmless at 0.05 (0 pointer candidates
+  at the current threshold; a 0.05 link passes 0.6% of its node). The lever if it stays
+  noisy: the write's own turn and a deliberate question near it only, no recent-turns window
+  for a batch's memories. (Tightened before merge: see the #423 reviewer's bullets below.)
+- Decided by the Group 4 builder, 2026-10-11, lightly held (review 06 C4, the ants rule): no
+  "a reinforced edge fades slower" in this build, and no column. It could be computed from what
+  is stored — a stability that grows with the edge's own weight above one co-use (e.g. linear
+  decay at `HEBB_RATE / S_EDGE` per lived day above 0.1, exponential below; an autonomous curve,
+  so decay realized at flush stays exact) — but weight is not use: a legacy 0.3 dream link would
+  fade like a thrice-used one, and those 174 rows are the hubs review 06 flagged. And there is
+  nothing for it to act on yet: the store has never co-used one pair twice (review 06 §3). (The
+  fast-forward could not say how many new trails use would reinforce: a forward simulation has
+  no awake use.) The honest version is the v14 column,
+  to batch with other v14 needs: `edges.reinforced INTEGER NOT NULL DEFAULT 0` (one `ALTER
+  TABLE … ADD COLUMN`, no backfill, ~1–2 bytes a row: ~6 KB at today's ~5.6k rows, ~60 KB at
+  30k), bumped in `planFlush` when a Hebbian delta lands on a row that already conducts (not by
+  `propose`, not by `retargetOnSupersede`, which takes the max), read in `edgeWeightAt` as
+  `S = S_EDGE · (1 + reinforced)`, carried by `restoreEdge` and the retarget, and
+  `EdgeRow`/`EdgeInput` gain the field. Size M with tests; `edges.source` (C4) rides the same
+  bump if the dashboard needs it — `deposited`, `atWrite` and `replayLinks` made it honest from
+  event JSON without one.
+- Decided by the Group 4 builder, 2026-10-11, lightly held (review 06 C7, D3): the recall
+  pointer threshold stays at 0.05. On the fast-forward: 0 of 635 recorded turns would have had a
+  pointer candidate at 0.05 (no edge reached 0.4; edges ≥ 0.16 fell from 172 to 88 as the legacy
+  0.3 links fade); at 0.0125 (variant b1) 216 would, 174 of them through links that existed
+  before (mostly those legacy links) and 42 through the new 0.05 trails the hand-read calls
+  mostly noise. Revisit after ~5 real lived days of deposit, and only after the write-time
+  window is tightened (CHECK-AFTER, Group 4).
+- Decided by the Group 4 builder, 2026-10-11, lightly held: the replay's deposit is laid when
+  a dream OPENS (`Dreams#begin`, its bundle composed), not when it wakes, between each new
+  memory and the older neighbours shown beside it (not the mixing or look-back), at 0.05; and
+  it is not one of the dream's changes, so a dream's undo leaves it. Why: the replay is the
+  bundle being put in front of the dreamer, which happens whether or not the dreamer then
+  changes anything (a headless run that fails still replayed); the dreamer chose none of
+  these pairs, and a 0.05 trail nothing confirms is gone in about 27 lived days.
+- Decided by the Group 4 builder, 2026-10-11, lightly held: the sweep of rows with an end
+  archived for good covers `episode-regrown` and `dream-merge` only, not `corrected` (review
+  06 C3 listed all three); and a dream's undo of a merge now carries the merged memory's
+  links back to each original it restores. Why: a corrected settle does not carry the
+  corrected memory's links to the one that holds (only a supersede retargets), and the
+  owner can undo a settle, which un-archives it — sweeping would drop links that were never
+  carried. `corrected` joins the list once its settle carries links (the reconsolidation
+  lane's). `corrected` was 24 of the 1,159 inert rows on 10-10.
+- Decided by the Group 4 builder, 2026-10-11, lightly held (review 06 D7): Association's
+  light is amber when links were laid in the last 7 lived days and none reached recall (no
+  pointer shown, no hop-lifted candidate shown), green only when one did. "Links laid"
+  counts pairs that landed (`deposited`), not rows written. Why: the old light was green on
+  a count of rewrites while links put one memory in front of the model in 19 days. Expect
+  the owner's dashboard to show Association amber after this ships, until a link reaches
+  recall; the demo store is amber too. Rows from before have no `deposited`, so the count
+  starts at zero. (Not on a new store: see the #423 reviewer's bullet below.)
+- Decided by the coordinator, 2026-10-11, lightly held, and built by the #423 reviewer: a
+  memory written in a session's write-up batch or by the night catch-up gets no recent-turns
+  window; one written mid-session keeps what was in mind. Why: Mike's rule was "like a brain,
+  unless there's a big downside", and 14 of 14 batch links hand-read as noise: what was in
+  mind at a session's end is not what each memory written then was about.
+- Decided by the #423 reviewer, 2026-10-11, lightly held: "mid-session" is the jot door (the
+  note tool), read from the memory's `gate.deposit` row; a session-end write-up, a catch-up's
+  write-up and a chapter copy (no deposit row) get no window, and so does any memory whose row
+  is missing. The window is the write's own turn only (`WRITE_LINK_TURNS` 3 → 1). Why:
+  hand-read on the 10-11 copy, a jot's own-turn showings were 7 right, 4 unsure, 9 noise of 20,
+  the two turns before it 2, 4, 14. The door, not timing, because timing (60 s apart) splits
+  the jots nearly in half and would give a lone session-end memory a window; chapter copies
+  were getting write-time links too.
+- Decided by the #423 reviewer, 2026-10-11, lightly held, against the coordinator's decision
+  that a batch memory may still link to a deliberate question's answer within 15 minutes: no
+  deliberate-question links for any door (`WRITE_LINK_ASKED_MS` 0, off; one number restores
+  it). Why: those answers hand-read 0 right of 20 for session-end memories and 0 of 20 for
+  jots, and 0 of 20 again counting only questions asked before the write and no chapter
+  copies; they are broad answers ("where did we leave off"), not what the memory was about.
+  So a batch memory gets nothing, a subset of the coordinator's rule for the same reason.
+  After both changes the fast-forward lays 95 write-time trails a week, not 904; a hand-read of
+  40 of them was 5 right, 6 unsure, 29 noise. The bench clinic pair: write-time links never
+  fired on the bench store (every write a session-end write-up, no recall while it was
+  written), before or after; one dream's replay links it. The hermetic clinic test now writes
+  through the jot door.
+- Decided by the #423 reviewer, 2026-10-11, lightly held: Association goes amber for links
+  laid with none reaching recall only once the store has lived 14 days and laid 20 links in
+  the 7-lived-day window (`vitalAfter`); before that it is waiting on the dashboard ("No
+  memory a link brought to mind yet; that takes a few weeks of use") and working in the
+  console. Why: Mike's yardstick for an amber is whether a regular user would know what to do
+  with it, and a new user can do nothing about this one; two weeks is the window and one
+  before it for trails to be laid and used, 20 is about three links a lived day. Mike's own
+  store passes both and will show it amber, which is honest.
+- Decided by the #423 reviewer, 2026-10-11, lightly held: the archived-for-good sweep takes an
+  end only once it was archived 10 minutes ago (`TERMINAL_ARCHIVE_GRACE_MS`). Why: a regrown
+  copy is archived and then retargeted, a merge's original folded in and then retargeted, and
+  another process's boundary flushing between the two steps would have deleted rows not yet
+  carried.
+- Decided by the #423 reviewer, 2026-10-11, lightly held: a dream's replay links count as laid
+  even after the dream is undone, and the undo still leaves them. Why: the undo takes back
+  what the dreamer chose; the replay is the bundle having been shown, which happened, and a
+  0.05 trail nothing uses fades in about 27 lived days. The count now matches the graph.
+- Decided by the #423 reviewer, 2026-10-11, lightly held: one drewOn's pair set holds at most
+  `DREW_ON_MAX_PER_BOUNDARY` (3) members. Why: a memory refused only for its day cadence joins
+  without spending a credit slot, so twenty named memories opened earlier sent 190 full-rate
+  pairs.
 
 ### Decided by the small-fixes builder, 2026-10-11, lightly held (fix/small-1011c)
 

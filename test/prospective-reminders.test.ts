@@ -647,7 +647,7 @@ describe("plain reminders reach the person AND the model, through the hooks", ()
     const id = dated(a.counterpart.store, "2026-10-15", { title: "pay your taxes", meta: { [CUE_MODE_META]: "plain" } });
     const result = a.sessionStart(input());
     expect(result.notices).toEqual(["Today: pay your taxes"]);
-    expect(result.injection).toMatch(/^Now: .*\nPlain reminder \(they asked to be told\) — Today: pay your taxes \[/);
+    expect(result.injection).toMatch(/^Now: .*\n<!-- counterparts:onboarding meet=done -->\nPlain reminder \(they asked to be told\) — Today: pay your taxes \[/);
     expect(result.injection).toContain(`[${id}]`);
     // Nothing is claimed until the delivery knows the envelope carries it.
     expect(a.counterpart.store.eventLog({ name: PROSPECTIVE_PLAIN_EVENT })).toEqual([]);
