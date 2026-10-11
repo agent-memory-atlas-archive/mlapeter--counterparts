@@ -185,22 +185,21 @@ describe("tool descriptions, as a host that serves only the first 2,048 characte
       // well inside the cut with their leading claims.
       // +227 on 2026-10-11 (about-marks): the `remark` claim, last in the
       // list, past the cut; the field's own description is served whole.
-      // +56 on 2026-10-11 (group 5): a missed plain day is said late, in the
-      // reminder claim, past the cut.
-      remember: { total: 5895, beforeList: 1387 },
+      // THE TRIM (2026-10-11, the context-trims lane): the claims that change
+      // nothing the model writes or calls moved to each tool's `engine` rows,
+      // audited and not served — remember 5,839 → 2,533, recall 6,163 → 4,645,
+      // session_end 7,825 → 2,485, chapter 2,417 → 1,778 (now whole inside the
+      // cut). The heads are untouched.
+      remember: { total: 2533, beforeList: 1387 },
       // session_end and chapter grew by 305 each on 2026-10-11: the `drewOn`
-      // claim, last in each list, past the cut (the field says it, served whole).
-      recall: { total: 6163, beforeList: 1200 },
+      // claim, last in each list (an engine row since the trim; the field says it).
+      recall: { total: 4645, beforeList: 1200 },
       status: { total: 1212, beforeList: 501 },
-      // +127 on 2026-10-11 (group 5): the late plain day and a drawn-on
-      // reminder stopping, both in claims past the cut.
-      session_end: { total: 7952, beforeList: 1088 },
+      session_end: { total: 2485, beforeList: 1088 },
       // chapter +33 on 2026-10-11 (chapter wording): "a diary of what
       // happened" in the summary and the diary-vs-log Do NOT line. The
-      // `about` claim, last of its leads, now ends at 2,044 of the 2,048.
-      // +71 on 2026-10-11 (group 5): a drawn-on reminder stops, at the end of
-      // the `drewOn` claim, past the cut.
-      chapter: { total: 2488, beforeList: 761 },
+      // `about` claim, last of its leads, ends at 1,778, the description's end.
+      chapter: { total: 1778, beforeList: 761 },
       scope: { total: 1514, beforeList: 755 },
       self_page: { total: 4846, beforeList: 1772 },
       dream: { total: 3785, beforeList: 1782 },
