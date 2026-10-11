@@ -17,7 +17,9 @@
   when, whether a session there is still open, how many memories it wrote, and its chapter's
   title when that chapter is about you or me (the "About me, from another directory" rule).
   Never what was said there, a work memory's title, or a handoff. Folders whose scope is not
-  on are not named. It is the first thing to give way after "Nearby".
+  on are not named. It has a small room of its own: at most 300 bytes (more folders become
+  "+N more"), taken from the page's room on days other folders were active, so it prints
+  beside a long page; only a plain reminder due today outranks it.
 - **Forgetting now changes what comes to mind (store v13).** Each memory fades on its own
   curve: steep at first and flat later, slower the more it mattered, the more it was felt,
   used or came back. A routine note leaves the working layer in about two days; a felt

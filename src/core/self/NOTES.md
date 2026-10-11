@@ -2027,9 +2027,15 @@ random-f8's, lightly held.
   me, us or owner — never the one that line already names). Skipped: this directory, this
   session, the nightly run's directory (the store's own), any directory the scope setting
   keeps home — named not at all, not even by count. Never span text, a work memory's title
-  or a handoff body. It sits in `ROOM_ORDER` right after Nearby (`elsewhere`): the trim
-  loop steps it down (chapters, then the line) once Nearby is empty and before it pops
-  craft; `takeRoom` does the same for a rescue.
+  or a handoff body. It first sat in `ROOM_ORDER` right after Nearby, and the test-build
+  rehearsal (10-10) found it never printed at 9,000 beside the owner's ~5.9 KB page. Now
+  (b2+f8, lightly held) it has a room of its own: every form within
+  `TODAY_ELSEWHERE_MAX_BYTES` (300; folders past it "+N more", last the count alone), the
+  page chosen in that much less room (`elsewhereRoomBytes`, only when there is a line), the
+  line floor furniture like the Yesterday line (the trim loop no longer touches it), and its
+  `ROOM_ORDER` rank above `pageBorrow`, below `due` — `takeRoom` steps it down for a due-day
+  plain reminder alone. Measured in the owner-like test: the page fits its own room less
+  the line, so it gave 0 bytes; "Still open" listed one item fewer.
 - **The preface says so:** "— assembled at session start" in place of "— composed at the
   last boundary" (fewer bytes, inside `PREFACE_RESERVE_BYTES`).
 - **The record speaks for one bundle.** It is written in the same transaction as

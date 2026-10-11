@@ -50,6 +50,7 @@ import { byteLength } from "./identity.js";
 import type { SelfTunables } from "./tunables.js";
 import { addDays, isDay } from "../time.js";
 import { HANDOFF_RESERVE_MAX_BYTES, HANDOFF_RESERVE_MIN_BUDGET_MULTIPLE } from "../handoff/index.js";
+import { TODAY_ELSEWHERE_MAX_BYTES } from "../handoff/last-here.js";
 
 /**
  * Composed order — behavioral-spec §1's, minus the two riders the Rulings drop
@@ -109,12 +110,7 @@ export const TRIM_ORDER: readonly LaneName[] = [
  *
  *   - `hints`, `craft`, `threads` — "Nearby", store-wide craft, and "Still
  *     open" past its first item: the trim loop's (`TRIM_ORDER`), whole
- *     elements from the end of each lane — with ONE line between the first
- *     two:
- *   - `elsewhere` — the "Today, elsewhere" line (2026-10-10, composed at
- *     session start only, `BriefingRequest.elsewhere`): it gives way after
- *     "Nearby" and before anything else, its titles first
- *     (`elsewhereShorter`), then the whole line;
+ *     elements from the end of each lane;
  *   - `work` — "Work here": the delivery's room for this directory's work
  *     lines (`lendBytes`), which then shows fewer of them;
  *   - `openCount` — "Still open"'s count beside the items the trim kept,
@@ -138,6 +134,14 @@ export const TRIM_ORDER: readonly LaneName[] = [
  *     left unlisted for them;
  *   - `pageBorrow` — the self page past its own room, borrowing "Work here"
  *     (review of #358);
+ *   - `elsewhere` — the "Today, elsewhere" line (2026-10-10, composed at
+ *     session start only, `BriefingRequest.elsewhere`; b2 + random-f8,
+ *     lightly held): at most `TODAY_ELSEWHERE_MAX_BYTES`, with a room of its
+ *     own — the page is chosen in that much less (`elsewhereRoomBytes`,
+ *     `Self#composeLanes`), so beside a long page the line is no longer the
+ *     first thing cut, and every lane listed above trims around it. Only on a
+ *     day other directories were active: no line, no room taken. It gives
+ *     way to `due` alone — chapters first, then directories, then the line;
  *   - `due` — a plain reminder due the day this wake is read (`Ranked.due`):
  *     the person asked to be told, and a missed one is a broken promise;
  *   - `page` — the page within its own room, and "Who I am".
@@ -153,7 +157,6 @@ export const TRIM_ORDER: readonly LaneName[] = [
  */
 export const ROOM_ORDER = [
   "hints",
-  "elsewhere",
   "craft",
   "threads",
   "work",
@@ -166,6 +169,7 @@ export const ROOM_ORDER = [
   "arrivingFirst",
   "handoffsKept",
   "pageBorrow",
+  "elsewhere",
   "due",
   "page",
 ] as const;
@@ -541,14 +545,15 @@ export interface BriefingRequest {
    * other directories were worked in today, when, the chapter written there
    * (scope and confidential gates), and how many memories, as counts. Never
    * a word of a span, a work memory's title or a handoff from there.
-   * Furniture, printed above "Nearby"; it gives way after "Nearby" and before
-   * every other lane (`ROOM_ORDER`'s `elsewhere`). Absent: no line — which is
-   * every render at a boundary, since the line is about the moment a session
-   * starts.
+   * Furniture, printed above "Nearby", at most `TODAY_ELSEWHERE_MAX_BYTES`
+   * (a longer form is not printed); every lane trims around it, and it gives
+   * way to a due-day plain reminder alone (`ROOM_ORDER`'s `elsewhere`).
+   * Absent: no line — which is every render at a boundary, since the line is
+   * about the moment a session starts.
    */
   readonly elsewhere?: string;
-  /** Its shorter forms, widest first: the counts without the titles. Ignored
-   *  without `elsewhere`. */
+  /** Its shorter forms, widest first: fewer chapters, fewer directories.
+   *  Ignored without `elsewhere`. */
   readonly elsewhereShorter?: readonly string[];
 }
 
@@ -1038,6 +1043,38 @@ export function arrivingHead(horizon: readonly Pick<Ranked, "due">[]): number {
   return Math.min(horizon.length, Math.max(1, n));
 }
 
+/**
+ * The "Today, elsewhere" line's forms the render may print, widest first:
+ * each within `TODAY_ELSEWHERE_MAX_BYTES` (2026-10-10), each narrower than
+ * the one before. Empty without a line.
+ */
+function elsewhereFormsOf(line: string | undefined, shorter: readonly string[] | undefined): string[] {
+  if (line === undefined || line.length === 0) return [];
+  const out: string[] = [];
+  for (const form of [line, ...(shorter ?? [])]) {
+    const size = byteLength(flatten(form));
+    if (form.length === 0 || size > TODAY_ELSEWHERE_MAX_BYTES) continue;
+    const last = out[out.length - 1];
+    if (last !== undefined && size >= byteLength(flatten(last))) continue;
+    out.push(form);
+  }
+  return out;
+}
+
+/**
+ * THE ROOM THE "TODAY, ELSEWHERE" LINE TAKES FROM THE PAGE (2026-10-10, b2 +
+ * random-f8, lightly held): the bytes its widest printable form adds to a
+ * wake — the line and the blank line above it — and 0 when there is none.
+ * `Self#composeLanes` chooses the page in that much less room, so the page
+ * gives up at most `TODAY_ELSEWHERE_MAX_BYTES` and two, only on a day other
+ * directories were active, and steps down its ladder whole when it no
+ * longer fits — never cut.
+ */
+export function elsewhereRoomBytes(line: string | undefined, shorter?: readonly string[]): number {
+  const widest = elsewhereFormsOf(line, shorter)[0];
+  return widest === undefined ? 0 : byteLength(flatten(widest)) + 2;
+}
+
 /** The "Today, elsewhere" line's next form after `line` in `forms`, or none. */
 function narrowerElsewhere(line: string, forms: readonly string[]): string | undefined {
   const at = forms.indexOf(line);
@@ -1066,7 +1103,9 @@ function shorterThan(line: string | undefined, forms: readonly string[] | undefi
  *     end, each a `TrimEvent` so the lane's count can still say so;
  *   - `handoffsKept` — the room held for the newest handoff's own block
  *     (`handoffKeepBytes`): reached only by `due`, the one lane above it
- *     that takes room here (review of #367).
+ *     that takes room here (review of #367);
+ *   - `elsewhere` — the "Today, elsewhere" line, a narrower form at a time,
+ *     then none: reached only by `due` too (2026-10-10).
  *
  * The lanes below them are the trim loop's and are gone before any rescue
  * runs; `lastHere` is the delivery's, inside the room lent at `handoffs`; the
@@ -1423,29 +1462,30 @@ export function render(
   // and all. Told nothing only when not even its pointers fit.
   const forms =
     req.yesterday === undefined || req.yesterday.length === 0 ? [] : [req.yesterday, ...shorterThan(req.yesterday, req.yesterdayShorter)];
-  const floorWith = (y: string): number => compose(emptyKept(), req.day, resolve, coreName, identity, {}, y).bytes;
-  const yesterday = forms.find((y) => floorWith(y) <= req.budgetBytes + lendOf(req.lendBytes));
-  // What the line borrowed, the trim loop composes inside.
-  const base = yesterday === undefined ? req.budgetBytes : Math.max(req.budgetBytes, floorWith(yesterday));
-  // THE "TODAY, ELSEWHERE" LINE (2026-10-10): its widest form, stepped down —
-  // its titles, then the line — after "Nearby" and before any other lane
-  // gives an element (`ROOM_ORDER`'s `elsewhere`). Not a lane: no trim row.
-  const elsewhereForms =
-    req.elsewhere === undefined || req.elsewhere.length === 0 ? [] : [req.elsewhere, ...shorterThan(req.elsewhere, req.elsewhereShorter)];
-  let elsewhere: string | undefined = elsewhereForms[0];
+  //
+  // THE "TODAY, ELSEWHERE" LINE (2026-10-10; its own room since b2 +
+  // random-f8's fix the same day, lightly held): furniture like the
+  // Yesterday line and ranked above it (`ROOM_ORDER`'s `elsewhere`) — its
+  // widest form within `TODAY_ELSEWHERE_MAX_BYTES` that the floor fits with,
+  // and the lanes trim around it. The page was chosen in that much less room
+  // (`elsewhereRoomBytes`). Only a due-day plain reminder steps it down
+  // (`takeRoom`). Not a lane: no trim row.
+  const elsewhereForms = elsewhereFormsOf(req.elsewhere, req.elsewhereShorter);
+  const floorWith = (y: string | undefined, e: string | undefined): number =>
+    compose(emptyKept(), req.day, resolve, coreName, identity, {}, y, e).bytes;
+  const floorRoom = req.budgetBytes + lendOf(req.lendBytes);
+  const elsewhere: string | undefined = elsewhereForms.find((e) => floorWith(undefined, e) <= floorRoom);
+  const yesterday = forms.find((y) => floorWith(y, elsewhere) <= floorRoom);
+  // What the lines borrowed, the trim loop composes inside.
+  const base =
+    yesterday === undefined && elsewhere === undefined ? req.budgetBytes : Math.max(req.budgetBytes, floorWith(yesterday, elsewhere));
 
   for (;;) {
     const c = compose(kept, req.day, resolve, coreName, identity, {}, yesterday, elsewhere);
     const fits = c.bytes <= base;
     let cut: TrimEvent | null = null;
-    let stepped = false;
     if (!fits) {
       for (const lane of TRIM_ORDER) {
-        if (lane !== "hints" && elsewhere !== undefined) {
-          elsewhere = narrowerElsewhere(elsewhere, elsewhereForms);
-          stepped = true;
-          break;
-        }
         const items = kept[lane];
         if (items.length === 0) continue;
         const dropped = items.pop();
@@ -1454,7 +1494,6 @@ export function render(
         break;
       }
     }
-    if (stepped) continue;
     if (fits || cut === null) {
       // WHAT THE TRIM COULD NOT POP GIVES WAY, IN `ROOM_ORDER` (2026-10-10):
       // the head of "Arriving:" — every plain reminder due the day the wake is

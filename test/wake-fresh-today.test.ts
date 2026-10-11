@@ -30,7 +30,7 @@
  * invented placeholder prose.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -38,6 +38,8 @@ import { Counterpart } from "../src/core/counterpart.js";
 import { Lifecycle } from "../src/adapters/lifecycle.js";
 import { setScope, writeScopes } from "../src/adapters/scopes.js";
 import { recordSession } from "../src/adapters/sessions.js";
+import { TODAY_ELSEWHERE_MAX_BYTES, todayElsewhereLines } from "../src/core/handoff/last-here.js";
+import { CUE_MODE_META } from "../src/core/prospective/index.js";
 import {
   BRIEFING_KEY,
   FRAMING,
@@ -80,7 +82,9 @@ let FAR: string;
 const open: { close(): void }[] = [];
 
 beforeEach(() => {
-  root = realpathSync(mkdtempSync(join(tmpdir(), "counterparts-wake-fresh-")));
+  // A short root (macOS's own temp path is ~50 bytes): the line names
+  // directories by path, within `TODAY_ELSEWHERE_MAX_BYTES`.
+  root = realpathSync(mkdtempSync(join(existsSync("/tmp") ? "/tmp" : tmpdir(), "cp-wake-")));
   storeDir = join(root, "store");
   HERE = join(root, "garden");
   THERE = join(root, "bakery");
@@ -466,13 +470,17 @@ describe("the assembled wake keeps its budget and its order", () => {
     expect(lines.indexOf(PAGE_END_LINES.whole)).toBeGreaterThan(top);
     // Still open keeps its first item beside the page.
     expect(lane(text, FRAMING.threads)[0]).toStartWith("- ");
+    // The line prints beside it, within its cap, the folders past it counted.
     const line = lines.find((l) => l.startsWith("Today, elsewhere: "));
-    if (line !== undefined) expect(line).toContain("1 more directory");
+    expect(line).toBeDefined();
+    expect(bytes(line ?? "")).toBeLessThanOrEqual(TODAY_ELSEWHERE_MAX_BYTES);
+    expect(line).toMatch(/; \+\d+ more\.$/);
   });
 
-  test("ROOM_ORDER: the line gives way after Nearby and before every other lane; a dated item before it", () => {
-    expect(ROOM_ORDER.indexOf("elsewhere")).toBe(ROOM_ORDER.indexOf("hints") + 1);
-    const ranked = (id: string, lane: Ranked["lane"]): Ranked => ({
+  test("ROOM_ORDER: the line ranks above the page's borrowing and every lane trims around it; a due-day plain reminder outranks it", () => {
+    expect(ROOM_ORDER.indexOf("elsewhere")).toBeGreaterThan(ROOM_ORDER.indexOf("pageBorrow"));
+    expect(ROOM_ORDER.indexOf("elsewhere")).toBeLessThan(ROOM_ORDER.indexOf("due"));
+    const ranked = (id: string, lane: Ranked["lane"], due = false): Ranked => ({
       id,
       lane,
       kind: "fact",
@@ -482,6 +490,7 @@ describe("the assembled wake keeps its budget and its order", () => {
       bornDay: 1,
       personScoped: false,
       lastRendered: -1,
+      ...(due ? { due: true } : {}),
     });
     const words = (id: string): string => `${id}: ${"a plain line of placeholder words about the garden and its beds ".repeat(2).trim()}.`;
     const resolve: Resolve = (id) => ({ statement: words(id), learnedOn: "2026-10-09" });
@@ -490,7 +499,7 @@ describe("the assembled wake keeps its budget and its order", () => {
       craft: [],
       threads: ["t1", "t2", "t3"].map((id) => ranked(id, "threads")),
       hints: ["h1", "h2", "h3"].map((id) => ranked(id, "hints")),
-      horizon: [ranked("d1", "horizon")],
+      horizon: [ranked("d1", "horizon", true)],
     };
     const away = `Today, elsewhere: ~/bakery open since 08:02 (live) — "${"A chapter title of some length ".repeat(3).trim()}" (epi_0123456789ab), 3 memories.`;
     const bare = "Today, elsewhere: ~/bakery open since 08:02 (live), 3 memories.";
@@ -498,28 +507,153 @@ describe("the assembled wake keeps its budget and its order", () => {
     const full = render(lanes, { budgetBytes: 100_000, day: 2, elsewhere: away, elsewhereShorter: [bare] }, resolve, SELF_TUNABLES);
     expect(full.elsewhere).toBe(away);
     expect(full.text.indexOf(away)).toBeLessThan(full.text.indexOf(FRAMING.hints));
-    // Down a sweep of budgets: threads and the dated item are never cut while
-    // the line or a hint still prints; hints go before the line's titles,
-    // the titles before the line.
-    let sawBare = false;
-    let sawNone = false;
-    for (let budget = without.bytes + bytes(away); budget > without.bytes - 600; budget -= 7) {
+    // A form past the cap is never printed.
+    const long = `Today, elsewhere: ${"~/a-long-folder-name; ".repeat(20)}.`;
+    expect(render(lanes, { budgetBytes: 100_000, day: 2, elsewhere: long, elsewhereShorter: [bare] }, resolve, SELF_TUNABLES).elsewhere).toBe(bare);
+    // Down a sweep of budgets: the line keeps its widest form while Nearby
+    // and Still open give way around it; only the due-day reminder steps it
+    // down, and the reminder stays listed whenever the line prints.
+    let sawLanesTrimmed = false;
+    let sawStepped = false;
+    const floorFits = (budget: number): boolean =>
+      render({ ...lanes, horizon: [] }, { budgetBytes: budget, day: 2, elsewhere: away }, resolve, SELF_TUNABLES).elsewhere === away;
+    for (let budget = without.bytes + bytes(away); budget > 300; budget -= 7) {
       const r = render(lanes, { budgetBytes: budget, day: 2, elsewhere: away, elsewhereShorter: [bare] }, resolve, SELF_TUNABLES);
       expect(r.bytes).toBeLessThanOrEqual(budget);
-      const hints = r.kept.hints.length;
-      if (r.elsewhere !== undefined) {
-        expect(r.kept.threads.length).toBe(3);
-        expect(r.kept.horizon.length).toBe(1);
+      // The reminder is never unlisted for the line: when the line prints
+      // and the reminder does not, the reminder would not fit without it.
+      if (r.elsewhere !== undefined && r.kept.horizon.length === 0) {
+        expect(render(lanes, { budgetBytes: budget, day: 2 }, resolve, SELF_TUNABLES).kept.horizon).toEqual([]);
       }
-      if (r.elsewhere === bare) {
-        sawBare = true;
-        expect(hints).toBe(0);
+      const lanesShort = r.kept.threads.length < 3 || r.kept.hints.length < 3;
+      if (lanesShort && (r.kept.threads.length > 0 || r.kept.hints.length > 0)) {
+        expect(r.elsewhere).toBe(away);
+        sawLanesTrimmed = true;
       }
-      if (r.elsewhere === undefined) sawNone = true;
-      if (r.kept.threads.length < 3) expect(r.elsewhere).toBeUndefined();
-      if (r.elsewhere === away && hints < 3) expect(r.kept.threads.length).toBe(3);
+      // Stepped down for the reminder: a narrower line, or none, with the reminder listed.
+      if (r.elsewhere !== away && r.kept.horizon.length === 1 && floorFits(budget)) sawStepped = true;
     }
-    expect(sawBare).toBe(true);
-    expect(sawNone).toBe(true);
+    expect(sawLanesTrimmed).toBe(true);
+    expect(sawStepped).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Its own room (b2 + random-f8, 2026-10-10, lightly held)
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("the line has a small room of its own, taken from the page", () => {
+  /**
+   * THE OWNER'S MORNING, AS THE TEST-BUILD REHEARSAL MET IT: a ~5.9 KB page,
+   * 25 open questions, four handoffs here, a plain reminder due today, at
+   * 9,000 bytes — where the line used to be the first thing cut after Nearby.
+   */
+  function ownerMorning(): { c: Counterpart; lc: Lifecycle } {
+    const k = store(at(D1, 18));
+    const { c } = k;
+    const para = "I keep the garden's ledger, I name what I do not know before I guess, and I write down what held.";
+    let page = "## Core\n\n";
+    while (bytes(page) < 5_900) page += `${para}\n\n`;
+    expect(c.revisePage(page.trim(), { by: "owner", reason: "a long page" }).written).toBe(true);
+    // Lanes that fill the room: ~250-byte open questions, craft and Nearby.
+    const long = (s: string): string => {
+      let body = s;
+      while (body.length < 230) body += ", or whether the thin coat holds for one more round";
+      return `${body}.`;
+    };
+    for (let i = 0; i < 25; i += 1) {
+      c.store.put({
+        type: "memory",
+        kind: "fact",
+        body: long(`Open question ${String(i)}: whether bed ${String(i)} wants lime this autumn`),
+        salience: { relevance: 0.7, emotional: 0.3, predictive: 0.5 },
+        meta: { unresolved: true },
+      });
+    }
+    for (let i = 0; i < 12; i += 1) {
+      c.store.put({ type: "memory", kind: "skill", body: long(`Craft ${String(i)}: the hose wants draining before a frost`), salience: { relevance: 0.6, emotional: 0.2, predictive: 0.6 } });
+      c.store.put({ type: "memory", kind: "fact", body: long(`Nearby ${String(i)}: the compost heap by the shed runs warm`), salience: { relevance: 0.6, emotional: 0.4, predictive: 0.4 } });
+    }
+    for (let i = 0; i < 4; i += 1) {
+      c.writeHandoff(`Handoff ${String(i)}: the seed trays on bench two need thinning. Then the watering log wants today's readings.`, {
+        scope: HERE,
+        session: `garden-bench-session-${String(i)}`,
+      });
+    }
+    c.store.put({
+      type: "memory",
+      kind: "person",
+      body: "Remind him today that the seed order closes at noon; the list is in the green folder.",
+      learnedOn: D1,
+      eventDate: D2,
+      salience: { relevance: 0.8, emotional: 0.8, predictive: 0.8 },
+      meta: { [CUE_MODE_META]: "plain" },
+    });
+    c.rebrief({ budgetBytes: BUDGET, at: D1 });
+    k.set(at(D2, 9));
+    const lc = new Lifecycle({ counterpart: c, config: { dataDir: storeDir }, configPath: join(root, "claude-code.json"), now: () => at(D2, 9, 5) });
+    return { c, lc };
+  }
+
+  /** The page's block in a wake: its top line through its end line. */
+  function pageBytes(text: string): number {
+    const ls = text.split("\n");
+    const from = ls.findIndex((l) => l.startsWith("(My page, "));
+    const to = ls.indexOf(PAGE_END_LINES.whole);
+    expect(from).toBeGreaterThan(-1);
+    expect(to).toBeGreaterThan(from);
+    return bytes(ls.slice(from, to + 1).join("\n"));
+  }
+
+  test("at 9,000 with a ~5.9 KB page, four handoffs and another active folder, the line prints within its cap — the page's lines and the due reminder intact", () => {
+    const m = ownerMorning();
+    // No other folder yet: no line, and nothing reserved — the wake is
+    // exactly what it is with no host to ask.
+    const quiet = m.lc.composeWake({ sessionId: B, scope: HERE, at: D2 }, BUDGET);
+    const alone = m.c.wake(BUDGET, { date: D2 }, { scope: HERE, session: B });
+    expect(quiet.text.split("\n").some((l) => l.startsWith("Today, elsewhere: "))).toBe(false);
+    expect(quiet.text).toBe(alone.text);
+    // Another folder at work this morning.
+    recordSession(storeDir, { sessionId: A, scope: THERE, phase: "start", at: at(D2, 8, 2) });
+    m.c.store.put({ type: "memory", kind: "fact", body: "The bakery's flour arrived.", origin: { session: A, scope: THERE } });
+    const text = m.lc.composeWake({ sessionId: B, scope: HERE, at: D2 }, BUDGET).text;
+    expect(readSentinel(text).intact).toBe(true);
+    expect(bytes(text)).toBeLessThanOrEqual(BUDGET);
+    const line = text.split("\n").find((l) => l.startsWith("Today, elsewhere: "));
+    expect(line).toBe(`Today, elsewhere: ${tilde(THERE)} open since 08:02 (live), 1 memory.`);
+    expect(bytes(line ?? "")).toBeLessThanOrEqual(TODAY_ELSEWHERE_MAX_BYTES);
+    // The page keeps its top and end lines, and gives at most the line's room.
+    const given = pageBytes(quiet.text) - pageBytes(text);
+    // Still open keeps its first item beside it.
+    expect(lane(text, FRAMING.threads)[0]).toStartWith("- ");
+    expect(given).toBeGreaterThanOrEqual(0);
+    expect(given).toBeLessThanOrEqual(TODAY_ELSEWHERE_MAX_BYTES + 2);
+    // The due-day plain reminder is still listed, and the handoffs still point the way.
+    expect(lane(text, FRAMING.horizon).some((l) => l.includes("the seed order closes at noon"))).toBe(true);
+    expect(text).toContain("garden-b");
+  });
+
+  test("many folders: the line stays within its cap, the rest as \"+N more\"", () => {
+    const dirs = Array.from({ length: 9 }, (_, i) => ({
+      scope: `/home/someone/projects/a-rather-long-folder-name-${String(i)}`,
+      firstAt: at(D2, 7, i),
+      lastAt: at(D2, 8, i),
+      live: i % 2 === 0,
+      chapter: null,
+      memories: i + 1,
+    }));
+    const lines = todayElsewhereLines(dirs, ZONE);
+    expect(lines).not.toBeNull();
+    const all = [lines?.line ?? "", ...(lines?.shorter ?? [])];
+    for (const form of all) expect(bytes(form)).toBeLessThanOrEqual(TODAY_ELSEWHERE_MAX_BYTES);
+    expect(lines?.line).toMatch(/; \+\d+ more\.$/);
+    // The named and the counted add up to every folder.
+    const named = (lines?.line ?? "").split("; ").filter((p) => p.includes("a-rather-long-folder-name-")).length;
+    const more = Number(/\+(\d+) more\.$/.exec(lines?.line ?? "")?.[1] ?? "0");
+    expect(named).toBeGreaterThan(0);
+    expect(named + more).toBe(9);
+    // Each shorter form is narrower than the one before; the last is the count alone.
+    for (let i = 1; i < all.length; i += 1) expect(bytes(all[i] ?? "")).toBeLessThan(bytes(all[i - 1] ?? ""));
+    expect(all[all.length - 1]).toBe("Today, elsewhere: 9 other directories.");
   });
 });

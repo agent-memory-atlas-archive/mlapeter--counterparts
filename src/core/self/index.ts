@@ -76,6 +76,7 @@ import {
   TRIM_ORDER,
   WAKE_SYSTEM,
   applyPreface,
+  elsewhereRoomBytes,
   arrivingTense,
   flatten,
   isPageFrameLine,
@@ -1037,10 +1038,17 @@ export class Self {
     // room costs "Work here" a few bytes; what is left of the lend is still
     // "Still open"'s.
     const lend = req.lendBytes === undefined || req.omit !== undefined ? 0 : Math.max(0, Math.floor(req.lendBytes));
+    // AND IT LEAVES THE "TODAY, ELSEWHERE" LINE ITS ROOM (2026-10-10, b2 +
+    // random-f8, lightly held; `briefing.ts#ROOM_ORDER`'s `elsewhere` above
+    // `pageBorrow`): the page is chosen in the line's bytes less room — at
+    // most `TODAY_ELSEWHERE_MAX_BYTES` and its blank line, and nothing on a
+    // day no other directory was active. A page that no longer fits borrows,
+    // then steps down its ladder whole, as it always does.
+    const away = req.omit !== undefined ? 0 : elsewhereRoomBytes(req.elsewhere, req.elsewhereShorter);
     const choose = (below?: PageRung): { block: PageBlock | typeof NO_ROOM | null; took: number } =>
       req.omit !== undefined && !this.tunables.PAGE_ON_EGRESS
         ? { block: null, took: 0 }
-        : this.pageBlock(req.budgetBytes, lend, below);
+        : this.pageBlock(req.budgetBytes - away, lend, below);
     const renderWith = (choice: { block: PageBlock | typeof NO_ROOM | null; took: number }): BriefingResult => {
       const { block, took } = choice;
       // A page that will not FIT is not a page that does not EXIST: the

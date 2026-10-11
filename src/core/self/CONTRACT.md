@@ -220,14 +220,15 @@ proposals and their archive; render and delivery telemetry.
    "Work here" reserve (`lendBytes`) lent to each rung before it steps down (review of
    #358) — every rung whole text (2026-10-10). **What gives way to whom is ONE declared
    list** (2026-10-10, a working default, `briefing.ts#ROOM_ORDER`), first to give way to
-   last: Nearby, the "Today, elsewhere" line (session start only; its chapters first, then
-   the line — 2026-10-10), craft, "Still open" past its first item (the trim loop's), "Work here"
+   last: Nearby, craft, "Still open" past its first item (the trim loop's), "Work here"
    (the delivery's room, `lendBytes`), "Still open"'s count beside items the trim kept, the
    Yesterday line's titles (a title at a time given way to its id), "Last here" and the
    handoffs (the delivery's room past the newest handoff's own block, `handoffLendBytes`),
    Arriving past its first line, "Still open"'s first item and count, Arriving's first
    line, the newest handoff's own block (`handoffKeepBytes`, lent to a due-day plain
-   reminder alone; review of #367), the page borrowing past its room, a plain reminder due
+   reminder alone; review of #367), the page borrowing past its room, the "Today,
+   elsewhere" line (session start only, at most 300 bytes, the page chosen in that much
+   less room; b2+f8, 2026-10-10, lightly held), a plain reminder due
    the day the wake is read (`Ranked.due`), the page within its room. After the trim loop
    fits, the lanes that ARE in it are listed again, highest first — Arriving's head (its
    due-day plain reminders, or its first line), then "Still open"'s first item and count

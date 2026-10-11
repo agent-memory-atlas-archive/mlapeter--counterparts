@@ -477,11 +477,20 @@ export function lastHereLadder(entries: readonly LastHere[], reader: string | nu
 }
 
 /**
- * HOW MANY DIRECTORIES THE "TODAY, ELSEWHERE" LINE NAMES (2026-10-10): one
- * short line, the live ones and the most recently active first; the rest by
- * count.
+ * HOW MANY DIRECTORIES THE "TODAY, ELSEWHERE" LINE NAMES AT MOST (2026-10-10):
+ * one short line, the live ones and the most recently active first; the rest
+ * by count — and fewer when the line would pass its bytes, below.
  */
 export const TODAY_ELSEWHERE_MAX_DIRS = 5;
+
+/**
+ * HOW LONG THE LINE MAY BE, IN BYTES (2026-10-10, b2 + random-f8, lightly
+ * held): every form `todayElsewhereLines` returns fits it, the directories
+ * past it counted ("+N more"). It is the most the line takes from the page's
+ * room (`briefing.ts#ROOM_ORDER`'s `elsewhere`), so a long morning elsewhere
+ * cannot grow into the wake.
+ */
+export const TODAY_ELSEWHERE_MAX_BYTES = 300;
 
 /** One other directory, as the "Today, elsewhere" line names it. */
 export interface TodayElsewhere {
@@ -513,8 +522,9 @@ export interface TodayElsewhere {
  * through — the "About me, from another directory" line's: the scope setting,
  * the confidential mark, and a copy marked about me, us or the owner. Never a
  * word of a span, a work memory's title, or a handoff: those stay where they
- * were made. Returns the line and its shorter form — the same without the
- * chapters — or null when there is nothing to say. Pure.
+ * were made. Returns the line and its shorter forms — fewer chapters, fewer
+ * directories, the rest counted — every one within
+ * `TODAY_ELSEWHERE_MAX_BYTES`, or null when there is nothing to say. Pure.
  */
 export function todayElsewhereLines(
   dirs: readonly TodayElsewhere[],
@@ -530,8 +540,6 @@ export function todayElsewhereLines(
         (a.scope < b.scope ? -1 : a.scope > b.scope ? 1 : 0),
     );
   if (named.length === 0) return null;
-  const shown = named.slice(0, TODAY_ELSEWHERE_MAX_DIRS);
-  const rest = named.length - shown.length;
   const clock = (at: number): string => localStamp(at, zone).split(" ")[1] ?? "";
   const one = (d: TodayElsewhere, chapters: boolean): string => {
     const when =
@@ -548,9 +556,26 @@ export function todayElsewhereLines(
     const count = d.memories === 0 ? "" : `, ${String(d.memories)} ${d.memories === 1 ? "memory" : "memories"}`;
     return `${placeWords(d.scope)}${when}${chapter}${count}`;
   };
-  const tail = rest === 0 ? "" : `; ${String(rest)} more ${rest === 1 ? "directory" : "directories"}`;
-  const line = (chapters: boolean): string => flatten(`Today, elsewhere: ${shown.map((d) => one(d, chapters)).join("; ")}${tail}.`);
-  const whole = line(true);
-  const bare = line(false);
-  return { line: whole, shorter: bare === whole ? [] : [bare] };
+  // THE FORMS, widest first (2026-10-10): the first `k` directories with
+  // their chapters, then without, for `k` down to one — the rest counted —
+  // and last the count alone. Only those within `TODAY_ELSEWHERE_MAX_BYTES`,
+  // each narrower than the one before it.
+  const line = (k: number, chapters: boolean): string => {
+    const rest = named.length - k;
+    const tail = rest === 0 ? "" : `; +${String(rest)} more`;
+    return flatten(`Today, elsewhere: ${named.slice(0, k).map((d) => one(d, chapters)).join("; ")}${tail}.`);
+  };
+  const candidates: string[] = [];
+  for (let k = Math.min(named.length, TODAY_ELSEWHERE_MAX_DIRS); k >= 1; k--) candidates.push(line(k, true), line(k, false));
+  candidates.push(`Today, elsewhere: ${String(named.length)} other ${named.length === 1 ? "directory" : "directories"}.`);
+  const size = (s: string): number => new TextEncoder().encode(s).length;
+  const forms: string[] = [];
+  for (const form of candidates) {
+    if (size(form) > TODAY_ELSEWHERE_MAX_BYTES) continue;
+    const last = forms[forms.length - 1];
+    if (last !== undefined && size(form) >= size(last)) continue;
+    forms.push(form);
+  }
+  const [widest, ...shorter] = forms;
+  return widest === undefined ? null : { line: widest, shorter };
 }

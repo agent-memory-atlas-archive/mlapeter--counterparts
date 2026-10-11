@@ -368,10 +368,12 @@ describe("one ordered list of who gives way to whom", () => {
     expect(at("arrivingFirst")).toBeLessThan(at("handoffsKept"));
     expect(at("handoffsKept")).toBeLessThan(at("due"));
     expect(at("due")).toBeLessThan(at("page"));
-    // The trim loop's lanes are the bottom of the same list, in the same order —
-    // with the "Today, elsewhere" line between "Nearby" and the rest (2026-10-10).
-    expect(ROOM_ORDER.filter((l) => l !== "elsewhere").slice(0, 3)).toEqual(TRIM_ORDER.slice(0, 3) as never);
-    expect(at("elsewhere")).toBe(at("hints") + 1);
+    // The trim loop's lanes are the bottom of the same list, in the same order.
+    expect(ROOM_ORDER.slice(0, 3)).toEqual(TRIM_ORDER.slice(0, 3) as never);
+    // The "Today, elsewhere" line ranks above the page's borrowing and below
+    // a due-day plain reminder (b2 + random-f8, 2026-10-10).
+    expect(at("pageBorrow")).toBeLessThan(at("elsewhere"));
+    expect(at("elsewhere")).toBeLessThan(at("due"));
     // The head of Arriving: its due-day plain reminders, or else its first line.
     expect(arrivingHead([])).toBe(0);
     expect(arrivingHead([{}, {}])).toBe(1);
