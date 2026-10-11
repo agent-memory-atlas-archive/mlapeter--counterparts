@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 
 import { Counterpart } from "../src/core/counterpart.js";
 import { Dashboard } from "../src/adapters/dashboard/index.js";
+import { sourceOf } from "../src/adapters/dashboard/source.js";
 import { DURABLE_EVENT_NAMES } from "../src/adapters/dashboard/registries.js";
 import { router } from "../src/adapters/dashboard/web/server.js";
 import {
@@ -222,6 +223,110 @@ describe("the lights, on a seeded store", () => {
     expect(by["association"]?.status).toBe("amber");
     expect(by["retrieval"]?.status).toBe("green");
     expect(by["retrieval"]?.evidence).toStartWith("1 turn brought memories to mind");
+  });
+});
+
+describe("times fired today (the sidebar's “Mechanisms today”, 2026-10-10)", () => {
+  /** A store whose rows land at the given moments: `at` is the writer's clock. */
+  function seedToday(dir: string): void {
+    const now = Date.now();
+    let t = now - 2 * 86_400_000; // two calendar days ago
+    const c = Counterpart.open({ dir, owner: true, now: () => t });
+    try {
+      for (let i = 1; i <= 9; i++) c.store.advanceClock(`2026-01-${String(i).padStart(2, "0")}`);
+      const day = c.store.livedDay();
+      // Two days ago, inside the seven lived days but not today.
+      c.store.appendEvent({ name: "gate.deposit", day, payload: { accepted: 4 } });
+      c.store.appendEvent({ name: "recall.decision", day, ref: "s0", payload: { surfacedCount: 1, footnoteCount: 0 } });
+      t = now;
+      // Today: a deposit of three memories is ONE firing of Salience, not three.
+      c.store.appendEvent({ name: "gate.deposit", day, payload: { accepted: 3 } });
+      c.store.appendEvent({ name: "gate.deposit", day, payload: { accepted: 1 } });
+      // A deposit that accepted nothing is no firing at all.
+      c.store.appendEvent({ name: "gate.deposit", day, payload: { accepted: 0 } });
+      // A flush that wrote eight links: one firing of Association.
+      c.store.appendEvent({ name: "associate.flush", day, payload: { rows: 8 } });
+      // One dream: its journal and its changes are ONE firing of Dreaming;
+      // its merge proves Interference and Consolidation, its gist Gist.
+      c.store.appendEvent({ name: "dream.journaled", day, ref: "drm_one", payload: { chars: 400 } });
+      c.store.appendEvent({ name: "dream.changed", day, ref: "drm_one", payload: { applied: 12, merge: 1, gist: 2, link: 9 } });
+    } finally {
+      c.close();
+    }
+  }
+
+  test("rows that proved it on the calendar day, not amounts; a dream's rows once; null when not built", () => {
+    const dir = tempDir("counterparts-mech-today-");
+    seedToday(dir);
+    const v = viewOf(dir);
+    const dash = Dashboard.open({ dir });
+    try {
+      expect(v.today).toBe(dash.source.store.today());
+    } finally {
+      dash.close();
+    }
+    const today = Object.fromEntries(v.mechanisms.map((m) => [m.id, m.firedToday]));
+    expect(today).toEqual({
+      salience: 2,
+      emotional: 0,
+      decay: 0,
+      interference: 1,
+      retrieval: 0, // its only turn was two days ago
+      association: 1,
+      prospective: 0,
+      consolidation: 1,
+      dreaming: 1,
+      reconsolidation: 0,
+      "episodic-semantic": 1,
+      schema: null,
+    });
+    // The seven-day evidence still counts amounts, as it always has.
+    const by = Object.fromEntries(v.mechanisms.map((m) => [m.id, m]));
+    expect(by["salience"]?.evidence).toStartWith("8 memories scored as they were written");
+    expect(by["retrieval"]?.status).toBe("green");
+  });
+
+  test("today is the person's zone's calendar day: a minute before its midnight is yesterday, a minute after is today", () => {
+    // Honolulu (UTC-10, no summer time): both rows fall on 2026-10-10 in UTC, a day apart on the person's clock.
+    const zone = "Pacific/Honolulu";
+    const dir = tempDir("counterparts-mech-today-zone-");
+    let t = Date.parse("2026-10-10T09:59:00Z"); // Oct 9, 23:59 in Honolulu
+    const c = Counterpart.open({ dir, owner: true, timeZone: zone, now: () => t });
+    try {
+      for (let i = 1; i <= 9; i++) c.store.advanceClock(`2026-10-0${String(i)}`);
+      const day = c.store.livedDay();
+      c.store.appendEvent({ name: "associate.flush", day, payload: { rows: 2 } });
+      t = Date.parse("2026-10-10T10:01:00Z"); // Oct 10, 00:01 in Honolulu
+      c.store.appendEvent({ name: "associate.flush", day, payload: { rows: 2 } });
+    } finally {
+      c.close();
+    }
+    const now = Date.parse("2026-10-10T20:00:00Z"); // Oct 10, 10:00 in Honolulu
+    const o = Counterpart.open({ dir, observer: true, timeZone: zone, now: () => now });
+    try {
+      const v = mechanismsView(sourceOf(o));
+      expect(v.today).toBe("2026-10-10");
+      expect(v.mechanisms.find((m) => m.id === "association")?.firedToday).toBe(1);
+    } finally {
+      o.close();
+    }
+  });
+
+  test("the route carries it, and reads nothing it should not: not a byte of the store moves", () => {
+    const dir = tempDir("counterparts-mech-today-route-");
+    seedToday(dir);
+    const before = snapshot(dir);
+    const dash = Dashboard.open({ dir });
+    try {
+      const reply = router(new URL("http://127.0.0.1:4747/api/mechanisms"), "127.0.0.1:4747", dash.source);
+      expect(reply.status).toBe(200);
+      const body = JSON.parse(reply.body) as MechanismsView;
+      expect(typeof body.today).toBe("string");
+      expect(body.mechanisms.find((m) => m.id === "salience")?.firedToday).toBe(2);
+    } finally {
+      dash.close();
+    }
+    expect(snapshot(dir)).toEqual(before);
   });
 });
 

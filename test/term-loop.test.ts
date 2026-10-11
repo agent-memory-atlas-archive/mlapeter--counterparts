@@ -8,10 +8,12 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { charCells, findDock, findText, parseCapture, rowText, sliceGrid, type Grid } from '../tools/term-loop/grid.js';
+import { charCells, findDock, findLastText, findText, parseCapture, rowText, sliceGrid, type Grid } from '../tools/term-loop/grid.js';
 import { ITERM_MENLO_13, cellColours, paletteColour, renderHtml, renderRow } from '../tools/term-loop/render.js';
 import {
   MEMORY_SWITCH,
+  MEMORY_SWITCH_LABELS,
+  brainOf,
   focusOf,
   keyboardOf,
   locate,
@@ -129,6 +131,14 @@ describe('ANSI → cell grid', () => {
     // the wide character's second half alone becomes a blank
     expect(cell(s, 0, 0)).toMatchObject({ ch: ' ', width: 1 });
     expect(findText(g, 'fgh')).toEqual({ x: 3, y: 2 });
+  });
+
+  test('a footer label is found bottom-most in the dock, under body text that says the same', () => {
+    const g = parseCapture(['x│Claude memory note', 'x│body', 'x│* Claude memory', 'x│view'].join('\n'), 20, 4);
+    expect(findText(g, 'Claude memory', 2)).toEqual({ x: 2, y: 0 });
+    expect(findLastText(g, 'Claude memory', 2, 0, 4)).toEqual({ x: 4, y: 2 });
+    expect(findLastText(g, 'Claude memory', 2, 0, 2)).toEqual({ x: 2, y: 0 });
+    expect(findLastText(g, 'nowhere', 2)).toBeNull();
   });
 
   test('no divider, no dock', () => {
@@ -335,7 +345,29 @@ describe('steps and the keyboard guard', () => {
     expect(planWords(off)).toEqual(['type /counterparts', `click the "${MEMORY_SWITCH}" switch`]);
     // a file that can't be read says nothing
     expect(restorePlan(owner, null)).toEqual({ cmds: [], memory: false });
-    expect(viewOf({ view: 'rail' })).toBe('full');
+    expect(viewOf({ view: 'rail' })).toBe('open');
+  });
+
+  test('the sidebar v0.2’s preferences: views by meaning across versions, and the brain’s mode', () => {
+    const owner = { view: 'full', fpsShown: true, claudeMemory: true };
+    // v0.2 writes `sidebar` where v0.1 wrote `full`: the same view, nothing to put back
+    expect(restorePlan(owner, { ...owner, view: 'sidebar' })).toEqual({ cmds: [], memory: false });
+    expect(viewOf({ view: 'sidebar' })).toBe('open');
+    expect(viewOf({})).toBe('open');
+    // a run that left it in the strip, or quiet, is put back with the mod's commands
+    expect(restorePlan(owner, { ...owner, view: 'strip' }).cmds).toEqual(['/counterparts']);
+    // a stored strip (dropped 2026-10-10) is quiet to the mod: put back as quiet, and quiet over it is no change
+    expect(restorePlan({ view: 'strip' }, { view: 'sidebar' }).cmds).toEqual(['/counterparts quiet']);
+    expect(restorePlan({ view: 'strip' }, { view: 'quiet' }).cmds).toEqual([]);
+    expect(restorePlan({ view: 'quiet' }, { view: 'sidebar' }).cmds).toEqual(['/counterparts quiet']);
+    // the brain: turning unless set
+    expect(restorePlan(owner, { ...owner, brain: 'off' }).cmds).toEqual(['/counterparts brain turning']);
+    expect(restorePlan({ ...owner, brain: 'still' }, { ...owner, brain: 'turning' }).cmds).toEqual(['/counterparts brain still']);
+    expect(restorePlan(owner, { ...owner, brain: 'turning' }).cmds).toEqual([]);
+    expect(brainOf({ brain: 'nonsense' })).toBe('turning');
+    // the memory switch is found by either version's label
+    expect(MEMORY_SWITCH_LABELS).toContain(MEMORY_SWITCH);
+    expect(MEMORY_SWITCH_LABELS).toContain("Claude Code's own memory");
   });
 
   test('targets: text in the pane first, cells 1-based; mouse reports are SGR 1006', () => {

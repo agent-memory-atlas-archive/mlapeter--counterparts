@@ -1,11 +1,16 @@
-# Sidebar mod v0.1: notes
+# Sidebar mod: notes
 
 A Claude Code mod (a module of function hooks) inside the Counterparts plugin:
-a memory pane docked beside the transcript, with a header, two switches, the
-brain turning in braille, the twelve mechanisms, search, and ACTIVITY. The
-approved design is the 10-09 mockup ("Sidebar v2", `drawD` in
-`~/counterparts-notes/mockups/2026-10-09-mod/`). This file records what the
-build learned. Everything here is a working default.
+a memory pane docked beside the transcript. **v0.2** (2026-10-10) is what
+memory is doing, in 35 columns: a small brain beside the title, the day, the
+count and a search box; Memories, Subconscious, Saved this session,
+Mechanisms today and Last Dream; three rows of switches. Closed (quiet), it is
+a dim tail under the prompt that ends with how to open it again. The design is
+the round-3 mockups Mike chose over three rounds that day
+(`~/counterparts-notes/mockups/2026-10-10-mod-round3/`, with `FEEDBACK-all.md`
+there: its last section overrides the PNGs). v0.1's notes follow the v0.2
+section, as the record; where v0.2 changed something they say so. Everything
+here is a working default.
 
 **Try it from a frozen copy**, not from a working tree. A `--plugin-dir` folder
 hot-reloads on every edit, and an agent's worktree is deleted at merge. So
@@ -14,26 +19,535 @@ down beside an npm install, still loads its code), and point Claude Code at
 that:
 
     git -C ~/counterparts fetch -q origin
-    sha=$(git -C ~/counterparts rev-parse --short origin/feat/mod-sidebar)
-    dir=~/counterparts-trials/sidebar-v01-$sha
+    sha=$(git -C ~/counterparts rev-parse --short origin/feat/sidebar-v02)
+    dir=~/counterparts-trials/sidebar-v02-$sha
     mkdir -p "$dir" && git -C ~/counterparts archive "$sha" | tar -x -C "$dir"
     (cd "$dir" && bun install --frozen-lockfile)
     claude --plugin-dir "$dir"
 
 That loads the whole plugin. Beside the npm install, its classic hooks and its
 server stand down, so only the mod runs; the one start-up line says this is
-expected and asks for nothing.
+expected and asks for nothing. Every copy named `counterparts` shares one
+`$.store` (term-loop's README says where), so a v0.1 trial copy reads what
+v0.2 stores: v0.2's `sidebar` is v0.1's `full`; v0.2's `quiet` makes a v0.1
+session open its narrow quiet pane.
 
 It opens by itself only where the terminal docks a pane beside the transcript
-(the fullscreen layout). Elsewhere, and after closing it by hand,
-`/counterparts` opens it. `/counterparts fps` shows the brain's frame rate,
-`/counterparts quiet` makes it quiet (as `‹` does), `/counterparts hide`
-hides it (as its `✕` does), `/counterparts resume` resumes a folder paused
-here, `/counterparts caps` swaps the switch ends.
+(the fullscreen layout), and only when the view is the sidebar. `/counterparts`
+opens it; `/counterparts quiet` closes it to the tail (`hide`, `rail` and the
+dropped `strip` are quiet too); `/counterparts brain
+turning|still|off` sets the brain; `/counterparts resume` resumes a folder
+paused here; `/counterparts fps [n]` reports the brain's rate (or sets its
+target). `caps` is gone: the footer's switches are dots, with no ends to draw.
 
 **Check it:** `sh hooks/sidebar/check.sh`, which runs validate on both manifests,
-`claude plugin test hooks/sidebar` (74 tests, terminal and desktop) and
-`tsc -p hooks/sidebar`, all with a throwaway HOME.
+`claude plugin test hooks/sidebar` (118 tests, terminal and desktop) and
+`tsc -p hooks/sidebar`, all with a throwaway HOME. **See it:**
+`tools/term-loop/` (its README), at `--size 200x60` and `--size 160x48`. A
+term-loop session sends no message, so nothing comes to mind and nothing is
+saved in it; `COUNTERPARTS_SIDEBAR_SESSION=<session id>` in the environment
+shows that session's Memories, Subconscious and Saved instead (below,
+"Seeded").
+
+## v0.2 (2026-10-10): what memory is doing, in 35 columns
+
+### The polish round (2026-10-10, evening, from Mike's trial of dd179df5)
+
+Mike used the copy in his own terminal; his decisions are the last section of
+`~/counterparts-notes/mockups/2026-10-10-mod-round3/FEEDBACK-all.md`. Shots,
+before (dd179df5) and after, both sizes:
+`~/counterparts-notes/mockups/2026-10-10-mod-polish/` (private: live memory).
+The sections below this one describe the build before the round; where they
+disagree, this wins.
+
+- **Two views: sidebar and quiet.** The strip is gone (Mike read a click on
+  "strip" as the sidebar disappearing). Footer `view ● sidebar ○ quiet`. A
+  stored `strip` reads as quiet, like v0.1's `rail` and `hidden`, and is never
+  written back (a v0.1 copy on the same store keeps reading its own word);
+  `/counterparts strip` is quiet, so an older term-loop put-back still works.
+  The band above the prompt draws nothing now; its first drawing still decides
+  whether the pane opens unasked.
+- **The quiet tail always ends with ` · /counterparts opens it`**
+  (`sections.ts#quietTail`): the tail is dim text the engine draws and can't be
+  clicked, so it says the way back. The newest thing is shortened to the row
+  so the hint is never the part cut: `viewport.columns` less the `hint` prop
+  less 32 (`register.tsx#TAIL_SPARE`). **Measured** at 160x48 (term-loop,
+  Claude Code 2.1.296): the engine draws more than the prop holds (`⏸ manual
+  mode on · ? for shortcuts · ← for agents`, 49 cells, for a prop about 30;
+  auto mode's line 16 more), two cells of indent, ` · ` before the tail, and
+  three cells kept clear at the end; with two spare the first build's tail
+  lost `nterparts opens it`. With 32, whole in manual and auto mode at 160 and
+  200 columns (`quiet-*.png` in the shots). Nothing new yet: `Counterparts is quiet · …`.
+  An unasked pane this surface could not place still says `/counterparts opens
+  the sidebar` (view sidebar, nothing newer).
+- **A click opens in place, every time; again, it closes.** No click opens the
+  dashboard by itself: the 12-line threshold (`EXPAND_MAX_LINES`) is gone, and
+  with it the Subconscious "flash, then the dashboard". Up to 20 lines of text
+  (`OPEN_MAX_LINES`) show whole; longer, 20 lines, the last ending at a word
+  with `…` and a cyan `more` on that same line. `more` is the one link: a row
+  carries `link: { from, key }` (`sections.ts#Line`), and the body posts the
+  link's key (`more:<id>`) for a click from that column on, the row's own key
+  before it. It opens `#memories?id=<id>`. Shortened by the fold ladder at a
+  short pane (14, 10, 8, 5 lines), the text still ends with `more`. Nothing
+  opened closes by itself (review: the minute's auto-close is gone, for items,
+  the dream and an opened mechanism alike); only a click closes it.
+- **Up to three lines an item** in Memories, Subconscious and Saved (and a
+  mechanism's firing): fewer items when they don't fit, never one shorter. The
+  ladder's "memory titles 2 lines" step became "memories shows 2/1". A
+  footnote's `↗ opened` goes on its last line, or the line after when there's
+  no room.
+- **Saved this session:** every line of an item in one colour (`P.hi`); the
+  stage dot on line 1 only; no `replaces …` line in the list (it shows inside
+  the opened item); chapters left out (a journal entry, not a saved memory).
+- **Dates in titles** (`feed.ts#humanDates`, display only, never the stored
+  text): an ISO date that means today is dropped with its brackets or
+  separator (`(2026-10-10)`, `2026-10-10: `, `, 2026-10-10)`), `on 2026-10-10`
+  reads `today`, `on 2026-10-10 morning` `this morning`; any other ISO date is
+  `Oct 9`, or `Jan 5 2025` in another year (`hm` and the meta line follow the
+  same rule). Applied to Memories, Subconscious, Saved, firings, an opened
+  title, `replaces`, search hits and the tail. A short date standing alone
+  (`(10-09)`, `10-09: `, `… 10-09`, review) reads the same way, as this
+  year's (`feed.ts#isoShortDates`); not a date, left as written: part of a
+  longer number or name (`#10-09`, `v10-09`, `0.10-12`, `10-09-2026`, a path),
+  a time (`10:09`, `10-09:30`), a range of something (`10-20 lines`,
+  `10-20%`: a list of unit words), an impossible day (`13-09`, `02-30`). Not
+  touched: memory text and the dream's (an opened memory still reads
+  "Investigation 2026-10-10"; Mike's rule was about titles).
+- **An opened mechanism says what its firings were about**
+  (`feed.ts#mechFirings`, titles read whole by `/api/memory?id=`, all reads):
+
+  | Mechanism | What a firing shows | Source |
+  |---|---|---|
+  | Retrieval | each memory that came to mind or sat in the footnotes | `recall.decision` `surfaced`/`footnotes` ids |
+  | Retrieval | each memory a session's replies strengthened | `recall.credit` `ids` (when credited) |
+  | Emotion | the memories of a mood-matched recall | `recall.decision` ids |
+  | Salience | the memory kept | `gate.deposit` `memoryId` |
+  | Forgetting | the memory that faded, or was let go | `band.transition` / `memory.pruned` subject |
+  | Consolidation | what rose or became core; a dream's merge (the kept memory) | `band.*` subject; `/api/dreams` changes |
+  | Interference | a dream's merge; `<A> holds over <B>` for a settle | `/api/dreams`; `contradiction.settled` |
+  | Reconsolidation | `<A> holds over <B>`; `<B> argued with <A>` | `contradiction.settled`; `revision.pressure` |
+  | Prospective | the reminder | `prospective.*` subject |
+  | Dreaming | the dream's first sentence (opened: the journal) | `dream.journaled` + `/api/dreams` |
+  | Gist | the pattern the dream wrote | `/api/dreams` `gist` changes |
+
+  **Left out, nothing to name:** a look-up (`mcp.recall` counts what it
+  opened, no ids), a link flush (`associate.flush` counts pairs: so an opened
+  **Association** says what it does instead, `links memories used together;
+  it doesn't record which yet`, review), a flagged
+  contradiction (a pair id only), a sleep cycle's fades (counts), and a
+  `dream.changed` row for a dream older than the newest three. A core
+  follow-up would give `associate.flush` and `mcp.recall` the ids they count.
+  A dream's link changes do carry pairs, but they are Dreaming's, not
+  Association's flush, so they are not shown under Association.
+
+  **Read deeper when the panel names few** (review): `/api/mechanism?id=`
+  narrates four lines from 200 rows an event name, its repeats merged. So
+  Salience (every deposit narrates alike) named one memory beside 159 today,
+  and Emotion none beside 27 (its mood-matched recalls are sparse: the first
+  of today's was the 321st decision). When a mechanism names fewer than
+  three, or fewer than it fired today, the click also reads its own event
+  rows (`/api/activity?name=`, 150, doubling to 1,200, as today's counts do;
+  a 500-row decision read is about 0.7 MB, on a click only) and lists up to
+  eight (`register.tsx#deeperFirings`).
+- **Last Dream:** no "what changed last night" list (and its two `band.*`
+  reads are gone); opened, the dream's own text, up to 20 lines (no `more`:
+  the dashboard has no page for one dream by id).
+- **Mechanisms today stays open by default** (Mike, via the coordinator: the
+  bars break up the text); the ladder still folds it when room runs out.
+- **Amber only for a warning.** With the strip gone, the pane draws amber
+  only in the paused banner and the pause confirm. One more place took it: the
+  brain-off header's `◉` takes the stage colour of what just fired, and
+  Retrieval's stage is amber; it now draws cyan for Retrieval (other stages
+  keep theirs). The Retrieval and Association bars, and the brain's lit
+  region, keep the stage colour.
+- **Found while shooting: from 1,000 memories the header overflowed.** The
+  count (`1000 memories`, 13 cells) wrapped in the 12-column header column,
+  making it seven rows beside a six-row brain, so the pane ran one row long
+  and its last row (the brain switches) was cut, in dd179df5 too (Mike's
+  store reached 1,000 on 2026-10-10). The builder's fix wrapped it to two
+  rows (`1000` / `memories`), which read oddly; in review the header's text
+  column takes one cell of the two-cell gap beside the brain whenever the
+  count is wider than 12, every row of it (so `COUNTERPARTS`, the day, the
+  count and the search box stay aligned), and `1002 memories` is one row; the
+  brain's right edge still has a cell of air. From 10,000 the count reads
+  `10k+ memories` (13 cells); the dashboard has the exact number. Tests at
+  999, 1000 and 12345.
+- **Footprint:** Mike's store read
+  `{"fpsShown":true,"rail":false,"view":"sidebar","claudeMemory":true,"brain":"turning"}`
+  before and after every run; no switch was clicked. The "before" run of
+  dd179df5 clicked a long saved item, which in that build opens the dashboard:
+  it opened one browser tab on `#memories?id=` (a read).
+
+#### Review of the polish round (2026-10-10, late, a separate reviewer)
+
+Changes are above, marked "review". Seen at 200x60 and 160x48 from a frozen
+copy (930ae06c), session 0464c1d3 seeded as the builder's shots were; every
+state in `~/counterparts-notes/mockups/2026-10-10-mod-polish/` (the builder's
+kept as `*-builder.png`).
+
+- **Clicks are the same every time.** Open A, open B (A closes), close B,
+  open A again: each did what it did the first time (`p2`–`p4` shots, and a
+  pane test). An opened item still open after five minutes on the mocked
+  clock (a test).
+- **`more` opens that memory.** The click on the cyan `more` of a 25-line
+  saved item ran `open http://localhost:4747/#memories?id=mem_8a2172cd59f2`,
+  that item's id: logged by a stub `open` put first on the run's `PATH`, so
+  no browser opened (a trick worth keeping for term-loop runs that click
+  links). A click on the row before `more` closes the item (a test).
+- **The quiet tail's 32 cells: works, with modest headroom.** Measured with a
+  real newest thing (the builder's auto-mode shot had only "Counterparts is
+  quiet"): the hint ends 26 cells short of the row at 200 columns, 12 at 160
+  (manual mode) and 11 at 160 in auto mode. The engine's `hint` prop grows
+  with the mode line, so the margin covers both today; a Claude Code release
+  that draws more than ~10 extra cells outside the prop would cut
+  `/counterparts opens it` again. Brittle against the engine, not against
+  the data; the robust fix is the engine telling a `PromptHint` hook how wide
+  its drawn line is.
+- **Migrations and safety.** A stored `strip` reads as quiet and is never
+  written back (a test per stored word); v0.1 copies read only `quiet` and
+  `hidden` as not-full, as before. The switch code is untouched by the round
+  (strip's buttons gone, nothing else). Timers left: the poll, the brain,
+  the folder's recheck, the switch note's and pause confirm's 30 s (a
+  safety close, kept), a title retry, a redraw after a pulse.
+- **Not fixed, for Mike's eye:** a settle reads as one run-on title (`Mike:
+  a great system beats … let old ones fade holds over Era PR…`): two titles
+  joined by `holds over`, cut at three lines; dates inside memory and dream
+  text stay as written ("Investigation 2026-10-10", the dream's "the 09-10
+  line"); the search placeholder's `#999999` (earlier review).
+- **Core asks:** `associate.flush` (and `mcp.recall`) to carry the memory ids
+  they count, so Association can name what it linked; and the panel's
+  four-line, 200-row window, which is what made the sidebar read deeper.
+- **Footprint:** five runs, his preferences file read the same before and
+  after each (`{"fpsShown":true,"rail":false,"view":"sidebar","claudeMemory":true,"brain":"turning"}`);
+  no switch clicked; no browser tab opened; reads only on the live dashboard.
+
+The shots and the side-by-sides are in
+`~/counterparts-notes/mockups/2026-10-10-mod-build/` (`mockup-vs-build-200x60.png`,
+`mockup-vs-build-160x48.png`, and every state at both sizes).
+
+### The pane, top to bottom
+
+- **Width.** `$.ui.open({ columns: 34 })`; the dock adds its divider, so it is
+  35 wide, the mockups' exactly. Measured in a 200-column capture: the divider
+  at column 165, the panel 166–199, text 167–198 (32 columns), the same cells
+  as the mockup frames. Below the dock's floor or a width the person dragged,
+  the layout follows `bodyColumns`.
+- **Header.** The brain as an 18 x 6 Raster, two blank columns, then
+  `COUNTERPARTS` (a Button: a plain click opens the dashboard), the day, the
+  count and the search box, on the mockup's rows. The search box is one row a
+  shade above the panel (`#121a22`) with `⌕` and an `Input` whose placeholder
+  `search` the engine draws dim (Mike's "subtle search box with a fainter
+  placeholder"). With the brain off, the header is the mockup's two lines: `◉
+  COUNTERPARTS ↗` and the day; the search box and the count. The `◉` takes the
+  stage colour of whatever just fired. At 200x60 a blank row sits above the
+  header (a body of 44 rows or more), at 160x48 none, as in the mockups.
+- **The body** is one `Client` surface module (`hooks/body.tsx`) drawing the
+  lines `hooks/sections.ts` lays out. Every row carries the key of the item it
+  belongs to; a click posts that key to the hooks module, which opens, closes
+  or reads. No Buttons in the body: the engine inverts a Button under the
+  pointer (v0.1, plumbing question 3), and the mockups have no hover look.
+- **Memories ──── 10:25**: the recall block's "Came to mind" lane for the
+  person's last message that had one, titles in full (wrapped to three lines),
+  no dots. The block names a surfaced memory by its gist only
+  (`core/recall/render.ts` writes `- <gist>`; a footnote is `- <title>
+  [id]`), so its title comes from the dashboard: the `recall.decision` row
+  for this session's turn (`/api/activity?name=recall.decision&limit=8`, its
+  `surfaced` ids), then `/api/memory?id=` for each. Until those land, or with
+  the dashboard down, the gist stands: it is what Claude read. No surfaced
+  memory: no section, and the time moves to Subconscious. The time is a
+  12-hour clock with no am or pm, as the mockups have it (every time shown is
+  recent), or `Oct 9` before today.
+- **Subconscious ────**: the "Quietly available" lane, up to four, each on up
+  to three lines (polish round; it was one line, cut with `…`). A `recall` call this session made with that id (or a
+  handle that is its id or its title), seen at `tool.call`, adds `↗ opened`.
+- **Saved this session ──── N**: what `note`, `session_end` and `chapter`
+  saved this session, newest first, each with its stage dot on its first line
+  only (Salience's cyan for a new memory, Reconsolidation's lilac for an
+  update), wrapped lines back at the left edge, titles to two lines. Never cut
+  to one line each: when they don't all fit, fewer show, each keeping its two
+  lines (twelve at most; the heading counts them all). An update
+  (`updates: <id>`, unless `how: open` or a held settle) adds `replaces <old
+  title>`, the old title read from `/api/memory?id=`; unread, `replaces an
+  earlier memory`. The v0.1 toast on a kept note is gone: the pane, the strip
+  and the tail say it.
+- **Mechanisms today ──── times fired**: the twelve in the website's order;
+  half-height bars (`▄`, `▖` for a half) in the stage colours at 0.84, the
+  longest at 12 cells; a zero dim with no bar; Schemas `○ not built yet`.
+  Counts: `firedToday` from `/api/mechanisms` (below). A click on one lists
+  its newest firings from `/api/mechanism?id=` (one read, 6–8 KB), grouped
+  (`faded at 8:07:`), each title on up to two lines (no bullet between
+  firings, so a wrapped line draws a shade softer than a firing's first);
+  each opens in place like a memory. No tagline, no link.
+- **Last Dream ──── 8:15**: the newest dream from `/api/dreams?limit=1`, its
+  first sentence in italic, full width; its time is its `dream.journaled`
+  row's. A click opens a few more lines of it (to nine, cut at a word) and
+  "what changed last night:" (merged near-copies, patterns written down,
+  pairs linked, outdated memories replaced, from the dream's counts; how many
+  memories faded and became core, from the `band.transition` and
+  `band.promoted` rows of its lived day).
+- **Footer (variant B)**: a faint rule, then `● Counterparts  ● Claude
+  memory`, `view ● sidebar ○ strip ○ quiet`, `brain ● turning ○ still ○ off`;
+  each dot and its word one Button. What a click on either memory switch does
+  shows, while it is hovered, in a card drawn `position: absolute` over the
+  two rows above the rule (`display: none`, revealed by its hover group), so
+  nothing moves under the pointer; its words are whole sentences in those two
+  rows at 32 columns (a test per folder state). No card while the pause
+  confirm or a note shows: those rows are the confirm's [Pause] [Cancel], and
+  the pointer is still on the switch it just pressed. The pause confirm and a switch's note draw
+  as rows just above the rule, pushing the body up; the paused banner sits
+  under the header.
+
+### Opening things
+
+- **In place, or on the dashboard.** An item opens in place when its text
+  takes at most **12 lines** at the pane's width (about 350 characters;
+  `sections.ts#EXPAND_MAX_LINES`), plainly: its title in full, bold; its
+  text; `fact · learned Oct 9`. Longer, a click opens its card on the
+  dashboard (`#memories?id=<id>`, a route this change adds to the Memories
+  page) and nothing opens here. **Measured** on 77 of the live store's newest
+  memories: the median text is 626 characters (about 20 lines), so about one
+  in nine opens in place. That is the threshold doing what Mike asked, and
+  the first thing to judge by use. Measured again in review (2026-10-10,
+  the newest saved memories of three sessions): 2 of 29 open in place, so a
+  click on a saved item nearly always opens a browser tab. (Polish round: no
+  threshold; review: nothing closes by itself.) At a short pane the `open` ladder can still
+  cut an in-place text to 8 or 5 lines (`textTo`), with no link to the rest
+  (no link, by decision).
+- **The reads.** The text comes from `/api/memory?id=`
+  (`views/memory.ts#memoryDetail`): `readProse`, `row`, `physicsOf`,
+  `reveal`, all reads; the dashboard's source is typed so a write method fails
+  `tsc` (`source.ts`, `guardWrites`); a confidential body comes back withheld.
+  Never the `recall` tool, which counts a deliberate look-up and records what
+  it showed for crediting.
+- **A section's heading** is a click too: it gives that section the room (it
+  folds last and shortens only after every other section has folded); again,
+  and it is back as it was. Its costs, from the review: a click on a heading
+  that isn't folded changes nothing you can see, but the next click undoes
+  it; the focus never closes by itself (nor, since the review, does an opened
+  item); and Last Dream's heading opens the dream while it is unfolded
+  (its key is the dream's), unlike the others.
+- **Folding.** `layoutBody` takes the least folding that fits, with a blank
+  row between sections, else without; then opens again any fold the last one
+  made unnecessary (compose3.ts's ladder, less its "saved 1 line each"
+  step): saved items go fewer, one at a time, each keeping its two lines,
+  then the section folds to `Saved this session ──── 9 ›`; the dream
+  shortens; the subconscious shows fewer; the chart and the memories fold
+  last. An opened item keeps its room longest (its text gives way only after
+  the chart and the dream have folded), and is never folded away. An opened
+  dream: the chart folds, then the saved list goes down to two, then the
+  excerpt shortens (to 7, 5, 3 lines), then the last two saved go.
+- **Search** is v0.1's (Enter is a `recall` in facts mode), restyled: the
+  results take the sections' place under `“query” ──── 2 found ✕`, each title
+  and what it is; a click opens its excerpt in place; a click on the heading
+  clears it.
+- **Dashboard tabs: a link opens a new tab, as before.** Reusing an open
+  dashboard tab was looked at and not built. A browser lets no page bring
+  another tab forward: `window.focus()` from the open tab is ignored without
+  a click in it, so a BroadcastChannel hand-off (the new tab posts its address
+  to an open one and closes itself) would close the new tab and leave the
+  person on whichever tab sits beside it, the dashboard not shown; and a tab
+  the OS opened (`open URL`) is not script-closable in every browser. macOS
+  AppleScript can find the tab and activate it, but it asks for the
+  Automation permission ("…wants to control Google Chrome") and is a script
+  per browser. Neither is small and permission-free.
+
+### Seeded, on the first dashboard read
+
+A resumed session (`claude --resume`) starts this module over with nothing
+seen. So on its first read, while it has seen nothing, the sidebar fills
+Memories and Subconscious from this session's newest `recall.decision` with
+anything in it, and Saved from this session's `gate.deposit` rows (with a
+settle's `holds`/`over` for `replaces`), titles from `/api/memory?id=`. All
+reads. `COUNTERPARTS_SIDEBAR_SESSION=<id>` names another session instead, for
+a preview or a check: term-loop's sessions send no message, so its shots use
+it (the side-by-sides used two of Mike's sessions of 2026-10-10).
+
+### Mechanisms today: the dashboard's count
+
+`/api/mechanisms` now carries `firedToday` on every light and the day it
+counts (`today`): the rows that proved the mechanism on the person's
+calendar day (`store.today()`, the zone's local date of each row's `at`),
+counted as **rows, not amounts** (a flush that wrote 8 links is one firing of
+Association; a deposit of 3 memories one of Salience), a dream's
+`dream.journaled` and `dream.changed` rows one firing (`firingKey`: `dream.*`
+under one `ref`). The calendar day, not the lived day: a lived day can start
+after midnight, at the day's first sleep, and "today" in the sidebar is the
+date on the clock. Computed from the seven-lived-day window's rows the view
+already reads (30–50 ms on the live store). Tests:
+`test/dashboard-mechanisms.test.ts` (one pins the zone: a minute either side
+of Honolulu's midnight, both on one UTC date), `test/mechanism-evidence.test.ts`.
+Events only: master's decay `census` (2026-10-10) adds a part to a light,
+never a row, so it is not counted; a trial merge of the two conflicted only
+in CHANGELOG.md and passed the mechanism and dashboard tests.
+
+A dashboard older than this (0.3.16, Mike's install until the next release)
+says no `firedToday`. The sidebar then counts from the feed itself on a cold
+read: each event name's newest 150 rows, read twice as deep while every row is
+still today's, to at most 1,200, classified by `feed.ts#RULES` and counted the
+same way (`countToday`); polls add what arrives. On 2026-10-10 that was about
+290 turns. The cold read is then heavier (up to a few MB from localhost, once
+per cold read); it goes away with the new dashboard.
+
+The sidebar re-reads `/api/mechanisms` when a poll brings a row that proves a
+mechanism, and on the first poll after this machine's date changes, rows or
+none (the dashboard's `today` is its store's zone, so the check is the day
+the counts were last read on this clock, not that). The older-dashboard
+cold read counts rows only up to the seq the polls then go on from, so a
+row landing during it is counted once. Measured against the live 0.3.16
+dashboard in review: the cold read is about 5.5 MB in about 24 requests
+(about 0.2 s; every `/api/activity` answer carries about 16 KB of
+vocabulary), a warm poll about 19 KB and 38 ms.
+
+### Views, the tail, and the status line
+
+- **sidebar** is the pane. **strip** closes it and draws ONE line in the band
+  above the prompt: `◉ 2:10 stored: <title>` (the `◉` in the stage colour, the
+  time dim, the verb mid-grey) and, at its right end, `│ ○ sidebar ● strip ○
+  quiet` (Buttons; the engine adds its `[-]`). It reads nothing and draws no
+  brain. **quiet** closes it and draws nothing above the prompt.
+- **The tail**: the newest thing in plain words (`remembered: <title>`,
+  `subconscious: <title>` when nothing was said in full, `stored: <title>` or
+  `stored 3 memories: <first>`, `opened: <title>`, `dreamed: <first
+  sentence>`) as the `PromptHint` site's `tail`, which the engine draws dim
+  at the end of its own line, its pills live. Shown while the pane is not
+  showing, **not in the strip view** (the strip says the same thing one line
+  up; Mike's rule on the dashboard is to show each thing once), and not while
+  the folder is paused or off (the amber line says that). An unasked pane
+  this surface could not place says `/counterparts opens the sidebar` there,
+  until it draws.
+- **The status line is only a warning** now: a folder paused (`⏸
+  Counterparts memory paused in this folder · /counterparts resume`, or
+  `resume it in <dir>`) or off, in every view. Nothing otherwise: no day, no
+  counts, no fps (that is in `/counterparts fps`'s reply only), no "Claude
+  memory off" (the footer says it; the line adds it only beside a pause).
+  **Measured: clearing it gives the row back.** A probe mod that set a status
+  line, cleared it (`$.ui.status(undefined)`) and set it again, captured
+  three times in term-loop at 200x60 (Claude Code 2.1.296): set, the prompt's
+  top rule was on row 56 and the amber line on row 59; cleared, the rule moved
+  to row 57 and the hint line sat right under the prompt; set again, the rule
+  went back to row 56.
+- **Migration.** A stored view from v0.1 reads as: `full` (or none) the
+  sidebar; `quiet`, `rail` and `hidden` quiet. Opening the pane writes
+  `sidebar`, unasked opens included (a v0.1 copy writes `full` back when it
+  opens; each reads the other's word as the pane), and a choice writes
+  v0.2's word. v0.1 reads a stored `strip` as its full pane and v0.2's
+  `quiet` as its narrow quiet pane, so after a v0.2 close a v0.1 session
+  opens narrow rather than closed; left so (v0.1 is a trial copy). Both
+  write one key at a time, so neither drops the other's (`brain`, `caps`,
+  `fpsShown`, `rail`). The pane's `✕` (a close by the person) goes to
+  quiet, for this session and the next.
+
+### The brain
+
+- **18 x 6, dim at rest.** Unlit cells draw at 0.72 (`FrameOptions.dimRest`,
+  the mockups' factor); while a region is lit, the rest at 0.6. No tag (no
+  room for a name at this size). The Raster's cells take the terminal's
+  default background, so the panel's own colour shows through: measured, the
+  engine draws a Raster's colours at 4 bits a channel, and the panel's
+  `#05080c` came out `#000011`, a navy box around the brain; with the default
+  background the cells capture as `5,8,12`, the panel.
+- **turning** (the default) **sways** rather than turning all the way round:
+  at 18 x 6 the front and back views lose the brain (a rounded skull-like
+  outline; the sheet of fourteen yaws is
+  `~/counterparts-notes/mockups/2026-10-10-mod-build/brain-views-18x6.png`),
+  while the sway, side to three-quarter, keeps it. It is v0.1's timer:
+  calm (6 a second) while it sways, a burst while an arc flies, and no timer
+  after a quiet minute until something fires or the pane opens. The task's
+  "slow rotation" is this, said plainly in the report.
+- **still**: a fixed view (the sway's centre), no timer at all. Something
+  firing lights its region (`Brain.flash`) in the pane's next drawing, and
+  the drawing 2.6 s later puts it out (`Brain.dark`): two drawings an event.
+- **off**: no Raster; the header is two lines.
+- **CPU** of the `claude` process (`top`, 30 s windows; term-loop at 200x60,
+  the pane drawn, the dashboard polled every 15–30 s while Mike's other
+  sessions wrote events; load average 3–7, one window at 10; four runs, the
+  last from a frozen copy with nothing edited during it, since a
+  `--plugin-dir` working tree hot-reloads on every edit and the earlier runs'
+  odd windows lined up with edits):
+
+  | Mode | CPU | v0.1 |
+  |---|---|---|
+  | turning, swaying (the minute after an open or an event) | 1.2–4.5% | 2.8–4.2% swaying |
+  | turning, at rest, in a fresh session | 0.1–0.8% | 0.3–1.2% |
+  | turning, at rest, after a slash command | 1.6% | — |
+  | still | 1.0–2.2% | — |
+  | off | 0.7–1.7% | — |
+  | quiet (no pane, no reads) | 0.6–1.6% | 0.6–0.8% quiet, 0.7% hidden |
+  | a static probe pane (no Counterparts) | 0.3–0.5% | 0.6% no plugin |
+
+  Still and off run no timer. At rest, the brain's mode makes no difference
+  the measurement can see: turning at rest measured as low as 0.1% in a fresh
+  session and 1.6% once the transcript held a command's output, the same as
+  still and off (whose windows all came after the command that set them).
+  Read it as: idle, about 1–2% whatever the mode (the polls and their
+  redraws, and the session's own); turning adds two or three percent for the
+  minute it moves after an open or an event.
+
+### Where the build differs from the mockups, and why
+
+- The round-3 decisions win over the round-3 PNGs: two headings (Memories,
+  Subconscious) instead of "On Claude's mind" with `memories:` and
+  `subconscious:` labels; stage dots on saved items.
+- The brain's lit region shows only for 2.6 s after something fires; the
+  mockups froze a lit moment.
+- An opened memory: the mockup `c` opened a 684-character memory in place;
+  with the 12-line threshold that one opens the dashboard instead (shot `c`
+  opens a saved 328-character one). At 160x48 the shot clicks `Saved this
+  session` first: the item is the fifth saved one, folded away otherwise.
+- Live data: words, counts and which sections have anything differ. Every
+  count in the shots came through the older-dashboard path (Mike's 0.3.16
+  dashboard has no `firedToday`), and a long item's dashboard link lands on
+  the Memories page there, not on the memory, until the release.
+- The paused state (`g`) was not shot live: a shot would mean pausing a folder
+  in Mike's live registry. The tests cover it.
+- From the review (2026-10-10): saved items never go to one line each (the
+  round-3 ladder's first step), by Mike's rule that fewer readable items beat
+  more cut ones; an opened dream keeps its excerpt while the saved list goes
+  down to two (the round-3 order cut the excerpt first, which with two-line
+  items cut it to five lines beside eight saved ones at 200x60); a
+  mechanism's firings wrap to two lines, the second a shade softer (the
+  mockup cut each to one); the hover words are shorter, to fit their card.
+- "Claude memory off" shows only in the footer while the pane is open, and on
+  the amber line only beside a pause: closed, nothing says it (v0.1's status
+  line did, in every view). By the round-2 rule (the amber line only for a
+  paused or off folder); worth Mike's look.
+
+### Footprint of the build's runs
+
+Mike's shared sidebar store read `view: "full"` before the runs and reads
+`view: "sidebar"` with a new `brain: "turning"` after: the same view and the
+default brain to both versions (term-loop compares them by meaning, so it put
+nothing back). No other key moved; the Counterparts and Claude memory
+switches were never clicked. The review's five runs (2026-10-10, from frozen
+copies, `COUNTERPARTS_REQUIRE_EXPLICIT_DIR=1`) found it reading
+`{"fpsShown": true, "rail": false, "view": "sidebar", "claudeMemory": true,
+"brain": "turning"}` and left it so after each; they hovered both switches
+and clicked neither.
+
+### Not done, assumed
+
+- The strip's buttons were pressed in the test kit, not clicked live.
+- The hover cards' reveal is the surface's; the test kit draws them hidden.
+  Seen live in review: hovering either switch shows its card over the two rows
+  above the rule, and nothing in the footer moves (`hover-cp`, `hover-mem` in
+  the shots' folders).
+- Inline above the prompt (the main screen), the layout is held to 64 columns.
+- **The search box's placeholder is not fainter.** Measured (Claude Code
+  2.1.296): the engine draws an `Input`'s placeholder `#999999`, brighter
+  than the day and count beside it (`#66717c`) and than the `⌕` (`#8e98a2`);
+  `Input` takes no colour. Drawing our own dim word and the `Input` only
+  while the pane holds the keyboard would change where the keyboard goes
+  after any click in the pane; not done.
+- The desktop has no Raster: it draws the brain-off header.
+
+# v0.1 (2026-10-09/10), the record
+
+What follows is v0.1's. v0.2 removed the ACTIVITY list (and `list.tsx`, its
+"+N from other sessions" line and the kept toast), the legend of twelve, the
+42 x 14 brain and its tag, the switch tracks and their caps, the quiet pane
+and the hidden view, and the status line's day and counts; the plumbing, the
+switch's safety, the scope registry read, the brain's timer and the Claude
+memory switch carry on as written here.
 
 ## Layout, and why
 
