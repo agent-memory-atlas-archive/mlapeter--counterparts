@@ -617,3 +617,33 @@ anything, and the first possible exit at lived day 91. What changed here, all li
   `test/encoding-attention.test.ts`, 4 of 11 about-us memories with a return three lived days after birth
   now meet the fast lane, against 2 before. The return gate still binds (08: "worth little
   without #5"). The dashboard's "needs intensity 0.6" reading is now one of two ways in.
+
+## 2026-10-11 — the dated hold without the spent slope
+
+- **Cut (Mike, 2026-10-11, lightly held):** `SPENT_STABILITY_DIVISOR`, its "ends on use" rule,
+  `DatedHold`'s `spent` state and `stability(m, { spent })`. `datedHold` returns null once a
+  one-off date's window (its last day plus `HOLD_GRACE_DAYS`) has closed, so `elapsed` is
+  `t = 0` while pending and `d − decayAnchor` otherwise: the memory is on its own curve as if it
+  had never been held, t from its own anchor, not the close. The pending hold is unchanged, for
+  one-off dates and around each occurrence of a repeating one. The 2026-10-10 bullets above
+  describe what this replaces.
+- **What it does to a store:** a dated memory with an old anchor reads, the day after its
+  window, exactly what a never-dated twin reads. A routine 0.25 reminder written weeks before
+  its date is below reach at once, and — past `PHI_PRUNE` with its dwell long done — archived on
+  that same night's pass (the test in `test/strength.test.ts` asserts it, and the twin was
+  archived weeks earlier). A felt 0.6 fact stays in reach for months on its own curve.
+- **Readers of the spent state, all checked:** `elapsed` / `decay` / `daysUntilBelow`
+  (here); `sleep/decay.ts#bandMoveCause`'s `held` (now only a pending hold, the case a repeat's
+  window opening still needs); `nextChangeDay` (`d + 1` while held, so the first pass after the
+  close looks at it and gives it its normal day); `store/operational.ts#eraClaimOf` and
+  prospective's `faded` (both test `pending` only, unchanged). The dashboard's "hold"
+  (firm / settling / fading) and meaning mode's `hold` are other things.
+- **The curve signature** drops `spent: 4` for `afterHold: "own-curve"`, so a store signed by
+  the ÷4 build re-curves once: every next-change day forgotten, every live row read on the next
+  pass. On a synthetic 1,100-row temp store (the owner's size) that pass examined all 1,100 rows
+  within the decay budget (20,000) and the whole cycle took ~55–65 ms against ~40–45 ms for a
+  steady night: one pass, no backlog.
+- **Not fixed, pre-existing:** a repeat between windows carries no hold, so its next-change day
+  is its curve's, and nothing makes the turn-down look at it the day its next window opens on
+  the calendar; until some pass reads it, the ranking cache can still read it below reach
+  (ambient recall prefilters on that cache).

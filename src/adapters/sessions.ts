@@ -320,6 +320,22 @@ export interface SessionRecord {
    * (`config.ts#TUNABLES`, `touchDesktopSession`). Carried like `config`.
    */
   readonly desk?: DeskPace;
+  /**
+   * WHEN THIS SESSION LAST HEARD WHAT OTHER DIRECTORIES DID (2026-10-11), for
+   * the per-prompt "Since you started" line (`Lifecycle#sinceLine`): `at` is
+   * its wake or the last such line shown, and `state` where it is —
+   * `woke` (SessionStart just delivered a wake, so the first prompt says
+   * nothing), `armed` (the first prompt has passed), `shown` (a line went out
+   * at `at`, so none for an hour). Written by the hooks only; carried like
+   * `config`, newest wins. Still host state: a number and a word.
+   */
+  readonly sinceSeen?: SinceSeen;
+}
+
+/** Where a session's "Since you started" line stands (`SessionRecord.sinceSeen`). */
+export interface SinceSeen {
+  readonly at: number;
+  readonly state: "woke" | "armed" | "shown";
 }
 
 /** Claude Desktop's write-up pacer, as a record keeps it (`SessionRecord.desk`). */
@@ -495,6 +511,8 @@ export function recordSession(
     mayWriteUp?: readonly string[];
     /** Claude Desktop's write-up pacer (`touchDesktopSession`). Carried like `config`. */
     desk?: DeskPace;
+    /** Where the "Since you started" line stands (`markSinceSeen`). Carried like `config`. */
+    sinceSeen?: SinceSeen;
   },
 ): SessionRecord | null {
   if (!isSessionId(input.sessionId)) return null;
@@ -611,6 +629,13 @@ export function recordSession(
       if (desk !== null) return { desk };
       return prior?.desk !== undefined ? { desk: prior.desk } : {};
     })(),
+    // Carried like `config`, and it MUST be: every prompt rewrites the record
+    // whole (`noteSession`) before the line's state is read.
+    ...((): { sinceSeen?: SinceSeen } => {
+      const seen = parseSinceSeen(input.sinceSeen);
+      if (seen !== null) return { sinceSeen: seen };
+      return prior?.sinceSeen !== undefined ? { sinceSeen: prior.sinceSeen } : {};
+    })(),
   };
 
   return writeRecord(dataDir, path, record);
@@ -633,6 +658,28 @@ function parseDesk(raw: unknown): DeskPace | null {
   if (typeof calls !== "number" || !Number.isSafeInteger(calls) || calls < 0) return null;
   if (typeof since !== "number" || !Number.isFinite(since) || since < 0) return null;
   return { calls, since };
+}
+
+/** A "Since you started" state, or null: a finite non-negative time and one of the three words. */
+function parseSinceSeen(raw: unknown): SinceSeen | null {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const d = raw as Record<string, unknown>;
+  const at = d["at"];
+  const state = d["state"];
+  if (typeof at !== "number" || !Number.isFinite(at) || at < 0) return null;
+  if (state !== "woke" && state !== "armed" && state !== "shown") return null;
+  return { at, state };
+}
+
+/**
+ * MOVE A SESSION'S "SINCE YOU STARTED" STATE (2026-10-11): into the record's
+ * raw JSON (`mergeIntoRecord`), so it moves no clock and erases no field it
+ * does not know. The hooks' call only — SessionStart (`woke`) and a prompt
+ * (`armed`, `shown`). No record, no mark: false. Never throws.
+ */
+export function markSinceSeen(dataDir: string, sessionId: string, seen: SinceSeen): boolean {
+  if (parseSinceSeen(seen) === null) return false;
+  return mergeIntoRecord(dataDir, sessionId, { sinceSeen: { at: seen.at, state: seen.state } });
 }
 
 /**
@@ -1529,6 +1576,10 @@ function parseRecord(raw: unknown): SessionRecord | null {
     ...((): { desk?: DeskPace } => {
       const desk = parseDesk(rec["desk"]);
       return desk === null ? {} : { desk };
+    })(),
+    ...((): { sinceSeen?: SinceSeen } => {
+      const seen = parseSinceSeen(rec["sinceSeen"]);
+      return seen === null ? {} : { sinceSeen: seen };
     })(),
   };
 }

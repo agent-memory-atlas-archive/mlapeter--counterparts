@@ -559,7 +559,6 @@ export function todayElsewhereLines(
         b.memories - a.memories ||
         (a.scope < b.scope ? -1 : a.scope > b.scope ? 1 : 0),
     );
-  if (named.length === 0) return null;
   const clock = (at: number): string => localStamp(at, zone).split(" ")[1] ?? "";
   const one = (d: TodayElsewhere, chapters: boolean): string => {
     const when =
@@ -568,26 +567,35 @@ export function todayElsewhereLines(
         : d.live
           ? ` open since ${clock(d.firstAt)} (live)`
           : ` ${clock(d.firstAt)}–${clock(d.lastAt ?? d.firstAt)}`;
-    const c = d.chapter;
-    const chapter =
-      !chapters || c === null
-        ? ""
-        : ` — ${c.title === null ? c.id : `"${excerpt(c.title, LAST_HERE_TITLE_BYTES)}" (${c.id})`}`;
+    const chapter = !chapters || d.chapter === null ? "" : ` — ${chapterWords(d.chapter)}`;
     const count = d.memories === 0 ? "" : `, ${String(d.memories)} ${d.memories === 1 ? "memory" : "memories"}`;
     return `${placeWords(d.scope)}${when}${chapter}${count}`;
   };
-  // THE FORMS, widest first (2026-10-10): the first `k` directories with
-  // their chapters, then without, for `k` down to one — the rest counted —
-  // and last the count alone. Only those within `TODAY_ELSEWHERE_MAX_BYTES`,
-  // each narrower than the one before it.
+  return elsewhereForms("Today, elsewhere:", named, one);
+}
+
+/**
+ * THE FORMS OF AN ELSEWHERE LINE, widest first (2026-10-10): the first `k`
+ * directories with their chapters, then without, for `k` down to one — the
+ * rest counted — and last the count alone. Only those within
+ * `TODAY_ELSEWHERE_MAX_BYTES`, each narrower than the one before it. One
+ * ladder for "Today, elsewhere" and "Since you started" (2026-10-11), so the
+ * two lines cannot come to disagree about how much room a folder takes.
+ */
+function elsewhereForms<D>(
+  head: string,
+  named: readonly D[],
+  one: (d: D, chapters: boolean) => string,
+): { line: string; shorter: string[] } | null {
+  if (named.length === 0) return null;
   const line = (k: number, chapters: boolean): string => {
     const rest = named.length - k;
     const tail = rest === 0 ? "" : `; +${String(rest)} more`;
-    return flatten(`Today, elsewhere: ${named.slice(0, k).map((d) => one(d, chapters)).join("; ")}${tail}.`);
+    return flatten(`${head} ${named.slice(0, k).map((d) => one(d, chapters)).join("; ")}${tail}.`);
   };
   const candidates: string[] = [];
   for (let k = Math.min(named.length, TODAY_ELSEWHERE_MAX_DIRS); k >= 1; k--) candidates.push(line(k, true), line(k, false));
-  candidates.push(`Today, elsewhere: ${String(named.length)} other ${named.length === 1 ? "directory" : "directories"}.`);
+  candidates.push(`${head} ${String(named.length)} other ${named.length === 1 ? "directory" : "directories"}.`);
   const size = (s: string): number => new TextEncoder().encode(s).length;
   const forms: string[] = [];
   for (const form of candidates) {
@@ -598,4 +606,75 @@ export function todayElsewhereLines(
   }
   const [widest, ...shorter] = forms;
   return widest === undefined ? null : { line: widest, shorter };
+}
+
+/** A gated chapter as an elsewhere line names it: its title and id, or the id alone. */
+function chapterWords(c: ChapterHere): string {
+  return c.title === null ? c.id : `"${excerpt(c.title, LAST_HERE_TITLE_BYTES)}" (${c.id})`;
+}
+
+/** One other directory, as the "Since you started" line names it: what CHANGED there since `since`. */
+export interface SinceElsewhere {
+  readonly scope: string;
+  /** The newest session there that STARTED since then and is still open, epoch ms; null when none. */
+  readonly startedAt: number | null;
+  /** A session there is open now (started then or before). */
+  readonly live: boolean;
+  /** The last session there that ENDED since then, epoch ms; null when none. */
+  readonly endedAt: number | null;
+  /** The newest chapter written there since then that may be named here — gated by the caller — or null. */
+  readonly chapter: ChapterHere | null;
+  /** How many memories were written there since then. A count, never a title. */
+  readonly memories: number;
+}
+
+/**
+ * THE "SINCE YOU STARTED" LINE (2026-10-11; option C of the fresh-wake brief,
+ * Mike approved it 2026-10-10): for a session ALREADY OPEN, which never reads
+ * a wake again, what changed in the other directories since it last heard —
+ * a session there started or ended, a chapter, new memories (counts).
+ *
+ *   Since you started (10:40): ~/deadfront ended 11:05, chapter "Fixing the
+ *   gate" (epi_…), 3 memories; ~/random open since 10:52, 2 memories.
+ *
+ * `since` is when the session last heard (its wake, or the last such line):
+ * the first line says "Since you started (10:40)", a later one "Since 11:40".
+ * The same gates as "Today, elsewhere" — the caller applies them, the one
+ * gate for both — and the same ladder of forms within
+ * `TODAY_ELSEWHERE_MAX_BYTES`. A directory where nothing changed is not
+ * named. Null when there is nothing to say. Pure.
+ */
+export function sinceElsewhereLines(
+  dirs: readonly SinceElsewhere[],
+  since: { readonly at: number; readonly started: boolean; readonly now: number },
+  zone?: string,
+): { line: string; shorter: string[] } | null {
+  const named = dirs
+    .filter((d) => d.startedAt !== null || d.endedAt !== null || d.memories > 0 || d.chapter !== null)
+    .sort(
+      (a, b) =>
+        Math.max(b.startedAt ?? 0, b.endedAt ?? 0, b.chapter?.writtenAt ?? 0) -
+          Math.max(a.startedAt ?? 0, a.endedAt ?? 0, a.chapter?.writtenAt ?? 0) ||
+        b.memories - a.memories ||
+        (a.scope < b.scope ? -1 : a.scope > b.scope ? 1 : 0),
+    );
+  const clock = (at: number): string => localStamp(at, zone).split(" ")[1] ?? "";
+  // A clock time alone while it is the same day; the day as well when not.
+  const when = (at: number): string =>
+    localDate(at, zone) === localDate(since.now, zone) ? clock(at) : localStamp(at, zone);
+  const one = (d: SinceElsewhere, chapters: boolean): string => {
+    const state =
+      d.startedAt !== null
+        ? ` open since ${when(d.startedAt)}`
+        : d.live
+          ? " open"
+          : d.endedAt !== null
+            ? ` ended ${when(d.endedAt)}`
+            : "";
+    const chapter = !chapters || d.chapter === null ? "" : `, chapter ${chapterWords(d.chapter)}`;
+    const count = d.memories === 0 ? "" : `, ${String(d.memories)} ${d.memories === 1 ? "memory" : "memories"}`;
+    return `${placeWords(d.scope)}${state}${chapter}${count}`;
+  };
+  const head = since.started ? `Since you started (${when(since.at)}):` : `Since ${when(since.at)}:`;
+  return elsewhereForms(head, named, one);
 }

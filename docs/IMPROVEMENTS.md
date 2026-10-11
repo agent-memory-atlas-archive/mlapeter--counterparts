@@ -47,6 +47,10 @@ come first. Nothing here quotes a memory.
    after the arc, counted "+N faded"). Fallback, if faded matches are ever seen crowding
    fresh ones on a live store: variant (a″), a mild fade-scaled penalty on the order only
    (score × (1 − 0.3 × (1 − strength/REACH))), also measured in R2-2. (`facts.ts`)
+   **Kept. Mike, 2026-10-11, lightly held; looked at again at the 10-14 check-in.** His reason:
+   be cautious about changing the core app to improve the benchmark. That's welcome when it
+   helps overall, never at the real system's expense; a few months ago, fitting the benchmark
+   broke a lot. At 10-14: look on the live store for faded matches crowding fresh ones.
 
 2. **A dated memory is held until its date (no decay before it arrives), then fades a little
    faster.** Revised by b2+f8, 2026-10-10, lightly held — and it may reverse Mike's
@@ -62,10 +66,37 @@ come first. Nothing here quotes a memory.
    9 of 17 dated memories were archived within 30 lived days, among them a felt fact about
    Mike and an agreed way of working; changed by Mike, 2026-10-10, loosely held. That holds for
    every memory whose date came after the day it was written, not only reminders. (Group 1a.)
+   **Changed by Mike, 2026-10-11, lightly held: keep the pending hold, cut the spent slope.**
+   The hold stays for one-off dates (through the grace week) and around each occurrence of a
+   repeating date. The divide-by-4, its "ends on use" rule and its branch in `elapsed()` go.
+   Once a one-off date's window closes, the memory is back on its normal curve as if it had
+   never been held: t counts from its own anchor, not from the window's close. An old routine
+   reminder drops out of reach at once; a felt dated fact lands where its own curve puts it.
+   Why, in Mike's words: he asked how much complexity it adds and suggested just dropping the
+   weight after the date instead of separate logic. Lowering it by hand wouldn't reach quiet
+   reminders; ending the hold does the same job with no extra logic. This replaces his
+   2026-10-10 "fades faster after" call (stability ÷4), loosely held. Also covers item 7.
 3. **PARKED — engaged footnote credit** (G1b, #371). Parked by Mike, 2026-10-10:
    hand-labelled strict precision 0.17–0.33, lenient 0.60–0.78, below the 0.8 bar; the 09-14
-   ruling ("never for being named in prose") stands in practice. Successor: an explicit `drewOn`
-   field (planned). Not a reversal that shipped.
+   ruling ("never for being named in prose") stands in practice: no matcher guesses at use.
+   **Successor, built: the `drewOn` field.** Built by the drewOn builder, 2026-10-11, from
+   Mike's 10-10 direction, lightly held. `session_end` and `chapter` take optional `drewOn`
+   ids: memories this session was shown that changed what it did or said, in its own word.
+   Each earns the `engaged` tier, #371's tier code without its matcher: half a use, the clock
+   restarted, a `returns.source = 'engaged'` row worth half a spaced return, no core-lane day.
+   Once per lived day per memory; at most 3 per boundary (one ask, both tools together; the
+   first named, the rest `capped`; a refused id uses no slot). Never a superseded memory or
+   one faded under a newer one (refused by name). An open later the same day lifts it to a
+   full use, in this session or another. The repetition arm now saturates,
+   0.5·(1−e^(−uses/3)) (was linear to 0.5 at five uses). The one guard: only an id recall
+   showed this session (its footnotes, loud memories and recall answers) counts; any other is
+   refused `not-shown` and nothing is credited. **The wake is not in that record** (published
+   per store, not per session), so a wake line still earns credit only by being opened.
+   Every credit row says how each credit was earned (`how`: `expanded` / `quoted` /
+   `drewOn`), and the doctor's Credit line counts a week of `drewOn` credits for the ~10-14
+   check-in. Half weight toward the core's recurrence is a constant waiting for Group 3's
+   recurrence lane (`ENGAGED_RECURRENCE_WEIGHT`); today an engaged return buys no lane day.
+   The Stop ask is unchanged: the field text is the only prompt.
 
 The rest are not reversals of Mike's rulings as far as b2, f8 and the builders know. Some
 reverse older defaults and contract lines; those go to the rules audit.
@@ -103,22 +134,28 @@ reverse older defaults and contract lines; those go to the rules audit.
    and its kind. Why: a routine note should leave the working layer in about two days, a felt
    reading should last months, and a 0.7 fact about a year. Until now every memory faded on
    the same slow curve, so nothing left reach for ~100 lived days. (1a)
+   **Kept. Mike, 2026-10-11, lightly held; looked at again at the 10-14 check-in.**
 5. **Below reach at 0.15.** Under it, a memory is left out of everything that comes up on its
    own (turn recall, the links' pointers, the wake's work lines); asking deliberately still
    finds it (facts mode: ranked with the rest, labelled faded — item 1); using it, opening it or a dream replaying
    it brings it back. The core never goes below reach. Why: forgetting in awareness, never in
    storage — strength has to change what comes to mind, or decay changes nothing anyone sees.
    (1a)
+   **Kept. Mike, 2026-10-11, lightly held; looked at again at the 10-14 check-in.**
 6. **Exit after 14 lived days under the floor (was 90).** Exit means ARCHIVED, never deleted:
    the words stay, readable by id, and the journal is untouched. Nothing deletes a memory
    except Mike's own `counterparts remove`. Why: exit should follow reach; at 90 the first
    possible exit was lived day 91. If any later change would delete rows, it waits for Mike.
    (1a)
-7. **A dated memory holds until its date and fades steeply after.** See item 2. (1a)
+   **Kept. Mike, 2026-10-11, lightly held; looked at again at the 10-14 check-in.** For a faster
+   read, at 7 lived days a read-only dry run shows what WOULD be archived if exit were 7 instead
+   of 14; nothing is archived by it (docs/CHECK-AFTER.md).
+7. **A dated memory holds until its date; after its window it is back on its own curve.** See item 2 (Mike, 2026-10-11). (1a)
 8. **Feeling sets how slowly a memory fades, not its band; `emotional` is out of the
    salience average.** A feeling now counts once for height and once for steepness. Why:
    feeling was the one signal that told readings from changelog on the live store; it was
    being counted twice in height and barely in steepness. (1a)
+   **Kept. Mike, 2026-10-11, lightly held; looked at again at the 10-14 check-in.**
 9. **Mood-matched recall turned down (weights 0, code kept), marked for re-test.** Why:
    evidence from the old use metric (lifted memories used 1.3% vs 2.4%); re-test after Group
    1's engaged credit gives a real signal. Not a closed decision. (1c)
@@ -240,6 +277,7 @@ were refined by b2+f8 at the review of #369, named where they were):
 ### Approved by Mike, 2026-10-10; details b2+f8, lightly held (the wake, #376)
 
 - Mike approved the two options 2026-10-10; details b2+f8, lightly held: the wake is assembled at session start (Still open, Arriving, the Yesterday line and the page read for that moment; Nearby and the identity rotation stay the turn-end's, since showing them writes state), and a "Today, elsewhere" line names other folders worked in today. Why: morning sessions read the evening's wake and knew nothing of each other. Held firmly: no span text across folders, no work memory's title, no handoff body; counts only. Builder's choices, for review: a chapter title crosses only on the About-me line's gate (scope on, not confidential, a copy marked me/us/owner) — the Yesterday line still names every folder's titles; a folder whose scope is not on is not named at all, not even by count; three indexes (`memories_open`, `memories_created`, `memories_origin_ref`) ride the v13 upgrade, with no schema bump of their own; no worker kick at session start. Cost (SessionStart through the hook, 200 registry records): 3.7 → 6.6 ms at 1× (925 memories), 12.3 → 28.2 ms at a synthetic 10× (9,250 written in one day, 250 open questions), no model calls.
+- Mike approved option C 2026-10-10 (the fresh-wake brief's PR 2); decided by the since-you-started builder, 2026-10-11, lightly held: a session already open gets one "Since you started" line at a prompt, for the model only, when another folder had a session start or end, a chapter, or new memories since the session last heard — at most once an hour, never at the first prompt after a wake. Same gate as "Today, elsewhere", shared code (`Counterpart#elsewhereGate`), same 300-byte ladder. Why: an open session never reads a wake again, so it did not learn what another folder did an hour ago. Builder's choices, for review: the wake is not counted as a line, so the first line can come at the second prompt (the hour runs between lines); a compaction's wake restarts the count; a folder where only time passed (a live session still working, no memories) is not a change; a session open when this installs counts from its start; the line takes only what recall left of its budget (its widest form that fits) and with no room waits, the hour unspent; the state is `sinceSeen` on the session's registry record, no store change. Cost (prompt hook, 200 registry records, synthetic): +0 ms within the hour; ≈5 ms on a prompt that checks at 1× (925 memories) and ≈5.5–7.5 ms at 10× (9,250 written that day) — the registry read ≈2–3 ms, the fortnight's chapter walk ≈2 ms, the counts ≈0.1–1 ms. No model or embedding call, no store write.
 
 ### Decided by b2+f8, 2026-10-10, lightly held; rank by the review of #380 (the wake, "Today, elsewhere" room)
 
@@ -250,16 +288,58 @@ were refined by b2+f8 at the review of #369, named where they were):
 - Decided by the follow-ups builder, 2026-10-11, lightly held: at a session start the Yesterday line names a chapter by title and id when this session's own directory wrote it, or when it is about me, us or the owner and its directory's scope is on (the "About me, from another directory" gate); every other chapter of that day joins the line's "and N more" count, and when they are all there is the line is the count alone ("chapters from N sessions in other directories"). A chapter whose row recorded no directory counts as another directory's. The turn-end's and `rebrief`'s published render keep the store-wide line. Why: the gate is the reader's — own directory against another, and the scope setting the host hands the wake — and the published bundle has no reader, so it stays as it was; it reaches a session only when the session-start assembly falls back (a bundle an older build published, another ceiling), filed as self INTERFACE-GAPS §14.
 - Decided by the follow-ups builder, 2026-10-11, lightly held: the plugin's first-run lock in the temp directory is waited on only when it is a directory this user owns (not a link); anything else at its name is passed over, left where it is, and the install runs without the lock. Why: on Linux the temp directory is a shared `/tmp`, the lock's name is predictable, and with the sticky bit another user's directory there can be neither removed nor waited out — every first run waited its 20 s and failed. A per-user path alone does not close it (its name is just as predictable), so some fallback is needed either way; the lock only keeps the hook and the server, starting together, from installing at once, and `install` writes the same two things either way (measured: two first runs racing with no lock between them, every round one valid configuration and store).
 
+### Decided by the rollback builder, 2026-10-11, lightly held (`counterparts rollback`)
+
+- Decided by the rollback builder, 2026-10-11, lightly held: after a rollback, a hold file (`<store>/sessions/rollback/hold.json`) makes this build refuse EVERY open of the store while the store is behind it, writers and observers alike (`STORE_ROLLED_BACK`), until `counterparts rollback --upgrade-again` or `--undo`. Why: the command runs on the new build, and between the rollback and the older version's install anything on the new build would upgrade the store again (a hook, Claude Desktop's server, `install --host claude-desktop`) — and an observer read is not harmless either, because it builds the new build's cache beside the old store, which the older build then refuses for every memory tool (measured in the 10-10 rehearsal). A file and not a meta row, because the database is what gets swapped and a row would travel with it; inside `sessions/`, because an unclassified top-level entry makes even the older build refuse the store. Any later build on the same or a newer schema is held too (it would take the same store the same way), so an ordinary upgrade after a rollback needs the one command the stand-down names.
+- Decided by the rollback builder, 2026-10-11, lightly held: `rollback` does not run `disconnect`; it prints QUICKSTART's order for changing versions (disconnect on the newer version, install the older, connect, Desktop) as next steps. Why: the hold already covers what disconnecting covered for the store, and more (Desktop's server, the dashboard, the console are not disconnected by it); the host's files stay with the commands that own them.
+- Decided by the rollback builder, 2026-10-11, lightly held: `--upgrade-again` upgrades the store there and then from a NEW pre-migration copy, never one reused from the same UTC day (`freshMigrationCopy`). Why: the known trap — a second rollback on the same day restored the first one's copy and lost what the older version wrote in between. The upgraded store's cache is moved aside with it (not deleted), so `--undo` brings it back; `--undo` refuses once anything has written to the restored database (its sha256 is in the hold).
+
 ### Decided by the about-marks builder, 2026-10-11, lightly held (what a memory is about)
 
 - Decided by the about-marks builder, 2026-10-11, lightly held: the reflection's unmarked offer keeps a room of its own — exactly what the offered ids cost as lines, held back from the shared room — and an offered memory the shared fit left waiting or showed as a bare id is shown as a line in it. Why: on 10-10 the offer fitted to nothing (`fit.notShown` 356); a synthetic full night (700 recent memories) offered 0 of 11 before and 5 of 5 after. A reserve rather than a higher priority, because the top priority would also hand the offer whole texts first on exactly the tight nights. Unmarked skills are offered too (the review: 5 of 34 read as personal, and nothing else ever offered them).
 - Decided by the about-marks builder, 2026-10-11, lightly held: `counterparts about` (and the dashboard through it) marks an archived memory rather than refusing it, and says it is archived. Why: an archived memory can come back (a use, a body mention), and the mark should be right when it does; `setAbout` already took archived rows. An earlier version's id forwards to the current one and says so.
 - Decided by the about-marks builder, 2026-10-11, lightly held: a mark set by `remember`'s `remark` is recorded `about_by = 'self'` (a new value in a text column, no schema change). Why: the brief asked for "by self", `writer` is the mark given at birth, and `self` is already the store's word for the counterpart (`said_by`). The remark takes the reflection's rules: only a memory the session was shown (as `feelingsNow`), a dream's or a reflection's words only toward work or world, a missing why recorded rather than refused; a confidential memory outside the owner's session is not found. The owner's door has none of these limits.
 
+### Decided by the drewOn builder, 2026-10-11, lightly held (`drewOn`, item 3 above)
+
+- Decided by the drewOn builder, 2026-10-11, lightly held: an id from the wake comes back
+  `not-shown`. Why: the one guard is recall's per-session record (footnotes, loud memories,
+  recall answers), and the wake has none — `self.briefing.shown` is per published bundle and
+  cannot say which session read it. Admitting it would need a second guard, and the wake is
+  the always-near display the `on-display` rule exists for. Opening a wake line still credits it.
+- Decided by the drewOn builder, 2026-10-11, lightly held: the same-day lift to a full use
+  crosses sessions — `Store#reinforce` reads today's `engaged` return row when the caller
+  names no lower tier. Why: `drewOn` lands at one session's Stop, and the open that should
+  lift it is usually another session's; #371 lifted only within a session. Missed: an engaged
+  credit whose return was refused because another return already counted that day.
+- Decided by the drewOn builder, 2026-10-11, lightly held: "at most 3 per boundary" is per
+  recall turn, shared by `session_end` and `chapter` (both answer the same ask, in the turn
+  the Stop opened); only credits that land use a slot, so a refused id never pushes a later
+  one out. Edge: an engaged credit lifted by an open frees its slot that turn.
+- Decided by the drewOn builder, 2026-10-11, lightly held: `drewOn` is credited whatever the
+  rest of the call does (a refused chapter, `memories-required`), and rides out on every
+  answer, the `writeUp` divert's included (review of #385: it is read before the divert and
+  credited against the WRITING session's shown set, which is the one the guard reads). A
+  Desktop call that names no session (bound to the most recent live one) credits nothing and
+  says `session-unnamed`, as its handoff fields do: that session may be another chat's.
+- Decided by the reviewer of #385, 2026-10-11, lightly held: the saturating repetition arm's
+  `REP_SCALE_USES` joins the decay curve's signature (`sleep/decay.ts#curveSignature`), so the
+  first applied decay pass after this lands forgets every next-change day and walks the whole
+  store once, filing its band moves as `recurve`. Why: `rep()` no longer reads `REP_PER_USE`,
+  so the signature would otherwise be unchanged and the turn-down would trust next-change days
+  computed under the linear arm. Measured on a synthetic 20,000-row population (70% never
+  used): heights differ on ~2.7% of rows, bands move on ~0.04%, all down (3–8-use rows, whose
+  arm drops by up to 0.11); `self`/`person` (no repetition arm) never move.
+
 ### Also noted
 
 - **A read-without-crediting mode for audits.** A way to read memories (a review, a rules
   audit) without the reading counting as a use.
+- **A repeating date's next window can open while the ranking cache still reads it below
+  reach.** Between windows a repeat has no hold, so its next-change day is its curve's, and nothing
+  makes the turn-down look at it the day its next window opens on the calendar; until a pass reads
+  it, ambient recall (which prefilters on the cache) can miss it. Physics has no `event_date` to
+  predict it from. (Noted by the review of the 2026-10-11 hold-without-spent lane; pre-existing.)
 
 ---
 

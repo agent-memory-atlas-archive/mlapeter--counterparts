@@ -132,7 +132,23 @@ counterparts install --force --embedder
 
 ### Going back to an earlier version
 
-Go back in this order. The other order breaks every hook, and the older version's
+If the upgrade changed your memory's format, the older version won't open it until you
+put the old one back. Close your Claude Code sessions, quit Claude Desktop and stop the
+dashboard, then, while the newer version is still installed:
+
+```
+counterparts rollback
+```
+
+It puts back the copy the upgrade made first (they're kept 14 days), says how many
+memories you would lose (everything remembered since the upgrade), and asks you to type a
+word. Nothing is deleted: the upgraded memory is set aside next to it, in a
+`rollback-aside-…` folder. Until you install the older version, the newer one leaves your
+memory alone, and sessions on it say why. `counterparts rollback --undo` puts the
+upgraded memory back if the older version hasn't used it yet;
+`counterparts rollback --upgrade-again` lets the newer version upgrade it again.
+
+Then go back in this order. The other order breaks every hook, and the older version's
 `doctor` still reads green.
 
 1. `counterparts disconnect`, while the newer version is still installed.

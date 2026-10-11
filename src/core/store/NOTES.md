@@ -2074,3 +2074,23 @@ values under the wrong names), and its `all` threw "Cannot get name of column" o
 So an `ALTER TABLE` or `DROP TABLE` run on the connection (`exec` or `run`) empties its
 cache. Another connection's change is not seen; the version checks refuse a newer build's
 store before anything reads it.
+
+## 2026-10-11 — a rollback's hold (no schema bump)
+
+`counterparts rollback` (`adapters/cli/rollback.ts`) puts a store back from its
+pre-migration copy and leaves `sessions/rollback/hold.json`. While it is there and the
+database is absent or behind `SCHEMA_VERSION`, the constructor refuses every open —
+observer included — with `STORE_ROLLED_BACK`, second after the pre-rows check and before
+any directory or database is touched. The observer is refused too because an observer open
+builds this build's cache (`openCache` initializes a missing one whatever the stance), and
+the older build then refuses every memory tool on "cache ahead" (measured in the 10-10
+rehearsal). `releaseRollbackHold` lifts it for one open and makes that open's migration
+take a NEW copy (`freshMigrationCopy` → `snapshotBeforeMigration({ reuse: false })`), so a
+second rollback on the same UTC day cannot restore the first one's copy.
+
+Learned writing its tests: a database file renamed while this process still has a handle on
+it — and `openDb`'s handles outlive `close()`, because the statement cache never finalizes —
+answers `SQLITE_IOERR_VNODE` to a NEW connection on the file at its new path, in the same
+process. A file copied into place (a new inode) is unaffected. The console's rollback opens
+the upgraded database only before moving it, so it never meets this; the tests read moved
+files from a child process.

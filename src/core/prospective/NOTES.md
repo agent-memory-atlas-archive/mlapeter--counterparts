@@ -526,7 +526,8 @@ more than a few days out. Physics now HOLDS a dated memory at t = 0 while its wi
 defaults to physics' `HOLD_GRACE_DAYS` (one owner), as `LEAD_DAYS` defaults to `HOLD_LEAD_DAYS`; a
 repeating date is held through each occurrence's window (lead to grace) and fades between them, as
 the 2026-10-09 design says — so every occurrence finds it in reach. After the
-window closes the memory fades steeply. `load()` sets `faded` only when the hold is not
+window closes the memory is on its own curve from its own anchor, as if it had never been held
+(2026-10-11; the steeper "spent" slope is cut). `load()` sets `faded` only when the hold is not
 pending, so a pending reminder whose height alone sits at the floor is still asked for.
 G10 is reversed, lightly held (decided by b2+f8; on the rules audit; it may also revise the
 owner's 2026-09-26 note "decay still holds" — first on Mike's list).

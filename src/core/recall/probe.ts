@@ -167,6 +167,9 @@ export function probeOQ4(rows: readonly ProbeRow[]): ProbeReport {
       unparseable += 1;
       continue;
     }
+    // A `drewOn` field's row (2026-10-11) is the tools', not a boundary's:
+    // it expands nothing and scores no showings, so it is not a credit pass.
+    if (row.name === "recall.credit" && p["source"] === "drewOn") continue;
     const date = typeof p["date"] === "string" ? p["date"] : null;
     const a = get(session, date);
     if (row.name === "recall.decision") {

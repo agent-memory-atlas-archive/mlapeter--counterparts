@@ -139,6 +139,8 @@ export interface PreMigrationInput {
   /** The stamp found on disk, and the version about to be written. */
   readonly from: string;
   readonly to: number;
+  /** False: never use an earlier copy, always take a new one. Default true. */
+  readonly reuse?: boolean;
 }
 
 export interface PreMigrationCopy {
@@ -163,7 +165,7 @@ export interface PreMigrationCopy {
 export function snapshotBeforeMigration(input: PreMigrationInput): PreMigrationCopy {
   const dir = assertPreMigrationTarget(input.dbPath, input.dir);
   const now = Date.now();
-  const earlier = reusableCopy(dir, input.dbPath, input.from, input.to, now);
+  const earlier = input.reuse === false ? null : reusableCopy(dir, input.dbPath, input.from, input.to, now);
   if (earlier !== null) return { name: earlier, reused: true };
 
   const name = preMigrationName(now, input.from, input.to);

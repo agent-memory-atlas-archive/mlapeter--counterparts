@@ -926,6 +926,29 @@ describe("doctor — the reading", () => {
     expect(by(doctorFindings(input({ store: s })), "credit").severity).toBe("green");
   });
 
+  test("the Credit line counts a week of drewOn credits beside the boundary's newest row (2026-10-11)", () => {
+    mintStore();
+    writeConfig();
+    const s = store();
+    s.appendEvent({
+      name: RECALL_CREDIT_EVENT,
+      day: s.livedDay(),
+      payload: { reason: "failed", code: "X", date: "2026-09-14" },
+    });
+    for (const credited of [2, 1]) {
+      s.appendEvent({
+        name: RECALL_CREDIT_EVENT,
+        day: s.livedDay(),
+        payload: { source: "drewOn", via: "session_end", reason: "credited", credited, considered: 3, date: "2026-09-14" },
+      });
+    }
+    const f = by(doctorFindings(input({ store: s })), "credit");
+    // The boundary's own row is still the reading, past the drewOn rows after it.
+    expect(f.severity).toBe("amber");
+    expect(f.detail).toContain("drewOn 3 credited of 6 named in 2 calls over 7 days");
+    expect(f.data).toMatchObject({ drewOnCalls: 2, drewOnNamed: 6, drewOnCredited: 3 });
+  });
+
   /**
    * FINDING 12'S OWN READING — who did the week's writing, in rows the store
    * already keeps. Counts only; the line goes amber when a session owed a

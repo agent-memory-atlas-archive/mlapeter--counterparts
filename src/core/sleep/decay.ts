@@ -86,7 +86,7 @@ const DECAY_PHASE: Phase = "decay";
  *
  * EVERY constant that moves a strength, a line or the hold belongs here —
  * height's (`base`: each kind's `wSal`/`wRep`, `REP_PER_USE`, `REP_CAP`,
- * `CONS_BONUS`; `salArm`'s lift), steepness's, the lines', the hold's (review
+ * `REP_SCALE_USES`, `CONS_BONUS`; `salArm`'s lift), steepness's, the lines', the hold's (review
  * of #372: the height constants were missing, so a build that changed a
  * kind's salience weight would have trusted next-change days computed under
  * the old heights). Group 1c's `FELT_HEIGHT_CAP` (`salArm`) is one of them;
@@ -116,6 +116,10 @@ export function curveSignature(eraCutoff: string | null = null): string {
     ret: PHYSICS.RETURN_GAIN,
     rep: PHYSICS.REP_PER_USE,
     repCap: PHYSICS.REP_CAP,
+    // The saturating repetition arm (2026-10-11, `drewOn`; review of #385):
+    // `rep()` reads this, not `REP_PER_USE`, so a store whose next-change days
+    // were computed under the linear arm forgets them once.
+    repScale: PHYSICS.REP_SCALE_USES,
     cons: PHYSICS.CONS_BONUS,
     sem: PHYSICS.THETA_SEM,
     reach: PHYSICS.REACH,
@@ -123,7 +127,10 @@ export function curveSignature(eraCutoff: string | null = null): string {
     dwell: PHYSICS.D_FLOOR_DAYS,
     grace: PHYSICS.HOLD_GRACE_DAYS,
     lead: PHYSICS.HOLD_LEAD_DAYS,
-    spent: PHYSICS.SPENT_STABILITY_DIVISOR,
+    // After a one-off date's window: its own curve from its own anchor
+    // (2026-10-11; replaces `spent: 4`, the ÷4 slope — named, so a store
+    // signed by any build before it re-curves once).
+    afterHold: "own-curve",
     // Group 1c's height cap (`salArm`).
     felt: PHYSICS.FELT_HEIGHT_CAP,
     kinds: Object.fromEntries(Object.entries(PHYSICS.KINDS).map(([k, v]) => [k, [v.wSal, v.wRep, v.kappa]])),
@@ -141,10 +148,9 @@ export function curveSignature(eraCutoff: string | null = null): string {
  *   - `input`: the row's next-change day was NULL — read BEFORE this pass wrote
  *     anything, so a trigger cleared it because an input of the curve was
  *     written (or a rebuilt cache cleared them all);
- *   - `held`: a dated memory — its standing turns on the CALENDAR (a window
- *     opening, or the spent slope giving way after a long absence:
- *     `physics#elapsed` reads "used after the window" off two clocks), so it
- *     is read daily and a climb there is the date's, not a ratchet;
+ *   - `held`: a held dated memory — its standing turns on the CALENDAR (a
+ *     repeating date's window opening lifts it to t = 0), so it is read daily
+ *     and a climb there is the date's, not a ratchet;
  *   - `unexplained`: none of these — a strength that rose by itself.
  */
 export function bandMoveCause(

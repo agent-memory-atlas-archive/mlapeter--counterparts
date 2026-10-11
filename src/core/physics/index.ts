@@ -28,8 +28,21 @@ export type { Band, DatedHold, Kind, MemoryPhysics, Salience } from "../types.js
 
 export const TUNABLES = {
   // --- §5.2 strength ---
-  /** Repetition credit per use [v0, verbatim]. */
+  /** Repetition credit per use [v0, verbatim]. RETIRED from `rep()` on
+   *  2026-10-11 (`drewOn`, the engaged tier): the arm saturates instead
+   *  (below). Kept so the old linear arm can be named and restored in one line. */
   REP_PER_USE: 0.12,
+  /**
+   * THE REPETITION ARM SATURATES (2026-10-11, with the engaged tier; ported
+   * from #371): `rep = REP_CAP x (1 − e^(−uses / REP_SCALE_USES))` — 0.14
+   * after one use, 0.24 after two, 0.40 after five, never a cliff at the cap.
+   * Was `min(0.12 x uses, 0.5)`, linear to a wall. With `drewOn` (half a use
+   * for a memory the session says it drew on) use can come more often, and
+   * each further use must add less. Built by the drewOn builder, 2026-10-11,
+   * from Mike's 10-10 direction, lightly held. Why: review 05 C2/D3; the shape
+   * keeps "the 5th use adds clearly less than the 1st" at any intake.
+   */
+  REP_SCALE_USES: 3,
   /** Repetition cap [v0; v1 §10 G11]. Repetition is also no road to the
    *  identity band for any kind but `self`/`person` — guarantee 4, now a rule of
    *  `promotionEligibility` rather than a threshold (§5.3, 2026-09-26). */
@@ -75,6 +88,24 @@ export const TUNABLES = {
    * durability (spacing-scaled like any return). CAL.
    */
   REFLECTION_RETURN_WEIGHT: 1.0,
+  /**
+   * An ENGAGED use's return (2026-10-11, `drewOn`; ported from #371): the
+   * session said it drew on a memory it was shown, without opening it. Half a
+   * return, spacing-scaled like the others, and no core-lane day of its own
+   * (`returns.source = 'engaged'` is outside the lanes' `awake`/`reflection`).
+   * Lightly held. Why: review 05 D1; saying you drew on something is weaker
+   * evidence than opening it.
+   */
+  ENGAGED_RETURN_WEIGHT: 0.5,
+  /**
+   * What an engaged return will count for toward the core's RECURRENCE lane
+   * (b2+f8, 2026-10-10: half weight, and never alone). NOTHING READS IT YET:
+   * the recurrence lane is Group 3's (mechanisms synthesis, Group 3
+   * consolidation) and is not built — today's slow lane counts `awake` and
+   * `reflection` days only (`store#recomputeReturns`), so an engaged return
+   * buys no lane day at all. This is the hook that lane reads when it lands.
+   */
+  ENGAGED_RECURRENCE_WEIGHT: 0.5,
   /**
    * A reflection counts a memory as returned at most once every this many
    * lived days (working default 2026-09-27): "the reflection can't cite the
@@ -316,14 +347,6 @@ export const TUNABLES = {
    * once a year would be below reach on the very day it comes round.
    */
   HOLD_LEAD_DAYS: 3,
-  /**
-   * AFTER THE WINDOW: a dated memory's own stability is divided by this until
-   * it is used again (`elapsed`, `stability`'s `spent`). Steeper on its own
-   * curve, not zeroed: a 0.25 reminder (S ≈ 3) then leaves reach within a day,
-   * a felt 0.6 fact (S in the hundreds) still lasts months. Decided by Mike,
-   * 2026-10-10, lightly held; revisit after ~5 lived days (review of #372).
-   */
-  SPENT_STABILITY_DIVISOR: 4,
 
   // --- §5.1 salience ---
   /** CAL. Size of the nearest-neighbour slice in E(m) for novelty (v1's top-M). */
@@ -390,6 +413,13 @@ export const TUNABLES = {
   // --- §5.5 reinforcement ---
   /** Retrospective credit weights by tier. The ignorable tier never trains. */
   W_REFERENCED: 1.0,
+  /**
+   * The session said it DREW ON a memory it was shown (`drewOn` on
+   * `session_end` / `chapter`, 2026-10-11): half a use. Display alone still
+   * trains nothing — `W_FOOTNOTED` stays 0. Built by the drewOn builder,
+   * 2026-10-11, from Mike's 10-10 direction, lightly held. Why: review 05 D1.
+   */
+  W_ENGAGED: 0.5,
   W_SURFACED: 0.25,
   W_FOOTNOTED: 0.0,
 
@@ -769,7 +799,8 @@ export function clampSalienceAtSeam(
 // ---------------------------------------------------------------------------
 
 export function rep(m: Pick<MemoryPhysics, "uses">): number {
-  return Math.min(TUNABLES.REP_PER_USE * m.uses, TUNABLES.REP_CAP);
+  if (!(m.uses > 0)) return 0;
+  return TUNABLES.REP_CAP * (1 - Math.exp(-m.uses / TUNABLES.REP_SCALE_USES));
 }
 
 export function cons(m: Pick<MemoryPhysics, "consolidated">): number {
@@ -866,30 +897,25 @@ export function steepnessInput(m: Pick<MemoryPhysics, "salience" | "feelingPeak"
  * κ is 0 (none today; the owner's records later). `(1 + t/∞)^−1 = 1`, so the
  * exemption is the arithmetic, not a branch in every reader (03 D6).
  *
- * `spent` is the steeper slope of a dated memory whose window has closed (07
- * C2, `DatedHold`): its own stability divided by `SPENT_STABILITY_DIVISOR`
- * (4) — the completed intention is inhibited, gently, on its own curve.
- * Decided by Mike, 2026-10-10, loosely held (b2 proposed it); revisit after ~5 lived days (review
- * of #372). Why: the first version zeroed q, so salience and feeling no longer
- * slowed it at all — on a copy of the live store 9 of 17 dated memories were
- * archived within 30 lived days, among them a felt fact about the owner and an
- * agreed convention their own curves kept for months.
+ * A dated memory's slope is its own, before its window and after it: the
+ * steeper "spent" slope after the window (÷4, 2026-10-10) was cut by Mike,
+ * 2026-10-11, lightly held — ending the hold does the same job with no extra
+ * logic (`elapsed`).
  */
 export function stability(
   m: Pick<MemoryPhysics, "kind" | "uses" | "salience"> &
     Partial<Pick<MemoryPhysics, "feelingPeak" | "returns" | "promotedIdentity" | "eraClaim">>,
-  opts: { spent?: boolean } = {},
 ): number {
   const kappa = kindPhysics(m.kind).kappa;
   if (m.promotedIdentity === true || !(kappa > 0)) return Number.POSITIVE_INFINITY;
   const q = steepnessInput(m);
-  const s =
+  return (
     (TUNABLES.S0 *
       Math.exp(TUNABLES.STABILITY_GAIN * q) *
       (1 + TUNABLES.BETA * Math.log(1 + Math.max(0, m.uses))) *
       returnFactor(m.returns ?? 0)) /
-    kappa;
-  return opts.spent === true ? s / TUNABLES.SPENT_STABILITY_DIVISOR : s;
+    kappa
+  );
 }
 
 /** The returns' share of stability: `1 + RETURN_GAIN x ln(1 + returns)`. */
@@ -936,34 +962,24 @@ export function decayAnchor(
 }
 
 /**
- * The elapsed lived days the curve reads on day d, and whether the steep
- * (spent) slope applies — the one place the dated hold acts (07 C1/C2):
+ * The elapsed lived days the curve reads on day d — the one place the dated
+ * hold acts (07 C1/C2):
  *
- *   - PENDING (a future date, or its window still open; a live repeat): t = 0.
- *     The memory holds at its height until its window closes. No use is
- *     credited — `uses`, `lastUsedDay` and returns are untouched.
- *   - SPENT (its window closed): t counts from the window's close
- *     (`closedDaysAgo`, calendar days, an upper bound on the lived days
- *     since), on the steeper slope (stability / `SPENT_STABILITY_DIVISOR`).
- *   - …until it is USED after the window: a use means it still matters, so
- *     it is an ordinary memory again, t from its anchor on its own curve
- *     (decided by Mike, 2026-10-10, loosely held). "Used after" is read as
- *     fewer lived days since the anchor than calendar days since the close;
- *     on a store left alone for most of a window that errs toward ordinary —
- *     the gentle direction.
- *   - otherwise: t = d − `decayAnchor`.
- *
- * A REPEATING date is never spent: its hold is pending in each occurrence's
- * window and absent between them (`store/operational.ts#datedHold`).
+ *   - PENDING (a future date, or its window still open; a repeat inside an
+ *     occurrence's window): t = 0. The memory holds at its height until its
+ *     window closes. No use is credited — `uses`, `lastUsedDay` and returns
+ *     are untouched.
+ *   - otherwise: t = d − `decayAnchor`. A one-off date whose window has
+ *     closed carries no hold (`store/operational.ts#datedHold`), so it is back
+ *     on its own curve AS IF IT HAD NEVER BEEN HELD: t from its own anchor,
+ *     not from the close — an old routine reminder is below reach at once, a
+ *     felt dated fact lands where its own curve puts it. (Mike, 2026-10-11,
+ *     lightly held: this replaces the 2026-10-10 "spent" slope, t from the
+ *     close on stability ÷ 4 until a use.) A repeat between windows is the
+ *     same.
  */
-export function elapsed(m: MemoryPhysics, d: number): { t: number; spent: boolean } {
-  const t = Math.max(0, d - decayAnchor(m));
-  const hold = m.hold ?? null;
-  if (hold === null) return { t, spent: false };
-  if (hold.state === "pending") return { t: 0, spent: false };
-  const since = Math.max(0, hold.closedDaysAgo);
-  if (t < since) return { t, spent: false };
-  return { t: since, spent: true };
+export function elapsed(m: MemoryPhysics, d: number): number {
+  return m.hold?.state === "pending" ? 0 : Math.max(0, d - decayAnchor(m));
 }
 
 /**
@@ -976,8 +992,7 @@ export function elapsed(m: MemoryPhysics, d: number): { t: number; spent: boolea
  */
 export function decay(m: MemoryPhysics, d: number, shape: DecayShape = TUNABLES.DECAY_SHAPE): number {
   if (m.promotedIdentity) return 1;
-  const { t, spent } = elapsed(m, d);
-  return decayCurve(t, stability(m, { spent }), shape);
+  return decayCurve(elapsed(m, d), stability(m), shape);
 }
 
 /** The memory's height before decay: `base x fade` (03 C1's h). */
@@ -1011,8 +1026,8 @@ export function daysUntilBelow(m: MemoryPhysics, theta: number, shape: DecayShap
   if (m.promotedIdentity) return null;
   const h = height(m);
   if (h < theta) return 0;
-  if ((m.hold ?? null) !== null && m.hold?.state === "pending") return null;
-  const S = stability(m, { spent: m.hold?.state === "spent" });
+  if (m.hold?.state === "pending") return null;
+  const S = stability(m);
   if (S === Number.POSITIVE_INFINITY) return null;
   if (shape === "power-law" && TUNABLES.POWER_LAW_PSI === 1) {
     return Math.floor(S * (h / theta - 1)) + 1;
@@ -1030,9 +1045,10 @@ export const NEVER_CHANGES = 1_000_000_000;
  * the day the nightly turn-down has to look at it again. Strictly after `d`.
  *
  *   - the identity band, S = ∞: `NEVER_CHANGES`;
- *   - a dated memory (pending or spent): `d + 1` — its hold turns on the
+ *   - a held (pending) dated memory: `d + 1` — its hold turns on the
  *     CALENDAR, which a lived day cannot predict, so it is looked at daily
- *     (there are few of them);
+ *     (there are few of them). So the first pass after its window closes
+ *     looks at it, finds no hold, and gives it its normal day below;
  *   - otherwise the first day it falls under the next of `THETA_SEM`, `REACH`
  *     and `PHI_PRUNE` below where it stands, or — once under the floor — the
  *     day its dwell reaches `D_FLOOR_DAYS`.
@@ -1433,7 +1449,7 @@ export function promote(m: MemoryPhysics, d: number, ctx: CoreContext): Promotio
  * #238 gave `awake` — do not "fix" it back to `on-display` (physics
  * CONTRACT §5.11).
  */
-export type ReturnSource = "awake" | "dream" | "reflection";
+export type ReturnSource = "awake" | "dream" | "reflection" | "engaged";
 
 export type ReturnReason =
   | "counted"
@@ -1535,11 +1551,32 @@ export function creditReturn(
       ? TUNABLES.DREAM_RETURN_WEIGHT
       : opts.source === "reflection"
         ? TUNABLES.REFLECTION_RETURN_WEIGHT
-        : (opts.tierWeight ?? TUNABLES.W_REFERENCED);
+        : opts.source === "engaged"
+          ? TUNABLES.ENGAGED_RETURN_WEIGHT
+          : (opts.tierWeight ?? TUNABLES.W_REFERENCED);
   if (tier <= 0) return refuse("ignorable-tier");
   if (opts.source === "awake" && tier < TUNABLES.W_REFERENCED) return refuse("not-referenced");
   if (d <= m.birthDay) return refuse("birth-day");
   if (opts.source === "awake" && opts.onDisplay === true) return refuse("on-display");
+  // AN ENGAGED RETURN (2026-10-11, `drewOn`; ported from #371): half a
+  // return, spaced from the last return of ANY kind (the caller passes the
+  // last engaged day as `since`), and refused on a day that already counted
+  // one of any kind. It touches only the `returns` sum: no lane day, no
+  // `lastReturnDay` (those are the core lanes'), no `lastDreamDay`. Only a
+  // memory recall showed this session can earn one (`Counterpart#creditDrewOn`
+  // refuses the rest), so the wake's display rule does not apply.
+  if (opts.source === "engaged") {
+    if (gap <= 0) return refuse("already-returned-today");
+    const weight = tier * spacingWeight(gap);
+    return {
+      counted: true,
+      reason: "counted",
+      source: "engaged",
+      gap,
+      weight,
+      next: { ...unchanged, returns: unchanged.returns + weight },
+    };
+  }
   // "Already today" is asked of the SAME kind of return for an awake one: a
   // dream that replayed the memory earlier this lived day (the ask comes
   // mid-session, and the day goes on) takes the spacing — the awake return
@@ -1651,10 +1688,11 @@ export function symmetryCheck(kind: Kind, counts: { up: number; down: number; un
 // §5.5 Reinforcement
 // ---------------------------------------------------------------------------
 
-export type UseTier = "referenced" | "surfaced" | "footnoted";
+export type UseTier = "referenced" | "engaged" | "surfaced" | "footnoted";
 
 export const USE_TIER_WEIGHT: Record<UseTier, number> = {
   referenced: TUNABLES.W_REFERENCED,
+  engaged: TUNABLES.W_ENGAGED,
   surfaced: TUNABLES.W_SURFACED,
   footnoted: TUNABLES.W_FOOTNOTED,
 };
@@ -1682,15 +1720,30 @@ export interface CreditOutcome {
  *
  * A credited use also resets the forgetting curve: `lastUsedDay := d` raises
  * S through `uses`, so the next interval is longer — the testing effect.
+ *
+ * THE TIER ONLY GOES UP WITHIN A DAY (2026-10-11, `drewOn`; ported from
+ * #371). `upgradeFrom` names a lower tier the SAME memory was credited at
+ * earlier this lived day (the caller knows it; physics carries no tier). Then
+ * the day's credit is lifted to `tier`: `uses` gains the difference, the clock
+ * is already today's, and the reinforced day is not counted twice. Without it
+ * a `drewOn` credit at one boundary would refuse an expansion at the next as
+ * `already-credited-today`. Lightly held. Why: review 05 C2 ("a referenced use
+ * the same day supersedes it").
  */
-export function creditUse(m: MemoryPhysics, d: number, tier: UseTier): CreditOutcome {
+export function creditUse(m: MemoryPhysics, d: number, tier: UseTier, opts: { upgradeFrom?: UseTier } = {}): CreditOutcome {
   const w = USE_TIER_WEIGHT[tier];
   const days = reinforcedDays(m);
   const unchanged = { uses: m.uses, lastUsedDay: m.lastUsedDay, reinforcedDays: days };
   if (w <= 0) return { credited: false, reason: "ignorable-tier", w, next: unchanged };
   if (d === m.birthDay) return { credited: false, reason: "birth-day", w, next: unchanged };
   if (d < m.lastUsedDay) return { credited: false, reason: "stale-day", w, next: unchanged };
-  if (d === m.lastUsedDay) return { credited: false, reason: "already-credited-today", w, next: unchanged };
+  if (d === m.lastUsedDay) {
+    const from = opts.upgradeFrom === undefined ? 0 : USE_TIER_WEIGHT[opts.upgradeFrom];
+    if (from > 0 && from < w) {
+      return { credited: true, reason: "credited", w, next: { uses: m.uses + (w - from), lastUsedDay: d, reinforcedDays: days } };
+    }
+    return { credited: false, reason: "already-credited-today", w, next: unchanged };
+  }
   return {
     credited: true,
     reason: "credited",

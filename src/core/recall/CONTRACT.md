@@ -118,6 +118,21 @@ reply actually used reconsolidates, where in humans every retrieval does.
   also scores what ambient recall showed since the session's last scored boundary: by
   lane, how many a reply expanded or quoted and which it did not (NOTES §28). Measurement
   only; nothing trains on a miss.*
+  **A third door, 2026-10-11: `drewOn`, by the session's own word.** *Built by the drewOn
+  builder, 2026-10-11, from Mike's 10-10 direction, lightly held; the successor to #371's
+  matcher, parked at hand-read precision 0.17–0.33.* `session_end` and `chapter` take
+  optional `drewOn` ids, and each is credited at the `engaged` tier (half a use, half a
+  return, no core-lane day; physics §5.5) by `Counterpart#creditDrewOn`. No matcher guesses:
+  the 09-14 rule against crediting a name in prose stands. **The one guard: only an id this
+  session was SHOWN counts** — its gate state's `surfaced` records (footnotes, loud, quiet
+  pointers) and its `asked` records (a deliberate answer's results). Anything else is
+  refused `not-shown`. The wake is not in that record, so a wake line is credited by
+  opening it. Then refused by name: an unknown id, an archived row, a handoff, a superseded
+  memory, one faded under a newer one. At most `DREW_ON_MAX_PER_BOUNDARY` (3) land per
+  boundary — one recall turn, both tools together — the first in the order given, the rest
+  `capped`. Each tool call that names any writes its own `recall.credit` row (`source:
+  "drewOn"`, `via` the tool), and every credit row carries `how`, aligned with `ids`:
+  `expanded` / `quoted` / `drewOn`.
 - **Framing is load-bearing and part of the spec** — footnotes are pointers, and the "quietly
   available / ignorable" phrasing is a deliberate probe question, at step 1 since 2026-09-14
   (§7 OQ4). [v1 §9 G17]
@@ -249,7 +264,10 @@ credit at the boundary; reinforcement deltas handed to `physics/`.
    only in the owner's own session; withholding is *stated* for a direct lookup and silent in
    a list.
 10. **[M]** Reference credit is precision-biased, never downgrades an already-credited item,
-    and is a no-op under observer.
+    and is a no-op under observer. Since 2026-10-11 a lower tier credited earlier the same
+    lived day is LIFTED by a higher one (`physics#creditUse`'s `upgradeFrom`) — from this
+    session's gate state, or, for an engaged credit, from its return row in any session —
+    never the other way.
 11. **[M]** Under observer, recall computes and renders normally and strengthens nothing —
     checked first, before any other work (scar E7).
 12. **[M]** Per-session gate state has a defined store and lifetime, and a test asserts the

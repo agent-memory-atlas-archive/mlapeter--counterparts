@@ -114,7 +114,8 @@ clothes. **Hold debts, lose deadlines.**
   its window is ahead (its date plus `GRACE_DAYS`, physics' `HOLD_GRACE_DAYS`) — computed at
   the store's read seam, no column, no use credited — and a repeating date through each
   occurrence's window (lead to grace; between windows it fades, as decided 2026-10-09); after the
-  window closes it fades steeply. `faded` refuses only a memory whose hold is not pending.
+  window closes it is on its own curve from its own anchor, as if never held (2026-10-11).
+  `faded` refuses only a memory whose hold is not pending.
   The 2026-10-09 carve-out for repeats stands.
 - **Firing state is not canonical memory**, and the write budget is set by that cost:
   losing it risks one extra polite mention, never a memory, so contended writers skip the

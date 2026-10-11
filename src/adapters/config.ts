@@ -117,6 +117,14 @@ export const TUNABLES = {
    */
   PLAIN_WHAT_MAX_CHARS: 120,
   /**
+   * HOW OFTEN AN OPEN SESSION MAY BE TOLD WHAT CHANGED ELSEWHERE (2026-10-11,
+   * option C of the fresh-wake brief; Mike approved the option 2026-10-10,
+   * the number is the brief's): at most one "Since you started" line an hour
+   * per session (`lifecycle.ts#sinceLine`). The wake is not a line, so the
+   * first can come at the second prompt; a line that did not fit spends none.
+   */
+  SINCE_LINE_EVERY_MS: 60 * 60 * 1000,
+  /**
    * ONE BUDGET PER HOOK ENVELOPE (2026-09-29, audit item 9): the host's cap on
    * a hook's whole output, in characters. The host's own words: "Hook output
    * strings, including `additionalContext`, `systemMessage`, and plain stdout,

@@ -57,7 +57,7 @@ import {
   SPAWN_STARTED_EVENT,
   WRITE_UP_FAILED_EVENT,
 } from "../core/counterpart.js";
-import type { AdapterDurableEventName, DeliveryWarningName, PlainReminder } from "../core/counterpart.js";
+import type { AdapterDurableEventName, DeliveryWarningName, PlainReminder, WakeHere } from "../core/counterpart.js";
 import type {
   BoundaryKind,
   CaptureResult,
@@ -94,6 +94,7 @@ import {
   pruneSessions,
   pruneWriteUpProgress,
   manifestVersionOnDisk,
+  markSinceSeen,
   readSession,
   readWriteUpProgress,
   recordSession,
@@ -548,30 +549,114 @@ export class Lifecycle implements HostLifecycle {
       budget,
       { ...(input.at === undefined ? {} : { date: input.at }) },
       {
-        scope: input.scope,
-        session: input.sessionId.length === 0 ? null : input.sessionId,
+        ...this.elsewhereHere(input),
         // What a handoff's release is compared with (2026-10-01): the version
         // on disk NOW, which a long-running server's own may not be.
         installed: manifestVersionOnDisk(),
         openedWith: (session) => readSession(dir, session)?.opened?.build.version ?? null,
-        exportsFrom: this.chapterExports(),
-        // The registry, for the "Today, elsewhere" line (2026-10-10): host
-        // state only — which directory, when, live or ended. The core keeps
-        // today's, elsewhere, that the scope setting lets it name.
-        sessions: () => {
-          const now = this.nowFn();
-          return listSessions(dir).map((r) => ({
-            session: r.sessionId,
-            scope: r.scope,
-            startedAt: r.startedAt,
-            lastAt: Math.max(r.lastBoundaryAt, r.endedAt ?? 0),
-            live: isLive(r, now),
-          }));
-        },
       },
     );
     this.noteWakeExpectation(input, woke.sentinel);
     return woke;
+  }
+
+  /**
+   * WHERE AND WHO, AND WHAT MAY BE NAMED FROM ELSEWHERE — what both elsewhere
+   * lines are handed (the wake's "Today, elsewhere", 2026-10-10, and the
+   * prompt's "Since you started", 2026-10-11), so the two read the registry
+   * and the scope setting the same way. The registry is host state only —
+   * which directory, when, live or ended; the core keeps what the scope
+   * setting lets it name.
+   */
+  protected elsewhereHere(input: SessionInput): Pick<WakeHere, "scope" | "session" | "exportsFrom" | "sessions"> {
+    const dir = this.counterpart.store.dir;
+    return {
+      scope: input.scope,
+      session: input.sessionId.length === 0 ? null : input.sessionId,
+      exportsFrom: this.chapterExports(),
+      sessions: () => {
+        const now = this.nowFn();
+        return listSessions(dir).map((r) => ({
+          session: r.sessionId,
+          scope: r.scope,
+          startedAt: r.startedAt,
+          lastAt: Math.max(r.lastBoundaryAt, r.endedAt ?? 0),
+          live: isLive(r, now),
+          endedAt: r.endedAt,
+        }));
+      },
+    };
+  }
+
+  /**
+   * A SESSION THAT HAS JUST BEEN HANDED ITS WAKE has heard what the other
+   * directories did (2026-10-11): its "Since you started" line counts from
+   * now, and says nothing at the next prompt. SessionStart's call, after the
+   * wake is composed — a compaction's too, which hands it a fresh wake. Not
+   * under observer, not for the nightly run, not without an id. Never throws.
+   */
+  protected noteSinceWoke(input: SessionInput & { nightRun?: boolean }): void {
+    if (this.observer || input.nightRun === true || input.sessionId.length === 0) return;
+    try {
+      markSinceSeen(this.counterpart.store.dir, input.sessionId, { at: this.nowFn(), state: "woke" });
+    } catch {
+      /* a mark that will not write costs the line, never the wake */
+    }
+  }
+
+  /**
+   * THE "SINCE YOU STARTED" LINE, for a prompt in a session already open
+   * (2026-10-11; option C, Mike approved 2026-10-10): one line for the MODEL,
+   * naming what changed in the other directories since this session last
+   * heard — or the empty string. `room` is the bytes this prompt's envelope
+   * has left once everything already in it is counted: the line gives way to
+   * all of it, and takes the widest of its forms that fits.
+   *
+   * At most once an hour, and never at the first prompt after a wake, by the
+   * session's own state in the registry (`SessionRecord.sinceSeen`):
+   *   - `woke` (or no state, a session older than this build): this prompt
+   *     arms it and says nothing — the wake just covered it;
+   *   - `armed`: the line goes out when something changed and it fits;
+   *   - `shown`: nothing, not even a read, until an hour after the last line.
+   * A line that does not fit is not marked: the next prompt tries again and
+   * the hour is not spent. The state moves only when it arms or a line goes
+   * out, so a quiet prompt writes nothing more than it did.
+   *
+   * Reads only from the store (the counts and the chapter walk), the registry
+   * and the scope setting: no model, no embedding, no store write. Nothing
+   * under observer or for the nightly run; a folder that is off or paused
+   * never reaches here (`guard`). Never throws.
+   */
+  sinceLine(input: SessionInput & { nightRun?: boolean }, room: number): string {
+    if (this.observer || input.nightRun === true || input.sessionId.length === 0) return "";
+    try {
+      const dir = this.counterpart.store.dir;
+      const record = readSession(dir, input.sessionId);
+      if (record === null) return "";
+      const now = this.nowFn();
+      const seen = record.sinceSeen ?? { at: record.startedAt, state: "woke" as const };
+      if (seen.state === "woke") {
+        markSinceSeen(dir, input.sessionId, { at: seen.at, state: "armed" });
+        return "";
+      }
+      if (seen.state === "shown" && now - seen.at < TUNABLES.SINCE_LINE_EVERY_MS) return "";
+      const lines = this.counterpart.sinceElsewhere(
+        { since: seen.at, until: now, started: seen.state === "armed" },
+        this.elsewhereHere(input),
+      );
+      if (lines === null) return "";
+      const line = [lines.line, ...lines.shorter].find((l) => Buffer.byteLength(`${l}\n`, "utf8") <= room);
+      if (line === undefined) {
+        this.emit("adapter.since.deferred", { room, need: Buffer.byteLength(`${lines.line}\n`, "utf8") });
+        return "";
+      }
+      if (!markSinceSeen(dir, input.sessionId, { at: now, state: "shown" })) return "";
+      this.emit("adapter.since.shown", { bytes: Buffer.byteLength(line, "utf8") });
+      return line;
+    } catch (err) {
+      this.emit("adapter.since.failed", { code: err instanceof Error ? err.name : "unknown" });
+      return "";
+    }
   }
 
   /**
@@ -1176,6 +1261,9 @@ export class Lifecycle implements HostLifecycle {
         unreadable: summary.unreadable,
         refused: summary.refused,
         ids: summary.ids.slice(0, 64),
+        /** How each of `ids` was earned, aligned with it (2026-10-11):
+         *  `expanded` or `quoted` here; `drewOn` on the tools' own rows. */
+        how: summary.how.slice(0, 64),
         idsTotal: summary.ids.length,
         expandedIds: summary.expandedIds.slice(0, 64),
         expandedTotal: summary.expandedIds.length,
