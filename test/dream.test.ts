@@ -21,6 +21,7 @@ import { Counterpart } from "../src/core/counterpart.js";
 import { DREAM_MARK, DREAM_TUNABLES, dreamOpener } from "../src/core/dream/index.js";
 import { inheritFrom } from "../src/core/store/index.js";
 import { CLAIMED_DEFAULT_META_KEY } from "../src/core/mint.js";
+import { headOf } from "../src/core/recall/index.js";
 import { TUNABLES as PHYSICS } from "../src/core/physics/index.js";
 import { TUNABLES as REMEMBER_TUNABLES, enters } from "../src/core/remember/index.js";
 import type { SweepChunk } from "../src/core/remember/index.js";
@@ -154,7 +155,7 @@ describe("begin: the bundle", () => {
 // ---------------------------------------------------------------------------
 
 describe("propose: what a dream may change", () => {
-  test("merge: one memory in better words; the originals kept, archived with a forwarding address", () => {
+  test("merge: one memory in better words; the originals kept live, faded and labelled earlier under it (Group 2b)", () => {
     const c = brain();
     const m = lived(c);
     c.store.addFeelings(m.a, [{ whose: "owner", core: "fear", emotion: "anxious", strength: 0.7, carriedBy: "the empty boot" }]);
@@ -170,11 +171,11 @@ describe("propose: what a dream may change", () => {
     expect(out.results[0]).toMatchObject({ ok: true, reason: "merged" });
     for (const orig of [m.a, m.b]) {
       const row = c.store.row(orig);
-      expect(row?.archived).toBe(1);
-      expect(row?.archived_reason).toBe("dream-merge");
-      expect(row?.superseded_by).toBe(merged);
-      expect(c.store.versions(orig).at(-1)?.successor_id).toBe(merged);
-      expect(c.store.readVersion(orig, c.store.versions(orig).at(-1)?.seq ?? 0).body.length).toBeGreaterThan(0);
+      // A plain `changed` through the one door (decided by random-06, 2026-10-11): live, ×0.5, earlier under the merged memory.
+      expect(row).toMatchObject({ archived: 0, superseded_by: null });
+      expect(row?.fade).toBeCloseTo(0.5, 6);
+      expect(headOf(c.store, orig)).toBe(merged);
+      expect(c.store.contradictionBetween(merged, orig)).toMatchObject({ state: "settled", how: "changed", source: "dream-merge" });
     }
     // At least as strong as what it was made from: the feeling travelled.
     expect(c.store.feelingsFor(merged).length).toBe(1);
@@ -439,9 +440,9 @@ describe("merge inherits: about, and the old-claims era", () => {
     expect(row.claimed).toBe(0.25);
     expect(c.store.readProse(id).meta[CLAIMED_DEFAULT_META_KEY]).toBe(true);
     expect(c.store.physicsOf(id).eraClaim).toBe(PHYSICS.DEFAULT_CLAIM_PERSONAL);
-    // Two counted before, one after: the merged row is counted, its originals archived.
+    // Two counted before, three after: the merged row, and its originals, live and earlier under it (Group 2b).
     expect(before.up).toBe(2);
-    expect(c.store.claimsEra()).toMatchObject({ up: 1, affected: 1 });
+    expect(c.store.claimsEra()).toMatchObject({ up: 3, affected: 3 });
     c.store.updateMeta(CLAIMS_ERA_CUTOFF_KEY, () => null);
     expect(c.store.physicsOf(id).eraClaim ?? null).toBeNull();
     expect(c.store.physicsOf(id).salience.claimed).toBe(0.25);
@@ -455,7 +456,8 @@ describe("merge inherits: about, and the old-claims era", () => {
     expect(p.salience.claimed).toBe(0.7);
     expect(p.eraClaim).toBe(PHYSICS.DEFAULT_CLAIM_WORLD);
     expect(c.store.readProse(id).meta[CLAIMED_DEFAULT_META_KEY]).toBeUndefined();
-    expect(c.store.claimsEra()).toMatchObject({ down: 1, up: 0 });
+    // The merged row and its two originals (live, earlier under it since Group 2b).
+    expect(c.store.claimsEra()).toMatchObject({ down: 3, up: 0 });
     const cutoff = c.store.getMeta(CLAIMS_ERA_CUTOFF_KEY) as string;
     c.store.updateMeta(CLAIMS_ERA_CUTOFF_KEY, () => null);
     expect(c.store.physicsOf(id).eraClaim ?? null).toBeNull();
@@ -575,7 +577,8 @@ describe("merge inherits: about, and the old-claims era", () => {
     const { id } = merge(c, [fresh[0]!, fresh[1]!, old[0]!]);
     expect(c.store.readProse(id).meta[ERA_WRITTEN_AT_META]).toBe(c.store.row(old[0]!)!.created_at as number);
     expect(c.store.physicsOf(id).eraClaim).toBe(PHYSICS.DEFAULT_CLAIM_WORLD);
-    expect(c.store.claimsEra()).toMatchObject({ affected: 1, down: 1 });
+    // The merged row and its old original (live, earlier under it since Group 2b).
+    expect(c.store.claimsEra()).toMatchObject({ affected: 2, down: 2 });
   });
 
   test("three sources, mixed eras, a new one best: the merged row is read as new, even with old defaults beside it", () => {
@@ -589,7 +592,8 @@ describe("merge inherits: about, and the old-claims era", () => {
     expect(c.store.row(id)!.about).toBe("owner");
     expect(c.store.physicsOf(id).eraClaim ?? null).toBeNull();
     expect(c.store.physicsOf(id).salience.claimed).toBe(0.7);
-    expect(c.store.claimsEra()).toMatchObject({ affected: 0 });
+    // Only the two old originals, live and earlier under it since Group 2b; the merged row is not.
+    expect(c.store.claimsEra()).toMatchObject({ affected: 2, up: 1, down: 1 });
   });
 
   test("nothing else copies the carried moment: a supersede and a meta revise of a merged old row", () => {
@@ -606,7 +610,8 @@ describe("merge inherits: about, and the old-claims era", () => {
     const next = c.store.supersede(id, { type: "memory", kind: "fact", body: "Migrate first, always.", salience: { relevance: 0.6, emotional: 0.3, predictive: 0.6, claimed: 0.7 } });
     expect(c.store.readProse(next).meta[ERA_WRITTEN_AT_META]).toBeUndefined();
     expect(c.store.physicsOf(next).eraClaim ?? null).toBeNull();
-    expect(c.store.claimsEra()).toMatchObject({ affected: 0 });
+    // Only the merge's two old originals, live and earlier since Group 2b.
+    expect(c.store.claimsEra()).toMatchObject({ affected: 2, down: 2 });
   });
 
   test("an unmarked best source merged with a world one is about world, and the note says so", () => {

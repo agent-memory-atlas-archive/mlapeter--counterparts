@@ -4,8 +4,9 @@
  * another goes through `reconsolidation.ts#supersede`: a settle, a write's
  * `updates`, a slot confirmed, a dream merge, the core's pressure crossing, a
  * fulfilled plan, a moved reminder. Each writes the pair, the trail and the
- * label, takes its effect from `how` (or, for a holder that replaces the
- * memory, an archive with a forwarding address), and its undo is exact.
+ * label, takes its effect from `how` alone (decided by random-06, 2026-10-11:
+ * no fourth relation — a merge's originals and a crossed or fulfilled core
+ * memory fade, stay live and are labelled earlier), and its undo is exact.
  *
  * The core path's cases are the Han case's SHAPE, in made-up words.
  * Hermetic: a fresh temp data dir per test, removed after it.
@@ -21,16 +22,18 @@ import { Associate, TERMINAL_ARCHIVE_GRACE_MS } from "../src/core/associate/inde
 import { Counterpart } from "../src/core/counterpart.js";
 import { DREAM_MERGE_REASON } from "../src/core/dream/index.js";
 import { revisionBar } from "../src/core/physics/index.js";
-import { DATE_MOVED_TO_META } from "../src/core/prospective/index.js";
+import { CUE_MODE_META, DATE_MOVED_TO_META, Prospective } from "../src/core/prospective/index.js";
 import {
   CONTRADICTION_SETTLED_EVENT,
   CONTRADICTION_TUNABLES,
-  FULFILLED_REASON,
+  FULFILLED_SOURCE,
   PRESSURE_UNDONE_REASON,
   REMINDERS_MOVED_META,
+  REMINDER_SPENT_BY_META,
   REMINDER_MOVED_SOURCE,
   SLOT_SOURCE,
   expireUnanswerableSlots,
+  flag,
   proposeSlot,
   releaseOrphanSlots,
   settle,
@@ -39,6 +42,7 @@ import {
   undo,
 } from "../src/core/reconsolidation.js";
 import { Recall, headOf, standingOf } from "../src/core/recall/index.js";
+import { settledOver } from "../src/core/self/index.js";
 import { recallTurn } from "../src/core/retrieval.js";
 import { Store } from "../src/core/store/index.js";
 import type { PutInput } from "../src/core/store/index.js";
@@ -121,7 +125,7 @@ describe("the door: every 'A over B' writes the same record", () => {
     const out = settle(s, { holds: b, over: a, how: "changed", actor: "owner" });
     if (!out.ok) throw new Error(out.reason);
     expect(s.contradiction(out.pair)?.source).toBe("settle");
-    expect(settledEvents(s).at(-1)).toMatchObject({ source: "settle", how: "changed", faded: true, replaced: false });
+    expect(settledEvents(s).at(-1)).toMatchObject({ source: "settle", how: "changed", faded: true, leftCore: false });
     expect(standingOf(s, a)?.prefix).toContain(`Earlier (now [${b}])`);
     expect(s.row(a)?.fade).toBeCloseTo(0.5, 6);
     expect(undo(s, { pair: out.pair, actor: "owner" }).ok).toBe(true);
@@ -167,57 +171,130 @@ describe("the door: every 'A over B' writes the same record", () => {
 });
 
 describe("the dream merge goes through the door", () => {
-  function merged(c: Counterpart): { a: string; b: string; m: string; dream: string } {
+  const ORIGINALS = [
+    "The island ferry leaves at eight from the north pier.",
+    "The ferry to the island departs the north pier at eight.",
+    "At eight the island ferry goes from the north pier.",
+  ];
+
+  function merged(c: Counterpart, n = 2): { ids: string[]; a: string; b: string; m: string; dream: string; friend: string } {
     const s = c.store;
     for (let d = 4; d <= 12; d += 1) s.advanceClock(`2026-09-${String(d).padStart(2, "0")}`);
-    const a = c.store.put({ type: "memory", kind: "fact", body: "The island ferry leaves at eight from the north pier.", origin: { session: "s1" } });
-    const b = c.store.put({ type: "memory", kind: "fact", body: "The ferry to the island departs the north pier at eight.", origin: { session: "s1" } });
+    const ids = ORIGINALS.slice(0, n).map((body) => c.store.put({ type: "memory", kind: "fact", body, origin: { session: "s1" } }));
+    const friend = c.store.put({ type: "memory", kind: "fact", body: "The north pier café sells tea.", origin: { session: "s1" } });
+    const day = s.livedDay();
+    s.linkMany([
+      { src: ids[0] as string, dst: friend, weight: 0.2, day },
+      { src: friend, dst: ids[0] as string, weight: 0.2, day },
+    ]);
     const begun = c.dreams.begin({ session: "night" });
     if (!begun.ok) throw new Error(`begin refused: ${begun.reason}`);
-    const out = c.dreams.propose({ dream: begun.bundle.dream, session: "night", changes: [{ action: "merge", ids: [a, b], text: "The island ferry leaves the north pier at eight." }] });
-    if (!out.ok) throw new Error("propose refused");
-    return { a, b, m: out.results[0]?.id as string, dream: begun.bundle.dream };
+    const out = c.dreams.propose({ dream: begun.bundle.dream, session: "night", changes: [{ action: "merge", ids, text: "The island ferry leaves the north pier at eight." }] });
+    if (!out.ok || out.results[0]?.ok !== true) throw new Error(`propose refused: ${JSON.stringify(out)}`);
+    return { ids, a: ids[0] as string, b: ids[1] as string, m: out.results[0]?.id as string, dream: begun.bundle.dream, friend };
   }
 
-  test("one pair per original, plain `changed`, source dream-merge; the originals replaced with a forwarding address", () => {
+  test("one pair per original, plain `changed`, source dream-merge: the originals fade, stay live and are labelled earlier", () => {
     const c = brain();
-    const { a, b, m } = merged(c);
+    const { a, b, m, friend } = merged(c);
     const s = c.store;
     for (const x of [a, b]) {
-      const p = s.contradictionBetween(m, x);
-      expect(p).toMatchObject({ state: "settled", how: "changed", holds: m, over: x, source: DREAM_MERGE_REASON });
-      expect(s.row(x)).toMatchObject({ archived: 1, archived_reason: DREAM_MERGE_REASON, superseded_by: m });
+      expect(s.contradictionBetween(m, x)).toMatchObject({ state: "settled", how: "changed", holds: m, over: x, source: DREAM_MERGE_REASON });
+      expect(s.row(x)).toMatchObject({ archived: 0, superseded_by: null });
+      expect(s.row(x)?.fade).toBeCloseTo(0.5, 6);
+      expect(headOf(s, x)).toBe(m);
     }
-    expect(settledEvents(s).filter((e) => e["source"] === DREAM_MERGE_REASON)).toHaveLength(2);
-    // Counted as the merge it is, not as a declared settle.
-    expect(settledEvents(s).every((e) => e["replaced"] === true)).toBe(true);
+    const events = settledEvents(s).filter((e) => e["source"] === DREAM_MERGE_REASON);
+    expect(events).toHaveLength(2);
+    expect(events.every((e) => e["faded"] === true && e["archived"] === false)).toBe(true);
+    // The merged memory took the originals' links (a copy: the original keeps its own).
+    expect(c.associate.linked(m, friend)).toBe(true);
+    expect(c.associate.linked(a, friend)).toBe(true);
   });
 
-  test("the dream's undo is a settle's undo: the originals back, the pairs withdrawn, the merged memory archived", () => {
+  test("an original already settled under a merged memory is not merged again", () => {
     const c = brain();
-    const { a, b, m, dream } = merged(c);
+    const s = c.store;
+    for (let d = 4; d <= 12; d += 1) s.advanceClock(`2026-09-${String(d).padStart(2, "0")}`);
+    const [a, b, other] = ORIGINALS.map((body) => s.put({ type: "memory", kind: "fact", body, origin: { session: "s1" } })) as [string, string, string];
+    const begun = c.dreams.begin({ session: "night" });
+    if (!begun.ok) throw new Error(`begin refused: ${begun.reason}`);
+    const out = c.dreams.propose({
+      dream: begun.bundle.dream,
+      session: "night",
+      changes: [
+        { action: "merge", ids: [a, b], text: "The island ferry leaves the north pier at eight." },
+        { action: "merge", ids: [a, other], text: "The ferry leaves at eight." },
+      ],
+    });
+    if (!out.ok) throw new Error("propose refused");
+    expect(out.results[0]?.ok).toBe(true);
+    expect(out.results[1]).toMatchObject({ ok: false, reason: "earlier-is-not-merged" });
+    expect(headOf(s, a)).toBe(out.results[0]?.id as string);
+    expect(headOf(s, other)).toBeNull();
+  });
+
+  test("the dream's undo is a settle's undo: the originals' strength back, the pairs withdrawn, the merged memory archived", () => {
+    const c = brain();
+    const { ids, m, dream } = merged(c, 3);
     const s = c.store;
     expect(c.dreams.undo(dream).ok).toBe(true);
-    for (const x of [a, b]) {
-      expect(s.row(x)).toMatchObject({ archived: 0, superseded_by: null });
+    for (const x of ids) {
+      expect(s.row(x)).toMatchObject({ archived: 0, superseded_by: null, fade: 1 });
       expect(s.contradictionBetween(m, x)).toBeUndefined();
+      expect(headOf(s, x)).toBeNull();
     }
     expect(s.row(m)?.archived).toBe(1);
   });
 
-  test("the owner may undo one original's pair: it comes back beside the merged memory", () => {
+  test("the owner may undo one original's pair of three: it stands again, the other two stay earlier under the merged memory", () => {
     const c = brain();
-    const { a, b, m } = merged(c);
+    const { ids, m, dream } = merged(c, 3);
     const s = c.store;
-    const p = s.contradictionBetween(m, a);
-    const out = c.undoContradiction({ pair: p?.id as string, actor: "owner" });
-    expect(out).toMatchObject({ ok: true, state: "withdrawn", unarchived: a });
-    expect(s.row(a)).toMatchObject({ archived: 0, superseded_by: null });
-    expect(s.row(b)?.superseded_by).toBe(m);
+    const [a, b, d] = ids as [string, string, string];
+    const out = c.undoContradiction({ pair: s.contradictionBetween(m, a)?.id as string, actor: "owner" });
+    expect(out).toMatchObject({ ok: true, state: "withdrawn" });
+    expect(s.row(a)?.fade).toBe(1);
+    expect(headOf(s, a)).toBeNull();
+    for (const x of [b, d]) {
+      expect(s.row(x)?.fade).toBeCloseTo(0.5, 6);
+      expect(headOf(s, x)).toBe(m);
+    }
     expect(s.row(m)?.archived).toBe(0);
+    // The dream's undo afterwards still reverses the rest.
+    expect(c.dreams.undo(dream).ok).toBe(true);
+    for (const x of ids) expect(s.row(x)?.fade).toBe(1);
+    expect(s.row(m)?.archived).toBe(1);
   });
 
-  test("a proposal whose newer memory was merged away is carried to the merged memory, its cut the same", () => {
+  test("a merge from before the door (archived originals, no pairs) is undone the old way", () => {
+    const c = brain();
+    const s = c.store;
+    for (let d = 4; d <= 12; d += 1) s.advanceClock(`2026-09-${String(d).padStart(2, "0")}`);
+    const a = s.put({ type: "memory", kind: "fact", body: ORIGINALS[0] as string, origin: { session: "s1" } });
+    const m = s.put({ type: "memory", kind: "fact", body: "The island ferry leaves the north pier at eight.", origin: { session: "s1" } });
+    s.supersedeInto(a, m, DREAM_MERGE_REASON, { carryReturns: true });
+    expect(headOf(s, a)).toBe(m);
+    expect(s.restoreSuperseded(a, DREAM_MERGE_REASON)).toBe(true);
+    expect(s.row(a)).toMatchObject({ archived: 0, superseded_by: null });
+  });
+
+  test("a proposal whose newer memory is merged through the door stays open; confirmed, the chain runs older → newer → merged", () => {
+    const s = store();
+    const older = put(s, "The release is planned for Friday.");
+    const newer = put(s, "The release moved to Monday.");
+    const p = proposeSlot(s, { holds: newer, candidate: { over: older, cosine: 0.9, rule: "cosine", sameSession: false } });
+    if (!p.ok) throw new Error(p.reason);
+    const m = put(s, "The release moved to Monday morning.");
+    expect(supersede(s, { holds: m, over: newer, how: "changed", source: DREAM_MERGE_REASON, actor: "dream" }).ok).toBe(true);
+    // Both still stand, so nothing is orphaned or carried.
+    expect(releaseOrphanSlots(s)).toBe(0);
+    expect(s.contradiction(p.pair)?.state).toBe("unsettled");
+    expect(settle(s, { pair: p.pair, holds: newer, how: "changed", why: "the newer state", actor: "dream" }).ok).toBe(true);
+    expect(headOf(s, older)).toBe(m);
+  });
+
+  test("a proposal whose newer memory was replaced the old way (a forwarding address) is carried to its successor, its cut the same", () => {
     const s = store();
     const older = put(s, "The release is planned for Friday.");
     const newer = put(s, "The release moved to Monday.");
@@ -226,14 +303,10 @@ describe("the dream merge goes through the door", () => {
     const cut = s.row(older)?.fade as number;
     expect(cut).toBeCloseTo(CONTRADICTION_TUNABLES.SLOT_FADE, 6);
     const m = put(s, "The release moved to Monday morning.");
-    const door = supersede(s, { holds: m, over: newer, how: "changed", source: DREAM_MERGE_REASON, actor: "dream", replaces: { reason: DREAM_MERGE_REASON } });
-    expect(door.ok).toBe(true);
-    // Not closed by the merge: still waiting, its newer gone.
-    expect(s.contradiction(p.pair)?.state).toBe("unsettled");
+    s.supersedeInto(newer, m, DREAM_MERGE_REASON);
     expect(releaseOrphanSlots(s)).toBe(1);
     expect(s.contradiction(p.pair)?.state).toBe("withdrawn");
-    const carried = s.contradictionBetween(m, older);
-    expect(carried).toMatchObject({ state: "unsettled", source: SLOT_SOURCE });
+    expect(s.contradictionBetween(m, older)).toMatchObject({ state: "unsettled", source: SLOT_SOURCE });
     expect(s.row(older)?.fade).toBeCloseTo(cut, 6);
   });
 });
@@ -258,21 +331,27 @@ describe("the core path (review 10 C4), on the Han case's shape", () => {
         // A low claim: its own force would be a small fraction of the bar.
         salience: 0.1,
       });
-      const replaced = s.row(promise)?.superseded_by ?? null;
-      if (i < 2) expect(replaced).toBeNull();
-      else expect(replaced).not.toBeNull();
+      const head = headOf(s, promise);
+      if (i < 2) expect(head).toBeNull();
+      else expect(head).not.toBeNull();
     }
     const pressure = s.eventLog({ name: "revision.pressure" }).map((e) => (JSON.parse(e.payload ?? "{}") as { force: number }).force);
     expect(pressure.every((f) => Math.abs(f - 0.35) < 1e-9)).toBe(true);
-    // Through the door: a pair, source `pressure`, the old one replaced.
-    const successor = s.row(promise)?.superseded_by as string;
+    // Through the door: a pair, source `pressure`; the old one out of the core, faded, live, labelled earlier.
+    const successor = headOf(s, promise) as string;
     const crossing = s.contradictionBetween(successor, promise);
     expect(crossing).toMatchObject({ state: "settled", how: "changed", source: "pressure" });
-    expect(s.row(promise)?.archived_reason).toBe("revised-by-pressure");
-    // The crossing's undo: the core memory back, the minted successor put away, the pair withdrawn.
-    expect(srv.counterpart.undoContradiction({ pair: crossing?.id as string, actor: "owner" })).toMatchObject({ ok: true, state: "withdrawn", unarchived: promise });
-    expect(s.row(promise)).toMatchObject({ archived: 0, superseded_by: null, band: "identity" });
+    expect(s.row(promise)).toMatchObject({ archived: 0, superseded_by: null, promoted_identity: 0 });
+    expect(s.row(promise)?.band).not.toBe("identity");
+    expect(s.row(promise)?.fade).toBeCloseTo(0.5, 6);
+    expect(standingOf(s, promise)?.prefix).toContain(`Earlier (now [${successor}])`);
+    expect(s.row(successor)).toMatchObject({ band: "identity", archived: 0 });
+    expect(settledEvents(s).at(-1)).toMatchObject({ source: "pressure", leftCore: true });
+    // The crossing's undo: the core memory back in the core at full strength, the minted successor put away, the pair withdrawn.
+    expect(srv.counterpart.undoContradiction({ pair: crossing?.id as string, actor: "owner" })).toMatchObject({ ok: true, state: "withdrawn" });
+    expect(s.row(promise)).toMatchObject({ archived: 0, superseded_by: null, band: "identity", promoted_identity: 1, fade: 1 });
     expect(s.row(successor)).toMatchObject({ archived: 1, archived_reason: PRESSURE_UNDONE_REASON });
+    expect(headOf(s, promise)).toBeNull();
   });
 
   test("a FULFILLED plan (a status, then `done`) leaves the core in one step, and the undo puts it back", async () => {
@@ -281,15 +360,44 @@ describe("the core path (review 10 C4), on the Han case's shape", () => {
     const plan = core(s, "Planning to take Robin back to the lake cabin this autumn.", { status: "planned" } as Partial<PutInput>);
     const r = payload(await srv.call("remember", { text: "Took Robin back to the lake cabin: the autumn plan is done.", kind: "person", updates: plan, how: "changed", status: "done" }));
     const done = String(r["id"]);
-    expect(s.row(plan)).toMatchObject({ archived: 1, archived_reason: FULFILLED_REASON, superseded_by: done });
+    // `changed` plus the core path: out of the core, faded, live, labelled earlier.
+    expect(s.row(plan)).toMatchObject({ archived: 0, superseded_by: null, promoted_identity: 0 });
+    expect(s.row(plan)?.band).not.toBe("identity");
+    expect(s.row(plan)?.fade).toBeCloseTo(0.5, 6);
+    expect(headOf(s, plan)).toBe(done);
     // No pressure was needed, and the `done` memory is not core.
     expect(s.eventLog({ name: "revision.pressure" })).toHaveLength(0);
     expect(s.physicsOf(done).promotedIdentity).toBe(false);
     const pair = s.contradictionBetween(done, plan);
-    expect(pair).toMatchObject({ state: "settled", how: "changed", source: FULFILLED_REASON });
+    expect(pair).toMatchObject({ state: "settled", how: "changed", source: FULFILLED_SOURCE });
+    // The owner can see it happened: the settle's event says the plan left the core.
+    expect(settledEvents(s).at(-1)).toMatchObject({ source: FULFILLED_SOURCE, leftCore: true });
     expect(srv.counterpart.undoContradiction({ pair: pair?.id as string, actor: "owner" }).ok).toBe(true);
-    expect(s.row(plan)).toMatchObject({ archived: 0, superseded_by: null, band: "identity" });
+    expect(s.row(plan)).toMatchObject({ archived: 0, superseded_by: null, band: "identity", fade: 1 });
     expect(s.physicsOf(plan).promotedIdentity).toBe(true);
+    expect(headOf(s, plan)).toBeNull();
+  });
+
+  test("a settle by a `done` holder over a dated core plan through the door spends the reminder and the undo brings it back", () => {
+    const s = store();
+    const plan = put(s, "Renew the passport before the trip.", { eventDate: "2099-11-20", meta: { [CUE_MODE_META]: "plain" } } as Partial<PutInput>);
+    const done = put(s, "Renewed the passport.", { status: "done" } as Partial<PutInput>);
+    const out = supersede(s, { holds: done, over: plan, how: "changed", source: FULFILLED_SOURCE, actor: "session" });
+    if (!out.ok) throw new Error(out.reason);
+    expect(s.readProse(plan).meta[REMINDER_SPENT_BY_META]).toBe(done);
+    expect(new Prospective({ store: s }).plainDue({ at: "2099-11-20" })).toEqual([]);
+    expect(undo(s, { pair: out.pair, actor: "owner" }).ok).toBe(true);
+    expect(new Prospective({ store: s }).plainDue({ at: "2099-11-20" }).map((d) => d.memoryId)).toContain(plan);
+  });
+
+  test("a protected core plan is never fast-laned out", async () => {
+    const srv = server();
+    const s = srv.counterpart.store;
+    const plan = core(s, "Planning to take Robin back to the lake cabin this autumn.", { status: "planned" } as Partial<PutInput>);
+    s.updatePhysics(plan, { protected: true });
+    await srv.call("remember", { text: "Took Robin back to the lake cabin: the autumn plan is done.", kind: "person", updates: plan, how: "changed", status: "done" });
+    expect(s.row(plan)).toMatchObject({ promoted_identity: 1, band: "identity" });
+    expect(headOf(s, plan)).toBeNull();
   });
 
   test("a core memory with no status or date is not fast-laned by a `done` (the brief's rule, held as written)", async () => {
@@ -303,9 +411,9 @@ describe("the core path (review 10 C4), on the Han case's shape", () => {
 });
 
 describe("a pending reminder through the door (review 07)", () => {
-  test("a settle over a dated memory carries the reminder to an undated holder; the undo carries it back", () => {
+  test("a settle over a dated memory carries the reminder to an undated holder, where it FIRES; the undo carries it back", () => {
     const s = store();
-    const dated = put(s, "Renew the boat licence before the deadline.", { eventDate: "2099-10-15" } as Partial<PutInput>);
+    const dated = put(s, "Renew the boat licence before the deadline.", { eventDate: "2099-10-15", meta: { [CUE_MODE_META]: "plain" } } as Partial<PutInput>);
     expect(s.physicsOf(dated).hold?.state).toBe("pending");
     const newer = put(s, "The boat licence renewal form is half filled in.");
     const out = settle(s, { holds: newer, over: dated, how: "changed", why: "the newer state", actor: "dream" });
@@ -313,18 +421,25 @@ describe("a pending reminder through the door (review 07)", () => {
     expect(s.row(newer)?.event_date).toBe("2099-10-15");
     expect(s.row(dated)?.event_date).toBeNull();
     expect(s.readProse(dated).meta[DATE_MOVED_TO_META]).toBe(newer);
+    expect(s.physicsOf(newer).hold?.state).toBe("pending");
+    const due = new Prospective({ store: s }).plainDue({ at: "2099-10-15" }).map((d) => d.memoryId);
+    expect(due).toContain(newer);
+    expect(due).not.toContain(dated);
     expect(undo(s, { pair: out.pair, actor: "owner" }).ok).toBe(true);
     expect(s.row(dated)?.event_date).toBe("2099-10-15");
     expect(s.row(newer)?.event_date).toBeNull();
   });
 
-  test("a holder that says it is done does not take the reminder: it is spent", () => {
+  test("a holder that says it is done does not take the reminder: it is spent, on neither memory, and the undo puts it back", () => {
     const s = store();
-    const dated = put(s, "Renew the boat licence before the deadline.", { eventDate: "2099-10-15" } as Partial<PutInput>);
+    const dated = put(s, "Renew the boat licence before the deadline.", { eventDate: "2099-10-15", meta: { [CUE_MODE_META]: "plain" } } as Partial<PutInput>);
     const done = put(s, "Renewed the boat licence.", { status: "done" } as Partial<PutInput>);
     const out = settle(s, { holds: done, over: dated, how: "changed", why: "done", actor: "dream" });
-    expect(out.ok).toBe(true);
+    if (!out.ok) throw new Error(out.reason);
     expect(s.row(done)?.event_date).toBeNull();
+    expect(s.row(dated)?.event_date).toBeNull();
+    expect(new Prospective({ store: s }).plainDue({ at: "2099-10-15" })).toEqual([]);
+    expect(undo(s, { pair: out.pair, actor: "owner" }).ok).toBe(true);
     expect(s.row(dated)?.event_date).toBe("2099-10-15");
   });
 });
@@ -376,6 +491,35 @@ describe("order: a late answer does not undo a newer settle (review of #420 (a))
     expect(settle(s, { pair: p.pair, holds: b, how: "changed", why: "the newer state", actor: "dream" }).ok).toBe(true);
     expect(headOf(s, b)).toBe(c);
     expect(headOf(s, a)).toBe(c);
+    // The wake's "settled over" agrees: B is earlier, not current.
+    expect(settledOver(s).has(b)).toBe(true);
+  });
+
+  test("a dream FLAG raised before the newer settle, answered after it, does not re-affirm B either", () => {
+    const s = store();
+    const a = put(s, "The launch is planned for March.");
+    const b = put(s, "The launch moved to April.");
+    const f = flag(s, { x: a, y: b, source: "dream", day: s.livedDay() });
+    if (!f.ok) throw new Error("flag refused");
+    s.advanceClock("2026-09-04");
+    const c = put(s, "The launch moved again, to May.");
+    expect(settle(s, { holds: c, over: b, how: "changed", actor: "owner" }).ok).toBe(true);
+    s.advanceClock("2026-09-05");
+    // The flag closed through C's settle (Group 2, C5), so the late answer is refused, and B stays under C.
+    expect(settle(s, { pair: f.pair, holds: b, how: "changed", why: "the newer state", actor: "dream" })).toMatchObject({ ok: false, reason: "already-settled" });
+    expect(headOf(s, b)).toBe(c);
+  });
+
+  test("(recorded as found) a FRESH direct settle B over A made after C over B is raised later, so it re-affirms B (#408's rule)", () => {
+    const s = store();
+    const a = put(s, "The launch is planned for March.");
+    const b = put(s, "The launch moved to April.");
+    const c = put(s, "The launch moved again, to May.");
+    expect(settle(s, { holds: c, over: b, how: "changed", actor: "owner" }).ok).toBe(true);
+    s.advanceClock("2026-09-04");
+    expect(settle(s, { holds: b, over: a, how: "changed", actor: "owner" }).ok).toBe(true);
+    expect(headOf(s, a)).toBe(b);
+    expect(headOf(s, b)).toBeNull();
   });
 });
 

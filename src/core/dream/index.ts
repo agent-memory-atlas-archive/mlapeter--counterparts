@@ -1771,6 +1771,14 @@ export class Dreams {
         // the merged memory would carry no date, and the reminder would go
         // quiet. Left alone. (Adversarial review of #251.)
         if (rs.some((r) => r.event_date !== null)) return { action, ok: false, reason: "dated-is-not-merged", detail: `${which((r) => r.event_date !== null)} carries a date (a reminder); merged, it would go quiet.` };
+        // AN EARLIER VERSION is not merged again (2026-10-11, Group 2b): a
+        // merge's originals stay live, settled under the merged memory, and
+        // would otherwise be merged into a copy of a copy. Merge the one that
+        // holds now.
+        const heads = rs.map((r) => headOf(this.store, r.id));
+        if (heads.some((h) => h !== null)) {
+          return { action, ok: false, reason: "earlier-is-not-merged", detail: `${rs.flatMap((r, i) => (heads[i] === null ? [] : [`${r.id} (now ${String(heads[i])})`])).join(", ")} is an earlier version; merge the one that holds now.` };
+        }
         // The owner sent it back out of the core: a merged successor is a new
         // id the demotion does not name, and the lanes could promote it again.
         if (rs.some((r) => this.store.coreDemoted(r.id))) return { action, ok: false, reason: "demoted-is-not-merged", detail: `${which((r) => this.store.coreDemoted(r.id))} was sent out of the core by the owner.` };
@@ -1877,26 +1885,32 @@ export class Dreams {
               { provenance: traits.map((t) => ({ source: t.source, model: t.model, createdAt: t.created_at })) },
             );
           }
-          // THROUGH THE ONE DOOR (2026-10-11, Group 2b; review 10 C1): the
-          // merged memory holds over each original — `changed`, source
-          // `dream-merge` (decided by random-06, lightly held: three hows; the
-          // source says a merge made it) — and REPLACES it: archived with a
-          // forwarding address, its returns carried, its links handed on, a pair
-          // and a trail row written so the undo is a settle's undo.
+          // ITS RETURNS AND ITS LINKS are copied onto the merged memory, so it
+          // is at least as durable and as well connected as what it was made
+          // from; the original keeps its own (it stays live, below).
+          try {
+            this.store.copyReturns(r.id, newId);
+          } catch {
+            /* the merged memory starts from its own returns */
+          }
+          try {
+            this.ctx.retarget?.(r.id, newId, day);
+          } catch {
+            /* the links are a courtesy; the merge stands */
+          }
+          // THROUGH THE ONE DOOR (2026-10-11, Group 2b; review 10 C1), a plain
+          // `changed` (decided by random-06, 2026-10-11, lightly held: three
+          // hows, no fourth relation; the source says a merge made it): the
+          // original fades ×0.5, STAYS LIVE and is labelled earlier under the
+          // merged memory, which stands for it in ambient recall and folds it
+          // in facts mode; its own curve archives it at the floor. A pair and a
+          // trail row per original, so the undo is a settle's undo.
           const door = supersedeThroughDoor(
             this.store,
-            { holds: newId, over: r.id, how: "changed", source: DREAM_MERGE_REASON, actor: "dream", actorId: dream.id, why: "merged into one memory", day, replaces: { reason: DREAM_MERGE_REASON, carryReturns: true } },
+            { holds: newId, over: r.id, how: "changed", source: DREAM_MERGE_REASON, actor: "dream", actorId: dream.id, why: "merged into one memory", day },
             this.doorOpts(),
           );
-          if (!door.ok) {
-            // The door refused (it was checked live above): fold it in as before.
-            this.store.supersedeInto(r.id, newId, DREAM_MERGE_REASON, { carryReturns: true });
-            try {
-              this.ctx.retarget?.(r.id, newId, day);
-            } catch {
-              /* the links are a courtesy; the merge stands */
-            }
-          }
+          if (!door.ok) notes.push(`${r.id} was not settled under the merged memory (${door.reason}); it stands beside it.`);
         }
         // FIDELITY (2026-09-28): what the dream had of each original when it
         // merged them — whole, an excerpt, a line (or whole, fetched since).
@@ -2237,8 +2251,8 @@ export class Dreams {
           for (const orig of from) {
             try {
               // A SETTLE'S UNDO (2026-10-11, Group 2b): a merge made through the
-              // one door has a pair per original, and undoing it brings the
-              // original back, carries its links back and withdraws the pair.
+              // one door has a pair per original; undoing it puts the original's
+              // strength back and withdraws the pair (nothing was archived).
               const pair = c.ref === null ? undefined : this.store.contradictionBetween(c.ref, orig);
               if (pair !== undefined && pair.state === "settled" && pair.source === DREAM_MERGE_REASON) {
                 undoContradiction(this.store, { pair: pair.id, actor: "dream-undo", actorId: id, why: "its dream was undone" }, this.doorOpts());

@@ -26,11 +26,13 @@
  * (source `dream-merge`), the core's pressure crossing (`pressure`), a
  * fulfilled plan (`fulfilled`), a moved reminder (`reminder-moved`), and next
  * Group 3's folds. It writes the pair and the trail and takes the effect from
- * `how` alone — except where the holder REPLACES the memory (a merge's
- * memory, a core memory's successor or fulfilment): archived with a
- * forwarding address instead of faded. A memory that leaves recall hands its
- * links to the holder; a pending reminder moves to it. `settle` reads its
- * input and keeps the guards, then goes through the same door. Not here: a
+ * `how` alone (decided by random-06, 2026-10-11, lightly held: no fourth
+ * relation — a merge's originals and a crossed core memory fade, stay live and
+ * are labelled earlier, like any `changed`). A core memory a change reaches
+ * (only the core path's doors get there) leaves the core as it fades. A
+ * memory that leaves recall (`corrected`) hands its links to the holder; a
+ * pending reminder moves to it. `settle` reads its input and keeps the
+ * guards, then goes through the same door. Not here: a
  * chapter's regrown copy (`episode-regrown`, one chapter's text re-rendered,
  * not one memory over another) and the schema belief / current-state arms
  * (no live producer).
@@ -86,7 +88,7 @@ import { similarity } from "./remember/index.js";
 import { RECURRING_META, isStoreError, rowTombstoned, statusOf } from "./store/index.js";
 import type { ContradictionRow, MemoryRow, Store } from "./store/index.js";
 import { SETTLE_HOWS } from "./types.js";
-import type { SettleHow } from "./types.js";
+import type { Band, MemoryPhysics, SettleHow } from "./types.js";
 
 export { SETTLE_HOWS } from "./types.js";
 export type { SettleHow } from "./types.js";
@@ -201,11 +203,11 @@ export const SLOT_SOURCE = "slot";
 /** The archive reason a `corrected` memory carries. */
 export const CORRECTED_REASON = "corrected";
 
-/** The archive reason of a core plan a declared `done` fulfilled (2026-10-11, Group 2b; `revision.ts#fulfil`). */
-export const FULFILLED_REASON = "fulfilled";
+/** The `source` of the pair a declared `done` writes over the core plan it fulfils (2026-10-11, Group 2b; `revision.ts#fulfil`). */
+export const FULFILLED_SOURCE = "fulfilled";
 
-/** The archive reason a core memory replaced by pressure carries (`schemas/tunables.ts#REVISED_REASON`, spelled here: this file sits below `schemas/`). */
-const PRESSURE_REVISED_REASON = "revised-by-pressure";
+/** The `source` of the pairs a dream merge writes, one per original (`dream/index.ts#DREAM_MERGE_REASON`, spelled here: this file sits below `dream/`). */
+export const DREAM_MERGE_SOURCE = "dream-merge";
 
 /** The archive reason of the successor a pressure crossing minted, when that crossing is undone (2026-10-11, Group 2b). */
 export const PRESSURE_UNDONE_REASON = "pressure-undone";
@@ -475,13 +477,6 @@ export interface SupersedeInput {
   readonly pair?: ContradictionRow;
   /** `changed`'s cut on the memory it is over; absent, `CHANGED_FADE`. */
   readonly factor?: number;
-  /**
-   * THE HOLDER STANDS IN FOR IT: a merge's memory for its originals, a core
-   * memory's successor or its fulfilment. The memory it is over is archived
-   * `reason` with a forwarding address instead of faded, and an undo brings
-   * it back. The only thing besides `how` a door may say about the effect.
-   */
-  readonly replaces?: { readonly reason: string; readonly carryReturns?: boolean };
   /** A write's `how`: sent by the writer (true) or defaulted (false). Absent: not a write's. */
   readonly howSent?: boolean;
   /** Close the unsettled pairs on the memory it is over (default: when it moves). */
@@ -491,8 +486,20 @@ export interface SupersedeInput {
   readonly notes?: readonly string[];
 }
 
+/** Where a reminder a `done` holder SPENT records who spent it (2026-10-11, review of #427): the date leaves the memory, kept in its version row. */
+export const REMINDER_SPENT_BY_META = "reminderSpentBy";
+
+/** A reminder a door moves: to the one that holds, or (`to` null) spent by a `done` holder. */
+type ReminderMove = { from: string; fromMeta: Record<string, unknown>; to: string | null; eventDate: string; toMeta: Record<string, unknown> };
+
+/** A `done` holder spends the memory's reminder: the date goes, so it does not fire on a plan already carried out; an undo puts it back. */
+function reminderSpend(store: Store, from: string, by: string): ReminderMove | null {
+  const date = store.row(from)?.event_date ?? null;
+  return date === null ? null : { from, fromMeta: { [REMINDER_SPENT_BY_META]: by }, to: null, eventDate: date, toMeta: {} };
+}
+
 /** A reminder a door carries: from the memory it is over, to the one that holds. */
-function reminderCarry(store: Store, from: string, to: string): { from: string; fromMeta: Record<string, unknown>; to: string; eventDate: string; toMeta: Record<string, unknown> } | null {
+function reminderCarry(store: Store, from: string, to: string): ReminderMove | null {
   const date = store.row(from)?.event_date ?? null;
   if (date === null) return null;
   let mode: string = "quiet";
@@ -521,11 +528,12 @@ function reminderCarry(store: Store, from: string, to: string): { from: string; 
  * folds). It writes the pair (or settles the one named), the trail row and the
  * durable event, and applies the effect from `how` alone — `changed`: the
  * fade multiplier (`factor`, `CHANGED_FADE` unless said); `corrected`:
- * archived; `open`: nothing — except where the holder REPLACES the memory
- * (`replaces`): archived with a forwarding address instead. A memory that
- * leaves recall (corrected, replaced) hands its links to the holder. A
- * pending reminder on the memory it is over is CARRIED to the holder (unless
- * the holder is `done` — the reminder is spent — or replaces it); a holder
+ * archived; `open`: nothing. A CORE memory it moves (only the core path's
+ * doors reach one: `settle` refuses the core) leaves the core first, its
+ * fading restarted today, so the cut lands. A memory that leaves recall
+ * (`corrected`) hands its links to the holder. A pending reminder on the
+ * memory it is over is CARRIED to the holder (unless the holder is `done`:
+ * the reminder is spent, and goes quiet with the earlier one); a holder
  * with a date of its own refuses (`pending-date`), but for the owner. The
  * unsettled pairs on the memory it is over are closed through it, a slot
  * proposal's provisional cut lifted, and all of it recorded so `undo` is
@@ -543,16 +551,21 @@ export function supersede(store: Store, input: SupersedeInput, opts: { retarget?
   const detail: Record<string, unknown> = {};
   if (input.asked !== undefined && input.asked !== how) detail["asked"] = input.asked;
   if (input.howSent !== undefined) detail["howSent"] = input.howSent;
-  const replaces = how === "open" ? null : (input.replaces ?? null);
 
   // A PENDING REMINDER is never buried (07): settled over, it would go quiet.
   // It moves to the holder, as a write's `updates` moves it; a holder that is
-  // `done` has spent it, and one that replaces the memory archives it with it.
-  let reminder: ReturnType<typeof reminderCarry> = null;
-  if (how !== "open" && replaces === null && store.physicsOf(over).hold?.state === "pending") {
+  // `done` has spent it.
+  let reminder: ReminderMove | null = null;
+  if (how !== "open" && store.physicsOf(over).hold?.state === "pending") {
     const h = store.row(holds) as MemoryRow;
     if (statusOf(h.status ?? null) === "done") {
-      notes.push(`${over}'s reminder (${store.row(over)?.event_date ?? "a date"}) was not carried: ${holds} says it is done.`);
+      // SPENT (review of #427): left on the earlier memory, a settled-over
+      // date still fires — `prospective/` skips only a forwarded row.
+      reminder = reminderSpend(store, over, holds);
+      if (reminder !== null) {
+        detail["reminder"] = { from: over, to: null, eventDate: reminder.eventDate };
+        notes.push(`${over}'s reminder (${reminder.eventDate}) was spent: ${holds} says it is done.`);
+      }
     } else if (h.event_date !== null) {
       if (input.actor !== "owner") {
         return refuse(
@@ -596,10 +609,27 @@ export function supersede(store: Store, input: SupersedeInput, opts: { retarget?
   for (const l of lifts) lifted.set(l.id, unfade(lifted.get(l.id) ?? fadeOf(store.physicsOf(l.id)), l.factor));
   if (lifts.length > 0) detail["lifts"] = lifts;
 
+  // OUT OF THE CORE (2026-10-11, Group 2b; review 10 C4): a core memory the
+  // core path moves (a crossing's old memory, a fulfilled plan) goes back to
+  // ordinary fading first, restarted today as the owner's demotion restarts
+  // it, so the cut lands on it like any `changed`. Recorded, so an undo puts
+  // it back in the core exactly. Not the owner's demotion: nothing sticky is
+  // written, and the event says which door did it.
+  const overRow = store.row(over) as MemoryRow;
+  let leaveCore: { id: string; band: Band; lastUsedDay: number } | null = null;
+  let decored: MemoryPhysics | null = null;
+  if (how !== "open" && (overRow.promoted_identity === 1 || overRow.band === "identity")) {
+    const lastUsedDay = Math.max(overRow.last_used_day, day);
+    decored = { ...store.physicsOf(over), promotedIdentity: false, lastUsedDay };
+    leaveCore = { id: over, band: band(decored, day), lastUsedDay };
+    detail["core"] = { band: overRow.band, bandDay: overRow.band_day ?? null, lastUsedDay: overRow.last_used_day, promoted: overRow.promoted_identity === 1 };
+    notes.push(`${over} left the core: it fades now like any memory, earlier under ${holds}.`);
+  }
+
   let fade: { id: string; fade: number } | null = null;
   let faded: { id: string; before: number; after: number } | null = null;
-  if (how === "changed" && replaces === null) {
-    const physics = store.physicsOf(over);
+  if (how === "changed") {
+    const physics = decored ?? store.physicsOf(over);
     const base = lifted.has(over) ? { ...physics, fade: lifted.get(over) as number } : physics;
     const cut = changedFade(base, day, input.factor);
     if (cut === null) {
@@ -617,21 +647,20 @@ export function supersede(store: Store, input: SupersedeInput, opts: { retarget?
   // HOW IT SITS NOW (2026-10-11, Group 2, Mike): a memory's weight follows
   // its latest feeling, so whoever settles over a felt memory is asked to say
   // how it sits now that the newer one holds. The first feeling is kept. Not
-  // for a replaced memory: its feelings travelled with it (a merge) or it left.
-  if (how !== "open" && replaces === null) {
+  // for a merge (its feelings travelled to the merged memory) nor a moved
+  // reminder's row (bookkeeping nobody wrote).
+  if (how !== "open" && input.source !== DREAM_MERGE_SOURCE && input.source !== REMINDER_MOVED_SOURCE) {
     const felt = store.row(over)?.feeling_peak ?? null;
     if (typeof felt === "number" && felt > 0) notes.push(feelingInvite(over, felt));
   }
-  // OUT OF RECALL: archived `corrected`, or replaced with a forwarding address.
-  // Either way the reason is recorded, so an undo brings it back, and its
-  // links go to the holder (`retarget`), so the sweep of rows archived for
-  // good drops nothing that was not carried (Group 4, 2026-10-11).
-  const archive = how === "corrected" && replaces === null ? { id: over, reason: CORRECTED_REASON } : null;
-  const replaced = replaces === null ? null : { id: over, successor: holds, reason: replaces.reason, ...(replaces.carryReturns === true ? { carryReturns: true } : {}) };
-  const leaves = archive !== null || replaced !== null;
+  // OUT OF RECALL: archived `corrected`. The reason is recorded, so an undo
+  // brings it back, and its links go to the holder (`retarget`), so the sweep
+  // of rows archived for good drops nothing that was not carried (Group 4).
+  const archive = how === "corrected" ? { id: over, reason: CORRECTED_REASON } : null;
+  const leaves = archive !== null;
   if (leaves) {
     detail["archived"] = over;
-    detail["archivedReason"] = replaced?.reason ?? CORRECTED_REASON;
+    detail["archivedReason"] = CORRECTED_REASON;
     detail["links"] = true;
   }
   const holdsCol = how === "open" ? null : holds;
@@ -649,7 +678,7 @@ export function supersede(store: Store, input: SupersedeInput, opts: { retarget?
       day,
       fade,
       archive,
-      supersede: replaced,
+      leaveCore,
       reminder,
       closes,
       lifts: liftPatches,
@@ -677,7 +706,7 @@ export function supersede(store: Store, input: SupersedeInput, opts: { retarget?
       ...(input.howSent === undefined ? {} : { howSent: input.howSent }),
       faded: faded !== null,
       archived: archive !== null,
-      replaced: replaced !== null,
+      leftCore: leaveCore !== null,
       reminder: reminder !== null,
       closed: closes.length,
       day,
@@ -690,7 +719,7 @@ export function supersede(store: Store, input: SupersedeInput, opts: { retarget?
     holds: holdsCol,
     over: overCol,
     faded,
-    archived: archive?.id ?? replaced?.id ?? null,
+    archived: archive?.id ?? null,
     closed: closes,
     ...(notes.length > 0 ? { note: notes.join(" ") } : {}),
   };
@@ -911,19 +940,23 @@ export function undo(
   // A PRESSURE CROSSING UNDONE (2026-10-11, Group 2b): its pair was the
   // crossing's own, never raised as a question — withdrawn, and the pressure
   // pair it closed reopens. The successor it minted (the challenger's words,
-  // core) goes out with it, so the core memory does not stand beside a copy.
-  const crossing = pair.source === "pressure" && d.archivedReason === PRESSURE_REVISED_REASON;
+  // core) is put away with it, so the old memory back in the core does not
+  // stand beside a core copy of the words that were weighed against it.
+  const crossing = pair.source === "pressure" && last.holds !== null && last.over !== null && mintedByCrossing(store, last.holds, last.over);
   const back = !crossing && wasFlagged(pair) ? "unsettled" : "withdrawn";
   // A REMINDER THE SETTLE CARRIED goes back (2026-10-11, Group 2b) — while the
   // holder still has that date and the memory it came from has none since.
-  let reminderBack: { to: string; toMeta: Record<string, unknown>; from: string; eventDate: string; fromMeta: Record<string, unknown> } | null = null;
+  let reminderBack: ReminderMove | null = null;
   if (d.reminder !== null) {
-    const to = store.row(d.reminder.to);
-    const from = store.row(d.reminder.from);
-    if (to !== undefined && from !== undefined && to.event_date === d.reminder.eventDate && from.event_date === null) {
-      reminderBack = { to: d.reminder.to, toMeta: { [DATE_FROM_META]: null, [CUE_MODE_META]: null, [RECURRING_META]: null }, from: d.reminder.from, eventDate: d.reminder.eventDate, fromMeta: { [DATE_MOVED_TO_META]: null } };
+    const r = d.reminder;
+    const to = r.to === null ? null : store.row(r.to);
+    const from = store.row(r.from);
+    if (r.to === null && from !== undefined && from.event_date === null) {
+      reminderBack = { to: null, toMeta: {}, from: r.from, eventDate: r.eventDate, fromMeta: { [REMINDER_SPENT_BY_META]: null } };
+    } else if (r.to !== null && to !== undefined && to !== null && from !== undefined && to.event_date === r.eventDate && from.event_date === null) {
+      reminderBack = { to: r.to, toMeta: { [DATE_FROM_META]: null, [CUE_MODE_META]: null, [RECURRING_META]: null }, from: r.from, eventDate: r.eventDate, fromMeta: { [DATE_MOVED_TO_META]: null } };
     } else {
-      notes.push(`${d.reminder.to}'s date has moved on since, so the reminder stayed where it is.`);
+      notes.push(`${r.to ?? r.from}'s date has moved on since, so the reminder stayed where it is.`);
     }
   }
   let unarchived = false;
@@ -939,6 +972,7 @@ export function undo(
       restore,
       reapply,
       unarchive: d.archived === null ? null : { id: d.archived, reason: d.archivedReason },
+      rejoinCore: d.core === null || last.over === null ? null : { id: last.over, band: d.core.band, bandDay: d.core.bandDay, lastUsedDay: d.core.lastUsedDay, promoted: d.core.promoted },
       reopen,
       reminderBack,
       detail: { restored: restore?.id ?? null, archived: d.archived, reopened: reopen, state: back, ...(reminderBack === null ? {} : { reminder: true }) },
@@ -950,14 +984,11 @@ export function undo(
   // Back in recall, it takes back the links it handed the holder (the dream
   // merge's undo has done this since Group 4): the holder's, `max`, both ways.
   if (unarchived && d.links && last.holds !== null && d.archived !== null) carryLinks(store, last.holds, d.archived, day, opts.retarget);
-  if (crossing && unarchived && last.holds !== null) {
+  if (crossing && last.holds !== null) {
     try {
-      const minted = store.row(last.holds);
-      if (minted !== undefined && minted.archived === 0 && minted.source === "accommodation" && store.readProse(last.holds).meta["revisedFrom"] === d.archived) {
-        store.archive(last.holds, PRESSURE_UNDONE_REASON);
-      }
+      if (store.row(last.holds)?.archived === 0) store.archive(last.holds, PRESSURE_UNDONE_REASON);
     } catch {
-      notes.push(`${last.holds} could not be put away; it stands beside ${String(d.archived)}.`);
+      notes.push(`${last.holds} could not be put away; it stands beside ${String(last.over)}.`);
     }
   }
   // A reopened question starts fresh on "my mind" (review of #284, M5).
@@ -994,8 +1025,10 @@ export function settleDetail(raw: string): {
   archivedReason: string;
   /** Its links went to the holder, so an undo brings them back. */
   links: boolean;
-  /** A reminder the settle carried. */
-  reminder: { from: string; to: string; eventDate: string } | null;
+  /** A reminder the settle carried (`to` null: spent by a `done` holder). */
+  reminder: { from: string; to: string | null; eventDate: string } | null;
+  /** The core standing the memory it was over had before it left the core (2026-10-11, Group 2b). */
+  core: { band: Band; bandDay: number | null; lastUsedDay: number; promoted: boolean } | null;
   closes: string[];
   /** Provisional cuts the settle lifted (2026-10-11): an undo puts them back on. */
   lifts: { id: string; factor: number }[];
@@ -1013,15 +1046,34 @@ export function settleDetail(raw: string): {
     archivedReason: typeof d["archivedReason"] === "string" ? (d["archivedReason"] as string) : CORRECTED_REASON,
     links: d["links"] === true,
     reminder: reminderOf(d["reminder"]),
+    core: coreOf(d["core"]),
     closes: Array.isArray(d["closes"]) ? (d["closes"] as unknown[]).filter((x): x is string => typeof x === "string") : [],
     lifts: Array.isArray(d["lifts"]) ? (d["lifts"] as unknown[]).flatMap(fadeFactorOf) : [],
   };
 }
 
-function reminderOf(x: unknown): { from: string; to: string; eventDate: string } | null {
+function coreOf(x: unknown): { band: Band; bandDay: number | null; lastUsedDay: number; promoted: boolean } | null {
+  if (x === null || typeof x !== "object") return null;
+  const c = x as { band?: unknown; bandDay?: unknown; lastUsedDay?: unknown; promoted?: unknown };
+  if (c.band !== "identity" && c.band !== "semantic" && c.band !== "episodic") return null;
+  if (typeof c.lastUsedDay !== "number") return null;
+  return { band: c.band, bandDay: typeof c.bandDay === "number" ? c.bandDay : null, lastUsedDay: c.lastUsedDay, promoted: c.promoted === true };
+}
+
+/** Was `holds` the successor a pressure crossing minted from `over` (the challenger's words, source `accommodation`, `revisedFrom` it)? */
+function mintedByCrossing(store: Store, holds: string, over: string): boolean {
+  try {
+    const r = store.row(holds);
+    return r !== undefined && r.source === "accommodation" && store.readProse(holds).meta["revisedFrom"] === over;
+  } catch {
+    return false;
+  }
+}
+
+function reminderOf(x: unknown): { from: string; to: string | null; eventDate: string } | null {
   if (x === null || typeof x !== "object") return null;
   const r = x as { from?: unknown; to?: unknown; eventDate?: unknown };
-  return typeof r.from === "string" && typeof r.to === "string" && typeof r.eventDate === "string" ? { from: r.from, to: r.to, eventDate: r.eventDate } : null;
+  return typeof r.from === "string" && (typeof r.to === "string" || r.to === null) && typeof r.eventDate === "string" ? { from: r.from, to: r.to, eventDate: r.eventDate } : null;
 }
 
 /** One `{id, factor}` of a trail detail, as a list of none or one. */

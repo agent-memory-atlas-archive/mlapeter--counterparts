@@ -937,6 +937,7 @@ export const WRITE_METHODS = [
   "updatePhysics",
   "reinforce",
   "setBand",
+  "copyReturns",
   "link",
   "linkMany",
   "setProspective",
@@ -2414,18 +2415,34 @@ export class Store {
       // v9: the about-me mark travels too (the first original that has one).
       carryAboutMark(this.ops, oldId, successorId);
       carryWriteFacts(this.ops, oldId, successorId);
-      if (opts.carryReturns === true) {
-        this.ops.run(
-          `INSERT OR IGNORE INTO returns (memory_id, day, source, weight, gap, dream_id, at)
-           SELECT ?, day, source, weight, gap, dream_id, at FROM returns WHERE memory_id = ?`,
-          successorId,
-          oldId,
-        );
-        this.recomputeReturns(successorId);
-      }
+      if (opts.carryReturns === true) this.copyReturnsRaw(oldId, successorId);
     });
     deindexDoc(this.cache, oldId);
     this.emit("store.supersede", oldId, { successor: successorId, reason });
+  }
+
+  /**
+   * One memory's return history COPIED onto another (a return day both had is
+   * kept once), the original keeping its own (2026-10-11, Group 2b): a dream
+   * merge's originals stay live, settled `changed` under the merged memory,
+   * which is still at least as durable as what it was made from.
+   */
+  copyReturns(fromId: string, toId: string): void {
+    this.mutate("copyReturns", () => {
+      this.requireRow(fromId);
+      this.requireRow(toId);
+      this.copyReturnsRaw(fromId, toId);
+    });
+  }
+
+  private copyReturnsRaw(fromId: string, toId: string): void {
+    this.ops.run(
+      `INSERT OR IGNORE INTO returns (memory_id, day, source, weight, gap, dream_id, at)
+       SELECT ?, day, source, weight, gap, dream_id, at FROM returns WHERE memory_id = ?`,
+      toId,
+      fromId,
+    );
+    this.recomputeReturns(toId);
   }
 
   /**
@@ -3047,18 +3064,19 @@ export class Store {
     /** 2026-10-11: provisional cuts this settle LIFTS (a slot proposal's, on the pair or one it closes) — final fades, applied before `fade`. */
     lifts?: readonly { id: string; fade: number }[];
     /**
-     * 2026-10-11 (Group 2b, one door): the holder REPLACES the memory it is
-     * over — a dream merge's original, a core memory revised under pressure —
-     * so that one is archived `reason` with a forwarding address
-     * (`supersedeInto`), in this transaction. Instead of `fade`.
+     * 2026-10-11 (Group 2b, the core path): the memory it is over LEAVES THE
+     * CORE in this transaction — the promotion flag off, its fading restarted
+     * on `lastUsedDay`, the band column set to `band` — before `fade` (a core
+     * memory has nothing to cut). Not the owner's demotion: no core event, so
+     * nothing is made sticky.
      */
-    supersede?: { id: string; successor: string; reason: string; carryReturns?: boolean } | null;
+    leaveCore?: { id: string; band: Band; lastUsedDay: number } | null;
     /**
      * 2026-10-11 (Group 2b): a pending reminder carried from the memory the
      * settle is over to the one that holds — two in-place revisions, the meta
      * patches computed by the caller (`prospective/`'s keys), in this transaction.
      */
-    reminder?: { from: string; fromMeta: Record<string, unknown>; to: string; eventDate: string; toMeta: Record<string, unknown> } | null;
+    reminder?: { from: string; fromMeta: Record<string, unknown>; to: string | null; eventDate: string; toMeta: Record<string, unknown> } | null;
     detail?: Record<string, unknown>;
   }): { pairId: string; seq: number } {
     const out = this.mutate("settleContradiction", () => {
@@ -3129,21 +3147,22 @@ export class Store {
       // What it does to the memory it is over, LAST, so a refusal above has
       // staged nothing on the memory itself.
       for (const l of input.lifts ?? []) this.updatePhysics(l.id, { fade: l.fade });
+      if (input.leaveCore !== undefined && input.leaveCore !== null) {
+        const c = input.leaveCore;
+        this.updatePhysics(c.id, { promotedIdentity: false, lastUsedDay: c.lastUsedDay });
+        this.ops.run("UPDATE memories SET band = ?, band_day = ? WHERE id = ?", c.band, input.day, c.id);
+      }
       if (input.fade !== undefined && input.fade !== null) {
         this.updatePhysics(input.fade.id, { fade: input.fade.fade });
       }
       // The reminder first, while the memory it leaves is still live.
       if (input.reminder !== undefined && input.reminder !== null) {
         const m = input.reminder;
-        this.revise(m.to, { eventDate: m.eventDate, meta: m.toMeta, reason: "reminder-carried" });
-        this.revise(m.from, { eventDate: null, meta: m.fromMeta, reason: "reminder-moved" });
+        if (m.to !== null) this.revise(m.to, { eventDate: m.eventDate, meta: m.toMeta, reason: "reminder-carried" });
+        this.revise(m.from, { eventDate: null, meta: m.fromMeta, reason: m.to === null ? "reminder-spent" : "reminder-moved" });
       }
       if (input.archive !== undefined && input.archive !== null) {
         this.archive(input.archive.id, input.archive.reason);
-      }
-      if (input.supersede !== undefined && input.supersede !== null) {
-        const r = input.supersede;
-        this.supersedeInto(r.id, r.successor, r.reason, r.carryReturns === true ? { carryReturns: true } : {});
       }
       return { pairId, seq };
     });
@@ -3172,8 +3191,10 @@ export class Store {
     reopen?: readonly string[];
     /** 2026-10-11: provisional cuts the settle had lifted, put back on (final fades), before `restore`. */
     reapply?: readonly { id: string; fade: number }[];
+    /** 2026-10-11 (Group 2b): a memory the settle took out of the core, put back as it was (`settleContradiction`'s `leaveCore`, reversed). */
+    rejoinCore?: { id: string; band: Band; bandDay: number | null; lastUsedDay: number; promoted: boolean } | null;
     /** 2026-10-11 (Group 2b): a reminder the settle carried, carried back (`settleContradiction`'s `reminder`, reversed). */
-    reminderBack?: { to: string; toMeta: Record<string, unknown>; from: string; eventDate: string; fromMeta: Record<string, unknown> } | null;
+    reminderBack?: { to: string | null; toMeta: Record<string, unknown>; from: string; eventDate: string; fromMeta: Record<string, unknown> } | null;
     detail?: Record<string, unknown>;
   }): { seq: number; unarchived: boolean } {
     const out = this.mutate("undoContradictionSettle", () => {
@@ -3210,13 +3231,18 @@ export class Store {
       if (input.restore !== undefined && input.restore !== null) {
         this.updatePhysics(input.restore.id, { fade: input.restore.fade });
       }
+      if (input.rejoinCore !== undefined && input.rejoinCore !== null) {
+        const c = input.rejoinCore;
+        this.updatePhysics(c.id, { promotedIdentity: c.promoted, lastUsedDay: c.lastUsedDay });
+        this.ops.run("UPDATE memories SET band = ?, band_day = ? WHERE id = ?", c.band, c.bandDay, c.id);
+      }
       let unarchived = false;
       if (input.unarchive !== undefined && input.unarchive !== null) {
         unarchived = this.restoreSuperseded(input.unarchive.id, input.unarchive.reason);
       }
       if (input.reminderBack !== undefined && input.reminderBack !== null) {
         const m = input.reminderBack;
-        this.revise(m.to, { eventDate: null, meta: m.toMeta, reason: "reminder-carried-back" });
+        if (m.to !== null) this.revise(m.to, { eventDate: null, meta: m.toMeta, reason: "reminder-carried-back" });
         this.revise(m.from, { eventDate: m.eventDate, meta: m.fromMeta, reason: "reminder-carried-back" });
       }
       return { seq, unarchived };

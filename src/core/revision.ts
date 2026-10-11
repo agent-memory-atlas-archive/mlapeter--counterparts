@@ -93,7 +93,7 @@ import { hashText, occurredOnOf, saidByOf, statusOf } from "./store/index.js";
 import type { MemoryRow, Store } from "./store/index.js";
 import { TUNABLES, applyChallenge, successorSeed, supersedeRecord } from "./physics/index.js";
 import { directionOf } from "./mint.js";
-import { FULFILLED_REASON, flag, settleOnWrite, supersede } from "./reconsolidation.js";
+import { FULFILLED_SOURCE, PRESSURE_UNDONE_REASON, flag, settleOnWrite, supersede } from "./reconsolidation.js";
 import type { SettleOutcome } from "./reconsolidation.js";
 import type { SettleHow } from "./types.js";
 import type { Schemas } from "./schemas/index.js";
@@ -500,31 +500,40 @@ function identityChallenge(
       origin: { ref: input.challengerId },
     });
     // THROUGH THE ONE DOOR (2026-10-11, Group 2b; review 10 R7 path 3): the
-    // successor holds over the old core memory `changed`, source `pressure`,
-    // and REPLACES it — archived `revised-by-pressure` with a forwarding
-    // address, as before — with a pair and a trail row, so the crossing is
-    // undone like a settle; the pressure pair that stood while it built is
-    // closed through it; the links go to the successor.
+    // successor holds over the old core memory, a plain `changed`, source
+    // `pressure` (decided by random-06, 2026-10-11, lightly held: no fourth
+    // relation). The old memory leaves the core, fades ×0.5, STAYS LIVE and
+    // is labelled earlier under the successor; a pair and a trail row, so the
+    // crossing is undone like a settle; the pressure pair that stood while it
+    // built is closed through it. Its links are copied to the successor.
     const door = supersede(
       store,
-      { holds: successor, over: targetId, how: "changed", source: "pressure", actor: "session", actorId: input.session ?? null, day: input.day, replaces: { reason: "revised-by-pressure" } },
+      { holds: successor, over: targetId, how: "changed", source: "pressure", actor: "session", actorId: input.session ?? null, day: input.day },
       opts.retarget === undefined ? {} : { retarget: opts.retarget },
     );
     if (!door.ok) {
-      // The door refused (it should not: both are live memory rows): replaced as before.
-      store.supersedeInto(targetId, successor, "revised-by-pressure");
+      // The door refused (it should not: both are live memory rows). The
+      // crossing does not happen half-way: the successor is put away.
+      store.archive(successor, PRESSURE_UNDONE_REASON);
       opts.onEvent?.("revision.door.refused", { target: targetId, successor, day: input.day, reason: door.reason });
     } else {
       crossed = door.pair;
+      successorId = successor;
+      if (opts.retarget !== undefined) {
+        try {
+          opts.retarget(targetId, successor, input.day);
+        } catch (err) {
+          opts.onEvent?.("revision.edges.retarget.failed", { target: targetId, successor, day: input.day, error: err instanceof Error ? err.name : "UNKNOWN" });
+        }
+      }
+      const record = supersedeRecord(targetId, successor, input.day);
+      opts.onEvent?.("memory.superseded", {
+        target: targetId,
+        successor,
+        day: record.day,
+        resolvableUntilDay: record.resolvableUntilDay,
+      });
     }
-    successorId = successor;
-    const record = supersedeRecord(targetId, successorId, input.day);
-    opts.onEvent?.("memory.superseded", {
-      target: targetId,
-      successor: successorId,
-      day: record.day,
-      resolvableUntilDay: record.resolvableUntilDay,
-    });
   }
 
   return settle("identity", outcome.reason as RevisionReason, targetId, {
@@ -557,10 +566,11 @@ function fulfilled(store: Store, row: MemoryRow, challengerId: string): boolean 
 /**
  * THE FAST LANE OUT OF THE CORE (2026-10-11, Group 2b): a fulfilled plan is
  * settled `changed` by the memory that fulfils it, through the one door —
- * source `fulfilled`, the pressure pair settled when one stood — and replaced
- * by it: archived `fulfilled` with a forwarding address to the `done` memory,
- * which stays as it was (not core). No pressure, no successor. An undo brings
- * the plan back, core as it was.
+ * source `fulfilled`, the pressure pair settled when one stood. The plan
+ * leaves the core, fades ×0.5, stays live and is labelled earlier under the
+ * `done` memory, which stays as it was (not core); decided by random-06,
+ * 2026-10-11, lightly held: `changed` plus the core path, not an archive. No
+ * pressure, no successor. An undo puts the plan back in the core as it was.
  */
 function fulfil(
   store: Store,
@@ -577,17 +587,16 @@ function fulfil(
       holds: input.challengerId,
       over: row.id,
       how: "changed",
-      source: FULFILLED_REASON,
+      source: FULFILLED_SOURCE,
       actor: "session",
       actorId: input.session ?? null,
       day: input.day,
-      replaces: { reason: FULFILLED_REASON },
       ...(standing !== undefined && standing.state === "unsettled" ? { pair: standing } : {}),
       ...(input.howSent === undefined ? {} : { howSent: input.howSent }),
     },
     opts.retarget === undefined ? {} : { retarget: opts.retarget },
   );
   if (!door.ok) return settle("identity", "below-bar", row.id, { retargeted, settle: door });
-  opts.onEvent?.("memory.superseded", { target: row.id, successor: input.challengerId, day: input.day, resolvableUntilDay: supersedeRecord(row.id, input.challengerId, input.day).resolvableUntilDay });
+
   return settle("identity", "revised", row.id, { moved: true, verdict: "replace", retargeted, successorId: input.challengerId, settle: door, pressurePair: door.pair });
 }

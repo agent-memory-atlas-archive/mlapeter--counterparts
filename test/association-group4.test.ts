@@ -393,7 +393,7 @@ describe("5. rows with an endpoint archived for good are swept (review 06 C3)", 
     expect(c.store.edgesFrom(corrected).length).toBeGreaterThan(0);
   });
 
-  test("a dream's undo brings a merge's originals back WITH the merged memory's links", () => {
+  test("a merge through the one door (Group 2b): the merged memory copies the originals' links, the originals keep theirs (nothing to sweep), and the undo leaves them linked", () => {
     const clock = { now: Date.UTC(2026, 4, 30, 22) };
     const c = brainAt(clock);
     c.store.advanceClock("2026-05-20");
@@ -412,11 +412,11 @@ describe("5. rows with an endpoint archived for good are swept (review 06 C3)", 
     if (!out.ok) throw new Error("propose refused");
     const merged = out.results[0]?.id as string;
     expect(c.associate.linked(merged, friend)).toBe(true);
-    // A flush sweeps the originals' rows: they are archived for good.
+    // The originals stay live (settled `changed` under the merged memory), so a flush sweeps none of their rows.
     clock.now += TERMINAL_ARCHIVE_GRACE_MS + 1;
     c.associate.absorb([{ a: merged, b: friend, delta: 0.01 }]);
-    expect(c.associate.flush().sweptArchived).toBeGreaterThan(0);
-    expect(c.store.edgesFrom(a)).toEqual([]);
+    c.associate.flush();
+    for (const x of [a, b]) expect(c.associate.linked(x, friend)).toBe(true);
     expect(c.dreams.undo(begun.bundle.dream).ok).toBe(true);
     for (const x of [a, b]) expect(c.associate.linked(x, friend)).toBe(true);
   });

@@ -36,7 +36,7 @@
  * and otherwise returns null — which the census counts as an exit, so an
  * unknown leaving is never hidden under "nothing was forgotten".
  */
-import { CORRECTED_REASON, FULFILLED_REASON, PRESSURE_UNDONE_REASON } from "./reconsolidation.js";
+import { CORRECTED_REASON, PRESSURE_UNDONE_REASON } from "./reconsolidation.js";
 import { DREAM_MERGE_REASON, DREAM_UNDONE_REASON } from "./dream/index.js";
 import { TUNABLES as SCHEMA_TUNABLES } from "./schemas/index.js";
 import { MERGE_ARCHIVE_REASON, PRUNE_ARCHIVE_REASON } from "./sleep/index.js";
@@ -59,8 +59,6 @@ export const LEAVING: Readonly<Record<string, LeftAs>> = {
   // A contradiction settled `corrected` (2026-09-29): the memory that holds is
   // live, and the corrected one stays readable by its own id.
   [CORRECTED_REASON]: "replaced",
-  // A core plan a declared `done` fulfilled (2026-10-11): the `done` memory holds.
-  [FULFILLED_REASON]: "replaced",
   // The successor a core memory's pressure crossing minted, when the owner undid the crossing.
   [PRESSURE_UNDONE_REASON]: "replaced",
   supersede: "replaced",
