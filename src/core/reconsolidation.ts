@@ -924,6 +924,28 @@ export function reinstateSlot(store: Store, input: { pair: string; withdrawSeq: 
 }
 
 /**
+ * PROPOSALS NOBODY CAN ANSWER ANY MORE (review of #420): a slot proposal one
+ * of whose two memories is gone (archived, forgotten, merged away) is never
+ * shown to confirm (`slotsToConfirm` asks for both standing), so without this
+ * the older one would keep its provisional cut for good. Withdrawn, the cut
+ * put back, by the detector. Run before the dream reads its proposals. Never
+ * throws; the count withdrawn.
+ */
+export function releaseOrphanSlots(store: Store, day: number = store.livedDay()): number {
+  if (store.observer) return 0;
+  let n = 0;
+  try {
+    for (const c of store.contradictions({ state: "unsettled", limit: 100_000 })) {
+      if (c.source !== SLOT_SOURCE || pairStanding(store, c) || provisionalOf(store, c) === null) continue;
+      if (withdrawSlot(store, { pair: c.id, actor: "detector", why: "one of the two is gone", day }).ok) n += 1;
+    }
+  } catch {
+    /* tried again before the next dream */
+  }
+  return n;
+}
+
+/**
  * THE PROPOSALS WAITING FOR A READER, oldest first: unsettled slot pairs whose
  * two memories both still stand. `limit` of them (the night's budget), and how
  * many more wait.

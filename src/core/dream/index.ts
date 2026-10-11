@@ -80,6 +80,7 @@ import {
   pairStanding,
   provisionalOf,
   reinstateSlot,
+  releaseOrphanSlots,
   settle as settleContradiction,
   undo as undoContradiction,
   withdrawSlot,
@@ -2477,7 +2478,10 @@ export class Dreams {
     };
     const role = new Map<string, DreamRole>();
 
-    // WHAT'S ON MY MIND first: it lifts a queued memory's priority.
+    // WHAT'S ON MY MIND first: it lifts a queued memory's priority. A slot
+    // proposal whose newer (or older) memory is gone is withdrawn first, its
+    // cut put back: nobody could answer it (review of #420).
+    releaseOrphanSlots(this.store, day);
     const mindRead = mindRanked(this.store, {
       today: at,
       day,
