@@ -23,7 +23,9 @@
   dream's and the reflection's children `skipped: too-little-new` (or `first-day`), whenever
   the catch-up did what it could. It is `could-not-start` / `timed-out` / `failed`, with
   `detail: catch-up`, when the catch-up child could not start, was stopped, or failed. No ask
-  follows a catch-up that could not start, because there is no dream to ask about. Why: doctor
+  follows a catch-up that could not start while the dream is not due, because there is no
+  dream to ask about. Once it is due that day, the ordinary fallback asks, giving the
+  catch-up's reason. Why: doctor
   must not show a failed dream for a dream that was never due, and must still go amber when
   `claude -p` itself is broken.
 - Decided by the night-owed builder, 2026-10-11, lightly held: no per-day memo for the "is

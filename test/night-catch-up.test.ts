@@ -1221,7 +1221,7 @@ describe("the night starts when write-ups from an earlier day are owed, even whe
   }
 
   /** The detached process's side, as `bin/nightly.ts` runs it: the run the hook planned, with the kind it was told. */
-  async function nightOf(plan: SpawnPlan, seen: ChildPlan[], started: ChildPlan[]): Promise<Awaited<ReturnType<typeof runNight>>> {
+  async function nightOf(plan: SpawnPlan, seen: ChildPlan[], started: ChildPlan[], opts: { dated?: boolean } = {}): Promise<Awaited<ReturnType<typeof runNight>>> {
     return runNight({
       open: () => openNightCounterpart(config()),
       config: config(),
@@ -1229,7 +1229,8 @@ describe("the night starts when write-ups from an earlier day are owed, even whe
       session: String(plan.env[SESSION_ENV]),
       scope: String(plan.env[SCOPE_ENV]),
       kind: readKind(plan.env[NIGHT_KIND_ENV]),
-      date: TODAY(),
+      // `bin/nightly.ts` names no date: the run reads the store's today.
+      ...(opts.dated === false ? {} : { date: TODAY() }),
       startCatchUp: drivingChild(seen),
       start: async (p) => {
         started.push(p);
@@ -1307,9 +1308,11 @@ describe("the night starts when write-ups from an earlier day are owed, even whe
     expect(nightPlans()).toHaveLength(1);
     const plan = nightPlans()[0] as SpawnPlan;
     expect(plan.env[NIGHT_KIND_ENV]).toBe("catch-up:first-day");
-    const out = await nightOf(plan, [], []);
+    const out = await nightOf(plan, [], [], { dated: false });
     expect(owes("crash-1")).toBe(false);
     expect(out.state).toBe("done");
+    expect(out.date).toBe(TODAY());
+    expect(a.counterpart.dreams.nightRun()?.date).toBe(TODAY());
     expect(out.children?.map((ch) => ch.skipped)).toEqual(["first-day", "first-day"]);
   });
 
@@ -1351,7 +1354,7 @@ describe("the night starts when write-ups from an earlier day are owed, even whe
     prompt(a, "day2-1");
     expect(nightPlans()).toHaveLength(0);
     // Owed, but from today: tomorrow's.
-    lived("today-1", proj, { at: Date.now() - 2 * HOUR });
+    lived("today-1", proj, { at: Math.max(midnight() + MIN, Date.now() - 2 * HOUR) });
     expect(owes("today-1")).toBe(true);
     prompt(a, "day2-2");
     expect(nightPlans()).toHaveLength(0);
