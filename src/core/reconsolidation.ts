@@ -550,13 +550,18 @@ export function supersede(store: Store, input: SupersedeInput, opts: { retarget?
 
   // A FLAG CLOSES WHEN ITS QUESTION IS ANSWERED ELSEWHERE: every door that
   // moves the memory closes the unsettled pairs on it (Group 2; review 10 C5),
-  // so it is not labelled twice. A slot proposal in which a REPLACED memory is
-  // the newer is left for `releaseOrphanSlots`, which carries it to the holder.
+  // so it is not labelled twice. NOT a slot proposal in which this memory is
+  // the NEWER (2026-10-11, Group 2b; review of #420 (a)): "B is the newer state
+  // of A" is still a question when C settles over B — closing it lifted A's
+  // cut and stood A back up as current. It stays for the dream; settles are
+  // ordered by when they were raised (`recall/standing.ts#pairOrder`), so a
+  // late confirmation cannot re-affirm B over C. A replaced B's proposal is
+  // carried to what replaced it (`releaseOrphanSlots`).
   const closes =
     input.closeFlags === true || (input.closeFlags !== false && how !== "open")
       ? (store.contradictionsOf([over]).get(over) ?? [])
           .filter((c) => c.state === "unsettled" && c.id !== pair?.id)
-          .filter((c) => replaces === null || !(c.source === SLOT_SOURCE && provisionalOf(store, c)?.holds === over))
+          .filter((c) => !(c.source === SLOT_SOURCE && provisionalOf(store, c)?.holds === over))
           .map((c) => c.id)
       : [];
   // A SLOT PROPOSAL'S PROVISIONAL CUT (2026-10-11) is lifted by whatever
