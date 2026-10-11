@@ -24,7 +24,7 @@ import { settle, writeNeighbours } from "../src/core/contradictions.js";
 import { Counterpart, MCP_OVERSIZE_EVENT } from "../src/core/counterpart.js";
 import { onMyMind } from "../src/core/dream/mind.js";
 import { TOOL_RESULT_CEILING, wireChars } from "../src/core/fit/index.js";
-import { Recall, earlierMark, headOf, standingOf } from "../src/core/recall/index.js";
+import { HEAD_MAX_STEPS, Recall, earlierMark, headOf, standingOf } from "../src/core/recall/index.js";
 import { settledOver } from "../src/core/self/index.js";
 import { Store } from "../src/core/store/index.js";
 import type { PutInput } from "../src/core/store/index.js";
@@ -472,6 +472,14 @@ describe("review of #408: headOf's walk is bounded and never throws", () => {
     expect(() => headOf(long, "m_0")).not.toThrow();
     expect(performance.now() - t0).toBeLessThan(200);
     expect(headOf(fake([live("m_x")], [], { throws: true }), "m_x")).toBeNull();
+    // A pure settle chain past the bound (80 links): still earlier, as the wake
+    // says — the mark names the link the walk stopped at, not the live end.
+    const chain = Array.from({ length: 81 }, (_, i) => live(`m_c${String(i)}`));
+    const settles = Array.from({ length: 80 }, (_, i) => ({ over: `m_c${String(i)}`, holds: `m_c${String(i + 1)}`, at: i + 1 }));
+    const pure = fake(chain, settles);
+    expect(headOf(pure, "m_c0")).toBe(`m_c${String(HEAD_MAX_STEPS)}`);
+    expect(settledOver(pure).has("m_c0")).toBe(true);
+    expect(headOf(pure, "m_c40")).toBe("m_c80");
     // A settle cycle tied on the clock: the newest pair speaks, and it ends.
     const tie = fake([live("m_p"), live("m_q")], [
       { over: "m_p", holds: "m_q", at: 5 },
