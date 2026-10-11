@@ -8,6 +8,16 @@
   the main results, which left counting questions one item short. Things that come up on
   their own still leave faded memories out; being shown strengthens nothing, opening or
   quoting one does. Meaning mode is unchanged.
+- **A session's wake is put together when the session starts.** "Still open", "Arriving:",
+  the Yesterday line and the self page are read at that moment, so the morning's first
+  sessions see yesterday's chapters and a question or reminder noted last night, not the
+  wake the evening's last turn left. "Nearby" and "Who I am" still come from the last turn's
+  end. Reads only, no model call: a few milliseconds.
+- **"Today, elsewhere."** One line in the wake names the other folders worked in today:
+  when, whether a session there is still open, how many memories it wrote, and its chapter's
+  title when that chapter is about you or me (the "About me, from another directory" rule).
+  Never what was said there, a work memory's title, or a handoff. Folders whose scope is not
+  on are not named. It is the first thing to give way after "Nearby".
 - **Forgetting now changes what comes to mind (store v13).** Each memory fades on its own
   curve: steep at first and flat later, slower the more it mattered, the more it was felt,
   used or came back. A routine note leaves the working layer in about two days; a felt
@@ -68,6 +78,16 @@
   A few strongly felt memories claimed at 0.42–0.50 now start episodic rather than semantic.
   The text of a session that still owes a write-up is now kept up to 14 days of use plus the
   ordinary 7 days, not 2.
+- **A memory written with `remember` (or its old name `note`) reaches the next session's
+  wake the same day.** Only write-ups, chapters and the self page used to bring the wake up
+  to date between days, so a note left Still open, Nearby and Arriving as they were for up
+  to a day, in every directory, a question it answered included. Now every memory that
+  lands, and every handoff written or retired, re-renders the wake at that turn's end, in
+  the background.
+- **A reader for which memories recall shows and the replies ignore.** `probeMemoryHits`
+  reads the ids the credit row already lists as shown and not used, and gives a hit rate
+  per memory and per lane (loud, footnote, pointer). It only measures. Nothing reads it
+  to change a memory's strength or how readily it comes to mind.
 - **Recall counts the memories instead of listing them on every turn.** At ten times
   today's size that list was about a sixth of a turn. A second speed-up, not looking up
   words found in almost every memory, is built but off: it changed what recall showed on
