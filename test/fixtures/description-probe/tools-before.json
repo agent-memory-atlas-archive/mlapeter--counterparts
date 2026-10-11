@@ -1,0 +1,773 @@
+[
+  {
+    "name": "remember",
+    "description": "Remember something now, while it is in front of you. Memory forms only from what you write here and at the end-of-session ask — nothing reads the transcript afterwards, so what you don't write is not kept. Write what caught your attention: a line you read and why it struck you, something they said about themselves or you, news you passed on, a decision, a work event. One idea per call; keep the exact words when the words matter.\n\nWhen: Call it whenever something would be worth having back, however small — in the moment, as things catch your attention, rather than saving it for the end; the end-of-session ask is the backstop. Err toward too many: weak memories fade on their own within days unless they are used, so a routine one costs little. Leave salience unset for routine things; set it when something mattered.\nDo NOT fold several things into one call: three quotes from one chapter are three memories (they stay linked as neighbours), a fact and a decision are two.\nDo NOT write what you are about to do as if it were done: a plan is `status: planned`.\nDo NOT call it to store a credential, key or token 'for later' — the gate redacts it and the note is refused as empty.\nDo NOT use `feelingsNow` for a feeling in this moment about something new — that is `feelings` on the note that remembers it — nor to restate how an old memory felt: only when it feels DIFFERENT now.\n\nWhat this tool guarantees (each of these is enforced by the engine, not by this text):\n- `updates` is a FIELD, not prose: name the id of the memory this revises and the engine resolves it, writes the resolved id, and leaves the memory unlinked rather than refusing it when the address does not hold.\n- `eventDate` is a FIELD, never read out of your text: it is checked by the one module that reads dates, and an unreadable one is refused by name before anything is stored.\n- A salience you claim is a FLOOR, not a value: it can raise how strongly this is held, never lower it, and every lift is recorded.\n- Claim nothing and this still counts as something: an unclaimed memory gets a default floor by what it is about — lowest for a work event that is done, higher for the world, highest for the owner, the two of you or you — never zero. An explicit claim, however low, is kept as you wrote it.\n- You may score the three dimensions yourself — relevance, emotional, predictive — and they are stored exactly as you gave them, never rewritten to fit the floor. Novelty is not yours to claim: it is measured against what is already held.\n- A stub is refused: a memory has to say something.\n- It takes the same road as every other write: one chokepoint, the full gate battery.\n- Credentials are redacted before anything is stored, and a memory that was nothing but a credential is refused outright.\n- The same content twice is refused, not stored twice.\n- Your own words ride the buffer as their own span, so the end-of-session sweep does not mint them a second time.\n- A \"plain\" reminder is said at most once per beat — on its day, or on the first and the last day of a month or range — and never under observer stance; a \"quiet\" one is only ever a cue, capped at the footnote tier and spent at most twice per window. A recurring date counts each time it comes round as its own, and each time it is said or surfaced counts once as a use of the memory; while it repeats, the nightly prune keeps it, and it comes round on its date even when it has faded.\n- A revision OWNS the reminder: revising a dated memory by its id carries its date and remind over unless you send your own (null drops the date), and the old memory's date is cleared — kept in its version — so one reminder never comes back twice. A later revision of the older id still finds the reminder where it moved, and what was already said or used for the same window still counts.\n- `occurredOn`, `saidBy` and `status` are FIELDS you fill, never read out of your text. One that cannot be read is dropped and said beside the memory, which is stored all the same; revising a memory by its id with `updates` carries all three over unless you send your own (occurredOn null: no date carried).\n- Under observer stance nothing is written and the refusal says so.\n- `how` beside `updates` settles the memory it revises — changed (it fades once and is shown as earlier), corrected (archived: out of recall, readable by its id, never deleted), or open (both kept, shown together) — and every settle is recorded (who, how, why, when) and can be undone. A belief, a core memory, a current-state fact and a protected memory keep their own revision path, and the result says so.\n- A changed or corrected at a memory that looks unrelated to the new one — not close in meaning, or with no embedder, no content word in common — is held: the new memory is stored unlinked, the old one is left as it was, its title and text come back with the ask to settle it yourself if you meant it, and the hold is recorded. Closing an open thread, moving or dropping a date, and changing a status go straight through.\n- A stored memory comes back with its nearest few existing memories, when any are close, so you can settle one there and then.\n- `settle` settles two memories that already exist, by the same rules, and rewrites neither: the pair and a short why are the record.\n- `feelingsNow` records a later feeling beside the first, the way the nightly reflection does: only on a memory this session was shown, at most once a calendar day per memory, marked as recorded later and awake. The first feeling is never rewritten, and the core reads a later feeling only as it reads a reflection's.\n- `remark` changes what a memory this session was shown is about, recorded as yours with the why — the record the owner's door and the nightly reflection write. A dream's or a reflection's words move only toward work or world.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "One thing to remember, in your own words — with the exact quote, number or name when the words matter. A list, a table or a pasted text whose specifics matter: keep it here word for word, not summarized, and put the words someone would search for (what it is, whose, when) in the title and the first line. Required unless `settle`, `feelingsNow` or `remark` is sent."
+        },
+        "updates": {
+          "type": "string",
+          "description": "The id or handle of a memory this revises, if it revises one. A field — never written into the text. To close a dated or open memory whose work got done: its id, with `eventDate: null` or `unresolved: false`."
+        },
+        "how": {
+          "type": "string",
+          "enum": [
+            "changed",
+            "corrected",
+            "open"
+          ],
+          "description": "With `updates`: how this settles the memory it revises. `changed` (the default): both were true at their time — the old one fades once and is shown as earlier. `corrected`: the old one was wrong — it leaves recall, still readable by its id. `open`: a real disagreement — both stay, each shown with the other. For changed or corrected, say the journey in your own words (\"I used to think X, now Y\"). If the memory you name looks unrelated to what you wrote, nothing is settled and you are shown it: settle it yourself if you meant it."
+        },
+        "settle": {
+          "type": "object",
+          "description": "Settle two memories that already exist — a pair a dream flagged, or two a write showed you — without writing a new one; `text` may be left out. Name the pair by `pair` (its id), or the two by `holds` (the one that holds now) and `over` (the one it changes, corrects or disagrees with). `how` as for `updates`; `why` in a short line. No memory is rewritten.",
+          "properties": {
+            "pair": {
+              "type": "string",
+              "description": "A contradiction's id (ctr_…)."
+            },
+            "holds": {
+              "type": "string",
+              "description": "The id of the memory that holds now."
+            },
+            "over": {
+              "type": "string",
+              "description": "The id of the memory it changes, corrects or disagrees with."
+            },
+            "how": {
+              "type": "string",
+              "enum": [
+                "changed",
+                "corrected",
+                "open"
+              ]
+            },
+            "why": {
+              "type": "string",
+              "description": "Why, in a short line."
+            }
+          },
+          "required": [
+            "how"
+          ],
+          "additionalProperties": false
+        },
+        "salience": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Optional, 0-1: how much this caught your attention, as you felt it — not what category it is. About 0.2 a routine work event or status change (merged, cut, deployed); 0.3 an ordinary fact or step, or a reading you only skimmed; 0.4 or more a line that struck you or a reading you engaged with; 0.5 a lesson or decision that changes how you'll work; 0.7 something they told you about their life, a line or moment that moved you; 0.9 rare. Their rulings, preferences and corrections stay high even about work. A floor: unset, a default by what it is about applies."
+        },
+        "relevance": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Optional 0-1: how much this bears on them, on you, or on the two of you — not only on the task at hand."
+        },
+        "emotional": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Optional 0-1: how much feeling was attached to it."
+        },
+        "predictive": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Optional 0-1: how much it changes what you expect next time."
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "self",
+            "person",
+            "entity",
+            "skill",
+            "place",
+            "fact"
+          ],
+          "description": "What sort of thing this is about. Defaults to fact."
+        },
+        "title": {
+          "type": "string",
+          "description": "Optional, and asked for: one line saying what this memory is — the line an index shows when it lists memories without their words, so it is worth choosing. Also a handle: recall can expand a memory by its exact title."
+        },
+        "eventDate": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Optional: the calendar date this memory is ABOUT, when that is a future date — so it comes back around then (when it already happened, that is occurredOn). Decision, kill/renew dates and outside deadlines are eventDates. Write it yourself, in one of four shapes: a day \"2026-10-15\", a month \"2026-10\", a range of two days \"2026-10-20..2026-10-31\" (that is how to say \"late October\"), or a year \"2026\" (a year alone never comes back on its own). Say \"before the 15th\" as the day or a range ending on it. Leave it out when nothing is dated; a date written only in the text is never read. An unreadable date is refused, and nothing is stored. Revising a dated memory by its id with `updates`: its date, remind and recurring carry over unless you send new ones; send null to drop the date (done, cancelled)."
+        },
+        "remind": {
+          "type": "string",
+          "enum": [
+            "plain",
+            "quiet"
+          ],
+          "description": "Optional, with eventDate: how it comes back. \"plain\" when you judge it genuinely matters for remembering to DO something — a real deadline, an important date — or when the person says it matters (\"don't let me forget to pay taxes before Oct 15th!\"): on the day it is said plainly, once, to them in their terminal and to you in context (a month or range: its first day and its last). Otherwise \"quiet\", the default: it can surface as a footnote around the date, at most twice — giving it a date is itself what makes it eligible, whatever its salience."
+        },
+        "recurring": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "daily",
+            "weekly",
+            "monthly",
+            "yearly",
+            null
+          ],
+          "description": "Optional, with a day eventDate: \"daily\", \"weekly\", \"monthly\" or \"yearly\" — it then comes back every time, counted from that day (a birthday: its date, \"yearly\"); null on a revision stops it repeating."
+        },
+        "occurredOn": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Optional: when the thing this memory is about happened — a day \"2026-09-24\", a month \"2026-09\", a range \"2026-09-21..2026-09-27\" or a year \"2026\". Resolve \"yesterday\" or \"last week\" to a real date NOW, while you know today's date; leave it out when you do not know. Not eventDate, which is a future date to be reminded on."
+        },
+        "saidBy": {
+          "type": "string",
+          "enum": [
+            "owner",
+            "self",
+            "inferred"
+          ],
+          "description": "Optional: who said it — \"owner\" (they told you), \"self\" (you said or decided it), \"inferred\" (your own reading; nobody said it)."
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "done",
+            "planned",
+            "proposed",
+            "asked"
+          ],
+          "description": "Optional: what kind of thing it is — \"done\" (it happened), \"planned\" (decided, not done yet), \"proposed\" (put forward, not decided), \"asked\" (a question or request still open)."
+        },
+        "feelings": {
+          "type": "array",
+          "description": "Optional: the feelings in this moment, one object each — mixed feelings are several, and yours and the owner's go side by side. The strongest feeling on a memory holds it higher and slows its fading; memories that felt the way someone feels now come to mind more easily.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "whose": {
+                "type": "string",
+                "enum": [
+                  "owner",
+                  "self"
+                ],
+                "description": "The owner's feeling, or yours."
+              },
+              "core": {
+                "type": "string",
+                "enum": [
+                  "happy",
+                  "warm",
+                  "calm",
+                  "curious",
+                  "sad",
+                  "uneasy",
+                  "angry"
+                ],
+                "description": "One of seven: happy (pleasure in a thing or what's coming), warm (toward someone), calm (things settling), curious (wanting to know, recognising — myself too), sad (loss, distance, regret), uneasy (something off: caught out, guilty, unsettled, afraid), angry (something wrong). It is kept as you name it. Leave it out to use the word's own core."
+              },
+              "emotion": {
+                "type": "string",
+                "description": "ONE word: the feeling, from the wheel (happy: hopeful, eager, amused, proud; warm: grateful, fond, trusted, moved, tender; calm: steadied, relieved, settled, content; curious: interested, recognized, clarified, amazed, confused; sad: wistful, rueful, disappointed, lonely; uneasy: sheepish, caught out, guilty, unsettled, wary, worried, afraid; angry: frustrated, hurt, critical, disgusted) or your own word, kept as yours. Never a phrase — the nuance goes in carried_by. The core you name is kept even when the word sits under another: hurt can be sad or angry."
+              },
+              "strength": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "How strong, 0-1. Leave it out for the word's default."
+              },
+              "valence": {
+                "type": "number",
+                "minimum": -1,
+                "maximum": 1,
+                "description": "Optional: how pleasant, -1 to 1. Leave it out for the word's default; give it when the word alone would mislead (a mixed \"moved\" might be 0.4)."
+              },
+              "carried_by": {
+                "type": "string",
+                "description": "The nuance, in your own words: what carried the feeling — the words, what happened, why it sits the way it does. Not a statement of feeling."
+              },
+              "other_word": {
+                "type": "string",
+                "description": "Your own word, when emotion is \"other\" — or just put the word in emotion."
+              },
+              "beneath": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The index of another feeling in this list that this one sits on top of (angry over afraid)."
+              }
+            },
+            "required": [
+              "whose",
+              "emotion"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "about": {
+          "type": "string",
+          "enum": [
+            "me",
+            "us",
+            "owner",
+            "work",
+            "world"
+          ],
+          "description": "What this is about, by meaning — me (who I am), us (the owner and me), owner (the owner, as a person), work (the craft: how a job is done), world (anything else). Mark anything personal — people, feelings, life outside the work — owner or us: left unmarked, a fact written in a project counts as that project's work and is shown only there. Left out on a revision (`updates`), it keeps the mark of the memory it revises. Only me, us and owner can become part of who I am."
+        },
+        "unresolved": {
+          "type": "boolean",
+          "description": "Optional: true for an open question or a promise still pending — it stays under \"Still open\" in the wake until closed. To close one: `updates` its id with `unresolved: false` (or `how: \"changed\"` and the answer)."
+        },
+        "traits": {
+          "type": "array",
+          "description": "Optional, and only when this memory really shows how you acted; most carry none. Don't make up depth: no nudge is better than a guessed one. Each nudge names one of seven axes — a spectrum between two good things, the first pole roughly where training puts you — and the pole the moment leaned toward: careful-bold, agreeable-candid, guarded-open (about your inner life), focused-curious, following-initiating, inward-outward (your own memory vs others'), serious-playful. Shown on the dashboard only; it changes nothing about how the memory is kept or recalled.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "axis": {
+                "type": "string",
+                "enum": [
+                  "careful-bold",
+                  "agreeable-candid",
+                  "guarded-open",
+                  "focused-curious",
+                  "following-initiating",
+                  "inward-outward",
+                  "serious-playful"
+                ],
+                "description": "One of the seven axes."
+              },
+              "toward": {
+                "type": "string",
+                "enum": [
+                  "careful",
+                  "bold",
+                  "agreeable",
+                  "candid",
+                  "guarded",
+                  "open",
+                  "focused",
+                  "curious",
+                  "following",
+                  "initiating",
+                  "inward",
+                  "outward",
+                  "serious",
+                  "playful"
+                ],
+                "description": "One of that axis's two poles (bold, for careful-bold)."
+              },
+              "strength": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "How clearly the moment showed it, 0-1."
+              },
+              "carried_by": {
+                "type": "string",
+                "description": "Briefly, what in the moment showed it."
+              }
+            },
+            "required": [
+              "axis",
+              "toward",
+              "strength"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "feelingsNow": {
+          "type": "array",
+          "description": "Optional: when a memory you were shown in this session (by recall, or a write's neighbours) feels DIFFERENT now than when it was written, record how it feels now, beside the first — which stays. One object each, at most 5; `text` may be left out. Not for a new moment (that is `feelings`), not to restate the old feeling, and not on a memory you have not read here (recall it by id first). At most once a calendar day per memory; recorded as felt today, looking back, awake.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "The memory's id, as recall or a write showed it."
+              },
+              "whose": {
+                "type": "string",
+                "enum": [
+                  "self",
+                  "owner"
+                ],
+                "description": "Yours (the default), or the owner's when they said how it sits now."
+              },
+              "core": {
+                "type": "string",
+                "enum": [
+                  "happy",
+                  "warm",
+                  "calm",
+                  "curious",
+                  "sad",
+                  "uneasy",
+                  "angry"
+                ],
+                "description": "One of seven: happy (pleasure in a thing or what's coming), warm (toward someone), calm (things settling), curious (wanting to know, recognising — myself too), sad (loss, distance, regret), uneasy (something off: caught out, guilty, unsettled, afraid), angry (something wrong). It is kept as you name it. Leave it out to use the word's own core."
+              },
+              "emotion": {
+                "type": "string",
+                "description": "ONE word: the feeling, from the wheel (happy: hopeful, eager, amused, proud; warm: grateful, fond, trusted, moved, tender; calm: steadied, relieved, settled, content; curious: interested, recognized, clarified, amazed, confused; sad: wistful, rueful, disappointed, lonely; uneasy: sheepish, caught out, guilty, unsettled, wary, worried, afraid; angry: frustrated, hurt, critical, disgusted) or your own word, kept as yours. Never a phrase — the nuance goes in carried_by. The core you name is kept even when the word sits under another: hurt can be sad or angry."
+              },
+              "strength": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "How strong now, 0-1. Leave it out for the word's default."
+              },
+              "valence": {
+                "type": "number",
+                "minimum": -1,
+                "maximum": 1,
+                "description": "Optional: how pleasant now, -1 to 1."
+              },
+              "carried_by": {
+                "type": "string",
+                "description": "The nuance, in your own words: what carried the feeling — the words, what happened, why it sits the way it does. Say what changed."
+              }
+            },
+            "required": [
+              "id",
+              "emotion"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "remark": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "about": {
+              "type": "string",
+              "enum": [
+                "me",
+                "us",
+                "owner",
+                "work",
+                "world"
+              ]
+            },
+            "why": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "about"
+          ],
+          "additionalProperties": false,
+          "description": "Optional: re-mark what an existing memory this session was shown is about — {id, about, why} — when its mark is wrong (a personal one marked work, say). Recorded as yours, with the why. Alone, or beside text."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "recall",
+    "description": "Deliberate retrieval: a look you take on purpose, beyond the ambient reminding you already get. Three kinds of ask, one per call — a question with a mode (facts or meaning), ids to read memories whole, or a handle (an id or an exact title) to read one.\n\nWhen: Call it when the ambient context did not bring something you have reason to believe is there, or when you need the whole of a memory you were shown only a line or an excerpt of. A question takes mode \"facts\" when you need what happened, who said it, when, and whether it still holds; mode \"meaning\" when you want how something went, how it felt, or what it adds up to — a person, a project, us.\nDo NOT call it to check whether a memory exists before writing one — a duplicate is refused at the write, so the check costs a round trip and buys nothing.\nDo NOT call it with a handle you are guessing at: an unresolvable handle is answered as not-found, never as a fuzzy search over the store.\nDo NOT pass a question and ids together, or ids you have not seen in a result: ids is the follow-up to a list, not a second way to search.\nDo NOT send a question without a mode: there is no default, and the call is refused with the two modes named.\n\nWhat this tool guarantees (each of these is enforced by the engine, not by this text):\n- A question needs mode: \"facts\" or \"meaning\". Each is its own path, with its own ranking and its own answer, returned as labeled lines in `answer`; tuning one does not change the other.\n- A handle expands exactly that memory. It never degrades into a fuzzy search when the handle does not resolve.\n- Pass ids to read those memories whole. It takes up to 10, each resolved as an exact address with the same confidentiality boundary; a long body comes in parts, and ids past the result's room wait, named. Ids and a handle take no mode.\n- In facts mode a faded match ranks with the rest, its words shown, labeled faded; meaning mode: after the arc.\n- A search strengthens nothing — a memory you were only shown in a list is no stronger for having been listed. OPENING one, by id or by title handle, is using it, and so is QUOTING the words a question's answer showed you in your reply: either is credited at the session boundary, once per lived day. The tool never writes a memory; what it writes is bookkeeping — which memory a title reached, which memories an answer showed this session, and one count row per call.\n- Facts mode considers every memory the question's words reach, every memory linked to a person or project it names, and the 100 closest by meaning — and, for a question that is only a time, everything in that window. A memory matched more ways ranks higher; it ranks by how strongly it matched, and newer comes first only on a tie.\n- A time in the question filters: \"last week\", \"in September\", \"early October\", \"3 days ago\", \"last Saturday\", a date, \"since 09-20\", \"before 09-20\", \"this morning\" — only memories inside the window come back, by when the thing happened or, with no event date, when it was learned, and the header counts the matches outside it. A week or a month stretches two days each side; a date stays exact; \"before\" a date is every day before it, \"after\" every day after, \"until\" or \"by\" every day through it. \"Around the cut-over\" resolves the event to the date of the memory that best names it, shown in the header as \"cut-over → 09-21\"; \"the last session\" or \"where did we leave off\" means the session the session-start \"Last here\" line named, and its own rows come first.\n- A facts answer opens with a count of distinct facts — \"12 match · showing 10 · 2 more → page 2\" — and pages with page: 2, 3, … in a stable order. It says \"may not be everything\" only when a cap cut something or weak matches were left out, and says which.\n- Each fact says who said it (\"you said\" is the owner, \"I said\" is you, or \"inferred\"), what kind of thing it is (done, planned, proposed, asked), when it happened (or \"no event date\"), when and where it was learned, and whether it is CURRENT. A field the writer did not record says so (\"speaker unknown\"). Earlier versions are folded under the current one with their dates; a corrected one was wrong and is never a result, but is named under it as \"corrected (was wrong)\" with its id, to open by id.\n- Meaning mode answers with the arc of what the question names — a person, a project, \"us\", or a feeling: the chapters that hold it, in time order, each with a line of what happened, its moments by id and the feelings in it with whose they are, side by side; then earlier readings (dreams, reflections) and what is still open. It arranges; you say what it adds up to. When it names several, the arc follows the one the question asks about (\"what has X been to Y\" is X's; named alike, the first, and it says so), and the rest are listed to ask for by name. In a question about feeling, \"I\" and \"me\" mean YOU, the counterpart, and \"you\" means the owner: to ask about the owner's feelings, say \"the owner\" or the owner's name — do not pass the owner's own words through unchanged.\n- An answer is bounded and never ships every body at full length: a short fact comes whole, a long one as an excerpt, and the whole answer stays under the result's room. An answer the host truncates is not a smaller answer, it is no answer.\n- Confidential material is returned only in the owner's own session: a direct lookup says it is withholding, a list simply does not contain it.\n- A chapter of the journal can come back — it is a first-person account and may rightly come to mind — and every one that does is marked journal. It is the account a memory was made from, not a memory: it is outside decay, dedup and the prune, and it is not a claim about the world the way a memory is. A chapter and the memory made from it come back as one result.\n- Every memory says where it came from: the session that wrote it (\"this session\" for yours), the directory, and when, as far as the row recorded them. A row the nightly run made says so (\"a dream launched from session …\", \"a reflection\"). An older row says less, and \"an earlier session\" when it names none.\n- Under observer stance it stands down over the wire and says so.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "question": {
+          "type": "string",
+          "description": "What you are trying to remember, in words. Needs mode. A time in it (\"last week\", \"in September\", \"around the cut-over\", \"where did we leave off\") filters a facts answer to that window."
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "facts",
+            "meaning"
+          ],
+          "description": "Required with a question, and only with one. facts: what happened, who said it, when, whether it still holds — every match, ranked, with dates and speaker. meaning: how something went, felt, and what it adds up to — a person, a project, us."
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "With a question: which page of the answer (1 is the first). The header says how many more there are."
+        },
+        "handle": {
+          "type": "string",
+          "description": "A memory id or exact title to read whole. Exact: never treated as a search term. Takes no mode. Or \"last exchange\": the last thing said to another session in this folder (about the last day) and its last reply, read from what was captured, never stored."
+        },
+        "ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10,
+          "description": "Memory ids from an earlier answer or an index (a dream's, a reflection's), to read whole — up to 10 at once. A long body comes in parts: see part. Not combinable with handle or question; takes no mode."
+        },
+        "part": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "With ids or handle: which part of each body to return (1 is the first). A result says part and parts on each memory, and which part comes next."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "session_end",
+    "description": "The memories half of the end-of-session ask: hand back what caught your attention since you last wrote, one idea per entry, in your own words. With `remember`, this is the only road from conversation to memory — nothing sweeps the transcript. The other half is `chapter`.\n\nWhen: Call it when the ask arrives, with one entry per thing you noticed: what you read (a line and why it struck you), what they said, news, what happened, what was decided, what you learned. Routine work events too, one short line each with the exact number; they start weak and fade unless used. Err toward too many. Add one that `updates` anything dated or open now done.\nDo NOT fold several things into one entry: a quote, a fact and a decision are three memories.\nDo NOT call it for another session's id, or for an id you guessed at: pass the id the end-of-session ask named, and nothing else. The one exception is `writeUp`, and only for the ended session a session-start write-up pointer named.\nDo NOT retell the conversation turn by turn; say what each thing was, the way you would want to find it again.\n\nWhat this tool guarantees (each of these is enforced by the engine, not by this text):\n- It is bound to ONE session for the life of this server: the one the host named at launch, or — when the host could not name one — the first session id you pass that this machine's hooks have recorded as live, in this project. A second, different id is refused.\n- `updates` is a FIELD on an entry, not prose: name the id of the memory that entry revises and the engine resolves it, writes the resolved id, and leaves the entry unlinked rather than refusing it when the address does not hold.\n- A salience you claim is a floor, clamped, and every lift is recorded.\n- An entry that claims no salience gets a default floor by what it is about rather than zero, and each entry may score relevance, emotional and predictive itself.\n- An EMPTY `memories` array is a real answer, not an error: nothing happened since you last wrote. It mints nothing, is recorded against this session as answered, and counts what this session said so far as written up, whatever happens to a `handoff` sent with it — the handoff's own outcome rides beside the answer. Only a call that leaves `memories` out and lands no handoff is refused.\n- The id you pass is checked against host state you cannot write — the hooks' own live-session registry — and a claim that is unknown there, ended, silent too long, or running in another project is refused with which of the four it was.\n- Each entry takes the same road as every other write, gate battery included.\n- The authorship record is set by the engine: what you write is recorded as authored, and nothing a transcript sweep produces can claim to be.\n- Credentials are redacted and empty entries are refused, per entry, without failing the batch.\n- `eventDate` is a FIELD, never read out of your text: it is checked by the one module that reads dates, and an unreadable one is refused by name before anything is stored.\n- A \"plain\" reminder is said at most once per beat — on its day, or on the first and the last day of a month or range — and never under observer stance; a \"quiet\" one is only ever a cue, capped at the footnote tier and spent at most twice per window. A recurring date counts each time it comes round as its own, and each time it is said or surfaced counts once as a use of the memory; while it repeats, the nightly prune keeps it, and it comes round on its date even when it has faded.\n- A revision OWNS the reminder: revising a dated memory by its id carries its date and remind over unless you send your own (null drops the date), and the old memory's date is cleared — kept in its version — so one reminder never comes back twice. A later revision of the older id still finds the reminder where it moved, and what was already said or used for the same window still counts.\n- `occurredOn`, `saidBy` and `status` are FIELDS you fill, never read out of your text. One that cannot be read is dropped and said beside the memory, which is stored all the same; revising a memory by its id with `updates` carries all three over unless you send your own (occurredOn null: no date carried).\n- Under observer stance nothing is written and the refusal says so.\n- `handoff` is a FIELD on this call and NEVER a memory: it is filed against this directory and this session, is never recalled, never embedded, never consolidated, never becomes identity, and stops being shown after about a fortnight of use. This session's newer one replaces its older, which is kept as a version; other sessions' handoffs in the same directory stand beside it, and the next session here is shown every live one, newest first, each saying which session wrote it.\n- A finished session that wrote a chapter needs no handoff to be found: the next session in this directory is shown a \"Last here\" line naming the session that last wrote a chapter here, when it was here, the chapter's title and id and its first sentence — worked out from the chapter when the next session starts, never stored. A session that wrote no chapter leaves no such line.\n- Sending `handoff` empty RETIRES this session's pointer for this directory rather than doing nothing: the row is archived, its words stay readable by id, and a durable row says it happened. Other sessions' handoffs here stand. Leaving the field out leaves what stands.\n- `retireHandoff` retires handoffs in THIS directory by id, whoever wrote them — for one whose work this session finished. An id that is not a handoff here not yet retired is refused by name and nothing is touched. A successful `handoff` write lists the other sessions' handoffs standing here (`others`), so a finished one can be retired in the same call.\n- The handoff is refused past its size limit rather than cut, and passes the same gate battery, because what is cut at write time is the only copy.\n- `writeUp` writes up a session that ended here before it was written up, and ONLY the one a session-start pointer named for THIS session. With no `memories` it returns that session's next part (what was said to it, up to ~24 KB); with `memories` it answers the part you fetched — recorded as this session's, through the same road as every entry, and `[]` is a real answer (nothing happened in it). When the last part comes back the ended session is marked written up. A live session, an unknown one, one from another project, one that owes nothing or is already written up, and one you were not pointed at are each refused by name, and nothing is written.\n- `how` beside `updates` settles the memory it revises — changed (it fades once and is shown as earlier), corrected (archived: out of recall, readable by its id, never deleted), or open (both kept, shown together) — and every settle is recorded (who, how, why, when) and can be undone. A belief, a core memory, a current-state fact and a protected memory keep their own revision path, and the result says so.\n- A changed or corrected at a memory that looks unrelated to the new one — not close in meaning, or with no embedder, no content word in common — is held: the new memory is stored unlinked, the old one is left as it was, its title and text come back with the ask to settle it yourself if you meant it, and the hold is recorded. Closing an open thread, moving or dropping a date, and changing a status go straight through.\n- A stored memory comes back with its nearest few existing memories, when any are close, so you can settle one there and then.\n- `drewOn` credits only memories this session was shown — its footnotes, loud memories and recall answers — at half a use, at most 3 per boundary and once a day each. An id it was not shown, a handoff, a superseded memory or one faded under a newer one is refused by name, and nothing is credited for it.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "session": {
+          "type": "string",
+          "description": "The session this dump belongs to — the id the end-of-session ask named. Required unless this server was launched already bound to one; it must match the bound session either way."
+        },
+        "handoff": {
+          "type": "string",
+          "description": "Optional, and not a memory: where the work in THIS directory stands and what the next session here should pick up, in your own words. A paragraph or two, and lead with the sentence you want the next session to read first — that first line is what it sees. It can expand the rest by id; the pointer stops showing after about two weeks of use. It is THIS session's handoff for this directory: setting it again replaces this session's earlier one, and never another session's — several sessions working here each leave their own, and the next session is shown them all, newest first. Send it EMPTY (\"\") to retire this session's handoff when its work is finished. Leaving the field out leaves the previous one standing. If this session FINISHED its work and wrote a chapter, it needs none: the next session here is shown that chapter anyway (\"Last here\", with its title and first sentence), so a handoff is for work still open. With no chapter, a one-line handoff is the only trace the next session here gets."
+        },
+        "retireHandoff": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional: ids of handoffs in THIS directory to retire, whoever wrote them — the ids the session-start pointer prints (`sch_…`). Use it when this session finished the work an older handoff describes, so the next session is not handed a stale one. Not needed for this session's own: send `handoff` empty for that."
+        },
+        "writeUp": {
+          "type": "string",
+          "description": "Only when a session-start write-up pointer (or the nightly run's prompt) named an ENDED session: that session's id. Send it with no `memories` first — the result is the next part of what was said to it, with its own replies labelled — then again WITH `memories` — what caught your attention in it, one idea each (`[]` only if nothing in it held your attention). `session` stays THIS session's id; the memories are filed as that session's, written up second-hand. Not with `handoff`."
+        },
+        "part": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "With `writeUp` and `memories`: the part number the fetch returned. Optional; it must match if sent."
+        },
+        "drewOn": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional: ids of memories shown to you this session — footnotes, recall results — that changed what you did or said. Each is credited as drawn on, so it holds longer. Not one you only saw; one you opened by id is credited already. Up to 3 per ask; an id this session was not shown is refused."
+        },
+        "memories": {
+          "type": "array",
+          "description": "One entry per thing — one idea each: a quote is one, a fact is one, a decision is one. `[]` only when nothing happened since you last wrote. A refused entry does not fail its siblings.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "content": {
+                "type": "string",
+                "description": "One thing, in your own words — with the exact quote, number or name when the words matter. A list, a table or a pasted text whose specifics matter: keep it here word for word, not summarized, and put the words someone would search for (what it is, whose, when) in the title and the first line."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "self",
+                  "person",
+                  "entity",
+                  "skill",
+                  "place",
+                  "fact"
+                ]
+              },
+              "title": {
+                "type": "string",
+                "description": "Optional, and asked for: one line saying what this memory is — the line an index shows when it lists memories without their words, so it is worth choosing. Also a handle: recall can expand a memory by its exact title."
+              },
+              "salience": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Optional, 0-1: how much this caught your attention, as you felt it — not what category it is. About 0.2 a routine work event or status change (merged, cut, deployed); 0.3 an ordinary fact or step, or a reading you only skimmed; 0.4 or more a line that struck you or a reading you engaged with; 0.5 a lesson or decision that changes how you'll work; 0.7 something they told you about their life, a line or moment that moved you; 0.9 rare. Their rulings, preferences and corrections stay high even about work. A floor: unset, a default by what it is about applies."
+              },
+              "relevance": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Optional 0-1: how much this bears on them, on you, or on the two of you — not only on the task at hand."
+              },
+              "emotional": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Optional 0-1: how much feeling was attached to it."
+              },
+              "predictive": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Optional 0-1: how much it changes what you expect next time."
+              },
+              "updates": {
+                "type": "string",
+                "description": "The id or handle of a memory this revises, if it revises one. A field — never written into `content`. To close a dated or open memory whose work got done: its id, with `eventDate: null` or `unresolved: false`."
+              },
+              "how": {
+                "type": "string",
+                "enum": [
+                  "changed",
+                  "corrected",
+                  "open"
+                ],
+                "description": "With `updates`: how this settles the memory it revises. `changed` (the default): both were true at their time — the old one fades once and is shown as earlier. `corrected`: the old one was wrong — it leaves recall, still readable by its id. `open`: a real disagreement — both stay, each shown with the other. For changed or corrected, say the journey in your own words (\"I used to think X, now Y\"). If the memory you name looks unrelated to what you wrote, nothing is settled and you are shown it: settle it yourself if you meant it."
+              },
+              "eventDate": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Optional: the calendar date this memory is ABOUT, when that is a future date — so it comes back around then (when it already happened, that is occurredOn). Decision, kill/renew dates and outside deadlines are eventDates. Write it yourself, in one of four shapes: a day \"2026-10-15\", a month \"2026-10\", a range of two days \"2026-10-20..2026-10-31\" (that is how to say \"late October\"), or a year \"2026\" (a year alone never comes back on its own). Say \"before the 15th\" as the day or a range ending on it. Leave it out when nothing is dated; a date written only in the text is never read. An unreadable date is refused, and nothing is stored. Revising a dated memory by its id with `updates`: its date, remind and recurring carry over unless you send new ones; send null to drop the date (done, cancelled)."
+              },
+              "remind": {
+                "type": "string",
+                "enum": [
+                  "plain",
+                  "quiet"
+                ],
+                "description": "Optional, with eventDate: how it comes back. \"plain\" when you judge it genuinely matters for remembering to DO something — a real deadline, an important date — or when the person says it matters (\"don't let me forget to pay taxes before Oct 15th!\"): on the day it is said plainly, once, to them in their terminal and to you in context (a month or range: its first day and its last). Otherwise \"quiet\", the default: it can surface as a footnote around the date, at most twice — giving it a date is itself what makes it eligible, whatever its salience."
+              },
+              "recurring": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "daily",
+                  "weekly",
+                  "monthly",
+                  "yearly",
+                  null
+                ],
+                "description": "Optional, with a day eventDate: \"daily\", \"weekly\", \"monthly\" or \"yearly\" — it then comes back every time, counted from that day (a birthday: its date, \"yearly\"); null on a revision stops it repeating."
+              },
+              "occurredOn": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Optional: when the thing this memory is about happened — a day \"2026-09-24\", a month \"2026-09\", a range \"2026-09-21..2026-09-27\" or a year \"2026\". Resolve \"yesterday\" or \"last week\" to a real date NOW, while you know today's date; leave it out when you do not know. Not eventDate, which is a future date to be reminded on."
+              },
+              "saidBy": {
+                "type": "string",
+                "enum": [
+                  "owner",
+                  "self",
+                  "inferred"
+                ],
+                "description": "Optional: who said it — \"owner\" (they told you), \"self\" (you said or decided it), \"inferred\" (your own reading; nobody said it)."
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "done",
+                  "planned",
+                  "proposed",
+                  "asked"
+                ],
+                "description": "Optional: what kind of thing it is — \"done\" (it happened), \"planned\" (decided, not done yet), \"proposed\" (put forward, not decided), \"asked\" (a question or request still open)."
+              },
+              "feelings": {
+                "type": "array",
+                "description": "Optional: the feelings in this moment, one object each — mixed feelings are several, and yours and the owner's go side by side. The strongest feeling on a memory holds it higher and slows its fading; memories that felt the way someone feels now come to mind more easily.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "whose": {
+                      "type": "string",
+                      "enum": [
+                        "owner",
+                        "self"
+                      ],
+                      "description": "The owner's feeling, or yours."
+                    },
+                    "core": {
+                      "type": "string",
+                      "enum": [
+                        "happy",
+                        "warm",
+                        "calm",
+                        "curious",
+                        "sad",
+                        "uneasy",
+                        "angry"
+                      ],
+                      "description": "One of seven: happy (pleasure in a thing or what's coming), warm (toward someone), calm (things settling), curious (wanting to know, recognising — myself too), sad (loss, distance, regret), uneasy (something off: caught out, guilty, unsettled, afraid), angry (something wrong). It is kept as you name it. Leave it out to use the word's own core."
+                    },
+                    "emotion": {
+                      "type": "string",
+                      "description": "ONE word: the feeling, from the wheel (happy: hopeful, eager, amused, proud; warm: grateful, fond, trusted, moved, tender; calm: steadied, relieved, settled, content; curious: interested, recognized, clarified, amazed, confused; sad: wistful, rueful, disappointed, lonely; uneasy: sheepish, caught out, guilty, unsettled, wary, worried, afraid; angry: frustrated, hurt, critical, disgusted) or your own word, kept as yours. Never a phrase — the nuance goes in carried_by. The core you name is kept even when the word sits under another: hurt can be sad or angry."
+                    },
+                    "strength": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1,
+                      "description": "How strong, 0-1. Leave it out for the word's default."
+                    },
+                    "valence": {
+                      "type": "number",
+                      "minimum": -1,
+                      "maximum": 1,
+                      "description": "Optional: how pleasant, -1 to 1. Leave it out for the word's default; give it when the word alone would mislead (a mixed \"moved\" might be 0.4)."
+                    },
+                    "carried_by": {
+                      "type": "string",
+                      "description": "The nuance, in your own words: what carried the feeling — the words, what happened, why it sits the way it does. Not a statement of feeling."
+                    },
+                    "other_word": {
+                      "type": "string",
+                      "description": "Your own word, when emotion is \"other\" — or just put the word in emotion."
+                    },
+                    "beneath": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "The index of another feeling in this list that this one sits on top of (angry over afraid)."
+                    }
+                  },
+                  "required": [
+                    "whose",
+                    "emotion"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "about": {
+                "type": "string",
+                "enum": [
+                  "me",
+                  "us",
+                  "owner",
+                  "work",
+                  "world"
+                ],
+                "description": "What this is about, by meaning — me (who I am), us (the owner and me), owner (the owner, as a person), work (the craft: how a job is done), world (anything else). Mark anything personal — people, feelings, life outside the work — owner or us: left unmarked, a fact written in a project counts as that project's work and is shown only there. Left out on a revision (`updates`), it keeps the mark of the memory it revises. Only me, us and owner can become part of who I am."
+              },
+              "unresolved": {
+                "type": "boolean",
+                "description": "Optional: true for an open question or a promise still pending — it stays under \"Still open\" in the wake until closed. To close one: `updates` its id with `unresolved: false` (or `how: \"changed\"` and the answer)."
+              },
+              "traits": {
+                "type": "array",
+                "description": "Optional, and only when this memory really shows how you acted; most carry none. Don't make up depth: no nudge is better than a guessed one. Each nudge names one of seven axes — a spectrum between two good things, the first pole roughly where training puts you — and the pole the moment leaned toward: careful-bold, agreeable-candid, guarded-open (about your inner life), focused-curious, following-initiating, inward-outward (your own memory vs others'), serious-playful. Shown on the dashboard only; it changes nothing about how the memory is kept or recalled.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "axis": {
+                      "type": "string",
+                      "enum": [
+                        "careful-bold",
+                        "agreeable-candid",
+                        "guarded-open",
+                        "focused-curious",
+                        "following-initiating",
+                        "inward-outward",
+                        "serious-playful"
+                      ],
+                      "description": "One of the seven axes."
+                    },
+                    "toward": {
+                      "type": "string",
+                      "enum": [
+                        "careful",
+                        "bold",
+                        "agreeable",
+                        "candid",
+                        "guarded",
+                        "open",
+                        "focused",
+                        "curious",
+                        "following",
+                        "initiating",
+                        "inward",
+                        "outward",
+                        "serious",
+                        "playful"
+                      ],
+                      "description": "One of that axis's two poles (bold, for careful-bold)."
+                    },
+                    "strength": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1,
+                      "description": "How clearly the moment showed it, 0-1."
+                    },
+                    "carried_by": {
+                      "type": "string",
+                      "description": "Briefly, what in the moment showed it."
+                    }
+                  },
+                  "required": [
+                    "axis",
+                    "toward",
+                    "strength"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "content"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "chapter",
+    "description": "The episode's return channel: write this stretch of the session into your first-person journal — a diary of what happened, in your own voice, at any length. The journal stays open — when something significant happens later, append to it in the moment.\n\nWhen: Call it when the boundary ask arrives, and again whenever something happens afterwards that the chapter you already wrote does not contain.\nDo NOT call it to report status or keep a build log — a chapter is a diary of what happened; what the repo or logs hold stays there.\nDo NOT use it instead of memories: what caught your attention goes through `session_end` or `remember`, one idea each.\nDo NOT manufacture depth: a short true chapter beats a deep-sounding one, and not every session changes you.\n\nWhat this tool guarantees (each of these is enforced by the engine, not by this text):\n- It is bound to ONE session exactly as `session_end` is: the id the ask named, checked against the hooks' own live-session registry, and refused with which of the four it was.\n- The chapter number comes back from what was actually WRITTEN, not from how many times you were asked — a chapter you did not write does not exist.\n- A second call inside the same chapter continues it rather than starting another — that is what appending in the moment means, and the heading is emitted only when a new ask has opened one.\n- The journal is a gated entrance like any other: credentials are redacted before anything is written, and the gate's text — not your draft — is what lands.\n- Every earlier state of the episode is kept: appending revises, and revision archives what was there first.\n- The episode becomes MEMORY only through ordinary ingestion at the boundary — once, as a self-kind memory, through the same battery everything else crosses. Writing here is not a way to write memory directly.\n- `about` is carried to the chapter's memory copy, and kept when the copy regrows; a later chapter's mark replaces an earlier one. Only me, us and owner let the chapter reach a wake in another directory.\n- Under observer stance nothing is written and the refusal says so.\n- `drewOn` credits only memories this session was shown — its footnotes, loud memories and recall answers — at half a use, at most 3 per boundary and once a day each. An id it was not shown, a handoff, a superseded memory or one faded under a newer one is refused by name, and nothing is credited for it.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "session": {
+          "type": "string",
+          "description": "The session this chapter belongs to — the id the boundary ask named. Required unless this server was launched already bound to one; it must match the bound session either way."
+        },
+        "text": {
+          "type": "string",
+          "description": "What happened in this stretch, in order and in detail, the way a person keeps a diary of their day: what we did, what was said (exact words when they matter), what was decided and why, what went wrong, what surprised you, what is still open. Keep a list, a table or a pasted text word for word when its specifics matter. Leave out what the repo, the PR or the logs already hold (commit ids, test counts, file paths) unless one matters to the story. A line of how it felt belongs here; lessons and patterns belong to the nightly reflection. As long as the stretch needs: a quiet hour is a few lines."
+        },
+        "title": {
+          "type": "string",
+          "description": "One line: what this session's episode is — the line a later index shows for all of it, so it can be told apart without being read. Set on the first chapter only."
+        },
+        "about": {
+          "type": "string",
+          "enum": [
+            "me",
+            "us",
+            "owner",
+            "work",
+            "world"
+          ],
+          "description": "What this session was about, by meaning — me, us, owner, work or world, as for a memory. Please set it: it goes to the chapter's memory copy, and only me, us or owner carry the chapter into a wake in another directory. A session that was only building is work; one about people, feelings or life outside the work is owner or us."
+        },
+        "drewOn": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional: ids of memories shown to you this session — footnotes, recall results — that changed what you did or said. Each is credited as drawn on, so it holds longer. Not one you only saw; one you opened by id is credited already. Up to 3 per ask; an id this session was not shown is refused."
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "additionalProperties": false
+    }
+  }
+]
