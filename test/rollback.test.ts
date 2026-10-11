@@ -13,7 +13,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { EXIT, run } from "../src/adapters/cli/index.js";
@@ -362,5 +362,11 @@ describe("rollback", () => {
     const bad = await cli(["rollback", "--dir", dir, "--to", "../../etc", "--yes"]);
     expect(bad.code).toBe(EXIT.refused);
     expect(bad.err).toContain("--to takes the name of a pre-migration copy");
+
+    // A copy inside a live store is not read, by name (`homedir()` is the preload's temp home).
+    const live = join(homedir(), ".bansai", "snapshots", `2026-10-11T07-25-00-000Z-pre-migration-v${OLD}-to-v${NEW}`);
+    const forbidden = await cli(["rollback", "--dir", dir, "--to", live, "--yes"]);
+    expect(forbidden.code).toBe(EXIT.refused);
+    expect(forbidden.err).toContain("refused by name");
   });
 });

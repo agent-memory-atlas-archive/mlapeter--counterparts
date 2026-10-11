@@ -66,6 +66,7 @@ import {
   SCHEMA_VERSION,
   Store,
   ROLLBACK_HOLD_DIR,
+  assertSafeDataDir,
   paths,
   preMigrationVersions,
   readRollbackHold,
@@ -75,7 +76,7 @@ import {
 import type { MigrationNote, RollbackHold } from "../../core/store/index.js";
 import { openDb } from "../../core/store/db.js";
 import { listSessions, readServerRecords, serverBelieved } from "../sessions.js";
-import { pathGuard, readLiveness, sameFilesystemRefusal } from "./start-fresh.js";
+import { pathGuard, readLiveness, realpathDeep, sameFilesystemRefusal } from "./start-fresh.js";
 import { look } from "./wire.js";
 import type { ProcessLister } from "./wire.js";
 
@@ -314,6 +315,16 @@ export function planRollback(input: RollbackInput): RollbackPlan {
 
   const guard = pathGuard("store", input.storeDir, input.configPath, input.home, "--dir");
   if (guard !== null) return refuse(guard);
+  // The copy is only read, and still: a snapshots folder inside a live store
+  // nobody here may touch is refused by name, as written and as it resolves.
+  if (snapshotsDir !== null) {
+    try {
+      assertSafeDataDir(snapshotsDir);
+      assertSafeDataDir(realpathDeep(snapshotsDir));
+    } catch {
+      return refuse(`refused by name: ${snapshotsDir} is inside a live store this package never touches (CLAUDE.md).`);
+    }
+  }
   const dbPath = join(storeDir, DATABASE_FILE);
   if (!existsSync(dbPath)) return refuse(`refused: there is no store database at ${dbPath}, so there is nothing to roll back.`);
 
