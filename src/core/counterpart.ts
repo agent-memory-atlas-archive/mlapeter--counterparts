@@ -7183,6 +7183,15 @@ export class Counterpart {
           return null;
         }
       },
+      // Named but REMOVED: no content fallback, so the new memory is not
+      // attached to some other memory in the removed one's place (review of #422).
+      removed: (id: string) => {
+        try {
+          return this.store.deniedIds().includes(this.store.resolve(id));
+        } catch {
+          return false;
+        }
+      },
       candidates: (query): Candidate[] => {
         const out: Candidate[] = [];
         for (const hit of this.store.search(query.content, query.limit)) {

@@ -2003,6 +2003,19 @@ export class McpServer {
         },
       };
     }
+    // A REMOVED memory named in `updates` (review of #422): said whether or not
+    // a `how` was sent — the writer named one memory, and it is not there.
+    if (r.reason === "target-removed") {
+      return {
+        settled: {
+          ok: false,
+          applied: false,
+          path: r.path,
+          reason: r.reason,
+          detail: "the memory named in updates was removed, so nothing was updated; this one is stored on its own, unlinked.",
+        },
+      };
+    }
     if (!sentHow) return {};
     const why =
       r.path === "belief"

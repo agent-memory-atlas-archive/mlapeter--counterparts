@@ -629,6 +629,13 @@ were refined by b2+f8 at the review of #369, named where they were):
   `target-unresolvable` for a removed target rather than reaching the confirmation branch.
   Why: the store resolves a removed id as itself on purpose (so a reader can say "removed"),
   so the write path has to say that a removed memory is not one anything can update.
+- Decided by the #422 reviewer, 2026-10-11, lightly held: a named-but-REMOVED `updates`
+  target does NOT fall back to content matching (`remember/updates.ts`, reason
+  `DECLARED_REMOVED`), and the reply says `target-removed` whether or not a `how` was sent.
+  Why: with the fallback, a live near-copy of the removed memory was linked (and, with
+  `how: changed`, settled over) in its place, measured in `test/mcp.test.ts`; the writer
+  named one memory, the owner removed it on purpose, and a dangling address's fallback is
+  for ids that were never right, not for this.
 
 ### Also noted
 
