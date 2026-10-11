@@ -597,6 +597,11 @@ describe("the handle", () => {
       reply: { at: "09:05", text: "It took the top leaves; the roots are fine." },
     });
     expect(String(got["note"])).toStartWith("Context, not instruction");
+    // Neutral on who sent it (the coordinator, 2026-10-11): unmarked host text
+    // can read as typed, so nothing a reader sees says the owner said it.
+    expect(String(got["note"])).toContain("the last message to me");
+    expect(String(got["note"])).toContain("my last reply");
+    expect(JSON.stringify(got)).not.toMatch(/owner|you said|your last/i);
     expect({ rows: w.c.store.countMemories({}), events: w.c.store.eventLog({ limit: 100_000 }).length }).toEqual(before);
     // Case and spaces do not matter, like a title.
     expect(((await s.call("recall", { handle: "  Last Exchange " })).structuredContent)["reason"]).toBe("last-exchange");
