@@ -1076,7 +1076,7 @@ async function runHook(
     // The claim says it is done, so the next event that looks the same — one
     // that starts after this — is not taken for this one's twin (`../claim.ts`).
     if (claim.outcome === "won" && claimKey !== null && claim.at !== undefined) {
-      finishClaim(adapter.counterpart, claimKey, claim.at);
+      finishClaim(adapter.counterpart, claimKey, claim.at, Date.now(), claim.token);
     }
     adapter.counterpart.close();
   }

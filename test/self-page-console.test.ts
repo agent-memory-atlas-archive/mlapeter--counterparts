@@ -233,6 +233,38 @@ describe("counterparts self-page", () => {
     expect(within.out.join("\n")).toContain("The short version was not kept: the page is within its room");
   });
 
+  /**
+   * `--short <file>` AND `--short=<file>` BOTH CARRY THE FILE (2026-10-11).
+   * Before `short` was declared to the parser the spaced form arrived as the
+   * boolean `true`, with the file left over as a positional, and was refused —
+   * while the help and the room note both print the spaced form.
+   */
+  test("--short <file> and --short=<file> both add the short version", async () => {
+    const long = `${PAGE}\n\n${"A placeholder paragraph of the page. ".repeat(200)}`.trim();
+    for (const [form, args] of [
+      ["spaced", (path: string): string[] => ["--short", path]],
+      ["joined", (path: string): string[] => [`--short=${path}`]],
+    ] as const) {
+      withPage(long);
+      const short = `## Core\n\nCore: placeholder, said short (${form}).`;
+      const added = consoleWith();
+      expect(await run(["self-page", "--write", ...args(shortFile(short)), `--dir=${dir}`], { io: added.io, env: {} })).toBe(EXIT.ok);
+      expect(added.err).toEqual([]);
+      expect(added.out.join("\n")).toContain("sessions read the short version");
+      const c = Counterpart.open({ dir, observer: true });
+      expect(c.selfPage()?.body).toBe(long);
+      expect(c.selfPage()?.short?.body).toBe(short);
+      c.store.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+    // Spaced, with nothing after it, is still a usage refusal rather than a
+    // short version read from nowhere.
+    withPage(long);
+    const bare = consoleWith();
+    expect(await run(["self-page", "--write", `--dir=${dir}`, "--short"], { io: bare.io, env: {} })).toBe(EXIT.usage);
+    expect(bare.err.join("\n")).toContain("--short <file> is the page's short version");
+  });
+
   test("--clear unwrites the page, keeps it as a version, and --restore puts it back", async () => {
     withPage(PAGE);
     const cleared = consoleWith();

@@ -40,6 +40,7 @@ import {
   SCHEMA_UNREADABLE_REFUSAL,
   STALE_SERVER_REFUSAL,
   STORE_BUSY_REFUSAL,
+  cacheAheadRefusal,
   schemaAhead,
 } from "../src/adapters/mcp/server.js";
 import {
@@ -244,16 +245,33 @@ describe("the schema gate: a store a newer build migrated refuses every tool", (
     expect(existsSync(sessionsDir(dir)) ? readdirSync(sessionsDir(dir)).filter((n) => !n.startsWith("mcp-server@")) : []).toEqual([]);
   });
 
-  test("a CACHE stamp bumped from outside refuses the same way", async () => {
+  /**
+   * THE CACHE ALONE AHEAD SAYS WHAT IS TRUE (2026-10-11): the same gate and
+   * reason, but not "was updated … reconnect" — after a rollback a reconnect
+   * loads this same build onto the same cache. It names the cache's files and
+   * the two ways out; with the store ahead too, the store's sentence stands.
+   */
+  test("a CACHE stamp bumped from outside refuses every tool, in the cache's own words", async () => {
     const s = server();
     seed(s);
     const ops = outside(paths.operational(dir));
     const cache = outside(paths.cache(dir));
     cache.run("UPDATE cache_meta SET value = ? WHERE key = 'schemaVersion'", String(CACHE_SCHEMA_VERSION + 1));
 
-    await assertEveryToolRefuses(s, ops, cache, "schema-ahead", STALE_SERVER_REFUSAL);
+    const said = cacheAheadRefusal(paths.cache(dir));
+    expect(said).toContain(`delete ${paths.cache(dir)}*`);
+    // An update that moved only the cache: the newer build is installed, and the reconnect loads it.
+    expect(said).toContain("If that newer build is installed, run /mcp and Reconnect to load it.");
+    expect(said).not.toContain("was updated");
+    expect(said.includes("\n")).toBe(false);
+    await assertEveryToolRefuses(s, ops, cache, "schema-ahead", said);
     const one = (await s.call("recall", ARGS["recall"] ?? {})).structuredContent;
     expect(one["cache"]).toEqual({ expected: CACHE_SCHEMA_VERSION, found: String(CACHE_SCHEMA_VERSION + 1), ahead: true });
+    // Both ahead: a newer build this server has not loaded — the store's words.
+    ops.run("UPDATE meta SET value = ? WHERE key = 'schemaVersion'", String(SCHEMA_VERSION + 1));
+    expect((await s.call("status", {})).structuredContent["detail"]).toBe(STALE_SERVER_REFUSAL);
+    // Desktop's server says its own way back.
+    expect(cacheAheadRefusal(paths.cache(dir), "claude-desktop")).toContain("then quit and reopen Claude Desktop.");
   });
 
   test("the gate is read per call, not latched: put the stamp back and the same tool writes (the control)", async () => {

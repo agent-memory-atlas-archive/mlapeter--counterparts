@@ -343,9 +343,19 @@ would — the CLI (`counterparts wake --scope <dir>`, printing it) or an MCP rea
 not start a session — and the preface naming it beside the file. Not built on purpose
 (2026-10-10): the owner's brief was to name the door if it existed and file it if not.
 
-## 14. The Yesterday line has no scope gate — OPEN 2026-10-10 (review of #376)
+## 14. The published bundle's Yesterday line has no scope gate — OPEN 2026-10-11 (narrowed)
 
-The Yesterday line names every folder's chapter titles with no scope gate (pre-existing on
-master; `handoff/last-here.ts#chaptersOn` leaves out confidential chapters only). Align it with
-the About-me / Today-elsewhere gate (`Counterpart#selfChapterElsewhere`, `#elsewhereFor`: scope
-on, via `WakeHere.exportsFrom`). Not fixed in #376.
+At a session start the Yesterday line is gated since 2026-10-11 (`Counterpart#yesterdayFor`
+with a reader, `#nameableHere`): another directory's chapter is named by title only on the
+About-me gate, and counted otherwise. The PUBLISHED render — the turn-end's and `rebrief`'s,
+composed for no one session — still names every folder's titles (confidential chapters left
+out, `handoff/last-here.ts#chaptersOn`), because the gate is relative to a reader it does not
+have. That text reaches a session only when the session-start assembly falls back to the
+published bundle (`Self#assemble` returns null): a bundle an older build published, or a host
+whose ceiling differs from the one the bundle was composed under — which can last, for a second
+host on another budget, rather than one boundary. The dashboard reads it too, as the owner.
+
+**What would close it:** the published line counting what no reader may be shown (another
+directory's chapters not about me, or from a directory whose scope is off), with the
+session-start assembly naming them where they belong; or a fallback that re-renders the
+Yesterday line gated instead of delivering the published one.

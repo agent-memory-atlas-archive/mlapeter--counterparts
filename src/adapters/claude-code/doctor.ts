@@ -1185,12 +1185,17 @@ function withdrawnFinding(input: DoctorInput): Finding | null {
     );
   }
   if (v.kind === "cache-ahead") {
+    // The same two ways out as the server's refusal (`mcp/server.ts#
+    // cacheAheadRefusal`, review of #382): "update" alone was wrong after
+    // going back to an older build on purpose. This console is the older
+    // build here, so both ways are open: the newer build back, or the cache
+    // (rebuildable, no memory in it) gone.
     return finding(
       "embedder",
       "amber",
       RECALL_TITLE,
       `off in this process — the store's cache was written by a newer Counterparts (cache v${v.found}; this build reads v${v.expected}). Recall still matches on words`,
-      "Update: bun add -g counterparts@latest — then in Claude Code run /mcp → Reconnect so the server loads it.",
+      `Either install the newer build again (bun add -g counterparts@latest), or, to stay on this one, delete ${tilde(input.dir)}/cache/cache.sqlite* (the search cache alone; no memory is kept there, and it is rebuilt) — then in Claude Code run /mcp → Reconnect so the server opens it.`,
       { cacheAhead: true, found: v.found, expected: v.expected },
     );
   }

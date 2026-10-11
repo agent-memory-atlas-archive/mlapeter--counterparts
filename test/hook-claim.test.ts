@@ -25,6 +25,7 @@ import {
   CLAIM_WINDOW_MS,
   SET_ASIDE_LOCK,
   claimDelivery,
+  claimStep,
   claimsPath,
   deliveryClaimKey,
   finishClaim,
@@ -112,7 +113,7 @@ describe("claimDelivery", () => {
       const base = { hook: "user-prompt-submit" as const, sessionId: "s1", observer: false };
       // Both processes started at t0; the settings hook claims first.
       const first = claimDelivery(cp, { ...base, key: "k1", side: "settings", started: t0, now: t0 + 90 });
-      expect(first).toEqual({ outcome: "won", at: t0 + 90 });
+      expect(first).toEqual({ outcome: "won", at: t0 + 90, token: expect.stringMatching(/^[0-9a-f]{12}$/) });
       // Its twin, while the holder still runs.
       expect(claimDelivery(cp, { ...base, key: "k1", side: "plugin", started: t0 + 2, now: t0 + 140 })).toEqual({ outcome: "lost", heldBy: "settings" });
       const rows = cp.store.eventLog({ name: HOOK_CLAIM_LOST_EVENT });
@@ -210,6 +211,67 @@ describe("claimDelivery", () => {
       expect(keys).toHaveLength(CLAIM_KEEP);
       expect(keys).toContain(`k${String(CLAIM_KEEP + 29)}`);
       expect(keys).not.toContain("k0");
+    } finally {
+      cp.close();
+    }
+  });
+
+  /**
+   * ITS OWN CLAIM IS ITS OWN (2026-10-11, from the review of #378). A try
+   * whose commit landed though the write reported failure leaves this call's
+   * claim in the row, and the write runs its callback again (`updateClaims`).
+   * That try must read the claim as its own — the event delivered here —
+   * and not as a twin's, which would deliver it nowhere.
+   */
+  test("a try that meets this call's own landed claim takes it as its own; a twin with every other field the same still loses", () => {
+    const t0 = 1_800_000_000_000;
+    const attempt = { key: "k", side: "settings" as const, now: t0 + 90, started: t0, once: true, token: "a1a1a1a1a1a1" };
+    const first = claimStep(undefined, attempt);
+    expect(first.heldBy).toBeNull();
+    expect(first.next).toBeDefined();
+    // The retry, meeting the row its own landed commit wrote: won, nothing to write.
+    expect(claimStep(first.next, attempt)).toEqual({ next: undefined, heldBy: null });
+    // A twin: the same key, side, start and moment — only the call differs.
+    expect(claimStep(first.next, { ...attempt, token: "b2b2b2b2b2b2" })).toEqual({ next: undefined, heldBy: "settings" });
+    // A row an older build wrote carries no token: a holder there is a twin, as before.
+    const older = JSON.stringify({ k: [t0 + 90, "plugin", t0] });
+    expect(claimStep(older, attempt)).toEqual({ next: undefined, heldBy: "plugin" });
+    // Through the file: the token is kept beside the claim, and through the finish stamp.
+    const cp = Counterpart.open({ dir: store });
+    try {
+      const won = claimDelivery(cp, { hook: "session-start", key: "k", sessionId: "s1", side: "settings", observer: false, started: t0, now: t0 + 90, once: true });
+      expect(won.outcome).toBe("won");
+      const row = claimRow(cp)["k"] as unknown[];
+      expect(row.slice(0, 4)).toEqual([t0 + 90, "settings", t0, null]);
+      expect(String(row[4])).toMatch(/^[0-9a-f]{12}$/);
+      expect(finishClaim(cp, "k", t0 + 90, t0 + 200)).toBe(true);
+      expect(claimRow(cp)["k"]).toEqual([t0 + 90, "settings", t0, t0 + 200, row[4]]);
+      // Another call of the same process is not this call: it loses, as a twin does.
+      expect(claimDelivery(cp, { hook: "session-start", key: "k", sessionId: "s1", side: "plugin", observer: false, started: t0, now: t0 + 300, once: true }).outcome).toBe("lost");
+    } finally {
+      cp.close();
+    }
+  });
+
+  test("the finish stamp names the claim's token too; a row with no token (an older build's) is matched on its time, as before (review of #382)", () => {
+    const t0 = 1_800_000_000_000;
+    const cp = Counterpart.open({ dir: store });
+    try {
+      const won = claimDelivery(cp, { hook: "stop", sessionId: "s1", observer: false, key: "k", side: "settings", started: t0, now: t0 + 90 });
+      expect(won.token).toMatch(/^[0-9a-f]{12}$/);
+      // The same moment, another call's token: not this claim.
+      expect(finishClaim(cp, "k", t0 + 90, t0 + 200, "ffffffffffff")).toBe(false);
+      expect((claimRow(cp)["k"] as unknown[])[3]).toBeNull();
+      expect(finishClaim(cp, "k", t0 + 90, t0 + 200, won.token)).toBe(true);
+      // An older build's row: `[at, side, started]`, no token — the time decides.
+      const db = openDb(claimsPath(store));
+      try {
+        db.run("UPDATE claims SET value = ? WHERE key = ?", JSON.stringify({ old: [t0 + 300, "plugin", t0] }), CLAIMS_ROW);
+      } finally {
+        db.close();
+      }
+      expect(finishClaim(cp, "old", t0 + 300, t0 + 400, "a1a1a1a1a1a1")).toBe(true);
+      expect(claimRow(cp)["old"]).toEqual([t0 + 300, "plugin", t0, t0 + 400]);
     } finally {
       cp.close();
     }
@@ -573,6 +635,38 @@ describe("a locked store", () => {
       cp.close();
     }
   });
+
+  test("a held claims file beside a fresh set-aside lock is contention all the same: one wait, not three (#366 nit)", () => {
+    // Before (2026-10-11): a lock error went to the set-aside wait first — a
+    // fresh lock there meant CLAIM_WAIT_MS more, then the busy wait again.
+    const cp = Counterpart.open({ dir: store });
+    try {
+      expect(claimDelivery(cp, { ...base, key: "first" }).outcome).toBe("won");
+      mkdirSync(join(dirname(claimsPath(store)), SET_ASIDE_LOCK));
+      const holder = openDb(claimsPath(store));
+      let claim: ReturnType<typeof claimDelivery> | null = null;
+      let took = -1;
+      try {
+        holder.transaction(() => {
+          holder.run("UPDATE claims SET value = value WHERE key = ?", CLAIMS_ROW);
+          const t = Date.now();
+          claim = claimDelivery(cp, base);
+          took = Date.now() - t;
+        });
+      } finally {
+        holder.close();
+      }
+      expect((claim as ReturnType<typeof claimDelivery> | null)?.busy).toBe(true);
+      // COUNTED IN WAITS, not timed tight (review of #382): each wait is a
+      // full CLAIM_WAIT_MS of sleep, so the old three (measured 1,697 ms)
+      // cannot come in under three of them, and the one wait left has a whole
+      // second of room on a slow, busy machine.
+      expect(took).toBeGreaterThanOrEqual(CLAIM_WAIT_MS - 50);
+      expect(took).toBeLessThan(3 * CLAIM_WAIT_MS);
+    } finally {
+      cp.close();
+    }
+  });
 });
 
 // ── a claims file that is not a database (review of #359) ───────────────────
@@ -808,6 +902,28 @@ describe("a claims file that is not a database", () => {
       expect(mended.outcome).toBe("won");
       expect(basename(mended.setAside ?? "")).toMatch(/^hook-claims\.unreadable-\d+\.sqlite$/);
       expect(existsSync(lock)).toBe(false);
+    } finally {
+      cp.close();
+    }
+  });
+
+  test("a set-aside lock dated in the future — the clock stepped back — is a dead holder's, not a fresh one (#366 nit)", () => {
+    // Before (2026-10-11): its age read negative, so fresh, until the clock
+    // caught up: every claim waited CLAIM_WAIT_MS on nobody, and none mended
+    // the file.
+    const cp = Counterpart.open({ dir: store });
+    try {
+      corrupt();
+      const lock = join(dirname(claimsPath(store)), SET_ASIDE_LOCK);
+      mkdirSync(lock);
+      const ahead = (Date.now() + 3_600_000) / 1000;
+      utimesSync(lock, ahead, ahead);
+      const t0 = Date.now();
+      const mended = claimDelivery(cp, base);
+      expect(mended.outcome).toBe("won");
+      expect(basename(mended.setAside ?? "")).toMatch(/^hook-claims\.unreadable-\d+\.sqlite$/);
+      expect(existsSync(lock)).toBe(false);
+      expect(Date.now() - t0).toBeLessThan(CLAIM_WAIT_MS);
     } finally {
       cp.close();
     }

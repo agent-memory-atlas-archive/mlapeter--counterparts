@@ -2171,7 +2171,7 @@ export class Counterpart {
         publishedHash: hashText(stored),
         horizon: asked.items,
         ...(asked.more.length === 0 ? {} : { horizonMore: asked.more }),
-        ...this.yesterdayFor(at),
+        ...this.yesterdayFor(at, { here }),
         ...this.elsewhereFor(at, here),
       });
       if (out === null) return null;
@@ -2636,19 +2636,53 @@ export class Counterpart {
    * Its SHORTER FORMS ride beside it (review of #350, 2026-10-09): fewer
    * titles, the rest by count, for the wake to step down only when "Still
    * open" would otherwise list nothing (`handoff/last-here.ts#yesterdayShorter`).
+   *
+   * AT A SESSION START, GATED (2026-10-11; self INTERFACE-GAPS §14 files the rest):
+   * `reader` is the session the line is for, and another directory's chapter
+   * is named by title and id only on the "About me, from another directory"
+   * line's gate — a copy marked about me, us or the owner, and that
+   * directory's scope setting on (`WakeHere.exportsFrom`; no way to ask, or a
+   * chapter whose row recorded no directory, and it is not named). One this
+   * session's own directory wrote is named as before. The rest are counted.
+   * Without `reader` — the turn-end's and `rebrief`'s published render, which
+   * no one session reads — the line is store-wide, as it was.
    */
-  private yesterdayFor(at: string | undefined): { yesterday?: string; yesterdayShorter?: string[] } {
+  private yesterdayFor(at: string | undefined, reader?: { here: WakeHere | undefined }): { yesterday?: string; yesterdayShorter?: string[] } {
     if (at === undefined || !isDay(at)) return {};
     try {
       const date = addDays(at, -1);
       const fromDay = Math.max(0, this.store.livedDay() - LAST_HERE_LIFE_DAYS + 1);
-      const day = chaptersOn(this.store, date, { fromDay });
-      const line = yesterdayLine(day, date);
+      const all = chaptersOn(this.store, date, { fromDay });
+      const day = reader === undefined ? all : all.filter((c) => this.nameableHere(c.scope ?? null, c.aboutMe === true, reader.here));
+      const hidden = all.length - day.length;
+      const line = yesterdayLine(day, date, undefined, hidden);
       if (line === null) return {};
-      const shorter = yesterdayShorter(day, date);
+      const shorter = yesterdayShorter(day, date, hidden);
       return shorter.length === 0 ? { yesterday: line } : { yesterday: line, yesterdayShorter: shorter };
     } catch {
       return {};
+    }
+  }
+
+  /**
+   * May a chapter born in `scope` be named, by title and id, in a wake for
+   * `here`? Its own directory's, yes; another's only on the "About me, from
+   * another directory" gate (`selfChapterElsewhere`): about me, us or the
+   * owner, and that directory's scope setting on. No directory recorded, or
+   * no way to ask, and it is not. Confidential chapters never reach here
+   * (`chaptersOn` leaves them out). Never throws.
+   */
+  private nameableHere(scope: string | null, aboutMe: boolean, here: WakeHere | undefined): boolean {
+    if (scope === null) return false;
+    const norm = (s: string): string => s.trim().replace(/\/+$/, "");
+    const own = norm(here?.scope ?? "");
+    if (own.length > 0 && norm(scope) === own) return true;
+    const exportsFrom = here?.exportsFrom;
+    if (!aboutMe || exportsFrom === undefined) return false;
+    try {
+      return exportsFrom(scope) === true;
+    } catch {
+      return false;
     }
   }
 

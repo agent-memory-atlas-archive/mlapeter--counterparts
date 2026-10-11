@@ -10,7 +10,7 @@
 #
 # It runs ONLY the binary: install, a SessionStart wake, a UserPromptSubmit,
 # the worker the hooks spawn of themselves, the MCP server over stdio
-# (tools/list, note, recall — by meaning as well as words), doctor, the
+# (tools/list, remember, recall — by meaning as well as words), doctor, the
 # dashboard's page and static files, and the nightly mode's stand-down.
 
 set -uo pipefail
@@ -129,7 +129,7 @@ fi
 
 # ── 3. the MCP server over stdio ────────────────────────────────────────────
 OUT=$(mcp '{"jsonrpc":"2.0","id":2,"method":"tools/list"}')
-if grep -q '"serverInfo"' <<<"$OUT" && grep -q '"name":"recall"' <<<"$OUT" && grep -q '"name":"note"' <<<"$OUT"; then
+if grep -q '"serverInfo"' <<<"$OUT" && grep -q '"name":"recall"' <<<"$OUT" && grep -q '"name":"remember"' <<<"$OUT"; then
   ok "mcp: initialize + tools/list ($(grep -o '"name":"[a-z_]*"' <<<"$OUT" | wc -l | tr -d ' ') names)"
 else
   no "mcp tools/list" "$OUT
@@ -138,13 +138,13 @@ fi
 
 CANARY="The espresso machine in the kitchen is a Rancilio Silvia."
 OUT=$(mcp \
-  "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"note","arguments":{"text":"%s"}}}' "$CANARY")" \
+  "$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"remember","arguments":{"text":"%s"}}}' "$CANARY")" \
   '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"recall","arguments":{"question":"what espresso machine is in the kitchen?","mode":"facts"}}}' \
   '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"recall","arguments":{"question":"which coffee maker do we own?","mode":"facts"}}}')
 NOTED=$(grep '"id":2' <<<"$OUT" || true)
 RECALLED=$(grep '"id":3' <<<"$OUT" || true)
 MEANING=$(grep '"id":4' <<<"$OUT" || true)
-if grep -q '"isError":true' <<<"$NOTED" || [ -z "$NOTED" ]; then no "mcp note" "$NOTED"; else ok "mcp: note landed"; fi
+if grep -q '"isError":true' <<<"$NOTED" || [ -z "$NOTED" ]; then no "mcp remember" "$NOTED"; else ok "mcp: remember landed"; fi
 grep -q 'Rancilio Silvia' <<<"$RECALLED" && ok "mcp: recall returned the note" || no "mcp recall" "$RECALLED"
 grep -q '"semantic":"in-line"' <<<"$RECALLED" && ok "mcp: recall embedded the question with the embedded table (semantic in-line)" ||
   no "mcp recall did not use the table" "$RECALLED"

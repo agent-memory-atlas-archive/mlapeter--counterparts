@@ -323,6 +323,11 @@ export interface ChaptersOnDate {
   readonly chapters: number;
   /** When the episode was born, for the order. */
   readonly createdAt: number;
+  /** The directory it was born in, when the row recorded one — for the
+   *  wake's gate on another directory's titles (`Counterpart#yesterdayFor`). */
+  readonly scope?: string | null;
+  /** A live copy of it is marked about me, us or the owner, as `ChapterHere.aboutMe`. */
+  readonly aboutMe?: boolean;
 }
 
 /** Every chapter heading in an episode body, with the date it names when it names one. */
@@ -379,7 +384,14 @@ export function chaptersOn(store: Store, date: string, opts: { fromDay?: number 
       // date (2026-09-24) is read by the day it was born, and only then.
       if (dated === 0 && localDate(row.created_at ?? 0, zone) === date) that = 1;
       if (that === 0) continue;
-      out.push({ id, title: row.title === null || row.title.trim().length === 0 ? null : row.title, chapters: that, createdAt: row.created_at ?? 0 });
+      out.push({
+        id,
+        title: row.title === null || row.title.trim().length === 0 ? null : row.title,
+        chapters: that,
+        createdAt: row.created_at ?? 0,
+        scope: row.origin_scope === null || row.origin_scope.length === 0 ? null : row.origin_scope,
+        aboutMe: (copies.get(id) ?? []).some((c) => c.about !== null && (CORE_ABOUT_MARKS as readonly string[]).includes(c.about)),
+      });
     } catch {
       continue;
     }
@@ -396,9 +408,17 @@ export function chaptersOn(store: Store, date: string, opts: { fromDay?: number 
  * night is read in the morning, and a date stays true where "yesterday" alone
  * would not. No model run: titles and ids only. Null when that day has no
  * chapter.
+ *
+ * `hidden` (2026-10-11): how many more of that day's episodes the caller
+ * left out of `day` because their directory's chapters may not be named
+ * here (`Counterpart#yesterdayFor`'s gate). They join the count, never by
+ * title or id; when they are all there is, the line is the count alone.
  */
-export function yesterdayLine(day: readonly ChaptersOnDate[], date: string, titles = YESTERDAY_SHOWN): string | null {
-  if (day.length === 0) return null;
+export function yesterdayLine(day: readonly ChaptersOnDate[], date: string, titles = YESTERDAY_SHOWN, hidden = 0): string | null {
+  if (day.length === 0) {
+    if (hidden <= 0) return null;
+    return flatten(`Yesterday, ${date.slice(5)}: chapters from ${String(hidden)} session${hidden === 1 ? "" : "s"} in other directories.`);
+  }
   // The first `YESTERDAY_SHOWN` are named, the first `titles` of them by
   // title and id and the rest by id alone — pointers instead of titles
   // (2026-10-10, `yesterdayShorter`); past them, a count.
@@ -409,7 +429,7 @@ export function yesterdayLine(day: readonly ChaptersOnDate[], date: string, titl
       ? `${c.id}${n === "" ? "" : ` (${n.slice(2)})`}`
       : `"${excerpt(c.title, YESTERDAY_TITLE_BYTES)}" (${c.id}${n})`;
   });
-  const rest = day.length - shown.length;
+  const rest = day.length - shown.length + Math.max(0, hidden);
   return flatten(`Yesterday, ${date.slice(5)}: ${shown.join("; ")}${rest > 0 ? `; and ${String(rest)} more` : ""}.`);
 }
 
@@ -422,13 +442,13 @@ export function yesterdayLine(day: readonly ChaptersOnDate[], date: string, titl
  * the count past them is the whole line's. The wake steps down these to make
  * room for what ranks above the line (`self/briefing.ts#ROOM_ORDER`): the
  * Arriving lane and "Still open"'s first item; the count is honest because it
- * is counted here, where the chapters are.
+ * is counted here, where the chapters are. `hidden` as `yesterdayLine`'s.
  */
-export function yesterdayShorter(day: readonly ChaptersOnDate[], date: string): string[] {
+export function yesterdayShorter(day: readonly ChaptersOnDate[], date: string, hidden = 0): string[] {
   const out: string[] = [];
-  let last = yesterdayLine(day, date);
+  let last = yesterdayLine(day, date, YESTERDAY_SHOWN, hidden);
   for (let n = Math.min(YESTERDAY_SHOWN, day.length) - 1; n >= 0; n--) {
-    const line = yesterdayLine(day, date, n);
+    const line = yesterdayLine(day, date, n, hidden);
     if (line === null || last === null || line.length >= last.length) continue;
     out.push(line);
     last = line;

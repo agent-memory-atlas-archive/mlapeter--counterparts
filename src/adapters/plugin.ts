@@ -46,7 +46,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, realpathSync, rmdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, rmdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -436,6 +436,9 @@ export interface FirstRunInput {
   readonly waitMs?: number;
   readonly staleMs?: number;
   readonly now?: () => number;
+  /** Whose a lock must be to be waited on: this process's user by default;
+   *  null where the platform has none (Windows). A test's seam. */
+  readonly uid?: number | null;
 }
 
 /**
@@ -470,10 +473,30 @@ export function ensureFirstRun(input: FirstRunInput): FirstRun {
 
   const take = (): boolean => {
     try {
-      mkdirSync(lock);
+      mkdirSync(lock, 0o700);
       return true;
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+      return false;
+    }
+  };
+  // A LOCK THAT IS NOT THIS USER'S (2026-10-11, from the review of #365). The
+  // lock's name is known — the temp directory and a hash of the configuration
+  // path — and on Linux the temp directory is a shared `/tmp`, so anybody can
+  // make a directory there first, and with the sticky bit nobody else can
+  // remove it. Waited on, it made every first run wait its whole bound and
+  // fail. So only a directory this user owns, not a link, is another first
+  // run at work; anything else is passed over and the install runs without
+  // the lock. The lock only keeps the hook and the server, starting together,
+  // from installing twice at once, and `install` writes the same two things
+  // either way. Where the platform has no uid, the lock is taken as it stands.
+  const uid = input.uid !== undefined ? input.uid : typeof process.getuid === "function" ? process.getuid() : null;
+  const planted = (): boolean => {
+    if (uid === null) return false;
+    try {
+      const st = lstatSync(lock);
+      return !st.isDirectory() || st.uid !== uid;
+    } catch {
       return false;
     }
   };
@@ -485,9 +508,12 @@ export function ensureFirstRun(input: FirstRunInput): FirstRun {
     const until = now() + waitMs;
     while (!held) {
       if (existsSync(choice.path)) return joined;
+      if (planted()) break;
       let age = 0;
       try {
-        age = now() - statSync(lock).mtimeMs;
+        // The DISTANCE from now (review of #382, as the claims' lock): a lock
+        // dated ahead after the clock stepped back is stale, not fresh.
+        age = Math.abs(now() - statSync(lock).mtimeMs);
       } catch {
         age = 0;
       }
@@ -532,10 +558,13 @@ export function ensureFirstRun(input: FirstRunInput): FirstRun {
       detail: why,
     };
   } finally {
-    try {
-      rmdirSync(lock);
-    } catch {
-      // Already gone: nothing to release.
+    // Only a lock this process made is released; one passed over is not ours.
+    if (held) {
+      try {
+        rmdirSync(lock);
+      } catch {
+        // Already gone: nothing to release.
+      }
     }
   }
 }

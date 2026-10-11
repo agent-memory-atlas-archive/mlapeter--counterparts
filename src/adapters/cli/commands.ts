@@ -1441,6 +1441,11 @@ export function parse(argv: readonly string[]): Parsed {
       port: { type: "string" },
       "no-open": { type: "boolean" },
       file: { type: "string" },
+      // `--short <file>`, the page's short version: a string like `--file`, so
+      // the spaced form carries its file. Undeclared, `--short <file>` arrived
+      // as the boolean `true` with the file left over as a positional, and was
+      // refused; only `--short=<file>` worked.
+      short: { type: "string" },
       versions: { type: "boolean" },
       version: { type: "string" },
       restore: { type: "string" },

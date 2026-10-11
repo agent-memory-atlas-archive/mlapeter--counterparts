@@ -211,6 +211,12 @@ the fortnight: one to three lines, no row and no durable event (§5 G11).
     more than one, the rest by count, the date in the line.
     The root hands it to `self/`'s render as furniture for the day before the render's
     date; unlike "Last here" it is in the published bundle, not spliced at delivery.
+    At a session start (2026-10-11) the root GATES it for that session
+    (`Counterpart#yesterdayFor` with a reader): another directory's chapter is named only
+    on the "About me, from another directory" gate — about me, us or the owner, its scope
+    on — and the rest join the count (`yesterdayLine`'s `hidden`); this directory's own are
+    named as before. The published render, which no one session reads, stays store-wide
+    (self INTERFACE-GAPS §14).
 
 13. **[M] What was planned here since the handoff is named under it** (2026-10-09). A
     session that left a handoff and later changed the plan in a note, without rewriting
