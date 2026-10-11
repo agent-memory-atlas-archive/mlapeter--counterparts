@@ -40,7 +40,7 @@ import { router } from "../src/adapters/dashboard/web/server.js";
 import { openServer } from "../src/adapters/mcp/index.js";
 import type { McpServer } from "../src/adapters/mcp/index.js";
 import { TOOLS, renderDescription } from "../src/adapters/mcp/tools.js";
-import { lookupScope, readScopes, scopesPath } from "../src/adapters/scopes.js";
+import { lookupScope, readScopes, scopesPath, setScope, writeScopes } from "../src/adapters/scopes.js";
 import { firstRunLine } from "../src/adapters/plugin.js";
 
 let root: string;
@@ -388,6 +388,15 @@ describe("where memory is on", () => {
     expect(lookupScope(reg, proj).mode).toBe("on");
     expect(lookupScope(reg, join(proj, "sub")).mode).toBe("on");
     expect(lookupScope(reg, join(root, "elsewhere")).mode).toBe("off");
+  });
+
+  test("the script asks only while no folder has been set (a start-fresh store's meeting must not rewrite the owner's folders)", async () => {
+    newInstallStore();
+    expect(String((await server({ session: "w1" }).call("meet", {})).structuredContent["script"])).toContain("Every folder (recommended)");
+    for (const x of open.splice(0)) x.counterpart.close();
+    // An owner who has set one folder (as anyone who answered the first-launch question has).
+    writeScopes(scopesFile, setScope(null, join(root, "secret"), "off", { at: DAY1 }));
+    expect(String((await server({ session: "w2" }).call("meet", {})).structuredContent["script"])).not.toContain("Every folder (recommended)");
   });
 
   test("a Claude Desktop chat has no folder to set", async () => {

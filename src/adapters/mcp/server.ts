@@ -1720,7 +1720,7 @@ export class McpServer {
         uninstall: uninstallRouteWords(this.install, this.desktop),
         home: memoryHomeWords(this.counterpart.store.dir, this.lifecycleOpts.configPath),
         dreaming: this.counterpart.dreams.setting(),
-        folders: !isPseudoScope(this.scope) && this.scopesFile !== null,
+        folders: this.meetAsksWhere(),
         hostName: this.desktop ? "Claude" : "Claude Code",
         state,
       });
@@ -1785,6 +1785,25 @@ export class McpServer {
       if (r.structuredContent["stored"] === true && typeof id === "string") ids.push(id);
     }
     return ids;
+  }
+
+  /**
+   * DOES THE SCRIPT ASK WHERE MEMORY IS ON? Only where there is a folder, and
+   * only while nobody has set any folder yet (review of #419). The registry
+   * lives beside the configuration, not in the store: a `start-fresh` store's
+   * meeting that wrote `/` off would outlive `start-fresh --undo` and turn off
+   * every folder the owner had never named; and anyone who has already set a
+   * folder has answered the question their own way.
+   */
+  private meetAsksWhere(): boolean {
+    const file = this.scopesFile;
+    if (file === null || isPseudoScope(this.scope)) return false;
+    try {
+      const read = readScopes(file);
+      return read.error === null && read.refused.length === 0 && (read.registry === null || Object.keys(read.registry.scopes).length === 0);
+    } catch {
+      return false;
+    }
   }
 
   /** `where`: one `/` entry (on, or off with this folder on), written as the `scope` tool writes. */
