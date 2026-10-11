@@ -144,6 +144,7 @@ import {
 } from "../sessions.js";
 import { DESKTOP_HOST } from "../hosts.js";
 import type { PluginInstallRead } from "../host-wiring.js";
+import type { InstallRoute } from "../plugin.js";
 import { localStamp } from "../../core/time.js";
 import { CLAIMS_DIR, claimsSetAside } from "./claim.js";
 import { CATCH_UP_RUN_PREFIX, catchUpOf, catchUpWords } from "./night-catch-up.js";
@@ -298,6 +299,27 @@ export interface DoctorInput {
   /** Bound the whole reading. Absent: no bound (the console's case). */
   readonly budgetMs?: number;
   readonly now?: () => number;
+  /**
+   * HOW THIS COPY WAS INSTALLED (`plugin.ts#installRoute`, 2026-10-11), for
+   * the fix lines that install or update something: a plugin install has no
+   * `bun add -g`, its way is Claude Code's `/plugin`. Read by each caller from
+   * its own environment. Absent: not known, and those lines name both routes.
+   */
+  readonly install?: InstallRoute;
+}
+
+/** The plugin's way to a newer or whole copy: Claude Code's plugin manager. */
+const PLUGIN_UPDATE = "in Claude Code, /plugin → Installed → counterparts → Update now (or uninstall it and install it again)";
+
+/**
+ * A fix that installs something, in the words of the route this copy came
+ * by: the npm command, the plugin's update, or — not known — both.
+ */
+function byInstall(input: DoctorInput, npm: string, plugin: string = PLUGIN_UPDATE): string {
+  const route = input.install ?? "either";
+  if (route === "npm") return npm;
+  if (route === "plugin") return plugin;
+  return `npm: ${npm} · plugin: ${plugin}`;
 }
 
 // ── which checkout is running ───────────────────────────────────────────────
@@ -1210,7 +1232,7 @@ function withdrawnFinding(input: DoctorInput): Finding | null {
       "amber",
       RECALL_TITLE,
       `off in this process — the store's cache was written by a newer Counterparts (cache v${v.found}; this build reads v${v.expected}). Recall still matches on words`,
-      `Either install the newer build again (bun add -g counterparts@latest), or, to stay on this one, delete ${tilde(input.dir)}/cache/cache.sqlite* (the search cache alone; no memory is kept there, and it is rebuilt) — then in Claude Code run /mcp → Reconnect so the server opens it.`,
+      `Either install the newer build again (${byInstall(input, "bun add -g counterparts@latest", "in Claude Code, /plugin → Installed → counterparts → Update now")}), or, to stay on this one, delete ${tilde(input.dir)}/cache/cache.sqlite* (the search cache alone; no memory is kept there, and it is rebuilt) — then in Claude Code run /mcp → Reconnect so the server opens it.`,
       { cacheAhead: true, found: v.found, expected: v.expected },
     );
   }
@@ -1228,7 +1250,7 @@ function withdrawnFinding(input: DoctorInput): Finding | null {
  *     the first boundary will confirm it.
  */
 function staticFinding(input: DoctorInput, data: Record<string, string | number | boolean | null>): Finding {
-  const install = `Install the table: bun add -g ${STATIC_WEIGHTS_PACKAGE} — or set ${STATIC_WEIGHTS_ENV} in the environment Claude Code starts hooks with`;
+  const install = `Install the table: ${byInstall(input, `bun add -g ${STATIC_WEIGHTS_PACKAGE}`, `${PLUGIN_UPDATE}; the plugin installs the table with npm, so with no npm on this computer install Node.js (https://nodejs.org) first`)} — or set ${STATIC_WEIGHTS_ENV} in the environment Claude Code starts hooks with`;
   const row = newestBackfill(input);
   if (row !== null && str(row, "reason") === "embedder-unavailable") {
     const code = str(row, "codes") ?? "NO_WEIGHTS";
@@ -1237,7 +1259,7 @@ function staticFinding(input: DoctorInput, data: Record<string, string | number 
       "amber",
       RECALL_TITLE,
       `on (a local table), but the worker could not load its weights (${code}) — nothing is embedded; recall still matches on words`,
-      code === "HASH_MISMATCH" ? `The table on disk is not the one its package declares. Reinstall it: bun add -g ${STATIC_WEIGHTS_PACKAGE}` : install,
+      code === "HASH_MISMATCH" ? `The table on disk is not the one its package declares. Reinstall it: ${byInstall(input, `bun add -g ${STATIC_WEIGHTS_PACKAGE}`)}` : install,
       { ...data, kind: "static", code },
     );
   }

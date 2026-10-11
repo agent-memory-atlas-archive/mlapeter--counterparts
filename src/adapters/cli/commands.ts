@@ -256,6 +256,7 @@ import { look, realProcessLister, realSpawner, sessionsNote, tilde, unwire, wire
 import { connectDesktop, desktopUnavailable, readDesktop, repairDesktop } from "./desktop.js";
 import type { DesktopRepair } from "./desktop.js";
 import { BINARY, bundledModelDir, packagePath, runtimeLabel } from "../runtime.js";
+import { installRoute } from "../plugin.js";
 import type { Binary } from "../runtime.js";
 import { DESKTOP_ALWAYS_ALLOW, DESKTOP_HOST, upgradeWords } from "../hosts.js";
 import { hostsSeen, installedVersion } from "../sessions.js";
@@ -9784,6 +9785,9 @@ function doctorCommand(
       // CLAUDE DESKTOP'S ENTRY (2026-09-30): two small reads of the host's
       // files, like `host` above. Quiet in the report when there is none.
       desktop: readDesktop(home ?? homedir(), env),
+      // HOW THIS COPY CAME (2026-10-11): the plugin's /counterparts:doctor
+      // runs through `plugin-run.sh cli`, which says so in the environment.
+      install: installRoute(env),
       ...(open === undefined ? {} : { open }),
     });
     if (parsed.flags["json"] === true) {

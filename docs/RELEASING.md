@@ -74,6 +74,22 @@ release folder outside the clone. The builds aren't byte-reproducible, so the fi
 these ones. Any later change to `src/` means building again. Details:
 [single-binary.md, "Releasing"](single-binary.md#releasing).
 
+## 3b. The plugin bundle (once its repository exists)
+
+The plugin as a folder of its own, for the bundle repository and Anthropic's directory
+([plugin.md, "The bundle"](plugin.md#the-bundle-for-anthropics-directory)). Generate it
+after `binaries.json` is committed, since it copies that file and refuses one that names
+another version; it takes its version from `package.json`:
+
+```sh
+bun tools/plugin-bundle/build.ts <clone of the bundle repository>
+```
+
+It empties the clone (keeping `.git`) and writes the bundle. Check it with
+`claude plugin validate <clone>` and `tools/plugin-loop/run.sh --bundle`, then commit it
+there. At publish, tag that commit `v<version>` and push it beside this repository's tag.
+Nothing runs this automatically; a release with no bundle repository skips it.
+
 ## 4. Pack
 
 `npm pack` from a clean clone at the release head, after `binaries.json` is committed. Keep

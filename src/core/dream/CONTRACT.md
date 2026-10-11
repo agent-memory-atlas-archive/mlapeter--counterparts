@@ -223,11 +223,12 @@ dreamer is the model (a background agent the session launches), outside this pro
   over none — and its era
   standing: an original written before the old-claims cutoff gives the merged memory its
   moment (`meta.eraWrittenAt`) and its `claimedDefault`, so the era reads the merged
-  memory as it read that original; `mergedAbout`, `store/operational.ts#eraCarriedFrom`),
+  memory as it read that original; `store/index.ts#inheritFrom`, `store/operational.ts#eraCarriedFrom`),
   `link` (both ways, proposed at `LINK_WEIGHT` through
   `associate`, only where there is room, since 2026-09-28), `replayed` (a
   return at `DREAM_RETURN_WEIGHT`, never a use), `gist` (source `dreamed`, citing and
-  linked to its sources, salience capped at `DREAMED_CLAIM_CEILING`), `contradiction`
+  linked to its sources, salience capped at `DREAMED_CLAIM_CEILING`; it takes no `about`
+  mark from its sources until D6, §7 Q2, is decided), `contradiction`
   (an unsettled pair in `contradictions`; a pair already standing is left as it is),
   `settle` (2026-09-29: two memories it was shown, `holds` / `over` / `how` / `why`,
   through `contradictions.ts#settle`; undone with the dream unless settled since),

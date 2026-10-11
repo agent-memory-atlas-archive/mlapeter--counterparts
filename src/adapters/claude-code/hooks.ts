@@ -63,6 +63,7 @@ import { homedir } from "node:os";
 
 import { CODE_TAB_ENTRYPOINT, isDesktopScratchWorkspace } from "../hosts.js";
 import { scopeCommand, scopeCommandContext, stanceOfMode } from "../scopes.js";
+import type { InstallRoute } from "../plugin.js";
 import type { ScopeCommandContext } from "../scopes.js";
 import {
   NON_INTERACTIVE_ENTRYPOINTS,
@@ -314,6 +315,12 @@ export interface AdapterOptions extends LifecycleOptions {
    * with `--config` only when `configPath` names another registry.
    */
   readonly scopeCommand?: ScopeCommandContext;
+  /**
+   * How this copy was installed (`plugin.ts#installRoute`), for the notice's
+   * fix lines: the plugin's `/plugin` rather than `bun add -g`. Absent (a
+   * test, an embedder): not known, and those lines name both.
+   */
+  readonly install?: InstallRoute;
 }
 
 /**
@@ -529,6 +536,7 @@ export const STOP_HUMAN_LINE = "Counterparts: asking the assistant to write up t
 export class ClaudeCodeAdapter extends Lifecycle {
   private readonly nightArgs: readonly string[] | undefined;
   private readonly scopeCommandCtx: ScopeCommandContext | undefined;
+  private readonly install: InstallRoute | undefined;
   /** The anti-loop guard: one hook per session in flight at a time. */
   private readonly inFlight = new Set<string>();
 
@@ -536,6 +544,7 @@ export class ClaudeCodeAdapter extends Lifecycle {
     super(opts);
     this.nightArgs = opts.nightArgs;
     this.scopeCommandCtx = opts.scopeCommand;
+    this.install = opts.install;
   }
 
   // ── session start: the wake ────────────────────────────────────────────────
@@ -1636,6 +1645,7 @@ export class ClaudeCodeAdapter extends Lifecycle {
         starts: this.spawnStarts(),
         budgetMs: opts.budgetMs ?? SESSION_NOTICE_BUDGET_MS,
         ...(opts.now === undefined ? {} : { now: opts.now }),
+        ...(this.install === undefined ? {} : { install: this.install }),
       });
       return noticeMessage(findings);
     } catch (err) {
