@@ -113,7 +113,7 @@ describe("claimDelivery", () => {
       const base = { hook: "user-prompt-submit" as const, sessionId: "s1", observer: false };
       // Both processes started at t0; the settings hook claims first.
       const first = claimDelivery(cp, { ...base, key: "k1", side: "settings", started: t0, now: t0 + 90 });
-      expect(first).toEqual({ outcome: "won", at: t0 + 90 });
+      expect(first).toEqual({ outcome: "won", at: t0 + 90, token: expect.stringMatching(/^[0-9a-f]{12}$/) });
       // Its twin, while the holder still runs.
       expect(claimDelivery(cp, { ...base, key: "k1", side: "plugin", started: t0 + 2, now: t0 + 140 })).toEqual({ outcome: "lost", heldBy: "settings" });
       const rows = cp.store.eventLog({ name: HOOK_CLAIM_LOST_EVENT });
@@ -248,6 +248,30 @@ describe("claimDelivery", () => {
       expect(claimRow(cp)["k"]).toEqual([t0 + 90, "settings", t0, t0 + 200, row[4]]);
       // Another call of the same process is not this call: it loses, as a twin does.
       expect(claimDelivery(cp, { hook: "session-start", key: "k", sessionId: "s1", side: "plugin", observer: false, started: t0, now: t0 + 300, once: true }).outcome).toBe("lost");
+    } finally {
+      cp.close();
+    }
+  });
+
+  test("the finish stamp names the claim's token too; a row with no token (an older build's) is matched on its time, as before (review of #382)", () => {
+    const t0 = 1_800_000_000_000;
+    const cp = Counterpart.open({ dir: store });
+    try {
+      const won = claimDelivery(cp, { hook: "stop", sessionId: "s1", observer: false, key: "k", side: "settings", started: t0, now: t0 + 90 });
+      expect(won.token).toMatch(/^[0-9a-f]{12}$/);
+      // The same moment, another call's token: not this claim.
+      expect(finishClaim(cp, "k", t0 + 90, t0 + 200, "ffffffffffff")).toBe(false);
+      expect((claimRow(cp)["k"] as unknown[])[3]).toBeNull();
+      expect(finishClaim(cp, "k", t0 + 90, t0 + 200, won.token)).toBe(true);
+      // An older build's row: `[at, side, started]`, no token — the time decides.
+      const db = openDb(claimsPath(store));
+      try {
+        db.run("UPDATE claims SET value = ? WHERE key = ?", JSON.stringify({ old: [t0 + 300, "plugin", t0] }), CLAIMS_ROW);
+      } finally {
+        db.close();
+      }
+      expect(finishClaim(cp, "old", t0 + 300, t0 + 400, "a1a1a1a1a1a1")).toBe(true);
+      expect(claimRow(cp)["old"]).toEqual([t0 + 300, "plugin", t0, t0 + 400]);
     } finally {
       cp.close();
     }

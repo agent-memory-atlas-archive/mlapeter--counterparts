@@ -631,6 +631,8 @@ export interface Claim {
   readonly outcome: ClaimOutcome;
   /** The winner's claim time, which `finishClaim` names. */
   readonly at?: number;
+  /** The winner's token, written beside its claim, which `finishClaim` names too. */
+  readonly token?: string;
   /** The side that holds the claim, when this process lost it. */
   readonly heldBy?: string;
   /** Why nothing was claimed. */
@@ -688,7 +690,7 @@ export function claimDelivery(doors: ClaimDoors, input: ClaimInput): Claim {
   }
   const rebuilt = setAside === null ? {} : { setAside };
   const winner = seen.heldBy;
-  if (winner === null) return { outcome: "won", at: now, ...rebuilt };
+  if (winner === null) return { outcome: "won", at: now, token: attempt.token, ...rebuilt };
   try {
     doors.noteAdapterEvent(HOOK_CLAIM_LOST_EVENT, {
       hook: input.hook,
@@ -706,9 +708,12 @@ export function claimDelivery(doors: ClaimDoors, input: ClaimInput): Claim {
  * THE WINNER IS DONE: stamp its claim with the time it finished, so a later
  * process with the same key — one that started after this — is read as the
  * separate event it is. Only this process's own claim (same key, same `at`) is
- * touched. Never throws: a stamp that does not land leaves the claim to expire.
+ * touched — and, when both it and the row carry a token, the same token
+ * (review of #382). A row without one is an older build's, or one an older
+ * build rewrote, which drops every token: then `at` alone, as before. Never
+ * throws: a stamp that does not land leaves the claim to expire.
  */
-export function finishClaim(doors: Pick<ClaimDoors, "store">, key: string, at: number, now: number = Date.now()): boolean {
+export function finishClaim(doors: Pick<ClaimDoors, "store">, key: string, at: number, now: number = Date.now(), token?: string): boolean {
   let stamped = false;
   try {
     updateClaims(doors.store.dir, (current) => {
@@ -716,6 +721,7 @@ export function finishClaim(doors: Pick<ClaimDoors, "store">, key: string, at: n
       const claims = readClaims(current);
       const held = claims[key];
       if (held === undefined || held.at !== at) return undefined;
+      if (token !== undefined && held.token !== undefined && held.token !== token) return undefined;
       claims[key] = { ...held, ended: now };
       stamped = true;
       return writeClaims(claims);
