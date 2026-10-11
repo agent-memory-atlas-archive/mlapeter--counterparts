@@ -82,6 +82,7 @@ import {
   reinstateSlot,
   releaseOrphanSlots,
   settle as settleContradiction,
+  supersede as supersedeThroughDoor,
   undo as undoContradiction,
   withdrawSlot,
 } from "../reconsolidation.js";
@@ -1876,11 +1877,25 @@ export class Dreams {
               { provenance: traits.map((t) => ({ source: t.source, model: t.model, createdAt: t.created_at })) },
             );
           }
-          this.store.supersedeInto(r.id, newId, DREAM_MERGE_REASON, { carryReturns: true });
-          try {
-            this.ctx.retarget?.(r.id, newId, day);
-          } catch {
-            /* the links are a courtesy; the merge stands */
+          // THROUGH THE ONE DOOR (2026-10-11, Group 2b; review 10 C1): the
+          // merged memory holds over each original — `changed`, source
+          // `dream-merge` (decided by random-06, lightly held: three hows; the
+          // source says a merge made it) — and REPLACES it: archived with a
+          // forwarding address, its returns carried, its links handed on, a pair
+          // and a trail row written so the undo is a settle's undo.
+          const door = supersedeThroughDoor(
+            this.store,
+            { holds: newId, over: r.id, how: "changed", source: DREAM_MERGE_REASON, actor: "dream", actorId: dream.id, why: "merged into one memory", day, replaces: { reason: DREAM_MERGE_REASON, carryReturns: true } },
+            this.doorOpts(),
+          );
+          if (!door.ok) {
+            // The door refused (it was checked live above): fold it in as before.
+            this.store.supersedeInto(r.id, newId, DREAM_MERGE_REASON, { carryReturns: true });
+            try {
+              this.ctx.retarget?.(r.id, newId, day);
+            } catch {
+              /* the links are a courtesy; the merge stands */
+            }
           }
         }
         // FIDELITY (2026-09-28): what the dream had of each original when it
@@ -2030,7 +2045,7 @@ export class Dreams {
         if (!why.ok || why.text.trim().length === 0) {
           return { action, ok: false, reason: "why-required", detail: "A dream settles only with a clear reason: say it in `why`. Otherwise flag the pair (contradiction {a, b}) and let the waking self settle it." };
         }
-        const out = settleContradiction(this.store, { holds: holds.id, over: over.id, how: String(change.how ?? ""), why: why.text, actor: "dream", actorId: dream.id, day });
+        const out = settleContradiction(this.store, { holds: holds.id, over: over.id, how: String(change.how ?? ""), why: why.text, actor: "dream", actorId: dream.id, day }, this.doorOpts());
         if (!out.ok) return { action, ok: false, reason: out.reason, detail: out.detail };
         this.store.recordDreamChange(dream.id, { action, ref: holds.id, ref2: over.id, detail: { pair: out.pair, how: out.how } });
         return { action, ok: true, reason: `settled-${out.how}`, id: out.pair, ...(out.note === undefined ? {} : { note: out.note }) };
@@ -2053,7 +2068,7 @@ export class Dreams {
         const why = this.words(change.why ?? "", dream, true, DREAM_TUNABLES.MAX_WHY_CHARS);
         const reason = why.ok && why.text.trim().length > 0 ? why.text : null;
         if (change.same) {
-          const out = settleContradiction(this.store, { pair: pair.id, holds: holds.id, how: "changed", why: reason ?? "the newer state of the same thing", actor: "dream", actorId: dream.id, day });
+          const out = settleContradiction(this.store, { pair: pair.id, holds: holds.id, how: "changed", why: reason ?? "the newer state of the same thing", actor: "dream", actorId: dream.id, day }, this.doorOpts());
           if (!out.ok) return { action, ok: false, reason: out.reason, detail: out.detail };
           this.store.recordDreamChange(dream.id, { action, ref: holds.id, ref2: over.id, detail: { pair: out.pair, same: true } });
           return { action, ok: true, reason: "confirmed", id: out.pair, ...(out.note === undefined ? {} : { note: out.note }) };
@@ -2221,6 +2236,15 @@ export class Dreams {
           }
           for (const orig of from) {
             try {
+              // A SETTLE'S UNDO (2026-10-11, Group 2b): a merge made through the
+              // one door has a pair per original, and undoing it brings the
+              // original back, carries its links back and withdraws the pair.
+              const pair = c.ref === null ? undefined : this.store.contradictionBetween(c.ref, orig);
+              if (pair !== undefined && pair.state === "settled" && pair.source === DREAM_MERGE_REASON) {
+                undoContradiction(this.store, { pair: pair.id, actor: "dream-undo", actorId: id, why: "its dream was undone" }, this.doorOpts());
+                continue;
+              }
+              // A merge from before the door (no pair): as before.
               // CARRIED BACK (Group 4 item 5, 2026-10-11): the merge handed the
               // originals' links to the merged memory, and a merge's
               // originals' own rows are swept as archived for good
@@ -2293,7 +2317,7 @@ export class Dreams {
           const last = pair === undefined ? undefined : this.store.contradictionSettles({ pairId: pair.id }).filter((x) => x.action === "settle" && x.undone === 0).pop();
           if (pair !== undefined && pair.state === "settled" && last?.actor === "dream" && last.actor_id === id) {
             // The trail says a dream's undo did it (review of #284, M4), not the owner.
-            undoContradiction(this.store, { pair: pair.id, actor: "dream-undo", actorId: id, why: `dream ${id} was undone` });
+            undoContradiction(this.store, { pair: pair.id, actor: "dream-undo", actorId: id, why: `dream ${id} was undone` }, this.doorOpts());
           } else if (pairId !== null) {
             kept += 1;
             continue;
@@ -2991,6 +3015,12 @@ export class Dreams {
   }
 
   /** Why these ids cannot be changed by this dream, in words. */
+  /** The one door's links seam (`reconsolidation.ts#supersede`): this dream's retarget when it has one. */
+  private doorOpts(): { retarget?: (oldId: string, newId: string, day: number) => void } {
+    const r = this.ctx.retarget;
+    return r === undefined ? {} : { retarget: r };
+  }
+
   private notLive(ids: readonly (string | null | undefined)[], shown: ReadonlySet<string>): string {
     const parts = ids
       .filter((id): id is string | undefined => id !== null)

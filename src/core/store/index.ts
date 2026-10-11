@@ -2858,6 +2858,17 @@ export class Store {
     return { id, birth_day: r?.birth_day ?? 0, created_at: r?.created_at ?? null, rid: r?.rid ?? 0 };
   }
 
+  /**
+   * Live memory ids whose meta bag names `key` (2026-10-11, Group 2b): a text
+   * prefilter on the stored JSON, so the caller reads the value itself. One
+   * scan; for once-only passes, not for a hot path.
+   */
+  idsWithMetaKey(key: string): string[] {
+    return this.ops
+      .all<{ id: string }>("SELECT id FROM memories WHERE archived = 0 AND superseded_by IS NULL AND meta LIKE ?", `%"${key}"%`)
+      .map((r) => r.id);
+  }
+
   /** Has any pair EVER named these two memories, withdrawn ones included (a slot the dream said was two things)? */
   contradictionEverBetween(x: string, y: string): boolean {
     if (!this.hasTable("contradictions")) return false;
@@ -3035,6 +3046,19 @@ export class Store {
     closes?: readonly string[];
     /** 2026-10-11: provisional cuts this settle LIFTS (a slot proposal's, on the pair or one it closes) — final fades, applied before `fade`. */
     lifts?: readonly { id: string; fade: number }[];
+    /**
+     * 2026-10-11 (Group 2b, one door): the holder REPLACES the memory it is
+     * over — a dream merge's original, a core memory revised under pressure —
+     * so that one is archived `reason` with a forwarding address
+     * (`supersedeInto`), in this transaction. Instead of `fade`.
+     */
+    supersede?: { id: string; successor: string; reason: string; carryReturns?: boolean } | null;
+    /**
+     * 2026-10-11 (Group 2b): a pending reminder carried from the memory the
+     * settle is over to the one that holds — two in-place revisions, the meta
+     * patches computed by the caller (`prospective/`'s keys), in this transaction.
+     */
+    reminder?: { from: string; fromMeta: Record<string, unknown>; to: string; eventDate: string; toMeta: Record<string, unknown> } | null;
     detail?: Record<string, unknown>;
   }): { pairId: string; seq: number } {
     const out = this.mutate("settleContradiction", () => {
@@ -3108,8 +3132,18 @@ export class Store {
       if (input.fade !== undefined && input.fade !== null) {
         this.updatePhysics(input.fade.id, { fade: input.fade.fade });
       }
+      // The reminder first, while the memory it leaves is still live.
+      if (input.reminder !== undefined && input.reminder !== null) {
+        const m = input.reminder;
+        this.revise(m.to, { eventDate: m.eventDate, meta: m.toMeta, reason: "reminder-carried" });
+        this.revise(m.from, { eventDate: null, meta: m.fromMeta, reason: "reminder-moved" });
+      }
       if (input.archive !== undefined && input.archive !== null) {
         this.archive(input.archive.id, input.archive.reason);
+      }
+      if (input.supersede !== undefined && input.supersede !== null) {
+        const r = input.supersede;
+        this.supersedeInto(r.id, r.successor, r.reason, r.carryReturns === true ? { carryReturns: true } : {});
       }
       return { pairId, seq };
     });
@@ -3138,6 +3172,8 @@ export class Store {
     reopen?: readonly string[];
     /** 2026-10-11: provisional cuts the settle had lifted, put back on (final fades), before `restore`. */
     reapply?: readonly { id: string; fade: number }[];
+    /** 2026-10-11 (Group 2b): a reminder the settle carried, carried back (`settleContradiction`'s `reminder`, reversed). */
+    reminderBack?: { to: string; toMeta: Record<string, unknown>; from: string; eventDate: string; fromMeta: Record<string, unknown> } | null;
     detail?: Record<string, unknown>;
   }): { seq: number; unarchived: boolean } {
     const out = this.mutate("undoContradictionSettle", () => {
@@ -3177,6 +3213,11 @@ export class Store {
       let unarchived = false;
       if (input.unarchive !== undefined && input.unarchive !== null) {
         unarchived = this.restoreSuperseded(input.unarchive.id, input.unarchive.reason);
+      }
+      if (input.reminderBack !== undefined && input.reminderBack !== null) {
+        const m = input.reminderBack;
+        this.revise(m.to, { eventDate: null, meta: m.toMeta, reason: "reminder-carried-back" });
+        this.revise(m.from, { eventDate: m.eventDate, meta: m.fromMeta, reason: "reminder-carried-back" });
       }
       return { seq, unarchived };
     });

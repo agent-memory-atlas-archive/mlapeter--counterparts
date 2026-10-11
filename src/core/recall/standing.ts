@@ -163,12 +163,23 @@ function liveRow(store: HeadStore, id: string): boolean {
   return r !== undefined && r.archived === 0 && r.superseded_by === null && !(r.body === "" && r.content_hash === "");
 }
 
+/**
+ * NEWEST BY WHEN IT WAS RAISED, not when it was answered (2026-10-11, Group
+ * 2b; review of #420): a pair's `flagged_day`, then the moment it was made.
+ * A late answer to an old question — a slot proposal confirmed days after a
+ * newer settle over its newer memory — must not re-affirm what that newer
+ * settle covered. A direct settle is raised the day it is made.
+ */
+export function pairOrder(a: Pick<ContradictionRow, "flagged_day" | "created_at">, b: Pick<ContradictionRow, "flagged_day" | "created_at">): number {
+  return a.flagged_day - b.flagged_day || a.created_at - b.created_at;
+}
+
 /** The `holds` of the newest direct changed/corrected settle naming `id` when `id` is its `over`; else null. */
 function newestHolder(store: HeadStore, id: string): string | null {
   const pairs = [...(store.contradictionsOf([id]).get(id) ?? [])]
     .reverse()
     .filter((p) => p.state === "settled" && p.via === null && p.over !== null && p.holds !== null && (p.how === "changed" || p.how === "corrected"))
-    .sort((a, b) => a.updated_at - b.updated_at || a.created_at - b.created_at);
+    .sort(pairOrder);
   const newest = pairs[pairs.length - 1];
   return newest !== undefined && newest.over === id ? newest.holds : null;
 }

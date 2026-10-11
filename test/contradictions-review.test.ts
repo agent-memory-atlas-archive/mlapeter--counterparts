@@ -15,7 +15,7 @@ import type { Io } from "../src/adapters/cli/index.js";
 import { mechanismEvidence } from "../src/adapters/mechanism-evidence.js";
 import { openServer } from "../src/adapters/mcp/index.js";
 import type { McpServer, ToolResult } from "../src/adapters/mcp/index.js";
-import { CONTRADICTION_TUNABLES, flag, settle, undo } from "../src/core/reconsolidation.js";
+import { CONTRADICTION_TUNABLES, flag, proposeSlot, settle, undo } from "../src/core/reconsolidation.js";
 import { Counterpart } from "../src/core/counterpart.js";
 import { MIND_SEEN_PREFIX, mindRanked } from "../src/core/dream/mind.js";
 import { TUNABLES, pruneVerdict, strength } from "../src/core/physics/index.js";
@@ -409,19 +409,31 @@ describe("the mechanism table", () => {
     return { io: { out: (l) => out.push(l), err: (l) => err.push(l) }, out, err };
   }
 
-  test("reconsolidation is built; interference is partly built, and a changed settle lights it", async () => {
+  test("reconsolidation is built and counts a declared settle; interference is partly built and counts only the detected doors (Group 2b, C6)", async () => {
     const store = storeOnly();
     days(store, 4);
     const day = store.livedDay();
     const a = put(store, "The router is in the hall.");
     const b = put(store, "The router is in the study.");
     settle(store, { holds: b, over: a, how: "changed", actor: "owner" });
-    const v = mechanismEvidence(store, { sinceDay: day - 6, today: day }).verdicts;
-    expect(v.find((x) => x.id === "reconsolidation")?.build).toBe("built");
+    let v = mechanismEvidence(store, { sinceDay: day - 6, today: day }).verdicts;
+    const recon = v.find((x) => x.id === "reconsolidation");
+    expect(recon?.build).toBe("built");
+    expect(recon?.parts.find((p) => p.key === "settled")?.count).toBe(1);
+    expect(v.find((x) => x.id === "interference")?.parts.find((p) => p.key === "faded")?.count ?? 0).toBe(0);
+    // A slot proposal, confirmed: interference's, not reconsolidation's.
+    const c = put(store, "The modem is in the hall.");
+    const d = put(store, "The modem is in the study now.");
+    const proposed = proposeSlot(store, { holds: d, candidate: { over: c, cosine: 0.9, rule: "cosine", sameSession: false } });
+    if (!proposed.ok) throw new Error(proposed.reason);
+    expect(settle(store, { pair: proposed.pair, holds: d, how: "changed", why: "the newer state", actor: "dream" }).ok).toBe(true);
+    v = mechanismEvidence(store, { sinceDay: day - 6, today: day }).verdicts;
     const inter = v.find((x) => x.id === "interference");
     expect(inter?.build).toBe("partly");
     expect(inter?.fired).toBe(true);
+    expect(inter?.parts.find((p) => p.key === "proposed")?.count).toBe(1);
     expect(inter?.parts.find((p) => p.key === "faded")?.count).toBe(1);
+    expect(v.find((x) => x.id === "reconsolidation")?.parts.find((p) => p.key === "settled")?.count).toBe(1);
     store.close();
     open.splice(0);
     const said = io();

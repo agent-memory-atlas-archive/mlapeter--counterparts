@@ -127,6 +127,8 @@ export interface Proposal {
    * declaration stays a link (`revision.ts`).
    */
   how?: SettleHow;
+  /** True when the author SENT `how`; false when it was defaulted (2026-10-11, review 10 C6). Beside `how` only. */
+  howSent?: boolean;
   unresolved: boolean;
   /** The reminder date as the author wrote it (already read by `time.ts`), or null. */
   eventDate: string | null;
@@ -686,7 +688,7 @@ export async function submitProposal(
     aliases: [...(verdict.aliases ?? draft.aliases ?? [])],
     updates,
     // An AUTHORED `updates` settles: `changed` when the author did not say.
-    ...(draft.updates === undefined ? {} : { how: draft.how ?? "changed" }),
+    ...(draft.updates === undefined ? {} : { how: draft.how ?? "changed", howSent: draft.how !== undefined }),
     unresolved: draft.unresolved === true,
     eventDate: draft.eventDate ?? null,
     remind: draft.eventDate === undefined ? null : draft.remind ?? "quiet",

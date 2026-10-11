@@ -1,8 +1,9 @@
 /**
  * THE GUARDS ON "THIS REPLACES THAT" (2026-10-11, Group 2; reviews 04, 07 and
  * 10 C3/C5): a reading or world memory is not faded by a work or owner fact
- * (it comes back `open`); a pending dated memory is never buried (the settle
- * refuses, the write that `updates` it carries the reminder); the core
+ * (it comes back `open`); a pending dated memory is never buried (a settle
+ * carries the reminder or, onto a dated holder, refuses; the write that
+ * `updates` it carries it too — `reconsolidation-door.test.ts`); the core
  * survives a settle; the update guard's bar is the store's own. Hermetic: a fresh temp data dir per test, removed after it.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -90,10 +91,13 @@ describe("a pending dated memory", () => {
     for (const d of ["2026-09-01", "2026-09-02", "2026-09-03"]) s.advanceClock(d);
     const dated = String(payload(await srv.call("remember", { text: "Renew the boat licence before the deadline.", eventDate: "2099-10-15" }))["id"]);
     expect(s.physicsOf(dated).hold?.state).toBe("pending");
-    const other = put(s, "The harbour office is still processing the boat licence.");
-    const refused = settle(s, { holds: other, over: dated, how: "changed", actor: "session" });
+    // A holder with a date of its own cannot take the reminder: refused (Group 2b).
+    const datedToo = put(s, "The harbour office reopens for licences in the spring.");
+    s.revise(datedToo, { eventDate: "2099-03-01" });
+    const refused = settle(s, { holds: datedToo, over: dated, how: "changed", actor: "session" });
     expect(refused).toMatchObject({ ok: false, reason: "pending-date" });
     expect(s.row(dated)?.fade).toBe(1);
+    const other = put(s, "The harbour office is still processing the boat licence.");
     // Open moves nothing, so it may.
     expect(settle(s, { holds: other, over: dated, how: "open", actor: "session" }).ok).toBe(true);
     // The write that updates it: the reminder moves, then the old one is settled.

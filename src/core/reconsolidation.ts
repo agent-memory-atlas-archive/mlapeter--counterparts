@@ -62,11 +62,13 @@
  */
 import { randomBytes } from "node:crypto";
 
+import { Associate } from "./associate/index.js";
 import { lineOf } from "./fit/index.js";
 import { changedFade, cosine, fadeOf, strength, unfade } from "./physics/index.js";
+import { CUE_MODE_META, DATE_FROM_META, DATE_MOVED_TO_META, cueModeOf, recurrenceOf } from "./prospective/index.js";
 import { earlierMark, headOf, isHandoff } from "./recall/index.js";
 import { similarity } from "./remember/index.js";
-import { isStoreError, rowTombstoned } from "./store/index.js";
+import { RECURRING_META, isStoreError, rowTombstoned, statusOf } from "./store/index.js";
 import type { ContradictionRow, MemoryRow, Store } from "./store/index.js";
 import { SETTLE_HOWS } from "./types.js";
 import type { SettleHow } from "./types.js";
@@ -178,6 +180,9 @@ export const SLOT_SOURCE = "slot";
 /** The archive reason a `corrected` memory carries. */
 export const CORRECTED_REASON = "corrected";
 
+/** The archive reason of a core plan a declared `done` fulfilled (2026-10-11, Group 2b; `revision.ts#fulfil`). */
+export const FULFILLED_REASON = "fulfilled";
+
 /** Durable event names (`dashboard/registries.ts` and `fired.ts` read them). */
 export const CONTRADICTION_FLAGGED_EVENT = "contradiction.flagged";
 export const CONTRADICTION_SETTLED_EVENT = "contradiction.settled";
@@ -288,12 +293,10 @@ export function pairStanding(store: Pick<Store, "row">, pair: ContradictionRow):
 }
 
 /**
- * The checks a memory in a settle must pass, as a refusal or null. `moves` is
- * true for the memory a `changed` / `corrected` settle is OVER — the one whose
- * standing changes, which the owner's protection and the core's slower path
- * guard (`revision.ts`'s dispatch: protected refuses, identity takes pressure).
+ * What every door checks of both memories: there, not removed, a memory row,
+ * not replaced, not archived. A refusal or null.
  */
-function memoryRefusal(store: Store, id: string, moves: boolean): SettleOutcome | null {
+function doorRefusal(store: Store, id: string): SettleOutcome | null {
   const row = store.row(id);
   if (row === undefined) return refuse("unknown-memory", `There is no memory ${id}.`);
   if (rowTombstoned(row)) return refuse("removed", `${id} was removed by the owner.`);
@@ -307,6 +310,21 @@ function memoryRefusal(store: Store, id: string, moves: boolean): SettleOutcome 
     return refuse("moved-on", `${id} was replaced by ${row.superseded_by}; settle with that one.`);
   }
   if (row.archived === 1) return refuse("archived", `${id} is archived (${row.archived_reason ?? "archived"}), so it is out of recall already.`);
+  return null;
+}
+
+/**
+ * The checks a memory in a SETTLE must pass, as a refusal or null: the
+ * door's, and for the memory a `changed` / `corrected` settle is OVER
+ * (`moves`) — the one whose standing changes — the owner's protection and the
+ * core's slower path (`revision.ts`'s dispatch: protected refuses, identity
+ * takes pressure). The doors that ARE the core's path (pressure, a fulfilled
+ * plan) and the dream merge (its own refusals) call `supersede` directly.
+ */
+function memoryRefusal(store: Store, id: string, moves: boolean): SettleOutcome | null {
+  const door = doorRefusal(store, id);
+  if (door !== null) return door;
+  const row = store.row(id) as MemoryRow;
   if (moves && row.protected === 1) return refuse("protected", `${id} is protected by the owner: it can be marked open, never changed or corrected.`);
   if (moves && (row.band === "identity" || row.promoted_identity === 1)) {
     return refuse(
@@ -318,13 +336,14 @@ function memoryRefusal(store: Store, id: string, moves: boolean): SettleOutcome 
 }
 
 /**
- * SETTLE A PAIR — the one settle, whoever calls it. An existing pair by
- * `pair` (a dream's flag, say), or two memories by `holds` and `over` (a
- * standing pair between them is found and used). `changed` cuts the strength
- * of the one it is over through physics; `corrected` archives it; `open`
- * moves nothing. Writes the pair, the trail row and a durable event.
+ * SETTLE A PAIR — the settle, whoever calls it. An existing pair by `pair` (a
+ * dream's flag, say), or two memories by `holds` and `over` (a standing pair
+ * between them is found and used). Reads the input, refuses what a settle may
+ * not do (the guards, the owner's protection, the core), then goes through
+ * the one door (`supersede`): `changed` cuts the strength of the one it is
+ * over, `corrected` archives it, `open` moves nothing.
  */
-export function settle(store: Store, input: SettleInput, opts: { closeFlags?: boolean; source?: string } = {}): SettleOutcome {
+export function settle(store: Store, input: SettleInput, opts: { closeFlags?: boolean; source?: string; howSent?: boolean; retarget?: Retarget } = {}): SettleOutcome {
   if (store.observer) return refuse("observer", "This session is an observer: it reads the store and writes nothing. Nothing was settled.");
   const asked = readHow(input.how);
   if (asked === null) return refuse("how-unknown", `how is one of ${SETTLE_HOWS.join(", ")}.`);
@@ -378,34 +397,161 @@ export function settle(store: Store, input: SettleInput, opts: { closeFlags?: bo
         `${over} is a reading or a world memory and ${holds} is not, so it was not faded: the two were kept side by side (open). If one claim in it was wrong, write that claim, corrected, as a memory of its own.`,
       );
     }
-    // A PENDING DATED MEMORY is never buried (07): settled over, its reminder
-    // would go quiet. A newer memory that `updates` it carries the reminder.
-    if (how !== "open" && o !== undefined && store.physicsOf(over).hold?.state === "pending") {
-      return refuse(
-        "pending-date",
-        `${over} holds a date still to come (${o.event_date ?? "a reminder"}): settled over, its reminder would go quiet. Write the newer memory with updates: ${over} (the reminder carries to it), or settle open.`,
-      );
+  }
+  const bad = memoryRefusal(store, over, how !== "open") ?? memoryRefusal(store, holds, false);
+  if (bad !== null) return bad;
+  return supersede(
+    store,
+    {
+      holds,
+      over,
+      how,
+      source: opts.source ?? "settle",
+      actor: input.actor,
+      actorId: input.actorId ?? null,
+      why: input.why ?? null,
+      day,
+      ...(pair === undefined ? {} : { pair }),
+      ...(how !== asked ? { asked } : {}),
+      ...(opts.closeFlags === undefined ? {} : { closeFlags: opts.closeFlags }),
+      ...(opts.howSent === undefined ? {} : { howSent: opts.howSent }),
+      notes: guardNotes,
+    },
+    opts.retarget === undefined ? {} : { retarget: opts.retarget },
+  );
+}
+
+// ── THE ONE DOOR (2026-10-11, Group 2b; review 10 C1, R7) ───────────────────
+
+/** Carries a memory's links to the one that holds over it: `Associate.retargetOnSupersede`, injected (SEAMS E). */
+export type Retarget = (oldId: string, newId: string, day: number) => void;
+
+/** One "A over B", whoever writes it. */
+export interface SupersedeInput {
+  /** The memory that holds now. */
+  readonly holds: string;
+  /** The memory it is over (for `open`, the other one). */
+  readonly over: string;
+  /** The effect, from this alone: `changed` fades, `corrected` archives, `open` moves nothing. */
+  readonly how: SettleHow;
+  /**
+   * What made it (no DDL: a TEXT value): `write`, `settle`, `slot`, `pressure`,
+   * `fulfilled`, `dream-merge`, `reminder-moved` — Group 3's `fold` next. The
+   * dashboard counts by it.
+   */
+  readonly source: string;
+  readonly actor: SettleActor;
+  readonly actorId?: string | null;
+  readonly why?: string | null;
+  readonly day?: number;
+  /** An existing pair to settle (a flag, a proposal, the pressure pair). Absent: a new one. */
+  readonly pair?: ContradictionRow;
+  /** `changed`'s cut on the memory it is over; absent, `CHANGED_FADE`. */
+  readonly factor?: number;
+  /**
+   * THE HOLDER STANDS IN FOR IT: a merge's memory for its originals, a core
+   * memory's successor or its fulfilment. The memory it is over is archived
+   * `reason` with a forwarding address instead of faded, and an undo brings
+   * it back. The only thing besides `how` a door may say about the effect.
+   */
+  readonly replaces?: { readonly reason: string; readonly carryReturns?: boolean };
+  /** A write's `how`: sent by the writer (true) or defaulted (false). Absent: not a write's. */
+  readonly howSent?: boolean;
+  /** Close the unsettled pairs on the memory it is over (default: when it moves). */
+  readonly closeFlags?: boolean;
+  /** What the settler asked for, when a guard changed it. */
+  readonly asked?: SettleHow;
+  readonly notes?: readonly string[];
+}
+
+/** A reminder a door carries: from the memory it is over, to the one that holds. */
+function reminderCarry(store: Store, from: string, to: string): { from: string; fromMeta: Record<string, unknown>; to: string; eventDate: string; toMeta: Record<string, unknown> } | null {
+  const date = store.row(from)?.event_date ?? null;
+  if (date === null) return null;
+  let mode: string = "quiet";
+  let rule: unknown = null;
+  try {
+    const prose = store.readProse(from);
+    mode = cueModeOf(prose);
+    rule = recurrenceOf(prose);
+  } catch {
+    // Unreadable prose: the date still carries, at the default mode, once.
+  }
+  return {
+    from,
+    fromMeta: { [DATE_MOVED_TO_META]: to },
+    to,
+    eventDate: date,
+    toMeta: { [CUE_MODE_META]: mode, [DATE_FROM_META]: from, ...(rule === null ? {} : { [RECURRING_META]: rule }) },
+  };
+}
+
+/**
+ * A OVER B, THROUGH THE ONE DOOR — what every path that marks one memory as
+ * standing in place of another calls: a settle (awake, dream, reflection,
+ * owner), a write's `updates`, a slot confirmed, a dream merge, the core's
+ * pressure crossing and a fulfilled plan, a moved reminder (and Group 3's
+ * folds). It writes the pair (or settles the one named), the trail row and the
+ * durable event, and applies the effect from `how` alone — `changed`: the
+ * fade multiplier (`factor`, `CHANGED_FADE` unless said); `corrected`:
+ * archived; `open`: nothing — except where the holder REPLACES the memory
+ * (`replaces`): archived with a forwarding address instead. A memory that
+ * leaves recall (corrected, replaced) hands its links to the holder. A
+ * pending reminder on the memory it is over is CARRIED to the holder (unless
+ * the holder is `done` — the reminder is spent — or replaces it); a holder
+ * with a date of its own refuses (`pending-date`), but for the owner. The
+ * unsettled pairs on the memory it is over are closed through it, a slot
+ * proposal's provisional cut lifted, and all of it recorded so `undo` is
+ * exact. No guards beyond the door's own checks: `settle` keeps those.
+ */
+export function supersede(store: Store, input: SupersedeInput, opts: { retarget?: Retarget } = {}): SettleOutcome {
+  if (store.observer) return refuse("observer", "This session is an observer: it reads the store and writes nothing. Nothing was settled.");
+  const { holds, over, how } = input;
+  if (holds === over) return refuse("same-memory", `holds and over are both ${holds}.`);
+  const bad = doorRefusal(store, over) ?? doorRefusal(store, holds);
+  if (bad !== null) return bad;
+  const day = input.day ?? store.livedDay();
+  const pair = input.pair;
+  const notes: string[] = [...(input.notes ?? [])];
+  const detail: Record<string, unknown> = {};
+  if (input.asked !== undefined && input.asked !== how) detail["asked"] = input.asked;
+  if (input.howSent !== undefined) detail["howSent"] = input.howSent;
+  const replaces = how === "open" ? null : (input.replaces ?? null);
+
+  // A PENDING REMINDER is never buried (07): settled over, it would go quiet.
+  // It moves to the holder, as a write's `updates` moves it; a holder that is
+  // `done` has spent it, and one that replaces the memory archives it with it.
+  let reminder: ReturnType<typeof reminderCarry> = null;
+  if (how !== "open" && replaces === null && store.physicsOf(over).hold?.state === "pending") {
+    const h = store.row(holds) as MemoryRow;
+    if (statusOf(h.status ?? null) === "done") {
+      notes.push(`${over}'s reminder (${store.row(over)?.event_date ?? "a date"}) was not carried: ${holds} says it is done.`);
+    } else if (h.event_date !== null) {
+      if (input.actor !== "owner") {
+        return refuse(
+          "pending-date",
+          `${over} holds a date still to come (${store.row(over)?.event_date ?? "a reminder"}) and ${holds} has a date of its own, so the reminder cannot move to it: settled over, it would go quiet. Settle open, or write the newer memory with updates: ${over}.`,
+        );
+      }
+    } else {
+      reminder = reminderCarry(store, over, holds);
+      if (reminder !== null) {
+        detail["reminder"] = { from: over, to: holds, eventDate: reminder.eventDate };
+        notes.push(`${over}'s reminder (${reminder.eventDate}) moved to ${holds}.`);
+      }
     }
   }
-  const moves = how !== "open";
-  const bad = memoryRefusal(store, over, moves) ?? memoryRefusal(store, holds, false);
-  if (bad !== null) return bad;
 
-  const why = cleanWhy(input.why);
-  let fade: { id: string; fade: number } | null = null;
-  let faded: { id: string; before: number; after: number } | null = null;
-  const notes: string[] = [...guardNotes];
-  const detail: Record<string, unknown> = {};
-  if (how !== asked) detail["asked"] = asked;
-  // A FLAG CLOSES WHEN ITS QUESTION IS ANSWERED ELSEWHERE (write-time): a new
-  // memory that settles one of an unsettled pair's two closes that pair
-  // through its own, so the older memory is not labelled twice. Since
-  // 2026-10-11 (Group 2; review 10 C5) every settle that moves it does — a
-  // dream's or a reflection's too: on 10-10 a dream flag stayed unsettled 12
-  // lived days after a dream settled the same memory through another pair.
+  // A FLAG CLOSES WHEN ITS QUESTION IS ANSWERED ELSEWHERE: every door that
+  // moves the memory closes the unsettled pairs on it (Group 2; review 10 C5),
+  // so it is not labelled twice. A slot proposal in which a REPLACED memory is
+  // the newer is left for `releaseOrphanSlots`, which carries it to the holder.
   const closes =
-    opts.closeFlags === true || (opts.closeFlags !== false && how !== "open")
-      ? (store.contradictionsOf([over]).get(over) ?? []).filter((c) => c.state === "unsettled" && c.id !== pair?.id).map((c) => c.id)
+    input.closeFlags === true || (input.closeFlags !== false && how !== "open")
+      ? (store.contradictionsOf([over]).get(over) ?? [])
+          .filter((c) => c.state === "unsettled" && c.id !== pair?.id)
+          .filter((c) => replaces === null || !(c.source === SLOT_SOURCE && provisionalOf(store, c)?.holds === over))
+          .map((c) => c.id)
       : [];
   // A SLOT PROPOSAL'S PROVISIONAL CUT (2026-10-11) is lifted by whatever
   // answers it — this settle, or one that closes it — so the settle's own
@@ -417,10 +563,13 @@ export function settle(store: Store, input: SettleInput, opts: { closeFlags?: bo
   const lifted = new Map<string, number>();
   for (const l of lifts) lifted.set(l.id, unfade(lifted.get(l.id) ?? fadeOf(store.physicsOf(l.id)), l.factor));
   if (lifts.length > 0) detail["lifts"] = lifts;
-  if (how === "changed") {
+
+  let fade: { id: string; fade: number } | null = null;
+  let faded: { id: string; before: number; after: number } | null = null;
+  if (how === "changed" && replaces === null) {
     const physics = store.physicsOf(over);
     const base = lifted.has(over) ? { ...physics, fade: lifted.get(over) as number } : physics;
-    const cut = changedFade(base, day);
+    const cut = changedFade(base, day, input.factor);
     if (cut === null) {
       notes.push(`${over} has nothing to cut; it keeps its place as the earlier one.`);
     } else {
@@ -435,29 +584,41 @@ export function settle(store: Store, input: SettleInput, opts: { closeFlags?: bo
   const liftPatches = [...lifted].filter(([id]) => fade === null || id !== fade.id).map(([id, f]) => ({ id, fade: f }));
   // HOW IT SITS NOW (2026-10-11, Group 2, Mike): a memory's weight follows
   // its latest feeling, so whoever settles over a felt memory is asked to say
-  // how it sits now that the newer one holds — an apology, new information,
-  // the sting turned to clarity. The first feeling is kept.
-  if (how !== "open") {
+  // how it sits now that the newer one holds. The first feeling is kept. Not
+  // for a replaced memory: its feelings travelled with it (a merge) or it left.
+  if (how !== "open" && replaces === null) {
     const felt = store.row(over)?.feeling_peak ?? null;
     if (typeof felt === "number" && felt > 0) notes.push(feelingInvite(over, felt));
   }
-  const archive = how === "corrected" ? { id: over, reason: CORRECTED_REASON } : null;
-  if (archive !== null) detail["archived"] = over;
+  // OUT OF RECALL: archived `corrected`, or replaced with a forwarding address.
+  // Either way the reason is recorded, so an undo brings it back, and its
+  // links go to the holder (`retarget`), so the sweep of rows archived for
+  // good drops nothing that was not carried (Group 4, 2026-10-11).
+  const archive = how === "corrected" && replaces === null ? { id: over, reason: CORRECTED_REASON } : null;
+  const replaced = replaces === null ? null : { id: over, successor: holds, reason: replaces.reason, ...(replaces.carryReturns === true ? { carryReturns: true } : {}) };
+  const leaves = archive !== null || replaced !== null;
+  if (leaves) {
+    detail["archived"] = over;
+    detail["archivedReason"] = replaced?.reason ?? CORRECTED_REASON;
+    detail["links"] = true;
+  }
   const holdsCol = how === "open" ? null : holds;
   const overCol = how === "open" ? null : over;
   let pairId: string;
   try {
     const out = store.settleContradiction({
-      ...(pair === undefined ? { newId: newPairId(), x: holds, y: over, source: opts.source ?? "settle" } : { pairId: pair.id }),
+      ...(pair === undefined ? { newId: newPairId(), x: holds, y: over, source: input.source } : { pairId: pair.id }),
       how,
       holds: holdsCol,
       over: overCol,
       actor: input.actor,
       actorId: input.actorId ?? null,
-      why,
+      why: cleanWhy(input.why),
       day,
       fade,
       archive,
+      supersede: replaced,
+      reminder,
       closes,
       lifts: liftPatches,
       detail,
@@ -466,6 +627,7 @@ export function settle(store: Store, input: SettleInput, opts: { closeFlags?: bo
   } catch (err) {
     return refuse("failed", `Nothing was settled: ${isStoreError(err) ? err.code : String((err as Error).message ?? err)}.`);
   }
+  if (leaves) carryLinks(store, over, holds, day, opts.retarget);
   store.appendEvent({
     name: CONTRADICTION_SETTLED_EVENT,
     day,
@@ -477,8 +639,14 @@ export function settle(store: Store, input: SettleInput, opts: { closeFlags?: bo
       over: overCol,
       actor: input.actor,
       actorId: input.actorId ?? null,
+      // Which door (2026-10-11, Group 2b): the dashboard counts detected
+      // doors (slot, dream-merge) apart from declared ones (review 10 C6).
+      source: pair?.source ?? input.source,
+      ...(input.howSent === undefined ? {} : { howSent: input.howSent }),
       faded: faded !== null,
       archived: archive !== null,
+      replaced: replaced !== null,
+      reminder: reminder !== null,
       closed: closes.length,
       day,
     },
@@ -490,10 +658,20 @@ export function settle(store: Store, input: SettleInput, opts: { closeFlags?: bo
     holds: holdsCol,
     over: overCol,
     faded,
-    archived: archive?.id ?? null,
+    archived: archive?.id ?? replaced?.id ?? null,
     closed: closes,
     ...(notes.length > 0 ? { note: notes.join(" ") } : {}),
   };
+}
+
+/** A memory leaving recall hands its links to `to`. A courtesy: never throws, never undoes the settle. */
+function carryLinks(store: Store, from: string, to: string, day: number, retarget: Retarget | undefined): void {
+  try {
+    if (retarget !== undefined) retarget(from, to, day);
+    else new Associate({ store }).retargetOnSupersede(from, to, day);
+  } catch {
+    /* the links are a courtesy; the settle stands */
+  }
 }
 
 /**
@@ -504,13 +682,93 @@ export function settle(store: Store, input: SettleInput, opts: { closeFlags?: bo
  */
 export function settleOnWrite(
   store: Store,
-  input: { newId: string; targetId: string; how: SettleHow; actorId: string | null; day: number },
+  input: { newId: string; targetId: string; how: SettleHow; actorId: string | null; day: number; howSent?: boolean; retarget?: Retarget },
 ): SettleOutcome {
   return settle(
     store,
     { holds: input.newId, over: input.targetId, how: input.how, actor: "session", actorId: input.actorId, day: input.day },
-    { closeFlags: true, source: "write" },
+    { closeFlags: true, source: "write", ...(input.howSent === undefined ? {} : { howSent: input.howSent }), ...(input.retarget === undefined ? {} : { retarget: input.retarget }) },
   );
+}
+
+/** The `source` of a pair written because a memory's reminder moved to a newer one (2026-10-11, Group 2b). */
+export const REMINDER_MOVED_SOURCE = "reminder-moved";
+
+/** Where the once-only pass over moved-reminder remnants records that it ran (`settleMovedReminders`). */
+export const REMINDERS_MOVED_META = "reconsolidation.remindersMoved";
+
+/**
+ * A MEMORY WHOSE REMINDER MOVED STEPS BACK (2026-10-11, Group 2b; review 07
+ * §4.3, C2): the newer memory that took the reminder holds over it `changed`,
+ * source `reminder-moved`, through the settle (its guards: the core and a
+ * protected memory are left alone). Only when the two are not already a pair
+ * (the write's own `updates` settles it first, in the writer's words) and the
+ * remnant holds no date of its own. Null when nothing was written.
+ */
+export function settleMovedReminder(
+  store: Store,
+  input: { remnant: string; holder: string; actor: SettleActor; actorId?: string | null; day?: number },
+  opts: { retarget?: Retarget } = {},
+): SettleOutcome | null {
+  if (store.observer || input.remnant === input.holder) return null;
+  const r = store.row(input.remnant);
+  if (r === undefined || r.event_date !== null || r.archived === 1 || r.superseded_by !== null) return null;
+  if (store.contradictionBetween(input.holder, input.remnant) !== undefined) return null;
+  const out = settle(
+    store,
+    { holds: input.holder, over: input.remnant, how: "changed", why: "its reminder moved to the newer memory", actor: input.actor, actorId: input.actorId ?? null, ...(input.day === undefined ? {} : { day: input.day }) },
+    { source: REMINDER_MOVED_SOURCE, ...(opts.retarget === undefined ? {} : { retarget: opts.retarget }) },
+  );
+  return out.ok ? out : null;
+}
+
+/**
+ * THE REMNANTS FROM BEFORE (2026-10-11, Group 2b): every live memory whose
+ * reminder moved (`meta.reminderMovedTo`) and that nothing settled over yet
+ * gets its row once — the holder is where the reminder went, followed to its
+ * live end. Idempotent (a remnant already settled over, or already a pair
+ * with its holder, is passed by), never a memory that still holds a date.
+ * Latched in meta (`REMINDERS_MOVED_META`); a moved reminder writes its own
+ * row from now on. Never throws; the number written.
+ */
+export function settleMovedReminders(store: Store, opts: { retarget?: Retarget; force?: boolean } = {}): number {
+  if (store.observer) return 0;
+  try {
+    if (opts.force !== true && store.getMeta(REMINDERS_MOVED_META) !== undefined) return 0;
+    const day = store.livedDay();
+    let written = 0;
+    let passed = 0;
+    for (const id of store.idsWithMetaKey(DATE_MOVED_TO_META)) {
+      let to: unknown;
+      try {
+        to = store.readProse(id).meta[DATE_MOVED_TO_META];
+      } catch {
+        continue;
+      }
+      if (typeof to !== "string" || headOf(store, id) !== null) {
+        passed += 1;
+        continue;
+      }
+      let holder: string;
+      try {
+        holder = store.resolve(to);
+      } catch {
+        passed += 1;
+        continue;
+      }
+      const h = store.row(holder);
+      if (h === undefined || h.archived === 1 || h.superseded_by !== null || rowTombstoned(h)) {
+        passed += 1;
+        continue;
+      }
+      if (settleMovedReminder(store, { remnant: id, holder, actor: "detector", day }, opts) !== null) written += 1;
+      else passed += 1;
+    }
+    store.setMeta(REMINDERS_MOVED_META, JSON.stringify({ day, written, passed }));
+    return written;
+  } catch {
+    return 0;
+  }
 }
 
 /** FLAG A PAIR that disagrees (a dream's `contradiction`, today): unsettled, idempotent. */
@@ -574,6 +832,7 @@ export type UndoOutcome =
 export function undo(
   store: Store,
   input: { pair: string; actor: SettleActor; actorId?: string | null; why?: string | null; day?: number },
+  opts: { retarget?: Retarget } = {},
 ): UndoOutcome {
   if (store.observer) return { ok: false, reason: "observer", detail: "This session is an observer: nothing was undone." };
   const day = input.day ?? store.livedDay();
@@ -618,6 +877,18 @@ export function undo(
   const reapply = [...next].filter(([id]) => d.fade === null || id !== d.fade.id).map(([id, fade]) => ({ id, fade }));
   const reopen = d.closes.filter((c) => store.contradiction(c)?.via === pair.id);
   const back = wasFlagged(pair) ? "unsettled" : "withdrawn";
+  // A REMINDER THE SETTLE CARRIED goes back (2026-10-11, Group 2b) — while the
+  // holder still has that date and the memory it came from has none since.
+  let reminderBack: { to: string; toMeta: Record<string, unknown>; from: string; eventDate: string; fromMeta: Record<string, unknown> } | null = null;
+  if (d.reminder !== null) {
+    const to = store.row(d.reminder.to);
+    const from = store.row(d.reminder.from);
+    if (to !== undefined && from !== undefined && to.event_date === d.reminder.eventDate && from.event_date === null) {
+      reminderBack = { to: d.reminder.to, toMeta: { [DATE_FROM_META]: null, [CUE_MODE_META]: null, [RECURRING_META]: null }, from: d.reminder.from, eventDate: d.reminder.eventDate, fromMeta: { [DATE_MOVED_TO_META]: null } };
+    } else {
+      notes.push(`${d.reminder.to}'s date has moved on since, so the reminder stayed where it is.`);
+    }
+  }
   let unarchived = false;
   try {
     const out = store.undoContradictionSettle({
@@ -630,14 +901,18 @@ export function undo(
       state: back,
       restore,
       reapply,
-      unarchive: d.archived === null ? null : { id: d.archived, reason: CORRECTED_REASON },
+      unarchive: d.archived === null ? null : { id: d.archived, reason: d.archivedReason },
       reopen,
-      detail: { restored: restore?.id ?? null, archived: d.archived, reopened: reopen, state: back },
+      reminderBack,
+      detail: { restored: restore?.id ?? null, archived: d.archived, reopened: reopen, state: back, ...(reminderBack === null ? {} : { reminder: true }) },
     });
     unarchived = out.unarchived;
   } catch (err) {
     return { ok: false, reason: "failed", detail: `Nothing was undone: ${isStoreError(err) ? err.code : String((err as Error).message ?? err)}.` };
   }
+  // Back in recall, it takes back the links it handed the holder (the dream
+  // merge's undo has done this since Group 4): the holder's, `max`, both ways.
+  if (unarchived && d.links && last.holds !== null && d.archived !== null) carryLinks(store, last.holds, d.archived, day, opts.retarget);
   // A reopened question starts fresh on "my mind" (review of #284, M5).
   for (const id of back === "unsettled" ? [pair.id, ...reopen] : reopen) resetHabituation(store, id, day);
   if (d.archived !== null && !unarchived) notes.push(`${d.archived} has moved on since it was archived, so it was not brought back.`);
@@ -668,6 +943,12 @@ export function wasFlagged(pair: Pick<ContradictionRow, "source" | "dream_id">):
 export function settleDetail(raw: string): {
   fade: { id: string; factor: number } | null;
   archived: string | null;
+  /** Why it was archived (2026-10-11, Group 2b): `corrected`, or a replacing door's reason. Older rows: `corrected`. */
+  archivedReason: string;
+  /** Its links went to the holder, so an undo brings them back. */
+  links: boolean;
+  /** A reminder the settle carried. */
+  reminder: { from: string; to: string; eventDate: string } | null;
   closes: string[];
   /** Provisional cuts the settle lifted (2026-10-11): an undo puts them back on. */
   lifts: { id: string; factor: number }[];
@@ -682,9 +963,18 @@ export function settleDetail(raw: string): {
   return {
     fade: f !== undefined && typeof f.id === "string" && typeof f.factor === "number" ? { id: f.id, factor: f.factor } : null,
     archived: typeof d["archived"] === "string" ? (d["archived"] as string) : null,
+    archivedReason: typeof d["archivedReason"] === "string" ? (d["archivedReason"] as string) : CORRECTED_REASON,
+    links: d["links"] === true,
+    reminder: reminderOf(d["reminder"]),
     closes: Array.isArray(d["closes"]) ? (d["closes"] as unknown[]).filter((x): x is string => typeof x === "string") : [],
     lifts: Array.isArray(d["lifts"]) ? (d["lifts"] as unknown[]).flatMap(fadeFactorOf) : [],
   };
+}
+
+function reminderOf(x: unknown): { from: string; to: string; eventDate: string } | null {
+  if (x === null || typeof x !== "object") return null;
+  const r = x as { from?: unknown; to?: unknown; eventDate?: unknown };
+  return typeof r.from === "string" && typeof r.to === "string" && typeof r.eventDate === "string" ? { from: r.from, to: r.to, eventDate: r.eventDate } : null;
 }
 
 /** One `{id, factor}` of a trail detail, as a list of none or one. */

@@ -51,7 +51,8 @@ const PROOFS = BUILT.flatMap((m) => m.proofs.map((proof) => ({ mech: m.id, proof
  */
 const SAMPLES: Readonly<Record<string, Payload>> = {
   "decay.faded": { site: "decay", direction: "down" },
-  "interference.faded": { how: "changed" },
+  "interference.faded": { how: "changed", source: "slot" },
+  "reconsolidation.settled": { how: "changed", source: "write" },
   "retrieval.turns": { surfacedCount: 1, footnoteCount: 0 },
   "consolidation.rose": { site: "consolidate", direction: "up" },
 };
@@ -73,6 +74,8 @@ const MORE: readonly { event: string; payload: Payload }[] = [
   { event: "band.transition", payload: { site: "decay", direction: "up" } }, // the crossing into identity, not a fade
   { event: "contradiction.settled", payload: { how: "open" } },
   { event: "contradiction.settled", payload: { how: "corrected" } }, // live beside "changed" (2 of 50 on 2026-10-10)
+  { event: "contradiction.settled", payload: { how: "changed" } }, // from before rows said their source: declared
+  { event: "contradiction.settled", payload: { how: "changed", source: "dream-merge" } }, // counted as the merge, not as a settle
   { event: "associate.flush", payload: { rows: 0, pairs: 0 } },
   { event: "gate.deposit", payload: { accepted: 0 } },
 ];

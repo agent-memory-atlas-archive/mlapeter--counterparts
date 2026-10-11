@@ -91,9 +91,9 @@
  */
 import { hashText, occurredOnOf, saidByOf, statusOf } from "./store/index.js";
 import type { MemoryRow, Store } from "./store/index.js";
-import { applyChallenge, successorSeed, supersedeRecord } from "./physics/index.js";
+import { TUNABLES, applyChallenge, successorSeed, supersedeRecord } from "./physics/index.js";
 import { directionOf } from "./mint.js";
-import { flag, settleOnWrite } from "./reconsolidation.js";
+import { FULFILLED_REASON, flag, settleOnWrite, supersede } from "./reconsolidation.js";
 import type { SettleOutcome } from "./reconsolidation.js";
 import type { SettleHow } from "./types.js";
 import type { Schemas } from "./schemas/index.js";
@@ -141,6 +141,8 @@ export interface RevisionInput {
    * Absent — a swept declaration — the ordinary-memory arm is a link, as before.
    */
   how?: SettleHow;
+  /** Whether the author sent `how` or it was defaulted (2026-10-11): recorded on the settle. */
+  howSent?: boolean;
   /** The writing session, for the settle's trail. */
   session?: string | null;
 }
@@ -347,6 +349,12 @@ export function applyRevision(
   // both). An identity claim is exactly the case the slow-kind daily force cap
   // exists for — three lived days of pressure, not one loud sentence.
   if (row.type === "memory" && (row.band === "identity" || target.promotedIdentity)) {
+    // A FULFILLED PLAN LEAVES THE CORE IN ONE STEP (2026-10-11, Group 2b;
+    // review 10 C4): the current-state fast lane, even here. A plan, a status
+    // or a date is a state, and a declared `done` ends it.
+    if (input.how !== undefined && input.how !== "open" && fulfilled(store, row, input.challengerId)) {
+      return fulfil(store, row, input, settle, retargeted, opts);
+    }
     const out = identityChallenge(store, row, input, opts, settle, retargeted);
     // WHILE PRESSURE BUILDS (review of #284, M9): an authored `how` at a core
     // memory is not applied — its path is pressure over days — but the pair is
@@ -373,6 +381,8 @@ export function applyRevision(
       how: input.how,
       actorId: input.session ?? null,
       day: input.day,
+      ...(input.howSent === undefined ? {} : { howSent: input.howSent }),
+      ...(opts.retarget === undefined ? {} : { retarget: opts.retarget }),
     });
     if (out.ok) return settle(out.how, "settled", targetId, { moved: true, retargeted, settle: out });
     return settle("link-only", "linked-only", targetId, { retargeted, settle: out });
@@ -410,8 +420,16 @@ function identityChallenge(
     target,
     // The RESOLVED id is what physics is told; the raw declaration never leaves
     // the event (scar §2.5 — the model proposes semantics, the engine resolves
-    // references).
-    { id: input.challengerId, declaredUpdates: targetId, physics: challenger },
+    // references). An AUTHORED change or correction (a `how`) credits at least
+    // the slow-kind cap (2026-10-11, Group 2b; review 10 C4): the writer's word
+    // is the evidence, so a kept promise (salience 0.25) is not 0.06 a day
+    // against a bar of 0.77. A swept declaration keeps its own force.
+    {
+      id: input.challengerId,
+      declaredUpdates: targetId,
+      physics: challenger,
+      ...(input.how === "changed" || input.how === "corrected" ? { floor: TUNABLES.F_DAY_CAP_SLOW } : {}),
+    },
     input.day,
   );
 
@@ -447,6 +465,7 @@ function identityChallenge(
   }
 
   let successorId: string | null = null;
+  let crossed: string | null = null;
   if (outcome.verdict === "revise") {
     const statement = (input.statement ?? store.readProse(input.challengerId).body).trim();
     // v12: the successor's words are the CHALLENGER's statement, so its three
@@ -458,44 +477,47 @@ function identityChallenge(
     const occurredOn = occurredOnOf(said?.occurred_on ?? null);
     const saidBy = saidByOf(said?.said_by ?? null);
     const status = statusOf(said?.status ?? null);
-    successorId = store.supersede(
-      targetId,
-      {
-        type: "memory",
-        kind: row.kind,
-        body: statement,
-        ...(occurredOn === null ? {} : { occurredOn }),
-        ...(saidBy === null ? {} : { saidBy }),
-        ...(status === null ? {} : { status }),
-        meta: { revisedFrom: targetId, groundedIn: [input.challengerId] },
-        // Identity is entered by INHERITING it through a declared revision or by
-        // the counted promotion crossing, and never otherwise (physics §5.3).
-        // This is the first of those two, so the band travels with the successor
-        // and `successorSeed` carries the promotion flag.
-        band: row.band,
-        salience: challenger.salience,
-        physics: {
-          birthDay: input.day,
-          lastUsedDay: input.day,
-          ...successorSeed(store.physicsOf(targetId)),
-        },
-        source: "accommodation",
-        origin: { ref: input.challengerId },
+    const successor = store.put({
+      type: "memory",
+      kind: row.kind,
+      body: statement,
+      ...(occurredOn === null ? {} : { occurredOn }),
+      ...(saidBy === null ? {} : { saidBy }),
+      ...(status === null ? {} : { status }),
+      meta: { revisedFrom: targetId, groundedIn: [input.challengerId] },
+      // Identity is entered by INHERITING it through a declared revision or by
+      // the counted promotion crossing, and never otherwise (physics §5.3).
+      // This is the first of those two, so the band travels with the successor
+      // and `successorSeed` carries the promotion flag.
+      band: row.band,
+      salience: challenger.salience,
+      physics: {
+        birthDay: input.day,
+        lastUsedDay: input.day,
+        ...successorSeed(store.physicsOf(targetId)),
       },
-      "revised-by-pressure",
+      source: "accommodation",
+      origin: { ref: input.challengerId },
+    });
+    // THROUGH THE ONE DOOR (2026-10-11, Group 2b; review 10 R7 path 3): the
+    // successor holds over the old core memory `changed`, source `pressure`,
+    // and REPLACES it — archived `revised-by-pressure` with a forwarding
+    // address, as before — with a pair and a trail row, so the crossing is
+    // undone like a settle; the pressure pair that stood while it built is
+    // closed through it; the links go to the successor.
+    const door = supersede(
+      store,
+      { holds: successor, over: targetId, how: "changed", source: "pressure", actor: "session", actorId: input.session ?? null, day: input.day, replaces: { reason: "revised-by-pressure" } },
+      opts.retarget === undefined ? {} : { retarget: opts.retarget },
     );
-    if (opts.retarget !== undefined) {
-      try {
-        opts.retarget(targetId, successorId, input.day);
-      } catch (err) {
-        opts.onEvent?.("revision.edges.retarget.failed", {
-          target: targetId,
-          successor: successorId,
-          day: input.day,
-          error: err instanceof Error ? err.name : "UNKNOWN",
-        });
-      }
+    if (!door.ok) {
+      // The door refused (it should not: both are live memory rows): replaced as before.
+      store.supersedeInto(targetId, successor, "revised-by-pressure");
+      opts.onEvent?.("revision.door.refused", { target: targetId, successor, day: input.day, reason: door.reason });
+    } else {
+      crossed = door.pair;
     }
+    successorId = successor;
     const record = supersedeRecord(targetId, successorId, input.day);
     opts.onEvent?.("memory.superseded", {
       target: targetId,
@@ -516,5 +538,56 @@ function identityChallenge(
     pressureAfter: outcome.pressureAfter,
     bar: outcome.bar,
     increment,
+    ...(crossed === null ? {} : { pressurePair: crossed }),
   });
+}
+
+/**
+ * IS THIS A PLAN THE NEW MEMORY FULFILS? (2026-10-11, Group 2b; review 10
+ * C4): the core memory holds a state — a status other than `done` (planned,
+ * asked, proposed…) or a date — and the challenger says `done`. Read off the
+ * rows' own fields; no text is read.
+ */
+function fulfilled(store: Store, row: MemoryRow, challengerId: string): boolean {
+  const was = statusOf(row.status ?? null);
+  const holdsAState = (was !== null && was !== "done") || row.event_date !== null;
+  return holdsAState && statusOf(store.row(challengerId)?.status ?? null) === "done";
+}
+
+/**
+ * THE FAST LANE OUT OF THE CORE (2026-10-11, Group 2b): a fulfilled plan is
+ * settled `changed` by the memory that fulfils it, through the one door —
+ * source `fulfilled`, the pressure pair settled when one stood — and replaced
+ * by it: archived `fulfilled` with a forwarding address to the `done` memory,
+ * which stays as it was (not core). No pressure, no successor. An undo brings
+ * the plan back, core as it was.
+ */
+function fulfil(
+  store: Store,
+  row: MemoryRow,
+  input: RevisionInput,
+  settle: (path: RevisionPath, reason: RevisionApplyReason, targetId: string | null, extra?: Partial<RevisionApplication>) => RevisionApplication,
+  retargeted: boolean,
+  opts: RevisionOptions,
+): RevisionApplication {
+  const standing = store.contradictionBetween(row.id, input.challengerId);
+  const door = supersede(
+    store,
+    {
+      holds: input.challengerId,
+      over: row.id,
+      how: "changed",
+      source: FULFILLED_REASON,
+      actor: "session",
+      actorId: input.session ?? null,
+      day: input.day,
+      replaces: { reason: FULFILLED_REASON },
+      ...(standing !== undefined && standing.state === "unsettled" ? { pair: standing } : {}),
+      ...(input.howSent === undefined ? {} : { howSent: input.howSent }),
+    },
+    opts.retarget === undefined ? {} : { retarget: opts.retarget },
+  );
+  if (!door.ok) return settle("identity", "below-bar", row.id, { retargeted, settle: door });
+  opts.onEvent?.("memory.superseded", { target: row.id, successor: input.challengerId, day: input.day, resolvableUntilDay: supersedeRecord(row.id, input.challengerId, input.day).resolvableUntilDay });
+  return settle("identity", "revised", row.id, { moved: true, verdict: "replace", retargeted, successorId: input.challengerId, settle: door, pressurePair: door.pair });
 }

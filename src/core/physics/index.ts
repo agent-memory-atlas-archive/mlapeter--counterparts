@@ -1767,6 +1767,13 @@ export interface Challenge {
    *  inferred-revision path (guarantee 7). */
   declaredUpdates: string | null;
   physics: MemoryPhysics;
+  /**
+   * A FLOOR ON THE FORCE (2026-10-11, Group 2b; review 10 C4): the writer
+   * DECLARED a change at this memory, and the declaration is the evidence —
+   * a "done" memory's low salience says nothing about it. Still capped at
+   * `F_DAY_CAP_SLOW` for a slow kind, so the three-lived-day property holds.
+   */
+  floor?: number;
 }
 
 export type ChallengeReason =
@@ -1885,7 +1892,7 @@ export function applyChallenge(
   }
   if (target.lastChallengedDay !== null && d < target.lastChallengedDay) return refuse("stale-day");
 
-  const rawForce = challengeForce(challenge.physics, d, shape);
+  const rawForce = Math.max(challengeForce(challenge.physics, d, shape), challenge.floor ?? 0);
   const slow = kindPhysics(target.kind).iota >= TUNABLES.SLOW_KIND_IOTA;
   const force = slow ? Math.min(rawForce, TUNABLES.F_DAY_CAP_SLOW) : rawForce;
   const pressureAfter = pressureBefore + force;

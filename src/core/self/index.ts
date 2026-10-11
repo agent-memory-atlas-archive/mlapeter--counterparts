@@ -177,7 +177,7 @@ import { withTunables } from "./tunables.js";
 import type { SelfTunables } from "./tunables.js";
 import { calendarDate } from "./calendar.js";
 import { markWakeBehind } from "./behind.js";
-import { standingOf } from "../recall/standing.js";
+import { pairOrder, standingOf } from "../recall/standing.js";
 
 export * from "./behind.js";
 export * from "./briefing.js";
@@ -3167,7 +3167,8 @@ export function settledOver(store: Pick<Store, "contradictions" | "row">): Set<s
     const pairs = [...store.contradictions({ state: "settled", limit: 100_000 })]
       .reverse()
       .filter((p) => p.via === null && p.over !== null && p.holds !== null && (p.how === "changed" || p.how === "corrected"))
-      .sort((a, b) => a.updated_at - b.updated_at || a.created_at - b.created_at);
+      // Raised order, not answered order (`recall/standing.ts#pairOrder`, Group 2b).
+      .sort(pairOrder);
     const newest = new Map<string, { role: "over" | "holds"; holds: string }>();
     for (const p of pairs) {
       newest.set(p.over as string, { role: "over", holds: p.holds as string });
