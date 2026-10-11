@@ -70,7 +70,9 @@ shows that session's Memories, Subconscious and Saved instead (below,
 Built against core's onboarding state, which core was building in parallel
 (`~/counterparts-notes/2026-10-11-onboarding-core-brief.md`). **The source is
 the SessionStart wake's marker**, `<!-- counterparts:onboarding
-meet=<state> -->` on a line of its own, written on every wake (done
+meet=<state> -->` on a line of its own (right under the `Now:` clock line,
+outside the wake block; nothing in the mod reads the wake by line
+position), written on every wake, compactions included (done
 included; `start-fresh` resets it to not_started); spelled once, in
 `feed.ts#ONBOARDING_MARKER`. The hooks don't start the dashboard, so it
 could not be the source. No marker: an older core, `unknown`, and the mod

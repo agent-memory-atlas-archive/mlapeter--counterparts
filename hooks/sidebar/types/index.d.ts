@@ -235,7 +235,11 @@ export type SidebarMeet = 'unknown' | 'not_started' | 'offered' | 'later' | 'don
 
 export type SidebarOnboarding = {
   meet: SidebarMeet;
-  /** Core's answers, passed through as read (never drawn yet). */
+  /**
+   * Core's answers, passed through as read (never drawn yet): `where` is
+   * `every` or `this`, `style` `straight`, `think`, `friendly`, `character`
+   * or `other` (core #419); null from the wake's marker, which names only `meet`.
+   */
   where: string | null;
   style: string | null;
 };

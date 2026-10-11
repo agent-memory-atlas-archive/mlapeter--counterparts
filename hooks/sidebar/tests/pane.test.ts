@@ -1586,7 +1586,16 @@ const onbFetches = (w: World) => w.fetches.filter(u => u.endsWith('/api/onboardi
 
 /** Core's SessionStart wake, as the classic hook injects it: with its onboarding marker on a line of its own, or (null) none, as an older core. */
 async function wake($: Engine, w: World, meet: string | null): Promise<void> {
-  const body = ['# Waking up', '', 'Yesterday we worked on the sidebar.', ...(meet === null ? [] : [`<!-- counterparts:onboarding meet=${meet} -->`])].join('\n')
+  // As core #419 writes it: the marker on its own line right under the `Now:` clock line, above the wake block.
+  const body = [
+    'Now: Sunday, October 11, 2026, 1:35 PM',
+    ...(meet === null ? [] : [`<!-- counterparts:onboarding meet=${meet} -->`]),
+    '<!-- counterparts:wake -->',
+    '# Waking up',
+    '',
+    'Yesterday we worked on the sidebar.',
+    '<!-- counterparts:wake/end -->',
+  ].join('\n')
   await $.session.append({
     door: 'hook-context',
     origin: { kind: 'hook', event: 'SessionStart' },
@@ -1627,6 +1636,26 @@ test('speak first: the wake can land before the plugin’s session.start; the st
   await start($, w)
   await settle(w)
   expect(w.submits).toEqual([MEET])
+})
+
+test('a compaction’s wake carries the marker again (still not_started until core’s meet is called): nothing more is submitted', async ($, on) => {
+  const w = world(on)
+  await startWith($, w, 'not_started')
+  expect(w.submits).toEqual([MEET])
+  await wake($, w, 'not_started') // SessionStart after /compact
+  await w.clock.advance(61000)
+  await settle(w)
+  expect(w.submits).toEqual([MEET])
+})
+
+test('the marker under the wake’s clock line leaves the rest alone: a recall block in the same context still fills Memories', async ($, on) => {
+  const w = world(on, { store: { meetTriggered: { settled: 'done', at: T0 } } })
+  await start($, w)
+  await block($, w, `Now: Sunday, October 11, 2026, 1:35 PM\n<!-- counterparts:onboarding meet=done -->\n${RECALL_BLOCK}`)
+  const ui = await mount($, w, 'terminal')
+  expect((await bodyLines(ui)).join('\n')).toContain('Release notes go out on Fridays')
+  expect(w.submits).toHaveLength(0)
+  await ui.unmount()
 })
 
 test('speak first: a second session (or a restart) finds the mark and submits nothing', async ($, on) => {
