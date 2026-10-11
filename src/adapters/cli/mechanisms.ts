@@ -225,6 +225,9 @@ export const MEMORY_MECHANISMS: readonly MemoryMechanism[] = [
       if (v.starved !== undefined) {
         return { light: LIGHT.idle, says: `${plural(saved, "link")} laid this week, but none brought a memory to mind (${plural(held, "link")} held)` };
       }
+      if (v.young !== undefined) {
+        return { light: LIGHT.working, says: `${plural(saved, "link")} laid this week; too early for one to bring a memory to mind (${plural(held, "link")} held)` };
+      }
       return {
         light: LIGHT.idle,
         says:

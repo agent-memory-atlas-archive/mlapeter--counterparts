@@ -229,6 +229,13 @@ export function lightOf(v: Verdict, returns?: ReturnsBySource): MechanismLight {
     const none = missing === undefined ? "" : `, but no ${missing.says[0]}`;
     return { ...base, status: "amber", evidence: `${said.join(", ")} in the last ${MECHANISM_DAYS} lived days${none}.${heldLine}`, events: v.events };
   }
+  // YOUNG (reviewer of #423): the same, on a store too new to expect it — waiting, in plain words.
+  if (v.young !== undefined) {
+    const said = v.parts.filter((p) => p.count > 0).map((p) => plural(p.count, p.says));
+    const missing = v.parts.find((p) => p.key === v.young);
+    const none = missing === undefined ? "" : ` No ${missing.says[0]} yet; that takes a few weeks of use.`;
+    return { ...base, status: "waiting", evidence: `${said.join(", ")} in the last ${MECHANISM_DAYS} lived days.${none}${heldLine}`, events: v.events };
+  }
   if (row.held !== undefined && v.held === 0) {
     return { ...base, status: "waiting", evidence: row.held.none, events: [] };
   }

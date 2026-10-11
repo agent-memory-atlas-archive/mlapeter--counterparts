@@ -17,6 +17,7 @@ import { DREAM_MERGE_REASON } from "../src/core/dream/index.js";
 import { EPISODE_REGROWN_REASON } from "../src/core/leaving.js";
 import { ASKED_KIND, activate, askedTurn, freshGateState, loadGateState, saveGateState, withTunables as withRecallTunables } from "../src/core/recall/index.js";
 import { mechanismEvidence } from "../src/adapters/mechanism-evidence.js";
+import { LIGHT, MEMORY_MECHANISMS, readMechanism } from "../src/adapters/cli/mechanisms.js";
 import { MECHANISM_DAYS, lightOf } from "../src/adapters/dashboard/web/views/mechanisms.js";
 import type { GateState } from "../src/core/recall/index.js";
 import { DREAM_TUNABLES } from "../src/core/dream/tunables.js";
@@ -425,26 +426,55 @@ describe("7. honest evidence (review 06 C6)", () => {
     expect(row["linksReached"]).toBe((spread["pointersShown"] ?? 0) + (spread["liftedShown"] ?? 0));
   });
 
-  test("Association: links laid with none reaching recall is amber and says so; one that reached is green", () => {
+  test("Association: links laid with none reaching recall is waiting on a young store, amber once it has history; one that reached is green", () => {
     const clock = { now: Date.UTC(2026, 8, 1, 9) };
     const c = brainAt(clock);
+    const assoc = (today: number) => mechanismEvidence(c.store, { sinceDay: today - 6, today }).verdicts.find((v) => v.id === "association")!;
     for (let d = 1; d <= 9; d++) c.store.advanceClock(`2026-09-0${String(d)}`);
-    const day = c.store.livedDay();
+    let day = c.store.livedDay();
+    expect(day).toBeLessThan(14);
     // Rows rewritten are not links laid: `rows` alone proves nothing now.
     c.store.appendEvent({ name: "associate.flush", day, payload: { rows: 40, deposited: 0 } });
-    const quiet = mechanismEvidence(c.store, { sinceDay: day - 6, today: day }).verdicts.find((v) => v.id === "association");
-    expect(quiet?.fired).toBe(false);
-    expect(quiet?.starved).toBeUndefined();
-    c.store.appendEvent({ name: "associate.flush", day, payload: { rows: 8, deposited: 3 } });
+    const quiet = assoc(day);
+    expect(quiet.fired).toBe(false);
+    expect(quiet.starved).toBeUndefined();
+    expect(quiet.young).toBeUndefined();
+    // A new store: links laid, none reached recall yet — waiting, not amber, even with plenty laid.
+    c.store.appendEvent({ name: "associate.flush", day, payload: { rows: 8, deposited: 23 } });
     c.store.appendEvent({ name: "dream.begun", day, ref: "drm_x", payload: { replayLinks: 2 } });
-    const starved = mechanismEvidence(c.store, { sinceDay: day - 6, today: day }).verdicts.find((v) => v.id === "association")!;
+    const young = assoc(day);
+    expect(young.fired).toBe(false);
+    expect(young.starved).toBeUndefined();
+    expect(young.young).toBe("reached");
+    const waiting = lightOf(young);
+    expect(waiting.status).toBe("waiting");
+    expect(waiting.evidence).toBe(
+      `23 links laid, 2 faint links a dream's replay laid in the last ${String(MECHANISM_DAYS)} lived days. No memory a link brought to mind yet; that takes a few weeks of use.`,
+    );
+    const cli = MEMORY_MECHANISMS.find((m) => m.id === "association")!;
+    expect(readMechanism(cli, [young], () => undefined)).toEqual({
+      light: LIGHT.working,
+      says: "25 links laid this week; too early for one to bring a memory to mind (0 links held)",
+    });
+    // Two weeks of lived days, but only a handful laid this week: still too little to expect one.
+    for (let d = 10; d <= 20; d++) c.store.advanceClock(`2026-09-${String(d)}`);
+    day = c.store.livedDay();
+    expect(day).toBeGreaterThanOrEqual(14);
+    c.store.appendEvent({ name: "associate.flush", day, payload: { rows: 8, deposited: 5 } });
+    expect(assoc(day).young).toBe("reached");
+    expect(lightOf(assoc(day)).status).toBe("waiting");
+    // Enough history and enough laid: amber, and it says so.
+    c.store.appendEvent({ name: "associate.flush", day, payload: { rows: 30, deposited: 15 } });
+    const starved = assoc(day);
     expect(starved.fired).toBe(false);
+    expect(starved.young).toBeUndefined();
     expect(starved.starved).toBe("reached");
     const amber = lightOf(starved);
     expect(amber.status).toBe("amber");
-    expect(amber.evidence).toBe(`3 links laid, 2 faint links a dream's replay laid in the last ${String(MECHANISM_DAYS)} lived days, but no memory a link brought to mind.`);
+    expect(amber.evidence).toBe(`20 links laid in the last ${String(MECHANISM_DAYS)} lived days, but no memory a link brought to mind.`);
+    expect(readMechanism(cli, [starved], () => undefined).light).toBe(LIGHT.idle);
     c.store.appendEvent({ name: "recall.decision", day, ref: "s1", payload: { surfacedCount: 0, footnoteCount: 1, linksReached: 1 } });
-    const reached = mechanismEvidence(c.store, { sinceDay: day - 6, today: day }).verdicts.find((v) => v.id === "association")!;
+    const reached = assoc(day);
     expect(reached.fired).toBe(true);
     expect(lightOf(reached).status).toBe("green");
   });
