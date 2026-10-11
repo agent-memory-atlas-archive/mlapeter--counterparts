@@ -695,7 +695,9 @@ describe("the tool-description audit", () => {
     let checked = 0;
     for (const spec of TOOLS) {
       expect(spec.privileges.length).toBeGreaterThan(0);
-      for (const privilege of spec.privileges) {
+      // The engine's rows too (2026-10-11): kept out of the description, never
+      // out of this audit — a pointer nobody reads rots fastest.
+      for (const privilege of [...spec.privileges, ...(spec.engine ?? [])]) {
         expect(privilege.claim.trim().length).toBeGreaterThan(0);
         expect(privilege.mechanizedBy.trim().length).toBeGreaterThan(0);
         // The pointer cannot rot into a lie: every `src/**.ts` it names must be
@@ -723,6 +725,12 @@ describe("the tool-description audit", () => {
       // of registry rows, which is what makes "stated ⇒ mechanized" checkable.
       for (const privilege of spec.privileges) {
         expect(shipped?.description).toContain(privilege.claim);
+      }
+      // And the engine's rows are not served (2026-10-11, `ToolSpec.engine`):
+      // they change nothing the model writes or calls, and a description is
+      // context the model pays for every time the tool loads.
+      for (const kept of spec.engine ?? []) {
+        expect(shipped?.description).not.toContain(kept.claim);
       }
     }
   });
