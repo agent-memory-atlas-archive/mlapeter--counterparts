@@ -16,7 +16,7 @@
  * disagree.
  */
 
-import type { SidebarHit, SidebarMechEvent, SidebarRow, SidebarSaved } from '../types';
+import type { SidebarHit, SidebarRow, SidebarSaved } from '../types';
 import { MECHS, MEMORIES_URL, mechById, mechUrl } from './mechanisms';
 import type { MechId } from './mechanisms';
 import { cells, ellipsizeCells, headCells } from './width';
@@ -246,24 +246,134 @@ export function countToday(
 
 // ── a mechanism's recent firings (`/api/mechanism?id=`'s `activity`) ──────
 
+/** A piece of a firing's sentence: plain words, or a memory (its id, and the title the row carried, maybe cut). */
+export type FiringPart = string | { id: string | null; title: string | null };
+
+/** One thing a firing was about, before its titles are read in full: what the opened mechanism lists. */
+export type Firing = {
+  /** Unique among the list: `<seq>.<n>`. */
+  key: string;
+  seq: number;
+  at: number;
+  /** The group's word (`faded`, `came to mind`, `merged in a dream`). */
+  word: string;
+  /** The sentence, a memory's title or a few words around two. */
+  parts: FiringPart[];
+  /** The memory a click opens in place; null opens `text` instead. */
+  memoryId: string | null;
+  /** What opening a firing that names no memory shows. */
+  text: string;
+};
+
+function idList(e: DashEvent, key: string): string[] {
+  try {
+    const list: unknown = JSON.parse(detail(e, key) ?? '[]');
+    if (!Array.isArray(list)) return [];
+    return list
+      .map(x => (typeof x === 'string' ? x : x !== null && typeof x === 'object' ? (x as { id?: unknown }).id : undefined))
+      .filter((x): x is string => typeof x === 'string' && x.startsWith('mem_'));
+  } catch {
+    return [];
+  }
+}
+
+/** Which of a dream's changes prove `mech`: merges for Interference and Consolidation, patterns for Gist. */
+const DREAM_ACTION: Partial<Record<MechId, string>> = { interference: 'merge', consolidation: 'merge', 'episodic-semantic': 'gist' };
+
 /**
- * The firings of `mech` among `events`, newest first, each with the word of
- * the rule that proves THIS mechanism (`faded`, `merged in a dream`) and what
- * it was about: the memory's title when it names one, else the event in the
- * narrator's words.
+ * What each firing of `mech` among `events` was about, newest first: the
+ * memories it names, never its counts (Mike, 2026-10-10: "1 came to mind"
+ * says nothing). A firing that names nothing is left out:
+ *   - a recall's decision: each memory that came to mind or sat in the
+ *     footnotes (`surfaced`, `footnotes` ids); a credit: each memory it
+ *     strengthened (`ids`);
+ *   - a deposit, a fade, a rise, a promotion, a prune, a reminder: its memory;
+ *   - a settle: which memory holds over which; revision pressure: which
+ *     argued with which;
+ *   - a dream: its journal's first sentence (Dreaming); its merges
+ *     (Interference, Consolidation) and patterns (Gist) from `/api/dreams`'
+ *     changes, which name memories the event row only counts;
+ *   - left out, nothing to name: a look-up (`mcp.recall` counts what it
+ *     opened), a link flush (`associate.flush` counts pairs), a flagged
+ *     contradiction (a pair id), a sleep cycle's fades (counts).
  */
-export function mechEvents(events: readonly DashEvent[], mech: MechId, limit = 8): SidebarMechEvent[] {
-  const out: SidebarMechEvent[] = [];
+export function mechFirings(events: readonly DashEvent[], mech: MechId, dreams: readonly DashDream[] = [], limit = 8): Firing[] {
+  const out: Firing[] = [];
+  const push = (e: DashEvent, word: string, parts: FiringPart[], memoryId: string | null, text = e.text): void => {
+    if (out.length < limit) out.push({ key: `${String(e.seq)}.${String(out.length)}`, seq: e.seq, at: e.at, word, parts, memoryId, text });
+  };
   for (const e of [...events].sort((a, b) => b.seq - a.seq)) {
+    if (out.length >= limit) break;
     const rule = provedBy(e).find(r => r.mech === mech);
     if (rule === undefined) continue;
+    if (e.name === 'recall.decision' || e.name === 'recall.credit') {
+      const ids = e.name === 'recall.decision' ? [...surfacedIds(e), ...idList(e, 'footnotes')] : idList(e, 'ids');
+      const quoted = quotedTitles(e.text);
+      const word = e.name === 'recall.decision' && rule.word === 'recalled' ? 'came to mind' : rule.word;
+      ids.forEach((id, i) => push(e, word, [{ id, title: quoted.length === ids.length ? (quoted[i] ?? null) : null }], id));
+      continue;
+    }
+    if (e.name === 'dream.journaled' || e.name === 'dream.changed') {
+      const d = dreams.find(x => x.id === e.subject);
+      if (d === undefined) continue;
+      if (e.name === 'dream.journaled') {
+        if (typeof d.journal !== 'string' || d.journal.trim() === '') continue;
+        push(e, rule.word, [firstSentence(d.journal).first], null, d.journal.replace(/\s+/g, ' ').trim());
+        continue;
+      }
+      const action = DREAM_ACTION[mech];
+      if (action === undefined) continue;
+      for (const c of d.changes ?? []) {
+        const m = c.action === action && c.undone !== true ? c.memories?.[0] : undefined;
+        if (m === undefined || m.confidential === true) continue;
+        push(e, rule.word, [{ id: m.id, title: m.text }], m.id);
+      }
+      continue;
+    }
+    if (e.name === 'contradiction.settled') {
+      const holds = titled(detail(e, 'holds'));
+      const over = titled(detail(e, 'over'));
+      if (holds.id === null || over.id === null) continue;
+      push(e, rule.word, [holds, ' holds over ', over], holds.id);
+      continue;
+    }
+    if (e.name === 'revision.pressure') {
+      const target = titled(detail(e, 'targetId'));
+      const by = titled(detail(e, 'challengerId'));
+      if (target.id === null || by.id === null) continue;
+      push(e, rule.word, [by, ' argued with ', target], target.id);
+      continue;
+    }
+    if (e.name === 'mcp.recall' || e.name === 'associate.flush' || e.name === 'contradiction.flagged' || e.name === 'sleep.cycle') continue;
     const row = classify(e);
-    if (row === null) continue;
-    const title = row.memory?.title ?? (rule.name === 'recall.decision' ? row.text : e.text);
-    out.push({ seq: e.seq, at: e.at, word: rule.word, title: title.replace(/…$/, '…'), memoryId: row.memory?.id ?? null, text: e.text });
-    if (out.length >= limit) break;
+    if (row?.memory === undefined) continue;
+    push(e, rule.word, [{ id: row.memory.id, title: row.memory.title }], row.memory.id);
   }
   return out;
+}
+
+/** The ids a firing names, for reading their titles whole. */
+export function firingIds(f: Firing): string[] {
+  return f.parts.flatMap(p => (typeof p === 'string' || p.id === null ? [] : [p.id]));
+}
+
+/**
+ * A firing's sentence, with each memory's title read in full where it was
+ * (`titles`, by id), else the one the row carried; null when a memory has no
+ * title at all (it is left out rather than shown as an id).
+ */
+export function firingTitle(f: Firing, titles: Readonly<Record<string, string>>): string | null {
+  let s = '';
+  for (const p of f.parts) {
+    if (typeof p === 'string') {
+      s += p;
+      continue;
+    }
+    const t = (p.id === null ? undefined : titles[p.id]) ?? p.title;
+    if (t === null || t === '') return null;
+    s += t;
+  }
+  return s;
 }
 
 // ── the recall block ────────────────────────────────────────────────────────
@@ -345,8 +455,8 @@ function memoryId(v: unknown): string | null {
 
 /**
  * What a memory tool call that answered without error saved, as "Saved this
- * session" items in the order written; none for any other tool, and for a
- * call that stored nothing. A `note` or a `session_end` entry with `updates`
+ * session" items in the order written; none for any other tool (a chapter
+ * included: a journal entry), and for a call that stored nothing. A `note` or a `session_end` entry with `updates`
  * replaces that memory (unless `how: open`, which keeps both); its title is
  * read later, from the dashboard.
  */
@@ -355,20 +465,17 @@ export function savedItems(tool: string, args: Record<string, unknown>, resultTe
   if (ours === null) return [];
   const p = payloadOf(resultText);
   if (p !== null && p['stored'] === false) return [];
-  const item = (i: number, title: string, id: string | null, src: Record<string, unknown>, kind?: SidebarSaved['kind']): SidebarSaved => {
+  const item = (i: number, title: string, id: string | null, src: Record<string, unknown>): SidebarSaved => {
     const settled = p?.['settled'] as { ok?: unknown; held?: unknown } | undefined;
     const refused = ours.tool === 'note' && settled !== undefined && (settled.ok === false || settled.held === true);
     const replacesId = src['how'] === 'open' || refused ? null : memoryId(src['updates']);
-    return { key: `live:${String(seq)}:${String(i)}`, id, title, at, replaces: null, replacesId, kind: kind ?? (replacesId === null ? 'new' : 'update') };
+    return { key: `live:${String(seq)}:${String(i)}`, id, title, at, replaces: null, replacesId, kind: replacesId === null ? 'new' : 'update' };
   };
   if (ours.tool === 'note') {
     const title = firstLine(args['title']) ?? firstLine(args['text']) ?? 'a note';
     return [item(0, title, memoryId(p?.['id']), args)];
   }
-  if (ours.tool === 'chapter') {
-    const title = firstLine(args['title']) ?? firstLine(args['text']) ?? 'untitled';
-    return [item(0, `Chapter: ${title}`, memoryId(p?.['id']), {}, 'chapter')];
-  }
+  // A chapter is a journal entry, not a memory saved: left out of Saved this session (Mike, 2026-10-10).
   if (ours.tool === 'session_end') {
     const list = Array.isArray(args['memories']) ? (args['memories'] as unknown[]) : [];
     if (typeof p?.['deposited'] === 'number' && p['deposited'] === 0) return [];
@@ -401,7 +508,7 @@ export type DashDream = {
   state?: string;
   journal: string | null;
   counts?: Record<string, number>;
-  changes?: { action: string; said: string; undone?: boolean }[];
+  changes?: { action: string; said: string; undone?: boolean; memories?: { id: string; text: string; confidential?: boolean }[] }[];
 };
 
 /** The journal's first sentence, and what follows it. */
@@ -411,27 +518,6 @@ export function firstSentence(journal: string): { first: string; rest: string } 
   if (m === null) return { first: text, rest: '' };
   const first = text.slice(0, m[0].length).trim();
   return { first, rest: text.slice(m[0].length).trim() };
-}
-
-const plural = (n: number, one: string, many: string): string => `${String(n)} ${n === 1 ? one : many}`;
-
-/**
- * What changed that night, in plain words: the dream's own changes (merges,
- * patterns, links, replacements) and the night's sleep (memories that faded
- * a band, memories that became core), each only when it happened.
- */
-export function dreamChanges(d: DashDream, night: { faded: number; core: number }): string[] {
-  const c = d.counts ?? {};
-  const out: string[] = [];
-  const merges = (d.changes ?? []).filter(x => x.action === 'merge' && x.undone !== true);
-  const merge = c['merge'] ?? merges.length;
-  if (merge > 0) out.push(merge === 1 && merges[0] !== undefined && /^merged /.test(merges[0].said) ? merges[0].said : `merged near-copies ${plural(merge, 'time', 'times')}`);
-  if ((c['gist'] ?? 0) > 0) out.push(`wrote down ${plural(c['gist'] ?? 0, 'pattern', 'patterns')} it saw`);
-  if ((c['link'] ?? 0) > 0) out.push(`linked ${plural(c['link'] ?? 0, 'pair', 'pairs')} of memories`);
-  if ((c['settle'] ?? 0) > 0) out.push(`replaced ${plural(c['settle'] ?? 0, 'outdated memory', 'outdated memories')}`);
-  if (night.faded > 0) out.push(`${plural(night.faded, 'memory', 'memories')} faded`);
-  if (night.core > 0) out.push(`${String(night.core)} became core ${night.core === 1 ? 'memory' : 'memories'}`);
-  return out;
 }
 
 // ── a facts answer ─────────────────────────────────────────────────────────
@@ -555,11 +641,48 @@ export function dateOf(at: number): string {
 /**
  * The time a section's heading carries: `10:25`, `8:07` (a 12-hour clock with
  * no am or pm, as the mockups have it: every time it shows is recent), or
- * `Oct 9` before today.
+ * `Oct 9` before today (`Jan 5 2025` in another year).
  */
 export function hm(at: number, now: number): string {
   const d = new Date(at);
-  if (dateOf(at) !== dateOf(now)) return `${MONTHS[d.getMonth()] ?? ''} ${String(d.getDate())}`;
+  if (dateOf(at) !== dateOf(now)) return humanDay(dateOf(at), now);
   const h = d.getHours() % 12;
   return `${String(h === 0 ? 12 : h)}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** `2026-10-09` as `Oct 9`, or `Jan 5 2025` when it is not this year (by `now`). */
+export function humanDay(iso: string, now: number): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  const month = m === null ? undefined : MONTHS[Number(m[2]) - 1];
+  if (m === null || month === undefined) return iso;
+  const year = m[1] ?? '';
+  return `${month} ${String(Number(m[3]))}${year === dateOf(now).slice(0, 4) ? '' : ` ${year}`}`;
+}
+
+/**
+ * A title as the sidebar shows it (never the stored text): an ISO date that
+ * only says today is dropped with what holds it (`(2026-10-10)`,
+ * `2026-10-10: `, `, 2026-10-10)`), `on 2026-10-10` reads `today` and `on
+ * 2026-10-10 morning` `this morning`; any
+ * other ISO date is short and human, `Oct 9`, with the year only when it is
+ * not this one (`Jan 5 2025`). Mike, 2026-10-10. Other spellings (`10-09`)
+ * are left as written.
+ */
+export function humanDates(title: string, now: number): string {
+  const today = dateOf(now);
+  if (!/\d{4}-\d{2}-\d{2}/.test(title)) return title;
+  const t = today.replace(/-/g, '\\-');
+  const out = title
+    .replace(new RegExp(`\\s*\\(\\s*${t}\\s*\\)`, 'g'), '')
+    .replace(new RegExp(`^\\s*${t}\\s*[:·—–-]\\s*`), '')
+    .replace(new RegExp(`\\s*[:·—–-]\\s*${t}\\s*$`), '')
+    .replace(new RegExp(`\\s*[,;]\\s*${t}(?=\\s*\\))`, 'g'), '')
+    .replace(new RegExp(`\\(\\s*${t}\\s*[,;]\\s*`, 'g'), '(')
+    .replace(new RegExp(`\\b(?:on\\s+)?${t}\\s+(morning|afternoon|evening|night)\\b`, 'g'), 'this $1')
+    .replace(new RegExp(`\\b(?:on|dated)\\s+${t}\\b`, 'g'), 'today')
+    .replace(new RegExp(`\\b${t}\\b`, 'g'), 'today')
+    .replace(/\b(\d{4}-\d{2}-\d{2})\b/g, (_m, iso: string) => humanDay(iso, now))
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  return out === '' ? title : out;
 }

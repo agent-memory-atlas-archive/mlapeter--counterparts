@@ -111,17 +111,17 @@ export type SidebarMind = {
   footnotes: SidebarMemoryRef[];
 };
 
-/** A memory this session saved (`note`, `session_end`, `chapter`), newest first in the list. */
+/** A memory this session saved (`note`, `session_end`; a chapter is a journal entry, left out), newest first in the list. */
 export type SidebarSaved = {
   key: string;
   id: string | null;
   title: string;
   at: number;
-  /** An update: the memory it replaces (`updates`), by title once read, else null. */
+  /** An update: the memory it replaces (`updates`), by title once read, else null. Shown only when the item is opened. */
   replaces: string | null;
   replacesId: string | null;
-  /** `new` (Salience's dot), `update` (Reconsolidation's), `chapter`. */
-  kind: 'new' | 'update' | 'chapter';
+  /** `new` (Salience's dot), `update` (Reconsolidation's). */
+  kind: 'new' | 'update';
 };
 
 /**
@@ -150,19 +150,20 @@ export type SidebarDream = {
   first: string;
   /** What follows it. */
   rest: string;
-  /** What changed that night, in plain words (`merged 3 near-copies into one`, `4 memories faded`). */
-  changed: string[];
 };
 
 /**
  * The one item opened in place: `key` names it (`mem:0`, `sub:1`,
- * `saved:<key>`, `ev:<seq>`, `hit:<id>`, `dream`), `lines` what opening it
+ * `saved:<key>`, `ev:<key>`, `hit:<id>`, `dream`), with what opening it
  * shows, read from the dashboard (`/api/memory?id=`, a read that writes
- * nothing). Content longer than the sidebar's threshold opens the dashboard
- * instead and is never kept here.
+ * nothing). Every click opens in place, whatever the length (v0.2 polish,
+ * 2026-10-10): the layout shows up to 20 lines of the text, and past that
+ * ends the last with `more`, which opens `id` on the dashboard.
  */
 export type SidebarOpen = {
   key: string;
+  /** The memory it shows, when it is one: what `more` opens on the dashboard. */
+  id: string | null;
   status: 'loading' | 'ready' | 'error';
   /** The title in full, when the item names a memory. */
   title: string | null;
@@ -173,17 +174,23 @@ export type SidebarOpen = {
   at: number;
 };
 
-/** One of a mechanism's recent firings, as the opened mechanism lists it. */
+/**
+ * One thing a mechanism's recent firing was about, as the opened mechanism
+ * lists it: a memory's title, or a sentence naming two (`<A> holds over
+ * <B>`), never a count. A firing that names nothing is not listed.
+ */
 export type SidebarMechEvent = {
+  /** Unique in the list (`<seq>.<n>`): one firing can name several memories. */
+  key: string;
   seq: number;
   at: number;
-  /** `faded`, `kept`, `recalled`: the group's word. */
+  /** `faded`, `kept`, `came to mind`: the group's word. */
   word: string;
-  /** What it was about: a memory's title, else the event in a few words. */
+  /** What it was about, titles read in full. */
   title: string;
   /** The memory it names, when it names one. */
   memoryId: string | null;
-  /** The narrator's sentence, shown when an event that names no memory is opened. */
+  /** What an item that names no memory shows opened (a dream's journal). */
   text: string;
 };
 
@@ -195,7 +202,7 @@ export type SidebarMechOpen = {
   at: number;
 };
 
-/** The newest thing, in plain words (`remembered: …`, `stored: …`): the strip, and the dim tail under the prompt. */
+/** The newest thing, in plain words (`remembered: …`, `stored: …`): the dim tail under the prompt while the pane is closed. */
 export type SidebarLatest = { text: string; mech: SidebarMechId; at: number };
 
 /** What `scope` says this folder is set to, or why it could not be asked. */
@@ -224,8 +231,12 @@ export type SidebarNote = { text: string; at: number };
 /** The mechanisms that fired last, and when: the newest row's own first, then every other one the same read proved. */
 export type SidebarFiring = { ids: SidebarMechId[]; at: number };
 
-/** Where the sidebar shows: the pane (`sidebar`), one line above the prompt (`strip`), or only the dim tail under it (`quiet`). */
-export type SidebarView = 'sidebar' | 'strip' | 'quiet';
+/**
+ * Where the sidebar shows: the pane (`sidebar`), or only the dim tail under
+ * the prompt (`quiet`). The strip (one line above the prompt) is gone
+ * (2026-10-10); a stored `strip`, like v0.1's `rail` and `hidden`, reads as quiet.
+ */
+export type SidebarView = 'sidebar' | 'quiet';
 
 /** The brain beside the title: swaying (`turning`), a fixed view that lights when something fires (`still`), or none (`off`). */
 export type SidebarBrain = 'turning' | 'still' | 'off';

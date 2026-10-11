@@ -1,7 +1,8 @@
 /**
  * The pane's body as a `Client` surface module: the lines `./sections.ts`
  * laid out, drawn as they are, and a click on one posted back to the hooks
- * module by the key it carries (`{ click: 'mem:0' }`).
+ * module by the key it carries (`{ click: 'mem:0' }`), or, from a row's
+ * link column on, by the link's (`{ click: 'more:mem_…' }`).
  *
  * Why not Buttons: the engine inverts a Button under the pointer and the
  * focus, so moving the mouse over a list lit row after row (v0.1, NOTES).
@@ -19,7 +20,9 @@ const Body: ClientModule<BodyProps, never> = (props, surface: ClientSurface<neve
   const { Box, Text } = surface.elements
   surface.onPointer(ev => {
     if (ev.type !== 'down' || (ev.button !== undefined && ev.button !== 'left')) return
-    const key = props.lines[ev.y]?.key
+    const l = props.lines[ev.y]
+    // a row's link (the `more` that ends a cut text) takes the click from its column on
+    const key = l?.link !== undefined && ev.x >= l.link.from ? l.link.key : l?.key
     if (key !== undefined) surface.post({ click: key })
   })
   return (

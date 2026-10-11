@@ -18,6 +18,7 @@ import {
   PANE_PROPS,
   PLUGIN,
   PLUGIN_TOOLS,
+  PULSE,
   RECALL_BLOCK,
   SCOPES_FILE,
   SESSION,
@@ -69,6 +70,14 @@ async function click(ui: Ui, match: string): Promise<void> {
   const y = lines.findIndex(l => l.includes(match))
   if (y < 0) throw new Error(`no line holding ${match} in: ${lines.join(' | ')}`)
   await ui.pointer({ type: 'down', x: 2, y, button: 'left', in: 'body' })
+}
+
+/** A plain click on `word` in the first line of the body that holds `match` (its column: these lines are ASCII there). */
+async function clickWord(ui: Ui, match: string, word: string): Promise<void> {
+  const lines = await bodyLines(ui)
+  const y = lines.findIndex(l => l.includes(match))
+  if (y < 0) throw new Error(`no line holding ${match} in: ${lines.join(' | ')}`)
+  await ui.pointer({ type: 'down', x: (lines[y] ?? '').lastIndexOf(word) + 1, y, button: 'left', in: 'body' })
 }
 
 /** The band above the prompt drawing once, on a surface that docks panes or doesn't. */
@@ -125,7 +134,23 @@ test('on the main screen (no docking) nothing is opened unasked and nothing is s
   expect(w.statuses.every(s => s === undefined)).toBe(true)
   expect(await cmd($, '')).toBe('Counterparts sidebar opened.')
   expect(w.opens).toHaveLength(1)
-  expect(await cmd($, 'nonsense')).toContain('Usage: /counterparts [strip | quiet | brain turning|still|off | resume | fps [n]]')
+  expect(await cmd($, 'nonsense')).toContain('Usage: /counterparts [quiet | brain turning|still|off | resume | fps [n]]')
+})
+
+test('from 1,000 memories the count takes two rows of the header, beside the brain, and the header stays six rows', async ($, on) => {
+  const was = PULSE.memories
+  PULSE.memories = 1000
+  try {
+    const w = world(on)
+    await start($, w)
+    const ui = await mount($, w, 'terminal')
+    expect(await ui.find({ type: 'Text', text: '1000' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'memories' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: '1000 memories' })).toBeUndefined()
+    await ui.unmount()
+  } finally {
+    PULSE.memories = was
+  }
 })
 
 test('a docking terminal too narrow for an unasked pane: the dim tail under the prompt names /counterparts until the pane draws; no status line', async ($, on) => {
@@ -215,7 +240,7 @@ test('a turn’s row not written yet when the block arrives: the gist stands, an
   await start($, w)
   const ui = await mount($, w, 'terminal')
   await block($, w)
-  expect((await bodyLines(ui))[1]).toBe('Mike chose 35 columns on')
+  expect((await bodyLines(ui))[1]).toBe('Mike chose 35 columns on Oct 10:') // an ISO date shown short
   w.events.push(DECISION_T3) // written now
   await w.clock.advance(1600)
   await settle(w)
@@ -233,7 +258,7 @@ test('a message with nothing said in full: no Memories section, and the time mov
   expect(lines[0]).toMatch(/^Subconscious ─+ 1:35$/)
   await block($, w)
   lines = await bodyLines(ui)
-  expect(lines[1]).toBe('Mike chose 35 columns on') // the gist wraps; no title without the dashboard
+  expect(lines[1]).toBe('Mike chose 35 columns on Oct 10:') // the gist wraps; no title without the dashboard
   await ui.unmount()
 })
 
@@ -246,11 +271,13 @@ test('a footnote Claude opened by its id gets “↗ opened”', async ($, on) =
   expect((await bodyLines(ui)).join('\n')).not.toContain('↗ opened')
   await $.tool.call({ tool: 'mcp__counterparts__recall', ids: ['mem_rel00001'] } as never)
   await settle(w)
-  expect((await bodyLines(ui)).some(l => /^Release notes go out.*… ↗ opened$/.test(l))).toBe(true)
+  // its title whole; the mark on the line after it when the title's last line has no room
+  const lines = await bodyLines(ui)
+  expect(lines[lines.indexOf('Release notes go out on Fridays') + 1]).toBe('↗ opened')
   await ui.unmount()
 })
 
-test('Saved this session: each memory a note or session_end saved, newest first, its stage dot on the first line only; an update says what it replaces; nothing for a refused one', async ($, on) => {
+test('Saved this session: each memory a note or session_end saved, newest first, its stage dot on the first line only, up to three lines in one colour; no chapter; what an update replaces only opened; nothing for a refused one', async ($, on) => {
   const w = world(on)
   on('tool.call', (_$, e) => {
     const args = e as unknown as { text?: string; title?: string }
@@ -266,6 +293,7 @@ test('Saved this session: each memory a note or session_end saved, newest first,
   await $.tool.call({ tool: 'mcp__counterparts__note', title: 'Narrower now', text: 'x', updates: 'mem_old00001' } as never)
   await $.tool.call({ tool: 'mcp__counterparts__note', text: 'refuse me' } as never)
   await $.tool.call({ tool: 'mcp__counterparts__session_end', memories: [{ title: 'First of two', text: 'a' }, { title: 'Second of two', text: 'b' }] } as never)
+  await $.tool.call({ tool: 'mcp__counterparts__chapter', title: 'Day 18', text: 'a journal entry' } as never)
   await settle(w)
   const lines = await bodyLines(ui)
   const at = lines.findIndex(l => l.startsWith('Saved this session'))
@@ -274,22 +302,32 @@ test('Saved this session: each memory a note or session_end saved, newest first,
     '● Second of two',
     '● First of two',
     '● Narrower now',
-    'replaces The sidebar was 46 col…', // the title it replaces, read from the dashboard
     '● The pane is thirty-five',
-    'columns wide and every column…', // a wrapped line goes back to the left edge
+    'columns wide and every column of', // a wrapped line goes back to the left edge
+    'it is spent on words',
     '● The sidebar draws the brain in',
     'braille',
     ' ',
   ])
+  expect(lines.join('\n')).not.toMatch(/replaces|Chapter|Day 18/)
   // the dot is the stage's: Salience's cyan for a new memory, Reconsolidation's lilac for an update
   const root = (await ui.drawn({ in: 'body' })) as unknown as Drawn
   const row = (root.children ?? [])[at + 3] as Drawn
   expect(((row.children ?? [])[0] as Drawn).props?.['color']).toBe(hex(stageOf('reconsolidation').col))
+  // every line of an item one colour
+  const colour = (i: number): unknown => (((root.children ?? [])[i] as Drawn).children ?? []).map(c => (c as Drawn).props?.['color']).at(-1)
+  expect(colour(at + 4)).toBe(colour(at + 5))
+  expect(colour(at + 5)).toBe(colour(at + 6))
+  // opened, an update says what it replaces (the title read from the dashboard)
+  await click(ui, '● Narrower now')
+  await settle(w)
+  expect((await bodyLines(ui)).join(' ')).toContain('replaces The sidebar was 46 col')
+  await click(ui, '● Narrower now')
   expect(lines.join('\n')).not.toContain('refuse me')
-  expect(w.toasts).toHaveLength(0) // the pane, the strip and the tail say it; no toast
+  expect(w.toasts).toHaveLength(0) // the pane and the tail say it; no toast
   await ui.unmount()
   await cmd($, 'quiet')
-  expect(await tail($, w)).toBe('stored 2 memories: First of two')
+  expect(await tail($, w)).toBe('stored 2 memories: First of two · /counterparts opens it')
   // a /clear starts this session's list over
   await $.session.end({ reason: 'clear', sessionId: SESSION, resume: { id: SESSION } } as never)
   await settle(w)
@@ -306,7 +344,7 @@ test('saved under the plugin’s own server name too', async ($, on) => {
   await $.tool.call({ tool: 'mcp__plugin_counterparts_counterparts__note', title: 'From the plugin server', text: 'x' } as never)
   await settle(w)
   await cmd($, 'quiet')
-  expect(await tail($, w)).toBe('stored: From the plugin server')
+  expect(await tail($, w)).toBe('stored: From the plugin server · /counterparts opens it')
 })
 
 test('Mechanisms today: times each fired today, from the dashboard; a zero dim with no bar, Schemas not built; a click lists its firings, grouped, and lights its region', async ($, on) => {
@@ -414,7 +452,7 @@ test('a dashboard whose store keeps another zone: its `today` differs from this 
   await ui.unmount()
 })
 
-test('Last Dream: its first sentence, in its own voice; a click opens a few more lines and what changed last night', async ($, on) => {
+test('Last Dream: its first sentence, in its own voice; a click opens the dream itself, no counts', async ($, on) => {
   const w = world(on)
   await start($, w)
   for (const surface of SURFACES) {
@@ -425,22 +463,15 @@ test('Last Dream: its first sentence, in its own voice; a click opens a few more
     expect(lines.slice(at + 1, at + 3)).toEqual(['I dreamed the plugin and the', 'brain were one thing.'])
     await click(ui, 'I dreamed the plugin')
     lines = await bodyLines(ui)
-    expect(lines.join(' ')).toContain('Then the rail became a river')
-    const c = lines.indexOf('what changed last night:')
-    expect(lines.slice(c + 1, c + 6)).toEqual([
-      'merged 2 near-copies into one',
-      'wrote down 2 patterns it saw',
-      'linked 3 pairs of memories',
-      '1 memory faded',
-      '1 became core memory',
-    ])
+    expect(lines.join(' ')).toContain('Then the rail became a river, and the river carried the titles.')
+    expect(lines.join(' ')).not.toMatch(/what changed|near-copies|pairs of memories|faded|became core/)
     await click(ui, 'I dreamed the plugin')
-    expect((await bodyLines(ui)).join('\n')).not.toContain('what changed')
+    expect((await bodyLines(ui)).join(' ')).not.toContain('Then the rail')
     await ui.unmount()
   }
 })
 
-test('a memory opens in place when its text is short (12 lines at most), and on the dashboard when it is long; neither through the recall tool', async ($, on) => {
+test('a click opens a memory in place whatever its length, and never the dashboard by itself: past 20 lines, the last ends with `more`, the one link to it; never through the recall tool', async ($, on) => {
   const w = world(on)
   on('tool.call', (_$, e) => ({ result: 'ok', text: `{"stored":true,"id":"${(e as unknown as { title?: string }).title === 'Long one' ? 'mem_long0001' : 'mem_sur00001'}"}` }))
   await start($, w)
@@ -453,13 +484,41 @@ test('a memory opens in place when its text is short (12 lines at most), and on 
   expect(shown).toContain('The sidebar is 35 columns wide') // its title, in full
   expect(shown).toContain('nothing decorates.')
   expect(shown).toContain('fact · learned Oct 9')
-  expect(w.runs.some(r => r[0] === 'open')).toBe(false)
+  expect(shown).not.toMatch(/ more$/m)
   await click(ui, '● The sidebar is 35 columns wide') // opened, its own title in full: a click on it closes
   shown = (await bodyLines(ui)).join('\n')
   expect(shown).not.toContain('nothing decorates.')
   await click(ui, 'Long one')
+  await settle(w)
+  expect(w.runs.some(r => r[0] === 'open')).toBe(false) // in place, not the dashboard
+  const lines = await bodyLines(ui)
+  expect(lines.join(' ')).toContain('sentence 3 of a long')
+  const more = lines.filter(l => / more$/.test(l))
+  expect(more).toHaveLength(1)
+  expect(more[0]).toMatch(/… more$/)
+  // a click on the line's words is the item's (it closes again); only `more` opens the dashboard, on that memory
+  await clickWord(ui, '… more', 'more')
   expect(w.runs.at(-1)).toEqual(['open', 'http://localhost:4747/#memories?id=mem_long0001'])
-  expect((await bodyLines(ui)).join('\n')).not.toContain('sentence 3 of a long')
+  expect((await bodyLines(ui)).join(' ')).toContain('sentence 3 of a long') // still open
+  await click(ui, '… more')
+  expect((await bodyLines(ui)).join(' ')).not.toContain('sentence 3 of a long')
+  expect(w.runs.filter(r => r[0] === 'open')).toHaveLength(1)
+  expect(w.mcp.filter(c => c.tool === 'recall')).toHaveLength(0)
+  await ui.unmount()
+})
+
+test('a Subconscious item opens in place by a dashboard read, not the recall tool, and stays open', async ($, on) => {
+  const w = world(on)
+  await start($, w)
+  const ui = await mount($, w, 'terminal')
+  await block($, w)
+  await settle(w)
+  await click(ui, 'Release notes go out on Fridays')
+  await settle(w)
+  await w.clock.advance(5000)
+  await settle(w)
+  expect(w.fetches.some(u => u.includes('/api/memory?id=mem_rel00001'))).toBe(true)
+  expect(w.runs.some(r => r[0] === 'open')).toBe(false)
   expect(w.mcp.filter(c => c.tool === 'recall')).toHaveLength(0)
   await ui.unmount()
 })
@@ -489,34 +548,36 @@ test('at a laptop’s height the sections fold to fit, a folded one keeping its 
 
 // ── views ──────────────────────────────────────────────────────────────────
 
-test('views: the strip is one line above the prompt with the newest thing; quiet is only the dim tail; the sidebar is the pane (the tail never repeats what shows)', async ($, on) => {
+test('views: two, the sidebar and quiet; quiet is only the dim tail, ending with how to open it; the band above the prompt draws nothing', async ($, on) => {
   const w = world(on)
   on('tool.call', () => ({ result: 'ok', text: '{"stored":true,"id":"mem_new00001"}' }))
   await start($, w)
   await band($, w, true)
   const ui = await mount($, w, 'terminal')
-  await $.tool.call({ tool: 'mcp__counterparts__note', title: 'Strip me', text: 'x' } as never)
+  expect(await ui.find({ type: 'Button', key: 'view-strip' })).toBeUndefined()
+  expect(await ui.find({ type: 'Button', key: 'view-sidebar' })).toBeDefined()
+  await $.tool.call({ tool: 'mcp__counterparts__note', title: 'Quiet me (2026-10-09)', text: 'x' } as never)
   await settle(w)
   expect(await tail($, w)).toBeUndefined() // the pane shows: no tail
-  await ui.press({ key: 'view-strip' })
+  await ui.press({ key: 'view-quiet' })
   expect(w.closes).toContain(PANE)
-  expect(w.store['view']).toBe('strip')
-  const strip = await $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'AbovePrompt', props: BAND_PROPS, viewport: VIEWPORT })
-  await settle(w)
-  const words = (await strip.findAll({})).map(x => x.text).join(' ')
-  expect(words).toContain('stored:')
-  expect(words).toContain('Strip me')
-  expect(await strip.find({ type: 'Button', key: 'strip-sidebar' })).toBeDefined()
-  expect(await tail($, w)).toBeUndefined() // the strip says it
-  await strip.press({ key: 'strip-quiet' })
   expect(w.store['view']).toBe('quiet')
-  expect(await tail($, w)).toBe('stored: Strip me')
-  await strip.unmount()
+  expect(await tail($, w)).toBe('stored: Quiet me · /counterparts opens it') // today's date dropped
   const none = await $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'AbovePrompt', props: BAND_PROPS, viewport: VIEWPORT })
   await settle(w)
-  expect((await none.findAll({})).map(x => x.text).join('')).not.toContain('Strip me')
+  expect((await none.findAll({})).map(x => x.text).join('')).not.toContain('Quiet me')
   await none.unmount()
-  // quiet and strip read nothing and draw no brain
+  // a long title gives way to the hint, never the other way round
+  await $.tool.call({ tool: 'mcp__counterparts__note', title: 'A title long enough that a narrow row could not hold it and the hint after it', text: 'x' } as never)
+  await settle(w)
+  const hint = '? for shortcuts'
+  const narrow = await $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'PromptHint', props: { ...HINT_PROPS, hint } as never, viewport: { ...VIEWPORT, columns: 80 } })
+  await settle(w)
+  await narrow.unmount()
+  const cut = w.tails.at(-1) ?? ''
+  expect(cut).toMatch(/^stored: A title long enough.*… · \/counterparts opens it$/)
+  expect(hint.length + 1 + cut.length).toBeLessThan(80)
+  // quiet reads nothing and draws no brain
   const fetches = w.fetches.length
   const blits = w.blits.length
   await w.clock.advance(120000)
@@ -537,7 +598,8 @@ for (const [stored, opens] of [['full', true], ['quiet', false], ['rail', false]
     if (opens) expect(w.opens[0]?.columns).toBe(34)
     // nothing is rewritten but by opening it (v0.2 writes `sidebar` for the pane)
     expect(w.store['view']).toBe(opens ? 'sidebar' : stored)
-    if (!opens) expect(await tail($, w)).toBeUndefined() // nothing has happened yet: nothing to say
+    // nothing has happened yet: the tail says only how to open it (a stored `strip`, dropped, reads as quiet)
+    if (!opens) expect(await tail($, w)).toBe('Counterparts is quiet · /counterparts opens it')
   })
 }
 
@@ -560,15 +622,16 @@ test('a pane drawn before session.start has named the session still finds what t
   await ui.unmount()
 })
 
-test('/counterparts quiet, hide and rail all mean quiet; the commands say what they did', async ($, on) => {
+test('/counterparts quiet, hide, rail and strip all mean quiet; the commands say what they did', async ($, on) => {
   const w = world(on)
   await start($, w)
   for (const verb of ['quiet', 'hide', 'rail']) {
     expect(await cmd($, verb)).toContain('Counterparts quiet')
     expect(w.store['view']).toBe('quiet')
   }
-  expect(await cmd($, 'strip')).toContain('one line above the prompt')
-  expect(w.store['view']).toBe('strip')
+  // the strip is gone: an older put-back that types it gets quiet
+  expect(await cmd($, 'strip')).toContain('Counterparts quiet')
+  expect(w.store['view']).toBe('quiet')
 })
 
 // ── the brain ──────────────────────────────────────────────────────────────

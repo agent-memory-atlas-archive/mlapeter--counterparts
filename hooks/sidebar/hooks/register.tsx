@@ -5,9 +5,9 @@
  * what was put in front of Claude for the last message (Memories, said in
  * full; Subconscious, titles only), what this session saved, how often each
  * mechanism fired today, and the last dream; then three rows of switches
- * (Counterparts here, Claude Code's own memory; the view; the brain). Closed,
- * it is one line above the prompt (`strip`) or only a dim tail under it
- * (`quiet`). The design is the round-3 mockups Mike chose on 2026-10-10
+ * (Counterparts here, Claude Code's own memory; the view; the brain). Closed
+ * (`quiet`), it is only a dim tail under the prompt, ending with how to open
+ * it again. The design is the round-3 mockups Mike chose on 2026-10-10
  * (`~/counterparts-notes/mockups/2026-10-10-mod-round3/`); ../NOTES.md says
  * where the build differs and why.
  *
@@ -56,10 +56,11 @@ import {
   countToday,
   dateOf,
   decisionFor,
-  dreamChanges,
+  firingIds,
+  firingTitle,
   firstSentence,
-  hm,
-  mechEvents,
+  humanDates,
+  mechFirings,
   mechsOf,
   openedIds,
   ourTool,
@@ -79,7 +80,7 @@ import { DASHBOARD, MECHS, hex, mechById, memoryUrl, stageOf } from './mechanism
 import type { MechId } from './mechanisms'
 import { lookup, parentOf, parseRegistry, settingsHookConfig } from './scopes'
 import type { RegistryMode } from './scopes'
-import { EXPAND_MAX_LINES, P, clip, layoutBody, openedLines } from './sections'
+import { P, clip, layoutBody, quietTail } from './sections'
 import type { Line } from './sections'
 import { cells } from './width'
 
@@ -256,10 +257,12 @@ function isPaused(mode: string): boolean {
 
 /**
  * A stored view, from any version: v0.1's `full` is the sidebar; its `quiet`
- * (a narrow pane), `rail` and `hidden` are v0.2's quiet (no pane, the tail).
+ * (a narrow pane), `rail` and `hidden`, and v0.2's first `strip` (one line
+ * above the prompt, dropped 2026-10-10), are quiet (no pane, the tail). Read
+ * so, never written back: a v0.1 copy reading the same store keeps its word.
  */
 function normView(v: unknown): SidebarView {
-  return v === 'strip' ? 'strip' : v === 'quiet' || v === 'rail' || v === 'hidden' ? 'quiet' : 'sidebar'
+  return v === 'quiet' || v === 'rail' || v === 'hidden' || v === 'strip' ? 'quiet' : 'sidebar'
 }
 
 function normBrain(v: unknown): SidebarBrain {
@@ -358,6 +361,16 @@ function firePulses($: EngineInterface, ids: readonly MechId[]): void {
   }
 }
 
+/**
+ * The brain-off header's `◉` while something fires: the mechanism's stage
+ * colour, but never Retrieval's amber, which in this pane says only a warning
+ * (Mike, 2026-10-10): cyan then.
+ */
+function litDot(id: MechId): string {
+  const st = stageOf(id)
+  return st.id === 'retrieval' ? P.cyan : hex(st.col, 0.95)
+}
+
 function trimSlash(path: string): string {
   return path.replace(/\/+$/, '')
 }
@@ -406,7 +419,7 @@ function memoryHover(on: boolean): string {
   return on ? "Claude Code's MEMORY.md: a click turns it off in every session." : "Claude Code's own memory is off everywhere. A click turns it on."
 }
 
-/** The newest thing in plain words, for the strip and the tail. */
+/** The newest thing in plain words, for the tail. */
 function words(kind: 'remembered' | 'subconscious' | 'stored' | 'opened' | 'dreamed', what: string): string {
   return `${kind}: ${what}`
 }
@@ -554,8 +567,8 @@ async function addToday($: EngineInterface, rows: readonly SidebarRow[]): Promis
 
 /**
  * The newest dream (`/api/dreams?limit=1`), in its own voice: its first
- * sentence, what follows, and what changed that night (its own changes; the
- * night's fades and promotions, counted from the feed's rows of its day).
+ * sentence and what follows. No "what changed that night" counts (Mike,
+ * 2026-10-10): the room goes to the dream itself.
  */
 async function readDream($: EngineInterface): Promise<void> {
   const view = (await fetchJson($, '/api/dreams?limit=1')) as { dreams?: DashDream[] }
@@ -564,24 +577,15 @@ async function readDream($: EngineInterface): Promise<void> {
     await update($, dreamA, () => null)
     return
   }
-  const [journaled, faded, promoted] = await Promise.all(
-    [
-      'dream.journaled&limit=5',
-      'band.transition&limit=60',
-      'band.promoted&limit=30',
-    ].map(q => fetchJson($, `/api/activity?name=${q}`).then(a => (a as { events?: DashEvent[] }).events ?? [], () => [] as DashEvent[])),
-  )
-  const atOf = journaled?.find(e => e.subject === d.id)?.at ?? null
-  const onDay = (es: readonly DashEvent[] | undefined, mech: MechId): number =>
-    (es ?? []).filter(e => e.day === d.day && classify(e)?.mechs.includes(mech) === true).length
-  const night = { faded: onDay(faded, 'decay'), core: (promoted ?? []).filter(e => e.day === d.day).length }
+  const journaled = await fetchJson($, '/api/activity?name=dream.journaled&limit=5').then(a => (a as { events?: DashEvent[] }).events ?? [], () => [] as DashEvent[])
+  const atOf = journaled.find(e => e.subject === d.id)?.at ?? null
   const { first, rest } = firstSentence(d.journal)
-  const next: SidebarDream = { id: d.id, at: atOf, date: d.date, first, rest, changed: dreamChanges(d, night) }
+  const next: SidebarDream = { id: d.id, at: atOf, date: d.date, first, rest }
   const before = await read($, dreamA)
-  if (before === null || before.id !== next.id || before.at !== next.at || before.changed.join('|') !== next.changed.join('|')) {
+  if (before === null || before.id !== next.id || before.at !== next.at || before.rest !== next.rest) {
     await update($, dreamA, () => next)
   }
-  // A dream newer than anything this session did is the newest thing (the strip, the tail).
+  // A dream newer than anything this session did is the newest thing (the tail).
   const at = next.at
   if (at !== null) {
     const latest = await read($, latestA)
@@ -798,7 +802,7 @@ async function seedSession($: EngineInterface): Promise<void> {
     const list = items.filter((x): x is SidebarSaved => x !== null).sort((a, b) => b.at - a.at)
     if (list.length > 0) await update($, savedA, s => (s.length === 0 ? list : s))
   }
-  // The newest of what was found, as the strip and the tail say it, unless something newer is known.
+  // The newest of what was found, as the tail says it, unless something newer is known.
   const [mind, saved] = await Promise.all([read($, mindA), read($, savedA)])
   const said = mind?.surfaced[0] !== undefined ? words('remembered', mind.surfaced[0].title) : mind?.footnotes[0] !== undefined ? words('subconscious', mind.footnotes[0].title) : null
   const s = saved[0]
@@ -851,11 +855,12 @@ function autoClose($: EngineInterface, key: string, at: number): void {
 }
 
 /**
- * Opens a memory in place, or on the dashboard when it is long: its title,
- * text and kind from `/api/memory?id=` (a read; it credits and counts
- * nothing, unlike the `recall` tool). Content past the threshold
- * (EXPAND_MAX_LINES at the pane's width) opens the memory's card on the
- * dashboard and nothing opens here.
+ * Opens a memory in place, every time, whatever its length: its title, text
+ * and kind from `/api/memory?id=` (a read; it credits and counts nothing,
+ * unlike the `recall` tool, and a Subconscious item is read this way too).
+ * A click never opens the dashboard by itself (Mike, 2026-10-10): the layout
+ * shows up to 20 lines and ends a longer text with `more`, the one link to
+ * the memory's card there. Clicked again, it closes.
  */
 async function openMemory($: EngineInterface, key: string, id: string | null, fallback: string): Promise<void> {
   const cur = await read($, openA)
@@ -866,11 +871,11 @@ async function openMemory($: EngineInterface, key: string, id: string | null, fa
   const at = await $.clock.now()
   if (id === null) {
     // Named only by the words Claude was shown (the dashboard did not say which memory): those words, in place.
-    await update($, openA, () => ({ key, status: 'ready' as const, title: fallback, text: '', meta: null, at }))
+    await update($, openA, () => ({ key, id: null, status: 'ready' as const, title: fallback, text: '', meta: null, at }))
     autoClose($, key, at)
     return
   }
-  await update($, openA, () => ({ key, status: 'loading' as const, title: null, text: '', meta: null, at }))
+  await update($, openA, () => ({ key, id, status: 'loading' as const, title: null, text: '', meta: null, at }))
   try {
     const d = (await fetchJson($, `/api/memory?id=${encodeURIComponent(id)}`)) as {
       found?: boolean; title?: string; text?: string; kind?: string; learnedOn?: string; journal?: boolean; absence?: string | null
@@ -882,19 +887,21 @@ async function openMemory($: EngineInterface, key: string, id: string | null, fa
     const title = d.title ?? fallback
     const text = (d.text ?? '').trim()
     const meta = memoryMeta(d)
-    if (openedLines(text, run.bodyW) > EXPAND_MAX_LINES) {
-      await update($, openA, o => (o?.key === key && o.at === at ? null : o))
-      await openUrl($, memoryUrl(id))
-      return
-    }
-    await update($, openA, o => (o?.key === key && o.at === at ? { key, status: 'ready' as const, title, text, meta, at } : o))
+    await update($, openA, o => (o?.key === key && o.at === at ? { key, id, status: 'ready' as const, title, text, meta, at } : o))
     autoClose($, key, at)
   } catch {
     await update($, openA, o => (o?.key === key && o.at === at ? { ...o, status: 'error' as const, title: fallback, text: '' } : o))
   }
 }
 
-/** A mechanism in "Mechanisms today": its recent firings, from `/api/mechanism?id=` (one read), grouped by what and when. */
+/**
+ * A mechanism in "Mechanisms today": what its recent firings were about,
+ * from `/api/mechanism?id=` (one read), grouped by what and when: the
+ * memories they name, titles read whole from `/api/memory?id=`, and for a
+ * dream's rows the dream's own changes (`/api/dreams`, which names the
+ * memories its row only counts). All reads. A firing that names nothing is
+ * left out (`feed.ts#mechFirings`).
+ */
 async function openMech($: EngineInterface, id: MechId): Promise<void> {
   const cur = await read($, mechA)
   await update($, openA, o => (o !== null && o.key.startsWith('ev:') ? null : o))
@@ -909,7 +916,19 @@ async function openMech($: EngineInterface, id: MechId): Promise<void> {
   })
   try {
     const panel = (await fetchJson($, `/api/mechanism?id=${encodeURIComponent(id)}`)) as { activity?: DashEvent[] }
-    const events = mechEvents(panel.activity ?? [], id, 8)
+    const activity = panel.activity ?? []
+    const dreams = activity.some(e => e.name.startsWith('dream.'))
+      ? (((await fetchJson($, '/api/dreams?limit=3').catch(() => null)) as { dreams?: DashDream[] } | null)?.dreams ?? [])
+      : []
+    const firings = mechFirings(activity, id, dreams, 8)
+    const ids = [...new Set(firings.flatMap(firingIds))]
+    const read1 = await Promise.all(ids.map(async x => [x, await memoryTitle($, x)] as const))
+    const titles: Record<string, string> = {}
+    for (const [x, t] of read1) if (t !== null) titles[x] = t
+    const events = firings.flatMap(f => {
+      const title = firingTitle(f, titles)
+      return title === null ? [] : [{ key: f.key, seq: f.seq, at: f.at, word: f.word, title, memoryId: f.memoryId, text: f.text }]
+    })
     await update($, mechA, m => (m !== null && m.id === id && m.at === at ? { ...m, status: 'ready' as const, events } : m))
   } catch {
     await update($, mechA, m => (m !== null && m.id === id && m.at === at ? { ...m, status: 'error' as const } : m))
@@ -922,6 +941,12 @@ async function clickBody($: EngineInterface, key: string): Promise<void> {
     await runSearch($, '')
     return
   }
+  // The `more` that ends a cut text: the one click that opens the dashboard, on that memory.
+  if (key.startsWith('more:')) {
+    const id = key.slice(5)
+    if (/^mem_[A-Za-z0-9]+$/.test(id)) await openUrl($, memoryUrl(id))
+    return
+  }
   if (key.startsWith('head:')) {
     const section = key.slice(5)
     await update($, focusA, f => (f === section ? null : section))
@@ -930,7 +955,7 @@ async function clickBody($: EngineInterface, key: string): Promise<void> {
   if (key === 'dream') {
     const at = await $.clock.now()
     const cur = await read($, openA)
-    await update($, openA, () => (cur?.key === 'dream' ? null : { key, status: 'ready' as const, title: null, text: '', meta: null, at }))
+    await update($, openA, () => (cur?.key === 'dream' ? null : { key, id: null, status: 'ready' as const, title: null, text: '', meta: null, at }))
     if (cur?.key !== 'dream') autoClose($, key, at)
     return
   }
@@ -953,20 +978,21 @@ async function clickBody($: EngineInterface, key: string): Promise<void> {
   }
   if (key.startsWith('ev:')) {
     const mech = await read($, mechA)
-    const ev = mech?.events.find(e => `ev:${String(e.seq)}` === key)
+    const ev = mech?.events.find(e => `ev:${e.key}` === key)
     if (ev === undefined) return
     if (ev.memoryId !== null) await openMemory($, key, ev.memoryId, ev.title)
     else {
       const cur = await read($, openA)
       const at = await $.clock.now()
-      await update($, openA, () => (cur?.key === key ? null : { key, status: 'ready' as const, title: null, text: '', meta: null, at }))
+      await update($, openA, () => (cur?.key === key ? null : { key, id: null, status: 'ready' as const, title: null, text: '', meta: null, at }))
+      if (cur?.key !== key) autoClose($, key, at)
     }
     return
   }
   if (key.startsWith('hit:')) {
     const cur = await read($, openA)
     const at = await $.clock.now()
-    await update($, openA, () => (cur?.key === key ? null : { key, status: 'ready' as const, title: null, text: '', meta: null, at }))
+    await update($, openA, () => (cur?.key === key ? null : { key, id: key.slice(4), status: 'ready' as const, title: null, text: '', meta: null, at }))
     if (cur?.key !== key) autoClose($, key, at)
   }
 }
@@ -1269,9 +1295,9 @@ async function openPane($: EngineInterface): Promise<{ isPlaced: boolean }> {
   return { isPlaced: opened.isPlaced }
 }
 
-/** Closes the pane for the strip or the quiet view; the band and the tail draw again. */
-async function closeTo($: EngineInterface, view: 'strip' | 'quiet'): Promise<void> {
-  await setView($, view)
+/** Closes the pane for the quiet view: the tail draws again. */
+async function closeQuiet($: EngineInterface): Promise<void> {
+  await setView($, 'quiet')
   stopBrain()
   await update($, placedA, () => false)
   await $.ui.close({ id: PANE })
@@ -1476,8 +1502,8 @@ export const register: Register = on => {
     if (run.startedAt === 0) run.startedAt = await $.clock.now()
     await $.command.register({
       name: 'counterparts',
-      description: 'Counterparts sidebar: open it, make it a strip or quiet, or set the brain',
-      argumentHint: '[strip | quiet | brain turning|still|off | resume | fps [n]]',
+      description: 'Counterparts sidebar: open it, make it quiet, or set the brain',
+      argumentHint: '[quiet | brain turning|still|off | resume | fps [n]]',
     })
     const [mem, viewPref, brainPref, fpsPref] = await Promise.all([
       $.store.get('claudeMemory'),
@@ -1521,12 +1547,9 @@ export const register: Register = on => {
       }
       return { text: fpsReport(mode) }
     }
-    if (verb === 'strip') {
-      await closeTo($, 'strip')
-      return { text: 'Counterparts as one line above the prompt. /counterparts opens the sidebar.' }
-    }
-    if (verb === 'quiet' || verb === 'hide' || verb === 'rail') {
-      await closeTo($, 'quiet')
+    // `strip` (dropped 2026-10-10) is quiet now: an older term-loop's put-back can still type it.
+    if (verb === 'quiet' || verb === 'hide' || verb === 'rail' || verb === 'strip') {
+      await closeQuiet($)
       return { text: 'Counterparts quiet: the newest thing shows dim after the line under the prompt. /counterparts opens the sidebar.' }
     }
     if (verb === 'brain') {
@@ -1546,7 +1569,7 @@ export const register: Register = on => {
       return { text: switchExplains(scope) ?? `Counterparts memory isn't paused in ${shortDir(scope.dir)}.` }
     }
     if (verb !== '' && verb !== 'open' && verb !== 'sidebar') {
-      return { text: 'Usage: /counterparts [strip | quiet | brain turning|still|off | resume | fps [n]]. With nothing after it, opens the sidebar.' }
+      return { text: 'Usage: /counterparts [quiet | brain turning|still|off | resume | fps [n]]. With nothing after it, opens the sidebar.' }
     }
     // Asked for: placed at any width, whatever view it was left in.
     const opened = await openPane($)
@@ -1628,61 +1651,32 @@ export const register: Register = on => {
   )
 
   // Under the prompt: the newest thing, dim, after the engine's own hint line
-  // (its pills stay live), only while the pane is closed and the strip isn't
-  // showing it, and not while the folder is paused (the amber status says so).
+  // (its pills stay live), only while the pane is closed, and not while the
+  // folder is paused (the amber status says so). It always ends with
+  // ` · /counterparts opens it`, the newest thing shortened to keep that whole.
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
     const [view, placed, latest, scope] = await Promise.all([read($, viewA), read($, placedA), read($, latestA), read($, scopeA)])
-    if (normView(view) === 'strip' || (normView(view) === 'sidebar' && placed) || isPaused(scope.mode)) return next(e)
-    const tail = latest?.text ?? (run.hint ? '/counterparts opens the sidebar' : undefined)
-    if (tail === undefined) return next(e)
+    if ((normView(view) === 'sidebar' && placed) || isPaused(scope.mode)) return next(e)
+    if (latest === null && normView(view) === 'sidebar') {
+      // an unasked pane this surface could not place yet: say how to open it, until it draws
+      return run.hint ? next({ ...e, props: { ...e.props, tail: '/counterparts opens the sidebar' } }) : next(e)
+    }
+    const cols = e.viewport?.columns
+    // the engine's line, a space, then the tail; a cell spare at the row's end
+    const room = typeof cols === 'number' ? cols - cells(e.props.hint) - 2 : null
+    const tail = quietTail(latest?.text ?? null, room, await $.clock.now())
     return next({ ...e, props: { ...e.props, tail } })
   }).catch(($, e, next) => next(e))
 
   // The band above the prompt: its first drawing says whether this surface
-  // docks a pane (the sidebar opens unasked only then); in the strip view it
-  // draws one line, the newest thing, with the view's choices at its end.
+  // docks a pane (the sidebar opens unasked only then). Nothing is drawn there.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const docks = e.viewport?.isFullscreen
     if (docks !== undefined && !run.placementDecided) {
       run.placementDecided = true
       if (docks) $.clock.after(0, () => quiet(openUnasked($)))
     }
-    const view = normView(await read($, viewA))
-    if (view !== 'strip' || e.props.hasSurvey) return next(e)
-    const [latest, pulse] = await Promise.all([read($, latestA), read($, pulseA)])
-    const now = await $.clock.now()
-    const { Box, Text, Button } = $.ui.resolve(e)
-    const W = Math.max(20, e.props.bodyColumns)
-    const choices = ['sidebar', 'strip', 'quiet'] as const
-    const right = choices.reduce((n, c) => n + 2 + c.length + 1, 0) + 2
-    const room = Math.max(8, W - right - 1)
-    const lead = latest === null ? null : hm(latest.at, now)
-    const said = latest?.text ?? (pulse === null ? 'Counterparts' : `day ${String(pulse.day)} · ${String(pulse.memories)} memories`)
-    const colon = said.indexOf(': ')
-    const verb = colon > 0 ? said.slice(0, colon + 1) : ''
-    const rest = colon > 0 ? said.slice(colon + 2) : said
-    const head = `◉ ${lead === null ? '' : `${lead} `}`
-    const body = clip(`${verb === '' ? '' : `${verb} `}${rest}`, Math.max(4, room - cells(head)))
-    const verbShown = verb !== '' && body.startsWith(verb) ? verb : ''
-    return (
-      <Box flexDirection="row" width={W} justifyContent="space-between">
-        <Box flexDirection="row">
-          <Text color={latest === null ? CYAN_DIM : hex(stageOf(latest.mech).col)}>◉ </Text>
-          {lead === null ? null : <Text color={P.dim}>{`${lead} `}</Text>}
-          {verbShown === '' ? null : <Text color={P.mid}>{verbShown}</Text>}
-          <Text color={latest === null ? P.dim : P.text}>{verbShown === '' ? body : body.slice(verbShown.length)}</Text>
-        </Box>
-        <Box flexDirection="row">
-          <Text color={P.faint}>│ </Text>
-          {choices.map(c => (
-            <Button key={`strip-${c}`} plain onPress={() => (c === 'sidebar' ? openPane($) : c === 'quiet' ? closeTo($, 'quiet') : Promise.resolve())}>
-              <Text color={c === 'strip' ? P.cyan : P.dim}>{c === 'strip' ? '●' : '○'}</Text>
-              <Text color={c === 'strip' ? P.hi : P.dim}>{` ${c} `}</Text>
-            </Button>
-          ))}
-        </Box>
-      </Box>
-    )
+    return next(e)
   })
 
   // ── the pane ──────────────────────────────────────────────────────────────
@@ -1744,13 +1738,15 @@ export const register: Register = on => {
     )
     const titleButton = (lead: boolean) => (
       <Button key="title" plain onPress={() => openUrl($, `${DASHBOARD}/`)}>
-        {lead ? <Text color={lit === null ? CYAN_DIM : hex(stageOf(lit).col, 0.95)}>◉ </Text> : ''}
+        {lead ? <Text color={lit === null ? CYAN_DIM : litDot(lit)}>◉ </Text> : ''}
         <Text color={paused ? P.dim : P.cyan} bold>COUNTERPARTS</Text>
         {lead ? <Text color={CYAN_DIM}> ↗</Text> : ''}
       </Button>
     )
 
     // ── the header ──
+    const countText = pulse === null ? '' : `${String(pulse.memories)} memories`
+    const countRows = cells(countText) > w - HEAD_X ? 2 : 1
     if (hasRaster) {
       const { Raster } = $.ui.resolve(e)
       const reuse = raster.cols === BRAIN_COLS && raster.rows === BRAIN_ROWS && raster.cells !== '' && raster.look === lookKey()
@@ -1767,9 +1763,14 @@ export const register: Register = on => {
           <Box flexDirection="column" width={w - HEAD_X}>
             <Text> </Text>
             {titleButton(false)}
-            <Text> </Text>
+            {/* the count takes two rows from 1,000 memories on (12 columns here): the blank row gives it the second, so the search box stays on the brain's last row */}
+            {countRows === 1 ? <Text> </Text> : null}
             <Text color={P.dim}>{pulse === null ? ' ' : `day ${String(pulse.day)}`}</Text>
-            <Text color={P.dim}>{pulse === null ? ' ' : `${String(pulse.memories)} memories`}</Text>
+            {countRows === 1 ? (
+              <Text color={P.dim}>{pulse === null ? ' ' : countText}</Text>
+            ) : (
+              [<Text key="n" color={P.dim}>{String(pulse?.memories ?? '')}</Text>, <Text key="m" color={P.dim}>memories</Text>]
+            )}
             {searchBox(w - HEAD_X)}
           </Box>
         </Box>,
@@ -1885,10 +1886,10 @@ export const register: Register = on => {
         </Box>
         <Box flexDirection="row">
           <Text color={P.mid}>view</Text>
-          {(['sidebar', 'strip', 'quiet'] as const).map(v => (
+          {(['sidebar', 'quiet'] as const).map(v => (
             <Box key={`v-${v}`} flexDirection="row">
               <Text> </Text>
-              {dotWord(`view-${v}`, viewNow === v, v, () => (v === 'sidebar' ? openPane($) : closeTo($, v)))}
+              {dotWord(`view-${v}`, viewNow === v, v, () => (v === 'sidebar' ? openPane($) : closeQuiet($)))}
             </Box>
           ))}
         </Box>

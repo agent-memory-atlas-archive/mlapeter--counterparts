@@ -16,7 +16,8 @@
  * Mike's rules, everywhere: width is scarce, so no decoration that takes a
  * column across many lines (no quote rules, gutters, hanging indents or
  * bullets on list items); space goes to information, never to saying what
- * isn't shown (no "+N more" line); an item opens in place when it is short.
+ * isn't shown (no "+N more" line); a click opens an item in place, every
+ * time, and never opens the dashboard by itself (v0.2 polish, 2026-10-10).
  */
 
 import type {
@@ -29,7 +30,7 @@ import type {
   SidebarSearch,
   SidebarToday,
 } from '../types'
-import { dateOf, hm } from './feed'
+import { dateOf, hm, humanDates } from './feed'
 import { MECHS, STAGES, hex, stageOf } from './mechanisms'
 import type { MechId } from './mechanisms'
 import { cells, headCells } from './width'
@@ -51,23 +52,25 @@ export const P = {
 const BAR_K = 0.84
 
 /**
- * THE EXPAND THRESHOLD: an item opens in place when its text takes at most
- * this many lines at the pane's width (under it, one more line says what it
- * is); longer, a click opens it on the dashboard instead. Twelve lines of 32
- * columns is about 350 characters. Measured on
- * 77 of the live store's newest memories (2026-10-10): the median text is
- * 626 characters, so about one in nine opens in place and the rest open the
- * dashboard. A working default for Mike to judge.
+ * THE OPENED CAP: a click opens any item in place (Mike, 2026-10-10: "click
+ * = expand in place, same every time"), showing its text whole up to this
+ * many lines at the pane's width; longer, 20 lines, the last ending with a
+ * cyan `more` that opens that memory on the dashboard (`#memories?id=`).
+ * Twenty lines of 32 columns is about 600 characters, near the median
+ * memory (626, measured on 77 of the live store's newest, 2026-10-10).
  */
-export const EXPAND_MAX_LINES = 12
+export const OPEN_MAX_LINES = 20
+
+/** The word that ends a cut opened text, a link to the rest: drawn cyan, no icon, on the same line. */
+export const MORE = 'more'
 
 /**
- * A saved item's title, and a mechanism's firing, take up to this many lines:
- * readable words over many cut ones (Subconscious alone stays one line an
- * item, up to four, by Mike's decision of 2026-10-10).
+ * Every item in Memories, Subconscious and Saved this session (and a
+ * mechanism's firing) takes up to this many lines: when they don't all fit,
+ * fewer show, never one cut shorter (Mike, 2026-10-10, replacing
+ * Subconscious's "one line, up to four").
  */
-const SAVED_LINES = 2
-const EVENT_LINES = 2
+const ITEM_LINES = 3
 /**
  * The most saved items the list draws (the seed reads as many): a long
  * session's dozens would only lengthen the fold ladder, a step an item, and
@@ -76,8 +79,12 @@ const EVENT_LINES = 2
 const SAVED_MAX = 12
 
 export type Seg = { t: string; c: string; b?: true; i?: true }
-/** One row of the body: its pieces, and what a click on it names. */
-export type Line = { segs: Seg[]; key?: string }
+/**
+ * One row of the body: its pieces, and what a click on it names; `link`, a
+ * click from column `from` (0-based, in cells) to the row's end names
+ * another key instead (the `more` at the end of a cut text).
+ */
+export type Line = { segs: Seg[]; key?: string; link?: { from: number; key: string } }
 
 const seg = (t: string, c: string, o: { b?: boolean; i?: boolean } = {}): Seg => ({ t, c, ...(o.b ? { b: true as const } : {}), ...(o.i ? { i: true as const } : {}) })
 const line = (segs: Seg[], key?: string): Line => (key === undefined ? { segs } : { segs, key })
@@ -178,7 +185,8 @@ export type BodyState = {
 
 /** How far each section is folded: the ladder's knobs. */
 type Fold = {
-  memLines: number
+  /** Memories items shown (each whole, up to ITEM_LINES). */
+  memShow: number
   /** An opened item's text, in lines. */
   text: number
   /** Subconscious items shown; 0 folds it to its heading. */
@@ -194,8 +202,8 @@ type Fold = {
 }
 
 const FULL: Fold = {
-  memLines: 3, text: 99, sub: 4, savedShow: SAVED_MAX, savedFolded: false, chartFolded: false,
-  events: 6, dreamLines: 3, excerpt: 9, dreamFolded: false, mindFolded: false,
+  memShow: 99, text: OPEN_MAX_LINES, sub: 4, savedShow: SAVED_MAX, savedFolded: false, chartFolded: false,
+  events: 6, dreamLines: 3, excerpt: OPEN_MAX_LINES, dreamFolded: false, mindFolded: false,
 }
 
 /** One fold of the ladder; `fold` when it folds a section to its heading. */
@@ -208,7 +216,7 @@ const dreamTo = (n: number) => step(`dream ${String(n)} lines`, 'dream', f => ({
 const excerptTo = (n: number) => step(`dream excerpt ${String(n)} lines`, 'dream', f => ({ ...f, excerpt: Math.min(f.excerpt, n) }))
 const textTo = (n: number) => step(`opened text ${String(n)} lines`, 'open', f => ({ ...f, text: Math.min(f.text, n) }))
 const eventsTo = (n: number) => step(`events ${String(n)}`, 'chart', f => ({ ...f, events: Math.min(f.events, n) }))
-const memTo = (n: number) => step(`memory titles ${String(n)} lines`, 'mind', f => ({ ...f, memLines: Math.min(f.memLines, n) }))
+const memTo = (n: number) => step(`memories shows ${String(n)}`, 'mind', f => ({ ...f, memShow: Math.min(f.memShow, n) }))
 const chartFold = step('chart folded', 'chart', f => ({ ...f, chartFolded: true }))
 const mindFold = step('memories folded', 'mind', f => ({ ...f, mindFolded: true, sub: 0 }))
 const dreamFold = step('dream folded', 'dream', f => ({ ...f, dreamFolded: true }))
@@ -225,7 +233,7 @@ function savedFewer(n: number, to = 1): Step[] {
   return out
 }
 
-/** A mechanism's firings, fewer one at a time, each title keeping its two lines. */
+/** A mechanism's firings, fewer one at a time, each keeping its lines. */
 const EVENTS_DOWN = [eventsTo(5), eventsTo(4), eventsTo(3), eventsTo(2)]
 
 /**
@@ -239,31 +247,54 @@ function ladders(s: BodyState): Readonly<Record<'default' | 'open' | 'mech' | 'd
   const n = Math.min(s.saved.length, SAVED_MAX)
   const saved = [...savedFewer(n), savedFold]
   return {
-    default: [...saved, dreamTo(2), subTo(3), subTo(2), dreamTo(1), subTo(1), memTo(2), subTo(0), chartFold, mindFold, dreamFold],
-    // An item opens in place only when its text is short (EXPAND_MAX_LINES), so its text is the last to give way;
-    // the dream (two rows) folds before the chart (twelve).
-    open: [...saved, dreamTo(1), subTo(1), subTo(0), dreamFold, chartFold, textTo(8), textTo(5)],
+    default: [...saved, dreamTo(2), subTo(3), subTo(2), dreamTo(1), subTo(1), memTo(2), subTo(0), memTo(1), chartFold, mindFold, dreamFold],
+    // An opened item's text is the last to give way (cut, it ends with `more`); the dream (two rows) folds
+    // before the chart (twelve).
+    open: [...saved, dreamTo(1), subTo(1), subTo(0), dreamFold, chartFold, textTo(14), textTo(10), textTo(8), textTo(5)],
     mech: [...saved, dreamTo(1), mindFold, ...EVENTS_DOWN, dreamFold, eventsTo(1)],
     // The dream the person opened keeps its words while the saved list goes down to two items; past that its
     // excerpt shortens before the last two go (the round-3 160x48 frame: two saved, the dream's first sentence).
-    dream: [chartFold, ...savedFewer(n, 2), excerptTo(7), excerptTo(5), excerptTo(3), ...(n > 1 ? [savedTo(1)] : []), savedFold, subTo(1), subTo(0), mindFold],
+    dream: [chartFold, ...savedFewer(n, 2), excerptTo(14), excerptTo(10), excerptTo(7), excerptTo(5), excerptTo(3), ...(n > 1 ? [savedTo(1)] : []), savedFold, subTo(1), subTo(0), mindFold],
   }
 }
 
 // ── the sections ─────────────────────────────────────────────────────────────
 
-/** An opened memory in place: its title in full (bold, after `dot` on its first line when given), its text, and what it is. */
-function opened(s: BodyState, key: string, fallbackTitle: string, f: Fold, dot?: Seg): Line[] {
+/**
+ * `text` wrapped to `w`, at most `max` lines. Cut, the last line ends at a
+ * word with `…` and, when `moreKey` names where the rest is, a cyan `more`
+ * on that same line (its cells a link to `moreKey`).
+ */
+function textLines(text: string, w: number, max: number, c: string, key: string, moreKey: string | null, o: { b?: boolean; i?: boolean } = {}): Line[] {
+  const all = wrapN(text, w)
+  if (all.length <= max) return plain(all, c, key, o)
+  if (moreKey === null) return plain(wrapN(text, w, max), c, key, o)
+  const head = all.slice(0, Math.max(0, max - 1))
+  const room = w - cells(MORE) - 1
+  const last = wrapN(all.slice(head.length).join(' '), room, 1)[0] ?? ''
+  return [
+    ...plain(head, c, key, o),
+    { segs: [seg(last, c, o), seg(' ', c), seg(MORE, P.cyan)], key, link: { from: cells(last) + 1, key: moreKey } },
+  ]
+}
+
+/**
+ * An opened memory in place: its title in full (bold, after `dot` on its
+ * first line when given), its text (up to the cap, then `more`), what it is,
+ * and `extra` lines (a saved update's `replaces …`).
+ */
+function opened(s: BodyState, key: string, fallbackTitle: string, f: Fold, dot?: Seg, extra: Line[] = []): Line[] {
   const o = s.open
-  const title = o?.title ?? fallbackTitle
+  const title = humanDates(o?.title ?? fallbackTitle, s.now)
   const out = wrapN(title, s.w, 4, dot === undefined ? s.w : s.w - cells(dot.t)).map((t, i) =>
     line([...(i === 0 && dot !== undefined ? [dot] : []), seg(t, P.hi, { b: true })], key),
   )
   if (o === null || o.key !== key) return out
-  if (o.status === 'loading') return [...out, line([seg('opening…', P.dim)], key)]
-  if (o.status === 'error') return [...out, ...plain(wrapN(o.text || "couldn't read it: the dashboard isn't answering", s.w, 2), P.dim, key)]
-  if (o.text !== '') out.push(...plain(wrapN(o.text, s.w, f.text), P.text, key))
+  if (o.status === 'loading') return [...out, line([seg('opening…', P.dim)], key), ...extra]
+  if (o.status === 'error') return [...out, ...plain(wrapN(o.text || "couldn't read it: the dashboard isn't answering", s.w, 2), P.dim, key), ...extra]
+  if (o.text !== '') out.push(...textLines(o.text, s.w, f.text, P.text, key, o.id === null ? null : `more:${o.id}`))
   if (o.meta !== null) out.push(line([seg(o.meta, P.dim)], key))
+  out.push(...extra)
   return out
 }
 
@@ -273,20 +304,30 @@ function memories(s: BodyState, f: Fold): Line[] {
   const time = hm(m.at, s.now)
   if (f.mindFolded && s.open?.key.startsWith('mem:') !== true) return [heading('Memories', time, s.w, { folded: true, key: 'head:mind' })]
   const out: Line[] = [heading('Memories', time, s.w, { key: 'head:mind' })]
-  m.surfaced.forEach((r, i) => {
+  const openIdx = s.open?.key.startsWith('mem:') === true ? Number(s.open.key.slice(4)) : -1
+  m.surfaced.slice(0, Math.max(f.memShow, openIdx + 1, 1)).forEach((r, i) => {
     const key = `mem:${String(i)}`
     if (s.open?.key === key) out.push(...opened(s, key, r.title, f))
-    else out.push(...plain(wrapN(r.title, s.w, f.memLines), P.hi, key))
+    else out.push(...plain(wrapN(humanDates(r.title, s.now), s.w, ITEM_LINES), P.hi, key))
   })
   return out
 }
 
-function subTitle(r: SidebarMemoryRef, key: string, w: number): Line {
-  const mark = r.opened === true ? ' ↗ opened' : ''
-  const t = clip(r.title, w - cells(mark))
-  const segs = [seg(t, r.opened === true ? P.text : P.mid)]
-  if (r.opened === true) segs.push(seg(' ', P.dim), seg('↗', P.cyan), seg(' opened', P.dim))
-  return line(segs, key)
+/** A footnote's title, up to ITEM_LINES lines; `↗ opened` after it when Claude opened it, on its last line when it fits. */
+function subTitle(r: SidebarMemoryRef, key: string, w: number, now: number): Line[] {
+  const c = r.opened === true ? P.text : P.mid
+  const title = humanDates(r.title, now)
+  if (r.opened !== true) return plain(wrapN(title, w, ITEM_LINES), c, key)
+  const mark = [seg(' ', P.dim), seg('↗', P.cyan), seg(' opened', P.dim)]
+  const markW = cells(' ↗ opened')
+  let ls = wrapN(title, w, ITEM_LINES)
+  const lastW = cells(ls[ls.length - 1] ?? '')
+  if (lastW + markW > w) {
+    if (ls.length < ITEM_LINES) return [...plain(ls, c, key), line(mark.slice(1), key)]
+    // the third line gives the mark its room
+    ls = [...ls.slice(0, -1), ...wrapN(wrapN(title, w).slice(ls.length - 1).join(' '), w - markW, 1)]
+  }
+  return ls.map((t, i) => line([seg(t, c), ...(i === ls.length - 1 ? mark : [])], key))
 }
 
 function subconscious(s: BodyState, f: Fold): Line[] {
@@ -303,7 +344,7 @@ function subconscious(s: BodyState, f: Fold): Line[] {
   const out: Line[] = [heading('Subconscious', time, s.w, { key: 'head:mind' })]
   m.footnotes.slice(0, n).forEach((r, i) => {
     const key = `sub:${String(i)}`
-    out.push(...(s.open?.key === key ? opened(s, key, r.title, f) : [subTitle(r, key, s.w)]))
+    out.push(...(s.open?.key === key ? opened(s, key, r.title, f) : subTitle(r, key, s.w, s.now)))
   })
   return out
 }
@@ -313,25 +354,25 @@ function stageDot(kind: SidebarSaved['kind']): string {
 }
 
 function saved(s: BodyState, f: Fold): Line[] {
-  const n = s.saved.length
+  // A chapter is a journal entry, not a saved memory (a state written by an earlier copy may hold one).
+  const list = s.saved.filter(it => (it.kind as string) !== 'chapter')
+  const n = list.length
   if (n === 0) return []
   if (f.savedFolded && s.open?.key.startsWith('saved:') !== true) return [heading('Saved this session', String(n), s.w, { folded: true, key: 'head:saved' })]
   const out: Line[] = [heading('Saved this session', String(n), s.w, { key: 'head:saved' })]
   // An opened item is never folded away: the list shows at least down to it.
-  const openIdx = s.saved.findIndex(it => s.open?.key === `saved:${it.key}`)
-  for (const it of s.saved.slice(0, Math.min(Math.max(f.savedShow, openIdx + 1), n))) {
+  const openIdx = list.findIndex(it => s.open?.key === `saved:${it.key}`)
+  for (const it of list.slice(0, Math.min(Math.max(f.savedShow, openIdx + 1), n))) {
     const key = `saved:${it.key}`
-    if (s.open?.key === key) out.push(...opened(s, key, it.title, f, seg('● ', stageDot(it.kind))))
-    else {
-      // The stage dot on the first line only; wrapped lines go back to the left edge, two lines at most.
-      const ls = wrapN(it.title, s.w, SAVED_LINES, s.w - 2)
-      ls.forEach((t, i) => {
-        out.push(i === 0 ? line([seg('● ', stageDot(it.kind)), seg(t, P.hi)], key) : line([seg(t, P.text)], key))
+    if (s.open?.key === key) {
+      // What an update replaces shows only opened (Mike, 2026-10-10: no `replaces` line in the list).
+      const extra = it.kind === 'update' ? plain(wrapN(`replaces ${humanDates(it.replaces ?? 'an earlier memory', s.now)}`, s.w, 3), P.dim, key) : []
+      out.push(...opened(s, key, it.title, f, seg('● ', stageDot(it.kind)), extra))
+    } else {
+      // The stage dot on the first line only; wrapped lines go back to the left edge, up to three, one colour.
+      wrapN(humanDates(it.title, s.now), s.w, ITEM_LINES, s.w - 2).forEach((t, i) => {
+        out.push(line([...(i === 0 ? [seg('● ', stageDot(it.kind))] : []), seg(t, P.hi)], key))
       })
-    }
-    if (it.kind === 'update') {
-      const what = it.replaces ?? 'an earlier memory'
-      out.push(line([seg('replaces', P.mid), seg(clip(` ${what}`, s.w - 8), P.dim)], key))
     }
   }
   return out
@@ -387,7 +428,7 @@ function mechEvents(s: BodyState, f: Fold): Line[] {
   if (m === null) return []
   if (m.status === 'loading') return [line([seg('reading…', P.dim)], `mech:${m.id}`)]
   if (m.status === 'error') return plain(wrapN("couldn't read it: the dashboard isn't answering", s.w), P.dim, `mech:${m.id}`)
-  if (m.events.length === 0) return [line([seg('nothing lately', P.dim)], `mech:${m.id}`)]
+  if (m.events.length === 0) return plain(wrapN('nothing lately names a memory', s.w), P.dim, `mech:${m.id}`)
   const out: Line[] = []
   let last = ''
   for (const e of m.events.slice(0, f.events)) {
@@ -397,13 +438,16 @@ function mechEvents(s: BodyState, f: Fold): Line[] {
       out.push(line([seg(clip(head, s.w), P.mid)], `mech:${m.id}`))
       last = head
     }
-    const key = `ev:${String(e.seq)}`
+    const key = `ev:${e.key}`
     if (s.open?.key === key) {
-      if (e.memoryId === null && s.open.title === null) out.push(...plain(wrapN(e.text, s.w, f.text), P.hi, key, { b: true }))
-      else out.push(...opened(s, key, e.title, f))
+      if (e.memoryId === null) {
+        out.push(...plain(wrapN(humanDates(e.title, s.now), s.w, 4), P.hi, key, { b: true }))
+        const rest = e.text.startsWith(e.title) ? e.text.slice(e.title.length).trim() : e.text
+        if (rest !== '') out.push(...textLines(rest, s.w, f.text, P.text, key, null))
+      } else out.push(...opened(s, key, e.title, f))
     } else {
       // no dot or bullet between firings: a wrapped line a shade softer says where one ends
-      wrapN(e.title, s.w, EVENT_LINES).forEach((t, i) => out.push(line([seg(t, i === 0 ? P.text : P.mid)], key)))
+      wrapN(humanDates(e.title, s.now), s.w, ITEM_LINES).forEach((t, i) => out.push(line([seg(t, i === 0 ? P.text : P.mid)], key)))
     }
   }
   return out
@@ -417,13 +461,9 @@ function dream(s: BodyState, f: Fold): Line[] {
   if (f.dreamFolded) return [heading('Last Dream', when, s.w, { folded: true, key: 'head:dream' })]
   const out: Line[] = [heading('Last Dream', when, s.w, { key: 'dream' })]
   if (s.open?.key !== 'dream') return [...out, ...plain(wrapN(d.first, s.w, f.dreamLines), P.text, 'dream', { i: true })]
+  // Opened: the dream itself, as far as the room goes (no "what changed" counts: Mike, 2026-10-10).
   const body = f.excerpt <= 3 || d.rest === '' ? d.first : `${d.first} ${d.rest}`
   out.push(...plain(wrapN(body, s.w, f.excerpt), P.text, 'dream', { i: true }))
-  if (d.changed.length > 0) {
-    const lastNight = d.date === null || d.at === null || hm(d.at, s.now).includes(':')
-    out.push(line([seg(lastNight ? 'what changed last night:' : 'what changed that night:', P.mid)], 'dream'))
-    out.push(...d.changed.flatMap(t => plain(wrapN(t, s.w, 2), P.text, 'dream')))
-  }
   return out
 }
 
@@ -436,11 +476,11 @@ function searchResults(s: BodyState): Line[] {
   for (const h of q.hits) {
     const key = `hit:${h.id}`
     if (s.open?.key === key) {
-      out.push(...plain(wrapN(h.title, s.w, 4), P.hi, key, { b: true }))
-      if (h.excerpt !== '') out.push(...plain(wrapN(h.excerpt, s.w, EXPAND_MAX_LINES - 2), P.text, key))
+      out.push(...plain(wrapN(humanDates(h.title, s.now), s.w, 4), P.hi, key, { b: true }))
+      if (h.excerpt !== '') out.push(...textLines(h.excerpt, s.w, OPEN_MAX_LINES - 2, P.text, key, h.id.startsWith('mem_') ? `more:${h.id}` : null))
       out.push(line([seg(clip(h.meta, s.w), P.dim)], key))
     } else {
-      out.push(...plain(wrapN(h.title, s.w, 2), P.hi, key))
+      out.push(...plain(wrapN(humanDates(h.title, s.now), s.w, 2), P.hi, key))
       out.push(line([seg(clip(h.meta, s.w), P.dim)], key))
     }
   }
@@ -516,7 +556,7 @@ export function layoutBody(s: BodyState): { lines: Line[]; folds: string[] } {
   return { lines: joined(build(all), false), folds: steps.map(st => st.label) }
 }
 
-/** The lines an item's text takes at width `w`: what the expand threshold is measured on. */
+/** The lines an item's text takes at width `w`. */
 export function openedLines(text: string, w: number): number {
   return text === '' ? 0 : wrapN(text, w).length
 }
@@ -527,3 +567,26 @@ export function textOf(lines: readonly Line[]): string[] {
 }
 
 export type { MechId }
+
+// ── the quiet view's tail ────────────────────────────────────────────────────
+
+/** What ends the quiet tail, always: the way back to the pane (the tail is dim text; it can't be clicked). */
+export const TAIL_HINT = '/counterparts opens it'
+
+/**
+ * The quiet view's tail under the prompt: the newest thing, shortened so the
+ * hint after it is never cut (the engine cuts a tail where its row ends),
+ * then ` · /counterparts opens it` (Mike, 2026-10-10). `room` is the cells
+ * the tail may take (the row less the engine's own line), null when the
+ * surface says no width. Nothing new yet: `Counterparts is quiet · …`.
+ */
+export function quietTail(latest: string | null, room: number | null, now: number): string {
+  const end = ` · ${TAIL_HINT}`
+  if (latest === null) {
+    const whole = `Counterparts is quiet${end}`
+    return room !== null && cells(whole) > room ? TAIL_HINT : whole
+  }
+  const r = room ?? 45 + cells(end)
+  if (r - cells(end) < 12) return TAIL_HINT
+  return `${clip(humanDates(latest, now), r - cells(end))}${end}`
+}
