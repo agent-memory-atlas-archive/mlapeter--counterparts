@@ -2951,18 +2951,16 @@ function edgePrior(v: unknown): { weight: number; day: number } | null {
 }
 
 /**
- * The confidentiality marker a dream's new memory must carry when any memory
- * it was made from is confidential: `confidential: true`, plus the first
- * named class (`confidentiality`) found. Empty when none is.
- */
-/**
  * WHAT A MERGED MEMORY IS ABOUT (2026-10-11; decided by random-06,
  * 2026-10-11, lightly held): its best source's mark — the source whose words
  * and claim it already takes — unless that is not personal and another source
  * is (`CORE_ABOUT_MARKS`: me, us, owner): a personal mark is never lost to a
  * work one, or to none. Of several personal marks, the best source's when it
- * is one, else the first in the dream's own order of ids. The mark keeps who
- * set it (`about_by`). Null: no source was marked.
+ * is one, else the first in the dream's own order of ids. An unmarked best
+ * source with only work or world marks beside it takes the first of those:
+ * what `Store#supersedeInto`'s fill-if-unmarked carry gives it anyway, named
+ * here so the merge's note says what lands. The mark keeps who set it
+ * (`about_by`). Null: no source was marked.
  */
 export function mergedAbout(
   rows: readonly Pick<MemoryRow, "id" | "about" | "about_by">[],
@@ -2972,13 +2970,19 @@ export function mergedAbout(
     const m = aboutMarkOf(r.about);
     return m !== null && CORE_ABOUT_MARKS.includes(m);
   };
-  const chosen = personal(best) ? best : (rows.find(personal) ?? best);
+  const marked = (r: Pick<MemoryRow, "about">): boolean => aboutMarkOf(r.about) !== null;
+  const chosen = personal(best) ? best : (rows.find(personal) ?? (marked(best) ? best : (rows.find(marked) ?? best)));
   const about = aboutMarkOf(chosen.about);
   if (about === null) return null;
   const by = chosen.about_by;
   return { about, aboutBy: typeof by === "string" && (ABOUT_SETTERS as readonly string[]).includes(by) ? (by as AboutSetter) : null, from: chosen.id };
 }
 
+/**
+ * The confidentiality marker a dream's new memory must carry when any memory
+ * it was made from is confidential: `confidential: true`, plus the first
+ * named class (`confidentiality`) found. Empty when none is.
+ */
 function confidentialityOf(rows: readonly MemoryRow[]): Record<string, unknown> {
   let out: Record<string, unknown> = {};
   for (const r of rows) {

@@ -412,8 +412,8 @@ describe("merge inherits: about, and the old-claims era", () => {
     return ids;
   }
 
-  /** Strong enough to be the best source of a merge with an ordinary one. */
-  const STRONG = { physics: { uses: 12, reinforcedDays: 6 } };
+  /** The best source of a merge with an ordinary one (on its first day strength is the base, so uses alone only tie). */
+  const best = (claimed: number | null): Partial<PutInput> => ({ salience: { relevance: 0.95, emotional: 0.9, predictive: 0.95, claimed } });
 
   /** A merge in this dream (`dream`) or a new one; its memory's id, its note, the dream. */
   function merge(c: Counterpart, ids: string[], dream?: string): { id: string; note: string | undefined; dream: string } {
@@ -500,7 +500,7 @@ describe("merge inherits: about, and the old-claims era", () => {
   test("about: work + owner is owner, even when the work one is the best source and named first; it says so", () => {
     const c = brain();
     // Named first: the supersede's fill-if-unmarked carry alone took the work mark.
-    const ids = sources(c, [{ about: "work", ...claim(0.5), ...STRONG }, { about: "owner", aboutBy: "owner" }], { old: false });
+    const ids = sources(c, [{ about: "work", ...best(0.5) }, { about: "owner", aboutBy: "owner" }], { old: false });
     const m = merge(c, ids);
     // The best source's claim, the personal source's mark and its setter.
     expect(c.store.row(m.id)).toMatchObject({ about: "owner", about_by: "owner", claimed: 0.5 });
@@ -509,7 +509,7 @@ describe("merge inherits: about, and the old-claims era", () => {
 
   test("about: work + work is work", () => {
     const c = brain();
-    const ids = sources(c, [{ about: "work" }, { about: "work", ...STRONG }], { old: false });
+    const ids = sources(c, [{ about: "work" }, { about: "work", ...best(null) }], { old: false });
     const m = merge(c, ids);
     expect(c.store.row(m.id)).toMatchObject({ about: "work", about_by: "writer" });
     expect(m.note).toBeUndefined();
@@ -517,7 +517,7 @@ describe("merge inherits: about, and the old-claims era", () => {
 
   test("about: unmarked + us is us, even when the unmarked one is the best source", () => {
     const c = brain();
-    const ids = sources(c, [{ ...STRONG }, { about: "us" }], { old: false });
+    const ids = sources(c, [{ ...best(null) }, { about: "us" }], { old: false });
     expect(c.store.row(merge(c, ids).id)?.about).toBe("us");
   });
 
@@ -530,6 +530,10 @@ describe("merge inherits: about, and the old-claims era", () => {
     expect(mergedAbout(rows, rows[2]!)).toEqual({ about: "owner", aboutBy: "owner", from: "c" });
     expect(mergedAbout(rows, rows[0]!)).toEqual({ about: "us", aboutBy: "reflection", from: "b" });
     expect(mergedAbout([{ id: "x", about: null, about_by: null }], { id: "x", about: null, about_by: null })).toBeNull();
+    // An unmarked best source beside work and world: the first marked one.
+    const plain = [{ id: "p", about: null, about_by: null }, { id: "w", about: "world", about_by: "writer" }, { id: "k", about: "work", about_by: "writer" }];
+    expect(mergedAbout(plain, plain[0]!)).toEqual({ about: "world", aboutBy: "writer", from: "w" });
+    expect(mergedAbout(plain, plain[2]!)).toEqual({ about: "work", aboutBy: "writer", from: "k" });
   });
 
   test("a merge after the cutoff of sources written after it is unchanged: no carried moment, read as stored", () => {
@@ -550,6 +554,66 @@ describe("merge inherits: about, and the old-claims era", () => {
     const id = merge(c, [first.id, ids[2] as string], first.dream).id;
     expect(c.store.readProse(id).meta[ERA_WRITTEN_AT_META]).toBe(moment);
     expect(c.store.physicsOf(id).eraClaim).toBe(PHYSICS.DEFAULT_CLAIM_WORLD);
+  });
+
+  /** Old sources, the cutoff, then new sources — mixed eras on one store. */
+  function mixed(c: Counterpart, oldSpecs: Partial<PutInput>[], newSpecs: Partial<PutInput>[]): { old: string[]; fresh: string[] } {
+    const old = sources(c, oldSpecs, { old: true });
+    const day = c.store.livedDay();
+    const fresh = newSpecs.map((s, i) =>
+      mem(c, `The container boots empty without the migration, fresh ${String(i)}.`, { ...s, physics: { birthDay: day, lastUsedDay: day, ...(s.physics ?? {}) } }),
+    );
+    for (const f of fresh) expect(c.store.row(f)!.created_at as number).toBeGreaterThan(Number(c.store.getMeta(CLAIMS_ERA_CUTOFF_KEY)));
+    return { old, fresh };
+  }
+
+  test("three sources, mixed eras, the old one best: the merged row is read as old", () => {
+    const c = brain();
+    const { old, fresh } = mixed(c, [{ about: "world", ...best(0.7) }], [{ about: "world", ...claim(0.7) }, { about: "world", ...claim(0.7) }]);
+    // Best named last: order must not matter.
+    const { id } = merge(c, [fresh[0]!, fresh[1]!, old[0]!]);
+    expect(c.store.readProse(id).meta[ERA_WRITTEN_AT_META]).toBe(c.store.row(old[0]!)!.created_at as number);
+    expect(c.store.physicsOf(id).eraClaim).toBe(PHYSICS.DEFAULT_CLAIM_WORLD);
+    expect(c.store.claimsEra()).toMatchObject({ affected: 1, down: 1 });
+  });
+
+  test("three sources, mixed eras, a new one best: the merged row is read as new, even with old defaults beside it", () => {
+    const c = brain();
+    const { old, fresh } = mixed(c, [{ about: "owner", ...OLD_DEFAULT }, { about: "world", ...claim(0.7) }], [{ about: "world", ...best(0.7) }]);
+    const { id } = merge(c, [old[0]!, old[1]!, fresh[0]!]);
+    const meta = c.store.readProse(id).meta;
+    expect(meta[ERA_WRITTEN_AT_META]).toBeUndefined();
+    expect(meta[CLAIMED_DEFAULT_META_KEY]).toBeUndefined();
+    // The personal mark wins (owner is first-named, personal), and owner is exempt anyway.
+    expect(c.store.row(id)!.about).toBe("owner");
+    expect(c.store.physicsOf(id).eraClaim ?? null).toBeNull();
+    expect(c.store.physicsOf(id).salience.claimed).toBe(0.7);
+    expect(c.store.claimsEra()).toMatchObject({ affected: 0 });
+  });
+
+  test("nothing else copies the carried moment: a supersede and a meta revise of a merged old row", () => {
+    const c = brain();
+    const ids = sources(c, [{ about: "world", ...claim(0.7) }, { about: "world", ...claim(0.7) }], { old: true });
+    const { id } = merge(c, ids);
+    const moment = c.store.readProse(id).meta[ERA_WRITTEN_AT_META];
+    expect(typeof moment).toBe("number");
+    // A meta-only revise keeps the row's own moment (same row, same claim).
+    c.store.revise(id, { meta: { unresolved: true } });
+    expect(c.store.readProse(id).meta[ERA_WRITTEN_AT_META]).toBe(moment);
+    expect(c.store.physicsOf(id).eraClaim).toBe(PHYSICS.DEFAULT_CLAIM_WORLD);
+    // A supersede's successor is a new claim: no moment.
+    const next = c.store.supersede(id, { type: "memory", kind: "fact", body: "Migrate first, always.", salience: { relevance: 0.6, emotional: 0.3, predictive: 0.6, claimed: 0.7 } });
+    expect(c.store.readProse(next).meta[ERA_WRITTEN_AT_META]).toBeUndefined();
+    expect(c.store.physicsOf(next).eraClaim ?? null).toBeNull();
+    expect(c.store.claimsEra()).toMatchObject({ affected: 0 });
+  });
+
+  test("an unmarked best source merged with a world one is about world, and the note says so", () => {
+    const c = brain();
+    const ids = sources(c, [{ about: "world" }, { ...best(null) }], { old: false });
+    const m = merge(c, ids);
+    expect(c.store.row(m.id)).toMatchObject({ about: "world", about_by: "writer" });
+    expect(m.note).toContain(`the merged memory is about world, from ${ids[0] as string}`);
   });
 });
 
