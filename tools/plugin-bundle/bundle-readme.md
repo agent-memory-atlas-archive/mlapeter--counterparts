@@ -47,8 +47,9 @@ It fetches two things, both at install time or once:
 
 - **The embedding table.** Installing the plugin downloads one npm package,
   `counterparts-model-potion` (about 30 MB, a word-embedding table used to recall by
-  meaning), from the npm registry. Claude Code installs it from the plugin's lockfile, at
-  the exact version pinned there, with install scripts off.
+  meaning), from the npm registry. Claude Code installs it from the plugin's lockfile
+  (`bun.lock`, so when Bun is on your PATH), at the exact version pinned there, with
+  install scripts off. Without it, recall works by words rather than by meaning.
 - **A program, only when your computer has no runtime.** Counterparts runs on Bun or
   Node.js when either is installed. On a Mac or Linux computer with neither, it downloads
   one prebuilt Counterparts program for that computer (55–75 MB, from the
