@@ -2022,3 +2022,30 @@ line about it.
     `connect` brings the entry up to date once it's fixed. Tested with a trailing comma,
     and a write that fails (a read-only folder: install exits 0, connect 1).
   - The scripted install (`--no-connect`, a pipe, CI) reads no host file, as before.
+
+## 2026-10-11 — `uninstall` offers the delete; `--json` for the plugin's command
+
+Mike's decision (via the MOD session, lightly held): every uninstall path offers "Also
+delete all memories and related data? This can't be undone", always behind a confirmation.
+The plain arm now asks it at a terminal once the wiring is out, default keep, and a yes
+leads to `--delete-memories`' own typed phrase (`phraseGate`, shared). `--json` is the
+door the plugin's `/counterparts:uninstall` drives.
+
+- *Choices:*
+  - The plan is printed above the question, with a "Not touched:" block (Claude Code's own
+    directory; a snapshots folder the configuration points elsewhere). The delete arm
+    prints the same block.
+  - The question is withheld, with the reason, when a delete could not go ahead: the
+    registration is still there, the plan refuses, or something holds the store
+    (`openRefusal`: the moving arms' process check plus `rollback#readHolders`). After the
+    phrase the plan and the holders are read again; a change refuses.
+  - `--json` alone is a plan and changes nothing. With `--delete-memories` it runs the
+    ordinary arm behind a quiet console whose one prompt answer is stdin's line.
+- *What the plugin command has to know:* run from inside a Claude Code session with the
+  plugin on, the delete will REFUSE. That session is a holder: its hooks ran seconds ago and
+  its memory server (the plugin's) is running and recorded in the store. That is the guard
+  doing its job (a delete under a live server leaves its writes going nowhere, and the
+  session's next hook may make a fresh store). So the plan can be shown in-session, but the
+  delete itself has to happen with Claude Code closed. Either the person runs the launcher
+  in a terminal (`sh <plugin root>/src/adapters/plugin-run.sh cli uninstall`), or the mod
+  finds another moment when nothing holds the store.

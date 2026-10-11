@@ -62,6 +62,22 @@
  *   - **`--delete-memories` is the only destructive verb in this package**, and
  *     the one with no `--yes`. It PRINTS THE WHOLE PLAN — every path, with its
  *     size — and then takes a typed phrase.
+ *   - **The plain arm OFFERS the delete, after the wiring is out** (Mike,
+ *     2026-10-11, lightly held: every uninstall path offers "Also delete all
+ *     memories and related data? This can't be undone", always behind a
+ *     confirmation). At a terminal, and only there: the plan printed, then
+ *     `[y/N]` — Enter, Esc, `n`, `--yes`, `--keep-memories` and no terminal all
+ *     KEEP — and a yes leads to the same typed phrase `--delete-memories` takes.
+ *     It is not offered while anything holds the store (`openRefusal`).
+ *   - **`--json` is the plugin command's door** (`uninstallJson`). Alone it is a
+ *     PLAN and changes nothing. With `--delete-memories` it takes the phrase on
+ *     standard input, which is a scripted door, and this file used to say one
+ *     must never exist. It exists because the plugin has no terminal to type
+ *     into; this process cannot tell a person's keystrokes from anything else
+ *     on its stdin, so the guard that the phrase came from the PERSON is the
+ *     caller's (the mod collects it in its own UI, never through the model),
+ *     and the PR that added it says so. Without `--json`, `--delete-memories`
+ *     on a console with no person refuses exactly as it always did.
  *   - **Both moving arms refuse unless the deregistration is CONFIRMED** and
  *     unless the process check actually LOOKED. A guard that cannot tell "I
  *     found nothing" from "I could not look" is not a guard (review M2, M3);
@@ -79,19 +95,29 @@ import type { AdapterConfig } from "../config.js";
 import type { Io } from "./commands.js";
 import { BIN, CONFIG_FILE, LEGACY_CREDENTIALS_FILE, MCP_SERVER_NAME, hostSettingsDir } from "./install.js";
 import {
+  OPEN_WINDOW_MS,
   PARKED_INFIX,
   pairedSuffix,
   realpathDeep,
   sameFilesystemRefusal,
 } from "./start-fresh.js";
+import { readHolders } from "./rollback.js";
+import type { Holder } from "./rollback.js";
 import { confirm, typed, ui } from "./ui.js";
-import type { Ui } from "./ui.js";
+import type { TypedAnswer, Ui } from "./ui.js";
 import type { Outcome, ProcessLister, Spawner, WireInput } from "./wire.js";
 import { look, readMcp, tilde, unwire } from "./wire.js";
 
 /** The phrase `--delete-memories` asks for, exactly. Case-sensitive, and
  *  nothing is trimmed but the end-of-line (`ui.ts#typed`). */
 export const DELETE_PHRASE = "DELETE MEMORIES";
+
+/** The question the plain arm puts once the wiring is out, in Mike's words
+ *  (2026-10-11). Its default is NO, and a yes only leads to the phrase. */
+export const DELETE_QUESTION = "Also delete all memories and related data? This can't be undone.";
+
+/** The typed-phrase prompt, one string for both arms and the `--json` plan. */
+export const PHRASE_PROMPT = `Type ${DELETE_PHRASE} to go ahead — Esc or "cancel" to stop: `;
 
 /** The one command that removes the package. A program does not delete itself
  *  out from under the process that is running it. */
@@ -820,6 +846,9 @@ export function planLines(
   /** The suffix `--park` will append — for the destination column. Null when
    *  it could not be worked out, in which case the arrow is left off. */
   suffix: string | null = null,
+  /** The delete plan's first line, when it is an offer rather than the plan
+   *  of a command somebody already typed. */
+  deleteLead = "This will delete, for good:",
 ): string[] {
   const out: string[] = [];
   const short = (path: string): string => tilde(path, home);
@@ -838,7 +867,7 @@ export function planLines(
       for (const line of logClause(plan.logBytes, storeBytesOf(plan)) ?? []) out.push(`     ${line}`);
     }
   } else {
-    out.push("This will delete, for good:");
+    out.push(deleteLead);
     // Two columns, sized to what is actually in them: the paths are shortened
     // by now and the sizes are short by construction, so nothing here needs the
     // 60-character ceiling the absolute paths did.
@@ -912,6 +941,101 @@ function contentsSentence(plan: UninstallPlan): string {
   return `${what} — ${humanBytes(plan.bytes)}`;
 }
 
+/** Something a delete leaves, and why — said beside the plan, because "all
+ *  memories and related data" has to say where it stops (brief, 2026-10-11). */
+export interface NotTouched {
+  readonly path: string;
+  readonly why: string;
+}
+
+/**
+ * What a delete does NOT touch that somebody might expect it to: Claude Code's
+ * own directory (never ours — `configDirRefusal` refuses it as a target), and a
+ * snapshots folder the configuration points somewhere of the owner's choosing,
+ * which this command leaves alone exactly as `start-fresh` does. The foreign
+ * entries in the configuration directory are already named by `planLines`.
+ */
+export function notTouched(
+  plan: UninstallPlan,
+  config: AdapterConfig,
+  home: string,
+  env: Record<string, string | undefined>,
+): NotTouched[] {
+  const out: NotTouched[] = [
+    { path: hostSettingsDir(home, env), why: "Claude Code's own files: its settings, history and transcripts" },
+  ];
+  if (plan.storeDir !== null) {
+    const snaps = resolveSnapshotsDir(plan.storeDir, config.snapshots?.dir).dir;
+    if (snaps !== null && existsSync(snaps) && !plan.targets.some((t) => isWithin(t, snaps))) {
+      out.push({ path: snaps, why: "the snapshots folder your configuration names — yours to delete" });
+    }
+  }
+  return out;
+}
+
+export function notTouchedLines(items: readonly NotTouched[], home: string): string[] {
+  if (items.length === 0) return [];
+  const width = items.reduce((n, i) => Math.max(n, tilde(i.path, home).length), 0);
+  return ["", "  Not touched:", ...items.map((i) => `    ${tilde(i.path, home).padEnd(width)}  ${i.why}`)];
+}
+
+/**
+ * Whatever would make a park or a delete unsafe RIGHT NOW, as the lines a
+ * refusal prints (without its "Nothing has changed."), or null when clear.
+ *
+ * The first two clauses are the moving arms' own check (review M3): a look that
+ * did not happen, and any process of ours at all. The third is `rollback`'s
+ * live-holder check, for a delete only: a session whose hooks ran in the last
+ * ten minutes, or a memory server whose record is fresh, is evidence about THIS
+ * store — the process table cannot always see a session's hooks, and a delete
+ * under one leaves its writes going nowhere.
+ */
+export function openRefusal(
+  input: Pick<UninstallInput, "lister" | "nothingIsOpen" | "configPath" | "now">,
+  storeDir: string | null,
+  holders: boolean,
+): string[] | null {
+  const sighting = look(input.lister);
+  if (!sighting.looked && !input.nothingIsOpen) {
+    return [
+      "refused: this could not check whether anything of ours is still running — there is no " +
+        "usable `ps` here, or it would not answer. A rename does not break an open file handle " +
+        "and a delete does not tell a running process it has gone, so this will not proceed on " +
+        "a look that did not happen. Close every Claude Code session, dashboard and worker, and " +
+        "say so: --nothing-is-open.",
+    ];
+  }
+  if (sighting.processes.length > 0) {
+    return [
+      `refused: ${String(sighting.processes.length)} Counterparts process${sighting.processes.length === 1 ? " is" : "es are"} still running:`,
+      ...sighting.processes.map((p) => `  ${p.what}, pid ${String(p.pid)}`),
+      "A rename does not break an open file handle and a delete does not tell a running " +
+        "process it has gone. Close Claude Code sessions and try again.",
+    ];
+  }
+  if (holders && storeDir !== null && existsSync(storeDir)) {
+    const refusing = liveHolders(storeDir, input).filter((h) => h.refuse);
+    if (refusing.length > 0) {
+      return [
+        "refused: this store is open in:",
+        ...refusing.map((h) => `  ${h.what} — ${h.detail}`),
+        "Close every Claude Code session on it, quit Claude Desktop and stop the dashboard, then " +
+          `try again. A session that crashed or whose terminal was closed counts for ${String(Math.round(OPEN_WINDOW_MS / 60_000))} ` +
+          "minutes after its last hook.",
+      ];
+    }
+  }
+  return null;
+}
+
+/** `rollback`'s holders, minus the process table (the caller's `look` has it). */
+function liveHolders(
+  storeDir: string,
+  input: Pick<UninstallInput, "configPath" | "now">,
+): Holder[] {
+  return readHolders({ storeDir, configPath: input.configPath, now: input.now });
+}
+
 // ── the command ─────────────────────────────────────────────────────────────
 
 export interface UninstallInput {
@@ -932,9 +1056,24 @@ export interface UninstallInput {
    *  a process check that could not LOOK; it never excuses one that found
    *  something. */
   readonly nothingIsOpen: boolean;
+  /** `--keep-memories`: do not put the delete question; the memory stays.
+   *  Absent is false. */
+  readonly keepMemories?: boolean;
   readonly exe: string;
   readonly spawner: Spawner;
   readonly lister: ProcessLister;
+  /** Filled in as the command goes, for `--json`'s result. */
+  readonly record?: UninstallRecord;
+}
+
+/** What happened, for the one JSON line `uninstallJson` prints. */
+export interface UninstallRecord {
+  /** True once the hooks and the registration are out. */
+  unwired: boolean;
+  /** What came of the typed phrase, when one was asked. */
+  phrase: TypedAnswer | null;
+  /** Every path deleted, in order. Empty unless something was. */
+  deleted: string[];
 }
 
 export async function uninstall(input: UninstallInput): Promise<Outcome> {
@@ -948,7 +1087,15 @@ export async function uninstall(input: UninstallInput): Promise<Outcome> {
   // three different things to somebody's memory, and the heading is the one
   // line that says which of them they typed.
   u.heading(
-    `${BIN.cli} uninstall${input.park ? " --park" : input.deleteMemories ? " --delete-memories" : ""}`,
+    `${BIN.cli} uninstall${
+      input.park
+        ? " --park"
+        : input.deleteMemories
+          ? " --delete-memories"
+          : input.keepMemories === true
+            ? " --keep-memories"
+            : ""
+    }`,
   );
   // ONLY WHEN SOMEBODY NAMED ONE. The default configuration is the path in
   // every line below it; a `--config` somewhere else is the fact that explains
@@ -970,6 +1117,14 @@ export async function uninstall(input: UninstallInput): Promise<Outcome> {
     io.err(
       "refused: --park moves your memory aside and --delete-memories destroys it. They are two " +
         "answers to one question, and this will not guess which one you meant.",
+    );
+    return "refused";
+  }
+  if (input.keepMemories === true && moving) {
+    io.err(
+      `refused: --keep-memories keeps your memory where it is and --${input.park ? "park" : "delete-memories"} ` +
+        `${input.park ? "moves it aside" : "destroys it"}. They are two answers to one question, and this will ` +
+        "not guess which one you meant.",
     );
     return "refused";
   }
@@ -1004,27 +1159,10 @@ export async function uninstall(input: UninstallInput): Promise<Outcome> {
     // writes go nowhere at all and nothing says so. And a check that cannot
     // tell "I found nothing" from "I could not look" is not a check — the
     // review parked a store on a box with no `ps` and got no word about it.
-    const sighting = look(input.lister);
-    if (!sighting.looked && !input.nothingIsOpen) {
-      io.err(
-        "refused: this could not check whether anything of ours is still running — there is no " +
-          "usable `ps` here, or it would not answer. A rename does not break an open file handle " +
-          "and a delete does not tell a running process it has gone, so this will not proceed on " +
-          "a look that did not happen. Close every Claude Code session, dashboard and worker, and " +
-          "say so: --nothing-is-open.",
-      );
-      io.err("Nothing has changed.");
-      return "refused";
-    }
-    if (sighting.processes.length > 0) {
-      io.err(
-        `refused: ${String(sighting.processes.length)} Counterparts process${sighting.processes.length === 1 ? " is" : "es are"} still running:`,
-      );
-      for (const p of sighting.processes) io.err(`  ${p.what}, pid ${String(p.pid)}`);
-      io.err(
-        "A rename does not break an open file handle and a delete does not tell a running " +
-          "process it has gone. Close Claude Code sessions and try again.",
-      );
+    // A delete also takes `rollback`'s live holders (2026-10-11).
+    const open = openRefusal(input, plan.storeDir, input.deleteMemories);
+    if (open !== null) {
+      for (const line of open) io.err(line);
       io.err("Nothing has changed.");
       return "refused";
     }
@@ -1068,6 +1206,9 @@ export async function uninstall(input: UninstallInput): Promise<Outcome> {
     for (const line of planLines(plan, input.park ? "park" : "delete", home, previewSuffix(input, plan))) {
       io.out(line);
     }
+    if (input.deleteMemories) {
+      for (const line of notTouchedLines(notTouched(plan, input.config, home, env), home)) io.out(line);
+    }
     u.blank();
   }
 
@@ -1085,34 +1226,8 @@ export async function uninstall(input: UninstallInput): Promise<Outcome> {
       );
       return "refused";
     }
-    const census = plan.census ?? censusOf(plan.configDir, plan.storeDir);
-    // A PLAIN RED WARNING, not a `fail` tag (owner, finding #25): nothing has
-    // failed here. The count it used to carry is on the store's own line of the
-    // plan above, which is the line it is a count of.
-    u.warning(
-      "nothing can bring these back afterwards.",
-      `(${BIN.cli} uninstall --park sets them aside instead of deleting.)`,
-    );
-    if (census.kind === "size") {
-      u.hint(`The count could not be taken: ${census.why}.`);
-    }
-    u.blank();
-    const said = await typed(
-      io,
-      DELETE_PHRASE,
-      `Type ${DELETE_PHRASE} to go ahead — Esc or "cancel" to stop: `,
-    );
-    // THREE ANSWERS, TWO SENTENCES, TWO EXIT CODES. Stopping is something
-    // somebody chose and it exits 0; typing the wrong thing is a refusal, in
-    // case it was a script or a paste that went wrong.
-    if (said === "cancelled") {
-      io.out("Cancelled. Nothing was deleted.");
-      return "ok";
-    }
-    if (said !== "typed") {
-      io.err(`That was not ${DELETE_PHRASE}. Nothing was deleted.`);
-      return "refused";
-    }
+    const stopped = await phraseGate(input, u, plan);
+    if (stopped !== null) return stopped;
   } else if (!input.yes) {
     if (io.prompt === undefined) {
       io.err(
@@ -1124,9 +1239,11 @@ export async function uninstall(input: UninstallInput): Promise<Outcome> {
     // THE QUESTION SAYS WHAT IT IS AGREEING TO, and the tag says how to get
     // out (item 8: every prompt that can be cancelled says how in its own
     // text). Esc and `n` are the same answer here.
+    // When the delete question follows, this one no longer promises the memory
+    // stays: the next question is about exactly that.
     const go = await confirm(
       io,
-      input.park
+      input.park || offers(input)
         ? "Claude Code will be disconnected. Go ahead?"
         : "Claude Code will be disconnected — your memory stays exactly where it is. Go ahead?",
       { default: true, hint: "(Esc or n to stop)" },
@@ -1179,6 +1296,8 @@ export async function uninstall(input: UninstallInput): Promise<Outcome> {
     return "refused";
   }
 
+  if (input.record !== undefined) input.record.unwired = true;
+
   // ── the memory ────────────────────────────────────────────────────────────
   u.blank();
   if (plan !== null && input.park) return parkPlan(input, u, plan);
@@ -1192,13 +1311,141 @@ export async function uninstall(input: UninstallInput): Promise<Outcome> {
       ? `${memories(kept.memories)} ${kept.memories === 1 ? "is" : "are"} still at ${where}.`
       : `everything is still at ${tilde(configDir, home)} (${humanBytes(kept.bytes)}).`,
   );
+  if (offers(input)) return offerDelete(input, u, removed.mcpConfirmed);
+  keptHints(input, u);
+  return "ok";
+}
+
+/**
+ * Does the plain arm put the delete question? Only to a person: a console with
+ * a prompt, and neither `--yes` (whose sentence is "take the ordinary answer to
+ * every question", and the ordinary answer here is keep) nor `--keep-memories`.
+ */
+function offers(input: UninstallInput): boolean {
+  return (
+    !input.park &&
+    !input.deleteMemories &&
+    !input.yes &&
+    input.keepMemories !== true &&
+    input.io.prompt !== undefined
+  );
+}
+
+/** The plain arm's closing lines when the memory stays. */
+function keptHints(input: UninstallInput, u: Ui): void {
   u.hint("Nothing here deleted anything. To move it aside under a dated name:");
   u.hint(`  ${BIN.cli} uninstall --park`);
   u.hint("To destroy it (it prints the whole plan first, then asks you to type a phrase):");
   u.hint(`  ${BIN.cli} uninstall --delete-memories`);
   u.blank();
-  io.out(`To remove the program too: ${REMOVE_PACKAGE}`);
-  return "ok";
+  input.io.out(`To remove the program too: ${REMOVE_PACKAGE}`);
+}
+
+/**
+ * The warning and the typed phrase — the whole guard on a delete, shared by
+ * `--delete-memories` and the plain arm's offer. Null means the phrase was
+ * typed; anything else is the outcome to return, and nothing was deleted.
+ *
+ * THREE ANSWERS, TWO SENTENCES, TWO EXIT CODES. Stopping is something somebody
+ * chose and it exits 0; typing the wrong thing is a refusal, in case it was a
+ * script or a paste that went wrong.
+ */
+async function phraseGate(input: UninstallInput, u: Ui, plan: UninstallPlan): Promise<Outcome | null> {
+  const { io } = input;
+  const census = plan.census ?? censusOf(plan.configDir, plan.storeDir);
+  // A PLAIN RED WARNING, not a `fail` tag (owner, finding #25): nothing has
+  // failed here. The count it used to carry is on the store's own line of the
+  // plan above, which is the line it is a count of.
+  u.warning(
+    "nothing can bring these back afterwards.",
+    `(${BIN.cli} uninstall --park sets them aside instead of deleting.)`,
+  );
+  if (census.kind === "size") {
+    u.hint(`The count could not be taken: ${census.why}.`);
+  }
+  u.blank();
+  const said = await typed(io, DELETE_PHRASE, PHRASE_PROMPT);
+  if (input.record !== undefined) input.record.phrase = said;
+  if (said === "cancelled") {
+    io.out("Cancelled. Nothing was deleted.");
+    return "ok";
+  }
+  if (said !== "typed") {
+    io.err(`That was not ${DELETE_PHRASE}. Nothing was deleted.`);
+    return "refused";
+  }
+  return null;
+}
+
+/**
+ * THE OFFER (Mike, 2026-10-11): after the wiring is out, ask whether to delete
+ * the memory too — default NO — and a yes leads to the same typed phrase.
+ *
+ * Not offered, with the reason said, when a delete could not go ahead anyway:
+ * the registration is still there (review M2), the plan refuses, or something
+ * holds the store (`openRefusal`). Asked rather than refused after a yes,
+ * because a question whose yes is always refused is a question nobody should
+ * be put. Everything is looked at AGAIN after the phrase — somebody may have
+ * opened a session while reading — and anything changed is a refusal.
+ */
+async function offerDelete(input: UninstallInput, u: Ui, mcpConfirmed: boolean): Promise<Outcome> {
+  const { io, home, env } = input;
+  const withheld = (why: readonly string[]): Outcome => {
+    u.blank();
+    io.out("Deleting your memory is not offered right now:");
+    for (const line of why) io.out(`  ${line.replace(/^refused: /, "")}`);
+    u.blank();
+    keptHints(input, u);
+    return "ok";
+  };
+  if (!mcpConfirmed) {
+    return withheld([
+      "the memory server is still registered (above), and a server pointed at a store that is " +
+        "gone fails at every session start. Remove it, then run uninstall again.",
+    ]);
+  }
+  const planInput: PlanInput = { configPath: input.configPath, config: input.config, home, verb: "delete", env };
+  let plan = planUninstall(planInput);
+  if (plan.refusal !== null) return withheld([plan.refusal]);
+  if (plan.targets.length === 0) {
+    keptHints(input, u);
+    return "ok";
+  }
+  const open = openRefusal(input, plan.storeDir, true);
+  if (open !== null) return withheld(open);
+
+  plan = counted(remeasured(plan));
+  u.blank();
+  for (const line of planLines(plan, "delete", home, null, "If you say yes, this deletes, for good:")) io.out(line);
+  for (const line of notTouchedLines(notTouched(plan, input.config, home, env), home)) io.out(line);
+  u.blank();
+  const yes = await confirm(io, DELETE_QUESTION, { default: false, hint: "(Enter keeps them)" });
+  if (!yes) {
+    io.out("Kept. Nothing was deleted.");
+    u.blank();
+    io.out(`To remove the program too: ${REMOVE_PACKAGE}`);
+    return "ok";
+  }
+  u.blank();
+  const stopped = await phraseGate(input, u, plan);
+  if (stopped !== null) return stopped;
+
+  // THE GROUND AGAIN, after a person read and typed.
+  const again = planUninstall(planInput);
+  const openAgain = openRefusal(input, again.storeDir, true);
+  const moved =
+    again.refusal !== null ||
+    again.targets.length !== plan.targets.length ||
+    again.targets.some((t, i) => t !== plan.targets[i]);
+  if (openAgain !== null || moved) {
+    for (const line of openAgain ?? [again.refusal ?? "refused: what this would delete changed while you were reading it."]) {
+      io.err(line);
+    }
+    io.err("Nothing was deleted. Run uninstall again to see the plan as it stands now.");
+    return "refused";
+  }
+  u.blank();
+  return deletePlan(input, u, { ...again, census: plan.census });
 }
 
 /**
@@ -1355,6 +1602,7 @@ function deletePlan(input: UninstallInput, u: Ui, plan: UninstallPlan): Outcome 
     try {
       rmSync(path, { recursive: true, force: true });
       gone.push(path);
+      input.record?.deleted.push(path);
     } catch (err) {
       io.err(`failed to delete ${path}: ${String((err as Error).message ?? err)}`);
       io.err("What is listed below is gone; nothing else was touched.");
@@ -1384,5 +1632,180 @@ function deletePlan(input: UninstallInput, u: Ui, plan: UninstallPlan): Outcome 
   u.hint("Nothing in this package can bring the rest back.");
   u.blank();
   io.out(`To remove the program too: ${REMOVE_PACKAGE}`);
+  return "ok";
+}
+
+// ── --json: the door the plugin's command drives ────────────────────────────
+
+/** The version of the JSON below. Bumped if a field changes meaning. */
+export const UNINSTALL_JSON_VERSION = 1;
+
+/** Standard input, as `RunOptions.stdin` hands it over. */
+export interface JsonStdin {
+  readonly isTty: boolean;
+  read(): Promise<string>;
+}
+
+/**
+ * `counterparts uninstall --json` — ONE JSON object on stdout, and nothing else
+ * there. Three modes, by the flags beside it:
+ *
+ *   - **alone: the plan.** Changes nothing — not the wiring, not the store. It
+ *     says what a delete would remove (every path, with its size and the count
+ *     of memories), what it would leave, whether a delete could go ahead right
+ *     now and if not why, the question to put and the phrase to ask for. It
+ *     opens the store read-only to count, as `--delete-memories` does.
+ *   - **`--keep-memories`: uninstall, memory kept** — the wiring out, the store
+ *     untouched; no question, because the flag is the answer.
+ *   - **`--delete-memories`: uninstall and delete**, with the phrase read from
+ *     standard input (one line; nothing trimmed but its end-of-line). Every
+ *     guard of the interactive arm runs, in the same order, and the phrase is
+ *     checked before anything is taken out. An empty line or `cancel` stops it.
+ *
+ * The phrase on stdin is the one thing a person at a terminal would have
+ * typed, and this process cannot tell who wrote it. The caller's half of the
+ * guarantee is that the person typed it: the plugin command collects it in its
+ * own UI and passes it here, and the model is never the one that supplies it.
+ *
+ * Exit codes are the console's: 0 for a plan, a kept uninstall, a delete, or a
+ * phrase somebody stopped; 2 for a refusal (including a wrong phrase); 3 for a
+ * failure part-way. A refusal before this function runs (no configuration, a
+ * `--dir`) comes as text on stderr with no JSON.
+ */
+export async function uninstallJson(input: UninstallInput, stdin: JsonStdin | undefined): Promise<Outcome> {
+  const { io, home, env } = input;
+  // ALWAYS NAMED, the default included: the next call must act on the
+  // configuration this plan read, whatever its environment says.
+  const withConfig = ["--config", resolve(input.configPath)];
+  const emit = (body: Record<string, unknown>): void => {
+    io.out(
+      JSON.stringify({
+        command: "uninstall",
+        version: UNINSTALL_JSON_VERSION,
+        configPath: resolve(input.configPath),
+        ...body,
+      }),
+    );
+  };
+  if (input.park) {
+    emit({ mode: "park", outcome: "refused", why: "--json does not park. Run `uninstall --park` at a terminal." });
+    return "refused";
+  }
+
+  // ── the two modes that act: the console's own arms, behind a quiet console ─
+  if (input.deleteMemories || input.keepMemories === true) {
+    const mode = input.deleteMemories ? "delete" : "keep";
+    const lines: string[] = [];
+    const errors: string[] = [];
+    let phrase: string | null = null;
+    if (input.deleteMemories && input.keepMemories !== true) {
+      if (stdin === undefined || stdin.isTty) {
+        emit({
+          mode,
+          outcome: "refused",
+          why:
+            "with --json the phrase comes on standard input, piped in. At a terminal, run " +
+            "`uninstall --delete-memories` without --json and type it there.",
+          unwired: false,
+          deleted: [],
+        });
+        return "refused";
+      }
+      phrase = (await stdin.read()).replace(/\r?\n$/, "");
+    }
+    let asked = false;
+    const quiet: Io = {
+      out: (line) => lines.push(line),
+      err: (line) => errors.push(line),
+      // ONE ANSWER, ONCE: the phrase, for the one question `--delete-memories`
+      // puts. A second question would be a change in this file nobody meant,
+      // and it gets the empty answer, which stops everything.
+      ...(phrase === null
+        ? {}
+        : {
+            prompt: async (): Promise<string> => {
+              if (asked) return "";
+              asked = true;
+              return phrase ?? "";
+            },
+          }),
+    };
+    const record: UninstallRecord = { unwired: false, phrase: null, deleted: [] };
+    // `yes` for the kept mode: the flag answered the one question there is.
+    const outcome = await uninstall({ ...input, io: quiet, yes: true, record });
+    emit({
+      mode,
+      outcome,
+      ...(mode === "delete" ? { phrase: record.phrase ?? "not asked" } : {}),
+      unwired: record.unwired,
+      deleted: record.deleted,
+      lines,
+      errors,
+    });
+    return outcome;
+  }
+
+  // ── the plan: reads, and changes nothing ─────────────────────────────────
+  const forbidden = forbiddenBaseRefusal(resolve(dirname(input.configPath)));
+  if (forbidden !== null) {
+    emit({ mode: "plan", outcome: "refused", deletable: false, why: forbidden });
+    return "refused";
+  }
+  let plan = planUninstall({ configPath: input.configPath, config: input.config, home, verb: "delete", env });
+  const sighting = look(input.lister);
+  const holders =
+    plan.storeDir !== null && existsSync(plan.storeDir)
+      ? readHolders({ storeDir: plan.storeDir, configPath: input.configPath, now: input.now })
+      : [];
+  const open = plan.refusal === null ? openRefusal(input, plan.storeDir, true) : null;
+  if (plan.refusal === null) plan = counted(plan);
+  const why =
+    plan.refusal ??
+    (open !== null
+      ? open.join("\n")
+      : plan.targets.length === 0
+        ? "there is none of ours left here to delete."
+        : null);
+  const census = plan.census;
+  const kept = notTouched(plan, input.config, home, env);
+  emit({
+    mode: "plan",
+    outcome: "ok",
+    deletable: why === null,
+    why,
+    question: DELETE_QUESTION,
+    phrase: DELETE_PHRASE,
+    // What to run with the person's answer. The phrase goes on the delete's stdin.
+    deleteArgs: ["uninstall", "--delete-memories", "--json", ...withConfig],
+    keepArgs: ["uninstall", "--keep-memories", "--json", ...withConfig],
+    configDir: plan.configDir,
+    storeDir: plan.storeDir,
+    memories: census !== null && census.kind === "memories" ? census.memories : null,
+    countWhy: census !== null && census.kind === "size" ? census.why : null,
+    bytes: plan.bytes,
+    deletes: plan.entries.map((e) => ({
+      path: e.path,
+      kind: e.kind,
+      what: e.what,
+      bytes: e.bytes,
+      directory: e.directory,
+    })),
+    // What actually goes: the folder itself when nothing foreign is in it, our
+    // entries one by one when something is.
+    targets: plan.targets,
+    wholeDirectory: plan.wholeDirectory,
+    foreign: plan.foreign,
+    notTouched: kept,
+    running: sighting.looked ? sighting.processes.map((p) => ({ pid: p.pid, what: p.what })) : null,
+    holders: holders.map((h) => ({ what: h.what, detail: h.detail, refuse: h.refuse })),
+    // The screen a terminal would show, for a caller that shows text.
+    lines:
+      plan.refusal === null
+        ? [
+            ...planLines(plan, "delete", home, null, "If you say yes, this deletes, for good:"),
+            ...notTouchedLines(kept, home),
+          ]
+        : [],
+  });
   return "ok";
 }
