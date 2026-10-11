@@ -17,12 +17,14 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { openServer } from "../src/adapters/mcp/index.js";
-import type { McpServer, ToolResult } from "../src/adapters/mcp/index.js";
+import { McpServer, openServer } from "../src/adapters/mcp/index.js";
+import type { ToolResult } from "../src/adapters/mcp/index.js";
+import { recordSession } from "../src/adapters/sessions.js";
 import { settle, writeNeighbours } from "../src/core/contradictions.js";
-import { Counterpart } from "../src/core/counterpart.js";
+import { Counterpart, MCP_OVERSIZE_EVENT } from "../src/core/counterpart.js";
 import { onMyMind } from "../src/core/dream/mind.js";
-import { Recall, earlierMark, headOf } from "../src/core/recall/index.js";
+import { TOOL_RESULT_CEILING, wireChars } from "../src/core/fit/index.js";
+import { Recall, earlierMark, headOf, standingOf } from "../src/core/recall/index.js";
 import { settledOver } from "../src/core/self/index.js";
 import { Store } from "../src/core/store/index.js";
 import type { PutInput } from "../src/core/store/index.js";
@@ -216,6 +218,17 @@ describe("a write's neighbours", () => {
     expect((o2[0]?.["settled"] as Record<string, unknown>)["how"]).toBe("changed");
     const second = ((o2[1]?.["neighbours"] ?? []) as Record<string, unknown>[]).map((n) => n["id"]);
     expect(second).not.toContain(other);
+    // And it WOULD have been listed but for the sibling (review of #408): the
+    // same second write, its neighbours read with nothing excluded, lists the
+    // old rule, marked with the first entry — so the drop above is the
+    // sibling rule, not a neighbour that was never close.
+    const firstId = o2[0]?.["id"] as string;
+    const secondId = o2[1]?.["id"] as string;
+    expect(typeof firstId).toBe("string");
+    expect(typeof secondId).toBe("string");
+    const unexcluded = writeNeighbours(store, { id: secondId, owner: true });
+    expect(unexcluded.find((n) => n.id === other)?.standing).toBe(earlierMark(firstId));
+    expect(writeNeighbours(store, { id: secondId, owner: true, exclude: [firstId] }).map((n) => n.id)).not.toContain(other);
   });
 });
 
@@ -306,4 +319,223 @@ describe("the dream and the reflection", () => {
     expect(after).not.toContain(old);
     expect(after).toContain(head);
   });
+});
+
+// ── review of #408 ───────────────────────────────────────────────────────────
+
+const FILLER = [
+  "Ran the morning loop around the reservoir before breakfast.",
+  "The tax filing deadline moved to October this year.",
+  "Prefers dense espresso over filter coffee at home.",
+  "The garage door opener needs a new battery soon.",
+  "Rebasing keeps the history readable for reviewers.",
+  "The neighbour's cat sits on the fence every evening.",
+  "Bought hiking boots that finally fit properly.",
+  "The library closes early on Sundays now.",
+];
+
+describe("review of #408: footnotes and neighbours name the same memory", () => {
+  test("on a chain A→B→C the footnote, the question path's note and the neighbour all say C", () => {
+    const s = Store.open({ dir });
+    open.push(s);
+    aged(s);
+    for (const body of FILLER) put(s, body);
+    const a = put(s, "The zygomorphic orchid needs watering twice a week.", { title: "Zygomorphic orchid watering" });
+    const b = put(s, "The zygomorphic orchid needs watering once a week in autumn.", { title: "Orchid watering in autumn" });
+    const c = put(s, "The zygomorphic orchid needs watering every ten days in winter.", { title: "Orchid watering in winter" });
+    changed(s, b, a);
+    changed(s, c, b);
+    expect(headOf(s, a)).toBe(c);
+    expect(standingOf(s, a)?.prefix).toBe(`Earlier (now [${c}]): `);
+    expect(standingOf(s, a)?.note).toBe(`earlier — now ${c}`);
+    expect(standingOf(s, b)?.prefix).toBe(`Earlier (now [${c}]): `);
+    // B still says what it was over, after: the chain's history is not lost.
+    expect(standingOf(s, b)?.suffix).toBe(` (earlier: [${a}])`);
+    expect(standingOf(s, c)?.prefix).toBe("");
+    const text = new Recall({ store: s, owner: true }).build({ sessionId: "r1", text: "how often should the zygomorphic orchid get watering" }).injection;
+    const linesOfA = text.split("\n").filter((l) => l.includes("twice a week") || l.includes("Zygomorphic orchid watering"));
+    expect(linesOfA.length).toBeGreaterThan(0);
+    for (const line of linesOfA) {
+      expect(line).toContain(`Earlier (now [${c}]): `);
+      expect(line).not.toContain(`now [${b}]`);
+    }
+    const w = put(s, "The zygomorphic orchid needs watering twice a week, they said at the shop.");
+    const n = writeNeighbours(s, { id: w, owner: true, limit: 10 }).find((x) => x.id === a);
+    expect(n?.standing).toBe(earlierMark(c));
+  });
+
+  test("re-affirmed by a newer pair, or its holder gone with nothing after: no Earlier label", () => {
+    const s = Store.open({ dir });
+    open.push(s);
+    aged(s);
+    const p = put(s, "The ovens are cleaned on Sunday evening.");
+    const q = put(s, "The ovens are cleaned on Saturday evening.");
+    changed(s, q, p);
+    expect(standingOf(s, p)?.prefix).toBe(`Earlier (now [${q}]): `);
+    // Re-affirmed: a newer pair names P as what holds (the wake's rule: the newest pair speaks).
+    const r = put(s, "The ovens are cleaned whenever the week is quiet.");
+    changed(s, p, r);
+    expect(headOf(s, p)).toBeNull();
+    expect(settledOver(s).has(p)).toBe(false);
+    // Before this review it read "Earlier (now [Q])" here, off the older pair alone.
+    expect(standingOf(s, p)?.prefix ?? "").not.toContain("Earlier");
+    expect(standingOf(s, p)?.suffix).toContain(`earlier: [${r}]`);
+
+    const x = put(s, "The delivery van goes out on Tuesdays and Fridays.");
+    const y = put(s, "The delivery van goes out on Mondays only.");
+    changed(s, y, x);
+    s.archive(y, "removed-by-test");
+    expect(headOf(s, x)).toBeNull();
+    expect(settledOver(s).has(x)).toBe(false);
+    expect(standingOf(s, x)?.prefix ?? "").not.toContain("Earlier");
+  });
+});
+
+describe("review of #408: a corrected memory is never shown as current", () => {
+  test("not a neighbour, not in the dream's or the reflection's bundle, not coming up; by id it says Corrected by", () => {
+    const c = Counterpart.open({ dir, owner: true, identity: { name: "Mike" } });
+    open.push(c);
+    c.store.advanceClock("2026-09-10");
+    for (let d = 11; d <= 20; d += 1) c.store.advanceClock(`2026-09-${String(d)}`);
+    const day = c.store.livedDay();
+    const mk = (body: string, extra: Partial<PutInput> = {}): string =>
+      c.store.put({ type: "memory", kind: "fact", body, salience: { relevance: 0.7, emotional: 0.5, predictive: 0.6 }, physics: { birthDay: day, lastUsedDay: day }, ...extra });
+    const wrong = mk(OLD_RULE, { eventDate: "2026-09-22" });
+    const right = mk(NEW_RULE, { eventDate: "2026-09-23" });
+    mk("The deploy script needs the migration step before the container starts.");
+    expect(settle(c.store, { holds: right, over: wrong, how: "corrected", actor: "session", why: "misread" }).ok).toBe(true);
+    expect(c.store.row(wrong)?.archived).toBe(1);
+    const w = mk(CLOSE_TO_OLD);
+    expect(writeNeighbours(c.store, { id: w, owner: true, limit: 10 }).map((n) => n.id)).not.toContain(wrong);
+    const d = c.dreams.begin({ session: SESSION, scope: "/proj" });
+    if (!d.ok) throw new Error(d.reason);
+    expect(Object.keys(d.bundle.memories)).not.toContain(wrong);
+    expect(JSON.stringify(d.bundle)).not.toContain(wrong);
+    const r = c.reflections.begin({ session: SESSION, scope: "/proj" });
+    if (!r.ok) throw new Error(r.reason);
+    expect(Object.keys(r.bundle.memories)).not.toContain(wrong);
+    const mind = onMyMind(c.store, { today: "2026-09-20", day, showable: () => true, owner: true }).flatMap((m) => m.ids);
+    expect(mind).not.toContain(wrong);
+    expect(standingOf(c.store, wrong, { byId: true })?.prefix).toContain(`Corrected by [${right}]`);
+  });
+});
+
+describe("review of #408: headOf's walk is bounded and never throws", () => {
+  interface FakeRow {
+    id: string;
+    archived: number;
+    superseded_by: string | null;
+    body: string;
+    content_hash: string;
+  }
+  function fake(rows: FakeRow[], pairs: { over: string; holds: string; at: number }[] = [], opts: { throws?: boolean } = {}): Store {
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const cr = pairs.map((p, i) => ({
+      id: `pair_${String(i)}`,
+      a: p.over,
+      b: p.holds,
+      state: "settled",
+      how: "changed",
+      holds: p.holds,
+      over: p.over,
+      via: null,
+      created_at: p.at,
+      updated_at: p.at,
+    }));
+    return {
+      row: (id: string) => {
+        if (opts.throws === true) throw new Error("database is locked");
+        return byId.get(id);
+      },
+      // Newest first, as the store reads them.
+      contradictionsOf: (ids: readonly string[]) => {
+        const out = new Map<string, unknown[]>();
+        for (const id of ids) {
+          const got = cr.filter((p) => p.a === id || p.b === id).reverse();
+          if (got.length > 0) out.set(id, got);
+        }
+        return out;
+      },
+      contradictions: () => [...cr].reverse(),
+    } as unknown as Store;
+  }
+  const live = (id: string): FakeRow => ({ id, archived: 0, superseded_by: null, body: "words", content_hash: "h" });
+  const gone = (id: string, next: string | null): FakeRow => ({ id, archived: 0, superseded_by: next, body: "words", content_hash: "h" });
+
+  test("a cycle of replaced rows ends; a 10,000-long replaced chain stops at the bound; a store that throws settled nothing", () => {
+    expect(headOf(fake([gone("m_a", "m_b"), gone("m_b", "m_c"), gone("m_c", "m_a")]), "m_a")).toBeNull();
+    const rows: FakeRow[] = [];
+    for (let i = 0; i < 10_000; i += 1) rows.push(gone(`m_${String(i)}`, `m_${String(i + 1)}`));
+    rows.push(live("m_10000"));
+    const long = fake(rows);
+    const t0 = performance.now();
+    expect(() => headOf(long, "m_0")).not.toThrow();
+    expect(performance.now() - t0).toBeLessThan(200);
+    expect(headOf(fake([live("m_x")], [], { throws: true }), "m_x")).toBeNull();
+    // A settle cycle tied on the clock: the newest pair speaks, and it ends.
+    const tie = fake([live("m_p"), live("m_q")], [
+      { over: "m_p", holds: "m_q", at: 5 },
+      { over: "m_q", holds: "m_p", at: 5 },
+    ]);
+    expect(() => headOf(tie, "m_p")).not.toThrow();
+    expect(headOf(tie, "m_p") !== null).toBe(settledOver(tie).has("m_p"));
+    expect(headOf(tie, "m_q") !== null).toBe(settledOver(tie).has("m_q"));
+  });
+
+  test("a 60-link chain of real settles, a replaced row in its middle: headOf agrees with the wake's settledOver on every link", () => {
+    const s = Store.open({ dir });
+    open.push(s);
+    aged(s);
+    const ids: string[] = [];
+    for (let i = 0; i < 60; i += 1) ids.push(put(s, `The standup moved again, version ${String(i)} of the time.`));
+    for (let i = 1; i < 60; i += 1) changed(s, ids[i] as string, ids[i - 1] as string);
+    const mid = ids[30] as string;
+    const after = s.supersede(mid, { type: "memory", kind: "fact", body: "The standup moved again, version 30 of the time, reworded." });
+    const over = settledOver(s);
+    for (const id of [...ids, after]) {
+      if (id === mid) continue;
+      expect(headOf(s, id) !== null).toBe(over.has(id));
+    }
+    expect(headOf(s, ids[58] as string)).toBe(ids[59] as string);
+    expect(headOf(s, ids[59] as string)).toBeNull();
+  });
+});
+
+describe("review of #408: the marks stay inside each result's ceiling", () => {
+  test("a busy night where nearly every memory was settled over: dream and reflection parts all under the ceiling, no cut", async () => {
+    const c = Counterpart.open({ dir, owner: true, identity: { name: "Mike" } });
+    open.push(c);
+    c.store.advanceClock("2026-09-10");
+    const said = '"said" "so" "plainly" '.repeat(20);
+    const mk = (body: string): string => {
+      const day = c.store.livedDay();
+      return c.store.put({ type: "memory", kind: "fact", body, salience: { relevance: 0.6, emotional: 0.3, predictive: 0.6 }, physics: { birthDay: day, lastUsedDay: day } });
+    };
+    const ids: string[] = [];
+    for (let i = 0; i < 120; i += 1) ids.push(mk(`Older memory ${String(i)} of a busy week: ${said}`));
+    for (let d = 11; d <= 20; d += 1) c.store.advanceClock(`2026-09-${String(d)}`);
+    for (let i = 0; i < 90; i += 1) ids.push(mk(`Memory ${String(i)} of a busy day: ${said}`));
+    // Each memory changed by the next: all but the last carry the mark.
+    for (let i = 1; i < ids.length; i += 1) changed(c.store, ids[i] as string, ids[i - 1] as string);
+    recordSession(dir, { sessionId: SESSION, scope: "/proj", phase: "start" });
+    const s = new McpServer({ counterpart: c, scope: "/proj", owner: true, registryDir: dir });
+    const fits = (res: ToolResult): void => {
+      expect(res.isError ?? false).toBe(false);
+      expect(wireChars(JSON.stringify(res.structuredContent))).toBeLessThanOrEqual(TOOL_RESULT_CEILING.CHARS);
+      expect(res.structuredContent["cut"]).toBeUndefined();
+    };
+    const begin = await s.call("dream", { phase: "begin", session: SESSION });
+    fits(begin);
+    expect(JSON.stringify(begin.structuredContent)).toContain("earlier (now ");
+    const dreamId = begin.structuredContent["dream"] as string;
+    const of = (begin.structuredContent["parts"] as { of: number } | undefined)?.of ?? 1;
+    for (let k = 2; k <= of; k += 1) fits(await s.call("dream", { phase: "part", session: SESSION, dream: dreamId, part: k }));
+    await s.call("dream", { phase: "journal", session: SESSION, dream: dreamId, text: "A dream, read whole." });
+    const r = await s.call("reflect", { phase: "begin", session: SESSION, dream: dreamId });
+    fits(r);
+    const rid = r.structuredContent["reflection"] as string;
+    const rof = (r.structuredContent["parts"] as { of: number } | undefined)?.of ?? 1;
+    for (let k = 2; k <= rof; k += 1) fits(await s.call("reflect", { phase: "part", session: SESSION, reflection: rid, part: k }));
+    expect(c.store.eventLog({ name: MCP_OVERSIZE_EVENT, limit: 100 })).toEqual([]);
+  }, 90_000);
 });

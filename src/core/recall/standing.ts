@@ -12,7 +12,7 @@
  *
  *   | the pair                         | this memory is… | shown as                                   |
  *   |----------------------------------|-----------------|--------------------------------------------|
- *   | settled `changed`                | over            | `Earlier (now [holds]):` in front          |
+ *   | settled `changed`                | over            | `Earlier (now [head]):` in front (headOf)  |
  *   |                                  | holds           | `(earlier: [over])` after                  |
  *   | settled `corrected`              | over (by id)    | `Corrected by [holds]:` in front           |
  *   |                                  | holds           | `(corrects [over])` after                  |
@@ -59,7 +59,7 @@ export function standingOf(
   opts: { byId?: boolean; pairs?: readonly ContradictionRow[] } = {},
 ): Standing | null {
   const pairs = (opts.pairs ?? store.contradictionsOf([id]).get(id) ?? []).filter((p) => p.via === null && p.state !== "withdrawn");
-  const now: string[] = [];
+  let changedOver = false;
   const earlier: string[] = [];
   const correctedBy: string[] = [];
   const corrects: string[] = [];
@@ -69,7 +69,7 @@ export function standingOf(
     const other = p.a === id ? p.b : p.a;
     if (p.state === "settled") {
       if (p.how === "changed") {
-        if (p.over === id && p.holds !== null) now.push(p.holds);
+        if (p.over === id && p.holds !== null) changedOver = true;
         else if (p.holds === id && p.over !== null) earlier.push(p.over);
       } else if (p.how === "corrected") {
         if (p.over === id && p.holds !== null) correctedBy.push(p.holds);
@@ -81,6 +81,13 @@ export function standingOf(
       unsettled.push(p.b);
     }
   }
+  // "Earlier (now …)" names the END of the chain, the one memory a write's
+  // neighbours and the dream's bundles name too (`headOf`, review of #408):
+  // on A→B→C, A reads "now [C]", not "now [B]". And `headOf`'s rule decides
+  // whether it is earlier at all: re-affirmed by a newer pair, or its holder
+  // gone with nothing live after it, it stands and carries no "Earlier".
+  const head = changedOver ? headOf(store, id) : null;
+  const now: string[] = head === null ? [] : [head];
   const front: string[] = [];
   const back: string[] = [];
   const said: string[] = [];
@@ -131,7 +138,8 @@ export function standingOf(
  * memory a later one had settled `changed` over by its bare title, and the
  * session repeated the rule it had replaced. So every surface that shows a
  * memory's title by its own path — not through `standingOf`'s label — asks
- * this first and marks what it shows (`earlierMark`).
+ * this first and marks what it shows (`earlierMark`); `standingOf`'s
+ * "Earlier (now …)" names the same memory (review of #408).
  *
  * The rule is `self/index.ts#settledOver`'s, for one id: in the NEWEST
  * settled pair that names it directly (a `changed` or `corrected` closed

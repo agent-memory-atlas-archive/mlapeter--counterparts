@@ -435,6 +435,13 @@ were refined by b2+f8 at the review of #369, named where they were):
   the same way rather than leave it out (a dream may still link or feel it), and the dream's
   "coming up" leaves out a dated memory a later one settled over, as the wake's "Arriving:"
   does. "Settled over" is `settledOver`'s rule for one id (`recall/standing.ts#headOf`).
+- Decided by the coordinator at the review of #408, 2026-10-11, lightly held: recall's
+  `Earlier (now [id])` label (footnotes, "Came to mind", the wake's lanes, the deliberate
+  path's `standing`) names `headOf`'s memory too, so a footnote and a neighbour never name
+  different ones on a chain A→B→C (both say C, where the footnote said B). A memory a newer
+  pair names as what holds, or whose holder is gone with nothing live after it, no longer
+  reads `Earlier`. Accepted as built: a guest writer's neighbour whose head is confidential
+  is left out; a neighbour whose head ranks below it is listed marked beside its head.
 
 ### Also noted
 
