@@ -96,7 +96,7 @@ load-bearing, and this adapter is designed on the assumption that it will be use
   die by decay; revision is `updates:` plus arithmetic (owner decisions, settled). The
   vocabulary this adapter exposes was deliberately three verbs wide, plus the return
   channels — a return channel is not a fourth verb, it is the other end of an ask the
-  system already makes. It is nine tools now (§1); none of the four added since writes an
+  system already makes. It is ten tools now (§1; `meet`, the first meeting, 2026-10-11); none of the five added since writes an
   entity, a belief or a revision either.
 - **`chapter` is NOT the self-store tool coming back** (added 2026-09-04). The dropped v1
   tool wrote identity prose directly. This one appends to the session's own journal, and

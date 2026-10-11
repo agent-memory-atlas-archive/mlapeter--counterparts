@@ -374,8 +374,9 @@ interface EnvelopeRoom {
 
 /** What rode beside the wake when the pointer was measured, in words for
  *  doctor ("the first-launch question and 1 plain reminder"), or "". */
-function besideWords(question: boolean, plain: number): string {
+function besideWords(question: boolean, plain: number, meet = false): string {
   const parts = [
+    ...(meet ? ["the first meeting's line"] : []),
     ...(question ? ["the first-launch question"] : []),
     ...(plain > 0 ? [`${String(plain)} plain reminder${plain === 1 ? "" : "s"}`] : []),
   ];
@@ -644,7 +645,11 @@ export class ClaudeCodeAdapter extends Lifecycle {
       // are Claude Desktop's server, which serves a call as this session only
       // when the call names it. A terminal session's wake is unchanged.
       const codeTab = codeTabSessionLine(input);
-      const lead = `${woke.text.length === 0 && plain.context.length === 0 && codeTab === null ? "" : `${this.nowLine()}\n`}${codeTab === null ? "" : `${codeTab}\n`}${plain.context}`;
+      // THE FIRST MEETING'S MARKER (2026-10-11), on its own line under the
+      // clock, on every session-start wake: the state word only, for the mod,
+      // which cannot reach the dashboard before somebody starts it.
+      const marker = `${this.onboardingMarker()}\n`;
+      const lead = `${woke.text.length === 0 && plain.context.length === 0 && codeTab === null ? "" : `${this.nowLine()}\n`}${marker}${codeTab === null ? "" : `${codeTab}\n`}${plain.context}`;
       const sent = woke.bytes + Buffer.byteLength(lead, "utf8");
       const rides =
         plain.due.length > 0 &&
@@ -705,7 +710,17 @@ export class ClaudeCodeAdapter extends Lifecycle {
       // page writer's ask used to contend for it (and after two mornings of
       // losing went first); since 2026-09-28 the writer runs inside the
       // nightly run and is handed its day through a tool result instead.
-      const chosen = wantsAsk ? this.deliverScopeAsk(input, room) : "";
+      //
+      // THE FIRST MEETING'S LINE GOES FIRST (2026-10-11): the offer while the
+      // meeting is due, or the second session's one memory from it
+      // (`Lifecycle#onboardingLine`), only where a person will see the reply.
+      // While the meeting is still to happen the scope question waits: the
+      // meeting asks where memory is on, and asking twice is the wall of
+      // questions the meeting replaces.
+      const meet = isInteractive(input) ? this.deliverMeetLine(input, room) : "";
+      const meetBytes = meet.length === 0 ? 0 : room.cost(`\n\n${meet}`);
+      const scope = wantsAsk && !this.meetPending() ? this.deliverScopeAsk(input, { ...room, spent: room.spent + meetBytes }) : "";
+      const chosen = [meet, scope].filter((a) => a.length > 0).join("\n\n");
       // THE WRITE-UP POINTER RIDES AFTER WHICHEVER ASK TOOK THE FIELD, never
       // instead of it (C2): it may coincide with either, it is measured against
       // the room BOTH of them left, and it is fail-open by construction — a
@@ -714,7 +729,7 @@ export class ClaudeCodeAdapter extends Lifecycle {
       const writeUp = this.deliverWriteUpAsk(input, room.spent + chosenBytes, {
         limit: room.limit,
         cost: room.cost,
-        beside: besideWords(chosen.length > 0, room.plain),
+        beside: besideWords(scope.length > 0, room.plain, meet.length > 0),
       });
       const asks = [chosen, writeUp].filter((a) => a.length > 0).join("\n\n");
       return {
@@ -760,6 +775,23 @@ export class ClaudeCodeAdapter extends Lifecycle {
       // hook; the quiet answer is the safe one.
       return false;
     }
+  }
+
+  /**
+   * THE FIRST MEETING'S LINE, if one is due and it FITS — measured like the
+   * question below and deferred the same way (nothing is recorded, so the
+   * next session offers it instead). Returns the block, or "".
+   */
+  private deliverMeetLine(input: HookInput, room: EnvelopeRoom): string {
+    const line = this.onboardingLine(input);
+    if (line === null) return "";
+    const need = room.cost(`\n\n${line.text}`);
+    if (room.spent + need > room.limit) {
+      this.emit("adapter.meet.deferred", { kind: line.kind, wakeBytes: room.spent, budget: room.limit, need, form: room.form });
+      return "";
+    }
+    line.commit();
+    return line.text;
   }
 
   /**

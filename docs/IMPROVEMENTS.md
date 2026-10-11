@@ -552,6 +552,46 @@ were refined by b2+f8 at the review of #369, named where they were):
   reads `Earlier`. Accepted as built: a guest writer's neighbour whose head is confidential
   is left out; a neighbour whose head ranks below it is listed marked beside its head.
 
+### Decided by the onboarding-core builder, 2026-10-11, lightly held (the first meeting)
+
+- **Where the state lives: the store's `meta`, and absent means done.** Why: the hook, the
+  MCP server and the dashboard all read the store; the config is rewritten by
+  `install --force` with its own carry-forward rules. Only `install` writes `not_started`,
+  and only into a store it just created, so every existing store (Mike's included) reads
+  `done` with nothing written to it. `start-fresh`'s blank store gets the meeting (the
+  coordinator's ask) but not the dreaming change; `--undo` brings the parked store's own
+  state back with it. (`core/onboarding.ts`)
+- **Dreaming `auto` is written explicitly into a new install's store; the fallback stays
+  `ask`.** Why: changing `DREAMING_DEFAULT` would flip every upgraded store that never set
+  one. The once-only reset of an explicit `auto` is marked done at the same time, or the
+  first hook would set it back to `ask`.
+- **Core writes the answers, through `remember`'s own door.** `meet {step, answer}` stores
+  one memory per answer (about the owner, said by the owner, "(from onboarding)"), rather
+  than Claude calling `remember` itself. Why: the marks are mechanized, a skipped question
+  is never sent, and the second session's line has the id of the work answer. A name is a
+  memory too, never the identity core: no tool writes an entity (mcp CONTRACT §4). So a
+  plugin install, which never asks the name at install, still has no identity core; that is
+  a core ask, not built here.
+- **Where memory is on is one `/` entry in `scopes.json`:** on for every folder, or off with
+  this folder on. Why: there is no install-wide default today, `/` already matches every
+  absolute path with longest prefix winning, so existing entries keep theirs; and with
+  either answer no folder is `unset`, so the first-launch question never fires again. It
+  also waits while the meeting is pending (the meeting asks it instead); after `skipped` it
+  is back. A Claude Desktop chat has no folder, so the script leaves the question out.
+- **No double offer, with or without the mod:** the wake's line is carried whenever an
+  offer is due (at most once a calendar day, never twice in one session, none once done or
+  skipped), and its words make the mod's "say hello and introduce yourself" prompt the same
+  offer. A `meet` read marks `offered`; an `offered` from an earlier day becomes `later`, so
+  the mod sees a meeting it may offer again. Why: the install route is not the same as the
+  mod being present, and someone who types before the session goes idle can only be offered
+  it by the model, from a line already in its context.
+- **Each style bundle is its four preferences plus one shared honest-pushback line**, so
+  every bundle, the character's included, keeps the baseline in so many words. Bundle
+  memories are marked `about: owner`, so like any preference about the owner they could
+  become core through ordinary recurrence; nothing writes them there.
+- **The second session's memory rides beside the wake, once**, in the first session after
+  the one that finished the meeting: the work answer, else something loved, else the rest.
+
 ### Also noted
 
 - **A read-without-crediting mode for audits.** A way to read memories (a review, a rules

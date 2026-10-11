@@ -225,6 +225,7 @@ import { coverageLines } from "./coverage.js";
 import { catchUpCommand } from "./catch-up.js";
 import type { ChildPlan, ChildResult } from "../claude-code/child.js";
 import { DREAMING_SETTINGS, NIGHT_RUN_FINISHES } from "../../core/dream/index.js";
+import { NEW_INSTALL_DREAMING_LINE, beginNewInstall } from "../../core/onboarding.js";
 import { REFLECTED_FEELING_KEY } from "../../core/sleep/index.js";
 // The console's shared manners (2026-09-21): is there a person here, ask them,
 // and say one marked line back.
@@ -3570,6 +3571,14 @@ function installCommand(
     /** True for the conversational arm: a configuration this call CREATES
      *  gets the local embedder switched on when no flag said otherwise. */
     defaultEmbedder?: boolean;
+    /**
+     * What a store this call CREATES starts as (`core/onboarding.ts#beginNewInstall`):
+     * `install` (the default) — the first meeting `not_started` and dreaming
+     * `auto`; `start-fresh` — the meeting only (a fresh store is a fresh
+     * meeting), the dreaming setting left to its default, as a returning
+     * owner's blank store has always started.
+     */
+    newInstall?: "install" | "start-fresh";
   } = {},
 ): number {
   const dirFlag = typeof parsed.flags["dir"] === "string" ? parsed.flags["dir"] : undefined;
@@ -3684,6 +3693,22 @@ function installCommand(
     return EXIT.refused;
   }
   const resolved = store.dir;
+  // A NEW INSTALL'S STARTING STATE (onboarding, 2026-10-11): the first meeting
+  // `not_started` and dreaming `auto`, written ONLY into a store this call has
+  // just created. A store that was already here — every upgrade, Mike's
+  // included — is never touched: it has no meeting key, which reads `done`,
+  // and its dreaming setting is whatever it was. `start-fresh`'s blank store
+  // gets the meeting and not the dreaming change; its `--undo` renames the
+  // parked store back, and that store's own state with it.
+  if (!existed) {
+    try {
+      beginNewInstall(store, { dreaming: opts.newInstall !== "start-fresh" });
+    } catch (err) {
+      store.close();
+      io.err(prefixedRefusal(describeDirRefusal(err, layout.store)));
+      return EXIT.failed;
+    }
+  }
   store.close();
 
   // SEED THE CORE NOW, not at the first hook. `install` used to write the name
@@ -4265,6 +4290,13 @@ async function installConversation(
   const tableMissing = tableOn && (table === null || !existsSync(join(table.dir, MODEL_FILE)));
   if (tableOn && !tableMissing) {
     io.out("Recall by meaning: on. A small model runs on your machine; nothing is sent anywhere.");
+    u.blank();
+  }
+  // DREAMING IS ON FOR A NEW INSTALL (2026-10-11), and a person is told so
+  // where they can see it, with the way to turn it off. A re-run over a store
+  // that was here keeps its setting and says nothing about it.
+  if (!already) {
+    io.out(NEW_INSTALL_DREAMING_LINE);
     u.blank();
   }
   if (tableMissing) {
@@ -5512,7 +5544,7 @@ async function startFreshCommand(
       env,
       home_,
       named,
-      { hostSteps: false },
+      { hostSteps: false, newInstall: "start-fresh" },
     );
   } catch (err) {
     io.err(`the install failed: ${String((err as Error).message ?? err)}`);

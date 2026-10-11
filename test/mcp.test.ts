@@ -574,7 +574,11 @@ describe("the tool-description audit", () => {
       "self_page",
       "dream",
       "reflect",
+      "meet",
     ]);
+    // The tenth is `meet` (2026-10-11): the first meeting. Its answers are
+    // ordinary memories through `remember`'s door; it writes no entity and no
+    // identity element (a name is a memory like any other answer).
     // §4: what enters the identity band is the boundary's job by construction,
     // and `protected.add` went with the second-signature queue. Enumerated
     // absent, not assumed absent. Neither `chapter` nor `self_page` is a

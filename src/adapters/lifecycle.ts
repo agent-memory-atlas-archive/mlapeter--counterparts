@@ -64,6 +64,7 @@ import type {
   Turn as CapturedTurn,
 } from "../core/remember/index.js";
 import { calendarDate } from "../core/self/index.js";
+import { ahaDue, ahaLine, markAha, meetPending, meetState, noteOffered, offerDue, offerLine, onboardingMarker } from "../core/onboarding.js";
 import { localClock, localDate, readableDate } from "../core/time.js";
 
 import { CONFIG_FILE_EVENT } from "./config-path.js";
@@ -665,6 +666,68 @@ export class Lifecycle implements HostLifecycle {
     } catch (err) {
       this.emit("adapter.since.failed", { code: err instanceof Error ? err.name : "unknown" });
       return "";
+    }
+  }
+
+  /**
+   * THE FIRST MEETING'S LINE BESIDE THE WAKE (2026-10-11, `core/onboarding.ts`),
+   * for every host: the offer while the meeting is due (at most once a calendar
+   * day, never twice in a session, none once done or skipped), else — in the
+   * first session after it was finished — one memory from it. A READ, but for
+   * moving a stale `offered` to `later`: the caller measures the line against
+   * its envelope and calls `commit` only once the envelope certainly carries
+   * it, so a line that gave way is offered again next time. Null when nothing
+   * is due, under observer, for the nightly run, without an id; never throws.
+   * Whether a person can see the reply at all (`claude -p`) is the host's
+   * test: the hook asks only for an interactive session.
+   */
+  onboardingLine(input: SessionInput & { nightRun?: boolean }): { kind: "offer" | "aha"; text: string; commit: () => void } | null {
+    if (this.observer || input.nightRun === true || input.sessionId.length === 0) return null;
+    const store = this.counterpart.store;
+    try {
+      const on = input.at ?? store.today();
+      const offer = offerDue(store, { on, session: input.sessionId });
+      if (offer.due) {
+        return {
+          kind: "offer",
+          text: offerLine(offer.state),
+          commit: () => {
+            noteOffered(store, { on, session: input.sessionId, state: false });
+            this.emit("adapter.meet.offered", { state: offer.state });
+          },
+        };
+      }
+      const live = (id: string): boolean => {
+        const r = store.row(id);
+        return r !== undefined && r.archived === 0 && r.superseded_by === null;
+      };
+      const aha = ahaDue(store, input.sessionId, live);
+      if (aha === null) return null;
+      return {
+        kind: "aha",
+        text: ahaLine(store.readProse(aha.memoryId).body, aha.memoryId),
+        commit: () => {
+          markAha(store, input.sessionId);
+          this.emit("adapter.meet.aha", { step: aha.step });
+        },
+      };
+    } catch (err) {
+      this.emit("adapter.meet.failed", { code: err instanceof Error ? err.name : "unknown" });
+      return null;
+    }
+  }
+
+  /** The first meeting's machine marker for a session-start wake (`core/onboarding.ts#onboardingMarker`). A read; never throws. */
+  onboardingMarker(): string {
+    return onboardingMarker(meetState(this.counterpart.store));
+  }
+
+  /** Is the first meeting still to happen? The first-launch scope question waits while it is: the meeting asks where. */
+  meetPending(): boolean {
+    try {
+      return meetPending(this.counterpart.store);
+    } catch {
+      return false;
     }
   }
 

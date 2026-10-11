@@ -1118,6 +1118,12 @@ describe("the npm install's hook and server never take themselves for the plugin
     "installed both ways: every event of the npm hook runs in full, and an inherited CLAUDE_PLUGIN_ROOT changes not a byte",
     () => {
       bothInstalled();
+      // Somebody who has met already: the first meeting's offer is said once a
+      // day, so the second arm would differ by it, and it is not what this
+      // test is about (`core/onboarding.ts#offerDue`).
+      const met = Store.open({ dir: join(home, ".counterparts", "store") });
+      met.setMeta("onboarding.meet", "done");
+      met.close();
       const plain: string[] = [];
       for (const event of HOST_EVENTS) {
         const r = npmHook(event, npmEnv(), "npm-test-plain");
@@ -1171,7 +1177,7 @@ describe("the npm install's hook and server never take themselves for the plugin
         return { init, tools, stderr: r.stderr ?? "" };
       };
       const plain = serve(npmEnv());
-      expect(plain.tools.length).toBe(9);
+      expect(plain.tools.length).toBe(10);
       expect(said(String(plain.init["instructions"] ?? ""))).not.toMatch(PLUGIN_WORDS);
       expect(said(plain.stderr)).not.toMatch(PLUGIN_WORDS);
       const inherited = serve(npmEnv({ CLAUDE_PLUGIN_ROOT: OTHER_COPY(), CLAUDE_PLUGIN_DATA: join(home, "plugin-data") }));
