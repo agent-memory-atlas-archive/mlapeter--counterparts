@@ -12,7 +12,7 @@ each mechanism is working. It should run in whatever AI host people use.
 
 | | |
 |---|---|
-| **On npm** | 0.3.16 (Oct 10) |
+| **On npm** | 0.3.17 (Oct 11) |
 | **On master, not released** | nothing yet |
 | **Hosts** | Claude Code; the Desktop app's Code tab (verified live 10-02); Claude Desktop chat (0.3.9) |
 | **Platforms** | Mac and Linux, under bun or Node 22.15+ (0.3.11); the plugin with neither, as one downloaded program (0.3.14). Not Windows. |
@@ -81,6 +81,7 @@ each mechanism is working. It should run in whatever AI host people use.
 
 ## Recently done
 
+- **10-11**: 0.3.17 on npm: the sidebar mod v0.2, what memory is doing in 35 columns (#375); forgetting changes what comes to mind: each memory on its own curve, below reach, archived (never deleted) after 14 lived days under the floor, the dated hold, feeling counted once, old claims read at their defaults (#372, #377, #386); faded matches inline in facts recall (#379); `note` is `remember`, salience by attention, mood off (#369); `drewOn` (#385); about-marks (#383); the wake put together at session start, "Today, elsewhere" and "Since you started" (#376, #380, #387); a `remember` reaches the next wake the same day (#374); `counterparts rollback` (#384); scale fixes (#368, #373); follow-ups (#378, #382); changelog fragments (#381); store v12 to v13 and cache v5 to v6, nothing to run after upgrading from 0.3.16
 - **10-10**: 0.3.16 on npm: the self page is kept up to 16 KB and the wake steps down a ladder of whole texts (page, short version, outline, headings, one line), its room 5,681 bytes (#363); dated items before the wake's furniture, and doctor's Wake line amber when one goes unlisted (#367); a paused folder says so at session start (#362); each hook output field bounded on its own, the claims file mends itself, late twins stand down, scope commands name the folder (#366); the plugin's first-run line again (#365); the sidebar lights every mechanism an event proves (#360); tools/term-loop (#364); no store-format change, nothing to run after upgrading from 0.3.15
 - **10-10**: 0.3.15 on npm: the self page is never cut in the wake (#358); one delivery per event when the plugin and the npm install are both wired, the claims in a file of their own (#355, #359); `connect` and `install` rewrite Claude Desktop's entry and doctor reads it, so Desktop users run `counterparts connect` once (#354, #356); a yearless "by 1/5" in late December is the coming January (#356); the sidebar mod in the plugin (#342); CI runs the whole suite (#357); RELEASING.md (#356); no store-format change
 - **10-09**: 0.3.14 on npm: the plugin runs with no Bun or Node, as one prebuilt program per platform (#351); a project's `.env` and `bunfig.toml` stay out of the hooks and the server, so npm users run `counterparts connect` once (#349); the wake keeps "Still open" beside a long page and says when a reminder was due (#350); facts names corrected versions, reads amounts and "by 12/20" right, meaning says when a name has no card (#345, #347, #348, #352); dashboard and doctor follow-ups (#343, #346, #347); no store-format change
