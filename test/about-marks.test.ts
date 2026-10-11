@@ -177,6 +177,20 @@ describe("the owner's console door: counterparts about", () => {
     withBrain((c) => expect(c.store.read(id).about).toBe("us"));
   });
 
+  test("an earlier version's id reads and marks the current one", async () => {
+    const { old, head } = withBrain((c) => {
+      const o = mem(c, "The taxes are due on the 15th.");
+      const h = c.store.supersede(o, { type: "memory", kind: "fact", body: "The taxes are due on October 15.", salience: { relevance: 0.6, emotional: 0.3, predictive: 0.6 } });
+      return { old: o, head: h };
+    });
+    const read = await cli(["about", old]);
+    expect(read.out[0]).toBe(`${head} is unmarked.`);
+    expect(read.out[1]).toContain(`${old} is an earlier version`);
+    const set = await cli(["about", old, "owner"]);
+    expect(set.out[0]).toBe(`Marked ${head} about owner (it was unmarked), as you.`);
+    expect(set.out[1]).toContain(`${old} is an earlier version`);
+  });
+
   test("its help page names the marks and the one flag", async () => {
     const help = await run(["help", "about"], { io: { out: () => undefined, err: () => undefined } });
     expect(help).toBe(0);

@@ -2541,17 +2541,25 @@ function aboutCommand(dir: string, io: Io, parsed: Parsed, observer: boolean, na
     }
     const counterpart = openCounterpart(dir, true);
     try {
-      const row = counterpart.store.row(id);
+      // An earlier version reads as the current one, as the write marks it.
+      let head = id;
+      try {
+        head = counterpart.store.resolve(id);
+      } catch {
+        /* unknown: refused below */
+      }
+      const row = counterpart.store.row(head);
       if (row === undefined || row.type !== "memory") {
         io.err(`refused: no memory ${id} in this store. Nothing was read.`);
         return EXIT.refused;
       }
       io.out(
         row.about === null
-          ? `${id} is unmarked.`
-          : `${id} is about ${row.about} — marked by ${ABOUT_BY_WORDS[row.about_by ?? ""] ?? row.about_by ?? "someone unrecorded"}.`,
+          ? `${head} is unmarked.`
+          : `${head} is about ${row.about} — marked by ${ABOUT_BY_WORDS[row.about_by ?? ""] ?? row.about_by ?? "someone unrecorded"}.`,
       );
-      io.out(`  Change it: counterparts about ${id} me|us|owner|work|world --why "..."`);
+      if (head !== id) io.out(`  ${id} is an earlier version; this is the current one.`);
+      io.out(`  Change it: counterparts about ${head} me|us|owner|work|world --why "..."`);
       return EXIT.ok;
     } finally {
       counterpart.close();

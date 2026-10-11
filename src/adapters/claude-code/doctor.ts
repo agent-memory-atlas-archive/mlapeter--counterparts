@@ -2630,7 +2630,7 @@ export function upgradeV9Findings(store: Store): Finding[] {
       "upgrade-v9",
       "green",
       "Upgrade",
-      `Upgrade to v9: what a memory is about is now marked by meaning; the old rule was carried so nothing changed overnight — ${String(me)} self ${me === 1 ? "memory" : "memories"} marked about me, ${String(owner)} about the owner (${String(candidates)} core ${candidates === 1 ? "candidate" : "candidates"}); ${floor ? "at least " : ""}${String(since)} ${since === 1 ? "mark" : "marks"} set by the writer or a reflection since${work > 0 ? `, ${floor ? "at least " : ""}${String(work)} of them "work" (out of the candidates)` : ""}${floor ? ` (only the newest ${String(MARK_ROWS)} were read)` : ""}`,
+      `Upgrade to v9: what a memory is about is now marked by meaning; the old rule was carried so nothing changed overnight — ${String(me)} self ${me === 1 ? "memory" : "memories"} marked about me, ${String(owner)} about the owner (${String(candidates)} core ${candidates === 1 ? "candidate" : "candidates"}); ${floor ? "at least " : ""}${String(since)} ${since === 1 ? "mark" : "marks"} set since (by the writer, a reflection, you or a session)${work > 0 ? `, ${floor ? "at least " : ""}${String(work)} of them "work" (out of the candidates)` : ""}${floor ? ` (only the newest ${String(MARK_ROWS)} were read)` : ""}`,
       "",
       { markedMe: me, markedOwner: owner, candidates, marksSince: since, work, marksFloor: floor },
     ),
