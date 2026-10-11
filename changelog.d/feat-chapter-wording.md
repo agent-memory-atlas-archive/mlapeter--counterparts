@@ -1,1 +1,0 @@
-- **Chapters ask for the day's details.** A chapter is now asked to be a diary of what happened, in order and in detail: what was said, what was decided and why, what went wrong, with a list or a pasted text kept word for word when it matters, and without what the repo or the logs already hold. The lessons and patterns go to the nightly reflection, which now says so.

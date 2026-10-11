@@ -872,6 +872,133 @@ were refined by b2+f8 at the review of #369, named where they were):
   named one memory, the owner removed it on purpose, and a dangling address's fallback is
   for ids that were never right, not for this.
 
+### Decided by the #416 reviewer, 2026-10-11, lightly held (the sidebar's speak-first and three-way switch)
+
+- Decided by the #416 reviewer, 2026-10-11, lightly held: a slash command the person runs
+  stands a speak-first down that hasn't gone out, but doesn't drop one already queued; only a
+  prompt of their own does. Why: the drop assumes core offers the meeting in the reply to
+  that prompt, and a command like `/model` gets no reply, so dropping lost the introduction
+  with the once-per-store mark already spent.
+- Decided by the #416 reviewer, 2026-10-11, lightly held: in a session started in a
+  reads-only (observer) folder, the switch's confirmed on, pause or off names the
+  `counterparts scope <folder> --on|--pause|--off` command when the server stands the
+  `scope` tool down, instead of "The memory server said: This session is an observer…". The
+  confirm is still offered there. Why: the sidebar can't tell that launch from a folder set
+  reads-only mid-session (where the tool does write), and a dead end without the way out
+  read as broken.
+
+### Decided by the onboarding-core reviewer, 2026-10-11, lightly held (the first meeting's offers)
+
+- Decided by the onboarding-core reviewer, 2026-10-11, lightly held: the wake's offer line
+  is carried on at most three calendar days (`MEET_OFFER_DAYS`), then stops, whatever the
+  state; a `meet` read counts as that day's offer. The state stays `not_started` or
+  `later`, so the mod's "Meet your counterpart" and a person asking to meet still work.
+  Why: without a cap, a person who never answered (or said "later" once) was offered the
+  meeting every day for ever.
+- Decided by the onboarding-core reviewer, 2026-10-11, lightly held: a bare `meet` read
+  leaves `skipped` as it is (it used to move it to `offered`, and the next day to `later`,
+  which re-armed the daily offer). Why: `skipped` is "don't ask again"; the steps still
+  record and `done` still finishes it.
+- Decided by the onboarding-core reviewer, 2026-10-11, lightly held: the script asks where
+  memory is on only while the scope registry has no entries. Why: the registry lives beside
+  the configuration, not in the store, so a `start-fresh` store's meeting that wrote `/` off
+  outlived `start-fresh --undo` and turned off every folder the owner had never named; and
+  anyone who has set a folder has answered the question their own way.
+- Decided by the onboarding-core reviewer, 2026-10-11, lightly held: the wake's marker says
+  the settled state: an `offered` from an earlier day is moved to `later` before the marker
+  is written. Why: the marker said `offered` while the line beside it said "last time they
+  said later", and the mod keeps what the marker says.
+- Decided by the onboarding-core reviewer, 2026-10-11, lightly held: `meet` refuses by name
+  in a nightly-run child, and the second session's line skips an answer marked confidential
+  since. Why: nobody is in the night run to meet, and the line rides into wakes that are not
+  the owner's own (a Desktop chat).
+
+### Decided by the meet-command reviewer, 2026-10-11, lightly held (`/counterparts:meet` on a met store)
+
+- Decided by the #424 reviewer, 2026-10-11, lightly held: when the meeting is already
+  `done`, `/counterparts:meet` says so in one line and offers to go through it again,
+  following the core's script if they say yes, instead of only offering to talk about
+  something else. Why: the core's script already supports a second pass ("You have met
+  already. If they asked to go through it again, follow the steps below"), and the command
+  should follow the script, not override it; someone who typed the command is asking.
+
+### Decided by the night-owed builder, 2026-10-11, lightly held (the night starts when write-ups are owed)
+
+- Decided by the night-owed builder, 2026-10-11, lightly held: under dreaming `auto`, the
+  night starts for its catch-up alone when the dream is not due for `too-little-new` or
+  `first-day` and sessions from an earlier calendar day owe a write-up. Why: random-06's
+  decision (coordinator agreed); with the pointer retired under `auto`, a first day with
+  fewer than three memories was otherwise never written up.
+- Decided by the night-owed builder, 2026-10-11, lightly held: "an earlier day" means the
+  session's last activity (its last words, a boundary or its end, `HeldSession.clockFrom`)
+  falls before today's date in the store's zone. "Owed" is the catch-up's own reading
+  (`catchUpOwing`), not a new one. Why: one notion of owed; a session that ran past midnight
+  waits one more day, which loses nothing because a stretch owes for 14 days of use.
+- Decided by the night-owed builder, 2026-10-11, lightly held: the catch-up-only run claims
+  the day through the same `dream_asks` latch as a dream (`launched`), and only on a day with
+  no row yet. Why: racing sessions start one run, and the once-a-day claim stays one claim.
+  The effect: if the catch-up's write-ups bring the queue to three, the ordinary relaunch
+  dreams later that day, after the 30-minute quiet window, counted as a relaunch.
+- Decided by the night-owed builder, 2026-10-11, lightly held: the catch-up-only run says
+  nothing at its start and hands nothing back at the next prompt. Why: "the mechanism does
+  the work, it doesn't remind". Doctor and `counterparts dream --list` show it as "the
+  catch-up alone".
+- Decided by the night-owed builder, 2026-10-11, lightly held: its row is `done`, with the
+  dream's and the reflection's children `skipped: too-little-new` (or `first-day`), whenever
+  the catch-up did what it could. It is `could-not-start` / `timed-out` / `failed`, with
+  `detail: catch-up`, when the catch-up child could not start, was stopped, or failed. No ask
+  follows a catch-up that could not start while the dream is not due, because there is no
+  dream to ask about. Why: doctor
+  must not show a failed dream for a dream that was never due, and must still go amber when
+  `claude -p` itself is broken.
+- Decided by the #426 reviewer, 2026-10-11, lightly held: a catch-up-only run that could not
+  start, failed, timed out or went lost does not make the dream "fall back" to an ask
+  (`Dreams#fellBack` ignores a row whose children say `skipped: <reason>`, and the hook
+  writes those children on the run's very first row). If the dream comes due later that
+  day, the ordinary relaunch starts the whole night headless after the 30-minute quiet
+  window, counted against `RELAUNCHES_PER_DAY`; only if that run itself cannot start does
+  the existing `auto` fallback ask, as it did before this change. Why: under `auto` nothing
+  should turn into an ask because of a run that never tried to dream; the builder's version
+  showed "I couldn't start dreaming on my own" for a catch-up that failed.
+- Decided by the #426 reviewer, 2026-10-11, lightly held (replaces the builder's "no
+  per-day memo"): the "is anything owed from an earlier day" read is remembered per
+  calendar day. When it reads a real zero, the date goes in meta
+  (`night.nothing-owed-before`) and the rest of that day's prompts skip the read; a read
+  that fails is not remembered. Why: measured on a copy of the author's store (10-11
+  snapshot plus its spans), the read costs ~29 ms, at every prompt of an `auto` day whose
+  dream isn't due and whose day is unclaimed, on the latency-sensitive UserPromptSubmit
+  hook; with the memo it is a meta read (<0.01 ms). Within a day the earlier days' debt
+  only shrinks, so nothing is missed; a late capture that makes an earlier session owe
+  waits until the next day, well inside the 14 days of use before a stretch lapses.
+
+### Decided by the uninstall-plugin-order builder, 2026-10-11, lightly held (removing the plugin after a terminal delete)
+
+- Decided by the uninstall-plugin-order builder, 2026-10-11, lightly held: after a delete or a
+  park, `counterparts uninstall` tells a plugin install to run `claude plugin uninstall <id>`
+  at that terminal before Claude Code opens again, instead of `/plugin → Installed →
+  counterparts → Uninstall`. Why: measured with Claude Code 2.1.296 in a throwaway home,
+  reopening with the plugin enabled runs its SessionStart (and first run) at startup, before
+  anybody can reach /plugin, and re-creates `~/.counterparts`; removing it from the terminal,
+  or disabling it before the delete, leaves nothing. The person is already at a terminal with
+  Claude Code closed, so the terminal command is the one that fits.
+- Decided by the uninstall-plugin-order builder, 2026-10-11, lightly held: the id comes from
+  Claude Code's `installed_plugins.json`, else `counterparts@counterparts` (the published one).
+  An npm install whose host also has the plugin enabled is told to remove it too, because once
+  the npm hooks are out the plugin stops standing down. The keep arm's closing line is
+  unchanged: its configuration stays, so no first run fires. Why: the hazard is a missing
+  configuration, and only delete and park remove it.
+- Decided by the #425 reviewer, 2026-10-11, lightly held: the printed removal names the scope.
+  Claude Code's `installed_plugins.json` records each install's `scope` and, for a project or
+  local one, its `projectPath`, so a project or local install is told
+  `cd <folder> && claude plugin uninstall <id> --scope <scope>` (or "in the project it was
+  installed for" when no folder is recorded); a user install keeps the plain command. Only the
+  first record is read. Why: `claude plugin uninstall` defaults to user scope and fails for a
+  project install, and the scope was cheap to know.
+- Decided by the #425 reviewer, 2026-10-11, lightly held: `commands/uninstall.md` step 5 offers
+  both removals (the terminal command the closing line names, or /plugin → Uninstall after
+  reopening), keeping #421's disable-first order. Why: the terminal and the command now say the
+  same thing; either route is safe there because step 1 disabled the plugin.
+
 ### Also noted
 
 - **A read-without-crediting mode for audits.** A way to read memories (a review, a rules
