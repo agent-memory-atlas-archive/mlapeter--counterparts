@@ -249,6 +249,15 @@ describe("the plugin's files", () => {
     }
   });
 
+  test("/counterparts:meet grants only the meet tool, under either server name, and runs nothing else", () => {
+    // The first meeting's way in for someone with no sidebar button (quiet view,
+    // or the offers stopped): it hands the model the `meet` tool's own script.
+    const text = readFileSync(join(ROOT, "commands", "meet.md"), "utf8");
+    const grant = /^allowed-tools:\s*(.+)$/m.exec(text)?.[1]?.trim();
+    expect(grant).toBe("mcp__counterparts__meet, mcp__plugin_counterparts_counterparts__meet");
+    expect(text).not.toMatch(/Bash/);
+  });
+
   test("/counterparts:dashboard grants exactly the one command it runs, and asks for it in the background", () => {
     // The dashboard runs until it is stopped: in the foreground it would hold
     // the Bash call until the call timed out, then die with it.
