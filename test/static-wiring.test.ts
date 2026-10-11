@@ -158,6 +158,36 @@ describe("in-process embedding: a memory has its vector in the process that wrot
   });
 });
 
+describe("one embed per write: the gate's text and the store's text are one computation", () => {
+  test("an authored write computes its vector once; a different text still computes; the memo hands back a copy", async () => {
+    const model = loadStaticModel({ dir: weights });
+    const asked: string[] = [];
+    const counting = { ...model, embed: (text: string) => (asked.push(text), model.embed(text)) };
+    const e = createStaticEmbedder(counting);
+    const c = Counterpart.open({ dir, owner: true, budgetBytes: 20_000, embed: e.embed, vectors: e });
+    opened.push(c);
+    asked.length = 0; // whatever opening computed is not the write's
+    const ok = await c.submitJot({ content: "The otter survey found eleven holts on the river." }, { session: "s1", scope: "proj" });
+    expect(ok.deposited).toBe(true);
+    expect(c.store.unembeddedCount()).toBe(0);
+    // Gate (novelty) and Store.put (box 3) asked for the same string; the table computed it once.
+    expect(asked.length).toBe(1);
+    expect(new Set(asked).size).toBe(1);
+
+    // A different text is not answered from the memo.
+    const a = e.embed("river holt");
+    const b = e.embed("ward rota shift");
+    expect(asked.slice(1)).toEqual(["river holt", "ward rota shift"]);
+    expect(a).not.toEqual(b);
+    // The memo returns a COPY: mutating one answer cannot change the next.
+    const first = e.embed("ward rota shift") ?? [];
+    expect(asked.length).toBe(3);
+    const before = [...first];
+    first[0] = 99;
+    expect(e.embed("ward rota shift")).toEqual(before);
+  });
+});
+
 describe("vectors.ts — the worker's two jobs, on the table", () => {
   test("backfill: rows written by a process with no embedder are filled", async () => {
     // A process with no embedder (the MCP server's `note`, today) writes two memories.

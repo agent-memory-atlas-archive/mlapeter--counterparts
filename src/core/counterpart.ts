@@ -999,16 +999,19 @@ export interface CounterpartOptions extends Stance {
    * the client, exactly as it owns `InterpretFn` (`remember/INTERFACE-GAPS §3`).
    *
    * Wiring it turns novelty from `no-chunk-vector` into a measurement on the
-   * authored door, and the vector one deposit pays for is the vector box 3
-   * stores — but ONLY because of an ordering that is easy to break: the text
-   * embedded is the GATE'S output, shaped by `indexTextOf`, which is exactly
-   * what `Store.indexOne` will look the vector up by.
+   * authored door. The gate's vector is NOT handed to the store: `Store.put →
+   * indexOne` asks the sync `embed` for its own, by the same string. What keeps
+   * that to one computation is the embedder (the static table remembers its
+   * last text, `embed-client.ts#createStaticEmbedder`) — and an ordering that is
+   * easy to break: the text embedded here is the GATE'S output, shaped by
+   * `indexTextOf`, which is exactly what `Store.indexOne` will ask for.
    *
-   * Embed the author's draft instead and BOTH halves fail at once: raw text goes
-   * on the wire (the redaction is bypassed), and every gate rewrite — 18.9% of
-   * chunks in the replay corpus — caches under a key the store never asks for,
-   * so the deposit pays for a vector it then discards. `bridge.batteryGate`
-   * holds that order; `test/claude-code.test.ts` holds it to it.
+   * Embed the author's draft instead and BOTH halves fail at once: the novelty
+   * is measured on text the gate redacted or rewrote (the redaction is
+   * bypassed), and every gate rewrite — 18.9% of chunks in the replay corpus —
+   * asks under a key the store never asks for, so the write pays for a vector it
+   * then discards. `bridge.batteryGate` holds that order;
+   * `test/claude-code.test.ts` holds it to it.
    */
   vectors?: LiveVectors;
   /** Retention window for the bounded logs. `store/` owns the default. */
