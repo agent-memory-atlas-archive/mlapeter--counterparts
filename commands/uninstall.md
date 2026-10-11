@@ -32,7 +32,7 @@ It disconnects Counterparts from Claude Code and leaves the memories where they 
 
 1. First, in Claude Code, disable the plugin: /plugin → Installed → counterparts → Disable plugin. Its files stay, so the command below still works, but it no longer starts with Claude Code. Without this, the next time Claude Code opens, the plugin sets Counterparts up again, with a new, empty memory folder.
 2. Quit Claude Code completely, every window and session, because a running session holds the memory open.
-3. In a terminal, run this one command. Build it from the plan: `sh`, then the launcher's full path, then `cli`, then every item of the plan's `terminalArgs` in order, each in double quotes. The launcher's full path is the one in the step 1 command you ran, the path ending in `src/adapters/plugin-run.sh`, written out in full, with no variable in it. It looks like this, with real paths:
+3. In a terminal, run this one command. Build it from the plan: `sh`, then the launcher's full path, then `cli`, then every item of the plan's `terminalArgs` in order, each in double quotes. The launcher's full path is the one in the plan command you ran in Step 1, the path ending in `src/adapters/plugin-run.sh`, written out in full, with no variable in it. It looks like this, with real paths:
 
    ```
    sh "/full/path/to/src/adapters/plugin-run.sh" cli "uninstall" "--config" "/full/path/to/claude-code.json"
