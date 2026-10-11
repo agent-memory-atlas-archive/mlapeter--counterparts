@@ -462,6 +462,7 @@ export class Recall {
     for (const c of candidates) docs.set(c.id, c.doc);
     // Quiet pointers render with their one-word label (`FRAMING.linked`).
     const linked = new Set(candidates.filter((c) => c.linkOnly === true).map((c) => c.id));
+    const lifted = new Set(candidates.filter((c) => c.lifted === true).map((c) => c.id));
     // A memory's standing in a contradiction (2026-09-29): read once per id per
     // build — the trim loop composes more than once.
     const standings = new Map<string, { prefix: string; suffix: string } | null>();
@@ -541,6 +542,7 @@ export class Recall {
           : {
               ...act.spread,
               pointersShown: rendered.footnotes.filter((id) => linked.has(id)).length,
+              liftedShown: [...rendered.surfaced, ...rendered.footnotes].filter((id) => lifted.has(id)).length,
               pointersUnanchored: gated.verdicts.filter((v) => v.via === "link" && v.verdict === "dark-uncued").length,
             },
       dropped: act.dropped,

@@ -63,9 +63,12 @@ export const RULES: readonly Rule[] = [
   { name: 'gate.chunk', mech: 'salience', word: 'kept', when: e => num(e, 'accepted') > 0 },
   { name: 'recall.decision', mech: 'retrieval', word: 'recalled', when: e => num(e, 'surfacedCount') + num(e, 'footnoteCount') > 0 },
   { name: 'recall.decision', mech: 'emotional', word: 'brought closer', when: e => num(e, 'moodMatched') > 0 },
+  // A memory a link put in front of the model (2026-10-11, Group 4).
+  { name: 'recall.decision', mech: 'association', word: 'brought to mind by a link', when: e => num(e, 'linksReached') > 0 },
   { name: 'mcp.recall', mech: 'retrieval', word: 'looked up' },
   { name: 'recall.credit', mech: 'retrieval', word: 'strengthened', when: e => num(e, 'credited') > 0 },
-  { name: 'associate.flush', mech: 'association', word: 'linked', when: e => num(e, 'rows') > 0 },
+  // Links LAID, not rows rewritten (2026-10-11, Group 4): `deposited`.
+  { name: 'associate.flush', mech: 'association', word: 'linked', when: e => num(e, 'deposited') > 0 },
   { name: 'prospective.plain', mech: 'prospective', word: 'reminded' },
   { name: 'prospective.fire', mech: 'prospective', word: 'reminded' },
   { name: 'band.transition', mech: 'decay', word: 'faded', when: e => detail(e, 'site') === 'decay' && detail(e, 'direction') !== 'up' },
@@ -75,6 +78,8 @@ export const RULES: readonly Rule[] = [
   { name: 'band.promoted', mech: 'consolidation', word: 'became core' },
   { name: 'memory.merged', mech: 'consolidation', word: 'merged' },
   { name: 'dream.journaled', mech: 'dreaming', word: 'dreamed' },
+  // The replay's faint trails, laid as the dream opens (2026-10-11, Group 4).
+  { name: 'dream.begun', mech: 'association', word: 'linked', when: e => num(e, 'replayLinks') > 0 },
   // A change the dream made, or a core suggestion (`applied` counts both).
   { name: 'dream.changed', mech: 'dreaming', word: 'dreamed', when: e => num(e, 'applied') > 0 || num(e, 'nominate-core') > 0 },
   { name: 'dream.changed', mech: 'episodic-semantic', word: 'dreamed a pattern', when: e => num(e, 'gist') > 0 },
@@ -294,7 +299,9 @@ const DREAM_ACTION: Partial<Record<MechId, string>> = { interference: 'merge', c
  *     (Interference, Consolidation) and patterns (Gist) from `/api/dreams`'
  *     changes, which name memories the event row only counts;
  *   - left out, nothing to name: a look-up (`mcp.recall` counts what it
- *     opened), a link flush (`associate.flush` counts pairs), a flagged
+ *     opened), a link flush (`associate.flush` counts pairs), a turn a link
+ *     reached recall on (`recall.decision`'s `linksReached` is a count), a
+ *     dream's replay links (`dream.begun` counts them), a flagged
  *     contradiction (a pair id), a sleep cycle's fades (counts).
  */
 export function mechFirings(events: readonly DashEvent[], mech: MechId, dreams: readonly DashDream[] = [], limit = 8): Firing[] {
@@ -306,6 +313,9 @@ export function mechFirings(events: readonly DashEvent[], mech: MechId, dreams: 
     if (out.length >= limit) break;
     const rule = provedBy(e).find(r => r.mech === mech);
     if (rule === undefined) continue;
+    // A turn a link reached recall on counts only (2026-10-11): its row does not
+    // say WHICH shown memory the link brought, so naming them all would be wrong.
+    if (e.name === 'recall.decision' && mech === 'association') continue;
     if (e.name === 'recall.decision' || e.name === 'recall.credit') {
       const ids = e.name === 'recall.decision' ? [...surfacedIds(e), ...idList(e, 'footnotes')] : idList(e, 'ids');
       const quoted = quotedTitles(e.text);

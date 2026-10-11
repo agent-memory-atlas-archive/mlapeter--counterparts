@@ -141,6 +141,16 @@ export const DREAM_TUNABLES = {
    */
   LINK_WEIGHT: 0.1,
   /**
+   * THE REPLAY'S OWN DEPOSIT (Group 4 item 3, 2026-10-11; review 06 C2, D5):
+   * when a dream opens, each new memory its bundle shows is proposed a link to
+   * each older neighbour shown beside it, at this weight — half a dream's own
+   * `link`, because nobody chose these pairs: the bundle did. Through the same
+   * door (`associate.propose`: live ends, pinned frozen, room-only, never
+   * evicting); no model call, and not a change the dream made (it is not in
+   * the dream's changes, so an undo does not reach it — decay does). CAL.
+   */
+  REPLAY_LINK_WEIGHT: 0.05,
+  /**
    * TEXT CAPS, raised 2026-09-28 (owner direction: loosen the limits; design a
    * real answer when something really grows too long). Longer is kept to the
    * cap and the result says so — never cut without a word.

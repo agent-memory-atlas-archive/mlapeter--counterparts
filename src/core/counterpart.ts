@@ -37,7 +37,7 @@
  */
 import { randomUUID } from "node:crypto";
 
-import { Associate, appendPendingDeltas, claimPending, pairKey, planContiguity, releasePending } from "./associate/index.js";
+import { Associate, appendPendingDeltas, claimPending, pairKey, planAtWrite, planContiguity, releasePending } from "./associate/index.js";
 import type { CoactivateResult, Credited, FlushReport, PairDelta, PendingClaim } from "./associate/index.js";
 import { horizonFor, selfRenderer } from "./briefing.js";
 import { batteryGate, episodeGate, gateSweepChunk } from "./bridge.js";
@@ -52,6 +52,7 @@ import type { PlainDue } from "./prospective/index.js";
 import {
   ASKED_KIND,
   ASKED_MAX,
+  askedAt,
   askedTurn,
   Recall,
   isConfidential,
@@ -559,6 +560,14 @@ export interface DrewOnResult {
   /** Dated memories whose open reminder window this stopped
    *  (`Prospective#actedOn`): acted on, so no more footnotes this window. */
   readonly actedOn: string[];
+  /**
+   * Pairs of named memories handed to the edge module as one co-use
+   * (2026-10-11, Group 4 item 1): the ones credited, and the ones refused only
+   * for their day cadence (the credit pass's own rule, `linksDespite`), each
+   * pair at the referenced tier — one `HEBB_RATE` deposit. Written to the
+   * pending file; the boundary's worker lands them. 0 when fewer than two.
+   */
+  readonly linked: number;
 }
 /**
  * ONE ROW PER APPLY OF CARRIED CO-ACTIVATION, written by the process that
@@ -643,6 +652,29 @@ export interface ContiguityPass {
   readonly evictedOwn?: number;
   readonly evictedOther?: number;
   readonly renormalizedNodes?: number;
+  readonly code?: string;
+  /** The same pass's write-time links (Group 4 item 2, 2026-10-11): what was in mind. */
+  readonly atWrite?: AtWritePass;
+}
+
+/**
+ * WRITE-TIME LINKS (Group 4 item 2, 2026-10-11; bench item 5): each new memory
+ * the boundary's contiguity pass reads gets a faint link (`WRITE_LINK_WEIGHT`)
+ * to what was in mind when it was written — what a deliberate question showed
+ * near the write, and what recall showed its session in the last few turns.
+ * Proposed, so room-only: `noRoom` pairs were refused, never forced. Counts
+ * only, on the boundary's `associate.flush` row as `atWrite`.
+ */
+export interface AtWritePass {
+  readonly reason: "linked" | "nothing-in-mind" | "failed";
+  /** New memories that had something in mind, and the pairs planned for them. */
+  readonly memories: number;
+  readonly pairs: number;
+  /** Pairs that landed (or already weighed at least the proposal). */
+  readonly landed: number;
+  readonly noRoom: number;
+  readonly blocked: number;
+  readonly frozen: number;
   readonly code?: string;
 }
 export const SPAWN_REFUSED_EVENT = "adapter.spawn.refused";
@@ -1739,6 +1771,8 @@ export const RECALL_DECISION_FIELDS = [
   // Association build 1 (2026-09-28): what spreading did, and the cut's count.
   "spread",
   "dropped",
+  // Group 4 (2026-10-11): shown memories a link put there (pointers + lifted).
+  "linksReached",
 ] as const;
 
 export type SurfaceSetField = (typeof RECALL_DECISION_FIELDS)[number];
@@ -1823,6 +1857,11 @@ function recallDecisionRecord(
     // a turn it did not run.
     spread: d.spread,
     dropped: d.dropped,
+    // LINKS THAT REACHED RECALL (2026-10-11, Group 4 item 7; review 06 C6):
+    // memories SHOWN this turn that a link put there — quiet pointers, and
+    // candidates a hop lifted into the cut. Top-level, so the dashboard's
+    // proof can sum it.
+    linksReached: (d.spread?.pointersShown ?? 0) + (d.spread?.liftedShown ?? 0),
   } satisfies Record<SurfaceSetField, unknown>;
   return surfaceSet;
 }
@@ -3897,7 +3936,8 @@ export class Counterpart {
     const refused: { id: string; reason: string }[] = [];
     const capped: string[] = [];
     const actedOn: string[] = [];
-    const done = (): DrewOnResult => ({ day, named: ids.length, credited, refused, capped, actedOn });
+    let linked = 0;
+    const done = (): DrewOnResult => ({ day, named: ids.length, credited, refused, capped, actedOn, linked });
     if (this.observer) {
       for (const id of ids) refused.push({ id, reason: "observer" });
       return done();
@@ -3911,6 +3951,7 @@ export class Counterpart {
     }
     // What this boundary already credited this way: the other tool's answer
     // to the same ask shares the cap.
+    const members: Credited[] = [];
     let slots =
       DREW_ON_MAX_PER_BOUNDARY -
       Object.values(state.credited).filter((c) => c.tier === "engaged" && c.day === day && c.turn === state.turn).length;
@@ -3960,6 +4001,17 @@ export class Counterpart {
       }
       try {
         const r = this.resolveUse(sessionId, id, "engaged");
+        // THE DEPOSIT (2026-10-11, Group 4 item 1; review 06 C1): what the
+        // session drew on together was thought together, so the named
+        // memories enter one pair set at the REFERENCED tier — a co-use, one
+        // `HEBB_RATE` per pair, homeostasis bounding it at the flush. Strength
+        // stays the engaged tier's half use; only the link is a full deposit.
+        // As in `creditReferences`, a memory refused only for its day cadence
+        // (opened earlier today, born today) still joins the pair set. The set
+        // holds at most DREW_ON_MAX_PER_BOUNDARY (reviewer of #423): a refusal
+        // for cadence spends no credit slot, so without this bound a session
+        // naming twenty memories it had opened would send 190 full-rate pairs.
+        if ((r.credited || linksDespite(r)) && members.length < DREW_ON_MAX_PER_BOUNDARY) members.push({ id, tier: "referenced" });
         if (r.credited) {
           credited.push(id);
           slots -= 1;
@@ -3970,6 +4022,7 @@ export class Counterpart {
         refuse(errCode(err));
       }
     }
+    if (members.length > 1) linked = this.publishCoactivation(members, day);
     this.emit("counterpart.drewOn", sessionId, {
       day,
       named: ids.length,
@@ -3977,6 +4030,7 @@ export class Counterpart {
       refused: refused.length,
       capped: capped.length,
       actedOn: actedOn.length,
+      linked,
     });
     return done();
   }
@@ -4073,7 +4127,7 @@ export class Counterpart {
    * evented in process, so it stays distinguishable from a hook that broke
    * (observer-mode.md G6, scar §2.4).
    */
-  private publishCoactivation(members: readonly Credited[], day: number): void {
+  private publishCoactivation(members: readonly Credited[], day: number): number {
     const started = this.store.now();
     let co: CoactivateResult | null = null;
     let deltas: PairDelta[] = [];
@@ -4086,7 +4140,7 @@ export class Counterpart {
     }
     if (this.observer) {
       this.emit("counterpart.associate.standdown", undefined, { site: "pending" });
-      return;
+      return 0;
     }
     const eligible = co?.members.filter((m) => m.reason === "eligible").length ?? 0;
     const append =
@@ -4105,6 +4159,8 @@ export class Counterpart {
       code: append.code,
       elapsedMs: this.store.now() - started,
     });
+    // What reached the file: the pairs a later boundary can land.
+    return append.pairs;
   }
 
   /**
@@ -4244,6 +4300,10 @@ export class Counterpart {
       corrupt: out.corrupt,
       stuck: out.stuck,
       oldestMs: out.oldestMs,
+      // LINKS LAID (2026-10-11, Group 4 item 7): co-use pairs that landed —
+      // not `rows`, which counts both directions and every sibling a touched
+      // node's decay rewrote. What the dashboard's "links made" sums.
+      deposited: Math.max(0, out.pairs - out.blocked - out.dropped),
       ...rowIds(linked),
       // The APPLYING session (2026-10-11): the boundary whose worker carried
       // these claims. A claim may hold lines several sessions credited.
@@ -5293,6 +5353,9 @@ export class Counterpart {
         }),
       );
       if (fresh.length === 0) return { pass: { ...zero, excluded, lostEarlier }, pairs: [] };
+      // After the cursor moved, so a crash cannot propose these twice (and a
+      // proposal raises to at least its weight, so a second one adds nothing).
+      const atWrite = this.linkAtWrite(fresh, day);
       const buffered = this.associate.contiguity(deltas);
       // The mark counts pairs that could be LOST, which is the pairs buffered:
       // a pair refused here (pinned or dead endpoint) is counted as `frozen`
@@ -5320,14 +5383,124 @@ export class Counterpart {
         buffered: buffered.pairs,
         blocked: buffered.blocked,
         frozen: buffered.frozen,
+        ...(atWrite === null ? {} : { atWrite }),
       };
-      this.emit("counterpart.associate.contiguity", undefined, { ...out });
+      this.emit("counterpart.associate.contiguity", undefined, {
+        ...out,
+        atWrite: atWrite === null ? null : atWrite.landed,
+      } as Record<string, string | number | boolean | null>);
       return { pass: out, pairs: buffered.accepted };
     } catch (err) {
       const code = errCode(err);
       this.emit("counterpart.associate.contiguity.failed", undefined, { code });
       return { pass: { ...zero, reason: "failed", code }, pairs: [] };
     }
+  }
+
+  /**
+   * WRITE-TIME LINKS for the memories one contiguity pass read (Group 4 item
+   * 2, 2026-10-11; tightened by the reviewer of #423). Only a memory written
+   * IN THE MOMENT, through the jot door (`submitJot`, the note tool), has
+   * something in mind: what recall showed its session on the write's own turn
+   * (the last `WRITE_LINK_TURNS` turns at the boundary, which runs at every
+   * reply's end), the loud one before footnotes. A memory written in a
+   * session's write-up batch, by the night catch-up, or copied from a chapter
+   * gets none: what the session's last turns showed is not what each of those
+   * memories was about. A memory shown only through an ambiguous handle
+   * (`trains: false`, recall §9 G5) and a handoff are not in mind. What a
+   * deliberate question showed within `WRITE_LINK_ASKED_MS` of the write
+   * joins first, for any door, when that is above 0 (0, off, by default).
+   * `planAtWrite` keeps the first `WRITE_LINK_MAX`; `Associate.propose` lands
+   * them at `WRITE_LINK_WEIGHT`, room-only.
+   *
+   * Null when no memory had anything in mind. Fail-open: a throw is a `failed`
+   * pass, and contiguity goes on.
+   */
+  private linkAtWrite(fresh: readonly { id: string; session: string; at: number; bornDay: number }[], day: number): AtWritePass | null {
+    const t = this.associate.tunables;
+    try {
+      const memories: { id: string; inMind: string[] }[] = [];
+      const jots = this.jotsAmong(fresh);
+      const asking = t.WRITE_LINK_ASKED_MS > 0;
+      const bySession = new Map<string, { recent: string[]; asked: { ref: string; at: number }[] }>();
+      const handoff = new Map<string, boolean>();
+      const notHandoff = (id: string): boolean => {
+        let h = handoff.get(id);
+        if (h === undefined) {
+          h = isHandoffRow(this.store, id);
+          handoff.set(id, h);
+        }
+        return !h;
+      };
+      for (const m of fresh) {
+        const jot = jots.has(m.id);
+        if (!jot && !asking) continue;
+        let mind = bySession.get(m.session);
+        if (mind === undefined) {
+          const state = this.recall.gateState(m.session);
+          const recent = Object.entries(state.surfaced)
+            .filter(([, rec]) => rec.trains && rec.turn > state.turn - t.WRITE_LINK_TURNS)
+            .sort((x, y) => y[1].turn - x[1].turn || (x[1].tier === y[1].tier ? 0 : x[1].tier === "surfaced" ? -1 : 1) || (x[0] < y[0] ? -1 : 1))
+            .map(([id]) => id);
+          let asked: { ref: string; at: number }[] = [];
+          if (asking) {
+            try {
+              asked = this.store.gateRecords(m.session, ASKED_KIND).map((r) => ({ ref: r.ref, at: askedAt(r.turn) }));
+            } catch {
+              asked = [];
+            }
+          }
+          mind = { recent, asked };
+          bySession.set(m.session, mind);
+        }
+        const near = mind.asked
+          .filter((r) => Math.abs(r.at - m.at) <= t.WRITE_LINK_ASKED_MS)
+          .sort((x, y) => y.at - x.at || (x.ref < y.ref ? -1 : 1))
+          .map((r) => r.ref);
+        const inMind = [...new Set([...near, ...(jot ? mind.recent : [])])].filter(notHandoff);
+        if (inMind.length > 0) memories.push({ id: m.id, inMind });
+      }
+      const plan = planAtWrite(memories, t);
+      if (plan.pairs.length === 0) return null;
+      const r = this.associate.propose(plan.pairs, t.WRITE_LINK_WEIGHT, day);
+      return {
+        reason: r.reason === "failed" ? "failed" : r.pairs > 0 ? "linked" : "nothing-in-mind",
+        memories: plan.memories,
+        pairs: plan.pairs.length,
+        landed: r.pairs,
+        noRoom: r.noRoom,
+        blocked: r.blocked,
+        frozen: r.frozen,
+        ...(r.code === undefined ? {} : { code: r.code }),
+      };
+    } catch (err) {
+      const code = errCode(err);
+      this.emit("counterpart.associate.atwrite.failed", undefined, { code });
+      return { reason: "failed", memories: 0, pairs: 0, landed: 0, noRoom: 0, blocked: 0, frozen: 0, code };
+    }
+  }
+
+  /**
+   * Which of these new memories came through the JOT door (reviewer of #423,
+   * 2026-10-11), read from the gate's deposit rows (`GATE_DEPOSIT_EVENT`: its
+   * `source` and `memoryId`), which a deposit writes as it mints. A memory
+   * with no such row (a chapter copy, a row whose ledger write failed) reads
+   * as not a jot, so it gets no write-time window: the safe direction.
+   */
+  private jotsAmong(fresh: readonly { id: string; bornDay: number }[]): Set<string> {
+    const out = new Set<string>();
+    if (fresh.length === 0) return out;
+    const want = new Set(fresh.map((m) => m.id));
+    const since = fresh.reduce((d, m) => Math.min(d, m.bornDay), Number.POSITIVE_INFINITY);
+    for (const row of this.store.eventLog({ name: GATE_DEPOSIT_EVENT, sinceDay: since, order: "desc", limit: 10_000 })) {
+      try {
+        const p = JSON.parse(row.payload ?? "{}") as { source?: unknown; memoryId?: unknown };
+        if (p.source === "jot" && typeof p.memoryId === "string" && want.has(p.memoryId)) out.add(p.memoryId);
+      } catch {
+        /* an unreadable row names no jot */
+      }
+    }
+    return out;
   }
 
   /**
@@ -5383,7 +5556,9 @@ export class Counterpart {
    */
   private recordBoundaryFlush(edges: FlushReport, contiguity: ContiguityPass, session?: string): boolean {
     const flushed = edges.reason === "flushed" || edges.reason === "failed";
-    const contiguitySays = contiguity.reason === "failed" || contiguity.buffered > 0 || contiguity.lostEarlier > 0;
+    const atWrite = contiguity.atWrite;
+    const contiguitySays =
+      contiguity.reason === "failed" || contiguity.buffered > 0 || contiguity.lostEarlier > 0 || (atWrite !== undefined && atWrite.pairs > 0);
     if (!flushed && !contiguitySays) return false;
     const data: Record<string, unknown> = {
       reason: edges.reason,
@@ -5397,6 +5572,8 @@ export class Counterpart {
       blocked: edges.blocked,
       evicted: edges.evictions.length,
       swept: edges.swept,
+      // Of them, rows with an end archived for good (Group 4 item 5).
+      ...(edges.sweptArchived === undefined ? {} : { sweptArchived: edges.sweptArchived }),
       dropped: edges.dropped,
       pendingDropped: 0,
       corrupt: 0,
@@ -5423,6 +5600,15 @@ export class Counterpart {
         evictedOther: contiguity.evictedOther ?? 0,
         renormalizedNodes: contiguity.renormalizedNodes ?? 0,
       },
+      ...(atWrite === undefined ? {} : { atWrite: { ...atWrite } }),
+      // LINKS LAID (2026-10-11, Group 4 item 7): pairs that landed as a link —
+      // contiguity's, the write-time links', and any co-use this process
+      // buffered itself — not `rows` (both directions, plus every sibling a
+      // touched node's decay rewrote).
+      deposited:
+        (contiguity.landed ?? 0) +
+        (atWrite?.landed ?? 0) +
+        (edges.reason === "flushed" ? Math.max(0, edges.pairs - contiguity.buffered - edges.blocked) : 0),
     };
     if (edges.code !== undefined) data["error"] = edges.code;
     try {

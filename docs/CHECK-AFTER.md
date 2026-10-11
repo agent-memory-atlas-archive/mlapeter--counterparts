@@ -177,6 +177,59 @@ or the CLI's read commands (`counterparts mechanisms --dir …`, `counterparts d
 - **Changes a decision if:** `toConfirmMore` keeps growing night over night → proposals outpace the dream's
   4: raise `SLOT_PER_NIGHT` or tighten the rule.
 
+## Group 4 (association), due ~5 lived days after it ships
+
+The fast-forward on the 10-11 copy (7 lived days replayed with write-time links, replay deposits and
+co-use running, no model calls) is the baseline: write-time 95 new trails (904 before the review of #423
+narrowed them to a jot's own turn), replay ~505, co-use 46 pairs (all on links that already existed); 0
+pointer candidates at the current threshold, ~200 of 635 turns at 0.0125; the first flush swept ~2,040
+inert rows (regrown copies and merge originals). A forward simulation has no awake use, so it cannot say
+how many new trails use would confirm.
+
+### Edges laid per day, by source
+- **Look at:** per lived day, `sum(json_extract(payload,'$.deposited'))` over `associate.flush`, its
+  `atWrite.landed`, `contiguity.landed`, and `dream.begun`'s `replayLinks`; the drewOn `recall.credit` rows'
+  `linked`.
+- **Why:** "links made" counted rows rewritten until now; these are the pairs that landed. On the copy,
+  write-time links were 0–59 a lived day once only jots get them; the replay is now the larger source.
+- **Changes a decision if:** write-time rows swamp the table (more than ~3× contiguity's) → lower
+  `WRITE_LINK_MAX`, or drop write-time links (IMPROVEMENTS, Group 4).
+
+### The share of write-time links later reinforced
+- **Look at:** the share of write-time links later reinforced, on the live store, measured a week after the
+  release that ships this installs: of the pairs laid by `atWrite` (and, beside it, the replay), how many
+  weigh more than 0.05 a few days later (a co-use or a drewOn deposit landed on them): `edges` with
+  `weight > 0.06` whose pair first appeared on an `atWrite`/replay day.
+- **Why:** the ants rule only works if use confirms some trails, and only real use can show it.
+- **Changes a decision if:** ~0 after a week of drewOn → the trails are noise that nothing confirms: lower
+  `WRITE_LINK_MAX` or drop write-time links; and item 4's reinforced column (v14) has nothing to act on yet.
+
+### Hand-read 20 write-time edges for noise
+- **Look at:** 20 random pairs from `atWrite` days, both memories' titles, right / noise / unsure.
+- **Why:** on the copy, after the tightening, 40 read 5 right, 6 unsure, 29 noise (before it, 20 read 1, 3,
+  16, the batch ones 0, 2, 14). Every own-turn candidate was a footnote; G1b's footnote precision was
+  0.17–0.33.
+- **Changes a decision if:** still mostly noise on real use → drop write-time links and let drewOn and the
+  replay lay trails.
+
+### "Links reached recall" > 0, and the Association light
+- **Look at:** `sum(json_extract(payload,'$.linksReached'))` over `recall.decision` for the last 7 lived
+  days; the dashboard's Association light.
+- **Why:** it goes amber when links were laid and none reached recall, once the store has lived 14 days and
+  laid 20 links that week (waiting before that). The owner's store passes both, so expect amber there after
+  install: the copy had 0 pointer candidates at the current threshold.
+- **Changes a decision if:** 0 for 7 lived days with deposit running → re-run the 10-02 replay arms on a fresh
+  copy and decide the pointer threshold (`LINK_POINTER_MIN_FRACTION` 0.05 → 0.0125, review 06 C7).
+
+### The clinic pair, on the bench store
+- **Look at:** copy the bench store `s500-t-h55-clean/73d42213` and run one dream; the 7 AM memory and the
+  memories that say the last clinic trip took two hours are linked (`edges` both ways, ≥ 0.05).
+- **Why:** bench item 5/6: before, edges only ran between memories of the same conversation. The bench
+  writes every memory in a session-end write-up with no recall while it writes, so write-time links never
+  fire there; the replay is what links it (it did on a copy at review, 10-11).
+- **Changes a decision if:** not linked → the dream's neighbours miss what a real writer had in mind; look
+  at which.
+
 ## Ongoing (first two weeks)
 
 ### No settled-over memory outranks its head in ambient results

@@ -75,9 +75,11 @@ for `recall/`; telemetry by reference.
    the drewOn builder, from Mike's 10-10 direction, lightly held (wording from #371).* A
    memory shown and passed by (footnoted, surfaced, on the wake) trains nothing, in either
    direction. One the session NAMES in a `drewOn` field is credited at the `engaged` tier
-   (`Counterpart#creditDrewOn`) — strength only: it joins no pair set, and the edge deposit
-   from engagement is the association group's (group 4) to add. (Was: "Footnotes never
-   train. The ignorable tier is ignorable in both directions.")
+   (`Counterpart#creditDrewOn`) for strength; *since 2026-10-11 (group 4, NOTES §17)* the
+   memories one `drewOn` names together also enter one pair set at the `referenced` tier,
+   so each pair gets a co-use's `HEBB_RATE` deposit — the tier comes from the engagement,
+   not from the lane that showed it (review 06 C1). (Was: "Footnotes never train. The
+   ignorable tier is ignorable in both directions.")
 2. **[M] Per node, the edge count is capped and the total outgoing weight is bounded**,
    with proportional renormalization. Since 2026-09-28 this covers every edge a dream
    writes too: a dream's `link` and a gist's ties to its sources go through
@@ -115,7 +117,8 @@ for `recall/`; telemetry by reference.
     second place that buffers non-reconstructible state fails review.
 12. **[A] Temporal contiguity is the weak signal, co-use the strong one** (working default,
     2026-09-28, NOTES §14). At each boundary, memories one session wrote next to each
-    other are linked to their neighbours at lag 1 and 2 only — not all pairs — at
+    other are linked to their neighbours at lag 1 only (lag 2 dropped 2026-10-11,
+    NOTES §17) — not all pairs — at
     `CONTIGUITY_RATE` (0.06, under a co-use's 0.1), forward over back where the write
     order is real time, the same both ways inside one batch. Through the same buffer,
     plan, homeostasis and sweep as a co-use (G2), frozen at a pinned endpoint (G9),
@@ -124,6 +127,12 @@ for `recall/`; telemetry by reference.
     buffered, what landed, what it pushed out, a failed pass, pairs lost before a flush
     recorded them. The nightly run's rows (a dream's gists and merges, a reflection's
     entry) are not the session's and are left out, counted (review of #281).
+    *Since 2026-10-11 (group 4, NOTES §17) the same pass gives each new memory a faint
+    link (`WRITE_LINK_WEIGHT` 0.05) to what was in mind when it was written — for a memory
+    written in the moment (the jot door), what recall showed its session on the write's
+    own turn; a write-up's, a catch-up's or a chapter copy's memories get none (review of
+    #423) — through `Associate.propose`: room-only, never evicting. It is the new memory's
+    encoding context; the shown memory's strength does not change (G1).*
 
 ## 6. Scars honored
 

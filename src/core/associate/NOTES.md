@@ -466,3 +466,105 @@ Measured in memory on the densest graph the tunables allow (5,000 nodes, 32 stro
 each, 40 seeds, 64 expansions, 1,632 contributions): about 0.9 ms a spread, of which
 `head()` is about 0.3 ms. A heap would save at most that, per recall, beside the 64 edge
 reads from the store a real spread makes. Not done.
+
+## 17. Group 4: deposit, write-time links, replay, the sweep (2026-10-11)
+
+Built by the association (group 4) builder, 2026-10-11, from review 06 §5–6 and bench
+item 5, lightly held. Mike's rule of thumb: ants — faint trails laid by co-activation,
+strengthened by use, evaporating without it. No new mechanism where deposit and
+evaporation can do it.
+
+- **Lag 2 is gone** (review 06 C5, D1). `CONTIGUITY_WINDOW` 2 → 1. On the owner's copy
+  (10-10) lag-2 rows were 15% of the table, lived 3.5 lived days in the one-batch case,
+  and never conducted; 137 lag-2-back rows a week were written and swept by the same
+  flush. The window stays a knob, and the planner still handles any width.
+
+- **drewOn deposits** (item 1, review 06 C1). `Counterpart#creditDrewOn` hands the
+  memories one `drewOn` names to `coactivate` at the `referenced` tier (not `engaged`:
+  `tierFactor` has no engaged case and would refuse them as ignorable), so a pair gets one
+  `HEBB_RATE`. Same members rule as the credit pass: credited, or refused only for its day
+  cadence (`linksDespite`). Pairs form among the named ids only — a memory opened this turn
+  and not named joins the credit pass's own set, not this one. They go to the pending file
+  (the MCP server is not the worker) and land at the next boundary; the drewOn
+  `recall.credit` row carries `linked`, the pairs sent. The set holds at most
+  `DREW_ON_MAX_PER_BOUNDARY` (3) members (review of #423): a cadence refusal spends no
+  credit slot, so twenty named memories opened earlier would otherwise send 190 pairs.
+- **Write-time links** (item 2, bench item 5; `at-write.ts`, `Counterpart#linkAtWrite`).
+  In the boundary's contiguity pass, after its cursor moves, a new memory written in the
+  moment (the jot door, read from the gate's `gate.deposit` row) gets a proposed link at
+  `WRITE_LINK_WEIGHT` (0.05) to what recall showed its session on the write's own turn
+  (`WRITE_LINK_TURNS` 1), at most `WRITE_LINK_MAX`; a write-up's, a catch-up's or a
+  chapter copy's memories get none. (As built it was every new memory, the last 3 turns,
+  and a deliberate question's answer within 15 minutes; the review of #423 tightened it,
+  numbers below. `WRITE_LINK_ASKED_MS` is 0, off.) The boundary runs at every reply's
+  end, so the session's last turn is the jot's own; a jot read a boundary late would take
+  the later turn's showings, a gap left as is. Proposed, not buffered: room-only, never evicting, raised to at
+  least the weight from the decayed one (so a re-run adds nothing). Counted on the
+  boundary's `associate.flush` row as `atWrite` (planned, landed, noRoom, blocked,
+  frozen). This is the first edge source that does not need the reply: it is the new
+  memory's encoding context, not credit to the footnote — the footnote's strength is
+  untouched (CONTRACT G1). Test: the bench's clinic pair (73d42213) shape,
+  `association-group4.test.ts` › "2.".
+
+  The tightening, measured on the same 10-11 copy (review of #423). Hand-read candidates,
+  by where in mind they came from: a jot's own-turn showings 7 right, 4 unsure, 9 noise
+  of 20; the two turns before it 2, 4, 14; a session-end memory's deliberate-question
+  answers 0 right of 20, a jot's 0 of 20, and 0 of 20 again counting only questions asked
+  before the write with no chapter copies. Every own-turn candidate was a footnote, none a
+  loud one. Re-run fast-forward with the rule: write-time trails 904 → 95 a week
+  (0/0/0/1/59/35/0 per lived day); a hand-read of 40 of them 5 right, 6 unsure, 29 noise.
+  On the bench store itself every write is a session-end write-up with no recall during
+  ingestion, so write-time links never fired there, before or after; one dream's replay
+  links the clinic pair (both memories that say the last trip took two hours, to the 7 AM
+  one).
+- **Replay deposits** (item 3, review 06 C2, D5; `Dreams#replayDeposit`). When a dream
+  opens (not on resume), each new memory its bundle shows is proposed a link to each older
+  neighbour shown beside it, at `dream/` `REPLAY_LINK_WEIGHT` (0.05, half a dream's own
+  `link`), through the same `propose` door: room-only, never evicting, a pinned end frozen.
+  No model call. Not a dream change: the dreamer did not choose these pairs, so an undo
+  takes a dream's `link` back to what was there before it — which may now be the
+  replay's 0.05 — and leaves the replay's own trails to decay. Counted on `dream.begun`
+  (`replayPairs`, `replayLinks`, `replayNoRoom`), and counted as laid even once the dream
+  is undone, since they are still in the graph (review of #423). Neighbours are by meaning where a vector
+  exists and by rare title words where not (`Dreams#near`), so on a store without vectors
+  the replay links by words.
+- **The archived-for-good sweep** (item 5, review 06 C3, D2; `TERMINAL_ARCHIVE_REASONS`,
+  `Store#sweepArchivedEdges`). After every flush, rows with an end archived as
+  `episode-regrown` or `dream-merge` are deleted (pinned ends excepted): those paths carry
+  their links to what replaced them at archive time (NOTES §15; the merge's retarget), so
+  the rows are inert copies. On the 10-10 copy that was 1,135 of 1,159 inert rows. A dream's
+  undo now carries the merged memory's links back to each original it restores, since the
+  originals' own rows are gone. Left alone: decay archives, so a memory that comes back
+  keeps its trails; and `corrected` (24 rows on 10-10), because a corrected settle does not
+  carry its links today and its undo brings the memory back — sweeping it would drop them.
+  That is the reconsolidation lane's to carry first. Counted as `sweptArchived` on the
+  boundary's row (part of `swept`). Only an end archived at least
+  `TERMINAL_ARCHIVE_GRACE_MS` (10 minutes) ago is swept (review of #423): both paths
+  archive first and carry a moment later, and another process's flush in between would
+  have taken rows not yet carried.
+- **Honest evidence** (item 7, review 06 C6, D7). "Links made" was `sum(associate.flush.rows)`,
+  which counts both directions and every sibling a touched node's decay rewrote. Both
+  `associate.flush` rows now carry `deposited` — pairs that landed as a link (co-use pairs
+  less blocked and dropped; at the boundary, contiguity landed + write-time landed + any
+  in-process co-use) — and the proof sums that, plus `dream.begun`'s `replayLinks`. A
+  second proof, **links reached recall**: `recall.decision` carries `linksReached` =
+  pointers shown + candidates a hop LIFTED into the cut (in it only because of the hop:
+  `Candidate.lifted`, `SpreadStats.lifted` / `liftedShown`) and then shown. The table
+  marks it `vital`: links laid with none reaching recall in the window is *starved* — amber
+  on the dashboard ("N links laid …, but no memory a link brought to mind"), idle in the
+  console — not green; but only once the store has lived 14 days and laid 20 links in the
+  window (`vitalAfter`, review of #423). Before that it is *young*: waiting on the
+  dashboard ("No memory a link brought to mind yet; that takes a few weeks of use"),
+  working in the console. Rows written before this carry no `deposited`, so for the first
+  week after install the count starts from zero. The sidebar mod's copy of the table
+  (`hooks/sidebar/hooks/feed.ts`) follows.
+- **Not built: a reinforced edge fades slower** (item 4, C4) — and the pointer threshold
+  stays at 0.05 (item 8, C7). Both were measured on the 10-11 copy fast-forwarded 7 lived
+  days (the week of lived days 14–20 replayed: its writes, its co-use, a replay each night,
+  the boundary each day; vectors rebuilt; no model calls): 904 write-time and 503 replay
+  trails laid (write-time 95 after the review's tightening), co-use 46 pairs all on links
+  that already existed (a forward simulation has no awake use, so it cannot say how many
+  new trails use would confirm); 0 pointer candidates at 0.05, 216 of 635 turns at 0.0125
+  (42 through new trails); edges ≥ 0.4: none; the first flush swept ~2,040 inert rows. The
+  reasons and the v14 column's cost are in `docs/IMPROVEMENTS.md` (Group 4); what to look at
+  next is in `docs/CHECK-AFTER.md` (Group 4).

@@ -758,19 +758,37 @@ export class Dreams {
 
   /** Every edge a dream writes goes through here (`DreamContext.link`). */
   private proposeLinks(pairs: readonly { a: string; b: string }[], day: number): DreamLinkReport {
-    let r: DreamLinkReport;
-    try {
-      r =
-        this.ctx.link !== undefined
-          ? this.ctx.link(pairs, DREAM_TUNABLES.LINK_WEIGHT, day)
-          : (this.ownLinker ??= new Associate({ store: this.store })).propose(pairs, DREAM_TUNABLES.LINK_WEIGHT, day);
-    } catch {
-      r = { reason: "failed", pairs: 0, landed: [], noRoom: 0, blocked: 0, frozen: 0 };
-    }
+    const r = this.link(pairs, DREAM_TUNABLES.LINK_WEIGHT, day);
     this.linkTally.linkNoRoom += r.noRoom;
     this.linkTally.linkFrozen += r.frozen;
     if (r.reason === "failed" || r.reason === "observer") this.linkTally.linkFailed += 1;
     return r;
+  }
+
+  /** The one door to the edge module, at a weight; never throws. */
+  private link(pairs: readonly { a: string; b: string }[], weight: number, day: number): DreamLinkReport {
+    try {
+      return this.ctx.link !== undefined
+        ? this.ctx.link(pairs, weight, day)
+        : (this.ownLinker ??= new Associate({ store: this.store })).propose(pairs, weight, day);
+    } catch {
+      return { reason: "failed", pairs: 0, landed: [], noRoom: 0, blocked: 0, frozen: 0 };
+    }
+  }
+
+  /**
+   * THE REPLAY'S DEPOSIT (Group 4 item 3, 2026-10-11; review 06 C2): each new
+   * memory tonight's bundle shows, with each older neighbour shown beside it,
+   * proposed at `REPLAY_LINK_WEIGHT` — "dream proposes, waking use confirms".
+   * Only pairs the bundle carries (the fit can leave a neighbour out), only
+   * where there is room. Not recorded as a dream change: the dreamer did not
+   * choose it, and it fades on its own if nothing uses it.
+   */
+  private replayDeposit(fresh: readonly { id: string; neighbours: readonly string[] }[], day: number): { pairs: number; landed: number; noRoom: number } {
+    const pairs = fresh.flatMap((f) => f.neighbours.filter((n) => n !== f.id).map((n) => ({ a: f.id, b: n })));
+    if (pairs.length === 0) return { pairs: 0, landed: 0, noRoom: 0 };
+    const r = this.link(pairs, DREAM_TUNABLES.REPLAY_LINK_WEIGHT, day);
+    return { pairs: pairs.length, landed: r.pairs, noRoom: r.noRoom };
   }
 
   private emit(name: string, ref?: string, data?: Record<string, string | number | boolean | null>): void {
@@ -1520,7 +1538,16 @@ export class Dreams {
       shown: composed.shown,
     });
     this.index(id, composed, packed.later);
-    this.record(DREAM_BEGUN_EVENT, id, this.begunPayload(composed, packed.later.length + 1));
+    // The replay lays its faint trails as the bundle opens (no model call). A
+    // resumed dream does not lay them again: a re-proposal would only refresh
+    // their day.
+    const replay = this.replayDeposit(composed.bundle.fresh, day);
+    this.record(DREAM_BEGUN_EVENT, id, {
+      ...this.begunPayload(composed, packed.later.length + 1),
+      replayPairs: replay.pairs,
+      replayLinks: replay.landed,
+      replayNoRoom: replay.noRoom,
+    });
     return { ok: true, bundle: packed.bundle, text: renderDream(id, packed.bundle, ""), resumed: false };
   }
 
@@ -2194,7 +2221,14 @@ export class Dreams {
           }
           for (const orig of from) {
             try {
-              this.store.restoreSuperseded(orig, DREAM_MERGE_REASON);
+              // CARRIED BACK (Group 4 item 5, 2026-10-11): the merge handed the
+              // originals' links to the merged memory, and a merge's
+              // originals' own rows are swept as archived for good
+              // (`associate.TERMINAL_ARCHIVE_REASONS`) — so an original that
+              // comes back takes the merged memory's links with it.
+              if (this.store.restoreSuperseded(orig, DREAM_MERGE_REASON) && c.ref !== null) {
+                this.ctx.retarget?.(c.ref, orig, this.store.livedDay());
+              }
             } catch {
               /* removed since: nothing to restore */
             }
