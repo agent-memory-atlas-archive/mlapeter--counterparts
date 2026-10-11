@@ -170,6 +170,26 @@ describe("the wake on resume", () => {
     expect(stranger.injection).toContain(WAKE_BLOCK);
   });
 
+  // Review of #415: only the host's own `resume` earns the short line. A host
+  // that sends no `source` (an older Claude Code), an empty or unknown one, a
+  // `startup`, `clear` or `fork` re-firing for the same session the same day
+  // is each handed the full wake.
+  test("a same-day start whose source is missing, unknown, startup, clear or fork is handed the full wake", async () => {
+    const w = await world(at(9));
+    start(w, at(9), "startup");
+    let t = at(9, 30);
+    for (const source of [undefined, "", "Resume", "later", "startup", "clear", "fork"]) {
+      w.set((t += 10 * MIN));
+      const input = { sessionId: S, scope: HERE, at: D, ...(source === undefined ? {} : { source }) } as HookInput;
+      const result = w.hooks().sessionStart(input);
+      expect(result.injection).toContain(WAKE_BLOCK);
+      expect(result.injection).not.toContain(RESUME_WAKE_LINE);
+      expect(result.reason).not.toBe("resumed");
+    }
+    // And the hook carries nothing for a payload with no source.
+    expect(toHookInput({ session_id: S, hook_event_name: "SessionStart", cwd: HERE }, { scope: HERE }).source).toBeUndefined();
+  });
+
   test("the hook carries the host's source into the input, and nothing on an event without one", () => {
     const base = { session_id: S, hook_event_name: "SessionStart", cwd: HERE };
     expect(toHookInput({ ...base, source: "resume" }, { scope: HERE }).source).toBe("resume");
