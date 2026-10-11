@@ -621,6 +621,24 @@ were refined by b2+f8 at the review of #369, named where they were):
 - Decided by the Group 2 builder, 2026-10-11, lightly held: every settle that moves a memory closes
   the unsettled pairs on it (an `open` one only when asked); an unsettled flag is asked again once,
   at full weight, 7 lived days after it was raised.
+- Decided by the #420 reviewer, 2026-10-11, lightly held: the night's "to confirm" proposals are
+  the least shown first, then the oldest, and a proposal one of whose two memories is gone is
+  withdrawn (its cut put back) before the dream reads. Why: oldest-first with a fixed 4 let a dream
+  that passed the first four by keep the rest waiting for good, and a proposal whose newer memory
+  was forgotten or merged away was never shown again, so its older kept the ×0.8 forever. Nothing
+  expires either way.
+- Decided by the #420 reviewer, 2026-10-11, lightly held: a dump's earlier entries are never read
+  as an earlier state of a later entry of the same call. Why: the same moment's words, the rule the
+  write's neighbours already keep (review of #284, M1).
+- Decided by the #420 reviewer, 2026-10-11, lightly held: only a feeling recorded LATER (a
+  feeling-now, a dream's, a reflection's) is read as how a memory sits now; with none, the
+  strongest felt at the time. Why: a dream's merge carries each original's feelings at their own
+  moments, so "the newest moment" read a strongly felt memory merged with a mildly felt near-copy
+  as mild, with nothing said about it. Same result on the 10-11 copy (mem_6d48b8537011 reads 0.35).
+- Checked by the #420 reviewer, 2026-10-11: the title arm. On a copy of the owner's store (20 lived
+  days, the rule as it would read at each write), 3 proposals came from the title arm alone, all
+  three right on a hand-read (two of them the writer had settled `changed` itself). Kept; n is
+  small, so the CHECK-AFTER hand-read should keep the title ones apart.
 
 ### Decided by the uninstall-delete builder, 2026-10-11, lightly held (`uninstall` offers to delete)
 
