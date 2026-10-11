@@ -1309,6 +1309,8 @@ describe("doctor's Claude Code line knows the plugin", () => {
       id: ID,
       installPath: join(home, "cache", "0.3.12"),
       version: "0.3.12",
+      scope: "user",
+      projectPath: null,
       enabled: true,
     });
     recordPlugin(false);
