@@ -47,6 +47,10 @@ come first. Nothing here quotes a memory.
    after the arc, counted "+N faded"). Fallback, if faded matches are ever seen crowding
    fresh ones on a live store: variant (a″), a mild fade-scaled penalty on the order only
    (score × (1 − 0.3 × (1 − strength/REACH))), also measured in R2-2. (`facts.ts`)
+   **Kept. Mike, 2026-10-11, lightly held; looked at again at the 10-14 check-in.** His reason:
+   be cautious about changing the core app to improve the benchmark. That's welcome when it
+   helps overall, never at the real system's expense; a few months ago, fitting the benchmark
+   broke a lot. At 10-14: look on the live store for faded matches crowding fresh ones.
 
 2. **A dated memory is held until its date (no decay before it arrives), then fades a little
    faster.** Revised by b2+f8, 2026-10-10, lightly held — and it may reverse Mike's
