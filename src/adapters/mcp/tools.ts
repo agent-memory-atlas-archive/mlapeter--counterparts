@@ -175,6 +175,24 @@ const ABOUT_PROPERTY = {
 };
 
 /**
+ * `remark` on `remember` (2026-10-11, the about-marks lane): what an existing
+ * memory is about, changed in the moment, recorded as by self
+ * (`counterpart.ts#markAbout`, the owner's `counterparts about` path).
+ */
+const REMARK_PROPERTY = {
+  type: "object",
+  properties: {
+    id: { type: "string" },
+    about: { type: "string", enum: ["me", "us", "owner", "work", "world"] },
+    why: { type: "string" },
+  },
+  required: ["id", "about"],
+  additionalProperties: false,
+  description:
+    "Optional: re-mark what an existing memory this session was shown is about — {id, about, why} — when its mark is wrong (a personal one marked work, say). Recorded as yours, with the why. Alone, or beside text.",
+};
+
+/**
  * `unresolved` on a `remember` or a `session_end` entry (2026-10-01, lane 8): the
  * wake's "Still open:" lane reads this flag, and until now no write tool could
  * set it, so the lane never fired. Closed by a later write that `updates` the
@@ -564,6 +582,11 @@ const REMEMBER: ToolSpec = {
       mechanizedBy:
         "src/adapters/mcp/server.ts#feelingsNowOutcome -> src/core/dream/reflect.ts#Reflections.feelAgain (source awake, recorded_later) + src/core/store/index.ts#row (feeling_peak_lived)",
     },
+    {
+      claim:
+        "`remark` changes what a memory this session was shown is about, recorded as yours with the why — the record the owner's door and the nightly reflection write. A dream's or a reflection's words move only toward work or world.",
+      mechanizedBy: "src/adapters/mcp/server.ts#remarkOutcome -> src/core/counterpart.ts#markAbout -> src/core/store/index.ts#setAbout",
+    },
   ],
   inputSchema: {
     type: "object",
@@ -571,7 +594,7 @@ const REMEMBER: ToolSpec = {
       text: {
         type: "string",
         description:
-          "One thing to remember, in your own words — with the exact quote, number or name when the words matter. Required unless `settle` or `feelingsNow` is sent.",
+          "One thing to remember, in your own words — with the exact quote, number or name when the words matter. Required unless `settle`, `feelingsNow` or `remark` is sent.",
       },
       updates: {
         type: "string",
@@ -611,6 +634,7 @@ const REMEMBER: ToolSpec = {
       unresolved: UNRESOLVED_PROPERTY,
       traits: TRAITS_PROPERTY,
       feelingsNow: FEELINGS_NOW_PROPERTY,
+      remark: REMARK_PROPERTY,
     },
     // `text` is not required in the published schema (2026-09-29): a `settle`
     // or (2026-10-02) `feelingsNow` alone writes no memory. The server refuses

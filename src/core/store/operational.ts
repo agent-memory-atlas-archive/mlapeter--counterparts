@@ -795,7 +795,7 @@ export interface MemoryRow extends Row {
    * or a tool without the column still reads.
    */
   about: string | null;
-  /** v9: who set `about` — `writer`, `reflection`, `owner`, `upgrade`. */
+  /** v9: who set `about` — `writer`, `reflection`, `owner`, `upgrade`, and (2026-10-11, no schema change) `self`. */
   about_by: string | null;
   /** v10: the strength multiplier a `changed` settle sets (physics §5.12); 1 otherwise. */
   fade: number;

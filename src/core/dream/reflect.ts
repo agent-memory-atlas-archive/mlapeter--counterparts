@@ -80,8 +80,8 @@ import {
 } from "../store/index.js";
 import type { AboutMark, FeelingInput, MemoryRow, ProseDoc, ReflectionRow, Store } from "../store/index.js";
 import type { Kind } from "../types.js";
-import { TOOL_RESULT_CEILING, clipWire, fit, lineOf, offeredInPart, offeredOf, readIndex, wireChars, writeIndex } from "../fit/index.js";
-import type { Fidelity, FitCandidate, Placed } from "../fit/index.js";
+import { FIT_TUNABLES, TOOL_RESULT_CEILING, clipWire, fit, lineOf, offeredInPart, offeredOf, readIndex, wireChars, writeIndex } from "../fit/index.js";
+import type { Fidelity, FitCandidate, FitOutcome, Placed } from "../fit/index.js";
 import { ownerNames } from "../sleep/index.js";
 import { PAGE_WRITING_RULE } from "../self/writer.js";
 import { DREAM_MARK, carriesDreamMark } from "./mark.js";
@@ -815,7 +815,7 @@ export class Reflections {
       aboutLine,
       ...(bundle.unmarked.length > 0
         ? [
-            `  unmarked: ${String(bundle.unmarked.length)} ${bundle.unmarked.length === 1 ? "memory nobody has" : "memories nobody has"} marked. Unmarked, a fact written in a project counts as that project's work and is shown only there — so a personal one (a person, a feeling, life outside the work) sits among the work lines. ${open ? "Mark each by meaning in about, with why: owner or us when it is personal, work when it really is the craft, world otherwise." : "Tonight a mark may only be work or world: mark the ones that are, and leave a personal one unmarked."} They count toward the ${String(L.about)}.`,
+            `  unmarked: ${String(bundle.unmarked.length)} ${bundle.unmarked.length === 1 ? "memory nobody has" : "memories nobody has"} marked. Unmarked, a fact written in a project, or a skill, counts as that project's work and is shown only there — so a personal one (a person, a feeling, life outside the work) sits among the work lines. ${open ? "Mark each by meaning in about, with why: owner or us when it is personal, work when it really is the craft, world otherwise." : "Tonight a mark may only be work or world: mark the ones that are, and leave a personal one unmarked."} They count toward the ${String(L.about)}.`,
           ]
         : []),
       ...(bundle.feelingWeeks !== null
@@ -1614,8 +1614,10 @@ export class Reflections {
       const f = emotionalIntensity(this.store.physicsOf(mid));
       if (row.birth_day >= day - T.CHAPTER_DAYS) recent.push({ id: mid, felt: f, at: row.created_at ?? 0 });
       // UNMARKED WORK THAT MAY NOT BE WORK (owner pick 4): only a memory NOBODY
-      // marked — a writer's mark is never offered to be overridden here.
-      if ((row.about ?? null) === null && row.kind !== "skill" && isWorkMemory({ about: null, kind: row.kind, originScope: row.origin_scope, journal: isJournalCopy(row) })) {
+      // marked — a writer's mark is never offered to be overridden here. Skills
+      // too since 2026-10-11 (the about-marks review: 5 of 34 unmarked skills
+      // read as personal, and nothing else ever offered them).
+      if ((row.about ?? null) === null && isWorkMemory({ about: null, kind: row.kind, originScope: row.origin_scope, journal: isJournalCopy(row) })) {
         const rank = (withFeelings.has(mid) ? 2 : 0) + (row.kind === "entity" ? 1 : 0) + (namesAny(`${row.title ?? ""} ${row.body}`, owners) ? 1 : 0);
         unmarked.push({ id: mid, rank, uses: row.uses, at: row.created_at ?? 0 });
       }
@@ -1678,6 +1680,15 @@ export class Reflections {
     const unmarkedIds = [...ranked.filter((x) => !lately.has(x)), ...ranked.filter((x) => lately.has(x))]
       .slice(0, T.UNMARKED)
       .filter(take(2));
+    // THE OFFER'S OWN ROOM (2026-10-11, the about-marks review): exactly what
+    // the offered ids cost as lines, held back from the shared room — so a
+    // full night, whose ids alone fill the room before priority 2 is reached,
+    // still shows them (on 10-10 the offer fitted to nothing).
+    const lineCost = (mid: string): number => {
+      const v = see(mid) as { whole: string; line: string };
+      return FIT_TUNABLES.OVERHEAD + wireChars(v.whole.length <= v.line.length ? v.whole : v.line);
+    };
+    const offerRoom = unmarkedIds.reduce((n, mid) => n + lineCost(mid), 0);
 
     // WHAT THE DREAM SAW (2026-09-28): what it was shown and what it made, in
     // the order it was shown, a line each — so the reflection reads the night
@@ -1709,12 +1720,31 @@ export class Reflections {
       wireChars(dreamed?.journal ?? "") +
       earlier.reduce((n, e) => n + wireChars(e.entry), 0) +
       dreamSaw.reduce((n, s) => n + wireChars(s.text) + 30, 0);
-    const room = Math.max(0, T.ROOM_CHARS - spent - REFLECT_FURNITURE);
-    const cands: FitCandidate[] = [...priority].map(([mid, p]) => {
+    const avail = Math.max(0, T.ROOM_CHARS - spent - REFLECT_FURNITURE);
+    const candOf = (mid: string, p: number): FitCandidate => {
       const v = see(mid) as { whole: string; line: string };
       return { id: mid, priority: p, line: v.line, whole: v.whole };
-    });
-    const fitted = fit(cands, { room, excerptChars: T.DETAIL_CHARS });
+    };
+    const cands = [...priority].map(([mid, p]) => candOf(mid, p));
+    const thinIn = (f: FitOutcome): Set<string> => new Set([...f.waiting, ...f.placed.filter((p) => p.fidelity === "id").map((p) => p.id)]);
+    // A night whose shared fit already shows the offer a line or more is
+    // fitted exactly as before (review of #383): the reserve is only taken
+    // when it is needed, so a quiet night does not change.
+    const plain = fit(cands, { room: avail, excerptChars: T.DETAIL_CHARS });
+    let fitted: Pick<FitOutcome, "placed" | "waiting" | "report"> = plain;
+    if (unmarkedIds.some((x) => thinIn(plain).has(x))) {
+      // Never more than the room there is (review of #383): on a night the
+      // fixed parts already fill, the reserve shrinks with it.
+      const reserve = Math.min(offerRoom, avail);
+      const room = avail - reserve;
+      const shared = fit(cands, { room, excerptChars: T.DETAIL_CHARS });
+      // An offer the shared fit left waiting, or showed as a bare id, is shown
+      // as a line at least in its own room (plus whatever the shared fit left).
+      const thin = thinIn(shared);
+      const rescue = unmarkedIds.filter((x) => thin.has(x));
+      const offer = fit(rescue.map((mid) => candOf(mid, 0)), { room: reserve + Math.max(0, room - shared.used), excerptChars: T.DETAIL_CHARS, least: "line" });
+      fitted = mergeFits(shared, offer);
+    }
     const left = new Set(fitted.waiting);
     const kept = (x: string): boolean => !left.has(x);
     const memories: Record<string, ReflectItem> = {};
@@ -2265,6 +2295,25 @@ function cut(text: string | null, max: number): string | null {
 /** `text` kept to `max` characters, the last one "…" — the fitter's excerpt. */
 function excerpt(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, Math.max(0, max - 1))}…`;
+}
+
+/**
+ * The shared fit and the unmarked offer's own fit as one outcome: the offer's
+ * placements first (so a bundle in parts carries them in its first), then the
+ * shared fit's, less any the offer re-placed; the waiting and the counts of both.
+ */
+function mergeFits(shared: FitOutcome, offer: FitOutcome): Pick<FitOutcome, "placed" | "waiting" | "report"> {
+  const moved = new Set(offer.placed.map((p) => p.id));
+  const placed = [...offer.placed, ...shared.placed.filter((p) => !moved.has(p.id))];
+  // One the offer could not re-place keeps what the shared fit gave it (a
+  // bare id, or waiting), so it is neither counted twice nor both placed and waiting.
+  const waiting = shared.waiting.filter((x) => !moved.has(x));
+  const count = (f: Fidelity): number => placed.filter((p) => p.fidelity === f).length;
+  return {
+    placed,
+    waiting,
+    report: { ...shared.report, whole: count("whole"), excerpt: count("excerpt"), lined: count("line"), ids: count("id"), waiting: waiting.length },
+  };
 }
 
 /** A composed bundle and what its fit offered (for the lookup ledger). */

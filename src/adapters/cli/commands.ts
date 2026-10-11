@@ -335,6 +335,10 @@ export const COMMANDS = [
   // the owner's settle and undo. Reads and writes, like `dream`; the write
   // refuses at the core's own seam under observer.
   "settle",
+  // What a memory is about (2026-10-11): read its mark, or change it as the
+  // owner. Reads and writes, like `settle`; the write refuses under observer
+  // at the core's own door (`Counterpart.markAbout`).
+  "about",
   // What is written up and what is not yet, for one date (2026-09-30,
   // `core/coverage/`). Read-only.
   "coverage",
@@ -774,6 +778,7 @@ export const COMMAND_FLAGS: Record<Command, readonly string[]> = {
   dream: ["list", "show", "undo", "all", "setting"],
   core: ["list", "demote", "reason", "reflected-feeling"],
   settle: ["list", "pair", "holds", "against", "how", "why", "undo"],
+  about: ["why"],
   coverage: ["date"],
   // `--config` because the store it opens is the one the CONFIGURATION names —
   // that is the whole point of the command over `counterparts-dashboard serve`,
@@ -847,6 +852,8 @@ export const COMMAND_BLURB: Record<Command, string> = {
     "The core — the memories about me, about us and about the owner that do not fade. With no flags (or --list), what it holds and which lane carried each one there, what dreams have nominated, and what you sent back; --demote <id> --reason \"...\" sends one back to ordinary fading from today, records why, and keeps the lanes from promoting it again; --reflected-feeling on|off opens or closes the core to reflection alone. On (the default): a feeling a reflection records later and a reflection citing a memory both count toward the fast lane, and a reflection may re-label what a memory is about either way — each re-label is recorded with its reason, and one into me, us or the owner is told in the next morning share. Off: nothing reaches the core on a reflection alone — the fast lane needs a feeling felt at the time (not one a reflection recorded later) and an ordinary use after a gap (not a reflection citing it), and a reflection may only move what a memory is about toward work or world. Reading works under observer; the two changes refuse there.",
   settle:
     "Two memories that disagree. With no flags (or --list), the pairs nobody has settled — a dream flags them — and the ones settled lately: how, which holds, who settled it and why; and the corrections held in the last 7 lived days (a memory said it changes or corrects one that didn't look related, so nothing was settled) that nobody has settled since, each with the command that settles it. --pair <id> --holds <memory id> --how changed|corrected|open --why \"...\" settles one as you (or --holds <id> --against <id> for two memories no dream flagged): changed — both were true at their time, the older fades once and is shown as earlier; corrected — the older was wrong, it leaves recall and stays readable by its id; open — a real disagreement, both kept and shown together. No memory is rewritten. --undo <pair> reverses a settle: the strength comes back, a corrected memory comes back into recall, and the pair is unsettled again. Reading works under observer; the two changes refuse there.",
+  about:
+    "What a memory is about — me (who I am), us (the two of us), owner (you, as a person), work (the craft) or world (anything else). With an id alone, its mark and who set it; with an id and a mark, it changes the mark as you, keeps --why with it, and records it the way a nightly reflection's re-mark is recorded. Unmarked, a fact written in a project (or a skill) counts as that project's work and is shown only there; me, us and owner are shown everywhere and can become part of who I am. An archived memory can be marked too (the mark counts if it comes back); an earlier version's id marks the current one. Reading works under observer; the change refuses there.",
   coverage:
     "What is written up, and what is not yet, for one date (default today): each session that captured something that day, how much of it is written up, and what is not yet written up — how many pieces, over how long, since when — and whether that is owed (the next session in its project is asked to write it up), lapsed (let go unwritten after fourteen days of use — lost to memory; nothing is deleted), under the floor, or still at work. Read-only.",
   dashboard:
@@ -875,6 +882,7 @@ const COMMAND_ARGS: Partial<Record<Command, string>> = {
   dream: " [--list [--all] | --show <id> | --undo <id>]",
   core: " [--demote <id> --reason \"...\" | --reflected-feeling on|off]",
   settle: " [--list | --pair <id> --holds <id> --how changed|corrected|open --why \"...\" | --undo <pair>]",
+  about: " <id> [me|us|owner|work|world] [--why \"...\"]",
   coverage: " [--date YYYY-MM-DD]",
 };
 
@@ -1114,6 +1122,11 @@ const SETTLE_FLAG_HELP: Record<string, string> = {
   undo: "reverse one settle, by the pair's id (the id follows the flag): strength back, a corrected memory back in recall, the pair unsettled again",
 };
 
+/** `about`'s own one (2026-10-11): `--why` is settle's flag too, and means the same. */
+const ABOUT_FLAG_HELP: Record<string, string> = {
+  why: "why, in a short line — kept with the mark's record",
+};
+
 /** `core`'s own four. */
 const CORE_FLAG_HELP: Record<string, string> = {
   list: "what the core holds, with lanes, nominations and demotions — the default",
@@ -1169,7 +1182,9 @@ export function commandHelp(command: Command): string {
                     ? CLAIMS_ERA_FLAG_HELP
                   : command === "settle"
                     ? SETTLE_FLAG_HELP
-                    : {};
+                    : command === "about"
+                      ? ABOUT_FLAG_HELP
+                      : {};
   const flagLine = (name: string): string => {
     const shown = `--${name}${VALUED_FLAGS.includes(name) ? " <value>" : ""}`;
     return `  ${shown.padEnd(20)} ${override[name] ?? FLAG_HELP[name] ?? "(undocumented)"}`;
@@ -1964,6 +1979,8 @@ export async function run(argv: readonly string[], opts: RunOptions): Promise<nu
         return claimsEraCommand(dir, io, parsed, observer, typeof parsed.flags["dir"] === "string");
       case "settle":
         return settleCommand(dir, io, parsed, observer, typeof parsed.flags["dir"] === "string");
+      case "about":
+        return aboutCommand(dir, io, parsed, observer, typeof parsed.flags["dir"] === "string");
       case "coverage":
         return coverageCommand(dir, io, parsed, now, typeof parsed.flags["dir"] === "string");
     }
@@ -2480,6 +2497,94 @@ function settleCommand(dir: string, io: Io, parsed: Parsed, observer: boolean, n
     if (out.archived !== null) io.out(`  ${out.archived} leaves recall; it stays readable by its id (counterparts ask --id ${out.archived}).`);
     if (out.note !== undefined) io.out(`  ${out.note}`);
     io.out(`  Undo: counterparts settle --undo ${out.pair}`);
+    return EXIT.ok;
+  } finally {
+    counterpart.close();
+  }
+}
+
+/** Who set a mark, in the words `about` prints. */
+const ABOUT_BY_WORDS: Record<string, string> = {
+  writer: "the writer, when it was written",
+  reflection: "a nightly reflection",
+  owner: "you",
+  upgrade: "the v9 upgrade, by its kind",
+  self: "me, awake in a session",
+};
+
+/**
+ * `about` — what a memory is about, and the owner's door to change it
+ * (2026-10-11, the about-marks lane). With an id alone it reads; with a mark
+ * it goes through `Counterpart.markAbout` as the owner, which decides
+ * everything and refuses under observer. The dashboard's "about" action runs
+ * this same command.
+ */
+function aboutCommand(dir: string, io: Io, parsed: Parsed, observer: boolean, namedDir: boolean): number {
+  if (!storeExists(dir)) {
+    io.err(`No store at ${dir}. Run 'counterparts init${namedDir ? ` --dir ${dir}` : ""}' to create one.`);
+    return EXIT.usage;
+  }
+  const [id, mark, ...rest] = parsed.positional;
+  const why = typeof parsed.flags["why"] === "string" ? parsed.flags["why"].trim() : "";
+  if (id === undefined || id.trim().length === 0) {
+    io.err('refused: name a memory: counterparts about <id> [me|us|owner|work|world] [--why "..."].');
+    return EXIT.usage;
+  }
+  if (rest.length > 0) {
+    io.err(`refused: one id and one mark — "${rest.join(" ")}" is more. Put a reason in --why "...".`);
+    return EXIT.usage;
+  }
+  if (mark === undefined) {
+    if (why.length > 0) {
+      io.err("refused: --why goes with a mark. Pass one, or leave it out.");
+      return EXIT.usage;
+    }
+    const counterpart = openCounterpart(dir, true);
+    try {
+      // An earlier version reads as the current one, as the write marks it.
+      let head = id;
+      try {
+        head = counterpart.store.resolve(id);
+      } catch {
+        /* unknown: refused below */
+      }
+      const row = counterpart.store.row(head);
+      if (row === undefined || row.type !== "memory") {
+        io.err(`refused: no memory ${id} in this store. Nothing was read.`);
+        return EXIT.refused;
+      }
+      io.out(
+        row.about === null
+          ? `${head} is unmarked.`
+          : `${head} is about ${row.about} — marked by ${ABOUT_BY_WORDS[row.about_by ?? ""] ?? row.about_by ?? "someone unrecorded"}.`,
+      );
+      if (head !== id) io.out(`  ${id} is an earlier version; this is the current one.`);
+      io.out(`  Change it: counterparts about ${head} me|us|owner|work|world --why "..."`);
+      return EXIT.ok;
+    } finally {
+      counterpart.close();
+    }
+  }
+  if (observer) {
+    io.err("refused: this console is an observer; it reads and changes nothing. Nothing was marked.");
+    return EXIT.refused;
+  }
+  const counterpart = openCounterpart(dir, observer);
+  try {
+    const out = counterpart.markAbout({ id, mark, by: "owner", why: why.length > 0 ? why : null });
+    if (!out.ok) {
+      io.err(`refused: ${out.detail} Nothing was marked.`);
+      return EXIT.refused;
+    }
+    const was = out.before === null ? "unmarked" : out.before;
+    io.out(
+      out.changed
+        ? `Marked ${out.id} about ${out.mark} (it was ${was}), as you.`
+        : `${out.id} was already about ${out.mark}; it is recorded as yours now.`,
+    );
+    if (out.forwardedFrom !== undefined) io.out(`  ${out.forwardedFrom} is an earlier version; the current one, ${out.id}, carries the mark.`);
+    if (out.why !== null) io.out(`  Why, as recorded: ${out.why}`);
+    if (out.note !== undefined) io.out(`  ${out.note}`);
     return EXIT.ok;
   } finally {
     counterpart.close();

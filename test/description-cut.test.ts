@@ -159,7 +159,9 @@ describe("tool descriptions, as a host that serves only the first 2,048 characte
       // `note` became `remember` on 2026-10-10 (Group 1c, 01 C1's text): the
       // head grew from 951 to 1,387 and session_end's from 811 to 1,088, both
       // well inside the cut with their leading claims.
-      remember: { total: 5612, beforeList: 1387 },
+      // +227 on 2026-10-11 (about-marks): the `remark` claim, last in the
+      // list, past the cut; the field's own description is served whole.
+      remember: { total: 5839, beforeList: 1387 },
       // session_end and chapter grew by 305 each on 2026-10-11: the `drewOn`
       // claim, last in each list, past the cut (the field says it, served whole).
       recall: { total: 6163, beforeList: 1200 },
