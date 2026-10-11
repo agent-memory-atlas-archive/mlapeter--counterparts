@@ -466,3 +466,16 @@ Measured in memory on the densest graph the tunables allow (5,000 nodes, 32 stro
 each, 40 seeds, 64 expansions, 1,632 contributions): about 0.9 ms a spread, of which
 `head()` is about 0.3 ms. A heap would save at most that, per recall, beside the 64 edge
 reads from the store a real spread makes. Not done.
+
+## 17. Group 4: deposit, write-time links, replay, the sweep (2026-10-11)
+
+Built by the association (group 4) builder, 2026-10-11, from review 06 §5–6 and bench
+item 5, lightly held. Mike's rule of thumb: ants — faint trails laid by co-activation,
+strengthened by use, evaporating without it. No new mechanism where deposit and
+evaporation can do it.
+
+- **Lag 2 is gone** (review 06 C5, D1). `CONTIGUITY_WINDOW` 2 → 1. On the owner's copy
+  (10-10) lag-2 rows were 15% of the table, lived 3.5 lived days in the one-batch case,
+  and never conducted; 137 lag-2-back rows a week were written and swept by the same
+  flush. The window stays a knob, and the planner still handles any width.
+

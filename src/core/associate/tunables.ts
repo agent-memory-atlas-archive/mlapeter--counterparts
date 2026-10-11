@@ -114,14 +114,15 @@ export interface AssociateTunables {
    * confirms it. How long each kind lives above the floor if nothing confirms
    * it (`S_EDGE` 30, floor 0.02; review of #281, finding 7): lag 1 forward
    * with a real order 0.06, 33 lived days; lag 1 in one batch 0.045, 24; lag 1
-   * back 0.03, 12; lag 2 forward 0.03, 12; lag 2 in one batch 0.0225, 3.5;
-   * lag 2 back 0.015, swept at once. Lag 2 in the common one-batch case is
-   * close to inert (it passes 0.28% of its node) — whether it earns its rows
-   * is the owner's call (associate NOTES §14). CAL, no ancestry.
+   * back 0.03, 12. (Lag 2 lived 3.5 lived days in the common one-batch case
+   * and conducted nothing; it was dropped 2026-10-11, NOTES §17.) CAL, no
+   * ancestry.
    */
   CONTIGUITY_RATE: number;
-  /** Neighbours on each side a memory links to: lag 1 and lag 2. Adjacent
-   *  pairs only, never all pairs in a session. CAL. */
+  /** Neighbours on each side a memory links to: lag 1 only since 2026-10-11
+   *  (it was lag 1 and 2; review 06 C5 — lag 2 was 15% of the table, lived
+   *  3.5 lived days and never conducted). Adjacent pairs only, never all pairs
+   *  in a session. CAL. */
   CONTIGUITY_WINDOW: number;
   /** The backward delta as a fraction of the forward one (TCM's forward bias:
    *  in free recall a lag of +1 follows about twice as often as −1). CAL. */
@@ -159,7 +160,7 @@ export const TUNABLES: AssociateTunables = {
   SPREAD_MIN_FRACTION: 0.02,
 
   CONTIGUITY_RATE: 0.06,
-  CONTIGUITY_WINDOW: 2,
+  CONTIGUITY_WINDOW: 1,
   CONTIGUITY_BACKWARD: 0.5,
   CONTIGUITY_LAG_DECAY: 0.5,
   CONTIGUITY_BATCH_MS: 60_000,

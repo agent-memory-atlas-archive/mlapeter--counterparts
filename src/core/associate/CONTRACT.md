@@ -115,7 +115,8 @@ for `recall/`; telemetry by reference.
     second place that buffers non-reconstructible state fails review.
 12. **[A] Temporal contiguity is the weak signal, co-use the strong one** (working default,
     2026-09-28, NOTES §14). At each boundary, memories one session wrote next to each
-    other are linked to their neighbours at lag 1 and 2 only — not all pairs — at
+    other are linked to their neighbours at lag 1 only (lag 2 dropped 2026-10-11,
+    NOTES §17) — not all pairs — at
     `CONTIGUITY_RATE` (0.06, under a co-use's 0.1), forward over back where the write
     order is real time, the same both ways inside one batch. Through the same buffer,
     plan, homeostasis and sweep as a co-use (G2), frozen at a pinned endpoint (G9),
