@@ -116,14 +116,14 @@ import {
   DREAM_UNDONE_EVENT,
 } from "../../core/dream/index.js";
 import { V8_CENSUS_EVENT } from "../../core/sleep/index.js";
-// Contradictions (2026-09-29, `core/contradictions.ts`): a flag, a settle, an
+// Contradictions (2026-09-29, `core/reconsolidation.ts`): a flag, a settle, an
 // undo — and a write's `updates` held as unrelated (2026-10-09).
 import {
   CONTRADICTION_FLAGGED_EVENT,
   CONTRADICTION_HELD_EVENT,
   CONTRADICTION_SETTLED_EVENT,
   CONTRADICTION_UNDONE_EVENT,
-} from "../../core/contradictions.js";
+} from "../../core/reconsolidation.js";
 // What is not written up (2026-09-30, `core/coverage/`): one row per stretch per state.
 import { COVERAGE_LAPSED_EVENT, COVERAGE_OWED_EVENT, COVERAGE_WRITTEN_EVENT } from "../../core/coverage/index.js";
 

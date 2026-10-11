@@ -2719,7 +2719,7 @@ export class Store {
     return last?.action === "demoted";
   }
 
-  // ── contradictions (v10, `core/contradictions.ts`) ─────────────────────────
+  // ── contradictions (v10, `core/reconsolidation.ts`) ─────────────────────────
 
   /** One pair. */
   contradiction(id: string): ContradictionRow | undefined {

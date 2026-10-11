@@ -458,17 +458,17 @@ const SETTLE_PRIVILEGES: readonly Privilege[] = [
   {
     claim:
       "`how` beside `updates` settles the memory it revises — changed (it fades once and is shown as earlier), corrected (archived: out of recall, readable by its id, never deleted), or open (both kept, shown together) — and every settle is recorded (who, how, why, when) and can be undone. A belief, a core memory, a current-state fact and a protected memory keep their own revision path, and the result says so.",
-    mechanizedBy: "src/core/revision.ts#applyRevision -> src/core/contradictions.ts#settleOnWrite",
+    mechanizedBy: "src/core/revision.ts#applyRevision -> src/core/reconsolidation.ts#settleOnWrite",
   },
   {
     claim:
       "A changed or corrected at a memory that looks unrelated to the new one — not close in meaning, or with no embedder, no content word in common — is held: the new memory is stored unlinked, the old one is left as it was, its title and text come back with the ask to settle it yourself if you meant it, and the hold is recorded. Closing an open thread, moving or dropping a date, and changing a status go straight through.",
-    mechanizedBy: "src/core/counterpart.ts#guardUpdate -> src/core/contradictions.ts#updateRelatedness",
+    mechanizedBy: "src/core/counterpart.ts#guardUpdate -> src/core/reconsolidation.ts#updateRelatedness",
   },
   {
     claim:
       "A stored memory comes back with its nearest few existing memories, when any are close, so you can settle one there and then.",
-    mechanizedBy: "src/core/contradictions.ts#writeNeighbours",
+    mechanizedBy: "src/core/reconsolidation.ts#writeNeighbours",
   },
 ];
 
@@ -575,7 +575,7 @@ const REMEMBER: ToolSpec = {
     {
       claim:
         "`settle` settles two memories that already exist, by the same rules, and rewrites neither: the pair and a short why are the record.",
-      mechanizedBy: "src/core/counterpart.ts#settleContradiction -> src/core/contradictions.ts#settle",
+      mechanizedBy: "src/core/counterpart.ts#settleContradiction -> src/core/reconsolidation.ts#settle",
     },
     {
       claim:
@@ -1479,7 +1479,7 @@ const REFLECT: ToolSpec = {
     {
       claim:
         "`settle` settles two memories it was shown — changed, corrected or open — only with a plain reason, and the record names the reflection; it can be undone like any settle.",
-      mechanizedBy: "src/core/dream/reflect.ts#Reflections.settle -> src/core/contradictions.ts#settle",
+      mechanizedBy: "src/core/dream/reflect.ts#Reflections.settle -> src/core/reconsolidation.ts#settle",
     },
     {
       claim:

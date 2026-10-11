@@ -5,11 +5,11 @@
  * how, why), and the week's held corrections nobody has settled since
  * (2026-10-09); with `--pair`/`--holds`/`--over`/`--how` it settles one, as the
  * owner; `--undo <pair>` reverses a settle. Every decision is
- * `core/contradictions.ts`'s — this file only reads and prints. Reading works
+ * `core/reconsolidation.ts`'s — this file only reads and prints. Reading works
  * under observer; the two changes refuse there.
  */
-import { heldPairs } from "../../core/contradictions.js";
-import type { HeldPair } from "../../core/contradictions.js";
+import { heldPairs } from "../../core/reconsolidation.js";
+import type { HeldPair } from "../../core/reconsolidation.js";
 import type { Counterpart } from "../../core/counterpart.js";
 import type { ContradictionRow, SettleRow } from "../../core/store/index.js";
 import { CONTRADICTION_WINDOW_DAYS } from "../claude-code/doctor.js";

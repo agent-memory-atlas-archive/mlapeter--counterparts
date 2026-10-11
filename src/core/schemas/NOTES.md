@@ -381,7 +381,7 @@ archived for another reason no longer labels the next birth `schema.birth.after-
 `revision.ts`'s last arm was "link only" for an ordinary memory (owner ruling
 2026-09-04): the loser stayed live and in recall, and nothing said it was over. An
 AUTHORED `updates` now carries `how` (`changed` by default) and the arm calls
-`contradictions.ts#settleOnWrite`, which writes a pair and its trail row: `changed` cuts
+`reconsolidation.ts#settleOnWrite`, which writes a pair and its trail row: `changed` cuts
 the old memory's strength once through `physics.changedFade` and recall labels it
 earlier; `corrected` archives it `corrected`; `open` keeps both and labels each with the
 other. The rows above it are untouched — belief and identity take pressure, a

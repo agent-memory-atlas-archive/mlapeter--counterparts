@@ -1,5 +1,5 @@
 /**
- * CONTRADICTIONS as a mechanism (2026-09-29) — `core/contradictions.ts`, the
+ * CONTRADICTIONS as a mechanism (2026-09-29) — `core/reconsolidation.ts`, the
  * ordinary-memory arm of `core/revision.ts`, schema v10's `contradictions` and
  * `contradiction_settles`, and the MCP doors that reach them.
  *
@@ -31,7 +31,7 @@ import {
   settle,
   undo,
   writeNeighbours,
-} from "../src/core/contradictions.js";
+} from "../src/core/reconsolidation.js";
 import { changedFade, creditUse, strength, unfade } from "../src/core/physics/index.js";
 import { applyRevision } from "../src/core/revision.js";
 import { Store, V10_UPGRADE_KEY } from "../src/core/store/index.js";

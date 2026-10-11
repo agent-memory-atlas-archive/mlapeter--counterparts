@@ -125,8 +125,8 @@ import {
   undo as undoContradiction,
   updateRelatedness,
   writeNeighbours,
-} from "./contradictions.js";
-import type { HeldUpdate, Neighbour, SettleInput, SettleOutcome, UndoOutcome } from "./contradictions.js";
+} from "./reconsolidation.js";
+import type { HeldUpdate, Neighbour, SettleInput, SettleOutcome, UndoOutcome } from "./reconsolidation.js";
 import { Schemas } from "./schemas/index.js";
 import {
   HANDOFF_CLEARED_EVENT,
@@ -4298,7 +4298,7 @@ export class Counterpart {
   }
 
   /**
-   * SETTLE A CONTRADICTION (2026-09-29, `contradictions.ts`) — an existing
+   * SETTLE A CONTRADICTION (2026-09-29, `reconsolidation.ts`) — an existing
    * pair, or two memories by `holds` and `over` — with the `why` through the
    * SECRETS half of the battery: a reason is words, and a credential must not
    * land in the trail any more than in a body.
@@ -4310,7 +4310,7 @@ export class Counterpart {
     });
   }
 
-  /** Undo a settle (`contradictions.ts#undo`), the reason through the same scan. */
+  /** Undo a settle (`reconsolidation.ts#undo`), the reason through the same scan. */
   undoContradiction(input: Parameters<typeof undoContradiction>[1]): UndoOutcome {
     return undoContradiction(this.store, {
       ...input,
@@ -4319,7 +4319,7 @@ export class Counterpart {
   }
 
   /**
-   * The nearest few live memories of one just written (`contradictions.ts
+   * The nearest few live memories of one just written (`reconsolidation.ts
    * #writeNeighbours`), for the write's result — minus the memory it updates.
    */
   writeNeighbours(id: string, opts: { exclude?: readonly string[]; owner: boolean }): Neighbour[] {
@@ -6500,7 +6500,7 @@ export class Counterpart {
    * writer's word, and a weaker writer points at the wrong one (a 10-02
    * benchmark read: a Haiku writer, about two thirds of 149 pairs; on the
    * owner's store, Opus, all 10 checked were right). The pair is read by
-   * `contradictions.ts#updateRelatedness` — by meaning through the local
+   * `reconsolidation.ts#updateRelatedness` — by meaning through the local
    * embedder, by shared content words when there is none — and an unrelated
    * one comes back as a hold. Null: the declaration goes on as written.
    *

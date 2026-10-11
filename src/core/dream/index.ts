@@ -74,7 +74,7 @@ import { chapterEntries, entryKey, fitEpisodes, shownEntry } from "./slices.js";
 import type { ChapterEntry, EpisodeInView, EpisodesFit, ShownChapter, ShownEntry } from "./slices.js";
 import { BUNDLE_OWNER, DREAM_ACTIONS, DREAM_TUNABLES } from "./tunables.js";
 import type { DreamAction } from "./tunables.js";
-import { flag as flagContradiction, pairStanding, settle as settleContradiction, undo as undoContradiction } from "../contradictions.js";
+import { flag as flagContradiction, pairStanding, settle as settleContradiction, undo as undoContradiction } from "../reconsolidation.js";
 
 export { DREAM_ACTIONS, DREAM_TUNABLES } from "./tunables.js";
 export type { DreamAction } from "./tunables.js";

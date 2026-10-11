@@ -1,5 +1,6 @@
 /**
- * CONTRADICTIONS — the mechanism (2026-09-29). Reconsolidation and
+ * RECONSOLIDATION (2026-09-29 as `contradictions.ts`; renamed 2026-10-11,
+ * Group 2: noticing and updating are one process). Reconsolidation and
  * interference: two memories that disagree are noticed, settled, and the
  * settlement is kept and can be undone. A file beside `revision.ts`, not a
  * module, for the reason `revision.ts` is one: it is the seam where a memory

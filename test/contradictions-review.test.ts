@@ -15,7 +15,7 @@ import type { Io } from "../src/adapters/cli/index.js";
 import { mechanismEvidence } from "../src/adapters/mechanism-evidence.js";
 import { openServer } from "../src/adapters/mcp/index.js";
 import type { McpServer, ToolResult } from "../src/adapters/mcp/index.js";
-import { CONTRADICTION_TUNABLES, flag, settle, undo } from "../src/core/contradictions.js";
+import { CONTRADICTION_TUNABLES, flag, settle, undo } from "../src/core/reconsolidation.js";
 import { Counterpart } from "../src/core/counterpart.js";
 import { MIND_SEEN_PREFIX, mindRanked } from "../src/core/dream/mind.js";
 import { TUNABLES, pruneVerdict, strength } from "../src/core/physics/index.js";

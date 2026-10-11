@@ -37,7 +37,7 @@ import { healthView, pageCostOf, wakeCosts } from "../src/adapters/dashboard/web
 import type { WakeCosts } from "../src/adapters/dashboard/web/views/health.js";
 import { pageTooLargeLine, pageTopLine } from "../src/core/self/briefing.js";
 import { truncationMarker } from "../src/core/self/page.js";
-import { CORRECTED_REASON } from "../src/core/contradictions.js";
+import { CORRECTED_REASON } from "../src/core/reconsolidation.js";
 import { DREAM_MERGE_REASON, DREAM_UNDONE_REASON } from "../src/core/dream/index.js";
 import { TUNABLES as SCHEMA_TUNABLES } from "../src/core/schemas/index.js";
 import { MERGE_ARCHIVE_REASON, PRUNE_ARCHIVE_REASON, markerKey } from "../src/core/sleep/index.js";

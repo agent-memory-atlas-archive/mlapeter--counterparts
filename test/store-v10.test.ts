@@ -13,7 +13,7 @@ import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { settle } from "../src/core/contradictions.js";
+import { settle } from "../src/core/reconsolidation.js";
 import { MIND_SEEN_PREFIX, mindRanked } from "../src/core/dream/mind.js";
 import { OBSERVER_READ_FLOOR, SCHEMA_VERSION, Store, V10_UPGRADE_KEY, carriedPairId, isStoreError, paths } from "../src/core/store/index.js";
 import type { StoreOptions } from "../src/core/store/index.js";

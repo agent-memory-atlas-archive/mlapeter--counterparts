@@ -93,8 +93,8 @@ import type { ChapterEntry, EpisodeInView, EpisodesFit, ShownChapter } from "./s
 import { BUNDLE_OWNER, DREAM_TUNABLES } from "./tunables.js";
 import { mindRanked, noteMindShown } from "./mind.js";
 import type { MindItem } from "./mind.js";
-import { settle as settleContradiction } from "../contradictions.js";
-import type { SettleOutcome } from "../contradictions.js";
+import { settle as settleContradiction } from "../reconsolidation.js";
+import type { SettleOutcome } from "../reconsolidation.js";
 
 /** Every `reflect` knob, in one place. Working defaults of 2026-09-27; CAL = not yet measured. */
 export const REFLECT_TUNABLES = {
@@ -2172,7 +2172,7 @@ export class Reflections {
    * shown that disagree — a pair on "my mind", usually — when the reason is
    * plain. The waking write-up and sleep are the usual home; this is the
    * reflection's door, and the trail names it (`reflection`, its id). The
-   * settle itself is `contradictions.ts#settle`'s; `why` crosses the
+   * settle itself is `reconsolidation.ts#settle`'s; `why` crosses the
    * credential scan first, and a settle with no reason is refused.
    */
   settle(input: { reflection: string; session?: string; holds: string; over: string; how: string; why: string }): SettleOutcome {

@@ -20,7 +20,7 @@ import { join } from "node:path";
 import { McpServer, openServer } from "../src/adapters/mcp/index.js";
 import type { ToolResult } from "../src/adapters/mcp/index.js";
 import { recordSession } from "../src/adapters/sessions.js";
-import { settle, writeNeighbours } from "../src/core/contradictions.js";
+import { settle, writeNeighbours } from "../src/core/reconsolidation.js";
 import { Counterpart, MCP_OVERSIZE_EVENT } from "../src/core/counterpart.js";
 import { onMyMind } from "../src/core/dream/mind.js";
 import { TOOL_RESULT_CEILING, wireChars } from "../src/core/fit/index.js";

@@ -56,8 +56,8 @@
  */
 import { CLAIM_NOTHING_NEW, claimUnwritten } from "../../core/coverage/index.js";
 import { DREW_ON_MAX_PER_BOUNDARY, MCP_OVERSIZE_EVENT, MCP_PART_EVENT, MCP_RECALL_EVENT, RECALL_CREDIT_EVENT, boundedIds } from "../../core/counterpart.js";
-import { CONTRADICTION_TUNABLES, HELD_HINT, NEIGHBOURS_HINT } from "../../core/contradictions.js";
-import type { Neighbour } from "../../core/contradictions.js";
+import { CONTRADICTION_TUNABLES, HELD_HINT, NEIGHBOURS_HINT } from "../../core/reconsolidation.js";
+import type { Neighbour } from "../../core/reconsolidation.js";
 import { isRecurrence, localDate, occurrenceOnOrAfter, parseCalendarDate, readableRecurrence, todayIn } from "../../core/time.js";
 import type { Recurrence } from "../../core/time.js";
 import type { ChapterResult, Counterpart, DepositResult, SentFacts } from "../../core/counterpart.js";
@@ -1919,7 +1919,7 @@ export class McpServer {
   /**
    * `remember` with `settle` and no `text` (2026-09-29): settle two memories that
    * already exist — a flagged pair, or two a write showed — and write nothing
-   * else. The settle is `contradictions.ts#settle`'s, attributed to this
+   * else. The settle is `reconsolidation.ts#settle`'s, attributed to this
    * session on the trail.
    */
   private settleOnly(arg: Record<string, unknown>): ToolResult {

@@ -76,7 +76,7 @@ import {
   preMigrationDir,
 } from "../../core/store/index.js";
 import { BUSY_TIMEOUT_MS, journalModeOf } from "../../core/store/db.js";
-import { heldCorrections } from "../../core/contradictions.js";
+import { heldCorrections } from "../../core/reconsolidation.js";
 import { CLI_SCRIPT, NODE_HOOKS, bundledModelDir } from "../runtime.js";
 import { acceptsReflectedFeeling, laterFeelingWasAwake, laterFeelingWasReflections, selfRelevantFeeling } from "../../core/sleep/index.js";
 import { TUNABLES as ASSOCIATE_TUNABLES, isDead, pairKey } from "../../core/associate/index.js";
