@@ -662,6 +662,9 @@ describe("plain reminders reach the person AND the model, through the hooks", ()
     const out = JSON.parse(delivered.stdout) as Record<string, unknown>;
     expect(out["systemMessage"]).toBe("Today: pay your taxes");
     expect(a.counterpart.store.eventLog({ name: PROSPECTIVE_PLAIN_EVENT })).toHaveLength(1);
+    // The row names the session it was told in (2026-10-11).
+    const told = JSON.parse(a.counterpart.store.eventLog({ name: PROSPECTIVE_PLAIN_EVENT })[0]?.payload ?? "{}") as Record<string, unknown>;
+    expect(told["session"]).toBe("s1");
 
     // The same session's first prompt does not say it again.
     const turn = a.userPromptSubmit(input({ prompt: "morning" }));

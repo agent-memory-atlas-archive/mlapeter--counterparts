@@ -31,6 +31,7 @@
  * transitions never stall a host-facing path, and every refusal has a name.
  */
 import type { Kind } from "../types.js";
+import { isKnownSession } from "../types.js";
 import { strength } from "../physics/index.js";
 import type { UseTier } from "../physics/index.js";
 import type { ProseDoc, ProspectiveInput, ProspectiveRow, Store } from "../store/index.js";
@@ -818,7 +819,7 @@ export class Prospective {
    * the update notice's "mark first, show only if marked" (roadmap E). An
    * observer marks nothing and is therefore told nothing.
    */
-  claimPlain(due: PlainDue, opts: { at: string; day?: number }): boolean {
+  claimPlain(due: PlainDue, opts: { at: string; day?: number; session?: string }): boolean {
     if (this.observer) return false;
     const day = opts.day ?? this.store.livedDay();
     try {
@@ -826,7 +827,15 @@ export class Prospective {
         name: PROSPECTIVE_PLAIN_EVENT,
         day,
         ref: due.memoryId,
-        payload: { window: due.windowKey, beat: due.beat, precision: due.precision, date: opts.at, mode: "plain" },
+        payload: {
+          window: due.windowKey,
+          beat: due.beat,
+          precision: due.precision,
+          date: opts.at,
+          mode: "plain",
+          // The session it was told in, when the caller knows (2026-10-11).
+          ...(isKnownSession(opts.session) ? { session: opts.session } : {}),
+        },
         dedupKey: `${PROSPECTIVE_PLAIN_EVENT}:${due.memoryId}:${due.windowKey}:${due.beat}`,
       });
       if (seq > 0) {
@@ -1077,6 +1086,8 @@ export class Prospective {
       // near midnight or far from UTC is counted on the day it was asked
       // (2026-09-26 review — the gauge test failed in Pacific/Auckland).
       date: input.at,
+      // The session whose turn it came back in, when known (2026-10-11).
+      ...(isKnownSession(input.sessionId) ? { session: input.sessionId } : {}),
     });
     return { fired: true, reason: "fired", derivation: null, fires, state: "fired" };
   }

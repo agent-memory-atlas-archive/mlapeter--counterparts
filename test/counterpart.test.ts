@@ -663,7 +663,7 @@ describe("co-activation crosses the process line on disk", () => {
     expect(pending()).toEqual([]);
   });
 
-  test("the apply leaves ONE row: counts, reasons, and never an id", () => {
+  test("the apply leaves ONE row: counts, reasons, and the memories it wired, bounded", () => {
     const c = brain();
     const [a, b, d] = memories(c, 3) as [string, string, string];
     c.store.advanceClock("2026-08-26");
@@ -684,10 +684,13 @@ describe("co-activation crosses the process line on disk", () => {
     expect(row?.["stuck"]).toBe(0);
     expect(row?.["day"]).toBe(c.store.livedDay());
     expect(Number(row?.["oldestMs"])).toBeGreaterThanOrEqual(0);
-    // Content-by-reference: the row carries counts, and the ids live in the
-    // edge rows where they ARE the record.
-    const text = JSON.stringify(row);
-    for (const id of [a, b, d]) expect(text).not.toContain(id);
+    // Ids, never text (2026-10-11, for the sidebar mod): the memories it wired,
+    // once each, at most ROW_IDS_MAX, with their count. The edge rows are still
+    // the record of what links to what; the row only names who took part.
+    expect([...(row?.["ids"] as string[])].sort()).toEqual([a, b, d].sort());
+    expect(row?.["idCount"]).toBe(3);
+    // No session was named, so none is written.
+    expect(row !== undefined && "session" in row).toBe(false);
   });
 
   test("links do NOT inherit the once-a-day credit rule: a memory used again later links to a new one", () => {

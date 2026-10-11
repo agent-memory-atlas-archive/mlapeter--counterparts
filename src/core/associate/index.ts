@@ -134,6 +134,10 @@ export interface FlushReport {
   /** Which nodes were scaled back, on a flush that landed (2026-09-28) — so a
    *  caller can say which of its deltas pushed a node to its bound. */
   readonly renormalizedNodes?: readonly string[];
+  /** The memories this flush wired together — both ends of every pair that
+   *  passed the boundary's re-check, distinct, in first-seen order — on a
+   *  flush that landed (2026-10-11, for the `associate.flush` row's `ids`). */
+  readonly linkedIds?: readonly string[];
   readonly nodesTouched: number;
   /** Pairs dropped because an endpoint stopped conducting between the turn and
    *  the boundary — archived, superseded, or taken dark. */
@@ -502,6 +506,7 @@ export class Associate {
       evictions: plan.evictions,
       renormalized: plan.renormalized.length,
       renormalizedNodes: plan.renormalized,
+      linkedIds: [...new Set(live.flatMap((p) => [p.a, p.b]))],
       nodesTouched: plan.nodesTouched,
       blocked,
       dropped: 0,

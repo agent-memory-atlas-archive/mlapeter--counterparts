@@ -205,6 +205,7 @@ import type {
 import { TUNABLES as PHYSICS, band as bandOf, fadeOf } from "./physics/index.js";
 import type { UseTier } from "./physics/index.js";
 import type { Kind } from "./types.js";
+import { boundedIds, isKnownSession } from "./types.js";
 
 /** What `Counterpart.markAbout` did, or why it did nothing. */
 export type MarkAboutOutcome =
@@ -572,6 +573,13 @@ export interface DrewOnResult {
  * Since 2026-09-28 the boundary's OWN flush writes one too, with the same
  * fields plus `source: "boundary"` and `contiguity` (what temporal contiguity
  * planned and buffered) — but only when it flushed something: the same rule.
+ *
+ * Since 2026-10-11 (for the sidebar mod, lightly held) both rows also name the
+ * memories they wired together, bounded (`ids`, at most `ROW_IDS_MAX`, and
+ * `idCount`; absent when nothing passed the re-check), and the `session` whose
+ * boundary ran the flush when the caller said (`SessionEndInput.session`). That
+ * is the APPLYING session: a carried claim can hold lines several sessions
+ * credited, and the pending file does not say whose.
  */
 export const ASSOCIATE_FLUSH_EVENT = "associate.flush";
 
@@ -689,19 +697,34 @@ export const SPAWN_STARTED_EVENT = "adapter.spawn.started";
  * and "the session never asked" were the same silence, and the fired view could
  * only mark the mechanism blind.
  *
- * **Counts and reasons. NEVER the question, never a body, and no ids.** The
- * question is the one field here that could carry somebody's private words
- * (scar §2.20), so its LENGTH is recorded and its text is not; and a row
- * pairing a set of memory ids with the moment they were asked for is a link the
- * store does not need to hold in order to answer "did this fire, and what
- * stopped it". `blockedBy` is the refusal column — every verdict the deeper
- * look did not admit, by name — which is what makes "nothing came back" tell
- * "there was nothing" from "it was all gated".
+ * **Counts and reasons. NEVER the question, never a body.** The question is
+ * the one field here that could carry somebody's private words (scar §2.20),
+ * so its LENGTH is recorded and its text is not. `blockedBy` is the refusal
+ * column — every verdict the deeper look did not admit, by name — which is what
+ * makes "nothing came back" tell "there was nothing" from "it was all gated".
+ *
+ * IDS AND THE SESSION (2026-10-11, for the sidebar mod, lightly held): the row
+ * now carries the ids it DELIVERED, bounded (`boundedIds`: at most
+ * `ROW_IDS_MAX`, plus `idCount`), and the `session` it was served to when one
+ * is known. It used to carry no ids, on the ground that pairing ids with the
+ * moment they were asked for was a link the store need not hold — but
+ * `recall.decision` has written the ids of every surfacing, with its session,
+ * since E2, so the line was never the store's policy, and without the ids the
+ * sidebar could not say what a look-up opened.
  *
  * NO `dedupKey`: a tool call is a deliberate act by a session, not a boundary
  * that repeats on a timer, and it is bounded by the host's own tool budget.
  */
 export const MCP_RECALL_EVENT = "mcp.recall";
+
+// The bound on ids an event row names lives with the other shared shapes
+// (`types.ts#boundedIds`); re-exported for the adapters that write such rows.
+export { ROW_IDS_MAX, boundedIds } from "./types.js";
+
+/** `boundedIds`, or nothing at all when there are none (a flush that linked nothing). */
+function rowIds(ids: readonly string[]): { ids?: string[]; idCount?: number } {
+  return ids.length === 0 ? {} : boundedIds(ids);
+}
 /**
  * WHAT REACHED THE MODEL, NOT WHAT RAN (2026-10-02). Two rows the MCP server
  * writes because a tool result the host would not show looked, from the
@@ -1307,6 +1330,9 @@ export interface SessionEndInput {
   sweep?: SweepEntry | SweepSkipped;
   /** Override the ceiling reported at wake, for this boundary only. */
   budgetBytes?: number;
+  /** The session whose boundary this is, when the caller knows (2026-10-11):
+   *  stamped on the `associate.flush` rows this boundary writes. */
+  session?: string;
 }
 
 /** What an appended chapter comes back as, gate verdict included. */
@@ -3317,13 +3343,17 @@ export class Counterpart {
    * (`Prospective.claimPlain`), so two processes racing for the same beat
    * cannot both show it. Show the line only on true. Never throws.
    */
-  claimPlainReminder(reminder: PlainDue, input: { at: string; day?: number }): boolean {
+  claimPlainReminder(reminder: PlainDue, input: { at: string; day?: number; session?: string }): boolean {
     if (this.observer) return false;
     try {
       const day = input.day ?? this.store.livedDay();
       // Asked BEFORE the claim, which is itself what would make it false.
       const first = this.prospective.occurrenceUndelivered(reminder.memoryId, reminder.windowKey);
-      const claimed = this.prospective.claimPlain(reminder, { at: input.at, day });
+      const claimed = this.prospective.claimPlain(reminder, {
+        at: input.at,
+        day,
+        ...(input.session === undefined ? {} : { session: input.session }),
+      });
       if (claimed && first) this.creditOccurrence(reminder.memoryId, reminder.windowKey, day, "plain");
       // TOLD ON ITS DAY, IT LEAVES "ARRIVING:" (2026-09-29) — and the wake
       // published before the telling still lists it, until something
@@ -3969,7 +3999,7 @@ export class Counterpart {
    * A run that carried nothing writes no row (see `ASSOCIATE_FLUSH_EVENT`). An
    * observer claims nothing: the stand-down is checked before the rename.
    */
-  applyPendingAssociations(opts: { now?: number; staleMs?: number } = {}): PendingApplyReport {
+  applyPendingAssociations(opts: { now?: number; staleMs?: number; session?: string } = {}): PendingApplyReport {
     const idle: PendingApplyReport = {
       reason: "nothing-pending",
       claims: 0,
@@ -4012,6 +4042,7 @@ export class Counterpart {
       ),
     };
     let failure: string | null = null;
+    const linked: string[] = [];
     for (const claim of claims) {
       out.passes += claim.passes;
       out.pairs += claim.deltas.length;
@@ -4031,6 +4062,7 @@ export class Counterpart {
         out.evicted += report.evictions.length;
         out.swept += report.swept;
         out.dropped += report.dropped;
+        linked.push(...(report.linkedIds ?? []));
       }
       // `busy` is not applied either, and it is the subtle one: `flush()`
       // returns it WITHOUT draining, so the claim's deltas were never
@@ -4082,6 +4114,10 @@ export class Counterpart {
       corrupt: out.corrupt,
       stuck: out.stuck,
       oldestMs: out.oldestMs,
+      ...rowIds(linked),
+      // The APPLYING session (2026-10-11): the boundary whose worker carried
+      // these claims. A claim may hold lines several sessions credited.
+      ...(isKnownSession(opts.session) ? { session: opts.session } : {}),
     };
     if (failure !== null) data["error"] = failure;
     this.emit("counterpart.associate.applied", undefined, {
@@ -4911,7 +4947,8 @@ export class Counterpart {
     // What the buffered pairs BECAME, now the flush has landed (review of
     // #281, findings 2 and 9): links that conduct, and what they cost.
     const contiguity = this.contiguityOutcome(planned, edges);
-    if (this.recordBoundaryFlush(edges, contiguity) && planned.pairs.length > 0) this.clearContiguityPending();
+    const session = isKnownSession(input.session) ? input.session : undefined;
+    if (this.recordBoundaryFlush(edges, contiguity, session) && planned.pairs.length > 0) this.clearContiguityPending();
     // The hooks' own co-activation, applied in the process that can afford to
     // wait on the write lock. After the in-process flush, so a single-process
     // caller's own deltas are not sitting in the buffer when a claim is
@@ -4919,7 +4956,7 @@ export class Counterpart {
     // still on disk and a boundary is worth more than a retry.
     let carried: PendingApplyReport | null = null;
     try {
-      carried = this.applyPendingAssociations();
+      carried = this.applyPendingAssociations(session === undefined ? {} : { session });
     } catch (err) {
       this.emit("counterpart.associate.apply.failed", undefined, { code: errCode(err) });
     }
@@ -5194,7 +5231,7 @@ export class Counterpart {
    * so no new event name; `rows` 0 on those. Never throws; true when a row
    * landed, which is what clears the cursor's pending mark.
    */
-  private recordBoundaryFlush(edges: FlushReport, contiguity: ContiguityPass): boolean {
+  private recordBoundaryFlush(edges: FlushReport, contiguity: ContiguityPass, session?: string): boolean {
     const flushed = edges.reason === "flushed" || edges.reason === "failed";
     const contiguitySays = contiguity.reason === "failed" || contiguity.buffered > 0 || contiguity.lostEarlier > 0;
     if (!flushed && !contiguitySays) return false;
@@ -5215,6 +5252,8 @@ export class Counterpart {
       corrupt: 0,
       stuck: 0,
       oldestMs: 0,
+      ...rowIds(edges.linkedIds ?? []),
+      ...(session === undefined ? {} : { session }),
       contiguity: {
         reason: contiguity.reason,
         ...(contiguity.code === undefined ? {} : { code: contiguity.code }),

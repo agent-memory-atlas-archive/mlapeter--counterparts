@@ -331,6 +331,22 @@ were refined by b2+f8 at the review of #369, named where they were):
   used): heights differ on ~2.7% of rows, bands move on ~0.04%, all down (3–8-use rows, whose
   arm drops by up to 0.11); `self`/`person` (no repetition arm) never move.
 
+### Decided by the event-fields builder, 2026-10-11, lightly held (ids and session on events, for the sidebar mod)
+
+- Decided by the event-fields builder, 2026-10-11, lightly held: the durable `mcp.recall` row
+  now names the memory ids it DELIVERED (`ids`, at most 20, and `idCount`), reversing its old
+  "no ids" line. Why: `recall.decision` has written every surfacing's ids with its session
+  since E2, so the line was never the store's policy, and the sidebar could not say what a
+  look-up opened. Ids only, never text; confidential memories are not filtered out of the
+  list, as `recall.decision` does not filter them.
+- Decided by the event-fields builder, 2026-10-11, lightly held: `associate.flush`'s `session`
+  is the session whose boundary APPLIED the flush, not necessarily the one that credited the
+  pairs: the pending file can hold lines from several sessions and does not say whose (adding
+  that would change its on-disk format). Its `ids` are both ends of every pair that passed the
+  boundary's re-check — which reverses this row's old "never an id" (the edge rows stay the
+  record of what links to what). Rows from a caller that knows no session carry no `session` at all,
+  never the unbound sentinel, so a reader falls back on its own guess.
+
 ### Also noted
 
 - **A read-without-crediting mode for audits.** A way to read memories (a review, a rules
