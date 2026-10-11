@@ -1320,14 +1320,20 @@ export function keyHistory(store: Store | null): KeyHistory {
 }
 
 /**
- * HAS THE BACKFILL EVER RUN HERE (2026-10-11) — any row at all, asked directly:
- * `newestBackfill` reads null both for "none" and for "too many to say", and
- * only the first means a store that has not yet lived a boundary. A store that
- * will not answer is read as having run, so the line keeps its amber.
+ * HAS THIS STORE LIVED A BOUNDARY (2026-10-11) — a backfill row or a sweep row,
+ * any at all, asked directly: `newestBackfill` reads null both for "none" and
+ * for "too many to say", and only the first means a store that has not yet
+ * lived a boundary. The sweep row counts too (review of #393): a backfill that
+ * throws every run writes no row of its own, but the sweep after it still
+ * does, and that store's shortfall is a fault, not "not built yet". A store
+ * that will not answer is read as having lived one, so the line keeps its amber.
  */
-function backfillEverRan(store: Store): boolean {
+function livedABoundary(store: Store): boolean {
   try {
-    return store.eventLog({ name: EMBED_BACKFILL_EVENT, limit: 1 }).length > 0;
+    return (
+      store.eventLog({ name: EMBED_BACKFILL_EVENT, limit: 1 }).length > 0 ||
+      store.eventLog({ name: SWEEP_GATE_EVENT, limit: 1 }).length > 0
+    );
   } catch {
     return true;
   }
@@ -2557,11 +2563,13 @@ function vectorFindings(input: DoctorInput, store: Store): Finding[] {
   }
   // NOT BUILT YET IS NOT A FAULT (2026-10-11): a brand-new install read amber
   // here before its first session, in words a new user cannot act on. Every
-  // backfill run writes its row, so a store with none has never had one: the
-  // vectors are built at the end of the first session. A store that has run
-  // one and still has a shortfall keeps the amber below.
-  if (unembedded > 0 && !backfillEverRan(store)) {
-    return [finding("vectors", "green", "Vectors", `${unembedded} memories not searchable by meaning yet — this builds after your first session`, "", data)];
+  // backfill run and every sweep writes its row, so a store with neither has
+  // never had a boundary: the vectors are built at the end of the first
+  // session. A store that has lived one and still has a shortfall keeps the
+  // amber below.
+  if (unembedded > 0 && !livedABoundary(store)) {
+    const memories = unembedded === 1 ? "1 memory" : `${unembedded} memories`;
+    return [finding("vectors", "green", "Vectors", `${memories} not searchable by meaning yet — this builds after your first session`, "", data)];
   }
   if (unembedded > 0) {
     return [finding("vectors", "amber", "Vectors", detail, "The backfill embeds up to 1,000 per boundary; this number must fall run over run.", data)];

@@ -17,7 +17,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { EMBED_BACKFILL_EVENT } from "../src/core/counterpart.js";
+import { EMBED_BACKFILL_EVENT, SWEEP_GATE_EVENT } from "../src/core/counterpart.js";
 import { RETENTION_EVENT } from "../src/core/remember/index.js";
 import { STATIC_WEIGHTS_ENV, resolveStaticWeights } from "../src/core/embed/static.js";
 import { heldExits, Store, paths } from "../src/core/store/index.js";
@@ -294,6 +294,16 @@ describe("Vectors before the first session, and after", () => {
     const v = by(reading(STATIC), "vectors");
     expect(v.severity).toBe("amber");
     expect(v.fix).toContain("must fall");
+    expect(v.detail).not.toContain("first session");
+  });
+
+  test("a store that has swept but never written a backfill row (the backfill threw): amber, not 'not built yet' (review of #393)", () => {
+    const s = writer();
+    s.put({ type: "memory", kind: "fact", body: "one memory" });
+    s.appendEvent({ name: SWEEP_GATE_EVENT, day: s.livedDay(), payload: { date: "2026-09-22" } });
+    opened.splice(0).forEach((x) => x.close());
+    const v = by(reading(STATIC), "vectors");
+    expect(v.severity).toBe("amber");
     expect(v.detail).not.toContain("first session");
   });
 });
