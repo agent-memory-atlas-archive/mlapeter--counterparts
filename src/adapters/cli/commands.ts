@@ -2583,7 +2583,7 @@ function aboutCommand(dir: string, io: Io, parsed: Parsed, observer: boolean, na
         : `${out.id} was already about ${out.mark}; it is recorded as yours now.`,
     );
     if (out.forwardedFrom !== undefined) io.out(`  ${out.forwardedFrom} is an earlier version; the current one, ${out.id}, carries the mark.`);
-    if (why.length > 0) io.out(`  Why, as recorded: ${why}`);
+    if (out.why !== null) io.out(`  Why, as recorded: ${out.why}`);
     if (out.note !== undefined) io.out(`  ${out.note}`);
     return EXIT.ok;
   } finally {

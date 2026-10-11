@@ -217,6 +217,8 @@ export type MarkAboutOutcome =
       readonly before: AboutMark | null;
       readonly changed: boolean;
       readonly archived: boolean;
+      /** The why as recorded (credentials redacted), or null when none was given. */
+      readonly why: string | null;
       readonly note?: string;
     }
   | { readonly ok: false; readonly reason: string; readonly detail: string };
@@ -4201,7 +4203,10 @@ export class Counterpart {
       }
     }
     const notes: string[] = [];
-    const why = (input.why ?? "").trim();
+    // Through the SECRETS half of the battery, as a settle's why and the
+    // reflection's: a reason is words, and a credential must not land in the
+    // trail any more than in a body.
+    const why = redactSecrets((input.why ?? "").trim());
     if (input.by === "self" && why.length === 0) notes.push("No why was given; the mark records that. Say why next time.");
     if (row.kind === "skill" && core) notes.push("A skill memory is the craft and never becomes core, whatever its mark.");
     if (row.archived === 1) notes.push("It is archived: the mark is kept, and counts if it comes back.");
@@ -4217,6 +4222,7 @@ export class Counterpart {
       before: set.before,
       changed: set.changed,
       archived: row.archived === 1,
+      why: why.length > 0 ? why : null,
       ...(notes.length > 0 ? { note: notes.join(" ") } : {}),
     };
   }

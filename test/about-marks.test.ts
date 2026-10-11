@@ -268,3 +268,116 @@ describe("the session's door: remember's remark, by self", () => {
     }
   });
 });
+
+describe("remark beside each other part: an error only when nothing landed (review of #383)", () => {
+  type R = { isError?: boolean; structuredContent: Record<string, unknown> };
+  const err = (r: R): boolean => r.isError === true;
+  const remarkOk = (r: R): boolean => (r.structuredContent["remark"] as { ok?: boolean } | undefined)?.ok === true;
+
+  async function serverWith(): Promise<{ s: ReturnType<typeof openServer>; shown: string; other: string; a: string; b: string }> {
+    const ids = withBrain((c) => {
+      c.store.advanceClock("2026-09-01");
+      const shown = mem(c, "Winter plan: which projects Mike keeps going through the cold months.");
+      const other = mem(c, "The night run pins its token line with an env var.");
+      const a = mem(c, "Retro is on Fridays.");
+      const b = mem(c, "Retro is on Thursdays.");
+      for (const d of ["2026-09-02", "2026-09-03", "2026-09-04"]) c.store.advanceClock(d);
+      return { shown, other, a, b };
+    });
+    const s = openServer({ dir, session: SESSION, scope: SCOPE, owner: true });
+    await s.call("recall", { ids: [ids.shown, ids.other] });
+    return { s, ...ids };
+  }
+
+  test("beside text: text lands + remark fails, not an error; text refused + remark lands, not an error; both fail, an error", async () => {
+    const { s, shown } = await serverWith();
+    try {
+      const r1 = (await s.call("remember", { text: "A brand new note about the release checklist order.", remark: { id: "mem_nope", about: "us" } })) as R;
+      expect(r1.structuredContent["stored"]).toBe(true);
+      expect(remarkOk(r1)).toBe(false);
+      expect(err(r1)).toBe(false);
+
+      // An early refusal of the note (salience not a number): the remark still lands.
+      const r2 = (await s.call("remember", { text: "Another note.", salience: "high", remark: { id: shown, about: "owner", why: "His plans." } })) as R;
+      expect(r2.structuredContent["reason"]).toBe("salience-not-a-number");
+      expect(remarkOk(r2)).toBe(true);
+      expect(err(r2)).toBe(false);
+      expect(s.counterpart.store.read(shown).about).toBe("owner");
+
+      const r3 = (await s.call("remember", { text: "Another note.", salience: "high", remark: { id: "mem_nope", about: "us" } })) as R;
+      expect(err(r3)).toBe(true);
+      // A bad mark on a shown memory is a failed remark too.
+      const r4 = (await s.call("remember", { text: "Another note.", salience: "high", remark: { id: shown, about: "personal" } })) as R;
+      expect((r4.structuredContent["remark"] as { reason: string }).reason).toBe("about-is-me-us-owner-work-or-world");
+      expect(err(r4)).toBe(true);
+    } finally {
+      s.counterpart.close();
+    }
+  });
+
+  test("beside a settle: each failing in turn", async () => {
+    const { s, shown, a, b } = await serverWith();
+    try {
+      const r1 = (await s.call("remember", { settle: { holds: b, over: a, how: "changed", why: "moved" }, remark: { id: "mem_nope", about: "us" } })) as R;
+      expect((r1.structuredContent["settle"] as { ok: boolean }).ok).toBe(true);
+      expect(remarkOk(r1)).toBe(false);
+      expect(err(r1)).toBe(false);
+
+      const r2 = (await s.call("remember", { settle: { holds: "mem_x1", over: "mem_x2", how: "changed", why: "x" }, remark: { id: shown, about: "us", why: "Ours." } })) as R;
+      expect((r2.structuredContent["settle"] as { ok: boolean }).ok).toBe(false);
+      expect(remarkOk(r2)).toBe(true);
+      expect(err(r2)).toBe(false);
+
+      const r3 = (await s.call("remember", { settle: { holds: "mem_x1", over: "mem_x2", how: "changed", why: "x" }, remark: { id: "mem_nope", about: "us" } })) as R;
+      expect(err(r3)).toBe(true);
+    } finally {
+      s.counterpart.close();
+    }
+  });
+
+  test("beside feelings now: each failing in turn", async () => {
+    const { s, shown, other } = await serverWith();
+    try {
+      const feel = (id: string) => [{ id, core: "calm", emotion: "relieved", strength: 0.9, carried_by: "It held." }];
+      const r1 = (await s.call("remember", { feelingsNow: feel(other), remark: { id: "mem_nope", about: "us" } })) as R;
+      expect((r1.structuredContent["feelingsNow"] as { recorded: number }).recorded).toBe(1);
+      expect(remarkOk(r1)).toBe(false);
+      expect(err(r1)).toBe(false);
+
+      const r2 = (await s.call("remember", { feelingsNow: feel("mem_nope"), remark: { id: shown, about: "us", why: "Ours." } })) as R;
+      expect((r2.structuredContent["feelingsNow"] as { recorded: number }).recorded).toBe(0);
+      expect(remarkOk(r2)).toBe(true);
+      expect(err(r2)).toBe(false);
+
+      const r3 = (await s.call("remember", { feelingsNow: feel("mem_nope"), remark: { id: "mem_nope", about: "us" } })) as R;
+      expect(err(r3)).toBe(true);
+    } finally {
+      s.counterpart.close();
+    }
+  });
+
+  test("a why with a credential in it is redacted before it reaches the record, from either door", async () => {
+    const { s, shown } = await serverWith();
+    const key = "sk-ant-api03-" + "A".repeat(90) + "AA";
+    try {
+      const r = (await s.call("remember", { remark: { id: shown, about: "owner", why: `His plans; the key was ${key}` } })) as R;
+      expect(remarkOk(r)).toBe(true);
+    } finally {
+      s.counterpart.close();
+    }
+    const token = "ghp_" + "b".repeat(36);
+    const out = await cli(["about", shown, "work", "--why", `typed ${token}`]);
+    expect(out.code).toBe(0);
+    // The console (and the dashboard, which shows its output) echoes the why as recorded.
+    expect(out.out.join("\n")).not.toContain(token);
+    expect(out.out.join("\n")).toContain("Why, as recorded: typed [REDACTED");
+    withBrain((c) => {
+      const reasons = aboutEvents(c, shown).map((e) => e.reason ?? "");
+      expect(reasons.length).toBe(2);
+      for (const why of reasons) {
+        expect(why).not.toContain(key);
+        expect(why).not.toContain(token);
+      }
+    });
+  });
+});
