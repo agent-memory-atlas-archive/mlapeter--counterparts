@@ -179,19 +179,31 @@ reverse older defaults and contract lines; those go to the rules audit.
 12. **One model for "this replaces that".** "Newer in the same slot" is `changed`; one detector
     (the write-time neighbours, plus status lineage or very high similarity) proposes, the
     dream confirms or undoes; the newest in a chain is what comes up on its own. (Group 2)
+    **Yes. Mike, 2026-10-11, lightly held.** One model, owned by the module now called
+    `contradictions.ts`, which is RENAMED `reconsolidation`; the detector lives there too. `inheritFrom`
+    (#400) is its seed. The rename happens inside the Group 2 build, not as a separate PR.
 13. **"Fade faster" is the existing `fade` multiplier**, not a new per-memory slope column.
     (2/3)
+   **Kept. Mike, 2026-10-11, lightly held** (agreed earlier in the walk, via random-06).
 14. **The core.** A recurrence lane (back on several days, across sessions, over weeks);
     identity means about me or us; after 60 lived days without coming back a core memory is
     FLAGGED "being reconsidered" (dashboard and wake) — demotion needs a decision, mine
     (awake or in the reflection) or Mike's, never automatic from disuse; both of us can retire
     a core memory directly. (3)
+   **Kept. Mike, 2026-10-11, lightly held** (agreed earlier in the walk, via random-06).
 15. **Folding.** A fold is a flag on `gist`, not a new verb; a fold starts at its sources'
     strength; reverse provenance goes in a `derivations` table. (3)
+    **As revised, Mike, 2026-10-11, lightly held.** A fold is a dream gist flagged `fold`. Its sources
+    fade through the existing `fade` (readings, felt, protected and core memories exempt). It starts at
+    its sources' strength. At most 5 a night. Recall leads with it. NO `derivations` table: gists already
+    store `meta.sources`, and the reverse lookup is a query over that. Cut for now: awake filing and
+    code-proposed clusters. Open for Group 3: today's caps keep any gist from the core (the review of
+    #403); folds starting at their sources' strength partly answer that.
 16. **The dream queue.** The whole queue ranked into tonight's top-K; a memory stays queued
     until it is below reach; the reflection runs in its own context. (3)
 17. **Cards as views**, not built in v1 (Mike's direction, 2026-10-10). (3)
 18. **A missed plain reminder is told once, later, within its 7-day grace.** (5)
+   **Kept. Mike, 2026-10-11, lightly held** (agreed earlier in the walk, via random-06).
 
 ### Decided by the Group 1a builder, 2026-10-10, lightly held; revisit after ~5 lived days
 
