@@ -91,6 +91,22 @@ describe("stitch", () => {
     expect(existsSync(join(repo, "changelog.d", "README.md"))).toBe(true);
   });
 
+  test("merged pull requests stitch in merge order, not the order their branches committed", () => {
+    const repo = makeRepo();
+    const base = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
+    // The branches commit a, b, c (in that order); the base merges c, a, b.
+    const at: Record<string, number> = { a: 1_700_100_000, b: 1_700_200_000, c: 1_700_300_000 };
+    for (const x of ["a", "b", "c"]) {
+      git(repo, ["checkout", "-q", "-b", `fix/${x}`, base]);
+      addFragment(repo, `fix-${x}.md`, `- **${x}.** entry\n`, at[x]);
+    }
+    git(repo, ["checkout", "-q", base]);
+    let when = 1_700_400_000;
+    for (const x of ["c", "a", "b"]) git(repo, ["merge", "-q", "--no-ff", `fix/${x}`, "-m", `merge ${x}`], (when += 100_000));
+    const result = stitch(repo, { check: true });
+    expect(result.fragments.map((f) => f.name)).toEqual(["fix-c.md", "fix-a.md", "fix-b.md"]);
+  });
+
   test("same commit ties by name; an uncommitted fragment comes last", () => {
     const repo = makeRepo();
     writeFileSync(join(repo, "changelog.d", "zeta.md"), "- **Zeta.** z\n");

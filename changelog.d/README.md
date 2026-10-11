@@ -16,9 +16,12 @@ spaces. For example:
 ```
 
 At release, `bun tools/changelog/stitch.ts` appends every fragment to the end of
-`## Unreleased`, in the order the files were first committed, and deletes them
+`## Unreleased`, in the order their pull requests merged, and deletes them
 ([RELEASING.md](../docs/RELEASING.md)). `bun tools/changelog/stitch.ts --check` prints what
 it would add and changes nothing; it fails when a fragment doesn't start with a `- `
-bullet. A change nobody using it would notice doesn't need a fragment.
+bullet.
+
+`CHANGELOG.md` is for people using Counterparts. When nothing changes for them (tests,
+tooling, CI, refactors, internal docs), write no fragment.
 
 A hotfix branched off a released tag can still edit `CHANGELOG.md` directly.

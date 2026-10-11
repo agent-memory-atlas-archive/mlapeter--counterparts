@@ -5,8 +5,9 @@
  * (named after the branch, `/` → `-`), so two PRs never edit the same lines of
  * CHANGELOG.md. At release, this tool appends every fragment's bullets to the end
  * of `## Unreleased`, after the bullets already there, and deletes the fragments
- * it used. Fragments go in the order their files were first added on the current
- * branch (oldest first; a file not yet committed counts as newest), ties by name.
+ * it used. Fragments go in the order their files landed on the current branch:
+ * the first-parent commit that added each file (for a pull request, its merge
+ * commit), oldest first; a file not yet committed counts as newest; ties by name.
  *
  * A fragment is one or more `- ` bullets, continuation lines indented. Blank lines
  * before a bullet are dropped (Unreleased has none between bullets). A fragment
@@ -29,7 +30,7 @@ export interface Fragment {
   name: string;
   /** The bullets, ready to append (no trailing newline). */
   body: string;
-  /** Commit time (seconds) the file was first added; Infinity when uncommitted. */
+  /** Commit time (seconds) the file landed on the first-parent line; Infinity when uncommitted. */
   addedAt: number;
 }
 
@@ -56,7 +57,10 @@ export function parseFragment(text: string): { body: string } | { problem: strin
 function firstAdded(repoDir: string, relPath: string): number {
   let out = "";
   try {
-    out = execFileSync("git", ["log", "--diff-filter=A", "--format=%ct", "--", relPath], {
+    // First-parent, merges diffed against their first parent: a fragment from a merged
+    // pull request dates from its merge, so fragments stitch in merge order rather than
+    // the order the branches happened to commit them.
+    out = execFileSync("git", ["log", "--first-parent", "-m", "--no-patch", "--diff-filter=A", "--format=%ct", "--", relPath], {
       cwd: repoDir,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
