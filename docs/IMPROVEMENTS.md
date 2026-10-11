@@ -513,6 +513,52 @@ were refined by b2+f8 at the review of #369, named where they were):
   reads `Earlier`. Accepted as built: a guest writer's neighbour whose head is confidential
   is left out; a neighbour whose head ranks below it is listed marked beside its head.
 
+### Decided by the Group 2 builder, 2026-10-11, lightly held (one model for "this replaces that", items 12–13)
+
+- Decided by the Group 2 builder, 2026-10-11, lightly held: a slot proposal is an UNSETTLED pair
+  with source `slot`, a trail row `propose` naming which holds, and the older's `fade` × 0.8. It is
+  labelled "may be out of date"; the head-wins rule waits for a confirmation. Why: the arithmetic
+  is not a reader (04 D1); unsettled rows already have every surface (the label, the dream's settle,
+  the undo), and a wrong proposal then costs a fifth of one memory's height for a night.
+- Decided by the Group 2 builder, 2026-10-11, lightly held: the rule is cos ≥ 0.85, or cos ≥ 0.80
+  with status lineage (`planned` → `done`, not `proposed` / `asked`) or with the two titles at ≥ 0.85
+  (a third arm beyond the brief). Same kind, same `about`, both authored, within 7 lived days, this
+  session's writes first, the nearest; never a dated memory, a reading or world memory, one already
+  settled over, one already waiting as the older of a proposal, the core, the protected, or a pair
+  that was ever a pair. Why: the bench's "1250 followers" / "close to 1300" is 0.82 by its whole
+  text and 0.89 by its titles; on the 10-11 copy the title arm added 2 proposals to 27; three
+  dated reminders for one event read 0.94 to each other.
+- Decided by the Group 2 builder, 2026-10-11, lightly held: the dream answers a proposal with its
+  own action, `slot {pair, same: true | false}`, at most 4 a night beside the ranked "on my mind"
+  items; false withdraws it (cut put back, never proposed again). Why: `settle open` would label two
+  different things "disagrees with".
+- Decided by the Group 2 builder, 2026-10-11, lightly held: whatever answers a proposal (a writer's,
+  a dream's or the owner's settle, or a settle that closes it) lifts the provisional cut first,
+  recorded so an undo puts it back with the pair unsettled. Why: confirmed lands at `CHANGED_FADE`,
+  not 0.4, and every step is exact.
+- Decided by the Group 2 builder, 2026-10-11, lightly held: in ambient recall a settled-over memory
+  is inhibited when its head is admitted or already in the session, and one reached alone is shown
+  as its head (the earlier's numbers, the head's words and label), out of the turn's background.
+  This revises "standing is a label, never a filter" for ambient recall only (recall CONTRACT §6b).
+  Why: on 10-10 earlier versions were shown 55 times after their settle, 51 without their head.
+- Decided by the Group 2 builder, 2026-10-11, lightly held: "the latest feeling" is the strongest of
+  the newest moment any were recorded at, whoever's; the core's fast lane keeps the strongest felt
+  at the time (`feeling_peak_lived`); a dream's feeling-now is capped at the latest. Why: a write's
+  feelings share one moment (owner 0.55 and self 0.35 on mem_6d48b8537011), and the fast lane is
+  about what was felt then. On the 10-11 copy 12 of 113 felt memories read lower, none higher, no
+  band moved; mem_6d48b8537011 reads 0.35 (its dream's later feeling), strength 0.414 → 0.397.
+- Decided by the Group 2 builder, 2026-10-11, lightly held: the guards (a reading or world memory
+  under a work or owner fact comes back `open`; a pending dated memory refuses a settle that would
+  move it) apply to every settler but the owner. Why: the owner's door has no limits elsewhere
+  either (guards loose-first).
+- Decided by the Group 2 builder, 2026-10-11, lightly held: the store's guard bar (p60 of 2000
+  random live pairs, floor 0.30) is measured at the first guarded write of a lived day and kept in
+  `meta` with its day, not in a sleep phase. Why: no new phase, marker or budget for a few hundred
+  vector reads a day. On the 10-11 copy it reads 0.47; 0 of 101 declared pairs would be held.
+- Decided by the Group 2 builder, 2026-10-11, lightly held: every settle that moves a memory closes
+  the unsettled pairs on it (an `open` one only when asked); an unsettled flag is asked again once,
+  at full weight, 7 lived days after it was raised.
+
 ### Also noted
 
 - **A read-without-crediting mode for audits.** A way to read memories (a review, a rules

@@ -559,8 +559,10 @@ items). Whatever answers a proposal LIFTS its cut first, so a confirmed `changed
 puts the provisional cut back with the pair unsettled again (`settleDetail().lifts`).
 Withdrawn ("two things"), the cut is put back and the pair is never proposed again.
 
-On the 10-11 copy of the owner's store (all 20 lived days, nearest older per new memory):
-29 proposals; 20 of them the writer had already settled `changed` itself; of the 9 it had
-not, a hand-read found about 6 right, 1 wrong and 2 unsure. The bench's a2f3aa27 pair
-("1250 followers" / "close to 1300") reads 0.82 by its whole text, 0.89 by its titles: the
-title arm is what catches it.
+On the 10-11 copy of the owner's store, the rule as it would have read at each write (all
+20 lived days, the nearest qualifying older per new memory): 29 proposals, 20 of which the
+writer had settled `changed` itself, sooner or later. A hand-read of 20 drawn at random: 17
+right, 1 wrong (one the reviews had also called wrong), 2 unsure. Replayed on the store as it stands (the writer's settles already made, so a memory
+already settled over is no candidate): 5 proposals over 20 lived days, 4 of them in the last 7
+— about one a day of what nobody linked. The bench's a2f3aa27 pair ("1250 followers" / "close
+to 1300") reads 0.82 by its whole text, 0.89 by its titles: the title arm is what catches it.
