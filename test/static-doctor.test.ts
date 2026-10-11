@@ -273,6 +273,31 @@ describe("Recall by meaning on a FRESH static install — no worker row yet", ()
   });
 });
 
+// A brand-new install's one jargon amber (2026-10-11): before the first
+// session nothing has been embedded, and that is not a fault.
+describe("Vectors before the first session, and after", () => {
+  test("memories and no backfill run yet: green, in plain words, nothing to do", () => {
+    writer().put({ type: "memory", kind: "fact", body: "one memory" });
+    opened.splice(0).forEach((s) => s.close());
+    const v = by(reading(STATIC), "vectors");
+    expect(v.severity).toBe("green");
+    expect(v.detail).toContain("builds after your first session");
+    expect(v.detail).not.toContain("per boundary");
+    expect(v.fix).toBe("");
+    expect(v.data["unembedded"]).toBe(1);
+  });
+
+  test("a store that has run the backfill and still has a shortfall: amber, as before", () => {
+    writer().put({ type: "memory", kind: "fact", body: "one memory" });
+    opened.splice(0).forEach((s) => s.close());
+    backfillRow({ embedded: 0, failed: 1, remaining: 1, attempted: 1, reason: "ran", codes: "", skipped: 0, kind: "static", weights: "package", model: "potion-base-8M" });
+    const v = by(reading(STATIC), "vectors");
+    expect(v.severity).toBe("amber");
+    expect(v.fix).toContain("must fall");
+    expect(v.detail).not.toContain("first session");
+  });
+});
+
 describe("the Config line names the key it could not read (review of #190, MINOR 5)", () => {
   test("`counterparts doctor --config` on a bad embedder.kind says which key, and what it must be", async () => {
     const configPath = join(root, "claude-code.json");

@@ -1319,6 +1319,20 @@ export function keyHistory(store: Store | null): KeyHistory {
   }
 }
 
+/**
+ * HAS THE BACKFILL EVER RUN HERE (2026-10-11) — any row at all, asked directly:
+ * `newestBackfill` reads null both for "none" and for "too many to say", and
+ * only the first means a store that has not yet lived a boundary. A store that
+ * will not answer is read as having run, so the line keeps its amber.
+ */
+function backfillEverRan(store: Store): boolean {
+  try {
+    return store.eventLog({ name: EMBED_BACKFILL_EVENT, limit: 1 }).length > 0;
+  } catch {
+    return true;
+  }
+}
+
 /** How many backfill rows the "has this store ever embedded" read looks at. */
 const KEY_HISTORY_ROWS = 200;
 
@@ -2540,6 +2554,14 @@ function vectorFindings(input: DoctorInput, store: Store): Finding[] {
   }
   if (skipped > 0) {
     return [finding("vectors", "amber", "Vectors", detail, "counterparts verify --dir <store> --retry-skipped puts the skipped ids back in the rotation.", data)];
+  }
+  // NOT BUILT YET IS NOT A FAULT (2026-10-11): a brand-new install read amber
+  // here before its first session, in words a new user cannot act on. Every
+  // backfill run writes its row, so a store with none has never had one: the
+  // vectors are built at the end of the first session. A store that has run
+  // one and still has a shortfall keeps the amber below.
+  if (unembedded > 0 && !backfillEverRan(store)) {
+    return [finding("vectors", "green", "Vectors", `${unembedded} memories not searchable by meaning yet — this builds after your first session`, "", data)];
   }
   if (unembedded > 0) {
     return [finding("vectors", "amber", "Vectors", detail, "The backfill embeds up to 1,000 per boundary; this number must fall run over run.", data)];
