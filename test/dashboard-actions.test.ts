@@ -252,7 +252,7 @@ describe("an action's fields become an argv the console reads as meant", () => {
       const r = await runAction(name, {}, ctx);
       expect(r.status).toBe(404);
     }
-    expect([...ACTIONS].sort()).toEqual(["ask", "backup", "doctor", "export", "note", "rebrief", "remove", "scope", "verify"]);
+    expect([...ACTIONS].sort()).toEqual(["about", "ask", "backup", "doctor", "export", "note", "rebrief", "remove", "scope", "verify"]);
   });
 });
 

@@ -6,7 +6,8 @@
    sentence; why it mattered (the bars); the day it was written, once. Then a
    folded "details": the days it was used, its standing, its feelings, what it
    is linked to, its versions, the small chips (the model among them) and the
-   raw record. A part with nothing in it is left out. */
+   raw record. A part with nothing in it is left out. Under the fold, what it
+   is about, and a small control that changes it (2026-10-11). */
 import { act, resultHtml } from "./actions.js";
 import { api, fail } from "./api.js";
 import { emptyBox } from "./absence.js";
@@ -284,12 +285,69 @@ function footer(d) {
     d.points.map((p) => kv(p.role, esc(p.id))).join("") +
     d.removal.map((r) => kv("removal", esc(r.stage) + " by " + esc(r.actor) + " — " + esc(r.reason || "no reason recorded"))).join("") +
     "</div>";
-  return '<div class="mc-foot">' +
+  return aboutControl(d) + '<div class="mc-foot">' +
     '<details class="mc-details"><summary>details</summary>' + detailParts(d) + '<h4 class="mc-rawh">The record</h4>' + raw + "</details>" +
     '<div class="mc-buttons">' +
       "<button class='copy' data-id=\"" + esc(d.id) + "\" onclick=\"copyId(this)\">copy id</button>" +
       "<button class='copy act-danger' data-id=\"" + esc(d.id) + "\" onclick=\"removeMemory(this)\">remove…</button>" +
     "</div></div><div id='remove-out'></div>";
+}
+
+// ── what it is about, and the owner's door to change it ────────────────────
+
+/** The marks, in the order the console lists them, each with the words the card says. */
+export const ABOUT_CHOICES = [
+  ["me", "me — who I am"],
+  ["us", "us — the two of us"],
+  ["owner", "you, as a person"],
+  ["work", "work — the craft"],
+  ["world", "the world — anything else"],
+];
+
+const ABOUT_BY = {
+  writer: "the writer, when it was written",
+  reflection: "a nightly reflection",
+  owner: "you",
+  upgrade: "the upgrade, by its kind",
+  self: "me, awake in a session",
+};
+
+/**
+ * WHAT IT IS ABOUT (2026-10-11, the about-marks lane): the mark, who set it,
+ * and a picker that changes it through the console's own `about` command —
+ * the same store function as `counterparts about` (one path, two doors).
+ * Not on a journal entry, which is not a memory. Pure: markup only.
+ */
+export function aboutControl(d) {
+  if (d.journal) return "";
+  const choice = ABOUT_CHOICES.find(([v]) => v === d.about);
+  const now = choice
+    ? "About " + esc(choice[1]) + ' <span class="mc-dim">· marked by ' + esc(ABOUT_BY[d.aboutBy] || d.aboutBy || "someone unrecorded") + "</span>"
+    : 'Not marked <span class="mc-dim">· nobody has said what it is about yet</span>';
+  const opts = (choice ? "" : '<option value="" selected disabled>mark it as…</option>') +
+    ABOUT_CHOICES.map(([v, label]) => '<option value="' + v + '"' + (v === d.about ? " selected" : "") + ">" + esc(label) + "</option>").join("");
+  return '<div class="mc-about"><span class="mc-about-now">' + now + "</span>" +
+    '<span class="mc-about-set"><select class="mc-about-pick" aria-label="what this memory is about">' + opts + "</select>" +
+    '<input class="mc-about-why" type="text" maxlength="500" placeholder="why (optional)" aria-label="why">' +
+    "<button class='copy' data-id=\"" + esc(d.id) + "\" onclick=\"markAbout(this)\">mark</button></span>" +
+    "</div><div id='about-out'></div>";
+}
+
+/** Change the mark: `counterparts about <id> <mark> --why …`, as the owner. */
+export async function markAbout(btn) {
+  const id = btn.dataset.id || "";
+  const box = btn.closest(".mc-about");
+  const pick = box ? box.querySelector(".mc-about-pick") : null;
+  const why = box ? box.querySelector(".mc-about-why") : null;
+  const out = document.getElementById("about-out");
+  const show = (html) => { if (out) out.innerHTML = html; };
+  const about = pick ? pick.value : "";
+  if (!about) return show("<div class='act-out act-refused'>Pick what it is about first.</div>");
+  btn.disabled = true;
+  const r = await act("about", { id, about, why: why && why.value.trim() ? why.value.trim() : undefined });
+  btn.disabled = false;
+  show(resultHtml(r));
+  if (r && r.ok) window.dispatchEvent(new CustomEvent("counterparts:changed"));
 }
 
 /** The id, on demand — it is how the owner addresses this memory anywhere else
@@ -340,3 +398,4 @@ export async function removeMemory(btn) {
 window.openMemory = openMemory;
 window.copyId = copyId;
 window.removeMemory = removeMemory;
+window.markAbout = markAbout;
