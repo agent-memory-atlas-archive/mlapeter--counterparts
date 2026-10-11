@@ -2,36 +2,136 @@
 
 ## Unreleased
 
-The sidebar, rebuilt (#375).
-
-- **The sidebar shows what memory is doing, in 35 columns.** A small brain beside the
-  title (click COUNTERPARTS for the dashboard), the day, the count and a search box; then
-  **Memories**, what was said to Claude in full for your last message, and
-  **Subconscious**, the titles it was quietly given (`↗ opened` on one it looked up);
-  **Saved this session**, newest first; **Mechanisms today**, how many times each of the
-  twelve fired today, as bars (a click on one lists what its firings were about: the
-  memories that came to mind, what faded, what was merged, never bare counts); and **Last
-  Dream**, its first sentence (a click opens more of the dream). Each item takes up to
-  three lines, and when they don't all fit, fewer show. A click opens any item in place,
-  and again closes it; a long one shows 20 lines and ends with **more**, which opens that
-  memory on the dashboard (the dashboard now opens one memory by `#memories?id=`). Dates
-  in titles read short ("Oct 9"; today's are dropped). A click on a section's heading
-  gives it the room. Three rows of switches at the bottom: Counterparts in this folder
-  and Claude Code's own memory (each as safe as before: a pause still asks first, and an
-  unknown state is never shown as on), the view, and the brain. On a laptop screen the
-  sections fold to fit, each keeping its heading.
-- **Closed, it says the newest thing in one line.** `/counterparts quiet` (or the pane's
-  ✕) shows it dim at the end of the line under the prompt, as in "remembered: …", "stored:
-  …" or "dreamed: …", always ending with "· /counterparts opens it". The amber status line
-  is gone except to warn that a folder is paused or off, and clearing it gives the row
-  back. `/counterparts brain turning|still|off` (or the footer) sets the brain: turning
-  sways gently, still lights only when something fires, off leaves it out. A view or brain
-  you set before carries over; v0.1's "full" opens the sidebar, its "quiet" and "hidden"
-  are quiet.
-- **The dashboard counts each mechanism's firings today.** `/api/mechanisms` carries
-  `firedToday` on every mechanism: how many times it fired on today's date, counting
-  rows rather than amounts, and one dream once. With a dashboard from before this
-  release the sidebar counts them itself from the activity feed.
+- **Asking for facts shows faded memories in full, among the rest.** A match that has faded
+  (below reach) is ranked with the live ones by how well it matched, its words shown and
+  labelled faded, and the header counts them ("3 of them faded"). It was a title line after
+  the main results, which left counting questions one item short. Things that come up on
+  their own still leave faded memories out; being shown strengthens nothing, opening or
+  quoting one does. Meaning mode is unchanged.
+- **A session's wake is put together when the session starts.** "Still open", "Arriving:",
+  the Yesterday line and the self page are read at that moment, so the morning's first
+  sessions see yesterday's chapters and a question or reminder noted last night, not the
+  wake the evening's last turn left. "Nearby" and "Who I am" still come from the last turn's
+  end. Reads only, no model call: a few milliseconds.
+- **"Today, elsewhere."** One line in the wake names the other folders worked in today:
+  when, whether a session there is still open, how many memories it wrote, and its chapter's
+  title when that chapter is about you or me (the "About me, from another directory" rule).
+  Never what was said there, a work memory's title, or a handoff. Folders whose scope is not
+  on are not named. It is at most 300 bytes (more folders become "+N more"), and it is
+  given room ahead of "Nearby", "Still open" past its first item, "Work here", the
+  Yesterday line's titles, "Last here" and the older handoffs, so it prints beside a long
+  page. The page, "Arriving:", "Still open"'s first item and a plain reminder due today
+  still come first, and on days no other folder was active the wake is unchanged.
+- **Forgetting now changes what comes to mind (store v13).** Each memory fades on its own
+  curve: steep at first and flat later, slower the more it mattered, the more it was felt,
+  used or came back. A routine note leaves the working layer in about two days; a felt
+  reading lasts months; a strong fact about a year. Under a line ("below reach") a memory
+  stops coming up on its own — in turns, as a pointer from a link, or in the wake's work
+  lines — but asking for it still finds it, labelled faded, and
+  using it, opening it or a dream replaying it brings it back. A memory that has sat under
+  the floor for 14 lived days (was 90) is archived — never deleted, still readable by id.
+  A reminder is held at full strength until its date and the week after, then fades a little faster until it is used again;
+  a repeating date is held around each time it comes round. Chapters, their copies and live handoffs are never let
+  go. A feeling now counts once for how high a memory stands and once for how slowly it
+  fades, and softens from the day it was recorded. The nightly pass reads only the
+  memories whose standing changes that day. The dashboard counts "below reach now" and
+  "exited" apart. Skills and places now count their salience as fully as any other memory
+  (they counted it at 0.4, which left a quiet skill out of reach from the day it was written).
+  The band-symmetry check now warns only when memories climb with nothing behind it; fading
+  down a band is the curve working. The store upgrades to v13 on the first open, after taking a copy; a
+  build from before refuses the upgraded store, and the copy is the way back. These are
+  lightly held decisions; they are listed in `docs/IMPROVEMENTS.md` under "Decisions to
+  review".
+- **Old claims are read as defaults (an era, not a rewrite).** Memories written before this
+  build reached the store, with a salience claim made under the old field text ("set it on
+  anything that should last"), are read by the forgetting curve at the default for what they
+  are about — a done work event 0.20, other work 0.25, the world 0.35, me 0.40 — when that is
+  lower, so the store starts to fade. No claim is rewritten. The core, memories about you or
+  about us, things marked as said by you (memories written since 10-08), protected memories
+  and dated ones still ahead or repeating keep their claim; older rulings of yours with no
+  such mark may fade. `counterparts claims-era` says whether it is on and how many memories it
+  affects; `--off` reads every claim as stored again, `--on` puts it back; doctor shows the
+  same in one line. The reading is what turns back: a memory let go at the floor while it
+  was on stays archived (readable by id). A lightly held decision, listed in
+  `docs/IMPROVEMENTS.md`.
+- **`note` is now `remember`, and memory is asked for by attention.** The tool Claude
+  writes a memory with in the moment is called `remember`. **The old name `note` still
+  works** for at least this release — a session that started before the upgrade keeps
+  calling `note` and is served exactly as `remember`; only `remember` is listed. Its words
+  changed with it: memory forms only from what Claude writes here and at the end-of-session
+  ask (nothing reads the transcript afterwards), so it asks Claude to write in the moment,
+  as things catch its attention — a line read and why it struck, something said about the
+  person or about Claude, news, a decision, a work event — one idea per call. The
+  end-of-session ask now asks for "what caught your attention since you last wrote, one idea
+  each — what you read, what they said, what happened" (474 characters at most), and no
+  longer says "nothing worth keeping is a real answer"; an empty list is still accepted, as
+  the `memories` field says. The salience field gives an anchored scale by attention (about
+  0.1–0.2 a routine merge or status change; 0.4 or more a line that struck, or a reading
+  engaged with; the person's rulings, preferences and corrections high even about work), and
+  `relevance` now means how much it bears on the person, on Claude or on the two of them —
+  not only on the task. A dated decision, a kill or renew date and an outside deadline are
+  named as `eventDate`s. The CLI's `counterparts note` keeps its name.
+- **An unclaimed memory starts by what it is about.** A memory written without a salience
+  used to start at 0.25 whatever it was. Now: 0.20 for a work event that is done, 0.25 for
+  other work and for an unmarked one, 0.35 for the world (readings, news), 0.40 for the
+  person, the two of you or Claude (or said by the person). All stay under the semantic
+  floor, and a strong feeling on a silent memory lifts it to at most 0.49: a default sets how
+  high a memory starts, never its band.
+- **The core's fast lane can open again.** "Strongly felt" is read against the word's own
+  default: a feeling at 0.6, or one at 0.5 or more that is 0.1 above what its word is stored
+  at when nobody weighs it, now counts. Since the feelings wheel gave every word a default (all at or under 0.55),
+  nothing written without a number could reach the old 0.6 bar. A word nobody weighed
+  still never opens the lane on its own.
+- **Mood no longer lifts memories in recall** (both weights 0, the code kept for a re-test):
+  memories it lifted were used less than others (1.3% against 2.4%). Recall also stops
+  reading recent feelings each turn while it is off.
+- **What a session said and nobody wrote up stays owed for fourteen days of use**, not
+  three, so the nightly write-up (oldest first, four sessions a night) reaches it; past that
+  it is let go and said as lost. And a session at its ask limit for the day is still asked
+  when it holds an unwritten stretch that is due.
+- **Three things you may notice after upgrading.** If your Claude Code settings already allow
+  `mcp__counterparts__note`, you will be asked once to allow `mcp__counterparts__remember`.
+  A few strongly felt memories claimed at 0.42–0.50 now start episodic rather than semantic.
+  The text of a session that still owes a write-up is now kept up to 14 days of use plus the
+  ordinary 7 days, not 2.
+- **A memory written with `remember` (or its old name `note`) reaches the next session's
+  wake the same day.** Only write-ups, chapters and the self page used to bring the wake up
+  to date between days, so a note left Still open, Nearby and Arriving as they were for up
+  to a day, in every directory, a question it answered included. Now every memory that
+  lands, and every handoff written or retired, re-renders the wake at that turn's end, in
+  the background.
+- **A reader for which memories recall shows and the replies ignore.** `probeMemoryHits`
+  reads the ids the credit row already lists as shown and not used, and gives a hit rate
+  per memory and per lane (loud, footnote, pointer). It only measures. Nothing reads it
+  to change a memory's strength or how readily it comes to mind.
+- **Recall counts the memories instead of listing them on every turn.** At ten times
+  today's size that list was about a sixth of a turn. A second speed-up, not looking up
+  words found in almost every memory, is built but off: it changed what recall showed on
+  small stores.
+- **The sleep pass no longer reads forgotten memories to skip them.** The census, the
+  duplicate check and the fading pass ask the database for the rows they need instead of
+  reading every row, archived ones included. Their counts are unchanged.
+- **The store reuses its prepared database statements.** It used to prepare each query
+  again on every read. A new day's sleep pass at ten times today's size went from about
+  3.7 to 1.1 seconds.
+- **New memories in a dream part Claude Code cut go back in the queue.** When the nightly
+  run's transcript shows a part of the dream was cut to a preview the run couldn't open
+  (and it wasn't fetched again whole), the new memories that part carried are dreamed on
+  another night instead of being marked as seen. Any the dream changed or looked up stay
+  done. The morning's line about the cut says how many went back.
+- **A night's dream starts in about a second at ten times today's size, not half a
+  minute.** The cache keeps each memory's nearest memories from when it was written, so
+  the dream reads them instead of comparing every queued memory against every stored one.
+  A new memory's list is the older memories nearest it when it was written; one written
+  before the upgrade gets its list the first night it is dreamed. The cache's format goes
+  to v6 and fills itself in. An MCP server still running the previous build refuses its
+  tools until it is reconnected (`/mcp`), as after a store-format change.
+- **Two installs that meet a damaged claims file deliver the event once on Linux too.**
+  When one hook moved the damaged file aside, the other, still holding the old file, could
+  delete the new file's journal while the first hook was writing to it. That hook then
+  gave up on its claim, and the event went out twice (2 of 30 runs of the twins test under
+  load). Now a hook that finds its journal gone tries once more, and a claim that was
+  already saved when that happened counts as made.
 
 ## 0.3.16 — 2026-10-10
 

@@ -231,6 +231,9 @@ describe('the feed', () => {
     expect(end.map(s => [s.title, s.kind])).toEqual([['One', 'new'], ['Two, from its text', 'new'], ['Three', 'update']])
     expect(savedItems('mcp__counterparts__session_end', { memories: [{ title: 'x' }] }, '{"deposited":0}', T0, 7)).toEqual([])
     expect(savedItems('mcp__counterparts__note', { text: 'x' }, '{"stored":false,"reason":"duplicate"}', T0, 8)).toEqual([])
+    // `remember` is the new name (2026-10-10); `note` still answers
+    expect(savedItems('mcp__counterparts__remember', { title: 'Renamed door' }, '{"stored":true,"id":"mem_new00002"}', T0, 11)).toEqual([{ key: 'live:11:0', id: 'mem_new00002', title: 'Renamed door', at: T0, replaces: null, replacesId: null, kind: 'new' }])
+    expect(savedItems('mcp__counterparts__remember', { title: 'Held', updates: 'mem_old00001' }, '{"stored":true,"settled":{"ok":false,"held":true}}', T0, 12)[0]?.kind).toBe('new')
     expect(savedItems('mcp__counterparts__recall', { question: 'x' }, '{}', T0, 9)).toEqual([])
     expect(savedItems('mcp__other__note', { text: 'x' }, '{}', T0, 10)).toEqual([])
   })

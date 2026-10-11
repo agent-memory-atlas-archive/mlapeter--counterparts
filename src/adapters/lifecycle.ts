@@ -87,6 +87,8 @@ import type { ScopeVerdict } from "./scopes.js";
 import {
   ASK_ROW_COUNTING,
   claimedByOther,
+  isLive,
+  listSessions,
   owedWriteUps,
   progressKey,
   pruneSessions,
@@ -278,7 +280,7 @@ export const WRITE_UP_ASK_COUNT_KEY = "adapter.writeup.asks.count";
 
 /** What the pointer adds for a SMALL owed stretch (2026-09-29; since
  *  2026-09-30 `coverage/`'s `small`, under six pieces): one plain sentence. */
-export const WRITE_UP_SHORT_LINE = "It was a short session: one line is enough, or memories: [] if nothing in it is worth keeping.";
+export const WRITE_UP_SHORT_LINE = "It was a short session: one line is enough, or memories: [] only if nothing in it held your attention.";
 
 /** THE POINTER the model reads — short, because the words come from the door,
  *  and naming the ended session once. A small owed stretch (`short`) gets the
@@ -301,7 +303,7 @@ export function writeUpPointer(input: {
   const part = input.of <= 1 ? "" : `, part ${String(input.part)} of ${String(input.of)}`;
   return [
     WRITE_UP_OPEN,
-    `${some}; the oldest, from ${input.endedOn}, left ${size} of what was said there${part}. To write it up, call ${WRITE_UP_TOOL} with session: ${input.live}, writeUp: ${input.ended} and no memories to get the words, then again with the memories worth keeping (or memories: []).${input.short === true ? ` ${WRITE_UP_SHORT_LINE}` : ""}`,
+    `${some}; the oldest, from ${input.endedOn}, left ${size} of what was said there${part}. To write it up, call ${WRITE_UP_TOOL} with session: ${input.live}, writeUp: ${input.ended} and no memories to get the words, then again with what caught your attention, one idea each (memories: [] only if nothing did).${input.short === true ? ` ${WRITE_UP_SHORT_LINE}` : ""}`,
     WRITE_UP_CLOSE,
   ].join("\n");
 }
@@ -529,8 +531,10 @@ export class Lifecycle implements HostLifecycle {
    * THE WAKE, composed for this session: what the previous boundary published,
    * with the delivery preface (which system, which day, which date) and — WHERE
    * this session woke riding beside WHEN (E1) — the handoff pointer that
-   * belongs to this directory, if any. Zero compute, zero model calls, zero
-   * network (claude-code §1 G1).
+   * belongs to this directory, if any. Reads only: no model call, no network,
+   * no state written (claude-code §1 G1) — since 2026-10-10 the core ASSEMBLES
+   * the lanes that are plain reads for this moment (self CONTRACT §5 G1), and
+   * the registry's sessions ride along for its "Today, elsewhere" line.
    *
    * Then THE EXPECTATION, WRITTEN WHERE THE NEXT PROCESS CAN READ IT. This used
    * to be a `Map` on the adapter instance, which is a line that only looks like
@@ -551,6 +555,19 @@ export class Lifecycle implements HostLifecycle {
         installed: manifestVersionOnDisk(),
         openedWith: (session) => readSession(dir, session)?.opened?.build.version ?? null,
         exportsFrom: this.chapterExports(),
+        // The registry, for the "Today, elsewhere" line (2026-10-10): host
+        // state only — which directory, when, live or ended. The core keeps
+        // today's, elsewhere, that the scope setting lets it name.
+        sessions: () => {
+          const now = this.nowFn();
+          return listSessions(dir).map((r) => ({
+            session: r.sessionId,
+            scope: r.scope,
+            startedAt: r.startedAt,
+            lastAt: Math.max(r.lastBoundaryAt, r.endedAt ?? 0),
+            live: isLive(r, now),
+          }));
+        },
       },
     );
     this.noteWakeExpectation(input, woke.sentinel);

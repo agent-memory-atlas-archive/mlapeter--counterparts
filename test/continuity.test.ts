@@ -139,7 +139,7 @@ async function mikesAfternoon(k: ReturnType<typeof afternoon>): Promise<{ episod
   // `at(16, 61)` is 17:01: minutes past the hour are counted from 16:00.
   for (let m = 1; m <= 101; m += 10) k.talk(A, at(16, m));
   k.set(at(17, 42));
-  const noted = await s.call("note", { text: "Every text we read tonight ended grief at a table.", session: A });
+  const noted = await s.call("remember", { text: "Every text we read tonight ended grief at a table.", session: A });
   expect(noted.isError).not.toBe(true);
   k.talk(A, at(17, 44));
   k.set(at(17, 45));
@@ -278,7 +278,7 @@ describe("what were we about to do? a plan written after the handoff is named be
     k.talk(C, at(15, 40));
     k.set(at(15, 55));
     const changed = idOf(
-      await k.server(C).call("note", {
+      await k.server(C).call("remember", {
         session: C,
         title: "Publishing waits until Monday",
         text: "Changed plan: Mike is ill, so publishing 0.3.12 waits until Monday; nothing else moves.",
@@ -288,14 +288,14 @@ describe("what were we about to do? a plan written after the handoff is named be
     k.talk(A, at(16, 5));
     k.set(at(16, 10));
     const open = idOf(
-      await k.server(A).call("note", { session: A, text: "Is the tarball in the backups folder signed, or only checksummed?", unresolved: true }),
+      await k.server(A).call("remember", { session: A, text: "Is the tarball in the backups folder signed, or only checksummed?", unresolved: true }),
     );
     k.set(at(16, 12));
-    const done = idOf(await k.server(A).call("note", { session: A, text: "The changelog for 0.3.12 is written and merged.", status: "done" }));
+    const done = idOf(await k.server(A).call("remember", { session: A, text: "The changelog for 0.3.12 is written and merged.", status: "done" }));
     k.set(at(16, 14));
-    await k.server(A).call("note", { session: A, text: "The backups folder keeps one tarball per release, dated." });
+    await k.server(A).call("remember", { session: A, text: "The backups folder keeps one tarball per release, dated." });
     k.set(at(16, 16));
-    await k.server(A, THERE).call("note", { session: A, text: "Elsewhere, the docs pass is planned for Tuesday.", status: "planned" });
+    await k.server(A, THERE).call("remember", { session: A, text: "Elsewhere, the docs pass is planned for Tuesday.", status: "planned" });
     k.set(at(16, 30));
     return { changed, open, same, done };
   }
@@ -306,9 +306,14 @@ describe("what were we about to do? a plan written after the handoff is named be
     const text = wake(k.c, B);
     const lines = text.split("\n");
     const since = lines.find((l) => l.startsWith("Since this handoff:"));
-    expect(since).toBe(
-      `Since this handoff: Is the tarball in the backups folder signed, or only… (open, ${ids.open}); Publishing waits until Monday (planned, ${ids.changed}).`,
-    );
+    // The open question is in this wake's "Still open:" — assembled at session
+    // start (2026-10-10), so a note's question is there the same day — and so
+    // the line leaves it to that lane: one place for an open question.
+    expect(since).toBe(`Since this handoff: Publishing waits until Monday (planned, ${ids.changed}).`);
+    const open = lines.indexOf("Still open:");
+    expect(open).toBeGreaterThan(-1);
+    expect(lines.slice(open).find((l) => l === "" || l.endsWith("Is the tarball in the backups folder signed, or only checksummed?"))).not.toBe("");
+    expect(lines.filter((l) => l.includes("Is the tarball in the backups folder signed"))).toHaveLength(1);
     // Under the pointer's two lines, inside the bundle.
     const pointer = lines.findIndex((l) => l.startsWith("Where I left off in this directory"));
     expect(lines.indexOf(since as string)).toBe(pointer + 2);
@@ -323,7 +328,7 @@ describe("what were we about to do? a plan written after the handoff is named be
     expect(wake(k.c, B, THERE)).not.toContain("Since this handoff");
     // The shown row counts what the line named.
     const shown = k.c.store.eventLog({ name: "handoff.shown", limit: 1, order: "desc" })[0];
-    expect(JSON.parse(shown?.payload ?? "{}")["plans"]).toBe(2);
+    expect(JSON.parse(shown?.payload ?? "{}")["plans"]).toBe(1);
   });
 
   test("a handoff rewritten after the note covers it, and a plan settled over by a later one is not named", async () => {
@@ -339,10 +344,10 @@ describe("what were we about to do? a plan written after the handoff is named be
     k.talk(A, at(16, 45));
     k.set(at(16, 50));
     const s = k.server(A);
-    const first = idOf(await s.call("note", { session: A, text: "Ship the docs pass on Tuesday after the release.", status: "planned" }));
+    const first = idOf(await s.call("remember", { session: A, text: "Ship the docs pass on Tuesday after the release.", status: "planned" }));
     k.set(at(16, 52));
     const second = idOf(
-      await s.call("note", { session: A, text: "Ship the docs pass on Wednesday instead; Tuesday is the release.", status: "planned", updates: first, how: "changed" }),
+      await s.call("remember", { session: A, text: "Ship the docs pass on Wednesday instead; Tuesday is the release.", status: "planned", updates: first, how: "changed" }),
     );
     const line = wake(k.c, B).split("\n").find((l) => l.startsWith("Since this handoff:")) ?? "";
     expect(line).toContain(second);
@@ -565,7 +570,7 @@ describe("asked plainly, recall finds the last session here first (the recall ha
     const s = k.server(C, THERE);
     for (let i = 0; i < 12; i++) {
       k.talk(C, at(18, i * 2), THERE);
-      await s.call("note", {
+      await s.call("remember", {
         session: C,
         text: `Release session note ${String(i)}: the most recent session of the build cut the tarball and checked the doctor again, 2026-09-30.`,
       });
@@ -631,7 +636,7 @@ describe("asked plainly, recall finds the last session here first (the recall ha
     const D = "d0d0d0d0-0000-4000-8000-00000000000d";
     for (const m of [56, 58]) k.talk(D, at(17, m));
     k.set(at(17, 59));
-    await k.server(D).call("note", { session: D, text: "Halfway through the parser rewrite; the empty input still fails." });
+    await k.server(D).call("remember", { session: D, text: "Halfway through the parser rewrite; the empty input still fails." });
     const got = factsOf(await k.server(B).call("recall", { question: "what do you remember from our most recent session?", mode: "facts" }));
     expect(got.header.some((l) => l.includes("(session a1b2c3d4, its rows first)"))).toBe(true);
     expect(got.items[0]?.id).toBe(episodeId);
@@ -670,6 +675,9 @@ describe("asked plainly, recall finds the last session here first (the recall ha
       body: "Dreamed: four tables, one grief, set for Montaigne's three meals.",
       learnedOn: "2026-09-30",
       source: "dreamed",
+      // A dream's claim, at its ceiling (2026-10-10: a row that claims nothing
+      // stands at 0, below reach).
+      salience: { claimed: 0.3 },
       origin: { session: A, scope: HERE, ref: "dream:drm_000000000001" },
     });
     const got = factsOf(await k.server(B).call("recall", { question: "what do you remember from our most recent session?", mode: "facts" }));

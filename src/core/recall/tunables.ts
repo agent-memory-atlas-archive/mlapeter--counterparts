@@ -53,6 +53,16 @@ export interface RecallTunables {
    *  word. `Store.docFrequency` counts now (MEASURED 2026-09-04, see
    *  `store/cache.ts#docFrequency`). CAL. */
   PER_CUE_FETCH: number;
+  /**
+   * A cue whose rarity (`informativeness(df, storeSize)`) is below this is not
+   * looked up in the index (Lane 0, 2026-10-10, scale review C4): a word in
+   * almost every memory adds almost nothing to any of them, and fetching its
+   * postings read a list the size of the store on every turn (52% of a turn at
+   * 10x). 0.1 is a word in more than ~80% of memories; 0 is off (the default
+   * since the review of #368: a skipped word's postings were the gate's
+   * background, so skipping them changed what surfaced). CAL.
+   */
+  CUE_FETCH_MIN_IDF: number;
   /** Ambiguous-handle weight: a name pointing at two memories retrieves neither
    *  well, and trains nothing at all. [v1: 0.5] CAL. */
   AMBIGUOUS_WEIGHT: number;
@@ -260,6 +270,8 @@ export const TUNABLES: RecallTunables = {
   MIN_CUE_LENGTH: 3,
   MAX_CUES: 24,
   PER_CUE_FETCH: 24,
+  // Decided by b2, 2026-10-10, lightly held. Why: it shifts what recall shows on small stores (new users: 2 → 0 footnotes at 40 memories); Lane 0 is meant to change speed, not behaviour. Re-enable after a recall-bench run on a store copy, with a minimum store size.
+  CUE_FETCH_MIN_IDF: 0,
   AMBIGUOUS_WEIGHT: 0.5,
   CARRY_DECAY: 0.5,
 
@@ -446,8 +458,11 @@ export const TUNABLES: RecallTunables = {
   // working default.
   MOOD_WINDOW_HOURS: 3,
   MOOD_MIN_STRENGTH: 0.3,
-  MOOD_SAME_WEIGHT: 0.3,
-  MOOD_CROSS_WEIGHT: 0.1,
+  // Decided by b2+f8, 2026-10-10, lightly held. Evidence from the old use metric (lifted memories used 1.3% vs 2.4%); re-test after Group 1's engaged credit gives a real signal.
+  // (Review 02 C3. Were 0.3 and 0.1; the code in `mood.ts` is kept whole, and
+  // with both at 0 recall skips the per-turn `feelings` scan — `Recall#turn`.)
+  MOOD_SAME_WEIGHT: 0,
+  MOOD_CROSS_WEIGHT: 0,
   // Wheel v2 (2026-09-30): 0.5 lets neighbours match in part — a sad mood
   // (−0.6) meets uneasy (−0.5) at 0.8 and wistful (−0.3) at 0.4, never calm
   // or happy; a happy one (+0.7) meets warm at 1, calm (+0.5) at 0.6.

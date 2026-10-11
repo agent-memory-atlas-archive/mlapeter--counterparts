@@ -1606,3 +1606,56 @@ pinned holds: "by 12/20" asked on 10-09 (this year's), on 05-01 (last year's), "
 - Tested in Denver and on Kiritimati on 12-28, and across the new-year edge (12-31 in
   Denver, already 01-01 on Kiritimati: both read 2027-01-05, where Denver read
   2026-01-05); midyear the nearer decides (07-01: last January's; 07-10: next).
+
+## 2026-10-10 — `note` is `remember`; the words ask for attention (Group 1c)
+
+- **The rename and the alias.** `remember` is the registry's name; `note` resolves to it
+  before anything reads the name (`TOOL_ALIASES`, `canonicalToolName`), is never listed in
+  `tools/list`, and is counted (`mcp.tool.alias`, the process log). Decided by g1c-builder,
+  2026-10-10, lightly held; revisit after ~5 lived days. Why: a cached list only needs the
+  CALL to land, and listing both would put two descriptions of one door in the model's
+  context and break the audit's "the shipped list is exactly `TOOL_NAMES`". The CLI's
+  `counterparts note` and the dashboard's `note` action keep their names: they are the
+  owner's commands, not the model's tool. OQ1 below ("does `note` still need to exist?") is
+  answered the other way round: it is half of the only road now.
+- **The text is review 01 C1's, verbatim**, plus three additions: f8's "in the moment, as
+  things catch your attention" (the ask is the backstop) in `remember`'s admission; 07's
+  "Decision, kill/renew dates and outside deadlines are eventDates" on `eventDate`; and the
+  salience scale framed by attention (`tools.ts#SALIENCE_TEXT`). Two small departures,
+  each marked in the source: `text` keeps "Required unless `settle` or `feelingsNow` is
+  sent" (the schema's `required` is empty, so the field is the only place that says it),
+  and `session_end`'s `content` field reads like `remember`'s `text` (it said "What was
+  learned", the filter 01 names).
+- **The measured limits.** The ask is 474 characters with a real id and a four-digit
+  chapter (pin 480). `remember`'s head (summary, When:, Do NOTs) is 1,387 characters and
+  `session_end`'s 1,088, so fewer how-to-call claims fit inside the host's 2,048: three for
+  `remember` (`updates`, `eventDate`, the salience floor) and four for `session_end`. The
+  pin moved rather than the words (`test/description-cut.test.ts#LEADS`); each claim that
+  left is said on a field the host serves whole.
+- **For the rules audit, not changed here:** `remember`'s privilege "Your own words ride the
+  buffer as their own span, so the end-of-session sweep does not mint them a second time"
+  still names the sweep, whose code is there and does not run (keyless since 09-24).
+
+## 2026-10-10 — facts mode ranks faded matches inline (bench R2-2)
+
+- **What changed.** A matched memory below reach was a title line after the main results,
+  five a page, no body. Now it is ranked with the live matches by how strongly it matched,
+  its body shown, its heading line ending `faded: not used for a long while`; the header says
+  `N of them faded` (`all faded` when every match is). `FactsResult.faded` is that count
+  (it was the list of title lines); `FactItem.faded` the label. `FACTS_FADED_LINES` and
+  `FadedLine` are gone. The dashboard's ask box and the console's `ask` follow (a row's facts
+  line and its metadata line say faded).
+- **Why.** The benchmark caught Group 1 dropping 15 (426 vs 441), almost all multi-session
+  counting questions one item short: the missing item was a faded title line past the pages
+  the reader read. On the bench's scratch branch (`bench/faded-variants`, f9a47ebd) three
+  variants — fill after, inline, inline with a fade-scaled penalty — each recovered the 15
+  with no single-fact cost; inline is the simplest. Revised by b2+f8, 2026-10-10, from Mike's
+  2026-10-03 ruling, lightly held (`docs/IMPROVEMENTS.md`, Decisions to review, item 1).
+- **What did not change.** Ambient channels (turn recall's tiers, spreading, the wake) still
+  leave below-reach memories out. Being shown strengthens nothing; a faded result is now in
+  the answer's shown ids, so quoting its words credits it at the boundary, as opening it by
+  id always did. Meaning mode keeps its faded moments after the arc with "+N faded" in its
+  header: an arc is ordered by time, not by match, and a moment there is a pointer, not the
+  answer to a count.
+- **Fallback.** Variant (a″): a faded match's score × (1 − 0.3 × (1 − strength/REACH)) for
+  the ORDER only — if faded matches are ever seen crowding fresh ones on a live store.

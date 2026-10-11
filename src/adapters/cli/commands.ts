@@ -69,6 +69,7 @@ import {
   LAYOUT,
   PRE_ROWS_READABLE_BY,
   REQUIRE_EXPLICIT_DIR_ENV,
+  CLAIMS_ERA_CUTOFF_KEY,
   SCHEMA_VERSION,
   Store,
   StoreError,
@@ -302,6 +303,9 @@ export const COMMANDS = [
   "backfill-claims",
   "repair-dates",
   "repair-merged-beliefs",
+  // The old-claims era (2026-10-10): is it on, how many memories it reads at
+  // their default, and the switch. Reads under observer; the switch refuses.
+  "claims-era",
   "rebrief",
   "probe-oq4",
   // Constitution 11's last sentence as a command: which mechanisms fired this
@@ -737,6 +741,7 @@ export const COMMAND_FLAGS: Record<Command, readonly string[]> = {
   // and the owner's own runbook line spells it out. A flag that names the
   // behavior you are getting must not be refused as unknown.
   "repair-merged-beliefs": ["apply", "dry-run"],
+  "claims-era": ["on", "off"],
   // `--config` belongs to the two commands that READ or WRITE a host
   // configuration, and to no others. Declaring it everywhere would say the
   // console takes it for `note` or `recall`, which read no config at all — the
@@ -820,6 +825,8 @@ export const COMMAND_BLURB: Record<Command, string> = {
     "Give MIGRATED memories carrying the import day their true `learned` date, read off evidence each row already holds — an engram-era id that is a millisecond timestamp, a v1 date field, a session reference, a source path. Counts by confidence and the proposed dates by count. Dry run unless --apply. --apply requires --dir.",
   "repair-merged-beliefs":
     "Put back beliefs and current-state rows the nightly dedup pass archived as duplicates of an ordinary memory. Dry run unless --apply. --apply requires --dir.",
+  "claims-era":
+    "The old-claims era: memories written before this build reached the store, with a claim made under the old field text, are read by the curve at the default for what they are about (work, the world, me) when that is lower. The core, memories about the owner or us, said by the owner, protected, and dated ones still ahead or repeating keep their claim. No claim is rewritten. With no flags it says whether the era is on, since when, and how many memories it affects; --off reads every claim as stored again (a memory let go at the floor meanwhile stays archived, readable by id), --on puts the same cutoff back. Reading works under observer; the switch refuses there.",
   rebrief: "Re-render and republish the wake bundle NOW, through the boundary's own renderer.",
   "probe-oq4":
     "The OQ4 probe: footnotes delivered vs. later expanded, by calendar date, from recall.decision and recall.credit rows, then recall's hit rate — of what it showed, how much a reply expanded or quoted, loud, footnoted and pointer. Read-only.",
@@ -841,7 +848,7 @@ export const COMMAND_BLURB: Record<Command, string> = {
   settle:
     "Two memories that disagree. With no flags (or --list), the pairs nobody has settled — a dream flags them — and the ones settled lately: how, which holds, who settled it and why; and the corrections held in the last 7 lived days (a memory said it changes or corrects one that didn't look related, so nothing was settled) that nobody has settled since, each with the command that settles it. --pair <id> --holds <memory id> --how changed|corrected|open --why \"...\" settles one as you (or --holds <id> --against <id> for two memories no dream flagged): changed — both were true at their time, the older fades once and is shown as earlier; corrected — the older was wrong, it leaves recall and stays readable by its id; open — a real disagreement, both kept and shown together. No memory is rewritten. --undo <pair> reverses a settle: the strength comes back, a corrected memory comes back into recall, and the pair is unsettled again. Reading works under observer; the two changes refuse there.",
   coverage:
-    "What is written up, and what is not yet, for one date (default today): each session that captured something that day, how much of it is written up, and what is not yet written up — how many pieces, over how long, since when — and whether that is owed (the next session in its project is asked to write it up), lapsed (nobody did in two days of use; nothing is deleted), under the floor, or still at work. Read-only.",
+    "What is written up, and what is not yet, for one date (default today): each session that captured something that day, how much of it is written up, and what is not yet written up — how many pieces, over how long, since when — and whether that is owed (the next session in its project is asked to write it up), lapsed (let go unwritten after fourteen days of use — lost to memory; nothing is deleted), under the floor, or still at work. Read-only.",
   dashboard:
     "Open the dashboard in your browser: the web view of the store your configuration names, served on 127.0.0.1 and nowhere else. Ctrl-C stops it. Looking is read-only — it strengthens nothing and deposits nothing. What you do there on purpose (write a note, remove a memory, back up, …) runs through these same commands, and a removal asks you to type the id back.",
   version: "The version of Counterparts you have. It opens nothing.",
@@ -1115,6 +1122,12 @@ const CORE_FLAG_HELP: Record<string, string> = {
   "reflected-feeling": "on or off — can a memory reach the core on reflection alone? On (the default): a feeling a reflection records later and a reflection citing a memory both count toward the fast lane, and a reflection may re-label what a memory is about either way — each re-label is recorded with its reason, and one into me, us or the owner is told in the next morning share. Off: nothing reaches the core on a reflection alone — the fast lane needs a feeling felt at the time (not one a reflection recorded later) and an ordinary use after a gap (not a reflection citing it), and a reflection may only move what a memory is about toward work or world.",
 };
 
+/** `claims-era`'s own two (2026-10-10): `--on` / `--off` mean something else under `scope`. */
+const CLAIMS_ERA_FLAG_HELP: Record<string, string> = {
+  on: "read old claims at their default again, from the same cutoff as before",
+  off: "read every claim as stored again (no claim was rewritten); a memory let go at the floor while it was on stays archived, readable by id",
+};
+
 const DASHBOARD_FLAG_HELP: Record<string, string> = {
   dir: "a store to look at instead of the one your configuration names",
 };
@@ -1152,6 +1165,8 @@ export function commandHelp(command: Command): string {
                 ? DREAM_FLAG_HELP
                 : command === "core"
                   ? CORE_FLAG_HELP
+                  : command === "claims-era"
+                    ? CLAIMS_ERA_FLAG_HELP
                   : command === "settle"
                     ? SETTLE_FLAG_HELP
                     : {};
@@ -1945,6 +1960,8 @@ export async function run(argv: readonly string[], opts: RunOptions): Promise<nu
         return dreamCommand(dir, io, parsed, observer, typeof parsed.flags["dir"] === "string");
       case "core":
         return coreCommand(dir, io, parsed, observer, typeof parsed.flags["dir"] === "string");
+      case "claims-era":
+        return claimsEraCommand(dir, io, parsed, observer, typeof parsed.flags["dir"] === "string");
       case "settle":
         return settleCommand(dir, io, parsed, observer, typeof parsed.flags["dir"] === "string");
       case "coverage":
@@ -2538,6 +2555,76 @@ function coreCommand(dir: string, io: Io, parsed: Parsed, observer: boolean, nam
   const counterpart = openCounterpart(dir, true);
   try {
     for (const line of coreListLines(counterpart)) io.out(line);
+    return EXIT.ok;
+  } finally {
+    counterpart.close();
+  }
+}
+
+/**
+ * `claims-era` — the old-claims era's switch (2026-10-10; decided by Mike,
+ * 2026-10-10, loosely held). With no flags it reads; `--off` deletes the
+ * cutoff the curve reads (`store/operational.ts#CLAIMS_ERA_CUTOFF_KEY`), so
+ * every claim reads as stored again; `--on` puts back the cutoff first
+ * recorded. The READING is what toggles: a memory the floor prune archived
+ * while the era was on stays archived (no door un-archives a `pruned` row).
+ * Either takes effect at the next nightly pass (the curve's signature carries
+ * the cutoff, so every next-change day is recomputed once).
+ */
+function claimsEraCommand(dir: string, io: Io, parsed: Parsed, observer: boolean, namedDir: boolean): number {
+  if (!storeExists(dir)) {
+    io.err(`No store at ${dir}. Run 'counterparts init${namedDir ? ` --dir ${dir}` : ""}' to create one.`);
+    return EXIT.usage;
+  }
+  const on = parsed.flags["on"] === true;
+  const off = parsed.flags["off"] === true;
+  if (on && off) {
+    io.err("refused: --on and --off are two different things to do. Pass one.");
+    return EXIT.usage;
+  }
+  if ((on || off) && observer) {
+    io.err("refused: this console is an observer; it reads and changes nothing. Nothing was changed.");
+    return EXIT.refused;
+  }
+  const counterpart = openCounterpart(dir, observer || (!on && !off));
+  try {
+    const store = counterpart.store;
+    const day = (ms: number): string => localDate(ms, store.zone());
+    if (off) {
+      store.updateMeta(CLAIMS_ERA_CUTOFF_KEY, () => null);
+      io.out("Off: every claim reads as stored again. No claim was rewritten, so the reading comes back exactly.");
+      io.out("  A memory let go at the floor while it was on stays archived (readable by id); turning it off does not bring it back.");
+      io.out("  It takes effect at the next nightly pass. `counterparts claims-era --on` puts it back.");
+      return EXIT.ok;
+    }
+    if (on) {
+      const recorded = store.claimsEra().recorded;
+      if (recorded === null) {
+        io.err("refused: this store has no recorded cutoff yet; a writable open records it. Nothing was changed.");
+        return EXIT.refused;
+      }
+      store.setMeta(CLAIMS_ERA_CUTOFF_KEY, String(recorded));
+      const era = store.claimsEra();
+      io.out(
+        `On: memories written before ${day(recorded)} with a claim made under the old text are read at their default — ${String(era.affected)} ${era.affected === 1 ? "memory" : "memories"} now.`,
+      );
+      io.out("  It takes effect at the next nightly pass. `counterparts claims-era --off` reads every claim as stored again.");
+      return EXIT.ok;
+    }
+    const era = store.claimsEra();
+    if (era.cutoff === null) {
+      io.out(
+        era.recorded === null
+          ? "Off: no cutoff recorded yet (a writable open records one). Every claim reads as stored."
+          : `Off: every claim reads as stored. \`counterparts claims-era --on\` reads the ones written before ${day(era.recorded)} at their default again.`,
+      );
+      return EXIT.ok;
+    }
+    io.out(
+      `On since ${day(era.cutoff)}: ${String(era.affected)} ${era.affected === 1 ? "memory" : "memories"} written before it with a claim made under the old text ${era.affected === 1 ? "is" : "are"} read at the default for what ${era.affected === 1 ? "it is" : "they are"} about. No claim was rewritten.`,
+    );
+    io.out("  Kept as claimed: the core, memories about the owner or us, said by the owner, protected, and dated ones still ahead or repeating.");
+    io.out("  `counterparts claims-era --off` reads every claim as stored again.");
     return EXIT.ok;
   } finally {
     counterpart.close();
@@ -3572,7 +3659,7 @@ function printHostSteps(io: Io, resolved: string, custom: string | undefined, ho
   io.out(`     '${BIN.hook}' on a PATH that lacks the runtime is a`);
   io.out("     hook that never runs and says nothing.");
   io.out("");
-  io.out("  2. Register the MCP server, so note, recall and session_end exist:");
+  io.out("  2. Register the MCP server, so remember, recall and session_end exist:");
   io.out("");
   io.out(`     ${mcpCommand(resolved, undefined, custom)}`);
   io.out("");
@@ -6082,10 +6169,9 @@ async function recallCommand(
 export function printAskList(
   io: Io,
   result: {
-    readonly memories: readonly { readonly id: string; readonly title: string | null; readonly kind: string; readonly journal: boolean; readonly body: string }[];
+    readonly memories: readonly { readonly id: string; readonly title: string | null; readonly kind: string; readonly journal: boolean; readonly body: string; readonly faded?: boolean }[];
     readonly considered: number;
     readonly matched?: number;
-    readonly fadedTotal?: number;
   },
   how: string,
   said: string,
@@ -6099,13 +6185,11 @@ export function printAskList(
   const found = Math.max(result.matched ?? 0, result.memories.length);
   if (found === 0) {
     io.out(`Nothing found (${how}).`);
-    const faded = result.fadedTotal ?? 0;
+    // A faded match is counted in `matched` and listed with the rest (2026-10-10).
     io.out(
-      faded > 0
-        ? `  Only ${String(faded)} faded ${faded === 1 ? "memory" : "memories"} matched: --full lists them.`
-        : result.considered === 0
-          ? "  Nothing in the store came near the question, so no memory was even scored."
-          : `  ${result.considered} ${result.considered === 1 ? "memory was" : "memories were"} weighed and none was close enough to show.`,
+      result.considered === 0
+        ? "  Nothing in the store came near the question, so no memory was even scored."
+        : `  ${result.considered} ${result.considered === 1 ? "memory was" : "memories were"} weighed and none was close enough to show.`,
     );
     io.out(`  Try words the memory itself would use, or ask for it by id: ${BIN.cli} ${said} --id <mem_...>`);
     return;
@@ -6121,7 +6205,7 @@ export function printAskList(
     io.out(`${mark}${askGist(m.title, m.body)}`);
     // A chapter is never presented as a memory (LAUNCH-STATUS §I14): its
     // metadata line opens with `journal`.
-    io.out(`${" ".repeat(mark.length)}${dim(askMeta(m, opts.learnedOn?.(m.id) ?? null))}`);
+    io.out(`${" ".repeat(mark.length)}${dim(`${askMeta(m, opts.learnedOn?.(m.id) ?? null)}${m.faded === true ? " · faded" : ""}`)}`);
   });
   io.out("");
   io.out(
@@ -8777,7 +8861,7 @@ function scopeEffect(mode: ScopeMode, resumeTo: string | undefined): string {
     case "on":
       return "Sessions there capture, deposit, wake and recall, as everywhere else.";
     case "observer":
-      return "Sessions there deliver the wake and recall and record nothing; the note, session_end and chapter tools stand down.";
+      return "Sessions there deliver the wake and recall and record nothing; the remember, session_end and chapter tools stand down.";
     case "off":
       return "The hooks there produce no output and write nothing, and every tool refuses. `--resume` turns it back on.";
     default:

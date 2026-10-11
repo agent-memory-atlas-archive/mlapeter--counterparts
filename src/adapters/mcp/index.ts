@@ -21,7 +21,7 @@ export {
 } from "./protocol.js";
 export type { ErrorResponse, Id, ParsedLine, Request, Response, SuccessResponse } from "./protocol.js";
 
-export { DESKTOP_TOOLS, TOOLS, TOOL_NAMES, WAKE, renderDescription, toolDefinitions, toolSpec } from "./tools.js";
+export { DESKTOP_TOOLS, TOOLS, TOOL_ALIASES, TOOL_NAMES, WAKE, canonicalToolName, renderDescription, toolDefinitions, toolSpec } from "./tools.js";
 export type { Privilege, ToolName, ToolSpec } from "./tools.js";
 
 export {
@@ -30,7 +30,6 @@ export {
   RECALL_ID_RESULT_CHARS,
   RECALL_MAX_IDS,
   RECALL_RESULT_CHARS,
-  FADED_RETAINED,
   boundById,
   hasFaded,
   deliberateRecall,
@@ -52,7 +51,6 @@ export type {
 
 export {
   FACTS_EARLIER_SHOWN,
-  FACTS_FADED_LINES,
   FACTS_MEANING_CAP,
   FACTS_PAGE_SIZE,
   FACTS_WEAK_FRACTION,

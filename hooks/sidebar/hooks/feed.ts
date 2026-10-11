@@ -416,7 +416,7 @@ export function parseRecallBlock(text: string): RecallBlock | null {
 /** The two names the memory server's tools go by: the npm install's, the plugin's. */
 export const SERVER_SPELLINGS = ['counterparts', 'plugin_counterparts_counterparts'] as const;
 
-/** `mcp__counterparts__note` → `{ server: 'counterparts', tool: 'note' }`, ours only. */
+/** `mcp__counterparts__remember` → `{ server: 'counterparts', tool: 'remember' }`, ours only. */
 export function ourTool(name: string): { server: string; tool: string } | null {
   for (const server of SERVER_SPELLINGS) {
     const prefix = `mcp__${server}__`;
@@ -449,6 +449,9 @@ export function payloadOf(text: string | undefined): Record<string, unknown> | n
   }
 }
 
+/** `remember` was `note` until 2026-10-10; the old name still answers, so both save. */
+const REMEMBER = new Set(['remember', 'note']);
+
 function memoryId(v: unknown): string | null {
   return typeof v === 'string' && /^mem_[A-Za-z0-9]+$/.test(v.trim()) ? v.trim() : null;
 }
@@ -456,7 +459,7 @@ function memoryId(v: unknown): string | null {
 /**
  * What a memory tool call that answered without error saved, as "Saved this
  * session" items in the order written; none for any other tool (a chapter
- * included: a journal entry), and for a call that stored nothing. A `note` or a `session_end` entry with `updates`
+ * included: a journal entry), and for a call that stored nothing. A `remember` (or old `note`) or a `session_end` entry with `updates`
  * replaces that memory (unless `how: open`, which keeps both); its title is
  * read later, from the dashboard.
  */
@@ -467,11 +470,11 @@ export function savedItems(tool: string, args: Record<string, unknown>, resultTe
   if (p !== null && p['stored'] === false) return [];
   const item = (i: number, title: string, id: string | null, src: Record<string, unknown>): SidebarSaved => {
     const settled = p?.['settled'] as { ok?: unknown; held?: unknown } | undefined;
-    const refused = ours.tool === 'note' && settled !== undefined && (settled.ok === false || settled.held === true);
+    const refused = REMEMBER.has(ours.tool) && settled !== undefined && (settled.ok === false || settled.held === true);
     const replacesId = src['how'] === 'open' || refused ? null : memoryId(src['updates']);
     return { key: `live:${String(seq)}:${String(i)}`, id, title, at, replaces: null, replacesId, kind: replacesId === null ? 'new' : 'update' };
   };
-  if (ours.tool === 'note') {
+  if (REMEMBER.has(ours.tool)) {
     const title = firstLine(args['title']) ?? firstLine(args['text']) ?? 'a note';
     return [item(0, title, memoryId(p?.['id']), args)];
   }
