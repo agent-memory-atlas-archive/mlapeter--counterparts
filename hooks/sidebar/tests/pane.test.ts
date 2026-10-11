@@ -576,7 +576,8 @@ test('views: two, the sidebar and quiet; quiet is only the dim tail, ending with
   await narrow.unmount()
   const cut = w.tails.at(-1) ?? ''
   expect(cut).toMatch(/^stored: A title long enough.*… · \/counterparts opens it$/)
-  expect(hint.length + 1 + cut.length).toBeLessThan(80)
+  // the engine draws more than its `hint` prop holds and keeps cells clear: 32 spare (measured, NOTES)
+  expect(hint.length + cut.length).toBeLessThanOrEqual(80 - 32)
   // quiet reads nothing and draws no brain
   const fetches = w.fetches.length
   const blits = w.blits.length

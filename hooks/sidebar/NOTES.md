@@ -70,8 +70,14 @@ disagree, this wins.
 - **The quiet tail always ends with ` · /counterparts opens it`**
   (`sections.ts#quietTail`): the tail is dim text the engine draws and can't be
   clicked, so it says the way back. The newest thing is shortened to the row
-  (`viewport.columns` less the engine's own `hint`, two cells spare) so the
-  hint is never the part cut. Nothing new yet: `Counterparts is quiet · …`.
+  so the hint is never the part cut: `viewport.columns` less the `hint` prop
+  less 32 (`register.tsx#TAIL_SPARE`). **Measured** at 160x48 (term-loop,
+  Claude Code 2.1.296): the engine draws more than the prop holds (`⏸ manual
+  mode on · ? for shortcuts · ← for agents`, 49 cells, for a prop about 30;
+  auto mode's line 16 more), two cells of indent, ` · ` before the tail, and
+  three cells kept clear at the end; with two spare the first build's tail
+  lost `nterparts opens it`. With 32, whole in manual and auto mode at 160 and
+  200 columns (`quiet-*.png` in the shots). Nothing new yet: `Counterparts is quiet · …`.
   An unasked pane this surface could not place still says `/counterparts opens
   the sidebar` (view sidebar, nothing newer).
 - **A click opens in place, every time; again, it closes.** No click opens the

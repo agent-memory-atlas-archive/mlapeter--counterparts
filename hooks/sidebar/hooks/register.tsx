@@ -118,6 +118,16 @@ const OPEN_CLOSE_MS = 60000
 const SCOPE_RECHECK_MS = 60000
 /** How long the registry's path, found from the settings, is trusted before it is looked up again. */
 const SCOPES_FILE_TTL_MS = 5 * 60000
+/**
+ * Cells the quiet tail leaves beside the `hint` prop, so the engine never
+ * cuts the ` · /counterparts opens it` at its end. Measured at 160 columns
+ * (Claude Code 2.1.296, term-loop): the engine draws its line two cells in,
+ * joins the tail with ` · `, keeps three cells clear at the row's end, and
+ * draws more than the prop holds: `⏸ manual mode on · ? for shortcuts · ←
+ * for agents` (49 cells) for a prop about 30 wide, 19 cells more (auto mode's
+ * line, 16 more). 2 + 3 + 3 + 19, and five to spare for a wider line.
+ */
+const TAIL_SPARE = 32
 /** The hover groups that show what a click on each memory switch does, over the rows above the footer. */
 const HOVER_CP = 'counterparts-switch-cp'
 const HOVER_MEM = 'counterparts-switch-mem'
@@ -1662,8 +1672,8 @@ export const register: Register = on => {
       return run.hint ? next({ ...e, props: { ...e.props, tail: '/counterparts opens the sidebar' } }) : next(e)
     }
     const cols = e.viewport?.columns
-    // the engine's line, a space, then the tail; a cell spare at the row's end
-    const room = typeof cols === 'number' ? cols - cells(e.props.hint) - 2 : null
+    // The engine's line is wider than its `hint` prop, and it cuts the tail short of the row's end (TAIL_SPARE).
+    const room = typeof cols === 'number' ? cols - cells(e.props.hint) - TAIL_SPARE : null
     const tail = quietTail(latest?.text ?? null, room, await $.clock.now())
     return next({ ...e, props: { ...e.props, tail } })
   }).catch(($, e, next) => next(e))
