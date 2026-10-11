@@ -129,7 +129,10 @@ work event, 0.25 other work and unmarked (`AUTHORED_DEFAULT_CLAIM`), 0.35 the wo
 the owner, us or me (or said by the owner, or kind self/person). Every row stays under
 `THETA_SEM`; the 0.40 row plus a strong feeling would not (0.535), so the bound now rests
 on `FELT_HEIGHT_CAP` (§5.10) rather than on the sum. `salience.defaulted` carries the row's
-`class`. NOTES "2026-10-10 — the default by what a memory is about".
+`class`. NOTES "2026-10-10 — the default by what a memory is about". **2026-10-11
+(random-06, lightly held):** a revision by `updates` sent no `about` reads its default by the
+mark of the memory it revises (`store/index.ts#inheritFrom`, `counterpart.ts#carryAbout`),
+which it is born with; a sent mark always wins.
 
 **The old-claims era, since 2026-10-10 (decided by Mike, loosely held; working default).** A
 memory written before the store's `claims.era.cutoff` (meta, UTC ms; recorded once at the

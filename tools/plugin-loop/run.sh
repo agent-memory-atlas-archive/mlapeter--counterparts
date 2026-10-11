@@ -10,9 +10,15 @@
 # Prototype (2026-10-09). Companion to tools/install-loop/run.sh, which proves
 # the npm install; this one proves the plugin.
 #
-# Usage:  tools/plugin-loop/run.sh [workdir]
+# Usage:  tools/plugin-loop/run.sh [--bundle] [workdir]
 # Default workdir: a fresh `plugin-loop-<pid>` under $TMPDIR.
 # Env:    CLAUDE_BIN  the Claude Code executable (default: `claude` on PATH)
+#
+# --bundle: install the GENERATED plugin bundle (tools/plugin-bundle/build.ts,
+# the folder a repository of its own would hold) instead of the whole working
+# tree. The pin still comes from this repository's marketplace.json; the
+# installed copy must also stay inside the directory's file limit and carry no
+# test or module doc. Everything after the install is the same loop.
 #
 # WHAT IT NEVER DOES, and how that is proved rather than hoped:
 #
@@ -45,6 +51,11 @@ set -uo pipefail
 
 REAL_HOME="$HOME"
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+BUNDLE=0
+if [ "${1:-}" = "--bundle" ]; then
+  BUNDLE=1
+  shift
+fi
 
 # ── the guard ───────────────────────────────────────────────────────────────
 
@@ -105,20 +116,40 @@ export DISABLE_AUTOUPDATER=1
 # bun's caches follow HOME; its binary is borrowed, its home is not.
 export BUN_INSTALL="$HOME/.bun"
 # A PATH with no repo on it and no user bin dir: the borrowed bun and git, and
-# the system. Claude Code runs the plugin's dependency install (bun.lock → bun)
-# and its hooks with this PATH.
-export PATH="$(dirname "$BUN_BIN"):$(dirname "$GIT_BIN"):/usr/bin:/bin:/usr/sbin:/sbin"
+# the system. Claude Code runs the plugin's dependency install (the working
+# tree's bun.lock → bun; the bundle's package-lock.json → npm) and its hooks
+# with this PATH. For a bundle, npm is borrowed too, with the Node beside it;
+# the launcher still picks Bun first (a Node older than 22.15 it skips).
+LOCKFILE="bun.lock"
+NPM_DIR=""
+if [ "$BUNDLE" = 1 ]; then
+  LOCKFILE="package-lock.json"
+  NPM_BIN="$(command -v npm || true)"
+  [ -x "$NPM_BIN" ] || { echo "REFUSED: --bundle needs npm (its lockfile is npm's)."; exit 1; }
+  NPM_DIR="$(dirname "$NPM_BIN"):"
+  # npm's cache follows HOME, like bun's.
+  export npm_config_cache="$FAKE_HOME/.npm"
+fi
+export PATH="$(dirname "$BUN_BIN"):$NPM_DIR$(dirname "$GIT_BIN"):/usr/bin:/bin:/usr/sbin:/sbin"
 
 PROJECT="$HOME/project"
 MARKET_SRC="$WORK/marketplace-src"
 MARKET_GIT="$WORK/counterparts.git"
+# The repository's own marketplace (its catalog and pin): the snapshot's copy,
+# or, for a bundle (which carries none), a copy of this repository's.
+REPO_MARKET="$MARKET_SRC"
+[ "$BUNDLE" = 1 ] && REPO_MARKET="$WORK/repo-marketplace"
 
 echo "clean room"
 echo "  HOME     $HOME"
 echo "  PATH     $PATH"
 echo "  claude   $CLAUDE_BIN ($("$CLAUDE_BIN" --version 2>/dev/null))"
 echo "  bun      $("$BUN_BIN" --version)"
-echo "  repo     $REPO (snapshotted into a git marketplace; never loaded in place)"
+if [ "$BUNDLE" = 1 ]; then
+  echo "  repo     $REPO (its generated plugin bundle, snapshotted into git; never loaded in place)"
+else
+  echo "  repo     $REPO (snapshotted into a git marketplace; never loaded in place)"
+fi
 echo
 
 # ── plumbing ────────────────────────────────────────────────────────────────
@@ -165,11 +196,20 @@ fi
 
 # ── 2. a marketplace the way GitHub would serve it ─────────────────────────
 
-step "snapshot the working tree into a git marketplace (tracked + new files, no node_modules)"
 rm -rf "$MARKET_SRC" "$MARKET_GIT"
-mkdir -p "$MARKET_SRC"
-( cd "$REPO" && git ls-files -co --exclude-standard -z ) |
-  ( cd "$REPO" && xargs -0 -I{} sh -c 'mkdir -p "$1/$(dirname "$2")" && cp -p "$2" "$1/$2"' _ "$MARKET_SRC" {} )
+if [ "$BUNDLE" = 1 ]; then
+  step "generate the plugin bundle and snapshot it into git (the bundle repository's root is the plugin)"
+  BUILD_OUT=$("$BUN_BIN" "$REPO/tools/plugin-bundle/build.ts" "$MARKET_SRC" 2>&1)
+  printf '%s\n' "$BUILD_OUT" > "$WORK/bundle-build.txt"
+  rm -rf "$REPO_MARKET"
+  mkdir -p "$REPO_MARKET/.claude-plugin"
+  cp "$REPO/.claude-plugin/marketplace.json" "$REPO_MARKET/.claude-plugin/marketplace.json"
+else
+  step "snapshot the working tree into a git marketplace (tracked + new files, no node_modules)"
+  mkdir -p "$MARKET_SRC"
+  ( cd "$REPO" && git ls-files -co --exclude-standard -z ) |
+    ( cd "$REPO" && xargs -0 -I{} sh -c 'mkdir -p "$1/$(dirname "$2")" && cp -p "$2" "$1/$2"' _ "$MARKET_SRC" {} )
+fi
 (
   cd "$MARKET_SRC" &&
     git init -q -b main &&
@@ -177,16 +217,21 @@ mkdir -p "$MARKET_SRC"
     git -c user.name=plugin-loop -c user.email=plugin-loop@example.invalid commit -q -m snapshot &&
     git clone -q --bare . "$MARKET_GIT"
 ) >/dev/null 2>&1
-if [ -f "$MARKET_GIT/HEAD" ] && [ -f "$MARKET_SRC/.claude-plugin/marketplace.json" ]; then ok; else no "no snapshot" ""; fi
+if [ -f "$MARKET_GIT/HEAD" ] && [ -f "$MARKET_SRC/.claude-plugin/plugin.json" ] && [ -f "$REPO_MARKET/.claude-plugin/marketplace.json" ]; then
+  ok
+  [ "$BUNDLE" = 1 ] && sed 's/^/      /' "$WORK/bundle-build.txt"
+else
+  no "no snapshot" "${BUILD_OUT:-}"
+fi
 
 step "the repository's entry pins a release tag; the snapshot is tagged with it, and its branch moves past it"
-# The pin, read from the snapshot's own marketplace.json: GitHub at a tag.
+# The pin, read from the repository's own marketplace.json: GitHub at a tag.
 PIN=$(bun -e '
   const m = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
   const e = (m.plugins ?? []).find((p) => p.name === "counterparts");
   const s = e?.source;
   console.log(s && typeof s === "object" && s.source === "github" ? (s.ref ?? "") : "");
-' "$MARKET_SRC/.claude-plugin/marketplace.json" 2>/dev/null || true)
+' "$REPO_MARKET/.claude-plugin/marketplace.json" 2>/dev/null || true)
 # Inside the throwaway bare clone only: the snapshot gets the pin's tag, and the
 # branch gets one more commit (a marker file) the pin must not install.
 PAST="$WORK/past-the-pin"
@@ -205,7 +250,7 @@ fi
 TAGGED=$(git -C "$MARKET_GIT" rev-parse -q --verify "refs/tags/$PIN^{commit}" 2>/dev/null || true)
 BRANCH=$(git -C "$MARKET_GIT" rev-parse -q --verify "refs/heads/main" 2>/dev/null || true)
 if [[ ! "$PIN" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  no "the repository's entry is not GitHub at a release tag (ref: '${PIN}')" "$(cat "$MARKET_SRC/.claude-plugin/marketplace.json")"
+  no "the repository's entry is not GitHub at a release tag (ref: '${PIN}')" "$(cat "$REPO_MARKET/.claude-plugin/marketplace.json")"
 elif [ -z "$TAGGED" ] || [ -z "$BRANCH" ] || [ "$TAGGED" = "$BRANCH" ]; then
   no "could not tag the snapshot $PIN and move its branch past it" "tag: $TAGGED
 main: $BRANCH"
@@ -227,7 +272,7 @@ fi
 step "the repository's own marketplace.json adds, and lists the plugin"
 # Added from the local path (Claude Code reads a directory marketplace in
 # place), checked, and removed again: the install below takes the COPY path.
-ADD0=$(claude plugin marketplace add "$MARKET_SRC" 2>&1)
+ADD0=$(claude plugin marketplace add "$REPO_MARKET" 2>&1)
 LISTED=$(claude plugin marketplace list 2>&1)
 REMOVED=$(claude plugin marketplace remove counterparts 2>&1)
 if grep -q "counterparts" <<<"$LISTED" && ! grep -qi "error\|invalid\|✘" <<<"$ADD0"; then
@@ -313,8 +358,8 @@ fi
 step "the install is the tagged snapshot (the working tree), not the branch head past the tag"
 if [ -e "$INSTALL_PATH/PAST-THE-PIN" ]; then
   no "the install carries the commit past $PIN: Claude Code took the branch, not the pin" "$(ls "$INSTALL_PATH" | head -20)"
-elif ! cmp -s "$REPO/.claude-plugin/plugin.json" "$INSTALL_PATH/.claude-plugin/plugin.json"; then
-  no "the installed plugin.json is not the working tree's" "$(diff "$REPO/.claude-plugin/plugin.json" "$INSTALL_PATH/.claude-plugin/plugin.json" | head -20)"
+elif ! cmp -s "$MARKET_SRC/.claude-plugin/plugin.json" "$INSTALL_PATH/.claude-plugin/plugin.json"; then
+  no "the installed plugin.json is not the snapshot's" "$(diff "$MARKET_SRC/.claude-plugin/plugin.json" "$INSTALL_PATH/.claude-plugin/plugin.json" | head -20)"
 else
   ok
 fi
@@ -322,7 +367,21 @@ fi
 step "the install is a COPY in the cache, with no .git (so doctor reads it as an installed package)"
 if [ -d "$INSTALL_PATH/.git" ]; then no "the cached copy carries .git" "$(ls -la "$INSTALL_PATH" | head -20)"; else ok; fi
 
-step "Claude Code installed the one dependency (the embedding table) from bun.lock"
+if [ "$BUNDLE" = 1 ]; then
+  step "the installed bundle is inside the directory's limits: ≤ 512 files, no tests, no module docs, no symlinks"
+  SHIPPED=$( cd "$INSTALL_PATH" && find . -path ./node_modules -prune -o \( -type f -o -type l \) -print | sed 's|^\./||' | sort )
+  COUNT=$(printf '%s\n' "$SHIPPED" | grep -c . || true)
+  STRAY=$(printf '%s\n' "$SHIPPED" | grep -E '(^|/)(NOTES|CONTRACT|INTERFACE-GAPS)\.md$|\.test\.[cm]?[jt]sx?$|(^|/)tests?/|\.DS_Store$' || true)
+  LINKS=$( cd "$INSTALL_PATH" && find . -path ./node_modules -prune -o -type l -print )
+  if [ "$COUNT" -le 512 ] && [ -z "$STRAY" ] && [ -z "$LINKS" ]; then
+    ok
+    echo "      $COUNT files (node_modules aside)"
+  else
+    no "$COUNT files; stray: ${STRAY:-none}; links: ${LINKS:-none}" ""
+  fi
+fi
+
+step "Claude Code installed the one dependency (the embedding table) from $LOCKFILE"
 if [ -f "$INSTALL_PATH/node_modules/counterparts-model-potion/package.json" ]; then
   ok
   echo "      node_modules: $(du -sh "$INSTALL_PATH/node_modules" 2>/dev/null | cut -f1)"
@@ -351,6 +410,24 @@ else
   no "no first-run wake in the debug log" "$(grep -iE 'hook|counterparts' "$WORK/debug-wake.log" | tail -20)"
 fi
 
+step "the sidebar mod loads: Claude Code registers the plugin's hooks module"
+MODULE=$(grep -E 'hooks module counterparts@counterparts-loop loaded' "$WORK/debug-wake.log" | head -1 || true)
+if [ -n "$MODULE" ] && grep -q 'ui.render' <<<"$MODULE"; then
+  ok
+  sed 's/^.*\(hooks module counterparts\)/      \1/' <<<"$MODULE" | cut -c1-160
+else
+  no "no 'hooks module counterparts@… loaded' line in the debug log" "$(grep -iE 'hooks module|modules' "$WORK/debug-wake.log" | tail -10)"
+fi
+
+step "/counterparts:doctor is registered (its command is run for real under 'doctor' below)"
+# Every command the installed copy carries, so a new one (dashboard.md) does not fail this.
+COMMANDS=$(ls "$INSTALL_PATH/commands/"*.md 2>/dev/null | wc -l | tr -d ' ')
+if [ -f "$INSTALL_PATH/commands/doctor.md" ] && grep -q "Loaded $COMMANDS commands from plugin counterparts" "$WORK/debug-wake.log"; then
+  ok
+else
+  no "Claude Code loaded no command from the plugin" "$(grep -iE 'plugin commands|commands from plugin' "$WORK/debug-wake.log" | tail -5)"
+fi
+
 # ── 4. the server, launched by Claude Code from the plugin root ────────────
 
 step "claude mcp list starts the plugin's server from the plugin root, and it connects"
@@ -374,6 +451,8 @@ step "note → recall through the plugin's server"
 RPC=$(
   printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"claude-code","version":"plugin-loop"}}}'
   printf '%s\n' '{"jsonrpc":"2.0","method":"notifications/initialized"}'
+  # The list first: it is the long reply, and the server stops when stdin ends.
+  printf '%s\n' '{"jsonrpc":"2.0","id":4,"method":"tools/list","params":{}}'
   printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"note","arguments":{"text":"%s"}}}\n' "$CANARY"
   printf '%s\n' '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"recall","arguments":{"question":"what is the bicycle called?","mode":"facts"}}}'
 )
@@ -389,6 +468,20 @@ else
   no "recall did not return the note" "note: $NOTED
 recall: $RECALLED
 $(cat "$WORK/mcp.err")"
+fi
+
+step "the plugin's server lists its tools"
+LISTED_TOOLS=$(bun -e '
+  const line = require("fs").readFileSync(process.argv[1], "utf8").split("\n").find((l) => l.includes("\"id\":4"));
+  const r = JSON.parse(line ?? "{}");
+  console.log((r.result?.tools ?? []).map((t) => t.name).join(" "));
+' "$WORK/mcp-roundtrip.jsonl" 2>/dev/null || true)
+TOOL_COUNT=$(wc -w <<<"$LISTED_TOOLS" | tr -d ' ')
+if [ "${TOOL_COUNT:-0}" -ge 5 ] && grep -qw remember <<<"$LISTED_TOOLS" && grep -qw recall <<<"$LISTED_TOOLS"; then
+  ok
+  echo "      $TOOL_COUNT tools: $LISTED_TOOLS"
+else
+  no "tools/list did not name the memory tools" "$(grep '"id":4' <<<"$MCP_OUT" | cut -c1-400)"
 fi
 
 step "the store shows it: the console (from the plugin) finds the note"
@@ -438,6 +531,82 @@ if grep -q "connected as the Claude Code plugin (counterparts@counterparts-loop"
   grep -E "^[0-9]+ red" <<<"$DOCTOR" | sed 's/^/      /'
 else
   no "doctor did not read the plugin install (or recall/checkout lines differ)" "$(grep -E "Claude Code|Recall by meaning|Checkout|red,|^RED|^AMBER" <<<"$DOCTOR")"
+fi
+
+if [ "$BUNDLE" = 1 ]; then
+  step "Bun, named outright (COUNTERPARTS_RUNTIME), finds the table npm installed"
+  BUN_DOCTOR=$( cd "$PROJECT" && t 120 "${SERVE_ENV[@]}" COUNTERPARTS_RUNTIME="$BUN_BIN" sh "$INSTALL_PATH/src/adapters/plugin-run.sh" cli doctor 2>&1 )
+  printf '%s\n' "$BUN_DOCTOR" > "$WORK/doctor-bun.txt"
+  if grep -qE "^GREEN +Recall by meaning +on" <<<"$BUN_DOCTOR"; then
+    ok
+    grep -E "Recall by meaning" <<<"$BUN_DOCTOR" | cut -c1-140 | sed 's/^/      /'
+  else
+    no "under Bun, doctor's Recall by meaning line is not green" "$(grep -E "Recall by meaning|^RED|^AMBER" <<<"$BUN_DOCTOR")"
+  fi
+
+  # WHEN THE DEPENDENCY INSTALL DID NOT RUN (no npm, the 60 s limit, offline):
+  # a copy of the install without node_modules, each run on a store of its own
+  # (a throwaway home inside this workdir): a first session, then doctor.
+  NODEPS="$WORK/no-deps-copy"
+  rm -rf "$NODEPS"
+  cp -R "$INSTALL_PATH" "$NODEPS" && rm -rf "$NODEPS/node_modules"
+  nodeps_doctor() { # nodeps_doctor <runtime> <home> → doctor's output
+    rm -rf "$2"
+    mkdir -p "$2/project"
+    local envs=(env HOME="$2" USERPROFILE="$2" BUN_INSTALL="$2/.bun" COUNTERPARTS_RUNTIME="$1" CLAUDE_PLUGIN_ROOT="$NODEPS" CLAUDE_PLUGIN_DATA="$2/.claude/plugins/data/counterparts-counterparts-loop" CLAUDE_PROJECT_DIR="$2/project" CLAUDECODE=1)
+    # A whole session, so the processes the hooks start (the runner, the
+    # embedding worker) run too, then doctor.
+    local tr="$2/project/transcript.jsonl"
+    printf '%s\n' '{"type":"user","message":{"role":"user","content":"Our neighbour Ilse restores harpsichords in a barn."},"timestamp":"2026-10-11T10:00:00Z"}' \
+      '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Harpsichords in a barn: noted about Ilse."}]},"timestamp":"2026-10-11T10:00:05Z"}' > "$tr"
+    local ev
+    for ev in 'SessionStart","source":"startup' 'UserPromptSubmit","prompt":"Our neighbour Ilse restores harpsichords in a barn.' 'Stop","stop_hook_active":false' 'SessionEnd","reason":"exit'; do
+      printf '{"session_id":"no-deps-%s","cwd":"%s","transcript_path":"%s","hook_event_name":"%s"}' "$$" "$2/project" "$tr" "$ev" |
+        ( cd "$2/project" && t 120 "${envs[@]}" sh "$NODEPS/src/adapters/plugin-run.sh" hook ) >>"$2.hook.out" 2>&1
+    done
+    sleep 8
+    ( cd "$2/project" && t 120 "${envs[@]}" sh "$NODEPS/src/adapters/plugin-run.sh" cli doctor 2>&1 )
+  }
+
+  # A Node 22.15+ from the real home's version managers, borrowed like bun.
+  NODE_OK=""
+  for n in "$REAL_HOME"/.nvm/versions/node/v2[2-9]*/bin/node /opt/homebrew/bin/node /usr/local/bin/node; do
+    [ -x "$n" ] || continue
+    v="$("$n" --version 2>/dev/null)"; v="${v#v}"
+    major="${v%%.*}"; minor="${v#*.}"; minor="${minor%%.*}"
+    if [ "$major" -gt 22 ] 2>/dev/null || { [ "$major" -eq 22 ] && [ "$minor" -ge 15 ]; } 2>/dev/null; then NODE_OK="$n"; break; fi
+  done
+  step "no dependency install, under Node: doctor's Recall by meaning line is amber and says recall still matches on words"
+  if [ -z "$NODE_OK" ]; then
+    no "no Node 22.15+ to run this with (nvm, Homebrew, /usr/local)" ""
+  else
+    NODEPS_DOCTOR=$(nodeps_doctor "$NODE_OK" "$WORK/home-no-deps-node")
+    printf '%s\n' "$NODEPS_DOCTOR" > "$WORK/doctor-no-deps-node.txt"
+    if grep -qE "^AMBER +Recall by meaning +on \(a local table\), but .*recall still matches on words" <<<"$NODEPS_DOCTOR"; then
+      ok
+      echo "      node $("$NODE_OK" --version):"
+      grep -A1 -E "Recall by meaning" <<<"$NODEPS_DOCTOR" | cut -c1-220 | sed 's/^/      /'
+    else
+      no "doctor did not name the missing table" "$(grep -A1 -E "Recall by meaning" <<<"$NODEPS_DOCTOR")"
+    fi
+  fi
+
+  # Under Bun, with no node_modules anywhere above the plugin, Bun's runtime
+  # would fetch the package from the npm registry into ~/.bun/install/cache at
+  # first use, unpinned. empty-bunfig.toml, which every Bun launch names (the
+  # runner and embedding worker included), turns that off, so the table stays
+  # missing and doctor says so, as under Node.
+  step "no dependency install, under Bun: no auto-install (nothing in ~/.bun/install/cache), doctor's line is amber"
+  NODEPS_DOCTOR=$(nodeps_doctor "$BUN_BIN" "$WORK/home-no-deps-bun")
+  printf '%s\n' "$NODEPS_DOCTOR" > "$WORK/doctor-no-deps-bun.txt"
+  CACHED=$(ls -d "$WORK/home-no-deps-bun/.bun/install/cache/"* 2>/dev/null | head -3)
+  if [ -z "$CACHED" ] && grep -qE "^AMBER +Recall by meaning +on \(a local table\), but .*recall still matches on words" <<<"$NODEPS_DOCTOR"; then
+    ok
+    grep -E "Recall by meaning" <<<"$NODEPS_DOCTOR" | cut -c1-200 | sed 's/^/      /'
+  else
+    no "Bun fetched something, or doctor's line is not amber (cache: ${CACHED:-empty})" "$(grep -A1 -E "Recall by meaning" <<<"$NODEPS_DOCTOR")"
+  fi
+  rm -rf "$NODEPS"
 fi
 
 # ── 6. the double-install guard ────────────────────────────────────────────

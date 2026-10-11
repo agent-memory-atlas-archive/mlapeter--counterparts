@@ -223,11 +223,14 @@ dreamer is the model (a background agent the session launches), outside this pro
   over none — and its era
   standing: an original written before the old-claims cutoff gives the merged memory its
   moment (`meta.eraWrittenAt`) and its `claimedDefault`, so the era reads the merged
-  memory as it read that original; `mergedAbout`, `store/operational.ts#eraCarriedFrom`),
+  memory as it read that original; `store/index.ts#inheritFrom`, `store/operational.ts#eraCarriedFrom`),
   `link` (both ways, proposed at `LINK_WEIGHT` through
   `associate`, only where there is room, since 2026-09-28), `replayed` (a
   return at `DREAM_RETURN_WEIGHT`, never a use), `gist` (source `dreamed`, citing and
-  linked to its sources, salience capped at `DREAMED_CLAIM_CEILING`), `contradiction`
+  linked to its sources, salience capped at `DREAMED_CLAIM_CEILING`; since 2026-10-11
+  it takes what its sources were about by the merge's rule, a personal mark winning, the
+  first named as best — `store/index.ts#inheritFrom` — and no era standing, its claim being
+  its own; D6, §7 Q2), `contradiction`
   (an unsettled pair in `contradictions`; a pair already standing is left as it is),
   `settle` (2026-09-29: two memories it was shown, `holds` / `over` / `how` / `why`,
   through `contradictions.ts#settle`; undone with the dream unless settled since),
@@ -400,10 +403,19 @@ examples) · **§2.19** (every change enumerable: `counterparts dream --show`) �
    compares page versions after a few days, and may decide the reflection stops writing
    the page.
 2. Should a gist that proves true awake be promoted out of `dreamed` provenance?
-   Related (owner ruling D6 on #256, left open): should `sleep/consolidate.ts#aboutMe`
-   also refuse a `dreamed` row outright, as defence in depth? Today no road reaches the
-   core from a gist (capped salience; a reflection cannot feel it or mark it about me),
-   but the v9 upgrade marked a `self`-kind gist `me` when it carried the old rule.
+   Related, D6 (owner ruling on #256): **CLOSED by Mike, 2026-10-11, lightly held** — a
+   gist keeps a personal mark (me, us, owner) chosen by `inheritFrom`'s "personal wins"
+   rule over its sources, and reaches the core only the ordinary way, by awake recurrence
+   (a dream cannot replay it, a reflection cannot feel it or mark it about me, its claim
+   is capped). No special rule: `sleep/consolidate.ts#aboutMe` refuses nothing by
+   `source`. The provenance question above stays open. Measured at the review of
+   #403, under today's tunables: no lane is met by a gist even awake. Thirty days of
+   awake returns leave it at strength ~0.29, under the slow lane's 0.5 floor (its claim
+   stays at the cap, the repetition arm is 0 for `self`/`person` and stays under 0.5
+   for the rest, consolidation is for legacy rows only), and the fast lane needs a
+   feeling, which every door refuses on a gist. So today the mark changes the wake
+   lane a gist sits in (work or Nearby), not its way to the core. The question above
+   is the only road there.
 3. Should dream links be stored differently from Hebbian links (a marker, a hop
    weight)? A session designing association with the owner may decide; today they are
    ordinary edges at `LINK_WEIGHT`. Since 2026-09-28 (association build 1) that is 0.1,

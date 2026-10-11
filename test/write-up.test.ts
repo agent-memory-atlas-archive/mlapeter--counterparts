@@ -1041,7 +1041,7 @@ describe("doctor: one line, `Write-ups` (#192's `Crash write-up`, re-read off th
     s.done();
     const got = line();
     expect(got.severity).toBe("amber");
-    expect(got.detail).toContain("2 sessions owe a write-up, 2 from yesterday or earlier");
+    expect(got.detail).toContain("2 sessions to catch up, 2 from yesterday or earlier");
   });
 
   test("a session finished here and waiting on another project names that project (m-C)", async () => {
@@ -1070,8 +1070,8 @@ describe("doctor: one line, `Write-ups` (#192's `Crash write-up`, re-read off th
     }).find((x) => x.key === "crash-write-up");
     expect(f?.severity).toBe("amber");
     expect(f?.detail).toContain(`session multi is finished in ${PROJ} and waiting on words it left in ${OTHER}`);
-    expect(f?.fix).toContain(`Open a session in ${OTHER}`);
-    expect(f?.fix).toContain("no command yet to close a session by hand");
+    expect(f?.fix).toContain(`open a session in ${OTHER}`);
+    expect(f?.fix).toContain("Run counterparts catch-up");
   });
 
   test("counts the sessions that owe, and turns amber once one is from yesterday or earlier", () => {
@@ -1080,14 +1080,14 @@ describe("doctor: one line, `Write-ups` (#192's `Crash write-up`, re-read off th
     s.done();
     const green = line();
     expect(green.severity).toBe("green");
-    expect(green.detail).toContain("; 1 session owes a write-up");
+    expect(green.detail).toContain("; 1 session to catch up");
     expect(green.detail).not.toContain("from yesterday");
     const t = seeder();
     ended(t, "stale", { at: Date.now() - 5 * DAY, scope: OTHER });
     t.done();
     const amber = line();
     expect(amber.severity).toBe("amber");
-    expect(amber.detail).toContain("; 2 sessions owe a write-up, 1 from yesterday or earlier");
+    expect(amber.detail).toContain("; 2 sessions to catch up, 1 from yesterday or earlier");
   });
 
   test("Authorship carries the owed count as detail and stays green — the loss is Write-ups' one amber", () => {
@@ -1118,7 +1118,7 @@ describe("doctor: one line, `Write-ups` (#192's `Crash write-up`, re-read off th
     expect(late.crash).toBe("amber");
     expect(late.authorship.severity).toBe("green");
     expect(late.authorship.stale).toBe(1);
-    expect(late.authorship.detail).toContain("1 session awaiting a write-up, 1 from yesterday or earlier");
+    expect(late.authorship.detail).toContain("1 session awaiting catch-up, 1 from yesterday or earlier");
   });
 });
 
@@ -1345,7 +1345,7 @@ describe("the short write-up: a small owed stretch (2026-09-29; since 2026-09-30
         refusals: {},
       }).find((x) => x.key === "crash-write-up");
       expect(f?.severity).toBe("amber");
-      expect(f?.detail).toContain("1 session owes a write-up, 1 from yesterday or earlier");
+      expect(f?.detail).toContain("1 session to catch up, 1 from yesterday or earlier");
     } finally {
       c.close();
     }

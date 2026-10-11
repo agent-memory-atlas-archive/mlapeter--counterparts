@@ -329,6 +329,12 @@ were refined by b2+f8 at the review of #369, named where they were):
 
 - Decided by random-06, 2026-10-11, lightly held: a dream's merged memory takes its strongest original's `about` mark (with its setter) unless that is not personal and another original's is (me, us, owner: a personal mark is never lost to a work one); of several personal marks, the strongest original's, else the first named. It also keeps that original's stored claim AND its era standing: an original written before the old-claims cutoff gives the merged memory its moment (`meta.eraWrittenAt`) and its `claimedDefault`, so the era reads it as it read the original, and `--off` reads it as stored. Why: a merge is the same memory in better words; before this the supersede's fill-if-unmarked carry took the first marked original's mark in the dream's order (a work one could win), and a merged memory was a new row the era no longer read, so two old owner defaults reading 0.40 became one reading 0.25, and an old 0.7 world claim read at 0.35 jumped back to 0.7. Detail decided by the merge-inherits builder, lightly held: the moment, not a yes/no flag, so it reads right against whatever cutoff `--on` restores and through a merge of a merge; and the strongest original's writer's fields (said by, status, when) come too, since the era's default and its "said by the owner" exemption read them (the supersede's carry still fills any the strongest original lacks from the others, as before). Merged memories made before this fix are not repaired.
 
+### Decided by random-06, 2026-10-11, lightly held (one `inheritFrom` helper)
+
+- Decided by random-06, 2026-10-11, lightly held: one `inheritFrom` helper (`store/index.ts`) decides what a row made from existing ones inherits — what it is about (the merge's rule: a personal mark wins over work, work over none) and, for a row that takes its best source's stored claim, its era standing. The dream merge and a revision by `updates` read it. A revision with no `about` sent takes the mark of the memory it revises (declared and resolved, as the three writer's fields already did), written at birth with its setter, and its default claim reads by it: an owner or us memory revised without restating `about` defaults to 0.40, not the unmarked 0.25. A sent `about` always wins. Why: random-06 revises by `updates` many times a day, and each revision of a personal memory was dropping to the unmarked default, and (for a link-only revision) losing its mark entirely. Group 2 routes the remaining "this replaces that" paths through the same helper later. Details accepted by the coordinator, 2026-10-11, lightly held: the helper returns no default claim (the revision's mark goes into `mint.ts`'s existing `defaultClaimFor`, which reads the proposal's status, said-by and kind); and a schema element (marked `me` by the v9 upgrade) revised by `updates` is born `me` at 0.40, where before it got the mark only after the mint (by the supersede's carry) at 0.25.
+- Decided by the coordinator, 2026-10-11, lightly held, from the builder's evidence (B1), revising random-06's ask: **the reflection's own entry stays unmarked** (not `me`). Why: marking it reverses B1 (review of #256, pinned by `test/reflect-review.test.ts`, "a reflection's own entry … is not handed back to a reflection as a memory to mark or feel", which asserts the entry stays unmarked): the mark is the core's first gate (`physics#promotionEligibility`'s `not-about-me`), awake returns land on reflection rows (`Store#reinforce` filters no source), so every nightly entry would become a slow-lane core candidate — the self-authored rumination loop self CONTRACT §2(c) names. Turning it on is one line (`about: "me", aboutBy: "reflection"` in `dream/reflect.ts`'s entry `put`) plus that test's last assertion.
+- Gist marks: D6 closed by Mike, 2026-10-11, lightly held: personal marks kept, core only by awake recurrence. A dream gist reads `inheritFrom(sources)` like the merge (a personal mark among its sources wins, the first named as best; its setter kept), with no era standing, its claim staying at `DREAMED_CLAIM_CEILING`. No refusal by `source` was added to the core's lanes (`dream/CONTRACT.md` §7 Q2). The reflection's own entry stays unmarked.
+
 ### Decided by the drewOn builder, 2026-10-11, lightly held (`drewOn`, item 3 above)
 
 - Decided by the drewOn builder, 2026-10-11, lightly held: an id from the wake comes back
@@ -389,6 +395,47 @@ were refined by b2+f8 at the review of #369, named where they were):
   it are yours to draw here." Why: the dream already writes a pattern it sees as a gist, but the
   reflection named patterns only in one rotating question and lessons nowhere, so the work the
   chapter now hands over had no stated home.
+
+### Decided by the catch-up builder, 2026-10-11, lightly held (the nightly run writes up everything owed)
+
+- Decided by the catch-up builder, 2026-10-11, lightly held: the night's catch-up has no
+  session bound; it runs in batches of at most 192 KB / 16 parts, each a fresh `claude -p`, until
+  nothing is owed. Why: every fetched part stays in a child's context, so one child for a heavy
+  morning would grow past a 200k-token model; a fresh child per batch keeps each near 50k.
+- Decided by the catch-up builder, 2026-10-11, lightly held: the sanity ceiling is 400 parts and
+  one hour a run (`NIGHT_WRITE_UP_PARTS`, `NIGHT_WRITE_UP_TOTAL_MS`). Why: a part costs about 7k
+  new-work tokens (cache write + output) and two tool calls, so 400 parts is about 2.8M tokens,
+  ~11× the measured nightly baseline (246k, 2026-10-10); a typical morning (20–40 parts) is under
+  one baseline night, and a heavy day owed in full is about 200 parts (30 pieces were 16 parts on
+  10-11). 400 parts at the measured 4–8 s a part is 27–53 minutes. The per-part cost is an
+  estimate from part sizes, not measured from a catch-up transcript: measure it on the first live
+  runs and move the ceiling if it is off.
+- Decided by the catch-up builder, 2026-10-11, lightly held: the catch-up stays BEFORE the dream.
+  Why: the page writer and the dream's "new since the last dream" read yesterday, and yesterday's
+  write-ups should be there when they do. The cost is that a heavy morning delays the dream by up
+  to the hour; the hook's `started` row now carries that hour (`nightRowTimeoutMs`), so the delay
+  is never read as a lost run.
+- Decided by the catch-up builder, 2026-10-11, lightly held: the SessionStart pointer (and
+  Desktop's wake pointer) is retired only under dreaming `auto`. Why: under `ask` or `off` no
+  nightly run happens, and without the pointer an owed session in a quiet folder would lapse
+  unless someone ran `counterparts catch-up`. The door's ordinary (pointer) path is kept for
+  that case.
+- Decided by the catch-up builder, 2026-10-11, lightly held: `counterparts catch-up` files its
+  runners and pins its child's tools to the store's own directory, not the terminal's. Why: a
+  command typed in a terminal was not started from any project, and the working directory may be
+  one set `off`.
+
+### Decided by the doctor-install-fixes builder, 2026-10-11, lightly held (doctor's fixes by install)
+
+- Decided by the doctor-install-fixes builder, 2026-10-11, lightly held: doctor's fix lines
+  that install something (the model table missing or mismatched, a cache from a newer build)
+  name the route by `plugin.ts#installRoute`: `/plugin → Installed → counterparts → Update now` when this process
+  is the plugin's (`runningAsPlugin`), the `bun add -g` command when no `CLAUDE_PLUGIN_ROOT`
+  is set, and both when one is set but names another copy, or when a caller passes nothing.
+  Why: the plugin may run as the single binary with no bun at all, and "both" is the safe
+  default for a caller that forgets. `plugin-run.sh` now also exports the plugin data
+  directory it falls back on, so the single binary run from `/counterparts:doctor` knows
+  itself for the plugin's (before, `runningAsPlugin` read false there).
 
 ### Also noted
 

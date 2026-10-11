@@ -25,6 +25,7 @@ import {
   SCOPE_ASK_OPEN,
   loadConfig,
   nightMcpConfig,
+  nightRowTimeoutMs,
   nightTimeoutMs,
   openAdapter,
   openNightCounterpart,
@@ -45,7 +46,7 @@ import { launchOptions } from "../src/adapters/mcp/bin/serve.js";
 import { toolDefinitions } from "../src/adapters/mcp/tools.js";
 import { dreamShowLines, nightRunLine } from "../src/adapters/cli/dream-core.js";
 import { pageWriterNight } from "../src/core/self/index.js";
-import { Counterpart as CounterpartClass } from "../src/core/counterpart.js";
+import { Counterpart as CounterpartClass, NIGHT_WRITE_UP_EVENT } from "../src/core/counterpart.js";
 import type { Counterpart } from "../src/core/counterpart.js";
 import { DREAMING_DEFAULT, DREAM_MARK, DREAM_TUNABLES, RELAUNCHED_KEY, nightPartsWords, nightRunOf, nightRunWords } from "../src/core/dream/index.js";
 import type { PutInput } from "../src/core/store/index.js";
@@ -714,6 +715,27 @@ describe("B. auto: the first prompt of the day starts the headless run itself", 
     expect(a.counterpart.store.eventLog({ name: "dream.night" }).filter((e) => e.ref === started.run)).toHaveLength(2);
   });
 
+  test("the hand-back carries one line on what the night caught up (2026-10-11), read from its row", () => {
+    const a = autoHooks();
+    setAuto(a);
+    a.userPromptSubmit(input());
+    const started = a.counterpart.dreams.nightRun();
+    if (started === null) throw new Error("no run");
+    const d = a.counterpart.dreams.begin({ session: "s1", at: AT });
+    if (!d.ok) throw new Error(d.reason);
+    a.counterpart.dreams.journal({ dream: d.bundle.dream, session: "s1", title: "Boot order", text: "A dream." });
+    a.counterpart.store.appendEvent({
+      name: NIGHT_WRITE_UP_EVENT,
+      day: a.counterpart.store.livedDay(),
+      ref: started.run,
+      payload: { state: "done", granted: 4, written: 3, parts: 40, left: 1, partsLeft: 6, bounded: 0, busy: 0, batches: 3, limit: null },
+      dedupKey: `${NIGHT_WRITE_UP_EVENT}:${started.run}`,
+    });
+    a.counterpart.dreams.recordNightRun({ ...started, state: "done", code: 0, endedAt: a.counterpart.store.now(), dream: d.bundle.dream });
+    const next = a.userPromptSubmit(input({ prompt: "back again" }));
+    expect(next.injection).toContain("the nightly run caught up on sessions that had ended before they were written up — caught up 3 of 4 sessions (40 parts written); 1 session still owed, 6 parts.");
+  });
+
   test("a partial run's hand-back says it was partial; the reflection-alone run after it hands back no second dream line (review finding 5)", () => {
     const a = autoHooks();
     setAuto(a);
@@ -750,9 +772,14 @@ describe("B. auto: the first prompt of the day starts the headless run itself", 
     setAuto(a);
     a.userPromptSubmit(input());
     expect(nightPlans()).toHaveLength(1);
-    expect(a.counterpart.dreams.nightRun()?.timeoutMs).toBe(20 * 60_000);
+    // The row carries the catch-up's hour beside the main child's twenty
+    // minutes (2026-10-11), so a long catch-up is never read as lost.
+    expect(a.counterpart.dreams.nightRun()?.timeoutMs).toBe(nightRowTimeoutMs({ dataDir: dir }, "night"));
+    expect(nightRowTimeoutMs({ dataDir: dir }, "night")).toBeGreaterThan(80 * 60_000);
+    offsetMs += 50 * 60_000;
+    expect(a.userPromptSubmit(input({ sessionId: "s1b" })).dream).toBeUndefined();
     // Nothing ran: the detached process died without a word.
-    offsetMs += 31 * 60_000;
+    offsetMs += nightRowTimeoutMs({ dataDir: dir }, "night") - 50 * 60_000 + DREAM_TUNABLES.NIGHT_LOST_GRACE_MS + 60_000;
     const next = a.userPromptSubmit(input({ sessionId: "s2" }));
     expect(nightPlans()).toHaveLength(1);
     expect(next.dream?.offer).not.toBeNull();
@@ -800,8 +827,9 @@ describe("B. auto: the first prompt of the day starts the headless run itself", 
     expect(a.counterpart.dreams.status(AT).reason).toBe("dreaming-now");
     expect(a.userPromptSubmit(input({ sessionId: "s2" })).dream).toBeUndefined();
     expect(nightPlans()).toHaveLength(1);
-    // Past its own watchdog and the grace, it is lost, and the line asks.
-    offsetMs += 40 * 60_000;
+    // Past its own watchdog (with the catch-up's hour) and the grace, it is
+    // lost, and the line asks.
+    offsetMs += nightRowTimeoutMs({ dataDir: dir, dreaming: { timeoutMs: 60 * 60_000 } }, "night") + DREAM_TUNABLES.NIGHT_LOST_GRACE_MS;
     expect(a.userPromptSubmit(input({ sessionId: "s3" })).dream?.notice).toContain("it never reported back");
     expect(nightPlans()).toHaveLength(1);
   });
