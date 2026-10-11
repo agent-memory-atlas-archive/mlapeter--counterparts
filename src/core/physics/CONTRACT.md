@@ -139,8 +139,9 @@ lower, carried on `MemoryPhysics.eraClaim` from the read seam (`store/operationa
 Exempt: the core, about owner/us, said by the owner, protected, a pending or repeating date.
 The stored claim is never rewritten (`eraClaim` is not a column), so "an explicit claim is
 never overridden" holds for the claim as stored; `sal(m.salience)` still reads it. Deleting
-the key (`counterparts claims-era --off`) restores the old reading exactly; the cutoff is in
-the decay pass's curve signature, so a toggle recomputes every next-change day once.
+the key (`counterparts claims-era --off`) restores the old reading exactly — the reading, not
+the archive: a memory the floor prune let go meanwhile stays archived. The cutoff is in the
+decay pass's curve signature, so a toggle recomputes every next-change day once.
 
 ### 5.2 Strength — the one number
 

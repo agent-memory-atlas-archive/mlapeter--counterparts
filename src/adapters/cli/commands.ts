@@ -826,7 +826,7 @@ export const COMMAND_BLURB: Record<Command, string> = {
   "repair-merged-beliefs":
     "Put back beliefs and current-state rows the nightly dedup pass archived as duplicates of an ordinary memory. Dry run unless --apply. --apply requires --dir.",
   "claims-era":
-    "The old-claims era: memories written before this build reached the store, with a claim made under the old field text, are read by the curve at the default for what they are about (work, the world, me) when that is lower. The core, memories about the owner or us, said by the owner, protected, and dated ones still ahead or repeating keep their claim. No claim is rewritten. With no flags it says whether the era is on, since when, and how many memories it affects; --off reads every claim as stored again, --on puts the same cutoff back. Reading works under observer; the switch refuses there.",
+    "The old-claims era: memories written before this build reached the store, with a claim made under the old field text, are read by the curve at the default for what they are about (work, the world, me) when that is lower. The core, memories about the owner or us, said by the owner, protected, and dated ones still ahead or repeating keep their claim. No claim is rewritten. With no flags it says whether the era is on, since when, and how many memories it affects; --off reads every claim as stored again (a memory let go at the floor meanwhile stays archived, readable by id), --on puts the same cutoff back. Reading works under observer; the switch refuses there.",
   rebrief: "Re-render and republish the wake bundle NOW, through the boundary's own renderer.",
   "probe-oq4":
     "The OQ4 probe: footnotes delivered vs. later expanded, by calendar date, from recall.decision and recall.credit rows, then recall's hit rate — of what it showed, how much a reply expanded or quoted, loud, footnoted and pointer. Read-only.",
@@ -1125,7 +1125,7 @@ const CORE_FLAG_HELP: Record<string, string> = {
 /** `claims-era`'s own two (2026-10-10): `--on` / `--off` mean something else under `scope`. */
 const CLAIMS_ERA_FLAG_HELP: Record<string, string> = {
   on: "read old claims at their default again, from the same cutoff as before",
-  off: "read every claim as stored, exactly as before the era; nothing was rewritten, so nothing comes back",
+  off: "read every claim as stored again (no claim was rewritten); a memory let go at the floor while it was on stays archived, readable by id",
 };
 
 const DASHBOARD_FLAG_HELP: Record<string, string> = {
@@ -2566,8 +2566,10 @@ function coreCommand(dir: string, io: Io, parsed: Parsed, observer: boolean, nam
  * 2026-10-10, loosely held). With no flags it reads; `--off` deletes the
  * cutoff the curve reads (`store/operational.ts#CLAIMS_ERA_CUTOFF_KEY`), so
  * every claim reads as stored again; `--on` puts back the cutoff first
- * recorded. Either takes effect at the next nightly pass (the curve's
- * signature carries the cutoff, so every next-change day is recomputed once).
+ * recorded. The READING is what toggles: a memory the floor prune archived
+ * while the era was on stays archived (no door un-archives a `pruned` row).
+ * Either takes effect at the next nightly pass (the curve's signature carries
+ * the cutoff, so every next-change day is recomputed once).
  */
 function claimsEraCommand(dir: string, io: Io, parsed: Parsed, observer: boolean, namedDir: boolean): number {
   if (!storeExists(dir)) {
@@ -2590,7 +2592,8 @@ function claimsEraCommand(dir: string, io: Io, parsed: Parsed, observer: boolean
     const day = (ms: number): string => localDate(ms, store.zone());
     if (off) {
       store.updateMeta(CLAIMS_ERA_CUTOFF_KEY, () => null);
-      io.out("Off: every claim reads as stored again, exactly as before the era. Nothing was rewritten, so nothing comes back.");
+      io.out("Off: every claim reads as stored again. No claim was rewritten, so the reading comes back exactly.");
+      io.out("  A memory let go at the floor while it was on stays archived (readable by id); turning it off does not bring it back.");
       io.out("  It takes effect at the next nightly pass. `counterparts claims-era --on` puts it back.");
       return EXIT.ok;
     }

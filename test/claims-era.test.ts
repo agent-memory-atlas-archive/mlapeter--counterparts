@@ -10,6 +10,7 @@
  * Hermetic: every test makes and removes its own temp data dir.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -17,11 +18,12 @@ import { join } from "node:path";
 import { claimsEraFindings } from "../src/adapters/claude-code/doctor.js";
 import { EXIT, run } from "../src/adapters/cli/commands.js";
 import type { Io } from "../src/adapters/cli/index.js";
+import { Counterpart } from "../src/core/counterpart.js";
 import { CLAIMED_DEFAULT_META_KEY } from "../src/core/mint.js";
 import { TUNABLES as PHYSICS, curveSal, sal, stability, strength } from "../src/core/physics/index.js";
 import { runCycle } from "../src/core/sleep/index.js";
 import { CURVE_META_KEY, curveSignature } from "../src/core/sleep/decay.js";
-import { Store } from "../src/core/store/index.js";
+import { Store, paths } from "../src/core/store/index.js";
 import type { PutInput } from "../src/core/store/index.js";
 import {
   CLAIMED_DEFAULT_SPELLED,
@@ -31,6 +33,7 @@ import {
   eraClaimOf,
   rowToPhysics,
 } from "../src/core/store/operational.js";
+import { stripV13 } from "./store-fixture.js";
 
 let root: string;
 let dir: string;
@@ -215,6 +218,61 @@ describe("the cutoff: recorded once, kept off when turned off", () => {
     const id = put(s, { about: "work" });
     expect(s.physicsOf(id).eraClaim ?? null).toBeNull();
     expect(s.claimsEra().affected).toBe(0);
+  });
+
+  test("a v12 store: the open that migrates it records the cutoff, after every memory it holds; an observer records nothing", () => {
+    const s = store(() => T);
+    const id = put(s, { about: "work" });
+    s.close();
+    open.splice(0);
+    // Back to a v12 file, as Mike's store is before this build opens it.
+    const db = new Database(paths.operational(dir));
+    stripV13(db);
+    db.run("DELETE FROM meta WHERE key IN (?, ?)", [CLAIMS_ERA_CUTOFF_KEY, CLAIMS_ERA_RECORDED_KEY]);
+    db.run("UPDATE meta SET value = '12' WHERE key = 'schemaVersion'");
+    db.close();
+    const reader = Store.open({ dir, observer: true });
+    expect(reader.getMeta("schemaVersion")).toBe("12");
+    expect(reader.getMeta(CLAIMS_ERA_RECORDED_KEY)).toBeUndefined();
+    reader.close();
+    const later = T + 86_400_000;
+    const migrated = store(() => later);
+    expect(migrated.getMeta("schemaVersion")).toBe("13");
+    expect(migrated.getMeta(CLAIMS_ERA_CUTOFF_KEY)).toBe(String(later));
+    expect(migrated.getMeta(CLAIMS_ERA_RECORDED_KEY)).toBe(String(later));
+    expect(migrated.physicsOf(id).eraClaim).toBe(PHYSICS.AUTHORED_DEFAULT_CLAIM);
+  });
+
+  test("the bench's stores: what a writer minted with no claim is a default, so the era never reads it (review of #377)", async () => {
+    // The LongMemEval harness opens at clock 0, then moves the clock to each
+    // session's date and writes through the session-end door with no claim.
+    let now = 0;
+    const c = Counterpart.open({ dir, owner: true, timeZone: "UTC", now: () => now });
+    now = Date.UTC(2023, 4, 20, 12);
+    const plain = await c.submitSessionEnd(
+      { content: "The user adopted a rescue greyhound named Biscuit last spring.", kind: "fact" },
+      { session: "s1", scope: "longmemeval" },
+    );
+    const claimed = await c.submitSessionEnd(
+      { content: "The user is training for the city marathon in October.", kind: "fact", claimed: 0.8 },
+      { session: "s1", scope: "longmemeval" },
+    );
+    c.close();
+    expect(plain.deposited && claimed.deposited).toBe(true);
+    // Make every row old: the record forgotten, the next open records "now", years later.
+    const reset = store(() => now);
+    reset.updateMeta(CLAIMS_ERA_RECORDED_KEY, () => null);
+    reset.updateMeta(CLAIMS_ERA_CUTOFF_KEY, () => null);
+    reset.close();
+    open.splice(0);
+    const s = store(() => Date.UTC(2026, 9, 10, 12));
+    expect(Number(s.getMeta(CLAIMS_ERA_CUTOFF_KEY))).toBeGreaterThan(now);
+    const plainRow = s.row(plain.memoryId as string)!;
+    expect(JSON.parse(plainRow.meta as string)[CLAIMED_DEFAULT_META_KEY]).toBe(true);
+    expect(rowToPhysics(plainRow).eraClaim ?? null).toBeNull();
+    // The explicit one is old too, and read at its default: the store really is in the era.
+    expect(s.physicsOf(claimed.memoryId as string).eraClaim).toBe(PHYSICS.AUTHORED_DEFAULT_CLAIM);
+    expect(s.claimsEra().affected).toBe(1);
   });
 
   test("the spelled meta key matches mint's", () => {

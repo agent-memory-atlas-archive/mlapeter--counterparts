@@ -30,7 +30,9 @@
   about us, things you said, protected memories and dated ones still ahead or repeating keep
   their claim. `counterparts claims-era` says whether it is on and how many memories it
   affects; `--off` reads every claim as stored again, `--on` puts it back; doctor shows the
-  same in one line. A lightly held decision, listed in `docs/IMPROVEMENTS.md`.
+  same in one line. The reading is what turns back: a memory let go at the floor while it
+  was on stays archived (readable by id). A lightly held decision, listed in
+  `docs/IMPROVEMENTS.md`.
 - **`note` is now `remember`, and memory is asked for by attention.** The tool Claude
   writes a memory with in the moment is called `remember`. **The old name `note` still
   works** for at least this release — a session that started before the upgrade keeps

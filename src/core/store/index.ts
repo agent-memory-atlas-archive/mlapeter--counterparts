@@ -1273,6 +1273,10 @@ export class Store {
         if (recorded === undefined) {
           const at = String(this.nowFn());
           this.ops.transaction(() => {
+            // Asked again under the write lock (review of #377): another opener
+            // may have recorded it since the read above, and an owner may have
+            // turned it off since — a second insert would switch it back on.
+            if (this.ops.get("SELECT 1 FROM meta WHERE key = ?", CLAIMS_ERA_RECORDED_KEY) !== undefined) return;
             this.ops.run("INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)", CLAIMS_ERA_RECORDED_KEY, at);
             this.ops.run("INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)", CLAIMS_ERA_CUTOFF_KEY, at);
           });

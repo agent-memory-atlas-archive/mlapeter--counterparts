@@ -2766,7 +2766,7 @@ export function claimsEraFindings(store: Store): Finding[] {
   const detail =
     era.cutoff === null
       ? "off: every claim reads as stored (counterparts claims-era --on reads the old ones at their default again)"
-      : `on since ${localDate(era.cutoff, readingZone)}: ${n(era.affected)} written before it read at the default for what ${era.affected === 1 ? "it is" : "they are"} about, not the claim made under the old text; nothing rewritten (counterparts claims-era --off undoes it)`;
+      : `on since ${localDate(era.cutoff, readingZone)}: ${n(era.affected)} written before it read at the default for what ${era.affected === 1 ? "it is" : "they are"} about, not the claim made under the old text; nothing rewritten (counterparts claims-era --off reads them as claimed again; any let go meanwhile stay archived)`;
   return [
     finding("claims-era", "green", "Old claims", detail, "", {
       on: era.cutoff !== null,
