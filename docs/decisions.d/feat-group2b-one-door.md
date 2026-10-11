@@ -50,7 +50,11 @@
 - Decided by the Group 2b builder, 2026-10-11, lightly held: the pressure crossing now mints
   its successor with `put` and replaces the old memory through the door (pair source
   `pressure`, the pressure pair closed through it, links carried); the successor is as before
-  (the challenger's words, the core band, source `accommodation`).
+  (the challenger's words, the core band, source `accommodation`). Undoing the crossing
+  brings the old core memory back, withdraws the crossing's pair (the pressure pair it closed
+  reopens, as it stood while pressure built) and archives the minted successor
+  `pressure-undone`, so the core memory does not stand beside a core copy of the
+  challenger's words. The old memory's accumulated pressure is left as it was.
 - Decided by the Group 2b builder, 2026-10-11, lightly held: the schema belief and
   current-state arms (path 4) have no live producer — only `tools/demo/seed.ts` and tests
   reach `addBelief` / `addCurrentState` — and are left as they were, neither deleted nor
@@ -84,7 +88,9 @@
 - Decided by the Group 2b builder, 2026-10-11, lightly held (review of #420 (b)): a proposal
   whose newer memory was replaced (merged away, or a core successor) is carried to what
   replaced it — withdrawn and proposed again between that one and the older, the cut the
-  same — before the dream reads; one whose memory is simply gone is withdrawn as before.
+  same — before the dream reads; one whose memory is simply gone is withdrawn as before. The
+  carried proposal writes no second `contradiction.proposed` event (its trail row names the
+  pair it came from), so Interference counts the question once.
 - Decided by the Group 2b builder, 2026-10-11, lightly held (review of #420 (d)): with
   dreaming set to `off`, and only then, a proposal unanswered for 14 lived days
   (`SLOT_EXPIRY_DAYS`) is withdrawn and its cut put back, checked once a lived day at a write.

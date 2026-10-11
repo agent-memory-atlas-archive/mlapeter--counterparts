@@ -204,6 +204,12 @@ export const CORRECTED_REASON = "corrected";
 /** The archive reason of a core plan a declared `done` fulfilled (2026-10-11, Group 2b; `revision.ts#fulfil`). */
 export const FULFILLED_REASON = "fulfilled";
 
+/** The archive reason a core memory replaced by pressure carries (`schemas/tunables.ts#REVISED_REASON`, spelled here: this file sits below `schemas/`). */
+const PRESSURE_REVISED_REASON = "revised-by-pressure";
+
+/** The archive reason of the successor a pressure crossing minted, when that crossing is undone (2026-10-11, Group 2b). */
+export const PRESSURE_UNDONE_REASON = "pressure-undone";
+
 /** Durable event names (`dashboard/registries.ts` and `fired.ts` read them). */
 export const CONTRADICTION_FLAGGED_EVENT = "contradiction.flagged";
 export const CONTRADICTION_SETTLED_EVENT = "contradiction.settled";
@@ -902,7 +908,12 @@ export function undo(
     d.fade !== null && next.has(d.fade.id) ? { id: d.fade.id, fade: next.get(d.fade.id) as number } : null;
   const reapply = [...next].filter(([id]) => d.fade === null || id !== d.fade.id).map(([id, fade]) => ({ id, fade }));
   const reopen = d.closes.filter((c) => store.contradiction(c)?.via === pair.id);
-  const back = wasFlagged(pair) ? "unsettled" : "withdrawn";
+  // A PRESSURE CROSSING UNDONE (2026-10-11, Group 2b): its pair was the
+  // crossing's own, never raised as a question — withdrawn, and the pressure
+  // pair it closed reopens. The successor it minted (the challenger's words,
+  // core) goes out with it, so the core memory does not stand beside a copy.
+  const crossing = pair.source === "pressure" && d.archivedReason === PRESSURE_REVISED_REASON;
+  const back = !crossing && wasFlagged(pair) ? "unsettled" : "withdrawn";
   // A REMINDER THE SETTLE CARRIED goes back (2026-10-11, Group 2b) — while the
   // holder still has that date and the memory it came from has none since.
   let reminderBack: { to: string; toMeta: Record<string, unknown>; from: string; eventDate: string; fromMeta: Record<string, unknown> } | null = null;
@@ -939,6 +950,16 @@ export function undo(
   // Back in recall, it takes back the links it handed the holder (the dream
   // merge's undo has done this since Group 4): the holder's, `max`, both ways.
   if (unarchived && d.links && last.holds !== null && d.archived !== null) carryLinks(store, last.holds, d.archived, day, opts.retarget);
+  if (crossing && unarchived && last.holds !== null) {
+    try {
+      const minted = store.row(last.holds);
+      if (minted !== undefined && minted.archived === 0 && minted.source === "accommodation" && store.readProse(last.holds).meta["revisedFrom"] === d.archived) {
+        store.archive(last.holds, PRESSURE_UNDONE_REASON);
+      }
+    } catch {
+      notes.push(`${last.holds} could not be put away; it stands beside ${String(d.archived)}.`);
+    }
+  }
   // A reopened question starts fresh on "my mind" (review of #284, M5).
   for (const id of back === "unsettled" ? [pair.id, ...reopen] : reopen) resetHabituation(store, id, day);
   if (d.archived !== null && !unarchived) notes.push(`${d.archived} has moved on since it was archived, so it was not brought back.`);
@@ -1145,7 +1166,7 @@ export type SlotOutcome =
  */
 export function proposeSlot(
   store: Store,
-  input: { holds: string; candidate: SlotCandidate; actorId?: string | null; day?: number },
+  input: { holds: string; candidate: SlotCandidate; actorId?: string | null; day?: number; carriedFrom?: string },
 ): SlotOutcome {
   if (store.observer) return { ok: false, reason: "observer", detail: "This session is an observer: nothing was proposed." };
   const day = input.day ?? store.livedDay();
@@ -1172,15 +1193,21 @@ export function proposeSlot(
         rule: input.candidate.rule,
         cosine: input.candidate.cosine,
         sameSession: input.candidate.sameSession,
+        ...(input.carriedFrom === undefined ? {} : { carriedFrom: input.carriedFrom }),
       },
     });
     if (!out.created) return { ok: false, reason: "already-a-pair", detail: `${input.holds} and ${over} are already a pair (${out.id}).` };
-    store.appendEvent({
-      name: CONTRADICTION_PROPOSED_EVENT,
-      day,
-      ref: out.id,
-      payload: { pair: out.id, holds: input.holds, over, rule: input.candidate.rule, cosine: input.candidate.cosine, sameSession: input.candidate.sameSession, faded: faded !== null, bandDrop, day },
-    });
+    // A CARRIED proposal (`releaseOrphanSlots`) is the same question asked of
+    // another memory, not a new one noticed: no second durable event, so the
+    // dashboard counts it once. The trail row says where it came from.
+    if (input.carriedFrom === undefined) {
+      store.appendEvent({
+        name: CONTRADICTION_PROPOSED_EVENT,
+        day,
+        ref: out.id,
+        payload: { pair: out.id, holds: input.holds, over, rule: input.candidate.rule, cosine: input.candidate.cosine, sameSession: input.candidate.sameSession, faded: faded !== null, bandDrop, day },
+      });
+    }
     return { ok: true, pair: out.id, holds: input.holds, over, rule: input.candidate.rule, cosine: input.candidate.cosine, faded };
   } catch (err) {
     return { ok: false, reason: "failed", detail: `Nothing was proposed: ${isStoreError(err) ? err.code : String((err as Error).message ?? err)}.` };
@@ -1279,7 +1306,7 @@ export function releaseOrphanSlots(store: Store, day: number = store.livedDay())
         } catch {
           /* the carried proposal says less about how it was found */
         }
-        proposeSlot(store, { holds: successor, candidate: { over: p.over, cosine: cos, rule, sameSession: false }, actorId: null, day });
+        proposeSlot(store, { holds: successor, candidate: { over: p.over, cosine: cos, rule, sameSession: false }, actorId: null, day, carriedFrom: c.id });
       }
     }
   } catch {

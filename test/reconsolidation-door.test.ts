@@ -26,6 +26,7 @@ import {
   CONTRADICTION_SETTLED_EVENT,
   CONTRADICTION_TUNABLES,
   FULFILLED_REASON,
+  PRESSURE_UNDONE_REASON,
   REMINDERS_MOVED_META,
   REMINDER_MOVED_SOURCE,
   SLOT_SOURCE,
@@ -265,8 +266,13 @@ describe("the core path (review 10 C4), on the Han case's shape", () => {
     expect(pressure.every((f) => Math.abs(f - 0.35) < 1e-9)).toBe(true);
     // Through the door: a pair, source `pressure`, the old one replaced.
     const successor = s.row(promise)?.superseded_by as string;
-    expect(s.contradictionBetween(successor, promise)).toMatchObject({ state: "settled", how: "changed", source: "pressure" });
+    const crossing = s.contradictionBetween(successor, promise);
+    expect(crossing).toMatchObject({ state: "settled", how: "changed", source: "pressure" });
     expect(s.row(promise)?.archived_reason).toBe("revised-by-pressure");
+    // The crossing's undo: the core memory back, the minted successor put away, the pair withdrawn.
+    expect(srv.counterpart.undoContradiction({ pair: crossing?.id as string, actor: "owner" })).toMatchObject({ ok: true, state: "withdrawn", unarchived: promise });
+    expect(s.row(promise)).toMatchObject({ archived: 0, superseded_by: null, band: "identity" });
+    expect(s.row(successor)).toMatchObject({ archived: 1, archived_reason: PRESSURE_UNDONE_REASON });
   });
 
   test("a FULFILLED plan (a status, then `done`) leaves the core in one step, and the undo puts it back", async () => {
