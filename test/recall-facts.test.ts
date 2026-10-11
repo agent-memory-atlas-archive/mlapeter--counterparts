@@ -12,6 +12,7 @@
  *
  * Hermetic: every test makes its own temp store and removes it.
  */
+import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,6 +27,7 @@ import type { FactsResult } from "../src/adapters/mcp/facts.js";
 import { settle } from "../src/core/contradictions.js";
 import { Counterpart } from "../src/core/counterpart.js";
 import { OPEN_END, OPEN_START, loadGateState, readTimeAsk } from "../src/core/recall/index.js";
+import { paths } from "../src/core/store/index.js";
 import { findable } from "./store-fixture.js";
 
 const ZONE = "America/Los_Angeles";
@@ -1140,5 +1142,112 @@ describe("corrected versions are named, as wrong, and open by id (through the to
     const answer = String(body(await server(c).call("recall", { question: "zqswim", mode: "facts" }))["answer"]);
     expect(answer).toBe(renderFacts(r));
     expect(answer).not.toContain("corrected");
+  });
+});
+
+// 2026-10-11 (bench case a2f3aa27): two updates said on one day read as a tie.
+describe("order within a day (renderAt#sameDayTimes)", () => {
+  /** A store on a clock the test moves, so each put has its own `created_at`. */
+  function clocked(zone = ZONE): { c: Counterpart; at: (iso: string) => void } {
+    let t = NOW;
+    const c = Counterpart.open({ dir: join(dir, "store"), owner: true, now: () => t, timeZone: zone });
+    findable(c.store);
+    open.push(c);
+    return {
+      c,
+      at: (iso) => {
+        t = Date.parse(iso);
+      },
+    };
+  }
+
+  test("two results of the same day show the time each was learned, in the store's zone", () => {
+    const { c, at } = clocked();
+    seed(c);
+    at("2026-10-03T12:27:00Z"); // 05:27 in Los Angeles
+    c.store.put({ type: "memory", kind: "fact", body: "The zqchannel has 1250 followers.", occurredOn: "2026-10-03" });
+    at("2026-10-03T16:52:00Z"); // 09:52
+    c.store.put({ type: "memory", kind: "fact", body: "The zqchannel is close to 1300 followers.", occurredOn: "2026-10-03" });
+    const text = renderFacts(ask(c, "zqchannel followers"));
+    expect(text).toContain("happened 10-03\n   learned 10-03 05:27 ·");
+    expect(text).toContain("happened 10-03\n   learned 10-03 09:52 ·");
+  });
+
+  test("a lone result, different event days, different learned days and one shared minute show nothing new", () => {
+    const { c, at } = clocked();
+    seed(c);
+    at("2026-10-03T12:00:00Z");
+    c.store.put({ type: "memory", kind: "fact", body: "Zqlone note on its own." });
+    expect(renderFacts(ask(c, "zqlone"))).toMatch(/learned 10-03 · /);
+    // Same learned day, different event days.
+    c.store.put({ type: "memory", kind: "fact", body: "Zqdays first.", occurredOn: "2026-09-20" });
+    at("2026-10-03T15:00:00Z");
+    c.store.put({ type: "memory", kind: "fact", body: "Zqdays second.", occurredOn: "2026-09-25" });
+    // Same event day, learned on different days: the learned dates order them.
+    at("2026-10-01T15:00:00Z");
+    c.store.put({ type: "memory", kind: "fact", body: "Zqlearn first.", occurredOn: "2026-09-25" });
+    at("2026-10-03T15:00:00Z");
+    c.store.put({ type: "memory", kind: "fact", body: "Zqlearn second.", occurredOn: "2026-09-25" });
+    // Same day, same minute: a time would order nothing.
+    c.store.put({ type: "memory", kind: "fact", body: "Zqsame first." });
+    c.store.put({ type: "memory", kind: "fact", body: "Zqsame second." });
+    for (const q of ["zqdays", "zqlearn", "zqsame"]) {
+      const r = ask(c, q);
+      expect(r.memories.length).toBe(2);
+      expect(renderFacts(r)).not.toMatch(/learned \d\d-\d\d \d\d:\d\d/);
+    }
+  });
+
+  test("the time is the store's zone, not the machine's (Pacific/Kiritimati)", () => {
+    const { c, at } = clocked("Pacific/Kiritimati");
+    seed(c);
+    at("2026-10-02T22:00:00Z"); // 12:00 on 10-03 in Kiritimati (UTC+14)
+    c.store.put({ type: "memory", kind: "fact", body: "Zqisland boat arrived." });
+    at("2026-10-02T23:30:00Z"); // 13:30
+    c.store.put({ type: "memory", kind: "fact", body: "Zqisland boat left again." });
+    const text = renderFacts(ask(c, "zqisland boat"));
+    expect(text).toContain("learned 10-03 12:00 ·");
+    expect(text).toContain("learned 10-03 13:30 ·");
+  });
+
+  test("an old row with no created_at shows nothing extra; the rest of its day still do", () => {
+    const { c, at } = clocked();
+    seed(c);
+    at("2026-10-03T16:00:00Z");
+    c.store.put({ type: "memory", kind: "fact", body: "Zqold first word." });
+    at("2026-10-03T17:00:00Z");
+    c.store.put({ type: "memory", kind: "fact", body: "Zqold second word." });
+    const old = c.store.put({ type: "memory", kind: "fact", body: "Zqold third word, from before." });
+    c.close();
+    open.splice(0);
+    const db = new Database(paths.operational(join(dir, "store")));
+    db.run("UPDATE memories SET created_at = NULL WHERE id = ?", [old]);
+    db.close();
+    const again = Counterpart.open({ dir: join(dir, "store"), owner: true, now: () => NOW, timeZone: ZONE });
+    open.push(again);
+    const r = ask(again, "zqold");
+    expect(r.memories.length).toBe(3);
+    expect(r.memories.find((m) => m.id === old)?.learnedAt).toBeUndefined();
+    const text = renderFacts(r);
+    expect(text).toContain("learned 10-03 09:00 ·");
+    expect(text).toContain("learned 10-03 10:00 ·");
+    const oldBlock = text.split("\n\n").find((b) => b.includes(old)) ?? "";
+    expect(oldBlock).toMatch(/learned 10-03 · /);
+  });
+
+  test("ten results of one day: each line grows by its time, six bytes", () => {
+    const { c, at } = clocked();
+    seed(c);
+    const what = ["the roof", "a kayak", "the budget", "my sister", "the garden", "a recipe", "the car", "an invoice", "the dog", "a concert"];
+    what.forEach((w, i) => {
+      at(`2026-10-03T${String(13 + i)}:0${String(i)}:00Z`);
+      c.store.put({ type: "memory", kind: "fact", body: `Zqten: news about ${w} came in.`, occurredOn: "2026-10-03" });
+    });
+    const r = ask(c, "zqten");
+    expect(r.memories.length).toBe(10);
+    const text = renderFacts(r);
+    const without = renderFacts({ ...r, memories: r.memories.map(({ learnedAt: _, ...m }) => m) });
+    expect(text.length - without.length).toBe(60);
+    expect(text.length).toBeLessThanOrEqual(RECALL_RESULT_CHARS);
   });
 });

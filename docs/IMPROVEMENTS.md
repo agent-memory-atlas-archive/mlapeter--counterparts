@@ -394,6 +394,20 @@ were refined by b2+f8 at the review of #369, named where they were):
   record of what links to what). Rows from a caller that knows no session carry no `session` at all,
   never the unbound sentinel, so a reader falls back on its own guess.
 
+### Decided by the day-order builder, 2026-10-11, lightly held (order within a day in a facts answer)
+
+- Decided by the day-order builder, 2026-10-11, lightly held: when two or more results in one
+  facts answer read as the same day, each shows the time it was learned, `HH:MM` in the store's
+  zone, on its learned line (`learned 05-25 09:52`), not "earlier" / "later that day". Why: a
+  time is exact, works for three or more results in a day, and does not depend on which other
+  results the page holds; it costs six bytes a line (60 on a 10-result answer). "Same day"
+  means the same event day (else learned day) AND the same learned day: results learned on
+  different days are already ordered by their learned dates, so nothing is added. Nothing is
+  added either when the colliding results share one minute, for journal entries, for an event
+  date that is a range or a month, or for an old row with no `created_at`. The time is when it
+  was learned, not when it happened, and the line says "learned". Meaning mode is unchanged:
+  its moments carry no per-line date, and its arc is already in time order.
+
 ### Decided by the chapter-wording builder, 2026-10-11, lightly held (what a chapter asks for)
 
 - Decided by the chapter-wording builder, 2026-10-11, lightly held: the core ask's own wording
@@ -421,7 +435,15 @@ were refined by b2+f8 at the review of #369, named where they were):
   one baseline night, and a heavy day owed in full is about 200 parts (30 pieces were 16 parts on
   10-11). 400 parts at the measured 4–8 s a part is 27–53 minutes. The per-part cost is an
   estimate from part sizes, not measured from a catch-up transcript: measure it on the first live
-  runs and move the ceiling if it is off.
+  runs and move the ceiling if it is off. (Superseded for the night by the next item: 400 is now
+  the command's ceiling only.)
+- Decided by Mike, 2026-10-11, lightly held: the nightly run caps at 100 parts
+  (`NIGHT_WRITE_UP_PARTS`); `counterparts catch-up` keeps 400 (`CATCH_UP_COMMAND_PARTS`); both
+  keep the one-hour watchdog. Why: 100 parts is about 700k new-work tokens, roughly 3× the nightly
+  baseline, so a typical morning's 20–40 parts clear in one night and a heavy day (about 200)
+  takes two, what is left staying owed for the next night; the command is run on purpose, so it
+  keeps the larger ceiling. The per-part cost is still to be measured (`docs/CHECK-AFTER.md`,
+  "Catch-up's real per-part cost").
 - Decided by the catch-up builder, 2026-10-11, lightly held: the catch-up stays BEFORE the dream.
   Why: the page writer and the dream's "new since the last dream" read yesterday, and yesterday's
   write-ups should be there when they do. The cost is that a heavy morning delays the dream by up

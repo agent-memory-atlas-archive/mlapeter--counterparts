@@ -20,8 +20,8 @@ the ledger classifies the claim from (`next-session`).
 ## 3. Throughput: debts in projects not reopened lapse
 
 Writers (2026-10-01; 2026-10-11): the nightly run's catch-up, in any project, everything
-owed up to a sanity ceiling of `NIGHT_WRITE_UP_PARTS` a run; `counterparts catch-up`, the
-same on demand; and — only where no night runs (dreaming `ask` or `off`) — the next
+owed up to a sanity ceiling of `NIGHT_WRITE_UP_PARTS` (100) a run; `counterparts catch-up`, the
+same on demand, up to `CATCH_UP_COMMAND_PARTS` (400); and — only where no night runs (dreaming `ask` or `off`) — the next
 session in the same project (at most `WRITE_UP_ASKS_PER_DAY` pointers a day store-wide, one
 part each). Claim-first between them. The night's catch-up rides the nightly run, so it
 runs only on a day whose first prompt starts one (`auto`, with a dream due): on a day with

@@ -255,9 +255,10 @@ describe("the last session, asked in facts mode, and a session's notes from befo
     expect(got.items.slice(0, 4).map((m) => m.id).sort()).toEqual([late, chapter, mid, early].sort());
     // Inside A's stretch and no one else's: A's, and the words say how it was
     // placed (random-f2's item 4). The row itself still names nobody.
-    expect(got.items.find((m) => m.id === mid)?.learned).toBe(`   learned 09-30 (in the window by this date) in ${HERE} · session a1b2c3d4 (placed by when it was written) · CURRENT`);
+    // Same day as the other results: each says when it was learned (2026-10-11).
+    expect(got.items.find((m) => m.id === mid)?.learned).toBe(`   learned 09-30 16:15 (in the window by this date) in ${HERE} · session a1b2c3d4 (placed by when it was written) · CURRENT`);
     expect(k.c.store.row(mid)?.origin_session).toBe(UNBOUND_SESSION);
-    expect(got.items.find((m) => m.id === late)?.learned).toBe(`   learned 09-30 (in the window by this date) in ${HERE} · session a1b2c3d4 · CURRENT`);
+    expect(got.items.find((m) => m.id === late)?.learned).toBe(`   learned 09-30 16:36 (in the window by this date) in ${HERE} · session a1b2c3d4 · CURRENT`);
   });
 
   test("side by side: a note written while another session was at work here is nobody's; one inside A's stretch alone is A's", async () => {

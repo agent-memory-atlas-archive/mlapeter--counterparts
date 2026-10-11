@@ -1085,3 +1085,79 @@ describe("SessionStart stops pointing at another session where the night catches
     expect(readSession(dir, "here-1")?.writeUpPointer).toBe("old-1");
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe("the two ceilings (Mike, 2026-10-11): the night takes 100 parts, `counterparts catch-up` 400", () => {
+  /** `n` one-part sessions, a minute apart, oldest first, all owed. */
+  function owedSessions(prefix: string, n: number): string[] {
+    const ids = Array.from({ length: n }, (_, i) => `${prefix}-${String(i + 1).padStart(3, "0")}`);
+    ids.forEach((id, i) => lived(id, i % 2 === 0 ? proj : other, { at: YESTERDAY_10() - (n - i) * MIN }));
+    return ids;
+  }
+
+  test("the constants: 100 a night, 400 for the command, one hour each", () => {
+    expect(TUNABLES.NIGHT_WRITE_UP_PARTS).toBe(100);
+    expect(TUNABLES.CATCH_UP_COMMAND_PARTS).toBe(400);
+    expect(TUNABLES.NIGHT_WRITE_UP_TOTAL_MS).toBe(60 * MIN);
+  });
+
+  test("the night stops at 100 parts: 104 owed, the oldest 100 written, 4 left owed for the next night", async () => {
+    const ids = owedSessions("n", 104);
+    const seen: ChildPlan[] = [];
+    await runNight({
+      open: () => openNightCounterpart(config()),
+      config: config(),
+      run: "nrn_hundred",
+      session: "s-launch",
+      scope: launch,
+      kind: { kind: "night" },
+      date: TODAY(),
+      startCatchUp: drivingChild(seen),
+      start: async () => ({ code: 0, timedOut: false, error: null }),
+    });
+    const c = openNightCounterpart(config());
+    closers.push(c);
+    const row = catchUpOf(c.store, "nrn_hundred");
+    // Six batches of 16 and a seventh of the 4 the ceiling had left.
+    expect(row).toMatchObject({ state: "done", written: 100, parts: 100, left: 4, partsLeft: 4, bounded: 4, batches: 7, limit: "parts" });
+    expect(seen.length).toBe(7);
+    expect(catchUpWords(row as NonNullable<typeof row>)).toBe(
+      "caught up 100 of 100 sessions (100 parts written); 4 sessions still owed, 4 parts (4 were over the run's ceiling)",
+    );
+    for (const id of ids.slice(0, 100)) expect(owes(id)).toBe(false);
+    for (const id of ids.slice(100)) expect(owes(id)).toBe(true);
+  }, 120_000);
+
+  test("the command does not read the night's ceiling: with the night's set to 1, it still clears all 5 owed", async () => {
+    const ids = owedSessions("k", 5);
+    const { TUNABLES: T } = await import("../src/adapters/config.js");
+    const before = T.NIGHT_WRITE_UP_PARTS;
+    (T as { NIGHT_WRITE_UP_PARTS: number }).NIGHT_WRITE_UP_PARTS = 1;
+    try {
+      const code = await run(["catch-up", "--dir", dir], { io: { out: () => undefined, err: () => undefined }, env: { PATH: "/usr/bin:/bin" }, catchUpStart: drivingChild([]) });
+      expect(code).toBe(EXIT.ok);
+    } finally {
+      (T as { NIGHT_WRITE_UP_PARTS: number }).NIGHT_WRITE_UP_PARTS = before;
+    }
+    for (const id of ids) expect(owes(id)).toBe(false);
+    const c = openNightCounterpart(config());
+    closers.push(c);
+    expect(catchUpOf(c.store)).toMatchObject({ state: "done", written: 5, parts: 5, left: 0, limit: null });
+  });
+
+  test("the command reads its own: set to 2, it stops at 2 parts and says what is left stays owed", async () => {
+    const ids = owedSessions("m", 3);
+    const out: string[] = [];
+    const { TUNABLES: T } = await import("../src/adapters/config.js");
+    const before = T.CATCH_UP_COMMAND_PARTS;
+    (T as { CATCH_UP_COMMAND_PARTS: number }).CATCH_UP_COMMAND_PARTS = 2;
+    try {
+      const code = await run(["catch-up", "--dir", dir], { io: { out: (l) => out.push(l), err: () => undefined }, env: { PATH: "/usr/bin:/bin" }, catchUpStart: drivingChild([]) });
+      expect(code).toBe(EXIT.ok);
+    } finally {
+      (T as { CATCH_UP_COMMAND_PARTS: number }).CATCH_UP_COMMAND_PARTS = before;
+    }
+    expect(ids.map(owes)).toEqual([false, false, true]);
+    expect(out).toContain("What is left stays owed: run this again, or the nightly run takes it.");
+  });
+});
