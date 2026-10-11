@@ -583,6 +583,9 @@ export class ClaudeCodeAdapter extends Lifecycle {
       // The composition and THE EXPECTATION, written where the next process
       // can read it (`Lifecycle#composeWake` → `noteWakeExpectation`).
       const woke = this.composeWake(input, budget);
+      // The wake has just said what the other directories did today, so the
+      // prompt's "Since you started" line counts from here (2026-10-11).
+      this.noteSinceWoke(input);
 
       // THE PERSON'S CLOCK, as the wake's first line (docs/time.md rule 5,
       // 2026-09-25): `Now: Fri 25 Sep 2026, 1:40 pm MDT`, in the store's zone.
@@ -845,6 +848,17 @@ export class ClaudeCodeAdapter extends Lifecycle {
         ...(plain.due.length === 0 ? {} : { withhold: new Set(plain.due.map((r) => r.memoryId)) }),
       });
       const decision = result.decision;
+      // "SINCE YOU STARTED" (2026-10-11): what changed in other directories
+      // since this session last heard, for the model, at most once an hour
+      // (`Lifecycle#sinceLine`). It rides with the context lines and GIVES WAY
+      // TO EVERYTHING ALREADY HERE: it takes only what recall left of its
+      // budget, inside the host's cap, and without room it waits for the next
+      // prompt without spending its hour.
+      const recallBudget = budgetBytes ?? this.config.injectionBudgetBytes ?? RECALL_TUNABLES.BUDGET_BYTES;
+      const recallBytes = Buffer.byteLength(result.injection, "utf8");
+      const spent = Buffer.byteLength(`${this.nowLine()}\n${context}`, "utf8") + recallBytes;
+      const since = this.sinceLine(input, Math.min(recallBudget - recallBytes, TUNABLES.HOST_OUTPUT_CHARS - spent));
+      const lines = since.length === 0 ? context : `${context}${since}\n`;
       return {
         ...out,
         ok: true,
@@ -856,8 +870,8 @@ export class ClaudeCodeAdapter extends Lifecycle {
         // sentinel stand; alone when recall surfaced nothing.
         injection:
           result.injection.length === 0
-            ? `${this.nowLine()}${context.length === 0 ? "" : `\n${context.trimEnd()}`}`
-            : `${this.nowLine()}\n${context}${result.injection}`,
+            ? `${this.nowLine()}${lines.length === 0 ? "" : `\n${lines.trimEnd()}`}`
+            : `${this.nowLine()}\n${lines}${result.injection}`,
         bytes: decision.bytes,
         sentinel: decision.sentinel,
         // The footnote tier is carried SEPARATELY from the loud one, because the
