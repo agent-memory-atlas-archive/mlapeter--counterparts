@@ -85,7 +85,28 @@ or the CLI's read commands (`counterparts mechanisms --dir …`, `counterparts d
 - **Also look at:** doctor's Credit line's 7-day `drewOn` count. Zero after a week means the field isn't being
   used, which is a prompt problem, not a mechanism result.
 
+## Due at the first live catch-up (the nightly run's or `counterparts catch-up`)
+
+### Catch-up's real per-part cost
+- **Look at:** the run's `adapter.night.writeup` row (parts, batches) and its children's transcripts / usage
+  (runners `writeup-nrn_…` / `writeup-cup_…`): output + cache_write tokens per part, and tool calls per part.
+  Compare with the estimate (~7k new-work tokens and 2 calls a part) and the nightly baseline (246k new work,
+  20 calls; `~/counterparts-notes/2026-10-10-nightly-cost-baseline.md`).
+- **Why:** both ceilings (100 parts a night, 400 for the command, Mike 10-11) rest on that per-part estimate,
+  which was worked out from part sizes, never measured from a catch-up transcript.
+- **Changes a decision if:** the real cost per part is far above the estimate → lower the night's cap
+  (`NIGHT_WRITE_UP_PARTS`), and look again at the command's.
+
 ## Ongoing (first two weeks)
+
+### No settled-over memory outranks its head in ambient results
+- **Look at:** turn-recall footnotes ("Quietly available", "Came to mind"), the wake's Nearby, and the other
+  wake lanes, for a memory that a `changed` or `corrected` settle made earlier, shown above the memory that
+  replaced it, or shown without it.
+- **Why:** MOD's #3 (10-11): a settled-over memory's title showed bare beside newer ones, and a session repeated
+  a corrected rule from it. Marking those titles is its own lane; this is about whether the earlier one
+  ranks above its head at all.
+- **Changes a decision if:** it happens → interference/supersede ranking needs a fix (Group 2).
 
 ### The old-claims era's effect on archives
 - **Look at:** `counterparts claims-era --dir …` (count read at default) and archives with no

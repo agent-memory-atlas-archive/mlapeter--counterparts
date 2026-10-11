@@ -435,7 +435,15 @@ were refined by b2+f8 at the review of #369, named where they were):
   one baseline night, and a heavy day owed in full is about 200 parts (30 pieces were 16 parts on
   10-11). 400 parts at the measured 4–8 s a part is 27–53 minutes. The per-part cost is an
   estimate from part sizes, not measured from a catch-up transcript: measure it on the first live
-  runs and move the ceiling if it is off.
+  runs and move the ceiling if it is off. (Superseded for the night by the next item: 400 is now
+  the command's ceiling only.)
+- Decided by Mike, 2026-10-11, lightly held: the nightly run caps at 100 parts
+  (`NIGHT_WRITE_UP_PARTS`); `counterparts catch-up` keeps 400 (`CATCH_UP_COMMAND_PARTS`); both
+  keep the one-hour watchdog. Why: 100 parts is about 700k new-work tokens, roughly 3× the nightly
+  baseline, so a typical morning's 20–40 parts clear in one night and a heavy day (about 200)
+  takes two, what is left staying owed for the next night; the command is run on purpose, so it
+  keeps the larger ceiling. The per-part cost is still to be measured (`docs/CHECK-AFTER.md`,
+  "Catch-up's real per-part cost").
 - Decided by the catch-up builder, 2026-10-11, lightly held: the catch-up stays BEFORE the dream.
   Why: the page writer and the dream's "new since the last dream" read yesterday, and yesterday's
   write-ups should be there when they do. The cost is that a heavy morning delays the dream by up

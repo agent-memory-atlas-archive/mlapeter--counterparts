@@ -1,7 +1,7 @@
 - **The nightly run catches up on everything owed.** Sessions that ended before they were
   written up used to wait for a new session in the same folder, or for the nightly run,
   which took at most four of them a night. The nightly run now writes up all of them,
-  oldest first, in short batches, with a ceiling of 400 parts and an hour a night against
+  oldest first, in short batches, with a ceiling of 100 parts and an hour a night against
   runaway cost. What it leaves stays owed for the next night.
 - **`counterparts catch-up` does it now.** It writes up every ended session that is still
   owed, through the same windowless `claude -p` the nightly run uses, while your other

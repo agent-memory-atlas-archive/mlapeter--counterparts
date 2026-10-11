@@ -494,6 +494,8 @@ export async function runNight(input: NightRunInput): Promise<NightRun> {
         }),
       start: input.startCatchUp ?? ((p: ChildPlan) => startChild(p)),
       now,
+      // The night's ceiling, not the command's (Mike, 2026-10-11).
+      parts: TUNABLES.NIGHT_WRITE_UP_PARTS,
       ...(input.onEvent === undefined ? {} : { onEvent: input.onEvent }),
     });
     if (report !== null) catchUpMs = report.ms;

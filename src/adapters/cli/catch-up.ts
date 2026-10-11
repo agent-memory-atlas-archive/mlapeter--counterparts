@@ -76,6 +76,8 @@ export async function catchUpCommand(input: CatchUpCommandInput): Promise<number
         }),
       start: input.start ?? ((p: ChildPlan) => startChild(p)),
       now: input.now,
+      // The command's ceiling, run on purpose: four nights' worth (Mike, 2026-10-11).
+      parts: TUNABLES.CATCH_UP_COMMAND_PARTS,
       onBatch: ({ batch, plan }) => input.out(batchLine(batch, plan)),
       onEvent: log.event,
     });
