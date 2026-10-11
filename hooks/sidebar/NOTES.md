@@ -57,7 +57,7 @@ paused here; `/counterparts fps [n]` reports the brain's rate (or sets its
 target). `caps` is gone: the footer's switches are dots, with no ends to draw.
 
 **Check it:** `sh hooks/sidebar/check.sh`, which runs validate on both manifests,
-`claude plugin test hooks/sidebar` (170 tests, terminal and desktop) and
+`claude plugin test hooks/sidebar` (173 tests, terminal and desktop) and
 `tsc -p hooks/sidebar`, all with a throwaway HOME. **See it:**
 `tools/term-loop/` (its README), at `--size 200x60` and `--size 160x48`. A
 term-loop session sends no message, so nothing comes to mind and nothing is
@@ -103,6 +103,9 @@ still binds; the button covers that case.
   (above). The engine runs a plugin's prompt once the session is idle; if
   the person's own prompt gets there first, the queued one is dropped
   (`prompt.submit` hook) and core's offer at the end of that reply stands.
+  The drop keys on `run.spokeFirst`, which core's state moving on never
+  clears: that reply calls `meet` (state `offered`), and a refresh read then
+  must not let the queued line through after it (review of #416).
   Nothing is read from the dashboard at start.
 - **What the submitted turn looks like: not observed.** No core served the
   endpoint, and a real run would send a model turn through the live hooks.

@@ -1726,3 +1726,29 @@ test('the dashboard up refreshes it through the existing poll: done, the button 
   expect(onbFetches(w)).toHaveLength(asked)
   await ui.unmount()
 })
+
+test('a queued speak-first is still dropped when the person’s reply called core’s meet meanwhile (the state offered, read from the dashboard)', async ($, on) => {
+  const w = world(on, { onboarding: { meet: 'not_started' } })
+  on('tool.call', () => ({ result: 'ok', text: '{"script":"..."}' }))
+  await startWith($, w, 'not_started')
+  expect(w.submits).toEqual([MEET])
+  await $.prompt.submit({ text: 'hello', origin: { kind: 'composer' }, wait: false })
+  w.onboarding = { meet: 'offered' }
+  await $.tool.call({ tool: 'mcp__counterparts__meet' } as never)
+  await settle(w)
+  const r = await $.prompt.submit({ text: MEET, origin: { kind: 'plugin', name: 'counterparts' }, wait: false })
+  expect(r).toEqual({ drop: 'the person spoke first' })
+})
+
+test('a queued speak-first is still dropped when a warm poll read the state offered meanwhile', async ($, on) => {
+  const w = world(on, { onboarding: { meet: 'not_started' } })
+  await startWith($, w, 'not_started')
+  const ui = await mount($, w, 'terminal')
+  await $.prompt.submit({ text: 'hello', origin: { kind: 'composer' }, wait: false })
+  w.onboarding = { meet: 'offered' }
+  await w.clock.advance(16000)
+  await settle(w)
+  const r = await $.prompt.submit({ text: MEET, origin: { kind: 'plugin', name: 'counterparts' }, wait: false })
+  expect(r).toEqual({ drop: 'the person spoke first' })
+  await ui.unmount()
+})

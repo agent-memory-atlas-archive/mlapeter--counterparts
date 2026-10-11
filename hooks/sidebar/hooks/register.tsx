@@ -294,6 +294,12 @@ const run = {
   meetTried: false,
   /** The session whose start sent the speak-first, as stored; null when it never went out. */
   meetFiredIn: null as string | null,
+  /**
+   * This module life submitted the speak-first. Unlike `meetFiredIn`, core's state moving on
+   * never clears it: the person's reply calling `meet` (state `offered`) must not let a
+   * speak-first still queued behind it through (`prompt.submit`).
+   */
+  spokeFirst: false,
   /** When "Meet your counterpart" was last pressed (`$.clock`). */
   meetPressedAt: -Infinity,
 }
@@ -611,6 +617,7 @@ async function speakFirst($: EngineInterface): Promise<void> {
   if (run.session === '') run.session = await $.session.id()
   await $.store.set(MEET_FLAG, { session: run.session, at: await $.clock.now() })
   run.meetFiredIn = run.session
+  run.spokeFirst = true
   // Not awaited inside a hook: the engine queues it until the session is idle.
   $.clock.after(0, () => quiet($.prompt.submit({ text: MEET_PROMPT })))
 }
@@ -1853,7 +1860,7 @@ export const register: Register = on => {
   on('prompt.submit', async ($, e, next) => {
     const kind = e.origin.kind
     if (kind === 'composer' || kind === 'bridge') run.typed = true
-    if (kind === 'plugin' && e.origin.name === 'counterparts' && e.text === MEET_PROMPT && run.typed && run.meetFiredIn === run.session && run.meetPressedAt === -Infinity) {
+    if (kind === 'plugin' && e.origin.name === 'counterparts' && e.text === MEET_PROMPT && run.typed && run.spokeFirst && run.meetPressedAt === -Infinity) {
       return { drop: 'the person spoke first' }
     }
     return next(e)
