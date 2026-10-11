@@ -534,3 +534,33 @@ likely the pessimistic end for the owner's own corrections. `heldCorrections`'
 otherwise hold, through `note` and through `session_end`
 (`test/update-guard.test.ts`). The tersest a write can be is the content floor's (20
 characters, 3 words): "Done." alone is refused before the guard, as it was before it.
+
+## The slot detector: noticing without being told (2026-10-11, Group 2)
+
+Reviews 04 and 10 found the "A over B" machinery a declaration channel: 58 of 64 settles
+came from the writer naming the old memory, and the same slot across days was almost never
+linked (2 of 23). `reconsolidation.ts#detectSlot` is the door that needs no declaration, and
+no model call. At every authored write, after the declared revision: the session's own
+recent writes first, then the memory's stored neighbours (box 3, written at `put`), no more
+than `SLOT_WINDOW_DAYS` lived days older, same kind, same `about`, both authored. A slot when
+cos ≥ `SLOT_COSINE` (0.85), or cos ≥ 0.80 and either status lineage (`planned`, now `done`)
+or the two titles at ≥ 0.85. Never a dated memory (a reminder is its own thing — three dated
+reminders for one event read 0.94 to each other), a reading or world memory (consecutive
+readings read 0.85), one already settled over (the head is what a newer one sits over), one
+already waiting as the older of a proposal, the core, the protected, or a pair that was ever
+a pair.
+
+A hit is PROVISIONAL (review 10, D2): an unsettled pair with source `slot`, the trail's
+`propose` row naming which holds, and the older's fade × `SLOT_FADE` (0.8). Recall labels
+the older "may be out of date"; the write's result carries the slot and the ask; the dream
+sees it to confirm or undo (`slot {pair, same}`, at most four a night, beside the ranked
+items). Whatever answers a proposal LIFTS its cut first, so a confirmed `changed` lands at
+`CHANGED_FADE` in all, `open` and `corrected` leave no provisional cut behind, and an undo
+puts the provisional cut back with the pair unsettled again (`settleDetail().lifts`).
+Withdrawn ("two things"), the cut is put back and the pair is never proposed again.
+
+On the 10-11 copy of the owner's store (all 20 lived days, nearest older per new memory):
+29 proposals; 20 of them the writer had already settled `changed` itself; of the 9 it had
+not, a hand-read found about 6 right, 1 wrong and 2 unsure. The bench's a2f3aa27 pair
+("1250 followers" / "close to 1300") reads 0.82 by its whole text, 0.89 by its titles: the
+title arm is what catches it.

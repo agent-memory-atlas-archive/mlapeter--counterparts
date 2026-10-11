@@ -25,10 +25,17 @@
  * shows it. A pair leaves the list when it is SETTLED (2026-09-29): a new
  * memory that `updates` one of the two, a `note` with `settle`, the owner's
  * `counterparts settle`, or a dream or reflection with a clear reason.
+ *
+ * TO CONFIRM (2026-10-11, Group 2), for the dream only (`slots`): pairs the
+ * slot detector proposed as one thing's earlier and later state, oldest first,
+ * at most `SLOT_PER_NIGHT` a night beside the ranked items (not among them, so
+ * a busy night's proposals never push out what is coming up), the rest
+ * counted. They are not "unsettled" items: nobody said they disagree.
  */
 import { HANDOFF_LIFE_DAYS, daysLeft, liveHandoffRows, newestPerScope } from "../handoff/index.js";
 import { lineOf } from "../fit/index.js";
 import { headOf } from "../recall/standing.js";
+import { CONTRADICTION_TUNABLES, SLOT_SOURCE, slotsToConfirm } from "../reconsolidation.js";
 import type { MemoryRow, Store } from "../store/index.js";
 import { addDays, daysBetween, isDay } from "../time.js";
 
@@ -44,8 +51,8 @@ export const MIND_TUNABLES = {
 } as const;
 
 export interface MindItem {
-  /** `coming-up`, `unsettled` or `open-loop`. */
-  readonly kind: "coming-up" | "unsettled" | "open-loop";
+  /** `coming-up`, `unsettled`, `open-loop`, or (the dream's) `to-confirm`: a slot proposal, older first in `ids`. */
+  readonly kind: "coming-up" | "unsettled" | "open-loop" | "to-confirm";
   readonly text: string;
   /** The memories it names (a dated memory, a flagged pair) — shown, so they may be cited. */
   readonly ids: readonly string[];
@@ -98,6 +105,8 @@ interface MindInput {
   readonly showable: (row: MemoryRow) => boolean;
   /** The owner's own session: a confidential handoff may be shown. */
   readonly owner: boolean;
+  /** The dream's bundle: the slot proposals to confirm, beside the ranked items (2026-10-11). */
+  readonly slots?: boolean;
 }
 
 /** The most pressing open things, ranked across the three kinds. */
@@ -111,7 +120,7 @@ export function onMyMind(store: Store, input: MindInput): MindItem[] {
  * (today highest); a flagged pair 1.5, the newest dream's first; an open loop
  * 1–2 by how much of its life is left.
  */
-export function mindRanked(store: Store, input: MindInput): { items: MindItem[]; more: number } {
+export function mindRanked(store: Store, input: MindInput): { items: MindItem[]; more: number; slotsMore?: number } {
   const T = MIND_TUNABLES;
   const scored: { item: MindItem; score: number; order: number }[] = [];
   const push = (item: MindItem, score: number): void => {
@@ -151,6 +160,8 @@ export function mindRanked(store: Store, input: MindInput): { items: MindItem[];
     let n = 0;
     // By open state (v10): every unsettled pair in `contradictions`.
     for (const c of store.contradictions({ state: "unsettled" })) {
+      // A slot proposal is not a disagreement: the dream sees it to confirm.
+      if (c.source === SLOT_SOURCE) continue;
       const a = words(c.a);
       const b = words(c.b);
       if (a === null || b === null) continue;
@@ -192,5 +203,22 @@ export function mindRanked(store: Store, input: MindInput): { items: MindItem[];
     /* no handoffs */
   }
   scored.sort((a, b) => b.score - a.score || a.order - b.order);
-  return { items: scored.slice(0, T.MAX_ITEMS).map((s) => s.item), more: Math.max(0, scored.length - T.MAX_ITEMS) };
+  const items = scored.slice(0, T.MAX_ITEMS).map((s) => s.item);
+  const more = Math.max(0, scored.length - T.MAX_ITEMS);
+  if (input.slots !== true) return { items, more };
+  // TO CONFIRM: the night's budget of slot proposals, oldest first.
+  const all = slotsToConfirm(store, Number.MAX_SAFE_INTEGER).pairs;
+  const confirm: MindItem[] = [];
+  let skipped = 0;
+  for (const p of all) {
+    if (confirm.length >= CONTRADICTION_TUNABLES.SLOT_PER_NIGHT) break;
+    const older = words(p.over);
+    const newer = words(p.holds);
+    if (older === null || newer === null) {
+      skipped += 1;
+      continue;
+    }
+    confirm.push({ kind: "to-confirm", text: `"${older}" → "${newer}"`, ids: [p.over, p.holds], pair: p.pair });
+  }
+  return { items: [...items, ...confirm], more, slotsMore: Math.max(0, all.length - confirm.length - skipped) };
 }

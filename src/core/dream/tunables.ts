@@ -126,6 +126,9 @@ export const DREAM_TUNABLES = {
     // 2026-09-29: a dream may settle a pair when the reason is plain; it
     // mostly flags, so few.
     settle: 5,
+    // 2026-10-11 (Group 2): slot proposals confirmed or undone — at most the
+    // night's "to confirm" (`SLOT_PER_NIGHT`, 4).
+    slot: 4,
     "feeling-now": 10,
     "nominate-core": 3,
   },

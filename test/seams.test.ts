@@ -453,6 +453,9 @@ describe("SEAMS A — the observer predicate is hoisted, and stand-down totality
       withdrawContradiction: ["ctr_x"],
       settleContradiction: [{ pairId: "ctr_x", how: "open", holds: null, over: null, actor: "owner", actorId: null, why: null, day: 0 }],
       undoContradictionSettle: [{ pairId: "ctr_x", settleSeq: 1, actor: "owner", actorId: null, why: null, day: 0 }],
+      proposeContradiction: [{ id: "ctr_y", holds: "mem_a", over: "mem_b", source: "slot", day: 0, actor: "detector", actorId: null, fade: null }],
+      withdrawProposal: [{ pairId: "ctr_x", proposeSeq: 1, actor: "owner", actorId: null, why: null, day: 0, restore: null }],
+      reinstateProposal: [{ pairId: "ctr_x", proposeSeq: 1, withdrawSeq: 2, fade: null }],
       // v12 (2026-10-03): a card's birth and the backfill link what names it.
       linkSubjects: [[{ memoryId: "mem_x", subjectId: "sch_x" }], "birth"],
       // v13 (2026-10-10, the turn-down): derived bookkeeping and box 3.

@@ -1402,13 +1402,13 @@ const DREAM: ToolSpec = {
       changes: {
         type: "array",
         description:
-          "`propose`: the changes, each an object with `action` — `merge` (ids: two or more near-copies, text: the one memory in better words, title?), `link` (a, b), `replayed` (id), `gist` (text, sources: ids, title?, kind?, occurredOn?: when what it draws on happened, saidBy?: owner|self|inferred, status?: done|planned|proposed|asked), `contradiction` (a, b), `settle` (holds, over, how: changed|corrected|open, why — only when the reason is plain; flag otherwise), `feeling-now` (id, core, emotion: ONE word, strength, carried_by: the nuance in your own words), `nominate-core` (id, why). Usually far fewer changes than the limits; none is fine.",
+          "`propose`: the changes, each an object with `action` — `merge` (ids: two or more near-copies, text: the one memory in better words, title?), `link` (a, b), `replayed` (id), `gist` (text, sources: ids, title?, kind?, occurredOn?: when what it draws on happened, saidBy?: owner|self|inferred, status?: done|planned|proposed|asked), `contradiction` (a, b), `settle` (holds, over, how: changed|corrected|open, why — only when the reason is plain; flag otherwise), `slot` (pair, same: true|false, why — an on-mind to-confirm pair: is the newer the later state of the same thing?), `feeling-now` (id, core, emotion: ONE word, strength, carried_by: the nuance in your own words), `nominate-core` (id, why). Usually far fewer changes than the limits; none is fine.",
         items: {
           type: "object",
           properties: {
             action: {
               type: "string",
-              enum: ["merge", "link", "replayed", "gist", "contradiction", "settle", "feeling-now", "nominate-core"],
+              enum: ["merge", "link", "replayed", "gist", "contradiction", "settle", "slot", "feeling-now", "nominate-core"],
             },
             ids: { type: "array", items: { type: "string" } },
             id: { type: "string" },
@@ -1429,6 +1429,8 @@ const DREAM: ToolSpec = {
             holds: { type: "string", description: "`settle`: the memory that holds." },
             over: { type: "string", description: "`settle`: the memory it changes, corrects or disagrees with." },
             how: { type: "string", enum: ["changed", "corrected", "open"] },
+            pair: { type: "string", description: "`slot`: the to-confirm pair's id (ctr_…)." },
+            same: { type: "boolean", description: "`slot`: true when the newer is the later state of the same thing; false when they are two things." },
           },
           required: ["action"],
         },

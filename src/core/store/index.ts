@@ -984,6 +984,10 @@ export const WRITE_METHODS = [
   "withdrawContradiction",
   "settleContradiction",
   "undoContradictionSettle",
+  // 2026-10-11 (Group 2): the slot detector's proposal, its withdrawal and that undo.
+  "proposeContradiction",
+  "withdrawProposal",
+  "reinstateProposal",
   // v12 (2026-10-03): a card's birth and the backfill link what names it.
   "linkSubjects",
   // v13 (2026-10-10, the turn-down): derived bookkeeping and box 3.
@@ -2850,6 +2854,134 @@ export class Store {
     return { id, birth_day: r?.birth_day ?? 0, created_at: r?.created_at ?? null, rid: r?.rid ?? 0 };
   }
 
+  /** Has any pair EVER named these two memories, withdrawn ones included (a slot the dream said was two things)? */
+  contradictionEverBetween(x: string, y: string): boolean {
+    if (!this.hasTable("contradictions")) return false;
+    return (
+      this.ops.get<{ n: number }>(
+        "SELECT COUNT(*) AS n FROM contradictions WHERE (a = ? AND b = ?) OR (a = ? AND b = ?)",
+        x,
+        y,
+        y,
+        x,
+      )?.n ?? 0
+    ) > 0;
+  }
+
+  /**
+   * PROPOSE A PAIR AS ONE THING'S EARLIER AND LATER STATE (2026-10-11, Group 2:
+   * the slot detector), in one transaction: the pair UNSETTLED, the trail's
+   * `propose` row naming which holds and which it is over, and the provisional
+   * cut on the one it is over (`fade`, computed by the caller through
+   * `physics/`). Idempotent on the two memories: a standing pair between them
+   * is returned as it is, and nothing is cut.
+   */
+  proposeContradiction(input: {
+    id: string;
+    holds: string;
+    over: string;
+    source: string;
+    day: number;
+    actor: string;
+    actorId: string | null;
+    fade: { id: string; fade: number } | null;
+    detail?: Record<string, unknown>;
+  }): { id: string; created: boolean; seq: number | null } {
+    const out = this.mutate("proposeContradiction", () => {
+      if (input.holds === input.over) throw new StoreError("CONTRADICTION_SAME_MEMORY", { id: input.holds });
+      const standing = this.contradictionBetween(input.holds, input.over);
+      if (standing !== undefined) return { id: standing.id, created: false, seq: null };
+      const [a, b] = olderFirst(this.ageOf(input.holds), this.ageOf(input.over));
+      const at = this.nowFn();
+      this.ops.run(
+        `INSERT INTO contradictions
+           (id, a, b, state, how, holds, over, via, source, dream_id, dream_seq, flagged_day, raised_day, settled_day, created_at, updated_at)
+         VALUES (?, ?, ?, 'unsettled', NULL, NULL, NULL, NULL, ?, NULL, NULL, ?, NULL, NULL, ?, ?)`,
+        input.id,
+        a,
+        b,
+        input.source,
+        input.day,
+        at,
+        at,
+      );
+      this.ops.run(
+        `INSERT INTO contradiction_settles (pair_id, action, how, holds, over, actor, actor_id, why, day, at, undone, detail)
+         VALUES (?, 'propose', 'changed', ?, ?, ?, ?, NULL, ?, ?, 0, ?)`,
+        input.id,
+        input.holds,
+        input.over,
+        input.actor,
+        input.actorId,
+        input.day,
+        at,
+        JSON.stringify(input.detail ?? {}),
+      );
+      const seq = this.ops.get<{ seq: number }>("SELECT last_insert_rowid() AS seq")?.seq ?? 0;
+      if (input.fade !== null) this.updatePhysics(input.fade.id, { fade: input.fade.fade });
+      return { id: input.id, created: true, seq };
+    });
+    if (out.created) this.emit("store.contradiction", out.id, { action: "propose", source: input.source });
+    return out;
+  }
+
+  /**
+   * A PROPOSAL WITHDRAWN (2026-10-11): the two were not one thing's earlier and
+   * later state. The pair is withdrawn, its `propose` row marked undone, a
+   * `withdraw` row follows, and the provisional cut is put back (`restore`,
+   * computed by the caller). `reinstate` is its undo — a dream's withdrawal
+   * undone with the dream: the pair unsettled again, the cut re-applied.
+   */
+  withdrawProposal(input: {
+    pairId: string;
+    proposeSeq: number;
+    actor: string;
+    actorId: string | null;
+    why: string | null;
+    day: number;
+    restore: { id: string; fade: number } | null;
+    detail?: Record<string, unknown>;
+  }): { seq: number } {
+    const out = this.mutate("withdrawProposal", () => {
+      const at = this.nowFn();
+      const pair = this.contradiction(input.pairId);
+      if (pair === undefined) throw new StoreError("CONTRADICTION_UNKNOWN", { id: input.pairId });
+      this.ops.run("UPDATE contradiction_settles SET undone = 1 WHERE seq = ? AND pair_id = ?", input.proposeSeq, input.pairId);
+      this.ops.run(
+        `INSERT INTO contradiction_settles (pair_id, action, how, holds, over, actor, actor_id, why, day, at, undone, detail)
+         VALUES (?, 'withdraw', NULL, NULL, NULL, ?, ?, ?, ?, ?, 0, ?)`,
+        input.pairId,
+        input.actor,
+        input.actorId,
+        input.why,
+        input.day,
+        at,
+        JSON.stringify({ ...(input.detail ?? {}), withdraws: input.proposeSeq }),
+      );
+      const seq = this.ops.get<{ seq: number }>("SELECT last_insert_rowid() AS seq")?.seq ?? 0;
+      this.ops.run(
+        "UPDATE contradictions SET state = 'withdrawn', raised_day = NULL, updated_at = ? WHERE id = ?",
+        at,
+        input.pairId,
+      );
+      if (input.restore !== null) this.updatePhysics(input.restore.id, { fade: input.restore.fade });
+      return { seq };
+    });
+    this.emit("store.contradiction", input.pairId, { action: "withdraw", actor: input.actor });
+    return out;
+  }
+
+  /** The undo of `withdrawProposal`: the pair unsettled, the proposal standing, its cut back on. */
+  reinstateProposal(input: { pairId: string; proposeSeq: number; withdrawSeq: number; fade: { id: string; fade: number } | null }): void {
+    this.mutate("reinstateProposal", () => {
+      this.ops.run("UPDATE contradiction_settles SET undone = 0 WHERE seq = ? AND pair_id = ?", input.proposeSeq, input.pairId);
+      this.ops.run("UPDATE contradiction_settles SET undone = 1 WHERE seq = ? AND pair_id = ?", input.withdrawSeq, input.pairId);
+      this.ops.run("UPDATE contradictions SET state = 'unsettled', updated_at = ? WHERE id = ? AND state = 'withdrawn'", this.nowFn(), input.pairId);
+      if (input.fade !== null) this.updatePhysics(input.fade.id, { fade: input.fade.fade });
+    });
+    this.emit("store.contradiction", input.pairId, { action: "reinstate" });
+  }
+
   /** The once-only awake line was handed out for this pair, on this lived day. */
   markContradictionRaised(id: string, day: number): void {
     this.mutate("markContradictionRaised", () => {
@@ -2897,6 +3029,8 @@ export class Store {
     fade?: { id: string; fade: number } | null;
     archive?: { id: string; reason: string } | null;
     closes?: readonly string[];
+    /** 2026-10-11: provisional cuts this settle LIFTS (a slot proposal's, on the pair or one it closes) — final fades, applied before `fade`. */
+    lifts?: readonly { id: string; fade: number }[];
     detail?: Record<string, unknown>;
   }): { pairId: string; seq: number } {
     const out = this.mutate("settleContradiction", () => {
@@ -2966,6 +3100,7 @@ export class Store {
       const seq = this.ops.get<{ seq: number }>("SELECT last_insert_rowid() AS seq")?.seq ?? 0;
       // What it does to the memory it is over, LAST, so a refusal above has
       // staged nothing on the memory itself.
+      for (const l of input.lifts ?? []) this.updatePhysics(l.id, { fade: l.fade });
       if (input.fade !== undefined && input.fade !== null) {
         this.updatePhysics(input.fade.id, { fade: input.fade.fade });
       }
@@ -2997,6 +3132,8 @@ export class Store {
     restore?: { id: string; fade: number } | null;
     unarchive?: { id: string; reason: string } | null;
     reopen?: readonly string[];
+    /** 2026-10-11: provisional cuts the settle had lifted, put back on (final fades), before `restore`. */
+    reapply?: readonly { id: string; fade: number }[];
     detail?: Record<string, unknown>;
   }): { seq: number; unarchived: boolean } {
     const out = this.mutate("undoContradictionSettle", () => {
@@ -3029,6 +3166,7 @@ export class Store {
           id,
         );
       }
+      for (const r of input.reapply ?? []) this.updatePhysics(r.id, { fade: r.fade });
       if (input.restore !== undefined && input.restore !== null) {
         this.updatePhysics(input.restore.id, { fade: input.restore.fade });
       }
@@ -3300,6 +3438,22 @@ export class Store {
       return null;
     }
   }
+  /**
+   * A text's vector from this store's own embedder, computed and kept nowhere
+   * (2026-10-11: the slot detector reads two titles against each other). Null
+   * without an embedder, or when nothing ranks against this store's vectors
+   * (`rankable`). Never throws.
+   */
+  textVector(text: string): number[] | null {
+    try {
+      if (this.embed === undefined || text.trim().length === 0) return null;
+      const v = this.embed(text);
+      return v === null || !this.rankable(v.length, "textVector") ? null : Array.from(v);
+    } catch {
+      return null;
+    }
+  }
+
   setBand(id: string, band: Band, day: number): void {
     this.mutate("setBand", () => {
       this.requireRow(id);

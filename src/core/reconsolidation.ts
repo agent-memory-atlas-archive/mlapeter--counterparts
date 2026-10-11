@@ -63,7 +63,7 @@
 import { randomBytes } from "node:crypto";
 
 import { lineOf } from "./fit/index.js";
-import { changedFade, cosine, unfade } from "./physics/index.js";
+import { changedFade, cosine, fadeOf, strength, unfade } from "./physics/index.js";
 import { earlierMark, headOf, isHandoff } from "./recall/index.js";
 import { similarity } from "./remember/index.js";
 import { isStoreError, rowTombstoned } from "./store/index.js";
@@ -75,7 +75,7 @@ export { SETTLE_HOWS } from "./types.js";
 export type { SettleHow } from "./types.js";
 
 /** Who settled: the trail's `actor`. */
-export const SETTLE_ACTORS = ["session", "dream", "reflection", "page-writer", "owner", "dream-undo"] as const;
+export const SETTLE_ACTORS = ["session", "dream", "reflection", "page-writer", "owner", "dream-undo", "detector"] as const;
 export type SettleActor = (typeof SETTLE_ACTORS)[number];
 
 /** Working defaults, held lightly. */
@@ -118,7 +118,42 @@ export const CONTRADICTION_TUNABLES = {
   HELD_TEXT_CHARS: 600,
   /** Most rows `heldCorrections` reads of each name (holds newest first). */
   HELD_READ_ROWS: 5000,
+  /**
+   * THE SLOT DETECTOR's meaning bar (2026-10-11, Group 2; reviews 04 and 10
+   * C2): a new memory is proposed as the newer state of an older one of the
+   * same kind and the same `about` at the embedder's cosine of this or more.
+   * Reviewer 10: 15 of 15 nearest-older pairs at 0.85 were the same slot; on
+   * the 10-11 copy most fires at 0.85+ were. CAL.
+   */
+  SLOT_COSINE: 0.85,
+  /**
+   * The lower bar, when something else says it is one thing: the older was
+   * `planned` and the newer is `done` (status lineage: 7 of 7 at 0.80, review
+   * 10), or the two TITLES read as one at `SLOT_TITLE_COSINE`. CAL.
+   */
+  SLOT_LINEAGE_COSINE: 0.8,
+  /**
+   * Two titles this close name the same thing (2026-10-11): the bench's
+   * "1250 followers" / "close to 1300" pair is 0.82 by its whole text and 0.89
+   * by its titles, and on the 10-11 copy this arm added 2 proposals to 27. CAL.
+   */
+  SLOT_TITLE_COSINE: 0.85,
+  /** Candidates are no older than this many lived days before the new memory ("recent similar traces interfere most"). */
+  SLOT_WINDOW_DAYS: 7,
+  /** Stored neighbours read per new memory, nearest first. */
+  SLOT_CANDIDATES: 12,
+  /**
+   * The provisional cut on the older (`fade` x this) until the dream or the
+   * writer confirms it (to `CHANGED_FADE` in all) or says they are two things
+   * (put back). Mild, because cosine alone is not a reader (04 D1). CAL.
+   */
+  SLOT_FADE: 0.8,
+  /** Proposals shown to one night's dream to confirm or undo, oldest first; the rest wait. CAL. */
+  SLOT_PER_NIGHT: 4,
 } as const;
+
+/** The `source` of a pair the slot detector proposed (no DDL: a TEXT value). */
+export const SLOT_SOURCE = "slot";
 
 /** The archive reason a `corrected` memory carries. */
 export const CORRECTED_REASON = "corrected";
@@ -129,10 +164,16 @@ export const CONTRADICTION_SETTLED_EVENT = "contradiction.settled";
 export const CONTRADICTION_UNDONE_EVENT = "contradiction.undone";
 /** A write's `updates` that looked unrelated, so nothing was settled (2026-10-09). */
 export const CONTRADICTION_HELD_EVENT = "contradiction.held";
+/** The slot detector proposed a pair as one thing's earlier and later state (2026-10-11). */
+export const CONTRADICTION_PROPOSED_EVENT = "contradiction.proposed";
 
 /** The one line a write's result carries beside its neighbours. */
 export const NEIGHBOURS_HINT =
-  "These existing memories are close to what you just wrote. If the new memory changes, corrects or disagrees with one of them, settle it now: remember with settle {holds, over, how, why}.";
+  "These existing memories are close to what you just wrote. Is the new one the newer state of the same thing as one of them (a status moved on, a decision made, the latest release or result)? Then settle it now: remember with settle {holds: the new id, over: the old id, how: changed, why}. If it corrects one, how: corrected; if they disagree and you can't tell which holds, how: open. Otherwise do nothing.";
+
+/** The line a write's result carries beside a slot the detector proposed (2026-10-11). */
+export const SLOT_HINT =
+  "This reads as the newer state of the same thing as the memory in `slot`, so that one was marked as possibly out of date and faded a little, provisionally; tonight's dream confirms or undoes it. If it is, settle it now: remember with settle {holds, over, how: changed, why}. If they are two different things, do nothing.";
 
 /** The same ask, for the memory a write named in `updates` that looked unrelated to it (2026-10-09). */
 export const HELD_HINT =
@@ -304,22 +345,6 @@ export function settle(store: Store, input: SettleInput, opts: { closeFlags?: bo
   let faded: { id: string; before: number; after: number } | null = null;
   const notes: string[] = [];
   const detail: Record<string, unknown> = {};
-  if (how === "changed") {
-    const physics = store.physicsOf(over);
-    const cut = changedFade(physics, day);
-    if (cut === null) {
-      notes.push(`${over} has nothing to cut; it keeps its place as the earlier one.`);
-    } else {
-      // THE FADE MULTIPLIER (review of #284, B1): the cut is a factor on
-      // strength, recorded so an undo divides exactly that factor back out —
-      // in any order, whatever uses came since. `lastUsedDay` is not touched.
-      fade = { id: over, fade: cut.fade };
-      faded = { id: over, before: round(cut.before), after: round(cut.after) };
-      detail["fade"] = { id: over, factor: cut.factor, before: faded.before, after: faded.after };
-    }
-  }
-  const archive = how === "corrected" ? { id: over, reason: CORRECTED_REASON } : null;
-  if (archive !== null) detail["archived"] = over;
   // A FLAG CLOSES WHEN ITS QUESTION IS ANSWERED ELSEWHERE (write-time): a new
   // memory that settles one of an unsettled pair's two closes that pair
   // through its own, so the older memory is not labelled twice.
@@ -327,6 +352,34 @@ export function settle(store: Store, input: SettleInput, opts: { closeFlags?: bo
     opts.closeFlags === true
       ? (store.contradictionsOf([over]).get(over) ?? []).filter((c) => c.state === "unsettled" && c.id !== pair?.id).map((c) => c.id)
       : [];
+  // A SLOT PROPOSAL'S PROVISIONAL CUT (2026-10-11) is lifted by whatever
+  // answers it — this settle, or one that closes it — so the settle's own
+  // effect is the whole effect: confirmed `changed` lands at `CHANGED_FADE`,
+  // not that times the provisional cut; `open` and `corrected` put it back.
+  // Recorded (`lifts`), so an undo puts it on again with the pair unsettled.
+  const answered = [...(pair === undefined ? [] : [pair]), ...closes.map((c) => store.contradiction(c)).filter((c): c is ContradictionRow => c !== undefined)];
+  const lifts = answered.map((c) => provisionalOf(store, c)?.fade ?? null).filter((f): f is { id: string; factor: number } => f !== null);
+  const lifted = new Map<string, number>();
+  for (const l of lifts) lifted.set(l.id, unfade(lifted.get(l.id) ?? fadeOf(store.physicsOf(l.id)), l.factor));
+  if (lifts.length > 0) detail["lifts"] = lifts;
+  if (how === "changed") {
+    const physics = store.physicsOf(over);
+    const base = lifted.has(over) ? { ...physics, fade: lifted.get(over) as number } : physics;
+    const cut = changedFade(base, day);
+    if (cut === null) {
+      notes.push(`${over} has nothing to cut; it keeps its place as the earlier one.`);
+    } else {
+      // THE FADE MULTIPLIER (review of #284, B1): the cut is a factor on
+      // strength, recorded so an undo divides exactly that factor back out —
+      // in any order, whatever uses came since. `lastUsedDay` is not touched.
+      fade = { id: over, fade: cut.fade };
+      faded = { id: over, before: round(strength(physics, day)), after: round(cut.after) };
+      detail["fade"] = { id: over, factor: cut.factor, before: faded.before, after: faded.after };
+    }
+  }
+  const liftPatches = [...lifted].filter(([id]) => fade === null || id !== fade.id).map(([id, f]) => ({ id, fade: f }));
+  const archive = how === "corrected" ? { id: over, reason: CORRECTED_REASON } : null;
+  if (archive !== null) detail["archived"] = over;
   const holdsCol = how === "open" ? null : holds;
   const overCol = how === "open" ? null : over;
   let pairId: string;
@@ -343,6 +396,7 @@ export function settle(store: Store, input: SettleInput, opts: { closeFlags?: bo
       fade,
       archive,
       closes,
+      lifts: liftPatches,
       detail,
     });
     pairId = out.pairId;
@@ -465,6 +519,13 @@ export function undo(
   if (pair.via !== null) {
     return { ok: false, reason: "closed-through", detail: `${pair.id} was closed through ${pair.via}; undo that one.` };
   }
+  // A SLOT PROPOSAL nobody has answered yet (2026-10-11): its undo is its
+  // withdrawal — the two were not one thing's earlier and later state.
+  if (pair.state === "unsettled" && pair.source === SLOT_SOURCE && provisionalOf(store, pair) !== null) {
+    const w = withdrawSlot(store, { pair: pair.id, actor: input.actor, actorId: input.actorId ?? null, why: input.why ?? null, day });
+    if (!w.ok) return { ok: false, reason: w.reason, detail: w.detail };
+    return { ok: true, pair: pair.id, how: null, state: "withdrawn", restored: w.restored, unarchived: null, reopened: [] };
+  }
   if (pair.state !== "settled") return { ok: false, reason: "not-settled", detail: `${pair.id} is ${pair.state}; there is no settle to undo.` };
   const last = store
     .contradictionSettles({ pairId: pair.id })
@@ -473,11 +534,25 @@ export function undo(
   if (last === undefined) return { ok: false, reason: "no-settle", detail: `${pair.id} has no settle on its trail to undo.` };
   const d = settleDetail(last.detail);
   const notes: string[] = [];
-  let restore: { id: string; fade: number } | null = null;
+  // The settle's cut divided back out, and any provisional cut it lifted put
+  // back on (2026-10-11), per memory, from the fade it has now.
+  const next = new Map<string, number>();
+  const current = (id: string): number | null => {
+    if (next.has(id)) return next.get(id) as number;
+    const r = store.row(id);
+    return r === undefined ? null : typeof r.fade === "number" ? r.fade : 1;
+  };
   if (d.fade !== null) {
-    const now = store.row(d.fade.id);
-    if (now !== undefined) restore = { id: d.fade.id, fade: unfade(typeof now.fade === "number" ? now.fade : 1, d.fade.factor) };
+    const f = current(d.fade.id);
+    if (f !== null) next.set(d.fade.id, unfade(f, d.fade.factor));
   }
+  for (const l of d.lifts) {
+    const f = current(l.id);
+    if (f !== null) next.set(l.id, Math.min(1, f * l.factor));
+  }
+  const restore: { id: string; fade: number } | null =
+    d.fade !== null && next.has(d.fade.id) ? { id: d.fade.id, fade: next.get(d.fade.id) as number } : null;
+  const reapply = [...next].filter(([id]) => d.fade === null || id !== d.fade.id).map(([id, fade]) => ({ id, fade }));
   const reopen = d.closes.filter((c) => store.contradiction(c)?.via === pair.id);
   const back = wasFlagged(pair) ? "unsettled" : "withdrawn";
   let unarchived = false;
@@ -491,6 +566,7 @@ export function undo(
       day,
       state: back,
       restore,
+      reapply,
       unarchive: d.archived === null ? null : { id: d.archived, reason: CORRECTED_REASON },
       reopen,
       detail: { restored: restore?.id ?? null, archived: d.archived, reopened: reopen, state: back },
@@ -522,11 +598,17 @@ export function undo(
 
 /** Was this pair a question somebody raised — a dream's flag, or one pressure recorded — rather than a settle's own row? */
 export function wasFlagged(pair: Pick<ContradictionRow, "source" | "dream_id">): boolean {
-  return pair.source === "dream" || pair.source === "pressure" || pair.dream_id !== null;
+  return pair.source === "dream" || pair.source === "pressure" || pair.source === SLOT_SOURCE || pair.dream_id !== null;
 }
 
 /** A settle's trail detail, read tolerantly: the fade it applied, the memory it archived, the flags it closed. */
-export function settleDetail(raw: string): { fade: { id: string; factor: number } | null; archived: string | null; closes: string[] } {
+export function settleDetail(raw: string): {
+  fade: { id: string; factor: number } | null;
+  archived: string | null;
+  closes: string[];
+  /** Provisional cuts the settle lifted (2026-10-11): an undo puts them back on. */
+  lifts: { id: string; factor: number }[];
+} {
   let d: Record<string, unknown> = {};
   try {
     d = JSON.parse(raw) as Record<string, unknown>;
@@ -538,7 +620,263 @@ export function settleDetail(raw: string): { fade: { id: string; factor: number 
     fade: f !== undefined && typeof f.id === "string" && typeof f.factor === "number" ? { id: f.id, factor: f.factor } : null,
     archived: typeof d["archived"] === "string" ? (d["archived"] as string) : null,
     closes: Array.isArray(d["closes"]) ? (d["closes"] as unknown[]).filter((x): x is string => typeof x === "string") : [],
+    lifts: Array.isArray(d["lifts"]) ? (d["lifts"] as unknown[]).flatMap(fadeFactorOf) : [],
   };
+}
+
+/** One `{id, factor}` of a trail detail, as a list of none or one. */
+function fadeFactorOf(x: unknown): { id: string; factor: number }[] {
+  if (x === null || typeof x !== "object") return [];
+  const f = x as { id?: unknown; factor?: unknown };
+  return typeof f.id === "string" && typeof f.factor === "number" && f.factor > 0 && f.factor < 1 ? [{ id: f.id, factor: f.factor }] : [];
+}
+
+// ── THE SLOT DETECTOR (2026-10-11, Group 2; reviews 04 and 10 C2) ──────────
+
+/**
+ * A slot proposal still standing: the trail's newest `propose` row not undone,
+ * with which memory it read as holding, which as earlier, and the provisional
+ * cut it made (null when there was nothing to cut). Null for any other pair.
+ */
+export function provisionalOf(
+  store: Pick<Store, "contradictionSettles">,
+  pair: Pick<ContradictionRow, "id" | "source">,
+): { seq: number; holds: string; over: string; fade: { id: string; factor: number } | null } | null {
+  if (pair.source !== SLOT_SOURCE) return null;
+  const row = store
+    .contradictionSettles({ pairId: pair.id })
+    .filter((s) => s.action === "propose" && s.undone === 0)
+    .pop();
+  if (row === undefined || row.holds === null || row.over === null) return null;
+  let d: Record<string, unknown> = {};
+  try {
+    d = JSON.parse(row.detail) as Record<string, unknown>;
+  } catch {
+    d = {};
+  }
+  return { seq: row.seq, holds: row.holds, over: row.over, fade: fadeFactorOf(d["fade"])[0] ?? null };
+}
+
+/** What the detector found: the older memory a new one reads as the newer state of. */
+export interface SlotCandidate {
+  readonly over: string;
+  /** The embedder's cosine between the two, rounded. */
+  readonly cosine: number;
+  /** `lineage` (planned, now done) or `cosine` (very close in meaning). */
+  readonly rule: "lineage" | "title" | "cosine";
+  /** The older was written in the same session. */
+  readonly sameSession: boolean;
+}
+
+/** A kind of memory the detector never reads as a slot: a reading, a world memory (04: consecutive readings are not states). */
+function slotExempt(row: MemoryRow): boolean {
+  return row.about === "world" || /^\s*reading\b/i.test(row.title ?? row.body);
+}
+
+/**
+ * IS THIS NEW MEMORY THE NEWER STATE OF THE SAME THING AS AN OLDER ONE?
+ * Arithmetic, no model call (2026-10-11, Group 2). Candidates: this session's
+ * own recent writes first (42 of 59 declared slots were same-session, 04), then
+ * the memory's stored neighbours (box 3, written at `put`) — older than it, no
+ * more than `SLOT_WINDOW_DAYS` lived days older, of the same kind and the same
+ * `about`, both written by a session (`authored`). A slot when status lineage
+ * holds (it was `planned`, this is `done`, cos ≥ `SLOT_LINEAGE_COSINE`), the
+ * two titles read as one (`SLOT_TITLE_COSINE`, at the same lower bar), or the
+ * two are very close in meaning (cos ≥ `SLOT_COSINE`). Never: a memory with a
+ * date (a reminder is its own thing), a reading or world memory, one already
+ * settled over (`headOf`: the head is what a newer one sits over), one the
+ * owner protects or the core holds, or a pair that was ever a pair (a dream that
+ * said "two things" is not asked again). The nearest qualifying one, the
+ * session's first. Null when nothing qualifies or there are no vectors. Pure
+ * read; never throws.
+ */
+export function detectSlot(store: Store, input: { id: string; exclude?: readonly string[]; session?: string | null }): SlotCandidate | null {
+  const T = CONTRADICTION_TUNABLES;
+  try {
+    const row = store.row(input.id);
+    if (row === undefined || row.type !== "memory" || row.archived === 1 || row.superseded_by !== null || rowTombstoned(row)) return null;
+    if (row.source !== "authored" || slotExempt(row) || row.created_at === null) return null;
+    const vec = store.vectorOf(input.id);
+    if (vec === null) return null;
+    const skip = new Set<string>([input.id, ...(input.exclude ?? [])]);
+    const session = input.session ?? null;
+    const own = session === null ? [] : store.memoriesOfSession(session).map((m) => m.id);
+    const near = store.neighbourReader()(input.id, T.SLOT_CANDIDATES) ?? [];
+    const found: SlotCandidate[] = [];
+    const seen = new Set<string>();
+    let ownTitle: number[] | null | undefined;
+    for (const id of [...own, ...near]) {
+      if (seen.has(id) || skip.has(id)) continue;
+      seen.add(id);
+      const c = store.row(id);
+      if (c === undefined || c.type !== "memory" || c.archived === 1 || c.superseded_by !== null || rowTombstoned(c)) continue;
+      if (c.source !== "authored" || c.kind !== row.kind || (c.about ?? null) !== (row.about ?? null) || slotExempt(c)) continue;
+      if (c.confidential !== row.confidential || c.event_date !== null) continue;
+      if (c.created_at === null || c.created_at >= row.created_at || row.birth_day - c.birth_day > T.SLOT_WINDOW_DAYS) continue;
+      if (c.protected === 1 || c.band === "identity" || c.promoted_identity === 1) continue;
+      try {
+        if (isHandoff(store.readProse(id))) continue;
+      } catch {
+        continue;
+      }
+      const other = store.vectorOf(id);
+      if (other === null || other.length !== vec.length) continue;
+      const cos = cosine(vec, other);
+      if (cos < T.SLOT_LINEAGE_COSINE) continue;
+      const lineage = c.status === "planned" && row.status === "done";
+      let rule: SlotCandidate["rule"] | null = cos >= T.SLOT_COSINE ? "cosine" : lineage ? "lineage" : null;
+      if (rule === null && row.title !== null && c.title !== null) {
+        ownTitle ??= store.textVector(row.title);
+        const theirs = store.textVector(c.title);
+        if (ownTitle !== null && theirs !== null && theirs.length === ownTitle.length && cosine(ownTitle, theirs) >= T.SLOT_TITLE_COSINE) rule = "title";
+      }
+      if (rule === null) continue;
+      if (headOf(store, id) !== null || store.contradictionEverBetween(input.id, id)) continue;
+      // Already waiting as the older of a proposal: one provisional cut at a time.
+      if ((store.contradictionsOf([id]).get(id) ?? []).some((p) => p.state === "unsettled" && p.source === SLOT_SOURCE && p.a === id)) continue;
+      found.push({ over: id, cosine: round(cos), rule, sameSession: c.origin_session !== null && c.origin_session === session });
+    }
+    found.sort((a, b) => Number(b.sameSession) - Number(a.sameSession) || b.cosine - a.cosine || (a.over < b.over ? -1 : 1));
+    return found[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export type SlotOutcome =
+  | {
+      readonly ok: true;
+      readonly pair: string;
+      readonly holds: string;
+      readonly over: string;
+      readonly rule: SlotCandidate["rule"];
+      readonly cosine: number;
+      /** The provisional cut: strength before and after, rounded. Null when there was nothing to cut. */
+      readonly faded: { readonly before: number; readonly after: number } | null;
+    }
+  | { readonly ok: false; readonly reason: string; readonly detail: string };
+
+/**
+ * PROPOSE A SLOT: the new memory holds, the older one is its earlier state —
+ * provisionally. The pair is written UNSETTLED with source `slot`, so recall
+ * labels the older "may be out of date" and the dream is shown it to confirm
+ * or undo (`slotsToConfirm`); the older's fade is cut by `SLOT_FADE` meanwhile,
+ * on the trail so every later step is exact. The same refusals as a settle
+ * that moves it (`memoryRefusal`).
+ */
+export function proposeSlot(
+  store: Store,
+  input: { holds: string; candidate: SlotCandidate; actorId?: string | null; day?: number },
+): SlotOutcome {
+  if (store.observer) return { ok: false, reason: "observer", detail: "This session is an observer: nothing was proposed." };
+  const day = input.day ?? store.livedDay();
+  const over = input.candidate.over;
+  const bad = memoryRefusal(store, over, true) ?? memoryRefusal(store, input.holds, false);
+  if (bad !== null && !bad.ok) return { ok: false, reason: bad.reason, detail: bad.detail };
+  const cut = changedFade(store.physicsOf(over), day, CONTRADICTION_TUNABLES.SLOT_FADE);
+  const faded = cut === null ? null : { before: round(cut.before), after: round(cut.after) };
+  try {
+    const out = store.proposeContradiction({
+      id: newPairId(),
+      holds: input.holds,
+      over,
+      source: SLOT_SOURCE,
+      day,
+      actor: "detector",
+      actorId: input.actorId ?? null,
+      fade: cut === null ? null : { id: over, fade: cut.fade },
+      detail: {
+        ...(cut === null ? {} : { fade: { id: over, factor: cut.factor, ...faded } }),
+        rule: input.candidate.rule,
+        cosine: input.candidate.cosine,
+        sameSession: input.candidate.sameSession,
+      },
+    });
+    if (!out.created) return { ok: false, reason: "already-a-pair", detail: `${input.holds} and ${over} are already a pair (${out.id}).` };
+    store.appendEvent({
+      name: CONTRADICTION_PROPOSED_EVENT,
+      day,
+      ref: out.id,
+      payload: { pair: out.id, holds: input.holds, over, rule: input.candidate.rule, cosine: input.candidate.cosine, sameSession: input.candidate.sameSession, faded: faded !== null, day },
+    });
+    return { ok: true, pair: out.id, holds: input.holds, over, rule: input.candidate.rule, cosine: input.candidate.cosine, faded };
+  } catch (err) {
+    return { ok: false, reason: "failed", detail: `Nothing was proposed: ${isStoreError(err) ? err.code : String((err as Error).message ?? err)}.` };
+  }
+}
+
+/**
+ * THE TWO ARE NOT ONE THING'S EARLIER AND LATER STATE: a slot proposal
+ * withdrawn (the dream's `slot {same: false}`, or the owner's undo), its
+ * provisional cut put back. A withdrawn pair is never proposed again.
+ */
+export function withdrawSlot(
+  store: Store,
+  input: { pair: string; actor: SettleActor; actorId?: string | null; why?: string | null; day?: number },
+): { ok: true; pair: string; restored: string | null; seq: number } | { ok: false; reason: string; detail: string } {
+  if (store.observer) return { ok: false, reason: "observer", detail: "This session is an observer: nothing was withdrawn." };
+  const day = input.day ?? store.livedDay();
+  const pair = store.contradiction(input.pair.trim());
+  if (pair === undefined) return { ok: false, reason: "pair-unknown", detail: `There is no contradiction ${input.pair}.` };
+  const p = pair.state === "unsettled" ? provisionalOf(store, pair) : null;
+  if (p === null) return { ok: false, reason: "not-a-proposal", detail: `${pair.id} is not a slot proposal still waiting (${pair.source}, ${pair.state}).` };
+  let restore: { id: string; fade: number } | null = null;
+  if (p.fade !== null) {
+    const r = store.row(p.fade.id);
+    if (r !== undefined) restore = { id: p.fade.id, fade: unfade(typeof r.fade === "number" ? r.fade : 1, p.fade.factor) };
+  }
+  try {
+    const out = store.withdrawProposal({ pairId: pair.id, proposeSeq: p.seq, actor: input.actor, actorId: input.actorId ?? null, why: cleanWhy(input.why), day, restore, detail: { restored: restore?.id ?? null } });
+    store.appendEvent({
+      name: CONTRADICTION_UNDONE_EVENT,
+      day,
+      ref: pair.id,
+      payload: { pair: pair.id, how: null, actor: input.actor, restored: restore !== null, unarchived: false, reopened: 0, state: "withdrawn", proposal: true, day },
+    });
+    return { ok: true, pair: pair.id, restored: restore?.id ?? null, seq: out.seq };
+  } catch (err) {
+    return { ok: false, reason: "failed", detail: `Nothing was withdrawn: ${isStoreError(err) ? err.code : String((err as Error).message ?? err)}.` };
+  }
+}
+
+/** The undo of a `withdrawSlot` (a dream's, undone with the dream): the proposal stands again, its cut back on. */
+export function reinstateSlot(store: Store, input: { pair: string; withdrawSeq: number }): boolean {
+  if (store.observer) return false;
+  const pair = store.contradiction(input.pair);
+  if (pair === undefined || pair.state !== "withdrawn" || pair.source !== SLOT_SOURCE) return false;
+  const trail = store.contradictionSettles({ pairId: pair.id });
+  const w = trail.find((s) => s.seq === input.withdrawSeq && s.action === "withdraw" && s.undone === 0);
+  const prop = trail.filter((s) => s.action === "propose" && s.undone === 1).pop();
+  if (w === undefined || prop === undefined) return false;
+  let fade: { id: string; fade: number } | null = null;
+  try {
+    const f = fadeFactorOf((JSON.parse(prop.detail) as Record<string, unknown>)["fade"])[0];
+    const r = f === undefined ? undefined : store.row(f.id);
+    if (f !== undefined && r !== undefined) fade = { id: f.id, fade: (typeof r.fade === "number" ? r.fade : 1) * f.factor };
+  } catch {
+    fade = null;
+  }
+  store.reinstateProposal({ pairId: pair.id, proposeSeq: prop.seq, withdrawSeq: w.seq, fade });
+  return true;
+}
+
+/**
+ * THE PROPOSALS WAITING FOR A READER, oldest first: unsettled slot pairs whose
+ * two memories both still stand. `limit` of them (the night's budget), and how
+ * many more wait.
+ */
+export function slotsToConfirm(store: Store, limit: number = CONTRADICTION_TUNABLES.SLOT_PER_NIGHT): { pairs: { pair: string; holds: string; over: string }[]; more: number } {
+  const waiting: { pair: string; holds: string; over: string }[] = [];
+  try {
+    for (const c of [...store.contradictions({ state: "unsettled", limit: 100_000 })].reverse()) {
+      if (c.source !== SLOT_SOURCE || !pairStanding(store, c)) continue;
+      const p = provisionalOf(store, c);
+      if (p !== null) waiting.push({ pair: c.id, holds: p.holds, over: p.over });
+    }
+  } catch {
+    return { pairs: [], more: 0 };
+  }
+  return { pairs: waiting.slice(0, Math.max(0, limit)), more: Math.max(0, waiting.length - Math.max(0, limit)) };
 }
 
 /** "My mind"'s habituation for a pair, back to none. Bookkeeping only; never throws. */
@@ -588,11 +926,22 @@ function excerptOf(body: string, chars: number): string {
  */
 export function writeNeighbours(
   store: Store,
-  input: { id: string; exclude?: readonly string[]; owner: boolean; limit?: number },
+  input: { id: string; exclude?: readonly string[]; owner: boolean; limit?: number; session?: string | null },
 ): Neighbour[] {
   const T = CONTRADICTION_TUNABLES;
   const row = store.row(input.id);
   if (row === undefined || rowTombstoned(row)) return [];
+  // THIS SESSION'S OWN RECENT WRITES FIRST (2026-10-11, Group 2; 04: 42 of 59
+  // declared slots were same-session): candidates whatever the indexes rank,
+  // and ahead of the rest when they clear a bar.
+  const own = new Set<string>();
+  if (input.session !== undefined && input.session !== null) {
+    try {
+      for (const m of store.memoriesOfSession(input.session)) if (row.birth_day - m.bornDay <= T.SLOT_WINDOW_DAYS) own.add(m.id);
+    } catch {
+      /* no session rows: the indexes decide */
+    }
+  }
   const text = `${row.title ?? ""}\n${row.body}`;
   const skip = new Set<string>([input.id, ...(input.exclude ?? [])]);
   const vec = (() => {
@@ -603,7 +952,7 @@ export function writeNeighbours(
     }
   })();
   const cosByHit = new Map<string, number>();
-  const candidates: string[] = [];
+  const candidates: string[] = [...own];
   if (vec !== null) {
     try {
       for (const h of store.nearestTo(vec, T.NEIGHBOUR_CANDIDATES + skip.size)) {
@@ -641,7 +990,7 @@ export function writeNeighbours(
     if (lex < T.NEIGHBOUR_LEXICAL && (cos === null || cos < T.NEIGHBOUR_COSINE)) continue;
     scored.push({ id, score: Math.max(lex, cos ?? 0), row: c });
   }
-  scored.sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1));
+  scored.sort((a, b) => Number(own.has(b.id)) - Number(own.has(a.id)) || b.score - a.score || (a.id < b.id ? -1 : 1));
   // SETTLED OVER (2026-10-11): a memory a later one changed is still live,
   // so it can be close — and on 10-11 its bare title was read as the rule.
   // It is listed marked with the memory that holds now; left out when that

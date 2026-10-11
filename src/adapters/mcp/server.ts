@@ -56,7 +56,7 @@
  */
 import { CLAIM_NOTHING_NEW, claimUnwritten } from "../../core/coverage/index.js";
 import { DREW_ON_MAX_PER_BOUNDARY, MCP_OVERSIZE_EVENT, MCP_PART_EVENT, MCP_RECALL_EVENT, RECALL_CREDIT_EVENT, boundedIds } from "../../core/counterpart.js";
-import { CONTRADICTION_TUNABLES, HELD_HINT, NEIGHBOURS_HINT } from "../../core/reconsolidation.js";
+import { CONTRADICTION_TUNABLES, HELD_HINT, NEIGHBOURS_HINT, SLOT_HINT } from "../../core/reconsolidation.js";
 import type { Neighbour } from "../../core/reconsolidation.js";
 import { isRecurrence, localDate, occurrenceOnOrAfter, parseCalendarDate, readableRecurrence, todayIn } from "../../core/time.js";
 import type { Recurrence } from "../../core/time.js";
@@ -143,7 +143,7 @@ import {
 import type { Id, Request, Response } from "./protocol.js";
 import { DREAMING_SETTINGS, NIGHT_RUN_FINISHES, nightNext, nightOrder } from "../../core/dream/index.js";
 import type { DreamBundle, DreamingSetting, NightPart } from "../../core/dream/index.js";
-import { TOOL_RESULT_CEILING, clipWire, noteLookups, wireChars } from "../../core/fit/index.js";
+import { TOOL_RESULT_CEILING, clipWire, lineOf, noteLookups, wireChars } from "../../core/fit/index.js";
 import type { FitMechanism } from "../../core/fit/index.js";
 import { NIGHT_WRITER_TOOL, NO_PAGE_VERSION, WAKE_BUILD_KEY, pageRoomNote, pageSections, pageTooLargeDetail } from "../../core/self/index.js";
 import type { PageRevision, PageWriterMode } from "../../core/self/index.js";
@@ -1764,8 +1764,8 @@ export class McpServer {
       // when the store opened as a guest (2026-10-02).
       owner: this.owner,
     });
-    const neighbours = this.neighboursOf(deposit);
-    this.markSeen(neighbours.map((n) => n.id));
+    const neighbours = this.neighboursOf(deposit, [], CONTRADICTION_TUNABLES.NEIGHBOURS, session);
+    this.markSeen([...neighbours.map((n) => n.id), ...(deposit.slot === undefined ? [] : [deposit.slot.over])]);
     const feltNow = nowArg === undefined ? null : this.feelingsNowOutcome(nowArg as unknown[]);
     // WITH A SETTLE TOO (review of #284, M2): the call is an error only when
     // NOTHING landed — a refused note beside a settle that landed is not one,
@@ -1782,6 +1782,7 @@ export class McpServer {
       // IN THE PAYLOAD, so it rides in `structuredContent` — which is what
       // Claude Code hands the model (the #282 lesson, f387f55).
       ...(neighbours.length === 0 ? {} : { neighbours, neighboursHint: NEIGHBOURS_HINT }),
+      ...this.slotOf(deposit),
       ...(settle === null ? {} : { settle }),
       ...(feltNow === null ? {} : { feelingsNow: feltNow }),
       // AN ERROR ONLY WHEN NOTHING LANDED (review of #316): a refused note
@@ -2019,13 +2020,32 @@ export class McpServer {
    * any clear the similarity bar — minus the one it updates. Ids, titles and
    * a short excerpt; empty when nothing is close or nothing was stored.
    */
-  private neighboursOf(deposit: DepositResult, siblings: readonly string[] = [], room: number = CONTRADICTION_TUNABLES.NEIGHBOURS): readonly Neighbour[] {
+  private neighboursOf(
+    deposit: DepositResult,
+    siblings: readonly string[] = [],
+    room: number = CONTRADICTION_TUNABLES.NEIGHBOURS,
+    session: string | null = null,
+  ): readonly Neighbour[] {
     if (!deposit.deposited || deposit.memoryId === null || room <= 0) return [];
     // Not the memory it updates, and not a sibling written by the same call
     // (review of #284, M1): those are this writer's own words, not existing ones.
-    // A held one (2026-10-09) is already shown whole, beside its own ask.
-    const exclude = [deposit.revision?.targetId, deposit.mint?.updates, deposit.held?.over, ...siblings].filter((x): x is string => typeof x === "string");
-    return this.counterpart.writeNeighbours(deposit.memoryId, { exclude, owner: this.owner }).slice(0, room);
+    // A held one (2026-10-09) is already shown whole, beside its own ask, and
+    // a slot the detector proposed (2026-10-11) beside its own.
+    const exclude = [deposit.revision?.targetId, deposit.mint?.updates, deposit.held?.over, deposit.slot?.over, ...siblings].filter((x): x is string => typeof x === "string");
+    return this.counterpart.writeNeighbours(deposit.memoryId, { exclude, owner: this.owner, session }).slice(0, room);
+  }
+
+  /**
+   * THE SLOT THE DETECTOR PROPOSED for a write (2026-10-11, Group 2): the
+   * older memory, by id and title, and the ask — settle it now or let the
+   * dream. Empty when none was proposed.
+   */
+  private slotOf(deposit: DepositResult): Record<string, unknown> {
+    const s = deposit.slot;
+    if (s === undefined) return {};
+    const row = this.counterpart.store.row(s.over);
+    const title = row === undefined || (row.confidential === 1 && !this.owner) ? null : (row.title ?? lineOf({ body: row.body }));
+    return { slot: { pair: s.pair, over: s.over, ...(title === null ? {} : { title }), rule: s.rule }, slotHint: SLOT_HINT };
   }
 
   /**
@@ -3176,7 +3196,7 @@ export class McpServer {
       // the kinds that exist.
       const malformed = result.malformed ?? null;
       // Bounded per dump (M1): a long dump shares NEIGHBOURS_PER_CALL between its entries.
-      const neighbours = this.neighboursOf(result, batch, Math.min(CONTRADICTION_TUNABLES.NEIGHBOURS, CONTRADICTION_TUNABLES.NEIGHBOURS_PER_CALL - listed));
+      const neighbours = this.neighboursOf(result, batch, Math.min(CONTRADICTION_TUNABLES.NEIGHBOURS, CONTRADICTION_TUNABLES.NEIGHBOURS_PER_CALL - listed), session);
       listed += neighbours.length;
       if (result.memoryId !== null) batch.push(result.memoryId);
       outcomes.push({
@@ -3194,6 +3214,7 @@ export class McpServer {
         ...this.settledOf(result, draft["how"] !== undefined),
         ...threadOf(result),
         ...(neighbours.length === 0 ? {} : { neighbours }),
+        ...this.slotOf(result),
       });
     }
     return { outcomes, deposited, duplicates, entries };

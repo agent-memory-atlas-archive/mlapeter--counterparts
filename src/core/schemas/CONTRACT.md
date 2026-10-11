@@ -103,7 +103,8 @@ name/alias resolution; birth and death telemetry.
    lineage (`replaceCurrentState`), because world-state flips on one clear correction
    (§4.3) and a stale status has no reason to climb a bar. An **entity** row is LINKED and
    nothing else (`meta.updates` already records the relation). An **ordinary memory** is
-   SETTLED when an author declared it (2026-09-29, `src/core/reconsolidation.ts`): `how` is
+   SETTLED when an author declared it (2026-09-29, `src/core/reconsolidation.ts`, renamed from
+   `contradictions.ts` 2026-10-11): `how` is
    `changed` (the default — one strength cut, labelled earlier), `corrected` (archived:
    out of recall, readable by its id) or `open` (both kept); a SWEPT declaration carries no
    `how` and stays a link. **Before any of it, an authored `changed` or `corrected` declared
