@@ -128,9 +128,10 @@ for `recall/`; telemetry by reference.
     recorded them. The nightly run's rows (a dream's gists and merges, a reflection's
     entry) are not the session's and are left out, counted (review of #281).
     *Since 2026-10-11 (group 4, NOTES §17) the same pass gives each new memory a faint
-    link (`WRITE_LINK_WEIGHT` 0.05) to what was in mind when it was written — what recall
-    showed its session in the last few turns, and a deliberate question's answer near the
-    write — through `Associate.propose`: room-only, never evicting. It is the new memory's
+    link (`WRITE_LINK_WEIGHT` 0.05) to what was in mind when it was written — for a memory
+    written in the moment (the jot door), what recall showed its session on the write's
+    own turn; a write-up's, a catch-up's or a chapter copy's memories get none (review of
+    #423) — through `Associate.propose`: room-only, never evicting. It is the new memory's
     encoding context; the shown memory's strength does not change (G1).*
 
 ## 6. Scars honored

@@ -645,18 +645,19 @@ were refined by b2+f8 at the review of #369, named where they were):
   mind". **Measured on the 10-11 copy, fast-forwarded 7 lived days:** 904 new write-time
   trails, 793 (88%) of them from memories written in a session-end batch; a hand-read of 20
   was 1 right, 3 unsure, 16 noise — the 4 from timed (mid-session) writes 1/1/2, the 16 from
-  batches 0/2/14. None was later reinforced or had ever been co-used. Kept as built for now
-  because it is harmless at 0.05 (0 pointer candidates at the current threshold; a 0.05 link
-  passes 0.6% of its node). The lever if it stays noisy: the write's own turn and a deliberate
-  question near it only, no recent-turns window for a batch's memories.
+  batches 0/2/14. Kept as built for now because it is harmless at 0.05 (0 pointer candidates
+  at the current threshold; a 0.05 link passes 0.6% of its node). The lever if it stays
+  noisy: the write's own turn and a deliberate question near it only, no recent-turns window
+  for a batch's memories. (Tightened before merge: see the #423 reviewer's bullets below.)
 - Decided by the Group 4 builder, 2026-10-11, lightly held (review 06 C4, the ants rule): no
   "a reinforced edge fades slower" in this build, and no column. It could be computed from what
   is stored — a stability that grows with the edge's own weight above one co-use (e.g. linear
   decay at `HEBB_RATE / S_EDGE` per lived day above 0.1, exponential below; an autonomous curve,
   so decay realized at flush stays exact) — but weight is not use: a legacy 0.3 dream link would
   fade like a thrice-used one, and those 174 rows are the hubs review 06 flagged. And there is
-  nothing for it to act on: the store has never co-used one pair twice (review 06 §3), and 0 of
-  the fast-forward's 1,407 new trails were reinforced. The honest version is the v14 column,
+  nothing for it to act on yet: the store has never co-used one pair twice (review 06 §3). (The
+  fast-forward could not say how many new trails use would reinforce: a forward simulation has
+  no awake use.) The honest version is the v14 column,
   to batch with other v14 needs: `edges.reinforced INTEGER NOT NULL DEFAULT 0` (one `ALTER
   TABLE … ADD COLUMN`, no backfill, ~1–2 bytes a row: ~6 KB at today's ~5.6k rows, ~60 KB at
   30k), bumped in `planFlush` when a Hebbian delta lands on a row that already conducts (not by
@@ -694,7 +695,53 @@ were refined by b2+f8 at the review of #369, named where they were):
   a count of rewrites while links put one memory in front of the model in 19 days. Expect
   the owner's dashboard to show Association amber after this ships, until a link reaches
   recall; the demo store is amber too. Rows from before have no `deposited`, so the count
-  starts at zero.
+  starts at zero. (Not on a new store: see the #423 reviewer's bullet below.)
+- Decided by the coordinator, 2026-10-11, lightly held, and built by the #423 reviewer: a
+  memory written in a session's write-up batch or by the night catch-up gets no recent-turns
+  window; one written mid-session keeps what was in mind. Why: Mike's rule was "like a brain,
+  unless there's a big downside", and 14 of 14 batch links hand-read as noise: what was in
+  mind at a session's end is not what each memory written then was about.
+- Decided by the #423 reviewer, 2026-10-11, lightly held: "mid-session" is the jot door (the
+  note tool), read from the memory's `gate.deposit` row; a session-end write-up, a catch-up's
+  write-up and a chapter copy (no deposit row) get no window, and so does any memory whose row
+  is missing. The window is the write's own turn only (`WRITE_LINK_TURNS` 3 → 1). Why:
+  hand-read on the 10-11 copy, a jot's own-turn showings were 7 right, 4 unsure, 9 noise of 20,
+  the two turns before it 2, 4, 14. The door, not timing, because timing (60 s apart) splits
+  the jots nearly in half and would give a lone session-end memory a window; chapter copies
+  were getting write-time links too.
+- Decided by the #423 reviewer, 2026-10-11, lightly held, against the coordinator's decision
+  that a batch memory may still link to a deliberate question's answer within 15 minutes: no
+  deliberate-question links for any door (`WRITE_LINK_ASKED_MS` 0, off; one number restores
+  it). Why: those answers hand-read 0 right of 20 for session-end memories and 0 of 20 for
+  jots, and 0 of 20 again counting only questions asked before the write and no chapter
+  copies; they are broad answers ("where did we leave off"), not what the memory was about.
+  So a batch memory gets nothing, a subset of the coordinator's rule for the same reason.
+  After both changes the fast-forward lays 95 write-time trails a week, not 904; a hand-read of
+  40 of them was 5 right, 6 unsure, 29 noise. The bench clinic pair: write-time links never
+  fired on the bench store (every write a session-end write-up, no recall while it was
+  written), before or after; one dream's replay links it. The hermetic clinic test now writes
+  through the jot door.
+- Decided by the #423 reviewer, 2026-10-11, lightly held: Association goes amber for links
+  laid with none reaching recall only once the store has lived 14 days and laid 20 links in
+  the 7-lived-day window (`vitalAfter`); before that it is waiting on the dashboard ("No
+  memory a link brought to mind yet; that takes a few weeks of use") and working in the
+  console. Why: Mike's yardstick for an amber is whether a regular user would know what to do
+  with it, and a new user can do nothing about this one; two weeks is the window and one
+  before it for trails to be laid and used, 20 is about three links a lived day. Mike's own
+  store passes both and will show it amber, which is honest.
+- Decided by the #423 reviewer, 2026-10-11, lightly held: the archived-for-good sweep takes an
+  end only once it was archived 10 minutes ago (`TERMINAL_ARCHIVE_GRACE_MS`). Why: a regrown
+  copy is archived and then retargeted, a merge's original folded in and then retargeted, and
+  another process's boundary flushing between the two steps would have deleted rows not yet
+  carried.
+- Decided by the #423 reviewer, 2026-10-11, lightly held: a dream's replay links count as laid
+  even after the dream is undone, and the undo still leaves them. Why: the undo takes back
+  what the dreamer chose; the replay is the bundle having been shown, which happened, and a
+  0.05 trail nothing uses fades in about 27 lived days. The count now matches the graph.
+- Decided by the #423 reviewer, 2026-10-11, lightly held: one drewOn's pair set holds at most
+  `DREW_ON_MAX_PER_BOUNDARY` (3) members. Why: a memory refused only for its day cadence joins
+  without spending a credit slot, so twenty named memories opened earlier sent 190 full-rate
+  pairs.
 
 ### Decided by the small-fixes builder, 2026-10-11, lightly held (fix/small-1011c)
 
