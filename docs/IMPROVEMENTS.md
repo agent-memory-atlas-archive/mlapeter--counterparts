@@ -117,22 +117,28 @@ reverse older defaults and contract lines; those go to the rules audit.
    and its kind. Why: a routine note should leave the working layer in about two days, a felt
    reading should last months, and a 0.7 fact about a year. Until now every memory faded on
    the same slow curve, so nothing left reach for ~100 lived days. (1a)
+   **Kept. Mike, 2026-10-11, lightly held; looked at again at the 10-14 check-in.**
 5. **Below reach at 0.15.** Under it, a memory is left out of everything that comes up on its
    own (turn recall, the links' pointers, the wake's work lines); asking deliberately still
    finds it (facts mode: ranked with the rest, labelled faded — item 1); using it, opening it or a dream replaying
    it brings it back. The core never goes below reach. Why: forgetting in awareness, never in
    storage — strength has to change what comes to mind, or decay changes nothing anyone sees.
    (1a)
+   **Kept. Mike, 2026-10-11, lightly held; looked at again at the 10-14 check-in.**
 6. **Exit after 14 lived days under the floor (was 90).** Exit means ARCHIVED, never deleted:
    the words stay, readable by id, and the journal is untouched. Nothing deletes a memory
    except Mike's own `counterparts remove`. Why: exit should follow reach; at 90 the first
    possible exit was lived day 91. If any later change would delete rows, it waits for Mike.
    (1a)
+   **Kept. Mike, 2026-10-11, lightly held; looked at again at the 10-14 check-in.** For a faster
+   read, at 7 lived days a read-only dry run shows what WOULD be archived if exit were 7 instead
+   of 14; nothing is archived by it (docs/CHECK-AFTER.md).
 7. **A dated memory holds until its date; after its window it is back on its own curve.** See item 2 (Mike, 2026-10-11). (1a)
 8. **Feeling sets how slowly a memory fades, not its band; `emotional` is out of the
    salience average.** A feeling now counts once for height and once for steepness. Why:
    feeling was the one signal that told readings from changelog on the live store; it was
    being counted twice in height and barely in steepness. (1a)
+   **Kept. Mike, 2026-10-11, lightly held; looked at again at the 10-14 check-in.**
 9. **Mood-matched recall turned down (weights 0, code kept), marked for re-test.** Why:
    evidence from the old use metric (lifted memories used 1.3% vs 2.4%); re-test after Group
    1's engaged credit gives a real signal. Not a closed decision. (1c)
