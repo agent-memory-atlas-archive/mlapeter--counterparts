@@ -132,6 +132,34 @@ describe("a facts line says when its excerpt hides a list or a table", () => {
     }
   });
 
+  test("two different lists of the same shape are two results; one list pasted twice is one (review of #409)", async () => {
+    const w = openServer({ dir, session: "s-write", scope: SCOPE, owner: true });
+    const ids: string[] = [];
+    try {
+      for (const where of ["shelf", "attic", "basement"]) {
+        const a = (await w.call("remember", { text: list(where), title: `Mike's ${where} inventory, 100 items (2026-10-11)` })) as Result;
+        ids.push(String(a.structuredContent["id"]));
+      }
+      // The shelf list again, retitled, one count fixed: a repost, not a new list.
+      const again = (await w.call("remember", { text: list("shelf").replace("qty 9,", "qty 10,"), title: "Shelf stock as pasted" })) as Result;
+      expect(again.structuredContent["stored"]).toBe(true);
+      // Other memories, so "inventory" is not in every one (a word in all of them weighs nothing).
+      for (const n of ["the dog walk at dusk", "the oolong tea", "the river path", "the blue tote"]) await w.call("remember", { text: `Mike mentioned ${n}.` });
+    } finally {
+      w.counterpart.close();
+    }
+    const r = openServer({ dir, session: "s-read", scope: SCOPE, owner: true });
+    try {
+      const f = (await r.call("recall", { question: "inventory", mode: "facts" })) as Result;
+      const got = f.structuredContent["ids"] as string[];
+      for (const id of ids.slice(1)) expect(got).toContain(id);
+      expect(got.length).toBe(3);
+      expect(String(f.structuredContent["answer"])).toContain("1 near-duplicate of a result shown left out");
+    } finally {
+      r.counterpart.close();
+    }
+  });
+
   test("blockOf names a list or a table, and not a few lines", () => {
     expect(blockOf(list("shelf"))).toBe("a list, 100 items");
     expect(blockOf("- one\n- two\n* three\n• four\n+ five")).toBe("a list, 5 items");

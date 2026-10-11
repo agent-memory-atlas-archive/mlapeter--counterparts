@@ -96,8 +96,9 @@ or the CLI's read commands (`counterparts mechanisms --dir …`, `counterparts d
   table or a pasted text whose specifics matter word for word in the body, with the search words in the title
   and the first line. The body is stored and read whole, but the meaning vector is made from the title and the
   body's first ~3,072 characters (at most 512 tokens; a numbered list reaches 512 tokens sooner), so the rest
-  of a long block is reached by words only. Also watch: two similar lists (two weeks' shift tables, two
-  versions of an inventory) folded as near-duplicates of each other in a facts answer, so one is hidden.
+  of a long block is reached by words only. Also watch: a facts answer saying "near-duplicates … left out"
+  over two lists that were different (since the review of #409, a list or a table is compared by its lines,
+  not its word set; two near-identical versions of one list still fold, and the older may be the one shown).
 - **Changes a decision if:** long bodies blur meaning search, or real lists don't come back whole and findable
   → move to an attachments table (Mike's long-run lean), with the memory holding the context and keywords
   that find the attachment.
