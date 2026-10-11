@@ -41,7 +41,7 @@ paused here; `/counterparts fps [n]` reports the brain's rate (or sets its
 target). `caps` is gone: the footer's switches are dots, with no ends to draw.
 
 **Check it:** `sh hooks/sidebar/check.sh`, which runs validate on both manifests,
-`claude plugin test hooks/sidebar` (113 tests, terminal and desktop) and
+`claude plugin test hooks/sidebar` (118 tests, terminal and desktop) and
 `tsc -p hooks/sidebar`, all with a throwaway HOME. **See it:**
 `tools/term-loop/` (its README), at `--size 200x60` and `--size 160x48`. A
 term-loop session sends no message, so nothing comes to mind and nothing is
@@ -88,9 +88,9 @@ disagree, this wins.
   carries `link: { from, key }` (`sections.ts#Line`), and the body posts the
   link's key (`more:<id>`) for a click from that column on, the row's own key
   before it. It opens `#memories?id=<id>`. Shortened by the fold ladder at a
-  short pane (14, 10, 8, 5 lines), the text still ends with `more`. Opened
-  items still close by themselves after a minute (unchanged; worth Mike's eye
-  now that a 20-line text takes longer to read).
+  short pane (14, 10, 8, 5 lines), the text still ends with `more`. Nothing
+  opened closes by itself (review: the minute's auto-close is gone, for items,
+  the dream and an opened mechanism alike); only a click closes it.
 - **Up to three lines an item** in Memories, Subconscious and Saved (and a
   mechanism's firing): fewer items when they don't fit, never one shorter. The
   ladder's "memory titles 2 lines" step became "memories shows 2/1". A
@@ -105,8 +105,14 @@ disagree, this wins.
   reads `today`, `on 2026-10-10 morning` `this morning`; any other ISO date is
   `Oct 9`, or `Jan 5 2025` in another year (`hm` and the meta line follow the
   same rule). Applied to Memories, Subconscious, Saved, firings, an opened
-  title, `replaces`, search hits and the tail. Not touched: `10-09` and other
-  spellings (live titles have them, e.g. "(10-09)"), and memory text.
+  title, `replaces`, search hits and the tail. A short date standing alone
+  (`(10-09)`, `10-09: `, `… 10-09`, review) reads the same way, as this
+  year's (`feed.ts#isoShortDates`); not a date, left as written: part of a
+  longer number or name (`#10-09`, `v10-09`, `0.10-12`, `10-09-2026`, a path),
+  a time (`10:09`, `10-09:30`), a range of something (`10-20 lines`,
+  `10-20%`: a list of unit words), an impossible day (`13-09`, `02-30`). Not
+  touched: memory text and the dream's (an opened memory still reads
+  "Investigation 2026-10-10"; Mike's rule was about titles).
 - **An opened mechanism says what its firings were about**
   (`feed.ts#mechFirings`, titles read whole by `/api/memory?id=`, all reads):
 
@@ -126,12 +132,23 @@ disagree, this wins.
 
   **Left out, nothing to name:** a look-up (`mcp.recall` counts what it
   opened, no ids), a link flush (`associate.flush` counts pairs: so an opened
-  **Association** today shows `nothing lately names a memory`), a flagged
+  **Association** says what it does instead, `links memories used together;
+  it doesn't record which yet`, review), a flagged
   contradiction (a pair id only), a sleep cycle's fades (counts), and a
   `dream.changed` row for a dream older than the newest three. A core
   follow-up would give `associate.flush` and `mcp.recall` the ids they count.
   A dream's link changes do carry pairs, but they are Dreaming's, not
   Association's flush, so they are not shown under Association.
+
+  **Read deeper when the panel names few** (review): `/api/mechanism?id=`
+  narrates four lines from 200 rows an event name, its repeats merged. So
+  Salience (every deposit narrates alike) named one memory beside 159 today,
+  and Emotion none beside 27 (its mood-matched recalls are sparse: the first
+  of today's was the 321st decision). When a mechanism names fewer than
+  three, or fewer than it fired today, the click also reads its own event
+  rows (`/api/activity?name=`, 150, doubling to 1,200, as today's counts do;
+  a 500-row decision read is about 0.7 MB, on a click only) and lists up to
+  eight (`register.tsx#deeperFirings`).
 - **Last Dream:** no "what changed last night" list (and its two `band.*`
   reads are gone); opened, the dream's own text, up to 20 lines (no `more`:
   the dashboard has no page for one dream by id).
@@ -147,13 +164,62 @@ disagree, this wins.
   count (`1000 memories`, 13 cells) wrapped in the 12-column header column,
   making it seven rows beside a six-row brain, so the pane ran one row long
   and its last row (the brain switches) was cut, in dd179df5 too (Mike's
-  store reached 1,000 on 2026-10-10). The count now takes two rows and the
-  blank row above the day gives them room (a test).
+  store reached 1,000 on 2026-10-10). The builder's fix wrapped it to two
+  rows (`1000` / `memories`), which read oddly; in review the header's text
+  column takes one cell of the two-cell gap beside the brain whenever the
+  count is wider than 12, every row of it (so `COUNTERPARTS`, the day, the
+  count and the search box stay aligned), and `1002 memories` is one row; the
+  brain's right edge still has a cell of air. From 10,000 the count reads
+  `10k+ memories` (13 cells); the dashboard has the exact number. Tests at
+  999, 1000 and 12345.
 - **Footprint:** Mike's store read
   `{"fpsShown":true,"rail":false,"view":"sidebar","claudeMemory":true,"brain":"turning"}`
   before and after every run; no switch was clicked. The "before" run of
   dd179df5 clicked a long saved item, which in that build opens the dashboard:
   it opened one browser tab on `#memories?id=` (a read).
+
+#### Review of the polish round (2026-10-10, late, a separate reviewer)
+
+Changes are above, marked "review". Seen at 200x60 and 160x48 from a frozen
+copy (930ae06c), session 0464c1d3 seeded as the builder's shots were; every
+state in `~/counterparts-notes/mockups/2026-10-10-mod-polish/` (the builder's
+kept as `*-builder.png`).
+
+- **Clicks are the same every time.** Open A, open B (A closes), close B,
+  open A again: each did what it did the first time (`p2`–`p4` shots, and a
+  pane test). An opened item still open after five minutes on the mocked
+  clock (a test).
+- **`more` opens that memory.** The click on the cyan `more` of a 25-line
+  saved item ran `open http://localhost:4747/#memories?id=mem_8a2172cd59f2`,
+  that item's id: logged by a stub `open` put first on the run's `PATH`, so
+  no browser opened (a trick worth keeping for term-loop runs that click
+  links). A click on the row before `more` closes the item (a test).
+- **The quiet tail's 32 cells: works, with modest headroom.** Measured with a
+  real newest thing (the builder's auto-mode shot had only "Counterparts is
+  quiet"): the hint ends 26 cells short of the row at 200 columns, 12 at 160
+  (manual mode) and 11 at 160 in auto mode. The engine's `hint` prop grows
+  with the mode line, so the margin covers both today; a Claude Code release
+  that draws more than ~10 extra cells outside the prop would cut
+  `/counterparts opens it` again. Brittle against the engine, not against
+  the data; the robust fix is the engine telling a `PromptHint` hook how wide
+  its drawn line is.
+- **Migrations and safety.** A stored `strip` reads as quiet and is never
+  written back (a test per stored word); v0.1 copies read only `quiet` and
+  `hidden` as not-full, as before. The switch code is untouched by the round
+  (strip's buttons gone, nothing else). Timers left: the poll, the brain,
+  the folder's recheck, the switch note's and pause confirm's 30 s (a
+  safety close, kept), a title retry, a redraw after a pulse.
+- **Not fixed, for Mike's eye:** a settle reads as one run-on title (`Mike:
+  a great system beats … let old ones fade holds over Era PR…`): two titles
+  joined by `holds over`, cut at three lines; dates inside memory and dream
+  text stay as written ("Investigation 2026-10-10", the dream's "the 09-10
+  line"); the search placeholder's `#999999` (earlier review).
+- **Core asks:** `associate.flush` (and `mcp.recall`) to carry the memory ids
+  they count, so Association can name what it linked; and the panel's
+  four-line, 200-row window, which is what made the sidebar read deeper.
+- **Footprint:** five runs, his preferences file read the same before and
+  after each (`{"fpsShown":true,"rail":false,"view":"sidebar","claudeMemory":true,"brain":"turning"}`);
+  no switch clicked; no browser tab opened; reads only on the live dashboard.
 
 The shots and the side-by-sides are in
 `~/counterparts-notes/mockups/2026-10-10-mod-build/` (`mockup-vs-build-200x60.png`,
@@ -243,8 +309,8 @@ The shots and the side-by-sides are in
   in nine opens in place. That is the threshold doing what Mike asked, and
   the first thing to judge by use. Measured again in review (2026-10-10,
   the newest saved memories of three sessions): 2 of 29 open in place, so a
-  click on a saved item nearly always opens a browser tab. An opened item
-  closes itself after a minute. At a short pane the `open` ladder can still
+  click on a saved item nearly always opens a browser tab. (Polish round: no
+  threshold; review: nothing closes by itself.) At a short pane the `open` ladder can still
   cut an in-place text to 8 or 5 lines (`textTo`), with no link to the rest
   (no link, by decision).
 - **The reads.** The text comes from `/api/memory?id=`
@@ -257,8 +323,8 @@ The shots and the side-by-sides are in
   folds last and shortens only after every other section has folded); again,
   and it is back as it was. Its costs, from the review: a click on a heading
   that isn't folded changes nothing you can see, but the next click undoes
-  it; the focus never closes by itself (an opened item does, after a
-  minute); and Last Dream's heading opens the dream while it is unfolded
+  it; the focus never closes by itself (nor, since the review, does an opened
+  item); and Last Dream's heading opens the dream while it is unfolded
   (its key is the dream's), unlike the others.
 - **Folding.** `layoutBody` takes the least folding that fits, with a blank
   row between sections, else without; then opens again any fold the last one
