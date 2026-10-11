@@ -143,6 +143,8 @@ import type { Handoff, HandoffRefusal, HandoffWrite, PointerSince } from "./hand
 import { CLAIM_CHAPTER, askFromStretch, chapterClaims, claimUnwritten, sessionStretch, sessionsHere, workSince } from "./coverage/index.js";
 import { LAST_HERE_LIFE_DAYS, LAST_HERE_NOROOM_EVENT, chaptersBySession, chaptersHere, chaptersOn, elsewhereLine, lastHereLadder, sinceElsewhereLines, todayElsewhereLines, yesterdayLine, yesterdayShorter } from "./handoff/last-here.js";
 import type { ChapterHere, LastHere, SinceElsewhere, TodayElsewhere } from "./handoff/last-here.js";
+import { LAST_EXCHANGE_LINE_MAX_BYTES, exchangeLikely, lastExchange, lastExchangeLine, withExchange } from "./handoff/last-exchange.js";
+import type { LastExchange } from "./handoff/last-exchange.js";
 import { addDays, isDay, localStamp, localStampAfter, startOfLocalDay } from "./time.js";
 import type { Recurrence } from "./time.js";
 import { EPISODE_REGROWN_REASON, leftAs } from "./leaving.js";
@@ -2491,6 +2493,11 @@ export class Counterpart {
     // directory, finished or not — above the handoff, and the first thing
     // given up when there is not room for both (`handoff/last-here.ts`).
     const lastHere = this.lastHereLadder(scope, here?.session ?? null, chapters, here?.exportsFrom);
+    // LAST SAID HERE (2026-10-11): the last exchange in this directory, one
+    // line at the foot of the blocks above the handoff — the first thing they
+    // give up, at each of their widths (`withExchange`).
+    const exchange = here === undefined ? null : this.lastExchangeLine(here);
+    const aboveLadder = withExchange(lastHere, exchange);
     // Which chapter the line would name first, for its durable no-room row.
     const reader = here?.session ?? null;
     // Only for a "Last here" line proper: the about-me line alone names no
@@ -2504,7 +2511,7 @@ export class Counterpart {
     // handoff block is chosen, in the room that block leaves — the handoff and
     // "Last here" are chosen first and never give way to it (`withWorkHere`).
     const work = this.workHereLines(scope);
-    if (newest === undefined && lastHere.length === 0) return this.withWorkHere(result, null, work, budget, scope);
+    if (newest === undefined && aboveLadder.length === 0) return this.withWorkHere(result, null, work, budget, scope);
     const fits = (block: string): ReturnType<typeof spliceBeforeSentinel> | null => {
       const spliced = spliceBeforeSentinel(result.text, block);
       return spliced.applied && (budget === null || spliced.bytes <= budget) ? spliced : null;
@@ -2515,12 +2522,12 @@ export class Counterpart {
     // alone as the fallback. The line alone only when no handoff rung fits.
     // With no chapter here this is the handoff ladder as it was, rung for rung.
     // A bundle that is not a clean render is delivered as found.
-    if (!spliceBeforeSentinel(result.text, ladder[0]?.block ?? lastHere[0] ?? "").applied) return result;
+    if (!spliceBeforeSentinel(result.text, ladder[0]?.block ?? aboveLadder[0] ?? "").applied) return result;
     const best = ladder.find((rung) => fits(rung.block) !== null) ?? null;
     const tries: { rung: (typeof ladder)[number] | null; above: string | null }[] =
       best !== null
-        ? [...lastHere.map((above) => ({ rung: best, above })), { rung: best, above: null }]
-        : lastHere.map((above) => ({ rung: null, above }));
+        ? [...aboveLadder.map((above) => ({ rung: best, above })), { rung: best, above: null }]
+        : aboveLadder.map((above) => ({ rung: null, above }));
     // What `no-room` reports: the SMALLEST handoff rung, which is the one that
     // decided there was no room for it (review of #295, NIT-3).
     const last = ladder[ladder.length - 1];
@@ -2548,12 +2555,18 @@ export class Counterpart {
       } else if (newest !== undefined) {
         this.noteHandoffNoRoom(newest.handoff, smallest?.bytes ?? result.bytes, budget, result.bytes);
       }
-      if (above !== null) {
-        this.emit("counterpart.lasthere.shown", undefined, { bytes: aboveBytes, lines: above.split("\n").length });
+      // The exchange line rides at the foot of `above` when it was carried.
+      const saidShown = exchange !== null && above !== null && (above === exchange || above.endsWith(`\n${exchange}`));
+      const hereShown = above !== null && above !== exchange;
+      if (hereShown) {
+        // Its own bytes and lines, without the exchange line at its foot.
+        const said = saidShown ? byteLength(exchange) + 1 : 0;
+        this.emit("counterpart.lasthere.shown", undefined, { bytes: aboveBytes - said, lines: above.split("\n").length - (saidShown ? 1 : 0) });
       } else if (lastHere.length > 0) {
         // The handoff was carried and the line above it was not.
         this.noteLastHereNoRoom(lastHereId, { budget, was: result.bytes, besideHandoff: true });
       }
+      if (exchange !== null) this.emit(saidShown ? "counterpart.lastexchange.shown" : "counterpart.lastexchange.noroom", undefined, { bytes: byteLength(exchange) });
       // A memory the "since" line names is not named again in the work lines
       // above it (2026-10-09).
       const named = rung?.plans ?? [];
@@ -2562,7 +2575,45 @@ export class Counterpart {
     }
     if (newest !== undefined) this.noteHandoffNoRoom(newest.handoff, smallest?.bytes ?? result.bytes, budget, result.bytes);
     if (lastHere.length > 0) this.noteLastHereNoRoom(lastHereId, { budget, was: result.bytes, besideHandoff: false });
+    if (exchange !== null) this.emit("counterpart.lastexchange.noroom", undefined, { bytes: byteLength(exchange) });
     return this.withWorkHere(result, null, work, budget, scope);
+  }
+
+  /**
+   * THE LAST EXCHANGE IN `here.scope` (2026-10-11; Mike's design of
+   * 2026-10-10, "pull, not push"): what was last said to another session in
+   * this directory, and its last text reply, inside about a day — read from
+   * the span buffer alone (`handoff/last-exchange.ts`). The wake's "Last said here" line
+   * and the `last exchange` recall handle both ask here, so the two cannot
+   * disagree. Reads only; nothing is stored; nothing crosses directories.
+   * Null when there is none; never throws.
+   */
+  lastExchange(here: WakeHere): LastExchange | null {
+    const scope = here.scope?.trim() ?? "";
+    if (scope.length === 0) return null;
+    let sessions: readonly WakeSession[] = [];
+    try {
+      sessions = here.sessions?.() ?? [];
+    } catch {
+      sessions = [];
+    }
+    return lastExchange({
+      buffer: this.spans,
+      scope,
+      reader: here.session ?? null,
+      now: this.nowFn(),
+      sessions: sessions.map((s) => ({ session: s.session, scope: s.scope, lastAt: s.lastAt })),
+    });
+  }
+
+  /** The wake's "Last said here" line for `here`, or null. Never throws. */
+  private lastExchangeLine(here: WakeHere): string | null {
+    try {
+      const ex = this.lastExchange(here);
+      return ex === null ? null : lastExchangeLine(ex, { zone: this.store.zone(), now: this.nowFn() });
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -3120,18 +3171,46 @@ export class Counterpart {
    * combined candidate would never pass and the lines would never be carried.
    * What it takes comes out of the stored lanes by their trim order — Nearby
    * first. Never throws.
+   *
+   * **"LAST SAID HERE" RIDES THIS TERM (2026-10-11)**: its bound
+   * (`LAST_EXCHANGE_LINE_MAX_BYTES` and a newline) alone and beside each
+   * directory's block, when a session was at work in any directory inside the
+   * line's window — a bound, since the boundary cannot know who opens the
+   * next session where. Under the same share rule, so the term is still one
+   * of `self/briefing.ts#DELIVERY_SHARED_RESERVES` and the page's limit still
+   * holds. Here ON PURPOSE: this is the room the page borrows before it steps
+   * down a rung (`Self#build`), so the line is never the reason the page is
+   * shorter, and the lanes above "Work here" in `ROOM_ORDER` come first too;
+   * what is left of it at a delivery is the line's, chosen before the work
+   * lines (`addHandoffPointer`). Measured, docs/IMPROVEMENTS.md.
    */
   private workReserveBytes(budgetBytes: number): number {
-    if (!this.self.tunables.CRAFT_AT_DELIVERY) return 0;
+    const said = this.exchangeWithin() ? LAST_EXCHANGE_LINE_MAX_BYTES + 1 : 0;
+    const blocks: number[] = said > 0 ? [said] : [];
+    if (!this.self.tunables.CRAFT_AT_DELIVERY) return reserveBytes(blocks, budgetBytes);
     try {
-      const blocks: number[] = [];
       for (const scope of this.spans.scopes()) {
         const { lines } = this.workHereLines(scope);
-        if (lines.length > 0) blocks.push(workHereBytes(lines));
+        if (lines.length === 0) continue;
+        blocks.push(workHereBytes(lines));
+        if (said > 0) blocks.push(workHereBytes(lines) + said);
       }
       return reserveBytes(blocks, budgetBytes);
     } catch {
-      return 0;
+      return reserveBytes(said > 0 ? [said] : [], budgetBytes);
+    }
+  }
+
+  /** Was a session at work in any directory inside "Last said here"'s window
+   *  — not the store's own, where only the nightly run turn-ends? Never throws. */
+  private exchangeWithin(): boolean {
+    try {
+      const now = this.nowFn();
+      const norm = (s: string): string => s.trim().replace(/\/+$/, "");
+      const own = norm(this.store.dir);
+      return this.spans.scopes().some((scope) => norm(scope) !== own && exchangeLikely(this.spans, scope, now));
+    } catch {
+      return false;
     }
   }
 

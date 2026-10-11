@@ -239,6 +239,22 @@ the fortnight: one to three lines, no row and no durable event (§5 G11).
     they were, byte for byte; a memory the line names is left out of the work lines
     above it. `handoff.shown` counts the line's memories (`plans`).
 
+14. **[M] The last exchange here is pointed at, never stored** (2026-10-11; Mike's
+    design of 2026-10-10, "pull, not push"; `last-exchange.ts`). A session that opens in
+    a directory gets one line, `Last said here, <when> (session <id8>): "<first words>…"
+    — recall "last exchange"` (at most `LAST_EXCHANGE_LINE_MAX_BYTES`), naming the
+    newest owner words said to ANOTHER session here inside `LAST_EXCHANGE_WINDOW_MS`;
+    `recall`'s handle `last exchange` returns them and that session's last text reply,
+    each cut at a sentence (`LAST_EXCHANGE_TEXT_MAX_CHARS`). Read from THIS directory's
+    span buffer at the moment it is asked — nothing crosses directories and nothing is
+    written — and from nothing else: never the host's transcript, so words typed after
+    a session's last turn-end (a crash mid-reply) are not named (NOTES §13). The owner's words
+    are found by shape (`ownerWords`): the end-of-session ask never enters the buffer,
+    its answer is never a reply (no conversation span beside it), and host text is
+    stripped or cut. Secrets are redacted. At delivery it sits at the foot of "Last
+    here"'s blocks, each width tried with it first and then without; its room is
+    reserved in "Work here"'s term (§6).
+
 ## 6. Where it sits in the wake's order — who pays, when, and how much
 
 The pointer is **furniture at the foot of the bundle**, above the tail sentinel and below
@@ -302,6 +318,14 @@ true:
   that composed the bundle waits for the next one to be reserved for (`session_end`
   marks the wake behind; a lone `note` does not), and until then is carried only where
   the bundle has the room.
+
+- **"Last said here" (2026-10-11)** is not a candidate in this module's reserve. Its
+  bound rides the root's "Work here" term (`counterpart.ts#workReserveBytes`), alone and
+  beside each directory's work block under the same share rule, whenever any directory
+  had a turn-end inside the line's window: that term is the room the page borrows before
+  it steps down a rung, so the line never shortens the page. At delivery it is tried at
+  the foot of each "Last here" block, after the handoff rung is chosen, and before the
+  work lines. Measured in docs/IMPROVEMENTS.md (the wake, "Approved by Mike, 2026-10-10").
 
 So the order of who gives up bytes, stated plainly: **above the share rule's threshold the
 pointer is paid for first, out of the compose budget, by whatever lane the trim order
