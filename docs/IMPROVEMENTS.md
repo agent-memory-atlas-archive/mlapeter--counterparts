@@ -32,7 +32,8 @@ and the lessons learned. Legacy-only fixes are low priority by default.
 **Status:** `open` — Mike walks this list; npm is held until he has. Written by the Group 1a
 build (strength) from the mechanisms synthesis (§4, as amended by its draft 2, §8). Each line
 says who decided it, when, and why, in plain words. The ones that reverse a ruling of Mike's
-come first. Nothing here quotes a memory.
+come first. Nothing here quotes a memory. A new subsection arrives as a fragment in
+[`decisions.d/`](decisions.d/README.md) and is stitched in at release.
 
 ### Revised from Mike's rulings
 
