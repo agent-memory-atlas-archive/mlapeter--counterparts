@@ -399,9 +399,12 @@ export function settle(store: Store, input: SettleInput, opts: { closeFlags?: bo
   if (how !== asked) detail["asked"] = asked;
   // A FLAG CLOSES WHEN ITS QUESTION IS ANSWERED ELSEWHERE (write-time): a new
   // memory that settles one of an unsettled pair's two closes that pair
-  // through its own, so the older memory is not labelled twice.
+  // through its own, so the older memory is not labelled twice. Since
+  // 2026-10-11 (Group 2; review 10 C5) every settle that moves it does — a
+  // dream's or a reflection's too: on 10-10 a dream flag stayed unsettled 12
+  // lived days after a dream settled the same memory through another pair.
   const closes =
-    opts.closeFlags === true
+    opts.closeFlags === true || (opts.closeFlags !== false && how !== "open")
       ? (store.contradictionsOf([over]).get(over) ?? []).filter((c) => c.state === "unsettled" && c.id !== pair?.id).map((c) => c.id)
       : [];
   // A SLOT PROPOSAL'S PROVISIONAL CUT (2026-10-11) is lifted by whatever

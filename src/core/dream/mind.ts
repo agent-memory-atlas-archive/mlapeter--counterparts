@@ -48,6 +48,12 @@ export const MIND_TUNABLES = {
   TEXT_CHARS: 200,
   /** What a flagged pair weighs each time it was shown and nothing was done (0.5: half). CAL. */
   HABITUATION: 0.5,
+  /**
+   * A flag still unsettled this many lived days after it was raised is asked
+   * again ONCE at full weight (2026-10-11, Group 2; review 10 C5: six dream
+   * flags from days 6–9 sat unsettled, habituated away). Never auto-settled.
+   */
+  REASK_AFTER_DAYS: 7,
 } as const;
 
 export interface MindItem {
@@ -65,12 +71,12 @@ export interface MindItem {
 /** The meta prefix of a flagged pair's habituation: how often it was put on my mind, and the lived day last. */
 export const MIND_SEEN_PREFIX = "mind.seen.";
 
-function readMindSeen(store: Pick<Store, "getMeta">, pair: string): { times: number; day: number } | null {
+function readMindSeen(store: Pick<Store, "getMeta">, pair: string): { times: number; day: number; reasked: boolean } | null {
   try {
     const raw = store.getMeta(`${MIND_SEEN_PREFIX}${pair}`);
     if (raw === undefined) return null;
-    const v = JSON.parse(raw) as { times?: unknown; day?: unknown };
-    return typeof v.times === "number" && typeof v.day === "number" ? { times: v.times, day: v.day } : null;
+    const v = JSON.parse(raw) as { times?: unknown; day?: unknown; reasked?: unknown };
+    return typeof v.times === "number" && typeof v.day === "number" ? { times: v.times, day: v.day, reasked: v.reasked === true } : null;
   } catch {
     return null;
   }
@@ -81,7 +87,7 @@ function readMindSeen(store: Pick<Store, "getMeta">, pair: string): { times: num
  * flagged pair shown counts once more toward its habituation — reset when
  * either memory was used since it was last shown. Never throws.
  */
-export function noteMindShown(store: Pick<Store, "getMeta" | "setMeta" | "physicsOf">, items: readonly MindItem[], day: number): void {
+export function noteMindShown(store: Pick<Store, "getMeta" | "setMeta" | "physicsOf" | "contradiction">, items: readonly MindItem[], day: number): void {
   for (const item of items) {
     if (item.pair === undefined) continue;
     try {
@@ -91,11 +97,19 @@ export function noteMindShown(store: Pick<Store, "getMeta" | "setMeta" | "physic
         const used = Math.max(...item.ids.map((id) => store.physicsOf(id).lastUsedDay));
         if (used > seen.day) times = 0;
       }
-      store.setMeta(`${MIND_SEEN_PREFIX}${item.pair}`, JSON.stringify({ times: times + 1, day }));
+      // Asked again once, when old (`REASK_AFTER_DAYS`): `mindRanked` gave it full weight.
+      const reask = reaskDue(store.contradiction(item.pair)?.flagged_day ?? null, seen, day);
+      if (reask) times = 0;
+      store.setMeta(`${MIND_SEEN_PREFIX}${item.pair}`, JSON.stringify({ times: times + 1, day, ...(reask || seen?.reasked === true ? { reasked: true } : {}) }));
     } catch {
       /* bookkeeping only */
     }
   }
+}
+
+/** Is a flag due its one re-ask: shown before, never re-asked, and `REASK_AFTER_DAYS` old? */
+function reaskDue(flaggedDay: number | null, seen: { reasked: boolean } | null, day: number): boolean {
+  return seen !== null && !seen.reasked && flaggedDay !== null && day - flaggedDay >= MIND_TUNABLES.REASK_AFTER_DAYS;
 }
 
 interface MindInput {
@@ -180,6 +194,7 @@ export function mindRanked(store: Store, input: MindInput): { items: MindItem[];
           /* unreadable physics: keep the count */
         }
       }
+      if (reaskDue(c.flagged_day, seen, input.day)) times = 0;
       push({ kind: "unsettled", text: `"${a}" / "${b}"`, ids: [c.a, c.b], pair }, 1.5 * T.HABITUATION ** times - n * 0.001);
       n += 1;
     }
