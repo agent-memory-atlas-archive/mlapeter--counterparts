@@ -420,7 +420,9 @@ else
 fi
 
 step "/counterparts:doctor is registered (its command is run for real under 'doctor' below)"
-if grep -q 'Loaded 1 commands from plugin counterparts' "$WORK/debug-wake.log"; then
+# Every command the installed copy carries, so a new one (dashboard.md) does not fail this.
+COMMANDS=$(ls "$INSTALL_PATH/commands/"*.md 2>/dev/null | wc -l | tr -d ' ')
+if [ -f "$INSTALL_PATH/commands/doctor.md" ] && grep -q "Loaded $COMMANDS commands from plugin counterparts" "$WORK/debug-wake.log"; then
   ok
 else
   no "Claude Code loaded no command from the plugin" "$(grep -iE 'plugin commands|commands from plugin' "$WORK/debug-wake.log" | tail -5)"
