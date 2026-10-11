@@ -1330,6 +1330,37 @@ test('a session started in a reads-only folder: its server stands the scope tool
   await ui.unmount()
 })
 
+test('a symlinked folder: its own entry is found under the path it resolves to, so on turns it back on after the confirm', async ($, on) => {
+  const w = world(on, { scopeMode: 'off', scopeSetBy: '/real/project', links: { [HERE]: '/real/project' } })
+  await start($, w)
+  const ui = await mount($, w, 'terminal')
+  expect(await cpText(ui)).toBe('○ on ○ paused ● off')
+  await ui.press({ key: 'cp-on' })
+  expect(writes(w)).toHaveLength(0)
+  await ui.press({ key: 'confirm-on' })
+  expect(writes(w).at(-1)?.args).toEqual({ mode: 'on' })
+  await ui.unmount()
+})
+
+for (const [label, parent, links] of [
+  ['the parent of the folder it resolves to', '/real', { [HERE]: '/real/project' }],
+  ['a symlink to its parent', '/lnk', { [HERE]: '/real/project', '/lnk': '/real' }],
+] as const) {
+  test(`a symlinked folder off because of ${label}: every position explains, nothing is written`, async ($, on) => {
+    const w = world(on, { scopeMode: 'off', scopeSetBy: parent, links })
+    await start($, w)
+    const ui = await mount($, w, 'terminal')
+    expect(await cpText(ui)).toBe('○ on ○ paused ● off')
+    for (const key of ['cp-on', 'cp-paused', 'cp-off', 'resume-banner']) {
+      await ui.press({ key })
+      expect(await ui.find({ type: 'Button', key: 'confirm-on' })).toBeUndefined()
+      expect((await texts(ui)).replace(/\s+/g, ' ')).toContain(`This folder is off because ${parent} is set off`)
+    }
+    expect(writes(w)).toHaveLength(0)
+    await ui.unmount()
+  })
+}
+
 test('where the folder stands is read from the registry file, with no permission check: the tool is called only for a confirmed pause or a resume', async ($, on) => {
   const w = world(on, { permission: 'ask' })
   await start($, w)
