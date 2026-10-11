@@ -530,8 +530,10 @@ S(v)        = S_FEELING + |v| × (S_FEELING_NEGATIVE − S_FEELING)   for v < 0
   read are the LATEST recording's** — the strongest of those recorded at the newest moment
   (a write's feelings share one): a later feeling-now, a dream's or a reflection's, is how
   the memory sits now, so an apology or new information lowers its weight (or a later,
-  stronger one raises it). Nothing is rewritten; recall by feeling reads every one; the
-  fast lane's lived peak (`feeling_peak_lived`) is still the strongest felt at the time.
+  stronger one raises it). With nothing recorded later, the strongest felt at the time (so a
+  merge, which carries each original's feelings at their own moments, is not weighed by its
+  newest original's; review of #420). Nothing is rewritten; recall by feeling reads every
+  one; the fast lane's lived peak (`feeling_peak_lived`) is still the strongest felt at the time.
 - **Slope follows the same number.** "How long a memory lasts follows the strongest
   feeling on it." It changes decay on EXISTING stores — every row with an `emotional`
   score or a recorded feeling — which is why the multiplier is modest (×1.45 at I = 0.9).

@@ -161,6 +161,8 @@ export * from "./feelings.js";
 
 /** `LATER_FEELING_SOURCES` as a SQL list — the sources `feeling_peak_lived` leaves out. Constants only, never input. */
 const LATER_SQL = LATER_FEELING_SOURCES.map((x) => `'${x}'`).join(", ");
+/** The sources of a feeling recorded after the memory was written — what `feeling_peak` reads as how it sits now (2026-10-11). Constants only. */
+const RECORDED_LATER_SQL = ["dream", ...LATER_FEELING_SOURCES].map((x) => `'${x}'`).join(", ");
 export * from "./traits.js";
 export type { Db, Statement, WalFold } from "./db.js";
 export type {
@@ -4645,20 +4647,26 @@ export class Store {
     // dated hold (`operational.ts#datedHold`) reads off this one statement.
     // The old-claims era's cutoff rides the same way (`eraClaimOf`).
     // 2026-10-11 (Group 2, Mike): `feeling_peak` is the LATEST recording's —
-    // the strongest feeling of the newest moment any were recorded at (a
-    // write's feelings share one moment, so a lone strong one is not averaged
-    // down by quieter ones beside it). A later feeling-now, a dream's or a
-    // reflection's, is how the memory sits now: an apology, new information,
-    // the sting turned to clarity lowers its weight. The first is never
-    // rewritten; recall by feeling still reads every one. The fast lane's
-    // `feeling_peak_lived` stays the strongest felt at the time.
+    // the strongest feeling of the newest moment a feeling was recorded
+    // LATER at (a feeling-now, a dream's or a reflection's: `RECORDED_LATER_SQL`;
+    // a recording's feelings share one moment, so a lone strong one is not
+    // averaged down by quieter ones beside it). That is how the memory sits
+    // now: an apology, new information, the sting turned to clarity lowers
+    // its weight. With none recorded later, the strongest felt at the time —
+    // so a merge, which carries each original's feelings at their own
+    // moments, reads its strongest, not its newest original's (review of
+    // #420). The first is never rewritten; recall by feeling still reads every
+    // one. The fast lane's `feeling_peak_lived` stays the strongest felt at
+    // the time.
     return this.ops.get<MemoryRow & FeelingPeak>(
       `SELECT m.*,
               (SELECT value FROM meta WHERE key = 'lastActiveDate') AS today_date,
               (SELECT value FROM meta WHERE key = '${CLAIMS_ERA_CUTOFF_KEY}') AS claims_era_cutoff,
-              (SELECT MAX(f.strength) FROM feelings f
-                WHERE f.memory_id = m.id
-                  AND f.created_at = (SELECT MAX(g.created_at) FROM feelings g WHERE g.memory_id = m.id)) AS feeling_peak,
+              COALESCE(
+                (SELECT MAX(f.strength) FROM feelings f
+                  WHERE f.memory_id = m.id AND f.source IN (${RECORDED_LATER_SQL})
+                    AND f.created_at = (SELECT MAX(g.created_at) FROM feelings g WHERE g.memory_id = m.id AND g.source IN (${RECORDED_LATER_SQL}))),
+                (SELECT MAX(f.strength) FROM feelings f WHERE f.memory_id = m.id)) AS feeling_peak,
               (SELECT MAX(f.strength) FROM feelings f
                 WHERE f.memory_id = m.id AND (f.source IS NULL OR f.source NOT IN (${LATER_SQL}))) AS feeling_peak_lived
          FROM memories m WHERE m.id = ?`,

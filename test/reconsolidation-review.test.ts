@@ -6,6 +6,9 @@
  *   - A proposal one of whose memories is gone is withdrawn before the dream
  *     reads, its cut put back — nothing else could ever answer it.
  *   - A dump's earlier entries are never read as an earlier state of a later one.
+ *   - A merge's feelings, each at its original's moment, weigh by their
+ *     strongest; only a feeling recorded LATER (a feeling-now, a dream's, a
+ *     reflection's) is read as how the memory sits now.
  *   - The head wins AMBIENT recall only: the deliberate paths still show an
  *     earlier version, marked.
  *
@@ -21,7 +24,8 @@ import type { ToolResult } from "../src/adapters/mcp/index.js";
 import { mindRanked, noteMindShown } from "../src/core/dream/mind.js";
 import { Recall, headOf } from "../src/core/recall/index.js";
 import { CONTRADICTION_TUNABLES, SLOT_SOURCE, releaseOrphanSlots, slotsToConfirm } from "../src/core/reconsolidation.js";
-import type { Embedder, Store } from "../src/core/store/index.js";
+import { Store } from "../src/core/store/index.js";
+import type { Embedder } from "../src/core/store/index.js";
 
 const SESSION = "sess_review_420";
 const T = CONTRADICTION_TUNABLES;
@@ -196,4 +200,31 @@ test("the head wins ambient recall only: by handle, by facts and by meaning the 
   // Meaning mode: not filtered.
   const meaning = JSON.stringify(payload(await s.call("recall", { question: "how often does the zygomorphic orchid need watering", mode: "meaning" })));
   expect(meaning).toContain(old);
+});
+
+test("a merge's feelings weigh by their strongest; a later recording is how it sits now", () => {
+  let clock = Date.UTC(2026, 8, 1, 12);
+  const store = Store.open({ dir, now: () => clock });
+  open.push(store);
+  for (const d of ["2026-09-01", "2026-09-02", "2026-09-03"]) store.advanceClock(d);
+  const day = store.livedDay();
+  const id = store.put({ type: "memory", kind: "person", body: "Ada keeps a sketchbook of the river otters she sees.", salience: { relevance: 0.6, emotional: 0, predictive: 0.6 }, physics: { birthDay: day, lastUsedDay: day } });
+  // What a dream's merge does: each original's feelings, at their own moments —
+  // a strongly felt older original, a mildly felt newer one.
+  const t1 = clock - 5 * 86_400_000;
+  const t2 = clock - 86_400_000;
+  store.addFeelings(
+    id,
+    [
+      { whose: "owner", core: "happy", emotion: "delighted", strength: 0.8 },
+      { whose: "owner", core: "calm", emotion: "content", strength: 0.2 },
+    ],
+    { provenance: [{ source: "session", createdAt: t1 }, { source: "session", createdAt: t2 }] },
+  );
+  expect(store.row(id)?.feeling_peak).toBe(0.8);
+  // Later, a reflection records how it sits now: that is what it weighs.
+  clock += 86_400_000;
+  store.addFeelings(id, [{ whose: "self", core: "calm", emotion: "steady", strength: 0.3 }], { source: "reflection" });
+  expect(store.row(id)?.feeling_peak).toBe(0.3);
+  expect(store.row(id)?.feeling_peak_lived).toBe(0.8);
 });
