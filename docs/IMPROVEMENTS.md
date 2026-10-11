@@ -612,6 +612,24 @@ were refined by b2+f8 at the review of #369, named where they were):
   and so is Claude Code's own directory. Why: no widening of what a delete reaches without
   someone deciding it.
 
+### Decided by the small-fixes builder, 2026-10-11, lightly held (fix/small-1011c)
+
+- Decided by the small-fixes builder, 2026-10-11, lightly held: `--reflected-feeling off`
+  reaches a `remember` `remark` only when the call comes from a night run's child (its
+  server's environment carries `COUNTERPARTS_NIGHT_CHILD` or `COUNTERPARTS_NIGHT_RUN`); there it refuses a move to me, us or owner
+  (`door-closed-work-or-world-only`, the reflection's reason) and leaves work or world open.
+  An awake session's re-mark is not affected. Why: the switch closes the core to the night's
+  own judgment, and a night child that was allowed `remember` would otherwise be a second
+  door around it; an awake session is in front of its person, which the switch was not about.
+- Decided by the small-fixes builder, 2026-10-11, lightly held: where the guard for an
+  `updates` naming a REMOVED memory sits. The lane's brief asked that the new memory be
+  stored unlinked, as for an id that doesn't exist; the guard is at resolution
+  (`counterpart.ts#resolveUpdatesFor` treats a removed id as unresolved, so content matching
+  runs as the fallback), with a second lock in `revision.ts#applyRevision`, which answers
+  `target-unresolvable` for a removed target rather than reaching the confirmation branch.
+  Why: the store resolves a removed id as itself on purpose (so a reader can say "removed"),
+  so the write path has to say that a removed memory is not one anything can update.
+
 ### Also noted
 
 - **A read-without-crediting mode for audits.** A way to read memories (a review, a rules

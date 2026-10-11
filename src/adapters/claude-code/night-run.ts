@@ -93,7 +93,7 @@ import { CATCH_UP_TOOLS, runCatchUp } from "./night-catch-up.js";
 import { hostConfigDir, hostTranscriptPath, readToolSpills } from "./transcript.js";
 import type { ToolSpills } from "./transcript.js";
 import type { ChildPlan, ChildResult } from "./child.js";
-import { DATA_DIR_ENV, NIGHT_CHILD_ENV, SCOPE_ENV, SESSION_ENV, WATCHDOG_ENV } from "../spawn.js";
+import { DATA_DIR_ENV, NIGHT_CHILD_ENV, NIGHT_RUN_ENV, SCOPE_ENV, SESSION_ENV, WATCHDOG_ENV } from "../spawn.js";
 import type { SpawnPlan } from "../spawn.js";
 
 /** The dream tool, as the host names it — whatever server prefix it carries. */
@@ -102,9 +102,11 @@ const DREAM_TOOL = /__dream$/;
 /**
  * THE QUIET-CHILD FLAG, and the run's id: set on the headless run's
  * environment, read by our hooks inside it (`bin/hook.ts#toHookInput` →
- * `HookInput.nightRun`). Also how `bin/nightly.ts` learns which run it is.
+ * `HookInput.nightRun`) and by the MCP server's `remark` (a night child's
+ * re-mark honours `--reflected-feeling off`). Also how `bin/nightly.ts` learns
+ * which run it is. Defined in `spawn.ts`, re-exported here where it was born.
  */
-export const NIGHT_RUN_ENV = "COUNTERPARTS_NIGHT_RUN";
+export { NIGHT_RUN_ENV };
 /** What the run does: `night` (writer, dream, reflection) or `reflection:<dream id>`. */
 export const NIGHT_KIND_ENV = "COUNTERPARTS_NIGHT_KIND";
 /** Claude Code's own name for its MCP result token line (2026-10-02). */

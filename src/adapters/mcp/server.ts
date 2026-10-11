@@ -94,7 +94,7 @@ import { TUNABLES as ADAPTER_TUNABLES } from "../config.js";
 import type { AdapterConfig } from "../config.js";
 import { Lifecycle, plainContextLine } from "../lifecycle.js";
 import type { SessionInput } from "../lifecycle.js";
-import { NIGHT_CHILD_ENV, WORKER_RUNNER_PATH } from "../spawn.js";
+import { NIGHT_CHILD_ENV, NIGHT_RUN_ENV, WORKER_RUNNER_PATH } from "../spawn.js";
 import type { Spawner } from "../spawn.js";
 import {
   NIGHT_RUNNER_PREFIX,
@@ -1908,6 +1908,11 @@ export class McpServer {
         by: "self",
         why: typeof arg["why"] === "string" ? arg["why"] : null,
         owner: this.owner,
+        // A night run's child: held to the owner's `--reflected-feeling` switch,
+        // as the reflection is. Either mark says so — the child's name, which
+        // the night's MCP configuration sets on this server, or the run's id,
+        // which the run's environment carries (a catch-up child has no name).
+        ...((this.env[NIGHT_CHILD_ENV] ?? "").trim().length > 0 || (this.env[NIGHT_RUN_ENV] ?? "").trim().length > 0 ? { night: true } : {}),
       });
       this.emit("mcp.remember.remark", id, { ok: out.ok, reason: out.ok ? (out.changed ? "marked" : "unchanged") : out.reason });
       return { ...out };

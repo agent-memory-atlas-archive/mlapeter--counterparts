@@ -197,7 +197,7 @@ import type {
   WakeTrigger,
   WriterInput,
 } from "./self/index.js";
-import { cyclePartial, ownerNames, runCycle } from "./sleep/index.js";
+import { acceptsReflectedFeeling, cyclePartial, ownerNames, runCycle } from "./sleep/index.js";
 import type { CyclePartial, CycleReport, Phase } from "./sleep/index.js";
 import { ABOUT_MARKS, CORE_ABOUT_MARKS, Store, assertSafeDataDir, inheritFrom, rowTombstoned, hashText, indexTextOf, occurredOnOf, saidByOf, statusOf } from "./store/index.js";
 import type {
@@ -4591,8 +4591,16 @@ export class Counterpart {
    * a dream's or a reflection's words move only toward work or world, as the
    * reflection's do, and a confidential memory outside the owner's session is
    * not found. Refusals come back as reasons, never thrown.
+   *
+   * `night` (2026-10-11): the call comes from a night run's child (a dream or
+   * a reflection whose user allowed `remember`). The owner's `--reflected-feeling
+   * off` closes the core to the night's own judgment, and the reflection's
+   * re-marks already honour it (`dream/reflect.ts`, `door-closed-work-or-world-only`);
+   * a night child's `remark` is the same judgment by another door, so it is
+   * held to the same rule: only work or world. An AWAKE session's re-mark is
+   * not the reflection's, and the switch does not reach it.
    */
-  markAbout(input: { id: string; mark: string; by: "owner" | "self"; why?: string | null; owner?: boolean }): MarkAboutOutcome {
+  markAbout(input: { id: string; mark: string; by: "owner" | "self"; why?: string | null; owner?: boolean; night?: boolean }): MarkAboutOutcome {
     if (this.observer) return { ok: false, reason: "observer", detail: "This is an observer; it reads and changes nothing." };
     const mark = input.mark.trim();
     if (!(ABOUT_MARKS as readonly string[]).includes(mark)) {
@@ -4617,6 +4625,13 @@ export class Counterpart {
           ok: false,
           reason: row.source === "dreamed" ? "dreamed-is-a-suggestion" : "reflection-does-not-mark-itself",
           detail: `${id} was written by a ${row.source === "dreamed" ? "dream" : "reflection"}; only work or world may be set on it (the owner can mark it anything).`,
+        };
+      }
+      if (core && input.night === true && !acceptsReflectedFeeling(this.store)) {
+        return {
+          ok: false,
+          reason: "door-closed-work-or-world-only",
+          detail: "The owner has closed the core to the night's own judgment: from a night run, a mark may only move toward work or world.",
         };
       }
     }
