@@ -181,7 +181,7 @@ export const NIGHT_MCP_SCRIPT = fileURLToPath(new URL("../mcp/bin/serve.ts", imp
  * host passes through (review of #282, finding 1). No secret in it: paths and
  * a session id.
  */
-export function nightMcpConfig(input: { runtime: string; dataDir: string; configPath?: string; session: string; scope: string; child?: NightChild }): string {
+export function nightMcpConfig(input: { runtime: string; dataDir: string; configPath?: string; session: string; scope: string; child?: NightChild; run?: string }): string {
   // NOT THE OWNER'S, SAID (2026-10-02): a server Claude Code starts is the
   // owner's by default now, and `claude -p` is Claude Code. The headless run
   // keeps the stance it always had — confidential memories stay out of its
@@ -194,6 +194,12 @@ export function nightMcpConfig(input: { runtime: string; dataDir: string; config
   // Which child it serves, on the server's own environment (2026-10-11): the
   // dream's child is told to stop at its journal (`mcp/server.ts`).
   if (input.child !== undefined) env[NIGHT_CHILD_ENV] = input.child;
+  // The run's id, on the server's own environment too (review of #422): the
+  // child process carries it, but whether Claude Code passes its own
+  // environment through to a stdio server was never measured, and the
+  // server's `remark` reads it to hold a night child (the catch-up one has no
+  // name) to `--reflected-feeling off`.
+  if (input.run !== undefined && input.run.length > 0) env[NIGHT_RUN_ENV] = input.run;
   return JSON.stringify({ mcpServers: { [NIGHT_MCP_SERVER]: { type: "stdio", command: input.runtime, args: scriptArgs(NIGHT_MCP_SCRIPT, input.runtime), env } } });
 }
 
@@ -393,6 +399,7 @@ export function planNightChild(input: NightChildInput): NightChildPlan {
       scope: input.scope,
       ...(input.configPath === undefined ? {} : { configPath: input.configPath }),
       ...(input.child === undefined ? {} : { child: input.child }),
+      run: input.run,
     }),
     "--strict-mcp-config",
     ...(model === undefined ? [] : ["--model", model]),

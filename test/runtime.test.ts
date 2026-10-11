@@ -247,11 +247,13 @@ describe("what install writes, and what reads it back", () => {
         ...(tools === undefined ? {} : { tools }),
       });
       const config = JSON.parse(plan.args[plan.args.indexOf("--mcp-config") + 1] ?? "{}") as {
-        mcpServers: Record<string, { command: string; args: string[] }>;
+        mcpServers: Record<string, { command: string; args: string[] ; env: Record<string, string> }>;
       };
       const server = Object.values(config.mcpServers)[0];
       expect(server?.command).toBe(NODE);
       expect(server?.args).toEqual(["--import", NODE_HOOKS, MCP_SCRIPT]);
+      // The run's id on the server's own env, the catch-up child's too (review of #422).
+      expect(server?.env["COUNTERPARTS_NIGHT_RUN"]).toBe("r");
     }
   });
 
