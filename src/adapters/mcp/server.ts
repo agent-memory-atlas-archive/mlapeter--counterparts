@@ -3179,6 +3179,8 @@ export class McpServer {
           facts: facts.sent,
           // What it is about sets an unclaimed entry's default floor (2026-10-10).
           about: about.mark,
+          // The dump's earlier entries: never read as an earlier state of this one.
+          siblings: [...batch],
           ...(cover === undefined ? {} : { cover }),
           ...(model === undefined ? {} : { model }),
           ...(writeUp === undefined ? {} : { writeUp }),

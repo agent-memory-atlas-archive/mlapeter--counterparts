@@ -1168,6 +1168,13 @@ export interface DepositContext {
    * Absent: the process's own `owner`.
    */
   owner?: boolean;
+  /**
+   * Memories the same call wrote before this one (a dump's earlier entries):
+   * the writer's own words of the same moment, never read as an earlier state
+   * of this one by the slot detector (review of #420; the neighbours' rule,
+   * review of #284 M1).
+   */
+  siblings?: readonly string[];
 }
 
 /**
@@ -6510,7 +6517,7 @@ export class Counterpart {
     // THE SLOT DETECTOR (2026-10-11, Group 2), after the declared revision:
     // what the writer named is settled first, then arithmetic reads whether
     // this is the newer state of something it did not name.
-    const slot = this.proposeSlotFor(mint.id, proposal, ctx.session);
+    const slot = this.proposeSlotFor(mint.id, proposal, ctx.session, ctx.siblings ?? []);
     // THE WAKE IS BEHIND EVERY ACCEPTED MEMORY (2026-10-10), whatever door it
     // came through. Only `session_end` marked it before, so a `note` — the
     // most common write mid-session — left Still open, Nearby and Arriving as
@@ -6539,14 +6546,15 @@ export class Counterpart {
   /**
    * THE SLOT DETECTOR at the write (2026-10-11): the nearest older memory this
    * one reads as the newer state of, proposed provisionally — never the one
-   * it declared in `updates` (settled or held already). Never throws: a
-   * detector that fails costs the proposal, never the write.
+   * it declared in `updates` (settled or held already), nor an earlier entry
+   * of the same call. Never throws: a detector that fails costs the proposal,
+   * never the write.
    */
-  private proposeSlotFor(id: string, p: Proposal, session: string): Extract<SlotOutcome, { ok: true }> | null {
+  private proposeSlotFor(id: string, p: Proposal, session: string, siblings: readonly string[]): Extract<SlotOutcome, { ok: true }> | null {
     if (this.observer) return null;
     try {
       const declared = p.updates?.resolved ?? null;
-      const candidate = detectSlot(this.store, { id, exclude: declared === null ? [] : [declared], session });
+      const candidate = detectSlot(this.store, { id, exclude: declared === null ? siblings : [declared, ...siblings], session });
       if (candidate === null) return null;
       const out = proposeSlot(this.store, { holds: id, candidate, actorId: session, day: p.day });
       return out.ok ? out : null;
