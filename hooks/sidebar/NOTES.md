@@ -431,7 +431,8 @@ The port is read as core's server reads it when no `--port` is given:
 "any free port", reads as 4747). Reads and links use it, and a link opens only
 on localhost at that port (`isDashboardUrl`). **A core ask:** a dashboard
 started with `--port` can't be found from here; core offers no port file or
-other discovery surface.
+other discovery surface. (A feed row's `url`, `feed.ts`, is still built on
+4747; nothing opens it today. Thread the port in before anything does.)
 
 ### Views, the tail, and the status line
 
