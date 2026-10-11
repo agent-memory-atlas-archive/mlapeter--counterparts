@@ -66,7 +66,7 @@ function writer(): Store {
 }
 
 /** Doctor's own handle: an observer, exactly as the console and the hook open it. */
-function reading(embedder: AdapterConfig["embedder"]): Finding[] {
+function reading(embedder: AdapterConfig["embedder"], install?: DoctorInput["install"]): Finding[] {
   const s = Store.open({ dir, observer: true });
   opened.push(s);
   const input: DoctorInput = {
@@ -77,6 +77,7 @@ function reading(embedder: AdapterConfig["embedder"]): Finding[] {
     store: s,
     today: "2026-09-23",
     refusals: {},
+    ...(install === undefined ? {} : { install }),
   };
   return doctorFindings(input);
 }
@@ -95,6 +96,35 @@ function backfillRow(payload: Record<string, string | number | null>): void {
 }
 
 describe("Recall by meaning, for the local table", () => {
+  // The fix fits how this copy came (2026-10-11): a plugin install has no
+  // `bun add -g`, possibly no bun at all; its way is Claude Code's /plugin.
+  test("the weights missing: the npm command for npm, /plugin for the plugin, both when not known", () => {
+    writer().put({ type: "memory", kind: "fact", body: "one memory" });
+    opened.splice(0).forEach((s) => s.close());
+    backfillRow({ embedded: 0, failed: 0, remaining: 1, attempted: 0, reason: "embedder-unavailable", codes: "NO_WEIGHTS", skipped: 0, kind: "static", weights: null, model: null });
+    const npm = by(reading(STATIC, "npm"), "embedder");
+    expect(npm.fix).toContain("bun add -g counterparts-model-potion");
+    expect(npm.fix).not.toContain("/plugin");
+    const plugin = by(reading(STATIC, "plugin"), "embedder");
+    expect(plugin.severity).toBe("amber");
+    expect(plugin.fix).toContain("/plugin → update counterparts");
+    expect(plugin.fix).toContain("install it again");
+    expect(plugin.fix).not.toContain("bun add");
+    expect(plugin.fix).not.toContain("npm");
+    expect(plugin.fix).toContain(STATIC_WEIGHTS_ENV);
+    const either = by(reading(STATIC, "either"), "embedder");
+    expect(either.fix).toContain("npm: bun add -g counterparts-model-potion");
+    expect(either.fix).toContain("plugin: in Claude Code, /plugin → update counterparts");
+    expect(by(reading(STATIC), "embedder").fix).toBe(either.fix);
+  });
+
+  test("a table that does not match its package, under the plugin: reinstall through /plugin", () => {
+    backfillRow({ embedded: 0, failed: 0, remaining: 0, attempted: 0, reason: "embedder-unavailable", codes: "HASH_MISMATCH", skipped: 0, kind: "static", weights: null, model: null });
+    const f = by(reading(STATIC, "plugin"), "embedder");
+    expect(f.fix).toContain("Reinstall it: in Claude Code, /plugin → update counterparts");
+    expect(f.fix).not.toContain("bun add");
+  });
+
   test("the worker could not load the table: amber, the install fix, and never a Voyage key", () => {
     writer().put({ type: "memory", kind: "fact", body: "one memory" });
     opened.splice(0).forEach((s) => s.close());
@@ -231,6 +261,21 @@ describe("held and cache-ahead, read durably by doctor's observer handle", () =>
     // way out (review of #382): the cache is rebuildable and may go.
     expect(f.fix).toContain("counterparts@latest");
     expect(f.fix).toContain("/cache/cache.sqlite*");
+  });
+
+  test("cache-ahead under the plugin: the newer build back through /plugin, never bun", () => {
+    writer().put({ type: "memory", kind: "fact", body: "one memory" });
+    opened.splice(0).forEach((s) => s.close());
+    const db = openDb(paths.cache(dir));
+    db.run("INSERT OR REPLACE INTO cache_meta (key, value) VALUES ('schemaVersion', '7')");
+    db.close();
+    const plugin = by(reading(STATIC, "plugin"), "embedder");
+    expect(plugin.fix).toContain("install the newer build again (in Claude Code, /plugin → update counterparts)");
+    expect(plugin.fix).not.toContain("bun add");
+    expect(plugin.fix).toContain("/cache/cache.sqlite*");
+    const npm = by(reading(STATIC, "npm"), "embedder");
+    expect(npm.fix).toContain("(bun add -g counterparts@latest)");
+    expect(npm.fix).not.toContain("/plugin");
   });
 });
 

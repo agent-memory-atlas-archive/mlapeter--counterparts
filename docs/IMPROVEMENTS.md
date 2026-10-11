@@ -372,6 +372,18 @@ were refined by b2+f8 at the review of #369, named where they were):
   record of what links to what). Rows from a caller that knows no session carry no `session` at all,
   never the unbound sentinel, so a reader falls back on its own guess.
 
+### Decided by the doctor-install-fixes builder, 2026-10-11, lightly held (doctor's fixes by install)
+
+- Decided by the doctor-install-fixes builder, 2026-10-11, lightly held: doctor's fix lines
+  that install something (the model table missing or mismatched, a cache from a newer build)
+  name the route by `plugin.ts#installRoute`: `/plugin → update counterparts` when this process
+  is the plugin's (`runningAsPlugin`), the `bun add -g` command when no `CLAUDE_PLUGIN_ROOT`
+  is set, and both when one is set but names another copy, or when a caller passes nothing.
+  Why: the plugin may run as the single binary with no bun at all, and "both" is the safe
+  default for a caller that forgets. `plugin-run.sh` now also exports the plugin data
+  directory it falls back on, so the single binary run from `/counterparts:doctor` knows
+  itself for the plugin's (before, `runningAsPlugin` read false there).
+
 ### Also noted
 
 - **A read-without-crediting mode for audits.** A way to read memories (a review, a rules

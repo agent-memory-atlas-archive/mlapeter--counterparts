@@ -45,6 +45,7 @@ import {
   firstRunLockPath,
   firstRunNoticePath,
   hookGate,
+  installRoute,
   mcpGate,
   npmDoctorCommand,
   pluginOrigin,
@@ -291,6 +292,16 @@ describe("runningAsPlugin", () => {
     const link = join(work, "link");
     symlinkSync(ROOT, link);
     expect(runningAsPlugin({ CLAUDE_PLUGIN_ROOT: link }, ROOT)).toBe(true);
+  });
+});
+
+// How doctor names a fix that installs something (2026-10-11).
+describe("installRoute", () => {
+  test("the plugin when this is its copy, npm with no plugin root at all, both when another copy is named", () => {
+    expect(installRoute({ CLAUDE_PLUGIN_ROOT: ROOT }, ROOT, null)).toBe("plugin");
+    expect(installRoute({}, ROOT, null)).toBe("npm");
+    expect(installRoute({ CLAUDE_PLUGIN_ROOT: "  " }, ROOT, null)).toBe("npm");
+    expect(installRoute({ CLAUDE_PLUGIN_ROOT: work }, ROOT, null)).toBe("either");
   });
 });
 
