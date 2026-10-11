@@ -479,17 +479,17 @@ const SETTLE_PRIVILEGES: readonly Privilege[] = [
   {
     claim:
       "`how` beside `updates` settles the memory it revises — changed (it fades once and is shown as earlier), corrected (archived: out of recall, readable by its id, never deleted), or open (both kept, shown together) — and every settle is recorded (who, how, why, when) and can be undone. A belief, a core memory, a current-state fact and a protected memory keep their own revision path, and the result says so.",
-    mechanizedBy: "src/core/revision.ts#applyRevision -> src/core/contradictions.ts#settleOnWrite",
+    mechanizedBy: "src/core/revision.ts#applyRevision -> src/core/reconsolidation.ts#settleOnWrite",
   },
   {
     claim:
       "A changed or corrected at a memory that looks unrelated to the new one — not close in meaning, or with no embedder, no content word in common — is held: the new memory is stored unlinked, the old one is left as it was, its title and text come back with the ask to settle it yourself if you meant it, and the hold is recorded. Closing an open thread, moving or dropping a date, and changing a status go straight through.",
-    mechanizedBy: "src/core/counterpart.ts#guardUpdate -> src/core/contradictions.ts#updateRelatedness",
+    mechanizedBy: "src/core/counterpart.ts#guardUpdate -> src/core/reconsolidation.ts#updateRelatedness",
   },
   {
     claim:
       "A stored memory comes back with its nearest few existing memories, when any are close, so you can settle one there and then.",
-    mechanizedBy: "src/core/contradictions.ts#writeNeighbours",
+    mechanizedBy: "src/core/reconsolidation.ts#writeNeighbours",
   },
 ];
 /** The neighbours claim is served — it says what a write's result holds and
@@ -607,7 +607,7 @@ const REMEMBER: ToolSpec = {
     {
       claim:
         "`settle` settles two memories that already exist, by the same rules, and rewrites neither: the pair and a short why are the record.",
-      mechanizedBy: "src/core/counterpart.ts#settleContradiction -> src/core/contradictions.ts#settle",
+      mechanizedBy: "src/core/counterpart.ts#settleContradiction -> src/core/reconsolidation.ts#settle",
     },
     {
       claim:
@@ -1455,13 +1455,13 @@ const DREAM: ToolSpec = {
       changes: {
         type: "array",
         description:
-          "`propose`: the changes, each an object with `action` — `merge` (ids: two or more near-copies, text: the one memory in better words, title?), `link` (a, b), `replayed` (id), `gist` (text, sources: ids, title?, kind?, occurredOn?: when what it draws on happened, saidBy?: owner|self|inferred, status?: done|planned|proposed|asked), `contradiction` (a, b), `settle` (holds, over, how: changed|corrected|open, why — only when the reason is plain; flag otherwise), `feeling-now` (id, core, emotion: ONE word, strength, carried_by: the nuance in your own words), `nominate-core` (id, why). Usually far fewer changes than the limits; none is fine.",
+          "`propose`: the changes, each an object with `action` — `merge` (ids: two or more near-copies, text: the one memory in better words, title?), `link` (a, b), `replayed` (id), `gist` (text, sources: ids, title?, kind?, occurredOn?: when what it draws on happened, saidBy?: owner|self|inferred, status?: done|planned|proposed|asked), `contradiction` (a, b), `settle` (holds, over, how: changed|corrected|open, why — only when the reason is plain; flag otherwise), `slot` (pair, same: true|false, why — an on-mind to-confirm pair: is the newer the later state of the same thing?), `feeling-now` (id, core, emotion: ONE word, strength, carried_by: the nuance in your own words), `nominate-core` (id, why). Usually far fewer changes than the limits; none is fine.",
         items: {
           type: "object",
           properties: {
             action: {
               type: "string",
-              enum: ["merge", "link", "replayed", "gist", "contradiction", "settle", "feeling-now", "nominate-core"],
+              enum: ["merge", "link", "replayed", "gist", "contradiction", "settle", "slot", "feeling-now", "nominate-core"],
             },
             ids: { type: "array", items: { type: "string" } },
             id: { type: "string" },
@@ -1482,6 +1482,8 @@ const DREAM: ToolSpec = {
             holds: { type: "string", description: "`settle`: the memory that holds." },
             over: { type: "string", description: "`settle`: the memory it changes, corrects or disagrees with." },
             how: { type: "string", enum: ["changed", "corrected", "open"] },
+            pair: { type: "string", description: "`slot`: the to-confirm pair's id (ctr_…)." },
+            same: { type: "boolean", description: "`slot`: true when the newer is the later state of the same thing; false when they are two things." },
           },
           required: ["action"],
         },
@@ -1532,7 +1534,7 @@ const REFLECT: ToolSpec = {
     {
       claim:
         "`settle` settles two memories it was shown — changed, corrected or open — only with a plain reason, and the record names the reflection; it can be undone like any settle.",
-      mechanizedBy: "src/core/dream/reflect.ts#Reflections.settle -> src/core/contradictions.ts#settle",
+      mechanizedBy: "src/core/dream/reflect.ts#Reflections.settle -> src/core/reconsolidation.ts#settle",
     },
     {
       claim:

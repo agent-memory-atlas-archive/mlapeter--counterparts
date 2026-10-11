@@ -121,13 +121,16 @@ import { applyRevision } from "./revision.js";
 import type { RevisionApplication } from "./revision.js";
 import {
   CONTRADICTION_HELD_EVENT,
+  detectSlot,
+  guardBar,
   heldView,
+  proposeSlot,
   settle as settleContradiction,
   undo as undoContradiction,
   updateRelatedness,
   writeNeighbours,
-} from "./contradictions.js";
-import type { HeldUpdate, Neighbour, SettleInput, SettleOutcome, UndoOutcome } from "./contradictions.js";
+} from "./reconsolidation.js";
+import type { HeldUpdate, Neighbour, SettleInput, SettleOutcome, SlotOutcome, UndoOutcome } from "./reconsolidation.js";
 import { Schemas } from "./schemas/index.js";
 import {
   HANDOFF_CLEARED_EVENT,
@@ -1200,6 +1203,13 @@ export interface DepositContext {
    * Absent: the process's own `owner`.
    */
   owner?: boolean;
+  /**
+   * Memories the same call wrote before this one (a dump's earlier entries):
+   * the writer's own words of the same moment, never read as an earlier state
+   * of this one by the slot detector (review of #420; the neighbours' rule,
+   * review of #284 M1).
+   */
+  siblings?: readonly string[];
 }
 
 /**
@@ -1281,6 +1291,13 @@ export interface DepositResult {
   readonly thread?: { readonly from: string; readonly closed: boolean; readonly refused?: ThreadRefusal };
   /** v12: the writer's three fields as recorded — after a revision's carry-over. */
   readonly facts?: DepositFacts;
+  /**
+   * The older memory the slot detector read this one as the newer state of
+   * (2026-10-11, Group 2): proposed provisionally, for the writer to confirm
+   * now or the dream tonight (`reconsolidation.ts#detectSlot`). Absent when
+   * none qualified.
+   */
+  readonly slot?: Extract<SlotOutcome, { ok: true }>;
   /**
    * What it is about, when the writer sent no mark and this revision took the
    * one of the memory it revises (2026-10-11, `Counterpart#carryAbout`).
@@ -4383,7 +4400,7 @@ export class Counterpart {
   }
 
   /**
-   * SETTLE A CONTRADICTION (2026-09-29, `contradictions.ts`) — an existing
+   * SETTLE A CONTRADICTION (2026-09-29, `reconsolidation.ts`) — an existing
    * pair, or two memories by `holds` and `over` — with the `why` through the
    * SECRETS half of the battery: a reason is words, and a credential must not
    * land in the trail any more than in a body.
@@ -4395,7 +4412,7 @@ export class Counterpart {
     });
   }
 
-  /** Undo a settle (`contradictions.ts#undo`), the reason through the same scan. */
+  /** Undo a settle (`reconsolidation.ts#undo`), the reason through the same scan. */
   undoContradiction(input: Parameters<typeof undoContradiction>[1]): UndoOutcome {
     return undoContradiction(this.store, {
       ...input,
@@ -4404,12 +4421,17 @@ export class Counterpart {
   }
 
   /**
-   * The nearest few live memories of one just written (`contradictions.ts
+   * The nearest few live memories of one just written (`reconsolidation.ts
    * #writeNeighbours`), for the write's result — minus the memory it updates.
    */
-  writeNeighbours(id: string, opts: { exclude?: readonly string[]; owner: boolean }): Neighbour[] {
+  writeNeighbours(id: string, opts: { exclude?: readonly string[]; owner: boolean; session?: string | null }): Neighbour[] {
     try {
-      return writeNeighbours(this.store, { id, owner: opts.owner, ...(opts.exclude === undefined ? {} : { exclude: opts.exclude }) });
+      return writeNeighbours(this.store, {
+        id,
+        owner: opts.owner,
+        ...(opts.exclude === undefined ? {} : { exclude: opts.exclude }),
+        ...(opts.session === undefined ? {} : { session: opts.session }),
+      });
     } catch {
       // A neighbour search that fails costs the list, never the write.
       return [];
@@ -6696,6 +6718,10 @@ export class Counterpart {
     const keepOpen = thread?.refused === "confidential" || thread?.refused === "other-directory";
     const revision = this.applyDeclaredRevision(keepOpen ? withoutHow(proposal) : proposal, mint, source, ctx.session);
     if (held !== null) this.recordHold(held, mint.id, source, ctx, proposal.day);
+    // THE SLOT DETECTOR (2026-10-11, Group 2), after the declared revision:
+    // what the writer named is settled first, then arithmetic reads whether
+    // this is the newer state of something it did not name.
+    const slot = this.proposeSlotFor(mint.id, proposal, ctx.session, ctx.siblings ?? []);
     // THE WAKE IS BEHIND EVERY ACCEPTED MEMORY (2026-10-10), whatever door it
     // came through. Only `session_end` marked it before, so a `note` — the
     // most common write mid-session — left Still open, Nearby and Arriving as
@@ -6717,7 +6743,28 @@ export class Counterpart {
       ...(thread === null ? {} : { thread }),
       ...(facts === null ? {} : { facts }),
       ...(about === null ? {} : { aboutCarried: { mark: about.about, from: about.from } }),
+      ...(slot === null ? {} : { slot }),
     };
+  }
+
+  /**
+   * THE SLOT DETECTOR at the write (2026-10-11): the nearest older memory this
+   * one reads as the newer state of, proposed provisionally — never the one
+   * it declared in `updates` (settled or held already), nor an earlier entry
+   * of the same call. Never throws: a detector that fails costs the proposal,
+   * never the write.
+   */
+  private proposeSlotFor(id: string, p: Proposal, session: string, siblings: readonly string[]): Extract<SlotOutcome, { ok: true }> | null {
+    if (this.observer) return null;
+    try {
+      const declared = p.updates?.resolved ?? null;
+      const candidate = detectSlot(this.store, { id, exclude: declared === null ? siblings : [declared, ...siblings], session });
+      if (candidate === null) return null;
+      const out = proposeSlot(this.store, { holds: id, candidate, actorId: session, day: p.day });
+      return out.ok ? out : null;
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -6726,7 +6773,7 @@ export class Counterpart {
    * writer's word, and a weaker writer points at the wrong one (a 10-02
    * benchmark read: a Haiku writer, about two thirds of 149 pairs; on the
    * owner's store, Opus, all 10 checked were right). The pair is read by
-   * `contradictions.ts#updateRelatedness` — by meaning through the local
+   * `reconsolidation.ts#updateRelatedness` — by meaning through the local
    * embedder, by shared content words when there is none — and an unrelated
    * one comes back as a hold. Null: the declaration goes on as written.
    *
@@ -6785,6 +6832,8 @@ export class Counterpart {
       overVec,
       textVec,
       ignoreNames,
+      // The store's own bar (2026-10-11): what a random pair reads here.
+      ...(overVec !== null && textVec !== null ? { bar: guardBar(this.store) } : {}),
     });
     this.emit("counterpart.update.read", target, {
       related: read.related,

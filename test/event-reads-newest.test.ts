@@ -39,7 +39,7 @@ import {
   CONTRADICTION_TUNABLES,
   heldCorrections,
   heldPairs,
-} from "../src/core/contradictions.js";
+} from "../src/core/reconsolidation.js";
 import { LOG_LIMIT as PAGE_LOG_LIMIT, mindView } from "../src/adapters/dashboard/web/views/mind.js";
 
 const temps: string[] = [];

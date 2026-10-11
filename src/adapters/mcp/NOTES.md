@@ -1508,7 +1508,7 @@ Three of #338's reviewer's findings predated it (items 3 and 4 of that review), 
 ## 2026-10-09 — facts mode names its corrected versions
 
 Found by the LongMemEval run; the owner approved the fix. A memory settled `corrected` is
-archived (`contradictions.ts#settle`), so it is out of `recallRows` and out of the word
+archived (`reconsolidation.ts#settle`), so it is out of `recallRows` and out of the word
 index, and facts mode said only "N corrected versions hidden" under the one that corrected
 it. Nothing on the page reached it, even a search that named it: "Summer Solstice Market
 potted plants sold" came back with the herb-sale memory and that line. Answers that showed

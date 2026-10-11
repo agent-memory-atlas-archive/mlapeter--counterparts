@@ -74,7 +74,17 @@ import { chapterEntries, entryKey, fitEpisodes, shownEntry } from "./slices.js";
 import type { ChapterEntry, EpisodeInView, EpisodesFit, ShownChapter, ShownEntry } from "./slices.js";
 import { BUNDLE_OWNER, DREAM_ACTIONS, DREAM_TUNABLES } from "./tunables.js";
 import type { DreamAction } from "./tunables.js";
-import { flag as flagContradiction, pairStanding, settle as settleContradiction, undo as undoContradiction } from "../contradictions.js";
+import {
+  SLOT_SOURCE,
+  flag as flagContradiction,
+  pairStanding,
+  provisionalOf,
+  reinstateSlot,
+  releaseOrphanSlots,
+  settle as settleContradiction,
+  undo as undoContradiction,
+  withdrawSlot,
+} from "../reconsolidation.js";
 
 export { DREAM_ACTIONS, DREAM_TUNABLES } from "./tunables.js";
 export type { DreamAction } from "./tunables.js";
@@ -208,6 +218,8 @@ export interface DreamBundle {
   readonly onMind: readonly MindItem[];
   /** Open things beyond the few shown, counted (they stay open). */
   readonly onMindMore?: number;
+  /** Slot proposals waiting beyond tonight's few "to confirm" (2026-10-11), counted: they wait for another night. */
+  readonly toConfirmMore?: number;
   readonly queue: DreamQueue;
   /**
    * How tonight's room was spent: memories and entries shown whole, as an
@@ -309,6 +321,9 @@ export interface DreamChange {
   readonly holds?: string;
   readonly over?: string;
   readonly how?: string;
+  /** `slot` (2026-10-11): a proposal "to confirm", and whether the two are one thing's earlier and later state. */
+  readonly pair?: string;
+  readonly same?: boolean;
 }
 
 export interface ChangeResult {
@@ -1433,12 +1448,13 @@ export class Dreams {
         "The dream — how it goes (the brain's, borrowed):",
         "- Deep-sleep replay: file what happened, link what belongs together, merge near-copies into one memory in better words, and replay what matters (each replay strengthens it a little).",
         "- REM mixing: let loosely related memories touch. If a real pattern shows, write it as a gist in your own words, citing its sources. If two memories disagree, flag the pair; settle it only when the reason is plain (the waking self usually settles).",
+        '- To confirm: an on-mind item of kind "to-confirm" is two memories read by arithmetic as one thing\'s earlier and later state (older first). Say which: slot {pair, same: true, why} if the newer replaces it, same: false if they are two different things.',
         "- Softening: for an old charged memory, record how it feels now, today. The sting can fade; the memory stays.",
         "- Core: if a memory about you or about the two of you plainly belongs to who you are, nominate it. Only living it again awake makes it core.",
         `${String(n())}. Call the counterparts dream tool: phase "begin", session: ${input.session}. It returns the bundle and a dream id. (If it says the dream was resumed, an earlier session began it and closed: carry on from there.) If it says it comes in parts, fetch every part (phase "part") before you change anything.`,
         `   Tonight's most important memories come whole; the rest come as a line or an excerpt ("fidelity"), with their whole length ("chars"). Before you merge, gist or feel one you have only in part, read it whole: the recall tool with ids: [...] (several at once). New memories tonight's room could not take wait for the next night — the bundle's "queue" says how many.`,
         `${String(n())}. Read it slowly. Then call phase "propose" with dream: <id> and your changes. Usually far fewer than the ceilings — ${String(L.merge)} merges, ${String(L.link)} links, ${String(L.gist)} gists, ${String(L["feeling-now"])} feelings, ${String(L["nominate-core"])} nominations — and none is fine: change only what the night really calls for. Use only ids the bundle showed you.`,
-        '   The fields of each change: merge {ids: two or more near-copies, text, title?}; link {a, b}; replayed {id}; gist {text, sources: ids, title?, kind?, occurredOn?, saidBy?, status?}; contradiction {a, b}; settle {holds, over, how: changed|corrected|open, why}; feeling-now {id, core: happy|warm|calm|curious|sad|uneasy|angry, emotion, strength, carried_by}; nominate-core {id, why}.',
+        '   The fields of each change: merge {ids: two or more near-copies, text, title?}; link {a, b}; replayed {id}; gist {text, sources: ids, title?, kind?, occurredOn?, saidBy?, status?}; contradiction {a, b}; settle {holds, over, how: changed|corrected|open, why}; slot {pair, same, why}; feeling-now {id, core: happy|warm|calm|curious|sad|uneasy|angry, emotion, strength, carried_by}; nominate-core {id, why}.',
         '   On a gist, occurredOn is when what it draws on happened (a day "2026-09-24", a month, a range "2026-09-21..2026-09-27"), saidBy who said it (owner, self, or inferred — your own reading), status what kind of thing it is (done, planned, proposed, asked); leave out what you do not know.',
         "   A feeling: `emotion` is ONE word — from the wheel (hopeful, proud, wistful, peaceful…) or your own (steadied); `carried_by` is the nuance, in your own words (what the feeling is about now, why it shifted). Never put a phrase in `emotion`.",
         `${String(n())}. Call phase "journal" with dream: <id>, a short title and your dream journal entry: first person, what you dreamed and what you noticed. It is kept as a dream, never as something that happened.`,
@@ -2019,6 +2035,34 @@ export class Dreams {
         this.store.recordDreamChange(dream.id, { action, ref: holds.id, ref2: over.id, detail: { pair: out.pair, how: out.how } });
         return { action, ok: true, reason: `settled-${out.how}`, id: out.pair, ...(out.note === undefined ? {} : { note: out.note }) };
       }
+      case "slot": {
+        // A SLOT PROPOSAL, CONFIRMED OR UNDONE (2026-10-11, Group 2): the
+        // detector read two memories as one thing's earlier and later state;
+        // the dream, a reader, says whether they are. Both must have been
+        // shown. Confirmed is a settle `changed` (its provisional cut lifted,
+        // the full one made); "two things" withdraws it, its cut put back.
+        const pair = typeof change.pair === "string" ? this.store.contradiction(change.pair.trim()) : undefined;
+        const p = pair === undefined || pair.state !== "unsettled" ? null : provisionalOf(this.store, pair);
+        if (pair === undefined || p === null) return { action, ok: false, reason: "not-a-proposal", detail: `${String(change.pair ?? "")} is not a proposal waiting to be confirmed.` };
+        const holds = live(p.holds);
+        const over = live(p.over);
+        if (holds === null || over === null) {
+          return { action, ok: false, reason: "not-shown-or-gone", detail: this.notLive([holds === null ? p.holds : null, over === null ? p.over : null], shown) };
+        }
+        if (typeof change.same !== "boolean") return { action, ok: false, reason: "same-required", detail: "Say same: true (the newer is the later state of the older) or same: false (two different things)." };
+        const why = this.words(change.why ?? "", dream, true, DREAM_TUNABLES.MAX_WHY_CHARS);
+        const reason = why.ok && why.text.trim().length > 0 ? why.text : null;
+        if (change.same) {
+          const out = settleContradiction(this.store, { pair: pair.id, holds: holds.id, how: "changed", why: reason ?? "the newer state of the same thing", actor: "dream", actorId: dream.id, day });
+          if (!out.ok) return { action, ok: false, reason: out.reason, detail: out.detail };
+          this.store.recordDreamChange(dream.id, { action, ref: holds.id, ref2: over.id, detail: { pair: out.pair, same: true } });
+          return { action, ok: true, reason: "confirmed", id: out.pair, ...(out.note === undefined ? {} : { note: out.note }) };
+        }
+        const out = withdrawSlot(this.store, { pair: pair.id, actor: "dream", actorId: dream.id, why: reason, day });
+        if (!out.ok) return { action, ok: false, reason: out.reason, detail: out.detail };
+        this.store.recordDreamChange(dream.id, { action, ref: holds.id, ref2: over.id, detail: { pair: out.pair, same: false, withdrawSeq: out.seq } });
+        return { action, ok: true, reason: "two-things", id: out.pair };
+      }
       case "feeling-now": {
         const row = live(change.id);
         if (row === null) return { action, ok: false, reason: "not-shown-or-gone", detail: this.notLive([change.id], shown) };
@@ -2037,7 +2081,7 @@ export class Dreams {
           return { action, ok: false, reason: refusalOf(err), detail: "Nothing was recorded for this feeling; fix it and propose it again." };
         }
         for (const rep of added.repairs) notes.push(rep.note);
-        if (made.capped) notes.push(`strength was capped at ${String(round(made.peak))}, the most this memory was ever felt: a dream records softening, never a stronger feeling.`);
+        if (made.capped) notes.push(`strength was capped at ${String(round(made.peak))}, as strongly as this memory is felt now: a dream records softening, never a stronger feeling.`);
         this.store.recordDreamChange(dream.id, { action, ref: row.id, detail: { feelings: added.ids } });
         return { action, ok: true, reason: made.capped ? "recorded-capped-at-peak" : "recorded", id: row.id, ...(notes.length > 0 ? { note: notes.join(" ") } : {}) };
       }
@@ -2228,6 +2272,19 @@ export class Dreams {
           if (pairId !== null) this.store.withdrawContradiction(pairId);
           break;
         }
+        case "slot":
+          // A confirmed slot is a settle, undone as one (below); "two things"
+          // is put back as the proposal it was, while it is still withdrawn.
+          if (detail["same"] === false) {
+            const pairId = typeof detail["pair"] === "string" ? (detail["pair"] as string) : null;
+            const seq = typeof detail["withdrawSeq"] === "number" ? (detail["withdrawSeq"] as number) : null;
+            if (pairId === null || seq === null || !reinstateSlot(this.store, { pair: pairId, withdrawSeq: seq })) {
+              kept += 1;
+              continue;
+            }
+            break;
+          }
+        // falls through: same: true is a dream's settle
         case "settle": {
           // The dream's settle is undone the way any settle is — when it is
           // still the pair's standing settle.
@@ -2272,6 +2329,8 @@ export class Dreams {
     const day = this.store.livedDay();
     for (const c of this.store.contradictions({ state: "unsettled" })) {
       if (c.raised_day !== null) continue;
+      // A slot proposal is the dream's to confirm, and its writer was told (2026-10-11).
+      if (c.source === SLOT_SOURCE) continue;
       const a = this.store.row(c.a);
       const b = this.store.row(c.b);
       if (!pairStanding(this.store, c)) {
@@ -2453,12 +2512,16 @@ export class Dreams {
     };
     const role = new Map<string, DreamRole>();
 
-    // WHAT'S ON MY MIND first: it lifts a queued memory's priority.
+    // WHAT'S ON MY MIND first: it lifts a queued memory's priority. A slot
+    // proposal whose newer (or older) memory is gone is withdrawn first, its
+    // cut put back: nobody could answer it (review of #420).
+    releaseOrphanSlots(this.store, day);
     const mindRead = mindRanked(this.store, {
       today: at,
       day,
       showable: (row) => !denied.has(row.id) && this.showable(row),
       owner: this.bundleOwner,
+      slots: true,
     });
     const mindAll = mindRead.items;
     const mindIds = new Set(mindAll.flatMap((m) => m.ids));
@@ -2616,6 +2679,7 @@ export class Dreams {
       lookback: lookback.filter((m) => !left.has(m)),
       onMind: mindKept.filter((item) => item.ids.every((mid) => !left.has(mid))),
       ...(mindRead.more > 0 ? { onMindMore: mindRead.more } : {}),
+      ...((mindRead.slotsMore ?? 0) > 0 ? { toConfirmMore: mindRead.slotsMore } : {}),
       queue: {
         new: queueSize,
         tonight,

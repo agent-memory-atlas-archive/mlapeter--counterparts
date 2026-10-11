@@ -3,7 +3,7 @@
  * at a memory that looks unrelated is held: the new memory lands, the old one
  * is not settled and not linked, the writer is shown it and asked to settle
  * it itself if it meant to, and the hold is recorded. `Counterpart#guardUpdate`
- * decides when it applies; `contradictions.ts#updateRelatedness` reads the
+ * decides when it applies; `reconsolidation.ts#updateRelatedness` reads the
  * pair, by meaning through the embedder and by words without one.
  *
  * The meaning cases run on a small fake embedder (topic buckets), so they run
@@ -29,7 +29,7 @@ import {
   contentWords,
   heldCorrections,
   updateRelatedness,
-} from "../src/core/contradictions.js";
+} from "../src/core/reconsolidation.js";
 import { resolveStaticWeights } from "../src/core/embed/static.js";
 import { UPDATES_META_KEY } from "../src/core/mint.js";
 import { Store } from "../src/core/store/index.js";

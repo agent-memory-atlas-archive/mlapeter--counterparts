@@ -30,7 +30,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { Counterpart } from "../src/core/counterpart.js";
-import { settle } from "../src/core/contradictions.js";
+import { settle } from "../src/core/reconsolidation.js";
 import { ownerNames } from "../src/core/sleep/index.js";
 import { Dashboard } from "../src/adapters/dashboard/index.js";
 import { runAction } from "../src/adapters/dashboard/web/actions.js";

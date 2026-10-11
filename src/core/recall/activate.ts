@@ -122,6 +122,18 @@ export interface Candidate {
   /** Kept only because a stamp brought it, past the cut the words and meaning
    *  made (R1): the gate leaves it out of the background whole. */
   readonly pastCut?: true;
+  /**
+   * THE CHAIN HEAD WINS (2026-10-11, Group 2): set on a memory a later one
+   * settled over — the memory that holds now (`standing.ts#headOf`). The gate
+   * inhibits this one when its head is admitted or already in the session.
+   */
+  readonly head?: string;
+  /**
+   * Set on a head brought in for the earlier memory the turn reached (the id
+   * of that earlier one): it takes the earlier's place, with its numbers, and
+   * is left out of the turn's background (it was not reached on its own).
+   */
+  readonly standsFor?: string;
   /** LIFTED BY A LINK (2026-10-11, Group 4 item 7): in the cut only because a
    *  hop raised it — the cut without hops left it out. Absent otherwise. */
   readonly lifted?: true;

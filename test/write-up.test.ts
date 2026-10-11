@@ -68,7 +68,7 @@ import { keyFor } from "../src/core/remember/index.js";
 import { CLAIM_NOTHING_NEW, claimUnwritten } from "../src/core/coverage/index.js";
 import { localDate } from "../src/core/time.js";
 import { ALREADY_AUTHORED_MARK } from "../src/core/remember/index.js";
-import { CONTRADICTION_HELD_EVENT, CONTRADICTION_SETTLED_EVENT } from "../src/core/contradictions.js";
+import { CONTRADICTION_HELD_EVENT, CONTRADICTION_SETTLED_EVENT } from "../src/core/reconsolidation.js";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;

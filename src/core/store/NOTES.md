@@ -1978,7 +1978,7 @@ store does with it:
 The default stays `asc` (a story reads in the order it happened). The 2026-09-28 audit's
 item 1 was mostly closed by #272; this pass read the rest of the callers that leave `order`
 unset. Two wanted the newest rows and now ask for them, with `order: "desc"`:
-`contradictions.ts#heldPairs`' settle read (past `HELD_READ_ROWS` the newest hold read as
+`reconsolidation.ts#heldPairs`' settle read (past `HELD_READ_ROWS` the newest hold read as
 never settled) and the dashboard's page history (`views/mind.ts#pageHistory`: the newest
 versions lost their dates past `LOG_LIMIT`; its day strip's `sleep.cycle` read too). Under
 their limits both return the rows they did, and keep the same row per key (`test/
