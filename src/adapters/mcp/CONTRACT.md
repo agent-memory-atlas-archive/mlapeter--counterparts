@@ -164,10 +164,7 @@ actually wrote (chapter), the written self page or the version a write to it pro
    handle-resolution line, and (2026-10-03) the `asked` gate records that let a QUOTE of
    an answer's words be credited at the boundary — the credit itself is the boundary's.
 5. **[M] Under observer, every tool stands down over the wire and says so** (scars E7,
-   §2.4). One exception (2026-10-11, the last-exchange brief's item 4, lightly held):
-   `recall` with the handle `last exchange` still answers, because it only reads this
-   directory's span buffer and writes nothing — no row, no credit, no seen set, a ring
-   event only (`server.ts#lastExchangeTool`).
+   §2.4).
 6. **[M] Confidential material is returned only in the owner's own session.**
 7. **[M] The census names what was removed** — counts, kinds, dates; never bodies, never
    hashes.

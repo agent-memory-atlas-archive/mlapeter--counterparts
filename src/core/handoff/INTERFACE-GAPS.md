@@ -198,7 +198,10 @@ as the turns they were.
 and their sources dropped, so `last-exchange.ts#ownerWords` finds the owner's words by
 shape — wrapped host text stripped, the slice cut at the first host-framed paragraph, a
 slice that opens with a compaction summary passed over (NOTES §13). Two typed messages in
-one slice (a prompt queued mid-turn, a retry after an interrupt) read as one.
+one slice (a prompt queued mid-turn, a retry after an interrupt) read as one. And host
+text that carries no mark of its own — a coordinator's message (`isMeta`, origin
+`coordinator`), a scheduled prompt, `/context`'s output — reads as typed words when it
+opens a turn (review of #392: pinned as `test.todo` in `test/last-exchange.test.ts`).
 
 **The real fix** is a per-turn mark in the span (each turn's offset and source, or one
 line per turn), which is a change to the buffer's format: grouped with the next store

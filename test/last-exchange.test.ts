@@ -25,7 +25,8 @@
  *     handoffs, a due reminder, Last here, another active folder) the line
  *     prints and the page, the due reminder and Still open's first item are
  *     what they are without it; with less room it is the first thing given up;
- *   - nothing stored: the handle writes no row, and it reads under observer.
+ *   - nothing stored: the handle writes no row; under observer it stands down
+ *     like the rest of recall, and only the owner's session gets the words.
  *
  * Hermetic: every test opens a fresh temp dir and removes it; every word is
  * invented placeholder prose.
@@ -217,7 +218,9 @@ function recallServer(w: World, opts: { session?: string; scope?: string; observ
     scope: opts.scope ?? HERE,
     owner: true,
     now: () => w.now(),
-    ...(opts.observer === true ? { observer: true } : {}),
+    // The server's own observer option is `launchObserver` (review of #392:
+    // `observer` is not one, so the test that passed it ran as the owner).
+    ...(opts.observer === true ? { launchObserver: true } : {}),
   });
 }
 
@@ -278,7 +281,7 @@ describe("the line names the latest other session in this folder", () => {
     expect(lineOf(wakeOf(w, at(9, 30, D2), { date: D2 }))).toBeUndefined();
   });
 
-  test("an off or paused folder hears nothing", () => {
+  test("an off, paused or observer folder hears nothing", () => {
     const w = world(at(9));
     new Session(w, A, HERE).add(typed("Words that would be named.")).add(said("Yes.")).stop(at(9, 5));
     w.set(at(9, 30));
@@ -286,7 +289,27 @@ describe("the line names the latest other session in this folder", () => {
     for (const mode of ["off", "paused"] as const) {
       const out = w.hooks({ mode }).sessionStart({ sessionId: B, scope: HERE, at: D } as HookInput);
       expect(out.injection).not.toContain("Last said here");
+      expect(out.injection).not.toContain("Words that would be named");
     }
+    // An observer folder: the entry point opens the store as an observer
+    // (`bin/hook.ts` folds the mode into the config). Its wake is delivered,
+    // with no line pointing at a handle that would stand down (review of #392).
+    const obs = Counterpart.open({ dir: storeDir, observer: true, owner: true, budgetBytes: BUDGET, now: () => at(9, 30), timeZone: ZONE });
+    open.push(obs);
+    const hooks = new ClaudeCodeAdapter({
+      counterpart: obs,
+      config: { dataDir: storeDir, owner: true, observer: true, injectionBudgetBytes: BUDGET, timeZone: ZONE },
+      configPath: join(root, "claude-code.json"),
+      now: () => at(9, 30),
+      scope: { mode: "observer", matched: HERE, entry: null } as ScopeVerdict,
+      command: "/bin/true",
+      args: ["runner"],
+      spawner: () => ({ pid: 4242 }),
+    });
+    const seen = hooks.sessionStart({ sessionId: B, scope: HERE, at: D } as HookInput).injection;
+    expect(seen).toContain("counterparts:wake");
+    expect(seen).not.toContain("Last said here");
+    expect(seen).not.toContain("Words that would be named");
   });
 });
 
@@ -598,16 +621,119 @@ describe("the handle", () => {
     }
   });
 
-  test("under observer it still reads, and writes nothing", async () => {
+  // Review of #392 (coordinator's call): recall stands down under observer,
+  // and so does this handle — mcp CONTRACT G5 has no exception.
+  test("under observer it stands down like the rest of recall, and writes nothing", async () => {
     const w = world(at(9));
-    new Session(w, A, HERE).add(typed("Observer may read this."), said("Read only.")).stop(at(9, 5));
+    new Session(w, A, HERE).add(typed("Observer may not read this."), said("Read only.")).stop(at(9, 5));
     w.set(at(9, 30));
     const events = w.c.store.eventLog({ limit: 100_000 }).length;
-    const got = await lastExchangeOf(recallServer(w, { observer: true }));
-    expect(got["reason"]).toBe("last-exchange");
-    expect((got["said"] as { text: string }).text).toBe("Observer may read this.");
+    const res = await recallServer(w, { observer: true }).call("recall", { handle: "last exchange" });
+    expect(res.structuredContent["stoodDown"]).toBe(true);
+    expect(res.structuredContent["stance"]).toBe("observer");
+    expect(JSON.stringify(res)).not.toContain("Observer may not read this");
     expect(w.c.store.eventLog({ limit: 100_000 }).length).toBe(events);
+  });
+
+  test("a session that is not the owner's gets neither the handle's words nor the line (review of #392)", async () => {
+    const w = world(at(9));
+    new Session(w, A, HERE).add(typed("Words only the owner hears."), said("Kept.")).stop(at(9, 5));
+    w.set(at(9, 30));
+    const s = new McpServer({ counterpart: w.c, session: B, scope: HERE, owner: false, now: () => w.now() });
+    const got = await lastExchangeOf(s);
+    expect(got["reason"]).toBe("owner-only");
+    expect(JSON.stringify(got)).not.toContain("Words only the owner hears");
+    // The wake of a store opened as not the owner's: no line.
+    const guest = Counterpart.open({ dir: storeDir, owner: false, budgetBytes: BUDGET, now: () => at(9, 30), timeZone: ZONE });
+    open.push(guest);
+    guest.rebrief({ budgetBytes: BUDGET, at: D });
+    const hooks = new ClaudeCodeAdapter({
+      counterpart: guest,
+      config: { dataDir: storeDir, owner: false, injectionBudgetBytes: BUDGET, timeZone: ZONE },
+      configPath: join(root, "claude-code.json"),
+      now: () => at(9, 30),
+      scope: { mode: "on", matched: HERE, entry: null } as ScopeVerdict,
+      command: "/bin/true",
+      args: ["runner"],
+      spawner: () => ({ pid: 4242 }),
+    });
+    const text = hooks.sessionStart({ sessionId: B, scope: HERE, at: D } as HookInput).injection;
+    expect(text).not.toContain("Last said here");
+    expect(text).not.toContain("Words only the owner hears");
   });
 });
 
+// ── review of #392: adversarial shapes ─────────────────────────────────────
 
+describe("review of #392: host text is never the owner's words", () => {
+  const meta = (text: string, extra: Entry = {}): Entry => ({ type: "user", isMeta: true, message: { role: "user", content: [{ type: "text", text }] }, ...extra });
+  const echo = (name: string, args = ""): Entry => ({ type: "user", message: { role: "user", content: `<command-message>${name}</command-message>\n<command-name>/${name}</command-name>\n<command-args>${args}</command-args>` } });
+  const skillBody = (): Entry => meta("Base directory for this skill: /skills/garden-plan\n\n# Garden plan\n\nSKILLWORDS: walk each bed and write it down.");
+  const host = ["SKILLWORDS", "COORDWORDS", "SCHEDWORDS", "PASTEDWAKE", "FOOTWORDS", "HOOKWORDS", "PEERWORDS", "RITUALWORDS", "RITUALANSWER", "CMDWORDS", "COMPACTWORDS"];
+
+  async function check(build: (s: Session) => void, expectSaid: string | null): Promise<void> {
+    const w = world(at(9));
+    const s = new Session(w, A, HERE).add(typed("The earlier real question about the compost."), said("The earlier real answer.")).stop(at(9, 1));
+    build(s);
+    const line = lineOf(wakeOf(w, at(9, 30))) ?? "";
+    const got = await lastExchangeOf(recallServer(w));
+    const all = `${line}\n${JSON.stringify(got)}`;
+    for (const h of host) expect(all).not.toContain(h);
+    // A slice with no owner words steps back to the exchange before it.
+    expect((got["said"] as { text: string }).text).toBe(expectSaid ?? "The earlier real question about the compost.");
+    expect(line).toContain(`"${(expectSaid ?? "The earlier real question about the compost.").split(" ").slice(0, 3).join(" ")}`);
+  }
+
+  test("a user-typed skill: the command echo and the skill body", async () => {
+    await check((s) => s.add(echo("garden-plan", "north bed"), skillBody(), said("Walked the beds.")).stop(at(9, 5)), null);
+  });
+  test("a custom slash command's expansion", async () => {
+    await check((s) => s.add(echo("plan-day"), meta("CMDWORDS: read the ledger, then plan the day's beds."), said("Planned.")).stop(at(9, 5)), null);
+  });
+  test("a skill the model invoked, after the typed words", async () => {
+    await check(
+      (s) =>
+        s
+          .add(
+            typed("Plan the beds for spring."),
+            { type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id: "sk1", name: "Skill", input: {} }] } },
+            { type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "sk1", content: "Launching skill" }] } },
+            skillBody(),
+            said("Planned."),
+          )
+          .stop(at(9, 5)),
+      "Plan the beds for spring.",
+    );
+  });
+  test("a pasted wake cut short (no end marker)", async () => {
+    await check((s) => s.add(typed("<!-- counterparts:wake day=3 elements=1 bytes=80 -->\nPASTEDWAKE the first lines of a wake"), said("Seen.")).stop(at(9, 5)), null);
+  });
+  test("a pasted recall note, then the typed words", async () => {
+    await check((s) => s.add(typed("<!-- counterparts:recall n=1 -->\nFOOTWORDS a memory\n<!-- counterparts:recall/end n=1 -->\n\nMy own words after it."), said("Ok.")).stop(at(9, 5)), "My own words after it.");
+  });
+  test("hook additional context written as user text", async () => {
+    await check((s) => s.add(meta("<system-reminder>\nUserPromptSubmit hook additional context: HOOKWORDS a line\n</system-reminder>"), typed("Typed after the hook."), said("Ok.")).stop(at(9, 5)), "Typed after the hook.");
+  });
+  test("hook additional context, bare", async () => {
+    await check((s) => s.add(meta("SessionStart hook additional context: HOOKWORDS a line"), said("Ok.")).stop(at(9, 5)), null);
+  });
+  test("a cross-session message", async () => {
+    await check((s) => s.add({ type: "user", message: { role: "user", content: '<cross-session-message from-name="peer">PEERWORDS do the south bed</cross-session-message>' } }, said("Ok.")).stop(at(9, 5)), null);
+  });
+  test("the end-of-session ask as additional context, and its answer", async () => {
+    await check((s) => s.add(meta("<system-reminder>Stop hook additional context: Counterparts, before this session closes: RITUALWORDS</system-reminder>"), said("RITUALANSWER saved.")).stop(at(9, 5)), null);
+  });
+  test("a compaction summary, then typed words in the same slice: says less", async () => {
+    await check((s) => s.add({ type: "user", isCompactSummary: true, message: { role: "user", content: "This session is being continued from a previous conversation. COMPACTWORDS\n\nSummary." } }, typed("After the compaction."), said("Ok.")).stop(at(9, 5)), null);
+  });
+  // KNOWN LIMIT (review of #392): host text with no mark of its own — a
+  // coordinator's message, a scheduled prompt — that opens a turn reads like
+  // typed words, because a span drops each turn's source (INTERFACE-GAPS §9).
+  // These pass once the span carries a per-turn mark.
+  test.todo("a coordinator's message (isMeta, origin coordinator) opening a turn", async () => {
+    await check((s) => s.add(meta("COORDWORDS please also check the south bed.", { origin: { kind: "coordinator" } }), said("Checked.")).stop(at(9, 5)), null);
+  });
+  test.todo("a scheduled prompt (isMeta, system) opening a turn", async () => {
+    await check((s) => s.add(meta("SCHEDWORDS run the nightly bed check.", { promptSource: "system" }), said("Checked.")).stop(at(9, 5)), null);
+  });
+});

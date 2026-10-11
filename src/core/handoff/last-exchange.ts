@@ -108,7 +108,22 @@ const HOST_OPENERS: readonly RegExp[] = [
   // The compaction summary: no closing mark, so nothing after it is known to
   // be the owner's (`ownerWords` steps back when it opens the slice).
   /^This session is being continued from a previous conversation/,
+  // A skill's body, whether the person typed its command or the model called
+  // it (review of #392): the host's own first line for every skill.
+  /^Base directory for this skill:/,
+  // A pasted wake or recall note cut short of its end marker (review of #392).
+  /^<!--\s*counterparts:(?:wake|recall)\b/i,
 ];
+
+/**
+ * A slash command's echo (review of #392). What follows it in a slice is the
+ * command's expansion or output (a custom command's body, a skill's), which
+ * carries no mark of its own: so the slice is cut at the echo, the way it is
+ * at a host frame. `stripBoilerplate` erases echoes, so this one is marked
+ * before it runs. Nobody types a `<command-name>` in front of their own words.
+ */
+const COMMAND_ECHO = /<command-name>[\s\S]*?<\/command-name>/gi;
+const ECHO_MARK = "\u0000echo\u0000";
 
 /** The host's one-line markers: dropped where they stand, since the typed
  *  words after an interrupt are the person's newest. */
@@ -121,11 +136,12 @@ const HOST_MARKERS: readonly RegExp[] = [/^\[Request interrupted by user[^\]\n]*
  * pins each shape.
  */
 export function ownerWords(text: string): string | null {
-  let out = stripBoilerplate(text).text;
+  let out = stripBoilerplate(text.replace(COMMAND_ECHO, ECHO_MARK)).text;
   for (const re of HOST_WRAPPERS) out = out.replace(re, " ");
   const kept: string[] = [];
   for (const para of out.split(/\n[ \t]*\n/)) {
     const probe = para.trim();
+    if (probe.includes(ECHO_MARK)) break;
     if (probe.length === 0 || HOST_MARKERS.some((re) => re.test(probe))) continue;
     if (HOST_OPENERS.some((re) => re.test(probe))) break;
     kept.push(probe);

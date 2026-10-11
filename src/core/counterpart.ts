@@ -2606,8 +2606,11 @@ export class Counterpart {
     });
   }
 
-  /** The wake's "Last said here" line for `here`, or null. Never throws. */
+  /** The wake's "Last said here" line for `here`, or null. Never throws. Only
+   *  in the owner's session (review of #392): a span is the raw slice, which no
+   *  confidential mark has reached yet, so a non-owner wake gets no quote. */
   private lastExchangeLine(here: WakeHere): string | null {
+    if (!this.owner) return null;
     try {
       const ex = this.lastExchange(here);
       return ex === null ? null : lastExchangeLine(ex, { zone: this.store.zone(), now: this.nowFn() });

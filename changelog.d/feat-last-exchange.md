@@ -7,7 +7,8 @@
   with their times, each cut at a sentence. The end-of-session ask and its answer, text the host
   added (reminders, task notifications, subagent reports, slash commands) and tool-only
   turns are skipped. It is read only from what Counterparts already captured in that
-  folder, and never stored. A session that was killed after you typed and before it
+  folder, and never stored, and only in your own sessions: an observer folder, or a
+  session that is not yours, gets no line and no answer. A session that was killed after you typed and before it
   finished replying is named by the last exchange it did finish. The line sits beside "Last
   here" and the handoffs, and is the first of them to give way. Dated items and the page
   always come first.

@@ -2049,13 +2049,13 @@ export class McpServer {
    * row (`noteRecall`).
    */
   private async recallTool(args: Record<string, unknown>): Promise<ToolResult> {
+    if (this.observer) return this.standDown("recall");
     const handle = args["handle"];
-    // THE LAST EXCHANGE (2026-10-11): a read of this directory's span buffer,
-    // which writes nothing — so an observer may ask it too (the brief's rule).
+    // THE LAST EXCHANGE (2026-10-11): a read of this directory's span buffer.
+    // It stands down under observer like the rest of recall (G5, review of #392).
     if (typeof handle === "string" && handle.trim().toLowerCase() === LAST_EXCHANGE_HANDLE && args["question"] === undefined && args["ids"] === undefined) {
       return this.lastExchangeTool();
     }
-    if (this.observer) return this.standDown("recall");
     const question = args["question"];
     const ids = args["ids"];
     if (handle !== undefined && typeof handle !== "string") {
@@ -2170,10 +2170,24 @@ export class McpServer {
    * a day, each cut at a sentence — what the wake's "Last said here" line
    * points at, from the same reader (`Counterpart#lastExchange`). Read at the
    * call and never stored: no memory, no credit, no seen set, no durable row
-   * — a ring event only, so it may answer under observer too. Never another
-   * directory's: the buffer it reads is this one's.
+   * — a ring event only. Never another directory's: the buffer it reads is
+   * this one's. Never reached under observer (recall stands down, G5); and
+   * the words go only to the owner's session (review of #392): a span is the
+   * raw slice, which no confidential mark has reached yet (G6).
    */
   private lastExchangeTool(): ToolResult {
+    if (!this.owner) {
+      this.emit("mcp.recall.lastexchange", undefined, { found: false, owner: false });
+      return this.result(
+        {
+          path: "handle",
+          reason: "owner-only",
+          handle: LAST_EXCHANGE_HANDLE,
+          detail: "The last exchange is read only in the owner's own session.",
+        },
+        false,
+      );
+    }
     const reader = this.session ?? this.hostSession();
     const ex = this.counterpart.lastExchange({
       scope: this.scope,
@@ -2188,7 +2202,7 @@ export class McpServer {
           endedAt: r.endedAt,
         })),
     });
-    this.emit("mcp.recall.lastexchange", undefined, { found: ex !== null, observer: this.observer });
+    this.emit("mcp.recall.lastexchange", undefined, { found: ex !== null });
     if (ex === null) {
       return this.result(
         {
