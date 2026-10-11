@@ -3267,7 +3267,9 @@ export class McpServer {
     const session = this.session as string;
     let out: ReturnType<Counterpart["creditDrewOn"]>;
     try {
-      out = this.counterpart.creditDrewOn(session, raw as string[]);
+      // The calendar day, so a dated memory drawn on stops coming back as a
+      // footnote this window (`Prospective#actedOn`, 2026-10-11).
+      out = this.counterpart.creditDrewOn(session, raw as string[], { at: this.today() });
     } catch (err) {
       return { credited: [], reason: "threw", detail: String((err as Error).message ?? err) };
     }
@@ -3298,6 +3300,9 @@ export class McpServer {
       ...(out.capped.length === 0
         ? {}
         : { capped: out.capped, cap: `At most ${String(DREW_ON_MAX_PER_BOUNDARY)} per boundary, the first named; these were not credited.` }),
+      ...(out.actedOn.length === 0
+        ? {}
+        : { actedOn: out.actedOn, actedOnNote: "Dated memories you acted on: they will not come back as footnotes around this date again." }),
     };
   }
 

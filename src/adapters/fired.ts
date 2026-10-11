@@ -2020,7 +2020,9 @@ function readOccasion(m: Mechanism, store: ReadOnlyStore, log: LogRead, w: Windo
  * span and is due again on its last day (`last-day`); a YEAR is never told.
  * A beat is told when its latch row exists (`prospective.plain`, keyed
  * `<memory>:<window>:<beat>`) on the memory or on any memory its reminder
- * moved from — the same lineage `plainTold` walks.
+ * moved from — the same lineage `plainTold` walks. A day told LATE, inside its
+ * grace (`PlainDue.late`, 2026-10-11), writes the day's own latch, so it reads
+ * here as said.
  *
  * A beat counts as DUE only on a day of the window, today excluded, on which a
  * session a person could be told something in was there AFTER the memory

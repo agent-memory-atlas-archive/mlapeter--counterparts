@@ -483,6 +483,33 @@ were refined by b2+f8 at the review of #369, named where they were):
   directory it falls back on, so the single binary run from `/counterparts:doctor` knows
   itself for the plugin's (before, `runningAsPlugin` read false there).
 
+### Decided by the group-5 builder, 2026-10-11, lightly held (prospective: reminders, item 18)
+
+- Decided by the group-5 builder, 2026-10-11, lightly held: a plain DAY reminder whose day
+  passed untold is told once at the first session inside its 7-day grace, as "This was for
+  Mon 12 Oct 2026: …". It shares the day's latch (no new beat key), so a late telling counts
+  as the day told everywhere that asks, and it can never come twice. A memory written after
+  its day gets no late beat (it was never missed), nor one with no written date. A month's or
+  range's missed last day gets none: it already had its opening beat. Why: review 07 C4 — a
+  person who skips the day lost the reminder silently.
+- Decided by the group-5 builder, 2026-10-11, lightly held: `reference()` is WIRED, not
+  retired. A dated memory named in `drewOn` (and passing its guards: shown, live, not replaced)
+  stops its open window, whether or not its credit lands under the cap or the once-a-day rule.
+  Why: `drewOn` credits half a use and stops nothing, so a reminder the session already acted
+  on still came back as a footnote until its budget (2) ran out; the referenced-stop is the one
+  thing that ends that. A plain reminder keeps its day: until its last beat is told, drawing on
+  it the day before does not silence the telling or its place under "Arriving:".
+- Decided by the group-5 builder, 2026-10-11, lightly held: `exitReport()` is DELETED, and
+  prospective G12 now promises the states its rows name plus the counts already shown (the
+  dashboard's said-plainly / quiet-footnote counts, doctor's plain-due reading). Why: it had no
+  caller; its `superseded-by-reschedule` exit rests on `reschedule()`, which `carryReminder`
+  replaced (also uncalled, left in place); its `faded` exit cannot happen before a date now
+  that the date is held; and the two homes for a caller were a new always-green doctor line or
+  a write-capable engine inside the read-only dashboard.
+- Decided by the group-5 builder, 2026-10-11, lightly held: the Mechanisms panel's "waiting"
+  list shows a repeating date at its next occurrence, with how often it comes round ("every
+  May 14"); one that came back this week is counted under "came back", as a one-off is.
+
 ### Trial, Mike, 2026-10-11, very lightly held (verbatim in the memory's body)
 
 - Trial, Mike, 2026-10-11, very lightly held: verbatim in the memory's body; long-run lean is an

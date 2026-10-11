@@ -52,7 +52,7 @@ index, and `Store.datedMemories(from, to)`. A new column rather than a widened
 
 **Closed 2026-09-26 (PR B).** `note` and `session_end` write `event_date` (an explicit
 field the model fills; never read from text). `arrivals()` enumerates through
-`Store.datedMemories(at − GRACE_DAYS, at + LEAD_DAYS)`, `exitReport()` through
+`Store.datedMemories(at − GRACE_DAYS, at + LEAD_DAYS)`, `exitReport()` (removed 2026-10-11) through
 `datedMemories(…, { archived: true })` plus the new `Store.prospectiveMemoryIds()`; no
 `store.list()` scan is left. `contentDates` reads `ProseDoc.eventDate` alone — the
 `happenedOn` reading and the `meta.eventDate` convention are dropped (NOTES §12). A range
