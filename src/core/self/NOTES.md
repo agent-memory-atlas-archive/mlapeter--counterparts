@@ -2034,7 +2034,8 @@ random-f8's, lightly held.
   page chosen in that much less room (`elsewhereRoomBytes`, only when there is a line), the
   line floor furniture like the Yesterday line (the trim loop no longer touches it), and its
   `ROOM_ORDER` rank above `pageBorrow`, below `due` — `takeRoom` steps it down for a due-day
-  plain reminder alone. Measured in the owner-like test: the page fits its own room less
+  plain reminder alone, and `composeLanes` steps a borrowing page down before the line
+  narrows (the render alone would narrow the line first). Measured in the owner-like test: the page fits its own room less
   the line, so it gave 0 bytes; "Still open" listed one item fewer.
 - **The preface says so:** "— assembled at session start" in place of "— composed at the
   last boundary" (fewer bytes, inside `PREFACE_RESERVE_BYTES`).

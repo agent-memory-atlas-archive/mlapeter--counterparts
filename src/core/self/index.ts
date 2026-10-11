@@ -1104,17 +1104,28 @@ export class Self {
     // than the first rung that borrows nothing. The page within its own room
     // outranks it, so when even that does not list it, the wake stays as it
     // was composed, and doctor says so (`self.briefing`'s `trimmedLanes`).
+    //
+    // AND TO THE "TODAY, ELSEWHERE" LINE (2026-10-10, b2 + random-f8, lightly
+    // held; `elsewhere` above `pageBorrow`): when the render printed the line
+    // narrower than its widest form — or not at all — while the page
+    // borrowed, the page steps down the same way. A due-day reminder the
+    // render listed by stepping the line down is never given back for it.
     const due = lanes.horizon.filter((r) => r.due === true).map((r) => r.id);
     const unlisted = (o: BriefingResult): boolean => due.some((id) => !o.kept.horizon.includes(id));
+    const lineBytes = (o: BriefingResult): number => elsewhereRoomBytes(o.elsewhere);
+    const short = (o: BriefingResult): boolean => lineBytes(o) < away;
+    const better = (a: BriefingResult, b: BriefingResult): boolean =>
+      unlisted(b) !== unlisted(a) ? !unlisted(a) : lineBytes(a) > lineBytes(b);
+    let best = out;
     let current = chosen;
-    while (due.length > 0 && current.took > 0 && unlisted(out) && current.block !== null && current.block !== NO_ROOM) {
+    while (current.took > 0 && (unlisted(best) || short(best)) && current.block !== null && current.block !== NO_ROOM) {
       const next = choose(current.block.rung);
       if (next.block === null || next.block === NO_ROOM) break;
       const stepped = renderWith(next);
-      if (!unlisted(stepped)) return stepped;
+      if (better(stepped, best)) best = stepped;
       current = next;
     }
-    return out;
+    return best;
   }
 
   /**
