@@ -133,6 +133,10 @@ const PLAIN_WORDS: Partial<Record<StoreErrorCode, string>> = {
   STORE_PRE_ROWS:
     "this store keeps its memories in files, which this build does not read — it was written before the floor changed; the build that reads it is the tag floor/v5-last",
   MIGRATION_SNAPSHOT_FAILED: "upgrade not run — the copy taken first failed; the store is unchanged",
+  // An instruction too, for the same reason: the rollback that left this hold
+  // printed the way on, and a session is where the owner meets it next.
+  STORE_ROLLED_BACK:
+    "this store was rolled back to an older version; install that version, or run counterparts rollback --upgrade-again to upgrade it again",
   SQLITE_UNAVAILABLE: "this runtime has no SQLite binding",
   DATA_DIR_FORBIDDEN: "the configured data dir is one this build refuses to open",
   STORE_UNINITIALIZED: "there is no store here yet, or it is a schema behind",

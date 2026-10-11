@@ -108,6 +108,12 @@ the first whose danger is not deletion but MOVEMENT. It resolves its store from 
 CONFIGURATION rather than from `--dir`, which it refuses in words: the store that matters
 is the one the hooks and the MCP server open, and a second answer on the command line is
 how the wrong one would get moved.*
+*`rollback` (2026-10-11) is the third: it puts a store back from the copy its last upgrade
+took, sets the upgraded database and cache aside by rename (never deleted), and leaves a
+hold the store's own constructor honours (`store/rollback-hold.ts`). Unlike `start-fresh` it
+takes `--dir` — a name, as for `doctor` — and without one reads the configuration's
+`dataDir`. It asks for a typed word at a terminal and refuses `--yes` there; `--yes` is the
+door for a pipe. Rules and reasons: `cli/rollback.ts`.*
 *`self-page` is deliberately NOT on `OWNER_OPS`, and it is the second command with a
 reason of its own for that (`scope` is the first). It both READS and writes: reading the
 page must work from an instrument, because "what does my page actually say" is the first

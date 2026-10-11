@@ -151,6 +151,14 @@ export type StoreErrorCode =
    * `{ path, found, expected, dir, reason, remedy }`.
    */
   | "MIGRATION_SNAPSHOT_FAILED"
+  /**
+   * `counterparts rollback` put this store back on an older schema and left its
+   * hold (`rollback-hold.ts`), so this build opens it neither to upgrade it nor
+   * to read it: a read would build this build's cache beside the old store.
+   * Refused in `Store`'s constructor before anything is created or opened.
+   * `detail` carries `{ dir, from, to, at, snapshot, aside, remedy }`.
+   */
+  | "STORE_ROLLED_BACK"
   | "SQLITE_UNAVAILABLE"
   | "LAYOUT_UNCLASSIFIED";
 

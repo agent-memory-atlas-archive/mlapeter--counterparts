@@ -49,6 +49,7 @@ import {
   isCalendarDate,
   isDay,
   isRecurrence,
+  isoInstant,
   localDate,
   parseCalendarDate,
   resolveZone,
@@ -101,6 +102,7 @@ import type {
   WakeDisplayRow,
 } from "./operational.js";
 import { grantOwnerOps } from "./owner-op-seam.js";
+import { rollbackHeld } from "./rollback-hold.js";
 import {
   DATABASE_FILE,
   LAYOUT,
@@ -180,6 +182,15 @@ export type {
   TombstoneRow,
   MigrationNote,
 } from "./operational.js";
+export {
+  ROLLBACK_HOLD_DIR,
+  ROLLBACK_HOLD_FILE,
+  readRollbackHold,
+  rollbackHeld,
+  rollbackHoldPath,
+  writeRollbackHold,
+} from "./rollback-hold.js";
+export type { RollbackHold } from "./rollback-hold.js";
 export {
   PRE_MIGRATION_NAME_RE,
   PRE_MIGRATION_TAG,
@@ -321,6 +332,12 @@ export interface StoreOptions extends Stance {
    * refuses to migrate (`MIGRATION_SNAPSHOT_FAILED`).
    */
   snapshotsDir?: string;
+  /**
+   * Open past a rollback's hold (`rollback-hold.ts`) and, if the store is
+   * behind, upgrade it from a NEW pre-migration copy. Only
+   * `counterparts rollback --upgrade-again` sets it; it clears the hold after.
+   */
+  releaseRollbackHold?: boolean;
 }
 
 export interface PutInput {
@@ -1145,6 +1162,30 @@ export class Store {
       });
     }
 
+    // A ROLLBACK'S HOLD, SECOND, for the first one's reason: nothing below may
+    // run on a store `counterparts rollback` took back to an older schema. A
+    // writer would upgrade it again, and an observer would build this build's
+    // cache beside it, which the older build then refuses (`rollback-hold.ts`).
+    if (opts.releaseRollbackHold !== true) {
+      const hold = rollbackHeld(this.dir);
+      if (hold !== null) {
+        const h = hold === "unreadable" ? null : hold;
+        throw new StoreError("STORE_ROLLED_BACK", {
+          dir: this.dir,
+          from: h?.from ?? null,
+          to: h?.to ?? null,
+          at: h === null ? null : isoInstant(h.at),
+          snapshot: h?.snapshot ?? null,
+          aside: h?.aside ?? null,
+          remedy:
+            `This store was rolled back${h === null ? "" : ` to schema v${h.to}`} with counterparts rollback, ` +
+            "so this build leaves it alone: install the version you went back to, or run " +
+            `counterparts rollback --dir ${this.dir} --upgrade-again to upgrade it again ` +
+            "(or --undo to put the newer store back).",
+        });
+      }
+    }
+
     // AN INSTRUMENT WRITES NOTHING AT OPEN when there is a store to read.
     //
     // The old constructor ran the DDL and four meta upserts on every open,
@@ -1183,6 +1224,7 @@ export class Store {
       localToday: localDate(this.nowFn(), resolveZone(this.configuredZone)),
       retentionDays: this.retentionDays,
       ...(opts.snapshotsDir === undefined ? {} : { snapshotsDir: opts.snapshotsDir }),
+      ...(opts.releaseRollbackHold === true ? { freshMigrationCopy: true } : {}),
       onMigrated: (note) => {
         migration = note;
       },
