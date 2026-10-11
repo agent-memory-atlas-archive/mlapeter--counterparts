@@ -81,6 +81,8 @@ reverse older defaults and contract lines; those go to the rules audit.
   564/768 at +7, 479/697 at +30 lived days (729/770 and 660/747 without the era); no memory
   archived because of it by +7, 50 more than without it by +30 (73 against 23); the core
   13/13, memories about the owner or us and the pending tax reminders unchanged.
+  "Said by the owner" is the `said_by` field, which exists only on memories written since
+  10-08: "Protecting early memories is lower priority than a great, stable system; old memories, including Mike's pre-10-08 rulings (no said_by), may fade (Mike, 2026-10-10)."
 
 ### Decided by b2+f8, 2026-10-10, lightly held; revisit after ~5 lived days
 
