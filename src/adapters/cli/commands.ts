@@ -856,7 +856,7 @@ export const COMMAND_BLURB: Record<Command, string> = {
   "repair-merged-beliefs":
     "Put back beliefs and current-state rows the nightly dedup pass archived as duplicates of an ordinary memory. Dry run unless --apply. --apply requires --dir.",
   "claims-era":
-    "The old-claims era: memories written before this build reached the store, with a claim made under the old field text, are read by the curve at the default for what they are about (work, the world, me) when that is lower. The core, memories about the owner or us, said by the owner, protected, and dated ones still ahead or repeating keep their claim. No claim is rewritten. With no flags it says whether the era is on, since when, and how many memories it affects; --off reads every claim as stored again (a memory let go at the floor meanwhile stays archived, readable by id), --on puts the same cutoff back. Reading works under observer; the switch refuses there.",
+    "The old-claims era: memories written before this build reached the store are read by the curve at today's default for what they are about (work, the world, me, the owner or us). A default the old build filled in reads at today's, higher or lower; a claim made under the old field text reads at it only when that is lower, and the core, memories about the owner or us, said by the owner, protected, and dated ones still ahead or repeating keep their claim. No claim is rewritten. With no flags it says whether the era is on, since when, and how many memories it reads lower and higher; --off reads every claim as stored again (a memory let go at the floor meanwhile stays archived, readable by id), --on puts the same cutoff back. Reading works under observer; the switch refuses there.",
   rebrief: "Re-render and republish the wake bundle NOW, through the boundary's own renderer.",
   "probe-oq4":
     "The OQ4 probe: footnotes delivered vs. later expanded, by calendar date, from recall.decision and recall.credit rows, then recall's hit rate — of what it showed, how much a reply expanded or quoted, loud, footnoted and pointer. Read-only.",
@@ -1162,7 +1162,7 @@ const CORE_FLAG_HELP: Record<string, string> = {
 
 /** `claims-era`'s own two (2026-10-10): `--on` / `--off` mean something else under `scope`. */
 const CLAIMS_ERA_FLAG_HELP: Record<string, string> = {
-  on: "read old claims at their default again, from the same cutoff as before",
+  on: "read old claims and defaults at today's default again, from the same cutoff as before",
   off: "read every claim as stored again (no claim was rewritten); a memory let go at the floor while it was on stays archived, readable by id",
 };
 
@@ -2740,8 +2740,9 @@ function coreCommand(dir: string, io: Io, parsed: Parsed, observer: boolean, nam
  * `claims-era` — the old-claims era's switch (2026-10-10; decided by Mike,
  * 2026-10-10, loosely held). With no flags it reads; `--off` deletes the
  * cutoff the curve reads (`store/operational.ts#CLAIMS_ERA_CUTOFF_KEY`), so
- * every claim reads as stored again; `--on` puts back the cutoff first
- * recorded. The READING is what toggles: a memory the floor prune archived
+ * every claim reads as stored again — old explicit claims read down and old
+ * defaults read up or down alike (2026-10-11); `--on` puts back the cutoff
+ * first recorded. The READING is what toggles: a memory the floor prune archived
  * while the era was on stays archived (no door un-archives a `pruned` row).
  * Either takes effect at the next nightly pass (the curve's signature carries
  * the cutoff, so every next-change day is recomputed once).
@@ -2781,7 +2782,7 @@ function claimsEraCommand(dir: string, io: Io, parsed: Parsed, observer: boolean
       store.setMeta(CLAIMS_ERA_CUTOFF_KEY, String(recorded));
       const era = store.claimsEra();
       io.out(
-        `On: memories written before ${day(recorded)} with a claim made under the old text are read at their default — ${String(era.affected)} ${era.affected === 1 ? "memory" : "memories"} now.`,
+        `On: memories written before ${day(recorded)} are read at today's default for what they are about — ${String(era.affected)} ${era.affected === 1 ? "memory" : "memories"} now${eraSplit(era)}.`,
       );
       io.out("  It takes effect at the next nightly pass. `counterparts claims-era --off` reads every claim as stored again.");
       return EXIT.ok;
@@ -2791,19 +2792,25 @@ function claimsEraCommand(dir: string, io: Io, parsed: Parsed, observer: boolean
       io.out(
         era.recorded === null
           ? "Off: no cutoff recorded yet (a writable open records one). Every claim reads as stored."
-          : `Off: every claim reads as stored. \`counterparts claims-era --on\` reads the ones written before ${day(era.recorded)} at their default again.`,
+          : `Off: every claim reads as stored. \`counterparts claims-era --on\` reads the ones written before ${day(era.recorded)} at today's default again.`,
       );
       return EXIT.ok;
     }
     io.out(
-      `On since ${day(era.cutoff)}: ${String(era.affected)} ${era.affected === 1 ? "memory" : "memories"} written before it with a claim made under the old text ${era.affected === 1 ? "is" : "are"} read at the default for what ${era.affected === 1 ? "it is" : "they are"} about. No claim was rewritten.`,
+      `On since ${day(era.cutoff)}: ${String(era.affected)} ${era.affected === 1 ? "memory" : "memories"} written before it ${era.affected === 1 ? "is" : "are"} read at today's default for what ${era.affected === 1 ? "it is" : "they are"} about${eraSplit(era)}. No claim was rewritten.`,
     );
-    io.out("  Kept as claimed: the core, memories about the owner or us, said by the owner, protected, and dated ones still ahead or repeating.");
+    io.out("  Lower: a claim made under the old text, or an old default above today's. Higher: an old default below today's.");
+    io.out("  An explicit claim is kept as claimed for the core, memories about the owner or us, said by the owner, protected, and dated ones still ahead or repeating, and wherever it is already at or below the default.");
     io.out("  `counterparts claims-era --off` reads every claim as stored again.");
     return EXIT.ok;
   } finally {
     counterpart.close();
   }
+}
+
+/** The era's two directions, in a clause (2026-10-11): empty when it reads none. */
+function eraSplit(era: { affected: number; down: number; up: number }): string {
+  return era.affected === 0 ? "" : ` (${String(era.down)} lower than stored, ${String(era.up)} higher)`;
 }
 
 /**

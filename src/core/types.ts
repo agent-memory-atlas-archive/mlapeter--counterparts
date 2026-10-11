@@ -218,9 +218,10 @@ export interface MemoryPhysics {
   /**
    * THE OLD-CLAIMS ERA (2026-10-10, physics §5.1) — NOT a column: computed at
    * the read seam (`store/operational.ts#eraClaimOf`). For a memory written
-   * before the store's `claims.era.cutoff` under the old claim text, the
-   * claim the CURVE reads (`physics#curveSal`) in place of `salience.claimed`:
-   * the default for what it is about, when that is lower. The stored claim is
+   * before the store's `claims.era.cutoff`, the claim the CURVE reads
+   * (`physics#curveSal`) in place of `salience.claimed`: today's default for
+   * what it is about — for a default, either way (2026-10-11); for an explicit
+   * claim, only when that is lower. The stored claim is
    * never rewritten — `updatePhysics` does not know this field, so a physics
    * object written back cannot carry it into the `claimed` column. Absent or
    * null: the curve reads the stored claim.

@@ -2892,8 +2892,8 @@ export function writeFieldFindings(store: Store): Finding[] {
 /**
  * THE OLD-CLAIMS ERA, informational, never amber or red (2026-10-10; decided
  * by Mike, 2026-10-10, loosely held): whether the curve reads old claims at
- * their default, since when, and how many live memories that affects
- * (`Store#claimsEra`). Silent on a store with no cutoff ever recorded.
+ * today's default, since when, and how many live memories that affects, read
+ * lower and read higher (`Store#claimsEra`). Silent on a store with no cutoff ever recorded.
  */
 export function claimsEraFindings(store: Store): Finding[] {
   let era: ReturnType<Store["claimsEra"]>;
@@ -2904,15 +2904,20 @@ export function claimsEraFindings(store: Store): Finding[] {
   }
   if (era.cutoff === null && era.recorded === null) return [];
   const n = (k: number): string => `${String(k)} ${k === 1 ? "memory" : "memories"}`;
+  // Both ways since 2026-10-11: lower (an old claim, or an old default above
+  // today's), higher (an old default below today's).
+  const split = era.affected === 0 ? "" : ` (${String(era.down)} lower than stored, ${String(era.up)} higher)`;
   const detail =
     era.cutoff === null
-      ? "off: every claim reads as stored (counterparts claims-era --on reads the old ones at their default again)"
-      : `on since ${localDate(era.cutoff, readingZone)}: ${n(era.affected)} written before it read at the default for what ${era.affected === 1 ? "it is" : "they are"} about, not the claim made under the old text; nothing rewritten (counterparts claims-era --off reads them as claimed again; any let go meanwhile stay archived)`;
+      ? "off: every claim reads as stored (counterparts claims-era --on reads the old ones at today's default again)"
+      : `on since ${localDate(era.cutoff, readingZone)}: ${n(era.affected)} written before it read at today's default for what ${era.affected === 1 ? "it is" : "they are"} about${split}; nothing rewritten (counterparts claims-era --off reads them as stored again; any let go meanwhile stay archived)`;
   return [
     finding("claims-era", "green", "Old claims", detail, "", {
       on: era.cutoff !== null,
       cutoff: era.cutoff,
       affected: era.affected,
+      down: era.down,
+      up: era.up,
     }),
   ];
 }
@@ -5121,7 +5126,7 @@ export function doctorFindings(input: DoctorInput): Finding[] {
     ["upgrade-v11", () => upgradeV11Findings(store)],
     // v12 (2026-10-03): the writer's three fields, and the subject links. Two aggregates.
     ["write-fields", () => writeFieldFindings(store)],
-    // 2026-10-10: the old-claims era — on or off, and how many it reads at their default.
+    // 2026-10-10: the old-claims era — on or off, and how many it reads at today's default (lower, higher).
     ["claims-era", () => claimsEraFindings(store)],
     ["recognition-lane", () => recognitionLaneFindings(store)],
     ["contradictions", () => contradictionFindings(store)],

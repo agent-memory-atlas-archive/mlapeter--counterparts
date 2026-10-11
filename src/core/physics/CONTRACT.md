@@ -137,6 +137,10 @@ first writable open by this build) with an explicit claim is read by the CURVE �
 `curveSal(m)`, through `salArm` and `steepnessInput` — at `defaultClaimFor(...)` when that is
 lower, carried on `MemoryPhysics.eraClaim` from the read seam (`store/operational.ts#eraClaimOf`).
 Exempt: the core, about owner/us, said by the owner, protected, a pending or repeating date.
+**Extended 2026-10-11 (Mike, lightly held):** an old DEFAULT (`meta.claimedDefault`) reads at
+today's `defaultClaimFor(...)` in either direction and with no exemptions — an owner memory
+written at the old flat 0.25 reads 0.40 — so an upgrader reads what a fresh install writes;
+the curve signature's `eraReads: 2` re-curves a store signed before it once.
 The stored claim is never rewritten (`eraClaim` is not a column), so "an explicit claim is
 never overridden" holds for the claim as stored; `sal(m.salience)` still reads it. Deleting
 the key (`counterparts claims-era --off`) restores the old reading exactly — the reading, not

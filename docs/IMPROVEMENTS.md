@@ -126,6 +126,17 @@ reverse older defaults and contract lines; those go to the rules audit.
   13/13, memories about the owner or us and the pending tax reminders unchanged.
   "Said by the owner" is the `said_by` field, which exists only on memories written since
   10-08: "Protecting early memories is lower priority than a great, stable system; old memories, including Mike's pre-10-08 rulings (no said_by), may fade (Mike, 2026-10-10)."
+  **Extended by Mike, 2026-10-11, lightly held:** "A pre-cutoff memory reads at today's
+  default for its about, unless explicitly claimed lower." So an old DEFAULT (no claim; the
+  seam filled in the flat 0.25 of its day, `meta.claimedDefault`) now reads at today's default
+  too, up or down — an owner/us memory 0.40, a done work event 0.20 — while explicit claims
+  keep the reading above. Why: consistency between old and new defaults, not protection of the
+  old store; an upgrader gets what a fresh install gets. On a copy of the store, 18 owner/us
+  memories written 10-08..10-10 at the old 0.25 went below reach on the first pass. On a
+  synthetic store shaped like it (18 owner/us at the 0.25 default, written 10-08..10-10, no
+  uses): below reach 12/18 on the first pass, 18/18 by +7 lived days as stored; 0/18 at +0
+  and +7, 6/18 at +14, 18/18 at +30 read at today's 0.40 — none archived by +30 either way.
+  The curve signature carries `eraReads: 2`, so a store signed before it re-curves once.
 
 ### Decided by b2+f8, 2026-10-10, lightly held; revisit after ~5 lived days
 
@@ -299,6 +310,10 @@ were refined by b2+f8 at the review of #369, named where they were):
 - Decided by the about-marks builder, 2026-10-11, lightly held: the reflection's unmarked offer keeps a room of its own — exactly what the offered ids cost as lines, held back from the shared room — and an offered memory the shared fit left waiting or showed as a bare id is shown as a line in it. Why: on 10-10 the offer fitted to nothing (`fit.notShown` 356); a synthetic full night (700 recent memories) offered 0 of 11 before and 5 of 5 after. A reserve rather than a higher priority, because the top priority would also hand the offer whole texts first on exactly the tight nights. Unmarked skills are offered too (the review: 5 of 34 read as personal, and nothing else ever offered them).
 - Decided by the about-marks builder, 2026-10-11, lightly held: `counterparts about` (and the dashboard through it) marks an archived memory rather than refusing it, and says it is archived. Why: an archived memory can come back (a use, a body mention), and the mark should be right when it does; `setAbout` already took archived rows. An earlier version's id forwards to the current one and says so.
 - Decided by the about-marks builder, 2026-10-11, lightly held: a mark set by `remember`'s `remark` is recorded `about_by = 'self'` (a new value in a text column, no schema change). Why: the brief asked for "by self", `writer` is the mark given at birth, and `self` is already the store's word for the counterpart (`said_by`). The remark takes the reflection's rules: only a memory the session was shown (as `feelingsNow`), a dream's or a reflection's words only toward work or world, a missing why recorded rather than refused; a confidential memory outside the owner's session is not found. The owner's door has none of these limits.
+
+### Decided by the era-defaults builder, 2026-10-11, lightly held (old defaults at today's default)
+
+- Decided by the era-defaults builder, 2026-10-11, lightly held: the era's exemptions (the core, about owner/us, said by the owner, protected, a pending or repeating date) apply to explicit claims only; an old default reads at today's default whatever it is, so a protected or pending done-work default reads 0.20, not its stored 0.25. Why: the ruling's one exception is "explicitly claimed lower", and a default was nobody's claim; the exempt are held or unprunable by other means anyway, so this moves a reading, not an archive.
 
 ### Decided by the drewOn builder, 2026-10-11, lightly held (`drewOn`, item 3 above)
 
