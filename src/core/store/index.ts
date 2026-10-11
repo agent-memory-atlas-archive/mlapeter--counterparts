@@ -962,6 +962,8 @@ export const WRITE_METHODS = [
   "restoreEdge",
   // 2026-09-28 (association build 1): the flush sweeps edge rows that carry nothing.
   "sweepEdges",
+  // 2026-10-11 (Group 4): rows with an endpoint archived for good.
+  "sweepArchivedEdges",
   "retractFeelings",
   "retractDreamReturns",
   "retractDreamNominations",
@@ -3361,6 +3363,36 @@ export class Store {
       return doomed.length;
     });
     if (n > 0) this.emit("store.edge.swept", undefined, { count: n });
+    return n;
+  }
+
+  /**
+   * Remove the edge rows with an endpoint ARCHIVED FOR GOOD (2026-10-11, Group
+   * 4 item 5; review 06 C3): archived for one of `reasons`, whose links were
+   * carried to what replaced it when it was archived. Such a row can never
+   * conduct again (the conducting predicate refuses an archived end), so it is
+   * only rows. A pinned memory's rows stay, as in `sweepEdges`. The caller
+   * names the reasons; a decay archive is never one of them, so a memory that
+   * comes back keeps its trails. Returns how many rows went.
+   */
+  sweepArchivedEdges(reasons: readonly string[]): number {
+    if (reasons.length === 0) return 0;
+    const marks = reasons.map(() => "?").join(", ");
+    const n = this.mutate("sweepArchivedEdges", () => {
+      const doomed = this.ops.all<{ src: string; dst: string }>(
+        `SELECT e.src, e.dst FROM edges e
+          WHERE EXISTS (SELECT 1 FROM memories m
+                         WHERE m.id IN (e.src, e.dst) AND m.archived = 1 AND m.archived_reason IN (${marks}))
+            AND NOT EXISTS (SELECT 1 FROM memories m
+                             WHERE m.id IN (e.src, e.dst) AND m.protected = 1)`,
+        ...reasons,
+      );
+      if (doomed.length === 0) return 0;
+      const st = this.ops.prepare("DELETE FROM edges WHERE src = ? AND dst = ?");
+      for (const e of doomed) st.run(e.src, e.dst);
+      return doomed.length;
+    });
+    if (n > 0) this.emit("store.edge.swept", undefined, { count: n, archived: true });
     return n;
   }
 

@@ -263,6 +263,8 @@ describe("(a) the links a regrown copy was left holding before this are carried 
     const n = neighbour(c);
     coUse(c, first, n, 2);
     c.associate.retargetOnSupersede = () => NO_RETARGET;
+    // The builds before 2026-10-11 did not sweep an archived copy's rows (Group 4 item 5).
+    (c.store as unknown as { sweepArchivedEdges?: unknown }).sweepArchivedEdges = undefined;
     const second = regrow(c).newCopy;
     coUse(c, second, n, 4);
     coUse(c, first, second, 1);

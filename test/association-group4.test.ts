@@ -12,7 +12,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Counterpart } from "../src/core/counterpart.js";
-import { TUNABLES as ASSOCIATE_TUNABLES, planAtWrite } from "../src/core/associate/index.js";
+import { TUNABLES as ASSOCIATE_TUNABLES, TERMINAL_ARCHIVE_REASONS, planAtWrite } from "../src/core/associate/index.js";
+import { DREAM_MERGE_REASON } from "../src/core/dream/index.js";
+import { EPISODE_REGROWN_REASON } from "../src/core/leaving.js";
 import { ASKED_KIND, askedTurn, freshGateState, loadGateState, saveGateState } from "../src/core/recall/index.js";
 import type { GateState } from "../src/core/recall/index.js";
 import { DREAM_TUNABLES } from "../src/core/dream/tunables.js";
@@ -250,5 +252,74 @@ describe("3. replay deposits (review 06 C2)", () => {
     ]));
     expect(c.dreams.begin({ session: "night" }).ok).toBe(true);
     for (const f of fresh) expect(c.associate.weightAt(f, old, day)).toBeCloseTo(0.3, 10);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 5. The sweep: rows whose endpoint is archived for good
+// ═══════════════════════════════════════════════════════════════════════════
+describe("5. rows with an endpoint archived for good are swept (review 06 C3)", () => {
+  test("the reasons are the regrown copy's and the dream merge's — the constants those paths write", () => {
+    expect([...TERMINAL_ARCHIVE_REASONS].sort()).toEqual([DREAM_MERGE_REASON, EPISODE_REGROWN_REASON].sort());
+  });
+
+  test("after a flush: regrown and dream-merge rows go; a decay archive, a correction and a pinned memory keep theirs", async () => {
+    const clock = { now: Date.UTC(2026, 8, 1, 9) };
+    const c = brainAt(clock);
+    c.store.advanceClock("2026-09-01");
+    const hub = memoryIn(c, "s0", "The hub every other memory is linked to.");
+    const ends = Object.fromEntries(
+      ["regrown", "merged", "decayed", "corrected", "live"].map((k) => [k, memoryIn(c, "s0", `The ${k} end of a link.`)]),
+    ) as Record<string, string>;
+    ends["pinned"] = c.store.put({ type: "memory", kind: "fact", body: "The pinned end of a link.", origin: { session: "s0" }, physics: { protected: true } });
+    await c.sessionEnd({ date: "2026-09-01", budgetBytes: 9000 });
+    const day = c.store.livedDay();
+    c.store.linkMany(Object.values(ends).flatMap((e) => [
+      { src: hub, dst: e, weight: 0.2, day },
+      { src: e, dst: hub, weight: 0.2, day },
+    ]));
+    c.store.archive(ends["regrown"]!, EPISODE_REGROWN_REASON);
+    c.store.archive(ends["merged"]!, DREAM_MERGE_REASON);
+    c.store.archive(ends["decayed"]!, "pruned");
+    c.store.archive(ends["corrected"]!, "corrected");
+    c.store.archive(ends["pinned"]!, EPISODE_REGROWN_REASON);
+    // Any flush sweeps: here, a co-use the boundary lands.
+    c.associate.absorb([{ a: hub, b: ends["live"]!, delta: 0.1 }]);
+    const report = c.associate.flush();
+    // Every row touching the two (the hub's, and the boundary's own contiguity rows).
+    const touching = (x: string): number => c.store.allEdges().filter((e) => e.src === x || e.dst === x).length;
+    expect(report.sweptArchived).toBeGreaterThanOrEqual(4);
+    expect(touching(ends["regrown"]!) + touching(ends["merged"]!)).toBe(0);
+    const linked = (x: string): boolean => c.store.edgesFrom(hub).some((e) => e.dst === x) || c.store.edgesFrom(x).some((e) => e.dst === hub);
+    expect(linked(ends["regrown"]!)).toBe(false);
+    expect(linked(ends["merged"]!)).toBe(false);
+    for (const k of ["decayed", "corrected", "pinned", "live"]) expect(linked(ends[k]!)).toBe(true);
+  });
+
+  test("a dream's undo brings a merge's originals back WITH the merged memory's links", () => {
+    const clock = { now: Date.UTC(2026, 4, 30, 22) };
+    const c = brainAt(clock);
+    c.store.advanceClock("2026-05-20");
+    const friend = memoryIn(c, "s0", "An older memory the near-copies are both linked to.");
+    for (let d = 21; d <= 30; d += 1) c.store.advanceClock(`2026-05-${String(d)}`);
+    const a = memoryIn(c, "s1", "The ferry to the island leaves at eight from the north pier.");
+    const b = memoryIn(c, "s1", "The island ferry departs from the north pier at eight.");
+    const day = c.store.livedDay();
+    c.store.linkMany([a, b].flatMap((x) => [
+      { src: x, dst: friend, weight: 0.2, day },
+      { src: friend, dst: x, weight: 0.2, day },
+    ]));
+    const begun = c.dreams.begin({ session: "night" });
+    if (!begun.ok) throw new Error(`begin refused: ${begun.reason}`);
+    const out = c.dreams.propose({ dream: begun.bundle.dream, session: "night", changes: [{ action: "merge", ids: [a, b], text: "The island ferry leaves the north pier at eight." }] });
+    if (!out.ok) throw new Error("propose refused");
+    const merged = out.results[0]?.id as string;
+    expect(c.associate.linked(merged, friend)).toBe(true);
+    // A flush sweeps the originals' rows: they are archived for good.
+    c.associate.absorb([{ a: merged, b: friend, delta: 0.01 }]);
+    expect(c.associate.flush().sweptArchived).toBeGreaterThan(0);
+    expect(c.store.edgesFrom(a)).toEqual([]);
+    expect(c.dreams.undo(begun.bundle.dream).ok).toBe(true);
+    for (const x of [a, b]) expect(c.associate.linked(x, friend)).toBe(true);
   });
 });

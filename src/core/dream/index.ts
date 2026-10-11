@@ -2177,7 +2177,14 @@ export class Dreams {
           }
           for (const orig of from) {
             try {
-              this.store.restoreSuperseded(orig, DREAM_MERGE_REASON);
+              // CARRIED BACK (Group 4 item 5, 2026-10-11): the merge handed the
+              // originals' links to the merged memory, and a merge's
+              // originals' own rows are swept as archived for good
+              // (`associate.TERMINAL_ARCHIVE_REASONS`) — so an original that
+              // comes back takes the merged memory's links with it.
+              if (this.store.restoreSuperseded(orig, DREAM_MERGE_REASON) && c.ref !== null) {
+                this.ctx.retarget?.(c.ref, orig, this.store.livedDay());
+              }
             } catch {
               /* removed since: nothing to restore */
             }

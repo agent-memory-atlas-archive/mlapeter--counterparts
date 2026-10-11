@@ -509,3 +509,14 @@ evaporation can do it.
   (`replayPairs`, `replayLinks`, `replayNoRoom`). Neighbours are by meaning where a vector
   exists and by rare title words where not (`Dreams#near`), so on a store without vectors
   the replay links by words.
+- **The archived-for-good sweep** (item 5, review 06 C3, D2; `TERMINAL_ARCHIVE_REASONS`,
+  `Store#sweepArchivedEdges`). After every flush, rows with an end archived as
+  `episode-regrown` or `dream-merge` are deleted (pinned ends excepted): those paths carry
+  their links to what replaced them at archive time (NOTES §15; the merge's retarget), so
+  the rows are inert copies. On the 10-10 copy that was 1,135 of 1,159 inert rows. A dream's
+  undo now carries the merged memory's links back to each original it restores, since the
+  originals' own rows are gone. Left alone: decay archives, so a memory that comes back
+  keeps its trails; and `corrected` (24 rows on 10-10), because a corrected settle does not
+  carry its links today and its undo brings the memory back — sweeping it would drop them.
+  That is the reconsolidation lane's to carry first. Counted as `sweptArchived` on the
+  boundary's row (part of `swept`).

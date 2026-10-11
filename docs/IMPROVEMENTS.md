@@ -632,6 +632,14 @@ were refined by b2+f8 at the review of #369, named where they were):
   bundle being put in front of the dreamer, which happens whether or not the dreamer then
   changes anything (a headless run that fails still replayed); the dreamer chose none of
   these pairs, and a 0.05 trail nothing confirms is gone in about 27 lived days.
+- Decided by the Group 4 builder, 2026-10-11, lightly held: the sweep of rows with an end
+  archived for good covers `episode-regrown` and `dream-merge` only, not `corrected` (review
+  06 C3 listed all three); and a dream's undo of a merge now carries the merged memory's
+  links back to each original it restores. Why: a corrected settle does not carry the
+  corrected memory's links to the one that holds (only a supersede retargets), and the
+  owner can undo a settle, which un-archives it — sweeping would drop links that were never
+  carried. `corrected` joins the list once its settle carries links (the reconsolidation
+  lane's). `corrected` was 24 of the 1,159 inert rows on 10-10.
 
 ### Also noted
 

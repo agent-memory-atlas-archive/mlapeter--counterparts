@@ -5486,6 +5486,8 @@ export class Counterpart {
       blocked: edges.blocked,
       evicted: edges.evictions.length,
       swept: edges.swept,
+      // Of them, rows with an end archived for good (Group 4 item 5).
+      ...(edges.sweptArchived === undefined ? {} : { sweptArchived: edges.sweptArchived }),
       dropped: edges.dropped,
       pendingDropped: 0,
       corrupt: 0,
