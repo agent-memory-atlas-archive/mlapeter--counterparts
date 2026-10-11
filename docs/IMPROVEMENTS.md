@@ -170,12 +170,15 @@ reverse older defaults and contract lines; those go to the rules audit.
 9. **Mood-matched recall turned down (weights 0, code kept), marked for re-test.** Why:
    evidence from the old use metric (lifted memories used 1.3% vs 2.4%); re-test after Group
    1's engaged credit gives a real signal. Not a closed decision. (1c)
+   **Kept. random-06, 2026-10-11, lightly held** (Mike approved random-06's recommendations on every item so far and did not object). The re-test is in docs/CHECK-AFTER.md, now that drewOn gives a use signal.
 10. **"Strongly felt" means above the word's own default, or 0.6 and over**, so the core's fast
    lane can open again (it shut when feeling defaults were capped at 0.55). (1c)
+   **Kept. random-06, 2026-10-11, lightly held** (Mike approved random-06's recommendations on every item so far and did not object).
 11. **Encoding.** `note` becomes `remember` (with `note` kept as an alias for a release or
     two); the new end-of-session ask; salience by attention, not category; the defaults by
     what a memory is about. The `remember` description says to write in the moment, as things
     catch your attention; the ask is the backstop. (1c)
+    **Kept. random-06, 2026-10-11, lightly held** (Mike approved random-06's recommendations on every item so far and did not object).
 12. **One model for "this replaces that".** "Newer in the same slot" is `changed`; one detector
     (the write-time neighbours, plus status lineage or very high similarity) proposes, the
     dream confirms or undoes; the newest in a chain is what comes up on its own. (Group 2)
