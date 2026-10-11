@@ -67,6 +67,8 @@ bun run typecheck && bun tools/changelog/stitch.ts --check && TZ=America/Denver 
 - If someone using Counterparts would notice the change, write its changelog entry as
   `changelog.d/<branch>.md` rather than editing `CHANGELOG.md`
   ([`changelog.d/README.md`](changelog.d/README.md) says how).
+- A new decision for the "Decisions to review" list goes in `docs/decisions.d/<branch>.md`
+  rather than in `docs/IMPROVEMENTS.md` ([`docs/decisions.d/README.md`](docs/decisions.d/README.md)).
 - The package has one runtime dependency, and it is data only: `counterparts-model-potion`,
   the local embedding table recall by meaning runs on (no code, no install scripts). If a
   change adds another, say why.
