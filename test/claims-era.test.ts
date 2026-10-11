@@ -29,7 +29,9 @@ import {
   CLAIMED_DEFAULT_SPELLED,
   CLAIMS_ERA_CUTOFF_KEY,
   CLAIMS_ERA_RECORDED_KEY,
+  ERA_WRITTEN_AT_META,
   RECURRING_META,
+  eraCarriedFrom,
   eraClaimOf,
   rowToPhysics,
 } from "../src/core/store/operational.js";
@@ -404,6 +406,28 @@ describe("eraClaimOf: pure", () => {
     expect(eraClaimOf(base, "200", null)).toBe(PHYSICS.AUTHORED_DEFAULT_CLAIM);
     // Written before v7 (no moment): old.
     expect(eraClaimOf({ ...base, created_at: null }, "200", null)).toBe(PHYSICS.AUTHORED_DEFAULT_CLAIM);
+  });
+
+  test("a merged memory is read at its best source's moment, not its own (2026-10-11)", () => {
+    const merged = { ...base, created_at: 300, meta: JSON.stringify({ [ERA_WRITTEN_AT_META]: 100 }) };
+    expect(eraClaimOf(merged, "200", null)).toBe(PHYSICS.AUTHORED_DEFAULT_CLAIM);
+    expect(eraClaimOf(merged, null, null)).toBeNull();
+    expect(eraClaimOf(merged, "50", null)).toBeNull();
+    // A source written before v7 carried no moment: old under any cutoff.
+    expect(eraClaimOf({ ...merged, meta: JSON.stringify({ [ERA_WRITTEN_AT_META]: null }) }, "200", null)).toBe(PHYSICS.AUTHORED_DEFAULT_CLAIM);
+    // Unreadable meta, or a marker that is not a moment: the row's own.
+    expect(eraClaimOf({ ...merged, meta: "{not json" }, "200", null)).toBeNull();
+    expect(eraClaimOf({ ...merged, meta: JSON.stringify({ [ERA_WRITTEN_AT_META]: "100" }) }, "200", null)).toBeNull();
+  });
+
+  test("eraCarriedFrom: the moment only when the source is old; the default mark whenever it had one", () => {
+    const old = { created_at: 100, meta: JSON.stringify({ [CLAIMED_DEFAULT_SPELLED]: true }) };
+    expect(eraCarriedFrom(old, "200")).toEqual({ [CLAIMED_DEFAULT_SPELLED]: true, [ERA_WRITTEN_AT_META]: 100 });
+    expect(eraCarriedFrom(old, "50")).toEqual({ [CLAIMED_DEFAULT_SPELLED]: true });
+    expect(eraCarriedFrom(old, null)).toEqual({ [CLAIMED_DEFAULT_SPELLED]: true });
+    expect(eraCarriedFrom({ created_at: null, meta: "{}" }, 200)).toEqual({ [ERA_WRITTEN_AT_META]: null });
+    // A merge of a merge: the first source's moment, through.
+    expect(eraCarriedFrom({ created_at: 300, meta: JSON.stringify({ [ERA_WRITTEN_AT_META]: 100 }) }, "200")).toEqual({ [ERA_WRITTEN_AT_META]: 100 });
   });
 });
 

@@ -44,8 +44,27 @@ import type { Fidelity, FitCandidate, Placed } from "../fit/index.js";
 import { emotionalIntensity, sal, strength } from "../physics/index.js";
 import { isHandoff, isSelfPage } from "../recall/index.js";
 import { namesOwner, ownerNames } from "../sleep/index.js";
-import { CARRIED_BY_MAX_CHARS, SAID_BY, STATUSES, checkFeelings, checkTraits, defaultStrength, isStoreError, occurredOnOf, repairEmotion, saidByOf, splitNote, statusOf } from "../store/index.js";
-import type { DreamChangeRow, DreamRow, FeelingInput, MemoryRow, MemoryStatus, ProseDoc, SaidBy, Store } from "../store/index.js";
+import {
+  ABOUT_SETTERS,
+  CARRIED_BY_MAX_CHARS,
+  CLAIMS_ERA_CUTOFF_KEY,
+  CLAIMS_ERA_RECORDED_KEY,
+  CORE_ABOUT_MARKS,
+  SAID_BY,
+  STATUSES,
+  aboutMarkOf,
+  checkFeelings,
+  checkTraits,
+  defaultStrength,
+  eraCarriedFrom,
+  isStoreError,
+  occurredOnOf,
+  repairEmotion,
+  saidByOf,
+  splitNote,
+  statusOf,
+} from "../store/index.js";
+import type { AboutMark, AboutSetter, DreamChangeRow, DreamRow, FeelingInput, MemoryRow, MemoryStatus, ProseDoc, SaidBy, Store } from "../store/index.js";
 import { TUNABLES as PHYSICS } from "../physics/index.js";
 import { addDays, isDay } from "../time.js";
 import { livedOn } from "../types.js";
@@ -1655,6 +1674,21 @@ export class Dreams {
         const best = rs
           .map((r, i) => ({ r, p: phys[i] as ReturnType<Store["physicsOf"]>, s: strength(phys[i] as ReturnType<Store["physicsOf"]>, day) }))
           .sort((x, y) => y.s - x.s)[0] as { r: MemoryRow; p: ReturnType<Store["physicsOf"]> };
+        // WHAT IT IS ABOUT, AND ITS ERA STANDING, from the same best source
+        // (2026-10-11; decided by random-06, lightly held): a merge that
+        // dropped the mark left a personal memory reading as work, hidden
+        // outside its folder; one that dropped the standing was a new row, so
+        // the old-claims era stopped reading its old claim (`mergedAbout`,
+        // `store/operational.ts#eraCarriedFrom`). The writer's three fields
+        // come from the best source too, so the era's default for it is the
+        // one it read for the source.
+        const about = mergedAbout(rs, best.r);
+        const marks = [...new Set(rs.map((r) => aboutMarkOf(r.about) ?? "unmarked"))];
+        if (marks.length > 1) notes.push(`The originals were about different things (${marks.join(", ")}); the merged memory is about ${about?.about ?? "nothing marked"}${about !== null && about.from !== best.r.id ? `, from ${about.from}` : ""}.`);
+        const era = eraCarriedFrom(best.r, this.store.getMeta(CLAIMS_ERA_CUTOFF_KEY) ?? this.store.getMeta(CLAIMS_ERA_RECORDED_KEY) ?? null);
+        const saidBy = saidByOf(best.r.said_by);
+        const status = statusOf(best.r.status);
+        const occurredOn = occurredOnOf(best.r.occurred_on);
         const newId = this.store.put({
           type: "memory",
           kind: best.r.kind,
@@ -1673,9 +1707,13 @@ export class Dreams {
           // CONFIDENTIALITY TRAVELS with the words: the column is recomputed
           // from `meta` at `put`, so a merge that dropped the marker would
           // hand a confidential memory's words to every session.
-          meta: { dream: dream.id, mergedFrom: ids, ...confidentialityOf(rs) },
+          meta: { dream: dream.id, mergedFrom: ids, ...confidentialityOf(rs), ...era },
           origin: { ...(dream.session === null ? {} : { session: dream.session }), ...(dream.scope === null ? {} : { scope: dream.scope }), ref: `dream:${dream.id}` },
           ...(dream.model === null ? {} : { model: dream.model }),
+          ...(about === null ? {} : { about: about.about, ...(about.aboutBy === null ? {} : { aboutBy: about.aboutBy }) }),
+          ...(saidBy === null ? {} : { saidBy }),
+          ...(status === null ? {} : { status }),
+          ...(occurredOn === null ? {} : { occurredOn }),
         });
         for (const r of rs) {
           const feelings = this.store.feelingsFor(r.id);
@@ -2917,6 +2955,30 @@ function edgePrior(v: unknown): { weight: number; day: number } | null {
  * it was made from is confidential: `confidential: true`, plus the first
  * named class (`confidentiality`) found. Empty when none is.
  */
+/**
+ * WHAT A MERGED MEMORY IS ABOUT (2026-10-11; decided by random-06,
+ * 2026-10-11, lightly held): its best source's mark — the source whose words
+ * and claim it already takes — unless that is not personal and another source
+ * is (`CORE_ABOUT_MARKS`: me, us, owner): a personal mark is never lost to a
+ * work one, or to none. Of several personal marks, the best source's when it
+ * is one, else the first in the dream's own order of ids. The mark keeps who
+ * set it (`about_by`). Null: no source was marked.
+ */
+export function mergedAbout(
+  rows: readonly Pick<MemoryRow, "id" | "about" | "about_by">[],
+  best: Pick<MemoryRow, "id" | "about" | "about_by">,
+): { about: AboutMark; aboutBy: AboutSetter | null; from: string } | null {
+  const personal = (r: Pick<MemoryRow, "about">): boolean => {
+    const m = aboutMarkOf(r.about);
+    return m !== null && CORE_ABOUT_MARKS.includes(m);
+  };
+  const chosen = personal(best) ? best : (rows.find(personal) ?? best);
+  const about = aboutMarkOf(chosen.about);
+  if (about === null) return null;
+  const by = chosen.about_by;
+  return { about, aboutBy: typeof by === "string" && (ABOUT_SETTERS as readonly string[]).includes(by) ? (by as AboutSetter) : null, from: chosen.id };
+}
+
 function confidentialityOf(rows: readonly MemoryRow[]): Record<string, unknown> {
   let out: Record<string, unknown> = {};
   for (const r of rows) {

@@ -72,6 +72,7 @@ import {
   CLAIMS_ERA_CUTOFF_KEY,
   CLAIMS_ERA_RECORDED_KEY,
   DEFAULT_RETENTION_DAYS,
+  ERA_WRITTEN_AT_META,
   RECURRING_META,
   SCHEMA_VERSION,
   olderFirst,
@@ -217,8 +218,10 @@ export {
   CLAIMS_ERA_CUTOFF_KEY,
   CLAIMS_ERA_RECORDED_KEY,
   CLAIMED_DEFAULT_SPELLED,
+  ERA_WRITTEN_AT_META,
   backfillRecordedDays,
   datedHold,
+  eraCarriedFrom,
   eraClaimOf,
   reachExempt,
   carriedPairId,
@@ -3923,7 +3926,9 @@ export class Store {
    * explicit claim, or an old default above today's), `up` above it (an old
    * default below today's, 2026-10-11); `affected` is both. A read; one pass
    * over the live memory rows, each through `row()` so the hold and the cutoff
-   * are the ones the curve sees.
+   * are the ones the curve sees. A dream's merged memory carrying its best
+   * source's moment (`ERA_WRITTEN_AT_META`, 2026-10-11) is a candidate too,
+   * whatever its own `created_at`; `eraClaimOf` decides.
    */
   claimsEra(): { cutoff: number | null; recorded: number | null; affected: number; down: number; up: number } {
     const num = (v: string | undefined): number | null => {
@@ -3936,7 +3941,8 @@ export class Store {
     let up = 0;
     if (cutoff !== null) {
       for (const { id } of this.ops.all<{ id: string }>(
-        "SELECT id FROM memories WHERE archived = 0 AND type = 'memory' AND claimed IS NOT NULL AND (created_at IS NULL OR created_at < ?)",
+        `SELECT id FROM memories WHERE archived = 0 AND type = 'memory' AND claimed IS NOT NULL
+           AND (created_at IS NULL OR created_at < ? OR meta LIKE '%"${ERA_WRITTEN_AT_META}"%')`,
         cutoff,
       )) {
         const row = this.row(id);

@@ -18,10 +18,12 @@ import type { SpawnPlan } from "../src/adapters/spawn.js";
 import { parseTranscript } from "../src/adapters/claude-code/transcript.js";
 import { recordSession } from "../src/adapters/sessions.js";
 import { Counterpart } from "../src/core/counterpart.js";
-import { DREAM_MARK, DREAM_TUNABLES, dreamOpener } from "../src/core/dream/index.js";
+import { DREAM_MARK, DREAM_TUNABLES, dreamOpener, mergedAbout } from "../src/core/dream/index.js";
+import { CLAIMED_DEFAULT_META_KEY } from "../src/core/mint.js";
 import { TUNABLES as PHYSICS } from "../src/core/physics/index.js";
 import { TUNABLES as REMEMBER_TUNABLES, enters } from "../src/core/remember/index.js";
 import type { SweepChunk } from "../src/core/remember/index.js";
+import { CLAIMS_ERA_CUTOFF_KEY, CLAIMS_ERA_RECORDED_KEY, ERA_WRITTEN_AT_META } from "../src/core/store/index.js";
 import type { PutInput } from "../src/core/store/index.js";
 
 let dir: string;
@@ -381,6 +383,173 @@ describe("propose: what a dream may change", () => {
     expect(out.results[1]?.reason).toBe("unknown-action");
     expect(out.results.at(-1)?.reason).toBe("limit-reached");
     expect(c.store.row(m.a)?.archived).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// a merge keeps what its best source was about, and its era standing (2026-10-11)
+// ---------------------------------------------------------------------------
+
+describe("merge inherits: about, and the old-claims era", () => {
+  /** An old default as the seam filled it in before 2026-10-10: the flat 0.25, marked. */
+  const OLD_DEFAULT = { salience: { relevance: 0.6, emotional: 0.3, predictive: 0.6, claimed: 0.25 }, meta: { [CLAIMED_DEFAULT_META_KEY]: true } };
+  const claim = (claimed: number): Partial<PutInput> => ({ salience: { relevance: 0.6, emotional: 0.3, predictive: 0.6, claimed } });
+
+  /** Today's memories on a lived store; `old`: written before the era's cutoff, which is moved past them. */
+  function sources(c: Counterpart, specs: Partial<PutInput>[], opts: { old: boolean }): string[] {
+    lived(c);
+    const day = c.store.livedDay();
+    const ids = specs.map((s, i) =>
+      mem(c, `The container boots empty without the migration, version ${String(i)}.`, {
+        ...s,
+        physics: { birthDay: day, lastUsedDay: day, ...(s.physics ?? {}) },
+      }),
+    );
+    if (opts.old) {
+      c.store.setMeta(CLAIMS_ERA_CUTOFF_KEY, String(Date.now() + offsetMs + 1_000));
+      offsetMs += 10_000;
+    }
+    return ids;
+  }
+
+  /** Strong enough to be the best source of a merge with an ordinary one. */
+  const STRONG = { physics: { uses: 12, reinforcedDays: 6 } };
+
+  /** A merge in this dream (`dream`) or a new one; its memory's id, its note, the dream. */
+  function merge(c: Counterpart, ids: string[], dream?: string): { id: string; note: string | undefined; dream: string } {
+    const d = dream ?? begin(c).id;
+    const out = c.dreams.propose({ dream: d, session: SESSION, changes: [{ action: "merge", ids, text: "Migrate before the container boots." }] });
+    if (!out.ok) throw new Error(`propose refused: ${out.reason}`);
+    const r = out.results[0];
+    expect(r).toMatchObject({ ok: true, reason: "merged" });
+    return { id: r?.id as string, note: r?.note, dream: d };
+  }
+
+  test("two old owner defaults merge into one owner memory read at today's 0.40, as each source was; off reads 0.25", () => {
+    const c = brain();
+    const ids = sources(c, [{ about: "owner", ...OLD_DEFAULT }, { about: "owner", ...OLD_DEFAULT }], { old: true });
+    for (const s of ids) expect(c.store.physicsOf(s).eraClaim).toBe(PHYSICS.DEFAULT_CLAIM_PERSONAL);
+    const before = c.store.claimsEra();
+    const { id } = merge(c, ids);
+    const row = c.store.row(id)!;
+    expect(row.about).toBe("owner");
+    // A new row, after the cutoff — read as its best source was.
+    expect(row.created_at as number).toBeGreaterThan(Number(c.store.getMeta(CLAIMS_ERA_CUTOFF_KEY)));
+    expect(row.claimed).toBe(0.25);
+    expect(c.store.readProse(id).meta[CLAIMED_DEFAULT_META_KEY]).toBe(true);
+    expect(c.store.physicsOf(id).eraClaim).toBe(PHYSICS.DEFAULT_CLAIM_PERSONAL);
+    // Two counted before, one after: the merged row is counted, its originals archived.
+    expect(before.up).toBe(2);
+    expect(c.store.claimsEra()).toMatchObject({ up: 1, affected: 1 });
+    c.store.updateMeta(CLAIMS_ERA_CUTOFF_KEY, () => null);
+    expect(c.store.physicsOf(id).eraClaim ?? null).toBeNull();
+    expect(c.store.physicsOf(id).salience.claimed).toBe(0.25);
+  });
+
+  test("an old explicit 0.7 world memory merged after the cutoff stays read down at 0.35; off reads 0.7", () => {
+    const c = brain();
+    const ids = sources(c, [{ about: "world", ...claim(0.7) }, { about: "world", ...claim(0.7) }], { old: true });
+    const { id } = merge(c, ids);
+    const p = c.store.physicsOf(id);
+    expect(p.salience.claimed).toBe(0.7);
+    expect(p.eraClaim).toBe(PHYSICS.DEFAULT_CLAIM_WORLD);
+    expect(c.store.readProse(id).meta[CLAIMED_DEFAULT_META_KEY]).toBeUndefined();
+    expect(c.store.claimsEra()).toMatchObject({ down: 1, up: 0 });
+    const cutoff = c.store.getMeta(CLAIMS_ERA_CUTOFF_KEY) as string;
+    c.store.updateMeta(CLAIMS_ERA_CUTOFF_KEY, () => null);
+    expect(c.store.physicsOf(id).eraClaim ?? null).toBeNull();
+    expect(c.store.physicsOf(id).salience.claimed).toBe(0.7);
+    // On again at the same cutoff: read down again.
+    c.store.setMeta(CLAIMS_ERA_CUTOFF_KEY, cutoff);
+    expect(c.store.physicsOf(id).eraClaim).toBe(PHYSICS.DEFAULT_CLAIM_WORLD);
+  });
+
+  test("merged while the era is off, it is read as old once it is on again", () => {
+    const c = brain();
+    const ids = sources(c, [{ about: "world", ...claim(0.7) }, { about: "world", ...claim(0.7) }], { old: true });
+    // Off, with the moment first recorded after the sources (as `--on` would restore it).
+    const cutoff = c.store.getMeta(CLAIMS_ERA_CUTOFF_KEY) as string;
+    c.store.setMeta(CLAIMS_ERA_RECORDED_KEY, cutoff);
+    c.store.updateMeta(CLAIMS_ERA_CUTOFF_KEY, () => null);
+    const { id } = merge(c, ids);
+    expect(c.store.physicsOf(id).eraClaim ?? null).toBeNull();
+    c.store.setMeta(CLAIMS_ERA_CUTOFF_KEY, cutoff);
+    expect(c.store.physicsOf(id).eraClaim).toBe(PHYSICS.DEFAULT_CLAIM_WORLD);
+  });
+
+  test("the writer's fields come with it: an old done work default reads 0.20, an old owner-said 0.7 keeps its claim", () => {
+    const c = brain();
+    const ids = sources(
+      c,
+      [
+        { about: "work", status: "done", ...OLD_DEFAULT },
+        { about: "work", status: "done", ...OLD_DEFAULT },
+        { about: "work", saidBy: "owner", ...claim(0.7) },
+        { about: "work", saidBy: "owner", ...claim(0.7) },
+      ],
+      { old: true },
+    );
+    const done = merge(c, ids.slice(0, 2));
+    expect(c.store.row(done.id)!.status).toBe("done");
+    expect(c.store.physicsOf(done.id).eraClaim).toBe(PHYSICS.DEFAULT_CLAIM_WORK_EVENT);
+    const said = merge(c, ids.slice(2), done.dream).id;
+    expect(c.store.row(said)!.said_by).toBe("owner");
+    expect(c.store.physicsOf(said).eraClaim ?? null).toBeNull();
+  });
+
+  test("about: work + owner is owner, even when the work one is the best source and named first; it says so", () => {
+    const c = brain();
+    // Named first: the supersede's fill-if-unmarked carry alone took the work mark.
+    const ids = sources(c, [{ about: "work", ...claim(0.5), ...STRONG }, { about: "owner", aboutBy: "owner" }], { old: false });
+    const m = merge(c, ids);
+    // The best source's claim, the personal source's mark and its setter.
+    expect(c.store.row(m.id)).toMatchObject({ about: "owner", about_by: "owner", claimed: 0.5 });
+    expect(m.note).toContain(`about different things (work, owner); the merged memory is about owner, from ${ids[1] as string}`);
+  });
+
+  test("about: work + work is work", () => {
+    const c = brain();
+    const ids = sources(c, [{ about: "work" }, { about: "work", ...STRONG }], { old: false });
+    const m = merge(c, ids);
+    expect(c.store.row(m.id)).toMatchObject({ about: "work", about_by: "writer" });
+    expect(m.note).toBeUndefined();
+  });
+
+  test("about: unmarked + us is us, even when the unmarked one is the best source", () => {
+    const c = brain();
+    const ids = sources(c, [{ ...STRONG }, { about: "us" }], { old: false });
+    expect(c.store.row(merge(c, ids).id)?.about).toBe("us");
+  });
+
+  test("several personal marks: the best source's, else the first named", () => {
+    const rows = [
+      { id: "a", about: "work", about_by: "writer" },
+      { id: "b", about: "us", about_by: "reflection" },
+      { id: "c", about: "owner", about_by: "owner" },
+    ];
+    expect(mergedAbout(rows, rows[2]!)).toEqual({ about: "owner", aboutBy: "owner", from: "c" });
+    expect(mergedAbout(rows, rows[0]!)).toEqual({ about: "us", aboutBy: "reflection", from: "b" });
+    expect(mergedAbout([{ id: "x", about: null, about_by: null }], { id: "x", about: null, about_by: null })).toBeNull();
+  });
+
+  test("a merge after the cutoff of sources written after it is unchanged: no carried moment, read as stored", () => {
+    const c = brain();
+    const ids = sources(c, [{ about: "world", ...claim(0.7) }, { about: "world", ...claim(0.7) }], { old: false });
+    const { id } = merge(c, ids);
+    expect(c.store.readProse(id).meta[ERA_WRITTEN_AT_META]).toBeUndefined();
+    expect(c.store.physicsOf(id).eraClaim ?? null).toBeNull();
+    expect(c.store.claimsEra()).toMatchObject({ affected: 0 });
+  });
+
+  test("a merge of a merge keeps the first source's moment", () => {
+    const c = brain();
+    const ids = sources(c, [{ about: "world", ...claim(0.7) }, { about: "world", ...claim(0.7) }, { about: "world", ...claim(0.7) }], { old: true });
+    const first = merge(c, ids.slice(0, 2));
+    const moment = c.store.readProse(first.id).meta[ERA_WRITTEN_AT_META];
+    expect(moment).toBe(c.store.row(ids[0] as string)!.created_at as number);
+    const id = merge(c, [first.id, ids[2] as string], first.dream).id;
+    expect(c.store.readProse(id).meta[ERA_WRITTEN_AT_META]).toBe(moment);
+    expect(c.store.physicsOf(id).eraClaim).toBe(PHYSICS.DEFAULT_CLAIM_WORLD);
   });
 });
 
