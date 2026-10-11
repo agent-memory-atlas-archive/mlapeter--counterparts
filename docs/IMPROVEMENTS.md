@@ -624,7 +624,36 @@ were refined by b2+f8 at the review of #369, named where they were):
   there's a big downside", weak because footnotes are often noise; propose rather than the
   Hebbian buffer, so a faint footnote-grade trail never pushes out what use learned. A
   memory shown only through an ambiguous handle (`trains: false`) and a handoff are not "in
-  mind".
+  mind". **Measured on the 10-11 copy, fast-forwarded 7 lived days:** 904 new write-time
+  trails, 793 (88%) of them from memories written in a session-end batch; a hand-read of 20
+  was 1 right, 3 unsure, 16 noise — the 4 from timed (mid-session) writes 1/1/2, the 16 from
+  batches 0/2/14. None was later reinforced or had ever been co-used. Kept as built for now
+  because it is harmless at 0.05 (0 pointer candidates at the current threshold; a 0.05 link
+  passes 0.6% of its node). The lever if it stays noisy: the write's own turn and a deliberate
+  question near it only, no recent-turns window for a batch's memories.
+- Decided by the Group 4 builder, 2026-10-11, lightly held (review 06 C4, the ants rule): no
+  "a reinforced edge fades slower" in this build, and no column. It could be computed from what
+  is stored — a stability that grows with the edge's own weight above one co-use (e.g. linear
+  decay at `HEBB_RATE / S_EDGE` per lived day above 0.1, exponential below; an autonomous curve,
+  so decay realized at flush stays exact) — but weight is not use: a legacy 0.3 dream link would
+  fade like a thrice-used one, and those 174 rows are the hubs review 06 flagged. And there is
+  nothing for it to act on: the store has never co-used one pair twice (review 06 §3), and 0 of
+  the fast-forward's 1,407 new trails were reinforced. The honest version is the v14 column,
+  to batch with other v14 needs: `edges.reinforced INTEGER NOT NULL DEFAULT 0` (one `ALTER
+  TABLE … ADD COLUMN`, no backfill, ~1–2 bytes a row: ~6 KB at today's ~5.6k rows, ~60 KB at
+  30k), bumped in `planFlush` when a Hebbian delta lands on a row that already conducts (not by
+  `propose`, not by `retargetOnSupersede`, which takes the max), read in `edgeWeightAt` as
+  `S = S_EDGE · (1 + reinforced)`, carried by `restoreEdge` and the retarget, and
+  `EdgeRow`/`EdgeInput` gain the field. Size M with tests; `edges.source` (C4) rides the same
+  bump if the dashboard needs it — `deposited`, `atWrite` and `replayLinks` made it honest from
+  event JSON without one.
+- Decided by the Group 4 builder, 2026-10-11, lightly held (review 06 C7, D3): the recall
+  pointer threshold stays at 0.05. On the fast-forward: 0 of 635 recorded turns would have had a
+  pointer candidate at 0.05 (no edge reached 0.4; edges ≥ 0.16 fell from 172 to 88 as the legacy
+  0.3 links fade); at 0.0125 (variant b1) 216 would, 174 of them through links that existed
+  before (mostly those legacy links) and 42 through the new 0.05 trails the hand-read calls
+  mostly noise. Revisit after ~5 real lived days of deposit, and only after the write-time
+  window is tightened (CHECK-AFTER, Group 4).
 - Decided by the Group 4 builder, 2026-10-11, lightly held: the replay's deposit is laid when
   a dream OPENS (`Dreams#begin`, its bundle composed), not when it wakes, between each new
   memory and the older neighbours shown beside it (not the mixing or look-back), at 0.05; and

@@ -533,3 +533,12 @@ evaporation can do it.
   console — not green. Rows written before this carry no `deposited`, so for the first
   week after install the count starts from zero. The sidebar mod's copy of the table
   (`hooks/sidebar/hooks/feed.ts`) follows.
+- **Not built: a reinforced edge fades slower** (item 4, C4) — and the pointer threshold
+  stays at 0.05 (item 8, C7). Both were measured on the 10-11 copy fast-forwarded 7 lived
+  days (the week of lived days 14–20 replayed: its writes, its co-use, a replay each night,
+  the boundary each day; vectors rebuilt; no model calls): 904 write-time and 503 replay
+  trails laid, co-use 46 pairs all on links that already existed, 0 of the 1,407 new trails
+  later reinforced or ever co-used; 0 pointer candidates at 0.05, 216 of 635 turns at 0.0125
+  (42 through new trails); edges ≥ 0.4: none; the first flush swept ~2,040 inert rows. The
+  reasons and the v14 column's cost are in `docs/IMPROVEMENTS.md` (Group 4); what to look at
+  next is in `docs/CHECK-AFTER.md` (Group 4).
