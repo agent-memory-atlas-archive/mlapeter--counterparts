@@ -573,6 +573,34 @@ describe("a locked store", () => {
       cp.close();
     }
   });
+
+  test("a held claims file beside a fresh set-aside lock is contention all the same: one wait, not three (#366 nit)", () => {
+    // Before (2026-10-11): a lock error went to the set-aside wait first — a
+    // fresh lock there meant CLAIM_WAIT_MS more, then the busy wait again.
+    const cp = Counterpart.open({ dir: store });
+    try {
+      expect(claimDelivery(cp, { ...base, key: "first" }).outcome).toBe("won");
+      mkdirSync(join(dirname(claimsPath(store)), SET_ASIDE_LOCK));
+      const holder = openDb(claimsPath(store));
+      let claim: ReturnType<typeof claimDelivery> | null = null;
+      let took = -1;
+      try {
+        holder.transaction(() => {
+          holder.run("UPDATE claims SET value = value WHERE key = ?", CLAIMS_ROW);
+          const t = Date.now();
+          claim = claimDelivery(cp, base);
+          took = Date.now() - t;
+        });
+      } finally {
+        holder.close();
+      }
+      expect((claim as ReturnType<typeof claimDelivery> | null)?.busy).toBe(true);
+      expect(took).toBeGreaterThanOrEqual(CLAIM_WAIT_MS - 50);
+      expect(took).toBeLessThan(2 * CLAIM_WAIT_MS);
+    } finally {
+      cp.close();
+    }
+  });
 });
 
 // ── a claims file that is not a database (review of #359) ───────────────────
@@ -808,6 +836,28 @@ describe("a claims file that is not a database", () => {
       expect(mended.outcome).toBe("won");
       expect(basename(mended.setAside ?? "")).toMatch(/^hook-claims\.unreadable-\d+\.sqlite$/);
       expect(existsSync(lock)).toBe(false);
+    } finally {
+      cp.close();
+    }
+  });
+
+  test("a set-aside lock dated in the future — the clock stepped back — is a dead holder's, not a fresh one (#366 nit)", () => {
+    // Before (2026-10-11): its age read negative, so fresh, until the clock
+    // caught up: every claim waited CLAIM_WAIT_MS on nobody, and none mended
+    // the file.
+    const cp = Counterpart.open({ dir: store });
+    try {
+      corrupt();
+      const lock = join(dirname(claimsPath(store)), SET_ASIDE_LOCK);
+      mkdirSync(lock);
+      const ahead = (Date.now() + 3_600_000) / 1000;
+      utimesSync(lock, ahead, ahead);
+      const t0 = Date.now();
+      const mended = claimDelivery(cp, base);
+      expect(mended.outcome).toBe("won");
+      expect(basename(mended.setAside ?? "")).toMatch(/^hook-claims\.unreadable-\d+\.sqlite$/);
+      expect(existsSync(lock)).toBe(false);
+      expect(Date.now() - t0).toBeLessThan(CLAIM_WAIT_MS);
     } finally {
       cp.close();
     }

@@ -171,6 +171,11 @@ function updateClaims(dataDir: string, fn: (current: string | undefined) => stri
     // only tries again, on the twin's file, and loses to the twin's claim.
     if (fileIdentity(path) === met) {
       if (isUnreadableDatabase(err)) setAside = setClaimsAside(path, met);
+      // A LOCK IS CONTENTION, and says so at once (2026-10-11, a nit from the
+      // review of #366): another claim held the file past `CLAIM_WAIT_MS` on a
+      // healthy file, so the hook delivers `busy` now rather than first
+      // waiting on a set-aside lock and then the busy wait once more.
+      else if (isLocked(err)) throw err;
       // A twin is moving it right now (its sidecars go first, so the file is
       // still here): wait for it to be gone, then try the twin's new file. No
       // twin at work is the error's own — unless the file left while this
@@ -292,11 +297,17 @@ function awaitSetAside(path: string, met: string | null): boolean {
   return true;
 }
 
-/** The lock directory at `lock` as identity and age, or null when there is none. */
+/**
+ * The lock directory at `lock` as identity and age, or null when there is none.
+ * The age is the DISTANCE from now (2026-10-11, a nit from the review of #366):
+ * after the clock steps back, a lock's time is in the future, and a signed age
+ * would read it as fresh until the clock caught up — every claim waiting on a
+ * holder that is not there, and none taking it over. Far either way is stale.
+ */
 function lockAge(lock: string): { readonly id: string; readonly age: number } | null {
   try {
     const st = statSync(lock, { bigint: true });
-    return { id: `${String(st.dev)}:${String(st.ino)}`, age: Date.now() - Number(st.mtimeMs) };
+    return { id: `${String(st.dev)}:${String(st.ino)}`, age: Math.abs(Date.now() - Number(st.mtimeMs)) };
   } catch {
     return null;
   }
