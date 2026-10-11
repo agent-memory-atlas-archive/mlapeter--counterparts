@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Asking for facts shows faded memories in full, among the rest.** A match that has faded
+  (below reach) is ranked with the live ones by how well it matched, its words shown and
+  labelled faded, and the header counts them ("3 of them faded"). It was a title line after
+  the main results, which left counting questions one item short. Things that come up on
+  their own still leave faded memories out; being shown strengthens nothing, opening or
+  quoting one does. Meaning mode is unchanged.
 - **A session's wake is put together when the session starts.** "Still open", "Arriving:",
   the Yesterday line and the self page are read at that moment, so the morning's first
   sessions see yesterday's chapters and a question or reminder noted last night, not the
@@ -17,7 +23,7 @@
   used or came back. A routine note leaves the working layer in about two days; a felt
   reading lasts months; a strong fact about a year. Under a line ("below reach") a memory
   stops coming up on its own — in turns, as a pointer from a link, or in the wake's work
-  lines — but asking for it still finds it, listed after the main results as faded, and
+  lines — but asking for it still finds it, labelled faded, and
   using it, opening it or a dream replaying it brings it back. A memory that has sat under
   the floor for 14 lived days (was 90) is archived — never deleted, still readable by id.
   A reminder is held at full strength until its date and the week after, then fades a little faster until it is used again;

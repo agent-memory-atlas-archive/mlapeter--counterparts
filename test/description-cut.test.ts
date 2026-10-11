@@ -81,7 +81,9 @@ describe("tool descriptions, as a host that serves only the first 2,048 characte
     // the brief's words are verbatim unless a measured limit forces a change,
     // and the limit here binds the privileges, not the words that invite.
     remember: ["`updates` is a FIELD", "`eventDate` is a FIELD", "A salience you claim is a FLOOR"],
-    recall: ["A question needs mode", "A handle expands exactly that memory", "Pass ids to read those memories whole"],
+    // The faded line joined the cut on 2026-10-10 (inline faded matches): a
+    // model that reads only the start must know a faded result is shown, labeled.
+    recall: ["A question needs mode", "A handle expands exactly that memory", "Pass ids to read those memories whole", "In facts mode a faded match"],
     session_end: [
       "It is bound to ONE session",
       "`updates` is a FIELD on an entry",
@@ -128,6 +130,18 @@ describe("tool descriptions, as a host that serves only the first 2,048 characte
     expect(failures).toEqual([]);
   });
 
+  // Review of #379: the credit rule's first sentence sat inside the cut before
+  // the faded claim joined the list ahead of it; the faded claim is kept short
+  // so it still does.
+  test("recall's credit rule opens inside the cut: being shown strengthens nothing", () => {
+    const sentence = "A search strengthens nothing — a memory you were only shown in a list is no stronger for having been listed.";
+    for (const desktop of [false, true]) {
+      const end = endOf(served(desktop).get("recall") ?? "", sentence);
+      expect(end).toBeGreaterThan(0);
+      expect(end).toBeLessThanOrEqual(HOST_DESCRIPTION_CAP);
+    }
+  });
+
   /**
    * THE LENGTHS, RECORDED. When this fails because a description changed,
    * update the numbers: the diff is the record of the growth. `beforeList` is
@@ -146,7 +160,7 @@ describe("tool descriptions, as a host that serves only the first 2,048 characte
       // head grew from 951 to 1,387 and session_end's from 811 to 1,088, both
       // well inside the cut with their leading claims.
       remember: { total: 5612, beforeList: 1387 },
-      recall: { total: 6263, beforeList: 1200 },
+      recall: { total: 6163, beforeList: 1200 },
       status: { total: 1212, beforeList: 501 },
       session_end: { total: 7520, beforeList: 1088 },
       chapter: { total: 2079, beforeList: 728 },
