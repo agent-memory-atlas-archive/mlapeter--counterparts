@@ -175,13 +175,25 @@ counterparts uninstall
 bun remove -g counterparts
 ```
 
-`uninstall` disconnects Claude Code and keeps your memory. Two options change what
-happens to the memory:
+`uninstall` disconnects Claude Code, then asks whether to delete your memory too:
 
+```
+Also delete all memories and related data? This can't be undone. [y/N]
+```
+
+Above the question it lists every path that would go (the store, its snapshots, the
+configuration, the `~/.counterparts` folder) with its size, and what it leaves alone
+(Claude Code's own files). Enter keeps your memory. A yes asks you to type `DELETE MEMORIES`
+before anything is deleted. It doesn't ask while a Claude Code session, the dashboard or the
+worker has the memory open: close them and run it again.
+
+Options:
+
+- `--keep-memories` keeps your memory without asking.
 - `--park` renames `~/.counterparts` aside. `counterparts install` offers to bring it back.
 - `--delete-memories` deletes it, after asking you to type `DELETE MEMORIES`.
 
-Both show your memory's size first. Part of that can be a database log that shrinks on its
+Each shows your memory's size first. Part of that can be a database log that shrinks on its
 own; nothing is lost when it does.
 
 To disconnect Claude Code without uninstalling, run `counterparts disconnect`.

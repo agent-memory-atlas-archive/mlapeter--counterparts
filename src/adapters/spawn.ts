@@ -79,6 +79,15 @@ export const WATCHDOG_ENV = "COUNTERPARTS_WATCHDOG_MS";
 export const SESSION_ENV = "COUNTERPARTS_SESSION";
 export const SCOPE_ENV = "COUNTERPARTS_SCOPE";
 /**
+ * WHICH CHILD OF THE HEADLESS NIGHT this MCP server serves (2026-10-11):
+ * `dream` (the page writer and the dream) or `reflection`, set on the
+ * server's own environment by the night's MCP configuration
+ * (`claude-code/night-run.ts#nightMcpConfig`). The dream's child is told to
+ * stop at its journal, because the reflection runs after it in a child of its
+ * own. Absent everywhere else.
+ */
+export const NIGHT_CHILD_ENV = "COUNTERPARTS_NIGHT_CHILD";
+/**
  * The configuration file the PARENT read, pinned onto the child for exactly the
  * reason the data dir is (§2.13): two processes resolving one value twice is two
  * answers waiting to disagree. A hook driven by `--config <path>` that spawned a

@@ -32,10 +32,12 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { createHash } from "node:crypto";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -52,8 +54,11 @@ import { CONFIG_FILE, HOST_EVENTS, MCP_SERVER_NAME, readHost } from "../src/adap
 import {
   CHECKING_CLAUDE_CODE,
   DELETE_PHRASE,
+  DELETE_QUESTION,
+  PHRASE_PROMPT,
   LOG_WORTH_SAYING,
   REMOVE_PACKAGE,
+  REMOVE_PLUGIN,
   censusOf,
   configDirRefusal,
   dirSize,
@@ -67,8 +72,10 @@ import {
   planUninstall,
   storeRefusal,
   uninstall,
+  uninstallJson,
   walBytes,
 } from "../src/adapters/cli/uninstall.js";
+import { SESSIONS_DIR } from "../src/adapters/sessions.js";
 import type { UninstallInput } from "../src/adapters/cli/uninstall.js";
 import { PARKED_INFIX } from "../src/adapters/cli/start-fresh.js";
 import { PROMPT_CANCEL } from "../src/adapters/cli/ui.js";
@@ -1546,5 +1553,561 @@ describe("review n5 — the park screen claims only what moved", () => {
     expect(said).toContain("so no memory is moved");
     expect(said).toContain("Set aside");
     expect(said).toContain("No memory was moved: there was no store at the path the configuration named.");
+  });
+});
+
+// ── the offer, after the wiring is out (Mike, 2026-10-11) ───────────────────
+
+/**
+ * Every uninstall path offers "Also delete all memories and related data? This
+ * can't be undone", always behind the typed phrase. These pin the defaults:
+ * Enter, Esc, n, no terminal, `--yes` and `--keep-memories` all KEEP; only a yes
+ * AND the exact phrase delete; and a store something holds is never offered.
+ */
+describe("uninstall, plain — the offer to delete", () => {
+  /** A Claude Code session whose hooks ran a moment ago, as `readLiveness` reads it. */
+  function liveSession(id = "sess-live"): void {
+    mkdirSync(join(storePath(), SESSIONS_DIR), { recursive: true });
+    writeFileSync(
+      join(storePath(), SESSIONS_DIR, `${id}.json`),
+      JSON.stringify({ sessionId: id, scope: "/work/project", endedAt: null, lastBoundaryAt: Date.now() }),
+    );
+  }
+
+  const question = `${DELETE_QUESTION} [y/N]   (Enter keeps them) `;
+
+  test("the DEFAULT keeps: Enter at the question deletes nothing, and the question names the paths", async () => {
+    await install();
+    await notes(2);
+    await wireIt();
+    const before = fingerprint(base(), true);
+    const c = consoleWith(["y", ""]);
+    expect(await uninstall(input({ io: c.io, yes: false }))).toBe("ok");
+    expect(c.asked).toEqual(["Claude Code will be disconnected. Go ahead? [Y/n]   (Esc or n to stop) ", question]);
+    // The wiring is out; the memory is all there.
+    expect(readHost(home, home, ENV).events).toEqual([]);
+    expect(fingerprint(base(), true)).toBe(before);
+    const said = text(c.out);
+    expect(said).toContain("If you say yes, this deletes, for good:");
+    expect(said).toMatch(/~\/\.counterparts\/store\s+[\d.]+ [KMG]?B\s+your memory — [\d,]+ memories/);
+    expect(said).toContain("and the ~/.counterparts folder itself.");
+    // And where it stops: Claude Code's own directory is named as untouched.
+    expect(said).toContain("Not touched:");
+    expect(said).toMatch(/~\/\.claude\s+Claude Code's own files/);
+    expect(said).toContain("Kept. Nothing was deleted.");
+    expect(said).toContain(`To remove the program too: ${REMOVE_PACKAGE}`);
+  });
+
+  test("n and Esc keep too, and the phrase is never asked", async () => {
+    for (const answer of ["n", "no", PROMPT_CANCEL]) {
+      await install();
+      const before = fingerprint(base(), true);
+      const c = consoleWith(["y", answer]);
+      expect(await uninstall(input({ io: c.io, yes: false }))).toBe("ok");
+      expect(c.asked).toHaveLength(2);
+      expect(fingerprint(base(), true)).toBe(before);
+      rmSync(base(), { recursive: true, force: true });
+    }
+  });
+
+  test("y and the exact phrase delete — the store, its snapshots, the configuration — and say so path by path", async () => {
+    await install();
+    await notes(2);
+    await wireIt();
+    mkdirSync(join(base(), "snapshots", "2026-10-10"), { recursive: true });
+    const plan = planUninstall({ configPath: configPath(), config: { dataDir: storePath() }, home, verb: "delete" });
+    const c = consoleWith(["y", "y", DELETE_PHRASE]);
+    expect(await uninstall(input({ io: c.io, yes: false }))).toBe("ok");
+    expect(c.asked[1]).toBe(question);
+    expect(c.asked[2]).toBe(PHRASE_PROMPT);
+    expect(existsSync(base())).toBe(false);
+    const said = text(c.out);
+    // Every entry the plan named was on the screen before the question...
+    for (const e of plan.entries) expect(said).toContain(e.path.replace(home, "~"));
+    // ...and what went is exactly what the plan said would.
+    expect(plan.targets).toEqual([base()]);
+    expect(said).toContain("WARNING: nothing can bring these back afterwards.");
+    expect(said).toContain("Deleted");
+    expect(said).toContain("~/.counterparts");
+  });
+
+  test("y and the WRONG phrase delete nothing and exit non-zero", async () => {
+    await install();
+    await notes(1);
+    await wireIt();
+    const before = fingerprint(base(), true);
+    for (const wrong of ["delete memories", "y", "DELETE MEMORIES "]) {
+      const c = consoleWith(["y", "y", wrong]);
+      expect(await uninstall(input({ io: c.io, yes: false }))).toBe("refused");
+      expect(text(c.err)).toBe(`That was not ${DELETE_PHRASE}. Nothing was deleted.`);
+      expect(fingerprint(base(), true)).toBe(before);
+    }
+  });
+
+  test("y and then Esc, Enter or cancel at the phrase stop it, exit 0, and delete nothing", async () => {
+    await install();
+    const before = fingerprint(base(), true);
+    for (const out of ["", "cancel", PROMPT_CANCEL]) {
+      const c = consoleWith(["y", "y", out]);
+      expect(await uninstall(input({ io: c.io, yes: false }))).toBe("ok");
+      expect(text(c.out)).toContain("Cancelled. Nothing was deleted.");
+      expect(fingerprint(base(), true)).toBe(before);
+    }
+  });
+
+  test("no terminal: no question, and the memory stays", async () => {
+    await install();
+    await wireIt();
+    const before = fingerprint(base(), true);
+    // `--yes` from a pipe: the wiring goes, nothing is asked.
+    const c = consoleWith(null);
+    expect(
+      await run(["uninstall", "--config", configPath(), "--yes"], {
+        io: c.io,
+        env: ENV,
+        home,
+        spawner: okSpawner,
+        processes: noProcesses,
+      }),
+    ).toBe(EXIT.ok);
+    expect(readHost(home, home, ENV).events).toEqual([]);
+    expect(fingerprint(base(), true)).toBe(before);
+    expect(text(c.out)).not.toContain(DELETE_QUESTION);
+    expect(text(c.out)).toContain("memories are still at");
+  });
+
+  test("--yes at a terminal takes the ordinary answer — keep — and asks nothing", async () => {
+    await install();
+    const before = fingerprint(base(), true);
+    const c = consoleWith([]);
+    expect(await uninstall(input({ io: c.io, yes: true }))).toBe("ok");
+    expect(c.asked).toEqual([]);
+    expect(fingerprint(base(), true)).toBe(before);
+  });
+
+  test("--keep-memories skips the question, says the old promise, and keeps", async () => {
+    await install();
+    await wireIt();
+    const before = fingerprint(base(), true);
+    const c = consoleWith(["y"]);
+    const code = await run(["uninstall", "--config", configPath(), "--keep-memories"], {
+      io: c.io,
+      env: ENV,
+      home,
+      spawner: okSpawner,
+      processes: noProcesses,
+    });
+    expect(code).toBe(EXIT.ok);
+    expect(c.asked).toEqual([
+      "Claude Code will be disconnected — your memory stays exactly where it is. Go ahead? [Y/n]   (Esc or n to stop) ",
+    ]);
+    expect(readHost(home, home, ENV).events).toEqual([]);
+    expect(fingerprint(base(), true)).toBe(before);
+    expect(text(c.out)).toContain("counterparts uninstall --keep-memories");
+  });
+
+  test("--keep-memories beside --delete-memories or --park is refused, not guessed at", async () => {
+    await install();
+    for (const other of [{ deleteMemories: true }, { park: true }]) {
+      const c = consoleWith([DELETE_PHRASE]);
+      expect(await uninstall(input({ io: c.io, keepMemories: true, ...other }))).toBe("refused");
+      expect(text(c.err)).toContain("two answers to one question");
+      expect(existsSync(base())).toBe(true);
+    }
+  });
+
+  test("a LIVE SESSION on the store: the delete is not offered, and says why", async () => {
+    await install();
+    await wireIt();
+    liveSession();
+    const before = fingerprint(base(), true);
+    const c = consoleWith(["y", "y", DELETE_PHRASE]);
+    expect(await uninstall(input({ io: c.io, yes: false }))).toBe("ok");
+    // Only the go-ahead was asked: no question whose yes would be refused.
+    expect(c.asked).toHaveLength(1);
+    const said = text(c.out);
+    expect(said).toContain("Deleting your memory is not offered right now:");
+    expect(said).toContain("a Claude Code session (session sess-live)");
+    expect(fingerprint(base(), true)).toBe(before);
+    // The wiring is out all the same: that part was asked for.
+    expect(readHost(home, home, ENV).events).toEqual([]);
+  });
+
+  test("…and --delete-memories refuses on the same evidence, before anything is unwired", async () => {
+    await install();
+    await wireIt();
+    liveSession();
+    const c = consoleWith([DELETE_PHRASE]);
+    expect(await uninstall(input({ io: c.io, deleteMemories: true }))).toBe("refused");
+    expect(text(c.err)).toContain("refused: this store is open in:");
+    expect(text(c.err)).toContain("session sess-live");
+    expect(c.asked).toEqual([]);
+    expect(existsSync(storePath())).toBe(true);
+    expect(readHost(home, home, ENV).events).toHaveLength(HOST_EVENTS.length);
+  });
+
+  test("a process of ours running: not offered either", async () => {
+    await install();
+    const busy: ProcessLister = () => ({
+      looked: true,
+      processes: [{ pid: 77, what: "an MCP server", command: "bun run serve.ts" }],
+    });
+    const c = consoleWith(["y", "y", DELETE_PHRASE]);
+    expect(await uninstall(input({ io: c.io, yes: false, lister: busy }))).toBe("ok");
+    expect(c.asked).toHaveLength(1);
+    expect(text(c.out)).toContain("an MCP server, pid 77");
+    expect(existsSync(storePath())).toBe(true);
+  });
+
+  test("a session that opens WHILE the phrase is being typed stops the delete", async () => {
+    await install();
+    const answers = ["y", "y"];
+    const asked: string[] = [];
+    const out: string[] = [];
+    const err: string[] = [];
+    const io: Io = {
+      out: (l) => out.push(l),
+      err: (l) => err.push(l),
+      prompt: async (q) => {
+        asked.push(q);
+        if (q === PHRASE_PROMPT) {
+          liveSession("sess-late");
+          return DELETE_PHRASE;
+        }
+        return answers.shift() ?? "";
+      },
+    };
+    expect(await uninstall(input({ io, yes: false }))).toBe("refused");
+    expect(text(err)).toContain("session sess-late");
+    expect(text(err)).toContain("Nothing was deleted.");
+    expect(existsSync(storePath())).toBe(true);
+  });
+
+  test("a snapshots folder the configuration points elsewhere is named as kept, and kept", async () => {
+    await install();
+    const mine = join(home, "Backups", "counterparts-snaps");
+    mkdirSync(join(mine, "2026-10-10"), { recursive: true });
+    const config = { dataDir: storePath(), snapshots: { dir: mine } };
+    const c = consoleWith(["y", "y", DELETE_PHRASE]);
+    expect(await uninstall(input({ io: c.io, yes: false, config }))).toBe("ok");
+    expect(text(c.out)).toContain("~/Backups/counterparts-snaps");
+    expect(text(c.out)).toContain("the snapshots folder your configuration names — yours to delete");
+    expect(existsSync(base())).toBe(false);
+    expect(existsSync(join(mine, "2026-10-10"))).toBe(true);
+  });
+});
+
+// ── --json: the plugin command's door ───────────────────────────────────────
+
+describe("uninstall --json", () => {
+  const pipe = (text_: string) => ({ isTty: false, read: async () => text_ });
+
+  function only(lines: readonly string[]): Record<string, unknown> {
+    expect(lines).toHaveLength(1);
+    return JSON.parse(lines[0] as string) as Record<string, unknown>;
+  }
+
+  test("alone it is the PLAN: one JSON line, nothing unwired, nothing touched", async () => {
+    await install();
+    await notes(3);
+    await wireIt();
+    const before = fingerprint(base(), true);
+    const c = consoleWith(null);
+    expect(await uninstallJson(input({ io: c.io, yes: false }))).toBe("ok");
+    const plan = only(c.out);
+    expect(c.err).toEqual([]);
+    expect(plan["mode"]).toBe("plan");
+    expect(plan["deletable"]).toBe(true);
+    expect(plan["why"]).toBeNull();
+    expect(plan["question"]).toBe(DELETE_QUESTION);
+    // No scripted delete to offer: the phrase is not handed out, and the next
+    // step for a delete is a command the PERSON runs at a terminal.
+    expect(plan["phrase"]).toBeUndefined();
+    expect(plan["deleteArgs"]).toBeUndefined();
+    expect(plan["terminalArgs"]).toEqual(["uninstall", "--config", configPath()]);
+    expect(plan["keepArgs"]).toEqual(["uninstall", "--keep-memories", "--json", "--config", configPath()]);
+    expect(plan["targets"]).toEqual([base()]);
+    expect(plan["memories"]).toBeGreaterThanOrEqual(3);
+    const deletes = plan["deletes"] as { path: string; kind: string }[];
+    expect(deletes[0]).toMatchObject({ path: storePath(), kind: "store" });
+    expect(deletes.map((d) => d.path)).toContain(configPath());
+    expect((plan["notTouched"] as { path: string }[]).map((n) => n.path)).toContain(join(home, ".claude"));
+    expect((plan["lines"] as string[]).join("\n")).toContain("If you say yes, this deletes, for good:");
+    // Not one byte, and the hooks still in.
+    expect(fingerprint(base(), true)).toBe(before);
+    expect(readHost(home, home, ENV).events).toHaveLength(HOST_EVENTS.length);
+  });
+
+  test("the plan says when a delete cannot go ahead, and why", async () => {
+    await install();
+    mkdirSync(join(storePath(), SESSIONS_DIR), { recursive: true });
+    writeFileSync(
+      join(storePath(), SESSIONS_DIR, "s1.json"),
+      JSON.stringify({ sessionId: "s1", endedAt: null, lastBoundaryAt: Date.now() }),
+    );
+    const c = consoleWith(null);
+    await uninstallJson(input({ io: c.io }));
+    const plan = only(c.out);
+    expect(plan["deletable"]).toBe(false);
+    expect(String(plan["why"])).toContain("session s1");
+    expect((plan["holders"] as { refuse: boolean }[])[0]?.refuse).toBe(true);
+  });
+
+  test("--delete-memories --json is REFUSED, whatever is on stdin: nothing unwired, nothing deleted", async () => {
+    await install();
+    await notes(1);
+    await wireIt();
+    const before = fingerprint(base(), true);
+    const c = consoleWith(null);
+    expect(await uninstallJson(input({ io: c.io, deleteMemories: true }))).toBe("refused");
+    const result = only(c.out);
+    expect(result["mode"]).toBe("delete");
+    expect(result["outcome"]).toBe("refused");
+    expect(result["unwired"]).toBe(false);
+    expect(String(result["why"])).toContain("terminal");
+    expect(fingerprint(base(), true)).toBe(before);
+    expect(readHost(home, home, ENV).events).toHaveLength(HOST_EVENTS.length);
+
+    // Through the console, with the exact phrase piped in: the same refusal.
+    for (const stdin of [pipe(`${DELETE_PHRASE}\n`), { isTty: true, read: async () => DELETE_PHRASE }]) {
+      const viaRun = consoleWith(null);
+      expect(
+        await run(["uninstall", "--config", configPath(), "--delete-memories", "--json"], {
+          io: viaRun.io,
+          env: ENV,
+          home,
+          spawner: okSpawner,
+          processes: noProcesses,
+          stdin,
+        }),
+      ).toBe(EXIT.refused);
+      expect(only(viaRun.out)["outcome"]).toBe("refused");
+      expect(fingerprint(base(), true)).toBe(before);
+      expect(readHost(home, home, ENV).events).toHaveLength(HOST_EVENTS.length);
+    }
+  });
+
+  test("--keep-memories --json uninstalls and keeps, and asks nothing", async () => {
+    await install();
+    await wireIt();
+    const before = fingerprint(base(), true);
+    const c = consoleWith(null);
+    expect(await uninstallJson(input({ io: c.io, keepMemories: true, yes: false }))).toBe("ok");
+    const result = only(c.out);
+    expect(result["mode"]).toBe("keep");
+    expect(result["unwired"]).toBe(true);
+    expect(result["deleted"]).toBeUndefined();
+    expect(readHost(home, home, ENV).events).toEqual([]);
+    expect(fingerprint(base(), true)).toBe(before);
+  });
+
+  test("--keep-memories --json from a prompt-capable console still never asks the delete question", async () => {
+    await install();
+    await wireIt();
+    const before = fingerprint(base(), true);
+    const c = consoleWith(["y", "y", DELETE_PHRASE]);
+    expect(await uninstallJson(input({ io: c.io, keepMemories: true, yes: false }))).toBe("ok");
+    expect(c.asked).toEqual([]);
+    expect(fingerprint(base(), true)).toBe(before);
+  });
+
+  test("through the console: stdout is the JSON alone, and the exit codes are the console's", async () => {
+    await install();
+    const plan = consoleWith(null);
+    expect(
+      await run(["uninstall", "--config", configPath(), "--json"], {
+        io: plan.io,
+        env: ENV,
+        home,
+        spawner: okSpawner,
+        processes: noProcesses,
+      }),
+    ).toBe(EXIT.ok);
+    const parsed = only(plan.out);
+    // The configuration this plan read travels into the args the caller runs next.
+    expect(parsed["terminalArgs"]).toEqual(["uninstall", "--config", configPath()]);
+    expect(existsSync(base())).toBe(true);
+  });
+
+  test("without --json, --delete-memories with no person still refuses, stdin or not", async () => {
+    await install();
+    const c = consoleWith(null);
+    expect(
+      await run(["uninstall", "--config", configPath(), "--delete-memories"], {
+        io: c.io,
+        env: ENV,
+        home,
+        spawner: okSpawner,
+        processes: noProcesses,
+        stdin: pipe(`${DELETE_PHRASE}\n`),
+      }),
+    ).toBe(EXIT.refused);
+    expect(text(c.err)).toContain("has no --yes");
+    expect(existsSync(base())).toBe(true);
+  });
+});
+
+// ── review of #414: the edges ───────────────────────────────────────────────
+
+describe("uninstall — review of #414", () => {
+  function sessionAt(id: string, lastBoundaryAt: number, endedAt: number | null = null): void {
+    mkdirSync(join(storePath(), SESSIONS_DIR), { recursive: true });
+    writeFileSync(
+      join(storePath(), SESSIONS_DIR, `${id}.json`),
+      JSON.stringify({ sessionId: id, scope: "/work/project", endedAt, lastBoundaryAt }),
+    );
+  }
+
+  test("a session whose last hook was 11 minutes ago does not hold the offer back", async () => {
+    await install();
+    const now = Date.now();
+    sessionAt("sess-old", now - 11 * 60_000);
+    const c = consoleWith(["y", "y", DELETE_PHRASE]);
+    expect(await uninstall(input({ io: c.io, yes: false, now }))).toBe("ok");
+    expect(c.asked).toHaveLength(3);
+    expect(existsSync(base())).toBe(false);
+  });
+
+  test("a session 9 minutes ago does", async () => {
+    await install();
+    const now = Date.now();
+    sessionAt("sess-recent", now - 9 * 60_000);
+    const c = consoleWith(["y", "y", DELETE_PHRASE]);
+    expect(await uninstall(input({ io: c.io, yes: false, now }))).toBe("ok");
+    expect(c.asked).toHaveLength(1);
+    expect(existsSync(storePath())).toBe(true);
+  });
+
+  function serverRecord(pid: number): void {
+    mkdirSync(join(storePath(), SESSIONS_DIR), { recursive: true });
+    writeFileSync(
+      join(storePath(), SESSIONS_DIR, `mcp-server@${String(pid)}.json`),
+      JSON.stringify({
+        pid,
+        hostPid: 1,
+        scope: "/work/project",
+        startedAt: Date.now(),
+        build: { version: "0.3.17", storeSchema: 13, cacheSchema: 1 },
+      }),
+    );
+  }
+
+  test("a foreign file in the folder: the offer deletes EXACTLY the plan's targets, and names and keeps the rest", async () => {
+    await install();
+    await notes(1);
+    await wireIt();
+    mkdirSync(join(base(), "snapshots", "2026-10-10"), { recursive: true });
+    writeFileSync(join(base(), "my-notes.txt"), "mine");
+    const plan = planUninstall({ configPath: configPath(), config: { dataDir: storePath() }, home, verb: "delete" });
+    expect(plan.targets).not.toContain(base());
+    expect(plan.targets.length).toBeGreaterThan(0);
+    const c = consoleWith(["y", "y", DELETE_PHRASE]);
+    expect(await uninstall(input({ io: c.io, yes: false }))).toBe("ok");
+    for (const t of plan.targets) expect(existsSync(t)).toBe(false);
+    expect(readdirSync(base())).toEqual(["my-notes.txt"]);
+    expect(readFileSync(join(base(), "my-notes.txt"), "utf8")).toBe("mine");
+    expect(text(c.out)).toContain("my-notes.txt");
+  });
+
+  test("CLAUDE_CONFIG_DIR: the host's moved directory is the one named as untouched, and it survives even inside ~/.counterparts", async () => {
+    await install();
+    const moved = join(base(), "claude-config");
+    mkdirSync(moved, { recursive: true });
+    writeFileSync(join(moved, "settings.json"), "{}");
+    const env = { ...ENV, CLAUDE_CONFIG_DIR: moved };
+    const c = consoleWith(["y", "y", DELETE_PHRASE]);
+    expect(await uninstall(input({ io: c.io, yes: false, env }))).toBe("ok");
+    expect(text(c.out)).toMatch(/~\/\.counterparts\/claude-config\s+Claude Code's own files/);
+    expect(readFileSync(join(moved, "settings.json"), "utf8")).toBe("{}");
+    expect(existsSync(storePath())).toBe(false);
+  });
+
+  test("a fresh server record whose pid is DEAD does not hold the offer back", async () => {
+    await install();
+    const gone = spawnSync(process.execPath, ["-e", "0"]).pid;
+    serverRecord(gone);
+    const c = consoleWith(["y", "y", DELETE_PHRASE]);
+    expect(await uninstall(input({ io: c.io, yes: false }))).toBe("ok");
+    expect(c.asked).toHaveLength(3);
+    expect(existsSync(base())).toBe(false);
+  });
+
+  test("a fresh server record whose pid is alive does", async () => {
+    await install();
+    serverRecord(process.ppid);
+    const c = consoleWith(["y", "y", DELETE_PHRASE]);
+    expect(await uninstall(input({ io: c.io, yes: false }))).toBe("ok");
+    expect(c.asked).toHaveLength(1);
+    expect(text(c.out)).toContain(`a memory server — pid ${String(process.ppid)}`);
+    expect(existsSync(storePath())).toBe(true);
+  });
+
+  test("--delete-memories looks again after the phrase: a session that opens while it is typed stops it", async () => {
+    await install();
+    await wireIt();
+    const asked: string[] = [];
+    const err: string[] = [];
+    const io: Io = {
+      out: () => undefined,
+      err: (l) => err.push(l),
+      prompt: async (q) => {
+        asked.push(q);
+        sessionAt("sess-late", Date.now());
+        return DELETE_PHRASE;
+      },
+    };
+    expect(await uninstall(input({ io, deleteMemories: true }))).toBe("refused");
+    expect(text(err)).toContain("session sess-late");
+    expect(existsSync(storePath())).toBe(true);
+    // Before the wiring came out.
+    expect(readHost(home, home, ENV).events).toHaveLength(HOST_EVENTS.length);
+  });
+
+  test("a store symlinked OUTSIDE the folder: the offer is withheld and nothing on either side goes", async () => {
+    await install();
+    await notes(1);
+    // The real store moved elsewhere, and ~/.counterparts/store made a link to it.
+    const elsewhere = join(home, "Elsewhere", "real-store");
+    mkdirSync(dirname(elsewhere), { recursive: true });
+    renameSync(storePath(), elsewhere);
+    symlinkSync(elsewhere, storePath());
+    const outside = fingerprint(dirname(elsewhere), true);
+    const c = consoleWith(["y", "y", DELETE_PHRASE]);
+    expect(await uninstall(input({ io: c.io, yes: false }))).toBe("ok");
+    expect(c.asked).toHaveLength(1);
+    expect(text(c.out)).toContain("Deleting your memory is not offered right now:");
+    expect(text(c.out)).toContain("SYMBOLIC LINK");
+    expect(fingerprint(dirname(elsewhere), true)).toBe(outside);
+    expect(lstatSync(storePath()).isSymbolicLink()).toBe(true);
+    expect(existsSync(configPath())).toBe(true);
+  });
+
+  test("a snapshots folder that is a symlink outside: the link goes, what it points at stays", async () => {
+    await install();
+    const precious = join(home, "Elsewhere");
+    mkdirSync(join(precious, "2026-10-10"), { recursive: true });
+    writeFileSync(join(precious, "taxes.txt"), "mine");
+    symlinkSync(precious, join(base(), "snapshots"));
+    const outside = fingerprint(precious);
+    const c = consoleWith(["y", "y", DELETE_PHRASE]);
+    expect(await uninstall(input({ io: c.io, yes: false }))).toBe("ok");
+    expect(existsSync(base())).toBe(false);
+    expect(fingerprint(precious)).toBe(outside);
+  });
+
+  test("closing lines on a plugin install name the plugin's launcher and /plugin, not bun", async () => {
+    await install();
+    const root = join(dirname(import.meta.dir));
+    const env = { ...ENV, CLAUDE_PLUGIN_ROOT: root };
+    const c = consoleWith(["y", ""]);
+    expect(await uninstall(input({ io: c.io, yes: false, env }))).toBe("ok");
+    const said = text(c.out);
+    expect(said).toContain(`To remove the program too: ${REMOVE_PLUGIN}`);
+    expect(said).not.toContain(REMOVE_PACKAGE);
+    expect(existsSync(base())).toBe(true);
+    const kept = consoleWith(null);
+    expect(await uninstall(input({ io: kept.io, env }))).toBe("ok");
+    expect(text(kept.out)).toMatch(/sh \S*src\/adapters\/plugin-run\.sh cli uninstall --park/);
+    expect(text(kept.out)).not.toContain(REMOVE_PACKAGE);
   });
 });
