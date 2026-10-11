@@ -114,6 +114,23 @@ export const CONTRADICTION_TUNABLES = {
    * out at 0.29; a short mole/passport pair scored 0.28. CAL.
    */
   UPDATE_COSINE: 0.3,
+  /**
+   * THE GUARD'S BAR IS THE STORE'S (2026-10-11, Group 2; review 10 C3): an
+   * `updates` is held when the pair is no closer than a typical random pair
+   * IN THIS STORE — this quantile of `GUARD_BAR_PAIRS` random live pairs,
+   * never under `UPDATE_COSINE`. 0.30 was the demo store's; on the owner's
+   * one-topic store 81% of random pairs clear it (median 0.41), and the 60th
+   * percentile, about 0.44, holds ~63% of random wrong pointers while every
+   * one of 92 genuine pairs (lowest 0.50) passes. Measured once per lived day
+   * and kept in `meta` (`GUARD_BAR_META`). CAL.
+   */
+  GUARD_BAR_QUANTILE: 0.6,
+  /** Random pairs measured for the bar. */
+  GUARD_BAR_PAIRS: 2000,
+  /** Memories whose vectors the pairs are drawn from (one read each). */
+  GUARD_BAR_SAMPLE: 400,
+  /** Fewer memories with vectors than this, and the bar is `UPDATE_COSINE`: too few to say what is typical. */
+  GUARD_BAR_MIN_VECTORS: 50,
   /** Characters of a held memory's text shown back to the writer: enough to judge by. */
   HELD_TEXT_CHARS: 600,
   /** Most rows `heldCorrections` reads of each name (holds newest first). */
@@ -151,6 +168,9 @@ export const CONTRADICTION_TUNABLES = {
   /** Proposals shown to one night's dream to confirm or undo, oldest first; the rest wait. CAL. */
   SLOT_PER_NIGHT: 4,
 } as const;
+
+/** Where the store's guard bar is kept, with the lived day it was measured (`guardBar`). */
+export const GUARD_BAR_META = "reconsolidation.guardBar";
 
 /** The `source` of a pair the slot detector proposed (no DDL: a TEXT value). */
 export const SLOT_SOURCE = "slot";
@@ -195,6 +215,7 @@ export type SettleRefusal =
   | "archived"
   | "protected"
   | "core-takes-pressure"
+  | "pending-date"
   | "failed";
 
 export type SettleOutcome =
@@ -305,8 +326,9 @@ function memoryRefusal(store: Store, id: string, moves: boolean): SettleOutcome 
  */
 export function settle(store: Store, input: SettleInput, opts: { closeFlags?: boolean; source?: string } = {}): SettleOutcome {
   if (store.observer) return refuse("observer", "This session is an observer: it reads the store and writes nothing. Nothing was settled.");
-  const how = readHow(input.how);
-  if (how === null) return refuse("how-unknown", `how is one of ${SETTLE_HOWS.join(", ")}.`);
+  const asked = readHow(input.how);
+  if (asked === null) return refuse("how-unknown", `how is one of ${SETTLE_HOWS.join(", ")}.`);
+  let how: SettleHow = asked;
   const day = input.day ?? store.livedDay();
 
   let pair: ContradictionRow | undefined;
@@ -341,6 +363,30 @@ export function settle(store: Store, input: SettleInput, opts: { closeFlags?: bo
         : `If it is settled wrongly, tell the owner: undoing a settle is theirs (counterparts settle --undo ${pair.via ?? pair.id}).`;
     return refuse("already-settled", `${pair.id} is already settled (${pair.how ?? "settled"}${pair.via === null ? "" : `, through ${pair.via}`}). ${again}`);
   }
+  // THE GUARDS (2026-10-11, Group 2; reviews 04, 07 and 10 C3), for every
+  // settler but the owner, whose door has none:
+  const guardNotes: string[] = [];
+  if (how !== "open" && input.actor !== "owner") {
+    const o = store.row(over);
+    const h = store.row(holds);
+    // A READING OR A WORLD MEMORY is not faded by a work or owner fact: the
+    // one wrong settle reviews 04 and 10 found was a reading faded whole by a
+    // fact about the owner that shared its topic. Kept side by side instead.
+    if (o !== undefined && h !== undefined && slotExempt(o) && !slotExempt(h)) {
+      how = "open";
+      guardNotes.push(
+        `${over} is a reading or a world memory and ${holds} is not, so it was not faded: the two were kept side by side (open). If one claim in it was wrong, write that claim, corrected, as a memory of its own.`,
+      );
+    }
+    // A PENDING DATED MEMORY is never buried (07): settled over, its reminder
+    // would go quiet. A newer memory that `updates` it carries the reminder.
+    if (how !== "open" && o !== undefined && store.physicsOf(over).hold?.state === "pending") {
+      return refuse(
+        "pending-date",
+        `${over} holds a date still to come (${o.event_date ?? "a reminder"}): settled over, its reminder would go quiet. Write the newer memory with updates: ${over} (the reminder carries to it), or settle open.`,
+      );
+    }
+  }
   const moves = how !== "open";
   const bad = memoryRefusal(store, over, moves) ?? memoryRefusal(store, holds, false);
   if (bad !== null) return bad;
@@ -348,8 +394,9 @@ export function settle(store: Store, input: SettleInput, opts: { closeFlags?: bo
   const why = cleanWhy(input.why);
   let fade: { id: string; fade: number } | null = null;
   let faded: { id: string; before: number; after: number } | null = null;
-  const notes: string[] = [];
+  const notes: string[] = [...guardNotes];
   const detail: Record<string, unknown> = {};
+  if (how !== asked) detail["asked"] = asked;
   // A FLAG CLOSES WHEN ITS QUESTION IS ANSWERED ELSEWHERE (write-time): a new
   // memory that settles one of an unsettled pair's two closes that pair
   // through its own, so the older memory is not labelled twice.
@@ -1098,6 +1145,8 @@ export function updateRelatedness(input: {
   readonly textVec?: readonly number[] | null;
   /** Names that say nothing here — the owner's (`sleep/consolidate.ts#ownerNames`), any case. */
   readonly ignoreNames?: readonly string[];
+  /** The meaning bar (`guardBar`, the store's own); absent, `UPDATE_COSINE`. */
+  readonly bar?: number;
 }): UpdateRelatedness {
   const ignore = new Set((input.ignoreNames ?? []).flatMap((n) => n.toLowerCase().split(/[^a-z']+/)).filter((w) => w.length >= 3));
   const a = contentWords(input.over, ignore);
@@ -1107,9 +1156,77 @@ export function updateRelatedness(input: {
   const y = input.textVec ?? null;
   if (x !== null && y !== null && x.length > 0 && x.length === y.length) {
     const cos = cosine(x, y);
-    return { related: cos >= CONTRADICTION_TUNABLES.UPDATE_COSINE, by: "meaning", cosine: round(cos), shared };
+    return { related: cos >= Math.max(CONTRADICTION_TUNABLES.UPDATE_COSINE, input.bar ?? 0), by: "meaning", cosine: round(cos), shared };
   }
   return { related: a.size === 0 || shared.length > 0, by: "words", cosine: null, shared };
+}
+
+/**
+ * THE STORE'S GUARD BAR (2026-10-11): what a random pair of live memories
+ * reads in THIS store, at `GUARD_BAR_QUANTILE`, never under `UPDATE_COSINE`.
+ * Measured once per lived day — the first guarded write of the day pays a few
+ * hundred vector reads — and kept in `meta` with its day. Pairs drawn by a
+ * generator seeded on the day, so a day's bar is reproducible. Never throws:
+ * a store that cannot be measured is held to `UPDATE_COSINE`.
+ */
+export function guardBar(store: Store): number {
+  const T = CONTRADICTION_TUNABLES;
+  try {
+    const day = store.livedDay();
+    const raw = store.getMeta(GUARD_BAR_META);
+    if (raw !== undefined) {
+      const v = JSON.parse(raw) as { day?: unknown; bar?: unknown };
+      if (v.day === day && typeof v.bar === "number" && Number.isFinite(v.bar)) return Math.max(T.UPDATE_COSINE, v.bar);
+    }
+    const m = measureGuardBar(store, day);
+    if (!store.observer) {
+      try {
+        store.setMeta(GUARD_BAR_META, JSON.stringify({ day, bar: m.bar, quantile: m.quantile, pairs: m.pairs, vectors: m.vectors }));
+      } catch {
+        /* bookkeeping: measured again next time */
+      }
+    }
+    return m.bar;
+  } catch {
+    return T.UPDATE_COSINE;
+  }
+}
+
+/** One day's measure of the store's random pairs (`guardBar`). */
+export function measureGuardBar(store: Pick<Store, "list" | "vectorOf">, day: number): { bar: number; quantile: number | null; pairs: number; vectors: number } {
+  const T = CONTRADICTION_TUNABLES;
+  let seed = (day * 2654435761) >>> 0 || 1;
+  const rand = (): number => {
+    // xorshift32: small, seeded, enough for a sample.
+    seed ^= seed << 13;
+    seed >>>= 0;
+    seed ^= seed >>> 17;
+    seed ^= seed << 5;
+    seed >>>= 0;
+    return seed / 4294967296;
+  };
+  const ids = store.list({ type: "memory", archived: false });
+  for (let i = ids.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [ids[i], ids[j]] = [ids[j] as string, ids[i] as string];
+  }
+  const vecs: number[][] = [];
+  for (const id of ids) {
+    if (vecs.length >= T.GUARD_BAR_SAMPLE) break;
+    const v = store.vectorOf(id);
+    if (v !== null && (vecs.length === 0 || v.length === (vecs[0] as number[]).length)) vecs.push(v);
+  }
+  if (vecs.length < T.GUARD_BAR_MIN_VECTORS) return { bar: T.UPDATE_COSINE, quantile: null, pairs: 0, vectors: vecs.length };
+  const cos: number[] = [];
+  for (let k = 0; k < T.GUARD_BAR_PAIRS; k++) {
+    const a = Math.floor(rand() * vecs.length);
+    let b = Math.floor(rand() * (vecs.length - 1));
+    if (b >= a) b += 1;
+    cos.push(cosine(vecs[a] as number[], vecs[b] as number[]));
+  }
+  cos.sort((x, y) => x - y);
+  const q = cos[Math.min(cos.length - 1, Math.floor(T.GUARD_BAR_QUANTILE * cos.length))] as number;
+  return { bar: Math.max(T.UPDATE_COSINE, round(q)), quantile: round(q), pairs: cos.length, vectors: vecs.length };
 }
 
 /** A held `updates`, as the write's result carries it: the memory, in its own words. */

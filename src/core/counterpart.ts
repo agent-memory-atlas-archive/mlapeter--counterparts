@@ -121,6 +121,7 @@ import type { RevisionApplication } from "./revision.js";
 import {
   CONTRADICTION_HELD_EVENT,
   detectSlot,
+  guardBar,
   heldView,
   proposeSlot,
   settle as settleContradiction,
@@ -6597,6 +6598,8 @@ export class Counterpart {
       overVec,
       textVec,
       ignoreNames,
+      // The store's own bar (2026-10-11): what a random pair reads here.
+      ...(overVec !== null && textVec !== null ? { bar: guardBar(this.store) } : {}),
     });
     this.emit("counterpart.update.read", target, {
       related: read.related,
