@@ -105,22 +105,25 @@ function rows(c: Counterpart, name: string): Record<string, unknown>[] {
   return c.store.eventLog({ name, limit: 1_000 }).map((r) => JSON.parse(r.payload ?? "{}") as Record<string, unknown>);
 }
 
-/** A busy night: many memories, quote-heavy (every quote escapes twice on the wire) or CJK, and a long page. */
-function busyNight(c: Counterpart, script: "quoted" | "cjk"): void {
+/** A busy night: many memories, quote-heavy (every quote escapes twice on the wire) or CJK, and a long page.
+ *  Returns the ids of the memories it wrote, oldest first. */
+function busyNight(c: Counterpart, script: "quoted" | "cjk"): string[] {
+  const ids: string[] = [];
   c.store.advanceClock("2026-09-10");
   const said = script === "quoted" ? "\"said\" \"so\" \"plainly\" ".repeat(20) : "我们今天讨论了发布流程和迁移步骤，决定先运行迁移再启动容器。".repeat(8);
-  for (let i = 0; i < 120; i += 1) mem(c, `Older memory ${String(i)} of a busy week: ${said}`);
+  for (let i = 0; i < 120; i += 1) ids.push(mem(c, `Older memory ${String(i)} of a busy week: ${said}`));
   for (let d = 11; d <= 20; d += 1) c.store.advanceClock(`2026-09-${String(d)}`);
   for (let i = 0; i < 90; i += 1) {
-    mem(c, `Memory ${String(i)} of a busy day: ${said}${(script === "quoted" ? "and more said at length. " : said).repeat(i % 7 === 0 ? (script === "quoted" ? 300 : 20) : 1)}`, {
+    ids.push(mem(c, `Memory ${String(i)} of a busy day: ${said}${(script === "quoted" ? "and more said at length. " : said).repeat(i % 7 === 0 ? (script === "quoted" ? 300 : 20) : 1)}`, {
       kind: i % 3 === 0 ? "person" : i % 3 === 1 ? "self" : "fact",
       about: i % 2 === 0 ? "us" : "me",
-    });
+    }));
   }
   const page = script === "quoted" ? `## Core\n\n${"\"A\" \"quoted\" \"page\". ".repeat(700)}` : `## Core\n\n${"我是谁，我如何工作。".repeat(500)}`;
   expect(longPageWritten(c, page)).toBe(true);
   // The wake the dream carries is the last one rendered: a long one.
   c.store.setMeta(BRIEFING_KEY, `${page}\n\n## Open threads\n\n${said.repeat(10)}`);
+  return ids;
 }
 
 describe("one ceiling: every cap derives from it", () => {
@@ -278,7 +281,7 @@ describe("the net: a result over the ceiling is cut to it, said, and recorded �
 
   test("a lock met by a READ's own telemetry row (a part handed, a recall counted) does not turn the read into a refusal", async () => {
     const c = brain();
-    busyNight(c, "quoted");
+    const written = busyNight(c, "quoted");
     const s = server(c);
     const begin = await s.call("dream", { phase: "begin", session: SESSION });
     const dreamId = begin.structuredContent["dream"] as string;
@@ -288,7 +291,9 @@ describe("the net: a result over the ceiling is cut to it, said, and recorded �
     const realVersions = store.schemaVersions.bind(c.store);
     const realAppend = store.appendEvent.bind(c.store);
     let locked = false;
+    let metLock = 0;
     store.schemaVersions = () => {
+      if (locked) metLock += 1;
       if (locked) throw Object.assign(new Error("database is locked"), { code: "SQLITE_BUSY" });
       return realVersions();
     };
@@ -304,10 +309,17 @@ describe("the net: a result over the ceiling is cut to it, said, and recorded �
       const part = await s.call("dream", { phase: "part", session: SESSION, dream: dreamId, part: 2 });
       expect(part.isError ?? false).toBe(false);
       expect(typeof part.structuredContent["bundle"]).toBe("string");
-      const ids = Object.keys(JSON.parse((begin.structuredContent["bundle"] as string).split("\n").slice(1).join("\n")).memories as object).slice(0, 2);
+      // Two ids the test wrote, not the first two of the begin's bundle: how
+      // many memories part 1 carries depends on which comes first, and ties
+      // there break on the (random) id — when a long memory led, part 1 held
+      // one, the recall asked for one, and this read 1 for 2 (about 1 run in
+      // 60, under load or not; 2026-10-11).
+      const ids = written.slice(0, 2);
       const recall = await s.call("recall", { ids, session: SESSION });
       expect(recall.isError ?? false).toBe(false);
       expect((recall.structuredContent["memories"] as unknown[]).length).toBe(2);
+      // Both rows really met the lock: the part's and the recall's.
+      expect(metLock).toBe(2);
     } finally {
       store.schemaVersions = realVersions;
       store.appendEvent = realAppend;
