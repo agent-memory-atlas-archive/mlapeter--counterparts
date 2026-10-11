@@ -10,9 +10,9 @@
 - **A search cache from a newer build says so.** When only the search cache was written by a
   newer Counterparts (after going back to an older version, say), the memory tools no longer
   say "Counterparts was updated — run /mcp", which did not help. They say a newer build wrote
-  the search cache, and to reinstall that build or delete `cache/cache.sqlite*` in the store
-  (no memory is kept there; it is rebuilt) and then reconnect. A store from a newer build
-  keeps its message.
+  the search cache: if that build is installed, reconnect; if you went back to an older one,
+  delete `cache/cache.sqlite*` in the store (no memory is kept there; it is rebuilt) and then
+  reconnect. `counterparts doctor` says the same. A store from a newer build keeps its message.
 - **Hook claims hold up in three more corners.** A claims file another hook holds is given up
   on after one wait instead of three; a lock dated in the future after the clock steps back
   is treated as a dead process's instead of waited on; and a hook whose own claim landed while
