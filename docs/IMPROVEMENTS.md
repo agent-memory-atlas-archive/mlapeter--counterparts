@@ -471,6 +471,30 @@ were refined by b2+f8 at the review of #369, named where they were):
   command typed in a terminal was not started from any project, and the working directory may be
   one set `off`.
 
+### Decided by the reflection-own-context builder, 2026-10-11, lightly held (the reflection in its own child)
+
+- Decided by the reflection-own-context builder, 2026-10-11, lightly held: each of the night's
+  two children gets the whole watchdog (`dreaming.timeoutMs`, default 20 minutes) and the whole
+  turn ceiling, one after the other, and the `started` row carries both (`nightChildrenTimeoutMs`).
+  Why: one shared deadline would let a slow dream starve the reflection; a night that took
+  11–12 minutes in one context stays far inside 2 × 20. The cost is that a run that never
+  reports is read as lost about 20 minutes later than before.
+- Decided by the reflection-own-context builder, 2026-10-11, lightly held: the reflection's child
+  runs after ANY dream child that ran, journaled or not. On a journaled dream it reflects on that
+  dream by id; otherwise on the last few days, as the single run did when its dream was refused.
+  It is not started after a first child that stopped straight away having begun nothing
+  (`quick-exit`: a second `claude` would stop the same way), when a reflection already finished
+  today, or when the store will not open between them. Why: the brief asks that a failed or
+  skipped dream still leave a reflection. The cost is one case: a dream child that crashed
+  mid-dream leaves its dream begun, so the relaunch that resumes it later that day finds the
+  day already reflected and ends `partial` (the reflection is not run twice a day).
+- Decided by the reflection-own-context builder, 2026-10-11, lightly held: the dream's child may
+  not call the reflect tool at all (denied, `DREAM_CHILD_DENIED`), and its MCP server is told it
+  is the dream's child (`COUNTERPARTS_NIGHT_CHILD=dream`), so the journal's `next` says to hand
+  back instead of "now reflect". The reflection alone, and the reflection's child, keep all four
+  night tools as before. The in-session run (a person says "dream", the Agent tool) is unchanged:
+  one agent, all three parts.
+
 ### Decided by the doctor-install-fixes builder, 2026-10-11, lightly held (doctor's fixes by install)
 
 - Decided by the doctor-install-fixes builder, 2026-10-11, lightly held: doctor's fix lines

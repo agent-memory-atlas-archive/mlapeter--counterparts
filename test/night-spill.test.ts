@@ -493,12 +493,18 @@ describe("the run reads its child's transcript once it exits", () => {
     });
     expect(starts).toBe(1);
     expect(leftTranscript).toMatchObject({ state: "could-not-start", reason: "quick-exit" });
-    // No transcript, but a dream begun: not retried either.
+    // No transcript, but a dream begun: not retried either. (The reflection's
+    // own child follows it, 2026-10-11: a second child, not a retry.)
     let again = 0;
+    let reflections = 0;
     const began = await runNight({
       ...night(child(null)),
       run: "nrn_began",
-      start: async () => {
+      start: async (plan: ChildPlan) => {
+        if (plan.stdin.includes("reflection launch⟧")) {
+          reflections += 1;
+          return { code: 0, timedOut: false, error: null };
+        }
         again += 1;
         const c = openNightCounterpart(config());
         try {
@@ -510,6 +516,7 @@ describe("the run reads its child's transcript once it exits", () => {
       },
     });
     expect(again).toBe(1);
+    expect(reflections).toBe(1);
     expect(began.state).not.toBe("done");
   });
 
