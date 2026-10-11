@@ -517,6 +517,14 @@ order, none about which arrivals are offered:
 of #367): `horizon()` returns it as `more`, in the same order, and the wake names those ids
 in the lane's "N more arriving; recall ids: …" line.
 
+2026-10-11 (decided by random-06, lightly held): past the due-day plain items, the order is
+every other PLAIN arrival, then the quiet ones, each by nearest date — whole days either side
+of the day asked about, so a date in its grace days is as near as one as far ahead; the
+salience order only breaks a tie (`byArrivingOrder`). Found by the 0.3.17 release check on a
+copy of the owner's store: two quiet items due the 14th took both lines from his plain tax
+deadline due the 15th on the 13th (and would have on the 14th but for `plainDueOn`). The cap
+stays 2; if a plain item is still left out, the cap needs to grow, not the order.
+
 ## 19. The dated hold, and `faded` no longer refuses a pending date (2026-10-10, Group 1)
 
 Review 03 C4c / 07 C1: under the new curve (power-law, a default note out of reach in ~2 lived

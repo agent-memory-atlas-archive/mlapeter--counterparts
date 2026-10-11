@@ -24,6 +24,7 @@ import type { PutInput } from "../src/core/store/index.js";
 import type { Salience } from "../src/core/types.js";
 import * as prospective from "../src/core/prospective/index.js";
 import {
+  CUE_MODE_META,
   EXCLUDED_KINDS,
   PROSPECTIVE_FIRE_EVENT,
   PROSPECTIVE_REFUSED_EVENT,
@@ -747,6 +748,68 @@ describe("arrival is a cue, not a command — no bypass lane", () => {
     const h = engine(s).horizon({ at: "2026-09-04", day: 5 });
     expect(h.reason).toBe("nothing-arrived");
     expect(h.items).toEqual([]);
+  });
+});
+
+// The wake's "Arriving:" order (2026-10-11, decided by random-06, lightly
+// held): plain first, then nearest date. Found on a copy of the owner's store:
+// a plain deadline due the 15th lost both lines on the 13th and the 14th to two
+// quiet items due the 14th.
+describe("Arriving ranks plain reminders first, then nearest date", () => {
+  const PLAIN = { meta: { [CUE_MODE_META]: "plain" } } as const;
+  const ids = (xs: readonly Arrival[]): string[] => xs.map((x) => x.memoryId);
+
+  test("a plain item due further out beats two quiet items due sooner, and the +N more names the rest", () => {
+    const s = store();
+    const q1 = dated(s, "2026-09-06", { body: `${BODY} quiet one` });
+    const q2 = dated(s, "2026-09-06", { body: `${BODY} quiet two` });
+    // Four days out sits outside the default lead (`LEAD_DAYS` 3): open it wider.
+    const plain = dated(s, "2026-09-08", { body: `${BODY} plain`, salience: DULL, ...PLAIN });
+    const h = new Prospective({ store: s, tunables: { LEAD_DAYS: 5 } }).horizon({ at: "2026-09-04", day: 5 });
+    expect(h.items).toHaveLength(T.HORIZON_ITEMS);
+    expect(h.items[0]?.memoryId).toBe(plain);
+    expect([...ids(h.items), ...ids(h.more)].sort()).toEqual([plain, q1, q2].sort());
+    expect(h.more).toHaveLength(1);
+  });
+
+  test("the owner's shape under the default lead: on the 13th and the 14th the plain 15th is listed", () => {
+    const s = store();
+    dated(s, "2026-10-14", { body: `${BODY} quiet one` });
+    dated(s, "2026-10-14", { body: `${BODY} quiet two` });
+    const plain = dated(s, "2026-10-15", { body: `${BODY} tax deadline`, salience: DULL, ...PLAIN });
+    for (const at of ["2026-10-13", "2026-10-14"]) {
+      const h = engine(s).horizon({ at, day: 5 });
+      expect(ids(h.items)).toContain(plain);
+      expect(h.items[0]?.memoryId).toBe(plain);
+    }
+  });
+
+  test("two plain items fill the slots before any quiet one, nearest date first", () => {
+    const s = store();
+    const quiet = dated(s, "2026-09-05", { body: `${BODY} quiet` });
+    const later = dated(s, "2026-09-07", { body: `${BODY} plain later`, ...PLAIN });
+    const sooner = dated(s, "2026-09-06", { body: `${BODY} plain sooner`, ...PLAIN });
+    const h = engine(s).horizon({ at: "2026-09-04", day: 5 });
+    expect(ids(h.items)).toEqual([sooner, later]);
+    expect(ids(h.more)).toEqual([quiet]);
+  });
+
+  test("a plain item due the morning the wake is read still leads a sooner-dated plain one in grace", () => {
+    const s = store();
+    const missed = dated(s, "2026-09-03", { body: `${BODY} plain missed`, ...PLAIN });
+    const due = dated(s, "2026-09-05", { body: `${BODY} plain due`, ...PLAIN });
+    const h = engine(s).horizon({ at: "2026-09-04", day: 5 });
+    expect(ids(h.items)).toEqual([due, missed]);
+  });
+
+  test("within a tier: the nearest date either side of the day asked about leads", () => {
+    const s = store();
+    const behindFar = dated(s, "2026-08-31", { body: `${BODY} behind four` });
+    const ahead = dated(s, "2026-09-06", { body: `${BODY} ahead two` });
+    const behindNear = dated(s, "2026-09-03", { body: `${BODY} behind one` });
+    const today = dated(s, "2026-09-04", { body: `${BODY} today` });
+    const h = engine(s).horizon({ at: "2026-09-04", day: 5 });
+    expect([...ids(h.items), ...ids(h.more)]).toEqual([today, behindNear, ahead, behindFar]);
   });
 });
 
