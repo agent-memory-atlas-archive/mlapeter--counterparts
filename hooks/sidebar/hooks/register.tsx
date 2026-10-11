@@ -51,6 +51,7 @@ import type { BodyProps } from './body'
 import { Brain } from './brain'
 import { encodeCells } from './cells'
 import {
+  RULES,
   RULE_NAMES,
   classify,
   countToday,
@@ -75,7 +76,7 @@ import {
   titled,
   wrap,
 } from './feed'
-import type { DashDream, DashEvent, RecallBlock } from './feed'
+import type { DashDream, DashEvent, Firing, RecallBlock } from './feed'
 import { DASHBOARD, MECHS, hex, mechById, memoryUrl, stageOf } from './mechanisms'
 import type { MechId } from './mechanisms'
 import { lookup, parentOf, parseRegistry, settingsHookConfig } from './scopes'
@@ -925,7 +926,11 @@ async function openMech($: EngineInterface, id: MechId): Promise<void> {
     const dreams = activity.some(e => e.name.startsWith('dream.'))
       ? (((await fetchJson($, '/api/dreams?limit=3').catch(() => null)) as { dreams?: DashDream[] } | null)?.dreams ?? [])
       : []
-    const firings = mechFirings(activity, id, dreams, 8)
+    let firings = mechFirings(activity, id, dreams, 8)
+    // The panel looks back 200 rows an event name: a mechanism whose rows are sparse among them (Emotion's
+    // mood-matched recalls, 2026-10-10: the first of today's 27 was the 321st decision) fired today and names
+    // nothing there. Read its own rows deeper, as today's counts do, rather than say "nothing lately".
+    if (firings.length === 0 && ((await read($, todayA))?.counts[id] ?? 0) > 0) firings = await deeperFirings($, id)
     const ids = [...new Set(firings.flatMap(firingIds))]
     const read1 = await Promise.all(ids.map(async x => [x, await memoryTitle($, x)] as const))
     const titles: Record<string, string> = {}
@@ -937,6 +942,26 @@ async function openMech($: EngineInterface, id: MechId): Promise<void> {
     await update($, mechA, m => (m !== null && m.id === id && m.at === at ? { ...m, status: 'ready' as const, events } : m))
   } catch {
     await update($, mechA, m => (m !== null && m.id === id && m.at === at ? { ...m, status: 'error' as const } : m))
+  }
+}
+
+/** Event names whose rows name nothing (`feed.ts#mechFirings`) or need a dream read: not worth reading deeper. */
+const NAMES_NOTHING = new Set(['mcp.recall', 'associate.flush', 'contradiction.flagged', 'sleep.cycle', 'dream.journaled', 'dream.changed'])
+
+/**
+ * A mechanism's firings from its own event rows (`/api/activity?name=`, reads),
+ * FALLBACK_LIMIT first, twice as deep while nothing among them names a memory,
+ * to at most FALLBACK_MAX: only on a click, only when the panel named nothing.
+ */
+async function deeperFirings($: EngineInterface, id: MechId): Promise<Firing[]> {
+  const names = [...new Set(RULES.filter(r => r.mech === id && !NAMES_NOTHING.has(r.name)).map(r => r.name))]
+  if (names.length === 0) return []
+  for (let limit = FALLBACK_LIMIT; ; limit *= 2) {
+    const answers = await Promise.all(
+      names.map(n => fetchJson($, `/api/activity?name=${encodeURIComponent(n)}&limit=${String(limit)}`).then(a => (a as { events?: DashEvent[] }).events ?? [], () => [] as DashEvent[])),
+    )
+    const firings = mechFirings(answers.flat(), id, [], 8)
+    if (firings.length > 0 || answers.every(a => a.length < limit) || limit * 2 > FALLBACK_MAX) return firings
   }
 }
 

@@ -12,6 +12,8 @@ import { hex, stageOf } from '../hooks/mechanisms'
 import {
   BAND_PROPS,
   DECISION_T3,
+  EVENTS,
+  FIRED_TODAY,
   HERE,
   HOME,
   PANE,
@@ -381,6 +383,35 @@ test('Mechanisms today: times each fired today, from the dashboard; a zero dim w
     await click(ui, 'Forgetting') // again: closed
     expect((await bodyLines(ui)).join('\n')).not.toContain('faded at 3:34:')
     await ui.unmount()
+  }
+})
+
+test('a mechanism that fired today but whose rows the panel’s lookback missed: its own rows are read deeper, so it names what it was about', async ($, on) => {
+  const was = FIRED_TODAY.emotional ?? null
+  FIRED_TODAY.emotional = 1
+  try {
+    const w = world(on, { panelActivity: id => (id === 'emotional' ? [] : EVENTS) })
+    w.events.push(ev(460, 'recall.decision', 'On turn 4 a matching mood brought one memory closer.', 30, {
+      session: 'sess-older', turn: '4', surfacedCount: '1', footnoteCount: '0', moodMatched: '1',
+      surfaced: JSON.stringify([{ id: 'mem_sur00001', sal: 0.6 }]),
+    }))
+    await start($, w)
+    const ui = await mount($, w, 'terminal')
+    await click(ui, 'Emotion')
+    await settle(w)
+    const shown = (await bodyLines(ui)).join('\n')
+    expect(w.fetches.some(u => u.includes('/api/activity?name=recall.decision&limit=150'))).toBe(true)
+    expect(shown).toContain('brought closer at')
+    expect(shown).toContain('The sidebar is 35 columns wide')
+    expect(shown).not.toContain('nothing lately')
+    // nothing fired today and nothing in the panel: no deeper read
+    const before = w.fetches.length
+    await click(ui, 'Prospective')
+    await settle(w)
+    expect(w.fetches.slice(before).some(u => u.includes('/api/activity?name=prospective'))).toBe(false)
+    await ui.unmount()
+  } finally {
+    FIRED_TODAY.emotional = was
   }
 })
 

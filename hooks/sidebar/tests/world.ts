@@ -178,6 +178,8 @@ export type WorldOptions = {
   onFetch?: (url: URL) => void;
   /** The dashboard's `today` (its store's zone), when it is not this clock's day. */
   dashToday?: string;
+  /** What `/api/mechanism?id=` lists as its activity (every event unless given): its lookback can miss sparse rows. */
+  panelActivity?: (id: string) => Ev[];
 }
 
 /** The local calendar day of `at`, as the sidebar and the dashboard name it. */
@@ -348,7 +350,10 @@ export function world(on: On, opts: WorldOptions = {}): World {
       const mechanisms = Object.entries(FIRED_TODAY).map(([id, v]) => (opts.oldDashboard === true ? { id, status: 'green' } : { id, status: 'green', firedToday: v }))
       return ok({ livedDay: 18, fromDay: 12, days: 7, ...(opts.oldDashboard === true ? {} : { today: opts.dashToday ?? localDay(clock.now()) }), mechanisms, truncated: false })
     }
-    if (url.pathname === '/api/mechanism') return ok({ id: url.searchParams.get('id'), found: true, built: true, livedDay: 18, activity: w.events })
+    if (url.pathname === '/api/mechanism') {
+      const id = url.searchParams.get('id') ?? ''
+      return ok({ id, found: true, built: true, livedDay: 18, activity: opts.panelActivity?.(id) ?? w.events })
+    }
     if (url.pathname === '/api/memory') {
       const id = url.searchParams.get('id') ?? ''
       const m = MEMORIES[id]
