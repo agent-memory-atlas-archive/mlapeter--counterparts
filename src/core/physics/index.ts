@@ -347,14 +347,6 @@ export const TUNABLES = {
    * once a year would be below reach on the very day it comes round.
    */
   HOLD_LEAD_DAYS: 3,
-  /**
-   * AFTER THE WINDOW: a dated memory's own stability is divided by this until
-   * it is used again (`elapsed`, `stability`'s `spent`). Steeper on its own
-   * curve, not zeroed: a 0.25 reminder (S ≈ 3) then leaves reach within a day,
-   * a felt 0.6 fact (S in the hundreds) still lasts months. Decided by Mike,
-   * 2026-10-10, lightly held; revisit after ~5 lived days (review of #372).
-   */
-  SPENT_STABILITY_DIVISOR: 4,
 
   // --- §5.1 salience ---
   /** CAL. Size of the nearest-neighbour slice in E(m) for novelty (v1's top-M). */
@@ -905,30 +897,25 @@ export function steepnessInput(m: Pick<MemoryPhysics, "salience" | "feelingPeak"
  * κ is 0 (none today; the owner's records later). `(1 + t/∞)^−1 = 1`, so the
  * exemption is the arithmetic, not a branch in every reader (03 D6).
  *
- * `spent` is the steeper slope of a dated memory whose window has closed (07
- * C2, `DatedHold`): its own stability divided by `SPENT_STABILITY_DIVISOR`
- * (4) — the completed intention is inhibited, gently, on its own curve.
- * Decided by Mike, 2026-10-10, loosely held (b2 proposed it); revisit after ~5 lived days (review
- * of #372). Why: the first version zeroed q, so salience and feeling no longer
- * slowed it at all — on a copy of the live store 9 of 17 dated memories were
- * archived within 30 lived days, among them a felt fact about the owner and an
- * agreed convention their own curves kept for months.
+ * A dated memory's slope is its own, before its window and after it: the
+ * steeper "spent" slope after the window (÷4, 2026-10-10) was cut by Mike,
+ * 2026-10-11, lightly held — ending the hold does the same job with no extra
+ * logic (`elapsed`).
  */
 export function stability(
   m: Pick<MemoryPhysics, "kind" | "uses" | "salience"> &
     Partial<Pick<MemoryPhysics, "feelingPeak" | "returns" | "promotedIdentity" | "eraClaim">>,
-  opts: { spent?: boolean } = {},
 ): number {
   const kappa = kindPhysics(m.kind).kappa;
   if (m.promotedIdentity === true || !(kappa > 0)) return Number.POSITIVE_INFINITY;
   const q = steepnessInput(m);
-  const s =
+  return (
     (TUNABLES.S0 *
       Math.exp(TUNABLES.STABILITY_GAIN * q) *
       (1 + TUNABLES.BETA * Math.log(1 + Math.max(0, m.uses))) *
       returnFactor(m.returns ?? 0)) /
-    kappa;
-  return opts.spent === true ? s / TUNABLES.SPENT_STABILITY_DIVISOR : s;
+    kappa
+  );
 }
 
 /** The returns' share of stability: `1 + RETURN_GAIN x ln(1 + returns)`. */
@@ -975,34 +962,24 @@ export function decayAnchor(
 }
 
 /**
- * The elapsed lived days the curve reads on day d, and whether the steep
- * (spent) slope applies — the one place the dated hold acts (07 C1/C2):
+ * The elapsed lived days the curve reads on day d — the one place the dated
+ * hold acts (07 C1/C2):
  *
- *   - PENDING (a future date, or its window still open; a live repeat): t = 0.
- *     The memory holds at its height until its window closes. No use is
- *     credited — `uses`, `lastUsedDay` and returns are untouched.
- *   - SPENT (its window closed): t counts from the window's close
- *     (`closedDaysAgo`, calendar days, an upper bound on the lived days
- *     since), on the steeper slope (stability / `SPENT_STABILITY_DIVISOR`).
- *   - …until it is USED after the window: a use means it still matters, so
- *     it is an ordinary memory again, t from its anchor on its own curve
- *     (decided by Mike, 2026-10-10, loosely held). "Used after" is read as
- *     fewer lived days since the anchor than calendar days since the close;
- *     on a store left alone for most of a window that errs toward ordinary —
- *     the gentle direction.
- *   - otherwise: t = d − `decayAnchor`.
- *
- * A REPEATING date is never spent: its hold is pending in each occurrence's
- * window and absent between them (`store/operational.ts#datedHold`).
+ *   - PENDING (a future date, or its window still open; a repeat inside an
+ *     occurrence's window): t = 0. The memory holds at its height until its
+ *     window closes. No use is credited — `uses`, `lastUsedDay` and returns
+ *     are untouched.
+ *   - otherwise: t = d − `decayAnchor`. A one-off date whose window has
+ *     closed carries no hold (`store/operational.ts#datedHold`), so it is back
+ *     on its own curve AS IF IT HAD NEVER BEEN HELD: t from its own anchor,
+ *     not from the close — an old routine reminder is below reach at once, a
+ *     felt dated fact lands where its own curve puts it. (Mike, 2026-10-11,
+ *     lightly held: this replaces the 2026-10-10 "spent" slope, t from the
+ *     close on stability ÷ 4 until a use.) A repeat between windows is the
+ *     same.
  */
-export function elapsed(m: MemoryPhysics, d: number): { t: number; spent: boolean } {
-  const t = Math.max(0, d - decayAnchor(m));
-  const hold = m.hold ?? null;
-  if (hold === null) return { t, spent: false };
-  if (hold.state === "pending") return { t: 0, spent: false };
-  const since = Math.max(0, hold.closedDaysAgo);
-  if (t < since) return { t, spent: false };
-  return { t: since, spent: true };
+export function elapsed(m: MemoryPhysics, d: number): number {
+  return m.hold?.state === "pending" ? 0 : Math.max(0, d - decayAnchor(m));
 }
 
 /**
@@ -1015,8 +992,7 @@ export function elapsed(m: MemoryPhysics, d: number): { t: number; spent: boolea
  */
 export function decay(m: MemoryPhysics, d: number, shape: DecayShape = TUNABLES.DECAY_SHAPE): number {
   if (m.promotedIdentity) return 1;
-  const { t, spent } = elapsed(m, d);
-  return decayCurve(t, stability(m, { spent }), shape);
+  return decayCurve(elapsed(m, d), stability(m), shape);
 }
 
 /** The memory's height before decay: `base x fade` (03 C1's h). */
@@ -1050,8 +1026,8 @@ export function daysUntilBelow(m: MemoryPhysics, theta: number, shape: DecayShap
   if (m.promotedIdentity) return null;
   const h = height(m);
   if (h < theta) return 0;
-  if ((m.hold ?? null) !== null && m.hold?.state === "pending") return null;
-  const S = stability(m, { spent: m.hold?.state === "spent" });
+  if (m.hold?.state === "pending") return null;
+  const S = stability(m);
   if (S === Number.POSITIVE_INFINITY) return null;
   if (shape === "power-law" && TUNABLES.POWER_LAW_PSI === 1) {
     return Math.floor(S * (h / theta - 1)) + 1;
@@ -1069,9 +1045,10 @@ export const NEVER_CHANGES = 1_000_000_000;
  * the day the nightly turn-down has to look at it again. Strictly after `d`.
  *
  *   - the identity band, S = ∞: `NEVER_CHANGES`;
- *   - a dated memory (pending or spent): `d + 1` — its hold turns on the
+ *   - a held (pending) dated memory: `d + 1` — its hold turns on the
  *     CALENDAR, which a lived day cannot predict, so it is looked at daily
- *     (there are few of them);
+ *     (there are few of them). So the first pass after its window closes
+ *     looks at it, finds no hold, and gives it its normal day below;
  *   - otherwise the first day it falls under the next of `THETA_SEM`, `REACH`
  *     and `PHI_PRUNE` below where it stands, or — once under the floor — the
  *     day its dwell reaches `D_FLOOR_DAYS`.

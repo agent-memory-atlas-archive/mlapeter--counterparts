@@ -308,6 +308,11 @@ were refined by b2+f8 at the review of #369, named where they were):
 
 - **A read-without-crediting mode for audits.** A way to read memories (a review, a rules
   audit) without the reading counting as a use.
+- **A repeating date's next window can open while the ranking cache still reads it below
+  reach.** Between windows a repeat has no hold, so its next-change day is its curve's, and nothing
+  makes the turn-down look at it the day its next window opens on the calendar; until a pass reads
+  it, ambient recall (which prefilters on the cache) can miss it. Physics has no `event_date` to
+  predict it from. (Noted by the review of the 2026-10-11 hold-without-spent lane; pre-existing.)
 
 ---
 

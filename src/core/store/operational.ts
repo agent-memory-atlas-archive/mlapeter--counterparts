@@ -2195,7 +2195,8 @@ export const SELF_PAGE_ROLE_SPELLED = "page";
  *     day it comes round). A daily or weekly repeat is always in a window;
  *   - a date whose last day was AFTER the day it was written (a reminder, not
  *     a note about the past): `pending` while `today` is on or before its last
- *     day plus `HOLD_GRACE_DAYS`, then `spent` with the calendar days since;
+ *     day plus `HOLD_GRACE_DAYS`, then null: an ordinary memory again, on its
+ *     own curve from its own anchor (2026-10-11, the steeper "spent" slope cut);
  *   - anything else — no date, an unreadable one, a date that was already past
  *     when it was written (an `event_date` used as "the date it is about",
  *     before v12 split `occurred_on` off), or no calendar today: null.
@@ -2233,8 +2234,7 @@ export function datedHold(
   const written = typeof row.learned_on === "string" ? row.learned_on.slice(0, 10) : "";
   if (isDay(written) && daysBetween(written, date.last) <= 0) return null;
   const closes = addDays(date.last, PHYSICS_TUNABLES.HOLD_GRACE_DAYS);
-  const since = daysBetween(closes, today);
-  return since <= 0 ? { state: "pending" } : { state: "spent", closedDaysAgo: since };
+  return daysBetween(closes, today) <= 0 ? { state: "pending" } : null;
 }
 
 /**
