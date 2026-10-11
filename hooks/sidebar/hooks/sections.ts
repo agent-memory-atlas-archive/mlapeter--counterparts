@@ -428,7 +428,11 @@ function mechEvents(s: BodyState, f: Fold): Line[] {
   if (m === null) return []
   if (m.status === 'loading') return [line([seg('reading…', P.dim)], `mech:${m.id}`)]
   if (m.status === 'error') return plain(wrapN("couldn't read it: the dashboard isn't answering", s.w), P.dim, `mech:${m.id}`)
-  if (m.events.length === 0) return plain(wrapN('nothing lately names a memory', s.w), P.dim, `mech:${m.id}`)
+  if (m.events.length === 0) {
+    // Association's firings (link flushes) count the pairs they linked and name none yet: say what it does instead.
+    const said = m.id === 'association' ? "links memories used together; it doesn't record which yet" : 'nothing lately names a memory'
+    return plain(wrapN(said, s.w), P.dim, `mech:${m.id}`)
+  }
   const out: Line[] = []
   let last = ''
   for (const e of m.events.slice(0, f.events)) {

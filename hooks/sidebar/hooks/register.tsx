@@ -112,8 +112,6 @@ const POLL_IDLE_MS = 30000
 const STALE_MS = 10 * 60000
 /** A switch's note and the pause confirm close by themselves after this. */
 const AUTO_CLOSE_MS = 30000
-/** An item opened in place, or an opened mechanism, closes by itself after this. */
-const OPEN_CLOSE_MS = 60000
 /** How often the folder's registry is read again while no dashboard poll reads it (the pane closed or not shown). */
 const SCOPE_RECHECK_MS = 60000
 /** How long the registry's path, found from the settings, is trusted before it is looked up again. */
@@ -427,6 +425,15 @@ function scopeHover(scope: SidebarScope): string {
 /** What a click on the Claude Code memory switch does: whole sentences in two rows of 32. */
 function memoryHover(on: boolean): string {
   return on ? "Claude Code's MEMORY.md: a click turns it off in every session." : "Claude Code's own memory is off everywhere. A click turns it on."
+}
+
+/**
+ * The header's count, whole: `1000 memories` (13 cells, the header's text
+ * column widened by one for it). From 10,000, `10k+ memories`, still 13: the
+ * exact number is on the dashboard.
+ */
+function memoriesCount(n: number): string {
+  return n >= 10000 ? `${String(Math.floor(n / 1000))}k+ memories` : `${String(n)} memories`
 }
 
 /** The newest thing in plain words, for the tail. */
@@ -857,13 +864,6 @@ async function onOpened($: EngineInterface, ids: readonly string[], handle: stri
 
 // ── a click in the body ────────────────────────────────────────────────────
 
-/** Closes what is open in place after a while, if it is still the same. */
-function autoClose($: EngineInterface, key: string, at: number): void {
-  $.clock.after(OPEN_CLOSE_MS, () => {
-    quiet(update($, openA, o => (o !== null && o.key === key && o.at === at ? null : o)))
-  })
-}
-
 /**
  * Opens a memory in place, every time, whatever its length: its title, text
  * and kind from `/api/memory?id=` (a read; it credits and counts nothing,
@@ -882,7 +882,6 @@ async function openMemory($: EngineInterface, key: string, id: string | null, fa
   if (id === null) {
     // Named only by the words Claude was shown (the dashboard did not say which memory): those words, in place.
     await update($, openA, () => ({ key, id: null, status: 'ready' as const, title: fallback, text: '', meta: null, at }))
-    autoClose($, key, at)
     return
   }
   await update($, openA, () => ({ key, id, status: 'loading' as const, title: null, text: '', meta: null, at }))
@@ -898,7 +897,6 @@ async function openMemory($: EngineInterface, key: string, id: string | null, fa
     const text = (d.text ?? '').trim()
     const meta = memoryMeta(d)
     await update($, openA, o => (o?.key === key && o.at === at ? { key, id, status: 'ready' as const, title, text, meta, at } : o))
-    autoClose($, key, at)
   } catch {
     await update($, openA, o => (o?.key === key && o.at === at ? { ...o, status: 'error' as const, title: fallback, text: '' } : o))
   }
@@ -921,9 +919,6 @@ async function openMech($: EngineInterface, id: MechId): Promise<void> {
   }
   const at = await $.clock.now()
   await update($, mechA, () => ({ id, status: 'loading' as const, events: [], at }))
-  $.clock.after(OPEN_CLOSE_MS, () => {
-    quiet(update($, mechA, m => (m !== null && m.id === id && m.at === at ? null : m)))
-  })
   try {
     const panel = (await fetchJson($, `/api/mechanism?id=${encodeURIComponent(id)}`)) as { activity?: DashEvent[] }
     const activity = panel.activity ?? []
@@ -966,7 +961,6 @@ async function clickBody($: EngineInterface, key: string): Promise<void> {
     const at = await $.clock.now()
     const cur = await read($, openA)
     await update($, openA, () => (cur?.key === 'dream' ? null : { key, id: null, status: 'ready' as const, title: null, text: '', meta: null, at }))
-    if (cur?.key !== 'dream') autoClose($, key, at)
     return
   }
   if (key.startsWith('mech:')) {
@@ -995,7 +989,6 @@ async function clickBody($: EngineInterface, key: string): Promise<void> {
       const cur = await read($, openA)
       const at = await $.clock.now()
       await update($, openA, () => (cur?.key === key ? null : { key, id: null, status: 'ready' as const, title: null, text: '', meta: null, at }))
-      if (cur?.key !== key) autoClose($, key, at)
     }
     return
   }
@@ -1003,7 +996,6 @@ async function clickBody($: EngineInterface, key: string): Promise<void> {
     const cur = await read($, openA)
     const at = await $.clock.now()
     await update($, openA, () => (cur?.key === key ? null : { key, id: key.slice(4), status: 'ready' as const, title: null, text: '', meta: null, at }))
-    if (cur?.key !== key) autoClose($, key, at)
   }
 }
 
@@ -1755,8 +1747,11 @@ export const register: Register = on => {
     )
 
     // ── the header ──
-    const countText = pulse === null ? '' : `${String(pulse.memories)} memories`
-    const countRows = cells(countText) > w - HEAD_X ? 2 : 1
+    const countText = pulse === null ? '' : memoriesCount(pulse.memories)
+    // From 1,000 memories the count (`1000 memories`, 13 cells) is one wider than the header's text column:
+    // the column takes one cell of the gap beside the brain, every row of it, so the header stays six rows.
+    const gap = cells(countText) > w - HEAD_X ? 1 : 2
+    const headW = w - BRAIN_COLS - gap
     if (hasRaster) {
       const { Raster } = $.ui.resolve(e)
       const reuse = raster.cols === BRAIN_COLS && raster.rows === BRAIN_ROWS && raster.cells !== '' && raster.look === lookKey()
@@ -1769,19 +1764,14 @@ export const register: Register = on => {
       rows.push(
         <Box key="head" flexDirection="row" width={w}>
           <Raster key="brain" columns={BRAIN_COLS} rows={BRAIN_ROWS} cells={cells0} />
-          <Box width={2} />
-          <Box flexDirection="column" width={w - HEAD_X}>
+          <Box width={gap} />
+          <Box flexDirection="column" width={headW}>
             <Text> </Text>
             {titleButton(false)}
-            {/* the count takes two rows from 1,000 memories on (12 columns here): the blank row gives it the second, so the search box stays on the brain's last row */}
-            {countRows === 1 ? <Text> </Text> : null}
+            <Text> </Text>
             <Text color={P.dim}>{pulse === null ? ' ' : `day ${String(pulse.day)}`}</Text>
-            {countRows === 1 ? (
-              <Text color={P.dim}>{pulse === null ? ' ' : countText}</Text>
-            ) : (
-              [<Text key="n" color={P.dim}>{String(pulse?.memories ?? '')}</Text>, <Text key="m" color={P.dim}>memories</Text>]
-            )}
-            {searchBox(w - HEAD_X)}
+            <Text color={P.dim}>{pulse === null ? ' ' : countText}</Text>
+            {searchBox(headW)}
           </Box>
         </Box>,
       )
@@ -1797,7 +1787,7 @@ export const register: Register = on => {
       rows.push(
         <Box key="head2" flexDirection="row" justifyContent="space-between" width={w}>
           {searchBox(14)}
-          <Text color={P.dim}>{pulse === null ? '' : `${String(pulse.memories)} memories`}</Text>
+          <Text color={P.dim}>{countText}</Text>
         </Box>,
       )
       rows.push(<Text key="head-gap"> </Text>)

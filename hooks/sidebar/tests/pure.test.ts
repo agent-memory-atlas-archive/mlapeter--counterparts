@@ -312,8 +312,44 @@ describe('the feed', () => {
     expect(humanDates('A second prod read on 2026-10-10 morning', now)).toBe('A second prod read this morning')
     expect(humanDates('Telling a dream (agreed 2026-09-27, held lightly)', now)).toBe('Telling a dream (agreed Sep 27, held lightly)')
     expect(humanDates('An old thing 2025-01-05', now)).toBe('An old thing Jan 5 2025')
-    expect(humanDates('Han (10-09)', now)).toBe('Han (10-09)') // only ISO dates
     expect(hm(new Date(2025, 0, 5, 9, 0).getTime(), now)).toBe('Jan 5 2025')
+  })
+
+  test('short dates in titles (10-09) read the same way, as this year’s; numbers that are not dates are left alone', () => {
+    const now = new Date(2026, 9, 10, 15, 0).getTime()
+    // dates: each spelling the live titles use
+    expect(humanDates('Han (10-09)', now)).toBe('Han (Oct 9)')
+    expect(humanDates('10-09: the wake review', now)).toBe('Oct 9: the wake review')
+    expect(humanDates('Wake fix landed 10-09', now)).toBe('Wake fix landed Oct 9')
+    expect(humanDates('Coordinator day 10-09, wave 1', now)).toBe('Coordinator day Oct 9, wave 1')
+    expect(humanDates('Mike parked it (Mike, 09-30)', now)).toBe('Mike parked it (Mike, Sep 30)')
+    expect(humanDates('Release day 12-31.', now)).toBe('Release day Dec 31.')
+    // today's, dropped as an ISO today is
+    expect(humanDates('Sidebar shipped (10-10)', now)).toBe('Sidebar shipped')
+    expect(humanDates('10-10: the call', now)).toBe('the call')
+    expect(humanDates('Writer and reflection (Mike, 10-10)', now)).toBe('Writer and reflection (Mike)')
+    // not dates: left as written
+    for (const t of [
+      'Era PR (#377) gap',
+      'PR #10-09 merged',
+      'counterparts 0.3.16 published',
+      'v0.10-12 notes',
+      'v10-09 build',
+      'met at 10:09',
+      'checked 10:09-10:30',
+      'a span 10-09:30 long',
+      'ISO 2026-10-09 stays ISO-shaped only once',
+      '10-09-2026 written the other way',
+      'a 10-20 lines cap',
+      '10-12 cells wide',
+      'about 10-20% faster',
+      'impossible 13-09 and 02-30',
+      'rows 10-099 and 100-09',
+      'id mem_10-09a',
+      'see ~/notes/10-09.md',
+    ]) {
+      expect(humanDates(t, now)).toBe(t.startsWith('ISO') ? 'ISO Oct 9 stays ISO-shaped only once' : t)
+    }
   })
 
   test('the quiet tail always ends with how to open the sidebar; the newest thing is shortened to keep it whole', () => {
@@ -595,8 +631,11 @@ describe('the body, laid out', () => {
     const first = ev.findIndex(l => l.segs[0]?.t === 'Writer and reflection are')
     expect(ev[first]?.segs[0]?.c).not.toBe(ev[first + 1]?.segs[0]?.c)
     expect(ev[first]?.key).toBe('ev:3.0')
-    // nothing it can name: a plain line, never a count
-    expect(textOf(layoutBody({ ...BASE, mech: { ...mech, id: 'association' as const, events: [] } }).lines)).toContain('nothing lately names a memory')
+    // nothing it can name: a plain line, never a count; Association (whose flushes count pairs) says what it does
+    expect(textOf(layoutBody({ ...BASE, mech: { ...mech, id: 'decay' as const, events: [] } }).lines)).toContain('nothing lately names a memory')
+    const assoc = textOf(layoutBody({ ...BASE, mech: { ...mech, id: 'association' as const, events: [] } }).lines).join(' ')
+    expect(assoc).toContain("links memories used together; it doesn't record which yet")
+    expect(assoc).not.toContain('nothing lately')
     const dream = textOf(layoutBody({ ...BASE, open: { key: 'dream', id: null, status: 'ready', title: null, text: '', meta: null, at: T0 } }).lines)
     expect(dream.join(' ')).toContain('The interpretability paper')
     expect(dream.join(' ')).not.toMatch(/what changed|merged|faded/)

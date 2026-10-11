@@ -659,17 +659,42 @@ export function humanDay(iso: string, now: number): string {
   return `${month} ${String(Number(m[3]))}${year === dateOf(now).slice(0, 4) ? '' : ` ${year}`}`;
 }
 
+/** Words that, after `10-20`, make it a range of something rather than a day. */
+const RANGE_UNITS =
+  'lines?|cells?|columns?|cols?|rows?|items?|mins?|minutes?|secs?|seconds?|s|ms|hours?|hrs?|h|days?|weeks?|months?|years?|pages?|steps?|tests?|files?|words?|chars?|characters?|points?|pts?|px|k|x|times?|percent|people|memories|frames?|fps|of';
+
+/**
+ * A short date as the titles write it (`(10-09)`, `10-09: `, `… 10-09`),
+ * rewritten as `<year>-10-09` so the ISO rules below say it: two digits a
+ * side, a real month and day, standing alone. Not a date, so left as written:
+ * part of a longer number or name (`2026-10-09` itself, `#10-09`, `v10-09`,
+ * `0.10-09`, `10-09-2026`, `10-09.5`), a time (`10:09`, `10-09:30`), a range of something
+ * (`10-20 lines`, `10-20%`), an impossible day (`13-09`, `02-30`). The year
+ * is this one: a title's short date is recent, and none is shown for it.
+ */
+function isoShortDates(title: string, year: string): string {
+  if (!/\d{2}-\d{2}/.test(title)) return title;
+  const re = new RegExp(`(?<![\\p{L}\\p{N}_#./:$~-])(\\d{2})-(\\d{2})(?![\\p{L}\\p{N}_/%-])(?![.:]\\d)(?!\\s*(?:${RANGE_UNITS})\\b)`, 'gu');
+  return title.replace(re, (whole, mm: string, dd: string) => {
+    const m = Number(mm);
+    const d = Number(dd);
+    const days = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1];
+    return days === undefined || d < 1 || d > days ? whole : `${year}-${mm}-${dd}`;
+  });
+}
+
 /**
  * A title as the sidebar shows it (never the stored text): an ISO date that
  * only says today is dropped with what holds it (`(2026-10-10)`,
  * `2026-10-10: `, `, 2026-10-10)`), `on 2026-10-10` reads `today` and `on
  * 2026-10-10 morning` `this morning`; any
  * other ISO date is short and human, `Oct 9`, with the year only when it is
- * not this one (`Jan 5 2025`). Mike, 2026-10-10. Other spellings (`10-09`)
- * are left as written.
+ * not this one (`Jan 5 2025`). Mike, 2026-10-10. A short date (`(10-09)`,
+ * `10-09: `) reads the same way, as this year's (`isoShortDates`).
  */
 export function humanDates(title: string, now: number): string {
   const today = dateOf(now);
+  title = isoShortDates(title, today.slice(0, 4));
   if (!/\d{4}-\d{2}-\d{2}/.test(title)) return title;
   const t = today.replace(/-/g, '\\-');
   const out = title

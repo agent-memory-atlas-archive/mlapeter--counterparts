@@ -137,21 +137,29 @@ test('on the main screen (no docking) nothing is opened unasked and nothing is s
   expect(await cmd($, 'nonsense')).toContain('Usage: /counterparts [quiet | brain turning|still|off | resume | fps [n]]')
 })
 
-test('from 1,000 memories the count takes two rows of the header, beside the brain, and the header stays six rows', async ($, on) => {
-  const was = PULSE.memories
-  PULSE.memories = 1000
-  try {
-    const w = world(on)
-    await start($, w)
-    const ui = await mount($, w, 'terminal')
-    expect(await ui.find({ type: 'Text', text: '1000' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: 'memories' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: '1000 memories' })).toBeUndefined()
-    await ui.unmount()
-  } finally {
-    PULSE.memories = was
-  }
-})
+for (const [n, said] of [
+  [999, '999 memories'],
+  [1000, '1000 memories'],
+  [12345, '12k+ memories'],
+] as const) {
+  test(`the header's count on one row beside the brain, the header six rows: ${said}`, async ($, on) => {
+    const was = PULSE.memories
+    PULSE.memories = n
+    try {
+      const w = world(on)
+      await start($, w)
+      const ui = await mount($, w, 'terminal')
+      // the column beside the brain: blank, title, blank, day, count, search (from 1,000 it takes a cell of the gap)
+      const texts = (await ui.findAll({ type: 'Text' })).map(x => x.text)
+      expect(texts).toContain(said)
+      expect(texts.indexOf(said)).toBe(texts.indexOf('day 18') + 1)
+      expect(texts).not.toContain(String(n))
+      await ui.unmount()
+    } finally {
+      PULSE.memories = was
+    }
+  })
+}
 
 test('a docking terminal too narrow for an unasked pane: the dim tail under the prompt names /counterparts until the pane draws; no status line', async ($, on) => {
   const w = world(on, { placed: false })
@@ -500,10 +508,42 @@ test('a click opens a memory in place whatever its length, and never the dashboa
   await clickWord(ui, '… more', 'more')
   expect(w.runs.at(-1)).toEqual(['open', 'http://localhost:4747/#memories?id=mem_long0001'])
   expect((await bodyLines(ui)).join(' ')).toContain('sentence 3 of a long') // still open
+  await w.clock.advance(5 * 60000) // a long read: nothing closes it but a click
+  await settle(w)
+  expect((await bodyLines(ui)).join(' ')).toContain('sentence 3 of a long')
   await click(ui, '… more')
   expect((await bodyLines(ui)).join(' ')).not.toContain('sentence 3 of a long')
   expect(w.runs.filter(r => r[0] === 'open')).toHaveLength(1)
   expect(w.mcp.filter(c => c.tool === 'recall')).toHaveLength(0)
+  await ui.unmount()
+})
+
+test('clicks are the same every time: open A, open B (A closes), close B, open A again; nothing closes them but a click', async ($, on) => {
+  const w = world(on)
+  on('tool.call', (_$, e) => ({ result: 'ok', text: `{"stored":true,"id":"${(e as unknown as { title?: string }).title === 'Long one' ? 'mem_long0001' : 'mem_sur00001'}"}` }))
+  await start($, w)
+  const ui = await mount($, w, 'terminal')
+  await $.tool.call({ tool: 'mcp__counterparts__note', title: 'Long one', text: 'x' } as never)
+  await $.tool.call({ tool: 'mcp__counterparts__note', title: 'Short one', text: 'x' } as never)
+  await settle(w)
+  const has = async (t: string) => (await bodyLines(ui)).join(' ').includes(t)
+  await click(ui, 'Short one')
+  await settle(w)
+  expect(await has('nothing decorates.')).toBe(true)
+  await click(ui, 'Long one')
+  await settle(w)
+  expect(await has('nothing decorates.')).toBe(false)
+  expect(await has('sentence 3 of a long')).toBe(true)
+  await click(ui, 'sentence 3 of a long') // a click on its text closes it
+  await settle(w)
+  expect(await has('sentence 3 of a long')).toBe(false)
+  await click(ui, 'Short one')
+  await settle(w)
+  expect(await has('nothing decorates.')).toBe(true)
+  await w.clock.advance(5 * 60000)
+  await settle(w)
+  expect(await has('nothing decorates.')).toBe(true)
+  expect(w.runs.some(r => r[0] === 'open')).toBe(false)
   await ui.unmount()
 })
 
