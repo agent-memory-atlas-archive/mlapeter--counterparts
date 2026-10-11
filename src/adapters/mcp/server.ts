@@ -186,10 +186,16 @@ export const STALE_SERVER_REFUSAL = staleServerRefusal(DEFAULT_HOST);
  * rebuildable, so either that build comes back or the cache goes. The
  * reconnect after deleting it is real: this process holds the old file open.
  * `cacheFile` is the cache's path; the `*` takes its `-wal` and `-shm` too.
+ *
+ * BOTH WAYS IT HAPPENS (review of #382): an update whose new build moved the
+ * cache and not the store reaches this gate too, while the old server still
+ * runs — there the newer build IS installed, and the reconnect alone loads
+ * it. So the sentence says both, and deleting is offered only for going back.
  */
 export function cacheAheadRefusal(cacheFile: string, host: string = DEFAULT_HOST): string {
-  const then = wordingFor(host).reconnectFirst;
-  return `The search cache was written by a newer Counterparts build than this server runs, so this tool did nothing. Either reinstall that newer build, or delete ${cacheFile}* (the search cache alone; no memory is kept there, and it is rebuilt) and then ${then.charAt(0).toLowerCase()}${then.slice(1)}.`;
+  const w = wordingFor(host);
+  const lower = (s: string): string => `${s.charAt(0).toLowerCase()}${s.slice(1)}`;
+  return `The search cache was written by a newer Counterparts build than this server runs, so this tool did nothing. If that newer build is installed, ${lower(w.reconnect)} If you went back to an older build, delete ${cacheFile}* (the search cache alone; no memory is kept there, and it is rebuilt), then ${lower(w.reconnectFirst)}.`;
 }
 
 /** The gate's refusal when the stamps could not be read at all — the same

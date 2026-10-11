@@ -216,7 +216,7 @@ describe("held and cache-ahead, read durably by doctor's observer handle", () =>
     expect(v.fix).not.toContain("must fall");
   });
 
-  test("cache-ahead: amber, update and reconnect", () => {
+  test("cache-ahead: amber, the newer build back or the cache deleted, then reconnect", () => {
     writer().put({ type: "memory", kind: "fact", body: "one memory" });
     opened.splice(0).forEach((s) => s.close());
     const db = openDb(paths.cache(dir));
@@ -227,6 +227,10 @@ describe("held and cache-ahead, read durably by doctor's observer handle", () =>
     expect(f.detail).toContain("cache v7");
     expect(f.fix).toContain("/mcp");
     expect(f.fix).toContain("Reconnect");
+    // After going back to an older build on purpose, updating is not the only
+    // way out (review of #382): the cache is rebuildable and may go.
+    expect(f.fix).toContain("counterparts@latest");
+    expect(f.fix).toContain("/cache/cache.sqlite*");
   });
 });
 

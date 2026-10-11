@@ -260,7 +260,8 @@ describe("the schema gate: a store a newer build migrated refuses every tool", (
 
     const said = cacheAheadRefusal(paths.cache(dir));
     expect(said).toContain(`delete ${paths.cache(dir)}*`);
-    expect(said).toContain("reinstall that newer build");
+    // An update that moved only the cache: the newer build is installed, and the reconnect loads it.
+    expect(said).toContain("If that newer build is installed, run /mcp and Reconnect to load it.");
     expect(said).not.toContain("was updated");
     expect(said.includes("\n")).toBe(false);
     await assertEveryToolRefuses(s, ops, cache, "schema-ahead", said);
