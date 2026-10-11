@@ -34,6 +34,7 @@ import { HOOK_SCRIPT, HOST_EVENTS, MCP_SCRIPT, MCP_SERVER_NAME, readHost } from 
 import { doctorFindings } from "../src/adapters/claude-code/doctor.js";
 import type { Finding, HostReading } from "../src/adapters/claude-code/doctor.js";
 import { Counterpart } from "../src/core/counterpart.js";
+import { TOOL_NAMES } from "../src/adapters/mcp/tools.js";
 import { Store } from "../src/core/store/index.js";
 import { isOurHookCommand as wireIsOurs } from "../src/adapters/cli/wire.js";
 import { HOST_SESSION_ENV } from "../src/adapters/claude-code/night-run.js";
@@ -247,6 +248,21 @@ describe("the plugin's files", () => {
         expect(m[1] ?? "").not.toMatch(/:\*|\*|^Bash\s*(,|$)|Bash\(\s*\)/);
       }
     }
+  });
+
+  test("/counterparts:meet grants only the meet tool, under either server name, and runs nothing else", () => {
+    // The first meeting's way in for someone with no sidebar button (quiet view,
+    // or the offers stopped): it hands the model the `meet` tool's own script.
+    const text = readFileSync(join(ROOT, "commands", "meet.md"), "utf8");
+    const grant = /^allowed-tools:\s*(.+)$/m.exec(text)?.[1]?.trim();
+    expect(grant).toBe("mcp__counterparts__meet, mcp__plugin_counterparts_counterparts__meet");
+    expect(text).not.toMatch(/Bash/);
+    // The names are only right while the tool, the npm server's name and the
+    // plugin's own server key are: rename any of them and the grant grants nothing.
+    expect(TOOL_NAMES).toContain("meet");
+    expect(NPM_MCP_NAME).toBe("counterparts");
+    const manifest = JSON.parse(readFileSync(join(ROOT, ".claude-plugin", "plugin.json"), "utf8")) as { name: string; mcpServers: Record<string, unknown> };
+    expect(`mcp__plugin_${manifest.name}_${Object.keys(manifest.mcpServers)[0]}__meet`).toBe("mcp__plugin_counterparts_counterparts__meet");
   });
 
   test("/counterparts:dashboard grants exactly the one command it runs, and asks for it in the background", () => {
