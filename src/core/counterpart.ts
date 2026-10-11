@@ -200,7 +200,7 @@ import type {
   WakeTrigger,
   WriterInput,
 } from "./self/index.js";
-import { cyclePartial, ownerNames, runCycle } from "./sleep/index.js";
+import { acceptsReflectedFeeling, cyclePartial, ownerNames, runCycle } from "./sleep/index.js";
 import type { CyclePartial, CycleReport, Phase } from "./sleep/index.js";
 import { ABOUT_MARKS, CORE_ABOUT_MARKS, Store, assertSafeDataDir, inheritFrom, rowTombstoned, hashText, indexTextOf, occurredOnOf, saidByOf, statusOf } from "./store/index.js";
 import type {
@@ -1002,16 +1002,19 @@ export interface CounterpartOptions extends Stance {
    * the client, exactly as it owns `InterpretFn` (`remember/INTERFACE-GAPS §3`).
    *
    * Wiring it turns novelty from `no-chunk-vector` into a measurement on the
-   * authored door, and the vector one deposit pays for is the vector box 3
-   * stores — but ONLY because of an ordering that is easy to break: the text
-   * embedded is the GATE'S output, shaped by `indexTextOf`, which is exactly
-   * what `Store.indexOne` will look the vector up by.
+   * authored door. The gate's vector is NOT handed to the store: `Store.put →
+   * indexOne` asks the sync `embed` for its own, by the same string. What keeps
+   * that to one computation is the embedder (the static table remembers its
+   * last text, `embed-client.ts#createStaticEmbedder`) — and an ordering that is
+   * easy to break: the text embedded here is the GATE'S output, shaped by
+   * `indexTextOf`, which is exactly what `Store.indexOne` will ask for.
    *
-   * Embed the author's draft instead and BOTH halves fail at once: raw text goes
-   * on the wire (the redaction is bypassed), and every gate rewrite — 18.9% of
-   * chunks in the replay corpus — caches under a key the store never asks for,
-   * so the deposit pays for a vector it then discards. `bridge.batteryGate`
-   * holds that order; `test/claude-code.test.ts` holds it to it.
+   * Embed the author's draft instead and BOTH halves fail at once: the novelty
+   * is measured on text the gate redacted or rewrote (the redaction is
+   * bypassed), and every gate rewrite — 18.9% of chunks in the replay corpus —
+   * asks under a key the store never asks for, so the write pays for a vector it
+   * then discards. `bridge.batteryGate` holds that order;
+   * `test/claude-code.test.ts` holds it to it.
    */
   vectors?: LiveVectors;
   /** Retention window for the bounded logs. `store/` owns the default. */
@@ -4610,8 +4613,16 @@ export class Counterpart {
    * a dream's or a reflection's words move only toward work or world, as the
    * reflection's do, and a confidential memory outside the owner's session is
    * not found. Refusals come back as reasons, never thrown.
+   *
+   * `night` (2026-10-11): the call comes from a night run's child (a dream or
+   * a reflection whose user allowed `remember`). The owner's `--reflected-feeling
+   * off` closes the core to the night's own judgment, and the reflection's
+   * re-marks already honour it (`dream/reflect.ts`, `door-closed-work-or-world-only`);
+   * a night child's `remark` is the same judgment by another door, so it is
+   * held to the same rule: only work or world. An AWAKE session's re-mark is
+   * not the reflection's, and the switch does not reach it.
    */
-  markAbout(input: { id: string; mark: string; by: "owner" | "self"; why?: string | null; owner?: boolean }): MarkAboutOutcome {
+  markAbout(input: { id: string; mark: string; by: "owner" | "self"; why?: string | null; owner?: boolean; night?: boolean }): MarkAboutOutcome {
     if (this.observer) return { ok: false, reason: "observer", detail: "This is an observer; it reads and changes nothing." };
     const mark = input.mark.trim();
     if (!(ABOUT_MARKS as readonly string[]).includes(mark)) {
@@ -4636,6 +4647,13 @@ export class Counterpart {
           ok: false,
           reason: row.source === "dreamed" ? "dreamed-is-a-suggestion" : "reflection-does-not-mark-itself",
           detail: `${id} was written by a ${row.source === "dreamed" ? "dream" : "reflection"}; only work or world may be set on it (the owner can mark it anything).`,
+        };
+      }
+      if (core && input.night === true && !acceptsReflectedFeeling(this.store)) {
+        return {
+          ok: false,
+          reason: "door-closed-work-or-world-only",
+          detail: "The owner has closed the core to the night's own judgment: from a night run, a mark may only move toward work or world.",
         };
       }
     }
@@ -7201,11 +7219,26 @@ export class Counterpart {
       content,
       resolveId: (id: string) => {
         try {
-          return this.store.resolve(id);
+          const resolved = this.store.resolve(id);
+          // `resolve` hands back a REMOVED id as itself (so a reader can say
+          // "removed"), but a removed memory is not one a new memory can update:
+          // the mint's claim against it is refused by the store, and that refusal
+          // used to take the whole write with it (review of #400). Unresolved,
+          // exactly like a dangling address — the new memory is stored, unlinked.
+          return this.store.deniedIds().includes(resolved) ? null : resolved;
         } catch {
           // An address that does not resolve is not an error: content matching
           // is the fallback, and a refusal costs nothing durable (§5 G10).
           return null;
+        }
+      },
+      // Named but REMOVED: no content fallback, so the new memory is not
+      // attached to some other memory in the removed one's place (review of #422).
+      removed: (id: string) => {
+        try {
+          return this.store.deniedIds().includes(this.store.resolve(id));
+        } catch {
+          return false;
         }
       },
       candidates: (query): Candidate[] => {

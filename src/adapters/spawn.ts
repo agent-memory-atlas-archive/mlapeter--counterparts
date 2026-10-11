@@ -77,6 +77,13 @@ export const WATCHDOG_ENV = "COUNTERPARTS_WATCHDOG_MS";
  * of the span buffer it already owns.
  */
 export const SESSION_ENV = "COUNTERPARTS_SESSION";
+/**
+ * THE QUIET-CHILD FLAG, and the night run's id (`claude-code/night-run.ts`
+ * sets it on the headless run's environment). Here, beside the other names a
+ * child inherits, so the MCP server can tell a night child's call without
+ * importing the Claude Code adapter.
+ */
+export const NIGHT_RUN_ENV = "COUNTERPARTS_NIGHT_RUN";
 export const SCOPE_ENV = "COUNTERPARTS_SCOPE";
 /**
  * WHICH CHILD OF THE HEADLESS NIGHT this MCP server serves (2026-10-11):

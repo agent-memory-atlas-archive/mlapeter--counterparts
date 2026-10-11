@@ -29,6 +29,7 @@ import { toHookInput } from "../src/adapters/claude-code/bin/hook.js";
 import type { ScopeVerdict } from "../src/adapters/scopes.js";
 import { setScope, writeScopes } from "../src/adapters/scopes.js";
 import { markSinceSeen, readSession, recordSession } from "../src/adapters/sessions.js";
+import { MEET_LINE_OPEN, beginNewInstall } from "../src/core/onboarding.js";
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -188,6 +189,26 @@ describe("the wake on resume", () => {
     }
     // And the hook carries nothing for a payload with no source.
     expect(toHookInput({ session_id: S, hook_event_name: "SessionStart", cwd: HERE }, { scope: HERE }).source).toBeUndefined();
+  });
+
+  // Review of #419: the sidebar mod reads the first meeting's marker on EVERY
+  // SessionStart, so the short wake carries it too; the offer line keeps its
+  // once-a-session rule across a resume.
+  test("a resume's short wake carries the onboarding marker, and not the offer a second time", async () => {
+    const w = await world(at(9));
+    beginNewInstall(w.c.store);
+    const first = start(w, at(9), "startup").result;
+    expect(first.injection.split("\n")).toContain("<!-- counterparts:onboarding meet=not_started -->");
+    expect(first.ask ?? "").toContain(MEET_LINE_OPEN);
+    const resumed = start(w, at(11), "resume").result;
+    expect(resumed.reason).toBe("resumed");
+    const lines = resumed.injection.split("\n");
+    expect(lines).toContain("<!-- counterparts:onboarding meet=not_started -->");
+    expect(lines.indexOf("<!-- counterparts:onboarding meet=not_started -->")).toBe(1);
+    expect(resumed.ask ?? "").not.toContain(MEET_LINE_OPEN);
+    // An upgraded store's resume says done.
+    w.c.store.setMeta("onboarding.meet", "done");
+    expect(start(w, at(12), "resume").result.injection.split("\n")).toContain("<!-- counterparts:onboarding meet=done -->");
   });
 
   test("the hook carries the host's source into the input, and nothing on an event without one", () => {

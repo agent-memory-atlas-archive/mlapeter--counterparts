@@ -745,9 +745,11 @@ function onlyNow(stdout: string): boolean {
   return /^Now: [^\n{]+$/.test(stdout);
 }
 
+/** The first meeting's marker, on its own line under the clock at a session start (2026-10-11). */
+const MEET_MARKER = /^<!-- counterparts:onboarding meet=[a-z_]+ -->\n/;
 function withoutNow(text: string): string {
   expect(text).toMatch(NOW_LINE);
-  return text.replace(NOW_LINE, "");
+  return text.replace(NOW_LINE, "").replace(MEET_MARKER, "");
 }
 
 /**

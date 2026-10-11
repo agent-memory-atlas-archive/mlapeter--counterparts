@@ -641,6 +641,46 @@ were refined by b2+f8 at the review of #369, named where they were):
   three right on a hand-read (two of them the writer had settled `changed` itself). Kept; n is
   small, so the CHECK-AFTER hand-read should keep the title ones apart.
 
+### Decided by the onboarding-core builder, 2026-10-11, lightly held (the first meeting)
+
+- **Where the state lives: the store's `meta`, and absent means done.** Why: the hook, the
+  MCP server and the dashboard all read the store; the config is rewritten by
+  `install --force` with its own carry-forward rules. Only `install` writes `not_started`,
+  and only into a store it just created, so every existing store (Mike's included) reads
+  `done` with nothing written to it. `start-fresh`'s blank store gets the meeting (the
+  coordinator's ask) but not the dreaming change; `--undo` brings the parked store's own
+  state back with it. (`core/onboarding.ts`)
+- **Dreaming `auto` is written explicitly into a new install's store; the fallback stays
+  `ask`.** Why: changing `DREAMING_DEFAULT` would flip every upgraded store that never set
+  one. The once-only reset of an explicit `auto` is marked done at the same time, or the
+  first hook would set it back to `ask`.
+- **Core writes the answers, through `remember`'s own door.** `meet {step, answer}` stores
+  one memory per answer (about the owner, said by the owner, "(from onboarding)"), rather
+  than Claude calling `remember` itself. Why: the marks are mechanized, a skipped question
+  is never sent, and the second session's line has the id of the work answer. A name is a
+  memory too, never the identity core: no tool writes an entity (mcp CONTRACT §4). So a
+  plugin install, which never asks the name at install, still has no identity core; that is
+  a core ask, not built here.
+- **Where memory is on is one `/` entry in `scopes.json`:** on for every folder, or off with
+  this folder on. Why: there is no install-wide default today, `/` already matches every
+  absolute path with longest prefix winning, so existing entries keep theirs; and with
+  either answer no folder is `unset`, so the first-launch question never fires again. It
+  also waits while the meeting is pending (the meeting asks it instead); after `skipped` it
+  is back. A Claude Desktop chat has no folder, so the script leaves the question out.
+- **No double offer, with or without the mod:** the wake's line is carried whenever an
+  offer is due (at most once a calendar day, never twice in one session, none once done or
+  skipped), and its words make the mod's "say hello and introduce yourself" prompt the same
+  offer. A `meet` read marks `offered`; an `offered` from an earlier day becomes `later`, so
+  the mod sees a meeting it may offer again. Why: the install route is not the same as the
+  mod being present, and someone who types before the session goes idle can only be offered
+  it by the model, from a line already in its context.
+- **Each style bundle is its four preferences plus one shared honest-pushback line**, so
+  every bundle, the character's included, keeps the baseline in so many words. Bundle
+  memories are marked `about: owner`, so like any preference about the owner they could
+  become core through ordinary recurrence; nothing writes them there.
+- **The second session's memory rides beside the wake, once**, in the first session after
+  the one that finished the meeting: the work answer, else something loved, else the rest.
+
 ### Decided by the context-trims builder, 2026-10-11, lightly held (what a tool description serves)
 
 - Decided by the context-trims builder, 2026-10-11, lightly held; needs the bench A/B before
@@ -693,6 +733,31 @@ were refined by b2+f8 at the review of #369, named where they were):
   no more. A snapshots folder the configuration points somewhere else is named as kept,
   and so is Claude Code's own directory. Why: no widening of what a delete reaches without
   someone deciding it.
+
+### Decided by the small-fixes builder, 2026-10-11, lightly held (fix/small-1011c)
+
+- Decided by the small-fixes builder, 2026-10-11, lightly held: `--reflected-feeling off`
+  reaches a `remember` `remark` only when the call comes from a night run's child (its
+  server's environment carries `COUNTERPARTS_NIGHT_CHILD` or `COUNTERPARTS_NIGHT_RUN`); there it refuses a move to me, us or owner
+  (`door-closed-work-or-world-only`, the reflection's reason) and leaves work or world open.
+  An awake session's re-mark is not affected. Why: the switch closes the core to the night's
+  own judgment, and a night child that was allowed `remember` would otherwise be a second
+  door around it; an awake session is in front of its person, which the switch was not about.
+- Decided by the small-fixes builder, 2026-10-11, lightly held: where the guard for an
+  `updates` naming a REMOVED memory sits. The lane's brief asked that the new memory be
+  stored unlinked, as for an id that doesn't exist; the guard is at resolution
+  (`counterpart.ts#resolveUpdatesFor` treats a removed id as unresolved, so content matching
+  runs as the fallback), with a second lock in `revision.ts#applyRevision`, which answers
+  `target-unresolvable` for a removed target rather than reaching the confirmation branch.
+  Why: the store resolves a removed id as itself on purpose (so a reader can say "removed"),
+  so the write path has to say that a removed memory is not one anything can update.
+- Decided by the #422 reviewer, 2026-10-11, lightly held: a named-but-REMOVED `updates`
+  target does NOT fall back to content matching (`remember/updates.ts`, reason
+  `DECLARED_REMOVED`), and the reply says `target-removed` whether or not a `how` was sent.
+  Why: with the fallback, a live near-copy of the removed memory was linked (and, with
+  `how: changed`, settled over) in its place, measured in `test/mcp.test.ts`; the writer
+  named one memory, the owner removed it on purpose, and a dangling address's fallback is
+  for ids that were never right, not for this.
 
 ### Also noted
 

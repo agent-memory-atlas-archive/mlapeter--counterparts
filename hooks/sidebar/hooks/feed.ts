@@ -16,7 +16,7 @@
  * disagree.
  */
 
-import type { SidebarHit, SidebarRow, SidebarSaved } from '../types';
+import type { SidebarHit, SidebarMeet, SidebarOnboarding, SidebarRow, SidebarSaved } from '../types';
 import { MECHS, MEMORIES_URL, mechById, mechUrl } from './mechanisms';
 import type { MechId } from './mechanisms';
 import { cells, ellipsizeCells, headCells } from './width';
@@ -713,4 +713,69 @@ export function humanDates(title: string, now: number): string {
     .replace(/\s{2,}/g, ' ')
     .trim();
   return out === '' ? title : out;
+}
+
+// ── the first meeting: core's onboarding state ─────────────────────────────
+
+const MEET_STATES: readonly SidebarMeet[] = ['not_started', 'offered', 'later', 'done', 'skipped'];
+
+/** Not read, or read as nothing the sidebar knows: it does nothing about the meeting. */
+export const UNKNOWN_ONBOARDING: SidebarOnboarding = { meet: 'unknown', where: null, style: null };
+
+/**
+ * Core's `GET /api/onboarding` answer (`{ meet, where, style }`), read
+ * strictly: anything but an object whose `meet` is one of the five states is
+ * unknown, so a core from before onboarding (a 404 page, an error body, a
+ * renamed field) never moves the sidebar.
+ */
+export function parseOnboarding(text: string): SidebarOnboarding {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return UNKNOWN_ONBOARDING;
+  }
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return UNKNOWN_ONBOARDING;
+  const rec = raw as Record<string, unknown>;
+  const meet = rec['meet'];
+  if (typeof meet !== 'string' || !(MEET_STATES as readonly string[]).includes(meet)) return UNKNOWN_ONBOARDING;
+  const str = (v: unknown): string | null => (typeof v === 'string' && v.length > 0 ? v : null);
+  return { meet: meet as SidebarMeet, where: str(rec['where']), style: str(rec['style']) };
+}
+
+/**
+ * THE ONE PLACE THE WAKE'S MARKER IS SPELLED. Core writes it on its own line
+ * in every SessionStart wake (done included; `start-fresh` resets it to
+ * not_started): `<!-- counterparts:onboarding meet=<state> -->`. No marker:
+ * an older core, the state unknown. Change the text here if core's changes.
+ */
+export const ONBOARDING_MARKER = /<!--\s*counterparts:onboarding\s+meet=([a-z_]+)\s*-->/;
+
+/** The state the wake's marker names, or null: no marker, or a state the sidebar doesn't know. */
+export function parseOnboardingMarker(text: string): SidebarMeet | null {
+  const state = ONBOARDING_MARKER.exec(text)?.[1];
+  return state !== undefined && (MEET_STATES as readonly string[]).includes(state) ? (state as SidebarMeet) : null;
+}
+
+/**
+ * Whether the sidebar shows "Meet your counterpart": core says the meeting
+ * was put off (`later`) or offered and not finished (`offered`), or it never
+ * started though this install's one speak-first went out in an EARLIER
+ * session (the turn ended before Claude reached core's `meet`: a dead end
+ * otherwise). Never in a folder where the meeting can't keep anything
+ * (`canMeet`), and never for an unknown state.
+ */
+export function meetShows(meet: SidebarMeet, folderMode: string, firedIn: string | null, session: string): boolean {
+  if (!canMeet(folderMode)) return false;
+  if (meet === 'later' || meet === 'offered') return true;
+  return meet === 'not_started' && firedIn !== null && firedIn !== session;
+}
+
+/**
+ * A folder where a first meeting makes sense: Counterparts on by its own
+ * entry or a parent's, or unset (on by default). Not paused, off or
+ * observer (nothing new is kept there), and not unknown (never acted on as on).
+ */
+export function canMeet(folderMode: string): boolean {
+  return folderMode === 'on' || folderMode === 'unset';
 }

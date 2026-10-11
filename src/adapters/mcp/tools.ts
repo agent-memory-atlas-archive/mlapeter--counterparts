@@ -66,6 +66,7 @@ import { RECALL_MAX_IDS } from "./deliberate.js";
 import { FACTS_MEANING_CAP, FACTS_PAGE_SIZE } from "./facts.js";
 import { RECURRENCES } from "../../core/time.js";
 import { PAGE_ROOM_BYTES } from "../../core/self/briefing.js";
+import { MEET_STEPS } from "../../core/onboarding.js";
 
 /**
  * A MEMORY'S TITLE, ASKED FOR AS ONE LINE (2026-09-28, build B). Indexes — the
@@ -88,6 +89,7 @@ export type ToolName =
   | "self_page"
   | "dream"
   | "reflect"
+  | "meet"
   /** Claude Desktop only (`WAKE`); never in `TOOL_NAMES`. */
   | "wake";
 
@@ -132,6 +134,7 @@ export const TOOL_NAMES: readonly ToolName[] = [
   "self_page",
   "dream",
   "reflect",
+  "meet",
 ];
 
 /**
@@ -1644,6 +1647,38 @@ const REFLECT: ToolSpec = {
   },
 };
 
+/**
+ * `meet` — THE FIRST MEETING (2026-10-11, onboarding core). The tenth tool
+ * every host is offered. Its DESCRIPTION IS SHORT ON PURPOSE: a tool's schema
+ * rides in context in every session, and this one matters in one session per
+ * install (`~/counterparts-notes/2026-10-11-token-costs.md`). The script is
+ * the tool's RESULT (`core/onboarding.ts#meetingInstructions`), read only when
+ * the meeting happens.
+ */
+const MEET: ToolSpec = {
+  name: "meet",
+  summary: "The first meeting with the person. No step: the script, and where it stands. With step: record that step.",
+  admission: "the wake says you haven't met, or they ask to.",
+  negativeExamples: ["Do NOT start it unasked mid-task: offer it once."],
+  privileges: [
+    {
+      claim: "Answers are stored as memories about the owner, said by them, marked from onboarding; a skipped question stores nothing; a style is preferences, never identity.",
+      mechanizedBy: "src/adapters/mcp/server.ts#meetTool -> src/core/onboarding.ts#styleMemories",
+    },
+  ],
+  inputSchema: {
+    type: "object",
+    properties: {
+      step: { type: "string", enum: [...MEET_STEPS] },
+      answer: { type: "string", description: "Their answer in your words; for where/style, the option." },
+      like: { type: "string", description: "Style character: who." },
+      traits: { type: "array", items: { type: "string" }, description: "Style character: the traits you said back; other: their words." },
+    },
+    required: [],
+    additionalProperties: false,
+  },
+};
+
 export const TOOLS: readonly ToolSpec[] = [
   REMEMBER,
   RECALL,
@@ -1654,6 +1689,7 @@ export const TOOLS: readonly ToolSpec[] = [
   SELF_PAGE,
   DREAM,
   REFLECT,
+  MEET,
 ];
 
 /**

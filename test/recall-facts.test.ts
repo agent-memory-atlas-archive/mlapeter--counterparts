@@ -630,6 +630,27 @@ describe("current first: earlier versions fold, corrected ones are named as wron
   });
 });
 
+describe("an earlier version shown on its own names the END of its chain (review of #408)", () => {
+  test("A→B→C with B hidden from this asker: A reads now C, the memory standing and the neighbours name", () => {
+    const c = brain();
+    seed(c);
+    const a = c.store.put({ type: "memory", kind: "fact", body: "The zqferry leaves at nine." });
+    const b = c.store.put({ type: "memory", kind: "fact", body: "The zqferry timetable changed.", meta: { confidential: true } });
+    const z = c.store.put({ type: "memory", kind: "fact", body: "The ferry now leaves at half past ten." });
+    expect(settle(c.store, { holds: b, over: a, how: "changed", why: "moved", actor: "session" }).ok).toBe(true);
+    expect(settle(c.store, { holds: z, over: b, how: "changed", why: "moved again", actor: "session" }).ok).toBe(true);
+    // A guest cannot see B, so A cannot fold under it and is shown on its own.
+    const r = ask(c, "zqferry", { owner: false });
+    const shownA = r.memories.find((m) => m.id === a);
+    expect(shownA?.current).toBe(false);
+    // Before: its immediate holder, which this asker may not be told of ("a later version").
+    expect(shownA?.now).toBe(z);
+    const text = renderFacts(r);
+    expect(text).toContain(`earlier — now ${z}`);
+    expect(text).not.toContain(b);
+  });
+});
+
 describe("time filters", () => {
   test("only the window comes back; the matches outside it are counted; learned date stands in for a missing event date", () => {
     const c = brain();

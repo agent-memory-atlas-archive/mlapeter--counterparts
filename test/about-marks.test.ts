@@ -19,7 +19,9 @@ import { Dashboard } from "../src/adapters/dashboard/index.js";
 import { buildArgv, runAction } from "../src/adapters/dashboard/web/actions.js";
 import { memoryDetail } from "../src/adapters/dashboard/web/views/memory.js";
 import { openServer } from "../src/adapters/mcp/index.js";
+import { NIGHT_CHILD_ENV, NIGHT_RUN_ENV } from "../src/adapters/spawn.js";
 import { Counterpart } from "../src/core/counterpart.js";
+import { REFLECTED_FEELING_KEY } from "../src/core/sleep/index.js";
 import type { PutInput } from "../src/core/store/index.js";
 
 const WEB = fileURLToPath(new URL("../src/adapters/dashboard/web/", import.meta.url));
@@ -265,6 +267,53 @@ describe("the session's door: remember's remark, by self", () => {
       expect(bad.structuredContent["reason"]).toBe("remark-malformed");
     } finally {
       s.counterpart.close();
+    }
+  });
+});
+
+describe("--reflected-feeling off reaches a night child's remark, not an awake one (review of #383)", () => {
+  test("the core door: from a night run with the switch off, only work or world; awake, or the switch on, any mark", () => {
+    withBrain((c) => {
+      const id = mem(c, "The walk by the canal on the evening the move was settled.");
+      c.store.setMeta(REFLECTED_FEELING_KEY, "off");
+      const night = c.markAbout({ id, mark: "us", by: "self", why: "It was ours.", night: true });
+      expect(night).toMatchObject({ ok: false, reason: "door-closed-work-or-world-only" });
+      expect(c.store.read(id).about ?? null).toBeNull();
+      // Toward work or world stays open to the night, as it does for the reflection.
+      expect(c.markAbout({ id, mark: "world", by: "self", why: "A place, mostly.", night: true }).ok).toBe(true);
+      // An awake session's re-mark is not the reflection's: the switch does not reach it.
+      expect(c.markAbout({ id, mark: "us", by: "self", why: "It was ours." })).toMatchObject({ ok: true, mark: "us" });
+      // Nor the owner's own door.
+      expect(c.markAbout({ id, mark: "owner", by: "owner", night: true }).ok).toBe(true);
+      c.store.setMeta(REFLECTED_FEELING_KEY, "on");
+      expect(c.markAbout({ id, mark: "me", by: "self", why: "Mine.", night: true })).toMatchObject({ ok: true, mark: "me" });
+    });
+  });
+
+  test("the session's door: a server whose environment names a night run is held to it; one that does not is not", async () => {
+    const id = withBrain((c) => {
+      c.store.setMeta(REFLECTED_FEELING_KEY, "off");
+      return mem(c, "The first morning in the new flat, boxes everywhere.");
+    });
+    // Either mark: the child's name on the server (the night's MCP configuration), or the run's id.
+    for (const env of [{ [NIGHT_CHILD_ENV]: "reflection" }, { [NIGHT_RUN_ENV]: "run_test" }]) {
+      const night = openServer({ dir, session: SESSION, scope: SCOPE, owner: true, env });
+      try {
+        await night.call("recall", { ids: [id] });
+        const r = await night.call("remember", { remark: { id, about: "us", why: "Ours." } });
+        expect((r.structuredContent["remark"] as { reason: string }).reason).toBe("door-closed-work-or-world-only");
+        expect(night.counterpart.store.read(id).about ?? null).toBeNull();
+      } finally {
+        night.counterpart.close();
+      }
+    }
+    const awake = openServer({ dir, session: SESSION, scope: SCOPE, owner: true, env: {} });
+    try {
+      await awake.call("recall", { ids: [id] });
+      const r = await awake.call("remember", { remark: { id, about: "us", why: "Ours." } });
+      expect(r.structuredContent["remark"]).toMatchObject({ ok: true, mark: "us" });
+    } finally {
+      awake.counterpart.close();
     }
   });
 });

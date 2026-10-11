@@ -7,6 +7,7 @@ import { describe, expect, test } from 'claude-code/testing'
 import { Brain, DEFAULT_COLOR } from '../hooks/brain'
 import { decodeCells, encodeCells, isRasterSafe } from '../hooks/cells'
 import {
+  UNKNOWN_ONBOARDING,
   classify,
   countToday,
   dateOf,
@@ -17,8 +18,11 @@ import {
   firingTitle,
   humanDates,
   mechFirings,
+  meetShows,
   openedIds,
   parseFacts,
+  parseOnboarding,
+  parseOnboardingMarker,
   parseRecallBlock,
   resolveServer,
   savedItems,
@@ -759,5 +763,31 @@ describe('the dashboard’s port and links', () => {
     expect(isDashboardUrl('http://localhost:5151/a b', 5151)).toBe(false)
     expect(isDashboardUrl('http://localhost:5151/&calc', 5151)).toBe(false)
     expect(isDashboardUrl('http://localhost:0/', 0)).toBe(false)
+  })
+})
+
+describe('the first meeting', () => {
+  test('core’s /api/onboarding is read strictly: anything but one of the five states is unknown', () => {
+    expect(parseOnboarding('{"meet":"not_started","where":null,"style":null}')).toEqual({ meet: 'not_started', where: null, style: null })
+    expect(parseOnboarding('{"meet":"done","where":"everywhere","style":"straight"}')).toEqual({ meet: 'done', where: 'everywhere', style: 'straight' })
+    for (const bad of ['', 'not json', '{"error":"not found"}', '{"meet":"maybe"}', '{"meet":1}', '["done"]', 'null', '"done"']) {
+      expect(parseOnboarding(bad)).toEqual(UNKNOWN_ONBOARDING)
+    }
+  })
+  test('the wake’s marker names the state on a line of its own; none, or a state not known, is null', () => {
+    expect(parseOnboardingMarker('# Waking up\n<!-- counterparts:onboarding meet=not_started -->\nmore')).toBe('not_started')
+    for (const s of ['offered', 'later', 'done', 'skipped'] as const) expect(parseOnboardingMarker(`<!-- counterparts:onboarding meet=${s} -->`)).toBe(s)
+    for (const bad of ['', '# Waking up', '<!-- counterparts:onboarding meet=maybe -->', '<!-- counterparts:recall t=3 -->', 'counterparts:onboarding meet=done']) {
+      expect(parseOnboardingMarker(bad)).toBeNull()
+    }
+  })
+  test('the button shows for later and offered, and for not_started only after an earlier session’s speak-first; never where nothing can be kept', () => {
+    expect(meetShows('later', 'on', null, 's1')).toBe(true)
+    expect(meetShows('offered', 'unset', null, 's1')).toBe(true)
+    expect(meetShows('not_started', 'on', null, 's1')).toBe(false)
+    expect(meetShows('not_started', 'on', 's1', 's1')).toBe(false)
+    expect(meetShows('not_started', 'on', 's0', 's1')).toBe(true)
+    for (const m of ['done', 'skipped', 'unknown'] as const) expect(meetShows(m, 'on', 's0', 's1')).toBe(false)
+    for (const f of ['paused', 'off', 'observer', 'unknown']) expect(meetShows('later', f, null, 's1')).toBe(false)
   })
 })
