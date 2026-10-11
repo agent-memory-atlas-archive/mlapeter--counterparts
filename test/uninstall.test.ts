@@ -57,6 +57,8 @@ import {
   DELETE_QUESTION,
   PHRASE_PROMPT,
   LOG_WORTH_SAYING,
+  PLUGIN_BEFORE_REOPEN,
+  PLUGIN_ID_FALLBACK,
   REMOVE_PACKAGE,
   REMOVE_PLUGIN,
   censusOf,
@@ -2093,6 +2095,69 @@ describe("uninstall — review of #414", () => {
     expect(await uninstall(input({ io: c.io, yes: false }))).toBe("ok");
     expect(existsSync(base())).toBe(false);
     expect(fingerprint(precious)).toBe(outside);
+  });
+
+  /** Claude Code's record of a plugin install, as `host-wiring.ts#pluginInstall` reads it. */
+  function recordPlugin(id: string, enabled?: boolean): void {
+    mkdirSync(join(home, ".claude", "plugins"), { recursive: true });
+    writeFileSync(
+      join(home, ".claude", "plugins", "installed_plugins.json"),
+      JSON.stringify({ version: 2, plugins: { [id]: [{ scope: "user", installPath: join(home, "cache"), version: "0.3.17" }] } }),
+    );
+    if (enabled === undefined) return;
+    const settings = existsSync(settingsFile())
+      ? (JSON.parse(readFileSync(settingsFile(), "utf8")) as Record<string, unknown>)
+      : {};
+    mkdirSync(dirname(settingsFile()), { recursive: true });
+    writeFileSync(settingsFile(), JSON.stringify({ ...settings, enabledPlugins: { [id]: enabled } }));
+  }
+
+  test("after a delete, a plugin install is told to remove the plugin AT THE TERMINAL, before Claude Code opens again", async () => {
+    // An enabled plugin's first start re-creates an empty folder before anybody
+    // can reach /plugin (plugin.test.ts proves the re-create), so the closing
+    // line names Claude Code's terminal command, not the in-app menu.
+    await install();
+    recordPlugin("counterparts@counterparts-loop");
+    const env = { ...ENV, CLAUDE_PLUGIN_ROOT: join(dirname(import.meta.dir)) };
+    const c = consoleWith(["y", "y", DELETE_PHRASE]);
+    expect(await uninstall(input({ io: c.io, yes: false, env }))).toBe("ok");
+    expect(existsSync(base())).toBe(false);
+    const said = text(c.out);
+    expect(said).toContain("To remove the program too: claude plugin uninstall counterparts@counterparts-loop");
+    expect(said).toContain(PLUGIN_BEFORE_REOPEN);
+    expect(said.indexOf(PLUGIN_BEFORE_REOPEN)).toBeGreaterThan(said.indexOf("claude plugin uninstall"));
+    expect(said).not.toContain(REMOVE_PLUGIN);
+    expect(said).not.toContain(REMOVE_PACKAGE);
+  });
+
+  test("…and after a park, the same; with no record of the plugin, the published id", async () => {
+    await install();
+    const env = { ...ENV, CLAUDE_PLUGIN_ROOT: join(dirname(import.meta.dir)) };
+    const c = consoleWith();
+    expect(await uninstall(input({ io: c.io, park: true, env }))).toBe("ok");
+    expect(existsSync(configPath())).toBe(false);
+    const said = text(c.out);
+    expect(said).toContain(`To remove the program too: claude plugin uninstall ${PLUGIN_ID_FALLBACK}`);
+    expect(said).toContain(PLUGIN_BEFORE_REOPEN);
+    expect(said).not.toContain(REMOVE_PLUGIN);
+  });
+
+  test("an npm install whose host ALSO has the plugin on is told to remove it too after a delete; off, not", async () => {
+    await install();
+    recordPlugin("counterparts@counterparts", true);
+    const c = consoleWith(["y", "y", DELETE_PHRASE]);
+    expect(await uninstall(input({ io: c.io, yes: false }))).toBe("ok");
+    const said = text(c.out);
+    expect(said).toContain(`To remove the program too: ${REMOVE_PACKAGE}`);
+    expect(said).toContain("Claude Code also has the plugin: claude plugin uninstall counterparts@counterparts");
+    expect(said).toContain(PLUGIN_BEFORE_REOPEN);
+
+    await install();
+    recordPlugin("counterparts@counterparts", false);
+    const off = consoleWith(["y", "y", DELETE_PHRASE]);
+    expect(await uninstall(input({ io: off.io, yes: false }))).toBe("ok");
+    expect(existsSync(base())).toBe(false);
+    expect(text(off.out)).not.toContain("claude plugin uninstall");
   });
 
   test("closing lines on a plugin install name the plugin's launcher and /plugin, not bun", async () => {

@@ -92,6 +92,7 @@ import { Store, assertSafeDataDir, dateOf, isWithin, storeExists } from "../../c
 import { isJournal } from "../../core/sleep/index.js";
 import { SCOPES_FILE_NAME, shellWord } from "../scopes.js";
 import { PLUGIN_ROOT_ENV, installRoute } from "../plugin.js";
+import { pluginInstall } from "../host-wiring.js";
 import { SNAPSHOTS_DIR_NAME, resolveSnapshotsDir } from "../snapshots.js";
 import type { AdapterConfig } from "../config.js";
 import type { Io } from "./commands.js";
@@ -146,6 +147,47 @@ export function removeProgram(env: Record<string, string | undefined>): string {
   if (route === "npm") return REMOVE_PACKAGE;
   if (route === "plugin") return REMOVE_PLUGIN;
   return `${REMOVE_PACKAGE} (npm) · ${REMOVE_PLUGIN} (plugin)`;
+}
+
+/** The plugin's id when Claude Code records none here: the published one. */
+export const PLUGIN_ID_FALLBACK = "counterparts@counterparts";
+
+/** Claude Code's own command that removes the plugin, from a terminal. */
+export function removePluginAtTerminal(env: Record<string, string | undefined>, home: string): string {
+  const id = pluginInstall({ home, env, cwd: null })?.id ?? PLUGIN_ID_FALLBACK;
+  return `claude plugin uninstall ${id}`;
+}
+
+/** Why the plugin goes before Claude Code opens again, said under that line. */
+export const PLUGIN_BEFORE_REOPEN =
+  "Run it here, before you open Claude Code again: while the plugin is on, its first start sets " +
+  "Counterparts up again, with a new, empty memory folder.";
+
+/**
+ * The closing line once the configuration is GONE — deleted or parked. A
+ * plugin that is still on runs its first run (`plugin.ts#ensureFirstRun`) at
+ * the very next session start, before anybody can reach /plugin, finds no
+ * configuration and installs a fresh one, which the plugin's removal then
+ * leaves behind (measured with Claude Code 2.1.296 in a throwaway home,
+ * 2026-10-11). The person is at a terminal with Claude Code closed, so the
+ * plugin goes from there, with Claude Code's own command. Printed, never run:
+ * the launcher running this lives in the folder that command removes.
+ */
+function removeProgramAfterGone(input: UninstallInput): void {
+  const route = installRoute(input.env);
+  if (route === "npm") {
+    input.io.out(`To remove the program too: ${REMOVE_PACKAGE}`);
+    // INSTALLED TWICE: the plugin stood down while this install's hooks were
+    // live, and they are out now, so its next start is a first run too.
+    const also = pluginInstall({ home: input.home, env: input.env, cwd: null });
+    if (also === null || !also.enabled) return;
+    input.io.out(`Claude Code also has the plugin: claude plugin uninstall ${also.id}`);
+    input.io.out(PLUGIN_BEFORE_REOPEN);
+    return;
+  }
+  const plugin = removePluginAtTerminal(input.env, input.home);
+  input.io.out(`To remove the program too: ${route === "plugin" ? plugin : `${REMOVE_PACKAGE} (npm) · ${plugin} (plugin)`}`);
+  input.io.out(PLUGIN_BEFORE_REOPEN);
 }
 
 /** The one line a moving arm prints while `claude mcp list` runs (TTY only). */
@@ -1619,7 +1661,7 @@ function parkPlan(input: UninstallInput, u: Ui, plan: UninstallPlan): Outcome {
   // `counterparts help uninstall`, where somebody looking for it can read it
   // whole instead of meeting it at the end of a screen.
   io.out(`To bring it back later: ${consoleName(input.env, home)} install — it finds this folder and asks.`);
-  io.out(`To remove the program too: ${removeProgram(input.env)}`);
+  removeProgramAfterGone(input);
   return "ok";
 }
 
@@ -1659,7 +1701,7 @@ function deletePlan(input: UninstallInput, u: Ui, plan: UninstallPlan): Outcome 
   }
   u.hint("Nothing in this package can bring the rest back.");
   u.blank();
-  io.out(`To remove the program too: ${removeProgram(input.env)}`);
+  removeProgramAfterGone(input);
   return "ok";
 }
 
