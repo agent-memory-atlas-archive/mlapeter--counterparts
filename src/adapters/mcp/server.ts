@@ -64,7 +64,7 @@ import type { ChapterResult, Counterpart, DepositResult, SentFacts } from "../..
 import { loadGateState } from "../../core/recall/index.js";
 import type { SemanticSource } from "../../core/recall/index.js";
 import { AUTHOR_DIMENSIONS } from "../../core/remember/index.js";
-import { ABOUT_MARKS, CACHE_SCHEMA_VERSION, CORE_ABOUT_MARKS, SAID_BY, SCHEMA_VERSION, STATUSES, StoreError, checkFeelings, checkTraits, isStoreError, saidByOf, schemaAhead, statusOf } from "../../core/store/index.js";
+import { ABOUT_MARKS, CACHE_SCHEMA_VERSION, CORE_ABOUT_MARKS, SAID_BY, SCHEMA_VERSION, STATUSES, StoreError, checkFeelings, checkTraits, isStoreError, paths, saidByOf, schemaAhead, statusOf } from "../../core/store/index.js";
 import type { AboutMark, FeelingInput, MemoryStatus, SaidBy, TraitInput } from "../../core/store/index.js";
 import { isLocked } from "../../core/store/db.js";
 import type { Band, Kind } from "../../core/types.js";
@@ -176,6 +176,21 @@ export function staleServerRefusal(host: string = DEFAULT_HOST): string {
   return `Counterparts was updated and this server is still running the old version, so this tool did nothing. ${wordingFor(host).reconnect}`;
 }
 export const STALE_SERVER_REFUSAL = staleServerRefusal(DEFAULT_HOST);
+
+/**
+ * THE SAME GATE WHEN ONLY THE CACHE IS AHEAD (2026-10-11): the search cache
+ * (`cache/cache.sqlite`, box 3) carries a newer build's stamp while the store
+ * does not. "Was updated … reconnect" is not true there — after a rollback
+ * the installed build IS this one, and a reconnect loads the same code onto
+ * the same cache. What is true: a newer build wrote the cache, and it is
+ * rebuildable, so either that build comes back or the cache goes. The
+ * reconnect after deleting it is real: this process holds the old file open.
+ * `cacheFile` is the cache's path; the `*` takes its `-wal` and `-shm` too.
+ */
+export function cacheAheadRefusal(cacheFile: string, host: string = DEFAULT_HOST): string {
+  const then = wordingFor(host).reconnectFirst;
+  return `The search cache was written by a newer Counterparts build than this server runs, so this tool did nothing. Either reinstall that newer build, or delete ${cacheFile}* (the search cache alone; no memory is kept there, and it is rebuilt) and then ${then.charAt(0).toLowerCase()}${then.slice(1)}.`;
+}
 
 /** The gate's refusal when the stamps could not be read at all — the same
  *  first step, in the host's words. */
@@ -1307,7 +1322,9 @@ export class McpServer {
       cacheExpected: CACHE_SCHEMA_VERSION,
     });
     return this.refuse(tool, "schema-ahead", {
-      detail: staleServerRefusal(this.host),
+      // The store's stamp ahead is a newer build this server has not loaded;
+      // the cache's alone is a newer build's cache (`cacheAheadRefusal`).
+      detail: verdict.storeAhead ? staleServerRefusal(this.host) : cacheAheadRefusal(paths.cache(this.counterpart.store.dir), this.host),
       store: { expected: SCHEMA_VERSION, found: verdict.store, ahead: verdict.storeAhead },
       cache: { expected: CACHE_SCHEMA_VERSION, found: verdict.cache, ahead: verdict.cacheAhead },
     });
