@@ -1987,7 +1987,7 @@ export class Dreams {
           return { action, ok: false, reason: refusalOf(err), detail: "Nothing was recorded for this feeling; fix it and propose it again." };
         }
         for (const rep of added.repairs) notes.push(rep.note);
-        if (made.capped) notes.push(`strength was capped at ${String(round(made.peak))}, the most this memory was ever felt: a dream records softening, never a stronger feeling.`);
+        if (made.capped) notes.push(`strength was capped at ${String(round(made.peak))}, as strongly as this memory is felt now: a dream records softening, never a stronger feeling.`);
         this.store.recordDreamChange(dream.id, { action, ref: row.id, detail: { feelings: added.ids } });
         return { action, ok: true, reason: made.capped ? "recorded-capped-at-peak" : "recorded", id: row.id, ...(notes.length > 0 ? { note: notes.join(" ") } : {}) };
       }

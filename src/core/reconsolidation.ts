@@ -241,6 +241,11 @@ function newPairId(): string {
   return `ctr_${randomBytes(6).toString("hex")}`;
 }
 
+/** The settle's ask of whoever settled over a felt memory (2026-10-11): how does it sit now? */
+export function feelingInvite(over: string, felt: number): string {
+  return `${over} still carries a feeling (${String(round(felt))}, its latest). If it sits differently now that this holds, record how it feels now — a feeling-now on ${over} (remember's feelingsNow, a dream's feeling-now, a reflection's feelings); its weight follows the latest, and the first is kept.`;
+}
+
 /** A settle's reason, trimmed and kept to its length; null when empty. */
 export function cleanWhy(why: string | null | undefined): string | null {
   const t = (why ?? "").replace(/\s+/g, " ").trim();
@@ -378,6 +383,14 @@ export function settle(store: Store, input: SettleInput, opts: { closeFlags?: bo
     }
   }
   const liftPatches = [...lifted].filter(([id]) => fade === null || id !== fade.id).map(([id, f]) => ({ id, fade: f }));
+  // HOW IT SITS NOW (2026-10-11, Group 2, Mike): a memory's weight follows
+  // its latest feeling, so whoever settles over a felt memory is asked to say
+  // how it sits now that the newer one holds — an apology, new information,
+  // the sting turned to clarity. The first feeling is kept.
+  if (how !== "open") {
+    const felt = store.row(over)?.feeling_peak ?? null;
+    if (typeof felt === "number" && felt > 0) notes.push(feelingInvite(over, felt));
+  }
   const archive = how === "corrected" ? { id: over, reason: CORRECTED_REASON } : null;
   if (archive !== null) detail["archived"] = over;
   const holdsCol = how === "open" ? null : holds;
