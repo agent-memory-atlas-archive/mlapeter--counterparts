@@ -201,7 +201,16 @@ reverse older defaults and contract lines; those go to the rules audit.
     #403); folds starting at their sources' strength partly answer that.
 16. **The dream queue.** The whole queue ranked into tonight's top-K; a memory stays queued
     until it is below reach; the reflection runs in its own context. (3)
+    **Yes, in order. Mike, 2026-10-11, lightly held.** FIRST the reflection runs in its own fresh
+    context (a real bug: one night peaked at 223k tokens on a 200k model). THEN the dream queue: rank
+    everything not yet dreamed by value × fragility into tonight's top-K, keep a memory queued until it
+    is below reach, and drop the newest-2,000 read. It matches the sleep research: replay favours
+    tagged-important and weakly held memories, mostly recent, on a fixed budget.
 17. **Cards as views**, not built in v1 (Mike's direction, 2026-10-10). (3)
+    **Revised by Mike, 2026-10-11, lightly held: KEEP the entity card.** It is recall's subject index
+    (facts mode's subject channel, `memoriesNaming` plus aliases), and it's how a future person or
+    project view finds every memory about them. Fix its birth bug in Group 3: a nightly tally of names,
+    ≥3 memories on ≥2 lived days, gated by `mention()`. The view is the page; the card is the index.
 18. **A missed plain reminder is told once, later, within its 7-day grace.** (5)
    **Kept. Mike, 2026-10-11, lightly held** (agreed earlier in the walk, via random-06).
 
@@ -494,6 +503,48 @@ were refined by b2+f8 at the review of #369, named where they were):
   default for a caller that forgets. `plugin-run.sh` now also exports the plugin data
   directory it falls back on, so the single binary run from `/counterparts:doctor` knows
   itself for the plugin's (before, `runningAsPlugin` read false there).
+
+### Trial, Mike, 2026-10-11, very lightly held (verbatim in the memory's body)
+
+- Trial, Mike, 2026-10-11, very lightly held: verbatim in the memory's body; long-run lean is an
+  attachments table (the memory holding the context and keywords that find it). `remember`'s
+  `text` and `session_end`'s `content` ask for a list, a table or a pasted text whose specifics
+  matter word for word, with the search words in the title and the first line. Looked at after 1
+  and ~4 lived days (`docs/CHECK-AFTER.md`).
+- Decided by the verbatim-trial builder, 2026-10-11, lightly held: a facts line whose excerpt is
+  cut says when the words hold a list (5 or more bulleted or numbered lines) or a table (3 or more
+  rows between pipes, not counting the header and its rule): "… (a list, 100 items; read whole by
+  id)". Why: the excerpt flattens a list into one line of its first ~300 characters, so nothing
+  showed that the rest was worth reading; it costs about 35 characters a line, inside the result
+  budget. Counted on line shapes alone, so five lines that happen to start with a dash read as a
+  list.
+- Decided by the #409 reviewer, 2026-10-11, lightly held: facts mode's near-duplicate fold
+  compares two results by their LINES (normalized, as sets) when either holds a list or a table,
+  and by their word sets otherwise. Why: a long list's word set is mostly its shape, so three
+  different 100-item inventories read 0.99 alike and two were "left out" with no id; two weeks'
+  shift tables scored 0.78, just under the 0.85 line. By lines they score 0.0–0.05, while a list
+  pasted twice or retitled still folds (0.98–1.0). Ambient recall's gate (`gate.ts#similarity`)
+  still compares word sets; a turn could still deliver one of two similar lists.
+
+### Decided by the mark-superseded builder, 2026-10-11, lightly held (settled-over memories where titles show)
+
+- Decided by the mark-superseded builder, 2026-10-11, lightly held: a write's `neighbours`
+  list a memory a later one settled over MARKED (`standing: "earlier (now mem_…)"`, before
+  its title), not swapped for the one that holds now. It is left out instead when what holds
+  now is already in view (the write itself, what it updates, a sibling in the same
+  `session_end`, a neighbour listed above it) or is confidential to a guest writer. Why: the
+  neighbours are what is close in words to the write; the one that holds now may not be, and
+  the mark names it for a settle or a recall. The dream's and the reflection's bundles mark it
+  the same way rather than leave it out (a dream may still link or feel it), and the dream's
+  "coming up" leaves out a dated memory a later one settled over, as the wake's "Arriving:"
+  does. "Settled over" is `settledOver`'s rule for one id (`recall/standing.ts#headOf`).
+- Decided by the coordinator at the review of #408, 2026-10-11, lightly held: recall's
+  `Earlier (now [id])` label (footnotes, "Came to mind", the wake's lanes, the deliberate
+  path's `standing`) names `headOf`'s memory too, so a footnote and a neighbour never name
+  different ones on a chain A→B→C (both say C, where the footnote said B). A memory a newer
+  pair names as what holds, or whose holder is gone with nothing live after it, no longer
+  reads `Earlier`. Accepted as built: a guest writer's neighbour whose head is confidential
+  is left out; a neighbour whose head ranks below it is listed marked beside its head.
 
 ### Also noted
 

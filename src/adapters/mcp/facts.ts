@@ -34,7 +34,8 @@
  *
  * REBUILT HERE, not inherited from the ambient path: a chapter and its own
  * copy are one result (the chapter); a near-duplicate of a result already
- * kept is left out (`NEAR_DUPLICATE`, token overlap); the self page and the
+ * kept is left out (`NEAR_DUPLICATE`, token overlap; line overlap when one
+ * holds a list or a table, `alike`); the self page and the
  * handoffs are never results; a chapter is labeled journal; a confidential
  * memory is left out of a non-owner's list, silently (counted on the durable
  * row only).
@@ -145,7 +146,7 @@ export const FACTS_EARLIER_SHOWN = 2;
  * question (2026-10-09).
  */
 export const FACTS_CORRECTED_SHOWN = 3;
-/** Token overlap at or above which two results are near-duplicates (the gate's `NEAR_DUPLICATE`). */
+/** Overlap at or above which two results are near-duplicates (the gate's `NEAR_DUPLICATE`; `alike`). */
 export const FACTS_NEAR_DUPLICATE = 0.85;
 /** How far an event anchor's window reaches each side of its date. */
 export const FACTS_ANCHOR_DAYS = 2;
@@ -238,6 +239,8 @@ export interface FactItem {
   readonly body: string;
   readonly bodyChars: number;
   readonly whole: boolean;
+  /** The words hold a list or a table (`blockOf`): said on a cut excerpt, so a reader knows to read it whole. */
+  readonly block?: string;
   readonly saidBy: string | null;
   readonly status: string | null;
   readonly occurredOn: string | null;
@@ -419,6 +422,28 @@ function jaccard(a: ReadonlySet<string>, b: ReadonlySet<string>): number {
   let inter = 0;
   for (const t of a) if (b.has(t)) inter += 1;
   return inter / (a.size + b.size - inter);
+}
+
+/** What two results are compared on for near-duplicates: their words, and their lines when one holds a list or a table. */
+interface Likeness {
+  readonly words: ReadonlySet<string>;
+  readonly lines: ReadonlySet<string>;
+  readonly block: boolean;
+}
+
+function likeness(doc: { title: string | null; body: string }): Likeness {
+  const lines = new Set(doc.body.split("\n").map((l) => tokenize(l).join(" ")).filter((l) => l.length > 0));
+  return { words: new Set(tokenize(`${doc.title ?? ""}\n${doc.body}`)), lines, block: blockOf(doc.body) !== null };
+}
+
+/**
+ * Token overlap, or LINE overlap when either holds a list or a table (review
+ * of #409): a long list's token set is mostly its shape, so three different
+ * 100-item inventories read 0.99 alike by words and two were hidden behind
+ * the first. By lines, a list pasted twice (or retitled) still folds.
+ */
+function alike(a: Likeness, b: Likeness): number {
+  return a.block || b.block ? jaccard(a.lines, b.lines) : jaccard(a.words, b.words);
 }
 
 /**
@@ -721,7 +746,7 @@ export function factsRecall(ctx: FactsContext, question: string, opts: { page?: 
     }
   };
   const kept: Candidate[] = [];
-  const keptTokens: Set<string>[] = [];
+  const keptLikeness: Likeness[] = [];
   let duplicates = 0;
   let unreadable = 0;
   const need = page * FACTS_PAGE_SIZE;
@@ -734,13 +759,13 @@ export function factsRecall(ctx: FactsContext, question: string, opts: { page?: 
       unreadable += 1;
       continue;
     }
-    const toks = new Set(tokenize(`${doc.title ?? ""}\n${doc.body}`));
-    if (keptTokens.some((k) => jaccard(k, toks) >= FACTS_NEAR_DUPLICATE)) {
+    const toks = likeness(doc);
+    if (keptLikeness.some((k) => alike(k, toks) >= FACTS_NEAR_DUPLICATE)) {
       duplicates += 1;
       continue;
     }
     kept.push(c);
-    keptTokens.push(toks);
+    keptLikeness.push(toks);
   }
   const matched = kept.length + (main.length - walked);
   if (unreadable > 0) blocked("unreadable");
@@ -910,6 +935,7 @@ function factItem(
   wrong.sort((a, b) => b.reached - a.reached || (b.corrected ?? "").localeCompare(a.corrected ?? "") || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const correctedShown = wrong.slice(0, FACTS_CORRECTED_SHOWN).map(({ text, learned, corrected: on, id }) => ({ text, learned, corrected: on, id }));
   const title = row.title ?? doc.title;
+  const block = blockOf(text);
   return {
     id: c.id,
     faded,
@@ -921,6 +947,7 @@ function factItem(
     body,
     bodyChars: doc.body.length,
     whole: body.length === flat.length && chapter === undefined,
+    ...(block === null ? {} : { block }),
     saidBy: row.said_by,
     status: row.status,
     occurredOn: row.occurred_on,
@@ -1087,8 +1114,39 @@ function itemLines(m: FactItem, i: number, today: string, excerptChars: number, 
     );
   }
   const words = m.body.length <= excerptChars ? m.body : cutExcerpt(m.body, excerptChars);
-  out.push(`   ${words}`);
+  // The verbatim trial (2026-10-11): a list or a table kept word for word is
+  // flattened into the excerpt; saying it is there tells a reader the rest is
+  // worth the read by id.
+  const block = m.block !== undefined && (!m.whole || words !== m.body) ? ` (${m.block}; read whole by id)` : "";
+  out.push(`   ${words}${block}`);
   return out;
+}
+
+/** List items and table rows: a line led by a bullet or a number, or a line between pipes. */
+const LIST_ITEM = /^[ \t]*(?:[-*+•]|\d{1,4}[.)])[ \t]+\S/;
+const TABLE_ROW = /^[ \t]*\|.*\|[ \t]*$/;
+const TABLE_RULE = /^[ \t]*\|[ \t:|-]+\|[ \t]*$/;
+/** Fewer list items or table rows than these are a sentence's worth, not a block worth naming. */
+const LIST_MIN_ITEMS = 5;
+const TABLE_MIN_ROWS = 3;
+
+/**
+ * "a list, 100 items" or "a table, 12 rows" when the words hold one, else
+ * null. Counted on the words before they are flattened into an excerpt; a
+ * table's header row and its rule are not counted as rows.
+ */
+export function blockOf(text: string): string | null {
+  let items = 0;
+  let rows = 0;
+  for (const line of text.split("\n")) {
+    if (TABLE_ROW.test(line)) {
+      if (!TABLE_RULE.test(line)) rows += 1;
+    } else if (LIST_ITEM.test(line)) items += 1;
+  }
+  const data = Math.max(0, rows - 1);
+  if (data >= TABLE_MIN_ROWS && data >= items) return `a table, ${String(data)} rows`;
+  if (items >= LIST_MIN_ITEMS) return `a list, ${String(items)} items`;
+  return null;
 }
 
 /**
