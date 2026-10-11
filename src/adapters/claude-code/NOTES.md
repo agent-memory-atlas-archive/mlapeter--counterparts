@@ -2475,3 +2475,38 @@ Plain reminders were checked and nothing changed here: the line is said beside t
 carries it, and waits for the first prompt when there is no room — never dropped. What rode
 inside the wake was the same memory's Arriving line, which now leads the lane and outranks
 the self page's borrowing.
+
+## 2026-10-11 — the catch-up takes everything owed; two weak spots read off the live log
+
+**"Wrote up 0 of 1 session" was the bound and the words, not a lost write-up.** The night of
+10-11 granted one session (e92c5180, 17 parts). `planCatchUp` fit whole ~17–22 KB parts under
+the 96 KB bound (`upTo` 5), the child wrote parts 1–5, and the door refused part 6
+`allowance-spent`, as designed. `measure()` counts a session `written` only once its last part
+is, so the row said `written: 0, parts: 5`, and doctor's Write-ups line printed "wrote up 0 of 1"
+without the parts. The next run did 6–9 the same way. Now: batches until nothing is owed, the
+row carries `partsLeft`, and one renderer (`catchUpWords`) is used everywhere.
+
+**The stray `;exit` could not have killed the night run, and did not.** The hook starts
+`bin/nightly.ts` with `spawnDetached` (`detached: true`, `stdio: "ignore"`, `unref`), which is
+`setsid()`: measured under bun on macOS, the child is a session leader (`ps -j`: own PGID, STAT
+`Ss`, no terminal), so a closing terminal's SIGHUP and a kill of the launching session's group
+do not reach it, and once the hook exits it belongs to launchd. The `claude -p` children are
+`detached` too. The log agrees: `nrn_88bd91bd0ac9` wrote its own `process.end` 150 s in, code 0
+— a killed process writes nothing. Its `nothing-ran` is what `runNight` says for a child that
+exited 0 having begun no dream, reflection or page-writer row. That fits Mike's 0.3.17-dev
+install at 13:25:54: its migration put the store at a version this build is behind, after which
+the child's MCP server (`schemaGate`, read on every call) refuses everything `schema-ahead`, and
+this process's own reads after the child throw `SCHEMA_AHEAD` — so `began` stayed false whatever
+the child did before 13:25:54. Two lines of the log say that is what happened: the run ended
+with no `dream.night` row from the nightly process (08:16's run has one just before its
+`process.end`), so its record could not be written; and at 14:16 the next prompt started a
+headless run instead of asking, which the gate does for a lost `started` row only when a dream
+or reflection began after it started (`Dreams#fellBack`). So the first child had begun its
+dream before the migration, and `nothing-ran` was wrong. Read from the log and the code; the
+store's dream rows for 10-11 would confirm it. Fixed here: a store that will not open after the child is recorded `failed`,
+reason `unread`, with its code, not `nothing-ran` (`night-run.ts`).
+
+**The hidden constraint of an unbounded catch-up.** The hook's `started` row said 20 minutes;
+`nightRunLost` reads a row past that plus 10 minutes' grace as lost, and the next prompt would
+have asked to dream while a long catch-up ran. The row now carries the catch-up's hour from the
+start (`nightRowTimeoutMs`).

@@ -129,7 +129,10 @@ work event, 0.25 other work and unmarked (`AUTHORED_DEFAULT_CLAIM`), 0.35 the wo
 the owner, us or me (or said by the owner, or kind self/person). Every row stays under
 `THETA_SEM`; the 0.40 row plus a strong feeling would not (0.535), so the bound now rests
 on `FELT_HEIGHT_CAP` (§5.10) rather than on the sum. `salience.defaulted` carries the row's
-`class`. NOTES "2026-10-10 — the default by what a memory is about".
+`class`. NOTES "2026-10-10 — the default by what a memory is about". **2026-10-11
+(random-06, lightly held):** a revision by `updates` sent no `about` reads its default by the
+mark of the memory it revises (`store/index.ts#inheritFrom`, `counterpart.ts#carryAbout`),
+which it is born with; a sent mark always wins.
 
 **The old-claims era, since 2026-10-10 (decided by Mike, loosely held; working default).** A
 memory written before the store's `claims.era.cutoff` (meta, UTC ms; recorded once at the
@@ -137,6 +140,13 @@ first writable open by this build) with an explicit claim is read by the CURVE �
 `curveSal(m)`, through `salArm` and `steepnessInput` — at `defaultClaimFor(...)` when that is
 lower, carried on `MemoryPhysics.eraClaim` from the read seam (`store/operational.ts#eraClaimOf`).
 Exempt: the core, about owner/us, said by the owner, protected, a pending or repeating date.
+**Extended 2026-10-11 (Mike, lightly held):** an old DEFAULT (`meta.claimedDefault`) reads at
+today's `defaultClaimFor(...)` in either direction and with no exemptions — an owner memory
+written at the old flat 0.25 reads 0.40 — so an upgrader reads what a fresh install writes;
+the curve signature's `eraReads: 2` re-curves a store signed before it once.
+**2026-10-11 (random-06, lightly held):** a dream's merged memory is read at its strongest
+original's moment (`meta.eraWrittenAt`, `store/operational.ts#eraCarriedFrom`) when that
+original was old, with its `claimedDefault` — so a merge does not move the era's reading.
 The stored claim is never rewritten (`eraClaim` is not a column), so "an explicit claim is
 never overridden" holds for the claim as stored; `sal(m.salience)` still reads it. Deleting
 the key (`counterparts claims-era --off`) restores the old reading exactly — the reading, not

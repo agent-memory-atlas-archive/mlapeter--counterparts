@@ -143,6 +143,8 @@ import type { Handoff, HandoffRefusal, HandoffWrite, PointerSince } from "./hand
 import { CLAIM_CHAPTER, askFromStretch, chapterClaims, claimUnwritten, sessionStretch, sessionsHere, workSince } from "./coverage/index.js";
 import { LAST_HERE_LIFE_DAYS, LAST_HERE_NOROOM_EVENT, chaptersBySession, chaptersHere, chaptersOn, elsewhereLine, lastHereLadder, sinceElsewhereLines, todayElsewhereLines, yesterdayLine, yesterdayShorter } from "./handoff/last-here.js";
 import type { ChapterHere, LastHere, SinceElsewhere, TodayElsewhere } from "./handoff/last-here.js";
+import { LAST_EXCHANGE_LINE_MAX_BYTES, exchangeLikely, lastExchange, lastExchangeLine, withExchange } from "./handoff/last-exchange.js";
+import type { LastExchange } from "./handoff/last-exchange.js";
 import { addDays, isDay, localStamp, localStampAfter, startOfLocalDay } from "./time.js";
 import type { Recurrence } from "./time.js";
 import { EPISODE_REGROWN_REASON, leftAs } from "./leaving.js";
@@ -197,14 +199,16 @@ import type {
 } from "./self/index.js";
 import { cyclePartial, ownerNames, runCycle } from "./sleep/index.js";
 import type { CyclePartial, CycleReport, Phase } from "./sleep/index.js";
-import { ABOUT_MARKS, CORE_ABOUT_MARKS, Store, assertSafeDataDir, rowTombstoned, hashText, indexTextOf, occurredOnOf, saidByOf, statusOf } from "./store/index.js";
+import { ABOUT_MARKS, CORE_ABOUT_MARKS, Store, assertSafeDataDir, inheritFrom, rowTombstoned, hashText, indexTextOf, occurredOnOf, saidByOf, statusOf } from "./store/index.js";
 import type {
   AboutMark,
   AddFeelingsResult,
+  Inherited,
   FeelingInput, Embedder, StoreEvent, TraitInput, MemoryRow, MemoryStatus, SaidBy } from "./store/index.js";
 import { TUNABLES as PHYSICS, band as bandOf, fadeOf } from "./physics/index.js";
 import type { UseTier } from "./physics/index.js";
 import type { Kind } from "./types.js";
+import { boundedIds, isKnownSession } from "./types.js";
 
 /** What `Counterpart.markAbout` did, or why it did nothing. */
 export type MarkAboutOutcome =
@@ -572,6 +576,13 @@ export interface DrewOnResult {
  * Since 2026-09-28 the boundary's OWN flush writes one too, with the same
  * fields plus `source: "boundary"` and `contiguity` (what temporal contiguity
  * planned and buffered) — but only when it flushed something: the same rule.
+ *
+ * Since 2026-10-11 (for the sidebar mod, lightly held) both rows also name the
+ * memories they wired together, bounded (`ids`, at most `ROW_IDS_MAX`, and
+ * `idCount`; absent when nothing passed the re-check), and the `session` whose
+ * boundary ran the flush when the caller said (`SessionEndInput.session`). That
+ * is the APPLYING session: a carried claim can hold lines several sessions
+ * credited, and the pending file does not say whose.
  */
 export const ASSOCIATE_FLUSH_EVENT = "associate.flush";
 
@@ -689,19 +700,34 @@ export const SPAWN_STARTED_EVENT = "adapter.spawn.started";
  * and "the session never asked" were the same silence, and the fired view could
  * only mark the mechanism blind.
  *
- * **Counts and reasons. NEVER the question, never a body, and no ids.** The
- * question is the one field here that could carry somebody's private words
- * (scar §2.20), so its LENGTH is recorded and its text is not; and a row
- * pairing a set of memory ids with the moment they were asked for is a link the
- * store does not need to hold in order to answer "did this fire, and what
- * stopped it". `blockedBy` is the refusal column — every verdict the deeper
- * look did not admit, by name — which is what makes "nothing came back" tell
- * "there was nothing" from "it was all gated".
+ * **Counts and reasons. NEVER the question, never a body.** The question is
+ * the one field here that could carry somebody's private words (scar §2.20),
+ * so its LENGTH is recorded and its text is not. `blockedBy` is the refusal
+ * column — every verdict the deeper look did not admit, by name — which is what
+ * makes "nothing came back" tell "there was nothing" from "it was all gated".
+ *
+ * IDS AND THE SESSION (2026-10-11, for the sidebar mod, lightly held): the row
+ * now carries the ids it DELIVERED, bounded (`boundedIds`: at most
+ * `ROW_IDS_MAX`, plus `idCount`), and the `session` it was served to when one
+ * is known. It used to carry no ids, on the ground that pairing ids with the
+ * moment they were asked for was a link the store need not hold — but
+ * `recall.decision` has written the ids of every surfacing, with its session,
+ * since E2, so the line was never the store's policy, and without the ids the
+ * sidebar could not say what a look-up opened.
  *
  * NO `dedupKey`: a tool call is a deliberate act by a session, not a boundary
  * that repeats on a timer, and it is bounded by the host's own tool budget.
  */
 export const MCP_RECALL_EVENT = "mcp.recall";
+
+// The bound on ids an event row names lives with the other shared shapes
+// (`types.ts#boundedIds`); re-exported for the adapters that write such rows.
+export { ROW_IDS_MAX, boundedIds } from "./types.js";
+
+/** `boundedIds`, or nothing at all when there are none (a flush that linked nothing). */
+function rowIds(ids: readonly string[]): { ids?: string[]; idCount?: number } {
+  return ids.length === 0 ? {} : boundedIds(ids);
+}
 /**
  * WHAT REACHED THE MODEL, NOT WHAT RAN (2026-10-02). Two rows the MCP server
  * writes because a tool result the host would not show looked, from the
@@ -1217,6 +1243,11 @@ export interface DepositResult {
   readonly thread?: { readonly from: string; readonly closed: boolean; readonly refused?: ThreadRefusal };
   /** v12: the writer's three fields as recorded — after a revision's carry-over. */
   readonly facts?: DepositFacts;
+  /**
+   * What it is about, when the writer sent no mark and this revision took the
+   * one of the memory it revises (2026-10-11, `Counterpart#carryAbout`).
+   */
+  readonly aboutCarried?: { readonly mark: AboutMark; readonly from: string };
 }
 
 /**
@@ -1307,6 +1338,9 @@ export interface SessionEndInput {
   sweep?: SweepEntry | SweepSkipped;
   /** Override the ceiling reported at wake, for this boundary only. */
   budgetBytes?: number;
+  /** The session whose boundary this is, when the caller knows (2026-10-11):
+   *  stamped on the `associate.flush` rows this boundary writes. */
+  session?: string;
 }
 
 /** What an appended chapter comes back as, gate verdict included. */
@@ -2465,6 +2499,11 @@ export class Counterpart {
     // directory, finished or not — above the handoff, and the first thing
     // given up when there is not room for both (`handoff/last-here.ts`).
     const lastHere = this.lastHereLadder(scope, here?.session ?? null, chapters, here?.exportsFrom);
+    // LAST SAID HERE (2026-10-11): the last exchange in this directory, one
+    // line at the foot of the blocks above the handoff — the first thing they
+    // give up, at each of their widths (`withExchange`).
+    const exchange = here === undefined ? null : this.lastExchangeLine(here);
+    const aboveLadder = withExchange(lastHere, exchange);
     // Which chapter the line would name first, for its durable no-room row.
     const reader = here?.session ?? null;
     // Only for a "Last here" line proper: the about-me line alone names no
@@ -2478,7 +2517,7 @@ export class Counterpart {
     // handoff block is chosen, in the room that block leaves — the handoff and
     // "Last here" are chosen first and never give way to it (`withWorkHere`).
     const work = this.workHereLines(scope);
-    if (newest === undefined && lastHere.length === 0) return this.withWorkHere(result, null, work, budget, scope);
+    if (newest === undefined && aboveLadder.length === 0) return this.withWorkHere(result, null, work, budget, scope);
     const fits = (block: string): ReturnType<typeof spliceBeforeSentinel> | null => {
       const spliced = spliceBeforeSentinel(result.text, block);
       return spliced.applied && (budget === null || spliced.bytes <= budget) ? spliced : null;
@@ -2489,12 +2528,12 @@ export class Counterpart {
     // alone as the fallback. The line alone only when no handoff rung fits.
     // With no chapter here this is the handoff ladder as it was, rung for rung.
     // A bundle that is not a clean render is delivered as found.
-    if (!spliceBeforeSentinel(result.text, ladder[0]?.block ?? lastHere[0] ?? "").applied) return result;
+    if (!spliceBeforeSentinel(result.text, ladder[0]?.block ?? aboveLadder[0] ?? "").applied) return result;
     const best = ladder.find((rung) => fits(rung.block) !== null) ?? null;
     const tries: { rung: (typeof ladder)[number] | null; above: string | null }[] =
       best !== null
-        ? [...lastHere.map((above) => ({ rung: best, above })), { rung: best, above: null }]
-        : lastHere.map((above) => ({ rung: null, above }));
+        ? [...aboveLadder.map((above) => ({ rung: best, above })), { rung: best, above: null }]
+        : aboveLadder.map((above) => ({ rung: null, above }));
     // What `no-room` reports: the SMALLEST handoff rung, which is the one that
     // decided there was no room for it (review of #295, NIT-3).
     const last = ladder[ladder.length - 1];
@@ -2522,12 +2561,18 @@ export class Counterpart {
       } else if (newest !== undefined) {
         this.noteHandoffNoRoom(newest.handoff, smallest?.bytes ?? result.bytes, budget, result.bytes);
       }
-      if (above !== null) {
-        this.emit("counterpart.lasthere.shown", undefined, { bytes: aboveBytes, lines: above.split("\n").length });
+      // The exchange line rides at the foot of `above` when it was carried.
+      const saidShown = exchange !== null && above !== null && (above === exchange || above.endsWith(`\n${exchange}`));
+      const hereShown = above !== null && above !== exchange;
+      if (hereShown) {
+        // Its own bytes and lines, without the exchange line at its foot.
+        const said = saidShown ? byteLength(exchange) + 1 : 0;
+        this.emit("counterpart.lasthere.shown", undefined, { bytes: aboveBytes - said, lines: above.split("\n").length - (saidShown ? 1 : 0) });
       } else if (lastHere.length > 0) {
         // The handoff was carried and the line above it was not.
         this.noteLastHereNoRoom(lastHereId, { budget, was: result.bytes, besideHandoff: true });
       }
+      if (exchange !== null) this.emit(saidShown ? "counterpart.lastexchange.shown" : "counterpart.lastexchange.noroom", undefined, { bytes: byteLength(exchange) });
       // A memory the "since" line names is not named again in the work lines
       // above it (2026-10-09).
       const named = rung?.plans ?? [];
@@ -2536,7 +2581,48 @@ export class Counterpart {
     }
     if (newest !== undefined) this.noteHandoffNoRoom(newest.handoff, smallest?.bytes ?? result.bytes, budget, result.bytes);
     if (lastHere.length > 0) this.noteLastHereNoRoom(lastHereId, { budget, was: result.bytes, besideHandoff: false });
+    if (exchange !== null) this.emit("counterpart.lastexchange.noroom", undefined, { bytes: byteLength(exchange) });
     return this.withWorkHere(result, null, work, budget, scope);
+  }
+
+  /**
+   * THE LAST EXCHANGE IN `here.scope` (2026-10-11; Mike's design of
+   * 2026-10-10, "pull, not push"): what was last said to another session in
+   * this directory, and its last text reply, inside about a day — read from
+   * the span buffer alone (`handoff/last-exchange.ts`). The wake's "Last said here" line
+   * and the `last exchange` recall handle both ask here, so the two cannot
+   * disagree. Reads only; nothing is stored; nothing crosses directories.
+   * Null when there is none; never throws.
+   */
+  lastExchange(here: WakeHere): LastExchange | null {
+    const scope = here.scope?.trim() ?? "";
+    if (scope.length === 0) return null;
+    let sessions: readonly WakeSession[] = [];
+    try {
+      sessions = here.sessions?.() ?? [];
+    } catch {
+      sessions = [];
+    }
+    return lastExchange({
+      buffer: this.spans,
+      scope,
+      reader: here.session ?? null,
+      now: this.nowFn(),
+      sessions: sessions.map((s) => ({ session: s.session, scope: s.scope, lastAt: s.lastAt })),
+    });
+  }
+
+  /** The wake's "Last said here" line for `here`, or null. Never throws. Only
+   *  in the owner's session (review of #392): a span is the raw slice, which no
+   *  confidential mark has reached yet, so a non-owner wake gets no quote. */
+  private lastExchangeLine(here: WakeHere): string | null {
+    if (!this.owner) return null;
+    try {
+      const ex = this.lastExchange(here);
+      return ex === null ? null : lastExchangeLine(ex, { zone: this.store.zone(), now: this.nowFn() });
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -3094,18 +3180,46 @@ export class Counterpart {
    * combined candidate would never pass and the lines would never be carried.
    * What it takes comes out of the stored lanes by their trim order — Nearby
    * first. Never throws.
+   *
+   * **"LAST SAID HERE" RIDES THIS TERM (2026-10-11)**: its bound
+   * (`LAST_EXCHANGE_LINE_MAX_BYTES` and a newline) alone and beside each
+   * directory's block, when a session was at work in any directory inside the
+   * line's window — a bound, since the boundary cannot know who opens the
+   * next session where. Under the same share rule, so the term is still one
+   * of `self/briefing.ts#DELIVERY_SHARED_RESERVES` and the page's limit still
+   * holds. Here ON PURPOSE: this is the room the page borrows before it steps
+   * down a rung (`Self#build`), so the line is never the reason the page is
+   * shorter, and the lanes above "Work here" in `ROOM_ORDER` come first too;
+   * what is left of it at a delivery is the line's, chosen before the work
+   * lines (`addHandoffPointer`). Measured, docs/IMPROVEMENTS.md.
    */
   private workReserveBytes(budgetBytes: number): number {
-    if (!this.self.tunables.CRAFT_AT_DELIVERY) return 0;
+    const said = this.exchangeWithin() ? LAST_EXCHANGE_LINE_MAX_BYTES + 1 : 0;
+    const blocks: number[] = said > 0 ? [said] : [];
+    if (!this.self.tunables.CRAFT_AT_DELIVERY) return reserveBytes(blocks, budgetBytes);
     try {
-      const blocks: number[] = [];
       for (const scope of this.spans.scopes()) {
         const { lines } = this.workHereLines(scope);
-        if (lines.length > 0) blocks.push(workHereBytes(lines));
+        if (lines.length === 0) continue;
+        blocks.push(workHereBytes(lines));
+        if (said > 0) blocks.push(workHereBytes(lines) + said);
       }
       return reserveBytes(blocks, budgetBytes);
     } catch {
-      return 0;
+      return reserveBytes(said > 0 ? [said] : [], budgetBytes);
+    }
+  }
+
+  /** Was a session at work in any directory inside "Last said here"'s window
+   *  — not the store's own, where only the nightly run turn-ends? Never throws. */
+  private exchangeWithin(): boolean {
+    try {
+      const now = this.nowFn();
+      const norm = (s: string): string => s.trim().replace(/\/+$/, "");
+      const own = norm(this.store.dir);
+      return this.spans.scopes().some((scope) => norm(scope) !== own && exchangeLikely(this.spans, scope, now));
+    } catch {
+      return false;
     }
   }
 
@@ -3317,13 +3431,17 @@ export class Counterpart {
    * (`Prospective.claimPlain`), so two processes racing for the same beat
    * cannot both show it. Show the line only on true. Never throws.
    */
-  claimPlainReminder(reminder: PlainDue, input: { at: string; day?: number }): boolean {
+  claimPlainReminder(reminder: PlainDue, input: { at: string; day?: number; session?: string }): boolean {
     if (this.observer) return false;
     try {
       const day = input.day ?? this.store.livedDay();
       // Asked BEFORE the claim, which is itself what would make it false.
       const first = this.prospective.occurrenceUndelivered(reminder.memoryId, reminder.windowKey);
-      const claimed = this.prospective.claimPlain(reminder, { at: input.at, day });
+      const claimed = this.prospective.claimPlain(reminder, {
+        at: input.at,
+        day,
+        ...(input.session === undefined ? {} : { session: input.session }),
+      });
       if (claimed && first) this.creditOccurrence(reminder.memoryId, reminder.windowKey, day, "plain");
       // TOLD ON ITS DAY, IT LEAVES "ARRIVING:" (2026-09-29) — and the wake
       // published before the telling still lists it, until something
@@ -3969,7 +4087,7 @@ export class Counterpart {
    * A run that carried nothing writes no row (see `ASSOCIATE_FLUSH_EVENT`). An
    * observer claims nothing: the stand-down is checked before the rename.
    */
-  applyPendingAssociations(opts: { now?: number; staleMs?: number } = {}): PendingApplyReport {
+  applyPendingAssociations(opts: { now?: number; staleMs?: number; session?: string } = {}): PendingApplyReport {
     const idle: PendingApplyReport = {
       reason: "nothing-pending",
       claims: 0,
@@ -4012,6 +4130,7 @@ export class Counterpart {
       ),
     };
     let failure: string | null = null;
+    const linked: string[] = [];
     for (const claim of claims) {
       out.passes += claim.passes;
       out.pairs += claim.deltas.length;
@@ -4031,6 +4150,7 @@ export class Counterpart {
         out.evicted += report.evictions.length;
         out.swept += report.swept;
         out.dropped += report.dropped;
+        linked.push(...(report.linkedIds ?? []));
       }
       // `busy` is not applied either, and it is the subtle one: `flush()`
       // returns it WITHOUT draining, so the claim's deltas were never
@@ -4082,6 +4202,10 @@ export class Counterpart {
       corrupt: out.corrupt,
       stuck: out.stuck,
       oldestMs: out.oldestMs,
+      ...rowIds(linked),
+      // The APPLYING session (2026-10-11): the boundary whose worker carried
+      // these claims. A claim may hold lines several sessions credited.
+      ...(isKnownSession(opts.session) ? { session: opts.session } : {}),
     };
     if (failure !== null) data["error"] = failure;
     this.emit("counterpart.associate.applied", undefined, {
@@ -4911,7 +5035,8 @@ export class Counterpart {
     // What the buffered pairs BECAME, now the flush has landed (review of
     // #281, findings 2 and 9): links that conduct, and what they cost.
     const contiguity = this.contiguityOutcome(planned, edges);
-    if (this.recordBoundaryFlush(edges, contiguity) && planned.pairs.length > 0) this.clearContiguityPending();
+    const session = isKnownSession(input.session) ? input.session : undefined;
+    if (this.recordBoundaryFlush(edges, contiguity, session) && planned.pairs.length > 0) this.clearContiguityPending();
     // The hooks' own co-activation, applied in the process that can afford to
     // wait on the write lock. After the in-process flush, so a single-process
     // caller's own deltas are not sitting in the buffer when a claim is
@@ -4919,7 +5044,7 @@ export class Counterpart {
     // still on disk and a boundary is worth more than a retry.
     let carried: PendingApplyReport | null = null;
     try {
-      carried = this.applyPendingAssociations();
+      carried = this.applyPendingAssociations(session === undefined ? {} : { session });
     } catch (err) {
       this.emit("counterpart.associate.apply.failed", undefined, { code: errCode(err) });
     }
@@ -5194,7 +5319,7 @@ export class Counterpart {
    * so no new event name; `rows` 0 on those. Never throws; true when a row
    * landed, which is what clears the cursor's pending mark.
    */
-  private recordBoundaryFlush(edges: FlushReport, contiguity: ContiguityPass): boolean {
+  private recordBoundaryFlush(edges: FlushReport, contiguity: ContiguityPass, session?: string): boolean {
     const flushed = edges.reason === "flushed" || edges.reason === "failed";
     const contiguitySays = contiguity.reason === "failed" || contiguity.buffered > 0 || contiguity.lostEarlier > 0;
     if (!flushed && !contiguitySays) return false;
@@ -5215,6 +5340,8 @@ export class Counterpart {
       corrupt: 0,
       stuck: 0,
       oldestMs: 0,
+      ...rowIds(edges.linkedIds ?? []),
+      ...(session === undefined ? {} : { session }),
       contiguity: {
         reason: contiguity.reason,
         ...(contiguity.code === undefined ? {} : { code: contiguity.code }),
@@ -6305,10 +6432,12 @@ export class Counterpart {
     // v12: the writer's three fields, a revision's carried over where unsent.
     const facts = this.carryFacts(carry.proposal, ctx.facts);
     const proposal: Proposal = facts === null ? carry.proposal : { ...carry.proposal, facts: { ...(facts.occurredOn === null ? {} : { occurredOn: facts.occurredOn }), ...(facts.saidBy === null ? {} : { saidBy: facts.saidBy }), ...(facts.status === null ? {} : { status: facts.status }) } };
+    // What it is about, a revision's carried over when none was sent (2026-10-11).
+    const about = this.carryAbout(carry.proposal, ctx.about);
     const mint = mintProposal(this.store, proposal, {
       self: this.self,
       channel: "authored",
-      ...(ctx.about === undefined ? {} : { about: ctx.about }),
+      ...(about !== null ? { about: about.about, inheritedAbout: about } : ctx.about === undefined ? {} : { about: ctx.about }),
       ...(ctx.model === undefined ? {} : { model: ctx.model }),
       ...(ctx.writeUp === undefined ? {} : { writeUp: ctx.writeUp }),
       onEvent: (name, data) => this.emit(name, undefined, data),
@@ -6361,6 +6490,7 @@ export class Counterpart {
       ...(held === null ? {} : { held }),
       ...(thread === null ? {} : { thread }),
       ...(facts === null ? {} : { facts }),
+      ...(about === null ? {} : { aboutCarried: { mark: about.about, from: about.from } }),
     };
   }
 
@@ -6493,6 +6623,30 @@ export class Counterpart {
     } catch (err) {
       this.emit("counterpart.update.held.record.failed", holds, { error: errCode(err) });
     }
+  }
+
+  /**
+   * WHAT A REVISION IS ABOUT WHEN ITS WRITER DID NOT SAY (2026-10-11; decided
+   * by random-06, 2026-10-11, lightly held): the mark of the memory it revises
+   * — an address the author declared and the store resolved, as `carryFacts`
+   * reads it — through `store/index.ts#inheritFrom`, so its default floor
+   * reads by it: an owner memory revised without restating `about` stays the
+   * owner's (0.40), not the unmarked 0.25. A mark that was sent always wins
+   * (the door records it after the mint, as before); null and absent are the
+   * same here, since the doors read both as none sent. Null: a mark was sent,
+   * this is no declared revision, or the memory it revises is unmarked.
+   */
+  private carryAbout(p: Proposal, sent: string | null | undefined): (NonNullable<Inherited["about"]>) | null {
+    if (sent !== undefined && sent !== null) return null;
+    const target = p.updates?.method === "declared" ? p.updates.resolved : null;
+    if (target === null) return null;
+    let row: MemoryRow | undefined;
+    try {
+      row = this.store.row(target);
+    } catch {
+      return null;
+    }
+    return row === undefined ? null : inheritFrom([row]).about;
   }
 
   /**

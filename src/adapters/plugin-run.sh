@@ -4,7 +4,8 @@
 #   sh plugin-run.sh hook   - the five hooks (hooks/hooks.json)
 #   sh plugin-run.sh mcp    - the memory server (.claude-plugin/plugin.json)
 #   sh plugin-run.sh cli …  - the console, for a plugin user with no
-#                             `counterparts` on PATH (commands/doctor.md)
+#                             `counterparts` on PATH (commands/doctor.md,
+#                             commands/dashboard.md)
 #
 # Claude Code runs this with `sh` and the absolute path, so it needs no exec
 # bit and no runtime of its own. Its one job is the one the npm install does
@@ -36,6 +37,13 @@
 # and run its bunfig.toml `preload` inside them (adapters/runtime.ts). Node
 # reads neither unless told to; the single binary is built with both off
 # (--no-compile-autoload-dotenv, --no-compile-autoload-bunfig).
+#
+# That file also turns Bun's runtime auto-install off (`[install] auto =
+# "disable"`), here and in every process these start: where no node_modules
+# sits above the plugin (Claude Code's dependency install did not run: no npm,
+# its time limit, offline), Bun would otherwise fetch the embedding table from
+# the npm registry, unpinned, behind the person's back. Off, the table is simply
+# missing, and doctor says so.
 #
 # WITH NONE OF THE FOUR, THIS FETCHES THE BINARY — once, in the background,
 # under a lock, never blocking a hook or the server's start-up:
@@ -223,9 +231,13 @@ data="${CLAUDE_PLUGIN_DATA:-}"
 # `/counterparts:doctor` runs this through Claude Code's Bash tool, whose
 # environment need not carry CLAUDE_PLUGIN_DATA: then the directory Claude
 # Code gives this plugin (`<config dir>/plugins/data/<name>-<marketplace>`),
-# if it is there.
+# if it is there. Exported, so the single binary kept in it knows itself for
+# the plugin's (adapters/plugin.ts#runningAsPlugin reads it) and doctor names
+# the plugin's fixes, not `bun add -g`.
 if [ -z "$data" ] && [ -d "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/data/counterparts-counterparts" ]; then
   data="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/data/counterparts-counterparts"
+  CLAUDE_PLUGIN_DATA="$data"
+  export CLAUDE_PLUGIN_DATA
 fi
 [ -z "$data" ] && [ -z "$why" ] && why="the plugin has no data directory to keep it in"
 case "${COUNTERPARTS_BINARY_DOWNLOAD:-}" in off | 0 | no | false) [ -z "$why" ] && why="COUNTERPARTS_BINARY_DOWNLOAD is off" ;; esac

@@ -621,6 +621,9 @@ export function sal(s: Salience): number {
  * Decided by Mike, 2026-10-10, loosely held. Why: claims made under the old
  * field text ("set it on anything that should last") held the store in reach
  * for months under the new curve; read as defaults, never rewritten.
+ * Extended by Mike, 2026-10-11, lightly held: an old DEFAULT reads at today's
+ * default for what it is about, up or down, so an upgrader reads what a fresh
+ * install writes.
  */
 export function curveSal(m: { readonly salience: Salience; readonly eraClaim?: number | null | undefined }): number {
   const era = m.eraClaim;

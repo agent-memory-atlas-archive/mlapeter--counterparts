@@ -140,7 +140,11 @@ const CLAIMS_DDL = "CREATE TABLE IF NOT EXISTS claims (key TEXT PRIMARY KEY, val
  * every 100 pages rather than SQLite's 1000, so it stays under half a megabyte
  * beside a row of a few kilobytes.
  */
-function updateClaims(dataDir: string, fn: (current: string | undefined) => string | undefined): { readonly setAside: string | null } {
+function updateClaims(
+  dataDir: string,
+  fn: (current: string | undefined) => string | undefined,
+  onWait?: OnClaimWait,
+): { readonly setAside: string | null } {
   const path = claimsPath(dataDir);
   // WHICH FILE this attempt meets, so a failure can tell "this file is bad"
   // from "a twin moved it while this attempt had it open".
@@ -149,13 +153,22 @@ function updateClaims(dataDir: string, fn: (current: string | undefined) => stri
   // (`sidecarGone`). Only ever before this write's own commit: one its commit
   // met has landed (`transactClaims`), so no try reads its own claim as a twin's.
   let oneMore = true;
-  const transact = (): void => {
+  const once = (): void => {
     try {
       transactClaims(path, fn);
     } catch (err) {
+      // A busy timeout run out: one wait of `CLAIM_WAIT_MS` (`ClaimInput.onWait`).
+      if (isLocked(err)) onWait?.("busy");
+      throw err;
+    }
+  };
+  const transact = (): void => {
+    try {
+      once();
+    } catch (err) {
       if (!oneMore || !sidecarGone(err)) throw err;
       oneMore = false;
-      transactClaims(path, fn);
+      once();
     }
   };
   try {
@@ -170,7 +183,7 @@ function updateClaims(dataDir: string, fn: (current: string | undefined) => stri
     // `SQLITE_NOTADB`), so the test is the file, not the code. Then this one
     // only tries again, on the twin's file, and loses to the twin's claim.
     if (fileIdentity(path) === met) {
-      if (isUnreadableDatabase(err)) setAside = setClaimsAside(path, met);
+      if (isUnreadableDatabase(err)) setAside = setClaimsAside(path, met, onWait);
       // A LOCK IS CONTENTION, and says so at once (2026-10-11, a nit from the
       // review of #366): another claim held the file past `CLAIM_WAIT_MS` on a
       // healthy file, so the hook delivers `busy` now rather than first
@@ -183,7 +196,7 @@ function updateClaims(dataDir: string, fn: (current: string | undefined) => stri
       // that did both between the two looks leaves no lock but a file moved
       // (measured under load, an `SQLITE_IOERR_VNODE` delivered beside the
       // winner about 1 round in 1,500).
-      else if (!awaitSetAside(path, met) && fileIdentity(path) === met) throw err;
+      else if (!awaitSetAside(path, met, onWait) && fileIdentity(path) === met) throw err;
     }
     transact();
     return { setAside };
@@ -245,19 +258,19 @@ function fileIdentity(path: string): string | null {
  * holds the path, because the moment it is gone a twin may make a new file
  * there, and nothing of that file may be moved.
  */
-function setClaimsAside(path: string, met: string | null, now: number = Date.now()): string | null {
+function setClaimsAside(path: string, met: string | null, onWait?: OnClaimWait, now: number = Date.now()): string | null {
   const dir = dirname(path);
   const lock = join(dir, SET_ASIDE_LOCK);
-  let mine = takeSetAsideLock(lock, path, met);
+  let mine = takeSetAsideLock(lock, path, met, onWait);
   if (mine === null) {
     // A twin holds it: wait for the file to go. When no twin is found holding
     // it — it let go, or a twin taking over a dead holder's lock is between
     // moving that one off and making its own — try once more to take it, so a
     // twin never retries on the bad file without either waiting or moving it.
-    if (awaitSetAside(path, met)) return null;
-    mine = takeSetAsideLock(lock, path, met);
+    if (awaitSetAside(path, met, onWait)) return null;
+    mine = takeSetAsideLock(lock, path, met, onWait);
     if (mine === null) {
-      awaitSetAside(path, met);
+      awaitSetAside(path, met, onWait);
       return null;
     }
   }
@@ -289,9 +302,10 @@ function setClaimsAside(path: string, met: string | null, now: number = Date.now
  * `SET_ASIDE_STALE_MS`, a dead holder's, which no file is leaving for — so a
  * lock left by a crash never slows a busy write on a healthy file.
  */
-function awaitSetAside(path: string, met: string | null): boolean {
+function awaitSetAside(path: string, met: string | null, onWait?: OnClaimWait): boolean {
   const lock = lockAge(join(dirname(path), SET_ASIDE_LOCK));
   if (lock === null || lock.age > SET_ASIDE_STALE_MS) return false;
+  onWait?.("set-aside");
   const until = Date.now() + CLAIM_WAIT_MS;
   while (fileIdentity(path) === met && Date.now() < until) sleepSync(5);
   return true;
@@ -329,7 +343,7 @@ function lockAge(lock: string): { readonly id: string; readonly age: number } | 
  * found nothing to remove, this one removes it once the file the twin was
  * moving (`met`, the file both met) has left the path.
  */
-function takeSetAsideLock(lock: string, path: string, met: string | null): HeldLock | null {
+function takeSetAsideLock(lock: string, path: string, met: string | null, onWait?: OnClaimWait): HeldLock | null {
   try {
     mkdirSync(lock);
     return { id: fileIdentity(lock) };
@@ -348,7 +362,7 @@ function takeSetAsideLock(lock: string, path: string, met: string | null): HeldL
     const taken = fileIdentity(moved);
     if (taken !== judged.id) {
       renameSync(moved, lock);
-      awaitSetAside(path, met);
+      awaitSetAside(path, met, onWait);
       if (fileIdentity(path) !== met && fileIdentity(lock) === taken) rmdirSync(lock);
       return null;
     }
@@ -625,7 +639,15 @@ export interface ClaimInput {
    *  the window is a twin whenever this process started. */
   readonly once?: boolean;
   readonly now?: number;
+  /** Told of each wait of up to `CLAIM_WAIT_MS` the claim sits through: a busy
+   *  timeout run out on a held file, or a twin's set-aside lock waited on. For
+   *  tests, which count waits where wall time on a loaded machine cannot; the
+   *  hook passes none. */
+  readonly onWait?: OnClaimWait;
 }
+
+/** What a claim waited on (`ClaimInput.onWait`). */
+export type OnClaimWait = (wait: "busy" | "set-aside") => void;
 
 export interface Claim {
   readonly outcome: ClaimOutcome;
@@ -682,7 +704,7 @@ export function claimDelivery(doors: ClaimDoors, input: ClaimInput): Claim {
       const step = claimStep(current, attempt);
       seen.heldBy = step.heldBy;
       return step.next;
-    }));
+    }, input.onWait));
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     const code = codeOf(err);

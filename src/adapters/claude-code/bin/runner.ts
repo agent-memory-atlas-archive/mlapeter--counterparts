@@ -393,6 +393,8 @@ export async function runOnce(input: {
       date: today,
       at: today,
       sweep: { skipped: "not-opted-in" },
+      // Whose boundary this is, for the `associate.flush` rows (2026-10-11).
+      ...(input.session === undefined ? {} : { session: input.session }),
     });
     const swept = report.sweeps.reduce((n, s) => n + s.spansSwept, 0);
     const minted = report.sweeps.reduce((n, s) => n + s.proposals, 0);

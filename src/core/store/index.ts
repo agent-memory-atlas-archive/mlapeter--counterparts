@@ -72,8 +72,10 @@ import {
   CLAIMS_ERA_CUTOFF_KEY,
   CLAIMS_ERA_RECORDED_KEY,
   DEFAULT_RETENTION_DAYS,
+  ERA_WRITTEN_AT_META,
   RECURRING_META,
   SCHEMA_VERSION,
+  eraCarriedFrom,
   olderFirst,
   openOperational,
   reachExempt,
@@ -217,8 +219,10 @@ export {
   CLAIMS_ERA_CUTOFF_KEY,
   CLAIMS_ERA_RECORDED_KEY,
   CLAIMED_DEFAULT_SPELLED,
+  ERA_WRITTEN_AT_META,
   backfillRecordedDays,
   datedHold,
+  eraCarriedFrom,
   eraClaimOf,
   reachExempt,
   carriedPairId,
@@ -508,6 +512,75 @@ export type AboutSetter = (typeof ABOUT_SETTERS)[number];
 /** A column value read as a mark: anything else is unmarked. */
 export function aboutMarkOf(v: unknown): AboutMark | null {
   return typeof v === "string" && (ABOUT_MARKS as readonly string[]).includes(v) ? (v as AboutMark) : null;
+}
+
+/** What `inheritFrom` reads of a source: its mark, and — for `era` — its moment and meta. */
+export type InheritSource = Pick<MemoryRow, "id" | "about" | "about_by"> & Partial<Pick<MemoryRow, "created_at" | "meta">>;
+
+/** What a new row takes from the rows it is made from (`inheritFrom`). */
+export interface Inherited {
+  /**
+   * What it is about, who set that mark (`about_by`), and which source gave
+   * it. Null: no source was marked.
+   */
+  readonly about: { readonly about: AboutMark; readonly aboutBy: AboutSetter | null; readonly from: string } | null;
+  /**
+   * The best source's era standing, as meta keys (`operational.ts
+   * #eraCarriedFrom`) — for a row that takes the best source's STORED claim
+   * (a dream merge) and only for one: a row with a claim of its own (a
+   * revision, a gist) is new, and the era reads it as new. Empty without a
+   * `cutoff`.
+   */
+  readonly era: Record<string, unknown>;
+}
+
+/**
+ * WHAT A NEW ROW MADE FROM EXISTING ONES INHERITS (2026-10-11; decided by
+ * random-06, 2026-10-11, lightly held): one model for "this replaces that",
+ * so each path that makes a row out of others reads it the same way — the
+ * dream's merge and gist (D6 closed by Mike, 2026-10-11, lightly held), a
+ * revision by `updates:` (its one source, the memory it revises). `best` is
+ * the source whose words and claim the new row takes; absent, the first in
+ * order.
+ *
+ * WHAT IT IS ABOUT: the best source's mark unless that is not personal and
+ * another source is (`CORE_ABOUT_MARKS`: me, us, owner): a personal mark is
+ * never lost to a work one, or to none. Of several personal marks, the best
+ * source's when it is one, else the first in order. An unmarked best source
+ * with only work or world marks beside it takes the first of those — what
+ * `Store#supersedeInto`'s fill-if-unmarked carry would give it anyway, named
+ * here so a caller's note says what lands. The mark keeps who set it.
+ *
+ * The caller with no explicit claim reads its default BY THAT mark
+ * (`physics.defaultClaimFor`), with its own row's status, said-by and kind:
+ * the revision's door hands the mark to `mint.ts`, which already asks.
+ */
+export function inheritFrom(
+  sources: readonly InheritSource[],
+  opts: {
+    best?: InheritSource;
+    /** The era's cutoff (or its first recorded moment), for `era`. */
+    cutoff?: string | number | null;
+  } = {},
+): Inherited {
+  const best = opts.best ?? sources[0];
+  if (best === undefined) return { about: null, era: {} };
+  const personal = (r: Pick<MemoryRow, "about">): boolean => {
+    const m = aboutMarkOf(r.about);
+    return m !== null && CORE_ABOUT_MARKS.includes(m);
+  };
+  const marked = (r: Pick<MemoryRow, "about">): boolean => aboutMarkOf(r.about) !== null;
+  const chosen = personal(best) ? best : (sources.find(personal) ?? (marked(best) ? best : (sources.find(marked) ?? best)));
+  const mark = aboutMarkOf(chosen.about);
+  const by = chosen.about_by;
+  const about =
+    mark === null
+      ? null
+      : { about: mark, aboutBy: typeof by === "string" && (ABOUT_SETTERS as readonly string[]).includes(by) ? (by as AboutSetter) : null, from: chosen.id };
+  return {
+    about,
+    era: opts.cutoff === undefined ? {} : eraCarriedFrom({ created_at: best.created_at ?? null, meta: best.meta ?? "" }, opts.cutoff),
+  };
 }
 
 /** One memory with a reminder date, as `Store.datedMemories` returns it. */
@@ -3918,29 +3991,39 @@ export class Store {
   /**
    * THE OLD-CLAIMS ERA, as it stands (2026-10-10, `operational.ts#eraClaimOf`):
    * the cutoff the curve reads (null: off), the moment first recorded (what
-   * `--on` restores), and how many live memories the curve now reads at their
-   * default rather than their stored claim. A read; one pass over the live
-   * memory rows, each through `row()` so the hold and the cutoff are the ones
-   * the curve sees.
+   * `--on` restores), and how many live memories the curve now reads at
+   * today's default rather than their stored claim — `down` below it (an old
+   * explicit claim, or an old default above today's), `up` above it (an old
+   * default below today's, 2026-10-11); `affected` is both. A read; one pass
+   * over the live memory rows, each through `row()` so the hold and the cutoff
+   * are the ones the curve sees. A dream's merged memory carrying its best
+   * source's moment (`ERA_WRITTEN_AT_META`, 2026-10-11) is a candidate too,
+   * whatever its own `created_at`; `eraClaimOf` decides.
    */
-  claimsEra(): { cutoff: number | null; recorded: number | null; affected: number } {
+  claimsEra(): { cutoff: number | null; recorded: number | null; affected: number; down: number; up: number } {
     const num = (v: string | undefined): number | null => {
       const n = v === undefined || v === "" ? Number.NaN : Number(v);
       return Number.isFinite(n) ? n : null;
     };
     const cutoff = num(this.getMeta(CLAIMS_ERA_CUTOFF_KEY));
     const recorded = num(this.getMeta(CLAIMS_ERA_RECORDED_KEY));
-    let affected = 0;
+    let down = 0;
+    let up = 0;
     if (cutoff !== null) {
       for (const { id } of this.ops.all<{ id: string }>(
-        "SELECT id FROM memories WHERE archived = 0 AND type = 'memory' AND claimed IS NOT NULL AND (created_at IS NULL OR created_at < ?)",
+        `SELECT id FROM memories WHERE archived = 0 AND type = 'memory' AND claimed IS NOT NULL
+           AND (created_at IS NULL OR created_at < ? OR meta LIKE '%"${ERA_WRITTEN_AT_META}"%')`,
         cutoff,
       )) {
         const row = this.row(id);
-        if (row !== undefined && !reachExempt(row) && typeof rowToPhysics(row).eraClaim === "number") affected += 1;
+        if (row === undefined || reachExempt(row) || row.claimed === null) continue;
+        const era = rowToPhysics(row).eraClaim;
+        if (typeof era !== "number") continue;
+        if (era < row.claimed) down += 1;
+        else up += 1;
       }
     }
-    return { cutoff, recorded, affected };
+    return { cutoff, recorded, affected: down + up, down, up };
   }
 
   /** Every row's next-change day forgotten (a new curve: the turn-down looks at all of them once). */

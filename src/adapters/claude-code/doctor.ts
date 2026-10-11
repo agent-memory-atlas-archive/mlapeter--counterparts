@@ -144,9 +144,10 @@ import {
 } from "../sessions.js";
 import { DESKTOP_HOST } from "../hosts.js";
 import type { PluginInstallRead } from "../host-wiring.js";
+import type { InstallRoute } from "../plugin.js";
 import { localStamp } from "../../core/time.js";
 import { CLAIMS_DIR, claimsSetAside } from "./claim.js";
-import { catchUpOf, catchUpWords } from "./night-catch-up.js";
+import { CATCH_UP_RUN_PREFIX, catchUpOf, catchUpWords } from "./night-catch-up.js";
 import type { AdapterConfig } from "../config.js";
 // The same vocabulary the hook's stand-down uses, so the terminal and the
 // console cannot end up with two answers to "why did it not open".
@@ -298,6 +299,27 @@ export interface DoctorInput {
   /** Bound the whole reading. Absent: no bound (the console's case). */
   readonly budgetMs?: number;
   readonly now?: () => number;
+  /**
+   * HOW THIS COPY WAS INSTALLED (`plugin.ts#installRoute`, 2026-10-11), for
+   * the fix lines that install or update something: a plugin install has no
+   * `bun add -g`, its way is Claude Code's `/plugin`. Read by each caller from
+   * its own environment. Absent: not known, and those lines name both routes.
+   */
+  readonly install?: InstallRoute;
+}
+
+/** The plugin's way to a newer or whole copy: Claude Code's plugin manager. */
+const PLUGIN_UPDATE = "in Claude Code, /plugin → Installed → counterparts → Update now (or uninstall it and install it again)";
+
+/**
+ * A fix that installs something, in the words of the route this copy came
+ * by: the npm command, the plugin's update, or — not known — both.
+ */
+function byInstall(input: DoctorInput, npm: string, plugin: string = PLUGIN_UPDATE): string {
+  const route = input.install ?? "either";
+  if (route === "npm") return npm;
+  if (route === "plugin") return plugin;
+  return `npm: ${npm} · plugin: ${plugin}`;
 }
 
 // ── which checkout is running ───────────────────────────────────────────────
@@ -1210,7 +1232,7 @@ function withdrawnFinding(input: DoctorInput): Finding | null {
       "amber",
       RECALL_TITLE,
       `off in this process — the store's cache was written by a newer Counterparts (cache v${v.found}; this build reads v${v.expected}). Recall still matches on words`,
-      `Either install the newer build again (bun add -g counterparts@latest), or, to stay on this one, delete ${tilde(input.dir)}/cache/cache.sqlite* (the search cache alone; no memory is kept there, and it is rebuilt) — then in Claude Code run /mcp → Reconnect so the server opens it.`,
+      `Either install the newer build again (${byInstall(input, "bun add -g counterparts@latest", "in Claude Code, /plugin → Installed → counterparts → Update now")}), or, to stay on this one, delete ${tilde(input.dir)}/cache/cache.sqlite* (the search cache alone; no memory is kept there, and it is rebuilt) — then in Claude Code run /mcp → Reconnect so the server opens it.`,
       { cacheAhead: true, found: v.found, expected: v.expected },
     );
   }
@@ -1228,7 +1250,7 @@ function withdrawnFinding(input: DoctorInput): Finding | null {
  *     the first boundary will confirm it.
  */
 function staticFinding(input: DoctorInput, data: Record<string, string | number | boolean | null>): Finding {
-  const install = `Install the table: bun add -g ${STATIC_WEIGHTS_PACKAGE} — or set ${STATIC_WEIGHTS_ENV} in the environment Claude Code starts hooks with`;
+  const install = `Install the table: ${byInstall(input, `bun add -g ${STATIC_WEIGHTS_PACKAGE}`, `${PLUGIN_UPDATE}; the plugin installs the table with npm, so with no npm on this computer install Node.js (https://nodejs.org) first`)} — or set ${STATIC_WEIGHTS_ENV} in the environment Claude Code starts hooks with`;
   const row = newestBackfill(input);
   if (row !== null && str(row, "reason") === "embedder-unavailable") {
     const code = str(row, "codes") ?? "NO_WEIGHTS";
@@ -1237,7 +1259,7 @@ function staticFinding(input: DoctorInput, data: Record<string, string | number 
       "amber",
       RECALL_TITLE,
       `on (a local table), but the worker could not load its weights (${code}) — nothing is embedded; recall still matches on words`,
-      code === "HASH_MISMATCH" ? `The table on disk is not the one its package declares. Reinstall it: bun add -g ${STATIC_WEIGHTS_PACKAGE}` : install,
+      code === "HASH_MISMATCH" ? `The table on disk is not the one its package declares. Reinstall it: ${byInstall(input, `bun add -g ${STATIC_WEIGHTS_PACKAGE}`)}` : install,
       { ...data, kind: "static", code },
     );
   }
@@ -1316,6 +1338,26 @@ export function keyHistory(store: Store | null): KeyHistory {
   } catch {
     // A store that will not answer is not a store that says "never".
     return { embedded: false };
+  }
+}
+
+/**
+ * HAS THIS STORE LIVED A BOUNDARY (2026-10-11) — a backfill row or a sweep row,
+ * any at all, asked directly: `newestBackfill` reads null both for "none" and
+ * for "too many to say", and only the first means a store that has not yet
+ * lived a boundary. The sweep row counts too (review of #393): a backfill that
+ * throws every run writes no row of its own, but the sweep after it still
+ * does, and that store's shortfall is a fault, not "not built yet". A store
+ * that will not answer is read as having lived one, so the line keeps its amber.
+ */
+function livedABoundary(store: Store): boolean {
+  try {
+    return (
+      store.eventLog({ name: EMBED_BACKFILL_EVENT, limit: 1 }).length > 0 ||
+      store.eventLog({ name: SWEEP_GATE_EVENT, limit: 1 }).length > 0
+    );
+  } catch {
+    return true;
   }
 }
 
@@ -1496,7 +1538,7 @@ function rowFindings(input: DoctorInput, store: Store): Finding[] {
               "sweep",
               "green",
               "Sweep",
-              `${detail} — next session: a session that ended unwritten is written up by the next session in its project`,
+              `${detail} — a session that ended unwritten is caught up later (counterparts catch-up)`,
               "",
               { reason, ran: num(p, "ran"), date: rowDate(sweep) },
             )
@@ -1912,10 +1954,10 @@ function authorshipFindings(input: DoctorInput, store: Store, owedReading: OwedS
     owed === null
       ? ""
       : owed === "failed"
-        ? "; sessions awaiting a write-up: unknown (could not be read)"
+        ? "; sessions awaiting catch-up: unknown (could not be read)"
         : owed.waiting === 0
           ? ""
-          : `; ${plural(owed.waiting, "session", "sessions")} awaiting a write-up` +
+          : `; ${plural(owed.waiting, "session", "sessions")} awaiting catch-up` +
             (owed.stale === 0 ? "" : `, ${String(owed.stale)} from yesterday or earlier`);
   const detail =
     `${windowPhrase(shown, input.today)}: invited to write ${plural(asked, "time", "times")}, ` +
@@ -2541,6 +2583,16 @@ function vectorFindings(input: DoctorInput, store: Store): Finding[] {
   if (skipped > 0) {
     return [finding("vectors", "amber", "Vectors", detail, "counterparts verify --dir <store> --retry-skipped puts the skipped ids back in the rotation.", data)];
   }
+  // NOT BUILT YET IS NOT A FAULT (2026-10-11): a brand-new install read amber
+  // here before its first session, in words a new user cannot act on. Every
+  // backfill run and every sweep writes its row, so a store with neither has
+  // never had a boundary: the vectors are built at the end of the first
+  // session. A store that has lived one and still has a shortfall keeps the
+  // amber below.
+  if (unembedded > 0 && !livedABoundary(store)) {
+    const memories = unembedded === 1 ? "1 memory" : `${unembedded} memories`;
+    return [finding("vectors", "green", "Vectors", `${memories} not searchable by meaning yet — this builds after your first session`, "", data)];
+  }
   if (unembedded > 0) {
     return [finding("vectors", "amber", "Vectors", detail, "The backfill embeds up to 1,000 per boundary; this number must fall run over run.", data)];
   }
@@ -2892,8 +2944,8 @@ export function writeFieldFindings(store: Store): Finding[] {
 /**
  * THE OLD-CLAIMS ERA, informational, never amber or red (2026-10-10; decided
  * by Mike, 2026-10-10, loosely held): whether the curve reads old claims at
- * their default, since when, and how many live memories that affects
- * (`Store#claimsEra`). Silent on a store with no cutoff ever recorded.
+ * today's default, since when, and how many live memories that affects, read
+ * lower and read higher (`Store#claimsEra`). Silent on a store with no cutoff ever recorded.
  */
 export function claimsEraFindings(store: Store): Finding[] {
   let era: ReturnType<Store["claimsEra"]>;
@@ -2904,15 +2956,20 @@ export function claimsEraFindings(store: Store): Finding[] {
   }
   if (era.cutoff === null && era.recorded === null) return [];
   const n = (k: number): string => `${String(k)} ${k === 1 ? "memory" : "memories"}`;
+  // Both ways since 2026-10-11: lower (an old claim, or an old default above
+  // today's), higher (an old default below today's).
+  const split = era.affected === 0 ? "" : ` (${String(era.down)} lower than stored, ${String(era.up)} higher)`;
   const detail =
     era.cutoff === null
-      ? "off: every claim reads as stored (counterparts claims-era --on reads the old ones at their default again)"
-      : `on since ${localDate(era.cutoff, readingZone)}: ${n(era.affected)} written before it read at the default for what ${era.affected === 1 ? "it is" : "they are"} about, not the claim made under the old text; nothing rewritten (counterparts claims-era --off reads them as claimed again; any let go meanwhile stay archived)`;
+      ? "off: every claim reads as stored (counterparts claims-era --on reads the old ones at today's default again)"
+      : `on since ${localDate(era.cutoff, readingZone)}: ${n(era.affected)} written before it read at today's default for what ${era.affected === 1 ? "it is" : "they are"} about${split}; nothing rewritten (counterparts claims-era --off reads them as stored again; any let go meanwhile stay archived)`;
   return [
     finding("claims-era", "green", "Old claims", detail, "", {
       on: era.cutoff !== null,
       cutoff: era.cutoff,
       affected: era.affected,
+      down: era.down,
+      up: era.up,
     }),
   ];
 }
@@ -5121,7 +5178,7 @@ export function doctorFindings(input: DoctorInput): Finding[] {
     ["upgrade-v11", () => upgradeV11Findings(store)],
     // v12 (2026-10-03): the writer's three fields, and the subject links. Two aggregates.
     ["write-fields", () => writeFieldFindings(store)],
-    // 2026-10-10: the old-claims era — on or off, and how many it reads at their default.
+    // 2026-10-10: the old-claims era — on or off, and how many it reads at today's default (lower, higher).
     ["claims-era", () => claimsEraFindings(store)],
     ["recognition-lane", () => recognitionLaneFindings(store)],
     ["contradictions", () => contradictionFindings(store)],
@@ -5226,7 +5283,7 @@ function readOwed(store: Store, today: string): OwedReading | "failed" {
 type OwedSource = () => OwedReading | "failed" | null;
 
 function crashWriteUpFindings(input: DoctorInput, store: Store, owedReading: OwedSource): Finding[] {
-  const title = "Write-ups";
+  const title = "Catch-up";
   const yesterday = isDay(input.today) ? addDays(input.today, -1) : input.today;
   let waiting: number | null = null;
   let stale = 0;
@@ -5294,7 +5351,7 @@ function crashWriteUpFindings(input: DoctorInput, store: Store, owedReading: Owe
       ? "could not read what is written up"
       : waiting === 0
         ? "nothing owed"
-        : `${String(waiting)} session${waiting === 1 ? " owes" : "s owe"} a write-up` +
+        : `${String(waiting)} session${waiting === 1 ? "" : "s"} to catch up` +
           (stale === 0 ? "" : `, ${String(stale)} from yesterday or earlier`);
   // THE NIGHTLY RUN'S CATCH-UP (2026-10-01): its newest row, within two days.
   let night: ReturnType<typeof catchUpOf> = null;
@@ -5304,8 +5361,18 @@ function crashWriteUpFindings(input: DoctorInput, store: Store, owedReading: Owe
   } catch {
     night = null;
   }
+  // ONE RENDERER for the run's row (2026-10-11): on 10-11 this line said
+  // "wrote up 0 of 1" for a night that wrote 5 of a session's 17 parts.
   const nightWords =
-    night === null ? "" : `the nightly run (${localDate(night.at, store.zone())}): ${night.state === "none-granted" || night.state === "could-not-start" ? catchUpWords(night) : `wrote up ${String(night.written)} of ${String(night.granted)}`}`;
+    night === null ? "" : `${night.run.startsWith(CATCH_UP_RUN_PREFIX) ? "counterparts catch-up" : "the nightly run"} (${localDate(night.at, store.zone())}): ${catchUpWords(night)}`;
+  // WHERE THE NIGHT CATCHES UP (dreaming `auto`, 2026-10-11) the SessionStart
+  // pointer is retired: the advice is the night, or the command.
+  let auto = false;
+  try {
+    auto = dreamingSetting(store) === "auto";
+  } catch {
+    auto = false;
+  }
   const detail =
     [
       yesterdayWords,
@@ -5334,7 +5401,7 @@ function crashWriteUpFindings(input: DoctorInput, store: Store, owedReading: Owe
   };
   // THE POINTER IS NOT GETTING OUT (PR #192 review, MAJOR 1 and m4): opening a
   // session there would only defer again, so the advice says why and by how much.
-  if (pointer !== null && pointer.outcome === "deferred" && (waiting ?? 0) > 0) {
+  if (!auto && pointer !== null && pointer.outcome === "deferred" && (waiting ?? 0) > 0) {
     const short = Math.max(0, pointer.need - pointer.room);
     // WHAT TOOK THE ROOM, named (review of #285, M3): beside a full wake the
     // first-launch question or a plain reminder can be what left the pointer
@@ -5377,7 +5444,9 @@ function crashWriteUpFindings(input: DoctorInput, store: Store, owedReading: Owe
         title,
         `${detail} — session ${share.session} is finished in ${tilde(share.here)} and waiting on words it left in ${where}` +
           (shares.length > 1 ? ` (${String(shares.length)} such sessions)` : ""),
-        `Open a session in ${where}: its start points at the rest. A directory set off never will, and there is no command yet to close a session by hand.`,
+        auto
+          ? `The next nightly run writes up the rest in ${where}; counterparts catch-up does it now.`
+          : `Run counterparts catch-up, or open a session in ${where}: its start points at the rest. A directory set off never will.`,
         { ...data, sharesWaiting: shares.length },
       ),
     ];
@@ -5389,7 +5458,10 @@ function crashWriteUpFindings(input: DoctorInput, store: Store, owedReading: Owe
         "amber",
         title,
         detail,
-        "Open a session in the project each one is in: its start points at the oldest. counterparts coverage says which. A stretch nobody writes up lapses after two more days of use — nothing is deleted, it stops being owed.",
+        (auto
+          ? "The nightly run catches up on everything owed each morning; counterparts catch-up does it now. "
+          : "Run counterparts catch-up to write them up now, or open a session in the project each one is in: its start points at the oldest. ") +
+          "counterparts coverage says which. A stretch nobody writes up lapses after two more days of use — nothing is deleted, it stops being owed.",
         data,
       ),
     ];

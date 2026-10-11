@@ -510,7 +510,7 @@ describe("4. temporal contiguity: adjacent only, lag-weighted, forward where the
     clock.now += 10 * 60_000;
     const other = memoryIn(c, "s2", "Another session's memory entirely.");
     const day = c.store.livedDay();
-    const report = await c.sessionEnd({ date: "2026-09-28", budgetBytes: 9000 });
+    const report = await c.sessionEnd({ date: "2026-09-28", budgetBytes: 9000, session: "s1" });
     expect(report.contiguity.reason).toBe("buffered");
     expect(report.contiguity.memories).toBe(3);
     expect(report.contiguity.sessions).toBe(2);
@@ -528,6 +528,10 @@ describe("4. temporal contiguity: adjacent only, lag-weighted, forward where the
     expect(last["source"]).toBe("boundary");
     expect((last["contiguity"] as Record<string, unknown>)["pairs"]).toBe(1);
     expect(last["rows"]).toBe(2);
+    // The memories it wired, and the session whose boundary ran it (2026-10-11).
+    expect([...(last["ids"] as string[])].sort()).toEqual([a, b].sort());
+    expect(last["idCount"]).toBe(2);
+    expect(last["session"]).toBe("s1");
 
     // The cursor moved: a second boundary re-credits nothing.
     const again = await c.sessionEnd({ date: "2026-09-29", budgetBytes: 9000 });
@@ -754,10 +758,16 @@ describe("5. index co-credit: one batch lookup co-credits as a pair set, and the
     expect(again.credited).toBe(0);
     expect(again.refused["already-credited-at-or-above"]).toBe(3);
     expect(again.linkedDespite).toBe(3);
-    const applied = c.applyPendingAssociations();
+    const applied = c.applyPendingAssociations({ session: "s1" });
     expect(applied.reason).toBe("flushed");
     // Two passes of three pairs each: every pair was credited twice.
     expect(applied.pairs).toBe(6);
+    // The carried row names the three, once each, and the applying session (2026-10-11).
+    const flushRows = c.store.eventLog({ name: "associate.flush" });
+    const carried = JSON.parse(flushRows[flushRows.length - 1]?.payload ?? "{}") as Record<string, unknown>;
+    expect([...(carried["ids"] as string[])].sort()).toEqual([...ids].sort());
+    expect(carried["idCount"]).toBe(3);
+    expect(carried["session"]).toBe("s1");
     const [a, b, d] = ids as [string, string, string];
     for (const [x, y] of [[a, b], [a, d], [b, d]] as const) {
       expect(c.associate.weightAt(x, y)).toBeCloseTo(2 * ASSOCIATE_TUNABLES.HEBB_RATE, 10);

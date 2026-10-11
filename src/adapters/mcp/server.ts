@@ -55,12 +55,13 @@
  * No body text, no question text, no note text ever reaches an event.
  */
 import { CLAIM_NOTHING_NEW, claimUnwritten } from "../../core/coverage/index.js";
-import { DREW_ON_MAX_PER_BOUNDARY, MCP_OVERSIZE_EVENT, MCP_PART_EVENT, MCP_RECALL_EVENT, RECALL_CREDIT_EVENT } from "../../core/counterpart.js";
+import { DREW_ON_MAX_PER_BOUNDARY, MCP_OVERSIZE_EVENT, MCP_PART_EVENT, MCP_RECALL_EVENT, RECALL_CREDIT_EVENT, boundedIds } from "../../core/counterpart.js";
 import { CONTRADICTION_TUNABLES, HELD_HINT, NEIGHBOURS_HINT } from "../../core/contradictions.js";
 import type { Neighbour } from "../../core/contradictions.js";
 import { isRecurrence, localDate, occurrenceOnOrAfter, parseCalendarDate, readableRecurrence, todayIn } from "../../core/time.js";
 import type { Recurrence } from "../../core/time.js";
 import type { ChapterResult, Counterpart, DepositResult, SentFacts } from "../../core/counterpart.js";
+import { LAST_EXCHANGE_HANDLE, lastExchangeAnswer } from "../../core/handoff/last-exchange.js";
 import { loadGateState } from "../../core/recall/index.js";
 import type { SemanticSource } from "../../core/recall/index.js";
 import { AUTHOR_DIMENSIONS } from "../../core/remember/index.js";
@@ -108,6 +109,7 @@ import {
   isLive,
   isSessionId,
   latestLiveSession,
+  listSessions,
   manifestVersionOnDisk,
   markNothingNew,
   readSession,
@@ -1810,9 +1812,9 @@ export class McpServer {
   }
 
   /** Remember that the calling session was shown these memories. */
-  private markSeen(ids: readonly string[]): void {
+  private markSeen(ids: readonly string[], key?: string): void {
     if (ids.length === 0) return;
-    const key = this.seenKey();
+    key ??= this.seenKey();
     const set = this.seenBySession.get(key) ?? new Set<string>();
     for (const id of ids) set.add(id);
     // Newest last; the oldest session is let go past the bound.
@@ -2049,6 +2051,11 @@ export class McpServer {
   private async recallTool(args: Record<string, unknown>): Promise<ToolResult> {
     if (this.observer) return this.standDown("recall");
     const handle = args["handle"];
+    // THE LAST EXCHANGE (2026-10-11): a read of this directory's span buffer.
+    // It stands down under observer like the rest of recall (G5, review of #392).
+    if (typeof handle === "string" && handle.trim().toLowerCase() === LAST_EXCHANGE_HANDLE && args["question"] === undefined && args["ids"] === undefined) {
+      return this.lastExchangeTool();
+    }
     const question = args["question"];
     const ids = args["ids"];
     if (handle !== undefined && typeof handle !== "string") {
@@ -2084,6 +2091,10 @@ export class McpServer {
       return this.askQuestion(question, mode, typeof page === "number" ? page : 1);
     }
 
+    // Whose call this is, asked ONCE (review of #390): on Claude Code it is a
+    // registry scan. Unbound, it is the very session the old
+    // `this.session ?? this.hostSession()` found, so the recall is unchanged.
+    const key = this.seenKey();
     const result = deliberateRecall(
       this.counterpart,
       {
@@ -2091,7 +2102,7 @@ export class McpServer {
         ...(typeof question === "string" ? { question } : {}),
         ...(askedIds.length > 0 ? { ids: askedIds } : {}),
       },
-      { sessionId: this.session ?? this.hostSession() ?? UNBOUND_SESSION, owner: this.owner },
+      { sessionId: this.session ?? key, owner: this.owner },
     );
     const resolved = this.noteHandleResolution(handle, result);
     // THE MEASUREMENT (2026-09-28): did this lookup fetch what a mechanism's
@@ -2122,6 +2133,8 @@ export class McpServer {
       truncated: payload["truncated"] === true,
       droppedForBudget: 0,
     });
+    // Only what was DELIVERED (review of #316): an id left `waiting` was not shown.
+    const deliveredIds = ((payload["memories"] as { id?: unknown }[] | undefined) ?? []).map((m) => m.id).filter((x): x is string => typeof x === "string");
     this.noteRecall(
       {
         path: result.path,
@@ -2136,11 +2149,11 @@ export class McpServer {
       question,
       resolved,
       payload,
+      deliveredIds,
+      key,
       fromIndex,
     );
-    // Only what was DELIVERED (review of #316): an id left `waiting` was not shown.
-    const deliveredIds = ((payload["memories"] as { id?: unknown }[] | undefined) ?? []).map((m) => m.id).filter((x): x is string => typeof x === "string");
-    this.markSeen(deliveredIds);
+    this.markSeen(deliveredIds, key);
     const bad =
       result.reason === "no-argument" ||
       result.reason === "both-arguments" ||
@@ -2148,6 +2161,68 @@ export class McpServer {
       result.reason === "ids-too-many" ||
       result.reason === "handle-confidential-withheld";
     return this.result(payload, bad);
+  }
+
+  /**
+   * `recall` with the handle `last exchange` (2026-10-11; Mike's design of
+   * 2026-10-10, "pull, not push"): the last thing said to ANOTHER session in
+   * this server's directory and that session's last text reply, inside about
+   * a day, each cut at a sentence — what the wake's "Last said here" line
+   * points at, from the same reader (`Counterpart#lastExchange`). Read at the
+   * call and never stored: no memory, no credit, no seen set, no durable row
+   * — a ring event only. Never another directory's: the buffer it reads is
+   * this one's. Never reached under observer (recall stands down, G5); and
+   * the words go only to the owner's session (review of #392): a span is the
+   * raw slice, which no confidential mark has reached yet (G6).
+   */
+  private lastExchangeTool(): ToolResult {
+    if (!this.owner) {
+      this.emit("mcp.recall.lastexchange", undefined, { found: false, owner: false });
+      return this.result(
+        {
+          path: "handle",
+          reason: "owner-only",
+          handle: LAST_EXCHANGE_HANDLE,
+          detail: "The last exchange is read only in the owner's own session.",
+        },
+        false,
+      );
+    }
+    const reader = this.session ?? this.hostSession();
+    const ex = this.counterpart.lastExchange({
+      scope: this.scope,
+      session: reader,
+      sessions: () =>
+        listSessions(this.registryDir).map((r) => ({
+          session: r.sessionId,
+          scope: r.scope,
+          startedAt: r.startedAt,
+          lastAt: Math.max(r.lastBoundaryAt, r.endedAt ?? 0),
+          live: isLive(r, this.nowFn(), this.sessionTtlMs),
+          endedAt: r.endedAt,
+        })),
+    });
+    this.emit("mcp.recall.lastexchange", undefined, { found: ex !== null });
+    if (ex === null) {
+      return this.result(
+        {
+          path: "handle",
+          reason: "no-exchange",
+          handle: LAST_EXCHANGE_HANDLE,
+          detail: "No exchange with another session in this folder in about the last day was captured.",
+        },
+        false,
+      );
+    }
+    return this.result(
+      {
+        path: "handle",
+        reason: "last-exchange",
+        handle: LAST_EXCHANGE_HANDLE,
+        ...lastExchangeAnswer(ex, { zone: this.counterpart.store.zone(), now: this.nowFn() }),
+      },
+      false,
+    );
   }
 
   /**
@@ -2164,9 +2239,11 @@ export class McpServer {
     // during the embedding's round-trip must not be recalled past.
     const moved = this.schemaGate("recall");
     if (moved !== null) return moved;
+    // Asked once (review of #390), as on the address path.
+    const key = this.seenKey();
     const ctx = {
       counterpart: this.counterpart,
-      sessionId: this.session ?? this.hostSession() ?? UNBOUND_SESSION,
+      sessionId: this.session ?? key,
       owner: this.owner,
       ...(this.scope === undefined ? {} : { scope: this.scope }),
       vector: embedded.vector,
@@ -2245,9 +2322,9 @@ export class McpServer {
       truncated: false,
       droppedForBudget: 0,
     });
-    this.noteRecall(row, 0, question, false, payload);
-    this.markSeen(ids);
-    this.noteAsked(ids);
+    this.noteRecall(row, 0, question, false, payload, ids, key);
+    this.markSeen(ids, key);
+    this.noteAsked(ids, key);
     return this.result(payload, false);
   }
 
@@ -2261,9 +2338,9 @@ export class McpServer {
    * like the seen set (`seenKey`); nothing for a session nobody identified.
    * Never throws.
    */
-  private noteAsked(ids: readonly string[]): void {
+  private noteAsked(ids: readonly string[], key?: string): void {
     if (ids.length === 0) return;
-    const session = this.seenKey();
+    const session = key ?? this.seenKey();
     if (session === UNBOUND_SESSION) return;
     this.telemetry(() => {
       this.counterpart.noteAsked(session, ids);
@@ -2283,9 +2360,9 @@ export class McpServer {
    * **Never the question.** `queryChars` is its LENGTH: a deliberate question
    * is the one string on this path that could carry somebody's private words,
    * and a row in a store that will be read months later may not hold it (scar
-   * §2.20). No memory ids either — the counts answer this row's question, and a
-   * durable pairing of ids with the moment somebody asked for them is a link
-   * the store has no need of.
+   * §2.20). The ids it DELIVERED are on it, bounded, and its session when
+   * known (2026-10-11, `MCP_RECALL_EVENT`'s note) — never the ids it was asked
+   * for and did not give.
    *
    * `blockedBy` DOES carry `confidential-withheld`, which the wire deliberately
    * does not (§9.1 G5). The two audiences are different: the caller may be any
@@ -2305,12 +2382,18 @@ export class McpServer {
     question: unknown,
     handleResolved: boolean,
     payload: Record<string, unknown>,
+    delivered: readonly string[],
+    // Whose call this was, keyed like the seen set (`seenKey`, asked once by
+    // the caller); absent from the row when nobody knows, so a reader falls
+    // back on its own guess rather than on a sentinel.
+    session: string,
     fromIndex: Partial<Record<FitMechanism, number>> = {},
   ): void {
     const byAddress = row.path === "handle";
     const shown = row.shown ?? 0;
     this.telemetry(() => {
       this.counterpart.noteAdapterEvent(MCP_RECALL_EVENT, {
+        ...(session === UNBOUND_SESSION ? {} : { session }),
         path: row.path,
         reason: row.reason,
         ...(row.mode === undefined ? {} : { mode: row.mode }),
@@ -2339,6 +2422,9 @@ export class McpServer {
         // How many of the expanded ids a mechanism's index had offered only
         // in part (2026-09-28) — the lookup's use, per mechanism. Counts only.
         ...(Object.keys(fromIndex).length > 0 ? { fromIndex } : {}),
+        // What it DELIVERED, by id, bounded (2026-10-11): the memories a
+        // look-up opened or a question's answer showed.
+        ...boundedIds(delivered),
       });
       // The ring emit above already carries this call; a telemetry write that
       // failed must not become the answer the model receives (`telemetry`).
@@ -4357,13 +4443,18 @@ export class McpServer {
   /**
    * The `about` half of a deposit (schema v9): what the memory is about, set
    * by the writer who just wrote it (`about_by = 'writer'`). Nothing when none
-   * was sent; said when the memory did not land. A `skill` memory is the craft
+   * was sent, unless a revision carried its memory's over; said when the
+   * memory did not land. A `skill` memory is the craft
    * — how I work — and is never core (`aboutMe` never reads one as a
    * candidate), so a core mark on one is stored as asked, with a note
    * (2026-09-28: it was refused `skill-is-how-i-work`).
    */
   private recordAbout(deposit: DepositResult, mark: AboutMark | null): Record<string, unknown> {
-    if (mark === null) return {};
+    // None sent: a revision took the mark of the memory it revises (2026-10-11), and says so.
+    if (mark === null) {
+      const carried = deposit.aboutCarried;
+      return carried === undefined ? {} : { about: { stored: true, mark: carried.mark, carriedFrom: carried.from } };
+    }
     if (!deposit.deposited || deposit.memoryId === null) {
       return { about: { stored: false, reason: "memory-not-stored" } };
     }

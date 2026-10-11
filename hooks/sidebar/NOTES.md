@@ -12,6 +12,22 @@ there: its last section overrides the PNGs). v0.1's notes follow the v0.2
 section, as the record; where v0.2 changed something they say so. Everything
 here is a working default.
 
+## Where core ends and the mod begins (Mike, 2026-10-11, lightly held)
+
+Core is everything about memory: the store, writing, recall, forgetting,
+dreaming, the wake, the MCP tools, the CLI, the dashboard and its API, and the
+five classic hooks. It also owns onboarding (the steps and the first-run
+state), shared by every way of installing. The mod is how Counterparts looks
+and is controlled inside Claude Code: the sidebar, the quiet line, the
+switches. It reads core only through core's public surfaces (the dashboard
+API, hook output, its own tool calls) and never opens the store. When it needs
+something those don't give, that is a core ask, not a workaround inside the
+mod. Packaging (the manifest, the launcher, the bundle, the directory listing)
+ships both.
+
+The test: would someone using Counterparts without the sidebar need it? Then
+it's core.
+
 **Try it from a frozen copy**, not from a working tree. A `--plugin-dir` folder
 hot-reloads on every edit, and an agent's worktree is deleted at merge. So
 export one commit, install its dependencies (the plugin's server, which stands
@@ -41,7 +57,7 @@ paused here; `/counterparts fps [n]` reports the brain's rate (or sets its
 target). `caps` is gone: the footer's switches are dots, with no ends to draw.
 
 **Check it:** `sh hooks/sidebar/check.sh`, which runs validate on both manifests,
-`claude plugin test hooks/sidebar` (118 tests, terminal and desktop) and
+`claude plugin test hooks/sidebar` (125 tests, terminal and desktop) and
 `tsc -p hooks/sidebar`, all with a throwaway HOME. **See it:**
 `tools/term-loop/` (its README), at `--size 200x60` and `--size 160x48`. A
 term-loop session sends no message, so nothing comes to mind and nothing is
@@ -397,6 +413,26 @@ row landing during it is counted once. Measured against the live 0.3.16
 dashboard in review: the cold read is about 5.5 MB in about 24 requests
 (about 0.2 s; every `/api/activity` answer carries about 16 KB of
 vocabulary), a warm poll about 19 KB and 38 ms.
+
+**The dashboard down: the route this install has, and its port (2026-10-11).**
+The chart used to say `counterparts dashboard`, which a plugin-only install
+can't run (nothing on its PATH). It now names the route by the memory server
+this session connected (`mechanisms.ts#dashboardRoutes`): `counterparts` (the
+npm install's, which also wires the command) gets `counterparts dashboard`;
+the plugin's own server gets `/counterparts:dashboard` (`commands/dashboard.md`,
+which runs `plugin-run.sh cli dashboard` as a background Bash task, so the
+server outlives the tool call and stops with the session or from `/tasks`).
+No server found: the plugin route first, then `or counterparts dashboard`.
+The sidebar does not start the dashboard itself; it could (a detached
+`$.process.run` of the launcher), but that is a decision, not done.
+
+The port is read as core's server reads it when no `--port` is given:
+`COUNTERPARTS_DASHBOARD_PORT`, else 4747 (`mechanisms.ts#dashboardPort`; `0`,
+"any free port", reads as 4747). Reads and links use it, and a link opens only
+on localhost at that port (`isDashboardUrl`). **A core ask:** a dashboard
+started with `--port` can't be found from here; core offers no port file or
+other discovery surface. (A feed row's `url`, `feed.ts`, is still built on
+4747; nothing opens it today. Thread the port in before anything does.)
 
 ### Views, the tail, and the status line
 
@@ -1019,3 +1055,7 @@ Mike's first real run is the real measurement.
   field.
 - Unexplained: once, in the tmux session, focusing the pane with ctrl+x tab and
   then Enter widened the dock to about 60 columns. Not reproduced.
+- Since 2026-10-11 core's `mcp.recall` and `associate.flush` rows carry `ids` (at most 20)
+  and `idCount`, and `mcp.recall`, `prospective.fire`, `prospective.plain` and
+  `associate.flush` carry `session` when it is known (a flush's is the session that applied
+  it). `feed.ts` doesn't read them yet.

@@ -31,11 +31,12 @@
  * transitions never stall a host-facing path, and every refusal has a name.
  */
 import type { Kind } from "../types.js";
+import { isKnownSession } from "../types.js";
 import { strength } from "../physics/index.js";
 import type { UseTier } from "../physics/index.js";
 import type { ProseDoc, ProspectiveInput, ProspectiveRow, Store } from "../store/index.js";
 import { RECURRING_META } from "../store/index.js";
-import { addDays, isDay, isRecurrence, occurrenceBetween } from "../time.js";
+import { addDays, daysBetween, isDay, isRecurrence, occurrenceBetween } from "../time.js";
 import type { Recurrence } from "../time.js";
 import { derive } from "./derive.js";
 import type { DerivableMemory, DeriveReason, ExtractedDate, Prospectivity } from "./derive.js";
@@ -121,6 +122,29 @@ export function cueModeOf(doc: Pick<ProseDoc, "meta">): CueMode {
 export function plainDueOn(item: { readonly eventDate?: string; readonly mode?: CueMode }, at: string): boolean {
   if (item.mode !== "plain" || item.eventDate === undefined || !isDay(item.eventDate) || !isDay(at)) return false;
   return item.eventDate === at || item.eventDate === addDays(at, 1);
+}
+
+/**
+ * THE ORDER OF THE WAKE'S "ARRIVING:" LANE (2026-10-11, decided by random-06,
+ * lightly held), so the count (`HORIZON_ITEMS`) cuts from the bottom of it:
+ *
+ *   1. plain and due the day the wake is read (`plainDueOn`);
+ *   2. every other plain one;
+ *   3. the quiet ones.
+ *
+ * Within a tier, the nearest date first, in whole days either side of `at`: a
+ * date in its grace days is as near as one the same number of days ahead. A
+ * tie keeps the order it came in (the sort is stable; `arrivals()` hands them
+ * by ramp x strength). Day dates only — `horizon()` offers nothing else; a
+ * date that will not count sorts last in its tier. Pure.
+ */
+export function byArrivingOrder(at: string): (a: Arrival, b: Arrival) => number {
+  const tier = (x: Arrival): number => (plainDueOn(x, at) ? 0 : x.mode === "plain" ? 1 : 2);
+  const away = (x: Arrival): number => {
+    const d = isDay(x.eventDate) && isDay(at) ? daysBetween(at, x.eventDate) : Number.POSITIVE_INFINITY;
+    return Math.abs(d);
+  };
+  return (a, b) => tier(a) - tier(b) || away(a) - away(b);
 }
 
 /**
@@ -714,12 +738,19 @@ export class Prospective {
     // A PLAIN REMINDER DUE THE DAY THE WAKE IS READ COMES FIRST (2026-10-10),
     // ahead of the salience order and so ahead of the count: the person asked
     // to be told, and on that day it is not a question of how warm it is —
-    // `plainDue`'s own reasoning. The rest keep their order (`plainDueOn`).
+    // `plainDue`'s own reasoning (`plainDueOn`).
+    //
+    // THEN EVERY OTHER PLAIN ONE, THEN THE QUIET, EACH BY NEAREST DATE
+    // (2026-10-11, decided by random-06, lightly held): two quiet items due
+    // the 14th took both lines from a plain tax deadline due the 15th, on the
+    // 13th and the 14th. A plain reminder never loses its place to quiet ones;
+    // within a tier the nearest date leads, and the salience order only
+    // breaks a tie (`byArrivingOrder`).
     const offered = considered.arrivals
       .filter((a) => a.precision === "day")
       .filter((a) => a.recurring !== "daily")
       .filter((a) => !this.toldForGood(a));
-    const ordered = [...offered.filter((a) => plainDueOn(a, input.at)), ...offered.filter((a) => !plainDueOn(a, input.at))];
+    const ordered = [...offered].sort(byArrivingOrder(input.at));
     const items = ordered.slice(0, this.tunables.HORIZON_ITEMS);
     // Past the count: named by id in the wake, never silently gone (review of #367).
     const more = ordered.slice(items.length);
@@ -818,7 +849,7 @@ export class Prospective {
    * the update notice's "mark first, show only if marked" (roadmap E). An
    * observer marks nothing and is therefore told nothing.
    */
-  claimPlain(due: PlainDue, opts: { at: string; day?: number }): boolean {
+  claimPlain(due: PlainDue, opts: { at: string; day?: number; session?: string }): boolean {
     if (this.observer) return false;
     const day = opts.day ?? this.store.livedDay();
     try {
@@ -826,7 +857,15 @@ export class Prospective {
         name: PROSPECTIVE_PLAIN_EVENT,
         day,
         ref: due.memoryId,
-        payload: { window: due.windowKey, beat: due.beat, precision: due.precision, date: opts.at, mode: "plain" },
+        payload: {
+          window: due.windowKey,
+          beat: due.beat,
+          precision: due.precision,
+          date: opts.at,
+          mode: "plain",
+          // The session it was told in, when the caller knows (2026-10-11).
+          ...(isKnownSession(opts.session) ? { session: opts.session } : {}),
+        },
         dedupKey: `${PROSPECTIVE_PLAIN_EVENT}:${due.memoryId}:${due.windowKey}:${due.beat}`,
       });
       if (seq > 0) {
@@ -1077,6 +1116,8 @@ export class Prospective {
       // near midnight or far from UTC is counted on the day it was asked
       // (2026-09-26 review — the gauge test failed in Pacific/Auckland).
       date: input.at,
+      // The session whose turn it came back in, when known (2026-10-11).
+      ...(isKnownSession(input.sessionId) ? { session: input.sessionId } : {}),
     });
     return { fired: true, reason: "fired", derivation: null, fires, state: "fired" };
   }

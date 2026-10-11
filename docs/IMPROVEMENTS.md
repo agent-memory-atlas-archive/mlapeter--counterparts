@@ -126,6 +126,17 @@ reverse older defaults and contract lines; those go to the rules audit.
   13/13, memories about the owner or us and the pending tax reminders unchanged.
   "Said by the owner" is the `said_by` field, which exists only on memories written since
   10-08: "Protecting early memories is lower priority than a great, stable system; old memories, including Mike's pre-10-08 rulings (no said_by), may fade (Mike, 2026-10-10)."
+  **Extended by Mike, 2026-10-11, lightly held:** "A pre-cutoff memory reads at today's
+  default for its about, unless explicitly claimed lower." So an old DEFAULT (no claim; the
+  seam filled in the flat 0.25 of its day, `meta.claimedDefault`) now reads at today's default
+  too, up or down — an owner/us memory 0.40, a done work event 0.20 — while explicit claims
+  keep the reading above. Why: consistency between old and new defaults, not protection of the
+  old store; an upgrader gets what a fresh install gets. On a copy of the store, 18 owner/us
+  memories written 10-08..10-10 at the old 0.25 went below reach on the first pass. On a
+  synthetic store shaped like it (18 owner/us at the 0.25 default, written 10-08..10-10, no
+  uses): below reach 12/18 on the first pass, 18/18 by +7 lived days as stored; 0/18 at +0
+  and +7, 6/18 at +14, 18/18 at +30 read at today's 0.40 — none archived by +30 either way.
+  The curve signature carries `eraReads: 2`, so a store signed before it re-curves once.
 
 ### Decided by b2+f8, 2026-10-10, lightly held; revisit after ~5 lived days
 
@@ -171,19 +182,40 @@ reverse older defaults and contract lines; those go to the rules audit.
 12. **One model for "this replaces that".** "Newer in the same slot" is `changed`; one detector
     (the write-time neighbours, plus status lineage or very high similarity) proposes, the
     dream confirms or undoes; the newest in a chain is what comes up on its own. (Group 2)
+    **Yes. Mike, 2026-10-11, lightly held.** One model, owned by the module now called
+    `contradictions.ts`, which is RENAMED `reconsolidation`; the detector lives there too. `inheritFrom`
+    (#400) is its seed. The rename happens inside the Group 2 build, not as a separate PR.
 13. **"Fade faster" is the existing `fade` multiplier**, not a new per-memory slope column.
     (2/3)
+   **Kept. Mike, 2026-10-11, lightly held** (agreed earlier in the walk, via random-06).
 14. **The core.** A recurrence lane (back on several days, across sessions, over weeks);
     identity means about me or us; after 60 lived days without coming back a core memory is
     FLAGGED "being reconsidered" (dashboard and wake) — demotion needs a decision, mine
     (awake or in the reflection) or Mike's, never automatic from disuse; both of us can retire
     a core memory directly. (3)
+   **Kept. Mike, 2026-10-11, lightly held** (agreed earlier in the walk, via random-06).
 15. **Folding.** A fold is a flag on `gist`, not a new verb; a fold starts at its sources'
     strength; reverse provenance goes in a `derivations` table. (3)
+    **As revised, Mike, 2026-10-11, lightly held.** A fold is a dream gist flagged `fold`. Its sources
+    fade through the existing `fade` (readings, felt, protected and core memories exempt). It starts at
+    its sources' strength. At most 5 a night. Recall leads with it. NO `derivations` table: gists already
+    store `meta.sources`, and the reverse lookup is a query over that. Cut for now: awake filing and
+    code-proposed clusters. Open for Group 3: today's caps keep any gist from the core (the review of
+    #403); folds starting at their sources' strength partly answer that.
 16. **The dream queue.** The whole queue ranked into tonight's top-K; a memory stays queued
     until it is below reach; the reflection runs in its own context. (3)
+    **Yes, in order. Mike, 2026-10-11, lightly held.** FIRST the reflection runs in its own fresh
+    context (a real bug: one night peaked at 223k tokens on a 200k model). THEN the dream queue: rank
+    everything not yet dreamed by value × fragility into tonight's top-K, keep a memory queued until it
+    is below reach, and drop the newest-2,000 read. It matches the sleep research: replay favours
+    tagged-important and weakly held memories, mostly recent, on a fixed budget.
 17. **Cards as views**, not built in v1 (Mike's direction, 2026-10-10). (3)
+    **Revised by Mike, 2026-10-11, lightly held: KEEP the entity card.** It is recall's subject index
+    (facts mode's subject channel, `memoriesNaming` plus aliases), and it's how a future person or
+    project view finds every memory about them. Fix its birth bug in Group 3: a nightly tally of names,
+    ≥3 memories on ≥2 lived days, gated by `mention()`. The view is the page; the card is the index.
 18. **A missed plain reminder is told once, later, within its 7-day grace.** (5)
+   **Kept. Mike, 2026-10-11, lightly held** (agreed earlier in the walk, via random-06).
 
 ### Decided by the Group 1a builder, 2026-10-10, lightly held; revisit after ~5 lived days
 
@@ -281,10 +313,20 @@ were refined by b2+f8 at the review of #369, named where they were):
 
 - Mike approved the two options 2026-10-10; details b2+f8, lightly held: the wake is assembled at session start (Still open, Arriving, the Yesterday line and the page read for that moment; Nearby and the identity rotation stay the turn-end's, since showing them writes state), and a "Today, elsewhere" line names other folders worked in today. Why: morning sessions read the evening's wake and knew nothing of each other. Held firmly: no span text across folders, no work memory's title, no handoff body; counts only. Builder's choices, for review: a chapter title crosses only on the About-me line's gate (scope on, not confidential, a copy marked me/us/owner) — the Yesterday line still names every folder's titles; a folder whose scope is not on is not named at all, not even by count; three indexes (`memories_open`, `memories_created`, `memories_origin_ref`) ride the v13 upgrade, with no schema bump of their own; no worker kick at session start. Cost (SessionStart through the hook, 200 registry records): 3.7 → 6.6 ms at 1× (925 memories), 12.3 → 28.2 ms at a synthetic 10× (9,250 written in one day, 250 open questions), no model calls.
 - Mike approved option C 2026-10-10 (the fresh-wake brief's PR 2); decided by the since-you-started builder, 2026-10-11, lightly held: a session already open gets one "Since you started" line at a prompt, for the model only, when another folder had a session start or end, a chapter, or new memories since the session last heard — at most once an hour, never at the first prompt after a wake. Same gate as "Today, elsewhere", shared code (`Counterpart#elsewhereGate`), same 300-byte ladder. Why: an open session never reads a wake again, so it did not learn what another folder did an hour ago. Builder's choices, for review: the wake is not counted as a line, so the first line can come at the second prompt (the hour runs between lines); a compaction's wake restarts the count; a folder where only time passed (a live session still working, no memories) is not a change; a session open when this installs counts from its start; the line takes only what recall left of its budget (its widest form that fits) and with no room waits, the hour unspent; the state is `sinceSeen` on the session's registry record, no store change. Cost (prompt hook, 200 registry records, synthetic): +0 ms within the hour; ≈5 ms on a prompt that checks at 1× (925 memories) and ≈5.5–7.5 ms at 10× (9,250 written that day) — the registry read ≈2–3 ms, the fortnight's chapter walk ≈2 ms, the counts ≈0.1–1 ms. No model or embedding call, no store write.
+- Mike approved "last exchange, pull not push" 2026-10-10 (the fresh-wake brief's "after those"); decided by the last-exchange builder, 2026-10-11, lightly held: a fresh session gets one line, `Last said here, 18:42 (session 3fa9c1d2): "<first ~10 words>…" — recall "last exchange"` (at most 152 bytes), from the most recently active OTHER session in this folder whose owner words are inside 24 hours, and `recall` with the exact handle `last exchange` returns both messages (the owner's from its head, the reply from its tail, each at most 1,200 characters cut at a sentence) with times and the session. Nothing stored; nothing crosses folders. What the span buffer turned out to be, for review: it is per folder (yes), and it holds every exchange up to a session's last Stop — a message typed after that (killed mid-reply, closed before a reply) is absent; and a span is one turn-end's whole slice joined, the person's words and the host's (reminder, task notification, subagent hand-back, compaction summary) in one text. So, builder's choices: (1) the buffer is the only source: a crashed session is named by the last exchange its last turn-end captured, and words typed after it are not shown (a first build read them from the end of the host's transcript; taken out 2026-10-11 on the coordinator's word, since the plugin directory's rule 1F forbids extracting the host's chat history; capturing at the prompt hook would close the gap from our own hooks, not done here); (2) the owner's words are found by shape: wrapped host text stripped, the slice cut at the first paragraph that opens like a host frame, and a slice opening with a compaction summary skipped (the reader steps back one exchange) — the review of #392 added a skill's body, a pasted wake or recall note cut short, and a slash command's echo (what follows it is the command's expansion) as cuts; host text with no mark of its own (a coordinator's message, a scheduled prompt) that opens a turn still reads as typed words, a known limit — a per-turn mark in the span would make this exact, a format change not taken; (3) the reply is the newest assistant span from a turn-end that also held a conversation span, so the end-of-session ask's answer (which has none) never is, and a reply after an injected-only turn (a task notification) can be; (4) a still-live session in the same folder counts, and one that left no owner words is passed over for the one before it; (5) the line's room rides "Work here"'s reserve term (alone and beside each folder's work block, under the same share rule, so `DELIVERY_SHARED_RESERVES` and the page's limit hold), taken only when some folder had a turn-end in the last 24 hours — that is the room the page borrows before it steps down, so the line is never why the page is shorter; at delivery it sits at the foot of "Last here"'s blocks, each width tried with it and then without (the first thing given up there, never narrowing "Last here", the About-me line or the handoff, which is chosen first), and before the work lines; (6) the handle writes nothing (no `mcp.recall` row, no credit, no seen set; a ring event) — and, changed at the review of #392 on the coordinator's word, it stands down under observer like the rest of recall (mcp CONTRACT G5 has no exception); and, the #392 reviewer's call, lightly held, the line and the handle are given only to the owner's session (a span is the raw slice, which no confidential mark has reached yet; the installed configuration writes `owner: true`); (7) both texts go through the credential scan; the time shown is the turn-end's capture time. Rank, measured at 9,000 on the owner's morning (a 5.9 KB page, 25 open questions, a due-day reminder, another active folder), 0/1/4 handoffs × Last here or not × 5.9/6.5 KB page: the line prints in 11 of 12; the page stays whole in all 12 (and in the pinned four-handoff case "Arriving:", the due reminder and "Still open" are line for line what they are without it); the one miss is a 6.5 KB page beside four handoffs and Last here, where the page borrows the room first (pinned in `test/last-exchange.test.ts`). With no room of its own (riding the bundle's slack) it printed in 10 of 12 and never with neither a handoff nor a chapter here — the session that ended without a write-up, where the line matters most — and a room inside the handoffs' term instead made the page step down a rung at 7,000 (5.9 KB page, nothing else reserved). Cost: one lane element (Nearby, by trim order) on most of those wakes; SessionStart's lookup 0.45 ms for a day's buffer (4 sessions × 40 turn-ends) and 3.3 ms median, 4.5 p95, for a busy week (35 × 60 turn-ends of 1.5 KB, 6 MB), the render's check 0.2–0.9 ms; no model or embedding call, no store write. Not now: surfacing it on "where were we".
+- "Last said here" and `last exchange`, who sent the message: Decided by the coordinator, 2026-10-11, lightly held: the quote stays, attributed neutrally, until spans mark each turn's source. Why: host text with no mark of its own (a coordinator's message, a scheduled prompt) that opens a turn reads like typed words (handoff INTERFACE-GAPS §9, pinned as `test.todo`), so the line says "Last said here" and the handle "the last message to me … and my last reply", never that the owner said it.
 
 ### Decided by b2+f8, 2026-10-10, lightly held; rank by the review of #380 (the wake, "Today, elsewhere" room)
 
 - Decided by b2+f8, 2026-10-10, lightly held; rank moved by the review of #380: the "Today, elsewhere" line is capped at 300 bytes (folders past the cap become "+N more"; the last form is the count alone) and ranks in `ROOM_ORDER` between the handoffs' room and "Arriving:" past its head. It takes room from "Nearby", craft, "Still open" past its first item, "Work here", "Still open"'s count beside kept items, the Yesterday line's titles, "Last here" and the older handoffs; "Arriving:", "Still open"'s first item and count, the page and its borrowing, and a due-day plain reminder come before it. Only on days other folders were active; with no line the wake is byte-identical. Why: in the 10-10 test-build rehearsal the line never printed at the owner's 9,000-byte ceiling — his ~5.9 KB page filled the wake and the line was the first thing cut after Nearby — and it exists for his symptom, morning sessions in different folders not knowing about each other. Why this rank and not #380's (above the page's borrowing, the page chosen in the line's bytes less room): measured at 9,000 with a due-day reminder and four handoffs, it is the lowest rank that prints the line both in the owner-like case (~5.9 KB page, one other folder: ranks above "Still open"'s count suffice, the line takes that count) and in a busier one (6.5 KB page that borrows, "Work here", a Yesterday line, two or three other folders: nothing below the handoffs' room printed it; from there up it prints whole and "Work here" loses its one line). Higher buys nothing in either case and costs the page: at #380's rank a 6,767-byte page (an owner's page size from the history) stepped from whole to its next rung for a 243-byte line (8,881 → 4,172 bytes with no short version); here it stays whole and the line prints. #367 holds (dated items before furniture) and #363 holds (the page never gives way to the line).
+
+### Decided by random-06, 2026-10-11, lightly held (the wake's "Arriving:" order)
+
+- Decided by random-06, 2026-10-11, lightly held: "Arriving:" ranks plain reminders first, then nearest date — a plain reminder due the morning the wake is read, then every other plain one, then the quiet ones, each by nearest date (whole days either side, so a date in its grace days counts as near as one as far ahead; the warmth order only breaks a tie). The cap stays 2 and the "+N more arriving" line names the rest. Why: the 0.3.17 release check on a copy of Mike's store found his Oct-15 tax deadline (plain) missing from the wake on 10-13, because two quiet items due 10-14 took both lines. Builder's choice, for review: "nearest" counts days either side rather than putting dates still ahead before dates behind — the existing order of a reminder "was due yesterday" beside one due tomorrow is kept that way.
+
+### Decided by the arriving-plain builder, 2026-10-11, lightly held (doctor's Vectors line on a new install)
+
+- Decided by the arriving-plain builder, 2026-10-11, lightly held: doctor's Vectors line is green, "N memories not searchable by meaning yet — this builds after your first session", while the store has no backfill row at all; once any backfill has run, a shortfall is amber as before. Why: on a brand-new npm install this was the one amber before the first session, worded "the backfill embeds up to 1,000 per boundary", which a new user cannot act on. The discriminator is "no `adapter.embed.backfill` row ever" because every backfill run writes one; edge, accepted: a store whose embedder was off for its first sessions and then turned on reads green until its next session runs the backfill.
 
 ### Decided by the follow-ups builder, 2026-10-11, lightly held (the wake's Yesterday line)
 
@@ -302,6 +344,20 @@ were refined by b2+f8 at the review of #369, named where they were):
 - Decided by the about-marks builder, 2026-10-11, lightly held: the reflection's unmarked offer keeps a room of its own — exactly what the offered ids cost as lines, held back from the shared room — and an offered memory the shared fit left waiting or showed as a bare id is shown as a line in it. Why: on 10-10 the offer fitted to nothing (`fit.notShown` 356); a synthetic full night (700 recent memories) offered 0 of 11 before and 5 of 5 after. A reserve rather than a higher priority, because the top priority would also hand the offer whole texts first on exactly the tight nights. Unmarked skills are offered too (the review: 5 of 34 read as personal, and nothing else ever offered them).
 - Decided by the about-marks builder, 2026-10-11, lightly held: `counterparts about` (and the dashboard through it) marks an archived memory rather than refusing it, and says it is archived. Why: an archived memory can come back (a use, a body mention), and the mark should be right when it does; `setAbout` already took archived rows. An earlier version's id forwards to the current one and says so.
 - Decided by the about-marks builder, 2026-10-11, lightly held: a mark set by `remember`'s `remark` is recorded `about_by = 'self'` (a new value in a text column, no schema change). Why: the brief asked for "by self", `writer` is the mark given at birth, and `self` is already the store's word for the counterpart (`said_by`). The remark takes the reflection's rules: only a memory the session was shown (as `feelingsNow`), a dream's or a reflection's words only toward work or world, a missing why recorded rather than refused; a confidential memory outside the owner's session is not found. The owner's door has none of these limits.
+
+### Decided by the era-defaults builder, 2026-10-11, lightly held (old defaults at today's default)
+
+- Decided by the era-defaults builder, 2026-10-11, lightly held: the era's exemptions (the core, about owner/us, said by the owner, protected, a pending or repeating date) apply to explicit claims only; an old default reads at today's default whatever it is, so a protected or pending done-work default reads 0.20, not its stored 0.25. Why: the ruling's one exception is "explicitly claimed lower", and a default was nobody's claim; the exempt are held or unprunable by other means anyway, so this moves a reading, not an archive.
+
+### Decided by random-06, 2026-10-11, lightly held (a dream merge keeps `about` and era standing)
+
+- Decided by random-06, 2026-10-11, lightly held: a dream's merged memory takes its strongest original's `about` mark (with its setter) unless that is not personal and another original's is (me, us, owner: a personal mark is never lost to a work one); of several personal marks, the strongest original's, else the first named. It also keeps that original's stored claim AND its era standing: an original written before the old-claims cutoff gives the merged memory its moment (`meta.eraWrittenAt`) and its `claimedDefault`, so the era reads it as it read the original, and `--off` reads it as stored. Why: a merge is the same memory in better words; before this the supersede's fill-if-unmarked carry took the first marked original's mark in the dream's order (a work one could win), and a merged memory was a new row the era no longer read, so two old owner defaults reading 0.40 became one reading 0.25, and an old 0.7 world claim read at 0.35 jumped back to 0.7. Detail decided by the merge-inherits builder, lightly held: the moment, not a yes/no flag, so it reads right against whatever cutoff `--on` restores and through a merge of a merge; and the strongest original's writer's fields (said by, status, when) come too, since the era's default and its "said by the owner" exemption read them (the supersede's carry still fills any the strongest original lacks from the others, as before). Merged memories made before this fix are not repaired.
+
+### Decided by random-06, 2026-10-11, lightly held (one `inheritFrom` helper)
+
+- Decided by random-06, 2026-10-11, lightly held: one `inheritFrom` helper (`store/index.ts`) decides what a row made from existing ones inherits — what it is about (the merge's rule: a personal mark wins over work, work over none) and, for a row that takes its best source's stored claim, its era standing. The dream merge and a revision by `updates` read it. A revision with no `about` sent takes the mark of the memory it revises (declared and resolved, as the three writer's fields already did), written at birth with its setter, and its default claim reads by it: an owner or us memory revised without restating `about` defaults to 0.40, not the unmarked 0.25. A sent `about` always wins. Why: random-06 revises by `updates` many times a day, and each revision of a personal memory was dropping to the unmarked default, and (for a link-only revision) losing its mark entirely. Group 2 routes the remaining "this replaces that" paths through the same helper later. Details accepted by the coordinator, 2026-10-11, lightly held: the helper returns no default claim (the revision's mark goes into `mint.ts`'s existing `defaultClaimFor`, which reads the proposal's status, said-by and kind); and a schema element (marked `me` by the v9 upgrade) revised by `updates` is born `me` at 0.40, where before it got the mark only after the mint (by the supersede's carry) at 0.25.
+- Decided by the coordinator, 2026-10-11, lightly held, from the builder's evidence (B1), revising random-06's ask: **the reflection's own entry stays unmarked** (not `me`). Why: marking it reverses B1 (review of #256, pinned by `test/reflect-review.test.ts`, "a reflection's own entry … is not handed back to a reflection as a memory to mark or feel", which asserts the entry stays unmarked): the mark is the core's first gate (`physics#promotionEligibility`'s `not-about-me`), awake returns land on reflection rows (`Store#reinforce` filters no source), so every nightly entry would become a slow-lane core candidate — the self-authored rumination loop self CONTRACT §2(c) names. Turning it on is one line (`about: "me", aboutBy: "reflection"` in `dream/reflect.ts`'s entry `put`) plus that test's last assertion.
+- Gist marks: D6 closed by Mike, 2026-10-11, lightly held: personal marks kept, core only by awake recurrence. A dream gist reads `inheritFrom(sources)` like the merge (a personal mark among its sources wins, the first named as best; its setter kept), with no era standing, its claim staying at `DREAMED_CLAIM_CEILING`. No refusal by `source` was added to the core's lanes (`dream/CONTRACT.md` §7 Q2). The reflection's own entry stays unmarked.
 
 ### Decided by the drewOn builder, 2026-10-11, lightly held (`drewOn`, item 3 above)
 
@@ -333,6 +389,141 @@ were refined by b2+f8 at the review of #369, named where they were):
   computed under the linear arm. Measured on a synthetic 20,000-row population (70% never
   used): heights differ on ~2.7% of rows, bands move on ~0.04%, all down (3–8-use rows, whose
   arm drops by up to 0.11); `self`/`person` (no repetition arm) never move.
+
+### Decided by the event-fields builder, 2026-10-11, lightly held (ids and session on events, for the sidebar mod)
+
+- Decided by the event-fields builder, 2026-10-11, lightly held: the durable `mcp.recall` row
+  now names the memory ids it DELIVERED (`ids`, at most 20, and `idCount`), reversing its old
+  "no ids" line. Why: `recall.decision` has written every surfacing's ids with its session
+  since E2, so the line was never the store's policy, and the sidebar could not say what a
+  look-up opened. Ids only, never text; confidential memories are not filtered out of the
+  list, as `recall.decision` does not filter them.
+- Decided by the event-fields builder, 2026-10-11, lightly held: `associate.flush`'s `session`
+  is the session whose boundary APPLIED the flush, not necessarily the one that credited the
+  pairs: the pending file can hold lines from several sessions and does not say whose (adding
+  that would change its on-disk format). Its `ids` are both ends of every pair that passed the
+  boundary's re-check — which reverses this row's old "never an id" (the edge rows stay the
+  record of what links to what). Rows from a caller that knows no session carry no `session` at all,
+  never the unbound sentinel, so a reader falls back on its own guess.
+
+### Decided by the day-order builder, 2026-10-11, lightly held (order within a day in a facts answer)
+
+- Decided by the day-order builder, 2026-10-11, lightly held: when two or more results in one
+  facts answer read as the same day, each shows the time it was learned, `HH:MM` in the store's
+  zone, on its learned line (`learned 05-25 09:52`), not "earlier" / "later that day". Why: a
+  time is exact, works for three or more results in a day, and does not depend on which other
+  results the page holds; it costs six bytes a line (60 on a 10-result answer). "Same day"
+  means the same event day (else learned day) AND the same learned day: results learned on
+  different days are already ordered by their learned dates, so nothing is added. Nothing is
+  added either when the colliding results share one minute, for journal entries, for an event
+  date that is a range or a month, or for an old row with no `created_at`. The time is when it
+  was learned, not when it happened, and the line says "learned". Meaning mode is unchanged:
+  its moments carry no per-line date, and its arc is already in time order.
+
+### Decided by the chapter-wording builder, 2026-10-11, lightly held (what a chapter asks for)
+
+- Decided by the chapter-wording builder, 2026-10-11, lightly held: the core ask's own wording
+  (`self/episodes.ts#askText`, the host-neutral text an embedder can show; Claude Code's Stop
+  ask stays its short line) follows the chapter tool: a diary of what happened, in order and in
+  detail, with "lessons and patterns belong to the nightly reflection" in place of "what you
+  learned about them and about yourself". Why: two texts asking for different chapters would
+  pull a host that shows the core ask back toward reflection.
+- Decided by the chapter-wording builder, 2026-10-11, lightly held: the reflection's
+  instructions gain one sentence, "The chapters hold what happened; the lessons and patterns in
+  it are yours to draw here." Why: the dream already writes a pattern it sees as a gist, but the
+  reflection named patterns only in one rotating question and lessons nowhere, so the work the
+  chapter now hands over had no stated home.
+
+### Decided by the catch-up builder, 2026-10-11, lightly held (the nightly run writes up everything owed)
+
+- Decided by the catch-up builder, 2026-10-11, lightly held: the night's catch-up has no
+  session bound; it runs in batches of at most 192 KB / 16 parts, each a fresh `claude -p`, until
+  nothing is owed. Why: every fetched part stays in a child's context, so one child for a heavy
+  morning would grow past a 200k-token model; a fresh child per batch keeps each near 50k.
+- Decided by the catch-up builder, 2026-10-11, lightly held: the sanity ceiling is 400 parts and
+  one hour a run (`NIGHT_WRITE_UP_PARTS`, `NIGHT_WRITE_UP_TOTAL_MS`). Why: a part costs about 7k
+  new-work tokens (cache write + output) and two tool calls, so 400 parts is about 2.8M tokens,
+  ~11× the measured nightly baseline (246k, 2026-10-10); a typical morning (20–40 parts) is under
+  one baseline night, and a heavy day owed in full is about 200 parts (30 pieces were 16 parts on
+  10-11). 400 parts at the measured 4–8 s a part is 27–53 minutes. The per-part cost is an
+  estimate from part sizes, not measured from a catch-up transcript: measure it on the first live
+  runs and move the ceiling if it is off. (Superseded for the night by the next item: 400 is now
+  the command's ceiling only.)
+- Decided by Mike, 2026-10-11, lightly held: the nightly run caps at 100 parts
+  (`NIGHT_WRITE_UP_PARTS`); `counterparts catch-up` keeps 400 (`CATCH_UP_COMMAND_PARTS`); both
+  keep the one-hour watchdog. Why: 100 parts is about 700k new-work tokens, roughly 3× the nightly
+  baseline, so a typical morning's 20–40 parts clear in one night and a heavy day (about 200)
+  takes two, what is left staying owed for the next night; the command is run on purpose, so it
+  keeps the larger ceiling. The per-part cost is still to be measured (`docs/CHECK-AFTER.md`,
+  "Catch-up's real per-part cost").
+- Decided by the catch-up builder, 2026-10-11, lightly held: the catch-up stays BEFORE the dream.
+  Why: the page writer and the dream's "new since the last dream" read yesterday, and yesterday's
+  write-ups should be there when they do. The cost is that a heavy morning delays the dream by up
+  to the hour; the hook's `started` row now carries that hour (`nightRowTimeoutMs`), so the delay
+  is never read as a lost run.
+- Decided by the catch-up builder, 2026-10-11, lightly held: the SessionStart pointer (and
+  Desktop's wake pointer) is retired only under dreaming `auto`. Why: under `ask` or `off` no
+  nightly run happens, and without the pointer an owed session in a quiet folder would lapse
+  unless someone ran `counterparts catch-up`. The door's ordinary (pointer) path is kept for
+  that case.
+- Decided by the catch-up builder, 2026-10-11, lightly held: `counterparts catch-up` files its
+  runners and pins its child's tools to the store's own directory, not the terminal's. Why: a
+  command typed in a terminal was not started from any project, and the working directory may be
+  one set `off`.
+
+### Decided by the doctor-install-fixes builder, 2026-10-11, lightly held (doctor's fixes by install)
+
+- Decided by the doctor-install-fixes builder, 2026-10-11, lightly held: doctor's fix lines
+  that install something (the model table missing or mismatched, a cache from a newer build)
+  name the route by `plugin.ts#installRoute`: `/plugin → Installed → counterparts → Update now` when this process
+  is the plugin's (`runningAsPlugin`), the `bun add -g` command when no `CLAUDE_PLUGIN_ROOT`
+  is set, and both when one is set but names another copy, or when a caller passes nothing.
+  Why: the plugin may run as the single binary with no bun at all, and "both" is the safe
+  default for a caller that forgets. `plugin-run.sh` now also exports the plugin data
+  directory it falls back on, so the single binary run from `/counterparts:doctor` knows
+  itself for the plugin's (before, `runningAsPlugin` read false there).
+
+### Trial, Mike, 2026-10-11, very lightly held (verbatim in the memory's body)
+
+- Trial, Mike, 2026-10-11, very lightly held: verbatim in the memory's body; long-run lean is an
+  attachments table (the memory holding the context and keywords that find it). `remember`'s
+  `text` and `session_end`'s `content` ask for a list, a table or a pasted text whose specifics
+  matter word for word, with the search words in the title and the first line. Looked at after 1
+  and ~4 lived days (`docs/CHECK-AFTER.md`).
+- Decided by the verbatim-trial builder, 2026-10-11, lightly held: a facts line whose excerpt is
+  cut says when the words hold a list (5 or more bulleted or numbered lines) or a table (3 or more
+  rows between pipes, not counting the header and its rule): "… (a list, 100 items; read whole by
+  id)". Why: the excerpt flattens a list into one line of its first ~300 characters, so nothing
+  showed that the rest was worth reading; it costs about 35 characters a line, inside the result
+  budget. Counted on line shapes alone, so five lines that happen to start with a dash read as a
+  list.
+- Decided by the #409 reviewer, 2026-10-11, lightly held: facts mode's near-duplicate fold
+  compares two results by their LINES (normalized, as sets) when either holds a list or a table,
+  and by their word sets otherwise. Why: a long list's word set is mostly its shape, so three
+  different 100-item inventories read 0.99 alike and two were "left out" with no id; two weeks'
+  shift tables scored 0.78, just under the 0.85 line. By lines they score 0.0–0.05, while a list
+  pasted twice or retitled still folds (0.98–1.0). Ambient recall's gate (`gate.ts#similarity`)
+  still compares word sets; a turn could still deliver one of two similar lists.
+
+### Decided by the mark-superseded builder, 2026-10-11, lightly held (settled-over memories where titles show)
+
+- Decided by the mark-superseded builder, 2026-10-11, lightly held: a write's `neighbours`
+  list a memory a later one settled over MARKED (`standing: "earlier (now mem_…)"`, before
+  its title), not swapped for the one that holds now. It is left out instead when what holds
+  now is already in view (the write itself, what it updates, a sibling in the same
+  `session_end`, a neighbour listed above it) or is confidential to a guest writer. Why: the
+  neighbours are what is close in words to the write; the one that holds now may not be, and
+  the mark names it for a settle or a recall. The dream's and the reflection's bundles mark it
+  the same way rather than leave it out (a dream may still link or feel it), and the dream's
+  "coming up" leaves out a dated memory a later one settled over, as the wake's "Arriving:"
+  does. "Settled over" is `settledOver`'s rule for one id (`recall/standing.ts#headOf`).
+- Decided by the coordinator at the review of #408, 2026-10-11, lightly held: recall's
+  `Earlier (now [id])` label (footnotes, "Came to mind", the wake's lanes, the deliberate
+  path's `standing`) names `headOf`'s memory too, so a footnote and a neighbour never name
+  different ones on a chain A→B→C (both say C, where the footnote said B). A memory a newer
+  pair names as what holds, or whose holder is gone with nothing live after it, no longer
+  reads `Earlier`. Accepted as built: a guest writer's neighbour whose head is confidential
+  is left out; a neighbour whose head ranks below it is listed marked beside its head.
 
 ### Also noted
 

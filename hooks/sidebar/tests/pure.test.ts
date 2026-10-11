@@ -28,7 +28,7 @@ import {
 } from '../hooks/feed'
 import { cells, ellipsizeCells, padCells } from '../hooks/width'
 import { hookConfig, lookup, parentOf, parseRegistry, settingsHookConfig, under } from '../hooks/scopes'
-import { MECHS, STAGES } from '../hooks/mechanisms'
+import { MECHS, STAGES, dashboardBase, dashboardPort, dashboardRoutes, isDashboardUrl, memoryUrl } from '../hooks/mechanisms'
 import { MORE, OPEN_MAX_LINES, bar, clip, heading, layoutBody, openedLines, quietTail, textOf, wrapN } from '../hooks/sections'
 import type { BodyState } from '../hooks/sections'
 import { DECISION_T3, EVENTS, FACTS_ANSWER, RECALL_BLOCK, SESSION, T0, ev } from './world'
@@ -509,6 +509,7 @@ const BASE: BodyState = {
   mech: null,
   focus: null,
   dash: 'up',
+  routes: ['counterparts dashboard'],
   search: { query: '', status: 'idle', header: '', total: 0, hits: [], error: null },
 }
 
@@ -684,6 +685,22 @@ describe('the body, laid out', () => {
     expect(lines.join(' ')).toContain('counterparts dashboard')
   })
 
+  test('the dashboard down: the route this install has (npm, plugin, or the plugin’s first when unsure)', () => {
+    // The chart's lines from its first route, up to the blank row before the next section.
+    const after = (routes: readonly string[]) => {
+      const lines = textOf(layoutBody({ ...BASE, today: null, dash: 'down', routes }).lines)
+      const from = lines.findIndex(l => l === 'counterparts dashboard' || l === '/counterparts:dashboard')
+      expect(lines.slice(0, from).join(' ')).toContain("The dashboard isn't running")
+      const to = lines.findIndex((l, i) => i >= from && l.trim() === '')
+      return lines.slice(from, to < 0 ? undefined : to)
+    }
+    expect(after(dashboardRoutes('counterparts'))).toEqual(['counterparts dashboard'])
+    expect(after(dashboardRoutes('plugin_counterparts_counterparts'))).toEqual(['/counterparts:dashboard'])
+    expect(after(dashboardRoutes(null))).toEqual(['/counterparts:dashboard', 'or counterparts dashboard'])
+    // No routes handed in reads as not knowing.
+    expect(after([])).toEqual(['/counterparts:dashboard', 'or counterparts dashboard'])
+  })
+
   test('search results take the sections’ place: the query, how many, each title and what it is', () => {
     const lines = textOf(layoutBody({ ...BASE, search: { query: 'publish', status: 'done', header: '', total: 2, hits: parseFacts(FACTS_ANSWER).hits, error: null } }).lines)
     expect(lines[0]).toBe('“publish” ' + '─'.repeat(12) + ' 2 found ✕')
@@ -712,5 +729,35 @@ describe('the small brain', () => {
     expect(lit).not.toBe(dim)
     brain.dark()
     expect(encodeCells(brain.frame(18, 6, T0, { dimRest: 0.72 }))).toBe(dim)
+  })
+})
+
+describe('the dashboard’s port and links', () => {
+  test('the port is read as core reads COUNTERPARTS_DASHBOARD_PORT; anything else is 4747', () => {
+    expect(dashboardPort(undefined)).toBe(4747)
+    expect(dashboardPort('')).toBe(4747)
+    expect(dashboardPort('5151')).toBe(5151)
+    expect(dashboardPort(' 5151 ')).toBe(5151)
+    expect(dashboardPort('nope')).toBe(4747)
+    expect(dashboardPort('70000')).toBe(4747)
+    expect(dashboardPort('-1')).toBe(4747)
+    // 0 asks the OS for any free port: nothing to find, so the default.
+    expect(dashboardPort('0')).toBe(4747)
+    expect(dashboardBase(5151)).toBe('http://localhost:5151')
+    expect(memoryUrl('mem_a1', dashboardBase(5151))).toBe('http://localhost:5151/#memories?id=mem_a1')
+  })
+
+  test('only the dashboard’s own links open: localhost, the port read, a strict character set', () => {
+    expect(isDashboardUrl('http://localhost:4747/', 4747)).toBe(true)
+    expect(isDashboardUrl('http://localhost:5151/#memories?id=mem_a1', 5151)).toBe(true)
+    expect(isDashboardUrl('http://localhost:4747/', 5151)).toBe(false)
+    expect(isDashboardUrl('http://localhost:51510/', 5151)).toBe(false)
+    expect(isDashboardUrl('http://127.0.0.1:5151/', 5151)).toBe(false)
+    expect(isDashboardUrl('http://evil.example:5151/', 5151)).toBe(false)
+    expect(isDashboardUrl('http://localhost:5151.evil.example/', 5151)).toBe(false)
+    expect(isDashboardUrl('https://localhost:5151/', 5151)).toBe(false)
+    expect(isDashboardUrl('http://localhost:5151/a b', 5151)).toBe(false)
+    expect(isDashboardUrl('http://localhost:5151/&calc', 5151)).toBe(false)
+    expect(isDashboardUrl('http://localhost:0/', 0)).toBe(false)
   })
 })

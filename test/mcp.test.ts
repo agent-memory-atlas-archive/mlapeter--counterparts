@@ -22,7 +22,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, s
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Counterpart } from "../src/core/counterpart.js";
+import { Counterpart, ROW_IDS_MAX, boundedIds } from "../src/core/counterpart.js";
 import { UPDATES_META_KEY } from "../src/core/mint.js";
 import { TUNABLES } from "../src/core/physics/index.js";
 import { Store } from "../src/core/store/index.js";
@@ -1418,9 +1418,16 @@ describe("recall — deliberate retrieval", () => {
     expect(JSON.stringify(rows)).not.toContain(secret);
     expect(p[0]?.["queryChars"]).toBe(`what happened to my sourdough starter ${secret}`.length);
     expect(p[0]?.["path"]).toBe("question");
-    // NO IDS either: a durable pairing of memories with the moment somebody
-    // asked for them is a link this row has no need of.
-    expect(JSON.stringify(rows)).not.toContain(id);
+    // THE IDS IT DELIVERED (2026-10-11), bounded, and the session it served:
+    // what a look-up opened and what an answer showed — nothing for an
+    // address that answered nothing.
+    expect(p[1]?.["ids"]).toEqual([id]);
+    expect(p[1]?.["idCount"]).toBe(1);
+    expect(p[0]?.["ids"] as string[]).toContain(id);
+    expect(p[0]?.["idCount"]).toBe((p[0]?.["ids"] as string[]).length);
+    expect(p[2]?.["ids"]).toEqual([]);
+    expect(p[2]?.["idCount"]).toBe(0);
+    for (const row of p) expect(row["session"]).toBe(SESSION);
 
     // The expansion path counts what it opened; the question path counts what
     // its answer showed, and neither claims the other's number.
@@ -1437,6 +1444,31 @@ describe("recall — deliberate retrieval", () => {
 
     // WHAT WAS PREVENTED. An address that answers nothing says so by name.
     expect((p[2]?.["blockedBy"] as Record<string, number>)["handle-unknown"]).toBe(1);
+  });
+
+  test("a recall row names every id it delivered, and an unbound server writes no session", async () => {
+    const s = server({ session: undefined });
+    seed(s.counterpart);
+    const ids = Array.from({ length: RECALL_MAX_IDS }, (_, i) =>
+      s.counterpart.store.put({ type: "memory", kind: "fact", title: `Note ${String(i)}`, body: `Numbered note ${String(i)} about the garden.` }),
+    );
+    const out = payload(await s.call("recall", { ids }));
+    const delivered = (out["memories"] as { id: string }[]).map((m) => m.id);
+    expect(delivered.length).toBeGreaterThan(0);
+    const row = s.counterpart.store.eventLog({ name: "mcp.recall", limit: 5 })[0];
+    const p = JSON.parse(row?.payload ?? "{}") as Record<string, unknown>;
+    expect(p["ids"]).toEqual(delivered);
+    expect(p["idCount"]).toBe(delivered.length);
+    // No sentinel: a reader falls back on its own guess, not on "unbound".
+    expect("session" in p).toBe(false);
+  });
+
+  test("boundedIds keeps distinct ids in order, at most ROW_IDS_MAX, with the true count", () => {
+    const many = Array.from({ length: ROW_IDS_MAX + 5 }, (_, i) => `mem_${String(i)}`);
+    const out = boundedIds([...many, "mem_0", "mem_1", ""]);
+    expect(out.ids).toEqual(many.slice(0, ROW_IDS_MAX));
+    expect(out.idCount).toBe(ROW_IDS_MAX + 5);
+    expect(boundedIds([])).toEqual({ ids: [], idCount: 0 });
   });
 
   test("blockedBy carries `confidential-withheld` to the OWNER'S STORE, and still not to the caller", async () => {

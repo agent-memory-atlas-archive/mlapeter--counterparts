@@ -97,6 +97,20 @@ export function isKnownSession(session: string | null | undefined): session is s
 }
 
 /**
+ * **CAL.** How many memory ids an event row names (2026-10-11): `mcp.recall`'s
+ * delivered ids and `associate.flush`'s endpoints. A row is telemetry, not an
+ * index; the true number rides beside the list as `idCount`.
+ */
+export const ROW_IDS_MAX = 20;
+
+/** Distinct ids in first-seen order, cut at `ROW_IDS_MAX`, with the distinct count. */
+export function boundedIds(ids: Iterable<string>): { ids: string[]; idCount: number } {
+  const seen = new Set<string>();
+  for (const id of ids) if (id.length > 0) seen.add(id);
+  return { ids: [...seen].slice(0, ROW_IDS_MAX), idCount: seen.size };
+}
+
+/**
  * A model id as the host reports it (`claude-opus-5-5`, `claude-opus-5-5[1m]`),
  * and nothing else: it is printed into a chapter heading and stored on a row
  * (`memories.model`, schema v7), so no spaces, no `·`, no `<synthetic>`.
@@ -204,9 +218,10 @@ export interface MemoryPhysics {
   /**
    * THE OLD-CLAIMS ERA (2026-10-10, physics §5.1) — NOT a column: computed at
    * the read seam (`store/operational.ts#eraClaimOf`). For a memory written
-   * before the store's `claims.era.cutoff` under the old claim text, the
-   * claim the CURVE reads (`physics#curveSal`) in place of `salience.claimed`:
-   * the default for what it is about, when that is lower. The stored claim is
+   * before the store's `claims.era.cutoff`, the claim the CURVE reads
+   * (`physics#curveSal`) in place of `salience.claimed`: today's default for
+   * what it is about — for a default, either way (2026-10-11); for an explicit
+   * claim, only when that is lower. The stored claim is
    * never rewritten — `updatePhysics` does not know this field, so a physics
    * object written back cannot carry it into the `claimed` column. Absent or
    * null: the curve reads the stored claim.

@@ -42,6 +42,14 @@ or the CLI's read commands (`counterparts mechanisms --dir …`, `counterparts d
 
 ## Due 2026-10-14 (the check-in, reminder mem_8a53c5d0bc95)
 
+### The tax deadline shows under Arriving on 10-13 and 10-14
+- **Look at:** the wake in a session on the morning of 10-13 and of 10-14: "Arriving:" lists the
+  Oct-15 tax deadline (a plain reminder).
+- **Why:** two quiet items due 10-14 took both of Arriving's lines from it (found by the 0.3.17
+  release check); Arriving now ranks plain reminders first, then nearest date (IMPROVEMENTS,
+  "Decided by random-06, 2026-10-11").
+- **Changes a decision if:** it is still missing → the cap needs to grow, not just reorder.
+
 ### Decision 1: faded matches crowding fresh ones in facts recall
 - **Look at:** a few real facts-mode recalls on the live store (Mike's normal questions); count how often a
   faded match ranks above a fresh one that answered the question better.
@@ -77,13 +85,61 @@ or the CLI's read commands (`counterparts mechanisms --dir …`, `counterparts d
 - **Also look at:** doctor's Credit line's 7-day `drewOn` count. Zero after a week means the field isn't being
   used, which is a prompt problem, not a mechanism result.
 
+## Due at the first live catch-up (the nightly run's or `counterparts catch-up`)
+
+### Catch-up's real per-part cost
+- **Look at:** the run's `adapter.night.writeup` row (parts, batches) and its children's transcripts / usage
+  (runners `writeup-nrn_…` / `writeup-cup_…`): output + cache_write tokens per part, and tool calls per part.
+  Compare with the estimate (~7k new-work tokens and 2 calls a part) and the nightly baseline (246k new work,
+  20 calls; `~/counterparts-notes/2026-10-10-nightly-cost-baseline.md`).
+- **Why:** both ceilings (100 parts a night, 400 for the command, Mike 10-11) rest on that per-part estimate,
+  which was worked out from part sizes, never measured from a catch-up transcript.
+- **Changes a decision if:** the real cost per part is far above the estimate → lower the night's cap
+  (`NIGHT_WRITE_UP_PARTS`), and look again at the command's.
+
+## Due 1 lived day after the verbatim trial ships
+
+### Verbatim in the memory's body: first look
+- **Look at:** the bench 76-question slice (counterparts-07) for meaning-search blur on long bodies: do memories
+  holding a long verbatim block still come back for questions about their gist? And on the live store, any
+  memory written with a list or a table since the ship (a facts line ending "(a list, N items; read whole by
+  id)" finds them): did it come back whole by id, and was it findable by what it is, whose, when?
+- **Why:** Mike's trial (2026-10-11, very lightly held): `remember` and `session_end` now ask for a list, a
+  table or a pasted text whose specifics matter word for word in the body, with the search words in the title
+  and the first line. The body is stored and read whole, but the meaning vector is made from the title and the
+  body's first ~3,072 characters (at most 512 tokens; a numbered list reaches 512 tokens sooner), so the rest
+  of a long block is reached by words only. Also watch: a facts answer saying "near-duplicates … left out"
+  over two lists that were different (since the review of #409, a list or a table is compared by its lines,
+  not its word set; two near-identical versions of one list still fold, and the older may be the one shown).
+- **Changes a decision if:** long bodies blur meaning search, or real lists don't come back whole and findable
+  → move to an attachments table (Mike's long-run lean), with the memory holding the context and keywords
+  that find the attachment.
+
+## Due ~4 lived days after the verbatim trial ships
+
+### Verbatim in the memory's body: second look, and decide
+- **Look at:** the same as the first look, on the days since: the bench slice again if anything changed, and
+  every live memory written with a list, a table or a pasted text.
+- **Changes a decision if:** decide the trial → keep it, or → attachments (a table of the blocks, the memory
+  holding the context and keywords that find one). Record the call in `docs/IMPROVEMENTS.md`.
+
 ## Ongoing (first two weeks)
+
+### No settled-over memory outranks its head in ambient results
+- **Look at:** turn-recall footnotes ("Quietly available", "Came to mind"), the wake's Nearby, and the other
+  wake lanes, for a memory that a `changed` or `corrected` settle made earlier, shown above the memory that
+  replaced it, or shown without it.
+- **Why:** MOD's #3 (10-11): a settled-over memory's title showed bare beside newer ones, and a session repeated
+  a corrected rule from it. Marking those titles is its own lane; this is about whether the earlier one
+  ranks above its head at all.
+- **Changes a decision if:** it happens → interference/supersede ranking needs a fix (Group 2).
 
 ### The old-claims era's effect on archives
 - **Look at:** `counterparts claims-era --dir …` (count read at default) and archives with no
   `archived_reason` of corrected / dream-merge / episode-regrown / handoff-cleared, i.e. exits by fading, split
   by whether the era read them at default.
 - **Why:** the era (Mike 10-10) reads 468 old claims at their default; on the 10-10 copy it caused 50 more
-  archives by +30 lived days than without it (73 vs 23).
+  archives by +30 lived days than without it (73 vs 23). Since 10-11 the count has two parts, read lower
+  and read higher (old defaults below today's, e.g. owner/us at 0.25 → 0.40), so it jumps by the read-higher ones.
 - **Changes a decision if:** the era's archives include memories Mike would miss → `counterparts claims-era
   --off` reads claims as stored again (archives already made stay archived, readable by id).

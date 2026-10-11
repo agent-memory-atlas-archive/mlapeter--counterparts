@@ -429,6 +429,12 @@ holds), a `corrected` one as `Corrected by [id]`, an `open` pair as `(disagrees 
 is recallable, ranked or gated moves. The deliberate path carries the same as a
 `standing` field, and by id a replaced row says `replaced by [id]`.
 
+**[M] "Earlier (now [id])" names the end of the chain** (review of #408, 2026-10-11): the
+id is `headOf`'s, the same memory a write's neighbours and the dream's bundles name with
+`earlier (now mem_…)` — on A→B→C, A reads `now [C]`. And `headOf` decides whether it is
+earlier at all (the wake's `settledOver` rule): a memory a newer pair names as what holds,
+or whose holder is gone with nothing live after it, carries no `Earlier`.
+
 ## 6c. A deliberate result says where it came from (2026-09-30)
 
 **[M]** Every row the deliberate path returns carries `from`: the session that wrote it

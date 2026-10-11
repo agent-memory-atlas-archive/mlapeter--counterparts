@@ -2291,8 +2291,9 @@ export function reachExempt(row: Pick<MemoryRow, "type" | "source" | "origin_ref
  * hold a moment in UTC ms, compared with a row's `created_at`:
  *
  *   - `CLAIMS_ERA_CUTOFF_KEY` — the switch the curve reads. Present: a
- *     memory written before it under the old claim text is read at its
- *     default (`eraClaimOf`). Deleted (`counterparts claims-era --off`): every
+ *     memory written before it is read at today's default for what it is
+ *     about — a default always, an explicit claim when that is lower
+ *     (`eraClaimOf`). Deleted (`counterparts claims-era --off`): every
  *     claim reads as stored, exactly as before the era — the stored claim was
  *     never touched.
  *   - `CLAIMS_ERA_RECORDED_KEY` — the moment first recorded, kept so a store
@@ -2309,23 +2310,85 @@ export const CLAIMS_ERA_CUTOFF_KEY = "claims.era.cutoff";
 export const CLAIMS_ERA_RECORDED_KEY = "claims.era.recorded";
 /** `mint.ts#CLAIMED_DEFAULT_META_KEY`, spelled here (store imports no core module); a test holds them equal. */
 export const CLAIMED_DEFAULT_SPELLED = "claimedDefault";
+/**
+ * THE MOMENT THE ERA READS A ROW AS WRITTEN, when it is not the row's own
+ * `created_at` (2026-10-11, the dream merge): a merged memory is a new row,
+ * written after the cutoff, but its claim is its best source's stored claim,
+ * so the era reads it as it read that source. UTC ms, or null for a source
+ * written before v7 (no moment: old). Carried through a merge of a merge.
+ * `eraCarriedFrom` writes it; `eraClaimOf` reads it in place of `created_at`.
+ */
+export const ERA_WRITTEN_AT_META = "eraWrittenAt";
+
+function metaObjectOf(raw: string | null | undefined): Record<string, unknown> | null {
+  if (typeof raw !== "string" || raw.length === 0) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed !== null && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The moment the era compares with its cutoff: the carried one when present, else `created_at`. Null: unrecorded, old. */
+function eraMomentOf(createdAt: number | null | undefined, meta: Record<string, unknown> | null): number | null {
+  if (meta !== null && Object.prototype.hasOwnProperty.call(meta, ERA_WRITTEN_AT_META)) {
+    const v = meta[ERA_WRITTEN_AT_META];
+    if (v === null) return null;
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+  }
+  return typeof createdAt === "number" ? createdAt : null;
+}
+
+/**
+ * WHAT A ROW MADE FROM `source` CARRIES OF ITS ERA STANDING (2026-10-11, the
+ * dream merge; decided by random-06, 2026-10-11, lightly held), as meta keys
+ * for the new row: `claimedDefault` when the source's claim was a default (the
+ * new row takes that claim, so it is still nobody's), and — when the source is
+ * read as old against `cutoff` (the era's cutoff, or the moment first recorded
+ * while the era is off, so `--on` reads it the same) — the source's moment
+ * (`ERA_WRITTEN_AT_META`). The era then reads the new row exactly as it read
+ * the source: a default at today's default, an explicit claim down to it, the
+ * exempt as claimed. Nothing of the moment for a source written after the
+ * cutoff. The stored claim is never touched.
+ */
+export function eraCarriedFrom(
+  source: Pick<MemoryRow, "created_at" | "meta">,
+  cutoff: string | number | null | undefined,
+): Record<string, unknown> {
+  const meta = metaObjectOf(source.meta);
+  const out: Record<string, unknown> = {};
+  if (meta !== null && meta[CLAIMED_DEFAULT_SPELLED] === true) out[CLAIMED_DEFAULT_SPELLED] = true;
+  const at = typeof cutoff === "number" ? cutoff : typeof cutoff === "string" && cutoff !== "" ? Number(cutoff) : Number.NaN;
+  if (!Number.isFinite(at)) return out;
+  const moment = eraMomentOf(source.created_at, meta);
+  if (moment === null || moment < at) out[ERA_WRITTEN_AT_META] = moment;
+  return out;
+}
 
 /**
  * THE CLAIM THE CURVE READS FOR AN OLD MEMORY (2026-10-10, the old-claims era;
- * decided by Mike, 2026-10-10, loosely held), or null to read the stored claim.
- * The default for what it is about (`physics#defaultClaimFor`) when ALL hold:
+ * decided by Mike, 2026-10-10, loosely held; extended by Mike, 2026-10-11,
+ * lightly held), or null to read the stored claim. Only when the era is on
+ * (`cutoff` a moment) and the row is a `memory` written before it
+ * (`created_at` earlier, or unrecorded — older than v7; a dream's merged
+ * memory, its best source's moment, `ERA_WRITTEN_AT_META`, 2026-10-11) that
+ * carries a claim. Then the default for what it is about TODAY (`physics#defaultClaimFor`):
  *
- *   - the era is on (`cutoff` a moment) and the row is a `memory` written
- *     before it (`created_at` earlier, or unrecorded — older than v7);
- *   - it carries an explicit claim (`claimed` set, `meta.claimedDefault` not
- *     true) — a default was already a default;
- *   - it is none of the exempt: the core (`promoted_identity`), about the owner
- *     or us, said by the owner, `protected`, a pending date (`hold` pending:
- *     its date and grace still ahead) or a repeating date (a `recurring` rule);
- *   - the default is LOWER than the claim. A scale-down only: an explicit
- *     claim below its default (a 0.3 world reading) reads as written.
+ *   - for a DEFAULT (`meta.claimedDefault` true: the writer claimed nothing
+ *     and the seam filled in its day's default), in either direction and with
+ *     no exemptions — an owner memory written at the old flat 0.25 reads 0.40,
+ *     a done work event 0.20. A default was nobody's claim, so an upgrader
+ *     reads what a fresh install writes. Already today's: null;
+ *   - for an EXPLICIT claim, only when the default is LOWER (a scale-down
+ *     only: a 0.3 world reading below its 0.35 reads as written), and never
+ *     for the exempt: the core (`promoted_identity`), about the owner or us,
+ *     said by the owner, `protected`, a pending date (`hold` pending: its date
+ *     and grace still ahead) or a repeating date (a `recurring` rule).
  *
- * Pure: the caller hands it the row, the cutoff and the hold it computed.
+ * The 10-11 reading of defaults is `sleep/decay.ts#curveSignature`'s
+ * `eraReads: 2`. Pure: the caller hands it the row, the cutoff and the hold it
+ * computed.
  */
 export function eraClaimOf(
   row: Pick<
@@ -2338,25 +2401,21 @@ export function eraClaimOf(
   const at = typeof cutoff === "number" ? cutoff : typeof cutoff === "string" && cutoff !== "" ? Number(cutoff) : Number.NaN;
   if (!Number.isFinite(at)) return null;
   if (row.type !== "memory" || row.claimed === null || row.claimed === undefined) return null;
-  if (typeof row.created_at === "number" && row.created_at >= at) return null;
-  if (row.promoted_identity === 1 || row.protected === 1) return null;
+  // Unreadable meta: no default mark, no carried moment, no repeat.
+  const meta = metaObjectOf(row.meta);
+  // A merged memory is read at its best source's moment (2026-10-11, `ERA_WRITTEN_AT_META`).
+  const moment = eraMomentOf(row.created_at, meta);
+  if (moment !== null && moment >= at) return null;
   const about = row.about ?? null;
+  const claim = defaultClaimFor({ about, status: row.status ?? null, saidBy: row.said_by ?? null, kind: row.kind }).claim;
+  // A default: today's, either way, exempt or not (2026-10-11).
+  if (meta !== null && meta[CLAIMED_DEFAULT_SPELLED] === true) return claim === row.claimed ? null : claim;
+  if (row.promoted_identity === 1 || row.protected === 1) return null;
   if (about === "owner" || about === "us" || (row.said_by ?? null) === "owner") return null;
   if (hold !== null && hold.state === "pending") return null;
-  let meta: Record<string, unknown> | null = null;
-  if (typeof row.meta === "string" && row.meta.length > 0) {
-    try {
-      const parsed = JSON.parse(row.meta) as unknown;
-      if (parsed !== null && typeof parsed === "object") meta = parsed as Record<string, unknown>;
-    } catch {
-      /* unreadable meta: no default mark, no repeat */
-    }
-  }
-  if (meta !== null && meta[CLAIMED_DEFAULT_SPELLED] === true) return null;
   if (row.event_date !== null && row.event_date !== undefined && row.event_date !== "" && meta !== null && isRecurrence(meta[RECURRING_META])) {
     return null;
   }
-  const claim = defaultClaimFor({ about, status: row.status ?? null, saidBy: row.said_by ?? null, kind: row.kind }).claim;
   return claim < row.claimed ? claim : null;
 }
 
