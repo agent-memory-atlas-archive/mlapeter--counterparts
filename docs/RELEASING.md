@@ -24,7 +24,8 @@ In the same commit, or a second one:
 - **CHANGELOG:** first run `bun tools/changelog/stitch.ts`, which appends every
   `changelog.d/` fragment to the end of `## Unreleased` (oldest first), and every
   `docs/decisions.d/` fragment to the end of "Decisions to review" in `docs/IMPROVEMENTS.md`
-  ([decisions.d/README.md](decisions.d/README.md)), and deletes them; commit all of it.
+  (before its "Also noted", in merge order; [decisions.d/README.md](decisions.d/README.md)),
+  and deletes them; commit all of it.
   Then fold `## Unreleased` into `## <version> — <YYYY-MM-DD>`, with a short plain
   paragraph on top: what changed for someone using it, and anything they have to do after
   upgrading. The empty Unreleased heading goes until the next change brings it back (the
