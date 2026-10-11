@@ -6906,6 +6906,11 @@ export class Counterpart {
    * guard reads the pair as it would any other.
    */
   private closesOrRedates(p: Proposal, target: string, row: MemoryRow, sent: SentFacts | undefined): boolean {
+    // NOT FOR A CORE MEMORY (review of #427, 2026-10-11): a `done` over a core
+    // plan takes it out of the core in one step (`revision.ts#fulfil`), so the
+    // pair is read like any other first. A plan and the memory that says it
+    // was done share their subject; an unrelated write that named the id does not.
+    if (row.promoted_identity === 1 || row.band === "identity") return false;
     try {
       if (this.store.readProse(target).meta[UNRESOLVED_META_KEY] === true) return true;
     } catch {

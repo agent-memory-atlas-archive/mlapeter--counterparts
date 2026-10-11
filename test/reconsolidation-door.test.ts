@@ -409,6 +409,15 @@ describe("the core path (review 10 C4), on the Han case's shape", () => {
     expect(new Prospective({ store: s }).plainDue({ at: "2099-11-20" }).map((d) => d.memoryId)).toContain(plan);
   });
 
+  test("an UNRELATED `done` write that names a core plan is held by the update guard, not fast-laned out of the core", async () => {
+    const srv = server();
+    const s = srv.counterpart.store;
+    const plan = core(s, "Planning to take Robin back to the lake cabin this autumn.", { status: "planned" } as Partial<PutInput>);
+    await srv.call("remember", { text: "Paid the electricity bill for the flat online.", updates: plan, how: "changed", status: "done" });
+    expect(s.row(plan)).toMatchObject({ promoted_identity: 1, band: "identity", fade: 1 });
+    expect(headOf(s, plan)).toBeNull();
+  });
+
   test("a protected core plan is never fast-laned out", async () => {
     const srv = server();
     const s = srv.counterpart.store;
