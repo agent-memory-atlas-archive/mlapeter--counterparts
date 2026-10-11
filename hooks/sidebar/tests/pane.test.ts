@@ -116,20 +116,18 @@ const cmd = async ($: Engine, args: string): Promise<string> => (await $.command
 
 // ── opening, and where it opens ─────────────────────────────────────────────
 
-test('at session start nothing is opened or drawn and the dashboard is read only for the first meeting’s state, but this folder’s registry entry is; a docking surface opens it at 34 columns (a dock 35 wide)', async ($, on) => {
+test('at session start nothing is opened or drawn and the dashboard is not read, but this folder’s registry entry is; a docking surface opens it at 34 columns (a dock 35 wide)', async ($, on) => {
   const w = world(on)
   await start($, w)
   expect(w.opens).toHaveLength(0)
-  // One read, for the speak-first: where the first meeting stands (a 404 here, as today's core: nothing done).
-  const ONB = ['http://localhost:4747/api/onboarding']
-  expect(w.fetches).toEqual(ONB)
+  expect(w.fetches).toHaveLength(0)
   expect(w.submits).toHaveLength(0)
   expect(w.mcp).toHaveLength(0) // no tool: the registry file, read-only
   expect(w.fsReads).toContain(SCOPES_FILE)
   expect(w.lastStatus()).toBe('') // no status line in the normal case
   await band($, w, true)
   expect(w.opens).toEqual([{ id: PANE, title: 'Counterparts', columns: 34 }])
-  expect(w.fetches).toEqual(ONB) // nothing more read: the pane has not drawn
+  expect(w.fetches).toHaveLength(0) // still nothing read: the pane has not drawn
 })
 
 test('on the main screen (no docking) nothing is opened unasked and nothing is said; /counterparts opens it', async ($, on) => {
@@ -1527,18 +1525,37 @@ test('opted in by the store key alone (`claudeMemorySwitch`), the switch shows',
 // ── the first meeting: speak first, once; "Meet your counterpart" ───────────
 
 const MEET = 'Counterparts is installed. Say hello and introduce yourself.'
-const NOT_STARTED = { meet: 'not_started', where: null, style: null }
 const onbFetches = (w: World) => w.fetches.filter(u => u.endsWith('/api/onboarding'))
 
-test('speak first: core says not_started, so the first interactive start submits the line once and stores that it did', async ($, on) => {
-  const w = world(on, { onboarding: NOT_STARTED })
-  await start($, w)
+/** Core's SessionStart wake, as the classic hook injects it: with its onboarding marker on a line of its own, or (null) none, as an older core. */
+async function wake($: Engine, w: World, meet: string | null): Promise<void> {
+  const body = ['# Waking up', '', 'Yesterday we worked on the sidebar.', ...(meet === null ? [] : [`<!-- counterparts:onboarding meet=${meet} -->`])].join('\n')
+  await $.session.append({
+    door: 'hook-context',
+    origin: { kind: 'hook', event: 'SessionStart' },
+    uuid: `wake-${String(w.events.length)}`,
+    message: {
+      type: 'attachment',
+      name: 'hook_additional_context',
+      content: [{ type: 'text', text: `<system-reminder>\nSessionStart hook additional context: ${body}\n</system-reminder>` }],
+    },
+  } as never)
   await settle(w)
+}
+
+async function startWith($: Engine, w: World, meet: string | null, interactive = true): Promise<void> {
+  await start($, w, interactive)
+  await wake($, w, meet)
+}
+
+test('speak first: the wake’s marker says not_started, so the first interactive start submits the line once and stores that it did; the dashboard is not asked', async ($, on) => {
+  const w = world(on)
+  await startWith($, w, 'not_started')
   expect(w.submits).toEqual([MEET])
   expect(w.store['meetTriggered']).toEqual({ session: SESSION, at: T0 })
-  // session.start again (a reload, a re-enable): nothing more.
-  await start($, w)
-  await settle(w)
+  expect(onbFetches(w)).toHaveLength(0)
+  // session.start and the wake again (a reload, a /clear): nothing more.
+  await startWith($, w, 'not_started')
   expect(w.submits).toEqual([MEET])
   // The triggering session draws no button while Claude introduces itself.
   const ui = await mount($, w, 'terminal')
@@ -1546,39 +1563,58 @@ test('speak first: core says not_started, so the first interactive start submits
   await ui.unmount()
 })
 
-test('speak first: a second session (or a restart) finds the mark and neither submits nor asks core', async ($, on) => {
-  const w = world(on, { onboarding: NOT_STARTED, store: { meetTriggered: { session: 'sess-older', at: T0 - 60000 } } })
+test('speak first: the wake can land before the plugin’s session.start; the start’s look then decides', async ($, on) => {
+  const w = world(on)
+  await wake($, w, 'not_started')
+  expect(w.submits).toHaveLength(0)
   await start($, w)
   await settle(w)
-  expect(w.submits).toHaveLength(0)
-  expect(onbFetches(w)).toHaveLength(0)
+  expect(w.submits).toEqual([MEET])
 })
 
-const NEVER: [string, WorldOptions, boolean?][] = [
-  ['the folder paused', { onboarding: NOT_STARTED, scopeMode: 'paused' }],
-  ['the folder off', { onboarding: NOT_STARTED, scopeMode: 'off' }],
-  ['the folder reads only (observer)', { onboarding: NOT_STARTED, scopeMode: 'observer' }],
-  ['paused by a parent', { onboarding: NOT_STARTED, scopeMode: 'paused', scopeSetBy: '/work' }],
-  ['the folder’s state unknown', { onboarding: NOT_STARTED, scopesUnreadable: true }],
-  ['a prompt already sent (a resumed session)', { onboarding: NOT_STARTED, turns: 1 }],
-  ['a prompt being typed', { onboarding: NOT_STARTED, draft: 'how do I' }],
-  ['the dashboard down', { onboarding: NOT_STARTED, down: true }],
-  ['today’s core: /api/onboarding is a 404', {}],
-  ['another shape: an unknown state', { onboarding: { meet: 'maybe' } }],
-  ['another shape: no meet', { onboarding: { state: 'not_started' } }],
-  ['another shape: not an object', { onboarding: ['not_started'] }],
-  ['core says later', { onboarding: { meet: 'later' } }],
-  ['core says offered', { onboarding: { meet: 'offered' } }],
-  ['core says done', { onboarding: { meet: 'done' } }],
-  ['core says skipped', { onboarding: { meet: 'skipped' } }],
-  ['headless (-p)', { onboarding: NOT_STARTED }, false],
+test('speak first: a second session (or a restart) finds the mark and submits nothing', async ($, on) => {
+  const w = world(on, { store: { meetTriggered: { session: 'sess-older', at: T0 - 60000 } } })
+  await startWith($, w, 'not_started')
+  expect(w.submits).toHaveLength(0)
+})
+
+test('keyed to the store: once core moved past not_started the mark is settled, and a not_started after it (start-fresh) gets its own first meeting', async ($, on) => {
+  const w = world(on, { store: { meetTriggered: { settled: 'done', at: T0 - 86400000 } } })
+  await startWith($, w, 'not_started')
+  expect(w.submits).toEqual([MEET])
+  expect(w.store['meetTriggered']).toEqual({ session: SESSION, at: T0 })
+})
+
+test('keyed to the store: a binding mark is settled when core says the meeting moved on', async ($, on) => {
+  const w = world(on, { store: { meetTriggered: { session: 'sess-older', at: T0 - 60000 } } })
+  await startWith($, w, 'done')
+  expect(w.store['meetTriggered']).toEqual({ settled: 'done', at: T0 })
+  expect(w.submits).toHaveLength(0)
+})
+
+const NEVER: [string, WorldOptions, string | null, boolean?][] = [
+  ['the folder paused', { scopeMode: 'paused' }, 'not_started'],
+  ['the folder off', { scopeMode: 'off' }, 'not_started'],
+  ['the folder reads only (observer)', { scopeMode: 'observer' }, 'not_started'],
+  ['paused by a parent', { scopeMode: 'paused', scopeSetBy: '/work' }, 'not_started'],
+  ['the folder’s state unknown', { scopesUnreadable: true }, 'not_started'],
+  ['a prompt already sent (a resumed session)', { turns: 1 }, 'not_started'],
+  ['a prompt being typed', { draft: 'how do I' }, 'not_started'],
+  ['no marker in the wake (an older core), even with the endpoint saying not_started', { onboarding: { meet: 'not_started' } }, null],
+  ['no marker and no endpoint (today’s core)', {}, null],
+  ['a marker naming a state it doesn’t know', {}, 'maybe'],
+  ['the wake says later', {}, 'later'],
+  ['the wake says offered', {}, 'offered'],
+  ['the wake says done', {}, 'done'],
+  ['the wake says skipped', {}, 'skipped'],
+  ['headless (-p)', {}, 'not_started', false],
 ]
-for (const [name, opts, interactive] of NEVER) {
+for (const [name, opts, meet, interactive] of NEVER) {
   test(`speak first never fires with ${name}, and leaves no mark of having fired`, async ($, on) => {
     const w = world(on, opts)
-    await start($, w, interactive ?? true)
-    await settle(w)
+    await startWith($, w, meet, interactive ?? true)
     await w.clock.advance(120000)
+    await settle(w)
     expect(w.submits).toHaveLength(0)
     const mark = w.store['meetTriggered'] as { session?: unknown } | undefined
     expect(mark?.session).toBeUndefined()
@@ -1586,27 +1622,17 @@ for (const [name, opts, interactive] of NEVER) {
   })
 }
 
-test('core says done (an upgraded store): the start stores it as settled, and asks core no more at later starts', async ($, on) => {
-  const w = world(on, { onboarding: { meet: 'done', where: 'everywhere', style: 'straight' } })
-  await start($, w)
-  await settle(w)
-  expect(w.store['meetTriggered']).toEqual({ settled: 'done', at: T0 })
-  expect(onbFetches(w)).toHaveLength(1)
-})
-
-test('the person spoke first: a prompt they sent before the start’s check stands the speak-first down', async ($, on) => {
-  const w = world(on, { onboarding: NOT_STARTED })
+test('the person spoke first: a prompt they sent before the start’s look stands the speak-first down', async ($, on) => {
+  const w = world(on)
   await $.prompt.submit({ text: 'hello', origin: { kind: 'composer' }, wait: false })
-  await start($, w)
-  await settle(w)
+  await startWith($, w, 'not_started')
   expect(w.submits).toEqual(['hello'])
   expect(w.store['meetTriggered']).toBeUndefined()
 })
 
 test('a speak-first still queued when the person’s own prompt goes first is dropped', async ($, on) => {
-  const w = world(on, { onboarding: NOT_STARTED })
-  await start($, w)
-  await settle(w)
+  const w = world(on)
+  await startWith($, w, 'not_started')
   expect(w.submits).toEqual([MEET])
   await $.prompt.submit({ text: 'hello', origin: { kind: 'composer' }, wait: false })
   const r = await $.prompt.submit({ text: MEET, origin: { kind: 'plugin', name: 'counterparts' }, wait: false })
@@ -1617,9 +1643,9 @@ test('a speak-first still queued when the person’s own prompt goes first is dr
 const meetRow = async (ui: Ui) => ui.find({ type: 'Button', key: 'meet' })
 
 for (const meet of ['later', 'offered'] as const) {
-  test(`Meet your counterpart: core says ${meet}, so a cyan row tops the body; a press submits the same line, once a minute at most`, async ($, on) => {
-    const w = world(on, { onboarding: { meet } })
-    await start($, w)
+  test(`Meet your counterpart: the wake says ${meet}, so a cyan row tops the body; a press submits the same line, once a minute at most`, async ($, on) => {
+    const w = world(on)
+    await startWith($, w, meet)
     for (const surface of SURFACES) {
       const ui = await mount($, w, surface)
       expect((await meetRow(ui))?.text).toBe('Meet your counterpart')
@@ -1647,20 +1673,19 @@ for (const meet of ['later', 'offered'] as const) {
   })
 }
 
-const HIDDEN: [string, WorldOptions][] = [
-  ['done', { onboarding: { meet: 'done' } }],
-  ['skipped', { onboarding: { meet: 'skipped' } }],
-  ['unknown (a 404)', {}],
-  ['unknown (the dashboard down)', { down: true }],
-  ['not_started, before any speak-first', { onboarding: NOT_STARTED, turns: 1 }],
-  ['later, in a paused folder', { onboarding: { meet: 'later' }, scopeMode: 'paused' }],
-  ['later, in a folder set off', { onboarding: { meet: 'later' }, scopeMode: 'off' }],
-  ['later, the folder unknown', { onboarding: { meet: 'later' }, scopesUnreadable: true }],
+const HIDDEN: [string, WorldOptions, string | null][] = [
+  ['done', {}, 'done'],
+  ['skipped', {}, 'skipped'],
+  ['unknown (no marker: an older core)', {}, null],
+  ['not_started, before any speak-first', { turns: 1 }, 'not_started'],
+  ['later, in a paused folder', { scopeMode: 'paused' }, 'later'],
+  ['later, in a folder set off', { scopeMode: 'off' }, 'later'],
+  ['later, the folder unknown', { scopesUnreadable: true }, 'later'],
 ]
-for (const [name, opts] of HIDDEN) {
+for (const [name, opts, meet] of HIDDEN) {
   test(`Meet your counterpart is hidden: ${name}`, async ($, on) => {
     const w = world(on, opts)
-    await start($, w)
+    await startWith($, w, meet)
     const ui = await mount($, w, 'terminal')
     expect(await meetRow(ui)).toBeUndefined()
     expect(await texts(ui)).not.toContain('Meet your counterpart')
@@ -1669,23 +1694,32 @@ for (const [name, opts] of HIDDEN) {
 }
 
 test('not_started though the speak-first went out in an earlier session (its turn never reached core): the button offers it again', async ($, on) => {
-  const w = world(on, { onboarding: NOT_STARTED, store: { meetTriggered: { session: 'sess-older', at: T0 - 86400000 } } })
-  await start($, w)
+  const w = world(on, { store: { meetTriggered: { session: 'sess-older', at: T0 - 86400000 } } })
+  await startWith($, w, 'not_started')
   const ui = await mount($, w, 'terminal')
   expect((await meetRow(ui))?.text).toBe('Meet your counterpart')
   expect(w.submits).toHaveLength(0)
   await ui.unmount()
 })
 
-test('the button follows core through the existing dashboard poll: done, it goes, and the polls stop asking', async ($, on) => {
+test('the dashboard down: what the wake said stands', async ($, on) => {
+  const w = world(on, { down: true })
+  await startWith($, w, 'later')
+  const ui = await mount($, w, 'terminal')
+  expect(await meetRow(ui)).toBeDefined()
+  await ui.unmount()
+})
+
+test('the dashboard up refreshes it through the existing poll: done, the button goes, and the polls stop asking', async ($, on) => {
   const w = world(on, { onboarding: { meet: 'later' } })
-  await start($, w)
+  await startWith($, w, 'later')
   const ui = await mount($, w, 'terminal')
   expect(await meetRow(ui)).toBeDefined()
   w.onboarding = { meet: 'done' }
   await w.clock.advance(16000)
   await settle(w)
   expect(await meetRow(ui)).toBeUndefined()
+  expect(w.store['meetTriggered']).toEqual(expect.objectContaining({ settled: 'done' }))
   const asked = onbFetches(w).length
   await w.clock.advance(60000)
   await settle(w)

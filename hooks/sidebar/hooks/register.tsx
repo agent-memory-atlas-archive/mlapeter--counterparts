@@ -76,6 +76,7 @@ import {
   ourTool,
   parseFacts,
   parseOnboarding,
+  parseOnboardingMarker,
   parseRecallBlock,
   payloadOf,
   resolveServer,
@@ -536,38 +537,55 @@ async function fetchJson($: EngineInterface, path: string): Promise<unknown> {
 // ── the first meeting (core owns its steps and state; this triggers and draws) ──
 
 /**
- * Where the first meeting stands, from core's `/api/onboarding` (a read). A
- * 404 (a core from before onboarding), the dashboard down, or any other shape
- * is `unknown`, and the sidebar then does nothing about the meeting. This one
- * route answering 404 is ordinary: it never marks the dashboard down.
+ * Where the first meeting stands, taken in: from the marker core writes on
+ * every SessionStart wake (`feed.ts#ONBOARDING_MARKER`, the source), or from
+ * the dashboard's `/api/onboarding` (a refresh while it is up). Only a known
+ * state moves it: a missing marker or endpoint leaves what is known, and with
+ * neither ever seen it stays `unknown` (an older core): nothing happens.
+ *
+ * KEYED TO THE STORE without a store id: core says `not_started` only for a
+ * store that never got past it (`start-fresh` resets it). So every known
+ * state past it is written over the once-only mark as `{ settled }`, and a
+ * settled mark doesn't block the speak-first: a `not_started` after it is a
+ * new store, which gets its own first meeting.
  */
-async function readOnboarding($: EngineInterface): Promise<SidebarOnboarding> {
-  let next = UNKNOWN_ONBOARDING
-  try {
-    const r = await $.http.fetch(`${await dashUrl($)}/api/onboarding`)
-    if (r.ok) next = parseOnboarding(r.text)
-  } catch {
-    next = UNKNOWN_ONBOARDING
-  }
+async function takeOnboarding($: EngineInterface, next: SidebarOnboarding): Promise<void> {
+  if (next.meet === 'unknown') return
   const before = await read($, onboardingA)
-  if (before.meet !== next.meet || before.where !== next.where || before.style !== next.style) await update($, onboardingA, () => next)
-  return next
+  if (before.meet === next.meet && before.where === next.where && before.style === next.style) return
+  await update($, onboardingA, () => next)
+  if (next.meet !== 'not_started') {
+    const mark = (await $.store.get(MEET_FLAG)) as { settled?: unknown } | undefined
+    if (mark?.settled !== next.meet) await $.store.set(MEET_FLAG, { settled: next.meet, at: await $.clock.now() })
+    run.meetFiredIn = null
+  }
 }
 
-/** The session the stored speak-first went out in, or null: any stored value counts as sent. */
+/** The dashboard's `/api/onboarding`, a refresh: a 404, a refusal or another shape changes nothing, and never marks the dashboard down. */
+async function readOnboarding($: EngineInterface): Promise<void> {
+  try {
+    const r = await $.http.fetch(`${await dashUrl($)}/api/onboarding`)
+    if (r.ok) await takeOnboarding($, parseOnboarding(r.text))
+  } catch {
+    // down: what the wake said stands
+  }
+}
+
+/** The session a still-binding speak-first went out in, or null (none, or settled since: core moved past not_started). */
 function firedIn(stored: unknown): string | null {
-  if (stored === undefined || stored === null) return null
-  const session = (stored as { session?: unknown }).session
-  return typeof session === 'string' ? session : ''
+  const session = (stored as { session?: unknown } | null | undefined)?.session
+  return typeof session === 'string' ? session : null
 }
 
 /**
- * SPEAK FIRST: at most once per install (`MEET_FLAG` in `$.store`, shared by
- * every session and restart), at an interactive start, while core says the
- * meeting is `not_started`, the sidebar submits MEET_PROMPT, which the engine
- * runs once the session is idle. Never headless, never where the folder is
+ * SPEAK FIRST: once per store (`MEET_FLAG` in `$.store`, shared by every
+ * session and restart, settled when core moves on: `takeOnboarding`), at an
+ * interactive start, while the wake's marker says `not_started`, the sidebar
+ * submits MEET_PROMPT, which the engine runs once the session is idle. Run
+ * after the start's registry read and again when the marker arrives,
+ * whichever is last decides. Never headless, never where the folder is
  * paused, off, observer or unknown, never once the person has typed a prompt
- * (or is typing one), and never over a stored mark. The mark is written
+ * (or is typing one), and never over a binding mark. The mark is written
  * before the submit, so a crash between them loses the trigger rather than
  * repeating it.
  */
@@ -576,17 +594,13 @@ async function speakFirst($: EngineInterface): Promise<void> {
   const scope = await read($, scopeA)
   // Not read yet (another read was on its way): the next registry read tries again.
   if (scope.mode === 'unknown' && scope.unread === null) return
+  // No state yet: the wake's marker, when it comes, tries again (no marker at all: an older core, nothing).
+  const { meet } = await read($, onboardingA)
+  if (meet === 'unknown') return
   run.meetTried = true
-  if (run.typed || firedIn(await $.store.get(MEET_FLAG)) !== null) return
-  if (!canMeet(scope.mode)) return
-  const { meet } = await readOnboarding($)
-  if (meet === 'done' || meet === 'skipped') {
-    // Settled (an upgraded store starts done): later sessions need not ask at their start.
-    await $.store.set(MEET_FLAG, { settled: meet, at: await $.clock.now() })
-    return
-  }
-  if (meet !== 'not_started') return
-  // The last looks, right before: no prompt sent or typed, no other session got there while this read.
+  if (meet !== 'not_started' || run.typed || !canMeet(scope.mode)) return
+  if (firedIn(await $.store.get(MEET_FLAG)) !== null) return
+  // The last looks, right before: no prompt sent or typed, no other session got there meanwhile.
   if (run.typed || (await $.session.turns().catch(() => 1)) > 0) return
   const draft = await $.prompt.read().then(
     b => b.text,
@@ -600,6 +614,7 @@ async function speakFirst($: EngineInterface): Promise<void> {
   // Not awaited inside a hook: the engine queues it until the session is idle.
   $.clock.after(0, () => quiet($.prompt.submit({ text: MEET_PROMPT })))
 }
+
 
 /** "Meet your counterpart": the same line as the speak-first, once a minute at most. */
 async function pressMeet($: EngineInterface): Promise<void> {
@@ -803,9 +818,9 @@ async function poll($: EngineInterface): Promise<boolean> {
     const pulse = await read($, pulseA)
     const newDay = events.some(e => typeof e.day === 'number' && pulse !== null && e.day > pulse.day)
     if (newDay || events.some(e => COUNT_EVENTS.has(e.name))) await readPulse($)
-    // The first meeting, while it can still move (done and skipped stay).
+    // The first meeting, a refresh while it can still move (done and skipped stay; unknown: an older core).
     const meet = (await read($, onboardingA)).meet
-    if (meet !== 'done' && meet !== 'skipped') await readOnboarding($)
+    if (meet !== 'unknown' && meet !== 'done' && meet !== 'skipped') await readOnboarding($)
     // The Claude memory switch is one preference for every session: follow a change made in another.
     const stored = await claudeMemoryOn($)
     if (stored !== (await read($, memoryA))) {
@@ -1844,7 +1859,7 @@ export const register: Register = on => {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  // Memories and Subconscious: the recall block the classic hook injects
+  // Memories and Subconscious: the recall block the classic hook injects; and the wake's onboarding marker
   on('session.append', { door: 'hook-context' }, async ($, e, next) => {
     const stored = await next(e)
     if (e.agentId !== undefined) return stored
@@ -1854,6 +1869,12 @@ export const register: Register = on => {
       if (block !== null) {
         if (run.session === '') run.session = await $.session.id()
         await onRecallBlock($, block)
+      }
+      // The wake's onboarding marker: where the first meeting stands, then the speak-first's look.
+      const meet = parseOnboardingMarker(text)
+      if (meet !== null) {
+        await takeOnboarding($, { meet, where: null, style: null })
+        $.clock.after(0, () => quiet(speakFirst($)))
       }
     } catch {
       // the row is stored whatever the sidebar made of it

@@ -68,29 +68,42 @@ shows that session's Memories, Subconscious and Saved instead (below,
 ## The first meeting's trigger, a three-way switch, Claude memory opt-in (2026-10-11)
 
 Built against core's onboarding state, which core was building in parallel
-(`~/counterparts-notes/2026-10-11-onboarding-core-brief.md`, item 7): `GET
-/api/onboarding` → `{ meet: not_started|offered|later|done|skipped, where,
-style }`. Read strictly (`feed.ts#parseOnboarding`): a 404, the dashboard
-down or any other shape is `unknown`, and then the mod does nothing about the
-meeting. A 404 on this route never marks the dashboard down.
+(`~/counterparts-notes/2026-10-11-onboarding-core-brief.md`). **The source is
+the SessionStart wake's marker**, `<!-- counterparts:onboarding
+meet=<state> -->` on a line of its own, written on every wake (done
+included; `start-fresh` resets it to not_started); spelled once, in
+`feed.ts#ONBOARDING_MARKER`. The hooks don't start the dashboard, so it
+could not be the source. No marker: an older core, `unknown`, and the mod
+does nothing about the meeting. `GET /api/onboarding` (`{ meet, where, style
+}`, read strictly by `feed.ts#parseOnboarding`) is only a refresh while the
+dashboard is up (the cold read, and warm polls while the state can still
+move); a 404, a refusal or another shape changes nothing and never marks the
+dashboard down.
 
-- **Speak first** (`register.tsx#speakFirst`). At an interactive start, after
-  the folder's registry read: if the folder is `on` or unset (not paused,
-  off, observer or unknown), no `meetTriggered` mark is in `$.store`, core
-  says `not_started`, `$.session.turns()` is 0, the prompt box is empty and
+**The once-only mark is keyed to the store by core's state, not an id.** No
+store identity reaches the mod without a core change (`STORE_CREATED_KEY` is
+in the store's meta, on no public surface; the data dir's path survives
+`start-fresh`). Instead: every known state past `not_started` rewrites the
+mark as `{ settled: <state> }`, a settled mark doesn't block the speak-first,
+and so a `not_started` after it, which only a new store says, gets its own
+first meeting. A `{ session }` mark (fired, never moved past not_started)
+still binds; the button covers that case.
+
+- **Speak first** (`register.tsx#speakFirst`). At an interactive start, once
+  both the folder's registry read and the wake's marker have landed (either
+  order; whichever is last decides): if the folder is `on` or unset (not
+  paused, off, observer or unknown), no binding `meetTriggered` mark is in
+  `$.store`, the marker says `not_started`, `$.session.turns()` is 0, the
+  prompt box is empty and
   no prompt of the person's was seen (`prompt.submit`, origin `composer` or
   `bridge`), it stores `meetTriggered: { session, at }` and then submits
   `Counterparts is installed. Say hello and introduce yourself.` (mark first:
   a crash in between loses the trigger rather than repeating it). `$.store`
-  is shared by every session and restart, so it goes out once per install
-  (per Claude Code profile, strictly: the store is Claude Code's, not
-  `~/.counterparts`'s). The engine runs a plugin's prompt once the session is
-  idle; if the person's own prompt gets there first, the queued one is
-  dropped (`prompt.submit` hook) and core's offer at the end of that reply
-  stands. A start that reads `done` or `skipped` stores `{ settled, at }`, so
-  later starts don't ask core again. This adds one dashboard read at every
-  interactive start until then (the first test's "not read" became "read
-  only for onboarding").
+  is shared by every session and restart, so it goes out once per store
+  (above). The engine runs a plugin's prompt once the session is idle; if
+  the person's own prompt gets there first, the queued one is dropped
+  (`prompt.submit` hook) and core's offer at the end of that reply stands.
+  Nothing is read from the dashboard at start.
 - **What the submitted turn looks like: not observed.** No core served the
   endpoint, and a real run would send a model turn through the live hooks.
   From the declarations: origin `{ kind: 'plugin', name: 'counterparts' }`;

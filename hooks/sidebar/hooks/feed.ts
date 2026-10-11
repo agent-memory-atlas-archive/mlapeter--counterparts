@@ -744,6 +744,20 @@ export function parseOnboarding(text: string): SidebarOnboarding {
 }
 
 /**
+ * THE ONE PLACE THE WAKE'S MARKER IS SPELLED. Core writes it on its own line
+ * in every SessionStart wake (done included; `start-fresh` resets it to
+ * not_started): `<!-- counterparts:onboarding meet=<state> -->`. No marker:
+ * an older core, the state unknown. Change the text here if core's changes.
+ */
+export const ONBOARDING_MARKER = /<!--\s*counterparts:onboarding\s+meet=([a-z_]+)\s*-->/;
+
+/** The state the wake's marker names, or null: no marker, or a state the sidebar doesn't know. */
+export function parseOnboardingMarker(text: string): SidebarMeet | null {
+  const state = ONBOARDING_MARKER.exec(text)?.[1];
+  return state !== undefined && (MEET_STATES as readonly string[]).includes(state) ? (state as SidebarMeet) : null;
+}
+
+/**
  * Whether the sidebar shows "Meet your counterpart": core says the meeting
  * was put off (`later`) or offered and not finished (`offered`), or it never
  * started though this install's one speak-first went out in an EARLIER
