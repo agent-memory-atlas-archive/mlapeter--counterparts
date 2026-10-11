@@ -136,8 +136,8 @@ export const RECALL_BLOCK = [
   '<!-- counterparts:recall/end surfaced=1 footnotes=1 affect=0 bytes=260 -->',
 ].join('\n')
 
-export const NPM_TOOLS = ['note', 'recall', 'scope', 'session_end', 'chapter'].map(t => ({ name: `mcp__counterparts__${t}`, description: t, mcp: true }))
-export const PLUGIN_TOOLS = ['note', 'recall', 'scope', 'session_end', 'chapter'].map(t => ({ name: `mcp__plugin_counterparts_counterparts__${t}`, description: t, mcp: true }))
+export const NPM_TOOLS = ['remember', 'note', 'recall', 'scope', 'session_end', 'chapter'].map(t => ({ name: `mcp__counterparts__${t}`, description: t, mcp: true }))
+export const PLUGIN_TOOLS = ['remember', 'note', 'recall', 'scope', 'session_end', 'chapter'].map(t => ({ name: `mcp__plugin_counterparts_counterparts__${t}`, description: t, mcp: true }))
 
 export type WorldOptions = {
   /** The dashboard refuses every request (not running). */

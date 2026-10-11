@@ -23,8 +23,8 @@
  *   - the memory server over MCP, whichever this session connected: `scope`
  *     to pause or resume, after the confirm; `recall` (facts) for search;
  *   - this session: the recall block the classic UserPromptSubmit hook
- *     injects (Memories, Subconscious), and `tool.call` on note /
- *     session_end / chapter (Saved) and on recall by id (`↗ opened`).
+ *     injects (Memories, Subconscious), and `tool.call` on remember (or
+ *     its old name note) / session_end (Saved) and on recall by id (`↗ opened`).
  *
  * The engine lets `$` pass only to functions declared at the top of this
  * file, so everything that touches the engine lives here; the brain, the
