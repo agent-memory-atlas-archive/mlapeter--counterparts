@@ -376,7 +376,7 @@ were refined by b2+f8 at the review of #369, named where they were):
 
 - Decided by the doctor-install-fixes builder, 2026-10-11, lightly held: doctor's fix lines
   that install something (the model table missing or mismatched, a cache from a newer build)
-  name the route by `plugin.ts#installRoute`: `/plugin → update counterparts` when this process
+  name the route by `plugin.ts#installRoute`: `/plugin → Installed → counterparts → Update now` when this process
   is the plugin's (`runningAsPlugin`), the `bun add -g` command when no `CLAUDE_PLUGIN_ROOT`
   is set, and both when one is set but names another copy, or when a caller passes nothing.
   Why: the plugin may run as the single binary with no bun at all, and "both" is the safe

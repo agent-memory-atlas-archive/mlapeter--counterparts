@@ -309,7 +309,7 @@ export interface DoctorInput {
 }
 
 /** The plugin's way to a newer or whole copy: Claude Code's plugin manager. */
-const PLUGIN_UPDATE = "in Claude Code, /plugin → update counterparts (or uninstall it and install it again)";
+const PLUGIN_UPDATE = "in Claude Code, /plugin → Installed → counterparts → Update now (or uninstall it and install it again)";
 
 /**
  * A fix that installs something, in the words of the route this copy came
@@ -1232,7 +1232,7 @@ function withdrawnFinding(input: DoctorInput): Finding | null {
       "amber",
       RECALL_TITLE,
       `off in this process — the store's cache was written by a newer Counterparts (cache v${v.found}; this build reads v${v.expected}). Recall still matches on words`,
-      `Either install the newer build again (${byInstall(input, "bun add -g counterparts@latest", "in Claude Code, /plugin → update counterparts")}), or, to stay on this one, delete ${tilde(input.dir)}/cache/cache.sqlite* (the search cache alone; no memory is kept there, and it is rebuilt) — then in Claude Code run /mcp → Reconnect so the server opens it.`,
+      `Either install the newer build again (${byInstall(input, "bun add -g counterparts@latest", "in Claude Code, /plugin → Installed → counterparts → Update now")}), or, to stay on this one, delete ${tilde(input.dir)}/cache/cache.sqlite* (the search cache alone; no memory is kept there, and it is rebuilt) — then in Claude Code run /mcp → Reconnect so the server opens it.`,
       { cacheAhead: true, found: v.found, expected: v.expected },
     );
   }

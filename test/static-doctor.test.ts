@@ -107,21 +107,21 @@ describe("Recall by meaning, for the local table", () => {
     expect(npm.fix).not.toContain("/plugin");
     const plugin = by(reading(STATIC, "plugin"), "embedder");
     expect(plugin.severity).toBe("amber");
-    expect(plugin.fix).toContain("/plugin → update counterparts");
+    expect(plugin.fix).toContain("/plugin → Installed → counterparts → Update now");
     expect(plugin.fix).toContain("install it again");
     expect(plugin.fix).not.toContain("bun add");
     expect(plugin.fix).not.toContain("npm");
     expect(plugin.fix).toContain(STATIC_WEIGHTS_ENV);
     const either = by(reading(STATIC, "either"), "embedder");
     expect(either.fix).toContain("npm: bun add -g counterparts-model-potion");
-    expect(either.fix).toContain("plugin: in Claude Code, /plugin → update counterparts");
+    expect(either.fix).toContain("plugin: in Claude Code, /plugin → Installed → counterparts → Update now");
     expect(by(reading(STATIC), "embedder").fix).toBe(either.fix);
   });
 
   test("a table that does not match its package, under the plugin: reinstall through /plugin", () => {
     backfillRow({ embedded: 0, failed: 0, remaining: 0, attempted: 0, reason: "embedder-unavailable", codes: "HASH_MISMATCH", skipped: 0, kind: "static", weights: null, model: null });
     const f = by(reading(STATIC, "plugin"), "embedder");
-    expect(f.fix).toContain("Reinstall it: in Claude Code, /plugin → update counterparts");
+    expect(f.fix).toContain("Reinstall it: in Claude Code, /plugin → Installed → counterparts → Update now");
     expect(f.fix).not.toContain("bun add");
   });
 
@@ -270,7 +270,7 @@ describe("held and cache-ahead, read durably by doctor's observer handle", () =>
     db.run("INSERT OR REPLACE INTO cache_meta (key, value) VALUES ('schemaVersion', '7')");
     db.close();
     const plugin = by(reading(STATIC, "plugin"), "embedder");
-    expect(plugin.fix).toContain("install the newer build again (in Claude Code, /plugin → update counterparts)");
+    expect(plugin.fix).toContain("install the newer build again (in Claude Code, /plugin → Installed → counterparts → Update now)");
     expect(plugin.fix).not.toContain("bun add");
     expect(plugin.fix).toContain("/cache/cache.sqlite*");
     const npm = by(reading(STATIC, "npm"), "embedder");
