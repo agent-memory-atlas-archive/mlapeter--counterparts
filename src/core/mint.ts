@@ -52,7 +52,7 @@ import { TUNABLES as PHYSICS, clampSalienceAtSeam, defaultClaimFor } from "./phy
 import { CUE_MODE_META, DATE_FROM_META, RECURRING_META } from "./prospective/index.js";
 import type { Proposal } from "./remember/index.js";
 import { isDay, isRecurrence, localDate } from "./time.js";
-import type { Store } from "./store/index.js";
+import type { AboutMark, AboutSetter, Store } from "./store/index.js";
 import { SECOND_HAND_META_KEY, WRITTEN_UP_BY_META_KEY } from "./types.js";
 import type { Band, Salience } from "./types.js";
 
@@ -120,6 +120,13 @@ export interface MintOptions {
    * The mark is recorded by the door after the mint, as before.
    */
   about?: string | null;
+  /**
+   * The mark a REVISION inherits from the memory it revises when its writer
+   * sent none (2026-10-11, `store/index.ts#inheritFrom`), with who set it:
+   * written on the row at birth, as a merge's is. The door sets it, and hands
+   * the same mark in `about` so the default floor reads by it.
+   */
+  inheritedAbout?: { readonly about: AboutMark; readonly aboutBy: AboutSetter | null };
 }
 
 export interface MintResult {
@@ -259,6 +266,10 @@ export function mintProposal(store: Store, proposal: Proposal, opts: MintOptions
     ...(proposal.facts?.occurredOn === undefined ? {} : { occurredOn: proposal.facts.occurredOn }),
     ...(proposal.facts?.saidBy === undefined ? {} : { saidBy: proposal.facts.saidBy }),
     ...(proposal.facts?.status === undefined ? {} : { status: proposal.facts.status }),
+    // What a revision carries over of what its memory was about (2026-10-11).
+    ...(opts.inheritedAbout === undefined
+      ? {}
+      : { about: opts.inheritedAbout.about, ...(opts.inheritedAbout.aboutBy === null ? {} : { aboutBy: opts.inheritedAbout.aboutBy }) }),
     meta,
     band: opts.band ?? "episodic",
     ...(opts.model === undefined ? {} : { model: opts.model }),

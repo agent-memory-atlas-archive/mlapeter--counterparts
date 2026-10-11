@@ -18,7 +18,8 @@ import type { SpawnPlan } from "../src/adapters/spawn.js";
 import { parseTranscript } from "../src/adapters/claude-code/transcript.js";
 import { recordSession } from "../src/adapters/sessions.js";
 import { Counterpart } from "../src/core/counterpart.js";
-import { DREAM_MARK, DREAM_TUNABLES, dreamOpener, mergedAbout } from "../src/core/dream/index.js";
+import { DREAM_MARK, DREAM_TUNABLES, dreamOpener } from "../src/core/dream/index.js";
+import { inheritFrom } from "../src/core/store/index.js";
 import { CLAIMED_DEFAULT_META_KEY } from "../src/core/mint.js";
 import { TUNABLES as PHYSICS } from "../src/core/physics/index.js";
 import { TUNABLES as REMEMBER_TUNABLES, enters } from "../src/core/remember/index.js";
@@ -527,13 +528,13 @@ describe("merge inherits: about, and the old-claims era", () => {
       { id: "b", about: "us", about_by: "reflection" },
       { id: "c", about: "owner", about_by: "owner" },
     ];
-    expect(mergedAbout(rows, rows[2]!)).toEqual({ about: "owner", aboutBy: "owner", from: "c" });
-    expect(mergedAbout(rows, rows[0]!)).toEqual({ about: "us", aboutBy: "reflection", from: "b" });
-    expect(mergedAbout([{ id: "x", about: null, about_by: null }], { id: "x", about: null, about_by: null })).toBeNull();
+    expect(inheritFrom(rows, { best: rows[2]! }).about).toEqual({ about: "owner", aboutBy: "owner", from: "c" });
+    expect(inheritFrom(rows, { best: rows[0]! }).about).toEqual({ about: "us", aboutBy: "reflection", from: "b" });
+    expect(inheritFrom([{ id: "x", about: null, about_by: null }], { best: { id: "x", about: null, about_by: null } }).about).toBeNull();
     // An unmarked best source beside work and world: the first marked one.
     const plain = [{ id: "p", about: null, about_by: null }, { id: "w", about: "world", about_by: "writer" }, { id: "k", about: "work", about_by: "writer" }];
-    expect(mergedAbout(plain, plain[0]!)).toEqual({ about: "world", aboutBy: "writer", from: "w" });
-    expect(mergedAbout(plain, plain[2]!)).toEqual({ about: "work", aboutBy: "writer", from: "k" });
+    expect(inheritFrom(plain, { best: plain[0]! }).about).toEqual({ about: "world", aboutBy: "writer", from: "w" });
+    expect(inheritFrom(plain, { best: plain[2]! }).about).toEqual({ about: "work", aboutBy: "writer", from: "k" });
   });
 
   test("a merge after the cutoff of sources written after it is unchanged: no carried moment, read as stored", () => {
@@ -614,6 +615,41 @@ describe("merge inherits: about, and the old-claims era", () => {
     const m = merge(c, ids);
     expect(c.store.row(m.id)).toMatchObject({ about: "world", about_by: "writer" });
     expect(m.note).toContain(`the merged memory is about world, from ${ids[0] as string}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// a gist takes what its sources were about (2026-10-11, `inheritFrom`)
+// ---------------------------------------------------------------------------
+
+describe("gist inherits: what its sources were about", () => {
+  /** One gist per group of sources, all in one dream; the gists' ids, in order. */
+  function gists(c: Counterpart, groups: Partial<PutInput>[][]): string[] {
+    lived(c);
+    const day = c.store.livedDay();
+    let n = 0;
+    const ids = groups.map((specs) => specs.map((s) => mem(c, `They take the early ferry on weekdays, note ${String(n++)}.`, { ...s, physics: { birthDay: day, lastUsedDay: day } })));
+    const { id: d } = begin(c);
+    const out = c.dreams.propose({ dream: d, session: SESSION, changes: ids.map((sources) => ({ action: "gist", text: "The early ferry is their weekday habit.", sources })) });
+    if (!out.ok) throw new Error(`propose refused: ${out.reason}`);
+    for (const r of out.results) expect(r).toMatchObject({ ok: true, reason: "dreamed" });
+    return out.results.map((r) => r.id as string);
+  }
+
+  test("a gist over owner and work memories is the owner's, its setter kept; its claim stays the cap, with no era standing", () => {
+    const c = brain();
+    const [g] = gists(c, [[{ about: "work" }, { about: "owner", aboutBy: "owner" }]]) as [string];
+    expect(c.store.row(g)).toMatchObject({ about: "owner", about_by: "owner", source: "dreamed" });
+    expect(c.store.physicsOf(g).salience.claimed).toBe(PHYSICS.DREAMED_CLAIM_CEILING);
+    expect(c.store.readProse(g).meta[ERA_WRITTEN_AT_META]).toBeUndefined();
+    expect(c.store.readProse(g).meta[CLAIMED_DEFAULT_META_KEY]).toBeUndefined();
+  });
+
+  test("a gist over work memories is work; over unmarked ones, unmarked", () => {
+    const c = brain();
+    const [work, plain] = gists(c, [[{}, { about: "work" }], [{}, {}]]) as [string, string];
+    expect(c.store.row(work)?.about).toBe("work");
+    expect(c.store.row(plain)?.about ?? null).toBeNull();
   });
 });
 

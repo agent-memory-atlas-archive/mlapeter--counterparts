@@ -4443,13 +4443,18 @@ export class McpServer {
   /**
    * The `about` half of a deposit (schema v9): what the memory is about, set
    * by the writer who just wrote it (`about_by = 'writer'`). Nothing when none
-   * was sent; said when the memory did not land. A `skill` memory is the craft
+   * was sent, unless a revision carried its memory's over; said when the
+   * memory did not land. A `skill` memory is the craft
    * — how I work — and is never core (`aboutMe` never reads one as a
    * candidate), so a core mark on one is stored as asked, with a note
    * (2026-09-28: it was refused `skill-is-how-i-work`).
    */
   private recordAbout(deposit: DepositResult, mark: AboutMark | null): Record<string, unknown> {
-    if (mark === null) return {};
+    // None sent: a revision took the mark of the memory it revises (2026-10-11), and says so.
+    if (mark === null) {
+      const carried = deposit.aboutCarried;
+      return carried === undefined ? {} : { about: { stored: true, mark: carried.mark, carriedFrom: carried.from } };
+    }
     if (!deposit.deposited || deposit.memoryId === null) {
       return { about: { stored: false, reason: "memory-not-stored" } };
     }
