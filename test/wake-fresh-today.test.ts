@@ -38,7 +38,7 @@ import { Counterpart } from "../src/core/counterpart.js";
 import { Lifecycle } from "../src/adapters/lifecycle.js";
 import { setScope, writeScopes } from "../src/adapters/scopes.js";
 import { recordSession } from "../src/adapters/sessions.js";
-import { TODAY_ELSEWHERE_MAX_BYTES, todayElsewhereLines } from "../src/core/handoff/last-here.js";
+import { TODAY_ELSEWHERE_MAX_BYTES, chaptersOn, todayElsewhereLines, yesterdayLine, yesterdayShorter } from "../src/core/handoff/last-here.js";
 import { CUE_MODE_META } from "../src/core/prospective/index.js";
 import {
   BRIEFING_KEY,
@@ -182,7 +182,9 @@ describe("a session started before any turn-end today reads today's lanes", () =
     const k = store(at(D1, 18));
     const { c } = k;
     c.revisePage("## Core\n\nI keep the garden's ledger and say what I do not know. Page version one.", { by: "owner", reason: "seed" });
-    episode(c, { session: A, scope: THERE, title: "Bread for the market stall", date: D1, text: "We baked for the stall and wrote down the timings." });
+    // Written in this session's own directory, so the gate on another
+    // directory's titles (2026-10-11) names it here.
+    episode(c, { session: A, scope: HERE, title: "Bread for the market stall", date: D1, text: "We baked for the stall and wrote down the timings." });
     // The evening's turn-end: the bundle a morning used to read.
     const rendered = c.rebrief({ budgetBytes: BUDGET, at: D1 });
     expect(rendered.published).toBe(true);
@@ -257,6 +259,97 @@ describe("a session started before any turn-end today reads today's lanes", () =
     // A bundle an older build published (no record).
     c.store.setMeta(WAKE_SHOWN_KEY, "");
     expect(c.wake(BUDGET, { date: D2 }, { scope: HERE, session: B }).text).not.toContain("gate latch");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// A2. The Yesterday line's gate (2026-10-11)
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("the Yesterday line names another directory's titles on the About-me gate", () => {
+  /**
+   * Yesterday's chapters in five places: this directory (a work chapter), an
+   * `on` directory about me, an `on` directory about work, an `off` directory
+   * about me, and a confidential one about me in the `on` directory.
+   */
+  function yesterday(): { c: Counterpart; lc: Lifecycle; ids: Record<string, string> } {
+    const k = store(at(D1, 9));
+    const { c } = k;
+    writeScopes(join(root, "scopes.json"), setScope(null, FAR, "off", { at: D1 }));
+    const ids: Record<string, string> = {};
+    const put = (key: string, session: string, scope: string, about: "me" | "work", hour: number, confidential = false): void => {
+      k.set(at(D1, hour));
+      const epi = c.store.put({
+        type: "episode",
+        kind: "self",
+        title: `${key.toUpperCase()}TITLE chapter`,
+        body: `## chapter 1 — ${readableDate(D1)} · lived day 1\n\nA placeholder chapter.\n`,
+        meta: { sessionId: session, chapters: 1, ...(confidential ? { confidential: true } : {}) },
+        source: "episode",
+        origin: { session, scope },
+      });
+      copy(c, epi, session, scope, about, "A placeholder copy.");
+      ids[key] = epi;
+    };
+    put("own", E, HERE, "work", 10);
+    put("work", G, YON, "work", 11);
+    put("aboutme", A, THERE, "me", 12);
+    put("off", F, FAR, "me", 13);
+    put("secret", C, THERE, "me", 14, true);
+    // The evening's turn-end published the line store-wide; the morning's
+    // session start reads it for THIS session.
+    k.set(at(D2, 7));
+    expect(c.rebrief({ budgetBytes: BUDGET, at: D2 }).published).toBe(true);
+    k.set(at(D2, 8));
+    const lc = new Lifecycle({ counterpart: c, config: { dataDir: storeDir }, configPath: join(root, "claude-code.json"), now: () => at(D2, 8) });
+    return { c, lc, ids };
+  }
+
+  function lineOf(text: string): string | undefined {
+    return text.split("\n").find((l) => l.startsWith(`Yesterday, ${D1.slice(5)}: `));
+  }
+
+  test("its own directory's title, and another's only when about me with its scope on; the rest counted, never by id", () => {
+    const y = yesterday();
+    const text = y.lc.composeWake({ sessionId: B, scope: HERE, at: D2 }, BUDGET).text;
+    expect(text).toContain("assembled at session start");
+    expect(lineOf(text)).toBe(`Yesterday, ${D1.slice(5)}: "OWNTITLE chapter" (${y.ids["own"]}); "ABOUTMETITLE chapter" (${y.ids["aboutme"]}); and 2 more.`);
+    for (const never of ["WORKTITLE", "OFFTITLE", "SECRETTITLE", y.ids["work"] ?? "?", y.ids["off"] ?? "?", y.ids["secret"] ?? "?"]) {
+      expect(text).not.toContain(never);
+    }
+    expect(readSentinel(text).intact).toBe(true);
+  });
+
+  test("with no way to ask the scope setting only this directory's title is named; from a directory with none, the line is a count", () => {
+    const y = yesterday();
+    // The Counterpart alone, with no host to ask: nothing crosses.
+    const alone = y.c.wake(BUDGET, { date: D2 }, { scope: HERE, session: B }).text;
+    expect(lineOf(alone)).toBe(`Yesterday, ${D1.slice(5)}: "OWNTITLE chapter" (${y.ids["own"]}); and 3 more.`);
+    // Somewhere that wrote nothing yesterday, with every directory closed.
+    const NONE = join(root, "shed");
+    const none = y.c.wake(BUDGET, { date: D2 }, { scope: NONE, session: B, exportsFrom: () => false }).text;
+    expect(lineOf(none)).toBe(`Yesterday, ${D1.slice(5)}: chapters from 4 sessions in other directories.`);
+    for (const never of ["TITLE chapter", "epi_"]) expect(lineOf(none)).not.toContain(never);
+  });
+
+  test("the published bundle, which no one session reads, keeps the store-wide line; the shorter forms never surface a hidden id", () => {
+    const y = yesterday();
+    // A read that is not a delivery: the turn-end's render, as it was (the
+    // gate is the reader's, and the published bundle has none —
+    // INTERFACE-GAPS self §14).
+    const published = y.c.wake(BUDGET).text;
+    for (const shown of ["OWNTITLE", "WORKTITLE", "ABOUTMETITLE", "OFFTITLE"]) expect(published).toContain(shown);
+    expect(published).not.toContain("SECRETTITLE");
+    // The shorter forms over the named two, with two counted.
+    const named = chaptersOn(y.c.store, D1).filter((c) => c.id === y.ids["own"] || c.id === y.ids["aboutme"]);
+    const shorter = yesterdayShorter(named, D1, 2);
+    expect(shorter.length).toBeGreaterThan(0);
+    for (const line of shorter) {
+      expect(line).toEndWith("; and 2 more.");
+      for (const hidden of [y.ids["work"], y.ids["off"], y.ids["secret"]]) expect(line).not.toContain(hidden ?? "?");
+    }
+    expect(yesterdayLine([], D1, undefined, 1)).toBe(`Yesterday, ${D1.slice(5)}: chapters from 1 session in other directories.`);
+    expect(yesterdayLine([], D1)).toBeNull();
   });
 });
 
