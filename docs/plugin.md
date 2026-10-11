@@ -340,10 +340,13 @@ still loads, and `/plugin` notes the missing packages. Then, measured by the loo
   nothing will be embedded; recall still matches on words". Its fix line says
   `bun add -g counterparts-model-potion`, which is the npm install's fix, not a plugin
   user's;
-- under Bun, nothing is missing for long: with no `node_modules` above the plugin, Bun's
-  auto-install fetches the package from the npm registry into `~/.bun/install/cache` the
-  first time it's resolved, at whatever version the registry has, and recall by meaning
-  is on. That fetch isn't pinned by the plugin and isn't in the README's disclosure.
+- under Bun, with no `node_modules` above the plugin, Bun's runtime auto-install fetches
+  the package from the npm registry into `~/.bun/install/cache` the first time it's
+  resolved, unpinned and undisclosed. The launcher now runs Bun with `--no-install`, but
+  the processes the hooks start (the runner and the embedding worker, launched with
+  `runtime.ts#scriptArgs`) don't carry the flag, and the worker still fetches it. The
+  loop's step for this fails until they do. Measured: `[install] auto = "disable"` in
+  `empty-bunfig.toml`, which every Bun launch already names, stops it in every process.
 
 To serve installs from the bundle repository, the marketplace entry's `repo` becomes
 `mlapeter/counterparts-plugin`, with the same `ref` (`v<version>`, tagged there). Nothing

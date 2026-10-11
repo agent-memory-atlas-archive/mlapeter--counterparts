@@ -552,8 +552,17 @@ if [ "$BUNDLE" = 1 ]; then
     rm -rf "$2"
     mkdir -p "$2/project"
     local envs=(env HOME="$2" USERPROFILE="$2" BUN_INSTALL="$2/.bun" COUNTERPARTS_RUNTIME="$1" CLAUDE_PLUGIN_ROOT="$NODEPS" CLAUDE_PLUGIN_DATA="$2/.claude/plugins/data/counterparts-counterparts-loop" CLAUDE_PROJECT_DIR="$2/project" CLAUDECODE=1)
-    printf '{"hook_event_name":"SessionStart","session_id":"no-deps-%s","cwd":"%s","source":"startup"}' "$$" "$2/project" |
-      ( cd "$2/project" && t 120 "${envs[@]}" sh "$NODEPS/src/adapters/plugin-run.sh" hook ) >"$2.hook.out" 2>&1
+    # A whole session, so the processes the hooks start (the runner, the
+    # embedding worker) run too, then doctor.
+    local tr="$2/project/transcript.jsonl"
+    printf '%s\n' '{"type":"user","message":{"role":"user","content":"Our neighbour Ilse restores harpsichords in a barn."},"timestamp":"2026-10-11T10:00:00Z"}' \
+      '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Harpsichords in a barn: noted about Ilse."}]},"timestamp":"2026-10-11T10:00:05Z"}' > "$tr"
+    local ev
+    for ev in 'SessionStart","source":"startup' 'UserPromptSubmit","prompt":"Our neighbour Ilse restores harpsichords in a barn.' 'Stop","stop_hook_active":false' 'SessionEnd","reason":"exit'; do
+      printf '{"session_id":"no-deps-%s","cwd":"%s","transcript_path":"%s","hook_event_name":"%s"}' "$$" "$2/project" "$tr" "$ev" |
+        ( cd "$2/project" && t 120 "${envs[@]}" sh "$NODEPS/src/adapters/plugin-run.sh" hook ) >>"$2.hook.out" 2>&1
+    done
+    sleep 8
     ( cd "$2/project" && t 120 "${envs[@]}" sh "$NODEPS/src/adapters/plugin-run.sh" cli doctor 2>&1 )
   }
 
@@ -580,19 +589,19 @@ if [ "$BUNDLE" = 1 ]; then
     fi
   fi
 
-  # Under Bun the package does not stay missing: with no node_modules anywhere
-  # above the plugin, Bun's own auto-install resolves it from the npm registry
-  # into ~/.bun/install/cache at first use (no version pinned by the plugin).
-  # Recorded here as it is, not endorsed: docs/plugin.md, "The bundle".
-  step "no dependency install, under Bun: Bun's auto-install fetches the table into its own cache, and recall by meaning is on"
+  # Under Bun, with no node_modules anywhere above the plugin, Bun's runtime
+  # would fetch the package from the npm registry into ~/.bun/install/cache at
+  # first use, unpinned. The launcher runs Bun with --no-install, so the table
+  # stays missing and doctor says so, as under Node.
+  step "no dependency install, under Bun: no auto-install (nothing in ~/.bun/install/cache), doctor's line is amber"
   NODEPS_DOCTOR=$(nodeps_doctor "$BUN_BIN" "$WORK/home-no-deps-bun")
   printf '%s\n' "$NODEPS_DOCTOR" > "$WORK/doctor-no-deps-bun.txt"
-  CACHED=$(ls -d "$WORK/home-no-deps-bun/.bun/install/cache/counterparts-model-potion@"* 2>/dev/null | head -1)
-  if [ -n "$CACHED" ] && grep -qE "^GREEN +Recall by meaning +on" <<<"$NODEPS_DOCTOR"; then
+  CACHED=$(ls -d "$WORK/home-no-deps-bun/.bun/install/cache/"* 2>/dev/null | head -3)
+  if [ -z "$CACHED" ] && grep -qE "^AMBER +Recall by meaning +on \(a local table\), but .*recall still matches on words" <<<"$NODEPS_DOCTOR"; then
     ok
-    echo "      fetched by Bun into ${CACHED/#$WORK/<work>}"
+    grep -E "Recall by meaning" <<<"$NODEPS_DOCTOR" | cut -c1-200 | sed 's/^/      /'
   else
-    no "expected Bun's auto-install to fetch the table (cache: ${CACHED:-none})" "$(grep -A1 -E "Recall by meaning" <<<"$NODEPS_DOCTOR")"
+    no "Bun fetched something, or doctor's line is not amber (cache: ${CACHED:-empty})" "$(grep -A1 -E "Recall by meaning" <<<"$NODEPS_DOCTOR")"
   fi
   rm -rf "$NODEPS"
 fi
