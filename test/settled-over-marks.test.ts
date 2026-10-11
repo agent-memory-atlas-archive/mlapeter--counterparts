@@ -233,7 +233,11 @@ describe("a write's neighbours", () => {
 });
 
 describe("ambient recall (already labelled by standingOf)", () => {
-  test("a footnote of a memory settled over opens with Earlier (now …)", () => {
+  // Group 2 (2026-10-11): the head wins ambient recall, so a settled-over
+  // memory the turn reaches is shown as its head, whose label names it. The
+  // "Earlier (now …)" prefix is what it carries where it still shows (the
+  // label is `standingOf`'s, pinned below and in the chain test).
+  test("a memory settled over that the turn reaches is shown as its head, which names it", () => {
     const s = Store.open({ dir });
     open.push(s);
     aged(s);
@@ -254,8 +258,10 @@ describe("ambient recall (already labelled by standingOf)", () => {
     changed(s, head, old);
     const text = new Recall({ store: s, owner: true }).build({ sessionId: "r1", text: "how often should the zygomorphic orchid get watering" }).injection;
     const lines = text.split("\n").filter((l) => l.includes(`watering [${old}]`) || l.includes("twice a week"));
-    expect(lines.length).toBeGreaterThan(0);
-    for (const line of lines) expect(line).toContain(`Earlier (now [${head}]): `);
+    expect(lines).toEqual([]);
+    expect(text).toContain(`[${head}]`);
+    expect(text).toContain(`(earlier: [${old}])`);
+    expect(standingOf(s, old)?.prefix).toBe(`Earlier (now [${head}]): `);
   });
 });
 
@@ -352,13 +358,13 @@ describe("review of #408: footnotes and neighbours name the same memory", () => 
     // B still says what it was over, after: the chain's history is not lost.
     expect(standingOf(s, b)?.suffix).toBe(` (earlier: [${a}])`);
     expect(standingOf(s, c)?.prefix).toBe("");
+    // Ambient recall (Group 2, 2026-10-11): the head wins — A and B are not
+    // shown at all, C is.
     const text = new Recall({ store: s, owner: true }).build({ sessionId: "r1", text: "how often should the zygomorphic orchid get watering" }).injection;
     const linesOfA = text.split("\n").filter((l) => l.includes("twice a week") || l.includes("Zygomorphic orchid watering"));
-    expect(linesOfA.length).toBeGreaterThan(0);
-    for (const line of linesOfA) {
-      expect(line).toContain(`Earlier (now [${c}]): `);
-      expect(line).not.toContain(`now [${b}]`);
-    }
+    expect(linesOfA).toEqual([]);
+    expect(text).toContain(`[${c}]`);
+    expect(text).not.toContain(`[${b}]:`);
     const w = put(s, "The zygomorphic orchid needs watering twice a week, they said at the shop.");
     const n = writeNeighbours(s, { id: w, owner: true, limit: 10 }).find((x) => x.id === a);
     expect(n?.standing).toBe(earlierMark(c));
