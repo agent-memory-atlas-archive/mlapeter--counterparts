@@ -26,7 +26,7 @@
  * invented placeholder prose.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -347,5 +347,68 @@ describe("Since you started", () => {
     expect(lines?.shorter.at(-1)).toBe("Since you started (09:00): 9 other directories.");
     // Nothing changed anywhere: no line.
     expect(sinceElsewhereLines([{ scope: "/srv/x", startedAt: null, live: true, endedAt: null, chapter: null, memories: 0 }], { at: at(9), started: true, now: at(11) }, ZONE)).toBeNull();
+  });
+});
+
+describe("Since you started — review of #387", () => {
+  test("an off folder's child and a paused folder: their sessions ending, their chapters and memories are not named; a sibling sharing only a prefix is", () => {
+    const w = world(at(9));
+    const FAR = join(root, "ledger");
+    const CHILD = join(FAR, "inner");
+    const SIB = join(root, "ledger-public");
+    const REST = join(root, "cellar");
+    for (const d of [CHILD, SIB, REST]) mkdirSync(d, { recursive: true });
+    let reg = setScope(null, FAR, "off", { at: D });
+    reg = setScope(reg, REST, "paused", { at: D });
+    writeScopes(join(root, "scopes.json"), reg);
+    const IN = "d0d0d0d1-0000-4000-8000-00000000000d";
+    const RS = "d0d0d0d2-0000-4000-8000-00000000000d";
+    // Both open before this session woke; both end after it.
+    recordSession(storeDir, { sessionId: IN, scope: CHILD, phase: "start", at: at(9, 30) });
+    recordSession(storeDir, { sessionId: RS, scope: REST, phase: "start", at: at(9, 30) });
+    wake(w, at(10));
+    expect(prompt(w, at(10, 1))).toBeUndefined();
+    w.set(at(10, 10));
+    chapter(w.c, { session: IN, scope: CHILD, title: "INNERCHAPTER about me", about: "me" });
+    chapter(w.c, { session: RS, scope: REST, title: "RESTCHAPTER about me", about: "me" });
+    w.c.store.put({ type: "memory", kind: "fact", body: "INNERMEMORY", origin: { session: IN, scope: CHILD } });
+    recordSession(storeDir, { sessionId: IN, scope: CHILD, phase: "end", at: at(10, 12) });
+    recordSession(storeDir, { sessionId: RS, scope: REST, phase: "end", at: at(10, 13) });
+    // Nothing that may be named changed: no line at all.
+    expect(prompt(w, at(10, 20))).toBeUndefined();
+    recordSession(storeDir, { sessionId: "d0d0d0d3-0000-4000-8000-00000000000d", scope: SIB, phase: "start", at: at(10, 25) });
+    const line = prompt(w, at(10, 30)) ?? "";
+    expect(line).toBe(`Since you started (10:00): ${tilde(SIB)} open since 10:25.`);
+    for (const never of ["INNER", "RESTCHAPTER", tilde(CHILD), tilde(REST), "ended"]) expect(line).not.toContain(never);
+  });
+
+  test("a scope file that cannot be read names nothing (fail closed); the nightly run's prompt says nothing and moves nothing", () => {
+    const w = world(at(9));
+    wake(w, at(10));
+    expect(prompt(w, at(10, 1))).toBeUndefined();
+    w.set(at(10, 10));
+    recordSession(storeDir, { sessionId: C, scope: YON, phase: "start", at: at(10, 10) });
+    chapter(w.c, { session: C, scope: YON, title: "Why the pears ripen late", about: "me" });
+    w.set(at(10, 20));
+    expect(w.hooks().sinceLine({ sessionId: S, scope: HERE, at: D, nightRun: true } as HookInput & { nightRun: boolean }, 1_000)).toBe("");
+    expect(readSession(storeDir, S)?.sinceSeen?.state).toBe("armed");
+    writeFileSync(join(root, "scopes.json"), "{ not json");
+    expect(prompt(w, at(10, 25))).toBeUndefined();
+    expect(readSession(storeDir, S)?.sinceSeen?.state).toBe("armed");
+  });
+
+  test("a Stop's whole-record rewrite carries the state, so the hour holds across turns", () => {
+    const w = world(at(9));
+    wake(w, at(10));
+    expect(prompt(w, at(10, 1))).toBeUndefined();
+    w.set(at(10, 10));
+    recordSession(storeDir, { sessionId: C, scope: YON, phase: "start", at: at(10, 10) });
+    expect(prompt(w, at(10, 20))).toBe(`Since you started (10:00): ${tilde(YON)} open since 10:10.`);
+    w.set(at(10, 21));
+    w.hooks().stop({ sessionId: S, scope: HERE, at: D } as HookInput);
+    expect(readSession(storeDir, S)?.sinceSeen).toEqual({ at: at(10, 20), state: "shown" });
+    w.set(at(10, 30));
+    recordSession(storeDir, { sessionId: "c9cacbce-0000-4000-8000-00000000000c", scope: THERE, phase: "start", at: at(10, 30) });
+    expect(prompt(w, at(10, 40))).toBeUndefined();
   });
 });
