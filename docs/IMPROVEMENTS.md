@@ -612,6 +612,20 @@ were refined by b2+f8 at the review of #369, named where they were):
   and so is Claude Code's own directory. Why: no widening of what a delete reaches without
   someone deciding it.
 
+### Decided by the Group 4 builder, 2026-10-11, lightly held (association; revisit after ~5 lived days)
+
+- Decided by the Group 4 builder, 2026-10-11, lightly held: a new memory's write-time links
+  go to what its session was shown in the last 3 recall turns (`WRITE_LINK_TURNS`) and what
+  a deliberate question showed within 15 minutes of the write (`WRITE_LINK_ASKED_MS`), the
+  asked ones first, at most 4 per memory (`WRITE_LINK_MAX`), at 0.05 through
+  `Associate.propose` (room-only, never evicting). The window is the session's recent turns
+  at the boundary, which is the write's own turn for a mid-session memory and the session's
+  last turns for a write-up at its close. Why: Mike's "it should, like a brain, unless
+  there's a big downside", weak because footnotes are often noise; propose rather than the
+  Hebbian buffer, so a faint footnote-grade trail never pushes out what use learned. A
+  memory shown only through an ambiguous handle (`trains: false`) and a handoff are not "in
+  mind".
+
 ### Also noted
 
 - **A read-without-crediting mode for audits.** A way to read memories (a review, a rules

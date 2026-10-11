@@ -37,7 +37,7 @@
  */
 import { randomUUID } from "node:crypto";
 
-import { Associate, appendPendingDeltas, claimPending, pairKey, planContiguity, releasePending } from "./associate/index.js";
+import { Associate, appendPendingDeltas, claimPending, pairKey, planAtWrite, planContiguity, releasePending } from "./associate/index.js";
 import type { CoactivateResult, Credited, FlushReport, PairDelta, PendingClaim } from "./associate/index.js";
 import { horizonFor, selfRenderer } from "./briefing.js";
 import { batteryGate, episodeGate, gateSweepChunk } from "./bridge.js";
@@ -648,6 +648,29 @@ export interface ContiguityPass {
   readonly evictedOwn?: number;
   readonly evictedOther?: number;
   readonly renormalizedNodes?: number;
+  readonly code?: string;
+  /** The same pass's write-time links (Group 4 item 2, 2026-10-11): what was in mind. */
+  readonly atWrite?: AtWritePass;
+}
+
+/**
+ * WRITE-TIME LINKS (Group 4 item 2, 2026-10-11; bench item 5): each new memory
+ * the boundary's contiguity pass reads gets a faint link (`WRITE_LINK_WEIGHT`)
+ * to what was in mind when it was written — what a deliberate question showed
+ * near the write, and what recall showed its session in the last few turns.
+ * Proposed, so room-only: `noRoom` pairs were refused, never forced. Counts
+ * only, on the boundary's `associate.flush` row as `atWrite`.
+ */
+export interface AtWritePass {
+  readonly reason: "linked" | "nothing-in-mind" | "failed";
+  /** New memories that had something in mind, and the pairs planned for them. */
+  readonly memories: number;
+  readonly pairs: number;
+  /** Pairs that landed (or already weighed at least the proposal). */
+  readonly landed: number;
+  readonly noRoom: number;
+  readonly blocked: number;
+  readonly frozen: number;
   readonly code?: string;
 }
 export const SPAWN_REFUSED_EVENT = "adapter.spawn.refused";
@@ -5275,6 +5298,9 @@ export class Counterpart {
         }),
       );
       if (fresh.length === 0) return { pass: { ...zero, excluded, lostEarlier }, pairs: [] };
+      // After the cursor moved, so a crash cannot propose these twice (and a
+      // proposal raises to at least its weight, so a second one adds nothing).
+      const atWrite = this.linkAtWrite(fresh, day);
       const buffered = this.associate.contiguity(deltas);
       // The mark counts pairs that could be LOST, which is the pairs buffered:
       // a pair refused here (pinned or dead endpoint) is counted as `frozen`
@@ -5302,13 +5328,92 @@ export class Counterpart {
         buffered: buffered.pairs,
         blocked: buffered.blocked,
         frozen: buffered.frozen,
+        ...(atWrite === null ? {} : { atWrite }),
       };
-      this.emit("counterpart.associate.contiguity", undefined, { ...out });
+      this.emit("counterpart.associate.contiguity", undefined, {
+        ...out,
+        atWrite: atWrite === null ? null : atWrite.landed,
+      } as Record<string, string | number | boolean | null>);
       return { pass: out, pairs: buffered.accepted };
     } catch (err) {
       const code = errCode(err);
       this.emit("counterpart.associate.contiguity.failed", undefined, { code });
       return { pass: { ...zero, reason: "failed", code }, pairs: [] };
+    }
+  }
+
+  /**
+   * WRITE-TIME LINKS for the memories one contiguity pass read (Group 4 item
+   * 2, 2026-10-11). Per new memory, what was in mind when it was written,
+   * nearest first: what a deliberate question showed its session within
+   * `WRITE_LINK_ASKED_MS` of the write (newest first), then what recall showed
+   * the session in its last `WRITE_LINK_TURNS` turns (newest turn first, the
+   * loud one before footnotes). A memory shown only through an ambiguous
+   * handle (`trains: false`, recall §9 G5) and a handoff are not in mind.
+   * `planAtWrite` keeps the first `WRITE_LINK_MAX`; `Associate.propose` lands
+   * them at `WRITE_LINK_WEIGHT`, room-only.
+   *
+   * The window is the session's recent turns AT THE BOUNDARY, which is the
+   * write's own turn for a memory made mid-session (the boundary runs at every
+   * reply's end) and the session's last turns for a write-up at its close.
+   * Null when no memory had anything in mind. Fail-open: a throw is a `failed`
+   * pass, and contiguity goes on.
+   */
+  private linkAtWrite(fresh: readonly { id: string; session: string; at: number }[], day: number): AtWritePass | null {
+    const t = this.associate.tunables;
+    try {
+      const memories: { id: string; inMind: string[] }[] = [];
+      const bySession = new Map<string, { recent: string[]; asked: { ref: string; at: number }[] }>();
+      const handoff = new Map<string, boolean>();
+      const notHandoff = (id: string): boolean => {
+        let h = handoff.get(id);
+        if (h === undefined) {
+          h = isHandoffRow(this.store, id);
+          handoff.set(id, h);
+        }
+        return !h;
+      };
+      for (const m of fresh) {
+        let mind = bySession.get(m.session);
+        if (mind === undefined) {
+          const state = this.recall.gateState(m.session);
+          const recent = Object.entries(state.surfaced)
+            .filter(([, rec]) => rec.trains && rec.turn > state.turn - t.WRITE_LINK_TURNS)
+            .sort((x, y) => y[1].turn - x[1].turn || (x[1].tier === y[1].tier ? 0 : x[1].tier === "surfaced" ? -1 : 1) || (x[0] < y[0] ? -1 : 1))
+            .map(([id]) => id);
+          let asked: { ref: string; at: number }[] = [];
+          try {
+            asked = this.store.gateRecords(m.session, ASKED_KIND).map((r) => ({ ref: r.ref, at: r.turn * 1000 }));
+          } catch {
+            asked = [];
+          }
+          mind = { recent, asked };
+          bySession.set(m.session, mind);
+        }
+        const near = mind.asked
+          .filter((r) => Math.abs(r.at - m.at) <= t.WRITE_LINK_ASKED_MS)
+          .sort((x, y) => y.at - x.at || (x.ref < y.ref ? -1 : 1))
+          .map((r) => r.ref);
+        const inMind = [...new Set([...near, ...mind.recent])].filter(notHandoff);
+        if (inMind.length > 0) memories.push({ id: m.id, inMind });
+      }
+      const plan = planAtWrite(memories, t);
+      if (plan.pairs.length === 0) return null;
+      const r = this.associate.propose(plan.pairs, t.WRITE_LINK_WEIGHT, day);
+      return {
+        reason: r.reason === "failed" ? "failed" : r.pairs > 0 ? "linked" : "nothing-in-mind",
+        memories: plan.memories,
+        pairs: plan.pairs.length,
+        landed: r.pairs,
+        noRoom: r.noRoom,
+        blocked: r.blocked,
+        frozen: r.frozen,
+        ...(r.code === undefined ? {} : { code: r.code }),
+      };
+    } catch (err) {
+      const code = errCode(err);
+      this.emit("counterpart.associate.atwrite.failed", undefined, { code });
+      return { reason: "failed", memories: 0, pairs: 0, landed: 0, noRoom: 0, blocked: 0, frozen: 0, code };
     }
   }
 
@@ -5365,7 +5470,9 @@ export class Counterpart {
    */
   private recordBoundaryFlush(edges: FlushReport, contiguity: ContiguityPass, session?: string): boolean {
     const flushed = edges.reason === "flushed" || edges.reason === "failed";
-    const contiguitySays = contiguity.reason === "failed" || contiguity.buffered > 0 || contiguity.lostEarlier > 0;
+    const atWrite = contiguity.atWrite;
+    const contiguitySays =
+      contiguity.reason === "failed" || contiguity.buffered > 0 || contiguity.lostEarlier > 0 || (atWrite !== undefined && atWrite.pairs > 0);
     if (!flushed && !contiguitySays) return false;
     const data: Record<string, unknown> = {
       reason: edges.reason,
@@ -5405,6 +5512,7 @@ export class Counterpart {
         evictedOther: contiguity.evictedOther ?? 0,
         renormalizedNodes: contiguity.renormalizedNodes ?? 0,
       },
+      ...(atWrite === undefined ? {} : { atWrite: { ...atWrite } }),
     };
     if (edges.code !== undefined) data["error"] = edges.code;
     try {

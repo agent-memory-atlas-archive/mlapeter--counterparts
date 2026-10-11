@@ -139,6 +139,34 @@ export interface AssociateTunables {
    * mid-session, then the session's end) and the forward bias applies. CAL.
    */
   CONTIGUITY_BATCH_MS: number;
+
+  // ── write-time links and replay deposits (Group 4, 2026-10-11) ───────────
+  /**
+   * The weight a new memory's link to what was IN MIND when it was written
+   * starts at (`at-write.ts`; bench item 5): the memories recall showed its
+   * session in the last `WRITE_LINK_TURNS` turns, and what a deliberate
+   * question showed within `WRITE_LINK_ASKED_MS` of the write. Proposed
+   * (`Associate.propose`), so room-only and never evicting. Half a co-use
+   * because footnotes are often noise (G1b precision 0.17–0.33): a faint trail
+   * that lives ~27 lived days unconfirmed and passes 0.6% of its node's
+   * activation until use strengthens it. CAL, no ancestry.
+   */
+  WRITE_LINK_WEIGHT: number;
+  /** How many of the session's most recent recall turns count as "in mind". CAL. */
+  WRITE_LINK_TURNS: number;
+  /** A deliberate question's answer counts as in mind this long either side of the write. CAL. */
+  WRITE_LINK_ASKED_MS: number;
+  /** At most this many write-time links per new memory, the nearest in mind first. CAL. */
+  WRITE_LINK_MAX: number;
+  /**
+   * The weight the nightly REPLAY proposes between each new memory a dream's
+   * bundle shows and the older neighbours shown beside it (review 06 C2, D5:
+   * "dream proposes, waking use confirms"). Through `Associate.propose` like a
+   * dream's own `link` (`dream/` `LINK_WEIGHT`, a co-use's worth), at half
+   * that, because nobody chose these pairs: the bundle did. No model call.
+   * CAL, no ancestry.
+   */
+  REPLAY_LINK_WEIGHT: number;
 }
 
 export const TUNABLES: AssociateTunables = {
@@ -164,6 +192,12 @@ export const TUNABLES: AssociateTunables = {
   CONTIGUITY_BACKWARD: 0.5,
   CONTIGUITY_LAG_DECAY: 0.5,
   CONTIGUITY_BATCH_MS: 60_000,
+
+  WRITE_LINK_WEIGHT: 0.05,
+  WRITE_LINK_TURNS: 3,
+  WRITE_LINK_ASKED_MS: 15 * 60_000,
+  WRITE_LINK_MAX: 4,
+  REPLAY_LINK_WEIGHT: 0.05,
 };
 
 export function withTunables(overrides: Partial<AssociateTunables> = {}): AssociateTunables {

@@ -127,6 +127,11 @@ for `recall/`; telemetry by reference.
     buffered, what landed, what it pushed out, a failed pass, pairs lost before a flush
     recorded them. The nightly run's rows (a dream's gists and merges, a reflection's
     entry) are not the session's and are left out, counted (review of #281).
+    *Since 2026-10-11 (group 4, NOTES §17) the same pass gives each new memory a faint
+    link (`WRITE_LINK_WEIGHT` 0.05) to what was in mind when it was written — what recall
+    showed its session in the last few turns, and a deliberate question's answer near the
+    write — through `Associate.propose`: room-only, never evicting. It is the new memory's
+    encoding context; the shown memory's strength does not change (G1).*
 
 ## 6. Scars honored
 

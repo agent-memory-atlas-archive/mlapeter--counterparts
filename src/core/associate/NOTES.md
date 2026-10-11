@@ -487,3 +487,15 @@ evaporation can do it.
   and not named joins the credit pass's own set, not this one. They go to the pending file
   (the MCP server is not the worker) and land at the next boundary; the drewOn
   `recall.credit` row carries `linked`, the pairs sent.
+- **Write-time links** (item 2, bench item 5; `at-write.ts`, `Counterpart#linkAtWrite`).
+  In the boundary's contiguity pass, after its cursor moves, each new memory gets a
+  proposed link at `WRITE_LINK_WEIGHT` (0.05) to what was in mind when it was written:
+  what a deliberate question showed its session within `WRITE_LINK_ASKED_MS` of the write,
+  then what recall showed the session in its last `WRITE_LINK_TURNS` turns, newest first,
+  at most `WRITE_LINK_MAX`. Proposed, not buffered: room-only, never evicting, raised to at
+  least the weight from the decayed one (so a re-run adds nothing). Counted on the
+  boundary's `associate.flush` row as `atWrite` (planned, landed, noRoom, blocked,
+  frozen). This is the first edge source that does not need the reply: it is the new
+  memory's encoding context, not credit to the footnote — the footnote's strength is
+  untouched (CONTRACT G1). Test: the bench's clinic pair (73d42213) shape,
+  `association-group4.test.ts` › "2.".

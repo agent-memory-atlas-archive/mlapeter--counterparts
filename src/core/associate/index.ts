@@ -10,6 +10,8 @@
  *   `spread.ts`    a pure traversal `recall/` consumes as its hop channel
  *   `contiguity.ts` a pure planner: memories a session made next to each other
  *                  (temporal contiguity, 2026-09-28)
+ *   `at-write.ts`  a pure planner: a new memory's faint links to what was in
+ *                  mind when it was written (2026-10-11)
  *   `index.ts`     the binding: observer stance, the flush ordering, telemetry
  *
  * Three properties are structural here and worth stating at the top:
@@ -42,6 +44,7 @@ import type { Seed, SpreadResult } from "./spread.js";
 import { pairCredit, tierFactor, withTunables } from "./tunables.js";
 import type { AssociateTunables } from "./tunables.js";
 
+export * from "./at-write.js";
 export * from "./buffer.js";
 export * from "./contiguity.js";
 export * from "./edges.js";
