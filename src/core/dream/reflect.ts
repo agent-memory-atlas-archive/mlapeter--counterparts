@@ -1720,18 +1720,31 @@ export class Reflections {
       wireChars(dreamed?.journal ?? "") +
       earlier.reduce((n, e) => n + wireChars(e.entry), 0) +
       dreamSaw.reduce((n, s) => n + wireChars(s.text) + 30, 0);
-    const room = Math.max(0, T.ROOM_CHARS - spent - REFLECT_FURNITURE - offerRoom);
+    const avail = Math.max(0, T.ROOM_CHARS - spent - REFLECT_FURNITURE);
     const candOf = (mid: string, p: number): FitCandidate => {
       const v = see(mid) as { whole: string; line: string };
       return { id: mid, priority: p, line: v.line, whole: v.whole };
     };
-    const shared = fit([...priority].map(([mid, p]) => candOf(mid, p)), { room, excerptChars: T.DETAIL_CHARS });
-    // An offer the shared fit left waiting, or showed as a bare id, is shown
-    // as a line at least in its own room (plus whatever the shared fit left).
-    const thin = new Set([...shared.waiting, ...shared.placed.filter((p) => p.fidelity === "id").map((p) => p.id)]);
-    const rescue = unmarkedIds.filter((x) => thin.has(x));
-    const offer = fit(rescue.map((mid) => candOf(mid, 0)), { room: offerRoom + Math.max(0, room - shared.used), excerptChars: T.DETAIL_CHARS, least: "line" });
-    const fitted = mergeFits(shared, offer);
+    const cands = [...priority].map(([mid, p]) => candOf(mid, p));
+    const thinIn = (f: FitOutcome): Set<string> => new Set([...f.waiting, ...f.placed.filter((p) => p.fidelity === "id").map((p) => p.id)]);
+    // A night whose shared fit already shows the offer a line or more is
+    // fitted exactly as before (review of #383): the reserve is only taken
+    // when it is needed, so a quiet night does not change.
+    const plain = fit(cands, { room: avail, excerptChars: T.DETAIL_CHARS });
+    let fitted: Pick<FitOutcome, "placed" | "waiting" | "report"> = plain;
+    if (unmarkedIds.some((x) => thinIn(plain).has(x))) {
+      // Never more than the room there is (review of #383): on a night the
+      // fixed parts already fill, the reserve shrinks with it.
+      const reserve = Math.min(offerRoom, avail);
+      const room = avail - reserve;
+      const shared = fit(cands, { room, excerptChars: T.DETAIL_CHARS });
+      // An offer the shared fit left waiting, or showed as a bare id, is shown
+      // as a line at least in its own room (plus whatever the shared fit left).
+      const thin = thinIn(shared);
+      const rescue = unmarkedIds.filter((x) => thin.has(x));
+      const offer = fit(rescue.map((mid) => candOf(mid, 0)), { room: reserve + Math.max(0, room - shared.used), excerptChars: T.DETAIL_CHARS, least: "line" });
+      fitted = mergeFits(shared, offer);
+    }
     const left = new Set(fitted.waiting);
     const kept = (x: string): boolean => !left.has(x);
     const memories: Record<string, ReflectItem> = {};
@@ -2292,7 +2305,9 @@ function excerpt(text: string, max: number): string {
 function mergeFits(shared: FitOutcome, offer: FitOutcome): Pick<FitOutcome, "placed" | "waiting" | "report"> {
   const moved = new Set(offer.placed.map((p) => p.id));
   const placed = [...offer.placed, ...shared.placed.filter((p) => !moved.has(p.id))];
-  const waiting = [...shared.waiting.filter((x) => !moved.has(x)), ...offer.waiting];
+  // One the offer could not re-place keeps what the shared fit gave it (a
+  // bare id, or waiting), so it is neither counted twice nor both placed and waiting.
+  const waiting = shared.waiting.filter((x) => !moved.has(x));
   const count = (f: Fidelity): number => placed.filter((p) => p.fidelity === f).length;
   return {
     placed,
