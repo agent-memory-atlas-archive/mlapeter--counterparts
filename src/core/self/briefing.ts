@@ -129,9 +129,10 @@ export const TRIM_ORDER: readonly LaneName[] = [
  *     by the review of #380): it takes room from every lane listed above it —
  *     the trim loop's lanes, then "Work here", the Yesterday line's titles
  *     and the handoffs' room (`takeRoom`) — before it steps down: chapters
- *     first, then directories, then the line. Below it, every dated item and
- *     the page: "Arriving:", "Still open"'s first item, the page's borrowing,
- *     a due-day plain reminder. Only on a day other directories were active:
+ *     first, then directories, then the line. Above it, every dated item and
+ *     the page: "Arriving:", "Still open"'s first item (the lane's last item
+ *     left counts as its first, with its count), the page's borrowing, a
+ *     due-day plain reminder. Only on a day other directories were active:
  *     no line, nothing taken;
  *   - `arriving` — "Arriving:" past its first line;
  *   - `openFirst` — "Still open"'s first item and its count, when it would
