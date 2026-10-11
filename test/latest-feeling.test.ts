@@ -79,7 +79,8 @@ describe("the latest feeling", () => {
     const id = put(store, "Ada mentioned the boat trip in passing.");
     store.addFeelings(id, [{ whose: "owner", core: "calm", emotion: "content", strength: 0.2 }]);
     clock += 86_400_000;
-    store.addFeelings(id, [{ whose: "owner", core: "happy", emotion: "excited", strength: 0.7 }]);
+    // A feeling-now (recorded later, awake): how it sits now.
+    store.addFeelings(id, [{ whose: "owner", core: "happy", emotion: "excited", strength: 0.7 }], { source: "awake" });
     expect(store.row(id)?.feeling_peak).toBe(0.7);
   });
 
