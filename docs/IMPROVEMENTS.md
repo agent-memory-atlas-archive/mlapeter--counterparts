@@ -262,6 +262,26 @@ were refined by b2+f8 at the review of #369, named where they were):
 
 - Decided by b2+f8, 2026-10-10, lightly held; rank moved by the review of #380: the "Today, elsewhere" line is capped at 300 bytes (folders past the cap become "+N more"; the last form is the count alone) and ranks in `ROOM_ORDER` between the handoffs' room and "Arriving:" past its head. It takes room from "Nearby", craft, "Still open" past its first item, "Work here", "Still open"'s count beside kept items, the Yesterday line's titles, "Last here" and the older handoffs; "Arriving:", "Still open"'s first item and count, the page and its borrowing, and a due-day plain reminder come before it. Only on days other folders were active; with no line the wake is byte-identical. Why: in the 10-10 test-build rehearsal the line never printed at the owner's 9,000-byte ceiling — his ~5.9 KB page filled the wake and the line was the first thing cut after Nearby — and it exists for his symptom, morning sessions in different folders not knowing about each other. Why this rank and not #380's (above the page's borrowing, the page chosen in the line's bytes less room): measured at 9,000 with a due-day reminder and four handoffs, it is the lowest rank that prints the line both in the owner-like case (~5.9 KB page, one other folder: ranks above "Still open"'s count suffice, the line takes that count) and in a busier one (6.5 KB page that borrows, "Work here", a Yesterday line, two or three other folders: nothing below the handoffs' room printed it; from there up it prints whole and "Work here" loses its one line). Higher buys nothing in either case and costs the page: at #380's rank a 6,767-byte page (an owner's page size from the history) stepped from whole to its next rung for a 243-byte line (8,881 → 4,172 bytes with no short version); here it stays whole and the line prints. #367 holds (dated items before furniture) and #363 holds (the page never gives way to the line).
 
+### Decided by the drewOn builder, 2026-10-11, lightly held (`drewOn`, item 3 above)
+
+- Decided by the drewOn builder, 2026-10-11, lightly held: an id from the wake comes back
+  `not-shown`. Why: the one guard is recall's per-session record (footnotes, loud memories,
+  recall answers), and the wake has none — `self.briefing.shown` is per published bundle and
+  cannot say which session read it. Admitting it would need a second guard, and the wake is
+  the always-near display the `on-display` rule exists for. Opening a wake line still credits it.
+- Decided by the drewOn builder, 2026-10-11, lightly held: the same-day lift to a full use
+  crosses sessions — `Store#reinforce` reads today's `engaged` return row when the caller
+  names no lower tier. Why: `drewOn` lands at one session's Stop, and the open that should
+  lift it is usually another session's; #371 lifted only within a session. Missed: an engaged
+  credit whose return was refused because another return already counted that day.
+- Decided by the drewOn builder, 2026-10-11, lightly held: "at most 3 per boundary" is per
+  recall turn, shared by `session_end` and `chapter` (both answer the same ask, in the turn
+  the Stop opened); only credits that land use a slot, so a refused id never pushes a later
+  one out. Edge: an engaged credit lifted by an open frees its slot that turn.
+- Decided by the drewOn builder, 2026-10-11, lightly held: `drewOn` is credited whatever the
+  rest of the call does (a refused chapter, `memories-required`), and rides out on every
+  answer; it is not read on the `writeUp` divert, which writes up another session.
+
 ### Also noted
 
 - **A read-without-crediting mode for audits.** A way to read memories (a review, a rules
