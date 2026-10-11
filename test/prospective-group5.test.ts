@@ -28,6 +28,7 @@ import { openAdapter, plainLine } from "../src/adapters/claude-code/index.js";
 import type { AdapterConfig, HookInput } from "../src/adapters/claude-code/index.js";
 import { deliverTurn } from "../src/adapters/claude-code/bin/hook.js";
 import { openServer } from "../src/adapters/mcp/index.js";
+import { McpServer } from "../src/adapters/mcp/server.js";
 import { Dashboard } from "../src/adapters/dashboard/index.js";
 import { mechanismPanel } from "../src/adapters/dashboard/web/views/mechanism-panel.js";
 import { addDays } from "../src/core/time.js";
@@ -200,6 +201,71 @@ describe("a missed plain day is told once, late, within its grace", () => {
   });
 });
 
+/** A server and a store on the same injected clock (review of #411), so a write is learned on that day. */
+function serverAt(iso: string): McpServer {
+  const now = (): number => Date.parse(iso);
+  const counterpart = Counterpart.open({ dir, owner: true, now, timeZone: "UTC" });
+  open.push(counterpart);
+  return new McpServer({ counterpart, session: "sess_group5_r", scope: "/scope/group5", owner: true, now });
+}
+
+async function noteAt(s: McpServer, args: Record<string, unknown>): Promise<string> {
+  const body = (await s.call("remember", args)).structuredContent;
+  expect(body["stored"]).toBe(true);
+  return body["id"] as string;
+}
+
+describe("the late beat, never twice and never wrong (review of #411)", () => {
+  test("two processes reading the same missed day: exactly one claims it", () => {
+    const a = brain();
+    const id = dated(a, "2026-10-12", { meta: PLAIN });
+    const b = brain();
+    const da = a.plainDueToday({ at: "2026-10-13" });
+    const db = b.plainDueToday({ at: "2026-10-13" });
+    expect([...da, ...db].map((r) => [r.memoryId, r.late === true])).toEqual([[id, true], [id, true]]);
+    const won = [a.claimPlainReminder(da[0]!, { at: "2026-10-13" }), b.claimPlainReminder(db[0]!, { at: "2026-10-13" })];
+    expect(won.filter(Boolean)).toHaveLength(1);
+    expect(a.store.eventLog({ name: PROSPECTIVE_PLAIN_EVENT })).toHaveLength(1);
+  });
+
+  test("an observer is told nothing late", () => {
+    const a = brain();
+    dated(a, "2026-10-12", { meta: PLAIN });
+    a.close();
+    open.length = 0;
+    const o = Counterpart.open({ dir, owner: true, observer: true });
+    open.push(o);
+    expect(o.plainReminders({ at: "2026-10-13" })).toEqual([]);
+  });
+
+  test("moved after its old day passed: the old day is never told late, the new one on time", async () => {
+    const old = await noteAt(serverAt("2026-10-01T12:00:00Z"), {
+      text: "Pay the quarterly estimated taxes on the twelfth.",
+      eventDate: "2026-10-12",
+      remind: "plain",
+    });
+    for (const c of open.splice(0)) c.close();
+    const s = serverAt("2026-10-13T08:00:00Z");
+    const moved = await noteAt(s, { text: "The quarterly estimated tax deadline moved to the twentieth.", updates: old, eventDate: "2026-10-20" });
+    for (let k = 1; k <= 7; k++) expect(s.counterpart.plainReminders({ at: addDays("2026-10-12", k) }), String(k)).toEqual([]);
+    expect(s.counterpart.plainReminders({ at: "2026-10-20" }).map((r) => [r.memoryId, r.late === true])).toEqual([[moved, false]]);
+  });
+
+  test("cancelled (eventDate null) before the late beat, or written after its day: nothing", async () => {
+    const old = await noteAt(serverAt("2026-10-01T12:00:00Z"), {
+      text: "Pay the quarterly estimated taxes on the twelfth.",
+      eventDate: "2026-10-12",
+      remind: "plain",
+    });
+    for (const c of open.splice(0)) c.close();
+    const s = serverAt("2026-10-13T08:00:00Z");
+    await noteAt(s, { text: "The quarterly estimated taxes are paid, so that is done.", updates: old, eventDate: null });
+    await noteAt(s, { text: "There was a plumber visit on the twelfth.", eventDate: "2026-10-12", remind: "plain" });
+    expect(s.counterpart.plainReminders({ at: "2026-10-13" })).toEqual([]);
+    expect(s.counterpart.plainReminders({ at: "2026-10-14" })).toEqual([]);
+  });
+});
+
 /** Record `ids` as footnoted to `sessionId`, as recall's own save would. */
 function shown(c: Counterpart, sessionId: string, ids: readonly string[]): void {
   const prior = loadGateState(c.store, sessionId).state;
@@ -246,6 +312,16 @@ describe("drewOn: a dated memory the session drew on is acted on", () => {
     expect(c.creditDrewOn("s1", [plain], { at: "2026-10-12" }).actedOn).toEqual([]);
     expect(c.prospective.horizon({ at: "2026-10-14" }).items[0]?.memoryId).toBe(plain);
     expect(told(c, "2026-10-14")).toEqual([{ id: plain, beat: "day", late: false }]);
+  });
+
+  test("a plain one drawn on in its grace before it was told late is still told late", () => {
+    const c = brain();
+    c.store.advanceClock("2026-10-10");
+    const plain = dated(c, "2026-10-12", { meta: PLAIN });
+    c.store.advanceClock("2026-10-13");
+    shown(c, "s1", [plain]);
+    expect(c.creditDrewOn("s1", [plain], { at: "2026-10-13" }).actedOn).toEqual([]);
+    expect(told(c, "2026-10-13")).toEqual([{ id: plain, beat: "day", late: true }]);
   });
 
   test("through session_end, on the server's own calendar day, the answer says which were acted on", async () => {

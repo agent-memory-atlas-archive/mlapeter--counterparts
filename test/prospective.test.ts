@@ -8,7 +8,7 @@
  * real store.
  *
  * Assertions name the REASON — `DeriveReason`, `FireReason`, `SuppressReason`,
- * `RescheduleReason`, `ExitKind` — never just "it was absent". A window that did
+ * `RescheduleReason` — never just "it was absent". A window that did
  * not fire because the assistant already used the memory and one that did not
  * fire because it has not opened yet are different systems, and a test that
  * cannot tell them apart is the test v1 shipped (scar §2.4).
@@ -1050,7 +1050,7 @@ describe("reschedule — the gated compare-and-swap", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("observer — reads are welcome, firing state never advances", () => {
-  test("an observer may compute arrivals, the horizon, derivation and exits", () => {
+  test("an observer may compute arrivals, the horizon and derivation, and acts on nothing", () => {
     const live = store();
     const id = dated(live, "2026-09-04");
     live.close();

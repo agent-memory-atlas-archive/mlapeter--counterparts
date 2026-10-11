@@ -330,7 +330,7 @@ a `DateIntent`, so it neither carries nor moves.
   reminder that faded or was put away is not revived onto a live row by a revision.
 
 Still open, left alone: the old memory's firing rows stay where they are, so `exitReport`
-can count a moved window twice (once per memory); and a failed clear (`moved: false`,
+can count a moved window twice (once per memory; moot since 2026-10-11, §20: `exitReport` is removed); and a failed clear (`moved: false`,
 evented, `unmoved: true` in the reply) leaves the reminder on both rows — a double, never a
 loss, because the successor is minted first.
 
