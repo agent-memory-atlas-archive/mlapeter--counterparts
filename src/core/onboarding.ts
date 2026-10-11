@@ -180,15 +180,27 @@ export function noteOffered(store: MetaStore, input: { on: string; session: stri
  * mod, which reads the state, sees a meeting it may offer again.
  */
 export function offerDue(store: MetaStore, input: { on: string; session: string }): { due: boolean; state: MeetState } {
-  let state = meetState(store);
+  const state = settleOffer(store, input.on);
   const last = lastOffer(store);
-  if (state === "offered" && last !== null && last.on < input.on) {
-    store.setMeta(ONBOARDING_MEET_KEY, "later");
-    state = "later";
-  }
   if (state !== "not_started" && state !== "later") return { due: false, state };
   if (last !== null && (last.session === input.session || last.on >= input.on)) return { due: false, state };
   return { due: true, state };
+}
+
+/**
+ * AN `offered` LEFT BY AN EARLIER DAY BECOMES `later` — the one write a wake
+ * makes before it says the state (review of #419: the marker is computed from
+ * the settled state, so it never says `offered` while the line says "last
+ * time they said later"). Idempotent; returns the state after it.
+ */
+export function settleOffer(store: MetaStore, on: string): MeetState {
+  const state = meetState(store);
+  const last = lastOffer(store);
+  if (state === "offered" && last !== null && last.on < on) {
+    store.setMeta(ONBOARDING_MEET_KEY, "later");
+    return "later";
+  }
+  return state;
 }
 
 /** A step that moves the state: `later`, `skipped` (don't ask again) or `done`. A finished meeting stays finished. */

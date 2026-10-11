@@ -2807,7 +2807,7 @@ export class McpServer {
     const dream = this.wakeDreamLine(input);
     const notices = [this.wakeUpdateLine(), this.wakeDoctorLine()].filter((l): l is string => l !== null);
     const head = `Counterparts session for this chat: ${input.sessionId}. Pass session: ${input.sessionId} on session_end, chapter, dream and reflect in this chat.`;
-    const lead = [lc.nowLine(), lc.onboardingMarker(), ...told.map((r) => plainContextLine(r))].join("\n");
+    const lead = [lc.nowLine(), lc.onboardingMarker(input), ...told.map((r) => plainContextLine(r))].join("\n");
     // THE FIRST MEETING'S LINE (2026-10-11): the same offer, or the second
     // session's memory, a Claude Code session start carries. A tool result is
     // certain delivery, so it is committed here.

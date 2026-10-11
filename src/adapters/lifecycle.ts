@@ -64,7 +64,7 @@ import type {
   Turn as CapturedTurn,
 } from "../core/remember/index.js";
 import { calendarDate } from "../core/self/index.js";
-import { ahaDue, ahaLine, markAha, meetPending, meetState, noteOffered, offerDue, offerLine, onboardingMarker } from "../core/onboarding.js";
+import { ahaDue, ahaLine, markAha, meetPending, meetState, noteOffered, offerDue, offerLine, onboardingMarker, settleOffer } from "../core/onboarding.js";
 import { localClock, localDate, readableDate } from "../core/time.js";
 
 import { CONFIG_FILE_EVENT } from "./config-path.js";
@@ -717,9 +717,24 @@ export class Lifecycle implements HostLifecycle {
     }
   }
 
-  /** The first meeting's machine marker for a session-start wake (`core/onboarding.ts#onboardingMarker`). A read; never throws. */
-  onboardingMarker(): string {
-    return onboardingMarker(meetState(this.counterpart.store));
+  /**
+   * The first meeting's machine marker for a session-start wake
+   * (`core/onboarding.ts#onboardingMarker`). Given the session, it says the
+   * SETTLED state (review of #419): an `offered` from an earlier day is moved
+   * to `later` first, as the line beside the wake would move it, so the two
+   * never disagree. Under observer, for the nightly run or without an id it
+   * only reads. Never throws.
+   */
+  onboardingMarker(input?: SessionInput & { nightRun?: boolean }): string {
+    const store = this.counterpart.store;
+    if (input !== undefined && !this.observer && input.nightRun !== true && input.sessionId.length > 0) {
+      try {
+        return onboardingMarker(settleOffer(store, input.at ?? store.today()));
+      } catch {
+        /* the read below says what it can */
+      }
+    }
+    return onboardingMarker(meetState(store));
   }
 
   /** Is the first meeting still to happen? The first-launch scope question waits while it is: the meeting asks where. */

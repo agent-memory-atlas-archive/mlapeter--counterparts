@@ -648,7 +648,7 @@ export class ClaudeCodeAdapter extends Lifecycle {
       // THE FIRST MEETING'S MARKER (2026-10-11), on its own line under the
       // clock, on every session-start wake: the state word only, for the mod,
       // which cannot reach the dashboard before somebody starts it.
-      const marker = `${this.onboardingMarker()}\n`;
+      const marker = `${this.onboardingMarker(input)}\n`;
       const lead = `${woke.text.length === 0 && plain.context.length === 0 && codeTab === null ? "" : `${this.nowLine()}\n`}${marker}${codeTab === null ? "" : `${codeTab}\n`}${plain.context}`;
       const sent = woke.bytes + Buffer.byteLength(lead, "utf8");
       const rides =

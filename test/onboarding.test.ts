@@ -503,6 +503,27 @@ describe("the wake's machine marker", () => {
     });
   }
 
+  test("an offered from an earlier day: the marker says the settled state (later), as the line beside it does", async () => {
+    newInstallStore();
+    await server({ session: "s1" }).call("meet", {});
+    for (const x of open.splice(0)) x.counterpart.close();
+    const a = adapter();
+    try {
+      const out = a.sessionStart({ sessionId: "s2", scope: proj, at: DAY2 });
+      expect((out.injection ?? "").split("\n")).toContain("<!-- counterparts:onboarding meet=later -->");
+      expect(out.ask ?? "").toContain("(last time they said later)");
+    } finally {
+      a.counterpart.close();
+    }
+    // Desktop's wake too: a day-1 read, a day-2 wake.
+    rmSync(storeDir, { recursive: true, force: true });
+    newInstallStore();
+    await server({ session: "s1" }).call("meet", {});
+    const day2 = Date.parse(`${DAY2}T12:00:00Z`);
+    const text = String((await server({ host: "claude-desktop", scope: "claude-desktop:", now: () => day2 }).call("wake", {})).structuredContent["wake"]);
+    expect(text.split("\n")).toContain("<!-- counterparts:onboarding meet=later -->");
+  });
+
   test("Claude Desktop's wake carries it too, and the offer", async () => {
     newInstallStore();
     const s = server({ host: "claude-desktop", scope: "claude-desktop:" });
