@@ -38,6 +38,13 @@
 # reads neither unless told to; the single binary is built with both off
 # (--no-compile-autoload-dotenv, --no-compile-autoload-bunfig).
 #
+# That file also turns Bun's runtime auto-install off (`[install] auto =
+# "disable"`), here and in every process these start: where no node_modules
+# sits above the plugin (Claude Code's dependency install did not run: no npm,
+# its time limit, offline), Bun would otherwise fetch the embedding table from
+# the npm registry, unpinned, behind the person's back. Off, the table is simply
+# missing, and doctor says so.
+#
 # WITH NONE OF THE FOUR, THIS FETCHES THE BINARY — once, in the background,
 # under a lock, never blocking a hook or the server's start-up:
 #

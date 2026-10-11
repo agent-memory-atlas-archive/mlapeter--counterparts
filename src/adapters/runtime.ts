@@ -35,8 +35,11 @@
  *     inside our process before our entry (measured on Bun 1.3.10, through
  *     `run` and a bare script alike, the plugin's launcher included; `[run]
  *     preload` does not apply to these launches). `--config=<file>` makes Bun
- *     read that file instead, and `EMPTY_BUNFIG` is one with nothing in it. A
- *     missing one is fatal to Bun, so it ships beside this file and must stay.
+ *     read that file instead, and `EMPTY_BUNFIG` is one with nothing in it but
+ *     `[install] auto = "disable"`: no runtime auto-install, so a package missing
+ *     from node_modules is never fetched from npm behind the person's back (the
+ *     file says more). A missing one is fatal to Bun, so it ships beside this
+ *     file and must stay.
  *
  * Node has neither: it reads a `.env` only when `--env-file` names one, and no
  * `bunfig.toml`. Commands written before this lack one flag or both: they
