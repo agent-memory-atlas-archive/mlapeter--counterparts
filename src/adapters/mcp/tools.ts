@@ -409,7 +409,7 @@ const EVENT_DATE_FIELD_PRIVILEGE: Privilege = {
 const REMINDER_PRIVILEGES: readonly Privilege[] = [
   {
     claim:
-      'A "plain" reminder is said at most once per beat — on its day, or on the first and the last day of a month or range — and never under observer stance; a "quiet" one is only ever a cue, capped at the footnote tier and spent at most twice per window. A recurring date counts each time it comes round as its own, and each time it is said or surfaced counts once as a use of the memory; while it repeats, the nightly prune keeps it, and it comes round on its date even when it has faded.',
+      'A "plain" reminder is said at most once per beat — on its day, or on the first and the last day of a month or range — and never under observer stance; a day item whose day passed untold is said once, late, at the first session within the week after, saying which day it was for; a "quiet" one is only ever a cue, capped at the footnote tier and spent at most twice per window. A recurring date counts each time it comes round as its own, and each time it is said or surfaced counts once as a use of the memory; while it repeats, the nightly prune keeps it, and it comes round on its date even when it has faded.',
     mechanizedBy:
       "src/core/prospective/index.ts#Prospective.plainDue + claimPlain (dedupKey latch) + fire (FIRES_PER_WINDOW) -> src/core/counterpart.ts#recallForTurn; src/core/prospective/windows.ts#recurringWindowAt (one window key per occurrence); Prospective.occurrenceUndelivered -> src/core/counterpart.ts#creditOccurrence (store.reinforce, surfaced) + src/core/physics/index.ts#pruneVerdict (recurring); src/core/prospective/derive.ts#derive (a live repeat is not refused faded)",
   },
@@ -839,8 +839,8 @@ const DREW_ON_PROPERTY = {
 /** The claim `session_end` and `chapter` share about `drewOn`. */
 const DREW_ON_PRIVILEGE = {
   claim:
-    "`drewOn` credits only memories this session was shown — its footnotes, loud memories and recall answers — at half a use, at most 3 per boundary and once a day each. An id it was not shown, a handoff, a superseded memory or one faded under a newer one is refused by name, and nothing is credited for it.",
-  mechanizedBy: "src/core/counterpart.ts#creditDrewOn",
+    "`drewOn` credits only memories this session was shown — its footnotes, loud memories and recall answers — at half a use, at most 3 per boundary and once a day each. An id it was not shown, a handoff, a superseded memory or one faded under a newer one is refused by name, and nothing is credited for it. A dated memory it names was acted on: it stops coming back as a footnote for its current date (a plain one is still told on its day).",
+  mechanizedBy: "src/core/counterpart.ts#creditDrewOn -> src/core/prospective/index.ts#Prospective.actedOn",
 };
 
 const SESSION_END: ToolSpec = {

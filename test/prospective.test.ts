@@ -48,7 +48,6 @@ import type {
   Arrival,
   DerivableMemory,
   DeriveReason,
-  ExitKind,
   FireReason,
   SuppressReason,
 } from "../src/core/prospective/index.js";
@@ -1065,7 +1064,7 @@ describe("observer — reads are welcome, firing state never advances", () => {
     expect(result.arrivals.map((a) => a.memoryId)).toEqual([id]);
     expect(p.horizon({ at: "2026-09-04", day: 5 }).items).toHaveLength(1);
     expect(p.deriveFor(id, "2026-09-04")?.reason).toBe("eligible");
-    expect(p.exitReport("2026-09-04", 5).counts.open).toBe(1);
+    expect(p.actedOn(id, "2026-09-04", 5)).toEqual([]);
   });
 
   test("every transition refuses under observer, and every stand-down is observable", () => {
@@ -1142,75 +1141,42 @@ describe("observer — reads are welcome, firing state never advances", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Exits: every dated memory names its exit (§5 G12, scar §2.17)
+// Acted on: the referenced-stop's live caller (2026-10-11, review 07 C3)
 // ═══════════════════════════════════════════════════════════════════════════
 
-describe("exits — every dated memory names its exit", () => {
-  test("open, fired and referenced are counted apart", () => {
-    const s = store();
-    const open = dated(s, "2026-12-25", { body: `${BODY} open` });
-    const fired = dated(s, "2026-09-04", { body: `${BODY} fired` });
-    const referenced = dated(s, "2026-09-04", { body: `${BODY} referenced` });
-    const p = engine(s);
-    p.fire({ memoryId: fired, windowKey: "d:2026-09-04", at: "2026-09-04", day: 5 });
-    p.reference(referenced, "d:2026-09-04", 5);
-
-    const report = p.exitReport("2026-09-04", 5);
-    const kindOf = (id: string): ExitKind | undefined =>
-      report.exits.find((e) => e.memoryId === id)?.kind;
-    expect(kindOf(open)).toBe("open");
-    expect(kindOf(fired)).toBe("fired");
-    expect(kindOf(referenced)).toBe("referenced");
-    expect(report.counts.open).toBe(1);
-    expect(report.counts.fired).toBe(1);
-    expect(report.counts.referenced).toBe(1);
-  });
-
-  test("a window that closed unremarked EXPIRES; one whose memory faded first FADES", () => {
-    const s = store();
-    // A dull memory (2026-10-10): on the power-law curve a salient, felt one
-    // does not reach the floor for years — that is the curve working.
-    const expired = dated(s, "2026-09-04", { body: `${BODY} expired`, salience: DULL });
-    const report = engine(s).exitReport("2026-09-20", 5);
-    expect(report.exits.find((e) => e.memoryId === expired)?.kind).toBe("expired");
-
-    // Same window, same store, same clock — only the LIVED DAY being asked about
-    // moves, and the memory has decayed into insignificance by then (§12 G10 —
-    // forgetting it is memory working, not a miss). The store's own clock stays
-    // at 0, so this fails if strength is read from the clock instead of `day`.
-    expect(s.livedDay()).toBe(0);
-    const faded = engine(s).exitReport("2026-09-20", 900);
-    expect(faded.exits.find((e) => e.memoryId === expired)?.kind).toBe("faded");
-  });
-
-  test("a rescheduled window exits as superseded, not as expired", () => {
+describe("actedOn — a memory the session drew on stops its open window", () => {
+  test("an open quiet window is referenced, and fires no more", () => {
     const s = store();
     const id = dated(s, "2026-09-04");
     const p = engine(s);
-    p.reschedule({
-      memoryId: id,
-      expectCurrentDate: "2026-09-04",
-      nextDate: "2026-10-02",
-      at: "2026-09-01",
-    });
-    s.revise(id, { eventDate: "2026-10-02", reason: "rescheduled" });
-
-    const report = p.exitReport("2026-09-30", 8);
-    const byKey = new Map(report.exits.map((e) => [e.windowKey, e.kind]));
-    expect(byKey.get("d:2026-09-04")).toBe("superseded-by-reschedule");
-    expect(byKey.get("d:2026-10-02")).toBe("open");
-    expect(report.counts["superseded-by-reschedule"]).toBe(1);
+    expect(p.fire({ memoryId: id, windowKey: "d:2026-09-04", at: "2026-09-03", day: 4 }).fired).toBe(true);
+    expect(p.actedOn(id, "2026-09-03", 4)).toEqual(["d:2026-09-04"]);
+    expect(p.fire({ memoryId: id, windowKey: "d:2026-09-04", at: "2026-09-04", day: 5 }).reason).toBe("already-referenced");
+    expect(p.arrivals({ at: "2026-09-04", day: 5 }).arrivals).toEqual([]);
   });
 
-  test("nothing is swept: the exit report is a question, not a pass", () => {
+  test("a window not yet open, or already passed, owes it nothing", () => {
     const s = store();
-    const id = dated(s, "2026-09-04");
+    const ahead = dated(s, "2026-12-25", { body: `${BODY} ahead` });
+    const past = dated(s, "2026-08-01", { body: `${BODY} past` });
     const p = engine(s);
-    p.arm(id, "d:2026-09-04");
-    const before = JSON.stringify(s.prospectiveFor(id));
-    p.exitReport("2027-01-01", 200);
-    p.exitReport("2027-01-01", 200);
-    expect(JSON.stringify(s.prospectiveFor(id))).toBe(before);
+    expect(p.actedOn(ahead, "2026-09-04", 5)).toEqual([]);
+    expect(p.actedOn(past, "2026-09-04", 5)).toEqual([]);
+    expect(s.prospectiveFor(ahead)).toEqual([]);
+    expect(s.prospectiveFor(past)).toEqual([]);
+  });
+
+  test("a PLAIN reminder keeps its day until it is told; after, it is stopped like any other", () => {
+    const s = store();
+    const id = dated(s, "2026-09-04", { meta: { [CUE_MODE_META]: "plain" } });
+    const p = engine(s);
+    expect(p.actedOn(id, "2026-09-03", 4)).toEqual([]);
+    expect(p.horizon({ at: "2026-09-04", day: 5 }).items.map((i) => i.memoryId)).toEqual([id]);
+    const due = p.plainDue({ at: "2026-09-04" });
+    expect(due.map((d) => d.memoryId)).toEqual([id]);
+    expect(p.claimPlain(due[0]!, { at: "2026-09-04", day: 5 })).toBe(true);
+    expect(p.actedOn(id, "2026-09-05", 6)).toEqual(["d:2026-09-04"]);
+    expect(p.arrivals({ at: "2026-09-06", day: 7 }).suppressed.map((x) => x.reason)).toEqual(["already-referenced"]);
   });
 });
 
@@ -1246,7 +1212,7 @@ describe("telemetry is content-by-reference", () => {
     p.arrivals({ at: "2026-09-04", day: 5 });
     p.fire({ memoryId: id, windowKey: "d:2026-09-04", at: "2026-09-04", day: 5 });
     p.horizon({ at: "2026-09-04", day: 5 });
-    p.exitReport("2026-09-04", 5);
+    p.actedOn(id, "2026-09-04", 5);
     const dump = JSON.stringify(p.events());
     expect(dump).not.toContain("Portland");
     expect(dump).not.toContain("truck");

@@ -553,6 +553,9 @@ export interface DrewOnResult {
   readonly refused: { id: string; reason: string }[];
   /** Past the boundary's cap (`DREW_ON_MAX_PER_BOUNDARY`), not attempted. */
   readonly capped: string[];
+  /** Dated memories whose open reminder window this stopped
+   *  (`Prospective#actedOn`): acted on, so no more footnotes this window. */
+  readonly actedOn: string[];
 }
 /**
  * ONE ROW PER APPLY OF CARRIED CO-ACTIVATION, written by the process that
@@ -3855,16 +3858,26 @@ export class Counterpart {
    * already credited above this tier. An open later the same day lifts an
    * engaged credit to a full use (`physics#creditUse`'s `upgradeFrom`).
    *
+   * A DATED memory named here was ACTED ON (2026-10-11, review 07 C3; wired
+   * by the group-5 builder, lightly held): once an id passes the guards
+   * above — shown, live, not replaced — its open reminder window is stopped
+   * (`Prospective#actedOn`, the referenced-stop), whether or not the credit
+   * itself lands under the cap or the once-a-day rule: the session said it
+   * used it, and a reminder already used should not come back as a footnote.
+   * Needs the calendar day the host is on (`opts.at`); without one, nothing
+   * is stopped. A plain reminder keeps its day (`actedOn`).
+   *
    * Under observer stance nothing is read or written: every id comes back
    * refused `observer`.
    */
-  creditDrewOn(sessionId: string, named: readonly string[]): DrewOnResult {
+  creditDrewOn(sessionId: string, named: readonly string[], opts: { at?: string } = {}): DrewOnResult {
     const day = this.store.livedDay();
     const ids = [...new Set(named.map((id) => id.trim()).filter((id) => id.length > 0))];
     const credited: string[] = [];
     const refused: { id: string; reason: string }[] = [];
     const capped: string[] = [];
-    const done = (): DrewOnResult => ({ day, named: ids.length, credited, refused, capped });
+    const actedOn: string[] = [];
+    const done = (): DrewOnResult => ({ day, named: ids.length, credited, refused, capped, actedOn });
     if (this.observer) {
       for (const id of ids) refused.push({ id, reason: "observer" });
       return done();
@@ -3913,6 +3926,14 @@ export class Counterpart {
         refuse("faded-under-newer");
         continue;
       }
+      if (opts.at !== undefined && row.event_date !== null) {
+        try {
+          if (this.prospective.actedOn(id, opts.at, day).length > 0) actedOn.push(id);
+        } catch (err) {
+          // A lost stop costs one more polite footnote, never the credit (§12 G12).
+          this.emit("counterpart.drewOn.actedOn.failed", id, { code: errCode(err) });
+        }
+      }
       if (slots <= 0) {
         capped.push(id);
         continue;
@@ -3935,6 +3956,7 @@ export class Counterpart {
       credited: credited.length,
       refused: refused.length,
       capped: capped.length,
+      actedOn: actedOn.length,
     });
     return done();
   }

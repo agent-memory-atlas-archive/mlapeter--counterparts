@@ -275,7 +275,8 @@ The dashboard's "N today" counts rows on the current LIVED day, like its seven-d
 it stays on yesterday's number in the morning until a boundary moves the clock.
 
 **Still not wired:** `reference()` (brake 4, referenced-stop) has no live caller — when the
-model uses a dated memory, nothing yet stops its window. Session dedup (brake 3) is still
+model uses a dated memory, nothing yet stops its window. *(Wired 2026-10-11 through
+`drewOn`, §20.)* Session dedup (brake 3) is still
 in-process only, and every hook is its own process, so in live use brakes 1 and 2 are the
 ones doing the work. No bad-day or crisis switch was flipped: `refractory` and
 `previousSessionHighAffect` exist, and no live caller passes them.
@@ -394,7 +395,8 @@ written for both precisions so the two cannot drift if that changes.
   revised. The old row keeps its `meta.recurring` when its date is cleared — inert with no
   date, and kept in its version either way.
 
-Named, not fixed: `exitReport` (§5 G12, "every dated memory names its exit") sees a
+Named, not fixed *(both moot since 2026-10-11, §20: `exitReport` is removed, and the
+dashboard's waiting list shows a repeat's next occurrence)*: `exitReport` (§5 G12, "every dated memory names its exit") sees a
 repeating memory's CURRENT or next occurrence, plus any past occurrence that left a firing
 row. A past occurrence nobody fired — a quiet birthday in a week with no sessions, or a
 plain one told only through the plain latch, which writes an event and no firing row —
@@ -539,3 +541,36 @@ window closes the memory is on its own curve from its own anchor, as if it had n
 pending, so a pending reminder whose height alone sits at the floor is still asked for.
 G10 is reversed, lightly held (decided by b2+f8; on the rules audit; it may also revise the
 owner's 2026-09-26 note "decay still holds" — first on Mike's list).
+
+## 20. Group 5: a late beat, the referenced-stop wired, `exitReport` gone (2026-10-11)
+
+Review 07 C3–C5, item 18 of the mechanisms work; the group-5 builder, lightly held.
+
+- **A missed plain day is told once, late** (C4). `plainDue` also reads the days
+  `at − GRACE_DAYS .. at − 1` (and, for a repeat, the occurrence `recurringWindowAt` still
+  has open): a plain DAY item whose `day` latch was never written is due again, marked
+  `late`, until its grace closes. It writes the SAME latch as the day (`…:day`, payload
+  `late: true`), so every reader of "was the day told" — `toldForGood` (the lane),
+  `occurrenceUndelivered` (a repeat's credit), `plainToldOn`, doctor's `plainDueReading`,
+  the hooks' beat key — reads it as told without a line of its own, and two late tellings
+  are impossible. A memory written after its date (`learnedOn > eventDate`) was never
+  missed and gets none; one with no written date fails closed. A month or a range gets no
+  late beat. The host says `This was for Mon 12 Oct 2026: …` (`lifecycle.ts#plainLine`).
+  On a copy of the owner's store, a week away (10-12 to 10-19) then a session on 10-20 told
+  one reminder due that day and four owed late in one go; nothing caps that (guards loose
+  first). The late ones come after the on-time ones.
+- **`reference()` has its caller** (C3). `drewOn` credits half a use and stops nothing, so a
+  quiet reminder the session had acted on still came back until its two fires were spent.
+  Now `Counterpart#creditDrewOn` calls `Prospective#actedOn` for an id that passes its
+  guards (shown, live, not replaced), credit landed or not, which references every window
+  OPEN on the host's calendar day (`server.ts` passes its own `today()`; no `at`, no stop).
+  A plain item is left alone until its last beat is told: the plain line never reads
+  window state, but the lane does, and "plain first under Arriving on its day" (§18) should
+  not be undone by a session that drew on it the day before.
+- **`exitReport()` is removed** (C5). No caller; nobody read its counts; its
+  `superseded-by-reschedule` exit needs `reschedule()` (no caller since `carryReminder`), and
+  `faded` cannot happen before a date that is held (§19). G12 is now advisory and names the
+  counts that are shown (dashboard, doctor). `reschedule()`, `arm()` and `expire()` are still
+  uncalled outside tests and the demo; left in place.
+- **The dashboard's waiting list shows a repeat at its next occurrence** (C5), with
+  `time#readableRecurrence`'s words ("every May 14").
