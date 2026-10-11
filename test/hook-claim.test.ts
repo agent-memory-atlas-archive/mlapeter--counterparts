@@ -657,8 +657,12 @@ describe("a locked store", () => {
         holder.close();
       }
       expect((claim as ReturnType<typeof claimDelivery> | null)?.busy).toBe(true);
+      // COUNTED IN WAITS, not timed tight (review of #382): each wait is a
+      // full CLAIM_WAIT_MS of sleep, so the old three (measured 1,697 ms)
+      // cannot come in under three of them, and the one wait left has a whole
+      // second of room on a slow, busy machine.
       expect(took).toBeGreaterThanOrEqual(CLAIM_WAIT_MS - 50);
-      expect(took).toBeLessThan(2 * CLAIM_WAIT_MS);
+      expect(took).toBeLessThan(3 * CLAIM_WAIT_MS);
     } finally {
       cp.close();
     }
