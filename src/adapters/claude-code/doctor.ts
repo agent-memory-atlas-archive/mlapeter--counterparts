@@ -4011,12 +4011,19 @@ export function dreamingFindings(input: DoctorInput, store: Store): Finding[] {
             ? "started today, in the background"
             : "asked today";
   const unfinished = last !== undefined && last.state === "begun" ? `; dream ${last.id} is begun and not yet journaled` : "";
+  // `auto` SAYS WHAT IT WILL DO, AND HOW TO STOP IT (2026-10-11): it is a new
+  // install's default now, so the person reading this line may never have
+  // chosen it.
+  const said =
+    setting === "auto"
+      ? 'auto (the first session of each day starts the nightly run in the background; say "no dreams", or counterparts dream --setting off, to turn it off)'
+      : setting;
   return [
     finding(
       "dreaming",
       "green",
       "Dreaming",
-      `${setting}; ${when === null ? "has not dreamed yet" : `last dreamed ${when}${last?.title ? ` — "${last.title}"` : ""}`}; ${today}${unfinished}`,
+      `${said}; ${when === null ? "has not dreamed yet" : `last dreamed ${when}${last?.title ? ` — "${last.title}"` : ""}`}; ${today}${unfinished}`,
       "",
       { setting, last: when, dream: last?.id ?? null, ask: ask?.state ?? null },
     ),

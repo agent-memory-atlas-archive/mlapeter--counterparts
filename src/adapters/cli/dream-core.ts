@@ -34,13 +34,13 @@ function countsLine(counts: Readonly<Record<string, number>>): string {
   return parts.length === 0 ? "no changes" : parts.join(", ");
 }
 
-/** What each dreaming setting means, in one sentence (2026-09-28; `ask` the default since 2026-09-29). */
+/** What each dreaming setting means, in one sentence (2026-09-28). A new install starts on `auto` (2026-10-11); a store with no setting reads `ask`. */
 export function dreamingSettingWords(setting: DreamingSetting): string {
   switch (setting) {
     case "auto":
       return "Once a day, the first session starts the nightly run by itself — the page writer, then a dream, then a reflection — in a separate, windowless claude -p in the background, and says so in one line; if it cannot start, the next prompt asks instead and says why. Say 'no dreams' in a session, or counterparts dream --setting off, to turn it off.";
     case "ask":
-      return "Once a day, the first session shows you the question in the terminal before it starts the nightly run; say 'dream' to start it, 'dream on your own' to let it start by itself each day, or nothing and it waits. (The default.)";
+      return "Once a day, the first session shows you the question in the terminal before it starts the nightly run; say 'dream' to start it, 'dream on your own' to let it start by itself each day, or nothing and it waits. (A memory with no setting reads as this; a new install starts on auto.)";
     case "off":
       return "No dreams: nothing starts the nightly run and nothing asks. counterparts dream --setting ask (or auto) turns it back on.";
   }

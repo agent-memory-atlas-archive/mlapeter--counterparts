@@ -4,10 +4,11 @@
 
 The deliberate tools — remember, recall, status — plus the two return channels the Stop ask
 needs (`session_end` for memories, `chapter` for the episode), exposed over MCP to any host
-that speaks it. Nine tools today: those five, and `scope` (this directory's setting,
+that speaks it. Ten tools today: those five, and `scope` (this directory's setting,
 2026-09-15), `self_page` (the page the wake opens with, 2026-09-18), `dream` (the
-dreamer's phases, 2026-09-26) and `reflect` (the waking self's, 2026-09-27) — each added
-on purpose (`tools.ts#TOOL_NAMES`).
+dreamer's phases, 2026-09-26), `reflect` (the waking self's, 2026-09-27) and `meet` (the
+first meeting, 2026-10-11: its script as a result, its answers as ordinary memories through
+`remember`'s door, `core/onboarding.ts`) — each added on purpose (`tools.ts#TOOL_NAMES`).
 
 **`note` is `remember` (2026-10-10, Group 1c).** The old name still answers
 (`tools.ts#TOOL_ALIASES`, resolved first in `toolSpec` and `McpServer#call`, counted as
@@ -96,7 +97,7 @@ load-bearing, and this adapter is designed on the assumption that it will be use
   die by decay; revision is `updates:` plus arithmetic (owner decisions, settled). The
   vocabulary this adapter exposes was deliberately three verbs wide, plus the return
   channels — a return channel is not a fourth verb, it is the other end of an ask the
-  system already makes. It is nine tools now (§1); none of the four added since writes an
+  system already makes. It is ten tools now (§1; `meet`, the first meeting, 2026-10-11); none of the five added since writes an
   entity, a belief or a revision either.
 - **`chapter` is NOT the self-store tool coming back** (added 2026-09-04). The dropped v1
   tool wrote identity prose directly. This one appends to the session's own journal, and
@@ -126,7 +127,8 @@ that is the store's own directory) is asked here because this side has the canon
 and the durable row is written by `core/handoff/`, which owns that guarantee —
 `chapter(session, text[, title][, about])`; `scope(mode)` for this directory; `self_page` (read,
 or write with `ifVersion`); `dream(session, phase, …)` and `reflect(session, phase, …)`,
-each bound to one session as `session_end` is (their fields are `tools.ts`'s); for a
+each bound to one session as `session_end` is (their fields are `tools.ts`'s); `meet`
+(the script, or `step` with `answer`, `like`, `traits`); for a
 Claude Desktop client only, `wake()` (§5 G20) and the `prompts/list` / `prompts/get` pair; the
 session's observer role; the launch's session, scope, data dir and host when the host can
 supply them.

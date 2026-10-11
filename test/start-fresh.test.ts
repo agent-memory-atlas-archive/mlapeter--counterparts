@@ -1361,6 +1361,32 @@ describe("the way back, as a command", () => {
     expect(existsSync(`${storePath()}.${PARKED_INFIX}-${today()}`)).toBe(false);
   });
 
+  test("a fresh store is a fresh first meeting, its dreaming setting left alone; --undo brings back the parked store's own state", async () => {
+    await install();
+    await note();
+    // The owner met their counterpart and chose to be asked about dreams.
+    const met = Store.open({ dir: storePath() });
+    met.setMeta("onboarding.meet", "done");
+    met.setMeta("dream.setting", "ask");
+    met.close();
+    await run(["start-fresh", "--config", configPath(), "--yes", "--nothing-is-open"], { io: consoleWith().io, env: env(), home });
+    const fresh = Store.open({ dir: storePath(), observer: true });
+    try {
+      expect(fresh.getMeta("onboarding.meet")).toBe("not_started");
+      expect(fresh.getMeta("dream.setting")).toBeUndefined();
+    } finally {
+      fresh.close();
+    }
+    await run(["start-fresh", "--config", configPath(), "--undo", "--yes", "--nothing-is-open"], { io: consoleWith().io, env: env(), home });
+    const back = Store.open({ dir: storePath(), observer: true });
+    try {
+      expect(back.getMeta("onboarding.meet")).toBe("done");
+      expect(back.getMeta("dream.setting")).toBe("ask");
+    } finally {
+      back.close();
+    }
+  });
+
   test("--undo asks for the PARKED name, and --yes alone is refused the same way", async () => {
     await install();
     await note();

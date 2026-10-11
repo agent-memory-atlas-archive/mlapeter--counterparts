@@ -87,8 +87,26 @@ import {
 import type { ScopeCommandContext, ScopeMode, ScopeRegistry, ScopeVerdict } from "../scopes.js";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
+import { basename, dirname } from "node:path";
 
-import { CODE_TAB_ENTRYPOINT, DEFAULT_HOST, DESKTOP_HOST, DESKTOP_SCOPE, claudeCodeEnvMarker, hostOfClient, wordingFor } from "../hosts.js";
+import { CODE_TAB_ENTRYPOINT, DEFAULT_HOST, DESKTOP_HOST, DESKTOP_SCOPE, claudeCodeEnvMarker, hostOfClient, isPseudoScope, wordingFor } from "../hosts.js";
+import type { InstallRoute } from "../plugin.js";
+import {
+  MEET_STEPS,
+  STYLE_CHOICES,
+  addressMemory,
+  answerText,
+  meetState,
+  meetingInstructions,
+  noteOffered,
+  onboardingView,
+  recordAnswer,
+  recordState,
+  recordStyle,
+  recordWhere,
+  styleMemories,
+} from "../../core/onboarding.js";
+import type { AnswerStep, MeetStep, StyleChoice } from "../../core/onboarding.js";
 import type { RefusalPlace } from "../hosts.js";
 import { TUNABLES as ADAPTER_TUNABLES } from "../config.js";
 import type { AdapterConfig } from "../config.js";
@@ -326,6 +344,12 @@ export interface McpServerOptions {
    */
   scopeCommand?: ScopeCommandContext;
   /**
+   * How this copy was installed (`plugin.ts#installRoute`), for the first
+   * meeting's close — how to remove Counterparts. Set by `bin/serve.ts`.
+   * Absent (a test, an embedder): not known, and the close names both routes.
+   */
+  install?: InstallRoute;
+  /**
    * WHICH HOST THIS SERVER SERVES (`hosts.ts`, 2026-09-30), for the words a
    * result says about the host — today, how to reconnect after an update.
    * Absent: `DEFAULT_HOST`, Claude Code, which is every launch `bin/serve.ts`
@@ -403,6 +427,24 @@ export const START_PROMPT = {
  */
 export const DESKTOP_DREAM_NOTE =
   "(Claude Desktop: there is no terminal here, so nobody has shown them that line — say it to them yourself, once, in your own words. And there is no background Agent tool: if they say dream, follow the prompt the launch returns yourself, here.)";
+
+/**
+ * HOW TO REMOVE COUNTERPARTS, for the first meeting's close: the console's
+ * `counterparts uninstall` for an npm install (and Desktop, which is wired by
+ * it), the plugin's `/counterparts:uninstall` inside Claude Code; both when
+ * this process cannot tell. Each asks before it deletes the memories.
+ */
+export function uninstallRouteWords(install: InstallRoute, desktop: boolean): string {
+  if (install === "plugin" && !desktop) return "type /counterparts:uninstall in Claude Code";
+  if (install === "npm" || desktop) return "run counterparts uninstall in a terminal";
+  return "type /counterparts:uninstall in Claude Code (or, for an npm install, run counterparts uninstall in a terminal)";
+}
+
+/** Where the memory lives, as a person types it: the folder the configuration sits in (`~/.counterparts`), else the store's. */
+export function memoryHomeWords(storeDir: string, configPath: string | undefined, home: string = homedir()): string {
+  const base = configPath !== undefined && configPath.length > 0 ? dirname(configPath) : basename(storeDir) === "store" ? dirname(storeDir) : storeDir;
+  return base === home ? "~" : base.startsWith(`${home}/`) ? `~${base.slice(home.length)}` : base;
+}
 
 /**
  * WHAT A DESKTOP CALL THAT NAMED NO SESSION IS TOLD (2026-10-01: and a Claude
@@ -601,6 +643,7 @@ export class McpServer {
   private readonly registryDir: string;
   private readonly scopesFile: string | null;
   private readonly scopeCommandCtx: ScopeCommandContext | undefined;
+  private readonly install: InstallRoute;
   private readonly sessionTtlMs: number;
   private readonly resultCeilingChars: number;
   private readonly onEvent: ((e: McpEvent) => void) | undefined;
@@ -669,6 +712,7 @@ export class McpServer {
     this.scopesFile =
       opts.scopesFile !== undefined && opts.scopesFile.length > 0 ? opts.scopesFile : null;
     this.scopeCommandCtx = opts.scopeCommand;
+    this.install = opts.install ?? "either";
     this.sessionTtlMs = opts.sessionTtlMs ?? SESSION_TTL_MS;
     this.resultCeilingChars = opts.resultCeilingChars ?? TOOL_RESULT_CEILING.CHARS;
     this.host = opts.host ?? DEFAULT_HOST;
@@ -1234,6 +1278,8 @@ export class McpServer {
         return this.desktop ? this.wakeTool() : this.refuse(name, "unknown-tool", { tool: name });
       case "reflect":
         return this.reflectTool(args);
+      case "meet":
+        return await this.meetTool(args);
       default:
         return this.refuse(name, "unknown-tool", { tool: name });
     }
@@ -1631,6 +1677,164 @@ export class McpServer {
       },
       false,
     );
+  }
+
+  /**
+   * `meet` — THE FIRST MEETING (2026-10-11, `core/onboarding.ts`). No step: the
+   * script and the state, and the offer is recorded (`offered`), so neither
+   * the wake's line nor the mod offers it again today. With a step:
+   *
+   *   - an answer (name, work, loved, problem, peeves, outside) becomes ONE
+   *     memory through `remember`'s own door — about the owner, said by the
+   *     owner, marked "(from onboarding)" — and its id is kept for the second
+   *     session's line; a skipped question is never sent, so nothing is stored;
+   *   - `style` writes a fixed bundle (or the traits Claude said back, or the
+   *     person's words) as preferences about the owner, each marked, each
+   *     bundle ending with the honest-pushback baseline;
+   *   - `address` writes the form of address as its own preference;
+   *   - `where` writes the scope registry: `/` on (every folder), or `/` off
+   *     and this folder on — either way no folder is `unset` any more, so the
+   *     first-launch question never fires again;
+   *   - `later`, `skipped`, `done` move the state.
+   *
+   * Nothing here writes the identity core or any entity (CONTRACT §4): a name
+   * is a memory like any other answer. Under observer it reads and writes nothing.
+   */
+  private async meetTool(args: Record<string, unknown>): Promise<ToolResult> {
+    // NOT IN THE NIGHTLY RUN (review of #419): nobody is there to meet, and a
+    // read would mark an offer under the run's session. `--allowedTools`
+    // already fences it out of the child; this says so by name.
+    if ((this.env[NIGHT_CHILD_ENV] ?? "").trim().length > 0) {
+      return this.refuse("meet", "night-run", { detail: "This is the nightly run: there is nobody here to meet." });
+    }
+    const store = this.counterpart.store;
+    const session = this.session ?? this.hostSession() ?? UNBOUND_SESSION;
+    const on = this.today();
+    const step = args["step"];
+    if (step === undefined) {
+      let state = meetState(store);
+      if (!this.observer) {
+        try {
+          state = noteOffered(store, { on, session, state: true });
+        } catch {
+          /* a lost mark costs the throttle, never the script */
+        }
+      }
+      const name = this.counterpart.ownerDisplayName();
+      const script = meetingInstructions({
+        name,
+        uninstall: uninstallRouteWords(this.install, this.desktop),
+        home: memoryHomeWords(this.counterpart.store.dir, this.lifecycleOpts.configPath),
+        dreaming: this.counterpart.dreams.setting(),
+        folders: this.meetAsksWhere(),
+        hostName: this.desktop ? "Claude" : "Claude Code",
+        state,
+      });
+      this.emit("mcp.meet.read", undefined, { state });
+      return { content: [{ type: "text", text: script }], structuredContent: { ...onboardingView(store), name, script } };
+    }
+    if (this.observer) return this.standDown("meet");
+    if (typeof step !== "string" || !(MEET_STEPS as readonly string[]).includes(step)) {
+      return this.refuse("meet", "step-unknown", { detail: `step is one of ${MEET_STEPS.join(", ")} — or omit it for the script.` });
+    }
+    // A step taken is an offer made: the mod and the wake stop offering.
+    if (meetState(store) === "not_started") noteOffered(store, { on, session, state: true });
+    const answer = typeof args["answer"] === "string" ? args["answer"].trim() : "";
+    const done = (extra: Record<string, unknown>): ToolResult => {
+      this.emit("mcp.meet.step", undefined, { step, stored: typeof extra["stored"] === "number" ? extra["stored"] : null });
+      return this.result({ recorded: step, ...onboardingView(store), ...extra }, false);
+    };
+    switch (step as MeetStep) {
+      case "later":
+      case "skipped":
+      case "done":
+        recordState(store, step as "later" | "skipped" | "done", { on, session });
+        return done({});
+      case "where":
+        return this.meetWhere(answer, done);
+      case "style": {
+        const choice = (STYLE_CHOICES as readonly string[]).includes(answer) ? (answer as StyleChoice) : null;
+        if (choice === null) return this.refuse("meet", "style-unknown", { detail: `answer is one of ${STYLE_CHOICES.join(", ")}.` });
+        const traits = Array.isArray(args["traits"]) ? args["traits"].filter((t): t is string => typeof t === "string") : [];
+        const like = typeof args["like"] === "string" ? args["like"] : "";
+        const bundle = styleMemories(choice, { traits, like });
+        if (!bundle.ok) return this.refuse("meet", "style-incomplete", { detail: bundle.detail });
+        const ids = await this.meetWrite(bundle.texts);
+        recordStyle(store, choice);
+        return done({ option: bundle.option, stored: ids.length, ids });
+      }
+      case "address": {
+        const made = addressMemory(answer);
+        if (!made.ok) return this.refuse("meet", "answer-required", { detail: made.detail });
+        const ids = await this.meetWrite([made.text]);
+        return done({ stored: ids.length, ids });
+      }
+      default: {
+        // An answer: name, work, loved, problem, peeves, outside.
+        if (answer.length === 0) {
+          return this.refuse("meet", "answer-required", { detail: "Send the answer, in your words. A skipped question is never sent: nothing is stored for it." });
+        }
+        const text = step === "name" ? `The owner likes to be called ${answer}.` : answer;
+        const ids = await this.meetWrite([answerText(text)]);
+        if (ids[0] !== undefined) recordAnswer(store, step as AnswerStep, ids[0]);
+        return done({ stored: ids.length, ...(ids[0] === undefined ? {} : { id: ids[0] }) });
+      }
+    }
+  }
+
+  /** Each text through `remember`'s own door: about the owner, said by the owner. The ids that landed. */
+  private async meetWrite(texts: readonly string[]): Promise<string[]> {
+    const ids: string[] = [];
+    for (const text of texts) {
+      const r = await this.rememberTool({ text, about: "owner", saidBy: "owner" });
+      const id = r.structuredContent["id"];
+      if (r.structuredContent["stored"] === true && typeof id === "string") ids.push(id);
+    }
+    return ids;
+  }
+
+  /**
+   * DOES THE SCRIPT ASK WHERE MEMORY IS ON? Only where there is a folder, and
+   * only while nobody has set any folder yet (review of #419). The registry
+   * lives beside the configuration, not in the store: a `start-fresh` store's
+   * meeting that wrote `/` off would outlive `start-fresh --undo` and turn off
+   * every folder the owner had never named; and anyone who has already set a
+   * folder has answered the question their own way.
+   */
+  private meetAsksWhere(): boolean {
+    const file = this.scopesFile;
+    if (file === null || isPseudoScope(this.scope)) return false;
+    try {
+      const read = readScopes(file);
+      return read.error === null && read.refused.length === 0 && (read.registry === null || Object.keys(read.registry.scopes).length === 0);
+    } catch {
+      return false;
+    }
+  }
+
+  /** `where`: one `/` entry (on, or off with this folder on), written as the `scope` tool writes. */
+  private meetWhere(answer: string, done: (extra: Record<string, unknown>) => ToolResult): ToolResult {
+    if (answer !== "every" && answer !== "this") return this.refuse("meet", "where-unknown", { detail: 'answer is "every" or "this".' });
+    const file = this.scopesFile;
+    if (file === null || isPseudoScope(this.scope)) {
+      return this.refuse("meet", "no-folder", { detail: "There is no folder setting to write here; skip this question." });
+    }
+    const read = readScopes(file);
+    if (read.error !== null || read.refused.length > 0) {
+      return this.refuse("meet", "registry-unreadable", { registry: file, detail: "The folder setting could not be read whole, so nothing was changed. Tell the user; `counterparts scope` shows what is wrong." });
+    }
+    const at = new Date(this.nowFn()).toISOString();
+    const apply = (from: ScopeRegistry | null): ScopeRegistry => {
+      const root = setScope(from, "/", answer === "every" ? "on" : "off", { at, note: "chosen at onboarding" });
+      return answer === "every" ? root : setScope(root, this.scope, "on", { at, note: "chosen at onboarding" });
+    };
+    try {
+      writeScopes(file, apply(read.registry), { basedOn: read, reapply: apply });
+    } catch (err) {
+      return this.refuse("meet", "registry-unwritable", { registry: file, detail: `The folder setting could not be written (${err instanceof Error ? err.message : String(err)}). Nothing was changed.` });
+    }
+    recordWhere(this.counterpart.store, answer);
+    return done({ scope: this.scope, registry: file });
   }
 
   /**
@@ -2646,12 +2850,18 @@ export class McpServer {
     const dream = this.wakeDreamLine(input);
     const notices = [this.wakeUpdateLine(), this.wakeDoctorLine()].filter((l): l is string => l !== null);
     const head = `Counterparts session for this chat: ${input.sessionId}. Pass session: ${input.sessionId} on session_end, chapter, dream and reflect in this chat.`;
-    const lead = [lc.nowLine(), ...told.map((r) => plainContextLine(r))].join("\n");
+    const lead = [lc.nowLine(), lc.onboardingMarker(input), ...told.map((r) => plainContextLine(r))].join("\n");
+    // THE FIRST MEETING'S LINE (2026-10-11): the same offer, or the second
+    // session's memory, a Claude Code session start carries. A tool result is
+    // certain delivery, so it is committed here.
+    const meet = lc.onboardingLine(input);
+    meet?.commit();
     const parts = [
       head,
       `${lead}\n${woke.text}`.trimEnd(),
       ...(notices.length === 0 ? [] : [notices.join("\n")]),
       ...(dream === null ? [] : [`${dream}\n${DESKTOP_DREAM_NOTE}`]),
+      ...(meet === null ? [] : [meet.text]),
     ];
     const body = parts.join("\n\n");
     const pointer = lc.deliverWriteUpAsk(input, Buffer.byteLength(body, "utf8"), {
