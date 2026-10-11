@@ -434,12 +434,16 @@ describe("4. temporal contiguity: adjacent only, lag-weighted, forward where the
   const rate = T.CONTIGUITY_RATE;
   const flat = (1 + T.CONTIGUITY_BACKWARD) / 2;
 
-  test("the planner: lag 1 and lag 2 only, never all pairs; forward bias when the order is real", () => {
+  test("the planner: lag 1 only by default (2026-10-11), never all pairs; forward bias when the order is real", () => {
     const minute = 60_000;
     // Five memories, each written two minutes after the last: a real order.
     const rows = ["m1", "m2", "m3", "m4", "m5"].map((id, i) => ({ id, at: i * 2 * minute, fresh: true }));
-    const plan = planContiguity(rows, T);
-    // 4 at lag 1 + 3 at lag 2 = 7, not the 10 of every pair.
+    expect(T.CONTIGUITY_WINDOW).toBe(1);
+    const lag1 = planContiguity(rows, T);
+    expect(lag1.pairs).toBe(4);
+    expect(lag1.deltas.find((d) => d.a === "m1" && d.b === "m3")).toBeUndefined();
+    // The window is still a knob: at 2, 4 at lag 1 + 3 at lag 2 = 7, not the 10 of every pair.
+    const plan = planContiguity(rows, { ...T, CONTIGUITY_WINDOW: 2 });
     expect(plan.pairs).toBe(7);
     expect(plan.timed).toBe(7);
     expect(plan.batch).toBe(0);
@@ -454,7 +458,7 @@ describe("4. temporal contiguity: adjacent only, lag-weighted, forward where the
   test("the planner: inside one batch the two directions get the same delta, the mean of forward and back", () => {
     const rows = ["b1", "b2", "b3"].map((id, i) => ({ id, at: 1_000 + i, fresh: true }));
     const plan = planContiguity(rows, T);
-    expect(plan.batch).toBe(3);
+    expect(plan.batch).toBe(2);
     expect(plan.timed).toBe(0);
     const d12 = plan.deltas.find((d) => d.a === "b1" && d.b === "b2");
     expect(d12?.delta).toBeCloseTo(rate * flat, 12);
@@ -467,7 +471,8 @@ describe("4. temporal contiguity: adjacent only, lag-weighted, forward where the
       { id: "old2", at: 1, fresh: false },
       { id: "new1", at: 2, fresh: true },
     ];
-    const plan = planContiguity(rows, T);
+    expect(planContiguity(rows, T).deltas.map((d) => `${d.a}>${d.b}`)).toEqual(["old2>new1"]);
+    const plan = planContiguity(rows, { ...T, CONTIGUITY_WINDOW: 2 });
     const keys = plan.deltas.map((d) => `${d.a}>${d.b}`).sort();
     expect(keys).toEqual(["old1>new1", "old2>new1"]);
   });
@@ -543,9 +548,10 @@ describe("4. temporal contiguity: adjacent only, lag-weighted, forward where the
     const later = memoryIn(c, "s1", "The last note of the session, about firing.");
     const third = await c.sessionEnd({ date: "2026-09-30", budgetBytes: 9000 });
     expect(third.contiguity.memories).toBe(1);
-    expect(third.contiguity.pairs).toBe(2);
+    // Lag 1 only (2026-10-11): the nearest older neighbour, not the one before it.
+    expect(third.contiguity.pairs).toBe(1);
     expect(w(b, later)).toBeCloseTo(rate, 10);
-    expect(w(a, later)).toBeCloseTo(rate * T.CONTIGUITY_LAG_DECAY, 10);
+    expect(w(a, later)).toBe(0);
   });
 
   test("the nightly run's rows are not the session's: dream gists, merges and reflection entries are counted and left out (review of #281, finding 1)", async () => {
@@ -569,9 +575,9 @@ describe("4. temporal contiguity: adjacent only, lag-weighted, forward where the
     expect(report.contiguity.memories).toBe(3);
     for (const id of [gist, merge, entry, bare]) expect(c.store.edgesFrom(id)).toEqual([]);
     const w = (x: string, y: string): number => c.store.edgesFrom(x).find((e) => e.dst === y)?.weight ?? 0;
-    // The note after the night sits next to the note before it.
+    // The note after the night sits next to the note before it (lag 1 only).
     expect(w(n2, n3)).toBeGreaterThan(0);
-    expect(w(n1, n3)).toBeGreaterThan(0);
+    expect(w(n1, n2)).toBeGreaterThan(0);
     const rows = c.store.eventLog({ name: "associate.flush" });
     const last = JSON.parse(rows[rows.length - 1]?.payload ?? "{}") as { contiguity?: Record<string, unknown> };
     expect(last.contiguity?.["excluded"]).toBe(4);
@@ -603,16 +609,16 @@ describe("4. temporal contiguity: adjacent only, lag-weighted, forward where the
     // The cursor moves and the pairs are buffered — then the process dies
     // before any flush: the buffer goes with it.
     const pass = first.contiguityPass();
-    expect(pass.buffered).toBe(3);
+    expect(pass.buffered).toBe(2);
     first.associate.drain();
     first.close();
     clock.now += 60 * 60_000;
     const worker = brainAt(clock);
     const report = await worker.sessionEnd({ date: "2026-09-28", budgetBytes: 9000 });
-    expect(report.contiguity.lostEarlier).toBe(3);
+    expect(report.contiguity.lostEarlier).toBe(2);
     const rows = worker.store.eventLog({ name: "associate.flush" });
     const last = JSON.parse(rows[rows.length - 1]?.payload ?? "{}") as { contiguity?: Record<string, unknown> };
-    expect(last.contiguity?.["lostEarlier"]).toBe(3);
+    expect(last.contiguity?.["lostEarlier"]).toBe(2);
     // Said once: the mark is cleared once the row about it has landed.
     const again = await worker.sessionEnd({ date: "2026-09-29", budgetBytes: 9000 });
     expect(again.contiguity.lostEarlier).toBe(0);
