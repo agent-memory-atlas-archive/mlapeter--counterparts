@@ -798,7 +798,9 @@ export const NARRATORS = {
 
   // ── waking ─────────────────────────────────────────────────────────────────
   "adapter.wake.injected": (t) =>
-    notable(`I handed the host who I have been — ${n(t, "bytes") ?? 0} bytes of briefing, at the start of a session.`),
+    t.p["resumed"] === true
+      ? calm(`A session was resumed, and its briefing from earlier today was still in front of it: I said so in one line.`)
+      : notable(`I handed the host who I have been — ${n(t, "bytes") ?? 0} bytes of briefing, at the start of a session.`),
   "adapter.wake.delivered": (t) => {
     const seen = t.p["seen"] === true || t.p["sentinelSeen"] === true || t.p["ok"] === true;
     if (seen) return calm(`I checked the session's transcript and my briefing had arrived intact.`);

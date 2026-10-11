@@ -636,7 +636,13 @@ export class Lifecycle implements HostLifecycle {
    * under observer or for the nightly run; a folder that is off or paused
    * never reaches here (`guard`). Never throws.
    */
-  sinceLine(input: SessionInput & { nightRun?: boolean }, room: number): string {
+  sinceLine(
+    input: SessionInput & { nightRun?: boolean },
+    room: number,
+    /** A RESUMED session's start (2026-10-11): its short wake says what changed
+     *  since it last heard, whatever the state and the hour. */
+    opts: { readonly resumed?: boolean } = {},
+  ): string {
     if (this.observer || input.nightRun === true || input.sessionId.length === 0) return "";
     try {
       const dir = this.counterpart.store.dir;
@@ -644,13 +650,13 @@ export class Lifecycle implements HostLifecycle {
       if (record === null) return "";
       const now = this.nowFn();
       const seen = record.sinceSeen ?? { at: record.startedAt, state: "woke" as const };
-      if (seen.state === "woke") {
+      if (seen.state === "woke" && opts.resumed !== true) {
         markSinceSeen(dir, input.sessionId, { at: seen.at, state: "armed" });
         return "";
       }
-      if (seen.state === "shown" && now - seen.at < TUNABLES.SINCE_LINE_EVERY_MS) return "";
+      if (seen.state === "shown" && now - seen.at < TUNABLES.SINCE_LINE_EVERY_MS && opts.resumed !== true) return "";
       const lines = this.counterpart.sinceElsewhere(
-        { since: seen.at, until: now, started: seen.state === "armed" },
+        { since: seen.at, until: now, started: seen.state !== "shown" },
         this.elsewhereHere(input),
       );
       if (lines === null) return "";
