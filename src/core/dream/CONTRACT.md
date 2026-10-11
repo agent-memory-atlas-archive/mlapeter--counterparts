@@ -408,7 +408,14 @@ examples) · **§2.19** (every change enumerable: `counterparts dream --show`) �
    rule over its sources, and reaches the core only the ordinary way, by awake recurrence
    (a dream cannot replay it, a reflection cannot feel it or mark it about me, its claim
    is capped). No special rule: `sleep/consolidate.ts#aboutMe` refuses nothing by
-   `source`. The provenance question above stays open.
+   `source`. The provenance question above stays open. Measured at the review of
+   #403, under today's tunables: no lane is met by a gist even awake. Thirty days of
+   awake returns leave it at strength ~0.29, under the slow lane's 0.5 floor (its claim
+   stays at the cap, the repetition arm is 0 for `self`/`person` and stays under 0.5
+   for the rest, consolidation is for legacy rows only), and the fast lane needs a
+   feeling, which every door refuses on a gist. So today the mark changes the wake
+   lane a gist sits in (work or Nearby), not its way to the core. The question above
+   is the only road there.
 3. Should dream links be stored differently from Hebbian links (a marker, a hop
    weight)? A session designing association with the owner may decide; today they are
    ordinary edges at `LINK_WEIGHT`. Since 2026-09-28 (association build 1) that is 0.1,

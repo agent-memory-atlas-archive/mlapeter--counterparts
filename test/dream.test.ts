@@ -654,6 +654,14 @@ describe("gist marks: a personal mark among its sources wins (D6 closed)", () =>
     expect(c.store.readProse(us).meta[ERA_WRITTEN_AT_META]).toBeUndefined();
     expect(c.store.row(plain)?.about ?? null).toBeNull();
   });
+
+  test("over a confidential owner memory it is the owner's and as confidential as its source (review of #403)", () => {
+    // The owner's own dream: only that one is shown a confidential memory.
+    const c = Counterpart.open({ dir, owner: true, bundlesAsOwner: true, identity: { name: "Mike" }, now: () => Date.now() + offsetMs });
+    open.push(c);
+    const [g] = gists(c, [[{}, { about: "owner", aboutBy: "owner", meta: { confidential: true } }]]) as [string];
+    expect(c.store.row(g)).toMatchObject({ about: "owner", confidential: 1, source: "dreamed" });
+  });
 });
 
 // ---------------------------------------------------------------------------
