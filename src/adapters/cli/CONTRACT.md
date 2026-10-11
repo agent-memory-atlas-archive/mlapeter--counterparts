@@ -619,6 +619,16 @@ which holds, who, why); `--pair <id> --holds <id> --how changed|corrected|open -
 there. `ask` prints a memory's standing (earlier, corrected by, replaced by, disagrees
 with, unsettled) above its words.
 
+## 6b′. `about` (2026-10-11)
+
+**[M]** `counterparts about <id>` prints what a memory is about and who set it; `about <id>
+<me|us|owner|work|world> [--why "..."]` changes it as the owner, through
+`Counterpart.markAbout` → `store.setAbout`: the column, `about_by = 'owner'`, and the
+`core_events` row a reflection's re-mark writes (the mark it replaced, and the why). An
+unknown id or mark is refused by name; an archived memory is marked and said to be; an
+earlier version's id marks the current one. Reading works under observer; the change
+refuses there. The dashboard's `about` action runs this command.
+
 ## 6c. Claude Desktop (2026-09-30, host groundwork PR B)
 
 **[M]** `install --host claude-desktop` makes the store and configuration exactly as the

@@ -464,6 +464,15 @@ by ambient recall for the session; kept per session — is refused with the way 
 memory, five a call; source `awake`, `recorded_later` today. The path and the rest of its
 guarantees are the reflection's (`dream/reflect.ts#Reflections.feelAgain`).
 
+## 6c′. Re-marking while awake (2026-10-11, the about-marks lane)
+
+**[M]** `remember` takes `remark: {id, about, why}`: what an existing memory is about,
+changed in the moment, alone or beside anything else the call does. Only on a memory this
+session was shown (the `feelingsNow` rule); recorded `about_by = 'self'` with the why (a
+missing why is recorded as missing), through `counterpart.ts#markAbout` — the owner's
+`counterparts about` path. A dream's or a reflection's words move only toward work or
+world; a confidential memory outside the owner's session is not found.
+
 ## 6d. The writer's three fields (2026-10-03, schema v12)
 
 **[M]** `note` and each `session_end` entry (write-ups included) take `occurredOn` (when
