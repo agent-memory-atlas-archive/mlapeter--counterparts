@@ -511,7 +511,10 @@ export function nightRunLost(run: Pick<NightRun, "state" | "startedAt" | "timeou
  * reflection alone); the page writer is named when it ran, and never counted
  * missing — a night with no day before it has nothing for the writer to read.
  */
-export function nightPartsWords(run: Pick<NightRun, "kind"> & Partial<Pick<NightRun, "parts">>): string {
+export function nightPartsWords(run: Pick<NightRun, "kind"> & Partial<Pick<NightRun, "parts" | "children">>): string {
+  // THE CATCH-UP ALONE (2026-10-11): nothing it was for went missing.
+  const skipped = dreamSkippedOf(run);
+  if (skipped !== null) return `the catch-up ran; the dream and the reflection were skipped (${dreamSkippedWords(skipped)})`;
   const names: Record<NightPart, string> = { writer: "the page writer", dream: "the dream", reflection: "the reflection" };
   const required: NightPart[] = run.kind === "reflection" ? ["reflection"] : ["dream", "reflection"];
   const ran = nightOrder().filter((p) => (run.parts ?? []).includes(p));
@@ -717,6 +720,32 @@ export interface DreamOffer {
   readonly reflects: string | null;
   /** The moment of the day's row the offer read — the claim reclaims it — or null when the day is unclaimed. */
   readonly priorAt: number | null;
+  /**
+   * THE CATCH-UP ALONE (2026-10-11, `Dreams#catchUpOffer`): the run starts
+   * because write-ups from an earlier day are owed, and the dream is not due
+   * for this reason — so the run writes them up and skips its dream and its
+   * reflection. Absent on every other offer.
+   */
+  readonly dreamSkipped?: CatchUpOnlyReason;
+}
+
+/**
+ * WHY A NIGHT RUNS FOR ITS CATCH-UP ALONE (2026-10-11): the two gate reasons
+ * that leave a dream not due without anything having run or been asked today —
+ * too little new since the last dream, or a store on its first lived day.
+ */
+export const CATCH_UP_ONLY_REASONS = ["too-little-new", "first-day"] as const;
+export type CatchUpOnlyReason = (typeof CATCH_UP_ONLY_REASONS)[number];
+
+/** The reason a night skipped its dream for the catch-up alone, read off its children; null for any other run. */
+export function dreamSkippedOf(run: Partial<Pick<NightRun, "children">>): CatchUpOnlyReason | null {
+  const skipped = run.children?.find((c) => c.child === "dream")?.skipped;
+  return (CATCH_UP_ONLY_REASONS as readonly string[]).includes(skipped ?? "") ? (skipped as CatchUpOnlyReason) : null;
+}
+
+/** That reason, in a few words for a person. */
+export function dreamSkippedWords(reason: CatchUpOnlyReason): string {
+  return reason === "first-day" ? "a first day has no night behind it to dream on" : "too little new to dream on";
 }
 
 const KINDS: readonly Kind[] = ["self", "person", "entity", "skill", "place", "fact"];
@@ -1380,8 +1409,48 @@ export class Dreams {
       resumes: offer.resumes,
       reflects: offer.reflects,
       ...(offer.fallback ? { after: "could-not-start" } : {}),
+      ...(offer.dreamSkipped === undefined ? {} : { dreamSkipped: offer.dreamSkipped }),
     });
     return true;
+  }
+
+  /**
+   * THE CATCH-UP ALONE, OFFERED (2026-10-11): under `auto`, the night starts
+   * when write-ups from an earlier day are owed even though the dream is not
+   * due — so a new person's first day, with fewer than `MIN_NEW` memories or
+   * no session end behind it yet, is still written up before its words lapse.
+   * The caller (the host) knows what is owed; this decides only the dream's
+   * side: the setting is `auto`, the day is unclaimed (`dream_asks` holds no
+   * row: never a second start through the relaunch path), no run is under
+   * way, and the gate says not due for one of `CATCH_UP_ONLY_REASONS`. The
+   * offer claims the day like any other (`claimOffer`), carries why the dream
+   * is skipped (`dreamSkipped`), and says nothing to anyone: the mechanism
+   * does the work, it does not remind. A READ.
+   */
+  catchUpOffer(input: { at: string; session: string }): DreamOffer | null {
+    if (this.ctx.observer) return null;
+    // `first-day` returns from the gate before the setting, the run under way
+    // and the day's row are read: each is checked here.
+    if (this.setting() !== "auto") return null;
+    if (this.store.dreamAsk(input.at) !== undefined) return null;
+    if (this.nightRunUnderWay()) return null;
+    const s = this.status(input.at);
+    if (!(CATCH_UP_ONLY_REASONS as readonly string[]).includes(s.reason)) return null;
+    return {
+      at: input.at,
+      session: input.session,
+      state: "launched",
+      setting: "auto",
+      headless: true,
+      fallback: false,
+      context: "",
+      notice: null,
+      fresh: s.newSince,
+      resumes: null,
+      reflects: null,
+      priorAt: null,
+      dreamSkipped: s.reason as CatchUpOnlyReason,
+    };
   }
 
   /**

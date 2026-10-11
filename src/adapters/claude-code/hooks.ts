@@ -86,7 +86,7 @@ import { SESSION_NOTICE_BUDGET_MS, checkoutIsGraded, doctorFindings, noticeMessa
 import type { CheckoutReading } from "./doctor.js";
 import { primacy } from "./primacy.js";
 import { nightRowTimeoutMs, planNightRunner } from "./night-run.js";
-import { catchUpOf, catchUpWords } from "./night-catch-up.js";
+import { catchUpOf, catchUpWords, owedBefore } from "./night-catch-up.js";
 import type { NightKind } from "./night-run.js";
 import { spawnDetached } from "../spawn.js";
 import type { SpawnOutcome } from "../spawn.js";
@@ -1090,6 +1090,9 @@ export class ClaudeCodeAdapter extends Lifecycle {
       // started now — the start is the point, the terminal line a courtesy —
       // and a run that cannot even be started falls back to the ask at once.
       let offer = dreams.offer({ at: input.at, session: input.sessionId });
+      // NOT DUE, BUT WRITE-UPS OWED (2026-10-11): the night may start for its
+      // catch-up alone. Nothing is said to anyone, here or in the terminal.
+      if (offer === null) this.catchUpWhenOwed(input);
       if (offer !== null && offer.headless) {
         const started = dreams.claimOffer(offer) ? this.startNightRun(input, offer) : null;
         if (started === null) offer = null;
@@ -1135,13 +1138,51 @@ export class ClaudeCodeAdapter extends Lifecycle {
       // first prompt never starts a run under an `auto` this version resets.
       dreams.resetAutoOnce();
       const offer = dreams.offer({ at: input.at, session: input.sessionId });
-      if (offer === null || !offer.headless || !dreams.claimOffer(offer)) return;
+      // The catch-up alone, as at a watched prompt — no line to hold for it.
+      if (offer === null) {
+        const started = this.catchUpWhenOwed(input);
+        if (started) this.emit("adapter.dream.unwatched", { started, catchUpOnly: true, entrypoint: input.entrypoint ?? null });
+        return;
+      }
+      if (!offer.headless || !dreams.claimOffer(offer)) return;
       const started = this.startNightRun(input, offer);
       const night = dreams.nightRun();
       if (started && night !== null && night.state === "started") dreams.holdTold({ run: night.run, date: input.at });
       this.emit("adapter.dream.unwatched", { started, entrypoint: input.entrypoint ?? null });
     } catch {
       /* the run is a courtesy here; nothing is lost by not starting it */
+    }
+  }
+
+  /**
+   * THE NIGHT, STARTED FOR ITS CATCH-UP ALONE (2026-10-11) — under `auto`,
+   * when the dream is not due (too little new, or a first day) and write-ups
+   * from an earlier day are owed: without it a new person who saved fewer than
+   * three memories on their first day would get no night and, since the
+   * pointer is retired under `auto`, no write-up either. The dream's side is
+   * `Dreams#catchUpOffer` (the day unclaimed, no run under way); what is owed
+   * is the catch-up's own reading (`night-catch-up.ts#owedBefore`), asked
+   * only after that says yes — it reads every held session's words. Claimed
+   * through the day's one latch (`claimOffer`), so two sessions racing start
+   * one run, and a day the catch-up took starts no second run except through
+   * the ordinary relaunch, once the dream is due. A run that cannot start
+   * falls back to nothing: there is no dream to ask about. True when it
+   * started. Never throws.
+   */
+  private catchUpWhenOwed(input: HookInput): boolean {
+    if (input.at === undefined) return false;
+    try {
+      const dreams = this.counterpart.dreams;
+      const offer = dreams.catchUpOffer({ at: input.at, session: input.sessionId });
+      if (offer === null) return false;
+      const owed = owedBefore(this.counterpart, input.at);
+      if (owed === 0) return false;
+      if (!dreams.claimOffer(offer)) return false;
+      const started = this.startNightRun(input, offer);
+      this.emit("adapter.night.catch-up-only", { started, owed, dream: offer.dreamSkipped ?? null });
+      return started;
+    } catch {
+      return false;
     }
   }
 
@@ -1176,7 +1217,12 @@ export class ClaudeCodeAdapter extends Lifecycle {
     const dreams = this.counterpart.dreams;
     const store = this.counterpart.store;
     const run = newNightRunId();
-    const kind: NightKind = offer.reflects === null ? { kind: "night" } : { kind: "reflection", dream: offer.reflects };
+    const kind: NightKind =
+      offer.reflects !== null
+        ? { kind: "reflection", dream: offer.reflects }
+        : offer.dreamSkipped === undefined
+          ? { kind: "night" }
+          : { kind: "night", dreamSkipped: offer.dreamSkipped };
     const base = {
       run,
       date: offer.at,
@@ -1214,7 +1260,7 @@ export class ClaudeCodeAdapter extends Lifecycle {
       });
       if (!out.started) return couldNot("runner", out.code ?? String(out.reason));
       dreams.recordNightRun({ ...base, state: "started" });
-      this.emit("adapter.night.started", { run, pid: out.pid, kind: kind.kind });
+      this.emit("adapter.night.started", { run, pid: out.pid, kind: kind.kind, ...(offer.dreamSkipped === undefined ? {} : { dreamSkipped: offer.dreamSkipped }) });
       return true;
     } catch (err) {
       return couldNot("runner", codeOf(err));

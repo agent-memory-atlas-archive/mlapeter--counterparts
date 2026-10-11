@@ -79,7 +79,8 @@ import { fileURLToPath } from "node:url";
 
 import { Counterpart, MCP_SPILLED_EVENT } from "../../core/counterpart.js";
 import type { CounterpartEvent } from "../../core/counterpart.js";
-import type { NightChildRun, NightPart, NightRun } from "../../core/dream/index.js";
+import { CATCH_UP_ONLY_REASONS } from "../../core/dream/index.js";
+import type { CatchUpOnlyReason, NightChildRun, NightPart, NightRun } from "../../core/dream/index.js";
 import { CONFIG_ENV as CONFIG_PATH_ENV } from "../config-path.js";
 import { scriptArgs } from "../runtime.js";
 import { TOOL_RESULT_CEILING } from "../../core/fit/index.js";
@@ -90,6 +91,7 @@ import { TUNABLES } from "../config.js";
 import type { AdapterConfig } from "../config.js";
 import { DEFAULT_HOST_COMMAND, KILL_GRACE_MS, PERMISSION_MODE, REAP_GRACE_MS, startChild } from "./child.js";
 import { CATCH_UP_TOOLS, runCatchUp } from "./night-catch-up.js";
+import type { CatchUpReport } from "./night-catch-up.js";
 import { hostConfigDir, hostTranscriptPath, readToolSpills } from "./transcript.js";
 import type { ToolSpills } from "./transcript.js";
 import type { ChildPlan, ChildResult } from "./child.js";
@@ -225,20 +227,28 @@ export const HOST_SESSION_ENV = [
   "CLAUDE_PLUGIN_DATA",
 ] as const;
 
-export type NightKind = { readonly kind: "night" } | { readonly kind: "reflection"; readonly dream: string };
+/**
+ * The whole night — or, with `dreamSkipped` (2026-10-11), its catch-up alone:
+ * started because write-ups from an earlier day are owed while the dream is
+ * not due (`Dreams#catchUpOffer`) — or the reflection alone.
+ */
+export type NightKind = { readonly kind: "night"; readonly dreamSkipped?: CatchUpOnlyReason } | { readonly kind: "reflection"; readonly dream: string };
 
 /** A child of the run (2026-10-11): the page writer and the dream, or the reflection. */
 export type NightChild = NightChildRun["child"];
 
-/** `night` or `reflection:<id>`, for `NIGHT_KIND_ENV`. */
+/** `night`, `catch-up:<why the dream is skipped>` or `reflection:<id>`, for `NIGHT_KIND_ENV`. */
 export function kindValue(k: NightKind): string {
-  return k.kind === "night" ? "night" : `reflection:${k.dream}`;
+  if (k.kind === "reflection") return `reflection:${k.dream}`;
+  return k.dreamSkipped === undefined ? "night" : `catch-up:${k.dreamSkipped}`;
 }
 
 /** The reverse, forgiving: anything unreadable is the whole night. */
 export function readKind(raw: string | undefined): NightKind {
   const v = (raw ?? "").trim();
   if (v.startsWith("reflection:") && v.length > "reflection:".length) return { kind: "reflection", dream: v.slice("reflection:".length) };
+  const why = v.startsWith("catch-up:") ? v.slice("catch-up:".length) : "";
+  if ((CATCH_UP_ONLY_REASONS as readonly string[]).includes(why)) return { kind: "night", dreamSkipped: why as CatchUpOnlyReason };
   return { kind: "night" };
 }
 
@@ -549,6 +559,10 @@ export async function runNight(input: NightRunInput): Promise<NightRun> {
       ...(input.onEvent === undefined ? {} : { onEvent: input.onEvent }),
     });
     if (report !== null) catchUpMs = report.ms;
+    // THE CATCH-UP ALONE (2026-10-11): started because write-ups from an
+    // earlier day were owed while the dream was not due. Its dream and its
+    // reflection are skipped, and the row says why — never a failed dream.
+    if (input.kind.dreamSkipped !== undefined) return catchUpOnlyEnd(input, report, children, ended, (d) => (date = d));
   }
 
   // A STORE THAT WILL NOT OPEN is not opened a second time just to say so:
@@ -736,6 +750,47 @@ export async function runNight(input: NightRunInput): Promise<NightRun> {
   // were not there for it.
   if (!began) return ended({ state: "could-not-start", reason: "nothing-ran", detail: null, code: 0 });
   return ended({ state: "failed", reason: "unfinished", detail: null, code: 0, ...found });
+}
+
+/**
+ * THE END OF A NIGHT THAT RAN ITS CATCH-UP ALONE (2026-10-11): the dream's and
+ * the reflection's children are recorded skipped, with the gate's reason
+ * (`dream:skipped-too-little-new`); the wake catches up to what the catch-up
+ * wrote, as after any run; and the row's state follows the catch-up's own —
+ * `done` when it did what it could (its own row says how much), the child's
+ * failure when it could not start, failed or was stopped. Never throws.
+ */
+function catchUpOnlyEnd(
+  input: NightRunInput,
+  report: CatchUpReport | null,
+  children: NightChildRun[],
+  ended: (fields: Pick<NightRun, "state" | "reason" | "detail" | "code"> & Partial<Pick<NightRun, "parts">>) => NightRun,
+  setDate: (date: string) => void,
+): NightRun {
+  const skipped = input.kind.kind === "night" ? input.kind.dreamSkipped : undefined;
+  if (skipped !== undefined) children.push({ child: "dream", code: null, ms: 0, skipped }, { child: "reflection", code: null, ms: 0, skipped });
+  try {
+    const c = input.open();
+    try {
+      if (input.date === undefined) setDate(c.store.today());
+      c.refreshWake({ at: c.store.today(), trigger: "run-end" });
+    } finally {
+      c.close();
+    }
+  } catch {
+    /* the wake catches up at the next worker or the next lived day */
+  }
+  const code = report?.code ?? null;
+  switch (report?.state) {
+    case "could-not-start":
+      return ended({ state: "could-not-start", reason: "spawn-failed", detail: "catch-up", code: null });
+    case "timed-out":
+      return ended({ state: "timed-out", reason: "watchdog", detail: "catch-up", code });
+    case "failed":
+      return ended({ state: "failed", reason: "exit", detail: "catch-up", code });
+    default:
+      return ended({ state: "done", reason: null, detail: null, code, parts: [] });
+  }
 }
 
 /** What one child of the run came to: its exit, its time, and what the host cut. */

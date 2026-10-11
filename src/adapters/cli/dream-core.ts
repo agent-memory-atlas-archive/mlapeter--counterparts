@@ -9,7 +9,7 @@
  * tests can check the words without a store.
  */
 import type { Counterpart } from "../../core/counterpart.js";
-import { nightPartsWords, nightRunWords } from "../../core/dream/index.js";
+import { dreamSkippedOf, nightPartsWords, nightRunWords } from "../../core/dream/index.js";
 import type { DreamingSetting, NightRun } from "../../core/dream/index.js";
 import { acceptsReflectedFeeling } from "../../core/sleep/index.js";
 import type { DreamChangeRow, ReflectionRow, Store } from "../../core/store/index.js";
@@ -52,7 +52,7 @@ export function dreamingSettingWords(setting: DreamingSetting): string {
  * finish.
  */
 export function nightRunLine(run: NightRun): string {
-  const what = run.kind === "reflection" ? "the reflection alone" : "the whole night";
+  const what = run.kind === "reflection" ? "the reflection alone" : dreamSkippedOf(run) !== null ? "the catch-up alone" : "the whole night";
   const parts = run.state === "done" || run.state === "partial" ? ` — ${nightPartsWords(run)}` : "";
   const why = run.state === "done" || run.state === "started" || (run.state === "partial" && run.reason === "unfinished") ? "" : `: ${nightRunWords(run)}`;
   return `Latest headless run: ${run.run}  ${run.date}  ${run.state} (${what})${parts}${why}`;
