@@ -592,7 +592,11 @@ Now the offered ids' exact line cost (`OVERHEAD` + the line, or the whole when i
 shorter) is held back from the shared room; the shared fit runs as before in what is left;
 any offered id it left waiting or showed as a bare id is fitted again with `least: "line"`
 in the held-back room plus what the shared fit left over, and placed first (so a bundle in
-parts carries it in part 1). A light night is unchanged but for that small reserve. Not a
+parts carries it in part 1). The reserve is taken only when the plain fit (the whole room,
+as before) leaves an offered id waiting or a bare id, and never past the room there is
+(review of #383): a night whose plain fit already shows the offer a line or more is fitted
+exactly as before — measured at 150 long recent memories, the always-held reserve had
+turned six whole texts into lines (88 → 82) on a night that never needed it. Not a
 higher priority: the third pass hands whole texts out by priority, so the offer would have
 taken up to five whole texts on exactly the tight nights.
 

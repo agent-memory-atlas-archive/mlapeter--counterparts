@@ -292,8 +292,9 @@ dream having run.
   skill — since 2026-10-11; not a journal copy), those with a feeling, an entity or the
   owner's name first, then the most used, then the oldest, rotated so the last three
   nights' offers wait behind the rest — offered to be marked by meaning. They keep a room
-  of their own (2026-10-11): what they cost as lines is held back from the shared room, so
-  a full night shows each at least as a line. A writer's mark is never
+  of their own (2026-10-11): on a night the plain fit leaves one waiting or a bare id, what
+  they cost as lines is held back from the shared room (never past the room there is), so
+  a full night shows each at least as a line; any other night is fitted as before. A writer's mark is never
   offered. A reflection's own later feelings are counted but never make a change. Three questions, rotated so consecutive nights share none (the dream question only
   after a dream). **In parts, not cut** (2026-09-28): a bundle longer than
   `RESULT_CHARS` (the tool result's ceiling is about 25k tokens) comes as part 1 of N —
