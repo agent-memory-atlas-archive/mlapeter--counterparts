@@ -32,7 +32,8 @@ and the lessons learned. Legacy-only fixes are low priority by default.
 **Status:** `open` — Mike walks this list; npm is held until he has. Written by the Group 1a
 build (strength) from the mechanisms synthesis (§4, as amended by its draft 2, §8). Each line
 says who decided it, when, and why, in plain words. The ones that reverse a ruling of Mike's
-come first. Nothing here quotes a memory.
+come first. Nothing here quotes a memory. A new subsection arrives as a fragment in
+[`decisions.d/`](decisions.d/README.md) and is stitched in at release.
 
 ### Revised from Mike's rulings
 
@@ -575,6 +576,23 @@ were refined by b2+f8 at the review of #369, named where they were):
   pair names as what holds, or whose holder is gone with nothing live after it, no longer
   reads `Earlier`. Accepted as built: a guest writer's neighbour whose head is confidential
   is left out; a neighbour whose head ranks below it is listed marked beside its head.
+
+### Decided by the context-trims builder, 2026-10-11, lightly held (what a tool description serves)
+
+- Decided by the context-trims builder, 2026-10-11, lightly held; needs the bench A/B before
+  merge: `remember`, `session_end`, `recall` and `chapter` serve only the guarantees that
+  change what the model writes or calls (or name a refusal it can avoid); the rest became
+  each tool's `engine` rows, audited and not served (mcp CONTRACT §5 G2). session_end
+  20.9 → 15.5 KB as loaded, remember 19.6 → 16.2, recall 7.9 → 6.3, chapter 4.4 → 3.8. Why:
+  `session_end` and `chapter` load at every end-of-session ask, and what was cut is said on a
+  field the host serves whole, in the result, or in a refusal that names itself. The one
+  most likely to move a number: `remember` no longer says "you may score the three
+  dimensions yourself" (the fields `relevance`, `emotional`, `predictive` still do;
+  `session_end`'s pinned claim still says it).
+- Decided by the context-trims builder, 2026-10-11, lightly held: a RESUMED session gets a
+  short wake (the wake above still holds; what changed since) instead of a second full one,
+  when it resumes on the day it started. A compaction keeps the full wake: it summarizes the
+  first one away. Why: on resume the host replays the first wake, so the model read both.
 
 ### Decided by the uninstall-delete builder, 2026-10-11, lightly held (`uninstall` offers to delete)
 
