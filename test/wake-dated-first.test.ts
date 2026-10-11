@@ -370,10 +370,10 @@ describe("one ordered list of who gives way to whom", () => {
     expect(at("due")).toBeLessThan(at("page"));
     // The trim loop's lanes are the bottom of the same list, in the same order.
     expect(ROOM_ORDER.slice(0, 3)).toEqual(TRIM_ORDER.slice(0, 3) as never);
-    // The "Today, elsewhere" line ranks above the page's borrowing and below
-    // a due-day plain reminder (b2 + random-f8, 2026-10-10).
-    expect(at("pageBorrow")).toBeLessThan(at("elsewhere"));
-    expect(at("elsewhere")).toBeLessThan(at("due"));
+    // The "Today, elsewhere" line ranks above the handoffs' room and below
+    // every dated item and the page's borrowing (review of #380).
+    expect(at("handoffs")).toBeLessThan(at("elsewhere"));
+    expect(at("elsewhere")).toBeLessThan(at("arriving"));
     // The head of Arriving: its due-day plain reminders, or else its first line.
     expect(arrivingHead([])).toBe(0);
     expect(arrivingHead([{}, {}])).toBe(1);
@@ -668,36 +668,47 @@ describe("at the composition: three dated items, and who gives the room", () => 
     expect(two.kept.horizon[0]).toBe(first);
   });
 
-  test("the \"Today, elsewhere\" line's room comes out of the page, which steps down whole; a due-day reminder is listed and the page's borrowing gives way before the line (b2 + random-f8)", () => {
+  test("the \"Today, elsewhere\" line takes no room from the page or its borrowing: \"Work here\" and the handoffs' room are lent to it, and a due-day reminder outranks it (b2 + random-f8; its rank since the review of #380)", () => {
     const away = `Today, elsewhere: ~/bakery open since 08:02 (live) — "${"A chapter title of some length ".repeat(3).trim()}" (epi_0123456789ab), 3 memories.`;
     const bare = "Today, elsewhere: ~/bakery open since 08:02 (live), 3 memories.";
+    const line = { elsewhere: away, elsewhereShorter: [bare] };
     // `extra`: how much "Work here" lends past what the whole page needs —
-    // none, less than the line, more than the line.
-    for (const extra of [0, 200, 400]) {
+    // none, more than the line, enough for a long reminder but not for it
+    // and the line, and enough for both.
+    for (const extra of [0, 200, 400, 1_200]) {
       const lend = wholeCost(7_012) - (COMPOSE - PAGE_FLOOR_RESERVE_BYTES) + extra;
       const { me, ids } = selfWith(pageOfSize(7_012), SHORT, LONG);
       const first = ids[0] ?? "";
       const base = { budgetBytes: COMPOSE, day: 2, lendBytes: lend };
-      // No line: nothing reserved, the page whole on borrowed room.
+      // The page whole on borrowed room, with the line or without it.
       expect(me.build(base).page?.rung).toBe("whole");
-      // The line: printed widest; the page whole when the lend covers both,
-      // else stepped down to its short version — whole text, top and end lines.
-      const withLine = me.build({ ...base, elsewhere: away, elsewhereShorter: [bare] });
-      expect(withLine.elsewhere).toBe(away);
-      expect(withLine.page?.rung).toBe(extra >= bytes(away) + 2 ? "whole" : "short");
-      const rung = withLine.page?.rung ?? "line";
-      const lines = withLine.text.split("\n");
-      expect(lines).toContain(pageTopLine(rung, 7_012) ?? "");
-      expect(lines).toContain(PAGE_END_LINES[rung as keyof typeof PAGE_END_LINES]);
-      if (rung === "short") expect(withLine.text).toContain(SHORT);
+      const withLine = me.build({ ...base, ...line });
+      expect(withLine.page?.rung).toBe("whole");
+      expect(withLine.text.split("\n")).toContain(pageTopLine("whole", 7_012) ?? "");
+      expect(withLine.text.split("\n")).toContain(PAGE_END_LINES.whole);
+      expect([away, bare, undefined]).toContain(withLine.elsewhere);
+      expect(withLine.bytes).toBeLessThanOrEqual(withLine.budgetBytes);
       expect(readSentinel(withLine.text).intact).toBe(true);
-      // With a due-day plain reminder: listed, and the line kept whole — the
-      // page's borrowing gave way first.
-      const due = me.build({ ...base, elsewhere: away, elsewhereShorter: [bare], horizon: [{ id: first, due: "2026-10-09", plainDue: true }] });
+      // What "Work here" lends past the page is the line's.
+      if (extra > 0) expect(withLine.elsewhere).toBe(away);
+      // And the handoffs' room, below it in `ROOM_ORDER`, is lent to it too.
+      const lent = me.build({ ...base, ...line, handoffLendBytes: 400 });
+      expect(lent.page?.rung).toBe("whole");
+      expect(lent.elsewhere).toBe(away);
+      expect(lent.bytes).toBeLessThanOrEqual(lent.budgetBytes);
+      // A due-day plain reminder: listed, and the page on the rung it takes
+      // without the line — the line gives way first, never the page for it.
+      const horizon = [{ id: first, due: "2026-10-09", plainDue: true }];
+      const due = me.build({ ...base, ...line, horizon });
+      const alone = me.build({ ...base, horizon });
       expect(due.counts.horizon).toBe(1);
-      expect(due.elsewhere).toBe(away);
-      expect(due.page?.rung).toBe("short");
+      expect(due.page?.rung).toBe(alone.page?.rung);
       expect(due.bytes).toBeLessThanOrEqual(due.budgetBytes);
+      if (extra === 400) {
+        expect(due.page?.rung).toBe("whole");
+        expect(due.elsewhere).not.toBe(away);
+      }
+      if (extra === 1_200) expect(due.elsewhere).toBe(away);
     }
   });
 

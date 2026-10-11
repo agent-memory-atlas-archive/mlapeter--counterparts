@@ -2029,14 +2029,25 @@ random-f8's, lightly held.
   keeps home — named not at all, not even by count. Never span text, a work memory's title
   or a handoff body. It first sat in `ROOM_ORDER` right after Nearby, and the test-build
   rehearsal (10-10) found it never printed at 9,000 beside the owner's ~5.9 KB page. Now
-  (b2+f8, lightly held) it has a room of its own: every form within
-  `TODAY_ELSEWHERE_MAX_BYTES` (300; folders past it "+N more", last the count alone), the
-  page chosen in that much less room (`elsewhereRoomBytes`, only when there is a line), the
-  line floor furniture like the Yesterday line (the trim loop no longer touches it), and its
-  `ROOM_ORDER` rank above `pageBorrow`, below `due` — `takeRoom` steps it down for a due-day
-  plain reminder alone, and `composeLanes` steps a borrowing page down before the line
-  narrows (the render alone would narrow the line first). Measured in the owner-like test: the page fits its own room less
-  the line, so it gave 0 bytes; "Still open" listed one item fewer.
+  (b2+f8, lightly held) every form is within `TODAY_ELSEWHERE_MAX_BYTES` (300; folders past
+  it "+N more", last the count alone). #380 first ranked it above `pageBorrow` (the page
+  chosen in the line's bytes less room, the line floor furniture); **the review of #380
+  moved it down to between `handoffs` and `arriving`**, the lowest rank that printed it in
+  both measured cases (9,000, a due-day plain reminder, four handoffs):
+  - owner-like (~5.9 KB page, one other folder): above `openCount` is enough — the line
+    took "Still open"'s count; below it, only "1 other directory." printed;
+  - busier (6.5 KB page that borrows, "Work here" and a Yesterday line, two or three other
+    folders): nothing below `handoffs` printed it, not even the count alone; from
+    `handoffs` up it printed whole, and "Work here" lost its one line;
+  - and at 6,767 bytes (an owner's page size from the history), above `pageBorrow` cost
+    the page its whole rung for a 243-byte line (8,881 → 4,172 bytes, whole → outline
+    with no short version); here the page stays whole and the line prints.
+  So the line takes room from the trim loop's lanes, then — the trim loop asking
+  `takeRoom` on its behalf before it would pop a lane above it — "Work here", the
+  Yesterday line's titles and the handoffs' room, and only then steps down; "Still
+  open"'s last item counts as its first (`openFirst`, with its count) there. The page and
+  its borrowing give it nothing (`composeLanes` is as before #380); Arriving, "Still
+  open"'s first item and a due-day reminder step it down in the rescues.
 - **The preface says so:** "— assembled at session start" in place of "— composed at the
   last boundary" (fewer bytes, inside `PREFACE_RESERVE_BYTES`).
 - **The record speaks for one bundle.** It is written in the same transaction as

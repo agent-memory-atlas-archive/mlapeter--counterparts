@@ -477,9 +477,9 @@ describe("the assembled wake keeps its budget and its order", () => {
     expect(line).toMatch(/; \+\d+ more\.$/);
   });
 
-  test("ROOM_ORDER: the line ranks above the page's borrowing and every lane trims around it; a due-day plain reminder outranks it", () => {
-    expect(ROOM_ORDER.indexOf("elsewhere")).toBeGreaterThan(ROOM_ORDER.indexOf("pageBorrow"));
-    expect(ROOM_ORDER.indexOf("elsewhere")).toBeLessThan(ROOM_ORDER.indexOf("due"));
+  test("ROOM_ORDER: the line ranks above Nearby, Still open past its first item and the delivery's rooms, and below every dated item; they trim around it, and it steps down for what outranks it (review of #380)", () => {
+    expect(ROOM_ORDER.indexOf("elsewhere")).toBeGreaterThan(ROOM_ORDER.indexOf("handoffs"));
+    expect(ROOM_ORDER.indexOf("elsewhere")).toBeLessThan(ROOM_ORDER.indexOf("arriving"));
     const ranked = (id: string, lane: Ranked["lane"], due = false): Ranked => ({
       id,
       lane,
@@ -511,27 +511,30 @@ describe("the assembled wake keeps its budget and its order", () => {
     const long = `Today, elsewhere: ${"~/a-long-folder-name; ".repeat(20)}.`;
     expect(render(lanes, { budgetBytes: 100_000, day: 2, elsewhere: long, elsewhereShorter: [bare] }, resolve, SELF_TUNABLES).elsewhere).toBe(bare);
     // Down a sweep of budgets: the line keeps its widest form while Nearby
-    // and Still open give way around it; only the due-day reminder steps it
-    // down, and the reminder stays listed whenever the line prints.
+    // and Still open past its first item give way around it; it steps down
+    // only for what outranks it — the due-day reminder, Still open's first
+    // item — and neither is left unlisted for it.
     let sawLanesTrimmed = false;
     let sawStepped = false;
-    const floorFits = (budget: number): boolean =>
-      render({ ...lanes, horizon: [] }, { budgetBytes: budget, day: 2, elsewhere: away }, resolve, SELF_TUNABLES).elsewhere === away;
     for (let budget = without.bytes + bytes(away); budget > 300; budget -= 7) {
       const r = render(lanes, { budgetBytes: budget, day: 2, elsewhere: away, elsewhereShorter: [bare] }, resolve, SELF_TUNABLES);
       expect(r.bytes).toBeLessThanOrEqual(budget);
-      // The reminder is never unlisted for the line: when the line prints
-      // and the reminder does not, the reminder would not fit without it.
-      if (r.elsewhere !== undefined && r.kept.horizon.length === 0) {
-        expect(render(lanes, { budgetBytes: budget, day: 2 }, resolve, SELF_TUNABLES).kept.horizon).toEqual([]);
+      const alone = render(lanes, { budgetBytes: budget, day: 2 }, resolve, SELF_TUNABLES);
+      // The reminder and Still open's first item are never unlisted for the
+      // line: when the line prints and one of them does not, it would not
+      // fit without the line either.
+      if (r.elsewhere !== undefined && r.kept.horizon.length === 0) expect(alone.kept.horizon).toEqual([]);
+      if (r.elsewhere !== undefined && r.kept.threads.length === 0) expect(alone.kept.threads).toEqual([]);
+      // Narrower than its widest only once Nearby is gone and Still open is
+      // down to its first item.
+      if (r.elsewhere !== away) {
+        expect(r.kept.hints.length).toBe(0);
+        expect(r.kept.threads.length).toBeLessThanOrEqual(1);
       }
       const lanesShort = r.kept.threads.length < 3 || r.kept.hints.length < 3;
-      if (lanesShort && (r.kept.threads.length > 0 || r.kept.hints.length > 0)) {
-        expect(r.elsewhere).toBe(away);
-        sawLanesTrimmed = true;
-      }
-      // Stepped down for the reminder: a narrower line, or none, with the reminder listed.
-      if (r.elsewhere !== away && r.kept.horizon.length === 1 && floorFits(budget)) sawStepped = true;
+      if (lanesShort && r.elsewhere === away && (r.kept.threads.length > 1 || r.kept.hints.length > 0)) sawLanesTrimmed = true;
+      // Stepped down for what outranks it: a narrower line, or none, with the reminder listed.
+      if (r.elsewhere !== away && r.kept.horizon.length === 1) sawStepped = true;
     }
     expect(sawLanesTrimmed).toBe(true);
     expect(sawStepped).toBe(true);
@@ -542,7 +545,7 @@ describe("the assembled wake keeps its budget and its order", () => {
 // Its own room (b2 + random-f8, 2026-10-10, lightly held)
 // ═══════════════════════════════════════════════════════════════════════════
 
-describe("the line has a small room of its own, taken from the page", () => {
+describe("the line has a small room of its own, and the page keeps its own", () => {
   /**
    * THE OWNER'S MORNING, AS THE TEST-BUILD REHEARSAL MET IT: a ~5.9 KB page,
    * 25 open questions, four handoffs here, a plain reminder due today, at
@@ -622,12 +625,11 @@ describe("the line has a small room of its own, taken from the page", () => {
     const line = text.split("\n").find((l) => l.startsWith("Today, elsewhere: "));
     expect(line).toBe(`Today, elsewhere: ${tilde(THERE)} open since 08:02 (live), 1 memory.`);
     expect(bytes(line ?? "")).toBeLessThanOrEqual(TODAY_ELSEWHERE_MAX_BYTES);
-    // The page keeps its top and end lines, and gives at most the line's room.
-    const given = pageBytes(quiet.text) - pageBytes(text);
+    // The page keeps its top and end lines and gives none of its room: it
+    // and its borrowing outrank the line (review of #380).
+    expect(pageBytes(text)).toBe(pageBytes(quiet.text));
     // Still open keeps its first item beside it.
     expect(lane(text, FRAMING.threads)[0]).toStartWith("- ");
-    expect(given).toBeGreaterThanOrEqual(0);
-    expect(given).toBeLessThanOrEqual(TODAY_ELSEWHERE_MAX_BYTES + 2);
     // The due-day plain reminder is still listed, and the handoffs still point the way.
     expect(lane(text, FRAMING.horizon).some((l) => l.includes("the seed order closes at noon"))).toBe(true);
     expect(text).toContain("garden-b");

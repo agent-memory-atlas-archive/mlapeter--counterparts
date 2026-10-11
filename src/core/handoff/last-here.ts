@@ -486,9 +486,9 @@ export const TODAY_ELSEWHERE_MAX_DIRS = 5;
 /**
  * HOW LONG THE LINE MAY BE, IN BYTES (2026-10-10, b2 + random-f8, lightly
  * held): every form `todayElsewhereLines` returns fits it, the directories
- * past it counted ("+N more"). It is the most the line takes from the page's
- * room (`briefing.ts#ROOM_ORDER`'s `elsewhere`), so a long morning elsewhere
- * cannot grow into the wake.
+ * past it counted ("+N more"). It is the most room the line asks of the
+ * lanes below it (`briefing.ts#ROOM_ORDER`'s `elsewhere`), so a long morning
+ * elsewhere cannot grow into the wake.
  */
 export const TODAY_ELSEWHERE_MAX_BYTES = 300;
 

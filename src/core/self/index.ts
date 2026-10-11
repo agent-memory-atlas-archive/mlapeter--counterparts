@@ -76,7 +76,6 @@ import {
   TRIM_ORDER,
   WAKE_SYSTEM,
   applyPreface,
-  elsewhereRoomBytes,
   arrivingTense,
   flatten,
   isPageFrameLine,
@@ -1038,17 +1037,10 @@ export class Self {
     // room costs "Work here" a few bytes; what is left of the lend is still
     // "Still open"'s.
     const lend = req.lendBytes === undefined || req.omit !== undefined ? 0 : Math.max(0, Math.floor(req.lendBytes));
-    // AND IT LEAVES THE "TODAY, ELSEWHERE" LINE ITS ROOM (2026-10-10, b2 +
-    // random-f8, lightly held; `briefing.ts#ROOM_ORDER`'s `elsewhere` above
-    // `pageBorrow`): the page is chosen in the line's bytes less room — at
-    // most `TODAY_ELSEWHERE_MAX_BYTES` and its blank line, and nothing on a
-    // day no other directory was active. A page that no longer fits borrows,
-    // then steps down its ladder whole, as it always does.
-    const away = req.omit !== undefined ? 0 : elsewhereRoomBytes(req.elsewhere, req.elsewhereShorter);
     const choose = (below?: PageRung): { block: PageBlock | typeof NO_ROOM | null; took: number } =>
       req.omit !== undefined && !this.tunables.PAGE_ON_EGRESS
         ? { block: null, took: 0 }
-        : this.pageBlock(req.budgetBytes - away, lend, below);
+        : this.pageBlock(req.budgetBytes, lend, below);
     const renderWith = (choice: { block: PageBlock | typeof NO_ROOM | null; took: number }): BriefingResult => {
       const { block, took } = choice;
       // A page that will not FIT is not a page that does not EXIST: the
@@ -1104,28 +1096,20 @@ export class Self {
     // than the first rung that borrows nothing. The page within its own room
     // outranks it, so when even that does not list it, the wake stays as it
     // was composed, and doctor says so (`self.briefing`'s `trimmedLanes`).
-    //
-    // AND TO THE "TODAY, ELSEWHERE" LINE (2026-10-10, b2 + random-f8, lightly
-    // held; `elsewhere` above `pageBorrow`): when the render printed the line
-    // narrower than its widest form — or not at all — while the page
-    // borrowed, the page steps down the same way. A due-day reminder the
-    // render listed by stepping the line down is never given back for it.
+    // Not for the "Today, elsewhere" line (review of #380): the page and its
+    // borrowing outrank it, so the line takes its room in the render, from
+    // the lanes below it.
     const due = lanes.horizon.filter((r) => r.due === true).map((r) => r.id);
     const unlisted = (o: BriefingResult): boolean => due.some((id) => !o.kept.horizon.includes(id));
-    const lineBytes = (o: BriefingResult): number => elsewhereRoomBytes(o.elsewhere);
-    const short = (o: BriefingResult): boolean => lineBytes(o) < away;
-    const better = (a: BriefingResult, b: BriefingResult): boolean =>
-      unlisted(b) !== unlisted(a) ? !unlisted(a) : lineBytes(a) > lineBytes(b);
-    let best = out;
     let current = chosen;
-    while (current.took > 0 && (unlisted(best) || short(best)) && current.block !== null && current.block !== NO_ROOM) {
+    while (due.length > 0 && current.took > 0 && unlisted(out) && current.block !== null && current.block !== NO_ROOM) {
       const next = choose(current.block.rung);
       if (next.block === null || next.block === NO_ROOM) break;
       const stepped = renderWith(next);
-      if (better(stepped, best)) best = stepped;
+      if (!unlisted(stepped)) return stepped;
       current = next;
     }
-    return best;
+    return out;
   }
 
   /**
