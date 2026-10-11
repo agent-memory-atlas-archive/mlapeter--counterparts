@@ -12,10 +12,11 @@ ceremony when it fights this page. Changing THIS page is deliberate and rare._
    transcripts; the signal is in the structure of experience — what recurred, what
    carried feeling, what got revised, what connects. Simple rules from human memory,
    compounding.
-2. **Interpret, and keep the specifics.** Store what happened and what was learned, and
-   keep the specifics worth having back — the list, the table, the number, the exact
-   words — as they were, where exactness matters. Encoding sits as close to the lived
-   experience as the host allows — in author, in time, in context.
+2. **Interpret; keep the specifics that matter.** Store what happened and what was
+   learned, in your own words; keep the specifics worth having back — the list, the
+   table, the number, the exact words — as they were, where exactness matters. Encoding
+   sits as close to the lived experience as the host allows — in author, in time, in
+   context. How interpretation happens — who, when, which seat — is a design choice.
 3. **Forgetting is part of learning.** Forget the trials, keep the lesson. Decay and
    consolidation are features, never apologized for.
 4. **The self is first-class.** Identity, episodes, a persistent "who am I becoming" —
@@ -35,7 +36,8 @@ ceremony when it fights this page. Changing THIS page is deliberate and rare._
 7. **Memory changes like human memory.** Revision, fading, and forgetting are the
    system working. Revisions keep their history; nothing bulk-wipes silently; backups
    catch catastrophe. No ceremony beyond that.
-8. **Memory forms as you go:** you remember what catches your attention, in the moment.
+8. **Memory forms as you go.** You remember what catches your attention, in the moment,
+   the way people do.
 9. **One memory, many fidelities.** Gist governs salience and forgetting; verbatim
    survives where exactness matters. Biology's rules without biology's limits.
 10. **Simplicity is a feature.** One brain function per self-contained module. A
