@@ -260,6 +260,60 @@ describe("the plugin's files", () => {
     expect(text).toContain("run_in_background: true");
   });
 
+  test("/counterparts:uninstall grants the plan and the keep call, and no form that deletes or parks", () => {
+    // There is no scripted delete (cli/uninstall.ts#uninstallJson): the typed
+    // confirmation must come from the person at a terminal. A model could fake
+    // a TTY (script(1)), so this grant is the guard: exact rules, no wildcard,
+    // and a Bash rule without `:*` matches only its exact command.
+    const text = readFileSync(join(ROOT, "commands", "uninstall.md"), "utf8");
+    const line = /^allowed-tools:\s*(.+)$/m.exec(text)?.[1]?.trim() ?? "";
+    const grants = [...line.matchAll(/Bash\((.*?)\)(?=,\s*Bash\(|$)/g)].map((m) => m[1] ?? "");
+    const run = (args: string): string => `sh "${LAUNCHER_ARG}" cli ${args}`;
+    const plan = run("uninstall --json");
+    const keep = run("uninstall --keep-memories --json");
+    expect(grants).toEqual([plan, keep]);
+    expect(line).toBe(`Bash(${plan}), Bash(${keep})`);
+    const permits = (command: string): boolean => grants.includes(command);
+    expect(permits(plan)).toBe(true);
+    expect(permits(keep)).toBe(true);
+    for (const refused of [
+      run("uninstall"),
+      run("uninstall --config /x/claude-code.json"),
+      run("uninstall --delete-memories"),
+      run("uninstall --delete-memories --json"),
+      run("uninstall --park"),
+      run("uninstall --park --json"),
+      run("uninstall --json --config /x/claude-code.json"),
+      run("uninstall --keep-memories --json --config /x/claude-code.json"),
+      run("uninstall --json --keep-memories"),
+      run("uninstall --json --delete-memories"),
+      run("uninstall --keep-memories --json --delete-memories"),
+      `${plan}; rm -rf ~/.counterparts`,
+      `${plan} && sh "${LAUNCHER_ARG}" cli uninstall`,
+    ]) {
+      expect(permits(refused)).toBe(false);
+    }
+    // The only runnable commands the file hands a model are the two it grants;
+    // the terminal command for a delete is built for the person, never fenced
+    // with the launcher variable.
+    const fenced = [...text.matchAll(/```\n([\s\S]*?)```/g)].flatMap((m) => (m[1] ?? "").split("\n")).map((l) => l.trim());
+    const withRoot = fenced.filter((l) => l.includes("${CLAUDE_PLUGIN_ROOT}"));
+    expect(withRoot).toEqual([plan, keep]);
+    expect(text).toContain(`\n${plan}\n`);
+    expect(text).toContain(`\n${keep}\n`);
+    // The question is asked, with both answers, and a delete runs nothing.
+    expect(text).toContain("AskUserQuestion");
+    expect(text).toContain("Keep my memories (just uninstall)");
+    expect(text).toContain("Delete my memories too (can't be undone)");
+    expect(text).toContain("terminalArgs");
+    expect(text).not.toMatch(/DELETE MEMORIES/);
+    // A delete disables the plugin BEFORE the terminal run: an enabled plugin's
+    // next start installs a fresh base again (the test below proves it).
+    const disable = text.indexOf("Disable plugin");
+    expect(disable).toBeGreaterThan(-1);
+    expect(disable).toBeLessThan(text.indexOf("Quit Claude Code completely"));
+  });
+
   test("no top-level bin/ (chat and Cowork refuse such a plugin) and no root .mcp.json (it would be every dev session's project config)", () => {
     expect(existsSync(join(ROOT, "bin"))).toBe(false);
     expect(existsSync(join(ROOT, ".mcp.json"))).toBe(false);
@@ -1423,5 +1477,88 @@ describe("a paused folder with two wirings", () => {
     expect(systemMessage(settings.stdout)).toBe(`${PAUSED} \`counterparts scope ~/project --resume\` turns it back on.`);
     expect(snapshot(base)).toEqual(before);
     expect(existsSync(join(base, "store", "sessions", "claims"))).toBe(false);
+  }, 120_000);
+});
+
+// ── /counterparts:uninstall: the keep call drops the plan's --config ────────
+
+describe("/counterparts:uninstall's two calls read one configuration", () => {
+  /** A Bash call from the command: no CLAUDE_PLUGIN_ROOT of its own (the launcher sets it), run in `cwd`. */
+  function cli(args: readonly string[], env: Record<string, string>, cwd: string): { code: number; stdout: string; stderr: string } {
+    const e = { ...env };
+    delete e["CLAUDE_PLUGIN_ROOT"];
+    const r = spawnSync("/bin/sh", [LAUNCHER, "cli", ...args], { encoding: "utf8", env: e, cwd, timeout: 60_000 });
+    return { code: r.status ?? -1, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+  }
+
+  function json(stdout: string): Record<string, unknown> {
+    return JSON.parse(stdout.trim()) as Record<string, unknown>;
+  }
+
+  /** An install at `choice`, made the way the plugin's first run makes one. */
+  function installAt(choice: ConfigChoice): void {
+    expect(ensureFirstRun({ choice, env: firstRunEnv(), home, lockPath: firstRunLockPath(choice.path, tmp), noticePath: firstRunNoticePath(choice.path, tmp) }).state).toBe("created");
+  }
+
+  /** The plan, then the keep call EXACTLY as granted, from a different cwd (Claude Code's Bash keeps a `cd`). */
+  function planThenKeep(env: Record<string, string>): { plan: Record<string, unknown>; keep: Record<string, unknown> } {
+    const p = cli(["uninstall", "--json"], env, project);
+    expect(p.code).toBe(0);
+    const plan = json(p.stdout);
+    const k = cli(["uninstall", "--keep-memories", "--json"], env, work);
+    const keep = json(k.stdout);
+    // What the grant drops from the plan's keepArgs is a --config naming the very file both read.
+    expect(plan["keepArgs"]).toEqual(["uninstall", "--keep-memories", "--json", "--config", plan["configPath"]]);
+    expect(keep["mode"]).toBe("keep");
+    expect(keep["configPath"]).toBe(plan["configPath"]);
+    return { plan, keep };
+  }
+
+  beforeEach(() => {
+    // Decoys a search from the working directory would find first: there is no such search.
+    for (const dir of [project, work]) {
+      mkdirSync(join(dir, ".counterparts"), { recursive: true });
+      writeFileSync(join(dir, ".counterparts", "claude-code.json"), JSON.stringify({ dataDir: join(dir, "decoy-store") }));
+      writeFileSync(join(dir, "claude-code.json"), JSON.stringify({ dataDir: join(dir, "decoy-store") }));
+    }
+  });
+
+  test("the default: with or without CLAUDE_PLUGIN_DATA, whatever the cwd, both read ~/.counterparts/claude-code.json", () => {
+    installAt(defaultChoice());
+    for (const env of [pluginEnv(), (({ CLAUDE_PLUGIN_DATA: _, ...rest }) => rest)(pluginEnv())]) {
+      const { plan } = planThenKeep(env);
+      expect(plan["configPath"]).toBe(defaultChoice().path);
+    }
+  }, 120_000);
+
+  test("COUNTERPARTS_CONFIG reaches both calls alike, so the dropped --config names the same file", () => {
+    installAt(defaultChoice());
+    // A second install, named only by the variable (the first run makes only the default).
+    const other = join(work, "elsewhere", "claude-code.json");
+    mkdirSync(join(work, "elsewhere", "store"), { recursive: true });
+    writeFileSync(other, JSON.stringify({ dataDir: join(work, "elsewhere", "store") }));
+    const { plan } = planThenKeep(pluginEnv({ COUNTERPARTS_CONFIG: other }));
+    expect(plan["configPath"]).toBe(other);
+  }, 120_000);
+
+  test("after a delete at the terminal, an ENABLED plugin's next session start installs a fresh base again", () => {
+    // Why the command has the person disable the plugin before the terminal delete.
+    installAt(defaultChoice());
+    const base = dirname(defaultChoice().path);
+    rmSync(base, { recursive: true, force: true });
+    launch("hook", payload("SessionStart"), pluginEnv());
+    expect(existsSync(defaultChoice().path)).toBe(true);
+  }, 120_000);
+
+  test("COUNTERPARTS_REQUIRE_EXPLICIT_DIR=1 refuses both calls alike, before either reads or changes anything", () => {
+    installAt(defaultChoice());
+    const env = pluginEnv({ COUNTERPARTS_REQUIRE_EXPLICIT_DIR: "1" });
+    for (const args of [["uninstall", "--json"], ["uninstall", "--keep-memories", "--json"]]) {
+      const r = cli(args, env, project);
+      expect(r.code).toBe(2);
+      expect(r.stdout).toBe("");
+      expect(r.stderr).toContain("COUNTERPARTS_REQUIRE_EXPLICIT_DIR=1 and no configuration was named");
+    }
+    expect(existsSync(defaultChoice().path)).toBe(true);
   }, 120_000);
 });
