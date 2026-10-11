@@ -2728,7 +2728,14 @@ export class McpServer {
     // ONLY A NON-EMPTY STRING diverts (PR #192 review, m1): a host or model that
     // sends unused optional fields as `null` or `""` must not have every
     // ordinary answer refused as a write-up of nobody.
-    if (typeof args["writeUp"] === "string" && args["writeUp"].length > 0) return this.writeUpField(args);
+    //
+    // `drewOn` (2026-10-11) is read before the divert (review of #385), so a
+    // write-up that names what it drew on is credited as any other answer is:
+    // the writing session is this one, and so is the shown set the guard
+    // reads. It is credited whatever the rest of the call does, and its
+    // outcome rides out on every answer below.
+    const drewOn = this.drewOnField(args["drewOn"], "session_end");
+    if (typeof args["writeUp"] === "string" && args["writeUp"].length > 0) return this.writeUpField(args, drewOn);
 
     // THE HANDOFF FIRST, and before the memories check on purpose (E1). It is a
     // FIELD on this call and not one of the entries, so a dump whose `memories`
@@ -2755,9 +2762,6 @@ export class McpServer {
       const refused = this.unnamedHandoffField(retiredRaw);
       retired = refused === null ? null : [refused];
     }
-    // `drewOn` (2026-10-11) is a field on this call too, credited whatever the
-    // memories do, and its outcome rides out on every answer below.
-    const drewOn = this.drewOnField(args["drewOn"], "session_end");
 
     const raw = args["memories"];
     // NOTHING WORTH KEEPING IS A REAL ANSWER — and until 2026-09-21 it was not
@@ -3028,7 +3032,7 @@ export class McpServer {
    * decisions are `write-up.ts#writeUpDoor`'s; this only binds it to this
    * server's store, scope, registry and bound session, and renders the answer.
    */
-  private async writeUpField(args: Record<string, unknown>): Promise<ToolResult> {
+  private async writeUpField(args: Record<string, unknown>, drewOn: Record<string, unknown> | null): Promise<ToolResult> {
     const session = this.session as string;
     const out = await writeUpDoor({
       counterpart: this.counterpart,
@@ -3055,7 +3059,7 @@ export class McpServer {
     if (out.isError && body["stored"] === false && out.reason !== "nothing-landed") {
       this.emit("mcp.refused", undefined, { tool: "session_end", reason: out.reason });
     }
-    return this.result(body, out.isError);
+    return this.result(drewOn === null ? body : { ...body, drewOn }, out.isError);
   }
 
   /**
@@ -3077,6 +3081,17 @@ export class McpServer {
       return { credited: [], reason: "drewOn-malformed", detail: "drewOn is a list of memory ids, as strings." };
     }
     if (raw.length === 0) return null;
+    // A DESKTOP CALL THAT NAMED NO SESSION credits nothing (review of #385),
+    // as it leaves no handoff: it was bound to the most recent live Desktop
+    // session, which may be another chat's, and the guard would read THAT
+    // chat's shown set and spend its boundary's cap.
+    if (this.callBoundBy === "most-recent") {
+      return {
+        credited: [],
+        reason: "session-unnamed",
+        detail: `Name your session to say what you drew on: session: <the id wake gave this chat>. This call named none, so it was filed under the most recent Claude Desktop session (${this.session ?? "none"}), which may be another chat's.`,
+      };
+    }
     const session = this.session as string;
     let out: ReturnType<Counterpart["creditDrewOn"]>;
     try {

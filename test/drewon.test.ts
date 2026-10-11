@@ -22,6 +22,8 @@ import { TUNABLES, USE_TIER_WEIGHT, creditReturn, creditUse, rep } from "../src/
 import type { MemoryPhysics } from "../src/core/types.js";
 import { openServer } from "../src/adapters/mcp/index.js";
 import type { McpServer, ToolResult } from "../src/adapters/mcp/index.js";
+import { DESKTOP_HOST } from "../src/adapters/hosts.js";
+import { curveSignature } from "../src/core/sleep/decay.js";
 
 // ── physics: the engaged tier (ported from #371) ─────────────────────────────
 
@@ -395,5 +397,44 @@ describe("the drewOn field on session_end and chapter", () => {
     await watcher.call("chapter", { session: SESSION, text: "Watching only.", drewOn: [a] });
     expect(owner.counterpart.store.row(a)?.uses).toBe(0);
     expect(drewOnRows(owner)).toEqual([]);
+  });
+
+  test("review of #385: sent with a `writeUp`, it is credited against this session and rides out on the answer", async () => {
+    const s = server();
+    const [a] = seeded(s) as [string];
+    // A write-up of a session nobody recorded: the write-up refuses, the field still counts.
+    const out = payload(await s.call("session_end", { session: SESSION, writeUp: "sess_nobody_recorded", drewOn: [a] }));
+    expect(out["drewOn"]).toEqual({ credited: [a] });
+    expect(s.counterpart.store.row(a)?.uses).toBe(0.5);
+    expect(drewOnRows(s).map((r) => r["via"])).toEqual(["session_end"]);
+  });
+
+  test("review of #385: a Desktop call that names no session credits nothing — it may be another chat's", async () => {
+    const s = openServer({ dir, owner: true, host: DESKTOP_HOST, lifecycle: { spawner: () => ({ pid: 4242 }) }, manifestVersion: () => null });
+    open.push(s.counterpart);
+    const c = s.counterpart;
+    c.store.advanceClock("2026-08-25");
+    const a = fact(c, "The fig against the south wall");
+    c.store.advanceClock("2026-08-26");
+    const chat = payload(await s.call("wake", {}))["session"] as string;
+    shown(c, chat, 1, [a]);
+    for (const [tool, args] of [
+      ["session_end", { memories: [], drewOn: [a] }],
+      ["chapter", { text: "A chapter that forgot to name its chat.", drewOn: [a] }],
+    ] as const) {
+      const out = payload(await s.call(tool, args));
+      expect(out["boundBy"]).toBe("most-recent");
+      const d = out["drewOn"] as Record<string, unknown>;
+      expect(d["reason"]).toBe("session-unnamed");
+      expect(d["credited"]).toEqual([]);
+    }
+    expect(c.store.row(a)?.uses).toBe(0);
+    // Named, the same chat's credit lands.
+    const named = payload(await s.call("session_end", { session: chat, memories: [], drewOn: [a] }));
+    expect(named["drewOn"]).toEqual({ credited: [a] });
+  });
+
+  test("review of #385: the saturating arm is in the curve's signature, so a store signed under the linear arm re-curves once", () => {
+    expect(JSON.parse(curveSignature())["repScale"]).toBe(TUNABLES.REP_SCALE_USES);
   });
 });

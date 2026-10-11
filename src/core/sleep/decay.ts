@@ -116,6 +116,10 @@ export function curveSignature(eraCutoff: string | null = null): string {
     ret: PHYSICS.RETURN_GAIN,
     rep: PHYSICS.REP_PER_USE,
     repCap: PHYSICS.REP_CAP,
+    // The saturating repetition arm (2026-10-11, `drewOn`; review of #385):
+    // `rep()` reads this, not `REP_PER_USE`, so a store whose next-change days
+    // were computed under the linear arm forgets them once.
+    repScale: PHYSICS.REP_SCALE_USES,
     cons: PHYSICS.CONS_BONUS,
     sem: PHYSICS.THETA_SEM,
     reach: PHYSICS.REACH,
