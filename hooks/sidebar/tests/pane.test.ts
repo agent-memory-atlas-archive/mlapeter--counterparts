@@ -911,6 +911,48 @@ test('with the dashboard down the chart says how to start it, inside the pane; t
   expect(w.statuses.some(s => (s ?? '').includes('dashboard'))).toBe(false)
 })
 
+test('down, a plugin-only install is told the plugin route (no `counterparts` on its PATH)', async ($, on) => {
+  const w = world(on, { down: true, tools: PLUGIN_TOOLS })
+  await start($, w)
+  const ui = await mount($, w, 'terminal')
+  const text = (await bodyLines(ui)).join('\n')
+  expect(text).toContain('/counterparts:dashboard')
+  expect(text).not.toContain('counterparts dashboard')
+  await ui.unmount()
+})
+
+test('down, with no memory server found: the plugin route first, then the npm one', async ($, on) => {
+  const w = world(on, { down: true, tools: [] })
+  await start($, w)
+  const ui = await mount($, w, 'terminal')
+  const lines = await bodyLines(ui)
+  const plugin = lines.findIndex(l => l.includes('/counterparts:dashboard'))
+  const npm = lines.findIndex(l => l.includes('or counterparts dashboard'))
+  expect(plugin).toBeGreaterThanOrEqual(0)
+  expect(npm).toBeGreaterThan(plugin)
+  await ui.unmount()
+})
+
+test('the dashboard port comes from COUNTERPARTS_DASHBOARD_PORT, as core reads it: reads and links go there', async ($, on) => {
+  const w = world(on, { env: { HOME, COUNTERPARTS_DASHBOARD_PORT: '5151' } })
+  await start($, w)
+  const ui = await mount($, w, 'terminal')
+  await ui.press({ key: 'title' })
+  expect(w.runs.at(-1)).toEqual(['open', 'http://localhost:5151/'])
+  expect(w.fetches.length).toBeGreaterThan(0)
+  for (const f of w.fetches) expect(f.startsWith('http://localhost:5151/')).toBe(true)
+  await ui.unmount()
+})
+
+test('a port that is not one falls back to 4747', async ($, on) => {
+  const w = world(on, { env: { HOME, COUNTERPARTS_DASHBOARD_PORT: 'nope' } })
+  await start($, w)
+  const ui = await mount($, w, 'terminal')
+  await ui.press({ key: 'title' })
+  expect(w.runs.at(-1)).toEqual(['open', 'http://localhost:4747/'])
+  await ui.unmount()
+})
+
 test('COUNTERPARTS opens the dashboard on a plain click (how this machine opens a URL, asked once)', async ($, on) => {
   const w = world(on)
   await start($, w)

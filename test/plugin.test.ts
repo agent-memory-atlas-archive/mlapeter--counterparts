@@ -245,6 +245,17 @@ describe("the plugin's files", () => {
     }
   });
 
+  test("/counterparts:dashboard grants exactly the one command it runs, and asks for it in the background", () => {
+    // The dashboard runs until it is stopped: in the foreground it would hold
+    // the Bash call until the call timed out, then die with it.
+    const text = readFileSync(join(ROOT, "commands", "dashboard.md"), "utf8");
+    const grant = /^allowed-tools:\s*(.+)$/m.exec(text)?.[1]?.trim();
+    const run = `sh "${LAUNCHER_ARG}" cli dashboard`;
+    expect(grant).toBe(`Bash(${run})`);
+    expect(text).toContain(`\n${run}\n`);
+    expect(text).toContain("run_in_background: true");
+  });
+
   test("no top-level bin/ (chat and Cowork refuse such a plugin) and no root .mcp.json (it would be every dev session's project config)", () => {
     expect(existsSync(join(ROOT, "bin"))).toBe(false);
     expect(existsSync(join(ROOT, ".mcp.json"))).toBe(false);

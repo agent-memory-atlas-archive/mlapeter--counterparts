@@ -86,16 +86,63 @@ export function hex(col: Rgb, k = 1): string {
   return `#${c(col[0])}${c(col[1])}${c(col[2])}`;
 }
 
-/** The dashboard's address and the page each mechanism opens on. */
-export const DASHBOARD = 'http://localhost:4747';
-export function mechUrl(id: MechId): string {
-  return `${DASHBOARD}/#health/mechanisms?id=${id}`;
+/**
+ * The dashboard's port, read the way core's server reads it
+ * (`dashboard/web/server.ts#resolvePort`): `COUNTERPARTS_DASHBOARD_PORT` when
+ * it is a whole number, else 4747. A `--port` given at launch can't be found
+ * from here (core writes no port file, and `/api/pulse` doesn't say): a core
+ * ask (NOTES). `0` asks the OS for any free port, which leaves nothing to
+ * find, so it reads as the default; so does anything past 65535.
+ */
+export const DASHBOARD_PORT = 4747;
+export function dashboardPort(raw: string | null | undefined): number {
+  const n = Number.parseInt((raw ?? '').trim(), 10);
+  return Number.isInteger(n) && n > 0 && n < 65536 ? n : DASHBOARD_PORT;
+}
+
+/** The dashboard's address on a port. */
+export function dashboardBase(port: number = DASHBOARD_PORT): string {
+  return `http://localhost:${String(port)}`;
+}
+/** The address on the default port. */
+export const DASHBOARD = dashboardBase();
+
+/**
+ * The only links the sidebar opens: the dashboard's, on localhost and the
+ * port it read, in a strict character set.
+ */
+export function isDashboardUrl(url: string, port: number): boolean {
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) return false;
+  return new RegExp(`^http://localhost:${String(port)}/[A-Za-z0-9#?=/_.~-]*$`).test(url);
+}
+
+/** The page each mechanism opens on. */
+export function mechUrl(id: MechId, base: string = DASHBOARD): string {
+  return `${base}/#health/mechanisms?id=${id}`;
 }
 export const MEMORIES_URL = `${DASHBOARD}/#memories`;
 /**
  * One memory's card on the dashboard (`#memories?id=`, 2026-10-10). A
  * dashboard older than that opens its Memories page instead.
  */
-export function memoryUrl(id: string): string {
-  return `${DASHBOARD}/#memories?id=${encodeURIComponent(id)}`;
+export function memoryUrl(id: string, base: string = DASHBOARD): string {
+  return `${base}/#memories?id=${encodeURIComponent(id)}`;
+}
+
+/**
+ * How this install starts the dashboard, said where the dashboard is down.
+ * The memory server this session connected tells the installs apart: the npm
+ * install registers `counterparts` (and puts `counterparts` on the PATH); a
+ * plugin-only install connects the plugin's own server and has no such
+ * command, so it gets `/counterparts:dashboard`. Beside the npm install the
+ * plugin's server stands down with no tools, so the npm one is what resolves.
+ * Not known yet (no server found): the plugin route first, since it works
+ * under either install.
+ */
+export const NPM_DASHBOARD_ROUTE = 'counterparts dashboard';
+export const PLUGIN_DASHBOARD_ROUTE = '/counterparts:dashboard';
+export function dashboardRoutes(server: string | null): readonly string[] {
+  if (server === 'counterparts') return [NPM_DASHBOARD_ROUTE];
+  if (server === 'plugin_counterparts_counterparts') return [PLUGIN_DASHBOARD_ROUTE];
+  return [PLUGIN_DASHBOARD_ROUTE, NPM_DASHBOARD_ROUTE];
 }
