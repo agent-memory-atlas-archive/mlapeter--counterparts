@@ -629,6 +629,18 @@ describe("ensureFirstRun", () => {
     expect(r.state).toBe("created");
   });
 
+  test("a lock dated ahead — the clock stepped back — is stale too, not waited out (review of #382)", () => {
+    // Before: its age read negative, so fresh, and the first run waited its
+    // whole bound and failed.
+    mkdirSync(lockIn());
+    const ahead = new Date(Date.now() + 10 * 60_000);
+    utimesSync(lockIn(), ahead, ahead);
+    const t0 = Date.now();
+    const r = ensureFirstRun({ choice: defaultChoice(), env: firstRunEnv(), home, lockPath: lockIn(), noticePath: noticeIn(), waitMs: 10_000, uid: process.getuid?.() ?? null });
+    expect(r.state).toBe("created");
+    expect(Date.now() - t0).toBeLessThan(5_000);
+  });
+
   /**
    * A LOCK SOMEBODY ELSE PLANTED (2026-10-11, from the review of #365): in a
    * shared `/tmp` the lock's name is known and another user can make it

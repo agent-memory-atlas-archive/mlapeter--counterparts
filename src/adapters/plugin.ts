@@ -511,7 +511,9 @@ export function ensureFirstRun(input: FirstRunInput): FirstRun {
       if (planted()) break;
       let age = 0;
       try {
-        age = now() - statSync(lock).mtimeMs;
+        // The DISTANCE from now (review of #382, as the claims' lock): a lock
+        // dated ahead after the clock stepped back is stale, not fresh.
+        age = Math.abs(now() - statSync(lock).mtimeMs);
       } catch {
         age = 0;
       }
