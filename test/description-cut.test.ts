@@ -142,6 +142,30 @@ describe("tool descriptions, as a host that serves only the first 2,048 characte
     }
   });
 
+  // The chapter wording (2026-10-11): a diary of what happened, the details
+  // kept, lessons left to the nightly reflection. The `text` field is served
+  // whole; the summary and the Do NOT line sit inside the cut (held above).
+  test("chapter asks for a diary of what happened and leaves lessons to the nightly reflection", () => {
+    const spec = TOOLS.find((t) => t.name === "chapter")!;
+    const text = String((spec.inputSchema["properties"] as Record<string, { description: string }>)["text"]!.description);
+    for (const phrase of [
+      "the way a person keeps a diary of their day",
+      "what was said (exact words when they matter)",
+      "what was decided and why",
+      "Keep a list, a table or a pasted text word for word when its specifics matter.",
+      "Leave out what the repo, the PR or the logs already hold",
+      "lessons and patterns belong to the nightly reflection",
+      "a quiet hour is a few lines",
+    ]) {
+      expect(text).toContain(phrase);
+    }
+    const description = renderDescription(spec);
+    expect(description).toContain("a diary of what happened");
+    expect(description).toContain("Do NOT manufacture depth");
+    expect(description).not.toContain("changelog");
+    expect(`${description} ${text}`).not.toContain("what you learned");
+  });
+
   /**
    * THE LENGTHS, RECORDED. When this fails because a description changed,
    * update the numbers: the diff is the record of the growth. `beforeList` is
@@ -167,7 +191,10 @@ describe("tool descriptions, as a host that serves only the first 2,048 characte
       recall: { total: 6163, beforeList: 1200 },
       status: { total: 1212, beforeList: 501 },
       session_end: { total: 7825, beforeList: 1088 },
-      chapter: { total: 2384, beforeList: 728 },
+      // chapter +33 on 2026-10-11 (chapter wording): "a diary of what
+      // happened" in the summary and the diary-vs-log Do NOT line. The
+      // `about` claim, last of its leads, now ends at 2,044 of the 2,048.
+      chapter: { total: 2417, beforeList: 761 },
       scope: { total: 1514, beforeList: 755 },
       self_page: { total: 4846, beforeList: 1772 },
       dream: { total: 3785, beforeList: 1782 },
