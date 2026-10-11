@@ -990,7 +990,7 @@ the sweep no interpreter; its gate row says `not-opted-in` and `runner.done` say
 next-session`. A crashed session is pointed at like any other. An old `crashWriteUp` value
 is ignored and named in `retired`.
 
-**[M] Doctor: `Write-ups` (was `Crash write-up`, same key), and the `Sweep` line.** Since 2026-09-30 `Write-ups` reads the coverage ledger — yesterday's state, amber on a stretch owed from yesterday or earlier, the week's lapses (`core/coverage/NOTES.md` §8). Before it, `Crash write-up`: `next session`
+**[M] Doctor: `Catch-up` (was `Write-ups`, and before that `Crash write-up`; same key), and the `Sweep` line.** Since 2026-09-30 the line reads the coverage ledger — yesterday's state, amber on a stretch owed from yesterday or earlier, the week's lapses (`core/coverage/NOTES.md` §8). Before it, `Crash write-up`: `next session`
 green; amber when a session is finished in one project and waiting on words it left in
 another, naming that project (re-review m-C); amber when the newest pointer outcome is a
 DEFERRAL and sessions are waiting — saying the wake was too full, by how many bytes, and to lower
