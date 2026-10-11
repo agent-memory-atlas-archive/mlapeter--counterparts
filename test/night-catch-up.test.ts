@@ -1454,6 +1454,50 @@ describe("the night starts when write-ups from an earlier day are owed, even whe
     expect(next.dream).toBeUndefined();
     expect(nightPlans()).toHaveLength(1);
     expect(nightRunFindings({ today: TODAY(), config: { dataDir: dir } } as unknown as DoctorInput, a.counterpart.store)[0]?.severity).toBe("amber");
+    // The dream comes due later that day (review of #426): under `auto` the
+    // catch-up's failure turns nothing into an ask — no "I couldn't start
+    // dreaming" — the ordinary relaunch starts the whole night, headless.
+    saved(a.counterpart, 2);
+    expect(a.counterpart.dreams.status(TODAY()).reason).toBe("asked-today");
+    offsetMs += DREAM_TUNABLES.ABANDONED_AFTER_MS + 60_000;
+    expect(a.counterpart.dreams.status(TODAY()).due).toBe(true);
+    const later = prompt(a, "day2-3");
+    expect(nightPlans()).toHaveLength(2);
+    expect(nightPlans()[1]?.env[NIGHT_KIND_ENV]).toBe("night");
+    expect(later.dream?.offer ?? null).toBeNull();
+    expect(later.injection ?? "").not.toContain("couldn't start dreaming");
+    expect(later.injection ?? "").not.toContain("could not start");
+  });
+
+  test("a catch-up-only run whose own process could not start (the runner): the row reads as the catch-up alone, and no ask follows even once the dream is due", () => {
+    lived("day1-a", proj);
+    const a = hooksAt();
+    a.counterpart.store.advanceClock(YESTERDAY());
+    saved(a.counterpart, 2);
+    // Nothing could start the background process at all.
+    const failing = new ClaudeCodeAdapter({
+      counterpart: a.counterpart,
+      config: config(),
+      command: "/usr/bin/bun",
+      args: ["run", "/pkg/bin/runner.ts"],
+      nightArgs: ["run", NIGHTLY],
+      spawner: () => {
+        throw Object.assign(new Error("spawn EACCES"), { code: "EACCES" });
+      },
+      now: () => Date.now() + offsetMs,
+    });
+    prompt(failing, "day2-1");
+    const row = a.counterpart.dreams.nightRun();
+    expect(row).toMatchObject({ state: "could-not-start", reason: "runner" });
+    expect(row?.children?.map((ch) => ch.skipped)).toEqual(["too-little-new", "too-little-new"]);
+    expect(nightRunFindings({ today: TODAY(), config: { dataDir: dir } } as unknown as DoctorInput, a.counterpart.store)[0]?.detail).toContain("(the catch-up alone; too little new to dream on) could not start");
+    saved(a.counterpart, 2);
+    offsetMs += DREAM_TUNABLES.ABANDONED_AFTER_MS + 60_000;
+    const later = prompt(a, "day2-2");
+    expect(nightPlans()).toHaveLength(1);
+    expect(nightPlans()[0]?.env[NIGHT_KIND_ENV]).toBe("night");
+    expect(later.dream?.offer ?? null).toBeNull();
+    expect(later.injection ?? "").not.toContain("couldn't start dreaming");
   });
 
   test("pinned: once the catch-up has brought the queue to three, the ordinary relaunch dreams later that day (after the quiet window)", async () => {

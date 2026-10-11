@@ -1338,6 +1338,11 @@ export class Dreams {
     const night = this.nightRun();
     if (night === null || night.date !== at) return null;
     if (since !== undefined && night.startedAt < since) return null;
+    // THE CATCH-UP ALONE never tried a dream (review of #426): its failure is
+    // not a dream that could not start, so under `auto` it turns nothing into
+    // an ask — a dream due later that day comes through the ordinary relaunch,
+    // headless, and falls back only if that run itself cannot start.
+    if (dreamSkippedOf(night) !== null) return null;
     if (night.state === "could-not-start") return night;
     // A run that timed out, failed, or never reported (review of #282,
     // finding 4) falls back too — when it BEGAN NOTHING: one that dreamed

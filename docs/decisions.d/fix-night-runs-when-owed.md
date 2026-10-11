@@ -24,10 +24,18 @@
   the catch-up did what it could. It is `could-not-start` / `timed-out` / `failed`, with
   `detail: catch-up`, when the catch-up child could not start, was stopped, or failed. No ask
   follows a catch-up that could not start while the dream is not due, because there is no
-  dream to ask about. Once it is due that day, the ordinary fallback asks, giving the
-  catch-up's reason. Why: doctor
+  dream to ask about. Why: doctor
   must not show a failed dream for a dream that was never due, and must still go amber when
   `claude -p` itself is broken.
+- Decided by the #426 reviewer, 2026-10-11, lightly held: a catch-up-only run that could not
+  start, failed, timed out or went lost does not make the dream "fall back" to an ask
+  (`Dreams#fellBack` ignores a row whose children say `skipped: <reason>`, and the hook
+  writes those children on the run's very first row). If the dream comes due later that
+  day, the ordinary relaunch starts the whole night headless after the 30-minute quiet
+  window, counted against `RELAUNCHES_PER_DAY`; only if that run itself cannot start does
+  the existing `auto` fallback ask, as it did before this change. Why: under `auto` nothing
+  should turn into an ask because of a run that never tried to dream; the builder's version
+  showed "I couldn't start dreaming on my own" for a catch-up that failed.
 - Decided by the night-owed builder, 2026-10-11, lightly held: no per-day memo for the "is
   anything owed" read. Under `auto`, on a day when the dream isn't due and nothing has
   claimed the day, every prompt reads the held sessions once (the same read SessionStart's
