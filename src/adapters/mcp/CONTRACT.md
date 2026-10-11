@@ -156,6 +156,34 @@ actually wrote (chapter), the written self page or the version a write to it pro
    and per session-end entry; they reach the row exactly as written, an out-of-range one is
    refused by name rather than clamped or dropped, and `novelty` remains unclaimable —
    prediction error is measured, never asserted.
+
+   **Stated ⇒ mechanized; mechanized ⇏ stated (2026-10-11, the context-trims lane).** A
+   description is loaded into the model's context every time its tool is (`session_end`
+   and `chapter` at every end-of-session ask), so it serves only the claims that change
+   what the model writes or calls, or name a refusal it can avoid by how it calls. The
+   rest of each tool's guarantees are its `engine` rows in `tools.ts` (`ToolSpec.engine`):
+   kept beside their `mechanizedBy` pointers, walked by the same audit (`test/mcp.test.ts`),
+   and asserted NOT served. They are still guaranteed; they are not read. What each holds,
+   by tool:
+   - `remember`: the default floor for an unclaimed memory; the three dimensions stored as
+     given, novelty unclaimable; one chokepoint and the gate battery; credentials
+     redacted; own words ride the buffer as their own span; the two reminder rows (a plain
+     one said once per beat, a quiet one a capped cue; a revision owns the reminder);
+     observer stand-down; `how` settling and the unrelated-update hold; `settle` rewrites
+     neither memory; `feelingsNow`'s rules; `remark` recorded as yours.
+   - `session_end`: `memories: []` is a real answer and what it records; the id checked
+     against the hooks' registry, refused by which of four; the gate battery; authorship
+     engine-set; per-entry redaction and isolation; `eventDate` a field (its own field
+     says so); the two reminder rows; observer stand-down; `handoff` never a memory, the
+     "Last here" line, an empty `handoff` retiring, `retireHandoff`; the `writeUp` door;
+     `how` settling and the unrelated-update hold; `drewOn`'s credit.
+   - `recall`: the bookkeeping a call writes; what facts mode considers and how it ranks;
+     the count header and paging; the bounded answer; confidential material; every
+     memory's provenance; observer stand-down.
+   - `chapter`: the journal's gate; earlier states kept on revision; observer stand-down;
+     `drewOn`'s credit.
+   Most are also guarantees elsewhere in this section (1, 4–6, 12, 16, 6b–6f) or in the
+   module that enforces them; the registry row is the claim's exact wording.
 3. **[M] Every tool carries an admission test and at least one named negative example** in
    its description, plus an engine-side check wherever the rule is safety-relevant
    (scar §2.16 — v1's `thread.open` shipped with no criteria and produced 33 opens and zero

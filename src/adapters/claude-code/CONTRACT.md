@@ -407,6 +407,19 @@ row, saying which source answered, existed until the keys were removed — §1a.
     with no room, waits a prompt. Reads only; nothing under observer or for the
     nightly run.
 
+    **AND A RESUME TODAY IS HANDED ONE LINE, NOT A SECOND WAKE (2026-10-11, the
+    context-trims lane, lightly held).** The host replays a resumed session's
+    transcript, the first wake in it, so SessionStart with `source: "resume"` — for a
+    session whose record holds a printed wake's sentinel and started on today's date —
+    hands the clock, `RESUME_WAKE_LINE` ("the wake it was handed when it started (above)
+    still holds"), and the "Since you started" line with its once-an-hour gate waived,
+    plus the reminders and asks that ride beside any wake (`ClaudeCodeAdapter#resumesToday`,
+    `#resumeWake`). ~140–440 bytes where the wake is up to ~9 KB. No wake is composed, so
+    the delivery check still tests the expectation the first wake left, and the
+    `adapter.wake.injected` row says `resumed`. A resume on a later day, a compaction
+    (which summarizes the first wake away), `clear`, `fork`, and a session with no record
+    are handed the full wake.
+
 19. **[M] A directory set `off` gets NO OUTPUT AND NO WRITE — because nothing is
     constructed.** The scope registry (`adapters/scopes.ts`,
     `<config dir>/scopes.json`, longest-prefix, added 2026-09-10 for owner asks

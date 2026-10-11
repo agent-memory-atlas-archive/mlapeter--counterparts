@@ -173,6 +173,14 @@ export interface HookInput extends SessionInput {
    * the entrypoint list is the fallback.
    */
   readonly attended?: boolean;
+  /**
+   * WHY THE HOST FIRED `SessionStart` (its `source`: `startup`, `resume`,
+   * `clear`, `compact`, `fork`), carried for the wake (2026-10-11): a resume
+   * replays the transcript, the first wake in it, so a second full one is
+   * context the model reads twice (`Adapter#resumesToday`). Absent on every
+   * other event.
+   */
+  readonly source?: string;
 }
 
 export interface HookResult {
@@ -496,6 +504,20 @@ export function stopAsk(sessionId: string, chapter: number): string {
   ].join("\n");
 }
 
+/**
+ * WHAT A RESUME TODAY IS HANDED IN PLACE OF A SECOND WAKE (2026-10-11): the
+ * host replays the transcript, the first wake included, so this line points
+ * at it. The "Since you started" line rides under it when something changed
+ * (`ClaudeCodeAdapter#resumeWake`).
+ */
+export const RESUME_WAKE_LINE =
+  "Counterparts: this session was resumed; the wake it was handed when it started (above) still holds.";
+
+/** What `sessionStart` hands the host: a composed wake, or a resume's line. */
+type WokeHere = Pick<ReturnType<Lifecycle["composeWake"]>, "text" | "ok" | "bytes" | "sentinel" | "preface"> & {
+  readonly reason: string;
+};
+
 /** Re-exported where the hooks' callers already look (`hosts.ts` owns it). */
 export { CODE_TAB_ENTRYPOINT };
 
@@ -561,6 +583,10 @@ export class ClaudeCodeAdapter extends Lifecycle {
       // record whole, so the flag that says "this session has already been
       // asked" has to be read while it is still the previous process's answer.
       const wantsAsk = this.scopeAskDue(input);
+      // And for the same reason, whether this is a resume of a session that
+      // was handed its wake today: `noteSession` keeps the start, but a record
+      // it CREATES (one pruned, or never written) would read as started now.
+      const resumed = this.resumesToday(input);
       // BEFORE the delivery verdict, because the registry is not delivery: a
       // muted shadow still lives a session, and the tool that writes its dump
       // still has to be able to find out that the session is real.
@@ -593,10 +619,17 @@ export class ClaudeCodeAdapter extends Lifecycle {
       // if any, belongs at the foot of this wake.
       // The composition and THE EXPECTATION, written where the next process
       // can read it (`Lifecycle#composeWake` → `noteWakeExpectation`).
-      const woke = this.composeWake(input, budget);
+      //
+      // A RESUME TODAY IS HANDED A SHORT WAKE (2026-10-11, `resumesToday`):
+      // the host replays the transcript, so the wake this session was handed
+      // is already in front of the model; one line says it still holds, and
+      // the "Since you started" line says what changed elsewhere since it
+      // last heard. No wake is composed, so no new expectation is written for
+      // the delivery check, and the since-line's state is left to the line.
+      const woke: WokeHere = resumed ? this.resumeWake(input) : this.composeWake(input, budget);
       // The wake has just said what the other directories did today, so the
       // prompt's "Since you started" line counts from here (2026-10-11).
-      this.noteSinceWoke(input);
+      if (!resumed) this.noteSinceWoke(input);
 
       // THE PERSON'S CLOCK, as the wake's first line (docs/time.md rule 5,
       // 2026-09-25): `Now: Fri 25 Sep 2026, 1:40 pm MDT`, in the store's zone.
@@ -686,6 +719,8 @@ export class ClaudeCodeAdapter extends Lifecycle {
         // only the headless run or `claude -p` came is not a day a reminder
         // could have been said.
         interactive: isInteractive(input) && input.nightRun !== true,
+        // A resume's short wake (2026-10-11): `bytes` is the line, not a bundle.
+        resumed,
       });
       // THE QUESTION RIDES BESIDE THE WAKE, NEVER INSIDE IT, and only if it
       // FITS.
@@ -743,6 +778,47 @@ export class ClaudeCodeAdapter extends Lifecycle {
         ...(plain.due.length === 0 ? {} : { notices: plain.notices, plain: plain.due }),
       };
     });
+  }
+
+  /**
+   * IS THIS A RESUME OF A SESSION HANDED ITS WAKE TODAY (2026-10-11)? The host
+   * fires `SessionStart` again on `--resume`, `--continue` and `/resume`, and
+   * replays the transcript with the first wake still in it (measured
+   * 2026-10-10, ~/counterparts-notes/2026-10-10-session-start-limits.md), so a
+   * full wake there is ~9 KB the model reads twice. Four things must hold:
+   * the host says `resume`; this session has a record; that record holds a
+   * wake's sentinel — a wake was printed, not a stand-down or an empty store;
+   * and it started on today's date, because a session resumed on a later day
+   * is owed the new day's wake (its Yesterday line, what is arriving, the
+   * reminders). `compact` is not a resume: compaction summarizes the first
+   * wake away, so it is handed a full one. Read BEFORE `noteSession` rewrites
+   * the record. Never throws: unsure is the full wake.
+   */
+  private resumesToday(input: HookInput): boolean {
+    if (input.source !== "resume" || input.sessionId.length === 0 || input.nightRun === true) return false;
+    try {
+      const record = readSession(this.counterpart.store.dir, input.sessionId);
+      if (record === null || record.wakeSentinel === undefined || record.wakeSentinel.length === 0) return false;
+      const zone = this.counterpart.store.zone();
+      const today = input.at ?? localDate(this.nowFn(), zone);
+      return localDate(record.startedAt, zone) === today;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * THE SHORT WAKE A RESUME IS HANDED: one line saying the wake above still
+   * holds, and the "Since you started" line when another directory changed
+   * since this session last heard (`Lifecycle#sinceLine`, its gates waived:
+   * a resume is a moment the model asks "what did I miss"). No bundle, no
+   * sentinel, no expectation written.
+   */
+  private resumeWake(input: HookInput): WokeHere {
+    const room = TUNABLES.HOST_OUTPUT_CHARS - Buffer.byteLength(`${RESUME_WAKE_LINE}\n`, "utf8");
+    const since = this.sinceLine(input, room, { resumed: true });
+    const text = since.length === 0 ? RESUME_WAKE_LINE : `${RESUME_WAKE_LINE}\n${since}`;
+    return { text, ok: true, reason: "resumed", bytes: Buffer.byteLength(text, "utf8"), sentinel: null, preface: null };
   }
 
   /**

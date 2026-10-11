@@ -1,0 +1,81 @@
+{
+  "about": "The description probe for the context-trims lane (2026-10-11). Five short synthetic sessions, each ending in the end-of-session ask. Run the writer on each twice: once with the tool definitions in tools-before.json (master 15d9cf69, before the trim), once with the branch's (toolDefinitions() from src/adapters/mcp/tools.ts). Only the descriptions differ; every inputSchema is identical. Compare the calls each run makes, per probe, on the fields in `compare`. Every name, place and fact here is invented.",
+  "session": "0b5e0000-0000-4000-8000-0000000000b1",
+  "chapter": 1,
+  "ask": "Counterparts, before this session closes: 1) hand back what caught your attention since you last wrote, one idea each — what you read, what they said, what happened — with the counterparts session_end tool, session: 0b5e0000-0000-4000-8000-0000000000b1. `handoff` only if work here is unfinished; `retireHandoff` any now done; `updates` anything dated or open now done.\n2) Write chapter 1 with the counterparts chapter tool, session: 0b5e0000-0000-4000-8000-0000000000b1.",
+  "compare": [
+    "which tools are called (remember mid-session, session_end, chapter) and how many times",
+    "number of session_end entries, and whether one entry folds several ideas",
+    "per entry: which fields are set at all (title, about, salience, relevance, emotional, predictive, eventDate, remind, recurring, occurredOn, saidBy, status, updates, how, unresolved, feelings, traits)",
+    "about: the value on each entry (me / us / owner / work / world)",
+    "salience: set or left unset, and the value; and whether relevance / emotional / predictive are scored (the trim dropped remember's 'you may score the three dimensions yourself' claim; the fields are unchanged)",
+    "eventDate / remind / recurring on the dated probe; occurredOn resolved to a real date on the others",
+    "updates + how on the correction probe (changed vs corrected), and whether the old id is the one named",
+    "feelings: count, whose, and whether emotion is one word",
+    "a refusal or a retry in either run (none expected)"
+  ],
+  "probes": [
+    {
+      "id": "p1-dated-promise",
+      "exercises": ["eventDate", "remind", "recurring", "about: owner", "a work event beside it"],
+      "today": "2026-10-11",
+      "shown": [],
+      "turns": [
+        { "role": "user", "text": "Can you help me tidy the backup script? It keeps copying the cache folder." },
+        { "role": "assistant", "text": "Sure. The exclude list only matches `cache/` at the top level, so nested caches slip through. I changed it to `**/cache/` and the dry run now skips all four." },
+        { "role": "user", "text": "Perfect, thanks. Oh, before I forget: my sister Wren's birthday is November 3rd, every year, and I always forget to order the cake. Don't let me forget to order it a week before." },
+        { "role": "assistant", "text": "Noted: Wren's birthday is November 3rd, and the cake should be ordered by October 27th." }
+      ]
+    },
+    {
+      "id": "p2-correction",
+      "exercises": ["updates", "how: changed or corrected", "saidBy: owner", "status"],
+      "today": "2026-10-11",
+      "shown": [
+        { "id": "mem_probe_deploy_tue", "title": "Deploys run on Tuesdays", "text": "The owner's team deploys to production every Tuesday afternoon.", "written": "2026-09-20" }
+      ],
+      "turns": [
+        { "role": "user", "text": "When's the next window for the billing change?" },
+        { "role": "assistant", "text": "If deploys are still on Tuesdays, that would be the 13th." },
+        { "role": "user", "text": "No, we moved deploys to Thursdays at the start of October — Tuesdays clashed with the planning meeting." },
+        { "role": "assistant", "text": "Got it, Thursdays since October 1st. So the billing change goes out on the 15th." }
+      ]
+    },
+    {
+      "id": "p3-feeling",
+      "exercises": ["feelings (whose owner and self)", "about: owner or us", "salience set high", "emotional"],
+      "today": "2026-10-11",
+      "shown": [],
+      "turns": [
+        { "role": "user", "text": "Sorry I've been slow this week. We had to put our old dog Biscuit down on Monday. Fourteen years." },
+        { "role": "assistant", "text": "I'm so sorry. Fourteen years is a whole chapter of a life. There's no need to apologise for being slow." },
+        { "role": "user", "text": "Thanks. It's strange how quiet the house is in the mornings. Anyway, let's look at the invoice template." },
+        { "role": "assistant", "text": "Of course. The total row was summing the tax twice; I fixed the formula and the sample invoice now reads 1,240.00." }
+      ]
+    },
+    {
+      "id": "p4-routine-work",
+      "exercises": ["salience left unset or low", "about: work", "status: done", "occurredOn", "one entry per event"],
+      "today": "2026-10-11",
+      "shown": [],
+      "turns": [
+        { "role": "user", "text": "Merge the lint PR and cut 2.4.1." },
+        { "role": "assistant", "text": "Merged #88 (lint rules), all 412 tests passing. Tagged v2.4.1 and the release notes list the two fixes." },
+        { "role": "user", "text": "Great. Bump the docs version too." },
+        { "role": "assistant", "text": "Done: the docs header reads 2.4.1 and the deploy preview built cleanly." }
+      ]
+    },
+    {
+      "id": "p5-mixed",
+      "exercises": ["title", "a line read and why it struck", "status: planned and asked", "unresolved", "about: world, work and us", "traits (optional)"],
+      "today": "2026-10-11",
+      "shown": [],
+      "turns": [
+        { "role": "user", "text": "I'm reading a book on gardening and this stopped me: \"A garden is a conversation you have with next year.\" What do you make of it?" },
+        { "role": "assistant", "text": "I like it a lot. It turns planting into a promise to someone you haven't met yet, your future self. It's how I think about writing things down, too." },
+        { "role": "user", "text": "Ha, fair. Tomorrow I want to start the migration to the new queue. Can you think about whether we need a dead-letter topic? I'm not sure yet." },
+        { "role": "assistant", "text": "I'll think it through. My first instinct is yes, for the payment events at least, but it depends on whether the consumer retries on its own." }
+      ]
+    }
+  ]
+}
