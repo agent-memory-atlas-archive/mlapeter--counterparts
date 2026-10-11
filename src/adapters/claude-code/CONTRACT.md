@@ -880,6 +880,19 @@ directory. Under dreaming `auto` the SessionStart write-up pointer is retired
 (`lifecycle.ts#writeUpPointerRetired`); under `ask` or `off` no night runs and the pointer
 stays.
 
+**[M] The night also starts when write-ups are owed (2026-10-11).** Under `auto`, a prompt
+whose dream is not due for `too-little-new` or `first-day` — the day unclaimed, no run under
+way (`Dreams#catchUpOffer`) — starts the night anyway when sessions from an earlier calendar
+day owe a write-up (`night-catch-up.ts#owedBefore`: the catch-up's own `catchUpOwing`, whose
+last activity was before today; a real zero is remembered for the rest of the day,
+`NOTHING_OWED_BEFORE_KEY`, so the read is once a day, not per prompt). It claims the day through the same `dream_asks` latch, so
+racing sessions start one run; it says nothing to the model or the terminal and hands
+nothing back. `NIGHT_KIND_ENV` carries `catch-up:<reason>`; the run does its catch-up, then
+records `done` with the dream's and the reflection's children `skipped: <reason>` and
+refreshes the wake — or the catch-up's own `could-not-start` / `timed-out` / `failed`, with
+`detail: catch-up`. A watched or unwatched session may start it (no line is held); a night
+child's prompt and an observer never do; `ask` and `off` never do.
+
 **[M] A store that will not open once the child ended is said (2026-10-11).** The run is
 recorded `failed`, reason `unread`, with the store's code (`SCHEMA_AHEAD` when an install
 migrated the store mid-run) — never `nothing-ran` from the exit alone.

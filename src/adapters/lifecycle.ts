@@ -245,7 +245,10 @@ export interface LifecycleOptions {
  * **Retired under dreaming `auto` (2026-10-11).** There the nightly run writes
  * up everything owed in any directory, and `counterparts catch-up` does it on
  * demand, so a new session no longer spends its start on another session's
- * words (`writeUpPointerRetired`). Under `ask` or `off` no night runs, and this
+ * words (`writeUpPointerRetired`). The night starts for that alone when
+ * write-ups from an earlier day are owed and the dream is not due
+ * (`claude-code/hooks.ts#catchUpWhenOwed`), so a first day with few memories
+ * is still written up. Under `ask` or `off` no night runs, and this
  * pointer is still the way a session in a quiet folder gets written up.
  *
  * **Why a pointer (owner's choice, 2026-09-23, option (b) of claude-code
