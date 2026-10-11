@@ -1821,6 +1821,14 @@ export class Dreams {
         const facts = gistFacts(change);
         const cap = PHYSICS.DREAMED_CLAIM_CEILING;
         const title = (change.title ?? "").trim().slice(0, DREAM_TUNABLES.MAX_TITLE_CHARS);
+        // WHAT IT IS ABOUT, from its sources (D6 closed by Mike, 2026-10-11,
+        // lightly held; `store/index.ts#inheritFrom`, first named as best): a
+        // personal mark among the sources wins, so a pattern drawn from the
+        // owner's memories is the owner's, not unmarked (which the work lane
+        // counts as a project's work). It reaches the core only the ordinary
+        // way, by awake recurrence. Its claim is its own (the cap), so no era
+        // standing.
+        const { about } = inheritFrom(sourceRows as MemoryRow[]);
         const id = this.store.put({
           type: "memory",
           kind,
@@ -1839,6 +1847,7 @@ export class Dreams {
           meta: { dream: dream.id, dreamed: true, sources, ...confidentialityOf(sourceRows as MemoryRow[]) },
           origin: { ...(dream.session === null ? {} : { session: dream.session }), ...(dream.scope === null ? {} : { scope: dream.scope }), ref: `dream:${dream.id}` },
           ...(dream.model === null ? {} : { model: dream.model }),
+          ...(about === null ? {} : { about: about.about, ...(about.aboutBy === null ? {} : { aboutBy: about.aboutBy }) }),
           ...facts.put,
         });
         // The gist's ties to its sources, through the edge module, in the

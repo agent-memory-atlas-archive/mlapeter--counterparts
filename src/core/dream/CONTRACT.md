@@ -227,8 +227,10 @@ dreamer is the model (a background agent the session launches), outside this pro
   `link` (both ways, proposed at `LINK_WEIGHT` through
   `associate`, only where there is room, since 2026-09-28), `replayed` (a
   return at `DREAM_RETURN_WEIGHT`, never a use), `gist` (source `dreamed`, citing and
-  linked to its sources, salience capped at `DREAMED_CLAIM_CEILING`; it takes no `about`
-  mark from its sources until D6, §7 Q2, is decided), `contradiction`
+  linked to its sources, salience capped at `DREAMED_CLAIM_CEILING`; since 2026-10-11
+  it takes what its sources were about by the merge's rule, a personal mark winning, the
+  first named as best — `store/index.ts#inheritFrom` — and no era standing, its claim being
+  its own; D6, §7 Q2), `contradiction`
   (an unsettled pair in `contradictions`; a pair already standing is left as it is),
   `settle` (2026-09-29: two memories it was shown, `holds` / `over` / `how` / `why`,
   through `contradictions.ts#settle`; undone with the dream unless settled since),
@@ -401,10 +403,12 @@ examples) · **§2.19** (every change enumerable: `counterparts dream --show`) �
    compares page versions after a few days, and may decide the reflection stops writing
    the page.
 2. Should a gist that proves true awake be promoted out of `dreamed` provenance?
-   Related (owner ruling D6 on #256, left open): should `sleep/consolidate.ts#aboutMe`
-   also refuse a `dreamed` row outright, as defence in depth? Today no road reaches the
-   core from a gist (capped salience; a reflection cannot feel it or mark it about me),
-   but the v9 upgrade marked a `self`-kind gist `me` when it carried the old rule.
+   Related, D6 (owner ruling on #256): **CLOSED by Mike, 2026-10-11, lightly held** — a
+   gist keeps a personal mark (me, us, owner) chosen by `inheritFrom`'s "personal wins"
+   rule over its sources, and reaches the core only the ordinary way, by awake recurrence
+   (a dream cannot replay it, a reflection cannot feel it or mark it about me, its claim
+   is capped). No special rule: `sleep/consolidate.ts#aboutMe` refuses nothing by
+   `source`. The provenance question above stays open.
 3. Should dream links be stored differently from Hebbian links (a marker, a hop
    weight)? A session designing association with the owner may decide; today they are
    ordinary edges at `LINK_WEIGHT`. Since 2026-09-28 (association build 1) that is 0.1,
