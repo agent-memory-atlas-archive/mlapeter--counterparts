@@ -654,8 +654,10 @@ const RECALL: ToolSpec = {
     {
       // Inside the 2,048-character cut (revised 2026-10-10: faded matches were
       // title lines after the results; the benchmark lost counting answers).
+      // Kept short so the next claim's first sentence ("A search strengthens
+      // nothing … listed.") stays inside the cut too, as it was before.
       claim:
-        "In facts mode a faded match (long unused) ranks with the rest by how well it matched, its words shown, labeled faded; meaning mode lists faded moments after the arc.",
+        "In facts mode a faded match ranks with the rest, its words shown, labeled faded; meaning mode: after the arc.",
       mechanizedBy:
         "src/adapters/mcp/facts.ts#factsRecall (one ranking; FactItem.faded) + src/adapters/mcp/facts.ts#itemLines + src/adapters/mcp/deliberate.ts#hasFaded (physics REACH) + src/adapters/mcp/meaning.ts#meaningRecall (MEANING_FADED_SHOWN)",
     },
