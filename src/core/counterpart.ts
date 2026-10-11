@@ -205,7 +205,7 @@ import type {
 import { TUNABLES as PHYSICS, band as bandOf, fadeOf } from "./physics/index.js";
 import type { UseTier } from "./physics/index.js";
 import type { Kind } from "./types.js";
-import { isKnownSession } from "./types.js";
+import { boundedIds, isKnownSession } from "./types.js";
 
 /** What `Counterpart.markAbout` did, or why it did nothing. */
 export type MarkAboutOutcome =
@@ -716,19 +716,9 @@ export const SPAWN_STARTED_EVENT = "adapter.spawn.started";
  */
 export const MCP_RECALL_EVENT = "mcp.recall";
 
-/**
- * **CAL.** How many memory ids an event row names (2026-10-11): `mcp.recall`'s
- * delivered ids and `associate.flush`'s endpoints. A row is telemetry, not an
- * index; the true number rides beside the list as `idCount`.
- */
-export const ROW_IDS_MAX = 20;
-
-/** Distinct ids in first-seen order, cut at `ROW_IDS_MAX`, with the distinct count. */
-export function boundedIds(ids: Iterable<string>): { ids: string[]; idCount: number } {
-  const seen = new Set<string>();
-  for (const id of ids) if (id.length > 0) seen.add(id);
-  return { ids: [...seen].slice(0, ROW_IDS_MAX), idCount: seen.size };
-}
+// The bound on ids an event row names lives with the other shared shapes
+// (`types.ts#boundedIds`); re-exported for the adapters that write such rows.
+export { ROW_IDS_MAX, boundedIds } from "./types.js";
 
 /** `boundedIds`, or nothing at all when there are none (a flush that linked nothing). */
 function rowIds(ids: readonly string[]): { ids?: string[]; idCount?: number } {

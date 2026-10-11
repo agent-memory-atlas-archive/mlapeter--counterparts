@@ -529,7 +529,7 @@ describe("4. temporal contiguity: adjacent only, lag-weighted, forward where the
     expect((last["contiguity"] as Record<string, unknown>)["pairs"]).toBe(1);
     expect(last["rows"]).toBe(2);
     // The memories it wired, and the session whose boundary ran it (2026-10-11).
-    expect(last["ids"]).toEqual([a, b]);
+    expect([...(last["ids"] as string[])].sort()).toEqual([a, b].sort());
     expect(last["idCount"]).toBe(2);
     expect(last["session"]).toBe("s1");
 

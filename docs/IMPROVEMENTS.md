@@ -343,7 +343,8 @@ were refined by b2+f8 at the review of #369, named where they were):
   is the session whose boundary APPLIED the flush, not necessarily the one that credited the
   pairs: the pending file can hold lines from several sessions and does not say whose (adding
   that would change its on-disk format). Its `ids` are both ends of every pair that passed the
-  boundary's re-check. Rows from a caller that knows no session carry no `session` at all,
+  boundary's re-check — which reverses this row's old "never an id" (the edge rows stay the
+  record of what links to what). Rows from a caller that knows no session carry no `session` at all,
   never the unbound sentinel, so a reader falls back on its own guess.
 
 ### Also noted

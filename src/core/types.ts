@@ -97,6 +97,20 @@ export function isKnownSession(session: string | null | undefined): session is s
 }
 
 /**
+ * **CAL.** How many memory ids an event row names (2026-10-11): `mcp.recall`'s
+ * delivered ids and `associate.flush`'s endpoints. A row is telemetry, not an
+ * index; the true number rides beside the list as `idCount`.
+ */
+export const ROW_IDS_MAX = 20;
+
+/** Distinct ids in first-seen order, cut at `ROW_IDS_MAX`, with the distinct count. */
+export function boundedIds(ids: Iterable<string>): { ids: string[]; idCount: number } {
+  const seen = new Set<string>();
+  for (const id of ids) if (id.length > 0) seen.add(id);
+  return { ids: [...seen].slice(0, ROW_IDS_MAX), idCount: seen.size };
+}
+
+/**
  * A model id as the host reports it (`claude-opus-5-5`, `claude-opus-5-5[1m]`),
  * and nothing else: it is printed into a chapter heading and stored on a row
  * (`memories.model`, schema v7), so no spaces, no `·`, no `<synthetic>`.
