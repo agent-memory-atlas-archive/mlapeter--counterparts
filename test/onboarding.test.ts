@@ -275,6 +275,19 @@ describe("the meet tool", () => {
     expect(s.counterpart.ownerDisplayName()).toBeNull();
   });
 
+  test("in the nightly run's children it refuses by name and marks nothing", async () => {
+    newInstallStore();
+    for (const child of ["dream", "reflection"]) {
+      const r = await server({ session: `night-${child}`, env: { COUNTERPARTS_NIGHT_CHILD: child } }).call("meet", {});
+      expect(r.structuredContent["reason"]).toBe("night-run");
+    }
+    for (const x of open.splice(0)) x.counterpart.close();
+    withStore((s) => {
+      expect(meetState(s)).toBe("not_started");
+      expect(s.getMeta("onboarding.offered")).toBeUndefined();
+    });
+  });
+
   test("under observer it reads and writes nothing", async () => {
     newInstallStore();
     const s = server({ observer: true });
@@ -474,6 +487,20 @@ describe("the wake's line: no double offer", () => {
     const second = start("s2", DAY2);
     expect(second).toContain(`Counterparts: from your first meeting — "Ada is building a tide-chart app." (${workId}). Bring it up only if it fits naturally; no forced callback.`);
     expect(start("s3", DAY2)).not.toContain("from your first meeting");
+  });
+
+  test("an answer marked confidential since is passed over by the second session's line", async () => {
+    newInstallStore();
+    const s = server({ session: "s1" });
+    await s.call("meet", {});
+    const work = await s.call("meet", { step: "work", answer: "Ada is interviewing elsewhere, quietly." });
+    await s.call("meet", { step: "loved", answer: "Ada loves Middlemarch." });
+    await s.call("meet", { step: "done" });
+    for (const x of open.splice(0)) x.counterpart.close();
+    withStore((st) => st.revise(String(work.structuredContent["id"]), { meta: { confidential: true } }));
+    const second = start("s2", DAY2);
+    expect(second).not.toContain("interviewing");
+    expect(second).toContain("Ada loves Middlemarch.");
   });
 });
 

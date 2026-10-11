@@ -1701,6 +1701,12 @@ export class McpServer {
    * is a memory like any other answer. Under observer it reads and writes nothing.
    */
   private async meetTool(args: Record<string, unknown>): Promise<ToolResult> {
+    // NOT IN THE NIGHTLY RUN (review of #419): nobody is there to meet, and a
+    // read would mark an offer under the run's session. `--allowedTools`
+    // already fences it out of the child; this says so by name.
+    if ((this.env[NIGHT_CHILD_ENV] ?? "").trim().length > 0) {
+      return this.refuse("meet", "night-run", { detail: "This is the nightly run: there is nobody here to meet." });
+    }
     const store = this.counterpart.store;
     const session = this.session ?? this.hostSession() ?? UNBOUND_SESSION;
     const on = this.today();

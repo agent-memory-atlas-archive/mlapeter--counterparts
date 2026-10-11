@@ -705,7 +705,9 @@ export class Lifecycle implements HostLifecycle {
       }
       const live = (id: string): boolean => {
         const r = store.row(id);
-        return r !== undefined && r.archived === 0 && r.superseded_by === null;
+        // Not one marked confidential since (review of #419): this line rides
+        // into wakes that are not the owner's own, such as a Desktop chat.
+        return r !== undefined && r.archived === 0 && r.superseded_by === null && r.confidential === 0;
       };
       const aha = ahaDue(store, input.sessionId, live);
       if (aha === null) return null;
