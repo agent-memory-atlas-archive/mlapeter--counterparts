@@ -1474,3 +1474,77 @@ describe("a paused folder with two wirings", () => {
     expect(existsSync(join(base, "store", "sessions", "claims"))).toBe(false);
   }, 120_000);
 });
+
+// ── /counterparts:uninstall: the keep call drops the plan's --config ────────
+
+describe("/counterparts:uninstall's two calls read one configuration", () => {
+  /** A Bash call from the command: no CLAUDE_PLUGIN_ROOT of its own (the launcher sets it), run in `cwd`. */
+  function cli(args: readonly string[], env: Record<string, string>, cwd: string): { code: number; stdout: string; stderr: string } {
+    const e = { ...env };
+    delete e["CLAUDE_PLUGIN_ROOT"];
+    const r = spawnSync("/bin/sh", [LAUNCHER, "cli", ...args], { encoding: "utf8", env: e, cwd, timeout: 60_000 });
+    return { code: r.status ?? -1, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+  }
+
+  function json(stdout: string): Record<string, unknown> {
+    return JSON.parse(stdout.trim()) as Record<string, unknown>;
+  }
+
+  /** An install at `choice`, made the way the plugin's first run makes one. */
+  function installAt(choice: ConfigChoice): void {
+    expect(ensureFirstRun({ choice, env: firstRunEnv(), home, lockPath: firstRunLockPath(choice.path, tmp), noticePath: firstRunNoticePath(choice.path, tmp) }).state).toBe("created");
+  }
+
+  /** The plan, then the keep call EXACTLY as granted, from a different cwd (Claude Code's Bash keeps a `cd`). */
+  function planThenKeep(env: Record<string, string>): { plan: Record<string, unknown>; keep: Record<string, unknown> } {
+    const p = cli(["uninstall", "--json"], env, project);
+    expect(p.code).toBe(0);
+    const plan = json(p.stdout);
+    const k = cli(["uninstall", "--keep-memories", "--json"], env, work);
+    const keep = json(k.stdout);
+    // What the grant drops from the plan's keepArgs is a --config naming the very file both read.
+    expect(plan["keepArgs"]).toEqual(["uninstall", "--keep-memories", "--json", "--config", plan["configPath"]]);
+    expect(keep["mode"]).toBe("keep");
+    expect(keep["configPath"]).toBe(plan["configPath"]);
+    return { plan, keep };
+  }
+
+  beforeEach(() => {
+    // Decoys a search from the working directory would find first: there is no such search.
+    for (const dir of [project, work]) {
+      mkdirSync(join(dir, ".counterparts"), { recursive: true });
+      writeFileSync(join(dir, ".counterparts", "claude-code.json"), JSON.stringify({ dataDir: join(dir, "decoy-store") }));
+      writeFileSync(join(dir, "claude-code.json"), JSON.stringify({ dataDir: join(dir, "decoy-store") }));
+    }
+  });
+
+  test("the default: with or without CLAUDE_PLUGIN_DATA, whatever the cwd, both read ~/.counterparts/claude-code.json", () => {
+    installAt(defaultChoice());
+    for (const env of [pluginEnv(), (({ CLAUDE_PLUGIN_DATA: _, ...rest }) => rest)(pluginEnv())]) {
+      const { plan } = planThenKeep(env);
+      expect(plan["configPath"]).toBe(defaultChoice().path);
+    }
+  }, 120_000);
+
+  test("COUNTERPARTS_CONFIG reaches both calls alike, so the dropped --config names the same file", () => {
+    installAt(defaultChoice());
+    // A second install, named only by the variable (the first run makes only the default).
+    const other = join(work, "elsewhere", "claude-code.json");
+    mkdirSync(join(work, "elsewhere", "store"), { recursive: true });
+    writeFileSync(other, JSON.stringify({ dataDir: join(work, "elsewhere", "store") }));
+    const { plan } = planThenKeep(pluginEnv({ COUNTERPARTS_CONFIG: other }));
+    expect(plan["configPath"]).toBe(other);
+  }, 120_000);
+
+  test("COUNTERPARTS_REQUIRE_EXPLICIT_DIR=1 refuses both calls alike, before either reads or changes anything", () => {
+    installAt(defaultChoice());
+    const env = pluginEnv({ COUNTERPARTS_REQUIRE_EXPLICIT_DIR: "1" });
+    for (const args of [["uninstall", "--json"], ["uninstall", "--keep-memories", "--json"]]) {
+      const r = cli(args, env, project);
+      expect(r.code).toBe(2);
+      expect(r.stdout).toBe("");
+      expect(r.stderr).toContain("COUNTERPARTS_REQUIRE_EXPLICIT_DIR=1 and no configuration was named");
+    }
+    expect(existsSync(defaultChoice().path)).toBe(true);
+  }, 120_000);
+});
