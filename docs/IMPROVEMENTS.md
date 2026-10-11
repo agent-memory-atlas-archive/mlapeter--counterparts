@@ -47,6 +47,10 @@ come first. Nothing here quotes a memory.
    after the arc, counted "+N faded"). Fallback, if faded matches are ever seen crowding
    fresh ones on a live store: variant (a″), a mild fade-scaled penalty on the order only
    (score × (1 − 0.3 × (1 − strength/REACH))), also measured in R2-2. (`facts.ts`)
+   **Kept. Mike, 2026-10-11, lightly held; looked at again at the 10-14 check-in.** His reason:
+   be cautious about changing the core app to improve the benchmark. That's welcome when it
+   helps overall, never at the real system's expense; a few months ago, fitting the benchmark
+   broke a lot. At 10-14: look on the live store for faded matches crowding fresh ones.
 
 2. **A dated memory is held until its date (no decay before it arrives), then fades a little
    faster.** Revised by b2+f8, 2026-10-10, lightly held — and it may reverse Mike's
@@ -62,6 +66,16 @@ come first. Nothing here quotes a memory.
    9 of 17 dated memories were archived within 30 lived days, among them a felt fact about
    Mike and an agreed way of working; changed by Mike, 2026-10-10, loosely held. That holds for
    every memory whose date came after the day it was written, not only reminders. (Group 1a.)
+   **Changed by Mike, 2026-10-11, lightly held: keep the pending hold, cut the spent slope.**
+   The hold stays for one-off dates (through the grace week) and around each occurrence of a
+   repeating date. The divide-by-4, its "ends on use" rule and its branch in `elapsed()` go.
+   Once a one-off date's window closes, the memory is back on its normal curve as if it had
+   never been held: t counts from its own anchor, not from the window's close. An old routine
+   reminder drops out of reach at once; a felt dated fact lands where its own curve puts it.
+   Why, in Mike's words: he asked how much complexity it adds and suggested just dropping the
+   weight after the date instead of separate logic. Lowering it by hand wouldn't reach quiet
+   reminders; ending the hold does the same job with no extra logic. This replaces his
+   2026-10-10 "fades faster after" call (stability ÷4), loosely held. Also covers item 7.
 3. **PARKED — engaged footnote credit** (G1b, #371). Parked by Mike, 2026-10-10:
    hand-labelled strict precision 0.17–0.33, lenient 0.60–0.78, below the 0.8 bar; the 09-14
    ruling ("never for being named in prose") stands in practice: no matcher guesses at use.
@@ -120,22 +134,28 @@ reverse older defaults and contract lines; those go to the rules audit.
    and its kind. Why: a routine note should leave the working layer in about two days, a felt
    reading should last months, and a 0.7 fact about a year. Until now every memory faded on
    the same slow curve, so nothing left reach for ~100 lived days. (1a)
+   **Kept. Mike, 2026-10-11, lightly held; looked at again at the 10-14 check-in.**
 5. **Below reach at 0.15.** Under it, a memory is left out of everything that comes up on its
    own (turn recall, the links' pointers, the wake's work lines); asking deliberately still
    finds it (facts mode: ranked with the rest, labelled faded — item 1); using it, opening it or a dream replaying
    it brings it back. The core never goes below reach. Why: forgetting in awareness, never in
    storage — strength has to change what comes to mind, or decay changes nothing anyone sees.
    (1a)
+   **Kept. Mike, 2026-10-11, lightly held; looked at again at the 10-14 check-in.**
 6. **Exit after 14 lived days under the floor (was 90).** Exit means ARCHIVED, never deleted:
    the words stay, readable by id, and the journal is untouched. Nothing deletes a memory
    except Mike's own `counterparts remove`. Why: exit should follow reach; at 90 the first
    possible exit was lived day 91. If any later change would delete rows, it waits for Mike.
    (1a)
-7. **A dated memory holds until its date and fades steeply after.** See item 2. (1a)
+   **Kept. Mike, 2026-10-11, lightly held; looked at again at the 10-14 check-in.** For a faster
+   read, at 7 lived days a read-only dry run shows what WOULD be archived if exit were 7 instead
+   of 14; nothing is archived by it (docs/CHECK-AFTER.md).
+7. **A dated memory holds until its date; after its window it is back on its own curve.** See item 2 (Mike, 2026-10-11). (1a)
 8. **Feeling sets how slowly a memory fades, not its band; `emotional` is out of the
    salience average.** A feeling now counts once for height and once for steepness. Why:
    feeling was the one signal that told readings from changelog on the live store; it was
    being counted twice in height and barely in steepness. (1a)
+   **Kept. Mike, 2026-10-11, lightly held; looked at again at the 10-14 check-in.**
 9. **Mood-matched recall turned down (weights 0, code kept), marked for re-test.** Why:
    evidence from the old use metric (lifted memories used 1.3% vs 2.4%); re-test after Group
    1's engaged credit gives a real signal. Not a closed decision. (1c)
