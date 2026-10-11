@@ -179,7 +179,7 @@ describe("feelings over weeks: the reflection is shown how they ran", () => {
 // ---------------------------------------------------------------------------
 
 describe("the reflection is offered unmarked memories to mark", () => {
-  test("an unmarked entity written in a project is offered; a marked one, a skill and a journal copy are not; a mark lands as the reflection's", () => {
+  test("an unmarked entity written in a project is offered, and an unmarked skill; a marked one and a journal copy are not; a mark lands as the reflection's", () => {
     const c = brain();
     const han = mem(c, "Han thread: left as is.", { kind: "entity", origin: { scope: SCOPE } });
     const plain = mem(c, "The build uses bun test with a hermetic temp dir.", { origin: { scope: SCOPE } });
@@ -195,7 +195,9 @@ describe("the reflection is offered unmarked memories to mark", () => {
     // The one with a feeling, an entity, first.
     expect(u[0]).toBe(han);
     expect(u).toContain(plain);
-    for (const id of [marked, skill, copy, nowhere]) expect(u).not.toContain(id);
+    // Skills too since 2026-10-11 (the about-marks review).
+    expect(u).toContain(skill);
+    for (const id of [marked, copy, nowhere]) expect(u).not.toContain(id);
     expect(u.length).toBeLessThanOrEqual(REFLECT_TUNABLES.UNMARKED);
     for (const id of u) expect(begun.bundle.memories[id]).toBeDefined();
     expect(begun.instructions).toContain("nobody has marked");
@@ -214,6 +216,31 @@ describe("the reflection is offered unmarked memories to mark", () => {
     expect(c.store.read(han).about).toBe("owner");
     expect(c.store.read(han).aboutBy).toBe("reflection");
     expect(c.store.read(plain).about).toBe("work");
+  });
+
+  test("a full night still offers them, a line each at least, in the first part (the about-marks review, 2026-10-11)", () => {
+    const c = brain();
+    // The old unmarked stock: written in a project weeks ago.
+    clock = BASE - 30 * DAY;
+    const old = [0, 1, 2, 3, 4, 5].map((i) => mem(c, `An old unmarked project fact number ${String(i)} about the build.`, { origin: { scope: SCOPE } }));
+    const skill = mem(c, "An old unmarked skill: how we read a release checklist together.", { kind: "skill", origin: { scope: SCOPE } });
+    // A full night: more recent memories than the room holds even as ids.
+    clock = BASE - DAY;
+    for (let i = 0; i < 700; i += 1) mem(c, `A recent memory number ${String(i)} from a busy week of releases and reviews.`, { about: "work", origin: { scope: SCOPE } });
+    clock = BASE;
+    const begun = c.reflections.begin({ session: SESSION });
+    if (!begun.ok) throw new Error(begun.reason);
+    const b = begun.bundle;
+    // The room was full: some memories did not fit at all…
+    expect(b.shownAs.notShown).toBeGreaterThan(0);
+    // …and the offer is still all there, each with its words.
+    expect(b.unmarked.length).toBe(REFLECT_TUNABLES.UNMARKED);
+    for (const id of b.unmarked) {
+      expect([...old, skill]).toContain(id);
+      expect(["line", "whole", "excerpt"]).toContain(b.memories[id]?.fidelity as string);
+    }
+    const rec = c.store.reflection(b.reflection);
+    expect(JSON.parse(rec?.detail ?? "{}").unmarked).toEqual(b.unmarked);
   });
 
   test("bounded: never more than UNMARKED a night, most used first", () => {

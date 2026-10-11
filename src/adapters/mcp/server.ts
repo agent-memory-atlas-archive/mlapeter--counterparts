@@ -1645,6 +1645,30 @@ export class McpServer {
    */
   private async rememberTool(args: Record<string, unknown>): Promise<ToolResult> {
     if (this.observer) return this.standDown("remember");
+    // REMARK (2026-10-11, the about-marks lane): what an existing memory this
+    // session was shown is about, changed in the moment, as me. Alone, or
+    // beside anything else the call does.
+    const remarkArg = args["remark"];
+    if (remarkArg === undefined) return this.rememberCore(args);
+    if (remarkArg === null || typeof remarkArg !== "object" || Array.isArray(remarkArg)) {
+      return this.refuse("remember", "remark-malformed", { detail: "remark is one object: {id, about, why}." });
+    }
+    const hasText = typeof args["text"] === "string" && args["text"].trim().length > 0;
+    if (!hasText && args["settle"] === undefined && args["feelingsNow"] === undefined) {
+      const out = this.remarkOutcome(remarkArg as Record<string, unknown>);
+      return this.result({ stored: false, reason: "remark-only", remark: out }, out["ok"] !== true);
+    }
+    const done = await this.rememberCore(args);
+    const body = (done as { structuredContent?: Record<string, unknown> }).structuredContent;
+    if (body === undefined) return done;
+    const out = this.remarkOutcome(remarkArg as Record<string, unknown>);
+    // An error only when nothing landed, as with a settle or a feeling now.
+    return this.result({ ...body, remark: out }, (done as { isError?: boolean }).isError === true && out["ok"] !== true);
+  }
+
+  /** `remember` without its `remark`: the note, the settle, the feelings now. */
+  private async rememberCore(args: Record<string, unknown>): Promise<ToolResult> {
+    if (this.observer) return this.standDown("remember");
     const text = args["text"];
     // SETTLE (2026-09-29, contradictions): two memories that already exist,
     // settled without writing a new one. With `text` too, both happen.
@@ -1818,19 +1842,7 @@ export class McpServer {
    */
   private feelingsNowOutcome(list: readonly unknown[]): Record<string, unknown> {
     try {
-      const session = this.seenKey();
-      const shown = new Set(this.seenBySession.get(session) ?? []);
-      if (session !== UNBOUND_SESSION) {
-        try {
-          // SURFACED, not footnoted (review of #316): a title in a footnote or
-          // a link's pointer is not being shown the memory.
-          for (const [id, rec] of Object.entries(loadGateState(this.counterpart.store, session).state.surfaced)) {
-            if (rec.tier === "surfaced") shown.add(id);
-          }
-        } catch {
-          // The ambient record unreadable: what this server showed still counts.
-        }
-      }
+      const { session, shown } = this.shownToCaller();
       const model = this.sessionModel(session);
       const items = list.map((x) => (x !== null && typeof x === "object" && !Array.isArray(x) ? (x as Record<string, unknown>) : {}));
       const done = this.counterpart.reflections.feelAgain({
@@ -1848,6 +1860,57 @@ export class McpServer {
       return { recorded, results: done.feelings };
     } catch (err) {
       return { recorded: 0, reason: "threw", detail: String((err as Error).message ?? err) };
+    }
+  }
+
+  /**
+   * WHAT THE CALLING SESSION WAS SHOWN: what this server handed it
+   * (`seenBySession`) and what ambient recall surfaced for its session, when
+   * the session is known. Read by `feelingsNow` and `remark` alike.
+   */
+  private shownToCaller(): { session: string; shown: Set<string> } {
+    const session = this.seenKey();
+    const shown = new Set(this.seenBySession.get(session) ?? []);
+    if (session !== UNBOUND_SESSION) {
+      try {
+        // SURFACED, not footnoted (review of #316): a title in a footnote or
+        // a link's pointer is not being shown the memory.
+        for (const [id, rec] of Object.entries(loadGateState(this.counterpart.store, session).state.surfaced)) {
+          if (rec.tier === "surfaced") shown.add(id);
+        }
+      } catch {
+        // The ambient record unreadable: what this server showed still counts.
+      }
+    }
+    return { session, shown };
+  }
+
+  /**
+   * One `remark` through the core (2026-10-11), as the result carries it:
+   * only on a memory this session was shown (as `feelingsNow`), then
+   * `Counterpart.markAbout` by `self` — the store function the owner's
+   * `counterparts about` uses, which keeps a dream's or a reflection's words
+   * to work or world. Never throws.
+   */
+  private remarkOutcome(arg: Record<string, unknown>): Record<string, unknown> {
+    const id = typeof arg["id"] === "string" ? arg["id"].trim() : "";
+    try {
+      if (id.length === 0) return { ok: false, reason: "remark-malformed", detail: "remark needs the memory's id: {id, about, why}." };
+      const { shown } = this.shownToCaller();
+      if (!shown.has(id)) {
+        return { ok: false, reason: "not-shown-or-gone", detail: `${id} was not shown in this session: recall it by id first, then re-mark it.` };
+      }
+      const out = this.counterpart.markAbout({
+        id,
+        mark: typeof arg["about"] === "string" ? arg["about"] : "",
+        by: "self",
+        why: typeof arg["why"] === "string" ? arg["why"] : null,
+        owner: this.owner,
+      });
+      this.emit("mcp.remember.remark", id, { ok: out.ok, reason: out.ok ? (out.changed ? "marked" : "unchanged") : out.reason });
+      return { ...out };
+    } catch (err) {
+      return { ok: false, reason: "threw", detail: String((err as Error).message ?? err) };
     }
   }
 

@@ -197,7 +197,7 @@ import type {
 } from "./self/index.js";
 import { cyclePartial, ownerNames, runCycle } from "./sleep/index.js";
 import type { CyclePartial, CycleReport, Phase } from "./sleep/index.js";
-import { CORE_ABOUT_MARKS, Store, assertSafeDataDir, hashText, indexTextOf, occurredOnOf, saidByOf, statusOf } from "./store/index.js";
+import { ABOUT_MARKS, CORE_ABOUT_MARKS, Store, assertSafeDataDir, rowTombstoned, hashText, indexTextOf, occurredOnOf, saidByOf, statusOf } from "./store/index.js";
 import type {
   AboutMark,
   AddFeelingsResult,
@@ -205,6 +205,23 @@ import type {
 import { TUNABLES as PHYSICS, band as bandOf } from "./physics/index.js";
 import type { UseTier } from "./physics/index.js";
 import type { Kind } from "./types.js";
+
+/** What `Counterpart.markAbout` did, or why it did nothing. */
+export type MarkAboutOutcome =
+  | {
+      readonly ok: true;
+      readonly id: string;
+      /** The id asked for, when it was an earlier version of `id`. */
+      readonly forwardedFrom?: string;
+      readonly mark: AboutMark;
+      readonly before: AboutMark | null;
+      readonly changed: boolean;
+      readonly archived: boolean;
+      /** The why as recorded (credentials redacted), or null when none was given. */
+      readonly why: string | null;
+      readonly note?: string;
+    }
+  | { readonly ok: false; readonly reason: string; readonly detail: string };
 
 /** The durable per-chunk gate record (dashboard registry imports this literal). */
 export const GATE_CHUNK_EVENT = "gate.chunk";
@@ -4177,6 +4194,71 @@ export class Counterpart {
     });
     this.emit("counterpart.core.demoted", id, { day });
     return { ok: true, reason: "demoted" };
+  }
+
+  /**
+   * THE ABOUT DOOR (2026-10-11, the about-marks lane): change what a memory
+   * is about. One path for the owner's door (`counterparts about`, which the
+   * dashboard runs) and the session's (`remember`'s `remark`), through
+   * `store.setAbout` — so the record is the one a reflection's re-mark writes:
+   * the column, who set it, and a `core_events` row with the mark it replaced
+   * and the why. An archived memory may be marked (the mark counts if it
+   * comes back); an earlier version forwards to the current one. By `self`,
+   * a dream's or a reflection's words move only toward work or world, as the
+   * reflection's do, and a confidential memory outside the owner's session is
+   * not found. Refusals come back as reasons, never thrown.
+   */
+  markAbout(input: { id: string; mark: string; by: "owner" | "self"; why?: string | null; owner?: boolean }): MarkAboutOutcome {
+    if (this.observer) return { ok: false, reason: "observer", detail: "This is an observer; it reads and changes nothing." };
+    const mark = input.mark.trim();
+    if (!(ABOUT_MARKS as readonly string[]).includes(mark)) {
+      return { ok: false, reason: "about-is-me-us-owner-work-or-world", detail: `"${mark}" is not a mark: use one of ${ABOUT_MARKS.join(", ")}.` };
+    }
+    const asked = input.id.trim();
+    const missing: MarkAboutOutcome = { ok: false, reason: "unknown-id", detail: `No memory ${asked} in this store.` };
+    let id: string;
+    try {
+      id = this.store.resolve(asked);
+    } catch {
+      return missing;
+    }
+    const row = this.store.row(id);
+    if (row === undefined || rowTombstoned(row)) return missing;
+    if (row.type !== "memory") return { ok: false, reason: "not-a-memory", detail: `${asked} is a ${row.type}, not a memory; only a memory is marked.` };
+    const core = (CORE_ABOUT_MARKS as readonly string[]).includes(mark);
+    if (input.by === "self") {
+      if (row.confidential === 1 && input.owner !== true) return missing;
+      if (core && (row.source === "dreamed" || row.source === "reflection")) {
+        return {
+          ok: false,
+          reason: row.source === "dreamed" ? "dreamed-is-a-suggestion" : "reflection-does-not-mark-itself",
+          detail: `${id} was written by a ${row.source === "dreamed" ? "dream" : "reflection"}; only work or world may be set on it (the owner can mark it anything).`,
+        };
+      }
+    }
+    const notes: string[] = [];
+    // Through the SECRETS half of the battery, as a settle's why and the
+    // reflection's: a reason is words, and a credential must not land in the
+    // trail any more than in a body.
+    const why = redactSecrets((input.why ?? "").trim());
+    if (input.by === "self" && why.length === 0) notes.push("No why was given; the mark records that. Say why next time.");
+    if (row.kind === "skill" && core) notes.push("A skill memory is the craft and never becomes core, whatever its mark.");
+    if (row.archived === 1) notes.push("It is archived: the mark is kept, and counts if it comes back.");
+    const set = this.store.setAbout(id, mark as AboutMark, {
+      by: input.by,
+      why: why.length > 0 ? why : input.by === "self" ? "no why given" : null,
+    });
+    return {
+      ok: true,
+      id,
+      ...(id !== asked ? { forwardedFrom: asked } : {}),
+      mark: mark as AboutMark,
+      before: set.before,
+      changed: set.changed,
+      archived: row.archived === 1,
+      why: why.length > 0 ? why : null,
+      ...(notes.length > 0 ? { note: notes.join(" ") } : {}),
+    };
   }
 
   // ── the self page ──────────────────────────────────────────────────────────

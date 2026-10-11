@@ -578,3 +578,34 @@ broadly — every id a standing change names (`ref`, `ref2`, `detail.from|source
 and the index's `looked` — because removing a changed memory from `shown` would orphan its
 change rows. Test (`test/lane0-requeue.test.ts`): 60 fresh, a cut part carrying 21, one
 replayed → 20 requeued, 1 kept, and the next night's queue is waiting + 20.
+
+## 2026-10-11 — the unmarked offer keeps a room of its own (about-marks lane, held lightly)
+
+The about-marks review (2026-10-10) found the offer working when it was made (10-09: five
+offered, five marked, four into me/us/owner) and gone on a full night: on 10-10 the record
+had no `unmarked` key and `fit.notShown` was 356. The cause is in `compose`: the offer's
+ids carry priority 2, below recent and on-mind (3), core (4) and the dream's (5), and the
+fit's first pass places ids in priority order until the room is spent — so on a night whose
+ids alone fill the room, the offer waits and `unmarked.filter(kept)` drops it.
+
+Now the offered ids' exact line cost (`OVERHEAD` + the line, or the whole when it is
+shorter) is held back from the shared room; the shared fit runs as before in what is left;
+any offered id it left waiting or showed as a bare id is fitted again with `least: "line"`
+in the held-back room plus what the shared fit left over, and placed first (so a bundle in
+parts carries it in part 1). The reserve is taken only when the plain fit (the whole room,
+as before) leaves an offered id waiting or a bare id, and never past the room there is
+(review of #383): a night whose plain fit already shows the offer a line or more is fitted
+exactly as before — measured at 150 long recent memories, the always-held reserve had
+turned six whole texts into lines (88 → 82) on a night that never needed it. Not a
+higher priority: the third pass hands whole texts out by priority, so the offer would have
+taken up to five whole texts on exactly the tight nights.
+
+Measured on a synthetic night (a temp store: 8 unmarked facts and 3 unmarked skills written
+in a directory 30 days ago, then N work memories written the day before): at N = 700 the
+offer was 0 of 11 before and 5 (each shown whole, the texts being short) after, with
+`notShown` 78 → 81; at N = 640, 0 → 5 (`notShown` 18 → 21); at N = 100, 5 → 5. Test:
+`feelings-round3.test.ts`, "a full night still offers them".
+
+Unmarked skills are offered too — `isWorkMemory` counts every unmarked skill as work, and
+nothing else ever offered one (the review: 5 of 34 read as personal). A skill marked me, us
+or owner is shown everywhere but never becomes core; the finish note already says so.

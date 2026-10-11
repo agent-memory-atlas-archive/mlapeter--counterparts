@@ -1,5 +1,6 @@
 # The whole suite, on every pull request and every push to master.
-#   - typecheck: `tsc --noEmit`, once (the types do not depend on the platform);
+#   - typecheck: `tsc --noEmit`, once (the types do not depend on the platform),
+#     and `stitch --check`, which fails on a changelog.d/ fragment with no bullet;
 #   - suite: `bun test`, all of it, under two time zones on Linux (America/Denver,
 #     UTC-6/-7, and Pacific/Kiritimati, UTC+14: a local date and the UTC date
 #     disagree for part of every day in both, in opposite directions), and under
@@ -45,6 +46,7 @@ jobs:
           bun-version: 1.3.10
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
+      - run: bun tools/changelog/stitch.ts --check
 
   suite:
     name: suite (${{ matrix.os }}, ${{ matrix.tz }})
