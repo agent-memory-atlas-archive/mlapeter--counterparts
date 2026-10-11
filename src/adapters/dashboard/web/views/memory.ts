@@ -223,6 +223,14 @@ export interface MemoryDetail {
   readonly shownText: string;
   /** The date lifted off the front (`YYYY-MM-DD`), else null. */
   readonly writtenDate: string | null;
+  /**
+   * What it is about (`me`, `us`, `owner`, `work`, `world`), or null when
+   * nobody has marked it, and who set it (`writer`, `reflection`, `owner`,
+   * `upgrade`, `self`). The card's "about" control changes it through the
+   * console's `about` command (2026-10-11).
+   */
+  readonly about: string | null;
+  readonly aboutBy: string | null;
 }
 
 export function memoryDetail(src: DashboardSource, id: string): MemoryDetail {
@@ -294,6 +302,8 @@ export function memoryDetail(src: DashboardSource, id: string): MemoryDetail {
     timeline: [],
     shownText: "",
     writtenDate: null,
+    about: null,
+    aboutBy: null,
   } satisfies MemoryDetail;
 
   if (!r.present || r.headId === null) return empty;
@@ -431,6 +441,8 @@ export function memoryDetail(src: DashboardSource, id: string): MemoryDetail {
     archivedWords: row?.archived === 1 ? archiveWords(row.archived_reason ?? null, row.superseded_by !== null) : null,
     timeline: timelineOf(src, headId, doc.meta["updates"]),
     ...cardWords(doc.body.trim(), chapter, g.confidential),
+    about: row?.about ?? null,
+    aboutBy: row?.about === null || row?.about === undefined ? null : row.about_by ?? null,
   };
 }
 

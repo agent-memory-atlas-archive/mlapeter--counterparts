@@ -83,6 +83,11 @@
 #modal .mc-details .kv{margin:8px 0 0}
 .mc-buttons{display:flex;gap:8px}
 #modal .mc-buttons .copy{font-size:11px;padding:4px 10px}
+/* What it is about, and the picker that changes it (2026-10-11). */
+.mc-about{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;font-size:12.5px;margin:0 0 10px}
+.mc-about-set{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+#modal .mc-about select,#modal .mc-about input{font-size:12px;padding:3px 6px}
+#modal .mc-about .copy{font-size:11px;padding:4px 10px}
 @media(max-width:640px){
   #modal .mc-details .kv{grid-template-columns:minmax(0,1fr)}
   #modal .mc-details .kv .k{margin-top:6px}

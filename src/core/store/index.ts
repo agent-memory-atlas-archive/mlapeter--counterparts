@@ -496,8 +496,13 @@ export const ABOUT_MARKS = ["me", "us", "owner", "work", "world"] as const;
 export type AboutMark = (typeof ABOUT_MARKS)[number];
 /** The marks that make a memory a core candidate. */
 export const CORE_ABOUT_MARKS: readonly AboutMark[] = ["me", "us", "owner"];
-/** Who set a mark. */
-export const ABOUT_SETTERS = ["writer", "reflection", "owner", "upgrade"] as const;
+/**
+ * Who set a mark. `self` (2026-10-11): the counterpart awake, re-marking an
+ * existing memory in a session (`remember`'s `remark`) — `writer` is the mark
+ * given at birth; `owner` is the owner's door (`counterparts about`, and the
+ * dashboard through it).
+ */
+export const ABOUT_SETTERS = ["writer", "reflection", "owner", "upgrade", "self"] as const;
 export type AboutSetter = (typeof ABOUT_SETTERS)[number];
 
 /** A column value read as a mark: anything else is unmarked. */

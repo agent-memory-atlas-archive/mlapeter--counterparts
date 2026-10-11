@@ -39,7 +39,8 @@
  *
  * ## Which commands
  *
- * `note`, `remove`, `backup`, `export`, `scope`, `rebrief`, `verify`, and the
+ * `note`, `remove`, `about` (what a memory is about, 2026-10-11), `backup`,
+ * `export`, `scope`, `rebrief`, `verify`, and the
  * read-only `ask` and `doctor` (the health tab's checklist: `doctor --json`,
  * the console's own reading, so the page and the terminal cannot disagree
  * about what "healthy" means). `install`, `uninstall` and `start-fresh` stay terminal-only
@@ -61,7 +62,7 @@ import { toMyVoice } from "./ask-voice.js";
 export const NO_CONFIG_HOME = "/nonexistent/counterparts-dashboard-bare-store";
 
 /** The actions, in the order a reader meets them. */
-export const ACTIONS = ["ask", "note", "remove", "backup", "export", "scope", "rebrief", "verify", "doctor"] as const;
+export const ACTIONS = ["ask", "note", "remove", "about", "backup", "export", "scope", "rebrief", "verify", "doctor"] as const;
 export type ActionName = (typeof ACTIONS)[number];
 
 export function isActionName(name: string): name is ActionName {
@@ -83,6 +84,7 @@ export const TIMEOUT_MS: Record<ActionName, number> = {
   ask: 120_000,
   note: 120_000,
   remove: 120_000,
+  about: 30_000,
   scope: 30_000,
   rebrief: 120_000,
   // The three that walk the whole store: a backup and an export copy it, and
@@ -240,6 +242,9 @@ export interface Built {
   /** `ask` by question: what it searched with. */
   readonly searched?: Searched;
 }
+
+/** The marks `about` takes (`store/index.ts#ABOUT_MARKS`, said again so this file imports no store). */
+const ABOUT_CHOICES: readonly string[] = ["me", "us", "owner", "work", "world"];
 
 /** A memory id as the store accepts one: its family prefix, no whitespace, no slash. */
 const ID = /^(mem|epi|sch)_[A-Za-z0-9_-]{1,64}$/;
@@ -424,6 +429,19 @@ function argvFor(name: ActionName, body: Body, ctx: ActionContext): Built {
         throw new Invalid("confirm is the id, typed back");
       }
       return { argv: [...argv, "--confirm", "--", id], answer: typed };
+    }
+    case "about": {
+      // WHAT A MEMORY IS ABOUT (2026-10-11): the console's `about`, as the
+      // owner — one store function behind both doors (`Counterpart.markAbout`).
+      const id = memoryId(body, "id", true) as string;
+      const mark = body["about"];
+      if (typeof mark !== "string" || !ABOUT_CHOICES.includes(mark)) {
+        throw new Invalid(`about is one of ${ABOUT_CHOICES.join(", ")}`);
+      }
+      const argv = ["about", ...dir];
+      const why = text(body, "why", 500, false);
+      if (why !== undefined) argv.push(`--why=${why}`);
+      return { argv: [...argv, "--", id, mark] };
     }
     case "backup":
       return { argv: ["backup", ...dir, "--out", absPath(body, "out")] };
