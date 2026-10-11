@@ -66,6 +66,16 @@ come first. Nothing here quotes a memory.
    9 of 17 dated memories were archived within 30 lived days, among them a felt fact about
    Mike and an agreed way of working; changed by Mike, 2026-10-10, loosely held. That holds for
    every memory whose date came after the day it was written, not only reminders. (Group 1a.)
+   **Changed by Mike, 2026-10-11, lightly held: keep the pending hold, cut the spent slope.**
+   The hold stays for one-off dates (through the grace week) and around each occurrence of a
+   repeating date. The divide-by-4, its "ends on use" rule and its branch in `elapsed()` go.
+   Once a one-off date's window closes, the memory is back on its normal curve as if it had
+   never been held: t counts from its own anchor, not from the window's close. An old routine
+   reminder drops out of reach at once; a felt dated fact lands where its own curve puts it.
+   Why, in Mike's words: he asked how much complexity it adds and suggested just dropping the
+   weight after the date instead of separate logic. Lowering it by hand wouldn't reach quiet
+   reminders; ending the hold does the same job with no extra logic. This replaces his
+   2026-10-10 "fades faster after" call (stability ÷4), loosely held. Also covers item 7.
 3. **PARKED — engaged footnote credit** (G1b, #371). Parked by Mike, 2026-10-10:
    hand-labelled strict precision 0.17–0.33, lenient 0.60–0.78, below the 0.8 bar; the 09-14
    ruling ("never for being named in prose") stands in practice. Successor: an explicit `drewOn`
@@ -118,7 +128,7 @@ reverse older defaults and contract lines; those go to the rules audit.
    except Mike's own `counterparts remove`. Why: exit should follow reach; at 90 the first
    possible exit was lived day 91. If any later change would delete rows, it waits for Mike.
    (1a)
-7. **A dated memory holds until its date and fades steeply after.** See item 2. (1a)
+7. **A dated memory holds until its date; after its window it is back on its own curve.** See item 2 (Mike, 2026-10-11). (1a)
 8. **Feeling sets how slowly a memory fades, not its band; `emotional` is out of the
    salience average.** A feeling now counts once for height and once for steepness. Why:
    feeling was the one signal that told readings from changelog on the live store; it was
