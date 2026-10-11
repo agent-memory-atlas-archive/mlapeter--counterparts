@@ -201,7 +201,16 @@ reverse older defaults and contract lines; those go to the rules audit.
     #403); folds starting at their sources' strength partly answer that.
 16. **The dream queue.** The whole queue ranked into tonight's top-K; a memory stays queued
     until it is below reach; the reflection runs in its own context. (3)
+    **Yes, in order. Mike, 2026-10-11, lightly held.** FIRST the reflection runs in its own fresh
+    context (a real bug: one night peaked at 223k tokens on a 200k model). THEN the dream queue: rank
+    everything not yet dreamed by value × fragility into tonight's top-K, keep a memory queued until it
+    is below reach, and drop the newest-2,000 read. It matches the sleep research: replay favours
+    tagged-important and weakly held memories, mostly recent, on a fixed budget.
 17. **Cards as views**, not built in v1 (Mike's direction, 2026-10-10). (3)
+    **Revised by Mike, 2026-10-11, lightly held: KEEP the entity card.** It is recall's subject index
+    (facts mode's subject channel, `memoriesNaming` plus aliases), and it's how a future person or
+    project view finds every memory about them. Fix its birth bug in Group 3: a nightly tally of names,
+    ≥3 memories on ≥2 lived days, gated by `mention()`. The view is the page; the card is the index.
 18. **A missed plain reminder is told once, later, within its 7-day grace.** (5)
    **Kept. Mike, 2026-10-11, lightly held** (agreed earlier in the walk, via random-06).
 
