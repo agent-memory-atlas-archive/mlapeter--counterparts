@@ -260,6 +260,55 @@ describe("the plugin's files", () => {
     expect(text).toContain("run_in_background: true");
   });
 
+  test("/counterparts:uninstall grants the plan and the keep call, and no form that deletes or parks", () => {
+    // There is no scripted delete (cli/uninstall.ts#uninstallJson): the typed
+    // confirmation must come from the person at a terminal. A model could fake
+    // a TTY (script(1)), so this grant is the guard: exact rules, no wildcard,
+    // and a Bash rule without `:*` matches only its exact command.
+    const text = readFileSync(join(ROOT, "commands", "uninstall.md"), "utf8");
+    const line = /^allowed-tools:\s*(.+)$/m.exec(text)?.[1]?.trim() ?? "";
+    const grants = [...line.matchAll(/Bash\((.*?)\)(?=,\s*Bash\(|$)/g)].map((m) => m[1] ?? "");
+    const run = (args: string): string => `sh "${LAUNCHER_ARG}" cli ${args}`;
+    const plan = run("uninstall --json");
+    const keep = run("uninstall --keep-memories --json");
+    expect(grants).toEqual([plan, keep]);
+    expect(line).toBe(`Bash(${plan}), Bash(${keep})`);
+    const permits = (command: string): boolean => grants.includes(command);
+    expect(permits(plan)).toBe(true);
+    expect(permits(keep)).toBe(true);
+    for (const refused of [
+      run("uninstall"),
+      run("uninstall --config /x/claude-code.json"),
+      run("uninstall --delete-memories"),
+      run("uninstall --delete-memories --json"),
+      run("uninstall --park"),
+      run("uninstall --park --json"),
+      run("uninstall --json --config /x/claude-code.json"),
+      run("uninstall --keep-memories --json --config /x/claude-code.json"),
+      run("uninstall --json --keep-memories"),
+      run("uninstall --json --delete-memories"),
+      run("uninstall --keep-memories --json --delete-memories"),
+      `${plan}; rm -rf ~/.counterparts`,
+      `${plan} && sh "${LAUNCHER_ARG}" cli uninstall`,
+    ]) {
+      expect(permits(refused)).toBe(false);
+    }
+    // The only runnable commands the file hands a model are the two it grants;
+    // the terminal command for a delete is built for the person, never fenced
+    // with the launcher variable.
+    const fenced = [...text.matchAll(/```\n([\s\S]*?)```/g)].flatMap((m) => (m[1] ?? "").split("\n")).map((l) => l.trim());
+    const withRoot = fenced.filter((l) => l.includes("${CLAUDE_PLUGIN_ROOT}"));
+    expect(withRoot).toEqual([plan, keep]);
+    expect(text).toContain(`\n${plan}\n`);
+    expect(text).toContain(`\n${keep}\n`);
+    // The question is asked, with both answers, and a delete runs nothing.
+    expect(text).toContain("AskUserQuestion");
+    expect(text).toContain("Keep my memories (just uninstall)");
+    expect(text).toContain("Delete my memories too (can't be undone)");
+    expect(text).toContain("terminalArgs");
+    expect(text).not.toMatch(/DELETE MEMORIES/);
+  });
+
   test("no top-level bin/ (chat and Cowork refuse such a plugin) and no root .mcp.json (it would be every dev session's project config)", () => {
     expect(existsSync(join(ROOT, "bin"))).toBe(false);
     expect(existsSync(join(ROOT, ".mcp.json"))).toBe(false);

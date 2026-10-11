@@ -17,6 +17,7 @@ The repository root is the plugin. Claude Code reads four things from it:
 | `hooks/hooks.json` | The five events `counterparts install` wires: SessionStart, UserPromptSubmit, Stop, SessionEnd, PreCompact; and, under `"modules"`, the sidebar mod (`hooks/sidebar/`, see its `NOTES.md`) |
 | `commands/doctor.md` | `/counterparts:doctor`, because a plugin install puts no `counterparts` on PATH |
 | `commands/dashboard.md` | `/counterparts:dashboard`, for the same reason: `counterparts dashboard`, as a background task of the session |
+| `commands/uninstall.md` | `/counterparts:uninstall`: shows `counterparts uninstall --json`'s plan, asks keep or delete, runs `--keep-memories --json` for a keep; a delete it hands to the person, as a command to type at a terminal with Claude Code closed. Its grant allows the plan and the keep call and nothing else |
 
 Every hook and the server run `sh ${CLAUDE_PLUGIN_ROOT}/src/adapters/plugin-run.sh hook|mcp`.
 That launcher finds a runtime (below) and runs the same entry points the npm bins run.
