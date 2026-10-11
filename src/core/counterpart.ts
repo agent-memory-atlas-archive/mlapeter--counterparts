@@ -6703,7 +6703,7 @@ export class Counterpart {
     // proposal goes on without its `updates`, so nothing is linked, carried
     // over, closed or settled; the hold is recorded and handed back.
     const held = await this.guardUpdate(result.proposal, ctx);
-    const carry = this.carryReminder(held === null ? result.proposal : withoutUpdates(result.proposal));
+    const carry = this.carryReminder(held === null ? result.proposal : withoutUpdates(result.proposal), ctx.facts?.status ?? null);
     // v12: the writer's three fields, a revision's carried over where unsent.
     const facts = this.carryFacts(carry.proposal, ctx.facts);
     const proposal: Proposal = facts === null ? carry.proposal : { ...carry.proposal, facts: { ...(facts.occurredOn === null ? {} : { occurredOn: facts.occurredOn }), ...(facts.saidBy === null ? {} : { saidBy: facts.saidBy }), ...(facts.status === null ? {} : { status: facts.status }) } };
@@ -7073,7 +7073,7 @@ export class Counterpart {
    * a reminder that faded or was put away is not revived onto a live row by a
    * revision that did not ask for it.
    */
-  private carryReminder(p: Proposal): ReminderCarryPlan {
+  private carryReminder(p: Proposal, sentStatus: MemoryStatus | null = null): ReminderCarryPlan {
     const intent = p.dateIntent;
     const target = p.updates?.method === "declared" ? p.updates.resolved : null;
     const none: ReminderCarryPlan = { proposal: p, from: null, inherited: [] };
@@ -7092,8 +7092,12 @@ export class Counterpart {
     } catch {
       // Unreadable prose: the date still carries, at the default mode, once.
     }
+    // A `done` SPENDS IT (review of #427, 2026-10-11): a write that says the
+    // dated thing is done, and sends no date, does not inherit one to fire on
+    // a plan already carried out — the rule the one door keeps for a settle.
+    const spent = intent.eventDate === "absent" && sentStatus === "done";
     const eventDate =
-      intent.eventDate === "set" ? p.eventDate : intent.eventDate === "cleared" ? null : priorDate;
+      intent.eventDate === "set" ? p.eventDate : intent.eventDate === "cleared" || spent ? null : priorDate;
     const remind = eventDate === null ? null : intent.remind ?? priorMode;
     // HOW OFTEN, field by field like the rest (2026-10-09): what the author
     // sent, `null` for "no longer repeats", else the revised memory's. Only a

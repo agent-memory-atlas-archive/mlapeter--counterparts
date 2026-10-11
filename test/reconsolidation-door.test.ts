@@ -378,6 +378,25 @@ describe("the core path (review 10 C4), on the Han case's shape", () => {
     expect(headOf(s, plan)).toBeNull();
   });
 
+  test("a DATED core plan (no status) fulfilled by a `done` write: out of the core in one step, and its reminder spent on both memories", async () => {
+    const srv = server();
+    const s = srv.counterpart.store;
+    const plan = core(s, "Taking Robin back to the lake cabin on the 20th.", { eventDate: "2099-11-20", meta: { [CUE_MODE_META]: "plain" } } as Partial<PutInput>);
+    expect(s.physicsOf(plan).hold?.state).toBe("pending");
+    const r = payload(await srv.call("remember", { text: "Took Robin back to the lake cabin: the trip is done.", kind: "person", updates: plan, how: "changed", status: "done" }));
+    const done = String(r["id"]);
+    expect(headOf(s, plan)).toBe(done);
+    expect(s.row(plan)).toMatchObject({ promoted_identity: 0, event_date: null });
+    // The `done` memory did not inherit the date to fire on a trip already made.
+    expect(s.row(done)?.event_date).toBeNull();
+    expect(new Prospective({ store: s }).plainDue({ at: "2099-11-20" })).toEqual([]);
+    expect(s.eventLog({ name: "revision.pressure" })).toHaveLength(0);
+    // The undo puts the plan back in the core (the date moved at the write, as any write's move does, and stays where it went).
+    const pair = s.contradictionBetween(done, plan);
+    expect(srv.counterpart.undoContradiction({ pair: pair?.id as string, actor: "owner" }).ok).toBe(true);
+    expect(s.row(plan)).toMatchObject({ promoted_identity: 1, band: "identity" });
+  });
+
   test("a settle by a `done` holder over a dated core plan through the door spends the reminder and the undo brings it back", () => {
     const s = store();
     const plan = put(s, "Renew the passport before the trip.", { eventDate: "2099-11-20", meta: { [CUE_MODE_META]: "plain" } } as Partial<PutInput>);

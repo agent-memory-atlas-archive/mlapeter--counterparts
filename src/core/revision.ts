@@ -93,6 +93,7 @@ import { hashText, occurredOnOf, saidByOf, statusOf } from "./store/index.js";
 import type { MemoryRow, Store } from "./store/index.js";
 import { TUNABLES, applyChallenge, successorSeed, supersedeRecord } from "./physics/index.js";
 import { directionOf } from "./mint.js";
+import { DATE_MOVED_TO_META } from "./prospective/index.js";
 import { FULFILLED_SOURCE, PRESSURE_UNDONE_REASON, flag, settleOnWrite, supersede } from "./reconsolidation.js";
 import type { SettleOutcome } from "./reconsolidation.js";
 import type { SettleHow } from "./types.js";
@@ -559,7 +560,15 @@ function identityChallenge(
  */
 function fulfilled(store: Store, row: MemoryRow, challengerId: string): boolean {
   const was = statusOf(row.status ?? null);
-  const holdsAState = (was !== null && was !== "done") || row.event_date !== null;
+  // A date counts when it is still there, or when this very write just took
+  // it (the deposit moves a reminder before the revision runs; review of #427).
+  let movedHere = false;
+  try {
+    movedHere = row.event_date === null && store.readProse(row.id).meta[DATE_MOVED_TO_META] === challengerId;
+  } catch {
+    movedHere = false;
+  }
+  const holdsAState = (was !== null && was !== "done") || row.event_date !== null || movedHere;
   return holdsAState && statusOf(store.row(challengerId)?.status ?? null) === "done";
 }
 
