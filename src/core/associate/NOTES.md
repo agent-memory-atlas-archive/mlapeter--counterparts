@@ -499,3 +499,13 @@ evaporation can do it.
   memory's encoding context, not credit to the footnote — the footnote's strength is
   untouched (CONTRACT G1). Test: the bench's clinic pair (73d42213) shape,
   `association-group4.test.ts` › "2.".
+- **Replay deposits** (item 3, review 06 C2, D5; `Dreams#replayDeposit`). When a dream
+  opens (not on resume), each new memory its bundle shows is proposed a link to each older
+  neighbour shown beside it, at `dream/` `REPLAY_LINK_WEIGHT` (0.05, half a dream's own
+  `link`), through the same `propose` door: room-only, never evicting, a pinned end frozen.
+  No model call. Not a dream change: the dreamer did not choose these pairs, so an undo
+  takes a dream's `link` back to what was there before it — which may now be the
+  replay's 0.05 — and leaves the replay's own trails to decay. Counted on `dream.begun`
+  (`replayPairs`, `replayLinks`, `replayNoRoom`). Neighbours are by meaning where a vector
+  exists and by rare title words where not (`Dreams#near`), so on a store without vectors
+  the replay links by words.

@@ -15,6 +15,7 @@ import { Counterpart } from "../src/core/counterpart.js";
 import { TUNABLES as ASSOCIATE_TUNABLES, planAtWrite } from "../src/core/associate/index.js";
 import { ASKED_KIND, askedTurn, freshGateState, loadGateState, saveGateState } from "../src/core/recall/index.js";
 import type { GateState } from "../src/core/recall/index.js";
+import { DREAM_TUNABLES } from "../src/core/dream/tunables.js";
 import { findable } from "./store-fixture.js";
 
 const ENV = "COUNTERPARTS_DATA_DIR";
@@ -177,7 +178,7 @@ describe("2. write-time links to what was in mind (bench item 5)", () => {
     expect(c.store.edgesFrom(hub).filter((e) => e.weight > T.EDGE_FLOOR).length).toBe(T.MAX_EDGES_PER_NODE);
   });
 
-  test("an observer lays nothing", async () => {
+  test("an observer lays nothing at write time", async () => {
     const clock = { now: Date.UTC(2026, 8, 1, 9) };
     const owner = brainAt(clock);
     owner.store.advanceClock("2026-09-01");
@@ -191,5 +192,63 @@ describe("2. write-time links to what was in mind (bench item 5)", () => {
     const report = await watcher.sessionEnd({ date: "2026-09-01", budgetBytes: 9000 });
     expect(report.contiguity.reason).toBe("observer");
     expect(watcher.store.edgesFrom(before)).toEqual([]);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 3. Replay deposits: the bundle proposes faint links, no model call
+// ═══════════════════════════════════════════════════════════════════════════
+describe("3. replay deposits (review 06 C2)", () => {
+  /** An older memory, ten lived days back, and two new ones today that share its words. */
+  function night(c: Counterpart): { old: string; fresh: string[] } {
+    c.store.advanceClock("2026-05-20");
+    const old = c.store.put({
+      type: "memory",
+      kind: "fact",
+      body: "I left home at seven on Monday morning to reach the clinic appointment in time.",
+      origin: { session: "conv-0520" },
+      salience: { relevance: 0.6, emotional: 0.3, predictive: 0.6 },
+    });
+    for (let d = 21; d <= 30; d += 1) c.store.advanceClock(`2026-05-${String(d)}`);
+    const fresh = [
+      "It took two hours to get to the clinic appointment last time.",
+      "The clinic appointment moved to Thursday afternoon.",
+    ].map((body) => c.store.put({ type: "memory", kind: "fact", body, origin: { session: "conv-0530" }, salience: { relevance: 0.6, emotional: 0.3, predictive: 0.6 } }));
+    return { old, fresh };
+  }
+
+  test("opening a dream links each new memory to the older neighbours shown beside it, at REPLAY_LINK_WEIGHT, room-only", () => {
+    const clock = { now: Date.UTC(2026, 4, 30, 22) };
+    const c = brainAt(clock);
+    const { old, fresh } = night(c);
+    const out = c.dreams.begin({ session: "night" });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    const pairs = out.bundle.fresh.flatMap((f) => f.neighbours.map((n) => [f.id, n] as const));
+    expect(pairs.some(([, n]) => n === old)).toBe(true);
+    const day = c.store.livedDay();
+    for (const [a, b] of pairs) {
+      expect(c.associate.weightAt(a, b, day)).toBeCloseTo(DREAM_TUNABLES.REPLAY_LINK_WEIGHT, 10);
+      expect(c.associate.weightAt(b, a, day)).toBeCloseTo(DREAM_TUNABLES.REPLAY_LINK_WEIGHT, 10);
+    }
+    expect(fresh.some((f) => c.associate.linked(f, old))).toBe(true);
+    // Durable, on the dream's own row — and not a change the dream made.
+    const begun = JSON.parse(c.store.eventLog({ name: "dream.begun" }).at(-1)?.payload ?? "{}") as Record<string, unknown>;
+    expect(begun["replayPairs"]).toBe(pairs.length);
+    expect(begun["replayLinks"]).toBe(pairs.length);
+    expect(c.store.dreamChanges(out.bundle.dream)).toEqual([]);
+  });
+
+  test("a stronger link use already laid is never lowered by the replay", () => {
+    const clock = { now: Date.UTC(2026, 4, 30, 22) };
+    const c = brainAt(clock);
+    const { old, fresh } = night(c);
+    const day = c.store.livedDay();
+    c.store.linkMany(fresh.flatMap((f) => [
+      { src: f, dst: old, weight: 0.3, day },
+      { src: old, dst: f, weight: 0.3, day },
+    ]));
+    expect(c.dreams.begin({ session: "night" }).ok).toBe(true);
+    for (const f of fresh) expect(c.associate.weightAt(f, old, day)).toBeCloseTo(0.3, 10);
   });
 });

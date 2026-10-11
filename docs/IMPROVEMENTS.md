@@ -625,6 +625,13 @@ were refined by b2+f8 at the review of #369, named where they were):
   Hebbian buffer, so a faint footnote-grade trail never pushes out what use learned. A
   memory shown only through an ambiguous handle (`trains: false`) and a handoff are not "in
   mind".
+- Decided by the Group 4 builder, 2026-10-11, lightly held: the replay's deposit is laid when
+  a dream OPENS (`Dreams#begin`, its bundle composed), not when it wakes, between each new
+  memory and the older neighbours shown beside it (not the mixing or look-back), at 0.05; and
+  it is not one of the dream's changes, so a dream's undo leaves it. Why: the replay is the
+  bundle being put in front of the dreamer, which happens whether or not the dreamer then
+  changes anything (a headless run that fails still replayed); the dreamer chose none of
+  these pairs, and a 0.05 trail nothing confirms is gone in about 27 lived days.
 
 ### Also noted
 
