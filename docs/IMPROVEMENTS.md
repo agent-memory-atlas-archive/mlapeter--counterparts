@@ -471,6 +471,26 @@ were refined by b2+f8 at the review of #369, named where they were):
   directory it falls back on, so the single binary run from `/counterparts:doctor` knows
   itself for the plugin's (before, `runningAsPlugin` read false there).
 
+### Decided by the mark-superseded builder, 2026-10-11, lightly held (settled-over memories where titles show)
+
+- Decided by the mark-superseded builder, 2026-10-11, lightly held: a write's `neighbours`
+  list a memory a later one settled over MARKED (`standing: "earlier (now mem_…)"`, before
+  its title), not swapped for the one that holds now. It is left out instead when what holds
+  now is already in view (the write itself, what it updates, a sibling in the same
+  `session_end`, a neighbour listed above it) or is confidential to a guest writer. Why: the
+  neighbours are what is close in words to the write; the one that holds now may not be, and
+  the mark names it for a settle or a recall. The dream's and the reflection's bundles mark it
+  the same way rather than leave it out (a dream may still link or feel it), and the dream's
+  "coming up" leaves out a dated memory a later one settled over, as the wake's "Arriving:"
+  does. "Settled over" is `settledOver`'s rule for one id (`recall/standing.ts#headOf`).
+- Decided by the coordinator at the review of #408, 2026-10-11, lightly held: recall's
+  `Earlier (now [id])` label (footnotes, "Came to mind", the wake's lanes, the deliberate
+  path's `standing`) names `headOf`'s memory too, so a footnote and a neighbour never name
+  different ones on a chain A→B→C (both say C, where the footnote said B). A memory a newer
+  pair names as what holds, or whose holder is gone with nothing live after it, no longer
+  reads `Earlier`. Accepted as built: a guest writer's neighbour whose head is confidential
+  is left out; a neighbour whose head ranks below it is listed marked beside its head.
+
 ### Also noted
 
 - **A read-without-crediting mode for audits.** A way to read memories (a review, a rules
