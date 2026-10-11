@@ -86,7 +86,7 @@ const DECAY_PHASE: Phase = "decay";
  *
  * EVERY constant that moves a strength, a line or the hold belongs here —
  * height's (`base`: each kind's `wSal`/`wRep`, `REP_PER_USE`, `REP_CAP`,
- * `CONS_BONUS`; `salArm`'s lift), steepness's, the lines', the hold's (review
+ * `REP_SCALE_USES`, `CONS_BONUS`; `salArm`'s lift), steepness's, the lines', the hold's (review
  * of #372: the height constants were missing, so a build that changed a
  * kind's salience weight would have trusted next-change days computed under
  * the old heights). Group 1c's `FELT_HEIGHT_CAP` (`salArm`) is one of them;
