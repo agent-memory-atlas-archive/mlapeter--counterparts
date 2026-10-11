@@ -475,6 +475,16 @@ describe("drewOn deposits a link (Group 4 item 1, review 06 C1)", () => {
     expect(c.associate.linked(a, b)).toBe(false);
   });
 
+  test("naming twenty memories it had already opened sends at most DREW_ON_MAX_PER_BOUNDARY members' pairs, not 190", () => {
+    const { c, ids } = setup(20);
+    shown(c, "s1", 1, ids);
+    for (const id of ids) expect(c.resolveUse("s1", id, "referenced").credited).toBe(true);
+    const r = c.creditDrewOn("s1", ids);
+    // None credited (each was opened first), so no slot was spent — and still a bounded pair set.
+    expect(r.credited).toEqual([]);
+    expect(r.linked).toBe(3);
+  });
+
   test("a refused id (never shown) joins nothing, and the observer deposits nothing", () => {
     const { c, ids } = setup(3);
     const [a, b, z] = ids as [string, string, string];

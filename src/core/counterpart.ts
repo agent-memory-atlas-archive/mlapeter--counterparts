@@ -3987,8 +3987,11 @@ export class Counterpart {
         // `HEBB_RATE` per pair, homeostasis bounding it at the flush. Strength
         // stays the engaged tier's half use; only the link is a full deposit.
         // As in `creditReferences`, a memory refused only for its day cadence
-        // (opened earlier today, born today) still joins the pair set.
-        if (r.credited || linksDespite(r)) members.push({ id, tier: "referenced" });
+        // (opened earlier today, born today) still joins the pair set. The set
+        // holds at most DREW_ON_MAX_PER_BOUNDARY (reviewer of #423): a refusal
+        // for cadence spends no credit slot, so without this bound a session
+        // naming twenty memories it had opened would send 190 full-rate pairs.
+        if ((r.credited || linksDespite(r)) && members.length < DREW_ON_MAX_PER_BOUNDARY) members.push({ id, tier: "referenced" });
         if (r.credited) {
           credited.push(id);
           slots -= 1;
