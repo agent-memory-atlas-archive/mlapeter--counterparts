@@ -2160,6 +2160,41 @@ describe("uninstall — review of #414", () => {
     expect(text(off.out)).not.toContain("claude plugin uninstall");
   });
 
+  test("review of #425: a project-scope plugin is removed with --scope, from the folder Claude Code recorded", async () => {
+    await install();
+    const project = join(home, "my project");
+    mkdirSync(join(home, ".claude", "plugins"), { recursive: true });
+    writeFileSync(
+      join(home, ".claude", "plugins", "installed_plugins.json"),
+      JSON.stringify({
+        version: 2,
+        plugins: { "counterparts@counterparts": [{ scope: "project", projectPath: project, installPath: join(home, "cache") }] },
+      }),
+    );
+    const env = { ...ENV, CLAUDE_PLUGIN_ROOT: join(dirname(import.meta.dir)) };
+    const c = consoleWith();
+    expect(await uninstall(input({ io: c.io, park: true, env }))).toBe("ok");
+    expect(text(c.out)).toContain(
+      `To remove the program too: cd '${project}' && claude plugin uninstall counterparts@counterparts --scope project`,
+    );
+  });
+
+  test("review of #425: an npm-only install is never told to remove a plugin, even with a broken registry", async () => {
+    await install();
+    const c = consoleWith(["y", "y", DELETE_PHRASE]);
+    expect(await uninstall(input({ io: c.io, yes: false }))).toBe("ok");
+    expect(text(c.out)).not.toContain("claude plugin uninstall");
+
+    await install();
+    mkdirSync(join(home, ".claude", "plugins"), { recursive: true });
+    writeFileSync(join(home, ".claude", "plugins", "installed_plugins.json"), "{ not json");
+    const broken = consoleWith(["y", "y", DELETE_PHRASE]);
+    expect(await uninstall(input({ io: broken.io, yes: false }))).toBe("ok");
+    expect(existsSync(base())).toBe(false);
+    expect(text(broken.out)).toContain(`To remove the program too: ${REMOVE_PACKAGE}`);
+    expect(text(broken.out)).not.toContain("claude plugin uninstall");
+  });
+
   test("closing lines on a plugin install name the plugin's launcher and /plugin, not bun", async () => {
     await install();
     const root = join(dirname(import.meta.dir));

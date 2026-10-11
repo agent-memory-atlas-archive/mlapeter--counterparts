@@ -93,6 +93,7 @@ import { isJournal } from "../../core/sleep/index.js";
 import { SCOPES_FILE_NAME, shellWord } from "../scopes.js";
 import { PLUGIN_ROOT_ENV, installRoute } from "../plugin.js";
 import { pluginInstall } from "../host-wiring.js";
+import type { PluginInstallRead } from "../host-wiring.js";
 import { SNAPSHOTS_DIR_NAME, resolveSnapshotsDir } from "../snapshots.js";
 import type { AdapterConfig } from "../config.js";
 import type { Io } from "./commands.js";
@@ -152,10 +153,24 @@ export function removeProgram(env: Record<string, string | undefined>): string {
 /** The plugin's id when Claude Code records none here: the published one. */
 export const PLUGIN_ID_FALLBACK = "counterparts@counterparts";
 
-/** Claude Code's own command that removes the plugin, from a terminal. */
+/**
+ * Claude Code's own command that removes the plugin, from a terminal. A
+ * project or local install is only removed with `--scope`, from the folder it
+ * was installed for, both of which Claude Code records beside the id.
+ */
+export function pluginUninstallCommand(plugin: PluginInstallRead | null, home: string): string {
+  const command = `claude plugin uninstall ${plugin?.id ?? PLUGIN_ID_FALLBACK}`;
+  const scope = plugin?.scope ?? null;
+  if (scope !== "project" && scope !== "local") return command;
+  const where = plugin?.projectPath ?? null;
+  return where === null
+    ? `${command} --scope ${scope} (in the project it was installed for)`
+    : `cd ${shellWord(where, home)} && ${command} --scope ${scope}`;
+}
+
+/** {@link pluginUninstallCommand} for the install Claude Code records here. */
 export function removePluginAtTerminal(env: Record<string, string | undefined>, home: string): string {
-  const id = pluginInstall({ home, env, cwd: null })?.id ?? PLUGIN_ID_FALLBACK;
-  return `claude plugin uninstall ${id}`;
+  return pluginUninstallCommand(pluginInstall({ home, env, cwd: null }), home);
 }
 
 /** Why the plugin goes before Claude Code opens again, said under that line. */
@@ -181,7 +196,7 @@ function removeProgramAfterGone(input: UninstallInput): void {
     // live, and they are out now, so its next start is a first run too.
     const also = pluginInstall({ home: input.home, env: input.env, cwd: null });
     if (also === null || !also.enabled) return;
-    input.io.out(`Claude Code also has the plugin: claude plugin uninstall ${also.id}`);
+    input.io.out(`Claude Code also has the plugin: ${pluginUninstallCommand(also, input.home)}`);
     input.io.out(PLUGIN_BEFORE_REOPEN);
     return;
   }
