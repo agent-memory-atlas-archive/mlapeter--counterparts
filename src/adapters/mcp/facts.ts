@@ -237,6 +237,8 @@ export interface FactItem {
   readonly body: string;
   readonly bodyChars: number;
   readonly whole: boolean;
+  /** The words hold a list or a table (`blockOf`): said on a cut excerpt, so a reader knows to read it whole. */
+  readonly block?: string;
   readonly saidBy: string | null;
   readonly status: string | null;
   readonly occurredOn: string | null;
@@ -901,6 +903,7 @@ function factItem(
   wrong.sort((a, b) => b.reached - a.reached || (b.corrected ?? "").localeCompare(a.corrected ?? "") || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const correctedShown = wrong.slice(0, FACTS_CORRECTED_SHOWN).map(({ text, learned, corrected: on, id }) => ({ text, learned, corrected: on, id }));
   const title = row.title ?? doc.title;
+  const block = blockOf(text);
   return {
     id: c.id,
     faded,
@@ -912,6 +915,7 @@ function factItem(
     body,
     bodyChars: doc.body.length,
     whole: body.length === flat.length && chapter === undefined,
+    ...(block === null ? {} : { block }),
     saidBy: row.said_by,
     status: row.status,
     occurredOn: row.occurred_on,
@@ -1076,8 +1080,39 @@ function itemLines(m: FactItem, i: number, today: string, excerptChars: number):
     );
   }
   const words = m.body.length <= excerptChars ? m.body : cutExcerpt(m.body, excerptChars);
-  out.push(`   ${words}`);
+  // The verbatim trial (2026-10-11): a list or a table kept word for word is
+  // flattened into the excerpt; saying it is there tells a reader the rest is
+  // worth the read by id.
+  const block = m.block !== undefined && (!m.whole || words !== m.body) ? ` (${m.block}; read whole by id)` : "";
+  out.push(`   ${words}${block}`);
   return out;
+}
+
+/** List items and table rows: a line led by a bullet or a number, or a line between pipes. */
+const LIST_ITEM = /^[ \t]*(?:[-*+•]|\d{1,4}[.)])[ \t]+\S/;
+const TABLE_ROW = /^[ \t]*\|.*\|[ \t]*$/;
+const TABLE_RULE = /^[ \t]*\|[ \t:|-]+\|[ \t]*$/;
+/** Fewer list items or table rows than these are a sentence's worth, not a block worth naming. */
+const LIST_MIN_ITEMS = 5;
+const TABLE_MIN_ROWS = 3;
+
+/**
+ * "a list, 100 items" or "a table, 12 rows" when the words hold one, else
+ * null. Counted on the words before they are flattened into an excerpt; a
+ * table's header row and its rule are not counted as rows.
+ */
+export function blockOf(text: string): string | null {
+  let items = 0;
+  let rows = 0;
+  for (const line of text.split("\n")) {
+    if (TABLE_ROW.test(line)) {
+      if (!TABLE_RULE.test(line)) rows += 1;
+    } else if (LIST_ITEM.test(line)) items += 1;
+  }
+  const data = Math.max(0, rows - 1);
+  if (data >= TABLE_MIN_ROWS && data >= items) return `a table, ${String(data)} rows`;
+  if (items >= LIST_MIN_ITEMS) return `a list, ${String(items)} items`;
+  return null;
 }
 
 /**

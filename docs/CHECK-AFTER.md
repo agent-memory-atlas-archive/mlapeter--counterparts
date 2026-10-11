@@ -85,6 +85,31 @@ or the CLI's read commands (`counterparts mechanisms --dir …`, `counterparts d
 - **Also look at:** doctor's Credit line's 7-day `drewOn` count. Zero after a week means the field isn't being
   used, which is a prompt problem, not a mechanism result.
 
+## Due 1 lived day after the verbatim trial ships
+
+### Verbatim in the memory's body: first look
+- **Look at:** the bench 76-question slice (counterparts-07) for meaning-search blur on long bodies: do memories
+  holding a long verbatim block still come back for questions about their gist? And on the live store, any
+  memory written with a list or a table since the ship (a facts line ending "(a list, N items; read whole by
+  id)" finds them): did it come back whole by id, and was it findable by what it is, whose, when?
+- **Why:** Mike's trial (2026-10-11, very lightly held): `remember` and `session_end` now ask for a list, a
+  table or a pasted text whose specifics matter word for word in the body, with the search words in the title
+  and the first line. The body is stored and read whole, but the meaning vector is made from the title and the
+  body's first ~3,072 characters (at most 512 tokens; a numbered list reaches 512 tokens sooner), so the rest
+  of a long block is reached by words only. Also watch: two similar lists (two weeks' shift tables, two
+  versions of an inventory) folded as near-duplicates of each other in a facts answer, so one is hidden.
+- **Changes a decision if:** long bodies blur meaning search, or real lists don't come back whole and findable
+  → move to an attachments table (Mike's long-run lean), with the memory holding the context and keywords
+  that find the attachment.
+
+## Due ~4 lived days after the verbatim trial ships
+
+### Verbatim in the memory's body: second look, and decide
+- **Look at:** the same as the first look, on the days since: the bench slice again if anything changed, and
+  every live memory written with a list, a table or a pasted text.
+- **Changes a decision if:** decide the trial → keep it, or → attachments (a table of the blocks, the memory
+  holding the context and keywords that find one). Record the call in `docs/IMPROVEMENTS.md`.
+
 ## Ongoing (first two weeks)
 
 ### The old-claims era's effect on archives
