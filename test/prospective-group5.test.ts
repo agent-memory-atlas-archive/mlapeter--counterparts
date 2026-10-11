@@ -24,7 +24,9 @@ import { RECURRING_META } from "../src/core/store/index.js";
 import { CUE_MODE_META, PROSPECTIVE_PLAIN_EVENT, TUNABLES } from "../src/core/prospective/index.js";
 import { freshGateState, loadGateState, saveGateState } from "../src/core/recall/index.js";
 import type { GateState } from "../src/core/recall/index.js";
-import { plainLine } from "../src/adapters/claude-code/index.js";
+import { openAdapter, plainLine } from "../src/adapters/claude-code/index.js";
+import type { AdapterConfig, HookInput } from "../src/adapters/claude-code/index.js";
+import { deliverTurn } from "../src/adapters/claude-code/bin/hook.js";
 import { openServer } from "../src/adapters/mcp/index.js";
 import { Dashboard } from "../src/adapters/dashboard/index.js";
 import { mechanismPanel } from "../src/adapters/dashboard/web/views/mechanism-panel.js";
@@ -162,6 +164,30 @@ describe("a missed plain day is told once, late, within its grace", () => {
     const r = c.plainReminders({ at: "2026-05-15" });
     expect(r.map((x) => [x.memoryId, x.windowKey, x.late === true])).toEqual([[id, "d:2026-05-14", true]]);
     expect(c.plainReminders({ at: "2026-05-16" })).toEqual([]);
+  });
+
+  test("through the hooks: SessionStart the day after says it late, to the person and the model, once", () => {
+    const config: AdapterConfig = { dataDir: dir, injectionBudgetBytes: 20_000, owner: true };
+    const a = openAdapter(config, { command: "/bin/true", args: ["runner"], spawner: () => ({ pid: 1 }) });
+    open.push(a.counterpart);
+    const id = dated(a.counterpart, "2026-10-12", { title: "renew the library card", meta: PLAIN });
+    const input: HookInput = { sessionId: "s1", scope: "proj", turns: [], at: "2026-10-13" };
+    const result = a.sessionStart(input);
+    expect(result.notices).toEqual(["This was for Mon 12 Oct 2026: renew the library card"]);
+    expect(result.injection).toContain(`Plain reminder (they asked to be told) — This was for Mon 12 Oct 2026: renew the library card [${id}]`);
+    const delivered = deliverTurn(
+      "session-start",
+      result,
+      { hook_event_name: "SessionStart" },
+      [null, null],
+      { updateNotice: () => null, markUpdateNotice: () => false, claimPlain: (i, due) => a.claimPlain(i, due) },
+      input,
+    );
+    expect((JSON.parse(delivered.stdout) as Record<string, unknown>)["systemMessage"]).toBe(
+      "This was for Mon 12 Oct 2026: renew the library card",
+    );
+    expect(a.userPromptSubmit({ ...input, prompt: "morning" }).notices).toBeUndefined();
+    expect(a.sessionStart({ ...input, sessionId: "s2", at: "2026-10-14" }).notices).toBeUndefined();
   });
 
   test("the words say which day it was for", () => {
