@@ -612,8 +612,13 @@ export async function runNight(input: NightRunInput): Promise<NightRun> {
       const second = childInput("reflection", next.prompt);
       try {
         const two = await runNightChild(input, second, start, now);
-        ran.push(two);
-        children.push(childRunOf("reflection", two));
+        // One that never started (no `claude` now, a spawn that failed) is
+        // said as not started: the run's exit stays the dream child's.
+        if (two.neverStarted) children.push({ child: "reflection", code: null, ms: 0, skipped: two.result.spawnCode === "ENOENT" ? "no-claude" : "spawn-failed" });
+        else {
+          ran.push(two);
+          children.push(childRunOf("reflection", two));
+        }
       } catch {
         children.push({ child: "reflection", code: null, ms: 0, skipped: "spawn-failed" });
       }
@@ -621,12 +626,13 @@ export async function runNight(input: NightRunInput): Promise<NightRun> {
   }
   const ms = now() - startedAt;
   // THE RUN'S EXIT, from its children: stopped if any was stopped; the first
-  // non-zero exit, else the last child's.
+  // non-zero exit, else the last child's. Its code is that child's own (a
+  // stopped child has none), never another child's.
   const lastRun = ran[ran.length - 1] as NightChildOutcome;
   const stopped = ran.find((r) => r.result.timedOut);
   const failing = ran.find((r) => r.result.code !== 0 && !r.neverStarted);
   const result: ChildResult = stopped?.result ?? failing?.result ?? lastRun.result;
-  const exitCode = failing?.result.code ?? lastRun.result.code;
+  const exitCode = result.code;
   const spill = mergeSpills(ran.map((r) => r.spill));
 
   // WHAT THE RUN DID, from the store.

@@ -427,7 +427,7 @@ export interface NightRun {
   readonly detail: string | null;
   /**
    * The child's exit code, when it exited. With two children (2026-10-11),
-   * the first non-zero exit among them, else the last one's.
+   * the stopped one's (none), else the first non-zero exit, else the last one's.
    */
   readonly code: number | null;
   /** The dream this run journaled (or finished reflecting on), and its reflection. */
@@ -480,10 +480,11 @@ export interface NightChildRun {
   readonly ms: number;
   readonly timedOut?: true;
   /**
-   * NOT STARTED, and why — the reflection after a dream child that could not
-   * do its job: `nothing-ran` (it began nothing: the tools were not there),
-   * `quick-exit`, `unread` (the store would not open between them),
-   * `reflected-today` (a reflection already finished today).
+   * NOT STARTED, and why — the reflection's child, after the dream's:
+   * `quick-exit` (the first stopped straight away having begun nothing),
+   * `reflected-today` (a reflection already finished today), `unread` (the
+   * store would not open between them), `no-claude` or `spawn-failed` (it
+   * could not be started).
    */
   readonly skipped?: string;
 }

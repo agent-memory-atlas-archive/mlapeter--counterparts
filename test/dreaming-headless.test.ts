@@ -574,6 +574,47 @@ describe("B. the headless run: the child's plan, and what becomes of a run", () 
     expect(out.children?.at(-1)).toEqual({ child: "reflection", code: null, ms: 0, skipped: "reflected-today" });
   });
 
+  test("the dream's child was STOPPED and the reflection's finished: partial on the watchdog, with no exit code borrowed from the reflection (review of #413)", async () => {
+    lived(openNight());
+    const out = await runNight(
+      nightOf({
+        start: async (plan) => {
+          if (isReflection(plan)) {
+            reflectionChild(null);
+            return { code: 0, timedOut: false, error: null };
+          }
+          const c = openNightCounterpart(config());
+          try {
+            c.dreams.begin({ session: "s1" });
+          } finally {
+            c.close();
+          }
+          return { code: null, timedOut: true, error: "watchdog" };
+        },
+      }),
+    );
+    expect(out).toMatchObject({ state: "partial", reason: "watchdog", code: null, parts: ["reflection"] });
+    expect(out.children?.map((ch) => [ch.child, ch.timedOut ?? false])).toEqual([
+      ["dream", true],
+      ["reflection", false],
+    ]);
+  });
+
+  test("the reflection's child could not be started after a dream that journaled: said as not started, not as an exit (review of #413)", async () => {
+    lived(openNight());
+    const out = await runNight(
+      nightOf({
+        start: async (plan) => {
+          if (isReflection(plan)) return { code: null, timedOut: false, error: "spawn ENOENT", spawnCode: "ENOENT" };
+          dreamChild();
+          return { code: 0, timedOut: false, error: null };
+        },
+      }),
+    );
+    expect(out).toMatchObject({ state: "partial", reason: "unfinished", code: 0, parts: ["dream"] });
+    expect(out.children?.at(-1)).toEqual({ child: "reflection", code: null, ms: 0, skipped: "no-claude" });
+  });
+
   test("the reflection alone is one child, with every tool of the night (2026-10-11)", async () => {
     lived(openNight());
     const dream = dreamChild();
