@@ -622,7 +622,10 @@ with tonight's dream id. The in-session Agent path keeps the single prompt.
 Measured once each on a copy of the owner's store (11 Oct morning, v12 migrated; hooks
 off, strict MCP on the copy; Opus 5.5; peak = max input + cache write + cache read over
 a child's turns, deduped by message id). The page writer had nothing to write on that
-copy in both runs.
+copy in both runs, and it was a light night (13 turns, against 33–38 on 10-09 and 10-10),
+so the absolute peaks are not comparable with the review's 223k; the drop between the
+two is the evidence. Whether the dream child alone stays under 200k on a heavy night is
+still to be seen on the live runs.
 
 | | turns | peak context | cache read | cache write | output | wall |
 |---|---|---|---|---|---|---|

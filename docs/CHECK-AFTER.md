@@ -97,6 +97,17 @@ or the CLI's read commands (`counterparts mechanisms --dir …`, `counterparts d
 - **Changes a decision if:** the real cost per part is far above the estimate → lower the night's cap
   (`NIGHT_WRITE_UP_PARTS`), and look again at the command's.
 
+## Due at the first live nights with the reflection in its own child
+
+### Peak context per child on a heavy night
+- **Look at:** the `dream.night` row's `children` (expect `dream:0,reflection:0`), and the two children's
+  transcripts under `~/.claude/projects/-Users-mlapeter--counterparts-store/` (one session each): peak context
+  (max input + cache write + cache read over a child's turns, deduped by message id) and new work per child.
+- **Why:** measured once on a light night only (one agent 148k, then dream child 98k and reflection child 70k;
+  `src/core/dream/NOTES.md`, 2026-10-11). A heavy night (the writer writing, 50+ fresh) was not measured.
+- **Changes a decision if:** the dream child alone goes past ~150k → the dream bundle's room (`NIGHT_CHARS`) or
+  the queue (Group 3) is next; if new work goes past the 2× cap (~490k), look at the reflection's re-written cache.
+
 ## Ongoing (first two weeks)
 
 ### No settled-over memory outranks its head in ambient results
