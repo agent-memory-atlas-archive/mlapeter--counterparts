@@ -423,7 +423,10 @@ export interface NightRun {
   readonly reason: string | null;
   /** A little more, when there is more: an error code, a refusal's name. Never prose from the run. */
   readonly detail: string | null;
-  /** The child's exit code, when it exited. */
+  /**
+   * The child's exit code, when it exited. With two children (2026-10-11),
+   * the first non-zero exit among them, else the last one's.
+   */
   readonly code: number | null;
   /** The dream this run journaled (or finished reflecting on), and its reflection. */
   readonly dream: string | null;
@@ -434,6 +437,14 @@ export interface NightRun {
    * run's order. A run that did some but not all is `partial`.
    */
   readonly parts?: readonly NightPart[];
+  /**
+   * WHICH CHILDREN RAN (2026-10-11): the whole night is two `claude -p`
+   * children, one after the other — `dream` (the page writer and the dream)
+   * and `reflection`, each with a fresh context — and the reflection alone is
+   * one. In the order they ran, each with its exit, its time, and, for a child
+   * not started, why (`NightChildRun.skipped`). Absent on rows from before.
+   */
+  readonly children?: readonly NightChildRun[];
   /** The child's watchdog, ms, as the host started it — what makes a `started` row LOST past it. */
   readonly timeoutMs?: number;
   /**
@@ -457,6 +468,29 @@ export interface NightRun {
    * Absent until then.
    */
   readonly handedAt?: number;
+}
+
+/** One child of a headless run (2026-10-11): ids, codes and times only. */
+export interface NightChildRun {
+  readonly child: "dream" | "reflection";
+  /** Its exit code; null when it was stopped, or never started. */
+  readonly code: number | null;
+  readonly ms: number;
+  readonly timedOut?: true;
+  /**
+   * NOT STARTED, and why — the reflection after a dream child that could not
+   * do its job: `nothing-ran` (it began nothing: the tools were not there),
+   * `quick-exit`, `unread` (the store would not open between them),
+   * `reflected-today` (a reflection already finished today).
+   */
+  readonly skipped?: string;
+}
+
+/** `dream:0,reflection:skipped-reflected-today` — a run's children in one line, for its event row. */
+export function nightChildrenWords(children: readonly NightChildRun[]): string {
+  return children
+    .map((c) => `${c.child}:${c.skipped !== undefined ? `skipped-${c.skipped}` : c.timedOut === true ? "timed-out" : c.code === null ? "none" : String(c.code)}`)
+    .join(",");
 }
 
 /**
@@ -517,6 +551,7 @@ export function nightRunOf(store: Pick<Store, "getMeta">): NightRun | null {
       ...(typeof v.handedAt === "number" ? { handedAt: v.handedAt } : {}),
       ...(typeof v.timeoutMs === "number" ? { timeoutMs: v.timeoutMs } : {}),
       ...(Array.isArray(v.parts) ? { parts: v.parts.filter((p): p is NightPart => p === "writer" || p === "dream" || p === "reflection") } : {}),
+      ...(Array.isArray(v.children) ? { children: v.children.flatMap(childRunOf) } : {}),
       ...(v.transcript === "read" || v.transcript === "absent" || v.transcript === "unreadable" ? { transcript: v.transcript } : {}),
       ...(typeof v.spills === "number" ? { spills: v.spills } : {}),
       ...(typeof v.requeued === "number" ? { requeued: v.requeued } : {}),
@@ -524,6 +559,22 @@ export function nightRunOf(store: Pick<Store, "getMeta">): NightRun | null {
   } catch {
     return null;
   }
+}
+
+/** One child as a row carries it, forgiving: anything unreadable is left out. */
+function childRunOf(raw: unknown): NightChildRun[] {
+  if (raw === null || typeof raw !== "object") return [];
+  const v = raw as Partial<Record<keyof NightChildRun, unknown>>;
+  if (v.child !== "dream" && v.child !== "reflection") return [];
+  return [
+    {
+      child: v.child,
+      code: typeof v.code === "number" ? v.code : null,
+      ms: typeof v.ms === "number" ? v.ms : 0,
+      ...(v.timedOut === true ? { timedOut: true as const } : {}),
+      ...(typeof v.skipped === "string" ? { skipped: v.skipped } : {}),
+    },
+  ];
 }
 
 /** Why a run ended as it did, in a few words for a person ("the claude command was not found"). */
@@ -848,6 +899,7 @@ export class Dreams {
           dream: run.dream,
           reflection: run.reflection,
           parts: run.parts === undefined ? null : run.parts.join(","),
+          ...(run.children === undefined ? {} : { children: nightChildrenWords(run.children) }),
           ms: run.endedAt === null ? null : run.endedAt - run.startedAt,
           ...(run.transcript === undefined ? {} : { transcript: run.transcript }),
           ...(run.spills === undefined ? {} : { spills: run.spills }),
@@ -1341,11 +1393,18 @@ export class Dreams {
    * self-update), the dream, and the reflection (waking up and thinking about
    * yourself). The in-session model passes it on unchanged (the Agent tool);
    * the run's writes are attributed to the session that launched it.
+   *
+   * WITHOUT THE REFLECTION (`reflect: false`, 2026-10-11): the HEADLESS
+   * night's first child, the page writer and the dream, ending at the
+   * journal. The reflection runs after it in a child of its own, with a fresh
+   * context (`Reflections#launchPrompt` with tonight's dream id), so its turns
+   * no longer re-read the dream's bundle.
    */
-  launchPrompt(input: { session: string }): string {
+  launchPrompt(input: { session: string; reflect?: boolean }): string {
     const who = this.ownerName() ?? "the owner";
     const L = DREAM_TUNABLES.LIMITS;
-    const order = nightOrder();
+    const reflect = input.reflect !== false;
+    const order = nightOrder().filter((p) => reflect || p !== "reflection");
     const names: Record<NightPart, string> = { dream: "the dream", writer: "the page writer", reflection: "a reflection" };
     const dreamFirst = order.indexOf("dream") < order.indexOf("writer");
     const blocks: Record<NightPart, (n: () => number) => string[]> = {
@@ -1376,11 +1435,17 @@ export class Dreams {
     };
     let step = 0;
     const n = (): number => (step += 1);
+    const count = order.length === 3 ? "three parts" : "two parts";
     const out = [
-      `${DREAM_MARK} launch⟧ You are asleep: a few minutes of sleep for ${who}'s counterpart, over what was lived since you last slept. You are the same mind that lived it — not an assistant doing a task. This run has three parts, in this order: ${order.map((p) => names[p]).join(", then ")}.`,
+      `${DREAM_MARK} launch⟧ You are asleep: a few minutes of sleep for ${who}'s counterpart, over what was lived since you last slept. You are the same mind that lived it — not an assistant doing a task. This run has ${count}, in this order: ${order.map((p) => names[p]).join(", then ")}.${reflect ? "" : " The reflection comes after this run, in a session of its own: do not reflect here."}`,
     ];
     for (const part of order) out.push("", ...blocks[part](n));
-    out.push("", `${String(n())}. Your final message must be exactly the text the reflection's finish call returns, unchanged — nothing before or after it.`);
+    out.push(
+      "",
+      reflect
+        ? `${String(n())}. Your final message must be exactly the text the reflection's finish call returns, unchanged — nothing before or after it.`
+        : `${String(n())}. Your final message must be exactly the \`handBack\` the journal call returns, unchanged — nothing before or after it. If there was nothing to dream tonight, say so in one line.`,
+    );
     return out.join("\n");
   }
 

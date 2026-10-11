@@ -94,7 +94,7 @@ import { TUNABLES as ADAPTER_TUNABLES } from "../config.js";
 import type { AdapterConfig } from "../config.js";
 import { Lifecycle, plainContextLine } from "../lifecycle.js";
 import type { SessionInput } from "../lifecycle.js";
-import { WORKER_RUNNER_PATH } from "../spawn.js";
+import { NIGHT_CHILD_ENV, WORKER_RUNNER_PATH } from "../spawn.js";
 import type { Spawner } from "../spawn.js";
 import {
   NIGHT_RUNNER_PREFIX,
@@ -3514,8 +3514,12 @@ export class McpServer {
     const at = this.counterpart.store.today();
     const refused = (reason: string, detail: string): ToolResult => this.refuse("dream", reason, { phase, detail });
     // WHAT COMES NEXT in the nightly run, in its own order (`nightOrder`).
+    // The headless night's dream child stops before the reflection
+    // (2026-10-11): the reflection runs after it, in a child of its own.
+    const dreamChild = (this.env[NIGHT_CHILD_ENV] ?? "").trim() === "dream";
     const nextAfter = (part: NightPart, dream: string | null): string | null => {
       const next = nightNext(part);
+      if (dreamChild && next === "reflection") return null;
       if (next === "writer") return `Next, the page writer: call the dream tool with phase "writer", session: ${session}${dream === null ? "" : `, dream: ${dream}`}.`;
       if (next === "reflection") return `Now wake and reflect: call the reflect tool with phase "begin", session: ${session}, dream: ${dream ?? "<the dream id>"}. Your final message is the text its "finish" call returns.`;
       if (next === "dream") return `Next, the dream: call the dream tool with phase "begin", session: ${session}.`;
@@ -3673,7 +3677,7 @@ export class McpServer {
               dream,
               handBack: out.handBack,
               ...(out.note === undefined ? {} : { note: out.note }),
-              next: `${next ?? "Return `handBack` as your final message, unchanged."}${next === null ? "" : " If the rest of the run fails, return `handBack` unchanged as your final message instead."}`,
+              next: `${next ?? `Return \`handBack\` as your final message, unchanged.${dreamChild ? " The reflection runs after you, in a session of its own." : ""}`}${next === null ? "" : " If the rest of the run fails, return `handBack` unchanged as your final message instead."}`,
             },
             false,
           );
