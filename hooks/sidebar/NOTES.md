@@ -72,7 +72,11 @@ Built against core's onboarding state, which core was building in parallel
 the SessionStart wake's marker**, `<!-- counterparts:onboarding
 meet=<state> -->` on a line of its own (right under the `Now:` clock line,
 outside the wake block; nothing in the mod reads the wake by line
-position), written on every wake, compactions included (done
+position), written on every wake, compactions included, and on a same-day
+resume's short wake (core #415: one line pointing at the wake above). The
+marker is the only thing the mod reads from the wake (day and count are the
+dashboard's), so the short form changes nothing; a resumed session has
+replayed turns, so it never speaks first (done
 included; `start-fresh` resets it to not_started); spelled once, in
 `feed.ts#ONBOARDING_MARKER`. The hooks don't start the dashboard, so it
 could not be the source. No marker: an older core, `unknown`, and the mod

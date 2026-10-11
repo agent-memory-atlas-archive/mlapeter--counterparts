@@ -1658,6 +1658,48 @@ test('the marker under the wake’s clock line leaves the rest alone: a recall b
   await ui.unmount()
 })
 
+/** A same-day resume's SHORT wake (core #415): one line pointing at the wake above, the since-line, and (core #419) the marker under the clock line. */
+async function shortWake($: Engine, w: World, meet: string | null): Promise<void> {
+  const body = [
+    'Now: Sunday, October 11, 2026, 3:50 PM',
+    ...(meet === null ? [] : [`<!-- counterparts:onboarding meet=${meet} -->`]),
+    'Counterparts: this session was resumed; the wake it was handed when it started (above) still holds.',
+    'Since you started: 2 memories kept in ~/random.',
+  ].join('\n')
+  await $.session.append({
+    door: 'hook-context',
+    origin: { kind: 'hook', event: 'SessionStart' },
+    uuid: `short-wake-${String(w.events.length)}`,
+    message: { type: 'attachment', name: 'hook_additional_context', content: [{ type: 'text', text: `<system-reminder>\nSessionStart hook additional context: ${body}\n</system-reminder>` }] },
+  } as never)
+  await settle(w)
+}
+
+test('a same-day resume’s short wake: the marker is read from it (the button follows), and a resumed session (turns replayed) never speaks first', async ($, on) => {
+  const w = world(on, { turns: 3 })
+  await start($, w)
+  await shortWake($, w, 'not_started')
+  expect(w.submits).toHaveLength(0)
+  await shortWake($, w, 'later')
+  const ui = await mount($, w, 'terminal')
+  expect((await ui.find({ type: 'Button', key: 'meet' }))?.text).toBe('Meet your counterpart')
+  // Day and count are the dashboard's, not the wake's: the header reads them as before.
+  expect(await texts(ui)).toContain('day 18')
+  expect(await texts(ui)).toContain('776 memories')
+  await ui.unmount()
+})
+
+test('a short wake with no marker (a core between #415 and #419): unknown, nothing happens, the pane draws as usual', async ($, on) => {
+  const w = world(on, { turns: 3 })
+  await start($, w)
+  await shortWake($, w, null)
+  const ui = await mount($, w, 'terminal')
+  expect(await ui.find({ type: 'Button', key: 'meet' })).toBeUndefined()
+  expect(await texts(ui)).toContain('776 memories')
+  expect(w.submits).toHaveLength(0)
+  await ui.unmount()
+})
+
 test('speak first: a second session (or a restart) finds the mark and submits nothing', async ($, on) => {
   const w = world(on, { store: { meetTriggered: { session: 'sess-older', at: T0 - 60000 } } })
   await startWith($, w, 'not_started')
