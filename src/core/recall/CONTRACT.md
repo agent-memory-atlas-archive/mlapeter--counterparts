@@ -435,6 +435,15 @@ id is `headOf`'s, the same memory a write's neighbours and the dream's bundles n
 earlier at all (the wake's `settledOver` rule): a memory a newer pair names as what holds,
 or whose holder is gone with nothing live after it, carries no `Earlier`.
 
+**[M] The chain head wins ambient recall** (2026-10-11, Group 2; review 04 change 1, MOD
+#3) — the one place the label's rule became a filter. A turn candidate with a `headOf`
+carries it into the gate, which inhibits it when its head is admitted beside it or is
+already in the session; a turn that reached only the earlier one is shown its head instead
+(`recall/index.ts#headsWin`: the earlier's numbers, the head's words and its `(earlier:
+[id])`), left out of the turn's background. A confidential head for a guest is withheld,
+and the earlier then shows, labelled. The deliberate path is unchanged: facts mode already
+folds a chain under its head, and every other answer carries the label.
+
 ## 6c. A deliberate result says where it came from (2026-09-30)
 
 **[M]** Every row the deliberate path returns carries `from`: the session that wrote it

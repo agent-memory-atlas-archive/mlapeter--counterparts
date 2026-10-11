@@ -15,7 +15,7 @@ import { McpServer, RECALL_BODY_CHARS, RECALL_ID_RESULT_CHARS } from "../src/ada
 import { recordSession } from "../src/adapters/sessions.js";
 import { Counterpart } from "../src/core/counterpart.js";
 import { MIND_SEEN_PREFIX, mindRanked, noteMindShown } from "../src/core/dream/mind.js";
-import { flag } from "../src/core/contradictions.js";
+import { flag } from "../src/core/reconsolidation.js";
 import { readIndex, wireChars } from "../src/core/fit/index.js";
 import { onMyMind } from "../src/core/dream/index.js";
 import { readCursor, runDecay, runPrune } from "../src/core/sleep/index.js";

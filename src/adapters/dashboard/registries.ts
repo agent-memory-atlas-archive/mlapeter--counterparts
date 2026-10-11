@@ -116,14 +116,15 @@ import {
   DREAM_UNDONE_EVENT,
 } from "../../core/dream/index.js";
 import { V8_CENSUS_EVENT } from "../../core/sleep/index.js";
-// Contradictions (2026-09-29, `core/contradictions.ts`): a flag, a settle, an
+// Contradictions (2026-09-29, `core/reconsolidation.ts`): a flag, a settle, an
 // undo — and a write's `updates` held as unrelated (2026-10-09).
 import {
   CONTRADICTION_FLAGGED_EVENT,
   CONTRADICTION_HELD_EVENT,
+  CONTRADICTION_PROPOSED_EVENT,
   CONTRADICTION_SETTLED_EVENT,
   CONTRADICTION_UNDONE_EVENT,
-} from "../../core/contradictions.js";
+} from "../../core/reconsolidation.js";
 // What is not written up (2026-09-30, `core/coverage/`): one row per stretch per state.
 import { COVERAGE_LAPSED_EVENT, COVERAGE_OWED_EVENT, COVERAGE_WRITTEN_EVENT } from "../../core/coverage/index.js";
 
@@ -242,6 +243,7 @@ export type DurableEventName =
   | typeof CONTRADICTION_SETTLED_EVENT
   | typeof CONTRADICTION_UNDONE_EVENT
   | typeof CONTRADICTION_HELD_EVENT
+  | typeof CONTRADICTION_PROPOSED_EVENT
   | typeof COVERAGE_OWED_EVENT
   | typeof COVERAGE_WRITTEN_EVENT
   | typeof COVERAGE_LAPSED_EVENT;
@@ -377,6 +379,8 @@ export const DURABLE_EVENTS = {
   "contradiction.undone": "a settle was undone: strength put back, a corrected memory back in recall, the pair unsettled again",
   // The update guard (2026-10-09). Ids, the reading and its numbers; no text.
   "contradiction.held": "a new memory said it changed or corrected one that looked unrelated to it, so the old one was left as it was and the two were not linked (the writer was shown it and asked to settle it if it meant to)",
+  // The slot detector (2026-10-11, Group 2). Ids, the rule and the cosine; no text.
+  "contradiction.proposed": "a new memory read as the newer state of the same thing as an older one (status moved on, or very close in meaning), so the older was marked possibly out of date and faded a little, until the writer or the dream confirms it or says they are two things",
   // What is not written up (2026-09-30). Ids and counts only; one row per stretch per state.
   "coverage.owed": "a session left a stretch that is not written up — three pieces or more over a quarter of an hour — and is no longer at work, so it owes a write-up (how many pieces, over how long)",
   "coverage.written": "a stretch of a session was written up (how many pieces, and by whom: the session itself, a \"nothing new\", a chapter, or the next session)",

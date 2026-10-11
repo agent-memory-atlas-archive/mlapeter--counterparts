@@ -18,7 +18,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Counterpart } from "../src/core/counterpart.js";
-import { settle } from "../src/core/contradictions.js";
+import { settle } from "../src/core/reconsolidation.js";
 import { staleWords, versionOlder } from "../src/core/handoff/index.js";
 import { LAST_HERE_NOROOM_EVENT, chapterFor, chaptersBySession, chaptersOn, firstChapter } from "../src/core/handoff/last-here.js";
 import { rankLanes, scanActive, settledOver } from "../src/core/self/index.js";

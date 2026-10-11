@@ -24,7 +24,7 @@ import { RECALL_RESULT_CHARS, hasFaded } from "../src/adapters/mcp/deliberate.js
 import { FACTS_PAGE_SIZE, factsRecall, renderFacts } from "../src/adapters/mcp/facts.js";
 import { meaningRecall, renderMeaning } from "../src/adapters/mcp/meaning.js";
 import type { FactsResult } from "../src/adapters/mcp/facts.js";
-import { settle } from "../src/core/contradictions.js";
+import { settle } from "../src/core/reconsolidation.js";
 import { Counterpart } from "../src/core/counterpart.js";
 import { OPEN_END, OPEN_START, loadGateState, readTimeAsk } from "../src/core/recall/index.js";
 import { paths } from "../src/core/store/index.js";

@@ -366,7 +366,7 @@ The gap as it was filed:
 A held `updates` (`schemas/CONTRACT.md` §5 1b) leaves one durable `contradiction.held`
 row: the two ids, the `how`, which reading decided (`meaning` or `words`), the cosine and
 the shared-word count, the door, whether it was a write-up, and the session. The dashboard
-narrates each row on the flow lane; nothing COUNTS them. `core/contradictions.ts#heldCorrections`
+narrates each row on the flow lane; nothing COUNTS them. `core/reconsolidation.ts#heldCorrections`
 is the reader, written and tested and called by nobody: holds since a day, by which
 reading, and how many the writer settled by hand afterwards (the guard's likely mistakes).
 A doctor line — "N held this week, M settled after" — is the obvious caller; `doctor.ts`

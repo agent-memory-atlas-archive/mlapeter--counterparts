@@ -146,6 +146,37 @@ or the CLI's read commands (`counterparts mechanisms --dir …`, `counterparts d
 - **Changes a decision if:** decide the trial → keep it, or → attachments (a table of the blocks, the memory
   holding the context and keywords that find one). Record the call in `docs/IMPROVEMENTS.md`.
 
+## .18 / Group 2 (one model for "this replaces that"), the first week after it is installed
+
+### No settled-over memory outranks its head in ambient results (MOD #3)
+- **Look at:** `recall.decision` events since the install: any id in `surfaced` or `footnotes` for which a
+  settled `changed` / `corrected` pair names it as `over` (and whose head is live), on a turn where the head
+  is not also shown. With the head-wins rule (recall CONTRACT §6b) that should be only a guest session with a
+  confidential head. Also the wake's lanes, which already left settled-over memories out.
+- **Why:** on 10-10 earlier versions were shown 55 times after their settle, 51 of them without the newer.
+- **Changes a decision if:** an earlier one still shows beside or above its head → the gate's inhibition is
+  missing a door (a quiet pointer, a carried cue): a bug lane. The head showing for an earlier the turn reached
+  when the head reads wrong for the turn → the swap needs a bar of its own.
+
+### Detector precision on the owner's store: hand-read 20 proposed slots
+- **Look at:** `counterparts settle --dir …` ("Proposed as a newer state") and `contradiction.proposed`
+  events: how many a day, and a hand-read of 20 (ids and verdicts only), with what the dream did to each
+  (`slot` same true / false in `dream_changes`).
+- **Why:** before install, on the 10-11 copy, a replay of the write-time rule over 20 lived days read 17 of
+  20 right, 1 wrong, 2 unsure; replayed on the store as it stands now (the writer's own settles already made) it
+  proposes 5 over 20 lived days, 4 of them in the last 7.
+- **Changes a decision if:** fewer than ~3 in 4 are right → raise `SLOT_COSINE` or drop the title arm; the
+  dream says `same: false` to most → the provisional cut should be a flag only (no fade) until confirmed.
+
+### The dream's confirm/undo stays inside the night
+- **Look at:** the dream bundle's "to-confirm" items (at most 4) and `toConfirmMore`, the dream's `slot`
+  changes per night, and whether the night run's part count (`NIGHT_WRITE_UP_PARTS`, 100, shared with
+  catch-up) or its time moved. The detector itself makes no model call; confirming rides the one dream.
+- **Why:** on the 10-11 copy the 4 waiting proposals cost ~1.1k characters of on-mind text plus their memory
+  lines in the fitted room; nothing else.
+- **Changes a decision if:** `toConfirmMore` keeps growing night over night → proposals outpace the dream's
+  4: raise `SLOT_PER_NIGHT` or tighten the rule.
+
 ## Group 4 (association), due ~5 lived days after it ships
 
 The fast-forward on the 10-11 copy (7 lived days replayed with write-time links, replay deposits and

@@ -76,7 +76,7 @@ import {
   preMigrationDir,
 } from "../../core/store/index.js";
 import { BUSY_TIMEOUT_MS, journalModeOf } from "../../core/store/db.js";
-import { heldCorrections } from "../../core/contradictions.js";
+import { heldCorrections } from "../../core/reconsolidation.js";
 import { CLI_SCRIPT, NODE_HOOKS, bundledModelDir } from "../runtime.js";
 import { acceptsReflectedFeeling, laterFeelingWasAwake, laterFeelingWasReflections, selfRelevantFeeling } from "../../core/sleep/index.js";
 import { TUNABLES as ASSOCIATE_TUNABLES, isDead, pairKey } from "../../core/associate/index.js";
@@ -3070,7 +3070,9 @@ export function contradictionFindings(store: Store): Finding[] {
     return r !== undefined && r.archived === 0 && r.superseded_by === null && r.body !== "";
   };
   const open = pairs.filter((p) => p.state === "settled" && p.how === "open" && p.via === null).length;
-  const unsettled = pairs.filter((p) => p.state === "unsettled" && live(p.a) && live(p.b)).length;
+  // A slot proposal (2026-10-11) is not a disagreement: counted on its own.
+  const unsettled = pairs.filter((p) => p.state === "unsettled" && p.source !== "slot" && live(p.a) && live(p.b)).length;
+  const proposed = pairs.filter((p) => p.state === "unsettled" && p.source === "slot" && live(p.a) && live(p.b)).length;
   const kinds = ["changed", "corrected", "open"].map((k) => `${String(how[k] ?? 0)} ${k}`).join(", ");
   const whoWords = Object.entries(who)
     .sort((a, b) => b[1] - a[1])
@@ -3094,7 +3096,7 @@ export function contradictionFindings(store: Store): Finding[] {
       "contradictions",
       "green",
       "Contradictions",
-      `last ${String(CONTRADICTION_WINDOW_DAYS)} lived days: ${String(flagged)} flagged, ${String(kept.length)} settled (${kinds})${kept.length > 0 ? ` by ${whoWords}` : ""}${undone > 0 ? `, ${String(undone)} undone` : ""}; standing: ${String(open)} open, ${String(unsettled)} unsettled${unsettled > 0 ? " (counterparts settle lists them)" : ""}${heldWords}`,
+      `last ${String(CONTRADICTION_WINDOW_DAYS)} lived days: ${String(flagged)} flagged, ${String(kept.length)} settled (${kinds})${kept.length > 0 ? ` by ${whoWords}` : ""}${undone > 0 ? `, ${String(undone)} undone` : ""}; standing: ${String(open)} open, ${String(unsettled)} unsettled${unsettled > 0 ? " (counterparts settle lists them)" : ""}${proposed > 0 ? `, ${String(proposed)} proposed as a newer state (the dream confirms)` : ""}${heldWords}`,
       "",
       {
         ...heldData,
@@ -3111,6 +3113,7 @@ export function contradictionFindings(store: Store): Finding[] {
         byOwner: who["owner"] ?? 0,
         standingOpen: open,
         standingUnsettled: unsettled,
+        standingProposed: proposed,
       },
     ),
   ];

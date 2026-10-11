@@ -103,12 +103,13 @@ name/alias resolution; birth and death telemetry.
    lineage (`replaceCurrentState`), because world-state flips on one clear correction
    (§4.3) and a stale status has no reason to climb a bar. An **entity** row is LINKED and
    nothing else (`meta.updates` already records the relation). An **ordinary memory** is
-   SETTLED when an author declared it (2026-09-29, `src/core/contradictions.ts`): `how` is
+   SETTLED when an author declared it (2026-09-29, `src/core/reconsolidation.ts`, renamed from
+   `contradictions.ts` 2026-10-11): `how` is
    `changed` (the default — one strength cut, labelled earlier), `corrected` (archived:
    out of recall, readable by its id) or `open` (both kept); a SWEPT declaration carries no
    `how` and stays a link. **Before any of it, an authored `changed` or `corrected` declared
    by id is read against the memory it names** (2026-10-09, the update guard,
-   `Counterpart#guardUpdate` → `contradictions.ts#updateRelatedness`): by meaning through the
+   `Counterpart#guardUpdate` → `reconsolidation.ts#updateRelatedness`): by meaning through the
    embedder (cosine under `UPDATE_COSINE`, 0.30 CAL, looks unrelated), by shared content words
    when there is no embedder. A pair that looks unrelated is HELD — the new memory lands with
    no `updates`, so nothing is linked, carried, closed, settled or pressed; the writer is
