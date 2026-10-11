@@ -141,6 +141,9 @@ Exempt: the core, about owner/us, said by the owner, protected, a pending or rep
 today's `defaultClaimFor(...)` in either direction and with no exemptions — an owner memory
 written at the old flat 0.25 reads 0.40 — so an upgrader reads what a fresh install writes;
 the curve signature's `eraReads: 2` re-curves a store signed before it once.
+**2026-10-11 (random-06, lightly held):** a dream's merged memory is read at its strongest
+original's moment (`meta.eraWrittenAt`, `store/operational.ts#eraCarriedFrom`) when that
+original was old, with its `claimedDefault` — so a merge does not move the era's reading.
 The stored claim is never rewritten (`eraClaim` is not a column), so "an explicit claim is
 never overridden" holds for the claim as stored; `sal(m.salience)` still reads it. Deleting
 the key (`counterparts claims-era --off`) restores the old reading exactly — the reading, not
