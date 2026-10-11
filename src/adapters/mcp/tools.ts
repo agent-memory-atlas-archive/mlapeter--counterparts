@@ -56,6 +56,7 @@
  * core lane at consolidation promotes.
  */
 import { CORE_EMOTIONS } from "../../core/feelings-wheel.js";
+import { LAST_EXCHANGE_HANDLE } from "../../core/handoff/last-exchange.js";
 import { RECALL_MAX_IDS } from "./deliberate.js";
 import { FACTS_MEANING_CAP, FACTS_PAGE_SIZE } from "./facts.js";
 import { RECURRENCES } from "../../core/time.js";
@@ -762,7 +763,7 @@ const RECALL: ToolSpec = {
       },
       handle: {
         type: "string",
-        description: "A memory id or exact title to read whole. Exact: never treated as a search term. Takes no mode.",
+        description: `A memory id or exact title to read whole. Exact: never treated as a search term. Takes no mode. Or "${LAST_EXCHANGE_HANDLE}": the last thing said to another session in this folder (about the last day) and its last reply, read from what was captured, never stored.`,
       },
       ids: {
         type: "array",

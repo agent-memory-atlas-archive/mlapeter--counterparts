@@ -495,3 +495,35 @@ alone (review of #367): lent whole, the room went to dated lines and "Still open
 handoff was shown at all. That kept block is lent to one lane only, a plain reminder due
 the day the wake is read (`self/briefing.ts#ROOM_ORDER`'s `handoffsKept`): then the
 delivery may find no room for the pointer, and writes its `no-room` row as before.
+
+## 13. What the span buffer holds of the last exchange (2026-10-11)
+
+Checked before building "Last said here" (CONTRACT §5 G14), with a hermetic run through the
+real Stop hook on a written transcript:
+
+- **Per directory: yes.** `spans/<key>/` per scope, the session on every span.
+- **A crashed session: up to its last Stop.** Capture runs only at a boundary (Stop,
+  SessionEnd, PreCompact), never at a prompt. A session that turn-ended and was then
+  abandoned without SessionEnd keeps its last exchange; a message typed after the last
+  Stop — the session killed mid-reply, or closed before a reply — is not in the buffer.
+  That stretch is not read from anywhere else. A first build read the end of the host's
+  transcript for it (when the registry, which the prompt hook refreshes, showed a prompt
+  after the last boundary); it was taken out the same day, because the plugin directory's
+  policy (rule 1F) forbids extracting data from the host's chat history, and Mike wants
+  the plugin to pass that review. Such a session is named by the last exchange its last
+  turn-end captured. Capturing at the prompt hook would close the gap from our own hooks;
+  it would change capture's cursor and pacing, so it is not done here.
+- **A span is a turn-end's whole slice.** `capture` joins every user-side turn since the
+  cursor into one conversation span and every assistant text into one assistant span,
+  `\n\n` between them, with their sources dropped. So a reminder, a task notification and
+  a subagent's hand-back (all `injected`, all captured) sit in the same text as the typed
+  message, and the interim "Let me look." sits before the final reply. `ownerWords`
+  strips what comes wrapped, cuts the slice at the first paragraph that opens like a host
+  frame (a turn runs on past its first paragraph, and typed words come first in a slice),
+  and gives up on a slice that opens with a compaction summary, which has no closing
+  mark. A per-turn mark in the span would make this exact; that is a format change.
+- **The ritual is mechanical.** The end-of-session ask never enters (`ritual`), so the
+  turn-end that answers it holds an assistant span and no conversation span. A reply is
+  only ever read from a turn-end that held a conversation span.
+- An exact repeat of earlier words is not captured twice (layer-2 dedup), so the "last"
+  message can be the earlier copy.

@@ -188,3 +188,21 @@ for the next host. Kept as written.)*
 the dashboard, replay — passes nothing and gets the published bundle with no pointer, which
 is correct for all of them. A host that resolves a working directory and does not pass it
 gets no pointer and no error, which is the quiet direction.
+
+## 9. A span does not say where one turn ends (2026-10-11, "Last said here")
+
+**Owner:** `remember/` (`spans.ts#capture`).
+**Needed:** the owner's last message in a session, and the assistant's last reply to it,
+as the turns they were.
+**Have:** a span is one turn-end's whole slice, every user-side turn joined with `\n\n`
+and their sources dropped, so `last-exchange.ts#ownerWords` finds the owner's words by
+shape — wrapped host text stripped, the slice cut at the first host-framed paragraph, a
+slice that opens with a compaction summary passed over (NOTES §13). Two typed messages in
+one slice (a prompt queued mid-turn, a retry after an interrupt) read as one. And host
+text that carries no mark of its own — a coordinator's message (`isMeta`, origin
+`coordinator`), a scheduled prompt, `/context`'s output — reads as typed words when it
+opens a turn (review of #392: pinned as `test.todo` in `test/last-exchange.test.ts`).
+
+**The real fix** is a per-turn mark in the span (each turn's offset and source, or one
+line per turn), which is a change to the buffer's format: grouped with the next store
+format change, not taken alone.

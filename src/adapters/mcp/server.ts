@@ -61,6 +61,7 @@ import type { Neighbour } from "../../core/contradictions.js";
 import { isRecurrence, localDate, occurrenceOnOrAfter, parseCalendarDate, readableRecurrence, todayIn } from "../../core/time.js";
 import type { Recurrence } from "../../core/time.js";
 import type { ChapterResult, Counterpart, DepositResult, SentFacts } from "../../core/counterpart.js";
+import { LAST_EXCHANGE_HANDLE, lastExchangeAnswer } from "../../core/handoff/last-exchange.js";
 import { loadGateState } from "../../core/recall/index.js";
 import type { SemanticSource } from "../../core/recall/index.js";
 import { AUTHOR_DIMENSIONS } from "../../core/remember/index.js";
@@ -108,6 +109,7 @@ import {
   isLive,
   isSessionId,
   latestLiveSession,
+  listSessions,
   manifestVersionOnDisk,
   markNothingNew,
   readSession,
@@ -2049,6 +2051,11 @@ export class McpServer {
   private async recallTool(args: Record<string, unknown>): Promise<ToolResult> {
     if (this.observer) return this.standDown("recall");
     const handle = args["handle"];
+    // THE LAST EXCHANGE (2026-10-11): a read of this directory's span buffer.
+    // It stands down under observer like the rest of recall (G5, review of #392).
+    if (typeof handle === "string" && handle.trim().toLowerCase() === LAST_EXCHANGE_HANDLE && args["question"] === undefined && args["ids"] === undefined) {
+      return this.lastExchangeTool();
+    }
     const question = args["question"];
     const ids = args["ids"];
     if (handle !== undefined && typeof handle !== "string") {
@@ -2154,6 +2161,68 @@ export class McpServer {
       result.reason === "ids-too-many" ||
       result.reason === "handle-confidential-withheld";
     return this.result(payload, bad);
+  }
+
+  /**
+   * `recall` with the handle `last exchange` (2026-10-11; Mike's design of
+   * 2026-10-10, "pull, not push"): the last thing said to ANOTHER session in
+   * this server's directory and that session's last text reply, inside about
+   * a day, each cut at a sentence — what the wake's "Last said here" line
+   * points at, from the same reader (`Counterpart#lastExchange`). Read at the
+   * call and never stored: no memory, no credit, no seen set, no durable row
+   * — a ring event only. Never another directory's: the buffer it reads is
+   * this one's. Never reached under observer (recall stands down, G5); and
+   * the words go only to the owner's session (review of #392): a span is the
+   * raw slice, which no confidential mark has reached yet (G6).
+   */
+  private lastExchangeTool(): ToolResult {
+    if (!this.owner) {
+      this.emit("mcp.recall.lastexchange", undefined, { found: false, owner: false });
+      return this.result(
+        {
+          path: "handle",
+          reason: "owner-only",
+          handle: LAST_EXCHANGE_HANDLE,
+          detail: "The last exchange is read only in the owner's own session.",
+        },
+        false,
+      );
+    }
+    const reader = this.session ?? this.hostSession();
+    const ex = this.counterpart.lastExchange({
+      scope: this.scope,
+      session: reader,
+      sessions: () =>
+        listSessions(this.registryDir).map((r) => ({
+          session: r.sessionId,
+          scope: r.scope,
+          startedAt: r.startedAt,
+          lastAt: Math.max(r.lastBoundaryAt, r.endedAt ?? 0),
+          live: isLive(r, this.nowFn(), this.sessionTtlMs),
+          endedAt: r.endedAt,
+        })),
+    });
+    this.emit("mcp.recall.lastexchange", undefined, { found: ex !== null });
+    if (ex === null) {
+      return this.result(
+        {
+          path: "handle",
+          reason: "no-exchange",
+          handle: LAST_EXCHANGE_HANDLE,
+          detail: "No exchange with another session in this folder in about the last day was captured.",
+        },
+        false,
+      );
+    }
+    return this.result(
+      {
+        path: "handle",
+        reason: "last-exchange",
+        handle: LAST_EXCHANGE_HANDLE,
+        ...lastExchangeAnswer(ex, { zone: this.counterpart.store.zone(), now: this.nowFn() }),
+      },
+      false,
+    );
   }
 
   /**

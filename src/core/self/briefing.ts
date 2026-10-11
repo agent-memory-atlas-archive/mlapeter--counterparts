@@ -122,7 +122,9 @@ export const TRIM_ORDER: readonly LaneName[] = [
  *     own block (`handoffsKept`, below): the delivery drops "Last here"
  *     first and then shows fewer handoffs in full, the rest by id while
  *     there is room for that line (`counterpart.ts#addHandoffPointer`,
- *     `handoff/#pointerLadder`);
+ *     `handoff/#pointerLadder`). "Last said here" (2026-10-11) is the first
+ *     thing each "Last here" block gives up there; its room is held in
+ *     `work`'s, the room the page borrows before it steps down;
  *   - `elsewhere` — the "Today, elsewhere" line (2026-10-10, composed at
  *     session start only, `BriefingRequest.elsewhere`; at most
  *     `TODAY_ELSEWHERE_MAX_BYTES`, b2 + random-f8, lightly held; placed here
@@ -1766,7 +1768,8 @@ export const PAGE_FLOOR_RESERVE_BYTES = 512;
 /**
  * HOW MANY OF THE DELIVERY'S RESERVES ARE HELD UNDER THE SHARE RULE
  * (`handoff/#reserveBytes`), beside the preface: the handoff pointer with its
- * "Last here" line, and "Work here" (`counterpart.ts#wakeReserveBytes` and
+ * "Last here" line, and "Work here" with the "Last said here" line beside it
+ * (2026-10-11, one term; `counterpart.ts#wakeReserveBytes` and
  * `#workReserveBytes`). Each is at most an eighth of the ceiling and never past
  * `HANDOFF_RESERVE_MAX_BYTES`. A third reserve there is a third here, or the
  * page's limit below promises room the wake does not have — a test holds the

@@ -382,7 +382,8 @@ describe("what were we about to do? a plan written after the handoff is named be
     // measure too: what is left is the bundle with the plain pointer alone.
     const without = full.text
       .split("\n")
-      .filter((l) => l !== since && l !== WORK_HERE_HEADING && !/^- .*\(mem_[0-9a-f]+\)$/.test(l))
+      // "Last said here" (2026-10-11) is given up before the handoff's rungs too.
+      .filter((l) => l !== since && l !== WORK_HERE_HEADING && !/^- .*\(mem_[0-9a-f]+\)$/.test(l) && !l.startsWith("Last said here"))
       .join("\n");
     const tight = new TextEncoder().encode(without).length + 8;
     const woke = k.c.wake(tight, { date: "2026-09-30" }, { scope: HERE, session: B });
@@ -428,7 +429,8 @@ describe("its room in the wake", () => {
     const full = k.c.wake(9_000, { date: "2026-09-30" }, { scope: HERE, session: B });
     const pointerOnly = full.text
       .split("\n")
-      .filter((l) => !l.startsWith("Last here:"))
+      // "Last said here" (2026-10-11) goes before "Last here" does.
+      .filter((l) => !l.startsWith("Last here:") && !l.startsWith("Last said here"))
       .join("\n");
     // A ceiling just under the bundle with both: the line is given up.
     const tight = new TextEncoder().encode(pointerOnly).length + 20;
@@ -454,7 +456,7 @@ describe("its room in the wake", () => {
         .filter(
           (l) =>
             l.length > 0 &&
-            !/^(Last here:|Before it:|\+\d+ more here on )/.test(l) &&
+            !/^(Last here:|Before it:|\+\d+ more here on |Last said here)/.test(l) &&
             !/^<!-- counterparts:wake/.test(l) &&
             l !== WORK_HERE_HEADING &&
             !/^- .*\(mem_[0-9a-f]+\)$/.test(l),
