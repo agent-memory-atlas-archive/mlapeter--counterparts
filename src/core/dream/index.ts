@@ -42,7 +42,7 @@ import { Associate } from "../associate/index.js";
 import { FIT_TUNABLES, clipWire, fidelityOf, fit, lineOf, offeredOf, packParts, readIndex, wireChars, writeIndex } from "../fit/index.js";
 import type { Fidelity, FitCandidate, Placed } from "../fit/index.js";
 import { emotionalIntensity, sal, strength } from "../physics/index.js";
-import { isHandoff, isSelfPage } from "../recall/index.js";
+import { earlierMark, headOf, isHandoff, isSelfPage } from "../recall/index.js";
 import { namesOwner, ownerNames } from "../sleep/index.js";
 import {
   CARRIED_BY_MAX_CHARS,
@@ -130,6 +130,8 @@ export type DreamRole = "new" | "neighbour" | "mixing" | "lookback" | "on-mind";
  */
 export interface DreamItem {
   readonly id: string;
+  /** `earlier (now mem_…)` when a later memory settled over it (`recall/standing.ts#headOf`, 2026-10-11). */
+  readonly standing?: string;
   readonly kind: Kind;
   readonly why: DreamRole;
   readonly fidelity: Exclude<Fidelity, "id">;
@@ -2632,8 +2634,12 @@ export class Dreams {
     } catch {
       feeling = null;
     }
+    // SETTLED OVER (2026-10-11): marked, not left out — the dream may still
+    // link or feel it, and the mark keeps it from gisting the old rule as now.
+    const head = headOf(this.store, row.id);
     return {
       id: row.id,
+      ...(head === null ? {} : { standing: earlierMark(head) }),
       kind: row.kind,
       why,
       fidelity: placed.fidelity === "id" ? "line" : placed.fidelity,
