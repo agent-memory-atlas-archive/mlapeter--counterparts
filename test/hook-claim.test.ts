@@ -25,6 +25,7 @@ import {
   CLAIM_WINDOW_MS,
   SET_ASIDE_LOCK,
   claimDelivery,
+  claimStep,
   claimsPath,
   deliveryClaimKey,
   finishClaim,
@@ -210,6 +211,43 @@ describe("claimDelivery", () => {
       expect(keys).toHaveLength(CLAIM_KEEP);
       expect(keys).toContain(`k${String(CLAIM_KEEP + 29)}`);
       expect(keys).not.toContain("k0");
+    } finally {
+      cp.close();
+    }
+  });
+
+  /**
+   * ITS OWN CLAIM IS ITS OWN (2026-10-11, from the review of #378). A try
+   * whose commit landed though the write reported failure leaves this call's
+   * claim in the row, and the write runs its callback again (`updateClaims`).
+   * That try must read the claim as its own — the event delivered here —
+   * and not as a twin's, which would deliver it nowhere.
+   */
+  test("a try that meets this call's own landed claim takes it as its own; a twin with every other field the same still loses", () => {
+    const t0 = 1_800_000_000_000;
+    const attempt = { key: "k", side: "settings" as const, now: t0 + 90, started: t0, once: true, token: "a1a1a1a1a1a1" };
+    const first = claimStep(undefined, attempt);
+    expect(first.heldBy).toBeNull();
+    expect(first.next).toBeDefined();
+    // The retry, meeting the row its own landed commit wrote: won, nothing to write.
+    expect(claimStep(first.next, attempt)).toEqual({ next: undefined, heldBy: null });
+    // A twin: the same key, side, start and moment — only the call differs.
+    expect(claimStep(first.next, { ...attempt, token: "b2b2b2b2b2b2" })).toEqual({ next: undefined, heldBy: "settings" });
+    // A row an older build wrote carries no token: a holder there is a twin, as before.
+    const older = JSON.stringify({ k: [t0 + 90, "plugin", t0] });
+    expect(claimStep(older, attempt)).toEqual({ next: undefined, heldBy: "plugin" });
+    // Through the file: the token is kept beside the claim, and through the finish stamp.
+    const cp = Counterpart.open({ dir: store });
+    try {
+      const won = claimDelivery(cp, { hook: "session-start", key: "k", sessionId: "s1", side: "settings", observer: false, started: t0, now: t0 + 90, once: true });
+      expect(won.outcome).toBe("won");
+      const row = claimRow(cp)["k"] as unknown[];
+      expect(row.slice(0, 4)).toEqual([t0 + 90, "settings", t0, null]);
+      expect(String(row[4])).toMatch(/^[0-9a-f]{12}$/);
+      expect(finishClaim(cp, "k", t0 + 90, t0 + 200)).toBe(true);
+      expect(claimRow(cp)["k"]).toEqual([t0 + 90, "settings", t0, t0 + 200, row[4]]);
+      // Another call of the same process is not this call: it loses, as a twin does.
+      expect(claimDelivery(cp, { hook: "session-start", key: "k", sessionId: "s1", side: "plugin", observer: false, started: t0, now: t0 + 300, once: true }).outcome).toBe("lost");
     } finally {
       cp.close();
     }

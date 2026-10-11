@@ -91,7 +91,7 @@
  * (2026-10-09), so it cannot be skipped on that same reading. What one wiring
  * pays is the two small writes, on a file nothing else writes.
  */
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { closeSync, mkdirSync, openSync, readdirSync, renameSync, rmSync, rmdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 
@@ -506,12 +506,14 @@ export function firesOnce(name: HookName, payload: Record<string, unknown>): boo
 }
 
 /** One held claim: when it was made, by which side, when its process started,
- *  and when it finished (absent while it runs). */
+ *  when it finished (absent while it runs), and the token of the one call
+ *  that made it (absent in a row an older build wrote). */
 interface Held {
   readonly at: number;
   readonly side: string;
   readonly started: number;
   readonly ended?: number;
+  readonly token?: string;
 }
 
 function readClaims(raw: string | undefined): Record<string, Held> {
@@ -525,7 +527,14 @@ function readClaims(raw: string | undefined): Record<string, Held> {
       const at = v[0];
       const started = typeof v[2] === "number" && Number.isFinite(v[2]) ? v[2] : at;
       const ended = typeof v[3] === "number" && Number.isFinite(v[3]) ? v[3] : undefined;
-      out[k] = { at, side: typeof v[1] === "string" ? v[1] : "", started, ...(ended === undefined ? {} : { ended }) };
+      const token = typeof v[4] === "string" && v[4].length > 0 ? v[4] : undefined;
+      out[k] = {
+        at,
+        side: typeof v[1] === "string" ? v[1] : "",
+        started,
+        ...(ended === undefined ? {} : { ended }),
+        ...(token === undefined ? {} : { token }),
+      };
     }
     return out;
   } catch {
@@ -533,12 +542,66 @@ function readClaims(raw: string | undefined): Record<string, Held> {
   }
 }
 
+/** The row as written: `[at, side, started]`, then `ended` (null while it
+ *  runs) when it has ended or carries a token, then the token. An older
+ *  build reads the first four and passes over the fifth. */
 function writeClaims(claims: Record<string, Held>): string {
   return JSON.stringify(
     Object.fromEntries(
-      Object.entries(claims).map(([k, h]) => [k, h.ended === undefined ? [h.at, h.side, h.started] : [h.at, h.side, h.started, h.ended]]),
+      Object.entries(claims).map(([k, h]) => [
+        k,
+        h.token !== undefined
+          ? [h.at, h.side, h.started, h.ended ?? null, h.token]
+          : h.ended === undefined
+            ? [h.at, h.side, h.started]
+            : [h.at, h.side, h.started, h.ended],
+      ]),
     ),
   );
+}
+
+/** One claim attempt, as `claimStep` reads the row for it. */
+export interface ClaimAttempt {
+  readonly key: string;
+  readonly side: ClaimSide;
+  readonly now: number;
+  readonly started: number;
+  readonly once: boolean;
+  /** This call's own token (`claimDelivery` makes one per call). */
+  readonly token: string;
+}
+
+/**
+ * WHAT ONE TRY OF A CLAIM DOES WITH THE ROW AS IT STANDS (the transaction's
+ * callback, `claimDelivery`): the row to write, or `undefined` to leave it,
+ * and the side that holds the event when a twin does. Pure.
+ *
+ * ITS OWN CLAIM IS ITS OWN (2026-10-11, from the review of #378). A write can
+ * run its callback more than once (`updateClaims`: a sidecar a twin removed,
+ * a file a twin set aside), and a try whose commit LANDED though the write
+ * reported a failure leaves this call's claim in the row for the next try to
+ * meet. Read as a twin's, the event would be delivered nowhere — both
+ * processes standing down, one for the other and one for itself. The claim
+ * carries the call's token, so the next try knows it: the event is this
+ * call's, and the row is left as it is.
+ */
+export function claimStep(current: string | undefined, attempt: ClaimAttempt): { readonly next: string | undefined; readonly heldBy: string | null } {
+  const { key, now, started } = attempt;
+  const fresh = (h: Held): boolean => Math.abs(now - Math.max(h.at, h.ended ?? h.at)) < CLAIM_WINDOW_MS;
+  const claims = readClaims(current);
+  const held = claims[key];
+  if (held !== undefined && held.token === attempt.token) return { next: undefined, heldBy: null };
+  // A TWIN: the same event, and this process began before the holder ended
+  // — or the host sends this event only once, so any same-key process in
+  // the window is one, however late its runtime came up (`firesOnce`).
+  if (held !== undefined && fresh(held) && (attempt.once || held.ended === undefined || started < held.ended)) {
+    return { next: undefined, heldBy: held.side };
+  }
+  const kept = Object.entries(claims)
+    .filter(([k, h]) => k !== key && fresh(h))
+    .sort((a, b) => b[1].at - a[1].at)
+    .slice(0, CLAIM_KEEP - 1);
+  return { next: writeClaims(Object.fromEntries([[key, { at: now, side: attempt.side, started, token: attempt.token }], ...kept])), heldBy: null };
 }
 
 /** What a claim needs of the counterpart: the store's directory, under which
@@ -606,28 +669,17 @@ export function claimDelivery(doors: ClaimDoors, input: ClaimInput): Claim {
   const key = input.key;
   const now = input.now ?? Date.now();
   const started = input.started ?? performance.timeOrigin;
-  const fresh = (h: Held): boolean => Math.abs(now - Math.max(h.at, h.ended ?? h.at)) < CLAIM_WINDOW_MS;
+  const attempt: ClaimAttempt = { key, side: input.side, now, started, once: input.once === true, token: randomBytes(6).toString("hex") };
   // Written inside the transaction's callback, read after it.
   const seen: { heldBy: string | null } = { heldBy: null };
   let setAside: string | null = null;
   try {
     ({ setAside } = updateClaims(doors.store.dir, (current) => {
-      // Reset: the callback runs again on a rebuilt file (`updateClaims`).
-      seen.heldBy = null;
-      const claims = readClaims(current);
-      const held = claims[key];
-      // A TWIN: the same event, and this process began before the holder ended
-      // — or the host sends this event only once, so any same-key process in
-      // the window is one, however late its runtime came up (`firesOnce`).
-      if (held !== undefined && fresh(held) && (input.once === true || held.ended === undefined || started < held.ended)) {
-        seen.heldBy = held.side;
-        return undefined;
-      }
-      const kept = Object.entries(claims)
-        .filter(([k, h]) => k !== key && fresh(h))
-        .sort((a, b) => b[1].at - a[1].at)
-        .slice(0, CLAIM_KEEP - 1);
-      return writeClaims(Object.fromEntries([[key, { at: now, side: input.side, started }], ...kept]));
+      // Each try decides afresh: the callback runs again after a failed write
+      // (`updateClaims`), and may meet this call's own claim (`claimStep`).
+      const step = claimStep(current, attempt);
+      seen.heldBy = step.heldBy;
+      return step.next;
     }));
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
