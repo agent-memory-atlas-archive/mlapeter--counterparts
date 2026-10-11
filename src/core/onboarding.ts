@@ -149,11 +149,22 @@ export function meetPending(store: MetaReader): boolean {
   return s === "not_started" || s === "offered" || s === "later";
 }
 
-/** The last offer, or null. */
-export function lastOffer(store: MetaReader): { on: string; session: string } | null {
+/**
+ * ON HOW MANY CALENDAR DAYS THE OFFER IS MADE (review of #419): the wake's line
+ * offers on at most this many days, then stops, whatever the state. Without a
+ * cap a person who never answers (or says "later" and never comes back) was
+ * offered it every day for ever. The state is left as it is, so the mod's
+ * "Meet your counterpart" and a person asking to meet still work.
+ */
+export const MEET_OFFER_DAYS = 3;
+
+/** The last offer, or null; `days` is how many calendar days it has been made on. */
+export function lastOffer(store: MetaReader): { on: string; session: string; days: number } | null {
   const v = readJson(store, ONBOARDING_OFFERED_KEY);
   if (v === null || typeof v["on"] !== "string") return null;
-  return { on: v["on"], session: typeof v["session"] === "string" ? v["session"] : "" };
+  const raw = v["days"];
+  const days = typeof raw === "number" && Number.isFinite(raw) && raw >= 1 ? Math.floor(raw) : 1;
+  return { on: v["on"], session: typeof v["session"] === "string" ? v["session"] : "", days };
 }
 
 /**
@@ -164,7 +175,9 @@ export function lastOffer(store: MetaReader): { on: string; session: string } | 
  */
 export function noteOffered(store: MetaStore, input: { on: string; session: string; state: boolean }): MeetState {
   const before = meetState(store);
-  store.setMeta(ONBOARDING_OFFERED_KEY, JSON.stringify({ on: input.on, session: input.session }));
+  const last = lastOffer(store);
+  const days = last === null ? 1 : last.on === input.on ? last.days : last.days + 1;
+  store.setMeta(ONBOARDING_OFFERED_KEY, JSON.stringify({ on: input.on, session: input.session, days }));
   if (input.state && before !== "done") {
     store.setMeta(ONBOARDING_MEET_KEY, "offered");
     return "offered";
@@ -174,7 +187,8 @@ export function noteOffered(store: MetaStore, input: { on: string; session: stri
 
 /**
  * IS THE OFFER DUE IN THIS SESSION? The one rule, with or without the mod:
- * at most one offer a calendar day, none once `done` or `skipped`, never twice
+ * at most one offer a calendar day, on at most `MEET_OFFER_DAYS` days, none
+ * once `done` or `skipped`, never twice
  * in one session (a compaction's fresh wake included). An `offered` left by an
  * EARLIER day — the person never answered — is moved to `later` here, so the
  * mod, which reads the state, sees a meeting it may offer again.
@@ -184,6 +198,7 @@ export function offerDue(store: MetaStore, input: { on: string; session: string 
   const last = lastOffer(store);
   if (state !== "not_started" && state !== "later") return { due: false, state };
   if (last !== null && (last.session === input.session || last.on >= input.on)) return { due: false, state };
+  if (last !== null && last.days >= MEET_OFFER_DAYS) return { due: false, state };
   return { due: true, state };
 }
 

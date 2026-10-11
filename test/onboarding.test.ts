@@ -419,6 +419,23 @@ describe("the wake's line: no double offer", () => {
     withStore((s) => expect(meetState(s)).toBe("later"));
   });
 
+  test("an offer nobody answers is made on three days, then stops; the state stays, so the mod and a person asking still can", async () => {
+    newInstallStore();
+    expect(start("s1", "2026-10-11")).toContain(MEET_LINE_OPEN);
+    expect(start("s2", "2026-10-12")).toContain(MEET_LINE_OPEN);
+    // A meet read on the third day counts as that day's offer, not a fourth.
+    const third = Date.parse("2026-10-13T12:00:00Z");
+    await server({ session: "s3", now: () => third }).call("meet", {});
+    for (const x of open.splice(0)) x.counterpart.close();
+    expect(start("s3b", "2026-10-13")).not.toContain(MEET_LINE_OPEN);
+    expect(start("s4", "2026-10-14")).not.toContain(MEET_LINE_OPEN);
+    expect(start("s5", "2026-10-20")).not.toContain(MEET_LINE_OPEN);
+    withStore((s) => expect(meetState(s)).toBe("later"));
+    // A person who asks still gets the script.
+    const script = await server({ session: "s6" }).call("meet", {});
+    expect(String(script.structuredContent["script"])).toContain("THE FIRST MEETING");
+  });
+
   test("not for an upgraded store, a skipped or finished meeting, the nightly run, or a session nobody watches", () => {
     expect(start("s0", DAY1)).not.toContain(MEET_LINE_OPEN);
     newInstallStore();
