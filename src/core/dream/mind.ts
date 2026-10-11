@@ -27,7 +27,7 @@
  * `counterparts settle`, or a dream or reflection with a clear reason.
  *
  * TO CONFIRM (2026-10-11, Group 2), for the dream only (`slots`): pairs the
- * slot detector proposed as one thing's earlier and later state, oldest first,
+ * slot detector proposed as one thing's earlier and later state, least shown first,
  * at most `SLOT_PER_NIGHT` a night beside the ranked items (not among them, so
  * a busy night's proposals never push out what is coming up), the rest
  * counted. They are not "unsettled" items: nobody said they disagree.
@@ -221,8 +221,14 @@ export function mindRanked(store: Store, input: MindInput): { items: MindItem[];
   const items = scored.slice(0, T.MAX_ITEMS).map((s) => s.item);
   const more = Math.max(0, scored.length - T.MAX_ITEMS);
   if (input.slots !== true) return { items, more };
-  // TO CONFIRM: the night's budget of slot proposals, oldest first.
-  const all = slotsToConfirm(store, Number.MAX_SAFE_INTEGER).pairs;
+  // TO CONFIRM: the night's budget of slot proposals, the least shown first,
+  // then the oldest — so a dream that passes some by does not keep the rest
+  // waiting behind them (review of #420): nothing expires, and every one
+  // comes round.
+  const all = slotsToConfirm(store, Number.MAX_SAFE_INTEGER)
+    .pairs.map((p, i) => ({ p, i, shown: readMindSeen(store, p.pair)?.times ?? 0 }))
+    .sort((a, b) => a.shown - b.shown || a.i - b.i)
+    .map((x) => x.p);
   const confirm: MindItem[] = [];
   let skipped = 0;
   for (const p of all) {

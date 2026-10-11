@@ -241,7 +241,7 @@ dreamer is the model (a background agent the session launches), outside this pro
   `slot` (2026-10-11, Group 2: a "to-confirm" pair on my mind — the slot detector read two
   memories as one thing's earlier and later state — `same: true` confirms it as a settle
   `changed`, `same: false` withdraws it with its provisional cut put back; at most
-  `SLOT_PER_NIGHT`, 4, shown a night, oldest first, beside the ranked items; undone with
+  `SLOT_PER_NIGHT`, 4, shown a night, the least shown then the oldest first, beside the ranked items; undone with
   the dream as a settle, or as the proposal it was),
   `feeling-now` (the self's feeling today, capped at the memory's peak; the same
   feeling twice in one dream is one record), `nominate-core`
