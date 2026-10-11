@@ -14,3 +14,14 @@
   the npm hooks are out the plugin stops standing down. The keep arm's closing line is
   unchanged: its configuration stays, so no first run fires. Why: the hazard is a missing
   configuration, and only delete and park remove it.
+- Decided by the #425 reviewer, 2026-10-11, lightly held: the printed removal names the scope.
+  Claude Code's `installed_plugins.json` records each install's `scope` and, for a project or
+  local one, its `projectPath`, so a project or local install is told
+  `cd <folder> && claude plugin uninstall <id> --scope <scope>` (or "in the project it was
+  installed for" when no folder is recorded); a user install keeps the plain command. Only the
+  first record is read. Why: `claude plugin uninstall` defaults to user scope and fails for a
+  project install, and the scope was cheap to know.
+- Decided by the #425 reviewer, 2026-10-11, lightly held: `commands/uninstall.md` step 5 offers
+  both removals (the terminal command the closing line names, or /plugin → Uninstall after
+  reopening), keeping #421's disable-first order. Why: the terminal and the command now say the
+  same thing; either route is safe there because step 1 disabled the plugin.
