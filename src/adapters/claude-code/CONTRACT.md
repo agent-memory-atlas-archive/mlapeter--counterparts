@@ -407,6 +407,19 @@ row, saying which source answered, existed until the keys were removed — §1a.
     with no room, waits a prompt. Reads only; nothing under observer or for the
     nightly run.
 
+    **AND A RESUME TODAY IS HANDED ONE LINE, NOT A SECOND WAKE (2026-10-11, the
+    context-trims lane, lightly held).** The host replays a resumed session's
+    transcript, the first wake in it, so SessionStart with `source: "resume"` — for a
+    session whose record holds a printed wake's sentinel and started on today's date —
+    hands the clock, `RESUME_WAKE_LINE` ("the wake it was handed when it started (above)
+    still holds"), and the "Since you started" line with its once-an-hour gate waived,
+    plus the reminders and asks that ride beside any wake (`ClaudeCodeAdapter#resumesToday`,
+    `#resumeWake`). ~140–440 bytes where the wake is up to ~9 KB. No wake is composed, so
+    the delivery check still tests the expectation the first wake left, and the
+    `adapter.wake.injected` row says `resumed`. A resume on a later day, a compaction
+    (which summarizes the first wake away), `clear`, `fork`, and a session with no record
+    are handed the full wake.
+
 19. **[M] A directory set `off` gets NO OUTPUT AND NO WRITE — because nothing is
     constructed.** The scope registry (`adapters/scopes.ts`,
     `<config dir>/scopes.json`, longest-prefix, added 2026-09-10 for owner asks
@@ -771,9 +784,15 @@ session launches anything.** On the first prompt of a calendar day that is due
 `bin/nightly.ts` DETACHED (`night-run.ts#planNightRunner`, `spawn.ts#spawnDetached`) and
 records the run `started`, with its watchdog. That process composes the launch prompt from
 the store, starts `claude -p` with it on STDIN (`planNightChild`), waits under the run's own
-watchdog (`dreaming.timeoutMs`, default `NIGHT_RUN_MS` 20 minutes) and records the end. The
-outcome is read from the exit and the store, never from the child's output (the host's cut,
-below, is read from the host's own transcript of it):
+watchdog (`dreaming.timeoutMs`, default `NIGHT_RUN_MS` 20 minutes) and records the end.
+**A whole night is two children (2026-10-11):** the page writer and the dream first
+(`reflect` denied it; its MCP server told `COUNTERPARTS_NIGHT_CHILD=dream`, so the journal
+hands back), then the reflection with a fresh context, on tonight's dream by id — or, when
+no dream was journaled, on the last few days. Each has the watchdog and the turn ceiling;
+the row carries both and lists the children (`NightRun.children`: exit, time, or why the
+reflection's was not started — `quick-exit`, `reflected-today`, `unread`). The reflection
+alone is one child. The outcome is read from the exits and the store, never from the
+children's output (the host's cut, below, is read from the host's own transcript of each):
 
 - `done`: the dream and the reflection ran (the reflection, for a reflection-alone run);
 - `partial`: some of the run's parts ran and not all, whatever the exit, with the parts on

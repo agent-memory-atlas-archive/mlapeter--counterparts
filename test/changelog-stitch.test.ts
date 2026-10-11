@@ -168,3 +168,143 @@ describe("parseFragment", () => {
     expect("problem" in parseFragment("Some prose\n- then a bullet\n")).toBe(true);
   });
 });
+
+const IMPROVEMENTS = `# Improvements
+
+## Decisions to review — the walk (2026-10-10)
+
+**Status:** open.
+
+### Decided by someone, 2026-10-10, lightly held (existing)
+
+- Existing item. Stays where it is.
+
+### Also noted
+
+- **A loose note.** Stays last.
+
+---
+
+## U1 — An older entry (2026-09-14)
+
+Untouched.
+`;
+
+function makeDecisionsRepo(improvements = IMPROVEMENTS): string {
+  const repo = makeRepo();
+  mkdirSync(join(repo, "docs", "decisions.d"), { recursive: true });
+  writeFileSync(join(repo, "docs", "IMPROVEMENTS.md"), improvements);
+  writeFileSync(join(repo, "docs", "decisions.d", "README.md"), "# Decisions fragments\n\nNot a subsection.\n");
+  git(repo, ["add", "."]);
+  git(repo, ["commit", "-q", "-m", "decisions base"], 1_700_050_000);
+  return repo;
+}
+
+function addDecision(repo: string, name: string, text: string, when?: number): void {
+  writeFileSync(join(repo, "docs", "decisions.d", name), text);
+  if (when === undefined) return;
+  git(repo, ["add", "."]);
+  git(repo, ["commit", "-q", "-m", `add ${name}`], when);
+}
+
+const decision = (who: string): string =>
+  `### Decided by the ${who} builder, 2026-10-11, lightly held (${who})\n\n- Decided by the ${who} builder: a thing.\n  Why: wrapped.\n`;
+
+describe("stitch, decisions", () => {
+  test("appends subsections before ### Also noted, in merge order, and deletes them", () => {
+    const repo = makeDecisionsRepo();
+    const base = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
+    // The branches commit a, b; the base merges b, a.
+    const at: Record<string, number> = { a: 1_700_100_000, b: 1_700_200_000 };
+    for (const x of ["a", "b"]) {
+      git(repo, ["checkout", "-q", "-b", `fix/${x}`, base]);
+      addDecision(repo, `fix-${x}.md`, `\n${decision(x)}\n\n`, at[x]);
+    }
+    git(repo, ["checkout", "-q", base]);
+    git(repo, ["merge", "-q", "--no-ff", "fix/b", "-m", "merge b"], 1_700_300_000);
+    git(repo, ["merge", "-q", "--no-ff", "fix/a", "-m", "merge a"], 1_700_400_000);
+    const result = stitch(repo);
+    expect(result.problems).toEqual([]);
+    expect(result.wrote).toBe(true);
+    expect(result.decisions.map((f) => f.name)).toEqual(["fix-b.md", "fix-a.md"]);
+    expect(readFileSync(join(repo, "docs", "IMPROVEMENTS.md"), "utf8")).toBe(`# Improvements
+
+## Decisions to review — the walk (2026-10-10)
+
+**Status:** open.
+
+### Decided by someone, 2026-10-10, lightly held (existing)
+
+- Existing item. Stays where it is.
+
+${decision("b")}
+${decision("a")}
+### Also noted
+
+- **A loose note.** Stays last.
+
+---
+
+## U1 — An older entry (2026-09-14)
+
+Untouched.
+`);
+    expect(existsSync(join(repo, "docs", "decisions.d", "fix-a.md"))).toBe(false);
+    expect(existsSync(join(repo, "docs", "decisions.d", "fix-b.md"))).toBe(false);
+    expect(existsSync(join(repo, "docs", "decisions.d", "README.md"))).toBe(true);
+    // No changelog fragments: CHANGELOG.md is untouched.
+    expect(readFileSync(join(repo, "CHANGELOG.md"), "utf8")).toBe(CHANGELOG);
+  });
+
+  test("with no ### Also noted, goes before the --- that closes the section", () => {
+    const repo = makeDecisionsRepo(IMPROVEMENTS.replace("### Also noted\n\n- **A loose note.** Stays last.\n\n", ""));
+    addDecision(repo, "one.md", decision("one"), 1_700_100_000);
+    stitch(repo);
+    const after = readFileSync(join(repo, "docs", "IMPROVEMENTS.md"), "utf8");
+    expect(after).toContain(`- Existing item. Stays where it is.\n\n${decision("one")}\n---\n\n## U1`);
+  });
+
+  test("stitches the changelog and the decisions in one run", () => {
+    const repo = makeDecisionsRepo();
+    addFragment(repo, "both.md", "- **Both.** a user notices\n", 1_700_100_000);
+    addDecision(repo, "both.md", decision("both"), 1_700_100_000);
+    const result = stitch(repo);
+    expect(result.wrote).toBe(true);
+    expect(readFileSync(join(repo, "CHANGELOG.md"), "utf8")).toContain("- **Both.** a user notices\n\n## 0.1.0");
+    expect(readFileSync(join(repo, "docs", "IMPROVEMENTS.md"), "utf8")).toContain(`${decision("both")}\n### Also noted`);
+  });
+
+  test("a malformed decisions fragment fails --check and the stitch, and neither file changes", () => {
+    const repo = makeDecisionsRepo();
+    addFragment(repo, "good.md", "- **Good.** fine\n", 1_700_100_000);
+    addDecision(repo, "bullets.md", "- Decided by someone: no heading.\n", 1_700_200_000);
+    addDecision(repo, "split.md", "### Fine heading\n\n## But this splits the section\n", 1_700_300_000);
+    const check = spawnSync(process.execPath, [TOOL, "--check", repo], { encoding: "utf8" });
+    expect(check.status).toBe(1);
+    expect(check.stderr).toContain("docs/decisions.d/bullets.md does not start with a `### ` heading");
+    expect(check.stderr).toContain("docs/decisions.d/split.md has a `# ` or `## ` heading");
+    const run = spawnSync(process.execPath, [TOOL, repo], { encoding: "utf8" });
+    expect(run.status).toBe(1);
+    expect(readFileSync(join(repo, "CHANGELOG.md"), "utf8")).toBe(CHANGELOG);
+    expect(readFileSync(join(repo, "docs", "IMPROVEMENTS.md"), "utf8")).toBe(IMPROVEMENTS);
+    expect(existsSync(join(repo, "changelog.d", "good.md"))).toBe(true);
+  });
+
+  test("no Decisions to review section: a problem, nothing changes", () => {
+    const repo = makeDecisionsRepo("# Improvements\n\n## U1 — Only this\n");
+    addDecision(repo, "lost.md", decision("lost"), 1_700_100_000);
+    const result = stitch(repo);
+    expect(result.wrote).toBe(false);
+    expect(result.problems[0]).toContain('no "## Decisions to review" section');
+    expect(existsSync(join(repo, "docs", "decisions.d", "lost.md"))).toBe(true);
+  });
+
+  test("--check lists the decisions it would add and changes nothing", () => {
+    const repo = makeDecisionsRepo();
+    addDecision(repo, "seen.md", decision("seen"), 1_700_100_000);
+    const run = spawnSync(process.execPath, [TOOL, "--check", repo], { encoding: "utf8" });
+    expect(run.status).toBe(0);
+    expect(run.stdout).toContain("<!-- docs/decisions.d/seen.md -->");
+    expect(readFileSync(join(repo, "docs", "IMPROVEMENTS.md"), "utf8")).toBe(IMPROVEMENTS);
+  });
+});

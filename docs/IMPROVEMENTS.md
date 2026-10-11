@@ -32,7 +32,8 @@ and the lessons learned. Legacy-only fixes are low priority by default.
 **Status:** `open` — Mike walks this list; npm is held until he has. Written by the Group 1a
 build (strength) from the mechanisms synthesis (§4, as amended by its draft 2, §8). Each line
 says who decided it, when, and why, in plain words. The ones that reverse a ruling of Mike's
-come first. Nothing here quotes a memory.
+come first. Nothing here quotes a memory. A new subsection arrives as a fragment in
+[`decisions.d/`](decisions.d/README.md) and is stitched in at release.
 
 ### Revised from Mike's rulings
 
@@ -170,12 +171,15 @@ reverse older defaults and contract lines; those go to the rules audit.
 9. **Mood-matched recall turned down (weights 0, code kept), marked for re-test.** Why:
    evidence from the old use metric (lifted memories used 1.3% vs 2.4%); re-test after Group
    1's engaged credit gives a real signal. Not a closed decision. (1c)
+   **Kept. random-06, 2026-10-11, lightly held** (Mike approved random-06's recommendations on every item so far and did not object). The re-test is in docs/CHECK-AFTER.md, now that drewOn gives a use signal.
 10. **"Strongly felt" means above the word's own default, or 0.6 and over**, so the core's fast
    lane can open again (it shut when feeling defaults were capped at 0.55). (1c)
+   **Kept. random-06, 2026-10-11, lightly held** (Mike approved random-06's recommendations on every item so far and did not object).
 11. **Encoding.** `note` becomes `remember` (with `note` kept as an alias for a release or
     two); the new end-of-session ask; salience by attention, not category; the defaults by
     what a memory is about. The `remember` description says to write in the moment, as things
     catch your attention; the ask is the backstop. (1c)
+    **Kept. random-06, 2026-10-11, lightly held** (Mike approved random-06's recommendations on every item so far and did not object).
 12. **One model for "this replaces that".** "Newer in the same slot" is `changed`; one detector
     (the write-time neighbours, plus status lineage or very high similarity) proposes, the
     dream confirms or undoes; the newest in a chain is what comes up on its own. (Group 2)
@@ -201,7 +205,16 @@ reverse older defaults and contract lines; those go to the rules audit.
     #403); folds starting at their sources' strength partly answer that.
 16. **The dream queue.** The whole queue ranked into tonight's top-K; a memory stays queued
     until it is below reach; the reflection runs in its own context. (3)
+    **Yes, in order. Mike, 2026-10-11, lightly held.** FIRST the reflection runs in its own fresh
+    context (a real bug: one night peaked at 223k tokens on a 200k model). THEN the dream queue: rank
+    everything not yet dreamed by value × fragility into tonight's top-K, keep a memory queued until it
+    is below reach, and drop the newest-2,000 read. It matches the sleep research: replay favours
+    tagged-important and weakly held memories, mostly recent, on a fixed budget.
 17. **Cards as views**, not built in v1 (Mike's direction, 2026-10-10). (3)
+    **Revised by Mike, 2026-10-11, lightly held: KEEP the entity card.** It is recall's subject index
+    (facts mode's subject channel, `memoriesNaming` plus aliases), and it's how a future person or
+    project view finds every memory about them. Fix its birth bug in Group 3: a nightly tally of names,
+    ≥3 memories on ≥2 lived days, gated by `mention()`. The view is the page; the card is the index.
 18. **A missed plain reminder is told once, later, within its 7-day grace.** (5)
    **Kept. Mike, 2026-10-11, lightly held** (agreed earlier in the walk, via random-06).
 
@@ -459,6 +472,30 @@ were refined by b2+f8 at the review of #369, named where they were):
   command typed in a terminal was not started from any project, and the working directory may be
   one set `off`.
 
+### Decided by the reflection-own-context builder, 2026-10-11, lightly held (the reflection in its own child)
+
+- Decided by the reflection-own-context builder, 2026-10-11, lightly held: each of the night's
+  two children gets the whole watchdog (`dreaming.timeoutMs`, default 20 minutes) and the whole
+  turn ceiling, one after the other, and the `started` row carries both (`nightChildrenTimeoutMs`).
+  Why: one shared deadline would let a slow dream starve the reflection; a night that took
+  11–12 minutes in one context stays far inside 2 × 20. The cost is that a run that never
+  reports is read as lost about 20 minutes later than before.
+- Decided by the reflection-own-context builder, 2026-10-11, lightly held: the reflection's child
+  runs after ANY dream child that ran, journaled or not. On a journaled dream it reflects on that
+  dream by id; otherwise on the last few days, as the single run did when its dream was refused.
+  It is not started after a first child that stopped straight away having begun nothing
+  (`quick-exit`: a second `claude` would stop the same way), when a reflection already finished
+  today, or when the store will not open between them. Why: the brief asks that a failed or
+  skipped dream still leave a reflection. The cost is one case: a dream child that crashed
+  mid-dream leaves its dream begun, so the relaunch that resumes it later that day finds the
+  day already reflected and ends `partial` (the reflection is not run twice a day).
+- Decided by the reflection-own-context builder, 2026-10-11, lightly held: the dream's child may
+  not call the reflect tool at all (denied, `DREAM_CHILD_DENIED`), and its MCP server is told it
+  is the dream's child (`COUNTERPARTS_NIGHT_CHILD=dream`), so the journal's `next` says to hand
+  back instead of "now reflect". The reflection alone, and the reflection's child, keep all four
+  night tools as before. The in-session run (a person says "dream", the Agent tool) is unchanged:
+  one agent, all three parts.
+
 ### Decided by the doctor-install-fixes builder, 2026-10-11, lightly held (doctor's fixes by install)
 
 - Decided by the doctor-install-fixes builder, 2026-10-11, lightly held: doctor's fix lines
@@ -470,6 +507,33 @@ were refined by b2+f8 at the review of #369, named where they were):
   default for a caller that forgets. `plugin-run.sh` now also exports the plugin data
   directory it falls back on, so the single binary run from `/counterparts:doctor` knows
   itself for the plugin's (before, `runningAsPlugin` read false there).
+
+### Decided by the group-5 builder, 2026-10-11, lightly held (prospective: reminders, item 18)
+
+- Decided by the group-5 builder, 2026-10-11, lightly held: a plain DAY reminder whose day
+  passed untold is told once at the first session inside its 7-day grace, as "This was for
+  Mon 12 Oct 2026: …". It shares the day's latch (no new beat key), so a late telling counts
+  as the day told everywhere that asks, and it can never come twice. A memory written after
+  its day gets no late beat (it was never missed), nor one with no written date. A month's or
+  range's missed last day gets none: it already had its opening beat. Why: review 07 C4 — a
+  person who skips the day lost the reminder silently.
+- Decided by the group-5 builder, 2026-10-11, lightly held: `reference()` is WIRED, not
+  retired. A dated memory named in `drewOn` (and passing its guards: shown, live, not replaced)
+  stops its open window, whether or not its credit lands under the cap or the once-a-day rule.
+  Why: `drewOn` credits half a use and stops nothing, so a reminder the session already acted
+  on still came back as a footnote until its budget (2) ran out; the referenced-stop is the one
+  thing that ends that. A plain reminder keeps its day: until its last beat is told, drawing on
+  it the day before does not silence the telling or its place under "Arriving:".
+- Decided by the group-5 builder, 2026-10-11, lightly held: `exitReport()` is DELETED, and
+  prospective G12 now promises the states its rows name plus the counts already shown (the
+  dashboard's said-plainly / quiet-footnote counts, doctor's plain-due reading). Why: it had no
+  caller; its `superseded-by-reschedule` exit rests on `reschedule()`, which `carryReminder`
+  replaced (also uncalled, left in place); its `faded` exit cannot happen before a date now
+  that the date is held; and the two homes for a caller were a new always-green doctor line or
+  a write-capable engine inside the read-only dashboard.
+- Decided by the group-5 builder, 2026-10-11, lightly held: the Mechanisms panel's "waiting"
+  list shows a repeating date at its next occurrence, with how often it comes round ("every
+  May 14"); one that came back this week is counted under "came back", as a one-off is.
 
 ### Trial, Mike, 2026-10-11, very lightly held (verbatim in the memory's body)
 
@@ -512,6 +576,59 @@ were refined by b2+f8 at the review of #369, named where they were):
   pair names as what holds, or whose holder is gone with nothing live after it, no longer
   reads `Earlier`. Accepted as built: a guest writer's neighbour whose head is confidential
   is left out; a neighbour whose head ranks below it is listed marked beside its head.
+
+### Decided by the context-trims builder, 2026-10-11, lightly held (what a tool description serves)
+
+- Decided by the context-trims builder, 2026-10-11, lightly held; needs the bench A/B before
+  merge: `remember`, `session_end`, `recall` and `chapter` serve only the guarantees that
+  change what the model writes or calls (or name a refusal it can avoid); the rest became
+  each tool's `engine` rows, audited and not served (mcp CONTRACT §5 G2). session_end
+  20.9 → 15.5 KB as loaded, remember 19.6 → 16.2, recall 7.9 → 6.3, chapter 4.4 → 3.8. Why:
+  `session_end` and `chapter` load at every end-of-session ask, and what was cut is said on a
+  field the host serves whole, in the result, or in a refusal that names itself. The one
+  most likely to move a number: `remember` no longer says "you may score the three
+  dimensions yourself" (the fields `relevance`, `emotional`, `predictive` still do;
+  `session_end`'s pinned claim still says it).
+- Decided by the context-trims builder, 2026-10-11, lightly held: a RESUMED session gets a
+  short wake (the wake above still holds; what changed since) instead of a second full one,
+  when it resumes on the day it started. A compaction keeps the full wake: it summarizes the
+  first one away. Why: on resume the host replays the first wake, so the model read both.
+
+### Decided by the uninstall-delete builder, 2026-10-11, lightly held (`uninstall` offers to delete)
+
+- Decided by the uninstall-delete builder, 2026-10-11, lightly held: plain `uninstall`
+  puts the delete question only to a person (a console with a prompt), and `--yes` keeps
+  without asking, as `--keep-memories` does. Why: `--yes`'s sentence is "take the ordinary
+  answer to every question", and the ordinary answer here is keep. Nothing deletes without a
+  yes and the typed phrase.
+- Decided by the uninstall-delete builder, 2026-10-11, lightly held: the question is not put
+  at all while something holds the store (a process of ours, a session whose hooks ran in
+  the last ten minutes, a fresh memory-server record); the screen says what holds it instead.
+  `--delete-memories` refuses on the same evidence now (it used to check the process list
+  only). Why: a question whose yes is always refused should not be asked; `rollback`'s
+  holder check sees a session the process list can miss. Everything is looked at again
+  after the phrase, and anything changed is a refusal.
+- Decided by the uninstall-delete builder, 2026-10-11, lightly held: `uninstall
+  --delete-memories --json` reads the typed phrase from standard input, a scripted door
+  `uninstall.ts` used to say must never exist. Why: the plugin has no terminal to type into,
+  and Mike's decision was that every uninstall path offers the delete. This process can't
+  tell who wrote its stdin, so the guarantee that the PERSON typed it sits with the caller:
+  the plugin command collects the phrase in its own UI and the model never supplies it.
+  Without `--json`, `--delete-memories` from a pipe still refuses.
+  **Reversed by the coordinator, 2026-10-11, lightly held: there is no stdin door.**
+  `--delete-memories --json` is refused; `uninstall --json` is the plan only (read-only),
+  and `--keep-memories --json` uninstalls and keeps. Why: nothing can tell who wrote stdin,
+  so a model could type the phrase, which breaks the rule that the typed word comes from
+  the person. And a live Claude Code session always holds the store, so the plugin's
+  command could not delete from inside one anyway. `/counterparts:uninstall` shows the plan
+  in-session and sends the person to a terminal, with Claude Code closed, to run the
+  interactive `uninstall` (the plan's `terminalArgs`).
+- Decided by the uninstall-delete builder, 2026-10-11, lightly held: "all memories and
+  related data" is the existing delete list (the store, its default snapshots folder, the
+  configuration and scopes, and our own leftovers such as a `start-fresh` parked store), and
+  no more. A snapshots folder the configuration points somewhere else is named as kept,
+  and so is Claude Code's own directory. Why: no widening of what a delete reaches without
+  someone deciding it.
 
 ### Also noted
 

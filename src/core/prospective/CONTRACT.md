@@ -26,7 +26,12 @@ clothes. **Hold debts, lose deadlines.**
   because the person said "don't let me forget", or it is a real deadline — it is *also*
   said outright on its day: one line to the person (the host's terminal) and the same line
   to the model, at most once per beat (a day item on its day; a month or range the first
-  day it is seen open and again on its last day). That is a bypass lane on purpose, and it
+  day it is seen open and again on its last day). A day item whose day passed untold — no
+  session that day, or none with room for the line — is told once, late, at the first
+  session inside its grace, saying which day it was for ("This was for Mon 12 Oct 2026: …";
+  2026-10-11, review 07 C4, decided by the group-5 builder, lightly held). It shares the
+  day's latch, so it is never told twice, and never after the grace; a memory written
+  after its day was never missed and gets none. That is a bypass lane on purpose, and it
   is bounded like one: no salience floor (it was asked for), but never under observer,
   never for an archived, superseded, removed or journal row, never for a year, and never
   twice for the same beat (`Prospective.plainDue` / `claimPlain`), and a beat is claimed
@@ -96,7 +101,12 @@ clothes. **Hold debts, lose deadlines.**
 - **Once-ness has four independent brakes**: one ambient fire per occasion per lived day;
   a cap per window; session dedup; and — decisive — **once the assistant is observed to
   have used the memory, zero further fires this window.** *Remembering completes by being
-  lived, not by acknowledgment UI.* [v1] §12 G6.
+  lived, not by acknowledgment UI.* [v1] §12 G6. "Observed" is the session's own word
+  since 2026-10-11 (review 07 C3, wired by the group-5 builder, lightly held): a dated
+  memory it names in `drewOn` — shown this session, and it shaped what was done — stops
+  its open window (`Prospective#actedOn`). A plain one keeps its day: until its last beat
+  is told, drawing on it beforehand does not silence the telling or its place under
+  "Arriving:". Revising the memory to drop or move its date remains the other stop.
 - **Crisis deference.** [v1] §12 G7 — arrival cues are suppressed during a refractory
   period, and the horizon beat is suppressed wholesale after a high-affect previous
   session. A window is days wide; deferring past someone's hard week costs nothing. *A
@@ -173,7 +183,8 @@ physics.
 3. **[M] A missing or year-only encode date fails closed.**
 4. **[M] A temporal cue alone cannot reach the loud tier.**
 5. **[M] All four once-ness brakes are independently enforced**, and referenced-stop is the
-   decisive one.
+   decisive one; its live caller is `drewOn` (`Counterpart#creditDrewOn` →
+   `Prospective#actedOn`, 2026-10-11).
 6. **[M] Arrival cues are suppressed during refractory, and the horizon beat is suppressed
    wholesale after a high-affect previous session.**
 7. **[M] Rescheduling is a compare-and-swap that names the current value**, so a stale
@@ -187,8 +198,16 @@ physics.
 11. **[A] The horizon line's exact wording and whether a post-window grace beat is warm or
     creepy are open probe questions, deliberately.** *The words are load-bearing for tact,
     and that is an honest thing for a spec to say.*
-12. **[M] Every dated memory names its exit** — fired, expired, superseded by a
-    reschedule, or faded — and the counts are reported (scar §2.17).
+12. **[A] Every dated memory's window ends in a state its rows name** — fired, told
+    (`prospective.plain`), referenced (stopped by `drewOn`), or passed — derived at read
+    time, never swept. What reaches a person is counted where they look: the dashboard
+    counts reminders said plainly and quiet footnotes (and lists what is waiting), and
+    doctor's plain-due reading counts a plain reminder due on a day a session ran and never
+    said (scar §2.17). `exitReport()`, which classified every window and had no caller, was
+    removed 2026-10-11 (decided by the group-5 builder, lightly held): nothing read it, its
+    `superseded-by-reschedule` exit rested on `reschedule()`, which a revision's
+    `carryReminder` replaced, and its `faded` exit cannot happen before a date now that the
+    date is held.
 
 ## 6. Scars honored
 
@@ -197,7 +216,8 @@ brakes run on lived days) · **§2.1** (firing state is transactional rows, not 
 hand-serialized map with three writers) · **§2.4** (a suppressed fire is a distinct record
 from a fire that never became eligible) · **§2.8** (every ramp constant ships measured or
 disabled) · **§2.16** (the "would this still be true after the date passes?" test is the
-admission criterion, with a named negative example) · **§2.17** (exit paths are counted).
+admission criterion, with a named negative example) · **§2.17** (exit paths are counted —
+since 2026-10-11 by what reached a person, G12).
 
 ## 7. Open questions
 
@@ -211,8 +231,9 @@ admission criterion, with a named negative example) · **§2.17** (exit paths ar
 3. **What replaces `session dedup` if `recall/`'s per-session gate state is not persisted?**
    One of the four brakes depends on it — see `recall/` open question 1.
 4. **Is "plain" the right amount of loud?** (2026-09-26.) Once on the day, twice for a
-   month or range, only on the stated span — no lead-day warning, no nag when the day is
-   missed. The owner's first weeks of use answer it; nothing here measured it.
+   month or range, only on the stated span — no lead-day warning. Since 2026-10-11 a missed
+   DAY is told once, late, inside its grace (§3); a month's or range's missed last day is
+   not. The owner's first weeks of use answer it; nothing here measured it.
 5. **What should repeat beyond a day?** (2026-10-09.) "Every October" (a month, yearly),
    "hourly", every other week, "the first Monday" — each left out, loose first, until a
    real use asks for one.

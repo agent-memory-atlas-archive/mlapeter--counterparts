@@ -636,7 +636,13 @@ export class Lifecycle implements HostLifecycle {
    * under observer or for the nightly run; a folder that is off or paused
    * never reaches here (`guard`). Never throws.
    */
-  sinceLine(input: SessionInput & { nightRun?: boolean }, room: number): string {
+  sinceLine(
+    input: SessionInput & { nightRun?: boolean },
+    room: number,
+    /** A RESUMED session's start (2026-10-11): its short wake says what changed
+     *  since it last heard, whatever the state and the hour. */
+    opts: { readonly resumed?: boolean } = {},
+  ): string {
     if (this.observer || input.nightRun === true || input.sessionId.length === 0) return "";
     try {
       const dir = this.counterpart.store.dir;
@@ -644,13 +650,13 @@ export class Lifecycle implements HostLifecycle {
       if (record === null) return "";
       const now = this.nowFn();
       const seen = record.sinceSeen ?? { at: record.startedAt, state: "woke" as const };
-      if (seen.state === "woke") {
+      if (seen.state === "woke" && opts.resumed !== true) {
         markSinceSeen(dir, input.sessionId, { at: seen.at, state: "armed" });
         return "";
       }
-      if (seen.state === "shown" && now - seen.at < TUNABLES.SINCE_LINE_EVERY_MS) return "";
+      if (seen.state === "shown" && now - seen.at < TUNABLES.SINCE_LINE_EVERY_MS && opts.resumed !== true) return "";
       const lines = this.counterpart.sinceElsewhere(
-        { since: seen.at, until: now, started: seen.state === "armed" },
+        { since: seen.at, until: now, started: seen.state !== "shown" },
         this.elsewhereHere(input),
       );
       if (lines === null) return "";
@@ -1816,12 +1822,17 @@ export function substanceOf(turns: readonly HostTurn[]): { turns: number; bytes:
  *   day        `Today: pay your taxes`
  *   opens      `This month: launch the beta` / `Until Sat 31 Oct 2026: book flights`
  *   last-day   `Last day today: file the extension`
+ *   late       `This was for Mon 12 Oct 2026: pay your taxes`
+ *
+ * A LATE one (2026-10-11) is a day item whose day passed untold, said once
+ * inside its grace (`PlainDue.late`), so it says which day it was for.
  *
  * `what` is the memory's title or first line (`Counterpart.plainReminders`).
  */
-export function plainLine(r: Pick<PlainReminder, "beat" | "precision" | "lastDay" | "what">): string {
+export function plainLine(r: Pick<PlainReminder, "beat" | "precision" | "lastDay" | "what" | "late">): string {
   const max = TUNABLES.PLAIN_WHAT_MAX_CHARS;
   const what = r.what.length <= max ? r.what : `${r.what.slice(0, max - 1).trimEnd()}…`;
+  if (r.late === true) return `This was for ${readableDate(r.lastDay)}: ${what}`;
   if (r.beat === "day") return `Today: ${what}`;
   if (r.beat === "last-day") return `Last day today: ${what}`;
   if (r.precision === "month") return `This month: ${what}`;
@@ -1833,7 +1844,7 @@ export function plainLine(r: Pick<PlainReminder, "beat" | "precision" | "lastDay
  * memory so it can be looked up. One line, no newline — `what` is folded to
  * single spaces upstream — so `withoutPlain` can take it back out by line.
  */
-export function plainContextLine(r: Pick<PlainReminder, "beat" | "precision" | "lastDay" | "what" | "memoryId">): string {
+export function plainContextLine(r: Pick<PlainReminder, "beat" | "precision" | "lastDay" | "what" | "memoryId" | "late">): string {
   return `Plain reminder (they asked to be told) — ${plainLine(r)} [${r.memoryId}]`;
 }
 
