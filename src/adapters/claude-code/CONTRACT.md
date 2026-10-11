@@ -884,7 +884,8 @@ stays.
 whose dream is not due for `too-little-new` or `first-day` — the day unclaimed, no run under
 way (`Dreams#catchUpOffer`) — starts the night anyway when sessions from an earlier calendar
 day owe a write-up (`night-catch-up.ts#owedBefore`: the catch-up's own `catchUpOwing`, whose
-last activity was before today). It claims the day through the same `dream_asks` latch, so
+last activity was before today; a real zero is remembered for the rest of the day,
+`NOTHING_OWED_BEFORE_KEY`, so the read is once a day, not per prompt). It claims the day through the same `dream_asks` latch, so
 racing sessions start one run; it says nothing to the model or the terminal and hands
 nothing back. `NIGHT_KIND_ENV` carries `catch-up:<reason>`; the run does its catch-up, then
 records `done` with the dream's and the reflection's children `skipped: <reason>` and

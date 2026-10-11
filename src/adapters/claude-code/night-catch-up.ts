@@ -142,16 +142,27 @@ export function catchUpOwing(plan: readonly HeldSession[], dataDir: string): Hel
  * to start the night for the catch-up alone when the dream is not due. A
  * session that ran past midnight counts from the day it last moved: one more
  * day, never a loss (it owes for `LAPSE_DAYS_OF_USE` days of use). Reads every
- * held session's words once, like the plan. Never throws: unread is none.
+ * held session's words once, like the plan (~30 ms on a store of the author's
+ * size, review of #426 — hence `NOTHING_OWED_BEFORE_KEY`). Never throws: null
+ * when it could not read.
  */
-export function owedBefore(c: Counterpart, date: string): number {
+export function owedBefore(c: Counterpart, date: string): number | null {
   try {
     const zone = c.store.zone();
     return catchUpOwing(writeUpPlan({ store: c.store, spans: c.spans }), c.store.dir).filter((h) => calendarDate(h.clockFrom, zone) < date).length;
   } catch {
-    return 0;
+    return null;
   }
 }
+
+/**
+ * THE DAY NOTHING WAS OWED FROM AN EARLIER DAY (review of #426): the store's
+ * calendar date on which `owedBefore` last read a real zero. Within one day
+ * the earlier days' debt only shrinks — a session's last activity moves only
+ * later, and write-ups only take sessions away — so the hook asks once a day,
+ * not at every prompt. A meta row, no schema.
+ */
+export const NOTHING_OWED_BEFORE_KEY = "night.nothing-owed-before";
 
 /**
  * WHAT ONE BATCH WRITES UP, decided and nothing written. Every session owing a

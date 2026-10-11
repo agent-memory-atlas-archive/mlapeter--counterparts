@@ -28,6 +28,7 @@ import type { Io } from "../src/adapters/cli/index.js";
 import {
   CATCH_UP_RUN_PREFIX,
   CATCH_UP_TOOLS,
+  NOTHING_OWED_BEFORE_KEY,
   catchUpOf,
   catchUpRunner,
   catchUpWords,
@@ -1362,6 +1363,27 @@ describe("the night starts when write-ups from an earlier day are owed, even whe
     prompt(a, "day2-2");
     expect(nightPlans()).toHaveLength(0);
     expect(a.counterpart.store.dreamAsk(TODAY())).toBeUndefined();
+  });
+
+  test("review of #426: a day that read nothing owed from an earlier day remembers it — the held sessions are read once that day, not at every prompt — and the next day reads again", () => {
+    const a = hooksAt();
+    const c = a.counterpart;
+    saved(c, 2);
+    lived("today-1", proj, { at: Math.max(midnight() + MIN, Date.now() - 2 * HOUR) });
+    prompt(a, "day2-1");
+    expect(nightPlans()).toHaveLength(0);
+    expect(c.store.getMeta(NOTHING_OWED_BEFORE_KEY)).toBe(TODAY());
+    // Pinned trade-off: an earlier day's debt that turns up later the same day
+    // (it cannot, short of a late capture) waits for tomorrow — 14 days of use
+    // to lapse, so nothing is lost.
+    lived("day1-late", other);
+    expect(owes("day1-late")).toBe(true);
+    prompt(a, "day2-2");
+    expect(nightPlans()).toHaveLength(0);
+    // The next calendar day reads again, and today's session is now owed from an earlier day.
+    prompt(a, "day3-1", { at: addDays(TODAY(), 1) });
+    expect(nightPlans()).toHaveLength(1);
+    expect(nightPlans()[0]?.env[NIGHT_KIND_ENV]).toMatch(/^catch-up:/);
   });
 
   test("dreaming `ask`: no night starts, and the next session's pointer is how it gets written up, as before", () => {

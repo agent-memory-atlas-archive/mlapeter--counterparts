@@ -86,7 +86,7 @@ import { SESSION_NOTICE_BUDGET_MS, checkoutIsGraded, doctorFindings, noticeMessa
 import type { CheckoutReading } from "./doctor.js";
 import { primacy } from "./primacy.js";
 import { nightRowTimeoutMs, planNightRunner } from "./night-run.js";
-import { catchUpOf, catchUpWords, owedBefore } from "./night-catch-up.js";
+import { NOTHING_OWED_BEFORE_KEY, catchUpOf, catchUpWords, owedBefore } from "./night-catch-up.js";
 import type { NightKind } from "./night-run.js";
 import { spawnDetached } from "../spawn.js";
 import type { SpawnOutcome } from "../spawn.js";
@@ -1162,7 +1162,9 @@ export class ClaudeCodeAdapter extends Lifecycle {
    * pointer is retired under `auto`, no write-up either. The dream's side is
    * `Dreams#catchUpOffer` (the day unclaimed, no run under way); what is owed
    * is the catch-up's own reading (`night-catch-up.ts#owedBefore`), asked
-   * only after that says yes — it reads every held session's words. Claimed
+   * only after that says yes — it reads every held session's words, so a real
+   * zero is remembered for the rest of the day (`NOTHING_OWED_BEFORE_KEY`,
+   * review of #426: ~30 ms a prompt on a real-sized store otherwise). Claimed
    * through the day's one latch (`claimOffer`), so two sessions racing start
    * one run, and a day the catch-up took starts no second run except through
    * the ordinary relaunch, once the dream is due. A run that cannot start
@@ -1175,8 +1177,14 @@ export class ClaudeCodeAdapter extends Lifecycle {
       const dreams = this.counterpart.dreams;
       const offer = dreams.catchUpOffer({ at: input.at, session: input.sessionId });
       if (offer === null) return false;
+      const store = this.counterpart.store;
+      if (store.getMeta(NOTHING_OWED_BEFORE_KEY) === input.at) return false;
       const owed = owedBefore(this.counterpart, input.at);
-      if (owed === 0) return false;
+      if (owed === null) return false;
+      if (owed === 0) {
+        store.setMeta(NOTHING_OWED_BEFORE_KEY, input.at);
+        return false;
+      }
       if (!dreams.claimOffer(offer)) return false;
       const started = this.startNightRun(input, offer);
       this.emit("adapter.night.catch-up-only", { started, owed, dream: offer.dreamSkipped ?? null });

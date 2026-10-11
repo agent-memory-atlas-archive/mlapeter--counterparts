@@ -36,8 +36,13 @@
   the existing `auto` fallback ask, as it did before this change. Why: under `auto` nothing
   should turn into an ask because of a run that never tried to dream; the builder's version
   showed "I couldn't start dreaming on my own" for a catch-up that failed.
-- Decided by the night-owed builder, 2026-10-11, lightly held: no per-day memo for the "is
-  anything owed" read. Under `auto`, on a day when the dream isn't due and nothing has
-  claimed the day, every prompt reads the held sessions once (the same read SessionStart's
-  pointer did under `ask`). Why: guards loose-first; add a meta memo if it ever shows up in
-  timings.
+- Decided by the #426 reviewer, 2026-10-11, lightly held (replaces the builder's "no
+  per-day memo"): the "is anything owed from an earlier day" read is remembered per
+  calendar day. When it reads a real zero, the date goes in meta
+  (`night.nothing-owed-before`) and the rest of that day's prompts skip the read; a read
+  that fails is not remembered. Why: measured on a copy of the author's store (10-11
+  snapshot plus its spans), the read costs ~29 ms, at every prompt of an `auto` day whose
+  dream isn't due and whose day is unclaimed, on the latency-sensitive UserPromptSubmit
+  hook; with the memo it is a meta read (<0.01 ms). Within a day the earlier days' debt
+  only shrinks, so nothing is missed; a late capture that makes an earlier session owe
+  waits until the next day, well inside the 14 days of use before a stretch lapses.
