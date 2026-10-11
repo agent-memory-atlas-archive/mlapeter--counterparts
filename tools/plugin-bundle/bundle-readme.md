@@ -39,9 +39,22 @@ down, so the memory is never wired twice.
 ## What it runs, sends and fetches
 
 Counterparts runs on your computer. Its hooks read the transcript Claude Code keeps for
-each session and store memories in `~/.counterparts`, one SQLite file you can read, export
-or delete. Counterparts itself sends nothing anywhere: no accounts, no API keys, no
-telemetry.
+each session and store memories in the `~/.counterparts` folder. Counterparts itself sends
+nothing anywhere: no accounts, no API keys, no telemetry. The one exception is your own
+Claude: memories, and the turns being written up, go into the sessions you run, and into
+the background `claude -p` run if you turn dreaming to `auto` (below).
+
+**What it keeps of your conversations.** The hooks keep the text of each turn (your
+prompt and Claude's reply) in `~/.counterparts/store/spans/`, so the session can be
+written up as memories, at the session's end, by a later session, or by the nightly run.
+That text is deleted 7 days after the session ends; a session not yet written up keeps
+its text until it is. The last 14 daily backups in `~/.counterparts/snapshots/` hold
+copies of it too. It never leaves your computer except as above.
+
+**Turning it off.** In a folder it hasn't been told about, Counterparts remembers, and the
+first session there asks whether it should. Telling Claude "not here" (or "just read", or
+"pause this") sets that folder; in a folder set off, the hooks keep nothing. To delete
+everything, remove `~/.counterparts`.
 
 It fetches two things, both at install time or once:
 
