@@ -196,6 +196,43 @@ describe("the default floor by what a memory is about (01 C2)", () => {
     expect(s.counterpart.store.coreEvents({ memoryId: String(changed["id"]), action: "about" })).toHaveLength(0);
   });
 
+  test("review of #400: `about: null` inherits; a held update inherits nothing; `corrected` and a `session_end` entry inherit, with no re-label", async () => {
+    const s = server();
+    const store = s.counterpart.store;
+    const write = async (args: Record<string, unknown>): Promise<Record<string, unknown>> => payload(await s.call("remember", args));
+    const claim = (id: unknown) => store.physicsOf(String(id)).salience.claimed ?? null;
+    // Null is the same as absent.
+    const sister = await write({ text: "Their sister lives in Lisbon and teaches piano.", about: "owner" });
+    const moved = await write({ text: "Their sister lives in Porto now and teaches piano.", updates: String(sister["id"]), about: null });
+    expect(store.row(String(moved["id"]))?.about).toBe("owner");
+    expect(claim(moved["id"])).toBe(0.4);
+    expect(moved["about"]).toEqual({ stored: true, mark: "owner", carriedFrom: sister["id"] });
+    // A held update (unrelated words, `changed`) has no target: nothing carried, the unmarked default.
+    const father = await write({ text: "Their father fished cod off the Grand Banks for thirty years.", about: "owner" });
+    const unrelated = await write({ text: "The deploy script needs a force flag on the staging servers.", updates: String(father["id"]), how: "changed" });
+    expect(unrelated["settled"]).toMatchObject({ ok: false, held: true });
+    expect(store.row(String(unrelated["id"]))?.about ?? null).toBeNull();
+    expect(claim(unrelated["id"])).toBe(0.25);
+    expect(unrelated["about"]).toBeUndefined();
+    // `corrected`: inherited at birth, no `about` event on the new row.
+    const dog = await write({ text: "Their dog is a black lab called Juniper.", about: "owner" });
+    const fixed = await write({ text: "Their dog is a black lab called Juno, not Juniper.", updates: String(dog["id"]), how: "corrected" });
+    expect(store.row(String(fixed["id"]))).toMatchObject({ about: "owner", about_by: "writer" });
+    expect(claim(fixed["id"])).toBe(0.4);
+    expect(store.coreEvents({ memoryId: String(fixed["id"]), action: "about" })).toHaveLength(0);
+    // A `session_end` entry: inherits and says so; a sent mark wins there too.
+    const bakery = await write({ text: "Their favourite bakery is on Agricola Street.", about: "us" });
+    const ended = payload(await s.call("session_end", { session: "sess_g1c", memories: [
+      { content: "Their favourite bakery is on Agricola Street, the one with the blue door.", updates: String(bakery["id"]) },
+      { content: "Their favourite bakery is on Agricola Street, open since 1990.", updates: String(bakery["id"]), about: "world" },
+    ] }));
+    const [kept, sent] = ended["outcomes"] as Record<string, unknown>[];
+    expect(kept).toMatchObject({ stored: true, about: { stored: true, mark: "us", carriedFrom: bakery["id"] } });
+    expect(claim(kept?.["id"])).toBe(0.4);
+    expect(sent).toMatchObject({ stored: true, about: { stored: true, mark: "world" } });
+    expect(store.row(String(sent?.["id"]))?.about).toBe("world");
+  });
+
   test("a revision through `submitJot` reads the same way, the mark at birth (no re-label recorded)", async () => {
     const c = Counterpart.open({ dir, owner: true });
     open.push(c);
