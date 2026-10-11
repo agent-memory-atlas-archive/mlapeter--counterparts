@@ -280,7 +280,7 @@ describe('the feed', () => {
     // counts only: a look-up, a link flush, a flagged pair
     const counted = [
       ev(502, 'mcp.recall', '4 memories were opened in full, by name.', 1),
-      ev(503, 'associate.flush', '2 pairs of memories that were used together got more connected.', 1, { rows: '4' }),
+      ev(503, 'associate.flush', '2 pairs of memories that were used together got more connected.', 1, { rows: '4', deposited: '2' }),
       ev(504, 'contradiction.flagged', 'A dream flagged two memories that disagree.', 1, {}, 'ctr_y'),
     ]
     expect(mechFirings(counted, 'retrieval')).toEqual([])
@@ -396,11 +396,12 @@ describe('the feed', () => {
     const reminder = { seq: 10, at: at(1), name: 'prospective.plain', text: 'A reminder was said.', detail: [] }
     expect(classify(reminder, SESSION, at(30))?.who).toBe('here')
     // A flush names no session (live keys, 2026-10-10: reason, day, dayFrom, claims, passes, pairs,
-    // rows, blocked, evicted, swept, dropped, pendingDropped, corrupt, stuck, oldestMs, and a
-    // `contiguity` object whose `sessions` is a count), so it is placed by time like the others.
+    // rows, blocked, evicted, swept, dropped, pendingDropped, corrupt, stuck, oldestMs, a
+    // `contiguity` object whose `sessions` is a count, and since 2026-10-11 `deposited`, the
+    // links laid), so it is placed by time like the others.
     const flush = (minutesAgo: number) => ({
       seq: 11, at: at(minutesAgo), name: 'associate.flush', text: '2 pairs got more connected.',
-      detail: [{ key: 'reason', value: 'flushed' }, { key: 'rows', value: '4' }, { key: 'contiguity', value: '{"reason":"buffered","sessions":1}' }],
+      detail: [{ key: 'reason', value: 'flushed' }, { key: 'rows', value: '4' }, { key: 'deposited', value: '2' }, { key: 'contiguity', value: '{"reason":"buffered","sessions":1}' }],
     })
     expect(classify(flush(1), SESSION, at(30))?.who).toBe('here')
     expect(classify(flush(60), SESSION, at(30))?.who).toBe('other')

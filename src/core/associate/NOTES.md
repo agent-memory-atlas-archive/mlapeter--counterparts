@@ -520,3 +520,16 @@ evaporation can do it.
   carry its links today and its undo brings the memory back — sweeping it would drop them.
   That is the reconsolidation lane's to carry first. Counted as `sweptArchived` on the
   boundary's row (part of `swept`).
+- **Honest evidence** (item 7, review 06 C6, D7). "Links made" was `sum(associate.flush.rows)`,
+  which counts both directions and every sibling a touched node's decay rewrote. Both
+  `associate.flush` rows now carry `deposited` — pairs that landed as a link (co-use pairs
+  less blocked and dropped; at the boundary, contiguity landed + write-time landed + any
+  in-process co-use) — and the proof sums that, plus `dream.begun`'s `replayLinks`. A
+  second proof, **links reached recall**: `recall.decision` carries `linksReached` =
+  pointers shown + candidates a hop LIFTED into the cut (in it only because of the hop:
+  `Candidate.lifted`, `SpreadStats.lifted` / `liftedShown`) and then shown. The table
+  marks it `vital`: links laid with none reaching recall in the window is *starved* — amber
+  on the dashboard ("N links laid …, but no memory a link brought to mind"), idle in the
+  console — not green. Rows written before this carry no `deposited`, so for the first
+  week after install the count starts from zero. The sidebar mod's copy of the table
+  (`hooks/sidebar/hooks/feed.ts`) follows.

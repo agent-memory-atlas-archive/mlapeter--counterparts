@@ -52,6 +52,7 @@ import type { PlainDue } from "./prospective/index.js";
 import {
   ASKED_KIND,
   ASKED_MAX,
+  askedAt,
   askedTurn,
   Recall,
   isConfidential,
@@ -1750,6 +1751,8 @@ export const RECALL_DECISION_FIELDS = [
   // Association build 1 (2026-09-28): what spreading did, and the cut's count.
   "spread",
   "dropped",
+  // Group 4 (2026-10-11): shown memories a link put there (pointers + lifted).
+  "linksReached",
 ] as const;
 
 export type SurfaceSetField = (typeof RECALL_DECISION_FIELDS)[number];
@@ -1834,6 +1837,11 @@ function recallDecisionRecord(
     // a turn it did not run.
     spread: d.spread,
     dropped: d.dropped,
+    // LINKS THAT REACHED RECALL (2026-10-11, Group 4 item 7; review 06 C6):
+    // memories SHOWN this turn that a link put there — quiet pointers, and
+    // candidates a hop lifted into the cut. Top-level, so the dashboard's
+    // proof can sum it.
+    linksReached: (d.spread?.pointersShown ?? 0) + (d.spread?.liftedShown ?? 0),
   } satisfies Record<SurfaceSetField, unknown>;
   return surfaceSet;
 }
@@ -3991,7 +3999,7 @@ export class Counterpart {
         refuse(errCode(err));
       }
     }
-    if (members.length >= 2) linked = this.publishCoactivation(members, day);
+    if (members.length > 1) linked = this.publishCoactivation(members, day);
     this.emit("counterpart.drewOn", sessionId, {
       day,
       named: ids.length,
@@ -4269,6 +4277,10 @@ export class Counterpart {
       corrupt: out.corrupt,
       stuck: out.stuck,
       oldestMs: out.oldestMs,
+      // LINKS LAID (2026-10-11, Group 4 item 7): co-use pairs that landed —
+      // not `rows`, which counts both directions and every sibling a touched
+      // node's decay rewrote. What the dashboard's "links made" sums.
+      deposited: Math.max(0, out.pairs - out.blocked - out.dropped),
       ...rowIds(linked),
       // The APPLYING session (2026-10-11): the boundary whose worker carried
       // these claims. A claim may hold lines several sessions credited.
@@ -5383,7 +5395,7 @@ export class Counterpart {
             .map(([id]) => id);
           let asked: { ref: string; at: number }[] = [];
           try {
-            asked = this.store.gateRecords(m.session, ASKED_KIND).map((r) => ({ ref: r.ref, at: r.turn * 1000 }));
+            asked = this.store.gateRecords(m.session, ASKED_KIND).map((r) => ({ ref: r.ref, at: askedAt(r.turn) }));
           } catch {
             asked = [];
           }
@@ -5515,6 +5527,14 @@ export class Counterpart {
         renormalizedNodes: contiguity.renormalizedNodes ?? 0,
       },
       ...(atWrite === undefined ? {} : { atWrite: { ...atWrite } }),
+      // LINKS LAID (2026-10-11, Group 4 item 7): pairs that landed as a link —
+      // contiguity's, the write-time links', and any co-use this process
+      // buffered itself — not `rows` (both directions, plus every sibling a
+      // touched node's decay rewrote).
+      deposited:
+        (contiguity.landed ?? 0) +
+        (atWrite?.landed ?? 0) +
+        (edges.reason === "flushed" ? Math.max(0, edges.pairs - contiguity.buffered - edges.blocked) : 0),
     };
     if (edges.code !== undefined) data["error"] = edges.code;
     try {

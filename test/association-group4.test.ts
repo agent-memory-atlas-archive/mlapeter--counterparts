@@ -15,7 +15,9 @@ import { Counterpart } from "../src/core/counterpart.js";
 import { TUNABLES as ASSOCIATE_TUNABLES, TERMINAL_ARCHIVE_REASONS, planAtWrite } from "../src/core/associate/index.js";
 import { DREAM_MERGE_REASON } from "../src/core/dream/index.js";
 import { EPISODE_REGROWN_REASON } from "../src/core/leaving.js";
-import { ASKED_KIND, askedTurn, freshGateState, loadGateState, saveGateState } from "../src/core/recall/index.js";
+import { ASKED_KIND, activate, askedTurn, freshGateState, loadGateState, saveGateState, withTunables as withRecallTunables } from "../src/core/recall/index.js";
+import { mechanismEvidence } from "../src/adapters/mechanism-evidence.js";
+import { MECHANISM_DAYS, lightOf } from "../src/adapters/dashboard/web/views/mechanisms.js";
 import type { GateState } from "../src/core/recall/index.js";
 import { DREAM_TUNABLES } from "../src/core/dream/tunables.js";
 import { findable } from "./store-fixture.js";
@@ -321,5 +323,78 @@ describe("5. rows with an endpoint archived for good are swept (review 06 C3)", 
     expect(c.store.edgesFrom(a)).toEqual([]);
     expect(c.dreams.undo(begun.bundle.dream).ok).toBe(true);
     for (const x of [a, b]) expect(c.associate.linked(x, friend)).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 7. Honest evidence: links laid, and links that reached recall
+// ═══════════════════════════════════════════════════════════════════════════
+describe("7. honest evidence (review 06 C6)", () => {
+  test("a candidate a hop lifted into the cut is marked and counted; one already in the cut is not", async () => {
+    const clock = { now: Date.UTC(2026, 8, 1, 9) };
+    const c = brainAt(clock);
+    c.store.advanceClock("2026-09-01");
+    // Ordinary background, so rarity can discriminate (recall §9 G4).
+    for (const body of [
+      "The garage door opener needs a new battery soon.",
+      "The library closes early on Sundays now.",
+      "The kitchen tap drips when the pressure is high.",
+      "The bus route changed and adds ten minutes.",
+      "Planted three tomato seedlings in the planter.",
+      "The printer jams on heavy paper stock.",
+    ]) memoryIn(c, "s0", body);
+    const ids = [
+      "The sourdough starter died after two weeks of neglect.",
+      "The sourdough starter died when the kitchen got too cold.",
+    ].map((body) => memoryIn(c, "s0", body));
+    const turn = { text: "my sourdough starter died", day: c.store.livedDay(), selfFelt: false, maxCandidates: 1, storeSize: 8 };
+    const t = withRecallTunables({ SPREAD_SEEDS: 0 });
+    const plain = activate(c.store, turn, t);
+    const kept = plain.candidates.map((x) => x.id);
+    expect(kept.length).toBe(1);
+    const outside = ids.find((id) => !kept.includes(id)) as string;
+    const hopped = activate(c.store, { ...turn, spread: () => ({ contributions: [{ id: outside, activation: 1_000 }] }) }, t);
+    // Lifted only if the capped hop out-ranks what the cut kept; then it is marked.
+    const lifted = hopped.candidates.find((x) => x.id === outside);
+    expect(lifted?.lifted).toBe(true);
+    expect(hopped.spread?.lifted).toBe(1);
+    // A candidate already in the cut that a hop raised is not "lifted".
+    const raisedInside = activate(c.store, { ...turn, spread: () => ({ contributions: [{ id: kept[0]!, activation: 0.001 }] }) }, t);
+    expect(raisedInside.candidates.some((x) => x.lifted === true)).toBe(false);
+  });
+
+  test("the decision row's linksReached is pointers shown plus lifted ones shown", () => {
+    const clock = { now: Date.UTC(2026, 8, 1, 9) };
+    const c = brainAt(clock);
+    c.store.advanceClock("2026-09-01");
+    memoryIn(c, "s0", "The ferry stops running an hour earlier once the clocks change.");
+    c.recallForTurn({ sessionId: "s1", text: "when does the ferry stop" });
+    const row = JSON.parse(c.store.eventLog({ name: "recall.decision" }).at(-1)?.payload ?? "{}") as Record<string, unknown>;
+    const spread = (row["spread"] ?? {}) as Record<string, number>;
+    expect(row["linksReached"]).toBe((spread["pointersShown"] ?? 0) + (spread["liftedShown"] ?? 0));
+  });
+
+  test("Association: links laid with none reaching recall is amber and says so; one that reached is green", () => {
+    const clock = { now: Date.UTC(2026, 8, 1, 9) };
+    const c = brainAt(clock);
+    for (let d = 1; d <= 9; d++) c.store.advanceClock(`2026-09-0${String(d)}`);
+    const day = c.store.livedDay();
+    // Rows rewritten are not links laid: `rows` alone proves nothing now.
+    c.store.appendEvent({ name: "associate.flush", day, payload: { rows: 40, deposited: 0 } });
+    const quiet = mechanismEvidence(c.store, { sinceDay: day - 6, today: day }).verdicts.find((v) => v.id === "association");
+    expect(quiet?.fired).toBe(false);
+    expect(quiet?.starved).toBeUndefined();
+    c.store.appendEvent({ name: "associate.flush", day, payload: { rows: 8, deposited: 3 } });
+    c.store.appendEvent({ name: "dream.begun", day, ref: "drm_x", payload: { replayLinks: 2 } });
+    const starved = mechanismEvidence(c.store, { sinceDay: day - 6, today: day }).verdicts.find((v) => v.id === "association")!;
+    expect(starved.fired).toBe(false);
+    expect(starved.starved).toBe("reached");
+    const amber = lightOf(starved);
+    expect(amber.status).toBe("amber");
+    expect(amber.evidence).toBe(`3 links laid, 2 faint links a dream's replay laid in the last ${String(MECHANISM_DAYS)} lived days, but no memory a link brought to mind.`);
+    c.store.appendEvent({ name: "recall.decision", day, ref: "s1", payload: { surfacedCount: 0, footnoteCount: 1, linksReached: 1 } });
+    const reached = mechanismEvidence(c.store, { sinceDay: day - 6, today: day }).verdicts.find((v) => v.id === "association")!;
+    expect(reached.fired).toBe(true);
+    expect(lightOf(reached).status).toBe("green");
   });
 });

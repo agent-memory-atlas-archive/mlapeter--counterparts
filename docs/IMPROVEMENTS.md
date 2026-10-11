@@ -640,6 +640,14 @@ were refined by b2+f8 at the review of #369, named where they were):
   owner can undo a settle, which un-archives it — sweeping would drop links that were never
   carried. `corrected` joins the list once its settle carries links (the reconsolidation
   lane's). `corrected` was 24 of the 1,159 inert rows on 10-10.
+- Decided by the Group 4 builder, 2026-10-11, lightly held (review 06 D7): Association's
+  light is amber when links were laid in the last 7 lived days and none reached recall (no
+  pointer shown, no hop-lifted candidate shown), green only when one did. "Links laid"
+  counts pairs that landed (`deposited`), not rows written. Why: the old light was green on
+  a count of rewrites while links put one memory in front of the model in 19 days. Expect
+  the owner's dashboard to show Association amber after this ships, until a link reaches
+  recall; the demo store is amber too. Rows from before have no `deposited`, so the count
+  starts at zero.
 
 ### Also noted
 

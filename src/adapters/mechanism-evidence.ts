@@ -88,6 +88,14 @@ export interface MechanismEvidence {
   /** For a mechanism that is not built: the one plain line shown instead. */
   readonly grey?: string;
   /**
+   * THE PROOF THAT SAYS IT DID ITS JOB (2026-10-11, Group 4 item 7; review 06
+   * C6, D7): the key of a proof that must count above zero for the mechanism
+   * to have fired at all. Its other proofs firing without it is STARVED — the
+   * work happened and changed nothing — which a surface shows as amber, not
+   * green (Association: links laid, none reached recall).
+   */
+  readonly vital?: string;
+  /**
    * WHAT THE MECHANISM IS HOLDING, when that decides whether it can fire at all
    * (prospective: dated memories). Zero, with nothing fired, means there is
    * truly nothing for it to do.
@@ -196,12 +204,22 @@ export const MECHANISM_EVIDENCE: readonly MechanismEvidence[] = [
     ],
   },
   {
-    // PARTLY (audit: built but starved): links form only between memories used
-    // in the same turn, and a hop only lifts what the turn already reached.
+    // PARTLY (audit: built but starved). Since 2026-10-11 (Group 4, review 06
+    // C6) the proofs are honest: LINKS LAID is pairs that landed as a link
+    // (`deposited`: co-use, contiguity, write-time links), not the rows a flush
+    // rewrote, plus the replay's faint trails; and LINKS REACHED RECALL is what
+    // a link put in front of the model (pointers shown, candidates a hop lifted
+    // into the cut and then shown). Links laid with none reaching recall in the
+    // window is amber (`vital`).
     id: "association",
     family: "retrieval",
     build: "partly",
-    proofs: [{ key: "links", event: "associate.flush", sum: "rows", says: ["link written", "links written"] }],
+    vital: "reached",
+    proofs: [
+      { key: "links", event: "associate.flush", sum: "deposited", says: ["link laid", "links laid"] },
+      { key: "replayed", event: "dream.begun", sum: "replayLinks", stands: dreamStands, says: ["faint link a dream's replay laid", "faint links a dream's replay laid"] },
+      { key: "reached", event: "recall.decision", sum: "linksReached", says: ["memory a link brought to mind", "memories links brought to mind"] },
+    ],
   },
   {
     // Built end to end since 2026-09-26 (#243, #247): a date on a note or a
@@ -378,6 +396,9 @@ export interface Verdict {
   readonly held: number | null;
   /** When it did not fire in the window: the newest lived day it ever did. */
   readonly lastFiredDay: number | null;
+  /** Set when its other proofs counted in the window and its `vital` one did
+   *  not: that proof's key. `fired` is false then. Absent otherwise. */
+  readonly starved?: string;
   readonly schedule: Schedule | null;
 }
 
@@ -508,7 +529,10 @@ export function mechanismEvidence(
         held = null;
       }
     }
-    const fired = parts.some((p) => p.count > 0);
+    const anyPart = parts.some((p) => p.count > 0);
+    const vitalCount = m.vital === undefined ? null : (parts.find((p) => p.key === m.vital)?.count ?? 0);
+    const starved = anyPart && vitalCount === 0 ? m.vital : undefined;
+    const fired = anyPart && starved === undefined;
     const events = backing
       .sort((a, b) => b.seq - a.seq)
       .slice(0, RECENT_IDS)
@@ -535,6 +559,7 @@ export function mechanismEvidence(
       held,
       lastFiredDay,
       schedule: m.schedule === undefined ? null : scheduleOf(store, m.schedule, window.today),
+      ...(starved === undefined ? {} : { starved }),
     };
   });
   return { verdicts, truncated };
