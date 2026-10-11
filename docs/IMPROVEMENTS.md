@@ -280,7 +280,18 @@ were refined by b2+f8 at the review of #369, named where they were):
   one out. Edge: an engaged credit lifted by an open frees its slot that turn.
 - Decided by the drewOn builder, 2026-10-11, lightly held: `drewOn` is credited whatever the
   rest of the call does (a refused chapter, `memories-required`), and rides out on every
-  answer; it is not read on the `writeUp` divert, which writes up another session.
+  answer, the `writeUp` divert's included (review of #385: it is read before the divert and
+  credited against the WRITING session's shown set, which is the one the guard reads). A
+  Desktop call that names no session (bound to the most recent live one) credits nothing and
+  says `session-unnamed`, as its handoff fields do: that session may be another chat's.
+- Decided by the reviewer of #385, 2026-10-11, lightly held: the saturating repetition arm's
+  `REP_SCALE_USES` joins the decay curve's signature (`sleep/decay.ts#curveSignature`), so the
+  first applied decay pass after this lands forgets every next-change day and walks the whole
+  store once, filing its band moves as `recurve`. Why: `rep()` no longer reads `REP_PER_USE`,
+  so the signature would otherwise be unchanged and the turn-down would trust next-change days
+  computed under the linear arm. Measured on a synthetic 20,000-row population (70% never
+  used): heights differ on ~2.7% of rows, bands move on ~0.04%, all down (3–8-use rows, whose
+  arm drops by up to 0.11); `self`/`person` (no repetition arm) never move.
 
 ### Also noted
 
