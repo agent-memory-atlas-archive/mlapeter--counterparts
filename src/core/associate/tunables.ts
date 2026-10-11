@@ -143,18 +143,28 @@ export interface AssociateTunables {
   // ── write-time links (Group 4, 2026-10-11) ───────────────────────────────
   /**
    * The weight a new memory's link to what was IN MIND when it was written
-   * starts at (`at-write.ts`; bench item 5): the memories recall showed its
-   * session in the last `WRITE_LINK_TURNS` turns, and what a deliberate
-   * question showed within `WRITE_LINK_ASKED_MS` of the write. Proposed
+   * starts at (`at-write.ts`; bench item 5): for a memory written in the
+   * moment (the jot door), the memories recall showed its session in the last
+   * `WRITE_LINK_TURNS` turns; for any memory, what a deliberate question
+   * showed within `WRITE_LINK_ASKED_MS` of the write, when that is on. Proposed
    * (`Associate.propose`), so room-only and never evicting. Half a co-use
    * because footnotes are often noise (G1b precision 0.17–0.33): a faint trail
    * that lives ~27 lived days unconfirmed and passes 0.6% of its node's
    * activation until use strengthens it. CAL, no ancestry.
    */
   WRITE_LINK_WEIGHT: number;
-  /** How many of the session's most recent recall turns count as "in mind". CAL. */
+  /** How many of the session's most recent recall turns count as "in mind"
+   *  for a memory written in the moment: 1, the write's own turn (reviewer of
+   *  #423, 2026-10-11: hand-read on the 10-11 copy, the own turn's showings
+   *  were 7 right, 4 unsure, 9 noise of 20; the two turns before it 2, 4, 14).
+   *  It was 3. CAL. */
   WRITE_LINK_TURNS: number;
-  /** A deliberate question's answer counts as in mind this long either side of the write. CAL. */
+  /** A deliberate question's answer counts as in mind this long either side
+   *  of the write; 0 is off. Off since the review of #423 (2026-10-11): what a
+   *  deliberate question returned near a write hand-read 0 right of 20 for
+   *  both doors (broad answers, chapter copies among them), and 0 of 20 even
+   *  counting only questions before the write and no chapters. It was 15
+   *  minutes. CAL. */
   WRITE_LINK_ASKED_MS: number;
   /** At most this many write-time links per new memory, the nearest in mind first. CAL. */
   WRITE_LINK_MAX: number;
@@ -185,8 +195,8 @@ export const TUNABLES: AssociateTunables = {
   CONTIGUITY_BATCH_MS: 60_000,
 
   WRITE_LINK_WEIGHT: 0.05,
-  WRITE_LINK_TURNS: 3,
-  WRITE_LINK_ASKED_MS: 15 * 60_000,
+  WRITE_LINK_TURNS: 1,
+  WRITE_LINK_ASKED_MS: 0,
   WRITE_LINK_MAX: 4,
 };
 

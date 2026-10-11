@@ -59,6 +59,26 @@ function memoryIn(c: Counterpart, session: string, body: string): string {
   return c.store.put({ type: "memory", kind: "fact", body, origin: { session } });
 }
 
+/** A memory written in the moment, through the jot door (the note tool). */
+async function jotIn(c: Counterpart, session: string, content: string): Promise<string> {
+  const out = await c.submitJot({ content, kind: "fact" }, { session, scope: "proj" });
+  expect(out.deposited).toBe(true);
+  return out.memoryId as string;
+}
+
+/** A memory written in a session's write-up (the session_end door). */
+async function writtenUpIn(c: Counterpart, session: string, content: string): Promise<string> {
+  const out = await c.submitSessionEnd({ content, kind: "fact" }, { session, scope: "proj" });
+  expect(out.deposited).toBe(true);
+  return out.memoryId as string;
+}
+
+/** Turn a write-time knob for one brain (no `open` option takes the associate's tunables). */
+function tune(c: Counterpart, over: Partial<typeof ASSOCIATE_TUNABLES>): void {
+  const a = c.associate as unknown as { tunables: typeof ASSOCIATE_TUNABLES };
+  a.tunables = { ...a.tunables, ...over };
+}
+
 /** Record `ids` as shown to `sessionId` on `turn`, as recall's own save would. */
 function shown(c: Counterpart, sessionId: string, turn: number, ids: readonly string[], over: Partial<GateState["surfaced"][string]> = {}): void {
   const prior = loadGateState(c.store, sessionId).state;
@@ -89,7 +109,7 @@ describe("2. write-time links to what was in mind (bench item 5)", () => {
     expect(planAtWrite([{ id: "solo", inMind: ["solo"] }], T).pairs).toEqual([]);
   });
 
-  test("the clinic pair (bench 73d42213): a memory written after recall showed an older one is linked to it, faintly", async () => {
+  test("the clinic pair (bench 73d42213): a memory written in the moment, after recall showed an older one, is linked to it, faintly", async () => {
     const clock = { now: Date.UTC(2026, 4, 20, 9) };
     const c = brainAt(clock);
     c.store.advanceClock("2026-05-20");
@@ -106,7 +126,7 @@ describe("2. write-time links to what was in mind (bench item 5)", () => {
     const out = c.recallForTurn({ sessionId: "conv-0530", text: "how long does the trip to the clinic take" });
     expect([...out.decision.surfaced, ...out.decision.footnotes]).toContain(left);
     clock.now += 60_000;
-    const took = memoryIn(c, "conv-0530", "It took two hours to get to the clinic last time.");
+    const took = await jotIn(c, "conv-0530", "It took two hours to get to the clinic last time.");
     const report = await c.sessionEnd({ date: "2026-05-30", budgetBytes: 9000, session: "conv-0530" });
 
     expect(report.contiguity.atWrite?.reason).toBe("linked");
@@ -120,12 +140,33 @@ describe("2. write-time links to what was in mind (bench item 5)", () => {
     expect(last.atWrite?.["landed"]).toBe(report.contiguity.atWrite?.landed);
   });
 
-  test("only the session's last WRITE_LINK_TURNS turns are in mind; an ambiguous handle and another session's showings are not", async () => {
+  test("the same memory written in the session's write-up is linked to nothing: what the last turns showed was not in mind when it happened", async () => {
+    const clock = { now: Date.UTC(2026, 4, 20, 9) };
+    const c = brainAt(clock);
+    c.store.advanceClock("2026-05-20");
+    const left = memoryIn(c, "conv-0520", "I left home at 7 AM on Monday to get to the clinic appointment.");
+    await c.sessionEnd({ date: "2026-05-20", budgetBytes: 9000, session: "conv-0520" });
+    clock.now += 10 * DAY;
+    c.store.advanceClock("2026-05-30");
+    const out = c.recallForTurn({ sessionId: "conv-0530", text: "how long does the trip to the clinic take" });
+    expect([...out.decision.surfaced, ...out.decision.footnotes]).toContain(left);
+    clock.now += 60_000;
+    const took = await writtenUpIn(c, "conv-0530", "It took two hours to get to the clinic last time.");
+    // A chapter copy or any row without a door reads the same way.
+    const copied = memoryIn(c, "conv-0530", "A row with no deposit behind it, like a chapter copy.");
+    const report = await c.sessionEnd({ date: "2026-05-30", budgetBytes: 9000, session: "conv-0530" });
+    expect(report.contiguity.atWrite).toBeUndefined();
+    expect(c.associate.linked(took, left)).toBe(false);
+    expect(c.associate.linked(copied, left)).toBe(false);
+  });
+
+  test("only the write's own turn is in mind (WRITE_LINK_TURNS); an ambiguous handle and another session's showings are not", async () => {
+    expect(T.WRITE_LINK_TURNS).toBe(1);
     const clock = { now: Date.UTC(2026, 8, 1, 9) };
     const c = brainAt(clock);
     c.store.advanceClock("2026-09-01");
-    const old = memoryIn(c, "s0", "Shown long ago in this session.");
-    const recent = memoryIn(c, "s0", "Shown on the last turn.");
+    const old = memoryIn(c, "s0", "Shown on the turn before.");
+    const recent = memoryIn(c, "s0", "Shown on the write's own turn.");
     const ambiguous = memoryIn(c, "s0", "Shown only through an ambiguous handle.");
     const elsewhere = memoryIn(c, "s0", "Shown to another session.");
     await c.sessionEnd({ date: "2026-09-01", budgetBytes: 9000 });
@@ -135,31 +176,41 @@ describe("2. write-time links to what was in mind (bench item 5)", () => {
     shown(c, "s1", 1 + T.WRITE_LINK_TURNS, [recent]);
     shown(c, "s1", 1 + T.WRITE_LINK_TURNS, [ambiguous], { trains: false });
     shown(c, "s2", 1 + T.WRITE_LINK_TURNS, [elsewhere]);
-    const fresh = memoryIn(c, "s1", "Written at the end of the session.");
+    const fresh = await jotIn(c, "s1", "Noted in the moment, on that turn.");
     const report = await c.sessionEnd({ date: "2026-09-02", budgetBytes: 9000 });
     expect(report.contiguity.atWrite?.pairs).toBe(1);
     expect(c.associate.linked(fresh, recent)).toBe(true);
     for (const other of [old, ambiguous, elsewhere]) expect(c.associate.linked(fresh, other)).toBe(false);
   });
 
-  test("what a deliberate question showed near the write is in mind, first; one asked long before is not", async () => {
-    const clock = { now: Date.UTC(2026, 8, 1, 9) };
-    const c = brainAt(clock);
-    c.store.advanceClock("2026-09-01");
-    const asked = memoryIn(c, "s0", "The answer to a deliberate question.");
-    const stale = memoryIn(c, "s0", "Asked about hours before.");
-    await c.sessionEnd({ date: "2026-09-01", budgetBytes: 9000 });
-    clock.now += DAY;
-    c.store.advanceClock("2026-09-02");
-    const day = c.store.livedDay();
-    c.store.setGateRecords([
-      { sessionId: "s1", kind: ASKED_KIND, ref: stale, turn: askedTurn(clock.now - 3 * 60 * 60_000), lastDay: day, tier: "asked", trains: true },
-      { sessionId: "s1", kind: ASKED_KIND, ref: asked, turn: askedTurn(clock.now - 60_000), lastDay: day, tier: "asked", trains: true },
-    ]);
-    const fresh = memoryIn(c, "s1", "Written just after asking.");
-    await c.sessionEnd({ date: "2026-09-02", budgetBytes: 9000 });
-    expect(c.associate.linked(fresh, asked)).toBe(true);
-    expect(c.associate.linked(fresh, stale)).toBe(false);
+  test("a deliberate question's answer is not in mind by default; with WRITE_LINK_ASKED_MS on, a near one is, first, for any door", async () => {
+    expect(T.WRITE_LINK_ASKED_MS).toBe(0);
+    for (const on of [false, true]) {
+      const clock = { now: Date.UTC(2026, 8, 1, 9) };
+      const c = brainAt(clock);
+      if (on) tune(c, { WRITE_LINK_ASKED_MS: 15 * 60_000 });
+      c.store.advanceClock("2026-09-01");
+      const asked = memoryIn(c, `s0-${String(on)}`, "The answer to a deliberate question.");
+      const stale = memoryIn(c, `s0-${String(on)}`, "Asked about hours before.");
+      await c.sessionEnd({ date: "2026-09-01", budgetBytes: 9000 });
+      clock.now += DAY;
+      c.store.advanceClock("2026-09-02");
+      const day = c.store.livedDay();
+      const s = `s1-${String(on)}`;
+      c.store.setGateRecords([
+        { sessionId: s, kind: ASKED_KIND, ref: stale, turn: askedTurn(clock.now - 3 * 60 * 60_000), lastDay: day, tier: "asked", trains: true },
+        { sessionId: s, kind: ASKED_KIND, ref: asked, turn: askedTurn(clock.now - 60_000), lastDay: day, tier: "asked", trains: true },
+      ]);
+      const fresh = await writtenUpIn(c, s, `Written up just after asking, ${on ? "with" : "without"} the knob.`);
+      await c.sessionEnd({ date: "2026-09-02", budgetBytes: 9000 });
+      expect(c.associate.linked(fresh, asked)).toBe(on);
+      expect(c.associate.linked(fresh, stale)).toBe(false);
+      c.close();
+      brains.splice(0);
+      rmSync(dir, { recursive: true, force: true });
+      dir = mkdtempSync(join(tmpdir(), "counterparts-group4-"));
+      process.env[ENV] = dir;
+    }
   });
 
   test("room-only: a full node refuses the faint link and loses nothing it learned", async () => {
@@ -175,7 +226,7 @@ describe("2. write-time links to what was in mind (bench item 5)", () => {
       { src: o, dst: hub, weight: 0.1, day },
     ]));
     shown(c, "s1", 1, [hub]);
-    const fresh = memoryIn(c, "s1", "Written while the hub was in mind.");
+    const fresh = await jotIn(c, "s1", "Noted while the hub was in mind.");
     const report = await c.sessionEnd({ date: "2026-09-01", budgetBytes: 9000 });
     expect(report.contiguity.atWrite?.noRoom).toBe(1);
     expect(c.associate.linked(fresh, hub)).toBe(false);
@@ -189,7 +240,7 @@ describe("2. write-time links to what was in mind (bench item 5)", () => {
     const before = memoryIn(owner, "s0", "Shown before the write.");
     await owner.sessionEnd({ date: "2026-09-01", budgetBytes: 9000 });
     shown(owner, "s1", 1, [before]);
-    memoryIn(owner, "s1", "Written while it was in mind.");
+    await jotIn(owner, "s1", "Noted while it was in mind.");
     owner.close();
     brains.splice(0);
     const watcher = brainAt(clock, { observer: true });

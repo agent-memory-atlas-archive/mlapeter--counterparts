@@ -5356,25 +5356,29 @@ export class Counterpart {
 
   /**
    * WRITE-TIME LINKS for the memories one contiguity pass read (Group 4 item
-   * 2, 2026-10-11). Per new memory, what was in mind when it was written,
-   * nearest first: what a deliberate question showed its session within
-   * `WRITE_LINK_ASKED_MS` of the write (newest first), then what recall showed
-   * the session in its last `WRITE_LINK_TURNS` turns (newest turn first, the
-   * loud one before footnotes). A memory shown only through an ambiguous
-   * handle (`trains: false`, recall §9 G5) and a handoff are not in mind.
+   * 2, 2026-10-11; tightened by the reviewer of #423). Only a memory written
+   * IN THE MOMENT, through the jot door (`submitJot`, the note tool), has
+   * something in mind: what recall showed its session on the write's own turn
+   * (the last `WRITE_LINK_TURNS` turns at the boundary, which runs at every
+   * reply's end), the loud one before footnotes. A memory written in a
+   * session's write-up batch, by the night catch-up, or copied from a chapter
+   * gets none: what the session's last turns showed is not what each of those
+   * memories was about. A memory shown only through an ambiguous handle
+   * (`trains: false`, recall §9 G5) and a handoff are not in mind. What a
+   * deliberate question showed within `WRITE_LINK_ASKED_MS` of the write
+   * joins first, for any door, when that is above 0 (0, off, by default).
    * `planAtWrite` keeps the first `WRITE_LINK_MAX`; `Associate.propose` lands
    * them at `WRITE_LINK_WEIGHT`, room-only.
    *
-   * The window is the session's recent turns AT THE BOUNDARY, which is the
-   * write's own turn for a memory made mid-session (the boundary runs at every
-   * reply's end) and the session's last turns for a write-up at its close.
    * Null when no memory had anything in mind. Fail-open: a throw is a `failed`
    * pass, and contiguity goes on.
    */
-  private linkAtWrite(fresh: readonly { id: string; session: string; at: number }[], day: number): AtWritePass | null {
+  private linkAtWrite(fresh: readonly { id: string; session: string; at: number; bornDay: number }[], day: number): AtWritePass | null {
     const t = this.associate.tunables;
     try {
       const memories: { id: string; inMind: string[] }[] = [];
+      const jots = this.jotsAmong(fresh);
+      const asking = t.WRITE_LINK_ASKED_MS > 0;
       const bySession = new Map<string, { recent: string[]; asked: { ref: string; at: number }[] }>();
       const handoff = new Map<string, boolean>();
       const notHandoff = (id: string): boolean => {
@@ -5386,6 +5390,8 @@ export class Counterpart {
         return !h;
       };
       for (const m of fresh) {
+        const jot = jots.has(m.id);
+        if (!jot && !asking) continue;
         let mind = bySession.get(m.session);
         if (mind === undefined) {
           const state = this.recall.gateState(m.session);
@@ -5394,10 +5400,12 @@ export class Counterpart {
             .sort((x, y) => y[1].turn - x[1].turn || (x[1].tier === y[1].tier ? 0 : x[1].tier === "surfaced" ? -1 : 1) || (x[0] < y[0] ? -1 : 1))
             .map(([id]) => id);
           let asked: { ref: string; at: number }[] = [];
-          try {
-            asked = this.store.gateRecords(m.session, ASKED_KIND).map((r) => ({ ref: r.ref, at: askedAt(r.turn) }));
-          } catch {
-            asked = [];
+          if (asking) {
+            try {
+              asked = this.store.gateRecords(m.session, ASKED_KIND).map((r) => ({ ref: r.ref, at: askedAt(r.turn) }));
+            } catch {
+              asked = [];
+            }
           }
           mind = { recent, asked };
           bySession.set(m.session, mind);
@@ -5406,7 +5414,7 @@ export class Counterpart {
           .filter((r) => Math.abs(r.at - m.at) <= t.WRITE_LINK_ASKED_MS)
           .sort((x, y) => y.at - x.at || (x.ref < y.ref ? -1 : 1))
           .map((r) => r.ref);
-        const inMind = [...new Set([...near, ...mind.recent])].filter(notHandoff);
+        const inMind = [...new Set([...near, ...(jot ? mind.recent : [])])].filter(notHandoff);
         if (inMind.length > 0) memories.push({ id: m.id, inMind });
       }
       const plan = planAtWrite(memories, t);
@@ -5427,6 +5435,29 @@ export class Counterpart {
       this.emit("counterpart.associate.atwrite.failed", undefined, { code });
       return { reason: "failed", memories: 0, pairs: 0, landed: 0, noRoom: 0, blocked: 0, frozen: 0, code };
     }
+  }
+
+  /**
+   * Which of these new memories came through the JOT door (reviewer of #423,
+   * 2026-10-11), read from the gate's deposit rows (`GATE_DEPOSIT_EVENT`: its
+   * `source` and `memoryId`), which a deposit writes as it mints. A memory
+   * with no such row (a chapter copy, a row whose ledger write failed) reads
+   * as not a jot, so it gets no write-time window: the safe direction.
+   */
+  private jotsAmong(fresh: readonly { id: string; bornDay: number }[]): Set<string> {
+    const out = new Set<string>();
+    if (fresh.length === 0) return out;
+    const want = new Set(fresh.map((m) => m.id));
+    const since = fresh.reduce((d, m) => Math.min(d, m.bornDay), Number.POSITIVE_INFINITY);
+    for (const row of this.store.eventLog({ name: GATE_DEPOSIT_EVENT, sinceDay: since, order: "desc", limit: 10_000 })) {
+      try {
+        const p = JSON.parse(row.payload ?? "{}") as { source?: unknown; memoryId?: unknown };
+        if (p.source === "jot" && typeof p.memoryId === "string" && want.has(p.memoryId)) out.add(p.memoryId);
+      } catch {
+        /* an unreadable row names no jot */
+      }
+    }
+    return out;
   }
 
   /**

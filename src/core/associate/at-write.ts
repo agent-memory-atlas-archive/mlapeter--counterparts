@@ -1,8 +1,10 @@
 /**
  * Write-time links — a new memory gets a faint link to what was in mind when
  * it was written (Group 4 item 2, 2026-10-11; bench item 5). A PURE planner:
- * each new memory with the memories recall showed its session in the last few
- * turns in, proposed pairs out. It reads no store and writes nothing; the
+ * each new memory with what was in mind when it was written in (for a memory
+ * written in the moment, what recall showed its session on the write's own
+ * turn; a write-up's memories have nothing, `Counterpart#linkAtWrite`),
+ * proposed pairs out. It reads no store and writes nothing; the
  * boundary hands the pairs to `Associate.propose` at `WRITE_LINK_WEIGHT`, so
  * they land only where there is room and never evict what use has learned.
  *
@@ -17,8 +19,8 @@
  * Rules the code mechanizes:
  *
  *   1. **What was in mind, nearest first.** The caller orders each memory's
- *      `inMind` (what a deliberate question showed near its write, then the
- *      recent turns' showings, newest turn first) and this keeps the first
+ *      `inMind` (what a deliberate question showed near its write when that is
+ *      on, then the recent turns' showings, newest turn first) and this keeps the first
  *      `WRITE_LINK_MAX`.
  *   2. **Never to itself, never to a memory written in the same pass** (the
  *      session's own new memories are contiguity's), each pair once.
