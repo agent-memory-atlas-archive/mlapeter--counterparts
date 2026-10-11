@@ -1262,6 +1262,9 @@ describe("the night starts when write-ups from an earlier day are owed, even whe
     const asked = c.store.eventLog({ name: "dream.ask" }).map((e) => JSON.parse(e.payload ?? "{}") as Record<string, unknown>);
     expect(asked.find((p) => p["state"] === "launched")?.["dreamSkipped"]).toBe("too-little-new");
     expect(c.dreams.nightRun()).toMatchObject({ state: "started", kind: "night", session: "day2-1", date: TODAY() });
+    // While it runs, doctor already says what it is (review of #426), not "the whole night".
+    const running = nightRunFindings({ today: TODAY(), config: { dataDir: dir } } as unknown as DoctorInput, c.store)[0];
+    expect(running?.detail).toContain("running now (the catch-up alone; too little new to dream on)");
     // Nothing said to anyone: no line for the model, none for the terminal.
     expect(turn.dream).toBeUndefined();
     expect(turn.injection ?? "").not.toContain("nightly run");

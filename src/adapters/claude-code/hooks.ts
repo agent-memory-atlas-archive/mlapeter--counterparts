@@ -1236,6 +1236,18 @@ export class ClaudeCodeAdapter extends Lifecycle {
       code: null,
       dream: null,
       reflection: null,
+      // THE CATCH-UP ALONE says so from its first row (review of #426): doctor's
+      // "running now", and a row that never reports an end, read as it rather
+      // than as the whole night — and `fellBack` never reads it as a dream that
+      // could not start.
+      ...(offer.dreamSkipped === undefined
+        ? {}
+        : {
+            children: [
+              { child: "dream" as const, code: null, ms: 0, skipped: offer.dreamSkipped },
+              { child: "reflection" as const, code: null, ms: 0, skipped: offer.dreamSkipped },
+            ],
+          }),
     };
     const couldNot = (reason: string, detail: string | null): false => {
       dreams.recordNightRun({ ...base, state: "could-not-start", endedAt: store.now(), reason, detail });
