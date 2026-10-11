@@ -578,6 +578,24 @@ describe("why a band moved, and the up-ratchet tripwire (review of #372)", () =>
     runCycle({ store: s, date });
     expect(causeOf(s, id)).toBe("unexplained");
   });
+
+  test("on a store signed by the ÷4 build, a closed date's move on the first pass is `recurve` (review of #386)", () => {
+    const s = store();
+    const { id, date } = climb(s, {
+      type: "memory",
+      kind: "fact",
+      body: "Ship the September build by the tenth.",
+      salience: { claimed: 0.8 },
+      learnedOn: "2026-09-01",
+      eventDate: "2026-09-10",
+    });
+    const { afterHold: _cut, ...rest } = JSON.parse(curveSignature()) as Record<string, unknown>;
+    s.setMeta(CURVE_META_KEY, JSON.stringify({ ...rest, spent: 4 }));
+    const report = runCycle({ store: s, date });
+    expect(causeOf(s, id)).toBe("recurve");
+    expect(report.symmetry.find((v) => v.kind === "fact")).toMatchObject({ ok: true, unexplained: 0 });
+    expect(JSON.parse(s.getMeta(CURVE_META_KEY) ?? "{}")).toMatchObject({ afterHold: "own-curve" });
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
