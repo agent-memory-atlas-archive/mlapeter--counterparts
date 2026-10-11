@@ -9,6 +9,7 @@ import type { Engine } from 'claude-code/testing'
 
 import { decodeCells } from '../hooks/cells'
 import { hex, stageOf } from '../hooks/mechanisms'
+import { cells } from '../hooks/width'
 import {
   BAND_PROPS,
   DECISION_T3,
@@ -115,17 +116,20 @@ const cmd = async ($: Engine, args: string): Promise<string> => (await $.command
 
 // ── opening, and where it opens ─────────────────────────────────────────────
 
-test('at session start nothing is opened or drawn and the dashboard is not read, but this folder’s registry entry is; a docking surface opens it at 34 columns (a dock 35 wide)', async ($, on) => {
+test('at session start nothing is opened or drawn and the dashboard is read only for the first meeting’s state, but this folder’s registry entry is; a docking surface opens it at 34 columns (a dock 35 wide)', async ($, on) => {
   const w = world(on)
   await start($, w)
   expect(w.opens).toHaveLength(0)
-  expect(w.fetches).toHaveLength(0)
+  // One read, for the speak-first: where the first meeting stands (a 404 here, as today's core: nothing done).
+  const ONB = ['http://localhost:4747/api/onboarding']
+  expect(w.fetches).toEqual(ONB)
+  expect(w.submits).toHaveLength(0)
   expect(w.mcp).toHaveLength(0) // no tool: the registry file, read-only
   expect(w.fsReads).toContain(SCOPES_FILE)
   expect(w.lastStatus()).toBe('') // no status line in the normal case
   await band($, w, true)
   expect(w.opens).toEqual([{ id: PANE, title: 'Counterparts', columns: 34 }])
-  expect(w.fetches).toHaveLength(0) // still nothing read: the pane has not drawn
+  expect(w.fetches).toEqual(ONB) // nothing more read: the pane has not drawn
 })
 
 test('on the main screen (no docking) nothing is opened unasked and nothing is said; /counterparts opens it', async ($, on) => {
@@ -998,8 +1002,8 @@ test('search: Enter asks recall in facts mode; the results take the sections’ 
 
 // ── Claude Code's own memory ───────────────────────────────────────────────
 
-test('the Claude memory switch: on by default; off drops MEMORY.md and the memory section, and the footer draws it off', async ($, on) => {
-  const w = world(on)
+test('the Claude memory switch, opted in (COUNTERPARTS_SIDEBAR_CC_MEMORY=1): on by default; off drops MEMORY.md and the memory section, and the footer draws it off', async ($, on) => {
+  const w = world(on, { env: { HOME, COUNTERPARTS_SIDEBAR_CC_MEMORY: '1' } })
   const seen: string[][] = []
   on('prompt.context', (_$, e) => {
     seen.push((e.instructionFiles ?? []).map(f => f.kind))
@@ -1069,12 +1073,37 @@ test('headless (-p): nothing opens, ticks or reads', async ($, on) => {
 // sidebar drew the unread state as on while three sessions there ran with no
 // wake, no recall and no log lines.
 
-const cpText = async (ui: Ui): Promise<string> => (await ui.find({ type: 'Button', key: 'toggle-cp' }))?.text ?? ''
-/** The switch's dot is drawn on (cyan) only for a folder known to be on. */
+const POSITIONS = ['on', 'paused', 'off'] as const
+/** The three-way switch as drawn, its three buttons' text: `● on ○ paused ○ off`. */
+async function cpText(ui: Ui): Promise<string> {
+  const parts: string[] = []
+  for (const p of POSITIONS) parts.push((await ui.find({ type: 'Button', key: `cp-${p}` }))?.text ?? '')
+  return parts.join(' ')
+}
+/** The `on` position's dot is drawn lit (cyan) only for a folder known to be on. */
 async function cpLit(ui: Ui): Promise<boolean> {
-  const b = await ui.find({ type: 'Button', key: 'toggle-cp' })
+  const b = await ui.find({ type: 'Button', key: 'cp-on' })
   return (b?.children ?? []).some(c => typeof c === 'object' && c !== null && (c as { props: Record<string, unknown> }).props['color'] === '#00e5ff')
 }
+/** Calls that would change the folder (a read names no mode). */
+const writes = (w: World) => w.mcp.filter(c => c.tool === 'scope' && c.args['mode'] !== undefined)
+
+test('the three-way switch: `Counterparts ● on ○ paused ○ off`, one row of 32 cells; the Claude memory switch hidden by default', async ($, on) => {
+  const w = world(on)
+  await start($, w)
+  for (const surface of SURFACES) {
+    const ui = await mount($, w, surface)
+    expect(await cpText(ui)).toBe('● on ○ paused ○ off')
+    const row = drawnNode(await ui.drawn(), 'row-cp')
+    expect(row?.hover?.['scope']).toBe('counterparts-switch-cp')
+    const text = flat(row?.children ?? [])
+    expect(text).toBe('Counterparts ● on ○ paused ○ off')
+    expect(cells(text)).toBeLessThanOrEqual(32)
+    expect(await ui.find({ type: 'Button', key: 'toggle-mem' })).toBeUndefined()
+    expect(drawnNode(await ui.drawn(), 'mem-why')).toBeUndefined()
+    await ui.unmount()
+  }
+})
 
 test('the Counterparts switch asks before it pauses a folder set on, and resumes it at once; paused, the brain is grey, a banner says so, and the amber status line', async ($, on) => {
   const w = world(on)
@@ -1082,16 +1111,18 @@ test('the Counterparts switch asks before it pauses a folder set on, and resumes
   expect(w.mcp).toHaveLength(0)
   for (const surface of SURFACES) {
     const ui = await mount($, w, surface)
-    expect(await cpText(ui)).toBe('● Counterparts')
+    expect(await cpText(ui)).toBe('● on ○ paused ○ off')
     const before = w.mcp.length
-    await ui.press({ key: 'toggle-cp' })
+    await ui.press({ key: 'cp-on' }) // already on: nothing
+    await ui.press({ key: 'cp-paused' })
     expect(w.mcp).toHaveLength(before) // the press asked first, and called nothing
     expect(await ui.find({ type: 'Button', key: 'confirm-pause' })).toBeDefined()
     await ui.press({ key: 'confirm-pause' })
     expect(w.mcp.at(-1)).toEqual({ server: 'counterparts', tool: 'scope', args: { mode: 'pause' } })
     expect(await ui.find({ type: 'Button', key: 'confirm-pause' })).toBeUndefined()
     expect(await ui.find({ type: 'Text', text: '⏸ Counterparts paused here' })).toBeDefined()
-    expect(await cpText(ui)).toBe('○ Counterparts')
+    expect(await cpText(ui)).toBe('○ on ● paused ○ off')
+    expect(await cpLit(ui)).toBe(false)
     expect(w.lastStatus()).toBe('⏸ Counterparts memory paused in this folder · /counterparts resume')
     if (surface === 'terminal') {
       const cells = decodeCells(String((await ui.find({ type: 'Raster', key: 'brain' }))?.props['cells']))
@@ -1102,43 +1133,93 @@ test('the Counterparts switch asks before it pauses a folder set on, and resumes
         expect(Math.max(r, g, b) - Math.min(r, g, b)).toBeLessThan(40)
       }
     }
-    await ui.press({ key: 'toggle-cp' }) // resuming asks nothing
+    await ui.press({ key: 'cp-paused' }) // already paused: nothing
+    expect(w.mcp.at(-1)?.args).toEqual({ mode: 'pause' })
+    await ui.press({ key: 'cp-on' }) // resuming asks nothing
     expect(w.mcp.at(-1)).toEqual({ server: 'counterparts', tool: 'scope', args: { mode: 'resume' } })
     expect(w.scope.mode).toBe('on')
+    expect(await cpText(ui)).toBe('● on ○ paused ○ off')
     expect(w.lastStatus()).toBe('')
     await ui.unmount()
   }
   expect(w.mcp.filter(c => c.tool === 'scope' && c.args['mode'] === undefined)).toHaveLength(0)
 })
 
-test('a folder set off shows off, and the switch explains rather than turning it on', async ($, on) => {
+for (const from of ['on', 'paused'] as const) {
+  test(`off asks first too, from ${from}, and says the sidebar cannot turn it back on; confirmed, the folder is off`, async ($, on) => {
+    const w = world(on, { scopeMode: from })
+    await start($, w)
+    const ui = await mount($, w, 'terminal')
+    await ui.press({ key: 'cp-off' })
+    expect(writes(w)).toHaveLength(0)
+    expect(await ui.find({ type: 'Button', key: 'confirm-pause' })).toBeUndefined()
+    expect((await ui.find({ type: 'Button', key: 'confirm-off' }))?.text).toBe('Turn off')
+    const said = (await texts(ui)).replace(/\s+/g, ' ')
+    expect(said).toContain(`Turn Counterparts memory off in ${HERE} for every session here?`)
+    expect(said).toContain("The sidebar can't turn it back on.")
+    await ui.press({ key: 'confirm-off' })
+    expect(writes(w).at(-1)?.args).toEqual({ mode: 'off' })
+    expect(w.scope.mode).toBe('off')
+    expect(await cpText(ui)).toBe('○ on ○ paused ● off')
+    expect(await ui.find({ type: 'Text', text: '◌ Counterparts off here' })).toBeDefined()
+    expect(w.lastStatus()).toBe('◌ Counterparts memory off in this folder')
+    await ui.unmount()
+  })
+}
+
+test('off: cancelled, or left unanswered, nothing is called', async ($, on) => {
+  const w = world(on)
+  await start($, w)
+  const ui = await mount($, w, 'terminal')
+  await ui.press({ key: 'cp-off' })
+  await ui.press({ key: 'cancel-pause' })
+  expect(await ui.find({ type: 'Button', key: 'confirm-off' })).toBeUndefined()
+  await ui.press({ key: 'cp-off' })
+  await w.clock.advance(31000)
+  expect(await ui.find({ type: 'Button', key: 'confirm-off' })).toBeUndefined()
+  expect(writes(w)).toHaveLength(0)
+  expect(w.scope.mode).toBe('on')
+  await ui.unmount()
+})
+
+test('a folder set off shows off, and the switch explains rather than turning it on, from any position', async ($, on) => {
   const w = world(on, { scopeMode: 'off' })
   await start($, w)
   for (const surface of SURFACES) {
     const ui = await mount($, w, surface)
     expect(await ui.find({ type: 'Text', text: '◌ Counterparts off here' })).toBeDefined()
+    expect(await cpText(ui)).toBe('○ on ○ paused ● off')
     expect(w.lastStatus()).toBe('◌ Counterparts memory off in this folder')
-    await ui.press({ key: 'toggle-cp' })
-    expect(w.mcp.some(c => c.args['mode'] !== undefined)).toBe(false)
-    const said = (await texts(ui)).replace(/\s+/g, ' ')
-    expect(said).toContain('This folder is set off')
-    expect(said).toContain(`counterparts scope ${HERE}`)
-    expect(said).toContain('--on` does.')
+    for (const p of POSITIONS) {
+      await ui.press({ key: `cp-${p}` })
+      expect(writes(w)).toHaveLength(0)
+      expect(await ui.find({ type: 'Button', key: 'confirm-pause' })).toBeUndefined()
+      const said = (await texts(ui)).replace(/\s+/g, ' ')
+      expect(said).toContain('This folder is set off')
+      expect(said).toContain(`counterparts scope ${HERE}`)
+      expect(said).toContain('--on` does.')
+    }
     await ui.unmount()
   }
+  expect(w.scope.mode).toBe('off')
 })
 
-test('an unset folder is on by default; the switch explains instead of writing a pause that would end as an explicit on', async ($, on) => {
+test('an unset folder is on by default; the switch explains instead of writing a pause or an off that would end as an explicit on', async ($, on) => {
   const w = world(on, { scopeMode: 'unset', scopeSetBy: null })
   await start($, w)
   for (const surface of SURFACES) {
     const ui = await mount($, w, surface)
     expect(await cpLit(ui)).toBe(true)
-    await ui.press({ key: 'toggle-cp' })
-    expect(w.mcp.some(c => c.args['mode'] !== undefined)).toBe(false)
-    const shown = (await texts(ui)).replace(/\s+/g, ' ')
-    expect(shown).toContain('Nothing is set for this folder')
-    expect(shown).toContain('--on` gives it one.')
+    expect(await cpText(ui)).toBe('● on ○ paused ○ off')
+    for (const p of ['paused', 'off'] as const) {
+      await ui.press({ key: `cp-${p}` })
+      expect(writes(w)).toHaveLength(0)
+      expect(await ui.find({ type: 'Button', key: 'confirm-pause' })).toBeUndefined()
+      expect(await ui.find({ type: 'Button', key: 'confirm-off' })).toBeUndefined()
+      const shown = (await texts(ui)).replace(/\s+/g, ' ')
+      expect(shown).toContain('Nothing is set for this folder')
+      expect(shown).toContain('--on` gives it one.')
+    }
     await ui.unmount()
   }
   expect(w.scope.mode).toBe('unset')
@@ -1148,23 +1229,30 @@ test('a folder that follows its parent: the switch explains; paused by a parent,
   const w = world(on, { scopeMode: 'paused', scopeSetBy: '/work' })
   await start($, w)
   const ui = await mount($, w, 'terminal')
-  await ui.press({ key: 'toggle-cp' })
-  expect(w.mcp.some(c => c.args['mode'] !== undefined)).toBe(false)
-  expect((await texts(ui)).replace(/\s+/g, ' ')).toContain('Resume it there: `counterparts scope /work')
+  expect(await cpText(ui)).toBe('○ on ● paused ○ off')
+  for (const p of POSITIONS) {
+    await ui.press({ key: `cp-${p}` })
+    expect(writes(w)).toHaveLength(0)
+    expect((await texts(ui)).replace(/\s+/g, ' ')).toContain('Resume it there: `counterparts scope /work')
+  }
   await ui.unmount()
 })
 
-test('observer shows as reads-only, not on; a pause of it resumes to observer', async ($, on) => {
+test('observer shows as reads-only, not on; a pause of it resumes to observer; on never turns it fully on', async ($, on) => {
   const w = world(on, { scopeMode: 'observer' })
   await start($, w)
   for (const surface of SURFACES) {
     const ui = await mount($, w, surface)
-    expect(await cpText(ui)).toBe('◐ Counterparts')
-    await ui.press({ key: 'toggle-cp' })
+    expect(await cpText(ui)).toBe('◐ on ○ paused ○ off')
+    const wrote = writes(w).length
+    await ui.press({ key: 'cp-on' })
+    expect(writes(w)).toHaveLength(wrote)
+    expect((await texts(ui)).replace(/\s+/g, ' ')).toContain("The switch won't turn it fully on")
+    await ui.press({ key: 'cp-paused' })
     expect(w.scope.mode).toBe('observer') // asked first
     await ui.press({ key: 'confirm-pause' })
     expect(w.scope.mode).toBe('paused')
-    await ui.press({ key: 'toggle-cp' })
+    await ui.press({ key: 'cp-on' })
     expect(w.scope.mode).toBe('observer')
     await ui.unmount()
   }
@@ -1178,34 +1266,40 @@ test('where the folder stands is read from the registry file, with no permission
     if (surface === 'terminal') {
       expect(w.mcp).toHaveLength(0)
       expect(await cpLit(ui)).toBe(true) // known: on
-      await ui.press({ key: 'toggle-cp' })
+      await ui.press({ key: 'cp-paused' })
       expect(w.mcp).toHaveLength(0)
       await ui.press({ key: 'confirm-pause' })
-    } else await ui.press({ key: 'toggle-cp' })
+    } else await ui.press({ key: 'cp-on' })
     expect(w.mcp.at(-1)).toEqual({ server: 'counterparts', tool: 'scope', args: { mode: surface === 'terminal' ? 'pause' : 'resume' } })
     await ui.unmount()
   }
   expect(w.mcp).toHaveLength(2)
 })
 
-test('an unknown state is never drawn as on: `?` until read; a press asks the server, `…` meanwhile', async ($, on) => {
-  const w = world(on, { scopesUnreadable: true, scopeReadMs: 800 })
-  await start($, w)
-  expect(w.mcp).toHaveLength(0)
-  const ui = await mount($, w, 'terminal')
-  expect(await cpText(ui)).toBe('? Counterparts')
-  expect(await cpLit(ui)).toBe(false)
-  expect(w.lastStatus()).toBe('')
-  const pressing = ui.press({ key: 'toggle-cp' })
-  await settle(w)
-  expect(await cpText(ui)).toBe('… Counterparts')
-  expect(await cpLit(ui)).toBe(false)
-  await w.clock.advance(1000)
-  await pressing
-  await settle(w)
-  expect(await cpText(ui)).toBe('● Counterparts')
-  await ui.unmount()
-})
+for (const p of POSITIONS) {
+  test(`an unknown state is never drawn as on: \`?\` on every position until read; a press on ${p} asks the server, \`…\` meanwhile, and changes nothing`, async ($, on) => {
+    const w = world(on, { scopesUnreadable: true, scopeReadMs: 800 })
+    await start($, w)
+    expect(w.mcp).toHaveLength(0)
+    const ui = await mount($, w, 'terminal')
+    expect(await cpText(ui)).toBe('? on ? paused ? off')
+    expect(await cpLit(ui)).toBe(false)
+    expect(w.lastStatus()).toBe('')
+    const pressing = ui.press({ key: `cp-${p}` })
+    await settle(w)
+    expect(await cpText(ui)).toBe('… on … paused … off')
+    expect(await cpLit(ui)).toBe(false)
+    await w.clock.advance(1000)
+    await pressing
+    await settle(w)
+    expect(await cpText(ui)).toBe('● on ○ paused ○ off')
+    expect(writes(w)).toHaveLength(0)
+    expect(await ui.find({ type: 'Button', key: 'confirm-pause' })).toBeUndefined()
+    expect(await ui.find({ type: 'Button', key: 'confirm-off' })).toBeUndefined()
+    expect((await texts(ui)).replace(/\s+/g, ' ')).toContain('Counterparts memory is on in this folder. Paused or off asks first.')
+    await ui.unmount()
+  })
+}
 
 type Node = { type?: string; props: Record<string, unknown>; hover?: Record<string, unknown>; children?: unknown[] }
 
@@ -1220,15 +1314,17 @@ function drawnNode(tree: unknown, key: string): Node | undefined {
   return undefined
 }
 
+const CC_OPT_IN = { HOME, COUNTERPARTS_SIDEBAR_CC_MEMORY: '1' }
+
 test('hovered, each memory switch says what a click does, over the rows above the footer: drawn hidden, absolutely placed, so nothing moves', async ($, on) => {
-  const w = world(on)
+  const w = world(on, { env: CC_OPT_IN })
   await start($, w)
   for (const surface of SURFACES) {
     const ui = await mount($, w, surface)
     const shown = await texts(ui)
     // the card's lines, wrapped to the pane: whole sentences in its two rows, nothing cut
-    expect(shown).toContain('A click pauses Counterparts here')
-    expect(shown).toContain('for every session (asks first).')
+    expect(shown).toContain('Paused or off holds for every')
+    expect(shown).toContain('session here; each asks first.')
     expect(shown).toContain("Claude Code's MEMORY.md: a click")
     expect(shown).toContain('turns it off in every session.')
     const tree = await ui.drawn()
@@ -1244,9 +1340,9 @@ test('hovered, each memory switch says what a click does, over the rows above th
 })
 
 const HOVER_CASES: [string, WorldOptions, string, string][] = [
-  ['on', {}, 'A click pauses Counterparts here for every session (asks first).', "Claude Code's MEMORY.md: a click turns it off in every session."],
-  ['observer', { scopeMode: 'observer' }, 'Reads only here; a click pauses all sessions here (asks first).', ''],
-  ['paused', { scopeMode: 'paused' }, 'Paused in this folder, for every session. A click resumes it.', ''],
+  ['on', { env: CC_OPT_IN }, 'Paused or off holds for every session here; each asks first.', "Claude Code's MEMORY.md: a click turns it off in every session."],
+  ['observer', { scopeMode: 'observer' }, 'Reads only here. Paused or off: every session here (asks first).', ''],
+  ['paused', { scopeMode: 'paused' }, 'Paused here, for every session. on resumes it; off asks first.', ''],
   ['off', { scopeMode: 'off' }, "This switch can't change this folder. A click says why.", ''],
   ['following a parent', { scopeMode: 'on', scopeSetBy: '/Users/me' }, "This switch can't change this folder. A click says why.", ''],
   ['Claude memory off', { store: { claudeMemory: false } }, '', "Claude Code's own memory is off everywhere. A click turns it on."],
@@ -1266,11 +1362,11 @@ for (const [name, opts, cp, mem] of HOVER_CASES) {
 }
 
 test('while the pause asks, no hover card covers its buttons (the pointer is still on the switch); cancelled, the cards are back', async ($, on) => {
-  const w = world(on)
+  const w = world(on, { env: CC_OPT_IN })
   await start($, w)
   for (const surface of SURFACES) {
     const ui = await mount($, w, surface)
-    await ui.press({ key: 'toggle-cp' })
+    await ui.press({ key: 'cp-paused' })
     expect(await ui.find({ type: 'Button', key: 'confirm-pause' })).toBeDefined()
     let tree = await ui.drawn()
     expect(drawnNode(tree, 'cp-why')).toBeUndefined()
@@ -1288,17 +1384,16 @@ test('pausing asks first: Cancel calls nothing, and an unanswered ask closes by 
   await start($, w)
   for (const surface of SURFACES) {
     const ui = await mount($, w, surface)
-    const calls = () => w.mcp.filter(c => c.args['mode'] !== undefined)
-    await ui.press({ key: 'toggle-cp' })
-    expect(calls()).toHaveLength(0)
+    await ui.press({ key: 'cp-paused' })
+    expect(writes(w)).toHaveLength(0)
     expect((await texts(ui)).replace(/\s+/g, ' ')).toContain(`Pause Counterparts memory in ${HERE} for every session here?`)
     await ui.press({ key: 'cancel-pause' })
     expect(await ui.find({ type: 'Button', key: 'confirm-pause' })).toBeUndefined()
-    await ui.press({ key: 'toggle-cp' })
+    await ui.press({ key: 'cp-paused' })
     expect(await ui.find({ type: 'Button', key: 'confirm-pause' })).toBeDefined()
     await w.clock.advance(31000)
     expect(await ui.find({ type: 'Button', key: 'confirm-pause' })).toBeUndefined()
-    expect(calls()).toHaveLength(0)
+    expect(writes(w)).toHaveLength(0)
     expect(w.scope.mode).toBe('on')
     await ui.unmount()
   }
@@ -1389,4 +1484,211 @@ test('the registry is the one the wired hooks read: a settings hook’s own --co
   expect(w.fsReads).toContain('/cfg/alt/scopes.json')
   expect(w.fsReads).not.toContain(SCOPES_FILE)
   expect(w.lastStatus()).toBe('⏸ Counterparts memory paused in this folder · /counterparts resume')
+})
+
+// ── the Claude memory switch: hidden unless opted in (2026-10-11) ───────────
+
+test('the Claude memory switch is hidden by default and its filter is untouched: MEMORY.md stays, nothing is stored', async ($, on) => {
+  const w = world(on, { store: { claudeMemory: true } })
+  const seen: string[][] = []
+  on('prompt.context', (_$, e) => {
+    seen.push((e.instructionFiles ?? []).map(f => f.kind))
+    return { blocks: e.blocks }
+  })
+  await start($, w)
+  await $.prompt.context({ blocks: [], instructionFiles: [{ path: '/m/MEMORY.md', kind: 'memory', content: 'x' }] })
+  expect(seen.at(-1)).toEqual(['memory'])
+  const ui = await mount($, w, 'terminal')
+  expect(await ui.find({ type: 'Button', key: 'toggle-mem' })).toBeUndefined()
+  expect(w.store['claudeMemorySwitch']).toBeUndefined()
+  await ui.unmount()
+})
+
+test('whoever had already turned Claude memory off keeps the switch (stored once, so it stays when turned back on)', async ($, on) => {
+  const w = world(on, { store: { claudeMemory: false } })
+  await start($, w)
+  expect(w.store['claudeMemorySwitch']).toBe(true)
+  const ui = await mount($, w, 'terminal')
+  expect((await ui.find({ type: 'Button', key: 'toggle-mem' }))?.text).toBe('○ Claude memory')
+  await ui.press({ key: 'toggle-mem' }) // back on: the switch stays
+  expect((await ui.find({ type: 'Button', key: 'toggle-mem' }))?.text).toBe('● Claude memory')
+  expect(w.store['claudeMemorySwitch']).toBe(true)
+  await ui.unmount()
+})
+
+test('opted in by the store key alone (`claudeMemorySwitch`), the switch shows', async ($, on) => {
+  const w = world(on, { store: { claudeMemorySwitch: true } })
+  await start($, w)
+  const ui = await mount($, w, 'desktop')
+  expect((await ui.find({ type: 'Button', key: 'toggle-mem' }))?.text).toBe('● Claude memory')
+  await ui.unmount()
+})
+
+// ── the first meeting: speak first, once; "Meet your counterpart" ───────────
+
+const MEET = 'Counterparts is installed. Say hello and introduce yourself.'
+const NOT_STARTED = { meet: 'not_started', where: null, style: null }
+const onbFetches = (w: World) => w.fetches.filter(u => u.endsWith('/api/onboarding'))
+
+test('speak first: core says not_started, so the first interactive start submits the line once and stores that it did', async ($, on) => {
+  const w = world(on, { onboarding: NOT_STARTED })
+  await start($, w)
+  await settle(w)
+  expect(w.submits).toEqual([MEET])
+  expect(w.store['meetTriggered']).toEqual({ session: SESSION, at: T0 })
+  // session.start again (a reload, a re-enable): nothing more.
+  await start($, w)
+  await settle(w)
+  expect(w.submits).toEqual([MEET])
+  // The triggering session draws no button while Claude introduces itself.
+  const ui = await mount($, w, 'terminal')
+  expect(await ui.find({ type: 'Button', key: 'meet' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('speak first: a second session (or a restart) finds the mark and neither submits nor asks core', async ($, on) => {
+  const w = world(on, { onboarding: NOT_STARTED, store: { meetTriggered: { session: 'sess-older', at: T0 - 60000 } } })
+  await start($, w)
+  await settle(w)
+  expect(w.submits).toHaveLength(0)
+  expect(onbFetches(w)).toHaveLength(0)
+})
+
+const NEVER: [string, WorldOptions, boolean?][] = [
+  ['the folder paused', { onboarding: NOT_STARTED, scopeMode: 'paused' }],
+  ['the folder off', { onboarding: NOT_STARTED, scopeMode: 'off' }],
+  ['the folder reads only (observer)', { onboarding: NOT_STARTED, scopeMode: 'observer' }],
+  ['paused by a parent', { onboarding: NOT_STARTED, scopeMode: 'paused', scopeSetBy: '/work' }],
+  ['the folder’s state unknown', { onboarding: NOT_STARTED, scopesUnreadable: true }],
+  ['a prompt already sent (a resumed session)', { onboarding: NOT_STARTED, turns: 1 }],
+  ['a prompt being typed', { onboarding: NOT_STARTED, draft: 'how do I' }],
+  ['the dashboard down', { onboarding: NOT_STARTED, down: true }],
+  ['today’s core: /api/onboarding is a 404', {}],
+  ['another shape: an unknown state', { onboarding: { meet: 'maybe' } }],
+  ['another shape: no meet', { onboarding: { state: 'not_started' } }],
+  ['another shape: not an object', { onboarding: ['not_started'] }],
+  ['core says later', { onboarding: { meet: 'later' } }],
+  ['core says offered', { onboarding: { meet: 'offered' } }],
+  ['core says done', { onboarding: { meet: 'done' } }],
+  ['core says skipped', { onboarding: { meet: 'skipped' } }],
+  ['headless (-p)', { onboarding: NOT_STARTED }, false],
+]
+for (const [name, opts, interactive] of NEVER) {
+  test(`speak first never fires with ${name}, and leaves no mark of having fired`, async ($, on) => {
+    const w = world(on, opts)
+    await start($, w, interactive ?? true)
+    await settle(w)
+    await w.clock.advance(120000)
+    expect(w.submits).toHaveLength(0)
+    const mark = w.store['meetTriggered'] as { session?: unknown } | undefined
+    expect(mark?.session).toBeUndefined()
+    if (interactive === false) expect(w.fetches).toHaveLength(0)
+  })
+}
+
+test('core says done (an upgraded store): the start stores it as settled, and asks core no more at later starts', async ($, on) => {
+  const w = world(on, { onboarding: { meet: 'done', where: 'everywhere', style: 'straight' } })
+  await start($, w)
+  await settle(w)
+  expect(w.store['meetTriggered']).toEqual({ settled: 'done', at: T0 })
+  expect(onbFetches(w)).toHaveLength(1)
+})
+
+test('the person spoke first: a prompt they sent before the start’s check stands the speak-first down', async ($, on) => {
+  const w = world(on, { onboarding: NOT_STARTED })
+  await $.prompt.submit({ text: 'hello', origin: { kind: 'composer' }, wait: false })
+  await start($, w)
+  await settle(w)
+  expect(w.submits).toEqual(['hello'])
+  expect(w.store['meetTriggered']).toBeUndefined()
+})
+
+test('a speak-first still queued when the person’s own prompt goes first is dropped', async ($, on) => {
+  const w = world(on, { onboarding: NOT_STARTED })
+  await start($, w)
+  await settle(w)
+  expect(w.submits).toEqual([MEET])
+  await $.prompt.submit({ text: 'hello', origin: { kind: 'composer' }, wait: false })
+  const r = await $.prompt.submit({ text: MEET, origin: { kind: 'plugin', name: 'counterparts' }, wait: false })
+  expect(r).toEqual({ drop: 'the person spoke first' })
+  expect(w.submits).toEqual([MEET, 'hello'])
+})
+
+const meetRow = async (ui: Ui) => ui.find({ type: 'Button', key: 'meet' })
+
+for (const meet of ['later', 'offered'] as const) {
+  test(`Meet your counterpart: core says ${meet}, so a cyan row tops the body; a press submits the same line, once a minute at most`, async ($, on) => {
+    const w = world(on, { onboarding: { meet } })
+    await start($, w)
+    for (const surface of SURFACES) {
+      const ui = await mount($, w, surface)
+      expect((await meetRow(ui))?.text).toBe('Meet your counterpart')
+      expect((await ui.find({ type: 'Text', text: 'Meet your counterpart' }))?.props['color']).toBe('#00e5ff')
+      // at the top of the body: after the header, before the sections
+      const keys = (((await ui.drawn()) as unknown as Node).children ?? []).map(c => (c as Node).props?.['key'])
+      const head = Math.max(keys.indexOf('head'), keys.indexOf('head2'))
+      expect(head).toBeGreaterThanOrEqual(0)
+      expect(keys.indexOf('meet')).toBeGreaterThan(head)
+      expect(keys.indexOf('meet')).toBeLessThan(keys.indexOf('body'))
+      await ui.unmount()
+    }
+    const ui = await mount($, w, 'terminal')
+    await ui.press({ key: 'meet' })
+    await settle(w)
+    expect(w.submits).toEqual([MEET])
+    await ui.press({ key: 'meet' })
+    await settle(w)
+    expect(w.submits).toEqual([MEET])
+    await w.clock.advance(61000)
+    await ui.press({ key: 'meet' })
+    await settle(w)
+    expect(w.submits).toEqual([MEET, MEET])
+    await ui.unmount()
+  })
+}
+
+const HIDDEN: [string, WorldOptions][] = [
+  ['done', { onboarding: { meet: 'done' } }],
+  ['skipped', { onboarding: { meet: 'skipped' } }],
+  ['unknown (a 404)', {}],
+  ['unknown (the dashboard down)', { down: true }],
+  ['not_started, before any speak-first', { onboarding: NOT_STARTED, turns: 1 }],
+  ['later, in a paused folder', { onboarding: { meet: 'later' }, scopeMode: 'paused' }],
+  ['later, in a folder set off', { onboarding: { meet: 'later' }, scopeMode: 'off' }],
+  ['later, the folder unknown', { onboarding: { meet: 'later' }, scopesUnreadable: true }],
+]
+for (const [name, opts] of HIDDEN) {
+  test(`Meet your counterpart is hidden: ${name}`, async ($, on) => {
+    const w = world(on, opts)
+    await start($, w)
+    const ui = await mount($, w, 'terminal')
+    expect(await meetRow(ui)).toBeUndefined()
+    expect(await texts(ui)).not.toContain('Meet your counterpart')
+    await ui.unmount()
+  })
+}
+
+test('not_started though the speak-first went out in an earlier session (its turn never reached core): the button offers it again', async ($, on) => {
+  const w = world(on, { onboarding: NOT_STARTED, store: { meetTriggered: { session: 'sess-older', at: T0 - 86400000 } } })
+  await start($, w)
+  const ui = await mount($, w, 'terminal')
+  expect((await meetRow(ui))?.text).toBe('Meet your counterpart')
+  expect(w.submits).toHaveLength(0)
+  await ui.unmount()
+})
+
+test('the button follows core through the existing dashboard poll: done, it goes, and the polls stop asking', async ($, on) => {
+  const w = world(on, { onboarding: { meet: 'later' } })
+  await start($, w)
+  const ui = await mount($, w, 'terminal')
+  expect(await meetRow(ui)).toBeDefined()
+  w.onboarding = { meet: 'done' }
+  await w.clock.advance(16000)
+  await settle(w)
+  expect(await meetRow(ui)).toBeUndefined()
+  const asked = onbFetches(w).length
+  await w.clock.advance(60000)
+  await settle(w)
+  expect(onbFetches(w)).toHaveLength(asked)
+  await ui.unmount()
 })

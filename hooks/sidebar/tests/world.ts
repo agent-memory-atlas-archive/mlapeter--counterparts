@@ -178,6 +178,12 @@ export type WorldOptions = {
   onFetch?: (url: URL) => void;
   /** The dashboard's `today` (its store's zone), when it is not this clock's day. */
   dashToday?: string;
+  /** What core's `/api/onboarding` answers (a 404, as a core from before onboarding, unless given): a body, served as JSON. */
+  onboarding?: unknown;
+  /** User turns already in the transcript (`$.session.turns()`): 0 unless given (a resumed session has some). */
+  turns?: number;
+  /** The draft in the prompt box (`$.prompt.read()`): empty unless given. */
+  draft?: string;
   /** What `/api/mechanism?id=` lists as its activity (every event unless given): its lookback can miss sparse rows. */
   panelActivity?: (id: string) => Ev[];
 }
@@ -216,6 +222,12 @@ export type World = {
   tails: (string | undefined)[];
   /** Panes the module closed (`$.ui.close`). */
   closes: string[];
+  /** Prompts the module submitted (`$.prompt.submit`), in order, as the bottom of the chain saw them (none dropped). */
+  submits: string[];
+  /** What `/api/onboarding` answers now (undefined: 404): a test can move core's state. */
+  onboarding: unknown;
+  turns: number;
+  draft: string;
 }
 
 /** Registers the test's answers beneath the plugin; call before the first `$` call. */
@@ -253,6 +265,10 @@ export function world(on: On, opts: WorldOptions = {}): World {
     events: [...EVENTS],
     tails: [],
     closes: [],
+    submits: [],
+    onboarding: opts.onboarding,
+    turns: opts.turns ?? 0,
+    draft: opts.draft ?? '',
   }
   mock.env(on, opts.env ?? { HOME })
   // The scope registry as the server keeps it: `w.scope` is its one entry (none
@@ -278,6 +294,12 @@ export function world(on: On, opts: WorldOptions = {}): World {
   on('fs.stat', (_$, e) => ({ value: { kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false, ...(e.resolve ? { realPath: e.path } : {}) } }))
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('session.id', () => ({ value: SESSION }))
+  on('session.turns', () => ({ value: w.turns }))
+  on('prompt.read', () => ({ value: { text: w.draft, cursor: w.draft.length } }))
+  on('prompt.submit', (_$, e) => {
+    w.submits.push(e.text)
+    return { text: e.text }
+  })
   on('command.register', (_$, e) => ({ value: { command: e.name } }))
   on('ui.open', (_$, e) => {
     w.opens.push({ id: e.id, ...(e.columns === undefined ? {} : { columns: e.columns }), ...(e.title === undefined ? {} : { title: e.title }) })
@@ -360,6 +382,7 @@ export function world(on: On, opts: WorldOptions = {}): World {
       return ok(m === undefined ? { found: false, id, absence: 'no such memory' } : { found: true, id, journal: false, confidential: false, ...m })
     }
     if (url.pathname === '/api/dreams') return ok({ dreams: [DREAM] })
+    if (url.pathname === '/api/onboarding' && w.onboarding !== undefined) return ok(w.onboarding)
     return { value: { status: 404, ok: false, headers: {}, text: '{"error":"not found"}' } }
   })
   on('mcp.call', async (_$, e) => {

@@ -57,13 +57,75 @@ paused here; `/counterparts fps [n]` reports the brain's rate (or sets its
 target). `caps` is gone: the footer's switches are dots, with no ends to draw.
 
 **Check it:** `sh hooks/sidebar/check.sh`, which runs validate on both manifests,
-`claude plugin test hooks/sidebar` (125 tests, terminal and desktop) and
+`claude plugin test hooks/sidebar` (170 tests, terminal and desktop) and
 `tsc -p hooks/sidebar`, all with a throwaway HOME. **See it:**
 `tools/term-loop/` (its README), at `--size 200x60` and `--size 160x48`. A
 term-loop session sends no message, so nothing comes to mind and nothing is
 saved in it; `COUNTERPARTS_SIDEBAR_SESSION=<session id>` in the environment
 shows that session's Memories, Subconscious and Saved instead (below,
 "Seeded").
+
+## The first meeting's trigger, a three-way switch, Claude memory opt-in (2026-10-11)
+
+Built against core's onboarding state, which core was building in parallel
+(`~/counterparts-notes/2026-10-11-onboarding-core-brief.md`, item 7): `GET
+/api/onboarding` → `{ meet: not_started|offered|later|done|skipped, where,
+style }`. Read strictly (`feed.ts#parseOnboarding`): a 404, the dashboard
+down or any other shape is `unknown`, and then the mod does nothing about the
+meeting. A 404 on this route never marks the dashboard down.
+
+- **Speak first** (`register.tsx#speakFirst`). At an interactive start, after
+  the folder's registry read: if the folder is `on` or unset (not paused,
+  off, observer or unknown), no `meetTriggered` mark is in `$.store`, core
+  says `not_started`, `$.session.turns()` is 0, the prompt box is empty and
+  no prompt of the person's was seen (`prompt.submit`, origin `composer` or
+  `bridge`), it stores `meetTriggered: { session, at }` and then submits
+  `Counterparts is installed. Say hello and introduce yourself.` (mark first:
+  a crash in between loses the trigger rather than repeating it). `$.store`
+  is shared by every session and restart, so it goes out once per install
+  (per Claude Code profile, strictly: the store is Claude Code's, not
+  `~/.counterparts`'s). The engine runs a plugin's prompt once the session is
+  idle; if the person's own prompt gets there first, the queued one is
+  dropped (`prompt.submit` hook) and core's offer at the end of that reply
+  stands. A start that reads `done` or `skipped` stores `{ settled, at }`, so
+  later starts don't ask core again. This adds one dashboard read at every
+  interactive start until then (the first test's "not read" became "read
+  only for onboarding").
+- **What the submitted turn looks like: not observed.** No core served the
+  endpoint, and a real run would send a model turn through the live hooks.
+  From the declarations: origin `{ kind: 'plugin', name: 'counterparts' }`;
+  the model reads it framed, "The counterparts plugin sent a message: …"
+  (not `asUser`); the transcript names the plugin; it goes through the
+  UserPromptSubmit settings hooks, so core's recall block attaches as for a
+  typed prompt. Check it in the first real run.
+- **Meet your counterpart**: a cyan row at the top of the body (after the
+  header and any paused banner, before the sections) while core says `later`
+  or `offered`; a press submits the same line, once a minute at most. Also
+  shown for `not_started` when the speak-first went out in an EARLIER session
+  (its turn never reached core's `meet`: otherwise a dead end). Hidden for
+  done, skipped and unknown, and in a folder that is paused, off, observer or
+  unknown (nothing would be kept). No poll of its own: the cold dashboard read
+  and each warm poll read it, the warm ones only until done or skipped, and a
+  call of core's `meet` tool reads it again.
+- **The Counterparts switch is three-way**, `Counterparts ● on ○ paused ○
+  off` (32 cells, the dock's text width; `memory` for the word when
+  narrower). As safe as before: unknown draws `?` on every position and a
+  press on any only learns the state; only a folder's own entry is changed
+  (unset and inherited are explained); `paused` and `off` ask first (the
+  confirm row: [Pause] or [Turn off]); `on` resumes the folder's own pause at
+  once. It never turns an `off` folder on, nor an observer one fully on:
+  those say the CLI command, and the off confirm says the sidebar can't turn
+  it back on. **Loose end for Mike's trial:** an `on` that can't undo the
+  `off` you just clicked may read as broken; lifting it is one branch in
+  `pressScope` (with a confirm).
+- **The Claude memory switch is hidden** unless opted in:
+  `COUNTERPARTS_SIDEBAR_CC_MEMORY=1` in the environment Claude Code starts
+  with (`$.env.get`; a shell export is sure to reach it), or `$.store`
+  `claudeMemorySwitch: true`. Whoever had already turned Claude memory off is
+  opted in by the store, once, at the first start of this version, so no
+  filter is left that can't be seen or undone (Mike keeps his this way). The
+  filtering (`prompt.context`, `prompt.section`, the status line) is
+  unchanged. Opted in, it is its own footer row, under the Counterparts one.
 
 ## v0.2 (2026-10-10): what memory is doing, in 35 columns
 
