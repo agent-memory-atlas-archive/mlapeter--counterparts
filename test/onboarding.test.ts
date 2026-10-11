@@ -82,8 +82,14 @@ afterEach(() => {
   for (const s of open.splice(0)) s.counterpart.close();
 });
 
-/** The server's clock, pinned to DAY1 (noon UTC is DAY1 in every zone from -11 to +11): its `meet` marks the offer with ITS day, and a test that compares that day with DAY2 must not depend on the day it runs. */
-const SERVER_NOW = Date.parse(`${DAY1}T12:00:00Z`);
+/** Noon on `day` in this process's zone, which is the zone a test store takes (CI runs Pacific/Kiritimati, +14, where noon UTC is already the next day). */
+function localNoon(day: string): number {
+  const [y, m, d] = day.split("-").map(Number) as [number, number, number];
+  return new Date(y, m - 1, d, 12).getTime();
+}
+
+/** The server's clock, pinned to DAY1: its `meet` marks the offer with ITS day, and a test that compares that day with DAY2 must not depend on the day it runs. */
+const SERVER_NOW = localNoon(DAY1);
 
 function server(over: Parameters<typeof openServer>[0] = {}): McpServer {
   const s = openServer({ dir: storeDir, session: "sess-meet-1", scope: proj, owner: true, scopesFile, now: () => SERVER_NOW, ...over });
@@ -449,7 +455,7 @@ describe("the wake's line: no double offer", () => {
     expect(start("s1", "2026-10-11")).toContain(MEET_LINE_OPEN);
     expect(start("s2", "2026-10-12")).toContain(MEET_LINE_OPEN);
     // A meet read on the third day counts as that day's offer, not a fourth.
-    const third = Date.parse("2026-10-13T12:00:00Z");
+    const third = localNoon("2026-10-13");
     await server({ session: "s3", now: () => third }).call("meet", {});
     for (const x of open.splice(0)) x.counterpart.close();
     expect(start("s3b", "2026-10-13")).not.toContain(MEET_LINE_OPEN);
@@ -575,7 +581,7 @@ describe("the wake's machine marker", () => {
     rmSync(storeDir, { recursive: true, force: true });
     newInstallStore();
     await server({ session: "s1" }).call("meet", {});
-    const day2 = Date.parse(`${DAY2}T12:00:00Z`);
+    const day2 = localNoon(DAY2);
     const text = String((await server({ host: "claude-desktop", scope: "claude-desktop:", now: () => day2 }).call("wake", {})).structuredContent["wake"]);
     expect(text.split("\n")).toContain("<!-- counterparts:onboarding meet=later -->");
   });
