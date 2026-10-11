@@ -170,12 +170,15 @@ reverse older defaults and contract lines; those go to the rules audit.
 9. **Mood-matched recall turned down (weights 0, code kept), marked for re-test.** Why:
    evidence from the old use metric (lifted memories used 1.3% vs 2.4%); re-test after Group
    1's engaged credit gives a real signal. Not a closed decision. (1c)
+   **Kept. random-06, 2026-10-11, lightly held** (Mike approved random-06's recommendations on every item so far and did not object). The re-test is in docs/CHECK-AFTER.md, now that drewOn gives a use signal.
 10. **"Strongly felt" means above the word's own default, or 0.6 and over**, so the core's fast
    lane can open again (it shut when feeling defaults were capped at 0.55). (1c)
+   **Kept. random-06, 2026-10-11, lightly held** (Mike approved random-06's recommendations on every item so far and did not object).
 11. **Encoding.** `note` becomes `remember` (with `note` kept as an alias for a release or
     two); the new end-of-session ask; salience by attention, not category; the defaults by
     what a memory is about. The `remember` description says to write in the moment, as things
     catch your attention; the ask is the backstop. (1c)
+    **Kept. random-06, 2026-10-11, lightly held** (Mike approved random-06's recommendations on every item so far and did not object).
 12. **One model for "this replaces that".** "Newer in the same slot" is `changed`; one detector
     (the write-time neighbours, plus status lineage or very high similarity) proposes, the
     dream confirms or undoes; the newest in a chain is what comes up on its own. (Group 2)
@@ -468,6 +471,30 @@ were refined by b2+f8 at the review of #369, named where they were):
   command typed in a terminal was not started from any project, and the working directory may be
   one set `off`.
 
+### Decided by the reflection-own-context builder, 2026-10-11, lightly held (the reflection in its own child)
+
+- Decided by the reflection-own-context builder, 2026-10-11, lightly held: each of the night's
+  two children gets the whole watchdog (`dreaming.timeoutMs`, default 20 minutes) and the whole
+  turn ceiling, one after the other, and the `started` row carries both (`nightChildrenTimeoutMs`).
+  Why: one shared deadline would let a slow dream starve the reflection; a night that took
+  11–12 minutes in one context stays far inside 2 × 20. The cost is that a run that never
+  reports is read as lost about 20 minutes later than before.
+- Decided by the reflection-own-context builder, 2026-10-11, lightly held: the reflection's child
+  runs after ANY dream child that ran, journaled or not. On a journaled dream it reflects on that
+  dream by id; otherwise on the last few days, as the single run did when its dream was refused.
+  It is not started after a first child that stopped straight away having begun nothing
+  (`quick-exit`: a second `claude` would stop the same way), when a reflection already finished
+  today, or when the store will not open between them. Why: the brief asks that a failed or
+  skipped dream still leave a reflection. The cost is one case: a dream child that crashed
+  mid-dream leaves its dream begun, so the relaunch that resumes it later that day finds the
+  day already reflected and ends `partial` (the reflection is not run twice a day).
+- Decided by the reflection-own-context builder, 2026-10-11, lightly held: the dream's child may
+  not call the reflect tool at all (denied, `DREAM_CHILD_DENIED`), and its MCP server is told it
+  is the dream's child (`COUNTERPARTS_NIGHT_CHILD=dream`), so the journal's `next` says to hand
+  back instead of "now reflect". The reflection alone, and the reflection's child, keep all four
+  night tools as before. The in-session run (a person says "dream", the Agent tool) is unchanged:
+  one agent, all three parts.
+
 ### Decided by the doctor-install-fixes builder, 2026-10-11, lightly held (doctor's fixes by install)
 
 - Decided by the doctor-install-fixes builder, 2026-10-11, lightly held: doctor's fix lines
@@ -479,6 +506,33 @@ were refined by b2+f8 at the review of #369, named where they were):
   default for a caller that forgets. `plugin-run.sh` now also exports the plugin data
   directory it falls back on, so the single binary run from `/counterparts:doctor` knows
   itself for the plugin's (before, `runningAsPlugin` read false there).
+
+### Decided by the group-5 builder, 2026-10-11, lightly held (prospective: reminders, item 18)
+
+- Decided by the group-5 builder, 2026-10-11, lightly held: a plain DAY reminder whose day
+  passed untold is told once at the first session inside its 7-day grace, as "This was for
+  Mon 12 Oct 2026: …". It shares the day's latch (no new beat key), so a late telling counts
+  as the day told everywhere that asks, and it can never come twice. A memory written after
+  its day gets no late beat (it was never missed), nor one with no written date. A month's or
+  range's missed last day gets none: it already had its opening beat. Why: review 07 C4 — a
+  person who skips the day lost the reminder silently.
+- Decided by the group-5 builder, 2026-10-11, lightly held: `reference()` is WIRED, not
+  retired. A dated memory named in `drewOn` (and passing its guards: shown, live, not replaced)
+  stops its open window, whether or not its credit lands under the cap or the once-a-day rule.
+  Why: `drewOn` credits half a use and stops nothing, so a reminder the session already acted
+  on still came back as a footnote until its budget (2) ran out; the referenced-stop is the one
+  thing that ends that. A plain reminder keeps its day: until its last beat is told, drawing on
+  it the day before does not silence the telling or its place under "Arriving:".
+- Decided by the group-5 builder, 2026-10-11, lightly held: `exitReport()` is DELETED, and
+  prospective G12 now promises the states its rows name plus the counts already shown (the
+  dashboard's said-plainly / quiet-footnote counts, doctor's plain-due reading). Why: it had no
+  caller; its `superseded-by-reschedule` exit rests on `reschedule()`, which `carryReminder`
+  replaced (also uncalled, left in place); its `faded` exit cannot happen before a date now
+  that the date is held; and the two homes for a caller were a new always-green doctor line or
+  a write-capable engine inside the read-only dashboard.
+- Decided by the group-5 builder, 2026-10-11, lightly held: the Mechanisms panel's "waiting"
+  list shows a repeating date at its next occurrence, with how often it comes round ("every
+  May 14"); one that came back this week is counted under "came back", as a one-off is.
 
 ### Trial, Mike, 2026-10-11, very lightly held (verbatim in the memory's body)
 

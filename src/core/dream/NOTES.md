@@ -609,3 +609,30 @@ offer was 0 of 11 before and 5 (each shown whole, the texts being short) after, 
 Unmarked skills are offered too — `isWorkMemory` counts every unmarked skill as work, and
 nothing else ever offered one (the review: 5 of 34 read as personal). A skill marked me, us
 or owner is shown everywhere but never becomes core; the finish note already says so.
+
+## 2026-10-11 — the headless night's reflection is a child of its own (held lightly)
+
+The writer, the dream and the reflection ran in ONE `claude -p`, so every reflection turn
+re-read the dream's bundle: peaks of 223k and 394k tokens on 10-10 and 10-09 (review 09
+§3c), past a 200k-context model. Now the headless night starts the page writer and the
+dream in one child (`launchPrompt({ reflect: false })`, ending at the journal; `reflect`
+denied), then the reflection in a second child, fresh, from `Reflections#launchPrompt`
+with tonight's dream id. The in-session Agent path keeps the single prompt.
+
+Measured once each on a copy of the owner's store (11 Oct morning, v12 migrated; hooks
+off, strict MCP on the copy; Opus 5.5; peak = max input + cache write + cache read over
+a child's turns, deduped by message id). The page writer had nothing to write on that
+copy in both runs, and it was a light night (13 turns, against 33–38 on 10-09 and 10-10),
+so the absolute peaks are not comparable with the review's 223k; the drop between the
+two is the evidence. Whether the dream child alone stays under 200k on a heavy night is
+still to be seen on the live runs.
+
+| | turns | peak context | cache read | cache write | output | wall |
+|---|---|---|---|---|---|---|
+| before: one agent | 13 | 147.9k | 994k | 144k | 17.6k | 3.1 min |
+| after: dream child | 8 | 98.0k | 353k | 94k | 10.2k | 1.8 min |
+| after: reflection child | 7 | 70.4k | 216k | 65k | 12.9k | 2.0 min |
+
+The reflection child no longer carries the dream's ~80k. New work (cache write + output)
+went from 161k to 181k (+12%), because the reflection's own context is written to the
+cache again; cache read nearly halved (994k to 569k).

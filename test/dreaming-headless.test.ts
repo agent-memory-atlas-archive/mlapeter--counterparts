@@ -426,22 +426,43 @@ describe("B. the headless run: the child's plan, and what becomes of a run", () 
     expect(latest()?.state).toBe("timed-out");
   }, 20_000);
 
-  test("a run that dreamed and reflected is `done`, with both ids — read from the store, not from its output", async () => {
+  /** The dream's child, as a stub does it: begin and journal. Returns the dream's id. */
+  function dreamChild(): string {
+    const c = openNightCounterpart(config());
+    try {
+      const d = c.dreams.begin({ session: "s1" });
+      if (!d.ok) throw new Error(d.reason);
+      c.dreams.journal({ dream: d.bundle.dream, session: "s1", text: "A dream." });
+      return d.bundle.dream;
+    } finally {
+      c.close();
+    }
+  }
+
+  /** The reflection's child, as a stub does it: begin (on `dream`, when given) and finish. */
+  function reflectionChild(dream: string | null): void {
+    const c = openNightCounterpart(config());
+    try {
+      const r = c.reflections.begin({ session: "s1", ...(dream === null ? {} : { dream }) });
+      if (!r.ok) throw new Error(r.reason);
+      c.reflections.finish({ reflection: r.bundle.reflection, session: "s1", entry: "Nothing much tonight." });
+    } finally {
+      c.close();
+    }
+  }
+
+  const isReflection = (plan: { stdin: string }): boolean => plan.stdin.includes("reflection launch⟧");
+
+  test("a run that dreamed and reflected is `done`, with both ids — read from the store, not from its output — in TWO children, the reflection's after the dream's (2026-10-11)", async () => {
     lived(openNight());
+    const plans: { args: readonly string[]; stdin: string }[] = [];
+    let dreamed = "";
     const out = await runNight(
       nightOf({
-        start: async () => {
-          const c = openNightCounterpart(config());
-          try {
-            const d = c.dreams.begin({ session: "s1" });
-            if (!d.ok) throw new Error(d.reason);
-            c.dreams.journal({ dream: d.bundle.dream, session: "s1", text: "A dream." });
-            const r = c.reflections.begin({ session: "s1", dream: d.bundle.dream });
-            if (!r.ok) throw new Error(r.reason);
-            c.reflections.finish({ reflection: r.bundle.reflection, session: "s1", entry: "Nothing much tonight." });
-          } finally {
-            c.close();
-          }
+        start: async (plan) => {
+          plans.push(plan);
+          if (isReflection(plan)) reflectionChild(dreamed);
+          else dreamed = dreamChild();
           return { code: 0, timedOut: false, error: null };
         },
       }),
@@ -449,10 +470,191 @@ describe("B. the headless run: the child's plan, and what becomes of a run", () 
     expect(out.state).toBe("done");
     expect(out.dream).toMatch(/^drm_/);
     expect(out.reflection).toMatch(/^rfl_/);
+    // Two children, each its own session; the dream's first.
+    expect(plans).toHaveLength(2);
+    const [one, two] = plans as [{ args: readonly string[]; stdin: string }, { args: readonly string[]; stdin: string }];
+    const sid = (p: { args: readonly string[] }): string => p.args[p.args.indexOf("--session-id") + 1] ?? "";
+    expect(sid(one)).not.toBe(sid(two));
+    // The dream's child: no reflection in its prompt, and the reflect tool denied it.
+    expect(isReflection(one)).toBe(false);
+    expect(one.stdin).toContain("The reflection comes after this run, in a session of its own");
+    expect(one.stdin).not.toContain("reflect tool");
+    expect(one.stdin).toContain("exactly the `handBack` the journal call returns");
+    expect(one.args[one.args.indexOf("--allowedTools") + 1]).toBe("mcp__counterparts__dream,mcp__counterparts__self_page,mcp__counterparts__recall");
+    expect(one.args[one.args.indexOf("--disallowedTools") + 1]?.split(",")).toContain("mcp__counterparts__reflect");
+    const mcpEnv = (p: { args: readonly string[] }): Record<string, string> =>
+      (JSON.parse(p.args[p.args.indexOf("--mcp-config") + 1] ?? "{}") as { mcpServers: Record<string, { env: Record<string, string> }> }).mcpServers["counterparts"]?.env ?? {};
+    expect(mcpEnv(one)["COUNTERPARTS_NIGHT_CHILD"]).toBe("dream");
+    // The reflection's child: a fresh context, handed tonight's dream by id.
+    expect(two.stdin).toContain(`dream: ${dreamed}`);
+    expect(two.args[two.args.indexOf("--allowedTools") + 1]).toContain("mcp__counterparts__reflect");
+    expect(mcpEnv(two)["COUNTERPARTS_NIGHT_CHILD"]).toBe("reflection");
+    // The record says which children ran.
+    expect(out.children?.map((ch) => [ch.child, ch.code, ch.skipped ?? null])).toEqual([
+      ["dream", 0, null],
+      ["reflection", 0, null],
+    ]);
+    expect(latest()?.children?.map((ch) => ch.child)).toEqual(["dream", "reflection"]);
     // One event per state, latched by run and state.
     const c = openNight();
-    const states = c.store.eventLog({ name: "dream.night" }).map((e) => String((JSON.parse(e.payload ?? "{}") as { state?: unknown }).state));
-    expect(states.sort()).toEqual(["done", "started"]);
+    const rows = c.store.eventLog({ name: "dream.night" }).map((e) => JSON.parse(e.payload ?? "{}") as { state?: unknown; children?: unknown });
+    expect(rows.map((r) => String(r.state)).sort()).toEqual(["done", "started"]);
+    expect(rows.find((r) => r.state === "done")?.children).toBe("dream:0,reflection:0");
+  });
+
+  test("the dream's child FAILED after it began: the reflection's child still runs, on the last few days — partial, and the record says so (2026-10-11)", async () => {
+    lived(openNight());
+    let t = 1_000_000;
+    const prompts: string[] = [];
+    const out = await runNight(
+      nightOf({
+        now: () => (t += 90_000),
+        start: async (plan) => {
+          prompts.push(plan.stdin);
+          if (isReflection(plan)) {
+            reflectionChild(null);
+            return { code: 0, timedOut: false, error: null };
+          }
+          const c = openNightCounterpart(config());
+          try {
+            c.dreams.begin({ session: "s1" });
+          } finally {
+            c.close();
+          }
+          return { code: 3, timedOut: false, error: null };
+        },
+      }),
+    );
+    expect(prompts).toHaveLength(2);
+    // No dream journaled: the reflection is not pointed at one.
+    expect(prompts[1]).not.toContain("dream: drm_");
+    expect(out).toMatchObject({ state: "partial", reason: "exit", code: 3, parts: ["reflection"] });
+    expect(out.reflection).toMatch(/^rfl_/);
+    expect(out.children?.map((ch) => [ch.child, ch.code])).toEqual([
+      ["dream", 3],
+      ["reflection", 0],
+    ]);
+    expect(nightPartsWords(out)).toBe("the reflection ran; the dream did not");
+  });
+
+  test("the dream's child stopped straight away, having begun nothing: no reflection child — a second claude would stop the same way (2026-10-11)", async () => {
+    let starts = 0;
+    const out = await runNight(
+      nightOf({
+        start: async () => {
+          starts += 1;
+          return { code: 1, timedOut: false, error: null };
+        },
+      }),
+    );
+    // Once named, once without the name (the host may have refused it): never a reflection child.
+    expect(starts).toBe(2);
+    expect(out).toMatchObject({ state: "could-not-start", reason: "quick-exit" });
+    expect(out.children?.map((ch) => [ch.child, ch.skipped ?? null])).toEqual([
+      ["dream", null],
+      ["reflection", "quick-exit"],
+    ]);
+  });
+
+  test("a reflection already finished today: the reflection's child is not spent (2026-10-11)", async () => {
+    lived(openNight());
+    reflectionChild(null);
+    let starts = 0;
+    const out = await runNight(
+      nightOf({
+        start: async () => {
+          starts += 1;
+          dreamChild();
+          return { code: 0, timedOut: false, error: null };
+        },
+      }),
+    );
+    expect(starts).toBe(1);
+    expect(out).toMatchObject({ state: "partial", reason: "unfinished", parts: ["dream"] });
+    expect(out.children?.at(-1)).toEqual({ child: "reflection", code: null, ms: 0, skipped: "reflected-today" });
+  });
+
+  test("the dream's child was STOPPED and the reflection's finished: partial on the watchdog, with no exit code borrowed from the reflection (review of #413)", async () => {
+    lived(openNight());
+    const out = await runNight(
+      nightOf({
+        start: async (plan) => {
+          if (isReflection(plan)) {
+            reflectionChild(null);
+            return { code: 0, timedOut: false, error: null };
+          }
+          const c = openNightCounterpart(config());
+          try {
+            c.dreams.begin({ session: "s1" });
+          } finally {
+            c.close();
+          }
+          return { code: null, timedOut: true, error: "watchdog" };
+        },
+      }),
+    );
+    expect(out).toMatchObject({ state: "partial", reason: "watchdog", code: null, parts: ["reflection"] });
+    expect(out.children?.map((ch) => [ch.child, ch.timedOut ?? false])).toEqual([
+      ["dream", true],
+      ["reflection", false],
+    ]);
+  });
+
+  test("the reflection's child could not be started after a dream that journaled: said as not started, not as an exit (review of #413)", async () => {
+    lived(openNight());
+    const out = await runNight(
+      nightOf({
+        start: async (plan) => {
+          if (isReflection(plan)) return { code: null, timedOut: false, error: "spawn ENOENT", spawnCode: "ENOENT" };
+          dreamChild();
+          return { code: 0, timedOut: false, error: null };
+        },
+      }),
+    );
+    expect(out).toMatchObject({ state: "partial", reason: "unfinished", code: 0, parts: ["dream"] });
+    expect(out.children?.at(-1)).toEqual({ child: "reflection", code: null, ms: 0, skipped: "no-claude" });
+  });
+
+  test("the reflection alone is one child, with every tool of the night (2026-10-11)", async () => {
+    lived(openNight());
+    const dream = dreamChild();
+    const plans: { args: readonly string[]; stdin: string }[] = [];
+    const out = await runNight(
+      nightOf({
+        kind: { kind: "reflection", dream },
+        start: async (plan) => {
+          plans.push(plan);
+          reflectionChild(dream);
+          return { code: 0, timedOut: false, error: null };
+        },
+      }),
+    );
+    expect(plans).toHaveLength(1);
+    expect(isReflection(plans[0] as { stdin: string })).toBe(true);
+    expect(out).toMatchObject({ state: "done", kind: "reflection" });
+    expect(out.children?.map((ch) => ch.child)).toEqual(["reflection"]);
+  });
+
+  test("the row's watchdog covers both children, one after the other (2026-10-11)", () => {
+    const one = nightTimeoutMs(config());
+    expect(nightRowTimeoutMs(config(), "night")).toBeGreaterThanOrEqual(2 * one + ADAPTER_TUNABLES.NIGHT_WRITE_UP_TOTAL_MS);
+    expect(nightRowTimeoutMs(config(), "reflection")).toBe(one);
+  });
+
+  test("the dream's child's MCP server stops the run at the journal: its `next` hands back, and never says to reflect (2026-10-11)", async () => {
+    lived(openNight());
+    const c = openNight();
+    const say = async (env: Record<string, string>): Promise<string> => {
+      const s = new McpServer({ counterpart: c, scope: binDir, owner: true, registryDir: dir, session: "s1", env });
+      const begun = (await s.call("dream", { phase: "begin", session: "s1" })) as { content: { text: string }[] };
+      const dream = (JSON.parse(begun.content[0]?.text ?? "{}") as { dream?: string }).dream ?? "";
+      const journaled = (await s.call("dream", { phase: "journal", session: "s1", dream, text: "A dream." })) as { content: { text: string }[] };
+      return (JSON.parse(journaled.content[0]?.text ?? "{}") as { next?: string }).next ?? "";
+    };
+    const next = await say({ COUNTERPARTS_NIGHT_CHILD: "dream" });
+    expect(next).toContain("Return `handBack` as your final message, unchanged.");
+    expect(next).toContain("The reflection runs after you, in a session of its own.");
+    expect(next).not.toContain("reflect tool");
   });
 
   test("a run that began and then exited with an error is `failed`, not `could not start`", async () => {
@@ -483,7 +685,9 @@ describe("B. the headless run: the child's plan, and what becomes of a run", () 
     recordSession(dir, { sessionId: "s1", scope: binDir, phase: "start" });
     const out = await runNight(
       nightOf({
-        start: async () => {
+        start: async (plan) => {
+          // The reflection's child ran and finished nothing (it exited at once).
+          if (isReflection(plan)) return { code: 0, timedOut: false, error: null };
           const c = openNightCounterpart(config());
           try {
             // The writer's phase, as the child's MCP server (pinned to s1) answers it.
@@ -500,6 +704,11 @@ describe("B. the headless run: the child's plan, and what becomes of a run", () 
       }),
     );
     expect(out).toMatchObject({ state: "partial", reason: "unfinished", code: 0, parts: ["writer", "dream"] });
+    // Both children ran; the second finished nothing.
+    expect(out.children?.map((ch) => [ch.child, ch.code, ch.skipped ?? null])).toEqual([
+      ["dream", 0, null],
+      ["reflection", 0, null],
+    ]);
     expect(out.dream).toMatch(/^drm_/);
     expect(nightPartsWords(out)).toBe("the page writer and the dream ran; the reflection did not");
     expect(nightRunLine(out)).toContain("partial (the whole night) — the page writer and the dream ran; the reflection did not");

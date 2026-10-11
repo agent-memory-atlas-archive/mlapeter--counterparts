@@ -784,9 +784,15 @@ session launches anything.** On the first prompt of a calendar day that is due
 `bin/nightly.ts` DETACHED (`night-run.ts#planNightRunner`, `spawn.ts#spawnDetached`) and
 records the run `started`, with its watchdog. That process composes the launch prompt from
 the store, starts `claude -p` with it on STDIN (`planNightChild`), waits under the run's own
-watchdog (`dreaming.timeoutMs`, default `NIGHT_RUN_MS` 20 minutes) and records the end. The
-outcome is read from the exit and the store, never from the child's output (the host's cut,
-below, is read from the host's own transcript of it):
+watchdog (`dreaming.timeoutMs`, default `NIGHT_RUN_MS` 20 minutes) and records the end.
+**A whole night is two children (2026-10-11):** the page writer and the dream first
+(`reflect` denied it; its MCP server told `COUNTERPARTS_NIGHT_CHILD=dream`, so the journal
+hands back), then the reflection with a fresh context, on tonight's dream by id — or, when
+no dream was journaled, on the last few days. Each has the watchdog and the turn ceiling;
+the row carries both and lists the children (`NightRun.children`: exit, time, or why the
+reflection's was not started — `quick-exit`, `reflected-today`, `unread`). The reflection
+alone is one child. The outcome is read from the exits and the store, never from the
+children's output (the host's cut, below, is read from the host's own transcript of each):
 
 - `done`: the dream and the reflection ran (the reflection, for a reflection-alone run);
 - `partial`: some of the run's parts ran and not all, whatever the exit, with the parts on

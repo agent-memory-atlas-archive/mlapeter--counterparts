@@ -528,14 +528,16 @@ export class Reflections {
   // ── launch (on its own) ───────────────────────────────────────────────────
 
   /**
-   * THE LAUNCH PROMPT for a reflection with no dream before it — for a
-   * background agent, like the dream's. After a dream the dreamer reflects
-   * itself (the dream's launch prompt carries these steps).
+   * THE LAUNCH PROMPT for a reflection on its own — for a background agent,
+   * like the dream's. In the in-session run the dreamer reflects itself (the
+   * dream's launch prompt carries these steps); in the HEADLESS night
+   * (2026-10-11) this is the second child's, with tonight's dream id, so the
+   * reflection starts from a fresh context and reads the dream from the store.
    */
   launchPrompt(input: { session: string; dream?: string | null }): string {
     const who = this.ctx.ownerName() ?? "the owner";
-    // AFTER A DREAM WHOSE RUN WAS CUT OFF (2026-09-28): the reflection alone,
-    // on that dream.
+    // ON A DREAM: the headless night's own (2026-10-11), or one whose run was
+    // cut off before it reflected (2026-09-28).
     const after = input.dream === undefined || input.dream === null || input.dream.length === 0 ? null : input.dream;
     return [
       `${DREAM_MARK} reflection launch⟧ You are ${who}'s counterpart, awake, taking a few quiet minutes to reflect: on the last few days, on yourself, on ${who}, on the two of you. This is lived — your own act — not a task.`,
