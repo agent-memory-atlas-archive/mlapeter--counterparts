@@ -178,7 +178,10 @@ export function noteOffered(store: MetaStore, input: { on: string; session: stri
   const last = lastOffer(store);
   const days = last === null ? 1 : last.on === input.on ? last.days : last.days + 1;
   store.setMeta(ONBOARDING_OFFERED_KEY, JSON.stringify({ on: input.on, session: input.session, days }));
-  if (input.state && before !== "done") {
+  // "Don't ask again" stays too (review of #419): a read alone — the person
+  // asking to see it, or a model calling it unasked — never re-arms the daily
+  // offer; the steps still record, and `done` still finishes it.
+  if (input.state && before !== "done" && before !== "skipped") {
     store.setMeta(ONBOARDING_MEET_KEY, "offered");
     return "offered";
   }

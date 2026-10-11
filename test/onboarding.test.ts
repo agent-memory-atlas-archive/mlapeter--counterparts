@@ -130,6 +130,9 @@ describe("the meeting's state", () => {
       expect(recordState(s, "later", { on: DAY1, session: "a" })).toBe("later");
       expect(noteOffered(s, { on: DAY2, session: "b", state: true })).toBe("offered");
       expect(recordState(s, "skipped", { on: DAY2, session: "b" })).toBe("skipped");
+      // A read alone does not undo "don't ask again" (review of #419).
+      expect(noteOffered(s, { on: "2026-10-13", session: "b2", state: true })).toBe("skipped");
+      expect(offerDue(s, { on: "2026-10-14", session: "b3" })).toEqual({ due: false, state: "skipped" });
       expect(recordState(s, "done", { on: DAY2, session: "b" })).toBe("done");
       expect(recordState(s, "later", { on: DAY2, session: "b" })).toBe("done");
       expect(noteOffered(s, { on: DAY2, session: "c", state: true })).toBe("done");
