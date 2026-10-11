@@ -593,6 +593,42 @@ were refined by b2+f8 at the review of #369, named where they were):
   when it resumes on the day it started. A compaction keeps the full wake: it summarizes the
   first one away. Why: on resume the host replays the first wake, so the model read both.
 
+### Decided by the uninstall-delete builder, 2026-10-11, lightly held (`uninstall` offers to delete)
+
+- Decided by the uninstall-delete builder, 2026-10-11, lightly held: plain `uninstall`
+  puts the delete question only to a person (a console with a prompt), and `--yes` keeps
+  without asking, as `--keep-memories` does. Why: `--yes`'s sentence is "take the ordinary
+  answer to every question", and the ordinary answer here is keep. Nothing deletes without a
+  yes and the typed phrase.
+- Decided by the uninstall-delete builder, 2026-10-11, lightly held: the question is not put
+  at all while something holds the store (a process of ours, a session whose hooks ran in
+  the last ten minutes, a fresh memory-server record); the screen says what holds it instead.
+  `--delete-memories` refuses on the same evidence now (it used to check the process list
+  only). Why: a question whose yes is always refused should not be asked; `rollback`'s
+  holder check sees a session the process list can miss. Everything is looked at again
+  after the phrase, and anything changed is a refusal.
+- Decided by the uninstall-delete builder, 2026-10-11, lightly held: `uninstall
+  --delete-memories --json` reads the typed phrase from standard input, a scripted door
+  `uninstall.ts` used to say must never exist. Why: the plugin has no terminal to type into,
+  and Mike's decision was that every uninstall path offers the delete. This process can't
+  tell who wrote its stdin, so the guarantee that the PERSON typed it sits with the caller:
+  the plugin command collects the phrase in its own UI and the model never supplies it.
+  Without `--json`, `--delete-memories` from a pipe still refuses.
+  **Reversed by the coordinator, 2026-10-11, lightly held: there is no stdin door.**
+  `--delete-memories --json` is refused; `uninstall --json` is the plan only (read-only),
+  and `--keep-memories --json` uninstalls and keeps. Why: nothing can tell who wrote stdin,
+  so a model could type the phrase, which breaks the rule that the typed word comes from
+  the person. And a live Claude Code session always holds the store, so the plugin's
+  command could not delete from inside one anyway. `/counterparts:uninstall` shows the plan
+  in-session and sends the person to a terminal, with Claude Code closed, to run the
+  interactive `uninstall` (the plan's `terminalArgs`).
+- Decided by the uninstall-delete builder, 2026-10-11, lightly held: "all memories and
+  related data" is the existing delete list (the store, its default snapshots folder, the
+  configuration and scopes, and our own leftovers such as a `start-fresh` parked store), and
+  no more. A snapshots folder the configuration points somewhere else is named as kept,
+  and so is Claude Code's own directory. Why: no widening of what a delete reaches without
+  someone deciding it.
+
 ### Also noted
 
 - **A read-without-crediting mode for audits.** A way to read memories (a review, a rules

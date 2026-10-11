@@ -272,7 +272,8 @@ import type {
 // the folder `install` offers to bring back is the one `uninstall --park` set
 // aside — the same folder, named twice on two screens, has to carry the same
 // number.
-import { humanBytes as humanDiskBytes, uninstall } from "./uninstall.js";
+import { humanBytes as humanDiskBytes, uninstall, uninstallJson } from "./uninstall.js";
+import type { UninstallInput } from "./uninstall.js";
 import { NO_PAGE_VERSION } from "../../core/self/index.js";
 import { snapshot, snapshotName } from "./snapshot.js";
 import { feelingsLine } from "../feelings-line.js";
@@ -737,7 +738,7 @@ export const COMMAND_FLAGS: Record<Command, readonly string[]> = {
   // still asks, and its question is about somebody's memory.
   connect: ["config", "dry-run"],
   disconnect: ["config", "dry-run"],
-  uninstall: ["config", "yes", "park", "delete-memories", "nothing-is-open"],
+  uninstall: ["config", "yes", "park", "delete-memories", "keep-memories", "nothing-is-open", "json"],
   // `init` takes `--name` for the same reason `install` does: §3 routes second
   // and scratch stores here, and a store with no identity core is a store the
   // wake has nothing to say about.
@@ -850,7 +851,7 @@ export const COMMAND_BLURB: Record<Command, string> = {
   disconnect:
     "Disconnect an AI: take the Counterparts hooks back out of the host's settings file and deregister the memory server. It removes only what it recognises as ours; another tool's hooks are never candidates. Your memory is not touched.",
   uninstall:
-    "Leave: disconnect Claude Code, then say where your memory still is and how to remove the package. It never touches your memory unless you say --park (one rename, dated) or --delete-memories (which counts first and asks you to type a phrase).",
+    "Leave: disconnect Claude Code, then say where your memory still is and how to remove the package. At a terminal it then asks whether to delete your memory too (Enter keeps it; a yes asks you to type a phrase). Otherwise it never touches your memory unless you say --park (one rename, dated) or --delete-memories (which counts first and asks you to type a phrase).",
   init: "Just a store: create a data dir and PRINT the install steps. For a second store or a scratch one.",
   "start-fresh":
     "Begin again as a stranger (or --undo to put the parked store back): park the store your configuration names beside itself under a dated name, park its snapshots the same way, and create a blank store at the same path. One atomic rename each — it never copies, never deletes, and never opens the old store, not even read-only. The configuration is kept byte for byte.",
@@ -1058,6 +1059,8 @@ const FLAG_HELP: Record<string, string> = {
   park: "move the whole directory aside under a dated name — one rename, nothing copied, nothing deleted, and the store is never opened",
   "delete-memories":
     "destroy it. It counts what is about to go, says the number, and takes a typed phrase; there is no way to answer it from a script",
+  "keep-memories":
+    "keep your memory and do not ask: without it, at a terminal, uninstall asks whether to delete it too once Claude Code is disconnected (Enter keeps it)",
 };
 
 /**
@@ -1091,7 +1094,8 @@ const INSTALL_FLAG_HELP: Record<string, string> = {
 const HOST_FLAG_HELP: Record<string, string> = {
   // `connect` and `disconnect` no longer declare this one — they do not ask.
   // `uninstall` does, and this is its sentence.
-  yes: "do not ask: take the ordinary answer to every question this command would put",
+  yes: "do not ask: take the ordinary answer to every question this command would put (for uninstall's question about deleting your memory, that answer is keep)",
+  json: "for uninstall: one JSON object instead of the screen. Alone it is the plan — what a delete would remove and leave, and whether it can go ahead now — and changes nothing; with --keep-memories it uninstalls. It never deletes: that is typed by a person, at a terminal",
   "nothing-is-open":
     "you are asserting you have closed every session, dashboard and worker. It is the way past a check that could NOT LOOK — no usable `ps` — and never past one that found something",
   "dry-run": "print what would change and change nothing (this command is NOT dry by default)",
@@ -1495,6 +1499,7 @@ export function parse(argv: readonly string[]): Parsed {
       "no-connect": { type: "boolean" },
       park: { type: "boolean" },
       "delete-memories": { type: "boolean" },
+      "keep-memories": { type: "boolean" },
       // `dashboard`'s two. `--port` is a string for the reason every valued flag
       // here is: a trailing `--port` would otherwise arrive as the boolean
       // `true` and be read as "no port named", which is the right answer by
@@ -4609,26 +4614,31 @@ async function hostWiringCommand(
   const lister = opts.processes ?? realProcessLister(env);
 
   if (command === "uninstall") {
+    const uninstallInput: UninstallInput = {
+      io,
+      env,
+      home: home_,
+      configPath,
+      custom,
+      // THE WHOLE CONFIGURATION, not just `dataDir`: the plan has to find the
+      // snapshots directory and the store wherever the file put them, because "the directory the config sits in" is exactly
+      // the reasoning the 2026-09-21 review broke.
+      config: host.config,
+      now: now(),
+      yes: parsed.flags["yes"] === true,
+      park: parsed.flags["park"] === true,
+      deleteMemories: parsed.flags["delete-memories"] === true,
+      keepMemories: parsed.flags["keep-memories"] === true,
+      nothingIsOpen: parsed.flags["nothing-is-open"] === true,
+      exe: process.execPath,
+      spawner,
+      lister,
+    };
+    // `--json`: the plugin command's door (`uninstall.ts#uninstallJson`).
     return exitFor(
-      await uninstall({
-        io,
-        env,
-        home: home_,
-        configPath,
-        custom,
-        // THE WHOLE CONFIGURATION, not just `dataDir`: the plan has to find the
-        // snapshots directory and the store wherever the file put them, because "the directory the config sits in" is exactly
-        // the reasoning the 2026-09-21 review broke.
-        config: host.config,
-        now: now(),
-        yes: parsed.flags["yes"] === true,
-        park: parsed.flags["park"] === true,
-        deleteMemories: parsed.flags["delete-memories"] === true,
-        nothingIsOpen: parsed.flags["nothing-is-open"] === true,
-        exe: process.execPath,
-        spawner,
-        lister,
-      }),
+      parsed.flags["json"] === true
+        ? await uninstallJson(uninstallInput)
+        : await uninstall(uninstallInput),
     );
   }
 
