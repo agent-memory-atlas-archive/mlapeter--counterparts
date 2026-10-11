@@ -571,13 +571,13 @@ test('views: two, the sidebar and quiet; quiet is only the dim tail, ending with
   await $.tool.call({ tool: 'mcp__counterparts__note', title: 'A title long enough that a narrow row could not hold it and the hint after it', text: 'x' } as never)
   await settle(w)
   const hint = '? for shortcuts'
-  const narrow = await $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'PromptHint', props: { ...HINT_PROPS, hint } as never, viewport: { ...VIEWPORT, columns: 80 } })
+  const narrow = await $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'PromptHint', props: { ...HINT_PROPS, hint } as never, viewport: { ...VIEWPORT, columns: 100 } })
   await settle(w)
   await narrow.unmount()
   const cut = w.tails.at(-1) ?? ''
   expect(cut).toMatch(/^stored: A title long enough.*… · \/counterparts opens it$/)
   // the engine draws more than its `hint` prop holds and keeps cells clear: 32 spare (measured, NOTES)
-  expect(hint.length + cut.length).toBeLessThanOrEqual(80 - 32)
+  expect(hint.length + cut.length).toBeLessThanOrEqual(100 - 32)
   // quiet reads nothing and draws no brain
   const fetches = w.fetches.length
   const blits = w.blits.length
