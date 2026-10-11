@@ -112,8 +112,10 @@ export const TUNABLES = {
    *  never read as a lost run. */
   NIGHT_WRITE_UP_TOTAL_MS: 60 * 60_000,
   /** One child's turn ceiling: two calls a part for the most parts a child
-   *  takes, and room to look a tool up. */
-  NIGHT_WRITE_UP_MAX_TURNS: 40,
+   *  takes (2 × 16), and 16 more — room to look a tool up and for the odd
+   *  re-sent answer (one in five parts on 2026-10-11). A child that hits it
+   *  ends short, and the run starts no further batch. */
+  NIGHT_WRITE_UP_MAX_TURNS: 48,
   /** Reference resolution at a session-ending boundary (recall §9.2), ms. The
    *  resolver stops between candidates past it and the row says so
    *  (`recall.credit` reason `budget-exceeded`); nothing is truncated silently. */

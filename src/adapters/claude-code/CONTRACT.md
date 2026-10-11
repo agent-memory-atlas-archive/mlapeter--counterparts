@@ -842,7 +842,7 @@ runner is a session id of its own, `writeup-<run>` then `writeup-<run>-2`, …: 
 launcher writes the grant on the runner's record (`grantWriteUps`) and claims every subject
 (`WriteUpProgress.claim`, with `upTo` the last part allowed that batch) before a SECOND
 `claude -p` starts, pinned to that runner, locked down like the first but with
-`--allowedTools` exactly `mcp__counterparts__session_end`, `NIGHT_WRITE_UP_MAX_TURNS` (40)
+`--allowedTools` exactly `mcp__counterparts__session_end`, `NIGHT_WRITE_UP_MAX_TURNS` (48)
 and its own watchdog `NIGHT_WRITE_UP_MS` (10 minutes). When it ends, whatever became of it,
 the claims are let go, the grant withdrawn and the runner's record ended; one durable row
 for the whole run (`adapter.night.writeup`: granted, written, parts, left owed AND the parts
