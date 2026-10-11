@@ -50,6 +50,7 @@ import { byteLength } from "./identity.js";
 import type { SelfTunables } from "./tunables.js";
 import { addDays, isDay } from "../time.js";
 import { HANDOFF_RESERVE_MAX_BYTES, HANDOFF_RESERVE_MIN_BUDGET_MULTIPLE } from "../handoff/index.js";
+import { TODAY_ELSEWHERE_MAX_BYTES } from "../handoff/last-here.js";
 
 /**
  * Composed order — behavioral-spec §1's, minus the two riders the Rulings drop
@@ -109,12 +110,7 @@ export const TRIM_ORDER: readonly LaneName[] = [
  *
  *   - `hints`, `craft`, `threads` — "Nearby", store-wide craft, and "Still
  *     open" past its first item: the trim loop's (`TRIM_ORDER`), whole
- *     elements from the end of each lane — with ONE line between the first
- *     two:
- *   - `elsewhere` — the "Today, elsewhere" line (2026-10-10, composed at
- *     session start only, `BriefingRequest.elsewhere`): it gives way after
- *     "Nearby" and before anything else, its titles first
- *     (`elsewhereShorter`), then the whole line;
+ *     elements from the end of each lane;
  *   - `work` — "Work here": the delivery's room for this directory's work
  *     lines (`lendBytes`), which then shows fewer of them;
  *   - `openCount` — "Still open"'s count beside the items the trim kept,
@@ -127,6 +123,17 @@ export const TRIM_ORDER: readonly LaneName[] = [
  *     first and then shows fewer handoffs in full, the rest by id while
  *     there is room for that line (`counterpart.ts#addHandoffPointer`,
  *     `handoff/#pointerLadder`);
+ *   - `elsewhere` — the "Today, elsewhere" line (2026-10-10, composed at
+ *     session start only, `BriefingRequest.elsewhere`; at most
+ *     `TODAY_ELSEWHERE_MAX_BYTES`, b2 + random-f8, lightly held; placed here
+ *     by the review of #380): it takes room from every lane listed above it —
+ *     the trim loop's lanes, then "Work here", the Yesterday line's titles
+ *     and the handoffs' room (`takeRoom`) — before it steps down: chapters
+ *     first, then directories, then the line. Above it, every dated item and
+ *     the page: "Arriving:", "Still open"'s first item (the lane's last item
+ *     left counts as its first, with its count), the page's borrowing, a
+ *     due-day plain reminder. Only on a day other directories were active:
+ *     no line, nothing taken;
  *   - `arriving` — "Arriving:" past its first line;
  *   - `openFirst` — "Still open"'s first item and its count, when it would
  *     otherwise list nothing (review of #350);
@@ -153,7 +160,6 @@ export const TRIM_ORDER: readonly LaneName[] = [
  */
 export const ROOM_ORDER = [
   "hints",
-  "elsewhere",
   "craft",
   "threads",
   "work",
@@ -161,6 +167,7 @@ export const ROOM_ORDER = [
   "yesterday",
   "lastHere",
   "handoffs",
+  "elsewhere",
   "arriving",
   "openFirst",
   "arrivingFirst",
@@ -170,6 +177,16 @@ export const ROOM_ORDER = [
   "page",
 ] as const;
 export type RoomLane = (typeof ROOM_ORDER)[number];
+
+/** Where each lane the trim loop pops sits in `ROOM_ORDER`: Arriving's lines
+ *  past its head at `arriving`, "Who I am" with the page. */
+const TRIM_ROOM: Readonly<Record<LaneName, RoomLane>> = {
+  hints: "hints",
+  craft: "craft",
+  threads: "threads",
+  horizon: "arriving",
+  identity: "page",
+};
 
 /**
  * Framing is load-bearing and structural (§1: "context, not instruction"). It is
@@ -541,14 +558,17 @@ export interface BriefingRequest {
    * other directories were worked in today, when, the chapter written there
    * (scope and confidential gates), and how many memories, as counts. Never
    * a word of a span, a work memory's title or a handoff from there.
-   * Furniture, printed above "Nearby"; it gives way after "Nearby" and before
-   * every other lane (`ROOM_ORDER`'s `elsewhere`). Absent: no line — which is
-   * every render at a boundary, since the line is about the moment a session
-   * starts.
+   * Furniture, printed above "Nearby", at most `TODAY_ELSEWHERE_MAX_BYTES`
+   * (a longer form is not printed). It takes room from the lanes below it in
+   * `ROOM_ORDER` and gives way to those above it — "Arriving:", "Still
+   * open"'s first item, the page and its borrowing (`ROOM_ORDER`'s
+   * `elsewhere`).
+   * Absent: no line — which is every render at a boundary, since the line is
+   * about the moment a session starts.
    */
   readonly elsewhere?: string;
-  /** Its shorter forms, widest first: the counts without the titles. Ignored
-   *  without `elsewhere`. */
+  /** Its shorter forms, widest first: fewer chapters, fewer directories.
+   *  Ignored without `elsewhere`. */
   readonly elsewhereShorter?: readonly string[];
 }
 
@@ -1038,6 +1058,24 @@ export function arrivingHead(horizon: readonly Pick<Ranked, "due">[]): number {
   return Math.min(horizon.length, Math.max(1, n));
 }
 
+/**
+ * The "Today, elsewhere" line's forms the render may print, widest first:
+ * each within `TODAY_ELSEWHERE_MAX_BYTES` (2026-10-10), each narrower than
+ * the one before. Empty without a line.
+ */
+function elsewhereFormsOf(line: string | undefined, shorter: readonly string[] | undefined): string[] {
+  if (line === undefined || line.length === 0) return [];
+  const out: string[] = [];
+  for (const form of [line, ...(shorter ?? [])]) {
+    const size = byteLength(flatten(form));
+    if (form.length === 0 || size > TODAY_ELSEWHERE_MAX_BYTES) continue;
+    const last = out[out.length - 1];
+    if (last !== undefined && size >= byteLength(flatten(last))) continue;
+    out.push(form);
+  }
+  return out;
+}
+
 /** The "Today, elsewhere" line's next form after `line` in `forms`, or none. */
 function narrowerElsewhere(line: string, forms: readonly string[]): string | undefined {
   const at = forms.indexOf(line);
@@ -1064,6 +1102,10 @@ function shorterThan(line: string | undefined, forms: readonly string[] | undefi
  *     (`handoffLendBytes`), which the delivery gives up in its own order;
  *   - `arriving` — Arriving's lines past its head (`arrivingHead`), from the
  *     end, each a `TrimEvent` so the lane's count can still say so;
+ *   - `elsewhere` — the "Today, elsewhere" line, a narrower form at a time,
+ *     then none (2026-10-10; between `handoffs` and `arriving` since the
+ *     review of #380). The trim loop also asks here on the line's behalf
+ *     (`target` `elsewhere`) before it steps the line down;
  *   - `handoffsKept` — the room held for the newest handoff's own block
  *     (`handoffKeepBytes`): reached only by `due`, the one lane above it
  *     that takes room here (review of #367).
@@ -1424,15 +1466,29 @@ export function render(
   const forms =
     req.yesterday === undefined || req.yesterday.length === 0 ? [] : [req.yesterday, ...shorterThan(req.yesterday, req.yesterdayShorter)];
   const floorWith = (y: string): number => compose(emptyKept(), req.day, resolve, coreName, identity, {}, y).bytes;
-  const yesterday = forms.find((y) => floorWith(y) <= req.budgetBytes + lendOf(req.lendBytes));
+  let yesterday = forms.find((y) => floorWith(y) <= req.budgetBytes + lendOf(req.lendBytes));
   // What the line borrowed, the trim loop composes inside.
-  const base = yesterday === undefined ? req.budgetBytes : Math.max(req.budgetBytes, floorWith(yesterday));
-  // THE "TODAY, ELSEWHERE" LINE (2026-10-10): its widest form, stepped down —
-  // its titles, then the line — after "Nearby" and before any other lane
-  // gives an element (`ROOM_ORDER`'s `elsewhere`). Not a lane: no trim row.
-  const elsewhereForms =
-    req.elsewhere === undefined || req.elsewhere.length === 0 ? [] : [req.elsewhere, ...shorterThan(req.elsewhere, req.elsewhereShorter)];
+  let base = yesterday === undefined ? req.budgetBytes : Math.max(req.budgetBytes, floorWith(yesterday));
+  // THE "TODAY, ELSEWHERE" LINE (2026-10-10; at most
+  // `TODAY_ELSEWHERE_MAX_BYTES`, b2 + random-f8, lightly held; its rank since
+  // the review of #380, `ROOM_ORDER`'s `elsewhere`, between the handoffs'
+  // room and "Arriving:"): its widest form first. The trim loop pops the
+  // lanes below it — "Nearby", craft, "Still open" past its first item —
+  // and before it would pop one above it, the line takes room from "Work
+  // here", the Yesterday line's titles and the handoffs' room (`takeRoom`),
+  // and only then steps down a form. The rescues below step it down for
+  // what ranks above it; the page and its borrowing, chosen before the lanes
+  // (`Self#composeLanes`), give it nothing. Not a lane: no trim row.
+  const elsewhereForms = elsewhereFormsOf(req.elsewhere, req.elsewhereShorter);
   let elsewhere: string | undefined = elsewhereForms[0];
+  const ctx: RescueCtx = { req, resolve, coreName, identity, head: arrivingHead(lanes.horizon), elsewhereForms };
+  // "Still open"'s last item left is its first, which outranks the line
+  // with its count (`openFirst`, as `keepFirstOpen` restores them): the line
+  // finds room for itself beside both, or steps down, before the trim loop
+  // pops it.
+  const lone = (lane: LaneName): boolean => lane === "threads" && kept.threads.length === 1;
+  const outranksLine = (lane: LaneName): boolean =>
+    ROOM_ORDER.indexOf(lone(lane) ? "openFirst" : TRIM_ROOM[lane]) > ROOM_ORDER.indexOf("elsewhere");
 
   for (;;) {
     const c = compose(kept, req.day, resolve, coreName, identity, {}, yesterday, elsewhere);
@@ -1441,8 +1497,20 @@ export function render(
     let stepped = false;
     if (!fits) {
       for (const lane of TRIM_ORDER) {
-        if (lane !== "hints" && elsewhere !== undefined) {
-          elsewhere = narrowerElsewhere(elsewhere, elsewhereForms);
+        if (elsewhere !== undefined && outranksLine(lane)) {
+          const from: Rescued = { kept, trimmed: [...trimmed], yesterday, elsewhere, pinned: {}, composed: c, lent: base - req.budgetBytes };
+          const rest = lone(lane)
+            ? [...trimmed.filter((e) => e.lane === "threads").map((e) => e.id).reverse(), ...(lanes.overflow?.threads ?? [])]
+            : [];
+          const got = takeRoom("elsewhere", from, kept, rest.length === 0 ? {} : { threads: rest }, trimmed, ctx);
+          if (got === null) {
+            elsewhere = narrowerElsewhere(elsewhere, elsewhereForms);
+          } else {
+            for (const l of LANE_ORDER) kept[l] = got.kept[l];
+            trimmed.splice(0, trimmed.length, ...got.trimmed);
+            yesterday = got.yesterday;
+            base = req.budgetBytes + got.lent;
+          }
           stepped = true;
           break;
         }
@@ -1463,7 +1531,6 @@ export function render(
       // only from the lanes below it: "Work here", the Yesterday line's
       // titles, the room for "Last here" and the handoffs — never the page. A
       // rescue that finds no room leaves the render as it was.
-      const ctx: RescueCtx = { req, resolve, coreName, identity, head: arrivingHead(lanes.horizon), elsewhereForms };
       const dueHead = lanes.horizon[0]?.due === true;
       const overflow = lanes.overflow;
       let state: Rescued = { kept, trimmed: [...trimmed], yesterday, elsewhere, pinned: {}, composed: c, lent: base - req.budgetBytes };

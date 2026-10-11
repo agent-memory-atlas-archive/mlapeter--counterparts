@@ -17,7 +17,11 @@
   when, whether a session there is still open, how many memories it wrote, and its chapter's
   title when that chapter is about you or me (the "About me, from another directory" rule).
   Never what was said there, a work memory's title, or a handoff. Folders whose scope is not
-  on are not named. It is the first thing to give way after "Nearby".
+  on are not named. It is at most 300 bytes (more folders become "+N more"), and it is
+  given room ahead of "Nearby", "Still open" past its first item, "Work here", the
+  Yesterday line's titles, "Last here" and the older handoffs, so it prints beside a long
+  page. The page, "Arriving:", "Still open"'s first item and a plain reminder due today
+  still come first, and on days no other folder was active the wake is unchanged.
 - **Forgetting now changes what comes to mind (store v13).** Each memory fades on its own
   curve: steep at first and flat later, slower the more it mattered, the more it was felt,
   used or came back. A routine note leaves the working layer in about two days; a felt

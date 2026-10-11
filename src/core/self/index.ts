@@ -1096,6 +1096,9 @@ export class Self {
     // than the first rung that borrows nothing. The page within its own room
     // outranks it, so when even that does not list it, the wake stays as it
     // was composed, and doctor says so (`self.briefing`'s `trimmedLanes`).
+    // Not for the "Today, elsewhere" line (review of #380): the page and its
+    // borrowing outrank it, so the line takes its room in the render, from
+    // the lanes below it.
     const due = lanes.horizon.filter((r) => r.due === true).map((r) => r.id);
     const unlisted = (o: BriefingResult): boolean => due.some((id) => !o.kept.horizon.includes(id));
     let current = chosen;
