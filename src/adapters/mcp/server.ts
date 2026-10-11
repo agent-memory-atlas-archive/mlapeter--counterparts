@@ -1810,9 +1810,9 @@ export class McpServer {
   }
 
   /** Remember that the calling session was shown these memories. */
-  private markSeen(ids: readonly string[]): void {
+  private markSeen(ids: readonly string[], key?: string): void {
     if (ids.length === 0) return;
-    const key = this.seenKey();
+    key ??= this.seenKey();
     const set = this.seenBySession.get(key) ?? new Set<string>();
     for (const id of ids) set.add(id);
     // Newest last; the oldest session is let go past the bound.
@@ -2084,6 +2084,10 @@ export class McpServer {
       return this.askQuestion(question, mode, typeof page === "number" ? page : 1);
     }
 
+    // Whose call this is, asked ONCE (review of #390): on Claude Code it is a
+    // registry scan. Unbound, it is the very session the old
+    // `this.session ?? this.hostSession()` found, so the recall is unchanged.
+    const key = this.seenKey();
     const result = deliberateRecall(
       this.counterpart,
       {
@@ -2091,7 +2095,7 @@ export class McpServer {
         ...(typeof question === "string" ? { question } : {}),
         ...(askedIds.length > 0 ? { ids: askedIds } : {}),
       },
-      { sessionId: this.session ?? this.hostSession() ?? UNBOUND_SESSION, owner: this.owner },
+      { sessionId: this.session ?? key, owner: this.owner },
     );
     const resolved = this.noteHandleResolution(handle, result);
     // THE MEASUREMENT (2026-09-28): did this lookup fetch what a mechanism's
@@ -2139,9 +2143,10 @@ export class McpServer {
       resolved,
       payload,
       deliveredIds,
+      key,
       fromIndex,
     );
-    this.markSeen(deliveredIds);
+    this.markSeen(deliveredIds, key);
     const bad =
       result.reason === "no-argument" ||
       result.reason === "both-arguments" ||
@@ -2165,9 +2170,11 @@ export class McpServer {
     // during the embedding's round-trip must not be recalled past.
     const moved = this.schemaGate("recall");
     if (moved !== null) return moved;
+    // Asked once (review of #390), as on the address path.
+    const key = this.seenKey();
     const ctx = {
       counterpart: this.counterpart,
-      sessionId: this.session ?? this.hostSession() ?? UNBOUND_SESSION,
+      sessionId: this.session ?? key,
       owner: this.owner,
       ...(this.scope === undefined ? {} : { scope: this.scope }),
       vector: embedded.vector,
@@ -2246,9 +2253,9 @@ export class McpServer {
       truncated: false,
       droppedForBudget: 0,
     });
-    this.noteRecall(row, 0, question, false, payload, ids);
-    this.markSeen(ids);
-    this.noteAsked(ids);
+    this.noteRecall(row, 0, question, false, payload, ids, key);
+    this.markSeen(ids, key);
+    this.noteAsked(ids, key);
     return this.result(payload, false);
   }
 
@@ -2262,9 +2269,9 @@ export class McpServer {
    * like the seen set (`seenKey`); nothing for a session nobody identified.
    * Never throws.
    */
-  private noteAsked(ids: readonly string[]): void {
+  private noteAsked(ids: readonly string[], key?: string): void {
     if (ids.length === 0) return;
-    const session = this.seenKey();
+    const session = key ?? this.seenKey();
     if (session === UNBOUND_SESSION) return;
     this.telemetry(() => {
       this.counterpart.noteAsked(session, ids);
@@ -2307,13 +2314,14 @@ export class McpServer {
     handleResolved: boolean,
     payload: Record<string, unknown>,
     delivered: readonly string[],
+    // Whose call this was, keyed like the seen set (`seenKey`, asked once by
+    // the caller); absent from the row when nobody knows, so a reader falls
+    // back on its own guess rather than on a sentinel.
+    session: string,
     fromIndex: Partial<Record<FitMechanism, number>> = {},
   ): void {
     const byAddress = row.path === "handle";
     const shown = row.shown ?? 0;
-    // Whose call this was, keyed like the seen set; absent when nobody knows,
-    // so a reader falls back on its own guess rather than on a sentinel.
-    const session = this.seenKey();
     this.telemetry(() => {
       this.counterpart.noteAdapterEvent(MCP_RECALL_EVENT, {
         ...(session === UNBOUND_SESSION ? {} : { session }),

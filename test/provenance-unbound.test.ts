@@ -351,6 +351,24 @@ describe("a note written before the bind is filed under its host's session (2026
     a.forgetLaunch();
   });
 
+  test("an unbound Claude Code server's recall row names its host's session, and the ids, never the words (review of #390)", async () => {
+    const k = day();
+    k.set(at(16, 0));
+    opened(A, at(16, 0));
+    const a = launch(k, 90007);
+    k.set(at(16, 2));
+    const n = idOf(await a.call("remember", { text: "The garlic goes in on the full moon, a family habit." }));
+    const out = await a.call("recall", { ids: [n] });
+    expect(out.isError).not.toBe(true);
+    const rows = k.c.store.eventLog({ name: "mcp.recall", limit: 5 });
+    const p = JSON.parse(rows[0]?.payload ?? "{}") as Record<string, unknown>;
+    expect(p["session"]).toBe(A);
+    expect(p["ids"]).toEqual([n]);
+    expect(p["idCount"]).toBe(1);
+    expect(JSON.stringify(rows)).not.toContain("garlic");
+    a.forgetLaunch();
+  });
+
   test("an idle tab opened early in another host does not take a sibling's note (the #307 repro)", async () => {
     const k = day();
     opened(A, at(9, 0), 1111);

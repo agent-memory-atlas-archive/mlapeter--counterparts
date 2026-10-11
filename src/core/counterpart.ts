@@ -572,7 +572,8 @@ export interface DrewOnResult {
  *
  * Since 2026-09-28 the boundary's OWN flush writes one too, with the same
  * fields plus `source: "boundary"` and `contiguity` (what temporal contiguity
- * planned and buffered) — but only when it flushed something: the same rule. *
+ * planned and buffered) — but only when it flushed something: the same rule.
+ *
  * Since 2026-10-11 (for the sidebar mod, lightly held) both rows also name the
  * memories they wired together, bounded (`ids`, at most `ROW_IDS_MAX`, and
  * `idCount`; absent when nothing passed the re-check), and the `session` whose
