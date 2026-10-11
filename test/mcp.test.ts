@@ -1840,6 +1840,50 @@ describe("`updates` is a field on `note`, not prose", () => {
     ).toBeUndefined();
   });
 
+  test("a declaration naming a REMOVED memory lands UNLINKED too — the call does not fail", async () => {
+    const s = server();
+    const first = payload(await s.call("remember", { text: "The boiler service is booked for the first week of November." }));
+    const gone = first["id"] as string;
+    s.counterpart.store.appendRemovalRecord({ memoryId: gone, stage: "requested", actor: "owner", reason: "test" });
+    s.counterpart.store.appendRemovalRecord({ memoryId: gone, stage: "dark", actor: "owner", reason: "test" });
+    const res = await s.call("remember", {
+      text: "The boiler service moved to the second week of November after the engineer called.",
+      updates: gone,
+      how: "changed",
+    });
+    const body = payload(res);
+    expect(res.isError ?? false).toBe(false);
+    expect(body["stored"]).toBe(true);
+    expect(s.counterpart.store.readProse(body["id"] as string).meta[UPDATES_META_KEY]).toBeUndefined();
+    // Reported as not landing: nothing was settled against the removed memory.
+    expect(body["settled"]).toMatchObject({ ok: false, applied: false, path: "none", reason: "target-removed" });
+  });
+
+  test("a REMOVED target never falls back to content matching: a live near-copy is not updated in its place (review of #422)", async () => {
+    const s = server();
+    const twin = payload(await s.call("remember", { text: "The boiler service is booked for the first week of November with the usual engineer." }))["id"] as string;
+    const gone = payload(await s.call("remember", { text: "The boiler service is booked for the first week of November." }))["id"] as string;
+    s.counterpart.store.appendRemovalRecord({ memoryId: gone, stage: "requested", actor: "owner", reason: "test" });
+    s.counterpart.store.appendRemovalRecord({ memoryId: gone, stage: "dark", actor: "owner", reason: "test" });
+    const res = await s.call("remember", {
+      text: "The boiler service is booked for the second week of November with the usual engineer.",
+      updates: gone,
+      how: "changed",
+    });
+    const body = payload(res);
+    expect(res.isError ?? false).toBe(false);
+    expect(body["stored"]).toBe(true);
+    expect(s.counterpart.store.readProse(body["id"] as string).meta[UPDATES_META_KEY]).toBeUndefined();
+    // The writer learns it was REMOVED, not merely unfound; the twin is untouched.
+    expect(body["settled"]).toMatchObject({ ok: false, applied: false, reason: "target-removed" });
+    expect(String((body["settled"] as { detail: string }).detail)).toContain("removed");
+    expect(s.counterpart.store.row(twin)?.archived).toBe(0);
+    expect((s.counterpart.store.contradictionsOf([twin]).get(twin) ?? []).length).toBe(0);
+    // Without a `how`, the removal is still said.
+    const bare = payload(await s.call("remember", { text: "The boiler service is booked for the third week of November.", updates: gone }));
+    expect(bare["settled"]).toMatchObject({ ok: false, reason: "target-removed" });
+  });
+
   test("the schema OFFERS the field — the ask tells the model it is a field, so it has to exist", () => {
     const props = (toolSpec("remember")?.inputSchema as { properties: Record<string, unknown> }).properties;
     expect(props["updates"]).toBeDefined();

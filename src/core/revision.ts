@@ -115,6 +115,7 @@ export type RevisionApplyReason =
   | "settled"
   | "target-is-an-entity"
   | "confirmation-not-a-challenge"
+  | "target-removed"
   | "observer";
 
 export interface RevisionInput {
@@ -264,6 +265,10 @@ export function applyRevision(
   const retargeted = targetId !== declared;
   const row = store.row(targetId);
   if (row === undefined) return settle("none", "target-unresolvable", null, { retargeted });
+  // A REMOVED memory resolves as itself, and its row may still be here; it is
+  // not one anything can revise (review of #400). Said as itself, so the writer
+  // learns it was removed, not that it could not be found (review of #422).
+  if (store.deniedIds().includes(targetId)) return settle("none", "target-removed", null, { retargeted });
 
   // A CONFIRMATION IS NOT A CHALLENGE (rule 1 in the header). The engine matched
   // a restatement; saying the same thing again must never push the thing it
