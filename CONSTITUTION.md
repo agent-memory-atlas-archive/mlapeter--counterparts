@@ -1,6 +1,6 @@
 # The Counterparts Constitution
 
-_Ratified by the owner 2026-08-25; last amended 2026-09-17 (this file's git history is
+_Ratified by the owner 2026-08-25; last amended 2026-10-11 (this file's git history is
 the amendment log). This is the ONE page with standing authority — everything else,
 including owner answers given during the build, is a working default, revisable without
 ceremony when it fights this page. Changing THIS page is deliberate and rare._
@@ -12,10 +12,10 @@ ceremony when it fights this page. Changing THIS page is deliberate and rare._
    transcripts; the signal is in the structure of experience — what recurred, what
    carried feeling, what got revised, what connects. Simple rules from human memory,
    compounding.
-2. **Interpret, don't transcribe.** Store what was learned, not what was said. Encoding
-   sits as close to the lived experience as the host allows — in author, in time, in
-   context. How interpretation happens — who, when, which seat — is a design choice,
-   never doctrine.
+2. **Interpret, and keep the specifics.** Store what happened and what was learned, and
+   keep the specifics worth having back — the list, the table, the number, the exact
+   words — as they were, where exactness matters. Encoding sits as close to the lived
+   experience as the host allows — in author, in time, in context.
 3. **Forgetting is part of learning.** Forget the trials, keep the lesson. Decay and
    consolidation are features, never apologized for.
 4. **The self is first-class.** Identity, episodes, a persistent "who am I becoming" —
@@ -35,9 +35,7 @@ ceremony when it fights this page. Changing THIS page is deliberate and rare._
 7. **Memory changes like human memory.** Revision, fading, and forgetting are the
    system working. Revisions keep their history; nothing bulk-wipes silently; backups
    catch catastrophe. No ceremony beyond that.
-8. **Remembering is ambient.** Memory forms as a side effect of experience, not as a
-   task. Deliberate remembering — the note, the protection — is the exception, not the
-   interface.
+8. **Memory forms as you go:** you remember what catches your attention, in the moment.
 9. **One memory, many fidelities.** Gist governs salience and forgetting; verbatim
    survives where exactness matters. Biology's rules without biology's limits.
 10. **Simplicity is a feature.** One brain function per self-contained module. A
