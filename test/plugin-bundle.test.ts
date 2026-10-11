@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  BUNDLE_LOCKFILE,
   EXTRA_KEYWORDS,
   LISTING,
   MAX_FILES,
@@ -60,7 +61,7 @@ describe("the file set", () => {
       "LICENSE",
       "README.md",
       "package.json",
-      "bun.lock",
+      "package-lock.json",
     ]) {
       expect(paths).toContain(f);
     }
@@ -125,18 +126,32 @@ describe("the generated files", () => {
     expect(new Set(keywords).size).toBe(keywords.length);
   });
 
-  test("package.json names only the embedding table, at an exact version, and bun.lock pins the same", () => {
+  test("package.json names only the embedding table, at an exact version, and one npm lockfile pins the same", () => {
     expect(Object.keys(pkg.dependencies)).toEqual([MODEL_PACKAGE]);
     const pinned = pkg.dependencies[MODEL_PACKAGE]!;
     expect(pinned).toMatch(/^\d+\.\d+\.\d+$/);
     expect(pkg.type).toBe("module");
-    const lock = plan.generated["bun.lock"]!;
-    expect(lock).toContain(`"${MODEL_PACKAGE}": "${pinned}"`);
-    expect(lock).toContain(`"${MODEL_PACKAGE}@${pinned}"`);
-    expect(lock).toMatch(/"sha512-[A-Za-z0-9+/=]+"/);
-    expect(lock).not.toMatch(/"(typescript|playwright|@types\/bun)"/);
-    // The integrity is the one this repository's own lockfile pins.
-    expect(readFileSync(join(REPO, "bun.lock"), "utf8")).toContain(lock.match(/"(sha512-[^"]+)"/)![1]!);
+    // One lockfile: Claude Code uses the first of bun.lock, npm-shrinkwrap.json,
+    // package-lock.json and never falls back, so a second would decide instead.
+    expect(BUNDLE_LOCKFILE).toBe("package-lock.json");
+    expect(paths.filter((p) => /^(bun\.lockb?|npm-shrinkwrap\.json|package-lock\.json|yarn\.lock|pnpm-lock\.yaml)$/.test(p))).toEqual([BUNDLE_LOCKFILE]);
+    const lock = JSON.parse(plan.generated[BUNDLE_LOCKFILE]!) as {
+      lockfileVersion: number;
+      version: string;
+      packages: Record<string, { version?: string; resolved?: string; integrity?: string; dependencies?: Record<string, string> }>;
+    };
+    // npm 7+ format (Claude Code reads lockfileVersion 2 or 3), same dependencies as package.json.
+    expect(lock.lockfileVersion).toBe(3);
+    expect(lock.version).toBe(plan.version);
+    expect(lock.packages[""]!.dependencies).toEqual(pkg.dependencies);
+    expect(Object.keys(lock.packages).sort()).toEqual(["", `node_modules/${MODEL_PACKAGE}`]);
+    const entry = lock.packages[`node_modules/${MODEL_PACKAGE}`]!;
+    expect(entry.version).toBe(pinned);
+    // A registry package over https, pinned by integrity — the integrity this
+    // repository's own bun.lock pins.
+    expect(entry.resolved).toBe(`https://registry.npmjs.org/${MODEL_PACKAGE}/-/${MODEL_PACKAGE}-${pinned}.tgz`);
+    expect(entry.integrity).toMatch(/^sha512-[A-Za-z0-9+/=]+$/);
+    expect(readFileSync(join(REPO, "bun.lock"), "utf8")).toContain(entry.integrity!);
   });
 
   test("the README is long enough for the directory and discloses what the plugin fetches", () => {

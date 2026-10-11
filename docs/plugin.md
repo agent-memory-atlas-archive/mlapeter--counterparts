@@ -299,15 +299,17 @@ on 2.1.296 (2026-10-11).
 It never logs in. A model turn needs a login, and the loop copies no credential.
 
 `tools/plugin-loop/run.sh --bundle [workdir]` runs the same loop on the generated bundle
-(below) instead of the working tree, and also checks that the installed copy stays inside
-the directory's file limit with no tests or module docs. Last run: 24/24 on 2.1.296
-(2026-10-11).
+(below) instead of the working tree, with npm on its PATH for the bundle's lockfile. It
+also checks that the installed copy stays inside the directory's file limit with no tests
+or module docs, that Bun finds the table npm installed, and what happens when the
+dependency install didn't run (below). It needs a Node 22.15+ somewhere it looks (nvm,
+Homebrew, `/usr/local`). Last run: 27/27 on 2.1.296 (2026-10-11).
 
 ## The bundle (for Anthropic's directory)
 
 The directory reads the plugin folder, and here that folder is the whole repository: 800+
 files against a limit of 512, with tests, docs and this repository's own `package.json`
-and `bun.lock`. So the plugin can also be generated as a folder of its own, for a
+and `bun.lock` (its dev dependencies too). So the plugin can also be generated as a folder of its own, for a
 repository whose root is the plugin (planned name: `mlapeter/counterparts-plugin`):
 
 ```sh
@@ -318,10 +320,30 @@ The file set is traced from what Claude Code reads (`plugin.json`, `hooks/hooks.
 `commands/`) through the launcher and every import, and the dashboard's page from
 `app.html`; no tests, no module docs, no dev tooling. It generates `plugin.json` (this
 repository's, with the version from `package.json` and the directory listing fields), a
-`package.json` and `bun.lock` that name only `counterparts-model-potion` at an exact
-version (Claude Code installs it at plugin install), and a README with the disclosure
-below. It refuses symlinks, system files, a file over 5 MiB, or more than 512 files.
-`test/plugin-bundle.test.ts` holds those rules.
+`package.json` and npm `package-lock.json` that name only `counterparts-model-potion` at
+an exact version, and a README with the disclosure below. It refuses symlinks, system
+files, a file over 5 MiB, or more than 512 files. `test/plugin-bundle.test.ts` holds
+those rules.
+
+**Why npm's lockfile.** Claude Code installs a plugin's packages with the package
+manager its lockfile names, from the user's PATH, and tries no other. Node users without
+Bun far outnumber Bun users without npm, and the plugins docs recommend npm for reach.
+Whichever runtime the launcher then picks reads the same `node_modules` (the loop runs
+doctor under Bun on the table npm installed). A computer with neither runtime runs the
+single binary, which carries its own table (`runtime.ts#bundledModelDir`,
+`tools/single-binary/build.ts#embeddedFiles`).
+
+**When the install didn't run** (no npm on PATH, the 60-second limit, offline), the plugin
+still loads, and `/plugin` notes the missing packages. Then, measured by the loop:
+
+- under Node, doctor's Recall by meaning line is amber: "its weights were not found —
+  nothing will be embedded; recall still matches on words". Its fix line says
+  `bun add -g counterparts-model-potion`, which is the npm install's fix, not a plugin
+  user's;
+- under Bun, nothing is missing for long: with no `node_modules` above the plugin, Bun's
+  auto-install fetches the package from the npm registry into `~/.bun/install/cache` the
+  first time it's resolved, at whatever version the registry has, and recall by meaning
+  is on. That fetch isn't pinned by the plugin and isn't in the README's disclosure.
 
 To serve installs from the bundle repository, the marketplace entry's `repo` becomes
 `mlapeter/counterparts-plugin`, with the same `ref` (`v<version>`, tagged there). Nothing

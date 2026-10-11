@@ -28,7 +28,7 @@
  *
  * GENERATED, not copied: `.claude-plugin/plugin.json` (this repository's, with
  * `version` = package.json's and the directory listing fields), a minimal
- * `package.json` and `bun.lock` naming only the embedding table (Claude Code
+ * `package.json` and npm `package-lock.json` naming only the embedding table (Claude Code
  * installs that at plugin install: docs/plugin.md), and README.md
  * (tools/plugin-bundle/bundle-readme.md).
  *
@@ -311,27 +311,36 @@ export function bundlePackageJson(version: string, model: { version: string }): 
   return `${JSON.stringify(pkg, null, 2)}\n`;
 }
 
-/** A text bun.lock (lockfileVersion 1) with the one package, at the version and
- *  integrity this repository's own bun.lock pins: no network, same bytes every run. */
-export function bundleLock(model: { version: string; integrity: string }): string {
-  return [
-    "{",
-    '  "lockfileVersion": 1,',
-    '  "configVersion": 1,',
-    '  "workspaces": {',
-    '    "": {',
-    '      "name": "counterparts",',
-    '      "dependencies": {',
-    `        "${MODEL_PACKAGE}": "${model.version}",`,
-    "      },",
-    "    },",
-    "  },",
-    '  "packages": {',
-    `    "${MODEL_PACKAGE}": ["${MODEL_PACKAGE}@${model.version}", "", {}, "${model.integrity}"],`,
-    "  }",
-    "}",
-    "",
-  ].join("\n");
+/** The lockfile the bundle ships. Claude Code runs the package manager its
+ *  lockfile names, from the user's PATH, and tries no other
+ *  (code.claude.com/docs/en/plugins/loading#node-js-package-dependencies), so
+ *  this decides who gets the embedding table at install. npm: Node users
+ *  without Bun far outnumber Bun users without npm, and the docs recommend it
+ *  for reach. Whichever runtime the launcher then picks reads the same
+ *  node_modules; a computer with neither runs the single binary, which carries
+ *  its own table (runtime.ts#bundledModelDir). */
+export const BUNDLE_LOCKFILE = "package-lock.json";
+
+/** An npm lockfile (lockfileVersion 3, as npm 7+ writes) with the one package,
+ *  at the version and integrity this repository's own bun.lock pins: no
+ *  network, same bytes every run, and what `npm install --package-lock-only`
+ *  writes for the same package.json. */
+export function bundleLock(version: string, model: { version: string; integrity: string }): string {
+  const lock = {
+    name: "counterparts",
+    version,
+    lockfileVersion: 3,
+    requires: true,
+    packages: {
+      "": { name: "counterparts", version, license: "MIT", dependencies: { [MODEL_PACKAGE]: model.version } },
+      [`node_modules/${MODEL_PACKAGE}`]: {
+        version: model.version,
+        resolved: `https://registry.npmjs.org/${MODEL_PACKAGE}/-/${MODEL_PACKAGE}-${model.version}.tgz`,
+        integrity: model.integrity,
+      },
+    },
+  };
+  return `${JSON.stringify(lock, null, 2)}\n`;
 }
 
 // ── the plan, checked ──────────────────────────────────────────────────────
@@ -353,7 +362,7 @@ export function planBundle(repo: string = REPO): Plan {
   const generated: Record<string, string> = {
     ".claude-plugin/plugin.json": bundleManifest(repo, version),
     "package.json": bundlePackageJson(version, model),
-    "bun.lock": bundleLock(model),
+    [BUNDLE_LOCKFILE]: bundleLock(version, model),
     "README.md": readFileSync(join(HERE, "bundle-readme.md"), "utf8"),
   };
 
