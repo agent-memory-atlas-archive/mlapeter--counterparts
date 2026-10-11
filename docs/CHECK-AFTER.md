@@ -177,6 +177,52 @@ or the CLI's read commands (`counterparts mechanisms --dir …`, `counterparts d
 - **Changes a decision if:** `toConfirmMore` keeps growing night over night → proposals outpace the dream's
   4: raise `SLOT_PER_NIGHT` or tighten the rule.
 
+## .18 / Group 2b (one door for "A over B"), the first week after it is installed
+
+The forward run on the 10-11 copy (snapshot before the v13 migration, lived day 20; branch against master, +0/+1/+7
+lived days with a boundary a day, no model calls) is the baseline. Only the open-time passes can fire in it: the
+moved-reminder pass wrote 2 rows at +0 (mem_6d94a37a10c5 under mem_828f37a7eaa1, mem_828f37a7eaa1 under
+mem_96410a0916f3; both fade 1.0 → 0.5, strength 0.346 → 0.173 and 0.456 → 0.228) and 0 after; the corrected-links
+pass carried 10 corrected memories' links. Core: no movement (no declared change in a forward run). Owner/us: 0 of
+227 memories differ from master at any checkpoint. The doors that need a write or a dream (write, settle, slot,
+dream-merge, pressure, fulfilled) wrote nothing in the run; from the copy's history a dream merge would have written
+one row per original (40 originals so far).
+
+### Every door's rows, by source
+- **Look at:** `SELECT source, how, state, count(*) FROM contradictions WHERE created_at > <install> GROUP BY 1,2,3`,
+  and `contradiction.settled` events' `source` and `howSent`.
+- **Why:** after this, every "A over B" writes a row; a door that writes none is a door that was missed. Expect
+  `write` most days, `dream-merge` on dream nights (one per original), `reminder-moved` rarely (a reminder carried
+  from further along its chain), `pressure` / `fulfilled` only on a declared change at a core memory.
+- **Changes a decision if:** a merge night writes no `dream-merge` rows → the merge fell back past the door (it
+  emits nothing, so look for originals archived `dream-merge` with no pair): a bug lane. `howSent: false` on most
+  `write` rows that turn out wrong on a hand-read → default `how` to `open` instead of `changed`.
+
+### The dashboard no longer counts one settle twice
+- **Look at:** `/api/mechanisms` Interference and Reconsolidation backing ids: no event id under both.
+- **Why:** review 10 found the same event ids under both cards. Interference now counts merges, dream flags,
+  slot proposals and confirmed slots; Reconsolidation counts declared settles and pressure.
+- **Changes a decision if:** they still overlap → the split missed a source value; or Interference sits idle for a
+  week while slots are proposed → its proofs read the wrong events.
+
+### Corrected memories' rows swept only after their links were carried
+- **Look at:** meta `associate.corrected.relink` present after the first open; edge rows whose endpoint is archived
+  `corrected` (25 on the copy) go to ~0 at the first flush after it; the holder keeps the links.
+- **Why:** `corrected` joined the sweep's terminal list with this build; the open-time pass carries the old ones
+  first and the sweep waits for its latch.
+- **Changes a decision if:** the latch is missing a day later (the pass keeps failing) → the sweep never takes
+  `corrected`, which is the safe side, but find out why.
+
+### A core memory moves only on a declared change
+- **Look at:** `revision.pressure` rows (force 0.35 for an authored change at a slow-kind core memory) and pairs with
+  source `pressure` or `fulfilled`.
+- **Why:** before this no path moved a core memory in practice. The Han pair (mem_def8b46df5cc, no status, no date)
+  is not fast-laned: it needs three lived days of declared changes at the floor. Whether such items should be in the
+  core at all is Group 3's.
+- **Changes a decision if:** a `fulfilled` replaces a core memory a hand-read says was not a plan → narrow the fast
+  lane (status only, not a date); or the Han pair is still in the core after the owner has declared it kept on
+  three days → the floor is not reaching it.
+
 ## Group 4 (association), due ~5 lived days after it ships
 
 The fast-forward on the 10-11 copy (7 lived days replayed with write-time links, replay deposits and

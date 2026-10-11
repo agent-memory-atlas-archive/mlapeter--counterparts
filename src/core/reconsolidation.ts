@@ -20,6 +20,21 @@
  *   |             | id, never deleted                                         |
  *   | `open`      | nothing moves; both are shown with each other             |
  *
+ * **One door for "A over B"** (2026-10-11, Group 2b; review 10 C1, R7).
+ * Every path that marks one memory as standing in place of another calls
+ * `supersede`: a settle, a write's `updates`, a slot confirmed, a dream merge
+ * (source `dream-merge`), the core's pressure crossing (`pressure`), a
+ * fulfilled plan (`fulfilled`), a moved reminder (`reminder-moved`), and next
+ * Group 3's folds. It writes the pair and the trail and takes the effect from
+ * `how` alone — except where the holder REPLACES the memory (a merge's
+ * memory, a core memory's successor or fulfilment): archived with a
+ * forwarding address instead of faded. A memory that leaves recall hands its
+ * links to the holder; a pending reminder moves to it. `settle` reads its
+ * input and keeps the guards, then goes through the same door. Not here: a
+ * chapter's regrown copy (`episode-regrown`, one chapter's text re-rendered,
+ * not one memory over another) and the schema belief / current-state arms
+ * (no live producer).
+ *
  * **One way to settle, from anywhere.** A new memory settles the one it
  * `updates` as it is written (`settleOnWrite`, called by `revision.ts` in
  * place of the ordinary-memory "link-only" arm); a pair that already exists —
