@@ -78,10 +78,14 @@ describe("which runtime an executable names", () => {
     expect(BUN_NO_ENV_FILE).toBe("--no-env-file");
     expect(CFG).toBe(`--config=${EMPTY_BUNFIG}`);
     // The empty bunfig ships beside runtime.ts (a missing one is fatal to Bun),
-    // and holds nothing but comments.
+    // and holds nothing but comments and the one setting that turns Bun's
+    // runtime auto-install off (project-env.test.ts says why).
     expect(EMPTY_BUNFIG.endsWith("/src/adapters/empty-bunfig.toml")).toBe(true);
     expect(existsSync(EMPTY_BUNFIG)).toBe(true);
-    expect(readFileSync(EMPTY_BUNFIG, "utf8").split("\n").filter((l) => l.trim().length > 0 && !l.trim().startsWith("#"))).toEqual([]);
+    expect(readFileSync(EMPTY_BUNFIG, "utf8").split("\n").filter((l) => l.trim().length > 0 && !l.trim().startsWith("#"))).toEqual([
+      "[install]",
+      'auto = "disable"',
+    ]);
     expect(scriptArgs("/s/hook.ts", NODE)).toEqual(["--import", NODE_HOOKS, "/s/hook.ts"]);
     expect(NODE_HOOKS.endsWith("/src/adapters/node-hooks.mjs")).toBe(true);
   });

@@ -203,12 +203,23 @@ describe("a project's .env", () => {
       expect(resolve(dirname(shim), "../../empty-bunfig.toml")).toBe(EMPTY_BUNFIG);
     }
     const launcher = readFileSync(LAUNCHER, "utf8");
-    // The plugin's launcher also turns Bun's runtime auto-install off: with no
-    // node_modules (the plugin's dependency install did not run), Bun would
-    // fetch the embedding table from npm, unpinned (plugin-run.sh).
-    expect(launcher).toContain('exec "$runtime" --no-env-file --no-install "--config=$here/empty-bunfig.toml" "$entry" "$@"');
+    expect(launcher).toContain('exec "$runtime" --no-env-file "--config=$here/empty-bunfig.toml" "$entry" "$@"');
     expect(join(dirname(LAUNCHER), "empty-bunfig.toml")).toBe(EMPTY_BUNFIG);
     expect(existsSync(EMPTY_BUNFIG)).toBe(true);
+  });
+
+  test("the file every Bun launch names turns auto-install off, and names no package source", () => {
+    // With no node_modules (a plugin whose dependency install did not run), Bun
+    // would fetch a missing package from npm, unpinned. Every process that names
+    // this file — launched, or started by one — is covered.
+    const settings = readFileSync(EMPTY_BUNFIG, "utf8")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0 && !l.startsWith("#"));
+    expect(settings).toEqual(["[install]", 'auto = "disable"']);
+    // The directory's checklist holds a package-manager config that sets a
+    // registry or other source in a plugin with a package install.
+    expect(readFileSync(EMPTY_BUNFIG, "utf8")).not.toMatch(/^\s*(registry|scopes|cafile|\[install\.scopes\])/m);
   });
 });
 

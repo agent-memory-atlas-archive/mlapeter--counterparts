@@ -591,8 +591,9 @@ if [ "$BUNDLE" = 1 ]; then
 
   # Under Bun, with no node_modules anywhere above the plugin, Bun's runtime
   # would fetch the package from the npm registry into ~/.bun/install/cache at
-  # first use, unpinned. The launcher runs Bun with --no-install, so the table
-  # stays missing and doctor says so, as under Node.
+  # first use, unpinned. empty-bunfig.toml, which every Bun launch names (the
+  # runner and embedding worker included), turns that off, so the table stays
+  # missing and doctor says so, as under Node.
   step "no dependency install, under Bun: no auto-install (nothing in ~/.bun/install/cache), doctor's line is amber"
   NODEPS_DOCTOR=$(nodeps_doctor "$BUN_BIN" "$WORK/home-no-deps-bun")
   printf '%s\n' "$NODEPS_DOCTOR" > "$WORK/doctor-no-deps-bun.txt"
