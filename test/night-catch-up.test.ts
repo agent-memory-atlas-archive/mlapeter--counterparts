@@ -45,6 +45,7 @@ import type { HookInput } from "../src/adapters/claude-code/hooks.js";
 import type { ToolResult } from "../src/adapters/mcp/index.js";
 import {
   NIGHT_RUNNER_PREFIX,
+  WRITE_UP_PART_BYTES,
   WRITE_UP_REPLY_BYTES,
   WRITE_UP_REPLY_MARK,
   owedWriteUps,
@@ -52,6 +53,7 @@ import {
   readSession,
   readWriteUpProgress,
   recordSession,
+  updateWriteUpProgress,
   writeUpEntries,
   writeUpPlan,
 } from "../src/adapters/sessions.js";
@@ -886,6 +888,54 @@ describe("everything owed (2026-10-11): no session bound, a sanity ceiling and a
     });
     expect(seen.length).toBe(1);
     expect(report).toMatchObject({ state: "partial", granted: 1, written: 0, parts: 0, left: 1, batches: 1 });
+  });
+
+  /** Every part of `id` back and answered, the mark not landed: the state a
+   *  failed `recordWriteUp` leaves, which one fetch finishes. */
+  function markNotLanded(id: string, scope: string): void {
+    const c = openNightCounterpart(config());
+    try {
+      updateWriteUpProgress(c.store, (all) => {
+        all[progressKey(id, scope)] = { chunk: WRITE_UP_PART_BYTES, parts: 1, done: 1, handedAt: Date.now() - HOUR, answer: "memories" };
+        return true;
+      });
+    } finally {
+      c.close();
+    }
+  }
+
+  test("review of #401: a last part answered whose mark did not land, and a child that does nothing — one batch, `partial`, no part counted (it used to re-grant it to the ceiling)", async () => {
+    lived("stuck-1", proj);
+    markNotLanded("stuck-1", proj);
+    expect(owes("stuck-1")).toBe(true);
+    const seen: ChildPlan[] = [];
+    const report = await runCatchUp({
+      open: () => openNightCounterpart(config()),
+      config: config(),
+      run: "nrn_stuck",
+      scope: launch,
+      plan: ({ prompt, runner }) => planNightChild({ config: config(), run: "nrn_stuck", prompt, scope: launch, session: runner, tools: CATCH_UP_TOOLS }),
+      start: async (p) => {
+        seen.push(p);
+        return { code: 0, timedOut: false, error: null };
+      },
+      now: () => Date.now(),
+      parts: 20,
+    });
+    expect(seen.length).toBe(1);
+    expect(report).toMatchObject({ state: "partial", granted: 1, written: 0, parts: 0, left: 1, batches: 1 });
+    expect(owes("stuck-1")).toBe(true);
+  });
+
+  test("review of #401: the same state and a child that fetches it — the fetch lands the mark, written up, no part counted, the run goes on", async () => {
+    lived("stuck-2", proj, { at: YESTERDAY_10() - HOUR });
+    lived("next-2", other);
+    markNotLanded("stuck-2", proj);
+    const seen: ChildPlan[] = [];
+    const report = await catchUp("nrn_mark", seen);
+    expect(owes("stuck-2")).toBe(false);
+    expect(owes("next-2")).toBe(false);
+    expect(report).toMatchObject({ state: "done", granted: 2, written: 2, parts: 1, left: 0 });
   });
 
   test("the night's `started` row carries the catch-up's whole watchdog, so a long catch-up is never read as a lost run", () => {

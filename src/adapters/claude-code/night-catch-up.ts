@@ -100,6 +100,11 @@ export interface CatchUpSubject {
   readonly upTo: number;
   readonly of: number;
   readonly bytes: number;
+  /** Parts already written before this batch (review of #401): what the batch
+   *  is measured against, so a share that did not move counts no progress —
+   *  `from - 1`, except for a last part answered whose mark did not land,
+   *  where every part is already done and only the mark is owed. */
+  readonly done: number;
 }
 
 export interface CatchUpPlan {
@@ -171,7 +176,7 @@ export function planCatchUp(
         bounded += 1;
         continue;
       }
-      subjects.push({ session: h.session, here, lived: calendarDate(h.clockFrom, zone), from: p.parts, upTo: p.parts, of: p.parts, bytes: 0 });
+      subjects.push({ session: h.session, here, lived: calendarDate(h.clockFrom, zone), from: p.parts, upTo: p.parts, of: p.parts, bytes: 0, done: Math.min(p.done, p.parts) });
       taken += 1;
       continue;
     }
@@ -208,6 +213,7 @@ export function planCatchUp(
       upTo: done + take,
       of: parts.length,
       bytes,
+      done,
     });
   }
   return { runner, subjects, owed: owing.length, busy, bounded, bytes: total };
@@ -398,6 +404,8 @@ interface Granted {
   readonly from: number;
   readonly upTo: number;
   readonly of: number;
+  /** Parts written before its first batch. */
+  readonly done: number;
 }
 
 /** How far each granted share got: written, and parts back, read from the store. */
@@ -416,12 +424,16 @@ function measure(c: Counterpart, subjects: readonly Granted[], now: number): { w
     if (writeUpStanding(after, c.store.dir, s.session, s.here, now, { progress }).status !== "owed") {
       written += 1;
       allowed += 1;
-      parts += s.of - (s.from - 1);
+      parts += Math.max(0, s.of - s.done);
       continue;
     }
+    // Progress is what MOVED (review of #401): a last part answered whose mark
+    // did not land is already `done >= upTo` before the batch, and a child that
+    // touched nothing must not read as a part written — or the run re-grants
+    // it, batch after batch, to the ceiling.
     const p = progress[progressKey(s.session, s.here)];
-    if (p !== undefined) parts += Math.max(0, p.done - (s.from - 1));
-    if (p !== undefined && p.done >= s.upTo) allowed += 1;
+    if (p !== undefined) parts += Math.max(0, p.done - s.done);
+    if (p !== undefined && p.done >= s.upTo && p.done > s.done) allowed += 1;
   }
   const left = after.filter((h) => h.owes && pointable(h, c.store.dir)).length;
   return { written, parts, left, allowed };
@@ -547,7 +559,7 @@ export async function runCatchUp(input: CatchUpInput): Promise<CatchUpReport | n
     for (const s of plan.subjects) {
       const key = progressKey(s.session, s.here);
       const was = granted.get(key);
-      granted.set(key, { session: s.session, here: s.here, from: was?.from ?? s.from, upTo: s.upTo, of: s.of });
+      granted.set(key, { session: s.session, here: s.here, from: was?.from ?? s.from, upTo: s.upTo, of: s.of, done: was?.done ?? s.done });
     }
     try {
       input.onBatch?.({ batch: batches, plan });
@@ -580,7 +592,7 @@ export async function runCatchUp(input: CatchUpInput): Promise<CatchUpReport | n
     // early, exits 0 all the same. Its output is not read (it is prose); the
     // count is the evidence. And a batch that brought nothing back starts no
     // other: the next would be granted the same parts.
-    if (m === null || m.allowed < plan.subjects.length || m.parts === 0) {
+    if (m === null || m.allowed < plan.subjects.length || (m.parts === 0 && m.written === 0)) {
       state = "partial";
       break;
     }
