@@ -199,10 +199,11 @@ import type {
 } from "./self/index.js";
 import { cyclePartial, ownerNames, runCycle } from "./sleep/index.js";
 import type { CyclePartial, CycleReport, Phase } from "./sleep/index.js";
-import { ABOUT_MARKS, CORE_ABOUT_MARKS, Store, assertSafeDataDir, rowTombstoned, hashText, indexTextOf, occurredOnOf, saidByOf, statusOf } from "./store/index.js";
+import { ABOUT_MARKS, CORE_ABOUT_MARKS, Store, assertSafeDataDir, inheritFrom, rowTombstoned, hashText, indexTextOf, occurredOnOf, saidByOf, statusOf } from "./store/index.js";
 import type {
   AboutMark,
   AddFeelingsResult,
+  Inherited,
   FeelingInput, Embedder, StoreEvent, TraitInput, MemoryRow, MemoryStatus, SaidBy } from "./store/index.js";
 import { TUNABLES as PHYSICS, band as bandOf, fadeOf } from "./physics/index.js";
 import type { UseTier } from "./physics/index.js";
@@ -1242,6 +1243,11 @@ export interface DepositResult {
   readonly thread?: { readonly from: string; readonly closed: boolean; readonly refused?: ThreadRefusal };
   /** v12: the writer's three fields as recorded — after a revision's carry-over. */
   readonly facts?: DepositFacts;
+  /**
+   * What it is about, when the writer sent no mark and this revision took the
+   * one of the memory it revises (2026-10-11, `Counterpart#carryAbout`).
+   */
+  readonly aboutCarried?: { readonly mark: AboutMark; readonly from: string };
 }
 
 /**
@@ -6426,10 +6432,12 @@ export class Counterpart {
     // v12: the writer's three fields, a revision's carried over where unsent.
     const facts = this.carryFacts(carry.proposal, ctx.facts);
     const proposal: Proposal = facts === null ? carry.proposal : { ...carry.proposal, facts: { ...(facts.occurredOn === null ? {} : { occurredOn: facts.occurredOn }), ...(facts.saidBy === null ? {} : { saidBy: facts.saidBy }), ...(facts.status === null ? {} : { status: facts.status }) } };
+    // What it is about, a revision's carried over when none was sent (2026-10-11).
+    const about = this.carryAbout(carry.proposal, ctx.about);
     const mint = mintProposal(this.store, proposal, {
       self: this.self,
       channel: "authored",
-      ...(ctx.about === undefined ? {} : { about: ctx.about }),
+      ...(about !== null ? { about: about.about, inheritedAbout: about } : ctx.about === undefined ? {} : { about: ctx.about }),
       ...(ctx.model === undefined ? {} : { model: ctx.model }),
       ...(ctx.writeUp === undefined ? {} : { writeUp: ctx.writeUp }),
       onEvent: (name, data) => this.emit(name, undefined, data),
@@ -6482,6 +6490,7 @@ export class Counterpart {
       ...(held === null ? {} : { held }),
       ...(thread === null ? {} : { thread }),
       ...(facts === null ? {} : { facts }),
+      ...(about === null ? {} : { aboutCarried: { mark: about.about, from: about.from } }),
     };
   }
 
@@ -6614,6 +6623,30 @@ export class Counterpart {
     } catch (err) {
       this.emit("counterpart.update.held.record.failed", holds, { error: errCode(err) });
     }
+  }
+
+  /**
+   * WHAT A REVISION IS ABOUT WHEN ITS WRITER DID NOT SAY (2026-10-11; decided
+   * by random-06, 2026-10-11, lightly held): the mark of the memory it revises
+   * — an address the author declared and the store resolved, as `carryFacts`
+   * reads it — through `store/index.ts#inheritFrom`, so its default floor
+   * reads by it: an owner memory revised without restating `about` stays the
+   * owner's (0.40), not the unmarked 0.25. A mark that was sent always wins
+   * (the door records it after the mint, as before); null and absent are the
+   * same here, since the doors read both as none sent. Null: a mark was sent,
+   * this is no declared revision, or the memory it revises is unmarked.
+   */
+  private carryAbout(p: Proposal, sent: string | null | undefined): (NonNullable<Inherited["about"]>) | null {
+    if (sent !== undefined && sent !== null) return null;
+    const target = p.updates?.method === "declared" ? p.updates.resolved : null;
+    if (target === null) return null;
+    let row: MemoryRow | undefined;
+    try {
+      row = this.store.row(target);
+    } catch {
+      return null;
+    }
+    return row === undefined ? null : inheritFrom([row]).about;
   }
 
   /**

@@ -75,6 +75,7 @@ import {
   ERA_WRITTEN_AT_META,
   RECURRING_META,
   SCHEMA_VERSION,
+  eraCarriedFrom,
   olderFirst,
   openOperational,
   reachExempt,
@@ -511,6 +512,75 @@ export type AboutSetter = (typeof ABOUT_SETTERS)[number];
 /** A column value read as a mark: anything else is unmarked. */
 export function aboutMarkOf(v: unknown): AboutMark | null {
   return typeof v === "string" && (ABOUT_MARKS as readonly string[]).includes(v) ? (v as AboutMark) : null;
+}
+
+/** What `inheritFrom` reads of a source: its mark, and — for `era` — its moment and meta. */
+export type InheritSource = Pick<MemoryRow, "id" | "about" | "about_by"> & Partial<Pick<MemoryRow, "created_at" | "meta">>;
+
+/** What a new row takes from the rows it is made from (`inheritFrom`). */
+export interface Inherited {
+  /**
+   * What it is about, who set that mark (`about_by`), and which source gave
+   * it. Null: no source was marked.
+   */
+  readonly about: { readonly about: AboutMark; readonly aboutBy: AboutSetter | null; readonly from: string } | null;
+  /**
+   * The best source's era standing, as meta keys (`operational.ts
+   * #eraCarriedFrom`) — for a row that takes the best source's STORED claim
+   * (a dream merge) and only for one: a row with a claim of its own (a
+   * revision) is new, and the era reads it as new. Empty without a
+   * `cutoff`.
+   */
+  readonly era: Record<string, unknown>;
+}
+
+/**
+ * WHAT A NEW ROW MADE FROM EXISTING ONES INHERITS (2026-10-11; decided by
+ * random-06, 2026-10-11, lightly held): one model for "this replaces that",
+ * so each path that makes a row out of others reads it the same way — the
+ * dream's merge, a revision by `updates:` (its one source, the memory it
+ * revises); not yet the dream's gist (held until D6, dream CONTRACT §7 Q2,
+ * is decided). `best` is the source whose words and claim the new
+ * row takes; absent, the first in order.
+ *
+ * WHAT IT IS ABOUT: the best source's mark unless that is not personal and
+ * another source is (`CORE_ABOUT_MARKS`: me, us, owner): a personal mark is
+ * never lost to a work one, or to none. Of several personal marks, the best
+ * source's when it is one, else the first in order. An unmarked best source
+ * with only work or world marks beside it takes the first of those — what
+ * `Store#supersedeInto`'s fill-if-unmarked carry would give it anyway, named
+ * here so a caller's note says what lands. The mark keeps who set it.
+ *
+ * The caller with no explicit claim reads its default BY THAT mark
+ * (`physics.defaultClaimFor`), with its own row's status, said-by and kind:
+ * the revision's door hands the mark to `mint.ts`, which already asks.
+ */
+export function inheritFrom(
+  sources: readonly InheritSource[],
+  opts: {
+    best?: InheritSource;
+    /** The era's cutoff (or its first recorded moment), for `era`. */
+    cutoff?: string | number | null;
+  } = {},
+): Inherited {
+  const best = opts.best ?? sources[0];
+  if (best === undefined) return { about: null, era: {} };
+  const personal = (r: Pick<MemoryRow, "about">): boolean => {
+    const m = aboutMarkOf(r.about);
+    return m !== null && CORE_ABOUT_MARKS.includes(m);
+  };
+  const marked = (r: Pick<MemoryRow, "about">): boolean => aboutMarkOf(r.about) !== null;
+  const chosen = personal(best) ? best : (sources.find(personal) ?? (marked(best) ? best : (sources.find(marked) ?? best)));
+  const mark = aboutMarkOf(chosen.about);
+  const by = chosen.about_by;
+  const about =
+    mark === null
+      ? null
+      : { about: mark, aboutBy: typeof by === "string" && (ABOUT_SETTERS as readonly string[]).includes(by) ? (by as AboutSetter) : null, from: chosen.id };
+  return {
+    about,
+    era: opts.cutoff === undefined ? {} : eraCarriedFrom({ created_at: best.created_at ?? null, meta: best.meta ?? "" }, opts.cutoff),
+  };
 }
 
 /** One memory with a reminder date, as `Store.datedMemories` returns it. */

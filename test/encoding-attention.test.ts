@@ -149,6 +149,106 @@ describe("the default floor by what a memory is about (01 C2)", () => {
     expect(await claimed({ text: "A plain fact with no mark on it about the kettle.", salience: 0.05, about: "us" })).toBe(0.05);
   });
 
+  test("a revision by `updates` keeps what its memory was about unless the writer says otherwise (2026-10-11)", async () => {
+    const s = server();
+    const write = async (args: Record<string, unknown>): Promise<Record<string, unknown>> => {
+      const out = payload(await s.call("remember", args));
+      expect(out["stored"]).toBe(true);
+      return out;
+    };
+    const row = (out: Record<string, unknown>) => s.counterpart.store.row(String(out["id"]));
+    const claim = (out: Record<string, unknown>) => s.counterpart.store.physicsOf(String(out["id"])).salience.claimed ?? null;
+    const owner = await write({ text: "They grew up two streets from the harbour in Halifax.", about: "owner" });
+    // No `about` sent: the revision takes the owner's mark, and its default reads by it.
+    const revised = await write({ text: "They grew up three streets from the harbour in Halifax, not two.", updates: String(owner["id"]) });
+    expect(row(revised)?.about).toBe("owner");
+    expect(row(revised)?.about_by).toBe("writer");
+    expect(claim(revised)).toBe(0.4);
+    expect(revised["about"]).toEqual({ stored: true, mark: "owner", carriedFrom: owner["id"] });
+    // A revision of the revision: still the owner's.
+    const again = await write({ text: "They grew up three streets from the harbour in Halifax, by the ferry.", updates: String(revised["id"]), how: "open" });
+    expect(row(again)?.about).toBe("owner");
+    expect(claim(again)).toBe(0.4);
+    // A mark that is sent wins, and so does its default.
+    const work = await write({ text: "They grew up three streets from the harbour in Halifax; the map tool should show it.", updates: String(again["id"]), how: "open", about: "work" });
+    expect(row(work)?.about).toBe("work");
+    expect(claim(work)).toBe(0.25);
+    expect(work["about"]).toEqual({ stored: true, mark: "work" });
+    // An explicit claim is kept as it was.
+    const low = await write({ text: "They grew up three streets from the harbour in Halifax, near the ferry dock.", updates: String(again["id"]), how: "open", salience: 0.1 });
+    expect(row(low)?.about).toBe("owner");
+    expect(claim(low)).toBe(0.1);
+    // An unmarked memory's revision stays unmarked, at the unmarked default, and says nothing of it.
+    const plain = await write({ text: "The kettle in the kitchen takes four minutes to boil." });
+    const plainRevised = await write({ text: "The kettle in the kitchen takes five minutes to boil.", updates: String(plain["id"]) });
+    expect(row(plainRevised)?.about ?? null).toBeNull();
+    expect(claim(plainRevised)).toBe(0.25);
+    expect(plainRevised["about"]).toBeUndefined();
+    // No `updates`: nothing to inherit.
+    const fresh = await write({ text: "They mentioned the harbour in Halifax again today." });
+    expect(row(fresh)?.about ?? null).toBeNull();
+    // `how: changed` settles over the old one (and fades it): the new one is still ours, with no re-label recorded.
+    const pier = await write({ text: "Their favourite walk is out along the old pier at dusk.", about: "us" });
+    const changed = await write({ text: "Their favourite walk is out along the new pier at dusk now.", updates: String(pier["id"]), how: "changed" });
+    expect(changed["settled"]).toMatchObject({ ok: true, how: "changed", over: pier["id"] });
+    expect(row(changed)).toMatchObject({ about: "us", about_by: "writer" });
+    expect(claim(changed)).toBe(0.4);
+    expect(s.counterpart.store.coreEvents({ memoryId: String(changed["id"]), action: "about" })).toHaveLength(0);
+  });
+
+  test("review of #400: `about: null` inherits; a held update inherits nothing; `corrected` and a `session_end` entry inherit, with no re-label", async () => {
+    const s = server();
+    const store = s.counterpart.store;
+    const write = async (args: Record<string, unknown>): Promise<Record<string, unknown>> => payload(await s.call("remember", args));
+    const claim = (id: unknown) => store.physicsOf(String(id)).salience.claimed ?? null;
+    // Null is the same as absent.
+    const sister = await write({ text: "Their sister lives in Lisbon and teaches piano.", about: "owner" });
+    const moved = await write({ text: "Their sister lives in Porto now and teaches piano.", updates: String(sister["id"]), about: null });
+    expect(store.row(String(moved["id"]))?.about).toBe("owner");
+    expect(claim(moved["id"])).toBe(0.4);
+    expect(moved["about"]).toEqual({ stored: true, mark: "owner", carriedFrom: sister["id"] });
+    // A held update (unrelated words, `changed`) has no target: nothing carried, the unmarked default.
+    const father = await write({ text: "Their father fished cod off the Grand Banks for thirty years.", about: "owner" });
+    const unrelated = await write({ text: "The deploy script needs a force flag on the staging servers.", updates: String(father["id"]), how: "changed" });
+    expect(unrelated["settled"]).toMatchObject({ ok: false, held: true });
+    expect(store.row(String(unrelated["id"]))?.about ?? null).toBeNull();
+    expect(claim(unrelated["id"])).toBe(0.25);
+    expect(unrelated["about"]).toBeUndefined();
+    // `corrected`: inherited at birth, no `about` event on the new row.
+    const dog = await write({ text: "Their dog is a black lab called Juniper.", about: "owner" });
+    const fixed = await write({ text: "Their dog is a black lab called Juno, not Juniper.", updates: String(dog["id"]), how: "corrected" });
+    expect(store.row(String(fixed["id"]))).toMatchObject({ about: "owner", about_by: "writer" });
+    expect(claim(fixed["id"])).toBe(0.4);
+    expect(store.coreEvents({ memoryId: String(fixed["id"]), action: "about" })).toHaveLength(0);
+    // A `session_end` entry: inherits and says so; a sent mark wins there too.
+    const bakery = await write({ text: "Their favourite bakery is on Agricola Street.", about: "us" });
+    const ended = payload(await s.call("session_end", { session: "sess_g1c", memories: [
+      { content: "Their favourite bakery is on Agricola Street, the one with the blue door.", updates: String(bakery["id"]) },
+      { content: "Their favourite bakery is on Agricola Street, open since 1990.", updates: String(bakery["id"]), about: "world" },
+    ] }));
+    const [kept, sent] = ended["outcomes"] as Record<string, unknown>[];
+    expect(kept).toMatchObject({ stored: true, about: { stored: true, mark: "us", carriedFrom: bakery["id"] } });
+    expect(claim(kept?.["id"])).toBe(0.4);
+    expect(sent).toMatchObject({ stored: true, about: { stored: true, mark: "world" } });
+    expect(store.row(String(sent?.["id"]))?.about).toBe("world");
+  });
+
+  test("a revision through `submitJot` reads the same way, the mark at birth (no re-label recorded)", async () => {
+    const c = Counterpart.open({ dir, owner: true });
+    open.push(c);
+    const first = await c.submitJot({ content: "We decided the two of us read one chapter a night." }, { session: "sess_g1c", scope: "/scope/g1c", about: "us" });
+    c.store.setAbout(first.memoryId as string, "us", { by: "writer" });
+    const next = await c.submitJot(
+      { content: "We decided the two of us read two chapters a night, not one.", updates: first.memoryId },
+      { session: "sess_g1c", scope: "/scope/g1c" },
+    );
+    expect(next.deposited).toBe(true);
+    expect(next.aboutCarried).toEqual({ mark: "us", from: first.memoryId as string });
+    expect(c.store.row(next.memoryId as string)?.about).toBe("us");
+    expect(c.store.physicsOf(next.memoryId as string).salience.claimed).toBe(0.4);
+    expect(c.store.coreEvents({ memoryId: next.memoryId as string, action: "about" })).toHaveLength(0);
+  });
+
   test("through a `session_end` entry too", async () => {
     const seen: { name: string; data?: Record<string, unknown> }[] = [];
     const c = Counterpart.open({ dir, owner: true, onEvent: (e) => seen.push(e as unknown as { name: string; data?: Record<string, unknown> }) });
