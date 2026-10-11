@@ -110,7 +110,10 @@ describe("Recall by meaning, for the local table", () => {
     expect(plugin.fix).toContain("/plugin → Installed → counterparts → Update now");
     expect(plugin.fix).toContain("install it again");
     expect(plugin.fix).not.toContain("bun add");
-    expect(plugin.fix).not.toContain("npm");
+    expect(plugin.fix).not.toContain("npm i");
+    expect(plugin.fix).not.toContain("brings the table");
+    // A Bun-only plugin user: the update reruns an npm install that has no npm (#396).
+    expect(plugin.fix).toContain("with no npm on this computer install Node.js");
     expect(plugin.fix).toContain(STATIC_WEIGHTS_ENV);
     const either = by(reading(STATIC, "either"), "embedder");
     expect(either.fix).toContain("npm: bun add -g counterparts-model-potion");

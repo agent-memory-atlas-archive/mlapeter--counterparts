@@ -1250,7 +1250,7 @@ function withdrawnFinding(input: DoctorInput): Finding | null {
  *     the first boundary will confirm it.
  */
 function staticFinding(input: DoctorInput, data: Record<string, string | number | boolean | null>): Finding {
-  const install = `Install the table: ${byInstall(input, `bun add -g ${STATIC_WEIGHTS_PACKAGE}`, `${PLUGIN_UPDATE}, which brings the table with it`)} — or set ${STATIC_WEIGHTS_ENV} in the environment Claude Code starts hooks with`;
+  const install = `Install the table: ${byInstall(input, `bun add -g ${STATIC_WEIGHTS_PACKAGE}`, `${PLUGIN_UPDATE}; the plugin installs the table with npm, so with no npm on this computer install Node.js (https://nodejs.org) first`)} — or set ${STATIC_WEIGHTS_ENV} in the environment Claude Code starts hooks with`;
   const row = newestBackfill(input);
   if (row !== null && str(row, "reason") === "embedder-unavailable") {
     const code = str(row, "codes") ?? "NO_WEIGHTS";

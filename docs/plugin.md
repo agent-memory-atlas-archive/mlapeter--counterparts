@@ -338,9 +338,11 @@ single binary, which carries its own table (`runtime.ts#bundledModelDir`,
 still loads, and `/plugin` notes the missing packages. Then, measured by the loop:
 
 - under Node, doctor's Recall by meaning line is amber: "its weights were not found —
-  nothing will be embedded; recall still matches on words". Its fix line says
-  `bun add -g counterparts-model-potion`, which is the npm install's fix, not a plugin
-  user's;
+  nothing will be embedded; recall still matches on words". Its fix line names
+  the route for the install (`plugin.ts#installRoute`): for the plugin, `/plugin` →
+  Installed → counterparts → Update now, with Node.js first where there is no npm, or
+  `COUNTERPARTS_STATIC_WEIGHTS_DIR`; for the npm install, `bun add -g
+  counterparts-model-potion`;
 - under Bun, the same amber line. With no `node_modules` above the plugin, Bun's runtime
   auto-install would fetch the package from the npm registry into `~/.bun/install/cache`,
   unpinned and undisclosed. `src/adapters/empty-bunfig.toml`, which every Bun launch names
