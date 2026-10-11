@@ -65,7 +65,7 @@
 import { randomBytes } from "node:crypto";
 
 import { emotionalIntensity } from "../physics/index.js";
-import { isHandoff, isSelfPage } from "../recall/index.js";
+import { earlierMark, headOf, isHandoff, isSelfPage } from "../recall/index.js";
 import { aboutMe, acceptsReflectedFeeling, laterFeelingWasReflections, promotionRecordKey, selfRelevantFeeling } from "../sleep/index.js";
 import {
   ABOUT_MARKS,
@@ -222,6 +222,8 @@ export const CORE_MENTIONED_PREFIX = "reflection.coreMentioned.";
  */
 export interface ReflectItem {
   readonly id: string;
+  /** `earlier (now mem_…)` when a later memory settled over it (`recall/standing.ts#headOf`, 2026-10-11). */
+  readonly standing?: string;
   readonly kind: Kind;
   readonly fidelity: Fidelity;
   readonly text: string;
@@ -1833,7 +1835,9 @@ export class Reflections {
     if (isSelfPage(doc) || isHandoff(doc)) return null;
     const head = doc.title !== undefined && doc.title.trim().length > 0 ? `${doc.title.trim()} — ` : "";
     const flat = `${head}${doc.body}`.replace(/\s+/g, " ").trim();
-    return { id, text: clipWire(flat, REFLECT_TUNABLES.SAW_CHARS) };
+    // Settled over since (2026-10-11): the mark in front, outside the clip.
+    const now = headOf(this.store, id);
+    return { id, text: `${now === null ? "" : `${earlierMark(now)}: `}${clipWire(flat, REFLECT_TUNABLES.SAW_CHARS)}` };
   }
 
   /**
@@ -1965,8 +1969,10 @@ export class Reflections {
         carried_by: cut(f.carried_by, REFLECT_TUNABLES.FEELING_CARRIED_CHARS) ?? "",
       }));
     const about = row.about === null ? null : (ABOUT_MARKS as readonly string[]).includes(row.about) ? (row.about as AboutMark) : null;
+    const head = headOf(this.store, row.id);
     return {
       id: row.id,
+      ...(head === null ? {} : { standing: earlierMark(head) }),
       kind: row.kind,
       fidelity: placed.fidelity,
       text: placed.text,

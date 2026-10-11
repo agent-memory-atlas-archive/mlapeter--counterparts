@@ -122,3 +122,77 @@ export function standingOf(
     note: said.join("; "),
   };
 }
+
+// ── settled over: the head, and the one mark (2026-10-11) ──────────────────
+
+/**
+ * THE MEMORY THAT NOW HOLDS IN PLACE OF THIS ONE, or null when this one
+ * still stands (2026-10-11). On 10-11 a write's neighbour list showed a
+ * memory a later one had settled `changed` over by its bare title, and the
+ * session repeated the rule it had replaced. So every surface that shows a
+ * memory's title by its own path — not through `standingOf`'s label — asks
+ * this first and marks what it shows (`earlierMark`).
+ *
+ * The rule is `self/index.ts#settledOver`'s, for one id: in the NEWEST
+ * settled pair that names it directly (a `changed` or `corrected` closed
+ * through another speaks through that one), it is the `over`, and that
+ * pair's `holds` leads to a live memory — followed through its own newer
+ * settles and through `superseded_by` to the live end. A memory re-affirmed
+ * by a later pair (it holds there) stands; a `holds` with no live end hides
+ * nothing. A replaced row (`superseded_by`) answers its live successor.
+ * Bounded (a chain is walked at most `HEAD_MAX_STEPS` links, a cycle is
+ * none) and never throws: a store that will not answer has settled nothing.
+ */
+export const HEAD_MAX_STEPS = 50;
+
+type HeadStore = Pick<Store, "row" | "contradictionsOf">;
+
+function liveRow(store: HeadStore, id: string): boolean {
+  const r = store.row(id);
+  return r !== undefined && r.archived === 0 && r.superseded_by === null && !(r.body === "" && r.content_hash === "");
+}
+
+/** The `holds` of the newest direct changed/corrected settle naming `id` when `id` is its `over`; else null. */
+function newestHolder(store: HeadStore, id: string): string | null {
+  const pairs = [...(store.contradictionsOf([id]).get(id) ?? [])]
+    .reverse()
+    .filter((p) => p.state === "settled" && p.via === null && p.over !== null && p.holds !== null && (p.how === "changed" || p.how === "corrected"))
+    .sort((a, b) => a.updated_at - b.updated_at || a.created_at - b.created_at);
+  const newest = pairs[pairs.length - 1];
+  return newest !== undefined && newest.over === id ? newest.holds : null;
+}
+
+export function headOf(store: HeadStore, id: string): string | null {
+  try {
+    const seen = new Set<string>([id]);
+    // Where `id` points first: its successor when replaced, else the memory that holds over it.
+    const start = store.row(id);
+    if (start === undefined) return null;
+    let next: string | null = start.superseded_by ?? newestHolder(store, id);
+    let end: string | null = null;
+    for (let steps = 0; next !== null && steps < HEAD_MAX_STEPS; steps++) {
+      if (seen.has(next)) break;
+      seen.add(next);
+      const r = store.row(next);
+      if (r === undefined) break;
+      if (!liveRow(store, next)) {
+        next = r.superseded_by;
+        continue;
+      }
+      // Live: the end so far, and further when it was itself settled over.
+      end = next;
+      next = newestHolder(store, next);
+    }
+    return end === id ? null : end;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * THE ONE MARK a settled-over memory carries wherever it is shown by its own
+ * title or words: `earlier (now mem_…)`, read before the words. ~30 bytes.
+ */
+export function earlierMark(head: string): string {
+  return `earlier (now ${head})`;
+}
