@@ -124,6 +124,7 @@ import {
   CONTRADICTION_HELD_EVENT,
   CORRECTED_REASON,
   detectSlot,
+  expireUnanswerableSlots,
   guardBar,
   heldView,
   proposeSlot,
@@ -6794,6 +6795,8 @@ export class Counterpart {
    */
   private proposeSlotFor(id: string, p: Proposal, session: string, siblings: readonly string[]): Extract<SlotOutcome, { ok: true }> | null {
     if (this.observer) return null;
+    // With dreaming off, proposals nothing answered go, once a lived day.
+    expireUnanswerableSlots(this.store, p.day);
     try {
       const declared = p.updates?.resolved ?? null;
       const candidate = detectSlot(this.store, { id, exclude: declared === null ? siblings : [declared, ...siblings], session });

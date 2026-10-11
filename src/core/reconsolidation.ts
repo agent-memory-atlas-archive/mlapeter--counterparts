@@ -64,7 +64,7 @@ import { randomBytes } from "node:crypto";
 
 import { Associate } from "./associate/index.js";
 import { lineOf } from "./fit/index.js";
-import { changedFade, cosine, fadeOf, strength, unfade } from "./physics/index.js";
+import { band, changedFade, cosine, fadeOf, strength, unfade } from "./physics/index.js";
 import { CUE_MODE_META, DATE_FROM_META, DATE_MOVED_TO_META, cueModeOf, recurrenceOf } from "./prospective/index.js";
 import { earlierMark, headOf, isHandoff } from "./recall/index.js";
 import { similarity } from "./remember/index.js";
@@ -169,6 +169,12 @@ export const CONTRADICTION_TUNABLES = {
   SLOT_FADE: 0.8,
   /** Proposals shown to one night's dream to confirm or undo, oldest first; the rest wait. CAL. */
   SLOT_PER_NIGHT: 4,
+  /**
+   * With dreaming OFF only (2026-10-11, Group 2b): lived days a proposal waits
+   * for an answer before it is withdrawn and its cut put back. Two weeks: room
+   * for the writer to settle it awake, short enough that cuts do not pile up. CAL.
+   */
+  SLOT_EXPIRY_DAYS: 14,
 } as const;
 
 /** Where the store's guard bar is kept, with the lived day it was measured (`guardBar`). */
@@ -1126,8 +1132,11 @@ export function proposeSlot(
   const over = input.candidate.over;
   const bad = memoryRefusal(store, over, true) ?? memoryRefusal(store, input.holds, false);
   if (bad !== null && !bad.ok) return { ok: false, reason: bad.reason, detail: bad.detail };
-  const cut = changedFade(store.physicsOf(over), day, CONTRADICTION_TUNABLES.SLOT_FADE);
+  const physics = store.physicsOf(over);
+  const cut = changedFade(physics, day, CONTRADICTION_TUNABLES.SLOT_FADE);
   const faded = cut === null ? null : { before: round(cut.before), after: round(cut.after) };
+  // A PROVISIONAL CUT CAN DROP A BAND (review of #420 (e)): fine, but counted.
+  const bandDrop = cut !== null && band(physics, day) === "semantic" && band({ ...physics, fade: cut.fade }, day) === "episodic";
   try {
     const out = store.proposeContradiction({
       id: newPairId(),
@@ -1150,7 +1159,7 @@ export function proposeSlot(
       name: CONTRADICTION_PROPOSED_EVENT,
       day,
       ref: out.id,
-      payload: { pair: out.id, holds: input.holds, over, rule: input.candidate.rule, cosine: input.candidate.cosine, sameSession: input.candidate.sameSession, faded: faded !== null, day },
+      payload: { pair: out.id, holds: input.holds, over, rule: input.candidate.rule, cosine: input.candidate.cosine, sameSession: input.candidate.sameSession, faded: faded !== null, bandDrop, day },
     });
     return { ok: true, pair: out.id, holds: input.holds, over, rule: input.candidate.rule, cosine: input.candidate.cosine, faded };
   } catch (err) {
@@ -1219,20 +1228,96 @@ export function reinstateSlot(store: Store, input: { pair: string; withdrawSeq: 
  * shown to confirm (`slotsToConfirm` asks for both standing), so without this
  * the older one would keep its provisional cut for good. Withdrawn, the cut
  * put back, by the detector. Run before the dream reads its proposals. Never
- * throws; the count withdrawn.
+ * throws; the count withdrawn (carried ones included).
+ *
+ * CARRIED, NOT WITHDRAWN (2026-10-11, Group 2b; review of #420 (b)): when the
+ * NEWER of the two was replaced — merged away by a dream, or a core memory's
+ * successor — and the older still stands, the question is still open, so it
+ * goes to the memory that replaced it: withdrawn and proposed again between
+ * that one and the older, the cut the same (put back, then made again).
  */
 export function releaseOrphanSlots(store: Store, day: number = store.livedDay()): number {
   if (store.observer) return 0;
   let n = 0;
   try {
     for (const c of store.contradictions({ state: "unsettled", limit: 100_000 })) {
-      if (c.source !== SLOT_SOURCE || pairStanding(store, c) || provisionalOf(store, c) === null) continue;
-      if (withdrawSlot(store, { pair: c.id, actor: "detector", why: "one of the two is gone", day }).ok) n += 1;
+      if (c.source !== SLOT_SOURCE || pairStanding(store, c)) continue;
+      const p = provisionalOf(store, c);
+      if (p === null) continue;
+      const successor = replacedBy(store, p.holds);
+      const carry = successor !== null && liveMemory(store, p.over) && !store.contradictionEverBetween(successor, p.over);
+      const w = withdrawSlot(store, { pair: c.id, actor: "detector", why: carry ? `its newer memory was replaced by ${String(successor)}` : "one of the two is gone", day });
+      if (!w.ok) continue;
+      n += 1;
+      if (carry && successor !== null) {
+        let rule: SlotCandidate["rule"] = "cosine";
+        let cos = 0;
+        try {
+          const d = JSON.parse(store.contradictionSettles({ pairId: c.id }).find((x) => x.seq === p.seq)?.detail ?? "{}") as Record<string, unknown>;
+          if (d["rule"] === "lineage" || d["rule"] === "title" || d["rule"] === "cosine") rule = d["rule"];
+          if (typeof d["cosine"] === "number") cos = d["cosine"];
+        } catch {
+          /* the carried proposal says less about how it was found */
+        }
+        proposeSlot(store, { holds: successor, candidate: { over: p.over, cosine: cos, rule, sameSession: false }, actorId: null, day });
+      }
     }
   } catch {
     /* tried again before the next dream */
   }
   return n;
+}
+
+/** A live, un-replaced memory row with words. */
+function liveMemory(store: Store, id: string): boolean {
+  const r = store.row(id);
+  return r !== undefined && r.type === "memory" && r.archived === 0 && r.superseded_by === null && !rowTombstoned(r);
+}
+
+/** The live memory a replaced one forwards to (`superseded_by`, followed), or null: not replaced, or nothing live at the end. */
+function replacedBy(store: Store, id: string): string | null {
+  const r = store.row(id);
+  if (r === undefined || r.superseded_by === null) return null;
+  try {
+    const end = store.resolve(id);
+    return end !== id && liveMemory(store, end) ? end : null;
+  } catch {
+    return null;
+  }
+}
+
+/** `dream/index.ts#DREAMING_SETTING_KEY`, spelled here because this file sits below `dream/`. */
+const DREAMING_SETTING_KEY = "dream.setting";
+
+/** Where the dreaming-off expiry records the lived day it last ran (`expireUnanswerableSlots`). */
+export const SLOT_EXPIRY_META = "reconsolidation.slotExpiry";
+
+/**
+ * WITH DREAMING OFF, NOTHING ANSWERS A PROPOSAL (2026-10-11, Group 2b;
+ * review of #420 (d)): the dream is the only reader the detector hands its
+ * proposals to, so on a store whose owner turned dreaming off they would
+ * pile up, each older memory holding its provisional cut. There, and only
+ * there — random-06: no silent expiry while a dream can answer — a proposal
+ * nobody answered within `SLOT_EXPIRY_DAYS` lived days is withdrawn and its
+ * cut put back (the label goes with it). Once per lived day; never throws;
+ * the count withdrawn.
+ */
+export function expireUnanswerableSlots(store: Store, day: number = store.livedDay()): number {
+  if (store.observer) return 0;
+  try {
+    if ((store.getMeta(DREAMING_SETTING_KEY) ?? "").trim() !== "off") return 0;
+    const last = Number(store.getMeta(SLOT_EXPIRY_META) ?? "-1");
+    if (last === day) return 0;
+    let n = 0;
+    for (const c of store.contradictions({ state: "unsettled", limit: 100_000 })) {
+      if (c.source !== SLOT_SOURCE || day - c.flagged_day < CONTRADICTION_TUNABLES.SLOT_EXPIRY_DAYS || provisionalOf(store, c) === null) continue;
+      if (withdrawSlot(store, { pair: c.id, actor: "detector", why: "dreaming is off, so nothing answered it", day }).ok) n += 1;
+    }
+    store.setMeta(SLOT_EXPIRY_META, String(day));
+    return n;
+  } catch {
+    return 0;
+  }
 }
 
 /**
