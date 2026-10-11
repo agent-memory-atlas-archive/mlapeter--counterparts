@@ -758,7 +758,7 @@ export class Lifecycle implements HostLifecycle {
     const at = input.at;
     const claimed = due.filter((r) => {
       try {
-        return this.counterpart.claimPlainReminder(r, { at });
+        return this.counterpart.claimPlainReminder(r, { at, session: input.sessionId });
       } catch {
         return false;
       }

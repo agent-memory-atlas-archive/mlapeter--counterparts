@@ -1019,3 +1019,7 @@ Mike's first real run is the real measurement.
   field.
 - Unexplained: once, in the tmux session, focusing the pane with ctrl+x tab and
   then Enter widened the dock to about 60 columns. Not reproduced.
+- Since 2026-10-11 core's `mcp.recall` and `associate.flush` rows carry `ids` (at most 20)
+  and `idCount`, and `mcp.recall`, `prospective.fire`, `prospective.plain` and
+  `associate.flush` carry `session` when it is known (a flush's is the session that applied
+  it). `feed.ts` doesn't read them yet.

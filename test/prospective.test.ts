@@ -472,12 +472,14 @@ describe("window lifecycle — armed, fired, and the four once-ness brakes", () 
     const rows = (name: string): Record<string, unknown>[] =>
       s.eventLog({ name, limit: 50 }).map((r) => JSON.parse(r.payload ?? "{}") as Record<string, unknown>);
 
-    p.fire({ memoryId: id, windowKey: "d:2026-09-04", at: "2026-09-04", day: 5 });
+    p.fire({ memoryId: id, windowKey: "d:2026-09-04", at: "2026-09-04", day: 5, sessionId: "sess_fire" });
     expect(rows(PROSPECTIVE_FIRE_EVENT).length).toBe(1);
     expect(rows(PROSPECTIVE_FIRE_EVENT)[0]).toMatchObject({
       window: "d:2026-09-04",
       fires: 1,
       cap: T.FIRES_PER_WINDOW,
+      // The session whose turn it came back in (2026-10-11).
+      session: "sess_fire",
     });
     // The row points at the memory whose window it is.
     expect(s.eventLog({ name: PROSPECTIVE_FIRE_EVENT, limit: 5 })[0]?.ref).toBe(id);

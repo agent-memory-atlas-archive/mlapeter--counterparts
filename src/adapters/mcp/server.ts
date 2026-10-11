@@ -55,7 +55,7 @@
  * No body text, no question text, no note text ever reaches an event.
  */
 import { CLAIM_NOTHING_NEW, claimUnwritten } from "../../core/coverage/index.js";
-import { DREW_ON_MAX_PER_BOUNDARY, MCP_OVERSIZE_EVENT, MCP_PART_EVENT, MCP_RECALL_EVENT, RECALL_CREDIT_EVENT } from "../../core/counterpart.js";
+import { DREW_ON_MAX_PER_BOUNDARY, MCP_OVERSIZE_EVENT, MCP_PART_EVENT, MCP_RECALL_EVENT, RECALL_CREDIT_EVENT, boundedIds } from "../../core/counterpart.js";
 import { CONTRADICTION_TUNABLES, HELD_HINT, NEIGHBOURS_HINT } from "../../core/contradictions.js";
 import type { Neighbour } from "../../core/contradictions.js";
 import { isRecurrence, localDate, occurrenceOnOrAfter, parseCalendarDate, readableRecurrence, todayIn } from "../../core/time.js";
@@ -2122,6 +2122,8 @@ export class McpServer {
       truncated: payload["truncated"] === true,
       droppedForBudget: 0,
     });
+    // Only what was DELIVERED (review of #316): an id left `waiting` was not shown.
+    const deliveredIds = ((payload["memories"] as { id?: unknown }[] | undefined) ?? []).map((m) => m.id).filter((x): x is string => typeof x === "string");
     this.noteRecall(
       {
         path: result.path,
@@ -2136,10 +2138,9 @@ export class McpServer {
       question,
       resolved,
       payload,
+      deliveredIds,
       fromIndex,
     );
-    // Only what was DELIVERED (review of #316): an id left `waiting` was not shown.
-    const deliveredIds = ((payload["memories"] as { id?: unknown }[] | undefined) ?? []).map((m) => m.id).filter((x): x is string => typeof x === "string");
     this.markSeen(deliveredIds);
     const bad =
       result.reason === "no-argument" ||
@@ -2245,7 +2246,7 @@ export class McpServer {
       truncated: false,
       droppedForBudget: 0,
     });
-    this.noteRecall(row, 0, question, false, payload);
+    this.noteRecall(row, 0, question, false, payload, ids);
     this.markSeen(ids);
     this.noteAsked(ids);
     return this.result(payload, false);
@@ -2283,9 +2284,9 @@ export class McpServer {
    * **Never the question.** `queryChars` is its LENGTH: a deliberate question
    * is the one string on this path that could carry somebody's private words,
    * and a row in a store that will be read months later may not hold it (scar
-   * §2.20). No memory ids either — the counts answer this row's question, and a
-   * durable pairing of ids with the moment somebody asked for them is a link
-   * the store has no need of.
+   * §2.20). The ids it DELIVERED are on it, bounded, and its session when
+   * known (2026-10-11, `MCP_RECALL_EVENT`'s note) — never the ids it was asked
+   * for and did not give.
    *
    * `blockedBy` DOES carry `confidential-withheld`, which the wire deliberately
    * does not (§9.1 G5). The two audiences are different: the caller may be any
@@ -2305,12 +2306,17 @@ export class McpServer {
     question: unknown,
     handleResolved: boolean,
     payload: Record<string, unknown>,
+    delivered: readonly string[],
     fromIndex: Partial<Record<FitMechanism, number>> = {},
   ): void {
     const byAddress = row.path === "handle";
     const shown = row.shown ?? 0;
+    // Whose call this was, keyed like the seen set; absent when nobody knows,
+    // so a reader falls back on its own guess rather than on a sentinel.
+    const session = this.seenKey();
     this.telemetry(() => {
       this.counterpart.noteAdapterEvent(MCP_RECALL_EVENT, {
+        ...(session === UNBOUND_SESSION ? {} : { session }),
         path: row.path,
         reason: row.reason,
         ...(row.mode === undefined ? {} : { mode: row.mode }),
@@ -2339,6 +2345,9 @@ export class McpServer {
         // How many of the expanded ids a mechanism's index had offered only
         // in part (2026-09-28) — the lookup's use, per mechanism. Counts only.
         ...(Object.keys(fromIndex).length > 0 ? { fromIndex } : {}),
+        // What it DELIVERED, by id, bounded (2026-10-11): the memories a
+        // look-up opened or a question's answer showed.
+        ...boundedIds(delivered),
       });
       // The ring emit above already carries this call; a telemetry write that
       // failed must not become the answer the model receives (`telemetry`).
