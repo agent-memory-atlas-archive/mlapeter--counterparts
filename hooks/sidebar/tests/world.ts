@@ -162,6 +162,14 @@ export type WorldOptions = {
   permission?: 'allow' | 'ask' | 'deny';
   /** A read of the folder's scope takes this long on the mocked clock (none unless given). */
   scopeReadMs?: number;
+  /**
+   * The session's memory server started in a reads-only (`observer`) folder, so its `scope` tool
+   * stands down on every write (`serve.ts` bakes the registry's observer into the store), as it does
+   * on every other write; a read still answers.
+   */
+  scopeWritesStandDown?: boolean;
+  /** Paths that are symlinks, to what they resolve to (`$.fs.stat` with `resolve`); every other path is itself. */
+  links?: Record<string, string>;
   /** The scope registry file is there but `$.fs` refuses to read it. */
   scopesUnreadable?: boolean;
   /** Where the registry is (`SCOPES_FILE` unless given): beside the configuration a settings hook names. */
@@ -290,8 +298,11 @@ export function world(on: On, opts: WorldOptions = {}): World {
     const text = files[e.path]
     return text === undefined ? { deny: `ENOENT: no such file or directory, open '${e.path}'` } : { value: text }
   })
-  // Every folder resolves to itself: no links in the test's tree.
-  on('fs.stat', (_$, e) => ({ value: { kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false, ...(e.resolve ? { realPath: e.path } : {}) } }))
+  // Every folder resolves to itself, unless `links` names it.
+  on('fs.stat', (_$, e) => {
+    const to = opts.links?.[e.path]
+    return { value: { kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: to !== undefined, ...(e.resolve ? { realPath: to ?? e.path } : {}) } }
+  })
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('session.id', () => ({ value: SESSION }))
   on('session.turns', () => ({ value: w.turns }))
@@ -395,6 +406,9 @@ export function world(on: On, opts: WorldOptions = {}): World {
       if (mode === undefined) {
         if (opts.scopeReadMs !== undefined) await clock.sleep(opts.scopeReadMs)
         return text({ scope: HERE, mode: w.scope.mode, stance: w.scope.mode, ...(w.scope.setBy === null ? {} : { setBy: w.scope.setBy }) })
+      }
+      if (opts.scopeWritesStandDown === true) {
+        return text({ stoodDown: true, tool: 'scope', stance: 'observer', reason: 'This session is an observer: it reads the store as an instrument and changes nothing in it. The tool did not run.' }, true)
       }
       const own = w.scope.setBy === HERE
       if (mode === 'resume' && !own) return text({ refused: true, reason: 'nothing-to-resume', detail: 'Nothing is set for this directory.' }, true)

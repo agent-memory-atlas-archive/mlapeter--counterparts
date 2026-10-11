@@ -1312,6 +1312,24 @@ test('observer shows as reads-only, not on; a pause of it resumes to observer; o
   }
 })
 
+test('a session started in a reads-only folder: its server stands the scope tool down, so a confirmed on (or pause, or off) says the console command instead of the bare refusal', async ($, on) => {
+  const w = world(on, { scopeMode: 'observer', scopeWritesStandDown: true })
+  await start($, w)
+  const ui = await mount($, w, 'terminal')
+  for (const [press, confirm, flag] of [['cp-on', 'confirm-on', '--on'], ['cp-paused', 'confirm-pause', '--pause'], ['cp-off', 'confirm-off', '--off']] as const) {
+    await ui.press({ key: press })
+    await ui.press({ key: confirm })
+    expect(writes(w).at(-1)?.tool).toBe('scope')
+    expect(w.scope.mode).toBe('observer')
+    const said = (await texts(ui)).replace(/\s+/g, ' ')
+    expect(said).toContain("so its memory server can't change the setting.")
+    expect(said).toContain(`\`counterparts scope ${HERE} ${flag}\` does`)
+    expect(said).not.toContain('The memory server said')
+    expect(await cpText(ui)).toBe('◐ on ○ paused ○ off')
+  }
+  await ui.unmount()
+})
+
 test('where the folder stands is read from the registry file, with no permission check: the tool is called only for a confirmed pause or a resume', async ($, on) => {
   const w = world(on, { permission: 'ask' })
   await start($, w)

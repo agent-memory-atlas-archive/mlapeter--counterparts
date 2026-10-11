@@ -146,7 +146,13 @@ still binds; the button covers that case.
   the person runs (`/model`, which starts no turn) counts as typed for the
   speak-first. It stands a speak-first down that hasn't gone out, but doesn't
   drop one already queued: only a prompt (`run.prompted`) gets a reply in
-  which core can offer the meeting instead (review of #416).
+  which core can offer the meeting instead (review of #416). **A session
+  started in a reads-only folder can't change the setting at all:** its
+  server bakes the registry's `observer` into the store, and the `scope`
+  tool stands down on every write (`serve.ts`). The confirm still shows (the
+  sidebar can't tell that launch from a folder set reads-only later); its
+  [Turn on], [Pause] or [Turn off] then names the console command
+  (`stoodDownNote`) instead of the bare refusal (review of #416).
 - **The Claude memory switch is hidden** unless opted in:
   `COUNTERPARTS_SIDEBAR_CC_MEMORY=1` in the environment Claude Code starts
   with (`$.env.get`; a shell export is sure to reach it), or `$.store`

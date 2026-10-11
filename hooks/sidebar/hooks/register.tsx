@@ -1478,6 +1478,16 @@ async function confirmChange($: EngineInterface): Promise<void> {
   await setScope($, to)
 }
 
+/**
+ * The scope tool stood down: this session's memory server started while the
+ * folder read only (`observer`), and changes nothing for the session's life,
+ * the scope setting included (`serve.ts`). The console still can.
+ */
+function stoodDownNote(scope: SidebarScope, to: 'pause' | 'resume' | 'off' | 'on'): string {
+  const flag = to === 'pause' ? '--pause' : to === 'off' ? '--off' : to === 'on' ? '--on' : '--resume'
+  return `This session started while the folder read only, so its memory server can't change the setting. \`counterparts scope ${scope.dir ?? '<this folder>'} ${flag}\` does; a session started after that follows it.`
+}
+
 /** One call: pause, resume, turn off or turn on this folder's own entry. */
 async function setScope($: EngineInterface, to: 'pause' | 'resume' | 'off' | 'on'): Promise<void> {
   const scope = await read($, scopeA)
@@ -1486,7 +1496,7 @@ async function setScope($: EngineInterface, to: 'pause' | 'resume' | 'off' | 'on
     const { payload, isError } = await callMemory($, 'scope', { mode: to })
     const now = scopeOf(payload, isError, scope)
     await update($, scopeA, () => now)
-    await noteSwitch($, now.error === null ? null : `The memory server said: ${now.error}`)
+    await noteSwitch($, now.error === null ? null : payload?.['stoodDown'] === true ? stoodDownNote(scope, to) : `The memory server said: ${now.error}`)
   } catch (err) {
     await update($, scopeA, () => ({ ...scope, busy: false }))
     await noteSwitch($, err instanceof Error ? err.message : String(err))
