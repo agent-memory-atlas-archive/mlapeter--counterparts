@@ -70,14 +70,15 @@
  *     KEEP — and a yes leads to the same typed phrase `--delete-memories` takes.
  *     It is not offered while anything holds the store (`openRefusal`).
  *   - **`--json` is the plugin command's door** (`uninstallJson`). Alone it is a
- *     PLAN and changes nothing. With `--delete-memories` it takes the phrase on
- *     standard input, which is a scripted door, and this file used to say one
- *     must never exist. It exists because the plugin has no terminal to type
- *     into; this process cannot tell a person's keystrokes from anything else
- *     on its stdin, so the guard that the phrase came from the PERSON is the
- *     caller's (the mod collects it in its own UI, never through the model),
- *     and the PR that added it says so. Without `--json`, `--delete-memories`
- *     on a console with no person refuses exactly as it always did.
+ *     PLAN and changes nothing; with `--keep-memories` it uninstalls and keeps.
+ *     **There is no scripted delete.** The phrase is typed by a person at a
+ *     terminal or not at all: this process cannot tell who wrote its stdin, so
+ *     a door that took the phrase there would be one a model could walk through
+ *     by typing it (the PR that added the offer briefly had one; the
+ *     coordinator took it out, 2026-10-11, lightly held). The plugin's command
+ *     shows the plan and sends the person to a terminal, with Claude Code
+ *     closed — which a delete needs anyway, since a live session holds the
+ *     store. `--delete-memories` with no person refuses, `--json` or not.
  *   - **Both moving arms refuse unless the deregistration is CONFIRMED** and
  *     unless the process check actually LOOKED. A guard that cannot tell "I
  *     found nothing" from "I could not look" is not a guard (review M2, M3);
@@ -89,7 +90,8 @@ import { basename, dirname, isAbsolute, join, parse as parsePath, resolve } from
 
 import { Store, assertSafeDataDir, dateOf, isWithin, storeExists } from "../../core/store/index.js";
 import { isJournal } from "../../core/sleep/index.js";
-import { SCOPES_FILE_NAME } from "../scopes.js";
+import { SCOPES_FILE_NAME, shellWord } from "../scopes.js";
+import { PLUGIN_ROOT_ENV, installRoute } from "../plugin.js";
 import { SNAPSHOTS_DIR_NAME, resolveSnapshotsDir } from "../snapshots.js";
 import type { AdapterConfig } from "../config.js";
 import type { Io } from "./commands.js";
@@ -104,7 +106,7 @@ import {
 import { readHolders } from "./rollback.js";
 import type { Holder } from "./rollback.js";
 import { confirm, typed, ui } from "./ui.js";
-import type { TypedAnswer, Ui } from "./ui.js";
+import type { Ui } from "./ui.js";
 import type { Outcome, ProcessLister, Spawner, WireInput } from "./wire.js";
 import { look, readMcp, tilde, unwire } from "./wire.js";
 
@@ -116,12 +118,35 @@ export const DELETE_PHRASE = "DELETE MEMORIES";
  *  (2026-10-11). Its default is NO, and a yes only leads to the phrase. */
 export const DELETE_QUESTION = "Also delete all memories and related data? This can't be undone.";
 
-/** The typed-phrase prompt, one string for both arms and the `--json` plan. */
+/** The typed-phrase prompt, one string for both arms. */
 export const PHRASE_PROMPT = `Type ${DELETE_PHRASE} to go ahead — Esc or "cancel" to stop: `;
 
 /** The one command that removes the package. A program does not delete itself
  *  out from under the process that is running it. */
 export const REMOVE_PACKAGE = `bun remove -g ${BIN.cli}`;
+
+/** The same, for a copy Claude Code's plugin manager put there. */
+export const REMOVE_PLUGIN = "in Claude Code, /plugin → Installed → counterparts → Uninstall";
+
+/**
+ * The console's own name and the program's removal, in the words of the route
+ * this copy came by (`plugin.ts#installRoute`, as doctor's fix lines are): a
+ * plugin install has no `counterparts` on PATH and no `bun remove -g` to run.
+ * `either` (a plugin root that names another copy) keeps the console's name
+ * and names both removals.
+ */
+export function consoleName(env: Record<string, string | undefined>, home: string): string {
+  if (installRoute(env) !== "plugin") return BIN.cli;
+  const launcher = join((env[PLUGIN_ROOT_ENV] ?? "").trim(), "src", "adapters", "plugin-run.sh");
+  return `sh ${shellWord(launcher, home)} cli`;
+}
+
+export function removeProgram(env: Record<string, string | undefined>): string {
+  const route = installRoute(env);
+  if (route === "npm") return REMOVE_PACKAGE;
+  if (route === "plugin") return REMOVE_PLUGIN;
+  return `${REMOVE_PACKAGE} (npm) · ${REMOVE_PLUGIN} (plugin)`;
+}
 
 /** The one line a moving arm prints while `claude mcp list` runs (TTY only). */
 export const CHECKING_CLAUDE_CODE = "Checking Claude Code…";
@@ -1070,10 +1095,6 @@ export interface UninstallInput {
 export interface UninstallRecord {
   /** True once the hooks and the registration are out. */
   unwired: boolean;
-  /** What came of the typed phrase, when one was asked. */
-  phrase: TypedAnswer | null;
-  /** Every path deleted, in order. Empty unless something was. */
-  deleted: string[];
 }
 
 export async function uninstall(input: UninstallInput): Promise<Outcome> {
@@ -1228,6 +1249,14 @@ export async function uninstall(input: UninstallInput): Promise<Outcome> {
     }
     const stopped = await phraseGate(input, u, plan);
     if (stopped !== null) return stopped;
+    // THE HOLDERS AGAIN, after a person read and typed (review of #414: the
+    // offer looked twice and this arm once).
+    const openAgain = openRefusal(input, plan.storeDir, true);
+    if (openAgain !== null) {
+      for (const line of openAgain) io.err(line);
+      io.err("Nothing has changed.");
+      return "refused";
+    }
   } else if (!input.yes) {
     if (io.prompt === undefined) {
       io.err(
@@ -1333,12 +1362,13 @@ function offers(input: UninstallInput): boolean {
 
 /** The plain arm's closing lines when the memory stays. */
 function keptHints(input: UninstallInput, u: Ui): void {
+  const cli = consoleName(input.env, input.home);
   u.hint("Nothing here deleted anything. To move it aside under a dated name:");
-  u.hint(`  ${BIN.cli} uninstall --park`);
+  u.hint(`  ${cli} uninstall --park`);
   u.hint("To destroy it (it prints the whole plan first, then asks you to type a phrase):");
-  u.hint(`  ${BIN.cli} uninstall --delete-memories`);
+  u.hint(`  ${cli} uninstall --delete-memories`);
   u.blank();
-  input.io.out(`To remove the program too: ${REMOVE_PACKAGE}`);
+  input.io.out(`To remove the program too: ${removeProgram(input.env)}`);
 }
 
 /**
@@ -1358,14 +1388,13 @@ async function phraseGate(input: UninstallInput, u: Ui, plan: UninstallPlan): Pr
   // plan above, which is the line it is a count of.
   u.warning(
     "nothing can bring these back afterwards.",
-    `(${BIN.cli} uninstall --park sets them aside instead of deleting.)`,
+    `(${consoleName(input.env, input.home)} uninstall --park sets them aside instead of deleting.)`,
   );
   if (census.kind === "size") {
     u.hint(`The count could not be taken: ${census.why}.`);
   }
   u.blank();
   const said = await typed(io, DELETE_PHRASE, PHRASE_PROMPT);
-  if (input.record !== undefined) input.record.phrase = said;
   if (said === "cancelled") {
     io.out("Cancelled. Nothing was deleted.");
     return "ok";
@@ -1423,7 +1452,7 @@ async function offerDelete(input: UninstallInput, u: Ui, mcpConfirmed: boolean):
   if (!yes) {
     io.out("Kept. Nothing was deleted.");
     u.blank();
-    io.out(`To remove the program too: ${REMOVE_PACKAGE}`);
+    io.out(`To remove the program too: ${removeProgram(env)}`);
     return "ok";
   }
   u.blank();
@@ -1589,8 +1618,8 @@ function parkPlan(input: UninstallInput, u: Ui, plan: UninstallPlan): Outcome {
   // missing one and asks; the shell line that does it by hand lives in
   // `counterparts help uninstall`, where somebody looking for it can read it
   // whole instead of meeting it at the end of a screen.
-  io.out(`To bring it back later: ${BIN.cli} install — it finds this folder and asks.`);
-  io.out(`To remove the program too: ${REMOVE_PACKAGE}`);
+  io.out(`To bring it back later: ${consoleName(input.env, home)} install — it finds this folder and asks.`);
+  io.out(`To remove the program too: ${removeProgram(input.env)}`);
   return "ok";
 }
 
@@ -1602,7 +1631,6 @@ function deletePlan(input: UninstallInput, u: Ui, plan: UninstallPlan): Outcome 
     try {
       rmSync(path, { recursive: true, force: true });
       gone.push(path);
-      input.record?.deleted.push(path);
     } catch (err) {
       io.err(`failed to delete ${path}: ${String((err as Error).message ?? err)}`);
       io.err("What is listed below is gone; nothing else was touched.");
@@ -1631,7 +1659,7 @@ function deletePlan(input: UninstallInput, u: Ui, plan: UninstallPlan): Outcome 
   }
   u.hint("Nothing in this package can bring the rest back.");
   u.blank();
-  io.out(`To remove the program too: ${REMOVE_PACKAGE}`);
+  io.out(`To remove the program too: ${removeProgram(input.env)}`);
   return "ok";
 }
 
@@ -1640,39 +1668,31 @@ function deletePlan(input: UninstallInput, u: Ui, plan: UninstallPlan): Outcome 
 /** The version of the JSON below. Bumped if a field changes meaning. */
 export const UNINSTALL_JSON_VERSION = 1;
 
-/** Standard input, as `RunOptions.stdin` hands it over. */
-export interface JsonStdin {
-  readonly isTty: boolean;
-  read(): Promise<string>;
-}
-
 /**
  * `counterparts uninstall --json` — ONE JSON object on stdout, and nothing else
- * there. Three modes, by the flags beside it:
+ * there. Two modes, by the flags beside it:
  *
  *   - **alone: the plan.** Changes nothing — not the wiring, not the store. It
  *     says what a delete would remove (every path, with its size and the count
  *     of memories), what it would leave, whether a delete could go ahead right
- *     now and if not why, the question to put and the phrase to ask for. It
- *     opens the store read-only to count, as `--delete-memories` does.
+ *     now and if not why, and the question the terminal would put. It opens the
+ *     store read-only to count, as `--delete-memories` does.
  *   - **`--keep-memories`: uninstall, memory kept** — the wiring out, the store
  *     untouched; no question, because the flag is the answer.
- *   - **`--delete-memories`: uninstall and delete**, with the phrase read from
- *     standard input (one line; nothing trimmed but its end-of-line). Every
- *     guard of the interactive arm runs, in the same order, and the phrase is
- *     checked before anything is taken out. An empty line or `cancel` stops it.
  *
- * The phrase on stdin is the one thing a person at a terminal would have
- * typed, and this process cannot tell who wrote it. The caller's half of the
- * guarantee is that the person typed it: the plugin command collects it in its
- * own UI and passes it here, and the model is never the one that supplies it.
+ * **NO SCRIPTED DELETE** (coordinator, 2026-10-11, lightly held, reversing the
+ * builder's stdin door): `--delete-memories --json` is refused. This process
+ * cannot tell who wrote its stdin, so a phrase read there could have been
+ * typed by the model the plugin's command runs under — and a live session
+ * holds the store, so a delete from inside one refuses anyway. The plugin's
+ * command shows this plan and sends the person to `terminalArgs`, run by hand
+ * in a terminal with Claude Code closed, where the phrase is typed at a TTY.
  *
- * Exit codes are the console's: 0 for a plan, a kept uninstall, a delete, or a
- * phrase somebody stopped; 2 for a refusal (including a wrong phrase); 3 for a
- * failure part-way. A refusal before this function runs (no configuration, a
- * `--dir`) comes as text on stderr with no JSON.
+ * Exit codes are the console's: 0 for a plan or a kept uninstall, 2 for a
+ * refusal, 3 for a failure part-way. A refusal before this function runs (no
+ * configuration, a `--dir`) comes as text on stderr with no JSON.
  */
-export async function uninstallJson(input: UninstallInput, stdin: JsonStdin | undefined): Promise<Outcome> {
+export async function uninstallJson(input: UninstallInput): Promise<Outcome> {
   const { io, home, env } = input;
   // ALWAYS NAMED, the default included: the next call must act on the
   // configuration this plan read, whatever its environment says.
@@ -1691,57 +1711,28 @@ export async function uninstallJson(input: UninstallInput, stdin: JsonStdin | un
     emit({ mode: "park", outcome: "refused", why: "--json does not park. Run `uninstall --park` at a terminal." });
     return "refused";
   }
+  if (input.deleteMemories) {
+    emit({
+      mode: "delete",
+      outcome: "refused",
+      why:
+        "--json does not delete: the phrase has to be typed by the person, at a terminal. Close " +
+        "Claude Code, then run `uninstall` there (terminalArgs in the plan) and answer its question.",
+      unwired: false,
+    });
+    return "refused";
+  }
 
-  // ── the two modes that act: the console's own arms, behind a quiet console ─
-  if (input.deleteMemories || input.keepMemories === true) {
-    const mode = input.deleteMemories ? "delete" : "keep";
+  // ── uninstall, memory kept: the console's own arm, behind a quiet console ─
+  if (input.keepMemories === true) {
     const lines: string[] = [];
     const errors: string[] = [];
-    let phrase: string | null = null;
-    if (input.deleteMemories && input.keepMemories !== true) {
-      if (stdin === undefined || stdin.isTty) {
-        emit({
-          mode,
-          outcome: "refused",
-          why:
-            "with --json the phrase comes on standard input, piped in. At a terminal, run " +
-            "`uninstall --delete-memories` without --json and type it there.",
-          unwired: false,
-          deleted: [],
-        });
-        return "refused";
-      }
-      phrase = (await stdin.read()).replace(/\r?\n$/, "");
-    }
-    let asked = false;
-    const quiet: Io = {
-      out: (line) => lines.push(line),
-      err: (line) => errors.push(line),
-      // ONE ANSWER, ONCE: the phrase, for the one question `--delete-memories`
-      // puts. A second question would be a change in this file nobody meant,
-      // and it gets the empty answer, which stops everything.
-      ...(phrase === null
-        ? {}
-        : {
-            prompt: async (): Promise<string> => {
-              if (asked) return "";
-              asked = true;
-              return phrase ?? "";
-            },
-          }),
-    };
-    const record: UninstallRecord = { unwired: false, phrase: null, deleted: [] };
-    // `yes` for the kept mode: the flag answered the one question there is.
+    // No prompt at all: the flag answered the one question there is, and a
+    // console without one is a console nothing can be typed into.
+    const quiet: Io = { out: (line) => lines.push(line), err: (line) => errors.push(line) };
+    const record: UninstallRecord = { unwired: false };
     const outcome = await uninstall({ ...input, io: quiet, yes: true, record });
-    emit({
-      mode,
-      outcome,
-      ...(mode === "delete" ? { phrase: record.phrase ?? "not asked" } : {}),
-      unwired: record.unwired,
-      deleted: record.deleted,
-      lines,
-      errors,
-    });
+    emit({ mode: "keep", outcome, unwired: record.unwired, lines, errors });
     return outcome;
   }
 
@@ -1774,9 +1765,10 @@ export async function uninstallJson(input: UninstallInput, stdin: JsonStdin | un
     deletable: why === null,
     why,
     question: DELETE_QUESTION,
-    phrase: DELETE_PHRASE,
-    // What to run with the person's answer. The phrase goes on the delete's stdin.
-    deleteArgs: ["uninstall", "--delete-memories", "--json", ...withConfig],
+    // What comes next. `terminalArgs` is for the PERSON to run, by hand, in a
+    // terminal with Claude Code closed: it asks the question and takes the
+    // phrase there. `keepArgs` the plugin's command may run itself.
+    terminalArgs: ["uninstall", ...withConfig],
     keepArgs: ["uninstall", "--keep-memories", "--json", ...withConfig],
     configDir: plan.configDir,
     storeDir: plan.storeDir,

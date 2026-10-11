@@ -534,6 +534,14 @@ were refined by b2+f8 at the review of #369, named where they were):
   tell who wrote its stdin, so the guarantee that the PERSON typed it sits with the caller:
   the plugin command collects the phrase in its own UI and the model never supplies it.
   Without `--json`, `--delete-memories` from a pipe still refuses.
+  **Reversed by the coordinator, 2026-10-11, lightly held: there is no stdin door.**
+  `--delete-memories --json` is refused; `uninstall --json` is the plan only (read-only),
+  and `--keep-memories --json` uninstalls and keeps. Why: nothing can tell who wrote stdin,
+  so a model could type the phrase, which breaks the rule that the typed word comes from
+  the person. And a live Claude Code session always holds the store, so the plugin's
+  command could not delete from inside one anyway. `/counterparts:uninstall` shows the plan
+  in-session and sends the person to a terminal, with Claude Code closed, to run the
+  interactive `uninstall` (the plan's `terminalArgs`).
 - Decided by the uninstall-delete builder, 2026-10-11, lightly held: "all memories and
   related data" is the existing delete list (the store, its default snapshots folder, the
   configuration and scopes, and our own leftovers such as a `start-fresh` parked store), and

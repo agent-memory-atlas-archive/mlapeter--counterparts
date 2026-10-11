@@ -1058,7 +1058,7 @@ const FLAG_HELP: Record<string, string> = {
   "no-open": "do not open a browser — just print the address and serve it",
   park: "move the whole directory aside under a dated name — one rename, nothing copied, nothing deleted, and the store is never opened",
   "delete-memories":
-    "destroy it. It counts what is about to go, says the number, and takes a typed phrase; there is no --yes for it. With --json the phrase comes on standard input, for the plugin's own command",
+    "destroy it. It counts what is about to go, says the number, and takes a typed phrase; there is no way to answer it from a script",
   "keep-memories":
     "keep your memory and do not ask: without it, at a terminal, uninstall asks whether to delete it too once Claude Code is disconnected (Enter keeps it)",
 };
@@ -1095,7 +1095,7 @@ const HOST_FLAG_HELP: Record<string, string> = {
   // `connect` and `disconnect` no longer declare this one — they do not ask.
   // `uninstall` does, and this is its sentence.
   yes: "do not ask: take the ordinary answer to every question this command would put (for uninstall's question about deleting your memory, that answer is keep)",
-  json: "for uninstall: one JSON object instead of the screen. Alone it is the plan — what a delete would remove and leave, and whether it can go ahead now — and changes nothing; with --keep-memories it uninstalls; with --delete-memories it reads the typed phrase from standard input",
+  json: "for uninstall: one JSON object instead of the screen. Alone it is the plan — what a delete would remove and leave, and whether it can go ahead now — and changes nothing; with --keep-memories it uninstalls. It never deletes: that is typed by a person, at a terminal",
   "nothing-is-open":
     "you are asserting you have closed every session, dashboard and worker. It is the way past a check that could NOT LOOK — no usable `ps` — and never past one that found something",
   "dry-run": "print what would change and change nothing (this command is NOT dry by default)",
@@ -4637,7 +4637,7 @@ async function hostWiringCommand(
     // `--json`: the plugin command's door (`uninstall.ts#uninstallJson`).
     return exitFor(
       parsed.flags["json"] === true
-        ? await uninstallJson(uninstallInput, opts.stdin)
+        ? await uninstallJson(uninstallInput)
         : await uninstall(uninstallInput),
     );
   }

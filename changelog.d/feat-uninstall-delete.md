@@ -10,5 +10,7 @@
   as running on it, not only while one shows up in the process list.
 - **`counterparts uninstall --json`, for the plugin's own command.** On its own it prints
   the plan as one JSON object and changes nothing: what a delete would remove and leave, the
-  count, and whether it can go ahead now. With `--delete-memories` it reads the typed phrase
-  from standard input. With `--keep-memories` it uninstalls and keeps your memory.
+  count, and whether it can go ahead now. With `--keep-memories` it uninstalls and keeps your
+  memory. It never deletes: that is always typed by you, at a terminal.
+- **Uninstall's last lines fit a plugin install.** Run through the plugin, they name the
+  plugin's own command line and Claude Code's `/plugin` to remove it, not `bun remove -g`.

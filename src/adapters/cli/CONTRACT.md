@@ -211,10 +211,12 @@ snapshots and exports; the removal record; telemetry by reference.
     something a flag decides. Both joined for `start-fresh`'s reason rather than removal's:
     what they move cannot be checked by this process.* *Amended 2026-10-11, lightly held
     (Mike's decision, via the MOD session): plain `uninstall` at a terminal OFFERS the
-    delete once the wiring is out, default keep, and a yes leads to the same typed phrase;
-    `uninstall --delete-memories --json` takes the phrase on standard input, for the
-    plugin's own command. Still no `--yes`. This process cannot tell who wrote its stdin,
-    so on that door the guard that a person typed the phrase is the caller's.* Candidates for the list get discussed, never assumed (§14.3).
+    delete once the wiring is out, default keep, and a yes leads to the same typed phrase.
+    Still no `--yes`, and no scripted deletion door: the phrase is typed by a person at a
+    terminal, never read from a pipe, because this process cannot tell who wrote its
+    stdin. `uninstall --json` is the plan only and changes nothing; `--keep-memories
+    --json` uninstalls and keeps. (A stdin door for the plugin was built and taken out
+    the same day, coordinator, lightly held.)* Candidates for the list get discussed, never assumed (§14.3).
     Everything else that can be safely autonomous is. *`start-fresh` joined it on
     2026-09-20 for a reason removal does not share: what it moves cannot be checked by
     this process. A session holding the store open by a file handle goes on writing into
