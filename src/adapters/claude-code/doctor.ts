@@ -122,7 +122,7 @@ import {
 import { TUNABLES, pageWriterMode, resolveEmbedder, withEmbedderDefault } from "../config.js";
 import type { EmbedderSource } from "../config.js";
 import { MODEL_FILE, STATIC_WEIGHTS_ENV, STATIC_WEIGHTS_PACKAGE, resolveStaticWeights } from "../../core/embed/static.js";
-import { heldExits } from "../../core/store/index.js";
+import { DATABASE_FILE, heldExits, readRollbackHold, rollbackHeld } from "../../core/store/index.js";
 // Retention's own reading and its own week, so the Raw transcripts line cannot
 // promise a different number from the job that does the deleting. READ-ONLY:
 // `remember/index.ts` re-exports the plan and the readers, never the deleter.
@@ -709,6 +709,17 @@ export function readCounterpartOpen(
 
 /** The Memory line for a store this build reads only after its upgrade. */
 function behindFinding(dir: string, m: MigrationReading): Finding {
+  // Behind because a rollback put it there, and held: no session upgrades it.
+  if (rollbackHeld(dir) !== null) {
+    return finding(
+      "store",
+      "amber",
+      MEMORY_TITLE,
+      `${tilde(dir)} is on schema v${m.found}, rolled back; this version leaves it alone (see Rollback)`,
+      "",
+      { dir, exists: true, found: m.found, expected: m.expected, rolledBack: true },
+    );
+  }
   return finding(
     "store",
     "amber",
@@ -913,6 +924,8 @@ function configFindings(input: DoctorInput): Finding[] {
     out.push(
       behind !== undefined
         ? behindFinding(input.dir, behind)
+        : input.store === null && rollbackHalfway(input.dir)
+        ? halfwayMemoryFinding(input.dir)
         : input.store === null
         ? finding("store", "red", MEMORY_TITLE, `no store at ${tilde(input.dir)}`, "Check the path you gave --dir.", {
             dir: input.dir,
@@ -981,6 +994,8 @@ function configFindings(input: DoctorInput): Finding[] {
   const named = input.config.dataDir;
   if (input.store === null && input.open?.migration !== undefined) {
     out.push(behindFinding(input.dir, input.open.migration));
+  } else if (input.store === null && rollbackHalfway(input.dir)) {
+    out.push(halfwayMemoryFinding(input.dir));
   } else if (input.store === null) {
     out.push(
       finding("store", "red", MEMORY_TITLE, `no store at ${tilde(input.dir)}`, "Run: counterparts install, or name the store with --dir.", {
@@ -2277,7 +2292,83 @@ function checkoutFindings(reading: CheckoutReading): Finding[] {
  * The wording is the hook's: one code and one clause of plain words, so the red
  * line in the terminal and this line say the same thing about the same morning.
  */
+/**
+ * A rollback's hold (`store/rollback-hold.ts`), in one line, whenever one is
+ * there. While it holds, it is also why the store will not open, so the Store
+ * open line steps aside for it (`openFindings`).
+ */
+export function rollbackFindings(dir: string): Finding[] {
+  const hold = readRollbackHold(dir);
+  if (hold === null) return [];
+  const release = `counterparts rollback --dir ${dir} --upgrade-again`;
+  // Stopped halfway: the newer store is set aside and the copy never went in.
+  // Red, and the older version must not come first — it has no hold to read
+  // and would start a blank store here.
+  if (rollbackHalfway(dir)) {
+    return [
+      finding(
+        "rollback",
+        "red",
+        "Rollback",
+        `a rollback stopped before its copy went in: there is no database in ${tilde(dir)}` +
+          (hold === "unreadable" ? "" : `; the newer store is whole in ${tilde(hold.aside)}`),
+        `Run: counterparts rollback --dir ${dir} --undo (it puts the newer store back as it was), then roll back again if you still mean to. Don't install the older version first: it would start a blank store here.`,
+        { dir, holds: true, halfway: true },
+      ),
+    ];
+  }
+  if (hold === "unreadable") {
+    return [
+      finding(
+        "rollback",
+        "amber",
+        "Rollback",
+        `${tilde(dir)} carries a rollback hold that cannot be read; this version leaves the store alone while it is behind`,
+        `Run: counterparts rollback --dir ${dir} --undo, or ${release}`,
+        { dir, holds: true },
+      ),
+    ];
+  }
+  const day = localDate(hold.at);
+  const holds = rollbackHeld(dir) !== null;
+  return [
+    holds
+      ? finding(
+          "rollback",
+          "amber",
+          "Rollback",
+          `rolled back from v${hold.from} to v${hold.to} on ${day} (from ${hold.snapshot}); this version neither upgrades nor reads it, so sessions on it stand down. The newer store is in ${tilde(hold.aside)}`,
+          `Install the version you went back to, then: counterparts connect && counterparts doctor. Or, to stay on this one: ${release} (upgrades it again; what was written since the rollback is kept) or counterparts rollback --dir ${dir} --undo (the newer store comes back).`,
+          { dir, holds: true, from: hold.from, to: hold.to, snapshot: hold.snapshot, aside: hold.aside },
+        )
+      : finding(
+          "rollback",
+          "amber",
+          "Rollback",
+          `a rollback hold from ${day} is here, but the store is on this version's schema, so it holds nothing`,
+          `Run: ${release} to remove it.`,
+          { dir, holds: false, from: hold.from, to: hold.to },
+        ),
+  ];
+}
+
+/** A rollback's hold over a store with no database: it stopped before its copy went in. */
+function rollbackHalfway(dir: string): boolean {
+  return readRollbackHold(dir) !== null && !existsSync(join(dir, DATABASE_FILE));
+}
+
+/** The Memory line for that store: it is not "no store", and `install` is not the fix. */
+function halfwayMemoryFinding(dir: string): Finding {
+  return finding("store", "red", MEMORY_TITLE, `no database at ${tilde(dir)}: a rollback stopped halfway (see Rollback)`, "", {
+    dir,
+    exists: false,
+    rolledBack: true,
+  });
+}
+
 function openFindings(reading: OpenReading): Finding[] {
+  // The Rollback line says it, with what to do (`rollbackFindings`).
+  if (reading.code === "STORE_ROLLED_BACK") return [];
   const data: Record<string, string | number | boolean | null> = {
     dir: reading.dir,
     ok: reading.ok,
@@ -4968,6 +5059,8 @@ export function doctorFindings(input: DoctorInput): Finding[] {
     // Read by the caller for the same reason, and answered beside the `Store`
     // line it qualifies: "there is a store here" and "it opens" are two facts.
     ...(input.open === undefined ? [] : openFindings(input.open)),
+    // A rollback's hold (2026-10-11): one file read, and only when it is there.
+    ...rollbackFindings(input.dir),
     // DID THE HOST STEPS TAKE (finding 4). Also read by the caller — it is four
     // small file reads outside this store, and the hook does not pay for them.
     ...(input.host === undefined ? [] : hostFindings(input.host)),

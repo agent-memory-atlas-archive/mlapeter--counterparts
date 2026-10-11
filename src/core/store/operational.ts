@@ -1114,6 +1114,14 @@ export interface OpenOperationalOptions {
    * the store (`defaultSnapshotsDir`); a store with neither refuses to migrate.
    */
   readonly snapshotsDir?: string;
+  /**
+   * Take a NEW pre-migration copy even when one for the same upgrade from
+   * today is on disk (`pre-migration.ts#reusableCopy`). Set by
+   * `counterparts rollback --upgrade-again`: after a rollback the store has
+   * lived on since that copy, and reusing it would make a second rollback
+   * restore the first one's copy and lose what was written in between.
+   */
+  readonly freshMigrationCopy?: boolean;
   /** Told once, after a migration committed, what was copied and where. */
   readonly onMigrated?: (note: MigrationNote) => void;
   /**
@@ -1532,7 +1540,13 @@ export const CREATED_TABLES: readonly string[] = DDL.flatMap((sql) => {
 function copyBeforeMigrating(path: string, found: string, opts: OpenOperationalOptions): MigrationNote {
   const dir = preMigrationDir(path, opts.snapshotsDir);
   try {
-    const copy = snapshotBeforeMigration({ dbPath: path, dir, from: found, to: SCHEMA_VERSION });
+    const copy = snapshotBeforeMigration({
+      dbPath: path,
+      dir,
+      from: found,
+      to: SCHEMA_VERSION,
+      ...(opts.freshMigrationCopy === true ? { reuse: false } : {}),
+    });
     return { from: found, to: SCHEMA_VERSION, snapshot: copy.name, reused: copy.reused, dir: dir as string };
   } catch (err) {
     const reason = String((err as Error).message ?? err);

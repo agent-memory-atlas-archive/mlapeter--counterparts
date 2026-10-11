@@ -133,6 +133,10 @@ const PLAIN_WORDS: Partial<Record<StoreErrorCode, string>> = {
   STORE_PRE_ROWS:
     "this store keeps its memories in files, which this build does not read — it was written before the floor changed; the build that reads it is the tag floor/v5-last",
   MIGRATION_SNAPSHOT_FAILED: "upgrade not run — the copy taken first failed; the store is unchanged",
+  // An instruction too, for the same reason: the rollback that left this hold
+  // printed the way on, and a session is where the owner meets it next.
+  STORE_ROLLED_BACK:
+    "this store was rolled back to an older version; install that version, or run counterparts rollback --upgrade-again to upgrade it again",
   SQLITE_UNAVAILABLE: "this runtime has no SQLite binding",
   DATA_DIR_FORBIDDEN: "the configured data dir is one this build refuses to open",
   STORE_UNINITIALIZED: "there is no store here yet, or it is a schema behind",
@@ -187,6 +191,13 @@ function migrationReason(err: unknown): string | null {
   return typeof why === "string" && why.length > 0 ? `${why} (${base})` : base;
 }
 
+/** A rollback that stopped halfway is not "install that version": the older
+ *  version would start a blank store where the database is missing. */
+function rollbackReason(err: unknown): string | null {
+  if (!isStoreError(err, "STORE_ROLLED_BACK") || err.detail["halfway"] !== true) return null;
+  return "a rollback of this store stopped halfway; run counterparts rollback --undo, and don't install the older version first";
+}
+
 export function describeFault(err: unknown): StandDownFault {
   // TOTAL, and the reason is not theoretical politeness: this runs inside the
   // handler that exists so a hook never fails the host, and everything below
@@ -210,7 +221,13 @@ function readFault(err: unknown): StandDownFault {
   if (isStoreError(err)) {
     return {
       code: err.code,
-      reason: preRowsReason(err) ?? migrationReason(err) ?? sqliteReason(err) ?? PLAIN_WORDS[err.code] ?? OPEN_FAILED_WORDS,
+      reason:
+        preRowsReason(err) ??
+        migrationReason(err) ??
+        rollbackReason(err) ??
+        sqliteReason(err) ??
+        PLAIN_WORDS[err.code] ??
+        OPEN_FAILED_WORDS,
       kind,
     };
   }

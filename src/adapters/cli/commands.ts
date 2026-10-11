@@ -86,9 +86,22 @@ import {
   explicitDirSetting,
   isWithin,
   paths,
+  readRollbackHold,
   storeExists,
 } from "../../core/store/index.js";
 import type { Embedder, EventLogCensus, VectorFormatCensus } from "../../core/store/index.js";
+import { defaultSnapshotsDir } from "../../core/store/paths.js";
+import {
+  upgradeAgain,
+  nextStepLines,
+  performRollback,
+  performRollbackUndo,
+  planRollback,
+  planRollbackUndo,
+  previousVersion,
+  readHolders,
+  rollbackPlanLines,
+} from "./rollback.js";
 // The owner-op seam's REPAIR half — the one door that un-archives, and only for
 // the merge's reason. Imported HERE for the same reason `chaseRemoved` is:
 // this is the directory the caller-universality test allows to reach that file.
@@ -288,6 +301,10 @@ export const COMMANDS = [
   // Starting over as a stranger, in one command: park the store beside itself,
   // blank one in its place, nothing deleted and nothing opened (2026-09-20, N1).
   "start-fresh",
+  // Going back to the version before an upgrade (2026-10-11): the store is put
+  // back from the copy the upgrade took, the upgraded one set aside, and a hold
+  // keeps this version off it until you say otherwise. `rollback.ts`.
+  "rollback",
   "note",
   // ONE COMMAND, TWO NAMES, and the reason is in `help.ts#UNLISTED`: `ask` is
   // the word a person reaches for and is the listed spelling; `recall` is the
@@ -371,6 +388,9 @@ export const OWNER_OPS: readonly Command[] = [
   "init",
   // It creates a store and moves one. An instrument does neither.
   "start-fresh",
+  // It swaps a store's database for an older copy. Its `--undo` and
+  // `--upgrade-again` are writes too.
+  "rollback",
   // `note` deposits. `ask`/`recall` is a pure read and stays off this list,
   // exactly like `status`, `dashboard` and `version`: an instrument may look at
   // a memory and may not add to one. (`dashboard` opens the store through
@@ -713,6 +733,9 @@ export const COMMAND_FLAGS: Record<Command, readonly string[]> = {
   // parses either way, and the command refuses it in words rather than ignoring
   // it (the `--dirr` scar, pointed at the most dangerous verb here).
   "start-fresh": ["config", "dry-run", "yes", "nothing-is-open", "name", "undo"],
+  // `--dir` names the store, as on every command but the four above; without
+  // it the CONFIGURATION's `dataDir` is the store, as for `doctor`.
+  rollback: ["config", "to", "undo", "upgrade-again", "dry-run", "yes"],
   // `--config` for the embedder knob only, as on `ask`: a note is embedded on
   // write with the table the configuration turns on.
   note: ["kind", "title", "salience", "config"],
@@ -814,6 +837,8 @@ export const COMMAND_BLURB: Record<Command, string> = {
   init: "Just a store: create a data dir and PRINT the install steps. For a second store or a scratch one.",
   "start-fresh":
     "Begin again as a stranger (or --undo to put the parked store back): park the store your configuration names beside itself under a dated name, park its snapshots the same way, and create a blank store at the same path. One atomic rename each — it never copies, never deletes, and never opens the old store, not even read-only. The configuration is kept byte for byte.",
+  rollback:
+    "Go back to the version before an upgrade: put the store back from the copy the upgrade took first (the newest one unless --to names another), after saying what would be lost and asking you to type a word. The upgraded database and its cache are set aside beside the store, never deleted, and a hold keeps this version from upgrading or reading the store again until you install the older version, run --upgrade-again, or --undo it. It refuses while a session, a memory server or the dashboard has the store open.",
   note: "Remember this, deliberately — the same two doors the MCP tool uses.",
   ask: "Ask memory a question. Read-only.",
   recall: "Ask memory a question — the same command as `ask`, under its older name. Read-only.",
@@ -1141,6 +1166,17 @@ const CLAIMS_ERA_FLAG_HELP: Record<string, string> = {
   off: "read every claim as stored again (no claim was rewritten); a memory let go at the floor while it was on stays archived, readable by id",
 };
 
+/** `rollback`'s own (2026-10-11): it is not dry by default, and `--undo` and
+ *  `--yes` mean something narrower here. */
+const ROLLBACK_FLAG_HELP: Record<string, string> = {
+  to: "the pre-migration copy to put back, by its name in the snapshots folder or an absolute path; the default is the newest one taken before the upgrade to the store's version",
+  undo: "put the set-aside store back and remove the hold — only while nothing has written to the restored one",
+  "upgrade-again": "remove the hold and let this version upgrade the store now, from a new pre-migration copy",
+  "dry-run": "print what it would do and what would be lost, and change nothing (this command is NOT dry by default)",
+  yes: "for a script or a pipe, where nothing can be typed; refused at a terminal, where you type the word instead",
+  dir: "the store to roll back; without it, the one your configuration names",
+};
+
 const DASHBOARD_FLAG_HELP: Record<string, string> = {
   dir: "a store to look at instead of the one your configuration names",
 };
@@ -1168,6 +1204,8 @@ export function commandHelp(command: Command): string {
       ? SCOPE_FLAG_HELP
       : command === "start-fresh"
         ? START_FRESH_FLAG_HELP
+        : command === "rollback"
+          ? ROLLBACK_FLAG_HELP
         : command === "install"
           ? INSTALL_FLAG_HELP
           : command === "dashboard"
@@ -1251,6 +1289,7 @@ const VALUED_FLAGS: readonly string[] = [
   "why",
   "date",
   "host",
+  "to",
 ];
 
 /** Levenshtein, small and local. Only ever used to say "did you mean". */
@@ -1426,6 +1465,9 @@ export function parse(argv: readonly string[]): Parsed {
       // `start-fresh`'s two. Declared as booleans for the same reason `rebuild`
       // is: `strict: false` does not make an undeclared boolean reliable.
       undo: { type: "boolean" },
+      // `rollback`'s two (2026-10-11): which copy to put back, and the release.
+      to: { type: "string" },
+      "upgrade-again": { type: "boolean" },
       "nothing-is-open": { type: "boolean" },
       // The wiring three. Declared as booleans for the same reason `rebuild`
       // is: `strict: false` does not make an undeclared boolean reliable, and
@@ -1656,6 +1698,9 @@ export async function run(argv: readonly string[], opts: RunOptions): Promise<nu
     // hands the same choice to `install` so the blank store lands where the
     // file already points.
     command === "start-fresh" ||
+    // `rollback` reads one for the store when no `--dir` names it, and for
+    // `snapshots.dir`, where the upgrade put its copy.
+    command === "rollback" ||
     command === "rebrief" ||
     // `doctor` REPORTS on a host configuration, so it resolves it by the same
     // rule as the other two.
@@ -1869,6 +1914,24 @@ export async function run(argv: readonly string[], opts: RunOptions): Promise<nu
     }
   }
 
+  // `rollback` resolves its store as `doctor` does: `--dir` names it, and
+  // without one the configuration's `dataDir` is the store the hooks open. The
+  // explicit-dir guard applies to an unnamed configuration, as it does there.
+  if (command === "rollback") {
+    const named_ = typeof parsed.flags["dir"] === "string" ? undefined : named;
+    const implicit = named_ === undefined ? null : implicitConfigRefusal(named_, env);
+    if (implicit !== null) {
+      io.err(implicit);
+      return EXIT.refused;
+    }
+    try {
+      return await rollbackCommand(parsed, io, env, opts, named, now);
+    } catch (err) {
+      io.err(`rollback failed: ${describeDirRefusal(err)}`);
+      return EXIT.failed;
+    }
+  }
+
   // `dashboard` resolves its store exactly as `doctor` does, and for the same
   // reason: the store worth looking at is the one the hooks and the memory tools
   // open, and a person who has just been told "open the dashboard in your
@@ -2036,6 +2099,8 @@ function describeDirRefusal(err: unknown, dir?: string): string {
     describePreRowsRefusal(err, `Name a store with --dir <path>.`) ??
     preRowsInDisguise(err, dir) ??
     upgradePending(err) ??
+    // A rollback's hold: its remedy is the sentence, not the JSON around it.
+    (isStoreError(err, "STORE_ROLLED_BACK") && typeof err.detail["remedy"] === "string" ? err.detail["remedy"] : null) ??
     String((err as Error).message ?? err)
   );
 }
@@ -5889,6 +5954,237 @@ function livenessRefusal(io: Io, plan: StartFreshPlan, when = "", showRecent = t
   return EXIT.refused;
 }
 
+// ── rollback ────────────────────────────────────────────────────────────────
+
+/**
+ * `rollback` — the console's half of `rollback.ts`: which store, which
+ * snapshots folder, the plan printed, what holds the store refused, the word
+ * typed, the plan made again, the moves, and the next steps.
+ */
+async function rollbackCommand(
+  parsed: Parsed,
+  io: Io,
+  env: Record<string, string | undefined>,
+  opts: RunOptions,
+  named: ConfigChoice | undefined,
+  now: () => number,
+): Promise<number> {
+  const home_ = opts.home ?? homedir();
+  const dirFlag = typeof parsed.flags["dir"] === "string" ? parsed.flags["dir"] : undefined;
+  let storeDir: string;
+  let configPath: string;
+  let snapshotsConfigured: string | undefined;
+  if (dirFlag !== undefined) {
+    // `--dir` is a name; the configuration consulted is the one BESIDE it,
+    // where `install` puts it, never the default one.
+    storeDir = dirFlag;
+    configPath = join(dirname(resolve(dirFlag)), CONFIG_FILE);
+    snapshotsConfigured = snapshotsDirBeside(resolve(dirFlag));
+  } else {
+    configPath = named === undefined ? defaultConfigPath(home_) : resolve(named.path);
+    const host = existsSync(configPath) ? hostConfigFor(configPath) : null;
+    const dataDir = host?.reason === "loaded" ? host.config.dataDir : undefined;
+    if (dataDir === undefined || dataDir.trim().length === 0) {
+      io.err(
+        `refused: ${host === null ? `there is no configuration at ${configPath}` : `${configPath} names no store this can read`}, ` +
+          "so there is no telling which store to roll back. Name it: --dir <absolute path to the store>.",
+      );
+      return EXIT.refused;
+    }
+    storeDir = dataDir.trim();
+    snapshotsConfigured = host?.config.snapshots?.dir;
+  }
+  const absolute = isAbsolute(storeDir) ? resolve(storeDir) : storeDir;
+  const snapshotsDir =
+    snapshotsConfigured !== undefined && snapshotsConfigured.trim().length > 0
+      ? resolve(snapshotsConfigured)
+      : isAbsolute(storeDir)
+        ? defaultSnapshotsDir(absolute)
+        : null;
+  const lister = opts.processes ?? realProcessLister(env);
+  const dryRun = parsed.flags["dry-run"] === true;
+  const undo = parsed.flags["undo"] === true;
+  const allow = parsed.flags["upgrade-again"] === true;
+  const to = typeof parsed.flags["to"] === "string" ? parsed.flags["to"] : undefined;
+  if ([undo, allow, to !== undefined].filter(Boolean).length > 1) {
+    io.err("refused: --undo, --upgrade-again and --to are three different things; pass one of them.");
+    return EXIT.usage;
+  }
+
+  // WHAT HOLDS THE STORE, said, and refused when it is evidence about THIS one.
+  const holdersRefusal = (at: number, sayMaybe = true): number | null => {
+    const holders = readHolders({ storeDir: absolute, configPath, now: at, lister });
+    const refusing = holders.filter((h) => h.refuse);
+    const maybe = holders.filter((h) => !h.refuse);
+    if (sayMaybe && maybe.length > 0) {
+      io.out("");
+      io.out("  Running, and maybe on this store (its command line does not say which):");
+      for (const h of maybe) io.out(`    ${h.what} — ${h.detail}`);
+      io.out("  If one of them is on this store, stop it before you go on.");
+    }
+    if (refusing.length === 0) return null;
+    io.out("");
+    io.err("refused: this store is open in:");
+    for (const h of refusing) io.err(`  ${h.what} — ${h.detail}`);
+    io.err(
+      "Close every Claude Code session on it, quit Claude Desktop, stop the dashboard " +
+        "(and wait for a background run to finish), then run this again. Nothing has changed.",
+    );
+    io.err(
+      `A session that crashed or whose terminal was closed counts for ${String(Math.round(OPEN_WINDOW_MS / 60_000))} minutes after its last hook, ` +
+        "and a memory server only while its process runs, so a record left behind stops counting by itself.",
+    );
+    return EXIT.refused;
+  };
+  const tz = zoneBeside(absolute);
+
+  if (allow) {
+    io.out(`${BIN.cli} rollback --upgrade-again — let this version upgrade the store again.`);
+    io.out(`Store: ${absolute}`);
+    const hold = isAbsolute(storeDir) ? readRollbackHold(absolute) : null;
+    if (hold === null) {
+      io.err(`refused: ${absolute} carries no rollback hold, so there is nothing to allow.`);
+      return EXIT.refused;
+    }
+    if (!existsSync(join(absolute, DATABASE_FILE))) {
+      io.err(
+        `refused: there is no database in ${absolute}: the rollback stopped before its copy went in, so there is ` +
+          `nothing to upgrade, and an upgrade here would start a blank store. Run: ${BIN.cli} rollback --undo --dir ${absolute}`,
+      );
+      io.err("Nothing has changed.");
+      return EXIT.refused;
+    }
+    const stop = holdersRefusal(now());
+    if (stop !== null) return stop;
+    if (dryRun) {
+      io.out("Dry run: this would remove the hold and, if the store is behind this version, upgrade it");
+      io.out(`now, after a new copy to ${snapshotsDir ?? "the snapshots folder"}. Nothing has changed.`);
+      return EXIT.ok;
+    }
+    const { migration } = upgradeAgain({
+      storeDir: absolute,
+      ...(snapshotsDir === null ? {} : { snapshotsDir }),
+      ...(tz === undefined ? {} : { timeZone: tz }),
+    });
+    io.out(
+      migration === null
+        ? "The hold is removed. The store was already on this version's schema, so nothing was upgraded."
+        : `Upgraded v${migration.from} -> v${String(migration.to)}, after a new copy: ${join(migration.dir, migration.snapshot)}. The hold is removed.`,
+    );
+    return EXIT.ok;
+  }
+
+  if (undo) {
+    io.out(`${BIN.cli} rollback --undo — put the set-aside store back.`);
+    const plan = planRollbackUndo({ storeDir, configPath, home: home_ });
+    io.out(`Store: ${plan.storeDir}`);
+    if (plan.hold !== null) io.out(`Set aside: ${plan.hold.aside}`);
+    if (plan.refusal !== null) {
+      io.err(plan.refusal);
+      io.err("Nothing has changed.");
+      return EXIT.refused;
+    }
+    const stop = holdersRefusal(now());
+    if (stop !== null) return stop;
+    if (dryRun) {
+      io.out("Dry run: the restored store has not been written since, so it would be replaced by the");
+      io.out("set-aside one, the cache with it, and the hold removed. Nothing has changed.");
+      return EXIT.ok;
+    }
+    const outcome = performRollbackUndo(plan);
+    for (const line of outcome.done) io.out(`  ${line}`);
+    if (!outcome.ok) {
+      io.err(`undo stopped: ${outcome.error ?? "?"}. What moved is listed above; the hold is still there.`);
+      return EXIT.failed;
+    }
+    io.out("The newer store is back and the hold is removed. This version opens it as before.");
+    return EXIT.ok;
+  }
+
+  // ── the rollback itself ──
+  const at = now();
+  const input = { storeDir, snapshotsDir, configPath, home: home_, now: at, ...(to === undefined ? {} : { to }) };
+  const plan = planRollback(input);
+  io.out(`${BIN.cli} rollback — put this store back the way it was before its last upgrade.`);
+  io.out("");
+  for (const line of rollbackPlanLines(plan)) io.out(line);
+  if (plan.refusal !== null || plan.copy === null) {
+    io.out("");
+    io.err(plan.refusal ?? "refused: nothing to roll back to.");
+    io.err("Nothing has changed.");
+    return EXIT.refused;
+  }
+  const stop = holdersRefusal(at);
+  if (stop !== null) return stop;
+  const previous = previousVersion(plan.storeDir, plan.copy.from);
+  if (dryRun) {
+    io.out("");
+    for (const line of nextStepLines(plan, previous, BIN.cli)) io.out(line);
+    io.out("");
+    io.out("Dry run. Nothing has changed.");
+    return EXIT.ok;
+  }
+
+  // THE TYPED WORD, as `start-fresh` asks for one — and `--yes` only where
+  // nothing can be typed. At a terminal it is refused: the word is the check.
+  const word = `rollback-to-v${plan.copy.from}`;
+  if (io.prompt !== undefined) {
+    if (parsed.flags["yes"] === true) {
+      io.err("");
+      io.err(`refused: --yes at a terminal. Type the word when asked instead; --yes is for a script or a pipe.`);
+      io.err("Nothing has changed.");
+      return EXIT.refused;
+    }
+    io.out("");
+    io.out("Close every Claude Code session, Claude Desktop and the dashboard first: a session sitting");
+    io.out("idle writes nothing, so nothing here can see it.");
+    const said = await typed(io, word, `Type ${word} to go ahead — Esc or "cancel" to stop: `);
+    if (said === "cancelled") {
+      io.out("Cancelled. Nothing has changed.");
+      return EXIT.ok;
+    }
+    if (said !== "typed") {
+      io.err("refused: the confirmation did not match. Nothing has changed.");
+      return EXIT.refused;
+    }
+  } else if (parsed.flags["yes"] !== true) {
+    io.err("");
+    io.err(`refused: this is not an interactive console and nothing was confirmed. Pass --yes if that is what you mean.`);
+    io.err("Nothing has changed.");
+    return EXIT.refused;
+  }
+
+  // MADE AGAIN after the person answered, and refused if the ground moved.
+  const final = planRollback(input);
+  if (final.refusal !== null || final.copy?.name !== plan.copy.name || final.aside !== plan.aside) {
+    io.err(`refused after re-reading the store: ${final.refusal ?? "the copy or the store changed while this waited"}`);
+    io.err("Nothing has changed.");
+    return EXIT.refused;
+  }
+  // The "maybe" half was said above the question; once is enough.
+  const again = holdersRefusal(now(), false);
+  if (again !== null) return again;
+
+  const outcome = performRollback(final, at, installedVersion());
+  io.out("");
+  for (const line of outcome.done) io.out(`  ${line}`);
+  if (!outcome.ok) {
+    io.err(
+      outcome.done.length === 0
+        ? `rollback stopped before anything moved: ${outcome.error ?? "?"}. Nothing has changed.`
+        : `rollback stopped: ${outcome.error ?? "?"}. What moved is listed above, into ${final.aside}; ` +
+            "the hold is in place, so this version will not open the store. " +
+            `To put the newer store back: ${BIN.cli} rollback --undo --dir ${final.storeDir}`,
+    );
+    return EXIT.failed;
+  }
+  io.out("");
+  io.out(`Rolled back to schema v${final.copy?.from ?? "?"}. The newer store is in ${final.aside}.`);
+  io.out("");
+  for (const line of nextStepLines(final, previous, BIN.cli)) io.out(line);
+  return EXIT.ok;
+}
+
 // ── note / recall ───────────────────────────────────────────────────────────
 
 /**
@@ -9351,7 +9647,11 @@ function doctorCommand(
         // A store BEHIND this build refuses an observer until a session has
         // upgraded it; the Store open line already grades that, so the rest of
         // the reading goes on without a handle rather than failing.
-        if (open?.migration === undefined || !isStoreError(err, "STORE_UNINITIALIZED")) throw err;
+        // A store a rollback holds refuses every open by this build, and the
+        // Rollback line says so; the rest of the reading goes on the same way.
+        if (isStoreError(err, "STORE_ROLLED_BACK")) {
+          store = null;
+        } else if (open?.migration === undefined || !isStoreError(err, "STORE_UNINITIALIZED")) throw err;
       }
     }
     const findings = doctorFindings({
