@@ -303,7 +303,9 @@ describe("the wake keeps up: page, write-up, run end", () => {
       kind: { kind: "night" },
       date: "2026-09-29",
       baseEnv: { PATH: "/usr/bin:/bin" },
-      start: async () => {
+      start: async (plan) => {
+        // The reflection's own child, after this one (2026-10-11): nothing to do here.
+        if (plan.stdin.includes("reflection launch⟧")) return { code: 0, timedOut: false, error: null };
         await worker("2026-09-29");
         beforeWrite = published();
         writePage("This morning's page, written by the nightly run.");

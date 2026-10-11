@@ -348,7 +348,7 @@ export const DURABLE_EVENTS = {
   // counted as a firing.
   "prospective.fire": "a future date arrived and the reminder was offered into the turn (which window, and how much of its budget is left)",
   "prospective.fire.refused": "a reminder was NOT offered (which brake held — one row per window per reason per lived day)",
-  "prospective.plain": "a reminder its author marked plain was told to the person on its day (which window, which beat — its day, a month or range opening, or its last day — and the date)",
+  "prospective.plain": "a reminder its author marked plain was told to the person on its day (which window, which beat — its day, a month or range opening, or its last day — and the date; `late` when a day passed untold was told within its week after)",
   // The journal's markdown copy and the hand export (2026-09-20, F6 and F7):
   // the two places the constitution's "prose the owner can view" is kept now
   // that every body is a column.

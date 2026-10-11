@@ -40,6 +40,18 @@ or the CLI's read commands (`counterparts mechanisms --dir …`, `counterparts d
 - **Changes a decision if:** a reminder for something still pending is archived → its date was wrong, or the
   hold needs to key on "done" rather than on the date.
 
+### Expected on the live store until 0.3.18: personal memories at the old 0.25 default go below reach
+- **Look at:** owner/us memories below reach after the first new-curve pass (preview on a copy: 18, all at the
+  old 0.25 default, mostly learned 10-08..10-10).
+- **Why:** the live store runs 0.3.17, where the old-claims era only reads explicit claims DOWN; reading old
+  DEFAULT claims at today's default (owner/us/me → 0.40, Mike 10-11) is #395, which ships in 0.3.18. Below reach
+  is not archived: asking still finds them, and the 0.3.18 re-curve lifts them back. NOT a regression.
+- **Changes a decision if:** they're still below reach after 0.3.18 is installed and has had one pass → the era's
+  default reading isn't applying: a bug.
+- **Version facts, checked with git:** 0.3.17 (v0.3.17 @7c0d2f59) HAS the dated hold without the spent slope
+  (`afterHold: "own-curve"`) and drewOn's `repScale`; it does NOT have #395 (old defaults at today's default),
+  #398/#400 (merge and revision inherit about/era), #403 (gist marks), or catch-up (#401).
+
 ## Due 2026-10-14 (the check-in, reminder mem_8a53c5d0bc95)
 
 ### The tax deadline shows under Arriving on 10-13 and 10-14
@@ -96,6 +108,17 @@ or the CLI's read commands (`counterparts mechanisms --dir …`, `counterparts d
   which was worked out from part sizes, never measured from a catch-up transcript.
 - **Changes a decision if:** the real cost per part is far above the estimate → lower the night's cap
   (`NIGHT_WRITE_UP_PARTS`), and look again at the command's.
+
+## Due at the first live nights with the reflection in its own child
+
+### Peak context per child on a heavy night
+- **Look at:** the `dream.night` row's `children` (expect `dream:0,reflection:0`), and the two children's
+  transcripts under `~/.claude/projects/-Users-mlapeter--counterparts-store/` (one session each): peak context
+  (max input + cache write + cache read over a child's turns, deduped by message id) and new work per child.
+- **Why:** measured once on a light night only (one agent 148k, then dream child 98k and reflection child 70k;
+  `src/core/dream/NOTES.md`, 2026-10-11). A heavy night (the writer writing, 50+ fresh) was not measured.
+- **Changes a decision if:** the dream child alone goes past ~150k → the dream bundle's room (`NIGHT_CHARS`) or
+  the queue (Group 3) is next; if new work goes past the 2× cap (~490k), look at the reflection's re-written cache.
 
 ## Due 1 lived day after the verbatim trial ships
 

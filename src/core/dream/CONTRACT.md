@@ -167,6 +167,10 @@ dreamer is the model (a background agent the session launches), outside this pro
   claims the night for this session and hands the day and the page whole through the
   tool result); writer and reflection are DIFFERENT jobs and both may write the page
   for now, with their own author labels (`writer`, `reflection`), every version kept.
+  The HEADLESS night (2026-10-11) asks for the prompt without the reflection
+  (`launchPrompt({ reflect: false })`): its first child ends at the dream's journal, and
+  the reflection runs after it as a child of its own, from `Reflections#launchPrompt`
+  with tonight's dream id, reading the dream from the store with a fresh context.
 - `begin` refuses under observer, when a dream was journaled this CALENDAR day, while
   another session's run is busy (`dreaming-now`), and when nothing is new. A dream LEFT
   BEHIND — begun, never journaled, quiet for `ABANDONED_AFTER_MS` — is RESUMED when it
