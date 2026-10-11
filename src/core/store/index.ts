@@ -60,7 +60,7 @@ import type { AddFeelingsResult, FeelingInput, FeelingRow, FeelingSource } from 
 import { checkTraitsRepaired } from "./traits.js";
 import type { TraitRepair } from "./traits.js";
 import type { TraitInput, TraitRead, TraitRow, TraitSource } from "./traits.js";
-import { TUNABLES as PHYSICS_TUNABLES, creditReturn, creditUse } from "../physics/index.js";
+import { TUNABLES as PHYSICS_TUNABLES, USE_TIER_WEIGHT, creditReturn, creditUse } from "../physics/index.js";
 import type { CreditOutcome, ReturnOutcome, UseTier } from "../physics/index.js";
 import type { Db, Statement, WalFold } from "./db.js";
 import { foldWal, isLocked, wroteOn } from "./db.js";
@@ -1937,12 +1937,21 @@ export class Store {
        * decides.
        */
       cued?: boolean;
+      /**
+       * A lower tier this memory was credited at earlier THIS lived day, which
+       * this use lifts (`physics.creditUse`, 2026-10-11). The caller that
+       * recorded the earlier credit knows it (recall's gate state, for its own
+       * session). Absent, an `engaged` credit today is still found by its
+       * return row, so another session's open lifts it too.
+       */
+      upgradeFrom?: UseTier;
     } = {},
   ): CreditOutcome & { ret: ReturnOutcome | null } {
     const outcome = this.mutate("reinforce", () => {
       const row = this.requireRow(id);
-      const physics = rowToPhysics(row);
-      const verdict = creditUse(physics, day, tier);
+      let physics = rowToPhysics(row);
+      const upgradeFrom = opts.upgradeFrom ?? this.engagedToday(id, day, row.last_used_day, tier);
+      const verdict = creditUse(physics, day, tier, upgradeFrom === undefined ? {} : { upgradeFrom });
       let ret: ReturnOutcome | null = null;
       if (verdict.credited) {
         this.ops.run(
@@ -1954,12 +1963,24 @@ export class Store {
           verdict.next.reinforcedDays,
           id,
         );
-        ret = creditReturn(physics, day, {
-          source: "awake",
-          tierWeight: verdict.w,
-          onDisplay: opts.cued !== true && this.shownInHints(id, day),
-          since: this.legacyLastReturn(id),
-        });
+        // AN ENGAGED USE (2026-10-11, `drewOn`) is half a return of its own
+        // source, outside the core lanes. A use that LIFTS today's engaged
+        // credit takes its return back first, so the day's one return is the
+        // higher one.
+        if (upgradeFrom === "engaged" && tier !== "engaged") {
+          this.ops.run("DELETE FROM returns WHERE memory_id = ? AND day = ? AND source = 'engaged'", id, day);
+          this.recomputeReturns(id);
+          physics = rowToPhysics(this.requireRow(id));
+        }
+        ret =
+          tier === "engaged"
+            ? creditReturn(physics, day, { source: "engaged", since: this.spacingSince(id) })
+            : creditReturn(physics, day, {
+                source: "awake",
+                tierWeight: verdict.w,
+                onDisplay: opts.cued !== true && this.shownInHints(id, day),
+                since: this.spacingSince(id),
+              });
         if (ret.counted) this.writeReturn(id, day, ret, null);
       }
       return { ...verdict, ret };
@@ -1985,7 +2006,7 @@ export class Store {
   replayReturn(id: string, day: number, dreamId: string): ReturnOutcome {
     const outcome = this.mutate("replayReturn", () => {
       const row = this.requireRow(id);
-      const ret = creditReturn(rowToPhysics(row), day, { source: "dream", since: this.legacyLastReturn(id) });
+      const ret = creditReturn(rowToPhysics(row), day, { source: "dream", since: this.spacingSince(id) });
       if (ret.counted) this.writeReturn(id, day, ret, dreamId);
       return ret;
     });
@@ -2012,7 +2033,7 @@ export class Store {
         null;
       const ret = creditReturn(rowToPhysics(row), day, {
         source: "reflection",
-        since: this.legacyLastReturn(id),
+        since: this.spacingSince(id),
         lastReflectionDay: last,
       });
       if (ret.counted) this.writeReturn(id, day, ret, null);
@@ -2022,12 +2043,38 @@ export class Store {
     return outcome;
   }
 
-  /** The last day of a LEGACY return the upgrade credited (spacing reads it; the lanes never do). */
-  private legacyLastReturn(id: string): number | null {
+  /**
+   * The last day of a return the physics fields do not carry, which spacing
+   * still measures from (the lanes never read it): a LEGACY return the v8
+   * upgrade credited, or an ENGAGED one (2026-10-11, `drewOn` — no column, so
+   * "spaced like the others" reads it off the table).
+   */
+  private spacingSince(id: string): number | null {
     return (
-      this.ops.get<{ d: number | null }>("SELECT MAX(day) AS d FROM returns WHERE memory_id = ? AND source = 'legacy'", id)?.d ??
-      null
+      this.ops.get<{ d: number | null }>(
+        "SELECT MAX(day) AS d FROM returns WHERE memory_id = ? AND source IN ('legacy', 'engaged')",
+        id,
+      )?.d ?? null
     );
+  }
+
+  /**
+   * `engaged` when today's credit for this memory was an ENGAGED one — its
+   * return row says so — and a use above that tier would lift it; otherwise
+   * undefined (2026-10-11). Only an engaged credit writes that row, and a
+   * lift deletes it, so its presence on a day the memory was used means the
+   * day stands at the engaged tier. Not seen: an engaged credit whose return
+   * was refused (another return already counted that day) — that lift is
+   * left to the gate state of the session that gave it.
+   */
+  private engagedToday(id: string, day: number, lastUsedDay: number, tier: UseTier): UseTier | undefined {
+    if (lastUsedDay !== day || USE_TIER_WEIGHT[tier] <= USE_TIER_WEIGHT.engaged) return undefined;
+    const r = this.ops.get<{ n: number }>(
+      "SELECT COUNT(*) AS n FROM returns WHERE memory_id = ? AND day = ? AND source = 'engaged'",
+      id,
+      day,
+    );
+    return (r?.n ?? 0) > 0 ? "engaged" : undefined;
   }
 
   /** Insert one `returns` row and bring the aggregate columns in line with the table. */

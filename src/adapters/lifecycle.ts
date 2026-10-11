@@ -1176,6 +1176,9 @@ export class Lifecycle implements HostLifecycle {
         unreadable: summary.unreadable,
         refused: summary.refused,
         ids: summary.ids.slice(0, 64),
+        /** How each of `ids` was earned, aligned with it (2026-10-11):
+         *  `expanded` or `quoted` here; `drewOn` on the tools' own rows. */
+        how: summary.how.slice(0, 64),
         idsTotal: summary.ids.length,
         expandedIds: summary.expandedIds.slice(0, 64),
         expandedTotal: summary.expandedIds.length,

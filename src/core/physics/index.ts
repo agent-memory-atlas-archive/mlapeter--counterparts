@@ -28,8 +28,21 @@ export type { Band, DatedHold, Kind, MemoryPhysics, Salience } from "../types.js
 
 export const TUNABLES = {
   // --- §5.2 strength ---
-  /** Repetition credit per use [v0, verbatim]. */
+  /** Repetition credit per use [v0, verbatim]. RETIRED from `rep()` on
+   *  2026-10-11 (`drewOn`, the engaged tier): the arm saturates instead
+   *  (below). Kept so the old linear arm can be named and restored in one line. */
   REP_PER_USE: 0.12,
+  /**
+   * THE REPETITION ARM SATURATES (2026-10-11, with the engaged tier; ported
+   * from #371): `rep = REP_CAP x (1 − e^(−uses / REP_SCALE_USES))` — 0.14
+   * after one use, 0.24 after two, 0.40 after five, never a cliff at the cap.
+   * Was `min(0.12 x uses, 0.5)`, linear to a wall. With `drewOn` (half a use
+   * for a memory the session says it drew on) use can come more often, and
+   * each further use must add less. Built by the drewOn builder, 2026-10-11,
+   * from Mike's 10-10 direction, lightly held. Why: review 05 C2/D3; the shape
+   * keeps "the 5th use adds clearly less than the 1st" at any intake.
+   */
+  REP_SCALE_USES: 3,
   /** Repetition cap [v0; v1 §10 G11]. Repetition is also no road to the
    *  identity band for any kind but `self`/`person` — guarantee 4, now a rule of
    *  `promotionEligibility` rather than a threshold (§5.3, 2026-09-26). */
@@ -75,6 +88,24 @@ export const TUNABLES = {
    * durability (spacing-scaled like any return). CAL.
    */
   REFLECTION_RETURN_WEIGHT: 1.0,
+  /**
+   * An ENGAGED use's return (2026-10-11, `drewOn`; ported from #371): the
+   * session said it drew on a memory it was shown, without opening it. Half a
+   * return, spacing-scaled like the others, and no core-lane day of its own
+   * (`returns.source = 'engaged'` is outside the lanes' `awake`/`reflection`).
+   * Lightly held. Why: review 05 D1; saying you drew on something is weaker
+   * evidence than opening it.
+   */
+  ENGAGED_RETURN_WEIGHT: 0.5,
+  /**
+   * What an engaged return will count for toward the core's RECURRENCE lane
+   * (b2+f8, 2026-10-10: half weight, and never alone). NOTHING READS IT YET:
+   * the recurrence lane is Group 3's (mechanisms synthesis, Group 3
+   * consolidation) and is not built — today's slow lane counts `awake` and
+   * `reflection` days only (`store#recomputeReturns`), so an engaged return
+   * buys no lane day at all. This is the hook that lane reads when it lands.
+   */
+  ENGAGED_RECURRENCE_WEIGHT: 0.5,
   /**
    * A reflection counts a memory as returned at most once every this many
    * lived days (working default 2026-09-27): "the reflection can't cite the
@@ -390,6 +421,13 @@ export const TUNABLES = {
   // --- §5.5 reinforcement ---
   /** Retrospective credit weights by tier. The ignorable tier never trains. */
   W_REFERENCED: 1.0,
+  /**
+   * The session said it DREW ON a memory it was shown (`drewOn` on
+   * `session_end` / `chapter`, 2026-10-11): half a use. Display alone still
+   * trains nothing — `W_FOOTNOTED` stays 0. Built by the drewOn builder,
+   * 2026-10-11, from Mike's 10-10 direction, lightly held. Why: review 05 D1.
+   */
+  W_ENGAGED: 0.5,
   W_SURFACED: 0.25,
   W_FOOTNOTED: 0.0,
 
@@ -769,7 +807,8 @@ export function clampSalienceAtSeam(
 // ---------------------------------------------------------------------------
 
 export function rep(m: Pick<MemoryPhysics, "uses">): number {
-  return Math.min(TUNABLES.REP_PER_USE * m.uses, TUNABLES.REP_CAP);
+  if (!(m.uses > 0)) return 0;
+  return TUNABLES.REP_CAP * (1 - Math.exp(-m.uses / TUNABLES.REP_SCALE_USES));
 }
 
 export function cons(m: Pick<MemoryPhysics, "consolidated">): number {
@@ -1433,7 +1472,7 @@ export function promote(m: MemoryPhysics, d: number, ctx: CoreContext): Promotio
  * #238 gave `awake` — do not "fix" it back to `on-display` (physics
  * CONTRACT §5.11).
  */
-export type ReturnSource = "awake" | "dream" | "reflection";
+export type ReturnSource = "awake" | "dream" | "reflection" | "engaged";
 
 export type ReturnReason =
   | "counted"
@@ -1535,11 +1574,32 @@ export function creditReturn(
       ? TUNABLES.DREAM_RETURN_WEIGHT
       : opts.source === "reflection"
         ? TUNABLES.REFLECTION_RETURN_WEIGHT
-        : (opts.tierWeight ?? TUNABLES.W_REFERENCED);
+        : opts.source === "engaged"
+          ? TUNABLES.ENGAGED_RETURN_WEIGHT
+          : (opts.tierWeight ?? TUNABLES.W_REFERENCED);
   if (tier <= 0) return refuse("ignorable-tier");
   if (opts.source === "awake" && tier < TUNABLES.W_REFERENCED) return refuse("not-referenced");
   if (d <= m.birthDay) return refuse("birth-day");
   if (opts.source === "awake" && opts.onDisplay === true) return refuse("on-display");
+  // AN ENGAGED RETURN (2026-10-11, `drewOn`; ported from #371): half a
+  // return, spaced from the last return of ANY kind (the caller passes the
+  // last engaged day as `since`), and refused on a day that already counted
+  // one of any kind. It touches only the `returns` sum: no lane day, no
+  // `lastReturnDay` (those are the core lanes'), no `lastDreamDay`. Only a
+  // memory recall showed this session can earn one (`Counterpart#creditDrewOn`
+  // refuses the rest), so the wake's display rule does not apply.
+  if (opts.source === "engaged") {
+    if (gap <= 0) return refuse("already-returned-today");
+    const weight = tier * spacingWeight(gap);
+    return {
+      counted: true,
+      reason: "counted",
+      source: "engaged",
+      gap,
+      weight,
+      next: { ...unchanged, returns: unchanged.returns + weight },
+    };
+  }
   // "Already today" is asked of the SAME kind of return for an awake one: a
   // dream that replayed the memory earlier this lived day (the ask comes
   // mid-session, and the day goes on) takes the spacing — the awake return
@@ -1651,10 +1711,11 @@ export function symmetryCheck(kind: Kind, counts: { up: number; down: number; un
 // §5.5 Reinforcement
 // ---------------------------------------------------------------------------
 
-export type UseTier = "referenced" | "surfaced" | "footnoted";
+export type UseTier = "referenced" | "engaged" | "surfaced" | "footnoted";
 
 export const USE_TIER_WEIGHT: Record<UseTier, number> = {
   referenced: TUNABLES.W_REFERENCED,
+  engaged: TUNABLES.W_ENGAGED,
   surfaced: TUNABLES.W_SURFACED,
   footnoted: TUNABLES.W_FOOTNOTED,
 };
@@ -1682,15 +1743,30 @@ export interface CreditOutcome {
  *
  * A credited use also resets the forgetting curve: `lastUsedDay := d` raises
  * S through `uses`, so the next interval is longer — the testing effect.
+ *
+ * THE TIER ONLY GOES UP WITHIN A DAY (2026-10-11, `drewOn`; ported from
+ * #371). `upgradeFrom` names a lower tier the SAME memory was credited at
+ * earlier this lived day (the caller knows it; physics carries no tier). Then
+ * the day's credit is lifted to `tier`: `uses` gains the difference, the clock
+ * is already today's, and the reinforced day is not counted twice. Without it
+ * a `drewOn` credit at one boundary would refuse an expansion at the next as
+ * `already-credited-today`. Lightly held. Why: review 05 C2 ("a referenced use
+ * the same day supersedes it").
  */
-export function creditUse(m: MemoryPhysics, d: number, tier: UseTier): CreditOutcome {
+export function creditUse(m: MemoryPhysics, d: number, tier: UseTier, opts: { upgradeFrom?: UseTier } = {}): CreditOutcome {
   const w = USE_TIER_WEIGHT[tier];
   const days = reinforcedDays(m);
   const unchanged = { uses: m.uses, lastUsedDay: m.lastUsedDay, reinforcedDays: days };
   if (w <= 0) return { credited: false, reason: "ignorable-tier", w, next: unchanged };
   if (d === m.birthDay) return { credited: false, reason: "birth-day", w, next: unchanged };
   if (d < m.lastUsedDay) return { credited: false, reason: "stale-day", w, next: unchanged };
-  if (d === m.lastUsedDay) return { credited: false, reason: "already-credited-today", w, next: unchanged };
+  if (d === m.lastUsedDay) {
+    const from = opts.upgradeFrom === undefined ? 0 : USE_TIER_WEIGHT[opts.upgradeFrom];
+    if (from > 0 && from < w) {
+      return { credited: true, reason: "credited", w, next: { uses: m.uses + (w - from), lastUsedDay: d, reinforcedDays: days } };
+    }
+    return { credited: false, reason: "already-credited-today", w, next: unchanged };
+  }
   return {
     credited: true,
     reason: "credited",

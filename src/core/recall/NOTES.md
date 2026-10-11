@@ -1109,3 +1109,25 @@ held. Evidence from the old use metric (lifted memories used 1.3% vs 2.4%); re-t
 Group 1's engaged credit gives a real signal. The code in `mood.ts` is kept whole and its
 tests run it at the old weights; with both at 0, `Recall#build` skips `currentMood` (the
 per-turn `feelings` scan with no index on `created_at`).
+
+## 31. `drewOn` — the third door, by the session's word (2026-10-11)
+
+Built by the drewOn builder, 2026-10-11, from Mike's 10-10 direction, lightly held. #371's
+matcher (rare title words in the reply) is parked; its tier is kept (`engaged`, physics
+§5.5) and fed by an explicit field instead. What the build found:
+
+- **The "shown" record is recall's, and the wake is not in it.** `surfaced` and `asked`
+  gate records are per session; the wake's `self.briefing.shown` is per published bundle,
+  so it cannot say which session read it. Wake ids come back `not-shown`; opening one still
+  credits it. Loud ("Came to mind") lines show no id, so in practice `drewOn` names
+  footnotes and recall answers; a loud memory is still credited by quoting it.
+- **One boundary is one recall turn.** The ask's two answers (`session_end`, `chapter`)
+  come in the turn the Stop opened, so the cap of 3 counts engaged credits in the gate
+  state at `state.turn` today, and the two tools share it. A chapter appended mid-session
+  after a new prompt gets a fresh 3.
+- **The same-day lift crosses sessions.** #371 lifted only from this session's gate state;
+  the common case for `drewOn` is a Stop in one session and an open in another, so
+  `Store#reinforce` also reads today's `engaged` return row. Missed: an engaged credit whose
+  return was refused because another return already counted that day.
+- Watch at the ~10-14 check-in: the doctor's Credit line ("drewOn N credited of M named in
+  K calls over 7 days") and the `not-shown` share in `recall.credit` rows' `refused`.

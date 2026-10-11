@@ -160,10 +160,12 @@ describe("tool descriptions, as a host that serves only the first 2,048 characte
       // head grew from 951 to 1,387 and session_end's from 811 to 1,088, both
       // well inside the cut with their leading claims.
       remember: { total: 5612, beforeList: 1387 },
+      // session_end and chapter grew by 305 each on 2026-10-11: the `drewOn`
+      // claim, last in each list, past the cut (the field says it, served whole).
       recall: { total: 6163, beforeList: 1200 },
       status: { total: 1212, beforeList: 501 },
-      session_end: { total: 7520, beforeList: 1088 },
-      chapter: { total: 2079, beforeList: 728 },
+      session_end: { total: 7825, beforeList: 1088 },
+      chapter: { total: 2384, beforeList: 728 },
       scope: { total: 1514, beforeList: 755 },
       self_page: { total: 4846, beforeList: 1772 },
       dream: { total: 3785, beforeList: 1782 },

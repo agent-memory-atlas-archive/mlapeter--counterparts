@@ -64,8 +64,25 @@ come first. Nothing here quotes a memory.
    every memory whose date came after the day it was written, not only reminders. (Group 1a.)
 3. **PARKED — engaged footnote credit** (G1b, #371). Parked by Mike, 2026-10-10:
    hand-labelled strict precision 0.17–0.33, lenient 0.60–0.78, below the 0.8 bar; the 09-14
-   ruling ("never for being named in prose") stands in practice. Successor: an explicit `drewOn`
-   field (planned). Not a reversal that shipped.
+   ruling ("never for being named in prose") stands in practice: no matcher guesses at use.
+   **Successor, built: the `drewOn` field.** Built by the drewOn builder, 2026-10-11, from
+   Mike's 10-10 direction, lightly held. `session_end` and `chapter` take optional `drewOn`
+   ids: memories this session was shown that changed what it did or said, in its own word.
+   Each earns the `engaged` tier, #371's tier code without its matcher: half a use, the clock
+   restarted, a `returns.source = 'engaged'` row worth half a spaced return, no core-lane day.
+   Once per lived day per memory; at most 3 per boundary (one ask, both tools together; the
+   first named, the rest `capped`; a refused id uses no slot). Never a superseded memory or
+   one faded under a newer one (refused by name). An open later the same day lifts it to a
+   full use, in this session or another. The repetition arm now saturates,
+   0.5·(1−e^(−uses/3)) (was linear to 0.5 at five uses). The one guard: only an id recall
+   showed this session (its footnotes, loud memories and recall answers) counts; any other is
+   refused `not-shown` and nothing is credited. **The wake is not in that record** (published
+   per store, not per session), so a wake line still earns credit only by being opened.
+   Every credit row says how each credit was earned (`how`: `expanded` / `quoted` /
+   `drewOn`), and the doctor's Credit line counts a week of `drewOn` credits for the ~10-14
+   check-in. Half weight toward the core's recurrence is a constant waiting for Group 3's
+   recurrence lane (`ENGAGED_RECURRENCE_WEIGHT`); today an engaged return buys no lane day.
+   The Stop ask is unchanged: the field text is the only prompt.
 
 The rest are not reversals of Mike's rulings as far as b2, f8 and the builders know. Some
 reverse older defaults and contract lines; those go to the rules audit.

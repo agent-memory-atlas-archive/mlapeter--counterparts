@@ -49,6 +49,16 @@
 export const QUOTE_WINDOW_WORDS = 8;
 
 /**
+ * At most this many `drewOn` credits land per BOUNDARY (2026-10-11): one ask
+ * and its answers, `session_end` and `chapter` together — the recall turn the
+ * session is on, which no answer to the ask moves. Only credits that LANDED
+ * use a slot; past it, the rest of the ids named come back `capped`, in the
+ * order given (`Counterpart#creditDrewOn`). Built by the drewOn builder,
+ * 2026-10-11, from Mike's 10-10 direction, lightly held.
+ */
+export const DREW_ON_MAX_PER_BOUNDARY = 3;
+
+/**
  * Owner ruling 2026-09-14 (R3, review of #99): a matching window must carry at
  * least this many NON-stopword tokens, or it is boilerplate, not a quote.
  * Repro that forced it: body "I think it would be a good idea to keep …" and a
