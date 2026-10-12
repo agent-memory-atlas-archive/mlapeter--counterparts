@@ -2129,7 +2129,13 @@ What changed with it, measured:
   `uninstall.test.ts` finding #26), and one more snapshot bars the `-shm`
   (`dashboard-mechanisms.test.ts`), which SQLite rewrites at the last close.
 - **The sidecars at the last close** are the build's choice: bun on macOS keeps the `-wal`
-  (emptied) and the `-shm`; bun on Linux and node:sqlite delete both.
+  (emptied) and the `-shm`; bun on Linux and node:sqlite delete both, and the next open
+  makes an empty `-wal` again, with that open's mtime. Two things read that file and now
+  look past an empty one: `pre-migration.ts#reusableCopy`, which asked "has the live store
+  been written since this copy?" by the `-wal`'s mtime too, and on Linux never reused an
+  older copy once every open made a fresh `-wal`; and the suites that hash a store and
+  mean "nothing wrote", which skip it through `paths.ts#holdsNoData` (a `-wal` with pages
+  is still hashed). Measured in an `oven/bun:1.3.10` container, CI's bun.
 - **`foldWal` stays.** A hook usually closes while the MCP server, the worker or the
   dashboard has the file open, so its close is not the last and SQLite folds nothing.
 - **A hook turn costs the same.** open → put → appendEvent → close on a 2,000-memory
