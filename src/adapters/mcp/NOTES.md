@@ -830,7 +830,10 @@ headless child's own `--mcp-config` env and checks the bodies reach `structuredC
   and one call lists at most `NEIGHBOURS_PER_CALL` (12) across its entries (M1).
 - **`note` with `text` and `settle`** is an error only when nothing landed (M2).
 - **`already-settled`** tells a session to raise it with the owner, whose `counterparts
-  settle --undo` it is; the owner is told to undo first (M3).
+  settle --undo` it is; the owner is told to undo first (M3). Since the review of #432
+  (2026-10-11) a session's or the owner's settle of a standing `changed` pair the OTHER
+  way round reorders it instead (the old settle undone, its trail kept), and the refusal
+  says which way the pair stands.
 - **A `how` sent at a core memory** reports that pressure runs and that the pair is
   recorded unsettled meanwhile (M9). The published `note` schema has `required: []`;
   watch whether empty notes rise (M10).
