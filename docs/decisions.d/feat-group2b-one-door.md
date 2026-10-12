@@ -143,3 +143,17 @@
   stand for the earlier version the words reached and its pointer candidate is dropped. Why:
   the dedicated test showed both shown — a pointer sat in its own slots, apart from what the
   gate inhibits.
+- Decided by the #427 reviewer, 2026-10-11, lightly held (knock-ons of random-06's ruling): a
+  declaration (`updates`) at a merged original or a crossed core memory reaches the memory that
+  holds now (`revision.ts#forwardedHead`), as `resolve` followed the forwarding address before;
+  ordinary settles are left as they were (a write may still address an earlier version). A
+  crossing's successor carries the old memory's about mark and the writer's fields its
+  challenger did not send (`Store#carryInto`, without returns), as `supersede` did. A belief's
+  story reads a crossing's `pressure` pair as its lineage step (`Schemas#crossedTo`). The
+  store-wide feelings and nudge reads (`feelingsLive`, `feelingsSince`, `emotionCensus`,
+  `traitsAll`, `traitCensus`) leave a merge's live originals out, since their feelings and
+  nudges were copied onto the merged memory: a moment counted once, as when they were archived.
+- Noted by the #427 reviewer, 2026-10-11: `headOf`'s rule (#408) lets a FRESH direct settle
+  "B over A", made after "C over B", re-affirm B (it is raised later); a late answer to an
+  older flag or proposal cannot (raised order; a flag is closed by the newer settle). Kept as
+  found, with a test that records it; a design question, not changed here.
