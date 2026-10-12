@@ -19,7 +19,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { deflateSync, inflateSync } from 'node:zlib';
 
-import { FOX_FINAL } from '../../hooks/sidebar/hooks/fox-art.ts';
+import { FOX_FINAL } from '../../hooks/sidebar/hooks/fox-art.js';
 
 type Rgba = { w: number; h: number; px: Uint8Array };
 
