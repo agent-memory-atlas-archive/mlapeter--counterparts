@@ -16,6 +16,7 @@ import {
   readWriteFacts,
   MEMORY_KINDS,
   reminderEcho,
+  undatedReminderWarning,
   factsEcho,
   threadOf,
 } from "./server-args.js";
@@ -334,6 +335,7 @@ export async function depositEntries(
       ...server["recordAbout"](result, about.mark),
       ...server["recordTraits"](result, traits.inputs, model),
       ...reminderEcho(result, dated, server["today"]()),
+      ...undatedReminderWarning(result, dated, draft["title"], draft["content"]),
       ...factsEcho(result, facts),
       ...server["settledOf"](result, draft["how"] !== undefined),
       ...threadOf(result),
