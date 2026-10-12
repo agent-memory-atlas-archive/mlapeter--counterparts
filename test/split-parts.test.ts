@@ -41,11 +41,12 @@ function tsFiles(dir: string): string[] {
   return out;
 }
 
-/** The modules a file imports or re-exports as VALUES (type-only imports skipped). */
+/** The modules a file imports or re-exports as VALUES (type-only imports skipped), and any dynamic `import()`. */
 function valueImports(text: string): string[] {
   const out: string[] = [];
   const re = /\b(import|export)\s+(type\s+)?(?:[\w$]+\s*,\s*)?(?:\*\s+as\s+[\w$]+|\*|\{[^}]*\}|[\w$]+)\s+from\s+["']([^"']+)["']/g;
   for (const m of text.matchAll(re)) if (m[2] === undefined) out.push(m[3] as string);
+  for (const m of text.matchAll(/\bimport\s*\(\s*["']([^"']+)["']/g)) out.push(m[1] as string);
   return out;
 }
 
