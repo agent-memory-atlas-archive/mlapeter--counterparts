@@ -1,3 +1,3 @@
-- **The sidebar's first-meeting prompt reads like a sentence.** The line Claude Code shows when the plugin asks Claude to say hello is now "Counterparts: Claude has a memory now and would like to introduce itself."
+- **The sidebar's first-meeting prompt reads like a sentence.** The line Claude Code shows when the plugin asks Claude to say hello is now "Counterparts is installed. Claude would like to introduce itself."
 - **The sidebar's quiet line reads as one phrase.** A fresh save shows as `Stored "title" — ` and as much of what was written as the width allows, cut at a word, instead of `stored: ` before a title that has its own prefix.
 - **On the classic screen the sidebar's line suggests `/tui fullscreen`.** Where the pane cannot dock, the dim line under the prompt now says that `/tui fullscreen` shows the memory sidebar; nothing about the setting is changed for you.
