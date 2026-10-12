@@ -25,7 +25,7 @@ import { Counterpart } from "../src/core/counterpart.js";
 import { DREAM_TUNABLES } from "../src/core/dream/index.js";
 import { TUNABLES as PHYSICS, strength } from "../src/core/physics/index.js";
 import { headOf, standingOf } from "../src/core/recall/index.js";
-import { FOLD_SOURCE, FOLD_SOURCE_CORRECTED, settle, undo } from "../src/core/reconsolidation.js";
+import { CONTRADICTION_TUNABLES, FOLD_SOURCE, FOLD_SOURCE_CORRECTED, proposeSlot, settle, undo } from "../src/core/reconsolidation.js";
 import { settledOver } from "../src/core/self/index.js";
 import { coreRecurrence, runCycle, slotOf } from "../src/core/sleep/index.js";
 import type { PutInput } from "../src/core/store/index.js";
@@ -51,6 +51,7 @@ afterEach(() => {
 });
 
 const SESSION = "s-dream";
+const PROVISIONAL = CONTRADICTION_TUNABLES.SLOT_FADE;
 
 function brain(): Counterpart {
   const c = Counterpart.open({ dir, owner: true, bundlesAsOwner: true, identity: { name: "Mike" }, now: () => Date.now() + dateN * 86_400_000 });
@@ -307,6 +308,49 @@ describe("undo", () => {
       expect(c.store.contradictionBetween(fold, id)).toBeUndefined();
       expect(headOf(c.store, id)).toBeNull();
     }
+  });
+});
+
+describe("undo with a slot proposal under the fold (stacking)", () => {
+  /** X with a pending slot proposal (Y the newer state of X, X cut x0.8), folded with Z, then the slot confirmed. */
+  function stacked(c: Counterpart): { x: string; pair: string; dream: string } {
+    nextDay(c);
+    nextDay(c);
+    const x = mem(c, "The release is planned for Thursday.");
+    const y = mem(c, "The release is planned for Friday now.");
+    const z = mem(c, "The release notes are drafted.");
+    const slot = proposeSlot(c.store, { holds: y, candidate: { over: x, cosine: 0.9, rule: "cosine", sameSession: false } });
+    if (!slot.ok) throw new Error(slot.reason);
+    expect(fadeOf(c, x)).toBeCloseTo(PROVISIONAL, 9);
+    const dream = begin(c);
+    const [r] = propose(c, dream, [{ action: "gist", fold: true, text: "The release is ready.", sources: [x, z] }]);
+    expect(r?.ok).toBe(true);
+    expect(fadeOf(c, x)).toBeCloseTo(PROVISIONAL * 0.5, 9);
+    // Confirmed: the provisional cut is lifted, the confirmed cut lands on the fold's.
+    const ok = settle(c.store, { pair: slot.pair, holds: y, how: "changed", actor: "session" });
+    expect(ok.ok).toBe(true);
+    expect(fadeOf(c, x)).toBeCloseTo(0.25, 9);
+    return { x, pair: slot.pair, dream };
+  }
+
+  test("fold undone first, then the confirmation: X is back at its provisional cut, exactly", () => {
+    const c = brain();
+    const { x, pair, dream } = stacked(c);
+    expect(c.dreams.undo(dream).ok).toBe(true);
+    expect(fadeOf(c, x)).toBeCloseTo(0.5, 9);
+    expect(undo(c.store, { pair, actor: "owner" }).ok).toBe(true);
+    expect(fadeOf(c, x)).toBeCloseTo(PROVISIONAL, 9);
+    expect(undo(c.store, { pair, actor: "owner" }).ok).toBe(true); // the proposal withdrawn
+    expect(fadeOf(c, x)).toBe(1);
+  });
+
+  test("the confirmation undone first, then the fold: the same, exactly", () => {
+    const c = brain();
+    const { x, pair, dream } = stacked(c);
+    expect(undo(c.store, { pair, actor: "owner" }).ok).toBe(true);
+    expect(fadeOf(c, x)).toBeCloseTo(PROVISIONAL * 0.5, 9);
+    expect(c.dreams.undo(dream).ok).toBe(true);
+    expect(fadeOf(c, x)).toBeCloseTo(PROVISIONAL, 9);
   });
 });
 
