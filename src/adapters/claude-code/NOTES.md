@@ -2541,3 +2541,22 @@ the run went on to mark is refused `needs-retraction` (see the decisions fragmen
 **Not changed, flagged.** A jot claims every unwritten word its session said before it
 (`submitJot` → the default `cover`): one short note covered e92c5180's evening, about
 2.5 hours and 48 KB, whose other substance no chapter or memory of that session holds.
+
+## 2026-10-12 — three reads of Claude Code's files trimmed (directory review, 1D/1F)
+
+**The nightly run reads its child's output, not its transcript.** `claude -p --output-format
+stream-json` is refused without `--verbose` on 2.1.296 ("requires --verbose"), so both go on the
+run's children; the catch-up child's output stays ignored. Its `assistant` and `user` lines carry
+the transcript's block shapes, so `parseToolSpills` reads them unchanged. Not seen: a real spill in
+the stream, and whether the per-turn budget's `content-replacement` swap is written there at all
+(INTERFACE-GAPS §18). With STDOUT piped, `close` waits for every holder of the pipe, so the
+starter ends on `exit` plus `REAP_GRACE_MS` when it captures. The output also carries other hooks'
+`hook_response` lines; only the counts leave `readNightSpills`.
+
+**Claude Code's own lines are not kept** (`hostRecord`): the compaction summary and `isMeta` lines
+other than a peer's message. One expectation moved with it: a slice holding a compaction summary
+and then typed words used to "say less" in the last exchange; with the summary gone, the typed
+words are said.
+
+**The wake-arrival check is opt-in** (`COUNTERPARTS_WAKE_CHECK=1`). Off, `checkWakeArrival` returns
+before the registry read; doctor's Wake line, with no arrival rows, says the check is off.

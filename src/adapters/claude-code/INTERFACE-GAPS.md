@@ -885,15 +885,18 @@ one; closing such a session by hand needs a console command that marks `by: "own
 
 ## 18. The host's cut is read only for the nightly run, and only as the host writes it today (2026-10-09, U14 item 3)
 
-The nightly run reads its child's transcript for the host's marker on our results
-(`night-run.ts#readNightSpills`, `transcript.ts#readToolSpills`). Three things it owes:
+The nightly run reads its child's own `stream-json` output for the host's marker on our
+results (`night-run.ts#readNightSpills`, `transcript.ts#parseToolSpills`; until 2026-10-12 it
+read the child's transcript under `~/.claude/projects`). Three things it owes:
 
-1. **Unmeasured on a real machine.** That `claude -p` honours `--session-id`, and that the
-   transcript lands under `projects/` where the lookup asks. Both were read from the host's
-   code (2.1.295), not seen. If either fails, the run's row says `transcript: "absent"` and
-   doctor's green line says the night was not checked — check that line after the first
-   night on a build with this. A host that refuses the flag outright is retried once without
-   it (review of #330), so the night itself is not lost to this check.
+1. **Unmeasured on a real machine.** That a cut result reaches the `stream-json` output in
+   the shape the transcript records it — the preview in the `tool_result`, as the model saw
+   it — and that the per-turn budget's `content-replacement` swap is said there at all. The
+   message lines were seen on 2.1.296 to carry the transcript's block shapes; a spill was
+   not. If the swap is transcript-only, `turn-budget` cuts go unseen (a missed spill, never
+   a false one). Check doctor's Tool results line after the first night on a build with
+   this. A host that refuses the arguments outright is retried once without them (review of
+   #330), so the night itself is not lost to this check.
 2. **The markers are the host's wording.** Read from 2.1.295's code; a host that rewords
    them makes the check go quiet (a missed spill), never noisy. A new marker shape is one
    regex in `transcript.ts`.
