@@ -69,8 +69,8 @@ index text, and `reads-memories.ts`, `reads-marks.ts` and `reads-history.ts` the
 its public reads. `mcp/server.ts` keeps the class; `server-words.ts`, `server-options.ts`
 and `server-args.ts` hold its words, options and argument readers, and
 `server-session-end.ts` and `server-self-tools.ts` the bodies of five of its tools.
-`cli/commands.ts` keeps the dispatcher and the help; each command family is a
-`commands-*.ts` file. `claude-code/doctor.ts` keeps `doctorFindings` and about half the checks
+`cli/commands.ts` keeps the dispatcher, the help, and the repair that reads through the
+walk seam (its importers are pinned); each other command family is a `commands-*.ts` file. `claude-code/doctor.ts` keeps `doctorFindings` and about half the checks
 (every one that reads the zone it sets); the finding's shape and the checkout, open, upgrade,
 self-page, host, write-up and report groups are `doctor-*.ts` files. A moved class body is a free function taking the
 instance, behind a one-line delegate on the class (`docs/decisions.d/refactor-file-split.md`).

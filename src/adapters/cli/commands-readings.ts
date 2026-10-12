@@ -58,6 +58,9 @@ import {
   readCheckout,
   readCounterpartOpen,
   reportJson,
+  // `reportLines` is NOT imported here any more: the plain arm reaches it from
+  // inside `report.ts#printDoctorReport`, which is the one place that decides
+  // between the two layouts. Two call sites would be two places to forget.
 } from "../claude-code/doctor.js";
 import type { CheckoutReading } from "../claude-code/doctor.js";
 import { readHost, mcpCommand } from "./install.js";
