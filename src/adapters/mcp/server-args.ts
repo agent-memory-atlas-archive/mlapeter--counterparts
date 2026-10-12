@@ -267,6 +267,38 @@ export function reminderEcho(deposit: DepositResult, dated: ReminderRead, today:
   return dated.remindIgnored ? { reminder: { ignored: "remind", note: remindNote } } : {};
 }
 
+// ── an undated reminder, said at write time (2026-10-12) ────────────────────
+
+const REMINDER_WORD = /\bremind\b|\bdon'?t forget\b|\bfollow[- ]up\b|\bcheck back\b/i;
+const MONTHS = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
+const DATE_SHAPE = new RegExp(
+  `\\b\\d{4}-\\d{2}-\\d{2}\\b|\\b(?:${MONTHS})\\.? \\d{1,2}\\b|\\b\\d{1,2}(?:st|nd|rd|th)? (?:${MONTHS})\\b` +
+    "|\\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|next week)\\b" +
+    "|\\b(?:january|february|march|april|june|july|august|september|october|november|december)\\b",
+  "i",
+);
+
+/** Whether a title or text reads like a reminder: a reminder word AND a date
+ *  shape. A heuristic for a WARNING only — the engine never reads a date out
+ *  of the text (the 09-25 rule). */
+export function readsLikeReminder(...parts: readonly (string | null | undefined)[]): boolean {
+  const text = parts.filter((p): p is string => typeof p === "string").join("\n");
+  return REMINDER_WORD.test(text) && DATE_SHAPE.test(text);
+}
+
+/** What to tell a writer whose stored entry reads like a reminder but carries
+ *  no `eventDate` (a dated reminder only ever fires from that field). Nothing
+ *  when a date was sent or cleared, or a revision carried one over. Never
+ *  sets or guesses the date, never refuses. */
+export function undatedReminderWarning(deposit: DepositResult, dated: ReminderRead, title: unknown, text: unknown): Record<string, unknown> {
+  if ("refused" in dated || !deposit.deposited || deposit.memoryId === null) return {};
+  if ("eventDate" in dated.fields || deposit.reminder !== undefined) return {};
+  if (!readsLikeReminder(typeof title === "string" ? title : null, typeof text === "string" ? text : null)) return {};
+  return {
+    reminderHint: `this reads like a reminder but has no eventDate, so it will never come back on a date; to make it fire, revise it with updates: ${deposit.memoryId} and an eventDate`,
+  };
+}
+
 // ── feelings on a tool call (schema v7) ─────────────────────────────────────
 
 export type FeelingsRead = { inputs: FeelingInput[] } | { refused: string };
