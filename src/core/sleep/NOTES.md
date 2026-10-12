@@ -1011,3 +1011,28 @@ feelings the intensity reads (no reflection's or awake one with the door closed)
 recognition door (`selfRelevantFeeling`) and `laterFeelingCarriers` use the same test, and
 the closed-door counterfactual for a promotion record reads it with the door closed. The
 `SleepStore.feelingsFor` port now carries `core`, which the default is read under.
+
+## 2026-10-11 — the core: the recurrence lane, about me or us, being reconsidered (Group 3 part A)
+
+The slow lane counts `coreRecurrence` (in `consolidate.ts`): a memory's slot is itself plus the
+live memories a standing "A over B" ties it to (`slotOf`: settled `changed` pairs only, at most
+12; a slot proposal counts once it is confirmed). The evidence is the members' awake, reflection and engaged
+returns, plus the birth day of every member a session wrote after the slot's first. That is
+re-encoding, read off the rows, so nothing is written for it. `returns.session` is written from
+now on. A day with no session counts as one. The memory a later member settled over is
+`earlier` and does not cross: the current state does. `aboutMe` is `identityBlock(...) === null`,
+and `owner` is out of the core's marks (its personal meaning stays in `CORE_ABOUT_MARKS`).
+
+`core-standing.ts` weighs each core member on the consolidate pass (the `already-identity`
+branch, which skipped core rows until now). It flags; it never demotes. `keepCore` /
+`retireCore` are the one door for every decision: the owner's CLI, `remember`'s `core`, a
+reflection's `core` part. `Counterpart.demoteCore` now delegates to `retireCore`.
+
+On a copy of the owner's 10-11 store (lived day 20, v12 migrated to v13 on the copy, 30 lived days of
+no activity, default cadence): the first consolidation (lived day 22) flags the five members the
+narrowed test moves out (four about the owner, one fact), promotes the one fast-lane memory master
+would also promote, and promotes one memory by the new slow lane (a day-18 memory carried by its
+earlier state's uses). That crossing rests on reading a NULL session as one per day; read as no
+session, nothing on the copy crosses by the slow lane. After that, nothing: with no activity, the
+trailing window empties. No 60-day flag fires before lived day 70. The wake shows one flagged member
+at a time at the top of "Still open" (`RECONSIDERING_MAX`), the rest counted with "more still open".

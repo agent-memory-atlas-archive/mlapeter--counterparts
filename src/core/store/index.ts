@@ -501,8 +501,26 @@ export interface StoredMemory {
  */
 export const ABOUT_MARKS = ["me", "us", "owner", "work", "world"] as const;
 export type AboutMark = (typeof ABOUT_MARKS)[number];
-/** The marks that make a memory a core candidate. */
+/**
+ * The PERSONAL marks: a merge or gist never loses one to a work mark
+ * (`inheritFrom`), a dream's or a reflection's own words may not be given one
+ * by self, and "About me, from another directory" reads them. Since
+ * 2026-10-11 (Group 3 part A, review 08 C2) they are NOT the core's test:
+ * `owner` is about him, and feeds his card, not who I am — the core reads
+ * `IDENTITY_ABOUT_MARKS`.
+ */
 export const CORE_ABOUT_MARKS: readonly AboutMark[] = ["me", "us", "owner"];
+/**
+ * WHAT THE CORE IS FOR (2026-10-11, Group 3 part A; review 08 C2, item 14):
+ * a memory about me or about us — marked `me` or `us`, of one of
+ * `IDENTITY_KINDS`, and not a plan (`PLAN_STATUSES`). Facts about the owner
+ * and plans stay out of identity (`sleep/consolidate.ts#aboutMe`).
+ */
+export const IDENTITY_ABOUT_MARKS: readonly AboutMark[] = ["me", "us"];
+/** The kinds a core memory may be: never a fact, a skill or a place. */
+export const IDENTITY_KINDS: readonly string[] = ["self", "person", "entity"];
+/** The statuses that make a memory a plan, not who I am: planned, proposed, asked. */
+export const PLAN_STATUSES: readonly MemoryStatus[] = ["planned", "proposed", "asked"];
 /**
  * Who set a mark. `self` (2026-10-11): the counterpart awake, re-marking an
  * existing memory in a session (`remember`'s `remark`) — `writer` is the mark
@@ -2076,6 +2094,12 @@ export class Store {
        */
       cued?: boolean;
       /**
+       * The session the use came in (2026-10-11, Group 3 part A): written on
+       * the return it earns (`returns.session`), so the core's recurrence
+       * lane can count sessions. Absent: NULL, as every return before.
+       */
+      session?: string | null;
+      /**
        * A lower tier this memory was credited at earlier THIS lived day, which
        * this use lifts (`physics.creditUse`, 2026-10-11). The caller that
        * recorded the earlier credit knows it (recall's gate state, for its own
@@ -2119,7 +2143,7 @@ export class Store {
                 onDisplay: opts.cued !== true && this.shownInHints(id, day),
                 since: this.spacingSince(id),
               });
-        if (ret.counted) this.writeReturn(id, day, ret, null);
+        if (ret.counted) this.writeReturn(id, day, ret, null, opts.session ?? null);
       }
       return { ...verdict, ret };
     });
@@ -2163,7 +2187,7 @@ export class Store {
    * and `lastUsedDay` are untouched. No dream id: undoing the dream does not
    * take back what was lived awake after it.
    */
-  reflectReturn(id: string, day: number): ReturnOutcome {
+  reflectReturn(id: string, day: number, opts: { session?: string | null } = {}): ReturnOutcome {
     const outcome = this.mutate("reflectReturn", () => {
       const row = this.requireRow(id);
       const last =
@@ -2174,7 +2198,8 @@ export class Store {
         since: this.spacingSince(id),
         lastReflectionDay: last,
       });
-      if (ret.counted) this.writeReturn(id, day, ret, null);
+      // The reflection's id is its session (2026-10-11, the recurrence lane).
+      if (ret.counted) this.writeReturn(id, day, ret, null, opts.session ?? null);
       return ret;
     });
     this.emit("store.reflect", id, { counted: outcome.counted, reason: outcome.reason, day });
@@ -2216,10 +2241,10 @@ export class Store {
   }
 
   /** Insert one `returns` row and bring the aggregate columns in line with the table. */
-  private writeReturn(id: string, day: number, ret: ReturnOutcome, dreamId: string | null): void {
+  private writeReturn(id: string, day: number, ret: ReturnOutcome, dreamId: string | null, session: string | null = null): void {
     this.ops.run(
-      `INSERT OR IGNORE INTO returns (memory_id, day, source, weight, gap, dream_id, at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT OR IGNORE INTO returns (memory_id, day, source, weight, gap, dream_id, at, session)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       id,
       day,
       ret.source,
@@ -2227,6 +2252,7 @@ export class Store {
       Number.isFinite(ret.gap) ? ret.gap : 0,
       dreamId,
       this.nowFn(),
+      session,
     );
     this.recomputeReturns(id);
   }
@@ -2533,8 +2559,11 @@ export class Store {
   appendCoreEvent(input: {
     memoryId: string;
     /** v9 adds `about` (a mark set; `reason` is the mark and why) and `told`
-     *  (a morning share that cited it was told to the owner). */
-    action: "promoted" | "demoted" | "nominated" | "about" | "told";
+     *  (a morning share that cited it was told to the owner). 2026-10-11
+     *  (Group 3 part A) adds `reconsidering` (a core memory flagged for a
+     *  decision; `reason` is the category) and `reaffirmed` (kept: by a
+     *  decision, or because the cause went away). */
+    action: "promoted" | "demoted" | "nominated" | "about" | "told" | "reconsidering" | "reaffirmed";
     day: number;
     lane?: string | null;
     reason?: string | null;
@@ -2739,6 +2768,35 @@ export class Store {
   /** How many reflections the store holds, counted in SQL — so a caller that wants every one (`export --markdown`) can ask for exactly that many. */
   reflectionCount(): number {
     return this.ops.get<{ n: number }>("SELECT COUNT(*) AS n FROM reflections")?.n ?? 0;
+  }
+
+  /**
+   * A core memory's STANDING (2026-10-11, Group 3 part A): its latest
+   * promotion, demotion, flag or reaffirmation — `reconsidering` while it is
+   * being reconsidered — or undefined when none was ever written. A read.
+   */
+  coreStanding(id: string): CoreEventRow | undefined {
+    return this.ops.get<CoreEventRow>(
+      "SELECT * FROM core_events WHERE memory_id = ? AND action IN ('promoted', 'demoted', 'reconsidering', 'reaffirmed') ORDER BY seq DESC LIMIT 1",
+      id,
+    );
+  }
+
+  /**
+   * THE CORE MEMORIES BEING RECONSIDERED (2026-10-11): every live
+   * identity-band memory whose standing is a `reconsidering` flag, oldest
+   * flag first, with the flag's day and reason. One read; the wake, the
+   * dashboard and the reflection list it.
+   */
+  coreReconsidering(): { id: string; day: number; reason: string | null; at: number }[] {
+    return this.ops.all<{ id: string; day: number; reason: string | null; at: number }>(
+      `SELECT e.memory_id AS id, e.day AS day, e.reason AS reason, e.at AS at
+         FROM core_events e JOIN memories m ON m.id = e.memory_id
+        WHERE e.action = 'reconsidering' AND m.promoted_identity = 1 AND m.archived = 0
+          AND e.seq = (SELECT MAX(seq) FROM core_events x WHERE x.memory_id = e.memory_id
+                         AND x.action IN ('promoted', 'demoted', 'reconsidering', 'reaffirmed'))
+        ORDER BY e.seq`,
+    );
   }
 
   /** True when the owner's latest word on this memory's core membership is a demotion. */

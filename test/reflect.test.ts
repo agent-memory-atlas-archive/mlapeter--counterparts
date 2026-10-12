@@ -241,7 +241,9 @@ describe("the v9 upgrade carries today's rule, and says so", () => {
       // (a self schema row the old rule read as about me too; review of #256, S3).
       expect(record).toMatchObject({ from: "8", markedMe: 1, markedOwner: 1, candidates: 3 });
       // The candidates the morning after are the ones the old rule read.
-      for (const id of [self, him]) expect(aboutMe(after.store, after.store.row(id)!)).toBe(true);
+      expect(aboutMe(after.store, after.store.row(self)!)).toBe(true);
+      // About the owner is his card's since 2026-10-11 (Group 3 part A), not the core's.
+      expect(aboutMe(after.store, after.store.row(him)!)).toBe(false);
       for (const id of [ada, fact]) expect(aboutMe(after.store, after.store.row(id)!)).toBe(false);
       // Doctor says so.
       const { upgradeV9Findings } = await import("../src/adapters/claude-code/doctor.js");
@@ -733,7 +735,7 @@ describe("the owner can read it", () => {
     expect((dreamShowLines(c, begun.bundle.reflection) ?? []).join("\n")).toContain("It rests on:");
     expect(dreamListLines(c).join("\n")).toContain("share not told yet");
     const core = coreListLines(c).join("\n");
-    expect(core).toContain("about the owner");
+    expect(core).toContain("about me or about us");
     expect(core).toContain("--reflected-feeling off");
   });
 

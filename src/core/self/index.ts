@@ -57,6 +57,7 @@ import {
   rankedAs,
   scanActive,
   scanOne,
+  reconsideringIds,
   schemaBytes,
 } from "./identity.js";
 import { coveredByPage } from "./covered.js";
@@ -491,6 +492,8 @@ export interface ClaimOccasion {
   readonly direction: ClaimDirection;
   readonly tier?: UseTier;
   readonly day?: number;
+  /** The session it came in (2026-10-11): written on the return a confirmation earns (`returns.session`). */
+  readonly session?: string | null;
 }
 
 export type ClaimReason = FreezeReason | "unresolved" | "observer";
@@ -900,12 +903,16 @@ export class Self {
     // identity element left to its own lane.
     const supplied = (req.horizon ?? []).filter((h) => bandOf(h.id) !== "identity").map((h) => this.horizonRank(h, day));
     const horizon: Ranked[] = [...supplied.filter((r) => r.due === true), ...supplied.filter((r) => r.due !== true)];
-    // Still open, from the open memories alone.
-    const openIds = this.store.openThreadIds();
+    // Still open, from the open memories — and the core memories being
+    // reconsidered, which wait on a decision (2026-10-11).
+    const flagged = reconsideringIds(this.store);
+    const openIds = [...new Set([...this.store.openThreadIds(), ...flagged])];
     const open: Scanned[] = [];
     for (const id of openIds) {
       const s = scanOne(this.store, id, day);
-      if (s !== null && s.unresolved && s.band !== "identity") open.push(note(s));
+      if (s === null) continue;
+      if (s.band === "identity" && flagged.has(id)) open.push(note({ ...s, reconsidering: true }));
+      else if (s.unresolved && s.band !== "identity") open.push(note(s));
     }
     const fresh = rankLanes(open, horizon, this.tunables, {
       settledOver: settled,
@@ -919,6 +926,7 @@ export class Self {
       const out: Scanned[] = [];
       for (const id of ids) {
         if (lane !== "identity" && (opened.has(id) || arriving.has(id) || settled.has(id))) continue;
+        if (lane === "identity" && flagged.has(id)) continue;
         const s = scanOne(this.store, id, day);
         if (s === null || s.doc.body.trim().length === 0) continue;
         if ((lane === "identity") !== (s.band === "identity")) continue;
@@ -2363,7 +2371,7 @@ export class Self {
     const wouldMove = occasion.direction === "confirm";
     const credit =
       !verdict.frozen && wouldMove && !this.observer
-        ? this.store.reinforce(resolvedId, day, tier)
+        ? this.store.reinforce(resolvedId, day, tier, { session: occasion.session ?? null })
         : null;
 
     const after = this.store.physicsOf(resolvedId);
@@ -3011,6 +3019,15 @@ export class Self {
       if (st !== null) out.standing = { prefix: st.prefix, suffix: st.suffix };
     } catch {
       /* no standing */
+    }
+    // A CORE MEMORY BEING RECONSIDERED (2026-10-11, Group 3 part A) says so,
+    // and how to answer: `remember` with `core`.
+    try {
+      if (out.standing === undefined && this.store.coreStanding(id)?.action === "reconsidering" && this.store.row(id)?.promoted_identity === 1) {
+        out.standing = { prefix: `Core, being reconsidered — keep or retire it (remember core) [${id}]: `, suffix: "" };
+      }
+    } catch {
+      /* no flag read: shown as it is */
     }
     // Blank is how a chased row reads (`owner-op-seam`), and blank is not a date.
     if (doc.learnedOn.trim() !== "") out.learnedOn = doc.learnedOn;

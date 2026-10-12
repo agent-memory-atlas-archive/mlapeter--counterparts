@@ -514,14 +514,35 @@ describe("§5.3 the core lanes", () => {
     expect(promotionEligibility(weak, { aboutMe: true }).eligible).toBe(false);
   });
 
-  test("slow: back on five distinct days spanning three weeks", () => {
+  test("slow (the recurrence lane, 2026-10-11): four days, three sessions, a week's span, the row used itself", () => {
     const m = mem({ kind: "person", birthDay: 0 });
-    const four = { ...m, returnDays: 4, firstReturnDay: 2, lastReturnDay: 30 };
-    expect(promotionEligibility(four, { aboutMe: true }).eligible).toBe(false);
-    const short = { ...m, returnDays: 6, firstReturnDay: 2, lastReturnDay: 15 };
+    // Without a counted recurrence, the row's own return days stand in (one session each).
+    const three = { ...m, returnDays: 3, firstReturnDay: 2, lastReturnDay: 30 };
+    expect(promotionEligibility(three, { aboutMe: true }).eligible).toBe(false);
+    const short = { ...m, returnDays: 6, firstReturnDay: 2, lastReturnDay: 8 };
     expect(promotionEligibility(short, { aboutMe: true }).eligible).toBe(false);
-    const ok = { ...m, returnDays: 5, firstReturnDay: 2, lastReturnDay: 23 };
+    const ok = { ...m, returnDays: 4, firstReturnDay: 2, lastReturnDay: 9 };
     expect(promotionEligibility(ok, { aboutMe: true })).toMatchObject({ eligible: true, lane: "slow" });
+    // With one, the slot's count decides.
+    const rec = { days: 4, fullDays: 4, sessions: 3, first: 2, last: 9, anchored: true, lastEver: 9 };
+    expect(promotionEligibility(m, { aboutMe: true, recurrence: rec })).toMatchObject({ eligible: true, lane: "slow" });
+    expect(promotionEligibility(m, { aboutMe: true, recurrence: { ...rec, sessions: 2 } }).eligible).toBe(false);
+    expect(promotionEligibility(m, { aboutMe: true, recurrence: { ...rec, anchored: false } }).eligible).toBe(false);
+    // Engaged days count half, and never alone.
+    expect(promotionEligibility(m, { aboutMe: true, recurrence: { ...rec, days: 3.5 } }).eligible).toBe(false);
+    expect(promotionEligibility(m, { aboutMe: true, recurrence: { ...rec, fullDays: 0 } }).eligible).toBe(false);
+    const v = promotionEligibility(m, { aboutMe: true, recurrence: rec });
+    expect(v.slow).toMatchObject({ days: 4, needDays: 4, sessions: 3, needSessions: 3, span: 7, needSpan: 7, anchored: true });
+  });
+
+  test("slow: within reach on the day, not the old 0.5 floor", () => {
+    const m = mem({ kind: "self", salience: S(0.3), birthDay: 0, lastUsedDay: 0 });
+    const rec = { days: 4, fullDays: 4, sessions: 3, first: 2, last: 9, anchored: true, lastEver: 9 };
+    const v = promotionEligibility(m, { aboutMe: true, recurrence: rec, day: 10 });
+    expect(v.slow.needStrength).toBe(TUNABLES.REACH);
+    expect(v.slow.met).toBe((v.slow.strength ?? 0) >= TUNABLES.REACH);
+    const faint = promotionEligibility(m, { aboutMe: true, recurrence: rec, day: 100_000 });
+    expect(faint.slow.met).toBe(false);
   });
 
   test("the owner's demotion holds against both lanes", () => {
@@ -1242,8 +1263,11 @@ describe("the TUNABLE table matches the contract, in one visible place", () => {
     expect(TUNABLES.DREAMED_CLAIM_CEILING).toBe(0.3);
     expect(TUNABLES.CORE_FAST_FEELING).toBe(0.6);
     expect(TUNABLES.CORE_FAST_GAP_DAYS).toBe(2);
-    expect(TUNABLES.CORE_SLOW_DAYS).toBe(5);
-    expect(TUNABLES.CORE_SLOW_SPAN_DAYS).toBe(21);
+    // The recurrence lane (2026-10-11, Group 3 part A; review 08 C1).
+    expect(TUNABLES.CORE_SLOW_DAYS).toBe(4);
+    expect(TUNABLES.CORE_SLOW_SESSIONS).toBe(3);
+    expect(TUNABLES.CORE_SLOW_SPAN_DAYS).toBe(7);
+    expect(TUNABLES.CORE_SLOW_WINDOW_DAYS).toBe(30);
     // The curve (2026-10-10, §5.4): S0 · e^(G·q), q = sal + EMO_Q · I.
     expect(TUNABLES.S0).toBe(0.4);
     expect(TUNABLES.STABILITY_GAIN).toBe(8);

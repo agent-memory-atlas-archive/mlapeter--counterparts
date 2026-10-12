@@ -324,7 +324,8 @@ describe("re-feeling while awake: note's feelingsNow", () => {
   test("never on what a dream wrote; an awake feeling of recognition opens the fast lane only through the door", () => {
     const c = brain();
     const gist = mem(c, "A pattern the dream saw.", { source: "dreamed" });
-    const lived = mem(c, "Reading Mike's note on agency, I recognised myself in it.");
+    // A core kind (2026-10-11: a fact never reaches the core, even by recognition).
+    const lived = mem(c, "Reading Mike's note on agency, I recognised myself in it.", { kind: "self" });
     const shown = new Set([gist, lived]);
     const out = c.reflections.feelAgain({
       session: SESSION,

@@ -1851,6 +1851,23 @@ export class McpServer {
    */
   private async rememberTool(args: Record<string, unknown>): Promise<ToolResult> {
     if (this.observer) return this.standDown("remember");
+    // CORE (2026-10-11, Group 3 part A): keep or retire a core memory, as me.
+    // Alone, or beside anything else the call does.
+    const coreArg = args["core"];
+    if (coreArg !== undefined) {
+      if (coreArg === null || typeof coreArg !== "object" || Array.isArray(coreArg)) {
+        return this.refuse("remember", "core-malformed", { detail: 'core is one object: {id, decision: "keep" | "retire", why}.' });
+      }
+      const rest = { ...args };
+      delete rest["core"];
+      const hasRest = (typeof rest["text"] === "string" && rest["text"].trim().length > 0) || rest["settle"] !== undefined || rest["feelingsNow"] !== undefined || rest["remark"] !== undefined;
+      const out = this.coreDecisionOutcome(coreArg as Record<string, unknown>);
+      if (!hasRest) return this.result({ stored: false, reason: "core-only", core: out }, out["ok"] !== true);
+      const done = await this.rememberTool(rest);
+      const body = (done as { structuredContent?: Record<string, unknown> }).structuredContent;
+      if (body === undefined) return done;
+      return this.result({ ...body, core: out }, (done as { isError?: boolean }).isError === true && out["ok"] !== true);
+    }
     // REMARK (2026-10-11, the about-marks lane): what an existing memory this
     // session was shown is about, changed in the moment, as me. Alone, or
     // beside anything else the call does.
@@ -2121,6 +2138,37 @@ export class McpServer {
       });
       this.emit("mcp.remember.remark", id, { ok: out.ok, reason: out.ok ? (out.changed ? "marked" : "unchanged") : out.reason });
       return { ...out };
+    } catch (err) {
+      return { ok: false, reason: "threw", detail: String((err as Error).message ?? err) };
+    }
+  }
+
+  /**
+   * One `core` decision through the core (2026-10-11, Group 3 part A): keep a
+   * core memory (`Counterpart.keepCore`) or retire it (`demoteCore`), by
+   * `self`, with the why. Any core memory: the owner's and my door alike, and
+   * a confidential one only in the owner's session. Never throws.
+   */
+  private coreDecisionOutcome(arg: Record<string, unknown>): Record<string, unknown> {
+    const id = typeof arg["id"] === "string" ? arg["id"].trim() : "";
+    const decision = arg["decision"];
+    const why = typeof arg["why"] === "string" ? arg["why"] : "";
+    try {
+      if (id.length === 0) return { ok: false, reason: "core-malformed", detail: 'core needs the memory\'s id: {id, decision, why}.' };
+      if (decision !== "keep" && decision !== "retire") return { ok: false, reason: "core-malformed", detail: 'decision is "keep" or "retire".' };
+      const row = this.counterpart.store.row(id);
+      if (row === undefined || (row.confidential === 1 && !this.owner)) return { ok: false, reason: "unknown-id", detail: `No memory ${id} in this store.` };
+      const out = decision === "keep" ? this.counterpart.keepCore(id, { why, actor: "self" }) : this.counterpart.demoteCore(id, { reason: why, actor: "self" });
+      const detail: Record<string, string> = {
+        "reason-required": "Say why: the decision is kept with its reason.",
+        "not-core": `${id} is not in the core.`,
+        "unknown-id": `No memory ${id} in this store.`,
+        observer: "This session is an observer: nothing was changed.",
+      };
+      this.emit("mcp.remember.core", id, { ok: out.ok, reason: out.reason, decision });
+      return out.ok
+        ? { ok: true, reason: out.reason, id, note: decision === "keep" ? "Kept in the core; it is no longer being reconsidered for what it is." : "Retired: it fades like any other memory from today, and the core's lanes will not promote it again." }
+        : { ok: false, reason: out.reason, detail: detail[out.reason] ?? out.reason };
     } catch (err) {
       return { ok: false, reason: "threw", detail: String((err as Error).message ?? err) };
     }
@@ -4111,6 +4159,7 @@ export class McpServer {
             page: part(args["page"]),
             feelings: Array.isArray(args["feelings"]) ? (args["feelings"] as never) : [],
             about: Array.isArray(args["about"]) ? (args["about"] as never) : [],
+            core: Array.isArray(args["core"]) ? (args["core"] as never) : [],
             traits: Array.isArray(args["traits"]) ? (args["traits"] as never) : [],
             model: model ?? null,
           });

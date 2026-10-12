@@ -25,6 +25,18 @@ export const TUNABLES = {
   CORE_MAX_PER_SLEEP: 3,
 
   /**
+   * THE CORE'S TURNOVER (2026-10-11, Group 3 part A; item 14, which keeps
+   * review 08 C4's horizon and drops its automatic demotion): a core memory
+   * with no recurrence day — itself or its slot, used awake, cited by a
+   * reflection, re-encoded — for this many lived days (counted from its last
+   * recurrence, its promotion or its last reaffirmation, whichever is latest)
+   * is FLAGGED "being reconsidered" at the next consolidation. It stays in the
+   * core, still decay-exempt; only a decision demotes it — mine, awake or in
+   * a reflection, or the owner's (`demoteCore`). CAL.
+   */
+  CORE_QUIET_DAYS: 60,
+
+  /**
    * Below this change in cached strength, the row is left alone — CALM BY
    * DEFAULT (§3, v1 §11 G8). Exponential decay moves a floor memory by ~1e-9 a
    * day; without a quantum every quiet day would rewrite the whole cache and

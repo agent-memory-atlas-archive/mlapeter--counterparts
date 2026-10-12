@@ -815,7 +815,7 @@ export const COMMAND_FLAGS: Record<Command, readonly string[]> = {
   // session does not belong there.
   "self-page": ["write", "file", "stdin", "short", "reason", "versions", "version", "restore", "clear", "if-version"],
   dream: ["list", "show", "undo", "all", "setting"],
-  core: ["list", "demote", "reason", "reflected-feeling"],
+  core: ["list", "demote", "reaffirm", "reason", "reflected-feeling"],
   settle: ["list", "pair", "holds", "against", "how", "why", "undo"],
   about: ["why"],
   coverage: ["date"],
@@ -893,7 +893,7 @@ export const COMMAND_BLURB: Record<Command, string> = {
   dream:
     "What each dream did, and its undo — and what the waking self made of it. With no flags (or --list), the newest 20 dreams (--list --all for every one): date, state, title and what changed, then the recent reflections; --show <id> prints one dream's journal, every change it made and the reflection after it (--show <rfl_…> prints one reflection: its questions, entry, what it rests on and its morning share); --undo <id> reverses that dream's whole batch (merges come apart, links and gists go, replays and nominations are taken back) and keeps its journal, marked undone — a reflection is lived and stays. Reading works under observer; --undo refuses there.",
   core:
-    "The core — the memories about me, about us and about the owner that do not fade. With no flags (or --list), what it holds and which lane carried each one there, what dreams have nominated, and what you sent back; --demote <id> --reason \"...\" sends one back to ordinary fading from today, records why, and keeps the lanes from promoting it again; --reflected-feeling on|off opens or closes the core to reflection alone. On (the default): a feeling a reflection records later and a reflection citing a memory both count toward the fast lane, and a reflection may re-label what a memory is about either way — each re-label is recorded with its reason, and one into me, us or the owner is told in the next morning share. Off: nothing reaches the core on a reflection alone — the fast lane needs a feeling felt at the time (not one a reflection recorded later) and an ordinary use after a gap (not a reflection citing it), and a reflection may only move what a memory is about toward work or world. Reading works under observer; the two changes refuse there.",
+    "The core — the memories about me and about us that do not fade. With no flags (or --list), what it holds and which lane carried each one there, what dreams have nominated, what is being reconsidered, and what was sent back; --demote <id> --reason \"...\" sends one back to ordinary fading from today, records why, and keeps the lanes from promoting it again; --reaffirm <id> --reason \"...\" keeps one that is being reconsidered (it is not flagged again for what it is); --reflected-feeling on|off opens or closes the core to reflection alone. On (the default): a feeling a reflection records later and a reflection citing a memory both count toward the fast lane, and a reflection may re-label what a memory is about either way — each re-label is recorded with its reason, and one into me, us or the owner is told in the next morning share. Off: nothing reaches the core on a reflection alone — the fast lane needs a feeling felt at the time (not one a reflection recorded later) and an ordinary use after a gap (not a reflection citing it), and a reflection may only move what a memory is about toward work or world. Reading works under observer; the changes refuse there.",
   settle:
     "Two memories that disagree. With no flags (or --list), the pairs nobody has settled — a dream flags them — and the ones settled lately: how, which holds, who settled it and why; and the corrections held in the last 7 lived days (a memory said it changes or corrects one that didn't look related, so nothing was settled) that nobody has settled since, each with the command that settles it. --pair <id> --holds <memory id> --how changed|corrected|open --why \"...\" settles one as you (or --holds <id> --against <id> for two memories no dream flagged): changed — both were true at their time, the older fades once and is shown as earlier; corrected — the older was wrong, it leaves recall and stays readable by its id; open — a real disagreement, both kept and shown together. No memory is rewritten. --undo <pair> reverses a settle: the strength comes back, a corrected memory comes back into recall, and the pair is unsettled again. Reading works under observer; the two changes refuse there.",
   about:
@@ -926,7 +926,7 @@ const COMMAND_ARGS: Partial<Record<Command, string>> = {
   disconnect: " [claude-code]",
   help: " [advanced | <command>]",
   dream: " [--list [--all] | --show <id> | --undo <id>]",
-  core: " [--demote <id> --reason \"...\" | --reflected-feeling on|off]",
+  core: " [--demote <id> --reason \"...\" | --reaffirm <id> --reason \"...\" | --reflected-feeling on|off]",
   settle: " [--list | --pair <id> --holds <id> --how changed|corrected|open --why \"...\" | --undo <pair>]",
   about: " <id> [me|us|owner|work|world] [--why \"...\"]",
   coverage: " [--date YYYY-MM-DD]",
@@ -1180,6 +1180,7 @@ const ABOUT_FLAG_HELP: Record<string, string> = {
 const CORE_FLAG_HELP: Record<string, string> = {
   list: "what the core holds, with lanes, nominations and demotions — the default",
   demote: "send one core memory back to ordinary fading from today, by id; needs --reason",
+  reaffirm: "keep one core memory that is being reconsidered, by id; needs --reason. It is not flagged again for what it is",
   reason: "why — recorded with the demotion, and shown by --list",
   "reflected-feeling": "on or off — can a memory reach the core on reflection alone? On (the default): a feeling a reflection records later and a reflection citing a memory both count toward the fast lane, and a reflection may re-label what a memory is about either way — each re-label is recorded with its reason, and one into me, us or the owner is told in the next morning share. Off: nothing reaches the core on a reflection alone — the fast lane needs a feeling felt at the time (not one a reflection recorded later) and an ordinary use after a gap (not a reflection citing it), and a reflection may only move what a memory is about toward work or world.",
 };
@@ -1523,6 +1524,7 @@ export function parse(argv: readonly string[]): Parsed {
       // --undo` reuses `start-fresh`'s boolean and takes the id positionally.
       show: { type: "string" },
       demote: { type: "string" },
+      reaffirm: { type: "string" },
       // `settle`'s five valued flags (2026-09-29): strings, so a trailing flag
       // is a refusal rather than a `true` read as "none named".
       pair: { type: "string" },
@@ -2718,6 +2720,7 @@ function coreCommand(dir: string, io: Io, parsed: Parsed, observer: boolean, nam
     return EXIT.usage;
   }
   const demote = parsed.flags["demote"];
+  const keep = parsed.flags["reaffirm"];
   const reason = parsed.flags["reason"];
   const reflected = parsed.flags["reflected-feeling"];
   if (reflected !== undefined) {
@@ -2743,9 +2746,40 @@ function coreCommand(dir: string, io: Io, parsed: Parsed, observer: boolean, nam
       counterpart.close();
     }
   }
-  if (reason !== undefined && typeof demote !== "string") {
-    io.err("refused: --reason goes with a --demote. Pass one, or leave it out.");
+  if (typeof demote === "string" && typeof keep === "string") {
+    io.err("refused: --demote or --reaffirm, not both.");
     return EXIT.usage;
+  }
+  if (reason !== undefined && typeof demote !== "string" && typeof keep !== "string") {
+    io.err("refused: --reason goes with a --demote or a --reaffirm. Pass one, or leave it out.");
+    return EXIT.usage;
+  }
+  // KEEP (2026-10-11, Group 3 part A): the owner's answer to "being reconsidered".
+  if (typeof keep === "string") {
+    if (typeof reason !== "string" || reason.trim().length === 0) {
+      io.err('refused: keeping one needs a reason — --reason "why" — and it is kept with the record.');
+      return EXIT.usage;
+    }
+    const counterpart = openCounterpart(dir, observer);
+    try {
+      const out = counterpart.keepCore(keep, { why: reason, actor: "owner" });
+      if (!out.ok) {
+        const why: Record<string, string> = {
+          observer: "this console is an observer; it reads and changes nothing",
+          "unknown-id": `no memory ${keep} in this store`,
+          "not-core": `${keep} is not in the core (counterparts core --list shows what is)`,
+          "reason-required": "keeping one needs a reason",
+        };
+        io.err(`refused: ${why[out.reason] ?? out.reason}. Nothing was changed.`);
+        return EXIT.refused;
+      }
+      io.out(`Kept ${keep} in the core.`);
+      io.out(`  Why, as recorded: ${reason.trim()}`);
+      io.out("  It is no longer being reconsidered, and it is not flagged again for what it is — only if it stops coming back.");
+      return EXIT.ok;
+    } finally {
+      counterpart.close();
+    }
   }
   if (typeof demote === "string") {
     if (typeof reason !== "string" || reason.trim().length === 0) {

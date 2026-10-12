@@ -79,6 +79,8 @@ function code(fn: () => unknown): string | null {
 }
 
 const mem = (s: Store, body = "the afternoon the build went green") => s.put({ type: "memory", kind: "fact", body });
+/** A memory of a kind the core is for (since 2026-10-11 a fact never is, even by recognition). */
+const selfMem = (s: Store, body: string) => s.put({ type: "memory", kind: "self", body });
 
 // ═══════════════════════════════════════════════════════════════════════════
 // the writer's core wins
@@ -484,10 +486,13 @@ describe("the mechanism", () => {
 
   test("recognition: an unmarked memory carrying it is on the fast lane as about me; a mark wins; the slow lane still needs one", () => {
     const s = store();
-    const unmarked = mem(s, "Reading the old handoff, I saw how I write when I am careful.");
-    const work = mem(s, "The build cache keys on the lockfile hash.");
+    const unmarked = selfMem(s, "Reading the old handoff, I saw how I write when I am careful.");
+    const work = selfMem(s, "The build cache keys on the lockfile hash.");
     s.setAbout(work, "work", { by: "writer" });
-    const plain = mem(s, "The cache was warm the second time.");
+    const plain = selfMem(s, "The cache was warm the second time.");
+    // A fact carrying recognition is not on the road (2026-10-11): the core is not for facts.
+    const fact = mem(s, "The lockfile is checked in.");
+    s.addFeelings(fact, [{ whose: "self", core: "curious", emotion: "recognized", strength: 0.7 }]);
     s.addFeelings(unmarked, [{ whose: "self", core: "curious", emotion: "recognized", strength: 0.7 }]);
     expect(recognitionLaneFindings(s)[0]?.detail).toContain("1 unmarked memory is on the core's fast lane");
     s.addFeelings(work, [{ whose: "self", core: "curious", emotion: "that's me", strength: 0.7 }]);
@@ -497,6 +502,7 @@ describe("the mechanism", () => {
     expect(ctx(unmarked)).toMatchObject({ aboutMe: false, selfRelevantFeeling: true });
     expect(ctx(work).selfRelevantFeeling).toBeUndefined();
     expect(ctx(plain).selfRelevantFeeling).toBeUndefined();
+    expect(ctx(fact).selfRelevantFeeling).toBeUndefined();
     // The fast lane: strongly felt, and it came back after a gap.
     const p = (over: Partial<MemoryPhysics>): MemoryPhysics => ({ ...s.physicsOf(unmarked), ...over });
     const fast = p({ feelingPeak: 0.7, lastReturnDay: 5, firstReturnDay: 5, returnDays: 1, birthDay: 0 });
@@ -520,7 +526,7 @@ describe("which recognition counts (review of #301, M1)", () => {
     ];
     const read = (open: boolean) =>
       cases.map(([label, input, opts]) => {
-        const id = mem(s, `A memory for the case: ${label}.`);
+        const id = selfMem(s, `A memory for the case: ${label}.`);
         s.addFeelings(id, [input], opts);
         return `${label}: ${String(selfRelevantFeeling(s, s.row(id) as never, open))}`;
       });

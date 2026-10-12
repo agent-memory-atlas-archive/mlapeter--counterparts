@@ -689,6 +689,8 @@ export class Recall {
     const outcome = this.store.reinforce(memoryId, today, tier, {
       ...(cued ? { cued: true } : {}),
       ...(upgradeFrom === undefined ? {} : { upgradeFrom }),
+      // The session it came back in (2026-10-11): the core's recurrence lane counts sessions.
+      session: sessionId,
     });
     if (outcome.credited) {
       state.credited[memoryId] = { turn: state.turn, tier, day: today };
@@ -696,7 +698,7 @@ export class Recall {
     // Only when RECALL showed the chapter this session (review of #293, S4):
     // then it was the collapsed pair. A chapter credited from the wake or the
     // `chapter` tool credits the chapter alone, as before.
-    const copies = surfaced !== undefined ? this.creditCopies(state, memoryId, today, tier, cued) : 0;
+    const copies = surfaced !== undefined ? this.creditCopies(state, memoryId, today, tier, cued, sessionId) : 0;
     if (outcome.credited || copies > 0) this.persist(state, "resolveUse");
     this.emit("recall.credit", memoryId, {
       tier,
@@ -762,7 +764,7 @@ export class Recall {
    * physics decides; a copy that throws is skipped and the chapter's own credit
    * stands. Returns how many copies were credited.
    */
-  private creditCopies(state: GateState, memoryId: string, today: number, tier: UseTier, cued: boolean): number {
+  private creditCopies(state: GateState, memoryId: string, today: number, tier: UseTier, cued: boolean, sessionId: string): number {
     let copies: string[];
     try {
       if (this.store.row(memoryId)?.type !== "episode") return 0;
@@ -781,6 +783,7 @@ export class Recall {
         const out = this.store.reinforce(copy, today, tier, {
           ...(cued ? { cued: true } : {}),
           ...(upgradeFrom === undefined ? {} : { upgradeFrom }),
+          session: sessionId,
         });
         this.emit("recall.credit", copy, { tier, w, credited: out.credited, reason: out.reason, via: "chapter" });
         if (!out.credited) continue;

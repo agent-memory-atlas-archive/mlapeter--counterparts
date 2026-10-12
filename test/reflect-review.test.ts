@@ -337,7 +337,8 @@ describe("S3: the v9 upgrade marks a person-kind schema row naming the owner, as
       const after = Counterpart.open({ dir, owner: true, bundlesAsOwner: true, snapshotsDir: join(root, "snaps") });
       open.push(after);
       expect(after.store.read(belief)).toMatchObject({ about: "owner", aboutBy: "upgrade" });
-      expect(aboutMe(after.store, after.store.row(belief)!)).toBe(true);
+      // About the owner alone is his card's since 2026-10-11 (Group 3 part A), not a core candidate.
+      expect(aboutMe(after.store, after.store.row(belief)!)).toBe(false);
       expect(aboutMe(after.store, after.store.row(self)!)).toBe(true);
       const record = JSON.parse(after.store.getMeta(V9_UPGRADE_KEY) ?? "{}") as Record<string, unknown>;
       // The identity core (a self schema row) was a candidate by the old rule too.
@@ -567,7 +568,7 @@ describe("the open fast lane, end to end through the tool, sleep, doctor and the
   test("at most three cross a night, however many a reflection marks, feels and cites", () => {
     const c = brain();
     nextDay(c);
-    const ids = Array.from({ length: 5 }, (_, i) => mem(c, `A moment that mattered, number ${String(i)}.`, { kind: "fact", salience: { relevance: 0.7, emotional: 0, predictive: 0.5 } }));
+    const ids = Array.from({ length: 5 }, (_, i) => mem(c, `A moment that mattered, number ${String(i)}.`, { kind: "self", salience: { relevance: 0.7, emotional: 0, predictive: 0.5 } }));
     nextDay(c);
     nextDay(c);
     reflect(c, ids, {
@@ -620,7 +621,7 @@ describe("lanes: a reflection and an organic use on one lived day", () => {
   test("reflection first, then the use: one lane day, and the use is refused as a return (the record reads reflection alone)", () => {
     const c = brain();
     nextDay(c);
-    const id = mem(c, "Mike lets me decide how to structure the work.", { kind: "person", about: "owner", salience: { relevance: 0.7, emotional: 0.8, predictive: 0.5 } });
+    const id = mem(c, "Mike lets me decide how to structure the work.", { kind: "person", about: "us", salience: { relevance: 0.7, emotional: 0.8, predictive: 0.5 } });
     nextDay(c);
     nextDay(c);
     expect(reflect(c, [id]).outcome.returned[0]?.reason).toBe("counted");
@@ -807,7 +808,7 @@ describe("owner rulings on the review's decisions", () => {
     expect(c.store.read(entry).doc.body).toContain("redacted");
   });
 
-  test("D5 (watch, no change): reflection alone carries the slow lane in four weeks of weekly citing", () => {
+  test("D5 (watch): reflection alone carries the slow lane — the recurrence lane since 2026-10-11 — in three weeks of weekly citing", () => {
     const c = brain();
     nextDay(c);
     const id = mem(c, "I keep coming back to how quiet the good sessions are.", {
@@ -824,9 +825,10 @@ describe("owner rulings on the review's decisions", () => {
       if (sleepNow(c).promoted.some((p) => p.id === id)) promotedOn = c.store.livedDay();
     }
     expect(promotedOn).not.toBe(null);
-    expect(c.store.physicsOf(id).returnDays).toBe(5);
-    // Four weekly returns after the first: at least 28 lived days from the first citation.
-    expect((promotedOn as number) - born).toBeGreaterThanOrEqual(28);
+    // Four reflection days, each its own session, a week apart (2026-10-11: was
+    // five over three weeks, four weeks in all).
+    expect(c.store.physicsOf(id).returnDays).toBe(PHYSICS_TUNABLES.CORE_SLOW_DAYS);
+    expect((promotedOn as number) - born).toBeGreaterThanOrEqual(21);
     const record = JSON.parse(c.store.getMeta(promotionRecordKey(id)) ?? "{}") as Record<string, unknown>;
     expect(record).toMatchObject({ lane: "slow", reflectionOnly: true });
   });
