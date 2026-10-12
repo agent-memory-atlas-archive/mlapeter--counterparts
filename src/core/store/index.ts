@@ -937,7 +937,7 @@ export const WRITE_METHODS = [
   "updatePhysics",
   "reinforce",
   "setBand",
-  "copyReturns",
+  "carryInto",
   "link",
   "linkMany",
   "setProspective",
@@ -2422,15 +2422,19 @@ export class Store {
   }
 
   /**
-   * One memory's return history COPIED onto another (a return day both had is
-   * kept once), the original keeping its own (2026-10-11, Group 2b): a dream
-   * merge's originals stay live, settled `changed` under the merged memory,
-   * which is still at least as durable as what it was made from.
+   * What `supersedeInto` carries, WITHOUT the archive (2026-10-11, review of
+   * #427): the return history copied (a return day both had is kept once),
+   * the about-me mark and the writer's three fields where `toId` has none —
+   * the original keeping all of its own. A dream merge's originals stay live,
+   * settled `changed` under the merged memory, which is still at least as
+   * durable as what it was made from.
    */
-  copyReturns(fromId: string, toId: string): void {
-    this.mutate("copyReturns", () => {
+  carryInto(fromId: string, toId: string): void {
+    this.mutate("carryInto", () => {
       this.requireRow(fromId);
       this.requireRow(toId);
+      carryAboutMark(this.ops, fromId, toId);
+      carryWriteFacts(this.ops, fromId, toId);
       this.copyReturnsRaw(fromId, toId);
     });
   }

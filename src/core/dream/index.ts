@@ -19,8 +19,8 @@
  * few loosely related older ones, and the strongest-feeling memories of about a
  * week back — all through recall's gates, never a raw list. It then `propose`s
  * changes, each applied within per-dream limits and recorded so the whole dream
- * can be undone: merge near-copies (originals kept, archived with a forwarding
- * address), link two memories, replay (a return at half weight — never a use),
+ * can be undone: merge near-copies (originals kept, live, faded and labelled
+ * earlier under the merged memory: Group 2b), link two memories, replay (a return at half weight — never a use),
  * write a gist in its own words (source `dreamed`, starting low), flag a
  * contradiction (a pair in `contradictions`, unsettled) or — with a clear
  * reason — settle one (2026-09-29), record how an old charged memory feels
@@ -1885,11 +1885,12 @@ export class Dreams {
               { provenance: traits.map((t) => ({ source: t.source, model: t.model, createdAt: t.created_at })) },
             );
           }
-          // ITS RETURNS AND ITS LINKS are copied onto the merged memory, so it
-          // is at least as durable and as well connected as what it was made
-          // from; the original keeps its own (it stays live, below).
+          // ITS RETURNS, ITS MARK AND FIELDS WHERE THE MERGED ONE HAS NONE, AND
+          // ITS LINKS are carried onto the merged memory, so it is at least as
+          // durable and as well connected as what it was made from; the
+          // original keeps its own (it stays live, below).
           try {
-            this.store.copyReturns(r.id, newId);
+            this.store.carryInto(r.id, newId);
           } catch {
             /* the merged memory starts from its own returns */
           }

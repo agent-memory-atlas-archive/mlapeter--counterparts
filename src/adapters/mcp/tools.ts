@@ -1397,7 +1397,7 @@ const DREAM: ToolSpec = {
     },
     {
       claim:
-        "Each dream has limits (about ten merges, twenty links, three gists), and a merge keeps its originals: archived with a forwarding address and their words kept as a version, never deleted.",
+        "Each dream has limits (about ten merges, twenty links, three gists), and a merge keeps its originals: still there, faded and marked as the earlier version of the merged memory, never deleted.",
       mechanizedBy: "src/core/dream/tunables.ts#DREAM_TUNABLES.LIMITS + src/core/store/index.ts#supersedeInto",
     },
     {
