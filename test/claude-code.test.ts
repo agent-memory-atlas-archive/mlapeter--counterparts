@@ -35,7 +35,6 @@ import type { SessionRecord } from "../src/adapters/sessions.js";
 import { OK_STOP_REASONS, TUNABLES as REMEMBER, enters, validateWatchdog } from "../src/core/remember/index.js";
 import { BOOTSTRAP, BRIEFING_KEY, SELF_TUNABLES } from "../src/core/self/index.js";
 import {
-  AB_DIR_ENV,
   stopAsk,
   BOUNDARY_KIND,
   ClaudeCodeAdapter,
@@ -44,9 +43,6 @@ import {
   HOOKS,
   SESSION_ENDING,
   TUNABLES,
-  abDir,
-  assignmentHealth,
-  assignmentPath,
   attributePeers,
   capabilities,
   classifyBlock,
@@ -65,8 +61,6 @@ import {
   LAG_PROMPT_BYTES,
   LAG_REPLY_BYTES,
   planSpawn,
-  primacy,
-  readAssignment,
   SPAWN_REFUSAL_PREFIX,
   SPAWN_START_COUNT_KEY,
   SPAWN_START_DATE_KEY,
@@ -83,6 +77,16 @@ import type {
 import { hostConfig, hostDelivery } from "../src/adapters/claude-code/bin/hook.js";
 import { runOnce, runnerConfig } from "../src/adapters/claude-code/bin/runner.js";
 import { STOP_HUMAN_LINE } from "../src/adapters/claude-code/hooks.js";
+// The resolver left src/ on 2026-10-12; its unit tests follow it to the
+// maintainer instrument that still uses it.
+import {
+  AB_DIR_ENV,
+  abDir,
+  assignmentHealth,
+  assignmentPath,
+  primacy,
+  readAssignment,
+} from "../tools/parallel/primacy.js";
 import { toolSpec } from "../src/adapters/mcp/index.js";
 import { findable } from "./store-fixture.js";
 
@@ -104,9 +108,11 @@ const BUDGET_BYTES = 9000;
 
 let dir: string;
 let priorEnv: string | undefined;
-/** The A/B directory, redirected FOR THE WHOLE FILE. The owner's machine has a
- *  real `~/.memory-ab/assignment.json` — v1's live switch — and a test that
- *  read it would be reading production state and could flip with the day. */
+/** The A/B directory, redirected FOR THE WHOLE FILE. The owner's machine may
+ *  still have a `~/.memory-ab/assignment.json` — v1's old switch — and the
+ *  resolver tests below must never read it. Since 2026-10-12 nothing in src/
+ *  reads it at all; the stale-config tests prove that with a file that says
+ *  "stand down". */
 let abHome: string;
 let priorAbDir: string | undefined;
 /** Where the FAKE HOST keeps its transcripts — outside the data dir, because
@@ -1873,7 +1879,8 @@ describe("configuration — reported, checkable, and failing toward standing dow
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// The primacy resolver — the parallel run's G3, and its fail direction
+// The primacy resolver — the parallel run's G3, and its fail direction.
+// Lives in tools/parallel/ since 2026-10-12 (not shipped); tested here still.
 // ═══════════════════════════════════════════════════════════════════════════
 describe("primacy — v2 delivers on ONE reading of v1's file and mutes on every other", () => {
   test("a missing DIRECTORY is a named stand-down, never a throw", () => {
@@ -1987,163 +1994,44 @@ describe("primacy — v2 delivers on ONE reading of v1's file and mutes on every
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// The parallel run wired in: one voice (G3), an encode-only shadow (G5),
-// and a mute with evidence behind it (G4)
+// A stale `parallel` key — the parallel run's knob, removed 2026-10-12 (the run
+// ended 2026-09-21). An old configuration must not break anybody's hooks.
 // ═══════════════════════════════════════════════════════════════════════════
-describe("parallel.enabled — the delivering hooks stand down, and capture does not", () => {
-  const PARALLEL = { parallel: { enabled: true } } as const;
-
-  test("the knob parses like every other, and a half-written one stands down", () => {
-    expect(loadConfig({ parallel: { enabled: true } }).config.parallel).toEqual({ enabled: true });
-    expect(loadConfig({ parallel: { enabled: false } }).config.parallel).toEqual({ enabled: false });
-    for (const bad of [{ enabled: "yes" }, {}, [], null, true]) {
-      const loaded = loadConfig({ parallel: bad });
-      expect({ bad, ok: loaded.ok, observer: loaded.config.observer }).toEqual({
-        bad,
-        ok: false,
-        observer: true,
+describe("a stale `parallel` key is ignored — never refused, never a stand-down", () => {
+  test("loadConfig reads past it in every shape, and says nothing", () => {
+    for (const stale of [{ enabled: true }, { enabled: false }, { enabled: "yes" }, {}, [], null, true, "on"]) {
+      const loaded = loadConfig({ dataDir: dir, parallel: stale });
+      expect({ stale, ok: loaded.ok, observer: loaded.config.observer ?? false, retired: loaded.config.retired }).toEqual({
+        stale,
+        ok: true,
+        observer: false,
+        retired: undefined,
       });
+      expect(loaded.config.dataDir).toBe(dir);
+      expect("parallel" in loaded.config).toBe(false);
     }
   });
 
-  test("session-start under a stand-down injects NOTHING and says why", () => {
+  test("the hooks deliver as usual, and never read the old assignment file", () => {
+    // The file says stand down, loudly; the config still says the run is on.
     assign({ override: "bansai" });
-    const { a } = adapter(PARALLEL);
-    const result = a.sessionStart(input());
-    expect({ injection: result.injection, sentinel: result.sentinel, reason: result.reason }).toEqual({
-      injection: "",
-      sentinel: null,
-      reason: "primacy-standdown",
-    });
-    // The wake never ran, so there is no render record and no expectation set.
-    expect(a.events("adapter.wake.injected")).toEqual([]);
-    const standdown = a.events(PRIMACY_STANDDOWN_EVENT);
-    expect(standdown.length).toBe(1);
-    expect(standdown[0]?.data).toEqual({
-      hook: "session-start",
-      reason: "override-bansai",
-      system: "v1",
-      date: "2026-01-02",
-      session: "s1",
-    });
-  });
-
-  test("user-prompt-submit under a stand-down performs no recall", async () => {
-    assign({ override: "bansai" });
-    const { a } = adapter(PARALLEL);
-    a.counterpart.store.put({
-      type: "memory",
-      kind: "fact",
-      body: "The storage split put canonical prose on disk and one small operational database.",
-      salience: { novelty: null, relevance: 0.9, emotional: 0.6, predictive: 0.8 },
-      physics: { birthDay: 0, lastUsedDay: 0 },
-    });
-    await a.counterpart.sessionEnd({ date: "2026-01-02", budgetBytes: BUDGET_BYTES });
-    const result = a.userPromptSubmit(input({ prompt: "what did we settle about storage?" }));
-    expect({ injection: result.injection, reason: result.reason, surfaced: result.surfaced }).toEqual({
-      injection: "",
-      reason: "primacy-standdown",
-      surfaced: [],
-    });
-    expect(a.events("adapter.recall")).toEqual([]);
-    // No render happened, so no delivery claim is made about one.
-    expect(a.events("adapter.wake.delivered")).toEqual([]);
-    expect(a.events(PRIMACY_STANDDOWN_EVENT)[0]?.data?.hook).toBe("user-prompt-submit");
-  });
-
-  test("stop under a stand-down still CAPTURES and still spawns — the shadow is encode-only (G5)", () => {
-    assign({ override: "bansai" });
-    const { a, calls } = adapter(PARALLEL);
-    live(a);
-    const result = a.stop(input());
-    // The boundary happened: spans are in the buffer, the worker was planned.
-    // (Two spans: the user's turns joined into one, the assistant's kept apart.)
-    expect(result.spansAppended).toBe(2);
-    expect(a.counterpart.spans.spans("proj").length).toBe(1);
-    expect(a.counterpart.spans.assistantSpans("proj").length).toBe(1);
-    expect(result.spawn?.started).toBe(true);
-    expect(calls.length).toBe(1);
-    // And the ask did not go out (G5).
-    expect(result.ask).toBe(null);
-    expect(a.events("adapter.ask")).toEqual([]);
-    expect(a.events(PRIMACY_STANDDOWN_EVENT)[0]?.data?.hook).toBe("stop");
-  });
-
-  test("stop under a stand-down checks no wake's arrival (2026-10-08)", () => {
-    // A record that expects a wake and a transcript without it: an unmuted Stop
-    // would write `not-found` here. A muted one rendered nothing to test.
-    assign({ override: "bansai" });
-    const { a } = adapter(PARALLEL);
-    recordSession(dir, { sessionId: "s1", scope: "proj", phase: "start", wakeSentinel: "<!-- counterparts:wake/end day=1 bytes=9 -->" });
-    a.stop(input({ transcriptPath: writeTranscript(PREAMBLE) }));
-    expect(a.events("adapter.wake.delivered")).toEqual([]);
-    expect(readSession(dir, "s1")?.wakeChecked).toBe(undefined);
-  });
-
-  test("override engram: the delivering hooks behave EXACTLY as the non-parallel adapter, plus a deliver record", () => {
-    assign({ override: "engram" });
-    // The control runs on its own data dir: two adapters over one store share a
-    // cursor and an episode clock, and the second would see the first's writes.
-    const control = mkdtempSync(join(tmpdir(), "counterparts-cc-ctl-"));
-    try {
-      const { a } = adapter(PARALLEL);
-      const plain = openAdapter(config({ dataDir: control }), {
-        command: "/bin/true",
-        args: ["runner"],
-        spawner: fakeSpawner().spawner,
-      });
-      open.push(plain.counterpart);
-
-      const pick = (r: ReturnType<ClaudeCodeAdapter["stop"]>): unknown => ({
-        ok: r.ok,
-        reason: r.reason,
-        // Two stores, so two store ids (`adapters/store-id.ts`); the rest is the same.
-        injection: r.injection?.replace(/counterparts:store id=st_[0-9a-f]{16}/, "counterparts:store id=st_…"),
-        bytes: r.bytes,
-        sentinel: r.sentinel,
-        surfaced: r.surfaced,
-        footnotes: r.footnotes,
-        ask: r.ask,
-        spansAppended: r.spansAppended,
-        started: r.spawn?.started ?? null,
-      });
-
-      expect(pick(a.sessionStart(input()))).toEqual(pick(plain.sessionStart(input())));
-      expect(pick(a.userPromptSubmit(input({ prompt: "what about storage?" })))).toEqual(
-        pick(plain.userPromptSubmit(input({ prompt: "what about storage?" }))),
-      );
-      const parallelStop = a.stop(input({ turns: BIG_TURNS }));
-      expect(pick(parallelStop)).toEqual(pick(plain.stop(input({ turns: BIG_TURNS }))));
-      expect(parallelStop.ask).toBe(stopAsk("s1", 1));
-
-      // The only difference: three deliver records, one per delivering hook.
-      expect(a.events(PRIMACY_DELIVER_EVENT).map((e) => e.data?.hook)).toEqual([
-        "session-start",
-        "user-prompt-submit",
-        "stop",
-      ]);
-      expect(a.events(PRIMACY_STANDDOWN_EVENT)).toEqual([]);
-      expect(plain.events(PRIMACY_DELIVER_EVENT)).toEqual([]);
-    } finally {
-      rmSync(control, { recursive: true, force: true });
-    }
-  });
-
-  test("with NO `parallel` block the resolver is never consulted at all", () => {
-    // The file says stand down, loudly. Without the knob it is not even read.
-    assign({ override: "bansai" });
-    const { a } = adapter();
-    a.sessionStart(input());
+    const loaded = loadConfig({ parallel: { enabled: true } });
+    expect(loaded.ok).toBe(true);
+    const { a } = adapter(loaded.config);
+    const started = a.sessionStart(input());
+    // A fresh store's wake: the bootstrap line, as with no config at all.
+    expect(started.reason).toBe("absent");
+    expect(withoutNow(started.injection)).toBe(BOOTSTRAP);
     a.userPromptSubmit(input({ prompt: "what about storage?" }));
     const stopped = a.stop(input({ turns: BIG_TURNS }));
+    expect(stopped.ask).toBe(stopAsk("s1", 1));
     expect(a.events(PRIMACY_STANDDOWN_EVENT)).toEqual([]);
     expect(a.events(PRIMACY_DELIVER_EVENT)).toEqual([]);
-    expect(stopped.ask).toBe(stopAsk("s1", 1));
-    expect(a.counterpart.store.eventLog({ limit: 100 }).map((r) => r.name)).not.toContain(
-      PRIMACY_STANDDOWN_EVENT,
-    );
+    expect(a.counterpart.store.eventLog({ limit: 100 }).map((r) => r.name)).not.toContain(PRIMACY_STANDDOWN_EVENT);
   });
+});
 
+describe("hook records", () => {
   test("the briefing row says whether anybody could be told anything in its session (review of #337)", () => {
     // The `fired` report's plain-due check reads it: a session nobody attends
     // is never handed a plain reminder, so its day is not one a reminder could
@@ -2163,14 +2051,11 @@ describe("parallel.enabled — the delivering hooks stand down, and capture does
   });
 
   test("the DELIVERY is evidenced too: wake, recall, delivery-check and episode-ask rows are durable (G2/G4)", () => {
-    // On any day v2 is the muted side — day 0, or a reverted day — a v2
-    // delivery event IS the
-    // contamination detector — and a detector that lives only in the hook
-    // process's ring cannot be counted after the process is gone. Every
-    // delivering hook leaves a box-2 row carrying the calendar date and the
-    // session; counts, bytes, reasons and flags only.
-    assign({ override: "engram" });
-    const { a } = adapter(PARALLEL);
+    // A detector that lives only in the hook process's ring cannot be counted
+    // after the process is gone. Every delivering hook leaves a box-2 row
+    // carrying the calendar date and the session; counts, bytes, reasons and
+    // flags only.
+    const { a } = adapter();
     // The delivery-check row needs the opt-in arrival check (2026-10-12).
     process.env["COUNTERPARTS_WAKE_CHECK"] = "1";
     try {
@@ -2194,22 +2079,10 @@ describe("parallel.enabled — the delivering hooks stand down, and capture does
     }
     expect(typeof rows("adapter.wake.injected")[0]?.["bytes"]).toBe("number");
     expect(typeof rows("adapter.recall")[0]?.["surfaced"]).toBe("number");
-    // And under a stand-down none of the three delivering rows is added — the
-    // absence is the mute. (Same store as above: count, do not assert empty.)
-    const DELIVERING = ["adapter.wake.injected", "adapter.recall", "adapter.ask"];
-    const before = DELIVERING.map((name) => rows(name).length);
-    assign({ override: "bansai" });
-    const { a: muted } = adapter(PARALLEL);
-    muted.sessionStart(input());
-    muted.userPromptSubmit(input({ prompt: "what about storage?" }));
-    muted.stop(input());
-    expect(DELIVERING.map((name) => muted.counterpart.store.eventLog({ name, limit: 100 }).length)).toEqual(before);
-    for (const name of DELIVERING) expect(muted.events(name)).toEqual([]);
   });
 
   test("every session-ending path leaves a DURABLE boundary row — session-end and pre-compact included", () => {
-    assign({ override: "bansai" });
-    const { a } = adapter(PARALLEL);
+    const { a } = adapter();
     a.sessionEnd(input());
     a.preCompact(input({ sessionId: "s2" }));
     a.stop(input({ sessionId: "s3" }));
@@ -2222,45 +2095,6 @@ describe("parallel.enabled — the delivering hooks stand down, and capture does
       ["stop", "s3", "2026-01-02"],
     ]);
     for (const r of rows) for (const v of Object.values(r)) expect(["string", "number", "boolean"].includes(typeof v) || v === null).toBe(true);
-  });
-
-  test("the mute is EVIDENCED: the day's stand-downs are countable out of the store (G4)", () => {
-    assign({ override: "bansai" });
-    const { a } = adapter(PARALLEL);
-    a.sessionStart(input());
-    a.userPromptSubmit(input({ prompt: "what about storage?" }));
-    a.stop(input());
-
-    // Read back the way `tools/replay/driver.ts` reads `gate.chunk`: by name,
-    // out of box 2, after the fact — not out of the adapter's in-process ring.
-    const rows = a.counterpart.store.eventLog({ name: PRIMACY_STANDDOWN_EVENT, limit: 100 });
-    expect(rows.length).toBe(3);
-    const payloads = rows.map((r) => JSON.parse(r.payload ?? "{}") as Record<string, unknown>);
-    expect(payloads.map((p) => p["hook"])).toEqual([
-      "session-start",
-      "user-prompt-submit",
-      "stop",
-    ]);
-    // The calendar date rides in the payload: the log's `day` column is the
-    // store's LIVED day, which no hook advances.
-    expect(new Set(payloads.map((p) => p["date"]))).toEqual(new Set(["2026-01-02"]));
-    expect(new Set(payloads.map((p) => p["reason"]))).toEqual(new Set(["override-bansai"]));
-    const perDay = payloads.filter((p) => p["date"] === "2026-01-02").length;
-    expect(perDay).toBe(3);
-  });
-
-  test("an OBSERVER's stand-down costs no boundary — the durable write refuses without throwing", () => {
-    assign({ override: "bansai" });
-    // An observer no longer mints an absent store (cli INTERFACE-GAPS §7).
-    Counterpart.open({ dir, owner: true }).close();
-    const { a } = adapter({ ...PARALLEL, observer: true });
-    const result = a.sessionStart(input());
-    expect(result.ok).toBe(true);
-    // The ring still carries it (a stand-down must be observable), and the
-    // store refused the append rather than failing the hook.
-    expect(a.events(PRIMACY_STANDDOWN_EVENT).length).toBe(1);
-    expect(a.events("adapter.hook.failed")).toEqual([]);
-    expect(a.counterpart.store.eventLog({ name: PRIMACY_STANDDOWN_EVENT, limit: 10 })).toEqual([]);
   });
 });
 

@@ -25,7 +25,7 @@
  *   - **In the host's adapter** — how its events arrive and what they are
  *     called, how its output leaves and how much room it has, what its
  *     transcript looks like, the words of its ask, and anything only it has (for
- *     Claude Code: the parallel run's primacy, the wake-arrival check against
+ *     Claude Code: the wake-arrival check against
  *     the transcript, the update notice, the doctor notice, the first-launch
  *     question, the dream line and the headless nightly run). `ClaudeCodeAdapter`
  *     EXTENDS `Lifecycle`, so its hook bodies read exactly as they did.

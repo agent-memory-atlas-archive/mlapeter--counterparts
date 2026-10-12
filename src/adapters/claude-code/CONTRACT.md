@@ -21,7 +21,7 @@ where it called its own, in the same order, with the same rows. What stays here 
 host's: the five event names and their dispatch (`hooks.ts`), the payload translation, the
 JSON envelope and the room it measures (`bin/hook.ts`, `envelope.ts`), the transcript
 reader and the wake-arrival check against it (`transcript.ts`), the Stop ask's words
-(`stopAsk`, `STOP_HUMAN_LINE`), the first-launch question, the parallel run's primacy, the
+(`stopAsk`, `STOP_HUMAN_LINE`), the first-launch question, the
 update and doctor notices, the dream line and the headless nightly run. The configuration
 (`AdapterConfig`, `loadConfig`) and the worker spawn (`planSpawn`, `spawnDetached`) moved to
 the shared leaves `adapters/config.ts` and `adapters/spawn.ts` the same day; `index.ts`
@@ -128,16 +128,11 @@ credential — belongs here, discovered at runtime, never assumed by the core.
 
 - **The A/B day-alternating wake mute is gone** — the *day-alternation*, that is. Computing
   a parity off an anchor date is not a memory property (§1) and no schedule decides who
-  speaks here. What survives is smaller and temporary: for the **parallel run** beside v1,
-  a **primacy resolver** (`primacy.ts`) behind the `parallel.enabled` config flag. It reads
-  v1's own assignment file and lets the delivering hooks speak only when that file names the
-  slot v2 occupies; it **fails toward mute** where v1 fails toward inject, so the joint
-  failure state is v1-only rather than two voices or none. Absent flag ⇒ v2 delivers, which
-  is the ordinary build. The flag, the resolver, and the two durable events were meant to be
-  **retired at PROMOTE** — they are scaffolding for a comparison, not a feature. The parallel
-  run ended on 2026-09-21 and nothing retired them: they are **still wired**
-  (`hooks.ts#deliveryVerdict`, config `parallel`), and inert on every install that does not
-  set the flag. Removing them is a separate change.
+  speaks here. The parallel run beside v1 had a smaller, temporary successor — a primacy
+  resolver (`primacy.ts`) behind a `parallel.enabled` config flag that read v1's assignment
+  file from the home directory. **Removed 2026-10-12, the parallel run ended 2026-09-21.** A
+  configuration that still carries `parallel` is ignored, never refused. The resolver lives
+  on only in the maintainer instrument `tools/parallel/primacy.ts`, which is not shipped.
 - **The 9,000-byte wake budget is not a constant here or anywhere.** The adapter
   **discovers or asserts** its host's injection ceiling and reports it as a capability;
   the core composes to whatever it is told (scar §2.18). v1's number was 90% of one host's

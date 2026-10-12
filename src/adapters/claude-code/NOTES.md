@@ -2579,3 +2579,13 @@ run's own `claude -p` children were the suspects. Read from the host's transcrip
 - What was still open: a `SessionStart:compact` inside an Agent-tool subagent (10-10, `cli`) was handed a full
   wake, and the night child's prompt recall handed the day's reminders as "Quietly available" lines and spent their
   fires. Both are closed by `watchedAtStart` and `noCues` (docs/decisions.d/fix-start-told-unwatched-1012.md).
+
+## 2026-10-12 — the primacy read removed
+
+Removed 2026-10-12, the parallel run ended 2026-09-21. `primacy.ts` read v1's A/B assignment file in the home directory
+behind `parallel.enabled`, which install never set; a plugin-directory pre-flight flagged it as a read
+outside the disclosed files. The hooks no longer ask who delivers, `loadConfig` no longer reads
+`parallel` (an old key, in any shape, is ignored rather than taking the config to observer), and the
+resolver moved to `tools/parallel/primacy.ts` for the instrument that still reads old run directories.
+The `adapter.primacy.*` event names stay in core and the dashboard so a store's old rows still read.
+Earlier entries above that mention primacy describe the code as it was then.

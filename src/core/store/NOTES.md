@@ -499,11 +499,12 @@ NUMBER against a store already named by `--dir`; refusing that would teach peopl
 the guard. The line: **the guard refuses an implicit default that locates a store or
 writes the live base; a number read from the default config is neither.**
 
-**Not covered, on purpose.** `claude-code/primacy.ts` reads the parallel run's assignment
-file at `~/.memory-ab` by default — read-only, no store, and `test/store.test.ts` pins it
-read-only. `tools/parallel/bin/{preflight,daily,restart}.ts` carry the live paths as
-defaults by their own contract (every real path is a flag; the run directory's overlap
-guard needs them named). Neither goes through `dataDir()` and neither opens a store.
+**Not covered, on purpose.** `tools/parallel/bin/{preflight,daily,restart}.ts` carry the
+live paths as defaults by their own contract (every real path is a flag; the run directory's
+overlap guard needs them named). They do not go through `dataDir()` and open no store. (The
+parallel run's assignment resolver was the other one; it left src/ on 2026-10-12 for
+`tools/parallel/primacy.ts`, takes its directory in, and `test/store.test.ts` pins it
+read-only.)
 
 **The gap between the two doors, and how it surfaces.** A NAMED configuration that names
 no store — `--config` at a file with only `injectionBudgetBytes` — and no

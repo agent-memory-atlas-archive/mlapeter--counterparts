@@ -258,19 +258,6 @@ export interface AdapterConfig {
    */
   readonly embedder?: { readonly enabled: boolean; readonly kind?: EmbedderKind };
   /**
-   * THE PARALLEL-RUN KNOB, and it defaults to ABSENT.
-   *
-   * Absent ⇒ v2 delivers on every delivering hook, which is what it does in
-   * every other situation and what every test that does not name this flag
-   * asserts. Present and true ⇒ every delivering hook first asks
-   * `primacy.ts` whether the OTHER system is speaking today, and stands down if
-   * the answer is anything but a clean "engram" (parallel-run G3). It is a knob
-   * rather than an inference for the same reason the egress knob is: the
-   * presence of v1's file on the machine must not be the thing that decides
-   * whether v2 speaks. RETIRED at PROMOTE.
-   */
-  readonly parallel?: { readonly enabled: boolean };
-  /**
    * THE DAILY ROTATING SNAPSHOT (owner ruling 3, 2026-09-18).
    *
    * All three sub-keys are optional and the block as a whole may be absent: the
@@ -412,7 +399,6 @@ export function loadConfig(raw: unknown): LoadedConfig {
     socketLifetimeMs?: number;
     watchdogMs?: number;
     embedder?: { enabled: boolean; kind?: EmbedderKind };
-    parallel?: { enabled: boolean };
     snapshots?: { dir?: string; keep?: number; mirror?: string; ignored?: string[] };
     pageWriter?: { mode: PageWriterMode; ignored?: string[] };
     dreaming?: { model?: string; timeoutMs?: number; maxTurns?: number; ignored?: string[] };
@@ -530,19 +516,10 @@ export function loadConfig(raw: unknown): LoadedConfig {
       out.embedder = { enabled: e["enabled"], ...(kind === undefined ? {} : { kind: kind as EmbedderKind }) };
     }
   }
-  const parallel = rec["parallel"];
-  if (parallel !== undefined) {
-    // Read as strictly as the egress knob, and for the same reason: a
-    // half-written `parallel` block must not resolve to "on" — and, this being
-    // the mute switch, it must not resolve to "off" by accident either. An
-    // unreadable one takes the whole configuration to observer below.
-    const p = parallel as Record<string, unknown>;
-    if (typeof parallel !== "object" || parallel === null || Array.isArray(parallel) || typeof p["enabled"] !== "boolean") {
-      unreadable = true;
-    } else {
-      out.parallel = { enabled: p["enabled"] };
-    }
-  }
+  // `parallel` — the parallel run's knob — was removed 2026-10-12 (the run
+  // ended 2026-09-21). A configuration that still carries it, in any shape, is
+  // read as if it did not: never refused, never observer, nothing said. It
+  // switched on a stand-down only the run used, so ignoring it changes nothing.
   // THE SECOND LENIENT BLOCK, and it became one under review (S2, 2026-09-20).
   //
   // It was written strict, beside the egress knob, on the argument that `host`

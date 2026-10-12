@@ -44,14 +44,9 @@ import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "n
 import { createRequire } from "node:module";
 import { basename, dirname, join, resolve } from "node:path";
 
-import {
-  AB_DIR_ENV,
-  FOREIGN_MARKERS,
-  assignmentHealth,
-  assignmentPath,
-  classifyBlock,
-} from "../../src/adapters/claude-code/index.js";
-import type { AssignmentHealth } from "../../src/adapters/claude-code/index.js";
+import { FOREIGN_MARKERS, classifyBlock } from "../../src/adapters/claude-code/index.js";
+import { AB_DIR_ENV, assignmentHealth, assignmentPath } from "./primacy.js";
+import type { AssignmentHealth } from "./primacy.js";
 import {
   PRIMACY_DELIVER_EVENT,
   PRIMACY_STANDDOWN_EVENT,
