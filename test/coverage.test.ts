@@ -702,7 +702,7 @@ describe("reading it: `counterparts coverage` and the doctor line", () => {
     p.end(Date.now() - 2 * DAY + 25 * MIN);
     const h = read();
     expect(h?.severity).toBe("green");
-    expect(h?.detail).toContain("nothing owed; 1 small, not a person's session: left to lapse");
+    expect(h?.detail).toContain("nothing owed; 1 small, not known as a person's session: left to lapse");
   });
 
   test("`counterparts coverage` reads the same person-session filter as doctor and the catch-up: a small `claude -p` stretch is left to lapse, not owed (2026-10-11)", () => {
@@ -718,9 +718,9 @@ describe("reading it: `counterparts coverage` and the doctor line", () => {
     open.push(c);
     const said = coverageLines({ store: c.store, date: today, today }).join("\n");
     expect(said).toContain("Owed now: 1 session — owing-one (5 pieces).");
-    expect(said).toContain("Left to lapse (not a person's session): 1 session — print-1 (3 pieces).");
+    expect(said).toContain("Left to lapse (small; not known as a person's session): 1 session — print-1 (3 pieces).");
     const that = coverageLines({ store: c.store, date: new Date(printedAt).toISOString().slice(0, 10), today }).join("\n");
-    expect(that).toMatch(/print-1[\s\S]*not yet written up: 3 pieces over 20 min, since [^\n]* — left to lapse \(not a person's session\)/);
+    expect(that).toMatch(/print-1[\s\S]*not yet written up: 3 pieces over 20 min, since [^\n]* — left to lapse \(small; not known as a person's session\)/);
     expect(that).not.toMatch(/print-1[^\n]*\n[^\n]*owed \(/);
   });
 

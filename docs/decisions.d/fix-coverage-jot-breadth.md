@@ -18,7 +18,7 @@
   or file is needed (no store-format change), and every miss leaves the turn unwritten, which is the safe side.
 - Decided by the coverage-jot-breadth builder, 2026-10-11, lightly held: `counterparts coverage` splits owed
   sessions with the same filter doctor and the catch-up read (`sessions.ts#pointable`): a small stretch from a
-  session the registry does not show as a person's is listed under "Left to lapse (not a person's session)", not
+  session the registry does not show as a person's is listed under "Left to lapse (small; not known as a person's session)", not
   "Owed now". Why: one source of truth; the command listed d4929258 (an `sdk-cli` session) as owed while the
   catch-up and doctor let it lapse. Same caveat as doctor's: a small debt whose registry record was pruned (after
   a week) also reads as not a person's.
@@ -32,3 +32,7 @@
   prompt it never saw. A message queued mid-turn leaves its turn unwritten the same way. Why: the span is one text
   and cannot be split without a store-format change, and a turn left unwritten is the safe side (the session-end
   write-up or the catch-up takes it); the skip is emitted as `remember.coverage.turn.skipped`.
+- Decided by the #437 reviewer, 2026-10-11, lightly held: the lapse wording says "not KNOWN as a person's session"
+  (`counterparts coverage` and doctor's Coverage detail). Why: `pointable` reads a missing registry record as not a
+  person's, and records are pruned after a week while a small debt lapses only after 14 days of use, so a person's
+  own small debt can land on this line; "not a person's session" would then say something false.
