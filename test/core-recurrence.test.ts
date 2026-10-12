@@ -240,16 +240,24 @@ describe("the core weighs itself, and nothing leaves it without a decision", () 
     expect(weighCore(c.store, c.store.row(id)!, c.store.livedDay())).toEqual({ action: "reaffirmed", reason: "cause-gone" });
   });
 
-  test("the wake lists a flagged member under Still open, labelled, instead of under Who I am", () => {
+  test("the wake lists a flagged member under Still open, labelled, instead of under Who I am — one at a time", () => {
     const c = brain();
     nextDay(c);
     const id = mem(c, "Mike laughs at the demo.", { kind: "person", about: "owner" });
-    makeCore(c, id);
-    c.store.appendCoreEvent({ memoryId: id, action: "reconsidering", day: c.store.livedDay(), reason: "not-about-me-or-us", actor: "sleep" });
+    const second = mem(c, "Mike reads the changelog first.", { kind: "person", about: "owner" });
+    const question = mem(c, "Which day does the store move?", { meta: { unresolved: true } } as Partial<PutInput>);
+    for (const m of [id, second]) {
+      makeCore(c, m);
+      c.store.appendCoreEvent({ memoryId: m, action: "reconsidering", day: c.store.livedDay(), reason: "not-about-me-or-us", actor: "sleep" });
+    }
     c.rebrief({ budgetBytes: 9000 });
     const text = c.wake(9000).text;
     expect(text).toContain("Still open:");
+    // At most RECONSIDERING_MAX (1) leads the lane; an open question still shows beside it.
+    expect(text.match(/Core, being reconsidered — keep or retire it \(remember core\)/g)?.length).toBe(1);
     expect(text).toContain(`Core, being reconsidered — keep or retire it (remember core) [${id}]`);
+    expect(text).toContain("Which day does the store move?");
+    void question;
   });
 });
 

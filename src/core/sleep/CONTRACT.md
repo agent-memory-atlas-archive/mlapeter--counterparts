@@ -142,7 +142,7 @@ slot (`coreRecurrence`, physics §5.3); and the core WEIGHS ITSELF
 (`core-standing.ts#weighCore`): a member no longer about me or us, or quiet for
 `CORE_QUIET_DAYS` (60), is FLAGGED "being reconsidered" — a `core_events` row — and never
 demoted here. Only a decision moves it: mine (`remember`'s `core`, a reflection's `core`
-part) or the owner's (`counterparts core --demote` / `--keep`); a flag whose cause is gone
+part) or the owner's (`counterparts core --demote` / `--reaffirm`); a flag whose cause is gone
 is lifted by the next consolidation. The legacy
 consolidation marking runs first, for legacy rows only; a post-upgrade row is counted
 `not-legacy`. The first decay pass after the v8 upgrade runs a one-time census

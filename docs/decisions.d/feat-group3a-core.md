@@ -41,7 +41,10 @@
   promotion or keep, and its band day. Why: item 14 (no automatic demotion), and a flag that outlived its
   cause would ask for a decision that was already made.
 - Decided by the group3a builder, 2026-10-11, lightly held: a flagged member moves from "Who I am" to "Still
-  open" in the wake, labelled "Core, being reconsidered — keep or retire it (remember core) [id]". My doors are
+  open" in the wake, labelled "Core, being reconsidered — keep or retire it (remember core) [id]". Only one
+  shows at a time, at the top of the list (`RECONSIDERING_MAX` 1). The rest are counted with "more still
+  open". Why: the owner already has about 40 open threads and the lane shows 5. Five flags at once would have
+  pushed every open question out. My doors are
   `remember`'s `core: {id, decision: keep|retire, why}` (any core memory, with a why) and a reflection's
   `core` part (any core memory it was shown, at most 5). Flagged members are handed to the reflection. The
   owner's are `counterparts core --demote` and the new `--reaffirm`. Retiring is allowed on a night with the

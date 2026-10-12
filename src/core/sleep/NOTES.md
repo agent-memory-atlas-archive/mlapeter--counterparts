@@ -1029,8 +1029,10 @@ branch, which skipped core rows until now). It flags; it never demotes. `keepCor
 reflection's `core` part. `Counterpart.demoteCore` now delegates to `retireCore`.
 
 On a copy of the owner's 10-11 store (lived day 20, v12 migrated to v13 on the copy, 30 lived days of
-no activity): the first consolidation flags the five members the narrowed test moves out (four
-about the owner, one fact), promotes the one fast-lane memory master would also promote, and
-promotes one memory by the new slow lane (a day-18 memory carried by its earlier state's uses). After
-that, nothing: with no activity, the trailing window empties. No 60-day flag fires before lived
-day 70.
+no activity, default cadence): the first consolidation (lived day 22) flags the five members the
+narrowed test moves out (four about the owner, one fact), promotes the one fast-lane memory master
+would also promote, and promotes one memory by the new slow lane (a day-18 memory carried by its
+earlier state's uses). That crossing rests on reading a NULL session as one per day; read as no
+session, nothing on the copy crosses by the slow lane. After that, nothing: with no activity, the
+trailing window empties. No 60-day flag fires before lived day 70. The wake shows one flagged member
+at a time at the top of "Still open" (`RECONSIDERING_MAX`), the rest counted with "more still open".

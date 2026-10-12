@@ -414,6 +414,7 @@ export function rankLanes(
   const identity: Ranked[] = [];
   const craft: Ranked[] = [];
   const threads: Ranked[] = [];
+  const reconsidering: Ranked[] = [];
   const hints: Ranked[] = [];
   const settledOver = opts.settledOver ?? new Set<string>();
   const inIdentity = new Set(scanned.filter((s) => s.band === "identity").map((s) => s.id));
@@ -423,7 +424,7 @@ export function rankLanes(
   for (const s of scanned) {
     // A core memory being reconsidered waits on a decision: "Still open" (2026-10-11).
     if (s.band === "identity" && s.reconsidering === true) {
-      threads.push(rankedAs(s, "threads"));
+      reconsidering.push(rankedAs(s, "threads"));
       continue;
     }
     if (s.band === "identity") {
@@ -459,6 +460,13 @@ export function rankLanes(
   identity.sort(byRotation(scanned.find((s) => s.day !== undefined)?.day));
   craft.sort(byStrength);
   threads.sort(byThreadAge);
+  // A few core memories being reconsidered lead "Still open" (2026-10-11):
+  // at most `RECONSIDERING_MAX`, the rest counted with the lane's overflow
+  // ("more still open"), one decision at a time.
+  reconsidering.sort(byThreadAge);
+  const shownFlags = Math.min(reconsidering.length, t.RECONSIDERING_MAX);
+  threads.unshift(...reconsidering.slice(0, shownFlags));
+  const flagsWaiting = reconsidering.slice(shownFlags).map((r) => r.id);
   hints.sort(byHint);
 
   const past = (lane: readonly Ranked[], cap: number): string[] => lane.slice(cap).map((r) => r.id);
@@ -471,7 +479,7 @@ export function rankLanes(
     overflow: {
       identity: past(identity, t.IDENTITY_MAX),
       craft: past(craft, t.CRAFT_MAX),
-      threads: past(threads, t.THREADS_MAX),
+      threads: [...past(threads, t.THREADS_MAX), ...flagsWaiting],
       hints: past(hints, t.HINTS_MAX),
       horizon: [
         ...past(horizon, t.HORIZON_MAX),
