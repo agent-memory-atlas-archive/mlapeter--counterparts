@@ -118,6 +118,14 @@ dreamer is the model (a background agent the session launches), outside this pro
   still inside its watchdog makes the gate `dreaming-now`. The next calendar day tries
   headless again. "No dreams" takes effect from the next run; a run in flight finishes,
   and the owner is told so (owner decision D).
+  THE CATCH-UP ALONE (2026-10-11, `catchUpOffer`): under `auto`, when the gate says
+  `too-little-new` or `first-day`, the day is unclaimed and no run is under way, the host
+  may claim the day with a silent headless offer carrying `dreamSkipped` — when it finds
+  write-ups from an earlier day owed (the host's question, not this module's). The run
+  writes them up and skips its dream and reflection; its row is `done` with both children
+  `skipped: <reason>` (`dreamSkippedOf`), never a failed dream, and the `dream.ask` row
+  carries the reason. A later dream that day comes only through the ordinary relaunch, once
+  the queue reaches `MIN_NEW`.
   `off`: nothing.
 - **`auto` from before 2026-09-29 is reset once** (owner decision A): its meaning changed,
   so an explicit `auto` in a store's meta becomes `ask` on the first hook prompt of this

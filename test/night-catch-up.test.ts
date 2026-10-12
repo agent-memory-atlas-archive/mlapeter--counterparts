@@ -28,6 +28,7 @@ import type { Io } from "../src/adapters/cli/index.js";
 import {
   CATCH_UP_RUN_PREFIX,
   CATCH_UP_TOOLS,
+  NOTHING_OWED_BEFORE_KEY,
   catchUpOf,
   catchUpRunner,
   catchUpWords,
@@ -37,7 +38,12 @@ import {
   runCatchUp,
 } from "../src/adapters/claude-code/night-catch-up.js";
 import type { CatchUpReport } from "../src/adapters/claude-code/night-catch-up.js";
-import { nightRowTimeoutMs, openNightCounterpart, planNightChild, runNight } from "../src/adapters/claude-code/night-run.js";
+import { NIGHT_KIND_ENV, NIGHT_RUN_ENV, nightRowTimeoutMs, openNightCounterpart, planNightChild, readKind, runNight } from "../src/adapters/claude-code/night-run.js";
+import { ClaudeCodeAdapter } from "../src/adapters/claude-code/hooks.js";
+import type { SpawnPlan } from "../src/adapters/spawn.js";
+import { dreamingSettingWords, nightRunLine } from "../src/adapters/cli/dream-core.js";
+import { beginNewInstall } from "../src/core/onboarding.js";
+import { DREAM_TUNABLES } from "../src/core/dream/index.js";
 import { nightRunLost, nightRunWords } from "../src/core/dream/index.js";
 import { openServer } from "../src/adapters/mcp/index.js";
 import { openAdapter } from "../src/adapters/claude-code/index.js";
@@ -1159,5 +1165,377 @@ describe("the two ceilings (Mike, 2026-10-11): the night takes 100 parts, `count
     }
     expect(ids.map(owes)).toEqual([false, false, true]);
     expect(out).toContain("What is left stays owed: run this again, or the nightly run takes it.");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe("the night starts when write-ups from an earlier day are owed, even when the dream is not due (2026-10-11)", () => {
+  const NIGHTLY = "/pkg/bin/nightly.ts";
+  let plans: SpawnPlan[] = [];
+  let offsetMs = 0;
+  beforeEach(() => {
+    plans = [];
+    offsetMs = 0;
+  });
+
+  /** The hooks as install leaves a NEW store (dreaming `auto`, the meeting not started), a clock the test moves, and a spawner that records. */
+  function hooksAt(opts: { setting?: "auto" | "ask" | "off" | "new-install"; observer?: boolean } = {}): ClaudeCodeAdapter {
+    const counterpart = Counterpart.open({ dir, owner: true, ...(opts.observer === true ? { observer: true } : {}), now: () => Date.now() + offsetMs });
+    closers.push(counterpart);
+    const setting = opts.setting ?? "new-install";
+    if (opts.observer !== true) {
+      if (setting === "new-install") beginNewInstall(counterpart.store);
+      else counterpart.dreams.setSetting(setting, { by: "owner" });
+    }
+    return new ClaudeCodeAdapter({
+      counterpart,
+      config: config(opts.observer === true ? { observer: true } : {}),
+      command: "/usr/bin/bun",
+      args: ["run", "/pkg/bin/runner.ts"],
+      nightArgs: ["run", NIGHTLY],
+      spawner: (p) => {
+        plans.push(p);
+        return { pid: 4242 };
+      },
+      now: () => Date.now() + offsetMs,
+    });
+  }
+  const nightPlans = (): SpawnPlan[] => plans.filter((p) => p.args.includes(NIGHTLY));
+
+  function prompt(a: ClaudeCodeAdapter, session: string, over: Partial<HookInput> = {}): ReturnType<ClaudeCodeAdapter["userPromptSubmit"]> {
+    recordSession(dir, { sessionId: session, scope: launch, phase: "start" });
+    return a.userPromptSubmit({ sessionId: session, scope: launch, turns: [], at: TODAY(), prompt: "good morning", ...over } as HookInput);
+  }
+
+  /** `n` memories the person saved, on the store's lived day. */
+  function saved(c: Counterpart, n: number): void {
+    const day = c.store.livedDay();
+    for (let i = 0; i < n; i++) {
+      c.store.put({
+        type: "memory",
+        kind: "fact",
+        body: `Saved on the first day, ${String(i)}: the pump on loop ${String(i)} runs only after its relief valve is seated.`,
+        salience: { relevance: 0.6, emotional: 0.3, predictive: 0.6 },
+        physics: { birthDay: day, lastUsedDay: day },
+      });
+    }
+  }
+
+  /** The detached process's side, as `bin/nightly.ts` runs it: the run the hook planned, with the kind it was told. */
+  async function nightOf(plan: SpawnPlan, seen: ChildPlan[], started: ChildPlan[], opts: { dated?: boolean } = {}): Promise<Awaited<ReturnType<typeof runNight>>> {
+    return runNight({
+      open: () => openNightCounterpart(config()),
+      config: config(),
+      run: String(plan.env[NIGHT_RUN_ENV]),
+      session: String(plan.env[SESSION_ENV]),
+      scope: String(plan.env[SCOPE_ENV]),
+      kind: readKind(plan.env[NIGHT_KIND_ENV]),
+      // `bin/nightly.ts` names no date: the run reads the store's today.
+      ...(opts.dated === false ? {} : { date: TODAY() }),
+      startCatchUp: drivingChild(seen),
+      start: async (p) => {
+        started.push(p);
+        return { code: 0, timedOut: false, error: null };
+      },
+    });
+  }
+
+  test("a NEW install, the meeting skipped, two memories saved on day 1, its sessions ended owing: day 2's first prompt starts the night, the catch-up writes day 1 up, the dream is skipped and says why", async () => {
+    lived("day1-a", proj);
+    lived("day1-b", other, { at: YESTERDAY_10() + 2 * HOUR });
+    const a = hooksAt();
+    const c = a.counterpart;
+    // The first session's end moved the lived day past the first.
+    c.store.advanceClock(YESTERDAY());
+    saved(c, 2);
+    expect(c.dreams.setting()).toBe("auto");
+    expect(c.dreams.status(TODAY()).reason).toBe("too-little-new");
+    expect(owes("day1-a")).toBe(true);
+    expect(owes("day1-b")).toBe(true);
+
+    const turn = prompt(a, "day2-1");
+    expect(nightPlans()).toHaveLength(1);
+    const plan = nightPlans()[0] as SpawnPlan;
+    expect(plan.env[NIGHT_KIND_ENV]).toBe("catch-up:too-little-new");
+    expect(readKind(plan.env[NIGHT_KIND_ENV])).toEqual({ kind: "night", dreamSkipped: "too-little-new" });
+    // The day is claimed through the one latch, and the log says why.
+    expect(c.store.dreamAsk(TODAY())?.state).toBe("launched");
+    const asked = c.store.eventLog({ name: "dream.ask" }).map((e) => JSON.parse(e.payload ?? "{}") as Record<string, unknown>);
+    expect(asked.find((p) => p["state"] === "launched")?.["dreamSkipped"]).toBe("too-little-new");
+    expect(c.dreams.nightRun()).toMatchObject({ state: "started", kind: "night", session: "day2-1", date: TODAY() });
+    // While it runs, doctor already says what it is (review of #426), not "the whole night".
+    const running = nightRunFindings({ today: TODAY(), config: { dataDir: dir } } as unknown as DoctorInput, c.store)[0];
+    expect(running?.detail).toContain("running now (the catch-up alone; too little new to dream on)");
+    // Nothing said to anyone: no line for the model, none for the terminal.
+    expect(turn.dream).toBeUndefined();
+    expect(turn.injection ?? "").not.toContain("nightly run");
+    // A second session's prompt starts nothing more.
+    prompt(a, "day2-2");
+    expect(nightPlans()).toHaveLength(1);
+
+    const seen: ChildPlan[] = [];
+    const started: ChildPlan[] = [];
+    const out = await nightOf(plan, seen, started);
+    // The catch-up ran and wrote day 1 up; no dream child, no reflection child.
+    expect(seen).toHaveLength(1);
+    expect(started).toEqual([]);
+    expect(owes("day1-a")).toBe(false);
+    expect(owes("day1-b")).toBe(false);
+    expect(out).toMatchObject({ state: "done", reason: null, kind: "night", dream: null, reflection: null, parts: [] });
+    expect(out.children).toEqual([
+      { child: "dream", code: null, ms: 0, skipped: "too-little-new" },
+      { child: "reflection", code: null, ms: 0, skipped: "too-little-new" },
+    ]);
+    const night = c.store.eventLog({ name: "dream.night" }).map((e) => JSON.parse(e.payload ?? "{}") as Record<string, unknown>);
+    expect(night.find((p) => p["state"] === "done")?.["children"]).toBe("dream:skipped-too-little-new,reflection:skipped-too-little-new");
+    expect(catchUpOf(c.store, out.run)).toMatchObject({ state: "done", granted: 2, written: 2, left: 0 });
+
+    // Doctor: green, the catch-up alone, never a failed dream. The CLI line says the same.
+    const row = c.dreams.nightRun();
+    if (row === null) throw new Error("no row");
+    const found = nightRunFindings({ today: TODAY(), config: { dataDir: dir } } as unknown as DoctorInput, c.store)[0];
+    expect(found?.severity).toBe("green");
+    expect(found?.detail).toContain("(the catch-up alone; too little new to dream on) finished");
+    expect(found?.detail).toContain("catch-up: caught up 2 of 2 sessions");
+    expect(nightRunLine(row)).toContain("done (the catch-up alone) — the catch-up ran; the dream and the reflection were skipped (too little new to dream on)");
+    // No hand-back for it: the mechanism did the work, it does not remind.
+    expect(prompt(a, "day2-3", { prompt: "back again" }).injection ?? "").not.toContain("the nightly run");
+  });
+
+  test("no session end ever processed (lived day 0, `first-day`): the night still starts and writes day 1 up", async () => {
+    lived("crash-1", proj, { end: false });
+    const a = hooksAt();
+    saved(a.counterpart, 1);
+    expect(a.counterpart.store.livedDay()).toBe(0);
+    expect(a.counterpart.dreams.status(TODAY()).reason).toBe("first-day");
+    prompt(a, "day2-1");
+    expect(nightPlans()).toHaveLength(1);
+    const plan = nightPlans()[0] as SpawnPlan;
+    expect(plan.env[NIGHT_KIND_ENV]).toBe("catch-up:first-day");
+    const out = await nightOf(plan, [], [], { dated: false });
+    expect(owes("crash-1")).toBe(false);
+    expect(out.state).toBe("done");
+    expect(out.date).toBe(TODAY());
+    expect(a.counterpart.dreams.nightRun()?.date).toBe(TODAY());
+    expect(out.children?.map((ch) => ch.skipped)).toEqual(["first-day", "first-day"]);
+  });
+
+  test("a person whose only day was day 1 comes back on day 5: day 1 is still owed (lapse counts days of USE), and the night writes it up", async () => {
+    lived("day1-a", proj, { at: midnight() - 4 * 24 * HOUR + 10 * HOUR });
+    const a = hooksAt();
+    a.counterpart.store.advanceClock(addDays(TODAY(), -4));
+    saved(a.counterpart, 2);
+    expect(owes("day1-a")).toBe(true);
+    prompt(a, "day5-1");
+    expect(nightPlans()).toHaveLength(1);
+    await nightOf(nightPlans()[0] as SpawnPlan, [], []);
+    expect(owes("day1-a")).toBe(false);
+  });
+
+  test("dream due AND write-ups owed: ONE night, the whole one — the catch-up, then the dream's child", async () => {
+    lived("day1-a", proj);
+    const a = hooksAt();
+    const c = a.counterpart;
+    for (const back of [3, 2, 1]) c.store.advanceClock(addDays(TODAY(), -back));
+    saved(c, 4);
+    expect(c.dreams.status(TODAY()).due).toBe(true);
+    prompt(a, "day2-1");
+    prompt(a, "day2-2");
+    expect(nightPlans()).toHaveLength(1);
+    const plan = nightPlans()[0] as SpawnPlan;
+    expect(plan.env[NIGHT_KIND_ENV]).toBe("night");
+    const seen: ChildPlan[] = [];
+    const started: ChildPlan[] = [];
+    await nightOf(plan, seen, started);
+    expect(seen).toHaveLength(1);
+    expect(started.length).toBeGreaterThan(0);
+    expect(owes("day1-a")).toBe(false);
+  });
+
+  test("nothing owed and the dream not due: no night (unchanged) — nor for a session that ended TODAY", () => {
+    const a = hooksAt();
+    saved(a.counterpart, 2);
+    prompt(a, "day2-1");
+    expect(nightPlans()).toHaveLength(0);
+    // Owed, but from today: tomorrow's.
+    lived("today-1", proj, { at: Math.max(midnight() + MIN, Date.now() - 2 * HOUR) });
+    expect(owes("today-1")).toBe(true);
+    prompt(a, "day2-2");
+    expect(nightPlans()).toHaveLength(0);
+    expect(a.counterpart.store.dreamAsk(TODAY())).toBeUndefined();
+  });
+
+  test("review of #426: a day that read nothing owed from an earlier day remembers it — the held sessions are read once that day, not at every prompt — and the next day reads again", () => {
+    const a = hooksAt();
+    const c = a.counterpart;
+    saved(c, 2);
+    lived("today-1", proj, { at: Math.max(midnight() + MIN, Date.now() - 2 * HOUR) });
+    prompt(a, "day2-1");
+    expect(nightPlans()).toHaveLength(0);
+    expect(c.store.getMeta(NOTHING_OWED_BEFORE_KEY)).toBe(TODAY());
+    // Pinned trade-off: an earlier day's debt that turns up later the same day
+    // (it cannot, short of a late capture) waits for tomorrow — 14 days of use
+    // to lapse, so nothing is lost.
+    lived("day1-late", other);
+    expect(owes("day1-late")).toBe(true);
+    prompt(a, "day2-2");
+    expect(nightPlans()).toHaveLength(0);
+    // The next calendar day reads again, and today's session is now owed from an earlier day.
+    prompt(a, "day3-1", { at: addDays(TODAY(), 1) });
+    expect(nightPlans()).toHaveLength(1);
+    expect(nightPlans()[0]?.env[NIGHT_KIND_ENV]).toMatch(/^catch-up:/);
+  });
+
+  test("dreaming `ask`: no night starts, and the next session's pointer is how it gets written up, as before", () => {
+    lived("day1-a", proj);
+    const a = hooksAt({ setting: "ask" });
+    saved(a.counterpart, 2);
+    prompt(a, "day2-1");
+    expect(nightPlans()).toHaveLength(0);
+    const start = a.sessionStart({ sessionId: "here-1", scope: proj, at: TODAY() } as HookInput);
+    expect(start.ask ?? "").toContain("writeUp: day1-a");
+  });
+
+  test("dreaming `off` keeps its promise — nothing starts the nightly run, no catch-up either — and the pointer still works", () => {
+    lived("day1-a", proj);
+    const a = hooksAt({ setting: "off" });
+    a.counterpart.store.advanceClock(YESTERDAY());
+    saved(a.counterpart, 2);
+    prompt(a, "day2-1");
+    prompt(a, "day2-2", { entrypoint: "sdk-cli" });
+    expect(nightPlans()).toHaveLength(0);
+    expect(a.counterpart.dreams.nightRun()).toBeNull();
+    expect(a.counterpart.store.dreamAsk(TODAY())).toBeUndefined();
+    expect(dreamingSettingWords("off")).toContain("nothing starts the nightly run");
+    const start = a.sessionStart({ sessionId: "here-1", scope: proj, at: TODAY() } as HookInput);
+    expect(start.ask ?? "").toContain("writeUp: day1-a");
+  });
+
+  test("the claim: two offers raced to the latch, one wins — and two sessions prompting on day 2 start ONE run", () => {
+    lived("day1-a", proj);
+    const a = hooksAt();
+    saved(a.counterpart, 2);
+    const dreams = a.counterpart.dreams;
+    const one = dreams.catchUpOffer({ at: TODAY(), session: "x-1" });
+    const two = dreams.catchUpOffer({ at: TODAY(), session: "x-2" });
+    if (one === null || two === null) throw new Error("no offer");
+    expect([dreams.claimOffer(one), dreams.claimOffer(two)]).toEqual([true, false]);
+    expect(dreams.catchUpOffer({ at: TODAY(), session: "x-3" })).toBeNull();
+  });
+
+  test("the claim through the hooks: three sessions prompting on day 2, watched or not, start one run", () => {
+    lived("day1-a", proj);
+    const a = hooksAt();
+    const b = hooksAt();
+    saved(a.counterpart, 2);
+    prompt(a, "day2-1");
+    prompt(b, "day2-2");
+    prompt(b, "day2-3", { entrypoint: "sdk-cli" });
+    expect(nightPlans()).toHaveLength(1);
+  });
+
+  test("the exclusions hold: an observer and a night child's own prompt start nothing; a session nobody watches may start it, and holds no line for it", () => {
+    lived("day1-a", proj);
+    const watcher = hooksAt({ observer: true });
+    prompt(watcher, "obs-1");
+    expect(nightPlans()).toHaveLength(0);
+    const a = hooksAt();
+    saved(a.counterpart, 2);
+    prompt(a, "child-1", { nightRun: true });
+    expect(nightPlans()).toHaveLength(0);
+    prompt(a, "sdk-1", { entrypoint: "sdk-cli" });
+    expect(nightPlans()).toHaveLength(1);
+    expect(nightPlans()[0]?.env[NIGHT_KIND_ENV]).toBe("catch-up:first-day");
+    expect(a.counterpart.dreams.heldTold(TODAY(), "next-1")).toBeNull();
+  });
+
+  test("a catch-up that could not start: the row says so (amber under auto), and no ask follows — there is no dream to ask about", async () => {
+    lived("day1-a", proj);
+    const a = hooksAt();
+    a.counterpart.store.advanceClock(YESTERDAY());
+    saved(a.counterpart, 2);
+    prompt(a, "day2-1");
+    const plan = nightPlans()[0] as SpawnPlan;
+    const out = await runNight({
+      open: () => openNightCounterpart(config()),
+      config: config(),
+      run: String(plan.env[NIGHT_RUN_ENV]),
+      session: "day2-1",
+      scope: launch,
+      kind: readKind(plan.env[NIGHT_KIND_ENV]),
+      date: TODAY(),
+      startCatchUp: async () => ({ code: null, timedOut: false, error: "spawn ENOENT", spawnCode: "ENOENT" }),
+      start: async () => {
+        throw new Error("the dream's child must not start");
+      },
+    });
+    expect(out).toMatchObject({ state: "could-not-start", reason: "spawn-failed", detail: "catch-up" });
+    expect(owes("day1-a")).toBe(true);
+    offsetMs += 5_000;
+    const next = prompt(a, "day2-2");
+    expect(next.dream).toBeUndefined();
+    expect(nightPlans()).toHaveLength(1);
+    expect(nightRunFindings({ today: TODAY(), config: { dataDir: dir } } as unknown as DoctorInput, a.counterpart.store)[0]?.severity).toBe("amber");
+    // The dream comes due later that day (review of #426): under `auto` the
+    // catch-up's failure turns nothing into an ask — no "I couldn't start
+    // dreaming" — the ordinary relaunch starts the whole night, headless.
+    saved(a.counterpart, 2);
+    expect(a.counterpart.dreams.status(TODAY()).reason).toBe("asked-today");
+    offsetMs += DREAM_TUNABLES.ABANDONED_AFTER_MS + 60_000;
+    expect(a.counterpart.dreams.status(TODAY()).due).toBe(true);
+    const later = prompt(a, "day2-3");
+    expect(nightPlans()).toHaveLength(2);
+    expect(nightPlans()[1]?.env[NIGHT_KIND_ENV]).toBe("night");
+    expect(later.dream?.offer ?? null).toBeNull();
+    expect(later.injection ?? "").not.toContain("couldn't start dreaming");
+    expect(later.injection ?? "").not.toContain("could not start");
+  });
+
+  test("a catch-up-only run whose own process could not start (the runner): the row reads as the catch-up alone, and no ask follows even once the dream is due", () => {
+    lived("day1-a", proj);
+    const a = hooksAt();
+    a.counterpart.store.advanceClock(YESTERDAY());
+    saved(a.counterpart, 2);
+    // Nothing could start the background process at all.
+    const failing = new ClaudeCodeAdapter({
+      counterpart: a.counterpart,
+      config: config(),
+      command: "/usr/bin/bun",
+      args: ["run", "/pkg/bin/runner.ts"],
+      nightArgs: ["run", NIGHTLY],
+      spawner: () => {
+        throw Object.assign(new Error("spawn EACCES"), { code: "EACCES" });
+      },
+      now: () => Date.now() + offsetMs,
+    });
+    prompt(failing, "day2-1");
+    const row = a.counterpart.dreams.nightRun();
+    expect(row).toMatchObject({ state: "could-not-start", reason: "runner" });
+    expect(row?.children?.map((ch) => ch.skipped)).toEqual(["too-little-new", "too-little-new"]);
+    expect(nightRunFindings({ today: TODAY(), config: { dataDir: dir } } as unknown as DoctorInput, a.counterpart.store)[0]?.detail).toContain("(the catch-up alone; too little new to dream on) could not start");
+    saved(a.counterpart, 2);
+    offsetMs += DREAM_TUNABLES.ABANDONED_AFTER_MS + 60_000;
+    const later = prompt(a, "day2-2");
+    expect(nightPlans()).toHaveLength(1);
+    expect(nightPlans()[0]?.env[NIGHT_KIND_ENV]).toBe("night");
+    expect(later.dream?.offer ?? null).toBeNull();
+    expect(later.injection ?? "").not.toContain("couldn't start dreaming");
+  });
+
+  test("pinned: once the catch-up has brought the queue to three, the ordinary relaunch dreams later that day (after the quiet window)", async () => {
+    lived("day1-a", proj);
+    const a = hooksAt();
+    a.counterpart.store.advanceClock(YESTERDAY());
+    saved(a.counterpart, 2);
+    prompt(a, "day2-1");
+    expect(nightPlans()).toHaveLength(1);
+    await nightOf(nightPlans()[0] as SpawnPlan, [], []);
+    // The write-up's memory makes three: inside the quiet window, nothing.
+    prompt(a, "day2-2");
+    expect(nightPlans()).toHaveLength(1);
+    offsetMs += DREAM_TUNABLES.ABANDONED_AFTER_MS + 60_000;
+    prompt(a, "day2-3");
+    expect(nightPlans()).toHaveLength(2);
+    expect(nightPlans()[1]?.env[NIGHT_KIND_ENV]).toBe("night");
   });
 });

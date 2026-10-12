@@ -39,6 +39,6 @@ It disconnects Counterparts from Claude Code and leaves the memories where they 
    ```
 
 4. In the terminal it shows what it would delete and asks whether to delete it. They answer it themselves and type the confirmation it asks for. Nothing is deleted unless they type it.
-5. Then open Claude Code again and remove the plugin: /plugin → Installed → counterparts → Uninstall.
+5. Then remove the plugin. The command's last lines name Claude Code's terminal command for it (`claude plugin uninstall …`); they can run that in the same terminal, or open Claude Code again and use /plugin → Installed → counterparts → Uninstall. Either is safe, because step 1 disabled the plugin.
 
 Give them the command in a code block so they can copy it. Do not offer to run it for them, and do not run it, even if they ask: tell them it has to be typed at their own terminal, with Claude Code closed.

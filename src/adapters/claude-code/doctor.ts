@@ -88,7 +88,7 @@ import { WORK_OVERFLOW_EVENT } from "../../core/self/work.js";
 import { HANDOFF_REFUSED_EVENT } from "../../core/handoff/index.js";
 import { LAST_HERE_NOROOM_EVENT } from "../../core/handoff/last-here.js";
 import { TOOL_RESULT_CEILING } from "../../core/fit/index.js";
-import { awakeFeelingCounts, dreamingSetting, nightPartsWords, nightRunLost, nightRunOf, nightRunWords } from "../../core/dream/index.js";
+import { awakeFeelingCounts, dreamSkippedOf, dreamSkippedWords, dreamingSetting, nightPartsWords, nightRunLost, nightRunOf, nightRunWords } from "../../core/dream/index.js";
 import type { DreamingSetting } from "../../core/dream/index.js";
 // The page's own reader, so this line cannot drift from what the wake prints.
 import { clearedMarker, findPageRow, readSelfPage } from "../../core/self/page.js";
@@ -4055,7 +4055,7 @@ export function nightRunFindings(input: DoctorInput, store: Store): Finding[] {
   }
   if (run === null) {
     if (setting !== "auto") return [];
-    return [finding("night-run", "green", "Nightly run", "auto; no headless run yet — the first session of a day with enough new memory starts one", "", { setting, state: null })];
+    return [finding("night-run", "green", "Nightly run", "auto; no headless run yet — the first session of a day with enough new memory, or with write-ups owed from an earlier day, starts one", "", { setting, state: null })];
   }
   // ITS MORNING CATCH-UP (2026-10-01, build 3), when it had anything owed.
   const cu = catchUpOf(store, run.run);
@@ -4073,7 +4073,8 @@ export function nightRunFindings(input: DoctorInput, store: Store): Finding[] {
   };
   const mins = (ms: number): string => `${String(Math.max(1, Math.round(ms / 60_000)))} min`;
   const took = run.endedAt === null ? "" : ` after ${mins(run.endedAt - run.startedAt)}`;
-  const what = run.kind === "reflection" ? "the reflection alone" : "the whole night";
+  const skipped = dreamSkippedOf(run);
+  const what = run.kind === "reflection" ? "the reflection alone" : skipped !== null ? `the catch-up alone; ${dreamSkippedWords(skipped)}` : "the whole night";
   if (run.state === "done") {
     const ids = [run.dream, run.reflection].filter((x): x is string => x !== null).join(", ");
     return [finding("night-run", "green", "Nightly run", `${setting}; last run ${run.date} (${what}) finished${took}${ids.length > 0 ? ` — ${ids}` : ""}${caught}`, "", data)];
