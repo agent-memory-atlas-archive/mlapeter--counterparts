@@ -1046,6 +1046,11 @@ const SESSION_END: ToolSpec = {
         minimum: 1,
         description: "With `writeUp` and `memories`: the part number the fetch returned. Optional; it must match if sent.",
       },
+      nothing: {
+        type: "string",
+        description:
+          "With `writeUp` and `memories: []`, in a catch-up (the nightly run or `counterparts catch-up`): one line on why nothing in the part's not-yet-written words is worth keeping. A catch-up's empty answer without it is refused when the part holds such words, and the part stays owed. Not needed when every word in the part is marked already written up, nor in a live session.",
+      },
       drewOn: DREW_ON_PROPERTY,
       memories: {
         type: "array",

@@ -692,7 +692,8 @@ describe("review of #308: the runner writes up and nothing else; claims and gran
         try {
           const id = [...plan.stdin.matchAll(/^- ([A-Za-z0-9._-]+):/gm)][0]?.[1] as string;
           payload(await s.call("session_end", { session: runner, writeUp: id }));
-          payload(await s.call("session_end", { session: runner, writeUp: id, memories: [] }));
+          // A catch-up's empty answer says why (2026-10-11).
+          payload(await s.call("session_end", { session: runner, writeUp: id, memories: [], nothing: "routine valve checks, nothing new" }));
         } finally {
           s.counterpart.close();
         }
