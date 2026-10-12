@@ -87,7 +87,7 @@ export function meetRow(els: PaneEls, actions: PaneActions, w: number): JSX.Elem
   const { Text, Button } = els
   return [
     <Button key="meet" plain onPress={() => actions.pressMeet()}>
-      <Text color={P.accent} bold>{clip('Meet your counterpart', w)}</Text>
+      <Text color={P.accent} bold>{clip('Start the 5-minute intro', w)}</Text>
     </Button>,
     <Text key="meet-gap"> </Text>,
   ]

@@ -50,14 +50,14 @@ export function clipWords(text: string, w: number): string | null {
  * then ` · ` and the hint (`/counterparts opens it`, Mike, 2026-10-10; on the
  * classic screen `CLASSIC_HINT`). `room` is the cells the tail may take (the
  * row less the engine's own line), null when the surface says no width.
- * Nothing new yet: `Counterparts is quiet · …`. A save's own words (`body`)
+ * Nothing new yet: `Watching quietly · nothing new yet · …`. A save's own words (`body`)
  * follow its title after a dash, as much as the row holds, cut at a word.
  */
 export function quietTail(latest: string | null, room: number | null, now: number, body?: string, wanted: string = TAIL_HINT): string {
   const hint = wanted === CLASSIC_HINT && room !== null && cells(CLASSIC_HINT) > room ? CLASSIC_HINT_SHORT : wanted
   const end = ` · ${hint}`
   if (latest === null) {
-    const whole = `Counterparts is quiet${end}`
+    const whole = `Watching quietly · nothing new yet${end}`
     return room !== null && cells(whole) > room ? hint : whole
   }
   const r = room ?? 45 + cells(end)

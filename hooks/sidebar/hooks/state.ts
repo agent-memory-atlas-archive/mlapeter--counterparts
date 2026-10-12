@@ -69,19 +69,19 @@ export const FALLBACK_MAX = 1200
 
 /**
  * The first meeting's line: what the sidebar submits, once per install at the
- * first idle start while core says `not_started`, and on each press of "Meet
- * your counterpart". Framed as the plugin's (not `asUser`): the model reads
+ * first idle start while core says `not_started`, and on each press of "Start
+ * the 5-minute intro". Framed as the plugin's (not `asUser`): the model reads
  * "The counterparts plugin sent a message: …", and core's wake carries the
  * meeting's instructions. Claude Code shows this line to the person ("Prompt
  * from the counterparts plugin"), so it reads as a sentence to them, and still
  * tells the model to introduce itself (2026-10-12, owner's onboarding trial).
  */
-export const MEET_PROMPT = 'Counterparts: Claude has a memory now and would like to introduce itself.'
+export const MEET_PROMPT = 'Counterparts is installed. Claude would like to introduce itself.'
 
 /** `$.store`: the speak-first went out (`{ session, at }`); never again while it is there. */
 export const MEET_FLAG = 'meetTriggered'
 
-/** A second press of "Meet your counterpart" this soon after the first submits nothing. */
+/** A second press of "Start the 5-minute intro" this soon after the first submits nothing. */
 export const MEET_PRESS_MS = 60000
 
 // ── the empty search, the unknown folder, and what this module life knows ──
@@ -162,7 +162,7 @@ export const run = {
    * speak-first still queued behind it through (`prompt.submit`).
    */
   spokeFirst: false,
-  /** When "Meet your counterpart" was last pressed (`$.clock`). */
+  /** When "Start the 5-minute intro" was last pressed (`$.clock`). */
   meetPressedAt: -Infinity,
 }
 

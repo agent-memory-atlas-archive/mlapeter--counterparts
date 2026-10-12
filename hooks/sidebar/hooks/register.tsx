@@ -7,7 +7,7 @@
  * mechanism fired today, and the last dream; then three rows of switches
  * (Counterparts here, on · paused · off; the view; the brain), and Claude
  * Code's own memory for whoever opted in. While core's first meeting is put
- * off, "Meet your counterpart" tops the body; at the first start after an
+ * off, "Start the 5-minute intro" tops the body; at the first start after an
  * install, the sidebar asks Claude to speak first (once). Closed
  * (`quiet`), it is only a dim tail under the prompt, ending with how to open
  * it again. The design is the round-3 mockups Mike chose on 2026-10-10
@@ -97,7 +97,6 @@ import {
   MECHS,
   dashboardBase,
   dashboardPort,
-  dashboardRoutes,
   isDashboardUrl,
   mechById,
   memoryUrl,
@@ -310,7 +309,7 @@ async function speakFirst($: EngineInterface): Promise<void> {
 }
 
 
-/** "Meet your counterpart": the same line as the speak-first, once a minute at most. */
+/** "Start the 5-minute intro": the same line as the speak-first, once a minute at most. */
 async function pressMeet($: EngineInterface): Promise<void> {
   const now = await $.clock.now()
   if (now - run.meetPressedAt < MEET_PRESS_MS) return
@@ -1740,9 +1739,7 @@ export const register: Register = on => {
     // The rule, the Counterparts switch, the view, the brain; and Claude memory for whoever opted in.
     const footRows = ccSwitch ? 5 : 4
     const bodyRows = Math.max(4, fill - used - above.length - footRows)
-    // Down, the chart names how THIS install starts the dashboard: which memory server the session connected says.
-    const routes = dashboardRoutes(dash === 'down' ? await memoryServer($) : run.server)
-    const { lines } = layoutBody({ w, rows: bodyRows, now, mind, saved, today, dream: dreamNow, open, mech, focus, dash, routes, search })
+    const { lines } = layoutBody({ w, rows: bodyRows, now, mind, saved, today, dream: dreamNow, open, mech, focus, dash, search })
     // The Client tag stays here: the engine reads a hooks module's surface modules off its own source.
     rows.push(Client !== null ? <Client key="body" module="./body.tsx" width={w} props={{ lines } satisfies BodyProps} /> : plainBody(paneEls, lines))
     rows.push(<Box key="spacer" flexGrow={1} />)

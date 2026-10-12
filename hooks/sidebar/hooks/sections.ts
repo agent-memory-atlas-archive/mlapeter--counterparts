@@ -31,7 +31,7 @@ import type {
   SidebarToday,
 } from '../types'
 import { dateOf, hm, humanDates } from './feed'
-import { MECHS, STAGES, dashboardRoutes, hex, stageOf } from './mechanisms'
+import { MECHS, PLUGIN_DASHBOARD_ROUTE, STAGES, hex, stageOf } from './mechanisms'
 import type { MechId } from './mechanisms'
 import { P } from './theme'
 import { cells, headCells } from './width'
@@ -168,8 +168,6 @@ export type BodyState = {
   mech: SidebarMechOpen | null
   focus: string | null
   dash: 'unknown' | 'up' | 'down'
-  /** How this install starts the dashboard, first the one to try (`mechanisms.ts#dashboardRoutes`). */
-  routes: readonly string[]
   search: SidebarSearch
 }
 
@@ -378,14 +376,8 @@ function chart(s: BodyState, f: Fold): Line[] {
   const t = s.today
   if (t === null) {
     if (s.dash === 'down') {
-      // The route that works for this install; unsure which install, the plugin's first, then `or` the npm one.
-      const [first, ...rest] = s.routes.length > 0 ? s.routes : dashboardRoutes(null)
-      return [
-        heading('Mechanisms today', '', s.w),
-        ...plain(wrapN("The dashboard isn't running, so these can't be counted. Start it with", s.w), P.dim),
-        line([seg(clip(first ?? '', s.w), P.accent)]),
-        ...rest.map(r => line([seg('or ', P.dim), seg(clip(r, s.w - 3), P.accent)])),
-      ]
+      // The plugin's own command, which every install that draws this sidebar has (a stranger's read, 2026-10-12).
+      return [heading('Mechanisms today', '', s.w), ...plain(wrapN(`Counts appear once the dashboard is open (${PLUGIN_DASHBOARD_ROUTE})`, s.w), P.dim)]
     }
     return [heading('Mechanisms today', '', s.w), line([seg('reading the dashboard…', P.dim)])]
   }
