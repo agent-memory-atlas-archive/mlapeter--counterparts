@@ -35,6 +35,7 @@ import { hookConfig, lookup, parentOf, parseRegistry, settingsHookConfig, under 
 import { MECHS, STAGES, dashboardBase, dashboardPort, dashboardRoutes, isDashboardUrl, memoryUrl } from '../hooks/mechanisms'
 import { MORE, OPEN_MAX_LINES, bar, clip, heading, layoutBody, openedLines, textOf, wrapN } from '../hooks/sections'
 import { CLASSIC_HINT, CLASSIC_HINT_SHORT, TAIL_HINT, quietTail } from '../hooks/tail'
+import { P, applyTheme, cozy, normTheme, tron } from '../hooks/theme'
 import type { BodyState } from '../hooks/sections'
 import { DECISION_T3, EVENTS, FACTS_ANSWER, RECALL_BLOCK, SESSION, T0, ev } from './world'
 
@@ -815,5 +816,31 @@ describe('the first meeting', () => {
     expect(meetShows('not_started', 'on', 's0', 's1')).toBe(true)
     for (const m of ['done', 'skipped', 'unknown'] as const) expect(meetShows(m, 'on', 's0', 's1')).toBe(false)
     for (const f of ['paused', 'off', 'observer', 'unknown']) expect(meetShows('later', f, null, 's1')).toBe(false)
+  })
+})
+
+describe('the themes', () => {
+  test('tron is the mockups’ palette, exactly; cozy has every key, each a colour; a stored name this version does not know is tron', () => {
+    expect(tron).toEqual({
+      panel: '#05080c', hi: '#dde3e9', text: '#b3bcc5', mid: '#8e98a2', dim: '#66717c', faint: '#1d262e', head: '#c9d1d8',
+      accent: '#00e5ff', accent2: '#ffb347', searchBg: '#121a22', accentDim: '#0b6f7c',
+    })
+    expect(Object.keys(cozy).sort()).toEqual(Object.keys(tron).sort())
+    for (const v of Object.values(cozy)) expect(v).toMatch(/^#[0-9a-f]{6}$/)
+    expect(normTheme('cozy')).toBe('cozy')
+    for (const v of ['tron', 'neon', undefined, null, 3]) expect(normTheme(v)).toBe('tron')
+  })
+  test('applyTheme changes the palette in use, and the body’s lines are drawn in it', () => {
+    try {
+      applyTheme('cozy')
+      expect(P.panel).toBe(cozy.panel)
+      const used = new Set(layoutBody(BASE).lines.flatMap(l => l.segs.map(s => s.c)))
+      // the neutrals (stage colours on dots and bars are the mechanisms', not the theme's)
+      for (const k of ['hi', 'text', 'mid', 'dim', 'faint', 'head'] as const) expect(used.has(tron[k])).toBe(false)
+      expect(used.has(cozy.head) && used.has(cozy.dim)).toBe(true)
+    } finally {
+      applyTheme('tron')
+    }
+    expect(P).toEqual(tron)
   })
 })

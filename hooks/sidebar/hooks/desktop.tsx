@@ -10,7 +10,7 @@ import type { MechId } from './mechanisms'
 import { hex, stageOf } from './mechanisms'
 import { searchBox, titleButton } from './pane'
 import type { PaneActions, PaneEls } from './pane'
-import { P } from './sections'
+import { P } from './theme'
 
 /**
  * The brain-off header's `◉` while something fires: the mechanism's stage
@@ -19,7 +19,7 @@ import { P } from './sections'
  */
 export function litDot(id: MechId): string {
   const st = stageOf(id)
-  return st.id === 'retrieval' ? P.cyan : hex(st.col, 0.95)
+  return st.id === 'retrieval' ? P.accent : hex(st.col, 0.95)
 }
 
 /** The brainless header and the blank row under it: three rows. */

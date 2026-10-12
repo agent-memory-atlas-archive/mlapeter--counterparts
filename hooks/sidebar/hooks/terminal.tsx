@@ -17,8 +17,8 @@ import { mechById, stageOf } from './mechanisms'
 import type { MechId } from './mechanisms'
 import { searchBox, titleButton } from './pane'
 import type { PaneActions, PaneEls } from './pane'
-import { P } from './sections'
 import { run } from './state'
+import { P } from './theme'
 import { cells } from './width'
 
 /** The brain beside the title, in cells. */

@@ -12,21 +12,11 @@ import type { Elements } from 'claude-code'
 
 import type { SidebarBrain, SidebarScope, SidebarView } from '../types'
 import { shortDir, wrap } from './feed'
-import { P, clip } from './sections'
+import { clip } from './sections'
 import type { Line } from './sections'
 import { HOVER_CP, HOVER_MEM } from './state'
+import { P } from './theme'
 import { CONFIRM_FROM, memoryHover, scopeHover, switchAt } from './words'
-
-/**
- * The brain's cells take the terminal's default background (`bg: null` in
- * `frameCells`), so the panel's own black (`P.panel`) shows through them.
- * Measured: the engine draws a Raster's colours at 4 bits a channel, and the
- * panel colour given to the cells came out `#000011`, a navy box round the
- * brain.
- */
-/** The search box: a shade above the panel, so it reads as a field without a border. */
-export const SEARCH_BG = '#121a22'
-export const CYAN_DIM = '#0b6f7c'
 
 /** The constructors the pane draws with: every surface has these three; `Input` all but mobile. */
 export type PaneEls = Pick<Elements['terminal'], 'Box' | 'Text' | 'Button'> & { Input: Elements['terminal']['Input'] | null }
@@ -50,11 +40,11 @@ export type PaneActions = {
 export function searchBox(els: PaneEls, actions: PaneActions, width: number): JSX.Element {
   const { Box, Text, Input } = els
   return (
-    <Box key="search" flexDirection="row" width={width} backgroundColor={SEARCH_BG}>
-      <Text color={P.mid} backgroundColor={SEARCH_BG}>⌕ </Text>
+    <Box key="search" flexDirection="row" width={width} backgroundColor={P.searchBg}>
+      <Text color={P.mid} backgroundColor={P.searchBg}>⌕ </Text>
       <Box flexGrow={1}>
         {Input === null ? (
-          <Text color={P.dim} backgroundColor={SEARCH_BG}>search</Text>
+          <Text color={P.dim} backgroundColor={P.searchBg}>search</Text>
         ) : (
           <Input key="q" placeholder="search" value="" submitLabel="find" onSubmit={(value: string) => actions.search(value)} />
         )}
@@ -68,9 +58,9 @@ export function titleButton(els: PaneEls, actions: PaneActions, o: { lead: boole
   const { Text, Button } = els
   return (
     <Button key="title" plain onPress={() => actions.openDashboard()}>
-      {o.lead ? <Text color={o.dot ?? CYAN_DIM}>◉ </Text> : ''}
-      <Text color={o.paused ? P.dim : P.cyan} bold>COUNTERPARTS</Text>
-      {o.lead ? <Text color={CYAN_DIM}> ↗</Text> : ''}
+      {o.lead ? <Text color={o.dot ?? P.accentDim}>◉ </Text> : ''}
+      <Text color={o.paused ? P.dim : P.accent} bold>COUNTERPARTS</Text>
+      {o.lead ? <Text color={P.accentDim}> ↗</Text> : ''}
     </Button>
   )
 }
@@ -82,9 +72,9 @@ export function pausedBanner(els: PaneEls, actions: PaneActions, scope: SidebarS
   const { Text, Button } = els
   const off = scope.mode === 'off'
   return [
-    <Text key="paused" color={P.amber} bold>{clip(off ? '◌ Counterparts off here' : '⏸ Counterparts paused here', w)}</Text>,
+    <Text key="paused" color={P.accent2} bold>{clip(off ? '◌ Counterparts off here' : '⏸ Counterparts paused here', w)}</Text>,
     <Button key="resume-banner" plain onPress={() => actions.pressScope('on')}>
-      <Text color={P.amber} underline>
+      <Text color={P.accent2} underline>
         {clip(off ? (scope.own ? 'click to turn it back on' : `off by ${shortDir(scope.setBy)} · why`) : scope.own ? 'click to resume' : `paused by ${shortDir(scope.setBy)} · how to resume`, w)}
       </Text>
     </Button>,
@@ -97,7 +87,7 @@ export function meetRow(els: PaneEls, actions: PaneActions, w: number): JSX.Elem
   const { Text, Button } = els
   return [
     <Button key="meet" plain onPress={() => actions.pressMeet()}>
-      <Text color={P.cyan} bold>{clip('Meet your counterpart', w)}</Text>
+      <Text color={P.accent} bold>{clip('Meet your counterpart', w)}</Text>
     </Button>,
     <Text key="meet-gap"> </Text>,
   ]
@@ -123,7 +113,7 @@ export function aboveSwitches(
             ? `Turn memory back on in ${where}? Nothing from while it was off was kept.`
             : `Turn memory fully on in ${where}? New memories will be kept here, for every session.`
           : `Pause Counterparts memory in ${where} for every session here?`
-    wrap(ask, w).forEach((l, i) => above.push(<Text key={`ask${String(i)}`} color={P.amber}>{l}</Text>))
+    wrap(ask, w).forEach((l, i) => above.push(<Text key={`ask${String(i)}`} color={P.accent2}>{l}</Text>))
     above.push(
       <Box key="pause-ask" flexDirection="row">
         <Button key={`confirm-${askTo}`} onPress={() => actions.confirmChange()}>{askTo === 'off' ? 'Turn off' : askTo === 'on' ? 'Turn on' : 'Pause'}</Button>
@@ -146,7 +136,7 @@ export function footer(
 ): JSX.Element {
   const { Box, Text, Button } = els
   const { scope, w, ccSwitch, memoryOn, mode, cards } = s
-  const dotWord = (key: string, isOn: boolean, word: string, onPress: () => Promise<unknown>, dot?: string, dim = false, lit: string = P.cyan) => (
+  const dotWord = (key: string, isOn: boolean, word: string, onPress: () => Promise<unknown>, dot?: string, dim = false, lit: string = P.accent) => (
     <Button key={key} plain onPress={onPress}>
       <Text color={isOn && !dim ? lit : P.dim}>{dot ?? (isOn ? '●' : '○')}</Text>
       <Text color={isOn && !dim ? P.hi : P.dim}>{` ${word}`}</Text>
@@ -184,7 +174,7 @@ export function footer(
         {(['on', 'paused', 'off'] as const).map(pos => (
           <Box key={`cp-${pos}-box`} flexDirection="row">
             <Text> </Text>
-            {dotWord(`cp-${pos}`, at === pos, pos, () => actions.pressScope(pos), cpDot(pos), at === null, pos === 'on' ? P.cyan : P.amber)}
+            {dotWord(`cp-${pos}`, at === pos, pos, () => actions.pressScope(pos), cpDot(pos), at === null, pos === 'on' ? P.accent : P.accent2)}
           </Box>
         ))}
       </Box>

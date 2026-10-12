@@ -138,7 +138,7 @@ test('on the main screen (no docking) nothing is opened unasked and nothing is s
   expect(w.statuses.every(s => s === undefined)).toBe(true)
   expect(await cmd($, '')).toBe('Counterparts sidebar opened.')
   expect(w.opens).toHaveLength(1)
-  expect(await cmd($, 'nonsense')).toContain('Usage: /counterparts [quiet | brain turning|still|off | resume | fps [n]]')
+  expect(await cmd($, 'nonsense')).toContain('Usage: /counterparts [quiet | brain turning|still|off | theme tron|cozy | resume | fps [n]]')
 })
 
 for (const [n, said] of [
@@ -1967,3 +1967,37 @@ test('a queued speak-first is still dropped when a warm poll read the state offe
   expect(r).toEqual({ drop: 'the person spoke first' })
   await ui.unmount()
 })
+
+for (const surface of SURFACES) {
+  test(`the theme: tron by default; /counterparts theme cozy stores it and the pane draws warm: ${surface}`, async ($, on) => {
+    const w = world(on)
+    await start($, w)
+    const ui = await mount($, w, surface)
+    expect((await ui.find({ type: 'Text', text: 'COUNTERPARTS' }))?.props['color']).toBe('#00e5ff')
+    expect((await ui.find({ type: 'Box', key: 'search' }))?.props['backgroundColor']).toBe('#121a22')
+    expect(await cmd($, 'theme sepia')).toContain('tron or cozy (now tron)')
+    expect(await cmd($, 'theme cozy')).toContain('Theme cozy')
+    expect(w.store['theme']).toBe('cozy')
+    await settle(w)
+    expect((await ui.find({ type: 'Text', text: 'COUNTERPARTS' }))?.props['color']).toBe('#9cc65f')
+    expect((await ui.find({ type: 'Box', key: 'search' }))?.props['backgroundColor']).toBe('#2a1e16')
+    expect(await cmd($, 'theme tron')).toContain('Theme tron')
+    expect(w.store['theme']).toBe('tron')
+    await settle(w)
+    expect((await ui.find({ type: 'Text', text: 'COUNTERPARTS' }))?.props['color']).toBe('#00e5ff')
+    await ui.unmount()
+  })
+}
+
+for (const [stored, color] of [
+  ['cozy', '#9cc65f'],
+  ['neon', '#00e5ff'],
+] as const) {
+  test(`the theme is read from the store at the start: stored ${stored} draws ${color} from the first drawing`, async ($, on) => {
+    const w = world(on, { store: { theme: stored } })
+    await start($, w)
+    const ui = await mount($, w, 'terminal')
+    expect((await ui.find({ type: 'Text', text: 'COUNTERPARTS' }))?.props['color']).toBe(color)
+    await ui.unmount()
+  })
+}

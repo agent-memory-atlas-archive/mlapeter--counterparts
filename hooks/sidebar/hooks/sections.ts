@@ -33,20 +33,8 @@ import type {
 import { dateOf, hm, humanDates } from './feed'
 import { MECHS, STAGES, dashboardRoutes, hex, stageOf } from './mechanisms'
 import type { MechId } from './mechanisms'
+import { P } from './theme'
 import { cells, headCells } from './width'
-
-/** The mockups' palette: neutral text, stage colours only on dots and bars. */
-export const P = {
-  panel: '#05080c',
-  hi: '#dde3e9',
-  text: '#b3bcc5',
-  mid: '#8e98a2',
-  dim: '#66717c',
-  faint: '#1d262e',
-  head: '#c9d1d8',
-  cyan: '#00e5ff',
-  amber: '#ffb347',
-} as const
 
 /** Bars a shade under the site's full stage colour. */
 const BAR_K = 0.84
@@ -276,7 +264,7 @@ function textLines(text: string, w: number, max: number, c: string, key: string,
   const last = wrapN(all.slice(head.length).join(' '), room, 1)[0] ?? ''
   return [
     ...plain(head, c, key, o),
-    { segs: [seg(last, c, o), seg(' ', c), seg(MORE, P.cyan)], key, link: { from: cells(last) + 1, key: moreKey } },
+    { segs: [seg(last, c, o), seg(' ', c), seg(MORE, P.accent)], key, link: { from: cells(last) + 1, key: moreKey } },
   ]
 }
 
@@ -320,7 +308,7 @@ function subTitle(r: SidebarMemoryRef, key: string, w: number, now: number): Lin
   const c = r.opened === true ? P.text : P.mid
   const title = humanDates(r.title, now)
   if (r.opened !== true) return plain(wrapN(title, w, ITEM_LINES), c, key)
-  const mark = [seg(' ', P.dim), seg('↗', P.cyan), seg(' opened', P.dim)]
+  const mark = [seg(' ', P.dim), seg('↗', P.accent), seg(' opened', P.dim)]
   const markW = cells(' ↗ opened')
   let ls = wrapN(title, w, ITEM_LINES)
   const lastW = cells(ls[ls.length - 1] ?? '')
@@ -395,8 +383,8 @@ function chart(s: BodyState, f: Fold): Line[] {
       return [
         heading('Mechanisms today', '', s.w),
         ...plain(wrapN("The dashboard isn't running, so these can't be counted. Start it with", s.w), P.dim),
-        line([seg(clip(first ?? '', s.w), P.cyan)]),
-        ...rest.map(r => line([seg('or ', P.dim), seg(clip(r, s.w - 3), P.cyan)])),
+        line([seg(clip(first ?? '', s.w), P.accent)]),
+        ...rest.map(r => line([seg('or ', P.dim), seg(clip(r, s.w - 3), P.accent)])),
       ]
     }
     return [heading('Mechanisms today', '', s.w), line([seg('reading the dashboard…', P.dim)])]

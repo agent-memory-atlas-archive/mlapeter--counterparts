@@ -39,7 +39,7 @@
  * closure made here). The shared core: `state.ts` (timings, `run`),
  * `words.ts` (what the sidebar says), `feed.ts` (the dashboard's rows and the
  * recall block, read), `sections.ts` (the body's sections, laid out),
- * `mechanisms.ts`, `scopes.ts`. The views: `pane.tsx` (the pane's
+ * `mechanisms.ts`, `scopes.ts`, `theme.ts` (the colours). The views: `pane.tsx` (the pane's
  * tree on every surface), `terminal.tsx` (the brain's header) with
  * `brain.ts`, `cells.ts`, `width.ts` and `tail.ts`, `desktop.tsx` (the
  * header without a brain), and `body.tsx` (the body, a Client surface module).
@@ -57,6 +57,7 @@ import type {
   SidebarRow,
   SidebarSaved,
   SidebarScope,
+  SidebarTheme,
   SidebarToday,
   SidebarView,
 } from '../types'
@@ -134,6 +135,7 @@ import {
 } from './state'
 import { CLASSIC_HINT, TAIL_HINT, TAIL_SPARE, quietTail } from './tail'
 import { BRAIN_ROWS, brain, brainHeader, fireBrain, fps, fpsReport, frameCells, look, lookKey, paceMs, raster } from './terminal'
+import { applyTheme, normTheme } from './theme'
 import { cells } from './width'
 import {
   CONFIRM_FROM,
@@ -179,6 +181,7 @@ const ccSwitchA = atom({ plugin: 'counterparts', key: 'claudeMemorySwitch' } as 
 const onboardingA = atom({ plugin: 'counterparts', key: 'onboarding' } as const, UNKNOWN_ONBOARDING as SidebarOnboarding)
 const viewA = atom({ plugin: 'counterparts', key: 'view' } as const, 'sidebar')
 const brainA = atom({ plugin: 'counterparts', key: 'brain' } as const, 'turning')
+const themeA = atom({ plugin: 'counterparts', key: 'theme' } as const, 'tron')
 const placedA = atom({ plugin: 'counterparts', key: 'placed' } as const, false)
 const noteA = atom({ plugin: 'counterparts', key: 'switchNote' } as const, null)
 const pauseAskA = atom({ plugin: 'counterparts', key: 'pauseAsk' } as const, null)
@@ -1230,15 +1233,23 @@ async function setBrain($: EngineInterface, mode: SidebarBrain): Promise<void> {
   $.ui.invalidate('ui.render')
 }
 
+/** The pane's colours, for every session (`$.store`): tron or cozy. The Pane hook applies it at each drawing. */
+async function setTheme($: EngineInterface, name: SidebarTheme): Promise<void> {
+  await $.store.set('theme', name)
+  if ((await read($, themeA)) !== name) await update($, themeA, () => name)
+}
+
 /**
  * Opened without being asked: only where it docks as a sidebar, and only when
  * the stored view is the sidebar. Measured live (v0.1): the band draws BEFORE
- * `session.start` has read the stored view, so the view is read from the
- * store here.
+ * `session.start` has read the stored view, so the view (and the theme) is
+ * read from the store here.
  */
 async function openUnasked($: EngineInterface): Promise<void> {
   const view = normView(await $.store.get('view'))
   if ((await read($, viewA)) !== view) await update($, viewA, () => view)
+  const theme = normTheme(await $.store.get('theme'))
+  if ((await read($, themeA)) !== theme) await update($, themeA, () => theme)
   if (view !== 'sidebar') return
   const opened = await openPane($)
   if (!opened.isPlaced && run.interactive) {
@@ -1406,10 +1417,10 @@ export const register: Register = on => {
     if (run.startedAt === 0) run.startedAt = await $.clock.now()
     await $.command.register({
       name: 'counterparts',
-      description: 'Counterparts sidebar: open it, make it quiet, or set the brain',
-      argumentHint: '[quiet | brain turning|still|off | resume | fps [n]]',
+      description: 'Counterparts sidebar: open it, make it quiet, or set the brain or the theme',
+      argumentHint: '[quiet | brain turning|still|off | theme tron|cozy | resume | fps [n]]',
     })
-    const [mem, viewPref, brainPref, fpsPref, ccPref, ccEnv, meetMark] = await Promise.all([
+    const [mem, viewPref, brainPref, fpsPref, ccPref, ccEnv, meetMark, themePref] = await Promise.all([
       $.store.get('claudeMemory'),
       $.store.get('view'),
       $.store.get('brain'),
@@ -1417,7 +1428,9 @@ export const register: Register = on => {
       $.store.get('claudeMemorySwitch'),
       $.env.get('COUNTERPARTS_SIDEBAR_CC_MEMORY'),
       $.store.get(MEET_FLAG),
+      $.store.get('theme'),
     ])
+    await update($, themeA, () => normTheme(themePref))
     await update($, memoryA, () => mem !== false)
     // The Claude memory switch is drawn only for someone who opted in. Whoever had already
     // turned Claude Code's memory off keeps the switch (stored once), so nobody is left with a
@@ -1485,6 +1498,11 @@ export const register: Register = on => {
       await setBrain($, arg)
       return { text: arg === 'off' ? 'The brain is off: the header is one line.' : arg === 'still' ? 'The brain holds still, and lights where something fires.' : 'The brain turns slowly, and lights where something fires.' }
     }
+    if (verb === 'theme') {
+      if (arg !== 'tron' && arg !== 'cozy') return { text: `counterparts theme: tron or cozy (now ${normTheme(await read($, themeA))}).` }
+      await setTheme($, arg)
+      return { text: arg === 'cozy' ? 'Theme cozy: walnut, parchment, leaf green and pumpkin, in every session.' : 'Theme tron: black, cyan and amber, in every session.' }
+    }
     if (verb === 'resume') {
       if ((await read($, scopeA)).mode === 'unknown') await readScope($) // the registry could not be read: ask the server
       const scope = await read($, scopeA)
@@ -1497,7 +1515,7 @@ export const register: Register = on => {
       return { text: switchExplains(scope) ?? `Counterparts memory isn't paused in ${shortDir(scope.dir)}.` }
     }
     if (verb !== '' && verb !== 'open' && verb !== 'sidebar') {
-      return { text: 'Usage: /counterparts [quiet | brain turning|still|off | resume | fps [n]]. With nothing after it, opens the sidebar.' }
+      return { text: 'Usage: /counterparts [quiet | brain turning|still|off | theme tron|cozy | resume | fps [n]]. With nothing after it, opens the sidebar.' }
     }
     // Asked for: placed at any width, whatever view it was left in.
     const opened = await openPane($)
@@ -1646,7 +1664,9 @@ export const register: Register = on => {
     // session's copy is read too, so a turn of the switch here draws again.)
     await read($, memoryA)
     const memoryOn = await claudeMemoryOn($)
-    const [ccSwitch, onboarding] = await Promise.all([read($, ccSwitchA), read($, onboardingA)])
+    const [ccSwitch, onboarding, theme] = await Promise.all([read($, ccSwitchA), read($, onboardingA), read($, themeA)])
+    // Every colour below (and in the body's lines) is read from the palette in use: this session's theme.
+    applyTheme(normTheme(theme))
     const paused = isPaused(scope.mode)
     const mode = normBrain(brainMode)
     look.mono = paused
