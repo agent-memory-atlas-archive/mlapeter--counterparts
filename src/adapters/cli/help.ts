@@ -368,8 +368,9 @@ export const COMMAND_DETAIL: Record<string, readonly string[]> = {
     "It needs an injection ceiling, and says which of these gave it one:",
     "--budget <bytes>, else the config named by --config / $COUNTERPARTS_CONFIG,",
     "else <dir>/../claude-code.json (beside the store), else",
-    "~/.counterparts/claude-code.json (where the hooks read). Never a config",
-    "INSIDE the data dir — that store stops opening (§5 G11).",
+    "~/.counterparts/claude-code.json (where the hooks read). A config found",
+    "there without the key gives Claude Code's 9000, as the hooks use. Never a",
+    "config INSIDE the data dir — that store stops opening (§5 G11).",
   ],
   "probe-oq4": [
     "recall CONTRACT §7. The footnote header is the one string the probe varies",

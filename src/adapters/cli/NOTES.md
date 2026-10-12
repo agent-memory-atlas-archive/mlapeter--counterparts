@@ -1239,6 +1239,14 @@ is treated as no evidence rather than as evidence of absence.
   the owner's plan line ("`--budget` gets a default of 9000") and it is a working default,
   not a new rule — if it fights §2.18 later, the interactive arm is the one place to take
   it back out.
+  **2026-10-12: every Claude Code arm writes it now.** The 0.3.20 release check found the
+  cost of the scripted arm's silence: the plugin's first run is `install --no-connect` with
+  no terminal, so every plugin install got a configuration with no key, and a store that
+  never composed a wake (`briefing.no-budget`): each session woke on the bootstrap line,
+  day after day. `installCommand` now writes 9,000 into any configuration it creates for
+  Claude Code; `installDesktop` alone writes none. A file already written without the key
+  wakes under the same number at load (`config.ts#withBudgetDefault`), and `rebrief` uses
+  it for a config found without the key. The core still has no default.
 
 ### The merge with C and D, and what a real pty found (2026-09-21)
 

@@ -5642,16 +5642,35 @@ describe("install", () => {
     expect(parsed["embedder"]).toEqual({ enabled: true, kind: "static" });
   });
 
-  test("invents no injection ceiling, and says so (scar §2.18)", async () => {
-    const home = fakeHome("noceiling");
-    const store = join(outside, "noceiling", "store");
+  test("the scripted arm writes Claude Code's ceiling into a new configuration, as the terminal's does (2026-10-12)", async () => {
+    // Until 0.3.20 this arm wrote no key, and so did the plugin's first run
+    // (`install --no-connect`, no terminal): a store that never composed a wake.
+    for (const extra of [[], ["--yes"], ["--no-connect"]]) {
+      const tag = `ceiling${extra.join("")}`;
+      const home = fakeHome(tag);
+      const store = join(outside, tag, "store");
+      const c = consoleWith();
+      expect(await run(["install", "--dir", store, ...extra], { io: c.io, env: {}, home })).toBe(EXIT.ok);
+      const parsed = JSON.parse(
+        readFileSync(join(home, ".counterparts", CONFIG_FILE), "utf8"),
+      ) as Record<string, unknown>;
+      expect(parsed["injectionBudgetBytes"]).toBe(9000);
+      expect(text(c.out)).not.toContain("invents none");
+    }
+  });
+
+  test("a forced re-install over a file with no ceiling writes none: nothing is invented over a kept file (B1)", async () => {
+    const home = fakeHome("forcednoceiling");
+    const store = join(outside, "forcednoceiling", "store");
+    mkdirSync(join(home, ".counterparts"), { recursive: true });
+    writeFileSync(join(home, ".counterparts", CONFIG_FILE), JSON.stringify({ dataDir: store }));
     const c = consoleWith();
-    expect(await run(["install", "--dir", store], { io: c.io, env: {}, home })).toBe(EXIT.ok);
+    expect(await run(["install", "--dir", store, "--force"], { io: c.io, env: {}, home })).toBe(EXIT.ok);
     const parsed = JSON.parse(
       readFileSync(join(home, ".counterparts", CONFIG_FILE), "utf8"),
     ) as Record<string, unknown>;
+    // The hooks wake under the default anyway (`config.ts#withBudgetDefault`).
     expect(parsed["injectionBudgetBytes"]).toBeUndefined();
-    expect(text(c.out)).toContain("invents none");
   });
 
   test("refuses a --budget that is not a positive whole number, before anything is created", async () => {
