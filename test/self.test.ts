@@ -2428,8 +2428,10 @@ describe("structural guarantees", () => {
       for (const line of src.split("\n")) if (line.includes("PAGE_HOST_BUDGET_BYTES")) uses.push(`${f}: ${line.trim()}`);
     }
     expect(uses).toEqual([
-      "briefing.ts: export const PAGE_HOST_BUDGET_BYTES = 9_000;",
-      "briefing.ts: export const PAGE_ROOM_BYTES = pageRoomBytes(PAGE_HOST_BUDGET_BYTES);",
+      "briefing-page.ts: export const PAGE_HOST_BUDGET_BYTES = 9_000;",
+      "briefing-page.ts: export const PAGE_ROOM_BYTES = pageRoomBytes(PAGE_HOST_BUDGET_BYTES);",
+      // `briefing.ts` re-exports the page part's names (2026-10-12): a name, not a use.
+      "briefing.ts: PAGE_HOST_BUDGET_BYTES,",
     ]);
   });
 
