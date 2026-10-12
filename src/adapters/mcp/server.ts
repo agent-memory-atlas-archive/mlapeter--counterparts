@@ -1398,7 +1398,9 @@ export class McpServer {
       return this.refuse("meet", "step-unknown", { detail: `step is one of ${MEET_STEPS.join(", ")} — or omit it for the script.` });
     }
     // A step taken is an offer made: the mod and the wake stop offering.
-    if (meetState(store) === "not_started") noteOffered(store, { on, session, state: true });
+    // An answer after a "later" is the meeting resumed: offered again, so it holds.
+    const before = meetState(store);
+    if (before === "not_started" || (before === "later" && step !== "later" && step !== "skipped" && step !== "done")) noteOffered(store, { on, session, state: true });
     const answer = typeof args["answer"] === "string" ? args["answer"].trim() : "";
     const done = (extra: Record<string, unknown>): ToolResult => {
       this.emit("mcp.meet.step", undefined, { step, stored: typeof extra["stored"] === "number" ? extra["stored"] : null });
@@ -1417,12 +1419,12 @@ export class McpServer {
         recordState(store, "done", { on, session, writeUp });
         this.emit("mcp.meet.step", undefined, { step, stored: null });
         const view = { recorded: step, ...onboardingView(store) };
-        if (!writeUp) return this.result(view, false);
+        // Unbound, the close still comes; the write-up names the id to pass.
         const next = finishText({
           name: this.counterpart.ownerDisplayName(),
           dreaming: this.counterpart.dreams.setting(),
           plugin: this.install === "plugin" && !this.desktop,
-          session,
+          session: writeUp ? session : "<your session id, as the wake names it>",
         });
         return { content: [{ type: "text", text: next }], structuredContent: { ...view, next } };
       }

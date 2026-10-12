@@ -738,3 +738,29 @@ describe("the meeting holds the dream and the write-up ask, through the real hoo
     });
   });
 });
+
+describe("the meeting binds to the session the model names", () => {
+  test("a server launched without a session: `session` on each call, confirmed by the registry, is the one held", async () => {
+    newInstallStore();
+    recordSession(storeDir, { sessionId: "s9", scope: proj, phase: "start", at: SERVER_NOW });
+    const s = server({ session: undefined });
+    await s.call("meet", { session: "s9" });
+    expect(meetingHold(s.counterpart.store, "s9", SERVER_NOW)).toBe("running");
+    // A name the registry does not know is not taken.
+    await s.call("meet", { session: "s-unknown", step: "name", answer: "Ada" });
+    expect(meetingHold(s.counterpart.store, "s-unknown", SERVER_NOW)).toBeNull();
+    await s.call("meet", { session: "s9", step: "week", answer: "Ada's week was all tide tables." });
+    const fin = await s.call("meet", { session: "s9", step: "done" });
+    expect(String(fin.structuredContent["next"])).toContain("session: s9");
+    expect(meetingHold(s.counterpart.store, "s9", SERVER_NOW)).toBe("finished");
+  });
+
+  test("unbound, the finish still gives the close, and the write-up says which id to pass", async () => {
+    newInstallStore();
+    const s = server({ session: undefined });
+    const fin = await s.call("meet", { step: "done" });
+    const next = String(fin.structuredContent["next"]);
+    expect(next).toContain("session: <your session id, as the wake names it>");
+    expect(next).toContain("What would you like to work on today?");
+  });
+});
