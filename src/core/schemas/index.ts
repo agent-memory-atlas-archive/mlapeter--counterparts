@@ -151,6 +151,9 @@ const EVENT_RING = 500;
 /** How many of a name's memories make the source its birth is checked against. */
 const NAME_SOURCE_MEMORIES = 20;
 
+/** The share of a removed card's live linked memories a name must cover to be its name (review of #429). */
+const REMOVED_COVER = 0.8;
+
 /**
  * A tallied name's kind, from what its memories are ABOUT: the person, place
  * or entity memories that carry the name in their title. A person when those
@@ -1453,9 +1456,26 @@ export class Schemas {
     const byId = new Map(texts.map((m) => [m.id, m]));
     const born: string[] = [];
     const refused: Record<string, number> = {};
+    // A CARD THE OWNER REMOVED STAYS REMOVED (review of #429). The chase
+    // blanks its name and keeps only the ids it linked (store §16 G9), so the
+    // name is recognised by its memories: one whose memories cover
+    // `REMOVED_COVER` of the removed card's still-live ones is the same name.
+    // Its own name covers them all for as long as they say it; an alias hit
+    // the card linked may not, hence not 1.
+    const removed = this.store
+      .cardTombstoneLinks()
+      .map((ids) => ids.filter((id) => byId.has(id)))
+      .filter((ids) => ids.length > 0);
+    const names = tally.names.filter((n) => {
+      if (removed.length === 0) return true;
+      const mine = new Set(n.memories);
+      const taken = removed.some((ids) => ids.filter((id) => mine.has(id)).length >= REMOVED_COVER * ids.length);
+      if (taken) refused["removed-by-owner"] = (refused["removed-by-owner"] ?? 0) + 1;
+      return !taken;
+    });
     let skippedForLimit = 0;
     let attempts = 0;
-    tally.names.forEach((n, i) => {
+    names.forEach((n, i) => {
       if (attempts >= limit) {
         skippedForLimit += 1;
         return;
@@ -1482,14 +1502,14 @@ export class Schemas {
     this.emit("schema.births.sweep", undefined, {
       day,
       memories: texts.length,
-      offered: tally.names.length,
+      offered: names.length,
       born: born.length,
       refused: Object.values(refused).reduce((a, b) => a + b, 0),
       skippedForLimit,
       lowerCase: tally.lowerCase,
       dryRun,
     });
-    return { day, dryRun, memories: texts.length, offered: tally.names.length, born, refused, skippedForLimit, lowerCase: tally.lowerCase };
+    return { day, dryRun, memories: texts.length, offered: names.length, born, refused, skippedForLimit, lowerCase: tally.lowerCase };
   }
 
   // ── reads ──────────────────────────────────────────────────────────────────

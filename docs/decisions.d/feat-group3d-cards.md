@@ -33,3 +33,16 @@
   recall candidate and not a facts-mode result (the identity core included). Why: a newborn
   card's body is a stub that asserts nothing, and once cards were born a turn naming someone
   footnoted it. The card works as the index (subjects), not as a memory.
+
+### Decided by the #429 reviewer, 2026-10-11, lightly held (a removed card stays removed)
+
+- Decided by the #429 reviewer, 2026-10-11, lightly held: a card the owner removed is not
+  born again by the name tally. The chase keeps the memory ids the card linked (box-2 meta
+  `removal.card.<id>`), and `Schemas#birthsFromNames` refuses, as `removed-by-owner`, a name
+  whose memories cover 0.8 of those still live. Why: the chase blanks the card's name, so the
+  tally would rebirth it from the very memories that still say it, undoing the owner's act
+  (store CONTRACT: a removed memory cannot be silently resurrected). A hash of the name was
+  considered and refused: store §16 G9 forbids a content hash in what a removal leaves,
+  because a name is low-entropy and a hash of it is brute-forceable. If the owner later
+  removes those memories too, nothing is left to recognise the name by. A block by name that
+  outlives the memories would need G9 amended, which is the owner's call.

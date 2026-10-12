@@ -627,6 +627,17 @@ day 20; the copy migrated v12 → v13 on open and its lexical index rebuilt firs
 about him" have no person card to sit on, and none can be born: his name is held, and a near
 variant is refused `collision-near`. That is review 12 §4.5's collision, left for cards as
 views (synthesis L). The identity core's aliases are minted once from config; a nickname of
-the owner said often enough would be born as a person card (none on the copy). A card the
-owner removed is blanked by the chase, so its name can no longer be recognised, and the tally
-could give the name a new card.
+the owner said often enough would be born as a person card (none on the copy), and so would
+a misspelling of his two-word name (a test with a synthetic owner: his first or last name
+alone is refused `collision-near`; "Firstnme Lastname" and a diminutive are born). The config's
+aliases are what close that.
+
+**A card the owner removed stays removed** (review of #429). The chase blanks a card's name,
+so the tally could no longer recognise it and would give the name a new card from the same
+memories, undoing the removal. The chase now keeps the ids the card linked (meta
+`removal.card.<id>`, `Store#cardTombstoneLinks`) — never the name or a hash of it, which store
+§16 G9 forbids because a name is low-entropy — and `birthsFromNames` refuses a name whose
+memories cover 0.8 of those still live (`removed-by-owner`). Its own name covers them all for
+as long as they say it, so new memories naming it do not bring it back. A different name is
+refused only if it is in nearly every memory the card linked. If the owner removes those
+memories too, the record holds nothing: the name could then be born again from new ones.

@@ -28,6 +28,7 @@ import { tallyNames } from "../src/core/schemas/names.js";
 import type { TalliedText } from "../src/core/schemas/names.js";
 import { PHASES, phaseReport } from "../src/core/sleep/index.js";
 import { factsRecall } from "../src/adapters/mcp/facts.js";
+import { ownerRemoval } from "../src/adapters/cli/removal.js";
 
 const NOW = Date.parse("2026-03-02T12:00:00Z");
 const SESSION = "aaaaaaaa-1111-2222-3333-444444444444";
@@ -216,6 +217,36 @@ describe("cards are born from the tally, gated by mention() (Schemas#birthsFromN
     const r = later.birthsFromNames(9);
     expect(r.offered).toBe(0);
     expect(r.born).toEqual([]);
+  });
+
+  test("a card the owner removed is not born again, from the old memories or from new ones", () => {
+    const s = store();
+    const { naming } = spouse(s);
+    const card = Schemas.open({ store: s }).birthsFromNames(4).born[0] as string;
+    expect(card).toBeDefined();
+    ownerRemoval(s, { targetId: card, actor: "owner", reason: "no card for her", requestedAt: 0 });
+    // The chase blanks the card's name; what stays is the ids it linked (an
+    // address, never a word or a hash of one: store CONTRACT §16 G9).
+    expect(s.row(card)?.body).toBe("");
+    expect(s.cardTombstoneLinks().map((l) => [...l].sort())).toEqual([[...naming].sort()]);
+
+    const next = Schemas.open({ store: s });
+    const r = next.birthsFromNames(5);
+    expect(r.born).toEqual([]);
+    expect(r.offered).toBe(0);
+    expect(r.refused).toEqual({ "removed-by-owner": 1 });
+
+    // Talked about on two more days: still the name the owner took the card from.
+    put(s, "Wren took the early ferry again.", 6);
+    put(s, "Wren and I fixed the gate.", 7);
+    put(s, "Wren's sister visited for lunch.", 7);
+    expect(Schemas.open({ store: s }).birthsFromNames(8).born).toEqual([]);
+    // Another name in the same memories is not caught by it.
+    for (const [body, day] of [["Corvin rang about the boat.", 6], ["Lunch with Corvin.", 7], ["Corvin sent the plans.", 8]] as const) {
+      put(s, body, day);
+    }
+    const third = Schemas.open({ store: s });
+    expect(third.birthsFromNames(9).born.map((id) => nameOf(third, id))).toEqual(["Corvin"]);
   });
 
   test("the night's limit births the most-named first and counts the rest, which come next night", () => {

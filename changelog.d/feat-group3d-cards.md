@@ -8,3 +8,5 @@
 - **A card no longer shows up as a memory.** A newborn card holds only its name, so it isn't
   shown in a turn's recall or among the results of a question by name; the memories it links
   are.
+- **A card you remove stays removed.** Removing a person's or project's card no longer lets
+  the nightly count of names give it a new card from the same memories.
