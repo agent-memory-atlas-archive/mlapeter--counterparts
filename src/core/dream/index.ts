@@ -41,7 +41,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { Associate } from "../associate/index.js";
 import { FIT_TUNABLES, clipWire, fidelityOf, fit, lineOf, offeredOf, packParts, readIndex, wireChars, writeIndex } from "../fit/index.js";
 import type { Fidelity, FitCandidate, Placed } from "../fit/index.js";
-import { curveSal, emotionalIntensity, strength } from "../physics/index.js";
+import { belowReach, curveSal, emotionalIntensity, strength } from "../physics/index.js";
 import type { MemoryPhysics } from "../physics/index.js";
 import { earlierMark, headOf, isHandoff, isSelfPage } from "../recall/index.js";
 import { namesOwner, ownerNames } from "../sleep/index.js";
@@ -2709,11 +2709,11 @@ export class Dreams {
       if (row === undefined || !this.showableAs(row, opts.owner)) continue;
       if (opts.madeBy !== undefined && (row.created_at ?? 0) > opts.madeBy) continue;
       const p = rowToPhysics(row);
-      if (strength(p, day) < PHYSICS.REACH) {
+      if (belowReach(p, day)) {
         // BELOW REACH, NEVER DREAMED: it left the queue for ordinary fading.
         // Counted once — when it was still within reach at the last dream (or
         // born after it) — and said. Recall still finds it; a use revives it.
-        if (since !== null && (row.birth_day > since.day || strength(p, since.day) >= PHYSICS.REACH)) faded += 1;
+        if (since !== null && (row.birth_day > since.day || !belowReach(p, since.day))) faded += 1;
         continue;
       }
       ids.push(id);

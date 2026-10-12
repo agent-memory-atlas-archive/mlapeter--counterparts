@@ -120,6 +120,18 @@ describe("the whole queue is read, by reach, not by position or a fixed window",
     expect(b.queue.tonight + b.queue.waiting).toBe(b.queue.new);
   }, 120_000);
 
+  test("the core never leaves the queue by reach, even faded by a settle (physics' belowReach; review of #436)", () => {
+    const c = brain();
+    nextDay(c);
+    const core = mem(c, "Who I am when the work gets hard.", { kind: "self", about: "me", salience: ROUTINE });
+    c.store.updatePhysics(core, { promotedIdentity: true, fade: 0.1 });
+    for (let i = 0; i < 3; i += 1) nextDay(c);
+    expect(strength(c.store.physicsOf(core), c.store.livedDay())).toBeLessThan(PHYSICS.REACH);
+    const b = begin(c);
+    expect(b.fresh.map((f) => f.id)).toContain(core);
+    expect(b.queue.agedOut).toBe(0);
+  });
+
   test("a store that has never dreamed queues only its last week: its life before dreaming is not a backlog (review of #436)", () => {
     const c = brain();
     nextDay(c);
