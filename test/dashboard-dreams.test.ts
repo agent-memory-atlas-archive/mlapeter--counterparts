@@ -243,12 +243,12 @@ describe("f8's follow-ups from #277 (2026-10-01)", () => {
     expect(say({ fresh: 12, shown: 30 })).toBe("I began to dream, over 12 new memories and 30 in all.");
     expect(say({ fresh: 12, shown: 30, waiting: 0, agedOut: 0 })).toBe("I began to dream, over 12 new memories and 30 in all.");
     expect(say({ fresh: 40, shown: 52, waiting: 7, agedOut: 2 })).toBe(
-      "I began to dream, over 40 new memories and 52 in all. 7 more wait for the next night; 2 grew too old to be dreamed and will fade as usual.",
+      "I began to dream, over 40 new memories and 52 in all. 7 more wait for the next night; 2 left the queue undreamed and will fade as usual.",
     );
     expect(say({ fresh: 40, shown: 52, waiting: 1 })).toBe("I began to dream, over 40 new memories and 52 in all. 1 more waits for the next night.");
     // Floors are said as floors.
     expect(say({ fresh: 40, shown: 52, waiting: 7, agedOut: 2, readCapped: true, agedOutAtLeast: true })).toBe(
-      "I began to dream, over 40 new memories and 52 in all. At least 7 more wait for the next night; at least 2 grew too old to be dreamed and will fade as usual.",
+      "I began to dream, over 40 new memories and 52 in all. At least 7 more wait for the next night; at least 2 left the queue undreamed and will fade as usual.",
     );
   });
 });

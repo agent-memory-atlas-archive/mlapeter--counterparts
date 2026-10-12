@@ -597,7 +597,7 @@ describe("the wake's parts", () => {
       "The staging deploy needs its secrets file mounted read-only.",
     ]) {
       const day = c.store.livedDay();
-      c.store.put({ type: "memory", kind: "fact", body, physics: { birthDay: day, lastUsedDay: day } });
+      c.store.put({ type: "memory", kind: "fact", body, salience: { relevance: 0.5, emotional: 0, predictive: 0.5 }, physics: { birthDay: day, lastUsedDay: day } });
     }
     expect(c.dreams.setSetting("auto", { by: "owner" }).ok).toBe(true);
     const auto = String(payload(await s.call("wake", {}))["wake"]);

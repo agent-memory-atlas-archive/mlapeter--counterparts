@@ -201,16 +201,23 @@ dreamer is the model (a background agent the session launches), outside this pro
   (a handoff's first line, words only). Not new; the dream may draw on them. The ids
   shown are recorded on the dream; nothing else can be changed by it.
 - **The queue, tonight's room, and parts** (2026-09-28, build B; working defaults, held
-  lightly — `fit/` CONTRACT states the principle). "New" is every showable memory born
-  within `QUEUE_DAYS` lived days that no dream that stands was shown (read from the
-  dreams' own `shown`; a dream being resumed, or one the next `begin` will resume or
-  close, is passed over). The gate's `MIN_NEW` counts this queue. `begin` ranks it by
-  replay priority (salience, how strongly felt, coming up or on my mind, salient-but-weak,
-  less a little for age) and takes tonight's new memories in that order while their lines,
+  lightly — `fit/` CONTRACT states the principle; read whole and ranked by value ×
+  fragility since 2026-10-11, Group 3 part C). "New" is every showable memory that no
+  dream that stands was shown (read from the dreams' own `shown`; a dream being resumed,
+  or one the next `begin` will resume or close, is passed over) and that is still within
+  reach on its own curve (`physics.REACH`), born since the first standing dream's
+  `FIRST_DREAM_DAYS` look-back (a store's life before it dreamed is not a backlog), plus a
+  refused fold's carried parts. The whole queue is read — no positional cut. The
+  per-prompt gate's `MIN_NEW` counts it only `ASK_QUEUE_DAYS` back, newest first (a floor,
+  said as one). `begin` ranks it by replay priority = value × fragility (`replayPriorityOf`:
+  value = salience on the curve + how strongly felt + 0.4 dated + 0.3 on my mind;
+  fragility = `1 − strength` on the next lived day, at least `FRAGILITY_FLOOR`), carried
+  fold parts first and together, and takes tonight's new memories in that order while their lines,
   and their neighbours', fit `FRESH_SHARE` of `NIGHT_CHARS`; the rest WAIT for the next
-  night, counted in the bundle (`queue`), the tool's `how` and the hand-back. Past the
-  window a never-dreamed memory leaves the queue for ordinary fading, and how many did since
-  the last dream is said (`agedOut`). Every memory shown has a line at least and says why
+  night, counted in the bundle (`queue`), the tool's `how` and the hand-back. A
+  never-dreamed memory leaves the queue when it falls below reach, and how many did since
+  the last dream is said (`agedOut`, a name kept from the fixed window it counted before).
+  Every memory shown has a line at least and says why
   it is here, what it is about, its strongest feeling and its whole length; the most
   important come whole (up to `DETAIL_CHARS`, else an excerpt with its length). The
   journal comes as ENTRIES, cut at the chapter headings: only the entries added since the
@@ -257,7 +264,9 @@ dreamer is the model (a background agent the session launches), outside this pro
   [`DREAMED_CLAIM_CEILING`, `FOLD_CLAIM_CEILING` 0.6]; its title is its own (no
   `Dreamed:`); the dream picks its kind; it is `me`/`us` only when most of its parts are (`foldMarkFrom`), else their most common other mark. At most
   `FOLDS`, 5, a dream; one past it is refused `limit-reached`, counted on `dream.changed`
-  as `foldOverflow` and said in the hand-back. Counted as `fold`, not `gist`. A later
+  as `foldOverflow` and said in the hand-back; its parts a fold would fade (two or more)
+  are CARRIED to the next night's queue as one group (2026-10-11, Group 3 part C: a
+  `dream.carried` event; `foldCarried` on `dream.changed`). Counted as `fold`, not `gist`. A later
   `corrected` settle over one of its parts flags it beside the corrector, source
   `fold-source-corrected`; "which folds came from X" is `Store#foldsCiting`, a query over
   `meta.sources`), `contradiction`

@@ -666,3 +666,35 @@ days by three sessions over seven lived days (three of the fold, one of a part) 
 22 of 1,009 live memories out of a fold, down from 79 (any feeling). A fold now starts at
 the strength of the parts it holds over (kept ones don't lift it); on these clusters the
 starts are the same. Undo put every source's fade back exactly (57 of 57).
+
+## 2026-10-11 — the dream queue (Group 3 part C, held lightly)
+
+The queue is read whole (no newest-2,000 read), a memory stays in it while it is within
+reach (no 7-day window), and it is ranked by value × fragility. Simulated on a copy of the
+owner's store (10-11 snapshot, v12 migrated; no model; the copy has no embedding cache, so
+no neighbour lines: `FRESH_SHARE` was lowered to 0.1 in both runs to bring a night back to
+the live ~52):
+
+- Tonight (+1 lived day): before, 50 of a 254 queue, 16 of them already below reach (wasted
+  replay); after, 52 of a 182 queue, none below reach, 53 counted as having faded undreamed.
+  15 of the 52 are the same. The ranking moves dated, `us`/owner and felt memories up, and
+  brings in 10 undreamed memories from lived days 1–5 that were still within reach.
+- Drain with no use, after: queue 182 → 127 → 69 → 17 → empty by +5 (faded 53, 5, 7).
+  Before: 254 → 204 → 152 → 101 → 49 → empty by +6, nothing counted as faded.
+- A sixth fold of four parts had fewer than two foldable parts (nothing carried); a seventh
+  carried its 2 parts, which came back first, together, the next night.
+- Cost (copy, bun, 1x / a 10x copy with every memory cloned 9 times and every dream showing
+  the clones): the night's full queue read 3.8 / 41 ms (before, capped: 2.4 / 18 ms); the
+  per-prompt gate 0.9 / 4.4 ms (0.6 / 3.8); `begin` end to end 63 / 335 ms (69 / 321). The
+  work is the undreamed rows (dreamed ids are skipped before any row is read), and the
+  undreamed rows below reach leave with the prune, so it grows with intake, not the store.
+  Before, the 10x read hit `readCapped`.
+- Review of #436: the queue read every dream with `SELECT *` (journals included) on every
+  prompt. It now reads `store.dreamsShown` (no journal), and the gate only its week's dreams.
+  On the 10x copy with 350 older journaled dreams added (365 in all), the gate's queue read
+  went 7.3 → 2.8 ms (the same as at 15 dreams); counts unchanged. The carry's events were read
+  through the event log's default page (500, oldest first); now whole.
+- The reflection's part packer read a memory the fit left as an id, but that the dream also
+  saw (so it was offered as a line too), as a line: a part cost more than `pack` measured.
+  Once the queue read whole, the CJK limits test showed it (25.2k over a 24k part). Fixed
+  in `reflect.ts#part`: an id is read as an id before a line.
