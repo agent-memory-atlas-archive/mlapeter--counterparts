@@ -308,8 +308,8 @@ export function isInteractive(input: Pick<HookInput, "entrypoint" | "attended">)
  *    person typed, and a subagent's own compaction fires it too (measured
  *    2026-10-10: `SessionStart:compact` inside an Agent-tool subagent, `cli`,
  *    handed a full wake). What a person is owed waits one prompt.
- * A plain reminder, the first meeting's line and the wake row's `interactive`
- * all read this; `startup`, `clear` and `resume` are a person's.
+ * A plain reminder and the first meeting's line read this (the wake row's
+ * `interactive` does not: it says who is in the session, not this start); `startup`, `clear` and `resume` are a person's.
  */
 export function watchedAtStart(input: Pick<HookInput, "entrypoint" | "attended" | "nightRun" | "source">): boolean {
   return isInteractive(input) && input.nightRun !== true && input.source !== "compact";
@@ -742,7 +742,9 @@ export class ClaudeCodeAdapter extends Lifecycle {
         // reminders. The `fired` report's plain-due check reads it, so a day
         // only the headless run or `claude -p` came is not a day a reminder
         // could have been said.
-        interactive: watched,
+        // Not `watched`: the fired report marks a session unattended for good
+        // on any start that says so, and a person's session compacts too.
+        interactive: isInteractive(input) && input.nightRun !== true,
         // A resume's short wake (2026-10-11): `bytes` is the line, not a bundle.
         resumed,
       });
