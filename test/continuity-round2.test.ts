@@ -268,7 +268,7 @@ describe("the lanes: an answered question is not shown alone, and nothing shows 
     expect(shownBy(s)).toContain(b);
   });
 
-  test("a holds that is gone hides nothing; a memory re-affirmed by a newer pair is not hidden by the older one", () => {
+  test("a holds that is gone hides nothing; a newer pair in which a memory holds does not lift it out from under the older one", () => {
     const s = Store.open({ dir });
     stores.push(s);
     const x = hint(s, "The delivery van goes out on Tuesdays and Fridays.");
@@ -284,12 +284,14 @@ describe("the lanes: an answered question is not shown alone, and nothing shows 
     const r = hint(s, "The ovens are cleaned whenever the week is quiet.");
     changed(s, q, p);
     expect(settledOver(s).has(p)).toBe(true);
-    // Later p is re-affirmed: a newer pair has it HOLD over another.
+    // A newer pair has p HOLD over another: it speaks about p and r only, so p
+    // stays under q (Group 3 part B; random-06 — was #311's re-affirm), and r
+    // under p, at the end of the chain q.
     changed(s, p, r);
     const over = settledOver(s);
-    expect(over.has(p)).toBe(false);
+    expect(over.has(p)).toBe(true);
     expect(over.has(r)).toBe(true);
-    expect(shownBy(s)).toContain(p);
+    expect(shownBy(s)).toContain(q);
   });
 
   test("a memory arriving is shown under Arriving only, not under Nearby too", () => {

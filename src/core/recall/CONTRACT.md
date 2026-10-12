@@ -437,8 +437,10 @@ is recallable, ranked or gated moves. The deliberate path carries the same as a
 **[M] "Earlier (now [id])" names the end of the chain** (review of #408, 2026-10-11): the
 id is `headOf`'s, the same memory a write's neighbours and the dream's bundles name with
 `earlier (now mem_…)` — on A→B→C, A reads `now [C]`. And `headOf` decides whether it is
-earlier at all (the wake's `settledOver` rule): a memory a newer pair names as what holds,
-or whose holder is gone with nothing live after it, carries no `Earlier`.
+earlier at all (the wake's `settledOver` rule): a memory whose holder is gone with nothing
+live after it carries no `Earlier`. Since 2026-10-11 (Group 3 part B; random-06, lightly
+held) a settle speaks only about the pair it names: a newer pair in which a memory holds no
+longer re-affirms it over the pair that put it under another.
 
 **[M] The chain head wins ambient recall** (2026-10-11, Group 2; review 04 change 1, MOD
 #3) — the one place the label's rule became a filter. A turn candidate with a `headOf`

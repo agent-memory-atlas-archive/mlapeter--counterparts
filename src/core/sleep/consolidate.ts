@@ -378,7 +378,7 @@ export const SLOT_WALK_MAX = 12;
 /**
  * A MEMORY'S SLOT (2026-10-11, Group 3 part A): the memory and the live ones a
  * standing "A over B" ties it to — a SETTLED `changed` pair (a write's
- * `updates`, a settle, a dream merge, a fold once part B writes them) —
+ * `updates`, a settle, a dream merge, a dream fold: Group 3 part B) —
  * walked along the chain, at most `SLOT_WALK_MAX`. Not a slot proposal still
  * waiting (unconfirmed, about one in seven wrong on Group 2's hand-read: a
  * wrong one would pool another memory's uses into this one — decided by the

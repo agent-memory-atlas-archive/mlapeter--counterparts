@@ -209,6 +209,21 @@ export const FULFILLED_SOURCE = "fulfilled";
 /** The `source` of the pairs a dream merge writes, one per original (`dream/index.ts#DREAM_MERGE_REASON`, spelled here: this file sits below `dream/`). */
 export const DREAM_MERGE_SOURCE = "dream-merge";
 
+/**
+ * The `source` of the pairs a dream FOLD writes, one per source it fades
+ * (2026-10-11, Group 3 part B; item 15): the fold holds over each part,
+ * `changed`, through the one door — never a new path or a fourth relation.
+ */
+export const FOLD_SOURCE = "fold";
+
+/**
+ * The `source` of the flag a CORRECTION to a fold's source raises between the
+ * fold and the memory that corrects it (2026-10-11, Group 3 part B): the fold
+ * said what its parts added up to, and one of them was wrong. A question for
+ * the waking self (or the dream), never a settle.
+ */
+export const FOLD_SOURCE_CORRECTED = "fold-source-corrected";
+
 /** The archive reason of the successor a pressure crossing minted, when that crossing is undone (2026-10-11, Group 2b). */
 export const PRESSURE_UNDONE_REASON = "pressure-undone";
 
@@ -465,7 +480,7 @@ export interface SupersedeInput {
   readonly how: SettleHow;
   /**
    * What made it (no DDL: a TEXT value): `write`, `settle`, `slot`, `pressure`,
-   * `fulfilled`, `dream-merge`, `reminder-moved` — Group 3's `fold` next. The
+   * `fulfilled`, `dream-merge`, `reminder-moved`, `fold` (Group 3 part B). The
    * dashboard counts by it.
    */
   readonly source: string;
@@ -648,8 +663,9 @@ export function supersede(store: Store, input: SupersedeInput, opts: { retarget?
   // its latest feeling, so whoever settles over a felt memory is asked to say
   // how it sits now that the newer one holds. The first feeling is kept. Not
   // for a merge (its feelings travelled to the merged memory) nor a moved
-  // reminder's row (bookkeeping nobody wrote).
-  if (how !== "open" && input.source !== DREAM_MERGE_SOURCE && input.source !== REMINDER_MOVED_SOURCE) {
+  // reminder's row (bookkeeping nobody wrote), nor a fold (a dream cannot
+  // answer it, and a felt source is never faded by a fold).
+  if (how !== "open" && input.source !== DREAM_MERGE_SOURCE && input.source !== REMINDER_MOVED_SOURCE && input.source !== FOLD_SOURCE) {
     const felt = store.row(over)?.feeling_peak ?? null;
     if (typeof felt === "number" && felt > 0) notes.push(feelingInvite(over, felt));
   }
@@ -712,6 +728,12 @@ export function supersede(store: Store, input: SupersedeInput, opts: { retarget?
       day,
     },
   });
+  // A CORRECTION TO A FOLD'S SOURCE FLAGS THE FOLD (2026-10-11, Group 3 part
+  // B; item 15, review 12 C5): what the parts added up to may be wrong now.
+  if (how === "corrected" && input.source !== FOLD_SOURCE) {
+    const flagged = flagFoldsOf(store, over, holds, day);
+    if (flagged.length > 0) notes.push(`${flagged.join(", ")} ${flagged.length === 1 ? "was" : "were"} folded from ${over}: flagged beside ${holds}, to read again.`);
+  }
   return {
     ok: true,
     pair: pairId,
@@ -723,6 +745,38 @@ export function supersede(store: Store, input: SupersedeInput, opts: { retarget?
     closed: closes,
     ...(notes.length > 0 ? { note: notes.join(" ") } : {}),
   };
+}
+
+/**
+ * The live folds made from `source` (`Store#foldsCiting`: a query over
+ * `meta.sources`, no table), each flagged against `corrector` — unsettled,
+ * source `FOLD_SOURCE_CORRECTED`. A courtesy: never throws, never undoes the
+ * settle. The folds flagged.
+ */
+function flagFoldsOf(store: Store, source: string, corrector: string, day: number): string[] {
+  const out: string[] = [];
+  try {
+    for (const fold of store.foldsCiting(source)) {
+      if (fold === corrector) continue;
+      const f = flag(store, { x: fold, y: corrector, source: FOLD_SOURCE_CORRECTED, day });
+      if (f.ok && f.created) out.push(fold);
+    }
+  } catch {
+    /* the flag is a courtesy; the settle stands */
+  }
+  return out;
+}
+
+/** `flagFoldsOf` reversed: each still-unsettled flag it raised is withdrawn. Never throws. */
+function withdrawFoldFlags(store: Store, source: string, corrector: string): void {
+  try {
+    for (const fold of store.foldsCiting(source)) {
+      const p = store.contradictionBetween(fold, corrector);
+      if (p !== undefined && p.state === "unsettled" && p.source === FOLD_SOURCE_CORRECTED) store.withdrawContradiction(p.id);
+    }
+  } catch {
+    /* the flag stays; a waking read can answer it */
+  }
 }
 
 /** A memory leaving recall hands its links to `to`. A courtesy: never throws, never undoes the settle. */
@@ -994,6 +1048,9 @@ export function undo(
   // A reopened question starts fresh on "my mind" (review of #284, M5).
   for (const id of back === "unsettled" ? [pair.id, ...reopen] : reopen) resetHabituation(store, id, day);
   if (d.archived !== null && !unarchived) notes.push(`${d.archived} has moved on since it was archived, so it was not brought back.`);
+  // A correction undone takes back the flags it raised on the folds made from
+  // what it corrected (2026-10-11, Group 3 part B), while still unanswered.
+  if (pair.how === "corrected" && last.over !== null && last.holds !== null) withdrawFoldFlags(store, last.over, last.holds);
   store.appendEvent({
     name: CONTRADICTION_UNDONE_EVENT,
     day,
@@ -1121,7 +1178,7 @@ export interface SlotCandidate {
 }
 
 /** A kind of memory the detector never reads as a slot: a reading, a world memory (04: consecutive readings are not states). */
-function slotExempt(row: MemoryRow): boolean {
+export function slotExempt(row: Pick<MemoryRow, "about" | "title" | "body">): boolean {
   return row.about === "world" || /^\s*reading\b/i.test(row.title ?? row.body);
 }
 

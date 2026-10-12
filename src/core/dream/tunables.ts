@@ -133,6 +133,14 @@ export const DREAM_TUNABLES = {
     "nominate-core": 3,
   },
   /**
+   * FOLDS A NIGHT (2026-10-11, Group 3 part B; review 11 D5): a fold is a
+   * `gist` flagged `fold: true` — not an action of its own — so it has its own
+   * ceiling beside `LIMITS`, and the insight gists keep their 3. A fold past it
+   * is refused, counted on the night's `dream.changed` row (`foldOverflow`)
+   * and said in the hand-back; its parts wait as they are. CAL.
+   */
+  FOLDS: 5,
+  /**
    * The weight a dream PROPOSES for a link or a gist's tie, both ways — about
    * one co-activation (`associate` `HEBB_RATE`, 0.1). Was 0.3, three full
    * co-activations, written around homeostasis (2026-09-28: the dream proposes,

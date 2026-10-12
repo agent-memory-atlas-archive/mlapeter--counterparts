@@ -3166,11 +3166,12 @@ function shownRecord(briefing: BriefingResult, lanes: Lanes, req: BoundaryReques
  * them out of every lane but identity, so an answered question is not shown
  * alone as still open.
  *
- * ONLY WHILE SOMETHING LIVE HOLDS (review of #311). A memory is hidden when, in
- * the NEWEST settled pair that names it, it is the `over` — so one re-affirmed
- * by a later pair (holds there) is not hidden by the older one — and that
- * pair's `holds` leads to a live memory: followed through its own newer
- * settles and through `superseded_by` to the live end.
+ * ONLY WHILE SOMETHING LIVE HOLDS (review of #311). A memory is hidden when it
+ * is the `over` of a standing settled pair (the newest such, when there are
+ * several) and that pair's `holds` leads to a live memory: followed through
+ * its own settles and through `superseded_by` to the live end. A later pair in
+ * which it HOLDS does not re-affirm it (2026-10-11, Group 3 part B: a settle
+ * reorders only the pair it names; it re-affirmed it from #311 until then).
  * A `holds` that is archived, removed, or superseded with no live successor
  * hides nothing, and the `over` stays visible. Never throws — a store that
  * will not answer has settled nothing.
@@ -3186,11 +3187,11 @@ export function settledOver(store: Pick<Store, "contradictions" | "row">): Set<s
       .filter((p) => p.via === null && p.over !== null && p.holds !== null && (p.how === "changed" || p.how === "corrected"))
       // Raised order, not answered order (`recall/standing.ts#pairOrder`, Group 2b).
       .sort(pairOrder);
-    const newest = new Map<string, { role: "over" | "holds"; holds: string }>();
-    for (const p of pairs) {
-      newest.set(p.over as string, { role: "over", holds: p.holds as string });
-      newest.set(p.holds as string, { role: "holds", holds: p.holds as string });
-    }
+    // A settle speaks only about the pair it names (2026-10-11, Group 3 part
+    // B; random-06, lightly held): the newest pair in which a memory is the
+    // `over` decides; one in which it holds no longer re-affirms it.
+    const newest = new Map<string, { role: "over"; holds: string }>();
+    for (const p of pairs) newest.set(p.over as string, { role: "over", holds: p.holds as string });
     const live = (id: string): boolean => {
       const r = store.row(id);
       return r !== undefined && r.archived === 0 && r.superseded_by === null && !(r.body === "" && r.content_hash === "");

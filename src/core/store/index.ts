@@ -2950,6 +2950,32 @@ export class Store {
       .map((r) => r.id);
   }
 
+  /**
+   * THE LIVE FOLDS MADE FROM `id` (2026-10-11, Group 3 part B; item 15): the
+   * reverse of a fold's `meta.sources` — "which folds came from X" — as a
+   * query over the dream's own rows, no derivations table. A text prefilter
+   * on the stored JSON, confirmed by reading the bag. Oldest first.
+   */
+  foldsCiting(id: string): string[] {
+    const rows = this.ops.all<{ id: string; meta: string | null }>(
+      `SELECT id, meta FROM memories
+        WHERE archived = 0 AND superseded_by IS NULL AND source = 'dreamed'
+          AND meta LIKE '%"fold"%' AND meta LIKE ?
+        ORDER BY COALESCE(created_at, 0), id`,
+      `%"${id}"%`,
+    );
+    const out: string[] = [];
+    for (const r of rows) {
+      try {
+        const m = JSON.parse(r.meta ?? "{}") as Record<string, unknown>;
+        if (m["fold"] === true && Array.isArray(m["sources"]) && (m["sources"] as unknown[]).includes(id)) out.push(r.id);
+      } catch {
+        /* an unreadable bag names nothing */
+      }
+    }
+    return out;
+  }
+
   /** Has any pair EVER named these two memories, withdrawn ones included (a slot the dream said was two things)? */
   contradictionEverBetween(x: string, y: string): boolean {
     if (!this.hasTable("contradictions")) return false;
