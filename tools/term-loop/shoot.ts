@@ -17,11 +17,10 @@ import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, join, resolve, sep } from 'node:path';
 
 import { DEFAULT_DATA_DIR_NAME, FORBIDDEN_ROOT_NAMES } from '../../src/core/store/paths.js';
-import { findDock, findLastText, parseCapture, sliceGrid, type Grid, type Rect } from './grid.js';
+import { findDock, parseCapture, sliceGrid, type Grid, type Rect } from './grid.js';
 import { ITERM_MENLO_13, gridPixels, renderHtml } from './render.js';
 import {
   ALLOWED_COMMANDS,
-  MEMORY_SWITCH_LABELS,
   PREF_KEYS,
   STEP_HELP,
   keyboardOf,
@@ -229,34 +228,11 @@ function readPrefs(path: string): Prefs | null {
 
 /**
  * Puts the stored preferences back as they were before the run, through the
- * mod (this tool never writes the file): the memory switch by a click on it,
- * in the full view, since no command turns it; then the view, caps and fps by
+ * mod (this tool never writes the file): the view, brain, caps and fps by
  * the mod's commands. Returns what is still not back, in words.
  */
 async function putBack(s: Session, path: string, before: Prefs | null): Promise<string[]> {
   await s.clearPrompt();
-  if (restorePlan(before, readPrefs(path)).memory) {
-    if (viewOf(readPrefs(path)) !== 'open') {
-      console.log('  putting back the stored preference: /counterparts (to reach the memory switch)');
-      await s.command('/counterparts', ALLOWED_COMMANDS);
-      await sleep(800);
-    }
-    const l = await s.steady();
-    const dock = l.dock;
-    // the footer's switch is the bottom-most match in the dock: a memory's title in the body can say "Claude
-    // memory" too, and a click there opens that memory (or the browser), not the switch
-    const find = (t: string) => (dock === null ? null : findLastText(l.grid, t, dock.x0 + 1, dock.y0, dock.y1));
-    const label = MEMORY_SWITCH_LABELS.find(t => find(t) !== null);
-    const at = label === undefined ? null : find(label);
-    if (at !== null && dock !== null && at.y >= dock.y0 && at.y < dock.y1) {
-      console.log(`  putting back the stored preference: a click on "${label ?? ''}"`);
-      const [press, release] = mouseBytes('click', at.x, at.y);
-      if (press !== undefined) s.bytes(press);
-      await sleep(60);
-      if (release !== undefined) s.bytes(release);
-      await sleep(800);
-    }
-  }
   for (const c of restorePlan(before, readPrefs(path)).cmds) {
     console.log(`  putting back the stored preference: ${c}`);
     await s.command(c, ALLOWED_COMMANDS);

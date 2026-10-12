@@ -286,16 +286,8 @@ export function locate(g: Grid, t: Target, dock: Rect | null): { x: number; y: n
 // ── the sidebar's stored preferences ─────────────────────────────────────────
 
 /** The stored keys a run can change, and puts back. */
-export const PREF_KEYS = ['view', 'brain', 'caps', 'fpsShown', 'fps', 'claudeMemory'] as const;
+export const PREF_KEYS = ['view', 'brain', 'caps', 'fpsShown', 'fps'] as const;
 export type Prefs = Partial<Record<(typeof PREF_KEYS)[number], unknown>>;
-
-/**
- * The label of the switch that turns Claude Code's own memory (one preference
- * for every session): v0.2's footer says "Claude memory"; v0.1's switch said
- * "Claude Code's own memory". A put-back looks for either.
- */
-export const MEMORY_SWITCH = 'Claude memory';
-export const MEMORY_SWITCH_LABELS = ['Claude memory', "Claude Code's own memory"] as const;
 
 /**
  * The stored view, by what it means across the mod's versions: `open` (the
@@ -319,12 +311,11 @@ export function brainOf(p: Prefs | null): string {
 /**
  * What puts the stored preferences back as they were before the run: the
  * mod's own commands for view, brain, caps, fpsShown and fps (the mod's
- * defaults where a key was unset), and whether the memory switch wants a
- * click (no command turns it). Nothing when `now` can't be read.
+ * defaults where a key was unset). Nothing when `now` can't be read.
  */
-export function restorePlan(before: Prefs | null, now: Prefs | null): { cmds: string[]; memory: boolean } {
+export function restorePlan(before: Prefs | null, now: Prefs | null): { cmds: string[] } {
   const cmds: string[] = [];
-  if (now === null) return { cmds, memory: false };
+  if (now === null) return { cmds };
   const b = before ?? {};
   const view = viewOf(b);
   if (view !== viewOf(now)) cmds.push(view === 'open' ? '/counterparts' : view === 'hidden' ? '/counterparts hide' : `/counterparts ${view}`);
@@ -333,12 +324,12 @@ export function restorePlan(before: Prefs | null, now: Prefs | null): { cmds: st
   if ((b.fpsShown === true) !== (now.fpsShown === true)) cmds.push('/counterparts fps');
   const fpsOf = (p: Prefs): number => (typeof p.fps === 'number' ? p.fps : 12);
   if (fpsOf(b) !== fpsOf(now)) cmds.push(`/counterparts fps ${String(fpsOf(b))}`);
-  return { cmds, memory: (b.claudeMemory !== false) !== (now.claudeMemory !== false) };
+  return { cmds };
 }
 
 /** A plan in words, for the person who has to do it by hand. */
-export function planWords(plan: { cmds: string[]; memory: boolean }): string[] {
-  return [...plan.cmds.map(c => `type ${c}`), ...(plan.memory ? [`click the "${MEMORY_SWITCH}" switch`] : [])];
+export function planWords(plan: { cmds: string[] }): string[] {
+  return plan.cmds.map(c => `type ${c}`);
 }
 
 /** The screen as plain text (for until:, and for the error a timeout prints). */

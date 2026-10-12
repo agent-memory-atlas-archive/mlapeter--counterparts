@@ -11,8 +11,6 @@ import { describe, expect, test } from 'bun:test';
 import { charCells, findDock, findLastText, findText, parseCapture, rowText, sliceGrid, type Grid } from '../tools/term-loop/grid.js';
 import { ITERM_MENLO_13, cellColours, paletteColour, renderHtml, renderRow } from '../tools/term-loop/render.js';
 import {
-  MEMORY_SWITCH,
-  MEMORY_SWITCH_LABELS,
   brainOf,
   focusOf,
   keyboardOf,
@@ -331,27 +329,27 @@ describe('steps and the keyboard guard', () => {
     expect(refuseClick({ x: 4, y: 3 }, null, { focus: 'unknown', typed: '', pick: null })).toMatch(/refused/);
   });
 
-  test('putting the stored preferences back: the mod’s commands, and a click for the memory switch', () => {
-    const owner = { view: 'full', fpsShown: true, claudeMemory: true };
-    expect(restorePlan(owner, owner)).toEqual({ cmds: [], memory: false });
+  test('putting the stored preferences back: the mod’s commands', () => {
+    const owner = { view: 'full', fpsShown: true };
+    expect(restorePlan(owner, owner)).toEqual({ cmds: [] });
     expect(restorePlan(owner, { ...owner, view: 'quiet' }).cmds).toEqual(['/counterparts']);
     expect(restorePlan({ view: 'hidden' }, { view: 'full' }).cmds).toEqual(['/counterparts hide']);
     expect(restorePlan({ view: 'quiet' }, { view: 'hidden' }).cmds).toEqual(['/counterparts quiet']);
-    // unset keys are the mod's defaults: full, block caps, fps not shown, 12 fps, memory on
-    expect(restorePlan(null, { view: 'full', caps: 'block', fpsShown: false, fps: 12, claudeMemory: true })).toEqual({ cmds: [], memory: false });
+    // unset keys are the mod's defaults: full, block caps, fps not shown, 12 fps
+    expect(restorePlan(null, { view: 'full', caps: 'block', fpsShown: false, fps: 12 })).toEqual({ cmds: [] });
     expect(restorePlan(owner, { ...owner, caps: 'round', fpsShown: false, fps: 6 }).cmds).toEqual(['/counterparts caps', '/counterparts fps', '/counterparts fps 12']);
-    const off = restorePlan(owner, { ...owner, claudeMemory: false, view: 'hidden' });
-    expect(off).toEqual({ cmds: ['/counterparts'], memory: true });
-    expect(planWords(off)).toEqual(['type /counterparts', `click the "${MEMORY_SWITCH}" switch`]);
+    const off = restorePlan(owner, { ...owner, view: 'hidden' });
+    expect(off).toEqual({ cmds: ['/counterparts'] });
+    expect(planWords(off)).toEqual(['type /counterparts']);
     // a file that can't be read says nothing
-    expect(restorePlan(owner, null)).toEqual({ cmds: [], memory: false });
+    expect(restorePlan(owner, null)).toEqual({ cmds: [] });
     expect(viewOf({ view: 'rail' })).toBe('open');
   });
 
   test('the sidebar v0.2’s preferences: views by meaning across versions, and the brain’s mode', () => {
-    const owner = { view: 'full', fpsShown: true, claudeMemory: true };
+    const owner = { view: 'full', fpsShown: true };
     // v0.2 writes `sidebar` where v0.1 wrote `full`: the same view, nothing to put back
-    expect(restorePlan(owner, { ...owner, view: 'sidebar' })).toEqual({ cmds: [], memory: false });
+    expect(restorePlan(owner, { ...owner, view: 'sidebar' })).toEqual({ cmds: [] });
     expect(viewOf({ view: 'sidebar' })).toBe('open');
     expect(viewOf({})).toBe('open');
     // a run that left it in the strip, or quiet, is put back with the mod's commands
@@ -365,9 +363,6 @@ describe('steps and the keyboard guard', () => {
     expect(restorePlan({ ...owner, brain: 'still' }, { ...owner, brain: 'turning' }).cmds).toEqual(['/counterparts brain still']);
     expect(restorePlan(owner, { ...owner, brain: 'turning' }).cmds).toEqual([]);
     expect(brainOf({ brain: 'nonsense' })).toBe('turning');
-    // the memory switch is found by either version's label
-    expect(MEMORY_SWITCH_LABELS).toContain(MEMORY_SWITCH);
-    expect(MEMORY_SWITCH_LABELS).toContain("Claude Code's own memory");
   });
 
   test('targets: text in the pane first, cells 1-based; mouse reports are SGR 1006', () => {

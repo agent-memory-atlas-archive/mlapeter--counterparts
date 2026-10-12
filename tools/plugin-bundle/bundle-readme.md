@@ -86,9 +86,8 @@ it changes anything.
 
 **Settings and tool calls.** The plugin never changes Claude Code's settings or
 permissions, and its hooks never block, change or approve a tool call (the sidebar only
-watches Counterparts' own tool calls to show what was saved). An optional sidebar switch,
-shown only if you opt in, turns Claude Code's own memory (MEMORY.md and its prompt
-section) off or on in your sessions. At the end of a
+watches Counterparts' own tool calls to show what was saved). It leaves Claude Code's own
+memory (MEMORY.md and its prompt section) as it is. At the end of a
 reply the hooks may ask Claude, in a line you can see, to take one more short turn to
 write the session up as memories. The one exception for settings is
 `/counterparts:uninstall`, and only if you also had the npm install: it removes that

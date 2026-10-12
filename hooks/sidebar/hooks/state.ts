@@ -40,10 +40,8 @@ export const SCOPE_RECHECK_MS = 60000
 /** How long the registry's path, found from the settings, is trusted before it is looked up again. */
 export const SCOPES_FILE_TTL_MS = 5 * 60000
 
-/** The hover groups that show what a click on each memory switch does, over the rows above the footer. */
+/** The hover group that shows what a click on the Counterparts switch does, over the rows above the footer. */
 export const HOVER_CP = 'counterparts-switch-cp'
-
-export const HOVER_MEM = 'counterparts-switch-mem'
 
 export const FIRING_MS = 2600
 

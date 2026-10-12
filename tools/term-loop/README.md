@@ -160,11 +160,8 @@ The sessions are real Claude Code sessions with his own login and settings.
   `counterparts`, his own trial copy included. So `/counterparts quiet`
   (or `brain off`) in a run would make his next session open that way.
   The run reads that file before it starts (read only), and before the session
-  ends puts back whatever differs, through the mod: first the Claude memory
-  switch ("Claude memory" in v0.2's footer, "Claude Code's own memory" in
-  v0.1), by a click on it in the pane (that switch is one preference for
-  every session, his running ones included, and no command turns it), then
-  `view`, `brain`, `caps`, `fpsShown` and `fps` with the mod's own commands.
+  ends puts back whatever differs, through the mod: `view`, `brain`, `caps`,
+  `fpsShown` and `fps` with the mod's own commands.
   Views are compared by what they mean in either version (v0.2's `sidebar` is
   v0.1's `full`), so a v0.2 run that writes `sidebar` over his `full` changes
   nothing. It never writes the file. This runs after a step fails or times
