@@ -54,6 +54,7 @@ import {
   checkFeelings,
   checkTraits,
   defaultStrength,
+  foldMarkFrom,
   inheritFrom,
   isStoreError,
   occurredOnOf,
@@ -2092,8 +2093,10 @@ export class Dreams {
         // owner's memories is the owner's, not unmarked (which the work lane
         // counts as a project's work). It reaches the core only the ordinary
         // way, by awake recurrence. Its claim is its own (the cap), so no era
-        // standing.
-        const { about } = inheritFrom(sourceRows as MemoryRow[]);
+        // standing. A FOLD reads its mark by majority instead (`foldMarkFrom`,
+        // decided by random-06, 2026-10-11, lightly held): me/us only when most
+        // of its parts are, since it summarises many, not one said again.
+        const about = isFold ? foldMarkFrom(sourceRows as MemoryRow[]) : inheritFrom(sourceRows as MemoryRow[]).about;
         const id = this.store.put({
           type: "memory",
           kind,

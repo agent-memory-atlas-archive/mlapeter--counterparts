@@ -228,17 +228,38 @@ describe("what a fold keeps at its own weight", () => {
 });
 
 describe("the fold's kind and mark", () => {
-  test("the dream picks the kind; the mark is inherited, personal wins", () => {
+  test("the dream picks the kind; the mark is me/us only when most of its parts are (random-06's ruling)", () => {
     const c = brain();
     nextDay(c);
     nextDay(c);
     const work = mem(c, "Spent the morning on the benchmark rebuild.");
     const me = mem(c, "I stop and say so when a number looks too good.", { kind: "self", about: "me" });
+    const me2 = mem(c, "I asked what the benchmark measured before I read its score.", { kind: "self", about: "me" });
     const dream = begin(c);
-    const [r] = propose(c, dream, [{ action: "gist", fold: true, kind: "self", text: "I check a good number before I trust it.", sources: [work, me] }]);
+    const [r] = propose(c, dream, [{ action: "gist", fold: true, kind: "self", text: "I check a good number before I trust it.", sources: [work, me, me2] }]);
     const row = c.store.row(r?.id as string)!;
     expect(row.kind).toBe("self");
     expect(row.about).toBe("me");
+  });
+
+  test("a work cluster with one `us` part stays work; a tie is not personal", () => {
+    const c = brain();
+    nextDay(c);
+    nextDay(c);
+    const w1 = mem(c, "Merged the cards pull request after review.");
+    const w2 = mem(c, "Published the release with the cards fix.");
+    const w3 = mem(c, "Installed it on the live machine; doctor green.");
+    const us = mem(c, "Mike and I agreed to ship cards before folding.", { kind: "entity", about: "us" });
+    const dream = begin(c);
+    const [r1, r2] = propose(c, dream, [
+      { action: "gist", fold: true, kind: "fact", text: "The cards fix shipped and runs live.", sources: [w1, w2, w3, us] },
+      { action: "gist", fold: true, kind: "fact", text: "We shipped cards first.", sources: [w1, us] },
+    ]);
+    expect(c.store.row(r1?.id as string)?.about).toBe("work");
+    expect(c.store.row(r2?.id as string)?.about).toBe("work");
+    // An insight gist keeps "personal wins".
+    const [g] = propose(c, dream, [{ action: "gist", text: "Shipping in a set order keeps us calm.", sources: [w2, us] }]);
+    expect(c.store.row(g?.id as string)?.about).toBe("us");
   });
 });
 
