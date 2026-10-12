@@ -207,10 +207,14 @@ band(m, d) = identity  if promoted(m)                              # explicit cr
   consolidation by a CORE LANE** (rewritten 2026-09-26, owner decisions; working defaults):
 
   ```
-  about me(m) = about(m) ∈ {me, us, owner}, and kind(m) ≠ skill            # the mark, read by sleep/
+  about me(m) = about(m) ∈ {me, us} ∧ kind(m) ∈ {self, person, entity}     # the mark, read by sleep/
+                ∧ status(m) ∉ {planned, proposed, asked}                     # 2026-10-11 (08 C2)
   FAST lane   = I(m) ≥ 0.6  and  an awake return ≥ 2 lived days after birth
-  SLOW lane   = awake returns on ≥ 5 distinct lived days spanning ≥ 21 lived days
-  promote     ⇔ about me(m) ∧ (FAST ∨ SLOW) ∧ not demoted by the owner
+  SLOW lane   = the RECURRENCE lane (2026-10-11, 08 C1): over m's slot, ≥ 4 recurrence
+                days (engaged-only days ×0.5, never alone) from ≥ 3 sessions spanning
+                ≥ 7, inside the trailing 30 lived days; m itself used at least once;
+                m not an earlier state of its slot; strength(m, d) ≥ REACH
+  promote     ⇔ about me(m) ∧ (FAST ∨ SLOW) ∧ not demoted
   recognized  ⇔ about(m) unmarked ∧ a feeling on m in the recognition group,   # wheel v2
                 mine, its own strength ≥ 0.6, felt in a session (a reflection's only
                 with the reflected-feeling door open; a dream's never)
@@ -240,7 +244,16 @@ band(m, d) = identity  if promoted(m)                              # explicit cr
   stopgap of #244 is retired); repetition counts through the slow lane, and only for
   memories about me or about us. A dream's replays count toward neither lane: a dream may
   NOMINATE, only a lane promotes. `sleep/` caps the crossings at three a night, strongest
-  first; the owner's demotion (`counterparts core --demote`) is sticky.
+  first; a demotion (`counterparts core --demote`, or mine since 2026-10-11) is sticky.
+
+  *(Group 3 part A, 2026-10-11, working defaults; item 14, review 08 C1/C2/C4.)* A
+  RECURRENCE DAY is a lived day on which m or a member of its SLOT — the memories a
+  standing "A over B" ties it to (a settled `changed`, a slot proposal still waiting) —
+  was used awake (an engaged use counts half), cited by a reflection, or re-encoded (a
+  newer member written that day by a session). Dream replays never count. The caller
+  counts it (`sleep/consolidate.ts#coreRecurrence`) into `CoreContext.recurrence`;
+  without one the row's own return days stand in (`rowRecurrence`). The absolute 0.5
+  floor is gone: it fought the steeper curves; within reach is the floor now.
 - **Promotion is an explicit, counted crossing event** — a distinct record, never an
   emergent side effect (scar §2.4) — and **identity-band membership is enumerable on
   demand** beside the protected list: permanence and inspectability scale together
@@ -592,8 +605,8 @@ R(m)            = 1 + RETURN_GAIN × ln(1 + returns(m))              RETURN_GAIN
   what rehearsal is; and its guard is spacing, not the display rule: at most once a lived
   day per memory (a reflection and an organic use on one day are one lane day), and at
   most once every `REFLECTION_SPACING_DAYS` (7) per memory from reflections — so a
-  reflection cannot cite its way through the slow lane's five days in ~10 (it would take
-  four weeks of weekly citing). This is not the #238 loop come back; do not "fix" it to
+  reflection cannot cite its way through the slow lane quickly (since 2026-10-11 its four
+  recurrence days, each reflection its own session, take three weeks of weekly citing). This is not the #238 loop come back; do not "fix" it to
   `on-display`.
 - **The legacy path.** `consolidated` / `+CONS_BONUS` stays exactly as it was for rows
   born before schema v8 and is closed to every row made since. At zero returns, R = 1:

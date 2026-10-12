@@ -84,7 +84,7 @@ function makeCore(c: Counterpart, id: string): void {
 }
 
 describe("the recurrence lane counts the slot, the sessions and the window", () => {
-  test("a use, a newer state written into the slot and that one's use are three days of one slot; a fourth crosses by the slow lane", () => {
+  test("a use, a newer state written into the slot and that one's use are three days of one slot; a fourth carries the current state across by the slow lane", () => {
     const c = brain();
     nextDay(c);
     const a = mem(c, "I read slowly when a book bites.");
@@ -111,9 +111,12 @@ describe("the recurrence lane counts the slot, the sessions and the window", () 
     rec = coreRecurrence(c.store, a, day);
     expect(rec.days).toBe(4);
     expect((rec.last ?? 0) - (rec.first ?? 0)).toBeGreaterThanOrEqual(PHYSICS.CORE_SLOW_SPAN_DAYS);
+    // The slot's recurrence lifts its CURRENT state: a is the earlier one now.
+    expect(rec.earlier).toBe(true);
+    expect(coreRecurrence(c.store, b, day)).toMatchObject({ days: 4, anchored: true });
     const crossed = sleepNow(c).promoted;
-    expect(crossed.map((p) => p.id)).toContain(a);
-    expect(crossed.find((p) => p.id === a)?.lane).toBe("slow");
+    expect(crossed.map((p) => p.id)).toEqual([b]);
+    expect(crossed[0]?.lane).toBe("slow");
   });
 
   test("an engaged day counts half, and engaged days alone never meet the lane", () => {

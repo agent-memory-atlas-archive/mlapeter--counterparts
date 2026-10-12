@@ -69,7 +69,7 @@ export interface SleepStore {
    * OPTIONAL: the core's recurrence lane walks a memory's SLOT along them
    * (2026-10-11). Absent: a memory's slot is itself.
    */
-  contradictionsOf?(ids: readonly string[]): Map<string, readonly { a: string; b: string; state: string; how: string | null; source: string }[]>;
+  contradictionsOf?(ids: readonly string[]): Map<string, readonly { a: string; b: string; state: string; how: string | null; source: string; over: string | null }[]>;
   versions(id: string): VersionRow[];
   deniedIds(): string[];
 

@@ -1264,6 +1264,11 @@ export interface Recurrence {
   readonly anchored: boolean;
   /** The last recurrence day ever (no window), or null — the core's turnover reads it. */
   readonly lastEver: number | null;
+  /**
+   * A later memory of its slot SETTLED OVER it (`changed`): it is an earlier
+   * state, and the slot's recurrence lifts the current one, not this. Absent: false.
+   */
+  readonly earlier?: boolean;
 }
 
 /**
@@ -1386,6 +1391,7 @@ export function promotionEligibility(m: MemoryPhysics, ctx: CoreContext): Promot
     rec.sessions >= TUNABLES.CORE_SLOW_SESSIONS &&
     span >= TUNABLES.CORE_SLOW_SPAN_DAYS &&
     rec.anchored &&
+    rec.earlier !== true &&
     (now === null || now >= TUNABLES.REACH);
   const blockedBy: PromotionReason[] = [];
   if (m.promotedIdentity) blockedBy.push("already-identity");

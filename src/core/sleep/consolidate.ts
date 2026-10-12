@@ -386,7 +386,7 @@ export function slotOf(store: Pick<SleepStore, "row" | "contradictionsOf">, id: 
   if (store.contradictionsOf === undefined) return out;
   const seen = new Set(out);
   for (let i = 0; i < out.length && out.length < SLOT_WALK_MAX; i++) {
-    let pairs: readonly { a: string; b: string; state: string; how: string | null; source: string }[] = [];
+    let pairs: readonly { a: string; b: string; state: string; how: string | null; source: string; over: string | null }[] = [];
     try {
       pairs = store.contradictionsOf([out[i] as string]).get(out[i] as string) ?? [];
     } catch {
@@ -428,10 +428,18 @@ const NOT_REENCODING = new Set(["dreamed", "reflection"]);
  * (every return before 2026-10-11) counts as one session. Windowed to the
  * trailing `CORE_SLOW_WINDOW_DAYS` ending on `day`; `lastEver` is unwindowed.
  * `anchored`: the row itself has an awake, reflection or engaged return.
+ * `earlier`: a later member settled over it (`changed`) — the slot's
+ * recurrence lifts its current state, so an earlier one does not cross by it.
  */
 export function coreRecurrence(store: Pick<SleepStore, "row" | "returnsOf" | "contradictionsOf">, id: string, day: number): Recurrence {
   const members = slotOf(store, id);
   const rows = members.map((m) => ({ id: m, row: store.row(m) }));
+  let earlier = false;
+  try {
+    earlier = (store.contradictionsOf?.([id]).get(id) ?? []).some((p) => p.state === "settled" && p.how === "changed" && p.over === id);
+  } catch {
+    earlier = false;
+  }
   // The slot's first encoding is not a RE-encoding.
   let firstBorn: string | null = null;
   for (const { id: m, row } of rows) {
@@ -490,6 +498,7 @@ export function coreRecurrence(store: Pick<SleepStore, "row" | "returnsOf" | "co
     last: days.length === 0 ? null : Math.max(...days),
     anchored,
     lastEver,
+    ...(earlier ? { earlier: true } : {}),
   };
 }
 

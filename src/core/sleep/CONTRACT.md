@@ -135,7 +135,15 @@ ABOUT ME (`consolidate.ts#aboutMe` — since v9, 2026-09-27, the memory's MARK: 
 `owner`, set by an awake model that read it, never a `skill`; until v9: `self` kind, or a `person` memory naming the owner,
 read off the identity core's name and aliases), honours the owner's demotions
 (`store.coreDemoted`), and caps the night at `CORE_MAX_PER_SLEEP` (3), strongest first —
-the rest are counted `promotion:cap` and wait for the next consolidation. The legacy
+the rest are counted `promotion:cap` and wait for the next consolidation. *(2026-10-11,
+Group 3 part A.)* About me is `me` or `us`, of kind self, person or entity, and not a plan
+(`identityBlock` says which part fails); the slow lane counts a memory's RECURRENCE over its
+slot (`coreRecurrence`, physics §5.3); and the core WEIGHS ITSELF
+(`core-standing.ts#weighCore`): a member no longer about me or us, or quiet for
+`CORE_QUIET_DAYS` (60), is FLAGGED "being reconsidered" — a `core_events` row — and never
+demoted here. Only a decision moves it: mine (`remember`'s `core`, a reflection's `core`
+part) or the owner's (`counterparts core --demote` / `--keep`); a flag whose cause is gone
+is lifted by the next consolidation. The legacy
 consolidation marking runs first, for legacy rows only; a post-upgrade row is counted
 `not-legacy`. The first decay pass after the v8 upgrade runs a one-time census
 (`upgrade.ts`): every live row's band and projected prune day, old arithmetic vs new, into
