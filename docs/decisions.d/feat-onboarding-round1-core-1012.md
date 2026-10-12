@@ -31,7 +31,8 @@
   plugin install, the same test the uninstall route uses.
 - Decided by the onboarding round-1 core builder, 2026-10-12, lightly held: the pronoun rule ("by name or as
   'they', until the person says") goes in the meeting script, the Stop write-up ask, Desktop's write-up ask and
-  the dream's launch prompt. It costs about 20 tokens per write-up ask. One gendered model-facing line in
+  the dream's launch prompt. It costs about 15 tokens per write-up ask, and the Stop ask's pinned ceiling moves
+  from 480 to 535 characters for it. One gendered model-facing line in
   reconsolidation ("stands as his. Tell him") is now neutral.
 - Decided by the onboarding round-1 core builder, 2026-10-12, lightly held: "undo that dream" is a new `undo`
   phase on the dream tool. It does the same reversal as `counterparts dream --undo` and is refused in the
