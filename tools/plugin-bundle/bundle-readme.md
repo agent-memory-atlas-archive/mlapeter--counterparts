@@ -41,7 +41,10 @@ down, so the memory is never wired twice.
   end, before compaction). They read the transcript Claude Code keeps for the session,
   bring back what matters, and keep the session's turns in the memory's buffer.
 - **A memory server** (MCP) with the tools Claude uses to note, recall, reflect and write
-  its own pages.
+  its own pages. Recall matches by words and by meaning, on a small model on your computer:
+  close paraphrases work ("my doctor" finds a note about a physician), but a description
+  that never names the thing ("a pet that purrs" for a note about your cat) usually doesn't.
+  Exact words are strongest.
 - **A sidebar** in the terminal showing what came to mind and what was saved.
 - **Commands:** `/counterparts:doctor` (a health check), `/counterparts:dashboard` (opens the
   dashboard), `/counterparts:meet` (the first meeting) and `/counterparts:uninstall`.
