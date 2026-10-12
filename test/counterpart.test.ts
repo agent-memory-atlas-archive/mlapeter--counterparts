@@ -152,10 +152,12 @@ const TURNS = [
 // ═══════════════════════════════════════════════════════════════════════════
 describe("the composition root is WIRING — it defines no threshold of its own", () => {
   test("no numeric literal other than 0 or 1 appears in counterpart.ts", () => {
-    const src = readFileSync(
-      fileURLToPath(new URL("../src/core/counterpart.ts", import.meta.url)),
-      "utf8",
-    );
+    // counterpart.ts and the counterpart-*.ts parts its bodies moved into
+    // (2026-10-11): the root is the class and its parts together.
+    const core = fileURLToPath(new URL("../src/core/", import.meta.url));
+    const files = readdirSync(core).filter((f) => f === "counterpart.ts" || /^counterpart-.+\.ts$/.test(f));
+    expect(files.length).toBeGreaterThan(1);
+    const src = files.map((f) => readFileSync(join(core, f), "utf8")).join("\n");
     const code = src
       .replace(/\/\*[\s\S]*?\*\//g, " ")
       .replace(/\/\/.*$/gm, " ")
