@@ -5,6 +5,7 @@ import { DEFAULT_HOST, wordingFor } from "../hosts.js";
 import type { InstallRoute } from "../plugin.js";
 import { RECALL_MAX_IDS } from "./deliberate.js";
 import type { DreamBundle } from "../../core/dream/index.js";
+import { PRONOUN_RULE } from "../../core/onboarding.js";
 import { NO_PAGE_VERSION, pageRoomNote } from "../../core/self/index.js";
 import type { PageRevision } from "../../core/self/index.js";
 
@@ -128,7 +129,7 @@ export const NO_DESKTOP_SESSION =
 
 /** The write-up ask a Desktop tool result carries once the session is due one. */
 export function desktopWriteUpAsk(session: string): string {
-  return `Counterparts: this chat has gone on a while since it was last written up. At a natural pause, hand back what caught your attention, one idea each, with session_end (session: ${session}; memories: [] only if nothing held your attention; \`updates\` anything dated or open now done), and add a chapter with the chapter tool (session: ${session}) if the chat was about something.`;
+  return `Counterparts: this chat has gone on a while since it was last written up. At a natural pause, hand back what caught your attention, one idea each, with session_end (session: ${session}; memories: [] only if nothing held your attention; \`updates\` anything dated or open now done), and add a chapter with the chapter tool (session: ${session}) if the chat was about something. ${PRONOUN_RULE}`;
 }
 
 /** What `status` says `owner: false` means — the confused Desktop chats' question (2026-09-30). */
