@@ -575,6 +575,12 @@ export interface Inherited {
  * The caller with no explicit claim reads its default BY THAT mark
  * (`physics.defaultClaimFor`), with its own row's status, said-by and kind:
  * the revision's door hands the mark to `mint.ts`, which already asks.
+ *
+ * A dream FOLD does not read it this way (`foldMarkFrom`, decided by
+ * random-06, 2026-10-11, lightly held): "personal wins by one" is right where
+ * the sources are one memory said again (a merge, a revision, a pattern drawn
+ * from them), but a fold summarises many parts, and one `us` part among work
+ * must not make the whole stretch of work personal.
  */
 export function inheritFrom(
   sources: readonly InheritSource[],
@@ -601,6 +607,49 @@ export function inheritFrom(
   return {
     about,
     era: opts.cutoff === undefined ? {} : eraCarriedFrom({ created_at: best.created_at ?? null, meta: best.meta ?? "" }, opts.cutoff),
+  };
+}
+
+/** The marks a fold takes only from a strict majority of its parts (`foldMarkFrom`). */
+const FOLD_PERSONAL_MARKS: readonly AboutMark[] = ["me", "us"];
+
+/**
+ * WHAT A DREAM FOLD IS ABOUT (2026-10-11, Group 3 part B; decided by
+ * random-06, 2026-10-11, lightly held): `me` or `us` only when MOST of its
+ * parts — a strict majority of every part it cites, kept-at-weight ones
+ * included — are `me` or `us`; then whichever of the two more of them carry
+ * (a tie: the first in order). Otherwise the mark most of the others carry
+ * (owner, work, world; a tie: the first in order; unmarked parts do not
+ * vote), or none. A tie between personal and not is not a majority, so it is
+ * not personal. Beside `inheritFrom`, whose "personal wins" stays for merges
+ * and revisions. The mark keeps who set it.
+ */
+export function foldMarkFrom(sources: readonly InheritSource[]): Inherited["about"] {
+  const pick = (allowed: (m: AboutMark) => boolean): InheritSource | null => {
+    const counts = new Map<AboutMark, { n: number; first: InheritSource }>();
+    for (const s of sources) {
+      const m = aboutMarkOf(s.about);
+      if (m === null || !allowed(m)) continue;
+      const c = counts.get(m);
+      if (c === undefined) counts.set(m, { n: 1, first: s });
+      else c.n += 1;
+    }
+    let best: { n: number; first: InheritSource } | null = null;
+    // Map keeps first-seen order, so a tie goes to the mark seen first.
+    for (const c of counts.values()) if (best === null || c.n > best.n) best = c;
+    return best?.first ?? null;
+  };
+  const personal = sources.filter((s) => {
+    const m = aboutMarkOf(s.about);
+    return m !== null && FOLD_PERSONAL_MARKS.includes(m);
+  }).length;
+  const chosen = personal * 2 > sources.length ? pick((m) => FOLD_PERSONAL_MARKS.includes(m)) : pick((m) => !FOLD_PERSONAL_MARKS.includes(m));
+  if (chosen === null) return null;
+  const by = chosen.about_by;
+  return {
+    about: aboutMarkOf(chosen.about) as AboutMark,
+    aboutBy: typeof by === "string" && (ABOUT_SETTERS as readonly string[]).includes(by) ? (by as AboutSetter) : null,
+    from: chosen.id,
   };
 }
 
@@ -2948,6 +2997,32 @@ export class Store {
     return this.ops
       .all<{ id: string }>("SELECT id FROM memories WHERE archived = 0 AND superseded_by IS NULL AND meta LIKE ?", `%"${key}"%`)
       .map((r) => r.id);
+  }
+
+  /**
+   * THE LIVE FOLDS MADE FROM `id` (2026-10-11, Group 3 part B; item 15): the
+   * reverse of a fold's `meta.sources` — "which folds came from X" — as a
+   * query over the dream's own rows, no derivations table. A text prefilter
+   * on the stored JSON, confirmed by reading the bag. Oldest first.
+   */
+  foldsCiting(id: string): string[] {
+    const rows = this.ops.all<{ id: string; meta: string | null }>(
+      `SELECT id, meta FROM memories
+        WHERE archived = 0 AND superseded_by IS NULL AND source = 'dreamed'
+          AND meta LIKE '%"fold"%' AND meta LIKE ?
+        ORDER BY COALESCE(created_at, 0), id`,
+      `%"${id}"%`,
+    );
+    const out: string[] = [];
+    for (const r of rows) {
+      try {
+        const m = JSON.parse(r.meta ?? "{}") as Record<string, unknown>;
+        if (m["fold"] === true && Array.isArray(m["sources"]) && (m["sources"] as unknown[]).includes(id)) out.push(r.id);
+      } catch {
+        /* an unreadable bag names nothing */
+      }
+    }
+    return out;
   }
 
   /** Has any pair EVER named these two memories, withdrawn ones included (a slot the dream said was two things)? */

@@ -124,6 +124,16 @@ export const TUNABLES = {
    * from birth, and below `THETA_SEM`. CAL.
    */
   DREAMED_CLAIM_CEILING: 0.3,
+  /**
+   * THE CEILING OF A FOLD'S START (2026-10-11, Group 3 part B; review 11 C4,
+   * D4): a fold — a dream's gist flagged `fold`, saying what several lived
+   * memories add up to — starts at its sources' strength (the strongest, read
+   * before they fade), never above this, and never below
+   * `DREAMED_CLAIM_CEILING` (an insight gist's start). It summarizes lived
+   * events; it concludes nothing new, so the insight's ceiling is not its.
+   * CAL.
+   */
+  FOLD_CLAIM_CEILING: 0.6,
 
   // --- §5.3 core lanes (owner decisions 2026-09-26 — WORKING DEFAULTS) ---
   /** Fast lane: strongly felt — `emotionalIntensity` at or above this, his

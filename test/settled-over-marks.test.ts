@@ -116,7 +116,7 @@ describe("headOf: the memory that holds now", () => {
     expect(earlierMark(next)).toBe(`earlier (now ${next})`);
   });
 
-  test("agrees with the wake's settledOver: re-affirmed stands, a gone holder hides nothing, open settles nothing", () => {
+  test("agrees with the wake's settledOver: a later hold does not lift it, a gone holder hides nothing, open settles nothing", () => {
     const s = Store.open({ dir });
     open.push(s);
     aged(s);
@@ -137,8 +137,9 @@ describe("headOf: the memory that holds now", () => {
       if (s.row(id)?.archived === 1) continue;
       expect(headOf(s, id) !== null).toBe(over.has(id));
     }
-    expect(headOf(s, p)).toBeNull();
-    expect(headOf(s, r)).toBe(p);
+    // A settle speaks only about the pair it names (Group 3 part B): p stays under q, and r with it.
+    expect(headOf(s, p)).toBe(q);
+    expect(headOf(s, r)).toBe(q);
   });
 });
 
@@ -370,7 +371,7 @@ describe("review of #408: footnotes and neighbours name the same memory", () => 
     expect(n?.standing).toBe(earlierMark(c));
   });
 
-  test("re-affirmed by a newer pair, or its holder gone with nothing after: no Earlier label", () => {
+  test("a newer pair in which it holds keeps the Earlier label; its holder gone with nothing after: no Earlier label", () => {
     const s = Store.open({ dir });
     open.push(s);
     aged(s);
@@ -378,14 +379,15 @@ describe("review of #408: footnotes and neighbours name the same memory", () => 
     const q = put(s, "The ovens are cleaned on Saturday evening.");
     changed(s, q, p);
     expect(standingOf(s, p)?.prefix).toBe(`Earlier (now [${q}]): `);
-    // Re-affirmed: a newer pair names P as what holds (the wake's rule: the newest pair speaks).
+    // A newer pair names P as what holds over R: it speaks about P and R only
+    // (Group 3 part B; random-06 — #408 read it as re-affirming P).
     const r = put(s, "The ovens are cleaned whenever the week is quiet.");
     changed(s, p, r);
-    expect(headOf(s, p)).toBeNull();
-    expect(settledOver(s).has(p)).toBe(false);
-    // Before this review it read "Earlier (now [Q])" here, off the older pair alone.
-    expect(standingOf(s, p)?.prefix ?? "").not.toContain("Earlier");
+    expect(headOf(s, p)).toBe(q);
+    expect(settledOver(s).has(p)).toBe(true);
+    expect(standingOf(s, p)?.prefix).toBe(`Earlier (now [${q}]): `);
     expect(standingOf(s, p)?.suffix).toContain(`earlier: [${r}]`);
+    expect(standingOf(s, r)?.prefix).toBe(`Earlier (now [${q}]): `);
 
     const x = put(s, "The delivery van goes out on Tuesdays and Fridays.");
     const y = put(s, "The delivery van goes out on Mondays only.");
