@@ -231,7 +231,9 @@ describe("where archived memories went", () => {
     // "archived (dream-merge)" after 0.3.5 (2026-09-28).
     const written = archiveReasonsWritten(join(import.meta.dir, "..", "src"));
     expect(written.unresolved).toEqual([]);
-    for (const reason of [DREAM_MERGE_REASON, DREAM_UNDONE_REASON, SCHEMA_TUNABLES.FADE_REASON, "revised-by-pressure"]) {
+    // `dream-merge` and `revised-by-pressure` are no longer WRITTEN by a merge or a crossing (Group 2b, random-06's ruling: both settle
+    // `changed`, live); its old rows keep their phrase, checked in the list above.
+    for (const reason of [DREAM_UNDONE_REASON, SCHEMA_TUNABLES.FADE_REASON]) {
       expect(`${reason}: ${written.found.has(reason)}`).toBe(`${reason}: true`);
     }
     for (const reason of written.found) expect(`${reason}: ${mapped.has(reason)}`).toBe(`${reason}: true`);

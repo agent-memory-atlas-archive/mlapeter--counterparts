@@ -44,6 +44,8 @@ import {
 import { Recall, headOf, standingOf } from "../src/core/recall/index.js";
 import { settledOver } from "../src/core/self/index.js";
 import { recallTurn } from "../src/core/retrieval.js";
+import { applyRevision } from "../src/core/revision.js";
+import { Schemas } from "../src/core/schemas/index.js";
 import { Store } from "../src/core/store/index.js";
 import type { PutInput } from "../src/core/store/index.js";
 import { findable } from "./store-fixture.js";
@@ -292,6 +294,18 @@ describe("the dream merge goes through the door", () => {
     expect(s.contradiction(p.pair)?.state).toBe("unsettled");
     expect(settle(s, { pair: p.pair, holds: newer, how: "changed", why: "the newer state", actor: "dream" }).ok).toBe(true);
     expect(headOf(s, older)).toBe(m);
+  });
+
+  test("a later write that `updates` a merged original reaches the merged memory, as the forwarding address did", () => {
+    const s = store();
+    const a = put(s, "The island ferry leaves at eight from the north pier.");
+    const m = put(s, "The island ferry leaves the north pier at eight.");
+    expect(supersede(s, { holds: m, over: a, how: "changed", source: DREAM_MERGE_REASON, actor: "dream" }).ok).toBe(true);
+    const n = put(s, "The island ferry now leaves the north pier at nine.");
+    const out = applyRevision(s, Schemas.open({ store: s }), { updates: a, challengerId: n, day: s.livedDay(), method: "declared", how: "changed" }, {});
+    expect(out).toMatchObject({ targetId: m, retargeted: true });
+    expect(headOf(s, m)).toBe(n);
+    expect(headOf(s, a)).toBe(n);
   });
 
   test("a proposal whose newer memory was replaced the old way (a forwarding address) is carried to its successor, its cut the same", () => {

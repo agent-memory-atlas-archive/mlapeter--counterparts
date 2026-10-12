@@ -2026,7 +2026,8 @@ describe("dedup leaves a revision's successor alone", () => {
 
     const out = runDedup(ctx(wrap(s), 3));
     expect(out.merged).toEqual([]);
-    expect(out.leftAlone["revision-successor-never-merged"]).toBe(1);
+    // Each crossing's successor (the first two live, earlier under the next, since Group 2b).
+    expect(out.leftAlone["revision-successor-never-merged"]).toBe(3);
     expect(s.row(successor)?.archived).toBe(0);
     expect(s.row(challengerId)?.archived).toBe(0);
   });

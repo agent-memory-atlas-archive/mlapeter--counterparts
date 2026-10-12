@@ -202,7 +202,7 @@ describe("tool descriptions, as a host that serves only the first 2,048 characte
       chapter: { total: 1778, beforeList: 761 },
       scope: { total: 1514, beforeList: 755 },
       self_page: { total: 4846, beforeList: 1772 },
-      dream: { total: 3785, beforeList: 1782 },
+      dream: { total: 3769, beforeList: 1782 },
       reflect: { total: 2815, beforeList: 1331 },
       // `meet` (2026-10-11): kept short on purpose — its script is its result.
       meet: { total: 459, beforeList: 210 },

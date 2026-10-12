@@ -94,6 +94,7 @@ import type { MemoryRow, Store } from "./store/index.js";
 import { TUNABLES, applyChallenge, successorSeed, supersedeRecord } from "./physics/index.js";
 import { directionOf } from "./mint.js";
 import { DATE_MOVED_TO_META } from "./prospective/index.js";
+import { headOf } from "./recall/standing.js";
 import { FULFILLED_SOURCE, PRESSURE_UNDONE_REASON, flag, settleOnWrite, supersede } from "./reconsolidation.js";
 import type { SettleOutcome } from "./reconsolidation.js";
 import type { SettleHow } from "./types.js";
@@ -265,6 +266,12 @@ export function applyRevision(
   } catch {
     return settle("none", "target-unresolvable", null);
   }
+  // WHERE A FORWARDING ADDRESS USED TO LEAD (review of #427, 2026-10-11): a
+  // merge's original and a crossed core memory stay live now, settled under
+  // what stands in for them, where they used to be archived with
+  // `superseded_by` — which `resolve` followed. A declaration at one still
+  // reaches the memory that holds now, as it did.
+  targetId = forwardedHead(store, targetId) ?? targetId;
   const retargeted = targetId !== declared;
   const row = store.row(targetId);
   if (row === undefined) return settle("none", "target-unresolvable", null, { retargeted });
@@ -500,6 +507,14 @@ function identityChallenge(
       source: "accommodation",
       origin: { ref: input.challengerId },
     });
+    // WHAT `supersede` CARRIED (review of #427): the old memory's about mark
+    // and any of the writer's three fields the challenger did not give — a
+    // revision is still the same memory. Not its returns (it never did).
+    try {
+      store.carryInto(targetId, successor, { returns: false });
+    } catch {
+      /* the successor stands with the challenger's fields alone */
+    }
     // THROUGH THE ONE DOOR (2026-10-11, Group 2b; review 10 R7 path 3): the
     // successor holds over the old core memory, a plain `changed`, source
     // `pressure` (decided by random-06, 2026-10-11, lightly held: no fourth
@@ -550,6 +565,23 @@ function identityChallenge(
     increment,
     ...(crossed === null ? {} : { pressurePair: crossed }),
   });
+}
+
+/** The doors whose `over` used to be archived with a forwarding address (before 2026-10-11). */
+const FORWARDING_SOURCES: ReadonlySet<string> = new Set(["dream-merge", "pressure"]);
+
+/**
+ * The memory that holds now over one a merge or a crossing settled — the head
+ * a forwarding address used to name — or null when `id` is not such a memory.
+ */
+function forwardedHead(store: Store, id: string): string | null {
+  try {
+    const pairs = store.contradictionsOf([id]).get(id) ?? [];
+    const forwarded = pairs.some((p) => p.state === "settled" && p.via === null && p.over === id && FORWARDING_SOURCES.has(p.source));
+    return forwarded ? headOf(store, id) : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

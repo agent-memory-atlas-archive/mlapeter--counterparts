@@ -2427,15 +2427,16 @@ export class Store {
    * the about-me mark and the writer's three fields where `toId` has none —
    * the original keeping all of its own. A dream merge's originals stay live,
    * settled `changed` under the merged memory, which is still at least as
-   * durable as what it was made from.
+   * durable as what it was made from. `returns: false` for a pressure
+   * crossing's successor, which `supersede` never gave the old one's returns.
    */
-  carryInto(fromId: string, toId: string): void {
+  carryInto(fromId: string, toId: string, opts: { returns?: boolean } = {}): void {
     this.mutate("carryInto", () => {
       this.requireRow(fromId);
       this.requireRow(toId);
       carryAboutMark(this.ops, fromId, toId);
       carryWriteFacts(this.ops, fromId, toId);
-      this.copyReturnsRaw(fromId, toId);
+      if (opts.returns !== false) this.copyReturnsRaw(fromId, toId);
     });
   }
 
@@ -5030,7 +5031,7 @@ export class Store {
   feelingsSince(sinceMs: number): FeelingRow[] {
     return this.ops.all<FeelingRow>(
       `SELECT f.* FROM feelings f JOIN memories m ON m.id = f.memory_id
-        WHERE f.created_at >= ? AND m.archived = 0 AND m.superseded_by IS NULL
+        WHERE f.created_at >= ? AND m.archived = 0 AND m.superseded_by IS NULL${this.notMergedAway("m")}
         ORDER BY f.created_at DESC, f.rowid DESC`,
       sinceMs,
     );
@@ -5046,9 +5047,22 @@ export class Store {
   feelingsLive(): (FeelingRow & { birth_day: number })[] {
     return this.ops.all<FeelingRow & { birth_day: number }>(
       `SELECT f.*, m.birth_day AS birth_day FROM feelings f JOIN memories m ON m.id = f.memory_id
-        WHERE m.archived = 0 AND m.superseded_by IS NULL
+        WHERE m.archived = 0 AND m.superseded_by IS NULL${this.notMergedAway("m")}
         ORDER BY f.created_at, f.rowid`,
     );
+  }
+
+  /**
+   * A dream merge's ORIGINALS stay live since 2026-10-11 (Group 2b; random-06's
+   * ruling: a merge is a plain `changed`), and their feelings and nudges were
+   * copied onto the merged memory, so the store-wide reads that used to see
+   * only the merged copy leave the originals out — a moment counted once, as
+   * when the originals were archived. A SQL fragment on alias `m`; empty for
+   * a file without the contradictions table.
+   */
+  private notMergedAway(m: string): string {
+    if (!this.hasTable("contradictions")) return "";
+    return ` AND ${m}.id NOT IN (SELECT over FROM contradictions WHERE state = 'settled' AND source = 'dream-merge' AND over IS NOT NULL)`;
   }
 
   /**
@@ -5095,7 +5109,7 @@ export class Store {
                     OR EXISTS (SELECT 1 FROM feelings f WHERE f.memory_id = m.id AND f.strength > 0)
                   THEN 1 ELSE 0 END) AS weighted
          FROM memories m
-        WHERE m.archived = 0 AND m.superseded_by IS NULL AND m.birth_day >= ?`,
+        WHERE m.archived = 0 AND m.superseded_by IS NULL AND m.birth_day >= ?${this.notMergedAway("m")}`,
       since,
     );
     return { withFeelings: row?.with_feelings ?? 0, weighted: row?.weighted ?? 0 };
@@ -5432,7 +5446,7 @@ export class Store {
     const live = opts.live !== false;
     const rows = this.ops.all<TraitRow & { confidential: number }>(
       `SELECT t.*, m.confidential AS confidential FROM traits t JOIN memories m ON m.id = t.memory_id
-        WHERE t.created_at >= ?${live ? " AND m.archived = 0 AND m.superseded_by IS NULL" : ""}
+        WHERE t.created_at >= ?${live ? ` AND m.archived = 0 AND m.superseded_by IS NULL${this.notMergedAway("m")}` : ""}
         ORDER BY t.created_at, t.rowid`,
       opts.sinceMs ?? Number.MIN_SAFE_INTEGER,
     );
@@ -5449,7 +5463,7 @@ export class Store {
     const row = this.ops.get<{ memories: number | null; nudges: number | null }>(
       `SELECT COUNT(DISTINCT t.memory_id) AS memories, COUNT(*) AS nudges
          FROM traits t JOIN memories m ON m.id = t.memory_id
-        WHERE t.created_at >= ? AND m.archived = 0 AND m.superseded_by IS NULL`,
+        WHERE t.created_at >= ? AND m.archived = 0 AND m.superseded_by IS NULL${this.notMergedAway("m")}`,
       opts.sinceMs ?? Number.MIN_SAFE_INTEGER,
     );
     return { memories: row?.memories ?? 0, nudges: row?.nudges ?? 0 };
