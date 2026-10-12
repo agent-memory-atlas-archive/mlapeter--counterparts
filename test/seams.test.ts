@@ -759,6 +759,9 @@ describe("SEAMS C — recall's alias map comes from schemas, and the safety half
   function ambiguous(): { s: Store; schemas: Schemas; ids: string[] } {
     const s = store();
     for (const body of FILLER) s.put({ type: "memory", kind: "fact", body });
+    // What a turn reaches through the handle. The cards themselves are not
+    // recall candidates (2026-10-11, Group 3 part D), so a memory saying it is.
+    s.put({ type: "memory", kind: "fact", body: "Robin climbs; Robin belays Robin.", salience: { claimed: 0.8 } });
     const first = Schemas.open({ store: s });
     const second = Schemas.open({ store: s });
     const one = first.mention({

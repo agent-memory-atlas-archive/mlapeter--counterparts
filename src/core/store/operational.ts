@@ -216,6 +216,11 @@ export const OBSERVER_READ_FLOOR = 11;
  *  debugging. `store/NOTES.md` carries what changed underneath the number. */
 export const DEFAULT_RETENTION_DAYS = 90;
 
+/** Box-2 meta key prefix: the memory ids a card the owner removed had linked,
+ *  written by the chase (`owner-op-seam.ts`), read by `Store#cardTombstoneLinks`.
+ *  Ids only, never the name (§16 G9). Review of #429, 2026-10-11. */
+export const CARD_TOMBSTONE_PREFIX = "removal.card.";
+
 /**
  * THE TOMBSTONE SHAPE — what a chased row looks like once the owner-op seam has
  * blanked it (`owner-op-seam.ts#chaseRemoved`).

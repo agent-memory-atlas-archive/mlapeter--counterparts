@@ -45,7 +45,11 @@ alone.
 - **Phase order is behavior, not implementation.** [v1 §5 G5] The consequences that must
   survive: decay runs *after* the boundary's own writes (hence the same-lived-day
   reinforcement exemption); revision-dependent renders run *after* revision, so they see this
-  boundary's own supersedes; the briefing is the **last content write**.
+  boundary's own supersedes; the briefing is the **last content write**. *(2026-10-11,
+  Group 3 part D: a `births` phase runs right after the entity `fade`, every lived day. Like
+  the fade it is `schemas/`' verdict handed in as a function (`births.ts#BirthsFn` →
+  `Schemas#birthsFromNames`, the name tally); this module owns its cadence and its nightly
+  budget, `BUDGETS.births`, and a name over the budget waits, counted.)*
 - **Degrade, don't abort** — index rebuild, embedding refresh, horizon computation, backup,
   and every prune each fail without failing the cycle. [v1 §5 G6]
 - **The claim is truncated only after results are applied AND persisted.** [v1 §5 G7, E6]

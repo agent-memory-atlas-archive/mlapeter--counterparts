@@ -72,6 +72,7 @@ import {
   CLAIMS_ERA_CUTOFF_KEY,
   CLAIMS_ERA_RECORDED_KEY,
   DEFAULT_RETENTION_DAYS,
+  CARD_TOMBSTONE_PREFIX,
   ERA_WRITTEN_AT_META,
   RECURRING_META,
   SCHEMA_VERSION,
@@ -5384,6 +5385,37 @@ export class Store {
     return this.ops.all<{ id: string; title: string | null; body: string }>(
       "SELECT id, title, body FROM memories WHERE type = 'memory' AND body != '' ORDER BY id",
     );
+  }
+
+  /**
+   * The LIVE memories with words, with the lived day each was written on and
+   * its kind — the night's name tally reads these (`schemas/names.ts`,
+   * 2026-10-11). A chased removal is archived and blank, so it is not here; one
+   * still dark is, and the caller drops it by `deniedIds()`.
+   */
+  liveMemoryTexts(): { id: string; title: string | null; body: string; day: number; kind: string }[] {
+    return this.ops.all<{ id: string; title: string | null; body: string; day: number; kind: string }>(
+      "SELECT id, title, body, birth_day AS day, kind FROM memories WHERE type = 'memory' AND archived = 0 AND body != '' ORDER BY id",
+    );
+  }
+
+  /**
+   * The memory ids each card the owner removed had linked, one list per card
+   * (2026-10-11, review of #429). Written by the chase before it drops the
+   * card's subject links; ids only, never the name (§16 G9). The name tally
+   * reads it so a removed card is not born again from the same memories.
+   */
+  cardTombstoneLinks(): string[][] {
+    const out: string[][] = [];
+    for (const value of this.metaWithPrefix(CARD_TOMBSTONE_PREFIX).values()) {
+      try {
+        const ids = JSON.parse(value) as unknown;
+        if (Array.isArray(ids)) out.push(ids.filter((x): x is string => typeof x === "string"));
+      } catch {
+        /* a row that does not parse holds nothing */
+      }
+    }
+    return out;
   }
 
   /** How many subject links there are, and on how many memories (v12). Null without the table. */

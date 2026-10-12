@@ -64,6 +64,7 @@ import type {
   PhaseCtx,
   RenderFn,
   FadeFn,
+  BirthsFn,
   SleepEvent,
   SleepStore,
 } from "../src/core/sleep/index.js";
@@ -72,6 +73,8 @@ const SLEEP_SRC = fileURLToPath(new URL("../src/core/sleep/", import.meta.url));
 
 /** A fade sweep that finds nothing — for the tests about the cycle's shape, not the fade. */
 const NO_FADE: FadeFn = () => ({ examined: 0, faded: [], blocked: {}, anchored: 0, skippedForLimit: 0 });
+/** A name tally that offers nothing — likewise, for the cycle's shape. */
+const NO_BIRTHS: BirthsFn = () => ({ memories: 0, offered: 0, born: [], refused: {}, skippedForLimit: 0 });
 const ENV = "COUNTERPARTS_DATA_DIR";
 
 /** Store write events that move CONTENT. Meta/marker rows are bookkeeping. */
@@ -248,7 +251,7 @@ describe("phase order and completion markers", () => {
   test("every phase that ran advanced its marker to the cycle's day, and only forward", () => {
     const s = store();
     put(s);
-    const report = runCycle({ store: s, date: "2026-01-02", render: () => ({ bytes: 1 }), fade: NO_FADE });
+    const report = runCycle({ store: s, date: "2026-01-02", render: () => ({ bytes: 1 }), fade: NO_FADE, births: NO_BIRTHS });
 
     for (const phase of PHASES) {
       const pr = phaseReport(report, phase);
@@ -1208,6 +1211,10 @@ describe("observer mode", () => {
         if (f.apply) throw new Error("an observer's fade must be a dry run");
         return NO_FADE(f);
       },
+      births: (b) => {
+        if (b.apply) throw new Error("an observer's births must be a dry run");
+        return NO_BIRTHS(b);
+      },
     });
 
     // An instrument that attempted and caught a refusal would be relying on the
@@ -1243,12 +1250,12 @@ describe("idempotence under replay", () => {
     put(s, { body: "twinned", physics: { birthDay: 0, lastUsedDay: 0 } });
     put(s, { body: "twinned", physics: { birthDay: 1, lastUsedDay: 0 } });
 
-    const first = runCycle({ store: s, date: "2026-01-02", render: () => ({ bytes: 64 }), fade: NO_FADE });
+    const first = runCycle({ store: s, date: "2026-01-02", render: () => ({ bytes: 64 }), fade: NO_FADE, births: NO_BIRTHS });
     expect(first.pruned.length).toBe(1);
     expect(first.merged.length).toBe(1);
 
     const before = snapshot(dir);
-    const second = runCycle({ store: s, date: "2026-01-02", render: () => ({ bytes: 64 }), fade: NO_FADE });
+    const second = runCycle({ store: s, date: "2026-01-02", render: () => ({ bytes: 64 }), fade: NO_FADE, births: NO_BIRTHS });
     const after = snapshot(dir);
 
     expect(diff(before, after)).toEqual([]);
@@ -1383,6 +1390,7 @@ describe("structural guarantees", () => {
       "consolidate",
       "prune",
       "fade",
+      "births",
       "dedup",
       "versions",
       "briefing",

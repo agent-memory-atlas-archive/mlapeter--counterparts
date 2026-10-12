@@ -331,8 +331,9 @@ export async function seedDemo(opts: SeedOptions): Promise<SeedReport> {
       });
     }
 
-    // The two SKILL entities. `mentionFromProposal` only births person / entity /
-    // place from an authored title, so a skill's birth uses the module's own door.
+    // The two SKILL entities, born through the module's own door. The cast's
+    // people, things and places are born the same way at their first titled
+    // note (`deposit`, below).
     for (const skill of CAST.skills) {
       c.schemas.mention({
         name: skill.name,
@@ -399,6 +400,14 @@ export async function seedDemo(opts: SeedOptions): Promise<SeedReport> {
       }
       if (note.key !== undefined) memoryIds.set(note.key, result.memoryId);
       birthDayOf.set(result.memoryId, c.store.livedDay());
+      // THE CAST'S CARDS, born the day each is introduced. A live write never
+      // births a card (2026-10-11): cards are born at the boundary from the
+      // names the memories keep saying, at least two lived days apart. The
+      // script places beliefs on a card the day it introduces it, so the
+      // seeder births it here through the module's own door, as for skills.
+      if (note.title !== undefined && (note.kind === "person" || note.kind === "entity" || note.kind === "place")) {
+        c.schemas.mention({ name: note.title, kind: note.kind, source: note.content, chunkRef: `demo:${where}`, day: c.store.livedDay() });
+      }
       // WHAT IT IS ABOUT (schema v9): the writer's mark, set at the deposit the
       // way the MCP doors set it. The script's writer marks its own reflections
       // `me` and what it learns about the owner `owner`, and leaves the rest

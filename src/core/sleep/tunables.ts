@@ -52,6 +52,13 @@ export const TUNABLES = {
     prune: 1_000,
     /** Entity cards examined per fade sweep. Sized so a personal store's cards all fit in one pass. */
     fade: 5_000,
+    /**
+     * Cards born a night at most (2026-10-11, Group 3 part D). CAL, chosen not
+     * measured: a copy of the owner's store had ~100 names over the bar on the
+     * first night, and ten a night, most-named first, gives the people and
+     * projects said most their cards first; the rest wait, counted.
+     */
+    births: 10,
     dedup: 1_000,
     versions: 1,
     briefing: 1,
@@ -78,6 +85,8 @@ export const TUNABLES = {
     /** Every third lived day: the fade floors are months long, so a card that
      *  fades a day or two late costs nothing, and the sweep reads every card. */
     fade: 3,
+    /** Every lived day: the tally is one read of the live memories. */
+    births: 1,
     dedup: 1,
     versions: 1,
     briefing: 1,
