@@ -1256,9 +1256,14 @@ function keepArriving(
  * alone leaves the listed lines as they are: a listed date outranks it, and
  * doctor reads the trim. Null when the count is already in, there is nothing
  * to count, or no room is found.
+ *
+ * AND WHEN THE LANE LISTS NOTHING (2026-10-12): its one collapsed line takes
+ * room the same way. The owner's 10-12 bundles carried seven dated items and
+ * not a word about them — the page, borrowing "Work here", had spent the
+ * room, and the line was offered only what was left.
  */
 function keepArrivingCount(overflow: readonly string[], from: Rescued, ctx: RescueCtx): Rescued | null {
-  if ((from.pinned.horizon?.length ?? 0) > 0 || from.kept.horizon.length === 0) return null;
+  if ((from.pinned.horizon?.length ?? 0) > 0) return null;
   const rest = [...from.trimmed.filter((e) => e.lane === "horizon").map((e) => e.id).reverse(), ...overflow];
   if (rest.length === 0) return null;
   const pinned = { ...from.pinned, horizon: rest };

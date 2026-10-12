@@ -304,7 +304,16 @@ interface Morning {
  */
 async function morning(
   zone: string,
-  opts: { pageBytes: number; dated: number; plain?: boolean; widest?: boolean; short?: boolean; bodies?: readonly string[] },
+  opts: {
+    pageBytes: number;
+    dated: number;
+    plain?: boolean;
+    widest?: boolean;
+    short?: boolean;
+    bodies?: readonly string[];
+    /** Run after the evening's boundary, before the morning's session start. */
+    overnight?: (a: Adapter, ids: readonly string[], dataDir: string) => Promise<void>;
+  },
 ): Promise<Morning> {
   const dataDir = freshDir();
   clock(zone, "2026-10-07", 20);
@@ -319,8 +328,10 @@ async function morning(
   expect(written.written).toBe(true);
   work(a, opts.widest === true);
   const bodies = opts.bodies ?? REMINDERS;
-  for (let i = 0; i < opts.dated; i += 1) reminder(a, DUES[i] ?? "2026-10-11", bodies[i] ?? "", i === 0 && opts.plain === true ? "plain" : undefined);
+  const ids: string[] = [];
+  for (let i = 0; i < opts.dated; i += 1) ids.push(reminder(a, DUES[i] ?? "2026-10-11", bodies[i] ?? "", i === 0 && opts.plain === true ? "plain" : undefined));
   await worker(dataDir, zone);
+  await opts.overnight?.(a, ids, dataDir);
   const row = lastBriefing(a);
   clock(zone, "2026-10-09", 8);
   const { text, result } = sessionStart(a, zone, "s-morning");
@@ -712,6 +723,26 @@ describe("at the composition: three dated items, and who gives the room", () => 
     }
   });
 
+  test("when no dated line fits, the lane still says how many, on room from the lanes below it (2026-10-12)", () => {
+    // The owner's 10-12 bundle: a page whole on borrowed room, the Yesterday
+    // line with its titles, seven dated items and not one word under
+    // "Arriving:" — the count line had no rescue when the lane listed nothing.
+    const lens = [486, 1270, 263, 415, 134, 288, 483];
+    const bodies = lens.map((n, i) => `${`Item ${String(i)} ${"word ".repeat(400)}`.slice(0, n - 1)}.`);
+    const { me, ids } = selfWith(pageOfSize(6_472), undefined, bodies);
+    const dues = ["2026-10-14", "2026-10-14", "2026-10-14", "2026-10-15", "2026-10-15", "2026-10-11", "2026-10-15"];
+    const horizon = ids.map((id, i) => ({ id, due: dues[i] ?? "" }));
+    const out = me.build({ budgetBytes: 6_637, day: 2, horizon, lendBytes: 952, handoffKeepBytes: 673, yesterday: full, yesterdayShorter: shorter });
+    expect(out.page?.rung).toBe("whole");
+    expect(out.counts.horizon).toBe(0);
+    const line = out.text.split("\n").find((l) => collapsedLane(l) === "horizon");
+    expect(line).toContain(`Arriving: ${String(ids.length)} — ${COLLAPSED_WORDS}`);
+    expect(line).toContain(ids[0]);
+    expect(out.bytes).toBeLessThanOrEqual(out.budgetBytes);
+    expect(out.budgetBytes).toBeLessThanOrEqual(6_637 + 952);
+    expect(readSentinel(out.text).intact).toBe(true);
+  });
+
   test("the room kept for the newest handoff is lent to a due-day plain reminder, and to nothing else (review of #367)", () => {
     const { me, ids } = selfWith(pageOfSize(6_000), undefined, LONG);
     const first = ids[0] ?? "";
@@ -766,6 +797,69 @@ describe("at the composition: three dated items, and who gives the room", () => 
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// 4b. Cued and told before anyone read it: still listed on its day (2026-10-12)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * THE OWNER'S 10-12 MORNING. A plain tax reminder due that day had been cued
+ * twice in its lead days — its fire budget spent — and told plainly at 12:19
+ * am to a coordinator session's turn that an agent's message started, nobody
+ * reading. Both took it off "Arriving:" (the cue path's brakes, and the told
+ * latch), so his 08:00 wake, over-room page, four handoffs and Yesterday line
+ * and all, had no Arriving line at all.
+ */
+async function spentAndToldOvernight(a: Adapter, ids: readonly string[], dataDir: string): Promise<void> {
+  const zone = "America/Denver";
+  const id = ids[0] ?? "";
+  const p = a.counterpart.prospective;
+  const day = a.counterpart.store.livedDay();
+  // Cued on two lead days: the window's fire budget is spent.
+  expect(p.fire({ memoryId: id, windowKey: "d:2026-10-09", at: "2026-10-07", day: day - 1 }).reason).toBe("fired");
+  expect(p.fire({ memoryId: id, windowKey: "d:2026-10-09", at: "2026-10-08", day }).reason).toBe("fired");
+  expect(a.counterpart.store.prospectiveFor(id)[0]?.fires).toBe(2);
+  // 12:19 am: another session's turn is told it plainly, and its turn ends.
+  clock(zone, "2026-10-09", 0.3);
+  const due = p.plainDue({ at: "2026-10-09" }).find((d) => d.memoryId === id);
+  expect(due).toBeDefined();
+  if (due !== undefined) expect(p.claimPlain(due, { at: "2026-10-09", session: "s-agent-message" })).toBe(true);
+  await worker(dataDir, zone);
+}
+
+describe("a plain reminder due today, cued out and told overnight, still reaches the morning wake", () => {
+  test("over its room: the reminder is listed — on the room the lower lanes lend, or with the page on its short version", async () => {
+    for (const pageBytes of [6_472, 6_950, 7_100]) {
+      const m = await morning("America/Denver", { pageBytes, dated: 1, plain: true, short: true, overnight: spentAndToldOvernight });
+      const { listed, collapsed } = arriving(m.text);
+      // Whole on what "Work here" lends, or — past that — its short version.
+      if (pageBytes === 7_100) expect(m.text).toContain(SHORT);
+      else expect(m.text.split("\n")).toContain(PAGE_END_LINES.whole);
+      expect(listed.length).toBe(1);
+      expect(listed[0]).toEndWith(REMINDERS[0]);
+      expect(collapsed).toBe(false);
+      expect(readSentinel(m.text).intact).toBe(true);
+      expect(bytes(m.text)).toBeLessThanOrEqual(BUDGET);
+      // The bundle the overnight turn-end published lists it too.
+      expect(arriving(m.a.counterpart.store.getMeta(BRIEFING_KEY) ?? "").listed.length).toBe(1);
+    }
+  });
+
+  test("a page that fits: listed, and the page whole", async () => {
+    const m = await morning("America/Denver", { pageBytes: 4_000, dated: 1, plain: true, short: true, overnight: spentAndToldOvernight });
+    const { listed } = arriving(m.text);
+    expect(listed.length).toBe(1);
+    expect(listed[0]).toEndWith(REMINDERS[0]);
+    expect(m.text.split("\n")).toContain(PAGE_END_LINES.whole);
+    expect(readSentinel(m.text).intact).toBe(true);
+    expect(bytes(m.text)).toBeLessThanOrEqual(BUDGET);
+  });
+
+  test("the next morning it has left the lane: told, and its day behind", async () => {
+    const m = await morning("America/Denver", { pageBytes: 4_000, dated: 1, plain: true, overnight: spentAndToldOvernight });
+    expect(m.a.counterpart.prospective.horizon({ at: "2026-10-10" }).items.map((i) => i.memoryId)).toEqual([]);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // 5. Doctor: a dated item left unlisted is amber
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -790,7 +884,7 @@ describe("doctor's Wake line says so, in amber, when a dated item went unlisted"
     expect(lastBriefing(a)["trimmedLanes"]).toEqual({ horizon: 1 });
     const f = wakeArrivalFindings(store).find((x) => x.key === "wake");
     expect(f?.severity).toBe("amber");
-    expect(f?.detail).toContain('a dated item under "Arriving:" was not listed for want of room in 1 wake (newest 2026-10-08)');
+    expect(f?.detail).toContain('a dated item under "Arriving:" was not listed for want of room in 1 render of the wake (newest 2026-10-08)');
     expect(f?.fix).toContain("short version");
     expect(f?.fix).toContain("injectionBudgetBytes");
     expect(f?.data["datedUnlisted"]).toBe(1);

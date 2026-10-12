@@ -610,7 +610,7 @@ describe("an Arriving line past its date says it WAS due (2026-10-09)", () => {
     expect(lane(sessionStart(a, "America/Denver", "s1").text, FRAMING.horizon)).toEqual(["- was due yesterday, 2026-10-08 · Call the plumber back about the boiler."]);
   });
 
-  test("TOLD PLAINLY ON ITS DAY, it is not in the next morning's wake", async () => {
+  test("TOLD PLAINLY ON ITS DAY, it stays listed that day and is not in the next morning's wake", async () => {
     const zone = "America/Denver";
     clock(zone, "2026-10-07", 21);
     const a = adapter(zone);
@@ -633,13 +633,14 @@ describe("an Arriving line past its date says it WAS due (2026-10-09)", () => {
       { updateNotice: () => null, markUpdateNotice: () => false, claimPlain: (i, due) => a.claimPlain(i, due) },
       toHookInput({ session_id: "s-told", hook_event_name: "SessionStart", cwd: SCOPE }, { scope: SCOPE, timeZone: zone, env: {} }),
     );
-    expect(a.counterpart.prospective.horizon({ at: "2026-10-08" }).items.map((i) => i.memoryId)).not.toContain(id);
+    // ON ITS OWN DAY IT STAYS (2026-10-12): the turn that was told may be one
+    // nobody read — on the owner's store, an agent's message at 12:19 am — so
+    // the day's later wakes still list it.
+    expect(a.counterpart.prospective.horizon({ at: "2026-10-08" }).items.map((i) => i.memoryId)).toContain(id);
     // That session's turn ends.
     clock(zone, "2026-10-08", 8.5);
     await worker(zone);
-    // The turn-end after the telling re-rendered it: the telling marked the
-    // wake behind (`told`), so the 8th's own wake no longer lists it either.
-    expect(lane(a.counterpart.store.getMeta(BRIEFING_KEY) ?? "", FRAMING.horizon)).toBe(null);
+    expect(lane(a.counterpart.store.getMeta(BRIEFING_KEY) ?? "", FRAMING.horizon)?.[0]).toContain("(due 2026-10-08)");
     // The next morning, before the 9th's first worker: not under Arriving. (It
     // is still a memory, and warm: recall finds it, and Nearby may carry it
     // dated as any memory is — not as something still to come.)
