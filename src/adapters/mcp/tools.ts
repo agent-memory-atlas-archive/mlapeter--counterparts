@@ -193,7 +193,7 @@ const ABOUT_PROPERTY = {
   type: "string",
   enum: ["me", "us", "owner", "work", "world"],
   description:
-    "What this is about, by meaning — me (who I am), us (the owner and me), owner (the owner, as a person), work (the craft: how a job is done), world (anything else). Mark anything personal — people, feelings, life outside the work — owner or us: left unmarked, a fact written in a project counts as that project's work and is shown only there. Left out on a revision (`updates`), it keeps the mark of the memory it revises. Only me, us and owner can become part of who I am.",
+    "What this is about, by meaning — me (who I am), us (the owner and me), owner (the owner, as a person), work (the craft: how a job is done), world (anything else). Mark anything personal — people, feelings, life outside the work — owner or us: left unmarked, a fact written in a project counts as that project's work and is shown only there. Left out on a revision (`updates`), it keeps the mark of the memory it revises. Only me and us can become part of who I am — never a plan.",
 };
 
 /**
@@ -212,6 +212,25 @@ const REMARK_PROPERTY = {
   additionalProperties: false,
   description:
     "Optional: re-mark what an existing memory this session was shown is about — {id, about, why} — when its mark is wrong (a personal one marked work, say). Recorded as yours, with the why. Alone, or beside text.",
+};
+
+/**
+ * `core` on `remember` (2026-10-11, Group 3 part A): my decision on a core
+ * memory — keep it, or retire it to ordinary fading — the answer to "being
+ * reconsidered" in the wake, and a door I may use on any core memory
+ * (`sleep/core-standing.ts#keepCore` / `retireCore`, the owner's path too).
+ */
+const CORE_DECISION_PROPERTY = {
+  type: "object",
+  properties: {
+    id: { type: "string" },
+    decision: { type: "string", enum: ["keep", "retire"] },
+    why: { type: "string" },
+  },
+  required: ["id", "decision", "why"],
+  additionalProperties: false,
+  description:
+    'Optional: decide on a core memory — {id, decision: "keep" | "retire", why}. The answer to one the wake lists as being reconsidered for the core; retire sends it back to ordinary fading. Recorded as yours, with the why. Alone, or beside text.',
 };
 
 /**
@@ -620,6 +639,11 @@ const REMEMBER: ToolSpec = {
         "`remark` changes what a memory this session was shown is about, recorded as yours with the why — the record the owner's door and the nightly reflection write. A dream's or a reflection's words move only toward work or world.",
       mechanizedBy: "src/adapters/mcp/server.ts#remarkOutcome -> src/core/counterpart.ts#markAbout -> src/core/store/index.ts#setAbout",
     },
+    {
+      claim:
+        "`core` keeps a core memory or retires it to ordinary fading, recorded as yours with the why — the decision a memory being reconsidered waits for. Nothing leaves the core without one.",
+      mechanizedBy: "src/adapters/mcp/server.ts#coreDecisionOutcome -> src/core/counterpart.ts#keepCore / demoteCore -> src/core/sleep/core-standing.ts",
+    },
   ],
   inputSchema: {
     type: "object",
@@ -627,7 +651,7 @@ const REMEMBER: ToolSpec = {
       text: {
         type: "string",
         description:
-          "One thing to remember, in your own words — with the exact quote, number or name when the words matter. A list, a table or a pasted text whose specifics matter: keep it here word for word, not summarized, and put the words someone would search for (what it is, whose, when) in the title and the first line. Required unless `settle`, `feelingsNow` or `remark` is sent.",
+          "One thing to remember, in your own words — with the exact quote, number or name when the words matter. A list, a table or a pasted text whose specifics matter: keep it here word for word, not summarized, and put the words someone would search for (what it is, whose, when) in the title and the first line. Required unless `settle`, `feelingsNow`, `remark` or `core` is sent.",
       },
       updates: {
         type: "string",
@@ -668,6 +692,7 @@ const REMEMBER: ToolSpec = {
       traits: TRAITS_PROPERTY,
       feelingsNow: FEELINGS_NOW_PROPERTY,
       remark: REMARK_PROPERTY,
+      core: CORE_DECISION_PROPERTY,
     },
     // `text` is not required in the published schema (2026-09-29): a `settle`
     // or (2026-10-02) `feelingsNow` alone writes no memory. The server refuses
@@ -1548,7 +1573,7 @@ const REFLECT: ToolSpec = {
     },
     {
       claim:
-        "A feeling it records is marked as recorded later, with the day, beside what was felt at the time; what a memory is about is a mark with who set it, and only me, us and owner make a core candidate.",
+        "A feeling it records is marked as recorded later, with the day, beside what was felt at the time; what a memory is about is a mark with who set it, and only me and us make a core candidate.",
       mechanizedBy: "src/core/store/index.ts#addFeelings (recorded_later) + src/core/store/index.ts#setAbout + src/core/sleep/consolidate.ts#aboutMe",
     },
     {
@@ -1624,6 +1649,19 @@ const REFLECT: ToolSpec = {
             why: { type: "string" },
           },
           required: ["id", "about"],
+        },
+      },
+      core: {
+        type: "array",
+        description: "`finish`, optional: a decision on a core memory you were shown — keep it, or retire it to ordinary fading — with why. The answer to one being reconsidered.",
+        items: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+            decision: { type: "string", enum: ["keep", "retire"] },
+            why: { type: "string" },
+          },
+          required: ["id", "decision", "why"],
         },
       },
       traits: {

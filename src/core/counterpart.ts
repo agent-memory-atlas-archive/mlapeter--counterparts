@@ -206,7 +206,8 @@ import type {
   WakeTrigger,
   WriterInput,
 } from "./self/index.js";
-import { acceptsReflectedFeeling, cyclePartial, ownerNames, runCycle } from "./sleep/index.js";
+import { acceptsReflectedFeeling, cyclePartial, keepCore, ownerNames, retireCore, runCycle } from "./sleep/index.js";
+import type { CoreDecision, CoreDecisionActor } from "./sleep/index.js";
 import type { CyclePartial, CycleReport, Phase } from "./sleep/index.js";
 import { ABOUT_MARKS, CORE_ABOUT_MARKS, Store, assertSafeDataDir, inheritFrom, rowTombstoned, hashText, indexTextOf, occurredOnOf, saidByOf, statusOf } from "./store/index.js";
 import type {
@@ -4627,6 +4628,8 @@ export class Counterpart {
     core: { id: string; kind: string; lane: string | null; day: number | null; body: string | null; confidential: boolean }[];
     nominated: { id: string; day: number; reason: string | null; dream: string | null }[];
     demoted: { id: string; day: number; reason: string | null }[];
+    /** Core memories being reconsidered (2026-10-11): still core, waiting on a decision. `reason` is the category. */
+    reconsidering: { id: string; day: number; reason: string | null }[];
   } {
     const core: ReturnType<Counterpart["coreList"]>["core"] = [];
     for (const id of this.store.list({ archived: false })) {
@@ -4655,38 +4658,33 @@ export class Counterpart {
     const demoted = this.store
       .coreEvents({ action: "demoted" })
       .map((e) => ({ id: e.memory_id, day: e.day, reason: e.reason }));
-    return { core, nominated, demoted };
+    const reconsidering = this.store.coreReconsidering().map((r) => ({ id: r.id, day: r.day, reason: r.reason }));
+    return { core, nominated, demoted, reconsidering };
   }
 
   /**
    * THE DEMOTE DOOR (owner decision 2026-09-26): send a core memory back to
-   * ordinary fading, and record why. Its fading restarts TODAY — it was held at
-   * full strength until now, and "back to normal fading" should not mean a
-   * collapse to whatever months of decay would have left. The demotion is
-   * sticky: the core lanes do not promote it again (`coreDemoted`). The row
-   * says who and why; a `band.demoted` event is the durable crossing record,
-   * the mirror of `band.promoted`.
+   * ordinary fading, and record why — `sleep/core-standing.ts#retireCore`,
+   * which a reflection's `core` part calls too. The owner's by default; since
+   * 2026-10-11 (Group 3 part A, item 14) also mine awake (`actor: "self"`):
+   * either of us may retire a core memory, flagged or not.
    */
-  demoteCore(id: string, opts: { reason: string; actor?: string }): { ok: boolean; reason: string } {
-    if (this.observer) return { ok: false, reason: "observer" };
-    const reason = opts.reason.trim();
-    if (reason.length === 0) return { ok: false, reason: "reason-required" };
-    const row = this.store.row(id);
-    if (row === undefined) return { ok: false, reason: "unknown-id" };
-    if (row.promoted_identity !== 1) return { ok: false, reason: "not-core" };
-    const day = this.store.livedDay();
-    this.store.appendCoreEvent({ memoryId: id, action: "demoted", day, reason, actor: opts.actor ?? "owner" });
-    this.store.updatePhysics(id, { promotedIdentity: false, lastUsedDay: Math.max(row.last_used_day, day) });
-    const after = this.store.physicsOf(id);
-    this.store.setBand(id, bandOf(after, day), day);
-    this.store.appendEvent({
-      name: "band.demoted",
-      day,
-      ref: id,
-      payload: { kind: row.kind, day, actor: opts.actor ?? "owner" },
-    });
-    this.emit("counterpart.core.demoted", id, { day });
-    return { ok: true, reason: "demoted" };
+  demoteCore(id: string, opts: { reason: string; actor?: CoreDecisionActor }): { ok: boolean; reason: string } {
+    const out = retireCore(this.store, { id, reason: opts.reason, actor: opts.actor ?? "owner" });
+    if (out.ok) this.emit("counterpart.core.demoted", id, { day: this.store.livedDay() });
+    return out;
+  }
+
+  /**
+   * THE KEEP DOOR (2026-10-11, Group 3 part A): decide that a core memory
+   * stays — the answer to "being reconsidered", the owner's or mine awake.
+   * `sleep/core-standing.ts#keepCore`: a `reaffirmed` row with the why; a flag
+   * is lifted and not raised again for what the memory is.
+   */
+  keepCore(id: string, opts: { why: string; actor?: CoreDecisionActor }): CoreDecision {
+    const out = keepCore(this.store, { id, why: opts.why, actor: opts.actor ?? "owner" });
+    if (out.ok) this.emit("counterpart.core.kept", id, { day: this.store.livedDay() });
+    return out;
   }
 
   /**

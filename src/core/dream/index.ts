@@ -2205,7 +2205,7 @@ export class Dreams {
         // reflection may re-mark it.
         const notes: string[] = [];
         if (row.kind === "skill") notes.push(`${row.id} is a skill — the craft — which never becomes core; the nomination is recorded for the reflection to read.`);
-        else if (row.about === "work" || row.about === "world") notes.push(`${row.id} is marked ${row.about}; it can become core only if the reflection re-marks it me, us or owner.`);
+        else if (row.about === "work" || row.about === "world" || row.about === "owner") notes.push(`${row.id} is marked ${row.about}; it can become core only if the reflection re-marks it me or us.`);
         const why = this.words(change.why ?? "", dream, true, DREAM_TUNABLES.MAX_WHY_CHARS);
         if (!why.ok) notes.push(`why was not kept — ${why.detail}`);
         else if (why.cut) notes.push(`why was kept to its first ${String(DREAM_TUNABLES.MAX_WHY_CHARS)} characters.`);

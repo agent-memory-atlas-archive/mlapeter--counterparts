@@ -63,7 +63,13 @@ export interface SleepStore {
   read(id: string): StoredMemory;
   /** v9: one memory's counted returns, OPTIONAL — a promotion's record names
    *  their sources where the port has it. */
-  returnsOf?(id: string): readonly { source: string; day?: number }[];
+  returnsOf?(id: string): readonly { source: string; day?: number; session?: string | null }[];
+  /**
+   * The standing pairs that name these memories (v10, `core/reconsolidation.ts`),
+   * OPTIONAL: the core's recurrence lane walks a memory's SLOT along them
+   * (2026-10-11). Absent: a memory's slot is itself.
+   */
+  contradictionsOf?(ids: readonly string[]): Map<string, readonly { a: string; b: string; state: string; how: string | null; source: string }[]>;
   versions(id: string): VersionRow[];
   deniedIds(): string[];
 
@@ -147,7 +153,7 @@ export interface SleepStore {
    */
   appendCoreEvent?(input: {
     memoryId: string;
-    action: "promoted" | "demoted" | "nominated";
+    action: "promoted" | "demoted" | "nominated" | "reconsidering" | "reaffirmed";
     day: number;
     lane?: string | null;
     reason?: string | null;
@@ -155,6 +161,8 @@ export interface SleepStore {
     actor?: string | null;
   }): number;
   coreDemoted?(id: string): boolean;
+  /** A core memory's latest promotion, demotion, flag or reaffirmation (2026-10-11), OPTIONAL like the rest of the core's history. */
+  coreStanding?(id: string): { readonly action: string; readonly day: number; readonly reason: string | null; readonly actor: string | null } | undefined;
   /** A memory's feelings — whose, the word and its core, its strength and who
    *  recorded it are all this port reads (the recognition lane, wheel v2; the
    *  fast lane's "strongly felt", 2026-10-10). Absent: no

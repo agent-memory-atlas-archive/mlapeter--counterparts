@@ -1242,8 +1242,11 @@ describe("the TUNABLE table matches the contract, in one visible place", () => {
     expect(TUNABLES.DREAMED_CLAIM_CEILING).toBe(0.3);
     expect(TUNABLES.CORE_FAST_FEELING).toBe(0.6);
     expect(TUNABLES.CORE_FAST_GAP_DAYS).toBe(2);
-    expect(TUNABLES.CORE_SLOW_DAYS).toBe(5);
-    expect(TUNABLES.CORE_SLOW_SPAN_DAYS).toBe(21);
+    // The recurrence lane (2026-10-11, Group 3 part A; review 08 C1).
+    expect(TUNABLES.CORE_SLOW_DAYS).toBe(4);
+    expect(TUNABLES.CORE_SLOW_SESSIONS).toBe(3);
+    expect(TUNABLES.CORE_SLOW_SPAN_DAYS).toBe(7);
+    expect(TUNABLES.CORE_SLOW_WINDOW_DAYS).toBe(30);
     // The curve (2026-10-10, §5.4): S0 · e^(G·q), q = sal + EMO_Q · I.
     expect(TUNABLES.S0).toBe(0.4);
     expect(TUNABLES.STABILITY_GAIN).toBe(8);

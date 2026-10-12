@@ -914,7 +914,10 @@ export interface ReturnRow extends Row {
   gap: number;
   dream_id: string | null;
   at: number;
-  /** v13 (pre-provisioned for Group 3): the session it came back in. Nothing writes it yet. */
+  /** v13 (pre-provisioned for Group 3): the session it came back in — the
+   *  recall session for an awake or engaged use, the reflection's id for a
+   *  reflection's citation; written since 2026-10-11 (Group 3 part A), NULL
+   *  before that and for a dream's replay. The core's recurrence lane counts it. */
   session: string | null;
 }
 
