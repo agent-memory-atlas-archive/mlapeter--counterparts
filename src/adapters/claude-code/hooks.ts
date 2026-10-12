@@ -296,6 +296,25 @@ export function isInteractive(input: Pick<HookInput, "entrypoint" | "attended">)
   return input.entrypoint === undefined || !NON_INTERACTIVE_ENTRYPOINTS.has(input.entrypoint);
 }
 
+/**
+ * IS A PERSON THERE FOR THIS SESSION START? (2026-10-12.) `isInteractive`,
+ * and two starts no person makes even when the host says somebody attends:
+ *  - the headless nightly run's child (`HookInput.nightRun`), named outright
+ *    rather than left to the host's `sdk-cli` and `ATTENDED=0` (measured on
+ *    2.1.296: `claude -p` sets both in its hooks' environment), so the run's
+ *    own marker holds whatever a later host sets;
+ *  - a COMPACTION (`source: "compact"`): it fires mid-turn, so it is as
+ *    watched as the turn that filled the context, which may be a hand-back no
+ *    person typed, and a subagent's own compaction fires it too (measured
+ *    2026-10-10: `SessionStart:compact` inside an Agent-tool subagent, `cli`,
+ *    handed a full wake). What a person is owed waits one prompt.
+ * A plain reminder, the first meeting's line and the wake row's `interactive`
+ * all read this; `startup`, `clear` and `resume` are a person's.
+ */
+export function watchedAtStart(input: Pick<HookInput, "entrypoint" | "attended" | "nightRun" | "source">): boolean {
+  return isInteractive(input) && input.nightRun !== true && input.source !== "compact";
+}
+
 /** No plain reminders: what a session nobody watches is handed. */
 const NO_PLAIN: PlainLines = { context: "", notices: [], due: [] };
 
@@ -676,7 +695,8 @@ export class ClaudeCodeAdapter extends Lifecycle {
       // escaped envelope (`ENVELOPE_CHARS`), which cost a full wake its
       // reminders and both asks. What actually gave way is recorded by the
       // delivery (`noteGaveWay`) and by each ask's own deferral.
-      const plain = isInteractive(input) ? this.plainFor(input) : NO_PLAIN;
+      const watched = watchedAtStart(input);
+      const plain = watched ? this.plainFor(input) : NO_PLAIN;
       // DESKTOP'S CODE TAB (2026-10-01): one line, right under the clock,
       // naming this session's id — there the counterparts tools the model sees
       // are Claude Desktop's server, which serves a call as this session only
@@ -722,7 +742,7 @@ export class ClaudeCodeAdapter extends Lifecycle {
         // reminders. The `fired` report's plain-due check reads it, so a day
         // only the headless run or `claude -p` came is not a day a reminder
         // could have been said.
-        interactive: isInteractive(input) && input.nightRun !== true,
+        interactive: watched,
         // A resume's short wake (2026-10-11): `bytes` is the line, not a bundle.
         resumed,
       });
@@ -756,7 +776,7 @@ export class ClaudeCodeAdapter extends Lifecycle {
       // While the meeting is still to happen the scope question waits: the
       // meeting asks where memory is on, and asking twice is the wall of
       // questions the meeting replaces.
-      const meet = isInteractive(input) ? this.deliverMeetLine(input, room) : "";
+      const meet = watched ? this.deliverMeetLine(input, room) : "";
       const meetBytes = meet.length === 0 ? 0 : room.cost(`\n\n${meet}`);
       const scope = wantsAsk && !this.meetPending() ? this.deliverScopeAsk(input, { ...room, spent: room.spent + meetBytes }) : "";
       const chosen = [meet, scope].filter((a) => a.length > 0).join("\n\n");

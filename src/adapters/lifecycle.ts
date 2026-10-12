@@ -1089,6 +1089,9 @@ export class Lifecycle implements HostLifecycle {
         ...(input.at === undefined ? {} : { at: input.at }),
         // Said outright this turn, so not ALSO handed over as a quiet cue.
         ...(opts.withhold === undefined ? {} : { withhold: opts.withhold }),
+        // The headless nightly run's prompt (2026-10-12): no day's cue is
+        // handed to it, so none of the person's fires is spent at 00:19.
+        ...(input.nightRun === true ? { noCues: true } : {}),
       },
     );
     const decision = result.decision;

@@ -1,0 +1,1 @@
+- **A reminder isn't spent on a session nobody reads.** When Claude compacts a long conversation (or a subagent compacts its own), a reminder due today is no longer said there and marked as told. It waits for the next message you type. The nightly dream run is also no longer handed the day's reminders as quiet hints, so it can't use up the nudges meant for your day.
