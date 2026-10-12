@@ -1048,8 +1048,7 @@ const SESSION_END: ToolSpec = {
       },
       nothing: {
         type: "string",
-        description:
-          "With `writeUp` and `memories: []`, in a catch-up (the nightly run or `counterparts catch-up`): one line on why nothing in the part's not-yet-written words is worth keeping. A catch-up's empty answer without it is refused when the part holds such words, and the part stays owed. Not needed when every word in the part is marked already written up, nor in a live session.",
+        description: "Catch-up only, with `writeUp` and `memories: []`: one line on why nothing in the part is worth keeping.",
       },
       drewOn: DREW_ON_PROPERTY,
       memories: {
