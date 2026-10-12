@@ -19,3 +19,8 @@
   diagnostic (`COUNTERPARTS_WAKE_CHECK=1` in the hooks' environment) rather than being removed. Why: one
   line of gate against several hundred lines of reader, tests and doctor wording to remove; off, nothing is
   read and no row is written.
+- Checked by the #444 reviewer, 2026-10-12: in Claude Code 2.1.296's bundle, `content-replacement` is a
+  session-storage entry (`insertContentReplacement` → `appendEntry`), written to the transcript file only,
+  so it does not reach `stream-json`: turn-budget cuts go unseen on the night run from now on. The
+  per-result `<persisted-output>` preview sits inside the tool result itself, which `stream-json`'s `user`
+  messages carry. Kept as built; the miss is quiet, as the builder said.
