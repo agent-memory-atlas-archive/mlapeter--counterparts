@@ -93,7 +93,7 @@ import { findable } from "./store-fixture.js";
  */
 const NOW_LINE = /^Now: [A-Z][a-z]{2} \d{1,2} [A-Z][a-z]{2} \d{4}, \d{1,2}:\d{2} [ap]m \S+\n/;
 /** The first meeting's marker, on its own line under the clock at a session start (2026-10-11). */
-const MEET_MARKER = /^<!-- counterparts:onboarding meet=[a-z_]+ -->\n/;
+const MEET_MARKER = /^<!-- counterparts:onboarding meet=[a-z_]+ -->\n(?:<!-- counterparts:store id=st_[0-9a-f]{16} -->\n)?/;
 function withoutNow(text: string): string {
   expect(text).toMatch(NOW_LINE);
   return text.replace(NOW_LINE, "").replace(MEET_MARKER, "");
@@ -2097,7 +2097,8 @@ describe("parallel.enabled — the delivering hooks stand down, and capture does
       const pick = (r: ReturnType<ClaudeCodeAdapter["stop"]>): unknown => ({
         ok: r.ok,
         reason: r.reason,
-        injection: r.injection,
+        // Two stores, so two store ids (`adapters/store-id.ts`); the rest is the same.
+        injection: r.injection?.replace(/counterparts:store id=st_[0-9a-f]{16}/, "counterparts:store id=st_…"),
         bytes: r.bytes,
         sentinel: r.sentinel,
         surfaced: r.surfaced,

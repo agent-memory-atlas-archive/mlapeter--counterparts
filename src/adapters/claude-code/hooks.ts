@@ -704,8 +704,11 @@ export class ClaudeCodeAdapter extends Lifecycle {
       const codeTab = codeTabSessionLine(input);
       // THE FIRST MEETING'S MARKER (2026-10-11), on its own line under the
       // clock, on every session-start wake: the state word only, for the mod,
-      // which cannot reach the dashboard before somebody starts it.
-      const marker = `${this.onboardingMarker(input)}\n`;
+      // which cannot reach the dashboard before somebody starts it. The store
+      // marker on the line under it (2026-10-12) says which store this session
+      // opened, so the mod can tell this store's dashboard from another's.
+      const storeLine = this.storeMarker();
+      const marker = `${this.onboardingMarker(input)}\n${storeLine.length === 0 ? "" : `${storeLine}\n`}`;
       const lead = `${woke.text.length === 0 && plain.context.length === 0 && codeTab === null ? "" : `${this.nowLine()}\n`}${marker}${codeTab === null ? "" : `${codeTab}\n`}${plain.context}`;
       const sent = woke.bytes + Buffer.byteLength(lead, "utf8");
       const rides =

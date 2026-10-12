@@ -89,11 +89,14 @@ export const NEW_INSTALL_DREAMING_LINE =
   "Daily tidy-up (called dreaming): on. Once a day, your first session starts a short background run that looks over what was saved and lets go of what doesn't matter. Say \"no dreams\" in a session, or run `counterparts dream --setting off`, to turn it off.";
 
 /**
- * THE SAME, FOR THE PLUGIN (2026-10-12, onboarding round 1, F): a plugin
- * install has no `counterparts` command, so it is told only what to say.
+ * THE SAME, FOR THE PLUGIN'S FIRST-RUN LINE (2026-10-12, onboarding round 1,
+ * F; shortened the same day from Mike's fresh-user trial): a plugin install
+ * has no `counterparts` command, so it is told only what to say, and it rides
+ * at the end of one line (`plugin.ts#firstRunLine`), so it is a parenthesis.
+ * "called dreaming" stays so "no dreams" names something the line said.
  */
 export const NEW_INSTALL_DREAMING_LINE_PLUGIN =
-  "Daily tidy-up (called dreaming): on. Once a day, your first session starts a short background run that looks over what was saved and lets go of what doesn't matter. Say \"no dreams\" in a session to turn it off.";
+  "(Daily tidy-up, called dreaming, is on; say \"no dreams\" to turn it off.)";
 
 /**
  * A NEW INSTALL'S STARTING STATE — written by `install`, only into a store it
@@ -538,7 +541,7 @@ export function meetingInstructions(ctx: MeetContext): string {
     "Pass your session id (the one your wake names) as `session` on every meet call. Until the meeting is finished, the end-of-turn write-up ask and the dream wait; the finish step hands you the write-up.",
     "",
     "1. Introduce yourself in one warm line, close to this, and don't ask anything in it:",
-    "   \"Hi, I'm Claude, with Counterparts now: a memory that's mine and stays on this computer, so I can carry what matters from one session to the next.\"",
+    "   \"Hi, I'm Claude, with Counterparts now: a memory that's mine and stays on this computer, so I can carry what matters from one session to the next, and grow along with you.\"",
     "   Then the choice, asked once: \"Want to take about five minutes to get to know each other?\" Now (about 5 minutes) · Later. Later → meet {step: \"later\"}, then carry on with whatever they want, and don't offer again this session. If they never want it → meet {step: \"skipped\"}.",
   ];
   if (ctx.folders) {
@@ -600,15 +603,16 @@ export function finishText(ctx: Pick<MeetContext, "name" | "dreaming" | "plugin"
 
 /**
  * THE WAKE'S LINE (hosts with or without the mod): one short instruction,
- * never a takeover. The mod's own prompt ("say hello and introduce yourself")
- * is the same offer, and the line says so, so the two never make two offers.
+ * never a takeover. The mod's own prompt ("Meet your new counterpart." since
+ * 2026-10-12; any wording that asks to meet or for an introduction) is the
+ * same offer, and the line says so, so the two never make two offers.
  * The offer is ASKED ONCE (B, 2026-10-12): one warm line of introduction, then
  * the choice — the dialog where there is one, never the same question twice.
  */
 export function offerLine(state: MeetState): string {
   return [
     "<counterparts-meet>",
-    `You and the person haven't properly met yet${state === "later" ? " (last time they said later)" : ""}. Call the counterparts \`meet\` tool first: it has the script and records that the offer was made. At the end of your first reply, never instead of answering them, introduce yourself in one warm line and offer about five minutes to get to know each other — asked once, through the question dialog if the host has one, not also in prose. If their message asks you to say hello and introduce yourself, that is this meeting: begin it.`,
+    `You and the person haven't properly met yet${state === "later" ? " (last time they said later)" : ""}. Call the counterparts \`meet\` tool first: it has the script and records that the offer was made. At the end of your first reply, never instead of answering them, introduce yourself in one warm line and offer about five minutes to get to know each other — asked once, through the question dialog if the host has one, not also in prose. If their message asks to meet you or asks you to introduce yourself (the counterparts sidebar sends \"Meet your new counterpart.\"), that is this meeting: begin it with that introduction.`,
     "</counterparts-meet>",
   ].join("\n");
 }

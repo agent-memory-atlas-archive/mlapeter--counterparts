@@ -91,7 +91,8 @@ output. That writes the store and its configuration and nothing of the host's. A
 in the temp directory makes the hook and the server, which start together, produce
 one install between them. Whichever one makes it also leaves a small notice beside
 the lock, and the session's first SessionStart takes it: the wake then carries one
-line, "first run — a new memory was set up at ~/.counterparts", once. This matters
+line, "Counterparts is set up: a memory that stays on this computer, in ~/.counterparts.
+(Daily tidy-up, called dreaming, is on; say "no dreams" to turn it off.)", once. This matters
 because the server is usually first: with the sidebar's hooks module, Claude Code
 runs the SessionStart command after the server's install has finished. A plugin hook
 that stands down for the npm install takes the notice without saying it. This is
