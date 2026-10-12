@@ -240,7 +240,11 @@ describe("the mint path never reads the ambient clock", () => {
     // injected clock. Read the sources rather than trusting the tests above.
     const src = await Bun.file(new URL("../src/core/mint.ts", import.meta.url)).text();
     expect(src.includes("Date.now()")).toBe(false);
-    const storeSrc = await Bun.file(new URL("../src/core/store/index.ts", import.meta.url)).text();
+    // The class's file and the parts its bodies moved to (the 2026-10-11 file split), read as one.
+    const storeParts = ["index", "marks", "shapes", "index-text", "reads-memories", "reads-marks", "reads-history"];
+    const storeSrc = (
+      await Promise.all(storeParts.map((p) => Bun.file(new URL(`../src/core/store/${p}.ts`, import.meta.url)).text()))
+    ).join("\n");
     // Exactly one CALL of the ambient clock in the whole store, and it is the
     // module-level `today()` the adapters still use. Every write site — `put`,
     // `appendEvent`, `revise`, `supersede`, `appendRemovalRecord`, `emit` —
