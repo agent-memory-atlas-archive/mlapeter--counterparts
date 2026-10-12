@@ -2,7 +2,7 @@
  * DATED ITEMS COME BEFORE THE FURNITURE (2026-10-10, `self/briefing.ts#
  * ROOM_ORDER`).
  *
- * The owner's wake on lived day 19 was 8,922 bytes and read "Arriving: 1 — no
+ * The owner's wake on lived day 19 was 8,922 bytes and read "Coming up: 1 — no
  * room to list them in this wake". The item left out was his tax reminder,
  * while the same wake still printed yesterday's chapter titles and four
  * handoffs: the handoff pointer and "Last here" are spliced at delivery into
@@ -421,7 +421,7 @@ describe("at 9,000, an over-room page, four handoffs, yesterday's titles — eve
           const { listed, collapsed } = arriving(m.text);
           expect({ pageBytes, listed: listed.length, collapsed }).toEqual({ pageBytes, listed: dated, collapsed: false });
           for (const body of REMINDERS.slice(0, dated)) expect(listed.some((l) => l.endsWith(body))).toBe(true);
-          expect(m.text).not.toContain(`Arriving: ${String(dated)} — ${COLLAPSED_WORDS}`);
+          expect(m.text).not.toContain(`Coming up: ${String(dated)} — ${COLLAPSED_WORDS}`);
           expect(readSentinel(m.text).intact).toBe(true);
           expect(bytes(m.text)).toBeLessThanOrEqual(BUDGET);
           // Through the wake assembled at session start (2026-10-10).
@@ -444,7 +444,7 @@ describe("at 9,000, an over-room page, four handoffs, yesterday's titles — eve
           expect(was.yesterday).not.toBeNull();
           expect((now.yesterday ?? "").match(/epi_[0-9a-f]+/g)?.length).toBe((was.yesterday ?? "").match(/epi_[0-9a-f]+/g)?.length);
           // Doctor has nothing to say about dated items.
-          expect(wakeArrivalFindings(m.a.counterpart.store).map((f) => f.detail).join(" ")).not.toContain("Arriving:");
+          expect(wakeArrivalFindings(m.a.counterpart.store).map((f) => f.detail).join(" ")).not.toContain("Coming up:");
         }
         expect(gaveWay).toBeGreaterThan(0);
       }, 60_000);
@@ -477,7 +477,7 @@ test("the room lent stops at the newest handoff: dated items a few lines long ne
 
 describe("a plain reminder due the morning the wake is read, under the widest delivery reserves", () => {
   for (const zone of ZONES) {
-    test(`${zone}: it leads "Arriving:", listed whole beside a borrowing page, four handoffs and yesterday's titles — and is said plainly beside the wake, outside it`, async () => {
+    test(`${zone}: it leads "Coming up:", listed whole beside a borrowing page, four handoffs and yesterday's titles — and is said plainly beside the wake, outside it`, async () => {
       for (const pageBytes of [PAGE_ROOM_BYTES, 6_400, 6_767]) {
         const m = await morning(zone, { pageBytes, dated: 2, plain: true, widest: true });
         // The reserves landed at their widest: the boundary composed at 9,000 − (preface + 1,125 + 1,125), and lent past it.
@@ -734,7 +734,7 @@ describe("at the composition: three dated items, and who gives the room", () => 
   test("when no dated line fits, the lane still says how many, on room from the lanes below it (2026-10-12)", () => {
     // The owner's 10-12 bundle: a page whole on borrowed room, the Yesterday
     // line with its titles, seven dated items and not one word under
-    // "Arriving:" — the count line had no rescue when the lane listed nothing.
+    // "Coming up:" — the count line had no rescue when the lane listed nothing.
     const lens = [486, 1270, 263, 415, 134, 288, 483];
     const bodies = lens.map((n, i) => `${`Item ${String(i)} ${"word ".repeat(400)}`.slice(0, n - 1)}.`);
     const { me, ids } = selfWith(pageOfSize(6_472), undefined, bodies);
@@ -819,7 +819,7 @@ describe("at the composition: three dated items, and who gives the room", () => 
  * THE OWNER'S 10-12 MORNING. A plain tax reminder due that day had been cued
  * twice in its lead days — its fire budget spent — and told plainly at 12:19
  * am to a coordinator session's turn that an agent's message started, nobody
- * reading. Both took it off "Arriving:" (the cue path's brakes, and the told
+ * reading. Both took it off "Coming up:" (the cue path's brakes, and the told
  * latch), so his 08:00 wake, over-room page, four handoffs and Yesterday line
  * and all, had no Arriving line at all.
  */
@@ -921,7 +921,7 @@ describe("doctor's Wake line says so, in amber, when a dated item went unlisted"
     expect(f?.severity).toBe("amber");
     expect(f?.data["untold"]).toBe(0);
     expect(f?.data["steppedDown"]).toBe(1);
-    expect(f?.detail).toContain('a dated item under "Arriving:" was counted, not listed, for want of room in 1 render of the wake (newest 2026-10-08)');
+    expect(f?.detail).toContain('a dated item under "Coming up:" was counted, not listed, for want of room in 1 render of the wake (newest 2026-10-08)');
     expect(f?.fix).toContain("short version");
     expect(f?.fix).toContain("injectionBudgetBytes");
     expect(f?.data["datedUnlisted"]).toBe(1);
@@ -930,7 +930,7 @@ describe("doctor's Wake line says so, in amber, when a dated item went unlisted"
   test("every dated item listed: no such clause, and nothing amber for it", async () => {
     const m = await morning("America/Denver", { pageBytes: 6_400, dated: 2 });
     const f = wakeArrivalFindings(m.a.counterpart.store).find((x) => x.key === "wake");
-    expect(f?.detail ?? "").not.toContain("Arriving:");
+    expect(f?.detail ?? "").not.toContain("Coming up:");
     expect(f?.data["datedUnlisted"] ?? 0).toBe(0);
   });
 

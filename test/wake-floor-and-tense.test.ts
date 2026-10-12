@@ -282,8 +282,8 @@ describe("Still open keeps its first item beside a long page, and the page is ne
         // And what gave way was "Work here" (fewer lines), not the reminders or
         // yesterday's chapters: both Arriving lines, all four titles.
         expect(lane(text, FRAMING.horizon)?.filter((l) => l.startsWith("- ")).length).toBe(2);
-        expect(text).toContain("Yesterday, 10-08: ");
-        expect(text.split("\n").find((l) => l.startsWith("Yesterday, 10-08: "))).not.toContain(" more.");
+        expect(text).toContain("Yesterday, Oct 8: ");
+        expect(text.split("\n").find((l) => l.startsWith("Yesterday, Oct 8: "))).not.toContain(" more.");
         expect(text).toContain("Where the work in this directory was left off");
       });
     }
@@ -408,8 +408,8 @@ describe("what gives way for Still open's first item, in order — never the pag
   const body = pageOf(3_000);
   const page = { text: body, top: null, dateline: null, end: null, rung: "whole" as const, truncated: false, wholeBytes: 3_000 };
   const title = (i: number): string => `"Seating the relief valves on kiln number ${String(i)}" (epi_${String(i)})`;
-  const full = `Yesterday, 10-07: ${[0, 1, 2, 3].map(title).join("; ")}.`;
-  const shorter = [3, 2, 1].map((n) => `Yesterday, 10-07: ${[0, 1, 2].slice(0, n).map(title).join("; ")}; and ${String(4 - n)} more.`);
+  const full = `Yesterday, Oct 7: ${[0, 1, 2, 3].map(title).join("; ")}.`;
+  const shorter = [3, 2, 1].map((n) => `Yesterday, Oct 7: ${[0, 1, 2].slice(0, n).map(title).join("; ")}; and ${String(4 - n)} more.`);
   const shortest = shorter[shorter.length - 1] ?? "";
   function lanes(horizon = 3): Lanes {
     return {
@@ -513,18 +513,18 @@ describe("what gives way for Still open's first item, in order — never the pag
     forms.forEach((line, i) => {
       const titles = 3 - i;
       expect(line).toStartWith(
-        titles > 0 ? 'Yesterday, 10-07: "Seating the valves on kiln 0" (epi_0, 2 chapters)' : "Yesterday, 10-07: epi_0 (2 chapters); epi_1; ",
+        titles > 0 ? 'Yesterday, Oct 7: "Seating the valves on kiln 0" (epi_0)' : "Yesterday, Oct 7: epi_0; epi_1; ",
       );
       // Every chapter the whole line names is still named, by its id, and the one past them counted.
       for (const id of ["epi_0", "epi_1", "epi_2", "epi_3"]) expect(line).toContain(id);
       expect(line).toEndWith("; and 1 more.");
       expect(line.split('"').length - 1).toBe(2 * titles);
     });
-    expect(forms[forms.length - 1]).toBe("Yesterday, 10-07: epi_0 (2 chapters); epi_1; epi_2; epi_3; and 1 more.");
+    expect(forms[forms.length - 1]).toBe("Yesterday, Oct 7: epi_0; epi_1; epi_2; epi_3; and 1 more.");
     const sizes = forms.map((l) => Buffer.byteLength(l));
     expect(sizes).toEqual([...sizes].sort((a, b) => b - a));
     expect(new Set(sizes).size).toBe(sizes.length);
-    expect(yesterdayShorter(day.slice(0, 1), "2026-10-07")).toEqual(["Yesterday, 10-07: epi_0 (2 chapters)."]);
+    expect(yesterdayShorter(day.slice(0, 1), "2026-10-07")).toEqual(["Yesterday, Oct 7: epi_0."]);
   });
 
   test("the room held for 'Work here' is lent first: Arriving and Yesterday stay whole, and only Still open's first item and its count ride on it", () => {
@@ -708,6 +708,11 @@ describe("the tense, as a function", () => {
     ]);
     // Another lane's line that reads like one is not touched.
     expect(out).toContain("- 2026-10-01 · (due 2026-10-01) is in this statement.");
+  });
+
+  test("a bundle stored under the old heading ('Arriving:') is still re-tensed once after an upgrade", () => {
+    const text = body(["- 2026-10-01 (due 2026-10-08) · Past, yesterday."]).replace(FRAMING.horizon, "Arriving:");
+    expect(arrivingTense(text, "2026-10-09", 1_000)).toContain("- 2026-10-01 (was due yesterday, 2026-10-08) · Past, yesterday.");
   });
 
   test("inside its room: 'was' on every line first, then 'yesterday' while room is left; none at all with no room or no date", () => {

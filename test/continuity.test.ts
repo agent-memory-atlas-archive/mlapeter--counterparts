@@ -169,7 +169,7 @@ describe("the next session here is told who was last here", () => {
     const lines = text.split("\n");
     const last = lines.find((l) => l.startsWith("Last here:"));
     expect(last).toBe(
-      `Last here: session a1b2c3d4 on Opus 5.5, 09-30 16:01–17:53 — "${TITLE}" (${episodeId}). We read four texts in a row and every one of them ended grief at a table.`,
+      `Last here: session a1b2c3d4 on Opus 5.5, Sep 30 16:01–17:53 — "${TITLE}" (${episodeId}). We read four texts in a row and every one of them ended grief at a table.`,
     );
     // The handoff C left stands, at the foot, and now says how much of A's
     // evening is written up instead of "not yet written up".
@@ -194,7 +194,7 @@ describe("the next session here is told who was last here", () => {
     await s.call("chapter", { session: A, text: CHAPTER, title: TITLE });
     k.set(at(16, 47));
     const text = wake(k.c, B);
-    expect(text).toContain(`Last here: session a1b2c3d4 on Opus 5.5, 09-30 16:01–16:45 — "${TITLE}"`);
+    expect(text).toContain(`Last here: session a1b2c3d4 on Opus 5.5, Sep 30 16:01–16:45 — "${TITLE}"`);
     expect(text).not.toContain("Where I left off");
   });
 
@@ -252,8 +252,8 @@ describe("the next session here is told who was last here", () => {
     const text = wake(k.c, B);
     const lines = text.split("\n");
     expect(lines.find((l) => l.startsWith("Last here:"))).toContain(`"Part 3" (${ids[3] as string}). Session 3 did its part`);
-    expect(lines.find((l) => l.startsWith("Before it:"))).toBe(`Before it: session 33333333, 09-30 12:00–12:30 — "Part 2" (${ids[2] as string}).`);
-    expect(lines.find((l) => l.startsWith("+2 more here on 09-30:"))).toBe(`+2 more here on 09-30: ${ids[1] as string}, ${ids[0] as string}.`);
+    expect(lines.find((l) => l.startsWith("Before it:"))).toBe(`Before it: session 33333333, Sep 30 12:00–12:30 — "Part 2" (${ids[2] as string}).`);
+    expect(lines.find((l) => l.startsWith("+2 more here on Sep 30:"))).toBe(`+2 more here on Sep 30: ${ids[1] as string}, ${ids[0] as string}.`);
   });
 });
 

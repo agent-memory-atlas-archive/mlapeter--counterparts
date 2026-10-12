@@ -1261,7 +1261,7 @@ describe("SEAMS G — the cycle's last content write is self.boundary(), budget 
     // which never goes through `scanActive` at all. Nothing on that path had a
     // type filter — `Prospective.arrivals` walks `list({ archived: false })` and
     // `derive` excluded only `kind: "skill"` — so a chapter with a content date
-    // rendered under "Arriving:", as a thing about to happen. It is the account
+    // rendered under "Coming up:", as a thing about to happen. It is the account
     // of a day that is already LIVED: no label makes "Arriving" true of it.
     //
     // Reachable on the owner's store: 224 migrated episodes are live, they carry

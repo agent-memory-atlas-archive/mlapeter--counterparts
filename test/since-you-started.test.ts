@@ -272,7 +272,7 @@ describe("Since you started", () => {
       });
       return a;
     };
-    const counted = "Since you started (10:00): 1 other directory.";
+    const counted = "Since you started (10:00): 1 other project.";
     const least = Buffer.byteLength(`${counted}\n`, "utf8");
     // Recall's default budget, all but one byte too few for even the shortest form: it waits.
     w.set(at(10, 20));
@@ -344,7 +344,7 @@ describe("Since you started", () => {
     expect(lines).not.toBeNull();
     for (const l of [lines?.line ?? "", ...(lines?.shorter ?? [])]) expect(Buffer.byteLength(l, "utf8")).toBeLessThanOrEqual(TODAY_ELSEWHERE_MAX_BYTES);
     expect(lines?.line).toMatch(/^Since you started \(09:00\): .*; \+\d+ more\.$/);
-    expect(lines?.shorter.at(-1)).toBe("Since you started (09:00): 9 other directories.");
+    expect(lines?.shorter.at(-1)).toBe("Since you started (09:00): 9 other projects.");
     // Nothing changed anywhere: no line.
     expect(sinceElsewhereLines([{ scope: "/srv/x", startedAt: null, live: true, endedAt: null, chapter: null, memories: 0 }], { at: at(9), started: true, now: at(11) }, ZONE)).toBeNull();
   });

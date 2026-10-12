@@ -1143,8 +1143,8 @@ describe("doctor — the reading", () => {
       writeConfig();
       const f = by(doctorFindings(input()), "fired");
       expect(f.severity).toBe("green");
-      expect(f.detail).toContain("too new to grade");
-      expect(f.detail).toContain("nothing has happened yet");
+      expect(f.detail).toContain("Too new to judge yet");
+      expect(f.detail).toContain("only just started");
       expect(f.detail).not.toContain("have never fired");
       expect(f.data["young"]).toBe(true);
       expect(f.fix).toBe("");
@@ -1164,7 +1164,7 @@ describe("doctor — the reading", () => {
       });
       const f = by(doctorFindings(input({ store: s })), "fired");
       expect(f.severity).toBe("green");
-      expect(f.detail).toContain("too new to grade");
+      expect(f.detail).toContain("Too new to judge yet");
       expect(f.detail).toContain("already stopped by something");
       expect(f.fix).toContain("counterparts mechanisms --all");
       expect(f.data["blocked"]).toBe(1);

@@ -116,7 +116,7 @@ import {
 } from "./handoff/index.js";
 import type { Handoff, HandoffRefusal, HandoffWrite, PointerSince } from "./handoff/index.js";
 import { CLAIM_CHAPTER, askFromStretch, chapterClaims, claimUnwritten, sessionStretch, sessionsHere, workSince } from "./coverage/index.js";
-import { LAST_HERE_LIFE_DAYS, LAST_HERE_NOROOM_EVENT, chaptersBySession, chaptersHere, chaptersOn, elsewhereLine, lastHereLadder, sinceElsewhereLines, todayElsewhereLines, yesterdayLine, yesterdayShorter } from "./handoff/last-here.js";
+import { LAST_HERE_LIFE_DAYS, LAST_HERE_NOROOM_EVENT, chaptersBySession, chaptersHere, chaptersOn, elsewhereLine, lastHereLadder, sinceElsewhereLines, stampWords, todayElsewhereLines, yesterdayLine, yesterdayShorter } from "./handoff/last-here.js";
 import type { ChapterHere, LastHere, SinceElsewhere, TodayElsewhere } from "./handoff/last-here.js";
 import { LAST_EXCHANGE_LINE_MAX_BYTES, exchangeLikely, lastExchange, lastExchangeLine, withExchange } from "./handoff/last-exchange.js";
 import type { LastExchange } from "./handoff/last-exchange.js";
@@ -1301,16 +1301,16 @@ export class Counterpart {
       const zone = this.store.zone();
       const entries: LastHere[] = found.map((f) => ({
         chapter: f.chapter,
-        when: `${localStamp(f.firstAt, zone)}–${localStampAfter(f.lastAt, f.firstAt, zone)}`,
-        // `09-30 17:50` → `09-30`.
-        date: localStamp(f.chapter.writtenAt, zone).split(" ")[0] ?? "",
+        when: `${stampWords(localStamp(f.firstAt, zone))}–${stampWords(localStampAfter(f.lastAt, f.firstAt, zone))}`,
+        // `09-30 17:50` → `Sep 30`.
+        date: stampWords(localStamp(f.chapter.writtenAt, zone).split(" ")[0] ?? ""),
       }));
       const base = entries.length === 0 ? [] : lastHereLadder(entries, reader);
       // ABOUT ME, FROM ANOTHER DIRECTORY (2026-10-01): one more line on the
       // widest rungs, given up first; alone when nothing was written here.
       const away = this.selfChapterElsewhere(all, new Set(found.map((f) => f.chapter.id)), reader, exportsFrom);
       if (away === null) return base;
-      const line = elsewhereLine(away, localStamp(away.writtenAt, zone).split(" ")[0] ?? "", reader);
+      const line = elsewhereLine(away, stampWords(localStamp(away.writtenAt, zone).split(" ")[0] ?? ""), reader);
       return base.length === 0 ? [line] : [...base.map((b) => `${b}\n${line}`), ...base];
     } catch {
       return [];

@@ -1,5 +1,5 @@
 /**
- * "Nearby, if it helps:" — the hints lane rotates instead of freezing on the
+ * "Might be relevant:" — the hints lane rotates instead of freezing on the
  * strongest memory (2026-09-26, the owner's "rich get richer"; harvested from
  * the held #238 and reworked after its review).
  *

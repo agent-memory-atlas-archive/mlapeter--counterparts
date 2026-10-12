@@ -432,7 +432,7 @@ describe("nothing confidential and nothing permanent leaves through the wake", (
     const [prompt] = await sweepCapturingPrompts(c);
     expect(prompt).toContain(SELF_MARKER); // the wake did compose and did go
     expect(prompt).not.toContain(PROTECTED_MARKER); // permanent ink still held back
-    expect(prompt).not.toContain("No identity has formed here yet");
+    expect(prompt).not.toContain("We've only just met");
     expect(prompt).not.toContain("Mike Lapeter");
   });
 
@@ -443,7 +443,7 @@ describe("nothing confidential and nothing permanent leaves through the wake", (
     // formed no identity must still be told so, with the name the install gave
     // it. The fix above may not cost the new user their first line.
     const composed = c.self.build({ budgetBytes: BUDGET, day: c.store.livedDay() });
-    expect(composed.text).toContain("No identity has formed here yet");
+    expect(composed.text).toContain("We've only just met");
     expect(composed.text).toContain("Mike Lapeter");
   });
 

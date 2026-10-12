@@ -205,7 +205,7 @@ describe("Nearby: counted in room nothing else wants — of what it chose, never
   test("a Nearby lane with nothing listed is one collapsed line, its heading inside it", () => {
     const l = lanes();
     const ids = l.hints.map((r) => r.id);
-    expect(collapsedLine("hints", ids)).toStartWith("Nearby, if it helps: 5 — ");
+    expect(collapsedLine("hints", ids)).toStartWith("Might be relevant: 5 — ");
     expect(countedLanes(collapsedLine("hints", ids))).toEqual({ hints: 5 });
   });
 });

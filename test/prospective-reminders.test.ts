@@ -434,7 +434,7 @@ describe("the Arriving line says when it is due (2026-10-01)", () => {
     c.rebrief({ budgetBytes: 20_000, at: "2026-10-01" });
     const text = c.wake(20_000, { date: "2026-10-01" }).text;
     const lines = text.split("\n");
-    const at = lines.indexOf("Arriving:");
+    const at = lines.indexOf("Coming up:");
     expect(at).toBeGreaterThan(-1);
     expect(lines[at + 1]).toBe("- 2026-08-25 (due 2026-10-03) · The Portland move lands on the fourth and the truck is booked.");
   });
@@ -446,7 +446,7 @@ describe("the Arriving line says when it is due (2026-10-01)", () => {
     const { c } = counterpartWithDate("2026-08-25");
     c.rebrief({ budgetBytes: 20_000, at: "2026-08-24" });
     const lines = c.wake(20_000, { date: "2026-08-24" }).text.split("\n");
-    const at = lines.indexOf("Arriving:");
+    const at = lines.indexOf("Coming up:");
     expect(at).toBeGreaterThan(-1);
     expect(lines[at + 1]).toBe("- due 2026-08-25 · The Portland move lands on the fourth and the truck is booked.");
   });

@@ -11,6 +11,7 @@ import {
   FRAMING,
   LANE_ORDER,
   collapsedLane,
+  headingsOf,
   isFoldedLine,
   FOLDED_WORDS,
   SELF_PAGE_REVISED_EVENT,
@@ -1144,7 +1145,7 @@ const PART_LABEL: Record<string, string> = {
  */
 export function wakeParts(text: string, hasPage: boolean): WakePart[] {
   const headings = new Map<string, string>();
-  for (const lane of LANE_ORDER) headings.set(FRAMING[lane], lane);
+  for (const lane of LANE_ORDER) for (const h of headingsOf(lane)) headings.set(h, lane);
   const bytes = new Map<string, number>();
   const order: string[] = [];
   const add = (key: string, n: number): void => {
@@ -1467,7 +1468,7 @@ export function wakeLanes(text: string): WakeLane[] {
   // this splitter silently returning one enormous lane called "the preface",
   // which is precisely the quiet-wrong-answer shape the registries exist against.
   const headings = new Map<string, string>();
-  for (const lane of LANE_ORDER) headings.set(FRAMING[lane], lane);
+  for (const lane of LANE_ORDER) for (const h of headingsOf(lane)) headings.set(h, lane);
 
   const lanes: { heading: string; lane: string | null; items: string[] }[] = [];
   let current: { heading: string; lane: string | null; items: string[] } = {
@@ -1486,7 +1487,8 @@ export function wakeLanes(text: string): WakeLane[] {
     const collapsed = collapsedLane(line);
     if (collapsed !== null) {
       if (current.items.length > 0) lanes.push(current);
-      current = { heading: FRAMING[collapsed], lane: collapsed, items: [line.slice(FRAMING[collapsed].length).trim()] };
+      const said = headingsOf(collapsed).find((h) => line.startsWith(`${h} `)) ?? FRAMING[collapsed];
+      current = { heading: FRAMING[collapsed], lane: collapsed, items: [line.slice(said.length).trim()] };
       continue;
     }
     // The lanes' lines folded into one (2026-10-12): a block of its own, no lane's.

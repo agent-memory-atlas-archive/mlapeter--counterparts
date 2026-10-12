@@ -11,7 +11,7 @@ its memories itself, and they fade and grow the way yours do. It runs today with
 ## Install
 
 You need [bun](https://bun.sh) 1.3 or newer, or [Node](https://nodejs.org) 22.15 or newer.
-macOS and Linux.
+macOS and Linux; Windows not yet supported.
 
 ```
 curl -fsSL https://bun.sh/install | bash     # if you don't have bun
@@ -40,8 +40,8 @@ to be deleted. The full walkthrough is in [`docs/QUICKSTART.md`](docs/QUICKSTART
   learned, in its own words. Notes, not transcripts.
 - **It forgets on purpose.** Memories fade unless they come up again. What matters
   sticks; the rest lets go.
-- **It knows who it has been.** Every session opens with a short "who I am, who you are,
-  where we left off" that it wrote itself.
+- **It knows who it has been.** After the first few sessions, every session opens with a short "who I am, who you
+  are, where we left off" that it wrote itself.
 - **It keeps a journal.** Each session becomes a chapter in a first-person account of
   your time together.
 - **It changes its mind slowly.** What it believes about you shifts only under real

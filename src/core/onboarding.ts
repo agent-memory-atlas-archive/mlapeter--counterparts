@@ -86,14 +86,14 @@ export const NEW_INSTALL_DREAMING = "auto";
  * run in the background (`Dreams#offer`).
  */
 export const NEW_INSTALL_DREAMING_LINE =
-  "Dreaming: on. Once a day, your first session starts a short background run that goes over what was saved. Say \"no dreams\" in a session, or run `counterparts dream --setting off`, to turn it off.";
+  "Daily tidy-up (called dreaming): on. Once a day, your first session starts a short background run that looks over what was saved and lets go of what doesn't matter. Say \"no dreams\" in a session, or run `counterparts dream --setting off`, to turn it off.";
 
 /**
  * THE SAME, FOR THE PLUGIN (2026-10-12, onboarding round 1, F): a plugin
  * install has no `counterparts` command, so it is told only what to say.
  */
 export const NEW_INSTALL_DREAMING_LINE_PLUGIN =
-  "Dreaming: on. Once a day, your first session starts a short background run that goes over what was saved. Say \"no dreams\" in a session to turn it off.";
+  "Daily tidy-up (called dreaming): on. Once a day, your first session starts a short background run that looks over what was saved and lets go of what doesn't matter. Say \"no dreams\" in a session to turn it off.";
 
 /**
  * A NEW INSTALL'S STARTING STATE — written by `install`, only into a store it
@@ -377,33 +377,45 @@ export const STYLE_LABELS: Readonly<Record<Exclude<StyleChoice, "character" | "o
 
 /**
  * THE FIXED BUNDLES (the script's research section, agreed with Mike 14:16):
- * four preferences each, about the OWNER — how they like to be talked to —
+ * four preferences each, about the person — how they like to be talked to —
  * never a claim about who Claude is.
  */
 export const STYLE_BUNDLES: Readonly<Record<Exclude<StyleChoice, "character" | "other">, readonly string[]>> = {
   straight: [
-    "The owner likes replies that lead with the conclusion.",
-    "The owner likes replies short by default, with more depth only when they ask for it.",
-    "The owner likes no preamble and no recap at the end.",
-    "The owner likes blunt feedback, said plainly.",
+    "replies that lead with the conclusion.",
+    "replies short by default, with more depth only when they ask for it.",
+    "no preamble and no recap at the end.",
+    "blunt feedback, said plainly.",
   ],
   think: [
-    "The owner likes to hear the reasoning behind an answer, not just the answer.",
-    "The owner likes options laid out with their trade-offs.",
-    "The owner likes to be asked before big changes are made.",
-    "The owner likes disagreement that comes with its reasons.",
+    "to hear the reasoning behind an answer, not just the answer.",
+    "options laid out with their trade-offs.",
+    "to be asked before big changes are made.",
+    "disagreement that comes with its reasons.",
   ],
   friendly: [
-    "The owner likes a casual, easy tone.",
-    "The owner likes occasional dry humor.",
-    "The owner likes kind framing, with pushback still said when it is needed.",
-    "The owner likes frustration acknowledged briefly, then moving on.",
+    "a casual, easy tone.",
+    "occasional dry humor.",
+    "kind framing, with pushback still said when it is needed.",
+    "frustration acknowledged briefly, then moving on.",
   ],
 };
 
+/**
+ * WHO A STYLE MEMORY IS ABOUT, in words the person reads later (2026-10-12,
+ * plain words): their name when the meeting knows it, otherwise "They".
+ * `likes` is the verb that goes with it.
+ */
+function whoLikes(name: string | null): { who: string; likes: string; wants: string } {
+  const n = (name ?? "").trim();
+  return n.length > 0 ? { who: n, likes: "likes", wants: "wants" } : { who: "They", likes: "like", wants: "want" };
+}
+
 /** THE BASELINE every bundle keeps (no "ruinous empathy"): honest pushback, whatever the style. */
-export const PUSHBACK_BASELINE =
-  "Whatever the style, the owner wants honest pushback: say plainly when something looks wrong, and don't agree just to be agreeable.";
+export function pushbackBaseline(name: string | null = null): string {
+  const w = whoLikes(name);
+  return `Whatever the style, ${w.who === "They" ? "they" : w.who} ${w.wants} honest pushback: say plainly when something looks wrong, and don't agree just to be agreeable.`;
+}
 
 /** The longest trait or own-words line a style memory takes. */
 export const STYLE_TEXT_MAX = 240;
@@ -420,8 +432,10 @@ function mark(option: string): string {
  */
 export function styleMemories(
   choice: StyleChoice,
-  input: { traits?: readonly string[]; like?: string } = {},
+  input: { traits?: readonly string[]; like?: string; name?: string | null } = {},
 ): { ok: true; texts: string[]; option: string } | { ok: false; detail: string } {
+  const w = whoLikes(input.name ?? null);
+  const pushback = pushbackBaseline(input.name ?? null);
   const clean = (input.traits ?? []).map((t) => t.trim().replace(/[.\s]+$/u, "")).filter((t) => t.length > 0);
   if (clean.some((t) => t.length > STYLE_TEXT_MAX)) return { ok: false, detail: `Each trait is one short line (at most ${String(STYLE_TEXT_MAX)} characters).` };
   if (choice === "character") {
@@ -434,9 +448,9 @@ export function styleMemories(
       ok: true,
       option,
       texts: [
-        `The owner likes to be talked to a bit like ${like}: a style reference for tone, not a persona to play. ${mark(option)}`,
-        ...clean.map((t) => `From that, the owner likes: ${t}. ${mark(option)}`),
-        `${PUSHBACK_BASELINE} ${mark(option)}`,
+        `${w.who} ${w.likes} to be talked to a bit like ${like}: a style reference for tone, not a persona to play. ${mark(option)}`,
+        ...clean.map((t) => `From that, ${w.who === "They" ? "they" : w.who} ${w.likes}: ${t}. ${mark(option)}`),
+        `${pushback} ${mark(option)}`,
       ],
     };
   }
@@ -446,19 +460,19 @@ export function styleMemories(
     return {
       ok: true,
       option,
-      texts: [`How the owner likes to be talked to, in their words: "${clean[0] ?? ""}". ${mark(option)}`, `${PUSHBACK_BASELINE} ${mark(option)}`],
+      texts: [`How ${w.who === "They" ? "they" : w.who} ${w.likes} to be talked to, in their words: "${clean[0] ?? ""}". ${mark(option)}`, `${pushback} ${mark(option)}`],
     };
   }
   const option = STYLE_LABELS[choice];
-  return { ok: true, option, texts: [...STYLE_BUNDLES[choice].map((t) => `${t} ${mark(option)}`), `${PUSHBACK_BASELINE} ${mark(option)}`] };
+  return { ok: true, option, texts: [...STYLE_BUNDLES[choice].map((t) => `${w.who} ${w.likes} ${t} ${mark(option)}`), `${pushback} ${mark(option)}`] };
 }
 
 /** A form of address ("your highness"): its own small preference, apart from style. */
-export function addressMemory(answer: string): { ok: true; text: string } | { ok: false; detail: string } {
+export function addressMemory(answer: string, name: string | null = null): { ok: true; text: string } | { ok: false; detail: string } {
   const a = answer.trim();
   if (a.length === 0) return { ok: false, detail: "Step `address` needs `answer`: how they'd like to be addressed." };
   if (a.length > STYLE_TEXT_MAX) return { ok: false, detail: "`answer` is a form of address, a few words." };
-  return { ok: true, text: `The owner likes to be addressed as "${a}". ${mark("form of address")}` };
+  return { ok: true, text: `${whoLikes(name).who} ${whoLikes(name).likes} to be addressed as "${a}". ${mark("form of address")}` };
 }
 
 // ── the words ────────────────────────────────────────────────────────────────
@@ -492,7 +506,7 @@ export const PRONOUN_RULE = "Until they say their pronouns, use their name or \"
  * the script hands the exact line, for when they ask.
  */
 export const RETENTION_LINE =
-  "The text of each session is kept until it's written up, then 7 more days (at most 14 days of use if the write-up is owed); backups keep it about 14 days more.";
+  "Session text is kept until I've written it up, then deleted a week later (a week after the session's last activity or end, if that is later), so never while a session is open. If a write-up is still owed, the text is let go after about two weeks of use. Backups hold it about 14 days longer.";
 
 /** The first dream, true to the dreaming setting: never today (`meetingDay`). Empty when dreaming is off. */
 function firstDream(dreaming: MeetContext["dreaming"]): string {

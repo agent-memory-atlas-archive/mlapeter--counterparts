@@ -396,7 +396,7 @@ describe("the wake briefing — the day-0 lane", () => {
     expect(out.kept.identity).toEqual([]);
     expect(out.trimmed.map((t) => t.lane)).toEqual(["identity", "identity"]);
     expect(out.text).not.toContain(identityCoreLine("Dana"));
-    expect(out.text).not.toContain("No identity has formed here yet");
+    expect(out.text).not.toContain("We've only just met");
     // What the lane says instead (2026-09-29): that it left two out, and where
     // they are — never that there is nothing.
     expect(out.text).toContain(`${FRAMING.identity}\n(2 more about who I am; recall ids: id_one, id_two)`);
@@ -1279,7 +1279,7 @@ describe("identity ordering and enumeration", () => {
     // THE HORIZON LANE IS THE OTHER SOURCE, and it never goes through
     // `scanActive` at all. The first version of this test called that "the wake
     // can never list a chapter", which was FALSE: a dated chapter arrived under
-    // "Arriving:" until `prospective/derive.ts` learned to refuse a journal row
+    // "Coming up:" until `prospective/derive.ts` learned to refuse a journal row
     // (adversarial review of PR #70). That door is tested where it lives —
     // `test/prospective.test.ts` at the predicate, `test/seams.test.ts` end to
     // end through the real composition root.

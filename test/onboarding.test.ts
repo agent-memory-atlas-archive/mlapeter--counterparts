@@ -20,7 +20,7 @@ import {
   MEET_LINE_OPEN,
   ONBOARDING_MEET_KEY,
   PRONOUN_RULE,
-  PUSHBACK_BASELINE,
+  pushbackBaseline,
   RETENTION_LINE,
   beginNewInstall,
   meetState,
@@ -32,6 +32,7 @@ import {
   onboardingView,
   recordState,
   styleMemories,
+  addressMemory,
 } from "../src/core/onboarding.js";
 import { Store } from "../src/core/store/index.js";
 import { EXIT, run } from "../src/adapters/cli/index.js";
@@ -212,7 +213,7 @@ describe("a fresh install against an upgrade", () => {
 
   test("the plugin's first-run line says dreaming is on, and how to turn it off", () => {
     const line = firstRunLine(cfg(), home());
-    expect(line).toContain("Dreaming: on.");
+    expect(line).toContain("Daily tidy-up (called dreaming): on.");
     expect(line).toContain('Say "no dreams"');
     expect(line).not.toContain("counterparts dream");
   });
@@ -316,7 +317,7 @@ describe("the meet tool", () => {
     newInstallStore();
     const s = server();
     const r = await s.call("meet", { step: "name", answer: "Ada" });
-    expect(s.counterpart.store.read(String(r.structuredContent["id"])).doc.body).toBe(`The owner likes to be called Ada. ${FROM_ONBOARDING}`);
+    expect(s.counterpart.store.read(String(r.structuredContent["id"])).doc.body).toBe(`They like to be called Ada. ${FROM_ONBOARDING}`);
     expect(s.counterpart.ownerDisplayName()).toBeNull();
   });
 
@@ -346,25 +347,25 @@ describe("the meet tool", () => {
 describe("the style bundles", () => {
   const EXACT: Record<"straight" | "think" | "friendly", string[]> = {
     straight: [
-      "The owner likes replies that lead with the conclusion. (chosen at onboarding: Straight to it)",
-      "The owner likes replies short by default, with more depth only when they ask for it. (chosen at onboarding: Straight to it)",
-      "The owner likes no preamble and no recap at the end. (chosen at onboarding: Straight to it)",
-      "The owner likes blunt feedback, said plainly. (chosen at onboarding: Straight to it)",
-      `${PUSHBACK_BASELINE} (chosen at onboarding: Straight to it)`,
+      "They like replies that lead with the conclusion. (chosen at onboarding: Straight to it)",
+      "They like replies short by default, with more depth only when they ask for it. (chosen at onboarding: Straight to it)",
+      "They like no preamble and no recap at the end. (chosen at onboarding: Straight to it)",
+      "They like blunt feedback, said plainly. (chosen at onboarding: Straight to it)",
+      `${pushbackBaseline()} (chosen at onboarding: Straight to it)`,
     ],
     think: [
-      "The owner likes to hear the reasoning behind an answer, not just the answer. (chosen at onboarding: Think it through with me)",
-      "The owner likes options laid out with their trade-offs. (chosen at onboarding: Think it through with me)",
-      "The owner likes to be asked before big changes are made. (chosen at onboarding: Think it through with me)",
-      "The owner likes disagreement that comes with its reasons. (chosen at onboarding: Think it through with me)",
-      `${PUSHBACK_BASELINE} (chosen at onboarding: Think it through with me)`,
+      "They like to hear the reasoning behind an answer, not just the answer. (chosen at onboarding: Think it through with me)",
+      "They like options laid out with their trade-offs. (chosen at onboarding: Think it through with me)",
+      "They like to be asked before big changes are made. (chosen at onboarding: Think it through with me)",
+      "They like disagreement that comes with its reasons. (chosen at onboarding: Think it through with me)",
+      `${pushbackBaseline()} (chosen at onboarding: Think it through with me)`,
     ],
     friendly: [
-      "The owner likes a casual, easy tone. (chosen at onboarding: Friendly and easy)",
-      "The owner likes occasional dry humor. (chosen at onboarding: Friendly and easy)",
-      "The owner likes kind framing, with pushback still said when it is needed. (chosen at onboarding: Friendly and easy)",
-      "The owner likes frustration acknowledged briefly, then moving on. (chosen at onboarding: Friendly and easy)",
-      `${PUSHBACK_BASELINE} (chosen at onboarding: Friendly and easy)`,
+      "They like a casual, easy tone. (chosen at onboarding: Friendly and easy)",
+      "They like occasional dry humor. (chosen at onboarding: Friendly and easy)",
+      "They like kind framing, with pushback still said when it is needed. (chosen at onboarding: Friendly and easy)",
+      "They like frustration acknowledged briefly, then moving on. (chosen at onboarding: Friendly and easy)",
+      `${pushbackBaseline()} (chosen at onboarding: Friendly and easy)`,
     ],
   };
 
@@ -400,12 +401,23 @@ describe("the style bundles", () => {
       if (!made.ok) return;
       const m = `(chosen at onboarding: like ${like})`;
       expect(made.texts).toEqual([
-        `The owner likes to be talked to a bit like ${like}: a style reference for tone, not a persona to play. ${m}`,
-        ...traits.map((t) => `From that, the owner likes: ${t}. ${m}`),
-        `${PUSHBACK_BASELINE} ${m}`,
+        `They like to be talked to a bit like ${like}: a style reference for tone, not a persona to play. ${m}`,
+        ...traits.map((t) => `From that, they like: ${t}. ${m}`),
+        `${pushbackBaseline()} ${m}`,
       ]);
     });
   }
+
+  test("a style memory uses the person's name when the meeting knows it", () => {
+    const made = styleMemories("straight", { name: "Ada" });
+    expect(made.ok).toBe(true);
+    if (!made.ok) return;
+    expect(made.texts[0]).toBe("Ada likes replies that lead with the conclusion. (chosen at onboarding: Straight to it)");
+    expect(made.texts.at(-1)).toBe(`${pushbackBaseline("Ada")} (chosen at onboarding: Straight to it)`);
+    expect(pushbackBaseline("Ada")).toContain("Ada wants honest pushback");
+    expect(addressMemory("Ada", "Ada").ok).toBe(true);
+    expect(made.texts.join(" ")).not.toContain("owner");
+  });
 
   test("a character with no traits, and their own words, and a form of address", async () => {
     newInstallStore();
@@ -414,14 +426,14 @@ describe("the style bundles", () => {
       ok: true,
       option: "their own words",
       texts: [
-        'How the owner likes to be talked to, in their words: "talk to me like a coworker on a long drive". (chosen at onboarding: their own words)',
-        `${PUSHBACK_BASELINE} (chosen at onboarding: their own words)`,
+        'How they like to be talked to, in their words: "talk to me like a coworker on a long drive". (chosen at onboarding: their own words)',
+        `${pushbackBaseline()} (chosen at onboarding: their own words)`,
       ],
     });
     const s = server();
     const r = await s.call("meet", { step: "address", answer: "your highness" });
     const ids = r.structuredContent["ids"] as string[];
-    expect(s.counterpart.store.read(ids[0] ?? "").doc.body).toBe('The owner likes to be addressed as "your highness". (chosen at onboarding: form of address)');
+    expect(s.counterpart.store.read(ids[0] ?? "").doc.body).toBe('They like to be addressed as "your highness". (chosen at onboarding: form of address)');
   });
 });
 

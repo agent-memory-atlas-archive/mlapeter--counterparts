@@ -750,7 +750,7 @@ describe("arrival is a cue, not a command — no bypass lane", () => {
   });
 });
 
-// The wake's "Arriving:" order (2026-10-11, decided by random-06, lightly
+// The wake's "Coming up:" order (2026-10-11, decided by random-06, lightly
 // held): plain first, then nearest date. Found on a copy of the owner's store:
 // a plain deadline due the 15th lost both lines on the 13th and the 14th to two
 // quiet items due the 14th.
