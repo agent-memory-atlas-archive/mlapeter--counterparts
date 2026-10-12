@@ -41,6 +41,9 @@ describe("readsLikeReminder", () => {
       "Check back on 14 October about the permit",
       "Remind me tomorrow to call the bank",
       "Remind him Friday",
+      "remind me on the 15th",
+      "remind him in 2 weeks",
+      "Reminder: pay taxes by Oct 15",
     ]) expect(readsLikeReminder(t)).toBe(true);
   });
   test("negatives: a memory about a reminder, a date alone, a reminder word alone", () => {
@@ -50,6 +53,8 @@ describe("readsLikeReminder", () => {
       "The tax deadline drops off Arriving two days before it's due",
       "Mike votes in October",
       "Remind Mike to stretch",
+      "Why the 10-12 reminder was told to a hand-back turn",
+      "Reminder: stretch more",
     ]) expect(readsLikeReminder(t)).toBe(false);
   });
 });

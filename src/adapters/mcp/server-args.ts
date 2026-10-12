@@ -269,10 +269,11 @@ export function reminderEcho(deposit: DepositResult, dated: ReminderRead, today:
 
 // ── an undated reminder, said at write time (2026-10-12) ────────────────────
 
-const REMINDER_WORD = /\bremind\b|\bdon'?t forget\b|\bfollow[- ]up\b|\bcheck back\b/i;
+const REMINDER_WORD = /\bremind\b|^\s*reminder\s*:|\bdon'?t forget\b|\bfollow[- ]up\b|\bcheck back\b/im;
 const MONTHS = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
 const DATE_SHAPE = new RegExp(
   `\\b\\d{4}-\\d{2}-\\d{2}\\b|\\b(?:${MONTHS})\\.? \\d{1,2}\\b|\\b\\d{1,2}(?:st|nd|rd|th)? (?:${MONTHS})\\b` +
+    "|\\b\\d{1,2}(?:st|nd|rd|th)\\b|\\bin \\d+ (?:days?|weeks?|months?)\\b" +
     "|\\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|next week)\\b" +
     "|\\b(?:january|february|march|april|june|july|august|september|october|november|december)\\b",
   "i",
