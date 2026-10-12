@@ -13,7 +13,7 @@
  * Hermetic by construction (CLAUDE.md): a fresh temp data dir per test, removed
  * in `afterEach`, and `store/paths.ts` structurally refuses `~/.bansai`.
  */
-import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -500,7 +500,13 @@ describe("session-start — the injection carries a sentinel and honours the HOS
 
     // And the delivered loop still closes, on the bundle the host recorded.
     const path = writeTranscript([...PREAMBLE, hookAttachment({ stdout: result.injection })]);
-    a.userPromptSubmit(input({ prompt: "hello", transcriptPath: path }));
+    // The arrival check is opt-in since 2026-10-12.
+    process.env["COUNTERPARTS_WAKE_CHECK"] = "1";
+    try {
+      a.userPromptSubmit(input({ prompt: "hello", transcriptPath: path }));
+    } finally {
+      delete process.env["COUNTERPARTS_WAKE_CHECK"];
+    }
     expect(deliveredRow(a)["outcome"]).toBe("delivered");
   });
 
@@ -564,7 +570,36 @@ describe("session-start — the injection carries a sentinel and honours the HOS
  * weeks of live running (mechanism inventory 2026-09-17, S2). What it reads now
  * is the host's own record of what it injected, in the head of the transcript.
  */
+describe("the wake's arrival — off unless asked for (2026-10-12)", () => {
+  test("with no COUNTERPARTS_WAKE_CHECK, a transcript carrying the wake is never read and no row is written", async () => {
+    expect(process.env["COUNTERPARTS_WAKE_CHECK"]).toBeUndefined();
+    const { a } = adapter();
+    a.counterpart.store.put({
+      type: "memory",
+      kind: "fact",
+      body: "The storage split put canonical prose on disk and one small operational database.",
+      salience: { novelty: null, relevance: 0.9, emotional: 0.6, predictive: 0.8 },
+      physics: { birthDay: 0, lastUsedDay: 0 },
+    });
+    await a.counterpart.sessionEnd({ date: "2026-01-02", budgetBytes: BUDGET_BYTES });
+    const woke = a.sessionStart(input());
+    expect(woke.sentinel).not.toBe(null);
+    const path = writeTranscript([...PREAMBLE, hookAttachment({ stdout: woke.injection })]);
+    a.userPromptSubmit(input({ prompt: "hello", transcriptPath: path }));
+    a.stop(input({ transcriptPath: path }));
+    expect(a.events("adapter.wake.delivered")).toEqual([]);
+    expect(a.events("adapter.wake.check.deferred")).toEqual([]);
+  });
+});
+
 describe("the wake's arrival — one durable answer per session (scar §2.3)", () => {
+  // An opt-in diagnostic since 2026-10-12: on for this block only.
+  beforeAll(() => {
+    process.env["COUNTERPARTS_WAKE_CHECK"] = "1";
+  });
+  afterAll(() => {
+    delete process.env["COUNTERPARTS_WAKE_CHECK"];
+  });
   /** A woken session: a published bundle, a SessionStart, the sentinel it printed. */
   async function woken(sessionId = "s1"): Promise<{
     a: ClaudeCodeAdapter;
@@ -2135,9 +2170,15 @@ describe("parallel.enabled — the delivering hooks stand down, and capture does
     // session; counts, bytes, reasons and flags only.
     assign({ override: "engram" });
     const { a } = adapter(PARALLEL);
-    a.sessionStart(input());
-    a.userPromptSubmit(input({ prompt: "what about storage?" }));
-    a.stop(input());
+    // The delivery-check row needs the opt-in arrival check (2026-10-12).
+    process.env["COUNTERPARTS_WAKE_CHECK"] = "1";
+    try {
+      a.sessionStart(input());
+      a.userPromptSubmit(input({ prompt: "what about storage?" }));
+      a.stop(input());
+    } finally {
+      delete process.env["COUNTERPARTS_WAKE_CHECK"];
+    }
     const store = a.counterpart.store;
     const rows = (name: string): Record<string, unknown>[] =>
       store
