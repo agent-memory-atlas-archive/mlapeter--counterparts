@@ -2319,7 +2319,8 @@ export class Dreams {
           // its live successor as duplicates. That merge is left as it is and
           // counted; the rest of the dream is still reversed.
           const merged = c.ref === null ? undefined : this.store.row(c.ref);
-          if (merged === undefined || merged.archived === 1 || merged.superseded_by !== null) {
+          // Since 2026-10-11 (review of #427) "moved on" includes a later memory settled over it: it stays live then.
+          if (merged === undefined || merged.archived === 1 || merged.superseded_by !== null || headOf(this.store, merged.id) !== null) {
             kept += 1;
             continue;
           }

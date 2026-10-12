@@ -269,6 +269,20 @@ describe("the dream merge goes through the door", () => {
     expect(s.row(m)?.archived).toBe(1);
   });
 
+  test("the dream's undo leaves a merge alone when a later memory has settled over the merged one (it stays live now): no duplicates", () => {
+    const c = brain();
+    const { ids, m, dream } = merged(c);
+    const s = c.store;
+    const n = s.put({ type: "memory", kind: "fact", body: "The island ferry now leaves the north pier at nine.", origin: { session: "s2" } });
+    expect(settle(s, { holds: n, over: m, how: "changed", actor: "owner" }).ok).toBe(true);
+    expect(c.dreams.undo(dream)).toMatchObject({ ok: true, kept: 1 });
+    expect(s.row(m)?.archived).toBe(0);
+    for (const x of ids) {
+      expect(s.row(x)?.fade).toBeCloseTo(0.5, 6);
+      expect(headOf(s, x)).toBe(n);
+    }
+  });
+
   test("a merge from before the door (archived originals, no pairs) is undone the old way", () => {
     const c = brain();
     const s = c.store;

@@ -157,3 +157,7 @@
   "B over A", made after "C over B", re-affirm B (it is raised later); a late answer to an
   older flag or proposal cannot (raised order; a flag is closed by the newer settle). Kept as
   found, with a test that records it; a design question, not changed here.
+- Decided by the #427 reviewer, 2026-10-11, lightly held: a dream's undo leaves a merge alone
+  (counted `kept`) when a later memory has settled over the merged memory, not only when it
+  was archived or superseded: it stays live under the ruling, and undoing the merge would stand
+  the originals as current beside the memory that holds now (review of #251's rule).
