@@ -67,8 +67,9 @@ beforeAll(async () => {
             { session: `s${i}`, scope: "x" },
           );
           if (r.deposited && r.memoryId) ids.push(r.memoryId);
-          // v9: the writer marks what it learned about the owner.
-          if (r.deposited && r.memoryId && content.startsWith("Mike")) c.store.setAbout(r.memoryId, "owner", { by: "writer" });
+          // v9: the writer marks these as about us (since 2026-10-11 the core
+          // reads me and us only; about the owner alone is his card's).
+          if (r.deposited && r.memoryId && content.startsWith("Mike")) c.store.setAbout(r.memoryId, "us", { by: "writer" });
         }
       } else {
         c.resolveUses(`s${i}`, [{ memoryId: ids[0] as string, tier: "referenced" as const }]);
@@ -117,8 +118,8 @@ describe("the self tab's view", () => {
   test("candidates are exactly what physics' promotion rule says, never a restatement", () => {
     withSource(dir, (src) => {
       const v = mindView(src);
-      // The candidates are memories about the owner (person memories naming
-      // Mike), measured by the core lanes (2026-09-26).
+      // The candidates are memories about us (person memories naming Mike,
+      // marked us), measured by the core lanes (2026-09-26).
       expect(v.settling.candidates.length).toBeGreaterThan(0);
       for (const c of v.settling.candidates) {
         // The engine's own context, the same one every tab passes (round 3).

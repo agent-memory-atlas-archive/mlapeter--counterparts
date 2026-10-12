@@ -161,20 +161,24 @@ describe("the helper and consolidation agree", () => {
     const row = (id: string) => c.store.row(id) as NonNullable<ReturnType<Store["row"]>>;
 
     c.store.setMeta(REFLECTED_FEELING_KEY, "off");
-    expect(coreContextFor(c.store, row(m.felt), day)).toEqual({
+    // The recurrence lane's count (2026-10-11) rides along for a candidate.
+    const { recurrence, ...closed } = coreContextFor(c.store, row(m.felt), day);
+    expect(closed).toEqual({
       aboutMe: true,
       demoted: false,
       acceptsReflectedFeeling: false,
       organicReturnDay: null,
       day,
     });
+    expect(recurrence).toMatchObject({ anchored: true, fullDays: 1, sessions: 1 });
     // Not about me: no demotion read, no return read.
     expect(coreContextFor(c.store, row(m.fact), day)).toEqual({ aboutMe: false, demoted: false, acceptsReflectedFeeling: false, day });
     expect(coreContextFor(c.store, row(m.demoted), day).demoted).toBe(true);
 
     c.store.setMeta(REFLECTED_FEELING_KEY, "on");
     const open_ = coreContextFor(c.store, row(m.felt), day);
-    expect(open_).toEqual({ aboutMe: true, demoted: false, acceptsReflectedFeeling: true, day });
+    const { recurrence: _r, ...openRest } = open_;
+    expect(openRest).toEqual({ aboutMe: true, demoted: false, acceptsReflectedFeeling: true, day });
     expect("organicReturnDay" in open_).toBe(false);
     // The caller may hand in the door it already read (consolidation does, once a night).
     expect(coreContextFor(c.store, row(m.felt), day, { acceptsReflectedFeeling: false }).organicReturnDay).toBeNull();

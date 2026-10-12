@@ -656,20 +656,23 @@ describe("consolidation and the identity crossing", () => {
     expect(later.map((p) => p.id).sort()).toEqual(ids.slice(3).sort());
   });
 
-  test("the core reads the about mark, not the kind (v9): owner, me and us cross; work, world and unmarked do not", () => {
+  test("the core reads the about mark (v9): me and us cross; owner (since 2026-10-11), work, world and unmarked do not", () => {
     const s = store();
     s.put({ type: "schema", kind: "self", title: "Mike", body: "Mike", meta: { role: "entity", name: "Mike", aliases: ["Michael"] } });
-    const him = fastLaneSelf(s, { kind: "person", about: "owner", body: "Michael laughed when the demo finally worked." });
+    const him = fastLaneSelf(s, { kind: "person", about: "us", body: "Michael laughed with me when the demo finally worked." });
+    // About him alone: his card's, not who I am (review 08 C2).
+    const aboutHim = fastLaneSelf(s, { kind: "person", about: "owner", body: "Michael laughed when the demo finally worked." });
     // Naming him is no longer enough: nothing awake said it is about him.
     const named = fastLaneSelf(s, { kind: "person", about: undefined, body: "Michael sighed when the build broke again." });
     // A self-kind WORK LESSON, unmarked: not a candidate (rule A).
     const lesson = fastLaneSelf(s, { kind: "self", about: undefined, body: "Always run the migration before the container boots." });
     const report = runCycle({ store: s, date: "2026-01-02" });
     expect(report.promoted.map((p) => p.id)).toEqual([him]);
+    expect(s.physicsOf(aboutHim).promotedIdentity).toBe(false);
     expect(s.physicsOf(named).promotedIdentity).toBe(false);
     expect(s.physicsOf(lesson).promotedIdentity).toBe(false);
-    // The two above, and the unmarked identity core (a schema row) besides.
-    expect(phaseReport(report, "consolidate").skipped["promotion:not-about-me"]).toBeGreaterThanOrEqual(2);
+    // The three above, and the unmarked identity core (a schema row) besides.
+    expect(phaseReport(report, "consolidate").skipped["promotion:not-about-me"]).toBeGreaterThanOrEqual(3);
   });
 
   test("the owner's demotion holds: the lanes do not promote it again", () => {
