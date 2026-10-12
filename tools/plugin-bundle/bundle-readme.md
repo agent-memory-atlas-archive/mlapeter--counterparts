@@ -28,7 +28,7 @@ talked to). Your answers become ordinary memories; a question you skip stores no
 that first session the sidebar starts it: it sends one message, shown as from the plugin,
 and Claude introduces itself (once per install, never in a `claude -p` run, a paused
 folder, or after you've typed). Say "later" and it is offered again another day, on three days at most; a
-**Meet your counterpart** row in the sidebar, or `/counterparts:meet`, starts it any time.
+**Start the 5-minute intro** row in the sidebar, or `/counterparts:meet`, starts it any time.
 A memory that already existed is never offered it. Check its health any time with
 `/counterparts:doctor`.
 
