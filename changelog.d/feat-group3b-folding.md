@@ -11,4 +11,4 @@
   its parts' later uses, across sessions and days. Its parts' history from before the fold does not.
 - **A newer settle no longer stands an outdated memory back up.** Settling "B replaces A" after "C replaces B"
   used to make B current again over C. Now a settle speaks only about the two memories it names, and B stays
-  earlier under C.
+  earlier under C. To make B current again, settle B over C: that reorders the pair.
