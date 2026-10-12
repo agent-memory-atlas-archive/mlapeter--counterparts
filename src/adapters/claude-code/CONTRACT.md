@@ -75,7 +75,9 @@ credential — belongs here, discovered at runtime, never assumed by the core.
   because only the render was instrumented. SessionStart writes the sentinel it printed
   into the session registry record, and the session's FIRST PROMPT reads the head of the
   host's transcript (or, when the host has not written the file yet, the next prompt or the
-  first Stop — 2026-10-08) for this package's SessionStart attachment — what the hook printed
+  first Stop — 2026-10-08) — **an opt-in diagnostic since 2026-10-12: only when the hooks'
+  environment sets `COUNTERPARTS_WAKE_CHECK=1`; off, nothing is read and no row written,
+  and doctor's Wake line names the opt-in when it has no rows** — for this package's SessionStart attachment — what the hook printed
   beside what the host recorded as injected — and leaves one `adapter.wake.delivered` row
   saying `delivered`, `truncated`, `mismatch`, `printed-unverified` (this host build
   records no injected copy to check against), `not-found` or `no-wake-expected`, in counts
@@ -189,7 +191,13 @@ owner's (measured 2026-09-04, `fix/transcript-peer-speakers`):
 2026-09-23; shapes measured on 2.1.28x, table in `NOTES.md`): `origin.kind: "human"` is the
 person — typed, queued, or pasted; `isMeta`, `isCompactSummary`, and any other
 `origin.kind` (`peer` for a subagent's hand-back, `task-notification`) are the host, and
-are `injected` — kept in capture, out of pacing. The new text markers (anchored at the
+are `injected` — kept in capture, out of pacing. **Except the host's own lines
+(2026-10-12, `transcript.ts#hostRecord`, held lightly):** a compaction summary and every
+`isMeta` line but a peer's message (hook feedback, `/context` output, image captions, skill
+bodies, the idle notice) enter no turn at all — they are Claude Code's bookkeeping and its
+conversation summaries, not the conversation, and a summary repeats turns already
+captured. What they would have been refused as (`foreign`, `ritual`, `dream`) is still
+read and counted. The new text markers (anchored at the
 start of the block) decide only for a USER-role entry that carries no metadata; the
 assistant's text is never reclassified by a marker, and `classifyBlock` — the rule both
 roles share — is unchanged. The two refusals (`foreign`, `ritual`) come before the
@@ -811,17 +819,22 @@ deny beats the user's own allow rules; `ToolSearch` stays, for hosts that defer 
 `--strict-mcp-config` with an `--mcp-config` naming only the counterparts server, as the
 install registers it (`nightMcpConfig`); `--max-turns` (`NIGHT_MAX_TURNS` 60,
 `dreaming.maxTurns`); `--model` only when `dreaming.model` is set; `--session-id` a fresh
-UUID the waiting process chose (2026-10-09), so it can find the child's transcript. It
+UUID the waiting process chose (2026-10-09), which keeps the children apart; and
+`--output-format stream-json --verbose` (2026-10-12; `-p` refuses `stream-json` without
+`--verbose`, measured on 2.1.296), its STDOUT kept in memory to 64 MiB
+(`child.ts#OUTPUT_MAX_BYTES`) and read once for the host's cut. The catch-up child's
+output is ignored. It
 starts in a NEUTRAL directory — the store's own — so no project's CLAUDE.md, hooks or MCP
 servers load. The parent's stance, `CLAUDE_PROJECT_DIR` and `CLAUDECODE` variables are
 removed; this package's values are written last.
 
-**[M] The run reads its child's transcript for the host's cut (2026-10-09, U14 item 3 — held
-lightly).** Once the child exits, the waiting process finds its transcript by that session
-id (`transcript.ts#hostTranscriptPath`: `CLAUDE_CONFIG_DIR` or `~/.claude`, then
-`projects/<the store's directory, spelled>/<id>.jsonl`, failing that the same name in any
-project directory) and reads it for results of ours — `mcp__counterparts__*` — that the host
-replaced with its marker (`readToolSpills`): `<persisted-output>` "Output too large (…)" or
+**[M] The run reads its child's own output for the host's cut (2026-10-09, U14 item 3; from
+the output since 2026-10-12 — held lightly).** Once the child exits, the waiting process
+reads the `assistant` and `user` lines of its `stream-json` output
+(`night-run.ts#readNightSpills`) for results of ours — `mcp__counterparts__*` — that the
+host replaced with its marker (`transcript.ts#parseToolSpills`). Nothing under the host's
+directory is listed or read: until 2026-10-12 the run found the child's transcript under
+`~/.claude/projects` by its session id, and that lookup is gone. The markers: `<persisted-output>` "Output too large (…)" or
 "Output exceeded the … persist limit", `<truncated-output>`, "Error: result (…) exceeds
 maximum allowed tokens", or the "[OUTPUT TRUNCATED - exceeded … token limit]" trailer — as
 read from Claude Code 2.1.295. Matched where the host puts each one, at the start or the very
@@ -831,7 +844,8 @@ writes the swap as a `content-replacement` line of its own, the result's line le
 those lines are read too, shaped `turn-budget` (review of #330). Each cut result is one durable `mcp.result.spilled` row (run, tool, phase, shape, the
 size the host said; never the saved file's path); the run's row carries `transcript` (`read`
 | `absent` | `unreadable`) and, when read, `spills`. Doctor's Tool results line goes amber on
-any row in its window and says in green whether the last night's transcript was read; the
+any row in its window and says in green whether the last night's output was read (the row's
+field keeps its name, `transcript`); the
 morning hand-back adds a plain line (`Dreams.nightSpillLine`), even for a run that journaled
 nothing. The catch-up child is not read. A host that refuses the flag
 (a quick non-zero exit, no transcript under the name, nothing begun in the store) costs the
