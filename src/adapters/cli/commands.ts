@@ -4940,6 +4940,12 @@ async function catchUpEntry(
     io.err("refused: this configuration is an observer's, and a catch-up writes memories.");
     return EXIT.refused;
   }
+  // `--dry-run` and `--yes` belong to `--reowe` (review of #435): alone, a
+  // typed `catch-up --dry-run` would start a real run that writes memories.
+  if (parsed.flags["reowe"] === undefined && (parsed.flags["dry-run"] !== undefined || parsed.flags["yes"] !== undefined)) {
+    io.err(`usage: --dry-run and --yes go with --reowe <run>. ${BIN.cli} catch-up alone starts a real run; it has no dry run.`);
+    return EXIT.usage;
+  }
   if (parsed.flags["reowe"] !== undefined) {
     return await reoweCommand({ config: { ...config, dataDir }, io, now, run: parsed.flags["reowe"], dryRun: parsed.flags["dry-run"] === true, yes: parsed.flags["yes"] === true });
   }

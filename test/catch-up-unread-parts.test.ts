@@ -431,3 +431,113 @@ describe("catch-up --reowe <run>", () => {
     expect(err.join("\n")).toContain("keeps a week");
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe("review of #435: the edges", () => {
+  test("a part that mixes kept and unwritten words counts as unwritten, so the door serves it", () => {
+    const kept = { text: "k".repeat(30), kept: true, jot: false, at: 1 };
+    const fresh = { text: "f".repeat(30), kept: false, jot: false, at: 2 };
+    const parts = writeUpPartsDated([kept, fresh, kept], 1_000);
+    expect(parts.length).toBe(1);
+    expect(parts[0]?.unwritten).toBe(30);
+    expect(firstUnwrittenPart([{ unwritten: 0 }, ...parts, { unwritten: 0 }], 1)).toBe(2);
+  });
+
+  test("words claimed between the grant and the fetch: the door hands nothing, and no part is recorded done", async () => {
+    // The race's direction: claims only ever add kept words, so a plan made
+    // before them can only over-serve, never pass over a part with unwritten words.
+    livedWithChapter("whole-1", { kept: 0, unkept: 9, bytes: 7_000 });
+    expect(owes("whole-1")).toBe(true);
+    const plan = grant("cup_whole", "writeup-cup_whole");
+    const cc = openNightCounterpart(config());
+    try {
+      expect(cc.spans.claimCoverage({ scope: proj, session: "whole-1", proposalId: "prp_review" }).length).toBeGreaterThan(0);
+    } finally {
+      cc.close();
+    }
+    const parts = partsOf("whole-1");
+    expect(parts.length).toBeGreaterThanOrEqual(3);
+    expect(parts.every((p) => p.unwritten === 0)).toBe(true);
+    const s = runnerServer("writeup-cup_whole");
+    const f = payload(await s.call("session_end", { session: "writeup-cup_whole", writeUp: "whole-1" }));
+    expect(f).toMatchObject({ reason: "owes-nothing" });
+    expect(progressOf("whole-1")?.done ?? 0).toBe(0);
+    release(plan);
+  });
+
+  test("a run that stops short after a reasoned [] and a deposit: only the parts never reached are unread", async () => {
+    livedWithChapter("plain-1", { kept: 0, unkept: 12, bytes: 7_000 });
+    const n = partsOf("plain-1").length;
+    expect(n).toBeGreaterThanOrEqual(4);
+    const stopAfterTwo = async (plan: ChildPlan): Promise<ChildResult> => {
+      const runner = plan.env[SESSION_ENV] as string;
+      const s = openServer({ dir, owner: true, session: runner, scope: plan.env[SCOPE_ENV] as string });
+      try {
+        for (let k = 1; k <= 2; k++) {
+          const f = payload(await s.call("session_end", { session: runner, writeUp: "plain-1" }));
+          const answer = k === 1 ? { memories: [], nothing: "only routine valve checks here" } : memory("plain-1", k);
+          payload(await s.call("session_end", { session: runner, writeUp: "plain-1", part: f["part"], ...answer }));
+        }
+      } finally {
+        s.counterpart.close();
+      }
+      return { code: 0, timedOut: false, error: null };
+    };
+    const report = await runIt("cup_short", stopAfterTwo);
+    expect(report).toMatchObject({ state: "partial", parts: 2, passed: 0, unread: n - 2 });
+  });
+
+  test("--reowe: parts after the empty ones that brought memories back are refused by name", async () => {
+    livedWithChapter("plain-1", { kept: 0, unkept: 12, bytes: 7_000 });
+    expect(partsOf("plain-1").length).toBeGreaterThanOrEqual(4);
+    const runner = "writeup-cup_dep";
+    const plan = grant("cup_dep", runner, 2);
+    const s = runnerServer(runner);
+    for (let k = 1; k <= 2; k++) {
+      const f = payload(await s.call("session_end", { session: runner, writeUp: "plain-1" }));
+      const answer = k === 1 ? { memories: [], nothing: "only routine valve checks here" } : memory("plain-1", k);
+      expect(payload(await s.call("session_end", { session: runner, writeUp: "plain-1", part: f["part"], ...answer }))["reason"]).toBe("part-written");
+    }
+    release(plan);
+    const c = openNightCounterpart(config());
+    closers.push(c);
+    const re = reowePlan(c, "cup_dep", Date.now());
+    expect(re.subjects).toEqual([expect.objectContaining({ session: "plain-1", empty: [1], deposited: [2] })]);
+    expect(["after-deposits", "needs-retraction"]).toContain(String(re.subjects[0]?.status));
+    expect(applyReowe(c, re, Date.now())).toEqual([]);
+    expect(readWriteUpProgress(c.store)[progressKey("plain-1", proj)]?.done).toBe(2);
+  });
+
+  test("--reowe: a session another writer holds right now is refused busy, and nothing moves", async () => {
+    livedWithChapter("plain-1", { kept: 0, unkept: 9, bytes: 7_000 });
+    const runner = "writeup-cup_busy";
+    const plan = grant("cup_busy", runner, 2);
+    const s = runnerServer(runner);
+    for (let k = 0; k < 2; k++) {
+      const f = payload(await s.call("session_end", { session: runner, writeUp: "plain-1" }));
+      payload(await s.call("session_end", { session: runner, writeUp: "plain-1", part: f["part"], memories: [], nothing: "said only routine things here" }));
+    }
+    release(plan);
+    // A later run takes the session and is mid-batch.
+    const later = grant("cup_later", "writeup-cup_later");
+    const later_s = runnerServer("writeup-cup_later");
+    expect(payload(await later_s.call("session_end", { session: "writeup-cup_later", writeUp: "plain-1" }))["reason"]).toBe("part");
+    const c = openNightCounterpart(config());
+    closers.push(c);
+    const re = reowePlan(c, "cup_busy", Date.now());
+    expect(re.subjects).toEqual([expect.objectContaining({ session: "plain-1", status: "busy" })]);
+    expect(applyReowe(c, re, Date.now())).toEqual([]);
+    expect(readWriteUpProgress(c.store)[progressKey("plain-1", proj)]?.done).toBe(2);
+    release(later);
+  });
+
+  test("catch-up --dry-run or --yes without --reowe is a usage mistake, not a real run", async () => {
+    Counterpart.open({ dir, owner: true }).close();
+    const err: string[] = [];
+    const io: Io = { out: () => undefined, err: (l) => err.push(l) };
+    const env = { PATH: "/usr/bin:/bin", COUNTERPARTS_REQUIRE_EXPLICIT_DIR: "1" };
+    expect(await run(["catch-up", "--dir", dir, "--dry-run"], { io, env })).toBe(EXIT.usage);
+    expect(await run(["catch-up", "--dir", dir, "--yes"], { io, env })).toBe(EXIT.usage);
+    expect(err.join("\n")).toContain("--reowe");
+  });
+});
