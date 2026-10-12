@@ -2336,9 +2336,12 @@ describe("WAL, the busy timeout, and I39", () => {
     s.close();
     open.length = 0;
     expect(journalModeOf(opPath())).toBe("wal");
+    // After the last connection really closes (`db.ts`, 2026-10-11), the sidecars
+    // are the SQLite build's: Apple's keeps them, bun's own on Linux deletes them.
+    const kept = process.platform === "darwin";
     expect({ wal: existsSync(`${opPath()}-wal`), shm: existsSync(`${opPath()}-shm`) }).toEqual({
-      wal: true,
-      shm: true,
+      wal: kept,
+      shm: kept,
     });
 
     // How `tools/parallel/readers.ts` opens a live store: read-only, on purpose.

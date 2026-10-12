@@ -1466,6 +1466,10 @@ describe("finding #26 — the store's size, and what it is made of", () => {
     const del = consoleWith(["cancel"]);
     expect(await uninstall(input({ io: del.io, deleteMemories: true }))).toBe("ok");
     expect(text(del.out)).toContain("of that is a database log that shrinks on its own;");
+    // The delete arm's count is an observer open, and since `Db.close()` really
+    // closes (2026-10-11) the last connection's close folds the log: the
+    // shrinking that sentence promises. So the park arm gets a fat log of its own.
+    fattenLog();
     const park = consoleWith(["n"]);
     expect(await uninstall(input({ io: park.io, park: true, yes: false }))).toBe("ok");
     expect(text(park.out)).toContain("of that is a database log that shrinks on its own;");
@@ -1509,7 +1513,9 @@ describe("finding #26 — the store's size, and what it is made of", () => {
     // The delete plan's store row and the park plan's total are different
     // things (the park line counts the configuration too), so the check is that
     // each is the AFTER-fold size of what it names — neither carries the log.
-    expect(statSync(join(storePath(), `${DATABASE_FILE}-wal`)).size).toBe(0);
+    // Empty, or gone: SQLite on Linux deletes it when the last connection closes.
+    const wal = join(storePath(), `${DATABASE_FILE}-wal`);
+    expect(existsSync(wal) ? statSync(wal).size : 0).toBe(0);
     expect(walBytes(storePath())).toBeLessThan(LOG_WORTH_SAYING);
     expect(sizes[0]).toBe(humanBytes(dirSize(storePath())));
     expect(sizes[1]).toBe(humanBytes(dirSize(base())));

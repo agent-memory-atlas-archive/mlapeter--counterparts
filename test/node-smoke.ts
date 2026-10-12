@@ -9,7 +9,8 @@
  * does not collect it, and it uses only `node:test` and `node:assert`.
  *
  * What it proves, each against a fresh temp directory it removes:
- *   1. the store opens on `node:sqlite` and holds a row across a close;
+ *   1. the store opens on `node:sqlite` and holds a row across a close, and a
+ *      close frees the file at once and refuses a kept statement after it;
  *   2. the MCP server starts over stdio, answers `status`, and round-trips a
  *      `note` into a `recall`;
  *   3. a SessionStart hook runs end to end on a fake payload and injects a wake;
@@ -126,6 +127,36 @@ describe("under Node", () => {
     } finally {
       again.close();
     }
+  });
+
+  test("close() releases the file at once, refuses after, and ignores a second close", () => {
+    // The probe `test/db-close.test.ts` uses under bun: switching a WAL file to
+    // DELETE needs every other connection gone, and with no busy wait it
+    // answers at once either way (review of #438).
+    const free = (path: string): boolean => {
+      const probe = openDb(path);
+      try {
+        probe.exec("PRAGMA busy_timeout = 0");
+        try {
+          return probe.get<{ journal_mode: string }>("PRAGMA journal_mode = DELETE")?.journal_mode === "delete";
+        } catch {
+          return false;
+        }
+      } finally {
+        probe.close();
+      }
+    };
+    const path = join(work, "close-probe.sqlite");
+    const db = openDb(path, { wal: true });
+    db.exec("CREATE TABLE t (v TEXT)");
+    const kept = db.prepare("SELECT COUNT(*) AS n FROM t");
+    db.run("INSERT INTO t (v) VALUES (?)", "one");
+    assert.equal(kept.get<{ n: number }>()?.n, 1);
+    assert.equal(free(path), false);
+    db.close();
+    assert.equal(free(path), true);
+    assert.throws(() => kept.get(), (err: unknown) => (err as { code?: string }).code === "DB_CLOSED");
+    assert.doesNotThrow(() => db.close());
   });
 
   test("a store is created and opens again at its schema", () => {

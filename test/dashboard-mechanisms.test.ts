@@ -64,8 +64,13 @@ function snapshot(dir: string): Map<string, string> {
   const walk = (at: string): void => {
     for (const entry of readdirSync(at, { withFileTypes: true })) {
       const full = join(at, entry.name);
+      // Bar a `-shm`, as the other dashboard suites do: it is SQLite's shared
+      // index, holds no data, and is rewritten when the last connection on a
+      // file closes, which a reader's close now really does (2026-10-11).
       if (entry.isDirectory()) walk(full);
-      else if (entry.isFile()) out.set(relative(dir, full), createHash("sha256").update(readFileSync(full)).digest("hex"));
+      else if (entry.isFile() && !entry.name.endsWith("-shm")) {
+        out.set(relative(dir, full), createHash("sha256").update(readFileSync(full)).digest("hex"));
+      }
     }
   };
   walk(dir);

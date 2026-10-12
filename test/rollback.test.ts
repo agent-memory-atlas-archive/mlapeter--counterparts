@@ -308,7 +308,15 @@ describe("rollback", () => {
     if (walLeft) renameSync(join(aside, `${DATABASE_FILE}-wal`), `${paths.operational(dir)}-wal`);
     expect(existsSync(paths.operational(dir))).toBe(false);
     // And the cache only partly moved: a sidecar of the newer cache still in place.
-    const cacheSidecar = readdirSync(join(aside, "cache")).find((n) => n.startsWith("cache.sqlite-")) ?? "";
+    // Whether the cache HAS sidecars once its last connection closed is the SQLite
+    // build's (Apple's keeps them; bun's own on Linux deletes them, since
+    // `Db.close()` really closes, 2026-10-11). Where it has none, an empty `-wal`,
+    // which is what Apple's leaves, stands in for one.
+    if (!readdirSync(join(aside, "cache")).some((n) => n.startsWith("cache.sqlite-"))) {
+      writeFileSync(join(aside, "cache", "cache.sqlite-wal"), "");
+    }
+    const cacheBefore = readdirSync(join(aside, "cache")).sort();
+    const cacheSidecar = cacheBefore.find((n) => n.startsWith("cache.sqlite-")) ?? "";
     expect(cacheSidecar).not.toBe("");
     renameSync(join(aside, "cache", cacheSidecar), join(dir, "cache", cacheSidecar));
 
@@ -348,7 +356,7 @@ describe("rollback", () => {
     expect(back.ids).toContain(after);
     expect(existsSync(rollbackHoldPath(dir))).toBe(false);
     // The cache came back whole: the sidecar that never moved was not deleted.
-    expect(cacheFiles().sort()).toEqual(["cache.sqlite", "cache.sqlite-shm", "cache.sqlite-wal"]);
+    expect(cacheFiles().sort()).toEqual(cacheBefore);
     // The temporary copy was a duplicate of the snapshot, which stays; the aside folder is gone.
     expect(existsSync(tmp)).toBe(false);
     expect(preMigrationCopies().length).toBe(1);

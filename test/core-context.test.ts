@@ -13,7 +13,7 @@
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 
@@ -198,7 +198,12 @@ function snapshot(at: string): Map<string, string> {
   const walk = (p: string): void => {
     for (const entry of readdirSync(p, { withFileTypes: true })) {
       const full = join(p, entry.name);
+      // Bar what holds no data: the `-shm`, SQLite's shared index, which the last
+      // connection's close rewrites, and an EMPTY `-wal`, which some builds delete
+      // at that close and any open makes again (since `Db.close()` really closes,
+      // 2026-10-11). A `-wal` with pages is hashed.
       if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith("-shm") || (entry.name.endsWith("-wal") && statSync(full).size === 0)) continue;
       else if (entry.isFile()) out.set(relative(at, full), createHash("sha256").update(readFileSync(full)).digest("hex"));
     }
   };

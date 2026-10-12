@@ -53,7 +53,7 @@ import { TUNABLES as PHYSICS } from "../src/core/physics/index.js";
 import {
   WRITE_METHODS,
   hashText,
-  isDatabaseSidecar,
+  holdsNoData,
 } from "../src/core/store/index.js";
 import type { ReadOnlyStore, Store, WriteMethod } from "../src/core/store/index.js";
 import {
@@ -282,7 +282,9 @@ function snapshot(root: string, opts: { canonicalOnly?: boolean } = {}): Map<str
       // that file — a read-only one included. The `-wal` is NOT skipped: a commit
       // lives there until a checkpoint, so it is where a write by this adapter
       // would show, and this suite exists to see one.
-      if (isDatabaseSidecar(entry.name)) continue;
+      // An EMPTY `-wal` is skipped too: it holds nothing, and whether one exists
+      // is the platform SQLite's (`holdsNoData`). One with pages is hashed.
+      if (holdsNoData(full)) continue;
       if (entry.isDirectory()) {
         walk(full);
         continue;

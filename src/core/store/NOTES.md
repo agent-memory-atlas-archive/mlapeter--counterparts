@@ -1347,7 +1347,10 @@ SQLite's last-connection checkpoint; the `-wal` stayed at its high-water size (1
 after 300 puts, measured again here) until some other process folded it. Fixed with an
 explicit `PRAGMA wal_checkpoint(TRUNCATE)` in `Store.close()` (`db.ts#foldWal`) rather
 than statement finalization: it is independent of driver and of statement lifecycle,
-and finalization would have touched every call site in this module.
+and finalization would have touched every call site in this module. *(2026-10-11: the
+statement cache made finalization one place, and `close()` now finalizes and really
+closes; the fold stays, for the closes that are not the last. See the dated note at the
+end.)*
 
 - **Only a box this handle WROTE** (`db.ts#wroteOn`: `total_changes()` on that
   connection). The first cut folded on every writable close and broke three dry-run
@@ -2089,8 +2092,62 @@ take a NEW copy (`freshMigrationCopy` → `snapshotBeforeMigration({ reuse: fals
 second rollback on the same UTC day cannot restore the first one's copy.
 
 Learned writing its tests: a database file renamed while this process still has a handle on
-it — and `openDb`'s handles outlive `close()`, because the statement cache never finalizes —
+it — and `openDb`'s handles outlived `close()` then, because the statement cache never
+finalized (fixed 2026-10-11, the next note) —
 answers `SQLITE_IOERR_VNODE` to a NEW connection on the file at its new path, in the same
 process. A file copied into place (a new inode) is unaffected. The console's rollback opens
 the upgraded database only before moving it, so it never meets this; the tests read moved
 files from a child process.
+
+## 2026-10-11 — `close()` really closes (after #434)
+
+Under bun, `Db.close()` did not close. bun:sqlite's `close()` only closes a connection
+with no statement left alive, and the statement cache was cleared without finalizing, so
+every connection stayed open until the garbage collector reached its statements (or the
+process exited). Found by #434's builder chasing an ubuntu CI flake; measured again here
+(bun 1.3.10, macOS): after such a close another connection's `PRAGMA journal_mode = DELETE`
+fails "database is locked", and a statement kept from before the close still runs.
+node:sqlite was never affected: its `close()` finalizes the connection's statements itself
+(its statements have no `finalize`).
+
+Now every statement dropped from the cache (at the cap, or on a table change) is finalized
+at once, `close()` finalizes the rest before closing, a second `close()` does nothing, and
+anything run afterwards throws `DB_CLOSED`. A `Statement` from `prepare` holds its SQL and
+looks the driver statement up on each call, so a caller that kept one is not broken when
+its cache entry is dropped, and after an `ALTER TABLE` it gets the new columns.
+`test/db-close.test.ts`.
+
+What changed with it, measured:
+
+- **The last connection's close is SQLite's checkpoint-and-cleanup again.** A reader that
+  is the last to close a file folds whatever log is left: no row changes, the database
+  file's bytes can (4 KB → 8 KB with a 12 KB log in the probe). That includes an observer:
+  "an instrument leaves the log for the next writer" was true under bun only because no
+  close happened. The byte-identity suites still pass because a writer folds its own log on
+  close (`foldWal`), so an instrument usually finds the `-wal` empty; two tests that built a
+  fat log with a closed writer now keep it open or rebuild it (`cli.test.ts` migrate-cache,
+  `uninstall.test.ts` finding #26), and one more snapshot bars the `-shm`
+  (`dashboard-mechanisms.test.ts`), which SQLite rewrites at the last close.
+- **The sidecars at the last close** are the build's choice: bun on macOS keeps the `-wal`
+  (emptied) and the `-shm`; bun on Linux and node:sqlite delete both, and the next open
+  makes an empty `-wal` again, with that open's mtime. Two things read that file and now
+  look past an empty one: `pre-migration.ts#reusableCopy`, which asked "has the live store
+  been written since this copy?" by the `-wal`'s mtime too, and on Linux never reused an
+  older copy once every open made a fresh `-wal`; and the suites that hash a store and
+  mean "nothing wrote", which skip it through `paths.ts#holdsNoData` (a `-wal` with pages
+  is still hashed). Measured in an `oven/bun:1.3.10` container, CI's bun.
+- **`foldWal` stays.** A hook usually closes while the MCP server, the worker or the
+  dashboard has the file open, so its close is not the last and SQLite folds nothing.
+- **A hook turn costs the same.** open → put → appendEvent → close on a 2,000-memory
+  store, median of 40, two runs each: 3.2 / 2.9 ms now, 2.6 / 3.4 ms before.
+- **The rollback note above** (a renamed file answering `SQLITE_IOERR_VNODE` because
+  `openDb`'s handles outlived `close()`) was this; its tests still read moved files from a
+  child process, which is not wrong.
+- **The cross-process edge #434 named is not closed.** SQLite deletes the `-wal`/`-shm` at
+  the last close BY PATH. A process that keeps the old store open through a `start-fresh`
+  (past its session check or `--nothing-is-open`) and closes it after the blank store
+  exists would delete the blank store's sidecars on Linux. Before this, under bun, that
+  close happened when the collector ran, or never in a short-lived process; now it happens
+  at `close()`; under node it always did. A process that closed before the rename is no
+  longer a late closer at all. macOS's SQLite keeps the files and is not exposed. Not built
+  further.

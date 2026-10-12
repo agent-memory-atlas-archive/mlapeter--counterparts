@@ -394,7 +394,9 @@ and says how much of the number is log (NOTES, 2026-09-23), which is this module
 **The ask**, against `store/` (not built here): finalize statements — or cache them per
 SQL string and finalize the cache in `close()` — so a clean close is a real close. Worth
 measuring the hooks' per-turn cost before and after, since they open and close the store
-on every turn.
+on every turn. *(BUILT 2026-10-11: `db.ts` finalizes its cached statements and `close()`
+really closes; a hook turn measured the same before and after. `store/NOTES.md`, the
+2026-10-11 note.)*
 
 ## Dreaming and the core (2026-09-26)
 

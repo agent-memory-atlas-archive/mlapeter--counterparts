@@ -51,7 +51,7 @@ import { SWEEP_REASONS, TUNABLES as REMEMBER_TUNABLES } from "../src/core/rememb
 import type { InterpretFn, SweepChunk } from "../src/core/remember/index.js";
 import { BOOTSTRAP, LANE_ORDER, PREFACE_RESERVE_BYTES } from "../src/core/self/index.js";
 import { CycleKilled, PHASES } from "../src/core/sleep/index.js";
-import { Store, isDatabaseSidecar } from "../src/core/store/index.js";
+import { Store, holdsNoData } from "../src/core/store/index.js";
 
 const ENV = "COUNTERPARTS_DATA_DIR";
 
@@ -1616,8 +1616,8 @@ describe("observer stance — a full lifecycle leaves canonical state byte-ident
     const walk = (abs: string, rel: string): void => {
       for (const entry of readdirSync(abs, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
         if (rel === "" && (entry.name === "cache" || entry.name === "tmp")) continue;
-        if (isDatabaseSidecar(entry.name)) continue;
         const nextAbs = join(abs, entry.name);
+        if (holdsNoData(nextAbs)) continue;
         const nextRel = rel === "" ? entry.name : `${rel}/${entry.name}`;
         if (entry.isDirectory()) walk(nextAbs, nextRel);
         else out[nextRel] = createHash("sha256").update(readFileSync(nextAbs)).digest("hex");

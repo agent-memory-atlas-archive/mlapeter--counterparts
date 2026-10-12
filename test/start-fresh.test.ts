@@ -8,16 +8,19 @@
  * rebuilds) and an EMPTY `-wal`. A `-wal` with pages in it is hashed like any
  * other file, so a sidecar that carries writes still has to arrive byte for byte.
  *
- * Why the exceptions (2026-10-11, the ubuntu CI flake): `install` and `note` run
- * in THIS process, and `Store.close()` folds the WAL (TRUNCATE) and then calls
- * bun:sqlite's `close()`, which leaves the connection open until its cached
- * statements are garbage-collected. When that happens, SQLite — the last
- * connection on Linux's bundled build — deletes the empty `-wal` and the `-shm`.
- * So whether they exist when `before` is read and when the parked copy is read
- * depends on when GC runs, not on anything `start-fresh` does: it never opens the
- * old store, it renames it. The main database's bytes were identical in every
- * failing run. What the parked store must PROVE is checked by content instead:
- * it opens, it holds every write, and `--undo` brings it back.
+ * Why the exceptions: whether an empty `-wal` and the `-shm` outlive the last
+ * connection on a file is the SQLite build's choice. bun on macOS keeps them;
+ * bun on Linux and node:sqlite delete them as the last connection closes. The
+ * ubuntu CI flake of 2026-10-11 (#434) was that deletion landing at a random
+ * moment: `Store.close()` did not really close under bun until 2026-10-11 (its
+ * statements were never finalized), so the connections `install` and `note` made
+ * in THIS process closed whenever the garbage collector got to them, sometimes
+ * between `before` and the parked copy's fingerprint. Since then `close()` is
+ * real and the deletion happens at the close, but a test that says nothing about
+ * sidecars still should not depend on the platform's SQLite. `start-fresh` never
+ * opens the old store, it renames it. What the parked store must PROVE is
+ * checked by content instead: it opens, it holds every write, and `--undo`
+ * brings it back.
  *
  * Hermetic by construction (CLAUDE.md): every test makes a fresh temp HOME under
  * the OS temp dir and removes it in `afterEach`, even on failure; `run()` is
@@ -156,8 +159,8 @@ function guardedLines(out: readonly string[]): string[] {
 
 /**
  * The whole tree, every byte, and the directory shape — bar the `-shm` and an
- * empty `-wal`, which SQLite may delete whenever an in-process connection is
- * finally collected (see the header). A `-wal` that holds pages is hashed.
+ * empty `-wal`, which some SQLite builds delete when the last connection closes
+ * and others keep (see the header). A `-wal` that holds pages is hashed.
  */
 function fingerprint(root: string): string {
   const parts: string[] = [];
@@ -2015,6 +2018,8 @@ describe("the confirmation review's MINORs and NITs", () => {
     ).toBe(EXIT.ok);
     expect(text(u.out)).toContain("`-shm` index may have been");
     expect(text(u.out)).toContain("the parked store was not opened");
+    // Honest about the fold a real last close can do (review of #438).
+    expect(text(u.out)).toContain("a log left in its `-wal` folded into its database file");
     // And it really did not move anything.
     expect(existsSync(`${storePath()}.${PARKED_INFIX}-${today()}`)).toBe(true);
   });

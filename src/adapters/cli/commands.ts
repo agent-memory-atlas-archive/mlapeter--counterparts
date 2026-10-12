@@ -5879,8 +5879,13 @@ async function startFreshUndo(
     // SAID, because it is true and a careful reader checking bytes will find it
     // (confirmation review MINOR-4): reading the record opens the NEW store as
     // an observer, and SQLite rewrites its shared-memory index when it does.
+    // And since `Db.close()` really closes (2026-10-11, review of #438): when
+    // that read is the LAST connection on the file, SQLite folds any log left
+    // in the `-wal` into the database file as it closes. No row changes; the
+    // file's bytes can, so the sentence no longer says nothing else was touched.
     io.out("  (this read the new store's record, so its `-shm` index may have been");
-    io.out("   rewritten. Nothing else was touched, and the parked store was not opened.)");
+    io.out("   rewritten, and a log left in its `-wal` folded into its database file.");
+    io.out("   No memory in it changed, and the parked store was not opened.)");
     return EXIT.ok;
   }
   {

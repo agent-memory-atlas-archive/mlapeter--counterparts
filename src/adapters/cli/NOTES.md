@@ -1710,6 +1710,12 @@ and the stores would stop carrying megabytes of stale log between sessions. Noth
 lost today — the next writer reuses the log — but the size a person sees depends on which
 program happened to touch the store last.
 
+*(2026-10-11: built in `store/`. `close()` now really closes, so point 3 no longer holds
+when the reader is the LAST connection on the file: SQLite folds the log as it closes. The
+delete arm's count is such a reader, so a park plan run after a delete plan can show a
+smaller store with no log line. Each screen is still sized before its own count, which is
+what the #188 review asked for, and the sentence already says the log shrinks on its own.)*
+
 ## 2026-09-23 — keyless surfaces (roadmap C3)
 
 The owner's decision of 2026-09-23: install asks about **neither** key, and the static

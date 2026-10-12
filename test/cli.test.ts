@@ -54,7 +54,7 @@ import {
 } from "../src/core/store/cache.js";
 import { openDb } from "../src/core/store/db.js";
 import { CONFIG_FLAG } from "../src/adapters/config-path.js";
-import { EMBED_FAILED_PREFIX, EMBED_SKIP_AFTER, LAYOUT, SCHEMA_VERSION, Store, isDatabaseSidecar, paths } from "../src/core/store/index.js";
+import { EMBED_FAILED_PREFIX, EMBED_SKIP_AFTER, LAYOUT, SCHEMA_VERSION, Store, holdsNoData, paths } from "../src/core/store/index.js";
 import { makeBodyUnreadable } from "./store-fixture.js";
 import {
   BLOB_NAME,
@@ -174,6 +174,10 @@ function fingerprint(root: string): string {
       for (const name of readdirSync(path).sort()) walk(join(path, name), `${rel}/${name}`);
       return;
     }
+    // An EMPTY `-wal` holds nothing, and whether one exists depends on the SQLite
+    // build and on who has the file open: Linux's deletes it at the last close,
+    // and any open makes it again (since `Db.close()` really closes, 2026-10-11).
+    if (rel.endsWith("-wal") && statSync(path).size === 0) return;
     parts.push(`${rel}:${readFileSync(path).toString("base64")}`);
   };
   // The `-wal` is in the list on purpose: under WAL a commit lives in the
@@ -3341,9 +3345,10 @@ describe("verify", () => {
       for (const name of readdirSync(at).sort()) {
         // Bar a database's `-shm`: under WAL every connection writes read-marks
         // into it, a read-only one included. The `-wal` is hashed with the file —
-        // a commit lives there until a checkpoint moves it in.
-        if (isDatabaseSidecar(name)) continue;
+        // a commit lives there until a checkpoint moves it in (an empty one holds
+        // none, and comes and goes with the platform's SQLite: `holdsNoData`).
         const full = join(at, name);
+        if (holdsNoData(full)) continue;
         if (statSync(full).isDirectory()) walk(full);
         else parts.push(`${full}:${readFileSync(full).toString("base64")}`);
       }
@@ -3895,19 +3900,24 @@ describe("migrate-cache — the conversion that is not a rebuild", () => {
     // A fat `-wal` beside it, with not one byte of garbage in the database: two
     // passes that rewrite every page and commit, below SQLite's autocheckpoint.
     // (Measured: `SET dim = dim` alone left the `-wal` at zero, now that the
-    // compaction above folds its own.)
+    // compaction above folds its own.) The writer stays OPEN across the look:
+    // since `Db.close()` really closes (2026-10-11), the last connection's close
+    // folds the log, which is what a close should do and not the case here.
     const db = openCache(paths.cache(dir));
-    db.exec("UPDATE embeddings SET dim = dim + 1");
-    db.exec("UPDATE embeddings SET dim = dim - 1");
-    db.close();
-    expect(statSync(`${paths.cache(dir)}-wal`).size).toBeGreaterThan(1024 * 1024);
+    try {
+      db.exec("UPDATE embeddings SET dim = dim + 1");
+      db.exec("UPDATE embeddings SET dim = dim - 1");
+      expect(statSync(`${paths.cache(dir)}-wal`).size).toBeGreaterThan(1024 * 1024);
 
-    const look = consoleWith();
-    expect(await run(["migrate-cache", "--dir", dir], { io: look.io, env: { [ENV]: dir } })).toBe(
-      EXIT.ok,
-    );
-    expect(text(look.out)).toContain("Converted and compacted. Nothing to do.");
-    expect(text(look.out)).not.toContain("reclaimable");
+      const look = consoleWith();
+      expect(await run(["migrate-cache", "--dir", dir], { io: look.io, env: { [ENV]: dir } })).toBe(
+        EXIT.ok,
+      );
+      expect(text(look.out)).toContain("Converted and compacted. Nothing to do.");
+      expect(text(look.out)).not.toContain("reclaimable");
+    } finally {
+      db.close();
+    }
   });
 
   test("a second --apply REFUSES once there is nothing left to convert OR reclaim", async () => {

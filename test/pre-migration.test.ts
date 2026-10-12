@@ -22,6 +22,7 @@ import {
   realpathSync,
   renameSync,
   rmSync,
+  statSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
@@ -307,6 +308,43 @@ describe("a migration that fails after its copy", () => {
     utimesSync(paths.operational(dir), now, now);
     codeOf(() => store());
     expect(preMigrationCopies().length).toBe(2);
+  });
+
+  test("an empty -wal newer than an older copy is not a write; a write still only in the -wal is", () => {
+    oldStore();
+    breakMigration();
+    codeOf(() => store());
+    const [today] = preMigrationCopies();
+    const older = `${new Date(Date.now() - 2 * 86_400_000).toISOString().replace(/[:.]/g, "-")}-pre-migration-v${OLD}-to-v${String(SCHEMA_VERSION)}`;
+    renameSync(join(snapsDir, today ?? ""), join(snapsDir, older));
+    const live = paths.operational(dir);
+    const wal = `${live}-wal`;
+    const threeDaysAgo = (Date.now() - 3 * 86_400_000) / 1000;
+    const now = Date.now() / 1000;
+
+    // An empty -wal made by an open today (what bun's SQLite on Linux does at
+    // every open once the last close deleted it): the copy is still good.
+    writeFileSync(wal, "");
+    utimesSync(live, threeDaysAgo, threeDaysAgo);
+    utimesSync(wal, now, now);
+    codeOf(() => store());
+    expect(preMigrationCopies()).toEqual([older]);
+
+    // A committed write that sits only in the -wal (its connection still open,
+    // nothing checkpointed): the database file is as old as before, the -wal
+    // holds pages, and a fresh copy is taken.
+    const writer = new Database(live);
+    try {
+      writer.run("PRAGMA wal_autocheckpoint = 0");
+      writer.run("CREATE TABLE IF NOT EXISTS review_probe (v TEXT)");
+      writer.run("INSERT INTO review_probe (v) VALUES ('only in the log')");
+      utimesSync(live, threeDaysAgo, threeDaysAgo);
+      expect(statSync(wal).size).toBeGreaterThan(0);
+      codeOf(() => store());
+      expect(preMigrationCopies().length).toBe(2);
+    } finally {
+      writer.close();
+    }
   });
 
   test("a successful open after a failed one reuses today's copy and says so", () => {
