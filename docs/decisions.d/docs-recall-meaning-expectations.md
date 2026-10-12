@@ -16,7 +16,7 @@
   facts.
 - Decided by the recall-miss builder, 2026-10-12, lightly held: a hand set of 13 pairs that
   share no word, at the 0.15 floor: 3 miss (cat 0.070, sister/Portland 0.118, the kayak
-  sentence 0.148), 4 more barely pass (0.153 to 0.171), 6 pass clearly (0.217 to 0.513).
+  sentence 0.148), 3 more barely pass (0.153 to 0.171), 7 pass clearly (0.217 to 0.513).
   The README and the plugin README now say so: close paraphrases yes, a description that
   never names the thing no, exact words strongest. Lexical expansion (or a larger model) is
   the follow-up to measure, not done here.
