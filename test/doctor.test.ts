@@ -2844,7 +2844,7 @@ describe("what reached the session, not what ran (2026-10-02)", () => {
     wake("not-found", "absent");
     const only = by(doctorFindings(input({ store: s })), "wake");
     expect(only.severity).toBe("green");
-    expect(only.detail).toContain("no wake checked on arrival (the check is off unless COUNTERPARTS_WAKE_CHECK=1); 2 not checked (no transcript to read)");
+    expect(only.detail).toContain("no wake checked on arrival (an opt-in check: COUNTERPARTS_WAKE_CHECK=1 in Claude Code's environment); 2 not checked (no transcript to read)");
     expect(only.detail).not.toContain("not found in the transcript");
 
     wake("delivered", "read");

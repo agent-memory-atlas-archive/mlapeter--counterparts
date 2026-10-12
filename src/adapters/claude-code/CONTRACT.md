@@ -77,7 +77,7 @@ credential — belongs here, discovered at runtime, never assumed by the core.
   host's transcript (or, when the host has not written the file yet, the next prompt or the
   first Stop — 2026-10-08) — **an opt-in diagnostic since 2026-10-12: only when the hooks'
   environment sets `COUNTERPARTS_WAKE_CHECK=1`; off, nothing is read and no row written,
-  and doctor's Wake line says the check is off** — for this package's SessionStart attachment — what the hook printed
+  and doctor's Wake line names the opt-in when it has no rows** — for this package's SessionStart attachment — what the hook printed
   beside what the host recorded as injected — and leaves one `adapter.wake.delivered` row
   saying `delivered`, `truncated`, `mismatch`, `printed-unverified` (this host build
   records no injected copy to check against), `not-found` or `no-wake-expected`, in counts

@@ -2542,7 +2542,7 @@ export function wakeArrivalFindings(store: Store): Finding[] {
   };
   const head =
     expected <= 0
-      ? `${window} — no wake checked on arrival (the check is off unless COUNTERPARTS_WAKE_CHECK=1)`
+      ? `${window} — no wake checked on arrival (an opt-in check: COUNTERPARTS_WAKE_CHECK=1 in Claude Code's environment)`
       : `${window} — ${String(whole)} of ${String(expected)} ${expected === 1 ? "wake" : "wakes"} arrived whole`;
   if (cut === 0 && room.amber !== null) {
     return [

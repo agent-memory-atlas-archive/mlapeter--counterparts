@@ -5,4 +5,4 @@
   session sent to this one still is.
 - **The wake-arrival check is off by default.** It read the start of the session's transcript only to confirm
   the wake arrived whole. Set `COUNTERPARTS_WAKE_CHECK=1` in Claude Code's environment to turn it back on;
-  doctor's Wake line says when it is off.
+  doctor's Wake line names the setting when no wake was checked.

@@ -2559,4 +2559,4 @@ and then typed words used to "say less" in the last exchange; with the summary g
 words are said.
 
 **The wake-arrival check is opt-in** (`COUNTERPARTS_WAKE_CHECK=1`). Off, `checkWakeArrival` returns
-before the registry read; doctor's Wake line, with no arrival rows, says the check is off.
+before the registry read; doctor's Wake line, with no arrival rows, names the opt-in.
