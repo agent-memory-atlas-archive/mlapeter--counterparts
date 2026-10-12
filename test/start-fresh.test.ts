@@ -3,11 +3,21 @@
  *
  * The one property every test here is really about: **the parked directory is
  * byte-identical before and after, and nothing is ever deleted.** So the
- * fingerprint below hashes EVERY file in the tree, the `-wal` and the `-shm`
- * included — unlike `cli.test.ts`'s, which skips the `-shm` on purpose because
- * it is asking a different question ("did a reader write?"). Here the question
- * is "did this directory change AT ALL", and a `-shm` that moved is a directory
- * that changed.
+ * fingerprint below hashes every file in the tree and the directory shape, with
+ * two exceptions that hold no data: the `-shm` (a shared-memory index SQLite
+ * rebuilds) and an EMPTY `-wal`. A `-wal` with pages in it is hashed like any
+ * other file, so a sidecar that carries writes still has to arrive byte for byte.
+ *
+ * Why the exceptions (2026-10-11, the ubuntu CI flake): `install` and `note` run
+ * in THIS process, and `Store.close()` folds the WAL (TRUNCATE) and then calls
+ * bun:sqlite's `close()`, which leaves the connection open until its cached
+ * statements are garbage-collected. When that happens, SQLite — the last
+ * connection on Linux's bundled build — deletes the empty `-wal` and the `-shm`.
+ * So whether they exist when `before` is read and when the parked copy is read
+ * depends on when GC runs, not on anything `start-fresh` does: it never opens the
+ * old store, it renames it. The main database's bytes were identical in every
+ * failing run. What the parked store must PROVE is checked by content instead:
+ * it opens, it holds every write, and `--undo` brings it back.
  *
  * Hermetic by construction (CLAUDE.md): every test makes a fresh temp HOME under
  * the OS temp dir and removes it in `afterEach`, even on failure; `run()` is
@@ -144,9 +154,24 @@ function guardedLines(out: readonly string[]): string[] {
   return from.filter((l) => l.trimStart().startsWith("if [ -e ")).map((l) => l.trim());
 }
 
-/** The whole tree, every byte, including the sidecars and the directory shape. */
+/**
+ * The whole tree, every byte, and the directory shape — bar the `-shm` and an
+ * empty `-wal`, which SQLite may delete whenever an in-process connection is
+ * finally collected (see the header). A `-wal` that holds pages is hashed.
+ */
 function fingerprint(root: string): string {
   const parts: string[] = [];
+  // A `-wal` that vanished between the `readdir` and the `stat` is the same race
+  // an empty one is, so it counts as empty.
+  const size = (path: string): number => {
+    try {
+      return statSync(path).size;
+    } catch {
+      return 0;
+    }
+  };
+  const dataless = (path: string, name: string): boolean =>
+    name.endsWith("-shm") || (name.endsWith("-wal") && size(path) === 0);
   const walk = (path: string, rel: string): void => {
     let stat;
     try {
@@ -156,7 +181,9 @@ function fingerprint(root: string): string {
       return;
     }
     if (stat.isDirectory()) {
-      const names = readdirSync(path).sort();
+      const names = readdirSync(path)
+        .filter((name) => !dataless(join(path, name), name))
+        .sort();
       // The ENTRY LIST is part of the fingerprint: a file that appeared and one
       // that vanished must both show, not just a body that changed.
       parts.push(`${rel}/:[${names.join(",")}]`);
@@ -169,6 +196,20 @@ function fingerprint(root: string): string {
   // directory under its parked name are comparable without string surgery.
   walk(root, "");
   return parts.join("|");
+}
+
+/** Every memory body in the store at `dir`, sorted. Opens it (as an observer),
+ *  so call it only after the last fingerprint of that directory. */
+function bodiesIn(dir: string): string[] {
+  const s = Store.open({ dir, observer: true });
+  try {
+    return s
+      .list()
+      .map((id) => s.read(id).doc.body)
+      .sort();
+  } finally {
+    s.close();
+  }
 }
 
 /** The environment every `run()` here gets: the guard armed, nothing else. */
@@ -363,9 +404,11 @@ describe("start-fresh, end to end", () => {
     expect(existsSync(parkedStore)).toBe(true);
     expect(existsSync(parkedSnaps)).toBe(true);
 
-    // THE PROMISE. Every byte, every sidecar, every directory entry.
+    // THE PROMISE. Every byte that holds data, every directory entry.
     expect(fingerprint(parkedStore)).toBe(before);
     expect(fingerprint(parkedSnaps)).toBe(snapsBefore);
+    // And what that promise is FOR: the parked store opens and holds the write.
+    expect(bodiesIn(parkedStore)).toContain("the parked store must survive this");
 
     // The configuration and the credentials, untouched.
     expect(readFileSync(configPath())).toEqual(configBefore);
@@ -1359,6 +1402,55 @@ describe("the way back, as a command", () => {
     expect(existsSync(`${storePath()}.${BLANK_INFIX}-${today()}`)).toBe(true);
     expect(existsSync(snapshotsPath())).toBe(true);
     expect(existsSync(`${storePath()}.${PARKED_INFIX}-${today()}`)).toBe(false);
+    expect(bodiesIn(storePath())).toContain("the espresso machine is a Rancilio Silvia");
+  });
+
+  test("writes still in the -wal when the store is parked survive the park and the way back", async () => {
+    await install();
+    // A connection that is STILL OPEN, with its last writes only in the `-wal`:
+    // the worst moment to move a store, and the one a session that was not
+    // closed would leave. `start-fresh` renames the directory; the open handle's
+    // descriptors follow the files, so whatever it folds on close lands in the
+    // parked copy.
+    const bodies = ["the first write", "the second write", "the third write"];
+    const writer = Store.open({ dir: storePath() });
+    let closed = false;
+    try {
+      for (const body of bodies) {
+        writer.put({
+          type: "memory",
+          kind: "fact",
+          body,
+          learnedOn: today(),
+          salience: { relevance: 0.5, emotional: 0.5, predictive: 0.5 },
+        });
+      }
+      expect(statSync(join(storePath(), `${DATABASE_FILE}-wal`)).size).toBeGreaterThan(0);
+
+      expect(
+        await run(["start-fresh", "--config", configPath(), "--yes", "--nothing-is-open"], {
+          io: consoleWith().io,
+          env: env(),
+          home,
+        }),
+      ).toBe(EXIT.ok);
+      writer.close();
+      closed = true;
+    } finally {
+      if (!closed) writer.close();
+    }
+
+    const parked = `${storePath()}.${PARKED_INFIX}-${today()}`;
+    expect(bodiesIn(parked)).toEqual(expect.arrayContaining(bodies));
+
+    expect(
+      await run(["start-fresh", "--config", configPath(), "--undo", "--yes", "--nothing-is-open"], {
+        io: consoleWith().io,
+        env: env(),
+        home,
+      }),
+    ).toBe(EXIT.ok);
+    expect(bodiesIn(storePath())).toEqual(expect.arrayContaining(bodies));
   });
 
   test("a fresh store is a fresh first meeting, its dreaming setting left alone; --undo brings back the parked store's own state", async () => {
