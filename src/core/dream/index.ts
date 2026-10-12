@@ -2086,7 +2086,16 @@ export class Dreams {
         // review 11 C4, D4): the strongest part's, read before any of them
         // fades, at most `FOLD_CLAIM_CEILING` and never below an insight's
         // start. It summarizes lived events, so the insight's ceiling is not its.
-        const claim = isFold ? foldClaim(sourceRows as MemoryRow[], (id) => this.store.physicsOf(id), day) : cap;
+        // Only the parts it stands for count (review of #432): a core memory or
+        // a reading kept at its own weight does not lift a fold of weak work.
+        const exemptions = new Map((isFold ? (sourceRows as MemoryRow[]) : []).map((r) => [r.id, foldExemption(this.store, r)] as const));
+        const claim = isFold
+          ? foldClaim(
+              (sourceRows as MemoryRow[]).filter((r) => exemptions.get(r.id) === null),
+              (id) => this.store.physicsOf(id),
+              day,
+            )
+          : cap;
         // WHAT IT IS ABOUT, from its sources (D6 closed by Mike, 2026-10-11,
         // lightly held; `store/index.ts#inheritFrom`, first named as best): a
         // personal mark among the sources wins, so a pattern drawn from the
@@ -2143,7 +2152,7 @@ export class Dreams {
         const exempt: { id: string; why: string }[] = [];
         if (isFold) {
           for (const r of sourceRows as MemoryRow[]) {
-            const why = foldExemption(this.store, r);
+            const why = exemptions.get(r.id) ?? null;
             if (why !== null) {
               exempt.push({ id: r.id, why });
               continue;
@@ -3499,8 +3508,9 @@ function foldKey(action: string, fold: boolean): string {
 
 /**
  * WHERE A FOLD STARTS (2026-10-11, Group 3 part B; review 11 C4): the
- * strongest source's decayed strength on `day`, read before any part fades,
- * held to [`DREAMED_CLAIM_CEILING`, `FOLD_CLAIM_CEILING`].
+ * strongest decayed strength on `day` of the parts it holds over (the caller
+ * leaves out the ones kept at their own weight), read before any part fades,
+ * held to [`DREAMED_CLAIM_CEILING`, `FOLD_CLAIM_CEILING`]. None: the floor.
  */
 function foldClaim(rows: readonly MemoryRow[], physicsOf: (id: string) => ReturnType<Store["physicsOf"]>, day: number): number {
   let best = 0;

@@ -253,7 +253,7 @@ dreamer is the model (a background agent the session launches), outside this pro
   labelled earlier under the fold and joins its slot. Kept at their own weight, still cited
   and tied: the core, a protected memory, a reading or a world memory, a strongly felt
   `self` or `person` memory (feeling ≥ `FOLD_FELT_FLOOR` 0.5; review 11 C3), a dated one, a dream's own words and an earlier version
-  (`foldExemption`). It starts at its strongest part's strength, read before any fade, in
+  (`foldExemption`). It starts at the strongest strength of the parts it holds over, read before any fade, in
   [`DREAMED_CLAIM_CEILING`, `FOLD_CLAIM_CEILING` 0.6]; its title is its own (no
   `Dreamed:`); the dream picks its kind; it is `me`/`us` only when most of its parts are (`foldMarkFrom`), else their most common other mark. At most
   `FOLDS`, 5, a dream; one past it is refused `limit-reached`, counted on `dream.changed`

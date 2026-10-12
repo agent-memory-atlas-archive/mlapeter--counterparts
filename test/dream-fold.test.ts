@@ -142,6 +142,26 @@ describe("a fold goes through the one door", () => {
     expect(c.dreams.counts(dream)["gist"]).toBeUndefined();
   });
 
+  test("a part kept at its own weight does not lift the fold's start: weak work beside a core memory starts at the floor", () => {
+    const c = brain();
+    nextDay(c);
+    const weak = { salience: { relevance: 0.15, emotional: 0, predictive: 0.15 } } as Partial<PutInput>;
+    const w1 = mem(c, "Renamed a helper in the benchmark script.", weak);
+    const w2 = mem(c, "Fixed a typo in the benchmark README.", weak);
+    const core = mem(c, "I check a number before I trust it.", { kind: "self", about: "me" });
+    c.store.updatePhysics(core, { promotedIdentity: true });
+    c.store.setBand(core, "identity", c.store.livedDay());
+    for (let i = 0; i < 6; i++) nextDay(c);
+    const day = c.store.livedDay();
+    const workMax = Math.max(strength(c.store.physicsOf(w1), day), strength(c.store.physicsOf(w2), day));
+    expect(strength(c.store.physicsOf(core), day)).toBeGreaterThan(PHYSICS.DREAMED_CLAIM_CEILING + 0.1);
+    expect(workMax).toBeLessThan(PHYSICS.DREAMED_CLAIM_CEILING);
+    const dream = begin(c);
+    const [r] = propose(c, dream, [{ action: "gist", fold: true, text: "The benchmark got its small cleanups.", sources: [w1, w2, core] }]);
+    expect(r?.ok).toBe(true);
+    expect(c.store.physicsOf(r?.id as string).salience.claimed).toBe(PHYSICS.DREAMED_CLAIM_CEILING);
+  });
+
   test("an insight gist is unchanged: 0.3, `Dreamed:`, its sources untouched", () => {
     const c = brain();
     const m = releaseDay(c);
