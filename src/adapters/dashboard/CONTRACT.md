@@ -66,10 +66,12 @@ test.
 and the person's real one) can both try port 4747, so a reader must be able to tell whose
 dashboard answered. **[M]** `GET /api/whoami` returns `{ store, version }`: `store` is the
 store id (`adapters/store-id.ts#storeId`), `st_` and 16 lowercase hex of a sha256 over the
-store's resolved, symlink-free data dir (`/^st_[0-9a-f]{16}$/`); `version` is
-`package.json#version`, or null when unreadable. `/api/onboarding` carries the same `store`
-field. The id is stable across opens, differs between directories, and never carries the
-path; it is computed, not stored, so a store moved to another path reads as another store.
+store's secret per-store salt (G58's `sessions/expansions.salt`) and its resolved,
+symlink-free data dir (`/^st_[0-9a-f]{16}$/`), so a guessed path cannot be confirmed from
+it; `version` is `package.json#version`, or null when unreadable. `/api/onboarding` carries
+the same `store` field. The dashboard only reads the salt (E7): `store` is null until a
+session-start wake has minted it. The id is stable across opens, differs between stores,
+and never carries the path; a store moved to another path reads as another store.
 **[M]** The session-start wake of a Claude Code hook carries the same id on the line under
 the onboarding marker: `<!-- counterparts:store id=st_… -->`. The sidebar mod compares the
 two and trusts a dashboard only when they match. Nothing about which port is chosen changed.

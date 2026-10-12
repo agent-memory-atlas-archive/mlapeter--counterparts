@@ -4,7 +4,8 @@
  * and the dashboard and the session-start wake say the same one.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -14,6 +15,7 @@ import { Dashboard } from "../src/adapters/dashboard/index.js";
 import { router } from "../src/adapters/dashboard/web/server.js";
 import { installedVersion } from "../src/adapters/sessions.js";
 import { STORE_ID_RE, storeId, storeMarker } from "../src/adapters/store-id.js";
+import { expansionsSaltPath } from "../src/adapters/expansions.js";
 
 let root: string;
 let a: string;
@@ -24,6 +26,8 @@ beforeEach(() => {
   a = join(root, "trial", "store");
   b = join(root, "real", "store");
   for (const dir of [a, b]) Store.open({ dir }).close();
+  // A wake mints each store's salt; most tests start after one.
+  for (const dir of [a, b]) storeMarker(dir);
 });
 afterEach(() => {
   rmSync(root, { recursive: true, force: true });
@@ -63,6 +67,29 @@ describe("the store id", () => {
       for (const part of [dir, root, "trial", "real", "store/", "counterparts-store-id"]) expect(r.raw).not.toContain(part);
       expect(storeMarker(dir)).not.toContain(root);
     }
+  });
+
+  test("is keyed by the store's secret salt: the same path with another salt is another id", () => {
+    const before = storeId(a);
+    const saltPath = expansionsSaltPath(a);
+    expect(readFileSync(saltPath, "utf8").trim()).toMatch(/^[0-9a-f]{32}$/);
+    // An id computed from the path alone (the guessable scheme) is not it.
+    const unsalted = "st_" + createHash("sha256").update(`counterparts-store\0${realpathSync(a)}`, "utf8").digest("hex").slice(0, 16);
+    expect(before).not.toBe(unsalted);
+    writeFileSync(saltPath, `${"0".repeat(32)}\n`);
+    expect(storeId(a)).not.toBe(before);
+  });
+
+  test("the dashboard never writes the salt: null before any wake, the wake's id after", () => {
+    const c = join(root, "fresh", "store");
+    Store.open({ dir: c }).close();
+    const r = whoami(c);
+    expect(r.status).toBe(200);
+    expect(r.body["store"]).toBeNull();
+    expect(existsSync(expansionsSaltPath(c))).toBe(false);
+    const marker = storeMarker(c);
+    expect(marker).toMatch(/^<!-- counterparts:store id=st_[0-9a-f]{16} -->$/);
+    expect(marker).toBe(`<!-- counterparts:store id=${String(whoami(c).body["store"])} -->`);
   });
 
   test("whoami's version is the package's", () => {
