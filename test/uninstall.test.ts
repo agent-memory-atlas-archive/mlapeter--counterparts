@@ -1466,6 +1466,10 @@ describe("finding #26 — the store's size, and what it is made of", () => {
     const del = consoleWith(["cancel"]);
     expect(await uninstall(input({ io: del.io, deleteMemories: true }))).toBe("ok");
     expect(text(del.out)).toContain("of that is a database log that shrinks on its own;");
+    // The delete arm's count is an observer open, and since `Db.close()` really
+    // closes (2026-10-11) the last connection's close folds the log: the
+    // shrinking that sentence promises. So the park arm gets a fat log of its own.
+    fattenLog();
     const park = consoleWith(["n"]);
     expect(await uninstall(input({ io: park.io, park: true, yes: false }))).toBe("ok");
     expect(text(park.out)).toContain("of that is a database log that shrinks on its own;");

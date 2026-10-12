@@ -1620,7 +1620,11 @@ export class Store {
    * into the database file — bytes of the canonical box change even though no
    * row does — and the byte-identity suites hash the file WITH its `-wal`
    * around an instrument's open and close to prove it wrote nothing (NOTES §8).
-   * An instrument leaves the log for the next writer.
+   * An instrument does not ASK for a fold. But its close is a real one
+   * (`db.ts`, since 2026-10-11), and when it is the LAST connection on a file,
+   * SQLite itself folds whatever log is left as it closes: no row changes, the
+   * database file's bytes can. Under node:sqlite that was always so; under bun
+   * it was hidden because no close here really closed.
    *
    * **Never waits, never throws.** A reader holding an older snapshot (the MCP
    * server, the worker, the dashboard) makes the fold partial: whatever could be
@@ -1630,7 +1634,8 @@ export class Store {
    * back into a log that was just folded.
    *
    * A second call returns at once: nothing folds and neither handle is closed
-   * again (`node:sqlite` throws on a double close).
+   * again. (A `Db` ignores a second close itself since 2026-10-11, and refuses
+   * any statement after the first with `DB_CLOSED`.)
    */
   close(): void {
     if (this.closed) return;

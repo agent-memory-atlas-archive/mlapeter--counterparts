@@ -3895,19 +3895,24 @@ describe("migrate-cache — the conversion that is not a rebuild", () => {
     // A fat `-wal` beside it, with not one byte of garbage in the database: two
     // passes that rewrite every page and commit, below SQLite's autocheckpoint.
     // (Measured: `SET dim = dim` alone left the `-wal` at zero, now that the
-    // compaction above folds its own.)
+    // compaction above folds its own.) The writer stays OPEN across the look:
+    // since `Db.close()` really closes (2026-10-11), the last connection's close
+    // folds the log, which is what a close should do and not the case here.
     const db = openCache(paths.cache(dir));
-    db.exec("UPDATE embeddings SET dim = dim + 1");
-    db.exec("UPDATE embeddings SET dim = dim - 1");
-    db.close();
-    expect(statSync(`${paths.cache(dir)}-wal`).size).toBeGreaterThan(1024 * 1024);
+    try {
+      db.exec("UPDATE embeddings SET dim = dim + 1");
+      db.exec("UPDATE embeddings SET dim = dim - 1");
+      expect(statSync(`${paths.cache(dir)}-wal`).size).toBeGreaterThan(1024 * 1024);
 
-    const look = consoleWith();
-    expect(await run(["migrate-cache", "--dir", dir], { io: look.io, env: { [ENV]: dir } })).toBe(
-      EXIT.ok,
-    );
-    expect(text(look.out)).toContain("Converted and compacted. Nothing to do.");
-    expect(text(look.out)).not.toContain("reclaimable");
+      const look = consoleWith();
+      expect(await run(["migrate-cache", "--dir", dir], { io: look.io, env: { [ENV]: dir } })).toBe(
+        EXIT.ok,
+      );
+      expect(text(look.out)).toContain("Converted and compacted. Nothing to do.");
+      expect(text(look.out)).not.toContain("reclaimable");
+    } finally {
+      db.close();
+    }
   });
 
   test("a second --apply REFUSES once there is nothing left to convert OR reclaim", async () => {
