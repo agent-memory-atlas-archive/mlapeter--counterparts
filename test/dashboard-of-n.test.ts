@@ -122,7 +122,7 @@ describe("2–3. the salience and prospective pictures", () => {
       const scores = p.memories.map((m) => m.salience);
       expect(scores).toEqual([...scores].sort((a, b) => b - a));
       for (const m of p.memories) expect(m.bornDay).toBeGreaterThan(today - MECHANISM_DAYS);
-      expect(panel.caption(p)).toBe(`The ${PICTURE_ROWS} most salient of the ${weekIds.length} memories written in the last ${MECHANISM_DAYS} lived days.`);
+      expect(panel.caption(p)).toBe(`The ${PICTURE_ROWS} most salient of the ${weekIds.length} memories written in the last ${MECHANISM_DAYS} days of use.`);
       expect(panel.picture(p)).toContain('class="pic-cap"');
     });
   });

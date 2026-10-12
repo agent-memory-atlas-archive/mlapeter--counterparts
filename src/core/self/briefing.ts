@@ -316,11 +316,19 @@ export function headingsOf(lane: LaneName): string[] {
  */
 export const MORE_LINE_IDS = 5;
 
-/** What each lane's line calls the rest — the lane's heading, as a phrase. */
+/** What each lane's line calls the rest — the lane's heading, as a phrase
+ *  (2026-10-12: "coming up" and "might be relevant", as the headings say). */
 export const MORE_NOUN: Readonly<Record<LaneName, string>> = {
   identity: "about who I am",
   craft: "on how I work",
   threads: "still open",
+  hints: "might be relevant",
+  horizon: "coming up",
+};
+
+/** The phrases before the plain-words rename, read back (`countedLanes`) off
+ *  a stored bundle as `LEGACY_FRAMING` is; nothing composes them any more. */
+const LEGACY_MORE_NOUN: Readonly<Partial<Record<LaneName, string>>> = {
   hints: "nearby",
   horizon: "arriving",
 };
@@ -348,7 +356,7 @@ const FOLD_ORDER: readonly LaneName[] = ["horizon", "threads", "identity", "craf
 /** How many ids each folded lane names — fewer than its own line's five. */
 export const FOLD_LINE_IDS = 3;
 
-/** `More than this wake lists: 7 arriving (recall ids: mem_…, mem_…, mem_…, and 4 more); 5 nearby (recall ids: …)` */
+/** `More than this wake lists: 7 coming up (recall ids: mem_…, mem_…, mem_…, and 4 more); 5 might be relevant (recall ids: …)` */
 export function foldedLine(lost: Partial<Record<LaneName, readonly string[]>>): string | null {
   const lanes = FOLD_ORDER.filter((l) => (lost[l]?.length ?? 0) > 0);
   if (lanes.length === 0) return null;
@@ -373,6 +381,10 @@ export function isFoldedLine(line: string): boolean {
 export function countedLanes(text: string): Partial<Record<LaneName, number>> {
   const out: Partial<Record<LaneName, number>> = {};
   const byNoun = new Map(LANE_ORDER.map((l) => [MORE_NOUN[l], l] as const));
+  for (const l of LANE_ORDER) {
+    const old = LEGACY_MORE_NOUN[l];
+    if (old !== undefined) byNoun.set(old, l);
+  }
   for (const line of text.split("\n")) {
     const collapsed = collapsedLane(line);
     if (collapsed !== null) {

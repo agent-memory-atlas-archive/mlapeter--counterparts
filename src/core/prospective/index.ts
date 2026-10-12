@@ -400,7 +400,7 @@ export interface HorizonResult {
   /**
    * WHAT THE COUNT LEFT OUT (review of #367, 2026-10-10): the arrivals that
    * would have taken a wake line but for `HORIZON_ITEMS`, in the same order.
-   * The wake names them by id under the lane ("N more arriving; recall ids:
+   * The wake names them by id under the lane ("N more coming up; recall ids:
    * …") so a dated item past the count is never silently missing.
    */
   readonly more: Arrival[];

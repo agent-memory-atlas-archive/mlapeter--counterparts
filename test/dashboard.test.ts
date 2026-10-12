@@ -873,8 +873,8 @@ describe("status — the brain at a glance", () => {
     await seed();
     const text = stripAnsi(dash().status());
     expect(text).toContain("What I am, right now");
-    expect(text).toMatch(/I have lived \d+ days/);
-    expect(text).toContain("2026-08-04");
+    expect(text).toMatch(/I have had \d+ days of use/);
+    expect(text).toContain("the latest Aug 4");
     expect(text).toMatch(/I am holding \d+ memor/);
     expect(text).toContain("By kind");
     expect(text).toContain("By band");
@@ -1226,7 +1226,7 @@ describe("activity — the recent feed, resolved at render", () => {
   test("it is honest about being bounded telemetry, not canonical memory", async () => {
     await seed();
     const text = stripAnsi(dash().activity());
-    expect(text).toMatch(/I keep events for \d+ lived days/);
+    expect(text).toMatch(/I keep events for \d+ days of use/);
     expect(text).toContain("not everything that ever happened");
   });
 

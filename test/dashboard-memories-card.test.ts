@@ -189,7 +189,7 @@ describe("M1 — the card's road to the core names the lane that applies", () =>
     expect(coreRoadLine(base, true)).toBe("");
     expect(coreRoadLine({ ...base, holdShort: true }, false)).toContain("held a little more firmly");
     expect(coreRoadLine({ ...base, span: 10 }, false)).toContain("keep coming back a little longer");
-    expect(coreRoadLine({ ...base, byUse: false, oneReturn: true, needGap: 1 }, false)).toContain("1 lived day or more");
+    expect(coreRoadLine({ ...base, byUse: false, oneReturn: true, needGap: 1 }, false)).toContain("1 day of use or more");
   });
 });
 

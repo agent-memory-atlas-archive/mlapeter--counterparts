@@ -659,3 +659,18 @@ its id as a link that opens it; `+N more corrected (was wrong)` for the rest. "N
 corrected versions hidden" stays only for an answer that names none (one a non-owner
 may not be told of). "Ask reads the answers 0.3.12 gives" above says "corrected ones
 counted": that was the answer then. Test: `test/dashboard-ask-answers.test.ts`.
+
+## 2026-10-12 — The wake's words, and doctor's
+
+#456 renamed the wake's lanes ("Coming up:", "Might be relevant:") and made doctor say
+"day N of use"; the dashboard still said "Arriving", "memories nearby" and "lived day
+N". What a person reads now matches: the self tab's wake list and the health tab's wake
+bar (`mind.ts#PART_LABEL`) use the lanes' new words; "lived day N" is "day N of use" and
+"N lived days" is "N days of use" everywhere a person reads them, the console's
+`counterparts mechanisms` included (its test holds the two surfaces to one judgement);
+"the owner" in the feed, the event glossary and the help is "you"; "directory" is
+"project". The status opening prints its last active date as "Oct 11" (`stampWords`).
+Untouched: ids, JSON keys, CSS classes (`jd-lived`, `wk-*`), and the readers of stored
+text — `memory-words.ts` and `search.js` still read a chapter heading's "lived day N",
+and the Lookups line reads doctor's "last N lived days" (it says "days of use").
+The web view's own dates stay "Sep 4th" (`dates.js#dateWords`): they were never MM-DD.

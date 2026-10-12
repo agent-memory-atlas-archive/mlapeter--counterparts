@@ -676,8 +676,8 @@ function countOf(n: number, one: string, many: string): string {
  * alarm. Pure, so every shape is tested without a store.
  */
 export function pageBehindWords(x: { date: string; writtenDay: number; livedDays: number; chapters: number; dreams: number }): string {
-  const when = isIsoDay(x.date) ? shortDay(x.date) : `on lived day ${String(x.writtenDay)}`;
-  const parts = [x.livedDays === 1 ? "1 lived day" : `${String(x.livedDays)} lived days`];
+  const when = isIsoDay(x.date) ? shortDay(x.date) : `on day ${String(x.writtenDay)} of use`;
+  const parts = [x.livedDays === 1 ? "1 day of use" : `${String(x.livedDays)} days of use`];
   if (x.chapters > 0) parts.push(countOf(x.chapters, "chapter", "chapters"));
   if (x.dreams > 0) parts.push(countOf(x.dreams, "dream", "dreams"));
   const list = parts.length === 1 ? parts[0] as string : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1] as string}`;
@@ -832,7 +832,7 @@ export function pageDayWords(w: Pick<WriterLine, "what" | "next">): string {
 export function pageDayUnrecorded(today: boolean): { why: string; more: string } {
   return today
     ? { why: "Not rewritten today; the page writer has not run yet.", more: `${WRITER_IS} It runs at most once a night, when a session starts.` }
-    : { why: "Not rewritten, and the page writer left no record that day.", more: `${WRITER_IS} Nothing in the record says it ran on this lived day.` };
+    : { why: "Not rewritten, and the page writer left no record that day.", more: `${WRITER_IS} Nothing in the record says it ran on this day of use.` };
 }
 
 /**
@@ -1132,8 +1132,8 @@ const PART_LABEL: Record<string, string> = {
   identity: "who I am",
   craft: "how I work",
   threads: "still open",
-  hints: "nearby memories",
-  horizon: "arriving",
+  hints: "might be relevant",
+  horizon: "coming up",
 };
 
 /**

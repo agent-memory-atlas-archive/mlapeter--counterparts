@@ -422,7 +422,7 @@ export interface BoundaryRequest extends BriefingRequest {
    * ARRIVING ITEMS PAST THE CALLER'S COUNT, by id (review of #367,
    * 2026-10-10): `prospective/`'s `HORIZON_ITEMS` offers the lane two, and a
    * third dated item was in no wake line and no count. They join the lane's
-   * overflow, so its "N more arriving" line names them for recall. The
+   * overflow, so its "N more coming up" line names them for recall. The
    * owner's wake only (ignored with `omit`).
    */
   readonly horizonMore?: readonly string[];
