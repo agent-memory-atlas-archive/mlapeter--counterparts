@@ -14,8 +14,9 @@ please open issues and pull requests there.
 
 ## Install
 
-Counterparts works in Claude Code (the terminal, and the Code tab of the Claude desktop app), on macOS and
-Linux; Windows is not yet supported.
+Counterparts is built for Claude Code in the terminal, on macOS and Linux; Windows is not yet
+supported. The Code tab of the Claude desktop app runs the same hooks and memory server (checked
+with the npm install); the plugin's own install there is still being tested.
 
 In Claude Code:
 
@@ -64,23 +65,29 @@ the background `claude -p` dreaming run (below).
 prompt and Claude's reply) in `~/.counterparts/store/spans/`, so the session can be
 written up as memories, at the session's end, by a later session, or by the nightly run.
 Tool inputs and outputs, images and attached files are not kept. That text is deleted 7
-days after the session has ended and been written up; a session not yet written up keeps
-its text until it is, or until 14 days of use (days Claude Code ran with Counterparts)
-pass without it. The last 14 daily backups in `~/.counterparts/snapshots/` hold copies of
+days after the session's last activity (or its end); a session with something not yet
+written up keeps its text until it is, or until 14 days of use (days Claude Code ran with
+Counterparts) pass without it, and then the 7 days count again. The last 14 daily backups in `~/.counterparts/snapshots/` hold copies of
 it too, so deleted text can stay in a backup for about 14 more days. It never leaves your
 computer except as above.
 
 **What else it reads and writes.** Besides the session transcript, it reads
-`~/.claude/settings.json`, your project's `.claude/settings*.json` and `~/.claude.json`,
-only to tell whether the npm install is also set up. It doesn't read Claude Code's memory
-files, CLAUDE.md files or prompt history. Apart from `~/.counterparts`, it writes only to
-the plugin's own data folder (the downloaded program, if any), Claude Code's per-plugin
-storage (sidebar preferences) and a small lock file in your temp folder. The hooks start
-short-lived background processes on your computer for the slower work, and
-`/counterparts:doctor` lists running processes to find Counterparts' own.
+`~/.claude/settings.json`, your project's `.claude/settings.json` and `settings.local.json`,
+`~/.claude.json` and Claude Code's `plugins/installed_plugins.json`, only to tell whether
+the npm install is also set up, whether the plugin is on, and (for the sidebar) which
+configuration the hooks use. It doesn't read Claude Code's memory files, CLAUDE.md files or
+prompt history. Apart from `~/.counterparts`, it writes only to the plugin's own data
+folder (the downloaded program, if any), Claude Code's per-plugin storage (sidebar
+preferences) and small first-run files in your temp folder. The hooks start
+short-lived background processes on your computer for the slower work.
+`/counterparts:uninstall` lists running processes (`ps`) to find Counterparts' own before
+it changes anything.
 
 **Settings and tool calls.** The plugin never changes Claude Code's settings or
-permissions, and its hooks never block, change or approve a tool call. At the end of a
+permissions, and its hooks never block, change or approve a tool call (the sidebar only
+watches Counterparts' own tool calls to show what was saved). An optional sidebar switch,
+shown only if you opt in, turns Claude Code's own memory (MEMORY.md and its prompt
+section) off or on in your sessions. At the end of a
 reply the hooks may ask Claude, in a line you can see, to take one more short turn to
 write the session up as memories. The one exception for settings is
 `/counterparts:uninstall`, and only if you also had the npm install: it removes that
