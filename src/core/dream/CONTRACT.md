@@ -246,7 +246,21 @@ dreamer is the model (a background agent the session launches), outside this pro
   linked to its sources, salience capped at `DREAMED_CLAIM_CEILING`; since 2026-10-11
   it takes what its sources were about by the merge's rule, a personal mark winning, the
   first named as best — `store/index.ts#inheritFrom` — and no era standing, its claim being
-  its own; D6, §7 Q2), `contradiction`
+  its own; D6, §7 Q2), a FOLD (2026-10-11, Group 3 part B, item 15: a `gist` with
+  `fold: true` — not an action of its own — saying the standing outcome two or more parts
+  add up to; it holds over each part through the one door, `reconsolidation.ts#supersede`,
+  how `changed`, source `fold`, `closeFlags: false`: the part fades ×0.5, stays live, is
+  labelled earlier under the fold and joins its slot. Kept at their own weight, still cited
+  and tied: the core, a protected memory, a reading or a world memory, a felt one (any
+  recorded feeling), a dated one, a dream's own words and an earlier version
+  (`foldExemption`). It starts at its strongest part's strength, read before any fade, in
+  [`DREAMED_CLAIM_CEILING`, `FOLD_CLAIM_CEILING` 0.6]; its title is its own (no
+  `Dreamed:`); the dream picks its kind and it inherits the mark as a gist does. At most
+  `FOLDS`, 5, a dream; one past it is refused `limit-reached`, counted on `dream.changed`
+  as `foldOverflow` and said in the hand-back. Counted as `fold`, not `gist`. A later
+  `corrected` settle over one of its parts flags it beside the corrector, source
+  `fold-source-corrected`; "which folds came from X" is `Store#foldsCiting`, a query over
+  `meta.sources`), `contradiction`
   (an unsettled pair in `contradictions`; a pair already standing is left as it is),
   `settle` (2026-09-29: two memories it was shown, `holds` / `over` / `how` / `why`,
   through `reconsolidation.ts#settle`; undone with the dream unless settled since),
@@ -281,7 +295,8 @@ dreamer is the model (a background agent the session launches), outside this pro
    `DREAM_MARK`; `remember/spans.ts#enters` refuses any turn carrying it; the Claude Code
    reader tags such a block `dream`. Tested end to end: seed, dream, sweep, zero rows.
 4. **[M]** Undo reverses the whole batch and is idempotent: originals restored (each
-   original's pair undone, its strength back; a merge from before 2026-10-11 un-archived), the merged memory and gists archived `dream-undone`, links back to
+   original's pair undone, its strength back; a merge from before 2026-10-11 un-archived; a
+   fold's parts likewise, each pair undone, unless the fold has moved on since: `kept`), the merged memory and gists archived `dream-undone`, links back to
    their prior weights, the dream's feelings, replays and nominations removed. A merge
    whose merged memory has moved on since (revised into a successor, merged again,
    archived or removed) is left as it is and counted (`kept`), so an undo never stands
@@ -438,7 +453,13 @@ examples) · **§2.19** (every change enumerable: `counterparts dream --show`) �
    for the rest, consolidation is for legacy rows only), and the fast lane needs a
    feeling, which every door refuses on a gist. So today the mark changes the wake
    lane a gist sits in (work or Nearby), not its way to the core. The question above
-   is the only road there.
+   is the only road there. **Since 2026-10-11 (Group 3 parts A and B) a FOLD has the
+   ordinary road**: the slow floor became "within reach", a fold starts at its parts'
+   strength (≤ 0.6), and its parts are in its slot, so their recurrence (their uses and
+   their re-encodings: each part a session wrote on another day) counts for it once it has
+   one awake use of its own. Measured on a copy of the owner's store (10-11): a fold of
+   four `self`/me memories (three folded, one reading kept at its weight), written by
+   sessions on lived days 6 to 19, met the slow lane after one awake use on day 21. An insight gist still has no road (its claim stays at the cap).
 3. Should dream links be stored differently from Hebbian links (a marker, a hop
    weight)? A session designing association with the owner may decide; today they are
    ordinary edges at `LINK_WEIGHT`. Since 2026-09-28 (association build 1) that is 0.1,

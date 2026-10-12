@@ -636,3 +636,22 @@ still to be seen on the live runs.
 The reflection child no longer carries the dream's ~80k. New work (cache write + output)
 went from 161k to 181k (+12%), because the reflection's own context is written to the
 cache again; cache read nearly halved (994k to 569k).
+
+## 2026-10-11 — folding (Group 3 part B, held lightly)
+
+A fold is a gist flagged `fold: true`, written through the one door (`supersede`, source
+`fold`): no new verb, no table. Simulated on a copy of the owner's store (10-11 morning
+snapshot, v12 migrated; no model: the four clusters review 11 named by hand, a personal
+cluster of four `self`/me memories, and two spare work clusters, proposed as folds into one
+dream whose `shown` was widened to them):
+
+- 5 folds applied, 2 refused past the night's 5 (`foldOverflow` 2, said in the hand-back).
+- 57 sources: 36 faded ×0.5 under a fold, 15 kept at their weight (14 already an earlier
+  version under a Group 2 merge or slot, 1 reading). Undo put all 36 back.
+- Starts: 0.519 (personal), 0.58, 0.6, 0.327, 0.6. A fold at 0.6 is ~0.52 at +7 and ~0.37
+  at +30 lived days with no use; its faded parts at 0.25–0.32 on the night.
+- Two work folds inherited `us` ("personal wins": one part was about us); as `fact` they
+  cannot reach the core.
+- The personal fold met the slow lane after ONE awake use the next lived day: its three
+  folded parts, written by sessions on days 6, 11 and 19, count as re-encodings of its slot.
+  That is the D6 intent; whether one use should be enough is for the coordinator.
