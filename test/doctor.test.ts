@@ -3150,4 +3150,14 @@ describe("a fresh store's doctor reads all green, and every amber is one we chos
     const fs = doctorFindings(input({ store: s }));
     for (const key of ["sweep", "sleep", "snapshot"]) expect(by(fs, key).severity).toBe("amber");
   });
+
+  test("a long-lived store with a boundary today AND earlier ones still goes amber", () => {
+    mintStore();
+    writeConfig();
+    const s = store();
+    s.appendEvent({ name: BOUNDARY_EVENT, day: s.livedDay(), payload: { date: "2026-09-13" } });
+    s.appendEvent({ name: BOUNDARY_EVENT, day: s.livedDay(), payload: { date: "2026-09-14" } });
+    const fs = doctorFindings(input({ store: s }));
+    for (const key of ["sweep", "sleep", "snapshot"]) expect(by(fs, key).severity).toBe("amber");
+  });
 });

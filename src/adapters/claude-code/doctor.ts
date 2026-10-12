@@ -964,11 +964,17 @@ function clockFindings(input: DoctorInput, store: Store): Finding[] {
  * its time; "earlier" = a worker has had its chance.
  */
 function boundaryAge(store: Store, today: string): "never" | "today" | "earlier" {
-  const read = newestRows(store, BOUNDARY_EVENT, 1, store.livedDay());
-  if (read.unknown) return "earlier";
-  const newest = rowDate(read.rows[0]);
-  if (newest === null) return "never";
-  return newest < today ? "earlier" : "today";
+  // ALL boundary rows, not the newest: every active day writes one, so the newest
+  // is today's on any day the store has been used, however long it has lived.
+  const rows = store.eventLog({ name: BOUNDARY_EVENT, limit: 4000 });
+  if (rows.length === 0) return "never";
+  if (rows.length >= 4000) return "earlier"; // certainly lived
+  return rows.some((r) => {
+    const d = rowDate(r);
+    return d !== null && d < today;
+  })
+    ? "earlier"
+    : "today";
 }
 
 /** The newest row of each family the background half leaves behind. */
