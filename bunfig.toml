@@ -6,3 +6,7 @@ preload = ["./test/preload.ts"]
 # (hooks/sidebar/tests) import 'claude-code/testing' and run under
 # `claude plugin test hooks/sidebar` instead, never under bun.
 root = "./test"
+# Quiet by default (Mike, 2026-10-12, lightly held): print failures and the summary only,
+# so a full run costs a reader little. Every test, by name: add
+# `--reporter=junit --reporter-outfile=<file>` (bun has no flag to turn this back off).
+onlyFailures = true
