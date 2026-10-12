@@ -9,48 +9,23 @@ Read-only on the owner's store: open it with `sqlite3 "file:$HOME/.counterparts/
 or the CLI's read commands (`counterparts mechanisms --dir …`, `counterparts doctor --config …`,
 `counterparts claims-era --dir …`). Anything heavier runs on a snapshot copy, never the live store.
 
-## Due 2026-10-12 (lived day 21, the first new-curve pass)
+## Checked 2026-10-12 (lived day 21, the first new-curve pass, on 0.3.18)
 
-### The new curve actually ran
-- **Look at:** `SELECT value FROM meta WHERE key = 'decay.curve'` is present, and
-  `SELECT count(*) FROM memories WHERE archived = 0 AND next_change_day IS NULL` is ~0 after the day's first
-  sleep cycle (log `counterpart.sleep.cycle` with `"day":21`).
-- **Why:** on 10-11 the key was absent and every live row had a NULL next-change day, because day 20's decay
-  ran on 0.3.16 before the 07:25 migration (decay runs once per lived day).
-- **Changes a decision if:** still absent after a day-21 cycle → the turn-down isn't applying on a migrated
-  store: a bug lane before anything is published.
+All four entries due today were read on the live store (read-only) after the 00:19 night run. Nothing here
+changes a decision.
 
-### Below reach: 56 (live) vs 149 (the 10-10 copy at +0)
-- **Look at:** `counterparts mechanisms --dir ~/.counterparts/store` "Forgetting" line, against the 10-10
-  snapshot-copy numbers (in reach / below / archived at +0: 621/770 with the era on).
-- **Why:** on 10-11 the live store said 56 below reach; the copy said 149. The live 56 may come from the ranking
-  cache written under the old curve, not the new one.
-- **Changes a decision if:** after the first real pass the live number is still far from what the curve
-  predicts → the dashboard/mechanisms count reads a stale source; fix the reader before trusting any fading
-  number.
-- **Also send** random-06: in reach / below / archived, the era's count read at default, and any core or
-  owner/us memory that moved a band.
-
-### Dated memories archived on the first pass
-- **Look at:** archives made on day 21 whose row has an `event_date` (one-off, not repeating), and whether any
-  of them is something Mike would still want (a reminder for something not done yet, a felt dated fact).
-- **Why:** since Mike's 10-11 call (cut the spent slope), a one-off dated memory is back on its own curve the
-  day after its date plus the grace week, as if never held. A routine one written weeks ahead is archived that
-  same night (readable by id, never deleted). The ~17 dated rows on the store were never counted.
-- **Changes a decision if:** a reminder for something still pending is archived → its date was wrong, or the
-  hold needs to key on "done" rather than on the date.
-
-### Expected on the live store until 0.3.18: personal memories at the old 0.25 default go below reach
-- **Look at:** owner/us memories below reach after the first new-curve pass (preview on a copy: 18, all at the
-  old 0.25 default, mostly learned 10-08..10-10).
-- **Why:** the live store runs 0.3.17, where the old-claims era only reads explicit claims DOWN; reading old
-  DEFAULT claims at today's default (owner/us/me → 0.40, Mike 10-11) is #395, which ships in 0.3.18. Below reach
-  is not archived: asking still finds them, and the 0.3.18 re-curve lifts them back. NOT a regression.
-- **Changes a decision if:** they're still below reach after 0.3.18 is installed and has had one pass → the era's
-  default reading isn't applying: a bug.
-- **Version facts, checked with git:** 0.3.17 (v0.3.17 @7c0d2f59) HAS the dated hold without the spent slope
-  (`afterHold: "own-curve"`) and drewOn's `repScale`; it does NOT have #395 (old defaults at today's default),
-  #398/#400 (merge and revision inherit about/era), #403 (gist marks), or catch-up (#401).
+- **The new curve ran.** `decay.curve` is present (power-law, era on, `eraReads` 2). At 08:30, 29 live rows had
+  a NULL next-change day. 28 had been touched since the pass (written on day 21, a return or a dream on day 21,
+  or a new feeling; the feelings triggers clear it too). One, mem_a11cc5968ef4 (last return and dream on day
+  18), shows no touch I could find; a small open question, not a fault, because NULL only means "look again at
+  the next pass" (the pass selects NULL or due rows), so nothing goes unexamined.
+- **Below reach: 233** (`counterparts mechanisms`), against ~230 predicted on the copy. The 10-11 live 56 was
+  the old curve's ranking; the reader is fine.
+- **Dated memories archived on the first pass: none.**
+- **Personal memories below reach after 0.3.18: 4, none at the old 0.25 default.** The 18 old-default
+  owner/us memories the copy predicted are back in reach (#395 applies). The 4 below hold explicit low claims
+  (three "me" at 0.30, one owner at 0.20: Mike typing ';exit'), which the era keeps as claimed.
+- The era reads 591 old memories at today's default (485 lower, 106 higher).
 
 ## Due 2026-10-14 (the check-in, reminder mem_8a53c5d0bc95)
 
