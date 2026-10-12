@@ -1080,8 +1080,8 @@ describe("a note claims its own turn, not the session's backlog (2026-10-11)", (
     expect(r3.proposal?.covers).toEqual([]);
     const two = t.turn("two");
     const theirs = other.turn("theirs two");
-    expect(b.coverage(SCOPE).filter((m) => m.spanHash === two).map((m) => m.proposalId)).toEqual([r1.proposal?.id]);
-    expect(r2.proposal?.covers).toEqual([j2.spans[0]?.hash]);
+    expect(b.coverage(SCOPE).filter((m) => m.spanHash === two).map((m) => m.proposalId)).toEqual([r1.proposal?.id as string]);
+    expect(r2.proposal?.covers).toEqual([j2.spans[0]?.hash as string]);
     expect(b.coveredHashes(SCOPE).has(theirs)).toBe(false);
   });
 
@@ -1090,7 +1090,7 @@ describe("a note claims its own turn, not the session's backlog (2026-10-11)", (
     const jot = b.jot({ session: "s1", scope: SCOPE, text: long("note first") });
     const turn = transcript(b).turn("the turn it was written in");
     const res = await submitProposal(b, { content: "Late claim." }, jotCtx(jot.spans[0]?.hash));
-    expect(new Set(res.proposal?.covers)).toEqual(new Set([jot.spans[0]?.hash, turn]));
+    expect(new Set(res.proposal?.covers)).toEqual(new Set([jot.spans[0]?.hash as string, turn]));
   });
 });
 

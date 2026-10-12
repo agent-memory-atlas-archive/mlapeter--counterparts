@@ -744,7 +744,7 @@ describe("a note claims its own turn, so the rest stays owed and the ask still c
       { content: `Note ${String(n)}: the relief valve is seated before the loop is filled, step ${String(n)}.`, kind: "fact" },
       { session, scope: PROJ, ownSpanHash: jot.spans[0]?.hash ?? null },
     );
-    expect(dep.covers).toEqual([jot.spans[0]?.hash]);
+    expect(dep.covers).toEqual([jot.spans[0]?.hash as string]);
     t.piece(at);
   }
 
