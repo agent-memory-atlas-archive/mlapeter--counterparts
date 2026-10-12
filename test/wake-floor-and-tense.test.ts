@@ -572,9 +572,11 @@ describe("an Arriving line past its date says it WAS due (2026-10-09)", () => {
       // The next morning, before any worker has run on the 9th.
       clock(zone, "2026-10-09", 8);
       const { text } = sessionStart(a, zone, "s-morning");
+      // At session start the one still to come is near and listed first; a
+      // "was due" line is not near (review of #445, RANDOM's ruling).
       expect(lane(text, FRAMING.horizon)).toEqual([
-        "- 2026-10-01 (was due yesterday, 2026-10-08) · The dentist appointment is at nine and the forms are in the blue folder.",
         "- 2026-10-01 (due 2026-10-10) · Rosa's surgery is on the tenth; send a note the evening before.",
+        "- 2026-10-01 (was due yesterday, 2026-10-08) · The dentist appointment is at nine and the forms are in the blue folder.",
       ]);
       expect(text).toContain("(2026-10-09)");
       expect(readSentinel(text).intact).toBe(true);
