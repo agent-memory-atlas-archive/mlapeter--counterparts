@@ -1435,14 +1435,14 @@ export class McpServer {
         if (choice === null) return this.refuse("meet", "style-unknown", { detail: `answer is one of ${STYLE_CHOICES.join(", ")}.` });
         const traits = Array.isArray(args["traits"]) ? args["traits"].filter((t): t is string => typeof t === "string") : [];
         const like = typeof args["like"] === "string" ? args["like"] : "";
-        const bundle = styleMemories(choice, { traits, like });
+        const bundle = styleMemories(choice, { traits, like, name: this.counterpart.ownerDisplayName() });
         if (!bundle.ok) return this.refuse("meet", "style-incomplete", { detail: bundle.detail });
         const ids = await this.meetWrite(bundle.texts);
         recordStyle(store, choice);
         return done({ option: bundle.option, stored: ids.length, ids });
       }
       case "address": {
-        const made = addressMemory(answer);
+        const made = addressMemory(answer, this.counterpart.ownerDisplayName());
         if (!made.ok) return this.refuse("meet", "answer-required", { detail: made.detail });
         const ids = await this.meetWrite([made.text]);
         return done({ stored: ids.length, ids });
@@ -1452,7 +1452,7 @@ export class McpServer {
         if (answer.length === 0) {
           return this.refuse("meet", "answer-required", { detail: "Send the answer, in your words. A skipped question is never sent: nothing is stored for it." });
         }
-        const text = step === "name" ? `The owner likes to be called ${answer}.` : answer;
+        const text = step === "name" ? `They like to be called ${answer}.` : answer;
         const ids = await this.meetWrite([answerText(text)]);
         if (ids[0] !== undefined) recordAnswer(store, step as AnswerStep, ids[0]);
         return done({ stored: ids.length, ...(ids[0] === undefined ? {} : { id: ids[0] }) });

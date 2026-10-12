@@ -558,7 +558,7 @@ describe("the wake and recall show how often, beside the date", () => {
     });
     c.rebrief({ budgetBytes: 20_000, at: "2026-10-10" });
     const lines = c.wake(20_000, { date: "2026-10-10" }).text.split("\n");
-    const at = lines.indexOf("Arriving:");
+    const at = lines.indexOf("Coming up:");
     expect(at).toBeGreaterThan(-1);
     expect(lines[at + 1]).toBe("- 2026-08-25 (due 2026-10-12, every Monday) · The recycling goes out to the curb on Monday mornings.");
   });
@@ -578,7 +578,7 @@ describe("the wake and recall show how often, beside the date", () => {
     // read the next morning: no "every day", and nothing dated yesterday.
     c.rebrief({ budgetBytes: 20_000, at: "2026-10-10" });
     const lines = c.wake(20_000, { date: "2026-10-11" }).text.split("\n");
-    const at = lines.indexOf("Arriving:");
+    const at = lines.indexOf("Coming up:");
     expect(at).toBeGreaterThan(-1);
     const lane: string[] = [];
     for (let i = at + 1; i < lines.length && (lines[i] ?? "").startsWith("- "); i++) lane.push(lines[i] as string);

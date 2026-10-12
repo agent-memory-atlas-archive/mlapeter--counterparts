@@ -7,7 +7,7 @@
  */
 import { byteLength } from "./identity.js";
 import { addDays, isDay } from "../time.js";
-import { DUE_PAST_WORD, DUE_WORD, FRAMING, fixedPointTotal } from "./briefing.js";
+import { DUE_PAST_WORD, DUE_WORD, FRAMING, LEGACY_FRAMING, fixedPointTotal } from "./briefing.js";
 
 
 // ── reading a rendered bundle back ──────────────────────────────────────────
@@ -204,7 +204,8 @@ export function arrivingTense(text: string, today: string, room: number): string
   const lines = text.split("\n");
   // The LAST such heading: the lane is last, and a page above it is printed as
   // written, so a line of the page that happens to read "Arriving:" is not it.
-  const start = lines.lastIndexOf(FRAMING.horizon);
+  // A bundle stored before the plain-words rename still says "Arriving:".
+  const start = Math.max(lines.lastIndexOf(FRAMING.horizon), lines.lastIndexOf(LEGACY_FRAMING.horizon));
   if (start < 0) return text;
   const prior = addDays(today, -1);
   const shape = /^(- (?:(?:by )?\d{4}-\d{2}-\d{2} \()?)(was )?due (\d{4}-\d{2}-\d{2})(?=[,)]| · )/;

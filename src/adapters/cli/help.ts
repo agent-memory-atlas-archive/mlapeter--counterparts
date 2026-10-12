@@ -111,15 +111,12 @@ export const SHORT: Record<string, string | readonly string[]> = {
   status: "Memories held and recent activity",
   doctor: "Check that everything is working",
   dashboard: "Open the dashboard in your browser",
-  "self-page": [
-    "The assistant's identity page — who it is, who you are —",
-    "read at the start of every session",
-  ],
+  "self-page": "See what it knows about you",
   // ── setup ──
   install: "First-time setup: your memory and Claude Code — safe to run again",
   connect: "Connect an AI to your memory (Claude Code today; more soon)",
   disconnect: "Disconnect an AI",
-  scope: "Turn memory on or off for a directory",
+  scope: "Choose which folders it remembers",
   uninstall: "Remove Counterparts; keeps your memory unless you say otherwise",
   // ── your data ──
   export: "A copy of your memory you can take anywhere, encrypted by default",

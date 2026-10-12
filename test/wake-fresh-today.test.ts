@@ -4,7 +4,7 @@
  * random-f8's, lightly held).
  *
  * A. The published bundle is composed at a turn-end — the evening before, for
- *    a morning's first sessions. Now "Still open", "Arriving:", the Yesterday
+ *    a morning's first sessions. Now "Still open", "Coming up:", the Yesterday
  *    line and the self page are read at session start, for the session's own
  *    date, and composed by the published rules (`ROOM_ORDER`, the page's
  *    ladder) around what the bundle showed of the stateful lanes. Reads only.
@@ -29,6 +29,7 @@
  * Hermetic: every test opens a fresh temp dir and removes it; every word is
  * invented placeholder prose.
  */
+import { stampWords } from "../src/core/handoff/last-here.js";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -208,7 +209,7 @@ describe("a session started before any turn-end today reads today's lanes", () =
     });
     c.revisePage("## Core\n\nI keep the garden's ledger and say what I do not know. Page version two, written last night.", { by: "owner", reason: "revised" });
     const published = c.store.getMeta(BRIEFING_KEY) ?? "";
-    for (const absent of ["north bed", "seed order", "Page version two", `Yesterday, ${D1.slice(5)}`]) expect(published).not.toContain(absent);
+    for (const absent of ["north bed", "seed order", "Page version two", `Yesterday, ${stampWords(D1.slice(5))}`]) expect(published).not.toContain(absent);
 
     // The next morning, before any turn-end.
     k.set(at(D2, 8));
@@ -221,7 +222,7 @@ describe("a session started before any turn-end today reads today's lanes", () =
     expect(bytes(text)).toBeLessThanOrEqual(BUDGET);
     expect(text).toContain("assembled at session start");
     // Yesterday is the session's yesterday.
-    expect(text).toContain(`Yesterday, ${D1.slice(5)}: `);
+    expect(text).toContain(`Yesterday, ${stampWords(D1.slice(5))}: `);
     expect(text).toContain("Bread for the market stall");
     // Still open and Arriving, as of now.
     expect(lane(text, FRAMING.threads).some((l) => l.endsWith("Whether the north bed needs a second load of compost before the frost."))).toBe(true);
@@ -306,14 +307,14 @@ describe("the Yesterday line names another directory's titles on the About-me ga
   }
 
   function lineOf(text: string): string | undefined {
-    return text.split("\n").find((l) => l.startsWith(`Yesterday, ${D1.slice(5)}: `));
+    return text.split("\n").find((l) => l.startsWith(`Yesterday, ${stampWords(D1.slice(5))}: `));
   }
 
   test("its own directory's title, and another's only when about me with its scope on; the rest counted, never by id", () => {
     const y = yesterday();
     const text = y.lc.composeWake({ sessionId: B, scope: HERE, at: D2 }, BUDGET).text;
     expect(text).toContain("assembled at session start");
-    expect(lineOf(text)).toBe(`Yesterday, ${D1.slice(5)}: "OWNTITLE chapter" (${y.ids["own"]}); "ABOUTMETITLE chapter" (${y.ids["aboutme"]}); and 2 more.`);
+    expect(lineOf(text)).toBe(`Yesterday, ${stampWords(D1.slice(5))}: "OWNTITLE chapter" (${y.ids["own"]}); "ABOUTMETITLE chapter" (${y.ids["aboutme"]}); and 2 more.`);
     for (const never of ["WORKTITLE", "OFFTITLE", "SECRETTITLE", y.ids["work"] ?? "?", y.ids["off"] ?? "?", y.ids["secret"] ?? "?"]) {
       expect(text).not.toContain(never);
     }
@@ -324,11 +325,11 @@ describe("the Yesterday line names another directory's titles on the About-me ga
     const y = yesterday();
     // The Counterpart alone, with no host to ask: nothing crosses.
     const alone = y.c.wake(BUDGET, { date: D2 }, { scope: HERE, session: B }).text;
-    expect(lineOf(alone)).toBe(`Yesterday, ${D1.slice(5)}: "OWNTITLE chapter" (${y.ids["own"]}); and 3 more.`);
+    expect(lineOf(alone)).toBe(`Yesterday, ${stampWords(D1.slice(5))}: "OWNTITLE chapter" (${y.ids["own"]}); and 3 more.`);
     // Somewhere that wrote nothing yesterday, with every directory closed.
     const NONE = join(root, "shed");
     const none = y.c.wake(BUDGET, { date: D2 }, { scope: NONE, session: B, exportsFrom: () => false }).text;
-    expect(lineOf(none)).toBe(`Yesterday, ${D1.slice(5)}: chapters from 4 sessions in other directories.`);
+    expect(lineOf(none)).toBe(`Yesterday, ${stampWords(D1.slice(5))}: 4 sessions in other projects.`);
     for (const never of ["TITLE chapter", "epi_"]) expect(lineOf(none)).not.toContain(never);
   });
 
@@ -348,7 +349,7 @@ describe("the Yesterday line names another directory's titles on the About-me ga
       expect(line).toEndWith("; and 2 more.");
       for (const hidden of [y.ids["work"], y.ids["off"], y.ids["secret"]]) expect(line).not.toContain(hidden ?? "?");
     }
-    expect(yesterdayLine([], D1, undefined, 1)).toBe(`Yesterday, ${D1.slice(5)}: chapters from 1 session in other directories.`);
+    expect(yesterdayLine([], D1, undefined, 1)).toBe(`Yesterday, ${stampWords(D1.slice(5))}: 1 session in other projects.`);
     expect(yesterdayLine([], D1)).toBeNull();
   });
 });
@@ -435,7 +436,7 @@ describe("Today, elsewhere", () => {
         `${tilde(YON)} 08:05–09:40, 1 memory.`,
     );
     // The newest chapter about me is the "About me" line's, and not named twice.
-    expect(text).toContain(`About me, from another directory: session c9cacbcc, 10-10 in ${tilde(YON)} — "Pruning the old pear"`);
+    expect(text).toContain(`About me, from another project: session c9cacbcc, Oct 10 in ${tilde(YON)} — "Pruning the old pear"`);
     expect(text.split("\n").filter((l) => l.includes("Pruning the old pear"))).toHaveLength(1);
     // What stays where it was made, anywhere in the wake.
     for (const never of ["WORKTITLE", "Oven seven calibration log", "SPANWORDS", "HANDOFFBODY", "LEDGERWORDS", "proofing cabinet"]) {
@@ -456,7 +457,7 @@ describe("Today, elsewhere", () => {
     copy(m.c, mine, E, HERE, "me", "Weeding the herb bed slowly is how I think.");
     m.set(at(D2, 10));
     const text = m.lc.composeWake({ sessionId: B, scope: HERE, at: D2 }, BUDGET).text;
-    expect(text).toContain(`About me, from another directory: session c9cacbcc, 10-10 in ${tilde(YON)} — "Pruning the old pear"`);
+    expect(text).toContain(`About me, from another project: session c9cacbcc, Oct 10 in ${tilde(YON)} — "Pruning the old pear"`);
     expect(text.split("\n").filter((l) => l.includes("Pruning the old pear"))).toHaveLength(1);
     expect(lineOf(text)).toContain(`${tilde(YON)} 08:05–09:40, 1 memory`);
     expect(lineOf(text)).not.toContain("Weeding the herb bed");
@@ -749,6 +750,6 @@ describe("the line has a small room of its own, and the page keeps its own", () 
     expect(named + more).toBe(9);
     // Each shorter form is narrower than the one before; the last is the count alone.
     for (let i = 1; i < all.length; i += 1) expect(bytes(all[i] ?? "")).toBeLessThan(bytes(all[i - 1] ?? ""));
-    expect(all[all.length - 1]).toBe("Today, elsewhere: 9 other directories.");
+    expect(all[all.length - 1]).toBe("Today, elsewhere: 9 other projects.");
   });
 });

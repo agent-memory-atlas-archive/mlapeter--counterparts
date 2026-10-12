@@ -933,13 +933,13 @@ function clockFindings(input: DoctorInput, store: Store): Finding[] {
   // the clock, so the comparison is not made and the line says why.
   if (read.unknown) {
     const facts =
-      `lived day ${livedDay}, lastActiveDate ${lastActive ?? "(unset)"}, today ${input.today} ${zoneNote(input)} — ` +
+      `day ${livedDay} of use, lastActiveDate ${lastActive ?? "(unset)"}, today ${input.today} ${zoneNote(input)} — ` +
       undetermined(BOUNDARY_EVENT);
     return [finding("clock", "green", "Clock", facts, "", data)];
   }
   const facts =
-    `lived day ${livedDay}, lastActiveDate ${lastActive ?? "(unset)"}, ` +
-    `newest boundary ${boundary ?? "(none)"}, today ${input.today} ${zoneNote(input)}`;
+    `day ${livedDay} of use, lastActiveDate ${lastActive ?? "(unset)"}, ` +
+    `last session end ${boundary ?? "(none)"}, today ${input.today} ${zoneNote(input)}`;
   if (boundary !== null && (lastActive === null || lastActive < boundary)) {
     return [
       finding(
@@ -1001,7 +1001,7 @@ function rowFindings(input: DoctorInput, store: Store): Finding[] {
           title,
           age === "today"
             ? `${what} — the first night run starts today and writes this when it finishes`
-            : `${what} — and no boundary has been reached here yet`,
+            : `${what} — and no session has ended here yet`,
           "",
           { rows: 0 },
         );
@@ -1591,8 +1591,7 @@ function firedFindings(input: DoctorInput, store: Store): Finding[] {
         "fired",
         "green",
         "Fired",
-        `this store is on lived day ${String(report.livedDay)} — too new to grade; nothing has fired ` +
-          `because nothing has happened yet` +
+        `Too new to judge yet: nothing has run because you've only just started` +
           (c.blocked === 0 ? "" : `, though ${String(c.blocked)} was already stopped by something`),
         c.blocked === 0 ? "" : "Run: counterparts mechanisms --all — the blocked rows say by what.",
         data,
@@ -2693,7 +2692,7 @@ function wakeRoom(store: Store, since: number): WakeRoom {
       : "") +
     (workNoRoom > 0 ? `; "Work here" lines that did not fit, in ${String(workNoRoom)} ${workNoRoom === 1 ? "directory-day" : "directory-days"}` : "") +
     (datedUnlistedRenders > 0
-      ? `; a dated item under "Arriving:" was counted, not listed, for want of room in ${String(datedUnlistedRenders)} ${datedUnlistedRenders === 1 ? "render" : "renders"} of the wake${datedNewest === null ? "" : ` (newest ${datedNewest})`}`
+      ? `; a dated item under "Coming up:" was counted, not listed, for want of room in ${String(datedUnlistedRenders)} ${datedUnlistedRenders === 1 ? "render" : "renders"} of the wake${datedNewest === null ? "" : ` (newest ${datedNewest})`}`
       : "") +
     (untold > 0
       ? `; something the wake chose went unsaid — in no line, not even a count — in ${String(untold)} ${untold === 1 ? "render" : "renders"}${untoldNewest === null ? "" : ` (newest ${untoldNewest})`}`

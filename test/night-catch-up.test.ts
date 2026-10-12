@@ -13,6 +13,7 @@
  * `claude` is started: the catch-up child is an injected starter that drives
  * the real MCP server as the runner, exactly as the child's tools would.
  */
+import { stampWords } from "../src/core/handoff/last-here.js";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -284,7 +285,7 @@ describe("end to end: an owed session from yesterday, in another directory, writ
     try {
       const wake = s.getMeta(BRIEFING_KEY) ?? "";
       const line = wake.split("\n").find((l) => l.startsWith("Yesterday, "));
-      expect(line).toBe(`Yesterday, ${YESTERDAY().slice(5)}: "Seating the relief valves" (${ep}).`);
+      expect(line).toBe(`Yesterday, ${stampWords(YESTERDAY().slice(5))}: "Seating the relief valves" (${ep}).`);
     } finally {
       s.close();
     }
@@ -526,7 +527,7 @@ describe("the Yesterday line", () => {
     const d = Date.UTC(2026, 8, 30, 9);
     const day = [mk("epi_a", "First thing", 1, d), mk("epi_b", "Second thing", 2, d + HOUR), mk("epi_c", null, 1, d + 2 * HOUR), mk("epi_d", "Fourth", 1, d + 3 * HOUR), mk("epi_e", "Fifth", 1, d + 4 * HOUR)];
     expect(yesterdayLine(day, "2026-09-30")).toBe(
-      'Yesterday, 09-30: "First thing" (epi_a); "Second thing" (epi_b, 2 chapters); epi_c; "Fourth" (epi_d); and 1 more.',
+      'Yesterday, Sep 30: "First thing" (epi_a); "Second thing" (epi_b); epi_c; "Fourth" (epi_d); and 1 more.',
     );
     expect(yesterdayLine([], "2026-09-27")).toBeNull();
   });
@@ -572,7 +573,7 @@ describe("the Yesterday line", () => {
 
   test("it rides the wake's budget: furniture under the framing, and on a ceiling too small for it the floor goes without it", () => {
     const empty = { identity: [], craft: [], threads: [], hints: [], horizon: [] };
-    const line = 'Yesterday, 09-30: "Seating the relief valves" (epi_a).';
+    const line = 'Yesterday, Sep 30: "Seating the relief valves" (epi_a).';
     const resolve = (): { statement: string } => ({ statement: "" });
     const roomy = render(empty, { budgetBytes: 2_000, day: 3, yesterday: line }, resolve, SELF_TUNABLES);
     expect(roomy.text.split("\n")[2]).toBe(line);
@@ -591,7 +592,7 @@ describe("the Yesterday line", () => {
     expect(big.refreshWake({ at: TODAY(), trigger: "run-end" }).reason).toBe("rendered");
     const s = Store.open({ dir, observer: true });
     try {
-      expect(s.getMeta(BRIEFING_KEY) ?? "").toContain(`Yesterday, ${YESTERDAY().slice(5)}: "Seating the relief valves"`);
+      expect(s.getMeta(BRIEFING_KEY) ?? "").toContain(`Yesterday, ${stampWords(YESTERDAY().slice(5))}: "Seating the relief valves"`);
     } finally {
       s.close();
     }

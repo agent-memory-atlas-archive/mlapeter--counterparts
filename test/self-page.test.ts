@@ -451,7 +451,7 @@ describe("the page in the wake", () => {
     expect(me.build(req).text).toContain(identityCoreLine("Placeholder Owner"));
     me.revisePage(PAGE, { reason: "first", by: "owner" });
     const b = me.build(req);
-    expect(b.text).not.toContain("No identity has formed here yet");
+    expect(b.text).not.toContain("We've only just met");
     expect(b.text).toContain(PAGE);
   });
 
@@ -720,7 +720,7 @@ describe("the page in the wake", () => {
     me.revisePage(PAGE, { reason: "first", by: "session" });
     const b = me.build({ ...req, omit: () => true });
     expect(b.text).toContain(PAGE);
-    expect(b.text).not.toContain("No identity has formed here yet");
+    expect(b.text).not.toContain("We've only just met");
   });
 
   test("PAGE_ON_EGRESS off keeps the page off a filtering composition, and the list comes back", () => {

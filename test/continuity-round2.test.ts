@@ -166,7 +166,7 @@ describe("'Last here' pairs the title with the chapter it names (item 3)", () =>
       ],
     });
     const line = wake(k.c, B).split("\n").find((l) => l.startsWith("Last here:"));
-    expect(line).toContain(`— "${TITLE}" (${epi}, 2 chapters). We planned the autumn beds: garlic first, broad beans after.`);
+    expect(line).toContain(`— "${TITLE}" (${epi}). We planned the autumn beds: garlic first, broad beans after.`);
     expect(line).not.toContain("Later we checked");
   });
 
@@ -361,11 +361,11 @@ describe("a chapter about me reaches a wake in another directory, and only what 
   test("marked about me, from a directory that is on: one line, by title, id and where it was written", () => {
     const k = afternoon();
     const { epi, THERE } = bakery(k, "me");
-    const line = wake(k.c, B, 9_000, HERE, () => true).split("\n").find((l) => l.startsWith("About me, from another directory:"));
-    expect(line).toBe(`About me, from another directory: session a1b2c3d4, 09-30 in ${tilde(THERE)} — "Naming the garden beds" (${epi}).`);
+    const line = wake(k.c, B, 9_000, HERE, () => true).split("\n").find((l) => l.startsWith("About me, from another project:"));
+    expect(line).toBe(`About me, from another project: session a1b2c3d4, Sep 30 in ${tilde(THERE)} — "Naming the garden beds" (${epi}).`);
     const there = wake(k.c, B, 9_000, THERE, () => true);
     expect(there).toContain("Last here: session a1b2c3d4");
-    expect(there).not.toContain("About me, from another directory");
+    expect(there).not.toContain("About me, from another project");
   });
 
   test("nothing crosses without a way to ask, from a directory that is not on, or marked work or unmarked", () => {
@@ -377,7 +377,7 @@ describe("a chapter about me reaches a wake in another directory, and only what 
     ] as const) {
       const k = afternoon();
       bakery(k, about);
-      expect(wake(k.c, B, 9_000, HERE, exportsFrom)).not.toContain("About me, from another directory");
+      expect(wake(k.c, B, 9_000, HERE, exportsFrom)).not.toContain("About me, from another project");
       k.c.close();
       rmSync(storeDir, { recursive: true, force: true });
     }
@@ -406,13 +406,13 @@ describe("a chapter about me reaches a wake in another directory, and only what 
     const lc = new Lifecycle({ counterpart: k.c, config: { dataDir: storeDir }, configPath: config });
     const said = (): string => lc.composeWake({ sessionId: B, scope: HERE, at: "2026-09-30" }, 9_000).text;
     // No setting written: unset reads as on.
-    expect(said()).toContain("About me, from another directory");
+    expect(said()).toContain("About me, from another project");
     for (const mode of ["off", "observer"] as const) {
       writeScopes(join(root, "scopes.json"), setScope(null, THERE, mode, { at: "2026-09-30" }));
-      expect(said()).not.toContain("About me, from another directory");
+      expect(said()).not.toContain("About me, from another project");
     }
     writeScopes(join(root, "scopes.json"), setScope(null, THERE, "on", { at: "2026-09-30" }));
-    expect(said()).toContain("About me, from another directory");
+    expect(said()).toContain("About me, from another project");
   });
 });
 

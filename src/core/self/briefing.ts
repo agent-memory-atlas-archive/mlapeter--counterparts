@@ -264,9 +264,27 @@ export const FRAMING = {
   identity: "Who I am:",
   craft: "How I work:",
   threads: "Still open:",
+  hints: "Might be relevant:",
+  horizon: "Coming up:",
+} as const;
+
+/**
+ * THE HEADINGS BEFORE THE PLAIN-WORDS RENAME (2026-10-12): a wake bundle
+ * stored under them is still delivered and read once after an upgrade, so
+ * every reader of a STORED bundle (`arrivingTense`, `collapsedLane`,
+ * `countedLanes`, the console's lane splitters) accepts both. Nothing
+ * composes them any more.
+ */
+export const LEGACY_FRAMING = {
   hints: "Nearby, if it helps:",
   horizon: "Arriving:",
 } as const;
+
+/** Every heading a lane has been printed under, the current one first. */
+export function headingsOf(lane: LaneName): string[] {
+  const old = (LEGACY_FRAMING as Partial<Record<LaneName, string>>)[lane];
+  return old === undefined ? [laneHeading(lane)] : [laneHeading(lane), old];
+}
 
 /**
  * THE WAKE SAYS WHAT IT LEFT OUT (2026-09-29, audit item 5). A lane that lost
@@ -358,7 +376,8 @@ export function countedLanes(text: string): Partial<Record<LaneName, number>> {
   for (const line of text.split("\n")) {
     const collapsed = collapsedLane(line);
     if (collapsed !== null) {
-      out[collapsed] = Number(/^\D*(\d+) — /.exec(line.slice(laneHeading(collapsed).length))?.[1] ?? 0);
+      const heading = headingsOf(collapsed).find((h) => line.startsWith(`${h} `)) ?? laneHeading(collapsed);
+      out[collapsed] = Number(/^\D*(\d+) — /.exec(line.slice(heading.length))?.[1] ?? 0);
       continue;
     }
     const more = /^\((\d+) more (.+?); recall ids/.exec(line);
@@ -403,9 +422,10 @@ export function collapsedLine(lane: LaneName, ids: readonly string[]): string {
 /** The lane a collapsed line (`collapsedLine`) speaks for, or null for any other line. */
 export function collapsedLane(line: string): LaneName | null {
   for (const lane of LANE_ORDER) {
-    const heading = laneHeading(lane);
-    if (!line.startsWith(`${heading} `)) continue;
-    if (new RegExp(`^ \\d+ — ${COLLAPSED_WORDS}; recall ids`).test(line.slice(heading.length))) return lane;
+    for (const heading of headingsOf(lane)) {
+      if (!line.startsWith(`${heading} `)) continue;
+      if (new RegExp(`^ \\d+ — ${COLLAPSED_WORDS}; recall ids`).test(line.slice(heading.length))) return lane;
+    }
   }
   return null;
 }
@@ -455,7 +475,7 @@ export function collapsedLane(line: string): LaneName | null {
  * promised they may hand-edit (constitution 6) is a paste accident away.
  */
 export function identityCoreLine(name: string): string {
-  return `This memory is for ${flatten(name)}. No identity has formed here yet — identity is earned at the boundary that ends a session, from what recurs across distinct days.`;
+  return `This memory is for ${flatten(name)}. We've only just met. Who I am takes shape as the same things come up across different days.`;
 }
 
 /**
@@ -472,7 +492,7 @@ export interface IdentityBlock {
 
 /** What "Who I am" says when no page has been written and the list is off. */
 export const PAGE_FORMING_LINE =
-  "Still forming — no page has been written here yet. It is written at a boundary, from what recurs, and can be amended by hand.";
+  "Still forming: I write this page after a few sessions, from what keeps coming up. It can be edited by hand.";
 
 /** Id → the verbatim statement AND its dates, at render time only. */
 export interface Resolved {
