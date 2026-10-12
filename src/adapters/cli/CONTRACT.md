@@ -594,7 +594,7 @@ The standalone verb does not ask either: typing it is the yes.*
     credentials file and no key anywhere in the console: `install` writes the store and
     the configuration and nothing else, and never writes `credentialsFile`; a forced
     rewrite drops the retired keys (`credentialsFile`, `models`, `crashWriteUp`) rather
-    than carrying them (`commands.ts#carryForward`). An old `credentials.env` beside the
+    than carrying them (`commands-install.ts#carryForward`). An old `credentials.env` beside the
     configuration is not ours any more — it may hold somebody's keys — so `uninstall`
     treats it as foreign (never moved, never deleted, and named with one sentence saying
     what it is), and `start-fresh` leaves it byte for byte. `doctor` has no Credentials
@@ -660,7 +660,7 @@ amber only when the entry names another store, directly or through the Code tab'
 with `~/.claude.json`'s `counterparts`. `counterparts coverage` names a day's Desktop sessions
 as unmeasured — never lost.
 **[M]** `connect`, and `install` at a terminal, bring an entry of ours in an older shape up
-to today's command (2026-10-10, `commands.ts#repairDesktopEntry`): only `command` and
+to today's command (2026-10-10, `commands-install.ts#repairDesktopEntry`): only `command` and
 `args` change, the store its `env` names is kept, the file is backed up first and written
 whole, and nothing is written while Desktop is open or could not be ruled out — the person
 is told to quit it and run `connect` again. The scripted install reads no host file.

@@ -481,7 +481,7 @@ the store has funnels through that one function — `Store.open`,
 `resolveDir`, the dashboard — so the guard sits in one place. The env-set case returns
 before the guard is read: a process launched with `COUNTERPARTS_DATA_DIR` (the live MCP
 server) executes the instructions it executed before. `dataDir()` also gained an
-injectable `env` parameter (default `process.env`), which let `cli/commands.ts#resolveDir`
+injectable `env` parameter (default `process.env`), which let `cli/commands-shared.ts#resolveDir`
 drop the swap-the-variable-in-and-out-of-`process.env` shape it had, and lets a test
 construct the armed and unarmed cases without touching the process.
 
@@ -741,7 +741,7 @@ backlog with one day, which is the honest reading of what happened — the colum
 was reconciled that day.
 
 **Checked, not believed:** `counterparts verify` counts live non-journal rows
-whose column disagrees with box 3 (`cli/commands.ts#bandOfRecordCensus`), and it
+whose column disagrees with box 3 (`cli/commands-verify.ts#bandOfRecordCensus`), and it
 is 0 after a decay pass that its budget did not cut short.
 
 ## WAL, and the busy timeout first (I38/I39, 2026-09-18)
@@ -1316,7 +1316,7 @@ INTERFACE-GAPS §10, §11, §13; dashboard INTERFACE-GAPS §4, §5).
 
 **Newest first.** `eventLog` takes `order: "asc" | "desc"`, default `asc`, so none of
 the ~30 existing callers moved. `{ name, order: "desc", limit: 1 }` is the newest row of
-a name in one query. `doctor.ts#newestRows` still climbs its ladder; collapsing it is
+a name in one query. `doctor-finding.ts#newestRows` still climbs its ladder; collapsing it is
 doctor's owner's change.
 
 **Counted by name, in SQL.** `eventCounts({ sinceDay?, sinceAt? })` is one `GROUP BY

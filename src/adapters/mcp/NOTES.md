@@ -74,7 +74,7 @@ bun run <repo>/src/adapters/mcp/bin/serve.ts --session <id> --scope <project dir
 
 Neither flag is reachable on Claude Code, which registers MCP servers from a static
 configuration. Without `--scope` the server resolves `CLAUDE_PROJECT_DIR` and then its
-own working directory (`server.ts#hostScope`) — the first of those is the one the hooks
+own working directory (`server-options.ts#hostScope`) — the first of those is the one the hooks
 also file a session under, which is what makes a deposit's coverage land on the spans it
 covers rather than in another directory.
 
@@ -1021,7 +1021,7 @@ reflection's later mark is kept too. A later chapter's mark replaces an earlier 
 
 The threads lane read `meta.unresolved` and no tool could set it, so it never fired. `note` and
 each `session_end` entry take `unresolved` (a boolean, passed as sent). Beside a declared
-`updates`, SAYING it (true or false) clears the old row's flag (`counterpart.ts#closeThread`):
+`updates`, SAYING it (true or false) clears the old row's flag (`counterpart-deposit.ts#closeThread`):
 false is an answer, true carries the thread to the newer row, so one thread lives on one row,
 the reminder's rule. Left out, a revision does not close anything. The result says
 `thread: { closed: <id> }`. `how: changed` already took a settled row out of every lane.
@@ -1142,7 +1142,7 @@ the wake" is not built: it waits on the owner's test.
 ## 2026-10-03 — the writer's three fields (Release A of deliberate recall)
 
 `note` and each `session_end` entry (so write-ups too) take `occurredOn`, `saidBy` and
-`status`, read by `server.ts#readWriteFacts` before anything mints, and not a refusal: an
+`status`, read by `server-args.ts#readWriteFacts` before anything mints, and not a refusal: an
 unreadable date or an unknown word is dropped and said (`facts.dropped`, with what to send
 instead), the memory stored all the same. A date in the future is kept with a note that a
 reminder date is `eventDate`. Null is "none" (a revision carries nothing over for it). The

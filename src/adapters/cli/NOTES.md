@@ -1993,7 +1993,7 @@ into my voice is mine.
   doctor read the same wrong file and went green, and the host ran nothing.
   `install.ts#hostSettingsDir` is the one place that knows now: `readHost`,
   `wire.ts#userSettingsPath`, and `install`'s "is Claude Code here" check
-  (`commands.ts#claudeCodeHere`, which looked for a `.claude` inside the variable) all ask
+  (`commands-install.ts#claudeCodeHere`, which looked for a `.claude` inside the variable) all ask
   it. The MCP file is unchanged (`$CLAUDE_CONFIG_DIR/.claude.json` under the variable):
   `~/.claude.json` is not a `~/.claude` path, so the docs' sentence does not move it.
   Confirmed against the 2.1.295 binary in review: the global config file is

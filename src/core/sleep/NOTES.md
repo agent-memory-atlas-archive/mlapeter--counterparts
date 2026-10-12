@@ -175,7 +175,7 @@ arithmetic. `band_day` therefore means **"the lived day the column was last
 brought to physics"**, which is what it always meant for promotions and now means
 for everything; the crossing's own record is the latched `band.transition` row,
 never this column. `counterparts verify` counts the disagreement
-(`cli/commands.ts#bandOfRecordCensus`) so the invariant is checked rather than
+(`cli/commands-verify.ts#bandOfRecordCensus`) so the invariant is checked rather than
 believed, and `DecayResult.bandsReconciled` reports it per pass.
 
 **The skip list is reported, not branched on.** An identity-band memory is not

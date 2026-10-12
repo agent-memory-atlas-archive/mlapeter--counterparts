@@ -591,7 +591,7 @@ row, saying which source answered, existed until the keys were removed — §1a.
     `assertSafeDataDir` and writes tmp-then-rename, `sessions.ts`'s own rule for
     the same directory.
     `counterparts doctor` reads the same open with the same predicates
-    (`doctor.ts#readCounterpartOpen`) — RED for a store that will not open, AMBER
+    (`doctor-open.ts#readCounterpartOpen`) — RED for a store that will not open, AMBER
     for one that was busy or that only an owner may initialize — so the terminal
     and the console cannot disagree about what happened.
 

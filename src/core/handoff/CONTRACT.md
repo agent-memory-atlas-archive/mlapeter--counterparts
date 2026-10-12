@@ -338,7 +338,7 @@ where this module says so in numbers rather than in a sentence.
 
 **Worktrees, and why they are not a surprise.** The directory a session is filed under is
 `CLAUDE_PROJECT_DIR` where the host sets it (`bin/hook.ts#startDirectory`,
-`mcp/server.ts#hostScope`), which stays put when a session `cd`s or enters a git worktree.
+`mcp/server-options.ts#hostScope`), which stays put when a session `cd`s or enters a git worktree.
 So a session launched at a repo root and working inside `.claude/worktrees/x` shares the
 repo's pointer, and a session *launched* inside the worktree gets its own. Both are
 defensible; what would not be is neither being written down.

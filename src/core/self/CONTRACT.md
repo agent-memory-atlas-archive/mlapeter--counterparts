@@ -558,7 +558,7 @@ proposals and their archive; render and delivery telemetry.
     chain — and `writer.ts` never touches it; what this module writes is the run's own
     durable row. No memory is created, none promoted, no strength moves. **No model call
     happens in core**: this module composes what the writer is handed and the ADAPTER makes
-    the call, exactly as `counterpart.ts#sweepWake` composes and `interpret-client.ts`
+    the call, exactly as `counterpart-sweep.ts#sweepWake` composes and `interpret-client.ts`
     calls. A writer failure costs the writer: it never fails a wake, a boundary or a
     session, and with the writer off or never run the wake is byte-identical to a build
     without it (asserted).

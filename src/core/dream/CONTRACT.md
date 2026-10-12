@@ -246,13 +246,13 @@ dreamer is the model (a background agent the session launches), outside this pro
   over none — and its era
   standing: an original written before the old-claims cutoff gives the merged memory its
   moment (`meta.eraWrittenAt`) and its `claimedDefault`, so the era reads the merged
-  memory as it read that original; `store/index.ts#inheritFrom`, `store/operational.ts#eraCarriedFrom`),
+  memory as it read that original; `store/marks.ts#inheritFrom`, `store/operational.ts#eraCarriedFrom`),
   `link` (both ways, proposed at `LINK_WEIGHT` through
   `associate`, only where there is room, since 2026-09-28), `replayed` (a
   return at `DREAM_RETURN_WEIGHT`, never a use), `gist` (source `dreamed`, citing and
   linked to its sources, salience capped at `DREAMED_CLAIM_CEILING`; since 2026-10-11
   it takes what its sources were about by the merge's rule, a personal mark winning, the
-  first named as best — `store/index.ts#inheritFrom` — and no era standing, its claim being
+  first named as best — `store/marks.ts#inheritFrom` — and no era standing, its claim being
   its own; D6, §7 Q2), a FOLD (2026-10-11, Group 3 part B, item 15: a `gist` with
   `fold: true` — not an action of its own — saying the standing outcome two or more parts
   add up to; it holds over each part through the one door, `reconsolidation.ts#supersede`,
@@ -468,7 +468,7 @@ examples) · **§2.19** (every change enumerable: `counterparts dream --show`) �
    AFTER it was folded (decided by random-06, 2026-10-11, lightly held): its own uses and
    its parts' later uses count, the parts' births and earlier uses do not; no minimum
    count of its own uses beyond the slow lane's anchor. And it is `me`/`us` only when
-   most of its parts are (`store/index.ts#foldMarkFrom`), so a work fold with one `us`
+   most of its parts are (`store/marks.ts#foldMarkFrom`), so a work fold with one `us`
    part is not a core candidate. The builder's first measure (10-11) had a personal fold
    meet the slow lane after ONE awake use, on its parts' births; that lever is closed.
    An insight gist still has no road (its claim stays at the cap).

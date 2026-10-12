@@ -279,7 +279,7 @@ actually wrote (chapter), the written self page or the version a write to it pro
     the bind and before anything else reads the call, so it never writes a handoff and
     never marks the writing session "nothing new". It shares with an ordinary
     `session_end` only the bind (the WRITING session is this one, guarantee 10) and the
-    road each entry takes (`server.ts#depositEntries`, extracted rather than copied: gate
+    road each entry takes (`server-session-end.ts#depositEntries`, extracted rather than copied: gate
     battery, redaction, authored channel, per-entry isolation) — so the proposals ride
     under the writing session; each MEMORY, though, is the ended session's (2026-10-01):
     its origin names that session, its `happened_on` is the day the part was lived (its
@@ -448,7 +448,7 @@ Two smaller residuals, recorded rather than fixed:
   two scopes differed and the bind was refused. Both sides now resolve the directory the
   host names for the session — `CLAUDE_PROJECT_DIR`, which the host exports to hooks and
   to stdio MCP servers alike and does not move when the agent enters a worktree
-  (`server.ts#hostScope`, `claude-code/bin/hook.ts#sessionScope`) — so they agree by
+  (`server-options.ts#hostScope`, `claude-code/bin/hook.ts#sessionScope`) — so they agree by
   construction rather than by both happening to read the same working directory. What
   remains is the honest residual: a host that exports no such variable leaves the two
   sides back on their own working directories, where they agreed by measurement and not
@@ -513,9 +513,9 @@ world; a confidential memory outside the owner's session is not found.
 it happened: a day, month, range or year, read by `time.ts`), `saidBy` (owner, self,
 inferred) and `status` (done, planned, proposed, asked), all optional. **[M]** None of them
 refuses a memory: one that cannot be read is dropped and said in the answer's `facts`, with
-what to send instead (`server.ts#readWriteFacts`). **[M]** A revision by `updates` carries
+what to send instead (`server-args.ts#readWriteFacts`). **[M]** A revision by `updates` carries
 each over from the memory it revises unless one is sent (null: none); nothing moves off the
-old memory (`counterpart.ts#carryFacts`). **[A]** The descriptions ask the writer to
+old memory (`counterpart-deposit.ts#carryFacts`). **[A]** The descriptions ask the writer to
 resolve "last week" to a date at write time and keep `occurredOn` (when it happened) apart
 from `eventDate` (a future date to be reminded on). Facts mode reads them (§6f).
 

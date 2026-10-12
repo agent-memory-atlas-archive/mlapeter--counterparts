@@ -287,7 +287,7 @@ counted `unchased: 1`.)*
 **Status (2026-09-24):** `eventLog` takes `order: "asc" | "desc"` (default `asc`, so no
 caller changed), and `eventLog({ name, order: "desc", limit: 1 })` is the newest row of
 a name in one query (`test/store.test.ts` › "event log reads"). **Still open on this
-side:** `claude-code/doctor.ts#newestRows` keeps its ladder until whoever owns doctor
+side:** `claude-code/doctor-finding.ts#newestRows` keeps its ladder until whoever owns doctor
 collapses it to that call — not touched here, another session owned the file.
 
 `doctor` (2026-09-14) asks the store one question over and over: what is the
@@ -297,7 +297,7 @@ NEWEST `sleep.cycle` / `sweep.gate` / `adapter.embed.backfill` /
 the limit returns a window that does not contain the newest, and a caller that
 took `rows.at(-1)` would report last week's reading as today's, silently.
 
-`claude-code/doctor.ts#newestRows` closes it EXACTLY rather than approximately: a
+`claude-code/doctor-finding.ts#newestRows` closes it EXACTLY rather than approximately: a
 ladder of lived-day windows, narrowest first (today, 2, 7, 30, everything), and a
 window whose result is shorter than the limit was not truncated, so its last row
 is provably the newest in it. A full window is discarded rather than trusted.
