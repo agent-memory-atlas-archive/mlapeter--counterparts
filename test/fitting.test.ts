@@ -174,10 +174,12 @@ describe("the dream's new memories are a queue: ranked by label, what does not f
     const c = brain();
     days(c);
     // Plenty of new memories, each long enough that their lines fill
-    // tonight's share for the new. The first one written is the most salient.
-    const salient = mem(c, `The release broke the owner's trust — ${"a charged detail. ".repeat(30)}`, { salience: { relevance: 1, emotional: 1, predictive: 1 } });
+    // tonight's share for the new. The first one written is worth the most
+    // and still fragile (value × fragility, Group 3 part C); the plain notes
+    // are held a few days, so they are still within reach tomorrow.
+    const salient = mem(c, `The release broke the owner's trust — ${"a charged detail. ".repeat(30)}`, { salience: { relevance: 0.5, emotional: 0, predictive: 0.5 } });
     const ids: string[] = [];
-    for (let i = 0; i < 220; i += 1) ids.push(mem(c, `Plain note ${String(i)} — ${"something ordinary about the build pipeline and its caches, ".repeat(6)}`, { salience: { relevance: 0.2, emotional: 0, predictive: 0.2 } }));
+    for (let i = 0; i < 220; i += 1) ids.push(mem(c, `Plain note ${String(i)} — ${"something ordinary about the build pipeline and its caches, ".repeat(6)}`, { salience: { relevance: 0.3, emotional: 0, predictive: 0.3 } }));
     // The per-prompt gate stops at what it needs, and says so.
     const before = c.dreams.status("2026-09-20");
     expect(before.newSince).toBe(DREAM_TUNABLES.MIN_NEW);
@@ -188,8 +190,7 @@ describe("the dream's new memories are a queue: ranked by label, what does not f
     expect(q.new).toBe(221);
     expect(q.tonight + q.waiting).toBe(221);
     expect(q.waiting).toBeGreaterThan(0);
-    expect(q.windowDays).toBe(DREAM_TUNABLES.QUEUE_DAYS);
-    // By label, not by position: the most salient is first although it was written first.
+    // By value × fragility, not by position: it is first although it was written first.
     expect(d.bundle.fresh[0]?.id).toBe(salient);
     const shown = new Set(JSON.parse(c.store.dream(d.bundle.dream)?.shown ?? "[]") as string[]);
     const waiting = ids.filter((id) => !shown.has(id));
@@ -209,22 +210,35 @@ describe("the dream's new memories are a queue: ranked by label, what does not f
     expect(sawBefore).toEqual([]);
   }, 60_000);
 
-  test("past the window a never-dreamed memory leaves the queue, and the count of those that aged out is said", () => {
+  test("a never-dreamed memory stays queued while it is within reach, whatever its age; below reach it leaves, and the count is said once", () => {
     const c = brain();
     days(c);
     mem(c, "An early memory, dreamed tonight.");
     const d = c.dreams.begin({ session: SESSION, at: "2026-09-20" });
     if (!d.ok) throw new Error(d.reason);
     c.dreams.journal({ dream: d.bundle.dream, session: SESSION, text: "One." });
-    // Made after the dream began, then left: never shown to a dream.
+    // Made after the dream began, then left: never shown to a dream. Two
+    // routine notes fall below reach within days; a salient one does not.
     days(c, 21, 21);
-    const missed = [mem(c, "A memory no dream got to."), mem(c, "Another no dream got to.")];
+    const routine = { salience: { relevance: 0.2, emotional: 0, predictive: 0.2 } };
+    const missed = [mem(c, "A memory no dream got to.", routine), mem(c, "Another no dream got to.", routine)];
+    const kept = mem(c, "A salient memory no dream got to yet.");
     days(c, 22, 30);
     mem(c, "Something new, nine days on.");
     const q = c.dreams.begin({ session: SESSION, at: "2026-09-30" });
     if (!q.ok) throw new Error(q.reason);
     expect(q.bundle.queue.agedOut).toBe(missed.length);
-    expect(q.bundle.fresh.map((f) => f.id).some((id) => missed.includes(id))).toBe(false);
+    const fresh = q.bundle.fresh.map((f) => f.id);
+    expect(fresh.some((id) => missed.includes(id))).toBe(false);
+    // Nine lived days old, past the old 7-day window, and still queued: no fixed window.
+    expect(fresh).toContain(kept);
+    // Counted once: the next night does not count them again.
+    c.dreams.journal({ dream: q.bundle.dream, session: SESSION, text: "Two." });
+    c.store.advanceClock("2026-10-01");
+    mem(c, "Another new one.");
+    const r = c.dreams.begin({ session: SESSION, at: "2026-10-01" });
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.bundle.queue.agedOut).toBe(0);
   });
 
   test("every memory shown says why it is here, what it is about, its strongest feeling and its whole length; detail by importance, never a flat 400", () => {

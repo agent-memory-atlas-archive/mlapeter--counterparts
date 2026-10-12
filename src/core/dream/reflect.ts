@@ -732,7 +732,12 @@ export class Reflections {
     }
     const denied = new Set(this.store.deniedIds());
     const gone = "(gone since you began: archived, merged or made private)";
-    // Each at the fidelity its fit gave it (the reflection's index).
+    // Each at the fidelity its fit gave it (the reflection's index). An id
+    // offered as an id is read as one before a line (2026-10-11, Group 3 part
+    // C): a memory the fit left as an id that the dream also saw is offered as
+    // a line too (what the dream saw is lines), and reading it as a line here
+    // made a part cost more than `pack` measured — past the ceiling once the
+    // dream's queue is read whole and sees more of the reflection's days.
     const index = readIndex(this.store, "reflection");
     const offered = index !== null && index.ref === row.id ? index.offered : null;
     const fidelityOf = (key: string): Fidelity | null =>
@@ -742,10 +747,10 @@ export class Reflections {
           ? "whole"
           : offered.excerpt.includes(key)
             ? "excerpt"
-            : offered.line.includes(key)
-              ? "line"
-              : offered.id.includes(key)
-                ? "id"
+            : offered.id.includes(key)
+              ? "id"
+              : offered.line.includes(key)
+                ? "line"
                 : null;
     const T = REFLECT_TUNABLES;
     const memories: Record<string, ReflectItem | string> = {};

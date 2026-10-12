@@ -5051,9 +5051,12 @@ export function dreamHow(bundle: Pick<DreamBundle, "queue" | "shownAs">): string
   const q = bundle.queue;
   const s = bundle.shownAs;
   const waits = q.waiting > 0 ? ` ${String(q.waiting)} more new wait for the next night.` : "";
-  const aged = q.agedOut > 0 ? ` ${String(q.agedOut)} aged out of the queue since the last dream, never dreamed.` : "";
+  // Since 2026-10-11 (Group 3 part C) a memory leaves the queue when it falls
+  // below reach, and a refused fold's parts come back carried.
+  const aged = q.agedOut > 0 ? ` ${String(q.agedOut)} fell below reach since the last dream, never dreamed.` : "";
+  const carried = (q.carried ?? 0) > 0 ? ` ${String(q.carried)} of the new are parts of a fold the last night could not make, put first.` : "";
   return (
-    `Tonight: ${String(q.tonight)} of ${String(q.new)} new memories.${waits}${aged} ` +
+    `Tonight: ${String(q.tonight)} of ${String(q.new)} new memories.${waits}${aged}${carried} ` +
     `Shown whole: ${String(s.whole)}; as an excerpt: ${String(s.excerpt)}; as a line: ${String(s.line)}${s.notShown > 0 ? `; related, not shown: ${String(s.notShown)}` : ""}. ` +
     `To read any whole, call the recall tool with ids: [...] — up to ${String(RECALL_MAX_IDS)} at once.`
   );

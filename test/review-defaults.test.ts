@@ -245,7 +245,7 @@ describe("Q6 — removal redacts a dream journal that cites or quotes the memory
     days(c.store, 1, 12);
     const day = c.store.livedDay();
     const put = (body: string): string =>
-      c.store.put({ type: "memory", kind: "fact", body, physics: { birthDay: day, lastUsedDay: day } });
+      c.store.put({ type: "memory", kind: "fact", body, salience: { relevance: 0.5, emotional: 0, predictive: 0.5 }, physics: { birthDay: day, lastUsedDay: day } });
     const secret = put("Sarah is leaving the company in November and has not told the team yet.");
     put("The migration step must run before the container boots, or it boots empty.");
     put("Run the migration before starting the container, otherwise it starts empty.");
@@ -278,7 +278,7 @@ describe("an undone dream no longer lights Dreaming", () => {
       "The batch window now ends at one thirty, so backups start after it.",
       "Backups and batch jobs share the same disk, so they must not overlap.",
     ]) {
-      c.store.put({ type: "memory", kind: "fact", body, physics: { birthDay: day, lastUsedDay: day } });
+      c.store.put({ type: "memory", kind: "fact", body, salience: { relevance: 0.5, emotional: 0, predictive: 0.5 }, physics: { birthDay: day, lastUsedDay: day } });
     }
     const begun = c.dreams.begin({ session: "s-lit" });
     if (!begun.ok) throw new Error(begun.reason);

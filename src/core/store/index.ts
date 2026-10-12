@@ -3553,9 +3553,10 @@ export class Store {
    * birth day), else since a lived day. Newest first. Only the columns decide:
    * `type` memory, not archived, not superseded, not protected, not a dream's
    * own words. The caller applies the rest of recall's gates (the deny-list,
-   * confidentiality) to what comes back.
+   * confidentiality) to what comes back. Without a `limit`, every row: the
+   * dream's queue reads the whole store (2026-10-11, Group 3 part C).
    */
-  newMemoryIds(filter: { sinceAt: number | null; sinceDay: number; limit: number; beforeDay?: number }): string[] {
+  newMemoryIds(filter: { sinceAt: number | null; sinceDay: number; limit?: number; beforeDay?: number }): string[] {
     // Nor a dream's own MERGES (origin `dream:<id>`): a merged memory is a
     // rewording of what a dream already saw, and counting it as new would let
     // one dream's output raise the next day's ask by itself (review of #251).
@@ -3564,16 +3565,18 @@ export class Store {
                      AND (source IS NULL OR source != 'dreamed')
                      AND (origin_ref IS NULL OR origin_ref NOT LIKE 'dream:%')`;
     const order = "ORDER BY COALESCE(created_at, 0) DESC, birth_day DESC, id LIMIT ?";
+    // SQLite reads a negative LIMIT as none.
+    const limit = filter.limit ?? -1;
     const rows =
       filter.sinceAt === null
         ? filter.beforeDay === undefined
-          ? this.ops.all<{ id: string }>(`${base} AND birth_day >= ? ${order}`, filter.sinceDay, filter.limit)
-          : this.ops.all<{ id: string }>(`${base} AND birth_day >= ? AND birth_day < ? ${order}`, filter.sinceDay, filter.beforeDay, filter.limit)
+          ? this.ops.all<{ id: string }>(`${base} AND birth_day >= ? ${order}`, filter.sinceDay, limit)
+          : this.ops.all<{ id: string }>(`${base} AND birth_day >= ? AND birth_day < ? ${order}`, filter.sinceDay, filter.beforeDay, limit)
         : this.ops.all<{ id: string }>(
             `${base} AND (created_at > ? OR (created_at IS NULL AND birth_day > ?)) ${order}`,
             filter.sinceAt,
             filter.sinceDay,
-            filter.limit,
+            limit,
           );
     return rows.map((r) => r.id);
   }
