@@ -17,3 +17,8 @@
   open refuses a WAL store whose sidecars are gone, and under node it was always so. The
   observer promise is about rows, and a writer folds its own log on close, so an instrument
   usually finds nothing to fold.
+- Decided by the db-close builder, 2026-10-11, lightly held: a pre-migration copy older than
+  today is reused when neither the database file nor a NON-EMPTY `-wal` is newer than it.
+  Why: with closes now real, bun's own SQLite on Linux deletes the `-wal` at the last close
+  and the next open makes an empty one, so an empty `-wal`'s mtime is an open's, not a
+  write's; counting it meant an older copy was never reused there.
