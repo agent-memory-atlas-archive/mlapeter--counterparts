@@ -439,15 +439,17 @@ describe("the page is visible where mechanisms are", () => {
   });
 
   test("a page that has stopped being revised goes amber", () => {
-    const writtenAt = Date.now();
+    const fortyLocalDaysLater = new Date(Date.now());
+    fortyLocalDaysLater.setDate(fortyLocalDaysLater.getDate() + 40);
     withPage(PAGE);
     const later = Store.open({
       dir,
       observer: true,
-      // Forty days after the page was actually written, so the count is 40
-      // calendar days in whatever zone the suite runs in (the page's date is
-      // local — docs/time.md). A fixed UTC midnight read as 39 west of Greenwich.
-      now: () => writtenAt + 40 * 86_400_000,
+      // Forty calendar days after the page was actually written, in whatever
+      // zone the suite runs in (the page's date is local — docs/time.md). A
+      // fixed UTC midnight read as 39 west of Greenwich, and 40 x 24h read as
+      // 39 near midnight when the span crossed the end of daylight saving.
+      now: () => fortyLocalDaysLater.getTime(),
     });
     const found = selfPageFindings(later)[0];
     expect(found?.severity).toBe("amber");
