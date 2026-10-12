@@ -57,13 +57,167 @@ paused here; `/counterparts fps [n]` reports the brain's rate (or sets its
 target). `caps` is gone: the footer's switches are dots, with no ends to draw.
 
 **Check it:** `sh hooks/sidebar/check.sh`, which runs validate on both manifests,
-`claude plugin test hooks/sidebar` (194 tests, terminal and desktop) and
+`claude plugin test hooks/sidebar` (215 tests, terminal and desktop) and
 `tsc -p hooks/sidebar`, all with a throwaway HOME. **See it:**
 `tools/term-loop/` (its README), at `--size 200x60` and `--size 160x48`. A
 term-loop session sends no message, so nothing comes to mind and nothing is
 saved in it; `COUNTERPARTS_SIDEBAR_SESSION=<session id>` in the environment
 shows that session's Memories, Subconscious and Saved instead (below,
 "Seeded").
+
+## The fox (2026-10-12, for 0.3.20)
+
+A small fox now sits at the top of the pane, under the title. It is the avatar
+when nobody has chosen one. A `brain` someone stored (`turning`, `still`, `off`)
+stays what it was. The footer's row is `avatar ○ brain ● animal ○ off`
+(`/counterparts avatar animal|brain|off`; `brain turning|still|off` still works).
+The trial branch's `trialBrain`/`trialFoxSize` keys and its small/big size are
+gone: there is one size, under the real `brain` key.
+
+**The art is data.** `hooks/fox-art.ts` is the art agent's module, copied
+verbatim (round 7: `~/counterparts-notes/mockups/2026-10-12-stage/fox-final-sprites.ts`).
+It holds every frame three times (PNG paths, sextant cells, half-block pixels),
+and the moments and the schedule once. `hooks/fox-png.ts` is generated from the
+PNG export by `tools/fox-art/build.ts`. That script downscales the ×8 export to
+×3 (228 × 243, sampling each art pixel's centre, so the result stays crisp),
+lays the effects over the frames each moment draws (`nap1+zSmall+z`, `perk+spark0`, …)
+and writes them to `hooks/sidebar/art/fox/` and as base64 to `fox-png.ts`. The
+total is 25 PNGs and 59 KB. An art fix is a data-only change:
+
+    cp <new fox-final-sprites.ts> hooks/sidebar/hooks/fox-art.ts
+    bun tools/fox-art/build.ts <new fox-png folder>
+    # commit fox-art.ts, fox-png.ts and art/fox/
+
+The bundle traces imports, so it ships `fox.ts`, `fox-art.ts` and `fox-png.ts`
+but not `art/fox/*.png`. The mod never reads that folder: a hooks module's
+`$.fs` paths are relative to the working directory and can't name the plugin's
+own folder, so the pictures travel as base64. The folder is the source the
+module is generated from.
+
+**Four ways to draw one design** (`fox.ts`, `pickTier`):
+
+| tier | where | how | a frame change |
+|---|---|---|---|
+| `image` | kitty, Ghostty | `Image` of the PNG, 30 × 16 cells | a blit of the new `{ png }` |
+| `fine` | iTerm2, WezTerm, VS Code (and Ghostty/kitty where pictures don't show) | sextants (2 × 3 pixels a cell, two colours), as rows of `Text` runs | a redraw of the pane |
+| `basic` | everything else: Apple Terminal, tmux, screen, unknown | half-blocks on a `Raster`, 34 × 15 | a blit of the cells |
+| `svg` | the desktop app (no Raster, no Image) | `Svg`: rects from the half-block pixels, the PNG over them as a data URI | a redraw |
+
+`/counterparts avatar detail auto|images|fine|basic` overrides the choice. It
+is stored in `$.store` as `avatarDetail`.
+
+- **No capability flag exists.** `RenderViewport` gives columns, rows and
+  `isFullscreen`, and nothing on `e.surface` says whether the terminal draws
+  pictures. So the choice reads the environment once at session start
+  (`TERM_PROGRAM`, `TERM`, `KITTY_WINDOW_ID`, `WEZTERM_EXECUTABLE`, `TMUX`, `STY`,
+  `CLAUDE_CODE_FORCE_TERMINAL_IMAGES`). Pictures are chosen only for
+  `TERM_PROGRAM=ghostty`, `TERM=xterm-ghostty|xterm-kitty` or a
+  `KITTY_WINDOW_ID`, and never under tmux or screen. The force variable says
+  yes or no outright. **Assumed, not seen:** what Ghostty and kitty set (taken
+  from their docs, not observed here).
+- **The runtime check.** `$.ui.blit` on an Image is refused when "the Image
+  draws its alt there". In `auto`, two refused picture blits in a row switch
+  the session to sextants. Right after mounting, an Image's first frame is
+  blitted again as a probe, so a wrong guess shows the dim `a small fox` alt for
+  about two drawings, not until the next moment.
+- **Why the sextants are Text and not a Raster.** `RasterProps.cells` takes
+  "one printable width-1 BMP character". U+1FB00–1FB3B are not BMP, so a
+  Raster of them would be refused. **Unverified live:** that the engine
+  measures a sextant as one cell wide inside `Text`. If it counts two, the
+  stage's rows would wrap; `avatar detail basic` is the way out.
+- **The desktop's Svg** has both the rects and an `<image href="data:…">`.
+  Whether the drawing shows the PNG depends on whether the Svg scrub keeps a
+  data URI. If it drops it, the rects show the same fox in half-block pixels.
+  **Unverified:** nobody has opened it in the desktop app.
+- Transparent pixels: on the Raster they are the terminal's default colour,
+  as the trial found (a panel hex comes out as a box). In Text, a cell with no
+  colour takes the panel's.
+- Footprint: the stage is 34 columns, edge to edge (outside the frame's
+  padding), and needs a pane of 30 rows or more (`STAGE_MIN_PANE_ROWS`).
+  Shorter, inline, or narrower, the brain's header draws instead, standing
+  still. The fox's box starts 1 (half), 2 (sextants) or 2 (picture) columns in,
+  leaving room for the effects beside its head.
+
+**What it does when** (round 6's design, `fox-small-r6.ts`; the art's
+`moments` and `schedule`; `fox.ts`, `advance`/`trigger`, pure and seeded in
+tests):
+
+- At rest, a **still** hold of 8–20 s, then one small moment by weight: blink
+  3, glance 2, ear 2, tail 2, yawn 0.5. The art's `rest` loop (idle with
+  `breathe`) is not used. The owner asked for calmer movement, and the
+  breathing bob was the trial's suspected flicker. `breathe` is an unused
+  frame for now; adding it to the weights would bring it back as a moment.
+- After 3 minutes with nothing happening (`napAfterMs`), a nap with a z beside
+  the head. A prompt the person sends wakes it with a stretch, and so does any
+  real moment. The art's `napMaxMs` (4 min) also ends a nap, so a fox left
+  alone naps and wakes in turns.
+- Real state: `came` (a recall block put something in front of Claude), `note`
+  (a memory saved: the notepad, twice), `hello` (the speak-first goes out, and
+  each call of core's `meet` tool) and `dream`. The fox dreams while a dream
+  runs: during this session's `dream` tool call, or from a `dream.begun` row
+  in the activity feed until `dream.journaled`/`changed`/`undone`. A dream
+  that never says it ended stops after 20 minutes. While it dreams, other
+  moments wait.
+- **CPU.** One `$.clock.after` per change of what is on screen (`advance`
+  returns when the picture next changes, past steps that show the same thing).
+  No timer runs while the pane holds the keyboard, after a drawing finds the
+  pane not shown (the poll loop's not-shown branch stops it too), after a
+  refused blit, or in any view but the sidebar. A drawing starts it again.
+- The fox's moments are awaited inside the hooks that cause them (`onSaved`,
+  `onRecallBlock`, `tool.call`, `prompt.submit`) and use `$.clock.now()`, not
+  `Date.now()`, so the test kit's clock drives them.
+
+**"Start the 5-minute intro"** runs `/counterparts:meet` through `$.command.run`
+(from a timer: the engine refuses it inside a hook the turn waits on). The
+owner's trial showed why. In a later session (meet=later) the button sent the
+speak-first's line, "Meet your new counterpart.", and Claude had nothing to tie
+it to. The plugin command carries its own instructions. `MEET_PROMPT` is "Meet
+your new counterpart." (the owner, 13:03) and is sent only by the automatic
+first-session speak-first; core's wake names it (#459). A refused command shows
+a toast.
+
+**The Mechanisms section with the dashboard down** is a cyan link, "Start the
+dashboard to see stats here". A click on any of its lines runs
+`/counterparts:dashboard`. Schemas (not built) is no longer drawn at all.
+
+**Which store** (core #459). The wake's `<!-- counterparts:store id=st_… -->`
+is kept in `run.wakeStore`, and it survives a `/clear` because the store is
+the same. Every poll first asks `/api/whoami`. When both sides are known and
+differ, the sidebar does the following until they match again (`storeMatches`):
+
+- the dash state becomes `other`;
+- the pulse, today's counts and the last dream are dropped;
+- `fetchJson` refuses every read, which covers titles, memories, mechanisms
+  and seeding;
+- the Mechanisms section says "This dashboard belongs to another memory.", dim.
+
+A match makes the next read a cold one. `/api/onboarding`'s `store` is checked
+too, so another store's meeting state is never taken. Either side unknown (no
+marker yet, an older core with no `/api/whoami`, `store: null` before a wake
+minted the salt) means "can't tell": it carries on. A marker that arrives
+after a cold read from the wrong store corrects within one poll. Memories and
+Subconscious come from this session's own hook context and Saved from its own
+tool calls, so those always show.
+
+**The search box is hidden for 0.3.20** (`searchFlag`; set
+`COUNTERPARTS_SIDEBAR_SEARCH=1` before starting Claude Code to bring it back).
+In the owner's real sessions (fox trial rounds 1 and 2), a click never put the
+keyboard in it, while Buttons in the same pane pressed fine. The round-2
+"blit while focused" fix didn't change that. It could not be checked live from
+the build session. A term-loop session runs his npm hooks against his live
+memory and the mod reads his `~/.counterparts/scopes.json`, and builders may
+not touch either. The record has it working in tmux on 10-10 (v0.1, before the
+brain header). Next live check: master, fullscreen, the owner's own terminal,
+the brain avatar (`/counterparts avatar brain`) and the flag on. Click the box
+and type. If it works there, the stage's layout is the cause. If not, it is
+the terminal's or the engine's Input-in-a-pane, and a report to the Claude
+Code team.
+
+**The blank last line** under the avatar row in the owner's screenshot
+(`11-fox-r2-sidebar.png`) is not ours. It is grey, the dock's colour, while
+everything we draw sits on the panel's `#05080c` inside a frame `minHeight` of
+the body's rows. Our last row is the avatar row. That grey row is the engine's
+pane edge (the counterpart of the ✕ row at the top).
 
 ## The split, a theme setting, a stranger's copy (2026-10-12)
 

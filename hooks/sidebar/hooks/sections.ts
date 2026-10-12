@@ -31,7 +31,7 @@ import type {
   SidebarToday,
 } from '../types'
 import { dateOf, hm, humanDates } from './feed'
-import { MECHS, PLUGIN_DASHBOARD_ROUTE, STAGES, hex, stageOf } from './mechanisms'
+import { MECHS, STAGES, hex, stageOf } from './mechanisms'
 import type { MechId } from './mechanisms'
 import { P } from './theme'
 import { cells, headCells } from './width'
@@ -167,7 +167,7 @@ export type BodyState = {
   open: SidebarOpen | null
   mech: SidebarMechOpen | null
   focus: string | null
-  dash: 'unknown' | 'up' | 'down'
+  dash: 'unknown' | 'up' | 'down' | 'other'
   search: SidebarSearch
 }
 
@@ -372,12 +372,23 @@ export function bar(v: number, max: number, width: number): string {
   return '▄'.repeat(Math.floor(halves / 2)) + (halves % 2 === 1 ? '▖' : '')
 }
 
+/** The Mechanisms section's link while the dashboard is down: a click runs /counterparts:dashboard. */
+export const DASHBOARD_LINK = 'Start the dashboard to see stats here'
+
+/** What shows in place of another store's numbers. */
+export const OTHER_STORE = 'This dashboard belongs to another memory.'
+
 function chart(s: BodyState, f: Fold): Line[] {
   const t = s.today
   if (t === null) {
     if (s.dash === 'down') {
-      // The plugin's own command, which every install that draws this sidebar has (a stranger's read, 2026-10-12).
-      return [heading('Mechanisms today', '', s.w), ...plain(wrapN(`Counts appear once the dashboard is open (${PLUGIN_DASHBOARD_ROUTE})`, s.w), P.dim)]
+      // A link that starts it (the plugin's own command, which every install that draws this sidebar has), cyan
+      // like the intro's (the owner's fox trial, 2026-10-12).
+      return [heading('Mechanisms today', '', s.w), ...wrapN(DASHBOARD_LINK, s.w).map(t => line([seg(t, P.accent)], 'dash:start'))]
+    }
+    if (s.dash === 'other') {
+      // The dashboard on the port serves another store (core #459): none of its numbers here.
+      return [heading('Mechanisms today', '', s.w), ...plain(wrapN(OTHER_STORE, s.w), P.dim)]
     }
     return [heading('Mechanisms today', '', s.w), line([seg('reading the dashboard…', P.dim)])]
   }
@@ -392,7 +403,9 @@ function chart(s: BodyState, f: Fold): Line[] {
     const v = t.counts[m.id]
     const key = `mech:${m.id}`
     const picked = s.mech?.id === m.id
-    if (v === null || m.notBuilt === true) {
+    // Not built yet: not drawn until it is (the fox trial, 2026-10-12).
+    if (m.notBuilt === true) continue
+    if (v === null) {
       out.push(line([seg(m.short.padEnd(NAME), P.dim), seg(clip('○ not built yet', s.w - NAME), P.dim)], key))
       continue
     }

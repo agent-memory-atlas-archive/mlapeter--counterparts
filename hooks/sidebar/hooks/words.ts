@@ -25,8 +25,9 @@ export function normView(v: unknown): SidebarView {
   return v === 'quiet' || v === 'rail' || v === 'hidden' || v === 'strip' ? 'quiet' : 'sidebar'
 }
 
+/** The avatar as stored: a mode someone chose stays; nothing stored (or one this version doesn't know) is the fox. */
 export function normBrain(v: unknown): SidebarBrain {
-  return v === 'still' || v === 'off' ? v : 'turning'
+  return v === 'still' || v === 'off' || v === 'turning' ? v : 'fox'
 }
 
 /**

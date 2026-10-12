@@ -80,15 +80,18 @@ import {
   mechsOf,
   meetShows,
   openedIds,
+  otherStore,
   ourTool,
   parseFacts,
   parseOnboarding,
   parseOnboardingMarker,
   parseRecallBlock,
+  parseStoreMarker,
   payloadOf,
   resolveServer,
   savedItems,
   shortDir,
+  storeOf,
   surfacedIds,
   titled,
 } from './feed'
@@ -103,7 +106,29 @@ import {
   stageOf,
 } from './mechanisms'
 import type { MechId } from './mechanisms'
-import { aboveSwitches, footer, frame, meetRow, pausedBanner, plainBody } from './pane'
+import {
+  IMAGE_COLS,
+  IMAGE_ROWS,
+  IMAGE_X0,
+  STAGE_COLS,
+  STAGE_MIN_PANE_ROWS,
+  TIER_ENV,
+  advance,
+  fineCells,
+  foxSvg,
+  halfCells,
+  newDirector,
+  normDetail,
+  pickTier,
+  pngOf,
+  runs,
+  stage,
+  stageRows,
+  stepKey,
+  trigger,
+} from './fox'
+import type { FoxDetail, FoxEvent, FoxTier, Step } from './fox'
+import { aboveSwitches, footer, frame, meetRow, pausedBanner, plainBody, searchBox } from './pane'
 import type { PaneActions, PaneEls } from './pane'
 import { lookup, parentOf, parseRegistry, settingsHookConfig } from './scopes'
 import type { RegistryMode } from './scopes'
@@ -115,6 +140,8 @@ import {
   FALLBACK_MAX,
   FIRING_MS,
   IDLE_SEARCH,
+  DASHBOARD_COMMAND,
+  MEET_COMMAND,
   MEET_FLAG,
   MEET_PRESS_MS,
   MEET_PROMPT,
@@ -131,10 +158,11 @@ import {
   UNKNOWN_SCOPE,
   quiet,
   run,
+  searchFlag,
 } from './state'
 import { CLASSIC_HINT, TAIL_HINT, TAIL_SPARE, quietTail } from './tail'
 import { BRAIN_ROWS, brain, brainHeader, fireBrain, fps, fpsReport, frameCells, look, lookKey, paceMs, raster } from './terminal'
-import { applyTheme, normTheme } from './theme'
+import { P, applyTheme, normTheme } from './theme'
 import { cells } from './width'
 import {
   CONFIRM_FROM,
@@ -179,7 +207,7 @@ const memoryA = atom({ plugin: 'counterparts', key: 'claudeMemory' } as const, t
 const ccSwitchA = atom({ plugin: 'counterparts', key: 'claudeMemorySwitch' } as const, false)
 const onboardingA = atom({ plugin: 'counterparts', key: 'onboarding' } as const, UNKNOWN_ONBOARDING as SidebarOnboarding)
 const viewA = atom({ plugin: 'counterparts', key: 'view' } as const, 'sidebar')
-const brainA = atom({ plugin: 'counterparts', key: 'brain' } as const, 'turning')
+const brainA = atom({ plugin: 'counterparts', key: 'brain' } as const, 'fox')
 const themeA = atom({ plugin: 'counterparts', key: 'theme' } as const, 'tron')
 const placedA = atom({ plugin: 'counterparts', key: 'placed' } as const, false)
 const noteA = atom({ plugin: 'counterparts', key: 'switchNote' } as const, null)
@@ -227,6 +255,8 @@ async function dashUrl($: EngineInterface): Promise<string> {
 }
 
 async function fetchJson($: EngineInterface, path: string): Promise<unknown> {
+  // Another store's dashboard: nothing of it is read (`storeMatches`).
+  if (run.foreign) throw new Error('the dashboard serves another store')
   const r = await $.http.fetch(`${await dashUrl($)}${path}`)
   if (!r.ok) throw new Error(`the dashboard answered ${String(r.status)}`)
   return JSON.parse(r.text) as unknown
@@ -262,8 +292,10 @@ async function takeOnboarding($: EngineInterface, next: SidebarOnboarding): Prom
 /** The dashboard's `/api/onboarding`, a refresh: a 404, a refusal or another shape changes nothing, and never marks the dashboard down. */
 async function readOnboarding($: EngineInterface): Promise<void> {
   try {
+    if (run.foreign) return
     const r = await $.http.fetch(`${await dashUrl($)}/api/onboarding`)
-    if (r.ok) await takeOnboarding($, parseOnboarding(r.text))
+    // Another store's meeting is not this one's (core #459's `store` on the answer).
+    if (r.ok && !otherStore(run.wakeStore, storeOf(r.text))) await takeOnboarding($, parseOnboarding(r.text))
   } catch {
     // down: what the wake said stands
   }
@@ -304,19 +336,65 @@ async function speakFirst($: EngineInterface): Promise<void> {
   await $.store.set(MEET_FLAG, { session: run.session, at: await $.clock.now() })
   run.meetFiredIn = run.session
   run.spokeFirst = true
+  await foxEvent($, 'hello')
   // Not awaited inside a hook: the engine queues it until the session is idle.
   $.clock.after(0, () => quiet($.prompt.submit({ text: MEET_PROMPT })))
 }
 
 
-/** "Start the 5-minute intro": the same line as the speak-first, once a minute at most. */
+/**
+ * "Start the 5-minute intro", once a minute at most: the plugin's `/counterparts:meet`, as if
+ * typed. Not the speak-first's line: in a later session nothing tells Claude what that line
+ * means (the owner's fox trial: Claude was confused), and the command carries its own
+ * instructions. Run from a timer: `command.run` is refused inside a hook the turn waits on.
+ */
 async function pressMeet($: EngineInterface): Promise<void> {
   const now = await $.clock.now()
   if (now - run.meetPressedAt < MEET_PRESS_MS) return
   const [onb, scope] = await Promise.all([read($, onboardingA), read($, scopeA)])
   if (!meetShows(onb.meet, scope.mode, run.meetFiredIn, run.session)) return
   run.meetPressedAt = now
-  $.clock.after(0, () => quiet($.prompt.submit({ text: MEET_PROMPT })))
+  $.clock.after(0, () => quiet(runCommand($, MEET_COMMAND)))
+}
+
+/** A plugin command, as if the person typed it; a refusal (an unknown name) says so in a toast. */
+async function runCommand($: EngineInterface, command: string): Promise<void> {
+  try {
+    await $.command.run({ command })
+  } catch {
+    $.ui.toast(`counterparts: couldn't run /${command}`)
+  }
+}
+
+/**
+ * WHICH STORE (core #459): the dashboard on the port must serve the store this
+ * session's wake named. Both known and different: everything read from it is
+ * dropped (the pulse, today's counts, the last dream) and nothing more is read
+ * until it matches again; the Mechanisms section says so. Either unknown
+ * (no marker yet, an older core, `store: null`): carry on.
+ */
+async function storeMatches($: EngineInterface): Promise<boolean> {
+  if (run.wakeStore === null) return true
+  let dash: string | null = null
+  try {
+    const r = await $.http.fetch(`${await dashUrl($)}/api/whoami`)
+    dash = r.ok ? storeOf(r.text) : null
+  } catch {
+    dash = null // down: the next read says so
+  }
+  const other = otherStore(run.wakeStore, dash)
+  if (other !== run.foreign) {
+    run.foreign = other
+    if (other) {
+      await update($, dashA, () => 'other')
+      await update($, pulseA, () => null)
+      await update($, todayA, () => null)
+      await update($, dreamA, () => null)
+    }
+    // Either way the next read is a cold one: all of it again, from the right store.
+    run.cold = false
+  }
+  return !other
 }
 
 /** Claude Code's own memory, as stored: one preference across sessions, on unless turned off. */
@@ -481,6 +559,7 @@ async function poll($: EngineInterface): Promise<boolean> {
   if (run.polling) return false
   run.polling = true
   try {
+    if (!(await storeMatches($))) return false
     const now = Date.now()
     const stale = run.lastPollAt > 0 && now - run.lastPollAt > STALE_MS
     run.lastPollAt = now
@@ -508,6 +587,10 @@ async function poll($: EngineInterface): Promise<boolean> {
     await fire($, lit)
     await addToday($, rows).catch(() => undefined)
     if (events.some(e => e.name === 'dream.journaled' || e.name === 'dream.changed')) await readDream($).catch(() => undefined)
+    // The fox dreams while a dream runs (one begun, none ended since), in any session or at night.
+    const dreams = events.filter(e => e.name === 'dream.begun' || e.name === 'dream.journaled' || e.name === 'dream.changed' || e.name === 'dream.undone')
+    const lastDream = dreams.sort((a, b) => a.seq - b.seq).at(-1)
+    if (lastDream !== undefined) await foxEvent($, lastDream.name === 'dream.begun' ? 'dream' : 'dreamEnd')
     const pulse = await read($, pulseA)
     const newDay = events.some(e => typeof e.day === 'number' && pulse !== null && e.day > pulse.day)
     if (newDay || events.some(e => COUNT_EVENTS.has(e.name))) await readPulse($)
@@ -545,6 +628,7 @@ async function paneShown($: EngineInterface): Promise<boolean> {
 async function pollLoop($: EngineInterface): Promise<void> {
   if ((await read($, viewA)) !== 'sidebar' || !(await paneShown($))) {
     run.pollArmed = false
+    stopStage()
     return
   }
   const moved = await poll($)
@@ -585,6 +669,7 @@ async function onRecallBlock($: EngineInterface, block: RecallBlock): Promise<vo
   if (firstSurfaced !== undefined) await setLatest($, words('remembered', firstSurfaced.title), 'retrieval')
   else if (firstFoot !== undefined) await setLatest($, words('subconscious', firstFoot.title), 'retrieval')
   await fire($, ['retrieval'])
+  await foxEvent($, 'came')
   if (block.surfaced.length > 0 && (await read($, dashA)) !== 'down') quiet(titleSurfaced($, block.turn))
 }
 
@@ -699,6 +784,7 @@ async function seedSession($: EngineInterface): Promise<void> {
 async function onSaved($: EngineInterface, items: readonly SidebarSaved[]): Promise<void> {
   if (items.length === 0) return
   await update($, savedA, list => [...[...items].reverse(), ...list])
+  await foxEvent($, 'note')
   const first = items[0]
   if (first !== undefined) {
     await setLatest($, items.length === 1 ? storedWords(first.title) : storedWords(first.title, items.length), 'salience', bodyOf(first))
@@ -837,6 +923,11 @@ async function deeperFirings($: EngineInterface, id: MechId, panel: readonly Das
 
 /** A click on a row of the body, by the key the layout gave it. */
 async function clickBody($: EngineInterface, key: string): Promise<void> {
+  // The Mechanisms section's link while the dashboard is down: the plugin's command starts it.
+  if (key === 'dash:start') {
+    $.clock.after(0, () => quiet(runCommand($, DASHBOARD_COMMAND)))
+    return
+  }
   if (key === 'search:clear') {
     await runSearch($, '')
     return
@@ -1208,6 +1299,7 @@ async function openPane($: EngineInterface): Promise<{ isPlaced: boolean }> {
 async function closeQuiet($: EngineInterface): Promise<void> {
   await setView($, 'quiet')
   stopBrain()
+  stopStage()
   await update($, placedA, () => false)
   await $.ui.close({ id: PANE })
   $.ui.invalidate('ui.render')
@@ -1217,10 +1309,13 @@ async function closeQuiet($: EngineInterface): Promise<void> {
 async function setView($: EngineInterface, view: SidebarView): Promise<void> {
   if ((await read($, viewA)) !== view) await update($, viewA, () => view)
   await $.store.set('view', view)
-  if (view !== 'sidebar') stopBrain()
+  if (view !== 'sidebar') {
+    stopBrain()
+    stopStage()
+  }
 }
 
-/** The brain's mode, for every session (`$.store`): turning, still, or off. */
+/** The avatar, for every session (`$.store` `brain`): the fox, the brain turning or still, or none. */
 async function setBrain($: EngineInterface, mode: SidebarBrain): Promise<void> {
   await $.store.set('brain', mode)
   if ((await read($, brainA)) !== mode) await update($, brainA, () => mode)
@@ -1228,6 +1323,7 @@ async function setBrain($: EngineInterface, mode: SidebarBrain): Promise<void> {
   brain.hold(mode === 'still')
   if (mode !== 'turning') stopBrain()
   else brain.wake()
+  if (mode !== 'fox') stopStage()
   raster.look = ''
   $.ui.invalidate('ui.render')
 }
@@ -1347,6 +1443,132 @@ function startBrain($: EngineInterface, pace: 'burst' | 'calm' = 'calm'): void {
   run.brainTimer = $.clock.every(paceMs(pace), () => tick($, gen))
 }
 
+// ── the fox (fox.ts holds what it does and how each frame looks) ──
+
+function stopStage(): void {
+  stage.gen += 1
+  stage.live = false
+}
+
+/** Something real happened: the fox's moment for it plays now, if the stage is up (else the next drawing shows where it is). */
+async function foxEvent($: EngineInterface, ev: FoxEvent): Promise<void> {
+  const now = await $.clock.now()
+  stage.director ??= newDirector(now)
+  trigger(stage.director, ev, now)
+  if (stage.live) {
+    stage.gen += 1
+    const gen = stage.gen
+    $.clock.after(0, () => quiet(stageStep($, gen)))
+  }
+}
+
+/**
+ * What is on screen next, then one wait until it changes: no timer runs in
+ * between (a still hold is one wait of 8–20 s). A change on a Raster or an
+ * Image is a blit; in sextants (Text) or on the desktop (an Svg) a redraw of
+ * the pane. A pane no longer shown stops it (the next drawing starts it). A
+ * refused blit stops it; an Image refused twice in a row (it draws its alt
+ * here) leaves `auto` drawing sextants for the session.
+ */
+async function stageStep($: EngineInterface, gen: number): Promise<void> {
+  if (gen !== stage.gen || !stage.live) return
+  const now = await $.clock.now()
+  stage.director ??= newDirector(now)
+  const { step, next } = advance(stage.director, now)
+  const key = stepKey(step)
+  if (key !== stage.shown) {
+    if (!(await paneShown($))) {
+      stopStage()
+      return
+    }
+    if (gen !== stage.gen) return
+    stage.shown = key
+    const tier = stage.tier
+    if (tier === 'basic' || tier === 'image') {
+      const args =
+        tier === 'basic'
+          ? { requestId: PANE, key: 'stage', cells: halfCells(step), columns: STAGE_COLS, rows: stageRows('basic') }
+          : { requestId: PANE, key: 'stage', source: { png: pngOf(step) }, columns: IMAGE_COLS, rows: IMAGE_ROWS }
+      void $.ui.blit(args).then(
+        r => {
+          if (gen !== stage.gen) return
+          if (r.deny === undefined) {
+            run.redraws = 0
+            if (tier === 'image') stage.imageDenies = 0
+            return
+          }
+          if (tier === 'image') {
+            stage.imageDenies += 1
+            if (stage.imageDenies >= 2) stage.noImages = true
+          }
+          stopStage()
+          redrawAfterRefusal($)
+        },
+        () => {
+          if (gen === stage.gen) stopStage()
+        },
+      )
+    } else $.ui.invalidate('ui.render')
+  }
+  $.clock.after(Math.max(16, next - now), () => quiet(stageStep($, gen)))
+}
+
+/** Starts the stage's timer under a new generation, once its element is mounted. */
+function startStage($: EngineInterface): void {
+  if (stage.live) return
+  stage.gen += 1
+  stage.live = true
+  const gen = stage.gen
+  $.clock.after(0, () => quiet(stageStep($, gen)))
+}
+
+/** The stage's element in a tier, for the step on screen. */
+function stageElement(els: ReturnType<EngineInterface['ui']['resolve']>, tier: FoxTier, step: Step): JSX.Element {
+  if (tier === 'basic' && 'Raster' in els) {
+    const { Raster } = els
+    return <Raster key="stage" columns={STAGE_COLS} rows={stageRows('basic')} cells={halfCells(step)} />
+  }
+  if (tier === 'image' && 'Image' in els) {
+    const { Box, Image } = els
+    return (
+      <Box key="stage-box" flexDirection="row" paddingLeft={IMAGE_X0}>
+        <Image key="stage" source={{ png: pngOf(step) }} columns={IMAGE_COLS} rows={IMAGE_ROWS} alt="a small fox" />
+      </Box>
+    )
+  }
+  if (tier === 'svg' && 'Svg' in els) {
+    const { Svg } = els
+    const svg = foxSvg(step)
+    return <Svg key="stage" source={svg.source} alt="a small fox" width={svg.width} height={svg.height} />
+  }
+  // fine: each row as runs of one colour pair; a cell with no colour is the panel's.
+  const { Box, Text } = els
+  return (
+    <Box key="stage" flexDirection="column" width={STAGE_COLS}>
+      {fineCells(step).map((line, y) => (
+        <Box key={`s${String(y)}`} flexDirection="row">
+          {runs(line).map((r, i) => (
+            <Text key={String(i)} {...(r.fg === null ? {} : { color: r.fg })} {...(r.bg === null ? {} : { backgroundColor: r.bg })}>
+              {r.ch}
+            </Text>
+          ))}
+        </Box>
+      ))}
+    </Box>
+  )
+}
+
+/** The fox's detail, for every session (`$.store` `avatarDetail`): auto, images, fine or basic. */
+async function setDetail($: EngineInterface, detail: FoxDetail): Promise<void> {
+  await $.store.set('avatarDetail', detail)
+  stage.detail = detail
+  stage.noImages = false
+  stage.imageDenies = 0
+  stopStage()
+  stage.shown = ''
+  $.ui.invalidate('ui.render')
+}
+
 /** A drawing of the pane: the turning brain's timer starts, and the dashboard is read from here on, until the pane stops showing. */
 function wake($: EngineInterface, turning: boolean): void {
   if (run.hint) {
@@ -1416,10 +1638,10 @@ export const register: Register = on => {
     if (run.startedAt === 0) run.startedAt = await $.clock.now()
     await $.command.register({
       name: 'counterparts',
-      description: 'Counterparts sidebar: open it, make it quiet, or set the brain or the theme',
-      argumentHint: '[quiet | brain turning|still|off | theme tron|cozy | resume | fps [n]]',
+      description: 'Counterparts sidebar: open it, make it quiet, or set the avatar or the theme',
+      argumentHint: '[quiet | avatar animal|brain|off | avatar detail auto|images|fine|basic | theme tron|cozy | resume | fps [n]]',
     })
-    const [mem, viewPref, brainPref, fpsPref, ccPref, ccEnv, meetMark, themePref] = await Promise.all([
+    const [mem, viewPref, brainPref, fpsPref, ccPref, ccEnv, meetMark, themePref, detailPref, searchEnv] = await Promise.all([
       $.store.get('claudeMemory'),
       $.store.get('view'),
       $.store.get('brain'),
@@ -1428,7 +1650,27 @@ export const register: Register = on => {
       $.env.get('COUNTERPARTS_SIDEBAR_CC_MEMORY'),
       $.store.get(MEET_FLAG),
       $.store.get('theme'),
+      $.store.get('avatarDetail'),
+      $.env.get('COUNTERPARTS_SIDEBAR_SEARCH').catch(() => undefined),
     ])
+    // A new module life's fox starts fresh: still, awake, trying pictures again where they may show.
+    stage.director = null
+    stage.noImages = false
+    stage.imageDenies = 0
+    stage.detail = normDetail(detailPref)
+    searchFlag.on = truthy(searchEnv)
+    // What this terminal can draw the fox with, read once (fox.ts, `pickTier`).
+    // (Each name spelled out: the engine lists the variables a module reads.)
+    const envVals = await Promise.all([
+      $.env.get('TERM_PROGRAM').catch(() => undefined),
+      $.env.get('TERM').catch(() => undefined),
+      $.env.get('KITTY_WINDOW_ID').catch(() => undefined),
+      $.env.get('WEZTERM_EXECUTABLE').catch(() => undefined),
+      $.env.get('TMUX').catch(() => undefined),
+      $.env.get('STY').catch(() => undefined),
+      $.env.get('CLAUDE_CODE_FORCE_TERMINAL_IMAGES').catch(() => undefined),
+    ])
+    stage.env = Object.fromEntries(TIER_ENV.map((k, i) => [k, envVals[i]]).filter(([, v]) => typeof v === 'string'))
     await update($, themeA, () => normTheme(themePref))
     await update($, memoryA, () => mem !== false)
     // The Claude memory switch is drawn only for someone who opted in. Whoever had already
@@ -1492,6 +1734,39 @@ export const register: Register = on => {
       await closeQuiet($)
       return { text: 'Counterparts quiet: the newest thing shows dim after the line under the prompt. /counterparts opens the sidebar.' }
     }
+    if (verb === 'avatar') {
+      if (arg === 'detail') {
+        const d = e.args.trim().split(/\s+/)[2] ?? ''
+        if (d !== 'auto' && d !== 'images' && d !== 'fine' && d !== 'basic') {
+          return { text: `counterparts avatar detail: auto, images, fine or basic (now ${stage.detail}, drawn ${stage.tier === 'image' ? 'as a picture' : stage.tier === 'fine' ? 'in sextants' : stage.tier === 'svg' ? 'as a drawing' : 'in half-blocks'}).` }
+        }
+        await setDetail($, d)
+        return {
+          text:
+            d === 'auto'
+              ? 'The fox is drawn the finest way this terminal is known to show.'
+              : d === 'images'
+                ? 'The fox is drawn as a picture (kitty, Ghostty); a terminal that cannot shows its name instead.'
+                : d === 'fine'
+                  ? 'The fox is drawn in sextants (six pixels a cell), for a font that has them.'
+                  : 'The fox is drawn in half-blocks, which every terminal shows.',
+        }
+      }
+      if (arg === 'animal' || arg === 'fox') {
+        await setBrain($, 'fox')
+        return { text: 'The avatar is the fox: it sits still, now and then blinks or looks around, naps when nothing happens, and shows what memory is doing.' }
+      }
+      if (arg === 'brain') {
+        const now = await read($, brainA)
+        await setBrain($, now === 'still' ? 'still' : 'turning')
+        return { text: 'The avatar is the brain: it turns slowly, and lights where something fires.' }
+      }
+      if (arg === 'off') {
+        await setBrain($, 'off')
+        return { text: 'No avatar: the header is two lines.' }
+      }
+      return { text: 'counterparts avatar: animal, brain or off; or detail auto, images, fine or basic.' }
+    }
     if (verb === 'brain') {
       if (arg !== 'turning' && arg !== 'still' && arg !== 'off') return { text: 'counterparts brain: turning, still or off.' }
       await setBrain($, arg)
@@ -1514,7 +1789,7 @@ export const register: Register = on => {
       return { text: switchExplains(scope) ?? `Counterparts memory isn't paused in ${shortDir(scope.dir)}.` }
     }
     if (verb !== '' && verb !== 'open' && verb !== 'sidebar') {
-      return { text: 'Usage: /counterparts [quiet | brain turning|still|off | theme tron|cozy | resume | fps [n]]. With nothing after it, opens the sidebar.' }
+      return { text: 'Usage: /counterparts [quiet | avatar animal|brain|off | avatar detail auto|images|fine|basic | theme tron|cozy | resume | fps [n]]. With nothing after it, opens the sidebar.' }
     }
     // Asked for: placed at any width, whatever view it was left in.
     const opened = await openPane($)
@@ -1523,13 +1798,23 @@ export const register: Register = on => {
 
   // Saved this session, and footnotes Claude opened: the memory tools, after a call that answered without error
   on('tool.call', async ($, e, next) => {
-    const ran = await next(e)
-    if (ran.deny !== undefined || ran.isError === true) return ran
     const name = String(e.tool)
     const ours = ourTool(name)
+    // The fox dreams while this session's dream runs.
+    if (ours?.tool === 'dream') await foxEvent($, 'dream')
+    let ran: Awaited<ReturnType<typeof next>>
+    try {
+      ran = await next(e)
+    } finally {
+      if (ours?.tool === 'dream') await foxEvent($, 'dreamEnd')
+    }
+    if (ran.deny !== undefined || ran.isError === true) return ran
     if (ours === null) return ran
-    // Core's first-meeting tool moved the state: read it again (the button shows or hides).
-    if (ours.tool === 'meet') quiet(readOnboarding($))
+    // Core's first-meeting tool moved the state: read it again (the button shows or hides); the fox says hello.
+    if (ours.tool === 'meet') {
+      quiet(readOnboarding($))
+      await foxEvent($, 'hello')
+    }
     try {
       const args = e as unknown as Record<string, unknown>
       const opened = openedIds(name, args)
@@ -1547,7 +1832,10 @@ export const register: Register = on => {
   // core offers the meeting in that reply instead.
   on('prompt.submit', async ($, e, next) => {
     const kind = e.origin.kind
-    if (kind === 'composer' || kind === 'bridge') run.typed = run.prompted = true
+    if (kind === 'composer' || kind === 'bridge') {
+      run.typed = run.prompted = true
+      await foxEvent($, 'prompt')
+    }
     if (kind === 'plugin' && e.origin.name === 'counterparts' && e.text === MEET_PROMPT && run.prompted && run.spokeFirst && run.meetPressedAt === -Infinity) {
       return { drop: 'the person spoke first' }
     }
@@ -1565,6 +1853,9 @@ export const register: Register = on => {
         if (run.session === '') run.session = await $.session.id()
         await onRecallBlock($, block)
       }
+      // The wake's store marker: which store this session's hooks opened (the dashboard must serve the same).
+      const storeId = parseStoreMarker(text)
+      if (storeId !== null) run.wakeStore = storeId
       // The wake's onboarding marker: where the first meeting stands, then the speak-first's look.
       const meet = parseOnboardingMarker(text)
       if (meet !== null) {
@@ -1593,6 +1884,7 @@ export const register: Register = on => {
   on('ui.close', { id: PANE }, async ($, e, next) => {
     if (e.origin.kind === 'person') {
       stopBrain()
+      stopStage()
       await setView($, 'quiet')
       await update($, placedA, () => false)
     }
@@ -1681,8 +1973,15 @@ export const register: Register = on => {
     const w = Math.max(16, inline ? Math.min(W - 2, 64) : W - 2)
     run.bodyW = w
     const hasRaster = e.surface === 'terminal' && mode !== 'off'
-    // While the pane holds the keyboard (typing a search) the brain holds still.
+    // The fox's stage: on a pane tall and wide enough (shorter, the brain's header, standing still), in the
+    // tier this surface draws (fox.ts); on a surface with no way to draw it, the header with no avatar.
+    const tier = pickTier(e.surface, stage.detail, stage.env, stage.noImages)
+    const drawsStage = tier === 'svg' ? 'Svg' in els : 'Raster' in els
+    const hasStage = mode === 'fox' && drawsStage && !inline && fill >= STAGE_MIN_PANE_ROWS && W >= STAGE_COLS
+    // While the pane holds the keyboard the brain and the fox hold still.
     const holding = e.props.isFocused === true
+    if (!hasStage || holding || tier !== stage.tier) stopStage()
+    stage.tier = tier
     if (e.surface === 'terminal' && (holding || mode !== 'turning')) stopBrain()
     if (normView(view) === 'sidebar') wake($, hasRaster && mode === 'turning' && !holding)
 
@@ -1711,7 +2010,30 @@ export const register: Register = on => {
     // ── the header: the terminal's brain beside the title, or (desktop, the brain off) a dot before it ──
     const countText = pulse === null ? '' : memoriesCount(pulse.memories)
     const day = pulse === null ? null : pulse.day
-    if (hasRaster) {
+    let stageTop: JSX.Element[] | null = null
+    if (hasStage) {
+      // The title row, the stage edge to edge (outside the frame's padding), a thin rule, then the count.
+      stage.director ??= newDirector(now)
+      const step = advance(stage.director, now).step
+      // An Image's first frame is blitted once mounted too: a refusal says it draws its alt here.
+      stage.shown = tier === 'image' ? '' : stepKey(step)
+      const [title] = brainlessHeader(paneEls, actions, { w, paused, lit, day, count: countText })
+      stageTop = [...rows, ...(title === undefined ? [] : [title]), stageElement(els, tier, step)]
+      rows.length = 0
+      rows.push(
+        <Text key="stage-rule" color={P.faint}>{'─'.repeat(w)}</Text>,
+        <Box key="head2" flexDirection="row" justifyContent="space-between" width={w}>
+          {searchBox(paneEls, actions, searchFlag.on ? Math.max(14, w - cells(countText) - 1) : 1)}
+          <Text color={P.dim}>{countText}</Text>
+        </Box>,
+        <Text key="head-gap"> </Text>,
+      )
+      used += 1 + (tier === 'svg' ? 15 : stageRows(tier)) + 3
+      if (!holding) startStage($)
+    } else if (mode === 'fox' && !hasRaster) {
+      rows.push(...brainlessHeader(paneEls, actions, { w, paused, lit, day, count: countText }))
+      used += 3
+    } else if (hasRaster) {
       const { Raster } = $.ui.resolve(e)
       rows.push(...brainHeader(paneEls, Raster, actions, { w, paused, day, count: countText }))
       used += BRAIN_ROWS + 1
@@ -1750,6 +2072,6 @@ export const register: Register = on => {
     // on the switch it just pressed: a card there would cover [Pause] [Cancel] or the note's last line.
     rows.push(footer(paneEls, actions, { scope, w, ccSwitch, memoryOn, view: normView(view), mode, cards: above.length === 0 }))
 
-    return frame(paneEls, W, fill, rows)
+    return frame(paneEls, W, fill, rows, stageTop)
   })
 }

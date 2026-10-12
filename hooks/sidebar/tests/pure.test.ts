@@ -29,8 +29,32 @@ import {
   shortDir,
   surfacedIds,
   wrap,
+  otherStore,
+  parseStoreMarker,
+  storeOf,
 } from '../hooks/feed'
 import { cells, ellipsizeCells, padCells } from '../hooks/width'
+import {
+  STAGE_COLS,
+  TEXT_256,
+  advance,
+  fineCell,
+  fineCells,
+  foxSvg,
+  halfCells,
+  newDirector,
+  normDetail,
+  pickTier,
+  pngOf,
+  runs,
+  sextantBits,
+  sextantGlyph,
+  stageRows,
+  stepKey,
+  textHex,
+  trigger,
+} from '../hooks/fox'
+import { FOX_FINAL } from '../hooks/fox-art'
 import { hookConfig, lookup, parentOf, parseRegistry, settingsHookConfig, under } from '../hooks/scopes'
 import { MECHS, STAGES, dashboardBase, dashboardPort, isDashboardUrl, memoryUrl } from '../hooks/mechanisms'
 import { MORE, OPEN_MAX_LINES, bar, clip, heading, layoutBody, openedLines, textOf, wrapN } from '../hooks/sections'
@@ -589,7 +613,7 @@ describe('the body, laid out', () => {
       'waiting on Mike',
     ])
     expect(lines.join(' ')).not.toContain('replaces') // only when opened
-    expect(lines).toContain('Schemas         ○ not built yet')
+    expect(lines.some(l => l.startsWith('Schemas'))).toBe(false) // not built: not drawn
     expect(lines.find(l => l.startsWith('Prospective'))).toMatch(/^Prospective\s+0$/)
     const d = lines.findIndex(l => l.startsWith('Last Dream'))
     expect(lines[d]).toBe('Last Dream ' + '─'.repeat(16) + ' 8:15')
@@ -611,7 +635,7 @@ describe('the body, laid out', () => {
   test('folding to fit: saved items fewer, one at a time, each keeping its lines, then their heading; the dream shortens; a folded section keeps its heading and count', () => {
     const many = Array.from({ length: 9 }, (_, i) => ({ ...BASE.saved[1]!, key: `k${String(i)}`, title: `Saved item ${String(i)} with a title long enough to wrap twice over` }))
     expect(layoutBody({ ...BASE, saved: many, rows: 64 }).folds).toEqual([])
-    const tall = layoutBody({ ...BASE, saved: many, rows: 42 })
+    const tall = layoutBody({ ...BASE, saved: many, rows: 41 })
     expect(tall.folds).toEqual(['saved shows 5'])
     // never one line each, cut: every item shown keeps its words (two lines here), its dot on the first only
     const t = textOf(tall.lines)
@@ -619,7 +643,7 @@ describe('the body, laid out', () => {
     expect(t.slice(s0 + 1, s0 + 11)).toEqual(Array.from({ length: 5 }, (_, i) => [`● Saved item ${String(i)} with a title long`, 'enough to wrap twice over']).flat())
     expect(t.some(l => l.startsWith('● ') && l.endsWith('…'))).toBe(false)
     // two rows fewer take one item away, its two lines, rather than a line from each
-    expect(layoutBody({ ...BASE, saved: many, rows: 40 }).folds).toEqual(['saved shows 4'])
+    expect(layoutBody({ ...BASE, saved: many, rows: 39 }).folds).toEqual(['saved shows 4'])
     // a long session's list draws twelve at most, its heading the whole count
     const dozens = Array.from({ length: 40 }, (_, i) => ({ ...BASE.saved[1]!, key: `d${String(i)}`, title: `Item ${String(i)}` }))
     const all = textOf(layoutBody({ ...BASE, saved: dozens, rows: 200 }).lines)
@@ -710,20 +734,27 @@ describe('the body, laid out', () => {
     expect(before.find(l => l.startsWith('Last Dream'))).toBe('Last Dream ' + '─'.repeat(15) + ' Oct 7')
   })
 
-  test('the dashboard down: the chart says counts appear once it is open, naming the plugin’s command', () => {
-    const lines = textOf(layoutBody({ ...BASE, today: null, dash: 'down' }).lines)
-    const at = lines.findIndex(l => l.startsWith('Mechanisms today'))
-    const to = lines.findIndex((l, i) => i > at && l.trim() === '')
-    expect(lines.slice(at + 1, to).join(' ')).toBe('Counts appear once the dashboard is open (/counterparts:dashboard)')
+  test('the dashboard down: the chart is a cyan link that starts it, each of its lines a click on it', () => {
+    for (const w of [26, 32, 48, 64]) {
+      const laid = layoutBody({ ...BASE, w, today: null, dash: 'down' }).lines
+      const lines = textOf(laid)
+      const at = lines.findIndex(l => l.startsWith('Mechanisms today'))
+      const to = lines.findIndex((l, i) => i > at && l.trim() === '')
+      expect(lines.slice(at + 1, to).join(' ')).toBe('Start the dashboard to see stats here')
+      for (const l of laid.slice(at + 1, to)) {
+        expect(l.key).toBe('dash:start')
+        expect(l.segs[0]?.c).toBe('#00e5ff')
+      }
+      expect(lines.join(' ')).not.toMatch(/(^|[^/])counterparts dashboard/)
+    }
   })
 
-  test('the dashboard down: no console command, and the slash command whole on one line, docked or inline', () => {
-    for (const w of [26, 32, 48, 64]) {
-      const lines = textOf(layoutBody({ ...BASE, w, today: null, dash: 'down' }).lines)
-      expect(lines.some(l => l.includes('(/counterparts:dashboard)'))).toBe(true)
-      expect(lines.join(' ')).not.toMatch(/(^|[^/])counterparts dashboard/)
-      expect(lines.join(' ')).not.toContain("isn't running")
-    }
+  test('another store’s dashboard: no numbers, one dim line saying so', () => {
+    const laid = layoutBody({ ...BASE, today: null, dream: null, dash: 'other' }).lines
+    const lines = textOf(laid)
+    const at = lines.findIndex(l => l.startsWith('Mechanisms today'))
+    expect(lines.slice(at + 1, at + 3).join(' ')).toBe('This dashboard belongs to another memory.')
+    expect(laid[at + 1]?.key).toBeUndefined()
   })
 
   test('search results take the sections’ place: the query, how many, each title and what it is', () => {
@@ -836,5 +867,188 @@ describe('the themes', () => {
       applyTheme('tron')
     }
     expect(P).toEqual(tron)
+  })
+})
+
+// ── the fox ────────────────────────────────────────────────────────────────
+
+/** A seeded random: the schedule's moments and holds the same every run. */
+function seeded(seed = 7): () => number {
+  let x = seed
+  return () => {
+    x = (x * 1103515245 + 12345) % 2147483648
+    return x / 2147483648
+  }
+}
+
+describe('the fox', () => {
+  test('which way a surface draws it: pictures only where the terminal shows them (kitty, Ghostty, never under tmux or screen), sextants where the font has them, half-blocks everywhere else', () => {
+    expect(pickTier('terminal', 'auto', { TERM_PROGRAM: 'ghostty' })).toBe('image')
+    expect(pickTier('terminal', 'auto', { TERM: 'xterm-kitty', KITTY_WINDOW_ID: '1' })).toBe('image')
+    expect(pickTier('terminal', 'auto', { TERM_PROGRAM: 'ghostty', TMUX: '/tmp/tmux-501/default,1,0' })).toBe('basic')
+    expect(pickTier('terminal', 'auto', { TERM: 'xterm-kitty', STY: '1.pts-0' })).toBe('basic')
+    for (const p of ['iTerm.app', 'WezTerm', 'vscode']) expect(pickTier('terminal', 'auto', { TERM_PROGRAM: p })).toBe('fine')
+    expect(pickTier('terminal', 'auto', { TERM_PROGRAM: 'Apple_Terminal' })).toBe('basic')
+    expect(pickTier('terminal', 'auto', {})).toBe('basic')
+    // the engine's own switch says yes or no outright
+    expect(pickTier('terminal', 'auto', { TERM_PROGRAM: 'Apple_Terminal', CLAUDE_CODE_FORCE_TERMINAL_IMAGES: '1' })).toBe('image')
+    expect(pickTier('terminal', 'auto', { TERM_PROGRAM: 'ghostty', CLAUDE_CODE_FORCE_TERMINAL_IMAGES: '0' })).toBe('fine')
+    // an Image that drew its alt here: auto stops trying; an explicit choice stands
+    expect(pickTier('terminal', 'auto', { TERM_PROGRAM: 'ghostty' }, true)).toBe('fine')
+    expect(pickTier('terminal', 'images', { TERM_PROGRAM: 'Apple_Terminal' })).toBe('image')
+    expect(pickTier('terminal', 'fine', {})).toBe('fine')
+    expect(pickTier('terminal', 'basic', { TERM_PROGRAM: 'ghostty' })).toBe('basic')
+    for (const s of ['desktop', 'vscode', 'mobile']) expect(pickTier(s, 'basic', {})).toBe('svg')
+    expect(normDetail('images')).toBe('images')
+    expect(normDetail('sharp')).toBe('auto')
+  })
+
+  test('sextant colours land on their xterm-256 colour whether the terminal rounds (chalk) or takes the nearest; the drawing uses them', () => {
+    const LV = [0, 95, 135, 175, 215, 255]
+    const rgb = (h: string): number[] => {
+      const n = parseInt(h.slice(1), 16)
+      return [n >> 16, (n >> 8) & 255, n & 255]
+    }
+    const chalk = (c: number[]): number[] => c.map(v => LV[Math.round((v / 255) * 5)] ?? -1)
+    const nearest = (c: number[]): number[] => c.map(v => LV.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a)))
+    for (const target of Object.values(TEXT_256)) {
+      const want = rgb(target)
+      if (want[0] === want[1] && want[1] === want[2]) continue // a grey: the grey ramp, itself
+      for (const v of want) expect(LV.includes(v)).toBe(true)
+      const [art] = Object.entries(TEXT_256).find(([, t]) => t === target) ?? ['']
+      const spelt = rgb(textHex(art) ?? '')
+      expect(chalk(spelt)).toEqual(want)
+      expect(nearest(spelt)).toEqual(want)
+    }
+    // Every coloured sextant palette entry and effect has its colour (black, the outline and white pass as they are).
+    const six = (c: string): string => '#' + [...c.slice(1)].map(x => x + x).join('')
+    const pass = new Set(['#000000', '#110000', '#ffffff'])
+    for (const c of [...FOX_FINAL.sextant.palette, ...Object.values(FOX_FINAL.fxPalette)]) {
+      const h = c.length === 4 ? six(c) : c
+      if (!pass.has(h)) expect(TEXT_256[h]).toBeDefined()
+    }
+    const used = new Set(fineCells({ frame: 'idle', fx: [] }).flat().flatMap(c => [c.fg, c.bg]))
+    expect(used.has('#aa7766')).toBe(false)
+    expect(used.has(textHex('#a76'))).toBe(true)
+  })
+
+  test('sextants: every pattern has its glyph and back; the four that are not sextants are the space and the block glyphs', () => {
+    for (let v = 0; v < 64; v++) expect(sextantBits(sextantGlyph(v))).toBe(v)
+    expect([sextantGlyph(0), sextantGlyph(21), sextantGlyph(42), sextantGlyph(63)]).toEqual([' ', '▌', '▐', '█'])
+    expect(sextantGlyph(1)).toBe('\u{1FB00}')
+    expect(sextantGlyph(62)).toBe('\u{1FB3B}')
+    // two colours a cell: the two most frequent; a third goes to the nearer of them
+    const c = fineCell(['#ff0000', '#ff0000', '#0000ff', '#0000ff', '#ee0000', null])
+    expect([c.fg, c.bg].sort()).toEqual(['#0000ff', '#ff0000'])
+    expect(fineCell([null, null, null, null, null, null])).toEqual({ ch: ' ', fg: null, bg: null })
+    expect(fineCell(['#abc', null, '#abc', null, '#abc', null])).toEqual({ ch: '▌', fg: '#abc', bg: null })
+  })
+
+  test('each tier draws the same frame in its footprint: half-blocks 34 x 15 on a Raster, sextants 34 x 16 in Text runs, the picture a PNG, the desktop an Svg under its size cap', () => {
+    const idle = { frame: 'idle', fx: [] }
+    expect(decodeCells(halfCells(idle)).length).toBe(STAGE_COLS * 15 * 3)
+    expect(stageRows('basic')).toBe(15)
+    const fine = fineCells(idle)
+    expect(fine.length).toBe(16)
+    expect(fine.every(l => l.length === STAGE_COLS)).toBe(true)
+    expect(fine.flat().some(c => (c.ch.codePointAt(0) ?? 0) >= 0x1fb00)).toBe(true)
+    // runs keep every cell
+    for (const l of fine) expect([...runs(l).map(r => r.ch).join('')].length).toBe(STAGE_COLS)
+    // a nap's z sits beside the head, inside the stage, in the effect's colour
+    const zs = [['zSmall', 'zSmall'], ['z', 'z']] as const
+    expect(fineCells({ frame: 'nap1', fx: zs }).flat().some(c => c.fg === textHex('#9be') || c.bg === textHex('#9be'))).toBe(true)
+    expect([...decodeCells(halfCells({ frame: 'nap1', fx: zs }))].some((v, i) => i % 3 !== 0 && v === 0x99bbee)).toBe(true)
+    expect(pngOf(idle).startsWith('iVBORw0KGgo')).toBe(true)
+    expect(pngOf({ frame: 'perk', fx: [['spark0', 'spark']] })).not.toBe(pngOf({ frame: 'perk', fx: [] }))
+    expect(pngOf({ frame: 'no-such', fx: [] })).toBe(pngOf(idle))
+    const svg = foxSvg(idle)
+    expect(svg.source.length).toBeLessThan(131072)
+    expect(svg.source).toContain('<rect')
+    expect(svg.source).toContain('data:image/png;base64,')
+  })
+
+  test('the schedule: a still hold of 8–20 s, then one small moment; one wake per change of what is on screen', () => {
+    const d = newDirector(0)
+    const rand = seeded()
+    const first = advance(d, 0, rand)
+    expect(first.step.frame).toBe('idle')
+    expect(first.next).toBeGreaterThanOrEqual(8000)
+    expect(first.next).toBeLessThanOrEqual(20000)
+    let t = first.next
+    let shown = stepKey(first.step)
+    const seen: string[] = []
+    for (let i = 0; i < 40; i++) {
+      const a = advance(d, t, rand)
+      // each wake shows something new
+      expect(stepKey(a.step)).not.toBe(shown)
+      shown = stepKey(a.step)
+      seen.push(shown)
+      expect(a.next).toBeGreaterThan(t)
+      t = a.next
+    }
+    expect(seen.filter(k => k === 'idle').length).toBeGreaterThan(3)
+    expect(new Set(seen).size).toBeGreaterThan(2)
+  })
+
+  test('after three minutes with nothing happening the fox naps, and a prompt wakes it with a stretch', () => {
+    const d = newDirector(0)
+    const rand = seeded(3)
+    let t = 0
+    while (t < 200000) t = advance(d, t, rand).next
+    expect(d.mode).toBe('nap')
+    trigger(d, 'prompt', t)
+    expect(d.mode).toBe('idle')
+    const frames: string[] = []
+    for (let i = 0; i < 4; i++) {
+      const a = advance(d, t, rand)
+      frames.push(a.step.frame)
+      t = a.next
+    }
+    expect(frames).toContain('stretch')
+    // a prompt while awake changes nothing on screen
+    const before = stepKey(advance(d, t, rand).step)
+    trigger(d, 'prompt', t)
+    expect(stepKey(advance(d, t, rand).step)).toBe(before)
+  })
+
+  test('real state: something came to mind (a spark beside the head), a save (the notepad, twice), the first meeting (hello), a dream (asleep, until it ends)', () => {
+    const d = newDirector(0)
+    const rand = seeded()
+    trigger(d, 'came', 1000)
+    const came = advance(d, 1000, rand).step
+    expect(came.frame).toBe('perk')
+    expect(came.fx.map(f => f[0])).toContain('spark0')
+    trigger(d, 'note', 2000)
+    const notes: string[] = []
+    let t = 2000
+    for (let i = 0; i < 8; i++) {
+      const a = advance(d, t, rand)
+      notes.push(a.step.frame)
+      t = a.next
+    }
+    expect(notes.filter(f => f === 'note0').length).toBe(2)
+    trigger(d, 'hello', t)
+    expect(advance(d, t, rand).step.frame).toBe('hello0')
+    trigger(d, 'dream', t)
+    for (let i = 0; i < 10; i++) t = advance(d, t, rand).next
+    expect(d.mode).toBe('dream')
+    expect(advance(d, t, rand).step.fx.map(f => f[0]).some(n => n.startsWith('dream'))).toBe(true)
+    // a save while dreaming: the dream is what it does
+    trigger(d, 'note', t)
+    expect(d.mode).toBe('dream')
+    trigger(d, 'dreamEnd', t)
+    expect(d.mode).toBe('idle')
+  })
+
+  test('which store: the wake’s marker and a dashboard’s answer; another store only when both are known and differ', () => {
+    expect(parseStoreMarker('<!-- counterparts:onboarding meet=done -->\n<!-- counterparts:store id=st_0123456789abcdef -->')).toBe('st_0123456789abcdef')
+    expect(parseStoreMarker('<!-- counterparts:store id=st_xyz -->')).toBeNull()
+    expect(storeOf('{"store":"st_0123456789abcdef","version":"0.3.20"}')).toBe('st_0123456789abcdef')
+    expect(storeOf('{"store":null}')).toBeNull()
+    expect(storeOf('not json')).toBeNull()
+    expect(otherStore('st_0123456789abcdef', 'st_fedcba9876543210')).toBe(true)
+    expect(otherStore('st_0123456789abcdef', 'st_0123456789abcdef')).toBe(false)
+    expect(otherStore(null, 'st_fedcba9876543210')).toBe(false)
+    expect(otherStore('st_0123456789abcdef', null)).toBe(false)
   })
 })
