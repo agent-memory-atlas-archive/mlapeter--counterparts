@@ -801,6 +801,30 @@ describe("Arriving ranks plain reminders first, then nearest date", () => {
     expect(ids(h.items)).toEqual([due, missed]);
   });
 
+  // The owner's 10-12 tax reminder (2026-10-12): cued out in its lead days,
+  // told to a turn nobody read just after midnight, and gone from every wake
+  // that day. The lane is not a cue.
+  test("a date whose cue budget is spent, or fired today, is still arriving", () => {
+    const s = store();
+    const id = dated(s, "2026-09-04", { ...PLAIN });
+    const p = engine(s);
+    expect(p.fire({ memoryId: id, windowKey: "d:2026-09-04", at: "2026-09-02", day: 3 }).reason).toBe<FireReason>("fired");
+    expect(p.fire({ memoryId: id, windowKey: "d:2026-09-04", at: "2026-09-04", day: 5 }).reason).toBe<FireReason>("fired");
+    expect(p.arrivals({ at: "2026-09-04", day: 5 }).suppressed.map((x) => x.reason)).toEqual(["over-fired"]);
+    expect(ids(p.horizon({ at: "2026-09-04", day: 5 }).items)).toEqual([id]);
+  });
+
+  test("a plain reminder told on its day stays listed that day, and leaves once its day is behind", () => {
+    const s = store();
+    const id = dated(s, "2026-09-04", { ...PLAIN });
+    const p = engine(s);
+    const due = p.plainDue({ at: "2026-09-04" });
+    expect(p.claimPlain(due[0]!, { at: "2026-09-04", day: 5, session: "s-other" })).toBe(true);
+    expect(p.arrivals({ at: "2026-09-04", day: 5 }).suppressed.map((x) => x.reason)).toEqual(["told-plainly-today"]);
+    expect(ids(p.horizon({ at: "2026-09-04", day: 5 }).items)).toEqual([id]);
+    expect(ids(p.horizon({ at: "2026-09-05", day: 6 }).items)).toEqual([]);
+  });
+
   test("within a tier: the nearest date either side of the day asked about leads", () => {
     const s = store();
     const behindFar = dated(s, "2026-08-31", { body: `${BODY} behind four` });

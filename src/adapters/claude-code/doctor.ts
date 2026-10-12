@@ -2640,12 +2640,12 @@ function wakeRoom(store: Store, since: number): WakeRoom {
       : "") +
     (workNoRoom > 0 ? `; "Work here" lines that did not fit, in ${String(workNoRoom)} ${workNoRoom === 1 ? "directory-day" : "directory-days"}` : "") +
     (datedUnlistedRenders > 0
-      ? `; a dated item under "Arriving:" was not listed for want of room in ${String(datedUnlistedRenders)} ${datedUnlistedRenders === 1 ? "wake" : "wakes"}${datedNewest === null ? "" : ` (newest ${datedNewest})`}`
+      ? `; a dated item under "Arriving:" was not listed for want of room in ${String(datedUnlistedRenders)} ${datedUnlistedRenders === 1 ? "render" : "renders"} of the wake${datedNewest === null ? "" : ` (newest ${datedNewest})`}`
       : "");
   const remedies = [
     ...(datedUnlistedRenders > 0
       ? [
-          "A dated item is listed before everything below it gives way — \"Work here\", the Yesterday line's titles, \"Last here\" and the handoffs — so a wake that still had no room for it is over-full: give the self page a short version or bring it under its room (`counterparts self-page`), or raise `injectionBudgetBytes`. The item is still a memory, and recall finds it.",
+          "A dated item takes its room from \"Work here\", the Yesterday line's titles, \"Last here\" and the handoffs before it goes unlisted. A self page past its own room keeps what it borrowed from \"Work here\" ahead of an ordinary dated item, and steps down to its short version only for a plain reminder due that day. So an unlisted one means a page over its room or a full wake: bring the page under its room or give it a short version (`counterparts self-page`), or raise `injectionBudgetBytes`. The item is still a memory, and recall finds it.",
         ]
       : []),
     ...(overCap > 0
