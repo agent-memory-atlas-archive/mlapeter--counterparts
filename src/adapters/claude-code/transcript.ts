@@ -12,7 +12,9 @@
  *   **§2 G11 — injected context is kept in capture and excluded from pacing.**
  *   Host-injected material is user-role but is not the user speaking, so it is
  *   tagged `injected` rather than discarded: `enters()` keeps it, `substanceOf`
- *   does not count it.
+ *   does not count it. EXCEPT the host's own lines (2026-10-12, `hostRecord`):
+ *   a compaction summary and every `isMeta` line but a peer's message enter
+ *   no turn at all.
  *
  * And three more this host's shapes force:
  *
@@ -291,6 +293,28 @@ function hostFramed(text: string): boolean {
  */
 export type EntryAuthor = "human" | "host" | "unknown";
 
+/**
+ * A LINE THE HOST WROTE FOR ITSELF, NOT KEPT (2026-10-12): the compaction
+ * summary (`isCompactSummary`) and every other `isMeta` user line — hook
+ * feedback, `/context` output, image captions, skill bodies, the
+ * local-command caveat, the idle notice. They were kept as `injected` until
+ * then. A compaction summary is a conversation summary in the plain sense of
+ * the plugin directory's policy, and it repeats turns each Stop already
+ * captured; the rest is the host's own bookkeeping, not the conversation. Both
+ * now stay in the transcript: their text enters no turn. ONE `isMeta` line is
+ * still kept — a message another session SENT here (`origin.kind: "peer"`),
+ * which is addressed to this conversation like a task notification (no
+ * `isMeta`, kept) and is labelled by `attributePeers`. Refusals (`foreign`,
+ * `ritual`, `dream`) are still read from these lines and counted.
+ */
+export function hostRecord(entry: Record<string, unknown>): boolean {
+  if (entry["isCompactSummary"] === true) return true;
+  if (entry["isMeta"] !== true) return false;
+  const origin = entry["origin"];
+  const kind = origin !== null && typeof origin === "object" && !Array.isArray(origin) ? (origin as Record<string, unknown>)["kind"] : undefined;
+  return kind !== "peer";
+}
+
 export function entryAuthor(entry: Record<string, unknown>, role: "user" | "assistant"): EntryAuthor {
   if (role === "assistant") {
     const message = entry["message"] as Record<string, unknown> | undefined;
@@ -477,7 +501,10 @@ export function parseTranscript(raw: string): TranscriptRead {
       const said = message?.["model"];
       if (typeof said === "string" && said.length > 0) model = said;
     }
-    const pieces = blocksOf(content, role, author);
+    // The host's own lines keep only what is refused (and so counted); their
+    // text enters no turn (`hostRecord`).
+    const all = blocksOf(content, role, author);
+    const pieces = role === "user" && hostRecord(entry) ? all.filter((p) => p.source !== "injected") : all;
     // A twin, if the host ever writes one, is the person's NEXT sent entry: the
     // same words, marked queued. Anything else the person sends closes the
     // window. Assistant lines do not: the turn goes on after the attachment.

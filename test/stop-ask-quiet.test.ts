@@ -31,7 +31,7 @@ import { STOP_HUMAN_LINE, stopAsk, substanceOf } from "../src/adapters/claude-co
 import type { HookInput } from "../src/adapters/claude-code/hooks.js";
 import { openAdapter } from "../src/adapters/claude-code/index.js";
 import type { ClaudeCodeAdapter } from "../src/adapters/claude-code/index.js";
-import { STOP_ASK_OPENER, entryAuthor, parseTranscript } from "../src/adapters/claude-code/transcript.js";
+import { STOP_ASK_OPENER, entryAuthor, hostRecord, parseTranscript } from "../src/adapters/claude-code/transcript.js";
 import { openServer, renderDescription, toolSpec } from "../src/adapters/mcp/index.js";
 import type { McpServer } from "../src/adapters/mcp/index.js";
 import { describeScopeTrouble, readScopes, scopesPath } from "../src/adapters/scopes.js";
@@ -222,9 +222,12 @@ describe("pacing counts only what the person typed (decision 3)", () => {
     }
     // What the person TYPED is the person, whatever it looks like.
     expect(parseTranscript(jsonl([typedEntry(shapes[0] ?? "")])).turns[0]?.source).toBe("conversation");
-    // Some OTHER hook's additional context is still injected, not ours.
+    // Some OTHER hook's additional context is not ours: on the host's own
+    // (isMeta) line it is not kept at all (2026-10-12, `hostRecord`); written
+    // as bare user text it is still injected.
     const other = "<system-reminder>\nPostToolUse hook additional context: run the linter\n</system-reminder>";
-    expect(parseTranscript(jsonl([metaEntry(other)])).turns[0]?.source).toBe("injected");
+    expect(parseTranscript(jsonl([metaEntry(other)])).turns).toEqual([]);
+    expect(parseTranscript(jsonl([bareEntry(other)])).turns[0]?.source).toBe("injected");
     expect(parseTranscript(jsonl([bareEntry(other)])).turns[0]?.source).toBe("injected");
   });
 
@@ -291,7 +294,7 @@ describe("pacing counts only what the person typed (decision 3)", () => {
     expect(read?.corrupt).toBe(4);
   });
 
-  test("every other host-written user line is injected: compaction summary, /context output, image captions, idle notice", () => {
+  test("the host's own lines are not kept (compaction summary, /context output, image captions, idle notice); host text with no metadata is injected", () => {
     const read = parseTranscript(
       jsonl([
         { ...bareEntry("This session is being continued from a previous conversation that ran out of context."), isCompactSummary: true },
@@ -303,7 +306,10 @@ describe("pacing counts only what the person typed (decision 3)", () => {
         bareEntry("<bash-stdout>ok</bash-stdout><bash-stderr></bash-stderr>"),
       ]),
     );
-    expect(read.turns.map((t) => t.source)).toEqual(Array.from({ length: 7 }, () => "injected"));
+    // 2026-10-12 (`hostRecord`): the four isMeta / isCompactSummary lines
+    // enter no turn; the three bare lines are still read as injected.
+    expect(read.turns.map((t) => t.source)).toEqual(Array.from({ length: 3 }, () => "injected"));
+    expect(read.turns.map((t) => t.text).join(" ")).not.toContain("continued from a previous conversation");
     expect(substanceOf(read.turns)).toEqual({ turns: 0, bytes: 0 });
   });
 
@@ -336,6 +342,26 @@ describe("pacing counts only what the person typed (decision 3)", () => {
       turns: 1,
       bytes: Buffer.byteLength(TYPED, "utf8") + Buffer.byteLength(reply, "utf8"),
     });
+  });
+
+  test("2026-10-12: the host's own lines (isMeta, isCompactSummary) enter no turn; a peer's message and our refused ask still read", () => {
+    expect(hostRecord({ ...bareEntry("x"), isCompactSummary: true })).toBe(true);
+    expect(hostRecord(metaEntry("x"))).toBe(true);
+    expect(hostRecord(handbackEntry("x"))).toBe(false);
+    expect(hostRecord(notificationEntry("x"))).toBe(false);
+    expect(hostRecord(typedEntry("x"))).toBe(false);
+    const read = parseTranscript(
+      jsonl([
+        { ...bareEntry("This session is being continued from a previous conversation. SUMMARYWORDS"), isCompactSummary: true },
+        metaEntry("<system-reminder>SKILLWORDS a skill body</system-reminder>"),
+        handbackEntry(HANDBACK_TEXT),
+        typedEntry(TYPED),
+      ]),
+    );
+    const text = read.turns.map((t) => t.text).join("\n");
+    expect(text).not.toContain("SUMMARYWORDS");
+    expect(text).not.toContain("SKILLWORDS");
+    expect(read.turns.map((t) => t.source)).toEqual(["injected", "conversation"]);
   });
 
   test("entryAuthor reads the host's own fields and nothing else", () => {
