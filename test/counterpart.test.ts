@@ -519,6 +519,10 @@ describe("the root binds the seams a caller would otherwise have to remember", (
     ]) {
       c.store.put({ type: "memory", kind: "fact", body });
     }
+    // What the turn reaches through the handle alone. The cards themselves are
+    // no longer recall candidates (2026-10-11, Group 3 part D), so a memory
+    // saying the handle is.
+    c.store.put({ type: "memory", kind: "fact", body: "Robin climbs; Robin belays Robin.", salience: { claimed: 0.8 } });
     // Two concurrent births can each claim one handle; the next open reads both.
     const first = c.schemas;
     const second = brain().schemas;

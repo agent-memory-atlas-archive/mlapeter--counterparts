@@ -144,11 +144,11 @@ describe("the name tally (names.ts)", () => {
 
   test("a piece said mostly as part of a longer name gives way to the whole name", () => {
     const texts = [
-      text("Closed the Sitting Duck for winter.", 1),
-      text("The Sitting Duck reopens in spring.", 1),
-      text("Painted the sign at the Sitting Duck.", 2),
+      text("Closed the Copper Kettle for winter.", 1),
+      text("The Copper Kettle reopens in spring.", 1),
+      text("Painted the sign at the Copper Kettle.", 2),
     ];
-    expect(tallyNames(texts, BAR).names.map((n) => n.name)).toEqual(["Sitting Duck"]);
+    expect(tallyNames(texts, BAR).names.map((n) => n.name)).toEqual(["Copper Kettle"]);
   });
 
   test("a possessive names the person; the kind comes from what a memory is about", () => {

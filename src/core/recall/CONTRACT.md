@@ -211,6 +211,11 @@ it would put one directory's unfinished business in front of another's turn. It 
 refused at `deliberate.ts#expandHandle`, because the pointer's whole shape is a line and an
 id; what it is refused is CREDIT (`counterpart.ts#creditReferences`), so expanding one
 reinforces nothing and can never promote.*
+*A THIRD (2026-10-11, Group 3 part D): an ENTITY CARD (`activate.ts#isEntityCardRow`, off
+the row's `meta` column). A card is how a name reaches its memories — subjects, facts mode's
+subject channel — and a newborn one holds only its name, so once cards were born from the
+names the memories say, a turn naming someone footnoted the stub. Facts mode keeps it out of
+its results the same way (`facts.ts#neverAResult`). The identity core is a card too.*
 **Outputs** — a rendered injection (empty string, affect flag, footnotes, or a surfaced
 gist); a decision record (tier counts, ids, salience — content-by-reference); reference
 credit at the boundary; reinforcement deltas handed to `physics/`.

@@ -12,7 +12,7 @@
  * What counts as a name here, all of it mechanical and none of it a model call:
  *
  * - **A capitalized run, seen mid-sentence at least once.** One to
- *   `MAX_WORDS` adjacent capitalized words ("Sitting Duck"), where a
+ *   `MAX_WORDS` adjacent capitalized words ("Copper Kettle"), where a
  *   capitalized word starts upper-then-lower case (so "PR", "MCP" and "ELI5"
  *   are acronyms, not names) and has no digits. A sentence's first word is
  *   capitalized by grammar, so a run that starts a sentence, a line, a bullet or
@@ -35,7 +35,7 @@
  *   words, which recall reads its own way.
  * - **The whole name, not a piece of it.** A name inside a longer reported
  *   name that at least half its memories say as part of the longer one
- *   ("Duck" inside "Sitting Duck", "Guide" inside "Field Guide") is the longer
+ *   ("Kettle" inside "Copper Kettle", "Lights" inside "Harbour Lights") is the longer
  *   name's word, and only the longer one is reported: a card for the piece
  *   would refuse the whole name as a near collision.
  *
@@ -281,7 +281,7 @@ export function tallyNames(texts: readonly TalliedText[], opts: TallyOptions): N
     counted.push({ name, memories: memories.sort(), days: days.size, kinds, titledKinds });
   }
   // A piece of a longer name, said as part of it in at least half its
-  // memories, is that name's word: "Guide" mostly says "Field Guide". A card
+  // memories, is that name's word: "Lights" mostly says "Harbour Lights". A card
   // for the piece would refuse the whole name (`collision-near`) for good.
   const names = counted.filter(
     (short) =>

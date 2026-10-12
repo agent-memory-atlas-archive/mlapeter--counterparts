@@ -141,7 +141,17 @@ name/alias resolution; birth and death telemetry.
    hallucinated entity.
 3. **[M] At most one birth per chunk, counted by the engine.** A span that appears to
    introduce five new entities is far more likely to be one confused chunk than five
-   discoveries.
+   discoveries. **Since 2026-10-11 (Group 3 part D) the one live birth door is the night's
+   name tally** (`Schemas#birthsFromNames` over `names.ts#tallyNames`, run by sleep's
+   `births` phase): a name at least `BIRTH_TALLY.MIN_MEMORIES` (3) live memories on
+   `MIN_DAYS` (2) lived days say, mid-sentence and capitalized, and not written in another
+   case in prose by `LOWER_CASE_SHARE` of them, is offered to `mention()` with those
+   memories as its source; every gate here still judges it. Each name is its own chunk, so
+   the cap that binds is sleep's nightly budget (`BUDGETS.births`, 10), most-named first,
+   the rest counted and offered again. A name a live or faded card holds is not offered. The
+   title door (`counterpart.ts#mentionFromProposal`, an authored title passed as the name)
+   is gone: it refused every authored write `name-not-in-source` (review 12 §3a). A write
+   still credits the cards it names and brings a faded one back (G14, NOTES §15).
 4. **[M] Exact and near name collisions refuse, loudly**, and the refusal is a distinct
    record from "not proposed" (scar §2.4 — v1's zero births were ambiguous precisely
    because the two were indistinguishable). **The proposal is logged, not only the
