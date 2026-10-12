@@ -874,7 +874,14 @@ not read as lost. A clean exit that stopped short of
 its allowance — some granted session neither written up nor brought to its `upTo` part —
 is recorded `partial`, not `done` (a usage limit exits 0 too; its output is not read), and
 starts no further batch. A runner record a killed process left open is ended at the
-next run's start (`endStaleRunners`). `counterparts catch-up` runs the same launcher in the
+next run's start (`endStaleRunners`). A part whose every word is already written up (the
+session's own chapters or notes claimed them) is passed over by the door and costs a batch
+nothing — never the last part (`sessions.ts#firstUnwrittenPart`, 2026-10-11) — and the row
+counts those (`passed`). A catch-up's `[]` for a part with unwritten words needs a one-line
+`nothing` reason or is refused, and the part stays owed; the row counts parts a child was
+handed and did not bring back (`unread`). `counterparts catch-up --reowe <run>`
+(`reowe.ts`) owes again what a run closed empty while its words were unwritten, moving only
+the progress counter, and refuses by name what that cannot do. `counterparts catch-up` runs the same launcher in the
 foreground (`cli/catch-up.ts`, run ids `cup_…`), its runners filed under the store's own
 directory. Under dreaming `auto` the SessionStart write-up pointer is retired
 (`lifecycle.ts#writeUpPointerRetired`); under `ask` or `off` no night runs and the pointer

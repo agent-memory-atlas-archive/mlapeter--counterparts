@@ -17,6 +17,7 @@ import type { LedgerEntry } from "../../core/coverage/index.js";
 import { SpanBuffer } from "../../core/remember/index.js";
 import type { Store } from "../../core/store/index.js";
 import { localDate, localStamp, readableDate } from "../../core/time.js";
+import { catchUpOf } from "../claude-code/night-catch-up.js";
 import { DESKTOP_HOST } from "../hosts.js";
 import { hostOf, hostSessionEvidence, listSessions } from "../sessions.js";
 
@@ -119,6 +120,13 @@ export function coverageLines(input: { store: Store; date: string; today: string
           .map((e) => `${e.session} (${plural(e.stretch?.pieces ?? 0, "piece", "pieces")})`)
           .join(", ")}.`,
   );
+  // PARTS A CATCH-UP LEFT UNREAD (2026-10-11): handed to its reader and not
+  // brought back — an empty answer with no reason, or never reached. They stay
+  // owed, so they are in the line above too; this says why they are.
+  const cu = catchUpOf(store);
+  if (cu !== null && cu.unread > 0 && now - cu.at < COVERAGE_LAPSE_WINDOW_DAYS * 86_400_000) {
+    out.push(`The last catch-up (${readableDate(localDate(cu.at, zone)) || localDate(cu.at, zone)}) left ${plural(cu.unread, "part", "parts")} unread; they stay owed.`);
+  }
   const lapses = lapsesSince(store, now - COVERAGE_LAPSE_WINDOW_DAYS * 86_400_000).length;
   out.push(`Lapsed in the last ${String(COVERAGE_LAPSE_WINDOW_DAYS)} days: ${String(lapses)}.`);
   return out;

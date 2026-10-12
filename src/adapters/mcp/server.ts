@@ -3526,6 +3526,9 @@ export class McpServer {
       of: typeof body["of"] === "number" ? body["of"] : null,
       deposited: typeof body["deposited"] === "number" ? body["deposited"] : 0,
       marked: typeof body["marked"] === "boolean" ? body["marked"] : null,
+      // Parts a fetch passed over, every word in them already written up
+      // (2026-10-11): what makes a fast run of empty parts legible in the log.
+      skipped: typeof body["skipped"] === "number" ? body["skipped"] : 0,
     });
     if (out.isError && body["stored"] === false && out.reason !== "nothing-landed") {
       this.emit("mcp.refused", undefined, { tool: "session_end", reason: out.reason });

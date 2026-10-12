@@ -1046,6 +1046,10 @@ const SESSION_END: ToolSpec = {
         minimum: 1,
         description: "With `writeUp` and `memories`: the part number the fetch returned. Optional; it must match if sent.",
       },
+      nothing: {
+        type: "string",
+        description: "Catch-up only, with `writeUp` and `memories: []`: one line on why nothing in the part is worth keeping.",
+      },
       drewOn: DREW_ON_PROPERTY,
       memories: {
         type: "array",
