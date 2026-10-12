@@ -1,11 +1,11 @@
 # Counterparts for Claude Code
 
-Counterparts gives Claude its own long-term memory, modeled on human memory. Each session
-opens with a short "who I am, who you are, where we left off" that it wrote itself. As
-you talk, related memories come to mind. At the end of a session it writes down what it
-learned, in its own words, and memories fade unless they come up again. The memory is
-kept on your computer; Claude sees the parts it brings into a session, like anything else
-in its context.
+Counterparts gives Claude its own long-term memory, modeled on human memory. After the
+first few sessions, each session opens with a short "who I am, who you are, where we left
+off" that it wrote itself. As you talk, related memories come to mind. At the end of a
+session it writes down what it learned, in its own words, and memories fade unless they
+come up again. The memory is kept on your computer; Claude sees the parts it brings into a
+session, like anything else in its context.
 
 This is the Claude Code plugin. The source, the documentation and the npm package live at
 [github.com/mlapeter/counterparts](https://github.com/mlapeter/counterparts); this
@@ -13,6 +13,8 @@ repository is generated from it at each release (`tools/plugin-bundle/build.ts` 
 please open issues and pull requests there.
 
 ## Install
+
+Runs on macOS and Linux; Windows is not yet supported.
 
 In Claude Code:
 
