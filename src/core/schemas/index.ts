@@ -130,6 +130,8 @@ export const PUBLIC_SURFACE = [
   "bandOf",
   "fadeVerdict",
   "story",
+  // 2026-10-11 (review of #427): a crossing's successor, read off its pressure pair (a read).
+  "crossedTo",
   "lifecycle",
   "events",
   // v12 (2026-10-03): what a memory names — the store's finder, and the
