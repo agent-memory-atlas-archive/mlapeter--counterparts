@@ -32,9 +32,17 @@
  *     its old name note) / session_end (Saved) and on recall by id (`↗ opened`).
  *
  * The engine lets `$` pass only to functions declared at the top of this
- * file, so everything that touches the engine lives here; the brain, the
- * cells, the feed, the layout and the mechanism table are pure modules beside
- * it, and the body is a Client surface module (`./body.tsx`).
+ * file, reads a `$.state` source only from an atom declared here, and reads
+ * the surface modules (`<Client module=…>`) off this file's source, so those
+ * live here: every function that touches the engine, the atoms, the hooks.
+ * Everything else is beside it, with no `$` (a press reaches a view as a
+ * closure made here). The shared core: `state.ts` (timings, `run`),
+ * `words.ts` (what the sidebar says), `feed.ts` (the dashboard's rows and the
+ * recall block, read), `sections.ts` (the body's sections, laid out),
+ * `mechanisms.ts`, `scopes.ts`. The views: `pane.tsx` (the pane's
+ * tree on every surface), `terminal.tsx` (the brain's header) with
+ * `brain.ts`, `cells.ts`, `width.ts` and `tail.ts`, `desktop.tsx` (the
+ * header without a brain), and `body.tsx` (the body, a Client surface module).
  */
 
 import { atom, read, update } from 'claude-code'
@@ -53,6 +61,7 @@ import type {
   SidebarView,
 } from '../types'
 import type { BodyProps } from './body'
+import { brainlessHeader } from './desktop'
 import {
   RULES,
   RULE_NAMES,
@@ -81,7 +90,6 @@ import {
   shortDir,
   surfacedIds,
   titled,
-  wrap,
 } from './feed'
 import type { DashDream, DashEvent, Firing, RecallBlock } from './feed'
 import {
@@ -89,25 +97,23 @@ import {
   dashboardBase,
   dashboardPort,
   dashboardRoutes,
-  hex,
   isDashboardUrl,
   mechById,
   memoryUrl,
   stageOf,
 } from './mechanisms'
 import type { MechId } from './mechanisms'
+import { aboveSwitches, footer, frame, meetRow, pausedBanner, plainBody } from './pane'
+import type { PaneActions, PaneEls } from './pane'
 import { lookup, parentOf, parseRegistry, settingsHookConfig } from './scopes'
 import type { RegistryMode } from './scopes'
-import { P, clip, layoutBody } from './sections'
-import type { Line } from './sections'
+import { layoutBody } from './sections'
 import {
   AUTO_CLOSE_MS,
   COUNT_EVENTS,
   FALLBACK_LIMIT,
   FALLBACK_MAX,
   FIRING_MS,
-  HOVER_CP,
-  HOVER_MEM,
   IDLE_SEARCH,
   MEET_FLAG,
   MEET_PRESS_MS,
@@ -127,7 +133,7 @@ import {
   run,
 } from './state'
 import { CLASSIC_HINT, TAIL_HINT, TAIL_SPARE, quietTail } from './tail'
-import { BRAIN_COLS, BRAIN_ROWS, HEAD_X, brain, fireBrain, fps, fpsReport, frameCells, look, lookKey, paceMs, raster } from './terminal'
+import { BRAIN_ROWS, brain, brainHeader, fireBrain, fps, fpsReport, frameCells, look, lookKey, paceMs, raster } from './terminal'
 import { cells } from './width'
 import {
   CONFIRM_FROM,
@@ -136,16 +142,13 @@ import {
   isAbsolutePath,
   isPaused,
   memoriesCount,
-  memoryHover,
   memoryMeta,
   normBrain,
   normView,
-  scopeHover,
   scopeOf,
   statusFor,
   stoodDownNote,
   storedWords,
-  switchAt,
   switchExplains,
   truthy,
   words,
@@ -155,17 +158,6 @@ import {
 
 const PANE = 'counterparts'
 const TITLE = 'Counterparts'
-
-/**
- * The brain's cells take the terminal's default background (`bg: null` in
- * `frameCells`), so the panel's own black (`P.panel`) shows through them.
- * Measured: the engine draws a Raster's colours at 4 bits a channel, and the
- * panel colour given to the cells came out `#000011`, a navy box round the
- * brain.
- */
-/** The search box: a shade above the panel, so it reads as a field without a border. */
-const SEARCH_BG = '#121a22'
-const CYAN_DIM = '#0b6f7c'
 
 // ── state (the contract: ../types/index.d.ts) ──────────────────────────────
 
@@ -211,16 +203,6 @@ function firePulses($: EngineInterface, ids: readonly MechId[]): void {
     if (delay === 0) fireBrain(id, Date.now())
     else $.clock.after(delay, () => fireBrain(id, Date.now()))
   }
-}
-
-/**
- * The brain-off header's `◉` while something fires: the mechanism's stage
- * colour, but never Retrieval's amber, which in this pane says only a warning
- * (Mike, 2026-10-10): cyan then.
- */
-function litDot(id: MechId): string {
-  const st = stageOf(id)
-  return st.id === 'retrieval' ? P.cyan : hex(st.col, 0.95)
 }
 
 // ── the engine, through `$` ────────────────────────────────────────────────
@@ -1687,6 +1669,19 @@ export const register: Register = on => {
 
     const roomy = fill >= ROOMY_ROWS
     const lit = firingNow[0] ?? look.sel
+    // Every press in the pane, as a closure over this hook's `$` (the views take no `$`).
+    const actions: PaneActions = {
+      search: value => runSearch($, value),
+      openDashboard: () => openDashboard($, '/'),
+      pressScope: to => pressScope($, to),
+      pressMeet: () => pressMeet($),
+      confirmChange: () => confirmChange($),
+      cancelPause: () => cancelPause($),
+      toggleClaudeMemory: () => toggleClaudeMemory($),
+      view: v => (v === 'sidebar' ? openPane($) : closeQuiet($)),
+      brain: b => setBrain($, b),
+    }
+    const paneEls: PaneEls = { Box, Text, Button, Input }
     const rows: JSX.Element[] = []
     let used = 0
     if (roomy) {
@@ -1694,125 +1689,32 @@ export const register: Register = on => {
       used += 1
     }
 
-    // ── the search box: a shade above the panel, a fainter `search` inside ──
-    const searchBox = (width: number) => (
-      <Box key="search" flexDirection="row" width={width} backgroundColor={SEARCH_BG}>
-        <Text color={P.mid} backgroundColor={SEARCH_BG}>⌕ </Text>
-        <Box flexGrow={1}>
-          {Input === null ? (
-            <Text color={P.dim} backgroundColor={SEARCH_BG}>search</Text>
-          ) : (
-            <Input key="q" placeholder="search" value="" submitLabel="find" onSubmit={(value: string) => runSearch($, value)} />
-          )}
-        </Box>
-      </Box>
-    )
-    const titleButton = (lead: boolean) => (
-      <Button key="title" plain onPress={() => openDashboard($, '/')}>
-        {lead ? <Text color={lit === null ? CYAN_DIM : litDot(lit)}>◉ </Text> : ''}
-        <Text color={paused ? P.dim : P.cyan} bold>COUNTERPARTS</Text>
-        {lead ? <Text color={CYAN_DIM}> ↗</Text> : ''}
-      </Button>
-    )
-
-    // ── the header ──
+    // ── the header: the terminal's brain beside the title, or (desktop, the brain off) a dot before it ──
     const countText = pulse === null ? '' : memoriesCount(pulse.memories)
-    // From 1,000 memories the count (`1000 memories`, 13 cells) is one wider than the header's text column:
-    // the column takes one cell of the gap beside the brain, every row of it, so the header stays six rows.
-    const gap = cells(countText) > w - HEAD_X ? 1 : 2
-    const headW = w - BRAIN_COLS - gap
+    const day = pulse === null ? null : pulse.day
     if (hasRaster) {
       const { Raster } = $.ui.resolve(e)
-      const reuse = raster.cols === BRAIN_COLS && raster.rows === BRAIN_ROWS && raster.cells !== '' && raster.look === lookKey()
-      const cells0 = reuse ? raster.cells : frameCells(BRAIN_COLS, BRAIN_ROWS, Date.now())
-      raster.cols = BRAIN_COLS
-      raster.rows = BRAIN_ROWS
-      raster.cells = cells0
-      raster.look = lookKey()
-      raster.live = true
-      rows.push(
-        <Box key="head" flexDirection="row" width={w}>
-          <Raster key="brain" columns={BRAIN_COLS} rows={BRAIN_ROWS} cells={cells0} />
-          <Box width={gap} />
-          <Box flexDirection="column" width={headW}>
-            <Text> </Text>
-            {titleButton(false)}
-            <Text> </Text>
-            <Text color={P.dim}>{pulse === null ? ' ' : `day ${String(pulse.day)}`}</Text>
-            <Text color={P.dim}>{pulse === null ? ' ' : countText}</Text>
-            {searchBox(headW)}
-          </Box>
-        </Box>,
-      )
-      rows.push(<Text key="head-gap"> </Text>)
+      rows.push(...brainHeader(paneEls, Raster, actions, { w, paused, day, count: countText }))
       used += BRAIN_ROWS + 1
     } else {
-      rows.push(
-        <Box key="head1" flexDirection="row" justifyContent="space-between" width={w}>
-          {titleButton(true)}
-          <Text color={P.dim}>{pulse === null ? '' : `day ${String(pulse.day)}`}</Text>
-        </Box>,
-      )
-      rows.push(
-        <Box key="head2" flexDirection="row" justifyContent="space-between" width={w}>
-          {searchBox(14)}
-          <Text color={P.dim}>{countText}</Text>
-        </Box>,
-      )
-      rows.push(<Text key="head-gap"> </Text>)
+      rows.push(...brainlessHeader(paneEls, actions, { w, paused, lit, day, count: countText }))
       used += 3
     }
 
     // ── a paused folder says so before anything else in the pane ──
     if (paused) {
-      const off = scope.mode === 'off'
-      rows.push(<Text key="paused" color={P.amber} bold>{clip(off ? '◌ Counterparts off here' : '⏸ Counterparts paused here', w)}</Text>)
-      rows.push(
-        <Button key="resume-banner" plain onPress={() => pressScope($, 'on')}>
-          <Text color={P.amber} underline>
-            {clip(off ? (scope.own ? 'click to turn it back on' : `off by ${shortDir(scope.setBy)} · why`) : scope.own ? 'click to resume' : `paused by ${shortDir(scope.setBy)} · how to resume`, w)}
-          </Text>
-        </Button>,
-      )
-      rows.push(<Text key="paused-gap"> </Text>)
+      rows.push(...pausedBanner(paneEls, actions, scope, w))
       used += 3
     }
 
     // ── the first meeting, put off or not finished: one cyan row at the top of the body ──
     if (meetShows(onboarding.meet, scope.mode, run.meetFiredIn, run.session)) {
-      rows.push(
-        <Button key="meet" plain onPress={() => pressMeet($)}>
-          <Text color={P.cyan} bold>{clip('Meet your counterpart', w)}</Text>
-        </Button>,
-      )
-      rows.push(<Text key="meet-gap"> </Text>)
+      rows.push(...meetRow(paneEls, actions, w))
       used += 2
     }
 
     // ── what the switches say, above them: the pause (or off) confirm, a note ──
-    const above: JSX.Element[] = []
-    const askTo = pauseAsk?.to ?? 'pause'
-    if (pauseAsk !== null && scope.mode !== 'unknown' && CONFIRM_FROM[askTo].includes(scope.mode)) {
-      const where = shortDir(pauseAsk.dir)
-      const ask =
-        askTo === 'off'
-          ? `Turn Counterparts memory off in ${where} for every session here? Nothing is kept or recalled while it's off.`
-          : askTo === 'on'
-            ? scope.mode === 'off'
-              ? `Turn memory back on in ${where}? Nothing from while it was off was kept.`
-              : `Turn memory fully on in ${where}? New memories will be kept here, for every session.`
-            : `Pause Counterparts memory in ${where} for every session here?`
-      wrap(ask, w).forEach((l, i) => above.push(<Text key={`ask${String(i)}`} color={P.amber}>{l}</Text>))
-      above.push(
-        <Box key="pause-ask" flexDirection="row">
-          <Button key={`confirm-${askTo}`} onPress={() => confirmChange($)}>{askTo === 'off' ? 'Turn off' : askTo === 'on' ? 'Turn on' : 'Pause'}</Button>
-          <Text> </Text>
-          <Button key="cancel-pause" onPress={() => cancelPause($)}>Cancel</Button>
-        </Box>,
-      )
-    }
-    if (note !== null) wrap(note.text, w).forEach((l, i) => above.push(<Text key={`note${String(i)}`} color={P.text}>{l}</Text>))
-    if (above.length > 0) above.push(<Text key="above-gap"> </Text>)
+    const above = aboveSwitches(paneEls, actions, { scope, pauseAsk, note, w })
 
     // ── the body: the five sections, folded to the room left ──
     // The rule, the Counterparts switch, the view, the brain; and Claude memory for whoever opted in.
@@ -1821,98 +1723,16 @@ export const register: Register = on => {
     // Down, the chart names how THIS install starts the dashboard: which memory server the session connected says.
     const routes = dashboardRoutes(dash === 'down' ? await memoryServer($) : run.server)
     const { lines } = layoutBody({ w, rows: bodyRows, now, mind, saved, today, dream: dreamNow, open, mech, focus, dash, routes, search })
-    if (Client !== null) {
-      rows.push(<Client key="body" module="./body.tsx" width={w} props={{ lines } satisfies BodyProps} />)
-    } else {
-      // A surface with no Client modules (mobile, an editor): the same lines, not clickable.
-      rows.push(
-        <Box key="body" flexDirection="column">
-          {lines.map((l: Line, y: number) => (
-            <Text key={`b${String(y)}`} color={l.segs[0]?.c ?? P.text}>{l.segs.map(s => s.t).join('') || ' '}</Text>
-          ))}
-        </Box>,
-      )
-    }
+    // The Client tag stays here: the engine reads a hooks module's surface modules off its own source.
+    rows.push(Client !== null ? <Client key="body" module="./body.tsx" width={w} props={{ lines } satisfies BodyProps} /> : plainBody(paneEls, lines))
     rows.push(<Box key="spacer" flexGrow={1} />)
     rows.push(...above)
 
     // ── the footer: each dot and its word one hit target ──
-    const dotWord = (key: string, isOn: boolean, word: string, onPress: () => Promise<unknown>, dot?: string, dim = false, lit: string = P.cyan) => (
-      <Button key={key} plain onPress={onPress}>
-        <Text color={isOn && !dim ? lit : P.dim}>{dot ?? (isOn ? '●' : '○')}</Text>
-        <Text color={isOn && !dim ? P.hi : P.dim}>{` ${word}`}</Text>
-      </Button>
-    )
-    // The Counterparts switch, three-way: `on` (◐ for reads-only), `paused` and `off` (amber, a warning, as
-    // the status line says it). Unknown: every dot `?` and dim, never one lit; `…` while a press is answered.
-    const at = switchAt(scope.mode)
-    const cpDot = (pos: 'on' | 'paused' | 'off'): string => {
-      if (at === null) return scope.busy ? '…' : '?'
-      if (pos !== at) return '○'
-      if (scope.busy) return '…'
-      return pos === 'on' && scope.mode === 'observer' ? '◐' : '●'
-    }
-    // `Counterparts ● on ○ paused ○ off` is 32 cells, the docked pane's text width; narrower, a shorter word.
-    const cpLabel = w >= 32 ? 'Counterparts' : 'memory'
-    // What a click on a memory switch does, over the two rows above the footer while hovered: nothing moves under the pointer.
-    const hoverCard = (key: string, group: string, text: string) => (
-      <Box key={key} position="absolute" top={-2} left={0} width={w} height={2} display="none" hover={{ display: 'flex', scope: group }} flexDirection="column" backgroundColor={P.panel}>
-        {wrap(text, w)
-          .slice(0, 2)
-          .map((l, i) => (
-            <Text key={`${key}${String(i)}`} color={P.mid}>{l}</Text>
-          ))}
-      </Box>
-    )
-    const viewNow = normView(view)
     // While the pause asks (or a note explains), those rows sit right above the footer, and the pointer is still
     // on the switch it just pressed: a card there would cover [Pause] [Cancel] or the note's last line.
-    const cards = above.length === 0
-    rows.push(
-      <Box key="footer" flexDirection="column" width={w}>
-        {cards ? hoverCard('cp-why', HOVER_CP, scopeHover(scope)) : null}
-        {cards && ccSwitch ? hoverCard('mem-why', HOVER_MEM, memoryHover(memoryOn)) : null}
-        <Text color={P.faint}>{'─'.repeat(w)}</Text>
-        <Box key="row-cp" flexDirection="row" hover={{ scope: HOVER_CP }}>
-          <Text color={P.mid}>{cpLabel}</Text>
-          {(['on', 'paused', 'off'] as const).map(pos => (
-            <Box key={`cp-${pos}-box`} flexDirection="row">
-              <Text> </Text>
-              {dotWord(`cp-${pos}`, at === pos, pos, () => pressScope($, pos), cpDot(pos), at === null, pos === 'on' ? P.cyan : P.amber)}
-            </Box>
-          ))}
-        </Box>
-        {ccSwitch ? (
-          <Box key="row-mem" flexDirection="row" hover={{ scope: HOVER_MEM }}>
-            {dotWord('toggle-mem', memoryOn, 'Claude memory', () => toggleClaudeMemory($))}
-          </Box>
-        ) : null}
-        <Box flexDirection="row">
-          <Text color={P.mid}>view</Text>
-          {(['sidebar', 'quiet'] as const).map(v => (
-            <Box key={`v-${v}`} flexDirection="row">
-              <Text> </Text>
-              {dotWord(`view-${v}`, viewNow === v, v, () => (v === 'sidebar' ? openPane($) : closeQuiet($)))}
-            </Box>
-          ))}
-        </Box>
-        <Box flexDirection="row">
-          <Text color={P.mid}>brain</Text>
-          {(['turning', 'still', 'off'] as const).map(b => (
-            <Box key={`b-${b}`} flexDirection="row">
-              <Text> </Text>
-              {dotWord(`brain-${b}`, mode === b, b, () => setBrain($, b))}
-            </Box>
-          ))}
-        </Box>
-      </Box>,
-    )
+    rows.push(footer(paneEls, actions, { scope, w, ccSwitch, memoryOn, view: normView(view), mode, cards: above.length === 0 }))
 
-
-    return (
-      <Box flexDirection="column" paddingX={1} width={W} minHeight={fill} backgroundColor={P.panel}>
-        {rows}
-      </Box>
-    )
+    return frame(paneEls, W, fill, rows)
   })
 }

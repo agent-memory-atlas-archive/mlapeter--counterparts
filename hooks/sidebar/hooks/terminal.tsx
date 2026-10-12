@@ -1,16 +1,25 @@
 /**
  * The terminal view: the small braille brain beside the title (a `Raster`,
- * which only the terminal has), its frame rate and what it shows besides its
- * turning. The timer that drives it calls `$`, so it stays in
- * `register.tsx`; everything here is the module's own, no `$`.
+ * which only the terminal has), its frame rate, what it shows besides its
+ * turning, and the header it sits in. The timer that drives it calls `$`, so
+ * it stays in `register.tsx`; everything here is the module's own, no `$`.
+ * The rest of the terminal view: `brain.ts` (the brain itself), `cells.ts`
+ * (a Raster's cells), `width.ts` (cells a string takes) and `tail.ts` (the
+ * quiet tail under the prompt).
  */
+
+import type { Elements } from 'claude-code'
 
 import type { SidebarBrain } from '../types'
 import { Brain } from './brain'
 import { encodeCells } from './cells'
 import { mechById, stageOf } from './mechanisms'
 import type { MechId } from './mechanisms'
+import { searchBox, titleButton } from './pane'
+import type { PaneActions, PaneEls } from './pane'
+import { P } from './sections'
 import { run } from './state'
+import { cells } from './width'
 
 /** The brain beside the title, in cells. */
 export const BRAIN_COLS = 18
@@ -106,4 +115,48 @@ export function fireBrain(mech: MechId, now: number): void {
 export function paceMs(pace: 'burst' | 'calm'): number {
   const every = pace === 'burst' ? 1 : Math.max(1, Math.round(fps.target / brain.calmFps))
   return Math.max(16, Math.round((every * 1000) / fps.target))
+}
+
+// ── the header with the brain ──
+
+/**
+ * The terminal's header: the brain (a `Raster`, reusing the last frame while
+ * its look is the same) and beside it the title, the day, the count and the
+ * search box; then a blank row. BRAIN_ROWS + 1 rows.
+ */
+export function brainHeader(
+  els: PaneEls,
+  Raster: Elements['terminal']['Raster'],
+  actions: PaneActions,
+  s: { w: number; paused: boolean; day: number | null; count: string },
+): JSX.Element[] {
+  const { Box, Text } = els
+  const { w } = s
+  const countText = s.count
+  // From 1,000 memories the count (`1000 memories`, 13 cells) is one wider than the header's text column:
+  // the column takes one cell of the gap beside the brain, every row of it, so the header stays six rows.
+  const gap = cells(countText) > w - HEAD_X ? 1 : 2
+  const headW = w - BRAIN_COLS - gap
+  const reuse = raster.cols === BRAIN_COLS && raster.rows === BRAIN_ROWS && raster.cells !== '' && raster.look === lookKey()
+  const cells0 = reuse ? raster.cells : frameCells(BRAIN_COLS, BRAIN_ROWS, Date.now())
+  raster.cols = BRAIN_COLS
+  raster.rows = BRAIN_ROWS
+  raster.cells = cells0
+  raster.look = lookKey()
+  raster.live = true
+  return [
+    <Box key="head" flexDirection="row" width={w}>
+      <Raster key="brain" columns={BRAIN_COLS} rows={BRAIN_ROWS} cells={cells0} />
+      <Box width={gap} />
+      <Box flexDirection="column" width={headW}>
+        <Text> </Text>
+        {titleButton(els, actions, { lead: false, paused: s.paused, dot: null })}
+        <Text> </Text>
+        <Text color={P.dim}>{s.day === null ? ' ' : `day ${String(s.day)}`}</Text>
+        <Text color={P.dim}>{s.day === null ? ' ' : countText}</Text>
+        {searchBox(els, actions, headW)}
+      </Box>
+    </Box>,
+    <Text key="head-gap"> </Text>,
+  ]
 }
