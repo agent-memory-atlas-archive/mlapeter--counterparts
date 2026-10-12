@@ -17,3 +17,7 @@
 - Decided by the sidebar fox builder, 2026-10-12, lightly held: pictures are tried only where the environment
   says kitty or Ghostty, outside tmux and screen. Two refused picture blits switch the session to sextants. Why:
   the engine gives a mod no capability flag, and elsewhere an Image draws dim alt text.
+- Decided by the PR #460 reviewer, 2026-10-12, lightly held: the sextant tier gives its Text runs hand-picked
+  xterm-256 colours (`TEXT_256` in fox.ts), spelt so chalk's rounding and a nearest-colour mapping both land on
+  them. Why: on the owner's iTerm the Text colours came out in 256 colours, and chalk's rounding turned the rust
+  fur into a washed-out pink and the creams into white. The Raster and the picture keep the art's colours.

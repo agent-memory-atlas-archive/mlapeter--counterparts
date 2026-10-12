@@ -36,6 +36,7 @@ import {
 import { cells, ellipsizeCells, padCells } from '../hooks/width'
 import {
   STAGE_COLS,
+  TEXT_256,
   advance,
   fineCell,
   fineCells,
@@ -50,8 +51,10 @@ import {
   sextantGlyph,
   stageRows,
   stepKey,
+  textHex,
   trigger,
 } from '../hooks/fox'
+import { FOX_FINAL } from '../hooks/fox-art'
 import { hookConfig, lookup, parentOf, parseRegistry, settingsHookConfig, under } from '../hooks/scopes'
 import { MECHS, STAGES, dashboardBase, dashboardPort, isDashboardUrl, memoryUrl } from '../hooks/mechanisms'
 import { MORE, OPEN_MAX_LINES, bar, clip, heading, layoutBody, openedLines, textOf, wrapN } from '../hooks/sections'
@@ -900,6 +903,35 @@ describe('the fox', () => {
     expect(normDetail('sharp')).toBe('auto')
   })
 
+  test('sextant colours land on their xterm-256 colour whether the terminal rounds (chalk) or takes the nearest; the drawing uses them', () => {
+    const LV = [0, 95, 135, 175, 215, 255]
+    const rgb = (h: string): number[] => {
+      const n = parseInt(h.slice(1), 16)
+      return [n >> 16, (n >> 8) & 255, n & 255]
+    }
+    const chalk = (c: number[]): number[] => c.map(v => LV[Math.round((v / 255) * 5)] ?? -1)
+    const nearest = (c: number[]): number[] => c.map(v => LV.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a)))
+    for (const target of Object.values(TEXT_256)) {
+      const want = rgb(target)
+      if (want[0] === want[1] && want[1] === want[2]) continue // a grey: the grey ramp, itself
+      for (const v of want) expect(LV.includes(v)).toBe(true)
+      const [art] = Object.entries(TEXT_256).find(([, t]) => t === target) ?? ['']
+      const spelt = rgb(textHex(art) ?? '')
+      expect(chalk(spelt)).toEqual(want)
+      expect(nearest(spelt)).toEqual(want)
+    }
+    // Every coloured sextant palette entry and effect has its colour (black, the outline and white pass as they are).
+    const six = (c: string): string => '#' + [...c.slice(1)].map(x => x + x).join('')
+    const pass = new Set(['#000000', '#110000', '#ffffff'])
+    for (const c of [...FOX_FINAL.sextant.palette, ...Object.values(FOX_FINAL.fxPalette)]) {
+      const h = c.length === 4 ? six(c) : c
+      if (!pass.has(h)) expect(TEXT_256[h]).toBeDefined()
+    }
+    const used = new Set(fineCells({ frame: 'idle', fx: [] }).flat().flatMap(c => [c.fg, c.bg]))
+    expect(used.has('#aa7766')).toBe(false)
+    expect(used.has(textHex('#a76'))).toBe(true)
+  })
+
   test('sextants: every pattern has its glyph and back; the four that are not sextants are the space and the block glyphs', () => {
     for (let v = 0; v < 64; v++) expect(sextantBits(sextantGlyph(v))).toBe(v)
     expect([sextantGlyph(0), sextantGlyph(21), sextantGlyph(42), sextantGlyph(63)]).toEqual([' ', '▌', '▐', '█'])
@@ -924,7 +956,7 @@ describe('the fox', () => {
     for (const l of fine) expect([...runs(l).map(r => r.ch).join('')].length).toBe(STAGE_COLS)
     // a nap's z sits beside the head, inside the stage, in the effect's colour
     const zs = [['zSmall', 'zSmall'], ['z', 'z']] as const
-    expect(fineCells({ frame: 'nap1', fx: zs }).flat().some(c => c.fg === '#9be' || c.bg === '#9be')).toBe(true)
+    expect(fineCells({ frame: 'nap1', fx: zs }).flat().some(c => c.fg === textHex('#9be') || c.bg === textHex('#9be'))).toBe(true)
     expect([...decodeCells(halfCells({ frame: 'nap1', fx: zs }))].some((v, i) => i % 3 !== 0 && v === 0x99bbee)).toBe(true)
     expect(pngOf(idle).startsWith('iVBORw0KGgo')).toBe(true)
     expect(pngOf({ frame: 'perk', fx: [['spark0', 'spark']] })).not.toBe(pngOf({ frame: 'perk', fx: [] }))

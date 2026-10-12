@@ -405,6 +405,56 @@ export function fineCell(six: readonly (string | null)[]): FineCell {
   return { ch: sextantGlyph(v), fg: a, bg: b }
 }
 
+/**
+ * A Text run's colour comes out in the 256-colour palette on the owner's iTerm
+ * (fox trial, 2026-10-12): the art's rust `#a42` drew `#af5f5f`, a washed-out
+ * pink, and its creams went white. That is chalk's rgb-to-256 rounding
+ * (`round(c / 255 * 5)` a channel, which lifts every low channel a step). So
+ * the sextant tier gives Text hand-picked xterm-256 colours (TEXT_256, the art
+ * colour to the one it should land on), each spelt so that rounding lands on
+ * it exactly, as does a nearest-colour mapping, and a truecolor terminal draws
+ * nearly the same (`textHex`). The Raster (half-blocks) and the picture keep
+ * the art's colours. A colour not in the table (black, the outline, white) is
+ * passed as it is.
+ */
+export const TEXT_256: Readonly<Record<string, string>> = {
+  '#332211': '#262626', // darkest brown (else an olive edge)
+  '#443322': '#3a3a3a', // dark brown (else a grey)
+  '#663322': '#5f0000', // shadow
+  '#772222': '#5f0000', // shadow, red
+  '#883322': '#af5f00', // fur, dark
+  '#995544': '#af5f00', // fur, shaded
+  '#aa4422': '#d75f00', // fur, bright
+  '#aa7766': '#d7875f', // fur: most of the fox
+  '#bb4422': '#d75f00', // fur, bright
+  '#cc9988': '#d7af87', // light fur
+  '#ccbb99': '#d7af87', // shaded cream
+  '#eeddbb': '#ffd7af', // cream
+  '#eeddcc': '#ffd7af', // cream chest
+  '#ffbb44': '#ffaf00', // gold: the eyes, the notepad
+  '#ee8888': '#ffaf87', // pink: nose, tongue, inner ear
+  '#775533': '#875f00', // grey-brown (else olive)
+  '#99bbee': '#87afd7', // the z
+  '#ffee77': '#ffd75f', // a spark
+  '#ffffee': '#ffffd7', // the pencil's white
+  '#cc99ff': '#af87ff', // the dream
+}
+
+/** The 256-colour cube's levels, and the value each is spelt with so chalk's rounding and the nearest both land on it. */
+const LEVEL_SPELT: Readonly<Record<number, number>> = { 0: 0, 95: 76, 135: 127, 175: 175, 215: 215, 255: 255 }
+
+/** An art colour as a Text run's colour: its TEXT_256 colour, spelt to survive a 256-colour terminal; else as it is. */
+export function textHex(c: string | null): string | null {
+  if (c === null) return null
+  const target = TEXT_256[hex6(c)]
+  if (target === undefined) return c
+  const n = hexNum(target)
+  const ch = [n >> 16, (n >> 8) & 255, n & 255]
+  // A grey (all three equal) takes chalk's grey ramp, which lands on itself.
+  if (ch[0] === ch[1] && ch[1] === ch[2]) return target
+  return `#${ch.map(v => (LEVEL_SPELT[v] ?? v).toString(16).padStart(2, '0')).join('')}`
+}
+
 /** The sextant tier's cells on the stage: STAGE_COLS x the art's rows, effects laid over in sextant pixels. */
 export function fineCells(step: Pick<Step, 'frame' | 'fx'>, cols = STAGE_COLS): FineCell[][] {
   const S = ART.sextant
@@ -441,7 +491,8 @@ export function fineCells(step: Pick<Step, 'frame' | 'fx'>, cols = STAGE_COLS): 
     for (let c = 0; c < cols; c++) {
       const six: (string | null)[] = []
       for (let i = 0; i < 6; i++) six.push(px[(r * 3 + (i >> 1)) * W + c * 2 + (i & 1)] ?? null)
-      line.push(fineCell(six))
+      const cell = fineCell(six)
+      line.push({ ch: cell.ch, fg: textHex(cell.fg), bg: textHex(cell.bg) })
     }
     out.push(line)
   }

@@ -8,7 +8,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
 import { decodeCells } from '../hooks/cells'
-import { halfCells } from '../hooks/fox'
+import { halfCells, textHex } from '../hooks/fox'
 import { hex, stageOf } from '../hooks/mechanisms'
 import { cells } from '../hooks/width'
 import {
@@ -2170,13 +2170,13 @@ test('after three minutes with nothing happening it naps, and the person’s pro
   await w.clock.advance(200000)
   await settle(w)
   const z = await ui.findAll({ type: 'Text' })
-  expect(z.some(t => t.props['color'] === '#9be' || t.props['backgroundColor'] === '#9be')).toBe(true) // a z beside the head
+  expect(z.some(t => t.props['color'] === textHex('#9be') || t.props['backgroundColor'] === textHex('#9be'))).toBe(true) // a z beside the head
   await $.prompt.submit({ text: 'hello', origin: { kind: 'composer' }, wait: false })
   await settle(w)
   await w.clock.advance(5000)
   await settle(w)
   const after = await ui.findAll({ type: 'Text' })
-  expect(after.some(t => t.props['color'] === '#9be' || t.props['backgroundColor'] === '#9be')).toBe(false)
+  expect(after.some(t => t.props['color'] === textHex('#9be') || t.props['backgroundColor'] === textHex('#9be'))).toBe(false)
   await ui.unmount()
 })
 
