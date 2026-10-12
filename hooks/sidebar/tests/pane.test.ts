@@ -1023,61 +1023,37 @@ test('search: Enter asks recall in facts mode; the results take the sections’ 
   }
 })
 
-// ── Claude Code's own memory ───────────────────────────────────────────────
+// ── Claude Code's own memory: the mod only observes it (2026-10-12) ──────────
 
-test('the Claude memory switch, opted in (COUNTERPARTS_SIDEBAR_CC_MEMORY=1): on by default; off drops MEMORY.md and the memory section, and the footer draws it off', async ($, on) => {
-  const w = world(on, { env: { HOME, COUNTERPARTS_SIDEBAR_CC_MEMORY: '1' } })
-  const seen: string[][] = []
+test("the mod never filters or modifies Claude Code's own memory: MEMORY.md and the memory section pass whole, whatever an older version stored", async ($, on) => {
+  // An older version's switch, left off in the store, and its opt-in in the environment: both ignored.
+  const w = world(on, { env: { HOME, COUNTERPARTS_SIDEBAR_CC_MEMORY: '1' }, store: { claudeMemory: false, claudeMemorySwitch: true } })
+  const seen: unknown[] = []
   on('prompt.context', (_$, e) => {
-    seen.push((e.instructionFiles ?? []).map(f => f.kind))
+    seen.push(e.instructionFiles)
     return { blocks: e.blocks, ...(e.instructionFiles === undefined ? {} : { instructionFiles: e.instructionFiles }) }
   })
   on('prompt.section', (_$, e) => ({ text: e.text }))
-  on('ui.invalidate', (_$, e) => {
-    w.invalidations.push(e.event)
-    return { value: undefined }
-  })
   await start($, w)
   const files = [
     { path: '/work/project/CLAUDE.md', kind: 'project' as const, content: 'project rules' },
     { path: '/home/.claude/projects/x/memory/MEMORY.md', kind: 'memory' as const, content: 'auto memory' },
   ]
-  const ask = async () => {
-    await $.prompt.context({ blocks: [{ name: 'claudeMd', text: 'project rules\nauto memory' }], instructionFiles: files })
-    return (await $.prompt.section({ name: 'memory', text: '# Memory\nYou have a persistent memory.' })).text
-  }
-  expect(await ask()).toBe('# Memory\nYou have a persistent memory.')
-  expect(seen.at(-1)).toEqual(['project', 'memory'])
+  const blocks = [{ name: 'claudeMd', text: 'project rules\nauto memory' }]
+  const context = await $.prompt.context({ blocks, instructionFiles: files })
+  expect(seen.at(-1)).toEqual(files)
+  expect(context.blocks).toEqual(blocks)
+  expect((await $.prompt.section({ name: 'memory', text: '# Memory\nYou have a persistent memory.' })).text).toBe('# Memory\nYou have a persistent memory.')
   for (const surface of SURFACES) {
     const ui = await mount($, w, surface)
-    expect((await ui.find({ type: 'Button', key: 'toggle-mem' }))?.text).toBe('● Claude memory')
-    await ui.press({ key: 'toggle-mem' })
-    expect(w.invalidations).toEqual(expect.arrayContaining(['prompt.section', 'prompt.context']))
-    expect(w.toasts.at(-1)).toContain('off from your next message, in every session')
-    expect((await ui.find({ type: 'Button', key: 'toggle-mem' }))?.text).toBe('○ Claude memory')
-    expect(await ask()).toBeNull()
-    expect(seen.at(-1)).toEqual(['project'])
-    await ui.press({ key: 'toggle-mem' })
-    expect(await ask()).toBe('# Memory\nYou have a persistent memory.')
-    expect(seen.at(-1)).toEqual(['project', 'memory'])
+    expect(await ui.find({ type: 'Button', key: 'toggle-mem' })).toBeUndefined()
+    expect(await texts(ui)).not.toContain('Claude memory')
     await ui.unmount()
   }
-  expect(w.lastStatus()).toBe('') // a warning only for a paused folder
-})
-
-test('turned off in an earlier session: every session drops it, and the footer draws it off', async ($, on) => {
-  const w = world(on, { store: { claudeMemory: false } })
-  const seen: string[][] = []
-  on('prompt.context', (_$, e) => {
-    seen.push((e.instructionFiles ?? []).map(f => f.kind))
-    return { blocks: e.blocks }
-  })
-  await start($, w)
-  await $.prompt.context({ blocks: [], instructionFiles: [{ path: '/m/MEMORY.md', kind: 'memory', content: 'x' }] })
-  expect(seen.at(-1)).toEqual([])
-  const ui = await mount($, w, 'terminal')
-  expect((await ui.find({ type: 'Button', key: 'toggle-mem' }))?.text).toBe('○ Claude memory')
-  await ui.unmount()
+  expect(w.lastStatus()).toBe('')
+  // Nothing written over the stale values, nothing added.
+  expect(w.store['claudeMemory']).toBe(false)
+  expect(w.store['claudeMemorySwitch']).toBe(true)
 })
 
 test('headless (-p): nothing opens, ticks or reads', async ($, on) => {
@@ -1111,7 +1087,7 @@ async function cpLit(ui: Ui): Promise<boolean> {
 /** Calls that would change the folder (a read names no mode). */
 const writes = (w: World) => w.mcp.filter(c => c.tool === 'scope' && c.args['mode'] !== undefined)
 
-test('the three-way switch: `Counterparts ● on ○ paused ○ off`, one row of 32 cells; the Claude memory switch hidden by default', async ($, on) => {
+test('the three-way switch: `Counterparts ● on ○ paused ○ off`, one row of 32 cells', async ($, on) => {
   const w = world(on)
   await start($, w)
   for (const surface of SURFACES) {
@@ -1122,8 +1098,6 @@ test('the three-way switch: `Counterparts ● on ○ paused ○ off`, one row of
     const text = flat(row?.children ?? [])
     expect(text).toBe('Counterparts ● on ○ paused ○ off')
     expect(cells(text)).toBeLessThanOrEqual(32)
-    expect(await ui.find({ type: 'Button', key: 'toggle-mem' })).toBeUndefined()
-    expect(drawnNode(await ui.drawn(), 'mem-why')).toBeUndefined()
     await ui.unmount()
   }
 })
@@ -1442,10 +1416,8 @@ function drawnNode(tree: unknown, key: string): Node | undefined {
   return undefined
 }
 
-const CC_OPT_IN = { HOME, COUNTERPARTS_SIDEBAR_CC_MEMORY: '1' }
-
-test('hovered, each memory switch says what a click does, over the rows above the footer: drawn hidden, absolutely placed, so nothing moves', async ($, on) => {
-  const w = world(on, { env: CC_OPT_IN })
+test('hovered, the Counterparts switch says what a click does, over the rows above the footer: drawn hidden, absolutely placed, so nothing moves', async ($, on) => {
+  const w = world(on)
   await start($, w)
   for (const surface of SURFACES) {
     const ui = await mount($, w, surface)
@@ -1453,45 +1425,39 @@ test('hovered, each memory switch says what a click does, over the rows above th
     // the card's lines, wrapped to the pane: whole sentences in its two rows, nothing cut
     expect(shown).toContain('Paused or off holds for every')
     expect(shown).toContain('session here; each asks first.')
-    expect(shown).toContain("Claude Code's MEMORY.md: a click")
-    expect(shown).toContain('turns it off in every session.')
     const tree = await ui.drawn()
-    for (const [row, card, scope] of [['row-cp', 'cp-why', 'counterparts-switch-cp'], ['row-mem', 'mem-why', 'counterparts-switch-mem']] as const) {
-      expect(drawnNode(tree, row)?.hover?.['scope']).toBe(scope)
-      const c = drawnNode(tree, card)
-      expect(c?.props['position']).toBe('absolute')
-      expect(c?.props['display']).toBe('none')
-      expect(c?.hover).toEqual({ display: 'flex', scope })
-    }
+    expect(drawnNode(tree, 'row-cp')?.hover?.['scope']).toBe('counterparts-switch-cp')
+    const c = drawnNode(tree, 'cp-why')
+    expect(c?.props['position']).toBe('absolute')
+    expect(c?.props['display']).toBe('none')
+    expect(c?.hover).toEqual({ display: 'flex', scope: 'counterparts-switch-cp' })
     await ui.unmount()
   }
 })
 
-const HOVER_CASES: [string, WorldOptions, string, string][] = [
-  ['on', { env: CC_OPT_IN }, 'Paused or off holds for every session here; each asks first.', "Claude Code's MEMORY.md: a click turns it off in every session."],
-  ['observer', { scopeMode: 'observer' }, 'Reads only here. on, paused or off: each asks first.', ''],
-  ['paused', { scopeMode: 'paused' }, 'Paused here, for every session. on resumes it; off asks first.', ''],
-  ['off', { scopeMode: 'off' }, 'Off here, for every session. on turns it back on (asks first).', ''],
-  ['off by a parent', { scopeMode: 'off', scopeSetBy: '/work' }, "This switch can't change this folder. A click says why.", ''],
-  ['following a parent', { scopeMode: 'on', scopeSetBy: '/Users/me' }, "This switch can't change this folder. A click says why.", ''],
-  ['Claude memory off', { store: { claudeMemory: false } }, '', "Claude Code's own memory is off everywhere. A click turns it on."],
+const HOVER_CASES: [string, WorldOptions, string][] = [
+  ['on', {}, 'Paused or off holds for every session here; each asks first.'],
+  ['observer', { scopeMode: 'observer' }, 'Reads only here. on, paused or off: each asks first.'],
+  ['paused', { scopeMode: 'paused' }, 'Paused here, for every session. on resumes it; off asks first.'],
+  ['off', { scopeMode: 'off' }, 'Off here, for every session. on turns it back on (asks first).'],
+  ['off by a parent', { scopeMode: 'off', scopeSetBy: '/work' }, "This switch can't change this folder. A click says why."],
+  ['following a parent', { scopeMode: 'on', scopeSetBy: '/Users/me' }, "This switch can't change this folder. A click says why."],
 ]
-for (const [name, opts, cp, mem] of HOVER_CASES) {
+for (const [name, opts, cp] of HOVER_CASES) {
   test(`a hover card is whole sentences in its two rows at the pane’s width (${name})`, async ($, on) => {
     const w = world(on, opts)
     await start($, w)
     const ui = await mount($, w, 'terminal')
     const tree = await ui.drawn()
-    const card = (key: string): string[] => ((drawnNode(tree, key)?.children ?? []) as unknown[]).map(flat)
-    if (cp !== '') expect(card('cp-why').join(' ')).toBe(cp)
-    if (mem !== '') expect(card('mem-why').join(' ')).toBe(mem)
-    for (const key of ['cp-why', 'mem-why']) expect(card(key).length).toBeLessThanOrEqual(2)
+    const card = ((drawnNode(tree, 'cp-why')?.children ?? []) as unknown[]).map(flat)
+    expect(card.join(' ')).toBe(cp)
+    expect(card.length).toBeLessThanOrEqual(2)
     await ui.unmount()
   })
 }
 
-test('while the pause asks, no hover card covers its buttons (the pointer is still on the switch); cancelled, the cards are back', async ($, on) => {
-  const w = world(on, { env: CC_OPT_IN })
+test('while the pause asks, no hover card covers its buttons (the pointer is still on the switch); cancelled, the card is back', async ($, on) => {
+  const w = world(on)
   await start($, w)
   for (const surface of SURFACES) {
     const ui = await mount($, w, surface)
@@ -1499,11 +1465,9 @@ test('while the pause asks, no hover card covers its buttons (the pointer is sti
     expect(await ui.find({ type: 'Button', key: 'confirm-pause' })).toBeDefined()
     let tree = await ui.drawn()
     expect(drawnNode(tree, 'cp-why')).toBeUndefined()
-    expect(drawnNode(tree, 'mem-why')).toBeUndefined()
     await ui.press({ key: 'cancel-pause' })
     tree = await ui.drawn()
     expect(drawnNode(tree, 'cp-why')).toBeDefined()
-    expect(drawnNode(tree, 'mem-why')).toBeDefined()
     await ui.unmount()
   }
 })
@@ -1613,44 +1577,6 @@ test('the registry is the one the wired hooks read: a settings hook’s own --co
   expect(w.fsReads).toContain('/cfg/alt/scopes.json')
   expect(w.fsReads).not.toContain(SCOPES_FILE)
   expect(w.lastStatus()).toBe('⏸ Counterparts memory paused in this folder · /counterparts resume')
-})
-
-// ── the Claude memory switch: hidden unless opted in (2026-10-11) ───────────
-
-test('the Claude memory switch is hidden by default and its filter is untouched: MEMORY.md stays, nothing is stored', async ($, on) => {
-  const w = world(on, { store: { claudeMemory: true } })
-  const seen: string[][] = []
-  on('prompt.context', (_$, e) => {
-    seen.push((e.instructionFiles ?? []).map(f => f.kind))
-    return { blocks: e.blocks }
-  })
-  await start($, w)
-  await $.prompt.context({ blocks: [], instructionFiles: [{ path: '/m/MEMORY.md', kind: 'memory', content: 'x' }] })
-  expect(seen.at(-1)).toEqual(['memory'])
-  const ui = await mount($, w, 'terminal')
-  expect(await ui.find({ type: 'Button', key: 'toggle-mem' })).toBeUndefined()
-  expect(w.store['claudeMemorySwitch']).toBeUndefined()
-  await ui.unmount()
-})
-
-test('whoever had already turned Claude memory off keeps the switch (stored once, so it stays when turned back on)', async ($, on) => {
-  const w = world(on, { store: { claudeMemory: false } })
-  await start($, w)
-  expect(w.store['claudeMemorySwitch']).toBe(true)
-  const ui = await mount($, w, 'terminal')
-  expect((await ui.find({ type: 'Button', key: 'toggle-mem' }))?.text).toBe('○ Claude memory')
-  await ui.press({ key: 'toggle-mem' }) // back on: the switch stays
-  expect((await ui.find({ type: 'Button', key: 'toggle-mem' }))?.text).toBe('● Claude memory')
-  expect(w.store['claudeMemorySwitch']).toBe(true)
-  await ui.unmount()
-})
-
-test('opted in by the store key alone (`claudeMemorySwitch`), the switch shows', async ($, on) => {
-  const w = world(on, { store: { claudeMemorySwitch: true } })
-  await start($, w)
-  const ui = await mount($, w, 'desktop')
-  expect((await ui.find({ type: 'Button', key: 'toggle-mem' }))?.text).toBe('● Claude memory')
-  await ui.unmount()
 })
 
 // ── the first meeting: speak first, once; "Start the 5-minute intro" ───────────

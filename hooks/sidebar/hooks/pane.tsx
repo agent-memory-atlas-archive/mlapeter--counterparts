@@ -14,9 +14,9 @@ import type { SidebarBrain, SidebarScope, SidebarView } from '../types'
 import { shortDir, wrap } from './feed'
 import { clip } from './sections'
 import type { Line } from './sections'
-import { HOVER_CP, HOVER_MEM, searchFlag } from './state'
+import { HOVER_CP, searchFlag } from './state'
 import { P } from './theme'
-import { CONFIRM_FROM, memoryHover, scopeHover, switchAt } from './words'
+import { CONFIRM_FROM, scopeHover, switchAt } from './words'
 
 /** The constructors the pane draws with: every surface has these three; `Input` all but mobile. */
 export type PaneEls = Pick<Elements['terminal'], 'Box' | 'Text' | 'Button'> & { Input: Elements['terminal']['Input'] | null }
@@ -29,7 +29,6 @@ export type PaneActions = {
   pressMeet: () => Promise<unknown>
   confirmChange: () => Promise<unknown>
   cancelPause: () => Promise<unknown>
-  toggleClaudeMemory: () => Promise<unknown>
   view: (v: SidebarView) => Promise<unknown>
   brain: (b: SidebarBrain) => Promise<unknown>
 }
@@ -133,10 +132,10 @@ export function aboveSwitches(
 export function footer(
   els: PaneEls,
   actions: PaneActions,
-  s: { scope: SidebarScope; w: number; ccSwitch: boolean; memoryOn: boolean; view: SidebarView; mode: SidebarBrain; cards: boolean },
+  s: { scope: SidebarScope; w: number; view: SidebarView; mode: SidebarBrain; cards: boolean },
 ): JSX.Element {
   const { Box, Text, Button } = els
-  const { scope, w, ccSwitch, memoryOn, mode, cards } = s
+  const { scope, w, mode, cards } = s
   const dotWord = (key: string, isOn: boolean, word: string, onPress: () => Promise<unknown>, dot?: string, dim = false, lit: string = P.accent) => (
     <Button key={key} plain onPress={onPress}>
       <Text color={isOn && !dim ? lit : P.dim}>{dot ?? (isOn ? '●' : '○')}</Text>
@@ -154,7 +153,7 @@ export function footer(
   }
   // `Counterparts ● on ○ paused ○ off` is 32 cells, the docked pane's text width; narrower, a shorter word.
   const cpLabel = w >= 32 ? 'Counterparts' : 'memory'
-  // What a click on a memory switch does, over the two rows above the footer while hovered: nothing moves under the pointer.
+  // What a click on the Counterparts switch does, over the two rows above the footer while hovered: nothing moves under the pointer.
   const hoverCard = (key: string, group: string, text: string) => (
     <Box key={key} position="absolute" top={-2} left={0} width={w} height={2} display="none" hover={{ display: 'flex', scope: group }} flexDirection="column" backgroundColor={P.panel}>
       {wrap(text, w)
@@ -168,7 +167,6 @@ export function footer(
   return (
     <Box key="footer" flexDirection="column" width={w}>
       {cards ? hoverCard('cp-why', HOVER_CP, scopeHover(scope)) : null}
-      {cards && ccSwitch ? hoverCard('mem-why', HOVER_MEM, memoryHover(memoryOn)) : null}
       <Text color={P.faint}>{'─'.repeat(w)}</Text>
       <Box key="row-cp" flexDirection="row" hover={{ scope: HOVER_CP }}>
         <Text color={P.mid}>{cpLabel}</Text>
@@ -179,11 +177,6 @@ export function footer(
           </Box>
         ))}
       </Box>
-      {ccSwitch ? (
-        <Box key="row-mem" flexDirection="row" hover={{ scope: HOVER_MEM }}>
-          {dotWord('toggle-mem', memoryOn, 'Claude memory', () => actions.toggleClaudeMemory())}
-        </Box>
-      ) : null}
       <Box flexDirection="row">
         <Text color={P.mid}>view</Text>
         {(['sidebar', 'quiet'] as const).map(v => (

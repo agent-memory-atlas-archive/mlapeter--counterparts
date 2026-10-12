@@ -57,13 +57,35 @@ paused here; `/counterparts fps [n]` reports the brain's rate (or sets its
 target). `caps` is gone: the footer's switches are dots, with no ends to draw.
 
 **Check it:** `sh hooks/sidebar/check.sh`, which runs validate on both manifests,
-`claude plugin test hooks/sidebar` (215 tests, terminal and desktop) and
+`claude plugin test hooks/sidebar` (211 tests, terminal and desktop) and
 `tsc -p hooks/sidebar`, all with a throwaway HOME. **See it:**
 `tools/term-loop/` (its README), at `--size 200x60` and `--size 160x48`. A
 term-loop session sends no message, so nothing comes to mind and nothing is
 saved in it; `COUNTERPARTS_SIDEBAR_SESSION=<session id>` in the environment
 shows that session's Memories, Subconscious and Saved instead (below,
 "Seeded").
+
+## The Claude memory switch, removed (2026-10-12)
+
+The opt-in footer switch that hid Claude Code's own memory (its MEMORY.md
+instruction files through `prompt.context`, its `memory` system-prompt
+section through `prompt.section`) is gone, with its `$.store` keys
+(`claudeMemory`, `claudeMemorySwitch`), the `COUNTERPARTS_SIDEBAR_CC_MEMORY`
+opt-in, the `Claude memory off` status-line part, its hover card and toast.
+Why: a mock directory review read it as close to the policy against
+interfering with Claude's own features, and the owner prefers to drop it.
+The mod now only observes Claude's context and tool calls.
+
+- **A stale stored value is never read.** Whoever had it off (Mike among
+  them) gets Claude Code's memory back from the first session on this
+  version: nothing filters it any more. The old keys stay in the store
+  untouched; nothing reads, rewrites or shows them. One test pins it: with
+  `claudeMemory: false`, `claudeMemorySwitch: true` and the old env opt-in
+  all set, MEMORY.md and the memory section pass whole, no switch is drawn,
+  the status line is empty.
+- `tools/term-loop` no longer clicks the switch to put that preference back
+  (`claudeMemory` left `PREF_KEYS`; the put-back is the mod's commands only).
+- The sections below that describe the switch are history.
 
 ## The fox (2026-10-12, for 0.3.20)
 

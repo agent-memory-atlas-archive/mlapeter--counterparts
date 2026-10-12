@@ -203,8 +203,6 @@ const latestA = atom({ plugin: 'counterparts', key: 'latest' } as const, null)
 const firingA = atom({ plugin: 'counterparts', key: 'firing' } as const, null)
 const searchA = atom({ plugin: 'counterparts', key: 'search' } as const, IDLE_SEARCH)
 const scopeA = atom({ plugin: 'counterparts', key: 'scope' } as const, UNKNOWN_SCOPE)
-const memoryA = atom({ plugin: 'counterparts', key: 'claudeMemory' } as const, true)
-const ccSwitchA = atom({ plugin: 'counterparts', key: 'claudeMemorySwitch' } as const, false)
 const onboardingA = atom({ plugin: 'counterparts', key: 'onboarding' } as const, UNKNOWN_ONBOARDING as SidebarOnboarding)
 const viewA = atom({ plugin: 'counterparts', key: 'view' } as const, 'sidebar')
 const brainA = atom({ plugin: 'counterparts', key: 'brain' } as const, 'fox')
@@ -397,14 +395,8 @@ async function storeMatches($: EngineInterface): Promise<boolean> {
   return !other
 }
 
-/** Claude Code's own memory, as stored: one preference across sessions, on unless turned off. */
-async function claudeMemoryOn($: EngineInterface): Promise<boolean> {
-  return (await $.store.get('claudeMemory')) !== false
-}
-
 async function refreshStatus($: EngineInterface): Promise<void> {
-  const [scope, memoryOn] = await Promise.all([read($, scopeA), claudeMemoryOn($)])
-  $.ui.status(statusFor(scope, !memoryOn))
+  $.ui.status(statusFor(await read($, scopeA)))
 }
 
 /** The memory server this session connected: the npm install's first, then the plugin's. */
@@ -597,14 +589,6 @@ async function poll($: EngineInterface): Promise<boolean> {
     // The first meeting, a refresh while it can still move (done and skipped stay; unknown: an older core).
     const meet = (await read($, onboardingA)).meet
     if (meet !== 'unknown' && meet !== 'done' && meet !== 'skipped') await readOnboarding($)
-    // The Claude memory switch is one preference for every session: follow a change made in another.
-    const stored = await claudeMemoryOn($)
-    if (stored !== (await read($, memoryA))) {
-      await update($, memoryA, () => stored)
-      $.ui.invalidate('prompt.section')
-      $.ui.invalidate('prompt.context')
-      await refreshStatus($)
-    }
     return events.length > 0
   } catch {
     if ((await read($, dashA)) !== 'down') await update($, dashA, () => 'down')
@@ -1239,22 +1223,6 @@ async function setScope($: EngineInterface, to: 'pause' | 'resume' | 'off' | 'on
   await refreshStatus($)
 }
 
-async function toggleClaudeMemory($: EngineInterface): Promise<void> {
-  const on = !(await claudeMemoryOn($))
-  await $.store.set('claudeMemory', on)
-  await update($, memoryA, () => on)
-  // The memory section and the first message's context are cached answers:
-  // asking again rebuilds them from the next message (and the prompt cache once).
-  $.ui.invalidate('prompt.section')
-  $.ui.invalidate('prompt.context')
-  $.ui.toast(
-    on
-      ? "Claude Code's own memory is back from your next message."
-      : "Claude Code's own memory is off from your next message, in every session until you turn it back on (Counterparts stays).",
-  )
-  await refreshStatus($)
-}
-
 async function runSearch($: EngineInterface, raw: string): Promise<void> {
   const query = raw.trim()
   await update($, openA, o => (o !== null && o.key.startsWith('hit:') ? null : o))
@@ -1641,13 +1609,11 @@ export const register: Register = on => {
       description: 'Counterparts sidebar: open it, make it quiet, or set the avatar or the theme',
       argumentHint: '[quiet | avatar animal|brain|off | avatar detail auto|images|fine|basic | theme tron|cozy | resume | fps [n]]',
     })
-    const [mem, viewPref, brainPref, fpsPref, ccPref, ccEnv, meetMark, themePref, detailPref, searchEnv] = await Promise.all([
-      $.store.get('claudeMemory'),
+    // (A `claudeMemory` or `claudeMemorySwitch` left in the store by an older version is never read.)
+    const [viewPref, brainPref, fpsPref, meetMark, themePref, detailPref, searchEnv] = await Promise.all([
       $.store.get('view'),
       $.store.get('brain'),
       $.store.get('fps'),
-      $.store.get('claudeMemorySwitch'),
-      $.env.get('COUNTERPARTS_SIDEBAR_CC_MEMORY'),
       $.store.get(MEET_FLAG),
       $.store.get('theme'),
       $.store.get('avatarDetail'),
@@ -1672,16 +1638,6 @@ export const register: Register = on => {
     ])
     stage.env = Object.fromEntries(TIER_ENV.map((k, i) => [k, envVals[i]]).filter(([, v]) => typeof v === 'string'))
     await update($, themeA, () => normTheme(themePref))
-    await update($, memoryA, () => mem !== false)
-    // The Claude memory switch is drawn only for someone who opted in. Whoever had already
-    // turned Claude Code's memory off keeps the switch (stored once), so nobody is left with a
-    // filter they can't see or undo.
-    let ccSwitch = ccPref === true
-    if (!ccSwitch && ccPref === undefined && mem === false) {
-      await $.store.set('claudeMemorySwitch', true)
-      ccSwitch = true
-    }
-    await update($, ccSwitchA, () => ccSwitch || truthy(ccEnv))
     run.meetFiredIn = firedIn(meetMark)
     await update($, viewA, () => normView(viewPref))
     const mode = normBrain(brainPref)
@@ -1898,16 +1854,6 @@ export const register: Register = on => {
     return {}
   })
 
-  // Claude Code's own memory: its MEMORY.md files and its section of the system prompt
-  on('prompt.context', async ($, e, next) => {
-    if ((await claudeMemoryOn($)) || e.instructionFiles === undefined) return next(e)
-    return next({ ...e, instructionFiles: e.instructionFiles.filter(f => f.kind !== 'memory') })
-  }).catch(($, e, next) => next(e))
-
-  on('prompt.section', { name: 'memory' }, async ($, e, next) => ((await claudeMemoryOn($)) ? next(e) : { text: null })).catch(
-    ($, e, next) => next(e),
-  )
-
   // Under the prompt: the newest thing, dim, after the engine's own hint line
   // (its pills stay live), only while the pane is closed, and not while the
   // folder is paused (the amber status says so). It always ends with
@@ -1951,11 +1897,7 @@ export const register: Register = on => {
       read($, pulseA), read($, dashA), read($, mindA), read($, savedA), read($, todayA), read($, dreamA), read($, openA), read($, mechA),
       read($, focusA), read($, firingA), read($, searchA), read($, scopeA), read($, viewA), read($, brainA), read($, noteA), read($, pauseAskA),
     ])
-    // The stored preference, not this session's copy: another session may have turned it. (This
-    // session's copy is read too, so a turn of the switch here draws again.)
-    await read($, memoryA)
-    const memoryOn = await claudeMemoryOn($)
-    const [ccSwitch, onboarding, theme] = await Promise.all([read($, ccSwitchA), read($, onboardingA), read($, themeA)])
+    const [onboarding, theme] = await Promise.all([read($, onboardingA), read($, themeA)])
     // Every colour below (and in the body's lines) is read from the palette in use: this session's theme.
     applyTheme(normTheme(theme))
     const paused = isPaused(scope.mode)
@@ -1995,7 +1937,6 @@ export const register: Register = on => {
       pressMeet: () => pressMeet($),
       confirmChange: () => confirmChange($),
       cancelPause: () => cancelPause($),
-      toggleClaudeMemory: () => toggleClaudeMemory($),
       view: v => (v === 'sidebar' ? openPane($) : closeQuiet($)),
       brain: b => setBrain($, b),
     }
@@ -2058,8 +1999,8 @@ export const register: Register = on => {
     const above = aboveSwitches(paneEls, actions, { scope, pauseAsk, note, w })
 
     // ── the body: the five sections, folded to the room left ──
-    // The rule, the Counterparts switch, the view, the brain; and Claude memory for whoever opted in.
-    const footRows = ccSwitch ? 5 : 4
+    // The rule, the Counterparts switch, the view, the brain.
+    const footRows = 4
     const bodyRows = Math.max(4, fill - used - above.length - footRows)
     const { lines } = layoutBody({ w, rows: bodyRows, now, mind, saved, today, dream: dreamNow, open, mech, focus, dash, search })
     // The Client tag stays here: the engine reads a hooks module's surface modules off its own source.
@@ -2070,7 +2011,7 @@ export const register: Register = on => {
     // ── the footer: each dot and its word one hit target ──
     // While the pause asks (or a note explains), those rows sit right above the footer, and the pointer is still
     // on the switch it just pressed: a card there would cover [Pause] [Cancel] or the note's last line.
-    rows.push(footer(paneEls, actions, { scope, w, ccSwitch, memoryOn, view: normView(view), mode, cards: above.length === 0 }))
+    rows.push(footer(paneEls, actions, { scope, w, view: normView(view), mode, cards: above.length === 0 }))
 
     return frame(paneEls, W, fill, rows, stageTop)
   })

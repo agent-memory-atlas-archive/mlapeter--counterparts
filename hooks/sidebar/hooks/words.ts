@@ -35,13 +35,12 @@ export function normBrain(v: unknown): SidebarBrain {
  * session there, whatever the view (`⚠ counterparts:` and amber are the
  * engine's); the normal case has no status line at all (v0.2).
  */
-export function statusFor(scope: SidebarScope, memoryOff: boolean): string | undefined {
+export function statusFor(scope: SidebarScope): string | undefined {
   if (!isPaused(scope.mode)) return undefined
   const parts =
     scope.mode === 'paused'
       ? ['⏸ Counterparts memory paused in this folder', scope.own ? '/counterparts resume' : `resume it in ${shortDir(scope.setBy)}`]
       : ['◌ Counterparts memory off in this folder']
-  if (memoryOff) parts.push('Claude memory off')
   return parts.join(' · ')
 }
 
@@ -99,11 +98,6 @@ export function switchAt(mode: string): 'on' | 'paused' | 'off' | null {
 /** An opt-in written in the environment: `1`, `true`, `yes` or `on`. */
 export function truthy(v: string | undefined): boolean {
   return v !== undefined && /^(1|true|yes|on)$/i.test(v.trim())
-}
-
-/** What a click on the Claude Code memory switch does: whole sentences in two rows of 32. */
-export function memoryHover(on: boolean): string {
-  return on ? "Claude Code's MEMORY.md: a click turns it off in every session." : "Claude Code's own memory is off everywhere. A click turns it on."
 }
 
 /**
