@@ -1827,6 +1827,10 @@ export class Counterpart {
        *  host is saying outright in the same breath (2026-09-26 review), so the
        *  model is not handed the same date twice in one turn. */
       withhold?: ReadonlySet<string>;
+      /** No temporal cues at all THIS turn (2026-10-12): a turn nobody will
+       *  read — the headless nightly run's own — must not spend the fires a
+       *  person's day is owed. */
+      noCues?: boolean;
     } = {},
   ): RecallResult {
     // THE TEMPORAL CUES ARE COMPUTED HERE, not inside `composeTurn`, for one
@@ -1838,7 +1842,9 @@ export class Counterpart {
     const arrived =
       opts.at === undefined || turn.temporal !== undefined
         ? null
-        : this.prospective.arrivals({
+        : opts.noCues === true
+          ? []
+          : this.prospective.arrivals({
             at: opts.at,
             ...(turn.day === undefined ? {} : { day: turn.day }),
             sessionId: turn.sessionId,
