@@ -27,3 +27,19 @@
   session, held for after). Why: #442's reviewer found that a quiet item cued twice in its lead days rode
   all 7 grace days as "was due …". It now leaves after its day. A plain item is unaffected, and so is a
   quiet item that was not cued out.
+- Decided by COUNTERPARTS, 2026-10-12, lightly held, confirmed by RANDOM (built by the #445 reviewer): the
+  newest handoff keeps a floor. The near lines take room from "Last here", "Last said here", "Today,
+  elsewhere" and the older handoffs, but not from the newest handoff's own block (`arrivingNear` now sits
+  before `handoffsKept` in `ROOM_ORDER`; that room is again lent to a due-day plain reminder alone). Why:
+  the newest handoff is how a session knows where its work was left off. On the builder's fixture the wake
+  now lists 1 dated line (the second line's count by id) and the handoffs, as before this PR. What (b)
+  still adds: near lines are ordered right after the head, and the count rescue may not pop them.
+- RANDOM's ruling, 2026-10-12, lightly held (built by the #445 reviewer): a grace-day ("was due …") line is
+  not near. Only items due from the session's date through 3 days on are (`briefing.ts#nearDue`). Past
+  items keep their ordinary place in Arriving. This restores the bound the builder found missing.
+- Decided by COUNTERPARTS, 2026-10-12, lightly held, confirmed by RANDOM (built by the #445 reviewer): the
+  dream's prompt lines get the same guard. On a turn no person started (`startedByHost`) the prompt hook
+  treats the session as unwatched (`startUnwatched`): a headless night may still start and its line is
+  held for the next watched prompt; the day's line, the morning share, a night's hand-back and the
+  contradiction raises are neither said nor claimed there. Why: a morning share should count as told only
+  on a turn a person typed.

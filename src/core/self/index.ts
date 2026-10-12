@@ -395,10 +395,10 @@ export interface HorizonItem {
   readonly plainDue?: boolean;
   /**
    * AT SESSION START, DUE WITHIN THE NEXT FEW DAYS (2026-10-12): `due` no
-   * later than `ARRIVING_NEAR_DAYS` after the session's date, or already
-   * behind it (its grace days). Set only by the session-start assembly
+   * later than `ARRIVING_NEAR_DAYS` after the session's date and not behind
+   * it (a grace day's "was due" line is not near; review of #445). Set only by the session-start assembly
    * (`Counterpart#assembleWake`). Such lines come before the other dated
-   * lines and take room down to the newest handoff's own (`briefing.ts
+   * lines and take room down to, not into, the newest handoff's own (`briefing.ts
    * #ROOM_ORDER`'s `arrivingNear`).
    */
   readonly near?: boolean;

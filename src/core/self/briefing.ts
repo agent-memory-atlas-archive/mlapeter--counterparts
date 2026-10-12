@@ -140,17 +140,18 @@ export const TRIM_ORDER: readonly LaneName[] = [
  *   - `openFirst` — "Still open"'s first item and its count, when it would
  *     otherwise list nothing (review of #350);
  *   - `arrivingFirst` — "Arriving:"'s first line;
+ *   - `arrivingNear` — at session start only, "Arriving:"'s lines due from
+ *     the session's date through `ARRIVING_NEAR_DAYS` after it (`Ranked.near`;
+ *     2026-10-12, RANDOM's ruling, lightly held; not the grace days' "was
+ *     due" lines, RANDOM's ruling at review of #445): first claim on the room
+ *     the session-start lines would fill — "Last here", "Last said here",
+ *     "Today, elsewhere", the older handoffs — but not the newest handoff's
+ *     own (review of #445). The turn-end composition marks none;
  *   - `handoffsKept` — the room for the newest handoff's own block, with
  *     the margin (`handoffKeepBytes`, `counterpart.ts#handoffRoom`; review
- *     of #367): lent to `due` and `arrivingNear` alone, so no ordinary line
- *     leaves the next session's instructions unshown, and a due-day plain
- *     reminder is never left unlisted for them;
- *   - `arrivingNear` — at session start only, "Arriving:"'s lines due within
- *     `ARRIVING_NEAR_DAYS` of the session's date or in their grace days
- *     (`Ranked.near`; 2026-10-12, RANDOM's ruling, lightly held): first claim
- *     on the room the session-start lines would fill — "Last here", "Last
- *     said here", "Today, elsewhere", the handoffs, the newest one's too.
- *     The turn-end composition marks none, so it is unchanged there;
+ *     of #367): lent to `due` alone, so no ordinary line leaves the next
+ *     session's instructions unshown, and a due-day plain reminder is never
+ *     left unlisted for them;
  *   - `pageBorrow` — the self page past its own room, borrowing "Work here"
  *     (review of #358);
  *   - `due` — a plain reminder due the day this wake is read (`Ranked.due`):
@@ -179,8 +180,8 @@ export const ROOM_ORDER = [
   "arriving",
   "openFirst",
   "arrivingFirst",
-  "handoffsKept",
   "arrivingNear",
+  "handoffsKept",
   "pageBorrow",
   "due",
   "page",
@@ -1071,6 +1072,13 @@ export function arrivingHead(horizon: readonly Pick<Ranked, "due">[]): number {
  *  (`HorizonItem.near`; 2026-10-12, RANDOM's ruling, lightly held). */
 export const ARRIVING_NEAR_DAYS = 3;
 
+/** Whether a dated item due `due` is NEAR on `at`: from that day through
+ *  `ARRIVING_NEAR_DAYS` after it. A grace day's "was due" line, behind `at`,
+ *  is not (RANDOM's ruling at the review of #445, 2026-10-12, lightly held). */
+export function nearDue(due: string | undefined, at: string): boolean {
+  return due !== undefined && isDay(due) && isDay(at) && due >= at && due <= addDays(at, ARRIVING_NEAR_DAYS);
+}
+
 /**
  * How many of Arriving's first lines are NEAR (2026-10-12): the head, then
  * every line after it marked `near` (`Ranked.near`, set at session start
@@ -1131,9 +1139,9 @@ function shorterThan(line: string | undefined, forms: readonly string[] | undefi
  *     review of #380). The trim loop also asks here on the line's behalf
  *     (`target` `elsewhere`) before it steps the line down;
  *   - `handoffsKept` — the room held for the newest handoff's own block
- *     (`handoffKeepBytes`): reached only by `due` (review of #367) and, at
- *     session start, `arrivingNear` (2026-10-12), the lanes above it that
- *     take room here.
+ *     (`handoffKeepBytes`): reached only by `due`, the one lane above it
+ *     that takes room here (review of #367; `arrivingNear` stops below it,
+ *     review of #445).
  *
  * The lanes below them are the trim loop's and are gone before any rescue
  * runs; `lastHere` is the delivery's, inside the room lent at `handoffs`; the
@@ -1573,8 +1581,9 @@ export function render(
           (s) => keepArriving(lanes.horizon, overflow?.horizon ?? [], ctx.head, dueHead ? "due" : "arrivingFirst", s, ctx),
           (s) => keepFirstOpen(lanes.threads, overflow?.threads ?? [], lanes.horizon.length, s, ctx),
           // At session start, the lines due within the next few days, down
-          // to the newest handoff's room (`arrivingNear`, 2026-10-12).
-          (s) => (near > 0 ?keepArriving(lanes.horizon, overflow?.horizon ?? [], near, "arrivingNear", s, nearCtx) : null),
+          // to, not into, the newest handoff's room (`arrivingNear`, 2026-10-12;
+          // its floor, review of #445).
+          (s) => (near > 0 ? keepArriving(lanes.horizon, overflow?.horizon ?? [], near, "arrivingNear", s, nearCtx) : null),
           (s) => keepArriving(lanes.horizon, overflow?.horizon ?? [], lanes.horizon.length, "arriving", s, ctx),
           (s) => keepArrivingCount(overflow?.horizon ?? [], s, nearCtx),
         ];

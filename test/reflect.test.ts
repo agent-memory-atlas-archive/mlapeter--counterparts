@@ -688,6 +688,32 @@ describe("the reflect tool, and the carried share through the hook", () => {
     expect(a.userPromptSubmit(input("s-next")).injection).toContain("ZQSHARE");
     expect(a.userPromptSubmit(input("s-later")).injection).not.toContain("ZQSHARE");
   });
+
+  test("a turn no person started does not carry the share; the next typed prompt does (review of #445)", () => {
+    const a = openAdapter(
+      { dataDir: dir, injectionBudgetBytes: 9_000, owner: true },
+      { command: "/bin/true", args: ["runner"], spawner: (_p: SpawnPlan) => ({ pid: 4242 }) },
+    );
+    open.push(a.counterpart);
+    const d = dreamed(a.counterpart);
+    recordSession(dir, { sessionId: SESSION, scope: "proj", phase: "start" });
+    reflect(a.counterpart, [d.felt], { share: { text: "ZQSHARE I've been thinking about being understood.", cites: [d.felt] } });
+    recordSession(dir, { sessionId: SESSION, scope: "proj", phase: "end" });
+    const input = (sessionId: string, prompt: string): HookInput => {
+      recordSession(dir, { sessionId, scope: "proj", phase: "start" });
+      return { sessionId, scope: "proj", turns: [], at: a.counterpart.store.today(), prompt };
+    };
+    for (const hostTurn of [
+      "[Subagent hand-back]\nPR #445 reviewed; 6,330 pass.",
+      "<task-notification>\n<task-id>b7</task-id>\n<status>completed</status>\n</task-notification>",
+      '<cross-session-message from-name="random-06" from-session="s-r06">the bench run finished</cross-session-message>',
+    ]) {
+      expect(a.userPromptSubmit(input("s-coordinator", hostTurn)).injection).not.toContain("ZQSHARE");
+    }
+    // A person quoting a hand-back further down their prompt is still a person.
+    expect(a.userPromptSubmit(input("s-next", "good morning — see this:\n[Subagent hand-back]\nPR merged")).injection).toContain("ZQSHARE");
+    expect(a.userPromptSubmit(input("s-later", "good morning")).injection).not.toContain("ZQSHARE");
+  });
 });
 
 // ---------------------------------------------------------------------------

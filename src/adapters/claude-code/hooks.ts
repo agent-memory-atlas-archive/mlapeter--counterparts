@@ -955,7 +955,9 @@ export class ClaudeCodeAdapter extends Lifecycle {
       // a dream flagged that is still unraised — for the model; since
       // 2026-09-29 the day's line is shown to the PERSON too (`dream`), and
       // claimed only once the delivery knows it is leaving.
-      const dream = this.dreamLines(input);
+      // Nor the dream's lines (review of #445): a turn no person started is
+      // read as unwatched — the night may start, nothing is told or claimed.
+      const dream = this.dreamLines(input, byHost);
       const context = `${plain.context}${dream.text}`;
       if (dream.told !== null) Object.assign(told, { dream: dream.told });
       if (dream.note !== null) Object.assign(told, { dreamNote: dream.note });
@@ -1062,10 +1064,13 @@ export class ClaudeCodeAdapter extends Lifecycle {
    * do not both tell it. Here, on the prompt, rather than in the SessionStart
    * wake, whose byte ceiling is what stranded the page writer.
    */
-  private dreamLines(input: HookInput): { text: string; told: DreamTold | null; note: { notice: string; context: string } | null } {
+  private dreamLines(input: HookInput, byHost = false): { text: string; told: DreamTold | null; note: { notice: string; context: string } | null } {
     const none = { text: "", told: null, note: null };
     if (this.observer || input.at === undefined || input.nightRun === true || input.sessionId.length === 0) return none;
-    if (!isInteractive(input)) {
+    // A TURN NO PERSON STARTED (review of #445, 2026-10-12; `startedByHost`):
+    // as a session nobody watches — the headless run may start and its line is
+    // held; the day's line, the morning share and the raises wait for a person.
+    if (!isInteractive(input) || byHost) {
       this.startUnwatched(input);
       return none;
     }

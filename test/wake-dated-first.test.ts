@@ -57,6 +57,7 @@ import {
   WORK_HERE_HEADING,
   arrivingHead,
   arrivingNear,
+  nearDue,
   collapsedLane,
   deliveryReserveBound,
   pageBlockBytes,
@@ -549,15 +550,12 @@ describe("a plain reminder due the morning the wake is read, under the widest de
       }
     }
     // The same line, not plain and not due that morning: an ordinary dated
-    // item. The turn-end composition keeps the newest handoff's room from it.
+    // item, which the newest handoff's room is kept from — at session start
+    // too, near as it is (its floor, review of #445).
     const { row, text } = await one("America/Denver", 7_400, body(2), undefined);
+    expect(arriving(text).listed.length).toBe(0);
     expect((row["trimmedLanes"] as Record<string, number>)["horizon"]).toBe(1);
-    // At session start it is due within the next few days (2026-10-12,
-    // RANDOM's ruling, lightly held): first claim on that room too.
-    expect(arriving(text).listed.length).toBe(1);
-    expect(arriving(text).listed[0]).toContain("(due 2026-10-10)");
-    expect(readSentinel(text).intact).toBe(true);
-    expect(bytes(text)).toBeLessThanOrEqual(BUDGET);
+    expect(text).toContain("Handoff 0: the glaze tiles dry on rack two.");
   }, 60_000);
 
   test("it leads the horizon ahead of warmer arrivals, so the count cannot leave it out", async () => {
@@ -961,28 +959,36 @@ const HAND_BACK_BODY =
   "Remind him on the 9th to call the kiln supplier before noon about the cracked element; the replacement ships only if ordered that morning.";
 
 describe("at session start, dated items due within the next few days have first claim on the room (2026-10-12, RANDOM's ruling)", () => {
-  // Measured 2026-10-12 on this fixture with the step switched off: the
-  // session-start wake listed 1 of the 2 dated lines and showed 2 handoffs in
-  // full; the turn-end bundle lists 1 either way.
-  test("two long dated lines beside a borrowing page and four handoffs: the turn-end bundle lists one, the session-start wake both, and the handoffs give way", async () => {
+  // Built first (2026-10-12) the near lines could take the newest handoff's
+  // own room too: on this fixture the wake listed both dated lines and no
+  // handoff at all, not even by id. The newest handoff keeps a floor (review
+  // of #445, COUNTERPARTS' call): the second line would need its room.
+  test("two long dated lines beside a borrowing page and four handoffs: the newest handoff keeps its own block", async () => {
     for (const zone of ZONES) {
       const m = await morning(zone, { pageBytes: 6_472, dated: 3, widest: true, short: true, bodies: LONG });
       const stored = m.a.counterpart.store.getMeta(BRIEFING_KEY) ?? "";
       expect(arriving(stored).listed.length).toBe(1);
       const { listed, collapsed } = arriving(m.text);
       expect(collapsed).toBe(false);
-      expect(listed.length).toBe(2);
+      expect(listed.length).toBe(1);
       expect(listed[0]).toContain("(due 2026-10-09)");
-      expect(listed[1]).toContain("(due 2026-10-10)");
-      expect(lower(m.text).handoffs).toBe(0);
+      expect(lower(m.text).handoffs).toBeGreaterThanOrEqual(1);
+      // The newest, in full (listed first).
+      expect(m.text).toMatch(/^1\) From session [^\n]*: Handoff \d: the glaze tiles dry on rack two/m);
       expect(lower(m.text).yesterday).not.toBeNull();
       expect(readSentinel(m.text).intact).toBe(true);
       expect(bytes(m.text)).toBeLessThanOrEqual(BUDGET);
     }
   }, 60_000);
 
-  test("a dated item is near when due within three days of the session's date, or in its grace days; the head counts, a far line stops the run", () => {
+  test("a dated item is near when due from the session's date through three days on, not in its grace days; the head counts, a far line stops the run", () => {
     expect(ARRIVING_NEAR_DAYS).toBe(3);
+    expect(nearDue("2026-10-09", "2026-10-09")).toBe(true);
+    expect(nearDue("2026-10-12", "2026-10-09")).toBe(true);
+    expect(nearDue("2026-10-13", "2026-10-09")).toBe(false);
+    // A "was due" line (RANDOM's ruling at the review of #445).
+    expect(nearDue("2026-10-08", "2026-10-09")).toBe(false);
+    expect(nearDue(undefined, "2026-10-09")).toBe(false);
     expect(arrivingNear([{ due: true }, { near: true }, {}, { near: true }])).toBe(2);
     expect(arrivingNear([{}, { near: true }])).toBe(0);
     expect(arrivingNear([{ due: true }, {}])).toBe(0);
