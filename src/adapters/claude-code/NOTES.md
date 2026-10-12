@@ -2560,3 +2560,22 @@ words are said.
 
 **The wake-arrival check is opt-in** (`COUNTERPARTS_WAKE_CHECK=1`). Off, `checkWakeArrival` returns
 before the registry read; doctor's Wake line, with no arrival rows, names the opt-in.
+
+## 2026-10-12 — who was told at 00:19: the night run's children were not
+
+The 0.3.19 release check reported a fresh SessionStart at 00:19 telling a plain reminder, and the night
+run's own `claude -p` children were the suspects. Read from the host's transcripts (no store opened):
+
+- The sessions that started at 00:19:49 and 00:22:17 local on 10-12 were under
+  `~/.claude/projects/-Users-mlapeter--counterparts-store/`, cwd the store, entrypoint `sdk-cli`. These were the
+  dream child and the reflection child. Neither holds a plain-reminder line or a `systemMessage`.
+- A `claude -p` probe on 2.1.296 (user hooks off, empty strict MCP config, the parent's `ATTENDED=1`) printed
+  `CLAUDE_CODE_ENTRYPOINT=sdk-cli`, `CLAUDE_CODE_SESSION_ATTENDED=0`, `COUNTERPARTS_NIGHT_RUN=<run>`. The host
+  resets both of its own flags for a child, and the run's marker passes through.
+- The one reminder injected at 00:19 was a `UserPromptSubmit` (00:19:49.18) in the coordinator's open `cli`
+  session, on an "Another Claude session sent a message: … [Subagent hand-back]" turn. Its system message also
+  carried the dream and share lines, and it started the night run (first child +0.6 s). That was on 0.3.18,
+  before #445's `startedByHost`.
+- What was still open: a `SessionStart:compact` inside an Agent-tool subagent (10-10, `cli`) was handed a full
+  wake, and the night child's prompt recall handed the day's reminders as "Quietly available" lines and spent their
+  fires. Both are closed by `watchedAtStart` and `noCues` (docs/decisions.d/fix-start-told-unwatched-1012.md).

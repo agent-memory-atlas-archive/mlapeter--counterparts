@@ -1077,7 +1077,7 @@ export class Lifecycle implements HostLifecycle {
   recallTurn(
     input: SessionInput,
     text: string,
-    opts: { budgetBytes?: number; withhold?: ReadonlySet<string> } = {},
+    opts: { budgetBytes?: number; withhold?: ReadonlySet<string>; noCues?: boolean } = {},
   ): ReturnType<Counterpart["recallForTurn"]> {
     const result = this.counterpart.recallForTurn(
       {
@@ -1089,6 +1089,10 @@ export class Lifecycle implements HostLifecycle {
         ...(input.at === undefined ? {} : { at: input.at }),
         // Said outright this turn, so not ALSO handed over as a quiet cue.
         ...(opts.withhold === undefined ? {} : { withhold: opts.withhold }),
+        // The headless nightly run's prompt (2026-10-12): no day's cue is
+        // handed to it, so none of the person's fires is spent at 00:19.
+        // And a turn the host says no person started (review of #453).
+        ...(input.nightRun === true || opts.noCues === true ? { noCues: true } : {}),
       },
     );
     const decision = result.decision;
