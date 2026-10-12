@@ -280,7 +280,7 @@ export const DURABLE_EVENTS = {
   // What a delivery could not carry (durable since 2026-10-02; ring-only
   // before, so a dropped notice or a hook past the host's cap left nothing).
   "adapter.envelope.overcap": "a hook's output was past the host's 10,000-character cap even in plain form, so the host showed only a preview of it",
-  "adapter.notice.dropped": "your notice was dropped from a session start so the rest of the envelope stayed under the host's cap",
+  "adapter.notice.dropped": "the notice meant for you was dropped from a session start so the rest of the envelope stayed under the host's cap",
   "adapter.envelope.gave-way": "a part of a delivery waited for want of room — the write-up pointer, the scope question, the turn's recall, a reminder, the dream offer or the update notice (which hook, which part)",
   "adapter.injection.overbudget": "a session start sent more than the ceiling the host reported (what it sent, and the ceiling)",
   // Which CODE was live at a session start (2026-09-14): the hooks run whatever
