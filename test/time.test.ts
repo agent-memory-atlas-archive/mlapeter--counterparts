@@ -206,8 +206,8 @@ const ALLOWED_LINES: readonly { file: string; contains: string; why: string }[] 
   { file: "src/adapters/snapshots.ts", contains: ": dateOf(now);", why: "a snapshot folder is named by its UTC day" },
   { file: "src/adapters/snapshots.ts", contains: "dateOf(now - PRE_MIGRATION_KEEP_DAYS", why: "retention compared against UTC-named folders" },
   { file: "src/adapters/snapshots.ts", contains: "dateOf(now + 86_400_000)", why: "retention compared against UTC-named folders" },
-  { file: "src/adapters/cli/commands.ts", contains: "date: dateOf(at),", why: "the parked-store plan's date, a folder suffix" },
-  { file: "src/adapters/cli/commands.ts", contains: "${PARKED_INFIX}-${dateOf(at)}", why: "a parked-store folder suffix" },
+  { file: "src/adapters/cli/commands-start-fresh.ts", contains: "date: dateOf(at),", why: "the parked-store plan's date, a folder suffix" },
+  { file: "src/adapters/cli/commands-start-fresh.ts", contains: "${PARKED_INFIX}-${dateOf(at)}", why: "a parked-store folder suffix" },
   { file: "src/adapters/cli/start-fresh.ts", contains: "const date = dateOf(input.now);", why: "a parked-store folder suffix" },
   { file: "src/adapters/cli/uninstall.ts", contains: "dateOf(input.now)", why: "a paired-folder suffix" },
 ];
