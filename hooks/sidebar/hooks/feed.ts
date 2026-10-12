@@ -781,7 +781,7 @@ export function parseOnboardingMarker(text: string): SidebarMeet | null {
 }
 
 /**
- * Whether the sidebar shows "Meet your counterpart": core says the meeting
+ * Whether the sidebar shows "Start the 5-minute intro": core says the meeting
  * was put off (`later`) or offered and not finished (`offered`), or it never
  * started though this install's one speak-first went out in an EARLIER
  * session (the turn ended before Claude reached core's `meet`: a dead end

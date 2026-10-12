@@ -57,13 +57,70 @@ paused here; `/counterparts fps [n]` reports the brain's rate (or sets its
 target). `caps` is gone: the footer's switches are dots, with no ends to draw.
 
 **Check it:** `sh hooks/sidebar/check.sh`, which runs validate on both manifests,
-`claude plugin test hooks/sidebar` (173 tests, terminal and desktop) and
+`claude plugin test hooks/sidebar` (194 tests, terminal and desktop) and
 `tsc -p hooks/sidebar`, all with a throwaway HOME. **See it:**
 `tools/term-loop/` (its README), at `--size 200x60` and `--size 160x48`. A
 term-loop session sends no message, so nothing comes to mind and nothing is
 saved in it; `COUNTERPARTS_SIDEBAR_SESSION=<session id>` in the environment
 shows that session's Memories, Subconscious and Saved instead (below,
 "Seeded").
+
+## The split, a theme setting, a stranger's copy (2026-10-12)
+
+**Why** (owner, 2026-10-12): a clean split before the desktop view and the
+stage, which must reuse the shared parts. `register.tsx` was 107 KB and held
+everything.
+
+**What the engine allows**, measured with `claude plugin validate`: `$` may not
+be passed to a function imported from another file (refused: "$ is followed
+only into a function declared in this same file, never across an import"); a
+`read($, x)` needs `x` to be an atom declared in the same file; the surface
+modules are read off the hooks module's own `<Client module=…>`. A closure made
+in `register.tsx` that captures `$` may cross an import. So every function that
+takes `$`, the atoms, `PANE` (a matcher's literal) and the `<Client>` tag stay in
+`register.tsx`, and the views take the element table and a record of closures
+(`PaneActions`). That leaves `register.tsx` near 80 KB, not the 40 hoped for.
+Going further means a port object of closures handed to the core functions:
+a redesign, not a move, and the owner's call.
+
+**The file map** (`hooks/`):
+
+| file | part | holds |
+|---|---|---|
+| `register.tsx` | entry | the hooks, the atoms, every function that touches `$` (dashboard reads, the speak-first, the switch, search, the brain's timer, `/counterparts`) |
+| `state.ts` | core | timings and limits, the first meeting's line and mark, `run` |
+| `words.ts` | core | what the sidebar says: status line, switch explanations, hover cards, tail words |
+| `feed.ts`, `sections.ts`, `mechanisms.ts`, `scopes.ts` | core | the dashboard's rows read, the body's sections laid out, the mechanism table, the scope registry read |
+| `theme.ts` | core | every colour: `tron`, `cozy`, the palette in use (`P`) |
+| `pane.tsx` | view, every surface | the pane's tree: title, search box, paused banner, the intro button, the confirm row, the footer |
+| `terminal.tsx` | terminal view | the brain's header (a `Raster`), its frame and frame rate; with `brain.ts`, `cells.ts`, `width.ts`, `tail.ts` (the quiet tail) |
+| `desktop.tsx` | desktop view | the header without a brain (also the terminal's with the brain off) |
+| `body.tsx` | view | the body, a Client surface module |
+
+The first commit is moves only (every top-level statement identical, an
+`export` added; checked by a script comparing the statements' text), and
+validate's report of hooks, calls, state and surface modules is the same
+before and after each of the first two.
+
+**The theme.** `/counterparts theme tron|cozy`, stored in `$.store` (`theme`,
+default `tron`) like the view and the brain, kept in the `theme` atom, applied
+at each drawing of the pane (so a reload, which starts the module at tron,
+draws right). `tron` is the old values exactly; `cozy` is
+`~/counterparts-notes/mockups/2026-10-12-stage/cozy-theme.md`. `cyan` is now
+`accent`, `amber` `accent2`. Not themed: the mechanisms' stage colours and
+the brain's own body colours (the cozy notes keep stage colours per effect).
+The palette in use is one module object `applyTheme` copies into, so the
+layout stays a plain function of its state; a desktop view in another
+process would apply its own.
+
+**The copy** a stranger's read flagged, taken:
+- The submitted line: "Counterparts is installed. Claude would like to introduce itself."
+- The button: **"Start the 5-minute intro"** (was "Meet your counterpart"). The owner may still revise this one.
+- Dashboard down: "Counts appear once the dashboard is open (/counterparts:dashboard)", for every install. The
+  per-install route (`dashboardRoutes`, the console's `counterparts dashboard` for an npm install) is gone: the
+  slash command works wherever this sidebar is drawn.
+- The tail with nothing new: "Watching quietly · nothing new yet · /counterparts opens it".
+- Schemas' tagline loses "Not built yet."; it still draws hollow (`notBuilt`).
 
 ## The owner's onboarding trial, round 1 (2026-10-12)
 
@@ -720,7 +777,8 @@ memory switch carry on as written here.
   `--plugin-dir` session wrote or from the plugin-authoring skill's copy.
 - The engine lets `$` pass only to functions declared at the top of the same
   file, so `register.tsx` holds everything that touches the engine. `brain.ts`,
-  `cells.ts`, `feed.ts` and `mechanisms.ts` are pure.
+  `cells.ts`, `feed.ts` and `mechanisms.ts` are pure. (Since 2026-10-12 the
+  rest is split further: "The split" at the top has the file map.)
 
 ## The plumbing questions
 

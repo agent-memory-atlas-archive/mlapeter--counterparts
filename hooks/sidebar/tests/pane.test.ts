@@ -138,7 +138,7 @@ test('on the main screen (no docking) nothing is opened unasked and nothing is s
   expect(w.statuses.every(s => s === undefined)).toBe(true)
   expect(await cmd($, '')).toBe('Counterparts sidebar opened.')
   expect(w.opens).toHaveLength(1)
-  expect(await cmd($, 'nonsense')).toContain('Usage: /counterparts [quiet | brain turning|still|off | resume | fps [n]]')
+  expect(await cmd($, 'nonsense')).toContain('Usage: /counterparts [quiet | brain turning|still|off | theme tron|cozy | resume | fps [n]]')
 })
 
 for (const [n, said] of [
@@ -674,8 +674,8 @@ test('on the classic screen the tail suggests /tui fullscreen; on fullscreen it 
     await ui.unmount()
     return w.tails.at(-1)
   }
-  expect(await classic()).toBe('Counterparts is quiet · /tui fullscreen shows the memory sidebar')
-  expect(await tail($, w)).toBe('Counterparts is quiet · /counterparts opens it')
+  expect(await classic()).toBe('Watching quietly · nothing new yet · /tui fullscreen shows the memory sidebar')
+  expect(await tail($, w)).toBe('Watching quietly · nothing new yet · /counterparts opens it')
   await $.tool.call({ tool: 'mcp__counterparts__note', title: 'Answered: what Mike does off the keyboard', text: 'Mike plays pickup basketball on Tuesday nights and hikes most weekends.' } as never)
   await settle(w)
   expect(await classic()).toBe('Stored “Answered: what Mike does off the keyboard” — Mike plays pickup basketball on… · /tui fullscreen shows the memory sidebar')
@@ -691,7 +691,7 @@ for (const [stored, opens] of [['full', true], ['quiet', false], ['rail', false]
     // nothing is rewritten but by opening it (v0.2 writes `sidebar` for the pane)
     expect(w.store['view']).toBe(opens ? 'sidebar' : stored)
     // nothing has happened yet: the tail says only how to open it (a stored `strip`, dropped, reads as quiet)
-    if (!opens) expect(await tail($, w)).toBe('Counterparts is quiet · /counterparts opens it')
+    if (!opens) expect(await tail($, w)).toBe('Watching quietly · nothing new yet · /counterparts opens it')
   })
 }
 
@@ -920,36 +920,37 @@ test('a reload keeps the state: a `firing` v0.1 wrote ({ id, at }, no list) draw
 
 // ── the dashboard, links, search ───────────────────────────────────────────
 
-test('with the dashboard down the chart says how to start it, inside the pane; the status line says nothing of it', async ($, on) => {
+/** The words the chart says while the dashboard is down, whatever the install. */
+const DOWN_SAYS = 'Counts appear once the dashboard is open (/counterparts:dashboard)'
+
+test('with the dashboard down the chart says counts appear once it is open, inside the pane; the status line says nothing of it', async ($, on) => {
   const w = world(on, { down: true })
   await start($, w)
   for (const surface of SURFACES) {
     const ui = await mount($, w, surface)
-    expect((await bodyLines(ui)).join('\n')).toContain('counterparts dashboard')
+    expect((await bodyLines(ui)).join(' ').replace(/ +/g, ' ')).toContain(DOWN_SAYS)
     await ui.unmount()
   }
   expect(w.statuses.some(s => (s ?? '').includes('dashboard'))).toBe(false)
 })
 
-test('down, a plugin-only install is told the plugin route (no `counterparts` on its PATH)', async ($, on) => {
+test('down, a plugin-only install is told the same slash command, and nothing of the console', async ($, on) => {
   const w = world(on, { down: true, tools: PLUGIN_TOOLS })
   await start($, w)
   const ui = await mount($, w, 'terminal')
-  const text = (await bodyLines(ui)).join('\n')
-  expect(text).toContain('/counterparts:dashboard')
-  expect(text).not.toContain('counterparts dashboard')
+  const text = (await bodyLines(ui)).join(' ').replace(/ +/g, ' ')
+  expect(text).toContain(DOWN_SAYS)
+  expect(text).not.toMatch(/(^|[^/])counterparts dashboard/)
   await ui.unmount()
 })
 
-test('down, with no memory server found: the plugin route first, then the npm one', async ($, on) => {
+test('down, with no memory server found: the same slash command', async ($, on) => {
   const w = world(on, { down: true, tools: [] })
   await start($, w)
   const ui = await mount($, w, 'terminal')
-  const lines = await bodyLines(ui)
-  const plugin = lines.findIndex(l => l.includes('/counterparts:dashboard'))
-  const npm = lines.findIndex(l => l.includes('or counterparts dashboard'))
-  expect(plugin).toBeGreaterThanOrEqual(0)
-  expect(npm).toBeGreaterThan(plugin)
+  const text = (await bodyLines(ui)).join(' ').replace(/ +/g, ' ')
+  expect(text).toContain(DOWN_SAYS)
+  expect(text).not.toMatch(/(^|[^/])counterparts dashboard/)
   await ui.unmount()
 })
 
@@ -1646,9 +1647,9 @@ test('opted in by the store key alone (`claudeMemorySwitch`), the switch shows',
   await ui.unmount()
 })
 
-// ── the first meeting: speak first, once; "Meet your counterpart" ───────────
+// ── the first meeting: speak first, once; "Start the 5-minute intro" ───────────
 
-const MEET = 'Counterparts: Claude has a memory now and would like to introduce itself.'
+const MEET = 'Counterparts is installed. Claude would like to introduce itself.'
 const onbFetches = (w: World) => w.fetches.filter(u => u.endsWith('/api/onboarding'))
 
 /** Core's SessionStart wake, as the classic hook injects it: with its onboarding marker on a line of its own, or (null) none, as an older core. */
@@ -1749,7 +1750,7 @@ test('a same-day resume’s short wake: the marker is read from it (the button f
   expect(w.submits).toHaveLength(0)
   await shortWake($, w, 'later')
   const ui = await mount($, w, 'terminal')
-  expect((await ui.find({ type: 'Button', key: 'meet' }))?.text).toBe('Meet your counterpart')
+  expect((await ui.find({ type: 'Button', key: 'meet' }))?.text).toBe('Start the 5-minute intro')
   // Day and count are the dashboard's, not the wake's: the header reads them as before.
   expect(await texts(ui)).toContain('day 18')
   expect(await texts(ui)).toContain('776 memories')
@@ -1858,13 +1859,13 @@ test('a speak-first still queued when the person only ran a slash command (/mode
 const meetRow = async (ui: Ui) => ui.find({ type: 'Button', key: 'meet' })
 
 for (const meet of ['later', 'offered'] as const) {
-  test(`Meet your counterpart: the wake says ${meet}, so a cyan row tops the body; a press submits the same line, once a minute at most`, async ($, on) => {
+  test(`Start the 5-minute intro: the wake says ${meet}, so a cyan row tops the body; a press submits the same line, once a minute at most`, async ($, on) => {
     const w = world(on)
     await startWith($, w, meet)
     for (const surface of SURFACES) {
       const ui = await mount($, w, surface)
-      expect((await meetRow(ui))?.text).toBe('Meet your counterpart')
-      expect((await ui.find({ type: 'Text', text: 'Meet your counterpart' }))?.props['color']).toBe('#00e5ff')
+      expect((await meetRow(ui))?.text).toBe('Start the 5-minute intro')
+      expect((await ui.find({ type: 'Text', text: 'Start the 5-minute intro' }))?.props['color']).toBe('#00e5ff')
       // at the top of the body: after the header, before the sections
       const keys = (((await ui.drawn()) as unknown as Node).children ?? []).map(c => (c as Node).props?.['key'])
       const head = Math.max(keys.indexOf('head'), keys.indexOf('head2'))
@@ -1898,12 +1899,12 @@ const HIDDEN: [string, WorldOptions, string | null][] = [
   ['later, the folder unknown', { scopesUnreadable: true }, 'later'],
 ]
 for (const [name, opts, meet] of HIDDEN) {
-  test(`Meet your counterpart is hidden: ${name}`, async ($, on) => {
+  test(`Start the 5-minute intro is hidden: ${name}`, async ($, on) => {
     const w = world(on, opts)
     await startWith($, w, meet)
     const ui = await mount($, w, 'terminal')
     expect(await meetRow(ui)).toBeUndefined()
-    expect(await texts(ui)).not.toContain('Meet your counterpart')
+    expect(await texts(ui)).not.toContain('Start the 5-minute intro')
     await ui.unmount()
   })
 }
@@ -1912,7 +1913,7 @@ test('not_started though the speak-first went out in an earlier session (its tur
   const w = world(on, { store: { meetTriggered: { session: 'sess-older', at: T0 - 86400000 } } })
   await startWith($, w, 'not_started')
   const ui = await mount($, w, 'terminal')
-  expect((await meetRow(ui))?.text).toBe('Meet your counterpart')
+  expect((await meetRow(ui))?.text).toBe('Start the 5-minute intro')
   expect(w.submits).toHaveLength(0)
   await ui.unmount()
 })
@@ -1967,3 +1968,37 @@ test('a queued speak-first is still dropped when a warm poll read the state offe
   expect(r).toEqual({ drop: 'the person spoke first' })
   await ui.unmount()
 })
+
+for (const surface of SURFACES) {
+  test(`the theme: tron by default; /counterparts theme cozy stores it and the pane draws warm: ${surface}`, async ($, on) => {
+    const w = world(on)
+    await start($, w)
+    const ui = await mount($, w, surface)
+    expect((await ui.find({ type: 'Text', text: 'COUNTERPARTS' }))?.props['color']).toBe('#00e5ff')
+    expect((await ui.find({ type: 'Box', key: 'search' }))?.props['backgroundColor']).toBe('#121a22')
+    expect(await cmd($, 'theme sepia')).toContain('tron or cozy (now tron)')
+    expect(await cmd($, 'theme cozy')).toContain('Theme cozy')
+    expect(w.store['theme']).toBe('cozy')
+    await settle(w)
+    expect((await ui.find({ type: 'Text', text: 'COUNTERPARTS' }))?.props['color']).toBe('#9cc65f')
+    expect((await ui.find({ type: 'Box', key: 'search' }))?.props['backgroundColor']).toBe('#2a1e16')
+    expect(await cmd($, 'theme tron')).toContain('Theme tron')
+    expect(w.store['theme']).toBe('tron')
+    await settle(w)
+    expect((await ui.find({ type: 'Text', text: 'COUNTERPARTS' }))?.props['color']).toBe('#00e5ff')
+    await ui.unmount()
+  })
+}
+
+for (const [stored, color] of [
+  ['cozy', '#9cc65f'],
+  ['neon', '#00e5ff'],
+] as const) {
+  test(`the theme is read from the store at the start: stored ${stored} draws ${color} from the first drawing`, async ($, on) => {
+    const w = world(on, { store: { theme: stored } })
+    await start($, w)
+    const ui = await mount($, w, 'terminal')
+    expect((await ui.find({ type: 'Text', text: 'COUNTERPARTS' }))?.props['color']).toBe(color)
+    await ui.unmount()
+  })
+}

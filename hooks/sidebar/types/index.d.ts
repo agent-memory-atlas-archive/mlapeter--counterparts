@@ -268,6 +268,9 @@ export type SidebarView = 'sidebar' | 'quiet';
 /** The brain beside the title: swaying (`turning`), a fixed view that lights when something fires (`still`), or none (`off`). */
 export type SidebarBrain = 'turning' | 'still' | 'off';
 
+/** The pane's colours (`hooks/theme.ts`): the mockups' `tron` (the default) or the warm `cozy`. */
+export type SidebarTheme = 'tron' | 'cozy';
+
 declare module 'claude-code' {
   interface PluginState {
     counterparts: {
@@ -299,6 +302,8 @@ declare module 'claude-code' {
       onboarding: SidebarOnboarding;
       view: SidebarView;
       brain: SidebarBrain;
+      /** The pane's colours, for every session (`$.store` `theme`). */
+      theme: SidebarTheme;
       /** The pane is placed and showing (opened and not closed since). */
       placed: boolean;
       /** What the Counterparts switch said about a press it would not act on. */

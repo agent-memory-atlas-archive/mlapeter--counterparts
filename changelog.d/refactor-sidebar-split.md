@@ -1,0 +1,3 @@
+- **The sidebar has a second look.** `/counterparts theme cozy` turns the pane warm (dark walnut, parchment text, leaf green and pumpkin) in every session; `/counterparts theme tron` brings back the black, cyan and amber it has always had, which stays the default.
+- **The sidebar's button for a put-off first meeting says what it starts.** It reads "Start the 5-minute intro" (was "Meet your counterpart").
+- **The sidebar no longer sounds broken when there is nothing to show.** With the dashboard closed, Mechanisms today says "Counts appear once the dashboard is open (/counterparts:dashboard)", the same for every install; with nothing new yet, the quiet line under the prompt reads "Watching quietly · nothing new yet".
