@@ -503,10 +503,13 @@ export const PRONOUN_RULE = "Until they say their pronouns, use their name or \"
 
 /**
  * WHAT IS KEPT, word for word (D): Claude is never to paraphrase retention, so
- * the script hands the exact line, for when they ask.
+ * the script hands the exact line, for when they ask. Its facts: a week is
+ * `remember/tunables.ts#RETENTION_MS` from the latest of last activity, write-up
+ * and session end (`remember/owes.ts`); two weeks is `coverage/tunables.ts#
+ * LAPSE_DAYS_OF_USE`; 14 days is the daily snapshots' `DEFAULT_KEEP`.
  */
 export const RETENTION_LINE =
-  "Session text is kept until I've written it up, then deleted a week later (a week after the session's last activity or end, if that is later), so never while a session is open. If a write-up is still owed, the text is let go after about two weeks of use. Backups hold it about 14 days longer.";
+  "Session text is kept until I've written it up and the session has ended, then deleted a week later. If a write-up is still owed, the text is let go after about two weeks of use. Backups hold it about 14 days longer.";
 
 /** The first dream, true to the dreaming setting: never today (`meetingDay`). Empty when dreaming is off. */
 function firstDream(dreaming: MeetContext["dreaming"]): string {

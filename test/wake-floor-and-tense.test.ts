@@ -52,6 +52,7 @@ import {
   collapsedLane,
   collapsedLine,
   compose,
+  countedLanes,
   moreLine,
   prefaceLine,
   pageTooLargeLine,
@@ -735,5 +736,29 @@ describe("the tense, as a function", () => {
     // every Arriving line the lane can hold.
     const was = Buffer.byteLength("was ");
     expect(Buffer.byteLength(worst) + 1 + 2 + was * SELF_TUNABLES.HORIZON_MAX).toBeLessThanOrEqual(PREFACE_RESERVE_BYTES);
+  });
+});
+
+describe("a bundle stored under the old lane headings is still read (review of #456)", () => {
+  const old = (line: string): string => line.replace(FRAMING.horizon, "Arriving:").replace(FRAMING.hints, "Nearby, if it helps:");
+
+  test("collapsedLane and countedLanes read 'Arriving:' and 'Nearby, if it helps:' collapsed lines", () => {
+    const horizon = old(collapsedLine("horizon", ["mem_a", "mem_b", "mem_c"]));
+    const hints = old(collapsedLine("hints", ["mem_d", "mem_e"]));
+    expect(horizon.startsWith("Arriving: 3 — ")).toBe(true);
+    expect(hints.startsWith("Nearby, if it helps: 2 — ")).toBe(true);
+    expect(collapsedLane(horizon)).toBe("horizon");
+    expect(collapsedLane(hints)).toBe("hints");
+    expect(countedLanes(`${horizon}\n${hints}`)).toEqual({ horizon: 3, hints: 2 });
+  });
+
+  test("the dashboard's lane splitter files old headings under their lanes, not the preface", () => {
+    const text = [FRAMING.context, "Nearby, if it helps:", "- a nearby thing", old(collapsedLine("horizon", ["mem_a", "mem_b"]))].join("\n");
+    const lanes = wakeLanes(text);
+    const hints = lanes.find((l) => l.lane === "hints");
+    const horizon = lanes.find((l) => l.lane === "horizon");
+    expect(hints?.items).toEqual(["a nearby thing"]);
+    expect(horizon?.heading).toBe(FRAMING.horizon);
+    expect(horizon?.items[0]?.startsWith("2 — ")).toBe(true);
   });
 });
