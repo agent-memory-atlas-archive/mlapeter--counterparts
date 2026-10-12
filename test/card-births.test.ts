@@ -249,6 +249,26 @@ describe("cards are born from the tally, gated by mention() (Schemas#birthsFromN
     expect(third.birthsFromNames(9).born.map((id) => nameOf(third, id))).toEqual(["Corvin"]);
   });
 
+  test("the owner's first or last name alone is refused against his two-word core", () => {
+    const s = store();
+    s.put({
+      type: "schema",
+      kind: "self",
+      title: "Rowan Adler",
+      body: "Rowan Adler",
+      meta: { role: "entity", name: "Rowan Adler", aliases: [] },
+    });
+    for (const v of ["Rowan", "Adler"]) {
+      put(s, `Today ${v} fixed the bike.`, 1, { title: v, kind: "person" });
+      put(s, `Later ${v} went running by the river.`, 2);
+      put(s, `On the trip ${v} said the hills were steep.`, 3);
+    }
+    const schemas = Schemas.open({ store: s });
+    const r = schemas.birthsFromNames(4);
+    expect(r.born).toEqual([]);
+    expect(r.refused).toEqual({ "collision-near": 2 });
+  });
+
   test("the night's limit births the most-named first and counts the rest, which come next night", () => {
     const s = store();
     for (const [name, n] of [["Corvin", 5], ["Marisol", 4], ["Tamsin", 3]] as const) {
