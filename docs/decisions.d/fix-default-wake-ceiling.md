@@ -23,3 +23,9 @@
   Claude Desktop's MCP server does not apply the default, because that host has no measured
   ceiling. Side effect: the room a prompt's recall may take on those installs becomes 9,000
   instead of `RECALL_TUNABLES.BUDGET_BYTES` (2,048), the same as a terminal install's.
+- Decided by the #466 reviewer, 2026-10-12, lightly held: left as built, with the wording
+  corrected. Claude Desktop's server applies no default, but the worker its `wake` starts is
+  Claude Code's runner (`runnerConfig`), which does, and `install --host claude-desktop` writes
+  the same default `claude-code.json`. So a keyless store a Desktop chat wakes from is rendered
+  at 9,000 and delivered as the published bundle. Why: 9,000 bytes fits the tool result's
+  24,000 characters, and a composed wake is what that person was missing too.

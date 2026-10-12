@@ -27,6 +27,7 @@ import { HOOK_SCRIPT } from "../src/adapters/cli/install.js";
 import { CLI_SCRIPT } from "../src/adapters/runtime.js";
 import { CLAUDE_CODE_BUDGET_BYTES, capabilities, loadConfig, withBudgetDefault } from "../src/adapters/config.js";
 import { hostCeiling } from "../src/adapters/cli/commands-scope.js";
+import { desktopConfigPath } from "../src/adapters/cli/desktop.js";
 import { run } from "../src/adapters/cli/index.js";
 import { BOOTSTRAP } from "../src/core/self/index.js";
 import { Store } from "../src/core/store/index.js";
@@ -238,6 +239,23 @@ describe("the fallback, unit by unit", () => {
     expect(code).toBe(0);
     expect(out.join("\n")).toContain("budget 9000 bytes from");
     expect(out.join("\n")).toContain("Claude Code's default");
+  });
+
+  test("a --budget on the line always wins over the default, and Claude Desktop's install writes no ceiling", async () => {
+    const io = { out: () => {}, err: () => {} };
+    for (const extra of [["--no-connect"], ["--yes"]]) {
+      const h = join(work, `flag${extra.join("")}`);
+      expect(await run(["install", "--dir", join(h, "store"), "--budget", "4000", ...extra], { io, env: {}, home: h })).toBe(0);
+      expect(JSON.parse(readFileSync(join(h, ".counterparts", "claude-code.json"), "utf8"))["injectionBudgetBytes"]).toBe(4000);
+    }
+    // Desktop: a configuration it CREATES gets no key (`defaultBudget: false`).
+    const d = join(work, "desktop");
+    const cfg = join(d, "elsewhere", "claude-code.json");
+    const desktopFile = desktopConfigPath(d);
+    mkdirSync(join(desktopFile, ".."), { recursive: true });
+    writeFileSync(desktopFile, "{}\n");
+    expect(await run(["install", "--host", "claude-desktop", "--config", cfg], { io, env: {}, home: d })).toBe(0);
+    expect(JSON.parse(readFileSync(cfg, "utf8"))["injectionBudgetBytes"]).toBeUndefined();
   });
 
   test("doctor's Config line says which ceiling is in force", async () => {

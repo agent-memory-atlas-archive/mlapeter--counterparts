@@ -141,7 +141,8 @@ credential — belongs here, discovered at runtime, never assumed by the core.
   (9,000, this host's measured number): every Claude Code install writes it into a new
   configuration, and the hooks, the worker and the night run fill it in for a file with no
   key (`withBudgetDefault`, 2026-10-12), reported as defaulted, never as reported. Claude
-  Desktop's server takes no default.
+  Desktop's server takes no default itself, but the worker it starts is this runner, so a
+  keyless store it shares is rendered at 9,000 as well.
 - **Multi-file API-key rotation and per-key cursor bookkeeping are dropped** — and since
   2026-09-24 there are no keys at all (§1a), so there is nothing to rotate and no credential
   source to configure. (Until then credentials came from one configured source the package

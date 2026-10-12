@@ -897,7 +897,10 @@ export function withEmbedderDefault(config: AdapterConfig): AdapterConfig {
  * an absent key with this, at load, and say so (`injectionBudgetDefaulted`;
  * doctor's Config line, `capabilities()` still `reported: false`). Nothing is
  * written back to the file. A key in the file always wins. Claude Desktop's MCP
- * server does NOT apply it: that host has no measured ceiling.
+ * server does NOT apply it: that host has no measured ceiling. But the worker
+ * its `wake` starts is this adapter's runner, which does, so a keyless store a
+ * Desktop chat wakes from is rendered at 9,000 too (well inside a tool result's
+ * `TOOL_RESULT_CHARS`); Desktop's install writes the same file by default.
  */
 export const CLAUDE_CODE_BUDGET_BYTES = PAGE_HOST_BUDGET_BYTES;
 
