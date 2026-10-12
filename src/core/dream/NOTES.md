@@ -689,6 +689,11 @@ the live ~52):
   work is the undreamed rows (dreamed ids are skipped before any row is read), and the
   undreamed rows below reach leave with the prune, so it grows with intake, not the store.
   Before, the 10x read hit `readCapped`.
+- Review of #436: the queue read every dream with `SELECT *` (journals included) on every
+  prompt. It now reads `store.dreamsShown` (no journal), and the gate only its week's dreams.
+  On the 10x copy with 350 older journaled dreams added (365 in all), the gate's queue read
+  went 7.3 → 2.8 ms (the same as at 15 dreams); counts unchanged. The carry's events were read
+  through the event log's default page (500, oldest first); now whole.
 - The reflection's part packer read a memory the fit left as an id, but that the dream also
   saw (so it was offered as a line too), as a line: a part cost more than `pack` measured.
   Once the queue read whole, the CJK limits test showed it (25.2k over a 24k part). Fixed
