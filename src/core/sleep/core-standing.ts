@@ -57,7 +57,27 @@ export type CoreWeighing =
   | null;
 
 /** What `weighCore` reads. */
-export type ReadsCoreStanding = ReadsCoreContext & Pick<SleepStore, "coreStanding">;
+export type ReadsCoreStanding = ReadsCoreContext & Pick<SleepStore, "coreStanding" | "coreEvents">;
+
+/**
+ * DOES A KEEP STAND? — a decision (`reaffirmed` by the owner, by me or by a
+ * reflection; not sleep's own lift) since the memory last came into the core
+ * or left it. Read off the whole history, not the latest row: sleep lifting a
+ * later quiet flag writes its own `reaffirmed`, and that must not erase the
+ * keep (review of #430). A port without the history reads the latest row.
+ */
+function keptByDecision(store: ReadsCoreStanding, id: string, standing: { action: string; actor: string | null } | undefined): boolean {
+  if (store.coreEvents === undefined) return standing?.action === "reaffirmed" && standing.actor !== "sleep";
+  try {
+    for (const e of store.coreEvents({ memoryId: id, limit: 200 })) {
+      if (e.action === "promoted" || e.action === "demoted") return false;
+      if (e.action === "reaffirmed" && e.actor !== "sleep") return true;
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
 
 /**
  * WEIGH ONE CORE MEMORY (2026-10-11). Reads only; the phase writes what it
@@ -78,7 +98,7 @@ export function weighCore(store: ReadsCoreStanding, row: Pick<MemoryRow, "id" | 
     // An identity flag lifts when the memory is one the core is for again (re-marked me or us).
     return block === null ? { action: "reaffirmed", reason: "cause-gone" } : null;
   }
-  const kept = standing?.action === "reaffirmed" && standing.actor !== "sleep";
+  const kept = keptByDecision(store, row.id, standing);
   if (block !== null && !kept) return { action: "reconsidering", reason: block };
   // QUIET: from the latest of its last recurrence, its promotion or keep, its band day.
   const since = Math.max(rec.lastEver ?? -Infinity, standing !== undefined && standing.action !== "demoted" ? standing.day : -Infinity, row.band_day, row.birth_day);

@@ -258,6 +258,27 @@ describe("the core weighs itself, and nothing leaves it without a decision", () 
     expect(weighCore(c.store, c.store.row(id)!, c.store.livedDay())).toEqual({ action: "reaffirmed", reason: "cause-gone" });
   });
 
+  test("a keep outlives a quiet flag and its lift: it is still not flagged for what it is", () => {
+    const c = brain();
+    nextDay(c);
+    const id = mem(c, "Mike's promise to Han.", { kind: "person", about: "owner" });
+    makeCore(c, id);
+    let day = c.store.livedDay();
+    expect(weighCore(c.store, c.store.row(id)!, day)).toEqual({ action: "reconsidering", reason: "not-about-me-or-us" });
+    expect(c.keepCore(id, { why: "It is part of us.", actor: "owner" }).ok).toBe(true);
+    expect(weighCore(c.store, c.store.row(id)!, day)).toBeNull();
+    // Quiet for 60 lived days: flagged for going quiet, as it should be.
+    day += SLEEP.CORE_QUIET_DAYS;
+    expect(weighCore(c.store, c.store.row(id)!, day)).toEqual({ action: "reconsidering", reason: "no-recurrence" });
+    c.store.appendCoreEvent({ memoryId: id, action: "reconsidering", day, reason: "no-recurrence", actor: "sleep" });
+    // It comes back; sleep lifts the quiet flag.
+    c.store.reinforce(id, day + 1, "referenced", { cued: true, session: "s-back" });
+    expect(weighCore(c.store, c.store.row(id)!, day + 1)).toEqual({ action: "reaffirmed", reason: "cause-gone" });
+    c.store.appendCoreEvent({ memoryId: id, action: "reaffirmed", day: day + 1, reason: "cause-gone", actor: "sleep" });
+    // The owner's keep still stands: not flagged again for its mark.
+    expect(weighCore(c.store, c.store.row(id)!, day + 2)).toBeNull();
+  });
+
   test("the wake lists a flagged member under Still open, labelled, instead of under Who I am — one at a time", () => {
     const c = brain();
     nextDay(c);

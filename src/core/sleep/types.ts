@@ -163,6 +163,8 @@ export interface SleepStore {
   coreDemoted?(id: string): boolean;
   /** A core memory's latest promotion, demotion, flag or reaffirmation (2026-10-11), OPTIONAL like the rest of the core's history. */
   coreStanding?(id: string): { readonly action: string; readonly day: number; readonly reason: string | null; readonly actor: string | null } | undefined;
+  /** A memory's core history, newest first, OPTIONAL: whether a keep still stands reads it (2026-10-11). */
+  coreEvents?(filter: { memoryId?: string; limit?: number }): readonly { readonly action: string; readonly actor: string | null }[];
   /** A memory's feelings — whose, the word and its core, its strength and who
    *  recorded it are all this port reads (the recognition lane, wheel v2; the
    *  fast lane's "strongly felt", 2026-10-10). Absent: no
