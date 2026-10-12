@@ -260,7 +260,7 @@ export function coreListLines(counterpart: Counterpart): string[] {
   if (reconsidering.length > 0) {
     out.push("", "Being reconsidered — still core; nothing leaves without a decision, yours or mine:");
     for (const r of reconsidering) out.push(`  ${r.id}  since lived day ${String(r.day)} — ${reconsiderWords(r.reason)}`);
-    out.push('  Keep one: counterparts core --keep <id> --reason "..."  ·  send one back: --demote <id> --reason "..."');
+    out.push('  Keep one: counterparts core --reaffirm <id> --reason "..."  ·  send one back: --demote <id> --reason "..."');
   }
   if (demoted.length > 0) {
     out.push("", "Sent back to ordinary fading:");

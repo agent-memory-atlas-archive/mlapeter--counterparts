@@ -180,7 +180,9 @@ describe("the core weighs itself, and nothing leaves it without a decision", () 
     const aboutHim = mem(c, "Mike keeps his promises.", { kind: "person", about: "owner" });
     const plan = mem(c, "We will reflect after dreaming.", { kind: "fact", about: "us" });
     const me = mem(c, "I am patient with hard problems.");
-    for (const id of [aboutHim, plan, me]) makeCore(c, id);
+    // Unmarked: in by recognition or before marks — not flagged for its mark.
+    const unmarked = mem(c, "I recognised myself in the old handoff.", { about: undefined });
+    for (const id of [aboutHim, plan, me, unmarked]) makeCore(c, id);
     sleepNow(c);
     const flagged = c.store.coreReconsidering();
     const byId = (a: string[], b: string[]) => (a[0] as string) < (b[0] as string) ? -1 : 1;

@@ -268,7 +268,7 @@ export interface SettlingView {
   /**
    * Core memories BEING RECONSIDERED (2026-10-11, Group 3 part A): still in
    * the core, waiting on a decision — mine, or the owner's (`counterparts core
-   * --keep` / `--demote`). `why` is the reason in words.
+   * --reaffirm` / `--demote`). `why` is the reason in words.
    */
   readonly reconsidering: (SettlingRow & { readonly why: string; readonly day: number })[];
   /** Protected (permanent) rows. */

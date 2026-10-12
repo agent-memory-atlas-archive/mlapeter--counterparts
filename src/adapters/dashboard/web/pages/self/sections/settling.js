@@ -115,7 +115,7 @@ function list(s, key) {
       '<button type="button" class="st-row click" onclick="openMemory(\'' + esc(r.id) + '\')">' +
         '<span class="st-text">' + said(headline(r.text), r.confidential) + "</span>" +
         '<span class="st-hist-tail">' + esc("since day " + r.day + " · " + r.why) + "</span></button>").join("") +
-      '<p class="foot st-note">Still in the core. Nothing leaves it without a decision: keep one with <code>counterparts core --keep &lt;id&gt; --reason "…"</code>, or send it back with <code>--demote</code>. I can decide too, awake or when I reflect.</p>';
+      '<p class="foot st-note">Still in the core. Nothing leaves it without a decision: keep one with <code>counterparts core --reaffirm &lt;id&gt; --reason "…"</code>, or send it back with <code>--demote</code>. I can decide too, awake or when I reflect.</p>';
   }
   if (key === "contested") {
     return s.contested.map((c, i) =>

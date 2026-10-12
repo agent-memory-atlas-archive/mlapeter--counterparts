@@ -177,9 +177,13 @@ export type IdentityBlock = "not-about-me-or-us" | "not-a-core-kind" | "a-plan";
 export function identityBlock(
   store: ReadsDocs,
   row: Pick<MemoryRow, "id" | "kind"> & { about?: string | null; status?: string | null },
+  opts: { readonly unmarkedPasses?: boolean } = {},
 ): IdentityBlock | null {
   const mark = aboutMark(store, row);
-  if (typeof mark !== "string" || !(IDENTITY_ABOUT_MARKS as readonly string[]).includes(mark)) return "not-about-me-or-us";
+  // `unmarkedPasses` (the core weighing its members): an UNMARKED member came
+  // in by recognition, or before marks — nothing says it is not about me.
+  const unmarkedOk = opts.unmarkedPasses === true && (mark === null || mark === undefined);
+  if (!unmarkedOk && (typeof mark !== "string" || !(IDENTITY_ABOUT_MARKS as readonly string[]).includes(mark))) return "not-about-me-or-us";
   if (!IDENTITY_KINDS.includes(row.kind)) return "not-a-core-kind";
   if (isPlan(store, row)) return "a-plan";
   return null;

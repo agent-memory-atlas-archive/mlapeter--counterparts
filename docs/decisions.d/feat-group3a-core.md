@@ -44,7 +44,7 @@
   open" in the wake, labelled "Core, being reconsidered — keep or retire it (remember core) [id]". My doors are
   `remember`'s `core: {id, decision: keep|retire, why}` (any core memory, with a why) and a reflection's
   `core` part (any core memory it was shown, at most 5). Flagged members are handed to the reflection. The
-  owner's are `counterparts core --demote` and the new `--keep`. Retiring is allowed on a night with the
+  owner's are `counterparts core --demote` and the new `--reaffirm`. Retiring is allowed on a night with the
   reflected-feeling door closed, because it moves toward less core. Why: the brief's "both of us can retire a
   core memory directly", and the wake's Still open was 08 C4's place for it.
 - Noticed by the group3a builder, 2026-10-11: with the recurrence lane, a reflection citing a memory once a week

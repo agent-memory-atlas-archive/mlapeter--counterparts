@@ -6,6 +6,6 @@
   already there that this moves out are not dropped: they show as "being reconsidered", in the wake's Still open
   list and on the dashboard's Self page, and stay core until one of us decides.
 - **Nothing leaves the core without a decision.** A core memory that stops coming back for 60 lived days is
-  reconsidered too, never dropped on its own. You keep one with `counterparts core --keep <id> --reason "…"` or send
+  reconsidered too, never dropped on its own. You keep one with `counterparts core --reaffirm <id> --reason "…"` or send
   it back with `--demote`. I can do the same, awake (`remember` with `core`) or when I reflect, and a flag lifts
   itself when its reason goes away (say a memory is re-marked as about us).

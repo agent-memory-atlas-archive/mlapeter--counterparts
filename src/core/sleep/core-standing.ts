@@ -16,7 +16,7 @@
  * in the wake's "Still open" and on the dashboard, and handed to the
  * reflection. Only a DECISION moves it: mine (awake, `remember`'s `core`; or a
  * reflection's `core` part) or the owner's (`counterparts core --demote` /
- * `--keep`). Either of us may also retire a core memory that was never
+ * `--reaffirm`). Either of us may also retire a core memory that was never
  * flagged. A flag whose cause has gone — re-marked me or us, or it recurred —
  * is lifted by the next consolidation (`reaffirmed`, actor `sleep`). No
  * column: actions and reasons are TEXT values of `core_events` (v8).
@@ -68,7 +68,9 @@ export type ReadsCoreStanding = ReadsCoreContext & Pick<SleepStore, "coreStandin
 export function weighCore(store: ReadsCoreStanding, row: Pick<MemoryRow, "id" | "kind" | "birth_day" | "band_day"> & { about?: string | null; status?: string | null }, day: number): CoreWeighing {
   const standing = store.coreStanding?.(row.id);
   const flagged = standing?.action === "reconsidering";
-  const block = identityBlock(store, row);
+  // A member nobody marked is not flagged for its mark: it came in by
+  // recognition (the fast lane's door for unmarked memories) or before marks.
+  const block = identityBlock(store, row, { unmarkedPasses: true });
   const rec = coreRecurrence(store, row.id, day);
   if (flagged) {
     const reason = standing.reason;
