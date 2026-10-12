@@ -933,6 +933,12 @@ describe("export", () => {
     s.put({ type: "memory", kind: "fact", body: `a memory holding ${secret}` });
     s.close();
 
+    // A temp root of this test's own: the sweep reads os.tmpdir() (TMPDIR) at
+    // call time, and the shared one holds other test runs' live scratch.
+    const savedTmp = process.env.TMPDIR;
+    const tmpRoot = mkdtempSync(join(tmpdir(), "cp-sweep-root-"));
+    process.env.TMPDIR = tmpRoot;
+
     // One abandoned scratch, aged past the bound; one FRESH one, which stands
     // for a concurrent export and must survive.
     const old = mkdtempSync(join(tmpdir(), "counterparts-export-"));
@@ -960,8 +966,9 @@ describe("export", () => {
       // this sweep would introduce the collision the target sweep cannot have.
       expect(existsSync(join(fresh, "scratch.sqlite"))).toBe(true);
     } finally {
-      rmSync(old, { recursive: true, force: true });
-      rmSync(fresh, { recursive: true, force: true });
+      if (savedTmp === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = savedTmp;
+      rmSync(tmpRoot, { recursive: true, force: true });
     }
   });
 
