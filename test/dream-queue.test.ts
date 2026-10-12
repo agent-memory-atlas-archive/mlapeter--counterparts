@@ -120,6 +120,26 @@ describe("the whole queue is read, by reach, not by position or a fixed window",
     expect(b.queue.tonight + b.queue.waiting).toBe(b.queue.new);
   }, 120_000);
 
+  test("a store that has never dreamed queues only its last week: its life before dreaming is not a backlog (review of #436)", () => {
+    const c = brain();
+    nextDay(c);
+    const KEPT = { relevance: 0.8, emotional: 0, predictive: 0.8 };
+    const old = mem(c, "A salient note from before dreaming was turned on.", { salience: KEPT });
+    for (let i = 0; i < DREAM_TUNABLES.FIRST_DREAM_DAYS + 3; i += 1) nextDay(c);
+    expect(strength(c.store.physicsOf(old), c.store.livedDay())).toBeGreaterThanOrEqual(PHYSICS.REACH);
+    const recent = mem(c, "A note from this week.", { salience: KEPT });
+    expect(c.store.firstDreamDay()).toBeNull();
+    const first = begin(c);
+    expect(first.fresh.map((f) => f.id)).toEqual([recent]);
+    expect(first.queue.new).toBe(1);
+    expect(first.queue.agedOut).toBe(0);
+    journal(c, first.dream);
+    // Once dreaming has begun the horizon stays where it began: still not queued.
+    nextDay(c);
+    mem(c, "The next day's note.");
+    expect(begin(c).fresh.map((f) => f.id)).not.toContain(old);
+  });
+
   test("a routine memory leaves the queue the day it falls below reach, counted; a salient one waits past seven days", () => {
     const c = brain();
     nextDay(c);
