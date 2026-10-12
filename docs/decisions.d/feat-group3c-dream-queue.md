@@ -38,3 +38,15 @@
   new rows (the read has no cap); the dashboard still reads them on old rows. `dream_shown_day` (v13,
   pre-provisioned) stays unwritten: the read is O(undreamed rows) without it, and a second source of truth would
   have to follow undo, resume, requeue and carry.
+
+### Decided by the #436 reviewer, 2026-10-11, lightly held (the queue's read)
+
+- Decided by the #436 reviewer, 2026-10-11, lightly held: the queue reads the dreams through `store.dreamsShown`
+  (`id, day, date, state, started_at, shown`, oldest first, no journal) and the first dream's day through
+  `store.firstDreamDay` (one `MIN`); the per-prompt gate reads only the dreams begun in its week, by lived day
+  (`sinceDay`, the column the queue already filters on, indexed), not by `started_at`. The carry's events are
+  read the same week on the gate and without the event log's default page of 500 everywhere. Why: the gate runs
+  on every prompt, and `SELECT *` of every dream parsed every journal; the old 500-row page, oldest first, would
+  have dropped the newest carries once a store had made 500. No behaviour change on the gate: a dream older than
+  its week was already passed over, and a carry is recorded on its dream's day or later. On a 10x copy with a
+  year of dreams (365) the gate's queue read went from 7.3 ms to 2.8 ms; at 15 dreams it is unchanged.

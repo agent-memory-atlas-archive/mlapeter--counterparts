@@ -65,7 +65,7 @@ import {
   splitNote,
   statusOf,
 } from "../store/index.js";
-import type { AboutMark, AboutSetter, DreamChangeRow, DreamRow, FeelingInput, MemoryRow, MemoryStatus, ProseDoc, SaidBy, Store } from "../store/index.js";
+import type { AboutMark, AboutSetter, DreamChangeRow, DreamRow, DreamShownRow, FeelingInput, MemoryRow, MemoryStatus, ProseDoc, SaidBy, Store } from "../store/index.js";
 import { TUNABLES as PHYSICS } from "../physics/index.js";
 import { addDays, isDay } from "../time.js";
 import { livedOn } from "../types.js";
@@ -1224,13 +1224,13 @@ export class Dreams {
   }
 
   /** Today's or yesterday's: a dream left behind that the next `begin` resumes. */
-  private resumable(row: DreamRow, at: string): boolean {
+  private resumable(row: Pick<DreamRow, "date" | "day">, at: string): boolean {
     if (row.date !== null && isDay(row.date) && isDay(at)) return row.date >= addDays(at, -1);
     return row.day >= this.store.livedDay() - 1;
   }
 
   /** Begun, not journaled, and quiet — no change — for longer than `ABANDONED_AFTER_MS`. */
-  private abandoned(row: DreamRow): boolean {
+  private abandoned(row: Pick<DreamRow, "id" | "state" | "started_at">): boolean {
     if (row.state !== "begun") return false;
     const changes = this.store.dreamChanges(row.id);
     const lastAt = changes.reduce((m, c) => Math.max(m, c.at), row.started_at);
@@ -1243,7 +1243,7 @@ export class Dreams {
    * does not take memories out of the queue. The gate and `begin` count the
    * same queue.
    */
-  private passedOver(d: DreamRow, at: string): boolean {
+  private passedOver(d: DreamShownRow, at: string): boolean {
     return d.state === "begun" && this.abandoned(d) && (this.resumable(d, at) || this.store.dreamChanges(d.id).length === 0);
   }
 
@@ -2682,7 +2682,7 @@ export class Dreams {
    */
   private queue(opts: {
     owner: boolean;
-    skip?: (d: DreamRow) => boolean;
+    skip?: (d: DreamShownRow) => boolean;
     enough?: number;
     madeBy?: number;
     ask?: boolean;
@@ -2736,22 +2736,28 @@ export class Dreams {
    * `firstDay`: the lived day of the first dream that stands, whatever the
    * filters (null before any).
    */
-  private dreamedSet(sinceDay: number | null, skip?: (d: DreamRow) => boolean): { dreamed: Set<string>; carried: string[][]; firstDay: number | null } {
+  private dreamedSet(sinceDay: number | null, skip?: (d: DreamShownRow) => boolean): { dreamed: Set<string>; carried: string[][]; firstDay: number | null } {
+    // BOUNDED BY DAY, AND ONLY THE COLUMNS IT NEEDS (review of #436): the gate
+    // runs this on every prompt, so it reads the week it counts (`sinceDay`)
+    // and never a journal. A dream older than `sinceDay` is passed over below
+    // anyway, and its carry was recorded on its own lived day or later.
     const carriedBy = new Map<string, string[][]>();
-    for (const e of this.store.eventLog({ name: DREAM_CARRIED_EVENT })) {
+    for (const e of this.store.eventLog({ name: DREAM_CARRIED_EVENT, ...(sinceDay === null ? {} : { sinceDay }), limit: Number.MAX_SAFE_INTEGER })) {
       if (e.ref === null) continue;
-      const v = (JSON.parse(e.payload ?? "{}") as Record<string, unknown>)["ids"];
+      let v: unknown;
+      try {
+        v = (JSON.parse(e.payload ?? "{}") as Record<string, unknown>)["ids"];
+      } catch {
+        continue;
+      }
       if (typeof v !== "string" || v.length === 0) continue;
       carriedBy.set(e.ref, [...(carriedBy.get(e.ref) ?? []), v.split(",")]);
     }
     const by = new Map<string, string | null>();
     const groups: { dream: string; ids: string[] }[] = [];
-    const dreams = this.store.dreams({ limit: Number.MAX_SAFE_INTEGER });
-    let firstDay: number | null = null;
-    for (let i = dreams.length - 1; i >= 0; i -= 1) {
-      const d = dreams[i] as DreamRow;
-      if (d.state !== "undone") firstDay = firstDay === null ? d.day : Math.min(firstDay, d.day);
-      if (d.state === "undone" || (sinceDay !== null && d.day < sinceDay) || (skip !== undefined && skip(d))) continue;
+    const firstDay = this.store.firstDreamDay();
+    for (const d of this.store.dreamsShown(sinceDay === null ? {} : { sinceDay })) {
+      if (d.state === "undone" || (skip !== undefined && skip(d))) continue;
       for (const id of parseIds(d.shown)) by.set(id, null);
       for (const g of carriedBy.get(d.id) ?? []) {
         const mine = g.filter((id) => by.has(id));

@@ -196,3 +196,38 @@ describe("a refused fold's parts are carried to the next night, together and fir
     expect(next.queue.new).toBeGreaterThanOrEqual(12);
   });
 });
+
+describe("the queue's read of the dreams is bounded where it can be (review of #436)", () => {
+  test("the gate reads only the last week's dreams, without their journals; an older dream's carry still comes back first", () => {
+    const c = brain();
+    nextDay(c);
+    const KEPT = { relevance: 0.7, emotional: 0, predictive: 0.7 };
+    const ids = Array.from({ length: 12 }, (_, i) => mem(c, `Release step ${String(i)} went through, number ${String(i)}.`, { salience: KEPT }));
+    const b = begin(c);
+    // More carry rows than one page of the event log, of a dream that is not
+    // there: the read must not stop at the log's default page and lose the
+    // real carry recorded after them.
+    for (let i = 0; i < 500; i += 1) c.store.appendEvent({ name: "dream.carried", day: c.store.livedDay(), ref: "drm_gone", payload: { ids: "mem_a,mem_b", parts: 2 } });
+    const folds = Array.from({ length: DREAM_TUNABLES.FOLDS }, (_, i) => ({ action: "gist", fold: true, text: `Stretch ${String(i)} shipped.`, sources: [ids[2 * i], ids[2 * i + 1]] }));
+    const sixth = [ids[10] as string, ids[11] as string];
+    const results = propose(c, b.dream, [...folds, { action: "gist", fold: true, text: "The last stretch shipped.", sources: sixth }]);
+    expect(results[DREAM_TUNABLES.FOLDS]?.detail).toContain("2 foldable parts are carried");
+    journal(c, b.dream);
+    const dreamDay = c.store.livedDay();
+    for (let i = 0; i < DREAM_TUNABLES.ASK_QUEUE_DAYS + 2; i += 1) nextDay(c);
+    for (const id of sixth) expect(strength(c.store.physicsOf(id), c.store.livedDay())).toBeGreaterThanOrEqual(PHYSICS.REACH);
+    // The store's read: oldest first, by day, and no journal.
+    const all = c.store.dreamsShown();
+    expect(all.map((d) => d.id)).toEqual([b.dream]);
+    expect(Object.keys(all[0] ?? {}).sort()).toEqual(["date", "day", "id", "shown", "started_at", "state"]);
+    expect(c.store.dreamsShown({ sinceDay: c.store.livedDay() - DREAM_TUNABLES.ASK_QUEUE_DAYS })).toEqual([]);
+    expect(c.store.firstDreamDay()).toBe(dreamDay);
+    // The gate counts the week's new memory, not the older carried parts.
+    mem(c, "One new note this week.");
+    expect(c.dreams.status(date(dateN)).newSince).toBe(1);
+    // The night's full read still finds the carry, first.
+    const next = begin(c);
+    expect(next.queue.carried).toBe(2);
+    expect(next.fresh.slice(0, 2).map((f) => f.id).sort()).toEqual([...sixth].sort());
+  });
+});

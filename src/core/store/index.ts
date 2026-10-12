@@ -745,6 +745,9 @@ export interface EventPruneReport extends PruneReport {
 }
 
 /** What `eventLog` selects on. `order` defaults to `"asc"` (oldest first). */
+/** A dream row as the queue reads it (`dreamsShown`): no journal, title or model. */
+export type DreamShownRow = Pick<DreamRow, "id" | "day" | "date" | "state" | "started_at" | "shown">;
+
 export interface EventLogFilter {
   name?: string;
   ref?: string;
@@ -3595,6 +3598,24 @@ export class Store {
           filter.sinceAt,
           filter.limit ?? 100,
         );
+  }
+
+  /**
+   * WHAT THE DREAMS WERE SHOWN, oldest first (2026-10-11, review of #436): the
+   * dream queue's read — only the columns it needs (no journal), every dream,
+   * or those begun on `sinceDay` or later (the per-prompt gate reads a week).
+   */
+  dreamsShown(filter: { sinceDay?: number } = {}): DreamShownRow[] {
+    const cols = "SELECT id, day, date, state, started_at, shown FROM dreams";
+    const order = "ORDER BY started_at ASC, id ASC";
+    return filter.sinceDay === undefined
+      ? this.ops.all<DreamShownRow>(`${cols} ${order}`)
+      : this.ops.all<DreamShownRow>(`${cols} WHERE day >= ? ${order}`, filter.sinceDay);
+  }
+
+  /** The lived day of the first dream that stands (not undone), or null before any. */
+  firstDreamDay(): number | null {
+    return this.ops.get<{ d: number | null }>("SELECT MIN(day) AS d FROM dreams WHERE state != 'undone'")?.d ?? null;
   }
 
   /** How many dreams the store holds, counted in SQL — the "of N" beside a list of the newest. */
