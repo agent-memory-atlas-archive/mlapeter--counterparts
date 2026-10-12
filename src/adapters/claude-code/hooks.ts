@@ -973,8 +973,10 @@ export class ClaudeCodeAdapter extends Lifecycle {
       const text = input.prompt ?? "";
       const byHost = isInteractive(input) && startedByHost(text);
       const plain = isInteractive(input) && !byHost ? this.plainFor(input) : NO_PLAIN;
-      // Nor handed over there as a quiet cue, which would spend its fire.
-      const waiting = byHost ? this.plainFor(input).due : plain.due;
+      // Nor handed over there as a quiet cue, which would spend its fire; and
+      // no quiet cue at all at such a turn (review of #453): each spends a fire
+      // of the person's day on a turn nobody reads.
+      const waiting = plain.due;
       const told: { notices?: readonly string[]; plain?: readonly PlainReminder[]; dream?: DreamTold; dreamNote?: { notice: string; context: string } } =
         plain.due.length === 0 ? {} : { notices: plain.notices, plain: plain.due };
       // The DREAM lines (2026-09-26): the once-a-day line, and any contradiction
@@ -998,6 +1000,7 @@ export class ClaudeCodeAdapter extends Lifecycle {
         ...(budgetBytes === undefined ? {} : { budgetBytes }),
         // Said outright this turn, so not ALSO handed over as a quiet cue.
         ...(waiting.length === 0 ? {} : { withhold: new Set(waiting.map((r) => r.memoryId)) }),
+        ...(byHost ? { noCues: true } : {}),
       });
       const decision = result.decision;
       // "SINCE YOU STARTED" (2026-10-11): what changed in other directories

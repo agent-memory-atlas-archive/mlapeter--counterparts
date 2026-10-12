@@ -237,3 +237,28 @@ describe("a compaction is not where a reminder is said", () => {
     expect(watchedAtStart({ entrypoint: "cli", attended: false, source: "startup" })).toBe(false);
   });
 });
+
+describe("a turn no person started spends no quiet cue (review of #453)", () => {
+  test("a hand-back in a person's session hands no temporal cue and fires nothing; the next typed prompt says the reminder", () => {
+    const a = adapter();
+    waiting(a);
+    at(10);
+    recordSession(dir, { sessionId: "s-person", scope: SCOPE, phase: "start" });
+    const back = hook("UserPromptSubmit", "s-person", PERSON, {
+      prompt: 'Another Claude session sent a message:\n<agent-message from="agent-x">Done with the refactor.</agent-message>',
+    });
+    const handBack = a.userPromptSubmit(back);
+    deliverTurn("user-prompt-submit", handBack, {}, null, a, back);
+    // The quiet one may still surface by another channel; what matters is that
+    // no temporal cue was handed, so no fire of the day was spent here.
+    expect(handBack.injection ?? "").not.toContain("call the kiln supplier");
+    expect(a.counterpart.store.eventLog({ name: PROSPECTIVE_FIRE_EVENT })).toEqual([]);
+    expect(a.counterpart.store.eventLog({ name: PROSPECTIVE_PLAIN_EVENT })).toEqual([]);
+
+    const typed = hook("UserPromptSubmit", "s-person", PERSON, { prompt: "what's on today?" });
+    const turn = a.userPromptSubmit(typed);
+    const out = deliverTurn("user-prompt-submit", turn, {}, null, a, typed);
+    expect(personSaw(out)).toContain("Remind him today to call the kiln supplier");
+    expect(a.counterpart.store.eventLog({ name: PROSPECTIVE_PLAIN_EVENT })).toHaveLength(1);
+  }, 30_000);
+});

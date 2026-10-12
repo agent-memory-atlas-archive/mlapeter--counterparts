@@ -50,7 +50,7 @@ clothes. **Hold debts, lose deadlines.**
   hand-back, a task notification, a peer session's message (2026-10-12, the Claude Code
   adapter's prompt hook) — nor at a session start no person made: a compaction, or the
   headless nightly run's child (2026-10-12, `hooks.ts#watchedAtStart`): it waits for the
-  next prompt a person types. The nightly run's prompt is handed no temporal cue at all
+  next prompt a person types. The nightly run's prompt, and a prompt the host started, is handed no temporal cue at all
   (`recallForTurn`'s `noCues`), so it spends none of the day's fires. The
   telling marks the wake behind (`told`, 2026-10-09), so a wake composed before it is
   re-rendered at the next turn-end rather than the next day. It
