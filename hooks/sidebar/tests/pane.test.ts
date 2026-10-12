@@ -138,7 +138,7 @@ test('on the main screen (no docking) nothing is opened unasked and nothing is s
   expect(w.statuses.every(s => s === undefined)).toBe(true)
   expect(await cmd($, '')).toBe('Counterparts sidebar opened.')
   expect(w.opens).toHaveLength(1)
-  expect(await cmd($, 'nonsense')).toContain('Usage: /counterparts [quiet | brain turning|still|off | theme tron|cozy | resume | fps [n]]')
+  expect(await cmd($, 'nonsense')).toContain('Usage: /counterparts [quiet | avatar animal|brain|off | avatar detail auto|images|fine|basic | theme tron|cozy | resume | fps [n]]')
 })
 
 for (const [n, said] of [
@@ -370,7 +370,7 @@ test('Mechanisms today: times each fired today, from the dashboard; a zero dim w
     expect(lines[at + 1]).toMatch(/^Salience {8}▄+▖?\s+3$/)
     expect(lines[at + 2]).toMatch(/^Emotion {9}\s+0$/) // no bar
     expect(lines[at + 5]).toMatch(/^Retrieval {7}▄{12}\s*12$/) // the longest bar
-    expect(lines[at + 12]).toBe('Schemas         ○ not built yet')
+    expect(lines.some(l => l.startsWith('Schemas'))).toBe(false) // not built: not drawn
     await click(ui, 'Forgetting')
     lines = await bodyLines(ui)
     const f = lines.findIndex(l => l.startsWith('Forgetting'))
@@ -921,9 +921,9 @@ test('a reload keeps the state: a `firing` v0.1 wrote ({ id, at }, no list) draw
 // ── the dashboard, links, search ───────────────────────────────────────────
 
 /** The words the chart says while the dashboard is down, whatever the install. */
-const DOWN_SAYS = 'Counts appear once the dashboard is open (/counterparts:dashboard)'
+const DOWN_SAYS = 'Start the dashboard to see stats here'
 
-test('with the dashboard down the chart says counts appear once it is open, inside the pane; the status line says nothing of it', async ($, on) => {
+test('with the dashboard down the chart is a link that starts it (/counterparts:dashboard), inside the pane; the status line says nothing of it', async ($, on) => {
   const w = world(on, { down: true })
   await start($, w)
   for (const surface of SURFACES) {
@@ -931,6 +931,11 @@ test('with the dashboard down the chart says counts appear once it is open, insi
     expect((await bodyLines(ui)).join(' ').replace(/ +/g, ' ')).toContain(DOWN_SAYS)
     await ui.unmount()
   }
+  const ui = await mount($, w, 'terminal')
+  await click(ui, 'Start the dashboard')
+  await settle(w)
+  expect(w.commands).toEqual(['counterparts:dashboard'])
+  await ui.unmount()
   expect(w.statuses.some(s => (s ?? '').includes('dashboard'))).toBe(false)
 })
 
@@ -1649,7 +1654,7 @@ test('opted in by the store key alone (`claudeMemorySwitch`), the switch shows',
 
 // ── the first meeting: speak first, once; "Start the 5-minute intro" ───────────
 
-const MEET = 'Counterparts is installed. Claude would like to introduce itself.'
+const MEET = 'Meet your new counterpart.'
 const onbFetches = (w: World) => w.fetches.filter(u => u.endsWith('/api/onboarding'))
 
 /** Core's SessionStart wake, as the classic hook injects it: with its onboarding marker on a line of its own, or (null) none, as an older core. */
@@ -1859,7 +1864,7 @@ test('a speak-first still queued when the person only ran a slash command (/mode
 const meetRow = async (ui: Ui) => ui.find({ type: 'Button', key: 'meet' })
 
 for (const meet of ['later', 'offered'] as const) {
-  test(`Start the 5-minute intro: the wake says ${meet}, so a cyan row tops the body; a press submits the same line, once a minute at most`, async ($, on) => {
+  test(`Start the 5-minute intro: the wake says ${meet}, so a cyan row tops the body; a press runs /counterparts:meet (never the speak-first's line), once a minute at most`, async ($, on) => {
     const w = world(on)
     await startWith($, w, meet)
     for (const surface of SURFACES) {
@@ -1877,14 +1882,16 @@ for (const meet of ['later', 'offered'] as const) {
     const ui = await mount($, w, 'terminal')
     await ui.press({ key: 'meet' })
     await settle(w)
-    expect(w.submits).toEqual([MEET])
+    expect(w.commands).toEqual(['counterparts:meet'])
     await ui.press({ key: 'meet' })
     await settle(w)
-    expect(w.submits).toEqual([MEET])
+    expect(w.commands).toEqual(['counterparts:meet'])
     await w.clock.advance(61000)
     await ui.press({ key: 'meet' })
     await settle(w)
-    expect(w.submits).toEqual([MEET, MEET])
+    expect(w.commands).toEqual(['counterparts:meet', 'counterparts:meet'])
+    // the line the speak-first sends is never submitted by the button
+    expect(w.submits).toHaveLength(0)
     await ui.unmount()
   })
 }

@@ -14,7 +14,7 @@ import type { SidebarBrain, SidebarScope, SidebarView } from '../types'
 import { shortDir, wrap } from './feed'
 import { clip } from './sections'
 import type { Line } from './sections'
-import { HOVER_CP, HOVER_MEM } from './state'
+import { HOVER_CP, HOVER_MEM, searchFlag } from './state'
 import { P } from './theme'
 import { CONFIRM_FROM, memoryHover, scopeHover, switchAt } from './words'
 
@@ -36,9 +36,10 @@ export type PaneActions = {
 
 // ── the title and the search box, which each view's header places ──
 
-/** The search box: a shade above the panel, a fainter `search` inside. */
+/** The search box: a shade above the panel, a fainter `search` inside. Hidden (`searchFlag`): an empty box as wide. */
 export function searchBox(els: PaneEls, actions: PaneActions, width: number): JSX.Element {
   const { Box, Text, Input } = els
+  if (!searchFlag.on) return <Box key="search" width={width} />
   return (
     <Box key="search" flexDirection="row" width={width} backgroundColor={P.searchBg}>
       <Text color={P.mid} backgroundColor={P.searchBg}>⌕ </Text>
@@ -193,11 +194,12 @@ export function footer(
         ))}
       </Box>
       <Box flexDirection="row">
-        <Text color={P.mid}>brain</Text>
-        {(['turning', 'still', 'off'] as const).map(b => (
+        <Text color={P.mid}>avatar</Text>
+        {([['turning', 'brain'], ['fox', 'animal'], ['off', 'off']] as const).map(([b, word]) => (
           <Box key={`b-${b}`} flexDirection="row">
             <Text> </Text>
-            {dotWord(`brain-${b}`, mode === b, b, () => actions.brain(b))}
+            {/* The brain is one dot, turning or still: a press on it keeps whichever it was. */}
+            {dotWord(`brain-${b}`, mode === b || (b === 'turning' && mode === 'still'), word, () => actions.brain(b === 'turning' && mode === 'still' ? 'still' : b))}
           </Box>
         ))}
       </Box>
@@ -217,9 +219,21 @@ export function plainBody(els: PaneEls, lines: readonly Line[]): JSX.Element {
   )
 }
 
-/** The pane's frame: the rows in a column, the panel's colour behind them, at least as tall as the pane. */
-export function frame(els: PaneEls, W: number, fill: number, rows: JSX.Element[]): JSX.Element {
+/**
+ * The pane's frame: the rows in a column, the panel's colour behind them, at least as tall as the pane.
+ * `top` (the fox's stage): rows above, the last of them (the stage) drawn edge to edge, outside the padding.
+ */
+export function frame(els: PaneEls, W: number, fill: number, rows: JSX.Element[], top: JSX.Element[] | null = null): JSX.Element {
   const { Box } = els
+  if (top !== null && top.length > 0) {
+    return (
+      <Box flexDirection="column" width={W} minHeight={fill} backgroundColor={P.panel}>
+        <Box key="stage-head" flexDirection="column" paddingX={1}>{top.slice(0, -1)}</Box>
+        {top[top.length - 1]}
+        <Box key="stage-rest" flexDirection="column" paddingX={1} flexGrow={1}>{rows}</Box>
+      </Box>
+    )
+  }
   return (
     <Box flexDirection="column" paddingX={1} width={W} minHeight={fill} backgroundColor={P.panel}>
       {rows}

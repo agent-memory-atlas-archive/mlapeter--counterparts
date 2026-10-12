@@ -589,7 +589,7 @@ describe('the body, laid out', () => {
       'waiting on Mike',
     ])
     expect(lines.join(' ')).not.toContain('replaces') // only when opened
-    expect(lines).toContain('Schemas         ○ not built yet')
+    expect(lines.some(l => l.startsWith('Schemas'))).toBe(false) // not built: not drawn
     expect(lines.find(l => l.startsWith('Prospective'))).toMatch(/^Prospective\s+0$/)
     const d = lines.findIndex(l => l.startsWith('Last Dream'))
     expect(lines[d]).toBe('Last Dream ' + '─'.repeat(16) + ' 8:15')
@@ -611,7 +611,7 @@ describe('the body, laid out', () => {
   test('folding to fit: saved items fewer, one at a time, each keeping its lines, then their heading; the dream shortens; a folded section keeps its heading and count', () => {
     const many = Array.from({ length: 9 }, (_, i) => ({ ...BASE.saved[1]!, key: `k${String(i)}`, title: `Saved item ${String(i)} with a title long enough to wrap twice over` }))
     expect(layoutBody({ ...BASE, saved: many, rows: 64 }).folds).toEqual([])
-    const tall = layoutBody({ ...BASE, saved: many, rows: 42 })
+    const tall = layoutBody({ ...BASE, saved: many, rows: 41 })
     expect(tall.folds).toEqual(['saved shows 5'])
     // never one line each, cut: every item shown keeps its words (two lines here), its dot on the first only
     const t = textOf(tall.lines)
@@ -619,7 +619,7 @@ describe('the body, laid out', () => {
     expect(t.slice(s0 + 1, s0 + 11)).toEqual(Array.from({ length: 5 }, (_, i) => [`● Saved item ${String(i)} with a title long`, 'enough to wrap twice over']).flat())
     expect(t.some(l => l.startsWith('● ') && l.endsWith('…'))).toBe(false)
     // two rows fewer take one item away, its two lines, rather than a line from each
-    expect(layoutBody({ ...BASE, saved: many, rows: 40 }).folds).toEqual(['saved shows 4'])
+    expect(layoutBody({ ...BASE, saved: many, rows: 39 }).folds).toEqual(['saved shows 4'])
     // a long session's list draws twelve at most, its heading the whole count
     const dozens = Array.from({ length: 40 }, (_, i) => ({ ...BASE.saved[1]!, key: `d${String(i)}`, title: `Item ${String(i)}` }))
     const all = textOf(layoutBody({ ...BASE, saved: dozens, rows: 200 }).lines)
@@ -710,20 +710,27 @@ describe('the body, laid out', () => {
     expect(before.find(l => l.startsWith('Last Dream'))).toBe('Last Dream ' + '─'.repeat(15) + ' Oct 7')
   })
 
-  test('the dashboard down: the chart says counts appear once it is open, naming the plugin’s command', () => {
-    const lines = textOf(layoutBody({ ...BASE, today: null, dash: 'down' }).lines)
-    const at = lines.findIndex(l => l.startsWith('Mechanisms today'))
-    const to = lines.findIndex((l, i) => i > at && l.trim() === '')
-    expect(lines.slice(at + 1, to).join(' ')).toBe('Counts appear once the dashboard is open (/counterparts:dashboard)')
+  test('the dashboard down: the chart is a cyan link that starts it, each of its lines a click on it', () => {
+    for (const w of [26, 32, 48, 64]) {
+      const laid = layoutBody({ ...BASE, w, today: null, dash: 'down' }).lines
+      const lines = textOf(laid)
+      const at = lines.findIndex(l => l.startsWith('Mechanisms today'))
+      const to = lines.findIndex((l, i) => i > at && l.trim() === '')
+      expect(lines.slice(at + 1, to).join(' ')).toBe('Start the dashboard to see stats here')
+      for (const l of laid.slice(at + 1, to)) {
+        expect(l.key).toBe('dash:start')
+        expect(l.segs[0]?.c).toBe('#00e5ff')
+      }
+      expect(lines.join(' ')).not.toMatch(/(^|[^/])counterparts dashboard/)
+    }
   })
 
-  test('the dashboard down: no console command, and the slash command whole on one line, docked or inline', () => {
-    for (const w of [26, 32, 48, 64]) {
-      const lines = textOf(layoutBody({ ...BASE, w, today: null, dash: 'down' }).lines)
-      expect(lines.some(l => l.includes('(/counterparts:dashboard)'))).toBe(true)
-      expect(lines.join(' ')).not.toMatch(/(^|[^/])counterparts dashboard/)
-      expect(lines.join(' ')).not.toContain("isn't running")
-    }
+  test('another store’s dashboard: no numbers, one dim line saying so', () => {
+    const laid = layoutBody({ ...BASE, today: null, dream: null, dash: 'other' }).lines
+    const lines = textOf(laid)
+    const at = lines.findIndex(l => l.startsWith('Mechanisms today'))
+    expect(lines.slice(at + 1, at + 3).join(' ')).toBe('This dashboard belongs to another memory.')
+    expect(laid[at + 1]?.key).toBeUndefined()
   })
 
   test('search results take the sections’ place: the query, how many, each title and what it is', () => {

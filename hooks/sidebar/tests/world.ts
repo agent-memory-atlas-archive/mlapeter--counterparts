@@ -232,17 +232,22 @@ export type World = {
   closes: string[];
   /** Prompts the module submitted (`$.prompt.submit`), in order, as the bottom of the chain saw them (none dropped). */
   submits: string[];
+  /** Plugin commands the module ran (`$.command.run`), by name. */
+  commands: string[];
   /** What `/api/onboarding` answers now (undefined: 404): a test can move core's state. */
   onboarding: unknown;
   turns: number;
   draft: string;
+  /** The store `/api/whoami` names (undefined: a 404, an older core). */
+  dashStore: string | null | undefined;
 }
 
 /** Registers the test's answers beneath the plugin; call before the first `$` call. */
 export function world(on: On, opts: WorldOptions = {}): World {
   const clock = mock.clock(on, { now: opts.now ?? T0 })
   // The plugin's own store, kept here so a test can read what was written.
-  const store: Record<string, unknown> = { ...(opts.store ?? {}) }
+  // The fox is the default avatar; these tests are mostly the brain's, so they start turning (the fox's set `brain: 'fox'`).
+  const store: Record<string, unknown> = { brain: 'turning', ...(opts.store ?? {}) }
   on('store.get', (_$, e) => ({ value: store[e.key] }))
   on('store.set', (_$, e) => {
     store[e.key] = e.value
@@ -274,11 +279,14 @@ export function world(on: On, opts: WorldOptions = {}): World {
     tails: [],
     closes: [],
     submits: [],
+    commands: [],
     onboarding: opts.onboarding,
     turns: opts.turns ?? 0,
     draft: opts.draft ?? '',
+    dashStore: undefined,
   }
-  mock.env(on, opts.env ?? { HOME })
+  // The search box is hidden by default (0.3.20); the tests that are about it see it, as the flag brings it back.
+  mock.env(on, opts.env ?? { HOME, COUNTERPARTS_SIDEBAR_SEARCH: '1' })
   // The scope registry as the server keeps it: `w.scope` is its one entry (none
   // when nothing is set), so a write through the tool shows in the next read.
   const registryAt = opts.registryAt ?? SCOPES_FILE
@@ -312,6 +320,13 @@ export function world(on: On, opts: WorldOptions = {}): World {
     return { text: e.text }
   })
   on('command.register', (_$, e) => ({ value: { command: e.name } }))
+  // The plugin's own markdown commands, run as if typed: recorded.
+  for (const command of ['counterparts:meet', 'counterparts:dashboard']) {
+    on('command.run', { command }, (_$, e) => {
+      w.commands.push(e.command)
+      return { text: '' }
+    })
+  }
   on('ui.open', (_$, e) => {
     w.opens.push({ id: e.id, ...(e.columns === undefined ? {} : { columns: e.columns }), ...(e.title === undefined ? {} : { title: e.title }) })
     if (opts.placed === false && w.opens.length === 1) return { value: { isPlaced: false as const, reason: 'opened unasked below 144 columns' } }
@@ -393,6 +408,7 @@ export function world(on: On, opts: WorldOptions = {}): World {
       return ok(m === undefined ? { found: false, id, absence: 'no such memory' } : { found: true, id, journal: false, confidential: false, ...m })
     }
     if (url.pathname === '/api/dreams') return ok({ dreams: [DREAM] })
+    if (url.pathname === '/api/whoami' && w.dashStore !== undefined) return ok({ store: w.dashStore, version: '0.3.20' })
     if (url.pathname === '/api/onboarding' && w.onboarding !== undefined) return ok(w.onboarding)
     return { value: { status: 404, ok: false, headers: {}, text: '{"error":"not found"}' } }
   })

@@ -265,8 +265,8 @@ export type SidebarFiring = { ids: SidebarMechId[]; at: number };
  */
 export type SidebarView = 'sidebar' | 'quiet';
 
-/** The brain beside the title: swaying (`turning`), a fixed view that lights when something fires (`still`), or none (`off`). */
-export type SidebarBrain = 'turning' | 'still' | 'off';
+/** The avatar: the fox at the top (`fox`, the default), the brain beside the title swaying (`turning`) or still (`still`), or none (`off`). */
+export type SidebarBrain = 'turning' | 'still' | 'off' | 'fox';
 
 /** The pane's colours (`hooks/theme.ts`): the mockups' `tron` (the default) or the warm `cozy`. */
 export type SidebarTheme = 'tron' | 'cozy';

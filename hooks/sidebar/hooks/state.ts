@@ -75,8 +75,26 @@ export const FALLBACK_MAX = 1200
  * meeting's instructions. Claude Code shows this line to the person ("Prompt
  * from the counterparts plugin"), so it reads as a sentence to them, and still
  * tells the model to introduce itself (2026-10-12, owner's onboarding trial).
+ * Since the fox trial it is "Meet your new counterpart." (the owner: Claude
+ * already has a memory of its own), which core's wake names as this meeting.
+ * Only the automatic speak-first sends it: the button runs `/counterparts:meet`,
+ * which carries its own instructions in any later session (MEET_COMMAND).
  */
-export const MEET_PROMPT = 'Counterparts is installed. Claude would like to introduce itself.'
+export const MEET_PROMPT = 'Meet your new counterpart.'
+
+/** "Start the 5-minute intro": the plugin's command (commands/meet.md), run as if typed. */
+export const MEET_COMMAND = 'counterparts:meet'
+
+/** The Mechanisms section's link when the dashboard is down: the plugin's command (commands/dashboard.md). */
+export const DASHBOARD_COMMAND = 'counterparts:dashboard'
+
+/**
+ * The search box, hidden for 0.3.20 (2026-10-12): in the owner's real sessions a
+ * click never put the keyboard in it (fox trial rounds 1 and 2), and it could not
+ * be checked live here (NOTES). `COUNTERPARTS_SIDEBAR_SEARCH=1` brings it back,
+ * read at session start.
+ */
+export const searchFlag = { on: false }
 
 /** `$.store`: the speak-first went out (`{ session, at }`); never again while it is there. */
 export const MEET_FLAG = 'meetTriggered'
@@ -164,6 +182,10 @@ export const run = {
   spokeFirst: false,
   /** When "Start the 5-minute intro" was last pressed (`$.clock`). */
   meetPressedAt: -Infinity,
+  /** The store this session's hooks opened, from the wake's `counterparts:store` marker; null until it says. */
+  wakeStore: null as string | null,
+  /** The dashboard serves another store (`/api/whoami`): nothing is read from it until it matches again. */
+  foreign: false,
 }
 
 // ── small helpers ───────────────────────────────────────────────────────────
