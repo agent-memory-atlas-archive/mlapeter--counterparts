@@ -115,14 +115,14 @@ describe("the self tab, round 3b", () => {
   test("1: the strip's words, as the page draws them", () => {
     const filled = { day: 4, date: "2026-09-04", today: false, seqs: [3], by: "owner", reason: "by hand", why: null };
     const hollow = { day: 2, date: "2026-09-02", today: false, seqs: [], by: null, reason: null, why: "Not rewritten — x." };
-    expect(dayWords(filled)).toMatch(/^Sep 4th(, 2026)? · lived day 4 — rewritten by you, by hand: “by hand”$/);
-    expect(dayWords(hollow)).toMatch(/^Sep 2nd(, 2026)? · lived day 2 — Not rewritten — x\.$/);
-    expect(dayWords({ ...hollow, date: null })).toBe("Lived day 2 — Not rewritten — x.");
-    expect(stripSummary([filled, hollow])).toMatch(/^Rewritten on 1 of 2 lived days · newest Sep 4th/);
+    expect(dayWords(filled)).toMatch(/^Sep 4th(, 2026)? · day 4 of use — rewritten by you, by hand: “by hand”$/);
+    expect(dayWords(hollow)).toMatch(/^Sep 2nd(, 2026)? · day 2 of use — Not rewritten — x\.$/);
+    expect(dayWords({ ...hollow, date: null })).toBe("Day 2 of use — Not rewritten — x.");
+    expect(stripSummary([filled, hollow])).toMatch(/^Rewritten on 1 of 2 days of use · newest Sep 4th/);
     // 2026-09-30: every kind of reason a version carries, as a person would say it, no ids.
     const today = { ...filled, date: null, today: true, day: 9 };
     expect(dayWords({ ...today, seqs: [5, 6], by: "reflection", reason: "reflection rfl_06c7d252c3c7 after dream drm_5c16061f0f96" }))
-      .toBe("Today · lived day 9 — rewritten twice, last by the reflection after today's dream.");
+      .toBe("Today · day 9 of use — rewritten twice, last by the reflection after today's dream.");
     expect(dayWords({ ...filled, by: "reflection", reason: "reflection rfl_06c7d252c3c7 after dream drm_5c16061f0f96" }))
       .toMatch(/— rewritten by the reflection after that night's dream\.$/);
     expect(dayWords({ ...filled, by: "reflection", reason: "reflection rfl_06c7d252c3c7" })).toMatch(/— rewritten by the reflection\.$/);
@@ -148,7 +148,7 @@ describe("the self tab, round 3b", () => {
     expect(l.nearby.map((m) => m.id)).toEqual([ids["mild"] as string]);
     expect(l.nearby[0]?.text).toBe("I like short sentences.");
     expect(l.nearbyLines).toEqual([]);
-    expect(pageAge({ date: "2026-09-04", livedDaysAgo: 1, newerThanWake: false })).toMatch(/^written Sep 4th(, 2026)?, 1 lived day ago$/);
+    expect(pageAge({ date: "2026-09-04", livedDaysAgo: 1, newerThanWake: false })).toMatch(/^written Sep 4th(, 2026)?, 1 day of use ago$/);
     expect(pageAge({ date: null, livedDaysAgo: 0, newerThanWake: true })).toBe("written today — rewritten since; the next wake carries the new one");
   });
 
@@ -202,10 +202,10 @@ describe("the self tab, round 3b", () => {
     expect(w.parts.reduce((a, p) => a + p.bytes, 0)).toBe(w.bytes);
     expect(wakeLine(w).tone).toBe("green");
     expect(wakeLine({ ...w, bytes: 4000, budget: 9000 }).line).toBe("The wake fits: 4.0 KB of 9.0 KB, 5.0 KB room left");
-    const full = wakeLine({ ok: true, bytes: 8900, budget: 9000, parts: [], trimmed: 3, trimmedFrom: ["nearby memories"] });
+    const full = wakeLine({ ok: true, bytes: 8900, budget: 9000, parts: [], trimmed: 3, trimmedFrom: ["might be relevant"] });
     // A trim is the budget working (Mike, 2026-10-01: full is normal).
     expect(full.tone).toBe("green");
-    expect(full.line).toBe("The wake is full — normal: 8.9 KB of 9.0 KB; 3 lines (nearby memories) left out to fit");
+    expect(full.line).toBe("The wake is full — normal: 8.9 KB of 9.0 KB; 3 lines (might be relevant) left out to fit");
     expect(wakeLine({ ok: false }).tone).toBe("grey");
   });
 

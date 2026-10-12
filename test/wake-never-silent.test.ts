@@ -178,10 +178,12 @@ describe("Nearby: counted in room nothing else wants — of what it chose, never
     const l = lanes();
     const full = render({ ...l, identity: [] }, { budgetBytes: 100_000, day: 3 }, resolve, SELF_TUNABLES);
     expect(full.more.hints).toBeUndefined();
-    expect(full.text).not.toContain("more nearby");
+    expect(full.text).not.toContain("more might be relevant");
     let counted = 0;
     let quiet = 0;
-    for (let cut = 40; cut <= 400; cut += 20) {
+    // Every 5 bytes: the window where the count fits and nothing else wants it
+    // is narrower than 20 since the line says "might be relevant" (2026-10-12).
+    for (let cut = 40; cut <= 400; cut += 5) {
       const out = render({ ...l, identity: [] }, { budgetBytes: full.bytes - cut, day: 3 }, resolve, SELF_TUNABLES);
       const popped = out.trimmed.filter((t) => t.lane === "hints").map((t) => t.id);
       if (popped.length === 0) continue;
@@ -214,10 +216,16 @@ describe("the folded line", () => {
   test("names every lane that lost something, dated items first, and reads back", () => {
     const line = foldedLine({ threads: ["mem_a", "mem_b", "mem_e", "mem_f"], horizon: ["mem_c"], hints: ["mem_d"] }) ?? "";
     // Each folded lane its own handle: its first ids, and how many more.
-    expect(line).toBe(`${FOLDED_WORDS} 1 arriving (recall ids: mem_c); 4 still open (recall ids: mem_a, mem_b, mem_e, and 1 more); 1 nearby (recall ids: mem_d)`);
+    expect(line).toBe(`${FOLDED_WORDS} 1 coming up (recall ids: mem_c); 4 still open (recall ids: mem_a, mem_b, mem_e, and 1 more); 1 might be relevant (recall ids: mem_d)`);
     expect(isFoldedLine(line)).toBe(true);
     expect(countedLanes(line)).toEqual({ horizon: 1, threads: 4, hints: 1 });
     expect(foldedLine({})).toBeNull();
+  });
+
+  test("a bundle stored before the plain-words rename still reads back: 'arriving' and 'nearby'", () => {
+    const old = `${FOLDED_WORDS} 1 arriving (recall ids: mem_c); 4 still open (recall ids: mem_a, mem_b, mem_e, and 1 more); 1 nearby (recall ids: mem_d)`;
+    expect(countedLanes(old)).toEqual({ horizon: 1, threads: 4, hints: 1 });
+    expect(countedLanes("(3 more arriving; recall ids: mem_a, mem_b, mem_c)\n(2 more nearby; recall ids: mem_d, mem_e)")).toEqual({ horizon: 3, hints: 2 });
   });
 
   test("beside a page that leaves no room for each lane's line, the lanes that list nothing fold — and the page is never cut for them", () => {

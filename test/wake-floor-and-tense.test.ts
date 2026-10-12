@@ -548,8 +548,8 @@ describe("what gives way for Still open's first item, in order — never the pag
     expect(lent.budgetBytes).toBe(lent.bytes);
     expect(lent.overBudget).toBe(false);
     expect(readSentinel(lent.text).intact).toBe(true);
-    // Nothing else rides on borrowed bytes: no "more arriving" line, no second item.
-    expect(lent.text).not.toContain("more arriving");
+    // Nothing else rides on borrowed bytes: no "more coming up" line, no second item.
+    expect(lent.text).not.toContain("more coming up");
     // A wake with room for everything borrows nothing.
     const roomy = render(lanes(), req(floor + 5_000, { lend: 2_000 }), resolve, SELF_TUNABLES);
     expect(roomy.budgetBytes).toBe(floor + 5_000);
@@ -695,7 +695,7 @@ describe("the tense, as a function", () => {
       "- 2026-10-01 (due 2026-10-09) · Today: unchanged.",
       "- 2026-10-01 · No due date: unchanged, even dated in the past.",
       "- 2026-10-01 (was due 2026-10-08) · Past when composed: gains yesterday.",
-      "(1 more arriving; recall ids: mem_x)",
+      "(1 more coming up; recall ids: mem_x)",
     ]);
     const out = arrivingTense(text, "2026-10-09", 1_000);
     expect(lane(out, FRAMING.horizon)).toEqual([
@@ -705,7 +705,7 @@ describe("the tense, as a function", () => {
       "- 2026-10-01 (due 2026-10-09) · Today: unchanged.",
       "- 2026-10-01 · No due date: unchanged, even dated in the past.",
       "- 2026-10-01 (was due yesterday, 2026-10-08) · Past when composed: gains yesterday.",
-      "(1 more arriving; recall ids: mem_x)",
+      "(1 more coming up; recall ids: mem_x)",
     ]);
     // Another lane's line that reads like one is not touched.
     expect(out).toContain("- 2026-10-01 · (due 2026-10-01) is in this statement.");

@@ -138,7 +138,7 @@ describe("the dashboard dates in the configured zone", () => {
       // Not the machine's day, anywhere on the card.
       expect(html).not.toContain(`Written ${dateWords(localDate(AT, machineZone()), { year: true }) as string}`);
       const cycle = healthView(dash.source).cycle;
-      expect(cycleWhen(cycle)).toBe(`on ${dateWords(day) as string} (lived day ${String(cycle.day)})`);
+      expect(cycleWhen(cycle)).toBe(`on ${dateWords(day) as string} (day ${String(cycle.day)} of use)`);
       expect(cycleWhen({ ...cycle, today: true })).toBe("today");
     } finally {
       dash.close();

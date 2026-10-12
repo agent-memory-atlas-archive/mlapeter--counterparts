@@ -229,7 +229,7 @@ describe("the lights, on a seeded store", () => {
     const v = viewOf(dir);
     const by = Object.fromEntries(v.mechanisms.map((m) => [m.id, m]));
     expect(by["decay"]?.status).toBe("amber");
-    expect(by["decay"]?.evidence).toContain(`lived day ${v.livedDay - MECHANISM_DAYS}`);
+    expect(by["decay"]?.evidence).toContain(`day ${v.livedDay - MECHANISM_DAYS} of use`);
     expect(by["association"]?.status).toBe("amber");
     expect(by["retrieval"]?.status).toBe("green");
     expect(by["retrieval"]?.evidence).toStartWith("1 turn brought memories to mind");

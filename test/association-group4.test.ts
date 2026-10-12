@@ -530,7 +530,7 @@ describe("7. honest evidence (review 06 C6)", () => {
     const waiting = lightOf(young);
     expect(waiting.status).toBe("waiting");
     expect(waiting.evidence).toBe(
-      `23 links laid, 2 faint links a dream's replay laid in the last ${String(MECHANISM_DAYS)} lived days. No memory a link brought to mind yet; that takes a few weeks of use.`,
+      `23 links laid, 2 faint links a dream's replay laid in the last ${String(MECHANISM_DAYS)} days of use. No memory a link brought to mind yet; that takes a few weeks of use.`,
     );
     const cli = MEMORY_MECHANISMS.find((m) => m.id === "association")!;
     expect(readMechanism(cli, [young], () => undefined)).toEqual({
@@ -552,7 +552,7 @@ describe("7. honest evidence (review 06 C6)", () => {
     expect(starved.starved).toBe("reached");
     const amber = lightOf(starved);
     expect(amber.status).toBe("amber");
-    expect(amber.evidence).toBe(`20 links laid in the last ${String(MECHANISM_DAYS)} lived days, but no memory a link brought to mind.`);
+    expect(amber.evidence).toBe(`20 links laid in the last ${String(MECHANISM_DAYS)} days of use, but no memory a link brought to mind.`);
     expect(readMechanism(cli, [starved], () => undefined).light).toBe(LIGHT.idle);
     c.store.appendEvent({ name: "recall.decision", day, ref: "s1", payload: { surfacedCount: 0, footnoteCount: 1, linksReached: 1 } });
     const reached = assoc(day);

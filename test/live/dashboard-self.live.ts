@@ -164,7 +164,7 @@ describe("the self tab, live", () => {
       expect(await page.locator('.q-wrap.open[data-tip="history"]').count()).toBe(1);
       expect(await page.locator(".ps-dot.on").getAttribute("data-day")).toBe(firstDay);
       expect(await page.isVisible("#self-version .tl-detail")).toBe(true);
-      expect(await page.locator("#self-day-say.picked").textContent()).toContain("lived day " + firstDay);
+      expect(await page.locator("#self-day-say.picked").textContent()).toContain("day " + firstDay + " of use");
       expect(await page.isVisible("#wake-full")).toBe(true);
       expect(await page.locator(".jd-day.on").getAttribute("data-day")).toBe(olderDay);
       expect(await page.locator(".jc.open .jc-body").count()).toBe(1);

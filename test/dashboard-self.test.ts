@@ -417,18 +417,18 @@ describe("the self tab, round 3", () => {
     expect(b.chapters).toBe(2);
     expect(b.dreams).toBe(1);
     expect(b.line).toBe(pageBehindWords(b));
-    expect(b.line).toMatch(/^Written [A-Z][a-z]{2} \d{1,2}(st|nd|rd|th)(, \d{4})? — 3 lived days, 2 chapters and a dream since\.$/);
+    expect(b.line).toMatch(/^Written [A-Z][a-z]{2} \d{1,2}(st|nd|rd|th)(, \d{4})? — 3 days of use, 2 chapters and a dream since\.$/);
   });
 
   test("S1: the words read naturally for one of a thing, many, and none", () => {
     const w = (livedDays: number, chapters: number, dreams: number, date = "2026-09-24"): string =>
       pageBehindWords({ date, writtenDay: 3, livedDays, chapters, dreams });
     // The date is the dashboard's one style ("Sep 24th", the year when it is not this one).
-    expect(w(3, 14, 1)).toMatch(/^Written Sep 24th(, 2026)? — 3 lived days, 14 chapters and a dream since\.$/);
-    expect(w(2, 1, 0)).toMatch(/^Written Sep 24th(, 2026)? — 2 lived days and a chapter since\.$/);
-    expect(w(4, 0, 2)).toMatch(/^Written Sep 24th(, 2026)? — 4 lived days and 2 dreams since\.$/);
-    expect(w(2, 0, 0)).toMatch(/^Written Sep 24th(, 2026)? — 2 lived days since\.$/);
-    expect(w(2, 0, 0, "")).toBe("Written on lived day 3 — 2 lived days since.");
+    expect(w(3, 14, 1)).toMatch(/^Written Sep 24th(, 2026)? — 3 days of use, 14 chapters and a dream since\.$/);
+    expect(w(2, 1, 0)).toMatch(/^Written Sep 24th(, 2026)? — 2 days of use and a chapter since\.$/);
+    expect(w(4, 0, 2)).toMatch(/^Written Sep 24th(, 2026)? — 4 days of use and 2 dreams since\.$/);
+    expect(w(2, 0, 0)).toMatch(/^Written Sep 24th(, 2026)? — 2 days of use since\.$/);
+    expect(w(2, 0, 0, "")).toBe("Written on day 3 of use — 2 days of use since.");
   });
 
   test("S1: a page one lived day behind says nothing", () => {
@@ -494,7 +494,7 @@ describe("the self tab, round 3", () => {
     expect(headingIso(null)).toBeNull();
     // A dated day shows its date the side column's way; a lived day is never passed off as a date.
     expect(dayLabel({ day: 3, iso: "2026-09-04" })).toMatch(/^Sep 4th(, 2026)?$/);
-    expect(dayLabel({ day: 3, iso: null })).toBe("lived day 3");
+    expect(dayLabel({ day: 3, iso: null })).toBe("day 3 of use");
     expect(chapterCount(1)).toBe("1 chapter");
     expect(chapterCount(11)).toBe("11 chapters");
   });

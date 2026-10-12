@@ -642,7 +642,7 @@ describe("at the composition: three dated items, and who gives the room", () => 
       const horizon: HorizonItem[] = ids.slice(0, 2).map((id, i) => ({ id, due: DUES[i] ?? "2026-10-11" }));
       const out = me.build({ budgetBytes: COMPOSE, day: 2, horizon, horizonMore: ids.slice(2), yesterday: full, yesterdayShorter: shorter, lendBytes: SHARE, handoffLendBytes: SHARE });
       expect(out.counts.horizon).toBe(2);
-      expect(out.text).toContain(`(3 more arriving; recall ids: ${ids.slice(2).join(", ")})`);
+      expect(out.text).toContain(`(3 more coming up; recall ids: ${ids.slice(2).join(", ")})`);
       expect(out.bytes).toBeLessThanOrEqual(out.budgetBytes);
     }
   });
@@ -788,14 +788,14 @@ describe("at the composition: three dated items, and who gives the room", () => 
     const out = me.build({ budgetBytes: both.bytes, day: 2, horizon, horizonMore: past });
     expect(out.counts.horizon).toBe(2);
     expect(out.page?.rung).toBe("whole");
-    expect(out.text).toContain("(3 more arriving; recall ids: ");
+    expect(out.text).toContain("(3 more coming up; recall ids: ");
     expect(out.untold).toEqual({});
     expect(out.counts.hints).toBeLessThan(both.counts.hints);
     expect(out.trimmed.filter((e) => e.lane === "horizon")).toEqual([]);
     expect(out.bytes).toBeLessThanOrEqual(out.budgetBytes);
     // With room for the count, it names them, and no row is written for them.
     const roomy = me.build({ budgetBytes: COMPOSE, day: 2, horizon, horizonMore: past });
-    expect(roomy.text).toContain(`(3 more arriving; recall ids: ${past.join(", ")})`);
+    expect(roomy.text).toContain(`(3 more coming up; recall ids: ${past.join(", ")})`);
     expect(roomy.trimmed).toEqual([]);
   });
 
@@ -1140,7 +1140,7 @@ describe("the owner's 10-12 morning: nothing the wake chose goes unmentioned", (
       // Twenty-five open questions, every one listed or counted.
       expect(shape.open.listed + shape.open.counted).toBe(25);
       // Arriving and Still open list items, so each keeps its own count line under it (never the fold).
-      expect(text).toContain(`(${String(shape.arriving.counted)} more arriving; recall ids`);
+      expect(text).toContain(`(${String(shape.arriving.counted)} more coming up; recall ids`);
       expect(text).toContain(`(${String(shape.open.counted)} more still open; recall ids`);
       // "Nearby": listed, counted, or — the least of the lanes, in room
       // nothing else wants — left quiet, a step-down the session start's own

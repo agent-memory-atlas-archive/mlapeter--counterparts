@@ -404,13 +404,13 @@ describe("where archived memories went", () => {
     // whole or not), doctor's window, and doctor's nudge when none were.
     const detail = "last 14 lived days — dream: 3 looked up of 40 offered in part, over 2 nights; reflection: no reflection measured yet";
     expect(say({ dreamOffered: 40, dreamLooked: 3, dreamNights: 2, reflectionOffered: 0, reflectionLooked: 0, reflections: 0, floor: false }, detail)).toBe(
-      "last 14 lived days — dreams: 3 of 40 shown only in part were looked up, over 2 nights; reflections: no reflection measured yet",
+      "last 14 days of use — dreams: 3 of 40 shown only in part were looked up, over 2 nights; reflections: no reflection measured yet",
     );
     expect(say({ dreamOffered: 9, dreamLooked: 0, dreamNights: 1, reflectionOffered: 5, reflectionLooked: 1, reflections: 1, floor: true }, detail)).toBe(
-      "last 14 lived days — dreams: 0 of 9 shown only in part were looked up, over 1 night; reflections: 1 of 5 shown only in part were looked up, over 1 reflection (at least: more rows than were read)",
+      "last 14 days of use — dreams: 0 of 9 shown only in part were looked up, over 1 night; reflections: 1 of 5 shown only in part were looked up, over 1 reflection (at least: more rows than were read)",
     );
     expect(say({ dreamOffered: 9, dreamLooked: 0, dreamNights: 1, reflectionOffered: 0, reflectionLooked: 0, reflections: 0, floor: false }, detail)).toBe(
-      "last 14 lived days — dreams: 0 of 9 shown only in part were looked up, over 1 night; reflections: no reflection measured yet. None looked up yet: if that holds, the lines may be too thin or the lookup unclear",
+      "last 14 days of use — dreams: 0 of 9 shown only in part were looked up, over 1 night; reflections: no reflection measured yet. None looked up yet: if that holds, the lines may be too thin or the lookup unclear",
     );
     expect(say(undefined)).toBeNull();
     // A finding with no plain words keeps doctor's own detail.
@@ -420,7 +420,7 @@ describe("where archived memories went", () => {
   test("a full wake is green and says it is normal; amber only names what being full cost (Mike, 2026-10-01)", () => {
     const none: WakeCosts = { page: null, handoffs: 0, lastHere: 0, work: 0, writerHeld: false };
     const at = (bytes: number, budget: number, costs = none, trimmed = 0) =>
-      wakeLine({ ok: true, bytes, budget, parts: [], trimmed, trimmedFrom: trimmed > 0 ? ["nearby memories"] : [], costs });
+      wakeLine({ ok: true, bytes, budget, parts: [], trimmed, trimmedFrom: trimmed > 0 ? ["might be relevant"] : [], costs });
     expect(at(8840, 8840)).toEqual({ tone: "green", line: "The wake is full — normal: 8.8 KB of 8.8 KB" });
     expect(at(8700, 8840).tone).toBe("green");
     expect(at(8000, 8840).line).toBe("The wake fits: 8.0 KB of 8.8 KB, 0.8 KB room left");

@@ -107,7 +107,7 @@ export function parseArgv(argv: readonly string[]): Parsed {
 
 export function helpText(): string {
   const lines = [
-    "counterparts dashboard — the owner's window",
+    "counterparts dashboard — your window",
     "",
     "  bun run src/adapters/dashboard/bin/dashboard.ts <view> [flags]",
     "",
@@ -131,7 +131,7 @@ export function helpText(): string {
     "                                      actions name (absent: the page offers no scope)",
     "  serve --default-store               open the DEFAULT store instead. Without --dir",
     "                                      or --default-store, 'serve' refuses: on a machine",
-    "                                      with an install the default is the owner's live",
+    "                                      with an install the default is your live",
     "                                      memory.",
     "",
     "A flag a subcommand does not take is refused before anything is opened.",
@@ -253,7 +253,7 @@ export function serveRefusal(
   }
   return (
     `Refused: 'serve' with no --dir would open ${targetDirOf(args)}, which is the default store — ` +
-    "on a machine with an install, that is the owner's live memory. " +
+    "on a machine with an install, that is your live memory. " +
     "Pass --dir <path> to name a store, or --default-store to mean the default. Nothing was opened."
   );
 }

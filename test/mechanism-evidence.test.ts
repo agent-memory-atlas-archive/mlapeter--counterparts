@@ -106,8 +106,8 @@ describe("one judgement, two surfaces", () => {
       const m = mechanismsView(dash.source).mechanisms.find((x) => x.id === "consolidation")!;
       expect(m.status).toBe("waiting");
       expect(m.nextInDays).toBe(2);
-      expect(m.evidence).toContain(`lived day ${day - 1}`);
-      expect(m.evidence).toContain("next run in 2 lived days");
+      expect(m.evidence).toContain(`day ${day - 1} of use`);
+      expect(m.evidence).toContain("next run in 2 days of use");
     } finally {
       dash.close();
     }
@@ -118,7 +118,7 @@ describe("one judgement, two surfaces", () => {
       const cons = MEMORY_MECHANISMS.find((m) => m.id === "consolidation")!;
       const line = readMechanism(cons, consoleVerdicts(s, TODAY), (id) => byId.get(id));
       expect(line.light).toBe("◐");
-      expect(line.says).toContain("next run in 2 lived days");
+      expect(line.says).toContain("next run in 2 days of use");
     } finally {
       s.close();
     }
