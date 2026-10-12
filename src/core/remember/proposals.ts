@@ -704,7 +704,10 @@ export async function submitProposal(
 
   // WHOSE words: the depositor's by default, another session's or none when
   // the caller says so (`SubmitContext.cover`). The own span is only ever the
-  // depositor's, so it rides only on the default claim.
+  // depositor's, so it rides only on the default claim. HOW MUCH (2026-10-11):
+  // a note written in the moment claims its own turn, never the session's
+  // backlog (`SpanBuffer.claimCoverage#ownTurn`); a session-end write-up
+  // claims everything still unclaimed, as it always has.
   const coverage =
     ctx.cover === false
       ? []
@@ -713,6 +716,7 @@ export async function submitProposal(
           session: ctx.cover === undefined ? ctx.session : ctx.cover.session,
           proposalId: proposal.id,
           ownSpanHash: ctx.cover === undefined ? proposal.ownSpanHash : null,
+          ...(ctx.source === "jot" && ctx.cover === undefined ? { ownTurn: true } : {}),
         });
   proposal.covers = coverage.map((c) => c.spanHash);
 

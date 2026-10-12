@@ -1037,7 +1037,7 @@ DEFERRAL and sessions are waiting — saying the wake was too full, by how many 
 `injectionBudgetBytes` by that much (never "open a session", which would defer again);
 and (until 2026-09-30, when the `Write-ups` rule above replaced it) amber when a session had
 waited past a 3-day `WRITE_UP_WAIT_DAYS`. Counted with the pointer's own eligibility: a small
-debt the pointer never offers (not a person's session) is named apart, as left to lapse. Never red; not in the session-start reading. `Sweep`: `not-opted-in` —
+debt the pointer never offers (not known as a person's session) is named apart, as left to lapse. Never red; not in the session-start reading. `Sweep`: `not-opted-in` —
 and an older build's `no-credential` — is green `next session`.
 
 ## 6. Scars honored

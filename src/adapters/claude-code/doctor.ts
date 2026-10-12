@@ -5389,7 +5389,7 @@ function crashWriteUpFindings(input: DoctorInput, store: Store, owedReading: Owe
       yesterdayWords,
       nightWords,
       owedWords,
-      unpointed === 0 ? "" : `${String(unpointed)} small, not a person's session: left to lapse`,
+      unpointed === 0 ? "" : `${String(unpointed)} small, not known as a person's session: left to lapse`,
       lapses === 0 ? "" : `${String(lapses)} lost unwritten this week`,
     ]
       .filter((w) => w.length > 0)

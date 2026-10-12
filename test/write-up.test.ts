@@ -703,13 +703,19 @@ describe("the door: `session_end` with `writeUp`", () => {
     open.push(c);
     c.captureSpans({ session: "jotter", scope: PROJ, turns: [{ role: "user", text: "The jotter's own words about the pump." }] });
     c.captureSpans({ session: "other", scope: PROJ, turns: [{ role: "user", text: "Another session's words about the valve." }] });
-    const mine = c.spans.spans(PROJ).find((x) => x.session === "jotter")?.hash as string;
+    const earlier = c.spans.spans(PROJ).find((x) => x.session === "jotter")?.hash as string;
+    const jot = c.captureJot({ session: "jotter", scope: PROJ, text: "A jot about the pump." });
+    const mine = jot.spans[0]?.hash as string;
     const out = await c.submitJot({ content: "A jot about the pump.", kind: "fact" }, {
       session: "jotter",
       scope: PROJ,
+      ownSpanHash: mine,
       cover: { session: "other" },
     } as unknown as Parameters<Counterpart["submitJot"]>[1]);
+    // Its own words, and only its own turn's (2026-10-11): neither the other
+    // session's nor the jotter's earlier turn, which stays for its write-up.
     expect(out.covers).toEqual([mine]);
+    expect(out.covers).not.toContain(earlier);
   });
 
   test("progress entries of a session that stopped owing another way are pruned at the next pointer", () => {
