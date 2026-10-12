@@ -627,7 +627,12 @@ export class Prospective {
             refractory: input.refractory === true,
             sessionId: input.sessionId,
           }) ?? (toldToday ? "told-plainly-today" : null);
-        const brake = lane && braked !== null && CUE_ONLY_BRAKES.has(braked) ? null : braked;
+        // A QUIET day item whose day is behind it keeps them (2026-10-12,
+        // decided by COUNTERPARTS, lightly held): it is no longer arriving,
+        // only "was due", and one cued out in its lead days leaves the lane
+        // after its day instead of riding the whole grace week.
+        const pastQuiet = mode !== "plain" && w.precision === "day" && isDay(w.eventDate) && isDay(input.at) && w.eventDate < input.at;
+        const brake = lane && !pastQuiet && braked !== null && CUE_ONLY_BRAKES.has(braked) ? null : braked;
         if (brake !== null) {
           suppressed.push({ memoryId: id, windowKey: w.key, reason: brake });
           continue;

@@ -90,7 +90,7 @@ import { NOTHING_OWED_BEFORE_KEY, catchUpOf, catchUpWords, owedBefore } from "./
 import type { NightKind } from "./night-run.js";
 import { spawnDetached } from "../spawn.js";
 import type { SpawnOutcome } from "../spawn.js";
-import { NO_ARRIVAL, STOP_ASK_OPENER, readWakeArrival } from "./transcript.js";
+import { NO_ARRIVAL, STOP_ASK_OPENER, readWakeArrival, startedByHost } from "./transcript.js";
 import type { WakeArrival } from "./transcript.js";
 
 /**
@@ -943,19 +943,27 @@ export class ClaudeCodeAdapter extends Lifecycle {
       this.checkWakeArrival(input);
       // A plain reminder whose day began while this session was already open —
       // the session that runs past midnight — or that SessionStart had no room
-      // for, is said at the next prompt, once (claimed at delivery).
-      const plain = isInteractive(input) ? this.plainFor(input) : NO_PLAIN;
+      // for, is said at the next prompt, once (claimed at delivery). Not at a
+      // turn no person started (2026-10-12, `startedByHost`): on the owner's
+      // store two were told at 12:19 am to a turn a subagent's hand-back had
+      // started, nobody reading. They wait for the next prompt a person types.
+      const text = input.prompt ?? "";
+      const byHost = isInteractive(input) && startedByHost(text);
+      const plain = isInteractive(input) && !byHost ? this.plainFor(input) : NO_PLAIN;
+      // Nor handed over there as a quiet cue, which would spend its fire.
+      const waiting = byHost ? this.plainFor(input).due : plain.due;
       const told: { notices?: readonly string[]; plain?: readonly PlainReminder[]; dream?: DreamTold; dreamNote?: { notice: string; context: string } } =
         plain.due.length === 0 ? {} : { notices: plain.notices, plain: plain.due };
       // The DREAM lines (2026-09-26): the once-a-day line, and any contradiction
       // a dream flagged that is still unraised — for the model; since
       // 2026-09-29 the day's line is shown to the PERSON too (`dream`), and
       // claimed only once the delivery knows it is leaving.
-      const dream = this.dreamLines(input);
+      // Nor the dream's lines (review of #445): a turn no person started is
+      // read as unwatched — the night may start, nothing is told or claimed.
+      const dream = this.dreamLines(input, byHost);
       const context = `${plain.context}${dream.text}`;
       if (dream.told !== null) Object.assign(told, { dream: dream.told });
       if (dream.note !== null) Object.assign(told, { dreamNote: dream.note });
-      const text = input.prompt ?? "";
       if (text.trim().length === 0) {
         return { ...out, ok: true, reason: "empty-prompt", injection: `${this.nowLine()}${context.length === 0 ? "" : `\n${context.trimEnd()}`}`, ...told };
       }
@@ -966,7 +974,7 @@ export class ClaudeCodeAdapter extends Lifecycle {
       const result = this.recallTurn(input, text, {
         ...(budgetBytes === undefined ? {} : { budgetBytes }),
         // Said outright this turn, so not ALSO handed over as a quiet cue.
-        ...(plain.due.length === 0 ? {} : { withhold: new Set(plain.due.map((r) => r.memoryId)) }),
+        ...(waiting.length === 0 ? {} : { withhold: new Set(waiting.map((r) => r.memoryId)) }),
       });
       const decision = result.decision;
       // "SINCE YOU STARTED" (2026-10-11): what changed in other directories
@@ -1059,10 +1067,13 @@ export class ClaudeCodeAdapter extends Lifecycle {
    * do not both tell it. Here, on the prompt, rather than in the SessionStart
    * wake, whose byte ceiling is what stranded the page writer.
    */
-  private dreamLines(input: HookInput): { text: string; told: DreamTold | null; note: { notice: string; context: string } | null } {
+  private dreamLines(input: HookInput, byHost = false): { text: string; told: DreamTold | null; note: { notice: string; context: string } | null } {
     const none = { text: "", told: null, note: null };
     if (this.observer || input.at === undefined || input.nightRun === true || input.sessionId.length === 0) return none;
-    if (!isInteractive(input)) {
+    // A TURN NO PERSON STARTED (review of #445, 2026-10-12; `startedByHost`):
+    // as a session nobody watches — the headless run may start and its line is
+    // held; the day's line, the morning share and the raises wait for a person.
+    if (!isInteractive(input) || byHost) {
       this.startUnwatched(input);
       return none;
     }

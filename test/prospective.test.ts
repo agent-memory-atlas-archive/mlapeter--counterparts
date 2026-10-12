@@ -814,6 +814,26 @@ describe("Arriving ranks plain reminders first, then nearest date", () => {
     expect(ids(p.horizon({ at: "2026-09-04", day: 5 }).items)).toEqual([id]);
   });
 
+  // #442's review (2026-10-12): a QUIET item cued out in its lead days rode the
+  // whole grace week as "was due". Past its day the cue brakes hold again.
+  test("a quiet date cued out in its lead days is listed on its day, and leaves once its day is behind; a plain one rides the grace week", () => {
+    const s = store();
+    const quiet = dated(s, "2026-09-04");
+    const plain = dated(s, "2026-09-04", { ...PLAIN, body: `${BODY} plain` });
+    const p = engine(s);
+    for (const id of [quiet, plain]) {
+      expect(p.fire({ memoryId: id, windowKey: "d:2026-09-04", at: "2026-09-02", day: 3 }).reason).toBe<FireReason>("fired");
+      expect(p.fire({ memoryId: id, windowKey: "d:2026-09-04", at: "2026-09-03", day: 4 }).reason).toBe<FireReason>("fired");
+    }
+    expect(ids(p.horizon({ at: "2026-09-04", day: 5 }).items).sort()).toEqual([quiet, plain].sort());
+    expect(ids(p.horizon({ at: "2026-09-05", day: 6 }).items)).toEqual([plain]);
+    expect(ids(p.horizon({ at: "2026-09-08", day: 9 }).items)).toEqual([plain]);
+    // Not cued out: a quiet item still rides its grace days as before.
+    const s2 = store();
+    const fresh = dated(s2, "2026-09-04");
+    expect(ids(engine(s2).horizon({ at: "2026-09-05", day: 6 }).items)).toContain(fresh);
+  });
+
   test("a plain reminder told on its day stays listed that day, and leaves once its day is behind", () => {
     const s = store();
     const id = dated(s, "2026-09-04", { ...PLAIN });

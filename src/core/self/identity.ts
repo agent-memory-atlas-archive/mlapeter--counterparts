@@ -56,6 +56,9 @@ export interface Ranked {
    * self page's borrowing (`briefing.ts#ROOM_ORDER`'s `due`).
    */
   readonly due?: boolean;
+  /** Horizon only, at session start (2026-10-12): due within the next few
+   *  days (`HorizonItem.near`, `briefing.ts#ROOM_ORDER`'s `arrivingNear`). */
+  readonly near?: boolean;
 }
 
 /**

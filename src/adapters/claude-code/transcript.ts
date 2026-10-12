@@ -268,6 +268,21 @@ function hostFramed(text: string): boolean {
 }
 
 /**
+ * A TURN NO PERSON STARTED, read from its prompt text alone (2026-10-12): the
+ * reading `pieceOf` gives a user-role block with no metadata — a host frame
+ * at its start (a subagent's hand-back, a `<task-notification>`, "Another
+ * Claude session sent a message:"), or nothing but peer messages. The prompt
+ * hook has the text and no metadata, so this is its one signal. A person who
+ * pastes such a frame first is read as the host and loses one turn: what
+ * waits for a person is said at their next prompt.
+ */
+export function startedByHost(text: string): boolean {
+  if (hostFramed(text)) return true;
+  const attributed = attributePeers(text);
+  return attributed.peers > 0 && !attributed.ownerText;
+}
+
+/**
  * WHO WROTE A LINE, AS THE TRANSCRIPT ENTRY ITSELF SAYS (2026-09-23, B1).
  *
  * Measured on Claude Code 2.1.28x, across every transcript on the owner's

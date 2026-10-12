@@ -131,6 +131,7 @@ import {
   Self,
   byteLength,
   markWakeBehind,
+  nearDue,
   pageRoomNote,
   readSentinel,
   settledOver,
@@ -753,11 +754,18 @@ export class Counterpart {
       if (stored === undefined || stored.length === 0 || !readSentinel(stored).intact) return null;
       const day = this.store.livedDay();
       const asked = horizonFor(this.prospective, at, day);
+      // FIRST CLAIM ON THE SESSION-START ROOM (2026-10-12, RANDOM's ruling,
+      // lightly held): a dated item due today or within the next few days
+      // takes room before "Last here", "Last said here", "Today, elsewhere"
+      // and the older handoffs (`HorizonItem.near`). Not one in its grace
+      // days (RANDOM, review of #445): "was due" waits its ordinary turn. Bounded by date, so
+      // a long lane of far dates does not empty the furniture.
+      const horizon = asked.items.map((i) => (nearDue(i.due, at) ? { ...i, near: true } : i));
       const out = this.self.assemble({
         day,
         ceilingBytes: budget,
         publishedHash: hashText(stored),
-        horizon: asked.items,
+        horizon,
         ...(asked.more.length === 0 ? {} : { horizonMore: asked.more }),
         ...this.yesterdayFor(at, { here }),
         ...this.elsewhereFor(at, here),

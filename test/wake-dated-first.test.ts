@@ -33,14 +33,15 @@ import { join } from "node:path";
 import { openAdapter } from "../src/adapters/claude-code/index.js";
 import type { AdapterConfig } from "../src/adapters/claude-code/index.js";
 import { runOnce } from "../src/adapters/claude-code/bin/runner.js";
-import { toHookInput } from "../src/adapters/claude-code/bin/hook.js";
+import { deliverTurn, toHookInput } from "../src/adapters/claude-code/bin/hook.js";
 import { wakeArrivalFindings } from "../src/adapters/claude-code/doctor.js";
 import { SELF_BRIEFING_EVENT } from "../src/core/counterpart.js";
 import { episodeGate } from "../src/core/bridge.js";
 import { HANDOFF_RESERVE_MARGIN_BYTES, HANDOFF_RESERVE_MIN_BUDGET_MULTIPLE } from "../src/core/handoff/index.js";
 import { yesterdayLine, yesterdayShorter } from "../src/core/handoff/last-here.js";
-import { CUE_MODE_META, plainDueOn } from "../src/core/prospective/index.js";
+import { CUE_MODE_META, PROSPECTIVE_PLAIN_EVENT, plainDueOn } from "../src/core/prospective/index.js";
 import {
+  ARRIVING_NEAR_DAYS,
   BRIEFING_KEY,
   COLLAPSED_WORDS,
   FRAMING,
@@ -55,6 +56,8 @@ import {
   TRIM_ORDER,
   WORK_HERE_HEADING,
   arrivingHead,
+  arrivingNear,
+  nearDue,
   collapsedLane,
   deliveryReserveBound,
   pageBlockBytes,
@@ -547,7 +550,8 @@ describe("a plain reminder due the morning the wake is read, under the widest de
       }
     }
     // The same line, not plain and not due that morning: an ordinary dated
-    // item, which the newest handoff's room is kept from.
+    // item, which the newest handoff's room is kept from — at session start
+    // too, near as it is (its floor, review of #445).
     const { row, text } = await one("America/Denver", 7_400, body(2), undefined);
     expect(arriving(text).listed.length).toBe(0);
     expect((row["trimmedLanes"] as Record<string, number>)["horizon"]).toBe(1);
@@ -936,4 +940,123 @@ test("the stored bundle and the delivered one agree on what Arriving lists", asy
   const stored = m.a.counterpart.store.getMeta(BRIEFING_KEY) ?? "";
   expect(arriving(stored).listed.length).toBe(2);
   expect(arriving(m.text).listed.length).toBe(2);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 7. A turn no person started is not told a plain reminder (2026-10-12)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * THE OWNER'S 10-12, AS IT HAPPENED to mem_346077c3e78c: a plain reminder due
+ * D, raised as a cue on D-1, then, at 00:19 on D, "told" to a coordinator
+ * session's turn that a subagent's hand-back had started, nobody reading. Here
+ * that turn, and three more no person started, run the real prompt hook and
+ * the real delivery. The reminder is neither said nor marked told there; it is
+ * listed in D's morning wake beside an over-room page, four handoffs and the
+ * Yesterday line; and the first prompt a person types says it.
+ */
+const HAND_BACK_BODY =
+  "Remind him on the 9th to call the kiln supplier before noon about the cracked element; the replacement ships only if ordered that morning.";
+
+describe("at session start, dated items due within the next few days have first claim on the room (2026-10-12, RANDOM's ruling)", () => {
+  // Built first (2026-10-12) the near lines could take the newest handoff's
+  // own room too: on this fixture the wake listed both dated lines and no
+  // handoff at all, not even by id. The newest handoff keeps a floor (review
+  // of #445, COUNTERPARTS' call): the second line would need its room.
+  test("two long dated lines beside a borrowing page and four handoffs: the newest handoff keeps its own block", async () => {
+    for (const zone of ZONES) {
+      const m = await morning(zone, { pageBytes: 6_472, dated: 3, widest: true, short: true, bodies: LONG });
+      const stored = m.a.counterpart.store.getMeta(BRIEFING_KEY) ?? "";
+      expect(arriving(stored).listed.length).toBe(1);
+      const { listed, collapsed } = arriving(m.text);
+      expect(collapsed).toBe(false);
+      expect(listed.length).toBe(1);
+      expect(listed[0]).toContain("(due 2026-10-09)");
+      expect(lower(m.text).handoffs).toBeGreaterThanOrEqual(1);
+      // The newest, in full (listed first).
+      expect(m.text).toMatch(/^1\) From session [^\n]*: Handoff \d: the glaze tiles dry on rack two/m);
+      expect(lower(m.text).yesterday).not.toBeNull();
+      expect(readSentinel(m.text).intact).toBe(true);
+      expect(bytes(m.text)).toBeLessThanOrEqual(BUDGET);
+    }
+  }, 60_000);
+
+  test("a dated item is near when due from the session's date through three days on, not in its grace days; the head counts, a far line stops the run", () => {
+    expect(ARRIVING_NEAR_DAYS).toBe(3);
+    expect(nearDue("2026-10-09", "2026-10-09")).toBe(true);
+    expect(nearDue("2026-10-12", "2026-10-09")).toBe(true);
+    expect(nearDue("2026-10-13", "2026-10-09")).toBe(false);
+    // A "was due" line (RANDOM's ruling at the review of #445).
+    expect(nearDue("2026-10-08", "2026-10-09")).toBe(false);
+    expect(nearDue(undefined, "2026-10-09")).toBe(false);
+    expect(arrivingNear([{ due: true }, { near: true }, {}, { near: true }])).toBe(2);
+    expect(arrivingNear([{}, { near: true }])).toBe(0);
+    expect(arrivingNear([{ due: true }, {}])).toBe(0);
+    expect(arrivingNear([{ near: true }, { near: true }])).toBe(2);
+  });
+});
+
+describe("a plain reminder is never told to a turn no person started", () => {
+  test("a hand-back at 00:19, a task notification, a peer message: nothing said or claimed; the morning wake lists it; a typed prompt says it", async () => {
+    const zone = "America/Denver";
+    const hostTurns = [
+      "[Subagent hand-back]\nPR #442 opened; head 9543950d. 2,077 pass, 0 fail.",
+      "<task-notification>\n<task-id>b7</task-id>\n<status>completed</status>\n</task-notification>",
+      'Another Claude session sent a message:\n<agent-message from="counterparts-b2">merged</agent-message>',
+      '<cross-session-message from-name="random-06" from-session="s-r06">the bench run finished</cross-session-message>',
+    ];
+    const prompt = (session: string, text: string): ReturnType<typeof toHookInput> =>
+      toHookInput({ session_id: session, hook_event_name: "UserPromptSubmit", cwd: SCOPE, prompt: text }, { scope: SCOPE, timeZone: zone, env: {} });
+    const deliver = (a: Adapter, input: ReturnType<typeof toHookInput>) => {
+      const turn = a.userPromptSubmit(input);
+      const out = deliverTurn("user-prompt-submit", turn, {}, null, { updateNotice: () => null, markUpdateNotice: () => false, claimPlain: (i, due) => a.claimPlain(i, due) }, input);
+      return { turn, out };
+    };
+    const m = await morning(zone, {
+      pageBytes: 6_950,
+      dated: 1,
+      plain: true,
+      widest: true,
+      short: true,
+      bodies: [HAND_BACK_BODY],
+      overnight: async (a, ids, dataDir) => {
+        const id = ids[0] ?? "";
+        // Raised on D-1, as a cue in that evening's turn.
+        expect(a.counterpart.prospective.fire({ memoryId: id, windowKey: "d:2026-10-09", at: "2026-10-08", day: a.counterpart.store.livedDay() }).reason).toBe("fired");
+        a.counterpart.store.put({
+          type: "episode",
+          kind: "self",
+          title: "Glazing the test tiles and logging the cone readings for the record",
+          body: `## chapter 1 — ${readableDate("2026-10-08")} · lived day 2\n\nWe glazed the tiles and logged the cones.`,
+          origin: { scope: SCOPE, session: "kiln-and-glaze-studio-session-9" },
+        });
+        // 00:19 on D: the coordinator session's turns, none of them typed.
+        clock(zone, "2026-10-09", 19 / 60);
+        for (const text of hostTurns) {
+          const { turn } = deliver(a, prompt("s-coordinator", text));
+          expect(turn.notices ?? []).toEqual([]);
+          expect(turn.injection ?? "").not.toContain("call the kiln supplier");
+        }
+        expect(a.counterpart.store.eventLog({ name: PROSPECTIVE_PLAIN_EVENT })).toEqual([]);
+        await worker(dataDir, zone);
+      },
+    });
+    // D's morning wake: listed whole, beside everything else the wake carries.
+    const { listed, collapsed } = arriving(m.text);
+    expect(collapsed).toBe(false);
+    expect(listed.length).toBe(1);
+    expect(listed[0]).toEndWith(HAND_BACK_BODY);
+    expect(listed[0]).toContain("(due 2026-10-09)");
+    expect(m.text.split("\n").some((l) => l.startsWith("Yesterday, "))).toBe(true);
+    expect(m.text.split("\n").some((l) => l.startsWith("Last here: "))).toBe(true);
+    expect(m.text).toContain(SHORT);
+    expect(lower(m.text).handoffs).toBeGreaterThanOrEqual(1);
+    expect(readSentinel(m.text).intact).toBe(true);
+    expect(bytes(m.text)).toBeLessThanOrEqual(BUDGET);
+    expect(m.result.notices?.some((n) => n.startsWith("Today: Remind him on the 9th"))).toBe(true);
+    // The first prompt a person types says it, and only then is it told.
+    const { out } = deliver(m.a, prompt("s-typed", "morning, what's on today?"));
+    expect(String((JSON.parse(out.stdout) as Record<string, unknown>)["systemMessage"])).toStartWith("Today: Remind him on the 9th to call the kiln supplier");
+    expect(m.a.counterpart.store.eventLog({ name: PROSPECTIVE_PLAIN_EVENT })).toHaveLength(1);
+  }, 60_000);
 });

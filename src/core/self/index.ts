@@ -393,6 +393,15 @@ export interface HorizonItem {
    * its borrowing back for it (`briefing.ts#ROOM_ORDER`'s `due`).
    */
   readonly plainDue?: boolean;
+  /**
+   * AT SESSION START, DUE WITHIN THE NEXT FEW DAYS (2026-10-12): `due` no
+   * later than `ARRIVING_NEAR_DAYS` after the session's date and not behind
+   * it (a grace day's "was due" line is not near; review of #445). Set only by the session-start assembly
+   * (`Counterpart#assembleWake`). Such lines come before the other dated
+   * lines and take room down to, not into, the newest handoff's own (`briefing.ts
+   * #ROOM_ORDER`'s `arrivingNear`).
+   */
+  readonly near?: boolean;
 }
 
 export interface BoundaryRequest extends BriefingRequest {
@@ -837,7 +846,13 @@ export class Self {
     // the rest in the order supplied: the lane trims from its end, and its
     // head is what no lane below it may take (`briefing.ts#arrivingHead`).
     const supplied: Ranked[] = (req.horizon ?? []).map((h) => this.horizonRank(h, req.day));
-    const horizon: Ranked[] = [...supplied.filter((r) => r.due === true), ...supplied.filter((r) => r.due !== true)];
+    // Then, at session start, the ones due within the next few days
+    // (`HorizonItem.near`, 2026-10-12): first claim on its room.
+    const horizon: Ranked[] = [
+      ...supplied.filter((r) => r.due === true),
+      ...supplied.filter((r) => r.due !== true && r.near === true),
+      ...supplied.filter((r) => r.due !== true && r.near !== true),
+    ];
     const lanes: Lanes = rankLanes(scanned, horizon, this.tunables, {
       settledOver: settledOver(this.store),
       coveredByPage: this.pageCovers(scanned),
@@ -902,7 +917,13 @@ export class Self {
     // Arriving, as the turn-end ranks it: a due-day plain reminder first, an
     // identity element left to its own lane.
     const supplied = (req.horizon ?? []).filter((h) => bandOf(h.id) !== "identity").map((h) => this.horizonRank(h, day));
-    const horizon: Ranked[] = [...supplied.filter((r) => r.due === true), ...supplied.filter((r) => r.due !== true)];
+    // Then, at session start, the ones due within the next few days
+    // (`HorizonItem.near`, 2026-10-12): first claim on its room.
+    const horizon: Ranked[] = [
+      ...supplied.filter((r) => r.due === true),
+      ...supplied.filter((r) => r.due !== true && r.near === true),
+      ...supplied.filter((r) => r.due !== true && r.near !== true),
+    ];
     // Still open, from the open memories — and the core memories being
     // reconsidered, which wait on a decision (2026-10-11).
     const flagged = reconsideringIds(this.store);
@@ -2977,6 +2998,7 @@ export class Self {
       personScoped: false,
       lastRendered: -1,
       ...(item.plainDue === true ? { due: true } : {}),
+      ...(item.near === true ? { near: true } : {}),
     };
   }
 
