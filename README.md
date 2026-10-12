@@ -120,6 +120,11 @@ There are no API keys, and nothing leaves your machine except through Claude Cod
 itself. Search by meaning runs on a small model on your machine, and a session that ends
 before it's written up is written up by the next session in that project.
 
+That small model finds close paraphrases ("my doctor" finds a note about a physician), but
+not a description that never names the thing: "a pet that purrs" won't find a note about
+your cat. Exact words are strongest, and a short memory matches better than one padded with
+names and details.
+
 ## Background
 
 Counterparts is the third version of a memory project. The earlier ones (claude-engram,
