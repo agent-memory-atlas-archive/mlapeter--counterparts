@@ -130,6 +130,8 @@ export const PUBLIC_SURFACE = [
   "bandOf",
   "fadeVerdict",
   "story",
+  // 2026-10-11 (review of #427): a crossing's successor, read off its pressure pair (a read).
+  "crossedTo",
   "lifecycle",
   "events",
   // v12 (2026-10-03): what a memory names — the store's finder, and the
@@ -1687,7 +1689,15 @@ export class Schemas {
         });
       }
       const row: MemoryRow | undefined = this.store.row(cursor);
-      cursor = row?.superseded_by ?? undefined;
+      const crossed: string | undefined = row?.superseded_by === null ? this.crossedTo(cursor) : undefined;
+      if (crossed !== undefined) {
+        // A CROSSING THROUGH THE ONE DOOR (2026-10-11, Group 2b): the old row
+        // stays live, settled `changed` under the successor (pair source
+        // `pressure`), with no forwarding address — the pair is its lineage.
+        const pair = this.store.contradictionBetween(crossed, cursor);
+        lineage.push({ id: cursor, seq: 0, reason: TUNABLES.REVISED_REASON, day: pair?.settled_day ?? 0, successorId: crossed });
+      }
+      cursor = row?.superseded_by ?? crossed;
     }
     const headId = chain[chain.length - 1] ?? beliefId;
     const head = this.store.row(headId);
@@ -1702,6 +1712,16 @@ export class Schemas {
       strength: p === undefined ? 0 : strengthOf(p, p.lastChallengedDay ?? p.birthDay),
       increments: this.storyIncrements(chain),
     };
+  }
+
+  /** The successor a pressure crossing settled `id` under (a settled pair of source `pressure` over it), or undefined. */
+  crossedTo(id: string): string | undefined {
+    try {
+      const p = (this.store.contradictionsOf([id]).get(id) ?? []).find((c) => c.state === "settled" && c.via === null && c.source === "pressure" && c.over === id && c.holds !== null);
+      return p?.holds ?? undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   /**

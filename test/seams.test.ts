@@ -46,7 +46,7 @@ import {
   directionOf,
   mintProposal,
 } from "../src/core/mint.js";
-import { SCALAR_REF, loadGateState, saveGateState } from "../src/core/recall/index.js";
+import { SCALAR_REF, headOf, loadGateState, saveGateState } from "../src/core/recall/index.js";
 import { Associate } from "../src/core/associate/index.js";
 import { Prospective } from "../src/core/prospective/index.js";
 import { Recall, TUNABLES as RECALL_TUNABLES, activate, freshGateState, gate, withTunables } from "../src/core/recall/index.js";
@@ -406,6 +406,7 @@ describe("SEAMS A — the observer predicate is hoisted, and stand-down totality
       updatePhysics: [seedId, { uses: 1 }],
       reinforce: [seedId, 1],
       setBand: [seedId, "semantic", 1],
+      carryInto: [seedId, seedId],
       link: [{ src: seedId, dst: seedId, weight: 1, day: 0 }],
       linkMany: [[{ src: seedId, dst: seedId, weight: 1, day: 0 }]],
       setProspective: [
@@ -2581,9 +2582,12 @@ describe("O. a declared updates: reaches the engine — by door, and by target k
       "targetId",
     ]);
 
-    const successorId = c.store.row(identityId)?.superseded_by as string;
+    // Through the one door (Group 2b; random-06's ruling): the old memory is settled `changed` under the
+    // successor — out of the core, faded, live, labelled earlier — not archived with a forwarding address.
+    const successorId = headOf(c.store, identityId) as string;
     expect(typeof successorId).toBe("string");
-    expect(c.store.versions(identityId).map((v) => v.reason)).toContain("revised-by-pressure");
+    expect(c.store.row(identityId)).toMatchObject({ archived: 0, superseded_by: null, promoted_identity: 0 });
+    expect(c.store.contradictionBetween(successorId, identityId)).toMatchObject({ state: "settled", how: "changed", source: "pressure" });
     // Identity is entered by INHERITING it through a declared revision, and the
     // successor is a memory — no entity, no role, no schema it was never part of.
     expect(c.store.row(successorId)?.type).toBe("memory");

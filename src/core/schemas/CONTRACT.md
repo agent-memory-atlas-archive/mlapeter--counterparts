@@ -123,7 +123,17 @@ name/alias resolution; birth and death telemetry.
    declarations count for more than swept ones through the PHYSICS alone — a fallback
    challenger's claim was already cut at the minting seam — and no second weighting
    exists here. A CONFIRMATION (the engine matched a restatement rather than an author
-   addressing an id) enters none of it. Found as a gap on 2026-09-04: the pressure
+   addressing an id) enters none of it. **Since 2026-10-11 (Group 2b) every "A over B" on a
+   memory row goes through one door** (`reconsolidation.ts#supersede`): a pair, a trail row
+   and an undo, the effect from `how` alone. An identity element's crossing writes its pair
+   there (source `pressure`): the minted successor holds over the old one `changed`, and the
+   old one leaves the core, fades, stays live and is labelled earlier (decided by random-06,
+   2026-10-11, lightly held; it used to be archived with a forwarding address); an authored
+   `changed` or `corrected` at one credits at least `F_DAY_CAP_SLOW` a day (still three lived
+   days for a slow kind); and a core memory holding a state (a status not `done`, or a date)
+   that a `done` memory updates leaves the core at once, `changed` under it (source
+   `fulfilled`). The belief and current-state arms have no live producer (only the demo
+   seeder and tests reach them) and are left as they were, not routed. Found as a gap on 2026-09-04: the pressure
    accumulator had no live caller, and the running store held zero pressure, zero
    `superseded_by` and zero `revision.pressure` events for its whole life.
 2. **[M] Birth requires the name to occur in the source as a whole name**, by the same

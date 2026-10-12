@@ -37,8 +37,12 @@ dreamer is the model (a background agent the session launches), outside this pro
    is not a memory, a gist it writes starts lower than anything lived (source
    `dreamed`), and its replays count toward no core lane. Human dreams leak into waking
    memory; this one is kept from doing so on purpose.
-3. **Nothing is lost to a dream.** A merge archives its originals with a forwarding
-   address and keeps their words as a version; the whole dream can be undone.
+3. **Nothing is lost to a dream.** A merge keeps its originals: since 2026-10-11 (Group 2b;
+   decided by random-06, lightly held) each is settled `changed` under the merged memory
+   through the one door (`reconsolidation.ts#supersede`, source `dream-merge`) — faded ×0.5,
+   live, labelled earlier, hidden behind the merged memory in ambient recall and folded under
+   it in facts mode — and leaves by its own curve. Merges from before were archived with a
+   forwarding address. The whole dream can be undone, and the owner can undo one original.
 
 ## 3. Keeps
 
@@ -48,8 +52,8 @@ dreamer is the model (a background agent the session launches), outside this pro
 - **Recall's gates** [v2 recall §9.1]: a dream is shown only what could surface in the
   session that launched it — no archived, superseded, protected or schema row; nothing
   confidential outside the owner's own session.
-- **Versions, never deletion** [constitution 7; store §16]: merges supersede; undo
-  restores.
+- **Versions, never deletion** [constitution 7; store §16]: a merge settles over its
+  originals (before 2026-10-11 it superseded them); undo restores.
 - **One door per act, every claim mechanized** [mcp §5 G2]: one tool, `dream`, with
   phases.
 - **The authorship doctrine's provenance** [owner ruling 2026-08-29]: a dream's gist is
@@ -276,15 +280,16 @@ dreamer is the model (a background agent the session launches), outside this pro
 3. **[M]** A dream's words never become a lived memory: the bundle and the hand-back carry
    `DREAM_MARK`; `remember/spans.ts#enters` refuses any turn carrying it; the Claude Code
    reader tags such a block `dream`. Tested end to end: seed, dream, sweep, zero rows.
-4. **[M]** Undo reverses the whole batch and is idempotent: originals restored (their
-   versions kept), the merged memory and gists archived `dream-undone`, links back to
+4. **[M]** Undo reverses the whole batch and is idempotent: originals restored (each
+   original's pair undone, its strength back; a merge from before 2026-10-11 un-archived), the merged memory and gists archived `dream-undone`, links back to
    their prior weights, the dream's feelings, replays and nominations removed. A merge
    whose merged memory has moved on since (revised into a successor, merged again,
    archived or removed) is left as it is and counted (`kept`), so an undo never stands
    originals beside a live successor (review of #251).
 7. **[M]** What a dream makes keeps the rules of what it was made from: a merge or gist drawn
-   from a confidential memory is confidential; a dated reminder and a memory the owner
-   demoted from the core are not merged; a dream's merges are not "new" for the next
+   from a confidential memory is confidential; a dated reminder, a memory the owner
+   demoted from the core, and an earlier version (one a later memory holds over: merge the
+   one that holds, 2026-10-11) are not merged; a dream's merges are not "new" for the next
    ask; a dream left open is closed to changes once a newer one begins (review of #251).
 5. **[M]** Under observer stance nothing is written and every phase says so.
 6. **[M]** The journal lives in the `dreams` table: no decay, dedup, prune or recall
@@ -403,7 +408,8 @@ dream having run.
 - **A gist takes the writer's three fields** (v12, 2026-10-03): `occurredOn`, `saidBy`,
   `status`, read loose-first — **[M]** one that cannot be read is left off with a note and
   the gist is written; nothing is defaulted. A merge takes none; the store carries each
-  original's to the merged memory (`store/` guarantee 26).
+  original's to the merged memory (`store/` guarantee 26; since 2026-10-11 by
+  `Store#carryInto`, the originals staying live).
 
 ## 6. Scars honored
 

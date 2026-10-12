@@ -12,7 +12,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Counterpart } from "../src/core/counterpart.js";
-import { TUNABLES as ASSOCIATE_TUNABLES, TERMINAL_ARCHIVE_GRACE_MS, TERMINAL_ARCHIVE_REASONS, planAtWrite } from "../src/core/associate/index.js";
+import { TUNABLES as ASSOCIATE_TUNABLES, TERMINAL_ARCHIVE_GRACE_MS, TERMINAL_ARCHIVE_LATCHES,
+  TERMINAL_ARCHIVE_REASONS, planAtWrite } from "../src/core/associate/index.js";
 import { DREAM_MERGE_REASON } from "../src/core/dream/index.js";
 import { EPISODE_REGROWN_REASON } from "../src/core/leaving.js";
 import { ASKED_KIND, activate, askedTurn, freshGateState, loadGateState, saveGateState, withTunables as withRecallTunables } from "../src/core/recall/index.js";
@@ -328,11 +329,11 @@ describe("3. replay deposits (review 06 C2)", () => {
 // 5. The sweep: rows whose endpoint is archived for good
 // ═══════════════════════════════════════════════════════════════════════════
 describe("5. rows with an endpoint archived for good are swept (review 06 C3)", () => {
-  test("the reasons are the regrown copy's and the dream merge's — the constants those paths write", () => {
-    expect([...TERMINAL_ARCHIVE_REASONS].sort()).toEqual([DREAM_MERGE_REASON, EPISODE_REGROWN_REASON].sort());
+  test("the reasons are the regrown copy's, the dream merge's and (Group 2b) a correction's — the constants those paths write", () => {
+    expect([...TERMINAL_ARCHIVE_REASONS].sort()).toEqual([DREAM_MERGE_REASON, EPISODE_REGROWN_REASON, "corrected"].sort());
   });
 
-  test("after a flush: regrown and dream-merge rows go; a decay archive, a correction and a pinned memory keep theirs", async () => {
+  test("after a flush: regrown, dream-merge and corrected rows go; a decay archive and a pinned memory keep theirs", async () => {
     const clock = { now: Date.UTC(2026, 8, 1, 9) };
     const c = brainAt(clock);
     c.store.advanceClock("2026-09-01");
@@ -358,15 +359,41 @@ describe("5. rows with an endpoint archived for good are swept (review 06 C3)", 
     const report = c.associate.flush();
     // Every row touching the two (the hub's, and the boundary's own contiguity rows).
     const touching = (x: string): number => c.store.allEdges().filter((e) => e.src === x || e.dst === x).length;
-    expect(report.sweptArchived).toBeGreaterThanOrEqual(4);
-    expect(touching(ends["regrown"]!) + touching(ends["merged"]!)).toBe(0);
+    expect(report.sweptArchived).toBeGreaterThanOrEqual(6);
+    expect(touching(ends["regrown"]!) + touching(ends["merged"]!) + touching(ends["corrected"]!)).toBe(0);
     const linked = (x: string): boolean => c.store.edgesFrom(hub).some((e) => e.dst === x) || c.store.edgesFrom(x).some((e) => e.dst === hub);
     expect(linked(ends["regrown"]!)).toBe(false);
     expect(linked(ends["merged"]!)).toBe(false);
-    for (const k of ["decayed", "corrected", "pinned", "live"]) expect(linked(ends[k]!)).toBe(true);
+    expect(linked(ends["corrected"]!)).toBe(false);
+    for (const k of ["decayed", "pinned", "live"]) expect(linked(ends[k]!)).toBe(true);
   });
 
-  test("a dream's undo brings a merge's originals back WITH the merged memory's links", () => {
+  test("a reason whose one-time carry has not latched is left alone (review of #423; Group 2b)", async () => {
+    const clock = { now: Date.UTC(2026, 8, 1, 9) };
+    const c = brainAt(clock);
+    c.store.advanceClock("2026-09-01");
+    const hub = memoryIn(c, "s0", "The hub every other memory is linked to.");
+    const regrown = memoryIn(c, "s0", "The regrown end of a link.");
+    const corrected = memoryIn(c, "s0", "The corrected end of a link.");
+    await c.sessionEnd({ date: "2026-09-01", budgetBytes: 9000 });
+    const day = c.store.livedDay();
+    c.store.linkMany([regrown, corrected].flatMap((e) => [
+      { src: hub, dst: e, weight: 0.2, day },
+      { src: e, dst: hub, weight: 0.2, day },
+    ]));
+    c.store.archive(regrown, EPISODE_REGROWN_REASON);
+    c.store.archive(corrected, "corrected");
+    // As if each pass had thrown before it latched.
+    c.store.updateMeta(TERMINAL_ARCHIVE_LATCHES["episode-regrown"] as string, () => null);
+    c.store.updateMeta(TERMINAL_ARCHIVE_LATCHES["corrected"] as string, () => null);
+    clock.now += TERMINAL_ARCHIVE_GRACE_MS + 1;
+    c.associate.absorb([{ a: hub, b: regrown, delta: 0.01 }]);
+    c.associate.flush();
+    expect(c.store.edgesFrom(regrown).length).toBeGreaterThan(0);
+    expect(c.store.edgesFrom(corrected).length).toBeGreaterThan(0);
+  });
+
+  test("a merge through the one door (Group 2b): the merged memory copies the originals' links, the originals keep theirs (nothing to sweep), and the undo leaves them linked", () => {
     const clock = { now: Date.UTC(2026, 4, 30, 22) };
     const c = brainAt(clock);
     c.store.advanceClock("2026-05-20");
@@ -385,11 +412,11 @@ describe("5. rows with an endpoint archived for good are swept (review 06 C3)", 
     if (!out.ok) throw new Error("propose refused");
     const merged = out.results[0]?.id as string;
     expect(c.associate.linked(merged, friend)).toBe(true);
-    // A flush sweeps the originals' rows: they are archived for good.
+    // The originals stay live (settled `changed` under the merged memory), so a flush sweeps none of their rows.
     clock.now += TERMINAL_ARCHIVE_GRACE_MS + 1;
     c.associate.absorb([{ a: merged, b: friend, delta: 0.01 }]);
-    expect(c.associate.flush().sweptArchived).toBeGreaterThan(0);
-    expect(c.store.edgesFrom(a)).toEqual([]);
+    c.associate.flush();
+    for (const x of [a, b]) expect(c.associate.linked(x, friend)).toBe(true);
     expect(c.dreams.undo(begun.bundle.dream).ok).toBe(true);
     for (const x of [a, b]) expect(c.associate.linked(x, friend)).toBe(true);
   });

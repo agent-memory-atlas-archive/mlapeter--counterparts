@@ -37,7 +37,7 @@
  */
 import { randomUUID } from "node:crypto";
 
-import { Associate, appendPendingDeltas, claimPending, pairKey, planAtWrite, planContiguity, releasePending } from "./associate/index.js";
+import { Associate, TERMINAL_ARCHIVE_LATCHES, appendPendingDeltas, claimPending, pairKey, planAtWrite, planContiguity, releasePending } from "./associate/index.js";
 import type { CoactivateResult, Credited, FlushReport, PairDelta, PendingClaim } from "./associate/index.js";
 import { horizonFor, selfRenderer } from "./briefing.js";
 import { batteryGate, episodeGate, gateSweepChunk } from "./bridge.js";
@@ -55,6 +55,7 @@ import {
   askedAt,
   askedTurn,
   Recall,
+  headOf,
   isConfidential,
   judgedThrough,
   loadGateState,
@@ -121,11 +122,15 @@ import { applyRevision } from "./revision.js";
 import type { RevisionApplication } from "./revision.js";
 import {
   CONTRADICTION_HELD_EVENT,
+  CORRECTED_REASON,
   detectSlot,
+  expireUnanswerableSlots,
   guardBar,
   heldView,
   proposeSlot,
   settle as settleContradiction,
+  settleMovedReminder,
+  settleMovedReminders,
   undo as undoContradiction,
   updateRelatedness,
   writeNeighbours,
@@ -614,7 +619,10 @@ export const CONTIGUITY_CURSOR_META = "associateContiguityCursor";
 export const SUBJECTS_BACKFILL_META = "subjects.v12.backfill";
 /** Meta key: the one-time carry of the links regrown chapter copies were left
  *  holding (2026-10-09) — its latch, and what it carried. */
-export const REGROWN_RELINK_META = "associate.regrown.relink";
+export const REGROWN_RELINK_META = TERMINAL_ARCHIVE_LATCHES["episode-regrown"] as string;
+/** Meta key: the one-time carry of the links `corrected` memories were left
+ *  holding before the one door carried them (2026-10-11, Group 2b). */
+export const CORRECTED_RELINK_META = TERMINAL_ARCHIVE_LATCHES["corrected"] as string;
 
 /** What one boundary's temporal contiguity pass did. Counts only. */
 export interface ContiguityPass {
@@ -2037,6 +2045,12 @@ export class Counterpart {
     // Once per store, the links regrown chapter copies were left holding
     // before a regrowth carried them (2026-10-09).
     if (!this.observer) this.relinkRegrownCopies();
+    // …and the links corrected memories were left holding before the one
+    // door carried them (2026-10-11, Group 2b).
+    if (!this.observer) this.relinkCorrected();
+    // Once per store, the memories whose reminder moved before a move wrote
+    // its own row (2026-10-11, Group 2b): each steps back behind its holder.
+    if (!this.observer) settleMovedReminders(this.store, { retarget: this.retargetLinks });
     // SEAMS H: the REAL battery, so `self/`'s refusing default is unreachable.
     this.self = new Self({
       store: this.store,
@@ -4406,19 +4420,32 @@ export class Counterpart {
    * land in the trail any more than in a body.
    */
   settleContradiction(input: SettleInput): SettleOutcome {
-    return settleContradiction(this.store, {
-      ...input,
-      ...(typeof input.why === "string" ? { why: redactSecrets(input.why) } : {}),
-    });
+    return settleContradiction(
+      this.store,
+      {
+        ...input,
+        ...(typeof input.why === "string" ? { why: redactSecrets(input.why) } : {}),
+      },
+      { retarget: this.retargetLinks },
+    );
   }
 
   /** Undo a settle (`reconsolidation.ts#undo`), the reason through the same scan. */
   undoContradiction(input: Parameters<typeof undoContradiction>[1]): UndoOutcome {
-    return undoContradiction(this.store, {
-      ...input,
-      ...(typeof input.why === "string" ? { why: redactSecrets(input.why) } : {}),
-    });
+    return undoContradiction(
+      this.store,
+      {
+        ...input,
+        ...(typeof input.why === "string" ? { why: redactSecrets(input.why) } : {}),
+      },
+      { retarget: this.retargetLinks },
+    );
   }
+
+  /** SEAMS E for the one door (2026-10-11): a memory that leaves recall hands its links to the one that holds. */
+  private readonly retargetLinks = (oldId: string, newId: string, day: number): void => {
+    this.associate.retargetOnSupersede(oldId, newId, day);
+  };
 
   /**
    * The nearest few live memories of one just written (`reconsolidation.ts
@@ -6676,7 +6703,7 @@ export class Counterpart {
     // proposal goes on without its `updates`, so nothing is linked, carried
     // over, closed or settled; the hold is recorded and handed back.
     const held = await this.guardUpdate(result.proposal, ctx);
-    const carry = this.carryReminder(held === null ? result.proposal : withoutUpdates(result.proposal));
+    const carry = this.carryReminder(held === null ? result.proposal : withoutUpdates(result.proposal), ctx.facts?.status ?? null);
     // v12: the writer's three fields, a revision's carried over where unsent.
     const facts = this.carryFacts(carry.proposal, ctx.facts);
     const proposal: Proposal = facts === null ? carry.proposal : { ...carry.proposal, facts: { ...(facts.occurredOn === null ? {} : { occurredOn: facts.occurredOn }), ...(facts.saidBy === null ? {} : { saidBy: facts.saidBy }), ...(facts.status === null ? {} : { status: facts.status }) } };
@@ -6717,6 +6744,18 @@ export class Counterpart {
     // settled at once, and the wake dropped what the deposit said was open.
     const keepOpen = thread?.refused === "confidential" || thread?.refused === "other-directory";
     const revision = this.applyDeclaredRevision(keepOpen ? withoutHow(proposal) : proposal, mint, source, ctx.session);
+    // THE MEMORY THE REMINDER LEFT STEPS BACK (2026-10-11, Group 2b; review 07
+    // §4.3): after the declared revision, so the writer's own settle (its
+    // `how`, its words) comes first; a row of its own only when the two are not
+    // a pair already — the reminder came from further along its chain, or the
+    // writer said `open`.
+    if (reminder !== null && reminder.moved && !this.observer) {
+      try {
+        settleMovedReminder(this.store, { remnant: reminder.from, holder: mint.id, actor: "session", actorId: ctx.session, day: proposal.day }, { retarget: this.retargetLinks });
+      } catch {
+        /* the reminder moved; the row is bookkeeping */
+      }
+    }
     if (held !== null) this.recordHold(held, mint.id, source, ctx, proposal.day);
     // THE SLOT DETECTOR (2026-10-11, Group 2), after the declared revision:
     // what the writer named is settled first, then arithmetic reads whether
@@ -6756,6 +6795,8 @@ export class Counterpart {
    */
   private proposeSlotFor(id: string, p: Proposal, session: string, siblings: readonly string[]): Extract<SlotOutcome, { ok: true }> | null {
     if (this.observer) return null;
+    // With dreaming off, proposals nothing answered go, once a lived day.
+    expireUnanswerableSlots(this.store, p.day);
     try {
       const declared = p.updates?.resolved ?? null;
       const candidate = detectSlot(this.store, { id, exclude: declared === null ? siblings : [declared, ...siblings], session });
@@ -6865,6 +6906,11 @@ export class Counterpart {
    * guard reads the pair as it would any other.
    */
   private closesOrRedates(p: Proposal, target: string, row: MemoryRow, sent: SentFacts | undefined): boolean {
+    // NOT FOR A CORE MEMORY (review of #427, 2026-10-11): a `done` over a core
+    // plan takes it out of the core in one step (`revision.ts#fulfil`), so the
+    // pair is read like any other first. A plan and the memory that says it
+    // was done share their subject; an unrelated write that named the id does not.
+    if (row.promoted_identity === 1 || row.band === "identity") return false;
     try {
       if (this.store.readProse(target).meta[UNRESOLVED_META_KEY] === true) return true;
     } catch {
@@ -7032,7 +7078,7 @@ export class Counterpart {
    * a reminder that faded or was put away is not revived onto a live row by a
    * revision that did not ask for it.
    */
-  private carryReminder(p: Proposal): ReminderCarryPlan {
+  private carryReminder(p: Proposal, sentStatus: MemoryStatus | null = null): ReminderCarryPlan {
     const intent = p.dateIntent;
     const target = p.updates?.method === "declared" ? p.updates.resolved : null;
     const none: ReminderCarryPlan = { proposal: p, from: null, inherited: [] };
@@ -7051,8 +7097,12 @@ export class Counterpart {
     } catch {
       // Unreadable prose: the date still carries, at the default mode, once.
     }
+    // A `done` SPENDS IT (review of #427, 2026-10-11): a write that says the
+    // dated thing is done, and sends no date, does not inherit one to fire on
+    // a plan already carried out — the rule the one door keeps for a settle.
+    const spent = intent.eventDate === "absent" && sentStatus === "done";
     const eventDate =
-      intent.eventDate === "set" ? p.eventDate : intent.eventDate === "cleared" ? null : priorDate;
+      intent.eventDate === "set" ? p.eventDate : intent.eventDate === "cleared" || spent ? null : priorDate;
     const remind = eventDate === null ? null : intent.remind ?? priorMode;
     // HOW OFTEN, field by field like the rest (2026-10-09): what the author
     // sent, `null` for "no longer repeats", else the revised memory's. Only a
@@ -7365,6 +7415,7 @@ export class Counterpart {
         // HOW an authored declaration settles an ordinary memory (2026-09-29);
         // a swept proposal carries none and its declaration stays a link.
         ...(proposal.how === undefined ? {} : { how: proposal.how }),
+        ...(proposal.howSent === undefined ? {} : { howSent: proposal.howSent }),
         session,
       },
       {
@@ -7633,6 +7684,41 @@ export class Counterpart {
       );
     } catch (err) {
       this.emit("counterpart.regrown.relink.failed", undefined, { code: errCode(err) });
+    }
+  }
+
+  /**
+   * THE LINKS CORRECTED MEMORIES WERE LEFT HOLDING, carried once (2026-10-11,
+   * Group 2b). Until the one door, a `corrected` settle archived the old
+   * memory and kept its links on it, so the sweep of rows archived for good
+   * left `corrected` out (Group 4). Each standing `corrected` settle's old
+   * memory hands its links to the memory that holds now (`headOf`, else the
+   * pair's holder), by the carry a settle now makes. Latched like the
+   * regrown pass, which the sweep reads before it takes `corrected`; not
+   * latched when a write failed, so the next open tries again.
+   */
+  private relinkCorrected(): void {
+    try {
+      if (this.store.getMeta(CORRECTED_RELINK_META) !== undefined) return;
+      const day = this.store.livedDay();
+      let carried = 0;
+      let failed = 0;
+      for (const p of this.store.contradictions({ state: "settled", limit: 100_000 })) {
+        if (p.how !== "corrected" || p.via !== null || p.over === null || p.holds === null) continue;
+        const over = this.store.row(p.over);
+        if (over === undefined || over.archived !== 1 || over.archived_reason !== CORRECTED_REASON) continue;
+        const holder = this.store.row(p.holds);
+        const to = holder !== undefined && holder.archived === 0 && holder.superseded_by === null ? p.holds : headOf(this.store, p.holds);
+        if (to === null) continue;
+        const out = this.associate.retargetOnSupersede(p.over, to, day);
+        if (out.reason === "failed") failed += 1;
+        else carried += 1;
+      }
+      this.emit("counterpart.corrected.relink", undefined, { carried, failed, day });
+      if (failed > 0) return;
+      this.store.setMeta(CORRECTED_RELINK_META, JSON.stringify({ at: this.nowFn(), day, carried }));
+    } catch (err) {
+      this.emit("counterpart.corrected.relink.failed", undefined, { code: errCode(err) });
     }
   }
 

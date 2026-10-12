@@ -547,7 +547,7 @@ describe("a dream's merge carries the originals' nudges, as it carries their fee
     ]);
     // Read without asking: the merged memory is confidential, so its words are withheld.
     expect(c.store.traitsFor(merged).every((t) => t.withheld && t.carried_by === "")).toBe(true);
-    // The originals keep theirs, superseded — and the all-read counts the moment once.
+    // The originals keep theirs (live, earlier under the merged memory since Group 2b) — and the all-read counts the moment once.
     expect(c.store.traitsFor(a).length).toBe(1);
     expect(c.store.traitsAll().map((t) => t.memory_id)).toEqual([merged, merged]);
   });

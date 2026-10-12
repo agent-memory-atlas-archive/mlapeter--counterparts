@@ -890,7 +890,12 @@ function upgradeOf(prior: { tier: UseTier; day: number } | undefined, today: num
  * one `headOf` per candidate (a few indexed reads); never throws.
  */
 export function headsWin(store: Store, candidates: readonly Candidate[], day: number): Candidate[] {
-  const ids = new Set(candidates.map((c) => c.id));
+  // A HEAD REACHED ONLY BY A LINK is not the turn reaching it (2026-10-11,
+  // Group 2b, left from #420): as a quiet pointer it sat in its own slots,
+  // apart from what the words found, so the earlier version the words found
+  // was never inhibited and both showed. It is brought in to stand for the
+  // earlier one instead, and its link-only candidate is dropped.
+  const ids = new Set(candidates.filter((c) => c.linkOnly !== true).map((c) => c.id));
   const out: Candidate[] = [];
   const brought = new Set<string>();
   for (const c of candidates) {
@@ -925,7 +930,7 @@ export function headsWin(store: Store, candidates: readonly Candidate[], day: nu
       /* an unreadable head: the earlier one shows, labelled */
     }
   }
-  return out;
+  return brought.size === 0 ? out : out.filter((c) => !(c.linkOnly === true && brought.has(c.id) && c.standsFor === undefined));
 }
 
 function trainsOf(verdicts: readonly CandidateVerdict[], id: string): boolean {

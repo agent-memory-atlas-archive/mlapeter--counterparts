@@ -615,6 +615,10 @@ were refined by b2+f8 at the review of #369, named where they were):
   under a work or owner fact comes back `open`; a pending dated memory refuses a settle that would
   move it) apply to every settler but the owner. Why: the owner's door has no limits elsewhere
   either (guards loose-first).
+  Revised by the Group 2b builder, 2026-10-11, lightly held: a settle over a pending dated
+  memory now carries the reminder to the holder (undone with the settle) and refuses only
+  when the holder has a date of its own; a `done` holder spends it (decisions.d,
+  feat-group2b-one-door).
 - Decided by the Group 2 builder, 2026-10-11, lightly held: the store's guard bar (p60 of 2000
   random live pairs, floor 0.30) is measured at the first guarded write of a lived day and kept in
   `meta` with its day, not in a sleep phase. Why: no new phase, marker or budget for a few hundred
@@ -792,6 +796,10 @@ were refined by b2+f8 at the review of #369, named where they were):
   owner can undo a settle, which un-archives it — sweeping would drop links that were never
   carried. `corrected` joins the list once its settle carries links (the reconsolidation
   lane's). `corrected` was 24 of the 1,159 inert rows on 10-10.
+  Revised by the Group 2b builder, 2026-10-11, lightly held: done — a `corrected` settle
+  carries the links through the one door and its undo carries them back, older ones were
+  carried once at open, and `corrected` is in `TERMINAL_ARCHIVE_REASONS`, swept once that
+  pass has latched (decisions.d, feat-group2b-one-door).
 - Decided by the Group 4 builder, 2026-10-11, lightly held (review 06 D7): Association's
   light is amber when links were laid in the last 7 lived days and none reached recall (no
   pointer shown, no hop-lifted candidate shown), green only when one did. "Links laid"

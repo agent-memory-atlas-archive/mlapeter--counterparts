@@ -1826,6 +1826,7 @@ describe("observer mode is enforced at the store seam", () => {
     updatePhysics: ["mem_000000000000", { uses: 1 }],
     reinforce: ["mem_000000000000", 1],
     setBand: ["mem_000000000000", "semantic", 1],
+    carryInto: ["mem_000000000000", "mem_000000000000"],
     link: [{ src: "mem_000000000000", dst: "mem_000000000000", weight: 1, day: 0 }],
     linkMany: [[{ src: "mem_000000000000", dst: "mem_000000000000", weight: 1, day: 0 }]],
     setProspective: [

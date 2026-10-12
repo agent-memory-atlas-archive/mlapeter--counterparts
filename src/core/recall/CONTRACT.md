@@ -440,9 +440,13 @@ or whose holder is gone with nothing live after it, carries no `Earlier`.
 carries it into the gate, which inhibits it when its head is admitted beside it or is
 already in the session; a turn that reached only the earlier one is shown its head instead
 (`recall/index.ts#headsWin`: the earlier's numbers, the head's words and its `(earlier:
-[id])`), left out of the turn's background. A confidential head for a guest is withheld,
-and the earlier then shows, labelled. The deliberate path is unchanged: facts mode already
-folds a chain under its head, and every other answer carries the label.
+[id])`), left out of the turn's background. A head the turn reached only through a link
+(a quiet pointer) counts as not reached: it is brought in to stand for the earlier one and
+its pointer candidate dropped (2026-10-11, Group 2b), so the two never show side by side. A
+confidential head for a guest is withheld, and the earlier then shows, labelled. The
+deliberate path is unchanged: facts mode already folds a chain under its head, meaning mode
+marks an earlier moment `earlier (now [id])` (Group 2b), and every other answer carries the
+label.
 
 ## 6c. A deliberate result says where it came from (2026-09-30)
 

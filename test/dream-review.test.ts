@@ -8,6 +8,7 @@
  *
  * Hermetic: a fresh temp data dir per test, removed after. No model is called.
  */
+import { headOf } from "../src/core/recall/index.js";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -98,7 +99,9 @@ describe("review of #251: what a dream's changes must keep", () => {
       ],
     });
     if (!out.ok) throw new Error("refused");
-    expect(out.results.map((r) => r.reason)).toEqual(["merged", "not-shown-or-gone"]);
+    // secret2 stays live under the merged memory since Group 2b, so the gist drawn from it is made, and is confidential too.
+    expect(out.results.map((r) => r.reason)).toEqual(["merged", "dreamed"]);
+    expect(c.store.row(out.results[1]?.id as string)?.confidential).toBe(1);
     const merged = out.results[0]?.id as string;
     expect(c.store.row(merged)?.confidential).toBe(1);
     expect(c.store.readProse(merged).meta["confidentiality"]).toBe("business");
@@ -193,8 +196,11 @@ describe("review of #251: what a dream's changes must keep", () => {
     );
     const undone = c.dreams.undo(id);
     expect(undone).toMatchObject({ ok: true, reason: "undone-except-moved-on", reversed: 1, kept: 1 });
-    // The originals stay folded in; the awake correction stands alone.
-    for (const orig of [m.a, m.b]) expect(c.store.row(orig)?.archived).toBe(1);
+    // The originals stay earlier (live, faded, since Group 2b); the awake correction stands alone, their head.
+    for (const orig of [m.a, m.b]) {
+      expect(c.store.row(orig)?.fade).toBeCloseTo(0.5, 6);
+      expect(headOf(c.store, orig)).toBe(successor);
+    }
     expect(c.store.row(successor)?.archived).toBe(0);
     // The rest of the dream is reversed (to at most the replay's faint trail, Group 4).
     expect(c.store.edgesFrom(m.person).find((e) => e.dst === m.old)?.weight ?? 0).toBeLessThanOrEqual(DREAM_TUNABLES.REPLAY_LINK_WEIGHT);

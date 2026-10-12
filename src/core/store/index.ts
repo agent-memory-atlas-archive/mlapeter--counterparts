@@ -937,6 +937,7 @@ export const WRITE_METHODS = [
   "updatePhysics",
   "reinforce",
   "setBand",
+  "carryInto",
   "link",
   "linkMany",
   "setProspective",
@@ -2414,18 +2415,39 @@ export class Store {
       // v9: the about-me mark travels too (the first original that has one).
       carryAboutMark(this.ops, oldId, successorId);
       carryWriteFacts(this.ops, oldId, successorId);
-      if (opts.carryReturns === true) {
-        this.ops.run(
-          `INSERT OR IGNORE INTO returns (memory_id, day, source, weight, gap, dream_id, at)
-           SELECT ?, day, source, weight, gap, dream_id, at FROM returns WHERE memory_id = ?`,
-          successorId,
-          oldId,
-        );
-        this.recomputeReturns(successorId);
-      }
+      if (opts.carryReturns === true) this.copyReturnsRaw(oldId, successorId);
     });
     deindexDoc(this.cache, oldId);
     this.emit("store.supersede", oldId, { successor: successorId, reason });
+  }
+
+  /**
+   * What `supersedeInto` carries, WITHOUT the archive (2026-10-11, review of
+   * #427): the return history copied (a return day both had is kept once),
+   * the about-me mark and the writer's three fields where `toId` has none —
+   * the original keeping all of its own. A dream merge's originals stay live,
+   * settled `changed` under the merged memory, which is still at least as
+   * durable as what it was made from. `returns: false` for a pressure
+   * crossing's successor, which `supersede` never gave the old one's returns.
+   */
+  carryInto(fromId: string, toId: string, opts: { returns?: boolean } = {}): void {
+    this.mutate("carryInto", () => {
+      this.requireRow(fromId);
+      this.requireRow(toId);
+      carryAboutMark(this.ops, fromId, toId);
+      carryWriteFacts(this.ops, fromId, toId);
+      if (opts.returns !== false) this.copyReturnsRaw(fromId, toId);
+    });
+  }
+
+  private copyReturnsRaw(fromId: string, toId: string): void {
+    this.ops.run(
+      `INSERT OR IGNORE INTO returns (memory_id, day, source, weight, gap, dream_id, at)
+       SELECT ?, day, source, weight, gap, dream_id, at FROM returns WHERE memory_id = ?`,
+      toId,
+      fromId,
+    );
+    this.recomputeReturns(toId);
   }
 
   /**
@@ -2858,6 +2880,17 @@ export class Store {
     return { id, birth_day: r?.birth_day ?? 0, created_at: r?.created_at ?? null, rid: r?.rid ?? 0 };
   }
 
+  /**
+   * Live memory ids whose meta bag names `key` (2026-10-11, Group 2b): a text
+   * prefilter on the stored JSON, so the caller reads the value itself. One
+   * scan; for once-only passes, not for a hot path.
+   */
+  idsWithMetaKey(key: string): string[] {
+    return this.ops
+      .all<{ id: string }>("SELECT id FROM memories WHERE archived = 0 AND superseded_by IS NULL AND meta LIKE ?", `%"${key}"%`)
+      .map((r) => r.id);
+  }
+
   /** Has any pair EVER named these two memories, withdrawn ones included (a slot the dream said was two things)? */
   contradictionEverBetween(x: string, y: string): boolean {
     if (!this.hasTable("contradictions")) return false;
@@ -3035,6 +3068,20 @@ export class Store {
     closes?: readonly string[];
     /** 2026-10-11: provisional cuts this settle LIFTS (a slot proposal's, on the pair or one it closes) — final fades, applied before `fade`. */
     lifts?: readonly { id: string; fade: number }[];
+    /**
+     * 2026-10-11 (Group 2b, the core path): the memory it is over LEAVES THE
+     * CORE in this transaction — the promotion flag off, its fading restarted
+     * on `lastUsedDay`, the band column set to `band` — before `fade` (a core
+     * memory has nothing to cut). Not the owner's demotion: no core event, so
+     * nothing is made sticky.
+     */
+    leaveCore?: { id: string; band: Band; lastUsedDay: number } | null;
+    /**
+     * 2026-10-11 (Group 2b): a pending reminder carried from the memory the
+     * settle is over to the one that holds — two in-place revisions, the meta
+     * patches computed by the caller (`prospective/`'s keys), in this transaction.
+     */
+    reminder?: { from: string; fromMeta: Record<string, unknown>; to: string | null; eventDate: string; toMeta: Record<string, unknown> } | null;
     detail?: Record<string, unknown>;
   }): { pairId: string; seq: number } {
     const out = this.mutate("settleContradiction", () => {
@@ -3105,8 +3152,19 @@ export class Store {
       // What it does to the memory it is over, LAST, so a refusal above has
       // staged nothing on the memory itself.
       for (const l of input.lifts ?? []) this.updatePhysics(l.id, { fade: l.fade });
+      if (input.leaveCore !== undefined && input.leaveCore !== null) {
+        const c = input.leaveCore;
+        this.updatePhysics(c.id, { promotedIdentity: false, lastUsedDay: c.lastUsedDay });
+        this.ops.run("UPDATE memories SET band = ?, band_day = ? WHERE id = ?", c.band, input.day, c.id);
+      }
       if (input.fade !== undefined && input.fade !== null) {
         this.updatePhysics(input.fade.id, { fade: input.fade.fade });
+      }
+      // The reminder first, while the memory it leaves is still live.
+      if (input.reminder !== undefined && input.reminder !== null) {
+        const m = input.reminder;
+        if (m.to !== null) this.revise(m.to, { eventDate: m.eventDate, meta: m.toMeta, reason: "reminder-carried" });
+        this.revise(m.from, { eventDate: null, meta: m.fromMeta, reason: m.to === null ? "reminder-spent" : "reminder-moved" });
       }
       if (input.archive !== undefined && input.archive !== null) {
         this.archive(input.archive.id, input.archive.reason);
@@ -3138,6 +3196,10 @@ export class Store {
     reopen?: readonly string[];
     /** 2026-10-11: provisional cuts the settle had lifted, put back on (final fades), before `restore`. */
     reapply?: readonly { id: string; fade: number }[];
+    /** 2026-10-11 (Group 2b): a memory the settle took out of the core, put back as it was (`settleContradiction`'s `leaveCore`, reversed). */
+    rejoinCore?: { id: string; band: Band; bandDay: number | null; lastUsedDay: number; promoted: boolean } | null;
+    /** 2026-10-11 (Group 2b): a reminder the settle carried, carried back (`settleContradiction`'s `reminder`, reversed). */
+    reminderBack?: { to: string | null; toMeta: Record<string, unknown>; from: string; eventDate: string; fromMeta: Record<string, unknown> } | null;
     detail?: Record<string, unknown>;
   }): { seq: number; unarchived: boolean } {
     const out = this.mutate("undoContradictionSettle", () => {
@@ -3174,9 +3236,19 @@ export class Store {
       if (input.restore !== undefined && input.restore !== null) {
         this.updatePhysics(input.restore.id, { fade: input.restore.fade });
       }
+      if (input.rejoinCore !== undefined && input.rejoinCore !== null) {
+        const c = input.rejoinCore;
+        this.updatePhysics(c.id, { promotedIdentity: c.promoted, lastUsedDay: c.lastUsedDay });
+        this.ops.run("UPDATE memories SET band = ?, band_day = ? WHERE id = ?", c.band, c.bandDay, c.id);
+      }
       let unarchived = false;
       if (input.unarchive !== undefined && input.unarchive !== null) {
         unarchived = this.restoreSuperseded(input.unarchive.id, input.unarchive.reason);
+      }
+      if (input.reminderBack !== undefined && input.reminderBack !== null) {
+        const m = input.reminderBack;
+        if (m.to !== null) this.revise(m.to, { eventDate: null, meta: m.toMeta, reason: "reminder-carried-back" });
+        this.revise(m.from, { eventDate: m.eventDate, meta: m.fromMeta, reason: "reminder-carried-back" });
       }
       return { seq, unarchived };
     });
@@ -4959,7 +5031,7 @@ export class Store {
   feelingsSince(sinceMs: number): FeelingRow[] {
     return this.ops.all<FeelingRow>(
       `SELECT f.* FROM feelings f JOIN memories m ON m.id = f.memory_id
-        WHERE f.created_at >= ? AND m.archived = 0 AND m.superseded_by IS NULL
+        WHERE f.created_at >= ? AND m.archived = 0 AND m.superseded_by IS NULL${this.notMergedAway("m")}
         ORDER BY f.created_at DESC, f.rowid DESC`,
       sinceMs,
     );
@@ -4975,9 +5047,22 @@ export class Store {
   feelingsLive(): (FeelingRow & { birth_day: number })[] {
     return this.ops.all<FeelingRow & { birth_day: number }>(
       `SELECT f.*, m.birth_day AS birth_day FROM feelings f JOIN memories m ON m.id = f.memory_id
-        WHERE m.archived = 0 AND m.superseded_by IS NULL
+        WHERE m.archived = 0 AND m.superseded_by IS NULL${this.notMergedAway("m")}
         ORDER BY f.created_at, f.rowid`,
     );
+  }
+
+  /**
+   * A dream merge's ORIGINALS stay live since 2026-10-11 (Group 2b; random-06's
+   * ruling: a merge is a plain `changed`), and their feelings and nudges were
+   * copied onto the merged memory, so the store-wide reads that used to see
+   * only the merged copy leave the originals out — a moment counted once, as
+   * when the originals were archived. A SQL fragment on alias `m`; empty for
+   * a file without the contradictions table.
+   */
+  private notMergedAway(m: string): string {
+    if (!this.hasTable("contradictions")) return "";
+    return ` AND ${m}.id NOT IN (SELECT over FROM contradictions WHERE state = 'settled' AND source = 'dream-merge' AND over IS NOT NULL)`;
   }
 
   /**
@@ -5024,7 +5109,7 @@ export class Store {
                     OR EXISTS (SELECT 1 FROM feelings f WHERE f.memory_id = m.id AND f.strength > 0)
                   THEN 1 ELSE 0 END) AS weighted
          FROM memories m
-        WHERE m.archived = 0 AND m.superseded_by IS NULL AND m.birth_day >= ?`,
+        WHERE m.archived = 0 AND m.superseded_by IS NULL AND m.birth_day >= ?${this.notMergedAway("m")}`,
       since,
     );
     return { withFeelings: row?.with_feelings ?? 0, weighted: row?.weighted ?? 0 };
@@ -5361,7 +5446,7 @@ export class Store {
     const live = opts.live !== false;
     const rows = this.ops.all<TraitRow & { confidential: number }>(
       `SELECT t.*, m.confidential AS confidential FROM traits t JOIN memories m ON m.id = t.memory_id
-        WHERE t.created_at >= ?${live ? " AND m.archived = 0 AND m.superseded_by IS NULL" : ""}
+        WHERE t.created_at >= ?${live ? ` AND m.archived = 0 AND m.superseded_by IS NULL${this.notMergedAway("m")}` : ""}
         ORDER BY t.created_at, t.rowid`,
       opts.sinceMs ?? Number.MIN_SAFE_INTEGER,
     );
@@ -5378,7 +5463,7 @@ export class Store {
     const row = this.ops.get<{ memories: number | null; nudges: number | null }>(
       `SELECT COUNT(DISTINCT t.memory_id) AS memories, COUNT(*) AS nudges
          FROM traits t JOIN memories m ON m.id = t.memory_id
-        WHERE t.created_at >= ? AND m.archived = 0 AND m.superseded_by IS NULL`,
+        WHERE t.created_at >= ? AND m.archived = 0 AND m.superseded_by IS NULL${this.notMergedAway("m")}`,
       opts.sinceMs ?? Number.MIN_SAFE_INTEGER,
     );
     return { memories: row?.memories ?? 0, nudges: row?.nudges ?? 0 };
