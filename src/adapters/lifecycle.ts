@@ -64,6 +64,7 @@ import type {
   Turn as CapturedTurn,
 } from "../core/remember/index.js";
 import { calendarDate } from "../core/self/index.js";
+import { storeMarker } from "./store-id.js";
 import { ahaDue, ahaLine, markAha, meetPending, meetState, noteOffered, offerDue, offerLine, onboardingMarker, settleOffer } from "../core/onboarding.js";
 import { localClock, localDate, readableDate } from "../core/time.js";
 
@@ -747,6 +748,19 @@ export class Lifecycle implements HostLifecycle {
       }
     }
     return onboardingMarker(meetState(store));
+  }
+
+  /**
+   * WHICH STORE THIS SESSION OPENED, for the mod (2026-10-12,
+   * `adapters/store-id.ts#storeMarker`): an id, never the path. Rides beside
+   * the onboarding marker on every session-start wake. Never throws.
+   */
+  storeMarker(): string {
+    try {
+      return storeMarker(this.counterpart.store.dir);
+    } catch {
+      return "";
+    }
   }
 
   /** Is the first meeting still to happen? The first-launch scope question waits while it is: the meeting asks where. */

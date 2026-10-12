@@ -631,8 +631,8 @@ describe("ensureFirstRun", () => {
     expect(takeFirstRunNotice(noticeIn())).toBe(true);
     expect(takeFirstRunNotice(noticeIn())).toBe(false);
     const line = firstRunLine(defaultChoice().path, home);
-    expect(line).toContain("first run");
-    expect(line).toContain("~/.counterparts");
+    expect(line).toStartWith("Counterparts is set up: a memory that stays on this computer, in ~/.counterparts.");
+    expect(line).not.toContain("\n");
   });
 
   test("a memory parked beside it is named in the first-run line, and left where it is", () => {
@@ -685,7 +685,7 @@ describe("ensureFirstRun", () => {
       noticePath: join(work, "no", "such", "dir", "notice"),
     });
     expect(r.state).toBe("created");
-    expect(r.line).toContain("first run");
+    expect(r.line).toContain("Counterparts is set up");
   });
 
   test("a symlink waiting at the notice's name (a shared /tmp) is never written through", () => {
@@ -847,12 +847,12 @@ describe("plugin-run.sh", () => {
     const r = launch("hook", payload("SessionStart"), pluginEnv());
     expect(r.code).toBe(0);
     const out = JSON.parse(r.stdout) as { systemMessage?: string; hookSpecificOutput?: { additionalContext?: string } };
-    expect(out.systemMessage).toContain("first run");
+    expect(out.systemMessage).toContain("Counterparts is set up");
     expect(out.hookSpecificOutput?.additionalContext ?? "").toContain("Now:");
     expect(existsSync(join(home, ".counterparts", "claude-code.json"))).toBe(true);
     // The second session says nothing about a first run.
     const again = launch("hook", payload("SessionStart", "plugin-test-2"), pluginEnv());
-    expect(again.stdout).not.toContain("first run");
+    expect(again.stdout).not.toMatch(/first run|Counterparts is set up/);
   });
 
   test("the npm hooks live: SessionStart says so once, a prompt says nothing, and no store is made", () => {
@@ -959,7 +959,7 @@ describe("plugin-run.sh", () => {
     delete env["CLAUDE_PLUGIN_ROOT"];
     const r = launch("hook", payload("SessionStart"), { ...env, COUNTERPARTS_REQUIRE_EXPLICIT_DIR: "1" });
     expect(r.code).toBe(0);
-    expect(r.stdout).not.toContain("first run");
+    expect(r.stdout).not.toMatch(/first run|Counterparts is set up/);
     expect(existsSync(join(home, ".counterparts", "claude-code.json"))).toBe(false);
   });
 
@@ -1025,7 +1025,7 @@ describe("plugin-run.sh", () => {
   // found the configuration there and said nothing, so a new user was never
   // told a memory had been set up.
 
-  const FIRST_RUN_LINE = "Counterparts: first run — a new memory was set up at ~/.counterparts.";
+  const FIRST_RUN_LINE = "Counterparts is set up: a memory that stays on this computer, in ~/.counterparts.";
   const wake = (stdout: string): { systemMessage?: string; hookSpecificOutput?: { additionalContext?: string } } =>
     JSON.parse(stdout) as { systemMessage?: string; hookSpecificOutput?: { additionalContext?: string } };
 
@@ -1034,7 +1034,7 @@ describe("plugin-run.sh", () => {
     expect(existsSync(join(home, ".counterparts", "claude-code.json"))).toBe(true);
     // The server has no channel to the person: nothing in its instructions,
     // and the notice waits for the hook.
-    expect(server.stdout).not.toContain("first run");
+    expect(server.stdout).not.toMatch(/first run|Counterparts is set up/);
     expect(existsSync(noticeIn())).toBe(true);
 
     const start = launch("hook", payload("SessionStart"), pluginEnv());
@@ -1047,7 +1047,7 @@ describe("plugin-run.sh", () => {
     // Never again: not at the next session, not from a server started after it.
     launch("mcp", handshake, pluginEnv());
     const again = launch("hook", payload("SessionStart", "plugin-test-2"), pluginEnv());
-    expect(again.stdout).not.toContain("first run");
+    expect(again.stdout).not.toMatch(/first run|Counterparts is set up/);
     expect(again.stdout).toContain("Now:");
   });
 
@@ -1060,13 +1060,13 @@ describe("plugin-run.sh", () => {
     const server = launch("mcp", handshake, pluginEnv());
     expect(server.stderr).not.toContain("plugin first run");
     expect(existsSync(noticeIn())).toBe(false);
-    expect(launch("hook", payload("SessionStart", "plugin-test-2"), pluginEnv()).stdout).not.toContain("first run");
+    expect(launch("hook", payload("SessionStart", "plugin-test-2"), pluginEnv()).stdout).not.toMatch(/first run|Counterparts is set up/);
   });
 
   test("a prompt made the install (the plugin enabled mid-session): the next SessionStart says the line", () => {
     const prompt = launch("hook", payload("UserPromptSubmit"), pluginEnv());
     expect(prompt.code).toBe(0);
-    expect(prompt.stdout).not.toContain("first run");
+    expect(prompt.stdout).not.toMatch(/first run|Counterparts is set up/);
     expect(existsSync(join(home, ".counterparts", "claude-code.json"))).toBe(true);
     const start = launch("hook", payload("SessionStart", "plugin-test-2"), pluginEnv());
     expect(wake(start.stdout).systemMessage).toContain(FIRST_RUN_LINE);
@@ -1088,8 +1088,8 @@ describe("plugin-run.sh", () => {
         });
       const [hook, server] = await Promise.all([run("hook", payload("SessionStart")), run("mcp", handshake)]);
       expect(existsSync(join(home, ".counterparts", "claude-code.json"))).toBe(true);
-      expect((wake(hook.stdout).systemMessage ?? "").split("first run").length - 1).toBe(1);
-      expect(server.stdout).not.toContain("first run");
+      expect((wake(hook.stdout).systemMessage ?? "").split("Counterparts is set up").length - 1).toBe(1);
+      expect(server.stdout).not.toMatch(/first run|Counterparts is set up/);
       expect(existsSync(noticeIn())).toBe(false);
     },
     120_000,
@@ -1103,14 +1103,14 @@ describe("plugin-run.sh", () => {
     writeSettings({ SessionStart: [liveHookCommand()], UserPromptSubmit: [liveHookCommand()] });
     const start = launch("hook", payload("SessionStart"), pluginEnv());
     expect(start.stderr).toContain("plugin hook stood down");
-    expect(start.stdout).not.toContain("first run");
+    expect(start.stdout).not.toMatch(/first run|Counterparts is set up/);
     expect(existsSync(noticeIn())).toBe(false);
     // The npm hooks removed: the plugin wakes on the same memory, and the first
     // run is not news any more.
     writeSettings({});
     const moved = launch("hook", payload("SessionStart", "plugin-test-2"), pluginEnv());
     expect(moved.stdout).toContain("Now:");
-    expect(moved.stdout).not.toContain("first run");
+    expect(moved.stdout).not.toMatch(/first run|Counterparts is set up/);
   });
 });
 
@@ -1219,7 +1219,7 @@ describe("the npm install's hook and server never take themselves for the plugin
     for (const env of [npmEnv({ TMPDIR: tmp }), npmEnv({ TMPDIR: tmp, CLAUDE_PLUGIN_ROOT: OTHER_COPY() })]) {
       const r = npmHook("SessionStart", env);
       expect(r.code).toBe(0);
-      expect(r.stdout + r.stderr).not.toContain("first run");
+      expect(r.stdout + r.stderr).not.toMatch(/first run|Counterparts is set up/);
       expect(existsSync(noticeIn())).toBe(true);
     }
   });

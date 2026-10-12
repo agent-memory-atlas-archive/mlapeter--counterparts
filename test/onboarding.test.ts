@@ -49,6 +49,7 @@ import type { McpServer } from "../src/adapters/mcp/index.js";
 import { TOOLS, renderDescription } from "../src/adapters/mcp/tools.js";
 import { lookupScope, readScopes, scopesPath, setScope, writeScopes } from "../src/adapters/scopes.js";
 import { firstRunLine } from "../src/adapters/plugin.js";
+import { storeId } from "../src/adapters/store-id.js";
 
 let root: string;
 let storeDir: string;
@@ -211,10 +212,11 @@ describe("a fresh install against an upgrade", () => {
     withStore((s) => expect(s.getMeta(DREAMING_SETTING_KEY)).toBe("off"));
   });
 
-  test("the plugin's first-run line says dreaming is on, and how to turn it off", () => {
+  test("the plugin's first-run line is one line: where it lives, that dreaming is on, and how to turn it off", () => {
     const line = firstRunLine(cfg(), home());
-    expect(line).toContain("Daily tidy-up (called dreaming): on.");
-    expect(line).toContain('Say "no dreams"');
+    expect(line).toContain("Counterparts is set up: a memory that stays on this computer, in ");
+    expect(line).toContain('(Daily tidy-up, called dreaming, is on; say "no dreams" to turn it off.)');
+    expect(line).not.toContain("\n");
     expect(line).not.toContain("counterparts dream");
   });
 
@@ -244,7 +246,7 @@ describe("the meet tool", () => {
     const p = r.structuredContent;
     expect(p["meet"]).toBe("offered");
     const script = String(p["script"]);
-    expect(script).toContain("so I can carry what matters from one session to the next.");
+    expect(script).toContain("so I can carry what matters from one session to the next, and grow along with you.");
     expect(script).toContain("Every folder (recommended) · Just this folder");
     expect(script).toContain("AskUserQuestion");
     // B: the opening asks once — the dialog is the question.
@@ -484,7 +486,9 @@ describe("the wake's line: no double offer", () => {
     newInstallStore();
     const first = start("s1", DAY1);
     expect(first).toContain(MEET_LINE_OPEN);
-    expect(first).toContain("If their message asks you to say hello and introduce yourself, that is this meeting");
+    expect(first).toContain("If their message asks to meet you or asks you to introduce yourself");
+    // The sidebar's speak-first, word for word (2026-10-12): Claude reads it as this meeting.
+    expect(first).toContain('\"Meet your new counterpart.\"), that is this meeting: begin it with that introduction.');
     expect(first).not.toContain(SCOPE_ASK_OPEN);
     // The mod reads the state: still not_started (only a `meet` call moves it), so its trigger may still fire in s1.
     withStore((s) => expect(meetState(s)).toBe("not_started"));
@@ -564,7 +568,7 @@ describe("the wake's line: no double offer", () => {
 // ── the endpoint ─────────────────────────────────────────────────────────────
 
 describe("GET /api/onboarding", () => {
-  test("returns { meet, where, style } and no answer text", async () => {
+  test("returns { meet, where, style, store } and no answer text", async () => {
     newInstallStore();
     const s = server();
     await s.call("meet", { step: "where", answer: "every" });
@@ -575,7 +579,7 @@ describe("GET /api/onboarding", () => {
     try {
       const reply = router(new URL("http://127.0.0.1:4747/api/onboarding"), "127.0.0.1:4747", dash.source);
       expect(reply.status).toBe(200);
-      expect(JSON.parse(reply.body)).toEqual({ meet: "offered", where: "every", style: "think" });
+      expect(JSON.parse(reply.body)).toEqual({ meet: "offered", where: "every", style: "think", store: storeId(storeDir) });
       expect(reply.body).not.toContain("tide");
     } finally {
       dash.close();
