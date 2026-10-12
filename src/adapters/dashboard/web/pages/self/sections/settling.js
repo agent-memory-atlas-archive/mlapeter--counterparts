@@ -165,7 +165,7 @@ export function ruleWords(s) {
   }
   if (s.outOfReach > 0) {
     foot.push(s.outOfReach + (s.outOfReach === 1 ? " memory is" : " memories are") +
-      " not about me or about us, so the core is not for them however often they come back.");
+      " not about me or about us (about you, the work or the world), or a fact or a plan, so the core is not for them however often they come back. They are kept and recalled as before.");
   }
   return foot.join(" ");
 }
