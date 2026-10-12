@@ -7,8 +7,12 @@
   older ones get the same once.
 - **One record for every "this replaces that".** A dream's merge, a settle, a write that updates a memory, the
   core's slow change and a moved reminder now all leave the same record and the same undo, and a settle over a
-  memory with a date still to come carries the reminder to the newer one. A corrected memory hands its links
-  to the one that holds. The dashboard counts what was noticed (merges, newer states found) apart from what
+  memory with a date still to come carries the reminder to the newer one. A dream's merge keeps its originals
+  as faded earlier versions behind the merged memory (hidden from what comes up on its own) until they fade
+  out, instead of putting them away, and one original can be brought back on its own. A corrected memory hands
+  its links to the one that holds.
+- **"Done" ends a reminder.** A memory that says something is done no longer takes over the reminder of the
+  plan it finishes, so it does not remind you on the day of something already done. The dashboard counts what was noticed (merges, newer states found) apart from what
   was declared, so nothing shows under both.
 - **Earlier versions say so in more places.** A "meaning" answer marks an earlier moment with the memory that
   holds now, and a newer memory reached only through a link now stands in for its earlier version instead of

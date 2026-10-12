@@ -177,7 +177,7 @@ or the CLI's read commands (`counterparts mechanisms --dir …`, `counterparts d
 - **Changes a decision if:** `toConfirmMore` keeps growing night over night → proposals outpace the dream's
   4: raise `SLOT_PER_NIGHT` or tighten the rule.
 
-## .18 / Group 2b (one door for "A over B"), the first week after it is installed
+## .19 / Group 2b (one door for "A over B"), the first week after it is installed
 
 The forward run on the 10-11 copy (snapshot before the v13 migration, lived day 20; branch against master, +0/+1/+7
 lived days with a boundary a day, no model calls) is the baseline. Only the open-time passes can fire in it: the
@@ -194,8 +194,9 @@ one row per original (40 originals so far).
 - **Why:** after this, every "A over B" writes a row; a door that writes none is a door that was missed. Expect
   `write` most days, `dream-merge` on dream nights (one per original), `reminder-moved` rarely (a reminder carried
   from further along its chain), `pressure` / `fulfilled` only on a declared change at a core memory.
-- **Changes a decision if:** a merge night writes no `dream-merge` rows → the merge fell back past the door (it
-  emits nothing, so look for originals archived `dream-merge` with no pair): a bug lane. `howSent: false` on most
+- **Changes a decision if:** a merge night writes no `dream-merge` rows → the door refused (the merge's result note
+  says "was not settled under the merged memory"; look for a merged memory's `meta.mergedFrom` ids with no pair):
+  a bug lane. `howSent: false` on most
   `write` rows that turn out wrong on a hand-read → default `how` to `open` instead of `changed`.
 
 ### The dashboard no longer counts one settle twice
@@ -219,9 +220,19 @@ one row per original (40 originals so far).
 - **Why:** before this no path moved a core memory in practice. The Han pair (mem_def8b46df5cc, no status, no date)
   is not fast-laned: it needs three lived days of declared changes at the floor. Whether such items should be in the
   core at all is Group 3's.
-- **Changes a decision if:** a `fulfilled` replaces a core memory a hand-read says was not a plan → narrow the fast
+- **Changes a decision if:** a `fulfilled` takes a core memory out of the core that a hand-read says was not a plan → narrow the fast
   lane (status only, not a date); or the Han pair is still in the core after the owner has declared it kept on
   three days → the floor is not reaching it.
+
+### A merge's originals stay live, behind the merged memory (random-06's ruling, review of #427)
+- **Look at:** live memories that are the `over` of a settled `dream-merge` pair: their count, their strength
+  (fade 0.5), and whether any shows in a turn's ambient block beside its merged memory (the recall log) or unfolded in
+  a facts-mode answer.
+- **Why:** a merge no longer archives its originals; they fade ×0.5, are labelled earlier and leave by their own curve.
+  The cost accepted was more live near-copies for a couple of weeks, hidden from ambient.
+- **Changes a decision if:** an original shows beside its merged memory in ambient recall → head-wins misses a case
+  (a bug lane); or the live originals pile up past a few weeks without reaching the floor → revisit the cut for
+  a merge (a smaller `factor`, still `changed`).
 
 ## Group 4 (association), due ~5 lived days after it ships
 
