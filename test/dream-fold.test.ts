@@ -21,6 +21,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { Dashboard } from "../src/adapters/dashboard/index.js";
+import { dreamsView } from "../src/adapters/dashboard/web/views/dreams.js";
 import { Counterpart } from "../src/core/counterpart.js";
 import { DREAM_TUNABLES } from "../src/core/dream/index.js";
 import { TUNABLES as PHYSICS, strength } from "../src/core/physics/index.js";
@@ -160,6 +162,26 @@ describe("a fold goes through the one door", () => {
     const [r] = propose(c, dream, [{ action: "gist", fold: true, text: "The benchmark got its small cleanups.", sources: [w1, w2, core] }]);
     expect(r?.ok).toBe(true);
     expect(c.store.physicsOf(r?.id as string).salience.claimed).toBe(PHYSICS.DREAMED_CLAIM_CEILING);
+  });
+
+  test("the dashboard's dreams page counts a fold as a fold and says what it did", () => {
+    const c = brain();
+    const m = releaseDay(c);
+    const dream = begin(c);
+    propose(c, dream, [
+      { action: "gist", fold: true, text: "0.3.15 shipped.", sources: [m.a, m.b, m.d] },
+      { action: "gist", text: "Releases go smoother in rounds.", sources: [m.a, m.b] },
+    ]);
+    c.close();
+    open.splice(open.indexOf(c), 1);
+    const dash = Dashboard.open({ dir });
+    try {
+      const v = dreamsView(dash.source).dreams.find((d) => d.id === dream);
+      expect(v?.counts).toMatchObject({ fold: 1, gist: 1 });
+      expect(v?.changes.find((x) => x.said.startsWith("folded"))?.said).toBe("folded 3 memories into what they add up to (3 faded under it)");
+    } finally {
+      dash.close();
+    }
   });
 
   test("an insight gist is unchanged: 0.3, `Dreamed:`, its sources untouched", () => {
