@@ -22,3 +22,10 @@
   Why: with closes now real, bun's own SQLite on Linux deletes the `-wal` at the last close
   and the next open makes an empty one, so an empty `-wal`'s mtime is an open's, not a
   write's; counting it meant an older copy was never reused there.
+- Decided by the #438 reviewer, 2026-10-11, lightly held: where a read promised the files
+  were left alone, the wording is made honest rather than the promise kept. The one place it
+  was said of an opened store, `start-fresh --undo --dry-run` ("Nothing else was touched"),
+  now says a log left in the new store's `-wal` may have been folded into its database file,
+  and that no memory changed. Why: keeping it would mean the read never being the last
+  connection, which neither driver lets one connection choose; the other "nothing has
+  changed" lines are about memories, which still holds, and the forward dry run opens no store.

@@ -2018,6 +2018,8 @@ describe("the confirmation review's MINORs and NITs", () => {
     ).toBe(EXIT.ok);
     expect(text(u.out)).toContain("`-shm` index may have been");
     expect(text(u.out)).toContain("the parked store was not opened");
+    // Honest about the fold a real last close can do (review of #438).
+    expect(text(u.out)).toContain("a log left in its `-wal` folded into its database file");
     // And it really did not move anything.
     expect(existsSync(`${storePath()}.${PARKED_INFIX}-${today()}`)).toBe(true);
   });
