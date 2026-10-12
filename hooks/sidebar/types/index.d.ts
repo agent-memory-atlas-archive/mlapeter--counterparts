@@ -290,14 +290,6 @@ declare module 'claude-code' {
       firing: SidebarFiring | null;
       search: SidebarSearch;
       scope: SidebarScope;
-      /** Claude Code's own memory (MEMORY.md and its prompt section): on unless turned off. */
-      claudeMemory: boolean;
-      /**
-       * Whether the footer draws the Claude memory switch: only for someone
-       * who opted in (`COUNTERPARTS_SIDEBAR_CC_MEMORY=1`, or `$.store`
-       * `claudeMemorySwitch`, set for whoever had already turned it off).
-       */
-      claudeMemorySwitch: boolean;
       /** Where the first meeting stands (core's `/api/onboarding`). */
       onboarding: SidebarOnboarding;
       view: SidebarView;
