@@ -63,7 +63,7 @@ export interface SleepStore {
   read(id: string): StoredMemory;
   /** v9: one memory's counted returns, OPTIONAL — a promotion's record names
    *  their sources where the port has it. */
-  returnsOf?(id: string): readonly { source: string; day?: number; session?: string | null }[];
+  returnsOf?(id: string): readonly { source: string; day?: number; session?: string | null; at?: number }[];
   /**
    * The standing pairs that name these memories (v10, `core/reconsolidation.ts`),
    * OPTIONAL: the core's recurrence lane walks a memory's SLOT along them

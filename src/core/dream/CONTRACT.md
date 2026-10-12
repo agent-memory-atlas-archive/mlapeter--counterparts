@@ -255,7 +255,7 @@ dreamer is the model (a background agent the session launches), outside this pro
   recorded feeling), a dated one, a dream's own words and an earlier version
   (`foldExemption`). It starts at its strongest part's strength, read before any fade, in
   [`DREAMED_CLAIM_CEILING`, `FOLD_CLAIM_CEILING` 0.6]; its title is its own (no
-  `Dreamed:`); the dream picks its kind and it inherits the mark as a gist does. At most
+  `Dreamed:`); the dream picks its kind; it is `me`/`us` only when most of its parts are (`foldMarkFrom`), else their most common other mark. At most
   `FOLDS`, 5, a dream; one past it is refused `limit-reached`, counted on `dream.changed`
   as `foldOverflow` and said in the hand-back. Counted as `fold`, not `gist`. A later
   `corrected` settle over one of its parts flags it beside the corrector, source
@@ -455,11 +455,14 @@ examples) · **§2.19** (every change enumerable: `counterparts dream --show`) �
    lane a gist sits in (work or Nearby), not its way to the core. The question above
    is the only road there. **Since 2026-10-11 (Group 3 parts A and B) a FOLD has the
    ordinary road**: the slow floor became "within reach", a fold starts at its parts'
-   strength (≤ 0.6), and its parts are in its slot, so their recurrence (their uses and
-   their re-encodings: each part a session wrote on another day) counts for it once it has
-   one awake use of its own. Measured on a copy of the owner's store (10-11): a fold of
-   four `self`/me memories (three folded, one reading kept at its weight), written by
-   sessions on lived days 6 to 19, met the slow lane after one awake use on day 21. An insight gist still has no road (its claim stays at the cap).
+   strength (≤ 0.6), and its parts are in its slot. Its recurrence is what came back
+   AFTER it was folded (decided by random-06, 2026-10-11, lightly held): its own uses and
+   its parts' later uses count, the parts' births and earlier uses do not; no minimum
+   count of its own uses beyond the slow lane's anchor. And it is `me`/`us` only when
+   most of its parts are (`store/index.ts#foldMarkFrom`), so a work fold with one `us`
+   part is not a core candidate. The builder's first measure (10-11) had a personal fold
+   meet the slow lane after ONE awake use, on its parts' births; that lever is closed.
+   An insight gist still has no road (its claim stays at the cap).
 3. Should dream links be stored differently from Hebbian links (a marker, a hop
    weight)? A session designing association with the owner may decide; today they are
    ordinary edges at `LINK_WEIGHT`. Since 2026-09-28 (association build 1) that is 0.1,

@@ -327,11 +327,10 @@ describe("a correction to a source flags the folds made from it", () => {
   });
 });
 
-describe("fold → core is open in practice (D6)", () => {
-  test("a heavily used personal fold crosses into the core by the slow lane", () => {
-    const c = brain();
+describe("fold → core is open in practice (D6), by recurrence after the fold (random-06's ruling)", () => {
+  /** Four personal memories, by four sessions, over six lived days, folded into one `self`/me fold. */
+  function personalFold(c: Counterpart): { fold: string; parts: string[] } {
     nextDay(c);
-    // Four personal memories, by three sessions, over six lived days.
     const personal = { kind: "self", about: "me", salience: { relevance: 0.7, emotional: 0.1, predictive: 0.6 } } as Partial<PutInput>;
     const s1 = mem(c, "I say when I am not sure before I guess.", { ...personal, origin: { session: "s1" } });
     nextDay(c);
@@ -342,28 +341,51 @@ describe("fold → core is open in practice (D6)", () => {
     const s3 = mem(c, "I flagged my own guess as a guess in the review.", { ...personal, origin: { session: "s3" } });
     nextDay(c);
     const s4 = mem(c, "I asked before assuming what the benchmark measured.", { ...personal, origin: { session: "s4" } });
+    // Each part used awake before the fold: none of it is recurrence of the fold.
+    for (const [i, p] of [s1, s2, s3, s4].entries()) c.resolveUse(`pre${String(i)}`, p, "referenced");
     const dream = begin(c);
     const [r] = propose(c, dream, [{ action: "gist", fold: true, kind: "self", text: "I say what I do not know before I guess: it has held all week.", sources: [s1, s2, s3, s4] }]);
     expect(r).toMatchObject({ ok: true, reason: "folded" });
     const fold = r?.id as string;
     expect(c.store.row(fold)).toMatchObject({ kind: "self", about: "me" });
-    // Not yet: the fold has no use of its own (the fast lane stays shut to dreamed rows; no cap changed).
+    return { fold, parts: [s1, s2, s3, s4] };
+  }
+
+  test("its parts' births and pre-fold uses do not cross it, even with one use of its own", () => {
+    const c = brain();
+    const { fold } = personalFold(c);
     nextDay(c);
-    nextDay(c);
-    expect(coreRecurrence(c.store, fold, c.store.livedDay()).anchored).toBe(false);
-    expect(runCycle({ store: c.store, date: date(++dateN), cadence: { consolidate: 1 } }).promoted.map((p) => p.id)).not.toContain(fold);
-    // One awake use of its own, a lived day later.
-    nextDay(c);
+    expect(coreRecurrence(c.store, fold, c.store.livedDay())).toMatchObject({ anchored: false, days: 0 });
     expect(c.resolveUse("s5", fold, "referenced").credited).toBe(true);
     const rec = coreRecurrence(c.store, fold, c.store.livedDay());
-    expect(rec).toMatchObject({ anchored: true });
-    expect(rec.days).toBeGreaterThanOrEqual(PHYSICS.CORE_SLOW_DAYS);
-    expect(rec.sessions).toBeGreaterThanOrEqual(PHYSICS.CORE_SLOW_SESSIONS);
+    expect(rec).toMatchObject({ anchored: true, days: 1, sessions: 1 });
+    const crossed = runCycle({ store: c.store, date: date(++dateN), cadence: { consolidate: 1 } }).promoted;
+    expect(crossed.map((p) => p.id)).not.toContain(fold);
+  });
+
+  test("a heavily used personal fold, its content coming back after the fold, crosses by the slow lane", () => {
+    const c = brain();
+    const { fold, parts } = personalFold(c);
+    // Real awake uses after the fold, of it and of its parts, by three sessions over eight lived days.
+    nextDay(c);
+    expect(c.resolveUse("s5", fold, "referenced").credited).toBe(true);
+    nextDay(c);
+    nextDay(c);
+    nextDay(c);
+    expect(c.resolveUse("s6", parts[1] as string, "referenced").credited).toBe(true);
+    nextDay(c);
+    nextDay(c);
+    expect(c.resolveUse("s6", fold, "referenced").credited).toBe(true);
+    nextDay(c);
+    nextDay(c);
+    expect(c.resolveUse("s7", fold, "referenced").credited).toBe(true);
+    const rec = coreRecurrence(c.store, fold, c.store.livedDay());
+    expect(rec).toMatchObject({ anchored: true, days: 4, sessions: 3 });
     const crossed = runCycle({ store: c.store, date: date(++dateN), cadence: { consolidate: 1 } }).promoted;
     expect(crossed.map((p) => p.id)).toContain(fold);
     expect(crossed.find((p) => p.id === fold)?.lane).toBe("slow");
     // The parts stayed earlier under it, not core.
-    for (const id of [s1, s2, s3, s4]) expect(c.store.row(id)?.promoted_identity).toBe(0);
+    for (const id of parts) expect(c.store.row(id)?.promoted_identity).toBe(0);
   });
 });
 
