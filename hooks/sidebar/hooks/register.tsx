@@ -336,7 +336,7 @@ async function speakFirst($: EngineInterface): Promise<void> {
   await $.store.set(MEET_FLAG, { session: run.session, at: await $.clock.now() })
   run.meetFiredIn = run.session
   run.spokeFirst = true
-  quiet(foxEvent($, 'hello'))
+  await foxEvent($, 'hello')
   // Not awaited inside a hook: the engine queues it until the session is idle.
   $.clock.after(0, () => quiet($.prompt.submit({ text: MEET_PROMPT })))
 }
@@ -669,7 +669,7 @@ async function onRecallBlock($: EngineInterface, block: RecallBlock): Promise<vo
   if (firstSurfaced !== undefined) await setLatest($, words('remembered', firstSurfaced.title), 'retrieval')
   else if (firstFoot !== undefined) await setLatest($, words('subconscious', firstFoot.title), 'retrieval')
   await fire($, ['retrieval'])
-  quiet(foxEvent($, 'came'))
+  await foxEvent($, 'came')
   if (block.surfaced.length > 0 && (await read($, dashA)) !== 'down') quiet(titleSurfaced($, block.turn))
 }
 
@@ -784,7 +784,7 @@ async function seedSession($: EngineInterface): Promise<void> {
 async function onSaved($: EngineInterface, items: readonly SidebarSaved[]): Promise<void> {
   if (items.length === 0) return
   await update($, savedA, list => [...[...items].reverse(), ...list])
-  quiet(foxEvent($, 'note'))
+  await foxEvent($, 'note')
   const first = items[0]
   if (first !== undefined) {
     await setLatest($, items.length === 1 ? storedWords(first.title) : storedWords(first.title, items.length), 'salience', bodyOf(first))
@@ -1801,16 +1801,19 @@ export const register: Register = on => {
     const name = String(e.tool)
     const ours = ourTool(name)
     // The fox dreams while this session's dream runs.
-    if (ours?.tool === 'dream') quiet(foxEvent($, 'dream'))
-    const ran = await next(e).finally(() => {
-      if (ours?.tool === 'dream') quiet(foxEvent($, 'dreamEnd'))
-    })
+    if (ours?.tool === 'dream') await foxEvent($, 'dream')
+    let ran: Awaited<ReturnType<typeof next>>
+    try {
+      ran = await next(e)
+    } finally {
+      if (ours?.tool === 'dream') await foxEvent($, 'dreamEnd')
+    }
     if (ran.deny !== undefined || ran.isError === true) return ran
     if (ours === null) return ran
     // Core's first-meeting tool moved the state: read it again (the button shows or hides); the fox says hello.
     if (ours.tool === 'meet') {
       quiet(readOnboarding($))
-      quiet(foxEvent($, 'hello'))
+      await foxEvent($, 'hello')
     }
     try {
       const args = e as unknown as Record<string, unknown>
@@ -1831,7 +1834,7 @@ export const register: Register = on => {
     const kind = e.origin.kind
     if (kind === 'composer' || kind === 'bridge') {
       run.typed = run.prompted = true
-      quiet(foxEvent($, 'prompt'))
+      await foxEvent($, 'prompt')
     }
     if (kind === 'plugin' && e.origin.name === 'counterparts' && e.text === MEET_PROMPT && run.prompted && run.spokeFirst && run.meetPressedAt === -Infinity) {
       return { drop: 'the person spoke first' }

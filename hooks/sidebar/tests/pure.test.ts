@@ -29,8 +29,29 @@ import {
   shortDir,
   surfacedIds,
   wrap,
+  otherStore,
+  parseStoreMarker,
+  storeOf,
 } from '../hooks/feed'
 import { cells, ellipsizeCells, padCells } from '../hooks/width'
+import {
+  STAGE_COLS,
+  advance,
+  fineCell,
+  fineCells,
+  foxSvg,
+  halfCells,
+  newDirector,
+  normDetail,
+  pickTier,
+  pngOf,
+  runs,
+  sextantBits,
+  sextantGlyph,
+  stageRows,
+  stepKey,
+  trigger,
+} from '../hooks/fox'
 import { hookConfig, lookup, parentOf, parseRegistry, settingsHookConfig, under } from '../hooks/scopes'
 import { MECHS, STAGES, dashboardBase, dashboardPort, isDashboardUrl, memoryUrl } from '../hooks/mechanisms'
 import { MORE, OPEN_MAX_LINES, bar, clip, heading, layoutBody, openedLines, textOf, wrapN } from '../hooks/sections'
@@ -843,5 +864,159 @@ describe('the themes', () => {
       applyTheme('tron')
     }
     expect(P).toEqual(tron)
+  })
+})
+
+// ── the fox ────────────────────────────────────────────────────────────────
+
+/** A seeded random: the schedule's moments and holds the same every run. */
+function seeded(seed = 7): () => number {
+  let x = seed
+  return () => {
+    x = (x * 1103515245 + 12345) % 2147483648
+    return x / 2147483648
+  }
+}
+
+describe('the fox', () => {
+  test('which way a surface draws it: pictures only where the terminal shows them (kitty, Ghostty, never under tmux or screen), sextants where the font has them, half-blocks everywhere else', () => {
+    expect(pickTier('terminal', 'auto', { TERM_PROGRAM: 'ghostty' })).toBe('image')
+    expect(pickTier('terminal', 'auto', { TERM: 'xterm-kitty', KITTY_WINDOW_ID: '1' })).toBe('image')
+    expect(pickTier('terminal', 'auto', { TERM_PROGRAM: 'ghostty', TMUX: '/tmp/tmux-501/default,1,0' })).toBe('basic')
+    expect(pickTier('terminal', 'auto', { TERM: 'xterm-kitty', STY: '1.pts-0' })).toBe('basic')
+    for (const p of ['iTerm.app', 'WezTerm', 'vscode']) expect(pickTier('terminal', 'auto', { TERM_PROGRAM: p })).toBe('fine')
+    expect(pickTier('terminal', 'auto', { TERM_PROGRAM: 'Apple_Terminal' })).toBe('basic')
+    expect(pickTier('terminal', 'auto', {})).toBe('basic')
+    // the engine's own switch says yes or no outright
+    expect(pickTier('terminal', 'auto', { TERM_PROGRAM: 'Apple_Terminal', CLAUDE_CODE_FORCE_TERMINAL_IMAGES: '1' })).toBe('image')
+    expect(pickTier('terminal', 'auto', { TERM_PROGRAM: 'ghostty', CLAUDE_CODE_FORCE_TERMINAL_IMAGES: '0' })).toBe('fine')
+    // an Image that drew its alt here: auto stops trying; an explicit choice stands
+    expect(pickTier('terminal', 'auto', { TERM_PROGRAM: 'ghostty' }, true)).toBe('fine')
+    expect(pickTier('terminal', 'images', { TERM_PROGRAM: 'Apple_Terminal' })).toBe('image')
+    expect(pickTier('terminal', 'fine', {})).toBe('fine')
+    expect(pickTier('terminal', 'basic', { TERM_PROGRAM: 'ghostty' })).toBe('basic')
+    for (const s of ['desktop', 'vscode', 'mobile']) expect(pickTier(s, 'basic', {})).toBe('svg')
+    expect(normDetail('images')).toBe('images')
+    expect(normDetail('sharp')).toBe('auto')
+  })
+
+  test('sextants: every pattern has its glyph and back; the four that are not sextants are the space and the block glyphs', () => {
+    for (let v = 0; v < 64; v++) expect(sextantBits(sextantGlyph(v))).toBe(v)
+    expect([sextantGlyph(0), sextantGlyph(21), sextantGlyph(42), sextantGlyph(63)]).toEqual([' ', '▌', '▐', '█'])
+    expect(sextantGlyph(1)).toBe('\u{1FB00}')
+    expect(sextantGlyph(62)).toBe('\u{1FB3B}')
+    // two colours a cell: the two most frequent; a third goes to the nearer of them
+    const c = fineCell(['#ff0000', '#ff0000', '#0000ff', '#0000ff', '#ee0000', null])
+    expect([c.fg, c.bg].sort()).toEqual(['#0000ff', '#ff0000'])
+    expect(fineCell([null, null, null, null, null, null])).toEqual({ ch: ' ', fg: null, bg: null })
+    expect(fineCell(['#abc', null, '#abc', null, '#abc', null])).toEqual({ ch: '▌', fg: '#abc', bg: null })
+  })
+
+  test('each tier draws the same frame in its footprint: half-blocks 34 x 15 on a Raster, sextants 34 x 16 in Text runs, the picture a PNG, the desktop an Svg under its size cap', () => {
+    const idle = { frame: 'idle', fx: [] }
+    expect(decodeCells(halfCells(idle)).length).toBe(STAGE_COLS * 15 * 3)
+    expect(stageRows('basic')).toBe(15)
+    const fine = fineCells(idle)
+    expect(fine.length).toBe(16)
+    expect(fine.every(l => l.length === STAGE_COLS)).toBe(true)
+    expect(fine.flat().some(c => (c.ch.codePointAt(0) ?? 0) >= 0x1fb00)).toBe(true)
+    // runs keep every cell
+    for (const l of fine) expect([...runs(l).map(r => r.ch).join('')].length).toBe(STAGE_COLS)
+    // a nap's z sits beside the head, inside the stage, in the effect's colour
+    const zs = [['zSmall', 'zSmall'], ['z', 'z']] as const
+    expect(fineCells({ frame: 'nap1', fx: zs }).flat().some(c => c.fg === '#9be' || c.bg === '#9be')).toBe(true)
+    expect([...decodeCells(halfCells({ frame: 'nap1', fx: zs }))].some((v, i) => i % 3 !== 0 && v === 0x99bbee)).toBe(true)
+    expect(pngOf(idle).startsWith('iVBORw0KGgo')).toBe(true)
+    expect(pngOf({ frame: 'perk', fx: [['spark0', 'spark']] })).not.toBe(pngOf({ frame: 'perk', fx: [] }))
+    expect(pngOf({ frame: 'no-such', fx: [] })).toBe(pngOf(idle))
+    const svg = foxSvg(idle)
+    expect(svg.source.length).toBeLessThan(131072)
+    expect(svg.source).toContain('<rect')
+    expect(svg.source).toContain('data:image/png;base64,')
+  })
+
+  test('the schedule: a still hold of 8–20 s, then one small moment; one wake per change of what is on screen', () => {
+    const d = newDirector(0)
+    const rand = seeded()
+    const first = advance(d, 0, rand)
+    expect(first.step.frame).toBe('idle')
+    expect(first.next).toBeGreaterThanOrEqual(8000)
+    expect(first.next).toBeLessThanOrEqual(20000)
+    let t = first.next
+    let shown = stepKey(first.step)
+    const seen: string[] = []
+    for (let i = 0; i < 40; i++) {
+      const a = advance(d, t, rand)
+      // each wake shows something new
+      expect(stepKey(a.step)).not.toBe(shown)
+      shown = stepKey(a.step)
+      seen.push(shown)
+      expect(a.next).toBeGreaterThan(t)
+      t = a.next
+    }
+    expect(seen.filter(k => k === 'idle').length).toBeGreaterThan(3)
+    expect(new Set(seen).size).toBeGreaterThan(2)
+  })
+
+  test('after three minutes with nothing happening the fox naps, and a prompt wakes it with a stretch', () => {
+    const d = newDirector(0)
+    const rand = seeded(3)
+    let t = 0
+    while (t < 200000) t = advance(d, t, rand).next
+    expect(d.mode).toBe('nap')
+    trigger(d, 'prompt', t)
+    expect(d.mode).toBe('idle')
+    const frames: string[] = []
+    for (let i = 0; i < 4; i++) {
+      const a = advance(d, t, rand)
+      frames.push(a.step.frame)
+      t = a.next
+    }
+    expect(frames).toContain('stretch')
+    // a prompt while awake changes nothing on screen
+    const before = stepKey(advance(d, t, rand).step)
+    trigger(d, 'prompt', t)
+    expect(stepKey(advance(d, t, rand).step)).toBe(before)
+  })
+
+  test('real state: something came to mind (a spark beside the head), a save (the notepad, twice), the first meeting (hello), a dream (asleep, until it ends)', () => {
+    const d = newDirector(0)
+    const rand = seeded()
+    trigger(d, 'came', 1000)
+    const came = advance(d, 1000, rand).step
+    expect(came.frame).toBe('perk')
+    expect(came.fx.map(f => f[0])).toContain('spark0')
+    trigger(d, 'note', 2000)
+    const notes: string[] = []
+    let t = 2000
+    for (let i = 0; i < 8; i++) {
+      const a = advance(d, t, rand)
+      notes.push(a.step.frame)
+      t = a.next
+    }
+    expect(notes.filter(f => f === 'note0').length).toBe(2)
+    trigger(d, 'hello', t)
+    expect(advance(d, t, rand).step.frame).toBe('hello0')
+    trigger(d, 'dream', t)
+    for (let i = 0; i < 10; i++) t = advance(d, t, rand).next
+    expect(d.mode).toBe('dream')
+    expect(advance(d, t, rand).step.fx.map(f => f[0]).some(n => n.startsWith('dream'))).toBe(true)
+    // a save while dreaming: the dream is what it does
+    trigger(d, 'note', t)
+    expect(d.mode).toBe('dream')
+    trigger(d, 'dreamEnd', t)
+    expect(d.mode).toBe('idle')
+  })
+
+  test('which store: the wake’s marker and a dashboard’s answer; another store only when both are known and differ', () => {
+    expect(parseStoreMarker('<!-- counterparts:onboarding meet=done -->\n<!-- counterparts:store id=st_0123456789abcdef -->')).toBe('st_0123456789abcdef')
+    expect(parseStoreMarker('<!-- counterparts:store id=st_xyz -->')).toBeNull()
+    expect(storeOf('{"store":"st_0123456789abcdef","version":"0.3.20"}')).toBe('st_0123456789abcdef')
+    expect(storeOf('{"store":null}')).toBeNull()
+    expect(storeOf('not json')).toBeNull()
+    expect(otherStore('st_0123456789abcdef', 'st_fedcba9876543210')).toBe(true)
+    expect(otherStore('st_0123456789abcdef', 'st_0123456789abcdef')).toBe(false)
+    expect(otherStore(null, 'st_fedcba9876543210')).toBe(false)
+    expect(otherStore('st_0123456789abcdef', null)).toBe(false)
   })
 })

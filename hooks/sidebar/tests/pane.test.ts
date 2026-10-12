@@ -8,6 +8,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
 import { decodeCells } from '../hooks/cells'
+import { halfCells } from '../hooks/fox'
 import { hex, stageOf } from '../hooks/mechanisms'
 import { cells } from '../hooks/width'
 import {
@@ -2009,3 +2010,235 @@ for (const [stored, color] of [
     await ui.unmount()
   })
 }
+
+// ── the fox at the top ─────────────────────────────────────────────────────
+
+const FOX: WorldOptions = { store: { brain: 'fox' } }
+const foxEnv = (env: Record<string, string>): WorldOptions => ({ ...FOX, env: { HOME, ...env } })
+const stageBlits = (w: World) => w.blits.filter(b => b.key === 'stage')
+
+test('the fox is the avatar when none was chosen: under the title, edge to edge, a thin rule and the count under it; a short pane falls back to the brain', async ($, on) => {
+  const w = world(on, { store: { brain: undefined } })
+  await start($, w)
+  const ui = await mount($, w, 'terminal')
+  const r = await ui.find({ type: 'Raster', key: 'stage' })
+  expect(r?.props['columns']).toBe(34)
+  expect(r?.props['rows']).toBe(15)
+  expect(await ui.find({ type: 'Raster', key: 'brain' })).toBeUndefined()
+  expect((await ui.find({ type: 'Button', key: 'title' }))?.text).toContain('COUNTERPARTS')
+  expect(await ui.find({ type: 'Text', text: '776 memories' })).toBeDefined()
+  // the avatar row: the fox's dot lit
+  expect((await ui.find({ type: 'Button', key: 'brain-fox' }))?.text).toBe('● animal')
+  expect((await ui.find({ type: 'Button', key: 'brain-turning' }))?.text).toBe('○ brain')
+  await ui.unmount()
+  const short = await mount($, w, 'terminal', { ...PANE_PROPS, scroll: { offset: 0, bodyRows: 24 } } as typeof PANE_PROPS)
+  expect(await short.find({ type: 'Raster', key: 'stage' })).toBeUndefined()
+  expect(await short.find({ type: 'Raster', key: 'brain' })).toBeDefined()
+  await short.unmount()
+  // a brain someone chose stays the brain
+  expect(await cmd($, 'avatar brain')).toContain('turns slowly')
+  expect(w.store['brain']).toBe('turning')
+  expect(await cmd($, 'avatar animal')).toContain('The avatar is the fox')
+  expect(w.store['brain']).toBe('fox')
+})
+
+test('each terminal draws it its finest known way: a picture in Ghostty, sextants in iTerm2, half-blocks in Apple Terminal; the desktop an Svg', async ($, on) => {
+  const ghostty = world(on, foxEnv({ TERM_PROGRAM: 'ghostty' }))
+  await start($, ghostty)
+  const ui = await mount($, ghostty, 'terminal')
+  const img = await ui.find({ type: 'Image', key: 'stage' })
+  expect(img?.props['columns']).toBe(30)
+  expect(img?.props['rows']).toBe(16)
+  expect(String((img?.props['source'] as { png?: string } | undefined)?.png).startsWith('iVBORw0KGgo')).toBe(true)
+  expect(img?.props['alt']).toBe('a small fox')
+  expect(await ui.find({ type: 'Raster', key: 'stage' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('sextants in iTerm2: rows of Text, no Raster (a Raster takes no sextant), the count still under the rule', async ($, on) => {
+  const w = world(on, foxEnv({ TERM_PROGRAM: 'iTerm.app' }))
+  await start($, w)
+  const ui = await mount($, w, 'terminal')
+  expect(await ui.find({ type: 'Raster' })).toBeUndefined()
+  expect(await ui.find({ type: 'Image' })).toBeUndefined()
+  const all = await texts(ui)
+  expect([...all].some(ch => (ch.codePointAt(0) ?? 0) >= 0x1fb00 && (ch.codePointAt(0) ?? 0) <= 0x1fb3b)).toBe(true)
+  expect(await ui.find({ type: 'Text', text: '776 memories' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('half-blocks in Apple Terminal, and the desktop draws an Svg of the same fox', async ($, on) => {
+  const w = world(on, foxEnv({ TERM_PROGRAM: 'Apple_Terminal' }))
+  await start($, w)
+  let ui = await mount($, w, 'terminal')
+  expect(await ui.find({ type: 'Raster', key: 'stage' })).toBeDefined()
+  await ui.unmount()
+  ui = await mount($, w, 'desktop')
+  const svg = await ui.find({ type: 'Svg' })
+  expect(String(svg?.props['source'])).toContain('<rect')
+  expect(svg?.props['alt']).toBe('a small fox')
+  await ui.unmount()
+})
+
+test('/counterparts avatar detail overrides the choice, stored for every session', async ($, on) => {
+  const w = world(on, foxEnv({ TERM_PROGRAM: 'Apple_Terminal' }))
+  await start($, w)
+  const ui = await mount($, w, 'terminal')
+  expect(await cmd($, 'avatar detail fine')).toContain('sextants')
+  expect(w.store['avatarDetail']).toBe('fine')
+  await settle(w)
+  expect(await ui.find({ type: 'Raster', key: 'stage' })).toBeUndefined()
+  expect(await cmd($, 'avatar detail images')).toContain('picture')
+  await settle(w)
+  expect(await ui.find({ type: 'Image', key: 'stage' })).toBeDefined()
+  expect(await cmd($, 'avatar detail basic')).toContain('half-blocks')
+  await settle(w)
+  expect(await ui.find({ type: 'Raster', key: 'stage' })).toBeDefined()
+  expect(await cmd($, 'avatar detail sharp')).toContain('auto, images, fine or basic')
+  await ui.unmount()
+})
+
+test('a terminal that turns out to draw an Image’s alt: two refused picture blits, and auto draws sextants instead', async ($, on) => {
+  const w = world(on, { ...foxEnv({ TERM_PROGRAM: 'ghostty' }), blitDeny: true })
+  await start($, w)
+  const ui = await mount($, w, 'terminal')
+  await w.clock.advance(2000)
+  await settle(w)
+  expect(await ui.find({ type: 'Image' })).toBeUndefined()
+  expect([...(await texts(ui))].some(ch => (ch.codePointAt(0) ?? 0) >= 0x1fb00)).toBe(true)
+  await ui.unmount()
+})
+
+test('the fox is still for long holds: one blit per change of what is on screen, none between; a save writes on the notepad at once', async ($, on) => {
+  const w = world(on, FOX)
+  on('tool.call', () => ({ result: 'ok', text: '{"stored":true,"id":"mem_f0000001"}' }))
+  await start($, w)
+  const ui = await mount($, w, 'terminal')
+  await w.clock.advance(7000)
+  expect(stageBlits(w)).toHaveLength(0) // a hold is at least 8 s
+  await w.clock.advance(60000)
+  const n = stageBlits(w).length
+  expect(n).toBeGreaterThan(0)
+  expect(n).toBeLessThan(40) // a few moments a minute, never a running loop
+  // every blit changes the picture
+  const cellsOf = stageBlits(w).map(b => ('cells' in b ? b.cells : ''))
+  for (let i = 1; i < cellsOf.length; i++) expect(cellsOf[i]).not.toBe(cellsOf[i - 1])
+  const notes = ['note0', 'note1', 'note2'].map(frame => halfCells({ frame, fx: [] }))
+  const shown = new Set<string>()
+  const look = async () => {
+    shown.add(String((await ui.find({ type: 'Raster', key: 'stage' }))?.props['cells']))
+    for (const b of stageBlits(w)) if ('cells' in b) shown.add(b.cells)
+  }
+  await look()
+  expect(notes.some(c => shown.has(c))).toBe(false)
+  await $.tool.call({ tool: 'mcp__counterparts__note', title: 'A fox', text: 'x' } as never)
+  await settle(w)
+  for (let i = 0; i < 6; i++) {
+    await w.clock.advance(250)
+    await look()
+  }
+  expect(notes.filter(c => shown.has(c)).length).toBeGreaterThanOrEqual(2)
+  await ui.unmount()
+})
+
+test('no timer while the pane is hidden or holds the keyboard: nothing is drawn, and a drawing starts it again', async ($, on) => {
+  const w = world(on, FOX)
+  await start($, w)
+  const ui = await mount($, w, 'terminal')
+  await ui.redraw({ ...PANE_PROPS, isFocused: true } as typeof PANE_PROPS)
+  await settle(w)
+  const n = stageBlits(w).length
+  await w.clock.advance(120000)
+  expect(stageBlits(w).length).toBe(n)
+  await ui.redraw(PANE_PROPS)
+  await settle(w)
+  await w.clock.advance(60000)
+  expect(stageBlits(w).length).toBeGreaterThan(n)
+  // hidden: the next change finds it so and stops
+  w.shown = false
+  await w.clock.advance(30000)
+  const m = stageBlits(w).length
+  await w.clock.advance(120000)
+  expect(stageBlits(w).length).toBe(m)
+  await ui.unmount()
+})
+
+test('after three minutes with nothing happening it naps, and the person’s prompt wakes it', async ($, on) => {
+  const w = world(on, { ...foxEnv({ TERM_PROGRAM: 'iTerm.app' }) })
+  await start($, w)
+  const ui = await mount($, w, 'terminal')
+  await w.clock.advance(200000)
+  await settle(w)
+  const z = await ui.findAll({ type: 'Text' })
+  expect(z.some(t => t.props['color'] === '#9be' || t.props['backgroundColor'] === '#9be')).toBe(true) // a z beside the head
+  await $.prompt.submit({ text: 'hello', origin: { kind: 'composer' }, wait: false })
+  await settle(w)
+  await w.clock.advance(5000)
+  await settle(w)
+  const after = await ui.findAll({ type: 'Text' })
+  expect(after.some(t => t.props['color'] === '#9be' || t.props['backgroundColor'] === '#9be')).toBe(false)
+  await ui.unmount()
+})
+
+// ── which store the dashboard serves ───────────────────────────────────────
+
+async function wakeWithStore($: Engine, w: World, id: string): Promise<void> {
+  await $.session.append({
+    door: 'hook-context',
+    origin: { kind: 'hook', event: 'SessionStart' },
+    uuid: `wake-store-${id}`,
+    message: {
+      type: 'attachment',
+      name: 'hook_additional_context',
+      content: [{ type: 'text', text: `<system-reminder>\nSessionStart hook additional context: <!-- counterparts:onboarding meet=done -->\n<!-- counterparts:store id=${id} -->\n</system-reminder>` }],
+    },
+  } as never)
+  await settle(w)
+}
+
+const MINE = 'st_0123456789abcdef'
+const THEIRS = 'st_fedcba9876543210'
+
+test('another store’s dashboard on the port: none of its numbers, one dim line instead; when it matches again they come back', async ($, on) => {
+  const w = world(on)
+  await start($, w)
+  await wakeWithStore($, w, MINE)
+  w.dashStore = THEIRS
+  const ui = await mount($, w, 'terminal')
+  const body = (await bodyLines(ui)).join(' ')
+  expect(body).toContain('This dashboard belongs to another memory.')
+  expect(body).not.toContain('Salience')
+  expect(body).not.toContain('Last Dream')
+  expect(await ui.find({ type: 'Text', text: '776 memories' })).toBeUndefined()
+  expect(w.fetches.some(u => u.endsWith('/api/pulse'))).toBe(false)
+  // the right one comes up on the port
+  w.dashStore = MINE
+  await w.clock.advance(31000)
+  await settle(w)
+  expect(await ui.find({ type: 'Text', text: '776 memories' })).toBeDefined()
+  expect((await bodyLines(ui)).join(' ')).toContain('Salience')
+  await ui.unmount()
+})
+
+for (const [marker, dash, said] of [[null, THEIRS, 'no marker'], [MINE, null, 'a store not minted yet'], [MINE, undefined, 'an older core']] as const) {
+  test(`which store, unknown on one side (${said}): it carries on`, async ($, on) => {
+    const w = world(on)
+    await start($, w)
+    if (marker !== null) await wakeWithStore($, w, marker)
+    w.dashStore = dash
+    const ui = await mount($, w, 'terminal')
+    expect(await ui.find({ type: 'Text', text: '776 memories' })).toBeDefined()
+    await ui.unmount()
+  })
+}
+
+test('the search box is hidden unless COUNTERPARTS_SIDEBAR_SEARCH brings it back', async ($, on) => {
+  const w = world(on, { env: { HOME } })
+  await start($, w)
+  for (const surface of SURFACES) {
+    const ui = await mount($, w, surface)
+    expect(await ui.find({ type: 'Input' })).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: '776 memories' })).toBeDefined()
+    await ui.unmount()
+  }
+})
