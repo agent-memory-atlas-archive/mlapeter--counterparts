@@ -54,6 +54,7 @@ import {
   takeFirstRunNotice,
 } from "../src/adapters/plugin.js";
 import type { ConfigChoice } from "../src/adapters/config-path.js";
+import { runOnce, runnerConfig } from "../src/adapters/claude-code/bin/runner.js";
 
 const ROOT = resolve(import.meta.dir, "..");
 const LAUNCHER = join(ROOT, "src", "adapters", "plugin-run.sh");
@@ -1186,7 +1187,7 @@ describe("the npm install's hook and server never take themselves for the plugin
 
   test(
     "installed both ways: every event of the npm hook runs in full, and an inherited CLAUDE_PLUGIN_ROOT changes not a byte",
-    () => {
+    async () => {
       bothInstalled();
       // Somebody who has met already: the first meeting's offer is said once a
       // day, so the second arm would differ by it, and it is not what this
@@ -1194,6 +1195,12 @@ describe("the npm install's hook and server never take themselves for the plugin
       const met = Store.open({ dir: join(home, ".counterparts", "store") });
       met.setMeta("onboarding.meet", "done");
       met.close();
+      // The day's wake, published BEFORE either arm. A first-run install wakes
+      // under Claude Code's ceiling (2026-10-12), so the worker the first arm's
+      // Stop spawns would otherwise publish one between the two arms, and the
+      // second would wake on it while the first woke on the bootstrap line.
+      // Re-renders the same day, with nothing new, are byte for byte.
+      expect((await runOnce({ config: runnerConfig(defaultChoice().path, {}).config, embedder: null })).ran).toBe(true);
       const plain: string[] = [];
       for (const event of HOST_EVENTS) {
         const r = npmHook(event, npmEnv(), "npm-test-plain");

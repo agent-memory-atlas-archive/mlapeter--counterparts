@@ -28,7 +28,7 @@ import { isAbsolute, join } from "node:path";
 
 import { isZone } from "../core/time.js";
 
-import { PAGE_WRITER_MODES } from "../core/self/index.js";
+import { PAGE_HOST_BUDGET_BYTES, PAGE_WRITER_MODES } from "../core/self/index.js";
 import type { PageWriterMode } from "../core/self/index.js";
 import { DEFAULT_KEEP as SNAPSHOT_DEFAULT_KEEP } from "./snapshots.js";
 
@@ -235,8 +235,13 @@ export const EMBEDDER_KINDS: readonly EmbedderKind[] = ["static"];
 export interface AdapterConfig {
   /** Where the memory lives. Pinned onto the child's environment LAST. */
   readonly dataDir?: string;
-  /** The host's reported injection ceiling, in bytes. NO DEFAULT (scar §2.18). */
+  /** The host's reported injection ceiling, in bytes. The core has no default
+   *  (scar §2.18); Claude Code's loaders fill an absent one with that host's
+   *  (`withBudgetDefault`, 2026-10-12). */
   readonly injectionBudgetBytes?: number;
+  /** Set by `withBudgetDefault` alone, never read from a file: the ceiling above
+   *  is Claude Code's default because the file named none. Runtime only. */
+  readonly injectionBudgetDefaulted?: true;
   /** How long the host lets a foreground hook run, ms. Reported, not assumed. */
   readonly executionCeilingMs?: number;
   /** How long a socket survives in this host, ms. The reason E3 rescoped here. */
@@ -811,7 +816,8 @@ export function capabilities(config: AdapterConfig): CapabilityReport[] {
   return [
     {
       name: "injectionBudgetBytes",
-      reported: config.injectionBudgetBytes !== undefined,
+      // A defaulted ceiling is a value with no report behind it (§2.4).
+      reported: config.injectionBudgetBytes !== undefined && config.injectionBudgetDefaulted !== true,
       value: config.injectionBudgetBytes ?? null,
       why: "The host's injection cliff. v1 hardcoded 90% of one host's, as though it were physiology.",
     },
@@ -876,6 +882,28 @@ export function resolveEmbedder(
 export function withEmbedderDefault(config: AdapterConfig): AdapterConfig {
   const { block, source } = resolveEmbedder(config);
   return source === "explicit" || block === undefined ? config : { ...config, embedder: block };
+}
+
+/**
+ * CLAUDE CODE'S WAKE CEILING WHEN ITS CONFIGURATION NAMES NONE (2026-10-12).
+ *
+ * Scar §2.18 keeps the CORE free of a ceiling: the renderer still refuses an
+ * undefined one. But this file is the Claude Code adapter's, and 9,000 bytes is
+ * that host's number, measured — the one the interactive install has always
+ * written and the self page's room is sized against (`PAGE_HOST_BUDGET_BYTES`).
+ * The plugin's first run and every scripted install wrote no key until 0.3.20,
+ * so their stores never had a wake composed at all: every session woke on the
+ * bootstrap line. So the hooks, the worker, the night run and the console fill
+ * an absent key with this, at load, and say so (`injectionBudgetDefaulted`;
+ * doctor's Config line, `capabilities()` still `reported: false`). Nothing is
+ * written back to the file. A key in the file always wins. Claude Desktop's MCP
+ * server does NOT apply it: that host has no measured ceiling.
+ */
+export const CLAUDE_CODE_BUDGET_BYTES = PAGE_HOST_BUDGET_BYTES;
+
+export function withBudgetDefault(config: AdapterConfig): AdapterConfig {
+  if (config.injectionBudgetBytes !== undefined) return config;
+  return { ...config, injectionBudgetBytes: CLAUDE_CODE_BUDGET_BYTES, injectionBudgetDefaulted: true };
 }
 
 /**

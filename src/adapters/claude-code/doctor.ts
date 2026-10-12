@@ -386,6 +386,21 @@ function unreadableClause(keys: readonly string[] | undefined): string {
 }
 
 /** The config file itself: the one the hooks read, and whether it was readable. */
+/**
+ * WHICH WAKE CEILING IS IN FORCE (2026-10-12). A configuration with no
+ * `injectionBudgetBytes` wakes under Claude Code's default
+ * (`config.ts#withBudgetDefault`) — the plugin's first run and scripted
+ * installs wrote none before 0.3.20 — and the line says which, so "the file
+ * says 9000" and "nothing said, 9000 was used" read differently.
+ */
+function ceilingClause(config: AdapterConfig): string {
+  const bytes = config.injectionBudgetBytes;
+  if (bytes === undefined) return "; no wake ceiling, so no wake is composed";
+  return config.injectionBudgetDefaulted === true
+    ? `; wake ceiling ${String(bytes)} bytes, Claude Code's default (the file sets no injectionBudgetBytes)`
+    : `; wake ceiling ${String(bytes)} bytes`;
+}
+
 function configFindings(input: DoctorInput): Finding[] {
   const out: Finding[] = [];
   const reason = input.configReason;
@@ -452,9 +467,15 @@ function configFindings(input: DoctorInput): Finding[] {
         "config",
         "green",
         "Config",
-        `${input.configPath} — read; dataDir ${input.config.dataDir ?? "(unset: the default store)"}`,
+        `${input.configPath} — read; dataDir ${input.config.dataDir ?? "(unset: the default store)"}${ceilingClause(input.config)}`,
         "",
-        { path: input.configPath, reason: reason ?? "read-by-caller", dataDir: input.config.dataDir ?? null },
+        {
+          path: input.configPath,
+          reason: reason ?? "read-by-caller",
+          dataDir: input.config.dataDir ?? null,
+          ceiling: input.config.injectionBudgetBytes ?? null,
+          ceilingDefaulted: input.config.injectionBudgetDefaulted === true,
+        },
       ),
     );
     // SETTINGS THIS BUILD NO LONGER READS (keyless, 2026-09-24) — a quiet note,
