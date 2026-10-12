@@ -348,8 +348,10 @@ describe("dataDir", () => {
     // The store seam refuses the directories (the tests below); this is the
     // tripwire against the OTHER way a v1 path gets opened — someone hardcoding
     // it in a hook, a tool, or a worker. Allowed: `store/paths.ts`, which names
-    // them precisely to forbid them, and `claude-code/primacy.ts`, which reads
-    // the shared assignment file and imports no write API.
+    // them precisely to forbid them. The assignment resolver used to be the
+    // second; it left src/ on 2026-10-12 for `tools/parallel/primacy.ts`, where
+    // it takes its directory in and names no home path at all — nothing shipped
+    // reads `.memory-ab` any more. It is still checked read-only below.
     const here = fileURLToPath(new URL(".", import.meta.url));
     const roots = [join(here, "..", "src"), join(here, "..", "tools")];
     const forbidden = [".bansai", ".claude-engram", ".memory-ab"];
@@ -361,7 +363,6 @@ describe("dataDir", () => {
     // and a default that has to be typed is a guard that is sometimes skipped.
     const allowed = new Set([
       "src/core/store/paths.ts",
-      "src/adapters/claude-code/primacy.ts",
       "tools/parallel/bin/preflight.ts",
       "tools/parallel/bin/daily.ts",
       "tools/parallel/bin/restart.ts",
@@ -392,8 +393,8 @@ describe("dataDir", () => {
     };
     for (const r of roots) if (existsSync(r)) walk(r);
     expect(hits).toEqual([]);
-    // And the one allowed reader really is read-only.
-    const primacy = readFileSync(join(here, "..", "src/adapters/claude-code/primacy.ts"), "utf8");
+    // And the one assignment reader really is read-only.
+    const primacy = readFileSync(join(here, "..", "tools/parallel/primacy.ts"), "utf8");
     for (const api of ["writeFileSync", "appendFileSync", "mkdirSync", "renameSync", "rmSync", "unlinkSync"]) {
       expect(primacy).not.toContain(api);
     }

@@ -36,7 +36,7 @@ import { fileURLToPath } from "node:url";
 import { Store, holdsNoData } from "../src/core/store/index.js";
 import { DATA_DIR_ENV, FORBIDDEN_ROOT_NAMES, explicitDirMalformedRefusal } from "../src/core/store/index.js";
 import { v2DataDirGate, v2DataDirNotice, v2DataDirRefusal } from "../tools/parallel/live-stores.js";
-import { AB_DIR_ENV } from "../src/adapters/claude-code/index.js";
+import { AB_DIR_ENV } from "../tools/parallel/primacy.js";
 import { PRIMACY_DELIVER_EVENT, PRIMACY_STANDDOWN_EVENT } from "../src/core/counterpart.js";
 import { METRICS } from "../tools/replay/baselines.js";
 

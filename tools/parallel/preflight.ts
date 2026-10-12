@@ -206,12 +206,17 @@ function v2ConfigRow(opts: PreflightOptions): CheckRow {
   const config = loaded.config;
   const problems: string[] = [];
   if (config.observer === true) problems.push("the config resolved to OBSERVER (unreadable knob)");
-  if (config.parallel?.enabled !== true) problems.push("parallel.enabled is not true");
+  // Read from the raw JSON: `loadConfig` stopped parsing `parallel` when the
+  // shipped hooks dropped it (2026-10-12), and this check is about the file.
+  const rawParallel = typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>)["parallel"] : undefined;
+  const parallelOn =
+    typeof rawParallel === "object" && rawParallel !== null && (rawParallel as Record<string, unknown>)["enabled"] === true;
+  if (!parallelOn) problems.push("parallel.enabled is not true");
   if (opts.v2DataDir.trim().length === 0) problems.push("no v2 dataDir was given");
 
   const embedderEnabled = config.embedder?.enabled === true;
   const detail =
-    `parallel.enabled=${String(config.parallel?.enabled === true)} · dataDir=${opts.v2DataDir} · ` +
+    `parallel.enabled=${String(parallelOn)} · dataDir=${opts.v2DataDir} · ` +
     `embedder=${embedderEnabled ? "on" : "off"}` +
     (loaded.ok ? "" : ` · config ${loaded.reason}`);
 

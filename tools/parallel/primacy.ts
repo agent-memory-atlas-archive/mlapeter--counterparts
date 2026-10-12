@@ -1,6 +1,10 @@
 /**
  * THE PRIMACY RESOLVER — who delivers, for the parallel run only.
  *
+ * Moved here from `src/adapters/claude-code/primacy.ts` on 2026-10-12: the
+ * parallel run ended 2026-09-21 and the shipped hooks no longer consult it.
+ * What still reads it is this instrument's preflight and readers.
+ *
  * For one or two weeks v2 runs BESIDE v1 (bansai) on the owner's real sessions.
  * The parallel-run contract's G3 is that exactly one system delivers: two wakes,
  * two recall blocks and two episode asks in the same context is not a comparison,
@@ -28,12 +32,14 @@
  * fail direction can produce alone. The preflight asserts it away before Phase P
  * starts rather than discovering it as a quiet day.
  *
- * Nothing here throws, nothing here caches, nothing here writes. The directory
- * is resolved AT CALL TIME so a test (and the preflight) can redirect it with
- * `MEMORY_AB_DIR` without this module having been loaded in a particular order.
+ * Nothing here caches and nothing here writes. The directory is resolved AT
+ * CALL TIME from `MEMORY_AB_DIR`, so a test (and the preflight) can redirect it
+ * without this module having been loaded in a particular order. Since the move
+ * into this instrument it has NO home default: like every non-`bin/` module
+ * here it takes its path in (`readers.ts#readAssignmentAs` sets the variable
+ * from the path `bin/` computed), and an unset variable is the one throw.
  */
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 
 /** The one environment variable that moves the A/B directory. Tests use it. */
@@ -44,7 +50,11 @@ export const V2_OVERRIDE = "engram";
 
 /** Read at call time, never cached: the directory may move between calls. */
 export function abDir(): string {
-  return process.env[AB_DIR_ENV] ?? join(homedir(), ".memory-ab");
+  const dir = process.env[AB_DIR_ENV];
+  if (dir === undefined || dir.length === 0) {
+    throw new Error(`${AB_DIR_ENV} is not set — the assignment directory is passed in, never derived from a home`);
+  }
+  return dir;
 }
 
 export function assignmentPath(): string {
