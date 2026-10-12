@@ -19,8 +19,9 @@ import { join, relative } from "node:path";
 
 const SRC = join(import.meta.dir, "..", "src");
 
-/** Each class-body part, and the one file allowed to import it. */
-const PARTS: Record<string, string> = {
+/** Each class-body part, and the one file allowed to import it — or, for the
+ *  wake's parts (2026-10-12, moves only), the files. */
+const PARTS: Record<string, string | readonly string[]> = {
   "core/counterpart-boundary.ts": "core/counterpart.ts",
   "core/counterpart-sweep.ts": "core/counterpart.ts",
   "core/counterpart-deposit.ts": "core/counterpart.ts",
@@ -29,6 +30,12 @@ const PARTS: Record<string, string> = {
   "core/store/reads-memories.ts": "core/store/index.ts",
   "core/store/reads-marks.ts": "core/store/index.ts",
   "core/store/reads-history.ts": "core/store/index.ts",
+  // The wake composer's parts: `briefing.ts` re-exports their public names,
+  // so nothing else needs to reach in — the room machinery's exports are
+  // `render`'s internals.
+  "core/self/briefing-room.ts": "core/self/briefing.ts",
+  "core/self/briefing-page.ts": "core/self/briefing.ts",
+  "core/self/briefing-delivery.ts": ["core/self/briefing-page.ts", "core/self/briefing.ts"],
 };
 
 function tsFiles(dir: string): string[] {
@@ -65,7 +72,8 @@ describe("the class-body parts of the file split", () => {
     }
     for (const [part, owner] of Object.entries(PARTS)) {
       // NOT VACUOUS: the class really does import its part.
-      expect({ part, importers: [...new Set(importers.get(part) ?? [])] }).toEqual({ part, importers: [owner] });
+      const owners = typeof owner === "string" ? [owner] : [...owner];
+      expect({ part, importers: [...new Set(importers.get(part) ?? [])].sort() }).toEqual({ part, importers: owners.sort() });
     }
   });
 });

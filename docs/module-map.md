@@ -74,6 +74,12 @@ walk seam (its importers are pinned); each other command family is a `commands-*
 (every one that reads the zone it sets); the finding's shape and the checkout, open, upgrade,
 self-page, host, write-up and report groups are `doctor-*.ts` files. A moved class body is a free function taking the
 instance, behind a one-line delegate on the class (`docs/decisions.d/refactor-file-split.md`).
+`self/briefing.ts` (split 2026-10-12, moves only, past ~100 KB) keeps the lanes, the
+composition and `render`; `briefing-room.ts` holds the room machinery `render` calls
+(`takeRoom`, the rescues, `tellLost`), `briefing-page.ts` the page's block and ladder and
+the room it is sized to, and `briefing-delivery.ts` the sentinel reader, the preface and
+the splices. `briefing.ts` re-exports every public name, so no import changed; the parts'
+importers are pinned (`split-parts.test.ts`).
 
 ## Tools (`tools/`)
 

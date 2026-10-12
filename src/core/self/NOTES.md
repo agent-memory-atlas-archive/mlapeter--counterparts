@@ -175,6 +175,12 @@ subset property and still passes, but only because its fixture's identity elemen
 are smaller than its step; it is a real check of the trim order, not a proof about the
 share, and a fixture with 1.1 KB elements would fail it. Do not read it as one.
 
+A second exception, since 2026-10-12 (#454, nothing dropped without a word): at the fold's
+boundary. The folded line is shorter than the lanes' own count lines, and the rescue spends
+the difference, so a synthetic sweep re-admitted "Still open"'s first item at 1,200 bytes
+that 1,600 had left out. The sweep test's fixture does not cross that boundary. Measured
+and named in `docs/decisions.d/fix-wake-never-silent-1012.md`.
+
 The share is CAL, not structural. 0.5 was chosen against v1's measured wakes (20 elements,
 four lanes, the same 9,000-byte ceiling), not derived; `tools/replay` re-earns it. What is
 structural is that identity's ceiling exists at all when other lanes have content.

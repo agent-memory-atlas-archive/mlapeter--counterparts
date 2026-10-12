@@ -2,9 +2,10 @@
  * THE WAKE SAYS WHAT IT LEFT OUT (2026-09-29, audit item 5).
  *
  * A lane that loses elements — to its cap, the identity share or the budget
- * trim — gets at most one short line: how many more, and ids the `recall` tool
- * reads whole. The line is furniture (no count, no element), lives inside the
- * wake's byte budget, and is dropped without a word when it does not fit.
+ * trim — gets one short line: how many more, and ids the `recall` tool reads
+ * whole. The line is furniture (no count, no element) and lives inside the
+ * wake's byte budget. Since 2026-10-12 its room is RESERVED: the lane gives up
+ * an item for it rather than lose it, and nothing leaves without a word.
  *
  * Hermetic (CLAUDE.md): a fresh temp data dir per test, removed afterwards.
  */
@@ -14,7 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Counterpart } from "../src/core/counterpart.js";
-import { FRAMING, MORE_LINE_IDS, Self, SELF_TUNABLES, moreLine, readSentinel, render } from "../src/core/self/index.js";
+import { FRAMING, MORE_LINE_IDS, Self, SELF_TUNABLES, foldedLine, moreLine, readSentinel, render } from "../src/core/self/index.js";
 import type { Lanes, Ranked, Resolve } from "../src/core/self/index.js";
 import { McpServer } from "../src/adapters/mcp/index.js";
 import { recordSession } from "../src/adapters/sessions.js";
@@ -77,13 +78,18 @@ describe("the line", () => {
     expect(out.more).toEqual({});
   });
 
-  test("INSIDE THE BUDGET: with no room for the line it is left out without a word, and nothing else moves", () => {
+  test("INSIDE THE BUDGET, AND RESERVED: with no room for the line the lane gives up an item to say it — never left out without a word (2026-10-12)", () => {
     const without = render(lanes(12, 0), { budgetBytes: 100_000, day: 5 }, resolve, SELF_TUNABLES);
     // Exactly the room the wake needs without the line.
     const tight = render(lanes(12, 3), { budgetBytes: without.bytes, day: 5 }, resolve, SELF_TUNABLES);
-    expect(tight.text).toBe(without.text);
-    expect(tight.more).toEqual({});
-    expect(tight.trimmed).toEqual([]);
+    expect(tight.bytes).toBeLessThanOrEqual(without.bytes);
+    expect(tight.untold).toEqual({});
+    const popped = tight.trimmed.map((t) => t.id);
+    expect(popped.length).toBeGreaterThan(0);
+    expect(tight.counts.threads).toBe(12 - popped.length);
+    // The count names the popped items first, then what the cap left out.
+    expect(tight.more).toEqual({ threads: popped.length + 3 });
+    expect(tight.text).toContain(`(${String(popped.length + 3)} more still open; recall ids`);
     // And one line's worth more room is enough for it.
     const line = moreLine("threads", ["mem_t12", "mem_t13", "mem_t14"]);
     const roomy = render(lanes(12, 3), { budgetBytes: without.bytes + Buffer.byteLength(`${line}\n`, "utf8"), day: 5 }, resolve, SELF_TUNABLES);
@@ -156,5 +162,34 @@ describe("the ids work through the recall tool", () => {
     expect(r.isError ?? false).toBe(false);
     const got = (r.structuredContent["memories"] as { id: string }[]).map((x) => x.id);
     expect(got.sort()).toEqual([...ids].sort());
+  });
+});
+
+describe("the folded line's handles work through the recall tool (2026-10-12)", () => {
+  test("each folded lane names its own first ids, and recall returns them", async () => {
+    const c = Counterpart.open({ dir, owner: true });
+    open.push(c);
+    const ids: string[] = [];
+    for (let i = 0; i < 6; i += 1) {
+      ids.push(
+        c.store.put({
+          type: "memory",
+          kind: "fact",
+          body: `An open question, number ${String(i)}, about the move that is still not settled.`,
+          meta: { unresolved: true },
+          salience: { relevance: 0.9, emotional: 0.5, predictive: 0.5 },
+        }),
+      );
+    }
+    const line = foldedLine({ threads: ids }) ?? "";
+    const m = /6 still open \(recall ids: ([^)]+), and 3 more\)/.exec(line);
+    expect(m).not.toBeNull();
+    const named = (m?.[1] ?? "").split(", ");
+    expect(named).toEqual(ids.slice(0, 3));
+    recordSession(dir, { sessionId: "s-fold", scope: "/proj", phase: "start" });
+    const server = new McpServer({ counterpart: c, scope: "/proj", owner: true, registryDir: dir });
+    const r = await server.call("recall", { ids: named });
+    expect(r.isError ?? false).toBe(false);
+    expect((r.structuredContent["memories"] as { id: string }[]).map((x) => x.id).sort()).toEqual([...named].sort());
   });
 });

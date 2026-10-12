@@ -206,12 +206,27 @@ proposals and their archive; render and delivery telemetry.
    difference between them (NOTES §9, with the measurement). Truncating a belief to keep
    that property is the worse trade.* **A lane that lost elements says so** (2026-09-29,
    a working default): what its cap (`rankLanes`' `overflow`), the identity share or the
-   trim left out gets at most one furniture line under the lane — how many more, and up
-   to `MORE_LINE_IDS` ids the recall tool reads whole (`briefing.ts#moreLine`). It goes in
-   only while the whole still fits the budget, lanes that trim last first; one that does
-   not fit is left out and the trim's count stays in telemetry. Identity says nothing
-   while the page replaces the list, and Nearby says nothing at all since 2026-10-01: what
-   it leaves out is the rest of the warm store, which recall finds by asking. **A lane that
+   trim left out gets one furniture line under the lane — how many more, and up to
+   `MORE_LINE_IDS` ids the recall tool reads whole (`briefing.ts#moreLine`). **Nothing is
+   dropped without a word** (2026-10-12, Mike's principle; the minimal version, chosen via
+   RANDOM, lightly held): the line's room is RESERVED — the trim loop composes with the
+   line of every lane that has lost something and pops until items and lines fit together
+   — so each lane is whole, shortened (some items and its count) or counted (one line). A
+   lane that lost nothing pays nothing. A lane that still lists an item keeps its own count
+   under it; when not even the lanes' own lines fit, the lanes that list NOTHING fold into
+   one line (`foldedLine`: "More than this wake lists: 3 still open (recall ids: …); 2 on
+   how I work (recall ids: …)", each with its own first ids; decided by COUNTERPARTS
+   2026-10-12, lightly held), which takes room as a dated line does (`takeRoom` to
+   `arrivingFirst`); only when that finds none are ids left unsaid —
+   `BriefingResult.untold`, the `self.briefing` row's `untold`, and doctor's Wake line in
+   red. The one exception: a due-day plain reminder is said in full even when its lane's
+   count then has no room (#442). Identity says nothing while the page replaces the list.
+   Nearby counts what its trim popped — hints this wake chose, at most `HINTS_MAX` — and
+   never its cap's, which is the rest of the warm store (2026-10-01). Its count is not
+   reserved: the least of the lanes, it takes only room nothing else wants — its own line,
+   else a place in the fold, else it is `quiet`, a step-down (COUNTERPARTS, 2026-10-12). A
+   session start carries those popped hints and lists or counts them in its own room
+   (`WAKE_SHOWN_KEY`'s `more.hints`). **A lane that
    kept no element is one line, its heading inside it** (2026-10-09,
    `briefing.ts#collapsedLine`): `Still open: 20 — no room to list them in this wake;
    recall ids …`, never a heading over a count. **The page is never cut for the lanes
@@ -242,14 +257,15 @@ proposals and their archive; render and delivery telemetry.
    (`takeRoom`); the delivery then shows fewer work lines, drops "Last here" and shows
    fewer handoffs in full, the rest by id, and the render's `budgetBytes` states what was
    lent. All or nothing per lane: when even the last step below it leaves no room, the
-   render is what it was and a lane that lists nothing collapses to its one line. The
+   render is what it was and a lane that lists nothing collapses to its one line. Each
+   rescue keeps the lanes' reserved lines, and lists a later line only with its lane's
+   count (2026-10-12; before, a listed date outranked the count of the others). The
    page is chosen before the lanes and takes room from "Work here" only — past that it
    steps down its own ladder — and gives its borrowing back only to a due-day plain
    reminder (`Self#build`: the page steps down until the reminder is listed, never below
    the first rung that borrows nothing). A render that still left a dated item unlisted
    says so on its durable row (`self.briefing`'s `trimmedLanes`), and doctor's Wake line is
-   amber — an arriving id past the lane's cap that its count line had no room to name
-   included (review of #367). *Named change: until 2026-10-10 "Still open"'s first item
+   amber — counted, since 2026-10-12, not gone (a step-down; the row's `counted`). *Named change: until 2026-10-10 "Still open"'s first item
    took Arriving's second line before the Yesterday line's titles, and never touched the
    handoffs' room.*
    **What Nearby and the horizon leave out** (2026-10-01, working defaults): a memory a
