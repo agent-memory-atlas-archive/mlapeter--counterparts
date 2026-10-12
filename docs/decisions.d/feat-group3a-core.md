@@ -57,3 +57,8 @@
   proposal still waiting (unconfirmed) does not count until it is confirmed. Why: about one in seven
   proposals was wrong on Group 2's hand-read, and a wrong one would pool another memory's uses into this
   one's recurrence and could carry it into the core. Confirming is cheap, and the core is slow by design.
+- Decided by the #430 reviewer, 2026-10-11, lightly held: the flagged core memories take turns in the wake's
+  one "Still open" place, by lived day (the n flags in a fixed order, starting at day mod n). The flag still
+  repeats until someone decides, since asking for a decision is its job, and the reflection is handed all of
+  them every night. Why: in a fixed oldest-first order the same flag led every wake, and the other four on the
+  copy were never shown, only counted.

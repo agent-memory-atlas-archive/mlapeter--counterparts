@@ -294,8 +294,15 @@ describe("the core weighs itself, and nothing leaves it without a decision", () 
     expect(text).toContain("Still open:");
     // At most RECONSIDERING_MAX (1) leads the lane; an open question still shows beside it.
     expect(text.match(/Core, being reconsidered — keep or retire it \(remember core\)/g)?.length).toBe(1);
-    expect(text).toContain(`Core, being reconsidered — keep or retire it (remember core) [${id}]`);
+    const shownFirst = text.includes(`[${id}]`) ? id : second;
+    expect(text).toContain(`Core, being reconsidered — keep or retire it (remember core) [${shownFirst}]`);
     expect(text).toContain("Which day does the store move?");
+    // They take turns by lived day: the next day the other one leads (review of #430).
+    nextDay(c);
+    c.rebrief({ budgetBytes: 9000 });
+    const next = c.wake(9000).text;
+    expect(next.match(/Core, being reconsidered — keep or retire it \(remember core\)/g)?.length).toBe(1);
+    expect(next).toContain(`Core, being reconsidered — keep or retire it (remember core) [${shownFirst === id ? second : id}]`);
     void question;
   });
 });

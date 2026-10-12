@@ -463,10 +463,15 @@ export function rankLanes(
   // A few core memories being reconsidered lead "Still open" (2026-10-11):
   // at most `RECONSIDERING_MAX`, the rest counted with the lane's overflow
   // ("more still open"), one decision at a time.
+  // They TAKE TURNS by lived day (review of #430): a fixed order would show
+  // the same one every wake while the others waited unseen behind it.
   reconsidering.sort(byThreadAge);
-  const shownFlags = Math.min(reconsidering.length, t.RECONSIDERING_MAX);
-  threads.unshift(...reconsidering.slice(0, shownFlags));
-  const flagsWaiting = reconsidering.slice(shownFlags).map((r) => r.id);
+  const turn = scanned.find((s) => s.day !== undefined)?.day ?? 0;
+  const turns = reconsidering.length === 0 ? 0 : ((turn % reconsidering.length) + reconsidering.length) % reconsidering.length;
+  const rotated = [...reconsidering.slice(turns), ...reconsidering.slice(0, turns)];
+  const shownFlags = Math.min(rotated.length, t.RECONSIDERING_MAX);
+  threads.unshift(...rotated.slice(0, shownFlags));
+  const flagsWaiting = rotated.slice(shownFlags).map((r) => r.id);
   hints.sort(byHint);
 
   const past = (lane: readonly Ranked[], cap: number): string[] => lane.slice(cap).map((r) => r.id);
