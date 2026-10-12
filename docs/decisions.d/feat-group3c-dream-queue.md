@@ -57,3 +57,7 @@
   lone part jumping the queue as a "group" of one would spend the front of the night on no fold. The owner's
   forget path needed nothing: the removed part is denied and leaves the queue, the dream that showed it is
   redacted as before, and its `shown` stays.
+- Decided by the #436 reviewer, 2026-10-11, lightly held: the queue's reach test is physics' `belowReach`, not
+  `strength < REACH`, both for leaving the queue and for the `agedOut` count. Why: the tunables and the CONTRACT
+  say the core never leaves reach; a core memory faded by a settle could read under 0.15 and leave the queue as
+  "faded", and the queue was the one reader with its own definition of reach.
