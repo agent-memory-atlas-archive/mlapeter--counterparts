@@ -1,3 +1,0 @@
-- **The dashboard uses the same words as the session start.** Where the dashboard said "Arriving" and "memories nearby", it now says "Coming up" and "Might be relevant", the headings a session opens with. "Lived day 12" is now "day 12 of use", as the health check says it, and "the owner" is "you". Places your sessions ran are "projects", not "directories".
-- **Clearer count lines at the session start.** When there's no room to list everything, the count line now says "3 more coming up" or "2 more might be relevant" rather than "arriving" or "nearby".
-- **Status shows a readable date.** The opening line of `counterparts dashboard status` says "I have had 19 days of use — the latest Oct 11" in place of "I have lived 19 days — the last of them 2026-10-11".
