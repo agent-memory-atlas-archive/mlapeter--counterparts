@@ -58,8 +58,8 @@ the background `claude -p` dreaming run (below).
 prompt and Claude's reply) in `~/.counterparts/store/spans/`, so the session can be
 written up as memories, at the session's end, by a later session, or by the nightly run.
 That text is deleted 7 days after the session ends; a session not yet written up keeps
-its text until it is written up, or until three more days of use pass without it; after
-that the 7 days count from the session's last activity. The last 14 daily backups in
+its text until it is written up, or until 14 days of use (days Claude Code ran with Counterparts)
+pass without it; after that the 7 days count from the session's last activity. The last 14 daily backups in
 `~/.counterparts/snapshots/` hold copies of it too. It never leaves your computer except as above.
 
 **Turning it off.** In a folder it hasn't been told about, Counterparts remembers, and the
