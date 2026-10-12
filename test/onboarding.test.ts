@@ -19,9 +19,14 @@ import {
   FROM_ONBOARDING,
   MEET_LINE_OPEN,
   ONBOARDING_MEET_KEY,
+  PRONOUN_RULE,
   PUSHBACK_BASELINE,
+  RETENTION_LINE,
   beginNewInstall,
   meetState,
+  meetingDay,
+  meetingHold,
+  MEET_HOLD_MS,
   noteOffered,
   offerDue,
   onboardingView,
@@ -31,8 +36,9 @@ import {
 import { Store } from "../src/core/store/index.js";
 import { EXIT, run } from "../src/adapters/cli/index.js";
 import type { Io } from "../src/adapters/cli/index.js";
-import { SCOPE_ASK_OPEN, openAdapter } from "../src/adapters/claude-code/index.js";
-import type { ClaudeCodeAdapter, HookInput } from "../src/adapters/claude-code/index.js";
+import { ClaudeCodeAdapter, SCOPE_ASK_OPEN, openAdapter } from "../src/adapters/claude-code/index.js";
+import { recordSession } from "../src/adapters/sessions.js";
+import type { HookInput, SpawnPlan } from "../src/adapters/claude-code/index.js";
 import { dreamingFindings } from "../src/adapters/claude-code/doctor.js";
 import type { DoctorInput } from "../src/adapters/claude-code/doctor.js";
 import { Dashboard } from "../src/adapters/dashboard/index.js";
@@ -208,7 +214,7 @@ describe("a fresh install against an upgrade", () => {
     const line = firstRunLine(cfg(), home());
     expect(line).toContain("Dreaming: on.");
     expect(line).toContain('Say "no dreams"');
-    expect(line).toContain("counterparts dream --setting off");
+    expect(line).not.toContain("counterparts dream");
   });
 
   test("doctor's dreaming line says what auto does and how to turn it off", () => {
@@ -237,12 +243,45 @@ describe("the meet tool", () => {
     const p = r.structuredContent;
     expect(p["meet"]).toBe("offered");
     const script = String(p["script"]);
-    expect(script).toContain("I'll carry what matters from one session to the next, and let the small stuff fade, much like people do.");
+    expect(script).toContain("so I can carry what matters from one session to the next.");
     expect(script).toContain("Every folder (recommended) · Just this folder");
     expect(script).toContain("AskUserQuestion");
-    expect(script).toContain("Later, between sessions, I'll have my first dream: I'll go over what we talked about and start building a sense of who I am with you.");
-    expect(script).toContain("To remove Counterparts and everything it saved: run counterparts uninstall in a terminal.");
+    // B: the opening asks once — the dialog is the question.
+    expect(script).toContain("don't also ask it in prose");
+    expect(script).toContain("removing it: run counterparts uninstall in a terminal.");
     expect(script).toContain('name: "What should I call you?"');
+    // C: the research's five, easy to slightly deeper, and the rules.
+    const order = ["highlight, or the weirdest part, of your week", "working on lately that you're actually enjoying", "love most about what you do", "really good Saturday", "got you started building things"];
+    const at = order.map((q) => script.indexOf(q));
+    expect(at.every((i) => i > 0)).toBe(true);
+    expect([...at].sort((x, y) => x - y)).toEqual(at);
+    expect(script).not.toContain("problem you've enjoyed solving");
+    expect(script).toContain("never ask for pronouns");
+    expect(script).toContain(PRONOUN_RULE);
+    // D: retention is never paraphrased: the exact line, for when they ask.
+    expect(script).toContain(RETENTION_LINE);
+    expect(script).not.toContain("a few days at most");
+    // An npm install is not told of the sidebar.
+    expect(script).not.toContain("/counterparts shows");
+  });
+
+  test("the finish hands over the write-up, a few lines that show memory working, and a close that says what next", async () => {
+    newInstallStore();
+    const s = server({ install: "plugin", session: "s-fin" });
+    await s.call("meet", {});
+    await s.call("meet", { step: "name", answer: "Ada" });
+    const r = await s.call("meet", { step: "done" });
+    const next = String(r.structuredContent["next"]);
+    expect(r.content[0]?.text).toBe(next);
+    expect(next).toContain("session_end tool, session: s-fin");
+    expect(next).toContain("chapter tool, session: s-fin");
+    expect(next).toContain("Here's what I'll remember");
+    expect(next).toContain("/counterparts shows the memory sidebar");
+    expect(next).toContain("Ask me anything about Counterparts, any time.");
+    expect(next).toContain("What would you like to work on today? Or we can keep chatting — what's been on your mind lately?");
+    expect(next).toContain("Next time you're here on another day, I'll have my first dream");
+    expect(next).not.toContain("counterparts dream");
+    expect(next).not.toContain("days at most");
   });
 
   test("the close names the plugin's route, and a known name is not asked", async () => {
@@ -269,7 +308,7 @@ describe("the meet tool", () => {
     expect(meetState(s.counterpart.store)).toBe("offered");
     // Nothing is stored for a question with no answer.
     const before = s.counterpart.store.list({ type: "memory" }).length;
-    expect((await s.call("meet", { step: "loved" })).structuredContent["reason"]).toBe("answer-required");
+    expect((await s.call("meet", { step: "love" })).structuredContent["reason"]).toBe("answer-required");
     expect(s.counterpart.store.list({ type: "memory" }).length).toBe(before);
   });
 
@@ -483,7 +522,7 @@ describe("the wake's line: no double offer", () => {
     newInstallStore();
     const s = server({ session: "s1" });
     await s.call("meet", {});
-    await s.call("meet", { step: "loved", answer: "Ada loves Middlemarch for how patient it is with its people." });
+    await s.call("meet", { step: "love", answer: "Ada loves Middlemarch for how patient it is with its people." });
     const work = await s.call("meet", { step: "work", answer: "Ada is building a tide-chart app." });
     await s.call("meet", { step: "done" });
     const workId = String(work.structuredContent["id"]);
@@ -500,7 +539,7 @@ describe("the wake's line: no double offer", () => {
     const s = server({ session: "s1" });
     await s.call("meet", {});
     const work = await s.call("meet", { step: "work", answer: "Ada is interviewing elsewhere, quietly." });
-    await s.call("meet", { step: "loved", answer: "Ada loves Middlemarch." });
+    await s.call("meet", { step: "love", answer: "Ada loves Middlemarch." });
     await s.call("meet", { step: "done" });
     for (const x of open.splice(0)) x.counterpart.close();
     withStore((st) => st.revise(String(work.structuredContent["id"]), { meta: { confidential: true } }));
@@ -592,5 +631,110 @@ describe("the wake's machine marker", () => {
     const text = String((await s.call("wake", {})).structuredContent["wake"]);
     expect(text.split("\n")).toContain("<!-- counterparts:onboarding meet=not_started -->");
     expect(text).toContain(MEET_LINE_OPEN);
+  });
+});
+
+// ── the meeting holds the housekeeping (2026-10-12, round 1, A) ──────────────
+
+describe("the meeting holds the dream and the write-up ask, through the real hooks", () => {
+  const TURNS: HookInput["turns"] = Array.from({ length: 14 }, (_, i) => ({
+    role: (i % 2 === 0 ? "user" : "assistant") as "user" | "assistant",
+    text: `Turn ${String(i)}: ${"a real exchange in the meeting, at the length people actually talk at, which is what the byte half of the pace measures. ".repeat(2)}`,
+  }));
+
+  test("a meeting across turns: no dream, no ask mid-way; the finish hands over the write-up and its Stop says nothing; the next day dreams", async () => {
+    newInstallStore();
+    let t = localNoon(DAY1) - 3_600_000;
+    const now = (): number => t;
+    const plans: SpawnPlan[] = [];
+    const counterpart = Counterpart.open({ dir: storeDir, owner: true, now });
+    const hooks = new ClaudeCodeAdapter({
+      counterpart,
+      config: { dataDir: storeDir, owner: true, injectionBudgetBytes: 20_000 },
+      command: "/usr/bin/bun",
+      args: ["run", "/pkg/bin/runner.ts"],
+      nightArgs: ["run", "/pkg/bin/nightly.ts"],
+      spawner: (p) => {
+        plans.push(p);
+        return { pid: 4242 };
+      },
+      configPath: join(root, "cp", "claude-code.json"),
+      now,
+    });
+    const nights = (): number => plans.filter((p) => p.args.includes("/pkg/bin/nightly.ts")).length;
+    const hook = (sessionId: string, at: string, over: Partial<HookInput> = {}): HookInput => {
+      recordSession(storeDir, { sessionId, scope: proj, phase: "start" });
+      return { sessionId, scope: proj, at, prompt: "hello", turns: [], ...over };
+    };
+    try {
+      // Day one: the wake offers the meeting; the worker's cycle would have
+      // made it lived day 1 — without the hold, three answers make a dream due.
+      expect(hooks.sessionStart(hook("s1", DAY1)).ask ?? "").toContain(MEET_LINE_OPEN);
+      counterpart.store.advanceClock(DAY1);
+      const s = server({ session: "s1", now });
+      await s.call("meet", {});
+      for (const [step, answer] of [
+        ["name", "Ada"],
+        ["week", "Ada's week's highlight was a tide table that finally matched the harbour's."],
+        ["work", "Ada is enjoying building a tide-chart app."],
+        ["love", "Ada loves the moment a model finally matches the sea."],
+      ] as const) {
+        t += 60_000;
+        expect((await s.call("meet", { step, answer })).structuredContent["stored"]).toBe(1);
+        // A prompt mid-meeting starts no run, catch-up included.
+        hooks.userPromptSubmit(hook("s1", DAY1, { prompt: "an answer" }));
+      }
+      expect(nights()).toBe(0);
+      expect(counterpart.dreams.status(DAY1).reason).toBe("meeting-day");
+      expect(meetingDay(counterpart.store, DAY1)).toBe(true);
+      // A Stop mid-meeting, with substance enough to be due: nothing asked, nothing advanced.
+      expect(meetingHold(counterpart.store, "s1", t)).toBe("running");
+      expect(hooks.stop(hook("s1", DAY1, { turns: TURNS })).ask).toBeNull();
+      expect(counterpart.self.episodeState("s1").asks).toBe(0);
+      // Another session is not held.
+      expect(meetingHold(counterpart.store, "s-other", t)).toBeNull();
+      // The finish: the write-up, in the session.
+      t += 60_000;
+      const fin = await s.call("meet", { step: "done" });
+      expect(String(fin.structuredContent["next"])).toContain("session_end tool, session: s1");
+      expect(meetingHold(counterpart.store, "s1", t)).toBe("finished");
+      // Its Stop: paced (the write-up counts as the ask), not said.
+      expect(hooks.stop(hook("s1", DAY1, { turns: TURNS })).ask).toBeNull();
+      expect(counterpart.self.episodeState("s1").asks).toBe(1);
+      expect(meetingHold(counterpart.store, "s1", t)).toBeNull();
+      // And the next Stop on the same substance asks nothing either.
+      expect(hooks.stop(hook("s1", DAY1, { turns: TURNS })).ask).toBeNull();
+      // Still the meeting's day: no run.
+      hooks.userPromptSubmit(hook("s1", DAY1, { prompt: "thanks!" }));
+      expect(nights()).toBe(0);
+      // The next lived day: the first dream starts.
+      t = localNoon(DAY2);
+      counterpart.store.advanceClock(DAY2);
+      expect(meetingDay(counterpart.store, DAY2)).toBe(false);
+      hooks.userPromptSubmit(hook("s2", DAY2, { prompt: "good morning" }));
+      expect(nights()).toBe(1);
+    } finally {
+      counterpart.close();
+    }
+  });
+
+  test("a meeting gone quiet stops holding after the hold window; `later` releases at once", async () => {
+    newInstallStore();
+    const s = server({ session: "s1" });
+    await s.call("meet", {});
+    expect(meetingHold(s.counterpart.store, "s1", SERVER_NOW)).toBe("running");
+    expect(meetingHold(s.counterpart.store, "s1", SERVER_NOW + MEET_HOLD_MS + 1)).toBeNull();
+    await s.call("meet", { step: "later" });
+    expect(meetingHold(s.counterpart.store, "s1", SERVER_NOW)).toBeNull();
+    // Day one holds the dream even after "later"; a later day's "later" does not.
+    expect(meetingDay(s.counterpart.store, DAY1)).toBe(true);
+    expect(meetingDay(s.counterpart.store, DAY2)).toBe(false);
+  });
+
+  test("an upgraded store (no meeting keys) is never held", () => {
+    withStore((st) => {
+      expect(meetingDay(st, DAY1)).toBe(false);
+      expect(meetingHold(st, "s1", SERVER_NOW)).toBeNull();
+    });
   });
 });

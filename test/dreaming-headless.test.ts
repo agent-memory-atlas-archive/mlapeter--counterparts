@@ -919,7 +919,8 @@ describe("B. auto: the first prompt of the day starts the headless run itself", 
     const next = a.userPromptSubmit(input({ prompt: "back again" }));
     expect(next.injection).toContain("the nightly run finished in the background, on its own");
     expect(next.injection).toContain('"Boot order"');
-    expect(next.injection).toContain(`counterparts dream --show ${d.bundle.dream}`);
+    expect(next.injection).toContain(`${d.bundle.dream}⟧`);
+    expect(next.injection).toContain(`To reverse it, say "undo that dream".`);
     expect(a.userPromptSubmit(input({ sessionId: "s2", prompt: "and again" })).injection).not.toContain("the nightly run finished");
     // Handed: the row says so, and later prompts only read it — one latch row, ever.
     expect(a.counterpart.dreams.nightRun()?.handedAt).toBeGreaterThan(0);

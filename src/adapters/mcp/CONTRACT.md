@@ -128,7 +128,7 @@ and the durable row is written by `core/handoff/`, which owns that guarantee —
 `chapter(session, text[, title][, about])`; `scope(mode)` for this directory; `self_page` (read,
 or write with `ifVersion`); `dream(session, phase, …)` and `reflect(session, phase, …)`,
 each bound to one session as `session_end` is (their fields are `tools.ts`'s); `meet`
-(the script, or `step` with `answer`, `like`, `traits`); for a
+(the script, or `step` with `answer`, `like`, `traits`, and the `session` it holds — while the meeting runs there the write-up ask waits, and its `done` hands the write-up over; `core/onboarding.ts#meetingHold`); for a
 Claude Desktop client only, `wake()` (§5 G20) and the `prompts/list` / `prompts/get` pair; the
 session's observer role; the launch's session, scope, data dir and host when the host can
 supply them.

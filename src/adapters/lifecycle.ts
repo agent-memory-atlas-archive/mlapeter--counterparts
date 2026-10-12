@@ -404,7 +404,7 @@ export interface HostLifecycle {
   noteTail(input: SessionInput): void;
   /** The ask's PACING: the chapter this boundary asks for, or null when it
    *  asks nothing. The host words the ask. */
-  paceAsk(input: SessionInput): number | null;
+  paceAsk(input: SessionInput, opts?: { coveredBy?: string }): number | null;
 
   /** The next-session write-up pointer, measured against the room the caller
    *  names; the empty string when there is none, or no room for it. `label`
@@ -1467,7 +1467,7 @@ export class Lifecycle implements HostLifecycle {
    *   - **The re-fired Stop asks nothing and advances nothing** — the host's
    *     to refuse, before this is called.
    */
-  paceAsk(input: SessionInput): number | null {
+  paceAsk(input: SessionInput, opts: { coveredBy?: string } = {}): number | null {
     try {
       // Typed turns and both roles' text (`substanceOf`). The pacing and the
       // per-session, per-calendar-day cap are `self/episodes.ts#askDue`'s; the
@@ -1510,6 +1510,9 @@ export class Lifecycle implements HostLifecycle {
         unaskableBytes: coverage?.unaskableBytes ?? null,
         unwritten: chapter.verdict.unwritten?.pieces ?? null,
         unwrittenMinutes: chapter.verdict.unwritten?.minutes ?? null,
+        // An ask paced but not said: something else already asked for this
+        // write-up in the session (the first meeting's finish step, 2026-10-12).
+        ...(opts.coveredBy === undefined ? {} : { coveredBy: opts.coveredBy }),
       });
       // The chapter number is the STORE's, one past what was written; the ask
       // that carries it must also name this session, because the id is what

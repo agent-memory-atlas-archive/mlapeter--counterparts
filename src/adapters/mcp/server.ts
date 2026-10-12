@@ -94,8 +94,11 @@ import {
   STYLE_CHOICES,
   addressMemory,
   answerText,
+  finishText,
   meetState,
+  meetingHold,
   meetingInstructions,
+  noteActive,
   noteOffered,
   onboardingView,
   recordAnswer,
@@ -794,12 +797,15 @@ export class McpServer {
     const session = this.callSession;
     if (session === null) return this.withUnboundReason(result);
     const writing = name === "session_end" || name === "chapter";
+    // The first meeting holds the write-up ask here too (2026-10-12): never on
+    // a `meet` result, nor while the meeting runs in this chat.
+    const held = name === "meet" || meetingHold(this.counterpart.store, session, this.nowFn()) === "running";
     let ask = false;
     try {
       const touched = touchDesktopSession(this.registryDir, session, {
         now: this.nowFn(),
         wroteUp: writing && result.isError !== true,
-        mayAsk: !writing,
+        mayAsk: !writing && !held,
         // Only a call that NAMED its session moves that session's record or
         // carries its ask (review of #294, finding 1): a fallback-bound call
         // may be another chat's.
@@ -1350,9 +1356,21 @@ export class McpServer {
       return this.refuse("meet", "night-run", { detail: "This is the nightly run: there is nobody here to meet." });
     }
     const store = this.counterpart.store;
-    const session = this.session ?? this.hostSession() ?? UNBOUND_SESSION;
+    // The session the meeting holds (2026-10-12): the one it names when the
+    // hooks' registry knows it, else this server's own, else the host's.
+    const named = typeof args["session"] === "string" ? args["session"].trim() : "";
+    const session = (named.length > 0 && this.corroborate(named) ? named : null) ?? this.session ?? this.hostSession() ?? UNBOUND_SESSION;
     const on = this.today();
     const step = args["step"];
+    // EVERY CALL IS THE MEETING STILL GOING (2026-10-12, onboarding round 1, A):
+    // while it is, this session's write-up ask and the day's dream wait.
+    if (!this.observer && session !== UNBOUND_SESSION) {
+      try {
+        noteActive(store, session, this.nowFn());
+      } catch {
+        /* a lost mark costs the hold, never the meeting */
+      }
+    }
     if (step === undefined) {
       let state = meetState(store);
       if (!this.observer) {
@@ -1369,7 +1387,7 @@ export class McpServer {
         home: memoryHomeWords(this.counterpart.store.dir, this.lifecycleOpts.configPath),
         dreaming: this.counterpart.dreams.setting(),
         folders: this.meetAsksWhere(),
-        hostName: this.desktop ? "Claude" : "Claude Code",
+        plugin: this.install === "plugin" && !this.desktop,
         state,
       });
       this.emit("mcp.meet.read", undefined, { state });
@@ -1389,9 +1407,25 @@ export class McpServer {
     switch (step as MeetStep) {
       case "later":
       case "skipped":
-      case "done":
-        recordState(store, step as "later" | "skipped" | "done", { on, session });
+        recordState(store, step as "later" | "skipped", { on, session });
         return done({});
+      case "done": {
+        // THE FINISH STEP HANDS OVER THE WRITE-UP (2026-10-12, A): done here,
+        // in the session, in place of the end-of-turn ask the meeting held —
+        // so the next Stop paces that ask and does not say it (`meetingHold`).
+        const writeUp = session !== UNBOUND_SESSION;
+        recordState(store, "done", { on, session, writeUp });
+        this.emit("mcp.meet.step", undefined, { step, stored: null });
+        const view = { recorded: step, ...onboardingView(store) };
+        if (!writeUp) return this.result(view, false);
+        const next = finishText({
+          name: this.counterpart.ownerDisplayName(),
+          dreaming: this.counterpart.dreams.setting(),
+          plugin: this.install === "plugin" && !this.desktop,
+          session,
+        });
+        return { content: [{ type: "text", text: next }], structuredContent: { ...view, next } };
+      }
       case "where":
         return this.meetWhere(answer, done);
       case "style": {
