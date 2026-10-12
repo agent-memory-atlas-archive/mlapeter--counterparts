@@ -3108,3 +3108,46 @@ describe("the gaps #315 listed, closed (2026-10-02)", () => {
     });
   }
 });
+
+// ── a brand-new user's first doctor (2026-10-12, 0.3.20) ───────────────────
+
+describe("a fresh store's doctor reads all green, and every amber is one we chose", () => {
+  /** The ambers a fresh install is ALLOWED, named. Empty on purpose: the one
+   *  amber a stranger can meet is the Host line when `claude` is not on the
+   *  PATH, which is a real fault with its own fix, and these tests install
+   *  the host steps. */
+  const ALLOWED_AMBER: readonly string[] = [];
+  const ambers = (fs: readonly Finding[]): string[] =>
+    fs.filter((f) => f.severity !== "green").map((f) => `${f.severity}:${f.key}`);
+
+  test("day 0: a store that has never held a boundary has no amber", () => {
+    mintStore();
+    writeConfig();
+    installHostSteps();
+    const fs = doctorFindings(input({ store: store() }));
+    expect(ambers(fs).filter((a) => !ALLOWED_AMBER.includes(a))).toEqual([]);
+  });
+
+  test("day 1: the first boundary is today's and the night run has not finished, so Sweep, Sleep, Backfill and Snapshots say so in green", () => {
+    mintStore();
+    writeConfig();
+    installHostSteps();
+    const s = store();
+    s.setMeta("lastActiveDate", "2026-09-14");
+    s.appendEvent({ name: BOUNDARY_EVENT, day: s.livedDay(), payload: { date: "2026-09-14" } });
+    const fs = doctorFindings(input({ store: s }));
+    expect(ambers(fs).filter((a) => !ALLOWED_AMBER.includes(a))).toEqual([]);
+    for (const key of ["sweep", "sleep", "backfill", "snapshot"]) {
+      expect(by(fs, key).detail).toContain("the first night run starts today");
+    }
+  });
+
+  test("day 2: a boundary from an earlier day and still no night-run rows IS amber", () => {
+    mintStore();
+    writeConfig();
+    const s = store();
+    s.appendEvent({ name: BOUNDARY_EVENT, day: s.livedDay(), payload: { date: "2026-09-13" } });
+    const fs = doctorFindings(input({ store: s }));
+    for (const key of ["sweep", "sleep", "snapshot"]) expect(by(fs, key).severity).toBe("amber");
+  });
+});

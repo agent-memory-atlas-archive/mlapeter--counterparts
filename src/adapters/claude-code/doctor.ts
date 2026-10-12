@@ -955,6 +955,22 @@ function clockFindings(input: DoctorInput, store: Store): Finding[] {
   return [finding("clock", "green", "Clock", facts, "", data)];
 }
 
+/**
+ * HAS THE WORKER HAD A WHOLE DAY? The first boundary a store reaches (its first
+ * session after midnight) starts the first night run, which writes its rows when
+ * it FINISHES, minutes later. A doctor run in that window is not a fault: absent
+ * rows are evidence of trouble only once a boundary from an earlier day exists.
+ * "never" = no boundary yet; "today" = the newest is today's and the run is owed
+ * its time; "earlier" = a worker has had its chance.
+ */
+function boundaryAge(store: Store, today: string): "never" | "today" | "earlier" {
+  const read = newestRows(store, BOUNDARY_EVENT, 1, store.livedDay());
+  if (read.unknown) return "earlier";
+  const newest = rowDate(read.rows[0]);
+  if (newest === null) return "never";
+  return newest < today ? "earlier" : "today";
+}
+
 /** The newest row of each family the background half leaves behind. */
 function rowFindings(input: DoctorInput, store: Store): Finding[] {
   const livedDay = store.livedDay();
@@ -968,13 +984,21 @@ function rowFindings(input: DoctorInput, store: Store): Finding[] {
    */
   // `unknown` means the store holds MORE than `NEWEST_LIMIT` boundary rows, so
   // it has certainly lived — the one thing this flag needs to know.
-  const boundaries = newestRows(store, BOUNDARY_EVENT, 1, livedDay);
-  const lived = boundaries.unknown || boundaries.rows.length > 0;
-  /** The "no row yet" finding: amber once the store has lived, green before. */
+  const age = boundaryAge(store, input.today);
+  /** The "no row yet" finding: amber once a worker has had a whole day, green before. */
   const absent = (key: string, title: string, what: string, fix: string): Finding =>
-    lived
+    age === "earlier"
       ? finding(key, "amber", title, what, fix, { rows: 0 })
-      : finding(key, "green", title, `${what} — and no boundary has been reached here yet`, "", { rows: 0 });
+      : finding(
+          key,
+          "green",
+          title,
+          age === "today"
+            ? `${what} — the first night run starts today and writes this when it finishes`
+            : `${what} — and no boundary has been reached here yet`,
+          "",
+          { rows: 0 },
+        );
   /** The "we could not read the newest one" finding: neutral, never a grade. */
   const unread = (key: string, title: string, name: string): Finding =>
     finding(key, "green", title, undetermined(name), "", { unknown: true });
@@ -3102,8 +3126,8 @@ function snapshotFindings(input: DoctorInput, store: Store): Finding[] {
     // The same rule the row findings use: an absent copy is only evidence once a
     // boundary has been reached. On a fresh install there has been no worker run
     // to take a first one, and an amber there is decoration.
-    const boundaries = newestRows(store, BOUNDARY_EVENT, 1, livedDay);
-    const lived = boundaries.unknown || boundaries.rows.length > 0;
+    const age = boundaryAge(store, input.today);
+    const lived = age === "earlier";
     const failed = newestRows(store, SNAPSHOT_FAILED_EVENT, 1, livedDay);
     const failedRow = failed.rows[0];
     const why =
@@ -3124,7 +3148,7 @@ function snapshotFindings(input: DoctorInput, store: Store): Finding[] {
             "snapshot",
             "green",
             "Snapshots",
-            `no snapshot yet — and no boundary has been reached here yet${strange}${upgrade}${misread}`,
+            `no snapshot yet — ${age === "today" ? "the first night run starts today and takes one when it finishes" : "and no boundary has been reached here yet"}${strange}${upgrade}${misread}`,
             "",
             { ...held, rows: 0 },
           ),
