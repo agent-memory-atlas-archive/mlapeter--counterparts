@@ -1,4 +1,4 @@
-### Decided for the arriving-slack lane, 2026-10-12, lightly held (who a plain reminder is told to, and who gets the session-start room)
+### Decided by the arriving-slack builder, 2026-10-12, lightly held (who a plain reminder is told to, and who gets the session-start room)
 
 - Decided by the arriving-slack builder, 2026-10-12, lightly held: a plain reminder is not said, and not
   marked told, at a prompt no person started. That covers a subagent's hand-back, a `<task-notification>`,
@@ -18,8 +18,10 @@
   it is unchanged. The total stays within the composition's budget plus the delivery's lent rooms, which is
   at most the ceiling less the preface's reserve. Measured on a fixture (page 6,472 bytes, four handoffs, two
   long dated lines): the session-start wake listed 1 dated line and 2 handoffs before, and lists 2 dated
-  lines and no handoff now. Open: prospective's lead is also 3 days, so for day items the bound covers the
-  whole lane except the grace days. The page's borrowing still outranks these lines.
+  lines and no handoff at all now, not even by id. Open, for review: prospective's lead is also 3 days, so
+  for day items the bound covers the whole lane, grace days included; it bounds nothing today. Leaving the
+  grace-day ("was due") lines out of `near` would restore a bound. The page's borrowing still outranks
+  these lines, and "Still open"'s first item is rescued before them.
 - Decided by COUNTERPARTS, 2026-10-12, lightly held (built here): once a QUIET day item's date is behind the
   day asked about, the wake's lane applies the cue-only brakes to it again (over-fired, once a day, once a
   session, held for after). Why: #442's reviewer found that a quiet item cued twice in its lead days rode

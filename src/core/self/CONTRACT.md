@@ -228,7 +228,10 @@ proposals and their archive; render and delivery telemetry.
    lightly held; placed here by the review of #380 — the trim loop asks the rooms below it
    on its behalf before it steps down), Arriving past its first line, "Still open"'s first
    item and count, Arriving's first line, the newest handoff's own block
-   (`handoffKeepBytes`, lent to a due-day plain reminder alone; review of #367), the page
+   (`handoffKeepBytes`, lent to a due-day plain reminder and, at session start, the near
+   lines; review of #367), at session start only Arriving's lines due within 3 days or in
+   their grace days (`Ranked.near`, `arrivingNear`; RANDOM's ruling 2026-10-12, lightly
+   held — listed after the head and after "Still open"'s first item), the page
    borrowing past its room, a plain reminder due the day the wake is read (`Ranked.due`),
    the page within its room. After the trim loop
    fits, the lanes that ARE in it are listed again, highest first — Arriving's head (its

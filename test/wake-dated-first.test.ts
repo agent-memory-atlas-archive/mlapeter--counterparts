@@ -1042,6 +1042,8 @@ describe("a plain reminder is never told to a turn no person started", () => {
     expect(listed[0]).toEndWith(HAND_BACK_BODY);
     expect(listed[0]).toContain("(due 2026-10-09)");
     expect(m.text.split("\n").some((l) => l.startsWith("Yesterday, "))).toBe(true);
+    expect(m.text.split("\n").some((l) => l.startsWith("Last here: "))).toBe(true);
+    expect(m.text).toContain(SHORT);
     expect(lower(m.text).handoffs).toBeGreaterThanOrEqual(1);
     expect(readSentinel(m.text).intact).toBe(true);
     expect(bytes(m.text)).toBeLessThanOrEqual(BUDGET);
