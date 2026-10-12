@@ -1,5 +1,293 @@
 # Changelog
 
+## 0.3.18 — 2026-10-11
+
+A new install now starts with a first meeting: in its first session Counterparts offers,
+once, to take about five minutes to get to know each other (where memory is on, what you're
+working on, how you like to be talked to), and keeps each answer as an ordinary memory; the
+plugin's sidebar opens that conversation itself, and dreaming is on for new installs. The
+plugin is ready for Anthropic's plugin directory: Bun no longer fetches anything on its own,
+`/counterparts:dashboard`, `/counterparts:meet` and `/counterparts:uninstall` work without a
+`counterparts` command, and doctor's fixes fit how you installed. Older memories with no
+salience of their own now read at today's default for what they are about, so memories about
+you or the two of us written before your 0.3.17 upgrade come back into reach. The nightly run writes up every
+session still owed (`counterparts catch-up` does it on demand) and reflects in a session of
+its own, a memory that replaces another comes up in its place, and `counterparts uninstall`
+offers to delete your memory, at a terminal, behind a typed phrase. **Nothing to run after
+upgrading from 0.3.17**: the hooks, the memory server's registration and Claude Desktop's
+entry are the same as 0.3.17's, and an existing memory keeps its dreaming setting and is
+never offered the first meeting. **No store-format change** (still v13, and the search cache
+v6): nothing is copied or upgraded, and 0.3.17 opens the same store. To go back to 0.3.17,
+don't run `counterparts rollback`: it undoes a format upgrade, and within 14 days of 0.3.17's
+it would offer to put back the copy taken before it, without everything remembered since.
+Run `counterparts disconnect`, reinstall 0.3.17, then `counterparts connect`.
+
+The first meeting (#419, #416, #424, #426, #393).
+
+- **A first meeting, on every install.** A new install's first session offers, once and
+  at the end of a reply, to take about five minutes to get to know each other: where memory
+  is on (every folder, or just this one, unless a folder was already set), what you're working on, something you've loved,
+  how you like to be talked to (straight to it, think it through with me, friendly and easy,
+  or like a character you name) and a few more, each one skippable. Each answer is kept as
+  an ordinary memory marked as from onboarding, a style becomes a few preferences that keep
+  honest pushback, and the next session may bring one of them back on its own. "Later"
+  offers it again another day (the offer comes on three days at most); Claude's new `meet` tool starts it any time. A memory that
+  already existed is never offered it.
+- **The sidebar starts the first meeting.** In the first session after an install, Claude
+  speaks first ("Counterparts is installed. Say hello and introduce yourself.", shown as sent
+  by the plugin), once per install, never in a `-p` run, in a folder that is paused or off,
+  or after you've typed. If you put the meeting off, a **Meet your counterpart** row at the
+  top of the sidebar starts it when you're ready.
+- **`/counterparts:meet` starts the first meeting any time.** For a plugin install, the short getting-to-know-you conversation can be started with this command as well as with the sidebar's "Meet your counterpart" button, so someone in the quiet view, or past the first days' offers, still has a way in. It asks the memory server's `meet` tool for the meeting and runs nothing else.
+- **Dreaming is on for new installs.** Once a day the first session starts a short
+  background run that goes over what was saved, and the install, the plugin's first-run line
+  and `counterparts doctor` say so and how to turn it off ("no dreams", or
+  `counterparts dream --setting off`). An existing memory keeps its setting.
+- **`counterparts start-fresh` begins with a first meeting**, and `--undo` brings back the
+  parked memory as it was.
+- **A new person's first day gets written up even with only a few memories.** With dreaming
+  on its own, the nightly run used to start only when there was enough new to dream on, so
+  someone who skipped the first meeting and saved one or two memories got no run on day 2,
+  and their first day's conversations were never written up. Now the run also starts when
+  sessions from an earlier day still owe a write-up: it writes them up quietly in the
+  background and skips the dream, and `counterparts doctor` says "the catch-up alone" rather
+  than a failed dream. Dreaming `ask` and `off` work as before.
+- **A new install's doctor has no puzzling amber before the first session.** The Vectors line
+  read amber, about embedding "per boundary", until the first session ended. Before then it
+  is green and says the search by meaning builds after your first session; on a store that
+  has had sessions, a real shortfall is still amber.
+
+The plugin, ready for Anthropic's directory (#396, #394, #399, #416).
+
+- **Bun no longer fetches the embedding table on its own.** When a plugin install's
+  packages didn't install (the package manager its lockfile names wasn't on the PATH,
+  Claude Code's 60-second limit, offline), Bun used to download the table from the npm registry the first time it was
+  needed, at whatever version was newest, without saying so. Now nothing is fetched: recall
+  matches on words, and `/counterparts:doctor` says the table is missing. npm and Bun
+  installs of the package are unaffected.
+- **Doctor's fixes fit how you installed.** When the model table is missing or damaged, or
+  the search cache came from a newer build, doctor used to say `bun add -g …` even on a
+  Claude Code plugin install, which may have no bun at all. A plugin install now gets
+  `/plugin → Installed → counterparts → Update now` (or uninstall and install it again); the npm install keeps
+  its `bun add -g` command; and where doctor can't tell which it is, it names both.
+- **Plugin installs can start the dashboard: `/counterparts:dashboard`.** A plugin install
+  has no `counterparts` command, so the sidebar's "start it with `counterparts dashboard`"
+  couldn't work there. The new command starts the same dashboard from the plugin, in the
+  background, until the session ends. With the dashboard down, the sidebar names the way
+  that works for your install: `counterparts dashboard` for the npm install,
+  `/counterparts:dashboard` for the plugin.
+- **The sidebar finds a dashboard on another port.** When `COUNTERPARTS_DASHBOARD_PORT` is
+  set, the sidebar reads and links to that port, as the dashboard itself does, instead of
+  assuming 4747.
+- **The sidebar's Counterparts switch has three positions: on · paused · off.** Paused and
+  off each ask first and hold for every session in that folder; on resumes a pause at once,
+  and turns a folder you set off back on after one confirmation ("Nothing from while it was
+  off was kept."). It stays as careful as before: a state it couldn't read is never shown
+  as on, and it changes only a folder with a setting of its own. A folder that is off or
+  paused because a folder above it is, it explains, naming that folder, and leaves alone.
+- **The "Claude memory" switch is hidden unless you ask for it.** It turns Claude Code's
+  own memory (MEMORY.md) on and off, which most people don't need beside Counterparts. If
+  you had already turned Claude Code's memory off, you keep the switch. To show it anyway,
+  start Claude Code with `COUNTERPARTS_SIDEBAR_CC_MEMORY=1` in the environment (for
+  example `export COUNTERPARTS_SIDEBAR_CC_MEMORY=1` in your shell profile). What it does
+  when shown is unchanged.
+
+Uninstalling (#414, #421, #425).
+
+- **`counterparts uninstall` asks whether to delete your memory too.** Once Claude Code is
+  disconnected, at a terminal, it lists every path that would go (the store, its snapshots,
+  the configuration) with its size, says what it leaves (Claude Code's own files), and asks
+  "Also delete all memories and related data? This can't be undone. [y/N]". Enter keeps your
+  memory. A yes asks you to type `DELETE MEMORIES` before anything is deleted. It isn't asked
+  from a pipe, with `--yes`, or with the new `--keep-memories`, and isn't offered while a
+  Claude Code session, the dashboard or the worker has the memory open.
+- **`--delete-memories` also waits for open sessions.** It now refuses while a Claude Code
+  session's hooks ran on the store in the last ten minutes, or a memory server is recorded
+  as running on it, not only while one shows up in the process list.
+- **`counterparts uninstall --json`, for the plugin's own command.** On its own it prints
+  the plan as one JSON object and changes nothing: what a delete would remove and leave, the
+  count, and whether it can go ahead now. With `--keep-memories` it uninstalls and keeps your
+  memory. It never deletes: that is always typed by you, at a terminal.
+- **Uninstall's last lines fit a plugin install.** Run through the plugin, they name the
+  plugin's own command line and Claude Code's `/plugin` to remove it, not `bun remove -g`.
+- **`/counterparts:uninstall`, for a plugin install.** It shows what an uninstall would do,
+  then asks whether to keep your memories or delete them too. Keep disconnects Counterparts
+  and leaves your memories where they are; then you remove the plugin from `/plugin`. Delete
+  runs nothing: it has you disable the plugin first (so it doesn't set itself up again when
+  Claude Code next opens), then gives you the one command to type in a terminal with Claude
+  Code closed, where you confirm the delete yourself. Claude can't delete your memories from inside a session.
+- **Uninstalling with the plugin no longer leaves an empty memory folder behind.** After
+  `uninstall` deletes or sets aside your memories, a plugin install is now told to remove the
+  plugin right there in the terminal (`claude plugin uninstall …`), before opening Claude Code
+  again. Opening Claude Code first let the still-enabled plugin set Counterparts up again, with
+  a new, empty memory folder that stayed after the plugin was gone. If you have both the npm
+  install and the plugin, it now names the plugin too.
+
+Writing up what was said, at night (#401, #407, #413).
+
+- **The nightly run catches up on everything owed.** Sessions that ended before they were
+  written up used to wait for a new session in the same folder, or for the nightly run,
+  which took at most four of them a night. The nightly run now writes up all of them,
+  oldest first, in short batches, with a ceiling of 100 parts and an hour a night against
+  runaway cost. What it leaves stays owed for the next night.
+- **The nightly run's catch-up stops at 100 parts.** A typical morning owes 20 to 40 parts
+  and clears in one night; a heavy day takes two, and what the night leaves stays owed for
+  the next one. `counterparts catch-up`, which you run on purpose, still takes up to 400
+  parts. Both still stop at an hour.
+- **`counterparts catch-up` does it now.** It writes up every ended session that is still
+  owed, through the same windowless `claude -p` the nightly run uses, while your other
+  sessions stay open. It prints each batch, then how many sessions it caught up and how many
+  sessions and parts are left. It uses your Claude subscription like any session.
+- **New sessions no longer write up other sessions at the start.** With dreaming on `auto`,
+  a new session isn't pointed at an older session's words any more; the nightly run and the
+  command do that work. Your sessions' own write-ups are unchanged. With dreaming on `ask` or
+  `off`, no nightly run happens, so the pointer stays.
+- **Doctor says how far a catch-up got.** Its Catch-up line (it was Write-ups) and its
+  Nightly run line count the parts written and the parts still owed. On 10-11, "wrote up 0 of
+  1" was shown for a night that wrote 5 of a session's 17 parts. When the night has caught
+  up, the next session is told in one line.
+- **A nightly run cut off by an update says so.** If an install migrates the store while the
+  nightly run is going, the run is recorded as unreadable after an update mid-run. It used
+  to say the run had used none of its tools.
+- **The nightly reflection starts with a fresh mind.** The background run now runs in two
+  parts, one after the other: the page writer and the dream, then the reflection in a
+  session of its own, which reads tonight's dream from memory instead of carrying the whole
+  dream in its context, so a night needs far less room at its peak. If the dream fails or
+  has nothing to do, the reflection still runs on the last few days. `counterparts dream
+  --list` and doctor say which parts ran, as before.
+
+What a memory is about, and how long it lasts (#395, #398, #400, #403).
+
+- **Older memories read at today's defaults, the same as new ones.** A memory written before
+  the upgrade with no salience of its own was given the old flat default, so a memory about
+  you or us from the last few days faded within days, while the same memory written today
+  starts higher and lasts weeks. It now reads at today's default for what it is about, higher
+  or lower: about you or us 0.40, a finished piece of work 0.20. A salience someone actually
+  set still reads as it did. Nothing is rewritten; `counterparts claims-era` and doctor's "Old
+  claims" line say how many read lower and how many higher, and `--off` reads every one as
+  stored again.
+- **A merged memory keeps what it was about.** When a dream merges near-copies, the merged
+  memory now takes what its strongest original was about, and a memory about you, us or me is
+  never turned into a work one by merging it with one. It also fades the way its originals did:
+  a memory written before the upgrade is still read at today's default after a merge, instead
+  of starting over at the claim the old build gave it. `counterparts claims-era --off` reads it
+  as stored, the same as the rest.
+- **A revised memory keeps what it was about.** When you revise a memory (`updates`) without
+  saying what the new one is about, it now takes the mark of the memory it revises, and counts
+  for as much: a memory about you or the two of us, revised without restating `about`, stays
+  yours and keeps its higher starting weight instead of dropping to the unmarked one. Saying
+  `about` on the revision still wins.
+- **A dream's pattern keeps what it is about.** A pattern a dream draws from memories about you
+  or the two of us is now marked so, like the memories it came from, instead of coming out
+  unmarked and counted as one folder's project work. It still starts low and rises only by
+  coming back in your sessions.
+
+What replaces what (#420, #408, #422).
+
+- **A newer version of something is noticed without being named.** When a memory you write reads
+  as the newer state of a recent one (the same release, a plan now done, the latest count), the
+  older is marked as possibly out of date and faded a little, and the write says so; settle it
+  then, or the night's dream confirms it or says they are two different things. Dated reminders,
+  readings and core memories are never proposed.
+- **What holds now comes up in place of what it replaced.** When recall reaches a memory a later
+  one changed, it shows the later one, which names the earlier; the two no longer show side by
+  side with the old one first.
+- **A memory a later one changed is marked wherever it is listed.** When you write a memory,
+  the close existing memories it comes back with no longer show an older version by its bare
+  title: it reads `earlier (now mem_…)`, naming the one that holds now, or is left off when
+  that one is already in view. Dreams and reflections see the same mark, and a reminder a
+  later memory replaced no longer shows on the dream's "coming up".
+- **"Earlier (now …)" names the latest version.** When a memory was changed and then
+  changed again, recall's label points at the newest one, not the one in between, and a
+  memory a later settle put back in place no longer reads as earlier.
+- **Facts answers name the memory that holds now.** When a facts-mode `recall` shows an
+  earlier version on its own, its "earlier — now …" line names the end of the chain (on
+  A, then B, then C, it says C), the same memory recall's other labels and a write's
+  neighbours name. An earlier version that a newer settle re-affirmed reads as current.
+- **Updating a removed memory no longer fails the write.** A `remember` whose `updates`
+  named a memory you had removed used to fail outright, and the new memory was lost with
+  it. Now the new memory is stored on its own, unlinked, and the reply says the memory it
+  named was removed. It is never attached to a similar memory in the removed one's place.
+- **A memory's weight follows how it was last felt.** A later feeling recorded about a memory
+  (awake, in a dream or in a reflection) is what its weight reads now, so a hurt that has been
+  talked through can soften; the first feeling stays on record. Settling over a felt memory asks
+  how it sits now.
+- **Fewer wrong settles.** A reading is no longer faded by a fact that shares its topic (the two
+  are kept side by side), a reminder still to come can't be settled over without the newer memory
+  carrying it, and the check on a write's `updates` now measures how close is close in your own
+  store. A settle closes the other open questions about the memory it moves, and a question left
+  open for a week is asked again once.
+
+Reminders (#393, #411).
+
+- **A plain reminder keeps its place under "Arriving:".** The wake lists two arriving items,
+  and two quiet ones due sooner could take both lines from a reminder you asked to be told
+  about. Arriving now lists plain reminders first, then the nearest dates; whatever doesn't
+  fit is still named in the "more arriving" line.
+- **A reminder whose day you missed is still said, once.** If a reminder marked plain falls on
+  a day you don't open a session (or no session that day had room for it), the next session
+  within the week after says it once, with the day it was for: "This was for Mon 12 Oct 2026:
+  pay your taxes". It is never said twice, and never after that week.
+- **A reminder you've dealt with stops coming back.** When a session says it drew on a dated
+  memory (`drewOn`), that memory stops coming back as a footnote for that date. A reminder
+  marked plain is still said on its day.
+- **The dashboard shows repeating dates.** The Mechanisms panel's "waiting" list now includes
+  birthdays and other repeating dates, at their next occurrence ("every May 14").
+
+Association (#423).
+
+- **What you drew on together is linked.** The memories one `drewOn` names together each get a
+  link to the others, as strong as two memories opened in the same reply.
+- **A note is faintly linked to what was in mind.** A memory noted mid-conversation gets a faint
+  link to the memories recall showed on that same turn. Memories written up at a session's end
+  don't, since what was on screen then isn't what each of them was about. The link fades in about
+  a month unless using them together strengthens it, and it never pushes out a link use made.
+- **Dreams lay faint trails.** When a dream opens, each new memory it is shown is faintly linked
+  to the older memories shown beside it. No model call; it is not one of the dream's changes, so
+  undoing a dream leaves it.
+- **Fewer dead links.** Links to a chapter copy that regrew, or to the originals a dream merged,
+  are cleared once they've been handed on; undoing a dream's merge hands them back. Memories that
+  faded keep their links, so one that comes back keeps them too. Temporal neighbours link one
+  step apart now, not two.
+- **Association says what it did.** The dashboard counts links laid, not rows rewritten, and a
+  second number: memories a link brought to mind. Once a store has a couple of weeks behind it,
+  Association shows amber when links were laid but none brought anything to mind that week; a new
+  store shows it waiting instead.
+
+The wake, recall and chapters (#392, #405, #404, #409, #415).
+
+- **"Last said here."** A new session in a folder now gets one line pointing at the last
+  exchange there: when, which session, and the first few words of the last message that
+  session got, such as `Last said here, 18:42 (session 3fa9c1d2): "ok now let's fix the reserve…" —
+  recall "last exchange"`. It comes from the most recent other session in the same folder,
+  within about a day, and never from another folder. Asking `recall` for the handle
+  `last exchange` returns both messages, the last message there and the assistant's last reply,
+  with their times, each cut at a sentence. The end-of-session ask and its answer, text the host
+  added (reminders, task notifications, subagent reports, skills, slash commands) and tool-only
+  turns are skipped; text the host adds with no mark of its own (a coordinator's message) can
+  still read as a message, so neither the line nor the handle says who sent it. It is read only
+  from what Counterparts already captured in that
+  folder, and never stored, and only in your own sessions: an observer folder, or a
+  session that is not yours, gets no line and no answer. A session that was killed after you typed and before it
+  finished replying is named by the last exchange it did finish. The line sits beside "Last
+  here" and the handoffs, and is the first of them to give way. Dated items and the page
+  always come first.
+- **Recall shows the order of things said on the same day.** When two or more facts in one
+  answer happened on the same day and were learned on the same day, each says the time it was
+  learned (`learned 05-25 09:52`), so two updates from one day no longer read as a tie. A lone
+  result, or results on different days, look as before.
+- **Chapters ask for the day's details.** A chapter is now asked to be a diary of what happened, in order and in detail: what was said, what was decided and why, what went wrong, with a list or a pasted text kept word for word when it matters, and without what the repo or the logs already hold. The lessons and patterns go to the nightly reflection, which now says so.
+- **A list or table you care about is kept word for word in the memory.** When a list, a table or a
+  pasted text matters in its specifics, the assistant is now asked to keep it whole in the memory's
+  own words rather than summarize it, with what it is, whose and when in the title and first line
+  so it can be found. Asking for facts says when a memory holds one ("a list, 100 items; read whole
+  by id"). A trial, to be looked at again after a few days.
+- **Less room spent on tools and resumes.** The memory tools' descriptions are shorter
+  (`session_end` about 21 KB to 15.5 KB as loaded, `remember` 19.6 to 16.2) and keep every
+  rule that changes a call. A session you resume the same day gets one line pointing at the
+  wake already above it, instead of a second wake of up to about 9 KB; after a compaction,
+  on a later day, after `/clear` or in a fork, the full wake comes as before.
+
 ## 0.3.17 — 2026-10-11
 
 The plugin's sidebar shows what memory is doing in 35 columns: what came to mind for your

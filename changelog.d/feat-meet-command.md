@@ -1,1 +1,0 @@
-- **`/counterparts:meet` starts the first meeting any time.** For a plugin install, the short getting-to-know-you conversation can be started with this command as well as with the sidebar's "Meet your counterpart" button, so someone in the quiet view, or past the first days' offers, still has a way in. It asks the memory server's `meet` tool for the meeting and runs nothing else.
