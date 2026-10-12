@@ -771,7 +771,7 @@ describe("a note claims its own turn, so the rest stays owed and the ask still c
       else t.piece(T0 + i * 5 * MIN);
     }
     // Under the old rule the note in turn 8 claimed turns 0–7 and this Stop
-    // saw one unwritten piece: no ask. Now seven are unwritten.
+    // saw two unwritten pieces (turns 8 and 9): no ask. Now seven are unwritten.
     const first = k.c.episodeAsk("noter", { turns: 1, bytes: 100 }, undefined, { scope: PROJ });
     expect(first.asked).toBe(true);
     expect(first.verdict.reason).toBe("due-unwritten");
