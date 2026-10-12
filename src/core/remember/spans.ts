@@ -505,7 +505,7 @@ export class SpanBuffer {
     if (deduped > 0) {
       this.emit("remember.span.deduped", undefined, { scope: keyFor(input.scope), count: deduped });
     }
-    this.claimNotedTurn(input.scope, input.session, cursorBefore, fresh);
+    this.claimNotedTurn(input.scope, input.session, cursorBefore, fresh, typedAfterReply(kept));
     return {
       captured: fresh.length > 0,
       reason: fresh.length > 0 ? "APPENDED" : "DEDUPED",
@@ -525,8 +525,14 @@ export class SpanBuffer {
    * (its own span carries an `own` mark), under the same proposal id. A refused
    * note has no such mark and claims nothing. Never throws: a turn this misses
    * stays unwritten, which is the safe side.
+   *
+   * `later` (review of #437): the slice holds something the person typed AFTER
+   * a reply — the note's turn ended with no Stop (an interrupt; a session killed
+   * mid-turn and resumed), or a message was queued while the turn ran. The span
+   * is one joined text, so it would hand the note a turn it never saw: nothing
+   * is claimed and the whole slice stays for the write-up.
    */
-  private claimNotedTurn(scope: string, session: string, from: number, fresh: readonly Span[]): void {
+  private claimNotedTurn(scope: string, session: string, from: number, fresh: readonly Span[], later: boolean): void {
     try {
       const turn = fresh.filter((s) => s.kind === "conversation");
       if (turn.length === 0) return;
@@ -541,6 +547,10 @@ export class SpanBuffer {
         .filter((m) => m.own === true && m.session === session && typeof m.spanHash === "string" && notes.has(m.spanHash))
         .sort((a, b) => (a.at ?? 0) - (b.at ?? 0))[0];
       if (note === undefined || typeof note.proposalId !== "string") return;
+      if (later) {
+        this.emit("remember.coverage.turn.skipped", note.proposalId, { reason: "more-than-one-turn" });
+        return;
+      }
       const covered = new Set(marks.map((m) => m.spanHash));
       const at = this.nowFn();
       const proposalId = note.proposalId;
@@ -1397,6 +1407,22 @@ export function enters(turn: Turn): boolean {
   // is never a lived event (`dream/mark.ts`).
   if (source === "dream" || carriesDreamMark(turn.text)) return false;
   return source === "conversation" || source === "injected";
+}
+
+/**
+ * DID THE PERSON TYPE SOMETHING AFTER A REPLY in this slice of kept turns? Then
+ * it holds more than the one turn a note can claim (review of #437): the host
+ * runs no Stop after an interrupt, so the next Stop's slice carries the
+ * interrupted turn and the one after it. Host-injected text (`injected`: the
+ * interrupt's own marker, a peer's message) is not typed and does not count.
+ */
+function typedAfterReply(kept: readonly Turn[]): boolean {
+  let replied = false;
+  for (const t of kept) {
+    if (t.role === "assistant") replied = true;
+    else if (replied && (t.source ?? "conversation") === "conversation") return true;
+  }
+  return false;
 }
 
 /** A stable, path-safe directory key for an arbitrary scope or session string. */

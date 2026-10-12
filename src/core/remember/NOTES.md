@@ -98,7 +98,10 @@ night's catch-up rightly found nothing left to write. A note now claims its OWN 
 started the turn it sits in. That prompt is captured at the Stop AFTER the note, so
 `capture` hands it to the note's claim then (`claimNotedTurn`: the first accepted note of
 the turn, found by its `own` mark; nothing for a refused one). A note written in a turn
-with no prompt of the person's — the reply to a Stop ask — claims only itself. A
+with no prompt of the person's — the reply to a Stop ask — claims only itself. Nor
+does the turn go to the note when the capture holds something typed after a reply
+(the host runs no Stop after an interrupt, so the next Stop's one joined span carries
+the turn after too; review of #437, `spans.ts#typedAfterReply`). A
 session-end write-up still claims everything unclaimed. On the 10-11 copy, 85 of 181
 notes had claimed a backlog (214 pieces, about 230 KB where the text survives); 82 now
 claim a turn piece. Decided by the coordinator, 2026-10-11, lightly held

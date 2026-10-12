@@ -25,3 +25,10 @@
 - Decided by the coverage-jot-breadth builder, 2026-10-11, lightly held: the catch-up's "left N parts unread" line
   in `counterparts coverage` shows only when the date asked is today or the date of that run. Why: the line came
   from the newest run whatever date was asked for (review of #435).
+- Decided by the #437 reviewer, 2026-10-11, lightly held: a note does not take its turn when that turn's capture
+  holds something the person typed after a reply (`spans.ts#typedAfterReply`; host-injected text such as the
+  interrupt marker or a peer's message does not count). The host runs no Stop after an interrupt, so the next
+  Stop's single joined span carries the interrupted turn and the one after it, and the note would have claimed a
+  prompt it never saw. A message queued mid-turn leaves its turn unwritten the same way. Why: the span is one text
+  and cannot be split without a store-format change, and a turn left unwritten is the safe side (the session-end
+  write-up or the catch-up takes it); the skip is emitted as `remember.coverage.turn.skipped`.

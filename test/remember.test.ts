@@ -1117,6 +1117,45 @@ describe("a note claims its own turn, not the session's backlog (2026-10-11)", (
     }
   });
 
+  test("a note's turn that ended with no Stop (an interrupt): the next Stop's slice holds a later turn too, so the note claims none of it", async () => {
+    const b = buf();
+    const t = transcript(b);
+    t.turn("one");
+    const jot = b.jot({ session: "s1", scope: SCOPE, text: long("note, then an interrupt") });
+    const r = await submitProposal(b, { content: "Before the interrupt." }, jotCtx(jot.spans[0]?.hash));
+    const turns: Turn[] = [
+      u(long("one")),
+      a("reply to one"),
+      u(long("two")),
+      a("half a reply"),
+      { role: "user", text: "[Request interrupted by user]", source: "injected" },
+      u(long("three, typed after the interrupt")),
+      a("reply to three"),
+    ];
+    const span = b.capture({ session: "s1", scope: SCOPE, turns }).spans.find((s) => s.kind === "conversation");
+    expect(span).toBeDefined();
+    expect(b.coveredHashes(SCOPE).has(span?.hash as string)).toBe(false);
+    expect(b.events("remember.coverage.turn.skipped").map((e) => e.ref)).toEqual([r.proposal?.id as string]);
+  });
+
+  test("host-injected text after the reply (a peer's message) is not a later turn: the note still takes its turn", async () => {
+    const b = buf();
+    const t = transcript(b);
+    t.turn("one");
+    const jot = b.jot({ session: "s1", scope: SCOPE, text: long("note, then a peer message") });
+    const r = await submitProposal(b, { content: "Before the peer." }, jotCtx(jot.spans[0]?.hash));
+    const turns: Turn[] = [
+      u(long("one")),
+      a("reply to one"),
+      u(long("two")),
+      a("a reply"),
+      { role: "user", text: "Another Claude session sent a message: hello", source: "injected" },
+      a("noted"),
+    ];
+    const span = b.capture({ session: "s1", scope: SCOPE, turns }).spans.find((s) => s.kind === "conversation");
+    expect(b.coverage(SCOPE).find((m) => m.spanHash === span?.hash)?.proposalId).toBe(r.proposal?.id as string);
+  });
+
   test("a compaction mid-turn: the pre-compact capture hands the note its turn; what the Stop captures after is not the note's", async () => {
     const b = buf();
     const t = transcript(b);

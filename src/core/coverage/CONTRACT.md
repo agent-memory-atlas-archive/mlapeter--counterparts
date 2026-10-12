@@ -84,7 +84,9 @@ durable row names written by `recordCoverage`.
    turn it was written in; the Stop capture that lands that turn adds it to the note's
    claim (`SpanBuffer.capture` → `claimNotedTurn`), under the same proposal id, the
    first accepted note of the turn when there are two. A refused note, or one with no
-   own span, claims nothing. A session-end write-up, the write-up door, "nothing new"
+   own span, claims nothing; nor does a note whose capture holds something the person
+   typed after a reply (its turn ended with no Stop — an interrupt — or a message was
+   queued mid-turn): that span is more than its turn, and stays for the write-up. A session-end write-up, the write-up door, "nothing new"
    and a chapter take everything unclaimed of the session. No new row field: the turn's
    marks are ordinary marks.
 8. **[A] "Written up" / "not yet written up"** in anything a person reads; never "covered".
