@@ -373,14 +373,14 @@ describe("catch-up --reowe <run>", () => {
     expect(out.join("\n")).toContain("would be owed again from part 1");
     expect(out.join("\n")).toContain("Dry run: nothing was changed.");
     expect(progressOf("plain-1")?.done).toBe(2);
-    expect(await run(["catch-up", "--dir", dir, "--reowe", "cup_cli"], { io, env })).not.toBe(EXIT.ok);
+    expect(await run(["catch-up", "--dir", dir, "--reowe", "cup_cli"], { io, env })).toBe(EXIT.refused);
     expect(err.join("\n")).toContain("not an interactive console");
     expect(progressOf("plain-1")?.done).toBe(2);
     expect(await run(["catch-up", "--dir", dir, "--reowe", "cup_cli", "--yes"], { io, env })).toBe(EXIT.ok);
     expect(out.join("\n")).toContain("Owed again: plain-1");
     expect(progressOf("plain-1")?.done).toBe(0);
     // A run id that is not one is a usage mistake.
-    expect(await run(["catch-up", "--dir", dir, "--reowe", "nope"], { io, env })).toBe(2);
+    expect(await run(["catch-up", "--dir", dir, "--reowe", "nope"], { io, env })).toBe(EXIT.usage);
   });
 
   test("empty parts the session had already written up: nothing to re-owe", async () => {
@@ -427,7 +427,7 @@ describe("catch-up --reowe <run>", () => {
     expect(reowePlan(c, "cup_gone", Date.now()).subjects).toEqual([expect.objectContaining({ session: "gone-1", status: "pruned" })]);
     expect(reowePlan(c, "cup_never", Date.now()).found).toBe(false);
     const err: string[] = [];
-    expect(await run(["catch-up", "--dir", dir, "--reowe", "cup_never"], { io: { out: () => undefined, err: (l) => err.push(l) }, env: { PATH: "/usr/bin:/bin" } })).toBe(1);
+    expect(await run(["catch-up", "--dir", dir, "--reowe", "cup_never"], { io: { out: () => undefined, err: (l) => err.push(l) }, env: { PATH: "/usr/bin:/bin" } })).toBe(EXIT.refused);
     expect(err.join("\n")).toContain("keeps a week");
   });
 });

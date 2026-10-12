@@ -126,22 +126,23 @@ export interface ReoweCommandInput {
  * `counterparts catch-up --reowe <run>` (2026-10-11, `claude-code/reowe.ts`):
  * the plan first, always; then, with something to owe again, the run's id
  * typed back (or `--yes`) before progress moves. `--dry-run` stops after the
- * plan. Exit 0 when it did what it could or there was nothing to do, 1 when a
- * session was refused or the run could not be found, 2 on a usage mistake.
+ * plan. Exit codes are the CLI's (`EXIT`, review of #435): 0 when it did what
+ * it could or there was nothing to do, 2 (refused) when a session was refused,
+ * the run could not be found or nothing was confirmed, 1 on a usage mistake.
  */
 export async function reoweCommand(input: ReoweCommandInput): Promise<number> {
   const { io } = input;
   const run = input.run;
   if (typeof run !== "string" || (!run.startsWith(CATCH_UP_RUN_PREFIX) && !run.startsWith("nrn_"))) {
     io.err(`usage: counterparts catch-up --reowe <run> — a run's id, cup_… (counterparts catch-up) or nrn_… (the nightly run), as doctor and the log name it.`);
-    return 2;
+    return 1;
   }
   const c = openNightCounterpart(input.config);
   try {
     const plan = reowePlan(c, run, input.now());
     if (!plan.found) {
-      io.err(`refused: the log holds no write-up answers of ${run}. It keeps a week (sessions/log/), so a run older than that, or one that wrote nothing, cannot be re-owed from here.`);
-      return 1;
+      io.err(`refused: the log holds no write-up answers of ${run}. It keeps a week (sessions/log/), so a run older than that, one that wrote nothing, or another store's run cannot be re-owed from here.`);
+      return 2;
     }
     if (plan.subjects.length === 0) {
       io.out(`${run}: every part it closed brought memories back. Nothing to re-owe.`);
@@ -153,7 +154,7 @@ export async function reoweCommand(input: ReoweCommandInput): Promise<number> {
     const refused = plan.subjects.some((s) => s.status !== "reowe" && s.status !== "nothing-to-reowe");
     if (todo.length === 0) {
       io.out(refused ? "Nothing was changed." : "Nothing to re-owe: every part it closed with nothing kept was written up before the run began.");
-      return refused ? 1 : 0;
+      return refused ? 2 : 0;
     }
     if (input.dryRun) {
       io.out("Dry run: nothing was changed.");
@@ -162,7 +163,7 @@ export async function reoweCommand(input: ReoweCommandInput): Promise<number> {
     if (!input.yes) {
       if (io.prompt === undefined) {
         io.err("refused: this is not an interactive console and nothing was confirmed. Pass --yes if that is what you mean.");
-        return 1;
+        return 2;
       }
       const said = await typed(io, run, `Type the run's id to owe those parts again [${run}] — Esc or "cancel" to stop: `);
       if (said === "cancelled") {
@@ -171,7 +172,7 @@ export async function reoweCommand(input: ReoweCommandInput): Promise<number> {
       }
       if (said !== "typed") {
         io.err("refused: the confirmation did not match. Nothing was changed.");
-        return 1;
+        return 2;
       }
     }
     const moved = applyReowe(c, plan, input.now());
@@ -180,7 +181,7 @@ export async function reoweCommand(input: ReoweCommandInput): Promise<number> {
         ? "Nothing moved: a writer took those sessions, or moved past them, since the plan was read."
         : `Owed again: ${moved.join(", ")}. The next catch-up (this command, or the nightly run) reads those parts.`,
     );
-    return refused || moved.length < todo.length ? 1 : 0;
+    return refused || moved.length < todo.length ? 2 : 0;
   } finally {
     c.close();
   }
