@@ -62,3 +62,13 @@
   repeats until someone decides, since asking for a decision is its job, and the reflection is handed all of
   them every night. Why: in a fixed oldest-first order the same flag led every wake, and the other four on the
   copy were never shown, only counted.
+- Decided by the #430 reviewer, 2026-10-11, lightly held: the "a day with no session counts as one session"
+  reading stays, as a TRANSITION. It ends when the last return written before this build leaves the trailing
+  window: 30 lived days after the upgrade. To make sure it does end, a write that confirms an older memory
+  (`updates`, through `Self.noteSelfConfirmation`) now writes its session on the return it earns, as recall's
+  credits and a reflection's citations already did. What still writes no session: an entity card credited
+  for a name mentioned (`schemas`), which is a schema row nobody marks me or us, and the date-repeat credit,
+  which earns no return. Why: on the owner's copy the one slow crossing (a day-18 memory) rests on three
+  session-less days (two uses of its earlier state, four days apart, and a reflection), which really were
+  separate sessions. The over-count a NULL day allows (one session spanning several lived days) can only come
+  from returns before this build.

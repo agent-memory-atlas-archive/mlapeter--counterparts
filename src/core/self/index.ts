@@ -492,6 +492,8 @@ export interface ClaimOccasion {
   readonly direction: ClaimDirection;
   readonly tier?: UseTier;
   readonly day?: number;
+  /** The session it came in (2026-10-11): written on the return a confirmation earns (`returns.session`). */
+  readonly session?: string | null;
 }
 
 export type ClaimReason = FreezeReason | "unresolved" | "observer";
@@ -2369,7 +2371,7 @@ export class Self {
     const wouldMove = occasion.direction === "confirm";
     const credit =
       !verdict.frozen && wouldMove && !this.observer
-        ? this.store.reinforce(resolvedId, day, tier)
+        ? this.store.reinforce(resolvedId, day, tier, { session: occasion.session ?? null })
         : null;
 
     const after = this.store.physicsOf(resolvedId);

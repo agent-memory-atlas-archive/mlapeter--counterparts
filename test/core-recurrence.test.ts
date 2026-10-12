@@ -137,6 +137,16 @@ describe("the recurrence lane counts the slot, the sessions and the window", () 
     expect(slotOf(c.store, a).sort()).toEqual([a, b].sort());
   });
 
+  test("a write that confirms an older memory credits it with the write's session (review of #430)", () => {
+    const c = brain();
+    nextDay(c);
+    const a = mem(c, "I keep the notes short.");
+    nextDay(c);
+    const out = c.self.noteSelfConfirmation({ elementId: a, source: "authored", direction: "confirm", day: c.store.livedDay(), session: "s-write" });
+    expect(out.reinforced).toBe(true);
+    expect(c.store.returnsOf(a).map((r) => r.session)).toEqual(["s-write"]);
+  });
+
   test("an engaged day counts half, and engaged days alone never meet the lane", () => {
     const c = brain();
     nextDay(c);
