@@ -57,6 +57,7 @@ import {
 } from "../../core/counterpart.js";
 import type { PlainReminder } from "../../core/counterpart.js";
 import { newNightRunId } from "../../core/dream/index.js";
+import { PRONOUN_RULE, coverFinish, meetingHold } from "../../core/onboarding.js";
 import type { DreamOffer } from "../../core/dream/index.js";
 import type { BoundaryKind } from "../../core/remember/index.js";
 import { homedir } from "node:os";
@@ -502,7 +503,7 @@ export const PAGE_WRITER_TOOL = "counterparts self_page";
  */
 export function stopAsk(sessionId: string, chapter: number): string {
   return [
-    `${STOP_ASK_OPENER} 1) hand back what caught your attention since you last wrote, one idea each — what you read, what they said, what happened — with the counterparts session_end tool, session: ${sessionId}. \`handoff\` only if work here is unfinished; \`retireHandoff\` any now done; \`updates\` anything dated or open now done.`,
+    `${STOP_ASK_OPENER} 1) hand back what caught your attention since you last wrote, one idea each — what you read, what they said, what happened — with the counterparts session_end tool, session: ${sessionId}. \`handoff\` only if work here is unfinished; \`retireHandoff\` any now done; \`updates\` anything dated or open now done. ${PRONOUN_RULE}`,
     `2) Write chapter ${String(chapter)} with the counterparts chapter tool, session: ${sessionId}.`,
   ].join("\n");
 }
@@ -1589,6 +1590,25 @@ export class ClaudeCodeAdapter extends Lifecycle {
    */
   private askAtStop(input: HookInput): string | null {
     if (input.reFired === true) return null;
+    // THE FIRST MEETING HOLDS THE ASK (2026-10-12, onboarding round 1, A).
+    // Under way in this session: nothing is asked and the pacer is not
+    // consulted, so nothing advances. Just finished here: its finish step
+    // handed over the write-up, so this one Stop is paced (the pacer counts
+    // the write-up as asked) and says nothing.
+    const hold = meetingHold(this.counterpart.store, input.sessionId, this.nowFn());
+    if (hold === "running") {
+      this.emit("adapter.ask.held", { by: "meeting" });
+      return null;
+    }
+    if (hold === "finished") {
+      try {
+        coverFinish(this.counterpart.store);
+      } catch {
+        /* uncovered, the next Stop is paced the same way once more */
+      }
+      this.paceAsk(input, { coveredBy: "meeting" });
+      return null;
+    }
     const chapter = this.paceAsk(input);
     // The ask NAMES this session and its chapter: the id is what the MCP
     // server binds itself with, so an ask that omitted it would be an

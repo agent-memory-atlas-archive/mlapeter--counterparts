@@ -42,6 +42,7 @@ import type { CoactivateResult, Credited, FlushReport, PairDelta, PendingClaim }
 import { horizonFor } from "./briefing.js";
 import { episodeGate } from "./bridge.js";
 import { Dreams, Reflections } from "./dream/index.js";
+import { meetingDay } from "./onboarding.js";
 import type { VectorSource } from "./bridge.js";
 import type { MintResult } from "./mint.js";
 import { isObserver } from "./observer.js";
@@ -579,6 +580,7 @@ export class Counterpart {
       page: () => this.self.page()?.body ?? null,
       wake: () => this.store.getMeta(BRIEFING_KEY) ?? null,
       today: () => this.store.today(),
+      holds: (at) => meetingDay(this.store, at),
       retarget: (oldId, newId, day) => {
         this.associate.retargetOnSupersede(oldId, newId, day);
       },

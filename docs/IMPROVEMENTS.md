@@ -1007,6 +1007,691 @@ were refined by b2+f8 at the review of #369, named where they were):
   reopening), keeping #421's disable-first order. Why: the terminal and the command now say the
   same thing; either route is safe there because step 1 disabled the plugin.
 
+### Decided by the Group 2b builder, 2026-10-11, lightly held (one door for "A over B", item 12)
+
+- Decided by the Group 2b builder, 2026-10-11, lightly held: one function,
+  `reconsolidation.ts#supersede`, writes every "A over B" — a settle, a write's `updates`, a
+  slot confirmed, a dream merge (source `dream-merge`), the core's pressure crossing
+  (`pressure`), a fulfilled plan (`fulfilled`), a moved reminder (`reminder-moved`); Group 3's
+  folds call it with source `fold` (factor ×0.5 is already its default). `settle` keeps the
+  guards and goes through it. Why: review 10 counted seven paths with three effects; one door
+  gives one record (pair, trail, event with its source) and one undo.
+- Decided by random-06, 2026-10-11, lightly held (replacing the builder's "replaces" axis): no
+  effect axis besides `how` — a "replaces" was a fourth relation in disguise. A dream MERGE is
+  a real `changed`: each original fades ×0.5 (the existing changed fade), STAYS LIVE and is
+  labelled earlier under the merged memory; head-wins hides it in ambient recall and facts mode
+  folds it under the head; its own curve archives it at the floor, the ordinary way. The
+  PRESSURE CROSSING is the same (changed, fade, live, labelled), and the FULFILLED lane is
+  `changed` plus the core path (the plan leaves the core in one step), not an archive. Merges
+  are not `corrected` (the originals were not wrong). Cost accepted: more live near-copies for
+  a couple of weeks, hidden from ambient. Old merges (archived originals from before this
+  build) stay as they are, with no backfill, and undo the old way.
+- Decided by the #427 reviewer, 2026-10-11, lightly held (following random-06's ruling): a core
+  memory a change reaches through the door — only the core path's doors get there, since
+  `settle` refuses the core — LEAVES THE CORE in the settle's own transaction: the promotion
+  flag off, its fading restarted today (as the owner's demotion restarts it), the band column
+  set from its physics; then the ×0.5 cut lands (a core memory has nothing to cut otherwise).
+  The trail keeps its band, band day, last use and flag, so an undo puts it back exactly, and
+  the `contradiction.settled` event says `leftCore`. No `core_events` "demoted" row and no
+  `band.demoted` event: those are the owner's demotion, sticky against re-promotion, and
+  `fired.ts` reads `band.demoted` as the owner's door.
+- Decided by the #427 reviewer, 2026-10-11, lightly held: a merge carries what
+  `supersedeInto` used to — each original's returns, and its about mark and writer's fields
+  where the merged memory has none (`Store#carryInto`) — and its links
+  (`retargetOnSupersede`, already a copy) onto the merged memory, which is still at least as
+  durable and connected as what it was made from; the originals keep their own. An original that already has a head is refused
+  (`earlier-is-not-merged`: merge the one that holds), so a live earlier version is not merged
+  into a copy of a copy. A merge's door row writes no "how does it sit now" invitation (its
+  feelings travelled to the merged memory), nor does a moved reminder's.
+- Decided by the Group 2b builder, 2026-10-11, lightly held (unchanged by the ruling, simpler
+  now): the owner may undo one original's pair of a merge (`counterparts settle --undo`); that
+  original's strength comes back and it stands beside the merged memory, which keeps standing
+  for the rest. The dream's own undo undoes every original's pair and archives the merged
+  memory, as before.
+- Decided by the Group 2b builder, 2026-10-11, lightly held (confirmed by random-06): a settle
+  over a memory with a reminder still to come CARRIES the reminder to the holder (date, plain
+  or quiet, how often; `reminderMovedTo` / `reminderFrom`), and its undo carries it back; it
+  refuses only when the holder has a date of its own (the owner's settle goes through as
+  before). A holder whose status is `done` SPENDS it. Why: the brief's "the door calls
+  carryReminder"; a `done` memory firing on the old date would be wrong.
+- Decided by the #427 reviewer, 2026-10-11, lightly held: "spent" removes the date from the
+  earlier memory (`reminderSpentBy` names the `done` holder; the date stays in its version
+  row; an undo puts it back). Why: `prospective/` skips only a forwarded row, so a live
+  settled-over memory keeps firing on its date — with the archive gone, a fulfilled dated plan
+  would have reminded on a trip already made. The same for a WRITE: a `done` write that
+  `updates` a dated memory and sends no date no longer inherits the date (it used to, and fired
+  on it); and the fast lane counts a date that very write just took off the plan, which the
+  deposit moves before the revision runs (otherwise a dated core plan with no status never took
+  the fast lane).
+- Decided by the Group 2b builder, 2026-10-11, lightly held: a moved reminder's old memory gets
+  its row AFTER the write's declared revision, and only when the two are not already a pair.
+  Why: written first, it would make the writer's own settle refuse `already-settled` and lose
+  its `how` and words. The older remnants get theirs once, at open, latched in meta
+  (`reconsolidation.remindersMoved`) like the regrown-links pass, not in a sleep phase: a move
+  writes its own row from now on, so the pass never has new work. On the 10-11 copy, 9 live
+  remnants: 7 already had the writer's pair; 2 (both at fade 1.0) got one.
+- Decided by the Group 2b builder, 2026-10-11, lightly held (review 10 C4): an AUTHORED
+  `changed` or `corrected` at a core memory credits force `max(raw, F_DAY_CAP_SLOW)`; a slow
+  kind is still capped at 0.35, so the three-lived-day property is unchanged; a swept
+  declaration keeps its own force. `corrected` is included beside the brief's `changed`: it
+  is the stronger declaration.
+- Decided by the Group 2b builder, 2026-10-11, lightly held (review 10 C4; the effect revised by
+  random-06's ruling above): the fast lane is read off the rows' own fields — the core memory
+  has a status other than `done` or a date, and the memory updating it has status `done` —
+  and the `done` memory holds over it `changed` (source `fulfilled`): the plan leaves the core,
+  fades and is labelled earlier; no successor minted, no pressure; the `done` memory stays as
+  it was, not core. Held as the brief wrote it: the real Han pair's core memory has no status
+  and no date, so it stays on the slow path (three lived days of declared changes). Not
+  widened to read the words. "Such items don't enter the core at all" is Group 3's.
+- Decided by the #427 reviewer, 2026-10-11, lightly held: at a CORE memory the update guard no
+  longer lets a status change ("planned", now "done") or a redate through unread. Why: the fast
+  lane takes a core plan out of the core on one write, so an unrelated write that named the id
+  with status `done` was enough; a plan and its "done" share their subject, so the real case
+  still reads related (the Han-shaped test).
+- Decided by the Group 2b builder, 2026-10-11, lightly held (the effect revised by random-06's
+  ruling above): the pressure crossing mints its successor with `put` (the challenger's words,
+  the core band, source `accommodation`, as before) and settles `changed` over the old memory
+  through the door (pair source `pressure`, the pressure pair closed through it); the old one
+  leaves the core, fades, stays live and is labelled earlier, and its links are copied to the
+  successor. Undoing the crossing puts the old memory back in the core at full strength,
+  withdraws the crossing's pair (the pressure pair it closed reopens) and archives the minted
+  successor `pressure-undone`. Decided by the #427 reviewer, 2026-10-11, lightly held: that
+  archive stays though the crossing archives nothing now — with the old memory back in the
+  core, the successor (a core copy of the words weighed against it) would stand beside it as a
+  second core memory. The old memory's accumulated pressure is left as it was.
+- Decided by the Group 2b builder, 2026-10-11, lightly held: the schema belief and
+  current-state arms (path 4) have no live producer — only `tools/demo/seed.ts` and tests
+  reach `addBelief` / `addCurrentState` — and are left as they were, neither deleted nor
+  routed. Why: routing a path nothing reaches needs a record-only mode for an
+  already-superseded memory; deleting it takes schemas' contract, the demo and about ten test
+  files, its own lane. Chapters' `episode-regrown` (path 6) stays out: it is one chapter's
+  copy re-rendered, not one memory over another. Legacy link-only rows (path 7): 33 on the
+  copy, 3 from day 9 and none since; not backfilled. Link-only is still produced by refusal
+  fallbacks (a protected or entity target, a thread this session may not close, the crash
+  sweep), each with its reason.
+- Decided by the Group 2b builder, 2026-10-11, lightly held (review 10 C6): two honest cards,
+  not one "Updating" card. Interference counts the detected doors (dream merges, dream flags,
+  slot proposals, confirmed slots); Reconsolidation counts declared settles and pressure; a
+  merge's rows count once, as the merge. Why: smaller than renaming a mechanism across the
+  dashboard, the console, the sidebar copy and the "N of 11" count. Settles from before this
+  build carry no source and count as declared. Every `contradiction.settled` event now says
+  its `source`, and a write's says `howSent` (true: the writer sent `how`; false: defaulted
+  to `changed`). Not in `gate.deposit`, whose field list is pinned.
+- Decided by the Group 2b builder, 2026-10-11, lightly held: a `corrected` settle hands the
+  old memory's links to the holder (`Associate.retargetOnSupersede`, injected, or the door's
+  own when a caller has none) and its undo carries them back; `corrected` joins
+  `TERMINAL_ARCHIVE_REASONS`. Settles from before were carried once at open
+  (`associate.corrected.relink`, 10 on the copy), and the sweep leaves `corrected` and
+  `episode-regrown` alone until their one-time pass has latched (review of #423).
+- Decided by the Group 2b builder, 2026-10-11, lightly held (review of #420 (a)): settles are
+  ordered by when they were RAISED (`flagged_day`, then the moment made), not when answered,
+  in `headOf` and the wake's `settledOver` alike; and a settle over B no longer closes a slot
+  proposal in which B is the newer — the question "B is the newer state of A" stays for the
+  dream. Why: closing it lifted A's cut and stood A back up as current; with raised order a
+  late confirmation cannot re-affirm B over a newer settle.
+- Decided by the Group 2b builder, 2026-10-11, lightly held (review of #420 (b)): a proposal
+  whose newer memory was replaced with a forwarding address is carried to what replaced it —
+  withdrawn and proposed again between that one and the older, the cut the same — before the
+  dream reads; one whose memory is simply gone is withdrawn as before. The carried proposal
+  writes no second `contradiction.proposed` event (its trail row names the pair it came from),
+  so Interference counts the question once. Noted by the #427 reviewer: since random-06's
+  ruling no door forwards a memory, so this is for rows replaced the old way; a proposal whose
+  newer memory is merged through the door simply stays open (both still stand), and once the
+  dream confirms it the chain reads older → newer → merged.
+- Decided by the Group 2b builder, 2026-10-11, lightly held (review of #420 (d)): with
+  dreaming set to `off`, and only then, a proposal unanswered for 14 lived days
+  (`SLOT_EXPIRY_DAYS`) is withdrawn and its cut put back, checked once a lived day at a write.
+  Why: random-06's "no silent expiry while a dream can answer"; a cap on waiting proposals
+  would stop the detector at the cap instead.
+- Decided by the Group 2b builder, 2026-10-11, lightly held (review of #420 (c), (e)): a
+  meaning-mode answer marks an earlier moment `earlier (now [id])` ("a later version" when the
+  asker may not be shown it); a slot proposal's event says `bandDrop` when its provisional cut
+  moves the older from semantic to episodic.
+- Decided by the Group 2b builder, 2026-10-11, lightly held (left from #420): a head the turn
+  reaches only through a link (a quiet pointer) counts as not reached, so it is brought in to
+  stand for the earlier version the words reached and its pointer candidate is dropped. Why:
+  the dedicated test showed both shown — a pointer sat in its own slots, apart from what the
+  gate inhibits.
+- Decided by the #427 reviewer, 2026-10-11, lightly held (knock-ons of random-06's ruling): a
+  declaration (`updates`) at a merged original or a crossed core memory reaches the memory that
+  holds now (`revision.ts#forwardedHead`), as `resolve` followed the forwarding address before;
+  ordinary settles are left as they were (a write may still address an earlier version). A
+  crossing's successor carries the old memory's about mark and the writer's fields its
+  challenger did not send (`Store#carryInto`, without returns), as `supersede` did. A belief's
+  story reads a crossing's `pressure` pair as its lineage step (`Schemas#crossedTo`). The
+  store-wide feelings and nudge reads (`feelingsLive`, `feelingsSince`, `emotionCensus`,
+  `traitsAll`, `traitCensus`) leave a merge's live originals out, since their feelings and
+  nudges were copied onto the merged memory: a moment counted once, as when they were archived.
+- Noted by the #427 reviewer, 2026-10-11: `headOf`'s rule (#408) lets a FRESH direct settle
+  "B over A", made after "C over B", re-affirm B (it is raised later); a late answer to an
+  older flag or proposal cannot (raised order; a flag is closed by the newer settle). Kept as
+  found, with a test that records it; a design question, not changed here.
+- Decided by the #427 reviewer, 2026-10-11, lightly held: a dream's undo leaves a merge alone
+  (counted `kept`) when a later memory has settled over the merged memory, not only when it
+  was archived or superseded: it stays live under the ruling, and undoing the merge would stand
+  the originals as current beside the memory that holds now (review of #251's rule).
+
+### Decided by the group 3 cards builder, 2026-10-11, lightly held (card birth from a name tally)
+
+- Decided by the group 3 cards builder, 2026-10-11, lightly held: the nightly name tally runs
+  as a sleep-cycle phase (`births`, right after `fade`, every lived day), not as a dream
+  action. Why: it is mechanical (no model call), sleep already owns the fade's cadence and
+  budget the same way, and parts B and C of group 3 change the dream.
+- Decided by the group 3 cards builder, 2026-10-11, lightly held: the title door
+  (`mentionFromProposal`) is removed; a write credits and revives cards but never births one.
+  Why: an authored title is a sentence, so it refused every authored write, and keeping it
+  beside the tally would mean two birth rules.
+- Decided by the group 3 cards builder, 2026-10-11, lightly held: a name is a capitalized run
+  of one to three words seen mid-sentence at least once, counted by `nameRegex`, refused when
+  a quarter or more of its memories write it in another case in prose (code, paths,
+  versions and domains don't count), and refused when it is a weekday or a month. Why:
+  measured on a copy of the owner's store, project and people names sat at or under 0.20 and
+  capitalized English words from 0.25 up; "never in lower case" refused the project's own
+  name, because it is also its command.
+- Decided by the group 3 cards builder, 2026-10-11, lightly held: a name said as part of a
+  longer tallied name in at least half its memories gives way to the longer one. Why: a card
+  for the piece would refuse the whole name as a near collision for good.
+- Decided by the group 3 cards builder, 2026-10-11, lightly held: a tallied name's kind is
+  person when the person-kind memories carrying it in their title are at least as many as
+  the entity and place ones, then place, else entity; never skill. Why: counting every naming
+  memory's kind made a model and an API into people.
+- Decided by the group 3 cards builder, 2026-10-11, lightly held: at most 10 births a night
+  (`sleep/tunables.ts` BUDGETS.births), most-named first, the rest counted and offered the
+  next night. Why: the copy had 99 names over the bar on the first night; ten a night drains
+  it in nine nights with the people and projects said most first. Not measured beyond that.
+- Decided by the group 3 cards builder, 2026-10-11, lightly held: a name a faded card holds is
+  not offered by the tally. Why: the old memories already there when it faded would rebirth
+  it the next night; it comes back, as before, when a new memory names it.
+- Decided by the group 3 cards builder, 2026-10-11, lightly held: an entity card is not a
+  recall candidate and not a facts-mode result (the identity core included). Why: a newborn
+  card's body is a stub that asserts nothing, and once cards were born a turn naming someone
+  footnoted it. The card works as the index (subjects), not as a memory.
+
+### Decided by the #429 reviewer, 2026-10-11, lightly held (a removed card stays removed)
+
+- Decided by the #429 reviewer, 2026-10-11, lightly held: a card the owner removed is not
+  born again by the name tally. The chase keeps the memory ids the card linked (box-2 meta
+  `removal.card.<id>`), and `Schemas#birthsFromNames` refuses, as `removed-by-owner`, a name
+  whose memories cover 0.8 of those still live. Why: the chase blanks the card's name, so the
+  tally would rebirth it from the very memories that still say it, undoing the owner's act
+  (store CONTRACT: a removed memory cannot be silently resurrected). A hash of the name was
+  considered and refused: store §16 G9 forbids a content hash in what a removal leaves,
+  because a name is low-entropy and a hash of it is brute-forceable. If the owner later
+  removes those memories too, nothing is left to recognise the name by. A block by name that
+  outlives the memories would need G9 amended, which is the owner's call.
+
+### Decided by the group3a builder, 2026-10-11, lightly held (the core: recurrence lane, identity, being reconsidered)
+
+- Decided by the group3a builder, 2026-10-11, lightly held: a memory's SLOT is the memory plus the live
+  memories a standing "A over B" ties it to: a settled `changed` pair (a write's `updates`, a settle, a dream
+  merge, and folds once part B writes them through `supersede`). It is walked along the chain, at most 12
+  members. (A slot proposal still waiting was counted too in the first draft; see the reviewer's bullets below.) `open` pairs (two different things) and `corrected` pairs (the earlier
+  was wrong, not said again) are not slots. Why: Group 2 shipped pairs, not slot ids, and these pairs are the
+  ones that say "the same thing, later". Embedding neighbours were the other option, but the slot detector
+  already turned cosine into pairs, with a dream confirming them.
+- Decided by the group3a builder, 2026-10-11, lightly held: a RE-ENCODING is read off the slot's rows. It is
+  the birth day of each member other than the slot's first-written, when a session wrote it (a dream's or a
+  reflection's writing is not one), and its session is the member's `origin_session`. No `reencoded` row is
+  written to `returns`. Why: the count needs no write path, an undone settle takes its days with it
+  automatically, and the existing history counts on the first night. So `returns.source =
+  'reencoded'` stays unused. No store-format change was needed: v13 already has `returns.session`.
+- Decided by the group3a builder, 2026-10-11, lightly held: `returns.session` is written from now on: the recall
+  session for an awake or engaged use, and the reflection's id for a reflection's citation. A day whose
+  evidence names no session (every return before this build, and a direct store credit) counts as ONE session
+  of its own. Why: every existing row is NULL. Reading NULL as "no session" would hold the lane shut for weeks;
+  reading it as one session per day is the most it can honestly mean.
+- Decided by the group3a builder, 2026-10-11, lightly held: "the row itself has ≥1 engaged return" (08 C1)
+  reads as "the row has a real use of its own": an awake, reflection or engaged return. An engaged-only day
+  counts `ENGAGED_RECURRENCE_WEIGHT` (0.5) of a day, and at least one day must be a full one ("half, never
+  alone"). Why: an `engaged`-source anchor alone would shut out every row whose only uses were referenced ones.
+- Decided by the group3a builder, 2026-10-11, lightly held: a memory a later member of its slot settled over
+  (`changed`) does not cross by the slow lane. The slot's recurrence lifts its CURRENT state. Why: otherwise
+  an outdated state ("I preferred X") could become core on the strength of its successor's use. The fast lane
+  is unchanged.
+- Decided by the group3a builder, 2026-10-11, lightly held: identity means about ∈ {me, us}, kind ∈ {self,
+  person, entity}, status not planned/proposed/asked (08 C2), and the recognition door (an unmarked memory
+  with a strong recognition feeling) is held to the same kinds and the same "not a plan". `CORE_ABOUT_MARKS`
+  keeps `owner`, because it still means PERSONAL (what a merge inherits, what a dream may not self-mark, the
+  elsewhere line's gate). The core reads the new `IDENTITY_ABOUT_MARKS`. Why: changing the shared constant
+  would have moved four unrelated behaviours.
+- Decided by the group3a builder, 2026-10-11, lightly held: BEING RECONSIDERED is a `core_events` row
+  (`reconsidering`, reason `not-about-me-or-us` | `not-a-core-kind` | `a-plan` | `no-recurrence`). A decision
+  writes `reaffirmed` (keep, with the why, actor owner/self/reflection) or `demoted` (retire). Consolidation
+  lifts a flag itself (`reaffirmed`, actor `sleep`, reason `cause-gone`) when the memory is about me or us
+  again, or has recurred since the flag. A memory someone chose to keep is not flagged again for what it is,
+  only for going quiet after the keep. Quiet is counted from the latest of its last recurrence day, its
+  promotion or keep, and its band day. Why: item 14 (no automatic demotion), and a flag that outlived its
+  cause would ask for a decision that was already made.
+- Decided by the group3a builder, 2026-10-11, lightly held: a flagged member moves from "Who I am" to "Still
+  open" in the wake, labelled "Core, being reconsidered — keep or retire it (remember core) [id]". Only one
+  shows at a time, at the top of the list (`RECONSIDERING_MAX` 1). The rest are counted with "more still
+  open". Why: the owner already has about 40 open threads and the lane shows 5. Five flags at once would have
+  pushed every open question out. My doors are
+  `remember`'s `core: {id, decision: keep|retire, why}` (any core memory, with a why) and a reflection's
+  `core` part (any core memory it was shown, at most 5). Flagged members are handed to the reflection. The
+  owner's are `counterparts core --demote` and the new `--reaffirm`. Retiring is allowed on a night with the
+  reflected-feeling door closed, because it moves toward less core. Why: the brief's "both of us can retire a
+  core memory directly", and the wake's Still open was 08 C4's place for it.
+- Noticed by the group3a builder, 2026-10-11: with the recurrence lane, a reflection citing a memory once a week
+  carries it into the core in three weeks (four reflection days, each its own session), where it used to take
+  four. The D5 "watch" test now pins three weeks.
+- Decided by the coordinator and random-06, 2026-10-11, lightly held: only SETTLED pairs make a slot. A slot
+  proposal still waiting (unconfirmed) does not count until it is confirmed. Why: about one in seven
+  proposals was wrong on Group 2's hand-read, and a wrong one would pool another memory's uses into this
+  one's recurrence and could carry it into the core. Confirming is cheap, and the core is slow by design.
+- Decided by the #430 reviewer, 2026-10-11, lightly held: the flagged core memories take turns in the wake's
+  one "Still open" place, by lived day (the n flags in a fixed order, starting at day mod n). The flag still
+  repeats until someone decides, since asking for a decision is its job, and the reflection is handed all of
+  them every night. Why: in a fixed oldest-first order the same flag led every wake, and the other four on the
+  copy were never shown, only counted.
+- Decided by the #430 reviewer, 2026-10-11, lightly held: the "a day with no session counts as one session"
+  reading stays, as a TRANSITION. It ends when the last return written before this build leaves the trailing
+  window: 30 lived days after the upgrade. To make sure it does end, a write that confirms an older memory
+  (`updates`, through `Self.noteSelfConfirmation`) now writes its session on the return it earns, as recall's
+  credits and a reflection's citations already did. What still writes no session: an entity card credited
+  for a name mentioned (`schemas`), which is a schema row nobody marks me or us, and the date-repeat credit,
+  which earns no return. Why: on the owner's copy the one slow crossing (a day-18 memory) rests on three
+  session-less days (two uses of its earlier state, four days apart, and a reflection), which really were
+  separate sessions. The over-count a NULL day allows (one session spanning several lived days) can only come
+  from returns before this build.
+
+### Decided by the group3b builder, 2026-10-11, lightly held (folding)
+
+- Decided by the group3b builder, 2026-10-11, lightly held: a fold leaves the open questions on its parts open
+  (`supersede`'s `closeFlags: false`), where a merge closes them. Why: "these add up to X" answers no "does this
+  part disagree with Z"; closing it would hide a real question behind the fold.
+- Decided by the group3b builder, 2026-10-11, lightly held: besides the brief's four exemptions (readings, felt,
+  protected, the core), a fold also keeps at its own weight a DATED part (through the door its reminder would move
+  onto the fold), a dream's own words (a dream does not build on them, as merges already refuse), and an EARLIER
+  version (it already has a head; settling it under the fold too would move its head off its real successor).
+  All are still cited in `meta.sources` and tied. "Reading" is the settle guard's test (`slotExempt`: about
+  `world`, or a title opening "Reading"); "felt" was any recorded feeling (`feeling_peak > 0`; narrowed by the reviewer, below). Why: the door's
+  own effects (decoring, carrying a reminder, re-heading a chain) are wrong for a summary. On the owner's copy
+  (10-11) the census over 1,009 live memories: 751 foldable, 87 earlier, 79 felt, 42 reading or world, 21
+  dated, 16 dreamed, 13 core.
+- Decided by the group3b builder, 2026-10-11, lightly held: a fold starts at the strongest part's decayed
+  strength on the night (read before any part fades), floored at the insight gist's 0.3 and capped at 0.6. Why:
+  the brief's "its sources' strength (≤ 0.6)"; the floor keeps a fold of parts already near reach (four routine
+  events at ~0.12) from being born below reach with its parts cut to ~0.06, the "work vanishes from recall" case
+  review 11 warned of.
+- Decided by the group3b builder, 2026-10-11, lightly held: a fold's title is its own, with no "Dreamed:"
+  prefix (review 11 C4); `source = 'dreamed'` and `meta.fold` keep where it came from. A fold needs two or more
+  sources. Folds count as `fold`, not `gist`, in a dream's counts and on `dream.changed`, so the dashboard's
+  "patterns dreamed" line counts insights only.
+- Decided by the group3b builder, 2026-10-11, lightly held: "overflow carried and counted" is, for now, counted
+  and said: a fold past the night's 5 is refused `limit-reached`, counted on `dream.changed` (`foldOverflow`)
+  and named in the hand-back; its parts are left as they are. The queue read is untouched, so carrying them to
+  the next night is part C's (the dream queue).
+- Decided by the group3b builder, 2026-10-11, lightly held: a CORRECTION (`corrected`, any door but a fold's)
+  of a fold's part raises an unsettled pair between the fold and the corrector, source `fold-source-corrected`
+  (the fold, being older, reads "Unsettled — may be out of date"). Undoing the correction withdraws the flag
+  while it is still unanswered. A `changed` over a part flags nothing. Why: the brief names corrections; a
+  newer state of a part is what the fold already stands over.
+- Decided by the group3b builder, 2026-10-11, lightly held (random-06's ride-along): the head of a memory is the
+  end of the chain by its STANDING settles: of the settled `changed`/`corrected` pairs in which it is the
+  `over`, the newest (by when raised). A pair in which it holds no longer re-affirms it. `recall/standing.ts`
+  (`headOf`) and `self/index.ts#settledOver` changed together, so every reader (facts, ambient head-wins, the
+  wake, neighbours, the dream's bundle) follows. Three tests pinned the old reading and now pin the new one
+  (`reconsolidation-door`, `continuity-round2`, `settled-over-marks`). (The builder refused "settle B over C"
+  while "C over B" stood; the reviewer made it the explicit reordering the brief names, below.)
+
+### Core-lever ruling (decided by random-06, 2026-10-11, lightly held; implemented by the #432 reviewer)
+
+- Decided by random-06, 2026-10-11, lightly held: a FOLD takes the `me`/`us` mark only when MOST of its parts
+  are `me`/`us`: a strict majority of every part it cites, kept-at-weight ones included; then whichever of
+  the two more parts carry (a tie: the first in order). Otherwise it takes the most common of its parts'
+  other marks (owner, work, world; a tie: the first in order; unmarked parts do not vote), or none. A tie
+  between personal and not is not a majority, so it is not personal. "Personal wins by one" stays for
+  merges, revisions and insight gists (`inheritFrom`); a fold has its own helper beside it
+  (`store/index.ts#foldMarkFrom`). Why: a fold summarises many parts; one `us` part must not make a stretch
+  of work a core candidate.
+- Decided by random-06, 2026-10-11, lightly held: a fold's recurrence is what came back AFTER it was
+  folded. In a slot with a fold, a member already there when the slot's first fold was written gives no
+  re-encoding, and only its returns after the fold (`returns.at` past the fold's `created_at`; the lived day
+  where a return has no moment) count. The fold's own uses and members written since count as anywhere
+  else. No minimum count of its own uses. Why: its parts' births were the encoding the fold summarises,
+  not its content coming back. On the owner's copy the personal fold no longer meets the slow lane on one
+  use; four post-fold use days by three sessions over seven lived days do.
+
+### Decided by the #432 reviewer, 2026-10-11, lightly held
+
+- Decided by the #432 reviewer, 2026-10-11, lightly held: "felt" for a fold's exemption is review 11's (C3,
+  D3): a `self` or `person` memory whose recorded feeling peaks at `FOLD_FELT_FLOOR` (0.5) or more. Why: the
+  brief's one word summarises review 11; "any recorded feeling" kept 79 of 1,009 live memories out of
+  their folds, a mild feeling on a routine work memory among them. Review 11's reading keeps 22.
+- Decided by the #432 reviewer, 2026-10-11, lightly held: a fold starts at the strongest strength of the
+  parts it HOLDS OVER, not of every part cited (the 0.3 floor when it holds over none). Why: a core memory
+  or a reading kept at its own weight would otherwise lift a fold of weak work to its strength, above
+  every part the fold stands for. The 0.3 floor stays: without it a fold of parts near reach is born
+  below reach with its parts cut further.
+- Decided by the #432 reviewer, 2026-10-11, lightly held (random-06's ride-along, as the brief words it):
+  "settle B over C" while "C over B" stands REORDERS that pair: the standing settle is undone (C's cut on B
+  lifted, its trail kept, why `reversed: …`) and B settles over C. For the owner and a session; a `changed`
+  pair only (a `corrected` one archived B), not one closed through another, not a pressure crossing, and
+  not where the reading guard would keep the two side by side. A dream or a reflection is still refused
+  `already-settled` (an undo of its batch could not stand the old settle back up), and the refusal now
+  says which way the pair stands. Why: the brief: "a new settle reorders only the pair it names (to make
+  B current again, settle B over C)".
+- Decided by the #432 reviewer, 2026-10-11, lightly held: the dashboard's dreams page counts a fold as
+  `fold` and says "folded N memories into what they add up to (M faded under it)". Why: it counted folds
+  as patterns.
+
+### Decided by the coordinator, 2026-10-11, lightly held (who may reverse a settle)
+
+- Decided by the coordinator, 2026-10-11, lightly held: a session (or anything that is not the owner) may
+  reorder a pair by settling it the other way ONLY when the standing settle was not the owner's (its newest
+  settle not undone, actor `owner`: his CLI settle or his door). Over the owner's settle it is refused
+  `already-settled`, and the message says the owner settled it and how he can change it (his own settle the
+  other way, or `counterparts settle --undo`). The owner can reverse anything. Why: the owner's settle is his
+  ruling; a model session should not reverse it, even with the trail kept.
+
+### Decided by the catch-up-unread-parts builder, 2026-10-11, lightly held (did the catch-up skim?)
+
+- Decided by the catch-up-unread-parts builder, 2026-10-11, lightly held: the first live `counterparts
+  catch-up` did not skim. Every one of the 16 parts it closed with `[]` was wholly marked "already written
+  up" before the run began: 14 by the session's own half-hourly chapters, 2 by one mid-session note. The
+  reader was told not to write marked words again, and didn't. The waste was the door handing such parts
+  over at all. Why: read back from the parts the children were actually served (every entry carried the kept
+  mark) and from the coverage ledger's claims.
+- Decided by the catch-up-unread-parts builder, 2026-10-11, lightly held: a part whose every word is already
+  written up is passed over by the door (and recorded done) and costs a catch-up batch no bytes and no place,
+  except the session's last part, which is always served because only a session that was handed words sets
+  the write-up mark. Why: the smallest change that stops the waste without touching the mark's path.
+- Decided by the catch-up-unread-parts builder, 2026-10-11, lightly held: the guard on empty answers is a
+  required one-line `nothing` reason on the granted (catch-up) path, for a part that holds unwritten words.
+  There is no timer and no "N empty answers in a row" rule. Without the reason the answer is refused, nothing
+  is recorded, and the part stays owed ("unread"). Why: fetch-to-answer time measures what a reader wrote, not
+  what it read (a model takes in a whole part at once), and the 16 two-second answers that prompted this were
+  all right. A seconds-per-KB floor or a run-of-empties rule would have marked every one of them unread, and
+  kept re-owing them forever, since the chapters' claims stay. A live session's `[]` keeps the meaning it has
+  had since 2026-09-23. The reason's text is not stored.
+- Decided by the catch-up-unread-parts builder, 2026-10-11, lightly held: `catch-up --reowe <run>` only moves
+  a session's progress counter back, and only while nothing has claimed those words since. A session the run
+  went on to mark written up, or whose later memories claimed the words (each memory claims its session's
+  backlog), is refused `needs-retraction`. Taking a mark or a coverage claim back would mean a new operation
+  on two pinned seams (`write-up-seam.ts`, the coverage ledger), which is left as an open question rather
+  than built here. Why: with passed-over parts and the reason guard, a run that closes unwritten words empty
+  should be rare, and the retraction is a design call, not a repair.
+- Noted for the coordinator, not changed here: a mid-session note (`remember`/jot) claims coverage of every
+  unwritten word its session said before it (`submitJot` always covers its own session), so one note about
+  one fact can mark hours of conversation as written up. That is how 2 of the 16 parts (one session's
+  evening) came to read as already written up when the note covered none of their substance.
+- Decided by the #435 reviewer, 2026-10-11, lightly held: `catch-up --dry-run` or `--yes` without `--reowe`
+  is a usage mistake (exit 1). Why: the flags were added to `catch-up` for `--reowe`, and alone a typed
+  `catch-up --dry-run` started a real run that writes memories and spends the subscription.
+- Decided by the #435 reviewer, 2026-10-11, lightly held: `--reowe` exits with the CLI's codes (`EXIT`:
+  usage 1, refused 2), not its own inverted pair. Why: a script reads one meaning per code across commands.
+- Decided by the #435 reviewer, 2026-10-11, lightly held: the SessionStart pointer (dreaming `ask`/`off`)
+  names the part the door will hand over (`firstUnwrittenPart`) and counts only the parts a reader is
+  handed. Why: the door passes over parts with nothing unwritten on every path, not only the catch-up's,
+  and the pointer said "part 1 of N" and the whole backlog's size while the door handed part 9.
+- Noted by the #435 reviewer, not changed: with the reason guard in place, a future run's logged empty
+  parts with unwritten words are all ones the reader explicitly declined with a `nothing` line, which the
+  log does not record. `--reowe` owes those back too; that is what a "known-bad run" means here.
+
+### Decided by the coordinator, 2026-10-11, lightly held (a note claims its own turn)
+
+- Decided by the coordinator, 2026-10-11, lightly held: a memory written in the moment (the note tool, source
+  `jot`) claims only its own turn — its own span, and the conversation pieces whose cursor `from` equals the
+  note's own `from` (the prompt that started the turn it was written in, captured at the Stop after the note and
+  added to the note's claim then, under the same proposal id). A session-end write-up, the write-up door,
+  "nothing new" and a chapter keep their whole-session claims. Why: on 10-10 one short note in session e92c5180
+  claimed 18 pieces (about 48 KB, 2.6 hours) of that session's unwritten backlog, and the catch-up then rightly
+  saw them as written; it was the only real loss found in the first live catch-up. Same principle as Group 4's
+  write-time links (own turn only) and "memory forms as you go": a note is a moment, not a summary of the session.
+  For random-06's and Mike's review.
+- Decided by the coverage-jot-breadth builder, 2026-10-11, lightly held: the turn is found by the cursor, not by
+  times. A note's span is written with `from` = the session's cursor in that scope, and the next capture in that
+  scope starts at the same cursor, so "the capture that begins at the note's `from`" is the turn. When two notes
+  share a turn, the first accepted one takes the turn piece. A note written in a turn with no prompt of the
+  person's (the reply to a Stop ask, whose prompt is the ask itself and is never captured) claims only itself. A
+  note whose own span did not land (an exact repeat of an earlier note's text) claims nothing. Why: no new field
+  or file is needed (no store-format change), and every miss leaves the turn unwritten, which is the safe side.
+- Decided by the coverage-jot-breadth builder, 2026-10-11, lightly held: `counterparts coverage` splits owed
+  sessions with the same filter doctor and the catch-up read (`sessions.ts#pointable`): a small stretch from a
+  session the registry does not show as a person's is listed under "Left to lapse (small; not known as a person's session)", not
+  "Owed now". Why: one source of truth; the command listed d4929258 (an `sdk-cli` session) as owed while the
+  catch-up and doctor let it lapse. Same caveat as doctor's: a small debt whose registry record was pruned (after
+  a week) also reads as not a person's.
+- Decided by the coverage-jot-breadth builder, 2026-10-11, lightly held: the catch-up's "left N parts unread" line
+  in `counterparts coverage` shows only when the date asked is today or the date of that run. Why: the line came
+  from the newest run whatever date was asked for (review of #435).
+- Decided by the #437 reviewer, 2026-10-11, lightly held: a note does not take its turn when that turn's capture
+  holds something the person typed after a reply (`spans.ts#typedAfterReply`; host-injected text such as the
+  interrupt marker or a peer's message does not count). The host runs no Stop after an interrupt, so the next
+  Stop's single joined span carries the interrupted turn and the one after it, and the note would have claimed a
+  prompt it never saw. A message queued mid-turn leaves its turn unwritten the same way. Why: the span is one text
+  and cannot be split without a store-format change, and a turn left unwritten is the safe side (the session-end
+  write-up or the catch-up takes it); the skip is emitted as `remember.coverage.turn.skipped`.
+- Decided by the #437 reviewer, 2026-10-11, lightly held: the lapse wording says "not KNOWN as a person's session"
+  (`counterparts coverage` and doctor's Coverage detail). Why: `pointable` reads a missing registry record as not a
+  person's, and records are pruned after a week while a small debt lapses only after 14 days of use, so a person's
+  own small debt can land on this line; "not a person's session" would then say something false.
+
+### Decided by the group3c builder, 2026-10-11, lightly held (the dream queue)
+
+- Decided by the group3c builder, 2026-10-11, lightly held: fragility is `1 − strength` on the next lived day
+  (review 09 C3's second form), not the strength lost before the next night (its first). Why: on this curve the
+  one-night loss falls with stability, which grows exponentially with salience and feeling, so a felt or
+  salient memory ranked ~10x below a routine one and long-held valuable memories never got their turn. `1 −
+  strength` keeps value in charge, rises as a valuable memory fades toward the edge of reach (it is rescued
+  before it leaves), and still favours the weakly held. Value = salience on the curve (`curveSal`, the
+  old-claims era applied) + how strongly felt + 0.4 dated + 0.3 on my mind; the old at-risk bonus and age term
+  are gone (the curve is the clock).
+- Decided by the group3c builder, 2026-10-11, lightly held: a fragility floor, `FRAGILITY_FLOOR` 0.1. Why:
+  without it the most charged and most salient memories rank near zero every night while staying queued for
+  months (far from falling below reach), and a queued memory is kept out of the look-back and the neighbours.
+  At 0.1 a strongly felt memory ranks beside an ordinary one on its first night; the core (never below reach)
+  waits for its turn the same way instead of being dropped from the queue.
+- Decided by the group3c builder, 2026-10-11, lightly held: the queue starts where dreaming began, at the first
+  standing dream's `FIRST_DREAM_DAYS` (7) look-back (today's, before any dream). Why: a store's life before it
+  dreamed is not a backlog, and a store that turns dreaming on after months should not wake to all of it. On the
+  owner's copy the first dream's look-back reaches lived day 1, so 10 undreamed memories from days 1–5 that are
+  still within reach come back into the queue; the old window had aged them out.
+- Decided by the group3c builder, 2026-10-11, lightly held: the per-prompt gate reads only `ASK_QUEUE_DAYS` (7)
+  back and stops at `MIN_NEW`, as it did; the line, `begin` and the hand-back read the whole queue. Why: the gate
+  runs on every prompt, and the undreamed rows below reach (which the full read must still look at to know they
+  left) grow with intake until the prune takes them. Cost: an old leftover alone does not raise the ask.
+- Decided by the group3c builder, 2026-10-11, lightly held: a refused fold's parts are carried by an event
+  (`dream.carried`, the ids), not by editing the dream's `shown`. Why: the night's later changes, the
+  reflection's "what the dream saw" and the owner's forget path (which redacts a journal that showed a memory)
+  all read `shown`; the parts were seen, so taking them out of it would hide that. The queue reads the carry,
+  oldest dream first: a carried id is queued again until a later dream shows it. Only parts a fold would fade
+  are carried, and only two or more: an exempt-only fold is not re-offered night after night (#432's bullet 3).
+- Decided by the group3c builder, 2026-10-11, lightly held: carried parts rank first the next night, as a group,
+  ahead of the value × fragility ranking; general cluster selection (review 09 C4) is not built. Why: the dream
+  already chose that fold, and the group is small (at most the parts of the refused folds); ranking a whole
+  queue by clusters is a larger change and value × fragility already keeps a day's work of one salience close.
+- Decided by the group3c builder, 2026-10-11, lightly held: `agedOut` keeps its name on the bundle and the
+  `dream.begun` row and now counts the never-dreamed memories that fell below reach since the last dream (once:
+  within reach at that dream, or born after it). `readCapped`, `agedOutAtLeast` and `windowDays` are gone from
+  new rows (the read has no cap); the dashboard still reads them on old rows. `dream_shown_day` (v13,
+  pre-provisioned) stays unwritten: the read is O(undreamed rows) without it, and a second source of truth would
+  have to follow undo, resume, requeue and carry.
+
+### Decided by the #436 reviewer, 2026-10-11, lightly held (the queue's read)
+
+- Decided by the #436 reviewer, 2026-10-11, lightly held: the queue reads the dreams through `store.dreamsShown`
+  (`id, day, date, state, started_at, shown`, oldest first, no journal) and the first dream's day through
+  `store.firstDreamDay` (one `MIN`); the per-prompt gate reads only the dreams begun in its week, by lived day
+  (`sinceDay`, the column the queue already filters on, indexed), not by `started_at`. The carry's events are
+  read the same week on the gate and without the event log's default page of 500 everywhere. Why: the gate runs
+  on every prompt, and `SELECT *` of every dream parsed every journal; the old 500-row page, oldest first, would
+  have dropped the newest carries once a store had made 500. No behaviour change on the gate: a dream older than
+  its week was already passed over, and a carry is recorded on its dream's day or later. On a 10x copy with a
+  year of dreams (365) the gate's queue read went from 7.3 ms to 2.8 ms; at 15 dreams it is unchanged.
+- Decided by the #436 reviewer, 2026-10-11, lightly held: a carried group left with fewer than two parts still
+  queued (the others forgotten by the owner, archived, below reach, or shown by a later night) no longer goes
+  first and is not counted as `carried`; the part left ranks by value × fragility like any queued memory. Why:
+  the carry exists so a fold has its parts in front of it, and the carry itself is only made for two or more; a
+  lone part jumping the queue as a "group" of one would spend the front of the night on no fold. The owner's
+  forget path needed nothing: the removed part is denied and leaves the queue, the dream that showed it is
+  redacted as before, and its `shown` stays.
+- Decided by the #436 reviewer, 2026-10-11, lightly held: the queue's reach test is physics' `belowReach`, not
+  `strength < REACH`, both for leaving the queue and for the `agedOut` count. Why: the tunables and the CONTRACT
+  say the core never leaves reach; a core memory faded by a settle could read under 0.15 and leave the queue as
+  "faded", and the queue was the one reader with its own definition of reach.
+
+### Decided by the db-close builder, 2026-10-11, lightly held (`Db.close()` really closes)
+
+- Decided by the db-close builder, 2026-10-11, lightly held: a `Statement` from `db.prepare`
+  holds its SQL and looks up the driver statement on each call, instead of holding the driver
+  statement. Why: a statement dropped from the cache (at the 512 cap, or on an `ALTER`/`DROP
+  TABLE`) can then be finalized at once without breaking a caller that kept the handle, and
+  that caller gets the new columns after an `ALTER`. The alternative, keeping dropped
+  statements until `close()`, grows without bound under SQL built per call.
+- Decided by the db-close builder, 2026-10-11, lightly held: anything run on a closed `Db`
+  throws a new `StoreError` code, `DB_CLOSED`, and a second `close()` does nothing. Why: before,
+  under bun a statement kept from before the close still ran on the half-closed connection,
+  and under node a double close threw. A use after close is a bug that should say so.
+- Decided by the db-close builder, 2026-10-11, lightly held: an observer's close is not kept
+  from folding the log. When it is the last connection on a file, SQLite checkpoints at close
+  and the database file's bytes can change with no row changing. Why: bun and node expose no
+  way to turn that off for one connection (`SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE`), a read-only
+  open refuses a WAL store whose sidecars are gone, and under node it was always so. The
+  observer promise is about rows, and a writer folds its own log on close, so an instrument
+  usually finds nothing to fold.
+- Decided by the db-close builder, 2026-10-11, lightly held: a pre-migration copy older than
+  today is reused when neither the database file nor a NON-EMPTY `-wal` is newer than it.
+  Why: with closes now real, bun's own SQLite on Linux deletes the `-wal` at the last close
+  and the next open makes an empty one, so an empty `-wal`'s mtime is an open's, not a
+  write's; counting it meant an older copy was never reused there.
+- Decided by the #438 reviewer, 2026-10-11, lightly held: where a read promised the files
+  were left alone, the wording is made honest rather than the promise kept. The one place it
+  was said of an opened store, `start-fresh --undo --dry-run` ("Nothing else was touched"),
+  now says a log left in the new store's `-wal` may have been folded into its database file,
+  and that no memory changed. Why: keeping it would mean the read never being the last
+  connection, which neither driver lets one connection choose; the other "nothing has
+  changed" lines are about memories, which still holds, and the forward dry run opens no store.
+
+### Decided by the file-split builder, 2026-10-11, lightly held (splitting a class across files)
+
+- Decided by the file-split builder, 2026-10-11, lightly held: a big class (`Counterpart`, `McpServer`, `Store`)
+  is split by moving a method's BODY into a free function in a sibling part file, `export function name(cp:
+  Counterpart, …params)` (`server: McpServer`, `store: Store`), and leaving the method on the class as a one-line
+  delegate with the same name, modifiers, parameter types and return type: `return boundaryPart.name(this, …)`.
+  The body is unchanged but for one rewrite: `this.x` becomes `cp.x`, or `cp["x"]` when `x` is private (or
+  protected), and a bare `this` becomes `cp`. Why: TypeScript's bracket access to a private member is
+  type-checked and leaves the class's declared surface as it was, where dropping `private` would have widened
+  `Counterpart`'s and `Store`'s exported types (and `ReadOnlyStore`, which is `Omit<Store, …>` over the public
+  members). The codebase had no pattern for this; its nearest, free functions taking `store: Store`
+  (`mint.ts`, `reconsolidation.ts`), only ever use the public surface.
+- Decided by the file-split builder, 2026-10-11, lightly held: a delegate drops `async` (the body keeps it, so
+  the promise and its timing are the body's own), a defaulted parameter becomes optional on the delegate and keeps
+  its default in the body (evaluated once, where it was), and a public method keeps its doc comment on the class
+  while a private one's comment moves with its body. Section dividers (`// ── … ──`) stay on the class. Why: the
+  class still documents what callers may call; how a body works is read beside the body.
+- Decided by the file-split builder, 2026-10-11, lightly held: the parts holding class bodies are pinned to one
+  importer each, their class's file (`test/split-parts.test.ts`). Why: the functions are exported so the class can
+  import them, which also lets anyone who imports a part call a PRIVATE body (`Counterpart`'s deposit) past the
+  checks the public doors make first; the pin makes a second importer a decision rather than an import.
+- Decided by the file-split builder, 2026-10-11, lightly held: in `Store`, only public read bodies moved. Every
+  write method stays whole in `store/index.ts` (the `WRITE_METHODS` totality test reads its `this.mutate` sites from
+  that file), as do `embedOne`, `today` and `dateOf`, which tests read there, and no private method's body moved:
+  those are the store's internals (its raw insert, its transaction seam, its deny-list check), and nothing outside
+  the class should be able to import one. So
+  `store/index.ts` lands at about 218 KiB rather than the ~200 aimed for.
+
+### Decided by the arriving-lane builder, 2026-10-12, lightly held (what takes a dated item off "Arriving:")
+
+- Decided by the arriving-lane builder, 2026-10-12, lightly held: the wake's "Arriving:" lane no longer
+  applies the cue path's brakes. Those are the per-window fire cap, once per lived day, once per session, the
+  month or range item's last fire held for after, and "told plainly today". The lane still drops a window
+  that has not opened, one that has passed or been retired, and one the assistant was seen to use. Why:
+  those brakes ration how often a dated item is raised as a footnote in a turn. They say nothing about
+  whether the date is still arriving. Applied to the lane, they emptied it on the day it mattered. On
+  2026-10-12 the owner's plain tax reminder (mem_3d70c8464401, due that day) had been cued on 10-10 and 10-11,
+  which spent its two fires. It was missing from every wake on its day.
+- Decided by the arriving-lane builder, 2026-10-12, lightly held: a plain reminder that has been told stays
+  in the lane through its own day and leaves once that day is behind it. This replaces "leaves as soon as it
+  is told". Why: the tax reminder and mem_346077c3e78c were both "told" at 00:19 on 10-12, to a turn in a
+  coordinator session that an agent's hand-back message had started. Nobody read it, and the owner's 08:00
+  wake no longer listed either one. The grace week after the day, which is what the old rule was written
+  against, still drops it. The cost: a reminder already told in an earlier session that day shows again
+  under "Arriving:" in later wakes that day.
+- Decided by the arriving-lane builder, 2026-10-12, lightly held: when "Arriving:" lists nothing, its one
+  count line (`collapsedLine`) may take room from the lanes below it in `ROOM_ORDER`: "Work here", the
+  Yesterday line's titles, the handoffs' room and "Today, elsewhere". Before, it got only what was left
+  unspent. Why: the owner's bundles of 10-12 had seven dated items and not a word about them, because the
+  page, borrowing "Work here", had spent the room. The CONTRACT's promise that a dated item is "never
+  silently gone" did not hold.
+- Not changed, and open: an ordinary dated line still ranks below the page's borrowing (`arrivingFirst` <
+  `pageBorrow`). And the rescue lists Arriving's first N lines or none, so a long first line
+  (mem_2671e707a246, 1,270 bytes, 28 renders trimmed on 10-11/12) can keep a shorter one behind it unlisted.
+
+### Decided by the cc-reads-trim builder, 2026-10-12, lightly held (fewer reads of Claude Code's files)
+
+- Decided by the cc-reads-trim builder, 2026-10-12, lightly held: the nightly run reads its child's
+  `--output-format stream-json --verbose` output, kept in memory to 64 MiB and never written to disk, in
+  place of the child's transcript under `~/.claude/projects`. `--session-id` stays (it keeps the children
+  apart); the row's field keeps its name, `transcript`, so old and new rows read alike. A host that refuses
+  the arguments is retried once plain, its cut unchecked. Why: we launch the child, so its own output is the
+  smallest read; a scan of the host's projects directory is the read a directory reviewer would flag.
+- Decided by the cc-reads-trim builder, 2026-10-12, lightly held: the turn-budget swap
+  (`content-replacement`) is still parsed if it appears in the stream, but was not seen there. If it is
+  transcript-only, turn-budget cuts go unseen. Why: no cheap way to make a real host spill tonight; the
+  miss is quiet, never a false amber.
+- Decided by the cc-reads-trim builder, 2026-10-12, lightly held: Claude Code's compaction summaries and its
+  other `isMeta` user lines enter no turn (`transcript.ts#hostRecord`), but a message another session sent
+  here (`isMeta` with `origin.kind: "peer"`) is still kept, as task notifications are. Why: the policy names
+  conversation summaries, and the summary repeats turns each Stop already captured; a peer's message is
+  addressed to this conversation, not the host's bookkeeping.
+- Decided by the cc-reads-trim builder, 2026-10-12, lightly held: the wake-arrival check became an opt-in
+  diagnostic (`COUNTERPARTS_WAKE_CHECK=1` in the hooks' environment) rather than being removed. Why: one
+  line of gate against several hundred lines of reader, tests and doctor wording to remove; off, nothing is
+  read and no row is written.
+- Checked by the #444 reviewer, 2026-10-12: in Claude Code 2.1.296's bundle, `content-replacement` is a
+  session-storage entry (`insertContentReplacement` → `appendEntry`), written to the transcript file only,
+  so it does not reach `stream-json`: turn-budget cuts go unseen on the night run from now on. The
+  per-result `<persisted-output>` preview sits inside the tool result itself, which `stream-json`'s `user`
+  messages carry. Kept as built; the miss is quiet, as the builder said.
+
+### Decided by the arriving-slack builder, 2026-10-12, lightly held (who a plain reminder is told to, and who gets the session-start room)
+
+- Decided by the arriving-slack builder, 2026-10-12, lightly held: a plain reminder is not said, and not
+  marked told, at a prompt no person started. That covers a subagent's hand-back, a `<task-notification>`,
+  "Another Claude session sent a message:", and a prompt that is only peer messages. It waits for the next
+  prompt a person types. On such a prompt it is also held back from the quiet cues, so it does not spend a fire
+  there. The prompt hook reads this from the prompt text alone (`transcript.ts#startedByHost`, the same
+  frames capture uses to keep these turns out of pacing). Why: on 2026-10-12 at 00:19,
+  mem_3d70c8464401 and mem_346077c3e78c were "told" to a coordinator session's turn that a hand-back had
+  started, and nobody read it. The cost: a person who pastes one of those frames at the very start of a
+  prompt is read as the host and is told one turn later.
+- RANDOM's ruling, 2026-10-12, lightly held, for Mike's review, as built: at session start, "Arriving:" lines
+  due within the next 3 days (`ARRIVING_NEAR_DAYS`), or in their grace days, get first claim on the room
+  that would otherwise go to "Last here", "Last said here", "Today, elsewhere" and the handoffs. That
+  includes the room kept for the newest handoff, which before this went only to a plain reminder due that
+  day (`ROOM_ORDER`'s new `arrivingNear`, between `handoffsKept` and `pageBorrow`). They are listed after
+  the due-day head and before the other dated lines. The turn-end composition marks none of them near, so
+  it is unchanged. The total stays within the composition's budget plus the delivery's lent rooms, which is
+  at most the ceiling less the preface's reserve. Measured on a fixture (page 6,472 bytes, four handoffs, two
+  long dated lines): the session-start wake listed 1 dated line and 2 handoffs before, and lists 2 dated
+  lines and no handoff at all now, not even by id. Open, for review: prospective's lead is also 3 days, so
+  for day items the bound covers the whole lane, grace days included; it bounds nothing today. Leaving the
+  grace-day ("was due") lines out of `near` would restore a bound. The page's borrowing still outranks
+  these lines, and "Still open"'s first item is rescued before them.
+- Decided by COUNTERPARTS, 2026-10-12, lightly held (built here): once a QUIET day item's date is behind the
+  day asked about, the wake's lane applies the cue-only brakes to it again (over-fired, once a day, once a
+  session, held for after). Why: #442's reviewer found that a quiet item cued twice in its lead days rode
+  all 7 grace days as "was due …". It now leaves after its day. A plain item is unaffected, and so is a
+  quiet item that was not cued out.
+- Decided by COUNTERPARTS, 2026-10-12, lightly held, confirmed by RANDOM (built by the #445 reviewer): the
+  newest handoff keeps a floor. The near lines take room from "Last here", "Last said here", "Today,
+  elsewhere" and the older handoffs, but not from the newest handoff's own block (`arrivingNear` now sits
+  before `handoffsKept` in `ROOM_ORDER`; that room is again lent to a due-day plain reminder alone). Why:
+  the newest handoff is how a session knows where its work was left off. On the builder's fixture the wake
+  now lists 1 dated line (the second line's count by id) and the handoffs, as before this PR. What (b)
+  still adds: near lines are ordered right after the head, and the count rescue may not pop them.
+- RANDOM's ruling, 2026-10-12, lightly held (built by the #445 reviewer): a grace-day ("was due …") line is
+  not near. Only items due from the session's date through 3 days on are (`briefing.ts#nearDue`). Past
+  items keep their ordinary place in Arriving. This restores the bound the builder found missing.
+- Decided by COUNTERPARTS, 2026-10-12, lightly held, confirmed by RANDOM (built by the #445 reviewer): the
+  dream's prompt lines get the same guard. On a turn no person started (`startedByHost`) the prompt hook
+  treats the session as unwatched (`startUnwatched`): a headless night may still start and its line is
+  held for the next watched prompt; the day's line, the morning share, a night's hand-back and the
+  contradiction raises are neither said nor claimed there. Why: a morning share should count as told only
+  on a turn a person typed.
+
 ### Also noted
 
 - **A read-without-crediting mode for audits.** A way to read memories (a review, a rules

@@ -126,6 +126,14 @@ dreamer is the model (a background agent the session launches), outside this pro
   `skipped: <reason>` (`dreamSkippedOf`), never a failed dream, and the `dream.ask` row
   carries the reason. A later dream that day comes only through the ordinary relaunch, once
   the queue reaches `MIN_NEW`.
+  THE FIRST MEETING'S DAYS (2026-10-12, `DreamContext.holds`, `onboarding.ts#meetingDay`):
+  on the first meeting's first offer day, on a later day it was begun (`offered`) and is not
+  finished, and on the day it finished,
+  the gate says `meeting-day` before anything else but observer — no line, no headless
+  run, no catch-up alone. The first dream of a new install waits for its next lived day
+  and never dreams on half a meeting. A store with no meeting keys is never held. "Undo
+  that dream", said, is the dream tool's `undo` phase (`Dreams.undo`, as `--undo` is);
+  never in the nightly run.
   `off`: nothing.
 - **`auto` from before 2026-09-29 is reset once** (owner decision A): its meaning changed,
   so an explicit `auto` in a store's meta becomes `ask` on the first hook prompt of this
