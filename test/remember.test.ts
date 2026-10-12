@@ -1092,6 +1092,60 @@ describe("a note claims its own turn, not the session's backlog (2026-10-11)", (
     const res = await submitProposal(b, { content: "Late claim." }, jotCtx(jot.spans[0]?.hash));
     expect(new Set(res.proposal?.covers)).toEqual(new Set([jot.spans[0]?.hash as string, turn]));
   });
+
+  test("a note in the reply to a Stop ask claims only itself: the re-fired Stop moves the cursor, so the NEXT typed turn is never its turn (review of #437)", async () => {
+    const replies = [a("I wrote a note."), { role: "assistant" as const, text: "remember(...)", source: "tool" as const }];
+    for (const [i, reply] of replies.entries()) {
+      // A reply with text appends an assistant span; one that is only a tool
+      // call is ALL_EXCLUDED. Either way the cursor moves past the note's `from`.
+      const session = `ask-${String(i)}`;
+      const b = buf();
+      const turns: Turn[] = [u(long(`one ${session}`)), a("reply one")];
+      b.capture({ session, scope: SCOPE, turns: [...turns] });
+      // The Stop asks; the model answers with a note, after that Stop's capture.
+      const jot = b.jot({ session, scope: SCOPE, text: long(`ask-reply note ${String(i)}`) });
+      const own = jot.spans[0]?.hash as string;
+      await submitProposal(b, { content: `A note in the ask reply, ${session}.` }, jotCtx(own, { session }));
+      // The re-fired Stop: the ask came back as ritual text, then the reply.
+      turns.push({ role: "user", text: "Stop hook feedback: write it up", source: "ritual" }, reply);
+      expect(b.capture({ session, scope: SCOPE, turns: [...turns] }).cursorAfter).toBe(turns.length);
+      turns.push(u(long(`two ${session}`)), a("reply two"));
+      const next = b.capture({ session, scope: SCOPE, turns: [...turns] }).spans.find((s) => s.kind === "conversation");
+      expect(next).toBeDefined();
+      const mine = b.coverage(SCOPE).filter((m) => m.session === session).map((m) => m.spanHash);
+      expect(mine).toEqual([own]);
+    }
+  });
+
+  test("a compaction mid-turn: the pre-compact capture hands the note its turn; what the Stop captures after is not the note's", async () => {
+    const b = buf();
+    const t = transcript(b);
+    t.turn("one");
+    const jot = b.jot({ session: "s1", scope: SCOPE, text: long("note before compaction") });
+    const r = await submitProposal(b, { content: "Before the compaction." }, jotCtx(jot.spans[0]?.hash));
+    const turns: Turn[] = [u(long("one")), a("reply to one"), u(long("two"))];
+    const pre = b.capture({ session: "s1", scope: SCOPE, turns: [...turns] }).spans.find((s) => s.kind === "conversation");
+    b.boundary({ session: "s1", scope: SCOPE, kind: "pre-compaction" });
+    turns.push(a("reply to two"), u(long("typed while it ran")), a("reply"));
+    const after = b.capture({ session: "s1", scope: SCOPE, turns: [...turns] }).spans.find((s) => s.kind === "conversation");
+    expect(b.coverage(SCOPE).find((m) => m.spanHash === pre?.hash)?.proposalId).toBe(r.proposal?.id as string);
+    expect(b.coveredHashes(SCOPE).has(after?.hash as string)).toBe(false);
+  });
+
+  test("a turn claim that cannot be written costs only the claim: the capture lands, the turn stays unwritten, the failure is emitted", async () => {
+    const b = buf();
+    const t = transcript(b);
+    t.turn("one");
+    const jot = b.jot({ session: "s1", scope: SCOPE, text: long("note, claim refused by the disk") });
+    await submitProposal(b, { content: "A note." }, jotCtx(jot.spans[0]?.hash));
+    harden(scopeFile(SCOPE, "coverage.jsonl"));
+    const turns: Turn[] = [u(long("one")), a("reply to one"), u(long("two")), a("reply to two")];
+    const out = b.capture({ session: "s1", scope: SCOPE, turns });
+    expect(out.reason).toBe("APPENDED");
+    const two = out.spans.find((s) => s.kind === "conversation")?.hash as string;
+    expect(b.coveredHashes(SCOPE).has(two)).toBe(false);
+    expect(b.events("remember.write.failed").some((e) => e.data?.["site"] === "coverage")).toBe(true);
+  });
 });
 
 // ── updates: resolution ─────────────────────────────────────────────────────
