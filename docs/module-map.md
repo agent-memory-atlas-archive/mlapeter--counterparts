@@ -58,6 +58,23 @@ input — does `encode` shrink to gates-and-tagging inside `remember`'s pipeline
 | `stance-env.ts` | `COUNTERPARTS_OBSERVER` / `COUNTERPARTS_OWNER`, read the way the explicit-dir guard is, each failing toward less power. Unset, the configuration's `owner: true` decides for a server Claude Code starts (`mcp/bin/serve.ts#ownerStance`, 2026-10-02). |
 | `log/` | A shared leaf with its own CONTRACT: the process log — one line per allowlisted event (failures, stand-downs, turn ends, write-ups, the night, the wake) from the hook, the worker, the nightly run and the MCP server, to `<dataDir>/sessions/log/<date>.log`, ids and codes only, kept 7 days. Read by `counterparts log` and one doctor line. **Added 2026-09-30**: none of the four processes wired its `onEvent`, so ~270 event names died with their process. |
 
+**The five largest files, split by concern (2026-10-11)** — moves only, for the plugin
+directory's check on files over 256 KiB. Each file still exports everything it did, so no
+import changed. `core/counterpart.ts` keeps the class; its event names and record builders
+are in `counterpart-events.ts`, its shapes in `counterpart-types.ts`, and the bodies of the
+boundary, the sweep fallback and the deposit in `counterpart-boundary.ts`,
+`counterpart-sweep.ts` and `counterpart-deposit.ts`. `core/store/index.ts` keeps the class
+and every write; `marks.ts`, `shapes.ts` and `index-text.ts` hold its marks, shapes and
+index text, and `reads-memories.ts`, `reads-marks.ts` and `reads-history.ts` the bodies of
+its public reads. `mcp/server.ts` keeps the class; `server-words.ts`, `server-options.ts`
+and `server-args.ts` hold its words, options and argument readers, and
+`server-session-end.ts` and `server-self-tools.ts` the bodies of five of its tools.
+`cli/commands.ts` keeps the dispatcher, the help, and the repair that reads through the
+walk seam (its importers are pinned); each other command family is a `commands-*.ts` file. `claude-code/doctor.ts` keeps `doctorFindings` and about half the checks
+(every one that reads the zone it sets); the finding's shape and the checkout, open, upgrade,
+self-page, host, write-up and report groups are `doctor-*.ts` files. A moved class body is a free function taking the
+instance, behind a one-line delegate on the class (`docs/decisions.d/refactor-file-split.md`).
+
 ## Tools (`tools/`)
 
 | tool | job |

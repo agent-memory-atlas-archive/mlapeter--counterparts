@@ -645,7 +645,7 @@ own clock: `dateWords` leaving out "this year" (wrong only in the hours a New Ye
 falls on one side of the zones and not the other), and the Health checklist's
 "checked 14:05", the moment the browser ran doctor. Both are left as they are.
 One edge left too: the page's `ask` runs the console, which dates in the zone beside the
-store (`cli/commands.ts#openCounterpart`), not a named configuration kept somewhere else.
+store (`cli/commands-shared.ts#openCounterpart`), not a named configuration kept somewhere else.
 On an install the configuration is beside the store, and the two agree.
 Test: `test/dashboard-zone.test.ts`, on a store configured to a zone 20 hours or
 more from the machine's.

@@ -198,7 +198,7 @@ open-thread list and flags the memories it can still resolve — cheap, one-shot
 the only way the pre-migration years get a threads lane at all.
 **Status 2026-10-01 (lane 8): (1) and (2) are built.** `note` and a `session_end` entry take
 `unresolved: true`; a later write that `updates` one and says `unresolved: false` clears the
-old row's flag (`counterpart.ts#closeThread`; `true` moves the thread onto the newer row),
+old row's flag (`counterpart-deposit.ts#closeThread`; `true` moves the thread onto the newer row),
 and `how: changed` or `corrected` takes it out of the lane by `settledOver`. The write-up
 ask says to close what got done. `THREADS_MAX` is 5 now. (3) is not built.
 

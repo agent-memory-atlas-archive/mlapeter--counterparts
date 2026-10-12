@@ -102,7 +102,7 @@ gate reads.
 
 ## 4. `store/` + `schemas/` — `updates:` candidates and id resolution
 
-**Closed 2026-09-24** — `counterpart.ts#resolveUpdatesFor` binds `resolveId` (`store.resolve`) and `candidates` (`store.search`). `UPDATES_FLOOR` / `UPDATES_MARGIN` are still uncalibrated.
+**Closed 2026-09-24** — `counterpart-sweep.ts#resolveUpdatesFor` binds `resolveId` (`store.resolve`) and `candidates` (`store.search`). `UPDATES_FLOOR` / `UPDATES_MARGIN` are still uncalibrated.
 
 ```ts
 type IdResolver = (id: string) => string | null | Promise<string | null>;
@@ -280,7 +280,7 @@ at all and keep their seven days (today they are retired when the sweep claims t
 
 ## 14. The sweep's gate row has one reason for a deliberate skip — CLOSED 2026-09-23 (C2)
 
-`core/counterpart.ts#SweepSkipped` now has a second reason, `"not-opted-in"`, which the
+`core/counterpart-types.ts#SweepSkipped` now has a second reason, `"not-opted-in"`, which the
 worker writes when the owner has not opted into the API sweep (whatever key is present);
 `"no-credential"` is left for opted in with no key. Doctor's `Sweep` line reads
 `not-opted-in` — and a pre-C2 `no-credential` with the knob absent — as green `next

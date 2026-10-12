@@ -578,7 +578,7 @@ That is a different mechanism, not a wider parameter, and it is not built.
    live; the workaround is exact, not approximate, and the cost is up to five
    queries on a 150 ms hot path. *(Noted 2026-10-09: the store side is built,
    `order: "desc"`, 2026-09-24 (cli §10); doctor keeps its ladder on purpose, as
-   `doctor.ts#WINDOWS` says.)*
+   `doctor-finding.ts#WINDOWS` says.)*
 2. **`adapter.checkout` is a durable name in `core/counterpart.ts`.** The third
    time the core has learned a string for an adapter's sake, and for the same
    narrow reason the spawn names did: `dashboard/registries.ts` derives

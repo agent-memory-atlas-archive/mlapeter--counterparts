@@ -1110,7 +1110,7 @@ and `test/local-day.test.ts` pins `America/Chicago`, `UTC` and `Asia/Tokyo` expl
 the older writer tests now read the night through `pageWriterNight` instead of
 recomputing it from UTC, so the whole suite passes under any `TZ`.
 
-**Doctor reads the same night** (PR #189 review, M2). `doctor.ts#pageWriterFindings` took
+**Doctor reads the same night** (PR #189 review, M2). `doctor-self-page.ts#pageWriterFindings` took
 `dateOf(store.now())` — UTC — and compared a claim's local `on` with it, so every Pacific
 evening it called an in-flight claim "nothing-to-say (derived)" and named the wrong night
 as owed. It now reads `pageWriterNight(store)` and passes that `about` to
@@ -1187,7 +1187,7 @@ optional `model` (documented as not always present) and `message.model` on the
 transcript's assistant entries (reliable, per turn). The relay would be: every hook
 already parses the transcript (`claude-code/bin/hook.ts#toHookInput`) → take the last
 assistant `message.model` that is not `<synthetic>` → carry it on the session registry
-record (`adapters/sessions.ts`, optional fields already) → `mcp/server.ts#chapterTool`
+record (`adapters/sessions.ts`, optional fields already) → `mcp/server-session-end.ts#chapterTool`
 reads that record, as `corroborate` already does → `appendEpisode` opts → `meta` per
 chapter. It lags a mid-session `/model` switch by one turn (the record is refreshed at
 the boundary, and this adapter registers no `PostModelSwitch` hook).
