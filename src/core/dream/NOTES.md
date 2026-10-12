@@ -655,3 +655,14 @@ dream whose `shown` was widened to them):
 - The personal fold met the slow lane after ONE awake use the next lived day: its three
   folded parts, written by sessions on days 6, 11 and 19, count as re-encodings of its slot.
   That is the D6 intent; whether one use should be enough is for the coordinator.
+
+**Review of #432 (same copy, same clusters), after random-06's core-lever ruling.** A fold
+is `me`/`us` only when most of its parts are, and its recurrence is what came back after
+it was folded (parts' later uses count; their births and earlier uses don't). The two work
+folds (2 and 3 `us` parts of 11) are now `work`. The personal fold no longer meets the
+slow lane on one use the next day (1 recurrence day, 1 session); with four post-fold use
+days by three sessions over seven lived days (three of the fold, one of a part) it does.
+"Felt" narrowed to review 11's: a `self`/`person` memory felt at 0.5 or more. That keeps
+22 of 1,009 live memories out of a fold, down from 79 (any feeling). A fold now starts at
+the strength of the parts it holds over (kept ones don't lift it); on these clusters the
+starts are the same. Undo put every source's fade back exactly (57 of 57).
