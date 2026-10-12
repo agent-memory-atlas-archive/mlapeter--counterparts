@@ -604,10 +604,12 @@ export class ClaudeCodeAdapter extends Lifecycle {
       const resumed = this.resumesToday(input);
       this.noteSession("start", input);
       const budget = this.config.injectionBudgetBytes;
-      if (budget === undefined) {
+      if (budget === undefined || this.config.injectionBudgetDefaulted === true) {
         // The tripwire. We inject what exists, and we say that nobody told us
-        // what this host can carry — an invented ceiling is scar §2.18.
-        this.emit("adapter.budget.unreported", {});
+        // what this host can carry — an invented ceiling is scar §2.18. A
+        // configuration with no key wakes under Claude Code's default since
+        // 2026-10-12 (`config.ts#withBudgetDefault`), and still trips it.
+        this.emit("adapter.budget.unreported", budget === undefined ? {} : { defaulted: budget });
       }
       // THE DELIVERY PREFACE is asked for here, at injection, and composed
       // nowhere else. The stored bundle was rendered at the last boundary and is
