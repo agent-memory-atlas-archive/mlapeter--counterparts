@@ -7,7 +7,7 @@
  * mechanism fired today, and the last dream; then three rows of switches
  * (Counterparts here, on · paused · off; the view; the brain), and Claude
  * Code's own memory for whoever opted in. While core's first meeting is put
- * off, "Meet your counterpart" tops the body; at the first start after an
+ * off, "Start the 5-minute intro" tops the body; at the first start after an
  * install, the sidebar asks Claude to speak first (once). Closed
  * (`quiet`), it is only a dim tail under the prompt, ending with how to open
  * it again. The design is the round-3 mockups Mike chose on 2026-10-10
@@ -32,9 +32,17 @@
  *     its old name note) / session_end (Saved) and on recall by id (`↗ opened`).
  *
  * The engine lets `$` pass only to functions declared at the top of this
- * file, so everything that touches the engine lives here; the brain, the
- * cells, the feed, the layout and the mechanism table are pure modules beside
- * it, and the body is a Client surface module (`./body.tsx`).
+ * file, reads a `$.state` source only from an atom declared here, and reads
+ * the surface modules (`<Client module=…>`) off this file's source, so those
+ * live here: every function that touches the engine, the atoms, the hooks.
+ * Everything else is beside it, with no `$` (a press reaches a view as a
+ * closure made here). The shared core: `state.ts` (timings, `run`),
+ * `words.ts` (what the sidebar says), `feed.ts` (the dashboard's rows and the
+ * recall block, read), `sections.ts` (the body's sections, laid out),
+ * `mechanisms.ts`, `scopes.ts`, `theme.ts` (the colours). The views: `pane.tsx` (the pane's
+ * tree on every surface), `terminal.tsx` (the brain's header) with
+ * `brain.ts`, `cells.ts`, `width.ts` and `tail.ts`, `desktop.tsx` (the
+ * header without a brain), and `body.tsx` (the body, a Client surface module).
  */
 
 import { atom, read, update } from 'claude-code'
@@ -49,13 +57,12 @@ import type {
   SidebarRow,
   SidebarSaved,
   SidebarScope,
-  SidebarSearch,
+  SidebarTheme,
   SidebarToday,
   SidebarView,
 } from '../types'
 import type { BodyProps } from './body'
-import { Brain } from './brain'
-import { encodeCells } from './cells'
+import { brainlessHeader } from './desktop'
 import {
   RULES,
   RULE_NAMES,
@@ -81,125 +88,80 @@ import {
   payloadOf,
   resolveServer,
   savedItems,
-  shortDay,
   shortDir,
   surfacedIds,
   titled,
-  wrap,
 } from './feed'
 import type { DashDream, DashEvent, Firing, RecallBlock } from './feed'
 import {
   MECHS,
   dashboardBase,
   dashboardPort,
-  dashboardRoutes,
-  hex,
   isDashboardUrl,
   mechById,
   memoryUrl,
   stageOf,
 } from './mechanisms'
 import type { MechId } from './mechanisms'
+import { aboveSwitches, footer, frame, meetRow, pausedBanner, plainBody } from './pane'
+import type { PaneActions, PaneEls } from './pane'
 import { lookup, parentOf, parseRegistry, settingsHookConfig } from './scopes'
 import type { RegistryMode } from './scopes'
-import { CLASSIC_HINT, P, TAIL_HINT, clip, layoutBody, quietTail } from './sections'
-import type { Line } from './sections'
+import { layoutBody } from './sections'
+import {
+  AUTO_CLOSE_MS,
+  COUNT_EVENTS,
+  FALLBACK_LIMIT,
+  FALLBACK_MAX,
+  FIRING_MS,
+  IDLE_SEARCH,
+  MEET_FLAG,
+  MEET_PRESS_MS,
+  MEET_PROMPT,
+  NAMES_NOTHING,
+  OPEN_COLUMNS,
+  POLL_IDLE_MS,
+  POLL_MS,
+  PULSE_SLOTS,
+  PULSE_STAGGER_MS,
+  ROOMY_ROWS,
+  SCOPES_FILE_TTL_MS,
+  SCOPE_RECHECK_MS,
+  STALE_MS,
+  UNKNOWN_SCOPE,
+  quiet,
+  run,
+} from './state'
+import { CLASSIC_HINT, TAIL_HINT, TAIL_SPARE, quietTail } from './tail'
+import { BRAIN_ROWS, brain, brainHeader, fireBrain, fps, fpsReport, frameCells, look, lookKey, paceMs, raster } from './terminal'
+import { applyTheme, normTheme } from './theme'
 import { cells } from './width'
+import {
+  CONFIRM_FROM,
+  bodyOf,
+  firedIn,
+  isAbsolutePath,
+  isPaused,
+  memoriesCount,
+  memoryMeta,
+  normBrain,
+  normView,
+  scopeOf,
+  statusFor,
+  stoodDownNote,
+  storedWords,
+  switchExplains,
+  truthy,
+  words,
+} from './words'
 
 // ── constants ───────────────────────────────────────────────────────────────
 
 const PANE = 'counterparts'
 const TITLE = 'Counterparts'
-/**
- * Body columns the sidebar asks for: 34, which the dock draws 35 wide with its
- * divider (measured in v0.1: `columns: 44` gave a dock 45 wide), the mockups'
- * 35. The body is laid out to 32 text columns inside a column of padding each
- * side.
- */
-const OPEN_COLUMNS = 34
-/** The brain beside the title, in cells. */
-const BRAIN_COLS = 18
-const BRAIN_ROWS = 6
-/** The header's right column starts this far in: the brain and two blank columns. */
-const HEAD_X = BRAIN_COLS + 2
-/** "Dim at rest": what is not lit draws at this brightness, so a lit region stands out (the mockups' 0.72). */
-const DIM_REST = 0.72
-/** Rows of pane body from which the header gets a blank row above it (the mockups at 200x60 have one; at 160x48, not). */
-const ROOMY_ROWS = 44
-/** The dashboard is read only while the pane is drawn: this often while things happen… */
-const POLL_MS = 15000
-/** …and this often after four quiet reads in a row. */
-const POLL_IDLE_MS = 30000
-/** A gap longer than this since the last read starts over from a cold read. */
-const STALE_MS = 10 * 60000
-/** A switch's note and the pause confirm close by themselves after this. */
-const AUTO_CLOSE_MS = 30000
-/** How often the folder's registry is read again while no dashboard poll reads it (the pane closed or not shown). */
-const SCOPE_RECHECK_MS = 60000
-/** How long the registry's path, found from the settings, is trusted before it is looked up again. */
-const SCOPES_FILE_TTL_MS = 5 * 60000
-/**
- * Cells the quiet tail leaves beside the `hint` prop, so the engine never
- * cuts the ` · /counterparts opens it` at its end. Measured at 160 columns
- * (Claude Code 2.1.296, term-loop): the engine draws its line two cells in,
- * joins the tail with ` · `, keeps three cells clear at the row's end, and
- * draws more than the prop holds: `⏸ manual mode on · ? for shortcuts · ←
- * for agents` (49 cells) for a prop about 30 wide, 19 cells more (auto mode's
- * line, 16 more). 2 + 3 + 3 + 19, and five to spare for a wider line.
- */
-const TAIL_SPARE = 32
-/** The hover groups that show what a click on each memory switch does, over the rows above the footer. */
-const HOVER_CP = 'counterparts-switch-cp'
-const HOVER_MEM = 'counterparts-switch-mem'
-const FIRING_MS = 2600
-/**
- * One event can prove several mechanisms: their pulses go this far apart, so
- * each arc reads as its own. At most four slots: a fifth shares the fourth.
- */
-const PULSE_STAGGER_MS = 300
-const PULSE_SLOTS = 4
-/** The most the turning brain draws a second: a pulse's arc. Swaying it draws every other tick (`Brain.calmFps`), and at rest none. */
-const DEFAULT_FPS = 12
-/** Events that change the memory count, worth one read of `/api/pulse` (the dear one). */
-const COUNT_EVENTS = new Set(['gate.deposit', 'gate.chunk', 'memory.pruned', 'memory.merged', 'dream.changed', 'contradiction.settled'])
-/**
- * A dashboard older than v0.2 says no `firedToday`: today's counts come from
- * each event's newest rows, this many first, read deeper (doubling) while all
- * of them are today's, to at most FALLBACK_MAX. Only on a cold read; polls add.
- */
-const FALLBACK_LIMIT = 150
-const FALLBACK_MAX = 1200
-
-/**
- * The brain's cells take the terminal's default background (`bg: null` in
- * `frameCells`), so the panel's own black (`P.panel`) shows through them.
- * Measured: the engine draws a Raster's colours at 4 bits a channel, and the
- * panel colour given to the cells came out `#000011`, a navy box round the
- * brain.
- */
-/** The search box: a shade above the panel, so it reads as a field without a border. */
-const SEARCH_BG = '#121a22'
-const CYAN_DIM = '#0b6f7c'
-
-/**
- * The first meeting's line: what the sidebar submits, once per install at the
- * first idle start while core says `not_started`, and on each press of "Meet
- * your counterpart". Framed as the plugin's (not `asUser`): the model reads
- * "The counterparts plugin sent a message: …", and core's wake carries the
- * meeting's instructions. Claude Code shows this line to the person ("Prompt
- * from the counterparts plugin"), so it reads as a sentence to them, and still
- * tells the model to introduce itself (2026-10-12, owner's onboarding trial).
- */
-const MEET_PROMPT = 'Counterparts: Claude has a memory now and would like to introduce itself.'
-/** `$.store`: the speak-first went out (`{ session, at }`); never again while it is there. */
-const MEET_FLAG = 'meetTriggered'
-/** A second press of "Meet your counterpart" this soon after the first submits nothing. */
-const MEET_PRESS_MS = 60000
 
 // ── state (the contract: ../types/index.d.ts) ──────────────────────────────
 
-const IDLE_SEARCH: SidebarSearch = { query: '', status: 'idle', header: '', total: 0, hits: [], error: null }
-const UNKNOWN_SCOPE: SidebarScope = { mode: 'unknown', own: false, setBy: null, dir: null, error: null, busy: false, unread: null }
 const pulseA = atom({ plugin: 'counterparts', key: 'pulse' } as const, null)
 const dashA = atom({ plugin: 'counterparts', key: 'dash' } as const, 'unknown')
 const mindA = atom({ plugin: 'counterparts', key: 'mind' } as const, null)
@@ -218,198 +180,12 @@ const ccSwitchA = atom({ plugin: 'counterparts', key: 'claudeMemorySwitch' } as 
 const onboardingA = atom({ plugin: 'counterparts', key: 'onboarding' } as const, UNKNOWN_ONBOARDING as SidebarOnboarding)
 const viewA = atom({ plugin: 'counterparts', key: 'view' } as const, 'sidebar')
 const brainA = atom({ plugin: 'counterparts', key: 'brain' } as const, 'turning')
+const themeA = atom({ plugin: 'counterparts', key: 'theme' } as const, 'tron')
 const placedA = atom({ plugin: 'counterparts', key: 'placed' } as const, false)
 const noteA = atom({ plugin: 'counterparts', key: 'switchNote' } as const, null)
 const pauseAskA = atom({ plugin: 'counterparts', key: 'pauseAsk' } as const, null)
 
-// ── the module's own (a reload starts these over; the host keeps the state) ──
-
-const brain = new Brain()
-/** The Raster the terminal last mounted: a blit must match its size. */
-const raster = { cols: 0, rows: 0, live: false, cells: '', look: '' }
-/** What the brain shows besides its turning, refreshed by each drawing. */
-const look = { mono: false, still: false, sel: null as MechId | null, firing: [] as readonly MechId[] }
-const fps = {
-  target: DEFAULT_FPS,
-  inFlight: false,
-  lastTick: 0,
-  /** `performance.now()` of each blit the surface took: the measurement. */
-  blits: [] as number[],
-  frameMs: [] as number[],
-}
-const run = {
-  session: '',
-  interactive: false,
-  /** The first drawing's one-time work (a quiet scope read, if the start's found none) is done. */
-  woke: false,
-  /** A read of this folder's registry is on its way. */
-  scopeReading: false,
-  /** The folder this session started in (`session.start`'s `cwd`). */
-  cwd: '',
-  /** The registry the hooks read, and when (`$.clock`) that was found. */
-  scopesFile: null as string | null,
-  scopesFileAt: 0,
-  scopeTimer: null as { cancel: () => void } | null,
-  /** Canonical forms of paths that resolved whole (a folder's realpath rarely moves). */
-  canon: new Map<string, string>(),
-  /** Whether to open the pane unasked has been decided (from the first band drawing). */
-  placementDecided: false,
-  /** Whether this surface docks a pane (the fullscreen renderer), once the band or the hint has said. */
-  docks: undefined as boolean | undefined,
-  cold: false,
-  polling: false,
-  /** A dashboard read is scheduled or running. */
-  pollArmed: false,
-  quietPolls: 0,
-  lastPollAt: 0,
-  lastSeq: -1,
-  server: null as string | null,
-  /** The dashboard's port, read once (`dashPort`). */
-  port: null as number | null,
-  liveSeq: 0,
-  /** An unasked pane this surface could not place yet: the tail says `/counterparts opens the sidebar` until it draws. */
-  hint: false,
-  brainTimer: null as { cancel: () => void } | null,
-  /** Which timer is the brain's now: a tick or a blit answer of an older one changes nothing. */
-  brainGen: 0,
-  /** The pace the brain's timer runs at; `rest` while it is stopped at rest. */
-  brainPace: 'calm' as 'burst' | 'calm' | 'rest',
-  /** When this session began: an event naming no session, from after it, is taken as this session's. */
-  startedAt: 0,
-  /** The command that opens a URL here, once found. */
-  opener: null as readonly string[] | null,
-  /** Fresh drawings asked for after refused blits since the last blit that was taken. */
-  redraws: 0,
-  /** The body's text width at the last drawing: what the expand threshold is measured at. */
-  bodyW: 32,
-  /** Whether the dashboard says `firedToday` (v0.2 and later); null until asked. */
-  firedToday: null as boolean | null,
-  /**
-   * The calendar day on this machine's clock when today's counts were last read: a new one starts them over.
-   * Not the dashboard's `today`, which is the store's zone: a store set to another zone would differ from this
-   * clock all day and read the counts again on every poll.
-   */
-  countedOn: '',
-  /** This session's rows were looked for on the dashboard (`seedSession`), once a module life. */
-  seeded: false,
-  /** The person sent a prompt of their own, or ran a slash command, this session: the speak-first stands down. */
-  typed: false,
-  /**
-   * The person sent a PROMPT of their own (`prompt.submit`), not only a command: only this drops a
-   * speak-first already queued, since only a prompt gets a reply where core can offer the meeting.
-   */
-  prompted: false,
-  /** The speak-first was considered this module life (it goes out at most once per install, `MEET_FLAG`). */
-  meetTried: false,
-  /** The session whose start sent the speak-first, as stored; null when it never went out. */
-  meetFiredIn: null as string | null,
-  /**
-   * This module life submitted the speak-first. Unlike `meetFiredIn`, core's state moving on
-   * never clears it: the person's reply calling `meet` (state `offered`) must not let a
-   * speak-first still queued behind it through (`prompt.submit`).
-   */
-  spokeFirst: false,
-  /** When "Meet your counterpart" was last pressed (`$.clock`). */
-  meetPressedAt: -Infinity,
-}
-
-// ── pure helpers ────────────────────────────────────────────────────────────
-
-/** Work left running on its own: a reload or the session's end may cut it off, and that is fine. */
-function quiet(p: Promise<unknown>): void {
-  p.catch(() => undefined)
-}
-
-/** Nothing is remembered and nothing comes to mind: paused for now, or set off. */
-function isPaused(mode: string): boolean {
-  return mode === 'paused' || mode === 'off'
-}
-
-/**
- * A stored view, from any version: v0.1's `full` is the sidebar; its `quiet`
- * (a narrow pane), `rail` and `hidden`, and v0.2's first `strip` (one line
- * above the prompt, dropped 2026-10-10), are quiet (no pane, the tail). Read
- * so, never written back: a v0.1 copy reading the same store keeps its word.
- */
-function normView(v: unknown): SidebarView {
-  return v === 'quiet' || v === 'rail' || v === 'hidden' || v === 'strip' ? 'quiet' : 'sidebar'
-}
-
-function normBrain(v: unknown): SidebarBrain {
-  return v === 'still' || v === 'off' ? v : 'turning'
-}
-
-function achievedFps(): number {
-  const now = performance.now()
-  const recent = fps.blits.filter(t => now - t < 10000)
-  if (recent.length < 2) return 0
-  const span = (recent[recent.length - 1] ?? 0) - (recent[0] ?? 0)
-  return span <= 0 ? 0 : ((recent.length - 1) * 1000) / span
-}
-
-function meanFrameMs(): number {
-  if (fps.frameMs.length === 0) return 0
-  return fps.frameMs.reduce((a, b) => a + b, 0) / fps.frameMs.length
-}
-
-function paceWords(mode: SidebarBrain): string {
-  if (mode === 'off') return 'off (no brain, no timer)'
-  if (mode === 'still') return 'still (no timer; one frame when something fires, one when it goes out)'
-  if (run.brainTimer === null) return run.brainPace === 'rest' ? 'at rest (no timer)' : 'stopped'
-  return run.brainPace === 'burst' ? `in a burst (${String(fps.target)} fps)` : `swaying (${(1000 / paceMs('calm')).toFixed(0)} fps)`
-}
-
-function fpsReport(mode: SidebarBrain): string {
-  if (fps.blits.length < 2) {
-    return `Brain: no frames measured yet (target ${String(fps.target)} fps), now ${paceWords(mode)}. It draws only while the sidebar shows in a terminal and something moves; ask again in a few seconds.`
-  }
-  return `Brain: ${achievedFps().toFixed(1)} fps achieved over the last 10 s (target ${String(fps.target)}), now ${paceWords(mode)}; a frame takes ${meanFrameMs().toFixed(2)} ms to compute.`
-}
-
-/**
- * The status line: only a warning. A folder paused or off says so in every
- * session there, whatever the view (`⚠ counterparts:` and amber are the
- * engine's); the normal case has no status line at all (v0.2).
- */
-function statusFor(scope: SidebarScope, memoryOff: boolean): string | undefined {
-  if (!isPaused(scope.mode)) return undefined
-  const parts =
-    scope.mode === 'paused'
-      ? ['⏸ Counterparts memory paused in this folder', scope.own ? '/counterparts resume' : `resume it in ${shortDir(scope.setBy)}`]
-      : ['◌ Counterparts memory off in this folder']
-  if (memoryOff) parts.push('Claude memory off')
-  return parts.join(' · ')
-}
-
-/** What the brain shows besides its turning: a frame drawn under another look is not reused. */
-function lookKey(): string {
-  return `${String(look.mono)}|${String(look.still)}|${look.sel ?? ''}|${look.firing.join(',')}`
-}
-
-function frameCells(cols: number, rows: number, now: number): string {
-  if (look.still) {
-    // The still brain: a fixed view, lit only while something fires (or a mechanism is opened).
-    brain.dark()
-    for (const id of new Set([...look.firing, ...(look.sel === null ? [] : [look.sel])])) {
-      const m = mechById(id)
-      if (m !== undefined && !look.mono) brain.flash(m.region, stageOf(m.id).col)
-    }
-  } else if (look.sel !== null) {
-    const m = mechById(look.sel)
-    if (m !== undefined) brain.light(m.region, stageOf(m.id).col)
-  }
-  const t0 = performance.now()
-  const cells = encodeCells(brain.frame(cols, rows, now, { mono: look.mono, tag: null, bg: null, dimRest: DIM_REST }))
-  fps.frameMs.push(performance.now() - t0)
-  if (fps.frameMs.length > 120) fps.frameMs.shift()
-  return cells
-}
-
-function fireBrain(mech: MechId, now: number): void {
-  const m = mechById(mech)
-  if (m === undefined || look.mono || look.still) return
-  brain.pulse(m.region, stageOf(m.id).col, now, mech === 'retrieval' ? 'prefrontal' : 'thalamus')
-}
+// ── the brain's pulses ──────────────────────────────────────────────────────
 
 /**
  * Every mechanism a read proved, one pulse each: the first at once, the rest
@@ -429,111 +205,6 @@ function firePulses($: EngineInterface, ids: readonly MechId[]): void {
     if (delay === 0) fireBrain(id, Date.now())
     else $.clock.after(delay, () => fireBrain(id, Date.now()))
   }
-}
-
-/**
- * The brain-off header's `◉` while something fires: the mechanism's stage
- * colour, but never Retrieval's amber, which in this pane says only a warning
- * (Mike, 2026-10-10): cyan then.
- */
-function litDot(id: MechId): string {
-  const st = stageOf(id)
-  return st.id === 'retrieval' ? P.cyan : hex(st.col, 0.95)
-}
-
-function trimSlash(path: string): string {
-  return path.replace(/\/+$/, '')
-}
-
-/**
- * What the switch says instead of acting, by where the folder stands. It acts
- * only on a folder whose OWN entry holds the mode: pausing anything else would
- * leave an entry of its own behind when resumed (the `scope` tool can set
- * on, observer, off, pause and resume, not "unset"), and it never turns an
- * `off` folder on.
- */
-function switchExplains(scope: SidebarScope): string | null {
-  const here = scope.dir ?? 'this folder'
-  // A folder off by its OWN entry: the switch turns it back on (after a confirm). Off by a parent's: never flipped from here.
-  if (scope.mode === 'off' && !scope.own) {
-    return scope.setBy === null
-      ? `This folder is off, and not by a setting of its own. \`counterparts scope ${here} --on\` turns it on.`
-      : `This folder is off because ${scope.setBy} is set off. The switch won't change that folder from here; \`counterparts scope ${scope.setBy} --on\` does.`
-  }
-  if (scope.mode === 'paused' && !scope.own) {
-    return `Paused because ${scope.setBy ?? 'a folder above this one'} is paused. Resume it there: \`counterparts scope ${scope.setBy ?? '<that folder>'} --resume\`.`
-  }
-  if (scope.mode === 'unset') {
-    return `Nothing is set for this folder, so Counterparts is on by default. The switch pauses only a folder with a setting of its own: a pause here would come back as an explicit “on”, and nothing can put a folder back to unset yet. \`counterparts scope ${here} --on\` gives it one.`
-  }
-  if ((scope.mode === 'on' || scope.mode === 'observer') && !scope.own) {
-    return `This folder follows ${scope.setBy ?? 'a folder above it'} (${scope.mode}). The switch pauses only a folder with a setting of its own; \`counterparts scope ${here} --${scope.mode}\` gives it one.`
-  }
-  return null
-}
-
-/**
- * What a click on the Counterparts switch does, shown while the pointer is on
- * it: whole sentences in the card's two rows at the pane's 32 columns (a
- * longer one was cut mid-sentence there: "A click pauses it for").
- */
-function scopeHover(scope: SidebarScope): string {
-  if (scope.mode === 'unknown') return 'Not read yet: a click checks this folder, changing nothing.'
-  if (switchExplains(scope) !== null) return "This switch can't change this folder. A click says why."
-  if (scope.mode === 'paused') return 'Paused here, for every session. on resumes it; off asks first.'
-  if (scope.mode === 'off') return 'Off here, for every session. on turns it back on (asks first).'
-  if (scope.mode === 'observer') return 'Reads only here. on, paused or off: each asks first.'
-  return 'Paused or off holds for every session here; each asks first.'
-}
-
-/** Where the three-way switch stands: `on` for on, observer and unset (on by default); null while unknown. */
-function switchAt(mode: string): 'on' | 'paused' | 'off' | null {
-  if (mode === 'unknown') return null
-  return mode === 'paused' ? 'paused' : mode === 'off' ? 'off' : 'on'
-}
-
-/** An opt-in written in the environment: `1`, `true`, `yes` or `on`. */
-function truthy(v: string | undefined): boolean {
-  return v !== undefined && /^(1|true|yes|on)$/i.test(v.trim())
-}
-
-/** What a click on the Claude Code memory switch does: whole sentences in two rows of 32. */
-function memoryHover(on: boolean): string {
-  return on ? "Claude Code's MEMORY.md: a click turns it off in every session." : "Claude Code's own memory is off everywhere. A click turns it on."
-}
-
-/**
- * The header's count, whole: `1000 memories` (13 cells, the header's text
- * column widened by one for it). From 10,000, `10k+ memories`, still 13: the
- * exact number is on the dashboard.
- */
-function memoriesCount(n: number): string {
-  return n >= 10000 ? `${String(Math.floor(n / 1000))}k+ memories` : `${String(n)} memories`
-}
-
-/** The newest thing in plain words, for the tail. */
-function words(kind: 'remembered' | 'subconscious' | 'stored' | 'opened' | 'dreamed', what: string): string {
-  return `${kind}: ${what}`
-}
-
-/** What the tail says of a save: `Stored “title”` (the quotes keep a title's own `Answered:` from doubling the lead), or `Stored 2 memories, the first “title”`. */
-function storedWords(title: string, count = 1): string {
-  return count > 1 ? `Stored ${String(count)} memories, the first “${title}”` : `Stored “${title}”`
-}
-
-/** What a save wrote beyond its title, for the tail; none when the title was cut from the text itself. */
-function bodyOf(s: SidebarSaved): string | undefined {
-  return s.text === undefined || s.text.startsWith(s.title) ? undefined : s.text
-}
-
-/** The memory text an opened item shows, and the line saying what it is. */
-function memoryMeta(d: { kind?: unknown; learnedOn?: unknown; journal?: unknown }): string | null {
-  const kind = d.journal === true ? 'journal' : typeof d.kind === 'string' ? d.kind : null
-  // `Oct 9`, with the year only when it is not this one.
-  const thisYear = String(new Date().getFullYear())
-  const learned = typeof d.learnedOn === 'string' ? shortDay(d.learnedOn.startsWith(`${thisYear}-`) ? d.learnedOn.slice(5) : d.learnedOn) : ''
-  if (kind === null) return null
-  return learned === '' ? kind : `${kind} · learned ${learned}`
 }
 
 // ── the engine, through `$` ────────────────────────────────────────────────
@@ -598,12 +269,6 @@ async function readOnboarding($: EngineInterface): Promise<void> {
   }
 }
 
-/** The session a still-binding speak-first went out in, or null (none, or settled since: core moved past not_started). */
-function firedIn(stored: unknown): string | null {
-  const session = (stored as { session?: unknown } | null | undefined)?.session
-  return typeof session === 'string' ? session : null
-}
-
 /**
  * SPEAK FIRST: once per store (`MEET_FLAG` in `$.store`, shared by every
  * session and restart, settled when core moves on: `takeOnboarding`), at an
@@ -644,7 +309,7 @@ async function speakFirst($: EngineInterface): Promise<void> {
 }
 
 
-/** "Meet your counterpart": the same line as the speak-first, once a minute at most. */
+/** "Start the 5-minute intro": the same line as the speak-first, once a minute at most. */
 async function pressMeet($: EngineInterface): Promise<void> {
   const now = await $.clock.now()
   if (now - run.meetPressedAt < MEET_PRESS_MS) return
@@ -1149,9 +814,6 @@ async function openMech($: EngineInterface, id: MechId): Promise<void> {
   }
 }
 
-/** Event names whose rows name nothing (`feed.ts#mechFirings`) or need a dream read: not worth reading deeper. */
-const NAMES_NOTHING = new Set(['mcp.recall', 'associate.flush', 'contradiction.flagged', 'sleep.cycle', 'dream.journaled', 'dream.changed'])
-
 /**
  * A mechanism's firings from the panel's rows and its own (`/api/activity?name=`,
  * reads), FALLBACK_LIMIT first, twice as deep while fewer than `want` name a
@@ -1234,18 +896,6 @@ async function clickBody($: EngineInterface, key: string): Promise<void> {
 
 // ── the folder's switch ────────────────────────────────────────────────────
 
-function scopeOf(payload: Record<string, unknown> | null, isError: boolean, before: SidebarScope): SidebarScope {
-  if (isError || payload === null) {
-    return { ...before, busy: false, error: String(payload?.['detail'] ?? payload?.['reason'] ?? 'refused') }
-  }
-  const mode = typeof payload['mode'] === 'string' ? (payload['mode'] as string) : before.mode
-  const dir = typeof payload['scope'] === 'string' ? (payload['scope'] as string) : before.dir
-  // A read names the entry that governs (`setBy`); a set wrote this folder's own.
-  const setBy = payload['set'] === true ? dir : typeof payload['setBy'] === 'string' ? (payload['setBy'] as string) : null
-  const own = setBy !== null && dir !== null && trimSlash(setBy) === trimSlash(dir)
-  return { mode, own, setBy, dir, error: null, busy: false, unread: null }
-}
-
 /** Asks the memory server where this folder stands: only when the registry file could not be read and the person pressed. */
 async function readScope($: EngineInterface): Promise<void> {
   const before = await read($, scopeA)
@@ -1269,10 +919,6 @@ async function readText($: EngineInterface, path: string): Promise<string | null
   } catch {
     return null
   }
-}
-
-function isAbsolutePath(path: string): boolean {
-  return path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path)
 }
 
 /**
@@ -1469,13 +1115,6 @@ async function cancelPause($: EngineInterface): Promise<void> {
   await update($, pauseAskA, () => null)
 }
 
-/** Which own modes each confirm may change: a pause from on or observer; an off from those or paused; an on from off or observer. */
-const CONFIRM_FROM: Record<'pause' | 'off' | 'on', readonly string[]> = {
-  pause: ['on', 'observer'],
-  off: ['on', 'observer', 'paused'],
-  on: ['off', 'observer'],
-}
-
 /**
  * The confirm row's [Pause], [Turn off] or [Turn on]: the only presses that
  * pause, turn off, or turn on from off, and only a folder still holding its
@@ -1490,16 +1129,6 @@ async function confirmChange($: EngineInterface): Promise<void> {
   if (scope.busy || switchExplains(scope) !== null || !scope.own) return
   if (!CONFIRM_FROM[to].includes(scope.mode)) return
   await setScope($, to)
-}
-
-/**
- * The scope tool stood down: this session's memory server started while the
- * folder read only (`observer`), and changes nothing for the session's life,
- * the scope setting included (`serve.ts`). The console still can.
- */
-function stoodDownNote(scope: SidebarScope, to: 'pause' | 'resume' | 'off' | 'on'): string {
-  const flag = to === 'pause' ? '--pause' : to === 'off' ? '--off' : to === 'on' ? '--on' : '--resume'
-  return `This session started while the folder read only, so its memory server can't change the setting. \`counterparts scope ${scope.dir ?? '<this folder>'} ${flag}\` does; a session started after that follows it.`
 }
 
 /** One call: pause, resume, turn off or turn on this folder's own entry. */
@@ -1603,15 +1232,23 @@ async function setBrain($: EngineInterface, mode: SidebarBrain): Promise<void> {
   $.ui.invalidate('ui.render')
 }
 
+/** The pane's colours, for every session (`$.store`): tron or cozy. The Pane hook applies it at each drawing. */
+async function setTheme($: EngineInterface, name: SidebarTheme): Promise<void> {
+  await $.store.set('theme', name)
+  if ((await read($, themeA)) !== name) await update($, themeA, () => name)
+}
+
 /**
  * Opened without being asked: only where it docks as a sidebar, and only when
  * the stored view is the sidebar. Measured live (v0.1): the band draws BEFORE
- * `session.start` has read the stored view, so the view is read from the
- * store here.
+ * `session.start` has read the stored view, so the view (and the theme) is
+ * read from the store here.
  */
 async function openUnasked($: EngineInterface): Promise<void> {
   const view = normView(await $.store.get('view'))
   if ((await read($, viewA)) !== view) await update($, viewA, () => view)
+  const theme = normTheme(await $.store.get('theme'))
+  if ((await read($, themeA)) !== theme) await update($, themeA, () => theme)
   if (view !== 'sidebar') return
   const opened = await openPane($)
   if (!opened.isPlaced && run.interactive) {
@@ -1642,12 +1279,6 @@ function redrawAfterRefusal($: EngineInterface): void {
   if (run.redraws >= 3) return
   run.redraws += 1
   $.ui.invalidate('ui.render')
-}
-
-/** The timer's interval for a pace: every frame of the target while an arc flies, the calm rate while it sways. */
-function paceMs(pace: 'burst' | 'calm'): number {
-  const every = pace === 'burst' ? 1 : Math.max(1, Math.round(fps.target / brain.calmFps))
-  return Math.max(16, Math.round((every * 1000) / fps.target))
 }
 
 /**
@@ -1785,10 +1416,10 @@ export const register: Register = on => {
     if (run.startedAt === 0) run.startedAt = await $.clock.now()
     await $.command.register({
       name: 'counterparts',
-      description: 'Counterparts sidebar: open it, make it quiet, or set the brain',
-      argumentHint: '[quiet | brain turning|still|off | resume | fps [n]]',
+      description: 'Counterparts sidebar: open it, make it quiet, or set the brain or the theme',
+      argumentHint: '[quiet | brain turning|still|off | theme tron|cozy | resume | fps [n]]',
     })
-    const [mem, viewPref, brainPref, fpsPref, ccPref, ccEnv, meetMark] = await Promise.all([
+    const [mem, viewPref, brainPref, fpsPref, ccPref, ccEnv, meetMark, themePref] = await Promise.all([
       $.store.get('claudeMemory'),
       $.store.get('view'),
       $.store.get('brain'),
@@ -1796,7 +1427,9 @@ export const register: Register = on => {
       $.store.get('claudeMemorySwitch'),
       $.env.get('COUNTERPARTS_SIDEBAR_CC_MEMORY'),
       $.store.get(MEET_FLAG),
+      $.store.get('theme'),
     ])
+    await update($, themeA, () => normTheme(themePref))
     await update($, memoryA, () => mem !== false)
     // The Claude memory switch is drawn only for someone who opted in. Whoever had already
     // turned Claude Code's memory off keeps the switch (stored once), so nobody is left with a
@@ -1864,6 +1497,11 @@ export const register: Register = on => {
       await setBrain($, arg)
       return { text: arg === 'off' ? 'The brain is off: the header is one line.' : arg === 'still' ? 'The brain holds still, and lights where something fires.' : 'The brain turns slowly, and lights where something fires.' }
     }
+    if (verb === 'theme') {
+      if (arg !== 'tron' && arg !== 'cozy') return { text: `counterparts theme: tron or cozy (now ${normTheme(await read($, themeA))}).` }
+      await setTheme($, arg)
+      return { text: arg === 'cozy' ? 'Theme cozy: walnut, parchment, leaf green and pumpkin, in every session.' : 'Theme tron: black, cyan and amber, in every session.' }
+    }
     if (verb === 'resume') {
       if ((await read($, scopeA)).mode === 'unknown') await readScope($) // the registry could not be read: ask the server
       const scope = await read($, scopeA)
@@ -1876,7 +1514,7 @@ export const register: Register = on => {
       return { text: switchExplains(scope) ?? `Counterparts memory isn't paused in ${shortDir(scope.dir)}.` }
     }
     if (verb !== '' && verb !== 'open' && verb !== 'sidebar') {
-      return { text: 'Usage: /counterparts [quiet | brain turning|still|off | resume | fps [n]]. With nothing after it, opens the sidebar.' }
+      return { text: 'Usage: /counterparts [quiet | brain turning|still|off | theme tron|cozy | resume | fps [n]]. With nothing after it, opens the sidebar.' }
     }
     // Asked for: placed at any width, whatever view it was left in.
     const opened = await openPane($)
@@ -2025,7 +1663,9 @@ export const register: Register = on => {
     // session's copy is read too, so a turn of the switch here draws again.)
     await read($, memoryA)
     const memoryOn = await claudeMemoryOn($)
-    const [ccSwitch, onboarding] = await Promise.all([read($, ccSwitchA), read($, onboardingA)])
+    const [ccSwitch, onboarding, theme] = await Promise.all([read($, ccSwitchA), read($, onboardingA), read($, themeA)])
+    // Every colour below (and in the body's lines) is read from the palette in use: this session's theme.
+    applyTheme(normTheme(theme))
     const paused = isPaused(scope.mode)
     const mode = normBrain(brainMode)
     look.mono = paused
@@ -2048,6 +1688,19 @@ export const register: Register = on => {
 
     const roomy = fill >= ROOMY_ROWS
     const lit = firingNow[0] ?? look.sel
+    // Every press in the pane, as a closure over this hook's `$` (the views take no `$`).
+    const actions: PaneActions = {
+      search: value => runSearch($, value),
+      openDashboard: () => openDashboard($, '/'),
+      pressScope: to => pressScope($, to),
+      pressMeet: () => pressMeet($),
+      confirmChange: () => confirmChange($),
+      cancelPause: () => cancelPause($),
+      toggleClaudeMemory: () => toggleClaudeMemory($),
+      view: v => (v === 'sidebar' ? openPane($) : closeQuiet($)),
+      brain: b => setBrain($, b),
+    }
+    const paneEls: PaneEls = { Box, Text, Button, Input }
     const rows: JSX.Element[] = []
     let used = 0
     if (roomy) {
@@ -2055,225 +1708,48 @@ export const register: Register = on => {
       used += 1
     }
 
-    // ── the search box: a shade above the panel, a fainter `search` inside ──
-    const searchBox = (width: number) => (
-      <Box key="search" flexDirection="row" width={width} backgroundColor={SEARCH_BG}>
-        <Text color={P.mid} backgroundColor={SEARCH_BG}>⌕ </Text>
-        <Box flexGrow={1}>
-          {Input === null ? (
-            <Text color={P.dim} backgroundColor={SEARCH_BG}>search</Text>
-          ) : (
-            <Input key="q" placeholder="search" value="" submitLabel="find" onSubmit={(value: string) => runSearch($, value)} />
-          )}
-        </Box>
-      </Box>
-    )
-    const titleButton = (lead: boolean) => (
-      <Button key="title" plain onPress={() => openDashboard($, '/')}>
-        {lead ? <Text color={lit === null ? CYAN_DIM : litDot(lit)}>◉ </Text> : ''}
-        <Text color={paused ? P.dim : P.cyan} bold>COUNTERPARTS</Text>
-        {lead ? <Text color={CYAN_DIM}> ↗</Text> : ''}
-      </Button>
-    )
-
-    // ── the header ──
+    // ── the header: the terminal's brain beside the title, or (desktop, the brain off) a dot before it ──
     const countText = pulse === null ? '' : memoriesCount(pulse.memories)
-    // From 1,000 memories the count (`1000 memories`, 13 cells) is one wider than the header's text column:
-    // the column takes one cell of the gap beside the brain, every row of it, so the header stays six rows.
-    const gap = cells(countText) > w - HEAD_X ? 1 : 2
-    const headW = w - BRAIN_COLS - gap
+    const day = pulse === null ? null : pulse.day
     if (hasRaster) {
       const { Raster } = $.ui.resolve(e)
-      const reuse = raster.cols === BRAIN_COLS && raster.rows === BRAIN_ROWS && raster.cells !== '' && raster.look === lookKey()
-      const cells0 = reuse ? raster.cells : frameCells(BRAIN_COLS, BRAIN_ROWS, Date.now())
-      raster.cols = BRAIN_COLS
-      raster.rows = BRAIN_ROWS
-      raster.cells = cells0
-      raster.look = lookKey()
-      raster.live = true
-      rows.push(
-        <Box key="head" flexDirection="row" width={w}>
-          <Raster key="brain" columns={BRAIN_COLS} rows={BRAIN_ROWS} cells={cells0} />
-          <Box width={gap} />
-          <Box flexDirection="column" width={headW}>
-            <Text> </Text>
-            {titleButton(false)}
-            <Text> </Text>
-            <Text color={P.dim}>{pulse === null ? ' ' : `day ${String(pulse.day)}`}</Text>
-            <Text color={P.dim}>{pulse === null ? ' ' : countText}</Text>
-            {searchBox(headW)}
-          </Box>
-        </Box>,
-      )
-      rows.push(<Text key="head-gap"> </Text>)
+      rows.push(...brainHeader(paneEls, Raster, actions, { w, paused, day, count: countText }))
       used += BRAIN_ROWS + 1
     } else {
-      rows.push(
-        <Box key="head1" flexDirection="row" justifyContent="space-between" width={w}>
-          {titleButton(true)}
-          <Text color={P.dim}>{pulse === null ? '' : `day ${String(pulse.day)}`}</Text>
-        </Box>,
-      )
-      rows.push(
-        <Box key="head2" flexDirection="row" justifyContent="space-between" width={w}>
-          {searchBox(14)}
-          <Text color={P.dim}>{countText}</Text>
-        </Box>,
-      )
-      rows.push(<Text key="head-gap"> </Text>)
+      rows.push(...brainlessHeader(paneEls, actions, { w, paused, lit, day, count: countText }))
       used += 3
     }
 
     // ── a paused folder says so before anything else in the pane ──
     if (paused) {
-      const off = scope.mode === 'off'
-      rows.push(<Text key="paused" color={P.amber} bold>{clip(off ? '◌ Counterparts off here' : '⏸ Counterparts paused here', w)}</Text>)
-      rows.push(
-        <Button key="resume-banner" plain onPress={() => pressScope($, 'on')}>
-          <Text color={P.amber} underline>
-            {clip(off ? (scope.own ? 'click to turn it back on' : `off by ${shortDir(scope.setBy)} · why`) : scope.own ? 'click to resume' : `paused by ${shortDir(scope.setBy)} · how to resume`, w)}
-          </Text>
-        </Button>,
-      )
-      rows.push(<Text key="paused-gap"> </Text>)
+      rows.push(...pausedBanner(paneEls, actions, scope, w))
       used += 3
     }
 
     // ── the first meeting, put off or not finished: one cyan row at the top of the body ──
     if (meetShows(onboarding.meet, scope.mode, run.meetFiredIn, run.session)) {
-      rows.push(
-        <Button key="meet" plain onPress={() => pressMeet($)}>
-          <Text color={P.cyan} bold>{clip('Meet your counterpart', w)}</Text>
-        </Button>,
-      )
-      rows.push(<Text key="meet-gap"> </Text>)
+      rows.push(...meetRow(paneEls, actions, w))
       used += 2
     }
 
     // ── what the switches say, above them: the pause (or off) confirm, a note ──
-    const above: JSX.Element[] = []
-    const askTo = pauseAsk?.to ?? 'pause'
-    if (pauseAsk !== null && scope.mode !== 'unknown' && CONFIRM_FROM[askTo].includes(scope.mode)) {
-      const where = shortDir(pauseAsk.dir)
-      const ask =
-        askTo === 'off'
-          ? `Turn Counterparts memory off in ${where} for every session here? Nothing is kept or recalled while it's off.`
-          : askTo === 'on'
-            ? scope.mode === 'off'
-              ? `Turn memory back on in ${where}? Nothing from while it was off was kept.`
-              : `Turn memory fully on in ${where}? New memories will be kept here, for every session.`
-            : `Pause Counterparts memory in ${where} for every session here?`
-      wrap(ask, w).forEach((l, i) => above.push(<Text key={`ask${String(i)}`} color={P.amber}>{l}</Text>))
-      above.push(
-        <Box key="pause-ask" flexDirection="row">
-          <Button key={`confirm-${askTo}`} onPress={() => confirmChange($)}>{askTo === 'off' ? 'Turn off' : askTo === 'on' ? 'Turn on' : 'Pause'}</Button>
-          <Text> </Text>
-          <Button key="cancel-pause" onPress={() => cancelPause($)}>Cancel</Button>
-        </Box>,
-      )
-    }
-    if (note !== null) wrap(note.text, w).forEach((l, i) => above.push(<Text key={`note${String(i)}`} color={P.text}>{l}</Text>))
-    if (above.length > 0) above.push(<Text key="above-gap"> </Text>)
+    const above = aboveSwitches(paneEls, actions, { scope, pauseAsk, note, w })
 
     // ── the body: the five sections, folded to the room left ──
     // The rule, the Counterparts switch, the view, the brain; and Claude memory for whoever opted in.
     const footRows = ccSwitch ? 5 : 4
     const bodyRows = Math.max(4, fill - used - above.length - footRows)
-    // Down, the chart names how THIS install starts the dashboard: which memory server the session connected says.
-    const routes = dashboardRoutes(dash === 'down' ? await memoryServer($) : run.server)
-    const { lines } = layoutBody({ w, rows: bodyRows, now, mind, saved, today, dream: dreamNow, open, mech, focus, dash, routes, search })
-    if (Client !== null) {
-      rows.push(<Client key="body" module="./body.tsx" width={w} props={{ lines } satisfies BodyProps} />)
-    } else {
-      // A surface with no Client modules (mobile, an editor): the same lines, not clickable.
-      rows.push(
-        <Box key="body" flexDirection="column">
-          {lines.map((l: Line, y: number) => (
-            <Text key={`b${String(y)}`} color={l.segs[0]?.c ?? P.text}>{l.segs.map(s => s.t).join('') || ' '}</Text>
-          ))}
-        </Box>,
-      )
-    }
+    const { lines } = layoutBody({ w, rows: bodyRows, now, mind, saved, today, dream: dreamNow, open, mech, focus, dash, search })
+    // The Client tag stays here: the engine reads a hooks module's surface modules off its own source.
+    rows.push(Client !== null ? <Client key="body" module="./body.tsx" width={w} props={{ lines } satisfies BodyProps} /> : plainBody(paneEls, lines))
     rows.push(<Box key="spacer" flexGrow={1} />)
     rows.push(...above)
 
     // ── the footer: each dot and its word one hit target ──
-    const dotWord = (key: string, isOn: boolean, word: string, onPress: () => Promise<unknown>, dot?: string, dim = false, lit: string = P.cyan) => (
-      <Button key={key} plain onPress={onPress}>
-        <Text color={isOn && !dim ? lit : P.dim}>{dot ?? (isOn ? '●' : '○')}</Text>
-        <Text color={isOn && !dim ? P.hi : P.dim}>{` ${word}`}</Text>
-      </Button>
-    )
-    // The Counterparts switch, three-way: `on` (◐ for reads-only), `paused` and `off` (amber, a warning, as
-    // the status line says it). Unknown: every dot `?` and dim, never one lit; `…` while a press is answered.
-    const at = switchAt(scope.mode)
-    const cpDot = (pos: 'on' | 'paused' | 'off'): string => {
-      if (at === null) return scope.busy ? '…' : '?'
-      if (pos !== at) return '○'
-      if (scope.busy) return '…'
-      return pos === 'on' && scope.mode === 'observer' ? '◐' : '●'
-    }
-    // `Counterparts ● on ○ paused ○ off` is 32 cells, the docked pane's text width; narrower, a shorter word.
-    const cpLabel = w >= 32 ? 'Counterparts' : 'memory'
-    // What a click on a memory switch does, over the two rows above the footer while hovered: nothing moves under the pointer.
-    const hoverCard = (key: string, group: string, text: string) => (
-      <Box key={key} position="absolute" top={-2} left={0} width={w} height={2} display="none" hover={{ display: 'flex', scope: group }} flexDirection="column" backgroundColor={P.panel}>
-        {wrap(text, w)
-          .slice(0, 2)
-          .map((l, i) => (
-            <Text key={`${key}${String(i)}`} color={P.mid}>{l}</Text>
-          ))}
-      </Box>
-    )
-    const viewNow = normView(view)
     // While the pause asks (or a note explains), those rows sit right above the footer, and the pointer is still
     // on the switch it just pressed: a card there would cover [Pause] [Cancel] or the note's last line.
-    const cards = above.length === 0
-    rows.push(
-      <Box key="footer" flexDirection="column" width={w}>
-        {cards ? hoverCard('cp-why', HOVER_CP, scopeHover(scope)) : null}
-        {cards && ccSwitch ? hoverCard('mem-why', HOVER_MEM, memoryHover(memoryOn)) : null}
-        <Text color={P.faint}>{'─'.repeat(w)}</Text>
-        <Box key="row-cp" flexDirection="row" hover={{ scope: HOVER_CP }}>
-          <Text color={P.mid}>{cpLabel}</Text>
-          {(['on', 'paused', 'off'] as const).map(pos => (
-            <Box key={`cp-${pos}-box`} flexDirection="row">
-              <Text> </Text>
-              {dotWord(`cp-${pos}`, at === pos, pos, () => pressScope($, pos), cpDot(pos), at === null, pos === 'on' ? P.cyan : P.amber)}
-            </Box>
-          ))}
-        </Box>
-        {ccSwitch ? (
-          <Box key="row-mem" flexDirection="row" hover={{ scope: HOVER_MEM }}>
-            {dotWord('toggle-mem', memoryOn, 'Claude memory', () => toggleClaudeMemory($))}
-          </Box>
-        ) : null}
-        <Box flexDirection="row">
-          <Text color={P.mid}>view</Text>
-          {(['sidebar', 'quiet'] as const).map(v => (
-            <Box key={`v-${v}`} flexDirection="row">
-              <Text> </Text>
-              {dotWord(`view-${v}`, viewNow === v, v, () => (v === 'sidebar' ? openPane($) : closeQuiet($)))}
-            </Box>
-          ))}
-        </Box>
-        <Box flexDirection="row">
-          <Text color={P.mid}>brain</Text>
-          {(['turning', 'still', 'off'] as const).map(b => (
-            <Box key={`b-${b}`} flexDirection="row">
-              <Text> </Text>
-              {dotWord(`brain-${b}`, mode === b, b, () => setBrain($, b))}
-            </Box>
-          ))}
-        </Box>
-      </Box>,
-    )
+    rows.push(footer(paneEls, actions, { scope, w, ccSwitch, memoryOn, view: normView(view), mode, cards: above.length === 0 }))
 
-
-    return (
-      <Box flexDirection="column" paddingX={1} width={W} minHeight={fill} backgroundColor={P.panel}>
-        {rows}
-      </Box>
-    )
+    return frame(paneEls, W, fill, rows)
   })
 }

@@ -32,8 +32,10 @@ import {
 } from '../hooks/feed'
 import { cells, ellipsizeCells, padCells } from '../hooks/width'
 import { hookConfig, lookup, parentOf, parseRegistry, settingsHookConfig, under } from '../hooks/scopes'
-import { MECHS, STAGES, dashboardBase, dashboardPort, dashboardRoutes, isDashboardUrl, memoryUrl } from '../hooks/mechanisms'
-import { CLASSIC_HINT, CLASSIC_HINT_SHORT, MORE, OPEN_MAX_LINES, TAIL_HINT, bar, clip, heading, layoutBody, openedLines, quietTail, textOf, wrapN } from '../hooks/sections'
+import { MECHS, STAGES, dashboardBase, dashboardPort, isDashboardUrl, memoryUrl } from '../hooks/mechanisms'
+import { MORE, OPEN_MAX_LINES, bar, clip, heading, layoutBody, openedLines, textOf, wrapN } from '../hooks/sections'
+import { CLASSIC_HINT, CLASSIC_HINT_SHORT, TAIL_HINT, quietTail } from '../hooks/tail'
+import { P, applyTheme, cozy, normTheme, tron } from '../hooks/theme'
 import type { BodyState } from '../hooks/sections'
 import { DECISION_T3, EVENTS, FACTS_ANSWER, RECALL_BLOCK, SESSION, T0, ev } from './world'
 
@@ -369,7 +371,7 @@ describe('the feed', () => {
     expect(long.endsWith(' · /counterparts opens it')).toBe(true)
     expect(cells(long)).toBeLessThanOrEqual(60)
     expect(quietTail('stored: x', 20, T0)).toBe('/counterparts opens it')
-    expect(quietTail(null, 80, T0)).toBe('Counterparts is quiet · /counterparts opens it')
+    expect(quietTail(null, 80, T0)).toBe('Watching quietly · nothing new yet · /counterparts opens it')
     expect(quietTail('stored: x', null, T0)).toBe('stored: x · /counterparts opens it')
   })
 
@@ -384,7 +386,7 @@ describe('the feed', () => {
     expect(quietTail('Stored “Pets”', 44, T0, body)).toBe(`Stored “Pets”${end}`)
     expect(quietTail(`Stored “${'long title '.repeat(10)}”`, 60, T0, body).includes(' — ')).toBe(false)
     expect(quietTail('Stored “Pets”', 100, T0, 'Mike likes ponies', CLASSIC_HINT)).toBe('Stored “Pets” — Mike likes ponies · /tui fullscreen shows the memory sidebar')
-    expect(quietTail(null, 80, T0, undefined, CLASSIC_HINT)).toBe('Counterparts is quiet · /tui fullscreen shows the memory sidebar')
+    expect(quietTail(null, 80, T0, undefined, CLASSIC_HINT)).toBe('Watching quietly · nothing new yet · /tui fullscreen shows the memory sidebar')
     // never wider than the room the engine leaves (cols less its hint prop less 32), at 80, 100 and 120 columns, either hint, any body
     const bodies = [undefined, 'x', 'a'.repeat(200), 'supercalifragilistic '.repeat(20), '日本語のテキストです。'.repeat(20), '😀 emoji 🎉 party '.repeat(15)]
     for (const cols of [80, 100, 120]) for (const hint of [TAIL_HINT, CLASSIC_HINT]) for (const l of ['Stored “Pets”', 'Stored “日本語のタイトル”', `Stored “${'long title '.repeat(10)}”`, null]) for (const b of bodies) {
@@ -538,7 +540,6 @@ const BASE: BodyState = {
   mech: null,
   focus: null,
   dash: 'up',
-  routes: ['counterparts dashboard'],
   search: { query: '', status: 'idle', header: '', total: 0, hits: [], error: null },
 }
 
@@ -709,25 +710,20 @@ describe('the body, laid out', () => {
     expect(before.find(l => l.startsWith('Last Dream'))).toBe('Last Dream ' + '─'.repeat(15) + ' Oct 7')
   })
 
-  test('the dashboard down: the chart says how to start it', () => {
+  test('the dashboard down: the chart says counts appear once it is open, naming the plugin’s command', () => {
     const lines = textOf(layoutBody({ ...BASE, today: null, dash: 'down' }).lines)
-    expect(lines.join(' ')).toContain('counterparts dashboard')
+    const at = lines.findIndex(l => l.startsWith('Mechanisms today'))
+    const to = lines.findIndex((l, i) => i > at && l.trim() === '')
+    expect(lines.slice(at + 1, to).join(' ')).toBe('Counts appear once the dashboard is open (/counterparts:dashboard)')
   })
 
-  test('the dashboard down: the route this install has (npm, plugin, or the plugin’s first when unsure)', () => {
-    // The chart's lines from its first route, up to the blank row before the next section.
-    const after = (routes: readonly string[]) => {
-      const lines = textOf(layoutBody({ ...BASE, today: null, dash: 'down', routes }).lines)
-      const from = lines.findIndex(l => l === 'counterparts dashboard' || l === '/counterparts:dashboard')
-      expect(lines.slice(0, from).join(' ')).toContain("The dashboard isn't running")
-      const to = lines.findIndex((l, i) => i >= from && l.trim() === '')
-      return lines.slice(from, to < 0 ? undefined : to)
+  test('the dashboard down: no console command, and the slash command whole on one line, docked or inline', () => {
+    for (const w of [26, 32, 48, 64]) {
+      const lines = textOf(layoutBody({ ...BASE, w, today: null, dash: 'down' }).lines)
+      expect(lines.some(l => l.includes('(/counterparts:dashboard)'))).toBe(true)
+      expect(lines.join(' ')).not.toMatch(/(^|[^/])counterparts dashboard/)
+      expect(lines.join(' ')).not.toContain("isn't running")
     }
-    expect(after(dashboardRoutes('counterparts'))).toEqual(['counterparts dashboard'])
-    expect(after(dashboardRoutes('plugin_counterparts_counterparts'))).toEqual(['/counterparts:dashboard'])
-    expect(after(dashboardRoutes(null))).toEqual(['/counterparts:dashboard', 'or counterparts dashboard'])
-    // No routes handed in reads as not knowing.
-    expect(after([])).toEqual(['/counterparts:dashboard', 'or counterparts dashboard'])
   })
 
   test('search results take the sections’ place: the query, how many, each title and what it is', () => {
@@ -814,5 +810,31 @@ describe('the first meeting', () => {
     expect(meetShows('not_started', 'on', 's0', 's1')).toBe(true)
     for (const m of ['done', 'skipped', 'unknown'] as const) expect(meetShows(m, 'on', 's0', 's1')).toBe(false)
     for (const f of ['paused', 'off', 'observer', 'unknown']) expect(meetShows('later', f, null, 's1')).toBe(false)
+  })
+})
+
+describe('the themes', () => {
+  test('tron is the mockups’ palette, exactly; cozy has every key, each a colour; a stored name this version does not know is tron', () => {
+    expect(tron).toEqual({
+      panel: '#05080c', hi: '#dde3e9', text: '#b3bcc5', mid: '#8e98a2', dim: '#66717c', faint: '#1d262e', head: '#c9d1d8',
+      accent: '#00e5ff', accent2: '#ffb347', searchBg: '#121a22', accentDim: '#0b6f7c',
+    })
+    expect(Object.keys(cozy).sort()).toEqual(Object.keys(tron).sort())
+    for (const v of Object.values(cozy)) expect(v).toMatch(/^#[0-9a-f]{6}$/)
+    expect(normTheme('cozy')).toBe('cozy')
+    for (const v of ['tron', 'neon', undefined, null, 3]) expect(normTheme(v)).toBe('tron')
+  })
+  test('applyTheme changes the palette in use, and the body’s lines are drawn in it', () => {
+    try {
+      applyTheme('cozy')
+      expect(P.panel).toBe(cozy.panel)
+      const used = new Set(layoutBody(BASE).lines.flatMap(l => l.segs.map(s => s.c)))
+      // the neutrals (stage colours on dots and bars are the mechanisms', not the theme's)
+      for (const k of ['hi', 'text', 'mid', 'dim', 'faint', 'head'] as const) expect(used.has(tron[k])).toBe(false)
+      expect(used.has(cozy.head) && used.has(cozy.dim)).toBe(true)
+    } finally {
+      applyTheme('tron')
+    }
+    expect(P).toEqual(tron)
   })
 })

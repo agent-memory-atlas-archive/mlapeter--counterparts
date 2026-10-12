@@ -31,22 +31,10 @@ import type {
   SidebarToday,
 } from '../types'
 import { dateOf, hm, humanDates } from './feed'
-import { MECHS, STAGES, dashboardRoutes, hex, stageOf } from './mechanisms'
+import { MECHS, PLUGIN_DASHBOARD_ROUTE, STAGES, hex, stageOf } from './mechanisms'
 import type { MechId } from './mechanisms'
+import { P } from './theme'
 import { cells, headCells } from './width'
-
-/** The mockups' palette: neutral text, stage colours only on dots and bars. */
-export const P = {
-  panel: '#05080c',
-  hi: '#dde3e9',
-  text: '#b3bcc5',
-  mid: '#8e98a2',
-  dim: '#66717c',
-  faint: '#1d262e',
-  head: '#c9d1d8',
-  cyan: '#00e5ff',
-  amber: '#ffb347',
-} as const
 
 /** Bars a shade under the site's full stage colour. */
 const BAR_K = 0.84
@@ -92,7 +80,7 @@ const BLANK: Line = { segs: [] }
 
 // ── text ───────────────────────────────────────────────────────────────────
 
-const TRAIL = /[\s,;:·—–-]+$/
+export const TRAIL = /[\s,;:·—–-]+$/
 
 /**
  * Word wrap to `width` cells (the first line to `first`); past `maxLines`
@@ -180,8 +168,6 @@ export type BodyState = {
   mech: SidebarMechOpen | null
   focus: string | null
   dash: 'unknown' | 'up' | 'down'
-  /** How this install starts the dashboard, first the one to try (`mechanisms.ts#dashboardRoutes`). */
-  routes: readonly string[]
   search: SidebarSearch
 }
 
@@ -276,7 +262,7 @@ function textLines(text: string, w: number, max: number, c: string, key: string,
   const last = wrapN(all.slice(head.length).join(' '), room, 1)[0] ?? ''
   return [
     ...plain(head, c, key, o),
-    { segs: [seg(last, c, o), seg(' ', c), seg(MORE, P.cyan)], key, link: { from: cells(last) + 1, key: moreKey } },
+    { segs: [seg(last, c, o), seg(' ', c), seg(MORE, P.accent)], key, link: { from: cells(last) + 1, key: moreKey } },
   ]
 }
 
@@ -320,7 +306,7 @@ function subTitle(r: SidebarMemoryRef, key: string, w: number, now: number): Lin
   const c = r.opened === true ? P.text : P.mid
   const title = humanDates(r.title, now)
   if (r.opened !== true) return plain(wrapN(title, w, ITEM_LINES), c, key)
-  const mark = [seg(' ', P.dim), seg('↗', P.cyan), seg(' opened', P.dim)]
+  const mark = [seg(' ', P.dim), seg('↗', P.accent), seg(' opened', P.dim)]
   const markW = cells(' ↗ opened')
   let ls = wrapN(title, w, ITEM_LINES)
   const lastW = cells(ls[ls.length - 1] ?? '')
@@ -390,14 +376,8 @@ function chart(s: BodyState, f: Fold): Line[] {
   const t = s.today
   if (t === null) {
     if (s.dash === 'down') {
-      // The route that works for this install; unsure which install, the plugin's first, then `or` the npm one.
-      const [first, ...rest] = s.routes.length > 0 ? s.routes : dashboardRoutes(null)
-      return [
-        heading('Mechanisms today', '', s.w),
-        ...plain(wrapN("The dashboard isn't running, so these can't be counted. Start it with", s.w), P.dim),
-        line([seg(clip(first ?? '', s.w), P.cyan)]),
-        ...rest.map(r => line([seg('or ', P.dim), seg(clip(r, s.w - 3), P.cyan)])),
-      ]
+      // The plugin's own command, which every install that draws this sidebar has (a stranger's read, 2026-10-12).
+      return [heading('Mechanisms today', '', s.w), ...plain(wrapN(`Counts appear once the dashboard is open (${PLUGIN_DASHBOARD_ROUTE})`, s.w), P.dim)]
     }
     return [heading('Mechanisms today', '', s.w), line([seg('reading the dashboard…', P.dim)])]
   }
@@ -576,53 +556,3 @@ export function textOf(lines: readonly Line[]): string[] {
 }
 
 export type { MechId }
-
-// ── the quiet view's tail ────────────────────────────────────────────────────
-
-/** What ends the quiet tail, always: the way back to the pane (the tail is dim text; it can't be clicked). */
-export const TAIL_HINT = '/counterparts opens it'
-
-/**
- * What ends the tail on the classic renderer, where the pane can only go
- * inline and nothing opens unasked: a plugin cannot change the `tui` setting,
- * so it suggests it (owner's onboarding trial, 2026-10-12).
- */
-export const CLASSIC_HINT = '/tui fullscreen shows the memory sidebar'
-
-/** The classic hint on a row too narrow for the whole of it (80 columns leaves about 33 cells). */
-export const CLASSIC_HINT_SHORT = '/tui fullscreen'
-
-/** `text` cut at a word, with an ellipsis, to at most `w` cells; whole when it fits; null when under a few words' room. */
-function clipWords(text: string, w: number): string | null {
-  if (cells(text) <= w) return text
-  if (w < 8) return null
-  const cut = headCells(text, w - 1)
-  const sp = cut.lastIndexOf(' ')
-  const head = (text.slice(cut.length, cut.length + 1) === ' ' ? cut : sp > 0 ? cut.slice(0, sp) : '').replace(TRAIL, '')
-  return head === '' ? null : `${head}…`
-}
-
-/**
- * The quiet view's tail under the prompt: the newest thing, shortened so the
- * hint after it is never cut (the engine cuts a tail where its row ends),
- * then ` · ` and the hint (`/counterparts opens it`, Mike, 2026-10-10; on the
- * classic screen `CLASSIC_HINT`). `room` is the cells the tail may take (the
- * row less the engine's own line), null when the surface says no width.
- * Nothing new yet: `Counterparts is quiet · …`. A save's own words (`body`)
- * follow its title after a dash, as much as the row holds, cut at a word.
- */
-export function quietTail(latest: string | null, room: number | null, now: number, body?: string, wanted: string = TAIL_HINT): string {
-  const hint = wanted === CLASSIC_HINT && room !== null && cells(CLASSIC_HINT) > room ? CLASSIC_HINT_SHORT : wanted
-  const end = ` · ${hint}`
-  if (latest === null) {
-    const whole = `Counterparts is quiet${end}`
-    return room !== null && cells(whole) > room ? hint : whole
-  }
-  const r = room ?? 45 + cells(end)
-  if (r - cells(end) < 12) return hint
-  const avail = r - cells(end)
-  const head = clip(humanDates(latest, now), avail)
-  // the title whole, then the memory's own words in what is left (no body under a clipped title)
-  const more = body === undefined || head.endsWith('…') ? null : clipWords(body, avail - cells(head) - 3)
-  return `${head}${more === null ? '' : ` — ${more}`}${end}`
-}
