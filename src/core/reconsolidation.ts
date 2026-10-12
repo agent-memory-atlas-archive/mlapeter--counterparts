@@ -664,7 +664,7 @@ export function supersede(store: Store, input: SupersedeInput, opts: { retarget?
   // how it sits now that the newer one holds. The first feeling is kept. Not
   // for a merge (its feelings travelled to the merged memory) nor a moved
   // reminder's row (bookkeeping nobody wrote), nor a fold (a dream cannot
-  // answer it, and a felt source is never faded by a fold).
+  // answer it; a strongly felt self or person part is kept out of the fold).
   if (how !== "open" && input.source !== DREAM_MERGE_SOURCE && input.source !== REMINDER_MOVED_SOURCE && input.source !== FOLD_SOURCE) {
     const felt = store.row(over)?.feeling_peak ?? null;
     if (typeof felt === "number" && felt > 0) notes.push(feelingInvite(over, felt));

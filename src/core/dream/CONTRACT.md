@@ -251,8 +251,8 @@ dreamer is the model (a background agent the session launches), outside this pro
   add up to; it holds over each part through the one door, `reconsolidation.ts#supersede`,
   how `changed`, source `fold`, `closeFlags: false`: the part fades ×0.5, stays live, is
   labelled earlier under the fold and joins its slot. Kept at their own weight, still cited
-  and tied: the core, a protected memory, a reading or a world memory, a felt one (any
-  recorded feeling), a dated one, a dream's own words and an earlier version
+  and tied: the core, a protected memory, a reading or a world memory, a strongly felt
+  `self` or `person` memory (feeling ≥ `FOLD_FELT_FLOOR` 0.5; review 11 C3), a dated one, a dream's own words and an earlier version
   (`foldExemption`). It starts at its strongest part's strength, read before any fade, in
   [`DREAMED_CLAIM_CEILING`, `FOLD_CLAIM_CEILING` 0.6]; its title is its own (no
   `Dreamed:`); the dream picks its kind; it is `me`/`us` only when most of its parts are (`foldMarkFrom`), else their most common other mark. At most

@@ -141,6 +141,13 @@ export const DREAM_TUNABLES = {
    */
   FOLDS: 5,
   /**
+   * A FELT PART A FOLD KEEPS AT ITS OWN WEIGHT (2026-10-11, review of #432;
+   * review 11 C3/D3): a `self` or `person` memory whose recorded feeling peaks
+   * at or above this. A mild feeling on a routine work memory does not keep it
+   * out of the fold it belongs to. CAL.
+   */
+  FOLD_FELT_FLOOR: 0.5,
+  /**
    * The weight a dream PROPOSES for a link or a gist's tie, both ways — about
    * one co-activation (`associate` `HEBB_RATE`, 0.1). Was 0.3, three full
    * co-activations, written around homeostasis (2026-09-28: the dream proposes,

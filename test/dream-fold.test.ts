@@ -173,26 +173,30 @@ describe("a fold goes through the one door", () => {
 });
 
 describe("what a fold keeps at its own weight", () => {
-  test("a reading, a felt memory, the core and a dated memory are cited and tied, never faded or settled", () => {
+  test("a reading, a strongly felt person memory, the core and a dated memory are cited and tied, never faded or settled", () => {
     const c = brain();
     nextDay(c);
     nextDay(c);
     const plain = mem(c, "Read three chapters of the Essays tonight.");
     const reading = mem(c, "\"Have you not lived? That is not only the fundamental but the most illustrious of your occupations.\"", { title: "Reading: Of Experience, a line" });
-    const felt = mem(c, "Finishing Of Experience late at night, quietly moved.");
-    c.store.addFeelings(felt, [{ whose: "self", core: "calm", emotion: "peaceful", strength: 0.5 }]);
+    const felt = mem(c, "Mike read me the last page of Of Experience late at night; he was quietly moved.", { kind: "person", about: "us" });
+    c.store.addFeelings(felt, [{ whose: "self", core: "warm", emotion: "tender", strength: 0.6 }]);
+    // A mild feeling on a routine memory does not keep it out (review 11 C3: felt self/person memories).
+    const mild = mem(c, "Ordered the second volume of the Essays.");
+    c.store.addFeelings(mild, [{ whose: "self", core: "calm", emotion: "content", strength: 0.3 }]);
     const core = mem(c, "I read slowly when a book bites.", { kind: "self", about: "me" });
     c.store.updatePhysics(core, { promotedIdentity: true });
     c.store.setBand(core, "identity", c.store.livedDay());
     const dated = mem(c, "Finish the Essays by the end of the month.", { eventDate: "2099-12-31" } as Partial<PutInput>);
     const dream = begin(c);
     const [r] = propose(c, dream, [
-      { action: "gist", fold: true, kind: "fact", text: "The evening went to Montaigne's Of Experience.", sources: [plain, reading, felt, core, dated] },
+      { action: "gist", fold: true, kind: "fact", text: "The evening went to Montaigne's Of Experience.", sources: [plain, reading, felt, core, dated, mild] },
     ]);
     expect(r?.ok).toBe(true);
     const fold = r?.id as string;
     expect(r?.note).toContain("not faded");
     expect(fadeOf(c, plain)).toBeCloseTo(0.5, 6);
+    expect(fadeOf(c, mild)).toBeCloseTo(0.5, 6);
     for (const id of [reading, felt, core, dated]) {
       expect(fadeOf(c, id)).toBe(1);
       expect(c.store.contradictionBetween(fold, id)).toBeUndefined();
@@ -202,11 +206,11 @@ describe("what a fold keeps at its own weight", () => {
     expect(c.store.row(core)?.promoted_identity).toBe(1);
     // The reminder stays where it was.
     expect(c.store.row(dated)?.event_date).toBe("2099-12-31");
-    // All five are still its sources.
-    expect(JSON.parse(c.store.row(fold)?.meta ?? "{}")["sources"]).toEqual([plain, reading, felt, core, dated]);
+    // All six are still its sources.
+    expect(JSON.parse(c.store.row(fold)?.meta ?? "{}")["sources"]).toEqual([plain, reading, felt, core, dated, mild]);
     const change = c.dreams.show(dream)?.changes.find((x) => x.action === "gist");
     const detail = JSON.parse(change?.detail ?? "{}") as { faded: string[]; exempt: { id: string; why: string }[] };
-    expect(detail.faded).toEqual([plain]);
+    expect(detail.faded).toEqual([plain, mild]);
     expect(Object.fromEntries(detail.exempt.map((e) => [e.id, e.why]))).toEqual({ [reading]: "reading", [felt]: "felt", [core]: "core", [dated]: "dated" });
   });
 

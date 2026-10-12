@@ -1535,7 +1535,7 @@ export class Dreams {
       dream: (n) => [
         "The dream — how it goes (the brain's, borrowed):",
         "- Deep-sleep replay: file what happened, link what belongs together, merge near-copies into one memory in better words, and replay what matters (each replay strengthens it a little).",
-        "- Folding: when several memories are parts of one event or one stretch of work (a day's merges, a release, one book), fold them: a gist with fold: true, citing them, that says the standing outcome they add up to — what holds now, not the session retold (that is the chapter's job). Give it its kind: self, person or entity when it is about someone. Lessons and rulings inside stay their own memories. The parts stay, earlier under the fold, and fade (readings and felt memories keep their own weight).",
+        "- Folding: when several memories are parts of one event or one stretch of work (a day's merges, a release, one book), fold them: a gist with fold: true, citing them, that says the standing outcome they add up to — what holds now, not the session retold (that is the chapter's job). Give it its kind: self, person or entity when it is about someone. Lessons and rulings inside stay their own memories. The parts stay, earlier under the fold, and fade (readings, and strongly felt memories about you or someone, keep their own weight).",
         "- REM mixing: let loosely related memories touch. If a real pattern shows, write it as a gist in your own words, citing its sources. If two memories disagree, flag the pair; settle it only when the reason is plain (the waking self usually settles).",
         '- To confirm: an on-mind item of kind "to-confirm" is two memories read by arithmetic as one thing\'s earlier and later state (older first). Say which: slot {pair, same: true, why} if the newer replaces it, same: false if they are two different things.',
         "- Softening: for an old charged memory, record how it feels now, today. The sting can fade; the memory stays.",
@@ -3520,8 +3520,9 @@ function foldClaim(rows: readonly MemoryRow[], physicsOf: (id: string) => Return
  * over it (2026-10-11, Group 3 part B; item 15, review 11 C3/D3): the core
  * (the door would take it out of the core), a protected memory (the owner's),
  * a reading or a world memory (its lines are the point: a fold never
- * fade-cuts them), a felt memory (any recorded feeling: its weight follows its
- * feeling), a dated one (the door would move its reminder to the fold), a
+ * fade-cuts them), a felt memory about me or someone (a `self` or `person`
+ * memory felt at `FOLD_FELT_FLOOR` or more: its weight follows its feeling;
+ * review 11 C3, aligned by the review of #432), a dated one (the door would move its reminder to the fold), a
  * dream's own words (a dream does not build on them), and an earlier version
  * (it already has a head: fold the one that holds now). Linked and cited all
  * the same.
@@ -3530,7 +3531,7 @@ function foldExemption(store: Store, r: MemoryRow): string | null {
   if (r.promoted_identity === 1 || r.band === "identity") return "core";
   if (r.protected === 1) return "protected";
   if (slotExempt(r)) return "reading";
-  if (typeof r.feeling_peak === "number" && r.feeling_peak > 0) return "felt";
+  if ((r.kind === "self" || r.kind === "person") && typeof r.feeling_peak === "number" && r.feeling_peak >= DREAM_TUNABLES.FOLD_FELT_FLOOR) return "felt";
   if (r.event_date !== null) return "dated";
   if (r.source === "dreamed") return "dreamed";
   if (headOf(store, r.id) !== null) return "earlier";
