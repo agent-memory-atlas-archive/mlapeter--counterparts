@@ -998,6 +998,195 @@ describe("proposals (G5, G6, G7, §4.1 G8/G9)", () => {
   });
 });
 
+// ── a note claims its own turn (2026-10-11) ─────────────────────────────────
+
+describe("a note claims its own turn, not the session's backlog (2026-10-11)", () => {
+  const jotCtx = (own: string | undefined, over: Record<string, unknown> = {}) => ({
+    session: "s1",
+    scope: SCOPE,
+    source: "jot" as const,
+    gate: pass,
+    ownSpanHash: own ?? null,
+    ...over,
+  });
+  /** A transcript grown one typed turn and one reply at a time. */
+  function transcript(b: SpanBuffer, session = "s1") {
+    const turns: Turn[] = [];
+    return {
+      turn(tag: string): string {
+        turns.push(u(long(tag)), a(`reply to ${tag}`));
+        const out = b.capture({ session, scope: SCOPE, turns: [...turns] });
+        b.boundary({ session, scope: SCOPE, kind: "stop" });
+        return out.spans.find((s) => s.kind === "conversation")?.hash as string;
+      },
+    };
+  }
+
+  test("a note written mid-turn claims its own span, then that turn's prompt when the Stop captures it — and nothing said before", async () => {
+    const b = buf();
+    const t = transcript(b);
+    const earlier = [t.turn("one"), t.turn("two"), t.turn("three")];
+    // Mid-turn four: the note is written before the Stop that captures turn four.
+    const jot = b.jot({ session: "s1", scope: SCOPE, text: long("my note") });
+    const own = jot.spans[0]?.hash as string;
+    const res = await submitProposal(b, { content: "A note written in the moment." }, jotCtx(own));
+    expect(res.proposal?.covers).toEqual([own]);
+    const four = t.turn("four");
+    const covered = b.coveredHashes(SCOPE);
+    expect(covered.has(four)).toBe(true);
+    for (const h of earlier) expect(covered.has(h)).toBe(false);
+    // The turn is the note's claim, under its proposal id, and not its own span.
+    expect(b.coverage(SCOPE).find((m) => m.spanHash === four)).toMatchObject({ proposalId: res.proposal?.id, own: false });
+    // The turn after is nobody's.
+    const five = t.turn("five");
+    expect(b.coveredHashes(SCOPE).has(five)).toBe(false);
+  });
+
+  test("the session-end write-up then claims the rest, as a whole-session claim always has", async () => {
+    const b = buf();
+    const t = transcript(b);
+    const earlier = [t.turn("one"), t.turn("two")];
+    const jot = b.jot({ session: "s1", scope: SCOPE, text: long("a note") });
+    await submitProposal(b, { content: "A note written in the moment." }, jotCtx(jot.spans[0]?.hash));
+    t.turn("three");
+    const after = t.turn("four");
+    const end = await submitProposal(b, { content: "What the session came to." }, jotCtx(undefined, { source: "session-end", ownSpanHash: undefined }));
+    expect(new Set(end.proposal?.covers)).toEqual(new Set([...earlier, after]));
+    expect(b.spans(SCOPE).every((s) => b.coveredHashes(SCOPE).has(s.hash))).toBe(true);
+  });
+
+  test("a REFUSED note claims nothing, at the write or at its turn's capture", async () => {
+    const b = buf();
+    const t = transcript(b);
+    t.turn("one");
+    const jot = b.jot({ session: "s1", scope: SCOPE, text: long("refused note") });
+    const res = await submitProposal(b, { content: long("secret-ish") }, jotCtx(jot.spans[0]?.hash, { gate: refuse }));
+    expect(res.accepted).toBe(false);
+    t.turn("two");
+    expect(b.coveredHashes(SCOPE).size).toBe(0);
+  });
+
+  test("two notes in one turn: the first takes the turn; a note with no own span claims nothing; another session's turn is never taken", async () => {
+    const b = buf();
+    const t = transcript(b);
+    const other = transcript(b, "s2");
+    t.turn("one");
+    other.turn("theirs one");
+    const j1 = b.jot({ session: "s1", scope: SCOPE, text: long("first note") });
+    const r1 = await submitProposal(b, { content: "The first note." }, jotCtx(j1.spans[0]?.hash));
+    const j2 = b.jot({ session: "s1", scope: SCOPE, text: long("second note") });
+    const r2 = await submitProposal(b, { content: "The second note." }, jotCtx(j2.spans[0]?.hash));
+    const r3 = await submitProposal(b, { content: "A note whose span was not captured." }, jotCtx(undefined));
+    expect(r3.proposal?.covers).toEqual([]);
+    const two = t.turn("two");
+    const theirs = other.turn("theirs two");
+    expect(b.coverage(SCOPE).filter((m) => m.spanHash === two).map((m) => m.proposalId)).toEqual([r1.proposal?.id as string]);
+    expect(r2.proposal?.covers).toEqual([j2.spans[0]?.hash as string]);
+    expect(b.coveredHashes(SCOPE).has(theirs)).toBe(false);
+  });
+
+  test("a turn already captured when the note's claim lands is taken at the write (the same `from`)", async () => {
+    const b = buf();
+    const jot = b.jot({ session: "s1", scope: SCOPE, text: long("note first") });
+    const turn = transcript(b).turn("the turn it was written in");
+    const res = await submitProposal(b, { content: "Late claim." }, jotCtx(jot.spans[0]?.hash));
+    expect(new Set(res.proposal?.covers)).toEqual(new Set([jot.spans[0]?.hash as string, turn]));
+  });
+
+  test("a note in the reply to a Stop ask claims only itself: the re-fired Stop moves the cursor, so the NEXT typed turn is never its turn (review of #437)", async () => {
+    const replies = [a("I wrote a note."), { role: "assistant" as const, text: "remember(...)", source: "tool" as const }];
+    for (const [i, reply] of replies.entries()) {
+      // A reply with text appends an assistant span; one that is only a tool
+      // call is ALL_EXCLUDED. Either way the cursor moves past the note's `from`.
+      const session = `ask-${String(i)}`;
+      const b = buf();
+      const turns: Turn[] = [u(long(`one ${session}`)), a("reply one")];
+      b.capture({ session, scope: SCOPE, turns: [...turns] });
+      // The Stop asks; the model answers with a note, after that Stop's capture.
+      const jot = b.jot({ session, scope: SCOPE, text: long(`ask-reply note ${String(i)}`) });
+      const own = jot.spans[0]?.hash as string;
+      await submitProposal(b, { content: `A note in the ask reply, ${session}.` }, jotCtx(own, { session }));
+      // The re-fired Stop: the ask came back as ritual text, then the reply.
+      turns.push({ role: "user", text: "Stop hook feedback: write it up", source: "ritual" }, reply);
+      expect(b.capture({ session, scope: SCOPE, turns: [...turns] }).cursorAfter).toBe(turns.length);
+      turns.push(u(long(`two ${session}`)), a("reply two"));
+      const next = b.capture({ session, scope: SCOPE, turns: [...turns] }).spans.find((s) => s.kind === "conversation");
+      expect(next).toBeDefined();
+      const mine = b.coverage(SCOPE).filter((m) => m.session === session).map((m) => m.spanHash);
+      expect(mine).toEqual([own]);
+    }
+  });
+
+  test("a note's turn that ended with no Stop (an interrupt): the next Stop's slice holds a later turn too, so the note claims none of it", async () => {
+    const b = buf();
+    const t = transcript(b);
+    t.turn("one");
+    const jot = b.jot({ session: "s1", scope: SCOPE, text: long("note, then an interrupt") });
+    const r = await submitProposal(b, { content: "Before the interrupt." }, jotCtx(jot.spans[0]?.hash));
+    const turns: Turn[] = [
+      u(long("one")),
+      a("reply to one"),
+      u(long("two")),
+      a("half a reply"),
+      { role: "user", text: "[Request interrupted by user]", source: "injected" },
+      u(long("three, typed after the interrupt")),
+      a("reply to three"),
+    ];
+    const span = b.capture({ session: "s1", scope: SCOPE, turns }).spans.find((s) => s.kind === "conversation");
+    expect(span).toBeDefined();
+    expect(b.coveredHashes(SCOPE).has(span?.hash as string)).toBe(false);
+    expect(b.events("remember.coverage.turn.skipped").map((e) => e.ref)).toEqual([r.proposal?.id as string]);
+  });
+
+  test("host-injected text after the reply (a peer's message) is not a later turn: the note still takes its turn", async () => {
+    const b = buf();
+    const t = transcript(b);
+    t.turn("one");
+    const jot = b.jot({ session: "s1", scope: SCOPE, text: long("note, then a peer message") });
+    const r = await submitProposal(b, { content: "Before the peer." }, jotCtx(jot.spans[0]?.hash));
+    const turns: Turn[] = [
+      u(long("one")),
+      a("reply to one"),
+      u(long("two")),
+      a("a reply"),
+      { role: "user", text: "Another Claude session sent a message: hello", source: "injected" },
+      a("noted"),
+    ];
+    const span = b.capture({ session: "s1", scope: SCOPE, turns }).spans.find((s) => s.kind === "conversation");
+    expect(b.coverage(SCOPE).find((m) => m.spanHash === span?.hash)?.proposalId).toBe(r.proposal?.id as string);
+  });
+
+  test("a compaction mid-turn: the pre-compact capture hands the note its turn; what the Stop captures after is not the note's", async () => {
+    const b = buf();
+    const t = transcript(b);
+    t.turn("one");
+    const jot = b.jot({ session: "s1", scope: SCOPE, text: long("note before compaction") });
+    const r = await submitProposal(b, { content: "Before the compaction." }, jotCtx(jot.spans[0]?.hash));
+    const turns: Turn[] = [u(long("one")), a("reply to one"), u(long("two"))];
+    const pre = b.capture({ session: "s1", scope: SCOPE, turns: [...turns] }).spans.find((s) => s.kind === "conversation");
+    b.boundary({ session: "s1", scope: SCOPE, kind: "pre-compaction" });
+    turns.push(a("reply to two"), u(long("typed while it ran")), a("reply"));
+    const after = b.capture({ session: "s1", scope: SCOPE, turns: [...turns] }).spans.find((s) => s.kind === "conversation");
+    expect(b.coverage(SCOPE).find((m) => m.spanHash === pre?.hash)?.proposalId).toBe(r.proposal?.id as string);
+    expect(b.coveredHashes(SCOPE).has(after?.hash as string)).toBe(false);
+  });
+
+  test("a turn claim that cannot be written costs only the claim: the capture lands, the turn stays unwritten, the failure is emitted", async () => {
+    const b = buf();
+    const t = transcript(b);
+    t.turn("one");
+    const jot = b.jot({ session: "s1", scope: SCOPE, text: long("note, claim refused by the disk") });
+    await submitProposal(b, { content: "A note." }, jotCtx(jot.spans[0]?.hash));
+    harden(scopeFile(SCOPE, "coverage.jsonl"));
+    const turns: Turn[] = [u(long("one")), a("reply to one"), u(long("two")), a("reply to two")];
+    const out = b.capture({ session: "s1", scope: SCOPE, turns });
+    expect(out.reason).toBe("APPENDED");
+    const two = out.spans.find((s) => s.kind === "conversation")?.hash as string;
+    expect(b.coveredHashes(SCOPE).has(two)).toBe(false);
+    expect(b.events("remember.write.failed").some((e) => e.data?.["site"] === "coverage")).toBe(true);
+  });
+});
+
 // ── updates: resolution ─────────────────────────────────────────────────────
 
 describe("updates: resolution (G10)", () => {

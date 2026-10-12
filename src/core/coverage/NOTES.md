@@ -57,7 +57,10 @@ pointer keeps #285's "one line is enough" sentence, it is offered only after eve
 debt has had today's pointer, and only for a session the registry knows and a person
 drove. Unlike #285's short debt it is a retention debt like any other, until written up
 or lapsed. Doctor counts only what the pointer can offer (`sessions.ts#pointable`); a small
-debt from `claude -p` or the SDK is named apart, as left to lapse.
+debt from `claude -p` or the SDK is named apart, as left to lapse. `counterparts coverage`
+reads the same filter since 2026-10-11 and lists such a session under "Left to lapse (small;
+not known as a person's session)", not "Owed now" — "known", because a person's small
+debt whose registry record was pruned (after a week) reads the same.
 
 ## 6. Written-up rows
 

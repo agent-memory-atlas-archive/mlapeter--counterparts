@@ -24,7 +24,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Counterpart } from "../src/core/counterpart.js";
+import { Counterpart, NIGHT_WRITE_UP_EVENT } from "../src/core/counterpart.js";
 import {
   COVERAGE_LAPSED_EVENT,
   COVERAGE_OWED_EVENT,
@@ -45,6 +45,7 @@ import { openServer } from "../src/adapters/mcp/index.js";
 import type { McpServer, ToolResult } from "../src/adapters/mcp/server.js";
 import { readSession, recordSession, writeUpPlan } from "../src/adapters/sessions.js";
 import { run as cliRun } from "../src/adapters/cli/index.js";
+import { coverageLines } from "../src/adapters/cli/coverage.js";
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -701,6 +702,90 @@ describe("reading it: `counterparts coverage` and the doctor line", () => {
     p.end(Date.now() - 2 * DAY + 25 * MIN);
     const h = read();
     expect(h?.severity).toBe("green");
-    expect(h?.detail).toContain("nothing owed; 1 small, not a person's session: left to lapse");
+    expect(h?.detail).toContain("nothing owed; 1 small, not known as a person's session: left to lapse");
+  });
+
+  test("`counterparts coverage` reads the same person-session filter as doctor and the catch-up: a small `claude -p` stretch is left to lapse, not owed (2026-10-11)", () => {
+    const { today } = yesterdayStore();
+    // The 10-08 shape: an `sdk-cli` session, a small stretch, ended.
+    recordSession(storeDir, { sessionId: "print-1", scope: PROJ, phase: "start", entrypoint: "sdk-cli" });
+    const printedAt = Date.now() - 2 * DAY;
+    const k = clocked(printedAt);
+    const p = talker(k, "print-1");
+    for (let i = 0; i < 3; i++) p.piece(printedAt + i * 10 * MIN);
+    p.end(printedAt + 25 * MIN);
+    const c = Counterpart.open({ dir: storeDir, owner: true, timeZone: ZONE });
+    open.push(c);
+    const said = coverageLines({ store: c.store, date: today, today }).join("\n");
+    expect(said).toContain("Owed now: 1 session — owing-one (5 pieces).");
+    expect(said).toContain("Left to lapse (small; not known as a person's session): 1 session — print-1 (3 pieces).");
+    const that = coverageLines({ store: c.store, date: new Date(printedAt).toISOString().slice(0, 10), today }).join("\n");
+    expect(that).toMatch(/print-1[\s\S]*not yet written up: 3 pieces over 20 min, since [^\n]* — left to lapse \(small; not known as a person's session\)/);
+    expect(that).not.toMatch(/print-1[^\n]*\n[^\n]*owed \(/);
+  });
+
+  test("the catch-up's unread line is today's, or that run's date's — never a past date's from a later run (review of #435)", () => {
+    const { yesterday, today } = yesterdayStore();
+    const c = Counterpart.open({ dir: storeDir, owner: true, timeZone: ZONE });
+    open.push(c);
+    c.store.appendEvent({ name: NIGHT_WRITE_UP_EVENT, day: c.store.livedDay(), ref: "nrn_test", payload: { state: "done", granted: 1, written: 0, parts: 3, unread: 2, left: 1 } });
+    expect(coverageLines({ store: c.store, date: today, today }).join("\n")).toContain("left 2 parts unread; they stay owed.");
+    expect(coverageLines({ store: c.store, date: yesterday, today }).join("\n")).not.toContain("unread");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe("a note claims its own turn, so the rest stays owed and the ask still comes (2026-10-11)", () => {
+  /** A typed turn with a note written in it: the note first, then the Stop. */
+  async function notedPiece(k: ReturnType<typeof clocked>, t: ReturnType<typeof talker>, session: string, at: number, n: number): Promise<void> {
+    k.set(at - 30_000);
+    const jot = k.c.captureJot({ session, scope: PROJ, text: `note ${String(n)}: the relief valve is seated before the loop is filled.` });
+    const dep = await k.c.submitJot(
+      { content: `Note ${String(n)}: the relief valve is seated before the loop is filled, step ${String(n)}.`, kind: "fact" },
+      { session, scope: PROJ, ownSpanHash: jot.spans[0]?.hash ?? null },
+    );
+    expect(dep.covers).toEqual([jot.spans[0]?.hash as string]);
+    t.piece(at);
+  }
+
+  test("a session with several notes keeps its other turns unwritten; the session-end write-up then claims them", async () => {
+    const k = clocked();
+    const t = talker(k, "noter");
+    for (let i = 0; i < 10; i++) {
+      if (i % 3 === 2) await notedPiece(k, t, "noter", T0 + i * 5 * MIN, i);
+      else t.piece(T0 + i * 5 * MIN);
+    }
+    const e = entryOf(k.c, "noter", T0 + 46 * MIN);
+    // 10 turns and 3 notes: each note wrote up itself and its own turn.
+    expect({ pieces: e?.pieces, written: e?.written, unwritten: e?.stretch?.pieces }).toEqual({ pieces: 13, written: 6, unwritten: 7 });
+    const end = await k.c.submitSessionEnd(MEMORY, { session: "noter", scope: PROJ });
+    expect(end.covers.length).toBe(7);
+    expect(entryOf(k.c, "noter", T0 + 47 * MIN)?.stretch).toBeNull();
+  });
+
+  test("the Stop-hook ask still fires on what the notes left, and no more often than the pacing allows", async () => {
+    const k = clocked();
+    const t = talker(k, "noter");
+    for (let i = 0; i < 10; i++) {
+      if (i % 3 === 2) await notedPiece(k, t, "noter", T0 + i * 5 * MIN, i);
+      else t.piece(T0 + i * 5 * MIN);
+    }
+    // Under the old rule the note in turn 8 claimed turns 0–7 and this Stop
+    // saw two unwritten pieces (turns 8 and 9): no ask. Now seven are unwritten.
+    const first = k.c.episodeAsk("noter", { turns: 1, bytes: 100 }, undefined, { scope: PROJ });
+    expect(first.asked).toBe(true);
+    expect(first.verdict.reason).toBe("due-unwritten");
+    expect(first.verdict.unwritten?.pieces).toBe(7);
+    // A noted turn and two plain ones: two new unwritten pieces, not three.
+    await notedPiece(k, t, "noter", T0 + 50 * MIN, 10);
+    t.piece(T0 + 55 * MIN);
+    t.piece(T0 + 60 * MIN);
+    k.set(T0 + 80 * MIN);
+    expect(k.c.episodeAsk("noter", { turns: 1, bytes: 100 }, undefined, { scope: PROJ }).asked).toBe(false);
+    // The third plain turn, past the half hour since the ask: asked again.
+    t.piece(T0 + 81 * MIN);
+    const again = k.c.episodeAsk("noter", { turns: 1, bytes: 100 }, undefined, { scope: PROJ });
+    expect(again.asked).toBe(true);
+    expect(again.verdict.reason).toBe("due-unwritten");
   });
 });

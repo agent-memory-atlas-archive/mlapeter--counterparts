@@ -5389,7 +5389,7 @@ function crashWriteUpFindings(input: DoctorInput, store: Store, owedReading: Owe
       yesterdayWords,
       nightWords,
       owedWords,
-      unpointed === 0 ? "" : `${String(unpointed)} small, not a person's session: left to lapse`,
+      unpointed === 0 ? "" : `${String(unpointed)} small, not known as a person's session: left to lapse`,
       lapses === 0 ? "" : `${String(lapses)} lost unwritten this week`,
     ]
       .filter((w) => w.length > 0)
@@ -5409,6 +5409,9 @@ function crashWriteUpFindings(input: DoctorInput, store: Store, owedReading: Owe
     pointerDate: pointer?.date ?? null,
     nightWrittenUp: night?.written ?? null,
     nightLeftOwed: night?.left ?? null,
+    // Parts a catch-up reader was handed and did not bring back (2026-10-11):
+    // they stay owed, so `waiting` already counts their sessions.
+    nightUnread: night?.unread ?? null,
   };
   // THE POINTER IS NOT GETTING OUT (PR #192 review, MAJOR 1 and m4): opening a
   // session there would only defer again, so the advice says why and by how much.

@@ -2510,3 +2510,34 @@ reason `unread`, with its code, not `nothing-ran` (`night-run.ts`).
 `nightRunLost` reads a row past that plus 10 minutes' grace as lost, and the next prompt would
 have asked to dream while a long catch-up ran. The row now carries the catch-up's hour from the
 start (`nightRowTimeoutMs`).
+
+## 2026-10-11 — the first live `counterparts catch-up`: sixteen empty parts, read back
+
+**It looked like skimming and was not.** Run `cup_463025455d83` closed 16 of its 24 parts with
+`[]`, about 2–3 s from fetch to answer (e92c5180 parts 10–15, 0464c1d3 parts 2–11). The parts
+the three children were actually served (their transcripts) show every entry of those 16 marked
+`[already written up]`: 14 were claimed by the sessions' own half-hourly chapters, 2 by one
+mid-session note. The prompt says not to write marked words again; the reader didn't. Fetch to
+answer measures output, not reading: the parts with unwritten words took 16–25 s each and kept
+5–10 memories. So the cause was the door serving parts with nothing to write, and the batch
+allowance counting them (one batch's whole allowance, and most of another's, went on them).
+
+**Fixed.** `writeUpPartsDated` counts each part's `unwritten` bytes; the door passes such parts
+over on a fetch, never the last (`firstUnwrittenPart`), and `planCatchUp` starts each batch at
+the first part the door will serve, charging passed-over parts nothing. The row carries
+`passed` and `unread`. Replayed on a copy of the preserved spans with 0464c1d3 alone and a real
+child: one batch, parts 1–11 passed over in one fetch, parts 12–16 read in 108 s, 37 memories
+(the live run: three children, 0 for parts 2–11, 35 for 12–16).
+
+**The guard.** On the granted path a `[]` for a part with unwritten words needs a one-line
+`nothing` reason, or it is refused `reason-required` and the part stays owed. No timer, no
+run-of-empties rule: both would have re-owed the sixteen right answers forever.
+
+**`--reowe <run>`** reads the run's `mcp.write_up` rows from the log (a week) and the coverage
+ledger as it stood when the run began. On a copy of the post-run spans with the run's log lines
+it says, for both sessions, "nothing to re-owe". It moves only the progress counter; a session
+the run went on to mark is refused `needs-retraction` (see the decisions fragment).
+
+**Not changed, flagged.** A jot claims every unwritten word its session said before it
+(`submitJot` → the default `cover`): one short note covered e92c5180's evening, about
+2.5 hours and 48 KB, whose other substance no chapter or memory of that session holds.

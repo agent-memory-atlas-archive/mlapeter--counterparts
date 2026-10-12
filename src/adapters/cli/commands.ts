@@ -222,7 +222,7 @@ import { NO_PAGE_LINES, bodyFrom, pageLines, versionLines, writeLines } from "./
 import { coreListLines, dreamListLines, dreamShowLines, dreamingSettingWords } from "./dream-core.js";
 import { settleListLines } from "./settle.js";
 import { coverageLines } from "./coverage.js";
-import { catchUpCommand } from "./catch-up.js";
+import { catchUpCommand, reoweCommand } from "./catch-up.js";
 import type { ChildPlan, ChildResult } from "../claude-code/child.js";
 import { DREAMING_SETTINGS, NIGHT_RUN_FINISHES } from "../../core/dream/index.js";
 import { NEW_INSTALL_DREAMING_LINE, beginNewInstall } from "../../core/onboarding.js";
@@ -821,7 +821,7 @@ export const COMMAND_FLAGS: Record<Command, readonly string[]> = {
   coverage: ["date"],
   // `--config` because the store it opens is the one the configuration names,
   // and the child's memory server reads the same file.
-  "catch-up": ["config"],
+  "catch-up": ["config", "reowe", "dry-run", "yes"],
   // `--config` because the store it opens is the one the CONFIGURATION names —
   // that is the whole point of the command over `counterparts-dashboard serve`,
   // which refuses until you name a store. `--dir` still parses (it is common)
@@ -901,7 +901,7 @@ export const COMMAND_BLURB: Record<Command, string> = {
   coverage:
     "What is written up, and what is not yet, for one date (default today): each session that captured something that day, how much of it is written up, and what is not yet written up — how many pieces, over how long, since when — and whether that is owed (the nightly run catches it up, or counterparts catch-up does now), lapsed (let go unwritten after fourteen days of use — lost to memory; nothing is deleted), under the floor, or still at work. Read-only.",
   "catch-up":
-    "Write up, now, every session that ended before it was written up — what the nightly run does each morning, on demand. Oldest first, in batches, each a windowless claude -p of its own allowed one tool (session_end); it prints each batch, then what it caught up and what is left. Sessions may be open meanwhile: one still at work is left for later, one being written up elsewhere is passed over. It uses your Claude subscription like any session. At most 400 parts and an hour a run; what is left stays owed. Refuses under observer.",
+    "Write up, now, every session that ended before it was written up — what the nightly run does each morning, on demand. Oldest first, in batches, each a windowless claude -p of its own allowed one tool (session_end); it prints each batch, then what it caught up and what is left. Sessions may be open meanwhile: one still at work is left for later, one being written up elsewhere is passed over. It uses your Claude subscription like any session. At most 400 parts and an hour a run; what is left stays owed. A part whose every word the session's own chapters or notes already wrote up is passed over, and a part answered with nothing kept and no reason why stays owed. --reowe <run> owes again the parts a run (cup_… or nrn_…) closed with nothing kept, when their words were not yet written up: it prints the plan, then asks for the run's id typed back (--yes skips that, --dry-run stops at the plan); it reads the run from the log, which keeps a week, and refuses by name what it cannot do. Refuses under observer.",
   dashboard:
     "Open the dashboard in your browser: the web view of the store your configuration names, served on 127.0.0.1 and nowhere else. Ctrl-C stops it. Looking is read-only — it strengthens nothing and deposits nothing. What you do there on purpose (write a note, remove a memory, back up, …) runs through these same commands, and a removal asks you to type the id back.",
   version: "The version of Counterparts you have. It opens nothing.",
@@ -1202,6 +1202,14 @@ const ROLLBACK_FLAG_HELP: Record<string, string> = {
   dir: "the store to roll back; without it, the one your configuration names",
 };
 
+/** `catch-up`'s own (2026-10-11): `--dry-run` and `--yes` belong to `--reowe`. */
+const CATCH_UP_FLAG_HELP: Record<string, string> = {
+  reowe:
+    "a run's id (cup_… or nrn_…): owe again the parts it closed with nothing kept while their words were not yet written up — the plan first, then the id typed back. It reads the run from the log, which keeps a week",
+  "dry-run": "with --reowe: print the plan and change nothing",
+  yes: "with --reowe: skip typing the run's id back, for a script or a pipe",
+};
+
 const DASHBOARD_FLAG_HELP: Record<string, string> = {
   dir: "a store to look at instead of the one your configuration names",
 };
@@ -1235,6 +1243,8 @@ export function commandHelp(command: Command): string {
           ? INSTALL_FLAG_HELP
           : command === "dashboard"
             ? DASHBOARD_FLAG_HELP
+          : command === "catch-up"
+            ? CATCH_UP_FLAG_HELP
             : command === "connect" || command === "disconnect" || command === "uninstall"
               ? HOST_FLAG_HELP
               : command === "dream"
@@ -1284,6 +1294,7 @@ export function commandHelp(command: Command): string {
 /** Flags whose value is a string; anything else here is a boolean switch. */
 const VALUED_FLAGS: readonly string[] = [
   "dir",
+  "reowe",
   "config",
   "port",
   "out",
@@ -1469,6 +1480,8 @@ export function parse(argv: readonly string[]): Parsed {
       "keep-vectors": { type: "boolean" },
       batch: { type: "string" },
       yes: { type: "boolean" },
+      // `catch-up --reowe <run>` (2026-10-11): the run whose empty parts to owe again.
+      reowe: { type: "string" },
       budget: { type: "string" },
       config: { type: "string" },
       // `repair-dates`' three. `dry-run` is a declared boolean rather than a
@@ -4926,6 +4939,15 @@ async function catchUpEntry(
   if (config.observer === true) {
     io.err("refused: this configuration is an observer's, and a catch-up writes memories.");
     return EXIT.refused;
+  }
+  // `--dry-run` and `--yes` belong to `--reowe` (review of #435): alone, a
+  // typed `catch-up --dry-run` would start a real run that writes memories.
+  if (parsed.flags["reowe"] === undefined && (parsed.flags["dry-run"] !== undefined || parsed.flags["yes"] !== undefined)) {
+    io.err(`usage: --dry-run and --yes go with --reowe <run>. ${BIN.cli} catch-up alone starts a real run; it has no dry run.`);
+    return EXIT.usage;
+  }
+  if (parsed.flags["reowe"] !== undefined) {
+    return await reoweCommand({ config: { ...config, dataDir }, io, now, run: parsed.flags["reowe"], dryRun: parsed.flags["dry-run"] === true, yes: parsed.flags["yes"] === true });
   }
   return await catchUpCommand({
     config: { ...config, dataDir },
