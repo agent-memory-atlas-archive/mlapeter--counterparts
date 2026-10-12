@@ -404,7 +404,7 @@ fi
 
 step "the wake reached the session: SessionStart output carries the first-run line and the context block"
 WAKE=$(grep -F 'Hook SessionStart:startup (SessionStart) success' "$WORK/debug-wake.log" || true)
-if grep -q "first run" <<<"$WAKE" && grep -q "additionalContext" <<<"$WAKE"; then
+if grep -q "Counterparts is set up" <<<"$WAKE" && grep -q "additionalContext" <<<"$WAKE"; then
   ok
 else
   no "no first-run wake in the debug log" "$(grep -iE 'hook|counterparts' "$WORK/debug-wake.log" | tail -20)"
@@ -642,7 +642,7 @@ cp "$WORK/settings.before.json" "$HOME/.claude/settings.json"
 rm -f "$WORK/debug-moved.log"
 ( cd "$PROJECT" && claude --debug-file "$WORK/debug-moved.log" --init-only >/dev/null 2>&1 )
 OUTS=$(grep -F 'Hook SessionStart:startup (SessionStart) success' "$WORK/debug-moved.log" || true)
-if grep -q "Now: " <<<"$OUTS" && ! grep -q "installed twice" <<<"$OUTS" && ! grep -q "first run" <<<"$OUTS"; then
+if grep -q "Now: " <<<"$OUTS" && ! grep -q "installed twice" <<<"$OUTS" && ! grep -q "Counterparts is set up" <<<"$OUTS"; then
   ok
 else
   no "the plugin did not wake on the existing store" "$OUTS"

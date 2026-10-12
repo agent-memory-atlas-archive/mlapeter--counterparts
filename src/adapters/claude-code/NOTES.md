@@ -2567,7 +2567,7 @@ The 0.3.19 release check reported a fresh SessionStart at 00:19 telling a plain 
 run's own `claude -p` children were the suspects. Read from the host's transcripts (no store opened):
 
 - The sessions that started at 00:19:49 and 00:22:17 local on 10-12 were under
-  `~/.claude/projects/-Users-mlapeter--counterparts-store/`, cwd the store, entrypoint `sdk-cli`. These were the
+  `~/.claude/projects/<the store directory's slug>/`, cwd the store, entrypoint `sdk-cli`. These were the
   dream child and the reflection child. Neither holds a plain-reminder line or a `systemMessage`.
 - A `claude -p` probe on 2.1.296 (user hooks off, empty strict MCP config, the parent's `ATTENDED=1`) printed
   `CLAUDE_CODE_ENTRYPOINT=sdk-cli`, `CLAUDE_CODE_SESSION_ATTENDED=0`, `COUNTERPARTS_NIGHT_RUN=<run>`. The host
