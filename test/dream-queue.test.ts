@@ -181,6 +181,37 @@ describe("a refused fold's parts are carried to the next night, together and fir
     for (const id of sixth) expect(third.fresh.map((f) => f.id)).not.toContain(id);
   });
 
+  test("a carried part the owner removes meanwhile leaves the carry; its journal is redacted and what the dream saw stays (review of #436)", async () => {
+    const c = brain();
+    nextDay(c);
+    const ids = Array.from({ length: 13 }, (_, i) => mem(c, `Migration step ${String(i)} finished cleanly, number ${String(i)}.`));
+    const b = begin(c);
+    const folds = Array.from({ length: DREAM_TUNABLES.FOLDS }, (_, i) => ({ action: "gist", fold: true, text: `Batch ${String(i)} migrated.`, sources: [ids[2 * i], ids[2 * i + 1]] }));
+    const [gone, archived, left] = [ids[10] as string, ids[11] as string, ids[12] as string];
+    const results = propose(c, b.dream, [...folds, { action: "gist", fold: true, text: "The last batch migrated.", sources: [gone, archived, left] }]);
+    expect(results[DREAM_TUNABLES.FOLDS]?.detail).toContain("3 foldable parts are carried");
+    journal(c, b.dream);
+    // The owner removes one part; another is archived.
+    c.store.appendRemovalRecord({ memoryId: gone, stage: "requested", actor: "owner", reason: "test" });
+    c.store.appendRemovalRecord({ memoryId: gone, stage: "dark", actor: "owner", reason: "test" });
+    const { chaseRemoved } = await import("../src/core/store/owner-op-seam.js");
+    chaseRemoved(c.store, gone);
+    c.store.archive(archived, "test");
+    // The dream that showed it is redacted; what it saw is not edited.
+    expect(c.store.dream(b.dream)?.journal).toContain("redacted");
+    expect(JSON.parse(c.store.dream(b.dream)?.shown ?? "[]")).toContain(gone);
+    nextDay(c);
+    mem(c, "A new day's note.");
+    const next = begin(c);
+    const fresh = next.fresh.map((f) => f.id);
+    expect(fresh).not.toContain(gone);
+    expect(fresh).not.toContain(archived);
+    expect(Object.keys(next.memories)).not.toContain(gone);
+    // One part left is no fold: it is not counted as carried, and it waits in the queue as any memory.
+    expect(next.queue.carried ?? 0).toBe(0);
+    expect(fresh).toContain(left);
+  });
+
   test("an undone night carries nothing: its parts are simply undreamed again", () => {
     const c = brain();
     nextDay(c);

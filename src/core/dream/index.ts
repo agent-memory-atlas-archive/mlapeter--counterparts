@@ -2722,8 +2722,11 @@ export class Dreams {
         break;
       }
     }
+    // A carry is a fold's parts: a group left with fewer than two still queued
+    // (the rest forgotten, archived, below reach or shown) is no fold any more,
+    // and what is left of it ranks as any queued memory (review of #436).
     const queued = new Set(ids);
-    return { ids, carried: carried.map((g) => g.filter((id) => queued.has(id))).filter((g) => g.length > 0), faded, stopped };
+    return { ids, carried: carried.map((g) => g.filter((id) => queued.has(id))).filter((g) => g.length >= 2), faded, stopped };
   }
 
   /**

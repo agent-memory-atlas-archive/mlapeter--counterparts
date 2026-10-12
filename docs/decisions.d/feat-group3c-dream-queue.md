@@ -50,3 +50,10 @@
   have dropped the newest carries once a store had made 500. No behaviour change on the gate: a dream older than
   its week was already passed over, and a carry is recorded on its dream's day or later. On a 10x copy with a
   year of dreams (365) the gate's queue read went from 7.3 ms to 2.8 ms; at 15 dreams it is unchanged.
+- Decided by the #436 reviewer, 2026-10-11, lightly held: a carried group left with fewer than two parts still
+  queued (the others forgotten by the owner, archived, below reach, or shown by a later night) no longer goes
+  first and is not counted as `carried`; the part left ranks by value × fragility like any queued memory. Why:
+  the carry exists so a fold has its parts in front of it, and the carry itself is only made for two or more; a
+  lone part jumping the queue as a "group" of one would spend the front of the night on no fold. The owner's
+  forget path needed nothing: the removed part is denied and leaves the queue, the dream that showed it is
+  redacted as before, and its `shown` stays.
