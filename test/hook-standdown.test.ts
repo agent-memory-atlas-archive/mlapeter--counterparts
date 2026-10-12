@@ -65,7 +65,7 @@ import {
 import type { StandDownMark } from "../src/adapters/claude-code/standdown.js";
 import { canonicalScopePath, scopesPath } from "../src/adapters/scopes.js";
 import { UPDATE_NOTICE, canonicalScope, installedBuild, readSession, recordServerLaunch, recordSession } from "../src/adapters/sessions.js";
-import { SCHEMA_VERSION, Store, StoreError, isDatabaseSidecar } from "../src/core/store/index.js";
+import { SCHEMA_VERSION, Store, StoreError, holdsNoData } from "../src/core/store/index.js";
 import { makeBodyUnreadable } from "./store-fixture.js";
 
 const HOOK_SCRIPT = resolve(import.meta.dir, "../src/adapters/claude-code/bin/hook.ts");
@@ -201,8 +201,8 @@ function fingerprint(dir: string): Record<string, string> {
   const out: Record<string, string> = {};
   const walk = (at: string, prefix: string): void => {
     for (const name of readdirSync(at).sort()) {
-      if (isDatabaseSidecar(name)) continue;
       const full = join(at, name);
+      if (holdsNoData(full)) continue;
       const rel = prefix === "" ? name : `${prefix}/${name}`;
       if (statSync(full).isDirectory()) walk(full, rel);
       else out[rel] = createHash("sha256").update(readFileSync(full)).digest("hex");

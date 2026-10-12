@@ -54,7 +54,7 @@ import {
   describePreRowsRefusal,
   SCHEMA_VERSION,
   Store,
-  isDatabaseSidecar,
+  holdsNoData,
   paths,
   storeExists,
 } from "../src/core/store/index.js";
@@ -113,7 +113,7 @@ function fingerprint(dir: string): Record<string, string> {
         walk(full);
         continue;
       }
-      if (isDatabaseSidecar(name)) continue;
+      if (holdsNoData(full)) continue;
       out[relative(dir, full)] = createHash("sha256").update(readFileSync(full)).digest("hex");
     }
   };

@@ -54,7 +54,7 @@ import {
 } from "../src/core/store/cache.js";
 import { openDb } from "../src/core/store/db.js";
 import { CONFIG_FLAG } from "../src/adapters/config-path.js";
-import { EMBED_FAILED_PREFIX, EMBED_SKIP_AFTER, LAYOUT, SCHEMA_VERSION, Store, isDatabaseSidecar, paths } from "../src/core/store/index.js";
+import { EMBED_FAILED_PREFIX, EMBED_SKIP_AFTER, LAYOUT, SCHEMA_VERSION, Store, holdsNoData, paths } from "../src/core/store/index.js";
 import { makeBodyUnreadable } from "./store-fixture.js";
 import {
   BLOB_NAME,
@@ -3345,9 +3345,10 @@ describe("verify", () => {
       for (const name of readdirSync(at).sort()) {
         // Bar a database's `-shm`: under WAL every connection writes read-marks
         // into it, a read-only one included. The `-wal` is hashed with the file —
-        // a commit lives there until a checkpoint moves it in.
-        if (isDatabaseSidecar(name)) continue;
+        // a commit lives there until a checkpoint moves it in (an empty one holds
+        // none, and comes and goes with the platform's SQLite: `holdsNoData`).
         const full = join(at, name);
+        if (holdsNoData(full)) continue;
         if (statSync(full).isDirectory()) walk(full);
         else parts.push(`${full}:${readFileSync(full).toString("base64")}`);
       }

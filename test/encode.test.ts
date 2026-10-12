@@ -56,7 +56,7 @@ import type {
   SecretsGateRecord,
 } from "../src/core/encode/index.js";
 import { sal } from "../src/core/physics/index.js";
-import { DATA_DIR_ENV, Store, isDatabaseSidecar } from "../src/core/store/index.js";
+import { DATA_DIR_ENV, Store, holdsNoData } from "../src/core/store/index.js";
 
 const ENCODE_SRC = fileURLToPath(new URL("../src/core/encode/", import.meta.url));
 const SRC_FILES = readdirSync(ENCODE_SRC).filter((f) => f.endsWith(".ts"));
@@ -1350,8 +1350,8 @@ describe("gated means gated, against a REAL store", () => {
     const out: Record<string, string> = {};
     const walk = (p: string, rel: string) => {
       for (const name of readdirSync(p).sort()) {
-        if (isDatabaseSidecar(name)) continue;
         const full = join(p, name);
+        if (holdsNoData(full)) continue;
         const key = rel === "" ? name : `${rel}/${name}`;
         if (statSync(full).isDirectory()) walk(full, key);
         else out[key] = createHash("sha256").update(readFileSync(full)).digest("hex");
