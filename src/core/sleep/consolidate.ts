@@ -378,7 +378,7 @@ export const SLOT_WALK_MAX = 12;
 /**
  * A MEMORY'S SLOT (2026-10-11, Group 3 part A): the memory and the live ones a
  * standing "A over B" ties it to — a SETTLED `changed` pair (a write's
- * `updates`, a settle, a dream merge, a fold once part B writes them) —
+ * `updates`, a settle, a dream merge, a dream fold: Group 3 part B) —
  * walked along the chain, at most `SLOT_WALK_MAX`. Not a slot proposal still
  * waiting (unconfirmed, about one in seven wrong on Group 2's hand-read: a
  * wrong one would pool another memory's uses into this one — decided by the
@@ -416,6 +416,16 @@ export function slotOf(store: Pick<SleepStore, "row" | "contradictionsOf">, id: 
 
 /** The sources whose returns are a recurrence: an ordinary use, a reflection's citation (full), an engaged use (`ENGAGED_RECURRENCE_WEIGHT`). */
 const RECURRENCE_SOURCES: Readonly<Record<string, "full" | "engaged">> = { awake: "full", reflection: "full", engaged: "engaged" };
+/** A dream fold's row (`meta.fold`, 2026-10-11, Group 3 part B). Never throws. */
+function isFoldRow(row: Pick<MemoryRow, "source" | "meta">): boolean {
+  if (row.source !== "dreamed" || typeof row.meta !== "string" || !row.meta.includes('"fold"')) return false;
+  try {
+    return (JSON.parse(row.meta) as Record<string, unknown>)["fold"] === true;
+  } catch {
+    return false;
+  }
+}
+
 /** Who writes no re-encoding by writing into a slot: a dream (its merge, gist or fold) and a reflection (its citation already counts). */
 const NOT_REENCODING = new Set(["dreamed", "reflection"]);
 
@@ -453,11 +463,25 @@ export function coreRecurrence(store: Pick<SleepStore, "row" | "returnsOf" | "co
     const r = rows.find((x) => x.id === firstBorn)?.row;
     if (firstBorn === null || r === undefined || row.birth_day < r.birth_day || (row.birth_day === r.birth_day && (row.created_at ?? 0) < (r.created_at ?? 0))) firstBorn = m;
   }
+  // A FOLD IN THE SLOT (2026-10-11, Group 3 part B; decided by random-06,
+  // 2026-10-11, lightly held): recurrence means its content came back AFTER
+  // it was folded. A member already there when the slot's first fold was
+  // written gives no re-encoding (its birth came before the fold existed),
+  // and only its uses after the fold count; the fold's own uses, and members
+  // written since, count as anywhere else.
+  let foldAt: { at: number; day: number } | null = null;
+  for (const { row } of rows) {
+    if (row === undefined || !isFoldRow(row)) continue;
+    const at = row.created_at ?? 0;
+    if (foldAt === null || at < foldAt.at) foldAt = { at, day: row.birth_day };
+  }
+  const beforeFold = (row: MemoryRow): boolean => foldAt !== null && !isFoldRow(row) && (row.created_at ?? 0) < foldAt.at;
   const evidence: { day: number; weight: number; session: string | null }[] = [];
   let anchored = false;
   for (const { id: m, row } of rows) {
     if (row === undefined) continue;
-    let returns: readonly { source: string; day?: number; session?: string | null }[] = [];
+    const folded = beforeFold(row);
+    let returns: readonly { source: string; day?: number; session?: string | null; at?: number }[] = [];
     try {
       returns = store.returnsOf?.(m) ?? [];
     } catch {
@@ -466,10 +490,11 @@ export function coreRecurrence(store: Pick<SleepStore, "row" | "returnsOf" | "co
     for (const r of returns) {
       const kind = RECURRENCE_SOURCES[r.source];
       if (kind === undefined || typeof r.day !== "number") continue;
+      if (folded && foldAt !== null && (typeof r.at === "number" ? r.at < foldAt.at : r.day <= foldAt.day)) continue;
       if (m === id) anchored = true;
       evidence.push({ day: r.day, weight: kind === "full" ? 1 : PHYSICS_TUNABLES.ENGAGED_RECURRENCE_WEIGHT, session: r.session ?? null });
     }
-    if (m !== firstBorn && !NOT_REENCODING.has(row.source ?? "")) evidence.push({ day: row.birth_day, weight: 1, session: row.origin_session ?? null });
+    if (m !== firstBorn && !folded && !NOT_REENCODING.has(row.source ?? "")) evidence.push({ day: row.birth_day, weight: 1, session: row.origin_session ?? null });
   }
   const from = day - PHYSICS_TUNABLES.CORE_SLOW_WINDOW_DAYS;
   const byDay = new Map<number, number>();

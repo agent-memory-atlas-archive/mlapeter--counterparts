@@ -1480,7 +1480,7 @@ const DREAM: ToolSpec = {
       changes: {
         type: "array",
         description:
-          "`propose`: the changes, each an object with `action` — `merge` (ids: two or more near-copies, text: the one memory in better words, title?), `link` (a, b), `replayed` (id), `gist` (text, sources: ids, title?, kind?, occurredOn?: when what it draws on happened, saidBy?: owner|self|inferred, status?: done|planned|proposed|asked), `contradiction` (a, b), `settle` (holds, over, how: changed|corrected|open, why — only when the reason is plain; flag otherwise), `slot` (pair, same: true|false, why — an on-mind to-confirm pair: is the newer the later state of the same thing?), `feeling-now` (id, core, emotion: ONE word, strength, carried_by: the nuance in your own words), `nominate-core` (id, why). Usually far fewer changes than the limits; none is fine.",
+          "`propose`: the changes, each an object with `action` — `merge` (ids: two or more near-copies, text: the one memory in better words, title?), `link` (a, b), `replayed` (id), `gist` (text, sources: ids, title?, kind?, occurredOn?: when what it draws on happened, saidBy?: owner|self|inferred, status?: done|planned|proposed|asked, fold?: true when it says what two or more of them add up to — the parts fade under it), `contradiction` (a, b), `settle` (holds, over, how: changed|corrected|open, why — only when the reason is plain; flag otherwise), `slot` (pair, same: true|false, why — an on-mind to-confirm pair: is the newer the later state of the same thing?), `feeling-now` (id, core, emotion: ONE word, strength, carried_by: the nuance in your own words), `nominate-core` (id, why). Usually far fewer changes than the limits; none is fine.",
         items: {
           type: "object",
           properties: {
@@ -1499,6 +1499,7 @@ const DREAM: ToolSpec = {
             occurredOn: { type: "string", description: "`gist`: when what it draws on happened — a day, a month, a year or a range." },
             saidBy: { type: "string", enum: ["owner", "self", "inferred"], description: "`gist`: who said it; inferred when it is your own reading." },
             status: { type: "string", enum: ["done", "planned", "proposed", "asked"], description: "`gist`: what kind of thing it is." },
+            fold: { type: "boolean", description: "`gist`: a fold — the standing outcome two or more parts add up to, not a session retold; the parts fade, earlier under it." },
             core: { type: "string", enum: CORES, description: `\`feeling-now\`: ${CORE_TEXT}` },
             emotion: { type: "string", description: `\`feeling-now\`: ${EMOTION_TEXT}` },
             strength: { type: "number", minimum: 0, maximum: 1 },

@@ -250,7 +250,10 @@ band(m, d) = identity  if promoted(m)                              # explicit cr
   RECURRENCE DAY is a lived day on which m or a member of its SLOT — the memories a
   standing "A over B" ties it to (a settled `changed`; not a slot proposal still waiting) —
   was used awake (an engaged use counts half), cited by a reflection, or re-encoded (a
-  newer member written that day by a session). Dream replays never count. The caller
+  newer member written that day by a session). Dream replays never count. In a slot with
+  a dream FOLD (Group 3 part B; decided by random-06, 2026-10-11, lightly held) only what
+  came back after the fold counts: a member already there when it was folded gives no
+  re-encoding, and only its later uses count. The caller
   counts it (`sleep/consolidate.ts#coreRecurrence`) into `CoreContext.recurrence`;
   without one the row's own return days stand in (`rowRecurrence`). The absolute 0.5
   floor is gone: it fought the steeper curves; within reach is the floor now.

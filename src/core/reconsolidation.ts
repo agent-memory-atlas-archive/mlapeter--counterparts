@@ -209,6 +209,21 @@ export const FULFILLED_SOURCE = "fulfilled";
 /** The `source` of the pairs a dream merge writes, one per original (`dream/index.ts#DREAM_MERGE_REASON`, spelled here: this file sits below `dream/`). */
 export const DREAM_MERGE_SOURCE = "dream-merge";
 
+/**
+ * The `source` of the pairs a dream FOLD writes, one per source it fades
+ * (2026-10-11, Group 3 part B; item 15): the fold holds over each part,
+ * `changed`, through the one door — never a new path or a fourth relation.
+ */
+export const FOLD_SOURCE = "fold";
+
+/**
+ * The `source` of the flag a CORRECTION to a fold's source raises between the
+ * fold and the memory that corrects it (2026-10-11, Group 3 part B): the fold
+ * said what its parts added up to, and one of them was wrong. A question for
+ * the waking self (or the dream), never a settle.
+ */
+export const FOLD_SOURCE_CORRECTED = "fold-source-corrected";
+
 /** The archive reason of the successor a pressure crossing minted, when that crossing is undone (2026-10-11, Group 2b). */
 export const PRESSURE_UNDONE_REASON = "pressure-undone";
 
@@ -402,6 +417,30 @@ export function settle(store: Store, input: SettleInput, opts: { closeFlags?: bo
     if (holds === over) return refuse("same-memory", `holds and over are both ${holds}.`);
     pair = store.contradictionBetween(holds, over);
   }
+  const reversalNotes: string[] = [];
+  // THE OWNER'S SETTLE IS HIS RULING (decided by the coordinator, 2026-10-11,
+  // lightly held): only he reverses a pair he settled; anyone else is told so.
+  if (pair !== undefined && pair.state === "settled" && input.actor !== "owner" && isReversal(store, pair, holds, over, how, "owner") && settledByOwner(store, pair.id)) {
+    return refuse(
+      "already-settled",
+      `${pair.id} is already settled: the owner settled ${over} over ${holds}, so it stands as his. Tell him: he can settle ${holds} over ${over} himself (counterparts settle --holds ${holds} --against ${over} --how changed --why "...") or undo it (counterparts settle --undo ${pair.id}).`,
+    );
+  }
+  if (pair !== undefined && pair.state === "settled" && isReversal(store, pair, holds, over, how, input.actor)) {
+    // AN EXPLICIT REVERSAL (2026-10-11, review of #432; random-06's ride-along,
+    // lightly held): "B over C" while "C over B" stands names the same pair,
+    // the other way — the way to say "B is current again". The standing settle
+    // is undone (C's cut lifted, its trail kept), then B settles over C below.
+    // Nothing half-done: what the reordered settle would refuse is refused
+    // before anything is undone.
+    const bad = memoryRefusal(store, over, true) ?? memoryRefusal(store, holds, false);
+    if (bad !== null) return bad;
+    const was = pair.id;
+    const u = undo(store, { pair: pair.id, actor: input.actor, actorId: input.actorId ?? null, why: `reversed: ${holds} holds again over ${over}`, day }, opts.retarget === undefined ? {} : { retarget: opts.retarget });
+    if (!u.ok) return refuse("already-settled", `${pair.id} is already settled (${over} over ${holds}) and could not be reversed: ${u.detail}`);
+    reversalNotes.push(`${over} had held over ${holds} (${was}); that settle was undone and the two reordered.`);
+    pair = store.contradictionBetween(holds, over);
+  }
   if (pair !== undefined && pair.state === "settled") {
     // Said in the caller's own terms (review of #284, M3): the owner has the
     // undo; anyone else is told to raise it with the owner.
@@ -409,7 +448,9 @@ export function settle(store: Store, input: SettleInput, opts: { closeFlags?: bo
       input.actor === "owner"
         ? `Undo it first — counterparts settle --undo ${pair.via ?? pair.id} — then settle again.`
         : `If it is settled wrongly, tell the owner: undoing a settle is theirs (counterparts settle --undo ${pair.via ?? pair.id}).`;
-    return refuse("already-settled", `${pair.id} is already settled (${pair.how ?? "settled"}${pair.via === null ? "" : `, through ${pair.via}`}). ${again}`);
+    // Which way it stands, so the writer knows what it would be asking.
+    const stands = pair.holds !== null && pair.over !== null ? `: ${pair.holds} holds over ${pair.over}` : "";
+    return refuse("already-settled", `${pair.id} is already settled (${pair.how ?? "settled"}${pair.via === null ? "" : `, through ${pair.via}`})${stands}. ${again}`);
   }
   // THE GUARDS (2026-10-11, Group 2; reviews 04, 07 and 10 C3), for every
   // settler but the owner, whose door has none:
@@ -444,10 +485,43 @@ export function settle(store: Store, input: SettleInput, opts: { closeFlags?: bo
       ...(how !== asked ? { asked } : {}),
       ...(opts.closeFlags === undefined ? {} : { closeFlags: opts.closeFlags }),
       ...(opts.howSent === undefined ? {} : { howSent: opts.howSent }),
-      notes: guardNotes,
+      notes: [...reversalNotes, ...guardNotes],
     },
     opts.retarget === undefined ? {} : { retarget: opts.retarget },
   );
+}
+
+/** Was the standing settle on this pair the owner's (its newest settle not undone)? Never throws. */
+function settledByOwner(store: Store, pairId: string): boolean {
+  try {
+    const last = store
+      .contradictionSettles({ pairId })
+      .filter((x) => x.action === "settle" && x.undone === 0)
+      .pop();
+    return last?.actor === "owner";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * IS "holds over over" THE STANDING `pair` THE OTHER WAY ROUND? (2026-10-11,
+ * review of #432) — a settle the owner or a session may make to reorder the
+ * pair it names (a session only when the owner did not settle it,
+ * `settledByOwner`): `changed` (a `corrected` one archived what would hold now),
+ * not closed through another, not a pressure crossing (its undo puts the
+ * successor away), and not a reading the guard would keep side by side. A
+ * dream or a reflection is still told to raise it (an undo of its batch could
+ * not stand the old settle back up).
+ */
+function isReversal(store: Pick<Store, "row">, pair: ContradictionRow, holds: string, over: string, how: SettleHow, actor: SettleActor): boolean {
+  if (actor !== "owner" && actor !== "session") return false;
+  if (how === "open" || pair.via !== null || pair.how !== "changed" || pair.source === "pressure") return false;
+  if (pair.holds !== over || pair.over !== holds) return false;
+  if (actor === "owner") return true;
+  const o = store.row(over);
+  const h = store.row(holds);
+  return !(o !== undefined && h !== undefined && slotExempt(o) && !slotExempt(h));
 }
 
 // ── THE ONE DOOR (2026-10-11, Group 2b; review 10 C1, R7) ───────────────────
@@ -465,7 +539,7 @@ export interface SupersedeInput {
   readonly how: SettleHow;
   /**
    * What made it (no DDL: a TEXT value): `write`, `settle`, `slot`, `pressure`,
-   * `fulfilled`, `dream-merge`, `reminder-moved` — Group 3's `fold` next. The
+   * `fulfilled`, `dream-merge`, `reminder-moved`, `fold` (Group 3 part B). The
    * dashboard counts by it.
    */
   readonly source: string;
@@ -648,8 +722,9 @@ export function supersede(store: Store, input: SupersedeInput, opts: { retarget?
   // its latest feeling, so whoever settles over a felt memory is asked to say
   // how it sits now that the newer one holds. The first feeling is kept. Not
   // for a merge (its feelings travelled to the merged memory) nor a moved
-  // reminder's row (bookkeeping nobody wrote).
-  if (how !== "open" && input.source !== DREAM_MERGE_SOURCE && input.source !== REMINDER_MOVED_SOURCE) {
+  // reminder's row (bookkeeping nobody wrote), nor a fold (a dream cannot
+  // answer it; a strongly felt self or person part is kept out of the fold).
+  if (how !== "open" && input.source !== DREAM_MERGE_SOURCE && input.source !== REMINDER_MOVED_SOURCE && input.source !== FOLD_SOURCE) {
     const felt = store.row(over)?.feeling_peak ?? null;
     if (typeof felt === "number" && felt > 0) notes.push(feelingInvite(over, felt));
   }
@@ -712,6 +787,12 @@ export function supersede(store: Store, input: SupersedeInput, opts: { retarget?
       day,
     },
   });
+  // A CORRECTION TO A FOLD'S SOURCE FLAGS THE FOLD (2026-10-11, Group 3 part
+  // B; item 15, review 12 C5): what the parts added up to may be wrong now.
+  if (how === "corrected" && input.source !== FOLD_SOURCE) {
+    const flagged = flagFoldsOf(store, over, holds, day);
+    if (flagged.length > 0) notes.push(`${flagged.join(", ")} ${flagged.length === 1 ? "was" : "were"} folded from ${over}: flagged beside ${holds}, to read again.`);
+  }
   return {
     ok: true,
     pair: pairId,
@@ -723,6 +804,38 @@ export function supersede(store: Store, input: SupersedeInput, opts: { retarget?
     closed: closes,
     ...(notes.length > 0 ? { note: notes.join(" ") } : {}),
   };
+}
+
+/**
+ * The live folds made from `source` (`Store#foldsCiting`: a query over
+ * `meta.sources`, no table), each flagged against `corrector` — unsettled,
+ * source `FOLD_SOURCE_CORRECTED`. A courtesy: never throws, never undoes the
+ * settle. The folds flagged.
+ */
+function flagFoldsOf(store: Store, source: string, corrector: string, day: number): string[] {
+  const out: string[] = [];
+  try {
+    for (const fold of store.foldsCiting(source)) {
+      if (fold === corrector) continue;
+      const f = flag(store, { x: fold, y: corrector, source: FOLD_SOURCE_CORRECTED, day });
+      if (f.ok && f.created) out.push(fold);
+    }
+  } catch {
+    /* the flag is a courtesy; the settle stands */
+  }
+  return out;
+}
+
+/** `flagFoldsOf` reversed: each still-unsettled flag it raised is withdrawn. Never throws. */
+function withdrawFoldFlags(store: Store, source: string, corrector: string): void {
+  try {
+    for (const fold of store.foldsCiting(source)) {
+      const p = store.contradictionBetween(fold, corrector);
+      if (p !== undefined && p.state === "unsettled" && p.source === FOLD_SOURCE_CORRECTED) store.withdrawContradiction(p.id);
+    }
+  } catch {
+    /* the flag stays; a waking read can answer it */
+  }
 }
 
 /** A memory leaving recall hands its links to `to`. A courtesy: never throws, never undoes the settle. */
@@ -994,6 +1107,9 @@ export function undo(
   // A reopened question starts fresh on "my mind" (review of #284, M5).
   for (const id of back === "unsettled" ? [pair.id, ...reopen] : reopen) resetHabituation(store, id, day);
   if (d.archived !== null && !unarchived) notes.push(`${d.archived} has moved on since it was archived, so it was not brought back.`);
+  // A correction undone takes back the flags it raised on the folds made from
+  // what it corrected (2026-10-11, Group 3 part B), while still unanswered.
+  if (pair.how === "corrected" && last.over !== null && last.holds !== null) withdrawFoldFlags(store, last.over, last.holds);
   store.appendEvent({
     name: CONTRADICTION_UNDONE_EVENT,
     day,
@@ -1121,7 +1237,7 @@ export interface SlotCandidate {
 }
 
 /** A kind of memory the detector never reads as a slot: a reading, a world memory (04: consecutive readings are not states). */
-function slotExempt(row: MemoryRow): boolean {
+export function slotExempt(row: Pick<MemoryRow, "about" | "title" | "body">): boolean {
   return row.about === "world" || /^\s*reading\b/i.test(row.title ?? row.body);
 }
 

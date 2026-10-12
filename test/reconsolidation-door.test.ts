@@ -566,7 +566,7 @@ describe("order: a late answer does not undo a newer settle (review of #420 (a))
     expect(headOf(s, b)).toBe(c);
   });
 
-  test("(recorded as found) a FRESH direct settle B over A made after C over B is raised later, so it re-affirms B (#408's rule)", () => {
+  test("a FRESH direct settle B over A made after C over B speaks only about A and B: B stays under C (Group 3 part B; was #408's re-affirm)", () => {
     const s = store();
     const a = put(s, "The launch is planned for March.");
     const b = put(s, "The launch moved to April.");
@@ -574,8 +574,9 @@ describe("order: a late answer does not undo a newer settle (review of #420 (a))
     expect(settle(s, { holds: c, over: b, how: "changed", actor: "owner" }).ok).toBe(true);
     s.advanceClock("2026-09-04");
     expect(settle(s, { holds: b, over: a, how: "changed", actor: "owner" }).ok).toBe(true);
-    expect(headOf(s, a)).toBe(b);
-    expect(headOf(s, b)).toBeNull();
+    expect(headOf(s, a)).toBe(c);
+    expect(headOf(s, b)).toBe(c);
+    expect(settledOver(s).has(b)).toBe(true);
   });
 });
 
