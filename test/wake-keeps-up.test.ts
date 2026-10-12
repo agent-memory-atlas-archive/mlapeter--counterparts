@@ -26,7 +26,7 @@
  *
  * Hermetic: every test opens a fresh temp store and removes it.
  */
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -472,6 +472,13 @@ describe("a same-day re-render is stable", () => {
 // ---------------------------------------------------------------------------
 
 describe("the delivery check reads each session's own sentinel", () => {
+  // The arrival check is an opt-in diagnostic since 2026-10-12: on for this block.
+  beforeAll(() => {
+    process.env["COUNTERPARTS_WAKE_CHECK"] = "1";
+  });
+  afterAll(() => {
+    delete process.env["COUNTERPARTS_WAKE_CHECK"];
+  });
   test("a session that woke before a rebuild still passes its delivery check", async () => {
     const a = openAdapter(config(), { command: "/bin/true", args: ["runner"], spawner: () => ({ pid: 1 }) });
     closers.push(a.counterpart);

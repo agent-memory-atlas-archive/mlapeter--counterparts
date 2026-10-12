@@ -728,8 +728,10 @@ describe("review of #392: host text is never the owner's words", () => {
   test("the end-of-session ask as additional context, and its answer", async () => {
     await check((s) => s.add(meta("<system-reminder>Stop hook additional context: Counterparts, before this session closes: RITUALWORDS</system-reminder>"), said("RITUALANSWER saved.")).stop(at(9, 5)), null);
   });
-  test("a compaction summary, then typed words in the same slice: says less", async () => {
-    await check((s) => s.add({ type: "user", isCompactSummary: true, message: { role: "user", content: "This session is being continued from a previous conversation. COMPACTWORDS\n\nSummary." } }, typed("After the compaction."), said("Ok.")).stop(at(9, 5)), null);
+  // Since 2026-10-12 the summary is not kept at all (`transcript.ts#hostRecord`),
+  // so the typed words after it are the slice's own and are said.
+  test("a compaction summary, then typed words in the same slice: the summary is not kept, the typed words are", async () => {
+    await check((s) => s.add({ type: "user", isCompactSummary: true, message: { role: "user", content: "This session is being continued from a previous conversation. COMPACTWORDS\n\nSummary." } }, typed("After the compaction."), said("Ok.")).stop(at(9, 5)), "After the compaction.");
   });
   // KNOWN LIMIT (review of #392): host text with no mark of its own — a
   // coordinator's message, a scheduled prompt — that opens a turn reads like

@@ -4,8 +4,9 @@
  * 0.3.12 keeps every counterparts tool result under 40,000 characters, but
  * Claude Code's own line (50,000 today) can be lowered by a remote flag, and a
  * result past it reaches the model as a 2 KB preview. Nothing in the store can
- * see that. The nightly run now names its child's session (`--session-id`),
- * reads that child's transcript once it exits, and:
+ * see that. The nightly run reads its child's own `stream-json` output once it
+ * exits (since 2026-10-12; before that, the child's transcript, found under
+ * `~/.claude/projects` by the session id it chose), and:
  *
  *   - counts a result of ours the host replaced with its marker — matched where
  *     the host puts it, never as a substring (the morning of 10-09 a search for
@@ -18,23 +19,23 @@
  * to read every part first (a release-check reflection finished without part 2).
  *
  * Hermetic: a fresh temp data dir and a fresh temp host directory per test,
- * removed after. No process is started; the child is an injected starter that
- * writes a fixture transcript where the host would.
+ * removed after. The child is an injected starter that hands back a fixture
+ * as its output; one test starts `/bin/sh` to prove the real starter keeps
+ * STDOUT. No test reads anything under the real `~/.claude`.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  hostConfigDir,
-  hostTranscriptPath,
   openAdapter,
   openNightCounterpart,
   parseToolSpills,
   planNightChild,
-  readToolSpills,
+  readNightSpills,
   runNight,
+  startChild,
   spillOf,
 } from "../src/adapters/claude-code/index.js";
 import type { AdapterConfig, ChildPlan, HookInput } from "../src/adapters/claude-code/index.js";
@@ -230,48 +231,44 @@ describe("the host's marker is matched where the host puts it, on our results on
   });
 });
 
-// ── 2. finding the child's transcript ───────────────────────────────────────
+// ── 2. the child's own output ───────────────────────────────────────────────
 
-describe("the child's transcript is found by the session id the run chose", () => {
+describe("the child's own output is read, and nothing under the host's projects directory", () => {
   const ID = "0f3c9a52-6d1e-4b7a-9c2d-5e8f1a2b3c4d";
 
-  test("under the directory as the host spells it; failing that, by its name in any project; else null", () => {
-    const cwd = join(dir, "store dir");
-    mkdirSync(cwd, { recursive: true });
-    const projects = join(host, "projects");
-    expect(hostTranscriptPath({ configDir: host, id: ID, cwd })).toBeNull();
-    mkdirSync(projects, { recursive: true });
-    expect(hostTranscriptPath({ configDir: host, id: ID, cwd })).toBeNull();
-    // Somewhere the spelling did not predict (a hashed long path, a worktree root).
-    mkdirSync(join(projects, "-elsewhere"), { recursive: true });
-    writeFileSync(join(projects, "-elsewhere", `${ID}.jsonl`), "", "utf8");
-    expect(hostTranscriptPath({ configDir: host, id: ID, cwd })).toBe(join(projects, "-elsewhere", `${ID}.jsonl`));
-    // Where the host spells it: every character but a letter or a digit is "-".
-    const spelled = cwd.replace(/[^a-zA-Z0-9]/g, "-");
-    mkdirSync(join(projects, spelled), { recursive: true });
-    writeFileSync(join(projects, spelled, `${ID}.jsonl`), "", "utf8");
-    expect(hostTranscriptPath({ configDir: host, id: ID, cwd })).toBe(join(projects, spelled, `${ID}.jsonl`));
-    // Another session's file is never the answer.
-    expect(hostTranscriptPath({ configDir: host, id: "11111111-2222-4333-8444-555555555555", cwd })).toBeNull();
-  });
-
-  test("the host's directory: CLAUDE_CONFIG_DIR when set, else ~/.claude (a temp home under test)", () => {
-    expect(hostConfigDir({ CLAUDE_CONFIG_DIR: host })).toBe(host);
-    expect(hostConfigDir({ CLAUDE_CONFIG_DIR: "  " }).endsWith(join("", ".claude"))).toBe(true);
-  });
-
   test("absent, read and read short are said apart", () => {
-    expect(readToolSpills(null).reason).toBe("absent");
-    expect(readToolSpills(join(host, "nope.jsonl")).reason).toBe("absent");
-    const path = join(host, "t.jsonl");
-    writeFileSync(path, spilledNight(), "utf8");
-    const whole = readToolSpills(path);
+    expect(readNightSpills({}).reason).toBe("absent");
+    expect(readNightSpills({ output: "  \n" }).reason).toBe("absent");
+    const whole = readNightSpills({ output: spilledNight() });
     expect(whole).toMatchObject({ reason: "read", results: 3, short: false });
     expect(whole.spills).toHaveLength(1);
-    const short = readToolSpills(path, { maxBytes: 600 });
-    expect(short.reason).toBe("read");
-    expect(short.short).toBe(true);
-    expect(short.corrupt).toBe(0);
+    // A capped output is read to its last whole line, marked short.
+    const short = readNightSpills({ output: `${spilledNight()}\n{"type":"assist`, outputShort: true });
+    expect(short).toMatchObject({ reason: "read", short: true, corrupt: 0 });
+    expect(short.spills).toHaveLength(1);
+  });
+
+  test("the run's child asks for stream-json (with --verbose, which -p requires) and keeps its STDOUT; the catch-up child does not", () => {
+    const config: AdapterConfig = { dataDir: dir, owner: true };
+    const base = { config, run: "nrn_1", prompt: "P", scope: "/proj", session: "s1", baseEnv: { PATH: "/usr/bin" } };
+    const reading = planNightChild({ ...base, readOutput: true });
+    const at = reading.args.indexOf("--output-format");
+    expect(reading.args.slice(at, at + 3)).toEqual(["--output-format", "stream-json", "--verbose"]);
+    expect(reading.captureOutput).toBe(true);
+    const plain = planNightChild(base);
+    expect(plain.args).not.toContain("--output-format");
+    expect(plain.captureOutput).toBeUndefined();
+  });
+
+  test("the real starter keeps what the child wrote to STDOUT, only when asked", async () => {
+    const plan = { command: "/bin/sh", args: ["-c", "cat"], stdin: spilledNight(), env: { PATH: "/usr/bin:/bin" }, timeoutMs: 10_000 };
+    const kept = await startChild({ ...plan, captureOutput: true });
+    expect(kept.code).toBe(0);
+    expect(kept.output).toBe(spilledNight());
+    expect(kept.outputShort).toBeUndefined();
+    const ignored = await startChild(plan);
+    expect(ignored.code).toBe(0);
+    expect(ignored.output).toBeUndefined();
   });
 
   test("the child is started with --session-id when the run names one, and without it otherwise (the catch-up child)", () => {
@@ -316,19 +313,29 @@ function openNight(): Counterpart {
   return c;
 }
 
-/** The run's child, injected: dreams and reflects through the store, and leaves `transcript` where the host would. */
-function child(transcript: string | null, where: "spelled" | "elsewhere" = "elsewhere") {
+/** The run's child, injected: dreams and reflects through the store, and hands back `output` as what it wrote to STDOUT. */
+function child(output: string | null) {
   return async (plan: ChildPlan) => {
     const id = plan.args[plan.args.indexOf("--session-id") + 1] ?? "";
     expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
-    if (transcript !== null) {
-      const name = where === "spelled" ? (plan.cwd ?? "").replace(/[^a-zA-Z0-9]/g, "-") : "-somewhere-else";
-      mkdirSync(join(host, "projects", name), { recursive: true });
-      writeFileSync(join(host, "projects", name, `${id}.jsonl`), transcript, "utf8");
-    }
+    expect(plan.captureOutput).toBe(true);
     dreamAndReflect();
-    return { code: 0, timedOut: false, error: null };
+    return { code: 0, timedOut: false, error: null, ...(output === null ? {} : { output }) };
   };
+}
+
+/**
+ * A transcript planted where the host would keep this child's session — under
+ * the directory as the host spells it AND under another project — the way the
+ * removed lookup (`hostTranscriptPath`) would have found it. A run that still
+ * read there would count its cut.
+ */
+function plantTranscript(plan: ChildPlan, transcript: string): void {
+  const id = plan.args[plan.args.indexOf("--session-id") + 1] ?? "";
+  for (const name of [(plan.cwd ?? "").replace(/[^a-zA-Z0-9]/g, "-"), "-somewhere-else"]) {
+    mkdirSync(join(host, "projects", name), { recursive: true });
+    writeFileSync(join(host, "projects", name, `${id}.jsonl`), transcript, "utf8");
+  }
 }
 
 /** What a child that ran does to the store: a dream journaled, a reflection finished. */
@@ -356,8 +363,8 @@ function night(start: ReturnType<typeof child>): Parameters<typeof runNight>[0] 
     scope: dir,
     kind: { kind: "night" },
     date: "2026-09-20",
-    baseEnv: { PATH: "/usr/bin:/bin" },
-    hostConfigDir: host,
+    // The host's directory, moved to a temp dir: where a lookup would have gone.
+    baseEnv: { PATH: "/usr/bin:/bin", CLAUDE_CONFIG_DIR: host, HOME: host },
     start,
   };
 }
@@ -411,10 +418,10 @@ describe("the run reads its child's transcript once it exits", () => {
     expect(a.userPromptSubmit(input({ sessionId: "s3", prompt: "again" })).injection).not.toContain("Claude Code cut");
   });
 
-  test("a clean night: no row, zero on the run's row, and doctor's green line says the transcript was read", async () => {
+  test("a clean night: no row, zero on the run's row, and doctor's green line says the output was read", async () => {
     lived(openNight());
     const clean = spilledNight().replace(JSON.stringify(persisted("51.5KB")), JSON.stringify('{"phase":"begin","dream":"drm_1"}'));
-    const out = await runNight(night(child(clean, "spelled")));
+    const out = await runNight(night(child(clean)));
     expect(out).toMatchObject({ state: "done", transcript: "read", spills: 0 });
     const c = openNight();
     expect(rows(c)).toEqual([]);
@@ -422,11 +429,11 @@ describe("the run reads its child's transcript once it exits", () => {
     c.noteAdapterEvent(MCP_PART_EVENT, { mechanism: "dream", ref: "drm_x", part: 1, of: 1, chars: 30_000 });
     const [f] = resultFindings(c.store);
     expect(f?.severity).toBe("green");
-    expect(f?.detail).toContain("the 2026-09-20 run's transcript showed none of our results cut by Claude Code");
+    expect(f?.detail).toContain("the 2026-09-20 run's output showed none of our results cut by Claude Code");
     expect(f?.data["lastTranscript"]).toBe("read");
   });
 
-  test("a transcript the host did not write where it keeps sessions: said as not checked, never as clean", async () => {
+  test("a child that kept no output: said as not checked, never as clean", async () => {
     lived(openNight());
     const out = await runNight(night(child(null)));
     expect(out.state).toBe("done");
@@ -437,7 +444,28 @@ describe("the run reads its child's transcript once it exits", () => {
     c.noteAdapterEvent(MCP_PART_EVENT, { mechanism: "dream", ref: "drm_x", part: 1, of: 1, chars: 30_000 });
     const [f] = resultFindings(c.store);
     expect(f?.severity).toBe("green");
-    expect(f?.detail).toContain("was not found where Claude Code keeps sessions, so Claude Code's cut was not checked");
+    expect(f?.detail).toContain("run's output was not kept, so Claude Code's cut was not checked");
+  });
+
+  test("2026-10-12: the cut is read from the child's output, never from a transcript under the host's projects directory", async () => {
+    lived(openNight());
+    const clean = spilledNight().replace(JSON.stringify(persisted("51.5KB")), JSON.stringify('{"phase":"begin","dream":"drm_1"}'));
+    // A CUT transcript where the old lookup would find it; the output is clean.
+    const planted = await runNight(
+      night(async (plan: ChildPlan) => {
+        plantTranscript(plan, spilledNight());
+        return child(clean)(plan);
+      }),
+    );
+    expect(planted).toMatchObject({ state: "done", transcript: "read", spills: 0 });
+    expect(rows(openNight())).toEqual([]);
+  });
+
+  test("2026-10-12: a cut in the output is found with no transcript anywhere, and the host's directory is never made", async () => {
+    lived(openNight());
+    const out = await runNight({ ...night(child(spilledNight())), run: "nrn_out" });
+    expect(out).toMatchObject({ state: "done", transcript: "read", spills: 1 });
+    expect(existsSync(join(host, "projects"))).toBe(false);
   });
 
   test("REVIEW OF #330: doctor's advice follows the newest cut's shape — the token line and the turn's budget are not the character line", () => {
@@ -472,6 +500,7 @@ describe("the run reads its child's transcript once it exits", () => {
     expect(seen).toHaveLength(2);
     expect(seen[0]).toContain("--session-id");
     expect(seen[1]).not.toContain("--session-id");
+    expect(seen[1]).not.toContain("--output-format");
     expect(out).toMatchObject({ state: "done", transcript: "absent" });
     expect(out.spills).toBeUndefined();
     expect(events.find((e) => e.name === "adapter.night.spill")?.data).toMatchObject({ transcript: "absent", named: false });
@@ -484,11 +513,9 @@ describe("the run reads its child's transcript once it exits", () => {
       ...night(child(null)),
       start: async (plan: ChildPlan) => {
         starts += 1;
-        // Not logged in, say: the session was written, then the child gave up.
-        const id = plan.args[plan.args.indexOf("--session-id") + 1] ?? "";
-        mkdirSync(join(host, "projects", "-store"), { recursive: true });
-        writeFileSync(join(host, "projects", "-store", `${id}.jsonl`), said("user", "the launch prompt"), "utf8");
-        return { code: 1, timedOut: false, error: null };
+        // Not logged in, say: the child said so on its stream, then gave up.
+        expect(plan.captureOutput).toBe(true);
+        return { code: 1, timedOut: false, error: null, output: said("user", "the launch prompt") };
       },
     });
     expect(starts).toBe(1);

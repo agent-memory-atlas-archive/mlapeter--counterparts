@@ -443,7 +443,7 @@ export const MCP_OVERSIZE_EVENT = "mcp.result.oversize";
  * are the server's view: what it handed, what it cut. Neither can see the host
  * cut a result the server sized under the ceiling — a remote flag can lower
  * Claude Code's line below it. The nightly run reads its own child's
- * transcript once the child exits (`claude-code/transcript.ts#readToolSpills`)
+ * output once the child exits (`claude-code/night-run.ts#readNightSpills`)
  * and writes one `mcp.result.spilled` row per result of ours the host showed
  * only as a preview: the run, the tool, the phase, the marker's shape and the
  * size the host said. Never the saved file's path, never the text. No

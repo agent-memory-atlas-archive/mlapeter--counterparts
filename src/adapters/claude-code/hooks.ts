@@ -134,6 +134,9 @@ export type HookName = (typeof HOOKS)[number];
 export const SESSION_ENDING = ["stop", "session-end", "pre-compact"] as const;
 export type SessionEndingHook = (typeof SESSION_ENDING)[number];
 
+/** Set to `1` in the hooks' environment to turn the wake-arrival check on (2026-10-12: off by default, `checkWakeArrival`). */
+export const WAKE_CHECK_ENV = "COUNTERPARTS_WAKE_CHECK";
+
 /** Host event name → `remember/`'s boundary vocabulary. Total by construction. */
 export const BOUNDARY_KIND: Record<SessionEndingHook, BoundaryKind> = {
   stop: "stop",
@@ -1622,6 +1625,11 @@ export class ClaudeCodeAdapter extends Lifecycle {
    * written from here would take that evidence away.
    */
   private checkWakeArrival(input: HookInput, opts: { readonly final?: boolean } = {}): void {
+    // AN OPT-IN DIAGNOSTIC SINCE 2026-10-12: off unless the hook's environment
+    // sets `COUNTERPARTS_WAKE_CHECK=1`. The check reads the head of Claude
+    // Code's transcript for nothing but a diagnostic, which is a read beyond
+    // what the memory needs; off, nothing is read and no row is written.
+    if (process.env[WAKE_CHECK_ENV] !== "1") return;
     if (this.observer) return;
     if (input.sessionId.length === 0) return;
     const started = this.nowFn();
