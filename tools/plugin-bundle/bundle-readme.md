@@ -3,8 +3,9 @@
 Counterparts gives Claude its own long-term memory, modeled on human memory. Each session
 opens with a short "who I am, who you are, where we left off" that it wrote itself. As
 you talk, related memories come to mind. At the end of a session it writes down what it
-learned, in its own words, and memories fade unless they come up again. Everything stays
-on your computer.
+learned, in its own words, and memories fade unless they come up again. The memory is
+kept on your computer; Claude sees the parts it brings into a session, like anything else
+in its context.
 
 This is the Claude Code plugin. The source, the documentation and the npm package live at
 [github.com/mlapeter/counterparts](https://github.com/mlapeter/counterparts); this
@@ -21,10 +22,15 @@ In Claude Code:
 ```
 
 Then restart Claude Code. The first session creates your memory in `~/.counterparts`, and
-Claude offers a short first meeting: a few skippable questions to get to know you (what
-you're working on, something you love, how you like to be talked to). Your answers become
-ordinary memories; say "later" and it waits, or start it any time with `/counterparts:meet`.
-Check its health any time with `/counterparts:doctor`.
+Claude offers a short first meeting: a few skippable questions to get to know you (where
+memory should be on, what you're working on, something you've loved, how you like to be
+talked to). Your answers become ordinary memories; a question you skip stores nothing. In
+that first session the sidebar starts it: it sends one message, shown as from the plugin,
+and Claude introduces itself (once per install, never in a `claude -p` run, a paused
+folder, or after you've typed). Say "later" and it is offered again another day, on three days at most; a
+**Meet your counterpart** row in the sidebar, or `/counterparts:meet`, starts it any time.
+A memory that already existed is never offered it. Check its health any time with
+`/counterparts:doctor`.
 
 If you already use the npm install (`counterparts install`), the plugin notices and stands
 down, so the memory is never wired twice.
@@ -52,8 +58,9 @@ the background `claude -p` dreaming run (below).
 prompt and Claude's reply) in `~/.counterparts/store/spans/`, so the session can be
 written up as memories, at the session's end, by a later session, or by the nightly run.
 That text is deleted 7 days after the session ends; a session not yet written up keeps
-its text until it is. The last 14 daily backups in `~/.counterparts/snapshots/` hold
-copies of it too. It never leaves your computer except as above.
+its text until it is written up, or until three more days of use pass without it; after
+that the 7 days count from the session's last activity. The last 14 daily backups in
+`~/.counterparts/snapshots/` hold copies of it too. It never leaves your computer except as above.
 
 **Turning it off.** In a folder it hasn't been told about, Counterparts remembers, and the
 first session there asks whether it should. Telling Claude "not here" (or "just read", or
@@ -81,24 +88,28 @@ The hooks and the memory server start through one small shell script,
 `src/adapters/plugin-run.sh`, whose only job is to find that runtime (Bun, then Node.js,
 then the downloaded program) and start the same entry points the npm package runs.
 
-Dreaming, the daily consolidation, is on by default for a new install: the first session
-of each day starts a background `claude -p` run with your own Claude Code and your own
-plan's usage, allowed only Counterparts' memory tools, with file, shell and web tools
-denied. It says so in one line when it starts. Saying "no dreams" in a session turns it
-off.
+Dreaming, the daily consolidation, is on by default for a new install (a memory that
+already existed keeps its own setting): the first session of each day starts a background
+`claude -p` run with your own Claude Code and your own plan's usage, allowed only
+Counterparts' memory tools, with file, shell and web tools denied. It says so in one line
+when it starts. Saying "no dreams" in a session turns it off (with the npm install,
+`counterparts dream --setting off` does too).
 
-**Token use.** Measured on a real store: for a moderate user (about 5 sessions and 60
-prompts a day), Counterparts adds roughly 60k tokens of context and 25k generated tokens a
-day, on your Claude plan. The daily dream adds roughly 20k generated tokens and 150k of
-input, most of it cached. Turning dreaming off removes that part.
+**Token use.** Estimated from measurements on one real store (the author's, October
+2026): for a moderate day (about 5 sessions and 60 prompts), Counterparts adds roughly 60k
+tokens of context and 25k generated tokens, on your Claude plan. The daily dream adds
+roughly 20k generated tokens and 155k of fresh input, plus about 1M tokens read from
+cache, on your default model. Turning dreaming off removes that part. Your numbers will
+differ with how much you use it.
 
-The dashboard, when you open it, is a page served on `localhost` only.
+The dashboard, when you open it, is a page served on 127.0.0.1 only (port 4747 unless
+you set `COUNTERPARTS_DASHBOARD_PORT`), and runs until the session that started it ends.
 
 ## Remove it
 
 `/counterparts:uninstall` walks you through it and asks whether to keep your memory or
-delete it too. Deleting can't be undone, so you type the confirmation yourself, in a
-terminal, with Claude Code closed; Claude never deletes it for you. Or uninstall from
+delete it too. Deleting can't be undone, so Claude never deletes it for you: you disable
+the plugin first, quit Claude Code, and type the confirmation yourself in a terminal. Or uninstall from
 `/plugin`: your memory in `~/.counterparts` is kept.
 
 ## License
