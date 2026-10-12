@@ -150,9 +150,10 @@ export function standingOf(
  * `holds` leads to a live memory, followed through its own settles and
  * through `superseded_by` to the live end. A settle speaks only about the
  * pair it names (2026-10-11, Group 3 part B; random-06, lightly held): a
- * later "B over A" says nothing about "C over B", so B stays earlier under C
- * (to make B current again, undo "C over B" and settle the two the other
- * way). Until then a pair in which it HOLDS re-affirmed it (#408's rule). A
+ * later "B over A" says nothing about "C over B", so B stays earlier under C.
+ * To make B current again, settle B over C: the settle door reorders the pair
+ * it names (`reconsolidation.ts#settle`, review of #432). Until then a pair in
+ * which it HOLDS re-affirmed it (#408's rule). A
  * `holds` with no live end hides nothing. A replaced row (`superseded_by`)
  * answers its live successor.
  * Bounded (a chain is walked at most `HEAD_MAX_STEPS` links, a cycle is

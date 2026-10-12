@@ -417,6 +417,22 @@ export function settle(store: Store, input: SettleInput, opts: { closeFlags?: bo
     if (holds === over) return refuse("same-memory", `holds and over are both ${holds}.`);
     pair = store.contradictionBetween(holds, over);
   }
+  const reversalNotes: string[] = [];
+  if (pair !== undefined && pair.state === "settled" && isReversal(store, pair, holds, over, how, input.actor)) {
+    // AN EXPLICIT REVERSAL (2026-10-11, review of #432; random-06's ride-along,
+    // lightly held): "B over C" while "C over B" stands names the same pair,
+    // the other way — the way to say "B is current again". The standing settle
+    // is undone (C's cut lifted, its trail kept), then B settles over C below.
+    // Nothing half-done: what the reordered settle would refuse is refused
+    // before anything is undone.
+    const bad = memoryRefusal(store, over, true) ?? memoryRefusal(store, holds, false);
+    if (bad !== null) return bad;
+    const was = pair.id;
+    const u = undo(store, { pair: pair.id, actor: input.actor, actorId: input.actorId ?? null, why: `reversed: ${holds} holds again over ${over}`, day }, opts.retarget === undefined ? {} : { retarget: opts.retarget });
+    if (!u.ok) return refuse("already-settled", `${pair.id} is already settled (${over} over ${holds}) and could not be reversed: ${u.detail}`);
+    reversalNotes.push(`${over} had held over ${holds} (${was}); that settle was undone and the two reordered.`);
+    pair = store.contradictionBetween(holds, over);
+  }
   if (pair !== undefined && pair.state === "settled") {
     // Said in the caller's own terms (review of #284, M3): the owner has the
     // undo; anyone else is told to raise it with the owner.
@@ -424,7 +440,9 @@ export function settle(store: Store, input: SettleInput, opts: { closeFlags?: bo
       input.actor === "owner"
         ? `Undo it first — counterparts settle --undo ${pair.via ?? pair.id} — then settle again.`
         : `If it is settled wrongly, tell the owner: undoing a settle is theirs (counterparts settle --undo ${pair.via ?? pair.id}).`;
-    return refuse("already-settled", `${pair.id} is already settled (${pair.how ?? "settled"}${pair.via === null ? "" : `, through ${pair.via}`}). ${again}`);
+    // Which way it stands, so the writer knows what it would be asking.
+    const stands = pair.holds !== null && pair.over !== null ? `: ${pair.holds} holds over ${pair.over}` : "";
+    return refuse("already-settled", `${pair.id} is already settled (${pair.how ?? "settled"}${pair.via === null ? "" : `, through ${pair.via}`})${stands}. ${again}`);
   }
   // THE GUARDS (2026-10-11, Group 2; reviews 04, 07 and 10 C3), for every
   // settler but the owner, whose door has none:
@@ -459,10 +477,29 @@ export function settle(store: Store, input: SettleInput, opts: { closeFlags?: bo
       ...(how !== asked ? { asked } : {}),
       ...(opts.closeFlags === undefined ? {} : { closeFlags: opts.closeFlags }),
       ...(opts.howSent === undefined ? {} : { howSent: opts.howSent }),
-      notes: guardNotes,
+      notes: [...reversalNotes, ...guardNotes],
     },
     opts.retarget === undefined ? {} : { retarget: opts.retarget },
   );
+}
+
+/**
+ * IS "holds over over" THE STANDING `pair` THE OTHER WAY ROUND? (2026-10-11,
+ * review of #432) — a settle the owner or a session may make to reorder the
+ * pair it names: `changed` (a `corrected` one archived what would hold now),
+ * not closed through another, not a pressure crossing (its undo puts the
+ * successor away), and not a reading the guard would keep side by side. A
+ * dream or a reflection is still told to raise it (an undo of its batch could
+ * not stand the old settle back up).
+ */
+function isReversal(store: Pick<Store, "row">, pair: ContradictionRow, holds: string, over: string, how: SettleHow, actor: SettleActor): boolean {
+  if (actor !== "owner" && actor !== "session") return false;
+  if (how === "open" || pair.via !== null || pair.how !== "changed" || pair.source === "pressure") return false;
+  if (pair.holds !== over || pair.over !== holds) return false;
+  if (actor === "owner") return true;
+  const o = store.row(over);
+  const h = store.row(holds);
+  return !(o !== undefined && h !== undefined && slotExempt(o) && !slotExempt(h));
 }
 
 // ── THE ONE DOOR (2026-10-11, Group 2b; review 10 C1, R7) ───────────────────
