@@ -18,8 +18,8 @@
   without the key). No config file is rewritten. The value is marked
   `injectionBudgetDefaulted`, `capabilities()` still says `reported: false`, the hook's
   `adapter.budget.unreported` tripwire still fires (with `defaulted: 9000`), and doctor's Config line says
-  "wake ceiling 9000 bytes, Claude Code's default". Why: installs already made by the plugin
-  or a script on 0.3.13–0.3.19 have no key, and none of them should need to do anything.
+  "wake ceiling 9000 bytes, Claude Code's default". Why: installs already made by the plugin (0.3.13–0.3.19)
+  or by a scripted `install` (any version before this) have no key, and none of them should need to do anything.
   Claude Desktop's MCP server does not apply the default, because that host has no measured
   ceiling. Side effect: the room a prompt's recall may take on those installs becomes 9,000
   instead of `RECALL_TUNABLES.BUDGET_BYTES` (2,048), the same as a terminal install's.
