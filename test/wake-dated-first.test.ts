@@ -1130,6 +1130,7 @@ describe("the owner's 10-12 morning: nothing the wake chose goes unmentioned", (
         yesterday: text.split("\n").find((l) => l.startsWith("Yesterday, ")) ?? null,
         page: (m.row["page"] as Record<string, unknown> | undefined)?.["rung"],
         folded: text.split("\n").some(isFoldedLine),
+        quiet: m.a.counterpart.events("counterpart.wake.assembled").at(-1)?.data?.["quiet"] ?? 0,
         bytes: bytes(text),
       };
       if (process.env["WAKE_SHAPE"] === "1") console.log(zone, JSON.stringify(shape));
@@ -1138,12 +1139,15 @@ describe("the owner's 10-12 morning: nothing the wake chose goes unmentioned", (
       expect(shape.arriving.listed).toBeGreaterThan(0);
       // Twenty-five open questions, every one listed or counted.
       expect(shape.open.listed + shape.open.counted).toBe(25);
-      // What the published bundle chose for "Nearby" (listed or counted there),
-      // listed or counted at session start too — not dropped for being popped.
-      const stored = m.a.counterpart.store.getMeta(BRIEFING_KEY) ?? "";
-      const hints = (lane(stored, FRAMING.hints) ?? []).filter((l) => l.startsWith("- ")).length + (countedLanes(stored).hints ?? 0);
-      expect(hints).toBeGreaterThan(0);
-      expect(shape.nearby.listed + shape.nearby.counted).toBe(hints);
+      // Arriving and Still open list items, so each keeps its own count line under it (never the fold).
+      expect(text).toContain(`(${String(shape.arriving.counted)} more arriving; recall ids`);
+      expect(text).toContain(`(${String(shape.open.counted)} more still open; recall ids`);
+      // "Nearby": listed, counted, or — the least of the lanes, in room
+      // nothing else wants — left quiet, a step-down the session start's own
+      // event records (decided by COUNTERPARTS, 2026-10-12).
+      const assembled = m.a.counterpart.events("counterpart.wake.assembled").at(-1)?.data ?? {};
+      expect(assembled["untold"]).toBe(0);
+      expect(shape.nearby.listed + shape.nearby.counted + Number(assembled["quiet"] ?? 0)).toBeGreaterThan(0);
       // Four handoffs: in full, the rest by id.
       expect(shape.handoffs).toBeGreaterThan(0);
       expect(shape.handoffs + Number(shape.older)).toBe(4);

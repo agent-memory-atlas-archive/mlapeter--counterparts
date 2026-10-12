@@ -4,8 +4,11 @@
  *
  * When room runs short the wake condenses, like a table of contents: every
  * lane it chose is whole, shortened (some items and its count) or counted (one
- * line with ids), and when not even the lanes' own lines fit they fold into
- * one. A due-day plain reminder is still said in full. What is left unsaid is
+ * line with ids). A lane that lists nothing folds, with the others that
+ * list nothing, into one line when its own does not fit; a lane that lists
+ * an item keeps its own count. "Nearby", the least of the lanes, is counted
+ * only in room nothing else wants — else it is `quiet`, a step-down. A
+ * due-day plain reminder is still said in full. What is left unsaid is
  * `untold`, and doctor's Wake line reads it in red.
  *
  * Hermetic (CLAUDE.md): a fresh temp data dir per test, removed afterwards.
@@ -21,6 +24,7 @@ import { Prospective } from "../src/core/prospective/index.js";
 import {
   FOLDED_WORDS,
   LANE_ORDER,
+  MORE_NOUN,
   PAGE_END_LINES,
   SELF_TUNABLES,
   compose,
@@ -111,14 +115,14 @@ describe("the invariant: every lane the wake chose is whole, shortened or counte
         for (const due of [false, true]) {
           const l = lanes({ due });
           const block = pageBytes === 0 ? undefined : page(pageBytes);
-          // The floor with every lane folded: the guarantee holds from here up.
+          // The floor with every reserved lane counted at its smallest — "Who I
+          // am" by its own line (it never folds), the rest folded; "Nearby" is
+          // not reserved. The guarantee holds from here up.
           const all: Partial<Record<LaneName, string[]>> = {};
-          for (const lane of LANE_ORDER) {
-            if (lane === "identity" && block !== undefined) continue;
-            all[lane] = [...l[lane].map((r) => r.id), ...(lane === "hints" ? [] : (l.overflow?.[lane] ?? []))];
-          }
+          for (const lane of ["craft", "threads", "horizon"] as const) all[lane] = [...l[lane].map((r) => r.id), ...(l.overflow?.[lane] ?? [])];
+          const self = [...l.identity.map((r) => r.id), ...(l.overflow?.identity ?? [])];
           const identity = { page: block ?? null, forming: null };
-          const foldFloor = compose({ identity: [], craft: [], threads: [], hints: [], horizon: [] }, 3, resolve, undefined, identity, {}, undefined, undefined, foldedLine(all) ?? "").bytes;
+          const foldFloor = compose({ identity: [], craft: [], threads: [], hints: [], horizon: [] }, 3, resolve, undefined, identity, block === undefined ? { identity: moreLine("identity", self) } : {}, undefined, undefined, foldedLine(all) ?? "").bytes;
           // A due-day line is said in full even past its count (#442): leave room for one.
           const dueLine = due ? Buffer.byteLength(`- due 2026-10-14 · ${WORDS.horizon} (mem_ho0000000000)\n`, "utf8") + 32 : 0;
           for (let budget = 500; budget <= 9_000; budget += 61) {
@@ -126,7 +130,11 @@ describe("the invariant: every lane the wake chose is whole, shortened or counte
             expect(readSentinel(out.text).intact).toBe(true);
             if (!out.overBudget) expect(out.bytes).toBeLessThanOrEqual(out.budgetBytes);
             expect(out.budgetBytes).toBeLessThanOrEqual(budget + lend);
-            if (budget >= foldFloor + dueLine) expect({ budget, pageBytes, lend, due, untold: out.untold }).toEqual({ budget, pageBytes, lend, due, untold: {} });
+            // Above the floor nothing is untold — but for the one exception: a
+            // due-day plain reminder said in full where its lane's count has no
+            // room (#442), which leaves Arriving's rest untold, and only that.
+            const untold = due && out.kept.horizon.length > 0 ? { ...out.untold, horizon: undefined } : out.untold;
+            if (budget >= foldFloor + dueLine) expect({ budget, pageBytes, lend, due, untold: JSON.parse(JSON.stringify(untold)) }).toEqual({ budget, pageBytes, lend, due, untold: {} });
             const said = countedLanes(out.text);
             if (out.folded) folded += 1;
             for (const lane of LANE_ORDER) {
@@ -135,9 +143,13 @@ describe("the invariant: every lane the wake chose is whole, shortened or counte
               const listed = out.kept[lane].length;
               if (out.untold[lane] !== undefined) continue;
               // Whole, shortened or counted — and the count is the rest, exactly.
-              expect({ budget, lane, sum: listed + (out.more[lane] ?? 0) }).toEqual({ budget, lane, sum: total });
+              // "Nearby" alone may be left uncounted by rank (`quiet`).
+              expect({ budget, lane, sum: listed + (out.more[lane] ?? 0) + (out.quiet[lane] ?? 0) }).toEqual({ budget, lane, sum: total });
+              if (lane !== "hints") expect(out.quiet[lane]).toBeUndefined();
               // What the record says is what the text says.
               expect({ budget, lane, said: said[lane] }).toEqual({ budget, lane, said: out.more[lane] });
+              // A lane that lists an item keeps its own count, never the fold.
+              if (listed > 0 && out.more[lane] !== undefined) expect(out.text).toContain(moreLine(lane, []).split(";")[0]?.replace("(0 more", `(${String(out.more[lane])} more`) ?? "");
               if (listed > 0 && listed < l[lane].length) shortened += 1;
               if (listed === 0) counted += 1;
             }
@@ -161,19 +173,33 @@ describe("the invariant: every lane the wake chose is whole, shortened or counte
   });
 });
 
-describe("Nearby gets a counted line — of what it chose, never the store", () => {
-  test("hints the budget popped are counted with their ids; the cap's forty are not", () => {
+describe("Nearby: counted in room nothing else wants — of what it chose, never the store", () => {
+  test("hints the budget popped are counted with their ids when there is room; else quiet, never untold; the cap's forty never", () => {
     const l = lanes();
     const full = render({ ...l, identity: [] }, { budgetBytes: 100_000, day: 3 }, resolve, SELF_TUNABLES);
     expect(full.more.hints).toBeUndefined();
     expect(full.text).not.toContain("more nearby");
-    // Tight enough that Nearby goes first.
-    const tight = render({ ...l, identity: [] }, { budgetBytes: full.bytes - 150, day: 3 }, resolve, SELF_TUNABLES);
-    const popped = tight.trimmed.filter((t) => t.lane === "hints").map((t) => t.id);
-    expect(popped.length).toBeGreaterThan(0);
-    expect(tight.more.hints).toBe(popped.length);
-    expect(tight.text).toContain(moreLine("hints", [...popped].reverse()));
-    expect(tight.untold).toEqual({});
+    let counted = 0;
+    let quiet = 0;
+    for (let cut = 40; cut <= 400; cut += 20) {
+      const out = render({ ...l, identity: [] }, { budgetBytes: full.bytes - cut, day: 3 }, resolve, SELF_TUNABLES);
+      const popped = out.trimmed.filter((t) => t.lane === "hints").map((t) => t.id);
+      if (popped.length === 0) continue;
+      expect(out.untold).toEqual({});
+      if (out.more.hints !== undefined) {
+        counted += 1;
+        expect(out.more.hints).toBe(popped.length);
+        expect(countedLanes(out.text).hints).toBe(popped.length);
+      } else {
+        quiet += 1;
+        expect(out.quiet).toEqual({ hints: popped.length });
+      }
+      // Nearby's count never cost another lane an item: what it lost, it lost
+      // to the budget alone — threads keep what they keep without it.
+      expect(out.kept.threads.length).toBe(render({ ...l, identity: [], hints: [] }, { budgetBytes: full.bytes - cut, day: 3 }, resolve, SELF_TUNABLES).kept.threads.length);
+    }
+    expect(counted).toBeGreaterThan(0);
+    expect(quiet).toBeGreaterThan(0);
   });
 
   test("a Nearby lane with nothing listed is one collapsed line, its heading inside it", () => {
@@ -186,14 +212,15 @@ describe("Nearby gets a counted line — of what it chose, never the store", () 
 
 describe("the folded line", () => {
   test("names every lane that lost something, dated items first, and reads back", () => {
-    const line = foldedLine({ threads: ["mem_a", "mem_b"], horizon: ["mem_c"], hints: ["mem_d"] }) ?? "";
-    expect(line).toBe(`${FOLDED_WORDS} 1 arriving, 2 still open, 1 nearby; recall ids: mem_c, mem_a, mem_b, mem_d`);
+    const line = foldedLine({ threads: ["mem_a", "mem_b", "mem_e", "mem_f"], horizon: ["mem_c"], hints: ["mem_d"] }) ?? "";
+    // Each folded lane its own handle: its first ids, and how many more.
+    expect(line).toBe(`${FOLDED_WORDS} 1 arriving (recall ids: mem_c); 4 still open (recall ids: mem_a, mem_b, mem_e, and 1 more); 1 nearby (recall ids: mem_d)`);
     expect(isFoldedLine(line)).toBe(true);
-    expect(countedLanes(line)).toEqual({ horizon: 1, threads: 2, hints: 1 });
+    expect(countedLanes(line)).toEqual({ horizon: 1, threads: 4, hints: 1 });
     expect(foldedLine({})).toBeNull();
   });
 
-  test("beside a page that leaves no room for each lane's line, the lanes fold — and the page is never cut for them", () => {
+  test("beside a page that leaves no room for each lane's line, the lanes that list nothing fold — and the page is never cut for them", () => {
     const l = lanes();
     const block = page(2_500);
     const identity = { page: block, forming: null };
@@ -206,7 +233,13 @@ describe("the folded line", () => {
     expect(out.untold).toEqual({});
     expect(out.text).toContain(block.text);
     expect(out.bytes).toBeLessThanOrEqual(out.budgetBytes);
-    expect(countedLanes(out.text)).toEqual({ craft: 4, threads: 10, hints: 5, horizon: 5 });
+    const counted = countedLanes(out.text);
+    expect({ ...counted, hints: (counted.hints ?? 0) + (out.quiet.hints ?? 0) }).toEqual({ craft: 4, threads: 10, hints: 5, horizon: 5 });
+    // The fold holds only lanes that list nothing; a lane listing an item has its own line.
+    const fold = out.text.split("\n").find(isFoldedLine) ?? "";
+    for (const lane of ["craft", "threads", "horizon"] as const) {
+      if (out.kept[lane].length > 0) expect(fold).not.toContain(` ${MORE_NOUN[lane]} (recall ids`);
+    }
   });
 });
 

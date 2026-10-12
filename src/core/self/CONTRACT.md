@@ -212,16 +212,21 @@ proposals and their archive; render and delivery telemetry.
    RANDOM, lightly held): the line's room is RESERVED — the trim loop composes with the
    line of every lane that has lost something and pops until items and lines fit together
    — so each lane is whole, shortened (some items and its count) or counted (one line). A
-   lane that lost nothing pays nothing. When not even the lanes' own lines fit, they fold
-   into one (`foldedLine`: "More than this wake lists: 7 arriving, 4 still open; recall
-   ids …"), which takes room as a dated line does (`takeRoom` to `arrivingFirst`); only
-   when that finds none are ids left unsaid — `BriefingResult.untold`, the `self.briefing`
-   row's `untold`, and doctor's Wake line in red. The one exception: a due-day plain
-   reminder is said in full even when its lane's count then has no room (#442). Identity
-   says nothing while the page replaces the list. Nearby counts what its trim popped —
-   hints this wake chose, at most `HINTS_MAX` — and never its cap's, which is the rest of
-   the warm store (2026-10-01); a session start carries those popped hints and lists or
-   counts them in its own room (`WAKE_SHOWN_KEY`'s `more.hints`). **A lane that
+   lane that lost nothing pays nothing. A lane that still lists an item keeps its own count
+   under it; when not even the lanes' own lines fit, the lanes that list NOTHING fold into
+   one line (`foldedLine`: "More than this wake lists: 3 still open (recall ids: …); 2 on
+   how I work (recall ids: …)", each with its own first ids; decided by COUNTERPARTS
+   2026-10-12, lightly held), which takes room as a dated line does (`takeRoom` to
+   `arrivingFirst`); only when that finds none are ids left unsaid —
+   `BriefingResult.untold`, the `self.briefing` row's `untold`, and doctor's Wake line in
+   red. The one exception: a due-day plain reminder is said in full even when its lane's
+   count then has no room (#442). Identity says nothing while the page replaces the list.
+   Nearby counts what its trim popped — hints this wake chose, at most `HINTS_MAX` — and
+   never its cap's, which is the rest of the warm store (2026-10-01). Its count is not
+   reserved: the least of the lanes, it takes only room nothing else wants — its own line,
+   else a place in the fold, else it is `quiet`, a step-down (COUNTERPARTS, 2026-10-12). A
+   session start carries those popped hints and lists or counts them in its own room
+   (`WAKE_SHOWN_KEY`'s `more.hints`). **A lane that
    kept no element is one line, its heading inside it** (2026-10-09,
    `briefing.ts#collapsedLine`): `Still open: 20 — no room to list them in this wake;
    recall ids …`, never a heading over a count. **The page is never cut for the lanes

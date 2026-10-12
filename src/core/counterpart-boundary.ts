@@ -882,6 +882,7 @@ export function recordSelfBriefing(
         // silent drop — doctor's Wake line, red), with the lanes of the latter.
         counted: numberField(rendered, "counted") ?? 0,
         untold: numberField(rendered, "untold") ?? 0,
+        quiet: numberField(rendered, "quiet") ?? 0,
         ...((stringField(rendered, "untoldLanes") ?? "") === ""
           ? {}
           : { untoldLanes: (stringField(rendered, "untoldLanes") ?? "").split(",") }),

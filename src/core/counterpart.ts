@@ -784,6 +784,7 @@ export class Counterpart {
         // (2026-10-12). Ring only: a session start writes no `self.briefing` row.
         counted: Object.values(out.more).reduce((n, k) => n + (k ?? 0), 0),
         untold: Object.values(out.untold).reduce((n, k) => n + (k ?? 0), 0),
+        quiet: Object.values(out.quiet).reduce((n, k) => n + (k ?? 0), 0),
       });
       return out;
     } catch (err) {

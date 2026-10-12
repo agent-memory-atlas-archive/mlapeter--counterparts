@@ -50,8 +50,8 @@ export interface Rescued {
   readonly pinned: Partial<Record<LaneName, string[]>>;
   readonly composed: Composed;
   readonly lent: number;
-  /** True when `pinned` is said in the one folded line (`foldedLine`): the
-   *  trim loop found no room for each lane's own. A rescue may unfold it,
+  /** True when the lanes of `pinned` that list nothing are said in the one
+   *  folded line (`foldParts`): the trim loop found no room for each lane's own. A rescue may unfold it,
    *  never fold it. */
   readonly fold: boolean;
 }
@@ -95,6 +95,25 @@ export function pinnedLines(pinned: Partial<Record<LaneName, readonly string[]>>
     out[lane] = lane !== "identity" && kept[lane].length === 0 ? collapsedLine(lane, ids) : moreLine(lane, ids);
   }
   return out;
+}
+
+/**
+ * THE SAME COUNTS, FOLDED (2026-10-12, decided by COUNTERPARTS, lightly
+ * held): a lane that still lists an item keeps its own "N more" line under
+ * it ("Who I am" always does); only the lanes that list nothing go into the
+ * one folded line (`foldedLine`). No fold when no lane lists nothing.
+ */
+export function foldParts(pinned: Partial<Record<LaneName, readonly string[]>>, kept: Kept): { more: Partial<Record<LaneName, string>>; fold?: string } {
+  const listing: Partial<Record<LaneName, readonly string[]>> = {};
+  const empty: Partial<Record<LaneName, readonly string[]>> = {};
+  for (const lane of LANE_ORDER) {
+    const ids = pinned[lane];
+    if (ids === undefined || ids.length === 0) continue;
+    if (lane !== "identity" && kept[lane].length === 0) empty[lane] = ids;
+    else listing[lane] = ids;
+  }
+  const fold = foldedLine(empty);
+  return fold === null ? { more: pinnedLines(listing, kept) } : { more: pinnedLines(listing, kept), fold };
 }
 
 /**
@@ -222,8 +241,9 @@ export function takeRoom(
     // else the one line — never a lane left without a word. `foldFirst`:
     // the one line first.
     const each = (): Composed => compose(k, req.day, ctx.resolve, ctx.coreName, ctx.identity, pinnedLines(pins, k), y, e);
-    const folded = from.fold ? foldedLine(pins) : null;
-    const one = (): Composed | null => (folded === null ? null : compose(k, req.day, ctx.resolve, ctx.coreName, ctx.identity, {}, y, e, folded));
+    const parts = from.fold ? foldParts(pins, k) : null;
+    const one = (): Composed | null =>
+      parts?.fold === undefined ? null : compose(k, req.day, ctx.resolve, ctx.coreName, ctx.identity, parts.more, y, e, parts.fold);
     let fold = false;
     let c: Composed;
     const first = foldFirst ? one() : null;
@@ -439,12 +459,24 @@ export function keepFirstOpen(
 
 /**
  * THE LANES' LINES, SAID LAST AND CHECKED (2026-10-12): every lane that lost
- * something, counted under `limit`. Each lane's own line ("N more", or the
- * collapsed line of a lane that lists nothing) when they all fit; else the
- * one folded line (`foldedLine`); else — a floor over its budget, or a bug —
- * each lane's line in `MORE_ORDER` while it still fits, and what is left
- * `untold`, which the caller records and doctor reads in red. The room was
- * reserved: the trim loop and every rescue composed with these lines.
+ * something, counted under `limit`, the first of these that fits:
+ *
+ *   1. each lane's own line ("N more", or the collapsed line of a lane that
+ *      lists nothing);
+ *   2. the same, with the lanes that list nothing folded into one line
+ *      (`foldParts`) — "Nearby" among them when it lists nothing;
+ *   3. and 4. those two again without "Nearby": the least of the lanes, its
+ *      count takes only room nothing else wants (decided by COUNTERPARTS,
+ *      2026-10-12, lightly held). Left out, it is `quiet` — a step-down;
+ *   5. and 6. the counts the last rescue composed with (`pinned`), which
+ *      fit: only a due-day plain reminder listed past its lane's count
+ *      (#442) leaves a lane out of them, and that lane is `untold`;
+ *   7. the last resort — a floor over its budget, or a bug — each lane's own
+ *      line in `MORE_ORDER` while it still fits, and what is left `untold`,
+ *      which the caller records and doctor reads in red.
+ *
+ * Every lane but "Nearby" had its room reserved: the trim loop and every
+ * rescue composed with its line.
  */
 export function tellLost(ctx: {
   kept: Kept;
@@ -456,22 +488,50 @@ export function tellLost(ctx: {
   yesterday?: string;
   elsewhere?: string;
   limit: number;
-}): { composed: Composed; more: Partial<Record<LaneName, number>>; folded: boolean; untold: Partial<Record<LaneName, number>> } {
+  /** The counts the last rescue composed with, when one ran. */
+  pinned?: Partial<Record<LaneName, readonly string[]>>;
+}): {
+  composed: Composed;
+  more: Partial<Record<LaneName, number>>;
+  folded: boolean;
+  untold: Partial<Record<LaneName, number>>;
+  quiet: Partial<Record<LaneName, number>>;
+} {
   const at = (more: Partial<Record<LaneName, string>>, fold?: string): Composed =>
     compose(ctx.kept, ctx.req.day, ctx.resolve, ctx.coreName, ctx.identity, more, ctx.yesterday, ctx.elsewhere, fold);
-  const counts: Partial<Record<LaneName, number>> = {};
-  for (const lane of LANE_ORDER) {
-    const n = ctx.lost[lane]?.length ?? 0;
-    if (n > 0) counts[lane] = n;
+  const countsOf = (lost: Partial<Record<LaneName, readonly string[]>>): Partial<Record<LaneName, number>> => {
+    const out: Partial<Record<LaneName, number>> = {};
+    for (const lane of LANE_ORDER) {
+      const n = lost[lane]?.length ?? 0;
+      if (n > 0) out[lane] = n;
+    }
+    return out;
+  };
+  const counts = countsOf(ctx.lost);
+  const reserved = withoutNearby(ctx.lost);
+  const hints = ctx.lost.hints?.length ?? 0;
+  const quiet: Partial<Record<LaneName, number>> = hints > 0 ? { hints } : {};
+  const tries: { lost: Partial<Record<LaneName, readonly string[]>>; fold: boolean }[] = [
+    { lost: ctx.lost, fold: false },
+    { lost: ctx.lost, fold: true },
+    ...(hints > 0 ? [{ lost: reserved, fold: false }, { lost: reserved, fold: true }] : []),
+    ...(ctx.pinned === undefined ? [] : [{ lost: ctx.pinned, fold: false }, { lost: ctx.pinned, fold: true }]),
+  ];
+  for (const t of tries) {
+    const parts = t.fold ? foldParts(t.lost, ctx.kept) : { more: pinnedLines(t.lost, ctx.kept) };
+    if (t.fold && parts.fold === undefined) continue;
+    const c = at(parts.more, parts.fold);
+    if (Object.keys(counts).length === 0 || c.bytes <= ctx.limit) {
+      const said = countsOf(t.lost);
+      const untold: Partial<Record<LaneName, number>> = {};
+      for (const lane of LANE_ORDER) {
+        const n = counts[lane];
+        if (n !== undefined && said[lane] === undefined && lane !== "hints") untold[lane] = n;
+      }
+      return { composed: c, more: said, folded: parts.fold !== undefined, untold, quiet: said.hints === undefined ? quiet : {} };
+    }
   }
-  const each = at(pinnedLines(ctx.lost, ctx.kept));
-  if (Object.keys(counts).length === 0 || each.bytes <= ctx.limit) return { composed: each, more: counts, folded: false, untold: {} };
-  const line = foldedLine(ctx.lost);
-  if (line !== null) {
-    const folded = at({}, line);
-    if (folded.bytes <= ctx.limit) return { composed: folded, more: counts, folded: true, untold: {} };
-  }
-  // The last resort: what fits, lane by lane; the rest is untold.
+  // The last resort: what fits, lane by lane; the rest is untold ("Nearby": quiet).
   let current = at({});
   const lines: Partial<Record<LaneName, string>> = {};
   const more: Partial<Record<LaneName, number>> = {};
@@ -490,7 +550,14 @@ export function tellLost(ctx: {
   const untold: Partial<Record<LaneName, number>> = {};
   for (const lane of LANE_ORDER) {
     const n = counts[lane];
-    if (n !== undefined && more[lane] === undefined) untold[lane] = n;
+    if (n !== undefined && more[lane] === undefined && lane !== "hints") untold[lane] = n;
   }
-  return { composed: current, more, folded: false, untold };
+  return { composed: current, more, folded: false, untold, quiet: more.hints === undefined ? quiet : {} };
+}
+
+/** The lanes whose count is reserved: every lane but "Nearby" (2026-10-12). */
+export function withoutNearby<T>(lost: Partial<Record<LaneName, T>>): Partial<Record<LaneName, T>> {
+  const out = { ...lost };
+  delete out.hints;
+  return out;
 }

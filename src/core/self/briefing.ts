@@ -50,6 +50,8 @@ import { byteLength } from "./identity.js";
 import type { SelfTunables } from "./tunables.js";
 import type { Kept, RescueCtx, Rescued } from "./briefing-room.js";
 import {
+  foldParts,
+  withoutNearby,
   arrivingHead,
   arrivingNear,
   elsewhereFormsOf,
@@ -281,12 +283,15 @@ export const FRAMING = {
  * line of every lane that has lost something so far, and pops until items and
  * lines fit together — so a lane is always whole, shortened (some items and
  * its count) or counted (its one collapsed line). A lane that lost nothing
- * pays nothing, so a roomy wake is byte for byte what it was. When not even
- * the lanes' own lines fit beside the furniture, they fold into ONE line
- * (`foldedLine`), which takes room from what ranks below a dated line; only a
- * wake with no such room left says nothing (`BriefingResult.untold`, red in
- * doctor). The page is not stepped down for it: in its own room it outranks
- * everything (`ROOM_ORDER`).
+ * pays nothing, so a roomy wake is byte for byte what it was. A lane that
+ * lists an item keeps its own count under it; when not even the lanes' own
+ * lines fit beside the furniture, the lanes that list NOTHING fold into ONE
+ * line (`foldedLine`, `foldParts`), which takes room from what ranks below a
+ * dated line; only a wake with no such room left says nothing
+ * (`BriefingResult.untold`, red in doctor). The page is not stepped down for
+ * it: in its own room it outranks everything (`ROOM_ORDER`). "Nearby" is not
+ * reserved: the least of the lanes, its count takes only room nothing else
+ * wants, and is otherwise `quiet` (`tellLost`; COUNTERPARTS, 2026-10-12).
  *
  * How many ids one line names. `recall` takes up to ten at once; five keeps the
  * line near 120 bytes, and the count says when there are more than it names.
@@ -308,24 +313,33 @@ export function moreLine(lane: LaneName, ids: readonly string[]): string {
 }
 
 /**
- * THE LANES' LINES, FOLDED INTO ONE (2026-10-12): what a wake prints when not
- * even each lane's own count line fits beside the page and the furniture —
- * every lane that lost something, counted, and the first ids of the
- * highest-ranked of them (`FOLD_ORDER`). Furniture, like the lines it stands
- * for. It takes room as a dated line does, from the lanes below
- * `arrivingFirst` in `ROOM_ORDER` (`render`'s trim loop).
+ * THE LANES THAT LIST NOTHING, FOLDED INTO ONE LINE (2026-10-12): what a wake
+ * prints when not even each such lane's own collapsed line fits beside the
+ * page and the furniture — each of them counted, with its own first ids, so
+ * every folded lane keeps a handle recall opens (`recall ids`). A lane that
+ * still lists an item keeps its own "N more" line under it and is never
+ * folded (decided by COUNTERPARTS, 2026-10-12, lightly held). Furniture,
+ * like the lines it stands for. It takes room as a dated line does, from the
+ * lanes below `arrivingFirst` in `ROOM_ORDER` (`render`'s trim loop).
  */
 export const FOLDED_WORDS = "More than this wake lists:";
 
 /** Who the folded line names first: dated items, then what is open, then the rest. */
 const FOLD_ORDER: readonly LaneName[] = ["horizon", "threads", "identity", "craft", "hints"];
 
-/** `More than this wake lists: 7 arriving, 4 still open; recall ids (the first 5): mem_…` */
+/** How many ids each folded lane names — fewer than its own line's five. */
+export const FOLD_LINE_IDS = 3;
+
+/** `More than this wake lists: 7 arriving (recall ids: mem_…, mem_…, mem_…, and 4 more); 5 nearby (recall ids: …)` */
 export function foldedLine(lost: Partial<Record<LaneName, readonly string[]>>): string | null {
   const lanes = FOLD_ORDER.filter((l) => (lost[l]?.length ?? 0) > 0);
   if (lanes.length === 0) return null;
-  const counts = lanes.map((l) => `${String(lost[l]?.length ?? 0)} ${MORE_NOUN[l]}`).join(", ");
-  return `${FOLDED_WORDS} ${counts}; ${recallIds(lanes.flatMap((l) => [...(lost[l] ?? [])]))}`;
+  const part = (l: LaneName): string => {
+    const ids = lost[l] ?? [];
+    const shown = ids.slice(0, FOLD_LINE_IDS);
+    return `${String(ids.length)} ${MORE_NOUN[l]} (recall ids: ${shown.join(", ")}${ids.length > shown.length ? `, and ${String(ids.length - shown.length)} more` : ""})`;
+  };
+  return `${FOLDED_WORDS} ${lanes.map(part).join("; ")}`;
 }
 
 /** True for the folded line (`foldedLine`), which belongs to no one lane. */
@@ -354,11 +368,9 @@ export function countedLanes(text: string): Partial<Record<LaneName, number>> {
       continue;
     }
     if (!isFoldedLine(line)) continue;
-    const counts = line.slice(FOLDED_WORDS.length + 1).split("; recall ids")[0] ?? "";
-    for (const part of counts.split(", ")) {
-      const m = /^(\d+) (.+)$/.exec(part);
-      const l = m === null ? undefined : byNoun.get(m[2] ?? "");
-      if (m !== null && l !== undefined) out[l] = Number(m[1]);
+    for (const m of line.slice(FOLDED_WORDS.length + 1).matchAll(/(\d+) ([^;(]+?) \(recall ids: /g)) {
+      const l = byNoun.get(m[2] ?? "");
+      if (l !== undefined) out[l] = Number(m[1]);
     }
   }
   return out;
@@ -637,7 +649,7 @@ export interface BriefingResult extends Composed {
    * reserved, so every lane that lost something is here).
    */
   readonly more: Partial<Record<LaneName, number>>;
-  /** True when the lanes' lines were folded into one (`foldedLine`). */
+  /** True when the lanes that list nothing were folded into one line (`foldedLine`). */
   readonly folded: boolean;
   /**
    * What the wake left out WITHOUT A WORD, per lane (2026-10-12): ids the lane
@@ -645,6 +657,14 @@ export interface BriefingResult extends Composed {
    * floor over its budget, or a bug — and doctor's Wake line says so in red.
    */
   readonly untold: Partial<Record<LaneName, number>>;
+  /**
+   * NEARBY, LEFT UNCOUNTED BY RANK (2026-10-12, decided by COUNTERPARTS,
+   * lightly held): "Nearby" is the least of the lanes, so its count takes
+   * only room nothing else wants — its own line, else a place in the folded
+   * line — and when neither fits it is left out. A step-down, not a silent
+   * drop: recall finds those hints by asking. `{ hints: N }` or empty.
+   */
+  readonly quiet: Partial<Record<LaneName, number>>;
   /** True when the render crossed the pressure ratio — the tripwire that fires
    *  when a budget is APPROACHED, not only when it blows (scar §2.4). */
   readonly pressure: boolean;
@@ -849,8 +869,8 @@ export function compose(
   yesterday?: string,
   /** The "Today, elsewhere" line (`BriefingRequest.elsewhere`), above "Nearby". */
   elsewhere?: string,
-  /** The lanes' lines folded into one (`foldedLine`), under "Who I am"; the
-   *  caller then passes no `more`. */
+  /** The lanes that list nothing, folded into one line (`foldedLine`), under
+   *  "Who I am"; the caller then passes no `more` for them. */
   fold?: string,
 ): Composed {
   const counts = emptyCounts();
@@ -1122,17 +1142,17 @@ export function render(
   // line of every lane that has lost something so far — to its cap, the
   // identity share or a pop — and pops until items and lines fit together.
   // When nothing is left to pop, the "Today, elsewhere" line steps down, and
-  // then the lanes' lines fold into one (`foldedLine`) — and they fold before
-  // the loop pops "Who I am", the lane the wake is for. A floor that holds
-  // not even the folded line composes bare (`bare`): its lanes go untold.
+  // then the lanes that list nothing fold into one line (`foldParts`) — and
+  // they fold before the loop pops "Who I am", the lane the wake is for. A
+  // floor that holds not even the folded line composes bare (`bare`): its
+  // lanes go untold. "Nearby"'s count is not reserved: the least of the
+  // lanes, it takes only room nothing else wants (`tellLost`; decided by
+  // COUNTERPARTS, 2026-10-12, lightly held).
   let fold = false;
   let bare = false;
-  const lostNow = (): Partial<Record<LaneName, string[]>> => lostByLane(lanes.overflow, trimmed, held, suppressList);
-  const linesFor = (lost: Partial<Record<LaneName, readonly string[]>>, k: Kept, folded: boolean): { more: Partial<Record<LaneName, string>>; fold?: string } => {
-    if (!folded) return { more: pinnedLines(lost, k) };
-    const line = foldedLine(lost);
-    return line === null ? { more: {} } : { more: {}, fold: line };
-  };
+  const lostNow = (): Partial<Record<LaneName, string[]>> => withoutNearby(lostByLane(lanes.overflow, trimmed, held, suppressList));
+  const linesFor = (lost: Partial<Record<LaneName, readonly string[]>>, k: Kept, folded: boolean): { more: Partial<Record<LaneName, string>>; fold?: string } =>
+    folded ? foldParts(lost, k) : { more: pinnedLines(lost, k) };
 
   for (;;) {
     const lost = lostNow();
@@ -1264,7 +1284,7 @@ export function render(
           const next = held[0];
           if (next === undefined) break;
           kept.identity.push(next);
-          const l = linesFor(lostByLane(lanes.overflow, trimmed, held.slice(1), suppressList), kept, fold);
+          const l = linesFor(withoutNearby(lostByLane(lanes.overflow, trimmed, held.slice(1), suppressList)), kept, fold);
           if (compose(kept, req.day, resolve, coreName, identity, l.more, said, away, l.fold).bytes > req.budgetBytes) {
             kept.identity.pop();
             break;
@@ -1284,6 +1304,7 @@ export function render(
         ...(said === undefined ? {} : { yesterday: said }),
         ...(away === undefined ? {} : { elsewhere: away }),
         limit: budgetBytes,
+        ...(first === null ? {} : { pinned: first.pinned }),
       });
       // AN ARRIVING ID THE COUNT COULD NOT NAME LEAVES A TRIM ROW (review of
       // #367, 2026-10-10). One past the lane's cap — `prospective/`'s count
@@ -1314,6 +1335,7 @@ export function render(
         more: told.more,
         folded: told.folded,
         untold: told.untold,
+        quiet: told.quiet,
         pressure: composed.bytes >= budgetBytes * t.BUDGET_PRESSURE,
         overBudget: !fits,
         ...(away === undefined ? {} : { elsewhere: away }),

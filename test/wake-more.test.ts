@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Counterpart } from "../src/core/counterpart.js";
-import { FRAMING, MORE_LINE_IDS, Self, SELF_TUNABLES, moreLine, readSentinel, render } from "../src/core/self/index.js";
+import { FRAMING, MORE_LINE_IDS, Self, SELF_TUNABLES, foldedLine, moreLine, readSentinel, render } from "../src/core/self/index.js";
 import type { Lanes, Ranked, Resolve } from "../src/core/self/index.js";
 import { McpServer } from "../src/adapters/mcp/index.js";
 import { recordSession } from "../src/adapters/sessions.js";
@@ -162,5 +162,34 @@ describe("the ids work through the recall tool", () => {
     expect(r.isError ?? false).toBe(false);
     const got = (r.structuredContent["memories"] as { id: string }[]).map((x) => x.id);
     expect(got.sort()).toEqual([...ids].sort());
+  });
+});
+
+describe("the folded line's handles work through the recall tool (2026-10-12)", () => {
+  test("each folded lane names its own first ids, and recall returns them", async () => {
+    const c = Counterpart.open({ dir, owner: true });
+    open.push(c);
+    const ids: string[] = [];
+    for (let i = 0; i < 6; i += 1) {
+      ids.push(
+        c.store.put({
+          type: "memory",
+          kind: "fact",
+          body: `An open question, number ${String(i)}, about the move that is still not settled.`,
+          meta: { unresolved: true },
+          salience: { relevance: 0.9, emotional: 0.5, predictive: 0.5 },
+        }),
+      );
+    }
+    const line = foldedLine({ threads: ids }) ?? "";
+    const m = /6 still open \(recall ids: ([^)]+), and 3 more\)/.exec(line);
+    expect(m).not.toBeNull();
+    const named = (m?.[1] ?? "").split(", ");
+    expect(named).toEqual(ids.slice(0, 3));
+    recordSession(dir, { sessionId: "s-fold", scope: "/proj", phase: "start" });
+    const server = new McpServer({ counterpart: c, scope: "/proj", owner: true, registryDir: dir });
+    const r = await server.call("recall", { ids: named });
+    expect(r.isError ?? false).toBe(false);
+    expect((r.structuredContent["memories"] as { id: string }[]).map((x) => x.id).sort()).toEqual([...named].sort());
   });
 });

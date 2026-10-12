@@ -2666,7 +2666,8 @@ function wakeRoom(store: Store, since: number): WakeRoom {
   const datedNewest = rowDate(datedRows[0]);
   // STEP-DOWNS AND SILENT DROPS (2026-10-12, `self/briefing.ts#tellLost`): a
   // lane said by count is the wake doing its job; an id no line names is not.
-  const steppedDown = briefings.filter((r) => (num(payloadOf(r), "counted") ?? 0) > 0).length;
+  // "Nearby" left uncounted by rank (`quiet`) is a step-down too.
+  const steppedDown = briefings.filter((r) => (num(payloadOf(r), "counted") ?? 0) + (num(payloadOf(r), "quiet") ?? 0) > 0).length;
   const untoldRows = briefings.filter((r) => (num(payloadOf(r), "untold") ?? 0) > 0);
   const untold = untoldRows.length;
   const untoldNewest = rowDate(untoldRows[0]);

@@ -2039,6 +2039,8 @@ export class Self {
       folded: briefing.folded,
       untold: Object.values(briefing.untold).reduce((n, k) => n + (k ?? 0), 0),
       untoldLanes: LANE_ORDER.filter((l) => (briefing.untold[l] ?? 0) > 0).join(","),
+      // "Nearby" left uncounted by rank: a step-down, not a drop (2026-10-12).
+      quiet: Object.values(briefing.quiet).reduce((n, k) => n + (k ?? 0), 0),
       // WHETHER THE PAGE RENDERED, AND WHETHER IT WAS CUT. Zero and false mean
       // "no page in this render", which is what a store with none looks like;
       // without these a wake led by a 6 KB page and a wake led by nothing are

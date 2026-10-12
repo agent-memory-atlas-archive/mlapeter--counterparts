@@ -7,14 +7,17 @@
   later Arriving line is listed only with its lane's count. Why: Mike's principle of 2026-10-12, the
   minimal version he chose via RANDOM. The cost: a wake at its edge lists an item or two fewer, to pay
   for the line that says they are there.
-- Decided by the wake-never-silent builder, 2026-10-12, lightly held: when not even the lanes' own lines
-  fit, they fold into ONE line, "More than this wake lists: N arriving, N still open, …; recall ids (the
-  first 5): …", ids from the highest-ranked lane first (Arriving, Still open, Who I am, craft, Nearby).
-  It sits under "Who I am". It folds before the loop pops "Who I am", and when even the fold has no room
-  it takes room the way a dated line does (`takeRoom` to `arrivingFirst`: Work here, the Yesterday
-  line's titles, the handoffs' room, Today elsewhere, Arriving past its head). Only past that are ids
-  left unsaid (`untold`). Why: one line always costs less than several, and it keeps the table of
-  contents when the lanes' own lines cannot.
+- Decided by COUNTERPARTS, 2026-10-12, lightly held (the follow-up on this PR), as built: a lane that
+  still lists an item keeps its own "N more" line directly under it, and only the lanes that list
+  NOTHING fold into ONE line under "Who I am": "More than this wake lists: 3 still open (recall ids:
+  mem_…, mem_…, mem_…, and 7 more); 5 nearby (recall ids: …)". Each folded lane carries its own first
+  three ids (`FOLD_LINE_IDS`), which the recall tool opens (`wake-more.test.ts`); no name handle like
+  "recall 'nearby'" exists today, so ids it is. "Who I am" never folds. The lanes that list nothing fold
+  before the loop pops "Who I am", and when even the fold has no room it takes room the way a dated line
+  does (`takeRoom` to `arrivingFirst`: Work here, the Yesterday line's titles, the handoffs' room, Today
+  elsewhere, Arriving past its head). Only past that are ids left unsaid (`untold`). Why: an item under
+  a heading with no count reads as the only one; the first version folded every count and moved
+  Arriving's "+5" and Still open's "+24" away from their lanes in the owner's own morning.
 - Decided by the wake-never-silent builder, 2026-10-12, lightly held: the page does NOT give up room to
   the folded line. I tried keeping the fold's bytes out of the page's room (as the brief's sizing
   suggested); it stepped pages in their own room down a rung in ten pinned tests and contradicts
@@ -25,12 +28,19 @@
   popped (at most `HINTS_MAX` hints the wake chose), with ids, in the same "N more nearby" and collapsed
   lines; its cap's overflow (the rest of the warm store) is still not counted. Why: the popped hints are
   a bounded list the wake chose, so the count means something; the cap's count is the store's size,
-  which random-f2's item 5 already ruled out. A session start carries the popped hints
+  which random-f2's item 5 already ruled out.
+- Decided by COUNTERPARTS, 2026-10-12, lightly held, as built: "Nearby"'s count is NOT reserved. The
+  least of the lanes, it takes only room nothing else wants (`tellLost`): its own line if that fits, else
+  a place in the folded line, else it is left out and recorded as `quiet` — a step-down (`self.briefing`'s
+  `quiet`, doctor's `steppedDown`), never a silent drop. So it never costs another lane an item, nor
+  "Last here" its room (the first version did: `last-exchange.test.ts` is back as it was). A session start carries the popped hints
   (`WAKE_SHOWN_KEY`'s new `more.hints`, read as empty on an older record) and lists or counts them in its
   own room.
 - Decided by the wake-never-silent builder, 2026-10-12, lightly held: a due-day plain reminder stays the
   one exception (#442/#445). It is listed in full even when its lane's count then has no room; the
-  render tries the fold first, and only then leaves the rest untold, with trim rows as before.
+  render tries the fold first, then the counts the rescue itself composed with, and only then leaves
+  Arriving's rest untold, with trim rows as before. Measured in the invariant sweep: only below about
+  1,200 bytes with no lent room, and only Arriving.
 - Decided by the wake-never-silent builder, 2026-10-12, lightly held: doctor's Wake line counts
   step-downs (`self.briefing`'s new `counted`; data `steppedDown`, no clause, never amber) apart from
   silent drops (`untold`, red: "worth reporting"). The dated-item amber of 2026-10-10 stays, reworded to
@@ -40,19 +50,11 @@
 - Decided by the wake-never-silent builder, 2026-10-12, lightly held: `prospective.horizon()` emits one
   ring event, `prospective.horizon.excluded`, with counts and ids for each reason an arrival left the
   lane (`notDay`, `daily`, `told`), only when one did.
-- Decided by the wake-never-silent builder, 2026-10-12, lightly held: the lanes' counts rank above the
-  delivery's "Last here" line, as every lane does in `ROOM_ORDER`. Measured in `last-exchange.test.ts`: a
-  6.5 KB page, four handoffs and eight hints the trim popped — the "Nearby: 8" line (dropped without a word
-  before) now takes the room "Last here" had, and "Last here" leaves its no-room row instead. The handoffs
-  stay. Why: a lane the wake chose outranks the pointer to the last chapter here; both are pointers, and
-  this one says what this wake chose. Worth Mike's look.
-- Measured, named, for Mike's look: the fold is not only a last resort. In the owner-shaped morning
-  (`wake-dated-first.test.ts` section 6: a 6,767-byte page, four handoffs, seven dated items, 25 open,
-  Nearby) the session-start wake now folds: "Arriving:" and "Still open" keep their listed items, and
-  their "+5" and "+24" move into one line under "Who I am" with Nearby's 5, which had been dropped without
-  a word. Its five ids are Arriving's; Still open's and Nearby's are not named there. The fuller rung
-  (fold only the lanes that list nothing, keep the count under a lane that lists items, ids from each
-  lane) is the natural next step if this reads badly.
+- Measured, the owner-shaped morning (`wake-dated-first.test.ts` section 6: a 6,767-byte page, four
+  handoffs, seven dated items, 25 open, six personal facts, at 9,000 through the session start): it
+  prints exactly what master printed — Arriving 2 and its own "+5", Still open 1 and its own "+24", three
+  handoffs and "+1 older", the page whole, 8,997 bytes — and the five hints the turn-end chose and the
+  session start had no room for are now recorded as `quiet` instead of vanishing from every record.
 - Named, a weakened guarantee: "a smaller budget yields a subset" (self NOTES section 9 names its
   exceptions) has a new one at the fold's boundary. A synthetic sweep (12 identity, 8 each of craft,
   threads and hints) re-admitted "Still open"'s first item at 1,200 bytes that 1,600 had left out: the
