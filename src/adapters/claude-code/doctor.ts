@@ -2694,7 +2694,7 @@ const RESULTS_ROWS = 2_000;
  *     a run begun before parts were logged has no part-1 row and is not
  *     judged either.
  *   - an `mcp.result.spilled` row (2026-10-09, U14 item 3): the nightly run's
- *     own transcript showed a result of ours that Claude Code replaced with a
+ *     own output showed a result of ours that Claude Code replaced with a
  *     short preview — its line is lower than the ceiling now (a remote flag
  *     can lower it), and the server could not see it. AMBER, like the two
  *     above: nothing to do by hand, and the night has already happened.
@@ -2776,8 +2776,8 @@ export function resultFindings(store: Store): Finding[] {
     if (last !== null && last.transcript !== undefined && !(last.transcript === "read" && (last.spills ?? 0) > 0)) {
       checked =
         last.transcript === "read"
-          ? `; the ${last.date} run's transcript showed none of our results cut by Claude Code`
-          : `; the ${last.date} run's transcript ${last.transcript === "absent" ? "was not found where Claude Code keeps sessions" : "could not be read"}, so Claude Code's cut was not checked`;
+          ? `; the ${last.date} run's output showed none of our results cut by Claude Code`
+          : `; the ${last.date} run's output ${last.transcript === "absent" ? "was not kept" : "could not be read"}, so Claude Code's cut was not checked`;
     }
   } catch {
     /* the line stands without it */
