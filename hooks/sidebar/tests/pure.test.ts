@@ -151,10 +151,13 @@ describe('the feed', () => {
     expect(classify(ev(503, 'dream.changed', 'In a dream I changed 1 thing (1 gist).', 1, { applied: '1', gist: '1' }))?.mechs).toEqual(['dreaming', 'episodic-semantic'])
     expect(classify(ev(504, 'dream.changed', 'In a dream I changed nothing; 8 were refused.', 1, { applied: '0', refused: '8' }))).toBeNull()
     expect(classify(ev(505, 'dream.changed', 'It suggested 1 memory for the core.', 1, { applied: '0', 'nominate-core': '1' }))?.mechs).toEqual(['dreaming'])
-    // a contradiction settled `changed`: Reconsolidation's row, Interference too (the earlier memory fades)
+    // a DECLARED settle is Reconsolidation's alone; a confirmed slot (a detected door) is Interference's
+    // alone; a dream merge's rows count as the merge (Group 2b, review 10 C6): never under both
     const changed = ev(506, 'contradiction.settled', 'The dream settled a contradiction as changed.', 1, { how: 'changed', actor: 'dream' })
-    expect(classify(changed)).toMatchObject({ mech: 'reconsolidation', mechs: ['reconsolidation', 'interference'], word: 'settled' })
+    expect(classify(changed)).toMatchObject({ mech: 'reconsolidation', mechs: ['reconsolidation'], word: 'settled' })
     expect(classify(ev(507, 'contradiction.settled', 'Settled as open.', 1, { how: 'open', actor: 'dream' }))?.mechs).toEqual(['reconsolidation'])
+    expect(classify(ev(511, 'contradiction.settled', 'A newer state confirmed.', 1, { how: 'changed', actor: 'dream', source: 'slot' }))).toMatchObject({ mech: 'interference', mechs: ['interference'], word: 'replaced' })
+    expect(classify(ev(512, 'contradiction.settled', 'Merged.', 1, { how: 'changed', actor: 'dream', source: 'dream-merge' }))).toBeNull()
     // a band move is one or the other, never both
     expect(classify(ev(508, 'band.transition', 'Faded.', 1, { site: 'decay', direction: 'down' }))?.mechs).toEqual(['decay'])
     expect(classify(ev(509, 'band.transition', 'Rose.', 1, { site: 'consolidate', direction: 'up' }))?.mechs).toEqual(['consolidation'])
@@ -277,7 +280,7 @@ describe('the feed', () => {
     // a fade names its memory; a sleep cycle's counts name none
     expect(mechFirings(EVENTS, 'decay').map(f => [f.word, firingTitle(f, {})])).toEqual([['faded', 'An old plan that faded']])
     // a settle: which holds over which; revision pressure: which argued with which
-    const settle = ev(500, 'contradiction.settled', 'settled', 1, { how: 'changed', holds: '"The new rule" [mem_new00001]', over: '"The old rule" [mem_old00001]' }, 'ctr_x')
+    const settle = ev(500, 'contradiction.settled', 'settled', 1, { how: 'changed', source: 'slot', holds: '"The new rule" [mem_new00001]', over: '"The old rule" [mem_old00001]' }, 'ctr_x')
     expect(mechFirings([settle], 'interference').map(f => [f.word, firingTitle(f, {})])).toEqual([['replaced', 'The new rule holds over The old rule']])
     const pressure = ev(501, 'revision.pressure', 'argued', 1, { targetId: '"Han\'s promise" [mem_tgt00001]', challengerId: '"Han replied" [mem_chl00001]' }, null)
     expect(firingTitle(mechFirings([pressure], 'reconsolidation')[0]!, {})).toBe("Han replied argued with Han's promise")
