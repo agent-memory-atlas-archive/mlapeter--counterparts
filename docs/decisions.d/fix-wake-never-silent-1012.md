@@ -46,6 +46,22 @@
   before) now takes the room "Last here" had, and "Last here" leaves its no-room row instead. The handoffs
   stay. Why: a lane the wake chose outranks the pointer to the last chapter here; both are pointers, and
   this one says what this wake chose. Worth Mike's look.
+- Measured, named, for Mike's look: the fold is not only a last resort. In the owner-shaped morning
+  (`wake-dated-first.test.ts` section 6: a 6,767-byte page, four handoffs, seven dated items, 25 open,
+  Nearby) the session-start wake now folds: "Arriving:" and "Still open" keep their listed items, and
+  their "+5" and "+24" move into one line under "Who I am" with Nearby's 5, which had been dropped without
+  a word. Its five ids are Arriving's; Still open's and Nearby's are not named there. The fuller rung
+  (fold only the lanes that list nothing, keep the count under a lane that lists items, ids from each
+  lane) is the natural next step if this reads badly.
+- Named, a weakened guarantee: "a smaller budget yields a subset" (self NOTES section 9 names its
+  exceptions) has a new one at the fold's boundary. A synthetic sweep (12 identity, 8 each of craft,
+  threads and hints) re-admitted "Still open"'s first item at 1,200 bytes that 1,600 had left out: the
+  folded line is shorter than the lanes' own, and the rescue spends the difference. `self.test.ts`'s
+  subset sweep still passes (its fixture does not cross that boundary). Folding before the loop pops
+  "Who I am" removed the case that sweep did hit.
+- Named, a cleanup left for later: `keepArrivingCount` is reachable only when Arriving's count was not
+  reserved, which no longer happens (the trim loop pins it whenever the lane lost something). Left in
+  place as a guard.
 - Not done, named: the delivery's own lines ("Last here", "Last said here", "Work here", "Today,
   elsewhere" at its last step) and the Yesterday line when not even its pointers fit still drop with
   only a durable row or a ring event, as before. Their rungs already exist; reserving them is the fuller
