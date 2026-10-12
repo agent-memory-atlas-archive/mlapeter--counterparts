@@ -19,6 +19,7 @@ import { run } from "../src/adapters/cli/index.js";
 import { pageWriterFindings } from "../src/adapters/claude-code/doctor.js";
 import { writerWords } from "../src/adapters/dashboard/web/views/mind.js";
 import { McpServer } from "../src/adapters/mcp/index.js";
+import { NIGHT_CHILD_ENV } from "../src/adapters/spawn.js";
 import { recordSession } from "../src/adapters/sessions.js";
 import { Counterpart } from "../src/core/counterpart.js";
 import { DREAMING_SETTING_KEY, DREAM_TUNABLES, REFLECT_TUNABLES, RELAUNCHED_KEY, dreamingSetting, nightNext, nightOrder } from "../src/core/dream/index.js";
@@ -856,3 +857,35 @@ describe("a page writer that writes 6,200 bytes, past its room, through the real
   });
 });
 
+
+// ---------------------------------------------------------------------------
+// "undo that dream", said (2026-10-12, onboarding round 1, F)
+// ---------------------------------------------------------------------------
+
+describe("undo that dream: the dream tool's undo phase", () => {
+  test("reverses the dream's changes as the CLI's --undo does, and is refused in the nightly run", async () => {
+    atNoon();
+    const c = brain();
+    const [a, b] = lived(c) as [string, string];
+    const s = server(c, SESSION);
+    const d = await s.call("dream", { phase: "begin", session: SESSION });
+    const dreamId = d.structuredContent["dream"] as string;
+    const p = await s.call("dream", { phase: "propose", session: SESSION, dream: dreamId, changes: [{ action: "merge", ids: [a, b], text: "Migrations run before the container boots." }] });
+    expect(p.isError).not.toBe(true);
+    await s.call("dream", { phase: "journal", session: SESSION, dream: dreamId, title: "Boot order", text: "A short dream." });
+    const merged = String((p.structuredContent["results"] as { id?: string }[])[0]?.id);
+    expect(c.store.row(merged)?.archived).toBe(0);
+    // Not without an id, and not one this memory never dreamed.
+    expect((await s.call("dream", { phase: "undo", session: SESSION })).structuredContent["reason"]).toBe("dream-required");
+    expect((await s.call("dream", { phase: "undo", session: SESSION, dream: "drm_nope" })).structuredContent["reason"]).toBe("unknown-dream");
+    const u = await s.call("dream", { phase: "undo", session: SESSION, dream: dreamId });
+    expect(u.structuredContent["reversed"]).toBeGreaterThan(0);
+    expect(String(u.structuredContent["said"])).toContain("Its journal entry stays");
+    expect(c.store.row(merged)?.archived ?? 1).toBe(1);
+    expect(c.store.row(a)?.archived).toBe(0);
+    expect(c.store.row(b)?.archived).toBe(0);
+    // The nightly run's child cannot undo a dream.
+    const night = new McpServer({ counterpart: c, scope: "/proj", owner: true, registryDir: dir, now: () => Date.now() + offsetMs, env: { [NIGHT_CHILD_ENV]: "dream" } });
+    expect((await night.call("dream", { phase: "undo", session: SESSION, dream: dreamId })).structuredContent["reason"]).toBe("night-run");
+  });
+});
