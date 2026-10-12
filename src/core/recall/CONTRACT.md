@@ -442,7 +442,8 @@ live after it carries no `Earlier`. Since 2026-10-11 (Group 3 part B; random-06,
 held) a settle speaks only about the pair it names: a newer pair in which a memory holds no
 longer re-affirms it over the pair that put it under another. To make B current again over
 C, settle B over C: the owner's or a session's settle reorders the standing pair it names
-(the old settle undone, its trail kept; review of #432).
+(the old settle undone, its trail kept; review of #432) — a session's only when the owner
+did not settle it.
 
 **[M] The chain head wins ambient recall** (2026-10-11, Group 2; review 04 change 1, MOD
 #3) — the one place the label's rule became a filter. A turn candidate with a `headOf`

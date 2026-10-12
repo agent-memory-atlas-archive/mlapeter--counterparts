@@ -833,7 +833,8 @@ headless child's own `--mcp-config` env and checks the bodies reach `structuredC
   settle --undo` it is; the owner is told to undo first (M3). Since the review of #432
   (2026-10-11) a session's or the owner's settle of a standing `changed` pair the OTHER
   way round reorders it instead (the old settle undone, its trail kept), and the refusal
-  says which way the pair stands.
+  says which way the pair stands. A session never reorders a pair the OWNER settled: it
+  is refused and told how he can change it (the coordinator, 2026-10-11).
 - **A `how` sent at a core memory** reports that pressure runs and that the pair is
   recorded unsettled meanwhile (M9). The published `note` schema has `required: []`;
   watch whether empty notes rise (M10).

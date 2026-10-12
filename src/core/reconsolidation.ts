@@ -418,6 +418,14 @@ export function settle(store: Store, input: SettleInput, opts: { closeFlags?: bo
     pair = store.contradictionBetween(holds, over);
   }
   const reversalNotes: string[] = [];
+  // THE OWNER'S SETTLE IS HIS RULING (decided by the coordinator, 2026-10-11,
+  // lightly held): only he reverses a pair he settled; anyone else is told so.
+  if (pair !== undefined && pair.state === "settled" && input.actor !== "owner" && isReversal(store, pair, holds, over, how, "owner") && settledByOwner(store, pair.id)) {
+    return refuse(
+      "already-settled",
+      `${pair.id} is already settled: the owner settled ${over} over ${holds}, so it stands as his. Tell him: he can settle ${holds} over ${over} himself (counterparts settle --holds ${holds} --against ${over} --how changed --why "...") or undo it (counterparts settle --undo ${pair.id}).`,
+    );
+  }
   if (pair !== undefined && pair.state === "settled" && isReversal(store, pair, holds, over, how, input.actor)) {
     // AN EXPLICIT REVERSAL (2026-10-11, review of #432; random-06's ride-along,
     // lightly held): "B over C" while "C over B" stands names the same pair,
@@ -483,10 +491,24 @@ export function settle(store: Store, input: SettleInput, opts: { closeFlags?: bo
   );
 }
 
+/** Was the standing settle on this pair the owner's (its newest settle not undone)? Never throws. */
+function settledByOwner(store: Store, pairId: string): boolean {
+  try {
+    const last = store
+      .contradictionSettles({ pairId })
+      .filter((x) => x.action === "settle" && x.undone === 0)
+      .pop();
+    return last?.actor === "owner";
+  } catch {
+    return false;
+  }
+}
+
 /**
  * IS "holds over over" THE STANDING `pair` THE OTHER WAY ROUND? (2026-10-11,
  * review of #432) — a settle the owner or a session may make to reorder the
- * pair it names: `changed` (a `corrected` one archived what would hold now),
+ * pair it names (a session only when the owner did not settle it,
+ * `settledByOwner`): `changed` (a `corrected` one archived what would hold now),
  * not closed through another, not a pressure crossing (its undo puts the
  * successor away), and not a reading the guard would keep side by side. A
  * dream or a reflection is still told to raise it (an undo of its batch could

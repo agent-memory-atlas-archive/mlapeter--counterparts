@@ -495,18 +495,23 @@ describe("ride-along: a settle reorders only the pair it names (random-06)", () 
     expect(standingOf(c.store, b)?.prefix).toBe(`Earlier (now [${cc}]): `);
   });
 
-  test("to make B current again, settle B over C: the pair it names is reordered (owner or session)", () => {
-    for (const actor of ["owner", "session"] as const) {
+  test("to make B current again, settle B over C: the pair it names is reordered (a session over a session's settle, the owner over his own)", () => {
+    const cases: { first: "owner" | "session"; then: "owner" | "session" }[] = [
+      { first: "session", then: "session" },
+      { first: "owner", then: "owner" },
+      { first: "session", then: "owner" },
+    ];
+    for (const { first, then } of cases) {
       const c = brain();
       nextDay(c);
       const a = mem(c, "The launch is planned for March.");
       const b = mem(c, "The launch moved to April.");
       const cc = mem(c, "The launch moved again, to May.");
-      expect(settle(c.store, { holds: cc, over: b, how: "changed", actor: "owner" }).ok).toBe(true);
+      expect(settle(c.store, { holds: cc, over: b, how: "changed", actor: first }).ok).toBe(true);
       expect(settle(c.store, { holds: b, over: a, how: "changed", actor: "owner" }).ok).toBe(true);
       expect(fadeOf(c, b)).toBeCloseTo(0.5, 9);
       nextDay(c);
-      const out = settle(c.store, { holds: b, over: cc, how: "changed", actor, why: "May fell through; April stands" });
+      const out = settle(c.store, { holds: b, over: cc, how: "changed", actor: then, why: "May fell through; April stands" });
       expect(out.ok).toBe(true);
       expect(out.ok ? out.note : "").toContain("reordered");
       // B's cut lifted, C's applied; B is the head again, C and A earlier under it.
@@ -528,12 +533,36 @@ describe("ride-along: a settle reorders only the pair it names (random-06)", () 
     }
   });
 
+  test("a session may not reverse the owner's settle: refused, told he settled it and how he can change it", () => {
+    const c = brain();
+    nextDay(c);
+    const b = mem(c, "The launch moved to April.");
+    const cc = mem(c, "The launch moved again, to May.");
+    const owned = settle(c.store, { holds: cc, over: b, how: "changed", actor: "owner" });
+    expect(owned.ok).toBe(true);
+    const out = settle(c.store, { holds: b, over: cc, how: "changed", actor: "session", why: "April stands" });
+    expect(out).toMatchObject({ ok: false, reason: "already-settled" });
+    const detail = out.ok ? "" : out.detail;
+    expect(detail).toContain(`the owner settled ${cc} over ${b}`);
+    expect(detail).toContain(`counterparts settle --holds ${b} --against ${cc}`);
+    expect(detail).toContain("counterparts settle --undo");
+    // Nothing moved.
+    expect(fadeOf(c, b)).toBeCloseTo(0.5, 9);
+    expect(fadeOf(c, cc)).toBe(1);
+    expect(headOf(c.store, b)).toBe(cc);
+    // A settle the owner undid is no longer his standing settle: a later session settle can be reversed by a session.
+    if (owned.ok) expect(undo(c.store, { pair: owned.pair, actor: "owner" }).ok).toBe(true);
+    expect(settle(c.store, { holds: cc, over: b, how: "changed", actor: "session" }).ok).toBe(true);
+    expect(settle(c.store, { holds: b, over: cc, how: "changed", actor: "session" }).ok).toBe(true);
+    expect(headOf(c.store, cc)).toBe(b);
+  });
+
   test("a dream may not reorder a settle, and a corrected pair is not reordered: both are told which way it stands and what to do", () => {
     const c = brain();
     nextDay(c);
     const b = mem(c, "The launch moved to April.");
     const cc = mem(c, "The launch moved again, to May.");
-    expect(settle(c.store, { holds: cc, over: b, how: "changed", actor: "owner" }).ok).toBe(true);
+    expect(settle(c.store, { holds: cc, over: b, how: "changed", actor: "session" }).ok).toBe(true);
     const dreamed = settle(c.store, { holds: b, over: cc, how: "changed", actor: "dream" });
     expect(dreamed).toMatchObject({ ok: false, reason: "already-settled" });
     expect(dreamed.ok ? "" : dreamed.detail).toContain(`${cc} holds over ${b}`);

@@ -78,3 +78,12 @@
 - Decided by the #432 reviewer, 2026-10-11, lightly held: the dashboard's dreams page counts a fold as
   `fold` and says "folded N memories into what they add up to (M faded under it)". Why: it counted folds
   as patterns.
+
+### Decided by the coordinator, 2026-10-11, lightly held (who may reverse a settle)
+
+- Decided by the coordinator, 2026-10-11, lightly held: a session (or anything that is not the owner) may
+  reorder a pair by settling it the other way ONLY when the standing settle was not the owner's (its newest
+  settle not undone, actor `owner`: his CLI settle or his door). Over the owner's settle it is refused
+  `already-settled`, and the message says the owner settled it and how he can change it (his own settle the
+  other way, or `counterparts settle --undo`). The owner can reverse anything. Why: the owner's settle is his
+  ruling; a model session should not reverse it, even with the trail kept.
