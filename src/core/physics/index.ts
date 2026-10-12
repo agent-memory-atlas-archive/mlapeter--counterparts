@@ -179,7 +179,7 @@ export const TUNABLES = {
    * THE SLOW LANE IS THE RECURRENCE LANE (2026-10-11, Group 3 part A; review
    * 08 C1, item 14): the slow lane retuned, not a third lane. A RECURRENCE DAY
    * is a lived day on which the memory or a member of its slot (the memories
-   * a settle or a slot proposal ties it to — Group 2's "A over B" pairs) was
+   * a settled `changed` pair ties it to — Group 2's "A over B" pairs) was
    * used awake (an engaged use too), cited by a reflection, or re-encoded (a
    * newer member of the slot was written that day). Dream replays never count.
    * Read by the caller (`sleep/consolidate.ts#coreRecurrence`) into

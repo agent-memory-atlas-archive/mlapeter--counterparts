@@ -2,16 +2,16 @@
 
 - Decided by the group3a builder, 2026-10-11, lightly held: a memory's SLOT is the memory plus the live
   memories a standing "A over B" ties it to: a settled `changed` pair (a write's `updates`, a settle, a dream
-  merge, and folds once part B writes them through `supersede`) or a slot proposal still waiting. It is walked
-  along the chain, at most 12 members. `open` pairs (two different things) and `corrected` pairs (the earlier
+  merge, and folds once part B writes them through `supersede`). It is walked along the chain, at most 12
+  members. (A slot proposal still waiting was counted too in the first draft; see the reviewer's bullets below.) `open` pairs (two different things) and `corrected` pairs (the earlier
   was wrong, not said again) are not slots. Why: Group 2 shipped pairs, not slot ids, and these pairs are the
   ones that say "the same thing, later". Embedding neighbours were the other option, but the slot detector
   already turned cosine into pairs, with a dream confirming them.
 - Decided by the group3a builder, 2026-10-11, lightly held: a RE-ENCODING is read off the slot's rows. It is
   the birth day of each member other than the slot's first-written, when a session wrote it (a dream's or a
   reflection's writing is not one), and its session is the member's `origin_session`. No `reencoded` row is
-  written to `returns`. Why: the count needs no write path, a withdrawn proposal or an undone settle takes its
-  days with it automatically, and the existing history counts on the first night. So `returns.source =
+  written to `returns`. Why: the count needs no write path, an undone settle takes its days with it
+  automatically, and the existing history counts on the first night. So `returns.source =
   'reencoded'` stays unused. No store-format change was needed: v13 already has `returns.session`.
 - Decided by the group3a builder, 2026-10-11, lightly held: `returns.session` is written from now on: the recall
   session for an awake or engaged use, and the reflection's id for a reflection's citation. A day whose
@@ -53,3 +53,7 @@
 - Noticed by the group3a builder, 2026-10-11: with the recurrence lane, a reflection citing a memory once a week
   carries it into the core in three weeks (four reflection days, each its own session), where it used to take
   four. The D5 "watch" test now pins three weeks.
+- Decided by the coordinator and random-06, 2026-10-11, lightly held: only SETTLED pairs make a slot. A slot
+  proposal still waiting (unconfirmed) does not count until it is confirmed. Why: about one in seven
+  proposals was wrong on Group 2's hand-read, and a wrong one would pool another memory's uses into this
+  one's recurrence and could carry it into the core. Confirming is cheap, and the core is slow by design.

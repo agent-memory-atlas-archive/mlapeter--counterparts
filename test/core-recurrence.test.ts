@@ -119,6 +119,24 @@ describe("the recurrence lane counts the slot, the sessions and the window", () 
     expect(crossed[0]?.lane).toBe("slow");
   });
 
+  test("a slot proposal still waiting is not a slot: only a settled pair pools the uses (coordinator and random-06, 2026-10-11)", () => {
+    const c = brain();
+    nextDay(c);
+    const a = mem(c, "I take the long way round a hard question.");
+    nextDay(c);
+    const b = mem(c, "I take the long way round, and I say so.", { origin: { session: "s2" } });
+    nextDay(c);
+    expect(c.resolveUse("s3", b, "referenced").credited).toBe(true);
+    const pr = c.store.proposeContradiction({ id: "ctr_wait", holds: b, over: a, source: "slot", day: c.store.livedDay(), actor: "detector", actorId: null, fade: null });
+    expect(pr.created).toBe(true);
+    // Unconfirmed: a's slot is a alone, and b's use is not a's recurrence.
+    expect(slotOf(c.store, a)).toEqual([a]);
+    expect(coreRecurrence(c.store, a, c.store.livedDay())).toMatchObject({ days: 0, anchored: false });
+    // Confirmed (settled `changed`): now it is one slot.
+    expect(c.settleContradiction({ holds: b, over: a, how: "changed", actor: "session", actorId: "s3" }).ok).toBe(true);
+    expect(slotOf(c.store, a).sort()).toEqual([a, b].sort());
+  });
+
   test("an engaged day counts half, and engaged days alone never meet the lane", () => {
     const c = brain();
     nextDay(c);

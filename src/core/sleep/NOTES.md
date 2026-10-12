@@ -1015,8 +1015,8 @@ the closed-door counterfactual for a promotion record reads it with the door clo
 ## 2026-10-11 — the core: the recurrence lane, about me or us, being reconsidered (Group 3 part A)
 
 The slow lane counts `coreRecurrence` (in `consolidate.ts`): a memory's slot is itself plus the
-live memories a standing "A over B" ties it to (`slotOf`: settled `changed` pairs and slot
-proposals still waiting, at most 12). The evidence is the members' awake, reflection and engaged
+live memories a standing "A over B" ties it to (`slotOf`: settled `changed` pairs only, at most
+12; a slot proposal counts once it is confirmed). The evidence is the members' awake, reflection and engaged
 returns, plus the birth day of every member a session wrote after the slot's first. That is
 re-encoding, read off the rows, so nothing is written for it. `returns.session` is written from
 now on. A day with no session counts as one. The memory a later member settled over is

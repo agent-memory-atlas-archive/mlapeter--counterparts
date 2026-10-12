@@ -377,12 +377,15 @@ export const SLOT_WALK_MAX = 12;
 
 /**
  * A MEMORY'S SLOT (2026-10-11, Group 3 part A): the memory and the live ones a
- * standing "A over B" ties it to — a settled `changed` pair (a write's
- * `updates`, a settle, a dream merge, a fold once part B writes them) or a slot
- * proposal still waiting — walked along the chain, at most `SLOT_WALK_MAX`.
- * Not an `open` pair (two different things, kept apart) and not a `corrected`
- * one (the earlier was wrong, not said again). Group 2 shipped pairs, not slot
- * ids, so this IS the slot. Reads only; a port without the pairs gives the
+ * standing "A over B" ties it to — a SETTLED `changed` pair (a write's
+ * `updates`, a settle, a dream merge, a fold once part B writes them) —
+ * walked along the chain, at most `SLOT_WALK_MAX`. Not a slot proposal still
+ * waiting (unconfirmed, about one in seven wrong on Group 2's hand-read: a
+ * wrong one would pool another memory's uses into this one — decided by the
+ * coordinator and random-06, 2026-10-11, lightly held), not an `open` pair
+ * (two different things, kept apart) and not a `corrected` one (the earlier
+ * was wrong, not said again). Group 2 shipped pairs, not slot ids, so this IS
+ * the slot. Reads only; a port without the pairs gives the
  * memory alone.
  */
 export function slotOf(store: Pick<SleepStore, "row" | "contradictionsOf">, id: string): string[] {
@@ -397,7 +400,7 @@ export function slotOf(store: Pick<SleepStore, "row" | "contradictionsOf">, id: 
       pairs = [];
     }
     for (const p of pairs) {
-      const sameThing = (p.state === "settled" && p.how === "changed") || (p.state === "unsettled" && p.source === "slot");
+      const sameThing = p.state === "settled" && p.how === "changed";
       if (!sameThing) continue;
       for (const other of [p.a, p.b]) {
         if (seen.has(other) || out.length >= SLOT_WALK_MAX) continue;
@@ -423,8 +426,7 @@ const NOT_REENCODING = new Set(["dreamed", "reflection"]);
  * cited by a reflection, or RE-ENCODED — a member written that day, other than
  * the slot's first, by a session (a dream's or a reflection's writing is not
  * one). Dream replays never count. Read off the `returns` table and the
- * members' rows, so an undone settle or a withdrawn proposal takes its days
- * with it: nothing is written for a re-encoding (no `reencoded` return row —
+ * members' rows, so an undone settle takes its days with it: nothing is written for a re-encoding (no `reencoded` return row —
  * decided by the group3a builder, 2026-10-11, lightly held).
  *
  * Sessions: `returns.session` (written since 2026-10-11), a member's
