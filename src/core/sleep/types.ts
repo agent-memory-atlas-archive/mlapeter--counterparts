@@ -186,6 +186,9 @@ export interface SleepStore {
  *     `consolidate`, so it sees this boundary's own supersedes and promotions.
  *   - `fade` runs right after `prune`, so a card whose last beliefs were
  *     pruned tonight is free to fade tonight (its floors permitting).
+ *   - `births` runs right after `fade` (2026-10-11): a name whose card faded
+ *     tonight is a faded card's name, so the tally leaves it to come back the
+ *     way a faded card does — when a new memory names it.
  *   - `briefing` is the cycle's final CONTENT write. `log` runs after it and
  *     writes no content: it deletes telemetry rows past the retention window
  *     (§5 G16), and it is last so "what the cycle forgot" and "what the log
@@ -198,6 +201,7 @@ export const PHASES = [
   "consolidate",
   "prune",
   "fade",
+  "births",
   "dedup",
   "versions",
   "briefing",
@@ -217,6 +221,7 @@ export type PhaseReason =
   | "observer-report"
   | "no-render-fn"
   | "no-fade-fn"
+  | "no-births-fn"
   | "no-durable-event-log"
   | "failed";
 

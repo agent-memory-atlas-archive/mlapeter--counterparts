@@ -5328,6 +5328,18 @@ export class Store {
     );
   }
 
+  /**
+   * The LIVE memories with words, with the lived day each was written on and
+   * its kind — the night's name tally reads these (`schemas/names.ts`,
+   * 2026-10-11). A chased removal is archived and blank, so it is not here; one
+   * still dark is, and the caller drops it by `deniedIds()`.
+   */
+  liveMemoryTexts(): { id: string; title: string | null; body: string; day: number; kind: string }[] {
+    return this.ops.all<{ id: string; title: string | null; body: string; day: number; kind: string }>(
+      "SELECT id, title, body, birth_day AS day, kind FROM memories WHERE type = 'memory' AND archived = 0 AND body != '' ORDER BY id",
+    );
+  }
+
   /** How many subject links there are, and on how many memories (v12). Null without the table. */
   subjectLinkCount(): { links: number; memories: number; subjects: number } | null {
     if (!this.hasTable("memory_subjects")) return null;

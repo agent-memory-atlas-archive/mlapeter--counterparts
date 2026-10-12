@@ -5249,6 +5249,9 @@ export class Counterpart {
         // Under observer the phase hands `apply: false` and this is a dry run.
         fade: (f) =>
           this.schemas.fadeSweep(f.day, { date: f.date, dryRun: !f.apply, limit: f.budget }),
+        // Cards are born where names are (2026-10-11, Group 3 part D): the
+        // night's name tally, judged by `mention()`, a nightly budget at most.
+        births: (b) => this.schemas.birthsFromNames(b.day, { dryRun: !b.apply, limit: b.budget }),
         date,
         ...(composeBudget === null ? {} : { budgetBytes: composeBudget }),
         onEvent: (e) => this.relay("sleep", e),
@@ -6734,8 +6737,7 @@ export class Counterpart {
     // alias ACTED, and those fires are most of what a mix is made of — v1's own
     // "737 gate fires" counted fires on proposals that were accepted.
     this.recordDeposit(result, ctx, source, mint);
-    const titled = this.mentionFromProposal(proposal, `deposit:${mint.id}`);
-    this.creditNamedIn(proposal.title ?? null, proposal.content, proposal.day, mint.id, source, titled);
+    this.creditNamedIn(proposal.title ?? null, proposal.content, proposal.day, mint.id, source);
     // THE CLOSE AND THE LIST AGREE (2026-10-02). A thread this session may
     // not close — confidential, or opened in another directory, for a session
     // that is not the owner's — is not settled over either: the declaration
@@ -7375,8 +7377,7 @@ export class Counterpart {
         updates: mint.updates,
         blind: mint.blind,
       });
-      const titled = this.mentionFromProposal(proposal, `sweep:${chunk.index}`);
-      this.creditNamedIn(proposal.title, proposal.content, proposal.day, mint.id, "sweep", titled);
+      this.creditNamedIn(proposal.title, proposal.content, proposal.day, mint.id, "sweep");
       // The DOOR, not `SWEPT_SOURCE` — that field says "session-end" because
       // `remember/`'s vocabulary has no word for a sweep (see its comment).
       this.applyDeclaredRevision(proposal, mint, "sweep");
@@ -7512,43 +7513,18 @@ export class Counterpart {
 
 
   /**
-   * Birth by mention, made AMBIENT (constitution line 8; schemas doctrine):
-   * when an authored or swept proposal NAMES an entity-family memory with a
-   * title, the mention reaches schemas the moment the memory lands — the writer
-   * naming a place is the birth site, and no separate tool or chore exists.
-   * schemas.mention() does all the judging (whole-word occurrence, collisions,
-   * the birth cap); this is wiring, not rules. Found as gap: `mention()` had
-   * ZERO live callers — the doctrine's front door was starved (cli gaps §8).
-   */
-  private mentionFromProposal(
-    proposal: { title?: string | null; kind: Kind; content: string; aliases: readonly string[]; day: number },
-    chunkRef: string,
-  ): string | null {
-    const title = proposal.title ?? null;
-    if (title === null || title.trim().length === 0) return null;
-    if (proposal.kind !== "entity" && proposal.kind !== "person" && proposal.kind !== "place") return null;
-    const outcome = this.schemas.mention({
-      name: title,
-      kind: proposal.kind,
-      source: proposal.content,
-      chunkRef,
-      aliases: proposal.aliases,
-      day: proposal.day,
-    });
-    this.emit("counterpart.mention", outcome.id ?? undefined, {
-      reason: outcome.reason,
-      kind: proposal.kind,
-      day: proposal.day,
-    });
-    return outcome.id;
-  }
-
-  /**
    * A saved memory that names a card anywhere in its title or body counts as a
    * use of that card, so someone talked about every day keeps their card, and
-   * one who faded comes back (schemas NOTES §15). The card the title path just handled is skipped. Every
-   * door that mints calls this: a deposit, a sweep, an episode ingestion.
-   * Fail-open: the memory has already landed.
+   * one who faded comes back (schemas NOTES §15). Every door that mints calls
+   * this: a deposit, a sweep, an episode ingestion. Fail-open: the memory has
+   * already landed.
+   *
+   * A write never BIRTHS a card (2026-10-11, Group 3 part D). The title door
+   * that used to (`mentionFromProposal`) passed the memory's title as the name,
+   * and an authored title is a sentence that never occurs verbatim in its own
+   * body: 84 entity and person memories, 0 births (review 12 §3a). Cards are
+   * born at the boundary, from the names the memories keep saying
+   * (`Schemas#birthsFromNames`, the sleep cycle's `births` phase).
    */
   private creditNamedIn(
     title: string | null,
@@ -7556,7 +7532,6 @@ export class Counterpart {
     day: number,
     memoryId: string,
     door: string,
-    titled: string | null = null,
   ): void {
     if (this.observer) return;
     try {
@@ -7564,7 +7539,6 @@ export class Counterpart {
         text: title === null ? body : `${title}\n${body}`,
         day,
         ref: memoryId,
-        ...(titled === null ? {} : { except: [titled] }),
       });
       if (out.credited.length + out.refused.length + out.revived.length + out.ambiguous === 0) return;
       this.emit("counterpart.mention.named", memoryId, {

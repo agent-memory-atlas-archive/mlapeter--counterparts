@@ -104,6 +104,8 @@ export type { DedupCandidateInput, DedupCandidateSource, DedupPair, DedupResult 
 
 export { runFade } from "./fade.js";
 export type { FadeFn, FadeInput, FadeResult, FadeSweepOutcome } from "./fade.js";
+export { runBirths } from "./births.js";
+export type { BirthsFn, BirthsInput, BirthsResult, BirthsSweepOutcome } from "./births.js";
 
 export { runBriefing } from "./briefing.js";
 export type { BriefingContext, BriefingOutcome, BriefingResult, RenderFn } from "./briefing.js";
