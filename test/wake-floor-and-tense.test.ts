@@ -431,12 +431,14 @@ describe("what gives way for Still open's first item, in order — never the pag
     ...(opts.lend === undefined ? {} : { lendBytes: opts.lend }),
   });
   const floor = render(lanes(), req(100), resolve, SELF_TUNABLES).bytes;
-  /** The smallest the rescue can make it: one open item and its count, one Arriving line, the shortest Yesterday. */
+  /** The smallest the rescue can make it: one open item and its count, one Arriving line and the count of
+   *  the rest (reserved since 2026-10-12), the shortest Yesterday. */
   function tightest(): ReturnType<typeof compose> {
     const all = lanes();
     const rest = [...all.threads.slice(1).map((r) => r.id), ...(all.overflow?.threads ?? [])];
     const kept = { identity: [], craft: [], hints: [], threads: all.threads.slice(0, 1), horizon: all.horizon.slice(0, 1) };
-    return compose(kept, 3, resolve, undefined, { page, forming: null }, { threads: moreLine("threads", rest) }, shortest);
+    const later = all.horizon.slice(1).map((r) => r.id);
+    return compose(kept, 3, resolve, undefined, { page, forming: null }, { threads: moreLine("threads", rest), ...(later.length === 0 ? {} : { horizon: moreLine("horizon", later) }) }, shortest);
   }
   /** Arriving whole when "Still open" has nothing to list: the trim loop's own room for it. */
   const arrivingWhole = (b: number): boolean =>
@@ -444,15 +446,21 @@ describe("what gives way for Still open's first item, in order — never the pag
 
   /**
    * The render with one more Arriving line than `out` listed, at its least:
-   * no count for Arriving, Still open as it was with its count, and the
-   * shortest Yesterday — what the rescue of that line had to beat.
+   * the count of Arriving's rest, Still open as it was with its count or its
+   * collapsed line (both reserved since 2026-10-12: nothing goes without a
+   * word), and the shortest Yesterday — what the rescue of that line had to beat.
    */
   function oneMoreArriving(out: ReturnType<typeof render>): ReturnType<typeof compose> {
     const all = lanes();
     const threads = all.threads.filter((r) => out.kept.threads.includes(r.id));
     const rest = [...all.threads.filter((r) => !out.kept.threads.includes(r.id)).map((r) => r.id), ...(all.overflow?.threads ?? [])];
     const kept = { identity: [], craft: [], hints: [], threads, horizon: all.horizon.slice(0, out.counts.horizon + 1) };
-    return compose(kept, 3, resolve, undefined, { page, forming: null }, threads.length === 0 ? {} : { threads: moreLine("threads", rest) }, shortest);
+    const later = all.horizon.slice(out.counts.horizon + 1).map((r) => r.id);
+    const more = {
+      threads: threads.length === 0 ? collapsedLine("threads", rest) : moreLine("threads", rest),
+      ...(later.length === 0 ? {} : { horizon: moreLine("horizon", later) }),
+    };
+    return compose(kept, 3, resolve, undefined, { page, forming: null }, more, shortest);
   }
 
   test("down every budget (2026-10-10, ROOM_ORDER): the Yesterday line gives up its titles before Arriving gives up a line, and Arriving's later lines go only for Still open's first item", () => {

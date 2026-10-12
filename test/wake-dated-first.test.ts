@@ -59,6 +59,8 @@ import {
   arrivingNear,
   nearDue,
   collapsedLane,
+  countedLanes,
+  isFoldedLine,
   deliveryReserveBound,
   pageBlockBytes,
   pageTopLine,
@@ -670,7 +672,9 @@ describe("at the composition: three dated items, and who gives the room", () => 
     const quiet = me.build({ ...base, horizon: [{ id: first, due: "2026-10-09" }] });
     expect(quiet.page?.rung).toBe("whole");
     expect(quiet.counts.horizon).toBe(0);
-    expect(quiet.text.split("\n").some((l) => collapsedLane(l) === "horizon")).toBe(true);
+    // Counted, in its own line or folded with the others (2026-10-12).
+    expect(countedLanes(quiet.text).horizon).toBe(1);
+    expect(quiet.untold).toEqual({});
     // Due the day the wake is read, plain: the page steps down — whole text, its short version — and the reminder is listed.
     const due = me.build({ ...base, horizon: [{ id: first, due: "2026-10-09", plainDue: true }] });
     expect(due.page?.rung).toBe("short");
@@ -688,9 +692,9 @@ describe("at the composition: three dated items, and who gives the room", () => 
     const bare = "Today, elsewhere: ~/bakery open since 08:02 (live), 3 memories.";
     const line = { elsewhere: away, elsewhereShorter: [bare] };
     // `extra`: how much "Work here" lends past what the whole page needs —
-    // none, more than the line, enough for a long reminder but not for it
-    // and the line, and enough for both.
-    for (const extra of [0, 200, 400, 1_200]) {
+    // none, more than the line, enough for a long reminder and Nearby's count (reserved since 2026-10-12) but not for those
+    // and the line, and enough for all.
+    for (const extra of [0, 200, 500, 1_200]) {
       const lend = wholeCost(7_012) - (COMPOSE - PAGE_FLOOR_RESERVE_BYTES) + extra;
       const { me, ids } = selfWith(pageOfSize(7_012), SHORT, LONG);
       const first = ids[0] ?? "";
@@ -719,7 +723,7 @@ describe("at the composition: three dated items, and who gives the room", () => 
       expect(due.counts.horizon).toBe(1);
       expect(due.page?.rung).toBe(alone.page?.rung);
       expect(due.bytes).toBeLessThanOrEqual(due.budgetBytes);
-      if (extra === 400) {
+      if (extra === 500) {
         expect(due.page?.rung).toBe("whole");
         expect(due.elsewhere).not.toBe(away);
       }
@@ -739,8 +743,10 @@ describe("at the composition: three dated items, and who gives the room", () => 
     const out = me.build({ budgetBytes: 6_637, day: 2, horizon, lendBytes: 952, handoffKeepBytes: 673, yesterday: full, yesterdayShorter: shorter });
     expect(out.page?.rung).toBe("whole");
     expect(out.counts.horizon).toBe(0);
-    const line = out.text.split("\n").find((l) => collapsedLane(l) === "horizon");
-    expect(line).toContain(`Arriving: ${String(ids.length)} — ${COLLAPSED_WORDS}`);
+    // Counted, in its own line or folded with the others (2026-10-12), its first id named.
+    expect(countedLanes(out.text).horizon).toBe(ids.length);
+    expect(out.untold).toEqual({});
+    const line = out.text.split("\n").find((l) => collapsedLane(l) === "horizon" || isFoldedLine(l));
     expect(line).toContain(ids[0]);
     expect(out.bytes).toBeLessThanOrEqual(out.budgetBytes);
     expect(out.budgetBytes).toBeLessThanOrEqual(6_637 + 952);
@@ -765,7 +771,7 @@ describe("at the composition: three dated items, and who gives the room", () => 
     expect(ordinary.budgetBytes).toBe(b);
   });
 
-  test("an id past the count that no count line can name still leaves a trim row, so doctor reads it (review of #367)", () => {
+  test("an id past the count is named beside the due-day lines: its count is reserved, and the lanes below give way for it (2026-10-12; review of #367)", () => {
     clock(ZONE, "2026-10-08", 21);
     const bodies = [...LONG.slice(0, 2), REMINDERS[2], "The clay order arrives; check the invoice against the slip.", "The glaze supplier calls back about the cobalt."];
     const { me, ids } = selfWith(pageOfSize(4_000), undefined, bodies);
@@ -776,12 +782,17 @@ describe("at the composition: three dated items, and who gives the room", () => 
     const both = me.build({ budgetBytes: COMPOSE, day: 2, horizon });
     expect(both.counts.horizon).toBe(2);
     expect(both.page?.rung).toBe("whole");
-    // The tightest budget that still lists both: no room for the count.
+    // The tightest budget that lists both without the count: the count was
+    // dropped without a word here until 2026-10-12 (only a trim row said so).
+    // Now its room is reserved, and "Nearby" gives up items to pay for it.
     const out = me.build({ budgetBytes: both.bytes, day: 2, horizon, horizonMore: past });
     expect(out.counts.horizon).toBe(2);
     expect(out.page?.rung).toBe("whole");
-    expect(out.text).not.toContain("more arriving");
-    expect(out.trimmed.filter((e) => e.lane === "horizon").map((e) => e.id).sort()).toEqual([...past].sort());
+    expect(out.text).toContain("(3 more arriving; recall ids: ");
+    expect(out.untold).toEqual({});
+    expect(out.counts.hints).toBeLessThan(both.counts.hints);
+    expect(out.trimmed.filter((e) => e.lane === "horizon")).toEqual([]);
+    expect(out.bytes).toBeLessThanOrEqual(out.budgetBytes);
     // With room for the count, it names them, and no row is written for them.
     const roomy = me.build({ budgetBytes: COMPOSE, day: 2, horizon, horizonMore: past });
     expect(roomy.text).toContain(`(3 more arriving; recall ids: ${past.join(", ")})`);
@@ -903,9 +914,14 @@ describe("doctor's Wake line says so, in amber, when a dated item went unlisted"
     await worker(dataDir, zone, small);
     expect((lastBriefing(a)["page"] as Record<string, unknown>)["rung"]).toBe("whole");
     expect(lastBriefing(a)["trimmedLanes"]).toEqual({ horizon: 1 });
+    // Counted, never gone without a word (2026-10-12): a step-down, not red.
+    expect(lastBriefing(a)["counted"]).toBe(1);
+    expect(lastBriefing(a)["untold"]).toBe(0);
     const f = wakeArrivalFindings(store).find((x) => x.key === "wake");
     expect(f?.severity).toBe("amber");
-    expect(f?.detail).toContain('a dated item under "Arriving:" was not listed for want of room in 1 render of the wake (newest 2026-10-08)');
+    expect(f?.data["untold"]).toBe(0);
+    expect(f?.data["steppedDown"]).toBe(1);
+    expect(f?.detail).toContain('a dated item under "Arriving:" was counted, not listed, for want of room in 1 render of the wake (newest 2026-10-08)');
     expect(f?.fix).toContain("short version");
     expect(f?.fix).toContain("injectionBudgetBytes");
     expect(f?.data["datedUnlisted"]).toBe(1);
@@ -1059,4 +1075,87 @@ describe("a plain reminder is never told to a turn no person started", () => {
     expect(String((JSON.parse(out.stdout) as Record<string, unknown>)["systemMessage"])).toStartWith("Today: Remind him on the 9th to call the kiln supplier");
     expect(m.a.counterpart.store.eventLog({ name: PROSPECTIVE_PLAIN_EVENT })).toHaveLength(1);
   }, 60_000);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 6. Nothing the wake chose goes unmentioned (2026-10-12, Mike's principle)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * THE OWNER'S 10-12 MORNING, ALL OF IT: a page over its room, four handoffs,
+ * seven dated items (two offered, five past prospective's count), 25 open
+ * questions, personal facts under "Nearby", the Yesterday line — at 9,000,
+ * through the wake assembled at session start. Every lane the wake chose is
+ * whole, shortened (some items and its count) or counted (one line), and the
+ * furniture keeps its own pointers. `WAKE_SHAPE=1` prints the shape.
+ */
+describe("the owner's 10-12 morning: nothing the wake chose goes unmentioned", () => {
+  const SEVEN = [
+    "The quarterly tax is due on the 15th; the forms are in the green folder.",
+    "Rosa's surgery is on the tenth; send a note the evening before.",
+    "The kiln inspector comes on the eleventh; the gate code is in the blue folder.",
+    "The clay order arrives; check the invoice against the slip.",
+    "The glaze supplier calls back about the cobalt.",
+    "The studio rent renews; ask about the second bay.",
+    "Pick up the repaired wheel from Marco's shop.",
+  ];
+  const FACTS = [
+    "He takes his coffee black and early, before the studio opens.",
+    "His sister Ana lives in Valencia and calls on Sundays.",
+    "He prefers plain answers over hedged ones, even when the news is bad.",
+    "The dog is called Pico and is afraid of the kiln's fan.",
+    "He learned to throw on a kick wheel and still prefers one.",
+    "He keeps a paper notebook for every firing.",
+  ];
+  for (const zone of ZONES) {
+    test(`${zone}: every lane whole, shortened or counted, the handoffs and Yesterday by pointer, within 9,000`, async () => {
+      const m = await morning(zone, {
+        pageBytes: 6_767,
+        dated: 7,
+        bodies: SEVEN,
+        overnight: async (a, _ids, dataDir) => {
+          for (const body of FACTS) a.counterpart.store.put({ type: "memory", kind: "fact", body, learnedOn: "2026-10-05", salience: SALIENT });
+          await worker(dataDir, zone);
+        },
+      });
+      const text = m.text;
+      const counted = countedLanes(text);
+      const listed = (heading: string): number => (lane(text, heading) ?? []).filter((l) => l.startsWith("- ")).length;
+      const shape = {
+        arriving: { listed: listed(FRAMING.horizon), counted: counted.horizon ?? 0 },
+        open: { listed: listed(FRAMING.threads), counted: counted.threads ?? 0 },
+        nearby: { listed: listed(FRAMING.hints), counted: counted.hints ?? 0 },
+        handoffs: lower(text).handoffs,
+        older: /\+(\d+) older here: sch_/.exec(text)?.[1] ?? "0",
+        yesterday: text.split("\n").find((l) => l.startsWith("Yesterday, ")) ?? null,
+        page: (m.row["page"] as Record<string, unknown> | undefined)?.["rung"],
+        folded: text.split("\n").some(isFoldedLine),
+        bytes: bytes(text),
+      };
+      if (process.env["WAKE_SHAPE"] === "1") console.log(zone, JSON.stringify(shape));
+      // Seven dated items, every one listed or counted.
+      expect(shape.arriving.listed + shape.arriving.counted).toBe(SEVEN.length);
+      expect(shape.arriving.listed).toBeGreaterThan(0);
+      // Twenty-five open questions, every one listed or counted.
+      expect(shape.open.listed + shape.open.counted).toBe(25);
+      // What the published bundle chose for "Nearby" (listed or counted there),
+      // listed or counted at session start too — not dropped for being popped.
+      const stored = m.a.counterpart.store.getMeta(BRIEFING_KEY) ?? "";
+      const hints = (lane(stored, FRAMING.hints) ?? []).filter((l) => l.startsWith("- ")).length + (countedLanes(stored).hints ?? 0);
+      expect(hints).toBeGreaterThan(0);
+      expect(shape.nearby.listed + shape.nearby.counted).toBe(hints);
+      // Four handoffs: in full, the rest by id.
+      expect(shape.handoffs).toBeGreaterThan(0);
+      expect(shape.handoffs + Number(shape.older)).toBe(4);
+      // The Yesterday line, its pointers at least; the page, on a rung that says where the rest is.
+      expect(shape.yesterday).not.toBeNull();
+      expect(shape.page).toBeDefined();
+      expect(readSentinel(text).intact).toBe(true);
+      expect(shape.bytes).toBeLessThanOrEqual(BUDGET);
+      // The published bundle said nothing was left unsaid, and doctor agrees.
+      expect(m.row["untold"]).toBe(0);
+      const f = wakeArrivalFindings(m.a.counterpart.store).find((x) => x.key === "wake");
+      expect(f?.severity ?? "green").not.toBe("red");
+    }, 60_000);
+  }
 });

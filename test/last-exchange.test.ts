@@ -55,7 +55,7 @@ import {
   tailAtSentence,
   withExchange,
 } from "../src/core/handoff/last-exchange.js";
-import { FRAMING, PAGE_END_LINES, readSentinel } from "../src/core/self/index.js";
+import { FRAMING, PAGE_END_LINES, countedLanes, readSentinel } from "../src/core/self/index.js";
 import { readableDate } from "../src/core/time.js";
 
 const MIN = 60_000;
@@ -557,7 +557,7 @@ describe("its rank: with the handoffs, below every dated item and the page", () 
     expect(text.split("\n").some((l) => l.startsWith("Today, elsewhere: "))).toBe(true);
   });
 
-  test("a page that needs the room borrows it first: the line is given up, the page stays whole, Last here and the handoffs stay", () => {
+  test("a page that needs the room borrows it first: the line is given up, the page stays whole, the handoffs stay, and \"Last here\" gives way to the lanes' counts (2026-10-12)", () => {
     // A 6.5 KB page beside four handoffs borrows the room the line was
     // reserved (it rides Work here's term, which the page borrows before it
     // steps down a rung).
@@ -567,7 +567,10 @@ describe("its rank: with the handoffs, below every dated item and the page", () 
     expect(lineOf(text)).toBeUndefined();
     expect(text).toContain(PAGE_END_LINES.whole);
     expect(pageBytes(text)).toBe(pageBytes(quiet));
-    expect(text.split("\n").some((l) => l.startsWith("Last here: "))).toBe(true);
+    // Nothing the wake chose goes without a word (2026-10-12): "Nearby"'s
+    // count is reserved, and "Last here", below every lane in `ROOM_ORDER`,
+    // is what gives way for it here (its no-room row says so).
+    expect(countedLanes(text).hints).toBeGreaterThan(0);
     expect(text).toContain("garden-b");
     expect(lane(text, FRAMING.horizon).some((l) => l.includes("the seed order closes at noon"))).toBe(true);
   });

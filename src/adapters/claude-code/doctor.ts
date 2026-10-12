@@ -2538,12 +2538,18 @@ export function wakeArrivalFindings(store: Store): Finding[] {
     lastHereNoRoom: room.lastHereNoRoom,
     workNoRoom: room.workNoRoom,
     datedUnlisted: room.datedUnlisted,
+    steppedDown: room.steppedDown,
+    untold: room.untold,
     floor,
   };
   const head =
     expected <= 0
       ? `${window} — no wake checked on arrival (an opt-in check: COUNTERPARTS_WAKE_CHECK=1 in Claude Code's environment)`
       : `${window} — ${String(whole)} of ${String(expected)} ${expected === 1 ? "wake" : "wakes"} arrived whole`;
+  // A LANE LEFT WITHOUT A WORD (2026-10-12) is a bug, not a full wake: red.
+  if (room.red !== null) {
+    return [finding("wake", "red", "Wake", `${head}${rest}`, room.red, data)];
+  }
   if (cut === 0 && room.amber !== null) {
     return [
       finding(
@@ -2582,8 +2588,17 @@ interface WakeRoom {
   readonly lastHereNoRoom: number;
   readonly workNoRoom: number;
   /** Wake renders that left a dated item ("Arriving:") unlisted for want of
-   *  room (2026-10-10) — amber. */
+   *  room (2026-10-10) — amber. Counted, since 2026-10-12, not gone. */
   readonly datedUnlisted: number;
+  /** Wake renders that said some lane by count rather than in full — a
+   *  step-down (a lane's cap, the identity share, the trim), never a fault
+   *  (2026-10-12). */
+  readonly steppedDown: number;
+  /** Wake renders that left an id unsaid — in no line, not even a count — a
+   *  silent drop: red (2026-10-12). */
+  readonly untold: number;
+  /** The red's remedy, or null when nothing here is red. */
+  readonly red: string | null;
   /** The clauses, each led by "; ", or "". */
   readonly clauses: string;
   /** The amber's remedy, or null when nothing here is amber. */
@@ -2615,9 +2630,16 @@ function wakeRoom(store: Store, since: number): WakeRoom {
   // row says "Arriving:" lost an element for want of room
   // (`self/briefing.ts#ROOM_ORDER`) — by its uncapped per-lane count, or, on
   // a row from before that count, by its trimmed list.
-  const datedRows = read(SELF_BRIEFING_EVENT).filter((r) => datedUnlisted(payloadOf(r)) > 0);
+  const briefings = read(SELF_BRIEFING_EVENT);
+  const datedRows = briefings.filter((r) => datedUnlisted(payloadOf(r)) > 0);
   const datedUnlistedRenders = datedRows.length;
   const datedNewest = rowDate(datedRows[0]);
+  // STEP-DOWNS AND SILENT DROPS (2026-10-12, `self/briefing.ts#tellLost`): a
+  // lane said by count is the wake doing its job; an id no line names is not.
+  const steppedDown = briefings.filter((r) => (num(payloadOf(r), "counted") ?? 0) > 0).length;
+  const untoldRows = briefings.filter((r) => (num(payloadOf(r), "untold") ?? 0) > 0);
+  const untold = untoldRows.length;
+  const untoldNewest = rowDate(untoldRows[0]);
   const parts = Object.entries(gaveWay)
     .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
     .map(([part, n]) => `${part} ${String(n)}`);
@@ -2640,7 +2662,10 @@ function wakeRoom(store: Store, since: number): WakeRoom {
       : "") +
     (workNoRoom > 0 ? `; "Work here" lines that did not fit, in ${String(workNoRoom)} ${workNoRoom === 1 ? "directory-day" : "directory-days"}` : "") +
     (datedUnlistedRenders > 0
-      ? `; a dated item under "Arriving:" was not listed for want of room in ${String(datedUnlistedRenders)} ${datedUnlistedRenders === 1 ? "render" : "renders"} of the wake${datedNewest === null ? "" : ` (newest ${datedNewest})`}`
+      ? `; a dated item under "Arriving:" was counted, not listed, for want of room in ${String(datedUnlistedRenders)} ${datedUnlistedRenders === 1 ? "render" : "renders"} of the wake${datedNewest === null ? "" : ` (newest ${datedNewest})`}`
+      : "") +
+    (untold > 0
+      ? `; something the wake chose went unsaid — in no line, not even a count — in ${String(untold)} ${untold === 1 ? "render" : "renders"}${untoldNewest === null ? "" : ` (newest ${untoldNewest})`}`
       : "");
   const remedies = [
     ...(datedUnlistedRenders > 0
@@ -2653,8 +2678,12 @@ function wakeRoom(store: Store, since: number): WakeRoom {
       : []),
   ];
   const amber = remedies.length === 0 ? null : remedies.join(" ");
+  const red =
+    untold === 0
+      ? null
+      : "Every lane the wake chose is meant to show whole, shortened, or as a count with its ids, so an id in no line is a bug in Counterparts, or a ceiling too small for the wake's own furniture. Worth reporting with this line; recall still finds the memories.";
   const any = clauses.length > 0;
-  return { overBudget, overCap, noticeDropped, gaveWay, handoffNoRoom, lastHereNoRoom, workNoRoom, datedUnlisted: datedUnlistedRenders, clauses, amber, any, floor };
+  return { overBudget, overCap, noticeDropped, gaveWay, handoffNoRoom, lastHereNoRoom, workNoRoom, datedUnlisted: datedUnlistedRenders, steppedDown, untold, red, clauses, amber, any, floor };
 }
 
 /**

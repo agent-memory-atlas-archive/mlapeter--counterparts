@@ -219,12 +219,24 @@ export const FRAMING = {
 /**
  * THE WAKE SAYS WHAT IT LEFT OUT (2026-09-29, audit item 5). A lane that lost
  * elements — to its cap (`identity.ts#rankLanes`), to the identity share, or to
- * the budget trim — gets at most ONE short line saying how many more there are
- * and the ids `recall` can fetch whole (its `ids` argument). Furniture, like the
- * day-0 line: no `- ` bullet, not counted in `counts` or `elements`. It goes in
- * only while the composition still fits the budget; a line that does not fit is
- * dropped without a word, and the trim's own count stays in telemetry
- * (`self.briefing.trim`) as before.
+ * the budget trim — gets ONE short line saying how many more there are and the
+ * ids `recall` can fetch whole (its `ids` argument). Furniture, like the day-0
+ * line: no `- ` bullet, not counted in `counts` or `elements`.
+ *
+ * NOTHING IS DROPPED WITHOUT A WORD (2026-10-12, Mike's principle; the minimal
+ * version, chosen via RANDOM, lightly held). The line used to go in last, only
+ * while the composition still fit, and was otherwise "dropped without a word":
+ * a lane could vanish from the wake. Now each lane's line is RESERVED inside
+ * the budget before the trim loop gives room away — the loop composes WITH the
+ * line of every lane that has lost something so far, and pops until items and
+ * lines fit together — so a lane is always whole, shortened (some items and
+ * its count) or counted (its one collapsed line). A lane that lost nothing
+ * pays nothing, so a roomy wake is byte for byte what it was. When not even
+ * the lanes' own lines fit beside the furniture, they fold into ONE line
+ * (`foldedLine`), which takes room from what ranks below a dated line; only a
+ * wake with no such room left says nothing (`BriefingResult.untold`, red in
+ * doctor). The page is not stepped down for it: in its own room it outranks
+ * everything (`ROOM_ORDER`).
  *
  * How many ids one line names. `recall` takes up to ten at once; five keeps the
  * line near 120 bytes, and the count says when there are more than it names.
@@ -240,23 +252,84 @@ export const MORE_NOUN: Readonly<Record<LaneName, string>> = {
   horizon: "arriving",
 };
 
-/** The order lanes are offered room for their line: the reverse of the trim
- *  order, so the lanes that are cut last are also told about first.
+/** The order lanes are offered room for their line when it was not reserved
+ *  (the last resort, `tellLost`): the reverse of the trim order, so the
+ *  lanes that are cut last are also told about first.
  *
- *  NOT NEARBY (2026-10-01, random-f2's item 5): what the hints lane leaves
- *  out is everything else warm in the store — "(331 more nearby; recall ids
- *  …)" counted the store and named five ids nobody chose. Recall finds those
- *  by asking. The other lanes' lines name a bounded list worth naming. */
+ *  NEARBY'S CAP IS NOT COUNTED (2026-10-01, random-f2's item 5): what the
+ *  hints lane's CAP leaves out is everything else warm in the store — "(331
+ *  more nearby; recall ids …)" counted the store and named five ids nobody
+ *  chose. Recall finds those by asking. What the BUDGET popped from the lane
+ *  is counted (2026-10-12): at most `HINTS_MAX` hints this wake chose, each
+ *  worth its id (`lostByLane`). */
 const MORE_ORDER: readonly LaneName[] = [
   "identity",
   "horizon",
   "threads",
   "craft",
+  "hints",
 ];
 
 /** `(3 more still open; recall ids: mem_…, mem_…, mem_…)` */
 export function moreLine(lane: LaneName, ids: readonly string[]): string {
   return `(${String(ids.length)} more ${MORE_NOUN[lane]}; ${recallIds(ids)})`;
+}
+
+/**
+ * THE LANES' LINES, FOLDED INTO ONE (2026-10-12): what a wake prints when not
+ * even each lane's own count line fits beside the page and the furniture —
+ * every lane that lost something, counted, and the first ids of the
+ * highest-ranked of them (`FOLD_ORDER`). Furniture, like the lines it stands
+ * for. It takes room as a dated line does, from the lanes below
+ * `arrivingFirst` in `ROOM_ORDER` (`render`'s trim loop).
+ */
+export const FOLDED_WORDS = "More than this wake lists:";
+
+/** Who the folded line names first: dated items, then what is open, then the rest. */
+const FOLD_ORDER: readonly LaneName[] = ["horizon", "threads", "identity", "craft", "hints"];
+
+/** `More than this wake lists: 7 arriving, 4 still open; recall ids (the first 5): mem_…` */
+export function foldedLine(lost: Partial<Record<LaneName, readonly string[]>>): string | null {
+  const lanes = FOLD_ORDER.filter((l) => (lost[l]?.length ?? 0) > 0);
+  if (lanes.length === 0) return null;
+  const counts = lanes.map((l) => `${String(lost[l]?.length ?? 0)} ${MORE_NOUN[l]}`).join(", ");
+  return `${FOLDED_WORDS} ${counts}; ${recallIds(lanes.flatMap((l) => [...(lost[l] ?? [])]))}`;
+}
+
+/** True for the folded line (`foldedLine`), which belongs to no one lane. */
+export function isFoldedLine(line: string): boolean {
+  return line.startsWith(`${FOLDED_WORDS} `);
+}
+
+/**
+ * WHAT A WAKE COUNTS, read back off its own lines (2026-10-12): each lane a
+ * "N more" line, a collapsed line or the folded line names, and N. Kept beside
+ * the three writers so their wording and this reader change together. Pure.
+ */
+export function countedLanes(text: string): Partial<Record<LaneName, number>> {
+  const out: Partial<Record<LaneName, number>> = {};
+  const byNoun = new Map(LANE_ORDER.map((l) => [MORE_NOUN[l], l] as const));
+  for (const line of text.split("\n")) {
+    const collapsed = collapsedLane(line);
+    if (collapsed !== null) {
+      out[collapsed] = Number(/^\D*(\d+) — /.exec(line.slice(laneHeading(collapsed).length))?.[1] ?? 0);
+      continue;
+    }
+    const more = /^\((\d+) more (.+?); recall ids/.exec(line);
+    const lane = more === null ? undefined : byNoun.get(more[2] ?? "");
+    if (more !== null && lane !== undefined) {
+      out[lane] = Number(more[1]);
+      continue;
+    }
+    if (!isFoldedLine(line)) continue;
+    const counts = line.slice(FOLDED_WORDS.length + 1).split("; recall ids")[0] ?? "";
+    for (const part of counts.split(", ")) {
+      const m = /^(\d+) (.+)$/.exec(part);
+      const l = m === null ? undefined : byNoun.get(m[2] ?? "");
+      if (m !== null && l !== undefined) out[l] = Number(m[1]);
+    }
+  }
+  return out;
 }
 
 function recallIds(ids: readonly string[]): string {
@@ -604,12 +677,20 @@ export interface BriefingResult extends Composed {
   readonly kept: Record<LaneName, string[]>;
   readonly trimmed: TrimEvent[];
   /**
-   * The lanes that carry a "N more" line (`moreLine`), and N for each — what
-   * the lane lost to its cap, the identity share or the trim, and that this
-   * render had room to say. A lane that lost something with no room for the
-   * line is absent here; its trim is still in `trimmed`.
+   * The lanes the wake COUNTS rather than lists in full, and N for each — what
+   * the lane lost to its cap, the identity share or the trim, said in its "N
+   * more" line (`moreLine`), its collapsed line, or the folded line (2026-10-12:
+   * reserved, so every lane that lost something is here).
    */
   readonly more: Partial<Record<LaneName, number>>;
+  /** True when the lanes' lines were folded into one (`foldedLine`). */
+  readonly folded: boolean;
+  /**
+   * What the wake left out WITHOUT A WORD, per lane (2026-10-12): ids the lane
+   * lost that no line names. Empty unless not even the folded line fit — a
+   * floor over its budget, or a bug — and doctor's Wake line says so in red.
+   */
+  readonly untold: Partial<Record<LaneName, number>>;
   /** True when the render crossed the pressure ratio — the tripwire that fires
    *  when a budget is APPROACHED, not only when it blows (scar §2.4). */
   readonly pressure: boolean;
@@ -816,6 +897,9 @@ export function compose(
   yesterday?: string,
   /** The "Today, elsewhere" line (`BriefingRequest.elsewhere`), above "Nearby". */
   elsewhere?: string,
+  /** The lanes' lines folded into one (`foldedLine`), under "Who I am"; the
+   *  caller then passes no `more`. */
+  fold?: string,
 ): Composed {
   const counts = emptyCounts();
   for (const lane of LANE_ORDER) counts[lane] = kept[lane].length;
@@ -862,6 +946,9 @@ export function compose(
         if (more.identity !== undefined) lines.push(more.identity);
         continue;
       }
+      // The folded line (2026-10-12): just under "Who I am", where a preview
+      // that keeps the head of the wake still carries it.
+      if (lane === "craft" && fold !== undefined && fold.length > 0) lines.push("", fold);
       const tail = more[lane];
       if (items.length === 0 && tail === undefined) continue;
       // Nothing listed: the tail is the lane's one collapsed line, heading
@@ -939,42 +1026,11 @@ function withheldForShare(
 }
 
 /**
- * Give identity back the bytes nobody else could use. Elements return in rank
- * order and only while the whole composition still fits, so the result is the
- * same prefix of the identity lane a larger share would have produced.
- */
-function offerLeftover(
-  kept: Kept,
-  held: Ranked[],
-  composed: Composed,
-  req: BriefingRequest,
-  resolve: Resolve,
-  coreName: string | undefined,
-  identity: IdentityBlock,
-  yesterday?: string,
-  elsewhere?: string,
-): Composed {
-  let current = composed;
-  while (held.length > 0) {
-    const next = held[0];
-    if (next === undefined) break;
-    kept.identity.push(next);
-    const candidate = compose(kept, req.day, resolve, coreName, identity, {}, yesterday, elsewhere);
-    if (candidate.bytes > req.budgetBytes) {
-      kept.identity.pop();
-      break;
-    }
-    held.shift();
-    current = candidate;
-  }
-  return current;
-}
-
-/**
  * WHAT EACH LANE LOST, by id, in the lane's rank order: the budget trim's
  * (popped from the end, so reversed back), then — identity only — what the
  * share held back and the leftover did not return, then what the lane's cap
- * left out. Identity says nothing while the page replaces the list.
+ * left out — but not Nearby's cap, which is the rest of the store
+ * (`MORE_ORDER`'s note). Identity says nothing while the page replaces the list.
  */
 function lostByLane(
   overflow: Partial<Record<LaneName, readonly string[]>> | undefined,
@@ -988,7 +1044,7 @@ function lostByLane(
     const ids = [
       ...trimmed.filter((e) => e.lane === lane).map((e) => e.id).reverse(),
       ...(lane === "identity" ? held.map((r) => r.id) : []),
-      ...(overflow?.[lane] ?? []),
+      ...(lane === "hints" ? [] : (overflow?.[lane] ?? [])),
     ];
     if (ids.length > 0) out[lane] = ids;
   }
@@ -1001,7 +1057,7 @@ function lostByLane(
  * (`takeRoom`). `lent` is what the composition runs past `budgetBytes` — lent
  * by "Work here" first, then by the room held for "Last here" and the handoff
  * pointer — and `pinned` the count lines already paid for, which
- * `withMoreLines` keeps rather than re-tries.
+ * the render keeps (`tellLost`).
  */
 interface Rescued {
   readonly kept: Kept;
@@ -1012,6 +1068,10 @@ interface Rescued {
   readonly pinned: Partial<Record<LaneName, string[]>>;
   readonly composed: Composed;
   readonly lent: number;
+  /** True when `pinned` is said in the one folded line (`foldedLine`): the
+   *  trim loop found no room for each lane's own. A rescue may unfold it,
+   *  never fold it. */
+  readonly fold: boolean;
 }
 
 interface RescueCtx {
@@ -1156,6 +1216,10 @@ function takeRoom(
   pinned: Partial<Record<LaneName, readonly string[]>>,
   trimmed: readonly TrimEvent[],
   ctx: RescueCtx,
+  /** Folded (`from.fold`): try the one folded line before each lane's own —
+   *  the trim loop's own call, so the lanes' count borrows as little as it
+   *  can (2026-10-12). */
+  foldFirst = false,
 ): Rescued | null {
   const { req } = ctx;
   const work = lendOf(req.lendBytes);
@@ -1172,9 +1236,28 @@ function takeRoom(
   let y = from.yesterday;
   let e = from.elsewhere;
   const attempt = (): Rescued | null => {
-    const c = compose(k, req.day, ctx.resolve, ctx.coreName, ctx.identity, pinnedLines(pins, k), y, e);
+    // Folded already (2026-10-12): each lane's own line when there is room,
+    // else the one line — never a lane left without a word. `foldFirst`:
+    // the one line first.
+    const each = (): Composed => compose(k, req.day, ctx.resolve, ctx.coreName, ctx.identity, pinnedLines(pins, k), y, e);
+    const folded = from.fold ? foldedLine(pins) : null;
+    const one = (): Composed | null => (folded === null ? null : compose(k, req.day, ctx.resolve, ctx.coreName, ctx.identity, {}, y, e, folded));
+    let fold = false;
+    let c: Composed;
+    const first = foldFirst ? one() : null;
+    if (first !== null && first.bytes <= limit) {
+      c = first;
+      fold = true;
+    } else {
+      c = each();
+      const second = c.bytes > limit && !foldFirst ? one() : null;
+      if (second !== null) {
+        c = second;
+        fold = true;
+      }
+    }
     return c.bytes <= limit
-      ? { kept: k, trimmed: t, yesterday: y, elsewhere: e, pinned: pins, composed: c, lent: Math.max(0, c.bytes - req.budgetBytes) }
+      ? { kept: k, trimmed: t, yesterday: y, elsewhere: e, pinned: pins, composed: c, lent: Math.max(0, c.bytes - req.budgetBytes), fold }
       : null;
   };
   let got = attempt();
@@ -1212,8 +1295,9 @@ function takeRoom(
           const dropped = k.horizon.pop();
           if (dropped === undefined) break;
           t.push({ lane: "horizon", id: dropped.id, strength: dropped.strength });
-          // A count already paid for names it too, first: it ranked first.
-          if (pins.horizon !== undefined) pins.horizon = [dropped.id, ...pins.horizon];
+          // The lane's count names it, first: it ranked first. Always
+          // (2026-10-12): a line popped here is never popped without a word.
+          pins.horizon = [dropped.id, ...(pins.horizon ?? [])];
           got = attempt();
         }
         break;
@@ -1240,8 +1324,11 @@ function takeRoom(
  *
  * Here the lane's first `upTo` lines are listed again — as many as fit, each
  * time with the count of the rest (an item under a heading with no count
- * reads as the only one arriving), or, when only the item fits, without it: a
- * listed date outranks the count of the others. The room comes from the
+ * reads as the only one arriving). Without the count only for a plain
+ * reminder due the day the wake is read (`target` `due`): it is said in full
+ * whatever else happens (#442), and the render's last step folds the count
+ * it could not carry into one line (2026-10-12; before that, any listed date
+ * outranked the count of the others, and the rest went unsaid). The room comes from the
  * lanes below `target` (`takeRoom`). Called twice: for the lane's head at
  * its own rank (`due` or `arrivingFirst`), and — after "Still open"'s first
  * item — for the rest at `arriving`. Null when nothing was trimmed from it,
@@ -1265,7 +1352,7 @@ function keepArriving(
     const rest = [...t.filter((e) => e.lane === "horizon").map((e) => e.id).reverse(), ...overflow];
     const others: Partial<Record<LaneName, string[]>> = { ...from.pinned };
     delete others.horizon;
-    for (const counted of rest.length === 0 ? [false] : [true, false]) {
+    for (const counted of rest.length === 0 ? [false] : target === "due" ? [true, false] : [true]) {
       const got = takeRoom(target, from, k, counted ? { ...others, horizon: rest } : others, t, ctx);
       if (got !== null) return got;
     }
@@ -1298,7 +1385,7 @@ function keepArrivingCount(overflow: readonly string[], from: Rescued, ctx: Resc
   const rest = [...from.trimmed.filter((e) => e.lane === "horizon").map((e) => e.id).reverse(), ...overflow];
   if (rest.length === 0) return null;
   const pinned = { ...from.pinned, horizon: rest };
-  // Room as the composition stands: `withMoreLines` adds it then, as it adds every lane's.
+  // Room as the composition stands: `tellLost` says it then, as it says every lane's.
   const { req } = ctx;
   if (from.lent === 0 && compose(from.kept, req.day, ctx.resolve, ctx.coreName, ctx.identity, pinnedLines(pinned, from.kept), from.yesterday, from.elsewhere).bytes <= req.budgetBytes) {
     return null;
@@ -1331,7 +1418,7 @@ function keepArrivingCount(overflow: readonly string[], from: Rescued, ctx: Resc
  * the count is paid for out of "Work here" and out of nothing else
  * (`openCount`, just above `work`): the items stay as the trim kept them (a
  * smaller budget still keeps a subset). Not when the count already fits as
- * the composition stands: `withMoreLines` adds it then, as it adds every
+ * the composition stands: `tellLost` says it then, as it says every
  * lane's.
  */
 function keepFirstOpen(
@@ -1354,7 +1441,8 @@ function keepFirstOpen(
   // The rest of the lane, as `lostByLane` will list it: the trim's (popped
   // from the end, so reversed back), then what the lane's cap left out.
   const rest = [...t.filter((e) => e.lane === "threads").map((e) => e.id).reverse(), ...overflow];
-  const pinned: Partial<Record<LaneName, string[]>> = rest.length === 0 ? { ...from.pinned } : { ...from.pinned, threads: rest };
+  const pinned: Partial<Record<LaneName, string[]>> = { ...from.pinned, threads: rest };
+  if (rest.length === 0) delete pinned.threads;
   if (kept.threads.length > 0) {
     // Items the trim kept: only their count is owed here, and only when it
     // does not fit as the composition stands.
@@ -1368,49 +1456,61 @@ function keepFirstOpen(
 }
 
 /**
- * Add each lane's "N more" line, in `MORE_ORDER`, only while the whole
- * composition still fits the budget. A line that does not fit is left out and
- * the next lane's is tried: they are one line each, and a shorter one may fit.
+ * THE LANES' LINES, SAID LAST AND CHECKED (2026-10-12): every lane that lost
+ * something, counted under `limit`. Each lane's own line ("N more", or the
+ * collapsed line of a lane that lists nothing) when they all fit; else the
+ * one folded line (`foldedLine`); else — a floor over its budget, or a bug —
+ * each lane's line in `MORE_ORDER` while it still fits, and what is left
+ * `untold`, which the caller records and doctor reads in red. The room was
+ * reserved: the trim loop and every rescue composed with these lines.
  */
-function withMoreLines(
-  composed: Composed,
-  ctx: {
-    kept: Kept;
-    lost: Partial<Record<LaneName, string[]>>;
-    req: BriefingRequest;
-    resolve: Resolve;
-    coreName: string | undefined;
-    identity: IdentityBlock;
-    yesterday?: string;
-    elsewhere?: string;
-    /** Lines already in `composed`, paid for before the others are offered
-     *  room (a rescue's count, `takeRoom`): kept, never re-tried. */
-    pinned?: Partial<Record<LaneName, string[]>>;
-  },
-): { composed: Composed; more: Partial<Record<LaneName, number>> } {
-  let current = composed;
-  const lines: Partial<Record<LaneName, string>> = pinnedLines(ctx.pinned ?? {}, ctx.kept);
-  const more: Partial<Record<LaneName, number>> = {};
+function tellLost(ctx: {
+  kept: Kept;
+  lost: Partial<Record<LaneName, string[]>>;
+  req: BriefingRequest;
+  resolve: Resolve;
+  coreName: string | undefined;
+  identity: IdentityBlock;
+  yesterday?: string;
+  elsewhere?: string;
+  limit: number;
+}): { composed: Composed; more: Partial<Record<LaneName, number>>; folded: boolean; untold: Partial<Record<LaneName, number>> } {
+  const at = (more: Partial<Record<LaneName, string>>, fold?: string): Composed =>
+    compose(ctx.kept, ctx.req.day, ctx.resolve, ctx.coreName, ctx.identity, more, ctx.yesterday, ctx.elsewhere, fold);
+  const counts: Partial<Record<LaneName, number>> = {};
   for (const lane of LANE_ORDER) {
-    const ids = ctx.pinned?.[lane];
-    if (ids === undefined || ids.length === 0) continue;
-    more[lane] = ids.length;
+    const n = ctx.lost[lane]?.length ?? 0;
+    if (n > 0) counts[lane] = n;
   }
+  const each = at(pinnedLines(ctx.lost, ctx.kept));
+  if (Object.keys(counts).length === 0 || each.bytes <= ctx.limit) return { composed: each, more: counts, folded: false, untold: {} };
+  const line = foldedLine(ctx.lost);
+  if (line !== null) {
+    const folded = at({}, line);
+    if (folded.bytes <= ctx.limit) return { composed: folded, more: counts, folded: true, untold: {} };
+  }
+  // The last resort: what fits, lane by lane; the rest is untold.
+  let current = at({});
+  const lines: Partial<Record<LaneName, string>> = {};
+  const more: Partial<Record<LaneName, number>> = {};
   for (const lane of MORE_ORDER) {
     const ids = ctx.lost[lane];
-    if (ids === undefined || ids.length === 0 || lines[lane] !== undefined) continue;
-    // A lane that kept nothing gets the one collapsed line instead: "N more"
-    // over no item is neither a list nor a count (2026-10-09).
+    if (ids === undefined || ids.length === 0) continue;
     lines[lane] = lane !== "identity" && ctx.kept[lane].length === 0 ? collapsedLine(lane, ids) : moreLine(lane, ids);
-    const candidate = compose(ctx.kept, ctx.req.day, ctx.resolve, ctx.coreName, ctx.identity, lines, ctx.yesterday, ctx.elsewhere);
-    if (candidate.bytes > ctx.req.budgetBytes) {
+    const candidate = at(lines);
+    if (candidate.bytes > ctx.limit) {
       delete lines[lane];
       continue;
     }
     current = candidate;
     more[lane] = ids.length;
   }
-  return { composed: current, more };
+  const untold: Partial<Record<LaneName, number>> = {};
+  for (const lane of LANE_ORDER) {
+    const n = counts[lane];
+    if (n !== undefined && more[lane] === undefined) untold[lane] = n;
+  }
+  return { composed: current, more, folded: false, untold };
 }
 
 /**
@@ -1528,19 +1628,35 @@ export function render(
   const outranksLine = (lane: LaneName): boolean =>
     ROOM_ORDER.indexOf(lone(lane) ? "openFirst" : TRIM_ROOM[lane]) > ROOM_ORDER.indexOf("elsewhere");
 
+  // EACH LANE'S LINE IS RESERVED (2026-10-12): the loop composes with the
+  // line of every lane that has lost something so far — to its cap, the
+  // identity share or a pop — and pops until items and lines fit together.
+  // When nothing is left to pop, the "Today, elsewhere" line steps down, and
+  // then the lanes' lines fold into one (`foldedLine`) — and they fold before
+  // the loop pops "Who I am", the lane the wake is for. A floor that holds
+  // not even the folded line composes bare (`bare`): its lanes go untold.
+  let fold = false;
+  let bare = false;
+  const lostNow = (): Partial<Record<LaneName, string[]>> => lostByLane(lanes.overflow, trimmed, held, suppressList);
+  const linesFor = (lost: Partial<Record<LaneName, readonly string[]>>, k: Kept, folded: boolean): { more: Partial<Record<LaneName, string>>; fold?: string } => {
+    if (!folded) return { more: pinnedLines(lost, k) };
+    const line = foldedLine(lost);
+    return line === null ? { more: {} } : { more: {}, fold: line };
+  };
+
   for (;;) {
-    const c = compose(kept, req.day, resolve, coreName, identity, {}, yesterday, elsewhere);
+    const lost = lostNow();
+    const lines = bare ? { more: {} } : linesFor(lost, kept, fold);
+    const c = compose(kept, req.day, resolve, coreName, identity, lines.more, yesterday, elsewhere, lines.fold);
     const fits = c.bytes <= base;
     let cut: TrimEvent | null = null;
     let stepped = false;
     if (!fits) {
       for (const lane of TRIM_ORDER) {
         if (elsewhere !== undefined && outranksLine(lane)) {
-          const from: Rescued = { kept, trimmed: [...trimmed], yesterday, elsewhere, pinned: {}, composed: c, lent: base - req.budgetBytes };
-          const rest = lone(lane)
-            ? [...trimmed.filter((e) => e.lane === "threads").map((e) => e.id).reverse(), ...(lanes.overflow?.threads ?? [])]
-            : [];
-          const got = takeRoom("elsewhere", from, kept, rest.length === 0 ? {} : { threads: rest }, trimmed, ctx);
+          const from: Rescued = { kept, trimmed: [...trimmed], yesterday, elsewhere, pinned: lost, composed: c, lent: base - req.budgetBytes, fold };
+          // "Still open"'s lone item keeps its count beside it: `lost` has it.
+          const got = takeRoom("elsewhere", from, kept, lost, trimmed, ctx);
           if (got === null) {
             elsewhere = narrowerElsewhere(elsewhere, elsewhereForms);
           } else {
@@ -1548,16 +1664,56 @@ export function render(
             trimmed.splice(0, trimmed.length, ...got.trimmed);
             yesterday = got.yesterday;
             base = req.budgetBytes + got.lent;
+            fold = got.fold;
           }
           stepped = true;
           break;
         }
         const items = kept[lane];
         if (items.length === 0) continue;
+        if (lane === "identity" && !fold && Object.keys(lost).length > 0) {
+          const folded = linesFor(lost, kept, true);
+          if (compose(kept, req.day, resolve, coreName, identity, folded.more, yesterday, elsewhere, folded.fold).bytes <= base) {
+            fold = true;
+            stepped = true;
+            break;
+          }
+        }
         const dropped = items.pop();
         if (dropped === undefined) continue;
         cut = { lane, id: dropped.id, strength: dropped.strength };
         break;
+      }
+      if (cut === null && !stepped) {
+        // Nothing left to pop. The lanes' lines fold into one; then that
+        // line takes room from what ranks below a dated line (`takeRoom` to
+        // `arrivingFirst`: "Work here", the Yesterday line's titles, the
+        // handoffs' room, "Today, elsewhere", Arriving past its head) — and
+        // only when even that finds none do the lanes go untold (`bare`).
+        const counting = Object.keys(lost).length > 0;
+        if (counting && !fold) {
+          fold = true;
+          continue;
+        }
+        if (counting && !bare) {
+          const from: Rescued = { kept, trimmed: [...trimmed], yesterday, elsewhere, pinned: lost, composed: c, lent: base - req.budgetBytes, fold: true };
+          const got = takeRoom("arrivingFirst", from, kept, lost, trimmed, ctx, true);
+          if (got === null) {
+            bare = true;
+          } else {
+            for (const l of LANE_ORDER) kept[l] = got.kept[l];
+            trimmed.splice(0, trimmed.length, ...got.trimmed);
+            yesterday = got.yesterday;
+            elsewhere = got.elsewhere;
+            base = req.budgetBytes + got.lent;
+            fold = got.fold;
+          }
+          continue;
+        }
+        if (elsewhere !== undefined) {
+          elsewhere = narrowerElsewhere(elsewhere, elsewhereForms);
+          continue;
+        }
       }
     }
     if (stepped) continue;
@@ -1568,13 +1724,14 @@ export function render(
       // count (review of #350), then the rest of "Arriving:", each taking room
       // only from the lanes below it: "Work here", the Yesterday line's
       // titles, the room for "Last here" and the handoffs — never the page. A
-      // rescue that finds no room leaves the render as it was.
+      // rescue that finds no room leaves the render as it was. Each starts
+      // from the lanes' reserved lines (`pinned`), and keeps them.
       const dueHead = lanes.horizon[0]?.due === true;
       const near = arrivingNear(lanes.horizon);
       // No later rescue takes a near line back to pay for a count of the rest.
       const nearCtx: RescueCtx = near > ctx.head ? { ...ctx, head: near } : ctx;
       const overflow = lanes.overflow;
-      let state: Rescued = { kept, trimmed: [...trimmed], yesterday, elsewhere, pinned: {}, composed: c, lent: base - req.budgetBytes };
+      let state: Rescued = { kept, trimmed: [...trimmed], yesterday, elsewhere, pinned: lost, composed: c, lent: base - req.budgetBytes, fold: fold || bare };
       let first: Rescued | null = null;
       if (fits) {
         const steps: ((s: Rescued) => Rescued | null)[] = [
@@ -1600,21 +1757,34 @@ export function render(
       }
       const said = first === null ? yesterday : first.yesterday;
       const away = first === null ? elsewhere : first.elsewhere;
+      // What it was composed to: the caller's budget, and what the delivery's
+      // rooms lent (`takeRoom`) — so a reader comparing the bundle to its
+      // ceiling sees one that fits, which it does: the delivery shows fewer
+      // work lines, and then fewer handoffs, in what is left.
+      const budgetBytes = req.budgetBytes + (first?.lent ?? base - req.budgetBytes);
       // The leftover clause. Only when NOTHING had to be trimmed: a lane that
       // lost an element wanted the room, and handing it to identity instead
       // would make the share decide the opposite of what it was set for. When
       // the other lanes are all present and the budget is still not spent, the
-      // held-back identity elements take it back, in rank order, whole. Not
-      // beside a kept first item: its count is already in, and the leftover
-      // composes without it.
-      const offered =
-        first !== null
-          ? first.composed
-          : trimmed.length === 0
-            ? offerLeftover(kept, held, c, req, resolve, coreName, identity, yesterday, elsewhere)
-            : c;
-      // THE "N MORE" LINES, last: they take only room nothing else wanted.
-      const told = withMoreLines(offered, {
+      // held-back identity elements take it back, in rank order, whole — each
+      // with the identity count of what is still held, so the count's room
+      // stays reserved. Not beside a rescue: its counts are already in.
+      if (fits && first === null && trimmed.length === 0) {
+        while (held.length > 0) {
+          const next = held[0];
+          if (next === undefined) break;
+          kept.identity.push(next);
+          const l = linesFor(lostByLane(lanes.overflow, trimmed, held.slice(1), suppressList), kept, fold);
+          if (compose(kept, req.day, resolve, coreName, identity, l.more, said, away, l.fold).bytes > req.budgetBytes) {
+            kept.identity.pop();
+            break;
+          }
+          held.shift();
+        }
+      }
+      // THE LANES' LINES, last and checked: each lane that lost something is
+      // counted, in its own line or the folded one (`tellLost`).
+      const told = tellLost({
         kept,
         lost: lostByLane(lanes.overflow, trimmed, held, suppressList),
         req,
@@ -1623,15 +1793,15 @@ export function render(
         identity,
         ...(said === undefined ? {} : { yesterday: said }),
         ...(away === undefined ? {} : { elsewhere: away }),
-        ...(first === null ? {} : { pinned: first.pinned }),
+        limit: budgetBytes,
       });
       // AN ARRIVING ID THE COUNT COULD NOT NAME LEAVES A TRIM ROW (review of
       // #367, 2026-10-10). One past the lane's cap — `prospective/`'s count
       // (`BoundaryRequest.horizonMore`) or the lane's own — was never a line
       // the trim popped, so when the lane's count did not fit either it was in
-      // no line and no row, and doctor read the wake as green. Now it is
-      // recorded as a popped line is (no rank of its own: strength 0), and
-      // doctor's Wake line counts it.
+      // no line and no row. Now it is recorded as a popped line is (no rank of
+      // its own: strength 0). Since 2026-10-12 the count is reserved, so this
+      // is only a floor over its budget, and `untold` says so too.
       if (told.more.horizon === undefined) {
         const recorded = new Set(trimmed.filter((e) => e.lane === "horizon").map((e) => e.id));
         for (const id of lanes.overflow?.horizon ?? []) {
@@ -1639,11 +1809,6 @@ export function render(
         }
       }
       const composed = told.composed;
-      // What it was composed to: the caller's budget, and what the delivery's
-      // rooms lent (`takeRoom`) — so a reader comparing the bundle to its
-      // ceiling sees one that fits, which it does: the delivery shows fewer
-      // work lines, and then fewer handoffs, in what is left.
-      const budgetBytes = req.budgetBytes + (first?.lent ?? base - req.budgetBytes);
       return {
         ...composed,
         budgetBytes,
@@ -1657,6 +1822,8 @@ export function render(
         },
         trimmed,
         more: told.more,
+        folded: told.folded,
+        untold: told.untold,
         pressure: composed.bytes >= budgetBytes * t.BUDGET_PRESSURE,
         overBudget: !fits,
         ...(away === undefined ? {} : { elsewhere: away }),

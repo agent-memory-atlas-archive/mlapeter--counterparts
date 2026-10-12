@@ -11,6 +11,8 @@ import {
   FRAMING,
   LANE_ORDER,
   collapsedLane,
+  isFoldedLine,
+  FOLDED_WORDS,
   SELF_PAGE_REVISED_EVENT,
   chapterModels,
   dayBefore,
@@ -1168,7 +1170,8 @@ export function wakeParts(text: string, hasPage: boolean): WakePart[] {
       add(collapsed, n);
       return;
     }
-    if (line.startsWith("<!--") || line === FRAMING.context) {
+    // The lanes' lines folded into one (2026-10-12) belong to no one lane.
+    if (line.startsWith("<!--") || line === FRAMING.context || isFoldedLine(line)) {
       add("furniture", n);
       return;
     }
@@ -1484,6 +1487,13 @@ export function wakeLanes(text: string): WakeLane[] {
     if (collapsed !== null) {
       if (current.items.length > 0) lanes.push(current);
       current = { heading: FRAMING[collapsed], lane: collapsed, items: [line.slice(FRAMING[collapsed].length).trim()] };
+      continue;
+    }
+    // The lanes' lines folded into one (2026-10-12): a block of its own, no lane's.
+    if (isFoldedLine(line)) {
+      if (current.items.length > 0) lanes.push(current);
+      lanes.push({ heading: FOLDED_WORDS, lane: null, items: [line.slice(FOLDED_WORDS.length).trim()] });
+      current = { heading: "", lane: null, items: [] };
       continue;
     }
     // A markdown heading counts too, so a future briefing that uses one still

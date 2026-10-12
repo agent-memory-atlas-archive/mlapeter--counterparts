@@ -80,6 +80,7 @@ import {
   stateKey,
   withTunables,
 } from "../src/core/self/index.js";
+import { foldedLine } from "../src/core/self/briefing.js";
 import type {
   ChapterAppend,
   EpisodeGate,
@@ -550,8 +551,14 @@ describe("the wake briefing — budget, at production scale", () => {
 
   test("identity survives to the last statement standing", () => {
     const { lanes, resolve } = bigStore();
-    const floor = compose(emptyLanes(), 0, resolve).bytes;
+    // The floor holds the lanes' folded count (2026-10-12): nothing leaves the
+    // wake without a word, so the room past it is what the elements share.
+    const all = (l: LaneName): string[] => [...lanes[l].map((r) => r.id), ...(l === "hints" ? [] : (lanes.overflow?.[l] ?? []))];
+    const fold = foldedLine({ identity: all("identity"), craft: all("craft"), threads: all("threads"), hints: all("hints") }) ?? "";
+    const floor = compose(emptyLanes(), 0, resolve, undefined, undefined, {}, undefined, undefined, fold).bytes;
     const out = render(lanes, { budgetBytes: floor + 320, day: 0 }, resolve, SELF_TUNABLES);
+    expect(out.folded).toBe(true);
+    expect(out.untold).toEqual({});
     expect(out.counts.craft).toBe(0);
     expect(out.counts.threads).toBe(0);
     expect(out.counts.hints).toBe(0);
