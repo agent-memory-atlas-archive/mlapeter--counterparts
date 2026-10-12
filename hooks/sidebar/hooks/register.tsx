@@ -102,7 +102,7 @@ import {
 import type { MechId } from './mechanisms'
 import { lookup, parentOf, parseRegistry, settingsHookConfig } from './scopes'
 import type { RegistryMode } from './scopes'
-import { P, clip, layoutBody, quietTail } from './sections'
+import { CLASSIC_HINT, P, TAIL_HINT, clip, layoutBody, quietTail } from './sections'
 import type { Line } from './sections'
 import { cells } from './width'
 
@@ -186,9 +186,11 @@ const CYAN_DIM = '#0b6f7c'
  * first idle start while core says `not_started`, and on each press of "Meet
  * your counterpart". Framed as the plugin's (not `asUser`): the model reads
  * "The counterparts plugin sent a message: …", and core's wake carries the
- * meeting's instructions.
+ * meeting's instructions. Claude Code shows this line to the person ("Prompt
+ * from the counterparts plugin"), so it reads as a sentence to them, and still
+ * tells the model to introduce itself (2026-10-12, owner's onboarding trial).
  */
-const MEET_PROMPT = 'Counterparts is installed. Say hello and introduce yourself.'
+const MEET_PROMPT = 'Counterparts: Claude has a memory now and would like to introduce itself.'
 /** `$.store`: the speak-first went out (`{ session, at }`); never again while it is there. */
 const MEET_FLAG = 'meetTriggered'
 /** A second press of "Meet your counterpart" this soon after the first submits nothing. */
@@ -252,6 +254,8 @@ const run = {
   canon: new Map<string, string>(),
   /** Whether to open the pane unasked has been decided (from the first band drawing). */
   placementDecided: false,
+  /** Whether this surface docks a pane (the fullscreen renderer), once the band or the hint has said. */
+  docks: undefined as boolean | undefined,
   cold: false,
   polling: false,
   /** A dashboard read is scheduled or running. */
@@ -512,6 +516,16 @@ function words(kind: 'remembered' | 'subconscious' | 'stored' | 'opened' | 'drea
   return `${kind}: ${what}`
 }
 
+/** What the tail says of a save: `Stored “title”` (the quotes keep a title's own `Answered:` from doubling the lead), or `Stored 2 memories, the first “title”`. */
+function storedWords(title: string, count = 1): string {
+  return count > 1 ? `Stored ${String(count)} memories, the first “${title}”` : `Stored “${title}”`
+}
+
+/** What a save wrote beyond its title, for the tail; none when the title was cut from the text itself. */
+function bodyOf(s: SidebarSaved): string | undefined {
+  return s.text === undefined || s.text.startsWith(s.title) ? undefined : s.text
+}
+
 /** The memory text an opened item shows, and the line saying what it is. */
 function memoryMeta(d: { kind?: unknown; learnedOn?: unknown; journal?: unknown }): string | null {
   const kind = d.journal === true ? 'journal' : typeof d.kind === 'string' ? d.kind : null
@@ -679,12 +693,12 @@ async function fire($: EngineInterface, ids: readonly MechId[]): Promise<void> {
   $.clock.after(FIRING_MS + 100, () => $.ui.invalidate('ui.render'))
 }
 
-async function setLatest($: EngineInterface, text: string, mech: MechId): Promise<void> {
-  await setLatestAt($, text, mech, await $.clock.now())
+async function setLatest($: EngineInterface, text: string, mech: MechId, body?: string): Promise<void> {
+  await setLatestAt($, text, mech, await $.clock.now(), body)
 }
 
-async function setLatestAt($: EngineInterface, text: string, mech: MechId, at: number): Promise<void> {
-  const next: SidebarLatest = { text, mech, at }
+async function setLatestAt($: EngineInterface, text: string, mech: MechId, at: number, body?: string): Promise<void> {
+  const next: SidebarLatest = body === undefined ? { text, mech, at } : { text, mech, at, body }
   await update($, latestA, l => (l !== null && l.at > at ? l : next))
 }
 
@@ -1012,7 +1026,7 @@ async function seedSession($: EngineInterface): Promise<void> {
   const [mind, saved] = await Promise.all([read($, mindA), read($, savedA)])
   const said = mind?.surfaced[0] !== undefined ? words('remembered', mind.surfaced[0].title) : mind?.footnotes[0] !== undefined ? words('subconscious', mind.footnotes[0].title) : null
   const s = saved[0]
-  if (s !== undefined && (mind === null || s.at > mind.at)) await setLatestAt($, words('stored', s.title), 'salience', s.at)
+  if (s !== undefined && (mind === null || s.at > mind.at)) await setLatestAt($, storedWords(s.title), 'salience', s.at, bodyOf(s))
   else if (mind !== null && said !== null) await setLatestAt($, said, 'retrieval', mind.at)
 }
 
@@ -1022,7 +1036,7 @@ async function onSaved($: EngineInterface, items: readonly SidebarSaved[]): Prom
   await update($, savedA, list => [...[...items].reverse(), ...list])
   const first = items[0]
   if (first !== undefined) {
-    await setLatest($, items.length === 1 ? words('stored', first.title) : `stored ${String(items.length)} memories: ${first.title}`, 'salience')
+    await setLatest($, items.length === 1 ? storedWords(first.title) : storedWords(first.title, items.length), 'salience', bodyOf(first))
   }
   await fire($, items.some(i => i.kind === 'update') ? ['salience', 'reconsolidation'] : ['salience'])
   for (const it of items) {
@@ -1978,7 +1992,9 @@ export const register: Register = on => {
     const cols = e.viewport?.columns
     // The engine's line is wider than its `hint` prop, and it cuts the tail short of the row's end (TAIL_SPARE).
     const room = typeof cols === 'number' ? cols - cells(e.props.hint) - TAIL_SPARE : null
-    const tail = quietTail(latest?.text ?? null, room, await $.clock.now())
+    // Fullscreen docks the pane (and opens it); the classic screen cannot, so the hint there points at /tui fullscreen.
+    const docks = e.viewport?.isFullscreen ?? run.docks
+    const tail = quietTail(latest?.text ?? null, room, await $.clock.now(), latest?.body, docks === false ? CLASSIC_HINT : TAIL_HINT)
     return next({ ...e, props: { ...e.props, tail } })
   }).catch(($, e, next) => next(e))
 
@@ -1986,6 +2002,7 @@ export const register: Register = on => {
   // docks a pane (the sidebar opens unasked only then). Nothing is drawn there.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const docks = e.viewport?.isFullscreen
+    if (docks !== undefined) run.docks = docks
     if (docks !== undefined && !run.placementDecided) {
       run.placementDecided = true
       if (docks) $.clock.after(0, () => quiet(openUnasked($)))

@@ -33,7 +33,7 @@ import {
 import { cells, ellipsizeCells, padCells } from '../hooks/width'
 import { hookConfig, lookup, parentOf, parseRegistry, settingsHookConfig, under } from '../hooks/scopes'
 import { MECHS, STAGES, dashboardBase, dashboardPort, dashboardRoutes, isDashboardUrl, memoryUrl } from '../hooks/mechanisms'
-import { MORE, OPEN_MAX_LINES, bar, clip, heading, layoutBody, openedLines, quietTail, textOf, wrapN } from '../hooks/sections'
+import { CLASSIC_HINT, MORE, OPEN_MAX_LINES, bar, clip, heading, layoutBody, openedLines, quietTail, textOf, wrapN } from '../hooks/sections'
 import type { BodyState } from '../hooks/sections'
 import { DECISION_T3, EVENTS, FACTS_ANSWER, RECALL_BLOCK, SESSION, T0, ev } from './world'
 
@@ -227,7 +227,7 @@ describe('the feed', () => {
 
   test('saved: note, chapter and session_end under either server name; an update names what it replaces; a refused one saves nothing', () => {
     const note = savedItems('mcp__counterparts__note', { title: 'Sidebar shipped', text: 'long' }, '{"stored":true,"id":"mem_new00001"}', T0, 1)
-    expect(note).toEqual([{ key: 'live:1:0', id: 'mem_new00001', title: 'Sidebar shipped', at: T0, replaces: null, replacesId: null, kind: 'new' }])
+    expect(note).toEqual([{ key: 'live:1:0', id: 'mem_new00001', title: 'Sidebar shipped', at: T0, replaces: null, replacesId: null, kind: 'new', text: 'long' }])
     expect(savedItems('mcp__counterparts__note', { title: 'Newer', updates: 'mem_old00001' }, '{"stored":true,"id":"mem_n2"}', T0, 2)[0]).toMatchObject({ kind: 'update', replacesId: 'mem_old00001' })
     // `how: open` keeps both: no replacement; a held update (looked unrelated) settled nothing
     expect(savedItems('mcp__counterparts__note', { title: 'Beside', updates: 'mem_old00001', how: 'open' }, '{"stored":true}', T0, 3)[0]?.kind).toBe('new')
@@ -371,6 +371,20 @@ describe('the feed', () => {
     expect(quietTail('stored: x', 20, T0)).toBe('/counterparts opens it')
     expect(quietTail(null, 80, T0)).toBe('Counterparts is quiet · /counterparts opens it')
     expect(quietTail('stored: x', null, T0)).toBe('stored: x · /counterparts opens it')
+  })
+
+  test('the tail: a title, then as much of its words as fit, cut at a word; the classic screen points at /tui fullscreen', () => {
+    const body = 'Mike plays pickup basketball on Tuesday nights and hikes most weekends'
+    const end = ' · /counterparts opens it'
+    expect(quietTail('Stored “Pets”', 100, T0, 'Mike likes ponies', undefined)).toBe(`Stored “Pets” — Mike likes ponies${end}`)
+    const cut = quietTail('Stored “Pets”', 60, T0, body)
+    expect(cut).toBe(`Stored “Pets” — Mike plays pickup…${end}`)
+    expect(cells(cut)).toBeLessThanOrEqual(60)
+    // no room for a few words: the title alone; a clipped title takes no body
+    expect(quietTail('Stored “Pets”', 44, T0, body)).toBe(`Stored “Pets”${end}`)
+    expect(quietTail(`Stored “${'long title '.repeat(10)}”`, 60, T0, body).includes(' — ')).toBe(false)
+    expect(quietTail('Stored “Pets”', 100, T0, 'Mike likes ponies', CLASSIC_HINT)).toBe('Stored “Pets” — Mike likes ponies · /tui fullscreen shows the memory sidebar')
+    expect(quietTail(null, 80, T0, undefined, CLASSIC_HINT)).toBe('Counterparts is quiet · /tui fullscreen shows the memory sidebar')
   })
 
   test('a dream: its first sentence and the rest', () => {

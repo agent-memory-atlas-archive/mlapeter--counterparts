@@ -485,7 +485,17 @@ export function savedItems(tool: string, args: Record<string, unknown>, resultTe
     const settled = p?.['settled'] as { ok?: unknown; held?: unknown } | undefined;
     const refused = REMEMBER.has(ours.tool) && settled !== undefined && (settled.ok === false || settled.held === true);
     const replacesId = src['how'] === 'open' || refused ? null : memoryId(src['updates']);
-    return { key: `live:${String(seq)}:${String(i)}`, id, title, at, replaces: null, replacesId, kind: replacesId === null ? 'new' : 'update' };
+    const body = typeof src['text'] === 'string' ? src['text'].replace(/\s+/g, ' ').trim() : '';
+    return {
+      key: `live:${String(seq)}:${String(i)}`,
+      id,
+      title,
+      at,
+      replaces: null,
+      replacesId,
+      kind: replacesId === null ? 'new' : 'update',
+      ...(body === '' ? {} : { text: body }),
+    };
   };
   if (REMEMBER.has(ours.tool)) {
     const title = firstLine(args['title']) ?? firstLine(args['text']) ?? 'a note';

@@ -339,7 +339,7 @@ test('Saved this session: each memory a note or session_end saved, newest first,
   expect(w.toasts).toHaveLength(0) // the pane and the tail say it; no toast
   await ui.unmount()
   await cmd($, 'quiet')
-  expect(await tail($, w)).toBe('stored 2 memories: First of two · /counterparts opens it')
+  expect(await tail($, w)).toBe('Stored 2 memories, the first “First of two” — a · /counterparts opens it')
   // a /clear starts this session's list over
   await $.session.end({ reason: 'clear', sessionId: SESSION, resume: { id: SESSION } } as never)
   await settle(w)
@@ -356,7 +356,7 @@ test('saved under the plugin’s own server name too', async ($, on) => {
   await $.tool.call({ tool: 'mcp__plugin_counterparts_counterparts__note', title: 'From the plugin server', text: 'x' } as never)
   await settle(w)
   await cmd($, 'quiet')
-  expect(await tail($, w)).toBe('stored: From the plugin server · /counterparts opens it')
+  expect(await tail($, w)).toBe('Stored “From the plugin server” — x · /counterparts opens it')
 })
 
 test('Mechanisms today: times each fired today, from the dashboard; a zero dim with no bar, Schemas not built; a click lists its firings, grouped, and lights its region', async ($, on) => {
@@ -635,7 +635,7 @@ test('views: two, the sidebar and quiet; quiet is only the dim tail, ending with
   await ui.press({ key: 'view-quiet' })
   expect(w.closes).toContain(PANE)
   expect(w.store['view']).toBe('quiet')
-  expect(await tail($, w)).toBe('stored: Quiet me · /counterparts opens it') // today's date dropped
+  expect(await tail($, w)).toBe('Stored “Quiet me” — x · /counterparts opens it') // today's date dropped; the note's own words follow
   const none = await $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'AbovePrompt', props: BAND_PROPS, viewport: VIEWPORT })
   await settle(w)
   expect((await none.findAll({})).map(x => x.text).join('')).not.toContain('Quiet me')
@@ -648,7 +648,7 @@ test('views: two, the sidebar and quiet; quiet is only the dim tail, ending with
   await settle(w)
   await narrow.unmount()
   const cut = w.tails.at(-1) ?? ''
-  expect(cut).toMatch(/^stored: A title long enough.*… · \/counterparts opens it$/)
+  expect(cut).toMatch(/^Stored “A title long enough.*… · \/counterparts opens it$/)
   // the engine draws more than its `hint` prop holds and keeps cells clear: 32 spare (measured, NOTES)
   expect(hint.length + cut.length).toBeLessThanOrEqual(100 - 32)
   // quiet reads nothing and draws no brain
@@ -661,6 +661,24 @@ test('views: two, the sidebar and quiet; quiet is only the dim tail, ending with
   expect(w.opens.at(-1)?.columns).toBe(34)
   expect(w.store['view']).toBe('sidebar')
   await ui.unmount()
+})
+
+test('on the classic screen the tail suggests /tui fullscreen; on fullscreen it says /counterparts opens it', async ($, on) => {
+  const w = world(on)
+  on('tool.call', () => ({ result: 'ok', text: '{"stored":true,"id":"mem_new00001"}' }))
+  await start($, w)
+  await cmd($, 'quiet')
+  const classic = async (): Promise<string | undefined> => {
+    const ui = await $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'PromptHint', props: HINT_PROPS as never, viewport: { ...VIEWPORT, isFullscreen: false } })
+    await settle(w)
+    await ui.unmount()
+    return w.tails.at(-1)
+  }
+  expect(await classic()).toBe('Counterparts is quiet · /tui fullscreen shows the memory sidebar')
+  expect(await tail($, w)).toBe('Counterparts is quiet · /counterparts opens it')
+  await $.tool.call({ tool: 'mcp__counterparts__note', title: 'Answered: what Mike does off the keyboard', text: 'Mike plays pickup basketball on Tuesday nights and hikes most weekends.' } as never)
+  await settle(w)
+  expect(await classic()).toBe('Stored “Answered: what Mike does off the keyboard” — Mike plays pickup basketball on… · /tui fullscreen shows the memory sidebar')
 })
 
 for (const [stored, opens] of [['full', true], ['quiet', false], ['rail', false], ['hidden', false], ['strip', false], [undefined, true]] as const) {
@@ -1630,7 +1648,7 @@ test('opted in by the store key alone (`claudeMemorySwitch`), the switch shows',
 
 // ── the first meeting: speak first, once; "Meet your counterpart" ───────────
 
-const MEET = 'Counterparts is installed. Say hello and introduce yourself.'
+const MEET = 'Counterparts: Claude has a memory now and would like to introduce itself.'
 const onbFetches = (w: World) => w.fetches.filter(u => u.endsWith('/api/onboarding'))
 
 /** Core's SessionStart wake, as the classic hook injects it: with its onboarding marker on a line of its own, or (null) none, as an older core. */
