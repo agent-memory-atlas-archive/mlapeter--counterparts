@@ -65,6 +65,27 @@ saved in it; `COUNTERPARTS_SIDEBAR_SESSION=<session id>` in the environment
 shows that session's Memories, Subconscious and Saved instead (below,
 "Seeded").
 
+## The owner's onboarding trial, round 1 (2026-10-12)
+
+A fresh-user trial of the first meeting turned up three things in the mod:
+
+- **The visible prompt.** Claude Code shows `MEET_PROMPT` to the person ("Prompt from the counterparts plugin"), so
+  "Counterparts is installed. Say hello and introduce yourself." read as machinery. It is now "Counterparts: Claude
+  has a memory now and would like to introduce itself." It still tells the model to introduce itself; core's wake
+  carries the real instructions.
+- **The quiet tail's save.** It read `stored: Answered: what Mike does off the keyboard`: two prefixes in a row.
+  A save now reads `Stored “<title>” — <the note's own words>…`: one lead word, the title in quotes (so a title's own
+  `Answered:` is just part of the title), then as much of the text as the width budget (`TAIL_SPARE` and the hint
+  prop, unchanged) leaves, cut at a word with an ellipsis. No words are added to a title that was clipped, and
+  none when the title was cut from the text itself. Several saves: `Stored 2 memories, the first “…”`. The text
+  rides on `SidebarSaved.text` and `SidebarLatest.body`; a row rebuilt from the dashboard has none (title only).
+  The other lead words (`remembered:`, `subconscious:`, `opened:`, `dreamed:`) are unchanged.
+- **The classic screen's hint.** There the pane can only go inline, so nothing opens unasked and the only sign was
+  `/counterparts opens it`. The status line's tail now ends `/tui fullscreen shows the memory sidebar` when
+  `e.viewport.isFullscreen` is false (read on the tail's own render, else the band's remembered answer; unknown
+  keeps `/counterparts opens it`). The mod does not touch the `tui` setting, writes no settings, and adds no
+  toast: it only says what would show the sidebar. `/counterparts` itself still opens the inline pane.
+
 ## The first meeting's trigger, a three-way switch, Claude memory opt-in (2026-10-11)
 
 Built against core's onboarding state, which core was building in parallel

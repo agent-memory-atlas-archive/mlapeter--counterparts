@@ -122,6 +122,8 @@ export type SidebarSaved = {
   replacesId: string | null;
   /** `new` (Salience's dot), `update` (Reconsolidation's). */
   kind: 'new' | 'update';
+  /** What was written (the call's text), for the quiet tail; absent on a row rebuilt from the dashboard. */
+  text?: string;
 };
 
 /**
@@ -203,7 +205,13 @@ export type SidebarMechOpen = {
 };
 
 /** The newest thing, in plain words (`remembered: …`, `stored: …`): the dim tail under the prompt while the pane is closed. */
-export type SidebarLatest = { text: string; mech: SidebarMechId; at: number };
+export type SidebarLatest = {
+  text: string;
+  mech: SidebarMechId;
+  at: number;
+  /** A stored memory's own words, for the tail to show as much of as the row holds. */
+  body?: string;
+};
 
 /** What `scope` says this folder is set to, or why it could not be asked. */
 export type SidebarScope = {
