@@ -566,3 +566,78 @@ right, 1 wrong (one the reviews had also called wrong), 2 unsure. Replayed on th
 already settled over is no candidate): 5 proposals over 20 lived days, 4 of them in the last 7
 — about one a day of what nobody linked. The bench's a2f3aa27 pair ("1250 followers" / "close
 to 1300") reads 0.82 by its whole text, 0.89 by its titles: the title arm is what catches it.
+
+## Cards are born where names are (2026-10-11, Group 3 part D)
+
+Review 12 found the only birth door title-shaped: `counterpart.ts#mentionFromProposal` passed
+an authored memory's title as the name, and a title is a sentence that never occurs verbatim
+in its own body, so 84 entity and person memories gave 0 births, and after 19 lived days the
+owner's store had one card, the install-seeded identity core. The decision (item 17, revised:
+KEEP) keeps the card as recall's person and project index — `subjectsIn` →
+`memoriesNaming`, facts mode's subject channel — and fixes its birth. Rich person and project
+pages are views over what a card links; not built.
+
+**The door.** Sleep's `births` phase, right after the fade, every lived day, calls
+`Schemas#birthsFromNames`: `names.ts#tallyNames` over the live memories, then `mention()` for
+each name, most-named first, up to sleep's nightly budget (10). The gates are `mention()`'s,
+unchanged. What the tally counts as a name, and why each rule is there:
+
+- A run of one to three capitalized words seen **mid-sentence** at least once. A sentence's
+  first word is capitalized by grammar. The run counts wherever it appears once proposed.
+- **Counted by `nameRegex`**, the linker's rule, so the count reported is what the newborn card
+  links when it looks back.
+- **Not mostly a word.** The matcher has no case option, so "Will" would name every "will".
+  A name that a quarter or more of its memories write in another case, in prose, is refused
+  (`LOWER_CASE_SHARE` 0.25, CAL). Code and addresses don't count as prose: a path, a command
+  in backticks, a version, a domain. Without that the project's own name, which is also its
+  command and its directory, read as a word (0.53); with it, 0.16. The first cut ("never in
+  lower case") refused it, and refused a name written in lower case in 2 of its 64 memories.
+- Not a weekday or a month or their short forms ("Sep", "Fri" were the first junk seen).
+- **The whole name, not a piece.** A name said as part of a longer one in at least half its
+  memories gives way to it: "Kettle" to "Copper Kettle", "Lights" to "Harbour Lights". A card for
+  the piece would refuse the whole name as a near collision for good.
+
+**Kind** comes from what memories are ABOUT: the person/place/entity memories that carry the
+name in their title. A person when those say person at least as often, then a place, else an
+entity. Counting every naming memory's kind made a model and an API "people" (each had two
+person-kind memories mentioning it in passing). A skill is never inferred from a name.
+
+**Not offered:** a name a live card holds (the write path credits it), and a name a faded card
+holds — the old memories that were there when it faded would rebirth it the next night, so it
+comes back the way a faded card does, when a new memory names it.
+
+**Kept out of results.** A newborn card's body is a stub ("Born by mention… Asserts nothing
+yet."). Once cards were born, a turn naming someone footnoted the stub, and facts mode listed
+it among her memories; both now leave cards out (recall CONTRACT §5, `facts.ts#neverAResult`).
+
+**Measured on a copy of the owner's store** (2026-10-11 snapshot, 1,009 live memories, lived
+day 20; the copy migrated v12 → v13 on open and its lexical index rebuilt first):
+- Before: 1 card (the identity core). The tally: 763 names proposed, 99 over the bar, 141
+  refused as words; 274 ms.
+- Twelve simulated nights: 10 born a night for nine nights, 90 in all (85 entity, 5 person),
+  none faded or lost; nights 10–12 offered only the 11 the gates refuse every night (10
+  `collision-near`, 1 `name-not-in-source`, a name only ever written possessive). A session
+  end took ~650–740 ms on a birth night, ~230–310 ms after.
+- The spouse case: her card was born on night 3, kind person, 15 memories linked. Facts mode
+  by her name: 14 matched before, 14 after, none lost. The memories that name her only by her
+  role ("his wife") are not reached: an alias would reach them, and nothing produces aliases
+  (`addAliases` has no live caller; the `remember` tool does not take them).
+
+**Known, not resolved.** The owner's own card is the identity core, kind `self`, so "facts
+about him" have no person card to sit on, and none can be born: his name is held, and a near
+variant is refused `collision-near`. That is review 12 §4.5's collision, left for cards as
+views (synthesis L). The identity core's aliases are minted once from config; a nickname of
+the owner said often enough would be born as a person card (none on the copy), and so would
+a misspelling of his two-word name (a test with a synthetic owner: his first or last name
+alone is refused `collision-near`; "Firstnme Lastname" and a diminutive are born). The config's
+aliases are what close that.
+
+**A card the owner removed stays removed** (review of #429). The chase blanks a card's name,
+so the tally could no longer recognise it and would give the name a new card from the same
+memories, undoing the removal. The chase now keeps the ids the card linked (meta
+`removal.card.<id>`, `Store#cardTombstoneLinks`) — never the name or a hash of it, which store
+§16 G9 forbids because a name is low-entropy — and `birthsFromNames` refuses a name whose
+memories cover 0.8 of those still live (`removed-by-owner`). Its own name covers them all for
+as long as they say it, so new memories naming it do not bring it back. A different name is
+refused only if it is in nearly every memory the card linked. If the owner removes those
+memories too, the record holds nothing: the name could then be born again from new ones.

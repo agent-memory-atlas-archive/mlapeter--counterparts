@@ -519,6 +519,10 @@ describe("the root binds the seams a caller would otherwise have to remember", (
     ]) {
       c.store.put({ type: "memory", kind: "fact", body });
     }
+    // What the turn reaches through the handle alone. The cards themselves are
+    // no longer recall candidates (2026-10-11, Group 3 part D), so a memory
+    // saying the handle is.
+    c.store.put({ type: "memory", kind: "fact", body: "Robin climbs; Robin belays Robin.", salience: { claimed: 0.8 } });
     // Two concurrent births can each claim one handle; the next open reads both.
     const first = c.schemas;
     const second = brain().schemas;
@@ -1777,8 +1781,8 @@ describe("the DB is a cache — everything indexed is reconstructible from canon
   });
 });
 
-describe("birth by mention is AMBIENT through the composition (cli gaps §8 closed)", () => {
-  test("a titled entity dump births a stub the moment the memory lands", async () => {
+describe("a write never births a card: the title door is gone (2026-10-11, Group 3 part D)", () => {
+  test("a titled entity dump lands as a memory and births no card", async () => {
     const c = brain();
     const deposit = await c.submitSessionEnd(
       {
@@ -1790,28 +1794,10 @@ describe("birth by mention is AMBIENT through the composition (cli gaps §8 clos
       { session: "s1", scope: "proj" },
     );
     expect(deposit.deposited).toBe(true);
-    // The mention reached schemas with no tool, no chore, no separate call.
-    const mentions = c.events("counterpart.mention");
-    expect(mentions.length).toBe(1);
-    expect(mentions[0]?.data?.["reason"]).toBe("born");
-    const entities = c.schemas.slices().filter((sl) => sl.name === "Huckleberry Syrup");
-    expect(entities.length).toBe(1);
-    c.close();
-  });
-
-  test("a fact dump with a title births nothing, and no title means no mention", async () => {
-    const c = brain();
-    const fact = await c.submitSessionEnd(
-      { content: "The lodge kitchen orders syrup on Tuesdays, per the calendar.", kind: "fact", title: "syrup schedule" },
-      { session: "s1", scope: "proj" },
-    );
-    expect(fact.deposited).toBe(true);
-    const untitled = await c.submitSessionEnd(
-      { content: "A second plain observation about kitchens, without any naming.", kind: "entity" },
-      { session: "s1", scope: "proj" },
-    );
-    expect(untitled.deposited).toBe(true);
-    expect(c.events("counterpart.mention").length).toBe(0);
+    // Cards are born at the boundary from the names the memories keep saying
+    // (test/card-births.test.ts), not from a title at the write.
+    expect(c.schemas.events("schema.mention")).toHaveLength(0);
+    expect(c.schemas.slices().filter((sl) => sl.name === "Huckleberry Syrup")).toHaveLength(0);
     c.close();
   });
 });

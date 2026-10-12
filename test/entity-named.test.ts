@@ -447,7 +447,9 @@ describe("every door that mints credits the cards it names", () => {
     expect(e[0]?.data?.["door"]).toBe("jot");
   });
 
-  test("a session-end dump titled with the name is credited once, by the title path", async () => {
+  test("a session-end dump titled with the name is credited once, as any named write is", async () => {
+    // The title door is gone (2026-10-11, Group 3 part D): a title naming the
+    // card is one more place the write names it, credited once a lived day.
     const c = root();
     const ada = withAda(c);
     const uses = c.store.physicsOf(ada).uses;
@@ -456,8 +458,9 @@ describe("every door that mints credits the cards it names", () => {
       { session: "s1", scope: "proj" },
     );
     expect(out.deposited).toBe(true);
-    expect(c.events("counterpart.mention")[0]?.data?.["reason"]).toBe("existing");
-    expect(c.events("counterpart.mention.named")).toHaveLength(0);
+    const named = c.events("counterpart.mention.named");
+    expect(named).toHaveLength(1);
+    expect(named[0]?.data?.["credited"]).toBe(1);
     expect(c.store.physicsOf(ada).uses).toBe(uses + 1);
   });
 
