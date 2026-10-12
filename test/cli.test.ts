@@ -174,6 +174,10 @@ function fingerprint(root: string): string {
       for (const name of readdirSync(path).sort()) walk(join(path, name), `${rel}/${name}`);
       return;
     }
+    // An EMPTY `-wal` holds nothing, and whether one exists depends on the SQLite
+    // build and on who has the file open: Linux's deletes it at the last close,
+    // and any open makes it again (since `Db.close()` really closes, 2026-10-11).
+    if (rel.endsWith("-wal") && statSync(path).size === 0) return;
     parts.push(`${rel}:${readFileSync(path).toString("base64")}`);
   };
   // The `-wal` is in the list on purpose: under WAL a commit lives in the
