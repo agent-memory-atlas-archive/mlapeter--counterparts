@@ -43,7 +43,12 @@ clothes. **Hold debts, lose deadlines.**
   (2026-09-29): it was said, and "Arriving:" would say it again as still to come. A day
   item stays listed through its own day (2026-10-12, lightly held): the turn that was told
   may be one nobody read. The lane applies none of the cue's fire brakes — the cap, once a
-  day, once a session, told today (2026-10-12): those ration footnotes, not dates. The
+  day, once a session, told today (2026-10-12): those ration footnotes, not dates. Past
+  its day a QUIET item keeps them (2026-10-12, lightly held), so one cued out in its lead
+  days leaves after its day rather than riding the grace week as "was due". A plain
+  item is not told, nor marked told, at a turn no person started — a subagent's
+  hand-back, a task notification, a peer session's message (2026-10-12, the Claude Code
+  adapter's prompt hook): it waits for the next prompt a person types. The
   telling marks the wake behind (`told`, 2026-10-09), so a wake composed before it is
   re-rendered at the next turn-end rather than the next day. It
   still arrives as a cue, so recall still finds it.

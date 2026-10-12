@@ -124,6 +124,7 @@ import type { Recurrence } from "./time.js";
 import { EPISODE_REGROWN_REASON, leftAs } from "./leaving.js";
 import type { LeftAs } from "./leaving.js";
 import {
+  ARRIVING_NEAR_DAYS,
   BRIEFING_KEY,
   NIGHT_WRITER_MEMORY_MAX,
   NIGHT_WRITER_TOOL,
@@ -753,11 +754,18 @@ export class Counterpart {
       if (stored === undefined || stored.length === 0 || !readSentinel(stored).intact) return null;
       const day = this.store.livedDay();
       const asked = horizonFor(this.prospective, at, day);
+      // FIRST CLAIM ON THE SESSION-START ROOM (2026-10-12, RANDOM's ruling,
+      // lightly held): a dated item due within the next few days, or in its
+      // grace days, takes room before "Last here", "Last said here", "Today,
+      // elsewhere" and the handoffs (`HorizonItem.near`). Bounded by date, so
+      // a long lane of far dates does not empty the furniture.
+      const soon = addDays(at, ARRIVING_NEAR_DAYS);
+      const horizon = asked.items.map((i) => (i.due !== undefined && isDay(i.due) && i.due <= soon ? { ...i, near: true } : i));
       const out = this.self.assemble({
         day,
         ceilingBytes: budget,
         publishedHash: hashText(stored),
-        horizon: asked.items,
+        horizon,
         ...(asked.more.length === 0 ? {} : { horizonMore: asked.more }),
         ...this.yesterdayFor(at, { here }),
         ...this.elsewhereFor(at, here),
