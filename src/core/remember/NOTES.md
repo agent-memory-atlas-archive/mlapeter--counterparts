@@ -90,6 +90,20 @@ which partitions a session across successive proposals exactly as the guarantee
 requires and needs no N to tune. Reopen if a real session shows one proposal
 swallowing material a later one should have owned.
 
+**Reopened 2026-10-11, for notes.** A real session did: on 10-10 one short mid-session
+note claimed 18 unclaimed pieces (about 48 KB, 2.6 hours) as written up, and the next
+night's catch-up rightly found nothing left to write. A note now claims its OWN TURN
+(`SpanBuffer.claimCoverage#ownTurn`): its own span, and the conversation pieces whose
+`from` is the note's own `from` — the cursor when it was written, so the prompt that
+started the turn it sits in. That prompt is captured at the Stop AFTER the note, so
+`capture` hands it to the note's claim then (`claimNotedTurn`: the first accepted note of
+the turn, found by its `own` mark; nothing for a refused one). A note written in a turn
+with no prompt of the person's — the reply to a Stop ask — claims only itself. A
+session-end write-up still claims everything unclaimed. On the 10-11 copy, 85 of 181
+notes had claimed a backlog (214 pieces, about 230 KB where the text survives); 82 now
+claim a turn piece. Decided by the coordinator, 2026-10-11, lightly held
+(`docs/decisions.d/fix-coverage-jot-breadth.md`).
+
 ## 9. Deliberately NOT built here
 
 - **Pacing counters / the episode ritual.** v1 paced a ritual off capture; no [M]

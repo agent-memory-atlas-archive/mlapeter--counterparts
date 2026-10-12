@@ -31,7 +31,9 @@ is that the ask is ambient (constitution line 8) and its coverage is measured, n
 - **Coverage is claimed by hash, by the engine, and coverage means down-weight, not
   deletion.** [v1] §4.1 G4 — successive writes *partition* a session rather than each
   claiming the backlog. What the fallback loses is permission to write the same memory
-  twice, not sight of the material.
+  twice, not sight of the material. Since 2026-10-11 a note written in the moment (source
+  `jot`) claims only its own turn — its span and the turn's conversation, by cursor
+  `from` — and a session-end write-up the rest (`coverage/` CONTRACT §5 G7; NOTES §8).
 - **A rejected proposal claims no coverage.** [v1] §4.1 G5.
 - **Coverage marks are prompt-side only** — never in the text the gates check, *so no gate
   can be loosened by a mark the engine wrote.* [v1] §4.1 G6.
