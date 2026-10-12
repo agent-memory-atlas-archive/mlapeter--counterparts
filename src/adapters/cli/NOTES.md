@@ -1662,7 +1662,9 @@ touches `wire`. And `test/cli.test.ts` › "NEW-MINOR-6: an abandoned scratch in
 dir is swept" is FLAKY under the full suite: it shares `$TMPDIR/counterparts-export-*`
 with any export running at the same moment in another test file, and failed once in the
 reviewer's full run (218/0 alone). Pre-existing, not touched here; the fix is a scratch
-root of its own per test.
+root of its own per test. (Fixed 2026-10-11: the test now points `TMPDIR` at a temp root
+of its own for its duration; the sweep and the export both read `os.tmpdir()` at call
+time, so no product change was needed.)
 
 ### #26, the two sizes — the cause, measured
 
