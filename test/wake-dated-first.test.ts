@@ -817,6 +817,14 @@ async function spentAndToldOvernight(a: Adapter, ids: readonly string[], dataDir
   expect(p.fire({ memoryId: id, windowKey: "d:2026-10-09", at: "2026-10-07", day: day - 1 }).reason).toBe("fired");
   expect(p.fire({ memoryId: id, windowKey: "d:2026-10-09", at: "2026-10-08", day }).reason).toBe("fired");
   expect(a.counterpart.store.prospectiveFor(id)[0]?.fires).toBe(2);
+  // A chapter here from the session before: the wake's "Last here" line.
+  a.counterpart.store.put({
+    type: "episode",
+    kind: "self",
+    title: "Glazing the test tiles and logging the cone readings for the record",
+    body: `## chapter 1 — ${readableDate("2026-10-08")} · lived day 2\n\nWe glazed the tiles and logged the cones.`,
+    origin: { scope: SCOPE, session: "kiln-and-glaze-studio-session-9" },
+  });
   // 12:19 am: another session's turn is told it plainly, and its turn ends.
   clock(zone, "2026-10-09", 0.3);
   const due = p.plainDue({ at: "2026-10-09" }).find((d) => d.memoryId === id);
@@ -830,6 +838,15 @@ describe("a plain reminder due today, cued out and told overnight, still reaches
     for (const pageBytes of [6_472, 6_950, 7_100]) {
       const m = await morning("America/Denver", { pageBytes, dated: 1, plain: true, short: true, overnight: spentAndToldOvernight });
       const { listed, collapsed } = arriving(m.text);
+      // The whole wake, around it: the Yesterday line, "Last here" (where it
+      // fits), "Last said here", the handoffs — what gives way is below it.
+      const lines = m.text.split("\n");
+      expect(lines.some((l) => l.startsWith("Yesterday, "))).toBe(true);
+      expect(lower(m.text).handoffs).toBeGreaterThanOrEqual(1);
+      if (pageBytes !== 6_950) {
+        expect(lines.some((l) => l.startsWith("Last here: "))).toBe(true);
+        expect(lines.some((l) => l.startsWith("Last said here, "))).toBe(true);
+      }
       // Whole on what "Work here" lends, or — past that — its short version.
       if (pageBytes === 7_100) expect(m.text).toContain(SHORT);
       else expect(m.text.split("\n")).toContain(PAGE_END_LINES.whole);
