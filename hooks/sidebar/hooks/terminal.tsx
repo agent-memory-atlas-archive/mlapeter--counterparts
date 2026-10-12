@@ -1,0 +1,109 @@
+/**
+ * The terminal view: the small braille brain beside the title (a `Raster`,
+ * which only the terminal has), its frame rate and what it shows besides its
+ * turning. The timer that drives it calls `$`, so it stays in
+ * `register.tsx`; everything here is the module's own, no `$`.
+ */
+
+import type { SidebarBrain } from '../types'
+import { Brain } from './brain'
+import { encodeCells } from './cells'
+import { mechById, stageOf } from './mechanisms'
+import type { MechId } from './mechanisms'
+import { run } from './state'
+
+/** The brain beside the title, in cells. */
+export const BRAIN_COLS = 18
+
+export const BRAIN_ROWS = 6
+
+/** The header's right column starts this far in: the brain and two blank columns. */
+export const HEAD_X = BRAIN_COLS + 2
+
+/** "Dim at rest": what is not lit draws at this brightness, so a lit region stands out (the mockups' 0.72). */
+export const DIM_REST = 0.72
+
+/** The most the turning brain draws a second: a pulse's arc. Swaying it draws every other tick (`Brain.calmFps`), and at rest none. */
+export const DEFAULT_FPS = 12
+
+// ── the module's own (a reload starts these over; the host keeps the state) ──
+
+export const brain = new Brain()
+
+/** The Raster the terminal last mounted: a blit must match its size. */
+export const raster = { cols: 0, rows: 0, live: false, cells: '', look: '' }
+
+/** What the brain shows besides its turning, refreshed by each drawing. */
+export const look = { mono: false, still: false, sel: null as MechId | null, firing: [] as readonly MechId[] }
+
+export const fps = {
+  target: DEFAULT_FPS,
+  inFlight: false,
+  lastTick: 0,
+  /** `performance.now()` of each blit the surface took: the measurement. */
+  blits: [] as number[],
+  frameMs: [] as number[],
+}
+
+export function achievedFps(): number {
+  const now = performance.now()
+  const recent = fps.blits.filter(t => now - t < 10000)
+  if (recent.length < 2) return 0
+  const span = (recent[recent.length - 1] ?? 0) - (recent[0] ?? 0)
+  return span <= 0 ? 0 : ((recent.length - 1) * 1000) / span
+}
+
+export function meanFrameMs(): number {
+  if (fps.frameMs.length === 0) return 0
+  return fps.frameMs.reduce((a, b) => a + b, 0) / fps.frameMs.length
+}
+
+export function paceWords(mode: SidebarBrain): string {
+  if (mode === 'off') return 'off (no brain, no timer)'
+  if (mode === 'still') return 'still (no timer; one frame when something fires, one when it goes out)'
+  if (run.brainTimer === null) return run.brainPace === 'rest' ? 'at rest (no timer)' : 'stopped'
+  return run.brainPace === 'burst' ? `in a burst (${String(fps.target)} fps)` : `swaying (${(1000 / paceMs('calm')).toFixed(0)} fps)`
+}
+
+export function fpsReport(mode: SidebarBrain): string {
+  if (fps.blits.length < 2) {
+    return `Brain: no frames measured yet (target ${String(fps.target)} fps), now ${paceWords(mode)}. It draws only while the sidebar shows in a terminal and something moves; ask again in a few seconds.`
+  }
+  return `Brain: ${achievedFps().toFixed(1)} fps achieved over the last 10 s (target ${String(fps.target)}), now ${paceWords(mode)}; a frame takes ${meanFrameMs().toFixed(2)} ms to compute.`
+}
+
+/** What the brain shows besides its turning: a frame drawn under another look is not reused. */
+export function lookKey(): string {
+  return `${String(look.mono)}|${String(look.still)}|${look.sel ?? ''}|${look.firing.join(',')}`
+}
+
+export function frameCells(cols: number, rows: number, now: number): string {
+  if (look.still) {
+    // The still brain: a fixed view, lit only while something fires (or a mechanism is opened).
+    brain.dark()
+    for (const id of new Set([...look.firing, ...(look.sel === null ? [] : [look.sel])])) {
+      const m = mechById(id)
+      if (m !== undefined && !look.mono) brain.flash(m.region, stageOf(m.id).col)
+    }
+  } else if (look.sel !== null) {
+    const m = mechById(look.sel)
+    if (m !== undefined) brain.light(m.region, stageOf(m.id).col)
+  }
+  const t0 = performance.now()
+  const cells = encodeCells(brain.frame(cols, rows, now, { mono: look.mono, tag: null, bg: null, dimRest: DIM_REST }))
+  fps.frameMs.push(performance.now() - t0)
+  if (fps.frameMs.length > 120) fps.frameMs.shift()
+  return cells
+}
+
+export function fireBrain(mech: MechId, now: number): void {
+  const m = mechById(mech)
+  if (m === undefined || look.mono || look.still) return
+  brain.pulse(m.region, stageOf(m.id).col, now, mech === 'retrieval' ? 'prefrontal' : 'thalamus')
+}
+
+/** The timer's interval for a pace: every frame of the target while an arc flies, the calm rate while it sways. */
+export function paceMs(pace: 'burst' | 'calm'): number {
+  const every = pace === 'burst' ? 1 : Math.max(1, Math.round(fps.target / brain.calmFps))
+  return Math.max(16, Math.round((every * 1000) / fps.target))
+}

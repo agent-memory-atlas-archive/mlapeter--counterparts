@@ -33,7 +33,8 @@ import {
 import { cells, ellipsizeCells, padCells } from '../hooks/width'
 import { hookConfig, lookup, parentOf, parseRegistry, settingsHookConfig, under } from '../hooks/scopes'
 import { MECHS, STAGES, dashboardBase, dashboardPort, dashboardRoutes, isDashboardUrl, memoryUrl } from '../hooks/mechanisms'
-import { CLASSIC_HINT, CLASSIC_HINT_SHORT, MORE, OPEN_MAX_LINES, TAIL_HINT, bar, clip, heading, layoutBody, openedLines, quietTail, textOf, wrapN } from '../hooks/sections'
+import { MORE, OPEN_MAX_LINES, bar, clip, heading, layoutBody, openedLines, textOf, wrapN } from '../hooks/sections'
+import { CLASSIC_HINT, CLASSIC_HINT_SHORT, TAIL_HINT, quietTail } from '../hooks/tail'
 import type { BodyState } from '../hooks/sections'
 import { DECISION_T3, EVENTS, FACTS_ANSWER, RECALL_BLOCK, SESSION, T0, ev } from './world'
 

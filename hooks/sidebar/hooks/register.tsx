@@ -49,13 +49,10 @@ import type {
   SidebarRow,
   SidebarSaved,
   SidebarScope,
-  SidebarSearch,
   SidebarToday,
   SidebarView,
 } from '../types'
 import type { BodyProps } from './body'
-import { Brain } from './brain'
-import { encodeCells } from './cells'
 import {
   RULES,
   RULE_NAMES,
@@ -81,7 +78,6 @@ import {
   payloadOf,
   resolveServer,
   savedItems,
-  shortDay,
   shortDir,
   surfacedIds,
   titled,
@@ -102,73 +98,63 @@ import {
 import type { MechId } from './mechanisms'
 import { lookup, parentOf, parseRegistry, settingsHookConfig } from './scopes'
 import type { RegistryMode } from './scopes'
-import { CLASSIC_HINT, P, TAIL_HINT, clip, layoutBody, quietTail } from './sections'
+import { P, clip, layoutBody } from './sections'
 import type { Line } from './sections'
+import {
+  AUTO_CLOSE_MS,
+  COUNT_EVENTS,
+  FALLBACK_LIMIT,
+  FALLBACK_MAX,
+  FIRING_MS,
+  HOVER_CP,
+  HOVER_MEM,
+  IDLE_SEARCH,
+  MEET_FLAG,
+  MEET_PRESS_MS,
+  MEET_PROMPT,
+  NAMES_NOTHING,
+  OPEN_COLUMNS,
+  POLL_IDLE_MS,
+  POLL_MS,
+  PULSE_SLOTS,
+  PULSE_STAGGER_MS,
+  ROOMY_ROWS,
+  SCOPES_FILE_TTL_MS,
+  SCOPE_RECHECK_MS,
+  STALE_MS,
+  UNKNOWN_SCOPE,
+  quiet,
+  run,
+} from './state'
+import { CLASSIC_HINT, TAIL_HINT, TAIL_SPARE, quietTail } from './tail'
+import { BRAIN_COLS, BRAIN_ROWS, HEAD_X, brain, fireBrain, fps, fpsReport, frameCells, look, lookKey, paceMs, raster } from './terminal'
 import { cells } from './width'
+import {
+  CONFIRM_FROM,
+  bodyOf,
+  firedIn,
+  isAbsolutePath,
+  isPaused,
+  memoriesCount,
+  memoryHover,
+  memoryMeta,
+  normBrain,
+  normView,
+  scopeHover,
+  scopeOf,
+  statusFor,
+  stoodDownNote,
+  storedWords,
+  switchAt,
+  switchExplains,
+  truthy,
+  words,
+} from './words'
 
 // ── constants ───────────────────────────────────────────────────────────────
 
 const PANE = 'counterparts'
 const TITLE = 'Counterparts'
-/**
- * Body columns the sidebar asks for: 34, which the dock draws 35 wide with its
- * divider (measured in v0.1: `columns: 44` gave a dock 45 wide), the mockups'
- * 35. The body is laid out to 32 text columns inside a column of padding each
- * side.
- */
-const OPEN_COLUMNS = 34
-/** The brain beside the title, in cells. */
-const BRAIN_COLS = 18
-const BRAIN_ROWS = 6
-/** The header's right column starts this far in: the brain and two blank columns. */
-const HEAD_X = BRAIN_COLS + 2
-/** "Dim at rest": what is not lit draws at this brightness, so a lit region stands out (the mockups' 0.72). */
-const DIM_REST = 0.72
-/** Rows of pane body from which the header gets a blank row above it (the mockups at 200x60 have one; at 160x48, not). */
-const ROOMY_ROWS = 44
-/** The dashboard is read only while the pane is drawn: this often while things happen… */
-const POLL_MS = 15000
-/** …and this often after four quiet reads in a row. */
-const POLL_IDLE_MS = 30000
-/** A gap longer than this since the last read starts over from a cold read. */
-const STALE_MS = 10 * 60000
-/** A switch's note and the pause confirm close by themselves after this. */
-const AUTO_CLOSE_MS = 30000
-/** How often the folder's registry is read again while no dashboard poll reads it (the pane closed or not shown). */
-const SCOPE_RECHECK_MS = 60000
-/** How long the registry's path, found from the settings, is trusted before it is looked up again. */
-const SCOPES_FILE_TTL_MS = 5 * 60000
-/**
- * Cells the quiet tail leaves beside the `hint` prop, so the engine never
- * cuts the ` · /counterparts opens it` at its end. Measured at 160 columns
- * (Claude Code 2.1.296, term-loop): the engine draws its line two cells in,
- * joins the tail with ` · `, keeps three cells clear at the row's end, and
- * draws more than the prop holds: `⏸ manual mode on · ? for shortcuts · ←
- * for agents` (49 cells) for a prop about 30 wide, 19 cells more (auto mode's
- * line, 16 more). 2 + 3 + 3 + 19, and five to spare for a wider line.
- */
-const TAIL_SPARE = 32
-/** The hover groups that show what a click on each memory switch does, over the rows above the footer. */
-const HOVER_CP = 'counterparts-switch-cp'
-const HOVER_MEM = 'counterparts-switch-mem'
-const FIRING_MS = 2600
-/**
- * One event can prove several mechanisms: their pulses go this far apart, so
- * each arc reads as its own. At most four slots: a fifth shares the fourth.
- */
-const PULSE_STAGGER_MS = 300
-const PULSE_SLOTS = 4
-/** The most the turning brain draws a second: a pulse's arc. Swaying it draws every other tick (`Brain.calmFps`), and at rest none. */
-const DEFAULT_FPS = 12
-/** Events that change the memory count, worth one read of `/api/pulse` (the dear one). */
-const COUNT_EVENTS = new Set(['gate.deposit', 'gate.chunk', 'memory.pruned', 'memory.merged', 'dream.changed', 'contradiction.settled'])
-/**
- * A dashboard older than v0.2 says no `firedToday`: today's counts come from
- * each event's newest rows, this many first, read deeper (doubling) while all
- * of them are today's, to at most FALLBACK_MAX. Only on a cold read; polls add.
- */
-const FALLBACK_LIMIT = 150
-const FALLBACK_MAX = 1200
 
 /**
  * The brain's cells take the terminal's default background (`bg: null` in
@@ -181,25 +167,8 @@ const FALLBACK_MAX = 1200
 const SEARCH_BG = '#121a22'
 const CYAN_DIM = '#0b6f7c'
 
-/**
- * The first meeting's line: what the sidebar submits, once per install at the
- * first idle start while core says `not_started`, and on each press of "Meet
- * your counterpart". Framed as the plugin's (not `asUser`): the model reads
- * "The counterparts plugin sent a message: …", and core's wake carries the
- * meeting's instructions. Claude Code shows this line to the person ("Prompt
- * from the counterparts plugin"), so it reads as a sentence to them, and still
- * tells the model to introduce itself (2026-10-12, owner's onboarding trial).
- */
-const MEET_PROMPT = 'Counterparts: Claude has a memory now and would like to introduce itself.'
-/** `$.store`: the speak-first went out (`{ session, at }`); never again while it is there. */
-const MEET_FLAG = 'meetTriggered'
-/** A second press of "Meet your counterpart" this soon after the first submits nothing. */
-const MEET_PRESS_MS = 60000
-
 // ── state (the contract: ../types/index.d.ts) ──────────────────────────────
 
-const IDLE_SEARCH: SidebarSearch = { query: '', status: 'idle', header: '', total: 0, hits: [], error: null }
-const UNKNOWN_SCOPE: SidebarScope = { mode: 'unknown', own: false, setBy: null, dir: null, error: null, busy: false, unread: null }
 const pulseA = atom({ plugin: 'counterparts', key: 'pulse' } as const, null)
 const dashA = atom({ plugin: 'counterparts', key: 'dash' } as const, 'unknown')
 const mindA = atom({ plugin: 'counterparts', key: 'mind' } as const, null)
@@ -222,194 +191,7 @@ const placedA = atom({ plugin: 'counterparts', key: 'placed' } as const, false)
 const noteA = atom({ plugin: 'counterparts', key: 'switchNote' } as const, null)
 const pauseAskA = atom({ plugin: 'counterparts', key: 'pauseAsk' } as const, null)
 
-// ── the module's own (a reload starts these over; the host keeps the state) ──
-
-const brain = new Brain()
-/** The Raster the terminal last mounted: a blit must match its size. */
-const raster = { cols: 0, rows: 0, live: false, cells: '', look: '' }
-/** What the brain shows besides its turning, refreshed by each drawing. */
-const look = { mono: false, still: false, sel: null as MechId | null, firing: [] as readonly MechId[] }
-const fps = {
-  target: DEFAULT_FPS,
-  inFlight: false,
-  lastTick: 0,
-  /** `performance.now()` of each blit the surface took: the measurement. */
-  blits: [] as number[],
-  frameMs: [] as number[],
-}
-const run = {
-  session: '',
-  interactive: false,
-  /** The first drawing's one-time work (a quiet scope read, if the start's found none) is done. */
-  woke: false,
-  /** A read of this folder's registry is on its way. */
-  scopeReading: false,
-  /** The folder this session started in (`session.start`'s `cwd`). */
-  cwd: '',
-  /** The registry the hooks read, and when (`$.clock`) that was found. */
-  scopesFile: null as string | null,
-  scopesFileAt: 0,
-  scopeTimer: null as { cancel: () => void } | null,
-  /** Canonical forms of paths that resolved whole (a folder's realpath rarely moves). */
-  canon: new Map<string, string>(),
-  /** Whether to open the pane unasked has been decided (from the first band drawing). */
-  placementDecided: false,
-  /** Whether this surface docks a pane (the fullscreen renderer), once the band or the hint has said. */
-  docks: undefined as boolean | undefined,
-  cold: false,
-  polling: false,
-  /** A dashboard read is scheduled or running. */
-  pollArmed: false,
-  quietPolls: 0,
-  lastPollAt: 0,
-  lastSeq: -1,
-  server: null as string | null,
-  /** The dashboard's port, read once (`dashPort`). */
-  port: null as number | null,
-  liveSeq: 0,
-  /** An unasked pane this surface could not place yet: the tail says `/counterparts opens the sidebar` until it draws. */
-  hint: false,
-  brainTimer: null as { cancel: () => void } | null,
-  /** Which timer is the brain's now: a tick or a blit answer of an older one changes nothing. */
-  brainGen: 0,
-  /** The pace the brain's timer runs at; `rest` while it is stopped at rest. */
-  brainPace: 'calm' as 'burst' | 'calm' | 'rest',
-  /** When this session began: an event naming no session, from after it, is taken as this session's. */
-  startedAt: 0,
-  /** The command that opens a URL here, once found. */
-  opener: null as readonly string[] | null,
-  /** Fresh drawings asked for after refused blits since the last blit that was taken. */
-  redraws: 0,
-  /** The body's text width at the last drawing: what the expand threshold is measured at. */
-  bodyW: 32,
-  /** Whether the dashboard says `firedToday` (v0.2 and later); null until asked. */
-  firedToday: null as boolean | null,
-  /**
-   * The calendar day on this machine's clock when today's counts were last read: a new one starts them over.
-   * Not the dashboard's `today`, which is the store's zone: a store set to another zone would differ from this
-   * clock all day and read the counts again on every poll.
-   */
-  countedOn: '',
-  /** This session's rows were looked for on the dashboard (`seedSession`), once a module life. */
-  seeded: false,
-  /** The person sent a prompt of their own, or ran a slash command, this session: the speak-first stands down. */
-  typed: false,
-  /**
-   * The person sent a PROMPT of their own (`prompt.submit`), not only a command: only this drops a
-   * speak-first already queued, since only a prompt gets a reply where core can offer the meeting.
-   */
-  prompted: false,
-  /** The speak-first was considered this module life (it goes out at most once per install, `MEET_FLAG`). */
-  meetTried: false,
-  /** The session whose start sent the speak-first, as stored; null when it never went out. */
-  meetFiredIn: null as string | null,
-  /**
-   * This module life submitted the speak-first. Unlike `meetFiredIn`, core's state moving on
-   * never clears it: the person's reply calling `meet` (state `offered`) must not let a
-   * speak-first still queued behind it through (`prompt.submit`).
-   */
-  spokeFirst: false,
-  /** When "Meet your counterpart" was last pressed (`$.clock`). */
-  meetPressedAt: -Infinity,
-}
-
-// ── pure helpers ────────────────────────────────────────────────────────────
-
-/** Work left running on its own: a reload or the session's end may cut it off, and that is fine. */
-function quiet(p: Promise<unknown>): void {
-  p.catch(() => undefined)
-}
-
-/** Nothing is remembered and nothing comes to mind: paused for now, or set off. */
-function isPaused(mode: string): boolean {
-  return mode === 'paused' || mode === 'off'
-}
-
-/**
- * A stored view, from any version: v0.1's `full` is the sidebar; its `quiet`
- * (a narrow pane), `rail` and `hidden`, and v0.2's first `strip` (one line
- * above the prompt, dropped 2026-10-10), are quiet (no pane, the tail). Read
- * so, never written back: a v0.1 copy reading the same store keeps its word.
- */
-function normView(v: unknown): SidebarView {
-  return v === 'quiet' || v === 'rail' || v === 'hidden' || v === 'strip' ? 'quiet' : 'sidebar'
-}
-
-function normBrain(v: unknown): SidebarBrain {
-  return v === 'still' || v === 'off' ? v : 'turning'
-}
-
-function achievedFps(): number {
-  const now = performance.now()
-  const recent = fps.blits.filter(t => now - t < 10000)
-  if (recent.length < 2) return 0
-  const span = (recent[recent.length - 1] ?? 0) - (recent[0] ?? 0)
-  return span <= 0 ? 0 : ((recent.length - 1) * 1000) / span
-}
-
-function meanFrameMs(): number {
-  if (fps.frameMs.length === 0) return 0
-  return fps.frameMs.reduce((a, b) => a + b, 0) / fps.frameMs.length
-}
-
-function paceWords(mode: SidebarBrain): string {
-  if (mode === 'off') return 'off (no brain, no timer)'
-  if (mode === 'still') return 'still (no timer; one frame when something fires, one when it goes out)'
-  if (run.brainTimer === null) return run.brainPace === 'rest' ? 'at rest (no timer)' : 'stopped'
-  return run.brainPace === 'burst' ? `in a burst (${String(fps.target)} fps)` : `swaying (${(1000 / paceMs('calm')).toFixed(0)} fps)`
-}
-
-function fpsReport(mode: SidebarBrain): string {
-  if (fps.blits.length < 2) {
-    return `Brain: no frames measured yet (target ${String(fps.target)} fps), now ${paceWords(mode)}. It draws only while the sidebar shows in a terminal and something moves; ask again in a few seconds.`
-  }
-  return `Brain: ${achievedFps().toFixed(1)} fps achieved over the last 10 s (target ${String(fps.target)}), now ${paceWords(mode)}; a frame takes ${meanFrameMs().toFixed(2)} ms to compute.`
-}
-
-/**
- * The status line: only a warning. A folder paused or off says so in every
- * session there, whatever the view (`⚠ counterparts:` and amber are the
- * engine's); the normal case has no status line at all (v0.2).
- */
-function statusFor(scope: SidebarScope, memoryOff: boolean): string | undefined {
-  if (!isPaused(scope.mode)) return undefined
-  const parts =
-    scope.mode === 'paused'
-      ? ['⏸ Counterparts memory paused in this folder', scope.own ? '/counterparts resume' : `resume it in ${shortDir(scope.setBy)}`]
-      : ['◌ Counterparts memory off in this folder']
-  if (memoryOff) parts.push('Claude memory off')
-  return parts.join(' · ')
-}
-
-/** What the brain shows besides its turning: a frame drawn under another look is not reused. */
-function lookKey(): string {
-  return `${String(look.mono)}|${String(look.still)}|${look.sel ?? ''}|${look.firing.join(',')}`
-}
-
-function frameCells(cols: number, rows: number, now: number): string {
-  if (look.still) {
-    // The still brain: a fixed view, lit only while something fires (or a mechanism is opened).
-    brain.dark()
-    for (const id of new Set([...look.firing, ...(look.sel === null ? [] : [look.sel])])) {
-      const m = mechById(id)
-      if (m !== undefined && !look.mono) brain.flash(m.region, stageOf(m.id).col)
-    }
-  } else if (look.sel !== null) {
-    const m = mechById(look.sel)
-    if (m !== undefined) brain.light(m.region, stageOf(m.id).col)
-  }
-  const t0 = performance.now()
-  const cells = encodeCells(brain.frame(cols, rows, now, { mono: look.mono, tag: null, bg: null, dimRest: DIM_REST }))
-  fps.frameMs.push(performance.now() - t0)
-  if (fps.frameMs.length > 120) fps.frameMs.shift()
-  return cells
-}
-
-function fireBrain(mech: MechId, now: number): void {
-  const m = mechById(mech)
-  if (m === undefined || look.mono || look.still) return
-  brain.pulse(m.region, stageOf(m.id).col, now, mech === 'retrieval' ? 'prefrontal' : 'thalamus')
-}
+// ── the brain's pulses ──────────────────────────────────────────────────────
 
 /**
  * Every mechanism a read proved, one pulse each: the first at once, the rest
@@ -439,101 +221,6 @@ function firePulses($: EngineInterface, ids: readonly MechId[]): void {
 function litDot(id: MechId): string {
   const st = stageOf(id)
   return st.id === 'retrieval' ? P.cyan : hex(st.col, 0.95)
-}
-
-function trimSlash(path: string): string {
-  return path.replace(/\/+$/, '')
-}
-
-/**
- * What the switch says instead of acting, by where the folder stands. It acts
- * only on a folder whose OWN entry holds the mode: pausing anything else would
- * leave an entry of its own behind when resumed (the `scope` tool can set
- * on, observer, off, pause and resume, not "unset"), and it never turns an
- * `off` folder on.
- */
-function switchExplains(scope: SidebarScope): string | null {
-  const here = scope.dir ?? 'this folder'
-  // A folder off by its OWN entry: the switch turns it back on (after a confirm). Off by a parent's: never flipped from here.
-  if (scope.mode === 'off' && !scope.own) {
-    return scope.setBy === null
-      ? `This folder is off, and not by a setting of its own. \`counterparts scope ${here} --on\` turns it on.`
-      : `This folder is off because ${scope.setBy} is set off. The switch won't change that folder from here; \`counterparts scope ${scope.setBy} --on\` does.`
-  }
-  if (scope.mode === 'paused' && !scope.own) {
-    return `Paused because ${scope.setBy ?? 'a folder above this one'} is paused. Resume it there: \`counterparts scope ${scope.setBy ?? '<that folder>'} --resume\`.`
-  }
-  if (scope.mode === 'unset') {
-    return `Nothing is set for this folder, so Counterparts is on by default. The switch pauses only a folder with a setting of its own: a pause here would come back as an explicit “on”, and nothing can put a folder back to unset yet. \`counterparts scope ${here} --on\` gives it one.`
-  }
-  if ((scope.mode === 'on' || scope.mode === 'observer') && !scope.own) {
-    return `This folder follows ${scope.setBy ?? 'a folder above it'} (${scope.mode}). The switch pauses only a folder with a setting of its own; \`counterparts scope ${here} --${scope.mode}\` gives it one.`
-  }
-  return null
-}
-
-/**
- * What a click on the Counterparts switch does, shown while the pointer is on
- * it: whole sentences in the card's two rows at the pane's 32 columns (a
- * longer one was cut mid-sentence there: "A click pauses it for").
- */
-function scopeHover(scope: SidebarScope): string {
-  if (scope.mode === 'unknown') return 'Not read yet: a click checks this folder, changing nothing.'
-  if (switchExplains(scope) !== null) return "This switch can't change this folder. A click says why."
-  if (scope.mode === 'paused') return 'Paused here, for every session. on resumes it; off asks first.'
-  if (scope.mode === 'off') return 'Off here, for every session. on turns it back on (asks first).'
-  if (scope.mode === 'observer') return 'Reads only here. on, paused or off: each asks first.'
-  return 'Paused or off holds for every session here; each asks first.'
-}
-
-/** Where the three-way switch stands: `on` for on, observer and unset (on by default); null while unknown. */
-function switchAt(mode: string): 'on' | 'paused' | 'off' | null {
-  if (mode === 'unknown') return null
-  return mode === 'paused' ? 'paused' : mode === 'off' ? 'off' : 'on'
-}
-
-/** An opt-in written in the environment: `1`, `true`, `yes` or `on`. */
-function truthy(v: string | undefined): boolean {
-  return v !== undefined && /^(1|true|yes|on)$/i.test(v.trim())
-}
-
-/** What a click on the Claude Code memory switch does: whole sentences in two rows of 32. */
-function memoryHover(on: boolean): string {
-  return on ? "Claude Code's MEMORY.md: a click turns it off in every session." : "Claude Code's own memory is off everywhere. A click turns it on."
-}
-
-/**
- * The header's count, whole: `1000 memories` (13 cells, the header's text
- * column widened by one for it). From 10,000, `10k+ memories`, still 13: the
- * exact number is on the dashboard.
- */
-function memoriesCount(n: number): string {
-  return n >= 10000 ? `${String(Math.floor(n / 1000))}k+ memories` : `${String(n)} memories`
-}
-
-/** The newest thing in plain words, for the tail. */
-function words(kind: 'remembered' | 'subconscious' | 'stored' | 'opened' | 'dreamed', what: string): string {
-  return `${kind}: ${what}`
-}
-
-/** What the tail says of a save: `Stored “title”` (the quotes keep a title's own `Answered:` from doubling the lead), or `Stored 2 memories, the first “title”`. */
-function storedWords(title: string, count = 1): string {
-  return count > 1 ? `Stored ${String(count)} memories, the first “${title}”` : `Stored “${title}”`
-}
-
-/** What a save wrote beyond its title, for the tail; none when the title was cut from the text itself. */
-function bodyOf(s: SidebarSaved): string | undefined {
-  return s.text === undefined || s.text.startsWith(s.title) ? undefined : s.text
-}
-
-/** The memory text an opened item shows, and the line saying what it is. */
-function memoryMeta(d: { kind?: unknown; learnedOn?: unknown; journal?: unknown }): string | null {
-  const kind = d.journal === true ? 'journal' : typeof d.kind === 'string' ? d.kind : null
-  // `Oct 9`, with the year only when it is not this one.
-  const thisYear = String(new Date().getFullYear())
-  const learned = typeof d.learnedOn === 'string' ? shortDay(d.learnedOn.startsWith(`${thisYear}-`) ? d.learnedOn.slice(5) : d.learnedOn) : ''
-  if (kind === null) return null
-  return learned === '' ? kind : `${kind} · learned ${learned}`
 }
 
 // ── the engine, through `$` ────────────────────────────────────────────────
@@ -596,12 +283,6 @@ async function readOnboarding($: EngineInterface): Promise<void> {
   } catch {
     // down: what the wake said stands
   }
-}
-
-/** The session a still-binding speak-first went out in, or null (none, or settled since: core moved past not_started). */
-function firedIn(stored: unknown): string | null {
-  const session = (stored as { session?: unknown } | null | undefined)?.session
-  return typeof session === 'string' ? session : null
 }
 
 /**
@@ -1149,9 +830,6 @@ async function openMech($: EngineInterface, id: MechId): Promise<void> {
   }
 }
 
-/** Event names whose rows name nothing (`feed.ts#mechFirings`) or need a dream read: not worth reading deeper. */
-const NAMES_NOTHING = new Set(['mcp.recall', 'associate.flush', 'contradiction.flagged', 'sleep.cycle', 'dream.journaled', 'dream.changed'])
-
 /**
  * A mechanism's firings from the panel's rows and its own (`/api/activity?name=`,
  * reads), FALLBACK_LIMIT first, twice as deep while fewer than `want` name a
@@ -1234,18 +912,6 @@ async function clickBody($: EngineInterface, key: string): Promise<void> {
 
 // ── the folder's switch ────────────────────────────────────────────────────
 
-function scopeOf(payload: Record<string, unknown> | null, isError: boolean, before: SidebarScope): SidebarScope {
-  if (isError || payload === null) {
-    return { ...before, busy: false, error: String(payload?.['detail'] ?? payload?.['reason'] ?? 'refused') }
-  }
-  const mode = typeof payload['mode'] === 'string' ? (payload['mode'] as string) : before.mode
-  const dir = typeof payload['scope'] === 'string' ? (payload['scope'] as string) : before.dir
-  // A read names the entry that governs (`setBy`); a set wrote this folder's own.
-  const setBy = payload['set'] === true ? dir : typeof payload['setBy'] === 'string' ? (payload['setBy'] as string) : null
-  const own = setBy !== null && dir !== null && trimSlash(setBy) === trimSlash(dir)
-  return { mode, own, setBy, dir, error: null, busy: false, unread: null }
-}
-
 /** Asks the memory server where this folder stands: only when the registry file could not be read and the person pressed. */
 async function readScope($: EngineInterface): Promise<void> {
   const before = await read($, scopeA)
@@ -1269,10 +935,6 @@ async function readText($: EngineInterface, path: string): Promise<string | null
   } catch {
     return null
   }
-}
-
-function isAbsolutePath(path: string): boolean {
-  return path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path)
 }
 
 /**
@@ -1469,13 +1131,6 @@ async function cancelPause($: EngineInterface): Promise<void> {
   await update($, pauseAskA, () => null)
 }
 
-/** Which own modes each confirm may change: a pause from on or observer; an off from those or paused; an on from off or observer. */
-const CONFIRM_FROM: Record<'pause' | 'off' | 'on', readonly string[]> = {
-  pause: ['on', 'observer'],
-  off: ['on', 'observer', 'paused'],
-  on: ['off', 'observer'],
-}
-
 /**
  * The confirm row's [Pause], [Turn off] or [Turn on]: the only presses that
  * pause, turn off, or turn on from off, and only a folder still holding its
@@ -1490,16 +1145,6 @@ async function confirmChange($: EngineInterface): Promise<void> {
   if (scope.busy || switchExplains(scope) !== null || !scope.own) return
   if (!CONFIRM_FROM[to].includes(scope.mode)) return
   await setScope($, to)
-}
-
-/**
- * The scope tool stood down: this session's memory server started while the
- * folder read only (`observer`), and changes nothing for the session's life,
- * the scope setting included (`serve.ts`). The console still can.
- */
-function stoodDownNote(scope: SidebarScope, to: 'pause' | 'resume' | 'off' | 'on'): string {
-  const flag = to === 'pause' ? '--pause' : to === 'off' ? '--off' : to === 'on' ? '--on' : '--resume'
-  return `This session started while the folder read only, so its memory server can't change the setting. \`counterparts scope ${scope.dir ?? '<this folder>'} ${flag}\` does; a session started after that follows it.`
 }
 
 /** One call: pause, resume, turn off or turn on this folder's own entry. */
@@ -1642,12 +1287,6 @@ function redrawAfterRefusal($: EngineInterface): void {
   if (run.redraws >= 3) return
   run.redraws += 1
   $.ui.invalidate('ui.render')
-}
-
-/** The timer's interval for a pace: every frame of the target while an arc flies, the calm rate while it sways. */
-function paceMs(pace: 'burst' | 'calm'): number {
-  const every = pace === 'burst' ? 1 : Math.max(1, Math.round(fps.target / brain.calmFps))
-  return Math.max(16, Math.round((every * 1000) / fps.target))
 }
 
 /**
