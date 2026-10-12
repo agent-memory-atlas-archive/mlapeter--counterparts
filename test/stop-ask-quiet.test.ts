@@ -554,7 +554,7 @@ describe("the person reads one line, the model reads two (decision 1)", () => {
     // 01 C1's text, verbatim (2026-10-10, Group 1c): what caught your
     // attention, one idea each, not what is "worth keeping".
     expect(stopAsk("SID", 3)).toBe(
-      "Counterparts, before this session closes: 1) hand back what caught your attention since you last wrote, one idea each — what you read, what they said, what happened — with the counterparts session_end tool, session: SID. `handoff` only if work here is unfinished; `retireHandoff` any now done; `updates` anything dated or open now done.\n" +
+      "Counterparts, before this session closes: 1) hand back what caught your attention since you last wrote, one idea each — what you read, what they said, what happened — with the counterparts session_end tool, session: SID. `handoff` only if work here is unfinished; `retireHandoff` any now done; `updates` anything dated or open now done. Until they say their pronouns, use their name or \"they\".\n" +
         "2) Write chapter 3 with the counterparts chapter tool, session: SID.",
     );
   });
@@ -594,8 +594,9 @@ describe("the person reads one line, the model reads two (decision 1)", () => {
     // clause was added (random-f2's item 1); the close clause the same day
     // fit inside it, by words taken out elsewhere. 474 since 2026-10-10 (the
     // attention ask, with a real id; a four-digit chapter is measured below).
-    expect(text.length).toBeLessThanOrEqual(480);
-    expect(stopAsk(UUID, 1234).length).toBeLessThanOrEqual(480);
+    // 535 since 2026-10-12: the pronoun rule (onboarding round 1, E; Mike).
+    expect(text.length).toBeLessThanOrEqual(535);
+    expect(stopAsk(UUID, 1234).length).toBeLessThanOrEqual(535);
   });
 
   test("the chapter number is the store's, on every chapter including the first", () => {

@@ -481,7 +481,7 @@ export interface MeetContext {
  * PRONOUNS, WITHOUT ASKING (2026-10-12, onboarding round 1, E): one rule, the
  * same words in the meeting, the write-up ask and the dream's prompt.
  */
-export const PRONOUN_RULE = "Until the person says their pronouns, refer to them by name or as \"they\".";
+export const PRONOUN_RULE = "Until they say their pronouns, use their name or \"they\".";
 
 /**
  * WHAT IS KEPT, word for word (D): Claude is never to paraphrase retention, so
