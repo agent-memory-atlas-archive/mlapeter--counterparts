@@ -731,6 +731,20 @@ describe("the meeting holds the dream and the write-up ask, through the real hoo
     expect(meetingDay(s.counterpart.store, DAY2)).toBe(false);
   });
 
+  test("review of #450: a later day's offer nobody took up (the wake offered, `meet` never called) does not hold that day's dream", () => {
+    newInstallStore();
+    withStore((st) => {
+      noteOffered(st, { on: DAY1, session: "a", state: false });
+      expect(meetingDay(st, DAY1)).toBe(true);
+      noteOffered(st, { on: DAY2, session: "b", state: false });
+      expect(meetState(st)).toBe("not_started");
+      expect(meetingDay(st, DAY2)).toBe(false);
+      // Begun that day (a read or a step moved it to `offered`): held.
+      noteOffered(st, { on: DAY2, session: "b", state: true });
+      expect(meetingDay(st, DAY2)).toBe(true);
+    });
+  });
+
   test("an upgraded store (no meeting keys) is never held", () => {
     withStore((st) => {
       expect(meetingDay(st, DAY1)).toBe(false);

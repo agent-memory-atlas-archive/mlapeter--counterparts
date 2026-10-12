@@ -39,3 +39,7 @@
   nightly run. The dream's hand-back line now says `say "undo that dream"` for every install, in place of the two
   CLI commands. The journal entry itself stays. `meet` takes an optional `session`, used only when the registry
   confirms it, so the hold binds to the right session even before the server has one.
+- Decided by the #450 reviewer, 2026-10-12, lightly held: on an offer day after the first, only a meeting begun
+  that day (`offered`: a `meet` read or step today) holds the dream, not the wake's offer alone, which leaves
+  the state `not_started`. Why: a Claude that never called `meet` cost a new person the dream on offer days 2
+  and 3, from the first prompt on, with no meeting anywhere. The first offer day still holds either way.

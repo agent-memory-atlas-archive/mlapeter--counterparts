@@ -310,8 +310,8 @@ export function coverFinish(store: MetaStore): void {
 
 /**
  * IS TODAY A MEETING DAY? No dream starts on one (the `Dreams` ctx's `holds`):
- * a day the meeting was offered while it is not finished — a new install's
- * first day, by the wake's own offer — and the day it was finished. So the
+ * a new install's first offer day (by the wake's own offer), a later day the
+ * meeting was begun and is not finished, and the day it was finished. So the
  * first dream waits for the next lived day and never dreams on half a
  * meeting. A store with no meeting keys (every store from before 0.3.18) is
  * never held, nor one that meets again after a meeting with no done record.
@@ -325,8 +325,12 @@ export function meetingDay(store: MetaReader, on: string): boolean {
     const last = lastOffer(store);
     if (last === null || last.on !== on) return false;
     // A later day's "later" or "don't ask again" lets that day dream; the
-    // first offer's day is the store's first day, and holds either way.
-    return last.days <= 1 || state === "not_started" || state === "offered";
+    // first offer's day is the store's first day, and holds either way. On a
+    // later day only a meeting begun that day holds (`offered`: a `meet` read
+    // or step today, the wake having settled an earlier day's to `later`) —
+    // not the wake's offer alone, which leaves `not_started` (review of #450:
+    // a Claude that never called `meet` cost days 2 and 3 their dream).
+    return last.days <= 1 || state === "offered";
   } catch {
     return false;
   }
