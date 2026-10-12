@@ -29,3 +29,15 @@
   unwritten word its session said before it (`submitJot` always covers its own session), so one note about
   one fact can mark hours of conversation as written up. That is how 2 of the 16 parts (one session's
   evening) came to read as already written up when the note covered none of their substance.
+- Decided by the #435 reviewer, 2026-10-11, lightly held: `catch-up --dry-run` or `--yes` without `--reowe`
+  is a usage mistake (exit 1). Why: the flags were added to `catch-up` for `--reowe`, and alone a typed
+  `catch-up --dry-run` started a real run that writes memories and spends the subscription.
+- Decided by the #435 reviewer, 2026-10-11, lightly held: `--reowe` exits with the CLI's codes (`EXIT`:
+  usage 1, refused 2), not its own inverted pair. Why: a script reads one meaning per code across commands.
+- Decided by the #435 reviewer, 2026-10-11, lightly held: the SessionStart pointer (dreaming `ask`/`off`)
+  names the part the door will hand over (`firstUnwrittenPart`) and counts only the parts a reader is
+  handed. Why: the door passes over parts with nothing unwritten on every path, not only the catch-up's,
+  and the pointer said "part 1 of N" and the whole backlog's size while the door handed part 9.
+- Noted by the #435 reviewer, not changed: with the reason guard in place, a future run's logged empty
+  parts with unwritten words are all ones the reader explicitly declined with a `nothing` line, which the
+  log does not record. `--reowe` owes those back too; that is what a "known-bad run" means here.
