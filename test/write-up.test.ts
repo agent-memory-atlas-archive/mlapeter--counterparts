@@ -417,6 +417,31 @@ describe("the pointer: the next session start in that project is pointed at it",
     expect(spent.events).toContain("adapter.writeup.skipped");
   });
 
+  test("review of #435: the pointer names the part the door hands over, past parts its own chapter wrote up", async () => {
+    const s = seeder();
+    const at = Date.now() - 2 * DAY;
+    recordSession(storeDir, { sessionId: "chap-1", scope: PROJ, phase: "start", at });
+    const turns: { role: "user" | "assistant"; text: string }[] = [];
+    for (let i = 0; i < 12; i++) {
+      s.set(at + i * PIECE_GAP);
+      turns.push({ role: "user", text: wordsOf(`chap-1 #${String(i)}`, 7_000) });
+      s.c.captureSpans({ session: "chap-1", scope: PROJ, turns: [...turns] });
+      // Its own chapter, after the first eight: those words are written up.
+      if (i === 7) expect(s.c.appendEpisode("chap-1", "A chapter from chap-1.", { scope: PROJ }).appended).toBe(true);
+    }
+    s.c.boundary({ session: "chap-1", scope: PROJ, kind: "stop" });
+    s.c.boundary({ session: "chap-1", scope: PROJ, kind: "session-end" });
+    recordSession(storeDir, { sessionId: "chap-1", scope: PROJ, phase: "end", at: at + 12 * PIECE_GAP + 1 });
+    s.done();
+    const pointerText = start("new-1").ask ?? "";
+    expect(pointerText).toContain("writeUp: chap-1");
+    const fetched = payload(await server().call("session_end", { session: "new-1", writeUp: "chap-1" }));
+    const pointed = /, part (\d+) of (\d+)\./.exec(pointerText);
+    expect(Number(pointed?.[1])).toBeGreaterThan(1);
+    // The door hands that same part.
+    expect(fetched["part"]).toBe(Number(pointed?.[1]));
+  });
+
   test("with host-length ids it fits beside the owner's 9,038-byte wake, and a deferral is durable and read by doctor (MAJOR 1)", () => {
     const OLD = "0d3f7a52-9c1e-4b8e-9a51-2f7c1f0e9b11";
     const LIVE = "7e1c2b90-44aa-4f0b-8c3d-5a6b7c8d9e0f";
