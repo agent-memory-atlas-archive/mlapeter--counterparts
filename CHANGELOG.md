@@ -1,5 +1,127 @@
 # Changelog
 
+## 0.3.19 — 2026-10-12
+
+Reminders now arrive. A reminder due today stays under "Arriving:" in the wake all day, the near ones come first when a session starts, a reminder is no longer counted as told to a message nobody typed (an agent's hand-back or a task notification), and a memory that reads like a reminder but has no date now says so. Counterparts also reads far less of Claude Code's own files: the nightly run no longer scans `~/.claude/projects`, and the wake-arrival check is off unless you ask for it, which is what the plugin directory asked for. Underneath: the core can change (a kept promise can retire, a declared change moves it in about three days), the night folds memories that belong together and writes up everything it was owed, cards for people and projects are born at last, and the biggest source files are split so the plugin bundle fits the directory's file limit. No store-format change (store v13, cache v6), so there is no migration, and nothing to run after upgrading from 0.3.18.
+
+- **The core can change now.** A core memory used to be write-once in practice: a kept promise could never
+  retire the promise. A change you declare at one now counts at full daily weight, so it moves in about three
+  days of saying so, and a plan the core held (with a status or a date) leaves it at once when a memory says it
+  is done. Either can be undone.
+- **A moved reminder's old memory steps back.** When a reminder moves to a newer memory, the one it left is
+  marked as the earlier one and fades, instead of staying as current with its future-tense words. The few
+  older ones get the same once.
+- **One record for every "this replaces that".** A dream's merge, a settle, a write that updates a memory, the
+  core's slow change and a moved reminder now all leave the same record and the same undo, and a settle over a
+  memory with a date still to come carries the reminder to the newer one. A dream's merge keeps its originals
+  as faded earlier versions behind the merged memory (hidden from what comes up on its own) until they fade
+  out, instead of putting them away, and one original can be brought back on its own. A corrected memory hands
+  its links to the one that holds.
+- **"Done" ends a reminder.** A memory that says something is done no longer takes over the reminder of the
+  plan it finishes, so it does not remind you on the day of something already done. The dashboard counts what was noticed (merges, newer states found) apart from what
+  was declared, so nothing shows under both.
+- **Earlier versions say so in more places.** A "meaning" answer marks an earlier moment with the memory that
+  holds now, and a newer memory reached only through a link now stands in for its earlier version instead of
+  showing beside it.
+- **Cards for the people and projects you talk about are born at last.** A card used to be
+  born only when a memory's title was exactly a name, which almost never happens, so a store
+  in daily use for weeks had one card: yours. Now, once a day at the end of a session, the
+  names your memories keep saying (in at least 3 memories on at least 2 days) get a card, ten
+  a day at most, the most-said first. Capitalized words that are also ordinary words, and days
+  and months, don't. A new card links every memory that names it, and a question by that name
+  reads those links.
+- **A card no longer shows up as a memory.** A newborn card holds only its name, so it isn't
+  shown in a turn's recall or among the results of a question by name; the memories it links
+  are.
+- **A card you remove stays removed.** Removing a person's or project's card no longer lets
+  the nightly count of names give it a new card from the same memories.
+- **What keeps coming back can become core.** The slow road into the core asked for five separate days of use
+  over three weeks, and nothing ever made it. Now it counts a memory together with its earlier and later states:
+  used, cited in a reflection, or written about again, on four days, in three sessions, over a week, within the
+  last month, as long as the memory itself was used. The newest state is the one that crosses.
+- **The core is about me and us.** A memory about you alone, a fact, or a plan no longer becomes core. The ones
+  already there that this moves out are not dropped: they show as "being reconsidered", in the wake's Still open
+  list and on the dashboard's Self page, and stay core until one of us decides.
+- **Nothing leaves the core without a decision.** A core memory that stops coming back for 60 lived days is
+  reconsidered too, never dropped on its own. You keep one with `counterparts core --reaffirm <id> --reason "…"` or send
+  it back with `--demote`. I can do the same, awake (`remember` with `core`) or when I reflect, and a flag lifts
+  itself when its reason goes away (say a memory is re-marked as about us).
+- **The night folds what belongs together.** When several memories are parts of one event or one stretch
+  of work (a day's merges, a release, one book), the dream can now fold them into one memory that says what
+  they add up to. The fold starts as strong as its strongest part, and the parts stay, marked earlier under it,
+  at half their strength, so recall leads with the fold and the parts are there when you ask for detail.
+  Readings, strongly felt memories about you or someone, and the core are never faded by a fold. At most five folds a night; any past that
+  are counted and said in the morning line.
+- **A correction reaches the summary.** When a memory a fold was made from is corrected, the fold is flagged
+  beside the correction as possibly out of date, so it gets read again instead of carrying the old claim.
+- **A personal fold can become core the ordinary way.** A fold is about you or about us only when most of its
+  parts are. Once folded, what comes back counts toward the slow road into the core: the fold's own uses and
+  its parts' later uses, across sessions and days. Its parts' history from before the fold does not.
+- **A newer settle no longer stands an outdated memory back up.** Settling "B replaces A" after "C replaces B"
+  used to make B current again over C. Now a settle speaks only about the two memories it names, and B stays
+  earlier under C. To make B current again, settle B over C: that reorders the pair.
+- **A catch-up no longer re-reads what a session already wrote up.** A long session that wrote its own
+  chapters as it went left parts whose every word was already written up, and a catch-up handed each one to a
+  reader anyway, about 24 KB at a time, only for it to answer "nothing new" in two seconds. Those parts are now
+  passed over without a reader and cost a batch nothing, and the run's summary says how many there were
+  ("16 parts written, 11 of them already written up in their own session"). On the first live catch-up's
+  biggest session that is one child instead of three, with about the same memories kept.
+- **A catch-up's "nothing worth keeping" says why.** In the nightly run or `counterparts catch-up`, an empty
+  answer for a part that holds words not yet written up now needs a one-line reason; without one the part is
+  not counted as written, stays owed for the next run, and doctor and `counterparts coverage` say how many
+  parts were left unread. A live session's empty answer is unchanged.
+- **`counterparts catch-up --reowe <run>`.** Owes again the parts a named run closed with nothing kept, when
+  their words were not yet written up. It prints the plan first, then asks for the run's id typed back
+  (`--yes` skips that, `--dry-run` stops at the plan), and refuses by name what it cannot do: a session the
+  run went on to write up, parts after them that brought memories back, or words no longer kept. It reads the
+  run from the log, which keeps a week.
+- **A note no longer marks the whole session as written up.** A note written mid-session used to count everything
+  said before it as written up, so one short note could leave hours of conversation that nothing ever wrote
+  down. Now a note covers only the turn it was written in; the rest waits for the session's own write-up, a
+  later session, or the night's catch-up, and the end-of-session ask still comes when it is due.
+- **`counterparts coverage` agrees with the catch-up and doctor about who owes.** A small stretch from a session
+  that was not a person's (`claude -p`, the Agent SDK) is listed as left to lapse, not as owed, and the line about
+  parts a catch-up left unread shows only for today or for the date that run was on.
+- **The night picks what to dream by what it is worth and how close it is to fading.** The dream used to read
+  only the newest 2,000 not-yet-dreamed memories and keep each one waiting for at most a week. Now it reads all of
+  them and ranks them by value (how much a memory mattered, how strongly it was felt, whether it is dated or on
+  my mind) times how weakly it is held on its own forgetting curve. A memory waits as long as it is still within
+  reach, however old, and one that fades below reach before a dream gets to it is counted and said, not dropped
+  silently. The night's budget is the same as before.
+- **A fold the night had no room for comes back.** When a night has already made its five folds, the parts of
+  the next fold are carried to the next night, together and first in line, so it can be made then. Parts a fold
+  would not fade (readings, strongly felt memories, dated ones, the core) are not carried.
+- **A reminder due today stays under "Arriving:" all day.** A dated item that had already come up twice in
+  conversation in the days before, or had come up once earlier the same day, dropped out of the wake's
+  "Arriving:" list, sometimes on the very day it was due. A plain reminder told to the first session of its
+  day also dropped out, even when that "session" was an agent's message at midnight that nobody read. Now
+  the list keeps a dated item until its day is behind it. How often a reminder is raised mid-conversation is
+  unchanged.
+- **"Arriving:" no longer goes silent.** When a long self page left room for no dated line, the wake said
+  nothing at all about what was arriving. Now it always gives the one-line count with the ids
+  (`Arriving: 7 — no room to list them in this wake`), taking that room from "Work here", the Yesterday
+  line's titles and the handoffs. Doctor's Wake line now counts these as renders of the wake, and its advice
+  says what actually gives way.
+- **A reminder written without a date now says so.** When a memory reads like a reminder ("remind", "don't forget", "follow up", "check back" beside a date such as "Oct 14", a weekday or "tomorrow") but is stored with no `eventDate`, the `remember` and `session_end` answers carry a one-line `reminderHint`: it will never come back on a date, and revising it with an `eventDate` makes it fire. The date is never guessed from the text and the write is never refused.
+- **Fewer reads of Claude Code's own files.** The nightly run no longer looks through `~/.claude/projects` for
+  its own background session's transcript: it reads what that session printed as it ran, and doctor's Tool
+  results line says whether that output was read. Claude Code's compaction summaries, skill bodies, hook
+  feedback and other lines it writes for itself are no longer kept with a session's words; a message another
+  session sent to this one still is.
+- **The wake-arrival check is off by default.** It read the start of the session's transcript only to confirm
+  the wake arrived whole. Set `COUNTERPARTS_WAKE_CHECK=1` in Claude Code's environment to turn it back on;
+  doctor's Wake line names the setting when no wake was checked.
+- **A reminder is no longer "told" to a message nobody read.** When an agent's hand-back, a task
+  notification or another session's message started a turn, a plain reminder due that day was said
+  there and counted as told. Now it waits for the next message you type. The same goes for the
+  morning's dream line and share.
+- **Dated items due in the next few days come first when a session starts.** At session start, the
+  "Arriving:" lines due today through three days ahead are listed first and take room before "Last
+  here", "Last said here", "Today, elsewhere" and the older handoffs. The newest handoff always keeps
+  its place.
+- **A quiet dated item that already came up leaves after its day.** One that had been raised twice in
+  the days before stayed under "Arriving:" for a week as "was due". Now it leaves once its day is past.
+
 ## 0.3.18 — 2026-10-11
 
 A new install now starts with a first meeting: in its first session Counterparts offers,
