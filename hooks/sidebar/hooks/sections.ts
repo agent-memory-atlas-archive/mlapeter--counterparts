@@ -589,6 +589,9 @@ export const TAIL_HINT = '/counterparts opens it'
  */
 export const CLASSIC_HINT = '/tui fullscreen shows the memory sidebar'
 
+/** The classic hint on a row too narrow for the whole of it (80 columns leaves about 33 cells). */
+export const CLASSIC_HINT_SHORT = '/tui fullscreen'
+
 /** `text` cut at a word, with an ellipsis, to at most `w` cells; whole when it fits; null when under a few words' room. */
 function clipWords(text: string, w: number): string | null {
   if (cells(text) <= w) return text
@@ -608,7 +611,8 @@ function clipWords(text: string, w: number): string | null {
  * Nothing new yet: `Counterparts is quiet · …`. A save's own words (`body`)
  * follow its title after a dash, as much as the row holds, cut at a word.
  */
-export function quietTail(latest: string | null, room: number | null, now: number, body?: string, hint: string = TAIL_HINT): string {
+export function quietTail(latest: string | null, room: number | null, now: number, body?: string, wanted: string = TAIL_HINT): string {
+  const hint = wanted === CLASSIC_HINT && room !== null && cells(CLASSIC_HINT) > room ? CLASSIC_HINT_SHORT : wanted
   const end = ` · ${hint}`
   if (latest === null) {
     const whole = `Counterparts is quiet${end}`

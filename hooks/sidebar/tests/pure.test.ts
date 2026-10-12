@@ -33,7 +33,7 @@ import {
 import { cells, ellipsizeCells, padCells } from '../hooks/width'
 import { hookConfig, lookup, parentOf, parseRegistry, settingsHookConfig, under } from '../hooks/scopes'
 import { MECHS, STAGES, dashboardBase, dashboardPort, dashboardRoutes, isDashboardUrl, memoryUrl } from '../hooks/mechanisms'
-import { CLASSIC_HINT, MORE, OPEN_MAX_LINES, bar, clip, heading, layoutBody, openedLines, quietTail, textOf, wrapN } from '../hooks/sections'
+import { CLASSIC_HINT, CLASSIC_HINT_SHORT, MORE, OPEN_MAX_LINES, TAIL_HINT, bar, clip, heading, layoutBody, openedLines, quietTail, textOf, wrapN } from '../hooks/sections'
 import type { BodyState } from '../hooks/sections'
 import { DECISION_T3, EVENTS, FACTS_ANSWER, RECALL_BLOCK, SESSION, T0, ev } from './world'
 
@@ -385,6 +385,13 @@ describe('the feed', () => {
     expect(quietTail(`Stored “${'long title '.repeat(10)}”`, 60, T0, body).includes(' — ')).toBe(false)
     expect(quietTail('Stored “Pets”', 100, T0, 'Mike likes ponies', CLASSIC_HINT)).toBe('Stored “Pets” — Mike likes ponies · /tui fullscreen shows the memory sidebar')
     expect(quietTail(null, 80, T0, undefined, CLASSIC_HINT)).toBe('Counterparts is quiet · /tui fullscreen shows the memory sidebar')
+    // never wider than the room the engine leaves (cols less its hint prop less 32), at 80, 100 and 120 columns, either hint, any body
+    const bodies = [undefined, 'x', 'a'.repeat(200), 'supercalifragilistic '.repeat(20), '日本語のテキストです。'.repeat(20), '😀 emoji 🎉 party '.repeat(15)]
+    for (const cols of [80, 100, 120]) for (const hint of [TAIL_HINT, CLASSIC_HINT]) for (const l of ['Stored “Pets”', 'Stored “日本語のタイトル”', `Stored “${'long title '.repeat(10)}”`, null]) for (const b of bodies) {
+      const room = cols - 15 - 32
+      expect(cells(quietTail(l, room, T0, b, hint))).toBeLessThanOrEqual(room)
+    }
+    expect(quietTail(null, 33, T0, undefined, CLASSIC_HINT)).toBe(CLASSIC_HINT_SHORT)
   })
 
   test('a dream: its first sentence and the rest', () => {
