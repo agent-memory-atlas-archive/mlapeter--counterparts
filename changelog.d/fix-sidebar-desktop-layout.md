@@ -9,8 +9,9 @@
   "Earlier: ...", "Unsettled - may be out of date, see [id]: ..." as "Unsettled: ...", "Corrected by
   [id]: ..." as "Corrected: ...", and the trailing "(earlier: [id])" and "(corrects [id])" are left
   off; a click on one opens that memory, not the one its note points at.
-- **The brain avatar now shows in the Desktop app** as a still picture (the terminal's brain at rest),
-  where before the pane showed no avatar at all.
+- **In the Desktop app the avatar is the fox or nothing.** The brain doesn't draw there yet, so the
+  avatar row offers animal and off, and a brain chosen in the terminal shows the fox on the Desktop. The
+  terminal keeps its brain.
 - **Pressing the Counterparts switch in auto mode no longer shows an engine error.** When auto mode
   declines the press, a short note says so and tells you what to ask Claude instead ("pause
   Counterparts here"); the switch stays as it was.
