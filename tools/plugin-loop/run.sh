@@ -225,12 +225,12 @@ else
 fi
 
 step "the repository's entry pins a release tag; the snapshot is tagged with it, and its branch moves past it"
-# The pin, read from the repository's own marketplace.json: GitHub at a tag.
+# The pin, read from the repository's own marketplace.json: our GitHub URL at a tag.
 PIN=$(bun -e '
   const m = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
   const e = (m.plugins ?? []).find((p) => p.name === "counterparts");
   const s = e?.source;
-  console.log(s && typeof s === "object" && s.source === "github" ? (s.ref ?? "") : "");
+  console.log(s && typeof s === "object" && s.source === "url" && /^https:\/\/github\.com\/mlapeter\//.test(s.url ?? "") ? (s.ref ?? "") : "");
 ' "$REPO_MARKET/.claude-plugin/marketplace.json" 2>/dev/null || true)
 # Inside the throwaway bare clone only: the snapshot gets the pin's tag, and the
 # branch gets one more commit (a marker file) the pin must not install.
@@ -250,7 +250,7 @@ fi
 TAGGED=$(git -C "$MARKET_GIT" rev-parse -q --verify "refs/tags/$PIN^{commit}" 2>/dev/null || true)
 BRANCH=$(git -C "$MARKET_GIT" rev-parse -q --verify "refs/heads/main" 2>/dev/null || true)
 if [[ ! "$PIN" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  no "the repository's entry is not GitHub at a release tag (ref: '${PIN}')" "$(cat "$REPO_MARKET/.claude-plugin/marketplace.json")"
+  no "the repository's entry is not our GitHub URL at a release tag (ref: '${PIN}')" "$(cat "$REPO_MARKET/.claude-plugin/marketplace.json")"
 elif [ -z "$TAGGED" ] || [ -z "$BRANCH" ] || [ "$TAGGED" = "$BRANCH" ]; then
   no "could not tag the snapshot $PIN and move its branch past it" "tag: $TAGGED
 main: $BRANCH"
