@@ -170,11 +170,20 @@ an install would get whatever master holds that day. The entry names a release t
 instead:
 
 ```json
-"source": { "source": "github", "repo": "mlapeter/counterparts", "ref": "v0.3.18" }
+"source": { "source": "url", "url": "https://github.com/mlapeter/counterparts.git", "ref": "v0.3.20" }
 ```
 
 Claude Code clones the repository at that tag, so a plugin install only ever gets a
 released version, and each release moves the pin (below).
+
+**HTTPS, not a `github` source.** Up to 0.3.20 the entry was
+`{ "source": "github", "repo": "mlapeter/counterparts", "ref": … }`. Claude Code clones
+that kind over SSH (`git@github.com:…`), so on a computer without an SSH key GitHub
+accepts, the install failed with "Permission denied (publickey)", even though
+`marketplace add` itself (HTTPS) had worked (seen on the owner's machine, 2026-10-13).
+A `url` source with the `https://` address clones without any key; Anthropic's own
+marketplace uses that form. Checked the same day: from a fresh Claude Code home on
+that same computer, the `url` entry installed v0.3.20 at its tagged commit.
 
 **Why v0.3.13 and not v0.3.12.** 0.3.12 has no plugin files: no
 `.claude-plugin/plugin.json`, no `hooks/hooks.json`, no launcher. The pin names the
@@ -272,7 +281,7 @@ at. Then it:
 
 1. snapshots the working tree into a git repository and validates it
    (`claude plugin validate`);
-2. reads the pin from the repository's `marketplace.json` (GitHub at a release tag),
+2. reads the pin from the repository's `marketplace.json` (our GitHub URL at a release tag),
    tags the snapshot with it inside its own throwaway clone, and adds one commit past
    the tag;
 3. adds the repository's own `marketplace.json` from its path;
@@ -354,8 +363,8 @@ still loads, and `/plugin` notes the missing packages. Then, measured by the loo
   `[install] auto = "disable"`, so nothing is fetched. It sets no registry or other package
   source. npm installs are unaffected, since their `node_modules` exists.
 
-To serve installs from the bundle repository, the marketplace entry's `repo` becomes
-`mlapeter/counterparts-plugin`, with the same `ref` (`v<version>`, tagged there). Nothing
+To serve installs from the bundle repository, the marketplace entry's `url` becomes
+`https://github.com/mlapeter/counterparts-plugin.git`, with the same `ref` (`v<version>`, tagged there). Nothing
 else in the entry changes, and the marketplace keeps its name, so the plugin's data
 directory (`counterparts-counterparts`) stays where it is.
 

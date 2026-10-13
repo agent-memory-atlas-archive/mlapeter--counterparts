@@ -199,16 +199,23 @@ describe("the plugin's files", () => {
     expect(entry.version).toBeUndefined();
     const source = entry.source as Record<string, unknown>;
     expect(typeof source).toBe("object");
-    expect(source["source"]).toBe("github");
+    // A git URL over HTTPS, not a `github` source: Claude Code clones a
+    // `github` source over SSH, which fails for anyone without a GitHub SSH key
+    // ("Permission denied (publickey)", 2026-10-13). Anthropic's own marketplace
+    // uses `url` sources too.
+    expect(source["source"]).toBe("url");
     // This repository, or the generated bundle's own repository
     // (tools/plugin-bundle/build.ts; docs/plugin.md, "The bundle"), tagged
     // with the same release.
-    expect(["mlapeter/counterparts", "mlapeter/counterparts-plugin"]).toContain(String(source["repo"]));
+    expect([
+      "https://github.com/mlapeter/counterparts.git",
+      "https://github.com/mlapeter/counterparts-plugin.git",
+    ]).toContain(String(source["url"]));
     const ref = String(source["ref"] ?? "");
     // A tag shaped like a release: not main, master, HEAD, refs/…, or a sha.
     expect(ref).toMatch(/^v\d+\.\d+\.\d+$/);
     if (source["sha"] !== undefined) expect(String(source["sha"])).toMatch(/^[0-9a-f]{40}$/);
-    expect(Object.keys(source).sort()).toEqual(source["sha"] === undefined ? ["ref", "repo", "source"] : ["ref", "repo", "sha", "source"]);
+    expect(Object.keys(source).sort()).toEqual(source["sha"] === undefined ? ["ref", "source", "url"] : ["ref", "sha", "source", "url"]);
 
     const semver = (v: string): number[] => v.replace(/^v/, "").split(".").map(Number);
     const below = (a: string, b: string): boolean => {
