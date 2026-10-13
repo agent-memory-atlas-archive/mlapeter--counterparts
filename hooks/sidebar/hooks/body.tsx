@@ -36,8 +36,14 @@ const Body: ClientModule<BodyProps, never> = (props, surface: ClientSurface<neve
         ) : (
           <Box key={`l${String(y)}`} flexDirection="row">
             {l.segs.map((s, i) =>
-              props.prose === true && RULE.test(s.t) ? (
+              props.prose === true && (s.grow === true || RULE.test(s.t)) ? (
                 <Box key={String(i)} flexGrow={1} />
+              ) : props.prose === true && s.fill !== undefined ? (
+                <Box key={String(i)} width={s.fill} height={1} backgroundColor={s.c} />
+              ) : props.prose === true && s.cw !== undefined ? (
+                <Box key={String(i)} width={s.cw}>
+                  <Text color={s.c} {...(s.b === true ? { bold: true } : {})}>{s.t}</Text>
+                </Box>
               ) : (
                 <Text key={String(i)} color={s.c} {...(s.b === true ? { bold: true } : {})} {...(s.i === true ? { italic: true } : {})}>
                   {props.prose === true && i > 0 && RULE.test(l.segs[i - 1]?.t ?? '') ? s.t.replace(/^ /, '') : s.t}

@@ -416,8 +416,14 @@ export function parseRecallBlock(text: string): RecallBlock | null {
     const item = line.slice(2).trim();
     if (lane === 'surfaced') surfaced.push(item);
     else if (lane === 'footnote') {
-      const m = /^(.*?)\s*\[([A-Za-z]+_[A-Za-z0-9]+)\]\s*(.*)$/.exec(item);
-      footnotes.push(m === null ? { title: item, id: null } : { title: `${m[1] ?? ''}${m[3] ? ` ${m[3]}` : ''}`.trim(), id: m[2] ?? null });
+      // A footnote can lead with what it is to another memory ("Earlier (now [id]): ", "Unsettled — may be out of
+      // date, see [id]: ") and trail one ("(earlier: [id])", "(corrects [id])"): the title is what's between,
+      // the id the first one after the lead (the sidebar showed "Earlier (now ): … [mem_…]", 2026-10-13).
+      const lead = /^(Earlier|Unsettled)\b[^:]*?\[[A-Za-z]+_[A-Za-z0-9]+\][^:]*:\s*/.exec(item);
+      const rest = lead === null ? item : item.slice(lead[0].length);
+      const m = /^(.*?)\s*\[([A-Za-z]+_[A-Za-z0-9]+)\]/.exec(rest);
+      const label = lead === null ? '' : lead[1] === 'Earlier' ? 'Earlier: ' : 'Unsettled: ';
+      footnotes.push(m === null ? { title: `${label}${rest}`.trim(), id: null } : { title: `${label}${m[1] ?? ''}`.trim(), id: m[2] ?? null });
     }
   }
   const turn = Number(open[1]);

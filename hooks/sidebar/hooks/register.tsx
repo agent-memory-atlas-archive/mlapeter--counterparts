@@ -1969,7 +1969,8 @@ export const register: Register = on => {
         </Box>,
         <Text key="head-gap"> </Text>,
       )
-      used += 1 + (tier === 'svg' ? 15 : stageRows(tier)) + 3
+      // The desktop's Svg is 180 px tall, about ten of its text rows (measured 2026-10-13), not the cells' fifteen.
+      used += 1 + (tier === 'svg' ? (SURFACE.prose ? 10 : 15) : stageRows(tier)) + 3
       if (!holding) startStage($)
     } else if (mode === 'fox' && !hasRaster) {
       rows.push(...brainlessHeader(paneEls, actions, { w, paused, lit, day, count: countText }))
@@ -2002,7 +2003,10 @@ export const register: Register = on => {
     // The rule, the Counterparts switch, the view, the brain.
     const footRows = 4
     const bodyRows = Math.max(4, fill - used - above.length - footRows)
-    const { lines } = layoutBody({ w, rows: bodyRows, now, mind, saved, today, dream: dreamNow, open, mech, focus, dash, search })
+    // The desktop sets the body in its own font, about a fifth narrower than the cells the pane is measured in:
+    // wrap to that, and a blank row between items there (2026-10-13, Mike: "hard to read").
+    const bodyW = SURFACE.prose ? Math.floor(w * 1.2) : w
+    const { lines } = layoutBody({ w: bodyW, rows: bodyRows, now, mind, saved, today, dream: dreamNow, open, mech, focus, dash, search, prose: SURFACE.prose })
     // The Client tag stays here: the engine reads a hooks module's surface modules off its own source.
     rows.push(Client !== null ? <Client key="body" module="./body.tsx" width={w} props={{ lines, prose: SURFACE.prose } satisfies BodyProps} /> : plainBody(paneEls, lines))
     rows.push(<Box key="spacer" flexGrow={1} />)
