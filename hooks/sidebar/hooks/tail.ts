@@ -34,6 +34,21 @@ export const CLASSIC_HINT = '/tui fullscreen shows the memory sidebar'
 /** The classic hint on a row too narrow for the whole of it (80 columns leaves about 33 cells). */
 export const CLASSIC_HINT_SHORT = '/tui fullscreen'
 
+/**
+ * What the tail says where the screen docks a pane but the window is too
+ * narrow to place the sidebar (Mike, 2026-10-13: a plain hint to widen, not
+ * `/counterparts`, which can't open it there either).
+ */
+export const NARROW_HINT = 'widen this window to see the memory sidebar'
+
+/** The narrow hint on a row too short for the whole of it. */
+export const NARROW_HINT_SHORT = 'widen to see the sidebar'
+
+/** The narrow-window hint for a tail of `room` cells (null: the surface gave no width). */
+export function narrowHint(room: number | null): string {
+  return room !== null && cells(NARROW_HINT) > room ? NARROW_HINT_SHORT : NARROW_HINT
+}
+
 /** `text` cut at a word, with an ellipsis, to at most `w` cells; whole when it fits; null when under a few words' room. */
 export function clipWords(text: string, w: number): string | null {
   if (cells(text) <= w) return text

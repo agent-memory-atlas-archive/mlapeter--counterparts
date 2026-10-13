@@ -57,7 +57,7 @@ paused here; `/counterparts fps [n]` reports the brain's rate (or sets its
 target). `caps` is gone: the footer's switches are dots, with no ends to draw.
 
 **Check it:** `sh hooks/sidebar/check.sh`, which runs validate on both manifests,
-`claude plugin test hooks/sidebar` (211 tests, terminal and desktop) and
+`claude plugin test hooks/sidebar` (214 tests, terminal and desktop) and
 `tsc -p hooks/sidebar`, all with a throwaway HOME. **See it:**
 `tools/term-loop/` (its README), at `--size 200x60` and `--size 160x48`. A
 term-loop session sends no message, so nothing comes to mind and nothing is
@@ -86,6 +86,97 @@ The mod now only observes Claude's context and tool calls.
 - `tools/term-loop` no longer clicks the switch to put that preference back
   (`claudeMemory` left `PREF_KEYS`; the put-back is the mod's commands only).
 - The sections below that describe the switch are history.
+
+## Fox polish (2026-10-13, for 0.3.21)
+
+Mike's picks from art round 8 (`~/counterparts-notes/mockups/2026-10-13-fox-r8/`,
+its NOTES.md and lab), 2026-10-13. His guiding note: more movement, but
+subtle, so he looks alive without pulling the eye.
+
+- **Perk is round 8's variant A** (replaces round 7's): one ear up, the other
+  eye taller under a raised brow, a small "hm!" mouth; the sparkle stays. It
+  is derived from idle, so only the head changes (108 PNG art pixels, 21
+  sextant cells).
+- **The tail tip flicks** (`tailSmall`: the white tip leans 1 then 2 px).
+  Slower than the lab (360/520/360 ms, about 1.2 s, against the lab's
+  220/320/220), so it reads as unhurried. It is also the first thing he
+  does: the first hold after the fox appears is 2–4 s, then the flick
+  (`schedule.first`, `firstMs`).
+- **The whole tail stays, rarer** (weight 0.5 against the tip's 3).
+- **Lick is not shipped** (its frames and moment left out; Mike: skip for now).
+- **He lies down** (round 8's "loaf") after 45 s with nothing happening
+  (`lieAfterMs`), has small moments lying (`lieWeights`: a blink, the ear, a
+  glance, a breath), and naps at 2 min (`napAfterMs`, was 3 min), curling up
+  from lying (`lieNapIn`). `fox.ts` has a third mode, `lie`. Any real event
+  gets him up: a prompt (`lieOut`: the lying blink, the sitting blink,
+  idle), a save, the meeting, a dream (straight to the curl, `lieNapIn`).
+  Something coming to mind while he lies perks him up lying down
+  (`cameLie`, the sparkle at `sparkLie`), then he sits up; that is the
+  lab's choice, kept.
+- **Frequent small moments**: holds of 4–9 s (were 8–20). Weights: blink 4,
+  tail tip 3, ear 2, glance 2, tail 0.5, yawn 0.3. The hold is still one
+  still frame, sitting or lying (the round-2 rule: calmer).
+- **The ear twitches once, and no longer flickers.** Round 7's `ear` frame
+  was a separate drawing of the whole fox: switching to it re-drew the body's
+  dithering everywhere (1,174 PNG art pixels; 116 of the sextant tier's
+  cells, every row), twice in 520 ms. That was the flicker. The new `ear` is
+  idle with only the right ear moved (round 8's own ear-lift, the other way:
+  2 px shorter, its tip 3 px out): 88 art pixels, 15 sextant cells in the top
+  three rows. The half-block ear was already local and is unchanged.
+  `lieEar` is the same ear on the loaf. One frame, 280 ms.
+
+**How the art changed.** `fox-art.ts` is no longer a verbatim copy of an art
+module: it is round 7's with round 8's frames merged in (`new-frames.ts`:
+perk, tailSmall0/1, the seven lie frames, `sparkLie`), the new ear, and the
+moments and schedule above. The new ear's grids came from round 8's pipeline
+(`src/lib.ts`, `maj2.ts`, the `tiers.ts` steps; the pipeline reproduces the
+shipped idle and round 8's lie0 cells exactly). The PNG export folder is
+round 7's plus round 8's PNGs plus the new ear and lieEar.
+
+**Smoothness, checked pair by pair** (what can run back to back; numbers
+are PNG art pixels / sextant cells that change):
+
+- Holds to moments and back: every sitting moment starts from and ends on
+  idle-faced frames (tip flick 34 / 7, ear 88 / 15, blink and glance local in
+  sextant and half). Lying, the same from lie0 (lieBlink 17 cells, lieEar
+  16, liePerk 20).
+- Sit to lie (`lieIn`: blink, lieBlink, lie0) and lie to nap (`lieNapIn`:
+  lieBlink 1.4 s, nap0): the pose changes only between two shut-eyed frames.
+  Up from lying (`lieOut`: lieBlink, blink, idle): the same, the other way.
+  Nap to sitting (`napOut`: nap0, stretch, blink, idle) is unchanged.
+- A mode change never starts from a moment's last frame: a moment that would
+  run past the 45 s or 2 min mark is not started; the still holds until the
+  mark (`holdThen`).
+- Perk in and out: perk is idle plus the ear, eye, brow and mouth, so in and
+  out are a cut of the head only; `cameLie` the same on the loaf.
+- Events mid-moment: an event used to cut straight from whatever was on
+  screen. Now (`getUp`) from the nap it plays the stretch, from lying
+  `lieOut`, and from a sitting moment's frame (a glance, the tail, the
+  notepad) one 160 ms blink (`bridge`) back to the sitting face first.
+- One wake per change: a moment that ends on the frame the next hold shows
+  (`came`'s idle, `lieIn`'s lie0) used to cost a second wake; `advance` now
+  plans ahead and joins them, and the hold's time is counted from when the
+  frame really changed.
+
+**Known, not fixed here** (live-check items):
+- At the PNG tier (Ghostty, kitty, the desktop's picture), round 7's
+  blink, drowsy, lookL/R, breathe, note and hello frames are each a separate
+  drawing of the whole fox, so the body's dithering shimmers on each of them
+  (about 1,000 art pixels). Sextant and half-block draw those locally. The
+  same fix as the ear (derive from idle) would cure them; not done.
+- tail1/tail2 shimmer in the sextant tier too (113 / 130 cells): they are
+  rare now.
+- The sextant `note0..2` frames name palette index 19 (`j`), one past the
+  palette's end, so those cells draw transparent. That is round 7's, from
+  before this change.
+
+**The hint for a narrow window.** Where the screen docks a pane but the
+window is too narrow to place the sidebar, the tail under the prompt said
+`/counterparts opens the sidebar`, which can't open it there either. It now
+says `widen this window to see the memory sidebar` (`NARROW_HINT`), or
+`widen to see the sidebar` on a row too short for that (`narrowHint`, the
+same room as the quiet tail's). The classic screen's `/tui fullscreen…` hint
+is unchanged.
 
 ## The fox (2026-10-12, for 0.3.20)
 

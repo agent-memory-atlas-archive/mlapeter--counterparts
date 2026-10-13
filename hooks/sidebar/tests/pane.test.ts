@@ -166,11 +166,15 @@ for (const [n, said] of [
   })
 }
 
-test('a docking terminal too narrow for an unasked pane: the dim tail under the prompt names /counterparts until the pane draws; no status line', async ($, on) => {
+test('a docking terminal too narrow for an unasked pane: the dim tail under the prompt says to widen the window until the pane draws (shorter on a short row); no status line', async ($, on) => {
   const w = world(on, { placed: false })
   await start($, w)
   await band($, w, true)
-  expect(await tail($, w)).toBe('/counterparts opens the sidebar')
+  expect(await tail($, w)).toBe('widen this window to see the memory sidebar')
+  const narrow = await $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'PromptHint', props: HINT_PROPS as never, viewport: { ...VIEWPORT, columns: 80 } })
+  await settle(w)
+  await narrow.unmount()
+  expect(w.tails.at(-1)).toBe('widen to see the sidebar')
   expect(w.lastStatus()).toBe('')
   const ui = await mount($, w, 'terminal')
   await ui.unmount()
@@ -2035,14 +2039,17 @@ test('a terminal that turns out to draw an Image’s alt: two refused picture bl
   await ui.unmount()
 })
 
-test('the fox is still for long holds: one blit per change of what is on screen, none between; a save writes on the notepad at once', async ($, on) => {
+test('the fox is still for long holds: the tail tip flicks within seconds, then one blit per change of what is on screen, none between; a save writes on the notepad at once', async ($, on) => {
   const w = world(on, FOX)
   on('tool.call', () => ({ result: 'ok', text: '{"stored":true,"id":"mem_f0000001"}' }))
   await start($, w)
   const ui = await mount($, w, 'terminal')
-  await w.clock.advance(7000)
-  expect(stageBlits(w)).toHaveLength(0) // a hold is at least 8 s
-  await w.clock.advance(60000)
+  await w.clock.advance(1500)
+  expect(stageBlits(w)).toHaveLength(0) // the first hold is at least 2 s
+  await w.clock.advance(3000)
+  const flick = ['tailSmall0', 'tailSmall1'].map(frame => halfCells({ frame, fx: [] }))
+  expect(stageBlits(w).some(b => 'cells' in b && flick.includes(b.cells))).toBe(true)
+  await w.clock.advance(40000)
   const n = stageBlits(w).length
   expect(n).toBeGreaterThan(0)
   expect(n).toBeLessThan(40) // a few moments a minute, never a running loop

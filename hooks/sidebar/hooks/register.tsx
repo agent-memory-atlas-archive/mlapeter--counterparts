@@ -160,7 +160,7 @@ import {
   run,
   searchFlag,
 } from './state'
-import { CLASSIC_HINT, TAIL_HINT, TAIL_SPARE, quietTail } from './tail'
+import { CLASSIC_HINT, TAIL_HINT, TAIL_SPARE, narrowHint, quietTail } from './tail'
 import { BRAIN_ROWS, brain, brainHeader, fireBrain, fps, fpsReport, frameCells, look, lookKey, paceMs, raster } from './terminal'
 import { P, applyTheme, normTheme } from './theme'
 import { cells } from './width'
@@ -1861,13 +1861,13 @@ export const register: Register = on => {
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
     const [view, placed, latest, scope] = await Promise.all([read($, viewA), read($, placedA), read($, latestA), read($, scopeA)])
     if ((normView(view) === 'sidebar' && placed) || isPaused(scope.mode)) return next(e)
-    if (latest === null && normView(view) === 'sidebar') {
-      // an unasked pane this surface could not place yet: say how to open it, until it draws
-      return run.hint ? next({ ...e, props: { ...e.props, tail: '/counterparts opens the sidebar' } }) : next(e)
-    }
     const cols = e.viewport?.columns
     // The engine's line is wider than its `hint` prop, and it cuts the tail short of the row's end (TAIL_SPARE).
     const room = typeof cols === 'number' ? cols - cells(e.props.hint) - TAIL_SPARE : null
+    if (latest === null && normView(view) === 'sidebar') {
+      // an unasked pane this surface could not place (the window too narrow to dock it): say to widen it, until it draws
+      return run.hint ? next({ ...e, props: { ...e.props, tail: narrowHint(room) } }) : next(e)
+    }
     // Fullscreen docks the pane (and opens it); the classic screen cannot, so the hint there points at /tui fullscreen.
     const docks = e.viewport?.isFullscreen ?? run.docks
     const tail = quietTail(latest?.text ?? null, room, await $.clock.now(), latest?.body, docks === false ? CLASSIC_HINT : TAIL_HINT)
