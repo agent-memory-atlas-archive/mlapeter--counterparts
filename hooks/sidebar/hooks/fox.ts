@@ -501,7 +501,7 @@ export const TEXT_256: Readonly<Record<string, string>> = {
   '#ccbb99': '#d7af87', // shaded cream
   '#eeddbb': '#ffd7af', // cream
   '#eeddcc': '#ffd7af', // cream chest
-  '#ffbb44': '#ffaf00', // gold: the eyes, the notepad
+  '#ffbb44': '#ffaf00', // gold: the pencil
   '#ee8888': '#ffaf87', // pink: nose, tongue, inner ear
   '#775533': '#875f00', // grey-brown (else olive)
   '#99bbee': '#87afd7', // the z

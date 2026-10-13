@@ -160,7 +160,7 @@ import {
   run,
   searchFlag,
 } from './state'
-import { CLASSIC_HINT, TAIL_HINT, TAIL_SPARE, narrowHint, quietTail } from './tail'
+import { CLASSIC_HINT, NARROW_HINT, TAIL_HINT, TAIL_SPARE, narrowHint, quietTail } from './tail'
 import { BRAIN_ROWS, brain, brainHeader, fireBrain, fps, fpsReport, frameCells, look, lookKey, paceMs, raster } from './terminal'
 import { P, applyTheme, normTheme } from './theme'
 import { cells } from './width'
@@ -1869,8 +1869,10 @@ export const register: Register = on => {
       return run.hint ? next({ ...e, props: { ...e.props, tail: narrowHint(room) } }) : next(e)
     }
     // Fullscreen docks the pane (and opens it); the classic screen cannot, so the hint there points at /tui fullscreen.
+    // A window still too narrow to place the asked-for pane keeps saying to widen it after something new.
     const docks = e.viewport?.isFullscreen ?? run.docks
-    const tail = quietTail(latest?.text ?? null, room, await $.clock.now(), latest?.body, docks === false ? CLASSIC_HINT : TAIL_HINT)
+    const wanted = run.hint && normView(view) === 'sidebar' ? NARROW_HINT : docks === false ? CLASSIC_HINT : TAIL_HINT
+    const tail = quietTail(latest?.text ?? null, room, await $.clock.now(), latest?.body, wanted)
     return next({ ...e, props: { ...e.props, tail } })
   }).catch(($, e, next) => next(e))
 

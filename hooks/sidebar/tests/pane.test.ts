@@ -168,6 +168,7 @@ for (const [n, said] of [
 
 test('a docking terminal too narrow for an unasked pane: the dim tail under the prompt says to widen the window until the pane draws (shorter on a short row); no status line', async ($, on) => {
   const w = world(on, { placed: false })
+  on('tool.call', () => ({ result: 'ok', text: '{"stored":true,"id":"mem_narrow01"}' }))
   await start($, w)
   await band($, w, true)
   expect(await tail($, w)).toBe('widen this window to see the memory sidebar')
@@ -175,6 +176,10 @@ test('a docking terminal too narrow for an unasked pane: the dim tail under the 
   await settle(w)
   await narrow.unmount()
   expect(w.tails.at(-1)).toBe('widen to see the sidebar')
+  // something new while the window is still too narrow: the hint after it still says to widen, not /counterparts
+  await $.tool.call({ tool: 'mcp__counterparts__note', title: 'Narrow', text: 'x' } as never)
+  await settle(w)
+  expect(await tail($, w)).toMatch(/^Stored “Narrow”.* · widen this window to see the memory sidebar$/)
   expect(w.lastStatus()).toBe('')
   const ui = await mount($, w, 'terminal')
   await ui.unmount()
