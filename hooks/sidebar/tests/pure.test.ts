@@ -929,8 +929,15 @@ describe('the fox', () => {
       if (!pass.has(h)) expect(TEXT_256[h]).toBeDefined()
     }
     const used = new Set(fineCells({ frame: 'idle', fx: [] }).flat().flatMap(c => [c.fg, c.bg]))
-    expect(used.has('#aa7766')).toBe(false)
-    expect(used.has(textHex('#a76'))).toBe(true)
+    expect(used.has('#a42')).toBe(false)
+    expect(used.has(textHex('#a42'))).toBe(true) // the fur: the palette is read from 1 ('1' the outline)
+    // every cell's colour is in the palette (the notepad's 'j' is its last colour, not past its end)
+    const P = FOX_FINAL.sextant.palette.length
+    for (const f of Object.values(FOX_FINAL.sextant.frames) as unknown as { fg: readonly string[]; bg: readonly string[] }[]) {
+      for (const ch of [...f.fg, ...f.bg].join('')) if (ch !== '.') expect(parseInt(ch, 36)).toBeLessThanOrEqual(P)
+    }
+    const pad = new Set(fineCells({ frame: 'note0', fx: [] }).flat().flatMap(c => [c.fg, c.bg]))
+    expect(pad.has(textHex('#753'))).toBe(true)
   })
 
   test('sextants: every pattern has its glyph and back; the four that are not sextants are the space and the block glyphs', () => {

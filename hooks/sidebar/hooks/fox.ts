@@ -494,8 +494,8 @@ export const TEXT_256: Readonly<Record<string, string>> = {
   '#772222': '#5f0000', // shadow, red
   '#883322': '#af5f00', // fur, dark
   '#995544': '#af5f00', // fur, shaded
-  '#aa4422': '#d75f00', // fur, bright
-  '#aa7766': '#d7875f', // fur: most of the fox
+  '#aa4422': '#d75f00', // fur: most of the fox
+  '#aa7766': '#d7875f', // fur, muted
   '#bb4422': '#d75f00', // fur, bright
   '#cc9988': '#d7af87', // light fur
   '#ccbb99': '#d7af87', // shaded cream
@@ -534,7 +534,10 @@ export function fineCells(step: Pick<Step, 'frame' | 'fx'>, cols = STAGE_COLS): 
   const frames = S.frames as unknown as Readonly<Record<string, { glyphs: readonly string[]; fg: readonly string[]; bg: readonly string[] }>>
   const f = frames[step.frame] ?? frames['idle']
   const pal = S.palette as readonly string[]
-  const colour = (ch: string | undefined): string | null => (ch === undefined || ch === '.' ? null : (pal[parseInt(ch, 36)] ?? null))
+  // The cells name the art's palette from 1 ('1' is the outline, `#000`; 'j', 19, the last). Read from 0
+  // until 2026-10-13, every sextant colour was the next one along (the fur drew #a76, not #a42) and the
+  // notepad's 'j' fell off the end and drew nothing.
+  const colour = (ch: string | undefined): string | null => (ch === undefined || ch === '.' ? null : (pal[parseInt(ch, 36) - 1] ?? null))
   f?.glyphs.forEach((line, r) => {
     const glyphs = [...line]
     const fgs = [...(f.fg[r] ?? '')]

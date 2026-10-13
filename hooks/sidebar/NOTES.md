@@ -131,7 +131,7 @@ perk, tailSmall0/1, the seven lie frames, `sparkLie`), the new ear, and the
 moments and schedule above. The new ear's grids came from round 8's pipeline
 (`src/lib.ts`, `maj2.ts`, the `tiers.ts` steps; the pipeline reproduces the
 shipped idle and round 8's lie0 cells exactly). The PNG export folder is
-round 7's plus round 8's PNGs plus the new ear and lieEar.
+round 7's plus round 8's PNGs plus the re-derived frames below (ear, lieEar, blink, drowsy, looks, breathe, note1/2, tail1/2 and their lying versions).
 
 **Smoothness, checked pair by pair** (what can run back to back; numbers
 are PNG art pixels / sextant cells that change):
@@ -162,17 +162,43 @@ are PNG art pixels / sextant cells that change):
 - The early flick is once per module life (the first drawing of the fox in a
   session), not at every reopening of the pane.
 
-**Known, not fixed here** (live-check items):
-- At the PNG tier (Ghostty, kitty, the desktop's picture), round 7's
-  blink, drowsy, lookL/R, breathe, note and hello frames are each a separate
-  drawing of the whole fox, so the body's dithering shimmers on each of them
-  (about 1,000 art pixels). Sextant and half-block draw those locally. The
-  same fix as the ear (derive from idle) would cure them; not done.
-- tail1/tail2 shimmer in the sextant tier too (113 / 130 cells): they are
-  rare now.
-- The sextant `note0..2` frames name palette index 19 (`j`), one past the
-  palette's end, so those cells draw transparent. That is round 7's, from
-  before this change.
+**No more shimmer: the small moments re-derived** (second pass, same day, at
+the coordinator's ask: the desktop draws the picture tier). Round 7's frames
+were each a separate drawing of the whole fox, so at the PNG tier every
+moment re-drew the body's dithering. Each is now its base pose with only the
+moving part edited, so the body's pixels are identical from frame to frame
+(PNG art pixels that change, before → after):
+
+| frame | base | what changes | before | after |
+|---|---|---|---|---|
+| blink | idle | idle's eyes out, round 7's closed-eye strokes in | 1,059 | 36 |
+| drowsy | idle | the eyes' top two rows under a lid (no head dip any more, as the sextant and half tiers already drew it) | 2,653 | 16 |
+| lookL / lookR | idle | round 7's look eyes (with their whites) in idle's eye boxes | 970 / 910 | 64 / 60 |
+| breathe | idle | the head, rows 0–45 left of the tail, 1 px lower (the sextant tier's breathe) | 1,828 | 446 (the head itself moving) |
+| note1 / note2 | note0 | only the paws, pencil and pad (x 32–58, y 49–72) | 491 / 511 vs note0 | 115 / 103 |
+| tail1 / tail2 | idle | only the tail's area (right of the body, from row 30; the head's edge stays idle's) | 1,631 / 1,878 | 681 / 811 (the tail swinging) |
+| lieBlink, lieLookL/R, lieBreathe | lie0 | the loaf with the new heads | 547 / 534 / 1,327 | 36 / 64 / 444 |
+
+hello0 → hello1 was already local (75 pixels, the waving paw); idle → hello0,
+idle → note0, the stretch and the yawn are pose changes and stay cuts. The
+sextant tail1/tail2 are rebuilt the same way (idle's clean cells, plus the
+cells whose majority differs from idle's): 113 / 130 cells → 73 / 83, all in
+the tail's rows. The other sextant and half-block frames were already local
+and are unchanged. Sources (`derive.ts`, `tiers3.ts`) are in
+`~/counterparts-notes/mockups/2026-10-13-fox-r8/shipped/ear-src/`.
+
+**The sextant colours were read one off.** The sextant cells name the art's
+palette from 1 (`1` is the outline, `#000`; `j`, 19, the last), as round 7's
+and round 8's pipelines write them, but `fineCells` read it from 0: every
+sextant colour was the next one along (most of the fox drew `#a76`, a muted
+tan, instead of the rust `#a42`; the creams drew white; the notepad's `j`
+fell off the end and drew nothing). Now read from 1. That fixes the notepad,
+and the iTerm fox now has the same colours as the picture (through
+TEXT_256's picks: the fur lands on `#d75f00`). **This changes how the fox
+looks in iTerm, WezTerm and VS Code**: a stronger orange, a cream chest
+instead of white, dark grey feet and ear tips. Check it live; if the old,
+softer look is the one wanted, that is a TEXT_256 choice now, not an
+indexing accident.
 
 **The hint for a narrow window.** Where the screen docks a pane but the
 window is too narrow to place the sidebar, the tail under the prompt said
