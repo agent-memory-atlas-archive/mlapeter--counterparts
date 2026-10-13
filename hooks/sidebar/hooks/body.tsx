@@ -14,7 +14,10 @@ import type { ClientModule, ClientSurface } from 'claude-code'
 
 import type { Line } from './sections'
 
-export type BodyProps = { lines: Line[] }
+/** `prose`: the surface sets text in its own font (desktop): a heading's `─` rule becomes space that pushes the right part to the edge. */
+export type BodyProps = { lines: Line[]; prose?: boolean }
+
+const RULE = /^ ?─+$/
 
 const Body: ClientModule<BodyProps, never> = (props, surface: ClientSurface<never>) => {
   const { Box, Text } = surface.elements
@@ -32,11 +35,15 @@ const Body: ClientModule<BodyProps, never> = (props, surface: ClientSurface<neve
           <Text key={`l${String(y)}`}> </Text>
         ) : (
           <Box key={`l${String(y)}`} flexDirection="row">
-            {l.segs.map((s, i) => (
-              <Text key={String(i)} color={s.c} {...(s.b === true ? { bold: true } : {})} {...(s.i === true ? { italic: true } : {})}>
-                {s.t}
-              </Text>
-            ))}
+            {l.segs.map((s, i) =>
+              props.prose === true && RULE.test(s.t) ? (
+                <Box key={String(i)} flexGrow={1} />
+              ) : (
+                <Text key={String(i)} color={s.c} {...(s.b === true ? { bold: true } : {})} {...(s.i === true ? { italic: true } : {})}>
+                  {props.prose === true && i > 0 && RULE.test(l.segs[i - 1]?.t ?? '') ? s.t.replace(/^ /, '') : s.t}
+                </Text>
+              ),
+            )}
           </Box>
         ),
       )}

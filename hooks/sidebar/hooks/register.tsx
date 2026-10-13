@@ -162,7 +162,7 @@ import {
 } from './state'
 import { CLASSIC_HINT, TAIL_HINT, TAIL_SPARE, quietTail } from './tail'
 import { BRAIN_ROWS, brain, brainHeader, fireBrain, fps, fpsReport, frameCells, look, lookKey, paceMs, raster } from './terminal'
-import { P, applyTheme, normTheme } from './theme'
+import { P, SURFACE, applyTheme, normTheme } from './theme'
 import { cells } from './width'
 import {
   CONFIRM_FROM,
@@ -1899,7 +1899,7 @@ export const register: Register = on => {
     ])
     const [onboarding, theme] = await Promise.all([read($, onboardingA), read($, themeA)])
     // Every colour below (and in the body's lines) is read from the palette in use: this session's theme.
-    applyTheme(normTheme(theme))
+    applyTheme(normTheme(theme), e.surface)
     const paused = isPaused(scope.mode)
     const mode = normBrain(brainMode)
     look.mono = paused
@@ -1962,7 +1962,7 @@ export const register: Register = on => {
       stageTop = [...rows, ...(title === undefined ? [] : [title]), stageElement(els, tier, step)]
       rows.length = 0
       rows.push(
-        <Text key="stage-rule" color={P.faint}>{'─'.repeat(w)}</Text>,
+        SURFACE.prose ? <Text key="stage-rule"> </Text> : <Text key="stage-rule" color={P.faint}>{'─'.repeat(w)}</Text>,
         <Box key="head2" flexDirection="row" justifyContent="space-between" width={w}>
           {searchBox(paneEls, actions, searchFlag.on ? Math.max(14, w - cells(countText) - 1) : 1)}
           <Text color={P.dim}>{countText}</Text>
@@ -2004,7 +2004,7 @@ export const register: Register = on => {
     const bodyRows = Math.max(4, fill - used - above.length - footRows)
     const { lines } = layoutBody({ w, rows: bodyRows, now, mind, saved, today, dream: dreamNow, open, mech, focus, dash, search })
     // The Client tag stays here: the engine reads a hooks module's surface modules off its own source.
-    rows.push(Client !== null ? <Client key="body" module="./body.tsx" width={w} props={{ lines } satisfies BodyProps} /> : plainBody(paneEls, lines))
+    rows.push(Client !== null ? <Client key="body" module="./body.tsx" width={w} props={{ lines, prose: SURFACE.prose } satisfies BodyProps} /> : plainBody(paneEls, lines))
     rows.push(<Box key="spacer" flexGrow={1} />)
     rows.push(...above)
 

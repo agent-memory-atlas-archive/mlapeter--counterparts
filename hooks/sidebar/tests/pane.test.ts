@@ -36,6 +36,15 @@ import {
 import type { World, WorldOptions } from './world'
 
 const SURFACES = ['terminal', 'desktop'] as const
+/**
+ * The desktop sets text in its own font and colours by Claude Code's theme
+ * keys (theme.ts, `desk`, 2026-10-13): a heading's `─` rule is space there,
+ * and the accent is the theme's `suggestion`.
+ */
+const esc = (t: string): string => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const headRe = (surface: string, label: string, right: string): RegExp =>
+  new RegExp(surface === 'terminal' ? `^${esc(label)} ─+ ${esc(right)}$` : `^${esc(label)}${esc(right)}$`)
+const ACCENT = (surface: string): string => (surface === 'terminal' ? '#00e5ff' : 'suggestion')
 const HINT_PROPS = { isDraft: false, isWorking: false, hint: '? for shortcuts' }
 
 async function mount($: Engine, w: World, surface: (typeof SURFACES)[number], props = PANE_PROPS) {
@@ -236,9 +245,9 @@ test('Memories and Subconscious: what the recall block put in front of Claude, t
     const ui = await mount($, w, surface)
     await block($, w)
     const lines = await bodyLines(ui)
-    expect(lines[0]).toMatch(/^Memories ─+ 1:35$/)
+    expect(lines[0]).toMatch(headRe(surface, 'Memories', '1:35'))
     expect(lines[1]).toBe('The sidebar is 35 columns wide') // the title, not the gist Claude read
-    expect(lines).toContain('Subconscious ' + '─'.repeat(32 - 'Subconscious '.length))
+    expect(lines).toContain(surface === 'terminal' ? 'Subconscious ' + '─'.repeat(32 - 'Subconscious '.length) : 'Subconscious')
     expect(lines).toContain('Release notes go out on Fridays')
     expect(lines.join('\n')).not.toMatch(/[·•●]\s*Release/) // no dots or bullets on these
     await ui.unmount()
@@ -367,7 +376,7 @@ test('Mechanisms today: times each fired today, from the dashboard; a zero dim w
     const ui = await mount($, w, surface)
     let lines = await bodyLines(ui)
     const at = lines.findIndex(l => l.startsWith('Mechanisms today'))
-    expect(lines[at]).toMatch(/^Mechanisms today ─+ times fired$/)
+    expect(lines[at]).toMatch(headRe(surface, 'Mechanisms today', 'times fired'))
     expect(lines[at + 1]).toMatch(/^Salience {8}▄+▖?\s+3$/)
     expect(lines[at + 2]).toMatch(/^Emotion {9}\s+0$/) // no bar
     expect(lines[at + 5]).toMatch(/^Retrieval {7}▄{12}\s*12$/) // the longest bar
@@ -501,7 +510,7 @@ test('Last Dream: its first sentence, in its own voice; a click opens the dream 
     const ui = await mount($, w, surface)
     let lines = await bodyLines(ui)
     const at = lines.findIndex(l => l.startsWith('Last Dream'))
-    expect(lines[at]).toMatch(/^Last Dream ─+ 3:35$/)
+    expect(lines[at]).toMatch(headRe(surface, 'Last Dream', '3:35'))
     expect(lines.slice(at + 1, at + 3)).toEqual(['I dreamed the plugin and the', 'brain were one thing.'])
     await click(ui, 'I dreamed the plugin')
     lines = await bodyLines(ui)
@@ -1011,7 +1020,7 @@ test('search: Enter asks recall in facts mode; the results take the sections’ 
     await ui.input({ key: 'q', text: 'publish' })
     expect(w.mcp.filter(c => c.tool === 'recall').at(-1)).toEqual({ server: 'plugin_counterparts_counterparts', tool: 'recall', args: { question: 'publish', mode: 'facts' } })
     let lines = await bodyLines(ui)
-    expect(lines[0]).toMatch(/^“publish” ─+ 2 found ✕$/)
+    expect(lines[0]).toMatch(headRe(surface, '“publish”', '2 found ✕'))
     expect(lines.slice(1, 4)).toEqual(['Publishing waits for a test and', 'a review', 'memory · Oct 9 · you said it'])
     expect(lines.some(l => l.startsWith('Mechanisms today'))).toBe(false)
     await click(ui, 'Publishing waits')
@@ -1082,7 +1091,10 @@ async function cpText(ui: Ui): Promise<string> {
 /** The `on` position's dot is drawn lit (cyan) only for a folder known to be on. */
 async function cpLit(ui: Ui): Promise<boolean> {
   const b = await ui.find({ type: 'Button', key: 'cp-on' })
-  return (b?.children ?? []).some(c => typeof c === 'object' && c !== null && (c as { props: Record<string, unknown> }).props['color'] === '#00e5ff')
+  return (b?.children ?? []).some(c => {
+    const color = typeof c === 'object' && c !== null ? (c as { props: Record<string, unknown> }).props['color'] : undefined
+    return color === ACCENT('terminal') || color === ACCENT('desktop')
+  })
 }
 /** Calls that would change the folder (a read names no mode). */
 const writes = (w: World) => w.mcp.filter(c => c.tool === 'scope' && c.args['mode'] !== undefined)
@@ -1419,7 +1431,8 @@ function drawnNode(tree: unknown, key: string): Node | undefined {
 test('hovered, the Counterparts switch says what a click does, over the rows above the footer: drawn hidden, absolutely placed, so nothing moves', async ($, on) => {
   const w = world(on)
   await start($, w)
-  for (const surface of SURFACES) {
+  // terminal only: the desktop has no panel colour to hide the rows under the card (theme.ts, `desk`)
+  for (const surface of ['terminal'] as const) {
     const ui = await mount($, w, surface)
     const shown = await texts(ui)
     // the card's lines, wrapped to the pane: whole sentences in its two rows, nothing cut
@@ -1459,7 +1472,7 @@ for (const [name, opts, cp] of HOVER_CASES) {
 test('while the pause asks, no hover card covers its buttons (the pointer is still on the switch); cancelled, the card is back', async ($, on) => {
   const w = world(on)
   await start($, w)
-  for (const surface of SURFACES) {
+  for (const surface of ['terminal'] as const) {
     const ui = await mount($, w, surface)
     await ui.press({ key: 'cp-paused' })
     expect(await ui.find({ type: 'Button', key: 'confirm-pause' })).toBeDefined()
@@ -1797,7 +1810,7 @@ for (const meet of ['later', 'offered'] as const) {
     for (const surface of SURFACES) {
       const ui = await mount($, w, surface)
       expect((await meetRow(ui))?.text).toBe('Start the 5-minute intro')
-      expect((await ui.find({ type: 'Text', text: 'Start the 5-minute intro' }))?.props['color']).toBe('#00e5ff')
+      expect((await ui.find({ type: 'Text', text: 'Start the 5-minute intro' }))?.props['color']).toBe(ACCENT(surface))
       // at the top of the body: after the header, before the sections
       const keys = (((await ui.drawn()) as unknown as Node).children ?? []).map(c => (c as Node).props?.['key'])
       const head = Math.max(keys.indexOf('head'), keys.indexOf('head2'))
@@ -1903,7 +1916,7 @@ test('a queued speak-first is still dropped when a warm poll read the state offe
   await ui.unmount()
 })
 
-for (const surface of SURFACES) {
+for (const surface of ['terminal'] as const) {
   test(`the theme: tron by default; /counterparts theme cozy stores it and the pane draws warm: ${surface}`, async ($, on) => {
     const w = world(on)
     await start($, w)
@@ -1923,6 +1936,16 @@ for (const surface of SURFACES) {
     await ui.unmount()
   })
 }
+
+test('the desktop draws in the app theme, whatever the stored theme: no panel, no search shade, the accent its suggestion colour, no rule of dashes', async ($, on) => {
+  const w = world(on, { store: { theme: 'cozy' } })
+  await start($, w)
+  const ui = await mount($, w, 'desktop')
+  expect((await ui.find({ type: 'Text', text: 'COUNTERPARTS' }))?.props['color']).toBe('suggestion')
+  expect((await ui.find({ type: 'Box', key: 'search' }))?.props['backgroundColor']).toBeUndefined()
+  expect((await texts(ui)).includes('───')).toBe(false)
+  await ui.unmount()
+})
 
 for (const [stored, color] of [
   ['cozy', '#9cc65f'],
