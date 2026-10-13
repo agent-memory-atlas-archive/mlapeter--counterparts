@@ -161,7 +161,8 @@ import {
   searchFlag,
 } from './state'
 import { CLASSIC_HINT, TAIL_HINT, TAIL_SPARE, quietTail } from './tail'
-import { BRAIN_ROWS, brain, brainHeader, fireBrain, fps, fpsReport, frameCells, look, lookKey, paceMs, raster } from './terminal'
+import { cellsSvg } from './cells'
+import { BRAIN_COLS, BRAIN_ROWS, brain, brainHeader, fireBrain, fps, fpsReport, frameCells, look, lookKey, paceMs, raster } from './terminal'
 import { P, SURFACE, applyTheme, normTheme } from './theme'
 import { cells } from './width'
 import {
@@ -177,6 +178,8 @@ import {
   scopeOf,
   statusFor,
   stoodDownNote,
+  failedPressNote,
+  isRefusal,
   storedWords,
   switchExplains,
   truthy,
@@ -1214,10 +1217,10 @@ async function setScope($: EngineInterface, to: 'pause' | 'resume' | 'off' | 'on
     const { payload, isError } = await callMemory($, 'scope', { mode: to })
     const now = scopeOf(payload, isError, scope)
     await update($, scopeA, () => now)
-    await noteSwitch($, now.error === null ? null : payload?.['stoodDown'] === true ? stoodDownNote(scope, to) : `The memory server said: ${now.error}`)
+    await noteSwitch($, now.error === null ? null : payload?.['stoodDown'] === true ? stoodDownNote(scope, to) : isRefusal(now.error) ? failedPressNote(to, now.error) : `The memory server said: ${now.error}`)
   } catch (err) {
     await update($, scopeA, () => ({ ...scope, busy: false }))
-    await noteSwitch($, err instanceof Error ? err.message : String(err))
+    await noteSwitch($, failedPressNote(to, err))
   }
   look.mono = isPaused((await read($, scopeA)).mode)
   await refreshStatus($)
@@ -1235,15 +1238,20 @@ async function runSearch($: EngineInterface, raw: string): Promise<void> {
     const { payload, isError } = await callMemory($, 'recall', { question: query, mode: 'facts' })
     const answer = payload?.['answer']
     if (isError || typeof answer !== 'string') {
-      const why = String(payload?.['detail'] ?? payload?.['reason'] ?? 'the search was refused')
+      const why = searchWhy(String(payload?.['detail'] ?? payload?.['reason'] ?? 'the search was refused'))
       await update($, searchA, () => ({ ...IDLE_SEARCH, query, status: 'error' as const, error: why }))
       return
     }
     const { header, total, hits } = parseFacts(answer)
     await update($, searchA, () => ({ query, status: 'done' as const, header, total, hits: hits.slice(0, 12), error: null }))
   } catch (err) {
-    await update($, searchA, () => ({ ...IDLE_SEARCH, query, status: 'error' as const, error: err instanceof Error ? err.message : String(err) }))
+    await update($, searchA, () => ({ ...IDLE_SEARCH, query, status: 'error' as const, error: searchWhy(err) }))
   }
+}
+
+/** A failed search in plain words: the engine's refusal text is never shown. */
+function searchWhy(err: unknown): string {
+  return isRefusal(err) ? "Auto mode didn't let the search run. Ask Claude to look it up." : 'The search failed. Try again.'
 }
 
 // ── views and the brain's mode ─────────────────────────────────────────────
@@ -1986,6 +1994,13 @@ export const register: Register = on => {
     } else if (mode === 'fox' && !hasRaster) {
       rows.push(...brainlessHeader(paneEls, actions, { w, paused, lit, day, count: countText }))
       used += searchFlag.on ? 3 : 2
+    } else if (SURFACE.prose && mode !== 'off' && 'Svg' in els) {
+      // The desktop has no Raster: the brain at rest, one frame of the terminal's cells as an Svg under the title row.
+      const { Svg } = els
+      const [title] = brainlessHeader(paneEls, actions, { w, paused, lit, day, count: countText })
+      const img = cellsSvg(frameCells(BRAIN_COLS, BRAIN_ROWS, 0), BRAIN_COLS, BRAIN_ROWS)
+      rows.push(...(title === undefined ? [] : [title]), <Svg key="brain" source={img.source} alt="a small brain" width={img.width} height={img.height} />, ...(searchFlag.on ? [<Box key="head2" flexDirection="row" width={w}>{searchBox(paneEls, actions, w)}</Box>] : []), <Text key="head-gap"> </Text>)
+      used += 1 + Math.ceil(BRAIN_ROWS * 0.9) + 1 + (searchFlag.on ? 1 : 0)
     } else if (hasRaster) {
       const { Raster } = $.ui.resolve(e)
       rows.push(...brainHeader(paneEls, Raster, actions, { w, paused, day, count: countText }))

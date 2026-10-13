@@ -168,7 +168,8 @@ export type WorldOptions = {
    * on every other write; a read still answers.
    */
   scopeWritesStandDown?: boolean;
-  /** Paths that are symlinks, to what they resolve to (`$.fs.stat` with `resolve`); every other path is itself. */
+  /** The engine refuses a scope write the way the auto-mode classifier does (a press is not a request). */
+  scopeWritesRefused?: boolean;  /** Paths that are symlinks, to what they resolve to (`$.fs.stat` with `resolve`); every other path is itself. */
   links?: Record<string, string>;
   /** The scope registry file is there but `$.fs` refuses to read it. */
   scopesUnreadable?: boolean;
@@ -422,6 +423,9 @@ export function world(on: On, opts: WorldOptions = {}): World {
       if (mode === undefined) {
         if (opts.scopeReadMs !== undefined) await clock.sleep(opts.scopeReadMs)
         return text({ scope: HERE, mode: w.scope.mode, stance: w.scope.mode, ...(w.scope.setBy === null ? {} : { setBy: w.scope.setBy }) })
+      }
+      if (opts.scopeWritesRefused === true) {
+        return { deny: 'The server-side auto mode classifier gave no verdict for mcp__counterparts__scope: the request that produced this action did not ask for one.' }
       }
       if (opts.scopeWritesStandDown === true) {
         return text({ stoodDown: true, tool: 'scope', stance: 'observer', reason: 'This session is an observer: it reads the store as an instrument and changes nothing in it. The tool did not run.' }, true)

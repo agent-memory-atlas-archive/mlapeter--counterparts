@@ -1516,6 +1516,53 @@ test('pausing asks first: Cancel calls nothing, and an unanswered ask closes by 
   }
 })
 
+test('a pane press the auto-mode classifier refuses: a short plain note worded to the press, never the engine text; the scope unchanged, no stuck `…`; the note clears by itself', async ($, on) => {
+  const w = world(on, { scopeWritesRefused: true })
+  await start($, w)
+  for (const surface of SURFACES) {
+    const ui = await mount($, w, surface)
+    await ui.press({ key: 'cp-paused' })
+    await ui.press({ key: 'confirm-pause' })
+    await settle(w)
+    const shown = (await texts(ui)).replace(/\s+/g, ' ')
+    expect(shown).toContain('Auto mode didn\'t let the switch change this. Ask Claude: "pause Counterparts here"')
+    expect(shown).not.toMatch(/classifier|\$\.mcp\.call|verdict/)
+    expect(await cpText(ui)).toBe('● on ○ paused ○ off') // unchanged, no busy dots
+    expect(w.scope.mode).toBe('on')
+    await w.clock.advance(31000)
+    expect((await texts(ui)).replace(/\s+/g, ' ')).not.toContain('Auto mode')
+    await ui.unmount()
+  }
+})
+
+test('the desktop has no Raster: a stored brain is drawn there as a still Svg of the terminal brain\'s cells, under the title row, and the avatar row keeps brain, animal and off', async ($, on) => {
+  const w = world(on, { store: { brain: 'turning' } })
+  await start($, w)
+  const desk = await mount($, w, 'desktop')
+  const svg = await desk.find({ type: 'Svg' })
+  expect(svg?.props['alt']).toBe('a small brain')
+  const src = String(svg?.props['source'])
+  expect(src).toContain('<circle') // braille dots
+  expect(src).not.toContain('data:image') // no picture, shapes
+  expect(src).toMatch(/fill="#[0-9a-f]{6}"/)
+  expect(await desk.find({ type: 'Raster' })).toBeUndefined()
+  expect((await desk.find({ type: 'Button', key: 'brain-turning' }))?.text).toBe('● brain')
+  expect((await desk.find({ type: 'Button', key: 'brain-fox' }))?.text).toBe('○ animal')
+  await desk.unmount()
+  expect(w.store['brain']).toBe('turning')
+}) 
+
+test('the desktop with the avatar off draws no brain and no fox; pressing animal there stores the fox', async ($, on) => {
+  const off = world(on, { store: { brain: 'off' } })
+  await start($, off)
+  const d2 = await mount($, off, 'desktop')
+  expect(await d2.find({ type: 'Svg' })).toBeUndefined()
+  expect((await d2.find({ type: 'Button', key: 'brain-off' }))?.text).toBe('● off')
+  await d2.press({ key: 'brain-fox' })
+  expect(off.store['brain']).toBe('fox')
+  await d2.unmount()
+})
+
 test('a paused folder says so in every view: the banner in the pane, the amber status line in the strip and quiet, no tail; /counterparts resume', async ($, on) => {
   const w = world(on, { scopeMode: 'paused' })
   await start($, w)
@@ -1816,7 +1863,7 @@ const meetRow = async (ui: Ui) => ui.find({ type: 'Button', key: 'meet' })
 
 for (const meet of ['later', 'offered'] as const) {
   test(`Start the 5-minute intro: the wake says ${meet}, so a cyan row tops the body; a press runs /counterparts:meet (never the speak-first's line), once a minute at most`, async ($, on) => {
-    const w = world(on)
+    const w = world(on, { store: { brain: 'off' } }) // the plain header on both surfaces (the desktop's brain is the fox, whose stage nests the rows)
     await startWith($, w, meet)
     for (const surface of SURFACES) {
       const ui = await mount($, w, surface)

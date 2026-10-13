@@ -5,7 +5,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { Brain, DEFAULT_COLOR } from '../hooks/brain'
-import { decodeCells, encodeCells, isRasterSafe } from '../hooks/cells'
+import { cellsSvg, decodeCells, encodeCells, isRasterSafe } from '../hooks/cells'
 import {
   UNKNOWN_ONBOARDING,
   classify,
@@ -1108,5 +1108,16 @@ describe('the desktop layout', () => {
     // the terminal pads with spaces instead and carries none of it
     const term = layoutBody(state(false)).lines.filter(l => l.key?.startsWith('mech:'))
     for (const l of term) expect(l.segs.some(sg => sg.cw !== undefined || sg.fill !== undefined || sg.grow === true)).toBe(false)
+  })
+
+  test('cellsSvg: braille cells are their set dots, other glyphs filled cells, blanks nothing', () => {
+    const c = new Uint32Array([0x2801, 0xff0000, 0, 0x20, 0, 0, 0x2588, 0x00ff00, 0, 0x28ff, 0x01000000, 0])
+    const svg = cellsSvg(encodeCells(c), 4, 1, 8)
+    expect(svg.width).toBe(32)
+    expect(svg.height).toBe(16)
+    expect(svg.source.match(/<circle/g)).toHaveLength(1 + 8) // one dot in the first cell, all eight in the last
+    expect(svg.source).toContain('fill="#ff0000"')
+    expect(svg.source).toContain('<rect x="16" y="0" width="8" height="16" fill="#00ff00"/>')
+    expect(svg.source).toContain('fill="#8a8a8a"') // the default colour
   })
 })

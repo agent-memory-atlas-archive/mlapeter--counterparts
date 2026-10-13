@@ -8,3 +8,8 @@
 - **The sidebar's "quietly available" titles read cleanly.** "Earlier (now [id]): ..." shows as
   "Earlier: ...", "Unsettled - may be out of date, see [id]: ..." as "Unsettled: ...", and the
   trailing "(earlier: [id])" and "(corrects [id])" are left off.
+- **The brain avatar now shows in the Desktop app** as a still picture (the terminal's brain at rest),
+  where before the pane showed no avatar at all.
+- **Pressing the Counterparts switch in auto mode no longer shows an engine error.** When auto mode
+  declines the press, a short note says so and tells you what to ask Claude instead ("pause
+  Counterparts here"); the switch stays as it was.
