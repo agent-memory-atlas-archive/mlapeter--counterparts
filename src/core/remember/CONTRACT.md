@@ -112,10 +112,11 @@ is that the ask is ambient (constitution line 8) and its coverage is measured, n
     model deposited. A session that ends normally is never swept, so anything after its
     last authored deposit is forgotten — by design (constitution 3: forget the trials),
     but it is a real loss and it is this rule's price.
-  - **Those spans stay in the buffer — for a week.** Nothing consumes the spans of a
-    session that ended normally; since 2026-09-23 RETENTION deletes them 7 days after
-    the session ended, when it owes no write-up (§5 G15, `retention.ts`). Until then this
-    was open question 5 and the buffer grew without bound.
+  - **Those spans stay in the buffer — for a few days.** Nothing consumes the spans of a
+    session that ended normally; since 2026-09-23 RETENTION deletes them after the
+    session ended, when it owes no write-up — 7 days until 2026-10-13, 3 since, and never
+    more than 14 after its last activity (§5 G15, `retention.ts`). Until then this was
+    open question 5 and the buffer grew without bound.
   - **An idle-but-alive session past the window is indistinguishable from a crash** and
     will be swept. If its author later writes, that stretch has twins after all — which
     is the measurement `CRASH_STALE_MS` owes: count sessions swept-then-authored. The
@@ -252,8 +253,12 @@ INTERFACE-GAPS §2a; this module still never gates and never reads them).
     and belongs to no single memory. It records counts and never a hash or a word
     (§16 G9). One window is NAMED rather than closed: a worker already holding a claim in
     memory finishes its arc (NOTES §14).
-15. **[M] Raw transcript is kept 7 days after a session ends, unless it owes a write-up
-    or the host still holds it open** (owner's ruling 2026-09-23; `owes.ts`,
+15. **[M] Raw transcript is kept 3 days after a session ends, unless it owes a write-up
+    or the host still holds it open — and never more than 14 days after its last
+    activity, whatever else is true** (owner's ruling 2026-09-23, clocks reset by Mike
+    2026-10-13: 7 days → 3, and the ceiling added; both are defaults a host may change,
+    `RetentionSources.retentionMs` / `maxMs`, which the Claude Code adapter reads from
+    the configuration's `retention` block; `owes.ts`,
     `retention.ts`, NOTES §16). ONE rule decides what is owed, and since 2026-09-30 it is
     `core/coverage/`'s, read by `planRetention` once per session across every scope: an
     unwritten stretch (pieces with no claim in `coverage.jsonl`) of three pieces over
@@ -264,14 +269,15 @@ INTERFACE-GAPS §2a; this module still never gates and never reads them).
     session that owes is kept however old until it is written up or lapses, and one the host's registry still
     holds open is kept for as long as the registry keeps its record; one that owes nothing
     loses every text line — its turns, jots, the assistant's
-    replies, quarantine, claims — 7 days after the latest thing known about it. The
+    replies, quarantine, claims — 3 days after the latest thing known about it. The
     deletion goes through the strike (G14) naming whole sessions, recorded
     `by: "retention"` with counts only, from the background worker alone
     (`remember/index.ts` does not export it; a test pins its one importer), once per date
     behind an `O_EXCL` latch, before the day's snapshot, leaving one `remember.prune` row
     (`deleted`, `keptOwed`, `keptYoung`, `keptLive`, `failed`). Cursors, boundaries,
     coverage, proposals and the ledgers are not text and are kept. Raw text therefore lives
-    up to 7 days in the store and up to 21 counting the 14 daily snapshots. The only way
+    at most 14 days in the store (by default), and none of it in a snapshot: since
+    2026-10-13 `spans/` is out of the backup set (`store/paths.ts#LAYOUT`). The only way
     out of owing — the write-up mark — is a grant behind a pinned seam
     (`write-up-seam.ts`), refusing an unknown scope, a free-text author and a session with
     no text, and a run is visible from the moment it holds its date (`STARTED`). Its two
