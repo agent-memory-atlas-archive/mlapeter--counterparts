@@ -2004,6 +2004,30 @@ for (const surface of ['terminal'] as const) {
   })
 }
 
+test('two surfaces drawing in turn: the desktop drawn last leaves the terminal its rules, its palette and its hover card (SURFACE is set per drawing)', async ($, on) => {
+  const w = world(on)
+  await start($, w)
+  const desk = await mount($, w, 'desktop')
+  const term = await mount($, w, 'terminal')
+  const check = async (): Promise<void> => {
+    const tl = await bodyLines(term)
+    expect(tl.some(l => /^Mechanisms today ─+ times fired$/.test(l))).toBe(true)
+    expect((await term.find({ type: 'Text', text: 'COUNTERPARTS' }))?.props['color']).toBe('#00e5ff')
+    expect(drawnNode(await term.drawn(), 'cp-why')).toBeDefined()
+    expect((await texts(term)).includes('───')).toBe(true)
+    expect((await bodyLines(desk)).some(l => l.includes('─'))).toBe(false)
+    expect((await desk.find({ type: 'Text', text: 'COUNTERPARTS' }))?.props['color']).toBe('suggestion')
+    expect(drawnNode(await desk.drawn(), 'cp-why')).toBeUndefined()
+  }
+  await check()
+  // a click on the desktop writes state both read: both draw again, in whatever order
+  await click(desk, 'Retrieval')
+  await settle(w)
+  await check()
+  await desk.unmount()
+  await term.unmount()
+})
+
 test('the desktop draws in the app theme, whatever the stored theme: no panel, no search shade, the accent its suggestion colour, no rule of dashes', async ($, on) => {
   const w = world(on, { store: { theme: 'cozy' } })
   await start($, w)

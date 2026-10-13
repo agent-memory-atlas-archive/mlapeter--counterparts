@@ -1238,7 +1238,8 @@ async function runSearch($: EngineInterface, raw: string): Promise<void> {
     const { payload, isError } = await callMemory($, 'recall', { question: query, mode: 'facts' })
     const answer = payload?.['answer']
     if (isError || typeof answer !== 'string') {
-      const why = searchWhy(String(payload?.['detail'] ?? payload?.['reason'] ?? 'the search was refused'))
+      // the memory server's own reason, in its words (an auto-mode refusal throws, below)
+      const why = String(payload?.['detail'] ?? payload?.['reason'] ?? 'the search was refused')
       await update($, searchA, () => ({ ...IDLE_SEARCH, query, status: 'error' as const, error: why }))
       return
     }
@@ -1249,7 +1250,7 @@ async function runSearch($: EngineInterface, raw: string): Promise<void> {
   }
 }
 
-/** A failed search in plain words: the engine's refusal text is never shown. */
+/** A search call that threw, in plain words: the engine's refusal text is never shown. */
 function searchWhy(err: unknown): string {
   return isRefusal(err) ? "Auto mode didn't let the search run. Ask Claude to look it up." : 'The search failed. Try again.'
 }
