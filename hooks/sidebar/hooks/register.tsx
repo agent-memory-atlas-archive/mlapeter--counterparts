@@ -1257,7 +1257,8 @@ async function runSearch($: EngineInterface, raw: string): Promise<void> {
 async function openPane($: EngineInterface): Promise<{ isPlaced: boolean }> {
   brain.wake() // opened, it eases out of rest
   await setView($, 'sidebar')
-  const opened = await $.ui.open({ id: PANE, title: TITLE, columns: OPEN_COLUMNS })
+  // The desktop asks for a narrower pane: its font fits a fifth more in a cell's width (Mike, 2026-10-13).
+  const opened = await $.ui.open({ id: PANE, title: TITLE, columns: run.surface === 'desktop' ? OPEN_COLUMNS - 4 : OPEN_COLUMNS })
   await update($, placedA, () => opened.isPlaced)
   $.ui.invalidate('ui.render')
   return { isPlaced: opened.isPlaced }
@@ -1879,6 +1880,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const docks = e.viewport?.isFullscreen
     if (docks !== undefined) run.docks = docks
+    run.surface = e.surface
     if (docks !== undefined && !run.placementDecided) {
       run.placementDecided = true
       if (docks) $.clock.after(0, () => quiet(openUnasked($)))
@@ -1953,7 +1955,8 @@ export const register: Register = on => {
     const day = pulse === null ? null : pulse.day
     let stageTop: JSX.Element[] | null = null
     if (hasStage) {
-      // The title row, the stage edge to edge (outside the frame's padding), a thin rule, then the count.
+      // The title row (the count and the day on its right), the stage edge to edge (outside the frame's
+      // padding), a thin rule, and the search box when it is on.
       stage.director ??= newDirector(now)
       const step = advance(stage.director, now).step
       // An Image's first frame is blitted once mounted too: a refusal says it draws its alt here.
@@ -1963,25 +1966,21 @@ export const register: Register = on => {
       rows.length = 0
       rows.push(
         SURFACE.prose ? <Text key="stage-rule"> </Text> : <Text key="stage-rule" color={P.faint}>{'─'.repeat(w)}</Text>,
-        <Box key="head2" flexDirection="row" justifyContent="space-between" width={w}>
-          {searchBox(paneEls, actions, searchFlag.on ? Math.max(14, w - cells(countText) - 1) : 1)}
-          <Text color={P.dim}>{countText}</Text>
-        </Box>,
-        <Text key="head-gap"> </Text>,
+        ...(searchFlag.on ? [<Box key="head2" flexDirection="row" width={w}>{searchBox(paneEls, actions, w)}</Box>] : []),
       )
       // The desktop's Svg is 180 px tall, about ten of its text rows (measured 2026-10-13), not the cells' fifteen.
-      used += 1 + (tier === 'svg' ? (SURFACE.prose ? 10 : 15) : stageRows(tier)) + 3
+      used += 1 + (tier === 'svg' ? (SURFACE.prose ? 10 : 15) : stageRows(tier)) + 1 + (searchFlag.on ? 1 : 0)
       if (!holding) startStage($)
     } else if (mode === 'fox' && !hasRaster) {
       rows.push(...brainlessHeader(paneEls, actions, { w, paused, lit, day, count: countText }))
-      used += 3
+      used += searchFlag.on ? 3 : 2
     } else if (hasRaster) {
       const { Raster } = $.ui.resolve(e)
       rows.push(...brainHeader(paneEls, Raster, actions, { w, paused, day, count: countText }))
       used += BRAIN_ROWS + 1
     } else {
       rows.push(...brainlessHeader(paneEls, actions, { w, paused, lit, day, count: countText }))
-      used += 3
+      used += searchFlag.on ? 3 : 2
     }
 
     // ── a paused folder says so before anything else in the pane ──
@@ -2002,11 +2001,13 @@ export const register: Register = on => {
     // ── the body: the five sections, folded to the room left ──
     // The rule, the Counterparts switch, the view, the brain.
     const footRows = 4
-    const bodyRows = Math.max(4, fill - used - above.length - footRows)
+    // The desktop's rows are its font's, a little taller than the cells it reports: two rows of headroom keep its
+    // pane from scrolling by a line (2026-10-13).
+    const bodyRows = Math.max(4, fill - used - above.length - footRows - (SURFACE.prose ? 2 : 0))
     // The desktop sets the body in its own font, about a fifth narrower than the cells the pane is measured in:
     // wrap to that, and a blank row between items there (2026-10-13, Mike: "hard to read").
     const bodyW = SURFACE.prose ? Math.floor(w * 1.2) : w
-    const { lines } = layoutBody({ w: bodyW, rows: bodyRows, now, mind, saved, today, dream: dreamNow, open, mech, focus, dash, search, prose: SURFACE.prose })
+    const { lines } = layoutBody({ w: bodyW, rows: bodyRows, now, mind, saved, today, dream: dreamNow, open, mech, focus, dash, search, prose: SURFACE.prose, cellsW: w })
     // The Client tag stays here: the engine reads a hooks module's surface modules off its own source.
     rows.push(Client !== null ? <Client key="body" module="./body.tsx" width={w} props={{ lines, prose: SURFACE.prose } satisfies BodyProps} /> : plainBody(paneEls, lines))
     rows.push(<Box key="spacer" flexGrow={1} />)

@@ -39,7 +39,13 @@ const Body: ClientModule<BodyProps, never> = (props, surface: ClientSurface<neve
               props.prose === true && (s.grow === true || RULE.test(s.t)) ? (
                 <Box key={String(i)} flexGrow={1} />
               ) : props.prose === true && s.fill !== undefined ? (
-                <Box key={String(i)} width={s.fill} height={1} backgroundColor={s.c} />
+                // a share of its column, drawn in half blocks clipped to that share: whatever width the app's
+                // font gives `▄`, the bar is the right length, half a row tall like the terminal's
+                <Box key={String(i)} width={s.of ?? s.fill} overflow="hidden">
+                  <Box width={`${String(Math.round((100 * s.fill) / Math.max(1, s.of ?? s.fill)))}%`} overflow="hidden">
+                    <Text color={s.c} wrap="truncate">{'▄'.repeat(2 * (s.of ?? s.fill))}</Text>
+                  </Box>
+                </Box>
               ) : props.prose === true && s.cw !== undefined ? (
                 <Box key={String(i)} width={s.cw}>
                   <Text color={s.c} {...(s.b === true ? { bold: true } : {})}>{s.t}</Text>

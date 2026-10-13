@@ -68,10 +68,10 @@ const SAVED_MAX = 12
 
 /**
  * One run of a line. On a prose surface (BodyProps.prose) three more say how it is laid out rather than
- * spelled with spaces: `cw`, a column that many cells wide; `fill`, a solid bar that many cells long;
+ * spelled with spaces: `cw`, a column that many cells wide; `fill` of `of`, a bar that share of a column `of` cells wide;
  * `grow`, the space that pushes what follows to the edge.
  */
-export type Seg = { t: string; c: string; b?: true; i?: true; cw?: number; fill?: number; grow?: true }
+export type Seg = { t: string; c: string; b?: true; i?: true; cw?: number; fill?: number; of?: number; grow?: true }
 /**
  * One row of the body: its pieces, and what a click on it names; `link`, a
  * click from column `from` (0-based, in cells) to the row's end names
@@ -179,6 +179,8 @@ export type BodyState = {
    * a name column, a solid bar and a count at the edge, since padding with spaces lines nothing up there.
    */
   prose?: boolean
+  /** The pane's own text width in cells, when `w` was widened for a prose surface's narrower font (bars use it). */
+  cellsW?: number
 }
 
 /** How far each section is folded: the ladder's knobs. */
@@ -406,7 +408,7 @@ function chart(s: BodyState, f: Fold): Line[] {
   if (f.chartFolded) return [heading('Mechanisms today', `${String(fired)} fired`, s.w, { folded: true, key: 'head:chart' })]
   const NAME = 16
   const CNT = 4
-  const barW = Math.max(4, s.w - NAME - CNT)
+  const barW = Math.max(4, (s.cellsW ?? s.w) - NAME - CNT)
   const max = Math.max(1, ...MECHS.map(m => t.counts[m.id] ?? 0))
   const out: Line[] = [heading('Mechanisms today', 'times fired', s.w, { key: 'head:chart' })]
   for (const m of MECHS) {
@@ -426,7 +428,7 @@ function chart(s: BodyState, f: Fold): Line[] {
     const count = seg(cs, n === 0 ? P.dim : picked ? P.hi : P.mid)
     if (s.prose === true) {
       const len = cells(b)
-      out.push(line([{ ...name, t: name.t.trimEnd(), cw: NAME }, ...(len > 0 ? [{ t: '', c: hex(stageOf(m.id).col, BAR_K), fill: len }] : []), { t: '', c: P.dim, grow: true as const }, count], key))
+      out.push(line([{ ...name, t: name.t.trimEnd(), cw: NAME }, { t: '', c: hex(stageOf(m.id).col, BAR_K), fill: len, of: barW }, { t: '', c: P.dim, grow: true as const }, count], key))
     } else {
       const pad = Math.max(1, s.w - NAME - cells(b) - cs.length)
       out.push(line([name, seg(b, hex(stageOf(m.id).col, BAR_K)), seg(' '.repeat(pad), P.dim), count], key))
