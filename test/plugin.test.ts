@@ -52,6 +52,7 @@ import {
   pluginOrigin,
   runningAsPlugin,
   takeFirstRunNotice,
+  twiceNoticePath,
 } from "../src/adapters/plugin.js";
 import type { ConfigChoice } from "../src/adapters/config-path.js";
 import { runOnce, runnerConfig } from "../src/adapters/claude-code/bin/runner.js";
@@ -875,6 +876,19 @@ describe("plugin-run.sh", () => {
     const prompt = launch("hook", payload("UserPromptSubmit"), pluginEnv());
     expect(prompt.stdout).toBe("");
     expect(existsSync(join(home, ".counterparts"))).toBe(false);
+    // Said once (2026-10-13): the next session start stands down just as quietly.
+    const again = launch("hook", payload("SessionStart", "plugin-test-2"), pluginEnv());
+    expect(again.stderr).toContain("plugin hook stood down");
+    expect(again.stdout).toBe("");
+    expect(existsSync(twiceNoticePath(defaultChoice().path, pluginEnv()))).toBe(true);
+  });
+
+  test("a dead npm entry is said at every session start, not once", () => {
+    writeSettings({ SessionStart: [`"${join(work, "gone", "bun")}" run "${join(work, "gone", "src", "adapters", "claude-code", "bin", "hook.ts")}"`] });
+    for (const session of ["dead-1", "dead-2"]) {
+      const start = launch("hook", payload("SessionStart", session), pluginEnv());
+      expect(systemMessage(start.stdout) ?? "").toContain("no longer runs");
+    }
   });
 
   // THE SHAPES AN NPM INSTALL WIRES, each of which must make the plugin stand
@@ -1466,8 +1480,9 @@ describe("a paused folder with two wirings", () => {
       const npm = npmHook(input);
       expect([plugin.code, npm.code]).toEqual([0, 0]);
       expect(plugin.stderr).toContain("plugin hook stood down");
-      // The plugin's own stand-down line, and no pause notice of its own.
-      expect(systemMessage(plugin.stdout) ?? "").toContain("running from a folder");
+      // The plugin's own stand-down line, at the first start only, and no pause notice of its own.
+      if (source === SOURCES[0]) expect(systemMessage(plugin.stdout) ?? "").toContain("running from a folder");
+      else expect(plugin.stdout).toBe("");
       expect(count(plugin.stdout)).toBe(0);
       expect(systemMessage(npm.stdout)).toBe(`${PAUSED} \`counterparts scope ~/project --resume\` turns it back on.`);
       // Once across both: the person's line, in the npm hook's systemMessage only.
