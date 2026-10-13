@@ -1498,6 +1498,58 @@ Mike's first real run is the real measurement.
   `bun tools/brain-lab/shoot.ts` or `bench.ts`. Neither `tsc` nor the plugin's
   checks read it (the repository's `tsconfig.json` excludes it).
 
+## Desktop layout (2026-10-13)
+
+Measured live with Mike in the Claude Desktop app's Code tab, screenshot by screenshot:
+
+- The app sets our text in a **proportional font**, not cells: about a fifth more characters fit in a
+  pane's reported width, a `─` rule can run wider than the cells it was counted in and wrap every
+  heading, and spaces line nothing up (the chart's `Name   ▄▄▄  3` rows came out ragged).
+- Its **native buttons** (the title, the footer's switches) are drawn dark; on tron's black panel they
+  were dark on dark. The Claude Code **theme keys** (`text`, `inactive`, `subtle`, `suggestion`,
+  `warning`) follow the app's light or dark mode, so they are the only colours that work on both.
+- A **pane width a plugin asks for is ignored**: the app keeps the width the person dragged. Asking
+  for `OPEN_COLUMNS - 4` is harmless and a hint at best. The pane's own width is read from
+  `bodyColumns` every drawing.
+- `Svg` is **not available in a Client module** (body.tsx), so the fox's picture stays in the pane's
+  own tree and the chart's bars are made of `Box`es and half-block text.
+
+What the branch does, for the surfaces that set text in their own font (`SURFACE.prose`: `desktop`,
+`vscode`; theme.ts `applyTheme(name, surface)`):
+
+- The `desk` palette of theme keys, no panel background, no hover card; tron and cozy apply to the
+  terminal only. `bg()` leaves a Box's background unset when the palette has none.
+- No `─` rules. A heading's rule is a `flexGrow` spacer (body.tsx); the stage rule and the footer's
+  rule are blank rows.
+- The body wraps at `floor(w * 1.2)` (`bodyW`), with a blank row between items (`prose` in
+  BodyState, `spaced`). The chart's rows are segments, not padding: `cw` (a name column that many
+  cells wide), `fill` of `of` (a half-block bar clipped to a share of a column sized by the pane's
+  own cells, `cellsW`), `grow` (a spacer), then the count.
+- The fox's Svg holds the PNG alone (the half-block rects under it showed as a dark ghost edge on the
+  light page; they stay only for a frame with no PNG). The fox shows down to 22 columns, scaled to fit
+  (about 7 px a cell), and the rows it takes are counted accordingly. Two rows of headroom keep the
+  pane from scrolling by a line.
+
+Two changes are on **every** surface: the memories count moved to the **title row** (`headRight`,
+desktop.tsx: `1511 memories · day 22`, else `1511 · day 22`, else `day 22`, by room; the brain
+header keeps its count beside the brain), so the separate count row is gone and the search box row
+exists only when `COUNTERPARTS_SIDEBAR_SEARCH=1`; and the footnote parser (feed.ts) turns a lead
+like `Earlier (now [id]): ` into `Earlier: ` and `Unsettled — may be out of date, see [id]: ` into
+`Unsettled: `, takes the id that follows the lead, and drops a trailing `(earlier: [id])` or
+`(corrects [id])`.
+
+Also for 0.3.21: the desktop has no Raster, so it has no brain yet. A static Svg of one frame of the
+terminal brain's cells (`cells.ts#cellsSvg`, kept with its tests) was tried live with Mike on
+2026-10-13: it drew, sat too close to the title, and didn't light up. So a stored `brain` avatar draws the
+fox there, the desktop's avatar row offers animal and off only, and the stored choice stays for the
+terminal. A brain that turns and lights on the desktop is for the next version.
+
+A pane press is not a request from the person, so in auto mode the classifier can refuse the
+tool call (`$.mcp.call ... refused: ... auto mode classifier ...`), on the terminal too. The switch
+(and a search) then shows a short note worded to the press ("Auto mode didn't let the switch change
+this. Ask Claude: ..."), never the engine's text; the scope is left as it was. A route that does not
+go through the classifier (a local dashboard write) is for a later version.
+
 ## Known gaps (v0.1)
 
 - TODO: the desktop's brain as an `Svg` (Raster is the terminal's alone). The
