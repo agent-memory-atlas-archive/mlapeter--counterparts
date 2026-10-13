@@ -35,6 +35,7 @@ import {
 } from '../hooks/feed'
 import { cells, ellipsizeCells, padCells } from '../hooks/width'
 import { headRight } from '../hooks/desktop'
+import { failedPressNote, isRefusal } from '../hooks/words'
 import {
   STAGE_COLS,
   TEXT_256,
@@ -218,7 +219,7 @@ describe('the feed', () => {
     expect(parseRecallBlock('<system-reminder>a wake, no recall</system-reminder>')).toBeNull()
   })
 
-  test('footnotes with a standing: the lead becomes a word, the id is the first after it, trailing pointers are dropped', () => {
+  test("footnotes with a standing: the lead becomes a word, the id is the memory's own (the last before any trailing pointers), the pointers are dropped", () => {
     const block = (...items: string[]): string =>
       ['<!-- counterparts:recall t=4 -->', '', 'Quietly available (ignorable; expand an id with recall before citing one):', ...items.map(i => `- ${i}`), '<!-- counterparts:recall/end surfaced=0 footnotes=3 affect=0 bytes=1 -->'].join('\n')
     expect(
@@ -229,6 +230,10 @@ describe('the feed', () => {
           'The pane is 35 columns [mem_cur00001] (earlier: [mem_old00002])',
           'The rail is gone [mem_rail0001] (corrects [mem_rail0000])',
           'A title with no id at all',
+          'Linked: Earlier (now [mem_new00002]): The fox sat left [mem_fox00001]',
+          'Corrected by [mem_fix00001]: Bars were cells [mem_bar00001] (disagrees with [mem_bar00002])',
+          'Earlier (now [mem_new00003]); Unsettled \u2014 may be out of date, see [mem_oth00002]: Two leads [mem_two00001]',
+          'Journal: A plain chapter [epi_chap0001]',
         ),
       )?.footnotes,
     ).toEqual([
@@ -237,6 +242,11 @@ describe('the feed', () => {
       { title: 'The pane is 35 columns', id: 'mem_cur00001' },
       { title: 'The rail is gone', id: 'mem_rail0001' },
       { title: 'A title with no id at all', id: null },
+      // the memory's own id is the last one before any trailing pointers, whatever the lead or frame word holds
+      { title: 'Linked: Earlier: The fox sat left', id: 'mem_fox00001' },
+      { title: 'Corrected: Bars were cells', id: 'mem_bar00001' },
+      { title: 'Earlier: Two leads', id: 'mem_two00001' },
+      { title: 'Journal: A plain chapter', id: 'epi_chap0001' },
     ])
   })
 
@@ -1233,5 +1243,12 @@ describe('the desktop layout', () => {
     expect(svg.source).toContain('fill="#ff0000"')
     expect(svg.source).toContain('<rect x="16" y="0" width="8" height="16" fill="#00ff00"/>')
     expect(svg.source).toContain('fill="#8a8a8a"') // the default colour
+  })
+
+  test("isRefusal: auto mode's classifier, not the memory server's own word \"refused\"", () => {
+    expect(isRefusal(new Error('$.mcp.call counterparts.scope refused: The server-side auto mode classifier gave no verdict'))).toBe(true)
+    expect(isRefusal('refused')).toBe(false) // scopeOf's fallback for an error with no detail
+    expect(isRefusal('the search was refused')).toBe(false)
+    expect(failedPressNote('pause', 'refused')).toBe('The switch could not change this just now. Try again, or ask Claude.')
   })
 })

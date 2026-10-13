@@ -6,8 +6,9 @@
   shortened when the pane is narrow), in every app, and the search row appears only when search is
   switched on.
 - **The sidebar's "quietly available" titles read cleanly.** "Earlier (now [id]): ..." shows as
-  "Earlier: ...", "Unsettled - may be out of date, see [id]: ..." as "Unsettled: ...", and the
-  trailing "(earlier: [id])" and "(corrects [id])" are left off.
+  "Earlier: ...", "Unsettled - may be out of date, see [id]: ..." as "Unsettled: ...", "Corrected by
+  [id]: ..." as "Corrected: ...", and the trailing "(earlier: [id])" and "(corrects [id])" are left
+  off; a click on one opens that memory, not the one its note points at.
 - **The brain avatar now shows in the Desktop app** as a still picture (the terminal's brain at rest),
   where before the pane showed no avatar at all.
 - **Pressing the Counterparts switch in auto mode no longer shows an engine error.** When auto mode

@@ -419,11 +419,18 @@ export function parseRecallBlock(text: string): RecallBlock | null {
       // A footnote can lead with what it is to another memory ("Earlier (now [id]): ", "Unsettled — may be out of
       // date, see [id]: ") and trail one ("(earlier: [id])", "(corrects [id])"): the title is what's between,
       // the id the first one after the lead (the sidebar showed "Earlier (now ): … [mem_…]", 2026-10-13).
-      const lead = /^(Earlier|Unsettled)\b[^:]*?\[[A-Za-z]+_[A-Za-z0-9]+\][^:]*:\s*/.exec(item);
-      const rest = lead === null ? item : item.slice(lead[0].length);
-      const m = /^(.*?)\s*\[([A-Za-z]+_[A-Za-z0-9]+)\]/.exec(rest);
-      const label = lead === null ? '' : lead[1] === 'Earlier' ? 'Earlier: ' : 'Unsettled: ';
-      footnotes.push(m === null ? { title: `${label}${rest}`.trim(), id: null } : { title: `${label}${m[1] ?? ''}`.trim(), id: m[2] ?? null });
+      // The line is `[Linked: |Journal: ][standing lead: ]Title [id][ (pointers)]` (core/recall/render.ts), so the
+      // memory's own id is the one at the end, before any trailing pointers; the lead may also be "Corrected by
+      // [id]" or "Replaced by [id]", alone or joined with "; ", and may sit behind a Linked:/Journal: word.
+      const end = /^(.*)\s*\[([A-Za-z]+_[A-Za-z0-9]+)\](?:\s*\([^()]*\))?$/.exec(item);
+      const m = end ?? /^(.*?)\s*\[([A-Za-z]+_[A-Za-z0-9]+)\]/.exec(item);
+      const front = m === null ? item : (m[1] ?? '');
+      const frame = /^(?:(?:Linked|Journal):\s+)*/.exec(front)?.[0] ?? '';
+      const after = front.slice(frame.length);
+      const lead = /^(Earlier|Unsettled|Corrected by|Replaced by)\b[^:]*?\[[A-Za-z]+_[A-Za-z0-9]+\][^:]*:\s*/.exec(after);
+      const word = lead === null ? '' : `${(lead[1] ?? '').replace(/ by$/, '')}: `;
+      const title = `${frame}${word}${lead === null ? after : after.slice(lead[0].length)}`.trim();
+      footnotes.push({ title, id: m === null ? null : (m[2] ?? null) });
     }
   }
   const turn = Number(open[1]);
