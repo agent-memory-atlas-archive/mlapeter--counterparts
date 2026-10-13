@@ -1,1 +1,0 @@
-- **The sidebar no longer offers to turn off Claude Code's own memory.** The opt-in "Claude memory" switch is gone, along with the `COUNTERPARTS_SIDEBAR_CC_MEMORY` setting that showed it. If you had turned Claude Code's memory off with it, your MEMORY.md files and Claude Code's memory instructions come back from your next session.

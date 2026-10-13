@@ -1692,6 +1692,304 @@ were refined by b2+f8 at the review of #369, named where they were):
   contradiction raises are neither said nor claimed there. Why: a morning share should count as told only
   on a turn a person typed.
 
+### Decided by the onboarding round-1 core builder, 2026-10-12, lightly held (the meeting holds the housekeeping)
+
+- Decided by the onboarding round-1 core builder, 2026-10-12, lightly held: "the meeting is running in this
+  session" means the meeting is `offered` and a `meet` call (a read or a step) came from this session within
+  the last 30 minutes (`MEET_HOLD_MS`). No new meeting state was added, because the mod reads the `meet=` marker.
+  Why: a read happens before the person even says yes, so without a time limit, someone who ignores the offer
+  and goes on working (with nobody calling `later`) would have no write-up ask all session. Every step refreshes
+  the window, so a real meeting never runs out of it.
+- Decided by the onboarding round-1 core builder, 2026-10-12, lightly held: the finish step (`meet` done) hands
+  the write-up over in its result (session_end, then a chapter, then two or three lines of "here's what I'll
+  remember", then the close). The one Stop after it is paced, so the pacer counts that write-up as its ask, but
+  says nothing. Its `adapter.ask` row carries `coveredBy: "meeting"`. Why: otherwise the Stop right after the
+  closing message would fire the ordinary ask (the meeting is past the first-ask threshold) and derail the close
+  into bookkeeping again. If the model skipped the write-up, the coverage arm and the next day's catch-up still
+  pick up what is unwritten.
+- Decided by the onboarding round-1 core builder, 2026-10-12, lightly held: no dream (line, headless run or
+  catch-up alone) on a MEETING DAY. That is the day the meeting was finished, or a day it was offered while it is
+  not finished. A later day's `later` or `skipped` releases that day, but the first offer's day holds either
+  way, since it is the store's first day. This is the dream gate's new `meeting-day` reason, through a `holds`
+  hook on the dream context. Why: one rule covers "not on the first day", "never on half a meeting" and the
+  catch-up night that Mike saw start mid-meeting (lived day 1 is reached by the first Stop's cycle, so the
+  existing `first-day` gate did not hold). Stores with no meeting keys are never held. Cost: someone who keeps
+  being offered the meeting and saying nothing has no dream on those days (three at most, the offer cap).
+- Decided by the onboarding round-1 core builder, 2026-10-12, lightly held: the five research questions replace
+  work/loved/problem/peeves/outside. "When Claude Code goes wrong for you" (peeves) is dropped too: it is not one
+  of Mike's five and not a settings question. Step names are `week`, `work`, `love`, `saturday`, `started`. The
+  second session's line still reads a 0.3.18/0.3.19 meeting's answers under their old names.
+- Decided by the onboarding round-1 core builder, 2026-10-12, lightly held: the close leaves out retention and
+  uninstalling. The script keeps both for when the person asks, and retention as one exact line
+  (`RETENTION_LINE`) that Claude is told not to paraphrase. The `/counterparts` sidebar line is said only on a
+  plugin install, the same test the uninstall route uses.
+- Decided by the onboarding round-1 core builder, 2026-10-12, lightly held: the pronoun rule ("by name or as
+  'they', until the person says") goes in the meeting script, the Stop write-up ask, Desktop's write-up ask and
+  the dream's launch prompt. It costs about 15 tokens per write-up ask, and the Stop ask's pinned ceiling moves
+  from 480 to 535 characters for it. One gendered model-facing line in
+  reconsolidation ("stands as his. Tell him") is now neutral.
+- Decided by the onboarding round-1 core builder, 2026-10-12, lightly held: "undo that dream" is a new `undo`
+  phase on the dream tool. It does the same reversal as `counterparts dream --undo` and is refused in the
+  nightly run. The dream's hand-back line now says `say "undo that dream"` for every install, in place of the two
+  CLI commands. The journal entry itself stays. `meet` takes an optional `session`, used only when the registry
+  confirms it, so the hold binds to the right session even before the server has one.
+- Decided by the #450 reviewer, 2026-10-12, lightly held: on an offer day after the first, only a meeting begun
+  that day (`offered`: a `meet` read or step today) holds the dream, not the wake's offer alone, which leaves
+  the state `not_started`. Why: a Claude that never called `meet` cost a new person the dream on offer days 2
+  and 3, from the first prompt on, with no meeting anywhere. The first offer day still holds either way.
+
+### Decided by the recall-miss builder, 2026-10-12, lightly held (the meaning floor stays; the docs say the limit)
+
+- Decided by the recall-miss builder, 2026-10-12, lightly held: the 10-11 bundle miss
+  ("small boat for paddling" found nothing for "The reviewer keeps a ochre kayak called
+  Marrow at the lake house.") is the static model's limit, not a bug, and the potion
+  in-line floor stays at 0.15. Why: the stored vector scores 0.148 against the question,
+  just under the floor, and unrelated pairs in a 39-pair distractor check scored up to
+  0.259 (4 of 39 at 0.15 or more), so 0.148 is inside the noise band. A lower floor buys
+  this one hit and several false ones, and on a store with one memory any floor under the
+  noise ceiling returns that memory for every question. Mean pooling dilutes the word that
+  carries the meaning: "kayak" alone scores 0.348, "ochre kayak called Marrow" 0.176, the
+  full sentence 0.148. The single-binary smoke's canary passes because it is short (0.288).
+  Reproduced the same way from this checkout (bun and Node), the 0.3.19 binary and the
+  plugin bundle with its model; the embedding, the identity and the floor lookup were all
+  as intended. Both modes miss; the 10-11 run asked `cli recall` with no `--mode`, which is
+  facts.
+- Decided by the recall-miss builder, 2026-10-12, lightly held: a hand set of 13 pairs that
+  share no word, at the 0.15 floor: 3 miss (cat 0.070, sister/Portland 0.118, the kayak
+  sentence 0.148), 3 more barely pass (0.153 to 0.171), 7 pass clearly (0.217 to 0.513).
+  The README and the plugin README now say so: close paraphrases yes, a description that
+  never names the thing no, exact words strongest. Lexical expansion (or a larger model) is
+  the follow-up to measure, not done here.
+
+### Decided by the first-doctor builder, 2026-10-12, lightly held (a fresh install's doctor)
+- Decided by the first-doctor builder, 2026-10-12, lightly held: on a fresh throwaway HOME (npm tarball + `connect`, and with a SessionStart/Stop pair run through the hook) doctor on this build reads 0 red / 0 amber. The only amber a stranger can meet is the Claude Code line when `claude` is not on the PATH (hooks in, memory tools not registered); it already says why and prints the one command to run, so it is left as is. Why: it is a real missing step, not day-1 noise.
+- Decided by the first-doctor builder, 2026-10-12, lightly held: the "absent row" ambers (Sweep, Sleep, Backfill, Snapshots) wait for a boundary dated BEFORE today. A boundary dated today means the first night run was just started and writes its rows when it finishes, so doctor says so in green. Why: the first session of day 1 writes the boundary and starts the run; a doctor run minutes later was amber for a healthy install. A worker that never finishes still goes amber the next day.
+- Decided by the first-doctor builder, 2026-10-12, lightly held: the older 0.3.18 build showed Sleep and Snapshots amber on day 0 after one session; this build already greens them, so nothing further was changed there. Why: it is a gap in the build being replaced, not in this one.
+
+### Decided by the start-told builder, 2026-10-12, lightly held (who is told at a session start)
+
+- Decided by the start-told builder, 2026-10-12, lightly held: the session start reads one test,
+  `watchedAtStart`. It is `isInteractive`, minus the night run's child (named outright, so the run's own marker
+  holds whatever a later host sets) and minus `source: "compact"`. It gates the plain reminders and the first
+  meeting's line. The wake row's `interactive` keeps the old test, because the fired report marks a session
+  unattended for good on any start that says so, and a person's session compacts too. Why: a compaction fires mid-turn, so it is only as watched as
+  the turn that filled the context, and that turn may be a hand-back nobody typed. An Agent-tool subagent's own
+  compaction fires it too (seen on 10-10: `SessionStart:compact` inside a subagent, `cli`, handed a full wake).
+  When a person did type `/compact`, the reminder is said on their next prompt, so the cost is one turn.
+- Decided by the start-told builder, 2026-10-12, lightly held: `startup`, `clear` and `resume` stay a person's.
+  Why: `claude -p` and the SDK already read as unwatched through the host's entrypoint and attended flags. A
+  terminal session that a tool opens is indistinguishable from one a person opens, and treating every `startup`
+  as unwatched would cost every person their morning reminder.
+- Decided by the start-told builder, 2026-10-12, lightly held: the night run's prompt gets no temporal cues at all
+  (`recallForTurn`'s `noCues`). Why: at 00:19 its recall handed the dream child the day's plain and quiet
+  reminders as "quietly available" lines, and that spent a fire of the person's day on a run nobody reads.
+  Hand-back turns in a person's session still spend quiet cues as before (only plain items are withheld there,
+  per #445). That is left open (closed by the reviewer, below).
+- Decided by the #453 reviewer, 2026-10-12, lightly held: the open item above is closed. A prompt the host
+  started (`startedByHost`, #445) gets `noCues` too, so a hand-back or task notification in a person's session
+  spends none of the day's fires; the plain items it held back are covered by the same switch, so the second
+  `plainFor` read there is gone. Topical recall on that turn is unchanged. Why: the same reason as the night
+  run's prompt, and the fix sits in the line beside #445's guard.
+
+### Decided by the wake-never-silent builder, 2026-10-12, lightly held (nothing in the wake is dropped without a word)
+
+- Decided by the wake-never-silent builder, 2026-10-12, lightly held: each lane's count line ("N more
+  …", or the collapsed line of a lane that lists nothing) is RESERVED inside the trim loop, not added
+  last if room is left. The loop composes with the line of every lane that has lost something so far
+  and pops items until items and lines fit together. Each rescue (`takeRoom`) keeps those lines, and a
+  later Arriving line is listed only with its lane's count. Why: Mike's principle of 2026-10-12, the
+  minimal version he chose via RANDOM. The cost: a wake at its edge lists an item or two fewer, to pay
+  for the line that says they are there.
+- Decided by COUNTERPARTS, 2026-10-12, lightly held (the follow-up on this PR), as built: a lane that
+  still lists an item keeps its own "N more" line directly under it, and only the lanes that list
+  NOTHING fold into ONE line under "Who I am": "More than this wake lists: 3 still open (recall ids:
+  mem_…, mem_…, mem_…, and 7 more); 5 nearby (recall ids: …)". Each folded lane carries its own first
+  three ids (`FOLD_LINE_IDS`), which the recall tool opens (`wake-more.test.ts`); no name handle like
+  "recall 'nearby'" exists today, so ids it is. "Who I am" never folds. The lanes that list nothing fold
+  before the loop pops "Who I am", and when even the fold has no room it takes room the way a dated line
+  does (`takeRoom` to `arrivingFirst`: Work here, the Yesterday line's titles, the handoffs' room, Today
+  elsewhere, Arriving past its head). Only past that are ids left unsaid (`untold`). Why: an item under
+  a heading with no count reads as the only one; the first version folded every count and moved
+  Arriving's "+5" and Still open's "+24" away from their lanes in the owner's own morning.
+- Decided by the wake-never-silent builder, 2026-10-12, lightly held: the page does NOT give up room to
+  the folded line. I tried keeping the fold's bytes out of the page's room (as the brief's sizing
+  suggested); it stepped pages in their own room down a rung in ten pinned tests and contradicts
+  `ROOM_ORDER`, where the page in its own room outranks everything. The fold-then-borrow path covered
+  every real-shaped case measured, so the reserve was left out. A page that fills every byte with no
+  lent room left still leaves the lanes untold, and doctor says so in red.
+- Decided by the wake-never-silent builder, 2026-10-12, lightly held: "Nearby" counts what its trim
+  popped (at most `HINTS_MAX` hints the wake chose), with ids, in the same "N more nearby" and collapsed
+  lines; its cap's overflow (the rest of the warm store) is still not counted. Why: the popped hints are
+  a bounded list the wake chose, so the count means something; the cap's count is the store's size,
+  which random-f2's item 5 already ruled out.
+- Decided by COUNTERPARTS, 2026-10-12, lightly held, as built: "Nearby"'s count is NOT reserved. The
+  least of the lanes, it takes only room nothing else wants (`tellLost`): its own line if that fits, else
+  a place in the folded line, else it is left out and recorded as `quiet` — a step-down (`self.briefing`'s
+  `quiet`, doctor's `steppedDown`), never a silent drop. So it never costs another lane an item, nor
+  "Last here" its room (the first version did: `last-exchange.test.ts` is back as it was). A session start carries the popped hints
+  (`WAKE_SHOWN_KEY`'s new `more.hints`, read as empty on an older record) and lists or counts them in its
+  own room.
+- Decided by the wake-never-silent builder, 2026-10-12, lightly held: a due-day plain reminder stays the
+  one exception (#442/#445). It is listed in full even when its lane's count then has no room; the
+  render tries the fold first, then the counts the rescue itself composed with, and only then leaves
+  Arriving's rest untold, with trim rows as before. Measured in the invariant sweep: only below about
+  1,200 bytes with no lent room, and only Arriving.
+- Decided by the wake-never-silent builder, 2026-10-12, lightly held: doctor's Wake line counts
+  step-downs (`self.briefing`'s new `counted`; data `steppedDown`, no clause, never amber) apart from
+  silent drops (`untold`, red: "worth reporting"). The dated-item amber of 2026-10-10 stays, reworded to
+  "counted, not listed, for want of room": it is still a room problem with a remedy (the page's short
+  version, or a larger ceiling). A session start writes no `self.briefing` row, so its counts ride the
+  ring event `counterpart.wake.assembled` only.
+- Decided by the wake-never-silent builder, 2026-10-12, lightly held: `prospective.horizon()` emits one
+  ring event, `prospective.horizon.excluded`, with counts and ids for each reason an arrival left the
+  lane (`notDay`, `daily`, `told`), only when one did.
+- Measured, the owner-shaped morning (`wake-dated-first.test.ts` section 6: a 6,767-byte page, four
+  handoffs, seven dated items, 25 open, six personal facts, at 9,000 through the session start): it
+  prints exactly what master printed — Arriving 2 and its own "+5", Still open 1 and its own "+24", three
+  handoffs and "+1 older", the page whole, 8,997 bytes — and the five hints the turn-end chose and the
+  session start had no room for are now recorded as `quiet` instead of vanishing from every record.
+- Named, a weakened guarantee: "a smaller budget yields a subset" (self NOTES section 9 names its
+  exceptions) has a new one at the fold's boundary. A synthetic sweep (12 identity, 8 each of craft,
+  threads and hints) re-admitted "Still open"'s first item at 1,200 bytes that 1,600 had left out: the
+  folded line is shorter than the lanes' own, and the rescue spends the difference. `self.test.ts`'s
+  subset sweep still passes (its fixture does not cross that boundary). Folding before the loop pops
+  "Who I am" removed the case that sweep did hit.
+- Named, a cleanup left for later: `keepArrivingCount` is reachable only when Arriving's count was not
+  reserved, which no longer happens (the trim loop pins it whenever the lane lost something). Left in
+  place as a guard.
+- Not done, named: the delivery's own lines ("Last here", "Last said here", "Work here", "Today,
+  elsewhere" at its last step) and the Yesterday line when not even its pointers fit still drop with
+  only a durable row or a ring event, as before. Their rungs already exist; reserving them is the fuller
+  version, for later if doctor's counts show sessions need it.
+
+### Decided by the plain-words builder, 2026-10-12, lightly held (wording)
+
+- Decided by the plain-words builder, lightly held: the lane headings are renamed ("Coming up:", "Might be relevant:"), and the old headings stay readable. `LEGACY_FRAMING` and `headingsOf` (self/briefing.ts) let `arrivingTense`, `collapsedLane`, `countedLanes` and the console's lane splitters read a wake bundle stored under "Arriving:" / "Nearby, if it helps:" for the one delivery after an upgrade; nothing composes the old text. Why: doctor and the console read stored bundles, and a rename that broke them for a session would be worse than the jargon.
+- Decided by the plain-words builder, lightly held: style memories name the person when `ownerDisplayName()` knows them, otherwise "They like …"; the name step stores "They like to be called X." (the name is not known yet). `PUSHBACK_BASELINE` became `pushbackBaseline(name)`. Why: stored text is read back by the person; "the owner" is internal vocabulary. The MCP enum "owner" is untouched.
+- Decided by the plain-words builder, lightly held: the retention line says text is deleted a week after the session's last activity or end (whichever is latest), a still-owed write-up lapses after about two weeks of use, and backups hold it about 14 days longer. Why: it must stay exact; it is longer than the old line on purpose.
+- Decided by the plain-words builder, lightly held: "Last here" and "Yesterday" no longer print "N chapters" beside an id, and dates print as "Oct 11" via `stampWords`, applied where `counterpart.ts` builds the stamps (`time.ts#localStamp` still prints MM-DD for other lines). "About me, from another directory:" and "Today, elsewhere: N other directories" also say "project". Why: ids are what Claude needs to recall; the count is not.
+- Decided by the plain-words builder, lightly held: doctor's clock line prints "day N of use" and "last session end" in place of "lived day" and "newest boundary", and the absent-row line says "no session has ended here yet". Chapter headings stored in episode bodies ("lived day N") are parsed by code and are untouched. Why: wording only; Wake-line logic and finding keys unchanged.
+- Decided by the plain-words builder, lightly held: left alone, as outside the list: the dashboard's "Arriving" label and "Nearby" lane mention, the dashboard's own "lived day" wording, and CLI help for commands other than scope and self-page. Why: not named in the job; a later pass can take them.
+
+### Decided by the #456 reviewer, 2026-10-12, lightly held
+
+- Decided by the #456 reviewer, 2026-10-12, lightly held: the retention line is shortened to "Session text is kept until I've written it up and the session has ended, then deleted a week later. If a write-up is still owed, the text is let go after about two weeks of use. Backups hold it about 14 days longer." Why: checked against `remember/owes.ts` (7 days from the latest of last activity, write-up mark and session end; an open or owed session is never deleted), `LAPSE_DAYS_OF_USE` 14 and the snapshots' `DEFAULT_KEEP` 14; the shorter line says the same and reads plainly. The two edges it leaves out: a session with nothing owed goes a week after its last activity, and a session the host never closes counts as ended once its registry record ages out (a week).
+
+### Decided by the dashboard-words builder, 2026-10-12, lightly held (wording)
+
+- Decided by the dashboard-words builder, lightly held: the wake's "N more" and folded count lines say "coming up" and "might be relevant" (`MORE_NOUN`, self/briefing.ts), and `countedLanes` still reads "arriving" and "nearby" off a bundle stored before (`LEGACY_MORE_NOUN`, beside `LEGACY_FRAMING`); the ids on those lines are unchanged. Why: the count line should name its lane as the heading does, and doctor and the console read stored bundles once after an upgrade.
+- Decided by the dashboard-words builder, lightly held: the hint-count test in `test/wake-never-silent.test.ts` sweeps the budget every 5 bytes, not every 20. Why: "might be relevant" is 11 bytes longer than "nearby", so the narrow window where the count fits and nothing else wants the room fell between 20-byte steps; the assertions are the same.
+- Decided by the dashboard-words builder, lightly held: "lived day N" is "day N of use" and "N lived days" is "N days of use" in every dashboard string a person reads, including "1 day of use ago", "Day of use × event" on the heatmap, and the "use" label (was "lived") on a memory's card and in `browse`. Why: doctor says "day N of use" since #456; one phrase reads the same everywhere even where it is a little longer.
+- Decided by the dashboard-words builder, lightly held: the console's `counterparts mechanisms` lines ("next run in N days of use", "the last dream was on day N of use") changed too. Why: `test/mechanism-evidence.test.ts` holds the dashboard and the console to one judgement and one wording; leaving the console behind would have split them.
+- Decided by the dashboard-words builder, lightly held: the status opening says "I have had N days of use — the latest Oct 11" (the overview the same without the date). Why: "I have lived N days" is the brain voice NOTES defends, but "lived" is the word doctor dropped; the date is the one MM-DD-shaped thing (a raw `YYYY-MM-DD`) a person read in the dashboard, so it goes through `stampWords` like the wake's.
+- Decided by the dashboard-words builder, lightly held: "the owner" became "you" in the feed's narration, the event glossary (`registries.ts`), the page title, the tips and `dashboard --help`, and "[removed by the owner]" is "[removed by you]". The CONTRACT's own "the owner's window" is left. Why: those are read by the person; the CONTRACT is read by builders.
+- Decided by the dashboard-words builder, lightly held: left alone, on purpose: the web view's dates ("Sep 4th", `dates.js#dateWords`) — never MM-DD, and changing a deliberate format is another job; doctor details the health tab shows verbatim ("last 14 lived days", the clock finding) — doctor's text, not the dashboard's; the Lookups line reads both "lived days" and "days of use" and prints "days of use"; the regexes that read a stored chapter heading's "lived day N" (`memory-words.ts`, `search.js`); CSS classes (`jd-lived`), JSON keys (`nearby`, `arriving`, `livedDays`) and the console's other "lived day" words. Why: the job is what a person reads in the dashboard; stored text and other modules keep their own words.
+
+### Decided by the fox-trial-core builder, 2026-10-12, lightly held (first run)
+
+- Decided by the fox-trial-core builder, lightly held: the first meeting's introduction is "Hi, I'm Claude, with Counterparts now: a memory that's mine and stays on this computer, so I can carry what matters from one session to the next, and grow along with you." Why: Mike's own wording, added to the last clause so it stays one sentence.
+- Decided by the fox-trial-core builder, lightly held: nothing in core keyed on the sidebar's old prompt text. The wake's offer line said "If their message asks you to say hello and introduce yourself", which "Meet your new counterpart." only loosely matches, so it now says "asks to meet you or asks you to introduce yourself" and quotes the sidebar's prompt word for word, and says to begin with the introduction. Why: the mod's prompt is the person's first message in that session; Claude must read it as the meeting and still say hello first. The `meet` tool's admission ("or they ask to") already covers a later session, so the tool description, which rides in every session, is unchanged.
+- Decided by the fox-trial-core builder, lightly held: the plugin's first-run notice is one line, "Counterparts is set up: a memory that stays on this computer, in ~/.counterparts. (Daily tidy-up, called dreaming, is on; say "no dreams" to turn it off.)". The path stays in it. Why: it is short (`~/.counterparts`), and where it lives is the one fact a new user needs before anything else; nothing had to move to doctor or the meeting. "called dreaming" stays so that "no dreams" names something the line said. A memory parked beside it still adds its one sentence, the only case where the notice runs past a line.
+- Decided by the fox-trial-core builder, lightly held: the store id is computed, not stored: `st_` plus the first 16 hex of sha256("counterparts-store\0" + the realpath of the data dir). Why: no store had an id to reuse (grep found no store or install id), a stored id would need a store write that a dashboard (observer) can never make, and the task rules out a store-format change. The cost: a store moved or restored to another path reads as another store, which for the mod's question ("is this my store's dashboard?") is the safe answer. A hash of a guessable path (like ~/.counterparts/store) could be confirmed by someone who guesses it; the id is served only on loopback, where `/api/meta` already names the path, so this is not a new exposure.
+- Decided by the fox-trial-core builder, lightly held: the mod learns its own store from the session-start wake, as a second marker line `<!-- counterparts:store id=st_… -->` right under the onboarding marker, not from a `counterparts whoami` CLI. Why: a plugin install has no `counterparts` command, and the mod already reads the onboarding marker from that same context. A separate line keeps the onboarding marker exactly as the mod's parser reads it. Claude Desktop's wake does not carry it: there is no sidebar there.
+- Decided by the #459 reviewer, 2026-10-12, lightly held: the store id is keyed by the store's existing secret salt (G58's `sessions/expansions.salt`, 16 random bytes): `st_` plus the first 16 hex of sha256("counterparts-store\0" + salt + "\0" + the realpath of the data dir). Why: the id rides in every wake and so in transcripts, and a plain hash of a guessable path (`/Users/<name>/.counterparts`) could be confirmed by trying usernames; the salt makes it unconfirmable without reading the store's own files. The dir stays in, so a copied store at another path is still another store. No store format change. The wake (a writer) mints the salt if a store has none yet; the dashboard only reads it (E7), so `/api/whoami` and `/api/onboarding` say `store: null` until a session-start wake has run on that store, and the wake omits the marker line if the salt can be neither read nor made.
+
+### Decided by the sidebar fox builder, 2026-10-12, lightly held (the fox in the sidebar)
+
+- Decided by the sidebar fox builder, 2026-10-12, lightly held: the fox is the avatar only when no `brain` is
+  stored. A stored `turning`, `still` or `off` stays as it was. Why: a stored mode was a choice someone made,
+  because the old default was never written. The changelog says so.
+- Decided by the sidebar fox builder, 2026-10-12, lightly held: the sidebar's search box is hidden for 0.3.20
+  behind `COUNTERPARTS_SIDEBAR_SEARCH=1`. Why: in the owner's real sessions a click never put the keyboard in it,
+  and it could not be checked live without touching his live memory (hooks/sidebar/NOTES.md, "The fox").
+- Decided by the sidebar fox builder, 2026-10-12, lightly held: the fox holds one still frame between moments and
+  does not breathe in a loop. Why: the owner asked for less movement, and the breathing bob was the trial's
+  suspected flicker. A still hold also means a single timer wake for 8–20 s.
+- Decided by the sidebar fox builder, 2026-10-12, lightly held: a nap ends on the person's prompt, on any real
+  moment, or after the art's `napMaxMs` (4 min). A dream that never says it ended stops after 20 minutes. Why:
+  the art's schedule sets the nap length, and a missed end-of-dream row must not leave the fox asleep for good.
+- Decided by the sidebar fox builder, 2026-10-12, lightly held: one size of fox. The trial's `small|big` setting is
+  dropped. Why: the owner chose the small one, and the round 7 art comes in one size in each drawing style.
+- Decided by the sidebar fox builder, 2026-10-12, lightly held: pictures are tried only where the environment
+  says kitty or Ghostty, outside tmux and screen. Two refused picture blits switch the session to sextants. Why:
+  the engine gives a mod no capability flag, and elsewhere an Image draws dim alt text.
+- Decided by the PR #460 reviewer, 2026-10-12, lightly held: the sextant tier gives its Text runs hand-picked
+  xterm-256 colours (`TEXT_256` in fox.ts), spelt so chalk's rounding and a nearest-colour mapping both land on
+  them. Why: on the owner's iTerm the Text colours came out in 256 colours, and chalk's rounding turned the rust
+  fur into a washed-out pink and the creams into white. The Raster and the picture keep the art's colours.
+
+### Decided by the cc-memory-switch removal builder, 2026-10-12, lightly held (the sidebar's Claude memory switch)
+
+- Decided by the cc-memory-switch removal builder, 2026-10-12, lightly held: the switch is removed outright, with
+  no migration step. A stored `claudeMemory: false` or `claudeMemorySwitch` is left in the plugin store and never
+  read, so whoever had Claude Code's memory off gets it back from the next session. Why: with the filter gone there
+  is nothing to undo, and writing to the store to clear dead keys would be one more thing that could fail.
+- Decided by the cc-memory-switch removal builder, 2026-10-12, lightly held: `tools/term-loop` stops putting the
+  `claudeMemory` preference back by a click on the switch. Why: the switch no longer exists, so the click could
+  only miss or land on a memory titled "Claude memory".
+
+### Decided by the primacy-removal builder, 2026-10-12, lightly held (directory pre-flight)
+
+- Decided by the primacy-removal builder, lightly held: an old configuration's `parallel`
+  key, in any shape (`{ "enabled": true }`, a half-written block, a string), is ignored in
+  silence. It is not refused, does not take the configuration to observer, and adds no
+  `retired` line. Why: the key switched on a stand-down only the parallel run used, so
+  dropping it changes nothing for anyone; refusing it would cost a user their hooks for a
+  stale line, and a `retired` note would tell nearly everyone about a setting they never had.
+  Before this change a malformed `parallel` block made the whole configuration unreadable;
+  that strictness went with the knob.
+- Decided by the primacy-removal builder, lightly held: `primacy.ts` moved to
+  `tools/parallel/primacy.ts` rather than being deleted outright. Why: `tools/parallel/`
+  (kept on purpose) imports `assignmentHealth`/`assignmentPath`/`AB_DIR_ENV` from it, and
+  deleting it would break the instrument and its tests. Two edits inside `tools/parallel/`
+  follow from that: `readers.ts` imports from `./primacy.js`, and `preflight.ts` reads
+  `parallel.enabled` from the raw config JSON because `loadConfig` no longer parses it.
+- Decided by the primacy-removal builder, lightly held: in its new home the resolver has no
+  `~/.memory-ab` default; `abDir()` throws when `MEMORY_AB_DIR` is unset. Why:
+  `test/parallel.test.ts` requires that no non-`bin/` module in `tools/parallel/` imports
+  `node:os`, and every caller already passes the directory in (`readAssignmentAs`).
+- Decided by the primacy-removal builder, lightly held: the `adapter.primacy.deliver` and
+  `adapter.primacy.standdown` event names stay in core, the dashboard and `fired.ts`. Why:
+  they name rows already in stores from the run; removing them would leave old rows
+  unnarrated, and keeping them changes no store format. Nothing in src/ emits them now.
+- Decided by the primacy-removal builder, lightly held: the resolver's own unit tests stay
+  in `test/claude-code.test.ts`, importing from `tools/parallel/primacy.js`; the
+  `parallel.enabled` hook tests were replaced by a stale-key test. Two tests in that block
+  that checked unrelated durable rows (delivery rows, boundary rows) were kept and run
+  without the knob.
+
+### Decided by the wake-ceiling builder, 2026-10-12, lightly held (Claude Code's default wake ceiling)
+
+- Decided by the wake-ceiling builder, 2026-10-12, lightly held: every Claude Code install
+  (the plugin's first run, `install` with no terminal or with `--yes`, and the terminal's)
+  writes `injectionBudgetBytes: 9000` into a configuration it creates when no `--budget` was
+  given. `install --host claude-desktop` still writes none. A forced re-install over a file
+  without the key still writes none (B1: nothing is invented over a kept file). Why: the
+  0.3.20 release check found that the plugin's first run is `install --no-connect` with stdin
+  ignored, so it took the scripted arm, which wrote no key. The renderer refuses an undefined
+  ceiling (`briefing.no-budget`), so every plugin install since 0.3.13 woke on the bootstrap
+  line every day. The scripted arm's silence came from scar §2.18 ("the ceiling is a host
+  capability, not a core constant"). The core keeps that rule: it still has no default. 9,000
+  is the Claude Code adapter's own measured number, the one the terminal arm has written since
+  2026-09-22 and the self page's room is sized against.
+- Decided by the wake-ceiling builder, 2026-10-12, lightly held: a configuration without the
+  key wakes under 9,000 at load (`config.ts#withBudgetDefault`), applied by the hook, the
+  worker and night run (`runnerConfig`), `catch-up`, doctor and `rebrief` (a config found
+  without the key). No config file is rewritten. The value is marked
+  `injectionBudgetDefaulted`, `capabilities()` still says `reported: false`, the hook's
+  `adapter.budget.unreported` tripwire still fires (with `defaulted: 9000`), and doctor's Config line says
+  "wake ceiling 9000 bytes, Claude Code's default". Why: installs already made by the plugin (0.3.13–0.3.19)
+  or by a scripted `install` (any version before this) have no key, and none of them should need to do anything.
+  Claude Desktop's MCP server does not apply the default, because that host has no measured
+  ceiling. Side effect: the room a prompt's recall may take on those installs becomes 9,000
+  instead of `RECALL_TUNABLES.BUDGET_BYTES` (2,048), the same as a terminal install's.
+- Decided by the #466 reviewer, 2026-10-12, lightly held: left as built, with the wording
+  corrected. Claude Desktop's server applies no default, but the worker its `wake` starts is
+  Claude Code's runner (`runnerConfig`), which does, and `install --host claude-desktop` writes
+  the same default `claude-code.json`. So a keyless store a Desktop chat wakes from is rendered
+  at 9,000 and delivered as the published bundle. Why: 9,000 bytes fits the tool result's
+  24,000 characters, and a composed wake is what that person was missing too.
+
 ### Also noted
 
 - **A read-without-crediting mode for audits.** A way to read memories (a review, a rules
