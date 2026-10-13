@@ -1492,6 +1492,14 @@ function startStage($: EngineInterface): void {
 }
 
 /** The stage's element in a tier, for the step on screen. */
+/**
+ * The desktop's pane, as wide as the person drags it (it keeps their width, not the one a plugin asks for;
+ * measured 2026-10-13): the fox shows down to this many columns, scaled to fit, where the terminal needs
+ * STAGE_COLS. `w` is the last drawing's width.
+ */
+const STAGE_MIN_PROSE_COLS = 22
+const prosePane = { w: STAGE_COLS }
+
 function stageElement(els: ReturnType<EngineInterface['ui']['resolve']>, tier: FoxTier, step: Step): JSX.Element {
   if (tier === 'basic' && 'Raster' in els) {
     const { Raster } = els
@@ -1508,7 +1516,9 @@ function stageElement(els: ReturnType<EngineInterface['ui']['resolve']>, tier: F
   if (tier === 'svg' && 'Svg' in els) {
     const { Svg } = els
     const svg = foxSvg(step)
-    return <Svg key="stage" source={svg.source} alt="a small fox" width={svg.width} height={svg.height} />
+    // A pane dragged narrower than the fox: the fox scales down with it (about 7 px a cell on the desktop).
+    const k = Math.min(1, (prosePane.w * 7) / svg.width)
+    return <Svg key="stage" source={svg.source} alt="a small fox" width={Math.round(svg.width * k)} height={Math.round(svg.height * k)} />
   }
   // fine: each row as runs of one colour pair; a cell with no colour is the panel's.
   const { Box, Text } = els
@@ -1912,6 +1922,7 @@ export const register: Register = on => {
       !paused && firing !== null && now - firing.at < FIRING_MS && Array.isArray(firing.ids) ? firing.ids : []
     look.firing = firingNow
     const W = Math.max(e.props.bodyColumns, 1)
+    prosePane.w = W
     const fill = Math.max(1, e.props.scroll?.bodyRows ?? 1)
     const inline = e.props.placement === 'inline'
     const w = Math.max(16, inline ? Math.min(W - 2, 64) : W - 2)
@@ -1921,7 +1932,7 @@ export const register: Register = on => {
     // tier this surface draws (fox.ts); on a surface with no way to draw it, the header with no avatar.
     const tier = pickTier(e.surface, stage.detail, stage.env, stage.noImages)
     const drawsStage = tier === 'svg' ? 'Svg' in els : 'Raster' in els
-    const hasStage = mode === 'fox' && drawsStage && !inline && fill >= STAGE_MIN_PANE_ROWS && W >= STAGE_COLS
+    const hasStage = mode === 'fox' && drawsStage && !inline && fill >= STAGE_MIN_PANE_ROWS && W >= (SURFACE.prose ? STAGE_MIN_PROSE_COLS : STAGE_COLS)
     // While the pane holds the keyboard the brain and the fox hold still.
     const holding = e.props.isFocused === true
     if (!hasStage || holding || tier !== stage.tier) stopStage()
