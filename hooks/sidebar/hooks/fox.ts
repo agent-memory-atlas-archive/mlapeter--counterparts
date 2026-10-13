@@ -551,7 +551,9 @@ export function foxSvg(step: Pick<Step, 'frame' | 'fx'>): { source: string; widt
   // The PNG's box over the half-block fox's (the art lines both up: the same footprint, feet on the bottom line).
   const [bw, bh] = ART.half.box
   const image = png === '' ? '' : `<image x="${String(HALF_X0)}" y="${String(H - bh)}" width="${String(bw + 2)}" height="${String(bh)}" preserveAspectRatio="xMidYMax meet" style="image-rendering:pixelated" href="data:image/png;base64,${png}"/>`
-  const source = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${String(cols)} ${String(H)}" shape-rendering="crispEdges">${rects.join('')}${image}</svg>`
+  // The picture alone when there is one: the half-block fox under it showed as a dark ghost edge on the
+  // desktop's light page (2026-10-13); it stays only as the fallback for a frame with no PNG.
+  const source = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${String(cols)} ${String(H)}" shape-rendering="crispEdges">${image === '' ? rects.join('') : image}</svg>`
   return { source, width: cols * SVG_PX, height: H * SVG_PX }
 }
 

@@ -2024,7 +2024,7 @@ test('half-blocks in Apple Terminal, and the desktop draws an Svg of the same fo
   await ui.unmount()
   ui = await mount($, w, 'desktop')
   const svg = await ui.find({ type: 'Svg' })
-  expect(String(svg?.props['source'])).toContain('<rect')
+  expect(String(svg?.props['source'])).toContain('data:image/png;base64,')
   expect(svg?.props['alt']).toBe('a small fox')
   await ui.unmount()
 })

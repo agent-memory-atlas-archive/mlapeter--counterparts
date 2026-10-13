@@ -963,7 +963,8 @@ describe('the fox', () => {
     expect(pngOf({ frame: 'no-such', fx: [] })).toBe(pngOf(idle))
     const svg = foxSvg(idle)
     expect(svg.source.length).toBeLessThan(131072)
-    expect(svg.source).toContain('<rect')
+    // the picture alone: the half-blocks under it showed as a ghost edge on the desktop's light page
+    expect(svg.source).not.toContain('<rect')
     expect(svg.source).toContain('data:image/png;base64,')
   })
 
