@@ -42,6 +42,7 @@ import {
   fineCells,
   foxSvg,
   halfCells,
+  momentSteps,
   newDirector,
   normDetail,
   pickTier,
@@ -928,8 +929,15 @@ describe('the fox', () => {
       if (!pass.has(h)) expect(TEXT_256[h]).toBeDefined()
     }
     const used = new Set(fineCells({ frame: 'idle', fx: [] }).flat().flatMap(c => [c.fg, c.bg]))
-    expect(used.has('#aa7766')).toBe(false)
-    expect(used.has(textHex('#a76'))).toBe(true)
+    expect(used.has('#a42')).toBe(false)
+    expect(used.has(textHex('#a42'))).toBe(true) // the fur: the palette is read from 1 ('1' the outline)
+    // every cell's colour is in the palette (the notepad's 'j' is its last colour, not past its end)
+    const P = FOX_FINAL.sextant.palette.length
+    for (const f of Object.values(FOX_FINAL.sextant.frames) as unknown as { fg: readonly string[]; bg: readonly string[] }[]) {
+      for (const ch of [...f.fg, ...f.bg].join('')) if (ch !== '.') expect(parseInt(ch, 36)).toBeLessThanOrEqual(P)
+    }
+    const pad = new Set(fineCells({ frame: 'note0', fx: [] }).flat().flatMap(c => [c.fg, c.bg]))
+    expect(pad.has(textHex('#753'))).toBe(true)
   })
 
   test('sextants: every pattern has its glyph and back; the four that are not sextants are the space and the block glyphs', () => {
@@ -967,15 +975,28 @@ describe('the fox', () => {
     expect(svg.source).toContain('data:image/png;base64,')
   })
 
-  test('the schedule: a still hold of 8–20 s, then one small moment; one wake per change of what is on screen', () => {
+  test('the schedule: a short first hold, then the tail tip flicks; then still holds of 4–9 s, each ending in one small moment; one wake per change of what is on screen', () => {
     const d = newDirector(0)
     const rand = seeded()
     const first = advance(d, 0, rand)
     expect(first.step.frame).toBe('idle')
-    expect(first.next).toBeGreaterThanOrEqual(8000)
-    expect(first.next).toBeLessThanOrEqual(20000)
-    let t = first.next
-    let shown = stepKey(first.step)
+    expect(first.next).toBeGreaterThanOrEqual(2000)
+    expect(first.next).toBeLessThanOrEqual(4000)
+    // the early flick: the tip leans, further, back
+    const flick: string[] = []
+    let u = first.next
+    for (let i = 0; i < 3; i++) {
+      const a = advance(d, u, rand)
+      flick.push(a.step.frame)
+      u = a.next
+    }
+    expect(flick).toEqual(['tailSmall0', 'tailSmall1', 'tailSmall0'])
+    const second = advance(d, u, rand)
+    expect(second.step.frame).toBe('idle')
+    expect(second.next - u).toBeGreaterThanOrEqual(4000)
+    expect(second.next - u).toBeLessThanOrEqual(9000)
+    let t = second.next
+    let shown = stepKey(second.step)
     const seen: string[] = []
     for (let i = 0; i < 40; i++) {
       const a = advance(d, t, rand)
@@ -990,11 +1011,101 @@ describe('the fox', () => {
     expect(new Set(seen).size).toBeGreaterThan(2)
   })
 
-  test('after three minutes with nothing happening the fox naps, and a prompt wakes it with a stretch', () => {
+  test('the moments: one ear twitch, the tail tip unhurried, the whole tail rare; no lick', () => {
+    expect(momentSteps('ear').map(s => s.frame)).toEqual(['ear'])
+    expect(momentSteps('tailSmall').reduce((a, s) => a + s.ms, 0)).toBeGreaterThan(1000)
+    const w = FOX_FINAL.schedule.weights as Readonly<Record<string, number>>
+    expect(w['tail']).toBeLessThan((w['tailSmall'] ?? 0) / 4)
+    expect('lick' in FOX_FINAL.moments).toBe(false)
+    // every frame a moment names is drawn in every tier
+    for (const steps of Object.values(FOX_FINAL.moments) as unknown as (readonly [string, number])[][]) {
+      for (const [f] of steps) {
+        expect(f in FOX_FINAL.png.frames && f in FOX_FINAL.sextant.frames && f in FOX_FINAL.half.frames).toBe(true)
+        if (f !== 'idle') expect(pngOf({ frame: f, fx: [] })).not.toBe(pngOf({ frame: 'idle', fx: [] }))
+      }
+    }
+  })
+
+  test('after 45 s with nothing happening he lies down, behind a blink; small moments lying; at 2 min he naps from there; a prompt gets him up', () => {
+    const d = newDirector(0)
+    const rand = seeded(5)
+    let t = 0
+    const frames: string[] = []
+    while (t < 44000) {
+      const a = advance(d, t, rand)
+      frames.push(a.step.frame)
+      t = a.next
+    }
+    expect(frames.some(f => f.startsWith('lie'))).toBe(false)
+    while (t < 60000) {
+      const a = advance(d, t, rand)
+      frames.push(a.step.frame)
+      t = a.next
+    }
+    expect(d.mode).toBe('lie')
+    // sitting to lying happens behind shut eyes: a blink, then the lying blink
+    const i = frames.indexOf('lieBlink')
+    expect(frames.slice(i - 1, i + 2)).toEqual(['blink', 'lieBlink', 'lie0'])
+    const lying: string[] = []
+    while (t < 110000) {
+      const a = advance(d, t, rand)
+      lying.push(a.step.frame)
+      t = a.next
+    }
+    expect(lying.every(f => f.startsWith('lie'))).toBe(true)
+    expect(new Set(lying).size).toBeGreaterThan(2)
+    trigger(d, 'prompt', t)
+    expect(d.mode).toBe('idle')
+    const up: string[] = []
+    for (let k = 0; k < 3; k++) {
+      const a = advance(d, t, rand)
+      up.push(a.step.frame)
+      t = a.next
+    }
+    expect(up).toEqual(['lieBlink', 'blink', 'idle'])
+    // left alone again: lying from 45 s, the nap at 2 min, curled from lying behind the lying blink
+    const start = t
+    const later: string[] = []
+    while (t < start + 125000) {
+      const a = advance(d, t, rand)
+      later.push(a.step.frame)
+      t = a.next
+    }
+    expect(d.mode).toBe('nap')
+    const n = later.indexOf('nap0')
+    expect(later[n - 1]).toBe('lieBlink')
+  })
+
+  test('something comes to mind while he lies: he perks up lying down (a spark beside the lying head), then sits up', () => {
+    const d = newDirector(0)
+    const rand = seeded(5)
+    let t = 0
+    while (d.mode !== 'lie' || advance(d, t, rand).step.frame !== 'lie0') t = advance(d, t, rand).next
+    trigger(d, 'came', t)
+    const a = advance(d, t, rand)
+    expect(a.step.frame).toBe('liePerk')
+    expect(a.step.fx).toEqual([['spark0', 'sparkLie']])
+    const seq: string[] = []
+    for (let k = 0; k < 8; k++) {
+      const s = advance(d, t, rand)
+      seq.push(s.step.frame)
+      t = s.next
+    }
+    expect(seq.slice(-4)).toContain('idle')
+    expect(d.mode).toBe('idle')
+    // a save mid-glance (sitting) goes through a blink first, so the notepad never jumps from a sideways look
+    const e = newDirector(0)
+    e.cur = { frame: 'lookL', ms: 1400, fx: [], moment: 'glance' }
+    e.until = 10
+    trigger(e, 'note', 5)
+    expect(advance(e, 5, rand).step.frame).toBe('blink')
+  })
+
+  test('after two minutes with nothing happening the fox naps, and a prompt wakes it with a stretch', () => {
     const d = newDirector(0)
     const rand = seeded(3)
     let t = 0
-    while (t < 200000) t = advance(d, t, rand).next
+    while (t < 140000) t = advance(d, t, rand).next
     expect(d.mode).toBe('nap')
     trigger(d, 'prompt', t)
     expect(d.mode).toBe('idle')
@@ -1027,7 +1138,10 @@ describe('the fox', () => {
       t = a.next
     }
     expect(notes.filter(f => f === 'note0').length).toBe(2)
+    // from the notepad pose, through a blink back to the sitting face, then hello
     trigger(d, 'hello', t)
+    expect(advance(d, t, rand).step.frame).toBe('blink')
+    t = advance(d, t, rand).next
     expect(advance(d, t, rand).step.frame).toBe('hello0')
     trigger(d, 'dream', t)
     for (let i = 0; i < 10; i++) t = advance(d, t, rand).next
