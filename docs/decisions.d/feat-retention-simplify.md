@@ -20,11 +20,14 @@
   recognition keys on classification, so copies without `spans/` and older copies with
   it are both "ours" and rotate as before.
 - Decided by the retention builder, 2026-10-13, lightly held: the database holds no
-  conversation text, with one small exception left as it is: `gate_session`'s scalar row
-  carries the previous turn's cue tokens (single keywords, one-turn expiry, swept by
-  `pruneGateSessions`). Not stripped from snapshot or pre-migration copies, because a
-  strip step inside the copy path and `store/pre-migration.ts` is more machinery than a
-  bag of keywords is worth. Revisit if Mike wants them out.
+  conversation text, with one small exception: `gate_session`'s scalar row carries the
+  previous turn's cue tokens (single keywords, one-turn expiry). Revised the same day
+  (fix/gate-carry-retention): `pruneGateSessions` turned out to have no live caller, so
+  an ended or killed session kept its last turn's tokens indefinitely. The worker now
+  empties the carry of every session idle past `maxDays` (`recall/session.ts#clearIdleCarries`,
+  every run, before the day's copy), so copies taken from then on hold none older than
+  the ceiling. Copies taken before it keep theirs until they rotate; no strip step was
+  added to the copy path.
 - Decided by the retention builder, 2026-10-13, lightly held: `counterparts delete <kind>`
   has one confirm shape: no flag prints the counts and changes nothing, a terminal is
   asked once (y/N), and `--yes` acts for a script or the dashboard (which shows the

@@ -71,6 +71,7 @@ import { fileURLToPath } from "node:url";
 
 import { Counterpart, RUNNER_FAILED_EVENT } from "../../../core/counterpart.js";
 import { recordCoverage } from "../../../core/coverage/index.js";
+import { clearIdleCarries } from "../../../core/recall/index.js";
 import { RETENTION_EVENT, retentionRow, retentionRuns } from "../../../core/remember/index.js";
 import type { HostSessionEvidence, RetentionReport } from "../../../core/remember/index.js";
 // THE DELETING HALF, by path, and from this file alone (PR #189 review, B1):
@@ -465,6 +466,17 @@ export async function runOnce(input: {
       }
     } catch (err) {
       emit("retention.threw", { code: err instanceof Error ? err.name : "UNKNOWN" });
+    }
+    // 3d. TYPED WORDS LEAVE QUIET SESSIONS (2026-10-13): recall's carried cue
+    // tokens are emptied in every session idle past the same ceiling, so a
+    // session that ended or was killed does not keep them, and the copy below
+    // does not take them. Every run, not once a date: it reads only rows that
+    // still carry words. Its own try, like the steps above.
+    try {
+      const cleared = clearIdleCarries(counterpart.store, retentionClocks(config).maxMs);
+      if (cleared > 0) emit("runner.carries", { cleared });
+    } catch (err) {
+      emit("carries.threw", { code: err instanceof Error ? err.name : "UNKNOWN" });
     }
     // 4. THE DAY'S COPY OF THE STORE — after everything above has written, on
     // the failed path as well as the good one, and before the store is closed.

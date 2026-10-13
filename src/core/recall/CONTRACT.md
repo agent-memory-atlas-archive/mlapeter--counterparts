@@ -170,7 +170,9 @@ reply actually used reconsolidates, where in humans every retrieval does.
   cross-session cue carry-over were all inert on the live path** — specified, implemented,
   tested, unreachable. The spec's instruction is to pick one and say so; this contract
   persists it (a few rows under the storage rescope) and marks the call. **Generalized: a
-  pure function over caller-owned state is only as real as its caller.**
+  pure function over caller-owned state is only as real as its caller.** The one piece of
+  it that is the person's own words, the carried cue tokens, is emptied in any session idle
+  past the retention ceiling (`clearIdleCarries`, run by the worker; NOTES §6, 2026-10-13).
 - **The activation graph's edge arithmetic may belong in `physics/` and the traversal here** —
   `associate/CONTRACT.md` open question 1, the module map's standing check-in question. Not
   resolved by this contract.

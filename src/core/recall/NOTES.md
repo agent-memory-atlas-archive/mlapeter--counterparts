@@ -76,6 +76,20 @@ every turn, scoped to one session, never emitted as telemetry. The decision reco
 every event carry counts and hashes only — a cue token is turn text, and turn text is
 exactly what telemetry may not carry. Revisit if the retention review disagrees.
 
+**2026-10-13, the retention review's answer.** "Overwritten every turn" was true of a
+session that keeps talking; a session that ended, or was killed, kept its last turn's
+tokens for as long as its row lived — and `Store#pruneGateSessions`, the sweep meant to
+end that, has no live caller. Policy since PR #468 is that what the person typed is never
+kept past the retention ceiling (`retention.maxDays`, default 14). So the scalar row now
+records when it was saved (`at`, in its JSON — no schema change), and the worker's every
+run calls `clearIdleCarries`, which empties `carriedCues` in every session whose row is
+older than the ceiling (a row with no `at` counts as old, which is what clears existing
+stores). Only the carry: the turn count, refractory and per-memory rows are ids and
+numbers, and stay. Not done at session end: the core boundary runs at every turn, and
+there is no clean end signal; the sweep covers ended and killed sessions alike. The
+other gate kinds hold no typed text: `surfaced`, `credited` and `asked` are memory ids,
+`semantic` is `{id, score}` plus a model name, `judged` is a turn number.
+
 ## 7. Deliberately NOT built (Amendment 15 — complexity is earned)
 
 - **Deliberate recall (§9.1)** — the explicit ask, its lower-confidence labeled tier and
