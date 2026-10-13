@@ -1,5 +1,67 @@
 # Changelog
 
+## 0.3.21 — 2026-10-13
+
+Your conversation text is kept for less time, and never in a backup. The text of a conversation is now deleted 3 days after it has been written up and the session has ended (it was 7), and it is never kept more than 14 days after the session's last activity, written up or not; both numbers can be changed with `"retention": {"afterWriteUpDays": 3, "maxDays": 14}` in `claude-code.json`. The first time the new version runs on an existing memory, everything older than those limits is deleted in one go, so if you want to keep more, add the `retention` setting before your first session on 0.3.21. Daily backups stop copying conversation text; backups made before this update still hold it until they rotate out, or until you run `counterparts delete backups`. New `counterparts delete conversation-text`, `delete backups` and `delete activity-log` (and "Delete data…" on the dashboard's Memories page) each delete one kind of data after showing what they would delete. The few words recall carries from your last message are cleared once a session has been quiet past the same 14-day limit. Also: the plugin installs over HTTPS without a GitHub SSH key (run `/plugin marketplace update counterparts` first if you added the marketplace before), "installed twice" is said once, the first meeting says where the sidebar appears, and the sidebar's fox and its look in the Claude Desktop app are polished (the Desktop shows the fox, not the brain, this version). No store-format change (store v13, cache v6) and no wiring change: nothing to run after upgrading from 0.3.20, and `counterparts connect` is not needed.
+
+- **The plugin installs without a GitHub SSH key.** On a computer with no SSH key that
+  GitHub accepts, `/plugin install counterparts@counterparts` failed with "Permission denied
+  (publickey)", even though adding the marketplace had worked. The marketplace now names the
+  repository by its `https://` address, which needs no key. If you added the marketplace
+  before, run `/plugin marketplace update counterparts` first, then install again.
+- **"Installed twice" is said once.** With both the npm install and the plugin, the plugin
+  stands down and said so at the start of every session, which read like an error. It now
+  says it at the first session that finds both, then stays quiet; `counterparts doctor`
+  still shows it. Nothing about how the two share the memory has changed.
+- **Conversation text is kept for less time, and never in a backup.** The text of your
+  conversations is deleted 3 days after it is written up and the session has ended (it
+  was 7), and is never kept more than 14 days after the session's last activity, written
+  up or not. Both can be changed in `claude-code.json`:
+  `"retention": {"afterWriteUpDays": 3, "maxDays": 14}`. Daily backups no longer copy it
+  at all, so restoring one loses whatever was not yet written up. Backups made before
+  this update still hold it until they rotate out, or until you delete them.
+- **Delete one kind of data at a time.** `counterparts delete conversation-text`,
+  `delete backups` and `delete activity-log` each delete that one kind and nothing else.
+  Each shows what it would delete first (for conversation text, how many sessions were
+  still waiting to be written up and would be lost) and asks once; `--yes` skips the
+  question for a script. The dashboard's Memories page has the same three under
+  "Delete data…".
+- **The first meeting says where the sidebar is.** In the plugin, the end of the first
+  meeting now says the memory sidebar appears on the right once the window is wide
+  enough.
+- **The sidebar's fox is a little more alive, and calmer about it.** He does small things
+  more often (a blink, a flick of his tail tip, an ear twitch, a glance), and flicks his tail
+  within a few seconds of the sidebar opening. When something comes to mind he perks up,
+  curious, with one ear raised. Left alone, he lies down after 45 seconds and naps after two
+  minutes; anything you do gets him up. His small moves no longer make his whole body
+  flicker, in the desktop app and in Ghostty or kitty. In iTerm, WezTerm and VS Code he
+  now has his intended colours (a warmer orange, a cream chest), and his notepad shows.
+- **A clearer hint when the window is too narrow for the sidebar.** The line under the
+  prompt now says to widen the window, instead of naming a command that can't open it there.
+- **Your words from a session's last turn no longer stay in the database.** Recall keeps a
+  few words from your previous message to help with the next one. A session that ended,
+  or was closed abruptly, kept its last few words indefinitely. Now they are cleared once
+  the session has been quiet for the retention limit (14 days unless you changed it),
+  including for sessions from before this update. Backups taken from then on don't
+  contain them either.
+- **The sidebar looks right in the Claude Desktop app.** It now uses the app's own colours (light or
+  dark), has no lines of dashes, wraps its text to the app's font, leaves a blank row between
+  items, and draws the "Mechanisms today" bars at a readable size. The fox no longer shows a dark
+  edge on the light page and fits a narrower pane.
+- **The memory count sits on the sidebar's title row, beside the day** ("1511 memories · day 22",
+  shortened when the pane is narrow), in every app, and the search row appears only when search is
+  switched on.
+- **The sidebar's "quietly available" titles read cleanly.** "Earlier (now [id]): ..." shows as
+  "Earlier: ...", "Unsettled - may be out of date, see [id]: ..." as "Unsettled: ...", "Corrected by
+  [id]: ..." as "Corrected: ...", and the trailing "(earlier: [id])" and "(corrects [id])" are left
+  off; a click on one opens that memory, not the one its note points at.
+- **In the Desktop app the avatar is the fox or nothing.** The brain doesn't draw there yet, so the
+  avatar row offers animal and off, and a brain chosen in the terminal shows the fox on the Desktop. The
+  terminal keeps its brain.
+- **Pressing the Counterparts switch in auto mode no longer shows an engine error.** When auto mode
+  declines the press, a short note says so and tells you what to ask Claude instead ("pause
+  Counterparts here"); the switch stays as it was.
+
 ## 0.3.20 — 2026-10-12
 
 New installs from the plugin now remember from the second day. (Plugin first runs and scripted `install --yes` had never set a size limit for the wake, so every session opened on "No briefing has been composed yet"; earlier plugin installs had the same gap, and they are fixed automatically, with no action and no change to your configuration file; the first session after upgrading may still open on that line, and the wake is composed when that session ends.) The first meeting is the heart of this release. A new install now opens with a short, easy conversation where Claude introduces itself, asks one question at a time (all fine to pass), writes up what it learned right there, and ends with "What would you like to work on today?". Nothing interrupts it: no dream starts and the end-of-turn write-up waits, so the first dream comes the next day. Everyday words replace the internal ones: session starts say "Coming up:" and "Might be relevant:", dates read "Oct 11", and the dashboard uses the same words. A brand-new install's first `counterparts doctor` shows no ambers, a plugin install gets a one-line welcome, and the README is honest about what recall by meaning can and cannot find. The sidebar gains onboarding, a small fox, a second theme and the dashboard's store id; its Claude Code memory switch is gone, and the dead read of an A/B file in the home directory is removed. Reminders are no longer spent on a compaction nobody reads, and the wake never drops a section without saying so. No store-format change (store v13, cache v6) and no wiring change: nothing to run after upgrading from 0.3.19, and `counterparts connect` is not needed.
