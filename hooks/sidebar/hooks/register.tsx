@@ -1979,8 +1979,9 @@ export const register: Register = on => {
         SURFACE.prose ? <Text key="stage-rule"> </Text> : <Text key="stage-rule" color={P.faint}>{'─'.repeat(w)}</Text>,
         ...(searchFlag.on ? [<Box key="head2" flexDirection="row" width={w}>{searchBox(paneEls, actions, w)}</Box>] : []),
       )
-      // The desktop's Svg is 180 px tall, about ten of its text rows (measured 2026-10-13), not the cells' fifteen.
-      used += 1 + (tier === 'svg' ? (SURFACE.prose ? 10 : 15) : stageRows(tier)) + 1 + (searchFlag.on ? 1 : 0)
+      // The desktop's Svg is 180 px tall, about ten of its text rows (measured 2026-10-13), not the cells' fifteen;
+      // fewer when a narrow pane scales it down (stageElement's factor).
+      used += 1 + (tier === 'svg' ? (SURFACE.prose ? Math.ceil(10 * Math.min(1, (W * 7) / (STAGE_COLS * 6))) : 15) : stageRows(tier)) + 1 + (searchFlag.on ? 1 : 0)
       if (!holding) startStage($)
     } else if (mode === 'fox' && !hasRaster) {
       rows.push(...brainlessHeader(paneEls, actions, { w, paused, lit, day, count: countText }))
