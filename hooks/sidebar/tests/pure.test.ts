@@ -34,6 +34,7 @@ import {
   storeOf,
 } from '../hooks/feed'
 import { cells, ellipsizeCells, padCells } from '../hooks/width'
+import { headRight } from '../hooks/desktop'
 import {
   STAGE_COLS,
   TEXT_256,
@@ -214,6 +215,28 @@ describe('the feed', () => {
       footnotes: [{ title: 'Release notes go out on Fridays', id: 'mem_rel00001' }],
     })
     expect(parseRecallBlock('<system-reminder>a wake, no recall</system-reminder>')).toBeNull()
+  })
+
+  test('footnotes with a standing: the lead becomes a word, the id is the first after it, trailing pointers are dropped', () => {
+    const block = (...items: string[]): string =>
+      ['<!-- counterparts:recall t=4 -->', '', 'Quietly available (ignorable; expand an id with recall before citing one):', ...items.map(i => `- ${i}`), '<!-- counterparts:recall/end surfaced=0 footnotes=3 affect=0 bytes=1 -->'].join('\n')
+    expect(
+      parseRecallBlock(
+        block(
+          'Earlier (now [mem_new00001]): The pane was 40 columns [mem_old00001]',
+          'Unsettled \u2014 may be out of date, see [mem_other001]: Releases go out on Fridays [mem_rel00001]',
+          'The pane is 35 columns [mem_cur00001] (earlier: [mem_old00002])',
+          'The rail is gone [mem_rail0001] (corrects [mem_rail0000])',
+          'A title with no id at all',
+        ),
+      )?.footnotes,
+    ).toEqual([
+      { title: 'Earlier: The pane was 40 columns', id: 'mem_old00001' },
+      { title: 'Unsettled: Releases go out on Fridays', id: 'mem_rel00001' },
+      { title: 'The pane is 35 columns', id: 'mem_cur00001' },
+      { title: 'The rail is gone', id: 'mem_rail0001' },
+      { title: 'A title with no id at all', id: null },
+    ])
   })
 
   test('a facts answer: titles, ids, the who-and-when line, the excerpt', () => {
@@ -1051,5 +1074,39 @@ describe('the fox', () => {
     expect(otherStore('st_0123456789abcdef', 'st_0123456789abcdef')).toBe(false)
     expect(otherStore(null, 'st_fedcba9876543210')).toBe(false)
     expect(otherStore('st_0123456789abcdef', null)).toBe(false)
+  })
+})
+
+describe('the desktop layout', () => {
+  test('headRight: the count and the day on the title row, shortened to the room beside the title', () => {
+    applyTheme('tron', 'terminal')
+    // the terminal: the room is the width less the title's 16 cells and a space
+    expect(headRight(22, '1511 memories', 40)).toBe('1511 memories \u00b7 day 22')
+    expect(headRight(22, '1511 memories', 30)).toBe('1511 \u00b7 day 22')
+    expect(headRight(22, '1511 memories', 24)).toBe('day 22')
+    expect(headRight(null, '1511 memories', 40)).toBe('1511 memories')
+    // the desktop's font fits a fifth more: the long form at a width where the terminal gives the short one
+    applyTheme('tron', 'desktop')
+    expect(headRight(22, '1511 memories', 37)).toBe('1511 memories \u00b7 day 22')
+    applyTheme('tron', 'terminal')
+    expect(headRight(22, '1511 memories', 37)).toBe('1511 \u00b7 day 22')
+  })
+
+  test('the desktop chart row: a name column, a bar as a share of its column, a spacer, the count', () => {
+    const state = (prose: boolean): BodyState => ({ ...BASE, prose, w: 40, cellsW: 34 })
+    const rows = layoutBody(state(true)).lines.filter(l => l.key?.startsWith('mech:'))
+    expect(rows.length).toBeGreaterThan(0)
+    for (const l of rows) {
+      const [name, bar, grow, count] = l.segs
+      expect(name?.cw).toBe(16)
+      expect(name?.t).not.toMatch(/\s$/)
+      expect(bar?.of).toBe(34 - 16 - 4)
+      expect(bar?.fill).toBeLessThanOrEqual(bar?.of ?? 0)
+      expect(grow?.grow).toBe(true)
+      expect(count?.t).toMatch(/^\d+$/)
+    }
+    // the terminal pads with spaces instead and carries none of it
+    const term = layoutBody(state(false)).lines.filter(l => l.key?.startsWith('mech:'))
+    for (const l of term) expect(l.segs.some(sg => sg.cw !== undefined || sg.fill !== undefined || sg.grow === true)).toBe(false)
   })
 })

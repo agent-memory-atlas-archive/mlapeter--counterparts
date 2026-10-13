@@ -195,16 +195,18 @@ test('drawn: the dashboard is read; the header is the small brain, COUNTERPARTS,
     expect(w.fetches.some(u => u.endsWith('/api/mechanisms'))).toBe(true)
     expect(w.fetches.some(u => u.includes('/api/dreams'))).toBe(true)
     expect((await ui.find({ type: 'Button', key: 'title' }))?.text).toContain('COUNTERPARTS')
-    expect(await ui.find({ type: 'Text', text: 'day 18' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: '776 memories' })).toBeDefined()
     expect((await ui.find({ type: 'Input', key: 'q' }))?.props['placeholder']).toBe('search')
     if (surface === 'terminal') {
+      // the brain header: the day on the title row, the count beside the brain
+      expect(await ui.find({ type: 'Text', text: 'day 18' })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: '776 memories' })).toBeDefined()
       const r = await ui.find({ type: 'Raster', key: 'brain' })
       expect(r?.props['columns']).toBe(18)
       expect(r?.props['rows']).toBe(6)
     } else {
-      // no Raster on the desktop: the header with no brain
+      // no Raster on the desktop: the header with no brain, the count and the day on the title row
       expect(await ui.find({ type: 'Raster' })).toBeUndefined()
+      expect(await ui.find({ type: 'Text', text: '776 · day 18' })).toBeDefined()
       expect((await ui.find({ type: 'Button', key: 'title' }))?.text).toContain('◉ COUNTERPARTS ↗')
     }
     await ui.unmount()
@@ -377,9 +379,17 @@ test('Mechanisms today: times each fired today, from the dashboard; a zero dim w
     let lines = await bodyLines(ui)
     const at = lines.findIndex(l => l.startsWith('Mechanisms today'))
     expect(lines[at]).toMatch(headRe(surface, 'Mechanisms today', 'times fired'))
-    expect(lines[at + 1]).toMatch(/^Salience {8}▄+▖?\s+3$/)
-    expect(lines[at + 2]).toMatch(/^Emotion {9}\s+0$/) // no bar
-    expect(lines[at + 5]).toMatch(/^Retrieval {7}▄{12}\s*12$/) // the longest bar
+    if (surface === 'terminal') {
+      expect(lines[at + 1]).toMatch(/^Salience {8}▄+▖?\s+3$/)
+      expect(lines[at + 2]).toMatch(/^Emotion {9}\s+0$/) // no bar
+      expect(lines[at + 5]).toMatch(/^Retrieval {7}▄{12}\s*12$/) // the longest bar
+    } else {
+      // the desktop's rows are columns, not padding: name, bar (a share of its column) and count, the bar's text the
+      // full column's half blocks, clipped by its box
+      expect(lines[at + 1]).toMatch(/^Salience▄+3$/)
+      expect(lines[at + 2]).toBe('Emotion0') // no bar
+      expect(lines[at + 5]).toMatch(/^Retrieval▄+12$/)
+    }
     expect(lines.some(l => l.startsWith('Schemas'))).toBe(false) // not built: not drawn
     await click(ui, 'Forgetting')
     lines = await bodyLines(ui)
@@ -511,7 +521,8 @@ test('Last Dream: its first sentence, in its own voice; a click opens the dream 
     let lines = await bodyLines(ui)
     const at = lines.findIndex(l => l.startsWith('Last Dream'))
     expect(lines[at]).toMatch(headRe(surface, 'Last Dream', '3:35'))
-    expect(lines.slice(at + 1, at + 3)).toEqual(['I dreamed the plugin and the', 'brain were one thing.'])
+    // the desktop wraps a fifth wider (its font fits more in a cell's width)
+    expect(lines.slice(at + 1, at + 3)).toEqual(surface === 'terminal' ? ['I dreamed the plugin and the', 'brain were one thing.'] : ['I dreamed the plugin and the brain', 'were one thing.'])
     await click(ui, 'I dreamed the plugin')
     lines = await bodyLines(ui)
     expect(lines.join(' ')).toContain('Then the rail became a river, and the river carried the titles.')
@@ -1021,7 +1032,7 @@ test('search: Enter asks recall in facts mode; the results take the sections’ 
     expect(w.mcp.filter(c => c.tool === 'recall').at(-1)).toEqual({ server: 'plugin_counterparts_counterparts', tool: 'recall', args: { question: 'publish', mode: 'facts' } })
     let lines = await bodyLines(ui)
     expect(lines[0]).toMatch(headRe(surface, '“publish”', '2 found ✕'))
-    expect(lines.slice(1, 4)).toEqual(['Publishing waits for a test and', 'a review', 'memory · Oct 9 · you said it'])
+    expect(lines.slice(1, 4)).toEqual(surface === 'terminal' ? ['Publishing waits for a test and', 'a review', 'memory · Oct 9 · you said it'] : ['Publishing waits for a test and a', 'review', 'memory · Oct 9 · you said it'])
     expect(lines.some(l => l.startsWith('Mechanisms today'))).toBe(false)
     await click(ui, 'Publishing waits')
     expect((await bodyLines(ui)).join('\n')).toContain('Publishing is mine once it is')
@@ -1966,7 +1977,7 @@ const FOX: WorldOptions = { store: { brain: 'fox' } }
 const foxEnv = (env: Record<string, string>): WorldOptions => ({ ...FOX, env: { HOME, ...env } })
 const stageBlits = (w: World) => w.blits.filter(b => b.key === 'stage')
 
-test('the fox is the avatar when none was chosen: under the title, edge to edge, a thin rule and the count under it; a short pane falls back to the brain', async ($, on) => {
+test('the fox is the avatar when none was chosen: under the title with the count and the day on its right, edge to edge, a thin rule under it; a short pane falls back to the brain', async ($, on) => {
   const w = world(on, { store: { brain: undefined } })
   await start($, w)
   const ui = await mount($, w, 'terminal')
@@ -1975,7 +1986,8 @@ test('the fox is the avatar when none was chosen: under the title, edge to edge,
   expect(r?.props['rows']).toBe(15)
   expect(await ui.find({ type: 'Raster', key: 'brain' })).toBeUndefined()
   expect((await ui.find({ type: 'Button', key: 'title' }))?.text).toContain('COUNTERPARTS')
-  expect(await ui.find({ type: 'Text', text: '776 memories' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '776 · day 18' })).toBeDefined() // on the title row
+  expect(await ui.find({ type: 'Text', text: '776 memories' })).toBeUndefined() // no row of its own
   // the avatar row: the fox's dot lit
   expect((await ui.find({ type: 'Button', key: 'brain-fox' }))?.text).toBe('● animal')
   expect((await ui.find({ type: 'Button', key: 'brain-turning' }))?.text).toBe('○ brain')
@@ -2004,7 +2016,7 @@ test('each terminal draws it its finest known way: a picture in Ghostty, sextant
   await ui.unmount()
 })
 
-test('sextants in iTerm2: rows of Text, no Raster (a Raster takes no sextant), the count still under the rule', async ($, on) => {
+test('sextants in iTerm2: rows of Text, no Raster (a Raster takes no sextant), the count still on the title row', async ($, on) => {
   const w = world(on, foxEnv({ TERM_PROGRAM: 'iTerm.app' }))
   await start($, w)
   const ui = await mount($, w, 'terminal')
@@ -2012,7 +2024,7 @@ test('sextants in iTerm2: rows of Text, no Raster (a Raster takes no sextant), t
   expect(await ui.find({ type: 'Image' })).toBeUndefined()
   const all = await texts(ui)
   expect([...all].some(ch => (ch.codePointAt(0) ?? 0) >= 0x1fb00 && (ch.codePointAt(0) ?? 0) <= 0x1fb3b)).toBe(true)
-  expect(await ui.find({ type: 'Text', text: '776 memories' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '776 · day 18' })).toBeDefined()
   await ui.unmount()
 })
 
@@ -2187,7 +2199,9 @@ test('the search box is hidden unless COUNTERPARTS_SIDEBAR_SEARCH brings it back
   for (const surface of SURFACES) {
     const ui = await mount($, w, surface)
     expect(await ui.find({ type: 'Input' })).toBeUndefined()
-    expect(await ui.find({ type: 'Text', text: '776 memories' })).toBeDefined()
+    // no search row: the count and the day share the title row (the brain header keeps its count beside the brain)
+    expect(await ui.find({ type: 'Text', text: surface === 'terminal' ? '776 memories' : '776 · day 18' })).toBeDefined()
+    expect(await ui.find({ key: 'head2' })).toBeUndefined()
     await ui.unmount()
   }
 })

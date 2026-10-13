@@ -43,9 +43,11 @@ const Body: ClientModule<BodyProps, never> = (props, surface: ClientSurface<neve
                 // font gives `▄`, the bar is the right length, half a row tall like the terminal's
                 <Box key={String(i)} width={s.of ?? s.fill} overflow="hidden">
                   {/* one row tall and clipped, no `wrap`: a truncating Text drew `…` at the bar's end */}
-                  <Box width={`${String(Math.round((100 * s.fill) / Math.max(1, s.of ?? s.fill)))}%`} height={1} overflow="hidden">
-                    <Text color={s.c}>{'▄'.repeat(2 * (s.of ?? s.fill))}</Text>
-                  </Box>
+                  {s.fill > 0 ? (
+                    <Box width={`${String(Math.round((100 * s.fill) / Math.max(1, s.of ?? s.fill)))}%`} height={1} overflow="hidden">
+                      <Text color={s.c}>{'▄'.repeat(2 * (s.of ?? s.fill))}</Text>
+                    </Box>
+                  ) : null}
                 </Box>
               ) : props.prose === true && s.cw !== undefined ? (
                 <Box key={String(i)} width={s.cw}>

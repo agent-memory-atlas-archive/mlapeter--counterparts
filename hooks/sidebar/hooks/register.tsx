@@ -1491,7 +1491,6 @@ function startStage($: EngineInterface): void {
   $.clock.after(0, () => quiet(stageStep($, gen)))
 }
 
-/** The stage's element in a tier, for the step on screen. */
 /**
  * The desktop's pane, as wide as the person drags it (it keeps their width, not the one a plugin asks for;
  * measured 2026-10-13): the fox shows down to this many columns, scaled to fit, where the terminal needs
@@ -1500,6 +1499,7 @@ function startStage($: EngineInterface): void {
 const STAGE_MIN_PROSE_COLS = 22
 const prosePane = { w: STAGE_COLS }
 
+/** The stage's element in a tier, for the step on screen. */
 function stageElement(els: ReturnType<EngineInterface['ui']['resolve']>, tier: FoxTier, step: Step): JSX.Element {
   if (tier === 'basic' && 'Raster' in els) {
     const { Raster } = els
