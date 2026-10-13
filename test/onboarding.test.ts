@@ -280,6 +280,7 @@ describe("the meet tool", () => {
     expect(next).toContain("chapter tool, session: s-fin");
     expect(next).toContain("Here's what I'll remember");
     expect(next).toContain("/counterparts shows the memory sidebar");
+    expect(next).toContain("on the right, once this window is wide enough. Off, quiet and pause are at its bottom.");
     expect(next).toContain("Ask me anything about Counterparts, any time.");
     expect(next).toContain("What would you like to work on today? Or we can keep chatting — what's been on your mind lately?");
     expect(next).toContain("Next time you're here on another day, I'll have my first dream");

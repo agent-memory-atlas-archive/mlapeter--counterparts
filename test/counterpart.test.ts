@@ -1775,7 +1775,8 @@ describe("the DB is a cache — everything indexed is reconstructible from canon
   test("the store the root opens is the store the seams tests open (no second layout)", () => {
     const c = brain();
     expect(() => c.store.assertLayout()).not.toThrow();
-    expect(c.store.backupSet()).toContain("spans");
+    // Classified, and since 2026-10-13 never copied: backups hold no conversation text.
+    expect(c.store.backupSet()).not.toContain("spans");
     // And a second handle over the same dir sees the same canonical files.
     const other = Store.open({ dir });
     expect(other.list()).toEqual(c.store.list());

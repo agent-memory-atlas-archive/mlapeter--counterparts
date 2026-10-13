@@ -517,8 +517,8 @@ describe("lapse: at the LAPSE_DAYS_OF_USE-th day of use after the day it was liv
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-describe("retention reads the same rule, and its seven days are unchanged", () => {
-  test("written up, under the floor, or lapsed: struck at seven days; owed and not lapsed: kept", () => {
+describe("retention reads the same rule, on its own clocks", () => {
+  test("written up, under the floor, or lapsed: struck after its days (3 since 2026-10-13); owed and not lapsed: kept", () => {
     const k = clocked();
     const make = (id: string, pieces: number, gap: number): void => {
       const t = talker(k, id);
@@ -530,28 +530,30 @@ describe("retention reads the same rule, and its seven days are unchanged", () =
     make("under", 2, 10 * MIN);
     make("owing", 4, 10 * MIN);
     make("lapsing", 4, 10 * MIN);
-    const verdicts = (now: number, extraUse: boolean): Map<string, string> => {
+    const verdicts = (now: number, extraUse: boolean, clocks: { maxMs?: number } = {}): Map<string, string> => {
       const b = new SpanBuffer({ dir: storeDir, now: () => now });
       if (extraUse) {
         for (let d = 1; d <= COVERAGE_TUNABLES.LAPSE_DAYS_OF_USE; d++) {
           new SpanBuffer({ dir: storeDir, now: () => T0 + d * DAY }).boundary({ session: "user", scope: PROJ, kind: "stop" });
         }
       }
-      return new Map(planRetention(b, retentionSources({ zone: () => ZONE })).map((h) => [h.session, h.verdict]));
+      return new Map(planRetention(b, retentionSources({ zone: () => ZONE }, clocks)).map((h) => [h.session, h.verdict]));
     };
-    const week = verdicts(T0 + 6 * DAY, false);
+    const week = verdicts(T0 + 2 * DAY, false);
     expect([week.get("written"), week.get("under"), week.get("owing"), week.get("lapsing")]).toEqual([
       "kept-young",
       "kept-young",
       "kept-owed",
       "kept-owed",
     ]);
-    const later = verdicts(T0 + 8 * DAY, false);
+    const later = verdicts(T0 + 4 * DAY, false);
     expect(later.get("written")).toBe("deleted");
     expect(later.get("under")).toBe("deleted");
     expect(later.get("owing")).toBe("kept-owed");
-    // LAPSE_DAYS_OF_USE days of use later, the owed stretches lapse and go on the week.
-    const lapsed = verdicts(T0 + 30 * DAY, true);
+    // LAPSE_DAYS_OF_USE days of use later, the owed stretches lapse and go on
+    // the ordinary clock — shown with the 14-day calendar ceiling set far off,
+    // so it is the LAPSE that lets them go and not the ceiling.
+    const lapsed = verdicts(T0 + 30 * DAY, true, { maxMs: 1_000 * DAY });
     expect(lapsed.get("owing")).toBe("deleted");
     expect(lapsed.get("lapsing")).toBe("deleted");
   });

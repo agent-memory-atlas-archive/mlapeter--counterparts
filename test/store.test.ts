@@ -1986,8 +1986,9 @@ describe("layout", () => {
     // BACKED UP, and `journal` is the example: it is derived, so it is
     // deliberately excluded from the copy and regenerated from rows on a
     // restore (f6f7 review MAJOR-5 — copying it put removed episodes' words
-    // into every rotating snapshot as plain markdown).
-    expect(s.backupSet().sort()).toEqual(["counterparts.sqlite", "spans"]);
+    // into every rotating snapshot as plain markdown). `spans` is the second
+    // (Mike, 2026-10-13): backups never hold conversation text.
+    expect(s.backupSet().sort()).toEqual(["counterparts.sqlite"]);
     // The rebuildable/ephemeral/derived families: box 3, the adapters'
     // live-session registry (`adapters/sessions.ts`), and the journal's
     // markdown copy. `tmp` went with the staging it existed for.
@@ -1995,6 +1996,7 @@ describe("layout", () => {
       "cache",
       "journal",
       "sessions",
+      "spans",
     ]);
     s.assertLayout();
   });
@@ -2420,7 +2422,7 @@ describe("WAL, the busy timeout, and I39", () => {
       expect({ name, classified: classifyTopLevel(name) !== undefined }).toEqual({ name, classified: true });
     }
     s.assertLayout();
-    expect(s.backupSet().sort()).toEqual(["counterparts.sqlite", "spans"]);
+    expect(s.backupSet().sort()).toEqual(["counterparts.sqlite"]);
 
     // The copy route `backup` and `export` take, with an uncommitted write held
     // open across it — under WAL the committed row lives in the `-wal`, which is

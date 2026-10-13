@@ -1,8 +1,9 @@
 /**
  * RAW TRANSCRIPT RETENTION — owner's ruling 2026-09-23 (roadmap B3).
  *
- * A session's captured text is deleted 7 days after it ended, when nothing is
- * owed; a session that owes a write-up waits until it is written up. Since
+ * A session's captured text is deleted 3 days after it ended (7 until
+ * 2026-10-13), when nothing is owed; a session that owes a write-up waits
+ * until it is written up — never past 14 days after its last activity. Since
  * 2026-09-30 "owes" is `core/coverage/`'s rule — an unwritten stretch of three
  * pieces over fifteen minutes, not at work, not lapsed — read by
  * `remember/owes.ts#planRetention`; these tests hold retention to three
@@ -127,15 +128,20 @@ async function live(
   if (opts.endNormally !== false) b.c.boundary({ session, scope: SCOPE, kind: "session-end" });
 }
 
-/** The sources the worker builds: this host's registry, and the store's zone. */
-function sources(c: Counterpart): RetentionSources {
-  return retentionSources(c.store, { host: retentionHost(c.store) });
+/** The sources the worker builds: this host's registry, the store's zone, and
+ *  the default clocks unless a test names its own. */
+function sources(c: Counterpart, clocks: { retentionMs?: number; maxMs?: number } = {}): RetentionSources {
+  return retentionSources(c.store, { host: retentionHost(c.store), ...clocks });
 }
 
 /** Hand-made sources, for a test about ONE fact. */
-function fake(host: Partial<HostSessionEvidence> = {}): RetentionSources {
-  return { host: () => ({ ...NO_HOST_EVIDENCE, ...host }), zone: "UTC" };
+function fake(host: Partial<HostSessionEvidence> = {}, clocks: { retentionMs?: number; maxMs?: number } = {}): RetentionSources {
+  return { host: () => ({ ...NO_HOST_EVIDENCE, ...host }), zone: "UTC", ...clocks };
 }
+
+/** A ceiling far off, for the tests about what is OWED at ages past the
+ *  default 14 days — the ceiling has its own tests below. */
+const NO_CEILING = { maxMs: 100_000 * DAY };
 
 let dates = 0;
 /** A fresh date per call, so the O_EXCL latch never stands in a test's way
@@ -207,7 +213,7 @@ describe("the acceptance scenario: three sessions, exactly one deleted", () => {
     const rows = b.c.store.eventLog({ name: RETENTION_EVENT });
     expect(rows.map((r) => (JSON.parse(r.payload ?? "{}") as { reason: string }).reason)).toEqual(["STARTED", "PRUNED"]);
     const payload = JSON.parse(rows[1]?.payload ?? "{}") as Record<string, unknown>;
-    expect(payload).toMatchObject({ date: "2026-09-23", reason: "PRUNED", deleted: 1, keptOwed: 1, keptYoung: 1, failed: 0, retentionDays: 7 });
+    expect(payload).toMatchObject({ date: "2026-09-23", reason: "PRUNED", deleted: 1, keptOwed: 1, keptYoung: 1, failed: 0, retentionDays: 3, maxDays: 14 });
     for (const row of rows) {
       expect(row.payload).not.toContain("written-old");
       expect(row.payload).not.toContain("migration");
@@ -215,7 +221,7 @@ describe("the acceptance scenario: three sessions, exactly one deleted", () => {
     expect(lastRetentionRun(b.c.store)).toMatchObject({ date: "2026-09-23", deleted: 1, keptOwed: 1, keptYoung: 1 });
   });
 
-  test("the same store through the WHOLE worker: `runOnce` deletes exactly the first, keylessly, before the snapshot", async () => {
+  test("the same store through the WHOLE worker: `runOnce` deletes exactly the first, keylessly — and the day's snapshot holds no text at all", async () => {
     // Seeded on a clock set back from the real one, because the worker opens
     // its own counterpart on the wall clock.
     const real = Date.now();
@@ -237,14 +243,13 @@ describe("the acceptance scenario: three sessions, exactly one deleted", () => {
       expect(report.retention?.report).toMatchObject({ deleted: 1, keptOwed: 1, keptYoung: 1, failed: 0 });
       expect(heldSessions(dir)).toEqual(["owes-old", "written-recent"]);
 
-      // The day's snapshot was taken AFTER the deletion: its copy of the buffer
-      // holds no line of the deleted session.
+      // The day's snapshot copies no conversation text (2026-10-13): not the
+      // deleted session's, and not the kept ones' either. The database is there.
       expect(report.snapshot?.reason).toBe("taken");
       const copies = readdirSync(snaps).filter((n) => !n.startsWith("."));
       expect(copies.length).toBe(1);
-      const copied = join(snaps, copies[0] as string, "spans", keyFor(SCOPE), "buffer.jsonl");
-      expect(readFileSync(copied, "utf8")).not.toContain("(written-old)");
-      expect(readFileSync(copied, "utf8")).toContain("(owes-old)");
+      expect(readdirSync(join(snaps, copies[0] as string))).not.toContain("spans");
+      expect(readdirSync(join(snaps, copies[0] as string))).toContain("counterparts.sqlite");
 
       // Once per date: a second worker the same day does nothing and adds no
       // row — the date holds its STARTED row and its result, and that is all.
@@ -268,14 +273,14 @@ describe("THE RULE — nothing deletes while coverage says a session owes", () =
       for (const endNormally of [false, true]) shapes.push({ session: `s-${String(answer)}-${String(endNormally)}`, answer, endNormally });
     for (const s of shapes) await live(b, s.session, NOW - 30 * DAY, { answer: s.answer, endNormally: s.endNormally });
     b.set(NOW);
-    const plan = planRetention(b.c.spans, sources(b.c));
+    const plan = planRetention(b.c.spans, sources(b.c, NO_CEILING));
     expect(plan).toHaveLength(shapes.length);
     // A chapter and a memory write the stretch up; a handoff and silence do
     // not — ended or not (a session quiet since the date changed is not at work).
     const owing = plan.filter((h) => h.owes).map((h) => h.session).sort();
     expect(owing).toEqual(["s-handoff-false", "s-handoff-true", "s-null-false", "s-null-true"]);
     for (const h of plan) expect(h.verdict).toBe(h.owes ? "kept-owed" : "deleted");
-    const report = prune(b.c.spans, sources(b.c));
+    const report = prune(b.c.spans, sources(b.c, NO_CEILING));
     expect(heldSessions(dir)).toEqual(owing);
     expect(report.keptOwed).toBe(owing.length);
     expect(report.deleted).toBe(shapes.length - owing.length);
@@ -300,7 +305,7 @@ describe("THE RULE — nothing deletes while coverage says a session owes", () =
       b.c.captureSpans({ session: "then-more", scope: SCOPE, turns: more.slice(0, 6 + 2 * (i + 1)) });
     }
     b.set(NOW);
-    const [h] = planRetention(b.c.spans, sources(b.c));
+    const [h] = planRetention(b.c.spans, sources(b.c, NO_CEILING));
     expect(h?.facts).toMatchObject({ unwritten: 3, state: "quiet" });
     expect(h?.verdict).toBe("kept-owed");
   });
@@ -330,17 +335,19 @@ describe("THE RULE — nothing deletes while coverage says a session owes", () =
     expect(h?.verdict).toBe("kept-owed");
   });
 
-  test("a session written up AFTER it ended stops owing, and its week starts at the write-up", async () => {
+  test("a session written up AFTER it ended stops owing, and its clock starts at the write-up", async () => {
     const b = brain();
-    await live(b, "late", NOW - 30 * DAY, { answer: null });
-    b.set(NOW - 3 * DAY);
+    await live(b, "late", NOW - 10 * DAY, { answer: null });
+    b.set(NOW - 1 * DAY);
     expect(recordWriteUp(b.c.spans, { scope: SCOPE, session: "late", by: "next-session" })).toBe("RECORDED");
     b.set(NOW);
     let [h] = planRetention(b.c.spans, sources(b.c));
     expect(h?.facts.writtenUp).toBe(true);
     expect(h?.owes).toBe(false);
     expect(h?.verdict).toBe("kept-young");
-    b.set(NOW + 5 * DAY);
+    // Three days after the write-up, and still inside the 14-day ceiling: it is
+    // the 3-day clock, from the write-up, that deletes it.
+    b.set(NOW + 3 * DAY);
     [h] = planRetention(b.c.spans, sources(b.c));
     expect(h?.verdict).toBe("deleted");
   });
@@ -388,16 +395,16 @@ describe("the PR #189 review's findings, each held by a test", () => {
     b.set(NOW);
     expect(planRetention(b.c.spans, sources(b.c)).map((h) => h.verdict)).toEqual(["kept-owed"]);
     const future = new SpanBuffer({ dir, now: () => NOW + 30 * DAY });
-    expect(planRetention(future, fake()).map((h) => h.verdict)).toEqual(["kept-owed"]);
+    expect(planRetention(future, fake({}, NO_CEILING)).map((h) => h.verdict)).toEqual(["kept-owed"]);
     expect(heldSessions(dir)).toEqual(["A"]);
     expect(b.c.spans.spans(SCOPE).length).toBeGreaterThan(0);
     expect(b.c.spans.assistantSpans(SCOPE).length).toBeGreaterThan(0);
   });
 
-  test("m10: a session the registry holds OPEN is never deleted, whatever its age", async () => {
+  test("m10: a session the registry holds OPEN is kept past its clock — up to the ceiling, not past it", async () => {
     const b = brain();
-    await live(b, "idle-open", NOW - 400 * DAY, { answer: "chapter", endNormally: false });
-    recordSession(dir, { sessionId: "idle-open", scope: SCOPE, phase: "start", at: NOW - 400 * DAY });
+    await live(b, "idle-open", NOW - 10 * DAY, { answer: "chapter", endNormally: false });
+    recordSession(dir, { sessionId: "idle-open", scope: SCOPE, phase: "start", at: NOW - 10 * DAY });
     b.set(NOW);
     const [h] = planRetention(b.c.spans, sources(b.c));
     expect(h?.open).toBe(true);
@@ -405,15 +412,20 @@ describe("the PR #189 review's findings, each held by a test", () => {
     const report = prune(b.c.spans, sources(b.c));
     expect(report.keptLive).toBe(1);
     expect(heldSessions(dir)).toEqual(["idle-open"]);
+    // Fourteen days after its last activity the ceiling wins, open or not
+    // (Mike, 2026-10-13: never kept more than 14 days).
+    b.set(NOW + 5 * DAY);
+    expect(planRetention(b.c.spans, sources(b.c))[0]?.verdict).toBe("deleted");
+    b.set(NOW);
     // Once the registry records its end, the ordinary rule applies.
-    recordSession(dir, { sessionId: "idle-open", scope: SCOPE, phase: "end", at: NOW - 399 * DAY });
+    recordSession(dir, { sessionId: "idle-open", scope: SCOPE, phase: "end", at: NOW - 9 * DAY });
     expect(planRetention(b.c.spans, sources(b.c))[0]?.verdict).toBe("deleted");
   });
 
   test("m10: a registry record that will not read is treated as open — cannot tell means keep", async () => {
     const b = brain();
-    await live(b, "garbled", NOW - 30 * DAY, { answer: "chapter", endNormally: false });
-    recordSession(dir, { sessionId: "garbled", scope: SCOPE, phase: "start", at: NOW - 30 * DAY });
+    await live(b, "garbled", NOW - 10 * DAY, { answer: "chapter", endNormally: false });
+    recordSession(dir, { sessionId: "garbled", scope: SCOPE, phase: "start", at: NOW - 10 * DAY });
     writeFileSync(sessionPath(dir, "garbled") as string, "{half a rec", "utf8");
     b.set(NOW);
     expect(planRetention(b.c.spans, sources(b.c))[0]?.verdict).toBe("kept-live");
@@ -505,8 +517,8 @@ describe("the re-review's residuals (R1, R7, R8)", () => {
     expect(existsSync(join(dir, "spans", keyFor("/nowhere/at/all")))).toBe(false);
     expect(recordWriteUp(b.c.spans, { scope: SCOPE, session: "owes", by: "anything" as never })).toBe("BAD_BY");
     expect(recordWriteUp(b.c.spans, { scope: SCOPE, session: "no-such-session", by: "owner" })).toBe("NO_TEXT");
-    // Nothing moved: still owed.
-    b.set(NOW + 30 * DAY);
+    // Nothing moved: still owed (inside the ceiling).
+    b.set(NOW + 10 * DAY);
     expect(planRetention(b.c.spans, sources(b.c))[0]?.verdict).toBe("kept-owed");
     expect(b.c.spans.writeUps(SCOPE)).toEqual([]);
     // The one accepted shape, and the record carries the fixed word.
@@ -552,10 +564,10 @@ describe("the re-review's residuals (R1, R7, R8)", () => {
     expect(prune(b.c.spans, sources(b.c)).deleted).toBe(1);
   });
 
-  test("R8: a session with capture in the last week is kept by the CAPTURE clock, whatever the registry still holds", async () => {
+  test("R8: a session with capture inside its clock is kept by the CAPTURE clock, whatever the registry still holds", async () => {
     const b = brain();
-    await live(b, "recent", NOW - 5 * DAY, { answer: "chapter", endNormally: false });
-    recordSession(dir, { sessionId: "recent", scope: SCOPE, phase: "start", at: NOW - 5 * DAY });
+    await live(b, "recent", NOW - 2 * DAY, { answer: "chapter", endNormally: false });
+    recordSession(dir, { sessionId: "recent", scope: SCOPE, phase: "start", at: NOW - 2 * DAY });
     b.set(NOW);
     // The registry forgets it (as `pruneSessions` would, given a later clock)...
     expect(pruneSessions(dir, NOW + 30 * DAY)).toBe(1);
@@ -635,7 +647,69 @@ describe("the delete: the owner's strike, naming whole sessions", () => {
     expect(retentionRuns(b.c.store).filter((r) => r.reason !== "STARTED").map((r) => r.date)).toEqual(["2026-09-24", "2026-09-23"]);
   });
 
-  test("the retention window is the owner's seven days", () => {
-    expect(REMEMBER_TUNABLES.RETENTION_MS).toBe(7 * DAY);
+  test("the retention clocks are Mike's: 3 days after the write-up, never more than 14", () => {
+    expect(REMEMBER_TUNABLES.RETENTION_MS).toBe(3 * DAY);
+    expect(REMEMBER_TUNABLES.RETENTION_MAX_MS).toBe(14 * DAY);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe("THE CEILING and the configured clocks (Mike, 2026-10-13)", () => {
+  test("a session that OWES is kept up to 14 days after its last activity, and deleted at 14", async () => {
+    const b = brain();
+    await live(b, "owes", NOW - 13 * DAY, { answer: null });
+    b.set(NOW);
+    expect(planRetention(b.c.spans, sources(b.c)).map((h) => [h.owes, h.verdict])).toEqual([[true, "kept-owed"]]);
+    // Its last piece was twenty minutes after it began: an hour past the day.
+    b.set(NOW + 1 * DAY + 60 * MIN);
+    const [h] = planRetention(b.c.spans, sources(b.c));
+    // Still owed — coverage's rule is unchanged — and deleted anyway.
+    expect(h?.owes).toBe(true);
+    expect(h?.verdict).toBe("deleted");
+    expect(prune(b.c.spans, sources(b.c)).deleted).toBe(1);
+    expect(heldSessions(dir)).toEqual([]);
+  });
+
+  test("the ceiling reads the last ACTIVITY: a late write-up or a late end cannot push it out", async () => {
+    const b = brain();
+    await live(b, "late", NOW - 15 * DAY, { answer: null, endNormally: false });
+    b.set(NOW - 1 * DAY);
+    expect(recordWriteUp(b.c.spans, { scope: SCOPE, session: "late", by: "next-session" })).toBe("RECORDED");
+    recordSession(dir, { sessionId: "late", scope: SCOPE, phase: "end", at: NOW - 1 * DAY });
+    b.set(NOW);
+    const [h] = planRetention(b.c.spans, sources(b.c));
+    // The 3-day clock alone would keep it (written up yesterday): the ceiling does not.
+    expect(h?.clockFrom).toBeGreaterThanOrEqual(NOW - 1 * DAY);
+    expect(h?.verdict).toBe("deleted");
+  });
+
+  test("a host's clocks are what the plan reads — and a bad one falls back, never meaning 'delete now'", async () => {
+    const b = brain();
+    await live(b, "written", NOW - 5 * DAY, { answer: "chapter" });
+    await live(b, "owes", NOW - 20 * DAY, { answer: null });
+    b.set(NOW);
+    const verdicts = (clocks: { retentionMs?: number; maxMs?: number }): string[][] =>
+      planRetention(b.c.spans, sources(b.c, clocks)).map((h) => [h.session, h.verdict]);
+    // Defaults: 3 days and 14.
+    expect(verdicts({})).toEqual([["owes", "deleted"], ["written", "deleted"]]);
+    // A longer setting, for a developer's store: 14 and 30.
+    expect(verdicts({ retentionMs: 14 * DAY, maxMs: 30 * DAY })).toEqual([["owes", "kept-owed"], ["written", "kept-young"]]);
+    // Nonsense is the default, not zero.
+    expect(verdicts({ retentionMs: 0, maxMs: Number.NaN })).toEqual(verdicts({}));
+    expect(retentionSources(b.c.store, { retentionMs: -1, maxMs: 0 })).toMatchObject({
+      retentionMs: REMEMBER_TUNABLES.RETENTION_MS,
+      maxMs: REMEMBER_TUNABLES.RETENTION_MAX_MS,
+    });
+  });
+
+  test("the job takes the configuration's clocks, and its row says which it ran under", async () => {
+    const b = brain();
+    await live(b, "written", NOW - 5 * DAY, { answer: "chapter" });
+    b.set(NOW);
+    const job = retentionJob({ counterpart: b.c, date: "2026-09-23", clocks: { retentionMs: 14 * DAY, maxMs: 30 * DAY } });
+    expect(job.report).toMatchObject({ deleted: 0, keptYoung: 1 });
+    expect(lastRetentionRun(b.c.store)).toMatchObject({ deleted: 0, keptYoung: 1 });
+    const rows = b.c.store.eventLog({ name: RETENTION_EVENT });
+    expect(JSON.parse(rows[rows.length - 1]?.payload ?? "{}")).toMatchObject({ retentionDays: 14, maxDays: 30 });
   });
 });
