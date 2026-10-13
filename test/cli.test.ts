@@ -835,7 +835,7 @@ describe("export", () => {
     // WHAT THE COPY LEAVES OUT is said, in the words retention makes true
     // (remember INTERFACE-GAPS §12): the raw capture is not in any export.
     expect(c.out).toContain(
-      "Not included: spans/ — the raw captured conversation, kept 7 days after a session ends, or for as long as it waits to be written up.",
+      "Not included: spans/ — the raw captured conversation, deleted 3 days after a session is written up and ended, and never kept more than 14 days.",
     );
 
     // THE BUNDLE IS THE DATABASE. `prose/**.md` was half of it until the floor;

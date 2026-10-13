@@ -16,7 +16,7 @@
  * Hermetic: a fresh temp base per test, removed after.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -223,6 +223,28 @@ describe("backups never hold conversation text, and delete backups", () => {
     expect(readdirSync(snaps).sort()).toEqual(["2026-08-01T00-00-00-000Z", "2026-08-02T00-00-00-000Z"]);
     expect(readdirSync(mirror)).toEqual([]);
     expect(deletedRows()[0]).toMatchObject({ kind: "backups", ok: true, copies: 4, left: 2 });
+  });
+
+  test("deleteAllCopies never follows a symlink: not a copy-named link, not a link inside a copy", () => {
+    // Somewhere outside the snapshots directory that must survive whole.
+    const outside = join(base, "outside");
+    mkdirSync(join(outside, "nested"), { recursive: true });
+    writeFileSync(join(outside, "counterparts.sqlite"), "looks like ours");
+    writeFileSync(join(outside, "nested", "keep.txt"), "keep");
+    // A copy-named SYMLINK to it at the top level, and a real copy of ours that
+    // holds a symlinked directory and a symlinked file pointing at it.
+    mkdirSync(snaps, { recursive: true });
+    symlinkSync(outside, join(snaps, "2026-10-03T00-00-00-000Z"));
+    copy(snaps, "2026-10-04T00-00-00-000Z", true);
+    symlinkSync(outside, join(snaps, "2026-10-04T00-00-00-000Z", "linked-dir"));
+    symlinkSync(join(outside, "nested", "keep.txt"), join(snaps, "2026-10-04T00-00-00-000Z", "linked-file"));
+
+    const r = deleteAllCopies(dir, snaps);
+    expect(r.deleted).toEqual(["2026-10-04T00-00-00-000Z"]);
+    expect(r.errors).toEqual([]);
+    expect(readdirSync(snaps)).toEqual(["2026-10-03T00-00-00-000Z"]);
+    expect(readdirSync(outside).sort()).toEqual(["counterparts.sqlite", "nested"]);
+    expect(readFileSync(join(outside, "nested", "keep.txt"), "utf8")).toBe("keep");
   });
 
   test("deleteAllCopies refuses a directory that holds the store", () => {
