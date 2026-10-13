@@ -2096,7 +2096,7 @@ test('no timer while the pane is hidden or holds the keyboard: nothing is drawn,
   await ui.unmount()
 })
 
-test('after three minutes with nothing happening it naps, and the person’s prompt wakes it', async ($, on) => {
+test('after two minutes with nothing happening it naps, and the person’s prompt wakes it', async ($, on) => {
   const w = world(on, { ...foxEnv({ TERM_PROGRAM: 'iTerm.app' }) })
   await start($, w)
   const ui = await mount($, w, 'terminal')

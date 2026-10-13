@@ -1432,7 +1432,7 @@ async function foxEvent($: EngineInterface, ev: FoxEvent): Promise<void> {
 
 /**
  * What is on screen next, then one wait until it changes: no timer runs in
- * between (a still hold is one wait of 8–20 s). A change on a Raster or an
+ * between (a still hold is one wait of 4–9 s). A change on a Raster or an
  * Image is a blit; in sextants (Text) or on the desktop (an Svg) a redraw of
  * the pane. A pane no longer shown stops it (the next drawing starts it). A
  * refused blit stops it; an Image refused twice in a row (it draws its alt

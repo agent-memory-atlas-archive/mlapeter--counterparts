@@ -156,7 +156,11 @@ are PNG art pixels / sextant cells that change):
 - One wake per change: a moment that ends on the frame the next hold shows
   (`came`'s idle, `lieIn`'s lie0) used to cost a second wake; `advance` now
   plans ahead and joins them, and the hold's time is counted from when the
-  frame really changed.
+  frame really changed. So `director.mode` turns to `lie` or `nap` up to one
+  hold before the pose changes on screen; `trigger` reads the pose from the
+  frame on screen (`poseOf`), and nothing outside `fox.ts` reads `mode`.
+- The early flick is once per module life (the first drawing of the fox in a
+  session), not at every reopening of the pane.
 
 **Known, not fixed here** (live-check items):
 - At the PNG tier (Ghostty, kitty, the desktop's picture), round 7's
