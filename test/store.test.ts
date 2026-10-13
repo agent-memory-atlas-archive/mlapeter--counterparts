@@ -1847,6 +1847,7 @@ describe("observer mode is enforced at the store seam", () => {
     updateMeta: ["k", () => "v"],
     setGateRecords: [[{ sessionId: "s1", kind: "surfaced", ref: "mem_000000000000", turn: 1, lastDay: 0 }]],
     pruneGateSessions: [],
+    rewriteGateValues: ["scalar", "state", "x", () => null],
     appendEvent: [{ name: "probe", day: 0 }],
     pruneEvents: [],
     setRanking: [[{ id: "mem_000000000000", strength: 0.5, band: "episodic", day: 0 }]],

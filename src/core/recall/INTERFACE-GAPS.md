@@ -5,7 +5,7 @@ entry names the owner, the workaround now in the code, and what the real fix loo
 
 ## 1. `store/` has no meta enumeration or expiry — gate-state rows are unbounded
 
-**Closed 2026-09-24** — gate state is the `gate_session` table, one row per record with `last_day` (`store/operational.ts`), swept by `Store#pruneGateSessions`.
+**Closed 2026-09-24** — gate state is the `gate_session` table, one row per record with `last_day` (`store/operational.ts`), swept by `Store#pruneGateSessions` — which, as of 2026-10-13, nothing on a live path calls. The rows' one piece of typed text, the carried cue tokens, is emptied by `clearIdleCarries` (NOTES §6); the rows themselves are still unbounded.
 
 **Owner:** `store/`.
 **Needed:** per-session gate state with a defined store AND lifetime (recall contract §5

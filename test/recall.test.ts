@@ -27,6 +27,7 @@ import {
   Recall,
   TRIM_ORDER,
   byteLength,
+  clearIdleCarries,
   detectAffect,
   freshGateState,
   gate,
@@ -732,6 +733,59 @@ describe("per-session gate state is PERSISTED (the ruling, and v1's dark behavio
     const third = r2.recall({ sessionId: "s1", text: "never mind then" });
     expect(third.decision.carriedCueCount).toBe(0);
     expect(r2.gateState("s1").carriedFromTurn).toBe(3);
+  });
+
+  test("typed cue tokens leave a session idle past the ceiling; an active one still carries (2026-10-13)", () => {
+    const DAY = 86_400_000;
+    const MAX = 14 * DAY;
+    let now = Date.parse("2026-10-01T12:00:00Z");
+    const s = store({ now: () => now });
+    seed(s);
+    put(s, { kind: "skill", body: "The sourdough starter died after two weeks of neglect." });
+    const r = new Recall({ store: s, owner: true });
+    r.recall({ sessionId: "quiet", text: "my sourdough starter died again" });
+    r.recall({ sessionId: "active", text: "my sourdough starter died again" });
+    const quietBefore = s.gateRecords("quiet");
+    expect(r.gateState("quiet").carriedCues.length).toBeGreaterThan(0);
+
+    // Inside the ceiling nothing is touched, and the active session carries.
+    now += DAY;
+    expect(clearIdleCarries(s, MAX)).toBe(0);
+    expect(r.recall({ sessionId: "active", text: "what should I do about it" }).decision.carriedCueCount).toBeGreaterThan(0);
+
+    // The active session keeps talking; the quiet one passes the ceiling.
+    now += 13 * DAY + 1;
+    r.recall({ sessionId: "active", text: "the sourdough starter again" });
+    expect(clearIdleCarries(s, MAX)).toBe(1);
+    expect(r.gateState("quiet").carriedCues).toEqual([]);
+    expect(JSON.stringify(s.gateRecords("quiet"))).not.toContain("sourdough");
+    // Only the carry: the rest of the quiet session's gate state is as it was.
+    const quietAfter = s.gateRecords("quiet");
+    expect(quietAfter.map((x) => [x.kind, x.ref, x.turn, x.last_day])).toEqual(
+      quietBefore.map((x) => [x.kind, x.ref, x.turn, x.last_day]),
+    );
+    expect(quietAfter.filter((x) => x.kind !== "scalar")).toEqual(quietBefore.filter((x) => x.kind !== "scalar"));
+    // The active session still carries into its next turn.
+    expect(r.gateState("active").carriedCues.length).toBeGreaterThan(0);
+    expect(r.recall({ sessionId: "active", text: "what should I do now" }).decision.carriedCueCount).toBeGreaterThan(0);
+    // A second pass finds nothing left to clear.
+    expect(clearIdleCarries(s, MAX)).toBe(0);
+  });
+
+  test("a carry saved before rows had a time counts as old; an unreadable row is left alone; observer refuses", () => {
+    const s = store();
+    const legacy = JSON.stringify({ v: 1, affectFiredTurn: 2, carriedCues: ["sourdough", "starter"], carriedFromTurn: 3 });
+    s.setGateRecords([
+      { sessionId: "old", kind: "scalar", ref: SCALAR_REF, turn: 3, lastDay: 0, value: legacy },
+      { sessionId: "bad", kind: "scalar", ref: SCALAR_REF, turn: 1, lastDay: 0, value: '{"carriedCues":["x"' },
+    ]);
+    expect(clearIdleCarries(s, 14 * 86_400_000)).toBe(1);
+    const old = JSON.parse(s.gateRecords("old")[0]?.value ?? "{}");
+    expect(old).toEqual({ v: 1, affectFiredTurn: 2, carriedCues: [], carriedFromTurn: 3 });
+    expect(s.gateRecords("bad")[0]?.value).toBe('{"carriedCues":["x"');
+    s.close();
+    const o = store({ observer: true });
+    expect(() => clearIdleCarries(o, 0)).toThrow();
   });
 
   test("the emotional refractory holds the affect flag down after it fires", () => {

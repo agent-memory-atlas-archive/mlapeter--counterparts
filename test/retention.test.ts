@@ -43,6 +43,7 @@ import {
   retentionSources,
 } from "../src/core/remember/index.js";
 import type { HostSessionEvidence, RetentionSources } from "../src/core/remember/index.js";
+import { SCALAR_REF } from "../src/core/recall/index.js";
 // The deleting half, by path — the way only the worker may import it in `src/`.
 import { pruneRetention } from "../src/core/remember/retention.js";
 import { WRITE_UP_BY, recordWriteUp } from "../src/core/remember/write-up-seam.js";
@@ -229,6 +230,18 @@ describe("the acceptance scenario: three sessions, exactly one deleted", () => {
     await live(b, "written-old", real - 10 * DAY, { answer: "chapter" });
     await live(b, "written-recent", real - 2 * DAY, { answer: "session-end" });
     await live(b, "owes-old", real - 10 * DAY, { answer: null });
+    // A session that ended (or was killed) long ago, still holding its last
+    // turn's typed cue tokens in recall's gate row, from before rows had a time.
+    b.c.store.setGateRecords([
+      {
+        sessionId: "ended-long-ago",
+        kind: "scalar",
+        ref: SCALAR_REF,
+        turn: 7,
+        lastDay: 0,
+        value: JSON.stringify({ v: 1, affectFiredTurn: null, carriedCues: ["zanzibarquokka"], carriedFromTurn: 7 }),
+      },
+    ]);
     b.c.close();
     open.length = 0;
 
@@ -250,6 +263,9 @@ describe("the acceptance scenario: three sessions, exactly one deleted", () => {
       expect(copies.length).toBe(1);
       expect(readdirSync(join(snaps, copies[0] as string))).not.toContain("spans");
       expect(readdirSync(join(snaps, copies[0] as string))).toContain("counterparts.sqlite");
+      // ...and no typed cue tokens: the worker emptied the ended session's
+      // carry before the copy was taken.
+      expect(readFileSync(join(snaps, copies[0] as string, "counterparts.sqlite")).includes("zanzibarquokka")).toBe(false);
 
       // Once per date: a second worker the same day does nothing and adds no
       // row — the date holds its STARTED row and its result, and that is all.

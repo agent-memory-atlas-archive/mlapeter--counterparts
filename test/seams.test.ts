@@ -420,6 +420,7 @@ describe("SEAMS A — the observer predicate is hoisted, and stand-down totality
       updateMeta: ["k", () => "v"],
       setGateRecords: [[{ sessionId: "s1", kind: "surfaced", ref: seedId, turn: 1, lastDay: 0 }]],
       pruneGateSessions: [],
+      rewriteGateValues: ["scalar", "state", "x", () => null],
       appendEvent: [{ name: "probe", day: 0 }],
       pruneEvents: [],
       setRanking: [[{ id: seedId, strength: 0.5, band: "episodic", day: 0 }]],
