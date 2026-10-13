@@ -36,13 +36,15 @@
  *      (`core/coverage/`);
  *   3c. RAW TRANSCRIPT RETENTION (owner's ruling 2026-09-23): once per date —
  *      behind an `O_EXCL` latch under `spans/retention/` — a session's captured
- *      text is deleted 7 days after it ended when it owes no write-up and the
- *      registry does not hold it open (`remember/owes.ts` decides,
+ *      text is deleted 3 days after it ended when it owes no write-up and the
+ *      registry does not hold it open, and 14 days after its last activity
+ *      whatever is true — the configuration's `retention` block may set both
+ *      (`config.ts#retentionClocks`; `remember/owes.ts` decides,
  *      `remember/retention.ts` deletes, and this file is the only one that may
  *      import the second), and one `remember.prune` row says what was deleted,
- *      what is waiting on a write-up, what is younger than a week and what is
- *      still open. Keyless, like every step but the sweep. BEFORE the snapshot on
- *      purpose: raw text in every backup is the reason it exists;
+ *      what is waiting on a write-up, what is inside its clock and what is
+ *      still open. Keyless, like every step but the sweep. (Before the snapshot,
+ *      which since 2026-10-13 copies no conversation text at all.)
  *   4. the DAILY ROTATING SNAPSHOT (`adapters/snapshots.ts`), last and outside
  *      the cycle. Last because it copies the state the three steps above just
  *      left; outside because sleep must not learn that the floor is changing —
@@ -92,7 +94,7 @@ import {
 } from "../../config-path.js";
 import type { ConfigChoice } from "../../config-path.js";
 
-import { loadConfig, withBudgetDefault, withEmbedderDefault } from "../../config.js";
+import { loadConfig, retentionClocks, withBudgetDefault, withEmbedderDefault } from "../../config.js";
 import type { AdapterConfig } from "../../config.js";
 import { openEmbedder } from "../index.js";
 import type { LiveEmbedder } from "../embed-client.js";
@@ -198,6 +200,9 @@ export const retentionHost: (store: Store) => (session: string) => HostSessionEv
 export function retentionJob(input: {
   counterpart: Counterpart;
   date: string;
+  /** The configuration's two clocks (`config.ts#retentionClocks`); the
+   *  defaults when absent. */
+  clocks?: { retentionMs: number; maxMs: number };
   onEvent?: (name: string, data: Record<string, string | number | boolean | null>) => void;
 }): RetentionJobReport {
   const { counterpart, date } = input;
@@ -210,7 +215,7 @@ export function retentionJob(input: {
     // THE SAME SOURCES THE WRITE-UP READS (`sessions.ts#writeUpSources`), so
     // what this pass keeps as owed and what the next session is asked to write
     // up are one set, by construction rather than by two copies agreeing.
-    const sources = writeUpSources(store);
+    const sources = writeUpSources(store, input.clocks ?? {});
     // THE DATE IS VISIBLE FROM THE MOMENT IT IS HELD (re-review R7): a
     // `STARTED` row goes in as soon as the latch is taken, before anything is
     // planned, so a run the watchdog kills halfway leaves "started, never
@@ -220,7 +225,7 @@ export function retentionJob(input: {
         store.appendEvent({
           name: RETENTION_EVENT,
           day: store.livedDay(),
-          payload: retentionRow({ ...EMPTY_RETENTION, reason: "STARTED" }, date),
+          payload: retentionRow({ ...EMPTY_RETENTION, reason: "STARTED" }, date, sources),
           dedupKey: `${RETENTION_EVENT}:${date}:started`,
         });
       } catch (err) {
@@ -236,7 +241,7 @@ export function retentionJob(input: {
           store.appendEvent({
             name: RETENTION_EVENT,
             day: store.livedDay(),
-            payload: retentionRow({ ...EMPTY_RETENTION, reason: "LATCH_HELD" }, date),
+            payload: retentionRow({ ...EMPTY_RETENTION, reason: "LATCH_HELD" }, date, sources),
             dedupKey: `${RETENTION_EVENT}:${date}:held`,
           });
         } catch (err) {
@@ -256,7 +261,7 @@ export function retentionJob(input: {
       store.appendEvent({
         name: RETENTION_EVENT,
         day: store.livedDay(),
-        payload: retentionRow(report, date),
+        payload: retentionRow(report, date, sources),
         dedupKey: `${RETENTION_EVENT}:${date}`,
       });
       recorded = true;
@@ -450,11 +455,11 @@ export async function runOnce(input: {
       emit("coverage.threw", { code: err instanceof Error ? err.name : "UNKNOWN" });
     }
     // 3c. RETENTION — on the failed path as well as the good one (a day whose
-    // sweep broke still ages the week-old text of sessions that owe nothing),
-    // and BEFORE the copy below, so the day's backup never carries raw text
-    // past its week. Its own try: a retention pass may not cost the snapshot.
+    // sweep broke still ages the text of sessions that owe nothing), with the
+    // configuration's clocks. Its own try: a retention pass may not cost the
+    // snapshot.
     try {
-      retentionReport = retentionJob({ counterpart, date: today, onEvent: emit });
+      retentionReport = retentionJob({ counterpart, date: today, clocks: retentionClocks(config), onEvent: emit });
       if (retentionReport.reason === "failed") {
         noteFailure(counterpart, emit, retentionReport.code ?? "UNKNOWN", "retention", today);
       }
