@@ -1005,8 +1005,8 @@ session the host's registry knows (one our hooks saw start), so the unbound MCP 
 shared `mcp` id is passed by, and only for a person's interactive conversation: a session
 whose host entrypoint (`CLAUDE_CODE_ENTRYPOINT`, kept on the registry record) says
 `claude -p`, the Agent SDK, `mcp` or a GitHub action owes no short write-up (N2). It is
-not a retention debt (text ages out with its week; a written-up one keeps it up to 7 days
-after the write-up, like a full debt) and not in doctor's awaiting count. The headless
+not a retention debt (text ages out on the retention clock; a written-up one keeps it up to 3
+days after the write-up, like a full debt, and never past the 14-day ceiling) and not in doctor's awaiting count. The headless
 nightly run's child and an observer capture nothing, so they owe nothing. When a pointer
 defers for room, its record names what else rode beside the wake, and doctor's advice
 names that rather than the wake's budget (M3).

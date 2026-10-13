@@ -49,7 +49,10 @@ to be deleted. The full walkthrough is in [`docs/QUICKSTART.md`](docs/QUICKSTART
 - **Things come to mind.** As you talk, related memories surface quietly, the way one
   thing reminds you of another.
 - **It's yours.** Everything lives on your machine in one SQLite file you can read,
-  export or delete. No API keys, no accounts, nothing sent anywhere.
+  export or delete. No API keys, no accounts, nothing sent anywhere. The text of your
+  conversations is kept only until it's written up: deleted 3 days after that, never
+  kept more than 14 days, and never in a backup. You can delete the conversation text,
+  the backups or the activity log on their own at any time (`counterparts delete`).
 
 ## Who it's for
 

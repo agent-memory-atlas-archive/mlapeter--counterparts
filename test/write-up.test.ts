@@ -1272,7 +1272,7 @@ describe("the short write-up: a small owed stretch (2026-09-29; since 2026-09-30
     expect(start("s4").ask ?? "").toContain(WRITE_UP_SHORT_LINE);
   });
 
-  test("A WRITTEN-UP short session keeps its text up to 7 days after the write-up (review of #285, M1 / probe P2)", async () => {
+  test("A WRITTEN-UP short session keeps its text up to 3 days after the write-up (review of #285, M1 / probe P2)", async () => {
     const s = seeder();
     ended(s, "short-x", { at: Date.now() - 6 * DAY, bytes: 200, asked: false });
     s.done();
@@ -1287,13 +1287,13 @@ describe("the short write-up: a small owed stretch (2026-09-29; since 2026-09-30
     const sources = writeUpSources(c.store);
     const v = (t: number): string | undefined =>
       planRetention(new SpanBuffer({ dir: storeDir, now: () => t }), sources).find((h) => h.session === "short-x")?.verdict;
-    const at5 = v(Date.now() + 5 * DAY);
-    const at8 = v(Date.now() + 8 * DAY);
+    const at2 = v(Date.now() + 2 * DAY);
+    const at4 = v(Date.now() + 4 * DAY);
     c.close();
-    // The write-up restarts the week, as it does for a full debt: kept at +5
-    // days (11 after it ended), gone at +8 — bounded, about 14 days at most.
-    expect(at5).toBe("kept-young");
-    expect(at8).toBe("deleted");
+    // The write-up restarts the clock, as it does for a full debt: kept at +2
+    // days (8 after it ended), gone at +4 — and never past 14 after it ended.
+    expect(at2).toBe("kept-young");
+    expect(at4).toBe("deleted");
   });
 
   test("NOT A PERSON'S INTERACTIVE CONVERSATION (review of #285, N2): `claude -p` / the Agent SDK owe no one-line write-up", () => {

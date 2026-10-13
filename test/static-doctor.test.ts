@@ -394,7 +394,7 @@ describe("Raw transcripts — what the newest retention pass did", () => {
     const f = by(reading(undefined), "retention");
     expect(f.severity).toBe("green");
     expect(f.title).toBe("Raw transcripts");
-    expect(f.detail).toBe("7 days after a session ends (up to 21 counting the daily snapshots) · not run yet");
+    expect(f.detail).toBe("deleted 3 days after a session is written up and ended, never kept more than 14 · never in backups · not run yet");
   });
 
   test("a finished pass: green, with what it deleted, kept owed and kept open", () => {
@@ -402,27 +402,33 @@ describe("Raw transcripts — what the newest retention pass did", () => {
     const f = by(reading(undefined), "retention");
     expect(f.severity).toBe("green");
     expect(f.detail).toBe(
-      "7 days after a session ends (up to 21 counting the daily snapshots) · 3 pruned 2026-09-22 · 1 kept until written up · 2 still open",
+      "deleted 3 days after a session is written up and ended, never kept more than 14 · never in backups · 3 pruned 2026-09-22 · 1 kept until written up · 2 still open",
     );
   });
 
-  test("the snapshot count comes from the configuration's keep", () => {
+  test("the clocks come from the configuration's retention block, and a field it could not read is amber", () => {
     pruneRow({ date: "2026-09-22", reason: "NOTHING", ...counts, deleted: 0 });
     const s = Store.open({ dir, observer: true });
     opened.push(s);
-    const f = by(
-      doctorFindings({
-        configPath: join(root, "claude-code.json"),
-        configReason: "loaded",
-        config: { dataDir: dir, snapshots: { keep: 3 } },
-        dir,
-        store: s,
-        today: "2026-09-23",
-        refusals: {},
-      }),
-      "retention",
-    );
-    expect(f.detail).toContain("(up to 10 counting the daily snapshots)");
+    const read = (retention: Record<string, unknown>) =>
+      by(
+        doctorFindings({
+          configPath: join(root, "claude-code.json"),
+          configReason: "loaded",
+          config: { dataDir: dir, retention },
+          dir,
+          store: s,
+          today: "2026-09-23",
+          refusals: {},
+        }),
+        "retention",
+      );
+    const set = read({ afterWriteUpDays: 14, maxDays: 30 });
+    expect(set.severity).toBe("green");
+    expect(set.detail).toContain("deleted 14 days after a session is written up and ended, never kept more than 30");
+    const bad = read({ maxDays: 14, ignored: ['"retention.afterWriteUpDays" was 0; using 3'] });
+    expect(bad.severity).toBe("amber");
+    expect(bad.detail).toContain('"retention.afterWriteUpDays" was 0; using 3');
   });
 
   test("a pass that could not delete something: amber, with a command", () => {
