@@ -188,7 +188,7 @@ export function footer(
       </Box>
       <Box flexDirection="row">
         <Text color={P.mid}>avatar</Text>
-        {([['turning', 'brain'], ['fox', 'animal'], ['off', 'off']] as const).map(([b, word]) => (
+        {(SURFACE.prose ? ([['fox', 'animal'], ['off', 'off']] as const) : ([['turning', 'brain'], ['fox', 'animal'], ['off', 'off']] as const)).map(([b, word]) => (
           <Box key={`b-${b}`} flexDirection="row">
             <Text> </Text>
             {/* The brain is one dot, turning or still: a press on it keeps whichever it was. */}

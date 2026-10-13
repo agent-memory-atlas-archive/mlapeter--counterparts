@@ -1544,22 +1544,21 @@ test('a pane press the auto-mode classifier refuses: a short plain note worded t
   }
 })
 
-test('the desktop has no Raster: a stored brain is drawn there as a still Svg of the terminal brain\'s cells, under the title row, and the avatar row keeps brain, animal and off', async ($, on) => {
+test('the desktop has no brain yet (Mike, 2026-10-13: next version): a stored brain draws the fox there, the avatar row offers animal and off, and the stored choice stays for the terminal', async ($, on) => {
   const w = world(on, { store: { brain: 'turning' } })
   await start($, w)
   const desk = await mount($, w, 'desktop')
-  const svg = await desk.find({ type: 'Svg' })
-  expect(svg?.props['alt']).toBe('a small brain')
-  const src = String(svg?.props['source'])
-  expect(src).toContain('<circle') // braille dots
-  expect(src).not.toContain('data:image') // no picture, shapes
-  expect(src).toMatch(/fill="#[0-9a-f]{6}"/)
+  expect((await desk.find({ type: 'Svg' }))?.props['alt']).toBe('a small fox')
   expect(await desk.find({ type: 'Raster' })).toBeUndefined()
-  expect((await desk.find({ type: 'Button', key: 'brain-turning' }))?.text).toBe('● brain')
-  expect((await desk.find({ type: 'Button', key: 'brain-fox' }))?.text).toBe('○ animal')
+  expect(await desk.find({ type: 'Button', key: 'brain-turning' })).toBeUndefined()
+  expect((await desk.find({ type: 'Button', key: 'brain-fox' }))?.text).toBe('● animal')
+  expect((await desk.find({ type: 'Button', key: 'brain-off' }))?.text).toBe('○ off')
   await desk.unmount()
   expect(w.store['brain']).toBe('turning')
-}) 
+  const term = await mount($, w, 'terminal')
+  expect(await term.find({ type: 'Button', key: 'brain-turning' })).toBeDefined()
+  await term.unmount()
+})
 
 test('the desktop with the avatar off draws no brain and no fox; pressing animal there stores the fox', async ($, on) => {
   const off = world(on, { store: { brain: 'off' } })

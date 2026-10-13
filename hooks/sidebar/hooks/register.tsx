@@ -161,7 +161,6 @@ import {
   searchFlag,
 } from './state'
 import { CLASSIC_HINT, NARROW_HINT, TAIL_HINT, TAIL_SPARE, narrowHint, quietTail } from './tail'
-import { cellsSvg } from './cells'
 import { BRAIN_COLS, BRAIN_ROWS, brain, brainHeader, fireBrain, fps, fpsReport, frameCells, look, lookKey, paceMs, raster } from './terminal'
 import { P, SURFACE, applyTheme, normTheme } from './theme'
 import { cells } from './width'
@@ -1924,7 +1923,9 @@ export const register: Register = on => {
     // Every colour below (and in the body's lines) is read from the palette in use: this session's theme.
     applyTheme(normTheme(theme), e.surface)
     const paused = isPaused(scope.mode)
-    const mode = normBrain(brainMode)
+    // The desktop draws no brain yet (no Raster; a static Svg brain didn't light up, Mike 2026-10-13: next
+    // version): a stored brain choice shows the fox there, and the terminal keeps the brain.
+    const mode = SURFACE.prose && normBrain(brainMode) !== 'off' ? 'fox' : normBrain(brainMode)
     look.mono = paused
     look.still = mode === 'still'
     look.sel = mech === null ? null : mech.id
@@ -1997,13 +1998,6 @@ export const register: Register = on => {
     } else if (mode === 'fox' && !hasRaster) {
       rows.push(...brainlessHeader(paneEls, actions, { w, paused, lit, day, count: countText }))
       used += searchFlag.on ? 3 : 2
-    } else if (SURFACE.prose && mode !== 'off' && 'Svg' in els) {
-      // The desktop has no Raster: the brain at rest, one frame of the terminal's cells as an Svg under the title row.
-      const { Svg } = els
-      const [title] = brainlessHeader(paneEls, actions, { w, paused, lit, day, count: countText })
-      const img = cellsSvg(frameCells(BRAIN_COLS, BRAIN_ROWS, 0), BRAIN_COLS, BRAIN_ROWS)
-      rows.push(...(title === undefined ? [] : [title]), <Svg key="brain" source={img.source} alt="a small brain" width={img.width} height={img.height} />, ...(searchFlag.on ? [<Box key="head2" flexDirection="row" width={w}>{searchBox(paneEls, actions, w)}</Box>] : []), <Text key="head-gap"> </Text>)
-      used += 1 + Math.ceil(BRAIN_ROWS * 0.9) + 1 + (searchFlag.on ? 1 : 0)
     } else if (hasRaster) {
       const { Raster } = $.ui.resolve(e)
       rows.push(...brainHeader(paneEls, Raster, actions, { w, paused, day, count: countText }))

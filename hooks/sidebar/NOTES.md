@@ -1538,11 +1538,11 @@ like `Earlier (now [id]): ` into `Earlier: ` and `Unsettled — may be out of da
 `Unsettled: `, takes the id that follows the lead, and drops a trailing `(earlier: [id])` or
 `(corrects [id])`.
 
-Also for 0.3.21: the desktop has no Raster, so a stored `brain` avatar (turning or still) draws there as
-one still frame of the terminal brain's cells, turned into an Svg (`cells.ts#cellsSvg`: a braille cell is
-its set dots as circles, any other glyph a filled cell, the cell's foreground colour, no background),
-under the title row, about 7 px a cell column. It does not turn or light; an animated Svg brain is for
-a later version. The avatar row is the terminal's (brain, animal, off).
+Also for 0.3.21: the desktop has no Raster, so it has no brain yet. A static Svg of one frame of the
+terminal brain's cells (`cells.ts#cellsSvg`, kept with its tests) was tried live with Mike on
+2026-10-13: it drew, sat too close to the title, and didn't light up. So a stored `brain` avatar draws the
+fox there, the desktop's avatar row offers animal and off only, and the stored choice stays for the
+terminal. A brain that turns and lights on the desktop is for the next version.
 
 A pane press is not a request from the person, so in auto mode the classifier can refuse the
 tool call (`$.mcp.call ... refused: ... auto mode classifier ...`), on the terminal too. The switch
