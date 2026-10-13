@@ -12,7 +12,7 @@ each mechanism is working. It should run in whatever AI host people use.
 
 | | |
 |---|---|
-| **On npm** | 0.3.20 (Oct 12) |
+| **On npm** | 0.3.21 (Oct 13) |
 | **On master, not released** | nothing yet |
 | **Hosts** | Claude Code; the Desktop app's Code tab (verified live 10-02); Claude Desktop chat (0.3.9) |
 | **Platforms** | Mac and Linux, under bun or Node 22.15+ (0.3.11); the plugin with neither, as one downloaded program (0.3.14). Not Windows. |
@@ -81,6 +81,7 @@ each mechanism is working. It should run in whatever AI host people use.
 
 ## Recently done
 
+- **10-13**: 0.3.21 on npm: conversation text kept 3 days after write-up and never more than 14 days, never in a backup, `counterparts delete conversation-text|backups|activity-log` and "Delete data…" on the dashboard (#468); recall's carried words cleared past the same ceiling (#471); the plugin installs over HTTPS (#467); "installed twice" said once (#469); the fox polished and the sidebar's Desktop layout (#470, #472); no store-format change, nothing to run after upgrading from 0.3.20
 - **10-12**: 0.3.20 on npm: plugin installs now remember from the second day, the wake gets a default 9,000-byte ceiling (#466); the first meeting is a short conversation that is never interrupted (no dream, write-up in the session, one question at a time, ends with what to do next), plain words in the wake and dashboard, a fresh install's doctor with no ambers, a one-line first-run notice and a store id for the sidebar, honest wording about recall by meaning (#450, #451, #452, #456, #458, #459); compaction starts unwatched, the wake never drops a section silently (#453, #454); the sidebar: onboarding, the split, the fox, no Claude Code memory switch (#447, #455, #460, #462); bundle README disclosures (#457, #461); the dead A/B file read removed (#463); no store-format change, nothing to run after upgrading from 0.3.19
 - **10-12**: 0.3.19 on npm: reminders arrive: one due today stays under "Arriving:" all day, near ones first, never "told" to a turn nobody typed, a warning for a reminder-like memory with no date (#442, #445, #443); far fewer reads of Claude Code's own files (#444); the core can change, the night folds what belongs together, catch-up over written parts, cards born, one door for writes (#430, #432, #436, #429, #435, #427); the big-file split that fits the directory's 256 KiB limit (#439); no store-format change, nothing to run after upgrading from 0.3.18
 - **10-11**: 0.3.18 on npm: the first meeting on every new install, started by the sidebar or `/counterparts:meet`, and dreaming on for new installs (#419, #416, #424); the plugin ready for Anthropic's directory: the bundle, no Bun auto-install, `/counterparts:dashboard`, install-aware doctor (#396, #394, #399); `uninstall` offers to delete, at a terminal, with a typed phrase, and `/counterparts:uninstall` (#414, #421, #425); older memories read at today's defaults (#395), merges and revisions keep what they were about (#398, #400, #403); the night writes up everything owed, `counterparts catch-up`, the reflection in its own session (#401, #407, #413, #426); what replaces what (#420, #408, #422); reminders (#393, #411); association (#423); last exchange, day order, chapter wording, the verbatim trial, context trims (#392, #405, #404, #409, #415); decisions fragments (#418); no store-format change
