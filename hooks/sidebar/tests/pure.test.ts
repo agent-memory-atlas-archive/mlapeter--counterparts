@@ -20,7 +20,6 @@ import {
   mechFirings,
   meetShows,
   openedIds,
-  parseFacts,
   parseOnboarding,
   parseOnboardingMarker,
   parseRecallBlock,
@@ -64,7 +63,7 @@ import { MORE, OPEN_MAX_LINES, bar, clip, heading, layoutBody, openedLines, text
 import { CLASSIC_HINT, CLASSIC_HINT_SHORT, TAIL_HINT, quietTail } from '../hooks/tail'
 import { P, applyTheme, cozy, normTheme, tron } from '../hooks/theme'
 import type { BodyState } from '../hooks/sections'
-import { DECISION_T3, EVENTS, FACTS_ANSWER, RECALL_BLOCK, SESSION, T0, ev } from './world'
+import { DECISION_T3, EVENTS, RECALL_BLOCK, SESSION, T0, ev } from './world'
 
 describe('the brain', () => {
   test('a frame is cols x rows cells of braille or blank, every one a Raster may hold', () => {
@@ -247,41 +246,6 @@ describe('the feed', () => {
       { title: 'Corrected: Bars were cells', id: 'mem_bar00001' },
       { title: 'Earlier: Two leads', id: 'mem_two00001' },
       { title: 'Journal: A plain chapter', id: 'epi_chap0001' },
-    ])
-  })
-
-  test('a facts answer: titles, ids, the who-and-when line, the excerpt', () => {
-    const { header, hits } = parseFacts(FACTS_ANSWER)
-    expect(header).toBe('2 match · showing 2')
-    expect(hits).toEqual([
-      { id: 'mem_pub00001', title: 'Publishing waits for a test and a review', kind: 'memory', date: 'Oct 9', who: 'you said it', meta: 'memory · Oct 9 · you said it', excerpt: 'Publishing is mine once it is tested and reviewed.' },
-      { id: 'mem_pub00002', title: 'npm publish needs a one-time password', kind: 'memory', date: 'Sep 24', who: 'I said it', meta: 'memory · Sep 24 · I said it', excerpt: 'The publish step asks for a one-time password.' },
-    ])
-  })
-
-  test('a facts answer read from the right: a title holding “ · word_word · ”, a chapter, no ways at all', () => {
-    const answer = [
-      '14 match · showing 3 · 11 more → page 2',
-      '',
-      '1. Sidebar · npm_install · trial notes · mem_bbbbbbbbbbbb · words',
-      '   you said · decided · no event date',
-      '   Body one.',
-      '',
-      '2. [journal] The lighthouse conversation · ep_aaaaaaaaaaaa (chapter 2 of 5) · meaning',
-      '   my journal · written 10-08..10-09',
-      '   Body two.',
-      '',
-      '3. No ways at all · mem_cccccccccccc · ',
-      '   you said · decided · no event date',
-      '   Body three.',
-    ].join('\n')
-    const { total, hits } = parseFacts(answer)
-    expect(total).toBe(14)
-    expect(hits.map(h => h.meta)).toEqual(['memory · you said it', 'journal · Oct 8', 'memory · you said it'])
-    expect(hits.map(h => [h.id, h.title])).toEqual([
-      ['mem_bbbbbbbbbbbb', 'Sidebar · npm_install · trial notes'],
-      ['ep_aaaaaaaaaaaa', 'The lighthouse conversation'],
-      ['mem_cccccccccccc', 'No ways at all'],
     ])
   })
 
@@ -598,7 +562,6 @@ const BASE: BodyState = {
   mech: null,
   focus: null,
   dash: 'up',
-  search: { query: '', status: 'idle', header: '', total: 0, hits: [], error: null },
 }
 
 describe('the body, laid out', () => {
@@ -790,12 +753,6 @@ describe('the body, laid out', () => {
     expect(lines.slice(at + 1, at + 3).join(' ')).toBe('This dashboard belongs to another memory.')
     expect(laid[at + 1]?.key).toBeUndefined()
   })
-
-  test('search results take the sections’ place: the query, how many, each title and what it is', () => {
-    const lines = textOf(layoutBody({ ...BASE, search: { query: 'publish', status: 'done', header: '', total: 2, hits: parseFacts(FACTS_ANSWER).hits, error: null } }).lines)
-    expect(lines[0]).toBe('“publish” ' + '─'.repeat(12) + ' 2 found ✕')
-    expect(lines.slice(1, 4)).toEqual(['Publishing waits for a test and', 'a review', 'memory · Oct 9 · you said it'])
-  })
 })
 
 describe('the small brain', () => {
@@ -882,7 +839,7 @@ describe('the themes', () => {
   test('tron is the mockups’ palette, exactly; cozy has every key, each a colour; a stored name this version does not know is tron', () => {
     expect(tron).toEqual({
       panel: '#05080c', hi: '#dde3e9', text: '#b3bcc5', mid: '#8e98a2', dim: '#66717c', faint: '#1d262e', head: '#c9d1d8',
-      accent: '#00e5ff', accent2: '#ffb347', searchBg: '#121a22', accentDim: '#0b6f7c',
+      accent: '#00e5ff', accent2: '#ffb347', accentDim: '#0b6f7c',
     })
     expect(Object.keys(cozy).sort()).toEqual(Object.keys(tron).sort())
     for (const v of Object.values(cozy)) expect(v).toMatch(/^#[0-9a-f]{6}$/)

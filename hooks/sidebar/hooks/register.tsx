@@ -1,7 +1,7 @@
 /**
  * The Counterparts sidebar (v0.2): what memory is doing, in 35 columns.
  *
- * A small brain beside the title, the day, the count and a search box; then
+ * A small brain beside the title, the day and the count; then
  * what was put in front of Claude for the last message (Memories, said in
  * full; Subconscious, titles only), what this session saved, how often each
  * mechanism fired today, and the last dream; then three rows of switches
@@ -26,7 +26,7 @@
  *   - the scope registry file the hooks read (`scopes.json` beside the
  *     configuration, read-only, `./scopes.ts`): where this folder stands;
  *   - the memory server over MCP, whichever this session connected: `scope`
- *     to pause or resume, after the confirm; `recall` (facts) for search;
+ *     to pause or resume, after the confirm;
  *   - this session: the recall block the classic UserPromptSubmit hook
  *     injects (Memories, Subconscious), and `tool.call` on remember (or
  *     its old name note) / session_end (Saved) and on recall by id (`↗ opened`).
@@ -82,7 +82,6 @@ import {
   openedIds,
   otherStore,
   ourTool,
-  parseFacts,
   parseOnboarding,
   parseOnboardingMarker,
   parseRecallBlock,
@@ -128,7 +127,7 @@ import {
   trigger,
 } from './fox'
 import type { FoxDetail, FoxEvent, FoxTier, Step } from './fox'
-import { aboveSwitches, footer, frame, meetRow, pausedBanner, plainBody, searchBox } from './pane'
+import { aboveSwitches, footer, frame, meetRow, pausedBanner, plainBody } from './pane'
 import type { PaneActions, PaneEls } from './pane'
 import { lookup, parentOf, parseRegistry, settingsHookConfig } from './scopes'
 import type { RegistryMode } from './scopes'
@@ -139,7 +138,6 @@ import {
   FALLBACK_LIMIT,
   FALLBACK_MAX,
   FIRING_MS,
-  IDLE_SEARCH,
   DASHBOARD_COMMAND,
   MEET_COMMAND,
   MEET_FLAG,
@@ -158,7 +156,6 @@ import {
   UNKNOWN_SCOPE,
   quiet,
   run,
-  searchFlag,
 } from './state'
 import { CLASSIC_HINT, NARROW_HINT, TAIL_HINT, TAIL_SPARE, narrowHint, quietTail } from './tail'
 import { BRAIN_COLS, BRAIN_ROWS, brain, brainHeader, fireBrain, fps, fpsReport, frameCells, look, lookKey, paceMs, raster } from './terminal'
@@ -181,7 +178,6 @@ import {
   isRefusal,
   storedWords,
   switchExplains,
-  truthy,
   words,
 } from './words'
 
@@ -203,7 +199,6 @@ const mechA = atom({ plugin: 'counterparts', key: 'mech' } as const, null)
 const focusA = atom({ plugin: 'counterparts', key: 'focus' } as const, null)
 const latestA = atom({ plugin: 'counterparts', key: 'latest' } as const, null)
 const firingA = atom({ plugin: 'counterparts', key: 'firing' } as const, null)
-const searchA = atom({ plugin: 'counterparts', key: 'search' } as const, IDLE_SEARCH)
 const scopeA = atom({ plugin: 'counterparts', key: 'scope' } as const, UNKNOWN_SCOPE)
 const onboardingA = atom({ plugin: 'counterparts', key: 'onboarding' } as const, UNKNOWN_ONBOARDING as SidebarOnboarding)
 const viewA = atom({ plugin: 'counterparts', key: 'view' } as const, 'sidebar')
@@ -914,10 +909,6 @@ async function clickBody($: EngineInterface, key: string): Promise<void> {
     $.clock.after(0, () => quiet(runCommand($, DASHBOARD_COMMAND)))
     return
   }
-  if (key === 'search:clear') {
-    await runSearch($, '')
-    return
-  }
   // The `more` that ends a cut text: the one click that opens the dashboard, on that memory.
   if (key.startsWith('more:')) {
     const id = key.slice(5)
@@ -963,11 +954,6 @@ async function clickBody($: EngineInterface, key: string): Promise<void> {
       await update($, openA, () => (cur?.key === key ? null : { key, id: null, status: 'ready' as const, title: null, text: '', meta: null, at }))
     }
     return
-  }
-  if (key.startsWith('hit:')) {
-    const cur = await read($, openA)
-    const at = await $.clock.now()
-    await update($, openA, () => (cur?.key === key ? null : { key, id: key.slice(4), status: 'ready' as const, title: null, text: '', meta: null, at }))
   }
 }
 
@@ -1223,35 +1209,6 @@ async function setScope($: EngineInterface, to: 'pause' | 'resume' | 'off' | 'on
   }
   look.mono = isPaused((await read($, scopeA)).mode)
   await refreshStatus($)
-}
-
-async function runSearch($: EngineInterface, raw: string): Promise<void> {
-  const query = raw.trim()
-  await update($, openA, o => (o !== null && o.key.startsWith('hit:') ? null : o))
-  if (query.length === 0) {
-    await update($, searchA, () => IDLE_SEARCH)
-    return
-  }
-  await update($, searchA, () => ({ ...IDLE_SEARCH, query, status: 'running' as const }))
-  try {
-    const { payload, isError } = await callMemory($, 'recall', { question: query, mode: 'facts' })
-    const answer = payload?.['answer']
-    if (isError || typeof answer !== 'string') {
-      // the memory server's own reason, in its words (an auto-mode refusal throws, below)
-      const why = String(payload?.['detail'] ?? payload?.['reason'] ?? 'the search was refused')
-      await update($, searchA, () => ({ ...IDLE_SEARCH, query, status: 'error' as const, error: why }))
-      return
-    }
-    const { header, total, hits } = parseFacts(answer)
-    await update($, searchA, () => ({ query, status: 'done' as const, header, total, hits: hits.slice(0, 12), error: null }))
-  } catch (err) {
-    await update($, searchA, () => ({ ...IDLE_SEARCH, query, status: 'error' as const, error: searchWhy(err) }))
-  }
-}
-
-/** A search call that threw, in plain words: the engine's refusal text is never shown. */
-function searchWhy(err: unknown): string {
-  return isRefusal(err) ? "Auto mode didn't let the search run. Ask Claude to look it up." : 'The search failed. Try again.'
 }
 
 // ── views and the brain's mode ─────────────────────────────────────────────
@@ -1629,21 +1586,19 @@ export const register: Register = on => {
       argumentHint: '[quiet | avatar animal|brain|off | avatar detail auto|images|fine|basic | theme tron|cozy | resume | fps [n]]',
     })
     // (A `claudeMemory` or `claudeMemorySwitch` left in the store by an older version is never read.)
-    const [viewPref, brainPref, fpsPref, meetMark, themePref, detailPref, searchEnv] = await Promise.all([
+    const [viewPref, brainPref, fpsPref, meetMark, themePref, detailPref] = await Promise.all([
       $.store.get('view'),
       $.store.get('brain'),
       $.store.get('fps'),
       $.store.get(MEET_FLAG),
       $.store.get('theme'),
       $.store.get('avatarDetail'),
-      $.env.get('COUNTERPARTS_SIDEBAR_SEARCH').catch(() => undefined),
     ])
     // A new module life's fox starts fresh: still, awake, trying pictures again where they may show.
     stage.director = null
     stage.noImages = false
     stage.imageDenies = 0
     stage.detail = normDetail(detailPref)
-    searchFlag.on = truthy(searchEnv)
     // What this terminal can draw the fox with, read once (fox.ts, `pickTier`).
     // (Each name spelled out: the engine lists the variables a module reads.)
     const envVals = await Promise.all([
@@ -1912,11 +1867,10 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const els = $.ui.resolve(e)
     const { Box, Text, Button } = els
-    const Input = 'Input' in els ? els.Input : null
     const now = await $.clock.now()
-    const [pulse, dash, mind, saved, today, dreamNow, open, mech, focus, firing, search, scope, view, brainMode, note, pauseAsk] = await Promise.all([
+    const [pulse, dash, mind, saved, today, dreamNow, open, mech, focus, firing, scope, view, brainMode, note, pauseAsk] = await Promise.all([
       read($, pulseA), read($, dashA), read($, mindA), read($, savedA), read($, todayA), read($, dreamA), read($, openA), read($, mechA),
-      read($, focusA), read($, firingA), read($, searchA), read($, scopeA), read($, viewA), read($, brainA), read($, noteA), read($, pauseAskA),
+      read($, focusA), read($, firingA), read($, scopeA), read($, viewA), read($, brainA), read($, noteA), read($, pauseAskA),
     ])
     const [onboarding, theme] = await Promise.all([read($, onboardingA), read($, themeA)])
     // Every colour below (and in the body's lines) is read from the palette in use: this session's theme.
@@ -1955,7 +1909,6 @@ export const register: Register = on => {
     const lit = firingNow[0] ?? look.sel
     // Every press in the pane, as a closure over this hook's `$` (the views take no `$`).
     const actions: PaneActions = {
-      search: value => runSearch($, value),
       openDashboard: () => openDashboard($, '/'),
       pressScope: to => pressScope($, to),
       pressMeet: () => pressMeet($),
@@ -1964,7 +1917,7 @@ export const register: Register = on => {
       view: v => (v === 'sidebar' ? openPane($) : closeQuiet($)),
       brain: b => setBrain($, b),
     }
-    const paneEls: PaneEls = { Box, Text, Button, Input }
+    const paneEls: PaneEls = { Box, Text, Button }
     const rows: JSX.Element[] = []
     let used = 0
     if (roomy) {
@@ -1978,7 +1931,7 @@ export const register: Register = on => {
     let stageTop: JSX.Element[] | null = null
     if (hasStage) {
       // The title row (the count and the day on its right), the stage edge to edge (outside the frame's
-      // padding), a thin rule, and the search box when it is on.
+      // padding) and a thin rule.
       stage.director ??= newDirector(now)
       const step = advance(stage.director, now).step
       // An Image's first frame is blitted once mounted too: a refusal says it draws its alt here.
@@ -1986,24 +1939,21 @@ export const register: Register = on => {
       const [title] = brainlessHeader(paneEls, actions, { w, paused, lit, day, count: countText })
       stageTop = [...rows, ...(title === undefined ? [] : [title]), stageElement(els, tier, step)]
       rows.length = 0
-      rows.push(
-        SURFACE.prose ? <Text key="stage-rule"> </Text> : <Text key="stage-rule" color={P.faint}>{'─'.repeat(w)}</Text>,
-        ...(searchFlag.on ? [<Box key="head2" flexDirection="row" width={w}>{searchBox(paneEls, actions, w)}</Box>] : []),
-      )
+      rows.push(SURFACE.prose ? <Text key="stage-rule"> </Text> : <Text key="stage-rule" color={P.faint}>{'─'.repeat(w)}</Text>)
       // The desktop's Svg is 180 px tall, about ten of its text rows (measured 2026-10-13), not the cells' fifteen;
       // fewer when a narrow pane scales it down (stageElement's factor).
-      used += 1 + (tier === 'svg' ? (SURFACE.prose ? Math.ceil(10 * Math.min(1, (W * 7) / (STAGE_COLS * 6))) : 15) : stageRows(tier)) + 1 + (searchFlag.on ? 1 : 0)
+      used += 1 + (tier === 'svg' ? (SURFACE.prose ? Math.ceil(10 * Math.min(1, (W * 7) / (STAGE_COLS * 6))) : 15) : stageRows(tier)) + 1
       if (!holding) startStage($)
     } else if (mode === 'fox' && !hasRaster) {
       rows.push(...brainlessHeader(paneEls, actions, { w, paused, lit, day, count: countText }))
-      used += searchFlag.on ? 3 : 2
+      used += 2
     } else if (hasRaster) {
       const { Raster } = $.ui.resolve(e)
       rows.push(...brainHeader(paneEls, Raster, actions, { w, paused, day, count: countText }))
       used += BRAIN_ROWS + 1
     } else {
       rows.push(...brainlessHeader(paneEls, actions, { w, paused, lit, day, count: countText }))
-      used += searchFlag.on ? 3 : 2
+      used += 2
     }
 
     // ── a paused folder says so before anything else in the pane ──
@@ -2030,7 +1980,7 @@ export const register: Register = on => {
     // The desktop sets the body in its own font, about a fifth narrower than the cells the pane is measured in:
     // wrap to that, and a blank row between items there (2026-10-13, Mike: "hard to read").
     const bodyW = SURFACE.prose ? Math.floor(w * 1.2) : w
-    const { lines } = layoutBody({ w: bodyW, rows: bodyRows, now, mind, saved, today, dream: dreamNow, open, mech, focus, dash, search, prose: SURFACE.prose, cellsW: w })
+    const { lines } = layoutBody({ w: bodyW, rows: bodyRows, now, mind, saved, today, dream: dreamNow, open, mech, focus, dash, prose: SURFACE.prose, cellsW: w })
     // The body's surface module stays here, its module a literal on the tag's own line: the engine reads a hooks
     // module's surface modules off its own source.
     if ('Client' in els) {

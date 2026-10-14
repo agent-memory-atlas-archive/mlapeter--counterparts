@@ -15,7 +15,7 @@ import { Brain } from './brain'
 import { encodeCells } from './cells'
 import { mechById, stageOf } from './mechanisms'
 import type { MechId } from './mechanisms'
-import { searchBox, titleButton } from './pane'
+import { titleButton } from './pane'
 import type { PaneActions, PaneEls } from './pane'
 import { run } from './state'
 import { P } from './theme'
@@ -121,8 +121,9 @@ export function paceMs(pace: 'burst' | 'calm'): number {
 
 /**
  * The terminal's header: the brain (a `Raster`, reusing the last frame while
- * its look is the same) and beside it the title, the day, the count and the
- * search box; then a blank row. BRAIN_ROWS + 1 rows.
+ * its look is the same) and beside it the title, the day and the count (a
+ * blank row under them, where the search box was); then a blank row.
+ * BRAIN_ROWS + 1 rows.
  */
 export function brainHeader(
   els: PaneEls,
@@ -154,7 +155,7 @@ export function brainHeader(
         <Text> </Text>
         <Text color={P.dim}>{s.day === null ? ' ' : `day ${String(s.day)}`}</Text>
         <Text color={P.dim}>{s.day === null ? ' ' : countText}</Text>
-        {searchBox(els, actions, headW)}
+        <Box width={headW} />
       </Box>
     </Box>,
     <Text key="head-gap"> </Text>,

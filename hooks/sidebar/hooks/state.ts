@@ -1,7 +1,7 @@
 /**
  * The sidebar's own state and timings (shared core, no drawing): the
  * timings and limits the hooks keep, the first meeting's line and its
- * once-only mark, the empty search and the unknown folder, and `run`, what
+ * once-only mark, the unknown folder, and `run`, what
  * this module life knows (a reload starts it over; the host keeps `$.state`).
  *
  * The `$.state` atoms themselves stay in `register.tsx`: the engine's scan
@@ -9,7 +9,7 @@
  * file (NOTES, "The split").
  */
 
-import type { SidebarScope, SidebarSearch } from '../types'
+import type { SidebarScope } from '../types'
 
 /**
  * Body columns the sidebar asks for: 34, which the dock draws 35 wide with its
@@ -86,23 +86,13 @@ export const MEET_COMMAND = 'counterparts:meet'
 /** The Mechanisms section's link when the dashboard is down: the plugin's command (commands/dashboard.md). */
 export const DASHBOARD_COMMAND = 'counterparts:dashboard'
 
-/**
- * The search box, hidden for 0.3.20 (2026-10-12): in the owner's real sessions a
- * click never put the keyboard in it (fox trial rounds 1 and 2), and it could not
- * be checked live here (NOTES). `COUNTERPARTS_SIDEBAR_SEARCH=1` brings it back,
- * read at session start.
- */
-export const searchFlag = { on: false }
-
 /** `$.store`: the speak-first went out (`{ session, at }`); never again while it is there. */
 export const MEET_FLAG = 'meetTriggered'
 
 /** A second press of "Start the 5-minute intro" this soon after the first submits nothing. */
 export const MEET_PRESS_MS = 60000
 
-// ── the empty search, the unknown folder, and what this module life knows ──
-
-export const IDLE_SEARCH: SidebarSearch = { query: '', status: 'idle', header: '', total: 0, hits: [], error: null }
+// ── the unknown folder, and what this module life knows ──
 
 export const UNKNOWN_SCOPE: SidebarScope = { mode: 'unknown', own: false, setBy: null, dir: null, error: null, busy: false, unread: null }
 

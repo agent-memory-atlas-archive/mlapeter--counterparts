@@ -163,7 +163,7 @@ for (const [n, said] of [
       const w = world(on)
       await start($, w)
       const ui = await mount($, w, 'terminal')
-      // the column beside the brain: blank, title, blank, day, count, search (from 1,000 it takes a cell of the gap)
+      // the column beside the brain: blank, title, blank, day, count, blank (from 1,000 it takes a cell of the gap)
       const texts = (await ui.findAll({ type: 'Text' })).map(x => x.text)
       expect(texts).toContain(said)
       expect(texts.indexOf(said)).toBe(texts.indexOf('day 18') + 1)
@@ -195,7 +195,7 @@ test('a docking terminal too narrow for an unasked pane: the dim tail under the 
   expect(await tail($, w)).toBeUndefined()
 })
 
-test('drawn: the dashboard is read; the header is the small brain, COUNTERPARTS, the day, the count and a search box; no status line', async ($, on) => {
+test('drawn: the dashboard is read; the header is the small brain, COUNTERPARTS, the day and the count, no search box; no status line', async ($, on) => {
   const w = world(on)
   await start($, w)
   for (const surface of SURFACES) {
@@ -204,7 +204,7 @@ test('drawn: the dashboard is read; the header is the small brain, COUNTERPARTS,
     expect(w.fetches.some(u => u.endsWith('/api/mechanisms'))).toBe(true)
     expect(w.fetches.some(u => u.includes('/api/dreams'))).toBe(true)
     expect((await ui.find({ type: 'Button', key: 'title' }))?.text).toContain('COUNTERPARTS')
-    expect((await ui.find({ type: 'Input', key: 'q' }))?.props['placeholder']).toBe('search')
+    expect(await ui.find({ type: 'Input' })).toBeUndefined()
     if (surface === 'terminal') {
       // the brain header: the day on the title row, the count beside the brain
       expect(await ui.find({ type: 'Text', text: 'day 18' })).toBeDefined()
@@ -902,7 +902,7 @@ test('/counterparts asks for a fresh drawing: a pane reopened after a hand-close
   expect(w.invalidations).toContain('ui.render')
 })
 
-test('while the pane holds the keyboard (typing a search) the brain holds still; given back, it turns again', async ($, on) => {
+test('while the pane holds the keyboard the brain holds still; given back, it turns again', async ($, on) => {
   const w = world(on)
   await start($, w)
   const ui = await mount($, w, 'terminal', { ...PANE_PROPS, isFocused: true } as typeof PANE_PROPS)
@@ -948,7 +948,7 @@ test('a reload keeps the state: a `firing` v0.1 wrote ({ id, at }, no list) draw
   await ui.unmount()
 })
 
-// ── the dashboard, links, search ───────────────────────────────────────────
+// ── the dashboard, links ───────────────────────────────────────────
 
 /** The words the chart says while the dashboard is down, whatever the install. */
 const DOWN_SAYS = 'Start the dashboard to see stats here'
@@ -1028,28 +1028,6 @@ test('on Windows a link opens through rundll32, never cmd', async ($, on) => {
   await ui.press({ key: 'title' })
   expect(w.runs.at(-1)).toEqual(['rundll32', 'url.dll,FileProtocolHandler', 'http://localhost:4747/'])
   await ui.unmount()
-})
-
-test('search: Enter asks recall in facts mode; the results take the sections’ place, each opens in place; a click on the heading clears it', async ($, on) => {
-  const w = world(on, { tools: PLUGIN_TOOLS })
-  await start($, w)
-  for (const surface of SURFACES) {
-    const ui = await mount($, w, surface)
-    await ui.input({ key: 'q', text: 'publish', kind: 'change' })
-    expect(w.mcp.filter(c => c.tool === 'recall')).toHaveLength(surface === 'terminal' ? 0 : 1) // typing asks nothing
-    await ui.input({ key: 'q', text: 'publish' })
-    expect(w.mcp.filter(c => c.tool === 'recall').at(-1)).toEqual({ server: 'plugin_counterparts_counterparts', tool: 'recall', args: { question: 'publish', mode: 'facts' } })
-    let lines = await bodyLines(ui)
-    expect(lines[0]).toMatch(headRe(surface, '“publish”', '2 found ✕'))
-    expect(lines.slice(1, 4)).toEqual(surface === 'terminal' ? ['Publishing waits for a test and', 'a review', 'memory · Oct 9 · you said it'] : ['Publishing waits for a test and a', 'review', 'memory · Oct 9 · you said it'])
-    expect(lines.some(l => l.startsWith('Mechanisms today'))).toBe(false)
-    await click(ui, 'Publishing waits')
-    expect((await bodyLines(ui)).join('\n')).toContain('Publishing is mine once it is')
-    await click(ui, '“publish”')
-    lines = await bodyLines(ui)
-    expect(lines.some(l => l.startsWith('Mechanisms today'))).toBe(true)
-    await ui.unmount()
-  }
 })
 
 // ── Claude Code's own memory: the mod only observes it (2026-10-12) ──────────
@@ -1879,7 +1857,7 @@ for (const meet of ['later', 'offered'] as const) {
       expect((await ui.find({ type: 'Text', text: 'Start the 5-minute intro' }))?.props['color']).toBe(ACCENT(surface))
       // at the top of the body: after the header, before the sections
       const keys = (((await ui.drawn()) as unknown as Node).children ?? []).map(c => (c as Node).props?.['key'])
-      const head = Math.max(keys.indexOf('head'), keys.indexOf('head2'))
+      const head = Math.max(keys.indexOf('head'), keys.indexOf('head1'))
       expect(head).toBeGreaterThanOrEqual(0)
       expect(keys.indexOf('meet')).toBeGreaterThan(head)
       expect(keys.indexOf('meet')).toBeLessThan(keys.indexOf('body'))
@@ -1988,13 +1966,11 @@ for (const surface of ['terminal'] as const) {
     await start($, w)
     const ui = await mount($, w, surface)
     expect((await ui.find({ type: 'Text', text: 'COUNTERPARTS' }))?.props['color']).toBe('#00e5ff')
-    expect((await ui.find({ type: 'Box', key: 'search' }))?.props['backgroundColor']).toBe('#121a22')
     expect(await cmd($, 'theme sepia')).toContain('tron or cozy (now tron)')
     expect(await cmd($, 'theme cozy')).toContain('Theme cozy')
     expect(w.store['theme']).toBe('cozy')
     await settle(w)
     expect((await ui.find({ type: 'Text', text: 'COUNTERPARTS' }))?.props['color']).toBe('#9cc65f')
-    expect((await ui.find({ type: 'Box', key: 'search' }))?.props['backgroundColor']).toBe('#2a1e16')
     expect(await cmd($, 'theme tron')).toContain('Theme tron')
     expect(w.store['theme']).toBe('tron')
     await settle(w)
@@ -2027,12 +2003,11 @@ test('two surfaces drawing in turn: the desktop drawn last leaves the terminal i
   await term.unmount()
 })
 
-test('the desktop draws in the app theme, whatever the stored theme: no panel, no search shade, the accent its suggestion colour, no rule of dashes', async ($, on) => {
+test('the desktop draws in the app theme, whatever the stored theme: no panel, the accent its suggestion colour, no rule of dashes', async ($, on) => {
   const w = world(on, { store: { theme: 'cozy' } })
   await start($, w)
   const ui = await mount($, w, 'desktop')
   expect((await ui.find({ type: 'Text', text: 'COUNTERPARTS' }))?.props['color']).toBe('suggestion')
-  expect((await ui.find({ type: 'Box', key: 'search' }))?.props['backgroundColor']).toBeUndefined()
   expect((await texts(ui)).includes('───')).toBe(false)
   await ui.unmount()
 })
@@ -2275,8 +2250,8 @@ for (const [marker, dash, said] of [[null, THEIRS, 'no marker'], [MINE, null, 'a
   })
 }
 
-test('the search box is hidden unless COUNTERPARTS_SIDEBAR_SEARCH brings it back', async ($, on) => {
-  const w = world(on, { env: { HOME } })
+test('there is no search box, whatever the environment says (COUNTERPARTS_SIDEBAR_SEARCH is read no more)', async ($, on) => {
+  const w = world(on, { env: { HOME, COUNTERPARTS_SIDEBAR_SEARCH: '1' } })
   await start($, w)
   for (const surface of SURFACES) {
     const ui = await mount($, w, surface)

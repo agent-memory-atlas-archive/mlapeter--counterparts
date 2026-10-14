@@ -111,20 +111,6 @@ export const DECISION_T3 = ev(497, 'recall.decision', 'On turn 3 I said “The s
   surfaced: JSON.stringify([{ id: 'mem_sur00001', sal: 0.6 }]), footnotes: JSON.stringify([{ id: 'mem_rel00001', sal: 0.5 }]),
 })
 
-export const FACTS_ANSWER = [
-  '2 match · showing 2',
-  '',
-  '1. Publishing waits for a test and a review · mem_pub00001 · words, subject',
-  '   you said · done · happened 10-09',
-  '   learned 10-09 in ~/counterparts · session a1b2c3d4 · CURRENT',
-  '   Publishing is mine once it is tested and reviewed.',
-  '',
-  '2. npm publish needs a one-time password · mem_pub00002 · words',
-  '   I said · done · happened 09-24',
-  '   learned 09-24 in ~/counterparts · session b2c3d4e5 · CURRENT',
-  '   The publish step asks for a one-time password.',
-].join('\n')
-
 export const RECALL_BLOCK = [
   '<!-- counterparts:recall t=3 -->',
   '',
@@ -153,8 +139,6 @@ export type WorldOptions = {
   blitDeny?: boolean;
   /** The first N blits are refused (a Raster not mounted yet), the rest taken. */
   blitDenyFirst?: number;
-  /** The answer a `recall` gets. */
-  factsAnswer?: string;
   store?: Record<string, unknown>;
   /** `uname -s` fails, as it does on Windows. */
   windows?: boolean;
@@ -286,8 +270,7 @@ export function world(on: On, opts: WorldOptions = {}): World {
     draft: opts.draft ?? '',
     dashStore: undefined,
   }
-  // The search box is hidden by default (0.3.20); the tests that are about it see it, as the flag brings it back.
-  mock.env(on, opts.env ?? { HOME, COUNTERPARTS_SIDEBAR_SEARCH: '1' })
+  mock.env(on, opts.env ?? { HOME })
   // The scope registry as the server keeps it: `w.scope` is its one entry (none
   // when nothing is set), so a write through the tool shows in the next read.
   const registryAt = opts.registryAt ?? SCOPES_FILE
@@ -440,7 +423,6 @@ export function world(on: On, opts: WorldOptions = {}): World {
       w.scope.setBy = HERE
       return text({ set: true, scope: HERE, mode: w.scope.mode, stance: w.scope.mode })
     }
-    if (e.tool === 'recall') return text({ path: 'question', mode: 'facts', answer: opts.factsAnswer ?? FACTS_ANSWER, ids: ['mem_pub00001', 'mem_pub00002'] })
     return text({ reason: 'unknown-tool' }, true)
   })
   return w
