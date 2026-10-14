@@ -95,8 +95,15 @@ describe("the file set", () => {
       /(^|\/)(NOTES|CONTRACT|INTERFACE-GAPS|CLAUDE)\.md$|\.test\.[cm]?[jt]sx?$|(^|\/)tests?\/|^(test|tools|docs|changelog\.d|\.github)\/|\.DS_Store$|(^|\/)(bunfig\.toml|\.npmrc|tsconfig\.json)$|^bin\//.test(p),
     );
     expect(bad).toEqual([]);
-    // The sidebar's own plugin folder (its checks) stays in the repository.
-    expect(paths.filter((p) => p.startsWith("hooks/sidebar/") && !/^hooks\/sidebar\/(hooks|types)\//.test(p))).toEqual([]);
+    // The sidebar's own plugin folder (its checks) stays in the repository;
+    // only its fox frames ride with the modules and types.
+    expect(paths.filter((p) => p.startsWith("hooks/sidebar/") && !/^hooks\/sidebar\/(hooks|types)\/|^hooks\/sidebar\/art\/fox\/[^/]+\.png$/.test(p))).toEqual([]);
+  });
+
+  test("the sidebar's fox frames (read by path, not imported) ride in the bundle", () => {
+    const frames = readdirSync(join(REPO, "hooks/sidebar/art/fox")).filter((n) => n.endsWith(".png"));
+    expect(frames.length).toBeGreaterThan(30);
+    for (const f of frames) expect(paths).toContain(`hooks/sidebar/art/fox/${f}`);
   });
 
   test(`stays within the directory's ${MAX_FILES} files`, () => {
@@ -301,16 +308,45 @@ describe("the directory flavor", () => {
   });
 
   test("hooks modules: the directory flavor carries the sidebar alone; the full flavor every module hooks.json lists", () => {
-    // As data, so it holds before and after the speak-first module is split out.
-    expect(directoryModules(["./sidebar/hooks/register.tsx", "./sidebar/hooks/speak-first.tsx"])).toEqual(["./sidebar/hooks/register.tsx"]);
+    // As data, so it holds before and after hooks.json names `full.tsx` (register + speak-first).
+    expect(directoryModules(["./sidebar/hooks/full.tsx"])).toEqual(["./sidebar/hooks/register.tsx"]);
     expect(directoryModules(["./sidebar/hooks/register.tsx"])).toEqual(["./sidebar/hooks/register.tsx"]);
+    expect(directoryModules([])).toEqual([]);
     const hooks = JSON.parse(dir.generated["hooks/hooks.json"]!) as { modules: string[] };
     expect(hooks.modules).toEqual(["./sidebar/hooks/register.tsx"]);
-    expect(dirPaths.filter((p) => /speak-first/.test(p))).toEqual([]);
+    expect(dirPaths.filter((p) => /speak-first|sidebar\/hooks\/full\.tsx/.test(p))).toEqual([]);
+    expect(dirPaths.filter((p) => p.startsWith("hooks/sidebar/art/fox/")).length).toBeGreaterThan(30);
     // The full flavor copies hooks.json as it is, and traces every module it lists.
     const repoModules = (JSON.parse(readFileSync(join(REPO, "hooks/hooks.json"), "utf8")) as { modules: string[] }).modules;
     expect(plan.copied).toContain("hooks/hooks.json");
     for (const m of repoModules) expect(paths).toContain(join("hooks", m));
+  });
+
+  test("once hooks.json names full.tsx (register + speak-first): the full flavor traces all three, the directory flavor register alone", () => {
+    const mini = realpathSync(mkdtempSync(join(tmpdir(), "counterparts-plugin-modules-")));
+    try {
+      const put = (rel: string, text: string): void => {
+        mkdirSync(join(mini, rel, ".."), { recursive: true });
+        writeFileSync(join(mini, rel), text);
+      };
+      put(".claude-plugin/plugin.json", JSON.stringify({ name: "counterparts" }));
+      put("hooks/hooks.json", JSON.stringify({ hooks: {}, modules: ["./sidebar/hooks/full.tsx"] }));
+      mkdirSync(join(mini, "commands"));
+      put("hooks/sidebar/hooks/full.tsx", 'import register from "./register";\nimport speakFirst from "./speak-first";\nexport default [register, speakFirst];\n');
+      put("hooks/sidebar/hooks/register.tsx", "export default 1;\n");
+      put("hooks/sidebar/hooks/speak-first.tsx", "export default 2;\n");
+      put("hooks/sidebar/art/fox/idle-0.png", "png");
+      const sidebar = (files: string[]): string[] => files.filter((f) => f.startsWith("hooks/sidebar/"));
+      expect(sidebar(traceFiles(mini, "full").files)).toEqual([
+        "hooks/sidebar/art/fox/idle-0.png",
+        "hooks/sidebar/hooks/full.tsx",
+        "hooks/sidebar/hooks/register.tsx",
+        "hooks/sidebar/hooks/speak-first.tsx",
+      ]);
+      expect(sidebar(traceFiles(mini, "directory").files)).toEqual(["hooks/sidebar/art/fox/idle-0.png", "hooks/sidebar/hooks/register.tsx"]);
+    } finally {
+      rmSync(mini, { recursive: true, force: true });
+    }
   });
 
   test("the README says Bun 1.3+ near the top, and nothing of the launcher or the binary", () => {

@@ -175,6 +175,9 @@ describe("connect and Claude Desktop's entry", () => {
     expect(isOurDesktopEntry({ command: "/d/bin/0.3.14/counterparts", args: ["mcp"] })).toBe(true);
     expect(isOurDesktopEntry({ command: BUN, args: ["run", "/x/other.ts"] })).toBe(false);
     expect(isOurDesktopEntry({ command: "npx", args: ["x"] })).toBe(false);
+    // The transpiled tree's serve.js is ours under adapters/; another tool's is not (review of #475).
+    expect(isOurDesktopEntry({ command: BUN, args: ["run", "/p/src/adapters/mcp/bin/serve.js"] })).toBe(true);
+    expect(isOurDesktopEntry({ command: BUN, args: ["run", "/opt/acme/dist/mcp/bin/serve.js"] })).toBe(false);
     expect(isOurDesktopEntry("nope")).toBe(false);
   });
 

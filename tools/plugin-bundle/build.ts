@@ -198,16 +198,25 @@ export function shebangCommand<T extends Command>(c: T, problems: string[], wher
   return { ...c, command: `\${CLAUDE_PLUGIN_ROOT}/${DIRECTORY_ENTRIES[mode]}`, args: args.slice(2) };
 }
 
-/** The hooks modules the directory flavor carries, of those hooks.json lists:
- *  the sidebar alone (owner, 2026-10-14). Any other module (the speak-first
- *  module, once it is its own) stays in the full flavor only, and since the
- *  trace follows `modules`, its files fall out of the directory bundle too. */
+/** The hooks module the directory flavor carries: the sidebar alone (owner,
+ *  2026-10-14), whatever hooks.json names — `register.tsx` itself, or
+ *  `full.tsx`, which loads it and the speak-first module (the engine allows one
+ *  module per plugin). The full flavor takes hooks.json's `modules` as they
+ *  are; since the trace follows `modules` and their imports, `full.tsx` and
+ *  `speak-first.tsx` ship there and fall out of the directory bundle. */
 export const DIRECTORY_MODULES: readonly string[] = ["./sidebar/hooks/register.tsx"];
 
-/** hooks.json's `modules`, as the directory flavor lists them. Pure. */
+/** hooks.json's `modules`, as the directory flavor lists them: the sidebar
+ *  alone when hooks.json names any module, else none. Pure. */
 export function directoryModules(modules: readonly string[]): string[] {
-  return modules.filter((m) => DIRECTORY_MODULES.includes(m));
+  return modules.length === 0 ? [] : [...DIRECTORY_MODULES];
 }
+
+/** Files a hooks module reads at run time by path, not by import, carried in
+ *  both flavors: the sidebar's fox frames (drawn by `Image {file}` relative to
+ *  the plugin root, read by `$.fs.read` on the desktop). Every `*.png` in each
+ *  folder that exists. */
+export const SIDEBAR_ASSET_DIRS: readonly string[] = ["hooks/sidebar/art/fox"];
 
 /** A command file's launcher lines as the console's own entry. The uninstall
  *  command's step 4 builds a terminal line from the launcher in words, so
@@ -239,11 +248,7 @@ export function directoryRoots(repo: string, problems: string[] = []): Roots {
   for (const [event, groups] of Object.entries(hooks.hooks ?? {})) {
     for (const g of groups) g.hooks = (g.hooks ?? []).map((h) => shebangCommand(h, problems, `hooks.json ${event}`));
   }
-  if (Array.isArray(hooks["modules"])) {
-    const modules = directoryModules(hooks["modules"] as string[]);
-    if (modules.length === 0) problems.push(`hooks.json lists none of ${DIRECTORY_MODULES.join(", ")}`);
-    hooks["modules"] = modules;
-  }
+  if (Array.isArray(hooks["modules"])) hooks["modules"] = directoryModules(hooks["modules"] as string[]);
   const commands: Record<string, string> = {};
   for (const [path, text] of Object.entries(r.commands)) commands[path] = directoryCommandText(text);
   const roots: Roots = {
@@ -324,7 +329,15 @@ export function traceFiles(repo: string = REPO, flavor: Flavor = "full", roots?:
 
   carry("hooks/hooks.json", "Claude Code (hooks/hooks.json)");
   for (const p of pluginRootPaths(root.hooks)) add(p, "hooks/hooks.json");
-  for (const m of (JSON.parse(root.hooks) as { modules?: string[] }).modules ?? []) add(join("hooks", m), "hooks/hooks.json `modules`");
+  const modules = (JSON.parse(root.hooks) as { modules?: string[] }).modules ?? [];
+  for (const m of modules) add(join("hooks", m), "hooks/hooks.json `modules`");
+  // What the sidebar reads by path (its fox frames), whenever a module is carried.
+  if (modules.length > 0) {
+    for (const d of SIDEBAR_ASSET_DIRS) {
+      if (!existsSync(join(repo, d))) continue;
+      for (const name of readdirSync(join(repo, d)).sort()) if (name.endsWith(".png")) add(`${d}/${name}`, "the sidebar (read by path)");
+    }
+  }
 
   for (const [path, text] of Object.entries(root.commands).sort(([a], [b]) => a.localeCompare(b))) {
     carry(path, "Claude Code (commands/)");
