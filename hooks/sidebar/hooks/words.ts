@@ -134,6 +134,12 @@ export function memoryMeta(d: { kind?: unknown; learnedOn?: unknown; journal?: u
   return learned === '' ? kind : `${kind} · learned ${learned}`
 }
 
+/** The session a still-binding speak-first went out in, or null (none, or settled since: core moved past not_started). */
+export function firedIn(stored: unknown): string | null {
+  const session = (stored as { session?: unknown } | null | undefined)?.session
+  return typeof session === 'string' ? session : null
+}
+
 // ── the folder's switch ────────────────────────────────────────────────────
 
 export function scopeOf(payload: Record<string, unknown> | null, isError: boolean, before: SidebarScope): SidebarScope {

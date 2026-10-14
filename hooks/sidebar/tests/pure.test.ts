@@ -824,12 +824,15 @@ describe('the first meeting', () => {
       expect(parseOnboardingMarker(bad)).toBeNull()
     }
   })
-  test('the button shows for not_started, later and offered; never where nothing can be kept, never for done, skipped or unknown', () => {
+  test('the button shows for not_started (unless this session’s speak-first is the introduction), later and offered; never where nothing can be kept', () => {
+    expect(meetShows('later', 'on', null, 's1')).toBe(true)
+    expect(meetShows('offered', 'unset', null, 's1')).toBe(true)
+    expect(meetShows('not_started', 'on', null, 's1')).toBe(true) // no speak-first (the directory build), or it stood down
     expect(meetShows('not_started', 'on')).toBe(true)
-    expect(meetShows('later', 'on')).toBe(true)
-    expect(meetShows('offered', 'unset')).toBe(true)
-    for (const m of ['done', 'skipped', 'unknown'] as const) expect(meetShows(m, 'on')).toBe(false)
-    for (const f of ['paused', 'off', 'observer', 'unknown']) expect(meetShows('not_started', f)).toBe(false)
+    expect(meetShows('not_started', 'on', 's1', 's1')).toBe(false) // this session's speak-first is introducing
+    expect(meetShows('not_started', 'on', 's0', 's1')).toBe(true)
+    for (const m of ['done', 'skipped', 'unknown'] as const) expect(meetShows(m, 'on', 's0', 's1')).toBe(false)
+    for (const f of ['paused', 'off', 'observer', 'unknown']) expect(meetShows('later', f, null, 's1')).toBe(false)
   })
 })
 

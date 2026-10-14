@@ -65,6 +65,28 @@ export const FALLBACK_LIMIT = 150
 
 export const FALLBACK_MAX = 1200
 
+/**
+ * The speak-first's line (`speak-first.tsx`, a hooks module of its own): what it
+ * submits, once per install at the first idle start while core says
+ * `not_started`. Framed as the plugin's (not `asUser`): the model reads "The
+ * counterparts plugin sent a message: …", and core's wake carries the meeting's
+ * instructions. Claude Code shows this line to the person ("Prompt from the
+ * counterparts plugin"), so it reads as a sentence to them, and still tells the
+ * model to introduce itself (2026-10-12, owner's onboarding trial). Since the fox
+ * trial it is "Meet your new counterpart." (the owner: Claude already has a
+ * memory of its own), which core's wake names as this meeting. The button runs
+ * `/counterparts:meet` instead, which carries its own instructions in any later
+ * session (MEET_COMMAND).
+ */
+export const MEET_PROMPT = 'Meet your new counterpart.'
+
+/**
+ * `$.store`: the speak-first went out (`{ session, at }`), never again while it is there; or
+ * `{ settled }` once core moved past not_started. Written by `speak-first.tsx`; the sidebar
+ * reads it to hide its button in the session whose speak-first is introducing.
+ */
+export const MEET_FLAG = 'meetTriggered'
+
 /** "Start the 5-minute intro": the plugin's command (commands/meet.md), run as if typed. */
 export const MEET_COMMAND = 'counterparts:meet'
 

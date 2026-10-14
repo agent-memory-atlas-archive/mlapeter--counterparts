@@ -7,7 +7,9 @@
  * mechanism fired today, and the last dream; then three rows of switches
  * (Counterparts here, on · paused · off; the view; the brain), and Claude
  * Code's own memory for whoever opted in. While core's first meeting is put
- * off or not yet started, "Start the 5-minute intro" tops the body. Closed
+ * off or not yet started, "Start the 5-minute intro" tops the body (the
+ * speak-first, asking Claude to begin once per install, is `speak-first.tsx`,
+ * a hooks module of its own). Closed
  * (`quiet`), it is only a dim tail under the prompt, ending with how to open
  * it again. The design is the round-3 mockups Mike chose on 2026-10-10
  * (`~/counterparts-notes/mockups/2026-10-10-mod-round3/`); ../NOTES.md says
@@ -139,6 +141,7 @@ import {
   FIRING_MS,
   DASHBOARD_COMMAND,
   MEET_COMMAND,
+  MEET_FLAG,
   MEET_PRESS_MS,
   NAMES_NOTHING,
   OPEN_COLUMNS,
@@ -171,6 +174,7 @@ import {
   statusFor,
   stoodDownNote,
   failedPressNote,
+  firedIn,
   isRefusal,
   storedWords,
   switchExplains,
@@ -292,16 +296,16 @@ async function readOnboarding($: EngineInterface): Promise<void> {
 
 /**
  * "Start the 5-minute intro", once a minute at most: the plugin's `/counterparts:meet`, as if
- * typed; the command carries its own instructions. The sidebar never starts the meeting by
- * itself (the speak-first is gone, 2026-10-14: the plugin directory build): this press is the
- * one way it starts from here. Run from a timer: `command.run` is refused inside a hook the
+ * typed; the command carries its own instructions. This module never starts the meeting by
+ * itself: the speak-first is a hooks module of its own (`speak-first.tsx`), which the
+ * directory build leaves out. Run from a timer: `command.run` is refused inside a hook the
  * turn waits on.
  */
 async function pressMeet($: EngineInterface): Promise<void> {
   const now = await $.clock.now()
   if (now - run.meetPressedAt < MEET_PRESS_MS) return
-  const [onb, scope] = await Promise.all([read($, onboardingA), read($, scopeA)])
-  if (!meetShows(onb.meet, scope.mode)) return
+  const [onb, scope, mark] = await Promise.all([read($, onboardingA), read($, scopeA), $.store.get(MEET_FLAG)])
+  if (!meetShows(onb.meet, scope.mode, firedIn(mark), run.session)) return
   run.meetPressedAt = now
   $.clock.after(0, () => quiet(runCommand($, MEET_COMMAND)))
 }
@@ -1529,7 +1533,6 @@ export const register: Register = on => {
       argumentHint: '[quiet | avatar animal|brain|off | avatar detail auto|images|fine|basic | theme tron|cozy | resume | fps [n]]',
     })
     // (A `claudeMemory` or `claudeMemorySwitch` left in the store by an older version is never read.)
-    // (A `meetTriggered` mark an older version's speak-first left in the store is never read.)
     const [viewPref, brainPref, fpsPref, themePref, detailPref] = await Promise.all([
       $.store.get('view'),
       $.store.get('brain'),
@@ -1884,7 +1887,8 @@ export const register: Register = on => {
     }
 
     // ── the first meeting, not started, put off or not finished: one cyan row at the top of the body ──
-    if (meetShows(onboarding.meet, scope.mode)) {
+    // (The speak-first's mark, when that module is loaded and fired in this session: it is the introduction.)
+    if (meetShows(onboarding.meet, scope.mode, firedIn(await $.store.get(MEET_FLAG)), run.session)) {
       rows.push(...meetRow(paneEls, actions, w))
       used += 2
     }

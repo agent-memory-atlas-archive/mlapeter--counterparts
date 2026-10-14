@@ -761,14 +761,17 @@ export function otherStore(wake: string | null, dash: string | null): boolean {
 /**
  * Whether the sidebar shows "Start the 5-minute intro": core says the meeting
  * never started (`not_started`), was put off (`later`), or was offered and not
- * finished (`offered`). The sidebar no longer starts it by itself (the
- * speak-first is gone, 2026-10-14), so a new install sees the button from its
- * first drawing. Never in a folder where the meeting can't keep anything
- * (`canMeet`), and never for an unknown state.
+ * finished (`offered`). Not while this very session's speak-first is the
+ * introduction (`firedIn`, the mark `speak-first.tsx` writes: not_started and
+ * fired in `session`); an earlier session's that never reached core's `meet`
+ * leaves the button, and with no speak-first module (the directory build) the
+ * button is the one way in. Never in a folder where the meeting can't keep
+ * anything (`canMeet`), and never for an unknown state.
  */
-export function meetShows(meet: SidebarMeet, folderMode: string): boolean {
+export function meetShows(meet: SidebarMeet, folderMode: string, firedIn: string | null = null, session = ''): boolean {
   if (!canMeet(folderMode)) return false;
-  return meet === 'not_started' || meet === 'later' || meet === 'offered';
+  if (meet === 'not_started') return firedIn === null || firedIn !== session;
+  return meet === 'later' || meet === 'offered';
 }
 
 /**
