@@ -396,7 +396,20 @@ describe("the adapter is a leaf — and every session-ending path is enumerated"
     // reviewed on exactly the terms this comment block asked for (owner ruling
     // 2026-09-04, the local web dashboard), and it is added here rather than
     // excluded by a pattern, so the next reader still has to read it.
-    expect(callers.sort()).toEqual(["adapters/dashboard/web/server.ts"]);
+    //
+    // THE SECOND ENTRY IS OUTBOUND, BUT NEVER OFF THE MACHINE (2026-10-14, the
+    // sidebar's desktop button): `adapters/dashboard/web/probe.ts` asks the
+    // dashboard already holding a port which store it serves — one GET of
+    // `/api/whoami` on 127.0.0.1, nothing sent — so `counterparts dashboard`
+    // can open the browser on this store's own dashboard instead of failing.
+    // Pinned below: no other host, no other path.
+    expect(callers.sort()).toEqual(["adapters/dashboard/web/probe.ts", "adapters/dashboard/web/server.ts"]);
+    // (Only whole-line `//` comments stripped: a trailing-comment strip would eat the URL's own `//`.)
+    const probe = readFileSync(join(SRC, "adapters/dashboard/web/probe.ts"), "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, " ")
+      .replace(/^\s*\/\/.*$/gm, " ");
+    expect(probe.match(/https?:\/\/[^`"'\s]*/g)).toEqual(["http://127.0.0.1:${String(port)}/api/whoami"]);
+    expect(/\.request\s*\(|\.connect\s*\(|method\s*:|body\s*:/.test(probe)).toBe(false);
     // The inbound claim, mechanized: the server never calls an outbound verb.
     const server = readFileSync(join(SRC, "adapters/dashboard/web/server.ts"), "utf8")
       .replace(/\/\*[\s\S]*?\*\//g, " ")
