@@ -473,7 +473,40 @@ export function transpileSource(text: string): string {
     target: "node",
     tsconfig: { compilerOptions: { verbatimModuleSyntax: true } } as unknown as string,
   });
-  return transpiler.transformSync(text);
+  return escapeInvisible(transpiler.transformSync(text));
+}
+
+/**
+ * The invisible and control characters the directory's validator holds ("Invisible
+ * characters in a string or comment"): C0 controls but tab, newline and return; DEL
+ * and the C1 controls; the soft hyphen; zero-width and direction marks; the line and
+ * paragraph separators; word joiner and invisible operators; the byte-order mark.
+ * Built from a string, not a regex literal: Bun's own transpiler, which runs this
+ * file, turns ` ` inside a regex literal into the character itself (measured
+ * 2026-10-14, a syntax error).
+ */
+export const INVISIBLE = new RegExp(
+  "[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F-\\u009F\\u00AD\\u200B-\\u200F\\u2028\\u2029\\u2060-\\u2064\\uFEFF]",
+  "g",
+);
+
+/**
+ * Transpiled code with every `INVISIBLE` character written as its `\uXXXX`
+ * escape. Bun's transpiler COOKS a string's or an untagged template's escapes
+ * (the source's `"\x7f"` came out as a literal DEL in cli/ui.js, 2026-10-14)
+ * and keeps regex literals and `String.raw` as written; with comments
+ * stripped, a literal character can only sit in a string or untagged
+ * template, where `\uXXXX` is the same character. One after an odd run of
+ * backslashes would change meaning, so it is refused rather than guessed.
+ */
+export function escapeInvisible(js: string): string {
+  return js.replace(INVISIBLE, (ch: string, at: number) => {
+    let slashes = 0;
+    while (at - slashes - 1 >= 0 && js[at - slashes - 1] === "\\") slashes += 1;
+    const code = `\\u${ch.charCodeAt(0).toString(16).toUpperCase().padStart(4, "0")}`;
+    if (slashes % 2 === 1) throw new Error(`a backslash before an invisible character (${code}): escape it in the source`);
+    return code;
+  });
 }
 
 // ── generated files ────────────────────────────────────────────────────────
@@ -614,6 +647,15 @@ export function planBundle(repo: string = REPO, flavor: Flavor = "full"): Plan {
       executable.push(entry);
     }
     problems.push(...mirrorProblems(sources, copied, generated));
+    // No invisible character in any .js the bundle carries, transpiled or as it is.
+    const scripts: [string, string][] = [
+      ...Object.entries(generated).filter(([f]) => f.endsWith(".js")),
+      ...copied.filter((f) => f.endsWith(".js")).map((f): [string, string] => [f, readFileSync(join(repo, f), "utf8")]),
+    ];
+    for (const [f, text] of scripts) {
+      const at = text.search(INVISIBLE);
+      if (at >= 0) problems.push(`${f} holds an invisible character (U+${text.charCodeAt(at).toString(16).toUpperCase().padStart(4, "0")}) at line ${text.slice(0, at).split("\n").length}`);
+    }
   }
 
   const all = [...copied, ...Object.keys(placed), ...Object.keys(generated)];

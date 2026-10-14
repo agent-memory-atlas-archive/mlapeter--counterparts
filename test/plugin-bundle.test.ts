@@ -14,6 +14,7 @@ import { join } from "node:path";
 import {
   ACCEPTED_LARGE,
   BUNDLE_LOCKFILE,
+  INVISIBLE,
   DIRECTORY_ENTRIES,
   DIRECTORY_SHEBANG,
   EXTRA_KEYWORDS,
@@ -26,10 +27,12 @@ import {
   bundlePaths,
   directoryModules,
   driftLines,
+  escapeInvisible,
   largeFiles,
   mirrorProblems,
   planBundle,
   traceFiles,
+  transpileSource,
   transpiledPath,
   writeBundle,
 } from "../tools/plugin-bundle/build.js";
@@ -314,7 +317,9 @@ describe("the directory flavor", () => {
     const readme = dir.generated["README.md"]!;
     expect(readme.indexOf("Requires Bun 1.3+")).toBeGreaterThan(0);
     expect(readme.indexOf("Requires Bun 1.3+")).toBeLessThan(readme.indexOf("## Install"));
-    expect(readme).toContain("curl -fsSL https://bun.sh/install | bash");
+    expect(readme).toContain("Install it from [bun.sh](https://bun.sh)");
+    // No download-and-run command (the validator warns on one): no piped install, in either flavor.
+    for (const r of [readme, plan.generated["README.md"]!]) expect(r).not.toMatch(/\b(curl|wget)\b[^\n]*\|\s*(ba|z)?sh\b/);
     expect(readme).toContain("Claude Code only (the terminal and the Desktop app's Code tab)");
     expect(readme).toContain(MODEL_PACKAGE);
     expect(readme).not.toMatch(/plugin-run\.sh|binaries\.json|COUNTERPARTS_BINARY_DOWNLOAD|<!--/);
@@ -331,6 +336,32 @@ describe("the directory flavor", () => {
     for (const [f, text] of Object.entries(dir.generated)) {
       if (!ACCEPTED_LARGE.includes(f)) expect(Buffer.byteLength(text)).toBeLessThanOrEqual(MAX_INSPECTED_BYTES);
     }
+  });
+
+  test("no invisible or control character in any .js the directory flavor carries (the validator holds one)", () => {
+    const js = dirPaths.filter((p) => p.endsWith(".js"));
+    expect(js.length).toBeGreaterThan(300);
+    const found = js.filter((p) => (dir.generated[p] ?? readFileSync(join(REPO, p), "utf8")).search(INVISIBLE) >= 0);
+    expect(found).toEqual([]);
+    // The one that set it off: cli/ui.ts's DEL, escaped in the source, cooked by the transpiler, escaped again.
+    expect(dir.generated["src/adapters/cli/ui.js"]).toContain('const DEL = "\\u007F"');
+  });
+
+  test("invisible characters come out as \\uXXXX, meaning the same in strings and templates; regexes and String.raw as written", () => {
+    const source = [
+      'const a: string = "x\\x7f\\u200b\\u00ad\\ufeff";',
+      "const b = `t\\x7f${1}\\u2060`;",
+      "const c = /\\x7f[\\u2060-\\u2064]/;",
+      "const d = String.raw`\\x7f`;",
+      "const e = '\\\\x7f';",
+    ].join("\n");
+    const out = transpileSource(source);
+    expect(out.search(INVISIBLE)).toBe(-1);
+    const run = (code: string): unknown[] => new Function(`${code}\nreturn [a, b, c.source, c.test("\\x7f"), d, e];`)() as unknown[];
+    expect(run(out)).toEqual(run(new Bun.Transpiler({ loader: "ts" }).transformSync(source)));
+    expect(run(out)[0]).toBe("x\u007f​­﻿");
+    expect(escapeInvisible('"a\u007fb"')).toBe('"a\\u007Fb"');
+    expect(() => escapeInvisible('"a\\\u007fb"')).toThrow(/backslash before an invisible character/);
   });
 
   test("the mirror check names what breaks it", () => {

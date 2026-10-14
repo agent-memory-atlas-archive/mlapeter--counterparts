@@ -344,7 +344,8 @@ started through `plugin-run.sh`; our own marketplace serves it. `--flavor direct
 for Anthropic's directory, whose validator timed out on ~7 MB of commented TypeScript and
 holds a manifest whose command is `bun` (a package manager, to it). It transpiles every
 `src/**/*.ts` one for one to `.js` at the same path (Bun's transpiler: types and comments
-stripped), drops the launcher, the `.mjs` shims, Node's loader and `binaries.json`, and
+stripped; the control and invisible characters it unescapes in strings are written back as
+`\uXXXX`, since the validator holds a file with one), drops the launcher, the `.mjs` shims, Node's loader and `binaries.json`, and
 generates `plugin.json`, `hooks/hooks.json` and `commands/*.md` that run the three entries
 (`hook.js`, `serve.js`, `counterparts.js`) by their own path: each is written executable
 and starts `#!/usr/bin/env -S bun --no-env-file --config=/dev/null --no-install`, the

@@ -15,14 +15,8 @@ please open issues and pull requests there.
 <!-- Template for tools/plugin-bundle/build.ts: a flavor:<name> block is kept only in that flavor's README. -->
 <!-- Every line that is only an HTML comment, like these two, is dropped from the output. -->
 <!-- flavor:directory -->
-**Requires Bun 1.3+.** Install it with
-
-```
-curl -fsSL https://bun.sh/install | bash
-```
-
-then open a new terminal and start Claude Code from it, so `bun` is on the PATH Claude Code
-starts the plugin with.
+**Requires Bun 1.3+.** Install it from [bun.sh](https://bun.sh), then open a new terminal
+and start Claude Code from it, so `bun` is on the PATH Claude Code starts the plugin with.
 
 <!-- /flavor:directory -->
 ## Install
