@@ -1,8 +1,9 @@
 /**
  * The pane's body as a `Client` surface module: the lines `./sections.ts`
  * laid out, drawn as they are, and a click on one posted back to the hooks
- * module by the key it carries (`{ click: 'mem:0' }`), or, from a row's
- * link column on, by the link's (`{ click: 'more:mem_…' }`).
+ * module by the key it carries (`{ click: 'mem:0' }`). From a row's link
+ * column on (the `more` that ends a cut text) a click posts nothing: that
+ * piece is a `Link` to the dashboard, which the surface opens.
  *
  * Why not Buttons: the engine inverts a Button under the pointer and the
  * focus, so moving the mouse over a list lit row after row (v0.1, NOTES).
@@ -20,13 +21,13 @@ export type BodyProps = { lines: Line[]; prose?: boolean }
 const RULE = /^ ?─+$/
 
 const Body: ClientModule<BodyProps, never> = (props, surface: ClientSurface<never>) => {
-  const { Box, Text } = surface.elements
+  const { Box, Text, Link } = surface.elements
   surface.onPointer(ev => {
     if (ev.type !== 'down' || (ev.button !== undefined && ev.button !== 'left')) return
     const l = props.lines[ev.y]
-    // a row's link (the `more` that ends a cut text) takes the click from its column on
-    const key = l?.link !== undefined && ev.x >= l.link.from ? l.link.key : l?.key
-    if (key !== undefined) surface.post({ click: key })
+    // a row's link (the `more` that ends a cut text) takes the click from its column on: the surface's, not ours
+    if (l?.link !== undefined && ev.x >= l.link.from) return
+    if (l?.key !== undefined) surface.post({ click: l.key })
   })
   return (
     <Box flexDirection="column">
@@ -53,6 +54,11 @@ const Body: ClientModule<BodyProps, never> = (props, surface: ClientSurface<neve
                 <Box key={String(i)} width={s.cw}>
                   <Text color={s.c} {...(s.b === true ? { bold: true } : {})}>{s.t}</Text>
                 </Box>
+              ) : l.link?.href !== undefined && i === l.segs.length - 1 ? (
+                // the `more` that ends a cut text: a link to that memory on the dashboard
+                <Text key={String(i)} color={s.c}>
+                  <Link href={l.link.href}>{s.t}</Link>
+                </Text>
               ) : (
                 <Text key={String(i)} color={s.c} {...(s.b === true ? { bold: true } : {})} {...(s.i === true ? { italic: true } : {})}>
                   {props.prose === true && i > 0 && RULE.test(l.segs[i - 1]?.t ?? '') ? s.t.replace(/^ /, '') : s.t}

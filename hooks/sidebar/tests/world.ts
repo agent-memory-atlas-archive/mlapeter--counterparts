@@ -140,8 +140,6 @@ export type WorldOptions = {
   /** The first N blits are refused (a Raster not mounted yet), the rest taken. */
   blitDenyFirst?: number;
   store?: Record<string, unknown>;
-  /** `uname -s` fails, as it does on Windows. */
-  windows?: boolean;
   /** What the person's permission settings say about the memory tools (`allow` unless given): the test's `tool.check` answer only; the sidebar reads the folder's state from the registry file, so nothing it does turns on this. */
   permission?: 'allow' | 'ask' | 'deny';
   /** A read of the folder's scope takes this long on the mocked clock (none unless given). */
@@ -192,8 +190,6 @@ export type World = {
   fetches: string[];
   mcp: { server: string; tool: string; args: Record<string, unknown> }[];
   invalidations: string[];
-  /** Commands the module ran (`$.process.run`): the URL opener. */
-  runs: string[][];
   /** Files the module read (`$.fs.read`), in order. */
   fsReads: string[];
   /** The plugin's store as it stands. */
@@ -246,7 +242,6 @@ export function world(on: On, opts: WorldOptions = {}): World {
     fetches: [],
     mcp: [],
     invalidations: [],
-    runs: [],
     fsReads: [],
     store,
     scope: { mode: opts.scopeMode ?? 'on', setBy: opts.scopeSetBy === undefined ? HERE : opts.scopeSetBy, resumeTo: 'on' },
@@ -349,12 +344,6 @@ export function world(on: On, opts: WorldOptions = {}): World {
   on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
   on('tool.list', () => ({ value: opts.tools ?? NPM_TOOLS }))
   on('tool.check', () => ({ decision: opts.permission ?? 'allow' }))
-  on('process.run', (_$, e) => {
-    w.runs.push([...e.argv])
-    if (opts.windows === true && e.argv[0] === 'uname') return { deny: 'not found: uname' }
-    const out = e.argv[0] === 'uname' ? 'Darwin\n' : ''
-    return { value: { exitCode: 0, stdout: out, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
-  })
   on('http.fetch', (_$, e) => {
     w.fetches.push(e.url)
     if (opts.down === true) return { deny: 'ECONNREFUSED: Unable to connect.' }

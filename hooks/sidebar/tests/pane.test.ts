@@ -77,6 +77,38 @@ async function bodyLines(ui: Ui): Promise<string[]> {
   return kids.map(flat)
 }
 
+/** The colour of the first Text drawn holding exactly `text` (a Text in a Link too, which `find` passes over). */
+async function colorOf(ui: Ui, text: string): Promise<unknown> {
+  let found: unknown
+  const walk = (n: unknown): void => {
+    if (found !== undefined || n === null || typeof n !== 'object') return
+    if (Array.isArray(n)) return n.forEach(walk)
+    const d = n as Drawn & { type?: unknown }
+    const kids = d.children ?? (d.props?.['children'] as unknown[] | undefined) ?? []
+    if (d.type === 'Text' && Array.isArray(kids) && kids.length === 1 && kids[0] === text) {
+      found = d.props?.['color'] ?? null
+      return
+    }
+    walk(kids)
+  }
+  walk(await ui.drawn())
+  return found
+}
+
+/** Every `Link` the body's Client drew, by its address. */
+async function bodyLinks(ui: Ui): Promise<string[]> {
+  const out: string[] = []
+  const walk = (n: unknown): void => {
+    if (Array.isArray(n)) return n.forEach(walk)
+    if (n === null || typeof n !== 'object') return
+    const d = n as Drawn & { type?: unknown }
+    if (d.type === 'Link' && typeof d.props?.['href'] === 'string') out.push(d.props['href'] as string)
+    walk(d.children ?? d.props?.['children'] ?? [])
+  }
+  walk(await ui.drawn({ in: 'body' }))
+  return out
+}
+
 /** A plain click on the first line of the body that holds `match`. */
 async function click(ui: Ui, match: string): Promise<void> {
   const lines = await bodyLines(ui)
@@ -203,7 +235,7 @@ test('drawn: the dashboard is read; the header is the small brain, COUNTERPARTS,
     expect(w.fetches.some(u => u.endsWith('/api/pulse'))).toBe(true)
     expect(w.fetches.some(u => u.endsWith('/api/mechanisms'))).toBe(true)
     expect(w.fetches.some(u => u.includes('/api/dreams'))).toBe(true)
-    expect((await ui.find({ type: 'Button', key: 'title' }))?.text).toContain('COUNTERPARTS')
+    expect((await ui.find({ type: 'Box', key: 'title' }))?.text).toContain('COUNTERPARTS')
     expect(await ui.find({ type: 'Input' })).toBeUndefined()
     if (surface === 'terminal') {
       // the brain header: the day on the title row, the count beside the brain
@@ -216,7 +248,7 @@ test('drawn: the dashboard is read; the header is the small brain, COUNTERPARTS,
       // no Raster on the desktop: the header with no brain, the count and the day on the title row
       expect(await ui.find({ type: 'Raster' })).toBeUndefined()
       expect(await ui.find({ type: 'Text', text: '776 · day 18' })).toBeDefined()
-      expect((await ui.find({ type: 'Button', key: 'title' }))?.text).toContain('◉ COUNTERPARTS ↗')
+      expect((await ui.find({ type: 'Box', key: 'title' }))?.text).toContain('◉ COUNTERPARTS ↗')
     }
     await ui.unmount()
   }
@@ -561,22 +593,22 @@ test('a click opens a memory in place whatever its length, and never the dashboa
   expect(shown).not.toContain('nothing decorates.')
   await click(ui, 'Long one')
   await settle(w)
-  expect(w.runs.some(r => r[0] === 'open')).toBe(false) // in place, not the dashboard
   const lines = await bodyLines(ui)
   expect(lines.join(' ')).toContain('sentence 3 of a long')
   const more = lines.filter(l => / more$/.test(l))
   expect(more).toHaveLength(1)
   expect(more[0]).toMatch(/… more$/)
-  // a click on the line's words is the item's (it closes again); only `more` opens the dashboard, on that memory
+  // a click on the line's words is the item's (it closes again); only `more` links to the dashboard, on that memory:
+  // a `Link` the surface opens, so a click on it posts nothing and the memory stays open
+  expect(await bodyLinks(ui)).toEqual(['http://localhost:4747/#memories?id=mem_long0001'])
   await clickWord(ui, '… more', 'more')
-  expect(w.runs.at(-1)).toEqual(['open', 'http://localhost:4747/#memories?id=mem_long0001'])
   expect((await bodyLines(ui)).join(' ')).toContain('sentence 3 of a long') // still open
   await w.clock.advance(5 * 60000) // a long read: nothing closes it but a click
   await settle(w)
   expect((await bodyLines(ui)).join(' ')).toContain('sentence 3 of a long')
   await click(ui, '… more')
   expect((await bodyLines(ui)).join(' ')).not.toContain('sentence 3 of a long')
-  expect(w.runs.filter(r => r[0] === 'open')).toHaveLength(1)
+  expect(await bodyLinks(ui)).toEqual([])
   expect(w.mcp.filter(c => c.tool === 'recall')).toHaveLength(0)
   await ui.unmount()
 })
@@ -606,7 +638,6 @@ test('clicks are the same every time: open A, open B (A closes), close B, open A
   await w.clock.advance(5 * 60000)
   await settle(w)
   expect(await has('nothing decorates.')).toBe(true)
-  expect(w.runs.some(r => r[0] === 'open')).toBe(false)
   await ui.unmount()
 })
 
@@ -621,7 +652,6 @@ test('a Subconscious item opens in place by a dashboard read, not the recall too
   await w.clock.advance(5000)
   await settle(w)
   expect(w.fetches.some(u => u.includes('/api/memory?id=mem_rel00001'))).toBe(true)
-  expect(w.runs.some(r => r[0] === 'open')).toBe(false)
   expect(w.mcp.filter(c => c.tool === 'recall')).toHaveLength(0)
   await ui.unmount()
 })
@@ -824,7 +854,7 @@ test('off: no brain, the header is two lines; the footer’s brain row turns it,
   await ui.press({ key: 'brain-off' })
   expect(w.store['brain']).toBe('off')
   expect(await ui.find({ type: 'Raster' })).toBeUndefined()
-  expect((await ui.find({ type: 'Button', key: 'title' }))?.text).toBe('◉ COUNTERPARTS ↗')
+  expect((await ui.find({ type: 'Box', key: 'title' }))?.text).toContain('◉ COUNTERPARTS ↗')
   const blits = w.blits.length
   await w.clock.advance(5000)
   expect(w.blits.length).toBe(blits)
@@ -919,10 +949,7 @@ test('one event lights every mechanism it proves: a dream with a merge and a gis
   await start($, w)
   await cmd($, 'brain off') // the header's ◉ takes the lit mechanism's stage colour
   const ui = await mount($, w, 'terminal')
-  const dot = async () => {
-    const t = await ui.find({ type: 'Button', key: 'title' })
-    return (t?.children ?? []).map(c => (typeof c === 'object' && c !== null ? (c as { props: Record<string, unknown> }).props['color'] : null))[0]
-  }
+  const dot = async () => colorOf(ui, '◉ ')
   const resting = await dot()
   w.events.push(ev(502, 'dream.changed', 'In a dream I changed 47 things (1 merge, 2 gist).', 0, { applied: '49', merge: '1', gist: '2', link: '20' }, 'drm_test0002'))
   await w.clock.advance(15000)
@@ -993,8 +1020,7 @@ test('the dashboard port comes from COUNTERPARTS_DASHBOARD_PORT, as core reads i
   const w = world(on, { env: { HOME, COUNTERPARTS_DASHBOARD_PORT: '5151' } })
   await start($, w)
   const ui = await mount($, w, 'terminal')
-  await ui.press({ key: 'title' })
-  expect(w.runs.at(-1)).toEqual(['open', 'http://localhost:5151/'])
+  expect((await ui.find({ type: 'Link' }))?.props['href']).toBe('http://localhost:5151/')
   expect(w.fetches.length).toBeGreaterThan(0)
   for (const f of w.fetches) expect(f.startsWith('http://localhost:5151/')).toBe(true)
   await ui.unmount()
@@ -1004,30 +1030,26 @@ test('a port that is not one falls back to 4747', async ($, on) => {
   const w = world(on, { env: { HOME, COUNTERPARTS_DASHBOARD_PORT: 'nope' } })
   await start($, w)
   const ui = await mount($, w, 'terminal')
-  await ui.press({ key: 'title' })
-  expect(w.runs.at(-1)).toEqual(['open', 'http://localhost:4747/'])
+  expect((await ui.find({ type: 'Link' }))?.props['href']).toBe('http://localhost:4747/')
   await ui.unmount()
 })
 
-test('COUNTERPARTS opens the dashboard on a plain click (how this machine opens a URL, asked once)', async ($, on) => {
+test('COUNTERPARTS is a link to the dashboard, on every surface: the surface opens it, and the sidebar runs no process', async ($, on) => {
   const w = world(on)
+  let ran = 0
+  on('process.run', () => {
+    ran += 1
+    return { deny: 'the sidebar runs no process' }
+  })
   await start($, w)
-  const ui = await mount($, w, 'terminal')
-  await ui.press({ key: 'title' })
-  await ui.press({ key: 'title' })
-  expect(w.runs[0]).toEqual(['uname', '-s'])
-  expect(w.runs.filter(r => r[0] === 'uname')).toHaveLength(1)
-  expect(w.runs.at(-1)).toEqual(['open', 'http://localhost:4747/'])
-  await ui.unmount()
-})
-
-test('on Windows a link opens through rundll32, never cmd', async ($, on) => {
-  const w = world(on, { windows: true })
-  await start($, w)
-  const ui = await mount($, w, 'terminal')
-  await ui.press({ key: 'title' })
-  expect(w.runs.at(-1)).toEqual(['rundll32', 'url.dll,FileProtocolHandler', 'http://localhost:4747/'])
-  await ui.unmount()
+  for (const surface of SURFACES) {
+    const ui = await mount($, w, surface)
+    const link = await ui.find({ type: 'Link' })
+    expect(link?.props['href']).toBe('http://localhost:4747/')
+    expect(link?.text).toContain('COUNTERPARTS')
+    await ui.unmount()
+  }
+  expect(ran).toBe(0)
 })
 
 // ── Claude Code's own memory: the mod only observes it (2026-10-12) ──────────
@@ -1861,16 +1883,16 @@ for (const surface of ['terminal'] as const) {
     const w = world(on)
     await start($, w)
     const ui = await mount($, w, surface)
-    expect((await ui.find({ type: 'Text', text: 'COUNTERPARTS' }))?.props['color']).toBe('#00e5ff')
+    expect((await colorOf(ui, 'COUNTERPARTS'))).toBe('#00e5ff')
     expect(await cmd($, 'theme sepia')).toContain('tron or cozy (now tron)')
     expect(await cmd($, 'theme cozy')).toContain('Theme cozy')
     expect(w.store['theme']).toBe('cozy')
     await settle(w)
-    expect((await ui.find({ type: 'Text', text: 'COUNTERPARTS' }))?.props['color']).toBe('#9cc65f')
+    expect((await colorOf(ui, 'COUNTERPARTS'))).toBe('#9cc65f')
     expect(await cmd($, 'theme tron')).toContain('Theme tron')
     expect(w.store['theme']).toBe('tron')
     await settle(w)
-    expect((await ui.find({ type: 'Text', text: 'COUNTERPARTS' }))?.props['color']).toBe('#00e5ff')
+    expect((await colorOf(ui, 'COUNTERPARTS'))).toBe('#00e5ff')
     await ui.unmount()
   })
 }
@@ -1883,11 +1905,11 @@ test('two surfaces drawing in turn: the desktop drawn last leaves the terminal i
   const check = async (): Promise<void> => {
     const tl = await bodyLines(term)
     expect(tl.some(l => /^Mechanisms today ─+ times fired$/.test(l))).toBe(true)
-    expect((await term.find({ type: 'Text', text: 'COUNTERPARTS' }))?.props['color']).toBe('#00e5ff')
+    expect((await colorOf(term, 'COUNTERPARTS'))).toBe('#00e5ff')
     expect(drawnNode(await term.drawn(), 'cp-why')).toBeDefined()
     expect((await texts(term)).includes('───')).toBe(true)
     expect((await bodyLines(desk)).some(l => l.includes('─'))).toBe(false)
-    expect((await desk.find({ type: 'Text', text: 'COUNTERPARTS' }))?.props['color']).toBe('suggestion')
+    expect((await colorOf(desk, 'COUNTERPARTS'))).toBe('suggestion')
     expect(drawnNode(await desk.drawn(), 'cp-why')).toBeUndefined()
   }
   await check()
@@ -1903,7 +1925,7 @@ test('the desktop draws in the app theme, whatever the stored theme: no panel, t
   const w = world(on, { store: { theme: 'cozy' } })
   await start($, w)
   const ui = await mount($, w, 'desktop')
-  expect((await ui.find({ type: 'Text', text: 'COUNTERPARTS' }))?.props['color']).toBe('suggestion')
+  expect((await colorOf(ui, 'COUNTERPARTS'))).toBe('suggestion')
   expect((await texts(ui)).includes('───')).toBe(false)
   await ui.unmount()
 })
@@ -1916,7 +1938,7 @@ for (const [stored, color] of [
     const w = world(on, { store: { theme: stored } })
     await start($, w)
     const ui = await mount($, w, 'terminal')
-    expect((await ui.find({ type: 'Text', text: 'COUNTERPARTS' }))?.props['color']).toBe(color)
+    expect((await colorOf(ui, 'COUNTERPARTS'))).toBe(color)
     await ui.unmount()
   })
 }
@@ -1935,7 +1957,7 @@ test('the fox is the avatar when none was chosen: under the title with the count
   expect(r?.props['columns']).toBe(34)
   expect(r?.props['rows']).toBe(15)
   expect(await ui.find({ type: 'Raster', key: 'brain' })).toBeUndefined()
-  expect((await ui.find({ type: 'Button', key: 'title' }))?.text).toContain('COUNTERPARTS')
+  expect((await ui.find({ type: 'Box', key: 'title' }))?.text).toContain('COUNTERPARTS')
   expect(await ui.find({ type: 'Text', text: '776 · day 18' })).toBeDefined() // on the title row
   expect(await ui.find({ type: 'Text', text: '776 memories' })).toBeUndefined() // no row of its own
   // the avatar row: the fox's dot lit

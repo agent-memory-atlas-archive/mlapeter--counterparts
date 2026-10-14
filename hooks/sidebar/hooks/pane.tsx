@@ -18,12 +18,12 @@ import { HOVER_CP } from './state'
 import { P, SURFACE, bg } from './theme'
 import { CONFIRM_FROM, scopeHover, switchAt } from './words'
 
-/** The constructors the pane draws with: every surface has these three. */
-export type PaneEls = Pick<Elements['terminal'], 'Box' | 'Text' | 'Button'>
+/** The constructors the pane draws with: every surface has these four. */
+export type PaneEls = Pick<Elements['terminal'], 'Box' | 'Text' | 'Button' | 'Link'>
 
-/** What a press does: closures the Pane hook makes over its `$`. */
+/** What a press does: closures the Pane hook makes over its `$`; and where the title links (null: nowhere). */
 export type PaneActions = {
-  openDashboard: () => Promise<unknown>
+  dashboardHref: string | null
   pressScope: (to: 'on' | 'paused' | 'off') => Promise<unknown>
   pressMeet: () => Promise<unknown>
   confirmChange: () => Promise<unknown>
@@ -34,15 +34,22 @@ export type PaneActions = {
 
 // ── the title, which each view's header places ──
 
-/** COUNTERPARTS, a link to the dashboard; `lead` (the brainless header) puts a dot before it and `↗` after. */
+/**
+ * COUNTERPARTS, a link to the dashboard (`Link`: the surface opens it); `lead` (the brainless header) puts a dot
+ * before it and `↗` after. No address the sidebar trusts (`isDashboardUrl`): the same words, linking nowhere.
+ */
 export function titleButton(els: PaneEls, actions: PaneActions, o: { lead: boolean; paused: boolean; dot: string | null }): JSX.Element {
-  const { Text, Button } = els
+  const { Box, Text, Link } = els
+  const words = [
+    ...(o.lead ? [<Text key="dot" color={o.dot ?? P.accentDim}>◉ </Text>] : []),
+    <Text key="name" color={o.paused ? P.dim : P.accent} bold>COUNTERPARTS</Text>,
+    ...(o.lead ? [<Text key="arrow" color={P.accentDim}> ↗</Text>] : []),
+  ]
+  const href = actions.dashboardHref
   return (
-    <Button key="title" plain onPress={() => actions.openDashboard()}>
-      {o.lead ? <Text color={o.dot ?? P.accentDim}>◉ </Text> : ''}
-      <Text color={o.paused ? P.dim : P.accent} bold>COUNTERPARTS</Text>
-      {o.lead ? <Text color={P.accentDim}> ↗</Text> : ''}
-    </Button>
+    <Box key="title" flexDirection="row">
+      <Text>{href === null ? words : <Link href={href}>{words}</Link>}</Text>
+    </Box>
   )
 }
 

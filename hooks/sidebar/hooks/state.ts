@@ -119,8 +119,6 @@ export const run = {
   brainPace: 'calm' as 'burst' | 'calm' | 'rest',
   /** When this session began: an event naming no session, from after it, is taken as this session's. */
   startedAt: 0,
-  /** The command that opens a URL here, once found. */
-  opener: null as readonly string[] | null,
   /** Fresh drawings asked for after refused blits since the last blit that was taken. */
   redraws: 0,
   /** The body's text width at the last drawing: what the expand threshold is measured at. */

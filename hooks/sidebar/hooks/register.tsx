@@ -130,6 +130,7 @@ import type { PaneActions, PaneEls } from './pane'
 import { lookup, parentOf, parseRegistry, settingsHookConfig } from './scopes'
 import type { RegistryMode } from './scopes'
 import { layoutBody } from './sections'
+import type { Line } from './sections'
 import {
   AUTO_CLOSE_MS,
   COUNT_EVENTS,
@@ -853,12 +854,6 @@ async function clickBody($: EngineInterface, key: string): Promise<void> {
     $.clock.after(0, () => quiet(runCommand($, DASHBOARD_COMMAND)))
     return
   }
-  // The `more` that ends a cut text: the one click that opens the dashboard, on that memory.
-  if (key.startsWith('more:')) {
-    const id = key.slice(5)
-    if (/^mem_[A-Za-z0-9]+$/.test(id)) await openUrl($, memoryUrl(id, await dashUrl($)))
-    return
-  }
   if (key.startsWith('head:')) {
     const section = key.slice(5)
     await update($, focusA, f => (f === section ? null : section))
@@ -1479,41 +1474,26 @@ function wake($: EngineInterface, turning: boolean): void {
   })
 }
 
-/** How this machine opens a URL, found once: `open` (macOS), `xdg-open` (Linux), `start` (Windows). */
-async function opener($: EngineInterface): Promise<readonly string[]> {
-  if (run.opener !== null) return run.opener
-  let os = ''
-  try {
-    os = (await $.process.run(['uname', '-s'], { timeoutMs: 3000 })).stdout.trim()
-  } catch {
-    os = 'Windows'
-  }
-  // Never `cmd /c start`: cmd would read & | ^ % in a URL as its own.
-  run.opener = os === 'Darwin' ? ['open'] : os === 'Windows' ? ['rundll32', 'url.dll,FileProtocolHandler'] : ['xdg-open']
-  return run.opener
-}
-
 /**
- * A plain click opens the dashboard in the browser (an OSC 8 link opens only
- * on ⌘-click in iTerm2). A new tab each time: no browser lets a page bring an
- * already-open tab forward without the person's click there, and finding the
- * tab from here (AppleScript) needs an automation permission (NOTES).
+ * The links the sidebar draws (`Link`): the dashboard's, on localhost and the
+ * port it read (`isDashboardUrl`), or none. A click opens what the surface
+ * opens: on the terminal an OSC 8 link (⌘-click in iTerm2), on the desktop
+ * plain text, since a remote surface links only `https:`. The sidebar runs no
+ * process to open one (the plugin directory build, 2026-10-14).
  */
-async function openUrl($: EngineInterface, url: string): Promise<void> {
-  // The only links the sidebar opens: the dashboard's, on localhost and the port it read (`isDashboardUrl`).
-  if (!isDashboardUrl(url, await dashPort($))) return
-  try {
-    const argv = await opener($)
-    const r = await $.process.run([...argv, url], { timeoutMs: 10000 })
-    if (r.exitCode !== 0) $.ui.toast(`counterparts: couldn't open ${url}`)
-  } catch {
-    $.ui.toast(`counterparts: couldn't open ${url}`)
-  }
+async function dashboardHref($: EngineInterface, path: string): Promise<string | null> {
+  const url = `${await dashUrl($)}${path}`
+  return isDashboardUrl(url, await dashPort($)) ? url : null
 }
 
-/** A dashboard page (`/`, `/#memories`), on the port the sidebar read. */
-async function openDashboard($: EngineInterface, path: string): Promise<void> {
-  await openUrl($, `${await dashUrl($)}${path}`)
+/** The body's lines, each `more` that ends a cut text given the link to its memory on the dashboard. */
+function linkMore(lines: readonly Line[], base: string, port: number): Line[] {
+  return lines.map(l => {
+    const id = l.link?.key.startsWith('more:') === true ? l.link.key.slice(5) : null
+    if (l.link === undefined || id === null || !/^mem_[A-Za-z0-9]+$/.test(id)) return l
+    const href = memoryUrl(id, base)
+    return isDashboardUrl(href, port) ? { ...l, link: { ...l.link, href } } : l
+  })
 }
 
 // ── hooks ───────────────────────────────────────────────────────────────────
@@ -1788,7 +1768,7 @@ export const register: Register = on => {
   // ── the pane ──────────────────────────────────────────────────────────────
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const els = $.ui.resolve(e)
-    const { Box, Text, Button } = els
+    const { Box, Text, Button, Link } = els
     const now = await $.clock.now()
     const [pulse, dash, mind, saved, today, dreamNow, open, mech, focus, firing, scope, view, brainMode, note, pauseAsk] = await Promise.all([
       read($, pulseA), read($, dashA), read($, mindA), read($, savedA), read($, todayA), read($, dreamA), read($, openA), read($, mechA),
@@ -1831,7 +1811,7 @@ export const register: Register = on => {
     const lit = firingNow[0] ?? look.sel
     // Every press in the pane, as a closure over this hook's `$` (the views take no `$`).
     const actions: PaneActions = {
-      openDashboard: () => openDashboard($, '/'),
+      dashboardHref: await dashboardHref($, '/'),
       pressScope: to => pressScope($, to),
       pressMeet: () => pressMeet($),
       confirmChange: () => confirmChange($),
@@ -1839,7 +1819,7 @@ export const register: Register = on => {
       view: v => (v === 'sidebar' ? openPane($) : closeQuiet($)),
       brain: b => setBrain($, b),
     }
-    const paneEls: PaneEls = { Box, Text, Button }
+    const paneEls: PaneEls = { Box, Text, Button, Link }
     const rows: JSX.Element[] = []
     let used = 0
     if (roomy) {
@@ -1906,7 +1886,7 @@ export const register: Register = on => {
     // The body's surface module stays here, its module a literal on the tag's own line: the engine reads a hooks
     // module's surface modules off its own source.
     if ('Client' in els) {
-      const bodyProps: BodyProps = { lines, prose: SURFACE.prose }
+      const bodyProps: BodyProps = { lines: linkMore(lines, await dashUrl($), await dashPort($)), prose: SURFACE.prose }
       rows.push(<els.Client key="body" module="./body.tsx" width={w} props={bodyProps} />)
     } else rows.push(plainBody(paneEls, lines))
     rows.push(<Box key="spacer" flexGrow={1} />)
