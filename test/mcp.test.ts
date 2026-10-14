@@ -51,6 +51,7 @@ import {
 import type { Response, ToolResult } from "../src/adapters/mcp/index.js";
 import { launchOptions, ownerStance } from "../src/adapters/mcp/bin/serve.js";
 import { FACTS_JOURNAL_GLOSS } from "../src/adapters/mcp/facts.js";
+import { toolDefinitions } from "../src/adapters/mcp/tools.js";
 import { findable } from "./store-fixture.js";
 
 const ENV = "COUNTERPARTS_DATA_DIR";
@@ -715,6 +716,59 @@ describe("the tool-description audit", () => {
       }
     }
     expect(checked).toBeGreaterThan(TOOLS.length);
+  });
+
+  test("every listed tool carries MCP's annotations — a title, readOnlyHint and destructiveHint — on the wire (Directory policy §5E)", async () => {
+    const s = server();
+    const [response] = await pump(s, [rpc(1, "tools/list")]);
+    const tools = (response as unknown as { result: { tools: Record<string, unknown>[] } }).result.tools;
+    // Claude Code's list and Desktop's (which adds `wake`) both.
+    for (const list of [tools, toolDefinitions(true)]) {
+      expect(list.length).toBeGreaterThan(0);
+      for (const tool of list) {
+        const a = tool["annotations"] as Record<string, unknown> | undefined;
+        expect(a, String(tool["name"])).toBeDefined();
+        expect(typeof a?.["title"]).toBe("string");
+        expect((a?.["title"] as string).length).toBeGreaterThan(0);
+        expect(tool["title"]).toBe(a?.["title"]);
+        expect(typeof a?.["readOnlyHint"]).toBe("boolean");
+        expect(typeof a?.["destructiveHint"]).toBe("boolean");
+        expect(typeof a?.["idempotentHint"]).toBe("boolean");
+        expect(a?.["openWorldHint"]).toBe(false);
+      }
+    }
+  });
+
+  test("the annotation table: what is read-only, what is destructive", () => {
+    const table = Object.fromEntries(
+      toolDefinitions(true).map((t) => {
+        const a = t["annotations"] as { readOnlyHint: boolean; destructiveHint: boolean; idempotentHint: boolean };
+        return [t["name"] as string, [a.readOnlyHint, a.destructiveHint, a.idempotentHint]];
+      }),
+    );
+    // [readOnly, destructive, idempotent]. `recall` is not read-only: what it
+    // delivers is recorded for the session (`noteAsked`), and the boundary's
+    // credit pass strengthens a memory opened or quoted from it. `dream` is
+    // destructive: its `undo` phase removes a dream's links and gists. Every
+    // other writer archives what it replaces.
+    expect(table).toEqual({
+      remember: [false, false, false],
+      recall: [false, false, false],
+      status: [true, false, true],
+      session_end: [false, false, false],
+      chapter: [false, false, false],
+      scope: [false, false, false],
+      self_page: [false, false, false],
+      dream: [false, true, false],
+      reflect: [false, false, false],
+      meet: [false, false, false],
+      wake: [false, false, false],
+    });
+    // A read-only tool is never destructive (the spec: destructiveHint is
+    // meaningful only when readOnlyHint is false).
+    for (const [, [readOnly, destructive]] of Object.entries(table)) {
+      if (readOnly) expect(destructive).toBe(false);
+    }
   });
 
   test("a description is RENDERED from the registry, so a claim cannot exist without a mechanism", async () => {
