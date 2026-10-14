@@ -324,7 +324,7 @@ Homebrew, `/usr/local`). Last run: 27/27 on 2.1.296 (2026-10-11).
 The directory reads the plugin folder, and here that folder is the whole repository: 800+
 files against a limit of 512, with tests, docs and this repository's own `package.json`
 and `bun.lock` (its dev dependencies too). So the plugin can also be generated as a folder of its own, for a
-repository whose root is the plugin (planned name: `mlapeter/counterparts-plugin`):
+repository whose root is the plugin (planned name: `counterparts-ai/counterparts-plugin`):
 
 ```sh
 bun tools/plugin-bundle/build.ts <out-dir>     # or --list to print the file set
@@ -364,7 +364,7 @@ still loads, and `/plugin` notes the missing packages. Then, measured by the loo
   source. npm installs are unaffected, since their `node_modules` exists.
 
 To serve installs from the bundle repository, the marketplace entry's `url` becomes
-`https://github.com/mlapeter/counterparts-plugin.git`, with the same `ref` (`v<version>`, tagged there). Nothing
+`https://github.com/counterparts-ai/counterparts-plugin.git`, with the same `ref` (`v<version>`, tagged there). Nothing
 else in the entry changes, and the marketplace keeps its name, so the plugin's data
 directory (`counterparts-counterparts`) stays where it is.
 

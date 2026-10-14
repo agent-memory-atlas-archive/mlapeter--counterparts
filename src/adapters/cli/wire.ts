@@ -1022,10 +1022,10 @@ export type ProcessLister = () => ProcessSighting;
  * segment included, plus the two installed shims anchored at a boundary.
  */
 const PROCESS_MARKS: readonly { readonly re: RegExp; readonly what: string }[] = [
-  { re: /mcp[/\\]bin[/\\]serve\.(ts|mjs)/, what: "an MCP server" },
+  { re: /mcp[/\\]bin[/\\]serve\.(ts|mjs|js)/, what: "an MCP server" },
   { re: /(^|[\s"'/\\])counterparts-mcp(\s|$|")/, what: "an MCP server" },
-  { re: /claude-code[/\\]bin[/\\]runner\.ts/, what: "the worker" },
-  { re: /dashboard[/\\]bin[/\\]dashboard\.(ts|mjs)/, what: "a dashboard" },
+  { re: /claude-code[/\\]bin[/\\]runner\.(ts|js)/, what: "the worker" },
+  { re: /dashboard[/\\]bin[/\\]dashboard\.(ts|mjs|js)/, what: "a dashboard" },
   { re: /(^|[\s"'/\\])counterparts-dashboard(\s|$|")/, what: "a dashboard" },
   // The single binary (`runtime.ts#BINARY_MODES`): `…/counterparts mcp`.
   { re: /(^|[/\\])counterparts(\.exe)?"?\s+mcp(\s|$)/, what: "an MCP server" },

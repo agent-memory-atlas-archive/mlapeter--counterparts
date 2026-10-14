@@ -36,9 +36,15 @@ import {
   BUN_NO_ENV_FILE,
   CLI_SCRIPT,
   EMPTY_BUNFIG,
+  MODULE_EXT,
   NODE_HOOKS,
+  TRANSPILED,
+  binaryModeOf,
   currentRuntime,
+  entryScript,
+  moduleExtOf,
   parseScriptInvocation,
+  pluginConsoleWords,
   runtimeOf,
   runtimePresent,
   scriptArgs,
@@ -424,5 +430,59 @@ describe("a Node that cannot load node:sqlite", () => {
     expect(fault.reason).toBe("Node 22.14.0 can't load node:sqlite; use Node 22.15 or later, or Bun");
     const bun = describeFault(new StoreError("SQLITE_UNAVAILABLE", { driver: "bun:sqlite", reason: "x" }));
     expect(bun.reason).toBe("this runtime has no SQLite binding");
+  });
+});
+
+/**
+ * THE TRANSPILED TREE (tools/plugin-bundle/build.ts --flavor directory): the
+ * same code as `.js`, whose scripts name their `.js` siblings. From source
+ * everything stays `.ts`; the directory flavor's own run is proved by
+ * test/plugin-bundle.test.ts and tools/plugin-loop/run.sh --bundle=directory.
+ */
+describe("the transpiled tree", () => {
+  test("from source this is the TypeScript tree, and every script it names is a .ts", () => {
+    expect(MODULE_EXT).toBe(".ts");
+    expect(TRANSPILED).toBe(false);
+    for (const s of [CLI_SCRIPT, HOOK_SCRIPT, MCP_SCRIPT]) expect(s.endsWith(".ts")).toBe(true);
+  });
+
+  test("a module URL says which tree it is in; the single binary is never the transpiled one", () => {
+    expect(moduleExtOf("file:///p/src/adapters/runtime.js", null)).toBe(".js");
+    expect(moduleExtOf("file:///p/src/adapters/runtime.ts", null)).toBe(".ts");
+    expect(moduleExtOf("file:///$bunfs/root/counterparts.js", { root: "/$bunfs/root", self: "/x/counterparts" })).toBe(".ts");
+  });
+
+  test("a script named by its source path is its .js sibling in the transpiled tree", () => {
+    const url = new URL("file:///p/src/adapters/claude-code/bin/runner.ts");
+    expect(entryScript(url, ".ts")).toBe("/p/src/adapters/claude-code/bin/runner.ts");
+    expect(entryScript(url, ".js")).toBe("/p/src/adapters/claude-code/bin/runner.js");
+  });
+
+  test("an entry's binary mode reads the same from its .ts or .js name", () => {
+    expect(binaryModeOf("/p/runner.ts")).toBe("runner");
+    expect(binaryModeOf("/p/runner.js")).toBe("runner");
+    expect(binaryModeOf("/p/serve.js")).toBe("mcp");
+    expect(binaryModeOf("/p/other.js")).toBeUndefined();
+  });
+
+  test("Bun runs a .js script with the same flags as a .ts one", () => {
+    expect(scriptArgs("/p/runner.js", "/usr/local/bin/bun", null)).toEqual([BUN_NO_ENV_FILE, `${BUN_CONFIG_PREFIX}${EMPTY_BUNFIG}`, "run", "/p/runner.js"]);
+    expect(parseScriptInvocation(["/usr/local/bin/bun", ...scriptArgs("/p/hook.js", "/usr/local/bin/bun", null)])?.projectEnv).toBe("ignored");
+  });
+
+  test("the plugin's console: the launcher where there is one, else the transpiled tree's own entry", () => {
+    const plugin = join(root, "plugin");
+    expect(pluginConsoleWords(plugin)).toEqual(["sh", join(plugin, "src/adapters/plugin-run.sh"), "cli"]);
+    mkdirSync(join(plugin, "src/adapters/cli/bin"), { recursive: true });
+    writeFileSync(join(plugin, "src/adapters/cli/bin/counterparts.js"), "");
+    expect(pluginConsoleWords(plugin)).toEqual([join(plugin, "src/adapters/cli/bin/counterparts.js")]);
+    writeFileSync(join(plugin, "src/adapters/plugin-run.sh"), "");
+    expect(pluginConsoleWords(plugin)).toEqual(["sh", join(plugin, "src/adapters/plugin-run.sh"), "cli"]);
+  });
+
+  test("the transpiled tree's processes and hook commands still read as ours", () => {
+    expect(processMark("bun --no-env-file --config=/e.toml run /p/src/adapters/mcp/bin/serve.js")).not.toBeNull();
+    expect(processMark("bun run /p/src/adapters/claude-code/bin/runner.js")).not.toBeNull();
+    expect(isOurHookCommand('"/usr/local/bin/bun" run "/p/src/adapters/claude-code/bin/hook.js"')).toBe(true);
   });
 });

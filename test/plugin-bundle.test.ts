@@ -12,17 +12,24 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  ACCEPTED_LARGE,
   BUNDLE_LOCKFILE,
+  DIRECTORY_ENTRIES,
+  DIRECTORY_SHEBANG,
   EXTRA_KEYWORDS,
   LISTING,
   MAX_FILES,
+  MAX_INSPECTED_BYTES,
   MODEL_PACKAGE,
   REPO,
   bundleManifest,
   bundlePaths,
+  driftLines,
   largeFiles,
+  mirrorProblems,
   planBundle,
   traceFiles,
+  transpiledPath,
   writeBundle,
 } from "../tools/plugin-bundle/build.js";
 import { embeddedFiles } from "../tools/single-binary/build.js";
@@ -118,9 +125,13 @@ describe("the generated files", () => {
     }
     for (const [k, v] of Object.entries(LISTING)) {
       expect(manifest[k]).toBe(v);
-      expect(v.startsWith("https://")).toBe(true);
+      if (k !== "icon") expect(v.startsWith("https://")).toBe(true);
     }
-    expect(manifest["icon"]).toBeUndefined();
+    // The icon: an image inside the plugin, by its path from the plugin root.
+    expect(manifest["icon"]).toBe("./icon.png");
+    expect(paths).toContain("icon.png");
+    expect(plan.placed["icon.png"]).toBe(".claude-plugin/icon.png");
+    expect(readFileSync(join(REPO, ".claude-plugin/icon.png")).subarray(1, 4).toString()).toBe("PNG");
     const keywords = manifest["keywords"] as string[];
     for (const k of [...(repo["keywords"] as string[]), ...EXTRA_KEYWORDS]) expect(keywords).toContain(k);
     expect(new Set(keywords).size).toBe(keywords.length);
@@ -209,5 +220,132 @@ describe("writing it", () => {
     expect(readFileSync(join(other, "keep.txt"), "utf8")).toBe("not a bundle");
     expect(() => writeBundle(plan, REPO)).toThrow(/inside this repository/);
     expect(() => writeBundle(plan, join(REPO, "dist", "bundle"))).toThrow(/inside this repository/);
+  });
+});
+
+/**
+ * THE DIRECTORY FLAVOR (`--flavor directory`): the same file set, its
+ * TypeScript under `src/` transpiled one for one, the three entries Claude
+ * Code runs started by their own shebang, no launcher and no binary. The
+ * proof that Claude Code starts them from an installed copy is
+ * `tools/plugin-loop/run.sh --bundle=directory`.
+ */
+describe("the directory flavor", () => {
+  const dir = planBundle(REPO, "directory");
+  const dirPaths = bundlePaths(dir);
+  const full = new Set(paths);
+
+  test("mirrors the full flavor's tree: each src/ .ts as its .js at the same path, everything else as it is", () => {
+    const expected = new Set(
+      paths
+        .filter((p) => !/^src\/adapters\/(plugin-run\.sh|launch\.mjs|node-hooks\.mjs)$|\/bin\/[a-z-]+\.mjs$|^\.claude-plugin\/binaries\.json$/.test(p))
+        .map((p) => (p.startsWith("src/") && p.endsWith(".ts") && !p.endsWith(".d.ts") ? transpiledPath(p) : p)),
+    );
+    expect(dirPaths).toEqual([...expected].sort());
+    expect(dirPaths.filter((p) => p.startsWith("src/") && /\.tsx?$/.test(p))).toEqual([]);
+    // The dashboard's server-side modules are transpiled; its browser files ride as they are.
+    expect(dirPaths).toContain("src/adapters/dashboard/web/server.js");
+    expect(dirPaths).toContain("src/adapters/dashboard/web/views/memories.js");
+    expect(dir.copied).toContain("src/adapters/dashboard/web/app.js");
+    // The sidebar stays TypeScript: Claude Code compiles a hooks module itself.
+    expect(dir.copied).toContain("hooks/sidebar/hooks/register.tsx");
+    expect(full.has("hooks/sidebar/hooks/register.tsx")).toBe(true);
+    // The empty bunfig is still carried: the processes the entries start name it.
+    expect(dirPaths).toContain("src/adapters/empty-bunfig.toml");
+  });
+
+  test("no launcher, no binary checksums, no Node loader, no .mjs shims", () => {
+    for (const gone of ["src/adapters/plugin-run.sh", ".claude-plugin/binaries.json", "src/adapters/node-hooks.mjs", "src/adapters/launch.mjs"]) {
+      expect(dirPaths).not.toContain(gone);
+    }
+    expect(dirPaths.filter((p) => p.endsWith(".mjs"))).toEqual([]);
+    // The roots Claude Code reads name no launcher (the code still knows one, for the full flavor).
+    for (const [f, text] of Object.entries(dir.generated)) if (!f.startsWith("src/")) expect(text).not.toContain("plugin-run.sh");
+  });
+
+  test("the three entries start with the shebang and are written executable; nothing else is", () => {
+    expect(dir.executable).toEqual(Object.values(DIRECTORY_ENTRIES).sort());
+    expect(DIRECTORY_SHEBANG).toBe("#!/usr/bin/env -S bun --no-env-file --config=/dev/null --no-install");
+    for (const entry of Object.values(DIRECTORY_ENTRIES)) {
+      expect(dir.generated[entry]!.split("\n")[0]).toBe(DIRECTORY_SHEBANG);
+      // Transpiled: the main-script guard kept, no type left.
+      expect(dir.generated[entry]).toContain("isEntryPoint(process.argv[1], import.meta.url)");
+      expect(dir.generated[entry]).not.toMatch(/import type /);
+    }
+  });
+
+  test("plugin.json, hooks.json and the commands run the entries by path", () => {
+    const manifest = JSON.parse(dir.generated[".claude-plugin/plugin.json"]!) as { mcpServers: Record<string, unknown>; icon: string };
+    expect(manifest.mcpServers["counterparts"]).toEqual({ command: "${CLAUDE_PLUGIN_ROOT}/src/adapters/mcp/bin/serve.js", args: [] });
+    expect(manifest.icon).toBe("./icon.png");
+    const hooks = JSON.parse(dir.generated["hooks/hooks.json"]!) as { hooks: Record<string, { hooks: unknown[] }[]>; modules: string[] };
+    expect(Object.keys(hooks.hooks).sort()).toEqual(["PreCompact", "SessionEnd", "SessionStart", "Stop", "UserPromptSubmit"]);
+    for (const groups of Object.values(hooks.hooks)) {
+      for (const h of groups.flatMap((g) => g.hooks)) {
+        expect(h).toEqual({ type: "command", command: "${CLAUDE_PLUGIN_ROOT}/src/adapters/claude-code/bin/hook.js", args: [] });
+      }
+    }
+    expect(hooks.modules).toEqual(["./sidebar/hooks/register.tsx"]);
+    const cli = '"${CLAUDE_PLUGIN_ROOT}/src/adapters/cli/bin/counterparts.js"';
+    expect(dir.generated["commands/doctor.md"]).toContain(`Bash(${cli} doctor)`);
+    expect(dir.generated["commands/dashboard.md"]).toContain(`${cli} dashboard`);
+    expect(dir.generated["commands/uninstall.md"]).toContain(`${cli} uninstall --keep-memories --json`);
+    // Step 4 builds the terminal line from the console's path, not `sh` and a launcher.
+    expect(dir.generated["commands/uninstall.md"]).toContain('"/full/path/to/src/adapters/cli/bin/counterparts.js" "uninstall" "--config"');
+    expect(dir.generated["commands/uninstall.md"]).not.toMatch(/`sh`|launcher/);
+    expect(dir.generated["commands/meet.md"]).toBe(readFileSync(join(REPO, "commands/meet.md"), "utf8"));
+  });
+
+  test("the README says Bun 1.3+ near the top, and nothing of the launcher or the binary", () => {
+    const readme = dir.generated["README.md"]!;
+    expect(readme.indexOf("Requires Bun 1.3+")).toBeGreaterThan(0);
+    expect(readme.indexOf("Requires Bun 1.3+")).toBeLessThan(readme.indexOf("## Install"));
+    expect(readme).toContain("curl -fsSL https://bun.sh/install | bash");
+    expect(readme).toContain("Claude Code only (the terminal and the Desktop app's Code tab)");
+    expect(readme).toContain(MODEL_PACKAGE);
+    expect(readme).not.toMatch(/plugin-run\.sh|binaries\.json|COUNTERPARTS_BINARY_DOWNLOAD|<!--/);
+    // The full flavor's README: the binary and the launcher, no Bun requirement, no template notes.
+    const fullReadme = plan.generated["README.md"]!;
+    expect(fullReadme).toContain("plugin-run.sh");
+    expect(fullReadme).toContain("Claude Code only (the terminal and the Desktop app's Code tab)");
+    expect(fullReadme).not.toMatch(/Requires Bun 1\.3\+|<!--/);
+  });
+
+  test("within the directory's limits: file count, and nothing over 256 KiB but images, fonts and the vendored three.js", () => {
+    expect(dirPaths.length).toBeLessThanOrEqual(MAX_FILES);
+    expect(dir.warnings).toEqual([]);
+    for (const [f, text] of Object.entries(dir.generated)) {
+      if (!ACCEPTED_LARGE.includes(f)) expect(Buffer.byteLength(text)).toBeLessThanOrEqual(MAX_INSPECTED_BYTES);
+    }
+  });
+
+  test("the mirror check names what breaks it", () => {
+    expect(mirrorProblems(["src/a.ts"], [], {})).toEqual(["src/a.ts has no src/a.js"]);
+    expect(mirrorProblems(["src/a.ts"], ["src/a.js"], { "src/a.js": "" })).toEqual(["src/a.js is both a transpiled source and a file carried as it is"]);
+    expect(mirrorProblems([], ["src/b.ts"], {})).toEqual(["src/b.ts is TypeScript left in the transpiled tree"]);
+    expect(mirrorProblems([], [], { "src/c.js": "" })).toEqual(["src/c.js is generated under src/ from no source"]);
+  });
+
+  describe("written", () => {
+    let work = "";
+    beforeEach(() => {
+      work = realpathSync(mkdtempSync(join(tmpdir(), "counterparts-plugin-directory-")));
+    });
+    afterEach(() => {
+      rmSync(work, { recursive: true, force: true });
+    });
+
+    test("the entries are executable, other files are not; the drift check passes, then names a change", () => {
+      const out = join(work, "bundle");
+      writeBundle(dir, out);
+      for (const entry of Object.values(DIRECTORY_ENTRIES)) expect(lstatSync(join(out, entry)).mode & 0o111).toBe(0o111);
+      expect(lstatSync(join(out, "src/adapters/claude-code/bin/runner.js")).mode & 0o111).toBe(0);
+      expect(lstatSync(join(out, "README.md")).mode & 0o111).toBe(0);
+      expect(driftLines(dir, out)).toEqual([]);
+      writeFileSync(join(out, "src/core/types.js"), "// changed\n");
+      writeFileSync(join(out, "stale.txt"), "x");
+      rmSync(join(out, "icon.png"));
+      expect(driftLines(dir, out).sort()).toEqual(["differs  src/core/types.js", "extra    stale.txt", "missing  icon.png"]);
+    });
   });
 });

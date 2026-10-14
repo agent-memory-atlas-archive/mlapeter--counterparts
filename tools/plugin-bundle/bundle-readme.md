@@ -12,11 +12,24 @@ This is the Claude Code plugin. The source, the documentation and the npm packag
 repository is generated from it at each release (`tools/plugin-bundle/build.ts` there), so
 please open issues and pull requests there.
 
+<!-- Template for tools/plugin-bundle/build.ts: a flavor:<name> block is kept only in that flavor's README. -->
+<!-- Every line that is only an HTML comment, like these two, is dropped from the output. -->
+<!-- flavor:directory -->
+**Requires Bun 1.3+.** Install it with
+
+```
+curl -fsSL https://bun.sh/install | bash
+```
+
+then open a new terminal and start Claude Code from it, so `bun` is on the PATH Claude Code
+starts the plugin with.
+
+<!-- /flavor:directory -->
 ## Install
 
-Counterparts is built for Claude Code in the terminal, on macOS and Linux; Windows is not yet
-supported. The Code tab of the Claude desktop app runs the same hooks and memory server (checked
-with the npm install); the plugin's own install there is still being tested.
+Counterparts is for Claude Code only (the terminal and the Desktop app's Code tab), on macOS
+and Linux; Windows is not yet supported. The Code tab runs the same hooks and memory server
+(checked with the npm install); the plugin's own install there is still being tested.
 
 In Claude Code:
 
@@ -53,6 +66,7 @@ down, so the memory is never wired twice.
 - **Commands:** `/counterparts:doctor` (a health check), `/counterparts:dashboard` (opens the
   dashboard), `/counterparts:meet` (the first meeting) and `/counterparts:uninstall`.
 
+<!-- SPOT FOR ANOTHER LANE: the section "What this plugin runs, reads and sends" goes here, replacing or folding in the one below. -->
 ## What it runs, sends and fetches
 
 Counterparts runs on your computer. Its hooks read the transcript Claude Code keeps for
@@ -101,7 +115,12 @@ first session there asks whether it should. Telling Claude "not here" (or "just 
 "pause this") sets that folder; in a folder set off, the hooks keep nothing. To delete
 everything, remove `~/.counterparts`.
 
+<!-- flavor:full -->
 It fetches two things, both at install time or once:
+<!-- /flavor:full -->
+<!-- flavor:directory -->
+It fetches one thing, at install time:
+<!-- /flavor:directory -->
 
 - **The embedding table.** Installing the plugin downloads one npm package,
   `counterparts-model-potion` (about 30 MB, a word-embedding table used to recall by
@@ -109,6 +128,7 @@ It fetches two things, both at install time or once:
   (`package-lock.json`, so when npm is on your PATH), at the exact version pinned there,
   with install scripts off. Without it, recall works by words rather than by meaning, and
   `/counterparts:doctor` says so.
+<!-- flavor:full -->
 - **A program, only when your computer has no runtime.** Counterparts runs on Bun or
   Node.js when either is installed. On a Mac or Linux computer with neither, it downloads
   one prebuilt Counterparts program for that computer (55–75 MB, from the
@@ -121,6 +141,18 @@ It fetches two things, both at install time or once:
 The hooks and the memory server start through one small shell script,
 `src/adapters/plugin-run.sh`, whose only job is to find that runtime (Bun, then Node.js,
 then the downloaded program) and start the same entry points the npm package runs.
+<!-- /flavor:full -->
+<!-- flavor:directory -->
+
+Nothing else is downloaded, and your memories never leave your computer.
+
+The hooks, the memory server and the commands run the plugin's own entry points with Bun,
+each by its path (`src/adapters/claude-code/bin/hook.js`, `src/adapters/mcp/bin/serve.js`,
+`src/adapters/cli/bin/counterparts.js`), whose first line starts Bun with your project's
+`.env` and `bunfig.toml` left unread and Bun's automatic package install off. They are the
+same code the npm package runs, transpiled from its TypeScript sources at each release
+(types and comments removed, one file for each).
+<!-- /flavor:directory -->
 
 Dreaming, the daily consolidation, is on by default for a new install (a memory that
 already existed keeps its own setting): the first session of each day starts a background
