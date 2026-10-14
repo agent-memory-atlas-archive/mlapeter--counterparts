@@ -1913,7 +1913,6 @@ export const register: Register = on => {
     const els = $.ui.resolve(e)
     const { Box, Text, Button } = els
     const Input = 'Input' in els ? els.Input : null
-    const Client = 'Client' in els ? els.Client : null
     const now = await $.clock.now()
     const [pulse, dash, mind, saved, today, dreamNow, open, mech, focus, firing, search, scope, view, brainMode, note, pauseAsk] = await Promise.all([
       read($, pulseA), read($, dashA), read($, mindA), read($, savedA), read($, todayA), read($, dreamA), read($, openA), read($, mechA),
@@ -2032,8 +2031,12 @@ export const register: Register = on => {
     // wrap to that, and a blank row between items there (2026-10-13, Mike: "hard to read").
     const bodyW = SURFACE.prose ? Math.floor(w * 1.2) : w
     const { lines } = layoutBody({ w: bodyW, rows: bodyRows, now, mind, saved, today, dream: dreamNow, open, mech, focus, dash, search, prose: SURFACE.prose, cellsW: w })
-    // The Client tag stays here: the engine reads a hooks module's surface modules off its own source.
-    rows.push(Client !== null ? <Client key="body" module="./body.tsx" width={w} props={{ lines, prose: SURFACE.prose } satisfies BodyProps} /> : plainBody(paneEls, lines))
+    // The body's surface module stays here, its module a literal on the tag's own line: the engine reads a hooks
+    // module's surface modules off its own source.
+    if ('Client' in els) {
+      const bodyProps: BodyProps = { lines, prose: SURFACE.prose }
+      rows.push(<els.Client key="body" module="./body.tsx" width={w} props={bodyProps} />)
+    } else rows.push(plainBody(paneEls, lines))
     rows.push(<Box key="spacer" flexGrow={1} />)
     rows.push(...above)
 
