@@ -10,7 +10,7 @@
 # Prototype (2026-10-09). Companion to tools/install-loop/run.sh, which proves
 # the npm install; this one proves the plugin.
 #
-# Usage:  tools/plugin-loop/run.sh [--bundle] [workdir]
+# Usage:  tools/plugin-loop/run.sh [--bundle | --bundle=directory] [workdir]
 # Default workdir: a fresh `plugin-loop-<pid>` under $TMPDIR.
 # Env:    CLAUDE_BIN  the Claude Code executable (default: `claude` on PATH)
 #
@@ -19,6 +19,13 @@
 # tree. The pin still comes from this repository's marketplace.json; the
 # installed copy must also stay inside the directory's file limit and carry no
 # test or module doc. Everything after the install is the same loop.
+#
+# --bundle=directory: the same, for the bundle's DIRECTORY flavor (the sources
+# transpiled to .js, no launcher): every step runs the entries by their own
+# path, the way its plugin.json, hooks.json and commands do, so the loop proves
+# Claude Code starts them by their shebang from a copy installed out of git
+# (exec bit included). The steps about choosing a runtime (COUNTERPARTS_RUNTIME,
+# Node) do not apply to it and are skipped, said once each.
 #
 # WHAT IT NEVER DOES, and how that is proved rather than hoped:
 #
@@ -52,10 +59,34 @@ set -uo pipefail
 REAL_HOME="$HOME"
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 BUNDLE=0
-if [ "${1:-}" = "--bundle" ]; then
-  BUNDLE=1
-  shift
-fi
+FLAVOR=full
+case "${1:-}" in
+  --bundle | --bundle=full)
+    BUNDLE=1
+    shift
+    ;;
+  --bundle=directory)
+    BUNDLE=1
+    FLAVOR=directory
+    shift
+    ;;
+esac
+
+# launch <plugin root> <hook|mcp|cli>: sets LAUNCH to the words that start the
+# plugin's <mode> as its own files do: `sh plugin-run.sh <mode>`, or, in the
+# directory flavor, the entry run by its path (its shebang starts Bun).
+LAUNCH=()
+launch() {
+  if [ "$FLAVOR" = directory ]; then
+    case "$2" in
+      hook) LAUNCH=("$1/src/adapters/claude-code/bin/hook.js") ;;
+      mcp) LAUNCH=("$1/src/adapters/mcp/bin/serve.js") ;;
+      cli) LAUNCH=("$1/src/adapters/cli/bin/counterparts.js") ;;
+    esac
+  else
+    LAUNCH=(sh "$1/src/adapters/plugin-run.sh" "$2")
+  fi
+}
 
 # ── the guard ───────────────────────────────────────────────────────────────
 
@@ -146,7 +177,7 @@ echo "  PATH     $PATH"
 echo "  claude   $CLAUDE_BIN ($("$CLAUDE_BIN" --version 2>/dev/null))"
 echo "  bun      $("$BUN_BIN" --version)"
 if [ "$BUNDLE" = 1 ]; then
-  echo "  repo     $REPO (its generated plugin bundle, snapshotted into git; never loaded in place)"
+  echo "  repo     $REPO (its generated plugin bundle, $FLAVOR flavor, snapshotted into git; never loaded in place)"
 else
   echo "  repo     $REPO (snapshotted into a git marketplace; never loaded in place)"
 fi
@@ -198,8 +229,8 @@ fi
 
 rm -rf "$MARKET_SRC" "$MARKET_GIT"
 if [ "$BUNDLE" = 1 ]; then
-  step "generate the plugin bundle and snapshot it into git (the bundle repository's root is the plugin)"
-  BUILD_OUT=$("$BUN_BIN" "$REPO/tools/plugin-bundle/build.ts" "$MARKET_SRC" 2>&1)
+  step "generate the plugin bundle ($FLAVOR flavor) and snapshot it into git (the bundle repository's root is the plugin)"
+  BUILD_OUT=$("$BUN_BIN" "$REPO/tools/plugin-bundle/build.ts" --flavor "$FLAVOR" "$MARKET_SRC" 2>&1)
   printf '%s\n' "$BUILD_OUT" > "$WORK/bundle-build.txt"
   rm -rf "$REPO_MARKET"
   mkdir -p "$REPO_MARKET/.claude-plugin"
@@ -230,7 +261,7 @@ PIN=$(bun -e '
   const m = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
   const e = (m.plugins ?? []).find((p) => p.name === "counterparts");
   const s = e?.source;
-  console.log(s && typeof s === "object" && s.source === "url" && /^https:\/\/github\.com\/mlapeter\//.test(s.url ?? "") ? (s.ref ?? "") : "");
+  console.log(s && typeof s === "object" && s.source === "url" && /^https:\/\/github\.com\/(mlapeter|counterparts-ai)\//.test(s.url ?? "") ? (s.ref ?? "") : "");
 ' "$REPO_MARKET/.claude-plugin/marketplace.json" 2>/dev/null || true)
 # Inside the throwaway bare clone only: the snapshot gets the pin's tag, and the
 # branch gets one more commit (a marker file) the pin must not install.
@@ -381,6 +412,24 @@ if [ "$BUNDLE" = 1 ]; then
   fi
 fi
 
+if [ "$FLAVOR" = directory ]; then
+  step "directory flavor: the installed entries are executable and start Bun by their shebang; no launcher, no TypeScript under src/"
+  BAD=""
+  for e in src/adapters/claude-code/bin/hook.js src/adapters/mcp/bin/serve.js src/adapters/cli/bin/counterparts.js; do
+    [ -x "$INSTALL_PATH/$e" ] || BAD="$BAD $e(not executable)"
+    head -1 "$INSTALL_PATH/$e" 2>/dev/null | grep -q '^#!/usr/bin/env -S bun ' || BAD="$BAD $e(no shebang)"
+  done
+  [ -e "$INSTALL_PATH/src/adapters/plugin-run.sh" ] && BAD="$BAD plugin-run.sh(present)"
+  LEFT_TS=$( cd "$INSTALL_PATH" && find src -name '*.ts' -o -name '*.tsx' | head -3 )
+  [ -n "$LEFT_TS" ] && BAD="$BAD ts-left:$LEFT_TS"
+  if [ -z "$BAD" ]; then
+    ok
+    head -1 "$INSTALL_PATH/src/adapters/mcp/bin/serve.js" | sed 's/^/      /'
+  else
+    no "$BAD" "$(ls -l "$INSTALL_PATH/src/adapters/claude-code/bin" "$INSTALL_PATH/src/adapters/mcp/bin" "$INSTALL_PATH/src/adapters/cli/bin" 2>&1)"
+  fi
+fi
+
 step "Claude Code installed the one dependency (the embedding table) from $LOCKFILE"
 if [ -f "$INSTALL_PATH/node_modules/counterparts-model-potion/package.json" ]; then
   ok
@@ -456,7 +505,8 @@ RPC=$(
   printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"note","arguments":{"text":"%s"}}}\n' "$CANARY"
   printf '%s\n' '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"recall","arguments":{"question":"what is the bicycle called?","mode":"facts"}}}'
 )
-MCP_OUT=$( cd "$PROJECT" && printf '%s\n' "$RPC" | t 120 "${SERVE_ENV[@]}" sh "$INSTALL_PATH/src/adapters/plugin-run.sh" mcp 2>"$WORK/mcp.err" )
+launch "$INSTALL_PATH" mcp
+MCP_OUT=$( cd "$PROJECT" && printf '%s\n' "$RPC" | t 120 "${SERVE_ENV[@]}" "${LAUNCH[@]}" 2>"$WORK/mcp.err" )
 printf '%s\n' "$MCP_OUT" > "$WORK/mcp-roundtrip.jsonl"
 NOTED=$(grep '"id":2' <<<"$MCP_OUT" || true)
 RECALLED=$(grep '"id":3' <<<"$MCP_OUT" || true)
@@ -485,7 +535,8 @@ else
 fi
 
 step "the store shows it: the console (from the plugin) finds the note"
-CLI_OUT=$( cd "$PROJECT" && t 120 "${SERVE_ENV[@]}" sh "$INSTALL_PATH/src/adapters/plugin-run.sh" cli recall "teal bicycle" 2>&1 )
+launch "$INSTALL_PATH" cli
+CLI_OUT=$( cd "$PROJECT" && t 120 "${SERVE_ENV[@]}" "${LAUNCH[@]}" recall "teal bicycle" 2>&1 )
 printf '%s\n' "$CLI_OUT" > "$WORK/cli-recall.txt"
 if grep -q "Ferrous" <<<"$CLI_OUT"; then ok; else no "the console did not find the note" "$CLI_OUT"; fi
 
@@ -498,7 +549,7 @@ cat > "$TRANSCRIPT" <<EOF
 EOF
 hook() { # hook <event> [extra json]
   printf '{"hook_event_name":"%s","session_id":"%s","cwd":"%s","transcript_path":"%s"%s}' "$1" "$SESSION" "$PROJECT" "$TRANSCRIPT" "${2:-}" |
-    ( cd "$PROJECT" && t 120 "${SERVE_ENV[@]}" CLAUDE_CODE_SESSION_ID="$SESSION" sh "$INSTALL_PATH/src/adapters/plugin-run.sh" hook )
+    ( launch "$INSTALL_PATH" hook && cd "$PROJECT" && t 120 "${SERVE_ENV[@]}" CLAUDE_CODE_SESSION_ID="$SESSION" "${LAUNCH[@]}" )
 }
 hook SessionStart ',"source":"startup"' >"$WORK/hook-start.out" 2>"$WORK/hook-start.err"
 hook UserPromptSubmit ',"prompt":"My sister Odalys keeps bees on her roof in Tucson."' >"$WORK/hook-prompt.out" 2>"$WORK/hook-prompt.err"
@@ -506,7 +557,8 @@ hook Stop ',"stop_hook_active":false' >"$WORK/hook-stop.out" 2>"$WORK/hook-stop.
 hook SessionEnd ',"reason":"exit"' >"$WORK/hook-end.out" 2>"$WORK/hook-end.err"
 # The worker the Stop spawned writes in the background; give it a moment.
 sleep 5
-STATUS=$( cd "$PROJECT" && t 120 "${SERVE_ENV[@]}" sh "$INSTALL_PATH/src/adapters/plugin-run.sh" cli status 2>&1 )
+launch "$INSTALL_PATH" cli
+STATUS=$( cd "$PROJECT" && t 120 "${SERVE_ENV[@]}" "${LAUNCH[@]}" status 2>&1 )
 printf '%s\n' "$STATUS" > "$WORK/cli-status.txt"
 # Keyless by design: the hooks CAPTURE the turn into the store's span buffer,
 # and the model makes memories of it (the Stop ask, `session_end`, the night
@@ -522,7 +574,8 @@ $STATUS"
 fi
 
 step "doctor (what /counterparts:doctor runs) reads the plugin install as connected"
-DOCTOR=$( cd "$PROJECT" && t 120 "${SERVE_ENV[@]}" sh "$INSTALL_PATH/src/adapters/plugin-run.sh" cli doctor 2>&1 )
+launch "$INSTALL_PATH" cli
+DOCTOR=$( cd "$PROJECT" && t 120 "${SERVE_ENV[@]}" "${LAUNCH[@]}" doctor 2>&1 )
 printf '%s\n' "$DOCTOR" > "$WORK/doctor.txt"
 if grep -q "connected as the Claude Code plugin (counterparts@counterparts-loop" <<<"$DOCTOR" &&
    grep -qE "^GREEN +Recall by meaning +on" <<<"$DOCTOR" &&
@@ -534,6 +587,9 @@ else
 fi
 
 if [ "$BUNDLE" = 1 ]; then
+  if [ "$FLAVOR" = directory ]; then
+    echo "SKIP  Bun named outright (COUNTERPARTS_RUNTIME): the directory flavor has no launcher to choose a runtime; Bun ran every step above"
+  else
   step "Bun, named outright (COUNTERPARTS_RUNTIME), finds the table npm installed"
   BUN_DOCTOR=$( cd "$PROJECT" && t 120 "${SERVE_ENV[@]}" COUNTERPARTS_RUNTIME="$BUN_BIN" sh "$INSTALL_PATH/src/adapters/plugin-run.sh" cli doctor 2>&1 )
   printf '%s\n' "$BUN_DOCTOR" > "$WORK/doctor-bun.txt"
@@ -542,6 +598,7 @@ if [ "$BUNDLE" = 1 ]; then
     grep -E "Recall by meaning" <<<"$BUN_DOCTOR" | cut -c1-140 | sed 's/^/      /'
   else
     no "under Bun, doctor's Recall by meaning line is not green" "$(grep -E "Recall by meaning|^RED|^AMBER" <<<"$BUN_DOCTOR")"
+  fi
   fi
 
   # WHEN THE DEPENDENCY INSTALL DID NOT RUN (no npm, the 60 s limit, offline):
@@ -562,10 +619,10 @@ if [ "$BUNDLE" = 1 ]; then
     local ev
     for ev in 'SessionStart","source":"startup' 'UserPromptSubmit","prompt":"Our neighbour Ilse restores harpsichords in a barn.' 'Stop","stop_hook_active":false' 'SessionEnd","reason":"exit'; do
       printf '{"session_id":"no-deps-%s","cwd":"%s","transcript_path":"%s","hook_event_name":"%s"}' "$$" "$2/project" "$tr" "$ev" |
-        ( cd "$2/project" && t 120 "${envs[@]}" sh "$NODEPS/src/adapters/plugin-run.sh" hook ) >>"$2.hook.out" 2>&1
+        ( launch "$NODEPS" hook && cd "$2/project" && t 120 "${envs[@]}" "${LAUNCH[@]}" ) >>"$2.hook.out" 2>&1
     done
     sleep 8
-    ( cd "$2/project" && t 120 "${envs[@]}" sh "$NODEPS/src/adapters/plugin-run.sh" cli doctor 2>&1 )
+    ( launch "$NODEPS" cli && cd "$2/project" && t 120 "${envs[@]}" "${LAUNCH[@]}" doctor 2>&1 )
   }
 
   # A Node 22.15+ from the real home's version managers, borrowed like bun.
@@ -576,6 +633,9 @@ if [ "$BUNDLE" = 1 ]; then
     major="${v%%.*}"; minor="${v#*.}"; minor="${minor%%.*}"
     if [ "$major" -gt 22 ] 2>/dev/null || { [ "$major" -eq 22 ] && [ "$minor" -ge 15 ]; } 2>/dev/null; then NODE_OK="$n"; break; fi
   done
+  if [ "$FLAVOR" = directory ]; then
+    echo "SKIP  no dependency install, under Node: the directory flavor runs under Bun alone"
+  else
   step "no dependency install, under Node: doctor's Recall by meaning line is amber and says recall still matches on words"
   if [ -z "$NODE_OK" ]; then
     no "no Node 22.15+ to run this with (nvm, Homebrew, /usr/local)" ""
@@ -589,6 +649,7 @@ if [ "$BUNDLE" = 1 ]; then
     else
       no "doctor did not name the missing table" "$(grep -A1 -E "Recall by meaning" <<<"$NODEPS_DOCTOR")"
     fi
+  fi
   fi
 
   # Under Bun, with no node_modules anywhere above the plugin, Bun's runtime
@@ -614,7 +675,9 @@ fi
 step "with the npm hooks ALSO wired, the plugin stands down and says so once; one wake, not two"
 mkdir -p "$HOME/.claude"
 cp "$HOME/.claude/settings.json" "$WORK/settings.before.json" 2>/dev/null || echo '{}' > "$WORK/settings.before.json"
-NPM_HOOK="\"$BUN_BIN\" run \"$INSTALL_PATH/src/adapters/claude-code/bin/hook.ts\""
+HOOK_SRC="$INSTALL_PATH/src/adapters/claude-code/bin/hook.ts"
+[ "$FLAVOR" = directory ] && HOOK_SRC="$INSTALL_PATH/src/adapters/claude-code/bin/hook.js"
+NPM_HOOK="\"$BUN_BIN\" run \"$HOOK_SRC\""
 bun -e '
   const fs = require("fs");
   const [file, cmd] = process.argv.slice(1);

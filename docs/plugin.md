@@ -324,7 +324,7 @@ Homebrew, `/usr/local`). Last run: 27/27 on 2.1.296 (2026-10-11).
 The directory reads the plugin folder, and here that folder is the whole repository: 800+
 files against a limit of 512, with tests, docs and this repository's own `package.json`
 and `bun.lock` (its dev dependencies too). So the plugin can also be generated as a folder of its own, for a
-repository whose root is the plugin (planned name: `mlapeter/counterparts-plugin`):
+repository whose root is the plugin (planned name: `counterparts-ai/counterparts-plugin`):
 
 ```sh
 bun tools/plugin-bundle/build.ts <out-dir>     # or --list to print the file set
@@ -337,7 +337,28 @@ repository's, with the version from `package.json` and the directory listing fie
 `package.json` and npm `package-lock.json` that name only `counterparts-model-potion` at
 an exact version, and a README with the disclosure below. It refuses symlinks, system
 files, a file over 5 MiB, or more than 512 files. `test/plugin-bundle.test.ts` holds
-those rules.
+those rules. The listing icon is `.claude-plugin/icon.png`, carried to the bundle's root.
+
+**Two flavors (2026-10-14).** `full` (the default) is the above: the TypeScript as it is,
+started through `plugin-run.sh`; our own marketplace serves it. `--flavor directory` is
+for Anthropic's directory, whose validator timed out on ~7 MB of commented TypeScript and
+holds a manifest whose command is `bun` (a package manager, to it). It transpiles every
+`src/**/*.ts` one for one to `.js` at the same path (Bun's transpiler: types and comments
+stripped; the control and invisible characters it unescapes in strings are written back as
+`\uXXXX`, since the validator holds a file with one), drops the launcher, the `.mjs` shims, Node's loader and `binaries.json`, and
+generates `plugin.json`, `hooks/hooks.json` and `commands/*.md` that run the three entries
+(`hook.js`, `serve.js`, `counterparts.js`) by their own path: each is written executable
+and starts `#!/usr/bin/env -S bun --no-env-file --config=/dev/null --no-install`, the
+shebang form of what `plugin-run.sh` passes Bun. So it needs Bun 1.3+ on the PATH Claude
+Code starts with, and its README says so first. The code tells the trees apart by its own
+URL (`runtime.ts#entryScript`, `#TRANSPILED`): a script it spawns is its `.js` sibling
+there, and the console sets `CLAUDE_PLUGIN_ROOT` itself, as `plugin-run.sh cli` does. The
+build also refuses a directory-flavor file over 256 KiB that is not an image or font
+(the vendored three.js aside), a launcher left in the roots, and a tree that does not
+mirror the sources; it warns from 490 files. `build.ts --flavor directory --check <dir>`
+rebuilds and names every file that differs from `<dir>`, with the Bun version (the
+transpiled bytes depend on it). `tools/plugin-loop/run.sh --bundle=directory` installs it
+through Claude Code from git and runs every step through the entries.
 
 **Why npm's lockfile.** Claude Code installs a plugin's packages with the package
 manager its lockfile names, from the user's PATH, and tries no other. Node users without
@@ -364,7 +385,7 @@ still loads, and `/plugin` notes the missing packages. Then, measured by the loo
   source. npm installs are unaffected, since their `node_modules` exists.
 
 To serve installs from the bundle repository, the marketplace entry's `url` becomes
-`https://github.com/mlapeter/counterparts-plugin.git`, with the same `ref` (`v<version>`, tagged there). Nothing
+`https://github.com/counterparts-ai/counterparts-plugin.git`, with the same `ref` (`v<version>`, tagged there). Nothing
 else in the entry changes, and the marketplace keeps its name, so the plugin's data
 directory (`counterparts-counterparts`) stays where it is.
 

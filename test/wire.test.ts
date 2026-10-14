@@ -40,6 +40,7 @@ import { dirname, join } from "node:path";
 
 import { EXIT, run } from "../src/adapters/cli/index.js";
 import type { Io } from "../src/adapters/cli/index.js";
+import { COUNTERPARTS_HOOK_COMMAND } from "../src/adapters/claude-code/transcript.js";
 import {
   HOOK_COMMAND_MARK,
   HOST_EVENTS,
@@ -584,6 +585,17 @@ describe("the process lister's marks", () => {
     expect(processMark("tail -f /var/log/counterparts.log")).toBeNull();
     expect(processMark("/x/bun run /pkg/src/adapters/cli/bin/counterparts.ts uninstall")).toBeNull();
     expect(processMark("grep -r counterparts-mcpx .")).toBeNull();
+  });
+
+  test("the transpiled tree's .js is ours under adapters/; another tool's same-named .js is not (review of #475)", () => {
+    expect(processMark("bun run /p/src/adapters/mcp/bin/serve.js")).toBe("an MCP server");
+    expect(processMark("bun run /p/src/adapters/claude-code/bin/runner.js")).toBe("the worker");
+    expect(processMark('bun run "/p/src/adapters/dashboard/bin/dashboard.js" --port 1')).toBe("a dashboard");
+    expect(processMark("node /opt/acme/dist/mcp/bin/serve.js")).toBeNull();
+    expect(processMark("node /srv/app/dashboard/bin/dashboard.js")).toBeNull();
+    expect(processMark("node /srv/app/claude-code/bin/runner.js")).toBeNull();
+    expect(processMark("vim src/adapters/mcp/bin/serve.json")).toBeNull();
+    expect(processMark("vim src/adapters/mcp/bin/serve.tsx")).toBeNull();
   });
 });
 
@@ -1648,6 +1660,29 @@ describe("m1 — ours to rewrite, versus ours to report", () => {
     for (const command of ["/usr/local/bin/other-tool --hook", "echo hello"]) {
       expect(isOurHookCommand(command)).toBe(false);
     }
+  });
+
+  test("another tool's claude-code/bin/hook.js outside adapters/ is neither; ours as .js is both (review of #475)", () => {
+    for (const command of [
+      "bun run /Users/me/tools/acme/claude-code/bin/hook.js",
+      "node /opt/acme/claude-code/bin/hook.js",
+      "cat /p/src/adapters/claude-code/bin/hook.json",
+    ]) {
+      expect({ command, mark: HOOK_COMMAND_MARK.test(command) }).toEqual({ command, mark: false });
+      expect({ command, ours: isOurHookCommand(command) }).toEqual({ command, ours: false });
+      expect({ command, transcript: COUNTERPARTS_HOOK_COMMAND.test(command) }).toEqual({ command, transcript: false });
+    }
+    const ours = '"/x/bun" --no-env-file "--config=/p/src/adapters/empty-bunfig.toml" run "/p/src/adapters/claude-code/bin/hook.js"';
+    expect(HOOK_COMMAND_MARK.test(ours)).toBe(true);
+    expect(isOurHookCommand(ours)).toBe(true);
+    expect(COUNTERPARTS_HOOK_COMMAND.test(ours)).toBe(true);
+  });
+
+  test("unwire keeps another tool's claude-code/bin/hook.js (review of #475)", () => {
+    const foreign = { hooks: [{ type: "command", command: "bun run /Users/me/tools/acme/claude-code/bin/hook.js" }] };
+    const merged = mergeHooks({ hooks: { SessionStart: [foreign] } }, "", "unwire");
+    expect(merged.changed).toBe(false);
+    expect((merged.value["hooks"] as Record<string, unknown>)["SessionStart"]).toEqual([foreign]);
   });
 
   test("wire LEAVES a wrapper alone, names it, and adds ours beside it", async () => {

@@ -210,7 +210,7 @@ describe("the plugin's files", () => {
     // with the same release.
     expect([
       "https://github.com/mlapeter/counterparts.git",
-      "https://github.com/mlapeter/counterparts-plugin.git",
+      "https://github.com/counterparts-ai/counterparts-plugin.git",
     ]).toContain(String(source["url"]));
     const ref = String(source["ref"] ?? "");
     // A tag shaped like a release: not main, master, HEAD, refs/…, or a sha.
