@@ -14,6 +14,9 @@ sets the version in four places:
   an open session compares it to say "Counterparts was updated");
 - `"version"` in `.claude-plugin/plugin.json`;
 - the marketplace entry's `"ref"` in `.claude-plugin/marketplace.json`, as `v<version>`.
+  Since 0.3.22 the entry's `url` is the bundle repository,
+  `https://github.com/counterparts-ai/counterparts-plugin.git` (3b), so the ref names
+  that repository's tag; only the ref moves.
 
 `test/mcp.test.ts` fails until `SERVER_VERSION` agrees with `package.json`, and
 `test/plugin.test.ts` until the plugin's version and the pin do
@@ -77,21 +80,27 @@ release folder outside the clone. The builds aren't byte-reproducible, so the fi
 these ones. Any later change to `src/` means building again. Details:
 [single-binary.md, "Releasing"](single-binary.md#releasing).
 
-## 3b. The plugin bundle (once its repository exists)
+## 3b. The plugin bundle
 
-The plugin as a folder of its own, for the bundle repository and Anthropic's directory
-([plugin.md, "The bundle"](plugin.md#the-bundle-for-anthropics-directory)). Generate it
-after `binaries.json` is committed, since it copies that file and refuses one that names
-another version; it takes its version from `package.json`:
+The plugin as a folder of its own, for the bundle repository
+(`counterparts-ai/counterparts-plugin`) and Anthropic's directory
+([plugin.md, "The bundle"](plugin.md#the-bundle-for-anthropics-directory)). Since 0.3.22
+the marketplace installs from it. Generate both flavors after `binaries.json` is
+committed, since the build copies that file and refuses one that names another version;
+it takes its version from `package.json`:
 
 ```sh
-bun tools/plugin-bundle/build.ts <clone of the bundle repository>
+bun tools/plugin-bundle/build.ts <clone of the bundle repository>                     # full: main
+bun tools/plugin-bundle/build.ts --flavor directory <clone, directory branch>         # directory branch
 ```
 
-It empties the clone (keeping `.git`) and writes the bundle. Check it with
-`claude plugin validate <clone>` and `tools/plugin-loop/run.sh --bundle`, then commit it
-there. At publish, tag that commit `v<version>` and push it beside this repository's tag.
-Nothing runs this automatically; a release with no bundle repository skips it.
+Each empties its clone (keeping `.git`) and writes the bundle. Check each with
+`claude plugin validate <clone>`, `tools/plugin-loop/run.sh --bundle` (and
+`--bundle=directory`), and `build.ts [--flavor directory] --check <clone>` against a
+second build (the directory flavor's bytes depend on the Bun version), then commit them
+there. At publish, push the full flavor to `main` and tag it `v<version>`, and push the
+directory flavor to the `directory` branch. The tag must be on GitHub before the release
+PR merges: master's marketplace is read live, and it names that tag.
 
 ## 4. Pack
 
@@ -111,9 +120,10 @@ same hash. Then open the release PR.
    ```
 
    Use the packed commit rather than the PR's merge commit, unless their trees are identical.
-3. Merge the release PR. Once it's on master, master's marketplace entry names the new tag,
-   so `/plugin install` fails at the clone until the tag is pushed. Push the tag and merge
-   the release PR close together, tag first.
+3. Push the bundle (3b) to `counterparts-ai/counterparts-plugin`, tag it `v<version>`
+   there, then merge the release PR. Once it's on master, master's marketplace entry names
+   the bundle repository's new tag, so `/plugin install` fails at the clone until that tag
+   is pushed: tag first, merge after, close together.
 4. Create the GitHub release with the binaries from section 3 (`<folder>` is the release
    folder):
 
