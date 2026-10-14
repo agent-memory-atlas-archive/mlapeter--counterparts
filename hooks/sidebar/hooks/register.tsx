@@ -212,7 +212,7 @@ const pauseAskA = atom({ plugin: 'counterparts', key: 'pauseAsk' } as const, nul
  * the same arc (one region in one stage colour: Dreaming and Consolidation)
  * pulse once.
  */
-function firePulses($: EngineInterface, ids: readonly MechId[]): void {
+function firePulses($: EngineInterface, ids: readonly MechId[], now: number): void {
   const arcs = new Set<string>()
   for (const id of ids) {
     const m = mechById(id)
@@ -221,8 +221,8 @@ function firePulses($: EngineInterface, ids: readonly MechId[]): void {
     if (arcs.has(arc)) continue
     const delay = Math.min(arcs.size, PULSE_SLOTS - 1) * PULSE_STAGGER_MS
     arcs.add(arc)
-    if (delay === 0) fireBrain(id, Date.now())
-    else $.clock.after(delay, () => fireBrain(id, Date.now()))
+    if (delay === 0) fireBrain(id, now)
+    else $.clock.after(delay, () => fireBrain(id, now + delay))
   }
 }
 
@@ -251,6 +251,15 @@ async function fetchJson($: EngineInterface, path: string): Promise<unknown> {
   const r = await $.http.fetch(`${await dashUrl($)}${path}`)
   if (!r.ok) throw new Error(`the dashboard answered ${String(r.status)}`)
   return JSON.parse(r.text) as unknown
+}
+
+/** The rows of a dashboard `/api/activity` read, or none when it fails. */
+async function eventsOf($: EngineInterface, path: string): Promise<DashEvent[]> {
+  try {
+    return ((await fetchJson($, path)) as { events?: DashEvent[] }).events ?? []
+  } catch {
+    return []
+  }
 }
 
 // ── the first meeting (core owns its steps and state; this triggers and draws) ──
@@ -365,7 +374,7 @@ async function callMemory($: EngineInterface, tool: string, args: Record<string,
 async function fire($: EngineInterface, ids: readonly MechId[]): Promise<void> {
   if (ids.length === 0) return
   const now = await $.clock.now()
-  firePulses($, ids)
+  firePulses($, ids, now)
   await update($, firingA, () => ({ ids: [...ids], at: now }))
   $.clock.after(FIRING_MS + 100, () => $.ui.invalidate('ui.render'))
 }
@@ -466,7 +475,7 @@ async function readDream($: EngineInterface): Promise<void> {
     await update($, dreamA, () => null)
     return
   }
-  const journaled = await fetchJson($, '/api/activity?name=dream.journaled&limit=5').then(a => (a as { events?: DashEvent[] }).events ?? [], () => [] as DashEvent[])
+  const journaled = await eventsOf($, '/api/activity?name=dream.journaled&limit=5')
   const atOf = journaled.find(e => e.subject === d.id)?.at ?? null
   const { first, rest } = firstSentence(d.journal)
   const next: SidebarDream = { id: d.id, at: atOf, date: d.date, first, rest }
@@ -494,7 +503,7 @@ async function poll($: EngineInterface): Promise<boolean> {
   run.polling = true
   try {
     if (!(await storeMatches($))) return false
-    const now = Date.now()
+    const now = await $.clock.now()
     const stale = run.lastPollAt > 0 && now - run.lastPollAt > STALE_MS
     run.lastPollAt = now
     if (!run.cold || run.lastSeq < 0 || stale) {
@@ -720,11 +729,12 @@ async function onSaved($: EngineInterface, items: readonly SidebarSaved[]): Prom
     if (it.replacesId === null) continue
     const id = it.replacesId
     quiet(
-      fetchJson($, `/api/memory?id=${encodeURIComponent(id)}`).then(async d => {
+      (async () => {
+        const d = await fetchJson($, `/api/memory?id=${encodeURIComponent(id)}`)
         const title = (d as { found?: boolean; title?: string }).found === true ? (d as { title?: string }).title : undefined
         if (typeof title !== 'string' || title === '') return
         await update($, savedA, list => list.map(s => (s.key === it.key ? { ...s, replaces: title } : s)))
-      }),
+      })(),
     )
   }
 }
@@ -838,7 +848,7 @@ async function deeperFirings($: EngineInterface, id: MechId, panel: readonly Das
   if (names.length === 0) return firings
   for (let limit = FALLBACK_LIMIT; ; limit *= 2) {
     const answers = await Promise.all(
-      names.map(n => fetchJson($, `/api/activity?name=${encodeURIComponent(n)}&limit=${String(limit)}`).then(a => (a as { events?: DashEvent[] }).events ?? [], () => [] as DashEvent[])),
+      names.map(n => eventsOf($, `/api/activity?name=${encodeURIComponent(n)}&limit=${String(limit)}`)),
     )
     const seen = new Set<number>()
     const rows = [...panel, ...answers.flat()].filter(e => (seen.has(e.seq) ? false : (seen.add(e.seq), true)))
@@ -965,10 +975,12 @@ async function canonicalPath($: EngineInterface, path: string): Promise<string> 
   let head = path.length > 1 ? path.replace(/[/\\]+$/, '') : path
   const tail: string[] = []
   for (let i = 0; i < 64; i += 1) {
-    const real = await $.fs.stat(head, { resolve: true }).then(
-      st => st.realPath,
-      () => undefined,
-    )
+    let real: string | undefined
+    try {
+      real = (await $.fs.stat(head, { resolve: true })).realPath
+    } catch {
+      real = undefined
+    }
     if (real !== undefined) {
       if (tail.length === 0) {
         if (run.canon.size > 200) run.canon.clear()
@@ -1255,9 +1267,11 @@ function redrawAfterRefusal($: EngineInterface): void {
  * the measurement. The burst rate only while a pulse's arc is in flight, the
  * calm rate while it sways, and no timer at all at rest.
  */
-function tick($: EngineInterface, gen: number): void {
+async function tick($: EngineInterface, gen: number): Promise<void> {
   if (gen !== run.brainGen) return
-  const now = Date.now()
+  // The engine's clock (a round trip to the host): a tick a newer timer replaced meanwhile changes nothing.
+  const now = await $.clock.now()
+  if (gen !== run.brainGen) return
   const pace = run.brainPace === 'burst' ? 'burst' : 'calm'
   const dt = fps.lastTick === 0 ? paceMs(pace) : Math.min(250, Math.max(now - fps.lastTick, paceMs(pace)))
   fps.lastTick = now
@@ -1283,25 +1297,25 @@ function tick($: EngineInterface, gen: number): void {
   if (!brain.fresh) return // nothing moved a fifth of a dot: the frame on screen stands, no blit
   fps.inFlight = true
   const blitGen = run.brainGen
-  void $.ui.blit({ requestId: PANE, key: 'brain', cells, columns: raster.cols, rows: raster.rows }).then(
-    r => {
-      if (blitGen !== run.brainGen) return
-      fps.inFlight = false
-      if (r.deny !== undefined) {
-        stopBrain()
-        redrawAfterRefusal($)
-        return
-      }
-      run.redraws = 0
-      fps.blits.push(performance.now())
-      if (fps.blits.length > 240) fps.blits.shift()
-    },
-    () => {
-      if (blitGen !== run.brainGen) return
-      stopBrain()
-      redrawAfterRefusal($)
-    },
-  )
+  let r: Awaited<ReturnType<EngineInterface['ui']['blit']>>
+  try {
+    r = await $.ui.blit({ requestId: PANE, key: 'brain', cells, columns: raster.cols, rows: raster.rows })
+  } catch {
+    if (blitGen !== run.brainGen) return
+    stopBrain()
+    redrawAfterRefusal($)
+    return
+  }
+  if (blitGen !== run.brainGen) return
+  fps.inFlight = false
+  if (r.deny !== undefined) {
+    stopBrain()
+    redrawAfterRefusal($)
+    return
+  }
+  run.redraws = 0
+  fps.blits.push(await $.clock.now())
+  if (fps.blits.length > 240) fps.blits.shift()
 }
 
 /** Starts (or re-paces) the brain's timer under a new generation; a fresh start begins at the calm rate. */
@@ -1313,7 +1327,7 @@ function startBrain($: EngineInterface, pace: 'burst' | 'calm' = 'calm'): void {
   fps.inFlight = false
   if (fresh) fps.lastTick = 0
   run.brainPace = pace
-  run.brainTimer = $.clock.every(paceMs(pace), () => tick($, gen))
+  run.brainTimer = $.clock.every(paceMs(pace), () => quiet(tick($, gen)))
 }
 
 // ── the fox (fox.ts holds what it does and how each frame looks) ──
@@ -1362,8 +1376,16 @@ async function stageStep($: EngineInterface, gen: number): Promise<void> {
         tier === 'basic'
           ? { requestId: PANE, key: 'stage', cells: halfCells(step), columns: STAGE_COLS, rows: stageRows('basic') }
           : { requestId: PANE, key: 'stage', source: { png: pngOf(step) }, columns: IMAGE_COLS, rows: IMAGE_ROWS }
-      void $.ui.blit(args).then(
-        r => {
+      // Not awaited: the next wait is set below at once, whatever the blit's answer.
+      quiet(
+        (async () => {
+          let r: Awaited<ReturnType<EngineInterface['ui']['blit']>>
+          try {
+            r = await $.ui.blit(args)
+          } catch {
+            if (gen === stage.gen) stopStage()
+            return
+          }
           if (gen !== stage.gen) return
           if (r.deny === undefined) {
             run.redraws = 0
@@ -1376,10 +1398,7 @@ async function stageStep($: EngineInterface, gen: number): Promise<void> {
           }
           stopStage()
           redrawAfterRefusal($)
-        },
-        () => {
-          if (gen === stage.gen) stopStage()
-        },
+        })(),
       )
     } else $.ui.invalidate('ui.render')
   }
@@ -1568,9 +1587,9 @@ export const register: Register = on => {
         fps.target = n
         await $.store.set('fps', n)
         if (run.brainTimer !== null) startBrain($)
-        return { text: `Brain target set to ${String(n)} fps. ${fpsReport(mode)}` }
+        return { text: `Brain target set to ${String(n)} fps. ${fpsReport(mode, await $.clock.now())}` }
       }
-      return { text: fpsReport(mode) }
+      return { text: fpsReport(mode, await $.clock.now()) }
     }
     // `strip` (dropped 2026-10-10) is quiet now: an older term-loop's put-back can still type it.
     if (verb === 'quiet' || verb === 'hide' || verb === 'rail' || verb === 'strip') {
@@ -1851,7 +1870,7 @@ export const register: Register = on => {
       used += 2
     } else if (hasRaster) {
       const { Raster } = $.ui.resolve(e)
-      rows.push(...brainHeader(paneEls, Raster, actions, { w, paused, day, count: countText }))
+      rows.push(...brainHeader(paneEls, Raster, actions, { w, paused, day, count: countText, now }))
       used += BRAIN_ROWS + 1
     } else {
       rows.push(...brainlessHeader(paneEls, actions, { w, paused, lit, day, count: countText }))
