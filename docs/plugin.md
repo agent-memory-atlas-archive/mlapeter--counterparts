@@ -337,7 +337,27 @@ repository's, with the version from `package.json` and the directory listing fie
 `package.json` and npm `package-lock.json` that name only `counterparts-model-potion` at
 an exact version, and a README with the disclosure below. It refuses symlinks, system
 files, a file over 5 MiB, or more than 512 files. `test/plugin-bundle.test.ts` holds
-those rules.
+those rules. The listing icon is `.claude-plugin/icon.png`, carried to the bundle's root.
+
+**Two flavors (2026-10-14).** `full` (the default) is the above: the TypeScript as it is,
+started through `plugin-run.sh`; our own marketplace serves it. `--flavor directory` is
+for Anthropic's directory, whose validator timed out on ~7 MB of commented TypeScript and
+holds a manifest whose command is `bun` (a package manager, to it). It transpiles every
+`src/**/*.ts` one for one to `.js` at the same path (Bun's transpiler: types and comments
+stripped), drops the launcher, the `.mjs` shims, Node's loader and `binaries.json`, and
+generates `plugin.json`, `hooks/hooks.json` and `commands/*.md` that run the three entries
+(`hook.js`, `serve.js`, `counterparts.js`) by their own path: each is written executable
+and starts `#!/usr/bin/env -S bun --no-env-file --config=/dev/null --no-install`, the
+shebang form of what `plugin-run.sh` passes Bun. So it needs Bun 1.3+ on the PATH Claude
+Code starts with, and its README says so first. The code tells the trees apart by its own
+URL (`runtime.ts#entryScript`, `#TRANSPILED`): a script it spawns is its `.js` sibling
+there, and the console sets `CLAUDE_PLUGIN_ROOT` itself, as `plugin-run.sh cli` does. The
+build also refuses a directory-flavor file over 256 KiB that is not an image or font
+(the vendored three.js aside), a launcher left in the roots, and a tree that does not
+mirror the sources; it warns from 490 files. `build.ts --flavor directory --check <dir>`
+rebuilds and names every file that differs from `<dir>`, with the Bun version (the
+transpiled bytes depend on it). `tools/plugin-loop/run.sh --bundle=directory` installs it
+through Claude Code from git and runs every step through the entries.
 
 **Why npm's lockfile.** Claude Code installs a plugin's packages with the package
 manager its lockfile names, from the user's PATH, and tries no other. Node users without

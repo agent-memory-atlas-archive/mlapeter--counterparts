@@ -198,6 +198,17 @@ export function shebangCommand<T extends Command>(c: T, problems: string[], wher
   return { ...c, command: `\${CLAUDE_PLUGIN_ROOT}/${DIRECTORY_ENTRIES[mode]}`, args: args.slice(2) };
 }
 
+/** The hooks modules the directory flavor carries, of those hooks.json lists:
+ *  the sidebar alone (owner, 2026-10-14). Any other module (the speak-first
+ *  module, once it is its own) stays in the full flavor only, and since the
+ *  trace follows `modules`, its files fall out of the directory bundle too. */
+export const DIRECTORY_MODULES: readonly string[] = ["./sidebar/hooks/register.tsx"];
+
+/** hooks.json's `modules`, as the directory flavor lists them. Pure. */
+export function directoryModules(modules: readonly string[]): string[] {
+  return modules.filter((m) => DIRECTORY_MODULES.includes(m));
+}
+
 /** A command file's launcher lines as the console's own entry. The uninstall
  *  command's step 4 builds a terminal line from the launcher in words, so
  *  those words are rewritten too; whatever still names the launcher after
@@ -227,6 +238,11 @@ export function directoryRoots(repo: string, problems: string[] = []): Roots {
   const hooks = JSON.parse(r.hooks) as { hooks?: Record<string, { hooks?: Command[] }[]> } & Record<string, unknown>;
   for (const [event, groups] of Object.entries(hooks.hooks ?? {})) {
     for (const g of groups) g.hooks = (g.hooks ?? []).map((h) => shebangCommand(h, problems, `hooks.json ${event}`));
+  }
+  if (Array.isArray(hooks["modules"])) {
+    const modules = directoryModules(hooks["modules"] as string[]);
+    if (modules.length === 0) problems.push(`hooks.json lists none of ${DIRECTORY_MODULES.join(", ")}`);
+    hooks["modules"] = modules;
   }
   const commands: Record<string, string> = {};
   for (const [path, text] of Object.entries(r.commands)) commands[path] = directoryCommandText(text);

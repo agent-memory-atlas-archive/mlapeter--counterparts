@@ -24,6 +24,7 @@ import {
   REPO,
   bundleManifest,
   bundlePaths,
+  directoryModules,
   driftLines,
   largeFiles,
   mirrorProblems,
@@ -294,6 +295,19 @@ describe("the directory flavor", () => {
     expect(dir.generated["commands/uninstall.md"]).toContain('"/full/path/to/src/adapters/cli/bin/counterparts.js" "uninstall" "--config"');
     expect(dir.generated["commands/uninstall.md"]).not.toMatch(/`sh`|launcher/);
     expect(dir.generated["commands/meet.md"]).toBe(readFileSync(join(REPO, "commands/meet.md"), "utf8"));
+  });
+
+  test("hooks modules: the directory flavor carries the sidebar alone; the full flavor every module hooks.json lists", () => {
+    // As data, so it holds before and after the speak-first module is split out.
+    expect(directoryModules(["./sidebar/hooks/register.tsx", "./sidebar/hooks/speak-first.tsx"])).toEqual(["./sidebar/hooks/register.tsx"]);
+    expect(directoryModules(["./sidebar/hooks/register.tsx"])).toEqual(["./sidebar/hooks/register.tsx"]);
+    const hooks = JSON.parse(dir.generated["hooks/hooks.json"]!) as { modules: string[] };
+    expect(hooks.modules).toEqual(["./sidebar/hooks/register.tsx"]);
+    expect(dirPaths.filter((p) => /speak-first/.test(p))).toEqual([]);
+    // The full flavor copies hooks.json as it is, and traces every module it lists.
+    const repoModules = (JSON.parse(readFileSync(join(REPO, "hooks/hooks.json"), "utf8")) as { modules: string[] }).modules;
+    expect(plan.copied).toContain("hooks/hooks.json");
+    for (const m of repoModules) expect(paths).toContain(join("hooks", m));
   });
 
   test("the README says Bun 1.3+ near the top, and nothing of the launcher or the binary", () => {
