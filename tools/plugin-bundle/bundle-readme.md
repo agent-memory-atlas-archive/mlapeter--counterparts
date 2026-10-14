@@ -67,7 +67,27 @@ down, so the memory is never wired twice.
 - **Commands:** `/counterparts:doctor` (a health check), `/counterparts:dashboard` (opens the
   dashboard), `/counterparts:meet` (the first meeting) and `/counterparts:uninstall`.
 
-<!-- SPOT FOR ANOTHER LANE: the section "What this plugin runs, reads and sends" goes here, replacing or folding in the one below. -->
+## What the sidebar does
+
+The sidebar is a Claude Code mod (`hooks/sidebar/`). This is everything it reaches outside
+its own pane:
+
+- **Your own dashboard, on this computer.** It reads the pulse, today's counts, the last
+  dream and memory cards with HTTP GET requests to the Counterparts dashboard at
+  `http://127.0.0.1:4747` (or the port in `COUNTERPARTS_DASHBOARD_PORT`), and asks it which
+  memory it serves, so it never shows another one. It sends nothing off your computer.
+- **Commands you click.** **Start the 5-minute intro** runs this plugin's `/counterparts:meet`;
+  in the desktop app, COUNTERPARTS and `more` run `/counterparts:dashboard`.
+- **One memory tool you press.** The folder switch (on, pause, off) calls Counterparts' own
+  `scope` tool when you choose and confirm; Claude Code's permission check applies.
+- **What it watches.** It sees your slash commands and Counterparts' own tool calls only to
+  update what it shows, and passes every one on unchanged: it never approves, denies or
+  alters a command or a tool call, and never changes a setting.
+<!-- flavor:full -->
+- **One message, once.** On a new install, before you type anything, it sends "Meet your
+  new counterpart." so Claude can introduce itself (see Install).
+<!-- /flavor:full -->
+
 ## What it runs, sends and fetches
 
 Counterparts runs on your computer. Its hooks read the transcript Claude Code keeps for
