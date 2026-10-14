@@ -47,7 +47,8 @@ import {
   newDirector,
   normDetail,
   pickTier,
-  pngOf,
+  PNG_KEYS,
+  pngName,
   runs,
   sextantBits,
   sextantGlyph,
@@ -957,10 +958,13 @@ describe('the fox', () => {
     const zs = [['zSmall', 'zSmall'], ['z', 'z']] as const
     expect(fineCells({ frame: 'nap1', fx: zs }).flat().some(c => c.fg === textHex('#9be') || c.bg === textHex('#9be'))).toBe(true)
     expect([...decodeCells(halfCells({ frame: 'nap1', fx: zs }))].some((v, i) => i % 3 !== 0 && v === 0x99bbee)).toBe(true)
-    expect(pngOf(idle).startsWith('iVBORw0KGgo')).toBe(true)
-    expect(pngOf({ frame: 'perk', fx: [['spark0', 'spark']] })).not.toBe(pngOf({ frame: 'perk', fx: [] }))
-    expect(pngOf({ frame: 'no-such', fx: [] })).toBe(pngOf(idle))
-    const svg = foxSvg(idle)
+    // the picture tier's files (art/fox/<key>.png): a frame with its effects, else the frame, else idle
+    expect(pngName(idle)).toBe('idle.png')
+    expect(pngName({ frame: 'perk', fx: [['spark0', 'spark']] })).toBe('perk+spark0.png')
+    expect(pngName({ frame: 'perk', fx: [['nothing', 'spark']] })).toBe('perk.png')
+    expect(pngName({ frame: 'no-such', fx: [] })).toBe('idle.png')
+    expect(PNG_KEYS.size).toBe(36)
+    const svg = foxSvg(idle, 'iVBORw0KGgo')
     expect(svg.source.length).toBeLessThan(131072)
     // the picture alone: the half-blocks under it showed as a ghost edge on the desktop's light page
     expect(svg.source).not.toContain('<rect')
@@ -1013,7 +1017,7 @@ describe('the fox', () => {
     for (const steps of Object.values(FOX_FINAL.moments) as unknown as (readonly [string, number])[][]) {
       for (const [f] of steps) {
         expect(f in FOX_FINAL.png.frames && f in FOX_FINAL.sextant.frames && f in FOX_FINAL.half.frames).toBe(true)
-        if (f !== 'idle') expect(pngOf({ frame: f, fx: [] })).not.toBe(pngOf({ frame: 'idle', fx: [] }))
+        expect(pngName({ frame: f, fx: [] })).toBe(`${f}.png`)
       }
     }
   })

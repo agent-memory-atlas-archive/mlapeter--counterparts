@@ -119,7 +119,8 @@ import {
   newDirector,
   normDetail,
   pickTier,
-  pngOf,
+  PNG_DIRS,
+  pngName,
   runs,
   stage,
   stageRows,
@@ -1379,7 +1380,7 @@ async function stageStep($: EngineInterface, gen: number): Promise<void> {
       const args =
         tier === 'basic'
           ? { requestId: PANE, key: 'stage', cells: halfCells(step), columns: STAGE_COLS, rows: stageRows('basic') }
-          : { requestId: PANE, key: 'stage', source: { png: pngOf(step) }, columns: IMAGE_COLS, rows: IMAGE_ROWS }
+          : { requestId: PANE, key: 'stage', source: pngFile(step), columns: IMAGE_COLS, rows: IMAGE_ROWS }
       // Not awaited: the next wait is set below at once, whatever the blit's answer.
       quiet(
         (async () => {
@@ -1426,8 +1427,43 @@ function startStage($: EngineInterface): void {
 const STAGE_MIN_PROSE_COLS = 22
 const prosePane = { w: STAGE_COLS }
 
-/** The stage's element in a tier, for the step on screen. */
-function stageElement(els: ReturnType<EngineInterface['ui']['resolve']>, tier: FoxTier, step: Step): JSX.Element {
+/** The Image's source for a step: the PNG file, which the terminal reads itself. */
+function pngFile(step: Step): { file: string; format: 'png' } {
+  return { file: `${stage.pngDir ?? ''}/${pngName(step)}`, format: 'png' }
+}
+
+/** The folder of the fox's PNGs under the plugin's, or null when neither place holds them. */
+async function findPngDir($: EngineInterface): Promise<string | null> {
+  const root = $.plugin.root.replace(/[/\\]+$/, '')
+  for (const rel of PNG_DIRS) {
+    const dir = `${root}/${rel}`
+    try {
+      if (await $.fs.exists(`${dir}/idle.png`)) return dir
+    } catch {
+      // not readable: the next place
+    }
+  }
+  return null
+}
+
+/** A PNG's bytes (base64) for the desktop's Svg, read once from the plugin's folder; '' when it can't be. */
+async function pngData($: EngineInterface, name: string): Promise<string> {
+  const known = stage.pngData.get(name)
+  if (known !== undefined) return known
+  let data = ''
+  if (stage.pngDir !== null) {
+    try {
+      data = (await $.fs.read(`${stage.pngDir}/${name}`, { as: 'bytes' })).base64
+    } catch {
+      data = ''
+    }
+  }
+  stage.pngData.set(name, data)
+  return data
+}
+
+/** The stage's element in a tier, for the step on screen (`png`: the desktop's picture, base64). */
+function stageElement(els: ReturnType<EngineInterface['ui']['resolve']>, tier: FoxTier, step: Step, png: string): JSX.Element {
   if (tier === 'basic' && 'Raster' in els) {
     const { Raster } = els
     return <Raster key="stage" columns={STAGE_COLS} rows={stageRows('basic')} cells={halfCells(step)} />
@@ -1436,13 +1472,13 @@ function stageElement(els: ReturnType<EngineInterface['ui']['resolve']>, tier: F
     const { Box, Image } = els
     return (
       <Box key="stage-box" flexDirection="row" paddingLeft={IMAGE_X0}>
-        <Image key="stage" source={{ png: pngOf(step) }} columns={IMAGE_COLS} rows={IMAGE_ROWS} alt="a small fox" />
+        <Image key="stage" source={pngFile(step)} columns={IMAGE_COLS} rows={IMAGE_ROWS} alt="a small fox" />
       </Box>
     )
   }
   if (tier === 'svg' && 'Svg' in els) {
     const { Svg } = els
-    const svg = foxSvg(step)
+    const svg = foxSvg(step, png)
     // A pane dragged narrower than the fox: the fox scales down with it (about 7 px a cell on the desktop).
     const k = Math.min(1, (prosePane.w * 7) / svg.width)
     return <Svg key="stage" source={svg.source} alt="a small fox" width={Math.round(svg.width * k)} height={Math.round(svg.height * k)} />
@@ -1545,6 +1581,10 @@ export const register: Register = on => {
     stage.noImages = false
     stage.imageDenies = 0
     stage.detail = normDetail(detailPref)
+    // The PNGs ship as files beside the module (art/fox/): found once; none found, the terminal draws no pictures.
+    stage.pngDir = await findPngDir($)
+    stage.pngData.clear()
+    if (stage.pngDir === null) stage.noImages = true
     // What this terminal can draw the fox with, read once (fox.ts, `pickTier`).
     // (Each name spelled out: the engine lists the variables a module reads.)
     const envVals = await Promise.all([
@@ -1861,7 +1901,8 @@ export const register: Register = on => {
       // An Image's first frame is blitted once mounted too: a refusal says it draws its alt here.
       stage.shown = tier === 'image' ? '' : stepKey(step)
       const [title] = brainlessHeader(paneEls, actions, { w, paused, lit, day, count: countText })
-      stageTop = [...rows, ...(title === undefined ? [] : [title]), stageElement(els, tier, step)]
+      const png = tier === 'svg' ? await pngData($, pngName(step)) : ''
+      stageTop = [...rows, ...(title === undefined ? [] : [title]), stageElement(els, tier, step, png)]
       rows.length = 0
       rows.push(SURFACE.prose ? <Text key="stage-rule"> </Text> : <Text key="stage-rule" color={P.faint}>{'─'.repeat(w)}</Text>)
       // The desktop's Svg is 180 px tall, about ten of its text rows (measured 2026-10-13), not the cells' fifteen;

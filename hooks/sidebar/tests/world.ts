@@ -278,9 +278,12 @@ export function world(on: On, opts: WorldOptions = {}): World {
           ? {}
           : { [w.scope.setBy]: { mode: w.scope.mode, since: '2026-10-09T13:00:00.000Z', ...(w.scope.mode === 'paused' ? { resumeTo: w.scope.resumeTo } : {}) } },
     })
-  on('fs.exists', (_$, e) => ({ value: e.path === registryAt || e.path in files }))
+  // The fox's PNGs ship as files under the plugin's folder (art/fox/): there, and read as bytes.
+  const isPng = (path: string): boolean => /\/art\/fox\/[A-Za-z0-9+]+\.png$/.test(path)
+  on('fs.exists', (_$, e) => ({ value: e.path === registryAt || e.path in files || isPng(e.path) }))
   on('fs.read', (_$, e) => {
     w.fsReads.push(e.path)
+    if (isPng(e.path)) return { value: { base64: `iVBORw0KGgo${e.path.slice(e.path.lastIndexOf('/') + 1)}` } }
     if (e.path === registryAt) return opts.scopesUnreadable === true ? { deny: 'EACCES: permission denied' } : { value: registry() }
     const text = files[e.path]
     return text === undefined ? { deny: `ENOENT: no such file or directory, open '${e.path}'` } : { value: text }

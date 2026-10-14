@@ -2096,7 +2096,10 @@ test('each terminal draws it its finest known way: a picture in Ghostty, sextant
   const img = await ui.find({ type: 'Image', key: 'stage' })
   expect(img?.props['columns']).toBe(30)
   expect(img?.props['rows']).toBe(16)
-  expect(String((img?.props['source'] as { png?: string } | undefined)?.png).startsWith('iVBORw0KGgo')).toBe(true)
+  // the PNG as a file under the plugin's folder, which the terminal reads itself: no bytes cross `$`
+  const src = img?.props['source'] as { file?: string; format?: string } | undefined
+  expect(src?.format).toBe('png')
+  expect(String(src?.file)).toMatch(/^\/.*\/art\/fox\/[A-Za-z0-9+]+\.png$/)
   expect(img?.props['alt']).toBe('a small fox')
   expect(await ui.find({ type: 'Raster', key: 'stage' })).toBeUndefined()
   await ui.unmount()
@@ -2122,7 +2125,9 @@ test('half-blocks in Apple Terminal, and the desktop draws an Svg of the same fo
   await ui.unmount()
   ui = await mount($, w, 'desktop')
   const svg = await ui.find({ type: 'Svg' })
-  expect(String(svg?.props['source'])).toContain('data:image/png;base64,')
+  // the PNG's bytes, read from the plugin's folder (art/fox/) once, as the picture's data URI
+  expect(String(svg?.props['source'])).toContain('data:image/png;base64,iVBORw0KGgoidle.png')
+  expect(w.fsReads.filter(p => p.endsWith('/art/fox/idle.png'))).toHaveLength(1)
   expect(svg?.props['alt']).toBe('a small fox')
   await ui.unmount()
 })
