@@ -2,8 +2,10 @@
  * The pane's body as a `Client` surface module: the lines `./sections.ts`
  * laid out, drawn as they are, and a click on one posted back to the hooks
  * module by the key it carries (`{ click: 'mem:0' }`). From a row's link
- * column on (the `more` that ends a cut text) a click posts nothing: that
- * piece is a `Link` to the dashboard, which the surface opens.
+ * column on (the `more` that ends a cut text): on the terminal that piece is
+ * a `Link` to the dashboard, which the terminal opens, and the click posts
+ * nothing; elsewhere (no `href`) it posts the link's key (`more:mem_…`), and
+ * the hooks module runs `/counterparts:dashboard`.
  *
  * Why not Buttons: the engine inverts a Button under the pointer and the
  * focus, so moving the mouse over a list lit row after row (v0.1, NOTES).
@@ -25,8 +27,11 @@ const Body: ClientModule<BodyProps, never> = (props, surface: ClientSurface<neve
   surface.onPointer(ev => {
     if (ev.type !== 'down' || (ev.button !== undefined && ev.button !== 'left')) return
     const l = props.lines[ev.y]
-    // a row's link (the `more` that ends a cut text) takes the click from its column on: the surface's, not ours
-    if (l?.link !== undefined && ev.x >= l.link.from) return
+    // a row's link (the `more` that ends a cut text) takes the click from its column on: a Link's is the terminal's
+    if (l?.link !== undefined && ev.x >= l.link.from) {
+      if (l.link.href === undefined) surface.post({ click: l.link.key })
+      return
+    }
     if (l?.key !== undefined) surface.post({ click: l.key })
   })
   return (

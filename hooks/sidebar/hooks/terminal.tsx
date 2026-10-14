@@ -48,6 +48,8 @@ export const look = { mono: false, still: false, sel: null as MechId | null, fir
 export const fps = {
   target: DEFAULT_FPS,
   inFlight: false,
+  /** A tick is reading the clock: the next one is skipped (`register.tsx#tick`). */
+  ticking: false,
   lastTick: 0,
   /** The engine's clock (`$.clock.now()`) at each blit the surface took: the measurement. */
   blits: [] as number[],

@@ -208,6 +208,8 @@ const themeA = atom({ plugin: 'counterparts', key: 'theme' } as const, 'tron')
 const placedA = atom({ plugin: 'counterparts', key: 'placed' } as const, false)
 const noteA = atom({ plugin: 'counterparts', key: 'switchNote' } as const, null)
 const pauseAskA = atom({ plugin: 'counterparts', key: 'pauseAsk' } as const, null)
+/** The person ran `/counterparts …` in this session: written here, read by `speak-first.tsx` (which never sees it). */
+const typedInA = atom({ plugin: 'counterparts', key: 'typedIn' } as const, null)
 
 // ── the brain's pulses ──────────────────────────────────────────────────────
 
@@ -865,7 +867,9 @@ async function deeperFirings($: EngineInterface, id: MechId, panel: readonly Das
 /** A click on a row of the body, by the key the layout gave it. */
 async function clickBody($: EngineInterface, key: string): Promise<void> {
   // The Mechanisms section's link while the dashboard is down: the plugin's command starts it.
-  if (key === 'dash:start') {
+  // ... and off the terminal, the `more` that ends a cut text (no Link opens there): the same command, which opens
+  // the dashboard when it is already up.
+  if (key === 'dash:start' || key.startsWith('more:')) {
     $.clock.after(0, () => quiet(runCommand($, DASHBOARD_COMMAND)))
     return
   }
@@ -1274,8 +1278,16 @@ function redrawAfterRefusal($: EngineInterface): void {
  */
 async function tick($: EngineInterface, gen: number): Promise<void> {
   if (gen !== run.brainGen) return
-  // The engine's clock (a round trip to the host): a tick a newer timer replaced meanwhile changes nothing.
-  const now = await $.clock.now()
+  // The engine's clock, read once a frame (a round trip to the host). One read at a time: a tick that comes while
+  // one waits is skipped, so ticks never overlap and the time never runs backwards.
+  if (fps.ticking) return
+  fps.ticking = true
+  let now: number
+  try {
+    now = await $.clock.now()
+  } finally {
+    fps.ticking = false
+  }
   if (gen !== run.brainGen) return
   const pace = run.brainPace === 'burst' ? 'burst' : 'calm'
   const dt = fps.lastTick === 0 ? paceMs(pace) : Math.min(250, Math.max(now - fps.lastTick, paceMs(pace)))
@@ -1302,25 +1314,31 @@ async function tick($: EngineInterface, gen: number): Promise<void> {
   if (!brain.fresh) return // nothing moved a fifth of a dot: the frame on screen stands, no blit
   fps.inFlight = true
   const blitGen = run.brainGen
-  let r: Awaited<ReturnType<EngineInterface['ui']['blit']>>
-  try {
-    r = await $.ui.blit({ requestId: PANE, key: 'brain', cells, columns: raster.cols, rows: raster.rows })
-  } catch {
-    if (blitGen !== run.brainGen) return
-    stopBrain()
-    redrawAfterRefusal($)
-    return
-  }
-  if (blitGen !== run.brainGen) return
-  fps.inFlight = false
-  if (r.deny !== undefined) {
-    stopBrain()
-    redrawAfterRefusal($)
-    return
-  }
-  run.redraws = 0
-  fps.blits.push(await $.clock.now())
-  if (fps.blits.length > 240) fps.blits.shift()
+  // Not awaited: the next tick runs on its timer whatever the blit's answer (`inFlight` holds the next blit back).
+  quiet(
+    (async () => {
+      let r: Awaited<ReturnType<EngineInterface['ui']['blit']>>
+      try {
+        r = await $.ui.blit({ requestId: PANE, key: 'brain', cells, columns: raster.cols, rows: raster.rows })
+      } catch {
+        if (blitGen !== run.brainGen) return
+        stopBrain()
+        redrawAfterRefusal($)
+        return
+      }
+      if (blitGen !== run.brainGen) return
+      fps.inFlight = false
+      if (r.deny !== undefined) {
+        stopBrain()
+        redrawAfterRefusal($)
+        return
+      }
+      run.redraws = 0
+      // The frame's time (the clock read once): the measurement.
+      fps.blits.push(now)
+      if (fps.blits.length > 240) fps.blits.shift()
+    })(),
+  )
 }
 
 /** Starts (or re-paces) the brain's timer under a new generation; a fresh start begins at the calm rate. */
@@ -1620,6 +1638,12 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'counterparts' }, async ($, e) => {
+    // This hook answers without `next`, so no hook beneath sees the command: the speak-first learns it from here.
+    const kind = (e.origin as { kind?: string } | undefined)?.kind
+    if (kind === 'composer' || kind === 'bridge') {
+      if (run.session === '') run.session = await $.session.id()
+      await update($, typedInA, () => run.session)
+    }
     const [verb = '', arg = ''] = e.args.trim().split(/\s+/)
     await refreshScope($, true)
     if (verb === 'fps') {
@@ -1859,7 +1883,7 @@ export const register: Register = on => {
     const hasRaster = e.surface === 'terminal' && mode !== 'off'
     // The fox's stage: on a pane tall and wide enough (shorter, the brain's header, standing still), in the
     // tier this surface draws (fox.ts); on a surface with no way to draw it, the header with no avatar.
-    const tier = pickTier(e.surface, stage.detail, stage.env, stage.noImages)
+    const tier = pickTier(e.surface, stage.detail, stage.env, stage.noImages, stage.pngDir !== null)
     const drawsStage = tier === 'svg' ? 'Svg' in els : 'Raster' in els
     const hasStage = mode === 'fox' && drawsStage && !inline && fill >= STAGE_MIN_PANE_ROWS && W >= (SURFACE.prose ? STAGE_MIN_PROSE_COLS : STAGE_COLS)
     // While the pane holds the keyboard the brain and the fox hold still.
@@ -1873,7 +1897,8 @@ export const register: Register = on => {
     const lit = firingNow[0] ?? look.sel
     // Every press in the pane, as a closure over this hook's `$` (the views take no `$`).
     const actions: PaneActions = {
-      dashboardHref: await dashboardHref($, '/'),
+      dashboardHref: e.surface === 'terminal' ? await dashboardHref($, '/') : null,
+      openDashboard: async () => $.clock.after(0, () => quiet(runCommand($, DASHBOARD_COMMAND))),
       pressScope: to => pressScope($, to),
       pressMeet: () => pressMeet($),
       confirmChange: () => confirmChange($),
@@ -1950,7 +1975,9 @@ export const register: Register = on => {
     // The body's surface module stays here, its module a literal on the tag's own line: the engine reads a hooks
     // module's surface modules off its own source.
     if ('Client' in els) {
-      const bodyProps: BodyProps = { lines: linkMore(lines, await dashUrl($), await dashPort($)), prose: SURFACE.prose }
+      // A Link only on the terminal: the desktop draws a non-https link as plain text, so `more` posts its key there.
+      const bodyLines = e.surface === 'terminal' ? linkMore(lines, await dashUrl($), await dashPort($)) : lines
+      const bodyProps: BodyProps = { lines: bodyLines, prose: SURFACE.prose }
       rows.push(<els.Client key="body" module="./body.tsx" width={w} props={bodyProps} />)
     } else rows.push(plainBody(paneEls, lines))
     rows.push(<Box key="spacer" flexGrow={1} />)

@@ -9,6 +9,12 @@ import type { Register } from 'claude-code'
 import { register as sidebar } from './register'
 import { register as speakFirst } from './speak-first'
 
+/**
+ * ORDER MATTERS: the hook registered first is the outer one on an event. The sidebar comes first, so its
+ * `command.run {command: 'counterparts'}` hook answers `/counterparts …` without `next`, and the speak-first's
+ * `command.run` observer beneath it never sees that command; the sidebar writes `$.state` `typedIn` instead,
+ * which the speak-first reads. Reordering would change who sees what on every shared event.
+ */
 export const register: Register = (on, options) => {
   sidebar(on, options)
   speakFirst(on, options)

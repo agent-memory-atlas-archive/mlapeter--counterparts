@@ -886,6 +886,11 @@ describe('the fox', () => {
     // the engine's own switch says yes or no outright
     expect(pickTier('terminal', 'auto', { TERM_PROGRAM: 'Apple_Terminal', CLAUDE_CODE_FORCE_TERMINAL_IMAGES: '1' })).toBe('image')
     expect(pickTier('terminal', 'auto', { TERM_PROGRAM: 'ghostty', CLAUDE_CODE_FORCE_TERMINAL_IMAGES: '0' })).toBe('fine')
+    // no PNG folder found: never a picture, not even when asked for one
+    expect(pickTier('terminal', 'auto', { TERM_PROGRAM: 'ghostty' }, false, false)).toBe('fine')
+    expect(pickTier('terminal', 'images', { TERM_PROGRAM: 'ghostty' }, false, false)).toBe('fine')
+    expect(pickTier('terminal', 'images', { TERM_PROGRAM: 'Apple_Terminal' }, false, false)).toBe('basic')
+    expect(pickTier('terminal', 'images', {}, true)).toBe('image')
     // an Image that drew its alt here: auto stops trying; an explicit choice stands
     expect(pickTier('terminal', 'auto', { TERM_PROGRAM: 'ghostty' }, true)).toBe('fine')
     expect(pickTier('terminal', 'images', { TERM_PROGRAM: 'Apple_Terminal' })).toBe('image')

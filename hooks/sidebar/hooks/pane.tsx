@@ -21,9 +21,13 @@ import { CONFIRM_FROM, scopeHover, switchAt } from './words'
 /** The constructors the pane draws with: every surface has these four. */
 export type PaneEls = Pick<Elements['terminal'], 'Box' | 'Text' | 'Button' | 'Link'>
 
-/** What a press does: closures the Pane hook makes over its `$`; and where the title links (null: nowhere). */
+/**
+ * What a press does: closures the Pane hook makes over its `$`; and where the title links (`dashboardHref`, the
+ * terminal only; null: the title is a Button that runs `/counterparts:dashboard`, `openDashboard`).
+ */
 export type PaneActions = {
   dashboardHref: string | null
+  openDashboard: () => Promise<unknown>
   pressScope: (to: 'on' | 'paused' | 'off') => Promise<unknown>
   pressMeet: () => Promise<unknown>
   confirmChange: () => Promise<unknown>
@@ -35,20 +39,31 @@ export type PaneActions = {
 // ── the title, which each view's header places ──
 
 /**
- * COUNTERPARTS, a link to the dashboard (`Link`: the surface opens it); `lead` (the brainless header) puts a dot
- * before it and `↗` after. No address the sidebar trusts (`isDashboardUrl`): the same words, linking nowhere.
+ * COUNTERPARTS, the way to the dashboard: on the terminal a `Link` the terminal opens; elsewhere a Button running
+ * `/counterparts:dashboard`. `lead` (the brainless header) puts a dot before it and `↗` after.
  */
 export function titleButton(els: PaneEls, actions: PaneActions, o: { lead: boolean; paused: boolean; dot: string | null }): JSX.Element {
-  const { Box, Text, Link } = els
+  const { Box, Text, Link, Button } = els
   const words = [
     ...(o.lead ? [<Text key="dot" color={o.dot ?? P.accentDim}>◉ </Text>] : []),
     <Text key="name" color={o.paused ? P.dim : P.accent} bold>COUNTERPARTS</Text>,
     ...(o.lead ? [<Text key="arrow" color={P.accentDim}> ↗</Text>] : []),
   ]
   const href = actions.dashboardHref
+  // Off the terminal (the desktop draws a non-https Link as plain text): a Button, which starts the dashboard or,
+  // already up, opens it (`/counterparts:dashboard`).
+  if (href === null) {
+    return (
+      <Button key="title" plain onPress={() => actions.openDashboard()}>
+        {words}
+      </Button>
+    )
+  }
   return (
     <Box key="title" flexDirection="row">
-      <Text>{href === null ? words : <Link href={href}>{words}</Link>}</Text>
+      <Text>
+        <Link href={href}>{words}</Link>
+      </Text>
     </Box>
   )
 }

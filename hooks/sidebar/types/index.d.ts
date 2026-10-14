@@ -282,6 +282,12 @@ declare module 'claude-code' {
        * tool; [Cancel] or 30 s closes it.
        */
       pauseAsk: { dir: string; at: number; to?: 'pause' | 'off' | 'on' } | null;
+      /**
+       * The session in which the person ran `/counterparts …` themselves (the sidebar's own
+       * command answers without passing it on, so no other hook sees it): the speak-first
+       * (`speak-first.tsx`) reads it as having spoken first. Null until then.
+       */
+      typedIn: string | null;
     };
   }
 }

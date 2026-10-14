@@ -78,13 +78,14 @@ export function sextantsLikely(env: TierEnv): boolean {
  * The tier for a drawing: the desktop and the other remote surfaces draw the
  * Svg; a terminal, the override or else the environment's answer. `noImages`:
  * an Image here drew its alt (a refused blit said so), so `auto` stops trying.
+ * `hasPngs` false (no PNG folder found): never a picture, whatever was asked.
  */
-export function pickTier(surface: string, detail: FoxDetail, env: TierEnv, noImages = false): FoxTier {
+export function pickTier(surface: string, detail: FoxDetail, env: TierEnv, noImages = false, hasPngs = true): FoxTier {
   if (surface !== 'terminal') return 'svg'
-  if (detail === 'images') return 'image'
+  if (detail === 'images' && hasPngs) return 'image'
   if (detail === 'fine') return 'fine'
   if (detail === 'basic') return 'basic'
-  if (!noImages && imagesLikely(env)) return 'image'
+  if (detail !== 'images' && !noImages && hasPngs && imagesLikely(env)) return 'image'
   return sextantsLikely(env) ? 'fine' : 'basic'
 }
 

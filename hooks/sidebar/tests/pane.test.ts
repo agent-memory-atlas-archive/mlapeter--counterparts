@@ -77,6 +77,11 @@ async function bodyLines(ui: Ui): Promise<string[]> {
   return kids.map(flat)
 }
 
+/** The title: a Box around a Link on the terminal, a Button that runs /counterparts:dashboard elsewhere. */
+async function titleOf(ui: Ui) {
+  return (await ui.find({ type: 'Box', key: 'title' })) ?? (await ui.find({ type: 'Button', key: 'title' }))
+}
+
 /** The colour of the first Text drawn holding exactly `text` (a Text in a Link too, which `find` passes over). */
 async function colorOf(ui: Ui, text: string): Promise<unknown> {
   let found: unknown
@@ -235,7 +240,7 @@ test('drawn: the dashboard is read; the header is the small brain, COUNTERPARTS,
     expect(w.fetches.some(u => u.endsWith('/api/pulse'))).toBe(true)
     expect(w.fetches.some(u => u.endsWith('/api/mechanisms'))).toBe(true)
     expect(w.fetches.some(u => u.includes('/api/dreams'))).toBe(true)
-    expect((await ui.find({ type: 'Box', key: 'title' }))?.text).toContain('COUNTERPARTS')
+    expect((await titleOf(ui))?.text).toContain('COUNTERPARTS')
     expect(await ui.find({ type: 'Input' })).toBeUndefined()
     if (surface === 'terminal') {
       // the brain header: the day on the title row, the count beside the brain
@@ -248,7 +253,7 @@ test('drawn: the dashboard is read; the header is the small brain, COUNTERPARTS,
       // no Raster on the desktop: the header with no brain, the count and the day on the title row
       expect(await ui.find({ type: 'Raster' })).toBeUndefined()
       expect(await ui.find({ type: 'Text', text: '776 · day 18' })).toBeDefined()
-      expect((await ui.find({ type: 'Box', key: 'title' }))?.text).toContain('◉ COUNTERPARTS ↗')
+      expect((await titleOf(ui))?.text).toContain('◉ COUNTERPARTS ↗')
     }
     await ui.unmount()
   }
@@ -854,7 +859,7 @@ test('off: no brain, the header is two lines; the footer’s brain row turns it,
   await ui.press({ key: 'brain-off' })
   expect(w.store['brain']).toBe('off')
   expect(await ui.find({ type: 'Raster' })).toBeUndefined()
-  expect((await ui.find({ type: 'Box', key: 'title' }))?.text).toContain('◉ COUNTERPARTS ↗')
+  expect((await titleOf(ui))?.text).toContain('◉ COUNTERPARTS ↗')
   const blits = w.blits.length
   await w.clock.advance(5000)
   expect(w.blits.length).toBe(blits)
@@ -1034,7 +1039,7 @@ test('a port that is not one falls back to 4747', async ($, on) => {
   await ui.unmount()
 })
 
-test('COUNTERPARTS is a link to the dashboard, on every surface: the surface opens it, and the sidebar runs no process', async ($, on) => {
+test('COUNTERPARTS on the terminal is a link to the dashboard, which the terminal opens; the sidebar runs no process', async ($, on) => {
   const w = world(on)
   let ran = 0
   on('process.run', () => {
@@ -1042,14 +1047,37 @@ test('COUNTERPARTS is a link to the dashboard, on every surface: the surface ope
     return { deny: 'the sidebar runs no process' }
   })
   await start($, w)
-  for (const surface of SURFACES) {
-    const ui = await mount($, w, surface)
-    const link = await ui.find({ type: 'Link' })
-    expect(link?.props['href']).toBe('http://localhost:4747/')
-    expect(link?.text).toContain('COUNTERPARTS')
-    await ui.unmount()
-  }
+  const ui = await mount($, w, 'terminal')
+  const link = await ui.find({ type: 'Link' })
+  expect(link?.props['href']).toBe('http://localhost:4747/')
+  expect(link?.text).toContain('COUNTERPARTS')
+  await ui.unmount()
   expect(ran).toBe(0)
+  expect(w.commands).toHaveLength(0)
+})
+
+test('on the desktop (a non-https Link draws as plain text there) COUNTERPARTS and `more` are presses that run /counterparts:dashboard', async ($, on) => {
+  const w = world(on)
+  on('tool.call', (_$, e) => ({ result: 'ok', text: `{"stored":true,"id":"${(e as unknown as { title?: string }).title === 'Long one' ? 'mem_long0001' : 'mem_sur00001'}"}` }))
+  await start($, w)
+  const ui = await mount($, w, 'desktop')
+  expect(await ui.find({ type: 'Link' })).toBeUndefined()
+  await ui.press({ key: 'title' })
+  await settle(w)
+  expect(w.commands).toEqual(['counterparts:dashboard'])
+  await $.tool.call({ tool: 'mcp__counterparts__note', title: 'Long one', text: 'x' } as never)
+  await settle(w)
+  await click(ui, 'Long one')
+  await settle(w)
+  expect(await bodyLinks(ui)).toEqual([])
+  const lines = await bodyLines(ui)
+  const y = lines.findIndex(l => / more$/.test(l))
+  expect(y).toBeGreaterThanOrEqual(0)
+  await ui.pointer({ type: 'down', x: cells(lines[y] ?? '') - 2, y, button: 'left', in: 'body' })
+  await settle(w)
+  expect(w.commands).toEqual(['counterparts:dashboard', 'counterparts:dashboard'])
+  expect((await bodyLines(ui)).join(' ')).toContain('sentence 3 of a long') // still open
+  await ui.unmount()
 })
 
 // ── Claude Code's own memory: the mod only observes it (2026-10-12) ──────────
@@ -1846,6 +1874,17 @@ test('a slash command the person ran first (/model: no turn) counts as having sp
   expect(w.store['meetTriggered']).toBeUndefined()
 })
 
+test('/counterparts typed before the wake (the sidebar answers it, so no other hook sees it) stands the speak-first down too', async ($, on) => {
+  const w = world(on)
+  await start($, w)
+  await $.command.run({ command: 'counterparts', args: 'theme cozy', origin: { kind: 'composer' } } as never)
+  await wake($, w, 'not_started')
+  await w.clock.advance(120000)
+  await settle(w)
+  expect(w.submits).toHaveLength(0)
+  expect(w.store['meetTriggered']).toBeUndefined()
+})
+
 test('a speak-first still queued when the person’s own prompt goes first is dropped', async ($, on) => {
   const w = world(on)
   await startWith($, w, 'not_started')
@@ -2071,7 +2110,7 @@ test('the fox is the avatar when none was chosen: under the title with the count
   expect(r?.props['columns']).toBe(34)
   expect(r?.props['rows']).toBe(15)
   expect(await ui.find({ type: 'Raster', key: 'brain' })).toBeUndefined()
-  expect((await ui.find({ type: 'Box', key: 'title' }))?.text).toContain('COUNTERPARTS')
+  expect((await titleOf(ui))?.text).toContain('COUNTERPARTS')
   expect(await ui.find({ type: 'Text', text: '776 · day 18' })).toBeDefined() // on the title row
   expect(await ui.find({ type: 'Text', text: '776 memories' })).toBeUndefined() // no row of its own
   // the avatar row: the fox's dot lit

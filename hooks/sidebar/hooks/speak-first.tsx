@@ -37,11 +37,17 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { SidebarMeet } from '../types'
 import { canMeet, parseOnboardingMarker } from './feed'
-import { MEET_FLAG, MEET_PROMPT, UNKNOWN_SCOPE, quiet } from './state'
+import { MEET_FLAG, MEET_PROMPT, SCOPE_RECHECK_MS, UNKNOWN_SCOPE, quiet } from './state'
 import { firedIn } from './words'
 
 /** The sidebar's view of this folder (`register.tsx` writes it); read here, never written. */
 const scopeA = atom({ plugin: 'counterparts', key: 'scope' } as const, UNKNOWN_SCOPE)
+
+/**
+ * The session in which the person ran `/counterparts …` (the sidebar writes it: its command hook answers
+ * without passing the command on, so this module's `command.run` hook never sees that one).
+ */
+const typedInA = atom({ plugin: 'counterparts', key: 'typedIn' } as const, null)
 
 /** How often a start that could not decide yet (the folder or the marker not read) looks again, and for how long. */
 const RETRY_MS = 1000
@@ -86,13 +92,14 @@ async function speakFirst($: EngineInterface): Promise<void> {
   if (sf.meet === 'unknown') return
   sf.tried = true
   stopRetry()
+  if (sf.session === '') sf.session = await $.session.id()
+  if ((await read($, typedInA)) === sf.session) sf.typed = true
   if (sf.meet !== 'not_started' || sf.typed || !canMeet(scope.mode)) return
   if (firedIn(await $.store.get(MEET_FLAG)) !== null) return
   // The last looks, right before: no prompt sent or typed, no other session got there meanwhile.
-  if (sf.typed || (await turnsSoFar($)) > 0) return
+  if (sf.typed || (await read($, typedInA)) === sf.session || (await turnsSoFar($)) > 0) return
   if ((await draftNow($)).trim() !== '') return
   if (firedIn(await $.store.get(MEET_FLAG)) !== null) return
-  if (sf.session === '') sf.session = await $.session.id()
   await $.store.set(MEET_FLAG, { session: sf.session, at: await $.clock.now() })
   sf.spoke = true
   // Not awaited inside a hook: the engine queues it until the session is idle.
@@ -134,8 +141,14 @@ export const register: Register = on => {
       let left = RETRIES
       sf.retry = $.clock.every(RETRY_MS, () => {
         left -= 1
-        if (left <= 0 || sf.tried) stopRetry()
-        else quiet(speakFirst($))
+        if (sf.tried) stopRetry()
+        else if (left > 0) quiet(speakFirst($))
+        else {
+          // Still undecided after two minutes (the folder's state or the marker late): once a minute after,
+          // as the sidebar's own scope recheck used to carry it.
+          stopRetry()
+          sf.retry = $.clock.every(SCOPE_RECHECK_MS, () => (sf.tried ? stopRetry() : quiet(speakFirst($))))
+        }
       })
     }
     return next(e)
@@ -143,9 +156,9 @@ export const register: Register = on => {
 
   // A slash command the person ran (any: /model, /counterparts…) counts as having spoken: no
   // command starts a turn, so `session.turns()` would not see it.
-  on('command.run', async ($, e, next) => {
-    const kind = (e as { origin?: { kind?: string } }).origin?.kind
-    if (kind === 'composer' || kind === 'bridge') sf.typed = true
+  // (`/counterparts …` never reaches here: the sidebar answers it without `next`, and says so in `typedIn`.)
+  on('command.run', { origin: { kind: /^(composer|bridge)$/ } }, async ($, e, next) => {
+    sf.typed = true
     return next(e)
   }).catch(($, e, next) => next(e))
 
