@@ -173,10 +173,6 @@ export type WorldOptions = {
   dashToday?: string;
   /** What core's `/api/onboarding` answers (a 404, as a core from before onboarding, unless given): a body, served as JSON. */
   onboarding?: unknown;
-  /** User turns already in the transcript (`$.session.turns()`): 0 unless given (a resumed session has some). */
-  turns?: number;
-  /** The draft in the prompt box (`$.prompt.read()`): empty unless given. */
-  draft?: string;
   /** What `/api/mechanism?id=` lists as its activity (every event unless given): its lookback can miss sparse rows. */
   panelActivity?: (id: string) => Ev[];
 }
@@ -221,8 +217,6 @@ export type World = {
   commands: string[];
   /** What `/api/onboarding` answers now (undefined: 404): a test can move core's state. */
   onboarding: unknown;
-  turns: number;
-  draft: string;
   /** The store `/api/whoami` names (undefined: a 404, an older core). */
   dashStore: string | null | undefined;
 }
@@ -266,8 +260,6 @@ export function world(on: On, opts: WorldOptions = {}): World {
     submits: [],
     commands: [],
     onboarding: opts.onboarding,
-    turns: opts.turns ?? 0,
-    draft: opts.draft ?? '',
     dashStore: undefined,
   }
   mock.env(on, opts.env ?? { HOME })
@@ -297,8 +289,6 @@ export function world(on: On, opts: WorldOptions = {}): World {
   })
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('session.id', () => ({ value: SESSION }))
-  on('session.turns', () => ({ value: w.turns }))
-  on('prompt.read', () => ({ value: { text: w.draft, cursor: w.draft.length } }))
   on('prompt.submit', (_$, e) => {
     w.submits.push(e.text)
     return { text: e.text }

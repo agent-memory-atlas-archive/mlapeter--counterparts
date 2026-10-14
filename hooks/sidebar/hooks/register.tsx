@@ -7,8 +7,7 @@
  * mechanism fired today, and the last dream; then three rows of switches
  * (Counterparts here, on · paused · off; the view; the brain), and Claude
  * Code's own memory for whoever opted in. While core's first meeting is put
- * off, "Start the 5-minute intro" tops the body; at the first start after an
- * install, the sidebar asks Claude to speak first (once). Closed
+ * off or not yet started, "Start the 5-minute intro" tops the body. Closed
  * (`quiet`), it is only a dim tail under the prompt, ending with how to open
  * it again. The design is the round-3 mockups Mike chose on 2026-10-10
  * (`~/counterparts-notes/mockups/2026-10-10-mod-round3/`); ../NOTES.md says
@@ -67,7 +66,6 @@ import {
   RULES,
   RULE_NAMES,
   UNKNOWN_ONBOARDING,
-  canMeet,
   classify,
   countToday,
   dateOf,
@@ -140,9 +138,7 @@ import {
   FIRING_MS,
   DASHBOARD_COMMAND,
   MEET_COMMAND,
-  MEET_FLAG,
   MEET_PRESS_MS,
-  MEET_PROMPT,
   NAMES_NOTHING,
   OPEN_COLUMNS,
   POLL_IDLE_MS,
@@ -164,7 +160,6 @@ import { cells } from './width'
 import {
   CONFIRM_FROM,
   bodyOf,
-  firedIn,
   isAbsolutePath,
   isPaused,
   memoriesCount,
@@ -265,23 +260,12 @@ async function fetchJson($: EngineInterface, path: string): Promise<unknown> {
  * the dashboard's `/api/onboarding` (a refresh while it is up). Only a known
  * state moves it: a missing marker or endpoint leaves what is known, and with
  * neither ever seen it stays `unknown` (an older core): nothing happens.
- *
- * KEYED TO THE STORE without a store id: core says `not_started` only for a
- * store that never got past it (`start-fresh` resets it). So every known
- * state past it is written over the once-only mark as `{ settled }`, and a
- * settled mark doesn't block the speak-first: a `not_started` after it is a
- * new store, which gets its own first meeting.
  */
 async function takeOnboarding($: EngineInterface, next: SidebarOnboarding): Promise<void> {
   if (next.meet === 'unknown') return
   const before = await read($, onboardingA)
   if (before.meet === next.meet && before.where === next.where && before.style === next.style) return
   await update($, onboardingA, () => next)
-  if (next.meet !== 'not_started') {
-    const mark = (await $.store.get(MEET_FLAG)) as { settled?: unknown } | undefined
-    if (mark?.settled !== next.meet) await $.store.set(MEET_FLAG, { settled: next.meet, at: await $.clock.now() })
-    run.meetFiredIn = null
-  }
 }
 
 /** The dashboard's `/api/onboarding`, a refresh: a 404, a refusal or another shape changes nothing, and never marks the dashboard down. */
@@ -297,57 +281,17 @@ async function readOnboarding($: EngineInterface): Promise<void> {
 }
 
 /**
- * SPEAK FIRST: once per store (`MEET_FLAG` in `$.store`, shared by every
- * session and restart, settled when core moves on: `takeOnboarding`), at an
- * interactive start, while the wake's marker says `not_started`, the sidebar
- * submits MEET_PROMPT, which the engine runs once the session is idle. Run
- * after the start's registry read and again when the marker arrives,
- * whichever is last decides. Never headless, never where the folder is
- * paused, off, observer or unknown, never once the person has typed a prompt
- * (or is typing one), and never over a binding mark. The mark is written
- * before the submit, so a crash between them loses the trigger rather than
- * repeating it.
- */
-async function speakFirst($: EngineInterface): Promise<void> {
-  if (!run.interactive || run.meetTried) return
-  const scope = await read($, scopeA)
-  // Not read yet (another read was on its way): the next registry read tries again.
-  if (scope.mode === 'unknown' && scope.unread === null) return
-  // No state yet: the wake's marker, when it comes, tries again (no marker at all: an older core, nothing).
-  const { meet } = await read($, onboardingA)
-  if (meet === 'unknown') return
-  run.meetTried = true
-  if (meet !== 'not_started' || run.typed || !canMeet(scope.mode)) return
-  if (firedIn(await $.store.get(MEET_FLAG)) !== null) return
-  // The last looks, right before: no prompt sent or typed, no other session got there meanwhile.
-  if (run.typed || (await $.session.turns().catch(() => 1)) > 0) return
-  const draft = await $.prompt.read().then(
-    b => b.text,
-    () => '',
-  )
-  if (draft.trim() !== '') return
-  if (firedIn(await $.store.get(MEET_FLAG)) !== null) return
-  if (run.session === '') run.session = await $.session.id()
-  await $.store.set(MEET_FLAG, { session: run.session, at: await $.clock.now() })
-  run.meetFiredIn = run.session
-  run.spokeFirst = true
-  await foxEvent($, 'hello')
-  // Not awaited inside a hook: the engine queues it until the session is idle.
-  $.clock.after(0, () => quiet($.prompt.submit({ text: MEET_PROMPT })))
-}
-
-
-/**
  * "Start the 5-minute intro", once a minute at most: the plugin's `/counterparts:meet`, as if
- * typed. Not the speak-first's line: in a later session nothing tells Claude what that line
- * means (the owner's fox trial: Claude was confused), and the command carries its own
- * instructions. Run from a timer: `command.run` is refused inside a hook the turn waits on.
+ * typed; the command carries its own instructions. The sidebar never starts the meeting by
+ * itself (the speak-first is gone, 2026-10-14: the plugin directory build): this press is the
+ * one way it starts from here. Run from a timer: `command.run` is refused inside a hook the
+ * turn waits on.
  */
 async function pressMeet($: EngineInterface): Promise<void> {
   const now = await $.clock.now()
   if (now - run.meetPressedAt < MEET_PRESS_MS) return
   const [onb, scope] = await Promise.all([read($, onboardingA), read($, scopeA)])
-  if (!meetShows(onb.meet, scope.mode, run.meetFiredIn, run.session)) return
+  if (!meetShows(onb.meet, scope.mode)) return
   run.meetPressedAt = now
   $.clock.after(0, () => quiet(runCommand($, MEET_COMMAND)))
 }
@@ -1586,11 +1530,11 @@ export const register: Register = on => {
       argumentHint: '[quiet | avatar animal|brain|off | avatar detail auto|images|fine|basic | theme tron|cozy | resume | fps [n]]',
     })
     // (A `claudeMemory` or `claudeMemorySwitch` left in the store by an older version is never read.)
-    const [viewPref, brainPref, fpsPref, meetMark, themePref, detailPref] = await Promise.all([
+    // (A `meetTriggered` mark an older version's speak-first left in the store is never read.)
+    const [viewPref, brainPref, fpsPref, themePref, detailPref] = await Promise.all([
       $.store.get('view'),
       $.store.get('brain'),
       $.store.get('fps'),
-      $.store.get(MEET_FLAG),
       $.store.get('theme'),
       $.store.get('avatarDetail'),
     ])
@@ -1612,7 +1556,6 @@ export const register: Register = on => {
     ])
     stage.env = Object.fromEntries(TIER_ENV.map((k, i) => [k, envVals[i]]).filter(([, v]) => typeof v === 'string'))
     await update($, themeA, () => normTheme(themePref))
-    run.meetFiredIn = firedIn(meetMark)
     await update($, viewA, () => normView(viewPref))
     const mode = normBrain(brainPref)
     await update($, brainA, () => mode)
@@ -1626,23 +1569,13 @@ export const register: Register = on => {
     // stands, so a session started in a paused folder says so at once.
     quiet(refreshStatus($))
     if (run.interactive) {
-      // Where this folder stands, then (once per install, while core says not_started) the speak-first.
-      $.clock.after(0, () => quiet(refreshScope($).then(() => speakFirst($))))
+      // Where this folder stands, now and every few minutes.
+      $.clock.after(0, () => quiet(refreshScope($)))
       run.scopeTimer?.cancel()
-      // (The speak-first again too: a no-op once considered, a retry if the start's read had not landed.)
-      run.scopeTimer = $.clock.every(SCOPE_RECHECK_MS, () => quiet(refreshScope($).then(() => speakFirst($))))
+      run.scopeTimer = $.clock.every(SCOPE_RECHECK_MS, () => quiet(refreshScope($)))
     }
     return next(e)
   })
-
-  // A slash command the person ran (any: /model, /counterparts…) counts as having spoken: no
-  // command starts a turn, so `session.turns()` would not see it. Registered before the
-  // /counterparts hook, which answers without `next`.
-  on('command.run', async ($, e, next) => {
-    const kind = (e as { origin?: { kind?: string } }).origin?.kind
-    if (kind === 'composer' || kind === 'bridge') run.typed = true
-    return next(e)
-  }).catch(($, e, next) => next(e))
 
   on('command.run', { command: 'counterparts' }, async ($, e) => {
     const [verb = '', arg = ''] = e.args.trim().split(/\s+/)
@@ -1757,18 +1690,10 @@ export const register: Register = on => {
     return ran
   }).catch(($, e, next) => next(e))
 
-  // A prompt the person sent: the speak-first stands down for good in this session. If the
-  // speak-first was already queued behind it, it is dropped: their prompt comes first, and
-  // core offers the meeting in that reply instead.
+  // A prompt the person sent: the fox looks up.
   on('prompt.submit', async ($, e, next) => {
     const kind = e.origin.kind
-    if (kind === 'composer' || kind === 'bridge') {
-      run.typed = run.prompted = true
-      await foxEvent($, 'prompt')
-    }
-    if (kind === 'plugin' && e.origin.name === 'counterparts' && e.text === MEET_PROMPT && run.prompted && run.spokeFirst && run.meetPressedAt === -Infinity) {
-      return { drop: 'the person spoke first' }
-    }
+    if (kind === 'composer' || kind === 'bridge') await foxEvent($, 'prompt')
     return next(e)
   }).catch(($, e, next) => next(e))
 
@@ -1786,12 +1711,9 @@ export const register: Register = on => {
       // The wake's store marker: which store this session's hooks opened (the dashboard must serve the same).
       const storeId = parseStoreMarker(text)
       if (storeId !== null) run.wakeStore = storeId
-      // The wake's onboarding marker: where the first meeting stands, then the speak-first's look.
+      // The wake's onboarding marker: where the first meeting stands (the button shows or hides).
       const meet = parseOnboardingMarker(text)
-      if (meet !== null) {
-        await takeOnboarding($, { meet, where: null, style: null })
-        $.clock.after(0, () => quiet(speakFirst($)))
-      }
+      if (meet !== null) await takeOnboarding($, { meet, where: null, style: null })
     } catch {
       // the row is stored whatever the sidebar made of it
     }
@@ -1962,8 +1884,8 @@ export const register: Register = on => {
       used += 3
     }
 
-    // ── the first meeting, put off or not finished: one cyan row at the top of the body ──
-    if (meetShows(onboarding.meet, scope.mode, run.meetFiredIn, run.session)) {
+    // ── the first meeting, not started, put off or not finished: one cyan row at the top of the body ──
+    if (meetShows(onboarding.meet, scope.mode)) {
       rows.push(...meetRow(paneEls, actions, w))
       used += 2
     }

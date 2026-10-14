@@ -824,14 +824,12 @@ describe('the first meeting', () => {
       expect(parseOnboardingMarker(bad)).toBeNull()
     }
   })
-  test('the button shows for later and offered, and for not_started only after an earlier session’s speak-first; never where nothing can be kept', () => {
-    expect(meetShows('later', 'on', null, 's1')).toBe(true)
-    expect(meetShows('offered', 'unset', null, 's1')).toBe(true)
-    expect(meetShows('not_started', 'on', null, 's1')).toBe(false)
-    expect(meetShows('not_started', 'on', 's1', 's1')).toBe(false)
-    expect(meetShows('not_started', 'on', 's0', 's1')).toBe(true)
-    for (const m of ['done', 'skipped', 'unknown'] as const) expect(meetShows(m, 'on', 's0', 's1')).toBe(false)
-    for (const f of ['paused', 'off', 'observer', 'unknown']) expect(meetShows('later', f, null, 's1')).toBe(false)
+  test('the button shows for not_started, later and offered; never where nothing can be kept, never for done, skipped or unknown', () => {
+    expect(meetShows('not_started', 'on')).toBe(true)
+    expect(meetShows('later', 'on')).toBe(true)
+    expect(meetShows('offered', 'unset')).toBe(true)
+    for (const m of ['done', 'skipped', 'unknown'] as const) expect(meetShows(m, 'on')).toBe(false)
+    for (const f of ['paused', 'off', 'observer', 'unknown']) expect(meetShows('not_started', f)).toBe(false)
   })
 })
 

@@ -760,16 +760,15 @@ export function otherStore(wake: string | null, dash: string | null): boolean {
 
 /**
  * Whether the sidebar shows "Start the 5-minute intro": core says the meeting
- * was put off (`later`) or offered and not finished (`offered`), or it never
- * started though this install's one speak-first went out in an EARLIER
- * session (the turn ended before Claude reached core's `meet`: a dead end
- * otherwise). Never in a folder where the meeting can't keep anything
+ * never started (`not_started`), was put off (`later`), or was offered and not
+ * finished (`offered`). The sidebar no longer starts it by itself (the
+ * speak-first is gone, 2026-10-14), so a new install sees the button from its
+ * first drawing. Never in a folder where the meeting can't keep anything
  * (`canMeet`), and never for an unknown state.
  */
-export function meetShows(meet: SidebarMeet, folderMode: string, firedIn: string | null, session: string): boolean {
+export function meetShows(meet: SidebarMeet, folderMode: string): boolean {
   if (!canMeet(folderMode)) return false;
-  if (meet === 'later' || meet === 'offered') return true;
-  return meet === 'not_started' && firedIn !== null && firedIn !== session;
+  return meet === 'not_started' || meet === 'later' || meet === 'offered';
 }
 
 /**
