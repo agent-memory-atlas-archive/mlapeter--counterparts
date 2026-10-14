@@ -87,6 +87,7 @@ import {
   vacuumInto,
 } from "../src/adapters/cli/index.js";
 import type { DashboardSeam, Io, RunningView } from "../src/adapters/cli/index.js";
+import { storeId } from "../src/adapters/store-id.js";
 // The abort a prompt throws instead of returning an answer: `remove`'s
 // interactive door has to read it as a No rather than let it out of the command.
 import { PromptAborted } from "../src/adapters/cli/ui.js";
@@ -6369,6 +6370,63 @@ describe("counterparts dashboard", () => {
       }),
     ).toBe(EXIT.ok);
     expect(s.started).toEqual([{ dir, port: undefined }]);
+  });
+
+  /** A seam whose port is taken by a dashboard serving `serving` (null: nothing answered whoami). */
+  function takenSeam(serving: string | null): { seam: DashboardSeam; opened: string[]; asked: number[] } {
+    const opened: string[] = [];
+    const asked: number[] = [];
+    return {
+      opened,
+      asked,
+      seam: {
+        start: async (): Promise<RunningView> => {
+          throw Object.assign(new Error("listen EADDRINUSE: address already in use 127.0.0.1:4747"), {
+            code: "EADDRINUSE",
+            port: 4747,
+          });
+        },
+        open: (url: string): void => {
+          opened.push(url);
+        },
+        storeAt: async (port: number): Promise<string | null> => {
+          asked.push(port);
+          return serving;
+        },
+      },
+    };
+  }
+
+  test("the port taken by THIS store's dashboard: it opens the browser on it and succeeds, starting nothing", async () => {
+    configured();
+    const ours = storeId(dir, { mint: true });
+    expect(ours).not.toBeNull();
+    const s = takenSeam(ours);
+    const c = consoleWith();
+    expect(await run(["dashboard"], { io: c.io, env: {}, home: outside, dashboard: s.seam })).toBe(EXIT.ok);
+    expect(s.asked).toEqual([4747]);
+    expect(s.opened).toEqual(["http://127.0.0.1:4747"]);
+    expect(text(c.out)).toContain("Dashboard: http://127.0.0.1:4747  (already running for this store");
+    expect(text(c.out)).toContain("reading ");
+    // --no-open: still a success, no browser
+    const quiet = takenSeam(ours);
+    expect(await run(["dashboard", "--no-open"], { io: consoleWith().io, env: {}, home: outside, dashboard: quiet.seam })).toBe(EXIT.ok);
+    expect(quiet.opened).toEqual([]);
+  });
+
+  test("the port taken by another store's dashboard, or by something that does not say: it fails as before, and opens nothing", async () => {
+    configured();
+    storeId(dir, { mint: true });
+    const other = takenSeam("st_0123456789abcdef");
+    const c = consoleWith();
+    expect(await run(["dashboard"], { io: c.io, env: {}, home: outside, dashboard: other.seam })).toBe(EXIT.failed);
+    expect(text(c.err)).toContain("serving another store");
+    expect(other.opened).toEqual([]);
+    const silent = takenSeam(null);
+    const d = consoleWith();
+    expect(await run(["dashboard"], { io: d.io, env: {}, home: outside, dashboard: silent.seam })).toBe(EXIT.failed);
+    expect(text(d.err)).toContain("already in use");
+    expect(silent.opened).toEqual([]);
   });
 
   test("the default port it names is the server's own", async () => {

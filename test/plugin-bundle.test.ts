@@ -250,9 +250,13 @@ describe("the directory flavor", () => {
     const expected = new Set(
       paths
         .filter((p) => !/^src\/adapters\/(plugin-run\.sh|launch\.mjs|node-hooks\.mjs)$|\/bin\/[a-z-]+\.mjs$|^\.claude-plugin\/binaries\.json$/.test(p))
+        // The directory's hooks module is the sidebar alone: no speak-first, and no full.tsx joining the two.
+        .filter((p) => !/^hooks\/sidebar\/hooks\/(full|speak-first)\.tsx$/.test(p))
         .map((p) => (p.startsWith("src/") && p.endsWith(".ts") && !p.endsWith(".d.ts") ? transpiledPath(p) : p)),
     );
     expect(dirPaths).toEqual([...expected].sort());
+    expect(paths).toContain("hooks/sidebar/hooks/speak-first.tsx");
+    expect(dirPaths).not.toContain("hooks/sidebar/hooks/speak-first.tsx");
     expect(dirPaths.filter((p) => p.startsWith("src/") && /\.tsx?$/.test(p))).toEqual([]);
     // The dashboard's server-side modules are transpiled; its browser files ride as they are.
     expect(dirPaths).toContain("src/adapters/dashboard/web/server.js");

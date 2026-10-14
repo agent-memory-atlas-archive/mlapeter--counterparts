@@ -20,7 +20,6 @@ import {
   mechFirings,
   meetShows,
   openedIds,
-  parseFacts,
   parseOnboarding,
   parseOnboardingMarker,
   parseRecallBlock,
@@ -48,7 +47,8 @@ import {
   newDirector,
   normDetail,
   pickTier,
-  pngOf,
+  PNG_KEYS,
+  pngName,
   runs,
   sextantBits,
   sextantGlyph,
@@ -64,7 +64,7 @@ import { MORE, OPEN_MAX_LINES, bar, clip, heading, layoutBody, openedLines, text
 import { CLASSIC_HINT, CLASSIC_HINT_SHORT, TAIL_HINT, quietTail } from '../hooks/tail'
 import { P, applyTheme, cozy, normTheme, tron } from '../hooks/theme'
 import type { BodyState } from '../hooks/sections'
-import { DECISION_T3, EVENTS, FACTS_ANSWER, RECALL_BLOCK, SESSION, T0, ev } from './world'
+import { DECISION_T3, EVENTS, RECALL_BLOCK, SESSION, T0, ev } from './world'
 
 describe('the brain', () => {
   test('a frame is cols x rows cells of braille or blank, every one a Raster may hold', () => {
@@ -247,41 +247,6 @@ describe('the feed', () => {
       { title: 'Corrected: Bars were cells', id: 'mem_bar00001' },
       { title: 'Earlier: Two leads', id: 'mem_two00001' },
       { title: 'Journal: A plain chapter', id: 'epi_chap0001' },
-    ])
-  })
-
-  test('a facts answer: titles, ids, the who-and-when line, the excerpt', () => {
-    const { header, hits } = parseFacts(FACTS_ANSWER)
-    expect(header).toBe('2 match · showing 2')
-    expect(hits).toEqual([
-      { id: 'mem_pub00001', title: 'Publishing waits for a test and a review', kind: 'memory', date: 'Oct 9', who: 'you said it', meta: 'memory · Oct 9 · you said it', excerpt: 'Publishing is mine once it is tested and reviewed.' },
-      { id: 'mem_pub00002', title: 'npm publish needs a one-time password', kind: 'memory', date: 'Sep 24', who: 'I said it', meta: 'memory · Sep 24 · I said it', excerpt: 'The publish step asks for a one-time password.' },
-    ])
-  })
-
-  test('a facts answer read from the right: a title holding “ · word_word · ”, a chapter, no ways at all', () => {
-    const answer = [
-      '14 match · showing 3 · 11 more → page 2',
-      '',
-      '1. Sidebar · npm_install · trial notes · mem_bbbbbbbbbbbb · words',
-      '   you said · decided · no event date',
-      '   Body one.',
-      '',
-      '2. [journal] The lighthouse conversation · ep_aaaaaaaaaaaa (chapter 2 of 5) · meaning',
-      '   my journal · written 10-08..10-09',
-      '   Body two.',
-      '',
-      '3. No ways at all · mem_cccccccccccc · ',
-      '   you said · decided · no event date',
-      '   Body three.',
-    ].join('\n')
-    const { total, hits } = parseFacts(answer)
-    expect(total).toBe(14)
-    expect(hits.map(h => h.meta)).toEqual(['memory · you said it', 'journal · Oct 8', 'memory · you said it'])
-    expect(hits.map(h => [h.id, h.title])).toEqual([
-      ['mem_bbbbbbbbbbbb', 'Sidebar · npm_install · trial notes'],
-      ['ep_aaaaaaaaaaaa', 'The lighthouse conversation'],
-      ['mem_cccccccccccc', 'No ways at all'],
     ])
   })
 
@@ -598,7 +563,6 @@ const BASE: BodyState = {
   mech: null,
   focus: null,
   dash: 'up',
-  search: { query: '', status: 'idle', header: '', total: 0, hits: [], error: null },
 }
 
 describe('the body, laid out', () => {
@@ -790,12 +754,6 @@ describe('the body, laid out', () => {
     expect(lines.slice(at + 1, at + 3).join(' ')).toBe('This dashboard belongs to another memory.')
     expect(laid[at + 1]?.key).toBeUndefined()
   })
-
-  test('search results take the sections’ place: the query, how many, each title and what it is', () => {
-    const lines = textOf(layoutBody({ ...BASE, search: { query: 'publish', status: 'done', header: '', total: 2, hits: parseFacts(FACTS_ANSWER).hits, error: null } }).lines)
-    expect(lines[0]).toBe('“publish” ' + '─'.repeat(12) + ' 2 found ✕')
-    expect(lines.slice(1, 4)).toEqual(['Publishing waits for a test and', 'a review', 'memory · Oct 9 · you said it'])
-  })
 })
 
 describe('the small brain', () => {
@@ -867,11 +825,12 @@ describe('the first meeting', () => {
       expect(parseOnboardingMarker(bad)).toBeNull()
     }
   })
-  test('the button shows for later and offered, and for not_started only after an earlier session’s speak-first; never where nothing can be kept', () => {
+  test('the button shows for not_started (unless this session’s speak-first is the introduction), later and offered; never where nothing can be kept', () => {
     expect(meetShows('later', 'on', null, 's1')).toBe(true)
     expect(meetShows('offered', 'unset', null, 's1')).toBe(true)
-    expect(meetShows('not_started', 'on', null, 's1')).toBe(false)
-    expect(meetShows('not_started', 'on', 's1', 's1')).toBe(false)
+    expect(meetShows('not_started', 'on', null, 's1')).toBe(true) // no speak-first (the directory build), or it stood down
+    expect(meetShows('not_started', 'on')).toBe(true)
+    expect(meetShows('not_started', 'on', 's1', 's1')).toBe(false) // this session's speak-first is introducing
     expect(meetShows('not_started', 'on', 's0', 's1')).toBe(true)
     for (const m of ['done', 'skipped', 'unknown'] as const) expect(meetShows(m, 'on', 's0', 's1')).toBe(false)
     for (const f of ['paused', 'off', 'observer', 'unknown']) expect(meetShows('later', f, null, 's1')).toBe(false)
@@ -882,7 +841,7 @@ describe('the themes', () => {
   test('tron is the mockups’ palette, exactly; cozy has every key, each a colour; a stored name this version does not know is tron', () => {
     expect(tron).toEqual({
       panel: '#05080c', hi: '#dde3e9', text: '#b3bcc5', mid: '#8e98a2', dim: '#66717c', faint: '#1d262e', head: '#c9d1d8',
-      accent: '#00e5ff', accent2: '#ffb347', searchBg: '#121a22', accentDim: '#0b6f7c',
+      accent: '#00e5ff', accent2: '#ffb347', accentDim: '#0b6f7c',
     })
     expect(Object.keys(cozy).sort()).toEqual(Object.keys(tron).sort())
     for (const v of Object.values(cozy)) expect(v).toMatch(/^#[0-9a-f]{6}$/)
@@ -927,6 +886,11 @@ describe('the fox', () => {
     // the engine's own switch says yes or no outright
     expect(pickTier('terminal', 'auto', { TERM_PROGRAM: 'Apple_Terminal', CLAUDE_CODE_FORCE_TERMINAL_IMAGES: '1' })).toBe('image')
     expect(pickTier('terminal', 'auto', { TERM_PROGRAM: 'ghostty', CLAUDE_CODE_FORCE_TERMINAL_IMAGES: '0' })).toBe('fine')
+    // no PNG folder found: never a picture, not even when asked for one
+    expect(pickTier('terminal', 'auto', { TERM_PROGRAM: 'ghostty' }, false, false)).toBe('fine')
+    expect(pickTier('terminal', 'images', { TERM_PROGRAM: 'ghostty' }, false, false)).toBe('fine')
+    expect(pickTier('terminal', 'images', { TERM_PROGRAM: 'Apple_Terminal' }, false, false)).toBe('basic')
+    expect(pickTier('terminal', 'images', {}, true)).toBe('image')
     // an Image that drew its alt here: auto stops trying; an explicit choice stands
     expect(pickTier('terminal', 'auto', { TERM_PROGRAM: 'ghostty' }, true)).toBe('fine')
     expect(pickTier('terminal', 'images', { TERM_PROGRAM: 'Apple_Terminal' })).toBe('image')
@@ -999,10 +963,13 @@ describe('the fox', () => {
     const zs = [['zSmall', 'zSmall'], ['z', 'z']] as const
     expect(fineCells({ frame: 'nap1', fx: zs }).flat().some(c => c.fg === textHex('#9be') || c.bg === textHex('#9be'))).toBe(true)
     expect([...decodeCells(halfCells({ frame: 'nap1', fx: zs }))].some((v, i) => i % 3 !== 0 && v === 0x99bbee)).toBe(true)
-    expect(pngOf(idle).startsWith('iVBORw0KGgo')).toBe(true)
-    expect(pngOf({ frame: 'perk', fx: [['spark0', 'spark']] })).not.toBe(pngOf({ frame: 'perk', fx: [] }))
-    expect(pngOf({ frame: 'no-such', fx: [] })).toBe(pngOf(idle))
-    const svg = foxSvg(idle)
+    // the picture tier's files (art/fox/<key>.png): a frame with its effects, else the frame, else idle
+    expect(pngName(idle)).toBe('idle.png')
+    expect(pngName({ frame: 'perk', fx: [['spark0', 'spark']] })).toBe('perk+spark0.png')
+    expect(pngName({ frame: 'perk', fx: [['nothing', 'spark']] })).toBe('perk.png')
+    expect(pngName({ frame: 'no-such', fx: [] })).toBe('idle.png')
+    expect(PNG_KEYS.size).toBe(36)
+    const svg = foxSvg(idle, 'iVBORw0KGgo')
     expect(svg.source.length).toBeLessThan(131072)
     // the picture alone: the half-blocks under it showed as a ghost edge on the desktop's light page
     expect(svg.source).not.toContain('<rect')
@@ -1055,7 +1022,7 @@ describe('the fox', () => {
     for (const steps of Object.values(FOX_FINAL.moments) as unknown as (readonly [string, number])[][]) {
       for (const [f] of steps) {
         expect(f in FOX_FINAL.png.frames && f in FOX_FINAL.sextant.frames && f in FOX_FINAL.half.frames).toBe(true)
-        if (f !== 'idle') expect(pngOf({ frame: f, fx: [] })).not.toBe(pngOf({ frame: 'idle', fx: [] }))
+        expect(pngName({ frame: f, fx: [] })).toBe(`${f}.png`)
       }
     }
   })

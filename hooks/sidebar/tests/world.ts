@@ -111,20 +111,6 @@ export const DECISION_T3 = ev(497, 'recall.decision', 'On turn 3 I said “The s
   surfaced: JSON.stringify([{ id: 'mem_sur00001', sal: 0.6 }]), footnotes: JSON.stringify([{ id: 'mem_rel00001', sal: 0.5 }]),
 })
 
-export const FACTS_ANSWER = [
-  '2 match · showing 2',
-  '',
-  '1. Publishing waits for a test and a review · mem_pub00001 · words, subject',
-  '   you said · done · happened 10-09',
-  '   learned 10-09 in ~/counterparts · session a1b2c3d4 · CURRENT',
-  '   Publishing is mine once it is tested and reviewed.',
-  '',
-  '2. npm publish needs a one-time password · mem_pub00002 · words',
-  '   I said · done · happened 09-24',
-  '   learned 09-24 in ~/counterparts · session b2c3d4e5 · CURRENT',
-  '   The publish step asks for a one-time password.',
-].join('\n')
-
 export const RECALL_BLOCK = [
   '<!-- counterparts:recall t=3 -->',
   '',
@@ -153,11 +139,7 @@ export type WorldOptions = {
   blitDeny?: boolean;
   /** The first N blits are refused (a Raster not mounted yet), the rest taken. */
   blitDenyFirst?: number;
-  /** The answer a `recall` gets. */
-  factsAnswer?: string;
   store?: Record<string, unknown>;
-  /** `uname -s` fails, as it does on Windows. */
-  windows?: boolean;
   /** What the person's permission settings say about the memory tools (`allow` unless given): the test's `tool.check` answer only; the sidebar reads the folder's state from the registry file, so nothing it does turns on this. */
   permission?: 'allow' | 'ask' | 'deny';
   /** A read of the folder's scope takes this long on the mocked clock (none unless given). */
@@ -212,8 +194,6 @@ export type World = {
   fetches: string[];
   mcp: { server: string; tool: string; args: Record<string, unknown> }[];
   invalidations: string[];
-  /** Commands the module ran (`$.process.run`): the URL opener. */
-  runs: string[][];
   /** Files the module read (`$.fs.read`), in order. */
   fsReads: string[];
   /** The plugin's store as it stands. */
@@ -268,7 +248,6 @@ export function world(on: On, opts: WorldOptions = {}): World {
     fetches: [],
     mcp: [],
     invalidations: [],
-    runs: [],
     fsReads: [],
     store,
     scope: { mode: opts.scopeMode ?? 'on', setBy: opts.scopeSetBy === undefined ? HERE : opts.scopeSetBy, resumeTo: 'on' },
@@ -286,8 +265,7 @@ export function world(on: On, opts: WorldOptions = {}): World {
     draft: opts.draft ?? '',
     dashStore: undefined,
   }
-  // The search box is hidden by default (0.3.20); the tests that are about it see it, as the flag brings it back.
-  mock.env(on, opts.env ?? { HOME, COUNTERPARTS_SIDEBAR_SEARCH: '1' })
+  mock.env(on, opts.env ?? { HOME })
   // The scope registry as the server keeps it: `w.scope` is its one entry (none
   // when nothing is set), so a write through the tool shows in the next read.
   const registryAt = opts.registryAt ?? SCOPES_FILE
@@ -300,9 +278,12 @@ export function world(on: On, opts: WorldOptions = {}): World {
           ? {}
           : { [w.scope.setBy]: { mode: w.scope.mode, since: '2026-10-09T13:00:00.000Z', ...(w.scope.mode === 'paused' ? { resumeTo: w.scope.resumeTo } : {}) } },
     })
-  on('fs.exists', (_$, e) => ({ value: e.path === registryAt || e.path in files }))
+  // The fox's PNGs ship as files under the plugin's folder (art/fox/): there, and read as bytes.
+  const isPng = (path: string): boolean => /\/art\/fox\/[A-Za-z0-9+]+\.png$/.test(path)
+  on('fs.exists', (_$, e) => ({ value: e.path === registryAt || e.path in files || isPng(e.path) }))
   on('fs.read', (_$, e) => {
     w.fsReads.push(e.path)
+    if (isPng(e.path)) return { value: { base64: `iVBORw0KGgo${e.path.slice(e.path.lastIndexOf('/') + 1)}` } }
     if (e.path === registryAt) return opts.scopesUnreadable === true ? { deny: 'EACCES: permission denied' } : { value: registry() }
     const text = files[e.path]
     return text === undefined ? { deny: `ENOENT: no such file or directory, open '${e.path}'` } : { value: text }
@@ -376,12 +357,6 @@ export function world(on: On, opts: WorldOptions = {}): World {
   on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
   on('tool.list', () => ({ value: opts.tools ?? NPM_TOOLS }))
   on('tool.check', () => ({ decision: opts.permission ?? 'allow' }))
-  on('process.run', (_$, e) => {
-    w.runs.push([...e.argv])
-    if (opts.windows === true && e.argv[0] === 'uname') return { deny: 'not found: uname' }
-    const out = e.argv[0] === 'uname' ? 'Darwin\n' : ''
-    return { value: { exitCode: 0, stdout: out, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
-  })
   on('http.fetch', (_$, e) => {
     w.fetches.push(e.url)
     if (opts.down === true) return { deny: 'ECONNREFUSED: Unable to connect.' }
@@ -440,7 +415,6 @@ export function world(on: On, opts: WorldOptions = {}): World {
       w.scope.setBy = HERE
       return text({ set: true, scope: HERE, mode: w.scope.mode, stance: w.scope.mode })
     }
-    if (e.tool === 'recall') return text({ path: 'question', mode: 'facts', answer: opts.factsAnswer ?? FACTS_ANSWER, ids: ['mem_pub00001', 'mem_pub00002'] })
     return text({ reason: 'unknown-tool' }, true)
   })
   return w
