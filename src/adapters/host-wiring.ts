@@ -88,10 +88,10 @@ export function isOurHookCommand(command: string): boolean {
   // `<runtime> --import <node-hooks.mjs> <our hook script>`, or the single
   // binary's `<binary> hook` (`runtime.ts`).
   const run = parseScriptInvocation(tokens);
-  // The entry anchored at `adapters/` (as `HOOK_ENTRY`, review of #355): with
-  // `.js` read too (the transpiled tree), a bare `claude-code/bin/hook.js` is a
-  // path another tool's build may well have (review of #475).
-  if (run !== null && (run.mode === "hook" || (run.mode === undefined && /(^|[/\\])adapters[/\\]claude-code[/\\]bin[/\\]hook\.(ts|js)$/.test(run.script)))) {
+  // The transpiled tree's `.js` only anchored at `adapters/` (as `HOOK_ENTRY`,
+  // review of #355): a bare `claude-code/bin/hook.js` is a path another tool's
+  // build may well have (review of #475). `.ts` reads as it always has.
+  if (run !== null && (run.mode === "hook" || (run.mode === undefined && /((^|[/\\])adapters[/\\]claude-code[/\\]bin[/\\]hook\.js|claude-code[/\\]bin[/\\]hook\.ts)$/.test(run.script)))) {
     return tail(tokens.length - run.rest.length);
   }
   return false;

@@ -1662,11 +1662,10 @@ describe("m1 — ours to rewrite, versus ours to report", () => {
     }
   });
 
-  test("another tool's claude-code/bin/hook.js (or .ts) outside adapters/ is neither; ours as .js is both (review of #475)", () => {
+  test("another tool's claude-code/bin/hook.js outside adapters/ is neither; ours as .js is both (review of #475)", () => {
     for (const command of [
       "bun run /Users/me/tools/acme/claude-code/bin/hook.js",
       "node /opt/acme/claude-code/bin/hook.js",
-      '"/x/bun" run "/opt/acme/claude-code/bin/hook.ts"',
       "cat /p/src/adapters/claude-code/bin/hook.json",
     ]) {
       expect({ command, mark: HOOK_COMMAND_MARK.test(command) }).toEqual({ command, mark: false });
