@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.3.22 — 2026-10-14
+
+The sidebar is ready for Anthropic's plugin directory, and the plugin now installs from a repository of its own. In the sidebar the search box is gone, COUNTERPARTS and a memory's `more` are links to the dashboard in a terminal and buttons in the desktop app, and the sidebar no longer runs a command to open a browser; `counterparts dashboard` opens the dashboard already running for your memory instead of failing on its port. The plugin's marketplace entry now names `counterparts-ai/counterparts-plugin`, a generated folder that holds only the plugin, so an install clones a few hundred files instead of the whole development repository; if you added the marketplace before, run `/plugin marketplace update counterparts` first, and your memory and the plugin's data folder stay where they are. Also: the memory tools tell a host which of them only read and which can take something away, and the context a session starts with offers the first meeting and its other steps instead of ordering them. No store-format change (store v13, cache v6) and no wiring change: nothing to run after upgrading from 0.3.21, and `counterparts connect` is not needed.
+
+- **The plugin installs from its own repository.** The marketplace entry now names
+  `https://github.com/counterparts-ai/counterparts-plugin.git` at the release tag: the
+  plugin alone, generated from this repository at each release, without its tests, docs
+  and development tools. The marketplace keeps its name, so the plugin's data folder and
+  your memory are unchanged. If you added the marketplace before, run
+  `/plugin marketplace update counterparts` first.
+- **The memory tools now say what they do to a host.** Each one carries MCP's tool annotations: a
+  short title, and whether it only reads (`status`), writes, or can take something away (`dream`,
+  whose undo removes a dream's links and gists). A host can show these beside a tool or ask before
+  a call.
+- **Session context offers rather than orders.** The first-meeting line now offers the
+  meeting to the person and describes the `meet` tool as where the script lives; the
+  morning share and the contradiction note describe the `told` and `settle` steps instead
+  of ordering a tool call nobody asked for.
+- **The sidebar is ready for Anthropic's plugin directory.** The search box (hidden since
+  0.3.20) is gone. In a terminal, COUNTERPARTS and a memory's `more` are now ordinary links
+  to the dashboard, opened by your terminal (on some terminals with a ⌘- or Ctrl-click); in
+  the desktop app they are buttons that run `/counterparts:dashboard`. The sidebar no
+  longer runs a command to open a browser. The fox's pictures load from the plugin's own
+  image files.
+- **`counterparts dashboard` opens the dashboard that is already running** for your memory,
+  instead of failing because its port is taken. A dashboard for another memory on that
+  port still fails, and says so.
+
 ## 0.3.21 — 2026-10-13
 
 Your conversation text is kept for less time, and never in a backup. The text of a conversation is now deleted 3 days after it has been written up and the session has ended (it was 7), and it is never kept more than 14 days after the session's last activity, written up or not; both numbers can be changed with `"retention": {"afterWriteUpDays": 3, "maxDays": 14}` in `claude-code.json`. The first time the new version runs on an existing memory, everything older than those limits is deleted in one go, so if you want to keep more, add the `retention` setting before your first session on 0.3.21. Daily backups stop copying conversation text; backups made before this update still hold it until they rotate out, or until you run `counterparts delete backups`. New `counterparts delete conversation-text`, `delete backups` and `delete activity-log` (and "Delete data…" on the dashboard's Memories page) each delete one kind of data after showing what they would delete. The few words recall carries from your last message are cleared once a session has been quiet past the same 14-day limit. Also: the plugin installs over HTTPS without a GitHub SSH key (run `/plugin marketplace update counterparts` first if you added the marketplace before), "installed twice" is said once, the first meeting says where the sidebar appears, and the sidebar's fox and its look in the Claude Desktop app are polished (the Desktop shows the fox, not the brain, this version). No store-format change (store v13, cache v6) and no wiring change: nothing to run after upgrading from 0.3.20, and `counterparts connect` is not needed.

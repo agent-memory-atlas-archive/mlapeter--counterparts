@@ -15,7 +15,7 @@ The repository root is the plugin. Claude Code reads four things from it:
 | File | What it does |
 | :- | :- |
 | `.claude-plugin/plugin.json` | The manifest: name `counterparts`, version (kept equal to `package.json`), and the MCP server, declared inline |
-| `.claude-plugin/marketplace.json` | A one-plugin marketplace, so `mlapeter/counterparts` can be added as a marketplace. Its entry names this repository on GitHub at a release tag, not master (below, "Releases only") |
+| `.claude-plugin/marketplace.json` | A one-plugin marketplace, so `mlapeter/counterparts` can be added as a marketplace. Since 0.3.22 its entry names the plugin's own repository, `counterparts-ai/counterparts-plugin` (generated from this one, below "The bundle"), at a release tag, not master (below, "Releases only") |
 | `hooks/hooks.json` | The five events `counterparts install` wires: SessionStart, UserPromptSubmit, Stop, SessionEnd, PreCompact; and, under `"modules"`, the sidebar mod (`hooks/sidebar/`, see its `NOTES.md`) |
 | `commands/doctor.md` | `/counterparts:doctor`, because a plugin install puts no `counterparts` on PATH |
 | `commands/dashboard.md` | `/counterparts:dashboard`, for the same reason: `counterparts dashboard`, as a background task of the session |
@@ -170,11 +170,16 @@ an install would get whatever master holds that day. The entry names a release t
 instead:
 
 ```json
-"source": { "source": "url", "url": "https://github.com/mlapeter/counterparts.git", "ref": "v0.3.20" }
+"source": { "source": "url", "url": "https://github.com/counterparts-ai/counterparts-plugin.git", "ref": "v0.3.22" }
 ```
 
 Claude Code clones the repository at that tag, so a plugin install only ever gets a
-released version, and each release moves the pin (below).
+released version, and each release moves the pin (below). Up to 0.3.21 the `url` was
+this repository (`https://github.com/mlapeter/counterparts.git`); since 0.3.22 it is the
+generated bundle's repository (below, "The bundle"), whose `main` holds the full flavor
+and whose tags match this repository's. Master's marketplace is read live by everyone
+who adds it, so the bundle repository's tag has to exist before the release PR that
+names it merges.
 
 **HTTPS, not a `github` source.** Up to 0.3.20 the entry was
 `{ "source": "github", "repo": "mlapeter/counterparts", "ref": … }`. Claude Code clones
@@ -233,7 +238,8 @@ adds one edit and one tag:
 
 1. **In the release commit**, next to `package.json`'s version: set `"version"` in
    `.claude-plugin/plugin.json` to the same version, and the entry's `"ref"` in
-   `.claude-plugin/marketplace.json` to `v<version>`. `test/plugin.test.ts` fails
+   `.claude-plugin/marketplace.json` to `v<version>` (its `url` stays the bundle
+   repository's). `test/plugin.test.ts` fails
    until all three agree, and its message names this section.
 
    Then, after the last change to `src/`, on macOS, in the clean clone: run
@@ -252,8 +258,11 @@ adds one edit and one tag:
    git push origin v<version>
    ```
 
-   Until the tag is pushed, master's pin names a tag that isn't there (above). Tag the
-   packed commit, not the merge commit, unless the two trees are identical.
+   Tag the packed commit, not the merge commit, unless the two trees are identical.
+   Then push the bundle built from that commit to `counterparts-ai/counterparts-plugin`
+   and tag it `v<version>` there ([RELEASING.md, 3b](RELEASING.md)): that tag is the
+   one master's pin names, so until it is pushed a new install fails as above. Merge
+   the release PR only after it.
 
    **Right after the tag, attach the binaries** to that tag's release and check them
    (the owner runs these; a release agent writes them into the sheet):
@@ -384,10 +393,12 @@ still loads, and `/plugin` notes the missing packages. Then, measured by the loo
   `[install] auto = "disable"`, so nothing is fetched. It sets no registry or other package
   source. npm installs are unaffected, since their `node_modules` exists.
 
-To serve installs from the bundle repository, the marketplace entry's `url` becomes
-`https://github.com/counterparts-ai/counterparts-plugin.git`, with the same `ref` (`v<version>`, tagged there). Nothing
-else in the entry changes, and the marketplace keeps its name, so the plugin's data
-directory (`counterparts-counterparts`) stays where it is.
+Since 0.3.22 installs are served from the bundle repository: the marketplace entry's
+`url` is `https://github.com/counterparts-ai/counterparts-plugin.git`, with the same
+`ref` (`v<version>`, tagged there). Nothing else in the entry changed, and the
+marketplace keeps its name, so the plugin's data directory (`counterparts-counterparts`)
+stays where it is. The full flavor is that repository's `main` and its tags; the
+directory flavor sits on its `directory` branch.
 
 ## Manual checklist (needs a login or a GUI)
 
