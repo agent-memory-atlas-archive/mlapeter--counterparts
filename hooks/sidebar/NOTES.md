@@ -12,6 +12,29 @@ there: its last section overrides the PNGs). v0.1's notes follow the v0.2
 section, as the record; where v0.2 changed something they say so. Everything
 here is a working default.
 
+## For the plugin directory (2026-10-14)
+
+The directory's validator, and Mike's calls the same day, for both builds (one sidebar):
+
+- **One hooks module per plugin.** `hooks.json` "modules" takes one entry (a second is
+  refused). The plugin's own build names `full.tsx`, which registers `register.tsx` (the
+  sidebar) and `speak-first.tsx` (the once-per-install speak-first, moved out of the
+  sidebar); the directory build names `register.tsx` alone, which never submits a prompt.
+  Two hooks of one plugin on one event with no matcher are refused, so every speak-first
+  hook carries one. They share, through the engine, `$.state` `counterparts.scope` (the
+  sidebar writes it, the speak-first reads it; alone, the speak-first never fires) and the
+  `$.store` mark `meetTriggered` (the speak-first writes it; the sidebar hides its button
+  while this session's speak-first introduces). Without the speak-first, "Start the
+  5-minute intro" shows for `not_started` too.
+- **No `Client` identifier** in the hooks module but on the line that names its module.
+- **No `$.process.run`:** the dashboard links are `Link`s (OSC 8 on the terminal; the
+  desktop draws a non-https link as plain text, so they don't open there).
+- **No search box** (it was hidden since 0.3.20).
+- **No base64 module:** the fox's PNGs are files (`art/fox/`, under `$.plugin.root`). The
+  plugin bundle must ship that folder: its tracer follows imports, not these paths.
+- **The engine's clock** (`$.clock.now()`), never `Date.now()`/`performance.now()`; the fps
+  report no longer gives a frame's compute time.
+
 ## Where core ends and the mod begins (Mike, 2026-10-11, lightly held)
 
 Core is everything about memory: the store, writing, recall, forgetting,
